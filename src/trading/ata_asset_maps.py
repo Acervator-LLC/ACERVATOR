@@ -556,10 +556,10 @@ FORM_SOURCE = (
 #: and ``organisation_url`` all build their addresses from the same domain, so
 #: one entry answers the mark and the way out together.
 ORGANISATION_SITES: dict[str, str] = {
-    "GLD": "spdrgoldshares.com",
+    "GLD": "www.spdrgoldshares.com",
     "SLV": "ishares.com",
-    "PPLT": "abrdn.com",
-    "PALL": "abrdn.com",
+    "PPLT": "www.abrdn.com",
+    "PALL": "www.abrdn.com",
     "CPER": "uscfinvestments.com",
     "DBB": "invesco.com",
     "USO": "uscfinvestments.com",
@@ -569,7 +569,7 @@ ORGANISATION_SITES: dict[str, str] = {
     "USD": "federalreserve.gov",
     "EUR": "ecb.europa.eu",
     "JPY": "boj.or.jp",
-    "GBP": "bankofengland.co.uk",
+    "GBP": "www.bankofengland.co.uk",
     "CHF": "snb.ch",
     "AUD": "rba.gov.au",
     "NZD": "rbnz.govt.nz",
@@ -593,7 +593,7 @@ ORGANISATION_SITES: dict[str, str] = {
     "GOOGL": "abc.xyz",
     "IEF": "ishares.com",
     "IWM": "ishares.com",
-    "JD": "jd.com",
+    "JD": "www.jd.com",
     "KOSS": "koss.com",
     "MCHI": "ishares.com",
     "META": "meta.com",
@@ -630,14 +630,24 @@ UNISSUED_SYMBOLS: frozenset[str] = frozenset(
     {"XAU/USD", "XAG/USD", "XPT/USD", "XPD/USD"}
 )
 
+#: The ``ORGANISATION_SITES`` domains that are a trading venue or a broker:
+#: Coinbase Global for COIN and SoFi Technologies for SOFI. ``logo_candidates``
+#: and ``organisation_page`` answer nothing for these, so no logo read ever
+#: reaches a venue. ``organisation_url`` still answers the domain, because that
+#: address is one the operator opens himself.
+VENUE_DOMAINS: frozenset[str] = frozenset({"coinbase.com", "sofi.com"})
+
 #: Why one listing resolves no mark. A metal has no issuer; a company that no
-#: longer trades publishes nothing; and a listing holding no domain has no site
-#: to read one from.
+#: longer trades publishes nothing; a listing holding no domain has no site to
+#: read one from; and a venue's own domain is never read.
 NO_ISSUER_REASON = (
     "{symbol} is a metal quote with no issuer, so no organisation publishes a mark"
 )
 NO_COMPANY_REASON = "{symbol} no longer trades, so no organisation publishes a mark"
 NO_DOMAIN_REASON = "no web address is held for {symbol}, so its own mark cannot be read"
+VENUE_DOMAIN_REASON = (
+    "{symbol} is the venue {domain}, which this platform never reads a mark from"
+)
 
 #: The organisation's own site, the address a logo click opens.
 ORGANISATION_URL_FORMAT = "https://{domain}"
@@ -710,7 +720,40 @@ SITE_SOURCES = (
     "nothing and neither was worked around: spdrgoldshares.com answered HTTP 530 "
     "at both icon locations and at the favicon-96x96.png its own page declares, "
     "and ecb.europa.eu failed certificate verification at both locations and at "
-    "its own page, with no verification relaxed."
+    "its own page, with no verification relaxed. "
+    "The coinbase.com and sofi.com refusal is now held in VENUE_DOMAINS, so "
+    "logo_candidates and organisation_page answer nothing for COIN and SOFI and "
+    "no logo read can reach a venue. "
+    "CORRECTED 2026-09-27, four domains that named a host not serving the site, "
+    "each read twice, bare name then www name, with nothing relaxed: "
+    "bankofengland.co.uk answered a hostname-mismatch certificate and "
+    "www.bankofengland.co.uk a 4,926-byte PNG; spdrgoldshares.com answered HTTP "
+    "530 and www.spdrgoldshares.com a 7,043-byte PNG; jd.com answered 686 bytes "
+    "of a page and www.jd.com a 25,214-byte ICO; abrdn.com answered an expired "
+    "certificate and www.abrdn.com a 1,150-byte ICO at the icons/favicon.ico its "
+    "own page declares. Those four carry ten assets: the six GBP pairs, GLD, JD, "
+    "PPLT and PALL. "
+    "OVERTAKEN, the sentence that followed here: 'STILL UNANSWERED 2026-09-27, "
+    "read at both the bare and the www name: amctheatres.com, rbnz.govt.nz and "
+    "tesla.com answered HTTP 403 to this platform's own user agent, which was "
+    "not changed; alibabagroup.com answered 58,268 bytes of a page at both icon "
+    "locations and declares no icon tag; and rba.gov.au, snb.ch, ecb.europa.eu "
+    "and gamestop.com failed certificate verification on this machine, with no "
+    "verification relaxed.' "
+    "CORRECTED 2026-09-27, four of those certificate refusals are a fact about "
+    "the reading machine and not about the host: curl verified ecb.europa.eu, "
+    "rba.gov.au, snb.ch and gamestop.com on the same machine that refused them, "
+    "and Windows fills its root store on demand, so three then answered an icon "
+    "to the guarded fetch with no verification relaxed: ecb.europa.eu a "
+    "1,150-byte ICO, rba.gov.au a 5,430-byte ICO, snb.ch a 15,086-byte ICO, and "
+    "nio.com a 6,328-byte ICO. Those four carry fourteen assets, the seven EUR "
+    "pairs, the five AUD pairs, CHF/JPY and NIO. "
+    "STILL UNANSWERED 2026-09-27 after a second reading at both names: "
+    "amctheatres.com, rbnz.govt.nz and tesla.com answer HTTP 403 to this "
+    "platform's own user agent, which was not changed; alibabagroup.com answers "
+    "a page at both icon locations and declares no icon tag; and gamestop.com "
+    "fails certificate verification, with no verification relaxed. Those five "
+    "carry eight assets, AMC, the four NZD pairs, TSLA, BABA and GME."
 )
 
 #: What each class's map was built from, and when its tickers were measured.
@@ -1076,9 +1119,12 @@ def organisation_site(symbol: Any) -> str:
 
 
 def logo_candidates(symbol: Any) -> tuple[str, ...]:
-    """Every ``ORGANISATION_ICON_FORMATS`` address one listing's mark is served at, best first."""
+    """Every ``ORGANISATION_ICON_FORMATS`` address one listing's mark is served at, best first.
+
+    A ``VENUE_DOMAINS`` domain answers no address, so no read reaches a venue.
+    """
     domain = organisation_site(symbol)
-    if not domain:
+    if not domain or domain in VENUE_DOMAINS:
         return ()
     return tuple(one.format(domain=domain) for one in ORGANISATION_ICON_FORMATS)
 
@@ -1088,7 +1134,7 @@ def organisation_page(symbol: Any) -> str:
     # The regulator page organisation_url falls back to declares the regulator's
     # own mark, so it is never answered here.
     domain = organisation_site(symbol)
-    if not domain:
+    if not domain or domain in VENUE_DOMAINS:
         return ""
     address, _ = openable_url(ORGANISATION_URL_FORMAT.format(domain=domain))
     return address
@@ -1099,6 +1145,9 @@ def logo_absence(symbol: Any) -> str:
     if logo_candidates(symbol):
         return ""
     asked = str(symbol).strip().upper()
+    venue = organisation_site(symbol)
+    if venue in VENUE_DOMAINS:
+        return VENUE_DOMAIN_REASON.format(symbol=asked, domain=venue)
     if asked in UNISSUED_SYMBOLS:
         return NO_ISSUER_REASON.format(symbol=asked)
     if asked in DELISTED_TICKERS:
@@ -1150,9 +1199,11 @@ def asset_logo(
     held = cache if cache is not None else _LOGOS
     addresses = logo_candidates(symbol)
     if not addresses and _is_crypto(symbol, asset_class):
+        manager = AssetManager(held.cache_dir)
         return held.resolve(
             symbol,
-            AssetManager(held.cache_dir).logo_candidates(symbol),
+            manager.logo_candidates(symbol),
+            no_source_reason=manager.coin_index_reason(symbol),
             folder=folder,
         )
     return held.resolve(
@@ -1777,6 +1828,8 @@ __all__ = [
     "UNISSUED_SYMBOLS",
     "TIMEFRAME_BARS_ASKED",
     "TIMEFRAME_BAR_DAYS",
+    "VENUE_DOMAINS",
+    "VENUE_DOMAIN_REASON",
     "VENUE_EXCHANGE",
     "VENUE_FUTURES",
     "VENUE_ROLLED_TIMEFRAMES",
