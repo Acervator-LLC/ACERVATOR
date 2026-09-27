@@ -13,7 +13,8 @@
 #                  libraries from node_modules, so `npm ci` runs first. Runs when
 #                  `code` is true.
 #   * archetypes — runs the archetype that owns each changed file: coding for
-#                  .py, gui for .js/.mjs/.cjs/.css/.html, docs for .md. A file of
+#                  .py, .sh/.bash/.zsh and .yml/.yaml, gui for
+#                  .js/.mjs/.cjs/.css/.html, docs for .md. A file of
 #                  any other extension has no owning archetype; the step names it
 #                  and counts it as unowned. The lane fails when any archetype
 #                  reports passed=false. Runs when `any` is true, so a
@@ -261,6 +262,8 @@ jobs:
             fi
             case "$path" in
               *.py)                          module=coding_archetype ;;
+              *.sh|*.bash|*.zsh)             module=coding_archetype ;;
+              *.yml|*.yaml)                  module=coding_archetype ;;
               *.js|*.mjs|*.cjs|*.css|*.html) module=gui_archetype ;;
               *.md)                          module=docs_archetype ;;
               *)

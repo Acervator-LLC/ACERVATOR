@@ -1,0 +1,9 @@
+---
+# Calibration body for yamllint. One defect at error level: the key
+# `ceiling` is written twice in one mapping, so the first value is dropped
+# and nothing downstream can read 70.
+name: acervator-known-bad
+version: 1
+limits:
+  ceiling: 70
+  ceiling: 80

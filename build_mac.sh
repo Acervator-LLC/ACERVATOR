@@ -67,8 +67,12 @@ DEPS="$(python3 -m tools.deps requirements build)" || {
     exit 1
 }
 [ -n "$DEPS" ] || { echo "ERROR: empty dependency set; refusing to build"; exit 1; }
-# shellcheck disable=SC2086
-pip3 install $DEPS --quiet
+# tools.deps prints one requirement per line, so DEP_ARGS takes one per element.
+DEP_ARGS=()
+while IFS= read -r REQUIREMENT; do
+    DEP_ARGS+=("$REQUIREMENT")
+done <<< "$DEPS"
+pip3 install "${DEP_ARGS[@]}" --quiet
 
 # Build one .app per variant. The spec names each bundle after the version and
 # the variant and steps past a name already in dist, so nothing is overwritten.

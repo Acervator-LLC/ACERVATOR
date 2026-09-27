@@ -126,9 +126,10 @@ dev = [
     "acervator[test]",
     # The CI lint job runs black+flake8; the full lane shells out to the rest.
     "acervator[lint]",
-    # coding_archetype.py shells out to SIX analyzers - ruff, mypy, pyright,
-    # bandit, vulture, semgrep. pyright is a bare-executable runner, so it
-    # must be on PATH or every archetype test fails closed with
+    # coding_archetype.py shells out to SIX analyzers on a Python target -
+    # ruff, mypy, pyright, bandit, vulture, semgrep - and to shellcheck or
+    # yamllint on a shell or YAML target. pyright is a bare-executable
+    # runner, so it must be on PATH or every archetype test fails closed with
     # "pyright: not installed". slither-analyzer below is a seventh
     # analyzer that no archetype spawns; it is run on the Solidity sources.
     "semgrep>=1.0",
@@ -145,6 +146,14 @@ dev = [
     "bandit>=1.9.4",
     "vulture>=2.16",
     "pyright>=1.1.411",
+    # coding_archetype.py spawns shellcheck on a .sh target and yamllint on a
+    # .yml target. shellcheck-py ships the shellcheck binary as a console
+    # script, so `_resolve_executable("shellcheck")` finds it on PATH; without
+    # either package those two lanes report `missing` and the report cannot be
+    # green. Versions measured on harness_fixtures/coding_archetype/known_good
+    # and known_bad for both suffixes: shellcheck 0.11.0, yamllint 1.38.0.
+    "shellcheck-py>=0.10.0",
+    "yamllint>=1.35.0",
     "proselint>=0.16.0",
     "pytest>=9.0.3",
     "pytest-asyncio>=1.3.0",
