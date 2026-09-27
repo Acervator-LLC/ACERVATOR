@@ -577,6 +577,39 @@ NIGREDO = "nigredo"
 NIGREDO_FRACTION = 0.25
 ```
 
+### Where the tablets live
+
+The tablet archive is in the repository. A clone carries all 407 files, so the
+history arrives with the code and no venue is called to fetch it. 406 are candle
+tablets and one is the index they are read through.
+
+`src/trading/stone_tablets/storage.py` — the root a source checkout resolves
+
+```python
+def _tablet_root() -> Path:
+    if is_frozen():
+        return HOME_TABLETS_DIR
+    return project_root() / "stone_tablets"
+```
+
+A tablet is never modified. It is recorded venue history, and a back test over a
+tablet that drifted proves nothing. Tracking makes that rule checkable rather
+than merely stated: the archive is under version control, so any later change to
+any file in it shows up as a difference against the committed copy.
+
+The line-ending rule the repository applies to text does not reach the archive.
+The index file holds 5,283 carriage returns, and normalising them would change
+its digest and break the checksum every row carries.
+
+`.gitattributes` — the archive's exemption
+
+```
+stone_tablets/** -text
+```
+
+A built executable carries no archive, so it reads the home tree instead, at
+`~/.acervator/stone_tablets`. A source run never reads that copy.
+
 ### What is not built
 
 Privacy Mode, the news line and the data-pool line are not on the tab; their

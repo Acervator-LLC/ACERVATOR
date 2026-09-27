@@ -84,7 +84,8 @@ os.environ.setdefault("ACERVATOR_SIM_STATE_ROOT", str(_SIM_STATE_TMP))
 
 
 def _live_roots() -> tuple[Path, ...]:
-    """Return the five runtime roots the guard watches, all under ``Path.home()``."""
+    """Return the runtime roots the guard watches, the home trees plus
+    ``STONE_TABLETS_DIR``."""
     from src.paper.paper_paths import PAPER_ROOT
     from src.trading.ata_post_paths import ATA_POST_ROOT
 
@@ -95,12 +96,16 @@ def _live_roots() -> tuple[Path, ...]:
         home / ".acervator_ra_tablets",
         PAPER_ROOT,
         ATA_POST_ROOT,
+        _stone_tablet_root(),
     )
 
 
 def _stone_tablet_root() -> Path:
-    """Return the stone tablet archive, a subtree of ``_live_roots`` with a stricter rule."""
-    return Path.home() / ".acervator" / "stone_tablets"
+    """Return ``STONE_TABLETS_DIR``, a subtree of ``_live_roots`` with a
+    stricter rule."""
+    from src.trading.stone_tablets.storage import STONE_TABLETS_DIR
+
+    return STONE_TABLETS_DIR
 
 
 def _home_is_redirected() -> bool:
@@ -588,6 +593,8 @@ def _assert_no_live_tree_writes(_redirect_writable_roots):
         + "\n\n".join(problems)
         + "\n\nTests must never write to ~/.acervator, ~/.acervator_logs, "
         "~/.acervator_ra_tablets, ~/.acervator_paper or ~/.acervator_ata_posts. "
+        "The tracked stone_tablets/ archive carries the same rule: pass an "
+        "explicit root rather than letting STONE_TABLETS_DIR answer. "
         "Redirect the writer at its root-resolution point (see "
         "ACERVATOR_TELEMETRY_ROOT for the pattern)."
     )
