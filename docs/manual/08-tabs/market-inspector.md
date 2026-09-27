@@ -3103,7 +3103,7 @@ rendered surface - the window's own labels, and the page's own text.
 | | window | page |
 | --- | --- | --- |
 | scan that found candles | `18 asset(s) · 36 vote(s) · 0 reversal call(s)` / "No chart carried a reversal vote." | identical |
-| scan that found none | `18 asset(s) · 0 vote(s) · 0 reversal call(s)` / "No candles came back for ADA, ALGO, APT, ATOM, AVAX, BTC and 12 more." | identical |
+| scan that found none | `18 asset(s) · 0 vote(s) · 0 reversal call(s)` / "No candles came back for A34, ALGO, APT, ATOM, AVAX, A15 and 12 more." | identical |
 
 Both builds made the same number of calls in each arm, 72 and 108. Network calls
 attempted across every run: 0.
@@ -3309,18 +3309,18 @@ page's own text.
 
 | the press | window | page |
 | --------- | ------ | ---- |
-| `BTC`, crypto | `BTC in crypto` / `1 market · 2 vote(s) · 0 reversal call(s)` | identical |
+| `A15`, crypto | `A15 in crypto` / `1 market · 2 vote(s) · 0 reversal call(s)` | identical |
 | `defi`, crypto | `defi (crypto)` / `10 asset(s) · 20 vote(s) · 0 reversal call(s)` | identical |
 | the field empty | `defi (crypto)` / `10 asset(s) · 20 vote(s) · 0 reversal call(s)` | identical |
 | `ZZZZ`, crypto | zone keeps `defi (crypto)`; the line under the field reads `crypto holds no ticker ZZZZ. Pick one the field offers.` | identical |
 
-The symbols each press read, counted at the candle source: 1 for `BTC`, 11 for
-`defi` on a board already holding `BTC`, 11 again for the empty field, and 0
+The symbols each press read, counted at the candle source: 1 for `A15`, 11 for
+`defi` on a board already holding `A15`, 11 again for the empty field, and 0
 for `ZZZZ`. The same counter reported 0, 1, 4, 10 and 11 across one run, so its
 zero is a reading and not a blind instrument. Network calls attempted across
 every run: 0.
 
-Before this entry the same four presses read 0 symbols for `BTC`, then 10, 10
+Before this entry the same four presses read 0 symbols for `A15`, then 10, 10
 and 10, the last of those being the board re-running `defi` behind an invented
 `ZZZZ (crypto)` entry.
 
@@ -3735,7 +3735,7 @@ its reading whole with no note. The X body on the three-voter call:
 
 ```
 Not investment advice. Acervator TA engine demonstration.
-BTC/USD on 1hr: bullish reversal called.
+A15/USD on 1hr: bullish reversal called.
 RSI: no reading published. Votes bullish at 80% confidence.
 Abbreviated: 2 evidence line(s) omitted.
 https://github.com/Acervator-LLC
@@ -3942,16 +3942,16 @@ tape it reads as a vote with no call for every other market and timeframe.
 | 3 | `crypto by volume` / `15 market(s) read · 3 hit(s) · stopped at target` | identical | 1 to 15; 16 to 20 not read |
 | 1 | `crypto by volume` / `3 market(s) read · 1 hit(s) · stopped at target` | identical | 1 to 3 |
 | 10 | `crypto by volume` / `20 market(s) read · 3 hit(s) · sector exhausted` | identical | all 20 |
-| 3, `BTC` typed | `BTC in crypto` / `1 market · 2 vote(s) · 0 reversal call(s)` | identical | `BTC` only |
+| 3, `A15` typed | `A15 in crypto` / `1 market · 2 vote(s) · 0 reversal call(s)` | identical | `A15` only |
 
 The ticker press reads byte for byte what it read before this entry, 197
 bytes of zone line, entry and symbol, and the same comparison run against the
 empty-field entry reports a difference at its first byte.
 
-The ordering was driven on a stand-in connector serving six ticker rows: SOL
-at 900, BTC at 500, ETH at 300 and 100 under two quotes, DOGE with a base
-volume and a last price, and USDT at 9999. The crypto list read SOL, BTC, ETH,
-DOGE and then the names with no figure by name; USDT was dropped as a
+The ordering was driven on a stand-in connector serving six ticker rows: A23
+at 900, A15 at 500, A14 at 300 and 100 under two quotes, A22 with a base
+volume and a last price, and USDT at 9999. The crypto list read A23, A15, A14,
+A22 and then the names with no figure by name; USDT was dropped as a
 stablecoin; the second read inside the window made no connector call. Network
 calls attempted across every run: 0.
 
@@ -4364,13 +4364,13 @@ Both builds were driven at the operator's window size, 1536 by 937 logical at
 125 % scale, on a scratch home with every socket but loopback refused. A
 loopback stand-in answered the Yahoo chart endpoint for USO and BNO and
 refused every other ticker with 404, and answered the Coinbase public candle
-endpoint for BTC-USD and ETH-USD and refused every other product. The real
+endpoint for A15-USD and A14-USD and refused every other product. The real
 endpoints were never called.
 
 | press, empty field | log lines | Activity Log lines | pins | zone |
 | ------------------ | --------- | ------------------ | ---- | ---- |
 | energy: USO and BNO answered, UGA and UNG refused | 30 | 28 | 27: 1 pressed, 1 started, 24 read, 1 finished | `energy by volume` / `4 market(s) read · 2 hit(s) · sector exhausted` / `USO on 1wk: bearish reversal` |
-| crypto: BTC and ETH answered, 118 refused | 248 | 246 | 247: 244 read | `crypto by volume` / `120 market(s) read · 0 hit(s) · sector exhausted` / `No chart carried a reversal vote. No candles came back for 1INCH, AAVE, ADA, AGIX, AKT, ALGO and 112 more.` |
+| crypto: A15 and A14 answered, 118 refused | 248 | 246 | 247: 244 read | `crypto by volume` / `120 market(s) read · 0 hit(s) · sector exhausted` / `No chart carried a reversal vote. No candles came back for 1INCH, AAVE, A34, AGIX, AKT, ALGO and 112 more.` |
 | metals: every ticker refused | 20 | 18 | 19: 16 read | `metals by volume` / `4 market(s) read · 0 hit(s) · sector exhausted` / `No candles came back for GLD, PALL, PPLT, SLV.` |
 
 The counts are the same in the window and on the page. The Activity Log lines
@@ -4606,8 +4606,8 @@ loopback stand-in answered the chart endpoint for the four energy funds with
 planted volumes UNG 4000, UGA 3000, BNO 2000, USO 1000, the reverse of map
 order, and planted charts the chains fire on for UNG on 1wk, UGA on 1d, BNO on
 1hr and USO on 1d. A stand-in connector answered six crypto names with
-volumes SOL 600, BTC 500, LINK 400, ADA 300, ETH 200, DOGE 100 and charts that
-fire for SOL on 1wk, BTC on 1d, LINK on 1wk and ADA on 1d. The real endpoints
+volumes A23 600, A15 500, A21 400, A34 300, A14 200, A22 100 and charts that
+fire for A23 on 1wk, A15 on 1d, A21 on 1wk and A34 on 1d. The real endpoints
 were never called: 0 refused connections in every run.
 
 | press | ticked | Hits per scan | walk | hits | zone |
@@ -4616,7 +4616,7 @@ were never called: 0 refused connections in every run.
 | energy | 1hr 1d 1wk | 5 | UNG, UGA, BNO, USO | 4 | `4 market(s) read · 4 hit(s) · sector exhausted` |
 | energy, no chart fires | 1hr 1d 1wk | 5 | UNG, UGA, BNO, USO | 0 | `4 market(s) read · 0 hit(s) · sector exhausted` |
 | energy, volumes reversed | 1hr 1d 1wk | 3 | USO, BNO, UGA | 3: USO 1d, BNO 1hr, UGA 1d | `3 market(s) read · 3 hit(s) · stopped at target` |
-| crypto | 1hr 1d 1wk | 3 | SOL, BTC, LINK | 3: SOL 1wk, BTC 1d, LINK 1wk | `crypto by volume` / `3 market(s) read · 3 hit(s) · stopped at target` |
+| crypto | 1hr 1d 1wk | 3 | A23, A15, A21 | 3: A23 1wk, A15 1d, A21 1wk | `crypto by volume` / `3 market(s) read · 3 hit(s) · stopped at target` |
 | crypto | 1hr 1d 1wk | 5 | all 120 | 4 | `120 market(s) read · 4 hit(s) · sector exhausted` |
 
 Every row reads the same in the window and on the page: the walk, the hits,
@@ -4701,7 +4701,7 @@ the markdown image tags on the page answers 0 before this entry and 0 after it.
 Recognition stopped at the sector menu. Typing `gl` under crypto offered
 nothing, because GLD is listed by metals. Typing `gld` under crypto and pressing
 Scan Now was refused with `crypto holds no ticker gld. Pick one the field
-offers.` and nothing ran. `BTC/USD` under crypto was refused the same way,
+offers.` and nothing ran. `A15/USD` under crypto was refused the same way,
 because the pair form matched no name. `btc` under metals was refused. A typed
 name reached a market only when it was spelled as the chosen sector's list
 spelled it. The class box never moved. A market entry counted `reversal call(s)`
@@ -4730,7 +4730,7 @@ TICKER_JOIN = "/"
 
 The offers come prefix matches first, the chosen class first inside each, then
 matches holding the text later in the name, eight at most. Typing `btc/u` under
-metals offers `BTC  (crypto)`, because the part after the slash starts a quote
+metals offers `A15  (crypto)`, because the part after the slash starts a quote
 the connector route reads.
 
 `src/gui/main_tabs/market_inspector_surface.py` - the rows the completer and the page's list draw
@@ -4758,10 +4758,10 @@ because the connector route already tries those three quotes in that order.
 
 | typed | resolves to | class |
 | ----- | ----------- | ----- |
-| `btc`, `BTC/USD`, `btc-usd`, `BTCUSD` | BTC on the exchange | crypto |
+| `btc`, `A15/USD`, `btc-usd`, `BTCUSD` | A15 on the exchange | crypto |
 | `gld`, `GLD/USD` | GLD on yahoo | metals |
 | `eur/usd`, `eurusd`, ` eur usd ` | EUR/USD on yahoo | forex |
-| `BTC/EUR` | nothing | EUR is not a quote the connector route reads |
+| `A15/EUR` | nothing | EUR is not a quote the connector route reads |
 | `ZZZQ` | nothing | no class lists it |
 
 `src/gui/main_tabs/market_inspector_surface.py` - the placement the press resolves
@@ -4870,16 +4870,16 @@ Both builds were driven at the operator's window size, 1536 by 937 logical at
 125 % scale, on a scratch home with every socket but loopback refused. A
 loopback stand-in answered the Yahoo chart endpoint for GLD, SLV, PPLT, USO,
 BNO, UGA and UNG and refused every other ticker with 404, and a stand-in
-connector listed SOL, BTC, LINK, ADA, ETH and DOGE. The real endpoints were
+connector listed A23, A15, A21, A34, A14 and A22. The real endpoints were
 never called. Three timeframes were ticked on every press.
 
 | typed, class chosen | completer | class box after the press | zone |
 | ------------------- | --------- | ------------------------- | ---- |
 | `gl`, crypto | `GLD  (metals)` | - | - |
 | `aa`, crypto | `AAVE  (crypto)` | - | - |
-| `btc/u`, metals | `BTC  (crypto)` | - | - |
+| `btc/u`, metals | `A15  (crypto)` | - | - |
 | `gld`, crypto | - | metals | `GLD in metals` / `1 market on yahoo · 3 vote(s) · 1 hit(s)` / rows `384 candle(s) · bearish vote, refused by the gates`, `365 candle(s) · bearish vote, refused by the gates`, `200 candle(s) · bearish vote, hit` |
-| `BTC/USD`, crypto | - | crypto | `BTC in crypto` / `1 market on exchange · 2 vote(s) · 1 hit(s)`; 1hr unserved |
+| `A15/USD`, crypto | - | crypto | `A15 in crypto` / `1 market on exchange · 2 vote(s) · 1 hit(s)`; 1hr unserved |
 | `btc`, metals | - | crypto | the same entry |
 | ` eur usd `, crypto | - | forex | `EUR/USD in forex` / `1 market on yahoo · 0 vote(s) · 0 hit(s)` / `No candles came back for EUR/USD.` |
 | `ZZZQ`, crypto | - | crypto | unchanged; the line under the field reads `No class lists ticker ZZZQ. Pick one the field offers.`; 0 venue calls |
@@ -5216,7 +5216,7 @@ RSI route on the same render call the venue folder makes.
 
 | reading | value |
 | ------- | ----- |
-| the hit | ADA/USD 1h, bearish, 7 confirming voters: Vortex, MACD, Stoch RSI, Slingshot, ADX, KER, Supertrend |
+| the hit | A34/USD 1h, bearish, 7 confirming voters: Vortex, MACD, Stoch RSI, Slingshot, ADX, KER, Supertrend |
 | venue PNGs written | 7, one per venue folder |
 | overlays drawn on each | vortex, macd, stochrsi, slingshot, adx, supertrend, ker; undrawn none |
 | the same call on the commit before | drawn vortex, macd, stochrsi, slingshot; undrawn adx, kaufman_er, supertrend |
@@ -5597,7 +5597,7 @@ axis text colour.
 
 ### The venue readings, off the running program, under two themes
 
-Read on the recorded BTC 1h candles with a bearish call carrying the vortex,
+Read on the recorded A15 1h candles with a bearish call carrying the vortex,
 macd, adx and rsi voters and a caption, the theme applied through the theme
 manager before each call: under Neon Light the image's top-left pixel reads
 `#ffffff`, the theme's chart ground, and its foot pixel `#f0f0f8`, the
@@ -5708,8 +5708,8 @@ the Asset Charts page under the oscillators.
 ### The seven images of one hit, read off the running program
 
 The scan under his conditions, both variants, on the operator's tablet copies
-through a Coinbase-shaped connector: two calls, XLM 1d bearish and AXS 1h
-bearish, seven confirming voters each. The XLM images, read off the disk and
+through a Coinbase-shaped connector: two calls, A27 1d bearish and AXS 1h
+bearish, seven confirming voters each. The A27 images, read off the disk and
 off the painter's own heights at each width:
 
 | venue | image | natural height | reading strip | sub-panes | price pane | caption lines |
@@ -5976,7 +5976,7 @@ together. The chime's output was set to 0 for the run and read, not heard.
 | the wav | 26,460 frames, 44,100 Hz, stereo, 0.600 s; first 50 ms peak 15,987, last 50 ms peak 431 | the same bytes, one sha256 |
 | timers after the scan | 3, one per hit, each `next read 2026-09-20 00:00 UTC`, the next daily close | the same |
 | the entry after the scan | `X · waiting · open · next read 2026-09-20 00:00 UTC`; the head row reads `open · next read 2026-09-20 00:00 UTC` beside the vote | the same, read off the page |
-| the Activity Log | `ATA-SPM confirmation timer for ARB 1d: next read 2026-09-20 00:00 UTC`, and AVAX, DOGE | the same three on the page's pane |
+| the Activity Log | `ATA-SPM confirmation timer for ARB 1d: next read 2026-09-20 00:00 UTC`, and AVAX, A22 | the same three on the page's pane |
 | the clock past the first close | three reads on thread `ata-smp-follow-up`, one fetch each, `open`, entry and log `next read 2026-09-21 00:00 UTC`, three `follow_up_read` pins | the same |
 | the field, entry open | one `Phase 7 Follow-Up` row per call, the newest read | the same |
 | Scan Now while the timers pend | the walk ran on its own thread, 0 hits, 21 entries kept, every timer's next read and read count unchanged | the same |
@@ -5984,7 +5984,7 @@ together. The chime's output was set to 0 for the run and read, not heard.
 | a planted removal of one market's entries | that timer stopped, `... stopped: the entry left the bucket` on the log; the other two held | the same |
 | a tab change with timers held | the same three timers before and after | the same |
 | the confirmation share typed as 50 | `ata_spm_settings.json` holds `"confirmation_share_pct": 50` beside `hits_per_scan` | the same |
-| the third daily close | ARB and DOGE `failed · close 992.34`, `the trend held for 3 candles in a row`; no chime; 14 follow-up entries, one per venue per call | the same |
+| the third daily close | ARB and A22 `failed · close 992.34`, `the trend held for 3 candles in a row`; no chime; 14 follow-up entries, one per venue per call | the same |
 | the Monday close with the week withheld by the venue | `follow_up_read` pin `ok` False, 1 candle of 2; `next read 2026-09-28 00:01 UTC`, the 60 second retry | the same |
 | the retry with the week served | `confirmed · close 1476.67`, `reached 985.086, 50% of the run to midline 985.723`; the fourth chime; 7 more follow-up entries; the entry's head row `confirmed · close 1476.67` | the same |
 | `bot_state.json` | byte-identical after every press; the planted write moved the comparison | the same |
@@ -6750,7 +6750,7 @@ caption size, the countdown in `PRIMARY`, `reading` in `WARNING`,
 Both builds, the home on a scratch directory, every socket but loopback
 refused, the stand-in serving the shapes the sources serve: 90 trading
 crypto products, 100 screener equities, 14 metals rows of which 6 read, 11
-futures products, 28 forex pairs, 5 energy funds; a 5-minute crash on ADA's
+futures products, 28 forex pairs, 5 energy funds; a 5-minute crash on A34's
 tape, a daily one on nine names; three planted 429s, on AVAX/USD three times
 in a row on the connector route, on BIT-27FEB26-CDE once with `Retry-After:
 4` on the futures route, and on AMD once on Yahoo. The connector's interval
@@ -6770,12 +6770,12 @@ spacing.
 | the three planted 429s | exchange AVAX/USD answered 429/429/429/200/200/200/200, the retry 10.05 s after the last 429; coinbase-futures BIT-27FEB26-CDE answered 429/200/200/200, the retry 4.02 s after the last 429; yahoo AMD answered 429/200/200/200/200, the retry 60.03 s after the last 429 | exchange AVAX/USD answered 429/429/429/200/200/200/200, the retry 10.05 s after the last 429; coinbase-futures BIT-27FEB26-CDE answered 429/200/200/200, the retry 4.03 s after the last 429; yahoo AMD answered 429/200/200/200/200, the retry 60.02 s after the last 429 |
 | the holds the pace booked | exchange 10 s, yahoo 60 s, coinbase-futures 4 s | exchange 10 s, yahoo 60 s, coinbase-futures 4 s |
 | tiles after the walk; countdowns falling by one a second over five readings | 15; 15 of 15 | 15; 15 of 15 |
-| the ADA 5m tile across its close, one reading a second | 00:00:05 → 00:00:04 → 00:00:03 → 00:00:02 → 00:00:01 → reading → 00:04:57 → 00:04:56 → 00:04:55 → 00:04:54 | 00:00:05 → 00:00:04 → 00:00:03 → 00:00:02 → 00:00:01 → reading → failed · close 2.68396 |
-| the read's Activity Log line | ATA-SPM confirmation read for ADA 5m: open, next read 2026-09-20 09:40 UTC | ATA-SPM confirmation read for ADA 5m: failed, close 2.68396 |
+| the A34 5m tile across its close, one reading a second | 00:00:05 → 00:00:04 → 00:00:03 → 00:00:02 → 00:00:01 → reading → 00:04:57 → 00:04:56 → 00:04:55 → 00:04:54 | 00:00:05 → 00:00:04 → 00:00:03 → 00:00:02 → 00:00:01 → reading → failed · close 2.68396 |
+| the read's Activity Log line | ATA-SPM confirmation read for A34 5m: open, next read 2026-09-20 09:40 UTC | ATA-SPM confirmation read for A34 5m: failed, close 2.68396 |
 | tiles before and after a Scan Now on energy | 15 → 14 | 15 → 14 |
 | connections refused | 0 | 0 |
 
-The two builds' ADA reads met different closes because each run's clock
+The two builds' A34 reads met different closes because each run's clock
 stood at a different point on the 5-minute grid. The Qt read found one
 closed candle and stayed open, so the tile counted down to the next close;
 three closes then planted against the call, 900, 950 and 992.34, and the
@@ -7102,8 +7102,8 @@ The order line the open card draws after the change, identical on both builds:
 ```
 Phase 1 Evaluate order: Order by coinbase futures and perpetuals, 24 h volume
 x price, 9 expiring, 0 perpetual, 1 with no figure last by name:
-BIT-25SEP26-CDE, BIP-20DEC30-CDE, ET-25SEP26-CDE, SOL-25SEP26-CDE,
-LTC-25SEP26-CDE, XRP-25SEP26-CDE, DOG-25SEP26-CDE, ADA-25SEP26-CDE,
+BIT-25SEP26-CDE, BIP-20DEC30-CDE, ET-25SEP26-CDE, A23-25SEP26-CDE,
+A36-25SEP26-CDE, A18-25SEP26-CDE, DOG-25SEP26-CDE, A34-25SEP26-CDE,
 AVX-25OCT31-CDE; 3 dropped, the venue answered no candle on any granularity:
 LNK-25OCT31-CDE, DOT-25OCT31-CDE, NER-25OCT31-CDE
 ```
@@ -7877,21 +7877,21 @@ Coinbase's product route and its candle route. No venue was contacted.
 
 | product id | underlying | class | sector | form |
 | --- | --- | --- | --- | --- |
-| BIT-25SEP26-CDE | BTC | crypto | l1 | future |
-| BIT-27FEB26-CDE | BTC | crypto | l1 | future |
-| ET-25SEP26-CDE | ETH | crypto | l1 | future |
-| SOL-25SEP26-CDE | SOL | crypto | l1 | future |
-| LTC-25SEP26-CDE | LTC | crypto | payments | future |
-| XRP-25SEP26-CDE | XRP | crypto | l1 | future |
-| DOG-25SEP26-CDE | DOGE | crypto | meme | future |
-| ADA-25SEP26-CDE | ADA | crypto | l1 | future |
+| BIT-25SEP26-CDE | A15 | crypto | l1 | future |
+| BIT-27FEB26-CDE | A15 | crypto | l1 | future |
+| ET-25SEP26-CDE | A14 | crypto | l1 | future |
+| A23-25SEP26-CDE | A23 | crypto | l1 | future |
+| A36-25SEP26-CDE | A36 | crypto | payments | future |
+| A18-25SEP26-CDE | A18 | crypto | l1 | future |
+| DOG-25SEP26-CDE | A22 | crypto | meme | future |
+| A34-25SEP26-CDE | A34 | crypto | l1 | future |
 | AVX-25OCT31-CDE | AVAX | crypto | l1 | future |
-| BIP-20DEC30-CDE | BTC | crypto | l1 | future |
-| OND-20DEC30-CDE | ONDO | crypto | rwa | future |
+| BIP-20DEC30-CDE | A15 | crypto | l1 | future |
+| OND-20DEC30-CDE | A17 | crypto | rwa | future |
 | SIL-25DEC26-CDE | silver | commodities | precious metals | future |
 | GLD-25DEC26-CDE | gold | commodities | precious metals | future |
 | NQ-25DEC26-CDE | Nasdaq-100 index | stocks | portfolio | future |
-| LNK-25OCT31-CDE | LINK | crypto | oracle | future |
+| LNK-25OCT31-CDE | A21 | crypto | oracle | future |
 
 Two more products the venue lists answered no candle on any granularity and are
 dropped at list time with their names on the order line: DOT-25OCT31-CDE and
@@ -7922,7 +7922,7 @@ GLD-25DEC26-CDE  (commodities · future · charts only)
 XAU/USD          (commodities · spot · charts only, not retail)
 AAPL             (stocks · equity · charts only)
 EUR/USD          (forex · spot · charts only)
-BTC              (crypto · spot · bot ready)
+A15              (crypto · spot · bot ready)
 ```
 
 `bot ready` means a venue is wired and a bot can deploy. `charts only` means a
@@ -8116,7 +8116,7 @@ def trading_rules(
 ### What a ticker row says now
 
 ```
-BTC    (crypto · spot · bot ready · can size a scrum)
+A15    (crypto · spot · bot ready · can size a scrum)
 CBBTC  (crypto · spot · bot ready · size rules not read)
 AAPL   (stocks · equity · charts only · size rules not read)
 ```
@@ -8144,18 +8144,18 @@ Before the change, twelve readings of twelve carried three parts and said
 nothing about trading:
 
 ```
-BTC  (crypto · spot · bot ready)
+A15  (crypto · spot · bot ready)
 ```
 
 After it, with no connector wired, every row read `size rules not read` in both
 builds at all three widths.
 
 With a stand-in market table that ccxt's own `parse_spot_market` built from the
-product records ccxt records for Coinbase, typing `BTC` offered three rows in
+product records ccxt records for Coinbase, typing `A15` offered three rows in
 both builds:
 
 ```
-BTC    (crypto · spot · bot ready · can size a scrum)
+A15    (crypto · spot · bot ready · can size a scrum)
 CBBTC  (crypto · spot · bot ready · size rules not read)
 WBTC   (crypto · spot · bot ready · size rules not read)
 ```
@@ -8214,7 +8214,7 @@ GLD-25DEC26-CDE  (commodities · future · charts only)
 XAU/USD          (commodities · spot · charts only, not retail)
 AAPL             (stocks · equity · charts only)
 EUR/USD          (forex · spot · charts only)
-BTC              (crypto · spot · bot ready)
+A15              (crypto · spot · bot ready)
 ```
 
 Every one of those rows now ends with a fourth word, which is whichever of the
@@ -8675,7 +8675,7 @@ onto the asset only when the remainder names an asset some source already lists,
 so no name is shortened on a guess.
 
 ```
-1000BONK  ->  BONK      BONK is a recorded base
+1000A10   ->  A10      A10 is a recorded base
 1000MOG   ->  MOG       MOG is a recorded base
 1000PEPE  ->  PEPE      PEPE is a recorded base
 1000SHIB  ->  SHIB      SHIB is a recorded base
@@ -8759,10 +8759,10 @@ Every kept file carries the leading bytes of a real image format. None is empty,
 and a body that is a web page is refused rather than kept.
 
 ```
-crypto/l1/BTC.png              1,844 bytes   89 50 4E 47
-crypto/l1/ETH.png              1,270 bytes   89 50 4E 47
-crypto/meme/DOGE.png           4,395 bytes   89 50 4E 47
-crypto/oracle/LINK.png         1,982 bytes   89 50 4E 47
+crypto/l1/A15.png              1,844 bytes   89 50 4E 47
+crypto/l1/A14.png              1,270 bytes   89 50 4E 47
+crypto/meme/A22.png           4,395 bytes   89 50 4E 47
+crypto/oracle/A21.png         1,982 bytes   89 50 4E 47
 stocks/portfolio/AAPL.png      4,506 bytes   89 50 4E 47
 stocks/portfolio/MSFT.jpg        843 bytes   FF D8 FF E0
 stocks/portfolio/NVDA.ico     25,214 bytes   00 00 01 00
@@ -8772,7 +8772,7 @@ Reading a mark back by its symbol alone finds it at whatever depth it sits,
 which is why the bot list and the wizard need no knowledge of the folders.
 
 ```
-BTC   ->  crypto/l1/BTC.png
+A15   ->  crypto/l1/A15.png
 MSFT  ->  stocks/portfolio/MSFT.jpg
 NVDA  ->  stocks/portfolio/NVDA.ico
 a name no venue lists  ->  nothing
@@ -8832,8 +8832,8 @@ EUR/USD  forex/major                   ecb.europa.eu failed certificate
                                        at its own page; nothing was relaxed
 AAVE     crypto/defi                   the ticker-keyed icon address answered
 ATOM     crypto/l1                     6,186 bytes of a web page, refused by
-LTC      crypto/payments                the image check, identically for all six
-ONDO     crypto/rwa                     of these tickers
+A36      crypto/payments                the image check, identically for all six
+A17     crypto/rwa                     of these tickers
 PEPE     crypto/meme
 UNI      crypto/dex
 ```

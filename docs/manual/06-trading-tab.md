@@ -366,7 +366,7 @@ and the tenth is blank, because that one holds the Detail button. Mode is the
 coloured cell: green while running, amber while paused, grey while idle or
 stopped, red on error, orange in cooldown, cyan while starting. The Ammo cell
 draws green above the target, red below it, and neutral grey inside the dust
-band. Target BTC and Target ETH restate the Target in those two assets, and go
+band. Target A15 and Target A14 restate the Target in those two assets, and go
 blank when the pair is unlisted or when the target already is that asset. The
 Extractor table sits underneath. Both tables start hidden and appear when their
 own list gains a row.
@@ -399,7 +399,7 @@ control. A press flips that column's field in the privacy register, repaints
 every dot that shares the field, and redraws the rows from the payload the
 table already holds. Three of the nine dots share a field with another column:
 `Current Position Value` and `Ammo` share `bot_table.ammo`, and `Target`,
-`Target BTC` and `Target ETH` share `bot_table.target`. A press on one of them
+`Target A15` and `Target A14` share `bot_table.target`. A press on one of them
 masks every column that names the same field.
 
 `src/gui/widgets/bot_status_table.py` — `BotStatusTable.refresh_privacy_dots`
@@ -545,8 +545,8 @@ SCRUMMING_COLUMNS = ColumnSpec(
         "Mode",
         "Trades",
         "Target",
-        "Target BTC",
-        "Target ETH",
+        "Target A15",
+        "Target A14",
         "Ammo",
         "Fire",
         "",
@@ -1057,7 +1057,7 @@ for sym, info in exch.markets.items():
         continue
 ```
 
-Base Currency - This will be a National Currency, Stable Coin, or High Volume Crypto (BTC, ETH, BNB) for which multiple trading pairs are available on the selected exchange.
+Base Currency - This will be a National Currency, Stable Coin, or High Volume Crypto (A15, A14, BNB) for which multiple trading pairs are available on the selected exchange.
 
 The page offers a fixed list of seven, and it holds exactly the national
 currencies, stable coins and high-volume crypto named above.
@@ -1065,10 +1065,10 @@ currencies, stable coins and high-volume crypto named above.
 `src/gui/bot_wizard.py` — `AssetSelectionPage`, the base list
 
 ```python
-self._base.addItems(["USDT", "USDC", "BTC", "ETH", "BNB", "EUR", "USD"])
+self._base.addItems(["USDT", "USDC", "A15", "A14", "BNB", "EUR", "USD"])
 ```
 
-Target Asset - This is the asset in which the scrumming bot bases its position. If $50 and ZEC are selected, it will strive to maintain and compound against a balance of $50 in ZEC until it is shut down or some other adverse market condition occurs.
+Target Asset - This is the asset in which the scrumming bot bases its position. If $50 and A05 are selected, it will strive to maintain and compound against a balance of $50 in A05 until it is shut down or some other adverse market condition occurs.
 
 The list holds every asset trading against the base you chose, each with a
 cached coin icon and, where the venue reported one, a 24-hour volume figure.
@@ -2778,7 +2778,7 @@ same eleven names before.
 
 ### Extractor Bot (Partially Built; Untested)
 
-The second type of bot offered within Acervator is the Extractor. These operate quite differently from Scrumming Bots and actually operate as Siblings of them. In fact, an Extractor Bot cannot even be called unless a corresponding Base Currency Scrumming Bot (i.e. BTC:USD or ETH:USD) is already active. This is due to the core operating principle of the Extractor bot to acquire more of these base currencies by performing trades against available alternate currency pairings. It does this by using and blocking off a portion of the Parent’s position within an Extractor Tranche that represents an active position taken against one of the available alternate pairs. The Extractor Tranche remains open until its opposing accumulating (or Short Position if preferred by the user) or profit taking trade is filled. Extractor Tranches can be of any size but should generally be a relatively small fraction of the Parent’s total position which will allow the Extractor to take multiple positions if available and allowed by the specific user.
+The second type of bot offered within Acervator is the Extractor. These operate quite differently from Scrumming Bots and actually operate as Siblings of them. In fact, an Extractor Bot cannot even be called unless a corresponding Base Currency Scrumming Bot (i.e. A15:USD or A14:USD) is already active. This is due to the core operating principle of the Extractor bot to acquire more of these base currencies by performing trades against available alternate currency pairings. It does this by using and blocking off a portion of the Parent’s position within an Extractor Tranche that represents an active position taken against one of the available alternate pairs. The Extractor Tranche remains open until its opposing accumulating (or Short Position if preferred by the user) or profit taking trade is filled. Extractor Tranches can be of any size but should generally be a relatively small fraction of the Parent’s total position which will allow the Extractor to take multiple positions if available and allowed by the specific user.
 
 ![The Trading Mode page with the Extractor selected.](p24-i0.png)
 
@@ -2849,7 +2849,7 @@ the code downstream that builds a trading symbol.
 `src/gui/bot_wizard.py` — `ExtractorPoolPage._POOL_BASES`
 
 ```python
-_POOL_BASES = ["BTC", "ETH", "USDT", "USDC", "BNB"]
+_POOL_BASES = ["A15", "A14", "USDT", "USDC", "BNB"]
 ```
 
 `src/gui/bot_wizard.py` — `ExtractorPoolPage.get_config`
@@ -3815,10 +3815,10 @@ the side, the market and the numbers:
 ```
 [hh:mm:ss] [TICKER/last4] <glyph> <EVENT> [<side>] <market> — <numbers>
 
-[16:46:30] [BTC/c7a2] ▼ FILLED [SCRUM] BTC-USD — 0.001842 @ $61234.50000000
-[16:46:30] [BTC/c7a2] ▲ FILLED [FOLD] BTC-USD — 0.003000 @ $60100.00000000
-[16:46:30] [BTC/c7a2] ⚡ WIRE INCOME: +$1.2345 from a1b2c3d4 distributed evenly
-[16:46:30] [BTC/c7a2] RISK GATE [SCRUM] blocked by hysteresis_scrum. Price $0.00000317
+[16:46:30] [A15/c7a2] ▼ FILLED [SCRUM] A15-USD — 0.001842 @ $61234.50000000
+[16:46:30] [A15/c7a2] ▲ FILLED [FOLD] A15-USD — 0.003000 @ $60100.00000000
+[16:46:30] [A15/c7a2] ⚡ WIRE INCOME: +$1.2345 from a1b2c3d4 distributed evenly
+[16:46:30] [A15/c7a2] RISK GATE [SCRUM] blocked by hysteresis_scrum. Price $0.00000317
 ```
 
 Each part, and what already sets it:
@@ -4101,7 +4101,7 @@ Two sentences earlier on this page are overtaken. Quoted whole:
 > One line is a timestamp, then an optional bolt character, then the message:
 > `[hh:mm:ss] <bullet><message>`
 
-> `[16:46:30] [BTC/c7a2] RISK GATE [SCRUM] blocked by hysteresis_scrum. Price $0.00000317`
+> `[16:46:30] [A15/c7a2] RISK GATE [SCRUM] blocked by hysteresis_scrum. Price $0.00000317`
 
 A position tick now draws one line, and that line ends in the same gate lights
 the History tab's Gates column draws. The line names each bank, the price and
@@ -4386,7 +4386,7 @@ def exchange_display_name(entry: Any) -> str:
   neutral voters.
 - TF Lock chooses a timeframe below which an opposing trade is refused. The
   list opens on "None (no lock)".
-- The rate line under it shows the BTC and ETH prices with their satoshi and
+- The rate line under it shows the A15 and A14 prices with their satoshi and
   gwei equivalents, and the venue name at the end.
 - Two tables of six voters each. A green up triangle is a bullish vote, a red
   down triangle a bearish one, an em dash a neutral one. ADX, ZSc and KER print
@@ -5244,7 +5244,7 @@ and named the reservation, and an eighteen-unit sell was not refused by it.
 
 ```
 sell 20.0   "sell refused by capital reservation:
-             amount=20.000000 effective=19.000000 asset=BTC"
+             amount=20.000000 effective=19.000000 asset=A15"
 sell 18.0   no reservation refusal
 ```
 
@@ -5631,7 +5631,7 @@ until it drains. Both tooltips say so, on both builds, and the Activity Log says
 so as the figure is typed.
 
 ```
-HEDGE BALANCE CAP LIVE UPDATE: $200.00 -> $0.00. A $0.00 Hedge Balance is an
+HEDGE BALANCE A11 LIVE UPDATE: $200.00 -> $0.00. A $0.00 Hedge Balance is an
 empty reserve that never refills, not an off switch. Untick Hedge Rebalance
 Active to turn the hedge off. Reserve $200.00 stays spendable until it drains.
 ```
@@ -5968,7 +5968,7 @@ carried a value before. It holds thirty-eight entries now.
 ```
                  before              after
 bot selector     1 entry             38 entries
-bot shown        (select a bot)      CHIP/USD [c8e5c5db] (running)
+bot shown        (select a bot)      A02/USD [c8e5c5db] (running)
 cells with text  0 of 0              17 of 20
 confidence bars  0                   12
 ```
@@ -6136,7 +6136,7 @@ after    Data pool: 76 slots · awaiting first fetch  ·  cache-hit 0%
 ### The panel header carries its state and its rates
 
 The voting panel prints two header lines. One says the reading on screen is the
-last one taken and how old it is. The other prints the BTC and ETH spot rates.
+last one taken and how old it is. The other prints the A15 and A14 spot rates.
 Neither reached the React panel, because the payload the window pushed carried
 the cells alone.
 
@@ -6154,8 +6154,8 @@ Qt panel formats the age once and hands the result over, so the two banners
 cannot drift apart.
 
 ```
-before   BTC —   ETH —   (currency rates pending), no state line
-after    BTC —   ETH —
+before   A15 —   A14 —   (currency rates pending), no state line
+after    A15 —   A14 —
 after    ⏱ LAST TA READ, NOT CURRENT — taken 22:03:09, 30s ago. bot is idle
 ```
 
@@ -7576,7 +7576,7 @@ SHIFT press       stop_all, 0 bots      stop_all, 0 bots
 ## 2026-09-25 - #858 - the Indicator Voting Panel says why it is empty
 
 > "Live - Bug - IVP - Some bots IVP panels are not loading when selecting.
-> Observed with IMU, GROVE, CAP, and AGLD. Most are working. Cycled to through
+> Observed with A19, A24, A11, and A35. Most are working. Cycled to through
 > the bot list a few times and some are consistently failing to load and also
 > giving the candle cache notice in the console but the panels never populate."
 
@@ -7611,14 +7611,14 @@ Measured on the markets named above, at five minutes:
 
 | market | candles the venue returned | the panel reads |
 |---|---|---|
-| GROVE | 6 to 9 | too few candles |
-| LSETH | 10 to 12 | too few candles |
-| AGLD | 13 to 16 | too few candles |
-| IMU | 11 to 18 | too few candles |
-| CAP | 95 to 96 | cold start |
+| A24 | 6 to 9 | too few candles |
+| A38 | 10 to 12 | too few candles |
+| A35 | 13 to 16 | too few candles |
+| A19 | 11 to 18 | too few candles |
+| A11 | 95 to 96 | cold start |
 | a market that votes | 100 | twelve voters |
 
-CAP holds three times the floor and reports the other cause, so a full panel is
+A11 holds three times the floor and reports the other cause, so a full panel is
 not the only healthy reading.
 
 ### A stored reading draws with its age
@@ -7673,7 +7673,7 @@ hundreds of other paths the page cites.
 
 ## 2026-09-26 - #928 - the candle cache keeps what it has and stops re-asking
 
-> "IMU stuck at 13...GROVE stuck at 11...probably others...need to isolate the
+> "A19 stuck at 13...A24 stuck at 11...probably others...need to isolate the
 > issue."
 
 ### A short series is no longer a cache miss
@@ -8419,15 +8419,15 @@ Read on the running list, nine bots, one per state, at 700, 900 and 1400 wide:
 
 ```
 the bot's asset       first column            kept file
-BTC/USD               the logo, 32 by 32      BTC.png
-ETH/USD               the logo, 32 by 32      ETH.png
-SOL/USD               the logo, 32 by 32      SOL.png
+A15/USD               the logo, 32 by 32      A15.png
+A14/USD               the logo, 32 by 32      A14.png
+A23/USD               the logo, 32 by 32      A23.png
 AAPL                  the logo, 32 by 32      AAPL.png
 GLD                   the logo, 32 by 32      GLD.png
 EUR/USD               the logo, 32 by 32      EUR-USD.png
-ONDO/USD              the ticker, ONDO        none
+A17/USD              the ticker, A17        none
 ZZZQ/USD              the ticker, ZZZQ        none
-DOGE/USD              the ticker, DOGE        none
+A22/USD              the ticker, A22        none
 ```
 
 ### The state colour and the mode tooltip sit on the Symbol cell
@@ -8653,7 +8653,7 @@ Read with fifteen real marks on disk, nine bots, at 700, 900 and 1400 wide:
 
 ```
 sector                       marks on disk   an example
-crypto                                  10   BTC, ETH, LINK, DOT
+crypto                                  10   A15, A14, A21, DOT
 stocks                                   4   AAPL, AMZN
 commodities                              1   SLV
 forex                                    0   none answered an image
@@ -8685,14 +8685,14 @@ Read on both builds, at all three widths, one row per mark:
 
 ```
 the asset   the file holds            the window draws   the page draws
-BTC         50 by 50                  32 by 32           32 by 32
-ETH         50 by 50                  32 by 32           32 by 32
-LINK        50 by 50                  32 by 32           32 by 32
+A15         50 by 50                  32 by 32           32 by 32
+A14         50 by 50                  32 by 32           32 by 32
+A21        50 by 50                  32 by 32           32 by 32
 AAPL        152 by 152                32 by 32           32 by 32
 SLV         16 by 16 and 32 by 32     32 by 32           32 by 32
 AMZN        48, 32 and 16 square      32 by 32           32 by 32
 DOT         47 by 50                  30 by 32           30.08 by 32
-ONDO        no file                   the ticker         the ticker
+A17        no file                   the ticker         the ticker
 ZZZQ        no file                   the ticker         the ticker
 ```
 
@@ -8809,7 +8809,7 @@ Read off the running list and off the drawn page, one asset of each kind:
 
 ```
 asset   the tooltip's second line
-BTC     Open bitcoin.org in default browser: https://bitcoin.org
+A15     Open bitcoin.org in default browser: https://bitcoin.org
 PEPE    no web address is known for PEPE, so this mark is not a link
 ```
 

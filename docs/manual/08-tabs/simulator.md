@@ -684,7 +684,7 @@ of.
 ```python
     "CRYPTO_BLUE": Portfolio(
         name="CRYPTO_BLUE",
-        symbols=("BTC", "ETH", "BNB"),
+        symbols=("A15", "A14", "BNB"),
         description="Large-cap crypto — institutional grade",
     ),
 ```
@@ -822,7 +822,7 @@ year holds about 250 days where a coin year holds every one.
   SPY
     2022    251 rows  2022-01-03..2022-12-30
     2023    250 rows  2023-01-03..2023-12-29
-  BTC
+  A15
     2022    365 rows  2022-01-01..2022-12-31
     2023    365 rows  2023-01-01..2023-12-31
 ```
@@ -1295,7 +1295,7 @@ Battery section read `1d improved, 1w defended, 1M not run` with BNB named as
 over the same span read the same words with all three symbols run; Run Every
 Portfolio held sixty-three bots at $31,500.00 and wrote one report. A planted
 portfolio with a 60/30/10 mix read Targets of $900, $450 and $150; a stored fleet
-of BTC, ETH and BNB on coinbase at $1,000, $750 and $250 ran at those Targets
+of A15, A14 and BNB on coinbase at $1,000, $750 and $250 ran at those Targets
 with the report naming the bots loaded from the held fleet. Over a copy of the
 whole tape, Run Every Portfolio took 24.3 seconds in Qt and 24.9 in React while
 a 30 ms timer kept ticking with a longest gap of 0.342 and 0.125 seconds; the
@@ -2082,7 +2082,7 @@ across the lots, which is how the live bot sets its own holdings.
 | Current Position Value | holdings, the record's price, the quote rate |
 | Trades | the stats trade count |
 | Target | the grown target, or the config target |
-| Target BTC, Target ETH | the target over the fleet's own BTC and ETH rows |
+| Target A15, Target A14 | the target over the fleet's own A15 and A14 rows |
 | Ammo | the position value and the target |
 | Fire | the saved phase; the armed action and the gate state read as a live bot's do before its first tick |
 
@@ -2094,8 +2094,8 @@ and the gate state, read as they do on a live bot before its first tick.
 A sim row is priced from its own record and never from the live data pool.
 The price age is zero, the sim's own reading for this tick, so the Position
 Value cell and the Ammo cell price from the same figure, as the Trading tab
-page requires of them. The Target BTC and Target ETH cells denominate through
-the fleet's own BTC and ETH rows on that exchange, not through the live
+page requires of them. The Target A15 and Target A14 cells denominate through
+the fleet's own A15 and A14 rows on that exchange, not through the live
 currency monitor, and carry no drift suffix because the Simulator has no
 24-hour figure to draw one from; with no such row the cell reads `pending`.
 
@@ -2621,7 +2621,7 @@ flowchart LR
 | tab | read from the record | drawn when the record holds nothing |
 |---|---|---|
 | Status | `stats` | the row's figures, as the table draws them |
-| Settings | `config`, the live target, the anchor, the surplus, the consumed budget | Target BTC and Target ETH from the fleet's own BTC and ETH rows; the budget row reads an unreadable dash |
+| Settings | `config`, the live target, the anchor, the surplus, the consumed budget | Target A15 and Target A14 from the fleet's own A15 and A14 rows; the budget row reads an unreadable dash |
 | Fold Tranches | `fold_tranches`, the parked credits, the ledger, the four counters | no Extractor Tranche row, Live's own answer with no bot manager |
 | Stack Tranches | `stack_tranches`, the two counters | — |
 | Bot Swarm | nothing named a wire manager | Live's own line, Bot Swarm not active for this bot |
@@ -2881,7 +2881,7 @@ first. Choosing a bot draws the twelve voters, the Net, Comp and Conf columns,
 both bar graphs and the lock line for that bot's market on that bot's
 timeframe, computed by the real voting engine over the last hundred rows of
 the tablet filed under the bot's asset, exchange and timeframe. The rate strip
-prices BTC and ETH from the fleet's own rows. Nothing is invented; a bot with
+prices A15 and A14 from the fleet's own rows. Nothing is invented; a bot with
 no tablet says so.
 
 The reading is one function both hosts call, the window's dashboard feed
@@ -2912,7 +2912,7 @@ host for the chosen bot, the way the flip button asks for the replay layer.
 | part | fed from |
 | ---- | -------- |
 | Bot selector | the fleet's statuses, accumulation bots only |
-| rate strip | the fleet's BTC and ETH rows, priced by the currency monitor's own derivation |
+| rate strip | the fleet's A15 and A14 rows, priced by the currency monitor's own derivation |
 | both indicator tables | the engine over the tablet window, one row per timeframe |
 | both bar graphs | the same reading; the Qt bars move on their frame timer, the React bars arrive settled as Live's do |
 | Net, Comp and Conf | the engine's net score, the composite over the phantom rows, the consensus confidence |
@@ -2966,18 +2966,18 @@ every phantom is skipped today and the Comp column reads the Net column.
 
 ### What the reading measured
 
-The real window, both builds, a scratch tablet root holding copies of the BTC
-and ETH 5m tablets, and a scratch sim fleet of five bots. Selecting the BTC bot
+The real window, both builds, a scratch tablet root holding copies of the A15
+and A14 5m tablets, and a scratch sim fleet of five bots. Selecting the A15 bot
 drew every cell of both tables and every bar equal to the engine's own answer
 over the same hundred rows, in both builds, and Live's own panel handed the
 same summary drew the same cells, banner, rate line and lock line. A copy of
-the BTC tablet with its last twenty closes raised five per cent, filed under
+the A15 tablet with its last twenty closes raised five per cent, filed under
 another asset, moved the reading: BB from 99 to 69 per cent, Net from −0.79 to
 +2.11, the consensus from bearish to bullish. The Qt bars read at two frames
 sixty milliseconds apart differed and settled on their targets; the React bars
-read equal at two moments, as Live's React bars do. The SOL bot, with no
+read equal at two moments, as Live's React bars do. The A23 bot, with no
 tablet, read the no-tablet sentence; the idle bot read the idle sentence and,
-after Start on the command bar, the BTC reading. The scratch fleet file and
+after Start on the command bar, the A15 reading. The scratch fleet file and
 every tablet hashed identical after every reading, and a byte planted into two
 of them moved the hash. No socket left loopback.
 
@@ -3745,9 +3745,9 @@ derivation reads the amount and the price and does not read the cost. When the
 fills sold more than they bought, the position was opened before the file's
 first row and the file gives no basis: the record holds no target, the Target
 cell draws `---`, and the Activity Log says how many records read so. On the
-scratch files the reading was taken over, BTC/USD bought 0.007 and sold 0.002
+scratch files the reading was taken over, A15/USD bought 0.007 and sold 0.002
 across two year files, holding 0.005 at a last price of 61,000, so its Target
-is $305.00; SOL/USD bought 1.0 and sold 3.0, so it holds no target.
+is $305.00; A23/USD bought 1.0 and sold 3.0, so it holds no target.
 
 `src/simulator/fleet_source.py` — the derivation
 
@@ -3857,8 +3857,8 @@ resolved without being created.
 ### What the generation reading measured
 
 Read off the real window in both builds over a scratch home holding three
-pairs on `coinbase` (BTC/USD over two year files, ETH/USD, SOL/USD) and one on
-`kraken` (XRP/USD), 15 fills in all, a scratch live fleet file that is only
+pairs on `coinbase` (A15/USD over two year files, A14/USD, A23/USD) and one on
+`kraken` (A18/USD), 15 fills in all, a scratch live fleet file that is only
 hashed, and no sim fleet file:
 
 ```
@@ -3866,20 +3866,20 @@ reading                                     Qt                       React
 at open: venues seated                      none                     none
 Generate From YTD: chooser                  Generate From YTD, coinbase and kraken listed, both builds
 coinbase chosen: venue seated               coinbase                 coinbase
-rows by id, Scrumming Bots                  BTC/USD@coinbase, ETH/USD@coinbase, SOL/USD@coinbase, both builds
+rows by id, Scrumming Bots                  A15/USD@coinbase, A14/USD@coinbase, A23/USD@coinbase, both builds
 Target cells                                $305.0000, $345.0000, ---, both builds
 Activity Log                                Generated 3 bot(s) from 4 YTD trade file(s) on coinbase., both builds
                                             1 of them hold no Target Balance: the fills sold more than they bought.
 strip after one tick                        $0.00 $0.00 0 0 0 | — — — — 1, both builds
-kraken chosen at the corner                 one row, XRP/USD@kraken, $36.0000; two venues, both builds
-Start on BTC/USD@coinbase                   ✓ Bot BTC/USD@coinbase RUNNING., Bots 1, both builds
-a fourth pair planted, coinbase again       four rows, DOGE/USD@coinbase at $200.0000, both builds
+kraken chosen at the corner                 one row, A18/USD@kraken, $36.0000; two venues, both builds
+Start on A15/USD@coinbase                   ✓ Bot A15/USD@coinbase RUNNING., Bots 1, both builds
+a fourth pair planted, coinbase again       four rows, A22/USD@coinbase at $200.0000, both builds
 second process, rows from the sim file      five rows; no trade file opened, both builds
 no exchange_history directory               No YTD trade directory at <path>., not created, both builds
 an empty directory                          <path> holds no YTD trade file., both builds
 files without MANIFEST.json                 <path> holds no MANIFEST.json., both builds
 a manifest naming no pair                   MANIFEST.json under <path> names no traded pair., both builds
-one named file removed                      <file> named by MANIFEST.json is missing; ETH/USD on coinbase not generated.; two rows, both builds
+one named file removed                      <file> named by MANIFEST.json is missing; A14/USD on coinbase not generated.; two rows, both builds
 Cancel on the chooser                       Generate From YTD cancelled.; nothing moves, both builds
 ```
 
@@ -4044,9 +4044,9 @@ the wizard, every page walked, every field typed     49 keys                  49
 record config values against the typed values        47 of 47                 47 of 47
 Settings tab controls against the typed values       42 of 42                 42 of 42
 Phantom Bots tab: enable, timeframe, lock            off, 4h, 2               off, 4h, 2
-the row: Bot ID, Symbol, Trades, Target              id, BTC/USD, 0, $1,234.5600 (both)
+the row: Bot ID, Symbol, Trades, Target              id, A15/USD, 0, $1,234.5600 (both)
 the row against a target of 200                      the Target cell differs (both)
-an extractor, pool base BTC on the same venue        13 keys; 12 of 12; Pool $250.50 (both)
+an extractor, pool base A15 on the same venue        13 keys; 12 of 12; Pool $250.50 (both)
 an extractor with no holder                          refused with Live's own box (both)
 + New Bot on the other venue                         one row, $333.3300 (both)
 Start on the created row: the strip's Bots           0 to 1                   0 to 1
@@ -4216,8 +4216,8 @@ only. The answer is a row in a table the sizing module carries, and a class
 with no row is not simulated.
 
 The portfolios name sixty-three symbols and the RA-StoneTablet import asks for
-the same sixty-three. Thirteen are crypto: ADA, ATOM, AVAX, BNB, BTC, DOGE,
-DOT, ETH, LINK, MATIC, SOL, TRX and XRP. The other fifty are US exchange-listed
+the same sixty-three. Thirteen are crypto: A34, ATOM, AVAX, BNB, A15, A22,
+DOT, A14, A21, MATIC, A23, TRX and A18. The other fifty are US exchange-listed
 shares and funds, every one read off the Yahoo route as a share: AAPL, AGG,
 AMC, AMD, AMZN, ARKF, ARKG, ARKK, ARKW, BABA, BBBY, BIDU, BND, CCIV, COIN, CVNA,
 DKNG, EXPR, GLD, GME, GOOGL, IEF, IPOF, IWM, JD, KOSS, MCHI, META, MSFT, NIO,
@@ -4246,8 +4246,8 @@ The crypto row, quoted from the venue's pages
 ```
 https://docs.cdp.coinbase.com/api-reference/exchange-api/rest-api/orders/create-new-order
   titled "Create a new order", no date shown, read 2026-09-17
-  "The size can be in any increment of the base currency (e.g. BTC for the
-   BTC-USD product)."
+  "The size can be in any increment of the base currency (e.g. A15 for the
+   A15-USD product)."
   "The size can be in incremented in units of base_increment."
   "The size must be no less than the base_min_size and no larger than the
    base_max_size for the product."
@@ -4440,25 +4440,25 @@ def uncited_rule_line(result: BotResult) -> str:
 
 Before this, over the unit 26 scratch tape with four scratch bots, an AAPL bot
 filled 47 scrums and 187 folds in fractional units, and a bot of no class and a
-BTC bot on an uncited venue each walked the same 234 trades with nothing
+A15 bot on an uncited venue each walked the same 234 trades with nothing
 refused. After, on the same tape: the AAPL bot walks as stocks on Alpaca under
-the fractional rule, 234 trades, and the BTC bot on Coinbase walks 234 trades
+the fractional rule, 234 trades, and the A15 bot on Coinbase walks 234 trades
 identical to unit 26's reading over the same tape, trade for trade; the bot of
-no class, the BTC bot on Gemini and a TRX bot on the Yahoo route are each
+no class, the A15 bot on Gemini and a TRX bot on the Yahoo route are each
 refused with their line. With the stocks row planted whole for one run, the
 AAPL bot walked 233 trades, every one a whole number of units between one and
 ten, every dollar figure equal to the units times the price, two scrum latches
-and two fold latches unfilled below one unit, and the BTC bot unchanged; with
-the crypto row planted whole instead, the BTC bot at a one thousand dollar
+and two fold latches unfilled below one unit, and the A15 bot unchanged; with
+the crypto row planted whole instead, the A15 bot at a one thousand dollar
 target in a hundred dollar asset opened ten units and filled nothing, because
 its one percent interval never reached one unit, and the AAPL bot was
 unchanged. Each plant was removed and the table read as before.
 
-On the running Sim tab in both builds, one BTC bot and one AAPL bot imported
+On the running Sim tab in both builds, one A15 bot and one AAPL bot imported
 through Import Live Fleet in Validation over scratch tablets, `back_test.run`
 under the debugger with a breakpoint on every pure sizing function: the rule
 was read twice, once per bot, from the runner; 470 sizing calls, 94 scrum
-sizes and 376 fold sizes, every one with `walk` on the stack; the BTC trades
+sizes and 376 fold sizes, every one with `walk` on the stack; the A15 trades
 equal to unit 26's reading; under the planted stocks row the AAPL trades all
 whole and the plan trimmed on all 185 folds. Two bots imported on Gemini were
 refused and their two lines, drawn through the tab's own log method, read back
@@ -5017,14 +5017,14 @@ RETRIEVAL_RESULT_FORMAT = "{rows} candles received, latest close={close}"
 ### What the replay reading measured
 
 Both builds, the real window with a scratch home, every socket but loopback
-refused, a scratch tablet root holding the BTC and ETH 5m 2026 coinbase
-tablets and a held fleet of the BTC, ETH and SOL coinbase bots. With the BTC
+refused, a scratch tablet root holding the A15 and A14 5m 2026 coinbase
+tablets and a held fleet of the A15, A14 and A23 coinbase bots. With the A15
 bot selected and `Replay` pressed, the chooser listed the two tablets and
-`SOL_5m_coinbase — No Stone Tablet on disk.`, started on the BTC tablet, and
+`A23_5m_coinbase — No Stone Tablet on disk.`, started on the A15 tablet, and
 both windows' payloads hashed equal to `vwap_payload` and `playback_payload`
-over the same hundred candles; moved to ETH, both redrew. A retrieval of SOL
+over the same hundred candles; moved to A14, both redrew. A retrieval of A23
 against a loopback candle server, the reader's endpoint pointed at it, wrote
-`SOL_5m_2026_coinbase.json` and its MANIFEST row under the scratch root, drew
+`A23_5m_2026_coinbase.json` and its MANIFEST row under the scratch root, drew
 the windows from it, and recorded one API block per call; a second press
 updated from the last candle; the endpoint restored to the venue and the
 socket refused, the press wrote the refusal line and the root's files hashed
@@ -5122,7 +5122,7 @@ cancelled, records no block and writes its Activity Log line alone.
 [05:51:06] COINBASE FETCH_YTD
   Reason: Read the YTD trade files for coinbase - Generate From YTD
   Endpoint: <the exchange history directory>
-  Result: 10 fills read from 4 file(s): BTC-USD_2025_coinbase.json, BTC-USD_2026_coinbase.json, ETH-USD_2026_coinbase.json, SOL-USD_2026_coinbase.json
+  Result: 10 fills read from 4 file(s): A15-USD_2025_coinbase.json, A15-USD_2026_coinbase.json, A14-USD_2026_coinbase.json, A23-USD_2026_coinbase.json
   Response: 2.8ms
   Data usage: Generated 3 bot(s) on the Scrumming Bots table
 ```
@@ -5180,12 +5180,12 @@ RETRIEVAL_ACTION_FORMAT = TABLET_ACTION + " {key}"
 
 Both builds, the real window with a scratch home, every socket but loopback
 refused, scratch YTD trade files in the shape the generation reading above
-drove, copies of the BTC, ETH and DOGE tablets, copies of the SPY and GLD RA
+drove, copies of the A15, A14 and A22 tablets, copies of the SPY and GLD RA
 tablets, and a copy of
 `bot_state.json`. One session: Generate From YTD with coinbase chosen drew one
 block whose Result line named the four files and the ten fills, whose Response
 line carried the read's time, and whose lines read the same on both pages
-apart from the stamp and the path; Update Tablet on DOGE against a loopback
+apart from the stamp and the path; Update Tablet on A22 against a loopback
 candle server drew forty tablet blocks; Import Live Fleet drew none; Portfolio
 Battery over EQUITY_MACRO drew none. After the session the pane held 41
 blocks, and 41 of them opened with an allowed word. A venue order recorded on
@@ -5234,7 +5234,7 @@ Unit 31a moved the fill words to `src/simulator/sim_bus.py` (comment
 
 ```
 [2021-02-05T00:00:00Z] [SPY/ahoo] SELL FILLED: 0.193792 SPY @ $387.70999146 (gross $75.13498, fee $0.45081)
-[2026-07-29T15:35:00Z] [BILL/0bda] BUY FILLED: 155.417407 BILL @ $0.02252000 (spent $3.50000, fee $0.05600)
+[2026-07-29T15:35:00Z] [A03/0bda] BUY FILLED: 155.417407 A03 @ $0.02252000 (spent $3.50000, fee $0.05600)
 ```
 
 ### The stamp is the tape's time
@@ -5362,7 +5362,7 @@ per fill on the Activity Log exactly as the Battery does from the corner.
 ### What the trade-line reading measured
 
 Both builds, the real window with a scratch home holding a copy of
-`bot_state.json` with 38 coinbase bots, the BILL, CAP and VVV tablets, a copy
+`bot_state.json` with 38 coinbase bots, the A03, A11 and A13 tablets, a copy
 of the whole RA-StoneTablet root, a copy of the gate log and YTD trade files
 built from the SCRUM and FOLD rows three of those bots wrote; every socket but
 loopback refused. Import Live Fleet held 38 bots. Back Test through its run
@@ -6631,7 +6631,7 @@ to its end.
 Read off the running program in both builds, over a scratch home holding a
 `bot_state.json` of 24 scrumming bots on `coinbase`, one 5m tablet per pair,
 four fills per pair in YTD files, one fired gate row per fill, and a scratch
-RA root holding the 2022 tablets of BTC, ETH, SPY, QQQ, IWM, GLD and SLV.
+RA root holding the 2022 tablets of A15, A14, SPY, QQQ, IWM, GLD and SLV.
 
 Before, one fleet: Import Live Fleet under Validation drew 24 rows, and the
 same 24 rows drew under Back Test and Portfolio Battery; Create New Bots
@@ -6953,14 +6953,14 @@ PORTFOLIO_FINISHED_SIGNAL = "sim.battery.portfolio_finished"
 
 Both builds, the real window over a scratch home, every socket but loopback
 refused, a scratch RA root holding the operator's daily files for SPY, GLD,
-BTC, ETH, BNB and SLV, and a loopback stand-in for the public candle endpoint
-serving 5m for BTC and ETH from 2026-04-01 and refusing every other product.
-Before, Run Portfolio over CRYPTO_BLUE on `2026 test run` read BTC at 5m
-49,328 bars and 121 ticks, BTC at 1d 172 bars and 143 ticks, the Battery
+A15, A14, BNB and SLV, and a loopback stand-in for the public candle endpoint
+serving 5m for A15 and A14 from 2026-04-01 and refusing every other product.
+Before, Run Portfolio over CRYPTO_BLUE on `2026 test run` read A15 at 5m
+49,328 bars and 121 ticks, A15 at 1d 172 bars and 143 ticks, the Battery
 section `5m defended, 1d defended`, and no line between the retrieved line and
 the portfolio line; Run Every Portfolio held sixty-three bots from the press
-to the end and wrote one report. After, the same press read BTC at 5m 49,336
-bars and 49,307 evaluations, ETH the same, BTC at 1d 172 bars and 143
+to the end and wrote one report. After, the same press read A15 at 5m 49,336
+bars and 49,307 evaluations, A14 the same, A15 at 1d 172 bars and 143
 evaluations, each the bars less 29, in 223 and 203 seconds at 4.5 and 4.1
 seconds per 1,000 evaluations in Qt and 174 and 144 seconds at 3.5 and 2.9 in
 React; a line at each walk's start, every 5,000 bars and at its end; the
@@ -6982,9 +6982,9 @@ in Qt beside a React run of 51 minutes; the summary's totals at 5m over nine
 portfolios and at 1d over twenty-three read the same figures in both builds.
 Stop pressed on BNB's row a hundred seconds into the crypto walk ended it at
 bar 5,008 of 49,340 in Qt and 5,886 of 49,358 in React, the partial report
-naming the bar, its candle stamp and the evaluations made, and ETH and BNB
+naming the bar, its candle stamp and the evaluations made, and A14 and BNB
 as not walked. With `portfolio_battery.walk` wrapped in the driver process to
-step fourteen bars, BTC at 5m read 3,523 evaluations against 49,312 expected
+step fourteen bars, A15 at 5m read 3,523 evaluations against 49,312 expected
 and the finished emit read `ok` false, so the reading can fail. Every copied
 daily file and `bot_state.json` hashed identical after every press, with a
 planted byte moving the hash; the operator's RA root listed 414 entries before
@@ -7453,7 +7453,7 @@ The Simulator rebuild removed this file; it is not in the tree.
 """Candle-driven fake exchange for Fleet Replay, over real symbols.
 
 Serves per-symbol ``CandleSeries`` through the ``ExchangeInterface`` API,
-so a bot trades BTC/USD or ETH/USD against stored candles instead of a
+so a bot trades A15/USD or A14/USD against stored candles instead of a
 venue. ``NuclearSimExchange`` (``src/simulator/nuclear_sim_exchange.py``)
 is the other simulated venue and serves synthetic TAPEA/TAPEB symbols.
 The Simulator rebuild removed this file; it is not in the tree.
@@ -7974,8 +7974,8 @@ SCRUMMING_COLUMNS = ColumnSpec(
         "Mode",
         "Trades",
         "Target",
-        "Target BTC",
-        "Target ETH",
+        "Target A15",
+        "Target A14",
         "Ammo",
         "Fire",
         "",
@@ -8201,7 +8201,7 @@ Both builds were opened and read off the drawn window and the drawn page. The
 figures below come from that run.
 
 ```
-tablet          XRP_1d_2026_coinbase, 250 candles, 2026-01-01 to 2026-09-07
+tablet          A18_1d_2026_coinbase, 250 candles, 2026-01-01 to 2026-09-07
 window          100 candles
 tablets listed  411
 votes           5 bullish, 2 bearish, 5 neutral
@@ -8321,7 +8321,7 @@ defaults, so a chosen portfolio was lost until a run wrote it back.
 The RA store holds two kinds of tablet beside each other under one MANIFEST.
 A non-crypto asset keeps its daily file, `GLD_1d_2025_yahoo.json`, written by
 the daily builder as before. A crypto asset gains a native five-minute file,
-`BTC_5m_2026_coinbase.json`, the same shape the live fleet's store keeps, keyed
+`A15_5m_2026_coinbase.json`, the same shape the live fleet's store keeps, keyed
 on asset, timeframe, year and exchange by the same `tablet_filename`. The
 Battery reads a crypto bot off the 5m file and a non-crypto bot off the daily
 file, and the report names which one each bot read, with its timeframe, candle
@@ -8467,7 +8467,7 @@ hosts hand `run_battery` the tab's own connector and that connector crosses
 each call to the GUI thread, where the pane's writer accepts it. The
 recorder names the tablet off the call itself, through `call_tablet`: the
 symbol's base, the timeframe and the year of the first candle asked, so a
-Battery call reads `FETCH_TABLET BTC_5m_2026_coinbase` and a replay-layer
+Battery call reads `FETCH_TABLET A15_5m_2026_coinbase` and a replay-layer
 call keeps its own key. One block is one connector call of 350 candles; the
 public endpoint answers it in two pages of 300 and 50, which is why the
 chooser's call count is twice the block count. The Battery's per-asset lines
@@ -8529,25 +8529,25 @@ def battery_tablets_by_bot(run: BatteryRun) -> list[dict]:
 ### What the 5m reading measured
 
 Both builds, the real window over a scratch home, every socket but loopback
-refused, a scratch RA root holding the operator's daily files for BTC, ETH,
+refused, a scratch RA root holding the operator's daily files for A15, A14,
 BNB, GLD and SLV, and a loopback stand-in for the public candle endpoint
 serving 5m from 2026-04-01 and refusing BNB. Under Portfolio Battery, Run
 Portfolio opened the chooser with the cost line under the combos; the line
 changed on a control span; CRYPTO_BLUE on `2026 test run` read three assets,
 49,313 candles each, 846 calls, 9.3 MB. OK: the Activity Log carried the
-retrieving line and the retrieved line for BTC and for ETH, and the refusal by
-name for BNB; `BTC_5m_2026_coinbase.json` and `ETH_5m_2026_coinbase.json`
+retrieving line and the retrieved line for A15 and for A14, and the refusal by
+name for BNB; `A15_5m_2026_coinbase.json` and `A14_5m_2026_coinbase.json`
 landed under the scratch root with their MANIFEST rows and candle counts near
 288 a day; two `sim.tablet.retrieved` rows and one `sim.tablet.refused` row
 reached the signal sink; the Sim API pane held 290 `FETCH_TABLET` blocks
-after two presses, 141 for BTC, 141 for ETH and 8 for BNB, read off the Qt
+after two presses, 141 for A15, 141 for A14 and 8 for BNB, read off the Qt
 pane's text and the React page's API log element, while the stand-in counted
-two pages for each; the walk read BTC and ETH at `5m` and at `1d`, and
+two pages for each; the walk read A15 and A14 at `5m` and at `1d`, and
 BNB `no_tablet` at 5m; the report's Tablets section named each bot's file,
 timeframe, candle count and checksum. A second press over the same span
 stated nothing to retrieve and fetched nothing, and the two 5m files hashed
 identical before and after it. On a daily-only root with the stand-in absent,
-DIGITAL_GOLD refused BTC and ETH by name and walked GLD and SLV on their daily
+DIGITAL_GOLD refused A15 and A14 by name and walked GLD and SLV on their daily
 files at `1d`, `1w` and `1M`. Every copied daily file and `bot_state.json`
 hashed identical after every press, with a planted byte moving the hash; the
 operator's RA root listed 414 entries before and after. No bot was constructed
@@ -9559,7 +9559,7 @@ over a fleet of 38 rows:
 | the order survives a fresh fleet | yes | yes |
 
 The Detail column holds one identical button a row, so it carries no value to
-order by and is the one column a press does not sort. Target BTC and Target ETH
+order by and is the one column a press does not sort. Target A15 and Target A14
 do not reverse to an exact mirror, because a row that draws nothing in those
 two columns stays beneath the figures whichever way the sort runs.
 
@@ -9655,9 +9655,9 @@ recorded. Each bot row carries an **orders refused** count, and the Activity Log
 carries one line per bot naming the reason behind that count.
 
 ```
-u881l1-fractional: ADA/USD sizes on coinbase's recorded rules, minimum 0.1 on a
+u881l1-fractional: A34/USD sizes on coinbase's recorded rules, minimum 0.1 on a
 size step of 0.01.
-u881l1-fractional: ADA/USD refused 710 order(s): 710 below the venue's minimum
+u881l1-fractional: A34/USD refused 710 order(s): 710 below the venue's minimum
 size.
 ```
 
