@@ -213,6 +213,26 @@ because no archetype reads that type.
 anything else               unowned, and the log names the file
 ```
 
+### Shell scripts and workflow files reach the coding archetype
+
+The sentence above is overtaken. Quoted whole:
+
+> A file of any other type is named in the log and counted as unowned,
+> because no archetype reads that type.
+
+The coding archetype now reads two further types, and both routers send them to
+it. Shell scripts go through shellcheck and workflow files go through yamllint.
+
+```
+.sh .bash .zsh              coding archetype
+.yml .yaml                  coding archetype
+```
+
+A type that still has no analyzer keeps the third outcome. The lane names the
+file and counts it as unowned, and the hook that runs on every save now says the
+same thing rather than staying silent: this file type was not examined, which is
+not the same as clean.
+
 ### What a green result means
 
 Green means every changed file passed the archetype that owns it, the Solidity

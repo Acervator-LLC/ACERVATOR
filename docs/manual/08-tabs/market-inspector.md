@@ -8884,3 +8884,291 @@ src/gui/simulator/sim_extractor_bot_table.py   the same, in the simulator
 None of the kept images enters this repository. The library directory is ignored,
 proved after the fill with a control: the same reading reports an unignored file
 placed beside it.
+## 2026-09-27 - #937 - the library is filled over all 542 assets
+
+The fill was run over every asset the library covers. It resolved 434 marks and
+named all 108 assets that resolved nothing.
+
+`src/trading/logo_library.py` - what one walk reports
+
+```
+542 target(s), 81 already held, 376 read, 352 kept, 109 failed, 0 left, at 0.5 s a read
+```
+
+### A crypto mark is looked up, never guessed
+
+Every earlier crypto attempt built an address out of the ticker. That address
+serves a web page, and the image check refused it 443 times out of 443. A ticker
+is not a coin id, so the address was a guess.
+
+The fill now takes two steps. One read names every coin and its id; a second read
+names the picture each id serves.
+
+`src/exchange/crypto_assets.py` - the two addresses a coin picture is looked up through
+
+```python
+COIN_LIST_URL = "https://api.coingecko.com/api/v3/coins/list"
+COIN_MARKETS_URL = (
+    "https://api.coingecko.com/api/v3/coins/markets"
+    "?vs_currency=usd&per_page={size}&page=1&ids={ids}"
+)
+```
+
+Five reads answered the whole fleet.
+
+```
+453 ticker(s) looked up, 21642 coin(s) listed, 986 record(s) read over 5 read(s),
+362 address(es) indexed, 91 unsettled
+```
+
+### A ticker several coins carry is not guessed either
+
+`choose_coin` settles a ticker by the recorded name, then by a lone market rank,
+then by a rank far better than the next. A ticker it cannot settle is written down
+with its candidates and no address.
+
+`src/trading/logo_library.py` - the margin a rank must clear
+
+```python
+COIN_RANK_MARGIN = 10.0
+```
+
+Three tickers show why the refusal matters. Taking the best-ranked candidate would
+have drawn the wrong organisation's mark for each of them.
+
+```
+TON    Tokamak Network rank 807   against TON Community rank 2787
+HOOD   GreenHood rank 478         against Robinhood Markets rank 3209
+VELO   Velo rank 325              against Velodrome Finance rank 515
+```
+
+### Every mark the library holds now
+
+One folder per asset class, and a sector folder under it.
+
+```
+sector          marks       bytes
+commodities        10      76,602
+crypto            362   6,887,268
+currencies         24     231,758
+stocks             38     260,135
+total             434   7,455,763
+```
+
+Every target is settled one way or the other, in all four sectors.
+
+```
+sector         targets   kept   unresolved
+crypto             453    362           91
+stocks              47     38            9
+currencies          28     24            4
+commodities         14     10            4
+total              542    434          108
+```
+
+Each of the 434 files was read back off disk. Every one carries the leading bytes
+of the format its own name gives.
+
+```
+faults found on readback          0
+marks the window cannot decode    0
+formats kept                      311 png, 82 jpg, 37 ico, 4 webp
+smallest mark                     660 bytes
+largest mark                      175,010 bytes
+```
+
+### No mark is a placeholder, and a shared mark has a shared issuer
+
+434 marks carry 395 distinct pictures. Every picture two assets share belongs to
+one issuer.
+
+```
+7 marks   the iShares mark         AGG IEF IWM MCHI SLV TIP TLT
+7 marks   the ECB mark             the seven EUR pairs
+6 marks   the Bank of England mark the six GBP pairs
+5 marks   the USCF mark            BNO CPER UGA UNG USO
+5 marks   the ARK Invest mark      ARKF ARKG ARKK ARKW PRNT
+5 marks   the RBA mark             the five AUD pairs
+```
+
+Three crypto pairs share a picture because the venue spells one project two ways,
+and both spellings resolved to the same coin.
+
+```
+JUP and JUPITER      Jupiter
+LIT and LIGHTER      Lighter
+ZETA and ZETACHAIN   ZetaChain
+```
+
+### Six marks are smaller than the row draws
+
+The row draws a mark at 32 pixels. Six of the 434 offer only 16, so those six draw
+at their own size in both builds.
+
+```
+PALL PPLT   abrdn serves a 16-pixel icon
+AMD TDOC UWMC   the same
+GOOGL       abc.xyz serves a blank bitmap, and a 16-pixel icon on its own page
+```
+
+### What stays unfilled, and why each one does
+
+108 assets resolve no mark. Seven reasons cover all of them.
+
+```
+reason                                                        assets
+several coins carry the ticker at comparable market rank          67
+no coin record carries the ticker, or its name                    22
+every address answered something that is not an image              7
+the company no longer trades                                       4
+a metal quote with no issuer                                       4
+several coins carry the ticker and none carries a market rank       2
+the domain names a trading venue                                   2
+```
+
+The 22 with no coin record are venue index and derivative products rather than
+coins, so no project publishes a mark for them.
+
+```
+BRENTOIL WTIOIL COIN50
+CDEAI CDECHN CDECU CDEDEF CDEGLD CDEMC CDENGS CDEOIL CDEPT CDESIL CDETEK CDEUS5
+BASED1 BOBBOB CORECHAIN COSMOSDYDX FUN1 GST IP
+```
+
+The seven whose address answered a page or a refusal sit on five hosts.
+
+```
+amctheatres.com     AMC          HTTP 403 to this platform's user agent
+rbnz.govt.nz        4 NZD pairs  HTTP 403 to this platform's user agent
+tesla.com           TSLA         HTTP 403 to this platform's user agent
+gamestop.com        GME          a certificate this machine cannot verify
+```
+
+### A mark is never read from a venue
+
+Two entries in the domain map name a trading venue and a broker.
+
+`src/trading/ata_asset_maps.py` - the domains no logo read reaches
+
+```python
+VENUE_DOMAINS: frozenset[str] = frozenset({"coinbase.com", "sofi.com"})
+```
+
+### The page's own share image is the last location
+
+A site answering one page body at every icon address declares no icon and still
+declares a share image.
+
+`src/core/asset_logos.py` - the last location a mark is looked for
+
+```python
+SHARE_IMAGE_TAG = re.compile(
+    rb"""<meta\b[^>]*\b(?:property|name)\s*=\s*["'](?:og:image|twitter:image)["']"""
+    rb"""[^>]*\bcontent\s*=\s*["']([^"']+)["']""",
+    re.IGNORECASE,
+)
+```
+
+That resolved one asset the five icon addresses could not.
+
+```
+www.alibabagroup.com   58,268 bytes of its own page at five icon addresses
+BABA.png               15,358 bytes, from the share image the page declares
+```
+
+### The fill was stopped and started again
+
+The first run was given 30 reads and stopped at them. The second skipped
+everything the first had settled.
+
+```
+run 1   542 target(s),   5 already held,  30 read,   0 kept,  28 failed, 509 left (stopped)
+run 2   542 target(s),  96 already held, 455 read,  13 kept, 433 failed,   0 left
+run 3   542 target(s), 542 already held,   0 read,   0 kept,   0 failed,   0 left
+run 4   542 target(s),  81 already held, 376 read, 352 kept, 109 failed,   0 left
+run 5   542 target(s), 542 already held,   0 read,   0 kept,   0 failed,   0 left
+```
+
+96 is the 68 marks then on disk plus the 28 refusals the first run wrote down. The
+runs that read nothing are the control: they read zero where run 4 read 376.
+
+The fill also refuses outright while the fleet trades, which was driven against
+the live runtime directory while the application held its lock.
+
+```
+refused: the application is running and holds the instance lock; close it first
+```
+
+### A kept mark drawn in both builds
+
+Sixteen kept marks spanning all four sectors and all four formats were put through
+the resolver the bot list uses, then drawn in each build and read back off what
+each one painted.
+
+```
+mark            sector        window decodes   painted colours   page decodes   page draws
+BTC.png         crypto        yes                          253   50x50          32x32
+SUI.png         crypto        yes                          119   250x250        32x32
+PENGU.png       crypto        yes                          197   250x250        32x32
+WIF.jpg         crypto        yes                          797   250x250        32x32
+TAO.jpg         crypto        yes                           48   250x250        32x32
+BLEND.webp      crypto        yes                           82   250x250        32x32
+AAPL.png        stocks        yes                           84   152x152        32x32
+GOOGL.jpg       stocks        yes                          632   16x16          16x16
+META.webp       stocks        yes                          202   192x192        32x32
+NVDA.ico        stocks        yes                          148   48x48          32x32
+BABA.png        stocks        yes                          104   600x600        32x32
+GLD.png         commodities   yes                          120   180x180        32x32
+SLV.ico         commodities   yes                            6   32x32          32x32
+EUR-USD.png     currencies    yes                          223   152x152        32x32
+USD-CAD.ico     currencies    yes                          110   89x89          32x32
+CHF-JPY.png     currencies    yes                           51   180x180        32x32
+```
+
+All sixteen decode and draw in both builds. Fifteen draw at the full 32 pixels on
+the page; GOOGL draws at 16 because its own picture is 16.
+
+`src/gui/main_tabs/bot_status_table_surface.py` - the two figures both builds read
+
+```python
+LOGO_SIZE_PX = 32
+ROW_HEIGHT_PX = LOGO_SIZE_PX + 2 * ROW_LOGO_MARGIN_PX
+```
+
+The reading discriminates. Two assets with no kept mark were drawn beside the
+sixteen: the window gave each a null icon and kept its ticker as text at four
+painted colours, and the page drew no image for either.
+
+```
+TSLA       no mark kept   window icon null, text 'TSLA', 4 colours   page draws no image
+VELO/USD   no mark kept   window icon null, text 'VELO', 4 colours   page draws no image
+```
+
+### A recorded refusal is not read again
+
+An asset written to the unresolved file is skipped by every later run, including
+one whose source has since come back. Three central bank domains answered nothing
+on a first reading and an icon on a second, and they resolved only because their
+recorded refusals were cleared first.
+
+`src/trading/logo_library.py` - what the walk skips
+
+```python
+if store.kept_path(row.symbol) is not None or row.symbol in held:
+    skipped += 1
+    continue
+```
+
+### The hosts the fill reads, and nothing else
+
+```
+host                          what it answers                   reads
+api.coingecko.com             the coin list and the records        11
+coin-images.coingecko.com     the coin pictures                   352
+www.cryptocompare.com         the ticker-keyed address            443
+assets.coingecko.com          ten pictures the database names      10
+42 organisation domains       their own icons and pages           206
+```
+
+None of the 434 kept images enters this repository. The library directory stays
+ignored, and the tree is clean after the fill.

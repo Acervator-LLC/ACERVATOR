@@ -51,8 +51,8 @@ every verdict.”*
 ### 2. The harness sits in the tree
 
 `dev_harness/` carries four things: `dev_harness/harness/` holds the archetypes,
-`dev_harness/hooks/` holds 24 hooks plus
-`dev_harness/hooks/REGISTRATIONS.md`, `dev_harness/skills/` holds 29 skills, and
+`dev_harness/hooks/` holds 28 hooks plus
+`dev_harness/hooks/REGISTRATIONS.md`, `dev_harness/skills/` holds 33 skills, and
 `dev_harness/agents/` holds the evaluator. The skill set matches the user-level
 copy exactly.
 
