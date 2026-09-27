@@ -62,24 +62,7 @@ ADDITIONAL_DIRS = {
 }
 
 # Matched on basename at any depth by `_is_additional`.
-ADDITIONAL_FILES_EXACT = {
-    "ACERVATOR_DEV_1_BACKUP_2026-05-20.jsonl",
-    "ACERVATOR_HOP2.md",
-    "ACERVATOR_HOP3.md",
-    "ACERVATOR_HOP4.md",
-    "ACERVATOR_DEPT_LEAD_REVIEW_v3_12_0.md",
-    "pytest_out.txt",
-    "pytest_v3_16_48.txt",
-    "TESTNET_POA_VERIFY_REPORT.md",
-    "cartoon_screen.py",
-    "download_archive.py",
-    "generate_essay_ja.py",
-    "generate_essay_localized.py",
-    "investor_screen.py",
-    "screen_fx.py",
-    "splash_screen.py",
-    "render_trailer.py",
-}
+ADDITIONAL_FILES_EXACT: set[str] = set()
 
 
 def _parse_manual_version(name: str) -> Optional[tuple[int, int, int]]:
