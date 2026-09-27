@@ -119,6 +119,9 @@ TABLE_SPACES: tuple[str, ...] = (
 #: The console line the page writes a privacy toggle on.
 ACTION_PREFIX = "acervator-live:"
 
+CELL_PRESS_REFUSED_LOG = "The Live page sent a cell press that names no row: %r"
+CELL_OPEN_FAILED_LOG = "Cell address open failed for %r: %s"
+
 #: The JS expression naming every module whose global reached the page.
 LOADED_MODULES_JS = "window.acervatorTradingPage.modules().join(',')"
 
@@ -183,6 +186,7 @@ _HOST_SOURCE = """(function (global, doc) {
   var TOGGLE = %(toggle)s;
   var SORT = %(sort)s;
   var PICK = %(pick)s;
+  var CELL = %(cell)s;
   var COMMAND = %(command)s;
   var PREFIX = %(prefix)s;
   var FORGETS = %(forgets)s;
@@ -295,6 +299,8 @@ _HOST_SOURCE = """(function (global, doc) {
   // payload this page is already holding.
   // Overtaken: "Four presses leave this page." Five do. A COMMAND press
   // goes out on PREFIX as well, because the bot manager lives in Python.
+  // Overtaken again: six do. A CELL press goes out on PREFIX, because the
+  // system browser is opened in Python and never by this page.
   global.acervator = {
     call: function (method, params) {
       if (
@@ -302,6 +308,7 @@ _HOST_SOURCE = """(function (global, doc) {
         (owns(params, TOGGLE) ||
           owns(params, SORT) ||
           owns(params, PICK) ||
+          owns(params, CELL) ||
           owns(params, COMMAND))
       ) {
         global.console.log(
@@ -497,6 +504,7 @@ def host_script(built: dict, venues: Optional[dict] = None) -> str:
         "toggle": json.dumps(scrum_surface.PRIVACY_TOGGLE_PARAM, ensure_ascii=True),
         "sort": json.dumps(scrum_surface.SORT_COLUMN_PARAM, ensure_ascii=True),
         "pick": json.dumps(scrum_surface.SELECT_BOT_PARAM, ensure_ascii=True),
+        "cell": json.dumps(scrum_surface.CELL_CLICK_PARAM, ensure_ascii=True),
         "command": json.dumps(venue_surface.COMMAND_PARAM, ensure_ascii=True),
         "prefix": json.dumps(ACTION_PREFIX, ensure_ascii=True),
         "forgets": json.dumps(MODULE_FORGETS, ensure_ascii=True),
@@ -901,8 +909,9 @@ if _HAS_WEBENGINE:
             press also moves the Voting Panel, so the panel is redrawn from
             the window's own reading rather than at the next tick. A scroll
             band does not, so the panel keeps its bot.
-            ``venue_surface.COMMAND_PARAM`` carries the command bar's press,
-            which this tab answers beside those four.
+            ``venue_surface.COMMAND_PARAM`` carries the command bar's press
+            and ``scrum_surface.CELL_CLICK_PARAM`` a cell press, and this tab
+            answers both beside those four.
             """
             try:
                 asked = json.loads(payload)
@@ -923,6 +932,11 @@ if _HAS_WEBENGINE:
                     continue
                 method(sent)
                 answered = True
+            if params.get(scrum_surface.CELL_CLICK_PARAM) is not None:
+                if self._open_cell_address(
+                    venue, params[scrum_surface.CELL_CLICK_PARAM]
+                ):
+                    answered = True
             command = params.get(venue_surface.COMMAND_PARAM)
             if command is not None:
                 press = getattr(venue, "press_command", None)
@@ -932,6 +946,44 @@ if _HAS_WEBENGINE:
             if params.get(scrum_surface.SELECT_BOT_PARAM) is not None:
                 self.refresh_votes()
             return answered
+
+        def _open_cell_address(self, venue: Any, at: Any) -> bool:
+            """Open the address the pressed cell carries in the system browser.
+
+            The address is read from the payload that venue's page was drawn
+            from, so the page sends a row and a column and never an address.
+            ``opening_address`` refuses any value that is not https with a
+            host, which is the same check the Qt window's own opener applies.
+            """
+            read = getattr(venue, "models", None)
+            if not callable(read):
+                return False
+            held = read().get(scrum_surface.METHOD) or {}
+            try:
+                row, column = int(at[0]), int(at[1])
+            except (IndexError, TypeError, ValueError):
+                logger.warning(CELL_PRESS_REFUSED_LOG, at)
+                return False
+            field = scrum_surface.LINK_FIELD_BY_COLUMN.get(column)
+            if field is None:
+                return False
+            rows = held.get("rows") or []
+            if not 0 <= row < len(rows):
+                return False
+            cells = (rows[row] or {}).get("cells") or []
+            if not 0 <= column < len(cells):
+                return False
+            address = scrum_surface.opening_address((cells[column] or {}).get(field))
+            if not address:
+                return False
+            try:
+                import webbrowser
+
+                webbrowser.open(address, new=scrum_surface.BROWSER_NEW_WINDOW)
+            except Exception as exc:
+                logger.warning(CELL_OPEN_FAILED_LOG, address, exc)
+                return False
+            return True
 
         def refresh_votes(self) -> bool:
             """Redraw the voting panel from the reading the window holds now.
