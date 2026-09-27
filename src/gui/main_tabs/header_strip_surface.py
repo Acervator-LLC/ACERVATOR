@@ -35,10 +35,10 @@ CENTRAL_LAYOUT = {
     "child_stretch": [0],
 }
 
-#: The stretch each ``TOP_ROW_ORDER`` slot takes. A zero slot draws at the
-#: width its own text asks for; the class group's slot takes what is left.
-#: The group draws its own square inside that slot and never fills it.
-TOP_ROW_STRETCH = [0, 0, 0, 0, 0, 0, 1]
+#: The stretch each ``TOP_ROW_ORDER`` slot takes. The six slots holding text
+#: divide the whole row between them; the class group's slot takes zero, so it
+#: shrinks to the square and the square sits against the row's right edge.
+TOP_ROW_STRETCH = [3, 1, 1, 1, 1, 1, 0]
 
 TOP_ROW = {
     "margins_px": [0, 0, 0, 0],
@@ -65,9 +65,6 @@ KPI_COLUMN_W = 110
 
 #: The narrowest one counter card draws at, caption and amount both elided.
 COUNTER_MIN_W = 48
-
-#: The room one counter needs for a whole money amount at its own size.
-COUNTER_NATURAL_W = 100
 
 #: The slot names the top row gives a declared floor, in row order. The
 #: class group is not here; ``asset_class_surface.group_side_px`` answers it,
@@ -185,6 +182,10 @@ CARD_SIDE_MARGIN_PX = 8
 
 #: What a card's own margins take off the room its text has.
 COUNTER_TEXT_PAD = 2 * CARD_SIDE_MARGIN_PX
+
+#: The room one counter needs for a whole money amount at its own size. A
+#: counter draws the same amount a KPI column draws, inside a card's margins.
+COUNTER_NATURAL_W = KPI_COLUMN_W + COUNTER_TEXT_PAD
 
 CARD_LAYOUT = {
     "margins_px": [CARD_SIDE_MARGIN_PX, 4, CARD_SIDE_MARGIN_PX, 4],
@@ -434,11 +435,12 @@ def window_min_w() -> int:
 def width_budget() -> dict:
     """Every floor the top row holds, as one serialisable dict.
 
-    The React page writes each ``slot_min_w`` as that slot's CSS
-    ``min-width``, so both variants shrink to the same numbers.
+    ``slots`` carries the ``slot_natural_w`` the Qt row sets on each widget.
+    The page sets none: a browser already holds a flex item at the width its
+    own text needs.
     """
     return {
-        "slots": {slot: slot_min_w(slot) for slot in TOP_ROW_ORDER},
+        "slots": {slot: slot_natural_w(slot) for slot in TOP_ROW_ORDER},
         "spendable_text_pad_px": SPENDABLE_TEXT_PAD,
         "counter_text_pad_px": COUNTER_TEXT_PAD,
         "top_row_min_w_px": top_row_min_w(),

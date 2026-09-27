@@ -8,7 +8,6 @@
   var TOP_ROW = "top_row";
   var TOP_ROW_ORDER = "top_row_order";
   var WIDTH_BUDGET = "width_budget";
-  var BUDGET_SLOTS = "slots";
   var VISIBLE = "visible";
   var ISOLATED_TABS = "isolated_tabs";
   var SPENDABLE = "spendable";
@@ -439,23 +438,6 @@
     return style;
   }
 
-  // Every top row slot declares a floor, so a long amount cannot widen the
-  // row past the pane and push the class group off its right edge.
-  function slotFloor(model, slot) {
-    var budget = objectField(model, WIDTH_BUDGET);
-    var slots = objectField(budget, BUDGET_SLOTS);
-    return owns(slots, slot) ? slots[slot] : undefined;
-  }
-
-  // A slot never spills: it shrinks to its floor and clips what will not fit.
-  function withFloor(style, floor) {
-    if (floor !== undefined) {
-      style.minWidth = length(floor);
-      style.overflow = "hidden";
-    }
-    return style;
-  }
-
   function stretchOf(layout, at) {
     var stretch = listField(layout, CHILD_STRETCH);
     return at < stretch.length ? stretch[at] : undefined;
@@ -516,7 +498,6 @@
       style.gap = length(layout[COLUMN_SPACING_PX]);
     }
     withStretch(style, props.stretch);
-    withFloor(style, props.floor);
     var panelProps = { className: SPENDABLE_CLASS, style: style };
     panelProps[PART_ATTR] = SPENDABLE;
     panelProps[SLOT_ATTR] = SPENDABLE;
@@ -687,13 +668,11 @@
 
   function slotNode(model, slot, at) {
     var stretch = stretchOf(objectField(model, TOP_ROW), at);
-    var floor = slotFloor(model, slot);
     if (slot === SPENDABLE) {
       return element(SpendablePanel, {
         key: slot,
         spendable: model[SPENDABLE],
-        stretch: stretch,
-        floor: floor
+        stretch: stretch
       });
     }
     if (slot === MODE_BUTTON) {
@@ -701,8 +680,7 @@
         key: slot,
         button: model[MODE_BUTTON],
         actions: objectField(model, ACTIONS),
-        stretch: stretch,
-        floor: floor
+        stretch: stretch
       });
     }
     var card = counterFor(model, slot);
@@ -713,8 +691,7 @@
       key: slot,
       model: model,
       card: card,
-      stretch: stretch,
-      floor: floor
+      stretch: stretch
     });
   }
 
