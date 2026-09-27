@@ -50,8 +50,12 @@ from __future__ import annotations
 
 import ast
 import json
+import os
+import shutil
 import subprocess
 import sys
+import tarfile
+import tempfile
 from collections.abc import Callable
 from pathlib import Path
 
@@ -926,6 +930,885 @@ def _run_gui_static(target: Path) -> list[Finding]:
     return findings
 
 
+_GEOMETRY_TOOL = "gui-geometry"
+
+_GEOMETRY_RULE = "GUI009"
+
+#: The screen each file draws, for the rule that renders and measures. A file
+#: absent here is never rendered, so the rule reports nothing about it.
+_GEOMETRY_SCREEN_FILES: dict[str, str] = {
+    "src/gui/main_tabs/header_strip.py": "header_row",
+    "src/gui/main_tabs/header_strip_surface.py": "header_row",
+    "src/gui/web/header_strip.js": "header_row",
+    "harness_fixtures/gui_archetype/known_good_rendered_row.js": "fixture_row_visible",
+    "harness_fixtures/gui_archetype/known_bad_hidden_row.js": "fixture_row_hidden",
+}
+
+#: The variants a screen is built in, where it has fewer than both. The fixture
+#: pair is a page and has no Qt half.
+_GEOMETRY_SCREEN_VARIANTS: dict[str, tuple[str, ...]] = {
+    "fixture_row_visible": ("react",),
+    "fixture_row_hidden": ("react",),
+}
+
+#: The paths the reference tree is read from, so a fixture screen is comparable
+#: against the same commit the product screens are.
+_GEOMETRY_REFERENCE_PATHS: tuple[str, ...] = ("src", "harness_fixtures")
+
+#: The windows the screen is built at. 1600 is wider than the header row's own
+#: natural width, so spare width the row does not fill reads as void; 900 is
+#: narrower than it, so a caption or an amount that no longer fits reads as
+#: overflow. One window alone sees one of the two and never the other.
+_GEOMETRY_WINDOWS: tuple[tuple[int, int], ...] = ((1600, 700), (900, 700))
+
+_GEOMETRY_WINDOW_W = _GEOMETRY_WINDOWS[0][0]
+_GEOMETRY_WINDOW_H = _GEOMETRY_WINDOWS[0][1]
+
+_GEOMETRY_VARIANTS: tuple[str, ...] = ("qt", "react")
+
+#: The two committed states of the header row this rule is calibrated on. The
+#: pair is the fixture: one file cannot hold a row, so the rule is proved by
+#: reading the bad state against the good one and the good state against itself.
+_GEOMETRY_CALIBRATION_BAD = "91dcad3e"
+_GEOMETRY_CALIBRATION_GOOD = "2ffe9682"
+
+#: The scripts the React header page loads, in load order.
+_HEADER_ROW_ASSETS: tuple[str, ...] = (
+    "vendor/react.production.min.js",
+    "vendor/react-dom.production.min.js",
+    "design_tokens.js",
+    "theme_engine.js",
+    "shared_widgets.js",
+    "privacy_dot.js",
+    "spendable_profits.js",
+    "dashboard_stat_card.js",
+    "header_strip.js",
+)
+
+#: The element the React page draws the header row into.
+_HEADER_ROW_ROOT_ID = "acervator-header-row-root"
+
+#: The page ground, so no sheet of its own adds width to a slot.
+_HEADER_ROW_PAGE_STYLE = (
+    "*{margin:0;padding:0;box-sizing:border-box}"
+    "html,body{height:100%;overflow:hidden}"
+    f"#{_HEADER_ROW_ROOT_ID}{{width:100%}}"
+)
+
+#: `acervator.call` answered over a queue the driver drains, so the page draws
+#: the figures `desktop_bridge` serves instead of values written into it.
+_HEADER_ROW_HOST_SCRIPT = """(function (g) {
+  "use strict";
+  var next = 1;
+  g.__acervatorAsked = [];
+  g.__acervatorWaiting = {};
+  g.acervator = {
+    call: function (method, params) {
+      var id = next++;
+      g.__acervatorAsked.push({ id: id, method: method, params: params });
+      return new Promise(function (resolve, reject) {
+        g.__acervatorWaiting[id] = { resolve: resolve, reject: reject };
+      });
+    }
+  };
+  g.__acervatorAnswer = function (id, payload) {
+    var waiting = g.__acervatorWaiting[id];
+    delete g.__acervatorWaiting[id];
+    if (waiting) { waiting.resolve(payload); }
+    return Object.keys(g.__acervatorWaiting).length;
+  };
+  g.__acervatorTake = function () {
+    var taken = g.__acervatorAsked;
+    g.__acervatorAsked = [];
+    return taken;
+  };
+})(window);"""
+
+#: The row the React page draws, every slot inside it, and the ancestor chain
+#: each was measured through, as one reading. `offsetHeight` and the computed
+#: height are both carried: an element under a hidden ancestor answers 0 from
+#: `getBoundingClientRect` and `offsetHeight` while the computed height still
+#: answers the value the sheet specified, so either one read alone is wrong.
+_HEADER_ROW_READ_JS = """(function () {
+  var row = document.querySelector('[data-part="top-row"]');
+  if (!row) {
+    return JSON.stringify({
+      "row": null, "slots": [], "rendered": false,
+      "unrendered": "no element carries data-part=\\"top-row\\"", "ancestors": []
+    });
+  }
+  function overflow(node) {
+    var over = 0;
+    var all = node.querySelectorAll("*");
+    for (var at = 0; at < all.length; at++) {
+      over += Math.max(0, all[at].scrollWidth - all[at].clientWidth);
+    }
+    return over;
+  }
+  function named(node) {
+    return node.tagName.toLowerCase() +
+      (node.id ? "#" + node.id : "") +
+      (node.getAttribute("data-part") ? "[" + node.getAttribute("data-part") + "]" : "");
+  }
+  var chain = [];
+  var unrendered = "";
+  var walk = row;
+  while (walk && walk !== document.documentElement) {
+    var style = window.getComputedStyle(walk);
+    var step = {
+      "element": named(walk),
+      "offset_h": walk.offsetHeight,
+      "offset_w": walk.offsetWidth,
+      "display": style.display,
+      "visibility": style.visibility,
+      "computed_h": style.height
+    };
+    if (!unrendered && (step.display === "none" || step.visibility === "hidden" ||
+                        step.offset_h === 0 || step.offset_w === 0)) {
+      unrendered = step.element + " draws nothing: display " + step.display +
+        ", visibility " + step.visibility + ", offset " + step.offset_w + "x" +
+        step.offset_h + ", computed height " + step.computed_h;
+    }
+    chain.push(step);
+    walk = walk.parentElement;
+  }
+  var box = row.getBoundingClientRect();
+  var slots = [];
+  for (var at = 0; at < row.children.length; at++) {
+    var node = row.children[at];
+    var seen = node.getBoundingClientRect();
+    slots.push({
+      "slot": node.getAttribute("data-slot") || ("child[" + at + "]"),
+      "x": Math.round(seen.left - box.left),
+      "w": Math.round(seen.width),
+      "h": Math.round(seen.height),
+      "offset_h": node.offsetHeight,
+      "computed_h": window.getComputedStyle(node).height,
+      "overflow_px": overflow(node)
+    });
+  }
+  return JSON.stringify({
+    "row": { "w": Math.round(box.width), "h": Math.round(box.height) },
+    "slots": slots,
+    "rendered": unrendered === "",
+    "unrendered": unrendered,
+    "ancestors": chain
+  });
+})()"""
+
+
+class _GeometryStub:
+    """Answers every call the header row makes on a collaborator it has none of.
+
+    A reference commit builds the row against window methods that commit had,
+    so the driver names none of them and this answers whatever is asked.
+    """
+
+    def __getattr__(self, name: str) -> "_GeometryStub":
+        if name.startswith("__") and name.endswith("__"):
+            raise AttributeError(name)
+        return _GeometryStub()
+
+    def __call__(self, *_args: object, **_kwargs: object) -> None:
+        return None
+
+
+class _GeometrySettings:
+    """The settings store the header row reads its stored asset class from."""
+
+    def get(self, _key: str, default: object = None) -> object:
+        return default
+
+    def set(self, _key: str, _value: object) -> None:
+        return None
+
+
+def _qt_text_overflow_px(widget: object) -> int:
+    """The width the text inside `widget` asks for beyond the room it has.
+
+    `sizeHint` is read, never the drawn string `ElidingLabel` has already
+    shortened to the room it has.
+    """
+    over = 0
+    seen = [widget]
+    while seen:
+        each = seen.pop()
+        reader = getattr(each, "text", None)
+        if callable(reader) and hasattr(each, "sizeHint"):
+            try:
+                wants = each.sizeHint().width()
+            except (RuntimeError, TypeError):
+                wants = 0
+            over += max(0, wants - each.width())
+        for child in each.children():
+            if hasattr(child, "width"):
+                seen.append(child)
+    return over
+
+
+def _react_reading(drawn: dict, spacing: int) -> dict:
+    """One page reading, with the void widths and the ancestor verdict filled in."""
+    row = drawn.get("row") or {"w": 0, "h": 0}
+    slots = drawn.get("slots") or []
+    rendered = bool(drawn.get("rendered"))
+    said = str(drawn.get("unrendered") or "")
+    return {
+        "variant": "react",
+        "row": row,
+        "slots": slots,
+        "voids": _row_voids(int(row.get("w", 0)), slots, spacing),
+        "rendered": rendered,
+        "unrendered": "" if rendered else (said or "the page returned no reading"),
+        "ancestors": drawn.get("ancestors") or [],
+    }
+
+
+def _qt_ancestor_chain(widget: object) -> list[dict]:
+    """Each widget from `widget` up to its window, and whether it draws anything.
+
+    `isVisible` already answers False under a hidden ancestor, so a reading
+    taken through this chain cannot report a size for a row nobody sees.
+    """
+    chain: list[dict] = []
+    walk = widget
+    while walk is not None:
+        shown = bool(walk.isVisible())
+        wide, tall = walk.width(), walk.height()
+        step = {
+            "element": type(walk).__name__,
+            "offset_h": tall,
+            "offset_w": wide,
+            "display": "shown" if shown else "hidden",
+            "visibility": "visible" if shown else "hidden",
+            "computed_h": f"{walk.sizeHint().height()}px",
+            "unrendered": "",
+        }
+        if not shown or wide == 0 or tall == 0:
+            step["unrendered"] = (
+                f"{step['element']} draws nothing: {step['display']}, "
+                f"size {wide}x{tall}, size hint height {step['computed_h']}"
+            )
+        chain.append(step)
+        walk = walk.parentWidget()
+    return chain
+
+
+def _row_voids(row_w: int, slots: list[dict], spacing: int) -> dict:
+    """The empty width the row carries, at its head, between its slots and at its tail."""
+    if not slots:
+        return {"head_px": 0, "gap_px": 0, "tail_px": 0}
+    ordered = sorted(slots, key=lambda one: one["x"])
+    gap = 0
+    for before, after in zip(ordered, ordered[1:]):
+        gap += max(0, after["x"] - (before["x"] + before["w"]) - spacing)
+    last = ordered[-1]
+    return {
+        "head_px": max(0, ordered[0]["x"]),
+        "gap_px": gap,
+        "tail_px": max(0, row_w - (last["x"] + last["w"])),
+    }
+
+
+def _header_row_qt_geometry(width: int, height: int) -> dict:
+    """Build the real Qt header row offscreen and read every slot's geometry."""
+    from PySide6.QtWidgets import (
+        QApplication,
+        QMainWindow,
+        QSizePolicy,
+        QWidget,
+    )
+
+    from src.gui.main_tabs import header_strip_surface as surface
+    from src.gui.main_tabs.header_strip import HeaderStripMixin
+
+    class _Host(HeaderStripMixin, QMainWindow):
+        def __init__(self) -> None:
+            super().__init__()
+            self._status_log = _GeometryStub()
+            self._settings = _GeometrySettings()
+            self.setAccessibleName("Header row geometry window")
+            self.setAccessibleDescription(
+                "The header row built offscreen so each slot can be read."
+            )
+
+        def __getattr__(self, name: str) -> object:
+            if name.startswith("__") and name.endswith("__"):
+                raise AttributeError(name)
+            return _GeometryStub()
+
+    app = QApplication.instance() or QApplication([])
+    host = _Host()
+    central = host._build_header_strip()
+    # The window gives the row the height its own widgets ask for only while
+    # something else takes the rest, as the tab widget does in main_window.
+    filler = QWidget()
+    filler.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+    central.addWidget(filler)
+    host.resize(width, height)
+    host.show()
+    app.processEvents()
+
+    row = host._header_strip_container
+    layout = row.layout()
+    order = list(getattr(surface, "TOP_ROW_ORDER", []))
+    slots: list[dict] = []
+    at = 0
+    for index in range(layout.count()):
+        widget = layout.itemAt(index).widget()
+        if widget is None:
+            continue
+        geometry = widget.geometry()
+        slots.append(
+            {
+                "slot": order[at] if at < len(order) else f"child[{at}]",
+                "x": geometry.x(),
+                "w": geometry.width(),
+                "h": geometry.height(),
+                "offset_h": geometry.height(),
+                "computed_h": f"{widget.sizeHint().height()}px",
+                "overflow_px": _qt_text_overflow_px(widget),
+            }
+        )
+        at += 1
+    chain = _qt_ancestor_chain(row)
+    unrendered = next((one["unrendered"] for one in chain if one["unrendered"]), "")
+    reading = {
+        "variant": "qt",
+        "row": {"w": row.width(), "h": row.height()},
+        "slots": slots,
+        "voids": _row_voids(row.width(), slots, layout.spacing()),
+        "rendered": unrendered == "",
+        "unrendered": unrendered,
+        "ancestors": chain,
+    }
+    host.close()
+    host.deleteLater()
+    app.processEvents()
+    return reading
+
+
+def _header_row_react_geometry(width: int, height: int) -> dict:
+    """Load the real React header page offscreen and read every slot's geometry."""
+    from PySide6.QtCore import QEventLoop, QTimer
+    from PySide6.QtWebEngineWidgets import QWebEngineView
+    from PySide6.QtWidgets import QApplication
+
+    app = QApplication.instance() or QApplication([])
+
+    from src.core.desktop_bridge import build_registry, dispatch
+    from src.gui.main_tabs import header_strip_surface as surface
+    from src.gui.react_history_panel import page_html
+
+    registry = build_registry(None)
+    body = (
+        "<style>"
+        + _HEADER_ROW_PAGE_STYLE
+        + "</style>"
+        + f'<div id="{_HEADER_ROW_ROOT_ID}"></div>'
+    )
+    view = QWebEngineView()
+    view.resize(width, height)
+    view.show()
+    loop = QEventLoop()
+    view.loadFinished.connect(lambda _ok: loop.quit())
+    view.setHtml(
+        page_html((), _HEADER_ROW_ASSETS, body, None, (_HEADER_ROW_HOST_SCRIPT,))
+    )
+    QTimer.singleShot(_GEOMETRY_PAGE_TIMEOUT_MS, loop.quit)
+    loop.exec()
+
+    held: dict = {}
+
+    def _run(script: str) -> object:
+        held.clear()
+
+        def _got(value: object) -> None:
+            held["value"] = value
+            loop.quit()
+
+        view.page().runJavaScript(script, _got)
+        QTimer.singleShot(_GEOMETRY_PAGE_TIMEOUT_MS, loop.quit)
+        loop.exec()
+        return held.get("value")
+
+    model = dispatch(surface.METHOD, {}, registry)
+    _run(
+        "window.acervatorHeader.renderStrip("
+        f'document.getElementById("{_HEADER_ROW_ROOT_ID}"), '
+        + json.dumps(model)
+        + ") !== null"
+    )
+    # The cards and the spendable strip fetch their own models, so the page is
+    # not drawn until every ask the queue holds has been answered.
+    for _ in range(_GEOMETRY_PAGE_DRAIN_ROUNDS):
+        asked = _run("JSON.stringify(window.__acervatorTake())")
+        pending = json.loads(asked) if isinstance(asked, str) else []
+        if not pending:
+            break
+        for one in pending:
+            answer = dispatch(one["method"], one.get("params") or {}, registry)
+            _run(
+                f"window.__acervatorAnswer({int(one['id'])}, "
+                + json.dumps(answer)
+                + ")"
+            )
+
+    read = _run(_HEADER_ROW_READ_JS)
+    drawn = json.loads(read) if isinstance(read, str) else {}
+    reading = _react_reading(drawn, int(surface.TOP_ROW.get("spacing_px", 0)))
+    view.close()
+    view.deleteLater()
+    app.processEvents()
+    return reading
+
+
+#: The element the fixture pair draws its row into.
+_FIXTURE_ROW_ROOT_ID = "acervator-fixture-row-root"
+
+#: The tree `emit_geometry` was pointed at, so a fixture is read from the same
+#: commit as the modules beside it.
+_GEOMETRY_TREE: Path = REPO_ROOT
+
+
+def _fixture_row_geometry(module: str, width: int, height: int) -> dict:
+    """Load one fixture row module offscreen and read the row it draws."""
+    from PySide6.QtCore import QEventLoop, QTimer
+    from PySide6.QtWebEngineWidgets import QWebEngineView
+    from PySide6.QtWidgets import QApplication
+
+    app = QApplication.instance() or QApplication([])
+    source = (_GEOMETRY_TREE / "harness_fixtures" / "gui_archetype" / module).read_text(
+        encoding="utf-8"
+    )
+    page = (
+        '<!DOCTYPE html><html><head><meta charset="utf-8"><style>'
+        "*{margin:0;padding:0;box-sizing:border-box}html,body{height:100%}"
+        "</style></head><body>"
+        f'<div id="{_FIXTURE_ROW_ROOT_ID}"></div>'
+        "<script>" + source + "</script><script>window.acervatorFixtureRow.draw("
+        f'document.getElementById("{_FIXTURE_ROW_ROOT_ID}"));'
+        "</script></body></html>"
+    )
+    view = QWebEngineView()
+    view.resize(width, height)
+    view.show()
+    loop = QEventLoop()
+    view.loadFinished.connect(lambda _ok: loop.quit())
+    view.setHtml(page)
+    QTimer.singleShot(_GEOMETRY_PAGE_TIMEOUT_MS, loop.quit)
+    loop.exec()
+
+    held: dict = {}
+
+    def _got(value: object) -> None:
+        held["value"] = value
+        loop.quit()
+
+    view.page().runJavaScript(_HEADER_ROW_READ_JS, _got)
+    QTimer.singleShot(_GEOMETRY_PAGE_TIMEOUT_MS, loop.quit)
+    loop.exec()
+    read = held.get("value")
+    drawn = json.loads(read) if isinstance(read, str) else {}
+    reading = _react_reading(drawn, 0)
+    view.close()
+    view.deleteLater()
+    app.processEvents()
+    return reading
+
+
+def _fixture_row_visible_geometry(width: int, height: int) -> dict:
+    """Read the fixture row whose holder draws."""
+    return _fixture_row_geometry("known_good_rendered_row.js", width, height)
+
+
+def _fixture_row_hidden_geometry(width: int, height: int) -> dict:
+    """Read the fixture row whose holder is set to display none."""
+    return _fixture_row_geometry("known_bad_hidden_row.js", width, height)
+
+
+#: How long one page load or one page reading may take.
+_GEOMETRY_PAGE_TIMEOUT_MS = 20000
+
+#: How many rounds of asks the driver answers before it stops draining.
+_GEOMETRY_PAGE_DRAIN_ROUNDS = 12
+
+_GEOMETRY_BUILDERS: dict[tuple[str, str], Callable[[int, int], dict]] = {
+    ("header_row", "qt"): _header_row_qt_geometry,
+    ("header_row", "react"): _header_row_react_geometry,
+    ("fixture_row_visible", "react"): _fixture_row_visible_geometry,
+    ("fixture_row_hidden", "react"): _fixture_row_hidden_geometry,
+}
+
+
+def emit_geometry(
+    screen: str, variant: str, width: int, height: int, tree: Path | None = None
+) -> int:
+    """Print one screen's geometry, in one variant, as JSON on stdout.
+
+    The rule runs this in a subprocess per tree and per variant, since two trees
+    cannot both supply `src` to one interpreter.
+    """
+    global _GEOMETRY_TREE
+    if tree is not None:
+        _GEOMETRY_TREE = tree
+    builder = _GEOMETRY_BUILDERS.get((screen, variant))
+    if builder is None:
+        print(json.dumps({"error": f"no builder for {screen}/{variant}"}))
+        return 2
+    print(json.dumps(builder(width, height)))
+    return 0
+
+
+def _git_executable() -> str:
+    """The absolute path to git, so no lookup happens inside a subprocess call."""
+    found = shutil.which("git")
+    if not found:
+        raise RuntimeError("git is not on PATH, so no reference tree can be read")
+    return found
+
+
+def _extract_reference_member(
+    held: tarfile.TarFile, member: tarfile.TarInfo, root: Path
+) -> None:
+    """Write one archive member under `root`, refusing a link or an escaping path."""
+    if member.issym() or member.islnk() or not (member.isfile() or member.isdir()):
+        return
+    where = (root / member.name).resolve()
+    if not str(where).startswith(str(root.resolve())):
+        return
+    held.extract(member, root, filter="data")
+
+
+def _geometry_reference_tree(commit: str) -> Path:
+    """Extract `src` from `commit` into a scratch directory and return its root."""
+    git = _git_executable()
+    sha = subprocess.run(
+        [git, "-C", str(REPO_ROOT), "rev-parse", commit],
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=True,
+    ).stdout.strip()
+    root = Path(tempfile.gettempdir()) / f"acervator_geometry_{sha[:12]}"
+    if all((root / one).is_dir() for one in _GEOMETRY_REFERENCE_PATHS):
+        return root
+    root.mkdir(parents=True, exist_ok=True)
+    bundle = root / "src.tar"
+    with bundle.open("wb") as sink:
+        subprocess.run(
+            [git, "-C", str(REPO_ROOT), "archive", sha, *_GEOMETRY_REFERENCE_PATHS],
+            stdout=sink,
+            timeout=300,
+            check=True,
+        )
+    with tarfile.open(bundle) as held:
+        for member in held.getmembers():
+            _extract_reference_member(held, member, root)
+    bundle.unlink()
+    return root
+
+
+def _geometry_reading(
+    tree: Path, screen: str, variant: str, width: int, height: int
+) -> dict:
+    """Run one geometry emitter in `tree` and return what it printed.
+
+    The child's home is a scratch directory, so nothing it imports can read or
+    write the runtime tree the running platform keeps its state in.
+    """
+    scratch = Path(tempfile.mkdtemp(prefix="acervator_geometry_home_"))
+    env = dict(os.environ)
+    for name in ("HOME", "USERPROFILE", "LOCALAPPDATA", "APPDATA"):
+        env[name] = str(scratch)
+    env["QT_QPA_PLATFORM"] = "offscreen"
+    env["ACERVATOR_VARIANT"] = variant
+    env["PYTHONPATH"] = str(tree)
+    # The child imports the tree it measures, and must leave no bytecode in it.
+    env["PYTHONDONTWRITEBYTECODE"] = "1"
+    proc = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "dev_harness.harness.gui_archetype",
+            "--emit-geometry",
+            screen,
+            "--variant",
+            variant,
+            "--tree",
+            str(tree),
+            "--width",
+            str(width),
+            "--height",
+            str(height),
+        ],
+        capture_output=True,
+        text=True,
+        cwd=str(REPO_ROOT),
+        env=env,
+        timeout=300,
+    )
+    shutil.rmtree(scratch, ignore_errors=True)
+    line = (proc.stdout or "").strip().splitlines()
+    if not line:
+        raise RuntimeError(
+            f"{screen}/{variant} in {tree} printed nothing, exit {proc.returncode}: "
+            f"{(proc.stderr or '')[-400:]}"
+        )
+    return json.loads(line[-1])
+
+
+def _slots_by_name(reading: dict) -> dict[str, dict]:
+    return {one["slot"]: one for one in reading.get("slots", [])}
+
+
+def _geometry_finding(path: Path, message: str, severity: str = "high") -> Finding:
+    return Finding(
+        tool=_GEOMETRY_TOOL,
+        severity=severity,
+        file=str(path),
+        line=0,
+        rule_id=_GEOMETRY_RULE,
+        message=message,
+    )
+
+
+def _resized_slots(
+    path: Path, where: str, was: dict, now: dict, allowed: frozenset[str]
+) -> list[Finding]:
+    """A slot whose size moved between the two trees and was not named as the target."""
+    findings: list[Finding] = []
+    before, after = _slots_by_name(was), _slots_by_name(now)
+    for name in sorted(set(before) | set(after)):
+        old, new = before.get(name), after.get(name)
+        if old is None:
+            findings.append(
+                _geometry_finding(
+                    path,
+                    f"{where}: slot {name!r} is drawn here and was not in the "
+                    f"reference row",
+                )
+            )
+            continue
+        if new is None:
+            findings.append(
+                _geometry_finding(
+                    path,
+                    f"{where}: slot {name!r} was in the reference row and is "
+                    f"not drawn here",
+                )
+            )
+            continue
+        if (old["w"], old["h"]) == (new["w"], new["h"]):
+            continue
+        if name in allowed:
+            continue
+        findings.append(
+            _geometry_finding(
+                path,
+                f"{where}: slot {name!r} changed size with nothing asking it "
+                f"to -- {old['w']}x{old['h']} in the reference, "
+                f"{new['w']}x{new['h']} here",
+            )
+        )
+    return findings
+
+
+def _new_voids(path: Path, where: str, was: dict, now: dict) -> list[Finding]:
+    """Empty width the row carries here and did not carry in the reference."""
+    findings: list[Finding] = []
+    before = was.get("voids") or {}
+    after = now.get("voids") or {}
+    for edge in ("head_px", "gap_px", "tail_px"):
+        grew = int(after.get(edge, 0)) - int(before.get(edge, 0))
+        if grew <= 0:
+            continue
+        findings.append(
+            _geometry_finding(
+                path,
+                f"{where}: the row carries {grew} px more empty space at its "
+                f"{edge[:-3]} than the reference row -- "
+                f"{before.get(edge, 0)} px there, {after.get(edge, 0)} px here",
+            )
+        )
+    return findings
+
+
+def _new_overflow(path: Path, where: str, was: dict, now: dict) -> list[Finding]:
+    """Text that wants more width than its slot has, where the reference fitted."""
+    findings: list[Finding] = []
+    before, after = _slots_by_name(was), _slots_by_name(now)
+    for name in sorted(after):
+        old = before.get(name)
+        if old is None:
+            continue
+        grew = int(after[name].get("overflow_px", 0)) - int(old.get("overflow_px", 0))
+        if grew <= 0:
+            continue
+        findings.append(
+            _geometry_finding(
+                path,
+                f"{where}: the text in slot {name!r} wants {grew} px more room "
+                f"than the reference needed, so it no longer fits its slot",
+            )
+        )
+    return findings
+
+
+def _unrendered(path: Path, where: str, now: dict) -> list[Finding]:
+    """The reading was taken through an ancestor that drew nothing, or a slot that did.
+
+    A hidden ancestor makes every size read 0 while the computed height still
+    answers what the sheet specified, so two hidden rows compare equal and a
+    drift check alone would answer green on a screen nobody can see.
+    """
+    findings: list[Finding] = []
+    if not now.get("rendered", False):
+        findings.append(
+            _geometry_finding(
+                path,
+                f"{where}: the row was measured through something that drew "
+                f"nothing, so no size below it is a reading -- "
+                f"{now.get('unrendered') or 'no cause recorded'}",
+            )
+        )
+    for one in now.get("slots", []):
+        drawn = int(one.get("offset_h", one.get("h", 0)) or 0)
+        if drawn > 0:
+            continue
+        findings.append(
+            _geometry_finding(
+                path,
+                f"{where}: slot {one['slot']!r} drew nothing -- offset height 0 "
+                f"against a computed height of {one.get('computed_h', 'unknown')}",
+            )
+        )
+    return findings
+
+
+def _variant_gap(qt: dict, react: dict) -> dict[str, tuple[int, int]]:
+    """Per slot, how far the React page's size sits from the Qt screen's."""
+    on_qt, on_page = _slots_by_name(qt), _slots_by_name(react)
+    return {
+        name: (
+            on_page[name]["w"] - on_qt[name]["w"],
+            on_page[name]["h"] - on_qt[name]["h"],
+        )
+        for name in set(on_qt) & set(on_page)
+    }
+
+
+def _variant_mismatch(
+    path: Path,
+    qt: dict,
+    react: dict,
+    reference_gap: dict[str, tuple[int, int]],
+    at: str,
+) -> list[Finding]:
+    """Every slot the React page draws at a size the Qt screen does not.
+
+    The Qt screen is the reference. A gap the reference commit already carried
+    is reported at medium, so the rule can tell a regression from a standing
+    difference; a gap that is new blocks.
+    """
+    findings: list[Finding] = []
+    on_qt, on_page = _slots_by_name(qt), _slots_by_name(react)
+    for name in sorted(set(on_qt) | set(on_page)):
+        here, there = on_qt.get(name), on_page.get(name)
+        if here is None or there is None:
+            findings.append(
+                _geometry_finding(
+                    path,
+                    f"at {at}: slot {name!r} is drawn by "
+                    f"{'the Qt screen' if there is None else 'the React page'} "
+                    f"and not by the other",
+                )
+            )
+            continue
+        gap = (there["w"] - here["w"], there["h"] - here["h"])
+        if gap == (0, 0):
+            continue
+        stood = reference_gap.get(name)
+        severity = "medium" if stood == gap else "high"
+        findings.append(
+            _geometry_finding(
+                path,
+                f"at {at}: the React page draws slot {name!r} at "
+                f"{there['w']}x{there['h']} where the Qt screen draws "
+                f"{here['w']}x{here['h']}"
+                + ("" if severity == "high" else " -- the reference row already did"),
+                severity,
+            )
+        )
+    return findings
+
+
+def scan_geometry_drift(
+    target: Path,
+    against: str,
+    reshaped: frozenset[str],
+    report: ArchetypeReport,
+) -> None:
+    """Render `target`'s screen in both variants and grade what moved.
+
+    Records nothing when no screen names `target`, so `tool_availability`
+    stays silent on every file this rule cannot build.
+    """
+    try:
+        relative = target.resolve().relative_to(REPO_ROOT).as_posix()
+    except ValueError:
+        return
+    screen = _GEOMETRY_SCREEN_FILES.get(relative)
+    if screen is None:
+        return
+
+    variants = _GEOMETRY_SCREEN_VARIANTS.get(screen, _GEOMETRY_VARIANTS)
+    try:
+        reference = _geometry_reference_tree(against)
+        readings = {
+            (tree_name, variant, width, height): _geometry_reading(
+                tree, screen, variant, width, height
+            )
+            for tree_name, tree in (("now", REPO_ROOT), ("was", reference))
+            for variant in variants
+            for width, height in _GEOMETRY_WINDOWS
+        }
+    except (
+        OSError,
+        RuntimeError,
+        ValueError,
+        subprocess.SubprocessError,
+        tarfile.TarError,
+    ) as exc:
+        report.tool_availability[_GEOMETRY_TOOL] = f"error: {type(exc).__name__}: {exc}"
+        report.errors.append(f"{_GEOMETRY_TOOL}: {type(exc).__name__}: {exc}")
+        return
+
+    for width, height in _GEOMETRY_WINDOWS:
+        at = f"{width}x{height}"
+        for variant in variants:
+            was = readings[("was", variant, width, height)]
+            now = readings[("now", variant, width, height)]
+            where = f"{variant} at {at}"
+            report.findings.extend(_unrendered(target, where, now))
+            report.findings.extend(_resized_slots(target, where, was, now, reshaped))
+            report.findings.extend(_new_voids(target, where, was, now))
+            report.findings.extend(_new_overflow(target, where, was, now))
+        if "qt" in variants and "react" in variants:
+            report.findings.extend(
+                _variant_mismatch(
+                    target,
+                    readings[("now", "qt", width, height)],
+                    readings[("now", "react", width, height)],
+                    _variant_gap(
+                        readings[("was", "qt", width, height)],
+                        readings[("was", "react", width, height)],
+                    ),
+                    at,
+                )
+            )
+    report.tool_availability[_GEOMETRY_TOOL] = "ok"
+
+
 _BANDIT_SEVERITY_OVERRIDES: dict[str, str] = {
     "B101": "high",
     "B105": "high",
@@ -959,8 +1842,39 @@ class GUIArchetype:
         "eslint",
         "stylelint",
         "html-validate",
+        _GEOMETRY_TOOL,
     )
     calibration_name = "gui"
+
+    def __init__(
+        self,
+        against: str | None = None,
+        reshaped: frozenset[str] | None = None,
+    ) -> None:
+        """Hold the reference commit and the slots this change was asked to reshape.
+
+        `against` defaults to the point the branch left `origin/current`, so a
+        bare run compares the unit's whole change. `reshaped` names the slots
+        whose new size is wanted; every other slot is frozen.
+        """
+        self.geometry_against = against
+        self.geometry_reshaped = reshaped if reshaped is not None else frozenset()
+
+    def geometry_reference(self) -> str:
+        """The commit the geometry rule holds the current tree against."""
+        if self.geometry_against:
+            return self.geometry_against
+        git = shutil.which("git")
+        if not git:
+            return "HEAD"
+        found = subprocess.run(
+            [git, "-C", str(REPO_ROOT), "merge-base", "HEAD", "origin/current"],
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=False,
+        )
+        return found.stdout.strip() or "HEAD"
 
     def load_calibration(self) -> str:
         from dev_harness.harness.calibrations import load
@@ -1030,6 +1944,13 @@ class GUIArchetype:
             (".py",),
         )
 
+        scan_geometry_drift(
+            target,
+            self.geometry_reference(),
+            self.geometry_reshaped,
+            report,
+        )
+
         report.falsification = self._build_falsification(report)
         return report
 
@@ -1066,6 +1987,12 @@ class GUIArchetype:
         self._run_web_tool(report, "eslint", web_analyzers.run_eslint, target)
 
         scan_rule_modules(report, target, _TEXT_RULE_MODULES, (".js",))
+        scan_geometry_drift(
+            target,
+            self.geometry_reference(),
+            self.geometry_reshaped,
+            report,
+        )
         report.falsification = self._javascript_falsification(report)
         return report
 
@@ -1187,6 +2114,20 @@ class GUIArchetype:
             "that reads a live colour through a helper defined outside the "
             "test function;",
         ]
+        if _GEOMETRY_TOOL in report.tool_availability:
+            parts.append(
+                f"(d4) the {_GEOMETRY_TOOL} reading is wrong if a slot's size "
+                f"moved for a reason outside the tree it was held against -- a "
+                f"font this host has and the reference run did not, a window "
+                f"other than "
+                f"{' and '.join(f'{w}x{h}' for w, h in _GEOMETRY_WINDOWS)}, or a "
+                f"module outside "
+                f"{', '.join(sorted(_GEOMETRY_SCREEN_FILES))} that the row's "
+                f"width also depends on; it discriminates "
+                f"{_GEOMETRY_CALIBRATION_BAD} from "
+                f"{_GEOMETRY_CALIBRATION_GOOD} on the header row, and a run "
+                f"where it no longer does is a blind rule;"
+            )
         if missing:
             parts.append(
                 f"(e) any tool marked 'missing' was in fact installed and "
@@ -1347,15 +2288,41 @@ class GUIArchetype:
         return findings, "ok"
 
 
+def _flag(argv: list[str], name: str, fallback: str = "") -> str:
+    """The value written after `name` on the command line, or `fallback`."""
+    if name not in argv:
+        return fallback
+    at = argv.index(name) + 1
+    return argv[at] if at < len(argv) else fallback
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = argv if argv is not None else sys.argv[1:]
     if not argv or argv[0] in ("-h", "--help"):
         print("usage: python -m dev_harness.harness.gui_archetype <path>")
         print("       .py  reviews PySide6 GUI code with gui-static + ruff + bandit")
         print("       .js  reviews a React renderer module with gui-js")
+        print("       --against <commit>   the reference the geometry rule reads")
+        print("       --reshaped <slots>   comma-separated slots allowed to resize")
         return 2
+    if "--emit-geometry" in argv:
+        tree = _flag(argv, "--tree")
+        if tree:
+            sys.path.insert(0, tree)
+        return emit_geometry(
+            _flag(argv, "--emit-geometry"),
+            _flag(argv, "--variant", "qt"),
+            int(_flag(argv, "--width", str(_GEOMETRY_WINDOW_W))),
+            int(_flag(argv, "--height", str(_GEOMETRY_WINDOW_H))),
+            Path(tree) if tree else None,
+        )
     target = Path(argv[0])
-    report = GUIArchetype().review(target)
+    named = _flag(argv, "--reshaped")
+    archetype = GUIArchetype(
+        against=_flag(argv, "--against") or None,
+        reshaped=frozenset(one for one in named.split(",") if one),
+    )
+    report = archetype.review(target)
     print(json.dumps(report.to_dict(), indent=2))
     return cli_exit(report)
 
