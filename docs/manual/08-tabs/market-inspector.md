@@ -8884,3 +8884,204 @@ src/gui/simulator/sim_extractor_bot_table.py   the same, in the simulator
 None of the kept images enters this repository. The library directory is ignored,
 proved after the fill with a control: the same reading reports an unignored file
 placed beside it.
+
+## 2026-09-27 - #937 - the library is filled over all 542 assets
+
+The fill was run over every asset the library covers, not a slice of them. It
+resolved 81 marks and named all 461 assets that resolved nothing.
+
+`src/trading/logo_library.py` - what one walk reports
+
+```
+542 target(s), 96 already held, 455 read, 13 kept, 433 failed, 0 left, at 0.5 s a read
+```
+
+### Every mark the library holds now
+
+One folder per asset class, and a sector folder under it.
+
+```
+sector          marks     bytes
+commodities        10     76,602
+crypto             10     19,829
+currencies         24    231,758
+stocks             37    244,777
+total              81    572,966
+```
+
+Every target is now settled one way or the other, in all four sectors.
+
+```
+sector         targets   kept   unresolved
+crypto             453     10          443
+stocks              47     37           10
+currencies          28     24            4
+commodities         14     10            4
+total              542     81          461
+```
+
+Each of the 81 files was read back off disk. Every one carries the leading bytes
+of the format its own name gives, and no file is empty or short.
+
+```
+faults found on readback     0
+formats kept                 png, ico, jpg, webp
+smallest mark                660 bytes    CHF-JPY.png
+largest mark                 32,814 bytes USD-CAD.ico
+```
+
+### The sentences the filled library overtakes
+
+OVERTAKEN, and quoted whole:
+
+> The library holds 13 marks. Eight assets are recorded as resolving nothing, and
+> 521 have not been read at all, because this change was bounded to 36 reads in
+> total across every run.
+
+The library holds 81 marks, 461 assets are recorded as resolving nothing, and
+none is left unread.
+
+OVERTAKEN, and quoted whole:
+
+> Of the 542 assets, 451 hold no address but that one, so the route six of six
+> tickers failed on is the only route those 451 have.
+
+Of the 542 assets, 443 hold no address but that one. The other eight of the 451
+reach no address at all: four companies no longer trade and four are metal quotes
+with no issuer, so nothing is ever read for them.
+
+OVERTAKEN, and quoted whole:
+
+> The 81 assets whose organisation publishes its own domain resolved three of
+> four tried, and all ten assets carrying a confirmed coin-record address
+> resolved.
+
+Of the 81 assets whose organisation publishes a domain, two name a trading venue
+and are never read, 71 of the remaining 79 resolved a mark, and all ten assets
+carrying a coin-record address resolved.
+
+OVERTAKEN, and quoted whole:
+
+> Walking the remaining 521 assets would read at most 677 addresses.
+
+Walking them took 485 addresses across two runs, and a third run over the whole
+library read none.
+
+### What stays unfilled, and why each one does
+
+461 assets resolve no mark. Four reasons cover all of them.
+
+```
+reason                                                      assets
+every address answered something that is not an image          451
+no longer trades, so no organisation publishes a mark            4
+a metal quote with no issuer                                     4
+the domain names a trading venue, which is never read             2
+```
+
+Of the 451, eight sit on an organisation domain that answered nothing, and the
+other 443 hold only the address keyed on a ticker.
+
+```
+host                assets   what it answered
+amctheatres.com          1   HTTP 403 to this platform's user agent
+rbnz.govt.nz             4   HTTP 403 to this platform's user agent
+tesla.com                1   HTTP 403 to this platform's user agent
+alibabagroup.com         1   a page at both icon addresses, declaring no icon
+gamestop.com             1   a certificate this machine cannot verify
+```
+
+The 443 share one address and it serves a page, not an image. No route that is
+open reaches them: of the 48 crypto records the database holds, the 10 carrying
+their own site are the 10 already resolved, and 408 of the 443 have no record at
+all.
+
+`src/exchange/crypto_assets.py` - the one address those 443 hold
+
+```python
+SYMBOL_ICON_URL = "https://www.cryptocompare.com/media/img/cc_icons/{symbol}.png"
+```
+
+Every keyless source that would cover the 443 wants a publishable token, an
+on-screen attribution link beside every mark, or a domain rather than a ticker.
+That choice belongs to the operator and is not made here.
+
+### The fill was stopped and started again
+
+The first run was given 30 reads and stopped at them. The second skipped
+everything the first had settled and refetched none of it.
+
+```
+run 1   542 target(s),  5 already held,  30 read,  0 kept,  28 failed, 509 left (stopped)
+run 2   542 target(s), 96 already held, 455 read, 13 kept, 433 failed,   0 left
+run 3   542 target(s), 542 already held,  0 read,  0 kept,   0 failed,   0 left
+```
+
+96 is the 68 marks then on disk plus the 28 refusals the first run wrote down.
+The third run is the control: it read nothing where the second read 455.
+
+The fill also refuses outright while the fleet trades, which was driven against
+the live runtime directory while the application held its lock.
+
+```
+refused: the application is running and holds the instance lock; close it first
+```
+
+### A kept mark drawn in both builds
+
+Twelve kept marks spanning all four sectors and all four formats were put through
+the resolver the bot list uses, then drawn in each build and read back off what
+each one painted.
+
+```
+mark            sector        window icon   window colours   page decoded   page drawn   page colours
+BTC.png         crypto        32x32                   253     50x50           32x32              256
+ETH.png         crypto        32x32                   175     50x50           32x32              157
+DOGE.png        crypto        32x32                   514     50x50           32x32              489
+AAPL.png        stocks        32x32                    84   152x152           32x32               67
+GOOGL.jpg       stocks        32x32                   632     16x16           32x32              830
+META.webp       stocks        32x32                   203   192x192           32x32              222
+NVDA.ico        stocks        32x32                   127     48x48           32x32              174
+GLD.png         commodities   32x32                   120   180x180           32x32              152
+SLV.ico         commodities   32x32                    53     32x32           32x32               12
+EUR-USD.png     currencies    32x32                   223   152x152           32x32              195
+USD-CAD.ico     currencies    32x32                   110     89x89           32x32              135
+CHF-JPY.png     currencies    32x32                    51   180x180           32x32               67
+```
+
+All twelve draw in both builds, at the size the row allows, and none paints a
+single flat colour. The row keeps the height the surface sets.
+
+`src/gui/main_tabs/bot_status_table_surface.py` - the two figures both builds read
+
+```python
+LOGO_SIZE_PX = 32
+ROW_HEIGHT_PX = LOGO_SIZE_PX + 2 * ROW_LOGO_MARGIN_PX
+```
+
+The reading discriminates. Two assets with no kept mark were drawn beside the
+twelve: the window gave each a null icon and kept its ticker as text at four
+painted colours, and the page drew no image for either.
+
+```
+TSLA       no mark kept   window icon null, text 'TSLA', 4 colours   page draws no image
+ONDO/USD   no mark kept   window icon null, text 'ONDO', 4 colours   page draws no image
+```
+
+### A recorded refusal is not read again
+
+An asset written to the unresolved file is skipped by every later run, including
+one whose source has since come back. Three central bank domains answered nothing
+on a first reading and an icon on a second, and they resolved only because their
+recorded refusals were cleared first.
+
+`src/trading/logo_library.py` - what the walk skips
+
+```python
+if store.kept_path(row.symbol) is not None or row.symbol in held:
+    skipped += 1
+    continue
+```
+
+None of the 81 kept images enters this repository. The library directory stays
+ignored, and the tree is clean after the fill.

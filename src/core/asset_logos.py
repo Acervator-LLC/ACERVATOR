@@ -42,13 +42,15 @@ LOGO_EXTENSIONS: tuple[str, ...] = ("png", "svg", "jpg", "ico", "gif", "bmp", "w
 #: carrying them is kept under. A length alone cannot tell an image from an
 #: error page: measured 2026-09-26, one keyless icon address answered 6,186
 #: bytes of HTML and no failure code, and a length check kept it as a PNG.
+#: A BMP body is refused: abc.xyz and sndl.com each answer an 822-byte
+#: single-colour square at favicon.ico, and both assets keep a drawable mark
+#: from the icon their own page declares.
 IMAGE_SIGNATURES: tuple[tuple[bytes, str], ...] = (
     (b"\x89PNG\r\n\x1a\n", "png"),
     (b"\xff\xd8\xff", "jpg"),
     (b"GIF87a", "gif"),
     (b"GIF89a", "gif"),
     (b"\x00\x00\x01\x00", "ico"),
-    (b"BM", "bmp"),
 )
 
 #: What a WebP body carries: the container head, then the format mark.
