@@ -2,8 +2,8 @@
 
 ``RA_STONE_TABLETS_DIR`` is where the Portfolio Battery's historical prices are
 kept, and ``get_ra_root`` creates it on first use. It is a sibling of
-``~/.acervator/``, never a subdirectory of it: ``STONE_TABLETS_DIR`` in
-``storage.py`` is the live fleet's tree and nothing here writes into it.
+``~/.acervator/``, never a subdirectory of it, and ``STONE_TABLETS_DIR`` in
+``storage.py`` is the tracked archive that nothing here writes into.
 ``RA_GAPS_PATH`` names the file recording every period a source returned no
 data for.
 """

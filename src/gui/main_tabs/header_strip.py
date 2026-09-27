@@ -302,8 +302,10 @@ class HeaderStripMixin:
         top_row.setSpacing(surface.TOP_ROW_SPACING_PX)
         top_row.setContentsMargins(0, 0, 0, 0)
 
+        # Each slot's floor is the width its own whole amounts need, so the row
+        # divides only the width left above those floors.
         self._spendable_widget = _spendable_profits_class()()
-        self._spendable_widget.setMinimumWidth(surface.slot_min_w("spendable"))
+        self._spendable_widget.setMinimumWidth(surface.slot_natural_w("spendable"))
         top_row.addWidget(
             self._spendable_widget, stretch=surface.slot_stretch("spendable")
         )
@@ -359,17 +361,16 @@ class HeaderStripMixin:
                 self._stat_errors,
             ],
         ):
-            card.setMinimumWidth(surface.slot_min_w(slot))
+            card.setMinimumWidth(surface.slot_natural_w(slot))
             top_row.addWidget(card, stretch=surface.slot_stretch(slot))
 
-        # The square is one fixed side, so it takes no room from the figures
-        # and sits centred on the row's height at the row's left end. The slot
-        # takes the row's spare width; the square keeps its own size inside it.
+        # The square's slot takes no stretch, so it shrinks to the square and
+        # the square draws against the row's right edge.
         class_group = self._build_class_group()
         top_row.addWidget(
             class_group,
             surface.slot_stretch("mode_button"),
-            Qt.AlignVCenter | Qt.AlignLeft,
+            Qt.AlignVCenter | Qt.AlignRight,
         )
 
         # _on_main_tab_changed hides _header_strip_container on the Simulator tab.
