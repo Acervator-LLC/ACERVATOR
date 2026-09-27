@@ -49,6 +49,8 @@ jobs:
       QTWEBENGINE_CHROMIUM_FLAGS: --no-sandbox
       # Where a launched bundle writes its logs. Not the runner's own HOME.
       LAUNCH_ROOT: ${{ github.workspace }}/launch
+      # One line per screen capture, naming the application in front.
+      FRONT_READINGS: ${{ github.workspace }}/launch/front.txt
       # Seconds to wait for a bundle to report its window.
       LAUNCH_WAIT_SECONDS: 180
 
@@ -201,7 +203,21 @@ jobs:
             web="$(pgrep -f QtWebEngineProcess | wc -l | tr -d ' ')"
             echo "$variant QtWebEngineProcess count: $web"
 
-            screencapture -x "$home/screen.png" || true
+            # A web view paints seconds after the window is created, and the
+            # splash holds the window for its first 9.5 seconds, so the screen
+            # is read three times rather than once. lsappinfo names the
+            # application that owns the menu bar, which is how a window that
+            # never appeared is told from one that did.
+            previous=0
+            for moment in 4 15 40; do
+              sleep "$((moment - previous))"
+              previous="$moment"
+              front="$(lsappinfo info -only name "$(lsappinfo front)" 2>/dev/null \
+                       | sed -E 's/.*"LSDisplayName"="([^"]*)".*/\1/')"
+              screencapture -x "$home/screen-$moment.png" || true
+              echo "$variant at +${moment}s: front application is '${front:-unknown}'" \
+                | tee -a "$FRONT_READINGS"
+            done
 
             echo "--- the log tree the $variant bundle created under its HOME ---"
             find "$home/.acervator_logs" -type f 2>/dev/null | head -40 || true
@@ -225,10 +241,18 @@ jobs:
             grep -rc "tab bar failed to load" "$home/.acervator_logs" 2>/dev/null \
               || echo "none"
 
+            # Reap first, then count, so the number means what leaked rather
+            # than what was still running. The next variant's web-engine count
+            # is only honest once this one is gone.
             kill "$pid" 2>/dev/null || true
             wait "$pid" 2>/dev/null || true
-            echo "--- reaped pid $pid; still alive: $(pgrep -f "$name" | wc -l | tr -d ' ')"
             pkill -f "$name" 2>/dev/null || true
+            for _ in $(seq 1 30); do
+              [ "$(pgrep -f "$name" | wc -l | tr -d ' ')" = "0" ] && break
+              sleep 1
+            done
+            echo "--- reaped pid $pid; processes left: $(pgrep -f "$name" | wc -l | tr -d ' ')"
+            echo "--- QtWebEngineProcess left: $(pgrep -f QtWebEngineProcess | wc -l | tr -d ' ')"
 
             if [ "$ready" != "log" ] && [ "$ready" != "console" ]; then
               echo "FAILURE: the $variant bundle never reported its main window"
@@ -242,52 +266,80 @@ jobs:
         shell: python
         run: |
           import os
+          import re
           import sys
           from pathlib import Path
 
           from PIL import Image
 
+          # The window's own name, from the bundle's CFBundleName. The menu bar
+          # carries it only while a window of that application is in front, so
+          # a bundle that started and drew nothing reads as Finder here.
+          APPLICATION = "Acervator"
+          MOMENTS = (4, 15, 40)
+
           root = Path(os.environ["LAUNCH_ROOT"])
-          shots = {
-              "desktop-control": root / "desktop-control.png",
-              "qt": root / "qt" / "screen.png",
-              "react": root / "react" / "screen.png",
-          }
-          read = {}
-          for label, path in shots.items():
-              if not path.exists():
-                  print(f"{label:16} MISSING {path}")
-                  continue
+          front = {}
+          for line in Path(os.environ["FRONT_READINGS"]).read_text().splitlines():
+              found = re.match(r"(\w+) at \+(\d+)s: front application is '(.*)'", line)
+              if found:
+                  front.setdefault(found.group(1), []).append(found.group(3))
+
+
+          def measure(path):
+              """Return (size, distinct colours, bytes, pixels) for one capture."""
               image = Image.open(path).convert("RGB")
               colours = image.getcolors(maxcolors=1 << 24) or []
-              digest = image.tobytes()
-              read[label] = (image.size, len(colours), path.stat().st_size, digest)
+              return image.size, len(colours), path.stat().st_size, image.tobytes()
+
+
+          control_path = root / "desktop-control.png"
+          control = measure(control_path) if control_path.exists() else None
+          if control:
               print(
-                  f"{label:16} {image.size[0]}x{image.size[1]}  "
-                  f"{len(colours):>7} distinct colours  "
-                  f"{path.stat().st_size:>9} bytes"
+                  f"{'desktop-control':22} {control[0][0]}x{control[0][1]}  "
+                  f"{control[1]:>7} colours  {control[2]:>9} bytes"
               )
 
-          control = read.get("desktop-control")
           bad = []
-          for label in ("qt", "react"):
-              if label not in read:
-                  bad.append(f"{label}: no capture, so nothing was read")
-                  continue
-              if read[label][1] < 2:
-                  bad.append(f"{label}: one flat colour, so nothing drew")
-              if control and read[label][3] == control[3]:
-                  bad.append(f"{label}: identical to the bare desktop control")
-          if "qt" in read and "react" in read:
-              same = read["qt"][3] == read["react"][3]
+          last = {}
+          for variant in ("qt", "react"):
+              seen = front.get(variant, [])
               print()
-              print(f"the two variants drew the same pixels: {same}")
+              print(f"{variant}: the menu bar named {seen or ['nothing read']}")
+              if APPLICATION not in seen:
+                  bad.append(
+                      f"{variant}: {APPLICATION} never owned the menu bar, so no "
+                      f"window of it was ever in front"
+                  )
+              for moment in MOMENTS:
+                  path = root / variant / f"screen-{moment}.png"
+                  if not path.exists():
+                      print(f"{variant} +{moment}s{'':10} MISSING")
+                      continue
+                  size, colours, byte_count, pixels = measure(path)
+                  last[variant] = pixels
+                  same = " (same as the bare desktop)" if control and pixels == control[3] else ""
+                  print(
+                      f"{variant} +{moment}s{'':10} {size[0]}x{size[1]}  "
+                      f"{colours:>7} colours  {byte_count:>9} bytes{same}"
+                  )
+                  if colours < 2:
+                      bad.append(f"{variant} at +{moment}s: one flat colour")
+              if variant not in last:
+                  bad.append(f"{variant}: no capture, so nothing was read")
+
+          if "qt" in last and "react" in last:
+              print()
+              print(f"the two variants drew the same pixels: {last['qt'] == last['react']}")
+
           if bad:
               print()
               for line in bad:
                   print("FAILURE", line)
               sys.exit(1)
-          print("both variants drew a screen that differs from the bare desktop")
+          print()
+          print(f"{APPLICATION} owned the menu bar under both variants")
 
       - name: Upload the applications and the disk images
         if: always()
