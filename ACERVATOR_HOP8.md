@@ -56,8 +56,18 @@ every verdict.”*
 `dev_harness/agents/` holds the evaluator. The skill set matches the user-level
 copy exactly.
 
+The comparison reads each pair's text, not the directory names, and strips
+carriage returns from both sides first. The tracked copies are `eol=lf` and the
+user-level copies are CRLF, so a raw byte comparison calls 6 of the 33 drifted
+when no rule in them differs. The loop walks the tracked directory, so
+`~/.claude/skills/synced` never enters it; that directory is a bucket and holds
+no `SKILL.md`.
+
 ```bash
-diff <(ls -1 dev_harness/skills) <(ls -1 ~/.claude/skills)    # prints nothing
+for d in dev_harness/skills/*/; do n=$(basename "$d"); \
+  diff <(tr -d '\r' < "$d/SKILL.md") \
+       <(tr -d '\r' < ~/.claude/skills/"$n"/SKILL.md) \
+  > /dev/null || echo "$n differs"; done          # prints nothing
 ```
 
 A fresh clone gets the gate. Older handoffs claim the opposite.
@@ -639,7 +649,7 @@ units.
 
 | what | where |
 |---|---|
-| the law, 29 skills | `dev_harness/skills/`, mirrored at `~/.claude/skills/` |
+| the law, 33 skills | `dev_harness/skills/`, mirrored at `~/.claude/skills/` |
 | the blocking hooks | `dev_harness/hooks/`, declared in `dev_harness/hooks/REGISTRATIONS.md` |
 | the three auto-loaded rules | `.claude/rules/`, loaded with `CLAUDE.md` |
 | the Product Manual | `docs/manual/`, rendered by `tools/build_product_manual.py` |

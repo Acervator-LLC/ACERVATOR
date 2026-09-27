@@ -313,6 +313,30 @@ Four carry the domain.
 | `archetype-peer-review` | Building or extending an archetype |
 | `hop-protocol` | The handoff file described above |
 
+### The skills are in the tree now
+
+Two sentences above are overtaken. Each is quoted whole below, and the true
+sentence follows it.
+
+> Twenty skills sit under `~/.claude/skills/`, one directory each with a
+> `SKILL.md`.
+
+Overtaken. Thirty-three skills sit there, one directory each with a `SKILL.md`,
+and the four tables above name twenty of them.
+
+> They are machine-local and none is committed, so a reader cannot locate them
+> in this repository.
+
+Overtaken. All thirty-three are tracked under `dev_harness/skills/`, one
+directory per skill, so a reader of this repository finds every one of them. The
+copy outside the repository is the one the Skill tool loads, and the two hold the
+same text.
+
+The tracked copies end each line with one byte and the loaded copies end it with
+two, so a comparison of the pair strips carriage returns before it reads the
+text. Comparing the raw bytes instead names six of the thirty-three as different
+when no rule in them differs.
+
 ### The hooks, outside the repository
 
 Eight hooks sit under `~/.claude/hooks/`, also machine-local and also not
