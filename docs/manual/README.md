@@ -115,7 +115,7 @@ Where the extractor puts them:
 
 ```python
 REPO_ROOT = Path(__file__).resolve().parents[1]     # tools/extract_product_manual.py
-DEFAULT_FIGURES_DIR = REPO_ROOT / "artifacts" / "manual-figures"
+DEFAULT_FIGURES_DIR = REPO_ROOT / "docs" / "manual" / "figures"
 ```
 
 That count of 38 covers the images the source PDF embeds. A deep walk of the
@@ -128,8 +128,7 @@ their own under the same ignore rule, and [FIGURES.md](FIGURES.md) inventories
 them beside the first set. Counting both sets, the built PDF embeds 77 images.
 
 ```
-artifacts/manual-figures/       the manual's own 38 images
-artifacts/vwap-charts/          the 39 charts of Part 9
+docs/manual/figures/            the 38 manual images and the 39 charts
 ```
 
 ## Extraction record
@@ -205,7 +204,7 @@ move the input directory, the figures directory and the output file.
 
 ```python
 DEFAULT_DOCS_DIR = REPO_ROOT / "docs" / "manual"        # tools/build_product_manual.py
-DEFAULT_FIGURES_DIR = REPO_ROOT / "artifacts" / "manual-figures"
+DEFAULT_FIGURES_DIR = REPO_ROOT / "docs" / "manual" / "figures"
 DEFAULT_OUTPUT = REPO_ROOT / "artifacts" / "manual" / "Acervator-Product-Manual.pdf"
 # artifacts/ is gitignored, so the built PDF is not in the tree
 
@@ -213,6 +212,29 @@ parser.add_argument("--docs-dir", type=Path, default=DEFAULT_DOCS_DIR)
 parser.add_argument("--figures-dir", type=Path, default=DEFAULT_FIGURES_DIR)
 parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
 ```
+
+### One manual, and it names no traded asset
+
+Two sentences on this page are overtaken. Each is quoted whole, with the
+sentence that replaces it beneath.
+
+> They live one level down, in a directory of their own under the same ignore
+> rule, and [FIGURES.md](FIGURES.md) inventories them beside the first set.
+
+All 77 images live together in `docs/manual/figures/`, tracked, and
+[FIGURES.md](FIGURES.md) inventories both sets there.
+
+> The build writes the PDF beside the figures, under the same ignore rule.
+
+The build still writes into the ignored directory, and the tracked copy at
+[../Acervator-Product-Manual.pdf](../Acervator-Product-Manual.pdf) is the one
+this repository ships.
+
+The shipped PDF names no traded asset. Every chart has its asset name painted
+out of the pixels, every page carries a label such as `A01` in place of a
+symbol, and the PDF's own text holds no symbol a reader could copy out. A build
+that names the assets needs the unobscured charts and the unmasked pages, and
+this repository carries neither.
 
 The tool renumbers the parts of [04-manual-parts.md](04-manual-parts.md) from
 one and sets its count word to match. It builds a table of contents down to the

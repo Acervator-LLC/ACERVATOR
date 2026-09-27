@@ -12,8 +12,7 @@ never mix: each lands in a directory of its own. Counting both, the built manual
 embeds 77 images.
 
 ```
-artifacts/manual-figures/       38 images, unpacked from the source PDF
-artifacts/vwap-charts/          39 charts, drawn from the venue export
+docs/manual/figures/            77 images, tracked with the manual
 ```
 
 ## Where the figures are written
@@ -108,10 +107,39 @@ manual figures, under the same ignore rule. This repository tracks no chart. A
 file name carries the asset, and the combined view has a name of its own.
 
 ```
-artifacts/vwap-charts/
+docs/manual/figures/
     vwap_combined.png       the combined view
-    vwap_<ASSET>.png        one per charted base, 38 of them
+    vwap_a<NN>.png          one per charted base, 38 of them
 ```
+
+### What the repository carries now
+
+Four sentences on this page are overtaken. Each is quoted whole, with the
+sentence that replaces it beneath.
+
+> The images are captured output, so they are not tracked.
+
+All 77 images are tracked under `docs/manual/figures/`, so a clone can rebuild
+the manual with no export and no source PDF.
+
+> The two sets never mix: each lands in a directory of its own.
+
+Both sets land in `docs/manual/figures/`, and the name tells them apart:
+`p<page>-i<index>.png` for the manual's own images, `vwap_` for a chart.
+
+> They live in a directory of their own beside the manual figures, under the
+> same ignore rule. This repository tracks no chart.
+
+Every chart is tracked, beside the manual's own images, under no ignore rule.
+
+> A file name carries the asset, and the combined view has a name of its own.
+
+A file name carries the label the manual uses, `vwap_a01.png` through
+`vwap_a38.png`, and never the asset. The combined view keeps its own name.
+
+The asset name is painted out of every chart's title, out of its price-axis
+label, and out of the combined view's legend, so no chart in this repository
+names what it charts.
 
 Each of the 38 per-asset charts carries a Bollinger band behind its price
 panel, at period 20 and width 2 standard deviations, on one-day bars. The
@@ -123,44 +151,44 @@ than five minutes.
 | File | Asset | Fills | Described in |
 | ---- | ----- | ----: | ------------ |
 | `vwap_combined.png` | top eight by fill count | 3,113 | [10-live-trade-history.md](10-live-trade-history.md), under the combined-chart section |
-| `vwap_RAVE.png` | RAVE | 900 | [10-live-trade-history.md](10-live-trade-history.md) |
-| `vwap_CHIP.png` | CHIP | 495 | [10-live-trade-history.md](10-live-trade-history.md) |
-| `vwap_BILL.png` | BILL | 459 | [10-live-trade-history.md](10-live-trade-history.md) |
-| `vwap_ALLO.png` | ALLO | 322 | [10-live-trade-history.md](10-live-trade-history.md) |
-| `vwap_ZEC.png` | ZEC | 261 | [10-live-trade-history.md](10-live-trade-history.md) |
-| `vwap_KAT.png` | KAT | 230 | [10-live-trade-history.md](10-live-trade-history.md) |
-| `vwap_BIO.png` | BIO | 226 | [10-live-trade-history.md](10-live-trade-history.md) |
-| `vwap_SPK.png` | SPK | 220 | [10-live-trade-history.md](10-live-trade-history.md) |
-| `vwap_ORCA.png` | ORCA | 196 | [10-live-trade-history.md](10-live-trade-history.md) |
-| `vwap_BONK.png` | BONK | 191 | [10-live-trade-history.md](10-live-trade-history.md) |
-| `vwap_CAP.png` | CAP | 178 | [10-live-trade-history.md](10-live-trade-history.md) |
-| `vwap_PENGU.png` | PENGU | 159 | [10-live-trade-history.md](10-live-trade-history.md) |
-| `vwap_VVV.png` | VVV | 147 | [10-live-trade-history.md](10-live-trade-history.md) |
-| `vwap_ETH.png` | ETH | 141 | [10-live-trade-history.md](10-live-trade-history.md) |
-| `vwap_BTC.png` | BTC | 124 | [10-live-trade-history.md](10-live-trade-history.md) |
-| `vwap_TAO.png` | TAO | 124 | [10-live-trade-history.md](10-live-trade-history.md) |
-| `vwap_ONDO.png` | ONDO | 119 | [10-live-trade-history.md](10-live-trade-history.md) |
-| `vwap_XRP.png` | XRP | 119 | [10-live-trade-history.md](10-live-trade-history.md) |
-| `vwap_IMU.png` | IMU | 113 | [10-live-trade-history.md](10-live-trade-history.md) |
-| `vwap_BICO.png` | BICO | 87 | [10-live-trade-history.md](10-live-trade-history.md) |
-| `vwap_LINK.png` | LINK | 83 | [10-live-trade-history.md](10-live-trade-history.md) |
-| `vwap_DOGE.png` | DOGE | 80 | [10-live-trade-history.md](10-live-trade-history.md) |
-| `vwap_SOL.png` | SOL | 77 | [10-live-trade-history.md](10-live-trade-history.md) |
-| `vwap_GROVE.png` | GROVE | 75 | [10-live-trade-history.md](10-live-trade-history.md) |
-| `vwap_SUI.png` | SUI | 74 | [10-live-trade-history.md](10-live-trade-history.md) |
-| `vwap_RE.png` | RE | 73 | [10-live-trade-history.md](10-live-trade-history.md) |
-| `vwap_XLM.png` | XLM | 73 | [10-live-trade-history.md](10-live-trade-history.md) |
-| `vwap_HYPE.png` | HYPE | 66 | [10-live-trade-history.md](10-live-trade-history.md) |
-| `vwap_PUMP.png` | PUMP | 63 | [10-live-trade-history.md](10-live-trade-history.md) |
-| `vwap_NEAR.png` | NEAR | 58 | [10-live-trade-history.md](10-live-trade-history.md) |
-| `vwap_HBAR.png` | HBAR | 25 | [10-live-trade-history.md](10-live-trade-history.md) |
-| `vwap_AERO.png` | AERO | 24 | [10-live-trade-history.md](10-live-trade-history.md) |
-| `vwap_ENA.png` | ENA | 23 | [10-live-trade-history.md](10-live-trade-history.md) |
-| `vwap_ADA.png` | ADA | 23 | [10-live-trade-history.md](10-live-trade-history.md) |
-| `vwap_AGLD.png` | AGLD | 16 | [10-live-trade-history.md](10-live-trade-history.md) |
-| `vwap_LTC.png` | LTC | 6 | [10-live-trade-history.md](10-live-trade-history.md) |
-| `vwap_WLFI.png` | WLFI | 6 | [10-live-trade-history.md](10-live-trade-history.md) |
-| `vwap_LSETH.png` | LSETH | 5 | [10-live-trade-history.md](10-live-trade-history.md) |
+| `vwap_a01.png` | A01 | 900 | [10-live-trade-history.md](10-live-trade-history.md) |
+| `vwap_a02.png` | A02 | 495 | [10-live-trade-history.md](10-live-trade-history.md) |
+| `vwap_a03.png` | A03 | 459 | [10-live-trade-history.md](10-live-trade-history.md) |
+| `vwap_a04.png` | A04 | 322 | [10-live-trade-history.md](10-live-trade-history.md) |
+| `vwap_a05.png` | A05 | 261 | [10-live-trade-history.md](10-live-trade-history.md) |
+| `vwap_a06.png` | A06 | 230 | [10-live-trade-history.md](10-live-trade-history.md) |
+| `vwap_a07.png` | A07 | 226 | [10-live-trade-history.md](10-live-trade-history.md) |
+| `vwap_a08.png` | A08 | 220 | [10-live-trade-history.md](10-live-trade-history.md) |
+| `vwap_a09.png` | A09 | 196 | [10-live-trade-history.md](10-live-trade-history.md) |
+| `vwap_a10.png` | A10 | 191 | [10-live-trade-history.md](10-live-trade-history.md) |
+| `vwap_a11.png` | A11 | 178 | [10-live-trade-history.md](10-live-trade-history.md) |
+| `vwap_a12.png` | A12 | 159 | [10-live-trade-history.md](10-live-trade-history.md) |
+| `vwap_a13.png` | A13 | 147 | [10-live-trade-history.md](10-live-trade-history.md) |
+| `vwap_a14.png` | A14 | 141 | [10-live-trade-history.md](10-live-trade-history.md) |
+| `vwap_a15.png` | A15 | 124 | [10-live-trade-history.md](10-live-trade-history.md) |
+| `vwap_a16.png` | A16 | 124 | [10-live-trade-history.md](10-live-trade-history.md) |
+| `vwap_a17.png` | A17 | 119 | [10-live-trade-history.md](10-live-trade-history.md) |
+| `vwap_a18.png` | A18 | 119 | [10-live-trade-history.md](10-live-trade-history.md) |
+| `vwap_a19.png` | A19 | 113 | [10-live-trade-history.md](10-live-trade-history.md) |
+| `vwap_a20.png` | A20 | 87 | [10-live-trade-history.md](10-live-trade-history.md) |
+| `vwap_a21.png` | A21 | 83 | [10-live-trade-history.md](10-live-trade-history.md) |
+| `vwap_a22.png` | A22 | 80 | [10-live-trade-history.md](10-live-trade-history.md) |
+| `vwap_a23.png` | A23 | 77 | [10-live-trade-history.md](10-live-trade-history.md) |
+| `vwap_a24.png` | A24 | 75 | [10-live-trade-history.md](10-live-trade-history.md) |
+| `vwap_a25.png` | A25 | 74 | [10-live-trade-history.md](10-live-trade-history.md) |
+| `vwap_a26.png` | A26 | 73 | [10-live-trade-history.md](10-live-trade-history.md) |
+| `vwap_a27.png` | A27 | 73 | [10-live-trade-history.md](10-live-trade-history.md) |
+| `vwap_a28.png` | A28 | 66 | [10-live-trade-history.md](10-live-trade-history.md) |
+| `vwap_a29.png` | A29 | 63 | [10-live-trade-history.md](10-live-trade-history.md) |
+| `vwap_a30.png` | A30 | 58 | [10-live-trade-history.md](10-live-trade-history.md) |
+| `vwap_a31.png` | A31 | 25 | [10-live-trade-history.md](10-live-trade-history.md) |
+| `vwap_a32.png` | A32 | 24 | [10-live-trade-history.md](10-live-trade-history.md) |
+| `vwap_a33.png` | A33 | 23 | [10-live-trade-history.md](10-live-trade-history.md) |
+| `vwap_a34.png` | A34 | 23 | [10-live-trade-history.md](10-live-trade-history.md) |
+| `vwap_a35.png` | A35 | 16 | [10-live-trade-history.md](10-live-trade-history.md) |
+| `vwap_a36.png` | A36 | 6 | [10-live-trade-history.md](10-live-trade-history.md) |
+| `vwap_a37.png` | A37 | 6 | [10-live-trade-history.md](10-live-trade-history.md) |
+| `vwap_a38.png` | A38 | 5 | [10-live-trade-history.md](10-live-trade-history.md) |
 
 The 38 per-asset counts sum to 5,661. The combined view's 3,113 counts the
 eight assets it draws, which the 38 rows already carry.

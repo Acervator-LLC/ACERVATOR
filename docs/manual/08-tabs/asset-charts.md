@@ -628,7 +628,7 @@ arithmetic.
 | `SlingshotIndicator` | a `SlingshotBar`: the squeeze state, the release, the snapback and the momentum |
 
 The vote is unchanged. `compute` from the commit before and `compute` from
-this one ran over every prefix of 600 recorded BTC 1h candles, six classes,
+this one ran over every prefix of 600 recorded A15 1h candles, six classes,
 every Signal field compared: 0 of 600 prefixes differ for any class. The
 control: shifting one class's series by one candle makes the same comparison
 report 549 to 589 differing prefixes.
@@ -771,7 +771,7 @@ DRAWN_PIN = "charts.indicators.drawn"
 
 The real window in each build, the home on a scratch directory, every socket
 but loopback refused, a two-bot fleet read off a copy of the operator's
-`bot_state.json`, and the real fetcher fed 100 recorded BTC 1h candles by a
+`bot_state.json`, and the real fetcher fed 100 recorded A15 1h candles by a
 stand-in connector:
 
 | reading | Qt | React |
@@ -1063,8 +1063,8 @@ ANNOTATIONS_PIN = "charts.annotations.drawn"
 ### The skin readings, off the running program
 
 Both builds, the real window, the home on a scratch directory, every socket
-but loopback refused, one BTC/USD bot's figures off a scratch copy of the
-operator's fleet file, and 100 recorded BTC 1h candles rolled from the 5m
+but loopback refused, one A15/USD bot's figures off a scratch copy of the
+operator's fleet file, and 100 recorded A15 1h candles rolled from the 5m
 tablet by the registry's own rollup:
 
 | reading | Qt | React |
@@ -1217,8 +1217,8 @@ typed, 1hr 1d 1wk, target 3), then the Charts tab's toggle pressed:
 
 | reading | Qt | React |
 | ------- | -- | ----- |
-| the list after the press | XLM bear 1d, AXS bear 1h | the same |
-| the chart | XLM, 1d, 213 candles | the same |
+| the list after the press | A27 bear 1d, AXS bear 1h | the same |
+| the chart | A27, 1d, 213 candles | the same |
 | overlays on | adx, ichimoku, ker, macd, slingshot, supertrend, vortex; no other | the same |
 | badge and strip | bearish, 7 readings; caption 3 lines | the same |
 | floors, target line, glow, strip, position | none | none |
@@ -1409,8 +1409,8 @@ the React build.
 ### The five inputs read off the running program
 
 Both variants built the real `MainWindow` with the home on scratch, every
-socket but loopback refused, one BTC/USD bot off a scratch copy of
-`bot_state.json`, 100 BTC 1h candles rolled from a copy of the operator's 5m
+socket but loopback refused, one A15/USD bot off a scratch copy of
+`bot_state.json`, 100 A15 1h candles rolled from a copy of the operator's 5m
 tablet, at a device pixel ratio of 1.25, the widget and the page's chart host
 both 1358 pixels wide.
 
@@ -1571,8 +1571,8 @@ called kept the bot's picture on the ATA-SMP list.
 ### Read off the running program, both builds
 
 Both builds built the real `MainWindow` with the home on scratch, every
-socket but loopback refused, one BTC/USD bot off a scratch copy of
-`bot_state.json`, 100 BTC 1h candles rolled from a copy of the 5m tablet, at
+socket but loopback refused, one A15/USD bot off a scratch copy of
+`bot_state.json`, 100 A15 1h candles rolled from a copy of the 5m tablet, at
 the display's ratio of 1.25, the window 1920, 1400 and 900 pixels wide, each
 under `python -m pdb` with a breakpoint on the first statement of
 `_draw_legend`.
@@ -1732,21 +1732,21 @@ sells.
 
 Both builds, the real window, the home on a scratch directory, every socket
 but loopback refused, a two-bot fleet off a scratch copy of one seed record,
-100 recorded BTC 1h candles rolled from the 5m tablet by the registry's own
+100 recorded A15 1h candles rolled from the 5m tablet by the registry's own
 rollup and shifted by whole hours so the newest candle opens at the current
 hour, and a History venue on loopback answering `get_my_trades` with 40
-BTC/USD rows (26 on distinct candles inside the window, 14 older than it)
-and 6 ETH/USD rows, through the History tab's own fetch path:
+A15/USD rows (26 on distinct candles inside the window, 14 older than it)
+and 6 A14/USD rows, through the History tab's own fetch path:
 
 | reading | Qt | React |
 | ------- | -- | ----- |
 | `_draw_floors` and `set_tranche_floors` on the painter | absent; 0 floors held; the emitter names no floor | the same |
 | the History at the tab's first tick | never fetched; the tab asks once; the venue is asked once per market, 2 of 2; 46 rows land in 0.21 s | the same |
-| the shown market's rows against its glyphs | 40 rows for BTC/USD, 40 markers held, 26 drawn on 26 candles, 14 counted off the window | the same 40, 26 and 14 |
+| the shown market's rows against its glyphs | 40 rows for A15/USD, 40 markers held, 26 drawn on 26 candles, 14 counted off the window | the same 40, 26 and 14 |
 | a six-notch zoom to 36 candles, then a reset | 5 drawn and 35 off; back to 26 and 14 | the same |
 | one bus fill on the newest candle | drawn at once, 27 of 41; the History's next fetch carrying it leaves 27 of 41 | the same |
 | a row planted inside the window, then one outside | 28 drawn of 42; then 28 drawn of 43 with 15 off | the same |
-| ETH/USD shown, then BTC/USD again | 6 rows, 4 drawn, 2 off; back to 28 of 43 | the same |
+| A14/USD shown, then A15/USD again | 6 rows, 4 drawn, 2 off; back to 28 of 43 | the same |
 | the History tab after these fetches | 49 of 49 trades shown, page 1 of 1 | the same |
 | the venue image with a call | no glyph, no floor | one painter |
 
@@ -1992,7 +1992,7 @@ def fill_row(fill: FillLike) -> list[str]:
 
 Each build ran the real window with the home on a scratch directory, every
 socket but loopback refused, two bots off a scratch copy of one record, 100
-BTC 1h candles and a loopback History venue answering 40 fills, 26 inside the
+A15 1h candles and a loopback History venue answering 40 fills, 26 inside the
 window. The chart's host was resized to 690, 900 and 1100 px. Each run was
 driven under the debugger with a breakpoint on the paint pass, ignored on
 every crossing and counted at the end.
@@ -2124,7 +2124,7 @@ scrolls.
 ### The height and drag readings, off the running program, both builds
 
 Each build ran with the home on a scratch directory and every socket but
-loopback refused, 100 BTC 1h candles, seven sub-panes on, the panel at 700,
+loopback refused, 100 A15 1h candles, seven sub-panes on, the panel at 700,
 900 and 1400 px wide. The Qt numbers come from `ChartPainter.geometry_payload`,
 which reports what the last paint laid out; the page's numbers come from the
 same payload carried on the image answer, and its element rectangles from the

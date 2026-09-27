@@ -578,7 +578,7 @@ so a trophy lasts as long as the chain does.
 ## The chain
 
 `local_testnet.py` simulates the whole Base environment in memory, with no
-wallet, no ETH and no network. Ask the module for the classes it declares and
+wallet, no A14 and no network. Ask the module for the classes it declares and
 seven answer. Four are the chain and its contracts. Three are the records those
 four store.
 
@@ -1472,8 +1472,8 @@ action costs, and the multiplier it puts on that action's effect.
 Magisterium      AAVE/USD - Season 1 - Impetus -2, effect +50%
 Elixir           AAVE/USD - Season 1 - Impetus -1, effect +20%
 Flores           AAVE/USD - Season 1 - Impetus -1, effect +10%
-Pavonis          BTC/USD - Season 1 - effect +5%
-Calx             LTC/USD - Season 1 - effect +2%
+Pavonis          A15/USD - Season 1 - effect +5%
+Calx             A36/USD - Season 1 - effect +2%
 Action Impetus   4 becomes 1
 Action effect    1.87x
 loot_store.json
@@ -1554,8 +1554,8 @@ Six months means six calendar months, not a count of days. Bitcoin started on
 day were run.
 
 ```
-BTC asked on 2009-07-02   too_young    rewards Quintessence: no
-BTC asked on 2009-07-03   old_enough   rewards Quintessence: yes
+A15 asked on 2009-07-02   too_young    rewards Quintessence: no
+A15 asked on 2009-07-03   old_enough   rewards Quintessence: yes
 ```
 
 ### Where the date comes from
@@ -1622,16 +1622,16 @@ bad market string raises instead, and that is the only error path.
 
 | Reason | When | Measured |
 | ------ | ---- | -------- |
-| `too_young` | the project is under six months old | BTC asked on 2009-03-01 |
+| `too_young` | the project is under six months old | A15 asked on 2009-03-01 |
 | `no_coingecko_id` | the catalogue has no identifier | TRX/USD |
 | `no_genesis_date` | CoinGecko answers with no date | SHIB/USD |
-| `lookup_failed` | the call did not answer | ETH/USD, host unreachable |
+| `lookup_failed` | the call did not answer | A14/USD, host unreachable |
 
 Taking away a guard makes the lookup admit whatever that guard stops, and a run
 of each one showed exactly that.
 
 ```
-without the too_young guard         BTC at 2009-03-01 rewards Quintessence
+without the too_young guard         A15 at 2009-03-01 rewards Quintessence
 without the no_coingecko_id guard   TRX/USD rewards Quintessence
 without the no_genesis_date guard   SHIB/USD rewards Quintessence
 without the lookup_failed guard     an unreachable host rewards Quintessence
@@ -1669,8 +1669,8 @@ answered for Bitcoin from the file, and in the same run a market that was not in
 the file could not be answered at all.
 
 ```
-BTC/USD, host unreachable, in the file       old_enough
-ETH/USD, host unreachable, not in the file   lookup_failed
+A15/USD, host unreachable, in the file       old_enough
+A14/USD, host unreachable, not in the file   lookup_failed
 ```
 
 An empty answer is not written to the file. A project CoinGecko cannot date today
@@ -1878,7 +1878,7 @@ The operator's rule is that players take damage and never lose money. The health
 pool comes from the dollar line the engine defends, not from profit and loss. A
 bot below its line carries a wound and has lost nothing.
 
-These are the figures the conversion produced for one live bot on KAT/USD, with
+These are the figures the conversion produced for one live bot on A06/USD, with
 the field each one came from.
 
 ```
@@ -2006,11 +2006,11 @@ The two rankings were taken from one live Coinbase snapshot, the same 403 assets
 one sorted each way. They share one market out of twenty.
 
 ```
-top 20 by dollars traded   BTC ETH ZEC XRP SOL HYPE VVV NEAR LINK DOGE
-                           USELESS UNI PUMP SUI ADA TAO XLM AERO LIGHTER LTC
+top 20 by dollars traded   A15 A14 A05 A18 A23 A28 A13 A30 A21 A22
+                           USELESS UNI A29 A25 A34 A16 A27 A32 LIGHTER A36
 
-top 20 by coins traded     NEX MOG PEPE BONK SHIB FLOKI TOSHI VTHO PUMP NOICE
-                           SPELL BNKR DRB B3 AMP DOGINME NOM BLAST PENGU OXT
+top 20 by coins traded     NEX MOG PEPE A10 SHIB FLOKI TOSHI VTHO A29 NOICE
+                           SPELL BNKR DRB B3 AMP DOGINME NOM BLAST A12 OXT
 ```
 
 The second list is nineteen sub-cent tokens. Those are exactly the obscure pumps
@@ -2035,7 +2035,7 @@ The six-month rule reads a project's start date, and most projects publish none.
 Run against Coinbase's real top twenty, fifteen of them are refused.
 
 ```
-eligible          BTC/USD  ETH/USD  LINK/USD  DOGE/USD  LTC/USD
+eligible          A15/USD  A14/USD  A21/USD  A22/USD  A36/USD
 no identifier     8 markets     the asset catalogue has no CoinGecko id
 no start date     7 markets     CoinGecko answers with no date
 pool size         5
@@ -2075,11 +2075,11 @@ A season is a counter that a call advances. It carries no date, so the boundary 
 an event and nobody can predict when it falls.
 
 ```
-filed in season 1, binds from season 2   BTC/USD
+filed in season 1, binds from season 2   A15/USD
 in effect in season 1                    nothing
-in effect in season 2                    BTC/USD
-season 1 BTC/USD                         eligible
-season 2 BTC/USD                         excluded_by_exchange
+in effect in season 2                    A15/USD
+season 1 A15/USD                         eligible
+season 2 A15/USD                         excluded_by_exchange
 ```
 
 ### What the chain carries while a window is open
@@ -2097,7 +2097,7 @@ At the close the markets and the random value are published together, and anyone
 can check that the published set is the one the fingerprint was made from.
 
 ```
-reveal markets   ADA/USD  HYPE/USD  LIGHTER/USD  UNI/USD  VVV/USD
+reveal markets   A34/USD  A28/USD  LIGHTER/USD  UNI/USD  A13/USD
 proof verified   True
 ```
 
@@ -2453,8 +2453,8 @@ class name, the event it is for is the variant's own code, and the party row the
 carries the class, its level and the Impetus that level grants.
 
 ```
-04e1cafc  RE/USD    Iron Edge   level 1   Impetus 4   health $54.19
-092428b2  BONK/USD  none        --        --          health $101.98
+04e1cafc  A26/USD    Iron Edge   level 1   Impetus 4   health $54.19
+092428b2  A10/USD  none        --        --          health $101.98
 ```
 
 A class name outside the seven is refused and the panel prints the refusal.
@@ -2837,8 +2837,8 @@ zero.
 The platform's own trading log says it, before and after:
 
 ```
-before   FETCH_TICKER  Get current price for BTC/USD ... vol24h=0
-after    FETCH_TICKER  Get current price for BTC/USD ... vol24h=411256638
+before   FETCH_TICKER  Get current price for A15/USD ... vol24h=0
+after    FETCH_TICKER  Get current price for A15/USD ... vol24h=411256638
 ```
 
 The bulk answer carried a dollar figure for 923 of the 931 markets Coinbase
@@ -2859,13 +2859,13 @@ Exchange, and the catalogue took that coin.
 
 | Market | Identifier | How the check ran |
 | ------ | ---------- | ----------------- |
-| ZEC | zcash | CoinGecko lists it trading ZEC/USD on Coinbase Exchange |
-| HYPE | hyperliquid | CoinGecko lists it trading HYPE/USD on Coinbase Exchange |
-| VVV | venice-token | CoinGecko lists it trading VVV/USD on Coinbase Exchange |
+| A05 | A05 | CoinGecko lists it trading A05/USD on Coinbase Exchange |
+| A28 | A28 | CoinGecko lists it trading A28/USD on Coinbase Exchange |
+| A13 | A13 | CoinGecko lists it trading A13/USD on Coinbase Exchange |
 | USELESS | useless-3 | Two coins carry this ticker; only this one trades on Coinbase |
-| PUMP | pump-fun | Two coins carry this ticker; only this one trades on Coinbase |
-| TAO | bittensor | CoinGecko lists it trading TAO/USD on Coinbase Exchange |
-| AERO | aerodrome-finance | CoinGecko lists it trading AERO/USD on Coinbase Exchange |
+| A29 | A29 | Two coins carry this ticker; only this one trades on Coinbase |
+| A16 | A16 | CoinGecko lists it trading A16/USD on Coinbase Exchange |
+| A32 | A32 | CoinGecko lists it trading A32/USD on Coinbase Exchange |
 | LIGHTER | lighter | CoinGecko lists it trading LIGHTER/USD, under the ticker LIT |
 
 ### Matching by ticker alone fails its own check
@@ -2877,7 +2877,7 @@ already held, and held correctly, tested that idea.
 ```
 twelve known-correct identifiers
   2  resolve to exactly one coin on the published list
- 10  are ambiguous; twelve separate coins carry the ticker BTC
+ 10  are ambiguous; twelve separate coins carry the ticker A15
 ```
 
 A resolver that insists on one match refuses ten markets that work today. A
@@ -2893,7 +2893,7 @@ whose base is still absent from the catalogue refuses with the reason
 ### Six of twenty qualify, and the floor is still twelve
 
 Driven against Coinbase's real twenty, the refusals moved from two reasons to
-one. Zcash publishes a founding date and now qualifies. The other seven newly
+one. A05 publishes a founding date and now qualifies. The other seven newly
 named projects publish none.
 
 ```
@@ -3542,7 +3542,7 @@ thirty-eight carries a field holding a name or a label.
 bots read from the fleet file                      38
 bot id length                                      8 characters
 config keys containing "name" or "label"           0, across all 38
-the only readable field on the record              symbol, for example RE/USD
+the only readable field on the record              symbol, for example A26/USD
 ```
 
 The identifier is therefore shown whole rather than truncated, because eight
@@ -3550,10 +3550,10 @@ characters is the whole of it. The market symbol now sits next to it and carries
 the meaning. A row reads as its market, not as a string of hexadecimal.
 
 ```
-04e1cafc   RE/USD      $54.19
-092428b2   BONK/USD    $101.98
-168b78e3   IMU/USDC    $67.30
-45e9e720   ALLO/USDC   $134.05
+04e1cafc   A26/USD      $54.19
+092428b2   A10/USD    $101.98
+168b78e3   A19/USDC    $67.30
+45e9e720   A04/USDC   $134.05
 ```
 
 ### Six marks, ranked, and the slot shows only the first that holds
@@ -3890,11 +3890,11 @@ The largest book takes the division remainder, so the five pools add up to the
 activation's figure exactly. One real Coinbase draw, 10,000 Quintessence:
 
 ```
-BTC/USD    volume $404,975,607.15   pool 8849.2539   one participant's 5%  442.4627
+A15/USD    volume $404,975,607.15   pool 8849.2539   one participant's 5%  442.4627
 UNI/USD    volume $ 16,254,055.62   pool  355.1727   one participant's 5%   17.7586
-PUMP/USD   volume $ 16,048,824.74   pool  350.6881   one participant's 5%   17.5344
-SUI/USD    volume $ 12,378,533.61   pool  270.4874   one participant's 5%   13.5244
-LTC/USD    volume $  7,981,113.83   pool  174.3979   one participant's 5%    8.7199
+A29/USD   volume $ 16,048,824.74   pool  350.6881   one participant's 5%   17.5344
+A25/USD    volume $ 12,378,533.61   pool  270.4874   one participant's 5%   13.5244
+A36/USD    volume $  7,981,113.83   pool  174.3979   one participant's 5%    8.7199
 
 the five pools sum to 10000.00000000000000000000000, the figure activated
 ```
@@ -3977,7 +3977,7 @@ is paid.
 FLOCK/USD fill 0.061947 against its 24h open 0.06214
   scored_axes 1   overall_numeric 1.0   overall A+   execution_bps -31.06
 
-LTC/USD awarded 1.0 Quintessence, cooldown 900s of 3 5m candles
+A36/USD awarded 1.0 Quintessence, cooldown 900s of 3 5m candles
 ```
 
 ### A grade standing on one clamped axis earns nothing
@@ -4027,14 +4027,14 @@ EXECUTION_READABLE_BPS = 100.0
 One of his own fills, refused, and one paid.
 
 ```
-REFUSED  2026-09-10 05:23  KAT/USD buy at 0.0052147215059309
+REFUSED  2026-09-10 05:23  A06/USD buy at 0.0052147215059309
          bps -1439.06   accuracy 1.0   axes 1   grade 1.0   A+
          this grade scored execution and nothing else, and its reference price
          sits -1439.1 basis points from the fill, past the 100 the axis reads;
          a reference that far out is stale, so the one axis reports a clamp and
          the grade of 1.0 rests on nothing
 
-PAID     2026-09-10 03:22  KAT/USD buy at 0.005468
+PAID     2026-09-10 03:22  A06/USD buy at 0.005468
          bps -1023.25   accuracy 1.0   axes 2   grade 0.5   D
          0.5 Quintessence
 ```
@@ -4052,13 +4052,13 @@ nothing.
 
 ```
 one allotment a participant a market an activation period
-  REFUSED  participant-scored already took an allotment of LTC/USD in
+  REFUSED  participant-scored already took an allotment of A36/USD in
            coinbase:1; one allotment a participant a market an activation period
   PAID     participant-second on that same market, 1.0 Quintessence
 
 at most a twentieth of a market's pool
   REFUSED  9.719895940131813527748492105 Quintessence is above the
-           8.719895940131813527748492105 ceiling on LTC/USD, which holds a pool
+           8.719895940131813527748492105 ceiling on A36/USD, which holds a pool
            of 174.3979188026362705549698421; one participant takes at most 5%
            of a market's pool
   PAID     8.719895940131813527748492105 Quintessence, exactly the ceiling
@@ -4070,7 +4070,7 @@ three candles, floored at fifteen minutes
 
 the pool runs out
   REFUSED  allotment_exhausted, on a request for the full ceiling against
-           5E-25 of SUI/USD's 270.4873712360626776914103408 pool
+           5E-25 of A25/USD's 270.4873712360626776914103408 pool
   PAID     twenty earners in turn, each taking the full 13.52436856180313388
            ceiling
 ```
@@ -4137,7 +4137,7 @@ A fill that carries neither an exchange nor a season names no activation, and th
 program says so rather than guessing one.
 
 ```
-fill 04e1cafc:2026-09-10T07:21:39 on RE/USD names no activation, so no market
+fill 04e1cafc:2026-09-10T07:21:39 on A26/USD names no activation, so no market
 pool pays it
 
 award_reason : no_activation_named
@@ -4201,7 +4201,7 @@ One real fill, driven twice. The venue's fee is the only difference between the
 two runs.
 
 ```
-SUI/USD sell at 0.8223, two axes, grade 1.0
+A25/USD sell at 0.8223, two axes, grade 1.0
 
 no fee on the payload   nothing_to_award   0 Quintessence
 the venue fee supplied  awarded            1.00 Quintessence
@@ -4215,11 +4215,11 @@ refusal below is the program's own sentence.
 
 ```
 not_activated
-  RE/USD holds no Quintessence allotment in coinbase:1, so there is no pool
+  A26/USD holds no Quintessence allotment in coinbase:1, so there is no pool
   for an award to come out of
 
 sole_axis_clamped
-  SOL/USD sell at -646.3 basis points, one scored axis: a reference that far
+  A23/USD sell at -646.3 basis points, one scored axis: a reference that far
   out is stale, so the one axis reports a clamp and the grade of 1.0 rests
   on nothing
 
@@ -4230,7 +4230,7 @@ no_activation_named
   the fill carries no exchange and no season
 
 awarded
-  SOL/USD sell at -80.3 basis points, two axes, grade 0.5
+  A23/USD sell at -80.3 basis points, two axes, grade 0.5
   0.50 Quintessence of a 5902.5851 pool, ceiling 295.1292, cooldown 900s
 ```
 
@@ -4284,7 +4284,7 @@ live chain   4 CaptureBounds records
 demo chain   1 CaptureBounds record
 
 on the demo chain
-  PUMP/USD sell, two axes, grade 1.0 -> awarded, 1.00 Quintessence
+  A29/USD sell, two axes, grade 1.0 -> awarded, 1.00 Quintessence
   pool 964.6291  ceiling 48.2314  cooldown 900s
 ```
 
@@ -4533,10 +4533,10 @@ market refuses in words.
 Three refusals, each driven on the running rotation.
 
 ```
-BTC/USD on coinbase does not qualify: not_drawn; a drop comes from a market the
+A15/USD on coinbase does not qualify: not_drawn; a drop comes from a market the
 open rotation window drew
 
-ETH/USD on coinbase does not qualify: no_open_window; a drop comes from a market
+A14/USD on coinbase does not qualify: no_open_window; a drop comes from a market
 the open rotation window drew
 ```
 
@@ -4551,7 +4551,7 @@ pool  5: kraken holds 5 eligible markets, under the floor of 12, so no window
          opens, no market qualifies and no loot drops
 pool  6: kraken holds 6 eligible markets, under the floor of 12, ...
 pool 11: kraken holds 11 eligible markets, under the floor of 12, ...
-pool 12: BTC/USD on kraken does not qualify: no_open_window
+pool 12: A15/USD on kraken does not qualify: no_open_window
 ```
 
 A pool of twelve clears the floor and then waits on a window, which is the next
@@ -4712,10 +4712,10 @@ over the second. A latest-wins rule would let the last trade decide the whole ev
 and a weighted rule needs a weight nothing supplies.
 
 ```
-CHIP/USD  buy   grade F  0.0     total 0.0     fills 1   score 0.0
-CHIP/USD  buy   grade A+ 1.0     total 1.0     fills 2   score 0.5
-CHIP/USD  buy   grade A+ 1.0     total 2.0     fills 3   score 0.666666666666666666666666666
-CHIP/USD  sell  grade F  0.2955  total 2.2955  fills 4   score 0.573875
+A02/USD  buy   grade F  0.0     total 0.0     fills 1   score 0.0
+A02/USD  buy   grade A+ 1.0     total 1.0     fills 2   score 0.5
+A02/USD  buy   grade A+ 1.0     total 2.0     fills 3   score 0.666666666666666666666666666
+A02/USD  sell  grade F  0.2955  total 2.2955  fills 4   score 0.573875
 ```
 
 ### The best and the worst grade land halfway between them
@@ -4724,8 +4724,8 @@ One record took the highest and the lowest grade the real grader produced, in th
 order. The score is the mean of the two and nothing else.
 
 ```
-KAT/USD    grade A+  1.0   total 1.0   fills 1   score 1.0
-CHIP/USD   grade F   0.0   total 1.0   fills 2   score 0.5
+A06/USD    grade A+  1.0   total 1.0   fills 1   score 1.0
+A02/USD   grade F   0.0   total 1.0   fills 2   score 0.5
 ```
 
 ### A fill with no scored axis changes nothing
@@ -4736,8 +4736,8 @@ cannot pull a score down the way a zero would. A participant whose every fill is
 like that keeps a count of nought, and the division gives them no share at all.
 
 ```
-CHIP/USD  grade F   0.0  axes 0  ->  total 0  fills 0  score 0
-KAT/USD   grade A+  1.0  axes 0  ->  total 0  fills 0  score 0
+A02/USD  grade F   0.0  axes 0  ->  total 0  fills 0  score 0
+A06/USD   grade A+  1.0  axes 0  ->  total 0  fills 0  score 0
 
 score    {'address': '0xadf9793469cec8ae...', 'score': '0', 'scored_axes': 0,
           'standing': 'no_score'}
@@ -4901,12 +4901,12 @@ export by asset, size, price and second. Six hundred and fifty-seven of his 1,70
 trades have such a row.
 
 ```
-SELL  PUMP/USD 1409 @ $0.003676    2026-08-20 15:02
+SELL  A29/USD 1409 @ $0.003676    2026-08-20 15:02
       venue row 6a8716ec03b6f3f5c260f0f6   fee $0.062153808
       on the fill   fee_usd 0.062153808
-      awarded       0.0310769040 Quintessence   pool coinbase:1|PUMP/USD
+      awarded       0.0310769040 Quintessence   pool coinbase:1|A29/USD
 
-BUY   PUMP/USD 1325 @ $0.002286    2026-08-07 20:35
+BUY   A29/USD 1325 @ $0.002286    2026-08-07 20:35
       venue row 6a7641a1facc93c97c34e93b   fee $0.0363474
       on the fill   fee_usd 0.0363474
       awarded       0.03634740 Quintessence
@@ -4924,7 +4924,7 @@ refused       nothing_to_award
 distilled     0 Quintessence
 
 a fee of 0.0 at a grade of 0.5 distils nothing, and granting it would spend the
-participant's one allotment of PUMP/USD and open a cooldown for no Quintessence
+participant's one allotment of A29/USD and open a cooldown for no Quintessence
 ```
 
 ### No figure a bot trades on moved
@@ -4964,7 +4964,7 @@ the same class        : CertificationSocket and CertificationSocket
 the same chain object : False
 
 on the demo chain
-  BTC/USD, venue fee $0.1369262274012 -> awarded 0.1369262274012 Quintessence
+  A15/USD, venue fee $0.1369262274012 -> awarded 0.1369262274012 Quintessence
 
 live ledger   total ever minted 0.067424304     balanced
 demo ledger   total ever minted 0.1369262274012  balanced
@@ -5060,8 +5060,8 @@ His own sale and his own purchase, with the fee arriving from the settled read
 rather than from a downloaded statement.
 
 ```
-SELL  PUMP/USD 1409 @ $0.003676   settled fee $0.062153808 -> 0.0621538080 Q
-BUY   PUMP/USD 1325 @ $0.002286   settled fee $0.0363474   -> 0.03634740 Q
+SELL  A29/USD 1409 @ $0.003676   settled fee $0.062153808 -> 0.0621538080 Q
+BUY   A29/USD 1325 @ $0.002286   settled fee $0.0363474   -> 0.03634740 Q
 ```
 
 An order the exchange has not settled reports a fee of zero, and that fill earns
@@ -5083,7 +5083,7 @@ the same class        : CertificationSocket and CertificationSocket
 the same chain object : False
 the same ledger       : False
 
-PUMP/USD, settled fee $0.062153808 -> 0.0621538080 Quintessence
+A29/USD, settled fee $0.062153808 -> 0.0621538080 Quintessence
 demo ledger total ever minted 0.0621538080   balanced
 ```
 
@@ -5947,8 +5947,8 @@ one action of the running turn costs and what it does afterwards. Two items in a
 store drew four rows.
 
 ```
-Magisterium   BTC-USD - Season 1 - Impetus -2, effect +50%
-Calx          ETH-USD - Season 1 - effect +2%
+Magisterium   A15-USD - Season 1 - Impetus -2, effect +50%
+Calx          A14-USD - Season 1 - effect +2%
 Action Impetus   4 becomes 2
 Action effect    1.52x
 ```
@@ -16392,7 +16392,7 @@ fill passed the ceiling on its own. The second fill sat past the cooldown, so th
 cooldown could not be what refused it.
 
 ```
-market pool on BTC/USD     1000 Quintessence
+market pool on A15/USD     1000 Quintessence
 share ceiling              50, which is 5% of the pool
 each fill's award          30 Quintessence, under the ceiling alone
 both fills together        60 Quintessence, over the ceiling
@@ -16435,14 +16435,14 @@ no register        bot A credits   0x661a690670a3c1d4f1e91a6e2fd65ac9f88b3167
                   bot B           awarded, distilled 30.00000000
                   A's cooldown left       10200s
                   B's cooldown left       10800s
-                  ETH/USD drawn           30.00
+                  A14/USD drawn           30.00
 
 with the register  one address for both     True
                   bot A           awarded, distilled 30.00000000
                   bot B           cooldown_running, distilled 0
                   A's cooldown left       10200s
                   B's cooldown left       10200s
-                  ETH/USD drawn           0
+                  A14/USD drawn           0
 ```
 
 Two bots used to hold two cooldowns. A node that runs ten bots could take ten

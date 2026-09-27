@@ -488,7 +488,7 @@ The refusal the operator reads on the Console names both figures, so a price
 that moved and a price that did not are told apart.
 
 ```
-PRE-FLIGHT REJECTED: SELL ETH/USD notional $0.3631 (0.0001000000 x
+PRE-FLIGHT REJECTED: SELL A14/USD notional $0.3631 (0.0001000000 x
 $3630.98000000) is below min_cost $10.0000. Priced at $3630.98000000 on a
 price tick of 0.01. API not called.
 ```
@@ -663,7 +663,7 @@ Every fill row on a Back Test report carries a **sized by** cell reading either
 `recorded venue rules` or `cited unit rule`. Every bot row carries an **orders
 refused** count, and the Activity Log names the reason behind each count.
 
-Measured on `ADA_5m_2026_coinbase`, 5,102 bars rolled to one hour, one bot at a
+Measured on `A34_5m_2026_coinbase`, 5,102 bars rolled to one hour, one bot at a
 $350 target, sockets refused and the home redirected:
 
 | Recorded size step | Orders filled | Orders refused | Fills on the step | Whole-unit fills |
@@ -1508,10 +1508,10 @@ Two sentences, one per failure, read off a run with every socket refused and the
 home redirected.
 
 ```
-coinbase refuses a MARKET BUY on BTC/USD with no price:
+coinbase refuses a MARKET BUY on A15/USD with no price:
   fetch_ticker raised RuntimeError: ticker endpoint down
 
-coinbase refuses a MARKET BUY on BTC/USD with no price:
+coinbase refuses a MARKET BUY on A15/USD with no price:
   fetch_ticker served no last and no ask price
 ```
 

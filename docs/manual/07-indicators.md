@@ -1227,15 +1227,15 @@ ratio just above 0.05 down onto the threshold, and two where it had pulled a
 ratio near zero onto the sentinel that tells the gate no reading arrived.
 
 ```
-DOGE 2025, bar 264, both price scales
+A22 2025, bar 264, both price scales
     before   gate reads 0.05                  scrum blocked
     after    gate reads 0.05001050640890935   scrum allowed
 
-DOGE 2025, bar 263, both price scales
+A22 2025, bar 263, both price scales
     before   gate reads 0.2257                scrum allowed
     after    gate reads 0.2256565656565654    scrum allowed
 
-ETH 2025, bar 233, both price scales
+A14 2025, bar 233, both price scales
     before   gate reads 0.0                   scrum allowed
     after    gate reads 2.983774235682565e-05 scrum blocked
 ```
@@ -1346,15 +1346,15 @@ Wilder's ADX does not exist. Every one that ended is a window of twenty-eight
 or twenty-nine bars, where it did.
 
 ```
-ADA 2021, window 27 bars, both price scales
+A34 2021, window 27 bars, both price scales
     before   abstained     13 DX values, one short of the fourteen
     after    abstained     the same reason
 
-ADA 2021, window 28 bars, both price scales
+A34 2021, window 28 bars, both price scales
     before   abstained     the guard asked for 30 bars
     after    ADX 21.847870255087297  bullish at 0.3121
 
-ADA 2023, window 28 bars, both price scales
+A34 2023, window 28 bars, both price scales
     before   gate reads 0.0                 scrum allowed
     after    gate reads 74.20924187088121   scrum blocked
 ```
@@ -1362,7 +1362,7 @@ ADA 2023, window 28 bars, both price scales
 The last row is what the repair changes about a live reading. A bot that has
 just started, or one whose exchange returned a short window, spent two bars
 firing scrums into a trend the ADX could already measure. The panel felt it
-too: on the ADA 2021 bar the twelfth voter arriving moved the net score from
+too: on the A34 2021 bar the twelfth voter arriving moved the net score from
 0.7437 to 1.0558 and the consensus confidence from 0.1352 to 0.1624, and across
 the sweep the consensus direction itself changed on 58 readings.
 
@@ -1419,7 +1419,7 @@ scrum and fold verdicts changed     0 of 3,750
 One bar, at both prices, before and after:
 
 ```
-ADA 2021, bar 234, a bullish crossover
+A34 2021, bar 234, a bullish crossover
     before   three millionths   histogram  0.0
              four figures       histogram  1.651648
     after    three millionths   histogram  4.149197409777354e-09
@@ -1722,8 +1722,8 @@ bottom and the buy-back belongs.
     fold fires -> fold refused                      0
     scrum verdicts changed                          0
     windows                                         4
-        DOGE 2022, band position 0.1168, VI- 1.3276
-        SOL  2026, band position -0.1158, VI- 1.3014
+        A22 2022, band position 0.1168, VI- 1.3276
+        A23  2026, band position -0.1158, VI- 1.3014
     both windows identical at both price scales
 ```
 
@@ -1745,7 +1745,7 @@ a number carrying four, and the cell printed a different third decimal on 726 of
 "sep_acceleration": sep_acceleration,
 ```
 
-One example, from ADA 2021: the downward line computed 1.0835408442150014 and
+One example, from A34 2021: the downward line computed 1.0835408442150014 and
 published 1.0835, so the cell printed `1.083` where the number is `1.084`. The
 ATA-SMP sentence prints four decimals and matched the cut copy exactly, so it
 reads the same on all 3,750.
@@ -1818,7 +1818,7 @@ admits such a close, because the index rises with the last price. Most of those
 bars are large, because most windows sit a long way from seventy: the middle one
 needs a move of nearly twenty-six per cent. Seventy-two of the runs need a bar
 of one per cent or less, and the smallest was half a basis point after 271 real
-days of LINK.
+days of A21.
 
 ```
 2,901 recorded runs, the final bar each one needs
@@ -1833,7 +1833,7 @@ The smallest is the one to read. Half a basis point is an ordinary tick on a
 market that has already run up to the seventy line.
 
 ```
-LINK 2023, 271 recorded bars, then one bar of +0.0049%
+A21 2023, 271 recorded bars, then one bar of +0.0049%
     reading published, before                   70.00
     reading published, after                   70.003
     label, before and after                overbought
@@ -1887,7 +1887,7 @@ side and all the same way.
     fold verdicts changed                           0
     windows                                         3
         DOT 2023, consensus 0.2002 -> 0.1728, floor 0.1786
-        ETH 2022, consensus 0.2087 -> 0.1813, floor 0.1923
+        A14 2022, consensus 0.2087 -> 0.1813, floor 0.1923
         MATIC 2022, consensus 0.2286 -> 0.1910, floor 0.1923
 ```
 
@@ -1949,7 +1949,7 @@ BandWidth   = (Upper - Lower) / Middle
 ```
 
 The indicator published all three cut to six decimal places, a step of one
-millionth of a dollar. BONK trades at three millionths, so the whole channel is
+millionth of a dollar. A10 trades at three millionths, so the whole channel is
 narrower than the step and the three bands land on one number.
 
 `src/trading/indicators/bollinger.py` — the reading, before and after
