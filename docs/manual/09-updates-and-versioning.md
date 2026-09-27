@@ -184,3 +184,119 @@ def test_green_pytest_with_zero_tests_is_a_failure(...) -> None: ...
 
 The gate module is `dev_harness/harness/check_release_readiness.py`, which is
 the path that test imports. No copy of it lives under `tools/`.
+
+## How a build is produced
+
+Two files at the repository root are the ones to open, one per variant. A third
+builds both. None of them holds any build logic: each hands its variant names to
+one shared launcher.
+
+```python
+VARIANT = QT                                # Qt_BUILD.py
+VARIANT = REACT                             # React_BUILD.py
+def parse_variants(argv) -> tuple[str, ...]  # BUILD.py, every variant
+def launch(variants: tuple[str, ...]) -> bool    # tools/build_launcher.py
+```
+
+The launcher reads the platform it is running on and picks that platform's build
+script. Windows gets the PowerShell script, macOS gets the shell script, and any
+other platform is refused by name rather than silently doing nothing.
+
+```python
+WINDOWS_BUILDER = "build_windows.ps1"       # tools/build_launcher.py
+MACOS_BUILDER = "build_mac.sh"
+def builder_name() -> str: ...
+def build_argv(script: str, variants: tuple[str, ...]) -> list[str]: ...
+```
+
+Each build claims a folder name that is not already taken, so nothing in `dist`
+is replaced and every earlier build stays runnable beside the new one.
+
+```
+dist/Acervator-<version>-<variant>/Acervator-<version>-<variant>.exe   Windows
+dist/Acervator-<version>-<variant>.app                                 macOS
+dist/Acervator-<version>-<variant>.dmg                                 macOS
+```
+
+A build that finishes sets the modification date on both single-variant entry
+points, and a build that fails sets nothing. That date is how a file listing
+shows whether a build happened.
+
+```python
+def stamp_builder_dates(finished_at: float) -> list[str]: ...
+```
+
+### The macOS build runs on a runner, not on the operator's machine
+
+The operator's machine runs Windows, so no macOS build can be produced there. A
+workflow builds both macOS variants on a GitHub macOS runner instead.
+
+```yaml
+# .github/workflows/macos-build.yml
+name: macOS build
+runs-on: macos-latest
+run: ./build_mac.sh --dmg
+```
+
+Two things start it: a push that changes one of the files the macOS build reads,
+and the Run workflow button on the repository's Actions tab.
+
+```yaml
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - build_mac.sh
+      - Acervator_mac.spec
+      - tools/build_launcher.py
+      - tools/build_variants.py
+      - tools/spec_common.py
+      - .github/workflows/macos-build.yml
+```
+
+The run does not stop at a finished build. It reads the size of every bundle and
+every disk image, mounts each disk image and compares the application inside
+against the one that was built, then launches each application and reads the
+line the program writes to its own log once the main window is on screen.
+
+```python
+log_manager.info("Application ready — main window displayed")   # main.py
+```
+
+### Where the macOS build is downloaded
+
+The finished run page carries an Artifacts section. One entry holds both
+applications and both disk images as a single zip file; a second entry holds
+what the two launches produced, which is the evidence that each application
+started.
+
+```
+acervator-macos                  both .app bundles and both .dmg files
+acervator-macos-launch-evidence  each launch's own log and screen capture
+```
+
+The download is a zip file. Unzipping it gives the two applications and the two
+disk images; dragging an application to the Applications folder installs it.
+
+### What the first launch looks like
+
+The bundle carries no Apple Developer signature, so macOS refuses the first
+double-click. The way past it is to right-click the application and choose Open,
+which is needed once per build and not again.
+
+```
+------------------------------------------------------------
+  IF macOS REFUSES TO OPEN THE APP:
+  1. Right-click (or Control-click) the .app
+  2. Choose Open
+  3. Choose Open again in the dialog
+------------------------------------------------------------
+```
+
+Signing removes that step and is not set up. It needs a paid Apple Developer
+account, a Developer ID Application certificate, and that certificate held as a
+repository secret. The build script already accepts the identity.
+
+```
+./build_mac.sh --sign "Developer ID Application: <name> (<team id>)"
+```
