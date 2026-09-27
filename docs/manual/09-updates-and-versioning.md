@@ -243,10 +243,6 @@ pytest -m "not slow and not archetype"    exit 5, nothing collected
 pytest -m "slow or archetype"             exit 5, nothing collected
 ```
 
-### What a green result means
-
-A duplicate heading, which the docs archetype refuses under DOC005.
-
 ### What the branch rules refuse
 
 Two rulesets guard the branches. The first refuses a rewrite or a deletion of
@@ -256,6 +252,7 @@ request exists and the one status reports green.
 ```
 current   a pull request is required before a merge
 current   ci-gate must report success, and the branch must be up to date
+current   a red ci-gate leaves the merge blocked, and no one may bypass it
 current   a force-push is refused, and a deletion is refused
 main      a force-push is refused, and a deletion is refused
 main      a direct push is allowed, which is how the branch is synced
