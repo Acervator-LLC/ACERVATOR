@@ -5059,7 +5059,7 @@ with the strip list as shipped and then emptied.
 
 ```
 the list as shipped, 11 names
-  make_bot_config(**stored)             OK  symbol='BTC/USD'
+  make_bot_config(**stored)             OK  symbol='A15/USD'
   bot_config_kwargs then make_bot_config OK  kwargs=18 retired leaked=0
   restore_bots_from_state               OK  restored=1 skips=0
 

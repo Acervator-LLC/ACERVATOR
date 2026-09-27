@@ -1290,7 +1290,7 @@ answered no product list and 0 of 38 tickers.
 One more real reading settled the ninth name against the source. Through the
 built bundle's own copy of `PaperExchange`, against the public host, no
 credential file present and the adapter's own pace, one candles ask per name
-in `GRANULARITY` on `BTC-USD`, nine calls, ten bars each:
+in `GRANULARITY` on `A15-USD`, nine calls, ten bars each:
 
 ```
 name             status  rows  bar spacing
@@ -1634,15 +1634,15 @@ ledger at the press, Spendable and Locked       3,698.4572 each             3,69
 the run button while up                         Stop Paper Run, 4 seats     Stop Paper Run, 3 seats
 ticks in the first minute, two bots             24 (one per bot per 5 s)    24
 worked ticks in the first minute                4 (one per bot per 60 s)    4
-first scrum, ADA/USDC, bar 51                   at 725.294446 = the bid;    the same
+first scrum, A34/USDC, bar 51                   at 725.294446 = the bid;    the same
                                                 last 725.657275
-first scrum, AERO/USDC                          at 929.390286 = the bid     the same
+first scrum, A32/USDC                          at 929.390286 = the bid     the same
 scrum units against scrum_units on the          0.00241917, equal;          equal, equal
 log row's delta, bid and rule                   0.00188792, equal
 scrum fee against 0.6% of the notional          0.01052768, equal, twice    equal, twice
 strip after the scrums                          $3,701.95 / $0.00 /         the same
                                                 $3,698.46 / $0.00 / 1
-first fold, ADA/USDC, bar 57                    at 654.668976 = the ask;    the same
+first fold, A34/USDC, bar 57                    at 654.668976 = the ask;    the same
                                                 last 654.341805
 fold units against fold_units on the row's      0.00038187, equal;          equal, equal
 usd, ask and rule                               0.00029801, equal
@@ -1714,7 +1714,7 @@ venue calls during the run                8: 6 FETCH_TICKER,        8: 6 FETCH_T
                                           2 FETCH_OHLCV of 100      2 FETCH_OHLCV of 100
 least gap between two calls               0.258 s                   0.257 s
 calls a second over 122 s                 0.066                     0.066
-the ADA/USDC book on one read             last 0.221450,            last 0.221840,
+the A34/USDC book on one read             last 0.221450,            last 0.221840,
                                           bid 0.221420,             bid 0.221760,
                                           ask 0.221430              ask 0.221840
 paper rows written                        6, 3 per bot              6, 3 per bot
@@ -1936,7 +1936,7 @@ with no `bot_state.json` at launch and no credential file at any point, the
 window driven through the .NET UIAutomationClient assembly, every press an
 `InvokePattern` invoke or a `SelectionItemPattern` select on an element found
 under a window matched by its own process id. Two records on pairs the venue
-lists, `BTC/USD` at a $100 target and `ETH/USD` at $200, written to the scratch
+lists, `A15/USD` at a $100 target and `A14/USD` at $200, written to the scratch
 file after launch so no bot is ever restored.
 
 ```
@@ -1945,7 +1945,7 @@ moment                                    reading
 Import Live Fleet                         915 product(s) trade on coinbase;
                                           2 of 2 fleet products among them;
                                           2 of 2 tickers answered in 3 calls
-row after Import                          paperlive1 BTC/USD, Trades 0,
+row after Import                          paperlive1 A15/USD, Trades 0,
                                           Target $100.0000
 Start on the first row                    "✓ Bot paperlive1 RUNNING."
 Start Paper Run                           the runner thread up, Bots card 1
@@ -1959,7 +1959,7 @@ Ammo across the same marks                $0.0118 to $0.0377
 LOCKED on the header strip                $299.99 down to $299.94, back to $299.97
 SPENDABLE / REALISED / MATURE             $300.00 / $0.00 / $0.00
 cards: Scrummed, Folded, Trades, Errors   $0.00, $0.00, 0, 0
-the ETH row's Target BTC cell             0.002371 then 0.002372
+the A14 row's Target A15 cell             0.002371 then 0.002372
 after Stop Paper Run                      $99.9694, Trades 0
 bot_state.json across every press         575DED46ED9CB7B7, unchanged
 the planted-byte control                  B7821D9854A0EB0F, a different digest
@@ -1974,8 +1974,8 @@ The call ledger, read off the API Interaction Log pane, carries 28 calls over
 
 ```
 13:03:23  FETCH_MARKETS                     Import Live Fleet
-13:03:23  FETCH_TICKER  BTC/USD             the same press
-13:03:23  FETCH_TICKER  ETH/USD             the same press
+13:03:23  FETCH_TICKER  A15/USD             the same press
+13:03:23  FETCH_TICKER  A14/USD             the same press
 13:03:54  FETCH_TICKER                      the run's first worked tick
 13:03:55  FETCH_OHLCV   100 bars at 5m      the same tick, the only one
 13:04:00  FETCH_TICKER                      then one every five seconds
@@ -2473,8 +2473,8 @@ One pass drove both functions over two paper trades, a scrum and a fold, with
 the two fill times five minutes and thirty-three seconds apart.
 
 ```
-08:22:03 TRADE NOTIFICATION: SCRUM: BTC: FILLED — 0.000153 @ $65432.10000000
-08:27:36 TRADE NOTIFICATION: FOLD: BTC: FILLED — 0.000154 @ $64980.55000000
+08:22:03 TRADE NOTIFICATION: SCRUM: A15: FILLED — 0.000153 @ $65432.10000000
+08:27:36 TRADE NOTIFICATION: FOLD: A15: FILLED — 0.000154 @ $64980.55000000
 ```
 
 The two stamps hold that gap although one pass drew them both. A stamp read off
@@ -2543,7 +2543,7 @@ def price_label(price: Any, quote: str) -> str:
 
     A price of ``WHOLE_UNIT_PRICE`` or more prints to two places and a smaller
     one to ``SMALL_PRICE_PLACES``, with the trailing zeros cut; the quote is
-    named because a row on ``ETH/BTC`` prices in BTC, not in dollars.
+    named because a row on ``A14/A15`` prices in A15, not in dollars.
     """
 ```
 
@@ -2572,12 +2572,12 @@ stood in for by a recorded answer, and read the made bot back off the real fleet
 source beside a copied bot the same pass had loaded.
 
 ```
-Qt      5 pages    ETH/USD made, marked as made here
-                   SOL/USD held, marked as copied
+Qt      5 pages    A14/USD made, marked as made here
+                   A23/USD held, marked as copied
 React   8 of 8 page scripts, 5 page stops, 2 mode rows
-                   ETH/USD made, marked as made here
+                   A14/USD made, marked as made here
 both    49 of 49 settings agree, none differs
-labels  BTC  (64,231.07 USD)   ETH  (2,410.55 USD)   XRP  (0.00004312 USD)
+labels  A15  (64,231.07 USD)   A14  (2,410.55 USD)   A18  (0.00004312 USD)
 status  3 USD pairs, 3 carrying a last price
 widths  700   900   1400   every control inside the pane
 ```

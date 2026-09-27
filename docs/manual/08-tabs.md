@@ -1002,7 +1002,7 @@ indicator classes for their values and paints what they answer.
 ```
 
 Both builds were driven from the same 38 running bots and the same 180 daily
-BTC/USD candles. Both draw the same header, the same candles, the same last
+A15/USD candles. Both draw the same header, the same candles, the same last
 price of 78,623.00, the same four axis prices, the same time axis, and the same
 three panes reading Vortex 0.8761, MACD -245.82 and Stoch RSI 0.2318. The row
 below now reads `yes` under Registers in Electron.
@@ -1072,7 +1072,7 @@ registrations taken out and the same reading driven in, each slot fell from
 43,264 and 4,532 characters of markup to 82 and 72, and each carried the
 sentence naming the panel that did not draw.
 
-Both builds were driven with one reading: 180 daily BTC/USD candles from
+Both builds were driven with one reading: 180 daily A15/USD candles from
 CoinGecko through the voting engine, at 15m, 1h and 1d, and eight Activity Log
 messages covering a placed, a filled and a sent trade, a wire flow, a wire
 stack, a warning and an error. The Qt tab was built at the size the shell gives
@@ -2757,7 +2757,7 @@ an exchange client.
 ```
 src.trading                   the package
 src.trading.gate_vocabulary   the gate names
-src.trading.target_bands      the Target BTC and Target ETH arithmetic
+src.trading.target_bands      the Target A15 and Target A14 arithmetic
 ```
 
 The news strip is fed. `bind_news_transport` gives the strip the same reader the
@@ -3080,8 +3080,8 @@ Four discs were read off the qt picture and the same four off the React picture.
 They agree to the digit.
 
 ```
-BTC-USD   #5fb479      SOL-USD   #5fb496
-ETH-USD   #5fb484      LINK      #b45fb1
+A15-USD   #5fb479      A23-USD   #5fb496
+A14-USD   #5fb484      A21      #b45fb1
 ```
 
 **Two differences stay, and each has a reason.** The header ground reads
