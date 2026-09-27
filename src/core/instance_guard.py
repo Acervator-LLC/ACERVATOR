@@ -71,6 +71,48 @@ _FINGERPRINT_SALT = "acervator-instance-guard-v1"
 """Prefix ``read_machine_identity`` hashes with the platform machine id."""
 
 
+def _try_lock(fd: int) -> Optional[bool]:
+    """Return True when ``fd`` was locked, False when another process holds it.
+
+    None means neither ``msvcrt`` nor ``fcntl`` could be imported.
+    """
+    if os.name == "nt":
+        try:
+            import msvcrt
+        except ImportError:
+            return None
+        try:
+            msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+        except OSError:
+            return False
+        return True
+    try:
+        import fcntl
+    except ImportError:
+        return None
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        return False
+    return True
+
+
+def _try_unlock(fd: int) -> None:
+    """Unlock ``fd``, which ``_try_lock`` locked; a failure leaves it to the close."""
+    try:
+        if os.name == "nt":
+            import msvcrt
+
+            os.lseek(fd, 0, os.SEEK_SET)
+            msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+        else:
+            import fcntl
+
+            fcntl.flock(fd, fcntl.LOCK_UN)
+    except (OSError, ImportError):
+        logger.debug("instance lock release fell through to close")
+
+
 @dataclass(frozen=True)
 class MachineIdentity:
     """What this process establishes about the machine it runs on."""
@@ -357,7 +399,7 @@ class InstanceLock:
             )
             self.state = LOCK_UNAVAILABLE
             return self.state
-        taken = self._try_lock(fd)
+        taken = _try_lock(fd)
         if taken is None:
             os.close(fd)
             self.state = LOCK_UNAVAILABLE
@@ -375,32 +417,6 @@ class InstanceLock:
             logger.debug("instance lock note not written")
         return self.state
 
-    @staticmethod
-    def _try_lock(fd: int) -> Optional[bool]:
-        """Return True when ``fd`` was locked, False when another process holds it.
-
-        None means neither ``msvcrt`` nor ``fcntl`` could be imported.
-        """
-        if os.name == "nt":
-            try:
-                import msvcrt
-            except ImportError:
-                return None
-            try:
-                msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
-            except OSError:
-                return False
-            return True
-        try:
-            import fcntl
-        except ImportError:
-            return None
-        try:
-            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except OSError:
-            return False
-        return True
-
     def release(self) -> None:
         """Unlock and close the handle; ``LOCK_FILENAME`` is left on disk.
 
@@ -410,23 +426,40 @@ class InstanceLock:
         fd, self._fd = self._fd, None
         if fd is None:
             return
-        try:
-            if os.name == "nt":
-                import msvcrt
-
-                os.lseek(fd, 0, os.SEEK_SET)
-                msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
-            else:
-                import fcntl
-
-                fcntl.flock(fd, fcntl.LOCK_UN)
-        except (OSError, ImportError):
-            logger.debug("instance lock release fell through to close")
+        _try_unlock(fd)
         try:
             os.close(fd)
         except OSError:
             pass
         self.state = LOCK_UNAVAILABLE
+
+
+def lock_is_held(config_dir: Path) -> bool:
+    """True while another process holds ``LOCK_FILENAME`` under ``config_dir``.
+
+    Nothing is written and no ``InstanceClaim`` is made, so a step outside the
+    application can ask whether the fleet is running without taking ownership.
+    An absent lock file answers False; a file that cannot be opened answers True,
+    because a held handle is the reason a reader is refused.
+    """
+    path = Path(config_dir) / LOCK_FILENAME
+    if not path.is_file():
+        return False
+    try:
+        fd = os.open(str(path), os.O_RDWR)
+    except OSError as exc:
+        logger.debug("instance lock could not be opened (%s): %s", path, exc)
+        return True
+    try:
+        taken = _try_lock(fd)
+        if taken:
+            _try_unlock(fd)
+        return taken is False
+    finally:
+        try:
+            os.close(fd)
+        except OSError:
+            pass
 
 
 @dataclass(frozen=True)

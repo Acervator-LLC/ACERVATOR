@@ -8,6 +8,7 @@ from ...core.privacy_mask_registry import mask_or
 
 from .. import design_system as ds
 from ..main_tabs.bot_status_table_surface import (
+    BROWSER_NEW_WINDOW,
     COLUMN_LABELS,
     COLUMN_TOOLTIPS,
     FIXED_WIDTHS,
@@ -21,6 +22,7 @@ from ..main_tabs.bot_status_table_surface import (
     HEADER_LABEL_WRAP,
     HEADER_SORT_MARK_BOX_PX,
     HEADER_SORT_MARK_STYLE,
+    LINK_FIELD_BY_COLUMN,
     LOGO_SIZE_PX,
     LOGO_TIP_FORMAT,
     NO_LOGO_TIP_FORMAT,
@@ -34,6 +36,9 @@ from ..main_tabs.bot_status_table_surface import (
     icon_asset_of,
     kept_logo_path,
     mode_tooltip,
+    opening_address,
+    organisation_address,
+    organisation_tooltip,
     order_statuses,
     selection_after_press,
     selection_after_view_moved,
@@ -84,7 +89,7 @@ try:
         QWidget,
     )
     from PySide6.QtCore import QSignalBlocker, QSize, Qt
-    from PySide6.QtGui import QColor, QFont, QFontMetrics, QIcon, QPixmap
+    from PySide6.QtGui import QColor, QFont, QFontMetrics, QIcon
 
     from . import ColumnSpec, ColumnarTableWidget
     from .bot_selection import _reanchor_bot_selection, _select_row_for_bot
@@ -614,39 +619,49 @@ if _HAS_QT:
                     self.removeCellWidget(row, col)
 
         def _logo_icon(self, path: str):
-            """``path``'s pixmap at ``LOGO_SIZE_PX``, held in ``_logo_icons`` after one read."""
+            """``path``'s own icon, held in ``_logo_icons`` after one read, None for a file holding no image.
+
+            The file is handed to ``QIcon`` whole rather than as one pixmap
+            scaled to ``LOGO_SIZE_PX``, so an icon file carrying several sizes
+            draws the size nearest that figure and a mark smaller than it draws
+            at its own size rather than enlarged.
+            """
             held = self._logo_icons.get(path)
             if held is not None:
                 return held
-            pixmap = QPixmap(path)
-            found = (
-                None
-                if pixmap.isNull()
-                else QIcon(
-                    pixmap.scaled(
-                        LOGO_SIZE_PX,
-                        LOGO_SIZE_PX,
-                        Qt.KeepAspectRatio,
-                        Qt.SmoothTransformation,
-                    )
-                )
-            )
+            icon = QIcon(path)
+            found = icon if icon.availableSizes() else None
             self._logo_icons[path] = found
             return found
 
         def _draw_logo(self, item, symbol: str, shown: str) -> None:
-            """Put ``symbol``'s kept logo on ``item``, or leave ``shown`` as its text."""
+            """Put ``symbol``'s kept logo and organisation address on ``item``.
+
+            ``shown`` stays as the cell's text where no logo is kept. The
+            address goes on ``UserRole`` for ``_on_cell_clicked``, and the
+            tooltip names where a click goes or says the mark is not a link.
+            """
             asset = icon_asset_of(symbol)
             if not asset or shown != asset:
                 return
+            link = organisation_address(symbol)
+            if link:
+                from PySide6.QtCore import Qt as _Qt
+
+                item.setData(_Qt.UserRole, link)
+            mark_tip = organisation_tooltip(asset, link)
             path = kept_logo_path(symbol)
             icon = self._logo_icon(path) if path else None
             if icon is None:
-                item.setToolTip(NO_LOGO_TIP_FORMAT.format(asset=asset))
+                item.setToolTip(
+                    NO_LOGO_TIP_FORMAT.format(asset=asset) + TOOLTIP_LINE_GAP + mark_tip
+                )
                 return
             item.setIcon(icon)
             item.setText("")
-            item.setToolTip(LOGO_TIP_FORMAT.format(asset=asset))
+            item.setToolTip(
+                LOGO_TIP_FORMAT.format(asset=asset) + TOOLTIP_LINE_GAP + mark_tip
+            )
 
         def _write_row(self, row: int, status: dict) -> None:
             """Write one bot's eight cells, its Fire button and its Detail button."""
@@ -1002,26 +1017,33 @@ if _HAS_QT:
                 self._on_bot_clicked(bot_id)
 
         def _on_cell_clicked(self, row: int, col: int) -> None:
-            """Open the chart URL stored on a clicked Symbol cell.
+            """Open the address stored on a clicked cell, refusing any that is not https.
 
-            Only column 1 carries a URL; every other column is a no-op.
+            ``LINK_FIELD_BY_COLUMN`` names the columns that carry one: the
+            logo's own column and the Symbol column. ``opening_address``
+            refuses an http, file, javascript, data or scheme-less value, so
+            nothing but an https address with a host reaches the browser.
             """
-            if col != 1:
+            if col not in LINK_FIELD_BY_COLUMN:
                 return
             item = self.item(row, col)
             if item is None:
                 return
             from PySide6.QtCore import Qt as _Qt
 
-            url = item.data(_Qt.UserRole)
+            held = item.data(_Qt.UserRole)
+            if not held:
+                return
+            url = opening_address(held)
             if not url:
+                logger.warning("Cell address refused for %r", held)
                 return
             try:
                 import webbrowser
 
-                webbrowser.open(str(url), new=2)
+                webbrowser.open(url, new=BROWSER_NEW_WINDOW)
             except Exception as _wb_exc:  # noqa: BLE001 - best-effort
-                logger.warning("Chart URL open failed for %r: %s", url, _wb_exc)
+                logger.warning("Cell address open failed for %r: %s", url, _wb_exc)
 
         def _on_fire(self, bot_id: str) -> None:
             """MEM-236 — Manual Fire button click handler."""

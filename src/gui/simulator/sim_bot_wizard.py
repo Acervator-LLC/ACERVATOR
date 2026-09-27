@@ -166,7 +166,7 @@ if _HAS_QT:
                 named = _market_text(m.get("base"))
                 label = named + (f"  ({', '.join(parts)})" if parts else "")
                 # The cached icon only, since a download here blocks the GUI thread.
-                icon = _get_coin_icon(named, download=False)
+                icon = _get_coin_icon(named)
                 if icon:
                     self._target.addItem(icon, label, named)
                 else:

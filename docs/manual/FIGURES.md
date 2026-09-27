@@ -113,6 +113,13 @@ artifacts/vwap-charts/
     vwap_<ASSET>.png        one per charted base, 38 of them
 ```
 
+Each of the 38 per-asset charts carries a Bollinger band behind its price
+panel, at period 20 and width 2 standard deviations, on one-day bars. The
+combined view carries none, because it plots an index rather than a price.
+[10-live-trade-history.md](10-live-trade-history.md) states what the band is
+and what a fill at its edge means, and measures why the bar is one day rather
+than five minutes.
+
 | File | Asset | Fills | Described in |
 | ---- | ----- | ----: | ------------ |
 | `vwap_combined.png` | top eight by fill count | 3,113 | [10-live-trade-history.md](10-live-trade-history.md), under the combined-chart section |

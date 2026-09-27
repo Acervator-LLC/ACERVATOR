@@ -92,3 +92,9 @@
 # The renderer module list: one file a line, so a merge of two branches that
 # each add a module keeps both lines instead of conflicting.
 desktop/renderer/module_manifest.js merge=union
+
+# Recorded candle history. A tablet is never modified, and `text=auto eol=lf`
+# above would strip the 5,283 carriage returns in stone_tablets/MANIFEST.json
+# and break the digest every tablet row carries. Measured without this line:
+# git would store 242df301 where the file on disk is 0cc0d309.
+stone_tablets/** -text

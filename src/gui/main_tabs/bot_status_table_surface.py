@@ -7,6 +7,11 @@ target balance in dollars and restated in BTC and in ETH, the Ammo
 figure that says how far the position sits from that target, a Manual
 Fire button and a Detail button.
 
+The logo cell opens its asset's own organisation in the system browser
+when it is clicked, and ``opening_address`` refuses any address that is
+not https with a host. A cell whose asset resolves no address is not a
+link and its tooltip says so.
+
 The Symbol cell carries the state colour and names the mode and the
 state in its tooltip. The Current Position Value cell is blank whenever
 no fresh exchange price exists, and its tooltip names what is missing;
@@ -27,11 +32,15 @@ from __future__ import annotations
 
 import base64
 import logging
+import urllib.parse
 from typing import Any, Dict, Optional
 
 from ...core.asset_logos import LogoCache, image_extension
 from ...core.privacy_mask_registry import get_privacy_mask_registry, mask_or
+from ...core.safe_url import openable_url
+from ...exchange.crypto_assets import AssetManager
 from ...exchange.exchange_chart_urls import chart_url
+from ...trading.ata_asset_maps import organisation_page
 from .. import design_system as ds
 from .table_cells_surface import (
     NO_TARGET_TEXT,
@@ -69,6 +78,8 @@ COLUMN_TOOLTIPS = {
     0: (
         "The target asset this bot accumulates, drawn as that asset's own\n"
         "official logo. An asset with no logo kept yet shows its ticker.\n"
+        "Click a mark to open that asset's own organisation in your browser.\n"
+        "A mark for an asset with no web address is not a link and says so.\n"
         "The bot's own id is no longer shown here: it stays in the record\n"
         "and in the logs, and the Detail button opens the bot that holds it."
     ),
@@ -152,6 +163,13 @@ TARGET_BTC_COLUMN = 5
 TARGET_ETH_COLUMN = 6
 AMMO_COLUMN = 7
 
+#: The cell field a click on each column opens. A column absent from it opens
+#: nothing, and both surfaces read this one map rather than naming a column.
+LINK_FIELD_BY_COLUMN: Dict[int, str] = {
+    BOT_ID_COLUMN: "link_url",
+    SYMBOL_COLUMN: "chart_url",
+}
+
 REVEALED_GLYPH = "●"
 MASKED_GLYPH = "○"
 STATE_MASKED = "MASKED"
@@ -229,10 +247,24 @@ LOGO_DATA_FORMAT = "data:image/{extension};base64,{body}"
 LOGO_READ_FAILED_LOG = "Logo read failed for %r: %s: %s"
 LOGO_READ_ERRORS = (OSError, ValueError, TypeError)
 
+#: The only scheme ``opening_address`` answers an address for. It narrows
+#: ``openable_url``, which allows http as well, and never widens it.
+OPENING_SCHEMES: tuple[str, ...] = ("https",)
+
+ORGANISATION_TIP_FORMAT = "Open {host} in default browser: {address}"
+NO_ORGANISATION_TIP_FORMAT = (
+    "no web address is known for {asset}, so this mark is not a link"
+)
+ORGANISATION_READ_FAILED_LOG = "Organisation address read failed for %r: %s: %s"
+ORGANISATION_READ_ERRORS = (AttributeError, KeyError, TypeError, ValueError)
+
 #: One ``LogoCache`` reader over the kept directory; ``resolve`` is never called.
 KEPT_LOGOS = LogoCache()
+#: One ``AssetManager`` over the same directory; only ``organisation_url`` is asked.
+CRYPTO_RECORDS = AssetManager()
 _LOGO_PATHS: Dict[str, str] = {}
 _LOGO_DATA: Dict[str, str] = {}
+_ORGANISATION_ADDRESSES: Dict[str, str] = {}
 
 LINK_COLOR = ds.TEXT_INFO_SOFT
 LINK_UNDERLINE = True
@@ -538,6 +570,7 @@ DETAIL_CLICKED = "detail.clicked"
 FIRE_CLICKED = "fire.clicked"
 CELL_IGNORED = "cell.ignored"
 CELL_OPENED = "cell.opened"
+CELL_REFUSED = "cell.refused"
 
 CellCall = list
 
@@ -659,6 +692,61 @@ def kept_logo_path(symbol: str) -> str:
     return EMPTY_TEXT
 
 
+def opening_address(value: Any) -> str:
+    """``value`` when it is an ``https`` address carrying a host, empty for every other.
+
+    Both surfaces read a cell's stored address through this before any
+    browser is asked to open it, so an http, file, javascript, data or
+    scheme-less value never reaches one.
+    """
+    address, _ = openable_url(str(value or EMPTY_TEXT), allowed_schemes=OPENING_SCHEMES)
+    if not address:
+        return EMPTY_TEXT
+    try:
+        host = urllib.parse.urlsplit(address).hostname
+    except ValueError:
+        return EMPTY_TEXT
+    return address if host else EMPTY_TEXT
+
+
+def organisation_address(symbol: str) -> str:
+    """``symbol``'s own organisation address, empty for an asset resolving none.
+
+    A crypto base answers its record's own site and a listed name answers
+    ``organisation_page``; the regulator's company-search page is not an
+    organisation's own site and is never answered. Each answer is held in
+    ``_ORGANISATION_ADDRESSES``.
+    """
+    if not symbol:
+        return EMPTY_TEXT
+    held = _ORGANISATION_ADDRESSES.get(symbol)
+    if held is not None:
+        return held
+    found = EMPTY_TEXT
+    for asked in (icon_asset_of(symbol), symbol):
+        if not asked:
+            continue
+        try:
+            site, _ = CRYPTO_RECORDS.organisation_url(asked)
+            found = site or organisation_page(asked)
+        except ORGANISATION_READ_ERRORS as exc:
+            logger.debug(ORGANISATION_READ_FAILED_LOG, asked, type(exc).__name__, exc)
+            continue
+        if found:
+            break
+    address = opening_address(found)
+    _ORGANISATION_ADDRESSES[symbol] = address
+    return address
+
+
+def organisation_tooltip(asset: str, address: str) -> str:
+    """The line a mark's tooltip carries: where a click goes, or that it is not a link."""
+    if not address:
+        return NO_ORGANISATION_TIP_FORMAT.format(asset=asset)
+    host = urllib.parse.urlsplit(address).hostname or address
+    return ORGANISATION_TIP_FORMAT.format(host=host, address=address)
+
+
 def logo_data_address(path: str) -> str:
     """``path``'s bytes in ``LOGO_DATA_FORMAT``, held in ``_LOGO_DATA`` after one read."""
     if not path:
@@ -685,20 +773,30 @@ def logo_data_address(path: str) -> str:
     return found
 
 
-def logo_cell(asset: str, shown: str, path: str) -> dict:
-    """The first column's cell: ``asset``'s logo at ``path``, its ticker, or ``shown``."""
+def logo_cell(asset: str, shown: str, path: str, link: str = EMPTY_TEXT) -> dict:
+    """The first column's cell: ``asset``'s logo at ``path``, its ticker, or ``shown``.
+
+    ``link`` is the organisation address a click opens, and its tooltip line
+    names where that click goes or says the mark is not a link.
+    """
     if shown != asset or not asset:
         return cell(shown)
+    mark_tip = organisation_tooltip(asset, link)
     address = logo_data_address(path)
     if path and address:
         return cell(
             EMPTY_TEXT,
-            tooltip=LOGO_TIP_FORMAT.format(asset=asset),
+            tooltip=LOGO_TIP_FORMAT.format(asset=asset) + TOOLTIP_LINE_GAP + mark_tip,
             logo_path=path,
             logo_image=address,
             logo_size=LOGO_SIZE_PX,
+            link_url=link,
         )
-    return cell(asset, tooltip=NO_LOGO_TIP_FORMAT.format(asset=asset))
+    return cell(
+        asset,
+        tooltip=NO_LOGO_TIP_FORMAT.format(asset=asset) + TOOLTIP_LINE_GAP + mark_tip,
+        link_url=link,
+    )
 
 
 def blockers_text(blockers: list) -> str:
@@ -967,6 +1065,7 @@ def cell(
         "logo_path": EMPTY_TEXT,
         "logo_image": EMPTY_TEXT,
         "logo_size": LOGO_SIZE_PX,
+        "link_url": EMPTY_TEXT,
         "chart_url": EMPTY_TEXT,
         "underline": False,
     }
@@ -1246,11 +1345,12 @@ class BotStatusTableModel:
         )
 
     def _logo_cell(self, symbol, shown) -> dict:
-        """The first column's cell, ``logo_cell`` over ``symbol``'s kept file."""
+        """The first column's cell, ``logo_cell`` over ``symbol``'s kept file and address."""
         asset = icon_asset_of(symbol)
         path = kept_logo_path(symbol)
-        self.calls.append([ROW_LOGO, asset, LOGO_SIZE_PX, bool(path)])
-        return logo_cell(asset, shown, path)
+        link = organisation_address(symbol)
+        self.calls.append([ROW_LOGO, asset, LOGO_SIZE_PX, bool(path), bool(link)])
+        return logo_cell(asset, shown, path, link)
 
     def _symbol_cell(self, text, status, exchange_id, state, mode) -> dict:
         """The Symbol cell: the state colour, the mode tooltip, and the chart link."""
@@ -1537,17 +1637,26 @@ class BotStatusTableModel:
             self.on_fire_clicked(bot_id)
 
     def on_cell_clicked(self, row: int, column: int) -> str:
-        """The chart address a click on the Symbol cell asks to be opened."""
-        if column != SYMBOL_COLUMN:
+        """The address a click on one cell asks to be opened, empty for every other cell.
+
+        ``LINK_FIELD_BY_COLUMN`` names the field each column's click reads,
+        and ``opening_address`` refuses one that is not https with a host.
+        """
+        field = LINK_FIELD_BY_COLUMN.get(int(column))
+        if field is None:
             self.calls.append([CELL_IGNORED, column])
             return EMPTY_TEXT
         found = self.cell_at(row, column)
         if found is None:
             self.calls.append([CELL_IGNORED, column])
             return EMPTY_TEXT
-        url = found["chart_url"]
-        if not url:
+        held = found.get(field, EMPTY_TEXT)
+        if not held:
             self.calls.append([CELL_IGNORED, column])
+            return EMPTY_TEXT
+        url = opening_address(held)
+        if not url:
+            self.calls.append([CELL_REFUSED, column, held])
             return EMPTY_TEXT
         self.opened_urls.append(url)
         self.calls.append([CELL_OPENED, url])
@@ -1684,6 +1793,10 @@ def build_view_model(model: BotStatusTableModel) -> dict:
         "row_height": ROW_HEIGHT_PX,
         "link_color": LINK_COLOR,
         "link_underline": LINK_UNDERLINE,
+        "link_field_by_column": {
+            str(column): field for column, field in LINK_FIELD_BY_COLUMN.items()
+        },
+        "opening_schemes": list(OPENING_SCHEMES),
         "browser_new_window": BROWSER_NEW_WINDOW,
         "opened_urls": list(model.opened_urls),
         "detail_clicks": list(model.detail_clicks),
