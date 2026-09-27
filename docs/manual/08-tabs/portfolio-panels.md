@@ -38,6 +38,32 @@ a long figure is never cut.
 card.setMinimumWidth(surface.slot_natural_w(slot))
 ```
 
+Overtaken, quoted whole: "The first six divide the whole row between them, at
+three shares for the money strip and one for each card."
+
+True today: the money strip's three shares come out below its own floor at every
+window up to about 1950 pixels wide, so it draws at that floor and the five cards
+take the whole surplus between them.
+
+Both builds draw the row at the same geometry. The floor the Qt row sets on a
+widget is the number the React page sets on the same slot, and the surface serves
+that number to both.
+
+`src/gui/main_tabs/header_strip_surface.py`
+
+```python
+"slots": {slot: slot_natural_w(slot) for slot in TOP_ROW_ORDER}
+```
+
+`src/gui/web/header_strip.js`
+
+```javascript
+style.minWidth = length(floor);
+```
+
+Measured at a 1920 pixel window, in both builds: the money strip 686, each card
+217, the square 112.
+
 ## Left: the spendable columns
 
 Five labelled columns fill the left half, divided by thin vertical rules.
