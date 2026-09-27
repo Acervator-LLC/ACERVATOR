@@ -65,7 +65,7 @@ UNKNOWN_LANGUAGE = "unknown"
 
 # The languages this archetype carries analyzers for. Adding a name here
 # is a claim that the runners below can read that language.
-HANDLED_LANGUAGES: frozenset[str] = frozenset({"python", "javascript"})
+HANDLED_LANGUAGES: frozenset[str] = frozenset({"python", "javascript", "shell", "yaml"})
 
 # A mapped suffix decides the language, and no content check overturns it.
 _LANGUAGE_BY_SUFFIX: dict[str, str] = {
@@ -143,10 +143,22 @@ _PY_RULE_MODULES: tuple[tuple[str, str], ...] = (
     ("delegated_canon", "dev_harness.harness.rules.delegated_canon"),
 )
 
-_JS_RULE_MODULES: tuple[tuple[str, str], ...] = (
+# scaffolding and hallucination read the file as text, so they serve every
+# language whose own parser is not Python.
+_TEXT_RULE_MODULES: tuple[tuple[str, str], ...] = (
     ("scaffolding", "dev_harness.harness.rules.scaffolding"),
     ("hallucination", "dev_harness.harness.rules.hallucination"),
 )
+
+# Per language: the rule modules to run, and the suffixes a DIRECTORY target
+# expands to. A language absent here gets the Python pair.
+_RULE_MODULES_BY_LANGUAGE: dict[
+    str, tuple[tuple[tuple[str, str], ...], tuple[str, ...]]
+] = {
+    "javascript": (_TEXT_RULE_MODULES, (".js",)),
+    "shell": (_TEXT_RULE_MODULES, (".sh", ".bash", ".zsh")),
+    "yaml": (_TEXT_RULE_MODULES, (".yml", ".yaml")),
+}
 
 
 def _shebang_language(path: Path) -> str:
@@ -324,6 +336,37 @@ _RUFF_FAMILIES_BY_LEN: tuple[str, ...] = tuple(
 )
 
 
+# shellcheck's own four levels. `error` is a construct that misbehaves, so it
+# blocks; `info` and `style` are advice and do not.
+_SHELLCHECK_SEVERITY: dict[str, str] = {
+    "error": "high",
+    "warning": "medium",
+    "info": "low",
+    "style": "low",
+}
+
+# yamllint's two levels.
+_YAMLLINT_SEVERITY: dict[str, str] = {"error": "high", "warning": "medium"}
+
+# yamllint rules whose level is `error` and whose subject is layout, mapped
+# the way `_RUFF_SEV_MAP` maps pycodestyle: medium for the E family, low for
+# the W family. Every one still reports; none blocks. `key-duplicates`,
+# `anchors` and `syntax` are absent, so those keep `error` and block.
+_YAMLLINT_LAYOUT_DEMOTIONS: dict[str, str] = {
+    "braces": "medium",
+    "brackets": "medium",
+    "colons": "medium",
+    "commas": "medium",
+    "hyphens": "medium",
+    "indentation": "medium",
+    "line-length": "medium",
+    "empty-lines": "low",
+    "new-line-at-end-of-file": "low",
+    "new-lines": "low",
+    "trailing-spaces": "low",
+}
+
+
 def _module_binding_kinds(path: str) -> tuple[set[str], set[str]]:
     """Return (import_bound, assignment_bound) name sets for a module.
 
@@ -385,7 +428,8 @@ def _possibly_unbound_severity(message: str, file_path: str) -> str:
 
 class CodingArchetype:
     """Coding-quality archetype v2 — subprocess-invokes ruff, mypy,
-    pyright, bandit, vulture and semgrep on Python, eslint on JavaScript."""
+    pyright, bandit, vulture and semgrep on Python, eslint on JavaScript,
+    shellcheck on a shell script and yamllint on a YAML file."""
 
     name = "coding_quality"
     version = "2.1"  # v2.1: added falsification field + calibration hook
@@ -397,6 +441,8 @@ class CodingArchetype:
         "vulture",
         "semgrep",
         "eslint",
+        "shellcheck",
+        "yamllint",
     )
     calibration_name = "coding"
 
@@ -443,10 +489,10 @@ class CodingArchetype:
                 report.tool_availability[tool_name] = "error"
                 report.errors.append(f"{tool_name}: {type(e).__name__}: {e}")
 
-        if report.language == "javascript":
-            scan_rule_modules(report, target, _JS_RULE_MODULES, (".js",))
-        else:
-            scan_rule_modules(report, target, _PY_RULE_MODULES, (".py",))
+        modules, suffixes = _RULE_MODULES_BY_LANGUAGE.get(
+            report.language, (_PY_RULE_MODULES, (".py",))
+        )
+        scan_rule_modules(report, target, modules, suffixes)
 
         report.falsification = self._build_falsification(report)
         return report
@@ -502,6 +548,10 @@ class CodingArchetype:
         """
         if language == "javascript":
             return [("eslint", self._run_eslint)]
+        if language == "shell":
+            return [("shellcheck", self._run_shellcheck)]
+        if language == "yaml":
+            return [("yamllint", self._run_yamllint)]
         return [
             ("ruff", self._run_ruff),
             ("mypy", self._run_mypy),
@@ -825,6 +875,102 @@ class CodingArchetype:
             )
         return findings, "ok"
 
+    def _run_shellcheck(self, target: Path) -> tuple[list[Finding], str]:
+        """Grade one shell script with shellcheck.
+
+        `--format=json1` answers `{"comments": [...]}`, each row carrying
+        `level` and an integer `code` that this reads back as `SC<code>`.
+        shellcheck is a bare executable, so an absent install raises
+        FileNotFoundError out of `_resolve_executable` and `review` records
+        `missing` rather than a clean run.
+        """
+        proc = subprocess.run(
+            [
+                self._resolve_executable("shellcheck"),
+                "--format=json1",
+                str(target),
+            ],
+            cwd=str(REPO_ROOT),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=120,
+        )
+        refuse_silent_failure(proc, "shellcheck")
+        findings: list[Finding] = []
+        if not proc.stdout.strip():
+            return findings, "ok"
+        try:
+            data = json.loads(proc.stdout)
+        except json.JSONDecodeError as exc:
+            raise RuntimeError(f"shellcheck produced non-JSON output: {exc}") from exc
+        for item in data.get("comments", []):
+            code = item.get("code")
+            findings.append(
+                Finding(
+                    tool="shellcheck",
+                    severity=_SHELLCHECK_SEVERITY.get(item.get("level", ""), "medium"),
+                    file=item.get("file", str(target)),
+                    line=item.get("line", 0),
+                    rule_id=f"SC{code}" if code is not None else "no-code",
+                    message=item.get("message", ""),
+                )
+            )
+        return findings, "ok"
+
+    def _run_yamllint(self, target: Path) -> tuple[list[Finding], str]:
+        """Grade one YAML file with yamllint.
+
+        `--format parsable` answers one row per problem as
+        `path:line:column: [level] message (rule)`. A row whose rule is a
+        layout rule takes the severity `_YAMLLINT_LAYOUT_DEMOTIONS` gives it;
+        every other row keeps the level yamllint reported, so a duplicate key
+        and an unparseable document both block.
+        """
+        proc = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "yamllint",
+                "--format",
+                "parsable",
+                str(target),
+            ],
+            cwd=str(REPO_ROOT),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=120,
+        )
+        if self._module_absent(proc, "yamllint"):
+            return [], "missing"
+        refuse_silent_failure(proc, "yamllint")
+        findings: list[Finding] = []
+        pat = re.compile(
+            r"^(?P<file>.+?):(?P<line>\d+):(?P<col>\d+):\s*"
+            r"\[(?P<level>\w+)\]\s*(?P<msg>.+?)"
+            r"(?:\s+\((?P<rule>[A-Za-z0-9-]+)\))?\s*$"
+        )
+        for line in proc.stdout.splitlines():
+            match = pat.match(line)
+            if match is None:
+                continue
+            rule_id = match.group("rule") or "no-rule"
+            native = _YAMLLINT_SEVERITY.get(match.group("level"), "medium")
+            findings.append(
+                Finding(
+                    tool="yamllint",
+                    severity=_YAMLLINT_LAYOUT_DEMOTIONS.get(rule_id, native),
+                    file=match.group("file"),
+                    line=int(match.group("line")),
+                    rule_id=rule_id,
+                    message=match.group("msg"),
+                )
+            )
+        return findings, "ok"
+
     def _run_semgrep(self, target: Path) -> tuple[list[Finding], str]:
         # Use semgrep's default Python security ruleset
         proc = subprocess.run(
@@ -877,6 +1023,8 @@ def main(argv: list[str] | None = None) -> int:
         print("usage: python -m tools.harness.coding_archetype <path>")
         print("       .py: ruff + mypy + pyright + bandit + vulture + semgrep;")
         print("       .js: eslint;")
+        print("       .sh: shellcheck;")
+        print("       .yml: yamllint;")
         print("       prints JSON report; exit 0 if passed, 1 if failed")
         return 2
     target = Path(argv[0])

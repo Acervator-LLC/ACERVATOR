@@ -195,6 +195,27 @@ Five archetypes, one per domain:
 - `watchdog_archetype.py` — the out-of-process crash watchdog, checking that
   every test pin reaches the one handler.
 
+**Overtaken.** *"`coding_archetype.py` — Python source through ruff, mypy,
+pyright, bandit, vulture and semgrep, each normalised into one `Finding`
+schema."*
+
+The bullet above keeps its wording. The coding archetype reads four languages,
+not one. Python takes the six analyzers the bullet names. JavaScript takes
+eslint. A shell script takes shellcheck. A YAML settings file takes yamllint.
+For a file of any other type the archetype answers `unhandled`, which is
+neither a pass nor a failure.
+
+```
+.py .pyi .pyw .spec    ruff, mypy, pyright, bandit, vulture, semgrep
+.js .mjs .cjs .jsx     eslint
+.sh .bash .zsh         shellcheck
+.yml .yaml             yamllint
+anything else          unhandled - no analyzer ran
+```
+
+The archetype marks an absent analyzer missing, and a report carrying a missing
+analyzer never counts as a pass.
+
 The gate and the ledger:
 
 - `check_release_readiness.py` — the release gate. It runs the suite, runs each
