@@ -185,6 +185,78 @@ def test_green_pytest_with_zero_tests_is_a_failure(...) -> None: ...
 The gate module is `dev_harness/harness/check_release_readiness.py`, which is
 the path that test imports. No copy of it lives under `tools/`.
 
+## What the workflow runs on a pull request
+
+Four lanes run on every pull request, and each one judges something the tree
+actually holds. One workflow file declares all of them.
+
+```
+.github/workflows/ci.yml
+
+changes      diffs the branch and publishes the list of changed files
+lint         black and flake8 over src, tests, tools and the root scripts
+contracts    the six Solidity tests under tests/contracts, run by forge
+archetypes   the owning archetype for each changed file
+ci-gate      one status saying whether any required lane failed
+```
+
+### Which archetype owns which file
+
+The archetype lane reads each changed file's type and runs the archetype that
+owns it. A file of any other type is named in the log and counted as unowned,
+because no archetype reads that type.
+
+```
+.py                         coding archetype
+.js .mjs .cjs .css .html    GUI archetype
+.md                         docs archetype
+anything else               unowned, and the log names the file
+```
+
+### What a green result means
+
+Green means every changed file passed the archetype that owns it, the Solidity
+tests passed, and the formatting and lint lanes passed. It does not mean a Python
+test suite ran. The tree holds no Python test.
+
+```
+git ls-files tests/                   7 files
+git ls-files tests/contracts/*.sol    6 files
+git ls-files tests/test_*.py          0 files
+```
+
+### The two pytest lanes, overtaken
+
+The release gate section above says this about the two tests that hold it down:
+
+> Two tests pin both: one drives the gate with
+> each skip flag and asserts it declines to print the ready line, the other drives
+> a pytest run that collected nothing and asserts the gate calls it a failure.
+
+**Overtaken.** Neither of those two files is in the tree. The workflow used to
+carry two pytest lanes that read the same empty suite, so both reported a failure
+on every run, for a reason that was never the change underneath them. Both lanes
+are gone.
+
+```
+pytest -m "not slow and not archetype"    exit 5, nothing collected
+pytest -m "slow or archetype"             exit 5, nothing collected
+```
+
+### What the branch rules refuse
+
+Two rulesets guard the branches. The first refuses a rewrite or a deletion of
+either branch. The second refuses a merge into the working branch until a pull
+request exists and the one status reports green.
+
+```
+current   a pull request is required before a merge
+current   ci-gate must report success, and the branch must be up to date
+current   a force-push is refused, and a deletion is refused
+main      a force-push is refused, and a deletion is refused
+main      a direct push is allowed, which is how the branch is synced
+```
+
 ## How a build is produced
 
 Two files at the repository root are the ones to open, one per variant. A third
