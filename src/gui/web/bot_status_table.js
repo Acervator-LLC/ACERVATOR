@@ -57,6 +57,7 @@
   var GLOW_OFFSET = "glow_offset";
   var HAS_SELECTION = "has_selection";
   var HEADERS = "headers";
+  var LINK_FIELD_BY_COLUMN = "link_field_by_column";
   var POSITION_VALUE_COLUMN = "position_value_column";
   var PRIVACY_FIELD_BY_COL = "privacy_field_by_col";
   var ROW_COUNT = "row_count";
@@ -154,6 +155,7 @@
     "logo_size",
     ROW_HEIGHT,
     "link_color",
+    LINK_FIELD_BY_COLUMN,
     "link_tip_format",
     "link_underline",
     "logger_name",
@@ -240,6 +242,7 @@
   var LOGO_PATH = "logo_path";
   var LOGO_IMAGE = "logo_image";
   var LOGO_SIZE = "logo_size";
+  var LINK_URL = "link_url";
   var CHART_URL = "chart_url";
   var UNDERLINE = "underline";
 
@@ -268,6 +271,7 @@
     LOGO_PATH,
     LOGO_IMAGE,
     LOGO_SIZE,
+    LINK_URL,
     CHART_URL,
     UNDERLINE
   ];
@@ -402,6 +406,7 @@
   var ACTION_ATTR = "data-action";
   var SORT_DIRECTION_ATTR = "data-sort-direction";
   var SORTABLE_ATTR = "data-sortable";
+  var LINK_URL_ATTR = "data-link-url";
   var CHART_URL_ATTR = "data-chart-url";
   var ICON_ATTR = "data-icon";
   var ICON_SIZE_ATTR = "data-icon-size";
@@ -822,6 +827,14 @@
     return element(IMG_TAG, logoProps, null);
   }
 
+  // The cell field a click on one column opens, or null for a column the
+  // surface's link_field_by_column does not name. The page opens nothing
+  // itself; a press goes out and Python opens the address.
+  function linkFieldOf(model, column) {
+    var held = objectField(model, LINK_FIELD_BY_COLUMN)[String(column)];
+    return isFilledText(held) ? String(held) : null;
+  }
+
   function BodyCell(props) {
     var model = props.model;
     var found = props.cell;
@@ -853,8 +866,10 @@
     cellProps[ICON_ATTR] = text(found[ICON_ASSET]);
     cellProps[ICON_SIZE_ATTR] = text(found[ICON_SIZE]);
     cellProps[LOGO_PATH_ATTR] = text(found[LOGO_PATH]);
+    cellProps[LINK_URL_ATTR] = text(found[LINK_URL]);
     cellProps[CHART_URL_ATTR] = text(found[CHART_URL]);
-    if (isFilledText(found[CHART_URL])) {
+    var opener = linkFieldOf(model, column);
+    if (opener !== null && isFilledText(found[opener])) {
       cellProps[ACTION_ATTR] = text(objectField(model, ACTIONS)[CELL_CLICKED]);
       cellProps.onClick = function () {
         sendCellClick(model, props.at, column);
