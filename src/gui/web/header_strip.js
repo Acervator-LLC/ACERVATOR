@@ -8,7 +8,7 @@
   var TOP_ROW = "top_row";
   var TOP_ROW_ORDER = "top_row_order";
   var WIDTH_BUDGET = "width_budget";
-  var SLOTS = "slots";
+  var BUDGET_SLOTS = "slots";
   var VISIBLE = "visible";
   var ISOLATED_TABS = "isolated_tabs";
   var SPENDABLE = "spendable";
@@ -672,7 +672,7 @@
   }
 
   function floorOf(model, slot) {
-    var floors = objectField(objectField(model, WIDTH_BUDGET), SLOTS);
+    var floors = objectField(objectField(model, WIDTH_BUDGET), BUDGET_SLOTS);
     return owns(floors, slot) ? floors[slot] : undefined;
   }
 
