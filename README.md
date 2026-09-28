@@ -1,12 +1,45 @@
-WARNING: This is project that is being actively developed by a single human with no prior software development experience.  It has so far taken over 1600 hours to reach the current state.   
+WARNING: This is project that is being actively developed by a single human with no prior software development experience.  It has so far taken over 1600 hours to reach the current state.  There are some scaffolded bits and some buggy bits but the core trading strategy works and I now have almost 7000 data points proving it which you can review in the Product Manual under 'docs'.  My personal tests will be continuing as I iterate the platform so this evidentiary data set will do nothing but grow over time.    
 
-Acervator represents a significant departure from digital asset trading methodologies.  It contains an array of innovations that would likely cost thousands per user if developed by the firms that typically build Governance Execution Platforms.  It allows a single user to interface with and actively trade dozens of positions across multiple exchanges via a single complex yet layered and organized interface.  As such, there is a New User Presentation and Product Manual under the 'docs' directory that should be reviewed or referenced which first launching the platform.    
+Acervator represents a significant departure from digital asset trading methodologies.  It contains an array of innovations that would likely cost thousands per user if developed by the firms that typically build Governance Execution Platforms.  It allows a single user to interface with and actively trade dozens of positions across multiple exchanges via a single complex yet layered and organized interface.  As such, there will soon be a New User Presentation but, in the mean time, please refer to the Product Manual which, while massive, has much of the same information that will be condensed into the procedure.   
 
-Acervator's development, for better or worse, has thus far been completed without watching a single tutorial, reading a single book, or completing a single YouTube video.  I grabbed a piece here and a piece there.  Using Claude, I was able to hop between concepts and accelerate my learning while executing full stack development with leaps often occurring through troubleshooting issues and developing solutions.  The core trading strategy housed within Acervator, however, was developed manually from 2017 and refined over multiple market cycles.  Prior to this application, it could not be executed to its full potential due to working best as a high volume strategy.  This said and regardless of opinions on the whole vibe coding movement, I think my real trading results and their being executing under a stable application that does exactly what its configured to do should be the real measure of what I am making available in addition to others performing their own tests.
+Acervator's development, for better or worse, has thus far been completed without watching a single complete tutorial, reading a coding or software development manual, or attending any specialized schooling.  I grabbed a piece here and a piece there.  Using Claude, I was able to hop between concepts and accelerate my learning while executing full stack development with leaps often occurring through troubleshooting issues and developing solutions.  The core trading strategy housed within Acervator, however, was developed manually from 2017 and refined over multiple market cycles.  Prior to this application, it could not be executed to its full potential due to working best as a high volume strategy.  This said and regardless of opinions on the whole vibe coding movement, I think my real trading results and their being executing under a stable application that does exactly what its configured to do should be the real measure of what I am making available in addition to others performing their own tests.
 
-If given feedback, specific errors or bugs, and code-related fixes or refinements, I will happily incorporate them all into my version of the platform.
+If given feedback, specific errors or bugs, and code-related fixes or refinements, I will happily incorporate them all into my version of the platform.  
 
 - Thanks, Ekthelius / Tony 
+
+## Get the built application
+
+Every build is on the
+[Releases page](https://github.com/Acervator-LLC/ACERVATOR/releases). Nothing
+needs installing. No Python, no dependencies, no build step.
+
+Open the newest release and take one file. Choose by the middle column.
+
+| the file ends with | your computer | interface |
+|---|---|---|
+| `-qt-windows.zip` | Windows | Qt |
+| `-react-windows.zip` | Windows | React |
+| `-qt.dmg` | macOS | Qt |
+| `-react.dmg` | macOS | React |
+
+Both interfaces hold the same tabs and trade the same way. They differ only in
+how each one draws its screens.
+
+**On Windows.** Right-click the file you downloaded, choose Extract All, open
+the folder it makes, and double-click the program inside. Windows says *Windows
+protected your PC* the first time, because the file carries no paid
+code-signing certificate. Click *More info*, then *Run anyway*.
+
+**On a Mac.** Double-click the file you downloaded, then drag Acervator to the
+Applications folder. macOS refuses the first double-click, because the
+application carries no Apple Developer signature. Right-click the application,
+choose *Open*, then choose *Open* again in the dialog.
+
+Either warning appears once per download, not every launch.
+
+Acervator starts with no bots and no exchange keys, so it trades nothing until
+you add them. The Product Manual under `docs` explains the tabs.
 
 # ⬡ Acervator
 

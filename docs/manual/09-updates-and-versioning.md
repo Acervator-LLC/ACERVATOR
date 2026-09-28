@@ -319,6 +319,25 @@ shows whether a build happened.
 def stamp_builder_dates(finished_at: float) -> list[str]: ...
 ```
 
+**Overtaken.** These two sentences stay whole here:
+
+> Two files at the repository root are the ones to open, one per variant. A third
+> builds both.
+
+> A build that finishes sets the modification date on both single-variant entry
+> points, and a build that fails sets nothing.
+
+Four files at the root are the ones to open, two per platform, and a fifth builds
+every variant for the platform it runs on. A finished build sets the date on its
+own platform's pair and never on the other, so a Windows date and a macOS date
+report different builds.
+
+```python
+BUILDER_NAMES = ("Qt_BUILD.py", "React_BUILD.py")   # tools/build_launcher.py
+MAC_BUILDER_NAMES = ("Qt_MAC_BUILD.py", "React_MAC_BUILD.py")
+def stamp_builder_dates(finished_at, names=BUILDER_NAMES) -> list[str]: ...
+```
+
 ### The macOS build runs on a runner, not on the operator's machine
 
 The operator's machine runs Windows, so no macOS build can be produced there. A
@@ -347,6 +366,22 @@ on:
       - .github/workflows/macos-build.yml
 ```
 
+**Overtaken.** That sentence stays whole here:
+
+> Two things start it: a push that changes one of the files the macOS build reads,
+> and the Run workflow button on the repository's Actions tab.
+
+A third thing starts it, and it is the one the operator uses: a Mac builder at
+the repository root, double-clicked. Each one asks for a run on the branch his
+copy is on, or joins a run already going on that branch rather than starting a
+second one, because the workflow cancels an earlier run of the same group.
+
+```python
+VARIANT = QT                                    # Qt_MAC_BUILD.py
+VARIANT = REACT                                 # React_MAC_BUILD.py
+def launch_macos(variants: tuple[str, ...]) -> bool   # tools/build_launcher.py
+```
+
 The run does not stop at a finished build. It reads the size of every bundle and
 every disk image, mounts each disk image and compares the application inside
 against the one that was built, then launches each application and reads the
@@ -371,6 +406,40 @@ acervator-macos-launch-evidence  each launch's own log and screen capture
 The download is a zip file. Unzipping it gives the two applications and the two
 disk images; dragging an application to the Applications folder installs it.
 
+**Overtaken.** That last sentence stays whole here:
+
+> The download is a zip file. Unzipping it gives the two applications and the two
+> disk images; dragging an application to the Applications folder installs it.
+
+The run page artefact remains a zip holding both bundles, and it no longer tells
+a person where to go. A release carries each disk image as a file of its own, so
+a visitor downloads one disk image and never a zip.
+
+```
+a run page artefact   one zip holding both bundles and both disk images
+a release asset       one disk image, downloaded on its own
+```
+
+The operator downloads neither by hand. A Mac builder waits for its run, prints
+the elapsed time while it waits, then puts that variant's application and disk
+image straight into `dist` at the same level as the Windows folders, with no
+folder around them.
+
+```
+dist/Acervator-<version>-<variant>.app    what a Mac builder brings back
+dist/Acervator-<version>-<variant>.dmg    its disk image, in the same folder
+```
+
+On a Mac the disk image is the one to open. A bundle's internal links become
+copies inside the zip the run page serves, so the folder arrives without the
+permissions a Mac needs while the disk image keeps them. A builder that cannot
+reach GitHub prints which of the two reasons stopped it, and starts nothing.
+
+```python
+NOT_SIGNED_IN_NOTICE   # tools/build_launcher.py, gh answered exit 4
+NO_ANSWER_NOTICE       # every other non-zero answer from gh api
+```
+
 ### What the first launch looks like
 
 The bundle carries no Apple Developer signature, so macOS refuses the first
@@ -393,3 +462,89 @@ repository secret. The build script already accepts the identity.
 ```
 ./build_mac.sh --sign "Developer ID Application: <name> (<team id>)"
 ```
+
+## Where a person downloads the application
+
+A release carries the built applications outside the repository. A visitor
+installs no Python, no dependencies and no builder, and the Releases panel on the
+repository front page links it. Git cannot hold the builds: `dist` measured
+12,856 MB.
+
+```yaml
+name: Release                        # .github/workflows/release.yml
+on:
+  workflow_dispatch:
+jobs:
+  windows: {runs-on: windows-latest}
+  macos: {uses: ./.github/workflows/macos-build.yml}
+  publish: {needs: [windows, macos]}
+```
+
+The Run workflow button on the Actions tab starts it. One run builds both
+platforms, launches every application it built, reads the line each one writes
+once its main window is on screen, and attaches four files to one release.
+
+### The release a visitor downloads
+
+Four files, one per platform and per variant, each named after the version and
+the commit the build resolved.
+
+```
+Acervator-<version>-qt-windows.zip      Windows, the Qt interface
+Acervator-<version>-react-windows.zip   Windows, the React interface
+Acervator-<version>-qt.dmg              macOS, the Qt interface
+Acervator-<version>-react.dmg           macOS, the React interface
+```
+
+The tag carries that same version behind a prefix the version reader's own tag
+glob rejects, so publishing a release cannot move the version the next build
+resolves.
+
+```python
+TAG_GLOB = "v[0-9]*"                 # src/_version.py
+build-<version>                      # a release tag, which that glob rejects
+```
+
+A runner resolves that version from the tags the remote carries, and the newer
+version tag is not one of them, so a runner build and a local build of one commit
+report different numbers. The commit is the same in both, and every file name
+carries it.
+
+```
+git ls-remote --tags origin    the older version tag, and the build- tags
+a local clone                  the older and the newer version tag
+```
+
+Pushing the newer tag would change the number every runner build reports, which
+the release cascade above governs.
+
+The publish step refuses a set whose file names do not all carry one version, and
+the Windows step refuses a build folder holding any logo file. Neither guard has
+a way to pass a mixed or a logo-carrying release.
+
+```
+files to attach: 4          two per platform, or the step fails
+qt  logos    0              any other number fails the step
+```
+
+### The first launch on a Windows computer
+
+Windows refuses the first run of an unsigned program. Two clicks pass it, once
+per download and not again.
+
+```
+------------------------------------------------------------
+  IF WINDOWS BLOCKS THE EXE:
+  1. Click "More info" then "Run anyway"
+------------------------------------------------------------
+```
+
+That notice is the one the builder prints after a local build, so a downloaded
+build and a locally built one show the same step.
+
+```python
+SMARTSCREEN_NOTICE                   # tools/build_launcher.py
+```
+
+A macOS download carries the same unsigned bundle a run page artefact carries, so
+its own first launch is the Gatekeeper step recorded above.
