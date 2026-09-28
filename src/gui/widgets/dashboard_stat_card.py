@@ -47,7 +47,10 @@ if _HAS_QT:
             self._label = ElidingLabel(label)
             self._label.setProperty("muted", True)
             self._label.setAlignment(Qt.AlignHCenter | Qt.AlignBottom)
-            self._label.setStyleSheet(f"font-size: 10px; color: {ds.MAIN_CAPTION};")
+            self._label.setStyleSheet(
+                f"color: {ds.MAIN_CAPTION}; font-size: 10px; "
+                "letter-spacing: 1px; font-weight: 600;"
+            )
             self._label_row.addStretch()
             self._label_row.addWidget(self._label)
             self._privacy_dot: Optional[PrivacyDot] = None

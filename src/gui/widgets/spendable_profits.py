@@ -29,21 +29,29 @@ if _HAS_QT:
             f"color: {ds.CARD_METRIC_LABEL}; font-size: 10px; "
             "letter-spacing: 1px; font-weight: 600;"
         )
+        _SPENDABLE_LABEL_STYLE = (
+            f"color: {ds.PRIMARY}; font-size: 10px; "
+            "letter-spacing: 1px; font-weight: 600;"
+        )
         _VALUE_STYLE_DEFAULT = (
-            f"color: {ds.TEXT_NEUTRAL}; font-size: 16px; font-weight: bold;"
+            f"color: {ds.TEXT_NEUTRAL}; font-size: 14px; font-weight: bold;"
         )
         _VALUE_STYLE_HIGHLIGHT = (
-            f"color: {ds.SUCCESS}; font-size: 16px; font-weight: bold;"
+            f"color: {ds.SUCCESS}; font-size: 14px; font-weight: bold;"
         )
         _VALUE_STYLE_NEGATIVE = (
-            f"color: {ds.ERROR}; font-size: 16px; font-weight: bold;"
+            f"color: {ds.ERROR}; font-size: 14px; font-weight: bold;"
         )
         _VALUE_STYLE_MUTED = (
-            f"color: {ds.CARD_METRIC_LABEL}; font-size: 16px; font-weight: bold;"
+            f"color: {ds.CARD_METRIC_LABEL}; font-size: 14px; font-weight: bold;"
         )
         _SEPARATOR_STYLE = (
             f"color: {ds.MAIN_SEPARATOR}; font-size: 24px; margin: 0 2px;"
         )
+        _LABEL_ALIGN = Qt.AlignHCenter | Qt.AlignBottom
+        _VALUE_ALIGN = Qt.AlignHCenter | Qt.AlignTop
+        #: One share of the row each, so the five columns sit at one pitch.
+        _COLUMN_STRETCH = 1
         _SPENDABLE_ABSENT_TIP = (
             "This amount is not in the data the strip was given for this refresh."
         )
@@ -54,6 +62,12 @@ if _HAS_QT:
         def __init__(self, parent=None):
             super().__init__(parent)
             self._setup_ui()
+
+        @staticmethod
+        def _hold_caption_width(label) -> None:
+            """Floor one caption at the width its whole text needs, which
+            ``ElidingLabel.minimumSizeHint`` does not."""
+            label.setMinimumWidth(label.sizeHint().width())
 
         def _setup_ui(self) -> None:
             """Build the frame, the five KPI columns and their privacy dots."""
@@ -66,7 +80,7 @@ if _HAS_QT:
             )
 
             outer = QHBoxLayout(self)
-            outer.setContentsMargins(12, 6, 12, 6)
+            outer.setContentsMargins(12, 4, 12, 4)
             outer.setSpacing(0)
 
             # A dot toggle re-renders from this last data, not the next tick.
@@ -79,10 +93,9 @@ if _HAS_QT:
             spend_col.setSpacing(2)
             spend_col.setContentsMargins(0, 0, 0, 0)
             self._spend_label = ElidingLabel("SPENDABLE")
-            self._spend_label.setStyleSheet(
-                f"color: {ds.PRIMARY}; font-size: 10px; letter-spacing: 1px; "
-                "font-weight: 700;"
-            )
+            self._spend_label.setStyleSheet(self._SPENDABLE_LABEL_STYLE)
+            self._spend_label.setAlignment(self._LABEL_ALIGN)
+            self._hold_caption_width(self._spend_label)
             self._spend_label.setToolTip(
                 "Cash balance pulled from the exchange, across the bots "
                 "sharing one wallet."
@@ -90,6 +103,7 @@ if _HAS_QT:
             spend_col.addWidget(self._spend_label)
             self._amount = ElidingLabel(_ABSENT_TEXT)
             self._amount.setStyleSheet(self._VALUE_STYLE_MUTED)
+            self._amount.setAlignment(self._VALUE_ALIGN)
             spend_col.addWidget(self._amount)
             # The dot sits at index 2, keeping label at 0 and value at 1.
             self._spend_dot = PrivacyDot(
@@ -97,7 +111,7 @@ if _HAS_QT:
             )
             self._privacy_dots.append(self._spend_dot)
             spend_col.addWidget(self._spend_dot, alignment=Qt.AlignHCenter)
-            outer.addLayout(spend_col)
+            outer.addLayout(spend_col, self._COLUMN_STRETCH)
 
             # Spendable is built above; these four share one KPI field shape.
             _KPI_FIELD_BY_KEY = {
@@ -126,9 +140,12 @@ if _HAS_QT:
                 col.setContentsMargins(0, 0, 0, 0)
                 lbl = ElidingLabel(label_text)
                 lbl.setStyleSheet(self._LABEL_STYLE)
+                lbl.setAlignment(self._LABEL_ALIGN)
+                self._hold_caption_width(lbl)
                 col.addWidget(lbl)
                 val = ElidingLabel(_ABSENT_TEXT)
                 val.setStyleSheet(self._VALUE_STYLE_DEFAULT)
+                val.setAlignment(self._VALUE_ALIGN)
                 self._stats[key] = val
                 col.addWidget(val)
                 dot = PrivacyDot(
@@ -136,9 +153,7 @@ if _HAS_QT:
                 )
                 self._privacy_dots.append(dot)
                 col.addWidget(dot, alignment=Qt.AlignHCenter)
-                outer.addLayout(col)
-
-            outer.addStretch()
+                outer.addLayout(col, self._COLUMN_STRETCH)
 
         @staticmethod
         def _amount_of(value):

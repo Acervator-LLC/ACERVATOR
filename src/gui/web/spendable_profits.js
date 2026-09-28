@@ -78,6 +78,8 @@
   var COLUMN_MARGINS = "column_margins_px";
   var COLUMN_SPACING = "column_spacing_px";
   var DOT_ALIGN = "dot_align";
+  var COLUMN_ALIGN = "column_align";
+  var COLUMN_STRETCH = "column_stretch";
   var ALIGN = "align";
 
   var KIND = "kind";
@@ -152,6 +154,7 @@
   var CENTRE = "center";
   var FLEX_AUTO = "1 1 auto";
   var NO_SHRINK = "0 0 auto";
+  var ZERO_WIDTH = "0";
 
   var PADDING_SIDES = ["paddingLeft", "paddingTop", "paddingRight", "paddingBottom"];
 
@@ -560,9 +563,16 @@
     var column = isPlainObject(props.column) ? props.column : {};
     var layout = props.layout;
     var span = dotSpan();
+    var columnStyle = boxStyle(layout, COLUMN_FLOW, COLUMN_MARGINS, COLUMN_SPACING);
+    withAlign(columnStyle, layout, COLUMN_ALIGN);
+    // One share of the row each, so the five columns sit at one pitch.
+    if (owns(layout, COLUMN_STRETCH)) {
+      columnStyle.flex = String(layout[COLUMN_STRETCH]);
+      columnStyle.minWidth = ZERO_WIDTH;
+    }
     var columnProps = {
       className: HOST_CLASS,
-      style: boxStyle(layout, COLUMN_FLOW, COLUMN_MARGINS, COLUMN_SPACING)
+      style: columnStyle
     };
     columnProps[PART_ATTR] = COLUMN_PART;
     columnProps[KEY_ATTR] = text(column[KEY]);

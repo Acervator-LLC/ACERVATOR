@@ -35,28 +35,28 @@ FRAME_STYLE = (
     "  border: 1px solid rgba(0,255,180,80); border-radius: 4px; }"
 )
 
-OUTER_MARGINS_PX = (12, 6, 12, 6)
+OUTER_MARGINS_PX = (12, 4, 12, 4)
 OUTER_SPACING_PX = 0
 COLUMN_MARGINS_PX = (0, 0, 0, 0)
 COLUMN_SPACING_PX = 2
 SEPARATOR_GAP_PX = 14
 DOT_ALIGN = "hcenter"
+COLUMN_ALIGN = "hcenter"
 SEPARATOR_ALIGN = "vcenter"
-TRAILING_STRETCH = True
 
-LABEL_STYLE = (
-    f"color: {ds.CARD_METRIC_LABEL}; font-size: 10px; "
-    "letter-spacing: 1px; font-weight: 600;"
-)
-SPENDABLE_LABEL_STYLE = (
-    f"color: {ds.PRIMARY}; font-size: 10px; letter-spacing: 1px; " "font-weight: 700;"
-)
-VALUE_STYLE_DEFAULT = f"color: {ds.TEXT_NEUTRAL}; font-size: 16px; font-weight: bold;"
-VALUE_STYLE_HIGHLIGHT = f"color: {ds.SUCCESS}; font-size: 16px; font-weight: bold;"
-VALUE_STYLE_NEGATIVE = f"color: {ds.ERROR}; font-size: 16px; font-weight: bold;"
-VALUE_STYLE_MUTED = (
-    f"color: {ds.CARD_METRIC_LABEL}; font-size: 16px; font-weight: bold;"
-)
+#: One share of the row each, so the five columns sit at one pitch.
+TRAILING_STRETCH = False
+COLUMN_STRETCH = 1
+
+LABEL_FONT = "font-size: 10px; letter-spacing: 1px; font-weight: 600;"
+VALUE_FONT = "font-size: 14px; font-weight: bold;"
+
+LABEL_STYLE = f"color: {ds.CARD_METRIC_LABEL}; {LABEL_FONT}"
+SPENDABLE_LABEL_STYLE = f"color: {ds.PRIMARY}; {LABEL_FONT}"
+VALUE_STYLE_DEFAULT = f"color: {ds.TEXT_NEUTRAL}; {VALUE_FONT}"
+VALUE_STYLE_HIGHLIGHT = f"color: {ds.SUCCESS}; {VALUE_FONT}"
+VALUE_STYLE_NEGATIVE = f"color: {ds.ERROR}; {VALUE_FONT}"
+VALUE_STYLE_MUTED = f"color: {ds.CARD_METRIC_LABEL}; {VALUE_FONT}"
 SEPARATOR_STYLE = f"color: {ds.MAIN_SEPARATOR}; font-size: 24px; margin: 0 2px;"
 
 SEPARATOR_TEXT = "|"
@@ -335,7 +335,8 @@ def layout_items() -> list:
         items.append({"kind": "separator"})
         items.append({"kind": "spacing", "px": SEPARATOR_GAP_PX})
         items.append({"kind": "layout", "column": column["key"]})
-    items.append({"kind": "stretch"})
+    if TRAILING_STRETCH:
+        items.append({"kind": "stretch"})
     return items
 
 
@@ -353,6 +354,8 @@ def build_view_model(model: Optional[SpendableProfitsModel] = None) -> dict:
             "column_spacing_px": COLUMN_SPACING_PX,
             "separator_gap_px": SEPARATOR_GAP_PX,
             "dot_align": DOT_ALIGN,
+            "column_align": COLUMN_ALIGN,
+            "column_stretch": COLUMN_STRETCH,
             "trailing_stretch": TRAILING_STRETCH,
         },
         "separator": {

@@ -55,8 +55,11 @@ LABEL_ALIGN = "hcenter|bottom"
 VALUE_ALIGN = "hcenter|top"
 DOT_ALIGN = "hcenter"
 
-LABEL_STYLE = f"font-size: 10px; color: {ds.MAIN_CAPTION};"
-VALUE_STYLE = f"font-size: 14px; font-weight: bold; color: {ds.PRIMARY};"
+LABEL_FONT = "font-size: 10px; letter-spacing: 1px; font-weight: 600;"
+VALUE_FONT = "font-size: 14px; font-weight: bold;"
+
+LABEL_STYLE = f"color: {ds.MAIN_CAPTION}; {LABEL_FONT}"
+VALUE_STYLE = f"color: {ds.PRIMARY}; {VALUE_FONT}"
 LABEL_PROPERTY = "muted"
 VALUE_PROPERTY = "heading"
 

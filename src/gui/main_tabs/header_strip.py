@@ -311,7 +311,8 @@ class HeaderStripMixin:
         )
 
         card_class = _stat_card_class()
-        self._stat_scrummed = card_class("Scrummed", "$0.00")
+        caption = {card["key"]: card["label"] for card in surface.COUNTER_CARDS}
+        self._stat_scrummed = card_class(caption["scrummed"], "$0.00")
         self._stat_scrummed.setToolTip(
             "Total Scrummed (high score) — cumulative USD sold "
             "across all bots since the platform run started. Grows "
