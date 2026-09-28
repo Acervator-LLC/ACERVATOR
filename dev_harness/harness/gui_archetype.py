@@ -50,7 +50,9 @@ from __future__ import annotations
 
 import ast
 import json
+import math
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -894,6 +896,563 @@ def _scan_model_only_colour_asserts(path: Path, tree: ast.AST) -> list[Finding]:
     return findings
 
 
+_GROUND_RULE = "GUI010"
+
+# The Web Content Accessibility Guidelines linearise each sRGB channel before
+# weighting it; a plain channel average returns a different number.
+_SRGB_KNEE = 0.04045
+_SRGB_KNEE_DIVISOR = 12.92
+_SRGB_GAMMA_OFFSET = 0.055
+_SRGB_GAMMA_SCALE = 1.055
+_SRGB_GAMMA_EXPONENT = 2.4
+_LUMINANCE_WEIGHTS = (0.2126, 0.7152, 0.0722)
+
+# Contrast ratio adds this to both luminances, so the ratio runs 1 to 21.
+_CONTRAST_FLARE = 0.05
+
+# Web Content Accessibility Guidelines, Contrast (Minimum) at level AA.
+_CONTRAST_TEXT_MIN = 4.5
+_CONTRAST_LARGE_TEXT_MIN = 3.0
+
+# Large-scale text in Contrast (Minimum): 18 point, or 14 point bold.
+_LARGE_TEXT_PX = 24.0
+_LARGE_BOLD_TEXT_PX = 18.66
+
+# CIE 1976 L*a*b*, D65 white point, and the just-noticeable difference Mahy,
+# Van Eycken and Oosterlinck measured for delta E in it.
+_D65_WHITE = (0.95047, 1.0, 1.08883)
+_LAB_EPSILON = 216.0 / 24389.0
+_LAB_KAPPA = 24389.0 / 27.0
+_DELTA_E_JND = 2.3
+
+# Angular separations the published harmonies stand at on the hue circle:
+# analogous, triadic, split-complementary and complementary.
+_HARMONY_SEPARATIONS = (30.0, 120.0, 150.0, 180.0)
+_HARMONY_TOLERANCE_DEG = 1.0
+
+#: The module whose named tokens are the declared palette every ground is
+#: judged against. It is itself exempt, being the declaration.
+_PALETTE_MODULE = "src/gui/design_system.py"
+
+_HEX_COLOUR = re.compile(r"#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})\b")
+
+_CSS_DECLARATION = re.compile(
+    r"(?<![-\w])(background-color|background|color|border(?:-[a-z]+)*)\s*:\s*([^;{}]+)"
+)
+
+_CSS_FONT_SIZE = re.compile(r"(?<![-\w])font-size\s*:\s*([0-9.]+)\s*(px|pt)")
+
+_CSS_BOLD = re.compile(r"(?<![-\w])font-weight\s*:\s*(bold|[6-9]00)")
+
+#: A name carrying one of these declares a ground, so its colours are read as
+#: the grounds of one column.
+_GROUND_NAME_MARKS = ("GROUND", "BACKGROUND", "_BG", "BG_")
+
+#: A name carrying one of these holds what sits on a ground, not the ground, so
+#: `TRANCHE_ROW_BORDER_BY_BG` maps borders and is not a set of grounds.
+_SITTER_NAME_MARKS = ("BORDER", "OUTLINE", "TEXT", "FOREGROUND", "LINE", "EDGE")
+
+_GROUND_SETTERS = frozenset({"setBackground"})
+_MARK_SETTERS = frozenset({"setForeground"})
+
+_COLOUR_WRAPPERS = frozenset({"QColor", "QBrush", "rgba", "_rgba"})
+
+
+def _rgb_of(text: str) -> tuple[int, int, int] | None:
+    """``text``'s first hex colour as three 0-255 channels, or None."""
+    found = _HEX_COLOUR.search(text or "")
+    if found is None:
+        return None
+    digits = found.group(0)[1:]
+    if len(digits) in (3, 4):
+        digits = "".join(ch * 2 for ch in digits[:3])
+    digits = digits[:6]
+    return (int(digits[0:2], 16), int(digits[2:4], 16), int(digits[4:6], 16))
+
+
+def _linear_channel(value: int) -> float:
+    """One sRGB channel linearised as the contrast definition linearises it."""
+    scaled = value / 255.0
+    if scaled <= _SRGB_KNEE:
+        return scaled / _SRGB_KNEE_DIVISOR
+    return ((scaled + _SRGB_GAMMA_OFFSET) / _SRGB_GAMMA_SCALE) ** _SRGB_GAMMA_EXPONENT
+
+
+def _relative_luminance(rgb: tuple[int, int, int]) -> float:
+    """``rgb``'s relative luminance, the weighted sum of its linear channels."""
+    parts = [_linear_channel(channel) for channel in rgb]
+    return sum(w * p for w, p in zip(_LUMINANCE_WEIGHTS, parts))
+
+
+def _contrast_ratio(one: tuple[int, int, int], other: tuple[int, int, int]) -> float:
+    """The contrast ratio between two colours, from 1 to 21."""
+    first = _relative_luminance(one)
+    second = _relative_luminance(other)
+    lighter, darker = max(first, second), min(first, second)
+    return (lighter + _CONTRAST_FLARE) / (darker + _CONTRAST_FLARE)
+
+
+def _xyz(rgb: tuple[int, int, int]) -> tuple[float, float, float]:
+    """``rgb``'s CIE XYZ tristimulus values under the D65 white point."""
+    red, green, blue = (_linear_channel(channel) for channel in rgb)
+    return (
+        0.4124564 * red + 0.3575761 * green + 0.1804375 * blue,
+        0.2126729 * red + 0.7151522 * green + 0.0721750 * blue,
+        0.0193339 * red + 0.1191920 * green + 0.9503041 * blue,
+    )
+
+
+def _lab_component(ratio: float) -> float:
+    """One CIE 1976 L*a*b* component of a tristimulus ratio."""
+    if ratio > _LAB_EPSILON:
+        return ratio ** (1.0 / 3.0)
+    return (_LAB_KAPPA * ratio + 16.0) / 116.0
+
+
+def _lab(rgb: tuple[int, int, int]) -> tuple[float, float, float]:
+    """``rgb`` in CIE 1976 L*a*b*, the space distances are judged in."""
+    x, y, z = _xyz(rgb)
+    fx, fy, fz = (
+        _lab_component(x / _D65_WHITE[0]),
+        _lab_component(y / _D65_WHITE[1]),
+        _lab_component(z / _D65_WHITE[2]),
+    )
+    return (116.0 * fy - 16.0, 500.0 * (fx - fy), 200.0 * (fy - fz))
+
+
+def _delta_e(one: tuple[int, int, int], other: tuple[int, int, int]) -> float:
+    """The CIE 1976 delta E between two colours, a perceptual distance."""
+    first, second = _lab(one), _lab(other)
+    return math.sqrt(sum((a - b) ** 2 for a, b in zip(first, second)))
+
+
+def _hue_angle(rgb: tuple[int, int, int]) -> float:
+    """``rgb``'s hue angle in degrees on the CIE 1976 L*a*b* hue circle."""
+    _, a_star, b_star = _lab(rgb)
+    return math.degrees(math.atan2(b_star, a_star)) % 360.0
+
+
+def _chroma(rgb: tuple[int, int, int]) -> float:
+    """``rgb``'s chroma, its distance from the neutral axis in L*a*b*."""
+    _, a_star, b_star = _lab(rgb)
+    return math.sqrt(a_star * a_star + b_star * b_star)
+
+
+def _hue_separation(one: tuple[int, int, int], other: tuple[int, int, int]) -> float:
+    """The shorter arc in degrees between two hue angles, 0 to 180."""
+    gap = abs(_hue_angle(one) - _hue_angle(other)) % 360.0
+    return min(gap, 360.0 - gap)
+
+
+def _is_harmony_of(ground: tuple[int, int, int], token: tuple[int, int, int]) -> bool:
+    """Whether ``ground`` stands at a published harmony separation from ``token``.
+
+    Both carry chroma above the just-noticeable difference, since a hue angle is
+    indeterminate for an achromatic colour, and lightness and chroma hold within
+    that difference so only the hue is turned.
+    """
+    ground_chroma, token_chroma = _chroma(ground), _chroma(token)
+    if ground_chroma <= _DELTA_E_JND or token_chroma <= _DELTA_E_JND:
+        return False
+    lit, _, _ = _lab(ground)
+    token_lit, _, _ = _lab(token)
+    if abs(lit - token_lit) > _DELTA_E_JND:
+        return False
+    if abs(ground_chroma - token_chroma) > _DELTA_E_JND:
+        return False
+    turn = _hue_separation(ground, token)
+    return any(
+        abs(turn - separation) <= _HARMONY_TOLERANCE_DEG
+        for separation in _HARMONY_SEPARATIONS
+    )
+
+
+def _names_a_ground(name: str) -> bool:
+    """Whether ``name`` names a ground and does not name what sits on one."""
+    upper = name.upper()
+    if any(mark in upper for mark in _SITTER_NAME_MARKS):
+        return False
+    return any(mark in upper for mark in _GROUND_NAME_MARKS)
+
+
+def _module_hex_constants(tree: ast.AST) -> dict[str, str]:
+    """Every module-level name in ``tree`` that resolves to a hex colour."""
+    found: dict[str, str] = {}
+    for node in ast.iter_child_nodes(tree):
+        if not isinstance(node, ast.Assign) or len(node.targets) != 1:
+            continue
+        target = node.targets[0]
+        if not isinstance(target, ast.Name):
+            continue
+        text = _resolved_colour_text(node.value, found)
+        if text is not None:
+            found[target.id] = text
+    return found
+
+
+def _resolved_colour_text(node: ast.AST, known: dict[str, str]) -> str | None:
+    """The hex colour ``node`` resolves to, from ``known`` or from the palette.
+
+    A name the module does not declare is looked up as a palette token, so
+    `ds.SURFACE_1` and a directly imported `SURFACE_1` both resolve.
+    """
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value if _HEX_COLOUR.search(node.value) else None
+    if isinstance(node, ast.Name):
+        return known.get(node.id) or _declared_palette().get(node.id)
+    if isinstance(node, ast.Attribute):
+        return known.get(node.attr) or _declared_palette().get(node.attr)
+    if isinstance(node, ast.Call):
+        name = node.func.attr if isinstance(node.func, ast.Attribute) else None
+        if isinstance(node.func, ast.Name):
+            name = node.func.id
+        if name in _COLOUR_WRAPPERS and node.args:
+            return _resolved_colour_text(node.args[0], known)
+    return None
+
+
+_PALETTE_CACHE: dict[str, dict[str, str]] = {}
+
+
+def _declared_palette() -> dict[str, str]:
+    """The palette module's named tokens, each mapped to its hex value."""
+    held = _PALETTE_CACHE.get(_PALETTE_MODULE)
+    if held is not None:
+        return held
+    # Set before parsing: `_module_hex_constants` reads this cache back, and an
+    # unset entry would send it here again.
+    _PALETTE_CACHE[_PALETTE_MODULE] = {}
+    path = REPO_ROOT / _PALETTE_MODULE
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8", errors="replace"))
+    except (OSError, SyntaxError):
+        return {}
+    tokens = _module_hex_constants(tree)
+    _PALETTE_CACHE[_PALETTE_MODULE] = tokens
+    return tokens
+
+
+def _palette_token_for(ground: tuple[int, int, int]) -> str | None:
+    """The palette token ``ground`` holds, or one it is a published harmony of."""
+    for name, text in _declared_palette().items():
+        token = _rgb_of(text)
+        if token is not None and token == ground:
+            return name
+    for name, text in _declared_palette().items():
+        token = _rgb_of(text)
+        if token is not None and _is_harmony_of(ground, token):
+            return name
+    return None
+
+
+def _nearest_palette_token(ground: tuple[int, int, int]) -> tuple[str, float]:
+    """The palette token nearest ``ground`` by delta E, and that distance."""
+    best, distance = "", float("inf")
+    for name, text in _declared_palette().items():
+        token = _rgb_of(text)
+        if token is None:
+            continue
+        gap = _delta_e(ground, token)
+        if gap < distance:
+            best, distance = name, gap
+    return (best, distance)
+
+
+def _style_text(node: ast.AST, known: dict[str, str]) -> str | None:
+    """``node``'s declaration text, with every resolvable colour written in."""
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    if not isinstance(node, ast.JoinedStr):
+        return None
+    parts: list[str] = []
+    for piece in node.values:
+        if isinstance(piece, ast.Constant) and isinstance(piece.value, str):
+            parts.append(piece.value)
+        elif isinstance(piece, ast.FormattedValue):
+            parts.append(_resolved_colour_text(piece.value, known) or "\u0000")
+        else:
+            parts.append("\u0000")
+    return "".join(parts)
+
+
+#: Contrast (Minimum) exempts text in an inactive component, so a block on this
+#: state is not read.
+_INACTIVE_STATE = ":disabled"
+
+
+def _declaration_blocks(text: str) -> list[tuple[str, str]]:
+    """Each selector and its block in ``text``, or the whole of it when it has none.
+
+    A style sheet naming several selectors pairs a ground with the colour in
+    its own block; `QTabBar::tab:hover` never sits on `QTabWidget::pane`.
+    """
+    found = [
+        (match.group(1), match.group(2))
+        for match in re.finditer(r"([^{}]*)\{([^{}]*)\}", text)
+    ]
+    return found if found else [("", text)]
+
+
+def _declared_colours(text: str) -> tuple[list[str], list[str]]:
+    """The ground colours and the colours that sit on them in one declaration block.
+
+    A `border` colour is left out: the guidelines measure a boundary against the
+    adjacent colour, and one block names only the fill on one of its two sides.
+    """
+    grounds: list[str] = []
+    sitters: list[str] = []
+    for prop, value in _CSS_DECLARATION.findall(text):
+        if _HEX_COLOUR.search(value) is None:
+            continue
+        if prop in ("background", "background-color"):
+            grounds.append(value)
+        elif prop == "color":
+            sitters.append(value)
+    return (grounds, sitters)
+
+
+def _text_floor(text: str) -> float:
+    """The contrast floor the text in one declaration block must reach."""
+    found = _CSS_FONT_SIZE.search(text)
+    if found is None:
+        return _CONTRAST_TEXT_MIN
+    size = float(found.group(1))
+    pixels = size if found.group(2) == "px" else size * 96.0 / 72.0
+    bold = _CSS_BOLD.search(text) is not None
+    if pixels >= _LARGE_TEXT_PX or (bold and pixels >= _LARGE_BOLD_TEXT_PX):
+        return _CONTRAST_LARGE_TEXT_MIN
+    return _CONTRAST_TEXT_MIN
+
+
+def _contrast_finding(
+    path: Path,
+    line: int,
+    ground: tuple[int, int, int],
+    sitter: tuple[int, int, int],
+    floor: float,
+) -> Finding:
+    """One GUI010 finding for a ground that does not carry what sits on it."""
+    ratio = _contrast_ratio(ground, sitter)
+    return Finding(
+        tool="gui-static",
+        severity="high",
+        file=str(path),
+        line=line,
+        rule_id=_GROUND_RULE,
+        message=(
+            f"ground #{'%02x%02x%02x' % ground} carries #"
+            f"{'%02x%02x%02x' % sitter} at {ratio:.2f} to 1. The Web Content "
+            f"Accessibility Guidelines set {floor:g} to 1 under Contrast "
+            f"(Minimum) at level AA. Take a ground from {_PALETTE_MODULE} that "
+            f"reaches it, or lighten the colour that sits on it."
+        ),
+    )
+
+
+def _palette_finding(path: Path, line: int, ground: tuple[int, int, int]) -> Finding:
+    """One GUI010 finding for a ground the declared palette does not hold."""
+    name, gap = _nearest_palette_token(ground)
+    near = f"{name} at delta E {gap:.1f}" if name else "no token"
+    return Finding(
+        tool="gui-static",
+        severity="high",
+        file=str(path),
+        line=line,
+        rule_id=_GROUND_RULE,
+        message=(
+            f"ground #{'%02x%02x%02x' % ground} is not a token in "
+            f"{_PALETTE_MODULE} and stands at no published harmony separation "
+            f"from one on the CIE 1976 L*a*b* hue circle. Nearest token: "
+            f"{near}. Name a token instead of writing the hex value."
+        ),
+    )
+
+
+def _set_finding(path: Path, line: int, name: str, count: int, gap: float) -> Finding:
+    """One GUI010 finding for a column given more than one ground."""
+    return Finding(
+        tool="gui-static",
+        severity="high",
+        file=str(path),
+        line=line,
+        rule_id=_GROUND_RULE,
+        message=(
+            f"{name} gives one column {count} grounds, the nearest pair "
+            f"{gap:.1f} apart by delta E in CIE 1976 L*a*b*. One column takes "
+            f"ONE ground so every mark on it reads against the same colour. "
+            f"Replace the set with a single token from {_PALETTE_MODULE}."
+        ),
+    )
+
+
+def _distinct_grounds(
+    colours: list[tuple[int, int, int]],
+) -> tuple[list[tuple[int, int, int]], float]:
+    """The colours in ``colours`` that differ perceptually, and the nearest gap."""
+    kept: list[tuple[int, int, int]] = []
+    nearest = float("inf")
+    for colour in colours:
+        gaps = [_delta_e(colour, held) for held in kept]
+        if gaps:
+            nearest = min(nearest, min(gaps))
+        if all(gap > _DELTA_E_JND for gap in gaps):
+            kept.append(colour)
+    return (kept, 0.0 if nearest == float("inf") else nearest)
+
+
+def _ground_set_faults(
+    path: Path, tree: ast.AST, known: dict[str, str]
+) -> list[Finding]:
+    """Every ground-named collection in ``tree`` that carries several grounds."""
+    faults: list[Finding] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Assign) or len(node.targets) != 1:
+            continue
+        target = node.targets[0]
+        if not isinstance(target, ast.Name):
+            continue
+        if not _names_a_ground(target.id):
+            continue
+        held = node.value
+        members: list[ast.AST] = []
+        if isinstance(held, ast.Dict):
+            members = [v for v in held.values if v is not None]
+        elif isinstance(held, (ast.List, ast.Tuple, ast.Set)):
+            members = list(held.elts)
+        colours = []
+        for member in members:
+            text = _resolved_colour_text(member, known)
+            rgb = _rgb_of(text) if text else None
+            if rgb is not None:
+                colours.append(rgb)
+        kept, nearest = _distinct_grounds(colours)
+        if len(kept) > 1:
+            faults.append(
+                _set_finding(path, node.lineno, target.id, len(kept), nearest)
+            )
+    return faults
+
+
+def _named_ground_faults(
+    path: Path, tree: ast.AST, known: dict[str, str]
+) -> list[Finding]:
+    """Every ground-named single colour in ``tree`` the palette does not hold."""
+    faults: list[Finding] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Assign) or len(node.targets) != 1:
+            continue
+        target = node.targets[0]
+        if not isinstance(target, ast.Name):
+            continue
+        if not _names_a_ground(target.id):
+            continue
+        text = _resolved_colour_text(node.value, known)
+        ground = _rgb_of(text) if text else None
+        if ground is not None and _palette_token_for(ground) is None:
+            faults.append(_palette_finding(path, node.lineno, ground))
+    return faults
+
+
+def _style_ground_faults(
+    path: Path, tree: ast.AST, known: dict[str, str]
+) -> list[Finding]:
+    """Every declaration block in ``tree`` whose ground fails what sits on it."""
+    faults: list[Finding] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.Constant, ast.JoinedStr)):
+            continue
+        text = _style_text(node, known)
+        if not text or "background" not in text:
+            continue
+        for selector, block in _declaration_blocks(text):
+            if _INACTIVE_STATE in selector.lower():
+                continue
+            grounds, sitters = _declared_colours(block)
+            floor = _text_floor(block)
+            for ground_text in grounds:
+                ground = _rgb_of(ground_text)
+                if ground is None:
+                    continue
+                for sitter_text in sitters:
+                    sitter = _rgb_of(sitter_text)
+                    if sitter is not None and _contrast_ratio(ground, sitter) < floor:
+                        faults.append(
+                            _contrast_finding(path, node.lineno, ground, sitter, floor)
+                        )
+    return faults
+
+
+def _setter_colours(
+    fn: ast.AST, names: frozenset[str], known: dict[str, str]
+) -> list[tuple[int, tuple[int, int, int]]]:
+    """Every colour ``fn`` hands one of ``names``, with the call's line."""
+    local = dict(known)
+    for node in ast.walk(fn):
+        if isinstance(node, ast.Assign) and len(node.targets) == 1:
+            target = node.targets[0]
+            if isinstance(target, ast.Name):
+                text = _resolved_colour_text(node.value, local)
+                if text is not None:
+                    local[target.id] = text
+    found: list[tuple[int, tuple[int, int, int]]] = []
+    for node in ast.walk(fn):
+        if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
+            continue
+        if node.func.attr not in names or not node.args:
+            continue
+        text = _resolved_colour_text(node.args[0], local)
+        rgb = _rgb_of(text) if text else None
+        if rgb is not None:
+            found.append((node.lineno, rgb))
+    return found
+
+
+def _cell_ground_faults(
+    path: Path, tree: ast.AST, known: dict[str, str]
+) -> list[Finding]:
+    """Every function in ``tree`` whose cell grounds fail the palette or a mark."""
+    faults: list[Finding] = []
+    for fn in ast.walk(tree):
+        if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        grounds = _setter_colours(fn, _GROUND_SETTERS, known)
+        if not grounds:
+            continue
+        marks = _setter_colours(fn, _MARK_SETTERS, known)
+        kept, nearest = _distinct_grounds([rgb for _, rgb in grounds])
+        if len(kept) > 1:
+            faults.append(
+                _set_finding(path, grounds[0][0], fn.name, len(kept), nearest)
+            )
+        for line, ground in grounds:
+            if _palette_token_for(ground) is None:
+                faults.append(_palette_finding(path, line, ground))
+            for _, mark in marks:
+                if _contrast_ratio(ground, mark) < _CONTRAST_TEXT_MIN:
+                    faults.append(
+                        _contrast_finding(path, line, ground, mark, _CONTRAST_TEXT_MIN)
+                    )
+    return faults
+
+
+def _scan_column_ground_colours(path: Path, tree: ast.AST) -> list[Finding]:
+    """GUI010 — a column takes one ground, from the palette, that carries its marks.
+
+    It reads three departures: a ground whose contrast with what sits on it
+    misses the published floor, a ground the declared palette neither holds nor
+    stands in a published harmony with, and a set giving one column several
+    grounds.
+    """
+    if str(path).replace("\\", "/").endswith(_PALETTE_MODULE):
+        return []
+    known = _module_hex_constants(tree)
+    findings = _style_ground_faults(path, tree, known)
+    findings.extend(_cell_ground_faults(path, tree, known))
+    findings.extend(_named_ground_faults(path, tree, known))
+    findings.extend(_ground_set_faults(path, tree, known))
+    return findings
+
+
 def _run_gui_static(target: Path) -> list[Finding]:
     """Static-analysis pass for PySide6 quality gotchas."""
     findings: list[Finding] = []
@@ -925,6 +1484,7 @@ def _run_gui_static(target: Path) -> list[Finding]:
         findings.extend(_scan_model_only_colour_asserts(f, tree))
         findings.extend(_scan_segmented_group_skin(f, tree))
         findings.extend(_scan_row_spare_width(f, tree))
+        findings.extend(_scan_column_ground_colours(f, tree))
     return findings
 
 
