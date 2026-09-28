@@ -1,12 +1,10 @@
 # Copyright (c) 2025 Anthony L. Brown (Ekthelius the Accumulator). All rights reserved.
 """Resolve the version of the ``src`` package.
 
-The version is derived, never written down. A source checkout answers from
-the nearest ``v<digit>...`` git tag; a frozen bundle carries no repository
-and answers from the value the build stamped into the package as
-``BAKED_FILENAME``. Only a tree sitting exactly on a version tag, with no
-modifications, reports a bare release number. Every other state carries a
-PEP 440 local segment after a ``+``.
+``RELEASE`` declares the release number for a tree with no tags, no history and
+no network. ``describe`` adds the build count and the commit as a PEP 440 local
+segment after a ``+``. ``UNRESOLVED_LOCAL`` names a count ``describe`` could not
+derive, and ``BAKED_FILENAME`` carries the value a build stamped in.
 """
 
 from __future__ import annotations
@@ -14,14 +12,16 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+RELEASE = "0.2.0"
+
 BAKED_FILENAME = "_baked_version.txt"
 DIRTY_SUFFIX = ".dirty"
-UNKNOWN_VERSION = "0.1.0+unknown"
-UNTAGGED_RELEASE = "0.1.0"
+UNRESOLVED_LOCAL = "unknown"
+UNKNOWN_VERSION = f"{RELEASE}+{UNRESOLVED_LOCAL}"
 
-# Without this glob `git describe --tags` answers with the nearest tag of
-# any kind, including local backup tags.
-TAG_GLOB = "v[0-9]*"
+# `git describe` answers for this one tag or not at all. A pattern admitting
+# any version tag lets a machine missing one count from an older tag.
+RELEASE_TAG = f"v{RELEASE}"
 
 _DESCRIBE_PARTS = 3
 
@@ -59,11 +59,11 @@ def describe(root: str | Path) -> str:
         from tools.gate import describe_tags
     except ImportError:
         return ""
-    return describe_tags(base, TAG_GLOB, DIRTY_SUFFIX)
+    return describe_tags(base, RELEASE_TAG, DIRTY_SUFFIX)
 
 
-def _split_describe(text: str) -> tuple[str, int, str] | None:
-    """Split ``v<tag>-<distance>-g<commit>`` into its three parts.
+def _split_describe(text: str) -> tuple[int, str] | None:
+    """Split ``v<tag>-<distance>-g<commit>`` into its distance and its commit.
 
     Splits from the right, so a tag that itself contains a hyphen keeps it.
     Returns None for the bare commit id that ``--always`` falls back to.
@@ -76,28 +76,27 @@ def _split_describe(text: str) -> tuple[str, int, str] | None:
         return None
     if not commit.startswith("g"):
         return None
-    return tag[1:], int(distance), commit
+    return int(distance), commit
 
 
 def format_describe(text: str) -> str:
     """Turn ``git describe`` output into the version string to report.
 
-    A bare release comes back only from distance zero on a clean tree.
-    Distance, a modified tree and an unreachable version tag each add a
+    ``RELEASE`` is the whole number before the ``+``. A distance, a modified
+    tree and a ``RELEASE_TAG`` that ``describe`` could not reach each add a
     local segment.
     """
     dirty = text.endswith(DIRTY_SUFFIX)
     core = text[: -len(DIRTY_SUFFIX)] if dirty else text
     split = _split_describe(core)
     if split is None:
-        release = UNTAGGED_RELEASE
-        local = ["dev", f"g{core}"]
+        local = [UNRESOLVED_LOCAL] + ([f"g{core}"] if core else [])
     else:
-        release, distance, commit = split
+        distance, commit = split
         local = [] if distance == 0 else ["dev", str(distance), commit]
     if dirty:
         local.append("dirty")
-    return f"{release}+{'.'.join(local)}" if local else release
+    return f"{RELEASE}+{'.'.join(local)}" if local else RELEASE
 
 
 def baked_path(root: str | Path) -> Path:
