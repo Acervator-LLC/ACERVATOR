@@ -124,18 +124,18 @@ STAFF_HALF_BOTTOM = 0.031
 FINIAL_Y = -0.93
 FINIAL_RADIUS = 0.044
 
-WING_ROOT = (0.046, -0.74)
-WING_BEND = (0.24, -1.00)
-WING_TIP = (0.54, -0.92)
-WING_LOBES = 4
-WING_LOBE_STEPS = 5
-WING_LOBE_DEPTH = 0.082
-WING_LOBE_TAPER = 0.55
+WING_ROOT = (0.046, -0.76)
+WING_BEND = (0.28, -1.04)
+WING_TIP = (0.58, -0.92)
+WING_LOBES = 8
+WING_LOBE_DEPTH = 0.026
+WING_LOBE_TAPER = 0.40
+WING_FEATHER_RAKE = 0.10
 
 COMPASS_HINGE_Y = -0.66
 COMPASS_HINGE_RADIUS = 0.072
 COMPASS_HINGE_INNER = 0.030
-COMPASS_POINT = (0.50, 0.94)
+COMPASS_POINT = (0.50, 0.90)
 COMPASS_HALF_HINGE = 0.082
 COMPASS_HALF_POINT = 0.066
 COMPASS_LEG_STEPS = 10
@@ -181,21 +181,23 @@ AURA_LICK_POWER = 3.2
 AURA_TIP_SHARE = 1.78
 AURA_FLAME_STEPS = 12
 
-SERPENT_HEAD_Y = -0.66
-SERPENT_TAIL_Y = 0.44
-SERPENT_BOW = 0.275
-SERPENT_COILS = 1.5
-SERPENT_STEPS = 72
-SERPENT_HALF_HEAD = 0.034
-SERPENT_HALF_TAIL = 0.009
-SERPENT_SNOUT = (0.150, -0.060)
-SERPENT_JAW = (0.150, 0.032)
-SERPENT_TONGUE = (0.250, -0.020)
-SERPENT_TONGUE_FORK = 0.040
-SERPENT_TONGUE_HALF = 0.007
-SERPENT_EYE_OFFSET = (0.072, -0.022)
-SERPENT_EYE_RADIUS = 0.017
-SERPENT_BROW_SHARE = 0.52
+SERPENT_HEAD_Y = -0.60
+SERPENT_TAIL_Y = 0.62
+SERPENT_BOW = 0.135
+SERPENT_COILS = 1.75
+SERPENT_STEPS = 84
+SERPENT_HALF_MIN = 0.010
+SERPENT_HALF_SWELL = 0.032
+SERPENT_TAPER_POWER = 0.62
+SERPENT_HALF_HEAD = 0.028
+SERPENT_SNOUT = (0.090, -0.140)
+SERPENT_JAW = (0.078, -0.030)
+SERPENT_TONGUE = (0.148, -0.232)
+SERPENT_TONGUE_FORK = 0.030
+SERPENT_TONGUE_HALF = 0.008
+SERPENT_EYE_OFFSET = (0.042, -0.078)
+SERPENT_EYE_RADIUS = 0.016
+SERPENT_BROW_SHARE = 0.55
 SERPENT_BROW_LIFT = 1.30
 
 SCALE_BEAM_Y = 0.56
@@ -215,7 +217,7 @@ SCALE_SWING_RATE = 4.2
 SCALE_SETTLE_TAU_S = 0.9
 SCALE_SETTLE_LIMIT_S = 5.0
 
-SCYTHE_BUTT = (-0.24, 0.94)
+SCYTHE_BUTT = (-0.24, 0.90)
 SCYTHE_BEND = (-0.60, 0.44)
 SCYTHE_HEAD = (-0.74, -0.06)
 SCYTHE_NECK = (-0.72, -0.30)
@@ -226,23 +228,19 @@ SCYTHE_GRIP_AT = 0.42
 SCYTHE_GRIP_HALF = 0.044
 SCYTHE_GRIP_SPAN = 0.07
 
-FEATHER_QUILL = (-0.54, -0.54)
-FEATHER_TIP = (-0.12, -0.54)
-FEATHER_HALF_BASE = 0.022
-FEATHER_HALF_TIP = 0.004
-FEATHER_VANE_UPPER = 0.118
-FEATHER_VANE_LOWER = 0.082
-FEATHER_VANE_TAPER = 0.62
-FEATHER_LOWER_SPAN = (0.04, 0.97)
-FEATHER_UPPER_SPANS = ((0.04, 0.47), (0.60, 0.97))
-FEATHER_SPLIT_SPAN = (0.47, 0.60)
-FEATHER_SPLIT_BARBS = 3
-FEATHER_BARBS = 15
-FEATHER_BARB_RAKE_DEGREES = 42.0
-FEATHER_BARB_SHARE = 0.94
-FEATHER_BARB_HALF_ROOT = 0.0075
-FEATHER_BARB_HALF_TIP = 0.0012
-FEATHER_VANE_STEPS = 24
+BLADE_BACK_BEND = (-0.60, -0.70)
+BLADE_EDGE_BEND = (-0.40, -0.28)
+BLADE_TIP = (-0.11, -0.54)
+BLADE_STEPS = 24
+BLADE_SPLIT_FROM_SHARE = 0.40
+BLADE_SPLIT_TO_SHARE = 0.62
+BLADE_SPLIT_DEPTH = 0.46
+BLADE_RACHIS_HALF = 0.009
+BLADE_BARBS = 9
+BLADE_BARB_FROM_SHARE = 0.12
+BLADE_BARB_TO_SHARE = 0.92
+BLADE_BARB_REACH = 0.62
+BLADE_BARB_HALF = 0.0045
 
 STAFF_ALPHA_SHARE = 0.88
 WING_ALPHA_SHARE = 0.92
@@ -553,22 +551,6 @@ def _ribbon_faces(points: list, half_start: Any, half_end: Any, bands: int) -> l
     return _strip(left, right, bands)
 
 
-def _vane_edges(points: list, side: int, width: Any, span: tuple) -> tuple:
-    """The outer edge and the rachis spine of one vane lobe, over `span` of it."""
-    count = len(points)
-    edge: list = []
-    spine: list = []
-    for index, point in enumerate(points):
-        share = index / (count - 1) if count > 1 else 0.0
-        if share < span[0] or share > span[1]:
-            continue
-        nx, ny = _normal(points[max(index - 1, 0)], points[min(index + 1, count - 1)])
-        half = width * math.sin(math.pi * share) ** FEATHER_VANE_TAPER
-        edge.append([point[0] + nx * half * side, point[1] + ny * half * side])
-        spine.append([point[0], point[1]])
-    return edge, spine
-
-
 def _lens_edges(
     centre_y: Any, half_width: Any, up: Any, down: Any, steps: int
 ) -> tuple:
@@ -596,28 +578,39 @@ def _slit_edges(half_width: Any, steps: int) -> tuple:
 
 
 def _wing_edges() -> tuple:
-    """The wing's curved leading edge and its `WING_LOBES` scalloped trailing edge."""
+    """A rigid leading edge, and a trailing edge broken into `WING_LOBES` feather tips."""
     lead = _quadratic(WING_ROOT, WING_BEND, WING_TIP, _steps(CURVE_STEPS))
+    chord_x = WING_ROOT[0] - WING_TIP[0]
+    chord_y = WING_ROOT[1] - WING_TIP[1]
+    reach = math.hypot(chord_x, chord_y)
+    run = (chord_x / reach, chord_y / reach)
+    down = (-run[1], run[0])
+    if down[1] < 0:
+        down = (run[1], -run[0])
     trail: list = []
     for lobe in range(WING_LOBES):
         at = lobe / WING_LOBES
         to = (lobe + 1) / WING_LOBES
-        start = (
-            WING_TIP[0] + (WING_ROOT[0] - WING_TIP[0]) * at,
-            WING_TIP[1] + (WING_ROOT[1] - WING_TIP[1]) * at,
-        )
-        end = (
-            WING_TIP[0] + (WING_ROOT[0] - WING_TIP[0]) * to,
-            WING_TIP[1] + (WING_ROOT[1] - WING_TIP[1]) * to,
-        )
+        start = [
+            WING_TIP[0] + chord_x * at,
+            WING_TIP[1] + chord_y * at,
+        ]
+        end = [
+            WING_TIP[0] + chord_x * to,
+            WING_TIP[1] + chord_y * to,
+        ]
         depth = WING_LOBE_DEPTH * (1.0 - at * WING_LOBE_TAPER)
-        bend = ((start[0] + end[0]) / 2, (start[1] + end[1]) / 2 + depth)
-        trail.extend(_quadratic(start, bend, end, _steps(WING_LOBE_STEPS)))
+        rake = WING_FEATHER_RAKE * reach / WING_LOBES
+        tip = [
+            (start[0] + end[0]) / 2 + down[0] * depth - run[0] * rake,
+            (start[1] + end[1]) / 2 + down[1] * depth - run[1] * rake,
+        ]
+        trail.extend([start, tip, end])
     trail.reverse()
     samples = _steps(WING_SAMPLES)
     return (
         _resample([[point[0], point[1]] for point in lead], samples),
-        _resample([[point[0], point[1]] for point in trail], samples),
+        _resample(trail, samples),
     )
 
 
@@ -683,7 +676,10 @@ def serpent_coils(phase: Any) -> list:
 
 
 def _serpent_half(share: Any) -> Any:
-    return SERPENT_HALF_HEAD + (SERPENT_HALF_TAIL - SERPENT_HALF_HEAD) * share
+    """The serpent's half-width: thin at the head, swelling through the coil."""
+    return SERPENT_HALF_MIN + SERPENT_HALF_SWELL * math.sin(
+        math.pi * share**SERPENT_TAPER_POWER
+    )
 
 
 def _pan_edges(centre_x: Any, centre_y: Any) -> tuple:
@@ -950,6 +946,56 @@ def compass_faces() -> list:
     ]
 
 
+def _blade_edges() -> tuple:
+    """The blade's back and its cutting edge, the split vane notched into the back."""
+    steps = _steps(BLADE_STEPS)
+    back = [
+        [point[0], point[1]]
+        for point in _quadratic(SCYTHE_NECK, BLADE_BACK_BEND, BLADE_TIP, steps)
+    ]
+    edge = [
+        [point[0], point[1]]
+        for point in _quadratic(SCYTHE_NECK, BLADE_EDGE_BEND, BLADE_TIP, steps)
+    ]
+    opens = int(BLADE_SPLIT_FROM_SHARE * steps)
+    closes = int(BLADE_SPLIT_TO_SHARE * steps)
+    notched: list = []
+    for index, point in enumerate(back):
+        if index < opens or index > closes:
+            notched.append(point)
+            continue
+        across = (index - opens) / max(1, closes - opens)
+        pull = BLADE_SPLIT_DEPTH * math.sin(math.pi * across)
+        notched.append(_between(point, edge[index], pull))
+    return notched, edge
+
+
+def _blade_barbs(back: list, edge: list) -> list:
+    """Short barbs off the blade's mid-line, so the plume reads inside the outline."""
+    groups: list = []
+    steps = len(back) - 1
+    first = int(BLADE_BARB_FROM_SHARE * steps)
+    last = int(BLADE_BARB_TO_SHARE * steps)
+    for step in range(BLADE_BARBS):
+        index = first + (last - first) * step // max(1, BLADE_BARBS - 1)
+        spine = _between(back[index], edge[index], 0.5)
+        for toward in (back[index], edge[index]):
+            groups.append(
+                (
+                    _ribbon_faces(
+                        [spine, _between(spine, toward, BLADE_BARB_REACH)],
+                        BLADE_BARB_HALF,
+                        BLADE_BARB_HALF,
+                        BARB_BANDS,
+                    ),
+                    CYAN,
+                    FEATHER_BARB_ALPHA_SHARE,
+                    0.0,
+                )
+            )
+    return groups
+
+
 def scythe_faces() -> list:
     """One tool: a shaft with a grip, a neck, and the feather of Ma'at as its blade."""
     shaft = [
@@ -959,14 +1005,10 @@ def scythe_faces() -> list:
         )
     ]
     neck = _resample([list(SCYTHE_HEAD), list(SCYTHE_NECK)], _steps(HANGER_STEPS))
-    rachis = [
-        [point[0], point[1]]
-        for point in _quadratic(
-            SCYTHE_NECK, FEATHER_QUILL, FEATHER_TIP, _steps(FEATHER_VANE_STEPS)
-        )
-    ]
     grip_at = int(SCYTHE_GRIP_AT * (len(shaft) - 1))
     grip_to = min(len(shaft) - 1, grip_at + max(1, int(SCYTHE_GRIP_SPAN * len(shaft))))
+    back, edge = _blade_edges()
+    spine = [_between(back[i], edge[i], 0.5) for i in range(len(back))]
     groups = [
         (
             _ribbon_faces(shaft, SCYTHE_HALF_BUTT, SCYTHE_HALF_HEAD, FACET_BANDS),
@@ -991,87 +1033,15 @@ def scythe_faces() -> list:
             SCYTHE_ALPHA_SHARE,
             0.0,
         ),
+        (_strip(back, edge, FACET_BANDS), CYAN, SCYTHE_ALPHA_SHARE, 0.0),
         (
-            _ribbon_faces(rachis, FEATHER_HALF_BASE, FEATHER_HALF_TIP, FACET_BANDS),
-            CYAN,
+            _ribbon_faces(spine, BLADE_RACHIS_HALF, BLADE_RACHIS_HALF, BARB_BANDS),
+            PUPIL_RGB,
             SCYTHE_ALPHA_SHARE,
             0.0,
         ),
     ]
-    for span in FEATHER_UPPER_SPANS:
-        edge, spine = _vane_edges(rachis, 1, FEATHER_VANE_UPPER, span)
-        groups.append(
-            (
-                _strip(edge, spine, FACET_BANDS),
-                CYAN,
-                FEATHER_VANE_ALPHA_SHARE,
-                0.0,
-            )
-        )
-    edge, spine = _vane_edges(rachis, -1, FEATHER_VANE_LOWER, FEATHER_LOWER_SPAN)
-    groups.append(
-        (_strip(edge, spine, FACET_BANDS), CYAN, FEATHER_VANE_ALPHA_SHARE, 0.0)
-    )
-    groups.extend(_feather_barb_groups(rachis))
-    return groups
-
-
-def _feather_barb_groups(rachis: list) -> list:
-    """The barbs raked back off the rachis, `FEATHER_SPLIT_BARBS` inside the split."""
-    groups: list = []
-    count = len(rachis) - 1
-    rake = math.radians(FEATHER_BARB_RAKE_DEGREES)
-    for step in range(1, FEATHER_BARBS + 1):
-        share = step / (FEATHER_BARBS + 1)
-        index = int(share * count)
-        point = rachis[index]
-        nx, ny = _normal(rachis[max(index - 1, 0)], rachis[min(index + 1, count)])
-        for side in (1.0, -1.0):
-            width = (FEATHER_VANE_UPPER if side > 0 else FEATHER_VANE_LOWER) * math.sin(
-                math.pi * share
-            ) ** FEATHER_VANE_TAPER
-            reach = width * FEATHER_BARB_SHARE
-            dx = nx * side * math.cos(rake) - ny * side * math.sin(rake)
-            dy = nx * side * math.sin(rake) + ny * side * math.cos(rake)
-            groups.append(
-                (
-                    _ribbon_faces(
-                        [
-                            [point[0], point[1]],
-                            [point[0] + dx * reach, point[1] + dy * reach],
-                        ],
-                        FEATHER_BARB_HALF_ROOT,
-                        FEATHER_BARB_HALF_TIP,
-                        BARB_BANDS,
-                    ),
-                    CYAN,
-                    FEATHER_BARB_ALPHA_SHARE,
-                    0.0,
-                )
-            )
-    span = FEATHER_SPLIT_SPAN[1] - FEATHER_SPLIT_SPAN[0]
-    for step in range(FEATHER_SPLIT_BARBS):
-        share = FEATHER_SPLIT_SPAN[0] + span * (step + 1) / (FEATHER_SPLIT_BARBS + 1)
-        index = int(share * count)
-        point = rachis[index]
-        nx, ny = _normal(rachis[max(index - 1, 0)], rachis[min(index + 1, count)])
-        reach = FEATHER_VANE_UPPER * FEATHER_BARB_SHARE
-        groups.append(
-            (
-                _ribbon_faces(
-                    [
-                        [point[0], point[1]],
-                        [point[0] + nx * reach, point[1] + ny * reach],
-                    ],
-                    FEATHER_BARB_HALF_ROOT,
-                    FEATHER_BARB_HALF_TIP,
-                    BARB_BANDS,
-                ),
-                CYAN,
-                FEATHER_BARB_ALPHA_SHARE,
-                0.0,
-            )
-        )
+    groups.extend(_blade_barbs(back, edge))
     return groups
 
 
