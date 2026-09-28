@@ -69,9 +69,6 @@ SCANLINE_ALPHA_CAP = 8
 SCANLINE_ALPHA_DIVISOR = 20
 
 LOGO_OFFSET_Y = -110
-LOGO_GLOW_MIN_ALPHA = 10
-LOGO_GLOW_RADIUS = 60
-LOGO_GLOW_ALPHA_DIVISOR = 8
 CYAN = (0, 255, 238)
 BLUE = (0, 170, 255)
 GREEN = (0, 255, 136)
@@ -92,8 +89,8 @@ MARK_ELEMENTS = (
     "scythe",
     "winged caduceus",
 )
-MARK_RADIUS = 78.0
-MARK_OFFSET_Y = -30.0
+MARK_RADIUS = 150.0
+MARK_OFFSET_Y = -93.0
 FULL_TURN_DEGREES = 360.0
 CURVE_STEPS = 18
 LENS_STEPS = 16
@@ -255,14 +252,6 @@ FEATHER_VANE_ALPHA_SHARE = 0.34
 FEATHER_BARB_ALPHA_SHARE = 0.62
 PUPIL_RGB = (6, 6, 14)
 
-PARTICLE_ANGLES = (60, 200, 320)
-PARTICLE_SPIN_SHARE = (1.2, -0.8)
-PARTICLE_RADIUS = 45
-PARTICLE_SIZE = 6
-PARTICLE_TRAILS = 3
-PARTICLE_TRAIL_STEP_DEGREES = 8
-PARTICLE_TRAIL_SIZE = 3
-PARTICLE_TRAIL_ALPHA_DIVISOR = 3
 
 TITLE = "ACERVATOR"
 TITLE_FONT = ("Segoe UI", 32)
@@ -1281,46 +1270,7 @@ def paint_ops(t: Any, width: Any, height: Any, version: Optional[str] = None) ->
     spin = spin_degrees(t)
     pulse = pulse_scale(t)
 
-    if logo_a > LOGO_GLOW_MIN_ALPHA:
-        glow_r = int(LOGO_GLOW_RADIUS * pulse)
-        ops.append(["pen_style", NO_PEN])
-        ops.append(["brush_colour", _rgba(CYAN, logo_a // LOGO_GLOW_ALPHA_DIVISOR)])
-        ops.append(
-            [
-                "ellipse",
-                [cx - glow_r, logo_y - glow_r, glow_r * 2, glow_r * 2],
-            ]
-        )
-
     ops.extend(sigil_ops(cx, logo_y + MARK_OFFSET_Y, logo_a, spin, pulse, t))
-
-    ops.append(["pen_style", NO_PEN])
-    half = PARTICLE_SIZE / 2
-    trail_half = PARTICLE_TRAIL_SIZE / 2
-    for index, base_angle in enumerate(PARTICLE_ANGLES):
-        share = PARTICLE_SPIN_SHARE[0] if index % 2 == 0 else PARTICLE_SPIN_SHARE[1]
-        angle = base_angle + spin * share
-        ex = cx + PARTICLE_RADIUS * pulse * math.cos(math.radians(angle))
-        ey = logo_y + PARTICLE_RADIUS * pulse * math.sin(math.radians(angle))
-        ops.append(["brush_colour", _rgba(GREEN, logo_a)])
-        ops.append(["ellipse", [ex - half, ey - half, PARTICLE_SIZE, PARTICLE_SIZE]])
-        for trail in range(1, PARTICLE_TRAILS + 1):
-            behind = angle - trail * PARTICLE_TRAIL_STEP_DEGREES
-            tx = cx + PARTICLE_RADIUS * pulse * math.cos(math.radians(behind))
-            ty = logo_y + PARTICLE_RADIUS * pulse * math.sin(math.radians(behind))
-            faded = max(0, logo_a // (trail * PARTICLE_TRAIL_ALPHA_DIVISOR))
-            ops.append(["brush_colour", _rgba(GREEN, faded)])
-            ops.append(
-                [
-                    "ellipse",
-                    [
-                        tx - trail_half,
-                        ty - trail_half,
-                        PARTICLE_TRAIL_SIZE,
-                        PARTICLE_TRAIL_SIZE,
-                    ],
-                ]
-            )
 
     ops.append(
         [

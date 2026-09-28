@@ -956,14 +956,6 @@ def main() -> int:
             spin = t * 15
             pulse = 1.0 + 0.05 * math.sin(t * 2.5)
 
-            if logo_a > 10:
-                glow_r = int(60 * pulse)
-                p.setPen(Qt.NoPen)
-                p.setBrush(QColor(0, 255, 238, logo_a // 8))
-                p.drawEllipse(
-                    QRectF(cx - glow_r, logo_y - glow_r, glow_r * 2, glow_r * 2)
-                )
-
             splash_painter.replay(
                 p,
                 splash_painter.mark_ops(
@@ -975,20 +967,6 @@ def main() -> int:
                     t,
                 ),
             )
-
-            p.setPen(Qt.NoPen)
-            for i, base_angle in enumerate([60, 200, 320]):
-                ea = base_angle + spin * (1.2 if i % 2 == 0 else -0.8)
-                ex = cx + 45 * pulse * math.cos(math.radians(ea))
-                ey = logo_y + 45 * pulse * math.sin(math.radians(ea))
-                p.setBrush(QColor(0, 255, 136, logo_a))
-                p.drawEllipse(QRectF(ex - 3, ey - 3, 6, 6))
-                for trail in range(1, 4):
-                    ta = ea - trail * 8
-                    tx = cx + 45 * pulse * math.cos(math.radians(ta))
-                    ty = logo_y + 45 * pulse * math.sin(math.radians(ta))
-                    p.setBrush(QColor(0, 255, 136, max(0, logo_a // (trail * 3))))
-                    p.drawEllipse(QRectF(tx - 1.5, ty - 1.5, 3, 3))
 
             glow_i = int(60 + 30 * math.sin(t * 2.0))
             p.setPen(QColor(0, 255, 210, min(title_a, glow_i + 140)))
