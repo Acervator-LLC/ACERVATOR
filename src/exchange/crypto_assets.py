@@ -57,6 +57,9 @@ COIN_INDEX_ID_KEY = "coin_id"
 COIN_INDEX_CHOSEN_KEY = "chosen_by"
 COIN_INDEX_SITE_KEY = "site"
 COIN_INDEX_SITE_REASON_KEY = "site_reason"
+#: The project name recorded for one ticker, which ``choose_coin`` settles a
+#: shared ticker by and ``coin_candidates`` looks a coin id up under.
+COIN_INDEX_NAME_KEY = "name"
 
 #: The only scheme a site is written at and read back at. ``openable_url``
 #: allows http as well, and a browser is only ever handed an https address.
