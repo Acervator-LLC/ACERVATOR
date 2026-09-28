@@ -964,29 +964,6 @@ def main() -> int:
                     QRectF(cx - glow_r, logo_y - glow_r, glow_r * 2, glow_r * 2)
                 )
 
-            pen = QPen(QColor(0, 255, 238, logo_a))
-            pen.setWidthF(2.0)
-            p.setPen(pen)
-            p.setBrush(Qt.NoBrush)
-            r = 45 * pulse
-            p.drawEllipse(QRectF(cx - r, logo_y - r, r * 2, r * 2))
-
-            pen.setColor(QColor(0, 170, 255, int(logo_a * 0.6)))
-            pen.setWidthF(1.5)
-            p.setPen(pen)
-            ri = 28 * pulse
-            p.drawEllipse(QRectF(cx - ri, logo_y - ri, ri * 2, ri * 2))
-
-            pen.setColor(QColor(0, 255, 136, int(logo_a * 0.5)))
-            pen.setWidthF(1.2)
-            p.setPen(pen)
-            for rot_angle in [30 + spin, -30 - spin * 0.7]:
-                p.save()
-                p.translate(cx, logo_y)
-                p.rotate(rot_angle)
-                p.drawEllipse(QRectF(-52, -17, 104, 34))
-                p.restore()
-
             splash_painter.replay(
                 p, splash_painter.mark_ops(cx, logo_y, logo_a, spin, pulse, t)
             )

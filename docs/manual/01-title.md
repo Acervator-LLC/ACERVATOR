@@ -30,6 +30,20 @@ font, and the splash screen paints it where a single letter used to sit.
 
 The aura carries thirteen points, and the count is deliberate.
 
+### The maxim on the legs
+
+Each compass leg is engraved with one word, cut dark into the metal and reading
+from the hinge downward.
+
+| Leg | Word | Meaning |
+|---|---|---|
+| Left | SOLVE | dissolve |
+| Right | COAGULA | reform |
+
+Together they are the alchemical maxim *solve et coagula*. It is the platform's
+own cycle: a position is dissolved when the excess above the target is sold, and
+reformed larger when the dip is bought back.
+
 ### How it is built
 
 Each element has its own generator in

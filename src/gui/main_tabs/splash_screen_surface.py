@@ -68,7 +68,7 @@ SCANLINE_RGB = (255, 255, 255)
 SCANLINE_ALPHA_CAP = 8
 SCANLINE_ALPHA_DIVISOR = 20
 
-LOGO_OFFSET_Y = -110
+LOGO_OFFSET_Y = -150
 LOGO_GLOW_MIN_ALPHA = 10
 LOGO_GLOW_RADIUS = 60
 LOGO_GLOW_ALPHA_DIVISOR = 8
@@ -76,17 +76,6 @@ CYAN = (0, 255, 238)
 BLUE = (0, 170, 255)
 GREEN = (0, 255, 136)
 AMBER = (255, 200, 80)
-
-OUTER_RING_RADIUS = 45
-OUTER_RING_WIDTH = 2.0
-INNER_RING_RADIUS = 28
-INNER_RING_WIDTH = 1.5
-INNER_RING_ALPHA_SHARE = 0.6
-ORBIT_WIDTH = 1.2
-ORBIT_ALPHA_SHARE = 0.5
-ORBIT_ANGLES = (30, -30)
-ORBIT_TRAIL_SPIN_SHARE = 0.7
-ORBIT_RECT = (-52, -17, 104, 34)
 
 SPIN_DEGREES_PER_S = 15
 PULSE_BASE = 1.0
@@ -103,7 +92,7 @@ MARK_ELEMENTS = (
     "scythe",
     "winged caduceus",
 )
-MARK_RADIUS = 40.0
+MARK_RADIUS = 78.0
 FULL_TURN_DEGREES = 360.0
 CURVE_STEPS = 18
 LENS_STEPS = 16
@@ -146,11 +135,22 @@ COMPASS_HINGE_Y = -0.66
 COMPASS_HINGE_RADIUS = 0.072
 COMPASS_HINGE_INNER = 0.030
 COMPASS_POINT = (0.50, 0.94)
-COMPASS_HALF_HINGE = 0.038
-COMPASS_HALF_POINT = 0.009
+COMPASS_HALF_HINGE = 0.082
+COMPASS_HALF_POINT = 0.066
 COMPASS_LEG_STEPS = 10
-COMPASS_FOOT = 0.060
-COMPASS_FOOT_HALF = 0.020
+COMPASS_FOOT = 0.160
+COMPASS_FOOT_HALF = 0.056
+
+ETCH_LEFT_WORD = "SOLVE"
+ETCH_RIGHT_WORD = "COAGULA"
+ETCH_SIZE = 0.098
+ETCH_ADVANCE = 0.78
+ETCH_HALF = 0.0115
+ETCH_START = 0.63
+ETCH_END = 0.90
+ETCH_BIAS = 0.0
+ETCH_ALPHA_SHARE = 1.0
+ETCH_ARC_STEPS = 9
 
 EYE_CENTRE_Y = -0.02
 EYE_HALF_WIDTH = 0.300
@@ -796,6 +796,106 @@ def caduceus_faces(spin: Any, pulse: Any) -> list:
     return groups
 
 
+def _arc(
+    centre_x: Any,
+    centre_y: Any,
+    radius_x: Any,
+    radius_y: Any,
+    start: Any,
+    end: Any,
+) -> list:
+    steps = _steps(ETCH_ARC_STEPS)
+    out = []
+    for index in range(steps + 1):
+        degrees = start + (end - start) * index / steps
+        radians = math.radians(degrees)
+        out.append(
+            [
+                centre_x + radius_x * math.cos(radians),
+                centre_y + radius_y * math.sin(radians),
+            ]
+        )
+    return out
+
+
+def letter_strokes(letter: str) -> list:
+    """The strokes of one etched capital, in a box one unit tall and `ETCH_ADVANCE` wide."""
+    if letter == "S":
+        return [
+            [
+                [0.58, -0.30],
+                [0.40, -0.46],
+                [0.16, -0.38],
+                [0.14, -0.16],
+                [0.44, 0.00],
+                [0.52, 0.22],
+                [0.34, 0.44],
+                [0.08, 0.36],
+            ]
+        ]
+    if letter == "O":
+        return [_arc(0.32, 0.0, 0.26, 0.45, 0.0, FULL_TURN_DEGREES)]
+    if letter == "L":
+        return [[[0.13, -0.46], [0.13, 0.42], [0.56, 0.42]]]
+    if letter == "V":
+        return [[[0.05, -0.46], [0.32, 0.44], [0.59, -0.46]]]
+    if letter == "E":
+        return [
+            [[0.56, -0.46], [0.11, -0.46], [0.11, 0.42], [0.56, 0.42]],
+            [[0.11, -0.02], [0.46, -0.02]],
+        ]
+    if letter == "C":
+        return [_arc(0.34, 0.0, 0.26, 0.45, 55.0, 305.0)]
+    if letter == "A":
+        return [
+            [[0.03, 0.44], [0.32, -0.46], [0.61, 0.44]],
+            [[0.15, 0.13], [0.49, 0.13]],
+        ]
+    if letter == "G":
+        return [
+            _arc(0.34, 0.0, 0.26, 0.45, 55.0, 330.0),
+            [[0.60, 0.06], [0.38, 0.06]],
+        ]
+    if letter == "U":
+        return [
+            [[0.08, -0.46], [0.08, 0.14]]
+            + _arc(0.32, 0.14, 0.24, 0.30, 180.0, 360.0)
+            + [[0.56, 0.14], [0.56, -0.46]]
+        ]
+    return []
+
+
+def etched_faces(word: str, start: tuple, end: tuple) -> list:
+    """`word` laid along the line from `start` to `end`, as triangles on the leg."""
+    dx = end[0] - start[0]
+    dy = end[1] - start[1]
+    length = math.hypot(dx, dy)
+    if length < MIN_SEGMENT:
+        return []
+    along = (dx / length, dy / length)
+    across = (-along[1], along[0])
+    faces: list = []
+    span = (ETCH_END - ETCH_START) * length
+    written = len(word) * ETCH_ADVANCE * ETCH_SIZE
+    cursor = ETCH_START * length + max(0.0, span - written) / 2.0
+    for letter in word:
+        for stroke in letter_strokes(letter):
+            points = [
+                [
+                    start[0]
+                    + along[0] * (cursor + point[0] * ETCH_SIZE)
+                    + across[0] * point[1] * ETCH_SIZE,
+                    start[1]
+                    + along[1] * (cursor + point[0] * ETCH_SIZE)
+                    + across[1] * point[1] * ETCH_SIZE,
+                ]
+                for point in stroke
+            ]
+            faces.extend(_ribbon_faces(points, ETCH_HALF, ETCH_HALF, BARB_BANDS))
+        cursor += ETCH_ADVANCE * ETCH_SIZE
+    return faces
+
+
 def compass_faces() -> list:
     """The dividers: one hinge at the top and exactly two straight legs below it."""
     steps = _steps(COMPASS_LEG_STEPS)
@@ -816,11 +916,24 @@ def compass_faces() -> list:
         0.0,
         BARB_BANDS,
     )
+    hinge = (0.0, COMPASS_HINGE_Y)
     return [
         (leg, CYAN, COMPASS_ALPHA_SHARE, 0.0),
         (_mirrored_faces(leg), CYAN, COMPASS_ALPHA_SHARE, 0.0),
         (foot, CYAN, COMPASS_ALPHA_SHARE, 0.0),
         (_mirrored_faces(foot), CYAN, COMPASS_ALPHA_SHARE, 0.0),
+        (
+            etched_faces(ETCH_RIGHT_WORD, hinge, (COMPASS_POINT[0], COMPASS_POINT[1])),
+            PUPIL_RGB,
+            ETCH_ALPHA_SHARE,
+            ETCH_BIAS,
+        ),
+        (
+            etched_faces(ETCH_LEFT_WORD, hinge, (-COMPASS_POINT[0], COMPASS_POINT[1])),
+            PUPIL_RGB,
+            ETCH_ALPHA_SHARE,
+            ETCH_BIAS,
+        ),
         (
             _disc(0.0, COMPASS_HINGE_Y, COMPASS_HINGE_RADIUS),
             CYAN,
@@ -1207,29 +1320,6 @@ def paint_ops(t: Any, width: Any, height: Any, version: Optional[str] = None) ->
                 [cx - glow_r, logo_y - glow_r, glow_r * 2, glow_r * 2],
             ]
         )
-
-    ops.append(["pen", _rgba(CYAN, logo_a), OUTER_RING_WIDTH])
-    ops.append(["brush_style", NO_BRUSH])
-    outer_r = OUTER_RING_RADIUS * pulse
-    ops.append(["ellipse", [cx - outer_r, logo_y - outer_r, outer_r * 2, outer_r * 2]])
-
-    ops.append(
-        ["pen", _rgba(BLUE, int(logo_a * INNER_RING_ALPHA_SHARE)), INNER_RING_WIDTH]
-    )
-    inner_r = INNER_RING_RADIUS * pulse
-    ops.append(["ellipse", [cx - inner_r, logo_y - inner_r, inner_r * 2, inner_r * 2]])
-
-    ops.append(["pen", _rgba(GREEN, int(logo_a * ORBIT_ALPHA_SHARE)), ORBIT_WIDTH])
-    turned = (
-        ORBIT_ANGLES[0] + spin,
-        ORBIT_ANGLES[1] - spin * ORBIT_TRAIL_SPIN_SHARE,
-    )
-    for angle in turned:
-        ops.append(["save"])
-        ops.append(["translate", cx, logo_y])
-        ops.append(["rotate", angle])
-        ops.append(["ellipse", list(ORBIT_RECT)])
-        ops.append(["restore"])
 
     ops.extend(sigil_ops(cx, logo_y, logo_a, spin, pulse, t))
 
