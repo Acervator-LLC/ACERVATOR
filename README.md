@@ -8,6 +8,39 @@ If given feedback, specific errors or bugs, and code-related fixes or refinement
 
 - Thanks, Ekthelius / Tony 
 
+## Get the built application
+
+Every build is on the
+[Releases page](https://github.com/Acervator-LLC/ACERVATOR/releases). Nothing
+needs installing. No Python, no dependencies, no build step.
+
+Open the newest release and take one file. Choose by the middle column.
+
+| the file ends with | your computer | interface |
+|---|---|---|
+| `-qt-windows.zip` | Windows | Qt |
+| `-react-windows.zip` | Windows | React |
+| `-qt.dmg` | macOS | Qt |
+| `-react.dmg` | macOS | React |
+
+Both interfaces hold the same tabs and trade the same way. They differ only in
+how each one draws its screens.
+
+**On Windows.** Right-click the file you downloaded, choose Extract All, open
+the folder it makes, and double-click the program inside. Windows says *Windows
+protected your PC* the first time, because the file carries no paid
+code-signing certificate. Click *More info*, then *Run anyway*.
+
+**On a Mac.** Double-click the file you downloaded, then drag Acervator to the
+Applications folder. macOS refuses the first double-click, because the
+application carries no Apple Developer signature. Right-click the application,
+choose *Open*, then choose *Open* again in the dialog.
+
+Either warning appears once per download, not every launch.
+
+Acervator starts with no bots and no exchange keys, so it trades nothing until
+you add them. The Product Manual under `docs` explains the tabs.
+
 # ⬡ Acervator
 
 **Acervator - The Accumulation Trading Platform.** 

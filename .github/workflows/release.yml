@@ -1,0 +1,395 @@
+# Acervator release — the built applications, outside the repository.
+#
+# dist is 12 GB and is gitignored, so the builds cannot be tracked. This
+# workflow builds Windows and macOS on runners, launches every application it
+# built, and attaches four files to one release a visitor downloads.
+name: Release
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/release.yml
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    name: windows
+    runs-on: windows-latest
+    timeout-minutes: 120
+    env:
+      # Where a launched build writes its logs. Not the runner's own profile.
+      LAUNCH_ROOT: ${{ github.workspace }}\launch
+      # Seconds to wait for a build to report its window.
+      LAUNCH_WAIT_SECONDS: 180
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # src/_version.py runs `git describe`, so the tags have to be here.
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version-file: .python-version
+
+      - name: Report the runner and the version the build will carry
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Write-Host "runner: $([System.Environment]::OSVersion.VersionString)"
+          python -V
+          python -c "import src; print('version:', src.__version__)"
+          python -m tools.build_variants env-var
+          python -m tools.build_variants select
+          # resources/logos is gitignored, so a checkout carries none of it.
+          $logos = 0
+          if (Test-Path resources/logos) {
+            $logos = (Get-ChildItem resources/logos -Recurse -File).Count
+          }
+          Write-Host "logo files in the checkout: $logos"
+          if ($logos -ne 0) {
+            Write-Host "REFUSING: the checkout carries $logos logo files"
+            exit 1
+          }
+
+      - name: Build both variants
+        shell: cmd
+        # The argument list tools/build_launcher.py builds for this script.
+        run: powershell -ExecutionPolicy Bypass -File build_windows.ps1 -Variant qt,react
+
+      - name: Read every artefact back with its byte size
+        shell: pwsh
+        run: |
+          $fail = 0
+          Write-Host '=== dist ==='
+          Get-ChildItem dist | ForEach-Object { Write-Host "  $($_.Name)" }
+          foreach ($variant in @('qt', 'react')) {
+            $folder = Get-ChildItem -Path dist -Directory -Filter "*-$variant" |
+                      Select-Object -First 1
+            if (-not $folder) {
+              Write-Host "MISSING: no folder for the $variant variant"
+              $fail = 1
+              continue
+            }
+            $name = $folder.Name
+            $exe = Join-Path $folder.FullName "$name.exe"
+            if (-not (Test-Path $exe)) {
+              Write-Host "MISSING: $exe"
+              $fail = 1
+              continue
+            }
+            $bytes = (Get-ChildItem $folder.FullName -Recurse -File |
+                      Measure-Object -Property Length -Sum).Sum
+            Write-Host "$variant  folder   $name"
+            Write-Host "$variant  folder   $bytes bytes on disk"
+            Write-Host "$variant  exe      $((Get-Item $exe).Length) bytes"
+            $bakedVariant = Join-Path $folder.FullName '_internal\src\_baked_variant.txt'
+            $read = 'ABSENT'
+            if (Test-Path $bakedVariant) {
+              $read = (Get-Content $bakedVariant -Raw).Trim()
+            }
+            Write-Host "$variant  baked    $read"
+            if ($read -ne $variant) {
+              Write-Host "WRONG VARIANT BAKED into $name"
+              $fail = 1
+            }
+            $bakedVersion = Join-Path $folder.FullName '_internal\src\_baked_version.txt'
+            if (Test-Path $bakedVersion) {
+              Write-Host "$variant  version  $((Get-Content $bakedVersion -Raw).Trim())"
+            }
+            $logos = Join-Path $folder.FullName '_internal\resources\logos'
+            $logoCount = 0
+            if (Test-Path $logos) {
+              $logoCount = (Get-ChildItem $logos -Recurse -File).Count
+            }
+            Write-Host "$variant  logos    $logoCount"
+            if ($logoCount -ne 0) {
+              Write-Host "REFUSING: $logoCount logo files are inside $name"
+              $fail = 1
+            }
+            Write-Host ''
+          }
+          exit $fail
+
+      - name: Launch each executable and read what it reports about itself
+        shell: pwsh
+        run: |
+          $fail = 0
+          foreach ($variant in @('qt', 'react')) {
+            $folder = Get-ChildItem -Path dist -Directory -Filter "*-$variant" |
+                      Select-Object -First 1
+            $name = $folder.Name
+            $exe = Join-Path $folder.FullName "$name.exe"
+            $sandbox = Join-Path $env:LAUNCH_ROOT $variant
+            if (Test-Path $sandbox) { Remove-Item $sandbox -Recurse -Force }
+            New-Item -ItemType Directory -Force -Path $sandbox | Out-Null
+
+            # Path.home() reads USERPROFILE, so src/core/log_paths.py writes
+            # here, and no bot state file and no credential file exist.
+            $env:USERPROFILE = $sandbox
+            $env:HOME = $sandbox
+            $env:APPDATA = Join-Path $sandbox 'AppData\Roaming'
+            $env:LOCALAPPDATA = Join-Path $sandbox 'AppData\Local'
+            $env:ACERVATOR_DEBUG_BOOT = '1'
+
+            Write-Host '=============================================================='
+            Write-Host "=== launching the $variant build: $exe"
+            Write-Host "=== USERPROFILE is $sandbox"
+            Write-Host '=============================================================='
+            $proc = Start-Process -FilePath $exe -PassThru
+            Write-Host "pid $($proc.Id)"
+
+            $logs = Join-Path $sandbox '.acervator_logs'
+            $ready = 'timeout'
+            for ($second = 0; $second -lt [int]$env:LAUNCH_WAIT_SECONDS; $second++) {
+              if (Test-Path $logs) {
+                $hit = Get-ChildItem $logs -Recurse -File -ErrorAction SilentlyContinue |
+                       Select-String -SimpleMatch 'main window displayed' -List `
+                         -ErrorAction SilentlyContinue
+                if ($hit) { $ready = 'log'; break }
+              }
+              if ($proc.HasExited) { $ready = 'died'; break }
+              Start-Sleep -Seconds 1
+            }
+            Write-Host "--- the $variant build reported its window through: $ready"
+
+            if (Test-Path $logs) {
+              Write-Host '--- the log tree it created under its own profile ---'
+              Get-ChildItem $logs -Recurse -File |
+                Select-Object -First 40 |
+                ForEach-Object { Write-Host "  $($_.FullName)" }
+              $line = Get-ChildItem $logs -Recurse -File -ErrorAction SilentlyContinue |
+                      Select-String -SimpleMatch 'main window displayed' |
+                      Select-Object -First 1
+              if ($line) {
+                Write-Host "--- the line the running application wrote:"
+                Write-Host "    $($line.Line.Trim())"
+              }
+              # heartbeat.txt is written by the timer main.py starts, so its
+              # presence shows the event loop ran.
+              $beat = Get-ChildItem $logs -Recurse -Filter 'heartbeat.txt' `
+                        -ErrorAction SilentlyContinue | Select-Object -First 1
+              if ($beat) {
+                Write-Host "--- heartbeat.txt: $((Get-Content $beat.FullName -Raw).Trim())"
+              } else {
+                Write-Host '--- NO HEARTBEAT: the event loop never ran'
+              }
+              $system = Get-ChildItem $logs -Recurse -Filter 'system.log' `
+                          -ErrorAction SilentlyContinue | Select-Object -First 1
+              if ($system) {
+                Write-Host "--- the last 40 lines the $variant build logged ---"
+                Get-Content $system.FullName -Tail 40
+              } else {
+                Write-Host '--- NO system.log'
+              }
+            } else {
+              Write-Host '--- the build created no log tree'
+            }
+
+            if (-not $proc.HasExited) {
+              Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+            }
+            Wait-Process -Id $proc.Id -Timeout 30 -ErrorAction SilentlyContinue
+            $left = @(Get-Process -Name $name -ErrorAction SilentlyContinue).Count
+            Write-Host "--- reaped pid $($proc.Id); processes left: $left"
+
+            if ($ready -ne 'log') {
+              Write-Host "FAILURE: the $variant build never reported its main window"
+              $fail = 1
+            }
+            Write-Host ''
+          }
+          exit $fail
+
+      - name: Pack each build folder into the one file a visitor downloads
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Push-Location dist
+          foreach ($variant in @('qt', 'react')) {
+            $folder = Get-ChildItem -Directory -Filter "*-$variant" |
+                      Select-Object -First 1
+            $zip = "$($folder.Name)-windows.zip"
+            # 7z ships on the runner; Compress-Archive takes minutes at this size.
+            7z a -tzip -mx=5 -bso0 -bsp0 $zip $folder.Name
+            if ($LASTEXITCODE -ne 0) { throw "7z failed for the $variant variant" }
+            Write-Host "$zip  $((Get-Item $zip).Length) bytes"
+          }
+          Pop-Location
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: acervator-windows
+          path: dist/*-windows.zip
+          if-no-files-found: error
+          # The zips already hold compressed entries.
+          compression-level: 0
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: acervator-windows-launch-evidence
+          path: ${{ env.LAUNCH_ROOT }}
+          if-no-files-found: warn
+
+  macos:
+    name: macos
+    uses: ./.github/workflows/macos-build.yml
+
+  publish:
+    name: publish
+    needs: [windows, macos]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # src/_version.py runs `git describe`, so the tags have to be here.
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version-file: .python-version
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: acervator-windows
+          path: incoming
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: acervator-macos
+          path: incoming
+
+      - name: Name the release after the version the build stamped
+        run: |
+          set -euo pipefail
+          version="$(python -c 'import src; from tools.build_variants import sanitise; print(sanitise(src.__version__))')"
+          echo "the build stamps $version"
+          echo "version=$version" >> "$GITHUB_ENV"
+          # `v[0-9]*` is the glob src/_version.py matches, so a tag named this
+          # way cannot change the version the next build resolves.
+          echo "tag=build-$version" >> "$GITHUB_ENV"
+
+      - name: Refuse a set of files that do not all carry that version
+        run: |
+          set -uo pipefail
+          fail=0
+          found=0
+          echo "=== what the two builds handed over ==="
+          for asset in incoming/*-windows.zip incoming/*.dmg; do
+            [ -f "$asset" ] || continue
+            found=$((found + 1))
+            printf '%-60s %s bytes\n' "$(basename "$asset")" "$(stat -c%s "$asset")"
+            case "$(basename "$asset")" in
+              *"$version"*) ;;
+              *) echo "MISMATCH: $(basename "$asset") does not carry $version"
+                 fail=1 ;;
+            esac
+          done
+          echo "files to attach: $found"
+          if [ "$found" -ne 4 ]; then
+            echo "REFUSING: 4 files are expected, 2 per platform"
+            fail=1
+          fi
+          exit "$fail"
+
+      - name: Write what a visitor reads on the release page
+        shell: python
+        run: |
+          import os
+          from pathlib import Path
+
+          PLATFORM = {".zip": "Windows", ".dmg": "macOS"}
+          INTERFACE = {"qt": "Qt", "react": "React"}
+
+          version = os.environ["version"]
+          commit = os.environ["GITHUB_SHA"]
+          run_id = os.environ["GITHUB_RUN_ID"]
+          repository = os.environ["GITHUB_REPOSITORY"]
+
+          rows = []
+          for asset in sorted(Path("incoming").iterdir()):
+              if asset.suffix not in PLATFORM:
+                  continue
+              stem = asset.name.removesuffix("-windows.zip").removesuffix(asset.suffix)
+              variant = stem.rsplit("-", 1)[-1]
+              rows.append(
+                  f"| `{asset.name}` | {PLATFORM[asset.suffix]} | "
+                  f"{INTERFACE.get(variant, variant)} |"
+              )
+
+          notes = [
+              f"Acervator {version}, built from commit `{commit[:8]}` by "
+              f"[run {run_id}](https://github.com/{repository}/actions/runs/{run_id}).",
+              "",
+              "Nothing needs installing. No Python, no dependencies, no build.",
+              "",
+              "## Pick one file",
+              "",
+              "| file | your computer | interface |",
+              "|---|---|---|",
+              *rows,
+              "",
+              "Both interfaces trade the same way and hold the same tabs. Qt is the",
+              "one the author runs.",
+              "",
+              "## Windows",
+              "",
+              "Download the `.zip`, right-click it, choose Extract All, open the",
+              "folder it makes, and double-click the `.exe` inside.",
+              "",
+              "Windows shows **Windows protected your PC** the first time, because",
+              "the file carries no paid code-signing certificate. Click **More",
+              "info**, then **Run anyway**. That is once per download.",
+              "",
+              "## macOS",
+              "",
+              "Download the `.dmg`, double-click it, and drag Acervator to the",
+              "Applications folder.",
+              "",
+              "macOS refuses the first double-click, because the application",
+              "carries no Apple Developer signature. Right-click (or Control-click)",
+              "the application, choose **Open**, then choose **Open** again in the",
+              "dialog. That is once per download.",
+              "",
+              "## What it does on first run",
+              "",
+              "It opens with no bots and no exchange keys, so it trades nothing",
+              "until you add them. The Product Manual under `docs` explains the",
+              "tabs.",
+              "",
+          ]
+          Path("notes.md").write_text("\n".join(notes), encoding="utf-8")
+          print("\n".join(notes))
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # A second run of the same commit replaces its files rather than
+          # failing on a tag that already exists.
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            gh release edit "$tag" --repo "$GITHUB_REPOSITORY" \
+              --title "Acervator $version" --notes-file notes.md
+            gh release upload "$tag" --repo "$GITHUB_REPOSITORY" --clobber \
+              incoming/*-windows.zip incoming/*.dmg
+          else
+            gh release create "$tag" \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" \
+              --title "Acervator $version" \
+              --notes-file notes.md \
+              incoming/*-windows.zip incoming/*.dmg
+          fi
+          gh release view "$tag" --repo "$GITHUB_REPOSITORY" \
+            --json tagName,name,url,assets
