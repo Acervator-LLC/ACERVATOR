@@ -319,6 +319,25 @@ shows whether a build happened.
 def stamp_builder_dates(finished_at: float) -> list[str]: ...
 ```
 
+**Overtaken.** These two sentences stay whole here:
+
+> Two files at the repository root are the ones to open, one per variant. A third
+> builds both.
+
+> A build that finishes sets the modification date on both single-variant entry
+> points, and a build that fails sets nothing.
+
+Four files at the root are the ones to open, two per platform, and a fifth builds
+every variant for the platform it runs on. A finished build sets the date on its
+own platform's pair and never on the other, so a Windows date and a macOS date
+report different builds.
+
+```python
+BUILDER_NAMES = ("Qt_BUILD.py", "React_BUILD.py")   # tools/build_launcher.py
+MAC_BUILDER_NAMES = ("Qt_MAC_BUILD.py", "React_MAC_BUILD.py")
+def stamp_builder_dates(finished_at, names=BUILDER_NAMES) -> list[str]: ...
+```
+
 ### The macOS build runs on a runner, not on the operator's machine
 
 The operator's machine runs Windows, so no macOS build can be produced there. A
@@ -345,6 +364,22 @@ on:
       - tools/build_variants.py
       - tools/spec_common.py
       - .github/workflows/macos-build.yml
+```
+
+**Overtaken.** That sentence stays whole here:
+
+> Two things start it: a push that changes one of the files the macOS build reads,
+> and the Run workflow button on the repository's Actions tab.
+
+A third thing starts it, and it is the one the operator uses: a Mac builder at
+the repository root, double-clicked. Each one asks for a run on the branch his
+copy is on, or joins a run already going on that branch rather than starting a
+second one, because the workflow cancels an earlier run of the same group.
+
+```python
+VARIANT = QT                                    # Qt_MAC_BUILD.py
+VARIANT = REACT                                 # React_MAC_BUILD.py
+def launch_macos(variants: tuple[str, ...]) -> bool   # tools/build_launcher.py
 ```
 
 The run does not stop at a finished build. It reads the size of every bundle and
@@ -383,6 +418,26 @@ a visitor downloads one disk image and never a zip.
 ```
 a run page artefact   one zip holding both bundles and both disk images
 a release asset       one disk image, downloaded on its own
+```
+
+The operator downloads neither by hand. A Mac builder waits for its run, prints
+the elapsed time while it waits, then puts that variant's application and disk
+image straight into `dist` at the same level as the Windows folders, with no
+folder around them.
+
+```
+dist/Acervator-<version>-<variant>.app    what a Mac builder brings back
+dist/Acervator-<version>-<variant>.dmg    its disk image, in the same folder
+```
+
+On a Mac the disk image is the one to open. A bundle's internal links become
+copies inside the zip the run page serves, so the folder arrives without the
+permissions a Mac needs while the disk image keeps them. A builder that cannot
+reach GitHub prints which of the two reasons stopped it, and starts nothing.
+
+```python
+NOT_SIGNED_IN_NOTICE   # tools/build_launcher.py, gh answered exit 4
+NO_ANSWER_NOTICE       # every other non-zero answer from gh api
 ```
 
 ### What the first launch looks like
