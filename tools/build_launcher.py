@@ -2,17 +2,21 @@
 
 ``launch`` runs ``check_python``, ``check_and_install_deps`` and ``run_build``
 for the variants it is handed, then names the folders that run added under
-``dist``. The entry points at the repository root carry no build logic of
-their own; each hands its variants to ``launch``.
+``dist``. ``launch_macos`` builds the same variants on the macOS runner and
+brings each one's ``.app`` and ``.dmg`` back into ``dist``. The entry points at
+the repository root carry no build logic of their own; each hands its variants
+to ``launch`` or ``launch_macos``.
 """
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 
 # Every argv below runs `sys.executable` or a `shutil.which` result, so no
@@ -26,6 +30,29 @@ MACOS_BUILDER = "build_mac.sh"
 APP_SUFFIX = ".app"
 SMARTSCREEN_HELP_NAME = "IF_BLOCKED_READ_THIS.txt"
 BUILDER_NAMES = ("Qt_BUILD.py", "React_BUILD.py")
+MAC_BUILDER_NAMES = ("Qt_MAC_BUILD.py", "React_MAC_BUILD.py")
+DMG_SUFFIX = ".dmg"
+
+GH_EXE_NAME = "gh"
+MACOS_WORKFLOW = "macos-build.yml"
+MACOS_ARTIFACT = "acervator-macos"
+
+# `gh help` documents exit 4 as authentication required; every other non-zero
+# exit from `gh api` leaves the request unanswered.
+GH_NOT_SIGNED_IN_EXIT = 4
+GH_REACH_ENDPOINT = "rate_limit"
+
+GH_CALL_SECONDS = 120
+DOWNLOAD_SECONDS = 1800
+RUN_APPEARS_SECONDS = 180
+RUN_POLL_SECONDS = 15
+RUN_CEILING_SECONDS = 3600
+RUN_LIST_LIMIT = "30"
+SECONDS_PER_MINUTE = 60
+
+LIVE_RUN_STATES = frozenset(
+    {"queued", "in_progress", "waiting", "requested", "pending"}
+)
 
 # Selects the core dependency set plus the `build` and `report` extras, which
 # is what a PyInstaller host installs.
@@ -109,6 +136,43 @@ GATEKEEPER_NOTICE = """
   That is once per build. Later launches open normally.
 ------------------------------------------------------------
 """
+
+
+NOT_SIGNED_IN_NOTICE = """
+------------------------------------------------------------
+  YOU ARE NOT SIGNED IN TO GITHUB
+
+  The Mac build runs on GitHub's macOS computers, so this
+  needs you signed in.
+
+  1. Open a terminal
+  2. Run:  gh auth login
+  3. Choose GitHub.com, then HTTPS, then log in with a browser
+  4. Double-click this builder again
+------------------------------------------------------------
+"""
+
+NO_ANSWER_NOTICE = """
+------------------------------------------------------------
+  GITHUB DID NOT ANSWER
+
+  The Mac build runs on GitHub's macOS computers, so this
+  needs a working internet connection.
+
+  1. Check the connection
+  2. Double-click this builder again
+------------------------------------------------------------
+"""
+
+DISK_IMAGE_NOTICE = """
+  On a Mac, open the .dmg. A .dmg keeps the file permissions
+  a Mac needs; the .app folder beside it is downloaded as
+  plain files and does not.
+"""
+
+
+class MacBuildError(RuntimeError):
+    """Carries the one line ``launch_macos`` prints when a step cannot go on."""
 
 
 def required_python() -> tuple[int, int]:
@@ -358,10 +422,16 @@ def disk_images(skip: frozenset[str] = frozenset()) -> list[str]:
     )
 
 
-def stamp_builder_dates(finished_at: float) -> list[str]:
-    """Set both ``BUILDER_NAMES`` mtimes under ``PROJECT_ROOT`` to ``finished_at``."""
+def stamp_builder_dates(
+    finished_at: float, names: tuple[str, ...] = BUILDER_NAMES
+) -> list[str]:
+    """Set each ``names`` mtime under ``PROJECT_ROOT`` to ``finished_at``.
+
+    ``names`` defaults to ``BUILDER_NAMES``; ``launch_macos`` passes
+    ``MAC_BUILDER_NAMES`` so a Mac build never moves a Windows builder's date.
+    """
     stamped = []
-    for name in BUILDER_NAMES:
+    for name in names:
         path = os.path.join(PROJECT_ROOT, name)
         if not os.path.exists(path):
             print(f"  NOTE: {name} is not under {PROJECT_ROOT}; its date is unchanged.")
@@ -511,18 +581,298 @@ def launch(variants: tuple[str, ...]) -> bool:
     return True
 
 
+def gh_exe() -> str:
+    """Return the absolute gh path ``shutil.which`` resolves, or ''."""
+    return shutil.which(GH_EXE_NAME) or ""
+
+
+def gh_output(
+    argv: list[str], timeout: int = GH_CALL_SECONDS
+) -> subprocess.CompletedProcess:
+    """Run gh with ``argv`` from ``PROJECT_ROOT`` and capture what it printed."""
+    return subprocess.run(
+        [gh_exe(), *argv],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=timeout,
+    )
+
+
+def gh_said(result: subprocess.CompletedProcess) -> str:
+    """Return the text ``result`` carries on either stream, stripped."""
+    return (result.stderr or result.stdout or "").strip()
+
+
+def github_reach() -> tuple[int, str]:
+    """Return the exit code and text ``GH_REACH_ENDPOINT`` answered gh with.
+
+    A timeout answers 1 so the caller reads it as GitHub not answering.
+    """
+    try:
+        result = gh_output(["api", GH_REACH_ENDPOINT])
+    except subprocess.TimeoutExpired:
+        return 1, f"gh api did not answer within {GH_CALL_SECONDS} seconds"
+    return result.returncode, gh_said(result)
+
+
+def current_branch() -> str:
+    """Return the branch ``git rev-parse`` names for ``PROJECT_ROOT``, or ''."""
+    git = shutil.which("git")
+    if not git:
+        return ""
+    result = subprocess.run(
+        [git, "rev-parse", "--abbrev-ref", "HEAD"],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=GH_CALL_SECONDS,
+    )
+    named = result.stdout.strip()
+    if result.returncode != 0 or named == "HEAD":
+        return ""
+    return named
+
+
+def macos_runs(ref: str) -> list[dict]:
+    """Return the ``MACOS_WORKFLOW`` runs gh lists for ``ref``, newest first."""
+    result = gh_output(
+        [
+            "run",
+            "list",
+            "--workflow",
+            MACOS_WORKFLOW,
+            "--branch",
+            ref,
+            "--limit",
+            RUN_LIST_LIMIT,
+            "--json",
+            "databaseId,status,conclusion,url",
+        ]
+    )
+    if result.returncode != 0:
+        raise MacBuildError(gh_said(result))
+    return json.loads(result.stdout or "[]")
+
+
+def live_macos_run(ref: str) -> dict | None:
+    """Return the newest ``macos_runs`` entry on ``ref`` still in ``LIVE_RUN_STATES``."""
+    for run in macos_runs(ref):
+        if run.get("status") in LIVE_RUN_STATES:
+            return run
+    return None
+
+
+def start_macos_run(ref: str) -> dict:
+    """Start ``MACOS_WORKFLOW`` on ``ref`` and return the run gh then lists for it."""
+    known = {run["databaseId"] for run in macos_runs(ref)}
+    started = gh_output(["workflow", "run", MACOS_WORKFLOW, "--ref", ref])
+    if started.returncode != 0:
+        raise MacBuildError(gh_said(started))
+    deadline = time.monotonic() + RUN_APPEARS_SECONDS
+    while time.monotonic() < deadline:
+        for run in macos_runs(ref):
+            if run["databaseId"] not in known:
+                return run
+        time.sleep(RUN_POLL_SECONDS)
+    raise MacBuildError(
+        f"the run started on {ref} but gh listed no new run "
+        f"within {RUN_APPEARS_SECONDS} seconds"
+    )
+
+
+def wait_for_run(run_id: int) -> str:
+    """Print the elapsed time and status until ``run_id`` ends, returning its conclusion.
+
+    Raises ``MacBuildError`` once the wait passes ``RUN_CEILING_SECONDS``.
+    """
+    started = time.monotonic()
+    while True:
+        elapsed = int(time.monotonic() - started)
+        if elapsed > RUN_CEILING_SECONDS:
+            raise MacBuildError(
+                f"run {run_id} was still going after {RUN_CEILING_SECONDS} seconds"
+            )
+        result = gh_output(["run", "view", str(run_id), "--json", "status,conclusion"])
+        if result.returncode != 0:
+            raise MacBuildError(gh_said(result))
+        seen = json.loads(result.stdout or "{}")
+        status = str(seen.get("status") or "unknown")
+        minutes, seconds = divmod(elapsed, SECONDS_PER_MINUTE)
+        print(f"  [{minutes:02d}:{seconds:02d}] the Mac build is {status}", flush=True)
+        if status not in LIVE_RUN_STATES:
+            return str(seen.get("conclusion") or status)
+        time.sleep(RUN_POLL_SECONDS)
+
+
+def bundle_bytes(path: str) -> int:
+    """Return the size of ``path``, summing every file under it when it is a folder."""
+    if os.path.isfile(path):
+        return os.path.getsize(path)
+    total = 0
+    for folder, _subfolders, files in os.walk(path):
+        for name in files:
+            found = os.path.join(folder, name)
+            if os.path.isfile(found) and not os.path.islink(found):
+                total += os.path.getsize(found)
+    return total
+
+
+def free_dist_path(name: str) -> str:
+    """Return a ``dist_dir`` path for ``name``, adding -2 before its suffix when taken.
+
+    Nothing already under ``dist_dir`` is replaced or removed.
+    """
+    stem, suffix = os.path.splitext(name)
+    candidate = os.path.join(dist_dir(), name)
+    ordinal = 2
+    while os.path.exists(candidate):
+        candidate = os.path.join(dist_dir(), f"{stem}-{ordinal}{suffix}")
+        ordinal += 1
+    return candidate
+
+
+def collect_run_artifact(run_id: int, variant: str) -> list[str]:
+    """Move ``variant``'s ``APP_SUFFIX`` and ``DMG_SUFFIX`` items from ``run_id`` into dist.
+
+    The whole ``MACOS_ARTIFACT`` downloads to a temporary folder first, so only
+    the named ``variant`` reaches ``dist_dir``.
+    """
+    os.makedirs(dist_dir(), exist_ok=True)
+    staging = tempfile.mkdtemp(prefix="acervator-macos-")
+    try:
+        got = gh_output(
+            [
+                "run",
+                "download",
+                str(run_id),
+                "--name",
+                MACOS_ARTIFACT,
+                "--dir",
+                staging,
+            ],
+            timeout=DOWNLOAD_SECONDS,
+        )
+        if got.returncode != 0:
+            raise MacBuildError(gh_said(got))
+        wanted = (f"-{variant}{APP_SUFFIX}", f"-{variant}{DMG_SUFFIX}")
+        landed = []
+        for name in sorted(os.listdir(staging)):
+            if not name.endswith(wanted):
+                continue
+            destination = free_dist_path(name)
+            shutil.move(os.path.join(staging, name), destination)
+            landed.append(destination)
+        if not landed:
+            raise MacBuildError(
+                f"run {run_id} carried no {variant} application or disk image"
+            )
+        return landed
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
+
+
+def launch_macos(variants: tuple[str, ...]) -> bool:
+    """Build ``variants`` on the macOS runner and land each one's items in ``dist``.
+
+    Returns False with ``NOT_SIGNED_IN_NOTICE`` or ``NO_ANSWER_NOTICE`` when gh
+    cannot reach GitHub, and False with the reason when a step raises
+    ``MacBuildError``.
+    """
+    try:
+        os.chdir(PROJECT_ROOT)
+    except OSError as exc:
+        print(f"  NOTE: could not change directory to {PROJECT_ROOT}: {exc}")
+
+    print(HEADER)
+    print(f"  Surface: {', '.join(variants)}   Platform: macOS")
+
+    print("\n[1/4] Checking GitHub...")
+    if not gh_exe():
+        print(f"\n  ERROR: {GH_EXE_NAME} not found on PATH.")
+        print("  The Mac build runs on GitHub and needs the GitHub CLI.")
+        print("  Install it from https://cli.github.com/")
+        return False
+    code, said = github_reach()
+    if code == GH_NOT_SIGNED_IN_EXIT:
+        print(NOT_SIGNED_IN_NOTICE)
+        print(f"  gh said: {said}")
+        return False
+    if code != 0:
+        print(NO_ANSWER_NOTICE)
+        print(f"  gh said: {said}")
+        return False
+    print(f"  Signed in, and GitHub answered {GH_REACH_ENDPOINT}.")
+
+    ref = current_branch()
+    if not ref:
+        print("\n  ERROR: this copy is on no named branch, so there is no")
+        print("  branch for GitHub to build. Check out a branch and retry.")
+        return False
+    print(f"  Branch: {ref}")
+
+    try:
+        print("\n[2/4] Starting the Mac build...")
+        run = live_macos_run(ref)
+        if run is None:
+            run = start_macos_run(ref)
+            print(f"  Started run {run['databaseId']}")
+        else:
+            print(f"  Joined run {run['databaseId']}, already building")
+        print(f"  Watch it at: {run['url']}")
+
+        print("\n[3/4] Waiting. A Mac build takes about 13 minutes.")
+        conclusion = wait_for_run(run["databaseId"])
+        if conclusion != "success":
+            print(f"\n  The Mac build ended as: {conclusion}")
+            print(f"  Read what failed at: {run['url']}")
+            return False
+
+        print(f"\n[4/4] Bringing run {run['databaseId']} into {dist_dir()}...")
+        landed = []
+        for variant in variants:
+            landed += collect_run_artifact(run["databaseId"], variant)
+    except (MacBuildError, subprocess.TimeoutExpired, json.JSONDecodeError) as exc:
+        print(f"\n  ERROR: {exc}")
+        return False
+
+    stamped = stamp_builder_dates(time.time(), MAC_BUILDER_NAMES)
+    if stamped:
+        print(f"\n  Build date set on: {', '.join(stamped)}")
+    for path in landed:
+        print(f"\n  Build complete: {path}")
+        print(f"  Size: {bundle_bytes(path):,} bytes")
+    print(f"\n  From run {run['databaseId']}: {run['url']}")
+    print(DISK_IMAGE_NOTICE)
+    print(GATEKEEPER_NOTICE)
+    return True
+
+
 __all__ = [
     "APP_SUFFIX",
     "BUILDER_NAMES",
     "CONSUMER",
     "DEFENDER_PROMPT_SECONDS",
+    "DISK_IMAGE_NOTICE",
+    "DMG_SUFFIX",
     "GATEKEEPER_NOTICE",
+    "GH_NOT_SIGNED_IN_EXIT",
+    "GH_REACH_ENDPOINT",
     "HEADER",
+    "LIVE_RUN_STATES",
+    "MACOS_ARTIFACT",
     "MACOS_BUILDER",
+    "MACOS_WORKFLOW",
+    "MAC_BUILDER_NAMES",
+    "NOT_SIGNED_IN_NOTICE",
+    "NO_ANSWER_NOTICE",
     "PROJECT_ROOT",
     "SMARTSCREEN_HELP",
     "SMARTSCREEN_NOTICE",
     "WINDOWS_BUILDER",
+    "MacBuildError",
     "add_defender_exclusion",
     "application_path",
     "bash_exe",
@@ -530,19 +880,32 @@ __all__ = [
     "build_folder_names",
     "build_outputs",
     "builder_name",
+    "bundle_bytes",
     "check_and_install_deps",
     "check_pip",
     "check_python",
+    "collect_run_artifact",
+    "current_branch",
     "disk_image_names",
     "disk_images",
     "dist_dir",
+    "free_dist_path",
+    "gh_exe",
+    "gh_output",
+    "gh_said",
+    "github_reach",
     "install_package",
     "is_macos",
     "is_windows",
     "launch",
+    "launch_macos",
+    "live_macos_run",
+    "macos_runs",
     "powershell_exe",
     "required_python",
     "run_build",
     "stamp_builder_dates",
+    "start_macos_run",
+    "wait_for_run",
     "write_smartscreen_help",
 ]
