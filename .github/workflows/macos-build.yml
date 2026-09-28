@@ -25,6 +25,9 @@
 name: macOS build
 
 on:
+  # release.yml calls this file, so the release attaches the bundles this
+  # workflow's own launch readings were taken on.
+  workflow_call:
   workflow_dispatch:
   push:
     paths:
@@ -36,7 +39,9 @@ on:
       - .github/workflows/macos-build.yml
 
 concurrency:
-  group: macos-build-${{ github.ref }}
+  # github.workflow names the caller, so a called run and a push run of this
+  # file sit in different groups and cannot cancel each other.
+  group: macos-build-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
