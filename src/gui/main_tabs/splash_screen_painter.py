@@ -33,6 +33,7 @@ MARK_LAYER_ORDER = (
     "scythe",
     "scale",
     "fiery aura",
+    "coiled serpents",
     "reptilian eye",
 )
 BLOOM_LAYERS = ("fiery aura",)
