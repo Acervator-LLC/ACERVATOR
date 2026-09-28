@@ -69,42 +69,189 @@ SCANLINE_ALPHA_CAP = 8
 SCANLINE_ALPHA_DIVISOR = 20
 
 LOGO_OFFSET_Y = -110
-LOGO_GLOW_MIN_ALPHA = 10
-LOGO_GLOW_RADIUS = 60
-LOGO_GLOW_ALPHA_DIVISOR = 8
 CYAN = (0, 255, 238)
 BLUE = (0, 170, 255)
 GREEN = (0, 255, 136)
-
-OUTER_RING_RADIUS = 45
-OUTER_RING_WIDTH = 2.0
-INNER_RING_RADIUS = 28
-INNER_RING_WIDTH = 1.5
-INNER_RING_ALPHA_SHARE = 0.6
-ORBIT_WIDTH = 1.2
-ORBIT_ALPHA_SHARE = 0.5
-ORBIT_ANGLES = (30, -30)
-ORBIT_TRAIL_SPIN_SHARE = 0.7
-ORBIT_RECT = (-52, -17, 104, 34)
+AMBER = (255, 200, 80)
 
 SPIN_DEGREES_PER_S = 15
 PULSE_BASE = 1.0
 PULSE_DEPTH = 0.05
 PULSE_RATE = 2.5
 
-MONOGRAM = "A"
-MONOGRAM_FONT = ("Helvetica", 26)
-MONOGRAM_RECT = (-20, -16, 40, 32)
 BOLD = "bold"
 
-PARTICLE_ANGLES = (60, 200, 320)
-PARTICLE_SPIN_SHARE = (1.2, -0.8)
-PARTICLE_RADIUS = 45
-PARTICLE_SIZE = 6
-PARTICLE_TRAILS = 3
-PARTICLE_TRAIL_STEP_DEGREES = 8
-PARTICLE_TRAIL_SIZE = 3
-PARTICLE_TRAIL_ALPHA_DIVISOR = 3
+MARK_ELEMENTS = (
+    "compass",
+    "scale",
+    "reptilian eye",
+    "fiery aura",
+    "scythe",
+    "winged caduceus",
+)
+MARK_RADIUS = 150.0
+MARK_OFFSET_Y = -93.0
+FULL_TURN_DEGREES = 360.0
+CURVE_STEPS = 18
+LENS_STEPS = 16
+MIN_SEGMENT = 1e-9
+
+FACET_BANDS = 3
+FACET_DETAIL = 1.0
+FACET_DARK = 0.52
+FACET_BRIGHT = 1.0
+FACET_LIGHT_X = -0.24
+FACET_LIGHT_Y = -0.32
+FACET_JITTER = 0.11
+FACET_JITTER_STEP = 0.6180339887
+FACET_AURA_SWING = 0.22
+FACET_AURA_TRAVEL = 2.0
+FACET_SEAM_WIDTH = 0.6
+DISC_STEPS = 16
+STAFF_STEPS = 10
+WING_SAMPLES = 26
+BEAM_STEPS = 8
+HANGER_STEPS = 4
+BARB_BANDS = 1
+
+STAFF_TOP_Y = -0.88
+STAFF_BOTTOM_Y = 0.92
+STAFF_HALF_TOP = 0.017
+STAFF_HALF_BOTTOM = 0.031
+FINIAL_Y = -0.93
+FINIAL_RADIUS = 0.044
+
+WING_ROOT = (0.046, -0.76)
+WING_BEND = (0.28, -1.04)
+WING_TIP = (0.58, -0.92)
+WING_LOBES = 8
+WING_LOBE_DEPTH = 0.026
+WING_LOBE_TAPER = 0.40
+WING_FEATHER_RAKE = 0.10
+
+COMPASS_HINGE_Y = -0.66
+COMPASS_HINGE_RADIUS = 0.072
+COMPASS_HINGE_INNER = 0.030
+COMPASS_POINT = (0.50, 0.90)
+COMPASS_HALF_HINGE = 0.082
+COMPASS_HALF_POINT = 0.066
+COMPASS_LEG_STEPS = 10
+COMPASS_FOOT = 0.160
+COMPASS_FOOT_HALF = 0.056
+
+ETCH_LEFT_WORD = "SOLVE"
+ETCH_RIGHT_WORD = "COAGULA"
+ETCH_SIZE = 0.098
+ETCH_ADVANCE = 0.78
+ETCH_HALF = 0.0115
+ETCH_START = 0.63
+ETCH_END = 0.90
+ETCH_BIAS = 0.0
+ETCH_ALPHA_SHARE = 1.0
+ETCH_ARC_STEPS = 9
+
+EYE_CENTRE_Y = -0.02
+EYE_HALF_WIDTH = 0.300
+EYE_UPPER_BULGE = 0.172
+EYE_LOWER_BULGE = 0.150
+EYE_LID_HALF = 0.014
+IRIS_RADIUS = 0.125
+SLIT_HALF_MIN = 0.010
+SLIT_HALF_MAX = 0.044
+SLIT_HALF_MID = 0.027
+SLIT_HALF_SWING = 0.017
+SLIT_HALF_HEIGHT = 0.108
+SLIT_STEPS = 10
+
+AURA_POINTS = 13
+AURA_START_DEGREES = -90.0
+AURA_BASE_X = 0.360
+AURA_BASE_Y = 0.258
+AURA_BASE_SPREAD_DEGREES = 11.0
+AURA_ROOT_SHARE = 0.42
+AURA_BELLY_AT = 0.22
+AURA_SPREAD_TAPER = 0.88
+AURA_CURL_DEGREES = 6.0
+AURA_CURL_POWER = 2.0
+AURA_LICK_DEGREES = 14.0
+AURA_LICK_POWER = 3.2
+AURA_TIP_SHARE = 1.78
+AURA_FLAME_STEPS = 12
+
+SERPENT_HEAD_Y = -0.60
+SERPENT_TAIL_Y = 0.62
+SERPENT_BOW = 0.135
+SERPENT_COILS = 1.75
+SERPENT_STEPS = 84
+SERPENT_HALF_MIN = 0.010
+SERPENT_HALF_SWELL = 0.032
+SERPENT_TAPER_POWER = 0.62
+SERPENT_HALF_HEAD = 0.028
+SERPENT_SNOUT = (0.090, -0.140)
+SERPENT_JAW = (0.078, -0.030)
+SERPENT_TONGUE = (0.148, -0.232)
+SERPENT_TONGUE_FORK = 0.030
+SERPENT_TONGUE_HALF = 0.008
+SERPENT_EYE_OFFSET = (0.042, -0.078)
+SERPENT_EYE_RADIUS = 0.016
+SERPENT_BROW_SHARE = 0.55
+SERPENT_BROW_LIFT = 1.30
+
+SCALE_BEAM_Y = 0.56
+SCALE_BEAM_HALF = 0.34
+SCALE_BEAM_HALF_THICK = 0.020
+SCALE_BOSS_RADIUS = 0.046
+SCALE_HANGER_X = 0.310
+SCALE_HANGER_DROP = 0.215
+SCALE_HANGER_HALF = 0.009
+SCALE_RING_RADIUS = 0.024
+SCALE_PAN_HALF = 0.132
+SCALE_PAN_DEPTH = 0.086
+SCALE_PAN_RIM = 0.018
+SCALE_PAN_STEPS = 12
+SCALE_TILT_MAX_DEGREES = 9.0
+SCALE_SWING_RATE = 4.2
+SCALE_SETTLE_TAU_S = 0.9
+SCALE_SETTLE_LIMIT_S = 5.0
+
+SCYTHE_BUTT = (-0.24, 0.90)
+SCYTHE_BEND = (-0.60, 0.44)
+SCYTHE_HEAD = (-0.74, -0.06)
+SCYTHE_NECK = (-0.72, -0.30)
+SCYTHE_HALF_BUTT = 0.030
+SCYTHE_HALF_HEAD = 0.021
+SCYTHE_NECK_HALF = 0.026
+SCYTHE_GRIP_AT = 0.42
+SCYTHE_GRIP_HALF = 0.044
+SCYTHE_GRIP_SPAN = 0.07
+
+BLADE_BACK_BEND = (-0.60, -0.70)
+BLADE_EDGE_BEND = (-0.40, -0.28)
+BLADE_TIP = (-0.11, -0.54)
+BLADE_STEPS = 24
+BLADE_SPLIT_FROM_SHARE = 0.40
+BLADE_SPLIT_TO_SHARE = 0.62
+BLADE_SPLIT_DEPTH = 0.46
+BLADE_RACHIS_HALF = 0.009
+BLADE_BARBS = 9
+BLADE_BARB_FROM_SHARE = 0.12
+BLADE_BARB_TO_SHARE = 0.92
+BLADE_BARB_REACH = 0.62
+BLADE_BARB_HALF = 0.0045
+
+STAFF_ALPHA_SHARE = 0.88
+WING_ALPHA_SHARE = 0.92
+COMPASS_ALPHA_SHARE = 0.85
+SERPENT_ALPHA_SHARE = 0.90
+SCALE_ALPHA_SHARE = 0.82
+AURA_ALPHA_SHARE = 0.72
+EYE_ALPHA_SHARE = 1.0
+IRIS_ALPHA_SHARE = 0.85
+SCYTHE_ALPHA_SHARE = 0.70
+FEATHER_VANE_ALPHA_SHARE = 0.34
+FEATHER_BARB_ALPHA_SHARE = 0.62
+PUPIL_RGB = (6, 6, 14)
+
 
 TITLE = "ACERVATOR"
 TITLE_FONT = ("Segoe UI", 32)
@@ -138,7 +285,7 @@ DESIGNER_LABEL = "Designed, prompted, and engineered by"
 DESIGNER_LABEL_RECT = (90, 16)
 DESIGNER = "Ekthelius the Accumulator"
 DESIGNER_FONT = ("Segoe UI", 13)
-DESIGNER_RGB = (255, 200, 80)
+DESIGNER_RGB = AMBER
 DESIGNER_RECT = (108, 24)
 DESIGNER_ALIAS = "a.k.a. Anthony L. Brown"
 DESIGNER_ALIAS_RGB = (180, 170, 140)
@@ -259,6 +406,810 @@ def title_glow(t: Any) -> int:
     return int(TITLE_GLOW_BASE + TITLE_GLOW_DEPTH * math.sin(t * TITLE_GLOW_RATE))
 
 
+def slit_half_width(pulse: Any) -> Any:
+    """The reptilian pupil's half-width at this breath, clamped to the slit bounds."""
+    breath = (pulse - PULSE_BASE) / PULSE_DEPTH
+    return max(
+        SLIT_HALF_MIN, min(SLIT_HALF_MAX, SLIT_HALF_MID + SLIT_HALF_SWING * breath)
+    )
+
+
+def scale_tilt_degrees(t: Any) -> Any:
+    """How far the balance beam sits off level at `t`, swinging then settling."""
+    since = t - LOGO_FADE[0]
+    if not math.isfinite(since) or since <= 0 or since > SCALE_SETTLE_LIMIT_S:
+        return 0.0
+    return (
+        SCALE_TILT_MAX_DEGREES
+        * math.cos(SCALE_SWING_RATE * since)
+        * math.exp(-since / SCALE_SETTLE_TAU_S)
+    )
+
+
+def _steps(base: int) -> int:
+    return max(2, int(round(base * FACET_DETAIL)))
+
+
+def _between(start: list, end: list, share: Any) -> list:
+    return [
+        start[0] + (end[0] - start[0]) * share,
+        start[1] + (end[1] - start[1]) * share,
+    ]
+
+
+def _strip(left: list, right: list, bands: int) -> list:
+    """Triangles filling the band between two edge chains, `bands` facets across."""
+    faces: list = []
+    count = min(len(left), len(right))
+    for index in range(count - 1):
+        for band in range(bands):
+            near = band / bands
+            far = (band + 1) / bands
+            corner = [
+                _between(left[index], right[index], near),
+                _between(left[index + 1], right[index + 1], near),
+                _between(left[index + 1], right[index + 1], far),
+                _between(left[index], right[index], far),
+            ]
+            faces.append([corner[0], corner[1], corner[2]])
+            faces.append([corner[0], corner[2], corner[3]])
+    return faces
+
+
+def _fan(centre: list, rim: list) -> list:
+    return [[list(centre), rim[index], rim[index + 1]] for index in range(len(rim) - 1)]
+
+
+def _disc(centre_x: Any, centre_y: Any, radius: Any) -> list:
+    steps = _steps(DISC_STEPS)
+    rim = []
+    for index in range(steps + 1):
+        radians = math.radians(FULL_TURN_DEGREES * index / steps)
+        rim.append(
+            [
+                centre_x + radius * math.cos(radians),
+                centre_y + radius * math.sin(radians),
+            ]
+        )
+    return _fan([centre_x, centre_y], rim)
+
+
+def _resample(points: list, count: int) -> list:
+    out = []
+    last = len(points) - 1
+    for index in range(count):
+        at = last * index / (count - 1)
+        low = int(at)
+        out.append(_between(points[low], points[min(low + 1, last)], at - low))
+    return out
+
+
+def _mirrored_faces(faces: list) -> list:
+    return [[[-point[0], point[1]] for point in face] for face in faces]
+
+
+def _rotated(x: Any, y: Any, pivot_y: Any, degrees: Any) -> tuple:
+    radians = math.radians(degrees)
+    dy = y - pivot_y
+    return (
+        x * math.cos(radians) - dy * math.sin(radians),
+        pivot_y + x * math.sin(radians) + dy * math.cos(radians),
+    )
+
+
+def _quadratic(start: tuple, bend: tuple, end: tuple, steps: int) -> list:
+    """`steps` plus one points along the quadratic curve from `start` to `end`."""
+    out = []
+    for index in range(steps + 1):
+        u = index / steps
+        v = 1.0 - u
+        out.append(
+            (
+                v * v * start[0] + 2 * v * u * bend[0] + u * u * end[0],
+                v * v * start[1] + 2 * v * u * bend[1] + u * u * end[1],
+            )
+        )
+    return out
+
+
+def _normal(behind: tuple, ahead: tuple) -> tuple:
+    dx = ahead[0] - behind[0]
+    dy = ahead[1] - behind[1]
+    length = math.hypot(dx, dy)
+    if length < MIN_SEGMENT:
+        return (0.0, 0.0)
+    return (-dy / length, dx / length)
+
+
+def _ribbon_edges(points: list, half_start: Any, half_end: Any) -> tuple:
+    """Two edge chains either side of `points`, the half-width tapering along it."""
+    count = len(points)
+    left: list = []
+    right: list = []
+    for index, point in enumerate(points):
+        nx, ny = _normal(points[max(index - 1, 0)], points[min(index + 1, count - 1)])
+        share = index / (count - 1) if count > 1 else 0.0
+        half = half_start + (half_end - half_start) * share
+        left.append([point[0] + nx * half, point[1] + ny * half])
+        right.append([point[0] - nx * half, point[1] - ny * half])
+    return left, right
+
+
+def _ribbon_faces(points: list, half_start: Any, half_end: Any, bands: int) -> list:
+    left, right = _ribbon_edges(points, half_start, half_end)
+    return _strip(left, right, bands)
+
+
+def _lens_edges(
+    centre_y: Any, half_width: Any, up: Any, down: Any, steps: int
+) -> tuple:
+    """The upper and lower edges of a pointed almond, both running left to right."""
+    upper: list = []
+    lower: list = []
+    for index in range(steps + 1):
+        across = -1.0 + 2.0 * index / steps
+        bulge = 1.0 - across * across
+        upper.append([half_width * across, centre_y - up * bulge])
+        lower.append([half_width * across, centre_y + down * bulge])
+    return upper, lower
+
+
+def _slit_edges(half_width: Any, steps: int) -> tuple:
+    """The two edges of the pupil, pointed top and bottom and widest at the middle."""
+    right: list = []
+    left: list = []
+    for index in range(steps + 1):
+        along = -1.0 + 2.0 * index / steps
+        bulge = 1.0 - along * along
+        right.append([half_width * bulge, EYE_CENTRE_Y + SLIT_HALF_HEIGHT * along])
+        left.append([-half_width * bulge, EYE_CENTRE_Y + SLIT_HALF_HEIGHT * along])
+    return right, left
+
+
+def _wing_edges() -> tuple:
+    """A rigid leading edge, and a trailing edge broken into `WING_LOBES` feather tips."""
+    lead = _quadratic(WING_ROOT, WING_BEND, WING_TIP, _steps(CURVE_STEPS))
+    chord_x = WING_ROOT[0] - WING_TIP[0]
+    chord_y = WING_ROOT[1] - WING_TIP[1]
+    reach = math.hypot(chord_x, chord_y)
+    run = (chord_x / reach, chord_y / reach)
+    down = (-run[1], run[0])
+    if down[1] < 0:
+        down = (run[1], -run[0])
+    trail: list = []
+    for lobe in range(WING_LOBES):
+        at = lobe / WING_LOBES
+        to = (lobe + 1) / WING_LOBES
+        start = [
+            WING_TIP[0] + chord_x * at,
+            WING_TIP[1] + chord_y * at,
+        ]
+        end = [
+            WING_TIP[0] + chord_x * to,
+            WING_TIP[1] + chord_y * to,
+        ]
+        depth = WING_LOBE_DEPTH * (1.0 - at * WING_LOBE_TAPER)
+        rake = WING_FEATHER_RAKE * reach / WING_LOBES
+        tip = [
+            (start[0] + end[0]) / 2 + down[0] * depth - run[0] * rake,
+            (start[1] + end[1]) / 2 + down[1] * depth - run[1] * rake,
+        ]
+        trail.extend([start, tip, end])
+    trail.reverse()
+    samples = _steps(WING_SAMPLES)
+    return (
+        _resample([[point[0], point[1]] for point in lead], samples),
+        _resample(trail, samples),
+    )
+
+
+def _aura_point(degrees: Any, share: Any) -> list:
+    radians = math.radians(degrees)
+    return [
+        AURA_BASE_X * share * math.cos(radians),
+        EYE_CENTRE_Y + AURA_BASE_Y * share * math.sin(radians),
+    ]
+
+
+def aura_flame_edges(index: int, spin: Any) -> tuple:
+    """The trailing and leading edges of one flame, both running base to tip."""
+    middle = AURA_START_DEGREES + index * FULL_TURN_DEGREES / AURA_POINTS + spin
+    trailing: list = []
+    leading: list = []
+    steps = _steps(AURA_FLAME_STEPS)
+    for step in range(steps + 1):
+        height = step / steps
+        angle = (
+            middle
+            + AURA_CURL_DEGREES * height**AURA_CURL_POWER
+            + AURA_LICK_DEGREES * height**AURA_LICK_POWER
+        )
+        reach = 1.0 + (AURA_TIP_SHARE - 1.0) * height
+        root = AURA_ROOT_SHARE + (1.0 - AURA_ROOT_SHARE) * min(
+            1.0, height / AURA_BELLY_AT
+        )
+        spread = AURA_BASE_SPREAD_DEGREES * root * (1.0 - height) ** AURA_SPREAD_TAPER
+        trailing.append(_aura_point(angle - spread, reach))
+        leading.append(_aura_point(angle + spread, reach))
+    return trailing, leading
+
+
+def _serpent_spine(phase: Any) -> list:
+    out = []
+    steps = _steps(SERPENT_STEPS)
+    for index in range(steps + 1):
+        along = index / steps
+        out.append(
+            [
+                SERPENT_BOW * math.sin(2 * math.pi * SERPENT_COILS * along + phase),
+                SERPENT_HEAD_Y + (SERPENT_TAIL_Y - SERPENT_HEAD_Y) * along,
+            ]
+        )
+    return out
+
+
+def serpent_coils(phase: Any) -> list:
+    """The spine cut at every crossing of the staff, so each arc wraps one way."""
+    spine = _serpent_spine(phase)
+    arcs: list = []
+    run: list = [spine[0]]
+    start = 0
+    for index in range(1, len(spine)):
+        run.append(spine[index])
+        crossed = (spine[index][0] >= 0.0) != (spine[index - 1][0] >= 0.0)
+        if crossed or index == len(spine) - 1:
+            arcs.append((start / (len(spine) - 1), index / (len(spine) - 1), run))
+            run = [spine[index]]
+            start = index
+    return arcs
+
+
+def _serpent_half(share: Any) -> Any:
+    """The serpent's half-width: thin at the head, swelling through the coil."""
+    return SERPENT_HALF_MIN + SERPENT_HALF_SWELL * math.sin(
+        math.pi * share**SERPENT_TAPER_POWER
+    )
+
+
+def _pan_edges(centre_x: Any, centre_y: Any) -> tuple:
+    """The rim line and the bowl curve of one pan, so the pan reads as a vessel."""
+    rim: list = []
+    bowl: list = []
+    steps = _steps(SCALE_PAN_STEPS)
+    for index in range(steps + 1):
+        across = -1.0 + 2.0 * index / steps
+        rim.append([centre_x + SCALE_PAN_HALF * across, centre_y])
+        bowl.append(
+            [
+                centre_x + SCALE_PAN_HALF * across,
+                centre_y + SCALE_PAN_DEPTH * (1.0 - across * across) + SCALE_PAN_RIM,
+            ]
+        )
+    return rim, bowl
+
+
+def caduceus_faces(spin: Any, pulse: Any) -> list:
+    """The staff, its two coiled serpents and the wings, as toneable triangle groups."""
+    staff_spine = [
+        [0.0, STAFF_TOP_Y + (STAFF_BOTTOM_Y - STAFF_TOP_Y) * step / _steps(STAFF_STEPS)]
+        for step in range(_steps(STAFF_STEPS) + 1)
+    ]
+    staff = (
+        _ribbon_faces(staff_spine, STAFF_HALF_TOP, STAFF_HALF_BOTTOM, FACET_BANDS),
+        CYAN,
+        STAFF_ALPHA_SHARE,
+        0.0,
+    )
+    behind: list = []
+    infront: list = []
+    for phase in (math.pi / 2, -math.pi / 2):
+        for turn, (at, to, arc) in enumerate(serpent_coils(phase)):
+            band = _ribbon_faces(arc, _serpent_half(at), _serpent_half(to), FACET_BANDS)
+            wraps = behind if (turn % 2 == 0) == (phase > 0) else infront
+            wraps.append((band, BLUE, SERPENT_ALPHA_SHARE, 0.0))
+    groups = behind + [staff] + infront
+    for phase in (math.pi / 2, -math.pi / 2):
+        spine = _serpent_spine(phase)
+        facing = 1.0 if phase > 0 else -1.0
+        head = spine[0]
+        snout = [
+            head[0] + SERPENT_SNOUT[0] * facing,
+            head[1] + SERPENT_SNOUT[1],
+        ]
+        groups.append(
+            (
+                _strip(
+                    [
+                        [head[0], head[1] - SERPENT_HALF_HEAD],
+                        [
+                            head[0] + SERPENT_SNOUT[0] * SERPENT_BROW_SHARE * facing,
+                            head[1] - SERPENT_HALF_HEAD * SERPENT_BROW_LIFT,
+                        ],
+                        snout,
+                    ],
+                    [
+                        [head[0], head[1] + SERPENT_HALF_HEAD],
+                        [
+                            head[0] + SERPENT_JAW[0] * facing,
+                            head[1] + SERPENT_JAW[1],
+                        ],
+                        snout,
+                    ],
+                    FACET_BANDS,
+                ),
+                BLUE,
+                SERPENT_ALPHA_SHARE,
+                0.0,
+            )
+        )
+        for fork in (-SERPENT_TONGUE_FORK, SERPENT_TONGUE_FORK):
+            groups.append(
+                (
+                    _ribbon_faces(
+                        [
+                            snout,
+                            [
+                                head[0] + SERPENT_TONGUE[0] * facing,
+                                head[1] + SERPENT_TONGUE[1] + fork,
+                            ],
+                        ],
+                        SERPENT_TONGUE_HALF,
+                        SERPENT_TONGUE_HALF,
+                        BARB_BANDS,
+                    ),
+                    BLUE,
+                    SERPENT_ALPHA_SHARE,
+                    0.0,
+                )
+            )
+        groups.append(
+            (
+                _disc(
+                    head[0] + SERPENT_EYE_OFFSET[0] * facing,
+                    head[1] + SERPENT_EYE_OFFSET[1],
+                    SERPENT_EYE_RADIUS,
+                ),
+                CYAN,
+                EYE_ALPHA_SHARE,
+                0.0,
+            )
+        )
+    lead, trail = _wing_edges()
+    wing = _strip(lead, trail, FACET_BANDS)
+    groups.append((wing, CYAN, WING_ALPHA_SHARE, 0.0))
+    groups.append((_mirrored_faces(wing), CYAN, WING_ALPHA_SHARE, 0.0))
+    groups.append((_disc(0.0, FINIAL_Y, FINIAL_RADIUS), CYAN, STAFF_ALPHA_SHARE, 0.0))
+    return groups
+
+
+def _arc(
+    centre_x: Any,
+    centre_y: Any,
+    radius_x: Any,
+    radius_y: Any,
+    start: Any,
+    end: Any,
+) -> list:
+    steps = _steps(ETCH_ARC_STEPS)
+    out = []
+    for index in range(steps + 1):
+        degrees = start + (end - start) * index / steps
+        radians = math.radians(degrees)
+        out.append(
+            [
+                centre_x + radius_x * math.cos(radians),
+                centre_y + radius_y * math.sin(radians),
+            ]
+        )
+    return out
+
+
+def letter_strokes(letter: str) -> list:
+    """The strokes of one etched capital, in a box one unit tall and `ETCH_ADVANCE` wide."""
+    if letter == "S":
+        return [
+            [
+                [0.58, -0.30],
+                [0.40, -0.46],
+                [0.16, -0.38],
+                [0.14, -0.16],
+                [0.44, 0.00],
+                [0.52, 0.22],
+                [0.34, 0.44],
+                [0.08, 0.36],
+            ]
+        ]
+    if letter == "O":
+        return [_arc(0.32, 0.0, 0.26, 0.45, 0.0, FULL_TURN_DEGREES)]
+    if letter == "L":
+        return [[[0.13, -0.46], [0.13, 0.42], [0.56, 0.42]]]
+    if letter == "V":
+        return [[[0.05, -0.46], [0.32, 0.44], [0.59, -0.46]]]
+    if letter == "E":
+        return [
+            [[0.56, -0.46], [0.11, -0.46], [0.11, 0.42], [0.56, 0.42]],
+            [[0.11, -0.02], [0.46, -0.02]],
+        ]
+    if letter == "C":
+        return [_arc(0.34, 0.0, 0.26, 0.45, 55.0, 305.0)]
+    if letter == "A":
+        return [
+            [[0.03, 0.44], [0.32, -0.46], [0.61, 0.44]],
+            [[0.15, 0.13], [0.49, 0.13]],
+        ]
+    if letter == "G":
+        return [
+            _arc(0.34, 0.0, 0.26, 0.45, 55.0, 330.0),
+            [[0.60, 0.06], [0.38, 0.06]],
+        ]
+    if letter == "U":
+        return [
+            [[0.08, -0.46], [0.08, 0.14]]
+            + _arc(0.32, 0.14, 0.24, 0.30, 180.0, 360.0)
+            + [[0.56, 0.14], [0.56, -0.46]]
+        ]
+    return []
+
+
+def etched_faces(word: str, start: tuple, end: tuple) -> list:
+    """`word` laid along the line from `start` to `end`, as triangles on the leg."""
+    dx = end[0] - start[0]
+    dy = end[1] - start[1]
+    length = math.hypot(dx, dy)
+    if length < MIN_SEGMENT:
+        return []
+    along = (dx / length, dy / length)
+    across = (-along[1], along[0])
+    faces: list = []
+    span = (ETCH_END - ETCH_START) * length
+    written = len(word) * ETCH_ADVANCE * ETCH_SIZE
+    cursor = ETCH_START * length + max(0.0, span - written) / 2.0
+    for letter in word:
+        for stroke in letter_strokes(letter):
+            points = [
+                [
+                    start[0]
+                    + along[0] * (cursor + point[0] * ETCH_SIZE)
+                    + across[0] * point[1] * ETCH_SIZE,
+                    start[1]
+                    + along[1] * (cursor + point[0] * ETCH_SIZE)
+                    + across[1] * point[1] * ETCH_SIZE,
+                ]
+                for point in stroke
+            ]
+            faces.extend(_ribbon_faces(points, ETCH_HALF, ETCH_HALF, BARB_BANDS))
+        cursor += ETCH_ADVANCE * ETCH_SIZE
+    return faces
+
+
+def compass_faces() -> list:
+    """The dividers: one hinge at the top and exactly two straight legs below it."""
+    steps = _steps(COMPASS_LEG_STEPS)
+    spine = [
+        [
+            COMPASS_POINT[0] * step / steps,
+            COMPASS_HINGE_Y + (COMPASS_POINT[1] - COMPASS_HINGE_Y) * step / steps,
+        ]
+        for step in range(steps + 1)
+    ]
+    leg = _ribbon_faces(spine, COMPASS_HALF_HINGE, COMPASS_HALF_POINT, FACET_BANDS)
+    foot = _ribbon_faces(
+        [
+            [COMPASS_POINT[0], COMPASS_POINT[1] - COMPASS_FOOT],
+            [COMPASS_POINT[0], COMPASS_POINT[1]],
+        ],
+        COMPASS_FOOT_HALF,
+        0.0,
+        BARB_BANDS,
+    )
+    hinge = (0.0, COMPASS_HINGE_Y)
+    return [
+        (leg, CYAN, COMPASS_ALPHA_SHARE, 0.0),
+        (_mirrored_faces(leg), CYAN, COMPASS_ALPHA_SHARE, 0.0),
+        (foot, CYAN, COMPASS_ALPHA_SHARE, 0.0),
+        (_mirrored_faces(foot), CYAN, COMPASS_ALPHA_SHARE, 0.0),
+        (
+            etched_faces(ETCH_RIGHT_WORD, hinge, (COMPASS_POINT[0], COMPASS_POINT[1])),
+            PUPIL_RGB,
+            ETCH_ALPHA_SHARE,
+            ETCH_BIAS,
+        ),
+        (
+            etched_faces(ETCH_LEFT_WORD, hinge, (-COMPASS_POINT[0], COMPASS_POINT[1])),
+            PUPIL_RGB,
+            ETCH_ALPHA_SHARE,
+            ETCH_BIAS,
+        ),
+        (
+            _disc(0.0, COMPASS_HINGE_Y, COMPASS_HINGE_RADIUS),
+            CYAN,
+            COMPASS_ALPHA_SHARE,
+            0.0,
+        ),
+        (
+            _disc(0.0, COMPASS_HINGE_Y, COMPASS_HINGE_INNER),
+            PUPIL_RGB,
+            COMPASS_ALPHA_SHARE,
+            0.0,
+        ),
+    ]
+
+
+def _blade_edges() -> tuple:
+    """The blade's back and its cutting edge, the split vane notched into the back."""
+    steps = _steps(BLADE_STEPS)
+    back = [
+        [point[0], point[1]]
+        for point in _quadratic(SCYTHE_NECK, BLADE_BACK_BEND, BLADE_TIP, steps)
+    ]
+    edge = [
+        [point[0], point[1]]
+        for point in _quadratic(SCYTHE_NECK, BLADE_EDGE_BEND, BLADE_TIP, steps)
+    ]
+    opens = int(BLADE_SPLIT_FROM_SHARE * steps)
+    closes = int(BLADE_SPLIT_TO_SHARE * steps)
+    notched: list = []
+    for index, point in enumerate(back):
+        if index < opens or index > closes:
+            notched.append(point)
+            continue
+        across = (index - opens) / max(1, closes - opens)
+        pull = BLADE_SPLIT_DEPTH * math.sin(math.pi * across)
+        notched.append(_between(point, edge[index], pull))
+    return notched, edge
+
+
+def _blade_barbs(back: list, edge: list) -> list:
+    """Short barbs off the blade's mid-line, so the plume reads inside the outline."""
+    groups: list = []
+    steps = len(back) - 1
+    first = int(BLADE_BARB_FROM_SHARE * steps)
+    last = int(BLADE_BARB_TO_SHARE * steps)
+    for step in range(BLADE_BARBS):
+        index = first + (last - first) * step // max(1, BLADE_BARBS - 1)
+        spine = _between(back[index], edge[index], 0.5)
+        for toward in (back[index], edge[index]):
+            groups.append(
+                (
+                    _ribbon_faces(
+                        [spine, _between(spine, toward, BLADE_BARB_REACH)],
+                        BLADE_BARB_HALF,
+                        BLADE_BARB_HALF,
+                        BARB_BANDS,
+                    ),
+                    CYAN,
+                    FEATHER_BARB_ALPHA_SHARE,
+                    0.0,
+                )
+            )
+    return groups
+
+
+def scythe_faces() -> list:
+    """One tool: a shaft with a grip, a neck, and the feather of Ma'at as its blade."""
+    shaft = [
+        [point[0], point[1]]
+        for point in _quadratic(
+            SCYTHE_BUTT, SCYTHE_BEND, SCYTHE_HEAD, _steps(CURVE_STEPS)
+        )
+    ]
+    neck = _resample([list(SCYTHE_HEAD), list(SCYTHE_NECK)], _steps(HANGER_STEPS))
+    grip_at = int(SCYTHE_GRIP_AT * (len(shaft) - 1))
+    grip_to = min(len(shaft) - 1, grip_at + max(1, int(SCYTHE_GRIP_SPAN * len(shaft))))
+    back, edge = _blade_edges()
+    spine = [_between(back[i], edge[i], 0.5) for i in range(len(back))]
+    groups = [
+        (
+            _ribbon_faces(shaft, SCYTHE_HALF_BUTT, SCYTHE_HALF_HEAD, FACET_BANDS),
+            CYAN,
+            SCYTHE_ALPHA_SHARE,
+            0.0,
+        ),
+        (
+            _ribbon_faces(
+                shaft[grip_at : grip_to + 1],
+                SCYTHE_GRIP_HALF,
+                SCYTHE_GRIP_HALF,
+                FACET_BANDS,
+            ),
+            CYAN,
+            SCYTHE_ALPHA_SHARE,
+            0.0,
+        ),
+        (
+            _ribbon_faces(neck, SCYTHE_HALF_HEAD, SCYTHE_NECK_HALF, FACET_BANDS),
+            CYAN,
+            SCYTHE_ALPHA_SHARE,
+            0.0,
+        ),
+        (_strip(back, edge, FACET_BANDS), CYAN, SCYTHE_ALPHA_SHARE, 0.0),
+        (
+            _ribbon_faces(spine, BLADE_RACHIS_HALF, BLADE_RACHIS_HALF, BARB_BANDS),
+            PUPIL_RGB,
+            SCYTHE_ALPHA_SHARE,
+            0.0,
+        ),
+    ]
+    groups.extend(_blade_barbs(back, edge))
+    return groups
+
+
+def scale_faces(t: Any) -> list:
+    """The balance: one beam that settles level, its boss, two hangers and two pans."""
+    tilt = scale_tilt_degrees(t)
+    beam = _resample(
+        [
+            list(_rotated(-SCALE_BEAM_HALF, SCALE_BEAM_Y, SCALE_BEAM_Y, tilt)),
+            list(_rotated(SCALE_BEAM_HALF, SCALE_BEAM_Y, SCALE_BEAM_Y, tilt)),
+        ],
+        _steps(BEAM_STEPS),
+    )
+    groups = [
+        (
+            _ribbon_faces(
+                beam, SCALE_BEAM_HALF_THICK, SCALE_BEAM_HALF_THICK, FACET_BANDS
+            ),
+            BLUE,
+            SCALE_ALPHA_SHARE,
+            0.0,
+        ),
+        (
+            _disc(0.0, SCALE_BEAM_Y, SCALE_BOSS_RADIUS),
+            BLUE,
+            SCALE_ALPHA_SHARE,
+            0.0,
+        ),
+    ]
+    for side in (-1.0, 1.0):
+        top = _rotated(SCALE_HANGER_X * side, SCALE_BEAM_Y, SCALE_BEAM_Y, tilt)
+        pan_y = top[1] + SCALE_HANGER_DROP
+        hanger = _resample([[top[0], top[1]], [top[0], pan_y]], _steps(HANGER_STEPS))
+        groups.append(
+            (
+                _ribbon_faces(hanger, SCALE_HANGER_HALF, SCALE_HANGER_HALF, BARB_BANDS),
+                BLUE,
+                SCALE_ALPHA_SHARE,
+                0.0,
+            )
+        )
+        groups.append(
+            (
+                _disc(top[0], top[1], SCALE_RING_RADIUS),
+                BLUE,
+                SCALE_ALPHA_SHARE,
+                0.0,
+            )
+        )
+        rim, bowl = _pan_edges(top[0], pan_y)
+        groups.append((_strip(rim, bowl, FACET_BANDS), BLUE, SCALE_ALPHA_SHARE, 0.0))
+    return groups
+
+
+def aura_faces(spin: Any) -> list:
+    """The `AURA_POINTS` flames wreathing the eye, each retoned as the wreath turns."""
+    groups = []
+    for index in range(AURA_POINTS):
+        trailing, leading = aura_flame_edges(index, spin)
+        seat = index * FULL_TURN_DEGREES / AURA_POINTS * FACET_AURA_TRAVEL
+        bias = FACET_AURA_SWING * math.cos(math.radians(seat))
+        groups.append(
+            (_strip(trailing, leading, FACET_BANDS), AMBER, AURA_ALPHA_SHARE, bias)
+        )
+    return groups
+
+
+def eye_socket_faces() -> list:
+    """The almond, its lid and the iris, everything of the eye but the pupil."""
+    upper, lower = _lens_edges(
+        EYE_CENTRE_Y,
+        EYE_HALF_WIDTH,
+        EYE_UPPER_BULGE,
+        EYE_LOWER_BULGE,
+        _steps(LENS_STEPS),
+    )
+    outline = upper + list(reversed(lower)) + [upper[0]]
+    return [
+        (_strip(upper, lower, FACET_BANDS), PUPIL_RGB, EYE_ALPHA_SHARE, 0.0),
+        (
+            _ribbon_faces(outline, EYE_LID_HALF, EYE_LID_HALF, BARB_BANDS),
+            CYAN,
+            EYE_ALPHA_SHARE,
+            0.0,
+        ),
+        (
+            _disc(0.0, EYE_CENTRE_Y, IRIS_RADIUS),
+            BLUE,
+            IRIS_ALPHA_SHARE,
+            0.0,
+        ),
+    ]
+
+
+def pupil_faces(pulse: Any) -> list:
+    """The vertical slit pupil at this breath, narrow at the peak and wide at the low."""
+    right, left = _slit_edges(slit_half_width(pulse), _steps(SLIT_STEPS))
+    return [(_strip(right, left, FACET_BANDS), PUPIL_RGB, EYE_ALPHA_SHARE, 0.0)]
+
+
+def eye_faces(pulse: Any) -> list:
+    """The almond, its lid, the iris and the vertical slit pupil at this breath."""
+    return eye_socket_faces() + pupil_faces(pulse)
+
+
+def mark_layers(spin: Any, pulse: Any, t: Any) -> list:
+    """Each component's triangle groups, named, back layer first."""
+    return [
+        ("winged caduceus", caduceus_faces(spin, pulse)),
+        ("compass", compass_faces()),
+        ("scythe", scythe_faces()),
+        ("scale", scale_faces(t)),
+        ("fiery aura", aura_faces(spin)),
+        ("reptilian eye", eye_faces(pulse)),
+    ]
+
+
+def mark_triangle_count(spin: Any = 0.0, pulse: Any = 1.0, t: Any = 0.0) -> int:
+    """How many triangles the whole mark is built from at this moment."""
+    return sum(
+        len(faces)
+        for _name, groups in mark_layers(spin, pulse, t)
+        for faces, _rgb, _share_of, _bias in groups
+    )
+
+
+def _tone(rgb: tuple, alpha: int, level: Any) -> list:
+    lit = FACET_DARK + (FACET_BRIGHT - FACET_DARK) * max(0.0, min(1.0, level))
+    return [int(rgb[0] * lit), int(rgb[1] * lit), int(rgb[2] * lit), alpha]
+
+
+def _level(face: list, index: int) -> Any:
+    centre_x = (face[0][0] + face[1][0] + face[2][0]) / 3.0
+    centre_y = (face[0][1] + face[1][1] + face[2][1]) / 3.0
+    drift = FACET_JITTER * (((index + 1) * FACET_JITTER_STEP) % 1.0 - 0.5)
+    return 0.5 + FACET_LIGHT_X * centre_x + FACET_LIGHT_Y * centre_y + drift
+
+
+def toned_mesh(
+    faces: list, rgb: tuple, shade: int, bias: Any, cx: Any, cy: Any, radius: Any
+) -> list:
+    """Place `faces` at (`cx`, `cy`) and give each its own tone of `rgb`."""
+    out = []
+    for index, face in enumerate(faces):
+        colour = _tone(rgb, shade, _level(face, index) + bias)
+        out.append(
+            [
+                [cx + face[0][0] * radius, cy + face[0][1] * radius],
+                [cx + face[1][0] * radius, cy + face[1][1] * radius],
+                [cx + face[2][0] * radius, cy + face[2][1] * radius],
+                colour,
+            ]
+        )
+    return out
+
+
+def _share(alpha: Any, part: Any) -> int:
+    return int(alpha * part)
+
+
+def sigil_ops(cx: Any, cy: Any, alpha: int, spin: Any, pulse: Any, t: Any) -> list:
+    """One `mesh` call per component group of the six `MARK_ELEMENTS`, back first.
+
+    `alpha` is the logo fade, `spin` the turn the rings carry, and `pulse` the
+    breath that scales them.
+    """
+    radius = MARK_RADIUS * pulse
+    ops: list = []
+    for _name, groups in mark_layers(spin, pulse, t):
+        for faces, rgb, part, bias in groups:
+            ops.append(
+                [
+                    "mesh",
+                    toned_mesh(faces, rgb, _share(alpha, part), bias, cx, cy, radius),
+                ]
+            )
+    return ops
+
+
 def _rgba(rgb: tuple, alpha: Any) -> list:
     return [rgb[0], rgb[1], rgb[2], alpha]
 
@@ -319,81 +1270,7 @@ def paint_ops(t: Any, width: Any, height: Any, version: Optional[str] = None) ->
     spin = spin_degrees(t)
     pulse = pulse_scale(t)
 
-    if logo_a > LOGO_GLOW_MIN_ALPHA:
-        glow_r = int(LOGO_GLOW_RADIUS * pulse)
-        ops.append(["pen_style", NO_PEN])
-        ops.append(["brush_colour", _rgba(CYAN, logo_a // LOGO_GLOW_ALPHA_DIVISOR)])
-        ops.append(
-            [
-                "ellipse",
-                [cx - glow_r, logo_y - glow_r, glow_r * 2, glow_r * 2],
-            ]
-        )
-
-    ops.append(["pen", _rgba(CYAN, logo_a), OUTER_RING_WIDTH])
-    ops.append(["brush_style", NO_BRUSH])
-    outer_r = OUTER_RING_RADIUS * pulse
-    ops.append(["ellipse", [cx - outer_r, logo_y - outer_r, outer_r * 2, outer_r * 2]])
-
-    ops.append(
-        ["pen", _rgba(BLUE, int(logo_a * INNER_RING_ALPHA_SHARE)), INNER_RING_WIDTH]
-    )
-    inner_r = INNER_RING_RADIUS * pulse
-    ops.append(["ellipse", [cx - inner_r, logo_y - inner_r, inner_r * 2, inner_r * 2]])
-
-    ops.append(["pen", _rgba(GREEN, int(logo_a * ORBIT_ALPHA_SHARE)), ORBIT_WIDTH])
-    turned = (
-        ORBIT_ANGLES[0] + spin,
-        ORBIT_ANGLES[1] - spin * ORBIT_TRAIL_SPIN_SHARE,
-    )
-    for angle in turned:
-        ops.append(["save"])
-        ops.append(["translate", cx, logo_y])
-        ops.append(["rotate", angle])
-        ops.append(["ellipse", list(ORBIT_RECT)])
-        ops.append(["restore"])
-
-    ops.append(["pen_colour", _rgba(CYAN, logo_a)])
-    ops.append(_font(MONOGRAM_FONT, bold=True))
-    ops.append(
-        _centred_text(
-            [
-                cx + MONOGRAM_RECT[0],
-                logo_y + MONOGRAM_RECT[1],
-                MONOGRAM_RECT[2],
-                MONOGRAM_RECT[3],
-            ],
-            MONOGRAM,
-        )
-    )
-
-    ops.append(["pen_style", NO_PEN])
-    half = PARTICLE_SIZE / 2
-    trail_half = PARTICLE_TRAIL_SIZE / 2
-    for index, base_angle in enumerate(PARTICLE_ANGLES):
-        share = PARTICLE_SPIN_SHARE[0] if index % 2 == 0 else PARTICLE_SPIN_SHARE[1]
-        angle = base_angle + spin * share
-        ex = cx + PARTICLE_RADIUS * pulse * math.cos(math.radians(angle))
-        ey = logo_y + PARTICLE_RADIUS * pulse * math.sin(math.radians(angle))
-        ops.append(["brush_colour", _rgba(GREEN, logo_a)])
-        ops.append(["ellipse", [ex - half, ey - half, PARTICLE_SIZE, PARTICLE_SIZE]])
-        for trail in range(1, PARTICLE_TRAILS + 1):
-            behind = angle - trail * PARTICLE_TRAIL_STEP_DEGREES
-            tx = cx + PARTICLE_RADIUS * pulse * math.cos(math.radians(behind))
-            ty = logo_y + PARTICLE_RADIUS * pulse * math.sin(math.radians(behind))
-            faded = max(0, logo_a // (trail * PARTICLE_TRAIL_ALPHA_DIVISOR))
-            ops.append(["brush_colour", _rgba(GREEN, faded)])
-            ops.append(
-                [
-                    "ellipse",
-                    [
-                        tx - trail_half,
-                        ty - trail_half,
-                        PARTICLE_TRAIL_SIZE,
-                        PARTICLE_TRAIL_SIZE,
-                    ],
-                ]
-            )
+    ops.extend(sigil_ops(cx, logo_y + MARK_OFFSET_Y, logo_a, spin, pulse, t))
 
     ops.append(
         [
@@ -596,8 +1473,15 @@ def build_view_model(
             "subtitle": list(SUBTITLE_FADE),
             "credit": list(CREDIT_FADE),
         },
-        "texts": [TITLE, SUBTITLE, MONOGRAM, DESIGNER, DESIGNER_ALIAS, BUILDER, HINT],
+        "texts": [TITLE, SUBTITLE, DESIGNER, DESIGNER_ALIAS, BUILDER, HINT],
         "labels": [DESIGNER_LABEL, BUILDER_LABEL],
+        "mark": {
+            "elements": list(MARK_ELEMENTS),
+            "aura_points": AURA_POINTS,
+            "radius": MARK_RADIUS,
+            "pupil": "vertical slit",
+            "scythe_blade": "feather of Ma'at",
+        },
         "paint_ops": state.paint_ops(version),
         "call_names": list(CALL_NAMES),
         "calls": list(state.calls),
