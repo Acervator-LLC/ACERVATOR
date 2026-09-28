@@ -57,6 +57,45 @@ for name, groups in surface.mark_layers(spin, pulse, moment):
     layer = _pillow(bake_groups(groups, side))
 ```
 
+### The order the layers draw in
+
+`mark_layers` returns one entry per layer, back layer first. The coiled serpents
+draw after the aura, so the compass legs do not cover them.
+
+| Order | Layer | Generator |
+|---|---|---|
+| 1 | Winged caduceus | `caduceus_faces` |
+| 2 | Compass | `compass_faces` |
+| 3 | Scythe | `scythe_faces` |
+| 4 | Scale | `scale_faces` |
+| 5 | Fiery aura | `aura_faces` |
+| 6 | Coiled serpents | `serpent_faces` |
+| 7 | Reptilian eye | `eye_faces` |
+
+`MARK_LAYER_ORDER` in the painter holds the same order for the still frame.
+
+### The letter forms of the maxim
+
+Every capital in the maxim is a chain of straight strokes. No stroke is a curve,
+so the words read as archaic capitals cut with a chisel.
+
+```python
+if letter == "L":
+    return [[[0.13, -0.46], [0.13, 0.42], [0.56, 0.42]]]
+```
+
+`letter_strokes` returns the chains and `etched_faces` lays them along a leg.
+
+### How the aura reads as one body
+
+Each flame spreads half of its own share of the turn at its base, so the base of
+one flame meets the base of the next. The thirteen flames form one wreath that
+turns together, and each flame still tapers to its own point.
+
+```python
+AURA_BASE_SPREAD_DEGREES = FULL_TURN_DEGREES / AURA_POINTS / 2.0
+```
+
 ### What moves at launch
 
 Four things move while the splash is up, and all four run on clocks the splash
