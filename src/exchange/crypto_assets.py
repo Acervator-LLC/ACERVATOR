@@ -12,8 +12,8 @@ Logo caching: logos are downloaded once and cached in
 
 ``AssetManager.logo_answer`` reads that cache through ``LogoCache``, walking
 ``logo_candidates`` once per asset and answering a reason rather than a path
-when no address serves an image. ``organisation_url`` answers the asset's
-``website`` only after its scheme is allowed.
+when no address serves an image. ``organisation_url`` answers the coin index's
+kept ``site``, then the asset's ``website``, only after the scheme is allowed.
 """
 
 from __future__ import annotations
@@ -40,6 +40,11 @@ COIN_MARKETS_URL = (
 #: How many coin ids one ``COIN_MARKETS_URL`` read asks for.
 COIN_MARKETS_PAGE = 250
 
+#: One coin's own record, the only one of the three carrying the project's
+#: homepage. ``COIN_MARKETS_URL`` answers 26 fields and none of them is a site,
+#: so a site costs one read per coin id. Neither is a venue and neither takes a key.
+COIN_DETAIL_URL = "https://api.coingecko.com/api/v3/coins/{id}"
+
 #: The file under the logo cache holding one looked-up picture address per
 #: ticker, written by ``logo_library.build_coin_index``.
 COIN_INDEX_NAME = "coin_index.json"
@@ -50,6 +55,12 @@ COIN_INDEX_IMAGE_KEY = "image"
 COIN_INDEX_REASON_KEY = "reason"
 COIN_INDEX_ID_KEY = "coin_id"
 COIN_INDEX_CHOSEN_KEY = "chosen_by"
+COIN_INDEX_SITE_KEY = "site"
+COIN_INDEX_SITE_REASON_KEY = "site_reason"
+
+#: The only scheme a site is written at and read back at. ``openable_url``
+#: allows http as well, and a browser is only ever handed an https address.
+COIN_SITE_SCHEMES: tuple[str, ...] = ("https",)
 
 COIN_INDEX_READ_LOG = "crypto assets: %s will not parse: %s"
 
@@ -686,8 +697,18 @@ class AssetManager:
         return self._logos.resolve(symbol, self.logo_candidates(symbol))
 
     def organisation_url(self, symbol: str) -> tuple[str, str]:
-        """``symbol``'s ``website`` a browser may open, and the reason a refused one is not."""
-        asset = self.get_asset(symbol)
+        """``symbol``'s own site a browser may open, and the reason a refused one is not.
+
+        ``coin_index`` answers first where the fill looked a site up, and the
+        ``ASSETS`` record's ``website`` answers for the ten that carry one.
+        """
+        name = str(symbol).strip().upper()
+        indexed = str(
+            (self.coin_index.get(name) or {}).get(COIN_INDEX_SITE_KEY) or ""
+        ).strip()
+        if indexed:
+            return openable_url(indexed, allowed_schemes=COIN_SITE_SCHEMES)
+        asset = self.get_asset(name)
         return openable_url(asset.website if asset else "")
 
     def download_logo(self, symbol: str) -> Optional[Path]:

@@ -8893,3 +8893,144 @@ a path on this page that does exist, occurrences             4
 The reservation path lives in `src/trading/capital_reservation.py`, which still
 carries its registry class and which six modules read. A bot reads another bot's
 claim through `reservations_for`, and a sale is decided by `effective_available`.
+
+## 2026-09-28 - #937 - most marks were not links, and the ten records are why
+
+A mark opened only where this repository named a web address by hand, which it
+does on ten crypto records. Seven of the saved fleet's target assets are among
+those ten, so seven marks opened and thirty-one opened nothing. The address now
+comes from the same coin record the mark itself came from.
+
+### The site comes from the coin's own record, not from a hand-written row
+
+**Functional.** The library fill already settles one coin for each ticker and
+reads that coin's record to find the mark. The same record names the project's
+own front door, and the fill now keeps that beside the mark's address. The bot
+list reads the kept site first and the hand-written row second, so the ten that
+already worked still work.
+
+`src/exchange/crypto_assets.py` — `AssetManager.organisation_url`
+
+```python
+indexed = str(
+    (self.coin_index.get(name) or {}).get(COIN_INDEX_SITE_KEY) or ""
+).strip()
+if indexed:
+    return openable_url(indexed, allowed_schemes=COIN_SITE_SCHEMES)
+asset = self.get_asset(name)
+return openable_url(asset.website if asset else "")
+```
+
+Read by handing the reader five index rows, one of each kind:
+
+```
+the row the index holds              what the reader answered
+a kept site, https                   that site
+no kept site, a hand-written row     the hand-written site
+a kept site, http                    nothing, the http scheme does not open
+a row with no coin settled           nothing
+no row at all, a hand-written row    the hand-written site
+```
+
+### Which of the three coin addresses carries a site
+
+**Functional.** Three addresses at the coin data source answer this platform.
+The list names every coin, the market records name each mark, and only the
+third names a site. A site therefore costs one read for each settled coin, and
+a site already kept for the same coin is never read twice.
+
+`src/exchange/crypto_assets.py` — the third address
+
+```python
+COIN_DETAIL_URL = "https://api.coingecko.com/api/v3/coins/{id}"
+```
+
+Read live, one coin, all three addresses:
+
+```
+address            what it answered              carries a site
+/coins/list        every coin's id               no
+/coins/markets     26 fields for each coin       no
+/coins/{id}        a links block                 yes
+```
+
+### What the saved fleet resolves now
+
+**Functional.** Thirty-six of the thirty-eight target assets the saved fleet
+holds answer a web address. The two that do not are named with the reason, and
+neither is guessed at.
+
+Read by asking the reader for every target asset the saved fleet holds, before
+and after the fill, with a planted ticker no record holds as the control:
+
+```
+                                        before   after
+target assets in the saved fleet            38      38
+answered a web address                       7      36
+answered nothing                            31       2
+the planted ticker, nothing holds it    nothing  nothing
+Bitcoin, which a record does hold        a site   a site
+```
+
+The last two rows are the control: a ticker no record holds answers nothing in
+both readings, and one that a record holds answers in both, so the rise from
+seven to thirty-six is the fill and not the reading.
+
+The two, and why:
+
+```
+why an asset answers nothing                                 assets
+several coins carry its ticker at comparable market rank          1
+the coin record for it names no https web address                 1
+```
+
+Three coin records in the saved fleet name an insecure address and no secure
+one, so the check refuses all three. Two of the three are among the ten this
+repository names by hand and answer that hand-written address instead, which
+is why only one of them is counted above.
+
+### A walk over part of the fleet keeps the rest of the index
+
+**Functional.** The walk writes the tickers it asked about and keeps every
+other ticker the index already holds, so filling one roster never drops the
+rest.
+
+`src/trading/logo_library.py` — the merge before the write
+
+```python
+held.update(assets)
+```
+
+Read over a walk of 38 tickers against an index of 453:
+
+```
+rows in the index before the walk      453
+tickers the walk asked about            38
+rows in the index after the walk       453
+rows kept that the walk never asked     415
+```
+
+### The overtaken count of crypto records carrying a site
+
+**Overtaken.** *"Of the target assets the saved fleet holds, 7 carry an
+organisation address and 31 carry none."*
+
+Thirty-six carry one and two carry none. The count of hand-written records is
+unchanged at ten; what changed is that a record is no longer the only source.
+
+### The first column draws exactly as it drew
+
+**Functional.** Nothing about the column's look changed. The same marks draw at
+the same size, every column keeps its width, and the row keeps its height.
+
+Read by drawing the saved fleet at 1920 wide, at two heights, against the state
+before this work:
+
+```
+                        before   after
+row height                  36      36
+first column width         222     222
+marks drawn                 38      38
+the picture's fingerprint  same    same
+```
+

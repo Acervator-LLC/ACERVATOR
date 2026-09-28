@@ -8,7 +8,8 @@ the maps hold, each carrying the folder ``library_folder`` files it under.
 and ``lock_is_held`` refuses the whole fill while the application is running.
 ``build_coin_index`` looks every crypto ticker up through the coin list and the
 market records its ids name, and writes one picture address per ticker to
-``coin_index_path``; ``choose_coin`` settles a ticker several coins carry by the
+``coin_index_path``, with the site ``coin_site`` reads off that coin's own
+record beside it; ``choose_coin`` settles a ticker several coins carry by the
 recorded name, then by market rank, and writes down the candidates of one it
 cannot settle.
 """
@@ -33,20 +34,25 @@ from ..core.asset_logos import (
 )
 from ..core.instance_guard import lock_is_held
 from ..core.io_utils import atomic_write_json
-from ..core.safe_url import SafeRequest, safe_urlopen
+from ..core.safe_url import SafeRequest, openable_url, safe_urlopen
 from ..exchange.crypto_assets import (
     ASSETS,
+    COIN_DETAIL_URL,
     COIN_INDEX_ASSETS_KEY,
     COIN_INDEX_CHOSEN_KEY,
     COIN_INDEX_ID_KEY,
     COIN_INDEX_IMAGE_KEY,
     COIN_INDEX_REASON_KEY,
+    COIN_INDEX_SITE_KEY,
+    COIN_INDEX_SITE_REASON_KEY,
     COIN_INDEX_VERSION,
     COIN_INDEX_VERSION_KEY,
     COIN_LIST_URL,
     COIN_MARKETS_PAGE,
     COIN_MARKETS_URL,
+    COIN_SITE_SCHEMES,
     coin_index_path,
+    load_coin_index,
 )
 from ..exchange.market_rules_store import load_document, store_path
 from .ata_asset_maps import CLASS_CRYPTO, MAPS, asset_logo, listing_of
@@ -286,6 +292,16 @@ COIN_UNRANKED_REASON = (
 COIN_ABSENT_REASON = "no coin record carries the ticker {symbol}, or its name"
 COIN_NO_IMAGE_REASON = "the coin record for {symbol} carries no picture address"
 
+#: The coin record's own links block, and the field inside it naming the
+#: project's front door. ``COIN_MARKETS_URL`` carries neither.
+COIN_LINKS_KEY = "links"
+COIN_HOMEPAGE_KEY = "homepage"
+
+COIN_NO_SITE_REASON = "the coin record for {symbol} names no https web address"
+COIN_UNSETTLED_SITE_REASON = "no coin is settled for {symbol}, so no site is looked up"
+
+COIN_SITE_LOG = "logo library: %d site(s) looked up, %d named, %d without one"
+
 COIN_LIST_LOG = "logo library: the coin list names %d coin(s)"
 COIN_RECORD_LOG = "logo library: %d coin record(s) read over %d page(s)"
 COIN_INDEX_LOG = "logo library: coin index holds %d address(es) and %d refusal(s)"
@@ -302,6 +318,23 @@ COIN_REPORT_FORMAT = (
 def coin_folded(text: Any) -> str:
     """``text`` lowered with every character outside ASCII letters and digits removed."""
     return "".join(one for one in str(text).lower() if one.isascii() and one.isalnum())
+
+
+def coin_site(record: Any) -> str:
+    """The first web address ``record``'s links block names, empty for a record naming none.
+
+    ``openable_url`` decides it, so a homepage outside ``COIN_SITE_SCHEMES``
+    answers empty exactly as a refused ``website`` does.
+    """
+    links = record.get(COIN_LINKS_KEY) if isinstance(record, dict) else None
+    named = links.get(COIN_HOMEPAGE_KEY) if isinstance(links, dict) else None
+    for one in named if isinstance(named, list) else [named]:
+        address, _ = openable_url(
+            str(one or "").strip(), allowed_schemes=COIN_SITE_SCHEMES
+        )
+        if address:
+            return address
+    return ""
 
 
 def _coin_read(address: str, clock: Any) -> Optional[Any]:
@@ -478,8 +511,13 @@ def build_coin_index(
                 records[str(row[COIN_ID_KEY])] = row
     logger.info(COIN_RECORD_LOG, len(records), pages)
 
+    # A walk over part of the roster keeps every ticker it did not ask about,
+    # and reuses a site already kept for the same coin rather than reading again.
+    held = {name: dict(row) for name, row in load_coin_index(library).items()}
     assets: dict[str, dict] = {}
     refused: list[tuple[str, str]] = []
+    sited = 0
+    siteless = 0
     for symbol in asked:
         chosen, why = choose_coin(symbol, wanted[symbol], records)
         address = (
@@ -490,22 +528,48 @@ def build_coin_index(
         if chosen and not address:
             why = COIN_NO_IMAGE_REASON.format(symbol=symbol)
         if address:
-            assets[symbol] = {
+            row = {
                 COIN_INDEX_IMAGE_KEY: address,
                 COIN_INDEX_ID_KEY: chosen,
                 COIN_INDEX_CHOSEN_KEY: why,
             }
+            kept = held.get(symbol) or {}
+            site = (
+                str(kept.get(COIN_INDEX_SITE_KEY) or "").strip()
+                if kept.get(COIN_INDEX_ID_KEY) == chosen
+                else ""
+            )
+            if not site:
+                site = coin_site(_coin_read(COIN_DETAIL_URL.format(id=chosen), clock))
+                reads += 1
+            if site:
+                row[COIN_INDEX_SITE_KEY] = site
+                sited += 1
+            else:
+                row[COIN_INDEX_SITE_REASON_KEY] = COIN_NO_SITE_REASON.format(
+                    symbol=symbol
+                )
+                siteless += 1
+            assets[symbol] = row
             continue
-        assets[symbol] = {COIN_INDEX_REASON_KEY: why}
+        assets[symbol] = {
+            COIN_INDEX_REASON_KEY: why,
+            COIN_INDEX_SITE_REASON_KEY: COIN_UNSETTLED_SITE_REASON.format(
+                symbol=symbol
+            ),
+        }
+        siteless += 1
         refused.append((symbol, why))
+    logger.info(COIN_SITE_LOG, sited + siteless, sited, siteless)
 
     path = coin_index_path(library)
     path.parent.mkdir(parents=True, exist_ok=True)
+    held.update(assets)
     atomic_write_json(
         path,
         {
             COIN_INDEX_VERSION_KEY: COIN_INDEX_VERSION,
-            COIN_INDEX_ASSETS_KEY: {name: assets[name] for name in sorted(assets)},
+            COIN_INDEX_ASSETS_KEY: {name: held[name] for name in sorted(held)},
         },
         indent=2,
     )
@@ -715,6 +779,7 @@ __all__ = [
     "coin_candidates",
     "coin_folded",
     "coin_rank",
+    "coin_site",
     "LOGO_PACE_S",
     "MAP_SOURCE",
     "TRADING_REFUSAL",
