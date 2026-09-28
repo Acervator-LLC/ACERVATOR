@@ -48,6 +48,33 @@ def test_a_backup_tag_never_becomes_the_version(tmp_path) -> None: ...
 def test_the_unguarded_form_would_adopt_a_backup_tag(tmp_path) -> None: ...
 ```
 
+**Overtaken.** These two sentences stay whole here:
+
+> One resolver answers the version, and no file in the tree writes it down. It runs
+> `git describe` against a tag pattern that admits only a tag beginning with a v
+> and a digit, then turns that output into the reported string.
+
+The resolver declares the release number. The git call no longer decides it. That
+call matches the one tag the declared release names, and it adds the build count
+and the commit after a `+`.
+
+```python
+RELEASE                                     # src/_version.py, the declared release
+RELEASE_TAG = f"v{RELEASE}"
+UNRESOLVED_LOCAL = "unknown"
+UNKNOWN_VERSION = f"{RELEASE}+{UNRESOLVED_LOCAL}"
+```
+
+One commit reports one release number in every state. When the git call cannot
+derive a build count, the version says so and never takes one from an older tag.
+
+| what the machine holds | what the version carries |
+| --- | --- |
+| the release tag | the release, the build count and the commit |
+| an older version tag only | the release, the absent word and the commit |
+| no tags | the release, the absent word and the commit |
+| no git history | the release and the absent word |
+
 ## What the string says
 
 The formatter returns a bare release number for one state only: a clean tree
@@ -66,6 +93,26 @@ number, and the distance term inside it counts commits, not features. And the
 version tag the operator's own tree describes from is local to that machine:
 `git ls-remote --tags` lists an older version tag alone, so a fresh clone
 resolves a lower release number from the same commit.
+
+**Overtaken.** That last sentence stays whole here:
+
+> And the version tag the operator's own tree describes from is local to that
+> machine: `git ls-remote --tags` lists an older version tag alone, so a fresh
+> clone resolves a lower release number from the same commit.
+
+The server carries both version tags. The newer one is an annotated tag, so the
+listing prints it twice, once for the tag object and once for the commit it
+points at. A fresh clone reports the release number the tree declares, and the
+release number no longer moves when a tag is absent.
+
+```
+git ls-remote --tags origin
+
+refs/tags/build-<version>
+refs/tags/<older version tag>
+refs/tags/<newer version tag>
+refs/tags/<newer version tag>^{}
+```
 
 ## The six readers
 
@@ -517,6 +564,21 @@ a local clone                  the older and the newer version tag
 
 Pushing the newer tag would change the number every runner build reports, which
 the release cascade above governs.
+
+**Overtaken.** These two passages stay whole here:
+
+> A runner resolves that version from the tags the remote carries, and the newer
+> version tag is not one of them, so a runner build and a local build of one commit
+> report different numbers.
+
+> Pushing the newer tag would change the number every runner build reports, which
+> the release cascade above governs.
+
+The remote carries the newer version tag. A runner build and a local build of one
+commit report the same release number, because the resolver reads the release the
+tree declares and not a tag name. A tag that a runner cannot see now changes the
+build count alone, and the version names that count absent rather than counting
+from an older tag.
 
 The publish step refuses a set whose file names do not all carry one version, and
 the Windows step refuses a build folder holding any logo file. Neither guard has

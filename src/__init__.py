@@ -3,10 +3,10 @@
 # ┌─────────────────────────────────────────────────────────────┐
 # │ AI DEVELOPER NOTE                                           │
 # │                                                             │
-# │ THE VERSION IS DERIVED, NEVER WRITTEN. It comes from the    │
-# │ git tag in a source checkout, and from the value the build  │
-# │ baked in for a frozen bundle. Do not restate it here or     │
-# │ anywhere else — see src/_version.py.                        │
+# │ THE RELEASE NUMBER IS DECLARED IN src/_version.py.          │
+# │ The build count and the commit after the + come from git.   │
+# │ Do not restate the version here or anywhere else — see      │
+# │ src/_version.py.                                            │
 # │                                                             │
 # │ Acervator is an accumulation trading platform.              │
 # │ NOT a grid bot. NOT a DCA bot. NOT portfolio rebalancing.   │
