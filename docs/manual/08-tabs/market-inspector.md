@@ -4702,7 +4702,7 @@ Recognition stopped at the sector menu. Typing `gl` under crypto offered
 nothing, because GLD is listed by metals. Typing `gld` under crypto and pressing
 Scan Now was refused with `crypto holds no ticker gld. Pick one the field
 offers.` and nothing ran. `A15/USD` under crypto was refused the same way,
-because the pair form matched no name. `btc` under metals was refused. A typed
+because the pair form matched no name. `a15` under metals was refused. A typed
 name reached a market only when it was spelled as the chosen sector's list
 spelled it. The class box never moved. A market entry counted `reversal call(s)`
 by the twelve-voter consensus while the bucket counted the push gates, so
@@ -4729,7 +4729,7 @@ TICKER_JOIN = "/"
 ```
 
 The offers come prefix matches first, the chosen class first inside each, then
-matches holding the text later in the name, eight at most. Typing `btc/u` under
+matches holding the text later in the name, eight at most. Typing `a15/u` under
 metals offers `A15  (crypto)`, because the part after the slash starts a quote
 the connector route reads.
 
@@ -4758,7 +4758,7 @@ because the connector route already tries those three quotes in that order.
 
 | typed | resolves to | class |
 | ----- | ----------- | ----- |
-| `btc`, `A15/USD`, `btc-usd`, `BTCUSD` | A15 on the exchange | crypto |
+| `a15`, `A15/USD`, `a15-usd`, `A15USD` | A15 on the exchange | crypto |
 | `gld`, `GLD/USD` | GLD on yahoo | metals |
 | `eur/usd`, `eurusd`, ` eur usd ` | EUR/USD on yahoo | forex |
 | `A15/EUR` | nothing | EUR is not a quote the connector route reads |
@@ -4877,10 +4877,10 @@ never called. Three timeframes were ticked on every press.
 | ------------------- | --------- | ------------------------- | ---- |
 | `gl`, crypto | `GLD  (metals)` | - | - |
 | `aa`, crypto | `AAVE  (crypto)` | - | - |
-| `btc/u`, metals | `A15  (crypto)` | - | - |
+| `a15/u`, metals | `A15  (crypto)` | - | - |
 | `gld`, crypto | - | metals | `GLD in metals` / `1 market on yahoo · 3 vote(s) · 1 hit(s)` / rows `384 candle(s) · bearish vote, refused by the gates`, `365 candle(s) · bearish vote, refused by the gates`, `200 candle(s) · bearish vote, hit` |
 | `A15/USD`, crypto | - | crypto | `A15 in crypto` / `1 market on exchange · 2 vote(s) · 1 hit(s)`; 1hr unserved |
-| `btc`, metals | - | crypto | the same entry |
+| `a15`, metals | - | crypto | the same entry |
 | ` eur usd `, crypto | - | forex | `EUR/USD in forex` / `1 market on yahoo · 0 vote(s) · 0 hit(s)` / `No candles came back for EUR/USD.` |
 | `ZZZQ`, crypto | - | crypto | unchanged; the line under the field reads `No class lists ticker ZZZQ. Pick one the field offers.`; 0 venue calls |
 | `pall`, metals | - | metals | `PALL in metals` / `1 market on yahoo · 0 vote(s) · 0 hit(s)` / `No candles came back for PALL.` |
@@ -9107,11 +9107,11 @@ each one painted.
 
 ```
 mark            sector        window decodes   painted colours   page decodes   page draws
-BTC.png         crypto        yes                          253   50x50          32x32
-SUI.png         crypto        yes                          119   250x250        32x32
-PENGU.png       crypto        yes                          197   250x250        32x32
+A15.png         crypto        yes                          253   50x50          32x32
+A25.png         crypto        yes                          119   250x250        32x32
+A12.png         crypto        yes                          197   250x250        32x32
 WIF.jpg         crypto        yes                          797   250x250        32x32
-TAO.jpg         crypto        yes                           48   250x250        32x32
+A16.jpg         crypto        yes                           48   250x250        32x32
 BLEND.webp      crypto        yes                           82   250x250        32x32
 AAPL.png        stocks        yes                           84   152x152        32x32
 GOOGL.jpg       stocks        yes                          632   16x16          16x16

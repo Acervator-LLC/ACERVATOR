@@ -1124,7 +1124,7 @@ pixels and bold.
 
 ```
 line                          colour            size  weight
-Bot btc_core started          rgb(0,255,204)    12    normal
+Bot a15_core started          rgb(0,255,204)    12    normal
 SCRUM PLACED                  rgb(255,170,0)    14    bold
 SCRUM FILLED                  rgb(0,255,136)    14    bold
 WIRE FLOW                     rgb(255,102,221)  12    bold
@@ -2746,7 +2746,7 @@ surface that owns the method and then pushes the new payload.
 
 ```
 pressed           reached Python             the screen recorded
-Start on row 1    bot-eth-02, start          command.sent start scrumming
+Start on row 1    bot-a14-02, start          command.sent start scrumming
 nothing pressed   no call                    no entry
 ```
 
