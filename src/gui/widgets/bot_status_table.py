@@ -8,6 +8,7 @@ from ...core.privacy_mask_registry import mask_or
 
 from .. import design_system as ds
 from ..main_tabs.bot_status_table_surface import (
+    BOT_ID_COLUMN,
     BROWSER_NEW_WINDOW,
     COLUMN_LABELS,
     COLUMN_TOOLTIPS,
@@ -84,6 +85,8 @@ try:
         QHeaderView,
         QLabel,
         QPushButton,
+        QStyledItemDelegate,
+        QStyleOptionViewItem,
         QTableWidgetItem,
         QVBoxLayout,
         QWidget,
@@ -101,6 +104,14 @@ except ImportError:
 
 
 if _HAS_QT:
+
+    class CentredMarkDelegate(QStyledItemDelegate):
+        """Centres a cell's decoration by setting ``decorationPosition`` to ``Top``."""
+
+        def initStyleOption(self, option, index) -> None:  # noqa: N802
+            """Take the base option, then stack the decoration over the cell's text."""
+            super().initStyleOption(option, index)
+            option.decorationPosition = QStyleOptionViewItem.Top
 
     class ColumnHeaderCell(QWidget):
         """One column's wrapped label, over the privacy dot that masks it.
@@ -372,6 +383,10 @@ if _HAS_QT:
             # ROW_HEIGHT_PX rather than the style's own section size.
             self.setIconSize(QSize(LOGO_SIZE_PX, LOGO_SIZE_PX))
             self.verticalHeader().setDefaultSectionSize(ROW_HEIGHT_PX)
+
+            # Held on self: setItemDelegateForColumn does not take ownership.
+            self._mark_delegate = CentredMarkDelegate(self)
+            self.setItemDelegateForColumn(BOT_ID_COLUMN, self._mark_delegate)
 
             # Qt scrolls to its current item while autoScroll is on, which
             # takes the scroll bar away from the operator.
@@ -920,7 +935,7 @@ if _HAS_QT:
                         fire_btn.setStyleSheet(
                             "font-size: 10px; padding: 1px 6px; "
                             f"color: {ds.TEXT_MAX}; font-weight: bold; "
-                            f"background-color: {ds.STATE_ENGAGED}; "
+                            f"background-color: {ds.STATE_ENGAGED_DIM}; "
                             f"border: 1px solid {ds.STATE_ARMED};"
                         )
                         _apply_glow(ds.STATE_ARMED)
