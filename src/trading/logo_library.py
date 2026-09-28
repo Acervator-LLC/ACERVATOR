@@ -10,8 +10,11 @@ and ``lock_is_held`` refuses the whole fill while the application is running.
 market records its ids name, and writes one picture address per ticker to
 ``coin_index_path``, with the site ``coin_site`` reads off that coin's own
 record beside it; ``choose_coin`` settles a ticker several coins carry by the
-recorded name, then by market rank, and writes down the candidates of one it
-cannot settle.
+project name ``recorded_name`` answers, then by market rank, and writes down the
+candidates of one it cannot settle. ``coin_candidates`` looks a coin id up under
+that project name as well as under the ticker, ``--name TICKER=NAME`` supplies one
+the records do not hold, and ``_clear_unresolved`` drops a ticker from
+``unresolved.json`` once its index row carries an address.
 """
 
 from __future__ import annotations
@@ -42,6 +45,7 @@ from ..exchange.crypto_assets import (
     COIN_INDEX_CHOSEN_KEY,
     COIN_INDEX_ID_KEY,
     COIN_INDEX_IMAGE_KEY,
+    COIN_INDEX_NAME_KEY,
     COIN_INDEX_REASON_KEY,
     COIN_INDEX_SITE_KEY,
     COIN_INDEX_SITE_REASON_KEY,
@@ -305,13 +309,15 @@ COIN_SITE_LOG = "logo library: %d site(s) looked up, %d named, %d without one"
 COIN_LIST_LOG = "logo library: the coin list names %d coin(s)"
 COIN_RECORD_LOG = "logo library: %d coin record(s) read over %d page(s)"
 COIN_INDEX_LOG = "logo library: coin index holds %d address(es) and %d refusal(s)"
+COIN_CLEARED_LOG = "logo library: %d ticker(s) dropped from unresolved, %d left"
 COIN_READ_REFUSED_LOG = "logo library: %s answered nothing: %s"
 COIN_RATE_LOG = "logo library: %s refused for rate, holding %.0f s"
 
 #: What ``CoinIndexReport.line`` reads.
 COIN_REPORT_FORMAT = (
     "{tickers} ticker(s) looked up, {listed} coin(s) listed, {records} record(s) "
-    "read over {reads} read(s), {addressed} address(es) indexed, {refused} unsettled"
+    "read over {reads} read(s), {addressed} address(es) indexed, {refused} unsettled, "
+    "{cleared} refusal(s) dropped"
 )
 
 
@@ -366,12 +372,37 @@ def _coin_read(address: str, clock: Any) -> Optional[Any]:
     return None
 
 
-def coin_candidates(symbol: Any, by_symbol: dict, by_name: dict) -> tuple[str, ...]:
-    """Every coin id one ticker may name, matched on the ticker and then on the name."""
+def recorded_name(symbol: Any, kept: Optional[dict] = None) -> str:
+    """The project name recorded for one ticker, empty for a ticker no record names.
+
+    ``kept`` is the coin index as ``load_coin_index`` answers it, and its own
+    ``COIN_INDEX_NAME_KEY`` decides before the ``ASSETS`` record's name, so a name
+    one walk settled is the name the next walk reads.
+    """
+    asked = str(symbol).strip().upper()
+    row = (kept or {}).get(asked) or {}
+    named = str(row.get(COIN_INDEX_NAME_KEY) or "").strip()
+    if named:
+        return named
+    return ASSETS[asked].name if asked in ASSETS else ""
+
+
+def coin_candidates(
+    symbol: Any, by_symbol: dict, by_name: dict, name: Any = ""
+) -> tuple[str, ...]:
+    """Every coin id one ticker may name: the ticker, then ``name``, then the folded ticker.
+
+    ``by_name`` is keyed on each coin's own project name, so a project whose name
+    is not its ticker answers only under ``name``.
+    """
     found = by_symbol.get(str(symbol).strip().upper(), ())
     if found:
         return tuple(str(one[COIN_ID_KEY]) for one in found)
-    return tuple(str(one[COIN_ID_KEY]) for one in by_name.get(coin_folded(symbol), ()))
+    for key in (coin_folded(name), coin_folded(symbol)):
+        named = by_name.get(key, ()) if key else ()
+        if named:
+            return tuple(str(one[COIN_ID_KEY]) for one in named)
+    return ()
 
 
 def coin_rank(record: Any) -> float:
@@ -389,12 +420,14 @@ def _coin_named(candidates: Sequence[str], records: dict) -> str:
 
 
 def choose_coin(
-    symbol: str, candidates: Sequence[str], records: dict
+    symbol: str, candidates: Sequence[str], records: dict, name: Any = ""
 ) -> tuple[str, str]:
     """One coin id for ``symbol`` and how it was chosen, or an empty id and the refusal.
 
-    A recorded name decides first, then a lone ranked candidate, then a rank
-    ``COIN_RANK_MARGIN`` better than the next.
+    ``name`` is the project name ``recorded_name`` answers and it decides first,
+    then a lone ranked candidate, then a rank ``COIN_RANK_MARGIN`` better than the
+    next. A ticker no name settles is refused with its candidates rather than
+    guessed at.
     """
     present = [one for one in candidates if one in records]
     if not present:
@@ -402,7 +435,7 @@ def choose_coin(
     if len(present) == 1:
         return present[0], "the only coin carrying this ticker"
 
-    recorded = ASSETS[symbol].name if symbol in ASSETS else ""
+    recorded = str(name).strip()
     if recorded:
         matched = [
             one
@@ -432,6 +465,26 @@ def choose_coin(
     )
 
 
+def _clear_unresolved(assets: dict, library: Path) -> tuple[str, ...]:
+    """Every ticker dropped from ``unresolved_path`` whose ``assets`` row now carries an address.
+
+    ``fill_library`` skips a ticker ``read_unresolved`` names.
+    """
+    held = read_unresolved(library)
+    dropped = tuple(
+        one
+        for one, row in assets.items()
+        if one in held and str(row.get(COIN_INDEX_IMAGE_KEY) or "").strip()
+    )
+    if not dropped:
+        return ()
+    for one in dropped:
+        held.pop(one, None)
+    write_unresolved(held, library)
+    logger.info(COIN_CLEARED_LOG, len(dropped), len(held))
+    return dropped
+
+
 @dataclass(frozen=True)
 class CoinIndexReport:
     """What one ``build_coin_index`` walk wrote, with every unsettled ticker in ``refused``."""
@@ -442,6 +495,7 @@ class CoinIndexReport:
     reads: int = 0
     addressed: int = 0
     refused: tuple[tuple[str, str], ...] = field(default_factory=tuple)
+    cleared: int = 0
     path: Optional[Path] = None
 
     @property
@@ -454,6 +508,7 @@ class CoinIndexReport:
             reads=self.reads,
             addressed=self.addressed,
             refused=len(self.refused),
+            cleared=self.cleared,
         )
 
 
@@ -461,11 +516,13 @@ def build_coin_index(
     symbols: Iterable[str],
     library_dir: Optional[Path] = None,
     pace: Optional[Any] = None,
+    names: Optional[dict] = None,
 ) -> CoinIndexReport:
     """Look every ticker up through the coin list and its market records, and write the index.
 
-    ``choose_coin`` settles a ticker several coins carry; one it cannot settle is
-    written with its candidates and no address.
+    ``names`` maps a ticker to the project name ``coin_candidates`` and
+    ``choose_coin`` read, and a ticker whose row gains an address is dropped from
+    ``unresolved_path``.
     """
     library = Path(library_dir) if library_dir else LIBRARY_DIR
     clock = (
@@ -478,6 +535,15 @@ def build_coin_index(
     asked = tuple(
         sorted({str(one).strip().upper() for one in symbols if str(one).strip()})
     )
+    # A walk over part of the roster keeps every ticker it did not ask about,
+    # and reuses a site already kept for the same coin rather than reading again.
+    held = {one: dict(row) for one, row in load_coin_index(library).items()}
+    given = {
+        str(one).strip().upper(): str(text).strip()
+        for one, text in (names or {}).items()
+        if str(one).strip() and str(text).strip()
+    }
+    project_names = {one: given.get(one) or recorded_name(one, held) for one in asked}
 
     listed = _coin_read(COIN_LIST_URL, clock)
     reads = 1
@@ -494,7 +560,10 @@ def build_coin_index(
         by_symbol.setdefault(key, []).append(coin)
         by_name.setdefault(coin_folded(coin.get(COIN_NAME_KEY)), []).append(coin)
 
-    wanted = {one: coin_candidates(one, by_symbol, by_name) for one in asked}
+    wanted = {
+        one: coin_candidates(one, by_symbol, by_name, project_names.get(one, ""))
+        for one in asked
+    }
     every = sorted({one for ids in wanted.values() for one in ids})
 
     records: dict[str, dict] = {}
@@ -511,15 +580,13 @@ def build_coin_index(
                 records[str(row[COIN_ID_KEY])] = row
     logger.info(COIN_RECORD_LOG, len(records), pages)
 
-    # A walk over part of the roster keeps every ticker it did not ask about,
-    # and reuses a site already kept for the same coin rather than reading again.
-    held = {name: dict(row) for name, row in load_coin_index(library).items()}
     assets: dict[str, dict] = {}
     refused: list[tuple[str, str]] = []
     sited = 0
     siteless = 0
     for symbol in asked:
-        chosen, why = choose_coin(symbol, wanted[symbol], records)
+        named = project_names.get(symbol, "")
+        chosen, why = choose_coin(symbol, wanted[symbol], records, named)
         address = (
             str((records.get(chosen) or {}).get(COIN_IMAGE_KEY) or "").strip()
             if chosen
@@ -533,6 +600,9 @@ def build_coin_index(
                 COIN_INDEX_ID_KEY: chosen,
                 COIN_INDEX_CHOSEN_KEY: why,
             }
+            settled = str((records.get(chosen) or {}).get(COIN_NAME_KEY) or "").strip()
+            if settled or named:
+                row[COIN_INDEX_NAME_KEY] = settled or named
             kept = held.get(symbol) or {}
             site = (
                 str(kept.get(COIN_INDEX_SITE_KEY) or "").strip()
@@ -552,12 +622,15 @@ def build_coin_index(
                 siteless += 1
             assets[symbol] = row
             continue
-        assets[symbol] = {
+        unsettled = {
             COIN_INDEX_REASON_KEY: why,
             COIN_INDEX_SITE_REASON_KEY: COIN_UNSETTLED_SITE_REASON.format(
                 symbol=symbol
             ),
         }
+        if named:
+            unsettled[COIN_INDEX_NAME_KEY] = named
+        assets[symbol] = unsettled
         siteless += 1
         refused.append((symbol, why))
     logger.info(COIN_SITE_LOG, sited + siteless, sited, siteless)
@@ -575,6 +648,7 @@ def build_coin_index(
     )
     addressed = len(assets) - len(refused)
     logger.info(COIN_INDEX_LOG, addressed, len(refused))
+    cleared = _clear_unresolved(assets, library)
     return CoinIndexReport(
         tickers=len(asked),
         listed=len(listed),
@@ -582,6 +656,7 @@ def build_coin_index(
         reads=reads,
         addressed=addressed,
         refused=tuple(refused),
+        cleared=len(cleared),
         path=path,
     )
 
@@ -711,8 +786,9 @@ MAIN_LOG_FORMAT = "%(asctime)s %(message)s"
 def _parser() -> argparse.ArgumentParser:
     """The arguments ``main`` reads: the read budget, the library, the runtime directory.
 
-    ``--coin-index`` rebuilds the coin index; ``main`` builds it anyway when
-    ``coin_index_path`` names no file.
+    ``--coin-index`` rebuilds the coin index, and ``--name TICKER=NAME`` names the
+    project one ticker is settled under; either rebuilds it, as does a
+    ``coin_index_path`` naming no file.
     """
     parser = argparse.ArgumentParser(description="Fill the logo library.")
     parser.add_argument("--reads", type=int, default=DEFAULT_READ_LIMIT)
@@ -720,7 +796,22 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--config-dir", type=Path, default=None)
     parser.add_argument("--list", action="store_true")
     parser.add_argument("--coin-index", action="store_true")
+    parser.add_argument("--name", action="append", default=[], metavar="TICKER=NAME")
     return parser
+
+
+def given_names(pairs: Iterable[str]) -> dict[str, str]:
+    """Each ``TICKER=NAME`` pair as an upper-case ticker answering its project name.
+
+    A pair naming no ticker or no name is dropped.
+    """
+    found: dict[str, str] = {}
+    for one in pairs:
+        ticker, _, named = str(one).partition("=")
+        key = ticker.strip().upper()
+        if key and named.strip():
+            found[key] = named.strip()
+    return found
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
@@ -738,10 +829,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             print(FOLDER_FORMAT.format(folder=folder, count=counts[folder]))
         return 0
     library = Path(args.library) if args.library else LIBRARY_DIR
-    if args.coin_index or not coin_index_path(library).is_file():
+    names = given_names(args.name)
+    if args.coin_index or names or not coin_index_path(library).is_file():
         looked = build_coin_index(
             [one.symbol for one in rows if one.asset_class == CLASS_CRYPTO],
             library_dir=library,
+            names=names,
         )
         print(looked.line)
         for symbol, reason in looked.refused:
@@ -780,6 +873,8 @@ __all__ = [
     "coin_folded",
     "coin_rank",
     "coin_site",
+    "given_names",
+    "recorded_name",
     "LOGO_PACE_S",
     "MAP_SOURCE",
     "TRADING_REFUSAL",
