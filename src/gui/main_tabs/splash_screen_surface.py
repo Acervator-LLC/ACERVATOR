@@ -75,6 +75,7 @@ LOGO_GLOW_ALPHA_DIVISOR = 8
 CYAN = (0, 255, 238)
 BLUE = (0, 170, 255)
 GREEN = (0, 255, 136)
+AMBER = (255, 200, 80)
 
 OUTER_RING_RADIUS = 45
 OUTER_RING_WIDTH = 2.0
@@ -127,26 +128,29 @@ HANGER_STEPS = 4
 BARB_BANDS = 1
 
 STAFF_TOP_Y = -0.88
-STAFF_BOTTOM_Y = 0.98
+STAFF_BOTTOM_Y = 0.92
 STAFF_HALF_TOP = 0.017
 STAFF_HALF_BOTTOM = 0.031
 FINIAL_Y = -0.93
 FINIAL_RADIUS = 0.044
 
-WING_ROOT = (0.050, -0.72)
-WING_BEND = (0.34, -0.97)
-WING_TIP = (0.74, -0.88)
+WING_ROOT = (0.046, -0.74)
+WING_BEND = (0.24, -1.00)
+WING_TIP = (0.54, -0.92)
 WING_LOBES = 4
 WING_LOBE_STEPS = 5
-WING_LOBE_DEPTH = 0.090
+WING_LOBE_DEPTH = 0.082
 WING_LOBE_TAPER = 0.55
 
-COMPASS_HINGE_Y = -0.56
-COMPASS_HINGE_RADIUS = 0.058
-COMPASS_POINT = (0.62, 0.96)
-COMPASS_HALF_HINGE = 0.036
-COMPASS_HALF_POINT = 0.007
-COMPASS_LEG_STEPS = 12
+COMPASS_HINGE_Y = -0.66
+COMPASS_HINGE_RADIUS = 0.072
+COMPASS_HINGE_INNER = 0.030
+COMPASS_POINT = (0.50, 0.94)
+COMPASS_HALF_HINGE = 0.038
+COMPASS_HALF_POINT = 0.009
+COMPASS_LEG_STEPS = 10
+COMPASS_FOOT = 0.060
+COMPASS_FOOT_HALF = 0.020
 
 EYE_CENTRE_Y = -0.02
 EYE_HALF_WIDTH = 0.300
@@ -163,20 +167,25 @@ SLIT_STEPS = 10
 
 AURA_POINTS = 13
 AURA_START_DEGREES = -90.0
-AURA_BASE_X = 0.380
-AURA_BASE_Y = 0.272
-AURA_BASE_SPREAD_DEGREES = 12.5
-AURA_CURL_DEGREES = 16.0
-AURA_TIP_SHARE = 1.58
-AURA_SPREAD_TAPER = 0.85
-AURA_FLAME_STEPS = 7
+AURA_BASE_X = 0.360
+AURA_BASE_Y = 0.258
+AURA_BASE_SPREAD_DEGREES = 11.0
+AURA_ROOT_SHARE = 0.42
+AURA_BELLY_AT = 0.22
+AURA_SPREAD_TAPER = 0.88
+AURA_CURL_DEGREES = 6.0
+AURA_CURL_POWER = 2.0
+AURA_LICK_DEGREES = 14.0
+AURA_LICK_POWER = 3.2
+AURA_TIP_SHARE = 1.78
+AURA_FLAME_STEPS = 12
 
-SERPENT_HEAD_Y = -0.68
-SERPENT_TAIL_Y = 0.92
-SERPENT_BOW = 0.265
-SERPENT_COILS = 2.0
-SERPENT_STEPS = 40
-SERPENT_HALF_HEAD = 0.042
+SERPENT_HEAD_Y = -0.66
+SERPENT_TAIL_Y = 0.44
+SERPENT_BOW = 0.275
+SERPENT_COILS = 1.5
+SERPENT_STEPS = 72
+SERPENT_HALF_HEAD = 0.034
 SERPENT_HALF_TAIL = 0.009
 SERPENT_SNOUT = (0.150, -0.060)
 SERPENT_JAW = (0.150, 0.032)
@@ -188,34 +197,40 @@ SERPENT_EYE_RADIUS = 0.017
 SERPENT_BROW_SHARE = 0.52
 SERPENT_BROW_LIFT = 1.30
 
-SCALE_BEAM_Y = 0.52
-SCALE_BEAM_HALF = 0.38
-SCALE_BEAM_HALF_THICK = 0.019
-SCALE_BOSS_RADIUS = 0.042
-SCALE_HANGER_X = 0.330
-SCALE_HANGER_DROP = 0.200
-SCALE_HANGER_HALF = 0.008
-SCALE_PAN_HALF = 0.125
-SCALE_PAN_DEPTH = 0.058
-SCALE_PAN_HALF_THICK = 0.011
-SCALE_PAN_STEPS = 10
+SCALE_BEAM_Y = 0.56
+SCALE_BEAM_HALF = 0.34
+SCALE_BEAM_HALF_THICK = 0.020
+SCALE_BOSS_RADIUS = 0.046
+SCALE_HANGER_X = 0.310
+SCALE_HANGER_DROP = 0.215
+SCALE_HANGER_HALF = 0.009
+SCALE_RING_RADIUS = 0.024
+SCALE_PAN_HALF = 0.132
+SCALE_PAN_DEPTH = 0.086
+SCALE_PAN_RIM = 0.018
+SCALE_PAN_STEPS = 12
 SCALE_TILT_MAX_DEGREES = 9.0
 SCALE_SWING_RATE = 4.2
 SCALE_SETTLE_TAU_S = 0.9
 SCALE_SETTLE_LIMIT_S = 5.0
 
-SCYTHE_BUTT = (0.90, 0.86)
-SCYTHE_BEND = (0.52, 0.16)
-SCYTHE_HEAD = (-0.20, -0.46)
-SCYTHE_HALF_BUTT = 0.034
-SCYTHE_HALF_HEAD = 0.020
+SCYTHE_BUTT = (-0.24, 0.94)
+SCYTHE_BEND = (-0.60, 0.44)
+SCYTHE_HEAD = (-0.74, -0.06)
+SCYTHE_NECK = (-0.72, -0.30)
+SCYTHE_HALF_BUTT = 0.030
+SCYTHE_HALF_HEAD = 0.021
+SCYTHE_NECK_HALF = 0.026
+SCYTHE_GRIP_AT = 0.42
+SCYTHE_GRIP_HALF = 0.044
+SCYTHE_GRIP_SPAN = 0.07
 
-FEATHER_QUILL = (-0.56, -0.70)
-FEATHER_TIP = (-0.98, -0.48)
-FEATHER_HALF_BASE = 0.020
-FEATHER_HALF_TIP = 0.005
-FEATHER_VANE_UPPER = 0.108
-FEATHER_VANE_LOWER = 0.078
+FEATHER_QUILL = (-0.54, -0.54)
+FEATHER_TIP = (-0.12, -0.54)
+FEATHER_HALF_BASE = 0.022
+FEATHER_HALF_TIP = 0.004
+FEATHER_VANE_UPPER = 0.118
+FEATHER_VANE_LOWER = 0.082
 FEATHER_VANE_TAPER = 0.62
 FEATHER_LOWER_SPAN = (0.04, 0.97)
 FEATHER_UPPER_SPANS = ((0.04, 0.47), (0.60, 0.97))
@@ -231,14 +246,14 @@ FEATHER_VANE_STEPS = 24
 STAFF_ALPHA_SHARE = 0.88
 WING_ALPHA_SHARE = 0.92
 COMPASS_ALPHA_SHARE = 0.85
-SERPENT_ALPHA_SHARE = 0.78
+SERPENT_ALPHA_SHARE = 0.90
 SCALE_ALPHA_SHARE = 0.82
 AURA_ALPHA_SHARE = 0.72
 EYE_ALPHA_SHARE = 1.0
 IRIS_ALPHA_SHARE = 0.85
 SCYTHE_ALPHA_SHARE = 0.70
-FEATHER_VANE_ALPHA_SHARE = 0.26
-FEATHER_BARB_ALPHA_SHARE = 0.66
+FEATHER_VANE_ALPHA_SHARE = 0.34
+FEATHER_BARB_ALPHA_SHARE = 0.62
 PUPIL_RGB = (6, 6, 14)
 
 PARTICLE_ANGLES = (60, 200, 320)
@@ -282,7 +297,7 @@ DESIGNER_LABEL = "Designed, prompted, and engineered by"
 DESIGNER_LABEL_RECT = (90, 16)
 DESIGNER = "Ekthelius the Accumulator"
 DESIGNER_FONT = ("Segoe UI", 13)
-DESIGNER_RGB = (255, 200, 80)
+DESIGNER_RGB = AMBER
 DESIGNER_RECT = (108, 24)
 DESIGNER_ALIAS = "a.k.a. Anthony L. Brown"
 DESIGNER_ALIAS_RGB = (180, 170, 140)
@@ -621,9 +636,16 @@ def aura_flame_edges(index: int, spin: Any) -> tuple:
     steps = _steps(AURA_FLAME_STEPS)
     for step in range(steps + 1):
         height = step / steps
-        angle = middle + AURA_CURL_DEGREES * height * height
+        angle = (
+            middle
+            + AURA_CURL_DEGREES * height**AURA_CURL_POWER
+            + AURA_LICK_DEGREES * height**AURA_LICK_POWER
+        )
         reach = 1.0 + (AURA_TIP_SHARE - 1.0) * height
-        spread = AURA_BASE_SPREAD_DEGREES * (1.0 - height) ** AURA_SPREAD_TAPER
+        root = AURA_ROOT_SHARE + (1.0 - AURA_ROOT_SHARE) * min(
+            1.0, height / AURA_BELLY_AT
+        )
+        spread = AURA_BASE_SPREAD_DEGREES * root * (1.0 - height) ** AURA_SPREAD_TAPER
         trailing.append(_aura_point(angle - spread, reach))
         leading.append(_aura_point(angle + spread, reach))
     return trailing, leading
@@ -643,18 +665,41 @@ def _serpent_spine(phase: Any) -> list:
     return out
 
 
-def _pan_spine(centre_x: Any, centre_y: Any) -> list:
-    out = []
+def serpent_coils(phase: Any) -> list:
+    """The spine cut at every crossing of the staff, so each arc wraps one way."""
+    spine = _serpent_spine(phase)
+    arcs: list = []
+    run: list = [spine[0]]
+    start = 0
+    for index in range(1, len(spine)):
+        run.append(spine[index])
+        crossed = (spine[index][0] >= 0.0) != (spine[index - 1][0] >= 0.0)
+        if crossed or index == len(spine) - 1:
+            arcs.append((start / (len(spine) - 1), index / (len(spine) - 1), run))
+            run = [spine[index]]
+            start = index
+    return arcs
+
+
+def _serpent_half(share: Any) -> Any:
+    return SERPENT_HALF_HEAD + (SERPENT_HALF_TAIL - SERPENT_HALF_HEAD) * share
+
+
+def _pan_edges(centre_x: Any, centre_y: Any) -> tuple:
+    """The rim line and the bowl curve of one pan, so the pan reads as a vessel."""
+    rim: list = []
+    bowl: list = []
     steps = _steps(SCALE_PAN_STEPS)
     for index in range(steps + 1):
         across = -1.0 + 2.0 * index / steps
-        out.append(
+        rim.append([centre_x + SCALE_PAN_HALF * across, centre_y])
+        bowl.append(
             [
                 centre_x + SCALE_PAN_HALF * across,
-                centre_y + SCALE_PAN_DEPTH * (1.0 - across * across),
+                centre_y + SCALE_PAN_DEPTH * (1.0 - across * across) + SCALE_PAN_RIM,
             ]
         )
-    return out
+    return rim, bowl
 
 
 def caduceus_faces(spin: Any, pulse: Any) -> list:
@@ -663,14 +708,20 @@ def caduceus_faces(spin: Any, pulse: Any) -> list:
         [0.0, STAFF_TOP_Y + (STAFF_BOTTOM_Y - STAFF_TOP_Y) * step / _steps(STAFF_STEPS)]
         for step in range(_steps(STAFF_STEPS) + 1)
     ]
-    groups = [
-        (
-            _ribbon_faces(staff_spine, STAFF_HALF_TOP, STAFF_HALF_BOTTOM, FACET_BANDS),
-            CYAN,
-            STAFF_ALPHA_SHARE,
-            0.0,
-        )
-    ]
+    staff = (
+        _ribbon_faces(staff_spine, STAFF_HALF_TOP, STAFF_HALF_BOTTOM, FACET_BANDS),
+        CYAN,
+        STAFF_ALPHA_SHARE,
+        0.0,
+    )
+    behind: list = []
+    infront: list = []
+    for phase in (math.pi / 2, -math.pi / 2):
+        for turn, (at, to, arc) in enumerate(serpent_coils(phase)):
+            band = _ribbon_faces(arc, _serpent_half(at), _serpent_half(to), FACET_BANDS)
+            wraps = behind if (turn % 2 == 0) == (phase > 0) else infront
+            wraps.append((band, BLUE, SERPENT_ALPHA_SHARE, 0.0))
+    groups = behind + [staff] + infront
     for phase in (math.pi / 2, -math.pi / 2):
         spine = _serpent_spine(phase)
         facing = 1.0 if phase > 0 else -1.0
@@ -679,14 +730,6 @@ def caduceus_faces(spin: Any, pulse: Any) -> list:
             head[0] + SERPENT_SNOUT[0] * facing,
             head[1] + SERPENT_SNOUT[1],
         ]
-        groups.append(
-            (
-                _ribbon_faces(spine, SERPENT_HALF_HEAD, SERPENT_HALF_TAIL, FACET_BANDS),
-                BLUE,
-                SERPENT_ALPHA_SHARE,
-                0.0,
-            )
-        )
         groups.append(
             (
                 _strip(
@@ -754,21 +797,39 @@ def caduceus_faces(spin: Any, pulse: Any) -> list:
 
 
 def compass_faces() -> list:
-    """The dividers: a hinge above centre and two legs splaying to the A-frame."""
-    leg = _quadratic(
-        (0.0, COMPASS_HINGE_Y),
-        (COMPASS_POINT[0] / 2, (COMPASS_HINGE_Y + COMPASS_POINT[1]) / 2),
-        COMPASS_POINT,
-        _steps(COMPASS_LEG_STEPS),
+    """The dividers: one hinge at the top and exactly two straight legs below it."""
+    steps = _steps(COMPASS_LEG_STEPS)
+    spine = [
+        [
+            COMPASS_POINT[0] * step / steps,
+            COMPASS_HINGE_Y + (COMPASS_POINT[1] - COMPASS_HINGE_Y) * step / steps,
+        ]
+        for step in range(steps + 1)
+    ]
+    leg = _ribbon_faces(spine, COMPASS_HALF_HINGE, COMPASS_HALF_POINT, FACET_BANDS)
+    foot = _ribbon_faces(
+        [
+            [COMPASS_POINT[0], COMPASS_POINT[1] - COMPASS_FOOT],
+            [COMPASS_POINT[0], COMPASS_POINT[1]],
+        ],
+        COMPASS_FOOT_HALF,
+        0.0,
+        BARB_BANDS,
     )
-    spine = [[point[0], point[1]] for point in leg]
-    right = _ribbon_faces(spine, COMPASS_HALF_HINGE, COMPASS_HALF_POINT, FACET_BANDS)
     return [
-        (right, CYAN, COMPASS_ALPHA_SHARE, 0.0),
-        (_mirrored_faces(right), CYAN, COMPASS_ALPHA_SHARE, 0.0),
+        (leg, CYAN, COMPASS_ALPHA_SHARE, 0.0),
+        (_mirrored_faces(leg), CYAN, COMPASS_ALPHA_SHARE, 0.0),
+        (foot, CYAN, COMPASS_ALPHA_SHARE, 0.0),
+        (_mirrored_faces(foot), CYAN, COMPASS_ALPHA_SHARE, 0.0),
         (
             _disc(0.0, COMPASS_HINGE_Y, COMPASS_HINGE_RADIUS),
             CYAN,
+            COMPASS_ALPHA_SHARE,
+            0.0,
+        ),
+        (
+            _disc(0.0, COMPASS_HINGE_Y, COMPASS_HINGE_INNER),
+            PUPIL_RGB,
             COMPASS_ALPHA_SHARE,
             0.0,
         ),
@@ -776,22 +837,42 @@ def compass_faces() -> list:
 
 
 def scythe_faces() -> list:
-    """The shaft and its blade, the feather of Ma'at, with a split vane and barbs."""
+    """One tool: a shaft with a grip, a neck, and the feather of Ma'at as its blade."""
     shaft = [
         [point[0], point[1]]
         for point in _quadratic(
             SCYTHE_BUTT, SCYTHE_BEND, SCYTHE_HEAD, _steps(CURVE_STEPS)
         )
     ]
+    neck = _resample([list(SCYTHE_HEAD), list(SCYTHE_NECK)], _steps(HANGER_STEPS))
     rachis = [
         [point[0], point[1]]
         for point in _quadratic(
-            SCYTHE_HEAD, FEATHER_QUILL, FEATHER_TIP, _steps(FEATHER_VANE_STEPS)
+            SCYTHE_NECK, FEATHER_QUILL, FEATHER_TIP, _steps(FEATHER_VANE_STEPS)
         )
     ]
+    grip_at = int(SCYTHE_GRIP_AT * (len(shaft) - 1))
+    grip_to = min(len(shaft) - 1, grip_at + max(1, int(SCYTHE_GRIP_SPAN * len(shaft))))
     groups = [
         (
             _ribbon_faces(shaft, SCYTHE_HALF_BUTT, SCYTHE_HALF_HEAD, FACET_BANDS),
+            CYAN,
+            SCYTHE_ALPHA_SHARE,
+            0.0,
+        ),
+        (
+            _ribbon_faces(
+                shaft[grip_at : grip_to + 1],
+                SCYTHE_GRIP_HALF,
+                SCYTHE_GRIP_HALF,
+                FACET_BANDS,
+            ),
+            CYAN,
+            SCYTHE_ALPHA_SHARE,
+            0.0,
+        ),
+        (
+            _ribbon_faces(neck, SCYTHE_HALF_HEAD, SCYTHE_NECK_HALF, FACET_BANDS),
             CYAN,
             SCYTHE_ALPHA_SHARE,
             0.0,
@@ -920,17 +1001,14 @@ def scale_faces(t: Any) -> list:
         )
         groups.append(
             (
-                _ribbon_faces(
-                    _pan_spine(top[0], pan_y),
-                    SCALE_PAN_HALF_THICK,
-                    SCALE_PAN_HALF_THICK,
-                    FACET_BANDS,
-                ),
+                _disc(top[0], top[1], SCALE_RING_RADIUS),
                 BLUE,
                 SCALE_ALPHA_SHARE,
                 0.0,
             )
         )
+        rim, bowl = _pan_edges(top[0], pan_y)
+        groups.append((_strip(rim, bowl, FACET_BANDS), BLUE, SCALE_ALPHA_SHARE, 0.0))
     return groups
 
 
@@ -942,7 +1020,7 @@ def aura_faces(spin: Any) -> list:
         seat = index * FULL_TURN_DEGREES / AURA_POINTS * FACET_AURA_TRAVEL
         bias = FACET_AURA_SWING * math.cos(math.radians(seat))
         groups.append(
-            (_strip(trailing, leading, FACET_BANDS), GREEN, AURA_ALPHA_SHARE, bias)
+            (_strip(trailing, leading, FACET_BANDS), AMBER, AURA_ALPHA_SHARE, bias)
         )
     return groups
 
