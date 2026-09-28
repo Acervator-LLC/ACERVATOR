@@ -301,7 +301,7 @@ FIRE_STYLE_FOLD_CEILING = (
 )
 FIRE_STYLE_FOLD_SOLID = (
     FIRE_STYLE_HEAD + f"color: {ds.TEXT_MAX}; font-weight: bold; "
-    f"background-color: {ds.STATE_ENGAGED}; "
+    f"background-color: {ds.STATE_ENGAGED_DIM}; "
     f"border: 1px solid {ds.STATE_ARMED};"
 )
 FIRE_STYLE_FOLD_OUTLINE = (

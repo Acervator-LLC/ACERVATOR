@@ -9120,3 +9120,119 @@ findings on the bad file and none on the good one.
 Read over the shipped screens, the rule reports 16 findings in 15 files under
 `src/gui`. One sits in the asset column's own module: the Fire button's engaged
 ground carries white text at 3.44 to 1.
+
+## 2026-09-28 - the asset column's mark sits at the centre of the column
+
+**HIS.**
+
+> "Live - Asset Column - Logos are not hyperlinked. Should be centered in the
+> column. Column fields must match logo background color."
+
+The mark drew hard against the column's left edge. It now draws at the centre of
+the column, at the same size, in the same place up and down the row.
+
+### Why centre text alignment did not move the mark
+
+Every cell in the table takes centre text alignment. The first column's cell then
+takes its mark and its text is emptied. Text alignment governs text, so with no
+text left the mark laid out where a decoration lays out, which is the left edge.
+
+`src/gui/widgets/bot_status_table.py` - `_draw_logo`
+
+```python
+item.setIcon(icon)
+item.setText("")
+```
+
+Read off the drawn table, three rows, at 1920 by 700 and again at 1920 by 900:
+
+```
+                      before      after
+the cell, in pixels   x 0..219    x 0..219
+the cell's centre     110.0       110.0
+the mark              x 3..34     x 94..125
+the mark's size       32 by 32    32 by 32
+the mark's centre     19.0        110.0
+off the centre        -91.0       +0.0
+```
+
+Both heights gave the same numbers. The Symbol column's own text, which is
+centred, measured 2.5 pixels off centre in the same drawing, so the 91 is a fact
+about the mark.
+
+### What moves the mark
+
+One field of the style option the table reads while it draws. A delegate on the
+first column sets that field and touches nothing else.
+
+`src/gui/widgets/bot_status_table.py` - `CentredMarkDelegate`
+
+```python
+def initStyleOption(self, option, index) -> None:
+    super().initStyleOption(option, index)
+    option.decorationPosition = QStyleOptionViewItem.Top
+```
+
+Two other ways were tried first and measurement refused both. Setting the
+decoration's alignment to centre left the mark 91 pixels off. Painting the mark
+by hand drew it twice, once at each place.
+
+### The page already centred its own mark
+
+`src/gui/web/bot_status_table.js` - `AssetLogo`
+
+```javascript
+var DOT_MARGIN = "0 auto";
+```
+
+A block image with that margin sits at the centre of its cell. The window was the
+only build drawing the mark left, so this closes a difference between the two
+builds rather than opening one.
+
+### Nothing else in the list moved
+
+The whole drawn list was compared, the branch point against the branch, at both
+heights.
+
+```
+differing pixels                6144
+their box, in pixels            x 3..125, y 1..104
+the asset column                x 0..219
+one image against itself           0
+one planted pixel                  1
+```
+
+6144 is three rows times two squares of 32 by 32, the mark leaving one place and
+arriving at another. Every differing pixel sits inside the asset column, in the
+band the mark draws in. Row heights and every column width read the same before
+and after.
+
+### The Fire button's engaged ground now carries its own text
+
+The colour rule refused both of this column's files. The ground under white text
+missed the published floor.
+
+```
+token                hex       carries #ffffff   floor
+STATE_ENGAGED        #2d9d5f   3.4428 to 1       4.5     misses
+STATE_ENGAGED_DIM    #2d5f48   7.3891 to 1       4.5     reaches
+```
+
+`src/gui/main_tabs/bot_status_table_surface.py` - `FIRE_STYLE_FOLD_SOLID`
+
+```python
+FIRE_STYLE_HEAD + f"color: {ds.TEXT_MAX}; font-weight: bold; "
+f"background-color: {ds.STATE_ENGAGED_DIM}; "
+f"border: 1px solid {ds.STATE_ARMED};"
+```
+
+The declared palette names that token a dimmed engaged ground. Of its 146 tokens,
+77 reach the floor against white, and this one sits nearest the colour it
+replaces. The button keeps its bright border and its glow, which is what parts it
+from the button a position ceiling has stopped.
+
+```
+file                                              before   after
+src/gui/main_tabs/bot_status_table_surface.py     refused  passed
+src/gui/widgets/bot_status_table.py               refused  passed
+```
