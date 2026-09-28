@@ -88,6 +88,7 @@ MARK_ELEMENTS = (
     "fiery aura",
     "scythe",
     "winged caduceus",
+    "coiled serpents",
 )
 MARK_RADIUS = 150.0
 MARK_OFFSET_Y = -93.0
@@ -121,13 +122,14 @@ STAFF_HALF_BOTTOM = 0.031
 FINIAL_Y = -0.93
 FINIAL_RADIUS = 0.044
 
-WING_ROOT = (0.046, -0.76)
-WING_BEND = (0.28, -1.04)
-WING_TIP = (0.58, -0.92)
+WING_ROOT = (0.040, -0.74)
+WING_BEND = (0.40, -1.10)
+WING_TIP = (0.86, -0.96)
+WING_TRAIL_BEND = (0.38, -0.60)
 WING_LOBES = 8
-WING_LOBE_DEPTH = 0.026
-WING_LOBE_TAPER = 0.40
-WING_FEATHER_RAKE = 0.10
+WING_LOBE_DEPTH = 0.075
+WING_LOBE_TAPER = 0.55
+WING_FEATHER_RAKE = 0.30
 
 COMPASS_HINGE_Y = -0.66
 COMPASS_HINGE_RADIUS = 0.072
@@ -148,7 +150,6 @@ ETCH_START = 0.63
 ETCH_END = 0.90
 ETCH_BIAS = 0.0
 ETCH_ALPHA_SHARE = 1.0
-ETCH_ARC_STEPS = 9
 
 EYE_CENTRE_Y = -0.02
 EYE_HALF_WIDTH = 0.300
@@ -167,9 +168,7 @@ AURA_POINTS = 13
 AURA_START_DEGREES = -90.0
 AURA_BASE_X = 0.360
 AURA_BASE_Y = 0.258
-AURA_BASE_SPREAD_DEGREES = 11.0
-AURA_ROOT_SHARE = 0.42
-AURA_BELLY_AT = 0.22
+AURA_BASE_SPREAD_DEGREES = FULL_TURN_DEGREES / AURA_POINTS / 2.0
 AURA_SPREAD_TAPER = 0.88
 AURA_CURL_DEGREES = 6.0
 AURA_CURL_POWER = 2.0
@@ -225,9 +224,9 @@ SCYTHE_GRIP_AT = 0.42
 SCYTHE_GRIP_HALF = 0.044
 SCYTHE_GRIP_SPAN = 0.07
 
-BLADE_BACK_BEND = (-0.60, -0.70)
-BLADE_EDGE_BEND = (-0.40, -0.28)
-BLADE_TIP = (-0.11, -0.54)
+BLADE_BACK_BEND = (-0.62, -0.84)
+BLADE_EDGE_BEND = (-0.46, -0.44)
+BLADE_TIP = (-0.24, -0.56)
 BLADE_STEPS = 24
 BLADE_SPLIT_FROM_SHARE = 0.40
 BLADE_SPLIT_TO_SHARE = 0.62
@@ -567,27 +566,24 @@ def _slit_edges(half_width: Any, steps: int) -> tuple:
 
 
 def _wing_edges() -> tuple:
-    """A rigid leading edge, and a trailing edge broken into `WING_LOBES` feather tips."""
+    """A swept leading edge, and a bowed trailing edge cut into `WING_LOBES` feather tips."""
     lead = _quadratic(WING_ROOT, WING_BEND, WING_TIP, _steps(CURVE_STEPS))
-    chord_x = WING_ROOT[0] - WING_TIP[0]
-    chord_y = WING_ROOT[1] - WING_TIP[1]
-    reach = math.hypot(chord_x, chord_y)
-    run = (chord_x / reach, chord_y / reach)
-    down = (-run[1], run[0])
-    if down[1] < 0:
-        down = (run[1], -run[0])
+    sweep = _quadratic(WING_TIP, WING_TRAIL_BEND, WING_ROOT, WING_LOBES)
+    reach = math.hypot(WING_ROOT[0] - WING_TIP[0], WING_ROOT[1] - WING_TIP[1])
     trail: list = []
     for lobe in range(WING_LOBES):
+        start = [sweep[lobe][0], sweep[lobe][1]]
+        end = [sweep[lobe + 1][0], sweep[lobe + 1][1]]
+        span = math.hypot(end[0] - start[0], end[1] - start[1])
+        run = (
+            ((end[0] - start[0]) / span, (end[1] - start[1]) / span)
+            if span > MIN_SEGMENT
+            else (1.0, 0.0)
+        )
+        down = (-run[1], run[0])
+        if down[1] < 0:
+            down = (run[1], -run[0])
         at = lobe / WING_LOBES
-        to = (lobe + 1) / WING_LOBES
-        start = [
-            WING_TIP[0] + chord_x * at,
-            WING_TIP[1] + chord_y * at,
-        ]
-        end = [
-            WING_TIP[0] + chord_x * to,
-            WING_TIP[1] + chord_y * to,
-        ]
         depth = WING_LOBE_DEPTH * (1.0 - at * WING_LOBE_TAPER)
         rake = WING_FEATHER_RAKE * reach / WING_LOBES
         tip = [
@@ -625,10 +621,7 @@ def aura_flame_edges(index: int, spin: Any) -> tuple:
             + AURA_LICK_DEGREES * height**AURA_LICK_POWER
         )
         reach = 1.0 + (AURA_TIP_SHARE - 1.0) * height
-        root = AURA_ROOT_SHARE + (1.0 - AURA_ROOT_SHARE) * min(
-            1.0, height / AURA_BELLY_AT
-        )
-        spread = AURA_BASE_SPREAD_DEGREES * root * (1.0 - height) ** AURA_SPREAD_TAPER
+        spread = AURA_BASE_SPREAD_DEGREES * (1.0 - height) ** AURA_SPREAD_TAPER
         trailing.append(_aura_point(angle - spread, reach))
         leading.append(_aura_point(angle + spread, reach))
     return trailing, leading
@@ -689,17 +682,29 @@ def _pan_edges(centre_x: Any, centre_y: Any) -> tuple:
 
 
 def caduceus_faces(spin: Any, pulse: Any) -> list:
-    """The staff, its two coiled serpents and the wings, as toneable triangle groups."""
+    """The staff, its finial and the two wings, as toneable triangle groups."""
     staff_spine = [
         [0.0, STAFF_TOP_Y + (STAFF_BOTTOM_Y - STAFF_TOP_Y) * step / _steps(STAFF_STEPS)]
         for step in range(_steps(STAFF_STEPS) + 1)
     ]
-    staff = (
-        _ribbon_faces(staff_spine, STAFF_HALF_TOP, STAFF_HALF_BOTTOM, FACET_BANDS),
-        CYAN,
-        STAFF_ALPHA_SHARE,
-        0.0,
-    )
+    groups = [
+        (
+            _ribbon_faces(staff_spine, STAFF_HALF_TOP, STAFF_HALF_BOTTOM, FACET_BANDS),
+            CYAN,
+            STAFF_ALPHA_SHARE,
+            0.0,
+        )
+    ]
+    lead, trail = _wing_edges()
+    wing = _strip(lead, trail, FACET_BANDS)
+    groups.append((wing, CYAN, WING_ALPHA_SHARE, 0.0))
+    groups.append((_mirrored_faces(wing), CYAN, WING_ALPHA_SHARE, 0.0))
+    groups.append((_disc(0.0, FINIAL_Y, FINIAL_RADIUS), CYAN, STAFF_ALPHA_SHARE, 0.0))
+    return groups
+
+
+def serpent_faces() -> list:
+    """The two serpents coiled round the staff, with their heads, tongues and eyes."""
     behind: list = []
     infront: list = []
     for phase in (math.pi / 2, -math.pi / 2):
@@ -707,7 +712,7 @@ def caduceus_faces(spin: Any, pulse: Any) -> list:
             band = _ribbon_faces(arc, _serpent_half(at), _serpent_half(to), FACET_BANDS)
             wraps = behind if (turn % 2 == 0) == (phase > 0) else infront
             wraps.append((band, BLUE, SERPENT_ALPHA_SHARE, 0.0))
-    groups = behind + [staff] + infront
+    groups = behind + infront
     for phase in (math.pi / 2, -math.pi / 2):
         spine = _serpent_spine(phase)
         facing = 1.0 if phase > 0 else -1.0
@@ -774,53 +779,38 @@ def caduceus_faces(spin: Any, pulse: Any) -> list:
                 0.0,
             )
         )
-    lead, trail = _wing_edges()
-    wing = _strip(lead, trail, FACET_BANDS)
-    groups.append((wing, CYAN, WING_ALPHA_SHARE, 0.0))
-    groups.append((_mirrored_faces(wing), CYAN, WING_ALPHA_SHARE, 0.0))
-    groups.append((_disc(0.0, FINIAL_Y, FINIAL_RADIUS), CYAN, STAFF_ALPHA_SHARE, 0.0))
     return groups
 
 
-def _arc(
-    centre_x: Any,
-    centre_y: Any,
-    radius_x: Any,
-    radius_y: Any,
-    start: Any,
-    end: Any,
-) -> list:
-    steps = _steps(ETCH_ARC_STEPS)
-    out = []
-    for index in range(steps + 1):
-        degrees = start + (end - start) * index / steps
-        radians = math.radians(degrees)
-        out.append(
-            [
-                centre_x + radius_x * math.cos(radians),
-                centre_y + radius_y * math.sin(radians),
-            ]
-        )
-    return out
-
-
 def letter_strokes(letter: str) -> list:
-    """The strokes of one etched capital, in a box one unit tall and `ETCH_ADVANCE` wide."""
+    """One etched capital as straight stroke chains, in a box one unit tall by `ETCH_ADVANCE`."""
     if letter == "S":
         return [
             [
-                [0.58, -0.30],
+                [0.56, -0.36],
                 [0.40, -0.46],
-                [0.16, -0.38],
-                [0.14, -0.16],
-                [0.44, 0.00],
-                [0.52, 0.22],
-                [0.34, 0.44],
-                [0.08, 0.36],
+                [0.18, -0.46],
+                [0.10, -0.24],
+                [0.30, -0.04],
+                [0.52, 0.10],
+                [0.54, 0.32],
+                [0.36, 0.42],
+                [0.14, 0.42],
+                [0.06, 0.32],
             ]
         ]
     if letter == "O":
-        return [_arc(0.32, 0.0, 0.26, 0.45, 0.0, FULL_TURN_DEGREES)]
+        return [
+            [
+                [0.33, -0.46],
+                [0.59, -0.29],
+                [0.59, 0.25],
+                [0.33, 0.42],
+                [0.07, 0.25],
+                [0.07, -0.29],
+                [0.33, -0.46],
+            ]
+        ]
     if letter == "L":
         return [[[0.13, -0.46], [0.13, 0.42], [0.56, 0.42]]]
     if letter == "V":
@@ -831,7 +821,18 @@ def letter_strokes(letter: str) -> list:
             [[0.11, -0.02], [0.46, -0.02]],
         ]
     if letter == "C":
-        return [_arc(0.34, 0.0, 0.26, 0.45, 55.0, 305.0)]
+        return [
+            [
+                [0.56, -0.34],
+                [0.40, -0.46],
+                [0.20, -0.46],
+                [0.10, -0.28],
+                [0.10, 0.24],
+                [0.20, 0.42],
+                [0.40, 0.42],
+                [0.56, 0.30],
+            ]
+        ]
     if letter == "A":
         return [
             [[0.03, 0.44], [0.32, -0.46], [0.61, 0.44]],
@@ -839,14 +840,22 @@ def letter_strokes(letter: str) -> list:
         ]
     if letter == "G":
         return [
-            _arc(0.34, 0.0, 0.26, 0.45, 55.0, 330.0),
-            [[0.60, 0.06], [0.38, 0.06]],
+            [
+                [0.58, -0.34],
+                [0.42, -0.46],
+                [0.20, -0.46],
+                [0.10, -0.28],
+                [0.10, 0.24],
+                [0.20, 0.42],
+                [0.44, 0.42],
+                [0.58, 0.28],
+                [0.58, 0.06],
+                [0.38, 0.06],
+            ]
         ]
     if letter == "U":
         return [
-            [[0.08, -0.46], [0.08, 0.14]]
-            + _arc(0.32, 0.14, 0.24, 0.30, 180.0, 360.0)
-            + [[0.56, 0.14], [0.56, -0.46]]
+            [[0.09, -0.46], [0.09, 0.26], [0.33, 0.43], [0.57, 0.26], [0.57, -0.46]]
         ]
     return []
 
@@ -1144,6 +1153,7 @@ def mark_layers(spin: Any, pulse: Any, t: Any) -> list:
         ("scythe", scythe_faces()),
         ("scale", scale_faces(t)),
         ("fiery aura", aura_faces(spin)),
+        ("coiled serpents", serpent_faces()),
         ("reptilian eye", eye_faces(pulse)),
     ]
 
@@ -1192,7 +1202,7 @@ def _share(alpha: Any, part: Any) -> int:
 
 
 def sigil_ops(cx: Any, cy: Any, alpha: int, spin: Any, pulse: Any, t: Any) -> list:
-    """One `mesh` call per component group of the six `MARK_ELEMENTS`, back first.
+    """One `mesh` call per component group of the `MARK_ELEMENTS`, back first.
 
     `alpha` is the logo fade, `spin` the turn the rings carry, and `pulse` the
     breath that scales them.
