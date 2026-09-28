@@ -450,6 +450,19 @@ TAG_GLOB = "v[0-9]*"                 # src/_version.py
 build-0.2.0-dev.1916.ge2050ab1       # a release tag, which that glob rejects
 ```
 
+A runner resolves that version from the tags the remote carries, and the newer
+version tag is not one of them, so a runner build and a local build of one commit
+report different numbers. The commit is the same in both, and every file name
+carries it.
+
+```
+git ls-remote --tags origin    the older version tag, and the build- tags
+a local clone                  the older and the newer version tag
+```
+
+Pushing the newer tag would change the number every runner build reports, which
+the release cascade above governs.
+
 The publish step refuses a set whose file names do not all carry one version, and
 the Windows step refuses a build folder holding any logo file. Neither guard has
 a way to pass a mixed or a logo-carrying release.

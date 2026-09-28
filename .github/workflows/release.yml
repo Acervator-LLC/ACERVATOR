@@ -197,8 +197,20 @@ jobs:
               Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
             }
             Wait-Process -Id $proc.Id -Timeout 30 -ErrorAction SilentlyContinue
+            # The launch spawns QtWebEngineProcess children under the same name,
+            # so stopping the one pid leaves siblings running into the next
+            # variant's reading.
+            foreach ($stray in @(Get-Process -Name $name -ErrorAction SilentlyContinue)) {
+              Stop-Process -Id $stray.Id -Force -ErrorAction SilentlyContinue
+            }
+            Stop-Process -Name QtWebEngineProcess -Force -ErrorAction SilentlyContinue
+            for ($wait = 0; $wait -lt 30; $wait++) {
+              if (@(Get-Process -Name $name -ErrorAction SilentlyContinue).Count -eq 0) { break }
+              Start-Sleep -Seconds 1
+            }
             $left = @(Get-Process -Name $name -ErrorAction SilentlyContinue).Count
-            Write-Host "--- reaped pid $($proc.Id); processes left: $left"
+            $web = @(Get-Process -Name QtWebEngineProcess -ErrorAction SilentlyContinue).Count
+            Write-Host "--- reaped pid $($proc.Id); processes left: $left; web engine left: $web"
 
             if ($ready -ne 'log') {
               Write-Host "FAILURE: the $variant build never reported its main window"
