@@ -11,6 +11,9 @@ built from the operator's venue export rather than from the PDF. The two sets
 never mix: each lands in a directory of its own. Counting both, the built manual
 embeds 77 images.
 
+`splash-mark.png` under Part 3 belongs to neither set, so the built manual
+embeds 78.
+
 ```
 docs/manual/figures/            77 images, tracked with the manual
 ```

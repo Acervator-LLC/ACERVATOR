@@ -127,6 +127,9 @@ from the operator's venue export. They live one level down, in a directory of
 their own under the same ignore rule, and [FIGURES.md](FIGURES.md) inventories
 them beside the first set. Counting both sets, the built PDF embeds 77 images.
 
+`splash-mark.png` under Part 3 belongs to neither set, so the built PDF embeds
+78 images.
+
 ```
 docs/manual/figures/            the 38 manual images and the 39 charts
 ```
