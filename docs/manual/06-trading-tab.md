@@ -9034,3 +9034,89 @@ marks drawn                 38      38
 the picture's fingerprint  same    same
 ```
 
+## 2026-09-28 - the asset column sits on one palette ground the archetype checks
+
+**HIS.**
+
+> "Column fields must match logo background color."
+
+> "Some do not have a background color. Be sure to choose one that contrasts and
+> makes each one pop. Use a theme-consistent color."
+
+> "Do not want a bunch of random background colors in the Asset Column that smash
+> together and cause an eyesore."
+
+The three sentences settle each other. One colour sits behind the whole column.
+Every mark on it reads against that one colour. A column carrying its own tint
+per row is the thing he refused.
+
+### The rule that refuses a mismatched or a scattered ground
+
+The GUI archetype now carries GUI010. It reads a module's own colour declarations
+and refuses three departures.
+
+```
+a ground that does not carry what sits on it   the ratio misses the floor
+a ground the declared palette does not hold    no token, no published harmony
+a set giving one column several grounds        the eyesore, counted
+```
+
+`dev_harness/harness/gui_archetype.py` - `_scan_column_ground_colours`
+
+```python
+findings = _style_ground_faults(path, tree, known)
+findings.extend(_cell_ground_faults(path, tree, known))
+findings.extend(_named_ground_faults(path, tree, known))
+findings.extend(_ground_set_faults(path, tree, known))
+```
+
+Every finding is high. The archetype then reads `passed=False` and the command
+exits 1.
+
+### Where the palette and the floors come from
+
+The declared palette is `src/gui/design_system.py`. Its named tokens are the
+grounds the rule accepts, with one stated exception: a colour standing at a
+published harmony separation from a token on the hue circle, at that token's
+lightness and chroma. The published separations are 30, 120, 150 and 180 degrees
+- analogous, triadic, split-complementary and complementary. A hue angle means
+nothing for a grey, and a near-neutral colour therefore takes no harmony.
+
+The floors are the Web Content Accessibility Guidelines' own figures:
+
+```
+ordinary text on the ground       4.5 to 1   Contrast (Minimum), level AA
+large-scale text on the ground      3 to 1   the same criterion
+large-scale means                 18 point, or 14 point bold
+```
+
+The ratio comes from relative luminance, which linearises each channel before
+weighting it. A plain average of the raw channels returns a different number.
+
+Two grounds are compared in CIE 1976 L*a*b*, and they count as one ground while
+they sit within 2.3 of each other - the just-noticeable difference Mahy, Van
+Eycken and Oosterlinck measured.
+
+### What the ground rule leaves alone
+
+A border colour. The guidelines measure a boundary against the adjacent colour,
+and one declaration block names the fill on one of its two sides only. A block on
+the disabled state, which Contrast (Minimum) exempts as an inactive component. A
+colour the module never declares, such as the pixels inside a logo file.
+
+### The fixture pair the ground rule was watched fail against
+
+```
+harness_fixtures/gui_archetype/known_good_column_ground.py   exit 0
+harness_fixtures/gui_archetype/known_bad_column_ground.py    exit 1
+```
+
+The good file names one ground, the value `SURFACE_2` holds, and puts two palette
+colours on it at 13.16 and 13.23 to 1. The bad file plants all three departures:
+a ground no token holds, a colour on the ground at 2.42 to 1 against a floor of
+4.5, and three palette grounds down one column. The archetype reports four high
+findings on the bad file and none on the good one.
+
+Read over the shipped screens, the rule reports 16 findings in 15 files under
+`src/gui`. One sits in the asset column's own module: the Fire button's engaged
+ground carries white text at 3.44 to 1.
