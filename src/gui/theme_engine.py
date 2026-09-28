@@ -447,6 +447,13 @@ NIGREDO_GROUNDS = (
 #: The selector ``nigredo_qss`` puts before every rule.
 NIGREDO_SELECTOR = f'QWidget[{TONE_PROPERTY}="{NIGREDO}"]'
 
+#: The widest a ``QToolTip`` box draws; past this the text wraps to a new line.
+TOOLTIP_MAX_WIDTH_PX = 560
+
+#: The text size and inner spacing every ``QToolTip`` box draws at.
+TOOLTIP_FONT_SIZE_PX = 12
+TOOLTIP_PADDING_PX = 8
+
 _HEX_CHANNELS = re.compile(r"\A#([0-9a-fA-F]{2})([0-9a-fA-F]{2})([0-9a-fA-F]{2})\Z")
 _QSS_COMMENT = re.compile(r"/\*.*?\*/", re.S)
 
@@ -822,10 +829,12 @@ QStatusBar {{
 
 /* --- Tool tips --- */
 QToolTip {{
+    max-width: {TOOLTIP_MAX_WIDTH_PX}px;
     background-color: {t.bg_card};
     color: {t.text_primary};
     border: 1px solid {t.accent_primary};
-    padding: 6px;
+    font-size: {TOOLTIP_FONT_SIZE_PX}px;
+    padding: {TOOLTIP_PADDING_PX}px;
     border-radius: {t.radius_sm};
 }}
 

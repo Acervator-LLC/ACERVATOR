@@ -671,6 +671,10 @@ def main() -> int:
     app.setApplicationName("Acervator")
     app.setApplicationVersion(_acervator_version)
 
+    from src.gui import tooltips
+
+    tooltips.install(app)
+
     _install_qt_message_handler()
 
     import gc as _gc

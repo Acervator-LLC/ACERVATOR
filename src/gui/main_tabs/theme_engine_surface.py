@@ -7,7 +7,7 @@ a value takes the default written in ``DEFAULT_TOKENS``.
 
 ``generate_qss`` turns one theme into the style-sheet text the window
 applies. The template is written out here in full, so the two sides
-build the same 7376 characters from their own copies of the values.
+build the same 7419 characters from their own copies of the values.
 
 ``ThemeManagerModel`` holds the selected theme. ``list_themes``
 returns the name and display name of each. ``get_theme`` returns one
@@ -631,10 +631,12 @@ QStatusBar {{
 
 /* --- Tool tips --- */
 QToolTip {{
+    max-width: 560px;
     background-color: {bg_card};
     color: {text_primary};
     border: 1px solid {accent_primary};
-    padding: 6px;
+    font-size: 12px;
+    padding: 8px;
     border-radius: {radius_sm};
 }}
 
