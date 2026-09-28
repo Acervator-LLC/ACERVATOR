@@ -9,3 +9,4 @@
 # 40-char commit SHA on its own line below (with a trailing comment):
 #
 #   <sha>  # apply black to the entire codebase
+566a5a19eec8fb8448979099698c756c3322ec80  # apply black to the entire codebase
