@@ -66,6 +66,16 @@ def _normalize_proselint_severity(check: str, sev: str) -> str:
     return {"error": "medium", "warning": "medium", "suggestion": "low"}.get(sev, "low")
 
 
+# House-style families, scored low whatever level vale gave them.
+_VALE_STYLE_FAMILIES = ("write-good.",)
+
+
+def _normalize_vale_severity(check: str, level: str) -> str:
+    if check.startswith(_VALE_STYLE_FAMILIES):
+        return "low"
+    return {"error": "high", "warning": "medium", "suggestion": "low"}.get(level, "low")
+
+
 # Fenced blocks (``` / ~~~) and inline code spans (`...`).
 _FENCE_RE = re.compile(r"^\s*(```|~~~)")
 _INLINE_CODE_RE = re.compile(r"`[^`\n]*`")
@@ -408,19 +418,15 @@ class DocsArchetype:
             # vale JSON: {"path/to/file.md": [{"Check": "Google.Passive", "Line": N, "Severity": "warning", "Message": "..."}]}
             for _, alerts in data.items():
                 for alert in alerts:
-                    sev = alert.get("Severity", "warning").lower()
-                    sev_map = {
-                        "error": "high",
-                        "warning": "medium",
-                        "suggestion": "low",
-                    }
+                    check = alert.get("Check", "unknown")
+                    level = alert.get("Severity", "warning").lower()
                     findings.append(
                         Finding(
                             tool="vale",
-                            severity=sev_map.get(sev, "low"),
+                            severity=_normalize_vale_severity(check, level),
                             file=str(f),
                             line=alert.get("Line", 0),
-                            rule_id=alert.get("Check", "unknown"),
+                            rule_id=check,
                             message=alert.get("Message", ""),
                         )
                     )
