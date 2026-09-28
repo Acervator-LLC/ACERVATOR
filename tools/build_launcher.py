@@ -723,9 +723,14 @@ def bundle_bytes(path: str) -> int:
 def free_dist_path(name: str) -> str:
     """Return a ``dist_dir`` path for ``name``, adding -2 before its suffix when taken.
 
-    Nothing already under ``dist_dir`` is replaced or removed.
+    Only ``APP_SUFFIX`` and ``DMG_SUFFIX`` count as the suffix, so the dots in a
+    version keep their place, and nothing under ``dist_dir`` is replaced.
     """
-    stem, suffix = os.path.splitext(name)
+    stem, suffix = name, ""
+    for known in (APP_SUFFIX, DMG_SUFFIX):
+        if name.endswith(known):
+            stem, suffix = name[: -len(known)], known
+            break
     candidate = os.path.join(dist_dir(), name)
     ordinal = 2
     while os.path.exists(candidate):
