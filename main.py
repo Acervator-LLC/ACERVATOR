@@ -917,6 +917,7 @@ def main() -> int:
             import math
             from src import __version__
             from PySide6.QtGui import QPen
+            from src.gui.main_tabs import splash_screen_painter as splash_painter
 
             p = QPainter(self)
             p.setRenderHint(QPainter.Antialiasing)
@@ -986,9 +987,9 @@ def main() -> int:
                 p.drawEllipse(QRectF(-52, -17, 104, 34))
                 p.restore()
 
-            p.setPen(QColor(0, 255, 238, logo_a))
-            p.setFont(QFont("Helvetica", 26, QFont.Bold))
-            p.drawText(QRectF(cx - 20, logo_y - 16, 40, 32), Qt.AlignCenter, "A")
+            splash_painter.replay(
+                p, splash_painter.mark_ops(cx, logo_y, logo_a, spin, pulse, t)
+            )
 
             p.setPen(Qt.NoPen)
             for i, base_angle in enumerate([60, 200, 320]):
