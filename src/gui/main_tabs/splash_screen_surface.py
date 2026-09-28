@@ -68,7 +68,7 @@ SCANLINE_RGB = (255, 255, 255)
 SCANLINE_ALPHA_CAP = 8
 SCANLINE_ALPHA_DIVISOR = 20
 
-LOGO_OFFSET_Y = -150
+LOGO_OFFSET_Y = -110
 LOGO_GLOW_MIN_ALPHA = 10
 LOGO_GLOW_RADIUS = 60
 LOGO_GLOW_ALPHA_DIVISOR = 8
@@ -93,6 +93,7 @@ MARK_ELEMENTS = (
     "winged caduceus",
 )
 MARK_RADIUS = 78.0
+MARK_OFFSET_Y = -30.0
 FULL_TURN_DEGREES = 360.0
 CURVE_STEPS = 18
 LENS_STEPS = 16
@@ -1321,7 +1322,7 @@ def paint_ops(t: Any, width: Any, height: Any, version: Optional[str] = None) ->
             ]
         )
 
-    ops.extend(sigil_ops(cx, logo_y, logo_a, spin, pulse, t))
+    ops.extend(sigil_ops(cx, logo_y + MARK_OFFSET_Y, logo_a, spin, pulse, t))
 
     ops.append(["pen_style", NO_PEN])
     half = PARTICLE_SIZE / 2

@@ -965,7 +965,15 @@ def main() -> int:
                 )
 
             splash_painter.replay(
-                p, splash_painter.mark_ops(cx, logo_y, logo_a, spin, pulse, t)
+                p,
+                splash_painter.mark_ops(
+                    cx,
+                    logo_y + splash_painter.surface.MARK_OFFSET_Y,
+                    logo_a,
+                    spin,
+                    pulse,
+                    t,
+                ),
             )
 
             p.setPen(Qt.NoPen)
