@@ -447,7 +447,7 @@ resolves.
 
 ```python
 TAG_GLOB = "v[0-9]*"                 # src/_version.py
-build-0.2.0-dev.1916.ge2050ab1       # a release tag, which that glob rejects
+build-<version>                      # a release tag, which that glob rejects
 ```
 
 A runner resolves that version from the tags the remote carries, and the newer
