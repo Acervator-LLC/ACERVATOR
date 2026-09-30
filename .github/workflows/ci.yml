@@ -16,9 +16,12 @@
 #                  .py, .sh/.bash/.zsh and .yml/.yaml, gui for
 #                  .js/.mjs/.cjs/.css/.html, docs for .md. A file of
 #                  any other extension has no owning archetype; the step names it
-#                  and counts it as unowned. The lane fails when any archetype
-#                  reports passed=false. Runs when `any` is true, so a
-#                  documentation-only pull request is still adjudicated.
+#                  and counts it as unowned. A known-bad fixture under
+#                  harness_fixtures/ is named and counted as exempt, because that
+#                  file exists to report passed=false. The lane fails when any
+#                  archetype reports passed=false on a file that is not one.
+#                  Runs when `any` is true, so a documentation-only pull request
+#                  is still adjudicated.
 #
 # There are no pytest lanes. `git ls-files tests/` returns 7 files: six Solidity
 # tests and conftest.py. No `test_*.py` exists, so pytest collected nothing and
@@ -252,6 +255,7 @@ jobs:
 
           scanned=0
           unowned=0
+          exempt=0
           failed=0
 
           while IFS= read -r path; do
@@ -260,6 +264,22 @@ jobs:
               echo "deleted by this change, nothing to scan: $path"
               continue
             fi
+            # A known-bad fixture exists to report passed=false; that is how the
+            # harness proves a rule can fail at all. Judging one makes every new
+            # archetype rule red, because a rule ships with a known_good and a
+            # known_bad fixture. The three naming shapes the tree uses, each
+            # anchored to harness_fixtures/ so no source file is ever exempt:
+            #   known_bad.<ext> and known_bad_<rule>.<ext>
+            #   <subject>_bad.<ext>
+            #   <subject>_bad/<file>          the fixture is a whole directory
+            case "$path" in
+              harness_fixtures/*/known_bad.*|harness_fixtures/*/known_bad_*|\
+              harness_fixtures/*_bad.*|harness_fixtures/*_bad/*)
+                echo "known-bad fixture, built to report passed=false: $path"
+                exempt=$((exempt + 1))
+                continue
+                ;;
+            esac
             case "$path" in
               *.py)                          module=coding_archetype ;;
               *.sh|*.bash|*.zsh)             module=coding_archetype ;;
@@ -285,7 +305,7 @@ jobs:
             fi
           done <<< "$CHANGED_FILES"
 
-          echo "scanned=$scanned unowned=$unowned failed=$failed"
+          echo "scanned=$scanned unowned=$unowned exempt=$exempt failed=$failed"
           [ "$failed" -eq 0 ]
 
   ci-gate:
