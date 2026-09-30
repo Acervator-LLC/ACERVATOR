@@ -177,7 +177,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           # package-lock.json was written by npm 11, which ships with node 24.
           # Node 22 carries npm 10, and npm 10 reads that lock file as out of
@@ -207,7 +207,7 @@ jobs:
         with:
           python-version-file: .python-version
           cache: pip
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           # See the contracts lane: npm 10 refuses this lock file.
           node-version: '24'
