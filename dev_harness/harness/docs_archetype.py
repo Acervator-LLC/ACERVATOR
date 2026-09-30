@@ -79,6 +79,10 @@ def _normalize_vale_severity(check: str, level: str) -> str:
 # Fenced blocks (``` / ~~~) and inline code spans (`...`).
 _FENCE_RE = re.compile(r"^\s*(```|~~~)")
 _INLINE_CODE_RE = re.compile(r"`[^`\n]*`")
+# A blockquote line carries a quotation, not prose this archetype reviews.
+_QUOTE_RE = re.compile(r"^\s{0,3}>")
+# One heading pattern, shared by DOC005 and DOC013.
+_HEADING_RE = re.compile(r"^\s{0,3}(#{1,6})\s+(.+?)\s*#*\s*$")
 
 
 def _strip_markdown_code(text: str) -> str:
@@ -108,14 +112,33 @@ def _strip_markdown_code(text: str) -> str:
     return "\n".join(out)
 
 
+def _blank_quotes(text: str) -> str:
+    """Blank every blockquote line of `text`, keeping its line count.
+
+    `_QUOTE_RE` matches the line, so no proselint or vale finding lands on a
+    quotation.
+    """
+    return "\n".join(
+        "" if _QUOTE_RE.match(line) else line for line in text.split("\n")
+    )
+
+
 class DocsArchetype:
     """Documentation-quality archetype. Invokes proselint (installed),
     and Vale if on PATH. Also does a light structural check for
     Diataxis-mode signal and H1 heading."""
 
     name = "documentation_quality"
-    version = "1.3"
-    tools = ("proselint", "vale", "structure", "contents", "story", "updates")
+    version = "1.4"
+    tools = (
+        "proselint",
+        "vale",
+        "structure",
+        "contents",
+        "story",
+        "updates",
+        "cover",
+    )
     calibration_name = "docs"
 
     def load_calibration(self) -> str:
@@ -154,6 +177,7 @@ class DocsArchetype:
                 ("structure", partial(self._run_structure, files)),
                 ("story", partial(self._run_story, files)),
                 ("updates", partial(self._run_updates, files)),
+                ("cover", partial(self._run_cover, files)),
             ]
         if pdfs:
             runners.append(("contents", partial(self._run_contents, pdfs)))
@@ -212,6 +236,12 @@ class DocsArchetype:
         parts.append(
             f"(f) any of the {len(report.findings)} listed findings is a "
             "false positive when re-read by a human editor."
+        )
+        parts.append(
+            "(g) DOC013 is wrong if the first contents row of README.md is not "
+            "the cover page, if load_manual stops naming a cover, or if a page "
+            "whose folder holds no README.md and 04-manual-parts.md is a cover; "
+            "in each case the rule reports nothing and its silence is not a pass."
         )
         return " ".join(parts)
 
@@ -279,6 +309,96 @@ class DocsArchetype:
             return findings, f"unread: no contents rows in {', '.join(unread)}"
         return findings, "ok"
 
+    # `parse_markdown` kinds the cover's declared role does not carry. `heading`
+    # is split by level instead, so the title survives and a section does not.
+    _BODY_ONLY_KINDS = ("table", "image", "code", "diagram", "bullet")
+    _TITLE_LEVEL = 1
+
+    def _run_cover(self, files: list[Path]) -> tuple[list[Finding], str]:
+        """Report every block of a cover page that is not its title or epigraph.
+
+        `load_manual` names the cover, and `README.md` declares that row carries
+        the title and the epigraph, so a folder `load_manual` refuses declares no
+        cover and yields nothing.
+        """
+        if str(REPO_ROOT) not in sys.path:
+            sys.path.insert(0, str(REPO_ROOT))
+        from tools.build_product_manual import (
+            MANIFEST_FILE,
+            PART_LIST_FILE,
+            load_manual,
+        )
+
+        findings: list[Finding] = []
+        for f in files:
+            folder = f.parent
+            if not all(
+                (folder / name).is_file() for name in (MANIFEST_FILE, PART_LIST_FILE)
+            ):
+                continue
+            try:
+                manual = load_manual(folder, folder)
+            except (FileNotFoundError, ValueError, OSError, KeyError, IndexError):
+                continue
+            if manual.cover.path.resolve() != f.resolve():
+                continue
+            findings.extend(self._cover_findings(f, MANIFEST_FILE))
+        return findings, "ok"
+
+    def _cover_findings(self, page: Path, manifest_name: str) -> list[Finding]:
+        """Return one DOC013 per section of `page`, plus one for earlier body blocks.
+
+        A section is a `parse_markdown` heading below `_TITLE_LEVEL`, and
+        `_HEADING_RE` gives the line each heading sits on.
+        """
+        from tools.build_product_manual import parse_markdown
+
+        text = page.read_text(encoding="utf-8", errors="replace")
+        lines: dict[str, int] = {}
+        for number, line in enumerate(text.split("\n"), start=1):
+            match = _HEADING_RE.match(line)
+            if match:
+                lines.setdefault(match.group(2).strip(), number)
+        place = (
+            f"{manifest_name}'s first contents row declares this page carries the "
+            f"title and the epigraph, and the contents print straight after it. "
+            f"Move it to the part file its own part names."
+        )
+        findings: list[Finding] = []
+        strays: list[str] = []
+        for block in parse_markdown(text):
+            if block.kind == "heading" and block.level > self._TITLE_LEVEL:
+                findings.append(
+                    Finding(
+                        tool="cover",
+                        severity="high",
+                        file=str(page),
+                        line=lines.get(block.text.strip(), 0),
+                        rule_id="DOC013",
+                        message=(
+                            f"The cover page carries body material: the section "
+                            f"{block.text.strip()!r}. {place}"
+                        ),
+                    )
+                )
+            elif not findings and block.kind in self._BODY_ONLY_KINDS:
+                strays.append(block.kind)
+        if strays:
+            findings.append(
+                Finding(
+                    tool="cover",
+                    severity="high",
+                    file=str(page),
+                    line=1,
+                    rule_id="DOC013",
+                    message=(
+                        f"The cover page carries body material before its first "
+                        f"section: {', '.join(strays)}. {place}"
+                    ),
+                )
+            )
+        return findings
+
     def _run_updates(self, files: list[Path]) -> tuple[list[Finding], str]:
         """Report every per-tab page whose dated update headings run backwards.
 
@@ -327,6 +447,28 @@ class DocsArchetype:
             return False
         return f"No module named {tool}" in (proc.stderr or "")
 
+    @staticmethod
+    def _blanked_copy(source: Path) -> Optional[Path]:
+        """Return a temporary copy of `source` with its code and quotes blanked.
+
+        `_strip_markdown_code` and `_blank_quotes` keep the line count, so a
+        proselint or vale line still resolves against `source`, and None means
+        the caller lints `source` itself.
+        """
+        try:
+            text = _blank_quotes(
+                _strip_markdown_code(
+                    source.read_text(encoding="utf-8", errors="replace")
+                )
+            )
+            handle, name = tempfile.mkstemp(suffix=".md", prefix="docs_archetype_")
+            os.close(handle)
+            copy = Path(name)
+            copy.write_text(text, encoding="utf-8")
+        except OSError:
+            return None
+        return copy
+
     def _run_proselint(self, files: list[Path]) -> tuple[list[Finding], str]:
         """Invoke proselint per-file, parse its text output.
 
@@ -341,22 +483,8 @@ class DocsArchetype:
             r"(?P<check>[A-Za-z0-9_.]+):\s+(?P<msg>.+)$"
         )
         for f in files:
-            # The stripped copy preserves the line count, so a reported line
-            # still resolves against the real file.
-            tmp: Optional[Path] = None
-            try:
-                stripped = _strip_markdown_code(
-                    f.read_text(encoding="utf-8", errors="replace")
-                )
-                fd, tmp_name = tempfile.mkstemp(suffix=".md", prefix="proselint_")
-                os.close(fd)
-                tmp = Path(tmp_name)
-                tmp.write_text(stripped, encoding="utf-8")
-                target = tmp
-            except OSError:
-                # Never let the sanitiser take down the review — fall back
-                # to linting the file as-is.
-                target = f
+            tmp = self._blanked_copy(f)
+            target = tmp or f
             proc = subprocess.run(
                 [sys.executable, "-m", "proselint", "check", str(target)],
                 cwd=str(REPO_ROOT),
@@ -364,6 +492,9 @@ class DocsArchetype:
                 text=True,
                 encoding="utf-8",
                 errors="replace",
+                # proselint opens the file with the locale encoding; under
+                # cp1252 a UTF-8 quote made it exit 0 printing nothing.
+                env={**os.environ, "PYTHONUTF8": "1"},
                 timeout=120,
             )
             if tmp is not None:
@@ -396,9 +527,11 @@ class DocsArchetype:
             raise FileNotFoundError("vale not on PATH")
         findings: list[Finding] = []
         for f in files:
+            tmp = self._blanked_copy(f)
+            target = tmp or f
             proc = subprocess.run(
                 # vale resolves `.vale.ini` against the current directory.
-                [vale_bin, "--output=JSON", str(f)],
+                [vale_bin, "--output=JSON", str(target)],
                 cwd=str(REPO_ROOT),
                 capture_output=True,
                 text=True,
@@ -406,6 +539,8 @@ class DocsArchetype:
                 errors="replace",
                 timeout=120,
             )
+            if tmp is not None:
+                tmp.unlink(missing_ok=True)
             # vale reports a runtime error as JSON on stderr and leaves
             # stdout empty, which the check below would read as clean.
             refuse_silent_failure(proc, "vale")
@@ -464,7 +599,7 @@ class DocsArchetype:
             # Parse every heading (H1-H6) and flag any repeated text.
             heading_lines: list[tuple[int, str]] = []
             for i, line in enumerate(text.splitlines(), start=1):
-                m = re.match(r"^\s{0,3}(#{1,6})\s+(.+?)\s*#*\s*$", line)
+                m = _HEADING_RE.match(line)
                 if m:
                     heading_lines.append((i, m.group(2).strip().lower()))
             seen: dict[str, int] = {}
