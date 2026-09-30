@@ -1532,6 +1532,10 @@ _GEOMETRY_VARIANTS: tuple[str, ...] = ("qt", "react")
 _GEOMETRY_CALIBRATION_BAD = "91dcad3e"
 _GEOMETRY_CALIBRATION_GOOD = "2ffe9682"
 
+#: The commit whose header row every later tree is measured against, carrying
+#: the two added figures and the margins that made room for them.
+_GEOMETRY_REFERENCE_COMMIT = "9fb39e1d81b5a7d4073cd23b9e55277c0c0bf3c8"
+
 #: The scripts the React header page loads, in load order.
 _HEADER_ROW_ASSETS: tuple[str, ...] = (
     "vendor/react.production.min.js",
@@ -2481,28 +2485,16 @@ class GUIArchetype:
     ) -> None:
         """Hold the reference commit and the slots this change was asked to reshape.
 
-        `against` defaults to the point the branch left `origin/current`, so a
-        bare run compares the unit's whole change. `reshaped` names the slots
-        whose new size is wanted; every other slot is frozen.
+        `against` defaults to `_GEOMETRY_REFERENCE_COMMIT`, the recorded row.
+        `reshaped` names the slots whose new size is wanted; every other slot
+        is frozen.
         """
         self.geometry_against = against
         self.geometry_reshaped = reshaped if reshaped is not None else frozenset()
 
     def geometry_reference(self) -> str:
         """The commit the geometry rule holds the current tree against."""
-        if self.geometry_against:
-            return self.geometry_against
-        git = shutil.which("git")
-        if not git:
-            return "HEAD"
-        found = subprocess.run(
-            [git, "-C", str(REPO_ROOT), "merge-base", "HEAD", "origin/current"],
-            capture_output=True,
-            text=True,
-            timeout=60,
-            check=False,
-        )
-        return found.stdout.strip() or "HEAD"
+        return self.geometry_against or _GEOMETRY_REFERENCE_COMMIT
 
     def load_calibration(self) -> str:
         from dev_harness.harness.calibrations import load
