@@ -237,7 +237,7 @@ jobs:
           }
           Pop-Location
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: acervator-windows
@@ -246,7 +246,7 @@ jobs:
           # The zips already hold compressed entries.
           compression-level: 0
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: acervator-windows-launch-evidence
