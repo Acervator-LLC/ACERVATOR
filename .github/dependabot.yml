@@ -25,7 +25,7 @@ updates:
     schedule:
       interval: "weekly"
 
-  # the actions .github/workflows/ pins
+  # the action versions in .github/workflows/
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
