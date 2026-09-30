@@ -91,11 +91,15 @@ SPENDABLE_SIDE_MARGIN_PX = 12
 #: What the strip's own margins take off the room its text has.
 SPENDABLE_TEXT_PAD = 2 * SPENDABLE_SIDE_MARGIN_PX
 
-#: The gap the strip leaves either side of a rule between two columns. Six,
-#: not fourteen: ``spendable_natural_w`` counts ten of them, and the eighty
-#: pixels that buys are what the AMMO column takes without narrowing a card's
-#: text room.
-SPENDABLE_COLUMN_GAP_PX = 6
+#: The gap the strip leaves either side of a rule between two columns. Four,
+#: not fourteen: ``spendable_natural_w`` counts twelve of them, and the room
+#: that returns is what the two new columns take.
+SPENDABLE_COLUMN_GAP_PX = 4
+
+#: The width one rule between two columns draws at. Declared, not measured:
+#: the glyph reads 52 px wide in a fallback font and ``spendable_natural_w``
+#: counted none of it, so every column drew narrower than its own amount.
+SPENDABLE_RULE_W_PX = 8
 
 SPENDABLE_LAYOUT = {
     "margins_px": [SPENDABLE_SIDE_MARGIN_PX, 6, SPENDABLE_SIDE_MARGIN_PX, 6],
@@ -103,6 +107,7 @@ SPENDABLE_LAYOUT = {
     "column_spacing_px": SPENDABLE_COLUMN_GAP_PX,
     "column_margins_px": [0, 0, 0, 0],
     "column_spacing": 2,
+    "rule_w_px": SPENDABLE_RULE_W_PX,
     "frame_shape": "StyledPanel",
     "separator_align": "vcenter",
     "dot_align": "hcenter",
@@ -408,11 +413,11 @@ ACTIONS = {
 def spendable_natural_w() -> int:
     """The room the whole strip needs for every ``KPI_COLUMNS`` amount.
 
-    ``KPI_COLUMN_W`` per column, the ``SPENDABLE_LAYOUT`` gap either side of
-    each rule between two of them, and ``SPENDABLE_TEXT_PAD`` for the frame.
+    ``KPI_COLUMN_W`` per column, each rule's own ``SPENDABLE_RULE_W_PX`` and
+    the gap either side of it, and ``SPENDABLE_TEXT_PAD`` for the frame.
     """
     held = len(KPI_COLUMNS)
-    rules = max(held - 1, 0) * 2 * SPENDABLE_COLUMN_GAP_PX
+    rules = max(held - 1, 0) * (SPENDABLE_RULE_W_PX + 2 * SPENDABLE_COLUMN_GAP_PX)
     return held * KPI_COLUMN_W + rules + SPENDABLE_TEXT_PAD
 
 

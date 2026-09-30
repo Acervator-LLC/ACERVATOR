@@ -76,6 +76,7 @@
   var MARGINS = "margins_px";
   var SPACING = "spacing_px";
   var COLUMN_MARGINS = "column_margins_px";
+  var RULE_W = "rule_w_px";
   var COLUMN_SPACING = "column_spacing_px";
   var DOT_ALIGN = "dot_align";
   var ALIGN = "align";
@@ -605,6 +606,8 @@
     var style = styleOf(separator[STYLE_SHEET]);
     withAlign(style, layout, ALIGN);
     style.flex = NO_SHRINK;
+    style.width = length(layout[RULE_W]);
+    style.textAlign = "center";
     var props = { key: SEPARATOR_PART + String(at), className: HOST_CLASS, style: style };
     props[PART_ATTR] = SEPARATOR_PART;
     return element("span", props, text(separator[TEXT]));

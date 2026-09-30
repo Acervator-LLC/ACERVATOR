@@ -41,6 +41,7 @@ OUTER_SPACING_PX = 0
 COLUMN_MARGINS_PX = (0, 0, 0, 0)
 COLUMN_SPACING_PX = 2
 SEPARATOR_GAP_PX = header.SPENDABLE_COLUMN_GAP_PX
+RULE_W_PX = header.SPENDABLE_RULE_W_PX
 DOT_ALIGN = "hcenter"
 SEPARATOR_ALIGN = "vcenter"
 TRAILING_STRETCH = True
@@ -405,6 +406,7 @@ def build_view_model(model: Optional[SpendableProfitsModel] = None) -> dict:
             "column_margins_px": list(COLUMN_MARGINS_PX),
             "column_spacing_px": COLUMN_SPACING_PX,
             "separator_gap_px": SEPARATOR_GAP_PX,
+            "rule_w_px": RULE_W_PX,
             "dot_align": DOT_ALIGN,
             "trailing_stretch": TRAILING_STRETCH,
         },
