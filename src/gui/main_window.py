@@ -914,7 +914,7 @@ if _HAS_QT:
             if app:
                 current = app.styleSheet() or ""
                 app.setStyleSheet(
-                    current + "\nQToolTip { font-size: 12px; padding: 8px; "
+                    current + "\nQToolTip { "
                     f"background: {ds.SURFACE_CONTROL}; color: {ds.TEXT_HIGH}; border: "
                     f"1px solid {ds.MAIN_TOOLTIP_BORDER}; }}"
                 )
