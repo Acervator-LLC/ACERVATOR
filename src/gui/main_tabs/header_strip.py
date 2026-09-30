@@ -358,7 +358,10 @@ class HeaderStripMixin:
                 self._stat_errors,
             ],
         ):
-            card.setMinimumWidth(surface.slot_natural_w(slot))
+            # slot_min_w, not slot_natural_w: a card pinned at its natural
+            # width pushes the class square past the window's right edge at
+            # 1600. Stretch still gives every card its natural width above it.
+            card.setMinimumWidth(surface.slot_min_w(slot))
             top_row.addWidget(card, stretch=surface.slot_stretch(slot))
 
         # The square's slot takes no stretch, so it shrinks to the square and
