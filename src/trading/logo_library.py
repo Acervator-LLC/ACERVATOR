@@ -14,7 +14,10 @@ project name ``recorded_name`` answers, then by market rank, and writes down the
 candidates of one it cannot settle. ``coin_candidates`` looks a coin id up under
 that project name as well as under the ticker, ``--name TICKER=NAME`` supplies one
 the records do not hold, and ``_clear_unresolved`` drops a ticker from
-``unresolved.json`` once its index row carries an address.
+``unresolved.json`` once its index row carries an address. A read that answers
+nothing is named in ``CoinIndexReport.unread``, and ``main`` prints
+``SOURCE_REFUSED_FORMAT`` once and answers 1 rather than calling every ticker
+absent.
 """
 
 from __future__ import annotations
@@ -56,6 +59,7 @@ from ..exchange.crypto_assets import (
     COIN_MARKETS_URL,
     COIN_SITE_SCHEMES,
     coin_index_path,
+    coin_markets_pages,
     load_coin_index,
 )
 from ..exchange.market_rules_store import load_document, store_path
@@ -296,6 +300,12 @@ COIN_UNRANKED_REASON = (
 COIN_ABSENT_REASON = "no coin record carries the ticker {symbol}, or its name"
 COIN_NO_IMAGE_REASON = "the coin record for {symbol} carries no picture address"
 
+#: What a ticker says when the read that would have carried its records answered
+#: nothing, so ``COIN_ABSENT_REASON`` cannot be told from a refused read.
+COIN_UNREAD_REASON = (
+    "the coin records naming {symbol} were not read, so no coin is settled"
+)
+
 #: The coin record's own links block, and the field inside it naming the
 #: project's front door. ``COIN_MARKETS_URL`` carries neither.
 COIN_LINKS_KEY = "links"
@@ -303,6 +313,12 @@ COIN_HOMEPAGE_KEY = "homepage"
 
 COIN_NO_SITE_REASON = "the coin record for {symbol} names no https web address"
 COIN_UNSETTLED_SITE_REASON = "no coin is settled for {symbol}, so no site is looked up"
+
+#: What a settled coin's site says when the ``COIN_DETAIL_URL`` read answered
+#: nothing, so ``COIN_NO_SITE_REASON`` cannot be told from a refused read.
+COIN_SITE_UNREAD_REASON = (
+    "the coin record for {symbol} was not read, so no site is named"
+)
 
 COIN_SITE_LOG = "logo library: %d site(s) looked up, %d named, %d without one"
 
@@ -312,12 +328,13 @@ COIN_INDEX_LOG = "logo library: coin index holds %d address(es) and %d refusal(s
 COIN_CLEARED_LOG = "logo library: %d ticker(s) dropped from unresolved, %d left"
 COIN_READ_REFUSED_LOG = "logo library: %s answered nothing: %s"
 COIN_RATE_LOG = "logo library: %s refused for rate, holding %.0f s"
+COIN_SOURCE_REFUSED_LOG = "logo library: the coin data source refused %d of %d read(s)"
 
 #: What ``CoinIndexReport.line`` reads.
 COIN_REPORT_FORMAT = (
     "{tickers} ticker(s) looked up, {listed} coin(s) listed, {records} record(s) "
-    "read over {reads} read(s), {addressed} address(es) indexed, {refused} unsettled, "
-    "{cleared} refusal(s) dropped"
+    "read over {reads} read(s), {unread} read(s) refused, {addressed} address(es) "
+    "indexed, {refused} unsettled, {cleared} refusal(s) dropped"
 )
 
 
@@ -487,7 +504,11 @@ def _clear_unresolved(assets: dict, library: Path) -> tuple[str, ...]:
 
 @dataclass(frozen=True)
 class CoinIndexReport:
-    """What one ``build_coin_index`` walk wrote, with every unsettled ticker in ``refused``."""
+    """What one ``build_coin_index`` walk wrote, with every unsettled ticker in ``refused``.
+
+    ``unread`` names each address that answered nothing, so a walk that could not
+    reach the coin data source is never read as a walk that found no coin.
+    """
 
     tickers: int = 0
     listed: int = 0
@@ -497,6 +518,7 @@ class CoinIndexReport:
     refused: tuple[tuple[str, str], ...] = field(default_factory=tuple)
     cleared: int = 0
     path: Optional[Path] = None
+    unread: tuple[str, ...] = field(default_factory=tuple)
 
     @property
     def line(self) -> str:
@@ -506,6 +528,7 @@ class CoinIndexReport:
             listed=self.listed,
             records=self.records,
             reads=self.reads,
+            unread=len(self.unread),
             addressed=self.addressed,
             refused=len(self.refused),
             cleared=self.cleared,
@@ -548,7 +571,8 @@ def build_coin_index(
     listed = _coin_read(COIN_LIST_URL, clock)
     reads = 1
     if not isinstance(listed, list):
-        return CoinIndexReport(tickers=len(asked), reads=reads)
+        logger.error(COIN_SOURCE_REFUSED_LOG, 1, reads)
+        return CoinIndexReport(tickers=len(asked), reads=reads, unread=(COIN_LIST_URL,))
     logger.info(COIN_LIST_LOG, len(listed))
 
     by_symbol: dict[str, list[dict]] = {}
@@ -567,15 +591,19 @@ def build_coin_index(
     every = sorted({one for ids in wanted.values() for one in ids})
 
     records: dict[str, dict] = {}
+    unread: list[str] = []
+    unread_ids: set[str] = set()
     pages = 0
-    for start in range(0, len(every), COIN_MARKETS_PAGE):
-        page = every[start : start + COIN_MARKETS_PAGE]
-        rows = _coin_read(
-            COIN_MARKETS_URL.format(size=COIN_MARKETS_PAGE, ids=",".join(page)), clock
-        )
+    for page in coin_markets_pages(every):
+        address = COIN_MARKETS_URL.format(size=COIN_MARKETS_PAGE, ids=",".join(page))
+        rows = _coin_read(address, clock)
         reads += 1
         pages += 1
-        for row in rows if isinstance(rows, list) else ():
+        if not isinstance(rows, list):
+            unread.append(address)
+            unread_ids.update(page)
+            continue
+        for row in rows:
             if isinstance(row, dict) and COIN_ID_KEY in row:
                 records[str(row[COIN_ID_KEY])] = row
     logger.info(COIN_RECORD_LOG, len(records), pages)
@@ -587,6 +615,8 @@ def build_coin_index(
     for symbol in asked:
         named = project_names.get(symbol, "")
         chosen, why = choose_coin(symbol, wanted[symbol], records, named)
+        if not chosen and unread_ids.intersection(wanted[symbol]):
+            why = COIN_UNREAD_REASON.format(symbol=symbol)
         address = (
             str((records.get(chosen) or {}).get(COIN_IMAGE_KEY) or "").strip()
             if chosen
@@ -609,16 +639,21 @@ def build_coin_index(
                 if kept.get(COIN_INDEX_ID_KEY) == chosen
                 else ""
             )
+            site_reason = COIN_NO_SITE_REASON.format(symbol=symbol)
             if not site:
-                site = coin_site(_coin_read(COIN_DETAIL_URL.format(id=chosen), clock))
+                detail = COIN_DETAIL_URL.format(id=chosen)
+                answered = _coin_read(detail, clock)
                 reads += 1
+                if answered is None:
+                    unread.append(detail)
+                    site_reason = COIN_SITE_UNREAD_REASON.format(symbol=symbol)
+                else:
+                    site = coin_site(answered)
             if site:
                 row[COIN_INDEX_SITE_KEY] = site
                 sited += 1
             else:
-                row[COIN_INDEX_SITE_REASON_KEY] = COIN_NO_SITE_REASON.format(
-                    symbol=symbol
-                )
+                row[COIN_INDEX_SITE_REASON_KEY] = site_reason
                 siteless += 1
             assets[symbol] = row
             continue
@@ -648,6 +683,8 @@ def build_coin_index(
     )
     addressed = len(assets) - len(refused)
     logger.info(COIN_INDEX_LOG, addressed, len(refused))
+    if unread:
+        logger.error(COIN_SOURCE_REFUSED_LOG, len(unread), reads)
     cleared = _clear_unresolved(assets, library)
     return CoinIndexReport(
         tickers=len(asked),
@@ -658,6 +695,7 @@ def build_coin_index(
         refused=tuple(refused),
         cleared=len(cleared),
         path=path,
+        unread=tuple(unread),
     )
 
 
@@ -780,6 +818,13 @@ FOLDERS_HEAD = "folders the targets fall under:"
 FOLDER_FORMAT = "  {folder}: {count}"
 FAILURE_FORMAT = "  {symbol}: {reason}"
 REFUSED_FORMAT = "refused: {reason}"
+
+#: What ``main`` prints, once, when the coin data source refused a read, and the
+#: reason it answers 1 instead of listing every ticker as unsettled.
+SOURCE_REFUSED_FORMAT = (
+    "the coin data source refused {count} of {reads} read(s), so no mark is "
+    "settled from this walk; first refusal: {address}"
+)
 MAIN_LOG_FORMAT = "%(asctime)s %(message)s"
 
 
@@ -837,6 +882,16 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             names=names,
         )
         print(looked.line)
+        if looked.unread:
+            print(
+                SOURCE_REFUSED_FORMAT.format(
+                    count=len(looked.unread),
+                    reads=looked.reads,
+                    address=looked.unread[0],
+                ),
+                file=sys.stderr,
+            )
+            return 1
         for symbol, reason in looked.refused:
             print(FAILURE_FORMAT.format(symbol=symbol, reason=reason))
     report = fill_library(
