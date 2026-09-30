@@ -1532,9 +1532,9 @@ _GEOMETRY_VARIANTS: tuple[str, ...] = ("qt", "react")
 _GEOMETRY_CALIBRATION_BAD = "91dcad3e"
 _GEOMETRY_CALIBRATION_GOOD = "2ffe9682"
 
-#: The commit whose header row every later tree is measured against, carrying
-#: the two added figures and the margins that made room for them.
-_GEOMETRY_REFERENCE_COMMIT = "9fb39e1d81b5a7d4073cd23b9e55277c0c0bf3c8"
+#: The squash merge on `current` carrying the reference header row in `src` and
+#: `harness_fixtures`, which every clone reaches.
+_GEOMETRY_REFERENCE_COMMIT = "c10325d3caae7e668669641556abad462a312d81"
 
 #: The scripts the React header page loads, in load order.
 _HEADER_ROW_ASSETS: tuple[str, ...] = (
