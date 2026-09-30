@@ -93,8 +93,9 @@ module for those zones.
 | Wallet sections | 4 | Quintessence, Trophies, Loot, Vessels |
 | Party rows | 120 | 40 a page, 3 pages, 8 groups of 5 a page |
 
-The identity control, the reset control and the world control each ask first and
-act on a second press. Every control prints what its mechanism did or the refusal
+A player picks a chain, Live or Demo TestNet, then picks one of the eight event
+types, and every mechanism control runs against that pair. The identity control,
+the reset control and the world control each ask first and act on a second press. Every control prints what its mechanism did or the refusal
 that mechanism raised, and eleven exception types are caught as a refusal rather
 than a crash. Until this node writes its identity file, every other control
 refuses for want of a participant.
