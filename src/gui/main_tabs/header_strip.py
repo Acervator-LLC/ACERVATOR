@@ -305,7 +305,7 @@ class HeaderStripMixin:
         # Each slot's floor is the width its own whole amounts need, so the row
         # divides only the width left above those floors.
         self._spendable_widget = _spendable_profits_class()()
-        self._spendable_widget.setMinimumWidth(surface.slot_natural_w("spendable"))
+        self._spendable_widget.setMinimumWidth(surface.slot_floor_w("spendable"))
         top_row.addWidget(
             self._spendable_widget, stretch=surface.slot_stretch("spendable")
         )
@@ -325,9 +325,6 @@ class HeaderStripMixin:
             "with every FOLD (buy at lower-band) + MANUAL_FOLD "
             "fill. Resets to $0.00 only on a fresh process start."
         )
-        # _stat_pnl is never added to top_row; MainWindow still calls set_value on it.
-        self._stat_pnl = card_class("P/L", "$0.00")
-        self._stat_pnl.setVisible(False)
         self._stat_trades = card_class("Trades", "0")
         self._stat_trades.setToolTip(
             "Total executed buy and sell trades across all active bots."
@@ -361,7 +358,7 @@ class HeaderStripMixin:
                 self._stat_errors,
             ],
         ):
-            card.setMinimumWidth(surface.slot_natural_w(slot))
+            card.setMinimumWidth(surface.slot_floor_w(slot))
             top_row.addWidget(card, stretch=surface.slot_stretch(slot))
 
         # The square's slot takes no stretch, so it shrinks to the square and
