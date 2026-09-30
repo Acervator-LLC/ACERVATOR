@@ -13,7 +13,7 @@
 
   // Milliseconds a pointer must rest on a cell before its tooltip shows.
   // Qt's QToolTip wakes at the same figure.
-  var TOOLTIP_DELAY_MS = 700;
+  var TOOLTIP_DELAY_MS = 3000;
 
   // The bridge method the pager re-asks for a neighbouring page.
   var VIEW_MODEL_METHOD = "history.view_model";
