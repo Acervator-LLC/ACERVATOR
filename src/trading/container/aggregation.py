@@ -11,6 +11,12 @@ import math
 from typing import Any, Optional
 
 from ..smart_wire import is_mature, mature_profit_usd
+from ..target_bands import (
+    TERRITORY_FOLD,
+    TERRITORY_SCRUM,
+    target_delta,
+    target_territory,
+)
 from .config import DOLLAR_PEGGED_CURRENCIES, BotState
 
 logger = logging.getLogger("acervator.bot")
@@ -300,6 +306,9 @@ class FleetAggregationMixin:
         crypto_position_value_usd = 0.0  # sum of per-bot position values
         total_mature_exchange = 0.0
         mature_positions = 0
+        total_target_delta_usd = 0.0
+        bots_scrum_territory = 0
+        bots_fold_territory = 0
 
         for bot in self._bots.values():
             total_pnl += bot.stats.realised_pnl
@@ -346,6 +355,14 @@ class FleetAggregationMixin:
                     _pv_exc,
                 )
             crypto_position_value_usd += _bot_pos_val
+            _target_usd = float(getattr(bot.config, "target_balance", 0.0) or 0.0)
+            if _target_usd > 0:
+                total_target_delta_usd += target_delta(_bot_pos_val, _target_usd)
+                _where = target_territory(_bot_pos_val, _target_usd)
+                if _where == TERRITORY_SCRUM:
+                    bots_scrum_territory += 1
+                elif _where == TERRITORY_FOLD:
+                    bots_fold_territory += 1
             # The cost basis is exchange-pulled, so a bot the venue has not
             # answered for contributes no maturity reading either way.
             if _fresh_ts > 0:
@@ -386,6 +403,11 @@ class FleetAggregationMixin:
                 wallet_cash_usd + crypto_position_value_usd, 4
             ),
             "total_realised_pnl": round(total_pnl, 4),
+            # The header strip's AMMO column sums these deltas and colours
+            # itself by whichever territory count is larger.
+            "total_target_delta_usd": round(total_target_delta_usd, 4),
+            "bots_scrum_territory": bots_scrum_territory,
+            "bots_fold_territory": bots_fold_territory,
             "total_trades": total_trades,
             # Falls back to the platform-run accumulator when the YTD sum
             # is zero, so a fresh install is not blank.

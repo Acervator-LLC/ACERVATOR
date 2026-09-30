@@ -11,6 +11,7 @@ from ...core.privacy_mask_registry import (
     mask_or,
 )
 
+from . import header_strip_surface as header
 from . import privacy_dot_surface
 
 from .. import design_system as ds
@@ -39,7 +40,7 @@ OUTER_MARGINS_PX = (12, 6, 12, 6)
 OUTER_SPACING_PX = 0
 COLUMN_MARGINS_PX = (0, 0, 0, 0)
 COLUMN_SPACING_PX = 2
-SEPARATOR_GAP_PX = 14
+SEPARATOR_GAP_PX = header.SPENDABLE_COLUMN_GAP_PX
 DOT_ALIGN = "hcenter"
 SEPARATOR_ALIGN = "vcenter"
 TRAILING_STRETCH = True
@@ -102,6 +103,14 @@ _DOT_FIELDS = (
 REALISED_DEFAULT = None
 EXCHANGE_COUNT_DEFAULT = None
 
+#: How ``update_profits`` renders one column, named per column so no cell is
+#: drawn from its position in ``COLUMNS``.
+RENDER_SPENDABLE = "spendable"
+RENDER_MONEY = "money"
+RENDER_COUNT = "count"
+RENDER_AMMO = "ammo"
+RENDER_PNL = "pnl"
+
 COLUMNS = (
     {
         "key": "spendable",
@@ -113,6 +122,7 @@ COLUMNS = (
         "default": None,
         "initial_text": EMPTY_TEXT,
         "initial_style": VALUE_STYLE_MUTED,
+        "render": RENDER_SPENDABLE,
     },
     {
         "key": "total_realised",
@@ -124,6 +134,19 @@ COLUMNS = (
         "default": REALISED_DEFAULT,
         "initial_text": EMPTY_TEXT,
         "initial_style": VALUE_STYLE_DEFAULT,
+        "render": RENDER_MONEY,
+    },
+    {
+        "key": "pnl",
+        "label": "P/L",
+        "label_style": LABEL_STYLE,
+        "label_tooltip": header.PNL_TOOLTIP,
+        "field_id": "kpi.pnl",
+        "source_key": "unrealised",
+        "default": None,
+        "initial_text": EMPTY_TEXT,
+        "initial_style": VALUE_STYLE_DEFAULT,
+        "render": RENDER_PNL,
     },
     {
         "key": "locked",
@@ -135,6 +158,7 @@ COLUMNS = (
         "default": None,
         "initial_text": EMPTY_TEXT,
         "initial_style": VALUE_STYLE_DEFAULT,
+        "render": RENDER_MONEY,
     },
     {
         "key": "mature",
@@ -146,6 +170,7 @@ COLUMNS = (
         "default": None,
         "initial_text": EMPTY_TEXT,
         "initial_style": VALUE_STYLE_DEFAULT,
+        "render": RENDER_MONEY,
     },
     {
         "key": "exchanges",
@@ -157,6 +182,19 @@ COLUMNS = (
         "default": EXCHANGE_COUNT_DEFAULT,
         "initial_text": EMPTY_TEXT,
         "initial_style": VALUE_STYLE_DEFAULT,
+        "render": RENDER_COUNT,
+    },
+    {
+        "key": "total_ammo",
+        "label": header.AMMO_LABEL,
+        "label_style": LABEL_STYLE,
+        "label_tooltip": header.AMMO_TOOLTIP,
+        "field_id": "kpi.ammo",
+        "source_key": "total_ammo",
+        "default": None,
+        "initial_text": EMPTY_TEXT,
+        "initial_style": VALUE_STYLE_MUTED,
+        "render": RENDER_AMMO,
     },
 )
 
@@ -253,6 +291,32 @@ def spendable_cell(value: Any) -> dict:
     }
 
 
+def column_cell(column: dict, raw: Any, payload: dict) -> dict:
+    """One column's text, skin and tooltip, chosen by its own ``render``.
+
+    ``RENDER_AMMO`` reads ``ammo_lean`` out of ``payload`` for its colour;
+    every other renderer reads only ``raw``.
+    """
+    kind = column.get("render")
+    field_id = column["field_id"]
+    if kind == RENDER_SPENDABLE:
+        return spendable_cell(raw)
+    if kind == RENDER_AMMO:
+        return header.ammo_cell(raw, payload.get("ammo_lean"))
+    if kind == RENDER_PNL:
+        return {
+            "text": mask_or(header.pnl_text(raw), field_id),
+            "style_sheet": VALUE_STYLE_DEFAULT,
+            "tooltip": "",
+        }
+    text = count_text(raw) if kind == RENDER_COUNT else money_text(raw)
+    return {
+        "text": mask_or(text, field_id),
+        "style_sheet": VALUE_STYLE_DEFAULT,
+        "tooltip": "",
+    }
+
+
 def spendable_branch(value: Any) -> str:
     """The call name the SPENDABLE amount earns from its own value."""
     if value is None:
@@ -289,22 +353,11 @@ class SpendableProfitsModel:
     def update_profits(self, data: dict) -> None:
         """Render every cell from one payload, then keep that payload."""
         kept = dict(data) if isinstance(data, dict) else {}
-        first, last = COLUMNS[0], COLUMNS[-1]
-        amount = data.get(first["source_key"], first["default"])
-        rendered = {first["key"]: spendable_cell(amount)}
-        for column in COLUMNS[1:-1]:
+        amount = data.get(COLUMNS[0]["source_key"], COLUMNS[0]["default"])
+        rendered = {}
+        for column in COLUMNS:
             raw = data.get(column["source_key"], column["default"])
-            rendered[column["key"]] = {
-                "text": mask_or(money_text(raw), column["field_id"]),
-                "style_sheet": VALUE_STYLE_DEFAULT,
-                "tooltip": "",
-            }
-        count = data.get(last["source_key"], last["default"])
-        rendered[last["key"]] = {
-            "text": mask_or(count_text(count), last["field_id"]),
-            "style_sheet": VALUE_STYLE_DEFAULT,
-            "tooltip": "",
-        }
+            rendered[column["key"]] = column_cell(column, raw, data)
         self.cells.update(rendered)
         self.last_data = kept
         self.calls.append(UPDATE)

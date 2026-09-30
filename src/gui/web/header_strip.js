@@ -19,7 +19,6 @@
   var CARD_LABEL_PROPERTY = "card_label_property";
   var CARD_VALUE_PROPERTY = "card_value_property";
   var COUNTERS = "counters";
-  var HIDDEN_CARD = "hidden_card";
   var MODE_BUTTON = "mode_button";
   var ACTIONS = "actions";
 
@@ -33,7 +32,6 @@
     CARD_VALUE_STYLE,
     CENTRAL_LAYOUT,
     COUNTERS,
-    HIDDEN_CARD,
     ISOLATED_TABS,
     MODE_BUTTON,
     SPENDABLE,
@@ -149,9 +147,6 @@
   var TOP_ROW_PART = "top-row";
   var DOT_PART = "privacy-dot";
   var COUNTER_PART = "counter";
-  var COUNTER_LABEL_PART = "counter-label";
-  var COUNTER_VALUE_PART = "counter-value";
-  var HIDDEN_CARD_PART = "hidden-card";
   var MODE_BUTTON_PART = "mode-button";
 
   var SPENDABLE_MODULE = "spendable_profits";
@@ -537,33 +532,6 @@
     return element("div", cardProps, null);
   }
 
-  function HiddenCard(props) {
-    var card = objectField(props.model, HIDDEN_CARD);
-    var cardProps = {
-      className: CARD_CLASS,
-      style: styleOf(props.model[CARD_VALUE_STYLE]),
-      hidden: card[VISIBLE] === false,
-      title: label(card[TOOLTIP])
-    };
-    cardProps[PART_ATTR] = HIDDEN_CARD_PART;
-    cardProps[KEY_ATTR] = text(card[KEY]);
-    cardProps[FIELD_ID_ATTR] = text(card[FIELD_ID]);
-    cardProps[FORMAT_ATTR] = text(card[FORMAT]);
-    cardProps[SOURCE_KEY_ATTR] = text(card[SOURCE_KEY]);
-
-    var captionProps = {};
-    captionProps[PART_ATTR] = COUNTER_LABEL_PART;
-    var amountProps = {};
-    amountProps[PART_ATTR] = COUNTER_VALUE_PART;
-
-    return element(
-      "div",
-      cardProps,
-      element("span", captionProps, text(card[LABEL])),
-      element("span", amountProps, text(card[TEXT]))
-    );
-  }
-
   // Asks METHOD for the wing NEXT_MODE names, then redraws.
   function modePressed(button, askedClass) {
     if (!global.acervator || typeof global.acervator.call !== "function") {
@@ -751,12 +719,7 @@
     order.forEach(function (slot, at) {
       children.push(slotNode(model, slot, at));
     });
-    return element(
-      "div",
-      stripProps,
-      element("div", rowProps, children),
-      element(HiddenCard, { model: model })
-    );
+    return element("div", stripProps, element("div", rowProps, children));
   }
 
   // -- what the payload carries, and what it does not ------------------
@@ -897,7 +860,6 @@
     checkColumns(model);
     checkCounters(model);
     checkSlots(model);
-    checkAgainstDefault(HIDDEN_CARD, objectField(model, HIDDEN_CARD), TEXT, INITIAL_TEXT);
     checkSheet(SPENDABLE, STYLE_SHEET, objectField(model, SPENDABLE)[STYLE_SHEET]);
     checkSheet(MODE_BUTTON, STYLE_SHEET, objectField(model, MODE_BUTTON)[STYLE_SHEET]);
     return report();
@@ -995,10 +957,6 @@
 
   function counters() {
     return list(COUNTERS);
-  }
-
-  function hiddenCard() {
-    return bag(HIDDEN_CARD);
   }
 
   function modeButton() {
@@ -1239,7 +1197,6 @@
     cardValueProperty: cardValueProperty,
     counters: counters,
     counter: counter,
-    hiddenCard: hiddenCard,
     modeButton: modeButton,
     actions: actions,
     declaredFields: declaredFields,

@@ -325,9 +325,6 @@ class HeaderStripMixin:
             "with every FOLD (buy at lower-band) + MANUAL_FOLD "
             "fill. Resets to $0.00 only on a fresh process start."
         )
-        # _stat_pnl is never added to top_row; MainWindow still calls set_value on it.
-        self._stat_pnl = card_class("P/L", "$0.00")
-        self._stat_pnl.setVisible(False)
         self._stat_trades = card_class("Trades", "0")
         self._stat_trades.setToolTip(
             "Total executed buy and sell trades across all active bots."

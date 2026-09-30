@@ -801,7 +801,6 @@ if _HAS_QT:
             self._fire_glow_effects: list = []
 
             pulse_targets = [
-                self._stat_pnl,
                 self._stat_trades,
                 self._stat_bots,
                 self._stat_errors,
@@ -1164,12 +1163,11 @@ if _HAS_QT:
             return header_strip_reads_paper(tabs.tabText(tabs.currentIndex()))
 
         def _write_header_strip(self, agg: dict, exchanges: int) -> None:
-            """Write the five cards and the five columns from one aggregate."""
+            """Write the five cards and the seven columns from one aggregate."""
             _scr = float(agg.get("total_scrummed_usd", 0.0) or 0.0)
             _fld = float(agg.get("total_folded_usd", 0.0) or 0.0)
             self._stat_scrummed.set_value(f"${_scr:,.2f}")
             self._stat_folded.set_value(f"${_fld:,.2f}")
-            self._stat_pnl.set_value(f"${agg['total_realised_pnl']:+,.4f}")
             self._stat_trades.set_value(str(agg["total_trades"]))
             self._stat_bots.set_value(str(agg["running"]))
             self._stat_errors.set_value(str(agg.get("total_errors_lifetime", 0)))

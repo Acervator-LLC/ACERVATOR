@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 
 from ...core.privacy_mask_registry import ABSENT_TEXT as _ABSENT_TEXT, mask_or
+from ...trading.target_bands import TERRITORY_FOLD, TERRITORY_SCRUM
 
 from .. import design_system as ds
 
@@ -44,6 +45,23 @@ if _HAS_QT:
         _SEPARATOR_STYLE = (
             f"color: {ds.MAIN_SEPARATOR}; font-size: 24px; margin: 0 2px;"
         )
+        #: The gap either side of a rule, matching ``SPENDABLE_COLUMN_GAP_PX``.
+        _COLUMN_GAP_PX = 6
+        #: The skin each ``ammo_lean`` answer draws the Ammo total in.
+        _AMMO_SKIN_BY_LEAN = {
+            TERRITORY_SCRUM: _VALUE_STYLE_HIGHLIGHT,
+            TERRITORY_FOLD: _VALUE_STYLE_NEGATIVE,
+        }
+        _PNL_TIP = (
+            "P/L — the unrealised profit and loss the exchange answers across "
+            "every bot's open position. REALISED beside it carries the "
+            "profit and loss already booked."
+        )
+        _AMMO_TIP = (
+            "Total Ammo — every bot's Target Delta added together, in whole "
+            "dollars. Green while more bots hold more than their target, red "
+            "while more hold less."
+        )
         _SPENDABLE_ABSENT_TIP = (
             "This amount is not in the data the strip was given for this refresh."
         )
@@ -56,7 +74,7 @@ if _HAS_QT:
             self._setup_ui()
 
         def _setup_ui(self) -> None:
-            """Build the frame, the five KPI columns and their privacy dots."""
+            """Build the frame, the seven KPI columns and their privacy dots."""
             self.setFrameShape(QFrame.StyledPanel)
             self.setStyleSheet(
                 "SpendableProfitsWidget { "
@@ -99,36 +117,42 @@ if _HAS_QT:
             spend_col.addWidget(self._spend_dot, alignment=Qt.AlignHCenter)
             outer.addLayout(spend_col)
 
-            # Spendable is built above; these four share one KPI field shape.
+            # Spendable is built above; these six share one KPI field shape.
             _KPI_FIELD_BY_KEY = {
                 "total_realised": "kpi.realised",
+                "pnl": "kpi.pnl",
                 "locked": "kpi.locked",
                 "mature": "kpi.mature",
                 "exchanges": "kpi.exch",
+                "total_ammo": "kpi.ammo",
             }
 
             self._stats = {}
-            for label_text, key in [
-                ("REALISED", "total_realised"),
-                ("LOCKED", "locked"),
-                ("MATURE", "mature"),
-                ("EXCH", "exchanges"),
+            for label_text, key, tip in [
+                ("REALISED", "total_realised", ""),
+                ("P/L", "pnl", self._PNL_TIP),
+                ("LOCKED", "locked", ""),
+                ("MATURE", "mature", ""),
+                ("EXCH", "exchanges", ""),
+                ("AMMO", "total_ammo", self._AMMO_TIP),
             ]:
                 sep = QLabel("|")
                 sep.setStyleSheet(self._SEPARATOR_STYLE)
                 sep.setAlignment(Qt.AlignVCenter)
-                outer.addSpacing(14)
+                outer.addSpacing(self._COLUMN_GAP_PX)
                 outer.addWidget(sep)
-                outer.addSpacing(14)
+                outer.addSpacing(self._COLUMN_GAP_PX)
 
                 col = QVBoxLayout()
                 col.setSpacing(2)
                 col.setContentsMargins(0, 0, 0, 0)
                 lbl = ElidingLabel(label_text)
                 lbl.setStyleSheet(self._LABEL_STYLE)
+                lbl.setToolTip(tip)
                 col.addWidget(lbl)
                 val = ElidingLabel(_ABSENT_TEXT)
                 val.setStyleSheet(self._VALUE_STYLE_DEFAULT)
+                val.setToolTip(tip)
                 self._stats[key] = val
                 col.addWidget(val)
                 dot = PrivacyDot(
@@ -164,6 +188,32 @@ if _HAS_QT:
                 return _ABSENT_TEXT
             return str(value)
 
+        @staticmethod
+        def _pnl_text(value) -> str:
+            """Render the unrealised amount with its sign, or the marker."""
+            amount = SpendableProfitsWidget._amount_of(value)
+            if amount is None:
+                return _ABSENT_TEXT
+            return f"${amount:+,.2f}"
+
+        @staticmethod
+        def _ammo_text(value) -> str:
+            """Render the fleet Ammo total in whole dollars, or the marker."""
+            amount = SpendableProfitsWidget._amount_of(value)
+            if amount is None:
+                return _ABSENT_TEXT
+            whole = round(amount)
+            sign = "-" if whole < 0 else ""
+            return f"{sign}${abs(whole):,.0f}"
+
+        def _ammo_skin(self, value, lean) -> str:
+            """The skin the Ammo total draws in for one total and one lean."""
+            if self._amount_of(value) is None:
+                return self._VALUE_STYLE_MUTED
+            return self._AMMO_SKIN_BY_LEAN.get(
+                str(lean or ""), self._VALUE_STYLE_DEFAULT
+            )
+
         def update_profits(self, data: dict) -> None:
             """Draw every column from one payload, then keep that payload."""
             kept = dict(data) if isinstance(data, dict) else {}
@@ -177,21 +227,29 @@ if _HAS_QT:
                 skin, tip = self._VALUE_STYLE_HIGHLIGHT, ""
             else:
                 skin, tip = self._VALUE_STYLE_NEGATIVE, ""
+            ammo = data.get("total_ammo")
             drawn = {
                 "spendable": self._money_text(sp),
                 "total_realised": self._money_text(data.get("total_realised")),
+                "pnl": self._pnl_text(data.get("unrealised")),
                 "locked": self._money_text(data.get("locked")),
                 "mature": self._money_text(data.get("mature")),
                 "exchanges": self._count_text(data.get("exchange_count")),
+                "total_ammo": self._ammo_text(ammo),
             }
+            self._stats["total_ammo"].setStyleSheet(
+                self._ammo_skin(ammo, data.get("ammo_lean"))
+            )
             self._amount.setStyleSheet(skin)
             self._amount.setToolTip(tip)
             self._amount.setText(mask_or(drawn["spendable"], "kpi.spendable"))
             for key, field_id in (
                 ("total_realised", "kpi.realised"),
+                ("pnl", "kpi.pnl"),
                 ("locked", "kpi.locked"),
                 ("mature", "kpi.mature"),
                 ("exchanges", "kpi.exch"),
+                ("total_ammo", "kpi.ammo"),
             ):
                 self._stats[key].setText(mask_or(drawn[key], field_id))
             self._last_data = kept
