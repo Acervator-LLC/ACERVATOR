@@ -46,9 +46,9 @@ if _HAS_QT:
             f"color: {ds.MAIN_SEPARATOR}; font-size: 24px; margin: 0 2px;"
         )
         #: The gap either side of a rule, matching ``SPENDABLE_COLUMN_GAP_PX``.
-        _COLUMN_GAP_PX = 4
+        _COLUMN_GAP_PX = 3
         #: One rule's own width, matching ``SPENDABLE_RULE_W_PX``.
-        _RULE_W_PX = 8
+        _RULE_W_PX = 12
         #: The skin each ``ammo_lean`` answer draws the Ammo total in.
         _AMMO_SKIN_BY_LEAN = {
             TERRITORY_SCRUM: _VALUE_STYLE_HIGHLIGHT,
@@ -86,7 +86,7 @@ if _HAS_QT:
             )
 
             outer = QHBoxLayout(self)
-            outer.setContentsMargins(12, 6, 12, 6)
+            outer.setContentsMargins(6, 6, 6, 6)
             outer.setSpacing(0)
 
             # A dot toggle re-renders from this last data, not the next tick.

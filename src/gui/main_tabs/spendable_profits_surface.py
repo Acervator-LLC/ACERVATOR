@@ -36,7 +36,12 @@ FRAME_STYLE = (
     "  border: 1px solid rgba(0,255,180,80); border-radius: 4px; }"
 )
 
-OUTER_MARGINS_PX = (12, 6, 12, 6)
+OUTER_MARGINS_PX = (
+    header.SPENDABLE_SIDE_MARGIN_PX,
+    6,
+    header.SPENDABLE_SIDE_MARGIN_PX,
+    6,
+)
 OUTER_SPACING_PX = 0
 COLUMN_MARGINS_PX = (0, 0, 0, 0)
 COLUMN_SPACING_PX = 2

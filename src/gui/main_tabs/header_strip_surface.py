@@ -86,7 +86,7 @@ SPENDABLE_STYLE = (
 )
 
 #: What the strip leaves either side of its own columns.
-SPENDABLE_SIDE_MARGIN_PX = 12
+SPENDABLE_SIDE_MARGIN_PX = 6
 
 #: What the strip's own margins take off the room its text has.
 SPENDABLE_TEXT_PAD = 2 * SPENDABLE_SIDE_MARGIN_PX
@@ -94,12 +94,12 @@ SPENDABLE_TEXT_PAD = 2 * SPENDABLE_SIDE_MARGIN_PX
 #: The gap the strip leaves either side of a rule between two columns. Four,
 #: not fourteen: ``spendable_natural_w`` counts twelve of them, and the room
 #: that returns is what the two new columns take.
-SPENDABLE_COLUMN_GAP_PX = 4
+SPENDABLE_COLUMN_GAP_PX = 3
 
 #: The width one rule between two columns draws at. Declared, not measured:
 #: the glyph reads 52 px wide in a fallback font and ``spendable_natural_w``
 #: counted none of it, so every column drew narrower than its own amount.
-SPENDABLE_RULE_W_PX = 8
+SPENDABLE_RULE_W_PX = 12
 
 SPENDABLE_LAYOUT = {
     "margins_px": [SPENDABLE_SIDE_MARGIN_PX, 6, SPENDABLE_SIDE_MARGIN_PX, 6],
