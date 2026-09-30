@@ -31,6 +31,10 @@ if _HAS_QT:
         # Emitted only while `set_clickable(True)` has armed the card.
         clicked = Signal()
 
+        #: What the card leaves either side of its caption and its amount,
+        #: matching ``header_strip_surface.CARD_SIDE_MARGIN_PX``.
+        _SIDE_MARGIN_PX = 4
+
         def __init__(self, label: str, value: str = "---", parent=None):
             super().__init__(parent)
             self._setup_ui(label, value)
@@ -39,7 +43,7 @@ if _HAS_QT:
             """Build the caption, the amount and the dot slot under them."""
             self.setFrameShape(QFrame.StyledPanel)
             layout = QVBoxLayout(self)
-            layout.setContentsMargins(8, 4, 8, 4)
+            layout.setContentsMargins(self._SIDE_MARGIN_PX, 4, self._SIDE_MARGIN_PX, 4)
             layout.setSpacing(2)
             self._label_row = QHBoxLayout()
             self._label_row.setContentsMargins(0, 0, 0, 0)

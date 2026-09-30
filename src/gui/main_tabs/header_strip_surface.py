@@ -10,6 +10,11 @@ from ...core.privacy_mask_registry import (
     get_privacy_mask_registry,
     mask_or,
 )
+from ...trading.target_bands import (
+    TERRITORY_AT_TARGET,
+    TERRITORY_FOLD,
+    TERRITORY_SCRUM,
+)
 
 from .. import design_system as ds
 from ..color_alpha import css_colours
@@ -20,7 +25,6 @@ METHOD = "header.strip"
 EMPTY_TEXT = _ABSENT_TEXT
 MONEY_PREFIX = "$"
 MONEY_FORMAT = ",.2f"
-PNL_FORMAT = "+,.4f"
 COUNT_FORMAT = "str"
 
 #: What the central layout leaves either side of the top row.
@@ -82,13 +86,20 @@ SPENDABLE_STYLE = (
 )
 
 #: What the strip leaves either side of its own columns.
-SPENDABLE_SIDE_MARGIN_PX = 12
+SPENDABLE_SIDE_MARGIN_PX = 6
 
 #: What the strip's own margins take off the room its text has.
 SPENDABLE_TEXT_PAD = 2 * SPENDABLE_SIDE_MARGIN_PX
 
-#: The gap the strip leaves either side of a rule between two columns.
-SPENDABLE_COLUMN_GAP_PX = 14
+#: The gap the strip leaves either side of a rule between two columns. Four,
+#: not fourteen: ``spendable_natural_w`` counts twelve of them, and the room
+#: that returns is what the two new columns take.
+SPENDABLE_COLUMN_GAP_PX = 3
+
+#: The width one rule between two columns draws at. Declared, not measured:
+#: the glyph reads 52 px wide in a fallback font and ``spendable_natural_w``
+#: counted none of it, so every column drew narrower than its own amount.
+SPENDABLE_RULE_W_PX = 12
 
 SPENDABLE_LAYOUT = {
     "margins_px": [SPENDABLE_SIDE_MARGIN_PX, 6, SPENDABLE_SIDE_MARGIN_PX, 6],
@@ -96,6 +107,7 @@ SPENDABLE_LAYOUT = {
     "column_spacing_px": SPENDABLE_COLUMN_GAP_PX,
     "column_margins_px": [0, 0, 0, 0],
     "column_spacing": 2,
+    "rule_w_px": SPENDABLE_RULE_W_PX,
     "frame_shape": "StyledPanel",
     "separator_align": "vcenter",
     "dot_align": "hcenter",
@@ -129,6 +141,28 @@ UNREADABLE_TOOLTIP = (
     "This amount did not arrive as a number, so nothing is shown for it."
 )
 
+AMMO_LABEL = "AMMO"
+AMMO_TOOLTIP = (
+    "Total Ammo — every bot's Target Delta added together, in whole "
+    "dollars. Green while more bots hold more than their target, red "
+    "while more hold less."
+)
+AMMO_UNKNOWN_TOOLTIP = (
+    "This fleet reports no Target Delta total, so nothing is shown for it."
+)
+
+#: The Ammo total's own format: whole dollars, with a thousands mark.
+AMMO_FORMAT = ",.0f"
+
+#: The P/L card's format: the venue's unrealised figure, signed, to the cent.
+PNL_FORMAT = "+,.2f"
+
+PNL_TOOLTIP = (
+    "P/L — the unrealised profit and loss the exchange answers across "
+    "every bot's open position. Realised profit and loss has its own "
+    "column in the strip on the left."
+)
+
 KPI_COLUMNS = (
     {
         "key": "spendable",
@@ -145,6 +179,15 @@ KPI_COLUMNS = (
         "label_style": KPI_LABEL_STYLE,
         "label_tooltip": "",
         "field_id": "kpi.realised",
+        "initial_text": EMPTY_TEXT,
+        "initial_style": VALUE_STYLE_DEFAULT,
+    },
+    {
+        "key": "pnl",
+        "label": "P/L",
+        "label_style": KPI_LABEL_STYLE,
+        "label_tooltip": PNL_TOOLTIP,
+        "field_id": "kpi.pnl",
         "initial_text": EMPTY_TEXT,
         "initial_style": VALUE_STYLE_DEFAULT,
     },
@@ -175,10 +218,21 @@ KPI_COLUMNS = (
         "initial_text": EMPTY_TEXT,
         "initial_style": VALUE_STYLE_DEFAULT,
     },
+    {
+        "key": "total_ammo",
+        "label": AMMO_LABEL,
+        "label_style": KPI_LABEL_STYLE,
+        "label_tooltip": AMMO_TOOLTIP,
+        "field_id": "kpi.ammo",
+        "initial_text": EMPTY_TEXT,
+        "initial_style": VALUE_STYLE_MUTED,
+    },
 )
 
-#: What a card leaves either side of its caption and its amount.
-CARD_SIDE_MARGIN_PX = 8
+#: What a card leaves either side of its caption and its amount. Four, not
+#: eight: the row draws six cards where it drew five, and the eight pixels
+#: this returns is the text room the widest amount needs.
+CARD_SIDE_MARGIN_PX = 4
 
 #: What a card's own margins take off the room its text has.
 COUNTER_TEXT_PAD = 2 * CARD_SIDE_MARGIN_PX
@@ -295,24 +349,17 @@ COUNTER_CARDS = (
     },
 )
 
-HIDDEN_CARD = {
-    "key": "pnl",
-    "label": "P/L",
-    "initial_text": "$0.00",
-    "tooltip": "",
-    "field_id": None,
-    "visible": False,
-    "source_key": "total_realised_pnl",
-    "format": PNL_FORMAT,
-}
-
 PROFITS_SOURCE_KEYS = (
     "wallet_cash_usd",
     "crypto_position_value_usd",
     "total_realized_exchange",
+    "total_unrealized_exchange",
     "total_mature_exchange",
     "bots_with_fresh_exchange_data",
     "realised_history_complete",
+    "total_target_delta_usd",
+    "bots_scrum_territory",
+    "bots_fold_territory",
 )
 
 #: `get_aggregate_stats` counts the bots the venue has answered for. At zero
@@ -324,11 +371,7 @@ EXCHANGE_FRESHNESS_KEY = "bots_with_fresh_exchange_data"
 #: the key walks no venue fill history at all, so its realised figure is whole.
 REALISED_COMPLETE_KEY = "realised_history_complete"
 
-STATS_KEYS = (
-    tuple(card["source_key"] for card in COUNTER_CARDS)
-    + (HIDDEN_CARD["source_key"],)
-    + PROFITS_SOURCE_KEYS
-)
+STATS_KEYS = tuple(card["source_key"] for card in COUNTER_CARDS) + PROFITS_SOURCE_KEYS
 
 DOT_STYLE = (
     "PrivacyDot { "
@@ -370,11 +413,11 @@ ACTIONS = {
 def spendable_natural_w() -> int:
     """The room the whole strip needs for every ``KPI_COLUMNS`` amount.
 
-    ``KPI_COLUMN_W`` per column, the ``SPENDABLE_LAYOUT`` gap either side of
-    each rule between two of them, and ``SPENDABLE_TEXT_PAD`` for the frame.
+    ``KPI_COLUMN_W`` per column, each rule's own ``SPENDABLE_RULE_W_PX`` and
+    the gap either side of it, and ``SPENDABLE_TEXT_PAD`` for the frame.
     """
     held = len(KPI_COLUMNS)
-    rules = max(held - 1, 0) * 2 * SPENDABLE_COLUMN_GAP_PX
+    rules = max(held - 1, 0) * (SPENDABLE_RULE_W_PX + 2 * SPENDABLE_COLUMN_GAP_PX)
     return held * KPI_COLUMN_W + rules + SPENDABLE_TEXT_PAD
 
 
@@ -416,6 +459,19 @@ def slot_min_w(slot: Any) -> int:
     return 0
 
 
+def slot_floor_w(slot: Any) -> int:
+    """The width both hosts floor one ``TOP_ROW_ORDER`` slot at.
+
+    The spendable strip floors at ``slot_natural_w``, because its columns hold
+    whole money amounts; every other slot floors at ``slot_min_w``, so the row
+    never grows past the window and pushes the class square off its right edge.
+    """
+    name = str(slot or "")
+    if name == "spendable":
+        return slot_natural_w(name)
+    return slot_min_w(name)
+
+
 def top_row_min_w() -> int:
     """The narrowest the header top row draws at, holding every slot.
 
@@ -435,11 +491,11 @@ def window_min_w() -> int:
 def width_budget() -> dict:
     """Every floor the top row holds, as one serialisable dict.
 
-    ``slots`` carries the ``slot_natural_w`` both variants set on each slot:
+    ``slots`` carries the ``slot_floor_w`` both variants set on each slot:
     ``setMinimumWidth`` on the Qt row, ``min-width`` on the page's flex item.
     """
     return {
-        "slots": {slot: slot_natural_w(slot) for slot in TOP_ROW_ORDER},
+        "slots": {slot: slot_floor_w(slot) for slot in TOP_ROW_ORDER},
         "spendable_text_pad_px": SPENDABLE_TEXT_PAD,
         "counter_text_pad_px": COUNTER_TEXT_PAD,
         "top_row_min_w_px": top_row_min_w(),
@@ -477,8 +533,72 @@ def exchange_count_text(value: Any) -> str:
 
 
 def pnl_text(value: Any) -> str:
-    """Render the hidden P/L card, which carries a sign and four places."""
-    return f"{MONEY_PREFIX}{value:{PNL_FORMAT}}"
+    """Render the P/L card's amount with its sign, or the strip's empty marker."""
+    amount = money_amount(value)
+    if amount is None:
+        return EMPTY_TEXT
+    return f"{MONEY_PREFIX}{amount:{PNL_FORMAT}}"
+
+
+def ammo_total_text(value: Any) -> str:
+    """Render the fleet Ammo total in whole dollars, or the empty marker.
+
+    ``AMMO_FORMAT`` drops the decimal part, and a total below zero keeps its
+    minus ahead of ``MONEY_PREFIX``.
+    """
+    amount = money_amount(value)
+    if amount is None:
+        return EMPTY_TEXT
+    whole = round(amount)
+    sign = "-" if whole < 0 else ""
+    return f"{sign}{MONEY_PREFIX}{abs(whole):{AMMO_FORMAT}}"
+
+
+def ammo_lean(above: Any, below: Any) -> str:
+    """Which territory holds more bots, counted in bots and not in dollars.
+
+    Answers ``TERRITORY_AT_TARGET`` where neither count is the larger, which
+    is the one case the Ammo column draws in the strip's neutral text.
+    """
+    try:
+        scrum, fold = int(above or 0), int(below or 0)
+    except (TypeError, ValueError):
+        return TERRITORY_AT_TARGET
+    if scrum > fold:
+        return TERRITORY_SCRUM
+    if fold > scrum:
+        return TERRITORY_FOLD
+    return TERRITORY_AT_TARGET
+
+
+#: The value skin each ``ammo_lean`` answer draws the Ammo total in.
+AMMO_LEAN_STYLES = {
+    TERRITORY_SCRUM: VALUE_STYLE_HIGHLIGHT,
+    TERRITORY_FOLD: VALUE_STYLE_NEGATIVE,
+    TERRITORY_AT_TARGET: VALUE_STYLE_DEFAULT,
+}
+
+
+def ammo_cell(value: Any, lean: Any) -> dict:
+    """The AMMO column's text, skin and tooltip for one total and one lean."""
+    text = ammo_total_text(value)
+    if text == EMPTY_TEXT:
+        return {
+            "text": mask_or(EMPTY_TEXT, "kpi.ammo"),
+            "style_sheet": VALUE_STYLE_MUTED,
+            "tooltip": AMMO_UNKNOWN_TOOLTIP,
+        }
+    return {
+        "text": mask_or(text, "kpi.ammo"),
+        "style_sheet": AMMO_LEAN_STYLES[ammo_lean_key(lean)],
+        "tooltip": "",
+    }
+
+
+def ammo_lean_key(lean: Any) -> str:
+    """One ``AMMO_LEAN_STYLES`` key, defaulting to ``TERRITORY_AT_TARGET``."""
+    name = str(lean or "")
+    return name if name in AMMO_LEAN_STYLES else TERRITORY_AT_TARGET
 
 
 def is_masked(field_id: Any) -> bool:
@@ -543,6 +663,11 @@ def kpi_cells(profits: Optional[dict]) -> dict:
             "style_sheet": VALUE_STYLE_DEFAULT,
             "tooltip": "",
         },
+        "pnl": {
+            "text": mask_or(pnl_text(data.get("unrealised")), "kpi.pnl"),
+            "style_sheet": VALUE_STYLE_DEFAULT,
+            "tooltip": "",
+        },
         "locked": {
             "text": mask_or(money_text(data.get("locked")), "kpi.locked"),
             "style_sheet": VALUE_STYLE_DEFAULT,
@@ -560,6 +685,7 @@ def kpi_cells(profits: Optional[dict]) -> dict:
             "style_sheet": VALUE_STYLE_DEFAULT,
             "tooltip": "",
         },
+        "total_ammo": ammo_cell(data.get("total_ammo"), data.get("ammo_lean")),
     }
 
 
@@ -577,12 +703,6 @@ def counter_cells(stats: Optional[dict]) -> dict:
             count_text(data.get("total_errors_lifetime", 0)), "counter.errors"
         ),
     }
-
-
-def hidden_card_text(stats: Optional[dict]) -> str:
-    """The P/L card's value."""
-    data = stats if isinstance(stats, dict) else {}
-    return pnl_text(float(data.get("total_realised_pnl", 0.0) or 0.0))
 
 
 def exchange_amount(stats: Optional[dict], key: str) -> Any:
@@ -618,6 +738,15 @@ def realised_amount(stats: Optional[dict]) -> Any:
     return exchange_amount(data, "total_realized_exchange")
 
 
+def unrealised_amount(stats: Optional[dict]) -> Any:
+    """The fleet's unrealised profit and loss, or ``None`` while it is no reading.
+
+    ``reconciliation`` writes each bot's ``unrealised_pnl`` from the venue, and
+    ``exchange_amount`` answers ``None`` while the venue has answered for no bot.
+    """
+    return exchange_amount(stats, "total_unrealized_exchange")
+
+
 def profits_payload(stats: Optional[dict], exchange_count: int = 0) -> dict:
     """The payload the spendable panel receives for one snapshot."""
     data = stats if isinstance(stats, dict) else {}
@@ -628,8 +757,13 @@ def profits_payload(stats: Optional[dict], exchange_count: int = 0) -> dict:
         "spendable": wallet_cash if known else None,
         "total_realised": realised_amount(data),
         "locked": position_value if known else None,
+        "unrealised": unrealised_amount(data),
         "mature": exchange_amount(data, "total_mature_exchange"),
         "exchange_count": int(exchange_count),
+        "total_ammo": money_amount(data.get("total_target_delta_usd")),
+        "ammo_lean": ammo_lean(
+            data.get("bots_scrum_territory"), data.get("bots_fold_territory")
+        ),
     }
 
 
@@ -727,7 +861,6 @@ def build_view_model(
             }
             for card in COUNTER_CARDS
         ],
-        "hidden_card": {**HIDDEN_CARD, "text": hidden_card_text(stats)},
         "mode_button": mode_card(mode),
         "actions": dict(ACTIONS),
     }

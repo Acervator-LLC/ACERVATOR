@@ -31,8 +31,12 @@ from typing import Any, Optional
 from .. import design_system as ds
 from ...trading.target_bands import (
     MANUAL_FIRE_PCT,
+    TERRITORY_AT_TARGET,
+    TERRITORY_FOLD,
+    TERRITORY_SCRUM,
     manual_fire_dust_band,
     manual_fire_will_noop,
+    target_delta,
     target_territory,
 )
 
@@ -55,10 +59,6 @@ MAGNITUDE_FORMAT = "${magnitude:,.4f}"
 NO_TARGET_TEXT = "---"
 PENDING_PRICE_TEXT = "pending…"
 STALE_TEXT_FORMAT = "{text} {marker}"
-
-TERRITORY_SCRUM = "scrum"
-TERRITORY_FOLD = "fold"
-TERRITORY_AT_TARGET = "at_target"
 
 TERRITORIES = (TERRITORY_SCRUM, TERRITORY_FOLD, TERRITORY_AT_TARGET)
 
@@ -513,7 +513,7 @@ class TableCellsModel:
 
     def _empty_cell(self, position_val: float, target_val: float) -> dict:
         """Never held and never traded. Ammo is the whole target, to buy."""
-        delta = 0.0 - target_val
+        delta = target_delta(0.0, target_val)
         self.calls.append([AMMO_EMPTY, delta])
         return self._finish(
             AMMO_PATH_EMPTY,
@@ -551,7 +551,7 @@ class TableCellsModel:
         price_age_s: Optional[float],
     ) -> dict:
         """A live position: its distance from target and the engine's band."""
-        delta = position_val - target_val
+        delta = target_delta(position_val, target_val)
         territory = target_territory(position_val, target_val)
         color = TERRITORY_COLORS[territory]
         tip = TERRITORY_TIPS[territory]
