@@ -24,7 +24,7 @@ import json
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Iterable, Optional
 
 logger = logging.getLogger("acervator.assets")
 
@@ -37,8 +37,13 @@ COIN_MARKETS_URL = (
     "?vs_currency=usd&per_page={size}&page=1&ids={ids}"
 )
 
-#: How many coin ids one ``COIN_MARKETS_URL`` read asks for.
+#: The ``per_page`` one ``COIN_MARKETS_URL`` read asks for.
 COIN_MARKETS_PAGE = 250
+
+#: The most characters one ``COIN_MARKETS_URL`` may carry; a longer one answers
+#: 403 with no body. Measured 2026-09-30 against ``api.coingecko.com``: 2,010
+#: characters answered 200 and 123,677 bytes, 2,309 answered 403.
+COIN_MARKETS_URL_LIMIT = 2000
 
 #: One coin's own record, the only one of the three carrying the project's
 #: homepage. ``COIN_MARKETS_URL`` answers 26 fields and none of them is a site,
@@ -78,6 +83,31 @@ COIN_INDEX_READ_LOG = "crypto assets: %s will not parse: %s"
 # page. The address is kept, and 451 of the 542 logo-library targets hold no other
 # one, so each is recorded unresolved by name rather than left silent.
 SYMBOL_ICON_URL = "https://www.cryptocompare.com/media/img/cc_icons/{symbol}.png"
+
+
+def coin_markets_pages(ids: Iterable[str]) -> tuple[tuple[str, ...], ...]:
+    """``ids`` grouped so each group's ``COIN_MARKETS_URL`` fits ``COIN_MARKETS_URL_LIMIT``.
+
+    ``COIN_MARKETS_PAGE`` caps a group as well, since ``per_page`` bounds how many
+    records one read answers.
+    """
+    pages: list[list[str]] = []
+    held: list[str] = []
+    for one in ids:
+        asked = str(one).strip()
+        if not asked:
+            continue
+        joined = ",".join([*held, asked])
+        built = COIN_MARKETS_URL.format(size=COIN_MARKETS_PAGE, ids=joined)
+        if held and (
+            len(built) > COIN_MARKETS_URL_LIMIT or len(held) >= COIN_MARKETS_PAGE
+        ):
+            pages.append(held)
+            held = []
+        held.append(asked)
+    if held:
+        pages.append(held)
+    return tuple(tuple(one) for one in pages)
 
 
 def coin_index_path(cache_dir: Optional[Path] = None) -> Path:
