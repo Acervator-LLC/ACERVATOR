@@ -459,6 +459,19 @@ def slot_min_w(slot: Any) -> int:
     return 0
 
 
+def slot_floor_w(slot: Any) -> int:
+    """The width both hosts floor one ``TOP_ROW_ORDER`` slot at.
+
+    The spendable strip floors at ``slot_natural_w``, because its columns hold
+    whole money amounts; every other slot floors at ``slot_min_w``, so the row
+    never grows past the window and pushes the class square off its right edge.
+    """
+    name = str(slot or "")
+    if name == "spendable":
+        return slot_natural_w(name)
+    return slot_min_w(name)
+
+
 def top_row_min_w() -> int:
     """The narrowest the header top row draws at, holding every slot.
 
@@ -478,11 +491,11 @@ def window_min_w() -> int:
 def width_budget() -> dict:
     """Every floor the top row holds, as one serialisable dict.
 
-    ``slots`` carries the ``slot_natural_w`` both variants set on each slot:
+    ``slots`` carries the ``slot_floor_w`` both variants set on each slot:
     ``setMinimumWidth`` on the Qt row, ``min-width`` on the page's flex item.
     """
     return {
-        "slots": {slot: slot_natural_w(slot) for slot in TOP_ROW_ORDER},
+        "slots": {slot: slot_floor_w(slot) for slot in TOP_ROW_ORDER},
         "spendable_text_pad_px": SPENDABLE_TEXT_PAD,
         "counter_text_pad_px": COUNTER_TEXT_PAD,
         "top_row_min_w_px": top_row_min_w(),

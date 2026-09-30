@@ -305,7 +305,7 @@ class HeaderStripMixin:
         # Each slot's floor is the width its own whole amounts need, so the row
         # divides only the width left above those floors.
         self._spendable_widget = _spendable_profits_class()()
-        self._spendable_widget.setMinimumWidth(surface.slot_natural_w("spendable"))
+        self._spendable_widget.setMinimumWidth(surface.slot_floor_w("spendable"))
         top_row.addWidget(
             self._spendable_widget, stretch=surface.slot_stretch("spendable")
         )
@@ -358,10 +358,7 @@ class HeaderStripMixin:
                 self._stat_errors,
             ],
         ):
-            # slot_min_w, not slot_natural_w: a card pinned at its natural
-            # width pushes the class square past the window's right edge at
-            # 1600. Stretch still gives every card its natural width above it.
-            card.setMinimumWidth(surface.slot_min_w(slot))
+            card.setMinimumWidth(surface.slot_floor_w(slot))
             top_row.addWidget(card, stretch=surface.slot_stretch(slot))
 
         # The square's slot takes no stretch, so it shrinks to the square and
