@@ -101,32 +101,35 @@ SPENDABLE_COLUMN_GAP_PX = 3
 #: counted none of it, so every column drew narrower than its own amount.
 SPENDABLE_RULE_W_PX = 12
 
+#: One share of the row each, so the seven columns sit at one pitch.
+SPENDABLE_COLUMN_STRETCH = 1
+
 SPENDABLE_LAYOUT = {
-    "margins_px": [SPENDABLE_SIDE_MARGIN_PX, 6, SPENDABLE_SIDE_MARGIN_PX, 6],
+    "margins_px": [SPENDABLE_SIDE_MARGIN_PX, 4, SPENDABLE_SIDE_MARGIN_PX, 4],
     "spacing_px": 0,
     "column_spacing_px": SPENDABLE_COLUMN_GAP_PX,
     "column_margins_px": [0, 0, 0, 0],
     "column_spacing": 2,
+    "column_stretch": SPENDABLE_COLUMN_STRETCH,
     "rule_w_px": SPENDABLE_RULE_W_PX,
     "frame_shape": "StyledPanel",
     "separator_align": "vcenter",
+    "label_align": "hcenter|bottom",
+    "value_align": "hcenter|top",
     "dot_align": "hcenter",
 }
 
 
-KPI_LABEL_STYLE = (
-    f"color: {ds.CARD_METRIC_LABEL}; font-size: 10px; "
-    "letter-spacing: 1px; font-weight: 600;"
-)
-SPENDABLE_LABEL_STYLE = (
-    f"color: {ds.PRIMARY}; font-size: 10px; letter-spacing: 1px; " "font-weight: 700;"
-)
-VALUE_STYLE_DEFAULT = f"color: {ds.TEXT_NEUTRAL}; font-size: 16px; font-weight: bold;"
-VALUE_STYLE_HIGHLIGHT = f"color: {ds.SUCCESS}; font-size: 16px; font-weight: bold;"
-VALUE_STYLE_NEGATIVE = f"color: {ds.ERROR}; font-size: 16px; font-weight: bold;"
-VALUE_STYLE_MUTED = (
-    f"color: {ds.CARD_METRIC_LABEL}; font-size: 16px; font-weight: bold;"
-)
+#: One caption font for every panel in the strip, and one amount font under it.
+LABEL_FONT = "font-size: 10px; font-weight: 600;"
+VALUE_FONT = "font-size: 14px; font-weight: bold;"
+
+KPI_LABEL_STYLE = f"color: {ds.CARD_METRIC_LABEL}; {LABEL_FONT}"
+SPENDABLE_LABEL_STYLE = f"color: {ds.PRIMARY}; {LABEL_FONT}"
+VALUE_STYLE_DEFAULT = f"color: {ds.TEXT_NEUTRAL}; {VALUE_FONT}"
+VALUE_STYLE_HIGHLIGHT = f"color: {ds.SUCCESS}; {VALUE_FONT}"
+VALUE_STYLE_NEGATIVE = f"color: {ds.ERROR}; {VALUE_FONT}"
+VALUE_STYLE_MUTED = f"color: {ds.CARD_METRIC_LABEL}; {VALUE_FONT}"
 SEPARATOR_STYLE = f"color: {ds.MAIN_SEPARATOR}; font-size: 24px; margin: 0 2px;"
 
 SEPARATOR = {"text": "|", "style_sheet": SEPARATOR_STYLE}
@@ -254,8 +257,8 @@ CARD_LABEL_ROW = {
     "spacing_px": 4,
     "order": ["stretch", "label", "stretch"],
 }
-CARD_LABEL_STYLE = f"font-size: 10px; color: {ds.MAIN_CAPTION};"
-CARD_VALUE_STYLE = f"font-size: 14px; font-weight: bold; color: {ds.PRIMARY};"
+CARD_LABEL_STYLE = f"color: {ds.MAIN_CAPTION}; {LABEL_FONT}"
+CARD_VALUE_STYLE = f"color: {ds.PRIMARY}; {VALUE_FONT}"
 CARD_LABEL_PROPERTY = "muted"
 CARD_VALUE_PROPERTY = "heading"
 
@@ -294,7 +297,7 @@ def click_tooltip(base: Any, suffix: Any) -> str:
 COUNTER_CARDS = (
     {
         "key": "scrummed",
-        "label": "Scrummed",
+        "label": "SCRUMMED",
         "initial_text": "$0.00",
         "tooltip": SCRUMMED_TOOLTIP,
         "field_id": "counter.scrummed",
@@ -305,7 +308,7 @@ COUNTER_CARDS = (
     },
     {
         "key": "folded",
-        "label": "Folded",
+        "label": "FOLDED",
         "initial_text": "$0.00",
         "tooltip": FOLDED_TOOLTIP,
         "field_id": "counter.folded",
@@ -316,7 +319,7 @@ COUNTER_CARDS = (
     },
     {
         "key": "trades",
-        "label": "Trades",
+        "label": "TRADES",
         "initial_text": "0",
         "tooltip": TRADES_TOOLTIP,
         "field_id": "counter.trades",
@@ -327,7 +330,7 @@ COUNTER_CARDS = (
     },
     {
         "key": "bots",
-        "label": "Bots",
+        "label": "BOTS",
         "initial_text": "0",
         "tooltip": BOTS_TOOLTIP,
         "field_id": "counter.bots",
@@ -338,7 +341,7 @@ COUNTER_CARDS = (
     },
     {
         "key": "errors",
-        "label": "Errors",
+        "label": "ERRORS",
         "initial_text": "0",
         "tooltip": click_tooltip(ERRORS_TOOLTIP, ERRORS_CLICK_TOOLTIP),
         "field_id": "counter.errors",
