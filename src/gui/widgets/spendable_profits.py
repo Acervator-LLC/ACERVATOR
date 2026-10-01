@@ -2,17 +2,23 @@
 
 from __future__ import annotations
 
-import math
-
 from ...core.privacy_mask_registry import ABSENT_TEXT as _ABSENT_TEXT, mask_or
 from ...trading.target_bands import TERRITORY_FOLD, TERRITORY_SCRUM
 
 from .. import design_system as ds
-from ..main_tabs.header_strip_surface import VALUE_FONT_MIN_PX, VALUE_FONT_PX
+from ..main_tabs.header_strip_surface import (
+    VALUE_FONT_MIN_PX,
+    VALUE_FONT_PX,
+    ammo_total_text,
+    pnl_text,
+)
 from ..main_tabs.spendable_profits_surface import (
     COLUMNS,
     FIELD_ID_BY_KEY,
     MONEY_KEYS,
+    count_text,
+    money_amount,
+    money_text,
 )
 
 try:
@@ -185,47 +191,13 @@ if _HAS_QT:
                 col.addWidget(dot, alignment=Qt.AlignHCenter)
                 outer.addLayout(col, self._COLUMN_STRETCH)
 
-        @staticmethod
-        def _amount_of(value):
-            """The finite number a payload value carries, unconverted."""
-            if type(value) is int:
-                return value
-            if type(value) is float and math.isfinite(value):
-                return value
-            return None
-
-        @staticmethod
-        def _money_text(value) -> str:
-            """Render one amount as money text, or as the empty marker."""
-            amount = SpendableProfitsWidget._amount_of(value)
-            if amount is None:
-                return _ABSENT_TEXT
-            return f"${amount:,.2f}"
-
-        @staticmethod
-        def _count_text(value) -> str:
-            """Render a whole exchange count, or the empty marker."""
-            if type(value) is not int:
-                return _ABSENT_TEXT
-            return str(value)
-
-        @staticmethod
-        def _pnl_text(value) -> str:
-            """Render the unrealised amount with its sign, or the marker."""
-            amount = SpendableProfitsWidget._amount_of(value)
-            if amount is None:
-                return _ABSENT_TEXT
-            return f"${amount:+,.2f}"
-
-        @staticmethod
-        def _ammo_text(value) -> str:
-            """Render the fleet Ammo total in whole dollars, or the marker."""
-            amount = SpendableProfitsWidget._amount_of(value)
-            if amount is None:
-                return _ABSENT_TEXT
-            whole = round(amount)
-            sign = "-" if whole < 0 else ""
-            return f"{sign}${abs(whole):,.0f}"
+        # Every cell renders through the surface, so a format changed there
+        # reaches this screen and the page in one edit.
+        _amount_of = staticmethod(money_amount)
+        _money_text = staticmethod(money_text)
+        _count_text = staticmethod(count_text)
+        _pnl_text = staticmethod(pnl_text)
+        _ammo_text = staticmethod(ammo_total_text)
 
         def _ammo_skin(self, value, lean) -> str:
             """The skin the Ammo total draws in for one total and one lean."""

@@ -39,10 +39,11 @@ CENTRAL_LAYOUT = {
     "child_stretch": [0],
 }
 
-#: The stretch each ``TOP_ROW_ORDER`` slot takes. The seven slots holding text
-#: divide the whole row between them; the class group's slot takes zero, so it
-#: shrinks to the square and the square sits against the row's right edge.
-TOP_ROW_STRETCH = [3, 1, 1, 1, 1, 1, 1, 0]
+#: The stretch each ``TOP_ROW_ORDER`` slot takes. The strip takes six shares to
+#: the cards' one each, so spare width goes to the money columns rather than to
+#: the cards drawing a count; the class group's slot takes zero, so it shrinks
+#: to the square and the square sits against the row's right edge.
+TOP_ROW_STRETCH = [6, 1, 1, 1, 1, 1, 1, 0]
 
 TOP_ROW = {
     "margins_px": [0, 0, 0, 0],
@@ -66,12 +67,14 @@ TOP_ROW_ORDER = [
 SPENDABLE_MIN_W = 180
 
 #: The room one KPI column needs for a whole money amount at its own size.
-#: Ninety-four holds the widest signed amount the strip draws, 87 px in the
+#: Ninety holds the widest signed amount the strip draws, 87 px in the
 #: application font at ``VALUE_FONT_PX``.
-KPI_COLUMN_W = 94
+KPI_COLUMN_W = 90
 
-#: The narrowest one counter card draws at, caption and amount both elided.
-COUNTER_MIN_W = 48
+#: The narrowest one counter card draws at: the longest ``COUNTER_CARDS``
+#: caption at ``LABEL_FONT_MIN_PX``, which is 54 px in the application font,
+#: plus ``COUNTER_TEXT_PAD``. Caption and amount both shrink into that room.
+COUNTER_MIN_W = 88
 
 #: The slot names the top row gives a declared floor, in row order. The
 #: class group is not here; ``asset_class_surface.group_side_px`` answers it,
@@ -88,11 +91,17 @@ SPENDABLE_STYLE = (
     "  border: 1px solid rgba(0,255,180,80); border-radius: 4px; }"
 )
 
+#: What the theme's ``QFrame[frameShape="6"]`` rule insets on each side of a
+#: StyledPanel: 12 px of padding and a 1 px border. The strip and every counter
+#: card wear that frame, so their text room is this much narrower than the
+#: widget, and neither pad below can be read off the margins alone.
+PANEL_FRAME_INSET_PX = 13
+
 #: What the strip leaves either side of its own columns.
 SPENDABLE_SIDE_MARGIN_PX = 6
 
-#: What the strip's own margins take off the room its text has.
-SPENDABLE_TEXT_PAD = 2 * SPENDABLE_SIDE_MARGIN_PX
+#: What the strip's own frame and margins take off the room its text has.
+SPENDABLE_TEXT_PAD = 2 * (SPENDABLE_SIDE_MARGIN_PX + PANEL_FRAME_INSET_PX)
 
 #: The gap the strip leaves either side of a rule between two columns.
 #: ``spendable_natural_w`` counts two per rule.
@@ -126,13 +135,16 @@ SPENDABLE_LAYOUT = {
 LABEL_FONT_PX = 10
 LABEL_FONT = f"font-size: {LABEL_FONT_PX}px; font-weight: 600;"
 
+#: The smallest a caption shrinks to. A counter card is narrower than its own
+#: longest caption at the narrowest window, and a caption that shrinks keeps
+#: every letter where one that elides loses the end of the word.
+LABEL_FONT_MIN_PX = 8
+
 #: The size every money amount draws at where its column has the room.
 VALUE_FONT_PX = 14
 
-#: The smallest a money amount shrinks to, which is the caption's own size,
-#: so an amount never draws smaller than the caption above it. Measured in
-#: the application font, 10 px carries a signed amount past a thousand
-#: million dollars in a 93 px column; wider than that is elided.
+#: The smallest a money amount shrinks to, which is the caption's declared
+#: size, so an amount never draws smaller than the caption above it.
 VALUE_FONT_MIN_PX = LABEL_FONT_PX
 
 VALUE_FONT = f"font-size: {VALUE_FONT_PX}px; font-weight: bold;"
@@ -264,8 +276,8 @@ KPI_COLUMNS = (
 #: What a card leaves either side of its caption and its amount.
 CARD_SIDE_MARGIN_PX = 4
 
-#: What a card's own margins take off the room its text has.
-COUNTER_TEXT_PAD = 2 * CARD_SIDE_MARGIN_PX
+#: What a card's own frame and margins take off the room its text has.
+COUNTER_TEXT_PAD = 2 * (CARD_SIDE_MARGIN_PX + PANEL_FRAME_INSET_PX)
 
 #: The room one counter card gives its own amount. Declared here and not
 #: read off ``KPI_COLUMN_W``: a card holds one amount where the strip now
