@@ -1163,7 +1163,7 @@ if _HAS_QT:
             return header_strip_reads_paper(tabs.tabText(tabs.currentIndex()))
 
         def _write_header_strip(self, agg: dict, exchanges: int) -> None:
-            """Write the five cards and the seven columns from one aggregate."""
+            """Write the five cards and the eight columns from one aggregate."""
             _scr = float(agg.get("total_scrummed_usd", 0.0) or 0.0)
             _fld = float(agg.get("total_folded_usd", 0.0) or 0.0)
             self._stat_scrummed.set_value(f"${_scr:,.2f}")
