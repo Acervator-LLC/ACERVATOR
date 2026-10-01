@@ -801,9 +801,9 @@ if _HAS_QT:
             self._fire_glow_effects: list = []
 
             pulse_targets = [
-                self._stat_trades,
-                self._stat_bots,
-                self._stat_errors,
+                self._stat_cards["trades"],
+                self._stat_cards["bots"],
+                self._stat_cards["errors"],
                 self._spendable_widget,
             ]
             for widget in pulse_targets:
@@ -867,16 +867,9 @@ if _HAS_QT:
                     self._spendable_widget.refresh_privacy_dots()
             except Exception:  # noqa: S110
                 pass
-            for attr_name in (
-                "_stat_scrummed",
-                "_stat_folded",
-                "_stat_trades",
-                "_stat_bots",
-                "_stat_errors",
-            ):
+            for card in (getattr(self, "_stat_cards", None) or {}).values():
                 try:
-                    card = getattr(self, attr_name, None)
-                    if card is not None and hasattr(card, "refresh_privacy_dot"):
+                    if hasattr(card, "refresh_privacy_dot"):
                         card.refresh_privacy_dot()
                 except Exception:  # noqa: S110
                     pass
@@ -1163,14 +1156,19 @@ if _HAS_QT:
             return header_strip_reads_paper(tabs.tabText(tabs.currentIndex()))
 
         def _write_header_strip(self, agg: dict, exchanges: int) -> None:
-            """Write the five cards and the eight columns from one aggregate."""
-            _scr = float(agg.get("total_scrummed_usd", 0.0) or 0.0)
-            _fld = float(agg.get("total_folded_usd", 0.0) or 0.0)
-            self._stat_scrummed.set_value(f"${_scr:,.2f}")
-            self._stat_folded.set_value(f"${_fld:,.2f}")
-            self._stat_trades.set_value(str(agg["total_trades"]))
-            self._stat_bots.set_value(str(agg["running"]))
-            self._stat_errors.set_value(str(agg.get("total_errors_lifetime", 0)))
+            """Write every counter card and every strip column from one aggregate.
+
+            The cards are walked from ``COUNTER_CARDS``, so the window pushes
+            into exactly the cards ``_build_header_strip`` drew and no value
+            goes to a card that is not there.
+            """
+            for model in header_strip_surface.COUNTER_CARDS:
+                raw = agg.get(model["source_key"], 0)
+                if model["format"] == header_strip_surface.COUNT_FORMAT:
+                    text = header_strip_surface.count_text(raw)
+                else:
+                    text = header_strip_surface.money_text(float(raw or 0.0))
+                self._stat_cards[model["key"]].set_value(text)
             # One builder for both hosts: the React strip reads the same
             # `profits_payload` over the bridge.
             self._spendable_widget.update_profits(

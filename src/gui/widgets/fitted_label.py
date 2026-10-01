@@ -28,14 +28,18 @@ if _HAS_QT:
         _floor_px = 10
         _fitted_px = 14
         _skin = ""
+        _weight = "bold"
         _drawing = False
 
-        def __init__(self, text="", declared_px=14, floor_px=10, parent=None):
+        def __init__(
+            self, text="", declared_px=14, floor_px=10, parent=None, weight="bold"
+        ):
             super().__init__("", parent)
             self._declared_px = int(declared_px)
             self._floor_px = int(floor_px)
             self._fitted_px = int(declared_px)
             self._skin = ""
+            self._weight = str(weight)
             self._drawing = False
             self.setText(text)
 
@@ -53,21 +57,36 @@ if _HAS_QT:
             return self._declared_px
 
         def sizeHint(self) -> "QSize":
-            """``ElidingLabel.sizeHint`` at the height ``_declared_px`` has.
+            """The room the whole text needs at ``_declared_px``, and that size's
+            own height.
 
-            The row divides its height from this, so a shrunk amount never
-            moves the line it sits on.
+            Measured at the declared size and never at the fitted one: a hint
+            read off the shrunk font asks for the width the shrunk font needs,
+            so the label never grows back when the row widens. The row divides
+            its height from this, so a shrunk amount never moves its line.
             """
-            return QSize(super().sizeHint().width(), self._declared_height())
+            hint = super().sizeHint()
+            pad = hint.width() - self.fontMetrics().horizontalAdvance(self.fullText())
+            return QSize(
+                self._advance_at(self._declared_px) + max(pad, 0),
+                self._declared_height(),
+            )
 
         def minimumSizeHint(self) -> "QSize":
             """No width floor, and the height ``_declared_px`` has."""
             return QSize(0, self._declared_height())
 
         def _sized_font(self, size_px) -> "QFont":
-            """This label's font at ``size_px``."""
+            """This label's font at ``size_px``, at the weight it draws in.
+
+            The advance a style sheet's weight produces is wider than the
+            default one, so a reading taken at the default weight over-fits.
+            """
             font = QFont(self.font())
             font.setPixelSize(int(size_px))
+            font.setWeight(
+                QFont.Weight.Bold if self._weight == "bold" else QFont.Weight.DemiBold
+            )
             return font
 
         def _declared_height(self) -> int:
@@ -96,7 +115,8 @@ if _HAS_QT:
                 room = max(self.width(), 0)
                 self._fitted_px = self._fitted_for(room)
                 wanted = (
-                    f"{self._skin} font-size: {self._fitted_px}px; font-weight: bold;"
+                    f"{self._skin} font-size: {self._fitted_px}px; "
+                    f"font-weight: {self._weight};"
                 )
                 if self._skin and self.styleSheet() != wanted:
                     self.setStyleSheet(wanted)

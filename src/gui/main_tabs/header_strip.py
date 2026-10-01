@@ -79,8 +79,9 @@ def _stat_card_class() -> type:
 class HeaderStripMixin:
     """``HeaderStripMixin`` owns the header strip widgets.
 
-    ``_build_header_strip`` lays out the spendable-profits strip, five
-    ``StatCard`` counters and the segmented ``ClassGroupBar``.
+    ``_build_header_strip`` lays out the spendable-profits strip, one
+    ``StatCard`` per ``COUNTER_CARDS`` entry and the segmented
+    ``ClassGroupBar``.
     """
 
     # MainWindow supplies these; the bare annotations create no attribute.
@@ -110,6 +111,9 @@ class HeaderStripMixin:
     _class_group: dict
     _class_group_widget: Any
     _asset_class: str
+
+    # _build_header_strip fills this, one card per COUNTER_CARDS entry.
+    _stat_cards: dict
 
     def _build_class_group(self) -> QWidget:
         """Build the one square the asset classes segment, on the header top row.
@@ -310,57 +314,22 @@ class HeaderStripMixin:
             self._spendable_widget, stretch=surface.slot_stretch("spendable")
         )
 
+        # One card per COUNTER_CARDS entry, in that order, so a caption or a
+        # tooltip is spelled in the declaration and nowhere else.
         card_class = _stat_card_class()
-        caption = {card["key"]: card["label"] for card in surface.COUNTER_CARDS}
-        self._stat_scrummed = card_class(caption["scrummed"], "$0.00")
-        self._stat_scrummed.setToolTip(
-            "Total Scrummed (high score) — cumulative USD sold "
-            "across all bots since the platform run started. Grows "
-            "with every SCRUM (sell at upper-band) + MANUAL_SCRUM "
-            "fill. Resets to $0.00 only on a fresh process start."
-        )
-        self._stat_folded = card_class("Folded", "$0.00")
-        self._stat_folded.setToolTip(
-            "Total Folded (high score) — cumulative USD bought "
-            "across all bots since the platform run started. Grows "
-            "with every FOLD (buy at lower-band) + MANUAL_FOLD "
-            "fill. Resets to $0.00 only on a fresh process start."
-        )
-        self._stat_trades = card_class("Trades", "0")
-        self._stat_trades.setToolTip(
-            "Total executed buy and sell trades across all active bots."
-        )
-        self._stat_bots = card_class("Bots", "0")
-        self._stat_bots.setToolTip(
-            "Bots currently in RUNNING state (actively trading)."
-        )
-        self._stat_errors = card_class("Errors", "0")
-        self._stat_errors.setToolTip(
-            "Error count across all bots since last reset. "
-            "Click to open the Error Log; use the Reset button "
-            "inside to clear all previous faults.\n\n"
-            "Hover bot rows to see current ERROR/COOLDOWN state."
-        )
-        self._stat_errors.set_clickable(True, "Click to open the error log.")
-        self._stat_errors.clicked.connect(self._show_error_log_dialog)
-        # set_value renders through mask_or once a dot is attached.
-        self._stat_scrummed.attach_privacy_dot("counter.scrummed")
-        self._stat_folded.attach_privacy_dot("counter.folded")
-        self._stat_trades.attach_privacy_dot("counter.trades")
-        self._stat_bots.attach_privacy_dot("counter.bots")
-        self._stat_errors.attach_privacy_dot("counter.errors")
-        for slot, card in zip(
-            surface.COUNTER_SLOTS,
-            [
-                self._stat_scrummed,
-                self._stat_folded,
-                self._stat_trades,
-                self._stat_bots,
-                self._stat_errors,
-            ],
-        ):
-            card.setMinimumWidth(surface.slot_floor_w(slot))
-            top_row.addWidget(card, stretch=surface.slot_stretch(slot))
+        self._stat_cards = {}
+        for model in surface.COUNTER_CARDS:
+            card = card_class(model["label"], model["initial_text"])
+            card.setToolTip(model["tooltip"])
+            if model["clickable"]:
+                # The declaration's tooltip already carries the click line.
+                card.set_clickable(True)
+                card.clicked.connect(self._show_error_log_dialog)
+            # set_value renders through mask_or once a dot is attached.
+            card.attach_privacy_dot(model["field_id"])
+            card.setMinimumWidth(surface.slot_floor_w(model["key"]))
+            top_row.addWidget(card, stretch=surface.slot_stretch(model["key"]))
+            self._stat_cards[model["key"]] = card
 
         # The square's slot takes no stretch, so it shrinks to the square and
         # the square draws against the row's right edge.
