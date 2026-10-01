@@ -125,114 +125,98 @@ name a release the build is not.
 ```python
 self.setWindowTitle("Acervator v" + __version__ + "")
 ```
+Press a class segment in the header strip and the title is rewritten to name the
+active asset class, as `Acervator — CRYPTO LAYER`. The version leaves the title for
+the rest of the session, and only a restart brings it back.
 
-Press the mode button once and the title is rewritten to name the wing. The
-version leaves the title for the rest of the session, and only a restart brings
-it back. Issue #426 carries that handler.
-
-`src/gui/main_window.py` — `_toggle_trading_mode`, the title after a swap
+`src/gui/main_tabs/asset_class_surface.py` — the title a class writes
 
 ```python
-self.setWindowTitle("Acervator — CRYPTO WING")
+self.setWindowTitle(window_title(key))
 ```
 
 #### The screen itself
 
-**Functional.** One method builds this whole screen. It makes two layers, one
-for crypto and one for equities, and stacks them so only one is on show at a
-time. The crypto layer opens first. A second method builds the strip along the
-top, and that strip stays put on every tab. Privacy Mode is on in the figure,
-so each masked field draws four asterisks where its number would be.
+**Functional.** One method builds this whole screen. It makes one page per
+trading layer, one card for every asset class that has no layer, and stacks them
+so only one is on show at a time. Crypto and Stock each have a layer; Commodities
+and Forex share the card. The opening page is read off the taxonomy rather than
+typed. A second method builds the strip along the top, and that strip stays put
+on every tab. Privacy Mode is on in the figure, so each masked field draws four
+asterisks where its number would be.
 
 `src/gui/main_tabs/trading_tab.py` — `TradingTabMixin._build_trading_tab`
 
 ```python
-self._trading_stack.addWidget(crypto_page)  # index 0
-self._trading_stack.addWidget(stock_page)  # index 1
-self._trading_stack.setCurrentIndex(0)  # start in crypto
+self._trading_stack.addWidget(crypto_page)
+self._trading_stack.addWidget(stock_page)
+self._trading_stack.addWidget(self._make_unlayered_page())
+self._trading_stack.setCurrentIndex(acs.layer_page("crypto"))
 ```
 
-**Design intention.** The two-layer stack is the part of the multi-domain aim
-you can use today. Pressing the mode button swaps the whole wing, tables and
-Paper Trader together.
+**Design intention.** The stack holds one page per trading layer and one card for
+every class without one. A class with no layer shares that card rather than
+getting an empty layer, because an empty layer would offer a venue list it cannot
+serve. Which page a class draws is stated once, in the taxonomy.
 
-`src/gui/main_window.py` — `_toggle_trading_mode`
+`src/gui/main_tabs/asset_class_surface.py` — `layer_page`
 
 ```python
-self._trading_mode = "stock"
-self._mode_btn.setText("Stock Mode")
-self._mode_btn.setChecked(True)
-self._trading_stack.setCurrentIndex(1)
+layered = layered_classes()
+key = normalise(name)
+return layered.index(key) if key in layered else len(layered)
 ```
 
-The Modulus Bot and the Paper Trading layer this section names have no module
-behind them. This manual marks them unbuilt where it reaches them.
+The builder counts its own faults when it finishes and reports them on the System
+Status tab. That count reads zero, and the number it compares against is the
+taxonomy's rather than a typed one.
+
+`src/gui/main_tabs/trading_tab.py` — the three conditions the count reads
+
+```python
+self._trading_stack.count() != acs.stack_pages(),
+_crypto_page != acs.layer_page("crypto"),
+_stock_page != acs.layer_page("stocks"),
+```
+
+The Modulus Bot this section names has no module behind it. This manual marks it
+unbuilt where it reaches it.
 
 #### The header strip
 
-**Functional.** Five columns and five counter cards run along the top. The
-columns read SPENDABLE, REALISED, LOCKED, MATURE and EXCH. One call to
-`get_aggregate_stats` fills all of them once a tick. Spendable takes the wallet
-cash, Locked takes the value tied up in crypto, and Exch counts the open
-exchange sub-tabs. Realised and Mature are handed nothing at all, and the
-widget draws an em dash for each. Privacy Mode then masks that em dash to
-asterisks, which reads on screen as a hidden number rather than a missing one.
+**Functional.** Seven columns and five counter cards run along the top, and the
+asset class square ends the row. The columns read SPENDABLE, REALISED, P/L,
+LOCKED, MATURE, EXCH and AMMO. One call to `get_aggregate_stats` fills all of
+them once a tick. Spendable takes the wallet cash, Locked takes the value tied up
+in crypto, and Exch counts the open exchange sub-tabs.
 
-The five cards are Scrummed, Folded, Trades, Bots and Errors. Scrummed and
-Folded total the fleet's sold and bought dollars, Bots counts the bots that are
-running, and Errors totals the lifetime error count. Click Errors and the
-rolling error log opens. The small circle under every column and every card is
-a privacy dot, and it masks that one field on its own.
+The five cards are Scrummed, Folded, Trades, Bots and Errors. Scrummed and Folded
+total the fleet's sold and bought dollars, Bots counts the bots that are running,
+and Errors totals the lifetime error count. Click Errors and the rolling error
+log opens. The small circle under every column and every card is a privacy dot,
+and it masks that one field on its own.
 
-`src/gui/main_window.py` — `_refresh_dashboard`
+`src/gui/main_tabs/header_strip_surface.py` — the seven columns, declared once
 
 ```python
-if _wallet_cash > 0 or _crypto_value > 0:
-    self._spendable_widget.update_profits(
-        {
-            "spendable": _wallet_cash,
-            "total_realised": None,
-            "locked": _crypto_value,
-            "mature": None,
-            "exchange_count": exchanges,
-        }
-    )
-```
-
-**Design intention.** The strip should answer one question at a glance: what
-the fleet holds, what it has earned, and what it has spent. Two of the five
-columns do not answer it. Realised profit and matured profit are the numbers
-those columns were built for, and nothing computes either one. The aggregate
-already carries a realised total, so the first half is a short change at the
-one call site.
-
-*Proposed, not present:*
-
-```python
-self._spendable_widget.update_profits(
-    {
-        "spendable": _wallet_cash,
-        "total_realised": float(agg.get("total_realised_pnl", 0.0) or 0.0),
-        "locked": _crypto_value,
-        "mature": None,
-        "exchange_count": exchanges,
-    }
+KPI_COLUMNS = (
+    {"key": "spendable", "label": "SPENDABLE", ...},
+    {"key": "total_realised", "label": "REALISED", ...},
+    {"key": "pnl", "label": "P/L", ...},
+    {"key": "locked", "label": "LOCKED", ...},
+    {"key": "mature", "label": "MATURE", ...},
+    {"key": "exchanges", "label": "EXCH", ...},
+    {"key": "total_ammo", "label": AMMO_LABEL, ...},
 )
 ```
 
-`total_realised_pnl` is already read two lines above this call, for the
-Scrummed card. Mature has no source yet and stays an em dash. Issue #418
-carries this.
+**Design intention.** The strip answers one question at a glance: what the fleet
+holds, what it has earned, and what it has spent. The window no longer writes the
+payload itself. It calls the same builder the React strip calls, so one function
+decides what the seven columns hold and neither host can drift from the other.
+`_refresh_dashboard` runs the tick that calls it, every two seconds.
 
-[08-tabs/portfolio-panels.md](08-tabs/portfolio-panels.md) covers the strip in
-full.
-
-**Both columns are now fed, and both are fed from the exchange.** The window no
-longer writes the payload itself. It calls the same builder the React strip
-calls, so one function decides what the five columns hold and neither host can
-drift from the other.
-
-`src/gui/main_window.py` — `_refresh_dashboard`
+`src/gui/main_window.py` — `_write_header_strip`
 
 ```python
 self._spendable_widget.update_profits(
@@ -240,53 +224,60 @@ self._spendable_widget.update_profits(
 )
 ```
 
-Realised profit is the exchange's own figure, matched buy against sell. Mature
-profit is the profit on positions that have grown past two hundred per cent over
-what they cost. Neither is computed from the platform's internal running totals,
-because the venue is the authority on money.
-
-**Overtaken:** "Realised profit is the exchange's own figure, matched buy
-against sell."
-
-The venue carries no lifetime realised figure for a spot position. Realised
-profit is the platform's own first in, first out match over the venue's own
-fills, one figure per bot, added across the fleet. The venue is still the
-authority: the fills are the venue's and the cost basis is the venue's.
+**REALISED.** The platform's own first-in, first-out match over the venue's own
+fills, one figure per bot, added across the fleet. The venue carries no lifetime
+realised figure for a spot position, so the fills are the venue's and the cost
+basis is the venue's while the match is the platform's. Realised draws the empty
+marker when the fill history cannot be walked to its end, so the column never
+shows a figure added up from part of a history.
 
 `src/exchange/position_health.py` — `compute_position_health`
 
-**Overtaken:** "Mature profit is the profit on positions that have grown past
-two hundred per cent over what they cost."
+**P/L.** The unrealised profit and loss the exchange answers across every bot's
+open position. `src/trading/scrumming/reconciliation.py` writes each bot's
+unrealised figure from the venue, and the column adds them.
 
-Mature profit is the part of a position's value that sits over three times its
-cost. A position worth $350 on a $100 cost basis holds $50 of mature profit,
-not $250.
+`src/gui/main_tabs/header_strip_surface.py` — `unrealised_amount`
+
+```python
+return exchange_amount(stats, "total_unrealized_exchange")
+```
+
+**MATURE.** The part of a position's value that sits over three times its cost. A
+position worth $350 on a $100 cost basis holds $50 of mature profit, not $250.
 
 `src/trading/smart_wire.py` — `mature_profit_usd`
 
-Realised draws the empty marker when the fill history cannot be walked to its
-end, so the column never shows a figure added up from part of a history.
-[08-tabs/portfolio-panels.md](08-tabs/portfolio-panels.md) covers both columns
-in full.
+**AMMO.** Every bot's Target Delta added together, in whole dollars with a
+thousands mark. It draws green while more bots hold more than their target and red
+while more hold less, so the colour follows the count of bots and never the size
+of the figure. That makes the column the majority of the colours the Ammo cells
+already draw bot by bot, so the row and the bot list cannot disagree.
 
-`src/gui/main_tabs/header_strip_surface.py` — `profits_payload`
+`src/gui/main_tabs/header_strip_surface.py` — `ammo_lean`, the colour's own rule
 
 ```python
-"total_realised": exchange_amount(data, "total_realized_exchange"),
-"mature": exchange_amount(data, "total_mature_exchange"),
+if scrum > fold:
+    return TERRITORY_SCRUM
+if fold > scrum:
+    return TERRITORY_FOLD
+return TERRITORY_AT_TARGET
 ```
 
-Where the exchange has answered for no bot, both columns stay empty and say so.
-The aggregate counts the bots the venue has answered for, and at zero the two
-columns are handed nothing rather than a computed zero, so an empty column is
-never a figure the platform made up.
+The sum is taken inside the loop that already prices every bot's position, so no
+second pass over the fleet is made for it.
 
-The venue's portfolio breakdown answers a cost basis, an average entry price
-and an unrealised profit per open position, and each bot reads those three from
-it. The breakdown carries no lifetime realised figure for a spot position, so
-Realised is the platform's first-in, first-out match over the complete fill
-history of each bot's symbol, checked against the venue's cost basis on every
-refresh, and the fleet figure is the sum of one figure per bot.
+`src/trading/container/aggregation.py` — the sum
+
+```python
+total_target_delta_usd += target_delta(_bot_pos_val, _target_usd)
+```
+
+**Where a column stays empty.** The venue's portfolio breakdown answers a cost
+basis, an average entry price and an unrealised profit per open position, and each
+bot reads those three from it. Where the exchange has answered for no bot, the
+column is handed nothing rather than a computed zero, so an empty column is never
+a figure the platform made up.
 
 `src/exchange/base.py` — `SpotPosition`
 
@@ -306,8 +297,8 @@ if answered <= 0:
 ```
 
 An empty column stays empty under Privacy Mode. The mask replaces a number with
-four asterisks and leaves the empty marker alone, so the operator can always
-tell a hidden figure from a missing one.
+four asterisks and leaves the empty marker alone, so the operator can always tell
+a hidden figure from a missing one.
 
 `src/core/privacy_mask_registry.py` — `mask_or`
 
@@ -316,6 +307,61 @@ text = str(value)
 if field_id not in ALL_FIELD_IDS or text == ABSENT_TEXT:
     return text
 ```
+
+**The row's width budget.** Every part of the row declares a floor, and the sum
+of the floors is the narrowest the window opens at. Without them a part's minimum
+is the width of its own text, and a six-figure amount widens the whole window past
+the screen.
+
+`src/gui/main_tabs/header_strip_surface.py` — the floors and the shares
+
+```python
+SPENDABLE_MIN_W = 180
+COUNTER_MIN_W = 48
+COUNTER_NATURAL_W = 118
+TOP_ROW_STRETCH = [3, 1, 1, 1, 1, 1, 0]
+```
+
+The money strip's floor is 180 px and a counter card's is 48 px, against the 118 px
+that card wants for a whole money amount of `$12,345.67`. The money strip takes three
+shares of the spare width and each counter card takes one. The asset class square
+takes none, because its side is a declared number.
+
+**The margins the two newest columns are drawn from.** A column leaves 3 px either
+side of the rule between it and its neighbour, the rule itself is 12 px, the panel's
+own side margin is 6 px, and a counter card's side margin is 4 px.
+
+`src/gui/main_tabs/header_strip_surface.py` — the four figures
+
+```python
+SPENDABLE_SIDE_MARGIN_PX = 6
+SPENDABLE_COLUMN_GAP_PX = 3
+SPENDABLE_RULE_W_PX = 12
+CARD_SIDE_MARGIN_PX = 4
+```
+
+**A shortened amount ends in an ellipsis.** Every caption and every amount in the
+columns and the counters is an `ElidingLabel`. It keeps the whole text and draws
+what the width holds, so `$128,456.78` in a narrow row reads `$128,45…` and never
+`$128,45`. The whole text goes to `setAccessibleName`, so a shortened amount still
+reaches a screen reader whole.
+
+`src/gui/widgets/eliding_label.py` — `sizeHint`
+
+```python
+hint = super().sizeHint()
+metrics = self.fontMetrics()
+pad = hint.width() - metrics.horizontalAdvance(super().text())
+return QSize(metrics.horizontalAdvance(self._full) + max(pad, 0), hint.height())
+```
+
+At a 900-pixel window the row is wider than the window and the Scrummed and Folded
+amounts are cut short, because the cards reach their declared floor. Seven columns
+is more width than 900 pixels holds before a single card or the square, so no
+margin closes it. Which figure to prefer at that width is not decided.
+
+[08-tabs/portfolio-panels.md](08-tabs/portfolio-panels.md) covers the strip in
+full.
 
 #### The tab row
 
@@ -369,7 +415,9 @@ for target_idx, name in enumerate(desired):
 
 **Functional.** One sub-tab holds one exchange. Along its header sit Privacy
 Mode, a news headline, and the + New Bot button that opens the wizard for this
-venue. Privacy Mode toggles all eighteen masks at once. Under the header is a
+venue. Privacy Mode toggles every mask the register holds at once, and the
+register holds twenty-one fields; the button's own tooltip still says eighteen.
+Under the header is a
 data pool line: how many slots are held by kind, the age of the freshest and
 the oldest, how many have run past their time to live, and the cache hit ratio.
 At the right of the sub-tab row sits the button that adds another venue.
@@ -459,24 +507,404 @@ if event_type == EVENT_LEAVE:
 
 #### The bot tables
 
-**Functional.** The Scrumming Bots table carries ten columns. Nine are named
-and the tenth is blank, because that one holds the Detail button. Mode is the
-coloured cell: green while running, amber while paused, grey while idle or
-stopped, red on error, orange in cooldown, cyan while starting. The Ammo cell
-draws green above the target, red below it, and neutral grey inside the dust
-band. Target A15 and Target A14 restate the Target in those two assets, and go
-blank when the pair is unlisted or when the target already is that asset. The
-Extractor table sits underneath. Both tables start hidden and appear when their
-own list gains a row.
+**Functional.** The Scrumming Bots table carries ten columns. Nine are named and
+the tenth is blank, because that one holds the Detail button. The Extractor table
+sits underneath. Both tables start hidden and appear when their own list gains a
+row.
+
+`src/gui/main_tabs/bot_status_table_surface.py` — the ten labels, declared once and
+carried into the widget as `BotStatusTable.SCRUMMING_COLUMNS`
+
+```python
+COLUMN_LABELS = (
+    "Asset",
+    "Symbol",
+    "Current Position Value",
+    "Trades",
+    "Target",
+    "Target A15",
+    "Target A14",
+    "Ammo",
+    "Fire",
+    "",
+)
+```
+
+**Asset, the first column.** The column draws the target asset's own official
+mark. Where the logo library has already put a file on disk for that asset, the
+cell draws it and holds no text. Where none is kept, the cell draws the asset's
+ticker instead, so the row still names what the bot accumulates. Nothing on this
+path fetches anything: the cell reads the kept directory and no further.
+
+`src/gui/main_tabs/bot_status_table_surface.py` — `logo_cell`
+
+```python
+if shown != asset or not asset:
+    return cell(shown)
+address = logo_data_address(path)
+if path and address:
+    return cell(
+        EMPTY_TEXT,
+        tooltip=LOGO_TIP_FORMAT.format(asset=asset),
+        logo_path=path,
+        logo_image=address,
+        logo_size=LOGO_SIZE_PX,
+    )
+return cell(asset, tooltip=NO_LOGO_TIP_FORMAT.format(asset=asset))
+```
+
+The asset a crypto bot names is kept under its base, and a currency pair under
+the whole pair, so both keys are asked in that order.
+
+`src/gui/main_tabs/bot_status_table_surface.py` — `kept_logo_path`
+
+```python
+for asked in (icon_asset_of(symbol), symbol):
+    if not asked:
+        continue
+    found = KEPT_LOGOS.kept_path(asked)
+    if found is not None:
+        _LOGO_PATHS[symbol] = str(found)
+        return str(found)
+```
+
+**Where a mark comes from.** The library sits at `resources/logos`, under the
+repository, and is filled ahead of any bot. A crypto asset's mark comes from a
+coin data source; every other asset's mark comes from that organisation's own web
+site. The library files each mark under its asset class and its sector, so one
+asset has one file wherever it is met, and the list reads that directory at any
+depth.
+
+`src/trading/logo_library.py` — where one asset's file is put
+
+```python
+def library_folder(asset_class: Any, sector: Any = "") -> str:
+    return kept_folder(f"{asset_class}/{sector}")
+```
+
+`src/core/asset_logos.py` — the read at any depth
+
+```python
+for found in self._cache_dir.rglob(f"{stem}.*"):
+    rank = ranks.get(found.name)
+    if rank is None or rank >= best_rank or not found.is_file():
+        continue
+    best, best_rank = found, rank
+```
+
+**A mark keeps its own shape and its own detail.** A mark is drawn inside a box of
+the logo's own size and is never squeezed to fill it. A mark that is not square
+keeps its proportions in both builds. A mark whose file holds several sizes is
+drawn from the size nearest the box rather than from the smallest. A mark smaller
+than the box is drawn at its own size rather than enlarged. The React page cannot
+open a file by its path, so the same bytes travel to it as a data address, read
+once per file.
+
+`src/gui/widgets/bot_status_table.py` — `_draw_logo` hands the file to the icon whole
+
+```python
+icon = QIcon(path)
+found = icon if icon.availableSizes() else None
+```
+
+`src/gui/web/bot_status_table.js` — the page bounds the mark rather than setting it
+
+```javascript
+style.maxWidth = size + PX;
+style.maxHeight = size + PX;
+```
+
+**HIS.**
+
+> "Live - Asset Column - Logos are not hyperlinked. Should be centered in the
+> column. Column fields must match logo background color."
+
+**The mark sits at the centre of its column.** Every cell in the table takes centre
+text alignment, and the first column's cell empties its text once it holds a mark.
+Text alignment governs text, so a delegate on the first column moves the decoration
+instead, and it touches nothing else.
+
+`src/gui/widgets/bot_status_table.py` — `CentredMarkDelegate`
+
+```python
+def initStyleOption(self, option, index) -> None:
+    super().initStyleOption(option, index)
+    option.decorationPosition = QStyleOptionViewItem.Top
+```
+
+The page already centred its own mark, with a block image at an automatic side
+margin, so one declaration on each side puts the mark in the same place in both
+builds.
+
+`src/gui/web/bot_status_table.js` — `AssetLogo`
+
+```javascript
+var DOT_MARGIN = "0 auto";
+```
+
+**HIS.**
+
+> "Logos should also double as hyperlinks to the company or organization beyond
+> each asset. Want Acervator to feel like it is connected to all of these corners
+> of the investment world simultaneously like a creature with a thousand
+> tendrils..."
+
+**A mark opens the organisation that owns the asset.** Clicking a mark opens the
+front door of the company or organisation behind the traded asset, in the
+operator's own browser. Two readers already in the tree answer an address and the
+table asks them in one place: a crypto base answers the site its own coin record
+carries, and a listed name answers the domain the asset maps hold for it. A
+regulator's company-search page is never answered, because a search result is not
+an organisation's own front door. A mark whose asset has no known address is not a
+link: it draws exactly as it drew before, it opens nothing, and its tooltip says
+so.
+
+`src/gui/main_tabs/bot_status_table_surface.py` — `organisation_address`
+
+```python
+for asked in (icon_asset_of(symbol), symbol):
+    if not asked:
+        continue
+    site, _ = CRYPTO_RECORDS.organisation_url(asked)
+    found = site or organisation_page(asked)
+    if found:
+        break
+address = opening_address(found)
+```
+
+The site comes from the same coin record the mark came from. The library fill
+settles one coin for each ticker and keeps that coin's own front door beside the
+mark's address, so the bot list reads the kept site first and a hand-written row
+second. Only the coin source's detail address carries a site: the list address
+names every coin and the market records name each mark, so a site costs one read
+for each settled coin and a site already kept is never read twice.
+
+`src/exchange/crypto_assets.py` — `AssetManager.organisation_url`
+
+```python
+indexed = str(
+    (self.coin_index.get(name) or {}).get(COIN_INDEX_SITE_KEY) or ""
+).strip()
+if indexed:
+    return openable_url(indexed, allowed_schemes=COIN_SITE_SCHEMES)
+asset = self.get_asset(name)
+return openable_url(asset.website if asset else "")
+```
+
+`src/exchange/crypto_assets.py` — the address that carries a site
+
+```python
+COIN_DETAIL_URL = "https://api.coingecko.com/api/v3/coins/{id}"
+```
+
+Of the thirty-eight target assets the saved fleet holds, thirty-six answer a web
+address. Two do not: one because several coins carry its ticker at comparable
+market rank, and one because its coin record names no secure web address. Neither
+is guessed at.
+
+A mark's tooltip carries one extra line naming the address or its absence, so the
+operator can see which marks are links and which are not without pressing one.
+
+```
+a mark whose asset resolves      Open <the site> in default browser: <the address>
+a mark whose asset resolves none no web address is known for <ticker>, so this mark
+                                 is not a link
+```
+
+**What the address check refuses.** An address is checked before any browser is
+asked to open it. Only a secure web address with a host opens. An insecure
+address, a local file path, a script address, a data address, a file-transfer
+address, a bare host and an address with no host are each refused, and nothing is
+opened, whatever the data carries. The window reads the address off the clicked
+cell and opens it; the page sends the row and the column out and Python opens it,
+so the page never opens anything itself. Both go through the one check.
+
+`src/gui/main_tabs/bot_status_table_surface.py` — `opening_address`
+
+```python
+OPENING_SCHEMES: tuple[str, ...] = ("https",)
+```
+
+**HIS.**
+
+> "Column fields must match logo background color."
+
+> "Some do not have a background color. Be sure to choose one that contrasts and
+> makes each one pop. Use a theme-consistent color."
+
+> "Do not want a bunch of random background colors in the Asset Column that smash
+> together and cause an eyesore."
+
+The three sentences settle each other. One colour sits behind the whole column.
+Every mark on it reads against that one colour. A column carrying its own tint per
+row is the thing he refused.
+
+**The column sits on one palette ground.** One colour sits behind the whole
+column, and every mark on it reads against that one colour. The column carries no
+tint per row. GUI010 in the GUI archetype refuses a ground the declared palette does
+not hold, a ground that does not carry what sits on it at the published contrast
+floor, and a set of declarations giving one column several grounds. Every finding is
+high, so the verdict reads `passed=False` and the command exits 1.
+
+`dev_harness/harness/gui_archetype.py` — `_scan_column_ground_colours`
+
+```python
+findings = _style_ground_faults(path, tree, known)
+findings.extend(_cell_ground_faults(path, tree, known))
+findings.extend(_named_ground_faults(path, tree, known))
+findings.extend(_ground_set_faults(path, tree, known))
+```
+
+Its fixture pair is `harness_fixtures/gui_archetype/known_good_column_ground.py`,
+which names one ground, the value `SURFACE_2` holds, and puts two palette colours on
+it; and `harness_fixtures/gui_archetype/known_bad_column_ground.py`, which plants all
+three departures and draws four high findings.
+
+`src/gui/design_system.py` — where the palette is declared
+
+The floors are the Web Content Accessibility Guidelines' own figures: 4.5 to 1 for
+ordinary text on the ground and 3 to 1 for large-scale text, where large-scale
+means 18 point, or 14 point bold. The ratio comes from relative luminance, which
+linearises each channel before weighting it, so a plain average of the raw
+channels returns a different number. Two grounds count as one ground while they
+sit within 2.3 of each other in CIE 1976 L\*a\*b\*, which is the just-noticeable
+difference.
+
+The rule leaves three things alone: a border colour, because a boundary is measured
+against the adjacent colour and one declaration names the fill on one of its two
+sides only; a block on the disabled state, which the contrast criterion exempts as
+an inactive component; and a colour the module never declares, such as the pixels
+inside a logo file.
+
+**The Fire button's engaged ground carries its own text.** Of the palette's 146
+tokens, 77 reach the floor against white. The bright engaged token missed it, so the
+button draws on the dimmed one, which is the nearest colour to it that reaches.
+
+```
+token                hex       carries #ffffff   floor
+STATE_ENGAGED        #2d9d5f   3.4428 to 1       4.5     misses
+STATE_ENGAGED_DIM    #2d5f48   7.3891 to 1       4.5     reaches
+```
+
+`src/gui/main_tabs/bot_status_table_surface.py` — `FIRE_STYLE_FOLD_SOLID`
+
+```python
+FIRE_STYLE_HEAD + f"color: {ds.TEXT_MAX}; font-weight: bold; "
+f"background-color: {ds.STATE_ENGAGED_DIM}; "
+f"border: 1px solid {ds.STATE_ARMED};"
+```
+
+The button keeps its bright border and its glow, which is what parts it from the
+button a position ceiling has stopped.
+
+**Symbol, the second column.** The Symbol cell carries the colour that says what a
+bot is doing, and its tooltip names the mode and the state. Where the pair has a
+chart, the chart's line follows underneath the cell, and the underline is what
+marks the cell as the chart's link. The coloured disc carrying the asset's first
+letter no longer draws in this cell.
+
+`src/gui/main_tabs/bot_status_table_surface.py` — `BotStatusTableModel._symbol_cell`
+
+```python
+found = cell(text, state_color(state), mode_tooltip(mode, state))
+```
+
+The eight colours a state draws in:
+
+| state | the Symbol cell's colour |
+|---|---|
+| running | `#00ff88` |
+| idle | `#888888` |
+| paused | `#ffaa00` |
+| error | `#ff3366` |
+| cooldown | `#ff6600` |
+| stopped | `#666666` |
+| starting | `#00e6ff` |
+| a state the list does not name | `#e0e0f0` |
+
+**Current Position Value, the third column.** It shows what the bot's holdings are
+worth at the exchange's own price. It is blank whenever no fresh exchange price
+exists, and a blank cell names the missing thing in its tooltip: no position held,
+no exchange price for the pair yet, no exchange price this tick, or a price older
+than twenty seconds. The cell never falls back to a last-known figure, to a
+stand-in, or to a value read out of the bot's own ledger.
+
+`src/gui/main_tabs/table_cells_surface.py` — the one multiplication both priced
+cells read, so the Position Value cell and the Ammo cell can never disagree
+
+```python
+def priced_position(holdings: float, price: float, quote_rate: float) -> float:
+    """The position value at one price: ``holdings`` times ``price`` times
+    ``quote_rate``."""
+    return holdings * price * quote_rate
+```
+
+`src/gui/main_tabs/table_cells_surface.py` — the four blank paths and the one
+priced path
+
+```python
+POSITION_PATH_PRICED = "priced"
+POSITION_PATH_NO_HOLDINGS = "no_holdings"
+POSITION_PATH_NO_PRICE = "no_price"
+POSITION_PATH_OFF_EXCHANGE = "off_exchange"
+POSITION_PATH_AGED = "aged"
+```
+
+**Ammo.** The cell draws green above the target, red below it, and neutral grey
+inside the dust band.
+
+**Design intention.** The Ammo cell measures against the live target, not the
+frozen number typed into the wizard, so the reading follows the grown balance the
+engine re-zeroes to.
+
+`src/gui/widgets/bot_status_table.py` — the target the Ammo cell measures against
+
+```python
+target_val = float(
+    status.get("live_target_balance", status.get("target_balance", 0.0))
+    or status.get("target_balance", 0.0)
+    or 0.0
+)
+```
+
+**Target A15 and Target A14.** They restate the Target in those two assets, and go
+blank when the pair is unlisted or when the target already is that asset.
+
+**The row's height.** A logo draws at 32 pixels square. A row keeps two pixels
+above and two below its content, which is what this widget's style answers for its
+own item margin, so a row takes 36 pixels. The page's own sheet leaves more room
+than the window's style, so the logo's cell drops its vertical padding and the row
+keeps the height the payload set. No other cell and no rule in the sheet changes,
+so the Extractor table beneath is untouched.
+
+`src/gui/main_tabs/bot_status_table_surface.py` — the two figures and the sum
+
+```python
+LOGO_SIZE_PX = 32
+ROW_LOGO_MARGIN_PX = 2
+ROW_HEIGHT_PX = LOGO_SIZE_PX + 2 * ROW_LOGO_MARGIN_PX
+```
+
+**The bot id.** The bot id is still the thing a row is identified by. It stays in
+the payload, once as the list of every drawn row's bot and once on each row. It
+stays in the line the list writes when a row is built. The Detail button carries
+it, and the window that button opens names its first eight characters in its own
+title.
+
+`src/gui/main_tabs/bot_live_settings_surface.py` — the title that names it
+
+```python
+WINDOW_TITLE_FORMAT = "Bot Settings — {symbol} [{short_id}]"
+```
 
 **Functional.** Every column header wraps its own label inside its own column.
-`Current Position Value` reads over two or three lines rather than being cut.
-The label draws at `HEADER_LABEL_FONT_PX` and steps down to
+`Current Position Value` reads over two or three lines rather than being cut. The
+label draws at `HEADER_LABEL_FONT_PX` and steps down to
 `HEADER_LABEL_MIN_FONT_PX` when its longest word does not fit the column at the
-first size. Every column's header is the same height, which is the tallest
-wrapped label plus one dot row. Nine of the ten columns carry one privacy dot
-centred beneath the label, and the tenth, the one holding the Detail button,
-leaves that row empty. `ColumnHeaderCell` draws one label over one dot and
+first size. Every column's header is the same height, which is the tallest wrapped
+label plus one dot row. Nine of the ten columns carry one privacy dot centred
+beneath the label, and the tenth, the one holding the Detail button, leaves that
+row empty. `ColumnHeaderCell` draws one label over one dot and
 `WrappedColumnHeader` sizes and places one cell a column.
 
 `src/gui/main_tabs/bot_status_table_surface.py` — `header_view`
@@ -493,12 +921,13 @@ return {
 ```
 
 **Functional.** The dot is the `PrivacyDot` the manual calls the universal
-control. A press flips that column's field in the privacy register, repaints
-every dot that shares the field, and redraws the rows from the payload the
-table already holds. Three of the nine dots share a field with another column:
+control. A press flips that column's field in the privacy register, repaints every
+dot that shares the field, and redraws the rows from the payload the table already
+holds. Three of the nine dots share a field with another column:
 `Current Position Value` and `Ammo` share `bot_table.ammo`, and `Target`,
 `Target A15` and `Target A14` share `bot_table.target`. A press on one of them
-masks every column that names the same field.
+masks every column that names the same field. A masked first column draws the mask
+alone, with no image and no ticker, and revealing it brings the mark back.
 
 `src/gui/widgets/bot_status_table.py` — `BotStatusTable.refresh_privacy_dots`
 
@@ -508,13 +937,14 @@ for cell in self._header.cells():
         cell.dot.refresh()
 ```
 
-**Functional.** A press on a column's label orders the rows by that column.
-The first press sorts smallest first, and a second press on the same label
-reverses it. Nine of the ten columns sort. The tenth holds one identical Detail
-button on every row, so it carries no value to order by, and a press on it
-changes nothing. A small arrow in the label's top-right corner names the sorted
-column and its direction. The arrow sits outside the header's own layout, so
-neither the wrapped label nor the dot beneath it moves when a column sorts.
+**Functional.** A press on a column's label orders the rows by that column. The
+first press sorts smallest first, and a second press on the same label reverses
+it. Nine of the ten columns sort. The tenth holds one identical Detail button on
+every row, so it carries no value to order by, and a press on it changes nothing.
+One ordering serves both builds: the window and the page both call the same
+function on the same fleet, so neither can put the same bots in an order the other
+would not. On the page the press goes back to Python, because the fleet that
+answers it lives there, and the venue republishes the ordered rows.
 
 `src/gui/main_tabs/bot_status_table_surface.py` — `SORT_KIND_BY_COL`
 
@@ -533,35 +963,24 @@ SORT_KIND_BY_COL = {
 }
 ```
 
-**Overtaken.** *"A small arrow in the label's top-right corner names the sorted
-column and its direction."*
-
-**Functional.** The arrow draws on the privacy dot's own row, at the right edge
-of its own column. Its rectangle takes the dot's top and the dot's height, so
-the two sit on one line, and its left edge never crosses the dot's right edge.
-The box is clamped to the column, so no arrow is drawn outside the column it
-belongs to. The arrow is still outside the header's own layout: the wrapped
-label and the dot both measured unchanged. Read on the running header with a
-fleet of 38 bots at 700, 900 and 1400 pixels wide, on all nine sorting columns,
-the arrow's vertical centre equalled the dot's, its left edge sat at or right of
-the dot's right edge, and its rectangle sat wholly inside the column's.
-
-`src/gui/widgets/bot_status_table.py` — `ColumnHeaderCell._place_mark`
+`src/gui/main_tabs/bot_status_table_surface.py` — `BotStatusTableModel.on_header_sorted`
 
 ```python
-top, height = self._dot_row()
-left = max(self._dot_right(), self.width() - HEADER_SORT_MARK_BOX_PX)
-self.mark.setGeometry(left, top, max(0, self.width() - left), height)
+if column == self.sort_column:
+    self.sort_descending = not self.sort_descending
+else:
+    self.sort_column = column
+    self.sort_descending = False
 ```
 
-**Functional.** Bot ID and Symbol sort as words. The other seven sort as
-figures, each reading the number its cell was computed from rather than the
-text the cell draws, so nine never sorts above ten. Ammo sorts on the distance
-from target without its sign, which is the amount that would fire and the
-figure the cell prints; the colour still says which side of the target the bot
+**Functional.** Asset and Symbol sort as words, Asset on the asset's ticker. The
+other seven sort as figures, each reading the number its cell was computed from
+rather than the text the cell draws, so nine never sorts above ten. Ammo sorts on
+the distance from target without its sign, which is the amount that would fire and
+the figure the cell prints; the colour still says which side of the target the bot
 sits on. Fire sorts by what the engine would do next, armed first and disabled
-last. A row whose cell draws nothing sits beneath every row that draws a
-figure, whichever way the sort runs, and the bot's own identifier breaks a tie.
+last. A row whose cell draws nothing sits beneath every row that draws a figure,
+whichever way the sort runs, and the bot's own identifier breaks a tie.
 
 `src/gui/main_tabs/bot_status_table_surface.py` — `order_statuses`
 
@@ -571,11 +990,9 @@ return [row[2] for row in drawn] + blank
 ```
 
 **Functional.** The order is recomputed every time the rows are rewritten, not
-once at the press. A fleet arriving a second later is ordered again before it
-is drawn, so a column whose figures keep moving keeps the order the last press
-asked for and the rows travel as the figures change. Read on the running window
-with a fleet of 38 bots: lifting one bot's price moved that bot from the first
-row to the last, and every remaining pair still ran in order.
+once at the press. A fleet arriving a second later is ordered again before it is
+drawn, so a column whose figures keep moving keeps the order the last press asked
+for and the rows travel as the figures change.
 
 `src/gui/widgets/bot_status_table.py` — `BotStatusTable.update_bots`
 
@@ -588,12 +1005,72 @@ bot_statuses = order_statuses(
 )
 ```
 
+**Functional.** The sort arrow draws on the privacy dot's own row, at the right
+edge of its own column. Its rectangle takes the dot's top and the dot's height, so
+the two sit on one line, and its left edge never crosses the dot's right edge. The
+box is clamped to the column, so no arrow is drawn outside the column it belongs
+to. The arrow sits outside the header's own layout, so neither the wrapped label
+nor the dot beneath it moves when a column sorts. The page places its arrow the
+same way, against the heading's bottom edge above the cell's padding and held to
+the column's width.
+
+`src/gui/widgets/bot_status_table.py` — `ColumnHeaderCell._place_mark`
+
+```python
+top, height = self._dot_row()
+left = max(self._dot_right(), self.width() - HEADER_SORT_MARK_BOX_PX)
+self.mark.setGeometry(left, top, max(0, self.width() - left), height)
+```
+
+`src/gui/web/bot_status_table.js` — `SortMark`
+
+```javascript
+style.bottom = length(model[HEADER_CELL_PAD_PX]);
+style.right = MARK_EDGE;
+style.width = length(model[HEADER_SORT_MARK_BOX_PX]);
+style.maxWidth = MARK_MAX_WIDTH;
+style.height = length(model[HEADER_DOT_ROW_PX]);
+```
+
+**Functional.** Five things can be pressed on the table, and each sends one
+request and redraws from the answer. The dot under a column's label toggles that
+column's privacy mask. A mark in the first column opens its asset's own
+organisation. A Symbol cell opens the chart address. Fire hands the bot to Manual
+Fire. Detail selects the row and opens the bot. A press on a column's label sorts
+it. The dot keeps its own press to itself, so masking a column never reorders the
+table, and the Fire and Detail buttons stop the press reaching the row so they keep
+their window behaviour.
+
+`src/gui/main_tabs/bot_status_table_surface.py` — `BotStatusTableModel.on_detail`
+
+```python
+def on_detail(self, bot_id: str) -> None:
+    """Select the row, then hand the bot to whatever opens the detail."""
+    self.select_row_for_bot(bot_id)
+    self.detail_clicks.append(bot_id)
+    self.calls.append([DETAIL_CLICKED, bot_id])
+    if self.on_bot_clicked:
+        self.on_bot_clicked(bot_id)
+```
+
+`src/gui/react_trading_tab.py` — the presses the venue answers
+
+```python
+VENUE_PRESSES = (
+    (scrum_surface.PRIVACY_TOGGLE_PARAM, "toggle_privacy"),
+    (scrum_surface.SORT_COLUMN_PARAM, "sort_by"),
+    (scrum_surface.SELECT_BOT_PARAM, "select_bot"),
+    (scrum_surface.VIEW_BAND_PARAM, "scroll_view"),
+)
+```
+
 **Functional.** A press on a bot's row draws that bot in the Indicator Voting
-Panel. A press on the row the panel already draws takes the panel off it
-instead, and the panel shows its empty state; a third press brings the bot
-back. A press naming another bot never blanks the panel, it moves it. The press
-names the bot on the row and never the row's position, so a column can be
-sorted first and the panel still draws the bot whose row was pressed.
+Panel. A press on the row the panel already draws takes the panel off it instead,
+and the panel shows its empty state; a third press brings the bot back. A press
+naming another bot never blanks the panel, it moves it. The press names the bot on
+the row and never the row's position, so a column can be sorted first and the panel
+still draws the bot whose row was pressed. One function decides it and both builds
+call it, so a press cannot mean two different things on the two screens.
 
 `src/gui/main_tabs/bot_status_table_surface.py` — `selection_after_press`
 
@@ -604,10 +1081,89 @@ if not pressed or pressed == str(shown_bot_id or ""):
 return pressed
 ```
 
-**Functional.** The highlight runs the other way as well. When the panel's own
-dropdown or one of its arrows moves the selection, the bot list puts its
-highlight on that bot's row. One value stands behind both, the bot the Voting
-Panel holds, so the list and the panel cannot name two different bots.
+`BotStatusTable.mousePressEvent` calls it in the window and
+`BotStatusTableModel.on_row_pressed` calls it on the page, and the page's row sends
+its press out on the same console line the privacy toggle and the column sort use.
+
+`src/gui/web/bot_status_table.js` — `sendRowPress` and `sendSort`
+
+```javascript
+function sendRowPress(model, botId) {
+  return dispatch(
+    model,
+    actionNamed(model, ROW_PRESSED),
+    request(model, SELECT_BOT_PARAM, botId)
+  );
+}
+```
+
+The window builds one link and gives the panel's own topic a reader, in
+`MainWindow._setup_bot_list_link`. The topic was already declared and the emit already
+ran; nothing listened to it.
+
+`src/gui/widgets/bot_selection.py` — `BotListPanelLink.row_selected`
+
+```python
+def row_selected(self, bot_id: Optional[str]) -> str:
+    """Draw the pressed bot on the panel and answer the bot it holds."""
+    if self._settling:
+        return self.bot_id
+    self._settling = True
+    try:
+        return str(self._panel.select_bot(str(bot_id or "")) or "")
+    finally:
+        self._settling = False
+```
+
+**Functional.** The list scrolls only when the operator scrolls it. The table turns
+off the scroll-to-current-item behaviour the toolkit applies by default, so the
+only thing that moves the scroll bar is a hand. A highlighted row the viewport no
+longer draws loses the highlight, and one rule decides that for both builds. A
+column sort reorders every row while the scroll position stays, so the highlighted
+bot can land far below the rows on screen; that is the highlight leaving the view
+and it is released the same as any other cause. The drop runs with the table's
+signals blocked, so nothing downstream hears it.
+
+`src/gui/widgets/bot_status_table.py` — `BotStatusTable.__init__`
+
+```python
+self.setAutoScroll(False)
+self.verticalScrollBar().valueChanged.connect(
+    lambda _value: self.release_selection_off_view()
+)
+```
+
+`src/gui/main_tabs/bot_status_table_surface.py` — `selection_after_view_moved`
+
+```python
+if row < 0 or first < 0 or last < first:
+    return NO_SELECTION_ROW
+if first <= row <= last:
+    return row
+return NO_SELECTION_ROW
+```
+
+The React page reads its own drawn rows off the scroll box it sits in and sends the
+first and last of them, and the same function answers there.
+
+`src/gui/web/bot_status_table.js` — `visibleRowBand`
+
+```javascript
+if (span.top >= edge.top - 1 && span.bottom <= edge.bottom + 1) {
+  if (first < 0) {
+    first = at;
+  }
+  last = at;
+}
+```
+
+**Functional.** The list's highlight and the panel's bot are two values. A release
+changes the list alone. The panel changes only when a bot is chosen, from a row or
+from the panel's own dropdown, and the Live page does not redraw the panel on a
+scroll. The panel's dropdown still puts the highlight on that bot's row, and now
+only while that row is drawn, so the two can name different bots: the panel holds
+the bot it is drawing and the list holds a highlight it can release, which is what
+keeps the scroll bar still.
 
 `src/gui/widgets/bot_selection.py` — `BotListPanelLink.panel_selected`
 
@@ -618,11 +1174,10 @@ for host in self._hosts() or ():
         mark(wanted)
 ```
 
-**Functional.** One bad field now stops one row instead of the whole paint.
-Each row is written inside its own guard. A row that refuses is logged, emptied
-and left empty, and every other bot still draws. A row whose bot is not a
-scrumming bot is emptied the same way, so it can no longer keep the previous
-bot's figures.
+**Functional.** One bad field stops one row instead of the whole paint. Each row is
+written inside its own guard. A row that refuses is logged, emptied and left empty,
+and every other bot still draws. A row whose bot is not a scrumming bot is emptied
+the same way, so it can no longer keep the previous bot's figures.
 
 `src/gui/widgets/bot_status_table.py` — `BotStatusTable._clear_row`
 
@@ -633,82 +1188,12 @@ for col in range(self.columnCount()):
         self.removeCellWidget(row, col)
 ```
 
-`src/gui/widgets/bot_status_table.py` — `BotStatusTable.SCRUMMING_COLUMNS`
-
-```python
-SCRUMMING_COLUMNS = ColumnSpec(
-    labels=(
-        "Bot ID",
-        "Symbol",
-        "Mode",
-        "Trades",
-        "Target",
-        "Target A15",
-        "Target A14",
-        "Ammo",
-        "Fire",
-        "",
-    ),
-```
-
-**Functional.** Column 2 is Current Position Value. It shows what the bot's
-holdings are worth at the exchange's own price. It is blank whenever no fresh
-exchange price exists, and a blank cell names the missing thing in its tooltip:
-no position held, no exchange price for the pair yet, no exchange price this
-tick, or a price older than twenty seconds. The cell never falls back to a
-last-known figure, to a stand-in, or to a value read out of the bot's own
-ledger. The state colour now sits on the Bot ID cell, which is green while
-running, amber while paused, grey while idle or stopped, red on error, orange
-in cooldown and cyan while starting. That cell's tooltip names the mode and the
-state.
-
-`src/gui/main_tabs/table_cells_surface.py` — the one multiplication both priced
-cells read, so the Position Value cell and the Ammo cell can never disagree
-
-```python
-def priced_position(holdings: float, price: float, quote_rate: float) -> float:
-    """The position value at one price: ``holdings`` times ``price`` times
-    ``quote_rate``."""
-    return holdings * price * quote_rate
-```
-
-**Functional.** The price both cells read comes from the shared exchange price
-cache, and it carries its own age. An age of None means the cache held nothing
-and the bot's own last reading was used instead, which is why the Position
-Value cell goes blank on that path.
-
-`src/gui/main_tabs/table_cells_surface.py` — the four blank paths and the one
-priced path
-
-```python
-POSITION_PATH_PRICED = "priced"
-POSITION_PATH_NO_HOLDINGS = "no_holdings"
-POSITION_PATH_NO_PRICE = "no_price"
-POSITION_PATH_OFF_EXCHANGE = "off_exchange"
-POSITION_PATH_AGED = "aged"
-```
-
-**Design intention.** The Ammo cell measures against the live target, not the
-frozen number typed into the wizard, so the reading follows the grown balance
-the engine re-zeroes to.
-
-`src/gui/widgets/bot_status_table.py` — the target the Ammo cell measures
-against
-
-```python
-target_val = float(
-    status.get("live_target_balance", status.get("target_balance", 0.0))
-    or status.get("target_balance", 0.0)
-    or 0.0
-)
-```
-
 **Functional.** In the React build the Scrumming Bots table is drawn by
 `bot_status_table.js`. The exchange screen keeps a named empty space for it and
-fills that space when it draws itself. The rows come from the backend, not from
-the exchange screen: the renderer asks the bridge for the table's own state and
-names the exchange it wants rows for. Each exchange gets its own table state, so
-two exchange screens on one page never share rows or a highlight.
+fills that space when it draws itself. The rows come from the backend, not from the
+exchange screen: the renderer asks the bridge for the table's own state and names
+the exchange it wants rows for. Each exchange gets its own table state, so two
+exchange screens on one page never share rows or a highlight.
 
 `src/gui/web/exchange_tab.js` — `mountScrumTable`
 
@@ -725,85 +1210,11 @@ function mountScrumTable(target, model) {
 }
 ```
 
-**Overtaken.** *"A column header toggles that column's privacy mask."*
-
-**Functional.** The four things the operator can press on the table each send
-one request and redraw from the answer. The dot under a column's label toggles
-that column's privacy mask, a Symbol cell opens the chart address, Fire hands
-the bot to Manual Fire, and Detail selects the row and opens the bot. A press
-on the label itself does nothing. `on_detail` is the handler behind the Detail
-button.
-
-`src/gui/main_tabs/bot_status_table_surface.py` — `BotStatusTableModel.on_detail`
-
-```python
-def on_detail(self, bot_id: str) -> None:
-    """Select the row, then hand the bot to whatever opens the detail."""
-    self.select_row_for_bot(bot_id)
-    self.detail_clicks.append(bot_id)
-    self.calls.append([DETAIL_CLICKED, bot_id])
-    if self.on_bot_clicked:
-        self.on_bot_clicked(bot_id)
-```
-
-**Overtaken.** *"A press on the label itself does nothing."*
-
-**Functional.** A press on the label sorts that column, exactly as the window
-does. Five things can now be pressed on the page's table. The press goes back
-to Python, because the fleet that answers it lives there, and the venue
-republishes the ordered rows. The dot keeps its own press to itself, so masking
-a column never reorders the table.
-
-`src/gui/web/bot_status_table.js` — `sendSort`
-
-```javascript
-function sendSort(model, column) {
-  return dispatch(
-    model,
-    actionNamed(model, HEADER_SORTED),
-    request(model, SORT_COLUMN_PARAM, column)
-  );
-}
-```
-
-**Functional.** One ordering serves both builds. The window and the page both
-call the same function on the same fleet, so neither can put the same 38 bots
-in an order the other would not. Read on both running builds at 700, 900 and
-1400 pixels wide, each of the nine sortable columns ordered its figures the
-same way on the first press and reversed them on the second.
-
-`src/gui/main_tabs/bot_status_table_surface.py` — `BotStatusTableModel.on_header_sorted`
-
-```python
-if column == self.sort_column:
-    self.sort_descending = not self.sort_descending
-else:
-    self.sort_column = column
-    self.sort_descending = False
-```
-
-**Functional.** The page places its arrow the same way the window does. The
-arrow's box takes the dot row's height, sits against the heading's bottom edge
-above the cell's padding, and is held to the column's width. Read on the running
-page with a fleet of 38 bots at 700, 900 and 1400 pixels wide, on all nine
-sorting columns, the arrow's rectangle matched the dot's top and height, its
-left edge sat right of the dot's right edge, and it stayed inside the column.
-
-`src/gui/web/bot_status_table.js` — `SortMark`
-
-```javascript
-style.bottom = length(model[HEADER_CELL_PAD_PX]);
-style.right = MARK_EDGE;
-style.width = length(model[HEADER_SORT_MARK_BOX_PX]);
-style.maxWidth = MARK_MAX_WIDTH;
-style.height = length(model[HEADER_DOT_ROW_PX]);
-```
-
-**Design intention.** The exchange screen redraws itself once a second to keep
-the data-pool line fresh. Each redraw re-fills the table space, so the table is
-drawn from the state the renderer holds for that exchange rather than from the
-answer captured at first paint. A row the operator selected therefore survives
-the next redraw.
+**Design intention.** The exchange screen redraws itself once a second to keep the
+data-pool line fresh. Each redraw re-fills the table space, so the table is drawn
+from the state the renderer holds for that exchange rather than from the answer
+captured at first paint. A row the operator selected therefore survives the next
+redraw.
 
 `src/gui/web/bot_status_table.js` — `modelFor`
 
@@ -814,11 +1225,11 @@ function modelFor(exchangeId) {
 ```
 
 **Functional.** The Extractor table underneath is drawn the same way, by
-`extractor_bot_table.js` into the second named space the exchange screen keeps.
-Its rows come from the same fleet list, kept to the records whose mode is
-extractor. The Detail button is the one control the Extractor table offers;
-Fire stays disabled on this screen, because Manual Fire is per position and
-lives in the Positions Held tab of the bot's own window.
+`extractor_bot_table.js` into the second named space the exchange screen keeps. Its
+rows come from the same fleet list, kept to the records whose mode is extractor.
+The Detail button is the one control the Extractor table offers; Fire stays
+disabled on this screen, because Manual Fire is per position and lives in the
+Positions Held tab of the bot's own window.
 
 `src/gui/main_tabs/extractor_bot_table_surface.py` — `extractor_statuses`
 
@@ -834,6 +1245,18 @@ def extractor_statuses(statuses: Any) -> list:
         for found in statuses or []
         if isinstance(found, dict) and found.get("mode") == MODE_TEXT
     ]
+```
+
+**Functional.** The Scrumming table holds the whole accumulation fleet and grows
+into whatever room is left. The Extractor table keeps the height of its own rows,
+so its rows are never cut. The React page reads the two shares onto the flex of
+each table space, and the Qt page passes them to the layout.
+
+`src/gui/main_tabs/exchange_tab_surface.py` — the two stretches
+
+```python
+SCRUM_TABLE_STRETCH = 1
+EXTRACTOR_TABLE_STRETCH = 0
 ```
 
 **Functional.** The exchange screen mounts its three children in one step, each
@@ -896,8 +1319,8 @@ if not bot_id:
 > become Start All and launches bot start sequencer used during boot up -
 > Holding SHIFT makes Stop, Pause, and Restart all become Stop All, Pause All,
 > and Restart All respectively"
-
-**Overtaken.** *"Start, Pause, Stop, Restart and Delete all act on one bot."*
+**Functional.** Four of the five act on one bot, or on the whole fleet while you
+hold SHIFT, in the window build and in the page build. Hold the key and Start,
 
 **Functional.** Four of the five act on one bot, or on the whole fleet while you
 hold SHIFT. Hold the key and Start, Pause, Stop and Restart read Start All,
@@ -962,6 +1385,101 @@ def start_all(self) -> int:
 **Functional, on the Simulator.** The Simulator command bar does not read the
 key. He named Live and Paper only, and the Simulator's own venue page and its
 own view model are separate files that carry none of this.
+
+**HIS.**
+
+> "Live - Bug - Bot List - Start / Stop / Pause (All) toggles 'normally on'
+> instead of remaining 'normally off' after releasing the SHIFT key. Can hold
+> SHIFT key to toggle back to the normal state but this is incorrect / inverted
+> behavior."
+
+The five readings, per build:
+
+```
+                                 window build   page build
+at rest, no key held             single-bot     single-bot
+SHIFT pressed and held           all-bots       all-bots
+SHIFT released                   single-bot     single-bot
+window deactivated while held    single-bot     single-bot
+SHIFT pressed twice in a row     all-bots       all-bots
+```
+
+**Where the label state comes from.** Both window forks call one rule, so the Live
+tab and the Paper tab cannot draw different labels from the same key. The rule
+takes the state off the key event the code is already holding: a SHIFT press means
+the key is down, a SHIFT release means it is up, and no other reading is possible.
+It holds whichever way the computer reports the key.
+
+`src/gui/main_tabs/exchange_tab_surface.py` — `shift_held_after_key`
+
+```python
+def shift_held_after_key(
+    is_press: bool, key_is_shift: bool, event_has_shift: bool
+) -> bool:
+    if key_is_shift:
+        return is_press
+    return event_has_shift
+```
+
+The press target follows the label. The press reads SHIFT from the mouse press,
+which carries the true state. A window deactivated while the key is held reads the
+buttons' own names, and the key pressed twice in a row reads the all-bots names.
+
+**Functional.** A press on the Live page reaches the application only when it
+carries one of the fields the page forwards, and the command field is one of them.
+The page answers a read from what it already holds, and sends a press on, because
+the register, the fleet, the voting panel and the bot manager all live there.
+
+`src/gui/react_trading_tab.py` — the page's own bridge
+
+```javascript
+if (
+  params &&
+  (owns(params, TOGGLE) ||
+    owns(params, SORT) ||
+    owns(params, PICK) ||
+    owns(params, COMMAND))
+) {
+```
+
+**The venue a press names.** One page can draw more than one venue, so every press
+carries the exchange it came from. The bot table names that field one way and the
+venue page names it another, and the lookup reads every name a press can use.
+
+`src/gui/react_trading_tab.py` — `venue_of_press`
+
+```python
+def venue_of_press(params: Any) -> str:
+    held = params if isinstance(params, dict) else {}
+    for name in VENUE_KEYS:
+        found = held.get(name)
+        if found:
+            return str(found)
+    return ""
+```
+
+**The bot the bar acts on.** The bar takes its bot from the table the operator
+pressed last. The page keeps two records of the Scrumming table, the one it draws
+and the one the bar reads, and a row press moves both. The Paper tab and the
+Simulator keep the same two records, so the same call runs on all three.
+
+`src/gui/main_tabs/exchange_tab_surface.py` — `ExchangeTabModel.hold_scrum_bot`
+
+```python
+row = (
+    table.bot_ids.index(wanted)
+    if wanted in table.bot_ids
+    else NO_SELECTION_ROW
+)
+was = table.block_signals(True)
+try:
+    table.clear_selection()
+    table.set_current_cell(row, 0)
+    if row != NO_SELECTION_ROW:
+        table.select_row(row)
+finally:
+    table.block_signals(was)
+```
 
 #### The rest of the screen
 
@@ -1177,20 +1695,7 @@ large venue, and the sort reads a cached figure rather than fetching one.
 
 `src/gui/bot_wizard.py` — the volume sort
 
-```python
-# Cached volume only, since a network fetch here blocks the GUI thread.
-filtered.sort(
-    key=lambda m: _market_number(m.get("volume")) or 0.0, reverse=True
-)
-```
-
-**The block above is overtaken.** `_market_number` was the wizard's own
-reading rule. It read either infinity as a volume and it raised on a saved
-number too large to be a float, which lost the whole pair list. The wizard now
-reads through the one admission rule the trading package owns, and a refused
-volume sorts as `VOLUME_REFUSED_USD` and labels as nothing.
-
-`src/gui/bot_wizard.py` — the volume sort as it stands
+`src/gui/bot_wizard.py` — the volume sort
 
 ```python
 filtered.sort(
@@ -1198,6 +1703,12 @@ filtered.sort(
     reverse=True,
 )
 ```
+
+The sort reads through the one admission rule the trading package owns rather than
+a reading rule of the wizard's own, and a refused volume sorts as
+`VOLUME_REFUSED_USD` and labels as nothing. A saved number too large to be a float
+therefore costs that one pair its volume figure instead of losing the whole pair
+list.
 
 ### Trading Parameters
 
@@ -1548,9 +2059,9 @@ band position 0.976123, one tape, one tick
 
 Landing Strip Candles - Determines the strictness of Landing Strip detection. Minimum is three candles. Longer Landing Strips are historically more likely to indicate an impending market reversal than shorter ones assuming the taper remains intact or grows tighter.
 
-A whole number of candles from 2 to 10, at 3 to start. The widget accepts 2,
-one below the minimum of three the description names, and the number reaches
-only one of the two landing-strip detectors. Issue #432 carries this.
+A whole number of candles from 2 to 10, at 3 to start. The box accepts 2, one
+below the minimum of three the description names: its declared floor is 2, asked
+for 0 or 1 it answers 2, and 2 is the one figure under three it keeps.
 
 `src/gui/bot_wizard.py` — the Landing Strip Candles row
 
@@ -1561,31 +2072,13 @@ self._ls_candles.setValue(3)
 self._ls_candles.setSuffix(" candles")
 ```
 
-Both halves of the correction above were re-measured, and both hold. The box does
-accept 2: its declared floor is 2, asked for 0 or 1 it answers 2, and 2 is the
-one figure under three it keeps. The number does reach one detector of the two
-the tick runs over the same candles.
-
-```
-the tick runs two detectors, and they count different things
-  band proximity   its minimum pattern candles = the stored figure
-  tightening       its minimum consecutive run = a platform constant of 3
-
-one tape, trailing tight bodies 2
-  stored 2    landing strip True     confidence boost 0.1900
-  stored 3    landing strip False    confidence boost 0.0000
-  stored 2 and stored 12 both logged: TIGHTENING (upper BB): 3 candles
-```
-
-Raising the floor to three is not taken, and the reason is a measurement. A box
-holding a stored 2 answers 3 the moment its range starts at three, and putting
-the range back leaves the 3 behind, so the next Save would write three into a
-bot whose record says two.
-
-The tightening detector keeps its own run length, because a run of shrinking
-bodies is not a count of tight bodies at a band. The four figures the tick hands
-that detector are now the names the gate scan already declared for them, and the
-values are unchanged.
+The tick runs two detectors over the same candles and this number reaches one of
+them. Band proximity takes the stored figure as its minimum pattern length.
+Tightening keeps its own minimum consecutive run, a platform constant of three,
+because a run of shrinking bodies is not a count of tight bodies at a band. At a
+stored 2 a trailing run of two tight bodies reads as a landing strip and lifts the
+confidence boost to 0.1900; at a stored 3 the same tape reads no landing strip and
+no boost.
 
 ```python
 tightening = detect_landing_strip_v2(
@@ -1595,6 +2088,10 @@ tightening = detect_landing_strip_v2(
     bb_tolerance_pct=TIGHTENING_TOLERANCE_PCT,
 )
 ```
+
+Raising the box's floor to three is not taken. A box holding a stored 2 answers 3
+the moment its range starts at three, and putting the range back leaves the 3
+behind, so the next Save would write three into a bot whose record says two.
 
 TA Timeframe - This is the timeframe at which the bot operates and denotes the price chart it will monitor for trade decisions.
 
@@ -1739,16 +2236,21 @@ group emits, in the order of the rows above
 "scrum_fold_pct": self._scrum_fold_pct.value(),
 ```
 
-**Where the code departs.** Two of these rows read differently in the engine
+**Where the code departs.** Three of these rows read differently in the engine
 than the entries above say.
 
-Min Entry Price is the first. The entry above writes the correction into its
-own heading, and the code follows the label on screen rather than that
-correction. The buy
-path is the only place either entry-price field is read; it refuses a buy above
-the ceiling and refuses a buy below the floor. Neither number reaches the sell
-path, so a bot that holds the asset and reaches that price sells nothing.
-Manual Fire runs its own rebalance and reads neither.
+**Min Entry Price is the first.** The buy path is the only place either
+entry-price field is read; it refuses a buy above the ceiling and refuses a buy
+below the floor. Neither number reaches the sell path, so a bot that holds the
+asset and reaches that price sells nothing. Manual Fire runs its own rebalance and
+reads neither.
+
+```
+ceiling $90 against a price of $100    buy refused at the gate
+ceiling $110 against the same price    gate silent
+floor $110 against a price of $100     buy refused at the gate
+the same floor, the same price, sell   no refusal of any kind
+```
 
 `src/trading/scrumming/execution.py` — `_execute_buy`
 
@@ -1762,8 +2264,7 @@ except (TypeError, ValueError):
 if _max_ep is not None and _px > 0 and _px > float(_max_ep):
 ```
 
-The sell path already takes the price, so the floor check has somewhere to
-attach.
+The sell path already takes the price, so the floor check has somewhere to attach.
 
 *Proposed, not present, in `_execute_sell`:*
 
@@ -1781,29 +2282,116 @@ if _min_ep is not None and price > 0 and price < float(_min_ep):
     return None
 ```
 
-`min_entry_price` is declared in `src/trading/container/config.py` and reaches
-the bot through the wizard block above, so the proposal adds no new setting.
+`min_entry_price` is declared in `src/trading/container/config.py` and reaches the
+bot through the wizard block above, so the proposal adds no new setting.
 
-Max Target Growth % is the second. The engine holds two answers for a bot whose
-stored config lacks the key. Ten read sites take it with a fallback: seven fall
-back to 1.0 and three fall back to 0.0. A bot compounds or freezes depending on
-which site read it first. The declared default is 1.0, and the three outliers
-should say the same.
+**A zero in either entry-price box is not the same thing in both.** Both rows say
+zero means no ceiling and no floor, and both controls honour that: a box left at
+zero emits an absent value rather than a number. The engine's own guard is
+narrower. It treats only the absent value as off, so a record carrying a literal
+zero in the ceiling refuses every auto-buy for as long as it stands. The same zero
+in the floor is harmless, because no price is below it.
 
-*Proposed, not present, at each of the three sites:*
+`src/trading/scrumming/execution.py` — the two guards
+
+```python
+if _max_ep is not None and _px > 0 and _px > float(_max_ep):
+if _min_ep is not None and _px > 0 and _px < float(_min_ep):
+```
+
+No control can write that zero. The three places that collect the value each write
+an absent value in its place, so a record carrying a literal zero came from an
+older build or from an edit outside the application.
+
+```
+src/gui/bot_wizard.py                         absent unless the box reads above 0
+src/gui/live_settings/settings_tab.py         absent unless the box reads above 0
+src/gui/main_tabs/bot_wizard_surface.py       absent unless the box reads above 0
+```
+
+*Proposed, not present, in both guards:*
+
+```python
+if _max_ep and float(_max_ep) > 0 and _px > 0 and _px > float(_max_ep):
+```
+
+It is proposed rather than taken because a bot standing on such a record is
+refusing every buy today, and a build that read the zero as off would have it
+buying on its next tick.
+
+**Trading Fee is the second.** The fee is added to the Minimum Opposing Trade
+Distance, and at every figure the box offers except one every reader agrees. At a
+stored zero they split: ten reads inside the trading package treat a zero as six
+tenths of a percent, and two inside the same executor honour the zero.
+
+```
+stored 0.60 %   distance filter 1.60 %   buy and sell hysteresis 1.60 %
+stored 2.50 %   distance filter 3.50 %   buy and sell hysteresis 3.50 %
+stored 0.00 %   distance filter 1.60 %   buy and sell hysteresis 1.00 %
+```
+
+`src/trading/otd_math.py` — the read, and its own note on the split
+
+```python
+return minimum_opposing_trade_distance_pct(
+    getattr(config, "scrumming_interval_pct", 0) or 0,
+    getattr(config, "trading_fee_pct", 0.6) or 0.6,
+)
+```
+
+That module's docstring names the split and says it is named there and not
+repaired there. Closing it changes the distance a reversal must travel for any bot
+whose fee is zero, which is a live figure on a live tick.
+
+**Max Target Growth % is the third, and it is closed.** Nine read sites take the
+figure, and every one of them names the declared default of 1.0. No bot can reach
+that fallback: every construction path builds the config through one factory and
+the class declares the field, so the value is never absent. A tenth site was an
+expression whose value was discarded and it is gone.
+
+`src/trading/scrumming_bot.py` — the shape all nine share
 
 ```python
 _growth = float(getattr(self.config, "max_target_growth_pct", 1.0) or 0.0)
 ```
 
-The three outliers are the manual rebalance, the compounding snapshot and the
-SWOS inputs. Issue #409 carries this.
+Three of the nine used to fall back to zero, which would have made a bot compound
+or freeze depending on which site read first. They are the manual rebalance, the
+compounding snapshot and the Smart Wire inputs.
 
 ```
 src/trading/scrumming/execution.py   _execute_manual_rebalance
 src/trading/scrumming/snapshots.py   _compounding_snapshot
 src/trading/scrumming_bot.py         get_swos_inputs
 ```
+
+**Where the Scrum Fold Ratio is read.** One method reads it, once per sale, and it
+runs on the slice of tranches that sale appended rather than on the whole queue.
+
+`src/trading/scrumming/fold_tranches.py` — the read and the clamp
+
+```python
+_fold_pct = max(0, min(100, int(getattr(self.config, "scrum_fold_pct", 100))))
+_new_tranches = self._fold_tranches[_tranche_count_before:]
+if _fold_pct < 100 and _new_tranches:
+```
+
+At a hundred the branch does not run and the sale's tranches keep every dollar.
+Below a hundred each tranche keeps the ratio's share of units and of the sale's own
+proceeds, and the remainder is retired as cash with a realised profit line. Money
+in a tranche that did not come from this sale is wired-in credit and keeps its full
+value.
+
+```
+100 % on two $100 tranches   queued $200.00, 2.0000 units
+ 40 % on the same two        queued  $80.00, 0.8000 units
+  1 % on the same two        queued   $2.00, 0.0200 units
+```
+
+The clamp's lower bound is zero and both controls start at one, so a record
+carrying a zero empties the sale's whole fold queue and retires the cash instead.
+Raising the clamp to match the controls would change what such a bot rebuys on its
+next sale.
 
 ![The Advanced Scrumming and Hedge Rebalance groups.](p20-i0.png)
 
@@ -2021,10 +2609,9 @@ income arriving while the position sits within that band of its target and
 within that band of its entry price goes onto the target and queues an
 aggressive buy, rather than spreading over the fold queue.
 
-Bot creation does not pass this setting, so a new bot takes the declared default
-of 1.00 whatever you type here. The declared default and the wizard's start
-value are the same number, so the loss shows only once you change it. Bot
-Settings can set it on a bot that is already running. Issue #336 carries this.
+Bot creation passes it, and so does a restart. One declaration serves both paths,
+so every field the config declares reaches a new bot and a restored one. Bot
+Settings can set it on a bot that is already running.
 
 `src/trading/scrumming/wire_routing.py` — `WireRoutingMixin.apply_wire_income`
 
@@ -2039,12 +2626,6 @@ _target = 0.0
 _entry_px = 0.0
 if stack_pct > 0:
 ```
-
-Bot creation passes it now. One declaration serves the wizard path and the restore
-path together, so every field the config declares reaches a new bot. Driven
-through the creation route the wizard uses, a stored 0.00 arrived on the bot as
-0.00 rather than the declared 1.00, which is what the sentence above was written
-against.
 
 `src/trading/container/config.py` — the one carried set
 
@@ -2087,7 +2668,73 @@ self._hedge_rebalance.setChecked(True)
 
 Hedge Balance - Sets a limit on the amount of additional liquidity a given bot is allowed to absorb when Current Price drifts below Initial Entry Price.
 
-At $200.00 to start, a reserve the bot holds apart from Target Balance.
+At $200.00 to start, a reserve the bot holds apart from Target Balance. It is the
+figure a hedge buy is checked against and the ceiling a refill stops at, and the
+bot reads it off its configuration rather than keeping a second copy, so a restart
+cannot leave the two disagreeing. One hedge buy spends half of what the reserve
+holds, bounded by the gap to target.
+
+`src/trading/scrumming/tick_phases.py` — the one ceiling
+
+```python
+@property
+def _hedge_balance_initial(self) -> float:
+    if not self.config.hedge_rebalance_active:
+        return 0.0
+    return float(self.config.hedge_balance)
+```
+
+`src/trading/scrumming_bot.py` — the figure that sizes one hedge buy
+
+```python
+_use = min(self._hedge_bal * 0.5, _gap)
+```
+
+**The switch arms the reserve.** Ticking Hedge Rebalance Active on a running bot
+raises the reserve to the Hedge Balance figure, and it never lowers a reserve the
+bot already holds, so the box cannot destroy one. Unticking keeps the reserve and
+freezes it, because the arm test and the refill test both read the switch first. A
+word instead of a tick is refused and the switch does not move.
+
+```mermaid
+flowchart LR
+  A["Hedge Rebalance Active"] --> B["Apply"]
+  B --> C["set_hedge_rebalance_active_live"]
+  C --> D["the reserve a hedge buy reads"]
+  E["Hedge Balance"] --> B
+  B --> F["set_hedge_balance_live"]
+  F --> G["the ceiling a refill stops at"]
+```
+
+The reserve itself stays on the saved record, because it is a balance and not a
+setting, and it refills from compound growth at eight hundredths of each fold's
+profit.
+
+**A Hedge Balance of zero says what it is.** Zero is a figure the box accepts and
+it is not an off switch. It is an empty reserve that never refills, and a reserve
+the bot already holds stays spendable until it drains. Both tooltips say so, on
+both builds, and the Activity Log says so as the figure is typed.
+
+```
+HEDGE BALANCE A11 LIVE UPDATE: $200.00 -> $0.00. A $0.00 Hedge Balance is an
+empty reserve that never refills, not an off switch. Untick Hedge Rebalance
+Active to turn the hedge off. Reserve $200.00 stays spendable until it drains.
+```
+
+The running bot's row is routed through a method rather than written straight onto
+the config, and that method refuses a figure it cannot use.
+
+```
+set $500.00  applied   cap $500.00  reserve unchanged
+set   $0.00  applied   cap   $0.00  reserve unchanged
+set  -$5.00  refused   hedge_balance must be >= 0
+set   "abc"  refused   hedge_balance must be numeric
+set  $75.00  applied   cap  $75.00  reserve unchanged
+```
+
+A cap of zero shuts the refill gate for good while leaving the old reserve drainable,
+and raising the cap above zero re-opens it, so the state is recoverable by the same
+control that caused it.
 
 `src/gui/bot_wizard.py` — `TradingParamsPage.get_config`, the settings these
 two groups emit, in the order of the rows above
@@ -2645,7 +3292,7 @@ requires bullish TA, SCRUM holds in sustained uptrend, SCRUM defers to
 higher-TF bullish, FOLD requires bearish TA, and FOLD defers to higher-TF
 bearish.
 
-`src/gui/bot_wizard.py` — `TradingParamsPage.get_config`, the six flags this
+`src/gui/bot_wizard.py` — `TradingParamsPage.get_config`, the five flags this
 group emits
 
 ```python
@@ -2653,15 +3300,19 @@ group emits
 "scrum_hold_in_uptrend": self._gate_scrum_uptrend_chk.isChecked(),
 "scrum_defer_to_htf": self._gate_scrum_htf_chk.isChecked(),
 "fold_require_ta_bearish": self._gate_fold_ta_chk.isChecked(),
-"fold_hold_in_downtrend": True,  # reserved, no gate
 "fold_defer_to_htf": self._gate_fold_htf_chk.isChecked(),
 ```
 
-**Design intention.** Six flags are declared, the box shows five, and the
-missing one is the fold-side twin of a scrum gate that works. It goes out as a
-hard True, and nothing in the engine reads it. Its scrum mirror holds a sell
-during a sustained uptrend, and the fold twin would hold a buy during a
-sustained downtrend.
+**Design intention.** Five flags are declared and the box draws five checkboxes.
+A sixth, the fold-side twin of the scrum gate that holds a sell during a sustained
+uptrend, is gone: it is off the bot config, off the restore round-trip and off both
+wizard surfaces. It had no reader that moved a decision, so nothing the engine does
+changed with it, and a bot record written before the removal still loads because
+creation keeps only the fields the config declares.
+
+A fold-side hold needs a measurement before it needs a flag. The engine holds one
+trend figure, a count of the last twenty candles that close above their open, and
+it holds no downtrend figure for a gate to read.
 
 *Proposed, not present, in `src/trading/gate_chain.py`:*
 
@@ -2681,88 +3332,27 @@ class FoldTrendHoldGate(Gate):
         )
 ```
 
-The gate would join the fold chain beside its scrum twin, and
-`fold_hold_in_downtrend` in `src/trading/container/config.py` would arm it. A
-checkbox has to arrive with it, or the flag stays a hard True. Issue #419
-carries this.
-
-**Functional.** The sixth flag is gone. It is removed from the bot config, from
-the restore round-trip and from both wizard surfaces, so the wizard emits five
-gate flags and the box still draws five checkboxes. A bot record written before
-the removal still loads. Bot creation keeps only the fields the config declares,
-so the old key is dropped on the way in and every other flag arrives unchanged.
-
-Nothing the engine does changes. The field had no reader that moved a decision,
-so no running bot fires differently on its next tick. Driven on both sides over
-five candle tapes, every gate verdict read the same before the removal and
-after it.
-
-Two measured facts bear on the proposal above. The engine holds one trend
-figure, a count of the last twenty candles that close above their open, and it
-holds no downtrend figure for a gate to read. The proposed gate reads
-`ctx.eff_trend_hold`, which is that bullish count after the scrum checkbox has
-been applied to it. As written it would hold a buy during an uptrend, and the
-scrum checkbox would switch it. A fold hold needs its own measurement and its
-own control before it needs a flag.
+That gate reads the bullish count after the scrum checkbox has been applied to it,
+so as written it would hold a buy during an uptrend. A downtrend figure and a
+checkbox have to arrive with it.
 
 ![The Profit Routing group.](p22-i1.png)
 
 Moving onto the final section, we have Profit Routing which was intended to allow profits to be routed differently during initial set-up. This will be re-evaluated and potentially removed.
 
-The group writes two settings and stores them with the bot. No module under
-`src/trading/` reads either one. The wizard records the route, Bot Settings can
-change it, and a restart restores it. None of that reaches a trade:
-`_route_scrum_proceeds_via_wires` moves the scrum proceeds, and it never asks
-what the route says.
-
-The bot config declares both fields with a default, so the destination a bot
-holds is always the first entry in the list. Issue #336 carries this, with the
-rest of the settings the wizard writes and bot creation drops.
-
-`src/trading/container/restore.py` — the round-trip that puts both fields back
-on a restarted bot
-
-```python
-"profit_route": cfg.get("profit_route", "fold_to_target"),
-"profit_route_bot_id": cfg.get("profit_route_bot_id", ""),
-```
-
-Route - Destination for profits.
-
-Four destinations: fold back to target balance, send to spendable, split fold
-and spendable by percentage, and route to another bot. Only the last of the
-four makes the Target bot ID field below it mean anything.
-
-`src/gui/bot_wizard.py` — the Route row
-
-```python
-self._profit_route = QComboBox()
-self._profit_route.addItem("Fold back to target balance", "fold_to_target")
-self._profit_route.addItem("Send to spendable", "spendable")
-self._profit_route.addItem("Split fold/spendable per %", "split")
-self._profit_route.addItem("Route to another bot (cross-bot)", "cross_bot")
-```
-
-Target bot ID - Field for manually a bot ID which was intended to create a Smart Wire under the Bot Swarm tab.
-
-A free-text field. Its placeholder tells you to leave it blank unless you chose
-the cross-bot route.
-
-`src/gui/bot_wizard.py` — `TradingParamsPage.get_config`, the settings this
-group emits, in the order of the rows above
-
-```python
-"profit_route": self._profit_route.currentData(),
-"profit_route_bot_id": self._profit_route_bot_id.text().strip(),
-```
-
-The group and both of its rows are now removed, from the wizard and from Bot
-Settings. The operator's ruling on a setting that reaches no trade: "I do not
+The group and both of its rows are removed, from the wizard and from Bot Settings.
+`_route_scrum_proceeds_via_wires` moves the scrum proceeds and never asks what a route
+says.
+The operator's ruling on a setting that reaches no trade: "I do not
 want dangling settings fixed that do not or have not affected what is now
 almost 6000 trades or data points. The trading mechanisms are valid and sound."
 Profit reaches accumulation through harvest-fold and the fold tranches, and a
 wire drawn on the Bot Swarm tab carries any cross-bot share, so neither row had
 a destination left to name.
+
+Route - Destination for profits.
+
+Target bot ID - Field for manually a bot ID which was intended to create a Smart Wire under the Bot Swarm tab.
 
 `src/trading/scrumming/wire_routing.py` — the cross-bot destination the engine
 does read, taken from the drawn wires and never from a stored bot id
@@ -2771,15 +3361,16 @@ does read, taken from the drawn wires and never from a stored bot id
 _wires = _wire_mgr.get_outgoing_wires(self.bot_id)
 ```
 
-A bot saved before the removal still loads. A restart names each field it
-rebuilds one at a time, so a stored route is simply not read, and every other
-field arrives at the figure it was saved with.
+A bot saved before the removal still loads. The restore path keeps only the keys
+that name a field the config declares, so a stored route is dropped at that filter
+and every other field arrives at the figure it was saved with.
 
-`src/trading/container/config.py` — the field a bot is sized by, which is what
-Target Balance writes
+`src/trading/container/restore.py` — the whole selection
 
 ```python
-target_balance: float = 200.0  # Balance the bot trades relative to
+_kwargs = bot_config_kwargs(mode, cfg, exchange_id=cfg["exchange_id"])
+if "stack_mode" not in cfg:
+    _kwargs["stack_mode"] = STACK_MODE_DEFAULT
 ```
 
 Two further settings are removed alongside them, and neither ever had a row on
@@ -2788,16 +3379,6 @@ Spacing style was saved and restored and read by nothing, and the placement the
 engine derives from Opposing Trade Distance and the band extension is the
 method that replaced it.
 
-`src/trading/container/restore.py` — the scrumming fields a restart rebuilds,
-now carrying no line for either name
-
-```python
-"increment_style": cfg.get("increment_style", "linear"),
-"profit_folding_active": cfg.get("profit_folding_active", True),
-"scrumming_interval_pct": cfg.get("scrumming_interval_pct", 1.0),
-"scrum_fold_pct": cfg.get("scrum_fold_pct", 100),
-```
-
 ![The Phantom Bots page.](p23-i0.png)
 
 Lastly we have the selection for the Phantom (Balance) Bots. These are intended to provide trade action overrides from higher timeframe charts and indicator sets which, in turn, may result in an improved trade or prevent a premature one.
@@ -2805,15 +3386,42 @@ Lastly we have the selection for the Phantom (Balance) Bots. These are intended 
 **Functional.** This is the last page on the scrumming path:
 
 - Enable Phantom Bots, a checkbox, off at the start.
-- Active Timeframes, eleven checkboxes: 1m, 5m, 15m, 30m, 1h, 2h, 4h, 6h, 12h,
-  1d and 1w. All start clear. A timeframe the chosen venue does not carry is
-  greyed out and cleared, with the reason written into its tooltip.
+- Active Timeframe, eleven checkboxes: 1m, 5m, 15m, 30m, 1h, 2h, 4h, 6h, 12h,
+  1d and 1w. All start clear. The eleven names come from `ALL_TIMEFRAMES` in
+  `src/exchange/timeframes.py`, so the page holds no copy of its own.
 - Candles to lock, 1 to 10, at 2, inside the Higher-TF Lock Duration group.
 
-The page hands on only the boxes that are both ticked and available. Before it
-lets you leave, it asks the API load monitor whether that many phantoms would
-breach the safety threshold for the venue, and offers you Back to adjust or
-Continue anyway.
+**A bot runs one phantom.** Ticking a box clears every other box, and the heading
+states the rule: "Active Timeframe — pick one, above this bot's TA Timeframe:".
+A request ticking one timeframe and then another hands back one name.
+
+`src/gui/main_tabs/bot_wizard_surface.py` — `BotWizardModel.set_phantom_timeframe`
+
+```python
+for found in PHANTOM_TIMEFRAMES:
+    if found != timeframe and self.phantom_checks[found]:
+        self.phantom_checks[found] = False
+        self.calls.append([CHECK_SET_CHECKED, found, False])
+self.phantom_checks[timeframe] = True
+```
+
+**A timeframe that cannot run is refused.** A phantom must outrank the bot's own
+TA Timeframe. A box at or below it stays clear and its tooltip says why, and a box
+the venue does not carry behaves the same way. The Qt page and the Electron page
+share one rule, so on a one-hour bot a five-minute tick hands back no name and
+records the refusal `phantom_not_higher`.
+
+| step | module | symbol |
+| ---- | ------ | ------ |
+| state the rule | `src/gui/main_tabs/bot_wizard_surface.py` | `BotWizardModel.phantom_refusal` |
+| apply it on a tick | `src/gui/main_tabs/bot_wizard_surface.py` | `BotWizardModel.set_phantom_timeframe` |
+| apply it on the Qt page | `src/gui/bot_wizard.py` | `PhantomConfigPage._on_timeframe_toggled` |
+| hand on the choice | `src/gui/bot_wizard.py` | `PhantomConfigPage.get_config` |
+
+The page hands on only the box that is both ticked and available. Before it lets
+you leave, it asks the API load monitor whether that many phantoms would breach
+the safety threshold for the venue, and offers you Back to adjust or Continue
+anyway.
 
 `src/gui/bot_wizard.py` — `PhantomConfigPage.get_config`
 
@@ -2831,48 +3439,19 @@ def get_config(self):
     }
 ```
 
+`enable_phantoms` and `phantom_timeframes` reach the bot as arguments to
+`ScrummingBot.__init__` rather than through the bot config. `lock_candle_count` is
+no field on `BotConfig` and no argument of that constructor: the phantom
+coordinator holds an attribute of that name, and Bot Settings writes it there on a
+running bot. A stored timeframe the venue does not serve reaches the bot as an
+empty list, and the bot writes its own note naming the entry it dropped.
+
 **Design intention.** The engine behind this page is unfinished. The Indicator
 Voting Panel section of this manual records that phantom bots are still in
 active development and that related features do not yet work, so nothing is
 proposed for the page.
 
 In development.
-
-**The page keeps one timeframe.** A bot runs one phantom. The page now enforces
-that rule. Ticking a box clears every other box. The heading states the rule:
-"Active Timeframe — pick one, above this bot's TA Timeframe:".
-
-`src/gui/main_tabs/bot_wizard_surface.py` — `BotWizardModel.set_phantom_timeframe`
-
-```python
-for found in PHANTOM_TIMEFRAMES:
-    if found != timeframe and self.phantom_checks[found]:
-        self.phantom_checks[found] = False
-        self.calls.append([CHECK_SET_CHECKED, found, False])
-self.phantom_checks[timeframe] = True
-```
-
-Driven over the bridge, a request ticking 1d and then 4h on a 1h bot hands back
-one name. It handed back two names before.
-
-**The page refuses a timeframe that cannot run.** A phantom must outrank the
-bot's own TA Timeframe. A box at or below it stays clear and its tool tip says
-why. A box the venue does not serve behaves the same way. The Qt page and the
-Electron page share one rule.
-
-| step | module | symbol |
-| ---- | ------ | ------ |
-| state the rule | `src/gui/main_tabs/bot_wizard_surface.py` | `BotWizardModel.phantom_refusal` |
-| apply it on a tick | `src/gui/main_tabs/bot_wizard_surface.py` | `BotWizardModel.set_phantom_timeframe` |
-| apply it on the Qt page | `src/gui/bot_wizard.py` | `PhantomConfigPage._on_timeframe_toggled` |
-| hand on the choice | `src/gui/bot_wizard.py` | `PhantomConfigPage.get_config` |
-
-Driven over the bridge on a 1h bot, ticking 5m hands back no name and records
-the refusal `phantom_not_higher`. It handed back 5m before, with no refusal.
-
-**The eleven names come from one place.** `src/exchange/timeframes.py` declares
-`ALL_TIMEFRAMES`. The wizard page reads that tuple. It held its own copy of the
-same eleven names before.
 
 ### Extractor Bot (Partially Built; Untested)
 
@@ -2919,25 +3498,14 @@ else:
 - Exchange, the connected venues. Changing it re-scans that venue.
 - Pool Base Currency, a fixed list of five. It names the asset the pool
   accumulates.
-- A line counting the pairs available against that base.
-- Target alt pairs, a check list of every alt that trades against the base.
-  Leave every box clear and the bot picks its own pairs by volume at run time.
-- Select all and Clear act on the whole list.
-
-**Target alt pairs is removed.** The ruling of 13 September 2026 reads *"Not
-needed. List of compatible alt pairs is scanned and piped through the Trading
-IVP along with the chart being read. Same as Scrumming except multiple markets
-are being checked by one bot for entries and exit opportunities."* The tick
-boxes, the two buttons and the stored list are gone. The list stays on the page
-as a reading of which pairs trade against the pool base, and the bot picks the
-top-N of them by volume.
-
-```python
-ranked.sort(key=lambda x: x[1], reverse=True)
-top_n = int(self.config.extractor_scan_top_n)
-top_n = max(5, min(10, top_n))  # clamp to 5-10
-new_watch = [sym for sym, _ in ranked[:top_n]]
-```
+- A line counting the pairs available against that base, as a reading of which
+  pairs trade there. Its tick boxes, its Select all and Clear buttons and its
+  stored list are gone: the bot ranks those pairs by the last day's volume and
+  keeps the busiest, re-ranking on each refresh. His ruling of 13 September 2026
+  reads *"Not needed. List of compatible alt pairs is scanned and piped through
+  the Trading IVP along with the chart being read. Same as Scrumming except
+  multiple markets are being checked by one bot for entries and exit
+  opportunities."*
 
 The page hands on a single asterisk where a Scrumming Bot would hand on one
 target asset. Its own docstring calls that the pool sigil. An Extractor holds a
@@ -3117,30 +3685,10 @@ return float(candles * candle_seconds)
 
 Pool Reserve - To be re-evaluated.
 
-A percentage from 0.0 to 90.0, at 50.0 % to start. Bot creation passes it
-through as `extractor_pool_reserve_pct`, and one method reads it: the capacity
-check the artillery path runs before it fires a round. The reserve is that share
-of the pool, and the check refuses any round that would take the free pool below
-it.
-
-The share counts against the pool the operator allocated, not against what is
-left of it. Corrections that have already drained the pool therefore cannot hide
-inside the reserve arithmetic.
-
-`src/trading/extractor_bot.py` — `ExtractorBot._has_chunk_capacity`
-
-```python
-reserve = self._chunk_size_base * (
-    self.config.extractor_pool_reserve_pct / 100.0
-)
-return (self._chunk_free_base - artillery_base) >= reserve
-```
-
-**Pool Reserve is removed.** The ruling of 13 September 2026 reads *"Not needed.
-Conceptually its another name for Chunk Size."* The row is off the creation
-wizard and off the running-bot window, and the field is off the engine's
-declaration. The capacity check now asks only whether the free pool covers one
-round.
+**Removed.** His ruling of 13 September 2026 reads *"Not needed. Conceptually its
+another name for Chunk Size."* The row is off the creation wizard and off the
+running-bot window, and the field is off the engine's declaration. The capacity
+check asks only whether the free pool covers one round.
 
 ```python
 def _has_chunk_capacity(self, artillery_base: float) -> bool:
@@ -3174,48 +3722,11 @@ return base_back_after_fee > base_in_proportional
 
 Max compounding tier - Allows the Extractor to attempt a number of compounding Swing Trades with a given Extractor Tranche with subsequent re-entries based upon the Parent Scrumming Bot’s Minimum Opposing Trade Distance + Trade Fee + Bollinger Band extension settings.
 
-From 1 to 10, at 3 to start. The first tier always locks its gain back to the
-pool, and the counter is held by the position rather than by the bot, so it
-ends when the position does.
-
-`src/gui/bot_wizard.py` — the compounding tier row
-
-```python
-self._ext_max_tier = QSpinBox()
-self._ext_max_tier.setRange(1, 10)
-self._ext_max_tier.setValue(3)
-```
-
-A rolled tranche now prices its re-entry from the parent, which is what the
-sentence above asks for. The Extractor records the exit fill that rolled the
-tier, finds the parent Scrumming Bot holding the base currency, takes that
-parent's Minimum Opposing Trade Distance and Trading Fee as one distance, and
-hands that distance to the same placement the engine uses elsewhere, together
-with the pair's Bollinger band. A band edge further out than the distance
-replaces it, and that is the band extension the sentence names. A correction on
-a rolled tranche waits until the price reaches the floor.
-
-Driven on a parent at a 1.50 % interval and a 0.60 % fee, the distance read
-2.10 %, and a tranche rolled at a fill of 0.10 read a floor of 0.094 — the
-band's lower edge, further out than the 0.0979 the distance alone gives. At a
-price of 0.10 the re-entry was refused, and at 0.09 it went through. Tier one
-reads no floor, and neither does a bot with no parent.
-
-`src/trading/extractor_bot.py` — `ExtractorBot._reentry_floor_price`
-
-```python
-otd_pct = minimum_opposing_trade_distance_pct_from_config(parent.config)
-return placement_floor_price(
-    -1, float(pos.roll_exit_price_base_per_alt), otd_pct, band
-)
-```
-
-**Max compounding tier is removed.** The ruling of 13 September 2026 reads
-*"Not needed."* The row is off both screens, the tier counter is off the
-position record, and the re-entry pricing that read it is gone with it. The two
-pricing helpers it borrowed are shared with the Scrumming side and stay where
-they are, in `otd_math.py` and `stack_math.py`. A realised gain now always locks
-to the pool.
+**Removed.** His ruling of 13 September 2026 reads *"Not needed."* The row is off
+both screens, the tier counter is off the position record, and the re-entry pricing
+that read it is gone with it. The two pricing helpers it borrowed are shared with
+the Scrumming side and stay where they are, in `otd_math.py` and `stack_math.py`.
+A realised gain always locks to the pool.
 
 ```python
 # The gain locks to chunk_free_base; no roll re-enters the pair.
@@ -3225,82 +3736,17 @@ log_kind = "LOCK_TO_POOL"
 
 Max cost-basis multiple - To be re-evaluated.
 
-From 1.0x to 10.0x, at 2.0x to start. Setting it to 1.0 stops averaging down.
-Bot creation passes it through as `extractor_max_cost_basis_multiple`, and the
-correction path reads it twice. The first read is the ceiling: the bot may
-average a position down until its cost basis reaches this multiple of its
-opening round, then it holds and waits for the exit.
-
-The second read writes a log line, and it prints this multiple where a
-correction count belongs. The line reads corrections=1/2x cap, and nothing
-anywhere compares the correction counter against a cap. Issue #438 carries this.
-
-`src/trading/extractor_bot.py` — `ExtractorBot._maybe_fire_correction`, the
-ceiling
-
-```python
-max_basis = pos.artillery_size_base * float(
-    self.config.extractor_max_cost_basis_multiple
-)
-headroom = max_basis - pos.cost_basis_base
-if headroom <= 0:
-    return  # hard floor reached; wait for bullish exit
-```
-
-The log line now prints the cap the code actually enforces. It names the
-position's cost basis against the base-unit ceiling this multiple sets, and it
-prints the correction counter as a plain count with no denominator, because
-nothing caps that counter. Driven on a position with nine corrections already
-fired and headroom still open, the correction went through — which is what the
-old wording denied.
-
-`src/trading/extractor_bot.py` — `ExtractorBot._maybe_fire_correction`, the line
-
-```python
-f"cost_basis {pos.cost_basis_base:.8f} of "
-f"{max_basis:.8f} base allowed at "
-f"{float(self.config.extractor_max_cost_basis_multiple):.2f}x, "
-f"corrections={pos.corrections_fired} (no cap)."
-```
-
-**Max cost-basis multiple is removed.** The ruling of 13 September 2026 reads
-*"Not needed. Trade action is not based on assumed price limits. Its based on
-market structure."* It was the ceiling on averaging down, and averaging down
-went with it, so the row, the ceiling and the log line that quoted it are all
-gone.
-
-In development.
+**Removed.** His ruling of 13 September 2026 reads *"Not needed. Trade action is
+not based on assumed price limits. Its based on market structure."* It was the
+ceiling on averaging down, and averaging down went with it, so the row, the ceiling
+and the log line that quoted it are all gone.
 
 Direction - To be re-evaluated.
 
-Two entries: Normal, which runs base to alt and buys first, and Inverted, which
-runs standing alt to base and sells first.
-
-`src/gui/bot_wizard.py` — `TradingParamsPage.get_config`, the settings this
-group emits, in the order of the rows above
-
-```python
-"extractor_chunk_size_usd": self._ext_chunk_size_usd.value(),
-"extractor_artillery_size_usd": self._ext_artillery_size_usd.value(),
-"extractor_scan_top_n": int(self._ext_scan_top_n.value()),
-"extractor_scan_refresh_candles": int(
-    self._ext_scan_refresh.value()
-),
-"extractor_pool_reserve_pct": self._ext_pool_reserve.value(),
-"extractor_exit_pct": self._ext_exit_pct.value(),
-"extractor_max_compounding_tier": int(
-    self._ext_max_tier.value()
-),
-"extractor_max_cost_basis_multiple": self._ext_max_cost_basis.value(),
-"extractor_direction": self._ext_direction.currentData(),
-```
-
-![The Extractor group, remaining five rows.](p26-i0.png)
-
-**Direction is removed.** The ruling of 13 September 2026 puts it among the
-settings that are *"hallucinated nonsense that does not comply with the spec."*
-The Inverted mode went with the row: the pair filter keeps markets quoted in the
-base, entry fires on a bearish reading and buys, and the exit sells.
+**Removed.** His ruling of 13 September 2026 puts it among the settings that are
+*"hallucinated nonsense that does not comply with the spec."* The Inverted mode went
+with the row: the pair filter keeps markets quoted in the base, and the entry side
+is always a buy.
 
 ```python
 def _entry_order_side(self):
@@ -3310,75 +3756,12 @@ def _entry_order_side(self):
     return OrderSide.BUY
 ```
 
+![The Extractor group, remaining five rows.](p26-i0.png)
+
 Standing alt units (inverted) - To be re-evaluated.
 
-Eight decimal places, at 0 to start. The Inverted direction reads it; the
-Normal direction ignores it. The field takes up to a billion units. The wizard
-writes it as `inverted_extractor_standing_alt_units`.
-
-Bot creation passes neither this number nor the Direction beside it, so a new
-Extractor runs Normal with a standing position of zero whatever you enter.
-The one method that reads the number, `set_initial_chunk_rate`, has no caller in
-the product source either. Only tests call it. Issue #437 carries the method,
-and issue #336 the settings creation drops.
-
-Creation carries both names today. Driven on a wizard dictionary holding all
-fifteen Extractor names, the creation path carried fifteen of fifteen, and a
-restored bot read Inverted back — taking its entry side as a sell and its exit
-as a buy. The reader of the standing number is still uncalled, so the number
-itself reaches nothing.
-
-**Three sentences above are overtaken.** None is edited and none is removed. Each
-is quoted here with the reading that replaces it.
-
-> The one method that reads the number, `set_initial_chunk_rate`, has no caller in
-> the product source either. Only tests call it.
-
-> The reader of the standing number is still uncalled, so the number
-> itself reaches nothing.
-
-The reader has a caller. The Extractor's own rate reader calls it once, on the
-first tick of a bot with no position open, and the tick awaits that reader on
-every due watch-list refresh.
-
-`src/trading/extractor_bot.py` — `ExtractorBot._acquire_usd_per_base_rate`, the
-first-rate call
-
-```python
-if not self._recent_rates and self._tick_counter <= 1 and not self._positions:
-    self.set_initial_chunk_rate(
-        rate, total_holdings=await self._read_base_holdings(base)
-    )
-```
-
-> Creation carries both names today.
-
-Neither name is in the product source. Both were removed with the settings that
-carried them. Searched over the git index across every tracked Python file, each
-returns no occurrence, against sixteen for a refresh key that is still read.
-
-```
-inverted_extractor_standing_alt_units    0 occurrences
-extractor_direction                      0 occurrences
-extractor_scan_refresh_candles          16 occurrences
-```
-
-`src/trading/extractor_bot.py` — `ExtractorBot.set_initial_chunk_rate`, the
-inverted branch
-
-```python
-_standing = float(
-    getattr(self.config, "inverted_extractor_standing_alt_units", 0) or 0
-)
-if self._is_inverted and _standing > 0:
-    self._chunk_size_base = _standing
-    self._chunk_size_usd = _standing * usd_per_base
-```
-
-**Standing alt units is removed.** The ruling of 13 September 2026 puts it among
-the settings that are *"hallucinated nonsense that does not comply with the
-spec."* It served the Inverted direction above, which is gone, so the pool now
-rebases from the dollar figure on every Extractor.
+**Removed.** His same ruling covers it. It served the Inverted direction above, so
+the pool rebases from the dollar figure on every Extractor.
 
 ```python
 self._chunk_size_base = self._chunk_size_usd / usd_per_base
@@ -3387,34 +3770,9 @@ self._chunk_free_base = self._chunk_size_base
 
 Correction skip candles - To be re-evaluated.
 
-From 0 to 100 candles, at 4 to start. It throttles averaging down: the Extractor
-will not correct the same position again until this many have passed. One method
-reads it, the correction path, and it counts ticks rather than candles. The
-Extractor ticks every five seconds, so 4 is twenty seconds on any timeframe.
-
-Bot creation does not pass it, so a new bot takes the declared default of 4.
-Issue #438 carries the counting, and issue #336 the drop.
-
-Creation passes it today. Driven with a typed 9, a restored bot read 9 rather
-than the default of 4. What it counts is unchanged: the throttle compares
-ticks.
-
-`src/trading/extractor_bot.py` — `ExtractorBot._maybe_fire_correction`, the
-throttle
-
-```python
-last_tick = self._last_correction_tick.get(pos.pair, -(10**9))
-if self._tick_counter - last_tick < int(
-    self.config.extractor_correction_skip_candles
-):
-    return  # skip-candles throttle
-```
-
-**Correction skip candles is removed.** The ruling of 13 September 2026 puts it
-among the settings that are *"hallucinated nonsense that does not comply with
-the spec."* It throttled averaging down, and averaging down went with it, so the
-throttle and the method that lengthened it into seconds are both gone. The
-watch-list refresh still counts candles through the same helper.
+**Removed.** His same ruling covers it. It throttled averaging down, and averaging
+down went with it, so the throttle and the method that lengthened it into seconds
+are both gone. The watch-list refresh still counts candles through the same helper.
 
 ```python
 def _refresh_interval_seconds(self) -> float:
@@ -3424,33 +3782,9 @@ def _refresh_interval_seconds(self) -> float:
 
 Drawdown threshold - To be re-evaluated.
 
-A percentage from 0.00 to 50.00, at 3.00 % to start. One method reads it, and
-that method decides when a position counts as down: the current dollar value
-against the dollar value snapshotted at firing, which never changes afterwards.
-Crossing the threshold puts a position in front of the correction path.
-
-The wizard writes it as `extractor_drawdown_threshold_pct`, and bot creation
-does not pass it, so a new bot takes the declared default of 3.00. Issue #336
-carries this.
-
-Creation passes it today. Driven with a typed 11.00, a restored bot read 11.00
-rather than the default of 3.00.
-
-`src/trading/extractor_bot.py` — `ExtractorBot._is_in_drawdown`
-
-```python
-current_usd = self._position_value_usd(pos, alt_price_in_base)
-threshold = pos.artillery_size_usd_at_entry * (
-    1.0 - self.config.extractor_drawdown_threshold_pct / 100.0
-)
-return current_usd < threshold
-```
-
-**Drawdown threshold is removed.** The ruling of 13 September 2026 puts it among
-the settings that are *"hallucinated nonsense that does not comply with the
-spec."* The operator no longer sets when a position counts as down; a position
-is down while its dollar value sits below the value snapshotted at firing. The
-pool light still turns red on that reading.
+**Removed.** His same ruling covers it. The operator no longer sets when a position
+counts as down; a position is down while its dollar value sits below the value
+snapshotted at firing. The pool light still turns red on that reading.
 
 ```python
 return (
@@ -3461,17 +3795,9 @@ return (
 
 Trend Strength Threshold - To be re-evaluated.
 
-From 0.000 to 1.000, at 0.650 to start.
-
-Creation passes it, and it reaches the bot's technical-analysis signal provider
-once, at construction. Driven with a typed 0.875, the provider read 0.875. The
-provider is built one time per bot, so a later edit to the stored figure does
-not reach it.
-
-**Trend Strength Threshold is removed.** The ruling of 13 September 2026 puts it
-among the settings that are *"hallucinated nonsense that does not comply with
-the spec."* The signal provider carries the same threshold as its own published
-default, so the bot is built without the argument and the reading does not move.
+**Removed.** His same ruling covers it. The signal provider carries the same
+threshold as its own published default, so the bot is built without the argument
+and the reading does not move.
 
 ```python
 self._ta_provider = TASignalProvider(
@@ -3480,49 +3806,42 @@ self._ta_provider = TASignalProvider(
 )
 ```
 
-A sixth control sits in this part of the group and no entry above names it.
-Hedge budget (USD) starts at $0.00, which switches it off. Above zero, the bot
-converts it into a base-currency reserve held out of artillery rotation. This
-manual states that the control exists and claims nothing about what it is for.
+Hedge budget (USD) - no entry above names this row.
 
-The budget is read at construction, and the line that turns it into base-currency
-units sits in a method with no caller, so the reserve it names stays at zero.
-Driven with $40.00, the restored bot read a hedge budget of 40.00 and a free
-hedge reserve of 0.00.
-
-**Hedge budget is removed.** The ruling of 13 September 2026 puts it among the
-settings that are *"hallucinated nonsense that does not comply with the spec."*
-It funded averaging down, which went with it, so the budget, the reserve it
-converted into and both of their saved keys are gone. The capital claim now
-reserves the pool alone.
+**Removed.** His same ruling covers it. It funded averaging down, which went with
+it, so the budget, the reserve it converted into and both of their saved keys are
+gone. The capital claim reserves the pool alone.
 
 ```python
 total_reserved_base = self._chunk_size_base
 ```
 
-`src/gui/bot_wizard.py` — `TradingParamsPage.get_config`, the remaining
-Extractor settings
+`src/gui/bot_wizard.py` — `TradingParamsPage.get_config`, the five Extractor
+settings the wizard emits
 
 ```python
-"inverted_extractor_standing_alt_units": self._ext_standing_alt_units.value(),
-"extractor_correction_skip_candles": int(
-    self._ext_correction_skip.value()
+"extractor_chunk_size_usd": self._ext_chunk_size_usd.value(),
+"extractor_artillery_size_usd": self._ext_artillery_size_usd.value(),
+"extractor_scan_top_n": int(self._ext_scan_top_n.value()),
+"extractor_scan_refresh_candles": int(
+    self._ext_scan_refresh.value()
 ),
-"extractor_drawdown_threshold_pct": self._ext_drawdown_threshold.value(),
-"extractor_hedge_budget_usd": self._ext_hedge_budget.value(),
-"extractor_trend_strength_threshold": self._ext_trend_strength.value(),
+"extractor_exit_pct": self._ext_exit_pct.value(),
 ```
 
-#### The fifteen Extractor-only settings the engine declares
+The same method writes `visibility` and `aggressive_trading` before it branches on
+the kind of bot, so an Extractor carries those two as well.
+
+#### The five Extractor-only settings the engine declares
 
 **Functional.** One declaration names every setting that belongs to an Extractor
-and to no Scrumming Bot. A Scrumming config carrying any of the fifteen is
-refused when it is built, and so is an Extractor config carrying a Scrumming-only
-name. Creation filters the wizard's dictionary against that one declaration, so a
-name added to it reaches a new bot without a second list being edited.
+and to no Scrumming Bot. A Scrumming config carrying any of the five is refused
+when it is built, and so is an Extractor config carrying a Scrumming-only name.
+Creation filters the wizard's dictionary against that one declaration, and the
+restore path calls the same helper, so a name added to it reaches a new bot and a
+restored bot without a second list being edited.
 
-`src/trading/container/config.py` — `bot_config_kwargs`, how the fifteen are
-carried
+`src/trading/container/config.py` — `bot_config_kwargs`, how the five are carried
 
 ```python
 carried = {f.name for f in fields(BotConfig)} - foreign - {"mode"}
@@ -3533,81 +3852,24 @@ kwargs = {
 }
 ```
 
-All fifteen reach a new bot, and all fifteen survive a restore. Driven on a
-stored record holding every one of them, creation carried fifteen of fifteen and
-a restored bot read every value back unchanged. The same record with all fifteen
-dropped still restores the bot, on the declared defaults, and the behaviour moves
-with them: the entry side flips, and the watch list switches from the typed pair
-list to the ranked top-N.
+| setting | what its read decides |
+|---|---|
+| Chunk size (USD) | the pool every round draws from |
+| Artillery size (USD) | the size of one round |
+| Watch list top-N | how many ranked pairs are kept |
+| Watch list refresh | when the list is re-ranked |
+| Exit % | the share an exit sells |
 
-| setting | engine read | what the read decides |
-|---|---|---|
-| Chunk size (USD) | `extractor_bot.py:156` | the pool every round draws from |
-| Artillery size (USD) | `extractor_bot.py:1265` | the size of one round |
-| Watch list top-N | `extractor_bot.py:581` | how many ranked pairs are kept |
-| Watch list refresh | `extractor_bot.py:597` | when the list is re-ranked |
-| Pool Reserve | `extractor_bot.py:434` | the share a round may not take |
-| Exit % | `extractor_bot.py:799` | the share an exit sells |
-| Max compounding tier | `extractor_bot.py:1144` | roll to the next tier, or lock to the pool |
-| Max cost-basis multiple | `extractor_bot.py:858` | the averaging-down ceiling |
-| Correction skip candles | `extractor_bot.py:853` | the averaging-down throttle |
-| Drawdown threshold | `extractor_bot.py:786` | when a position counts as down |
-| Hedge budget (USD) | `extractor_bot.py:170` | the reserve corrections draw from first |
-| Trend Strength Threshold | `extractor_bot.py:193` | the threshold the signal provider is built with |
-| Target alt pairs | `extractor_bot.py:478` | the typed pair list against the ranked scan |
-| Direction | `extractor_bot.py:620` | whether entry buys or sells |
-| Standing alt units (inverted) | `extractor_bot.py:228` | nothing; its method has no caller |
+One of the five is read once, at construction, and never again: the pool size. The
+other four are read off the config as the bot ticks, so an edit to a running bot
+reaches them.
 
-**The last row's reason is overtaken.** The row stays as it is written. Its
-verdict of nothing still holds; the reason beside it does not.
-
-> | Standing alt units (inverted) | `extractor_bot.py:228` | nothing; its method has no caller |
-
-The method has a caller. The setting reaches nothing because the name the row
-stands for is in no Python file, not because the reader is uncalled.
-
-```
-inverted_extractor_standing_alt_units    0 occurrences in tracked Python
-set_initial_chunk_rate                   1 call site in tracked Python
-```
-
-Three of the fifteen are read once, at construction, and never again: the pool
-size, the hedge budget and the trend strength threshold. The other twelve are
-read off the config as the bot ticks, so an edit to a running bot reaches them.
-The running-bot screen draws eight of the fifteen, so seven can only be set
-before the bot exists.
-
-**Three places the path from a control to a trade stops.** The dollar-to-base
-rate stays at one, the hedge reserve stays at zero, and the bot writes no capital
-claim of its own.
-
-`src/trading/extractor_bot.py` — `ExtractorBot.__init__`, the rate
-
-```python
-self._usd_per_base_rate: float = 1.0  # dollars per base unit; set externally
-self._chunk_size_base: float = self._chunk_size_usd  # rebased when rate is set
-```
-
-All three sit behind one method. `set_initial_chunk_rate` is the only code that
-rebases the pool into base-currency units, converts the hedge budget, and claims
-the funds with the capital reservation registry, and it has no caller in the
-product source. Registration reads a rate of its own and writes a registry claim
-from it, but never hands that rate to the bot. Driven with a $250.00 pool, a
-$7.50 artillery size and a $40.00 hedge budget, the restored bot read a pool of
-250 base units, a round of 7.5 base units, a hedge reserve of zero, and no
-reservation token.
-
-All three arrive now. The Extractor reads its own base currency's dollar price
-on every watch-list refresh, which is the moment it already goes to the venue.
-The first reading rebases the pool, converts the hedge budget and writes the
-capital claim; every reading after that goes through the spike-protected update,
-so the rate a round is sized at stays current.
-
-Driven again on the same figures against a base priced at $4,000.00, the same
-restored bot read a pool of 0.0625 base units, a round of 0.001875, a hedge
-reserve of 0.01, and a reservation token. The rebase runs once, on a bot's first
-tick with no position open, so it cannot be charged twice and cannot throw away
-base units a running pool has already earned.
+**The dollar-to-base rate.** The Extractor reads its own base currency's dollar
+price on every watch-list refresh, which is the moment it already goes to the
+venue. The first reading rebases the pool into base-currency units and writes the
+capital claim; every reading after that goes through the spike-protected update, so
+the rate a round is sized at stays current. A dollar-pegged base takes a rate of one
+and reads no price at all.
 
 `src/trading/extractor_bot.py` — `ExtractorBot.tick`, the refresh step
 
@@ -3617,18 +3879,34 @@ if self._watch_list_due_for_refresh():
     await self._refresh_watch_list()
 ```
 
-One case is still open, and no record of it exists. A bot restored from a state
-file saved before this change keeps the base-unit figures that file holds,
-because a restore carries them and the rebase only runs on a first tick. The
-rate itself still becomes real, so every new round is sized correctly; the pool
-total is the part that would stay stale.
+The rebase runs once, on a bot's first tick with no position open, so it cannot be
+charged twice and cannot throw away base units a running pool has already earned.
+One case is open: a bot restored from a state file saved before the rebase existed
+keeps the base-unit figures that file holds, because a restore carries them. Every
+new round is still sized at the real rate; the pool total is the part that stays
+stale.
 
-#### The throttle between two averaging-down rounds
+#### What the watch list holds
 
-The figure on the screen says candles, and the throttle counts candles now. One
-method lengths a candle of the bot's own timeframe, and both candle-counted
-settings read it, so the watch-list refresh and this throttle cannot disagree
-about what a candle is.
+**Functional.** The bot ranks every alt that trades against its base by the last
+day's volume and keeps the busiest, re-ranking on each refresh. The count is the
+Watch list top-N figure, clamped to between five and ten. A pair holding an open
+position stays on the list, and a pair the venue has dropped is removed with a log
+line that names it.
+
+`src/trading/extractor_bot.py` — `ExtractorBot._refresh_watch_list`, the ranking
+
+```python
+ranked.sort(key=lambda x: x[1], reverse=True)
+top_n = int(self.config.extractor_scan_top_n)
+top_n = max(5, min(10, top_n))  # clamp to 5-10
+new_watch = [sym for sym, _ in ranked[:top_n]]
+```
+
+A refresh is due after the Watch list refresh figure's worth of candles of the
+bot's own timeframe, so nine candles is 2,700 seconds on a five-minute bot, 32,400
+on an hourly one, 129,600 on a four-hour one and 777,600 on a daily one. A timeframe
+the engine's table does not carry falls back to the hourly length.
 
 `src/trading/extractor_bot.py` — `ExtractorBot._candle_seconds`
 
@@ -3640,163 +3918,6 @@ return float(
 )
 ```
 
-The throttle reads the stamp the position already carries from its last
-correction, and from its entry before that, so the first correction after an
-entry waits the same span as every correction after it.
-
-`src/trading/extractor_bot.py` — `ExtractorBot._maybe_fire_correction`, the
-throttle
-
-```python
-skip_seconds = self._correction_skip_seconds()
-if skip_seconds > 0 and (time.time() - pos.last_correction_ts) < skip_seconds:
-    return  # skip-candles throttle
-```
-
-Driven at nine candles on an hourly bot, a correction 32,399 seconds old was
-refused and one 32,401 seconds old was admitted, so the boundary sits at nine
-candles exactly. The same nine candles read 2,700 seconds on a five-minute bot,
-8,100 on a fifteen-minute, 129,600 on a four-hour and 777,600 on a daily. A typed
-zero switches the throttle off. A timeframe the engine's table does not carry
-falls back to the hourly length.
-
-Two further things follow from reading the stamp. It is saved with the position
-and restored with it, so a restart no longer forgets how long a pair has been
-waiting. And a record written before that stamp existed restores it as zero, which
-reads as long ago and admits a correction at once — the same answer the tick
-counter gave for a pair it had never seen.
-
-**This whole throttle is overtaken.** Every sentence above stays as it is
-written. The section describes a throttle between two averaging-down rounds, and
-averaging down went with the settings the ruling of 13 September 2026 removed.
-
-> The throttle reads the stamp the position already carries from its last
-> correction, and from its entry before that, so the first correction after an
-> entry waits the same span as every correction after it.
-
-No Python file defines the correction method the citation above names, and no
-Python file defines the helper inside it. Searched over the git index across
-every tracked Python file:
-
-```
-_maybe_fire_correction       0 occurrences
-_correction_skip_seconds     0 occurrences
-_last_correction_tick        0 occurrences
-_candle_seconds              3 occurrences
-_refresh_interval_seconds    5 occurrences
-```
-
-The last two rows are the control: the same search finds the candle-length helper
-and the refresh interval that still read it, so a zero above is a reading of the
-tree and not of the search. The watch-list refresh is the one candle count that
-survives.
-
-#### What the pool picker does when it is empty, and when it is not
-
-Both settings of the picker run today. Leave every box clear and the bot ranks
-every alt that trades against its base by the last day's volume and keeps the
-busiest, re-ranking on each refresh. Tick boxes and the bot hunts those pairs and
-no others, for as long as they stay listed; a pair the venue has dropped is
-removed with a log line that names it.
-
-`src/trading/extractor_bot.py` — `ExtractorBot._refresh_watch_list`, the branch
-
-```python
-manual_targets = list(getattr(self.config, "extractor_alt_targets", []) or [])
-
-if manual_targets:
-```
-
-Driven on five scannable markets with three pairs ticked, one of the three not
-listed, the watch list read the two that were listed. Cleared, the same five
-markets ranked to five by volume. A pair holding an open position stays on the
-list either way.
-
-#### What the hedge budget does at zero, and above it
-
-At zero the reserve is off and every averaging-down round spends the pool. Above
-zero the bot converts the dollars into base units at the price it reads for its
-own base currency, holds them apart from the pool, and spends them on corrections
-before the pool is touched. The same amount is added to what this bot claims
-against the venue, so a sibling bot on the same asset cannot spend it.
-
-`src/trading/extractor_bot.py` — `ExtractorBot.set_initial_chunk_rate`, the
-conversion
-
-```python
-if self._hedge_budget_usd > 0:
-    self._hedge_free_base = self._hedge_budget_usd / usd_per_base
-```
-
-Driven with a forty dollar budget against a base priced at sixteen dollars, the
-reserve read 2.5 base units, and the claim written against the venue covered the
-pool and the reserve together.
-
-**The hedge conversion above is overtaken.** Every sentence stays as it is
-written. The entry earlier on this page already records that the hedge budget is
-removed, and the two fields the block above cites went with it.
-
-> At zero the reserve is off and every averaging-down round spends the pool.
-
-No Python file defines either field. Searched over the git index across every
-tracked Python file, against the pool field that still carries the claim:
-
-```
-_hedge_budget_usd     0 occurrences
-_hedge_free_base      0 occurrences
-_chunk_size_base     22 occurrences
-```
-
-The claim the bot writes against the venue now covers the pool alone.
-
-#### The standing alt quantity reaches the pool now
-
-The method that reads it runs. An Extractor reads its base currency's dollar
-price on its first refresh and hands that first reading to the rebase, which is
-where the standing quantity is read. For an Inverted Extractor holding a standing
-position, the quantity becomes the pool and the dollar figure becomes a reading of
-it rather than an input.
-
-`src/trading/extractor_bot.py` — `ExtractorBot.set_initial_chunk_rate`, the
-inverted branch
-
-```python
-if self._is_inverted and _standing > 0:
-    self._chunk_size_base = _standing
-    self._chunk_size_usd = _standing * usd_per_base
-```
-
-Driven on a record holding 31.25 standing units against a base priced at sixteen
-dollars, the restored bot read a pool of 31.25 base units and five hundred
-dollars, where the same bot before the rate held four hundred of each. The
-quantity also sizes the claim the bot writes against the venue.
-
-**The inverted branch above is overtaken.** Every sentence stays as it is
-written. Its opening sentence is still true, and the branch it credits is not.
-
-> The method that reads it runs.
-
-That much holds. The rebase runs on the first tick of a bot with no position
-open, which is the call this page records two sections above.
-
-> For an Inverted Extractor holding a standing
-> position, the quantity becomes the pool and the dollar figure becomes a reading of
-> it rather than an input.
-
-No Python file defines the direction field the branch tests, and no Python file
-defines the standing-quantity name it reads. Searched over the git index across
-every tracked Python file, against the two names the rebase still uses:
-
-```
-_is_inverted                             0 occurrences
-inverted_extractor_standing_alt_units    0 occurrences
-_chunk_size_usd                         76 occurrences
-_usd_per_base_rate                      37 occurrences
-```
-
-The pool now rebases from the dollar figure on every Extractor, and the dollar
-figure is the input rather than a reading.
-
 #### Who may close an Extractor Tranche
 
 The operator's own description of the two sides:
@@ -3805,13 +3926,13 @@ The operator's own description of the two sides:
 > by either the Extractor Bot (Sibling) or its corresponding Scrumming Bot
 > (Parent). All Tranches will persist under a bot's Details > Tranches Tab."
 
-One of the two sides runs. The Extractor closes its own tranche on a bullish
-exit, at the share the exit setting names, and that is the Sibling side. The
-Parent side names a force-sell by the base-currency Scrumming Bot at a percentage
-of growth, and nothing in the engine carries that percentage. It is not a field on
-a bot's configuration, it is not one of the fifteen Extractor settings, and every
-mention of a force-sell in the source sits inside a label or a tooltip. What the
-toggle does is store a word.
+One of the two sides runs. The Extractor closes its own tranche on a bullish exit,
+at the share the exit setting names, and that is the Sibling side. The Parent side
+names a force-sell by the base-currency Scrumming Bot at a percentage of growth,
+and nothing in the engine carries that percentage. It is not a field on a bot's
+configuration, it is not one of the five Extractor settings, and every mention of a
+force-sell in the source sits inside a label or a tooltip. What the toggle does is
+store a word, and its own tooltip says the Parent side is not acted on.
 
 `src/trading/extractor_bot.py` — `ExtractorBot.set_tranche_arbiter`, the write
 
@@ -3819,14 +3940,8 @@ toggle does is store a word.
 position.arbiter = normalize_arbiter(arbiter)
 ```
 
-Driven end to end on a restored Extractor under a restored parent: the tranche
-row read Sibling, a set read Parent, two presses returned Sibling then Parent, the
-parent's own listing reported the same Parent, and an import of the saved record
-read Parent back. No order was placed and no balance moved. The toggle's own
-tooltip already says the Parent side is not acted on, and it is accurate.
-
-A built Parent side would read a growth percentage the engine does not declare.
-The shape it would take, as a proposal rather than a build:
+A built Parent side would read a growth percentage the engine does not declare. The
+shape it would take, as a proposal rather than a build:
 
 PROPOSED
 
@@ -3842,25 +3957,11 @@ def force_sell_extractor_tranche(self, tranche_id: str, growth_pct: float) -> bo
     return growth >= growth_pct / 100.0
 ```
 
-Where that percentage comes from is the operator's decision: it is a control
-nobody has named, and the toggle waits on it.
+Where that percentage comes from is the operator's decision: it is a control nobody
+has named, and the toggle waits on it.
 
-#### What the re-measured settings reach today
-
-| setting | engine read | what the read decides |
-|---|---|---|
-| Target alt pairs | `extractor_bot.py:493` | the typed pair list, or the ranked scan when it is empty |
-| Direction | `extractor_bot.py:730` | whether the entry side buys or sells, and which half of a pair the filter keeps |
-| Standing alt units (inverted) | `extractor_bot.py:242` | the pool of an Inverted Extractor, and the size of its claim |
-| Correction skip candles | `extractor_bot.py:1030` | the span between two averaging-down rounds, in candles of the bot's timeframe |
-| Drawdown threshold | `extractor_bot.py:894` | when a position counts as down |
-| Hedge budget (USD) | `extractor_bot.py:260` | the reserve corrections spend before the pool, and part of the claim |
-| Trend Strength Threshold | `extractor_bot.py:211` | the threshold the signal provider is built with, once |
-| Arbiter, on a tranche | `extractor_bot.py:125` | a word on the tranche; no decision reads it |
-
-Two of the eight can only be set before a bot exists and have no running-bot
-control: the trend strength threshold, because its provider is built one time, and
-the direction, because no screen offers it afterwards.
+No bot on the saved fleet is an Extractor. All thirty-eight records carry the
+Scrumming mode, and all thirty-eight live claims carry the Scrumming kind.
 
 ### Additional Main Window > Trading Tab Features
 
@@ -3879,33 +3980,7 @@ in magenta behind a bolt character. A wire stack line draws in the pending
 colour behind the same character. The pane holds 5,000 lines and drops the
 oldest past that.
 
-##### How a line takes its shape
-
-One line is a timestamp, then an optional bolt character, then the message:
-
-```
-[hh:mm:ss] <bullet><message>
-```
-
-The words the message opens with choose the shape. `TRADE NOTIFICATION:` takes
-the trade shape, and the stage word inside it chooses the colour: green for
-`FILLED`, amber for `PLACED`, the primary colour for `SENT`, and red for a
-message naming no stage, which is what a cancellation gets. `WIRE FLOW` and
-`WIRE INCOME` take magenta, `WIRE STACK` the pending colour. Every other
-message takes its level colour.
-
-A line a bot wrote opens with that bot's own tag, `[TICKER/last4]`, added so
-you can tell which bot spoke. The tag sits before the message and is not part
-of it, so the shape is read from the text after the tag. A bot's fill
-therefore draws in the trade shape, the same as those words written straight
-to the pane, and still names its bot.
-
 ##### The parts one line draws
-
-The sentence opening this section is overtaken. Quoted whole:
-
-> One line is a timestamp, then an optional bolt character, then the message:
-> `[hh:mm:ss] <bullet><message>`
 
 A line is a timestamp, then the bot's own tag, then the glyph, then the event,
 the side, the market and the numbers:
@@ -3919,31 +3994,39 @@ the side, the market and the numbers:
 [16:46:30] [A15/c7a2] RISK GATE [SCRUM] blocked by hysteresis_scrum. Price $0.00000317
 ```
 
-Each part, and what already sets it:
+Each part, and what sets it:
 
 | part | what sets it |
 |---|---|
-| the timestamp | taken when the message arrives, drawn in a muted colour |
+| the timestamp | taken when the message arrives, drawn in a muted colour, in a column of its own so a wrapped message continues where the message starts |
 | the bot's tag | the window adds it so you can tell which bot spoke |
 | the glyph | a scrum sells, so it draws the chart's own sell glyph; a fold buys, so it draws the chart's buy glyph |
-| the bolt | a wire line keeps the bolt it always had, now behind the tag rather than in front of it |
+| the bolt | a wire line carries the bolt, behind the tag |
 | the event | the stage of the trade, in capitals, which is the same word the line's colour comes from |
-| the side | the trade's own role, in square brackets, the way a gate line already writes its side |
+| the side | the trade's own role, in square brackets, the way a gate line writes its side |
 | the market and the numbers | the pair traded and the writer's own figures, to the places they were always drawn |
+
+A role the chart sets no side for draws no glyph, which is what a wire-stack
+acquisition and a self-destruct sale get. Nothing is drawn for where a trade leaves
+the position, because no trade message carries a holdings figure. That figure sits
+on the plain line a fold writes beside its trade line.
 
 ##### The field that names a line's shape
 
-The sentence naming what chooses the shape is overtaken. Quoted whole:
+The writer names the kind of line it is writing, and the pane draws the shape that
+kind carries. A trade writer names a trade, a wire flow or wire income writer names
+a wire flow line, a wire stack writer names a wire stack line, and every other
+writer names nothing and its line draws in its level colour, through `level_color`.
+The kind decides and the words do not, so a line that names a trade later in its text
+still draws in the trade shape. The stage word inside a trade message chooses that
+line's colour — green for `FILLED`, amber for `PLACED`, the primary colour for `SENT`,
+and red for a message naming no stage, which is what a cancellation gets — and
+`trade_text` cuts the drawn text and the role out of it. A `WIRE FLOW` or
+`WIRE INCOME` line takes magenta and a `WIRE STACK` line takes the pending colour.
+The bot's tag opens a line a bot wrote.
 
-> The words the message opens with choose the shape.
-
-The writer names the kind of line it is writing, and the pane draws the shape
-that kind carries. A trade writer names a trade, a wire flow or wire income
-writer names a wire flow line, a wire stack writer names a wire stack line, and
-every other writer names nothing and its line draws in its level colour.
-
-Sixteen writers name a kind today, all of them in the bot brain, and the count
-is the whole set: one trade writer and fifteen wire writers.
+Sixteen writers name a kind, all of them in the bot brain: one trade writer and
+fifteen wire writers.
 
 ```python
 LINE_KIND_TRADE = "trade"
@@ -3953,33 +4036,52 @@ LINE_KIND_WIRE_STACK = "wire_stack"
 
 `src/core/event_bus.py` — the three kinds a writer names on its own bot line
 
-The stage word inside a trade message still chooses that line's colour, and the
-bot's tag still opens a line a bot wrote. What changed is that a trade line no
-longer has to open with the words `TRADE NOTIFICATION:` to draw in the trade
-shape. A line that names a trade later in its text draws in the trade shape too,
-because the kind decides and the words do not.
+One function decides the shape for both builds, so the Qt pane and the React page
+cannot drift apart. It takes the kind beside the message and the level, and it
+takes the gate lights where a line carries them.
 
 ```python
 def line_style(
-    message: str, level: Any = DEFAULT_LOG_LEVEL, kind: Optional[str] = None
+    message: str,
+    level: Any = DEFAULT_LOG_LEVEL,
+    kind: Optional[str] = None,
+    lights: Optional[list] = None,
 ) -> dict:
-    tag = bot_tag(message)
-    shaped = shape_source(message)
-    if kind == KIND_TRADE:
-        drawn, role = trade_text(shaped)
 ```
 
 `src/gui/main_tabs/status_log_surface.py` — `line_style`
 
-##### What the pane says about a writer that names no kind
+The glyph is read from the declaration the Asset Charts readout draws its fills
+with, so the two screens cannot disagree about which way a trade went:
 
-A line whose writer names no kind still draws. It draws at the plain size in its
-level colour, exactly as a plain line does, and nothing is lost from the pane.
+```python
+ROLE_GLYPHS = {
+    SIDE_ROLES[SELL_SIDE]: READOUT_SELL_GLYPH,
+    SIDE_ROLES[BUY_SIDE]: READOUT_BUY_GLYPH,
+}
+```
 
-The pane reports it when that line's own words ask for a shape. The report
+`src/gui/main_tabs/trade_charts_tab_surface.py` — `SIDE_ROLES`
+
+The Simulator and the Paper Trader draw their own Activity Log through the same
+function, so a change to the shape reaches all three panes at once.
+
+`src/gui/simulator/sim_status_log.py` — `SimStatusLog._render_safe`
+
+```python
+def _render_safe(self, ts: str, message: str, level: str = "info") -> None:
+    self.append(surface.line_html(ts, surface.line_style(message, level)))
+    self.verticalScrollBar().setValue(self.verticalScrollBar().maximum())
+```
+
+##### What the pane reports about a line whose shape is in doubt
+
+A line whose writer names no kind still draws, at the plain size in its level
+colour, and nothing is lost from the pane. The pane reports it when that line's own
+words ask for a shape, so a writer that should name a kind and does not is visible
+on the System Status tab instead of quietly drawing the wrong shape. The report
 carries the words the line opens with, which name the writer, beside the kind the
-pane drew. A writer that should name a kind and does not is then visible on the
-System Status tab instead of quietly drawing the wrong shape.
+pane drew.
 
 ```python
 _log_emit(
@@ -3997,83 +4099,11 @@ _log_emit(
 
 `src/gui/widgets/status_log.py` — `StatusLog._report_named_kind`
 
-Read on the running program in both builds, with the home on a scratch directory
-and every socket but loopback refused, driving invented tickers and figures: ten
-lines drove, ten drew the shape their writer named, and the Qt pane and the page
-agreed on every size, weight and colour. The one line driven with no kind drew
-plain in both builds and produced the one report reading a fault. The Simulator's
-own pane drew all ten the same as the Live pane. Before the change, a fill whose
-trade words did not open the text drew plain in both builds.
-
-A trade line drops the words `TRADE NOTIFICATION:`. Those nineteen characters
-tell the pane which shape to draw and tell you nothing you cannot already see:
-a larger, bold, stage-coloured line is a trade.
-
-A role the chart sets no side for draws no glyph, which is what a wire-stack
-acquisition and a self-destruct sale get. Nothing is drawn for where a trade
-leaves the position, because no trade message carries a holdings figure. That
-figure sits on the plain line a fold writes beside its trade line.
-
-One function decides the shape for both builds, so the Qt pane and the React
-page cannot drift apart:
-
-```python
-def line_style(message: str, level: Any = DEFAULT_LOG_LEVEL) -> dict:
-    """The three parts one message draws, and the weights it draws them in.
-    ``TRADE_PREFIX`` then the wire prefixes decide before ``level_color`` does."""
-    tag = bot_tag(message)
-    shaped = message[len(tag) :]
-    if shaped.startswith(TRADE_PREFIX):
-        drawn, role = trade_text(shaped)
-        glyph = ROLE_GLYPHS.get(role, "")
-        return style_of(
-            KIND_TRADE,
-            tag,
-            drawn,
-            stage_color(shaped),
-            font_size_px=TRADE_FONT_SIZE_PX,
-            bold=True,
-            bullet=GLYPH_FORMAT.format(glyph=glyph) if glyph else "",
-        )
-```
-
-`src/gui/main_tabs/status_log_surface.py` — `line_style`, `trade_text` and
-`ROLE_GLYPHS`
-
-The glyph is read from the declaration the Asset Charts readout already draws
-its fills with, so the two screens cannot disagree about which way a trade went:
-
-```python
-ROLE_GLYPHS = {
-    SIDE_ROLES[SELL_SIDE]: READOUT_SELL_GLYPH,
-    SIDE_ROLES[BUY_SIDE]: READOUT_BUY_GLYPH,
-}
-```
-
-`src/gui/main_tabs/trade_charts_tab_surface.py` — `SIDE_ROLES`
-
-The Simulator and the Paper Trader draw their own Activity Log through the same
-function. Each held its own copy of the four shapes, 48 lines apiece, with its
-own numbers for the sizes and its own copy of the bolt; both now call the one
-composer, so a change to the shape reaches all three panes at once.
-
-`src/gui/simulator/sim_status_log.py` — `SimStatusLog._render_safe`
-
-```python
-def _render_safe(self, ts: str, message: str, level: str = "info") -> None:
-    self.append(surface.line_html(ts, surface.line_style(message, level)))
-    self.verticalScrollBar().setValue(self.verticalScrollBar().maximum())
-```
-
-##### What the pane reports about a trade line
-
-The Live pane reports every line it draws whose text names a trade. A trade line
-that drew plain then shows on the System Status tab as a fault, instead of
-passing unnoticed. The report carries the shape the pane drew and the shape the
-text asked for, and it reads the two apart: the drawn shape comes from the text
-after the bot's tag, and the asked-for shape from those words being anywhere in
-the message at all. A line that names no trade gets no report, so the report
-follows fills rather than every line.
+The Live pane also reports every line it draws whose text names a trade, so a trade
+line that drew plain shows as a fault. The report reads the two apart: the drawn
+shape comes from the text after the bot's tag, and the asked-for shape from those
+words being anywhere in the message at all. A line that names no trade gets no
+report, so the report follows fills rather than every line.
 
 `src/gui/widgets/status_log.py` — `StatusLog._report_trade_shape`
 
@@ -4096,20 +4126,13 @@ with contextlib.suppress(Exception):
     )
 ```
 
-Read on the running program, with the home on a scratch directory and every
-socket but loopback refused, driving invented tickers and figures: six lines
-naming a trade produced six reports. Five read matched. One read unmatched — a
-line whose trade words did not open the text, and which drew plain, which is the
-fault this report exists to show. Wire and plain lines drove in the same run and
-produced none. Before the change the same run produced no report at all.
-
-Pause Console is a toggle. While it is down, each new line goes into a buffer
-of 2,000 instead of the screen, and a full buffer drops the newest rather than
-the oldest. Resume replays the buffer with the original timestamps and adds a
-line counting what it replayed. One writer goes through the pause regardless,
-for a message you must not miss. A timer checks the pane's health every sixty
-seconds and writes a warning into the pane itself when the render-error count
-rises, or when nothing has rendered for ten minutes while bots are running.
+Pause Console is a toggle. While it is down, each new line goes into a buffer of
+2,000 instead of the screen, and a full buffer drops the newest rather than the
+oldest. Resume replays the buffer with the original timestamps and adds a line
+counting what it replayed. One writer goes through the pause regardless, for a
+message you must not miss. A timer checks the pane's health every sixty seconds and
+writes a warning into the pane itself when the render-error count rises, or when
+nothing has rendered for ten minutes while bots are running.
 
 `src/gui/widgets/status_log.py` — `StatusLog.log`, the pause branch
 
@@ -4119,10 +4142,10 @@ if len(self._pause_buffer) < self._pause_buffer_cap:
 return
 ```
 
-**Design intention.** Two decisions follow from the pane's job. The buffer
-drops the newest line rather than the oldest, so the lines around the moment
-you hit pause are the ones that survive. And a pane that has gone quiet says so
-in the pane, because silence otherwise reads as calm.
+**Design intention.** Two decisions follow from the pane's job. The buffer drops
+the newest line rather than the oldest, so the lines around the moment you hit
+pause are the ones that survive. And a pane that has gone quiet says so in the
+pane, because silence otherwise reads as calm.
 
 `src/gui/main_tabs/trading_tab.py` — the silence check
 
@@ -4136,29 +4159,15 @@ if bots_active and age > 600:
 
 **What the lines say.** Every tick message follows one shape: the event in
 capitals, the side in square brackets where the message has one, then a short
-sentence and the numbers behind it. A message names the gate that refused and
-the reading that made it refuse. It never names a direction or a strength the
-data behind it cannot give.
+sentence and the numbers behind it. A message names the gate that refused and the
+reading that made it refuse. It never names a direction or a strength the data
+behind it cannot give.
 
-The gate snapshot is the longest of them. It writes the twelve-voter panel as a
-count and three groups, strongest confidence first, with an indicator's own raw
-reading in brackets where it publishes one. A neutral vote carries no
-confidence, so only its name prints.
-
-```
-RISK GATE [SCRUM] blocked by hysteresis_scrum. Price $0.00000317.
-Panel 6 bullish, 3 bearish, 3 neutral.
-bullish vortex 1.00, kaufman_er 0.70 (er 1.0), macd 0.60, adx 0.36 (adx 25.52),
-volume 0.35, supertrend 0.26.
-bearish bollinger_bands 0.82, stochastic_rsi 0.50, slingshot 0.35.
-neutral ichimoku, rsi, zscore (z 0.143).
-```
-
-A hold line names the half of the gate that failed. Two conditions must both
-hold before the TA gate lets a scrum through: the direction has to be bullish
-or neutral, and the confidence has to clear the floor. The line says which one
-refused, so a bullish reading held back by its confidence is never reported as
-a wait for a bullish reading.
+A hold line names the half of the gate that failed. Two conditions must both hold
+before the TA gate lets a scrum through: the direction has to be bullish or
+neutral, and the confidence has to clear the floor. The line says which one
+refused, so a bullish reading held back by its confidence is never reported as a
+wait for a bullish reading.
 
 `src/trading/scrumming_bot.py` — the scrum hold reason
 
@@ -4175,36 +4184,17 @@ else:
     )
 ```
 
-**Design intention.** A confidence and the floor it is measured against print
-at four decimals wherever a message compares them. At two decimals they
-collided, and the pane showed a comparison of a number against itself, which is
-not a statement anybody can act on.
-
-Both snapshot lines read one renderer, so the blocked half and the fired half
-of a decision cannot drift into two shapes.
-
-`src/trading/scrumming/snapshots.py` — the one panel renderer
-
-```python
-def _panel_line(summary: Optional[VotingSummary]) -> str:
-    panel = _build_panel_snapshot(summary)
-    if not panel:
-        return PANEL_ABSENT_TEXT
-```
+**Design intention.** A confidence and the floor it is measured against print at
+four decimals wherever a message compares them. At two decimals they collided, and
+the pane showed a comparison of a number against itself, which is not a statement
+anybody can act on.
 
 ##### One gate indicator line for each position tick
 
-Two sentences earlier on this page are overtaken. Quoted whole:
-
-> One line is a timestamp, then an optional bolt character, then the message:
-> `[hh:mm:ss] <bullet><message>`
-
-> `[16:46:30] [A15/c7a2] RISK GATE [SCRUM] blocked by hysteresis_scrum. Price $0.00000317`
-
-A position tick now draws one line, and that line ends in the same gate lights
-the History tab's Gates column draws. The line names each bank, the price and
-the panel's three counts, and the lights carry the rest. No tick writes a
-paragraph of voter readings to the pane any more.
+A position tick draws one line, and that line ends in the same gate lights the
+History tab's Gates column draws. The line names each bank, the price and the
+panel's three counts, and the lights carry the rest. No tick writes a paragraph of
+voter readings to the pane.
 
 ```
 [hh:mm:ss] GATES Scrum <state>. Fold <state>. Price $<price>. Panel <counts>. <lights>
@@ -4215,9 +4205,22 @@ paragraph of voter readings to the pane any more.
            Panel 4 bullish, 5 bearish, 3 neutral.
 ```
 
-Nineteen lights close the line: the ten scrum gates, the scrum bank's marker,
-the nine fold gates, then the fold bank's marker. Each light is its label above
-its own colour, and the colour says what that gate did on this tick.
+Nineteen lights close the line: ten for the scrum bank and nine for the fold bank,
+drawn in that order. Each light is its own label above its own colour, and the
+colour says what that gate did on this tick. Each light carries the bank it belongs
+to as a field rather than as a light of its own, so no marker takes one of the
+nineteen places.
+
+`src/trading/gate_vocabulary.py` — the two banks' labels, in draw order
+
+```
+scrum   TGT  INT  BB  FIRE  TA  LS  TRND  HTF  CB  OTD
+fold    BB   MID  TA  LS  TRNQ  CEIL  HTF  CB  OTD
+```
+
+The chains behind those labels hold more gates than the row has lights: fourteen on
+the scrum side and ten on the fold side, because one label can stand for more than
+one gate and each chain ends in an override gate that runs in its own pass.
 
 | light | what it says |
 |---|---|
@@ -4227,10 +4230,10 @@ its own colour, and the colour says what that gate did on this tick.
 | grey | the gate was not read on this tick |
 | cyan | the landing strip is overriding that bank |
 
-A tick draws its line when the lights are not the same as the last line's. A
-tick whose gate state has not moved spends no line, which is what stops the
-spool. A latched gate is named in words as well, because that block holds until
-its own condition clears rather than turning over each tick.
+A tick draws its line when the lights are not the same as the last line's. A tick
+whose gate state has not moved spends no line, which is what stops the spool. A
+latched gate is named in words as well, because that block holds until its own
+condition clears rather than turning over each tick.
 
 ```python
 def _emit_gate_light_line(
@@ -4244,25 +4247,33 @@ def _emit_gate_light_line(
 
 `src/trading/scrumming/snapshots.py` — the one per-tick writer
 
-The whole voter panel and every blocker phrase still exist. They go to the
-Console tab's own log on each line the pane draws, so a reading a tick produced
-is never lost, and the History tab keeps the full blocker text in its Gates
-column.
+The whole voter panel and every blocker phrase still exist. They go to the Console
+tab's own log on each line the pane draws, so a reading a tick produced is never
+lost, and the History tab keeps the full blocker text in its Gates column. The
+panel reads as a count and three groups, strongest confidence first, with an
+indicator's own raw reading in brackets where it publishes one; a neutral vote
+carries no confidence, so only its name prints.
 
-##### The timestamp keeps a column of its own
+```
+RISK GATE [SCRUM] blocked by hysteresis_scrum. Price $0.00000317.
+Panel 6 bullish, 3 bearish, 3 neutral.
+bullish vortex 1.00, kaufman_er 0.70 (er 1.0), macd 0.60, adx 0.36 (adx 25.52),
+volume 0.35, supertrend 0.26.
+bearish bollinger_bands 0.82, stochastic_rsi 0.50, slingshot 0.35.
+neutral ichimoku, rsi, zscore (z 0.143).
+```
 
-A wrapped message used to continue under the timestamp. The timestamp is now its
-own column, and a message that wraps continues where the message starts.
+Both snapshot lines read one renderer, so the blocked half and the fired half of a
+decision cannot drift into two shapes.
 
-Read on the running program in both builds, with the home on a scratch directory
-and every socket but loopback refused, driving an invented ticker and figures:
-twelve ticks asked the pane for sixteen lines before the change and three after,
-and the characters drawn fell from 5,248 to 396. A tick with two blocked gates
-and a tick with none drew different lines. In the Qt pane the wrapped lines
-started under the timestamp on all five before the change and on none of seven
-after. On the page the message box began at the same place as the timestamp
-before the change and to the right of it after. The nineteen lights drew in both
-builds, in one order, from one colour table.
+`src/trading/scrumming/snapshots.py` — the one panel renderer
+
+```python
+def _panel_line(summary: Optional[VotingSummary]) -> str:
+    panel = _build_panel_snapshot(summary)
+    if not panel:
+        return PANEL_ABSENT_TEXT
+```
 
 #### API Interaction Log
 
@@ -4479,11 +4490,11 @@ def exchange_display_name(entry: Any) -> str:
 
 **Functional.** The panel fills the right half of the Trading tab.
 
-- The Bot selector at the top names the bot whose votes the panel draws. The
-  list refills every tick. The badge beside it counts the bullish, bearish and
-  neutral voters.
-- TF Lock chooses a timeframe below which an opposing trade is refused. The
-  list opens on "None (no lock)".
+- The row at the top holds, from the left: the panel's title, a blue left arrow,
+  the bot dropdown, a blue right arrow and the privacy control. A stretch sits on
+  each side of the four controls, so the dropdown sits between the two arrows and
+  the group sits in the middle of the space the title leaves. The dropdown names
+  the bot whose votes the panel draws, and its list refills every tick.
 - The rate line under it shows the A15 and A14 prices with their satoshi and
   gwei equivalents, and the venue name at the end.
 - Two tables of six voters each. A green up triangle is a bullish vote, a red
@@ -4495,14 +4506,68 @@ def exchange_display_name(entry: Any) -> str:
   with its percentage beside it.
 - A bar chart under each table draws that table's six confidences at the width
   of the column above.
-- The line at the foot names any timeframe lock that is active.
+- The line at the foot names any timeframe lock that is active. It is a readout;
+  no control on the panel sets a lock.
 
-**Functional.** The dropdown is not the only way to pick the bot. A press on a
-row of the Scrumming Bots table draws that bot here, and the dropdown moves to
-it. A press on the row of the bot already drawn empties the panel, and the
-panel then reads *"no bot is selected — press a bot row, or pick one from the
-dropdown above."* Whichever control the operator uses, the bot list's highlight
-and this panel name the same bot.
+**The arrows.** Each arrow moves the dropdown one place along the list it already
+holds. The list does not wrap: a press at the first bot leaves the panel on the
+first bot, and a press at the last leaves it on the last. An arrow with nothing
+left to step to is greyed. The two glyphs, their size and their family are the
+Charts tab's own, imported rather than copied, so the two control rows cannot drift
+apart: each arrow is 34 by 26 pixels and draws U+25C0 or U+25B6 in Segoe UI Symbol
+at 16 pixels.
+
+`src/gui/indicator_panel.py` — `IndicatorVotingPanel._step_bot`
+
+```python
+def _step_bot(self, by: int) -> int:
+    """Move the dropdown ``by`` places and answer the index it lands on.
+
+    The list does not wrap: a press at either end leaves the
+    selection where it is.
+    """
+```
+
+`src/gui/main_tabs/indicator_panel_surface.py` — the arrows take the Charts tab's
+numbers
+
+```python
+from .native_chart_surface import (
+    ARROW_GLYPH_FAMILY,
+    ARROW_GLYPH_PX,
+    CONTROL_HEIGHT_PX,
+)
+```
+
+**The privacy control.** The panel draws the universal control, `PrivacyDot` in
+`src/gui/widgets/privacy_dot.py`. The glyph is a filled circle when the dropdown is
+readable and an empty circle when it is masked, and the control sizes to its own
+glyph rather than to a fixed square. The Charts tab's own dot takes its colour from
+the same token.
+
+`src/gui/design_system.py` — the token the dot paints in
+
+```python
+PRIMARY_BRIGHT = "#00ffee"  # Brighter cyan accent: privacy dot, Sim tab
+```
+
+**The page answers a press.** An ask that names an action goes to the window and
+moves the one Qt panel the window holds, so the page and the window never show two
+selections.
+
+`src/gui/main_tabs/trading_tab.py` — `TradingTabMixin._wire_live_feeds` binds it
+
+```python
+bind = getattr(getattr(self, "_trading_tab", None), "set_votes_handler", None)
+answer = getattr(self, "_answer_votes", None)
+if callable(bind) and callable(answer):
+    bind(answer)
+```
+
+**Functional.** The dropdown is not the only way to pick the bot. A press on a row
+of the Scrumming Bots table draws that bot here, and the dropdown moves to it. A
+press on the row of the bot already drawn empties the panel. Whichever control the
+operator uses, `select_bot` is the one thing that writes the bot the panel holds.
 
 `src/gui/indicator_panel.py` — `IndicatorVotingPanel.select_bot`
 
@@ -4513,6 +4578,83 @@ if not wanted:
     self._bot_selector.setCurrentIndex(-1)
     self._refresh_bot_arrows()
     return self._selected_bot_id
+```
+
+**Two empty states, and each names its cause.** A selection cleared by a second
+press reports the cause `no_selection` and reads *"no bot is selected — press a bot
+row, or pick one from the dropdown above."* A bot the fleet no longer carries
+reports `bot_missing` and reads *"bot … is selected but no longer present in the
+fleet."* A bot the dropdown does not carry leaves the panel where it is, so a stale
+ask cannot blank it. The cause clears when a summary arrives, so a panel drawing
+twelve voters never reports the reason it had been blank.
+
+`src/gui/indicator_panel.py` — `IndicatorVotingPanel.update_data`
+
+```python
+if multi_tf_summary:
+    self._no_data_cause = ""
+    self._no_data_message = ""
+```
+
+**HIS.**
+
+> "Live - Bug - IVP - Some bots IVP panels are not loading when selecting.
+> Observed with A19, A24, A11, and A35. Most are working. Cycled to through
+> the bot list a few times and some are consistently failing to load and also
+> giving the candle cache notice in the console but the panels never populate."
+
+**Two causes a panel with no votes names.** A panel holding no votes prints one
+sentence saying why, on the panel rather than only in the Console. Too few candles
+means the slot holds fewer bars than the engine needs. Cold start means the bot is
+running and has computed no reading since the platform launched. A market well over
+the floor can still read cold start, so a full panel is not the only healthy reading.
+
+| market | candles the slot held | the panel reads |
+|---|---|---|
+| A24 | 6 to 9 | too few candles |
+| A38 | 10 to 12 | too few candles |
+| A35 | 13 to 16 | too few candles |
+| A19 | 11 to 18 | too few candles |
+| A11 | 95 to 96 | cold start |
+| a market that votes | 100 | twelve voters |
+
+`src/gui/indicator_panel.py` — the sentence each cause prints
+
+```python
+    "cold_start": "cold start — this bot is running and has computed no TA since "
+    "the platform launched. Its first read lands on the next TA "
+    "evaluation.",
+    "too_few_candles": "too few candles — {candles} cached for {symbol} {timeframe}, "
+    "and the TA engine needs {floor}.",
+```
+
+**The floor is written once.** The engine needs thirty candles before any indicator
+votes, and that figure has one home beside the engine that needs it. The three
+panels read it from there and print it as a field, so no panel carries the number in
+its own prose. A market with a shorter history is refused a vote, and that refusal
+is correct rather than a fault, because an indicator computed on too little history
+is a wrong number.
+
+`src/trading/ta_engine.py` — the one place the floor is written
+
+```python
+#: The candles ``VotingEngine.compute_all`` needs before any indicator votes.
+MIN_CANDLES_FOR_TA = 30
+```
+
+**A stored reading draws with its age.** When a bot has a reading saved from an
+earlier evaluation, the panel draws that reading rather than emptying, with the time
+it was taken, how old it is, and the cause sentence after it. The window build and
+the page build draw the same sentence in the same place.
+
+`src/gui/indicator_panel.py` — the banner over a stored reading
+
+```python
+            self._staleness_label.setText(
+                f"⏱ LAST TA READ, NOT CURRENT — taken {when}, "
+                f"{age_phrase(age_s)}. {message}"
+            )
+            self._staleness_label.show()
 ```
 
 `src/gui/indicator_panel.py` — `IndicatorVotingPanel.INDICATOR_COLS`
@@ -4652,1744 +4794,28 @@ heading and on its cell, so a hover over either one answers.
 The maths behind Net and Conf lives with the voters, in
 [07-indicators.md](07-indicators.md).
 
-### The Indicator Voting Panel, restyled
+### The Indicator Voting Panel's layout
 
 The panel beside the exchange stack carries seven columns on each row, aligned
 under each other: TF and six indicators above, TF and six more below. The three
 collated columns — Net, Comp and Conf — close the first row and stand as one
-pillar each behind both rows.
+pillar each behind both rows. Both rows share one grid, and both the window and
+the page head their columns through one function, so neither can head a column the
+other leaves blank. The two rows draw seventeen column headings between them.
 
-`src/gui/indicator_panel.py` — the two rows share one grid
-
-```python
-col_names = ["TF"] + [short for _, short, _ in indicator_subset]
-col_names += [""] * (_PANEL_COLUMN_COUNT - len(col_names))
-```
-
-The TF Lock row is gone, and so are the pair symbol and the vote tally that
-stood in the upper right. The bot selector and its privacy dot moved there.
-[07-indicators.md](07-indicators.md) carries the panel's own entry.
-
-![The Trading tab in the Electron shell](../audits/2026-09-07_units/trading_tab_electron.png)
-
-## 2026-09-11 16:48 - #665 - the wizard's values reach a new bot
-
-Bot creation held two dict literals. Each named the settings it would pass to a
-new bot, and the wizard collected more settings than either named. A name absent
-from both lists was collected, held in memory and never read, so the bot took the
-declared default for that field instead. Twenty-five Scrumming settings and six
-Extractor settings went that way.
-
-One function now selects the kwargs, and it reads the declaration rather than a
-list of names. `bot_config_kwargs` keeps every key that names a field `BotConfig`
-declares, and drops the keys that belong to the other mode — which is the same
-rule `make_bot_config` applies when it refuses one. A field added to `BotConfig`
-and emitted by the wizard arrives with no second edit.
-
-`src/trading/container/config.py` — `bot_config_kwargs`, the selection
+`src/gui/main_tabs/indicator_panel_surface.py` — `column_titles`
 
 ```python
-foreign = (
-    _BOT_CONFIG_SCRUMMING_ONLY_FIELDS
-    if mode == BotMode.EXTRACTOR
-    else _BOT_CONFIG_EXTRACTOR_ONLY_FIELDS
-)
-# make_bot_config sets mode itself and raises on a foreign field.
-carried = {f.name for f in fields(BotConfig)} - foreign - {"mode"}
-```
-
-### What the entries above now read
-
-Five entries on this page state that bot creation does not pass a setting. Each
-sentence described the creation path as it stood, and the creation path has
-moved. The corrected reading for each:
-
-| entry | the sentence above | what it now does |
-|---|---|---|
-| Wire Inflow Stack | "Bot creation does not pass this setting, so a new bot takes the declared default of 1.00 whatever you type here." | Bot creation passes `wire_inflow_stack_pct`. A new bot takes the figure on the row. |
-| Profit Routing | "Issue #336 carries this, with the rest of the settings the wizard writes and bot creation drops." | Bot creation passes `profit_route` and `profit_route_bot_id`. No module under `src/trading/` reads either one, so the destination a bot holds still reaches no trade. |
-| Standing alt units (inverted) | "Bot creation passes neither this number nor the Direction beside it, so a new Extractor runs Normal with a standing position of zero whatever you enter." | Bot creation passes `inverted_extractor_standing_alt_units` and `extractor_direction`. `set_initial_chunk_rate` still has no caller in the product source. |
-| Correction skip candles | "Bot creation does not pass it, so a new bot takes the declared default of 4." | Bot creation passes `extractor_correction_skip_candles`. The reader still counts ticks rather than candles. |
-| Drawdown threshold | "bot creation does not pass it, so a new bot takes the declared default of 3.00" | Bot creation passes `extractor_drawdown_threshold_pct`. |
-
-Five entries already read "bot creation passes it through": Read Rate, Band
-Travel, Pool Reserve, Exit % and Max cost-basis multiple. Those sentences stand
-unchanged.
-
-**Two cells in the table above are overtaken.** Both rows stay as they are
-written. The table corrected the entries above it, and two of its own corrections
-have since gone stale.
-
-> Bot creation passes `inverted_extractor_standing_alt_units` and `extractor_direction`. `set_initial_chunk_rate` still has no caller in the product source.
-
-Both halves of that cell are false now. The rebase has one call site, and the two
-names the cell credits to bot creation are in no Python file.
-
-> Bot creation passes `extractor_correction_skip_candles`. The reader still counts ticks rather than candles.
-
-The name is in no Python file either, and neither is the reader. Searched over
-the git index across every tracked Python file:
-
-```
-set_initial_chunk_rate                   1 call site
-inverted_extractor_standing_alt_units    0 occurrences
-extractor_direction                      0 occurrences
-extractor_correction_skip_candles        0 occurrences
-_maybe_fire_correction                   0 occurrences
-extractor_scan_refresh_candles          16 occurrences
-```
-
-The last row is the control. The same search finds the refresh key that is still
-read, so a zero above is a reading of the tree and not of the search.
-
-### What the run measured
-
-One run drove the real wizard on both modes. It moved every control on every
-page the wizard reaches, collected the config, built a real bot through the
-creation path, and read each value back off that bot's own config.
-
-```
-scrumming   wizard emits 52 keys
-            before   26 passed, 24 settings held the default against a typed value
-            after    48 passed, 0 held a default against a typed value
-extractor   wizard emits 23 keys
-            before   20 passed, 6 settings held the default against a typed value
-            after    22 passed, 0 of those 6 held a default
-```
-
-The Extractor's 22 names hold two the wizard does not emit: Target Balance and
-Stack Mode, each supplied at creation as it was before. One Extractor key still
-holds a default and it is the Profit Folding flag, which the table below covers.
-
-The same run drove a save and a restore of a bot built from typed values. All 72
-fields came back holding what was saved, so a restart puts back what it put back
-before.
-
-A wizard left untouched still builds a bot at the declared defaults. Every
-Scrumming field matches its declaration. Two Extractor fields do not, and both
-are deliberate: the Extractor's parameter page offers no Target Balance row, so
-its pool figure stands in; and the page offers no Stack Mode box, so an absent
-key reads as off rather than as `STACK_MODE_DEFAULT`.
-
-### Three settings the wizard still collects and a new bot still cannot read
-
-| setting | why |
-|---|---|
-| Lock duration (candles) | `lock_candle_count` is no field on `BotConfig` and no argument of `ScrummingBot.__init__`. The phantom coordinator holds an attribute of that name, and Bot Settings writes it there on a running bot. |
-| Profit Folding, on an Extractor | `BotCreationWizard.get_bot_config` writes `profit_folding_active: False` for an Extractor. The field is Scrumming-only, so `make_bot_config` refuses it on an Extractor config. No control types it. |
-| Max adoptable USD | `max_adoptable_usd` is the one `BotConfig` field no page offers and the restore path does not read either. Nothing writes it and nothing types it. |
-
-`enable_phantoms` and `phantom_timeframes` are not on that list. Both already
-reach the bot, as arguments to `ScrummingBot.__init__` rather than through the
-bot config.
-
-## 2026-09-12 - the second half of the Scrumming Settings group, driven
-
-Six rows of that group were driven on a bot built from a record written for the
-run. The home was redirected into a scratch directory before the settings module
-was imported, so the settings directory and the log root both bound under it. No
-stored file of the running install was opened, no venue was contacted, and the
-exchange object handed to the bot defines no order method at all, so the run
-could not place an order even where a path reached for one.
-
-```
-Max Entry Price        the price an auto-buy is refused above
-Min Entry Price        the price an auto-buy is refused below
-Trading Fee %          the figure added to the opposing-trade distance
-Max Target Growth %    the ceiling one fold cycle may add to Target Balance
-Scrum Fold Ratio       the share of a sale's tranches kept for the fold
-Profit Folding Active  whether a fold may raise Target Balance at all
-```
-
-### What each row did when it was driven
-
-Every reading below is one call into the shipped engine, with the figure on the
-row as the only thing changed between the two sides.
-
-```
-Max Entry Price    ceiling $90 against a price of $100   buy refused at the gate
-                   ceiling $110 against the same price   gate silent
-Min Entry Price    floor $110 against a price of $100    buy refused at the gate
-                   the same floor, the same price, sell  no refusal of any kind
-Trading Fee %      fee 0.60 %, pivot $100, buy at $98.70 refused, needs 1.60 %
-                   fee 0.00 %, pivot $100, buy at $98.70 not refused
-                   fee 0.60 %, pivot $100, sell at $101.30 refused, needs 1.60 %
-                   fee 0.00 %, pivot $100, sell at $101.30 not refused
-Max Target Growth  1.00 % on a $200 target   cap $2.00, target became $202.00
-                   0.00 % on a $200 target   cap $0.00, target stayed $200.00
-                   5.00 % on a $200 target   cap $10.00, target became $210.00
-Scrum Fold Ratio   100 % on two $100 tranches  queued $200.00, 2.0000 units
-                   40 %  on the same two       queued $80.00, 0.8000 units
-                   1 %   on the same two       queued $2.00, 0.0200 units
-Profit Folding     on   applied $2.00, target $202.00, preview $2.00
-                   off  applied $0.00, target $200.00, preview $0.00
-```
-
-The Profit Folding row emits its own line when it is off, and that line is the
-one a reader should look for rather than the absence of a growth.
-
-`src/trading/scrumming_bot.py` — the line the off state emits
-
-```python
-f"[COMPOUND SKIPPED] ({source}): "
-f"profit_folding_active=False — the "
-f"compound-growth feature is off for "
-f"this bot. No target bump."
-```
-
-### A zero in either entry-price box is not the same thing in both
-
-Both entries above say zero means no ceiling and no floor, and both controls
-honour that: a box left at zero emits nothing rather than a number, measured on
-the wizard the Electron shell draws. The engine's own guard is narrower than the
-sentence. It treats only the absent value as off, so a record carrying a literal
-zero in the ceiling refuses **every** auto-buy for as long as it stands — driven,
-a ceiling of zero against a price of one hundred refused the buy at the gate. The
-same zero in the floor is harmless, because no price is below it.
-
-`src/trading/scrumming/execution.py` — the two guards, as they stand
-
-```python
-if _max_ep is not None and _px > 0 and _px > float(_max_ep):
-if _min_ep is not None and _px > 0 and _px < float(_min_ep):
-```
-
-No control can write that zero. The three places that collect the value each
-write an absent value in its place, so a record carrying a literal zero came from
-an older build or from an edit outside the application.
-
-```
-src/gui/bot_wizard.py:1540                    absent unless the box reads above 0
-src/gui/live_settings/settings_tab.py:517     absent unless the box reads above 0
-src/gui/main_tabs/bot_wizard_surface.py:2267  absent unless the box reads above 0
-```
-
-*Proposed, not present, in both guards:*
-
-```python
-if _max_ep and float(_max_ep) > 0 and _px > 0 and _px > float(_max_ep):
-```
-
-It is proposed rather than taken because a bot standing on such a record is
-refusing every buy today, and a build that reads the zero as off would have it
-buying on its next tick. That is his decision, not this unit's.
-
-### The floor on the Scrum, measured on both sides
-
-The entry above records that the buy path is the only reader. Driven, that is
-exactly what happens, and the reading is worth stating as a pair because the
-pair is what proves the instrument was working.
-
-```
-floor $110, price $100, buy   BUY REFUSED (min_entry_price gate)
-floor $110, price $100, sell  no refusal emitted, the sale went on
-```
-
-The count agrees with the drive. `_execute_sell` runs from line 1333 to line
-1669 of that module and the floor's name appears **nowhere** in it, against three
-appearances inside the buy executor above. The number his own sentence ties to a
-Scrum therefore reaches no sell, and a bot sitting at the floor holding the asset
-sells as if the figure were not set.
-
-Read against the standing test, the behaviour the code does have is the part no
-sentence on this page asks for: nothing here specifies a floor under a buy. The
-sell-side proposal already on this page stands, and the removal of the buy-side
-floor is the other half of the same decision. Both move money on the next tick of
-any bot carrying the figure, so both are reported here and neither is taken.
-
-### A fee of zero is read two ways at once
-
-The entry above says the fee is added to the Minimum Opposing Trade Distance, and
-it is. At every figure the box offers except one, every reader agrees. At a stored
-zero they split: ten reads inside the trading package treat a zero as six tenths
-of a percent, and two inside the same executor honour the zero.
-
-```
-stored 0.60 %   distance filter 1.60 %   buy and sell hysteresis 1.60 %
-stored 2.50 %   distance filter 3.50 %   buy and sell hysteresis 3.50 %
-stored 0.00 %   distance filter 1.60 %   buy and sell hysteresis 1.00 %
-```
-
-The box accepts a zero, and so does the wizard the shell draws — typed at zero it
-emitted a zero. The two controls then show six tenths when that record is
-reopened, because each seeds itself the same way the ten reads do.
-
-`src/trading/otd_math.py` — the read, and its own note on the quirk
-
-```python
-return minimum_opposing_trade_distance_pct(
-    getattr(config, "scrumming_interval_pct", 0) or 0,
-    getattr(config, "trading_fee_pct", 0.6) or 0.6,
-)
-```
-
-That module's docstring already names the quirk and says it is named there and
-not repaired there, so the split is known rather than newly found. Closing it
-changes the distance a reversal must travel for any bot whose fee is zero, which
-is a live figure on a live tick, so it is reported here and not taken.
-
-### What the Max Target Growth entry above now reads
-
-That entry records ten read sites, seven falling back to one and three to zero,
-and a bot that compounds or freezes depending on which read first. The first half
-holds and the second does not.
-
-| the entry's reading | what the run measured |
-| --- | --- |
-| three sites fall back to zero against a declared default of one | Held before this change. The three were the manual rebalance, the compounding snapshot and the Smart Wire inputs, exactly as named |
-| a bot compounds or freezes depending on which site read first | Does not hold. No bot can reach the fallback: every construction path builds the config through one factory, and the class declares the field, so the value is never absent |
-| ten read sites take it with a fallback | Nine now. One of the ten was an expression whose value was discarded, and it is gone |
-
-The three sites now name the declared default. Driven against a stand-in that
-genuinely lacks the field, the two reachable ones moved from zero to one and then
-agreed with the cycle cap; every other reading in the run was identical before
-and after, which is what makes the change inert on a real bot.
-
-```
-before   swos 0.0   snapshot 0.0   cycle cap $2.00
-after    swos 1.0   snapshot 1.0   cycle cap $2.00
-```
-
-`src/trading/scrumming_bot.py` — the shape all nine now share
-
-```python
-_growth = float(getattr(self.config, "max_target_growth_pct", 1.0) or 0.0)
-```
-
-### Where the Scrum Fold Ratio is read
-
-The entry above gives the row its range and its start value and says nothing
-about where the engine reads it. One method does, once per sale, and it runs on
-the slice of tranches that sale appended rather than on the whole queue.
-
-`src/trading/scrumming/fold_tranches.py` — the read and the clamp
-
-```python
-_fold_pct = max(0, min(100, int(getattr(self.config, "scrum_fold_pct", 100))))
-_new_tranches = self._fold_tranches[_tranche_count_before:]
-if _fold_pct < 100 and _new_tranches:
-```
-
-At a hundred the branch does not run and the sale's tranches keep every dollar.
-Below a hundred each tranche keeps the ratio's share of units and of the sale's
-own proceeds, and the remainder is retired as cash with a realised profit line.
-Money in a tranche that did not come from this sale is wired-in credit and keeps
-its full value.
-
-The clamp's lower bound is zero and both controls start at one. A record carrying
-a zero therefore empties the sale's whole fold queue — driven, one hundred
-dollars and one unit became zero dollars and zero units, with the cash retired
-instead. Raising the clamp to match the controls would change what such a bot
-rebuys on its next sale, so it is reported here and not taken.
-
-### The Profit Folding Active row on a running bot
-
-No entry above describes this row, because the group on the creation wizard does
-not carry it. The running bot's own Scrumming Settings group does, and so does
-the row list the shell draws from.
-
-| | the control |
-| --- | --- |
-| Where | `src/gui/live_settings/settings_tab.py:575` |
-| React row | `src/gui/main_tabs/live_settings_tab_surface.py:769` |
-| Kind | checkbox, on at the start |
-| What it writes | the bot config key the engine reads four times |
-
-Profit Folding Active - When it is on, a fold's surplus may raise Target Balance
-up to the Max Target Growth % cap above. When it is off, the surplus is not
-applied, the preview of a prospective fold reads zero, and the bot writes a
-skipped line naming the flag. A bot restored from its own record takes its own
-flag and reads no application setting.
-
-```
-on   surplus $10.00 applied $2.00   target $200.00 became $202.00   preview $2.00
-off  surplus $10.00 applied $0.00   target stayed $200.00           preview $0.00
-```
-
-The creation wizard holds a checkbox for the same flag on a page no route
-reaches, so a new bot opens on the declared default until that page is reachable.
-
-## 2026-09-12 - the Hedge Rebalance group and the despawn timer, driven
-
-Three rows were driven on a bot built from a record written for the run. The home
-was redirected into a scratch directory before the settings module was imported,
-so the settings directory and the log root both bound under it. No stored file of
-the running install was opened, no venue was contacted, and the exchange object
-handed to the bot defines no order method at all, so the run could not place an
-order even where a path reached for one.
-
-```
-Hedge Rebalance Active  whether the bot holds a reserve outside Target Balance
-Hedge Balance           the size of that reserve, and the ceiling it refills to
-Tranche Despawn Timer   the age at which a tranche record is removed
-```
-
-### What the hedge switch decides
-
-The switch reaches four places in the engine and every one of them moves a
-decision. Two are the seeds that set the reserve at construction, one is the gate
-that arms a hedge buy on a tick, and one is the gate that refills the reserve out
-of a completed fold's profit.
-
-`src/trading/scrumming_bot.py` — the two seeds
-
-```python
-self._hedge_bal: float = (
-    float(config.hedge_balance) if config.hedge_rebalance_active else 0.0
-)
-self._hedge_balance_initial: float = (
-    float(config.hedge_balance) if config.hedge_rebalance_active else 0.0
-)
-```
-
-Driven both ways at three figures, the seeds read what the two sentences above
-this section promise.
-
-```
-active=True   balance $200.00   reserve $200.00   cap $200.00
-active=True   balance  $50.00   reserve  $50.00   cap  $50.00
-active=True   balance   $0.00   reserve   $0.00   cap   $0.00
-active=False  balance $200.00   reserve   $0.00   cap   $0.00
-active=False  balance  $50.00   reserve   $0.00   cap   $0.00
-active=False  balance   $0.00   reserve   $0.00   cap   $0.00
-```
-
-The budget layer that refuses an oversized buy reads the same reserve, so the
-switch decides the ceiling as well as the gate. With half a unit held at one
-hundred dollars, the hedge path's ceiling is the position plus the reserve.
-
-```
-active=True   balance $200.00   a $25 buy allowed, a $210 buy refused at $251.00
-active=True   balance  $50.00   a $25 buy allowed, a  $75 buy refused at $100.25
-active=False  balance $200.00   every buy refused at $50.00, the position alone
-```
-
-The control for the figure on the scrum path is the same call with a different
-path name. At a reserve of zero it still allows a seventy-five dollar buy, which
-is what proves the refusals above came from the hedge reserve and not from the
-position.
-
-### The reserve a restart re-seeds and a toggle does not
-
-Turning the switch on while the bot runs arms nothing. The two reserve fields are
-read once, at construction, and nothing on the live path writes them again, so a
-bot built with the switch off keeps a reserve of zero and a ceiling of zero for
-as long as it stands.
-
-```
-built with the switch off   reserve $0.00   cap $0.00
-config flipped to on        reserve $0.00   cap $0.00
-a $25 hedge buy then reads  refused
-```
-
-A restart is the one route back, and it is a partial one. The ceiling is rebuilt
-from the stored config, because it is not itself persisted, while the drainable
-reserve is restored from the saved record.
-
-```
-rebuilt with the switch on        reserve $200.00   cap $200.00
-then restored from the off record reserve   $0.00   cap $200.00
-the fold replenish terms then     open
-```
-
-The reserve then refills from compound growth at eight hundredths of each fold's
-profit, and only after a restart. Making the toggle re-seed the reserve would
-hand a drained bot its full reserve back the moment the operator flicked the box
-twice, which is money on a live tick and his decision rather than this unit's.
-
-*Proposed, not present, in the live-settings route:*
-
-```python
-RUNTIME_ROUTED = {
-    "hedge_rebalance_active": "set_hedge_active_live",
-}
-```
-
-### What the Hedge Balance figure bounds
-
-The figure is the reserve's starting size and the ceiling a refill stops at. Six
-of its ten engine readers decide something: the two seeds, the arm test, the size
-of the buy, and the two budget layers that refuse an oversized one.
-
-`src/trading/scrumming_bot.py` — the figure that sizes one hedge buy
-
-```python
-_use = min(self._hedge_bal * 0.5, _gap)
-```
-
-The running bot's own row is routed through a method rather than written straight
-onto the config, and that method refuses a figure it cannot use.
-
-```
-set $500.00  applied   cap $500.00  reserve $120.00 unchanged
-set   $0.00  applied   cap   $0.00  reserve $120.00 unchanged
-set  -$5.00  refused   hedge_balance must be >= 0
-set   "abc"  refused   hedge_balance must be numeric
-set  $75.00  applied   cap  $75.00  reserve $120.00 unchanged
-```
-
-A cap of zero is accepted, and it shuts the refill gate for good while leaving
-the old reserve drainable. The bot can still spend what it holds and can never
-get any of it back. Raising the cap back above zero re-opens the gate, so the
-state is recoverable by the same control that caused it, and the refusal that
-would make a zero mean off instead of empty would change what a bot carrying one
-does on its next fold. Reported here and not taken.
-
-### The despawn timer has no creation-wizard control
-
-The timer is the one row of these three that a new bot cannot be given. Searching
-both wizard builds for the word returns nothing, so a new bot opens at the
-declared default of zero, which is off.
-
-```
-src/gui/bot_wizard.py                      0 matches
-src/gui/main_tabs/bot_wizard_surface.py     0 matches
-src/gui/live_settings/settings_tab.py      the one control, 0 to 365 days
-src/gui/main_tabs/live_settings_tab_surface.py   the React row for it
-```
-
-The label on both screens reads Tranche Despawn Timer. The engine reads the
-stored figure exactly once, through one shared helper, and the sweep that uses it
-runs once per tick outside every exception handler.
-
-`src/trading/container/config.py` — the one reading
-
-```python
-def despawn_threshold_days(config) -> int:
-    days = as_finite_float(getattr(config, "tranche_despawn_days", 0))
-    if days is None:
-        return 0
-    return min(DESPAWN_MAX_DAYS, max(0, int(days)))
-```
-
-Driven across thirteen stored values, every shape the control cannot type reads
-as off rather than as a number.
-
-```
-0 -> 0      1 -> 1      7 -> 7      365 -> 365      30.9 -> 30
--5 -> 0     True -> 0   "7" -> 0    None -> 0       nan -> 0    inf -> 0
-the field absent altogether -> 0
-```
-
-### The five claims the despawn tooltip makes
-
-The tooltip on that control is the only specification the row has, and it makes
-five checkable claims. Each one was driven on a bot holding seven fold records
-and five stack records.
-
-| The claim | What the run measured |
-| --- | --- |
-| Despawn is not a trade | Zero calls reached the exchange object across every sweep, at every threshold |
-| No order is placed or cancelled | The exchange object defines none of the five order methods, and the sweep calls none of them |
-| Holdings and cost basis are untouched | Holdings 0.5 before and after; both cost-basis lots identical, 0.3 at $91.00 and 0.2 at $103.00 |
-| A tranche with no timestamp is never despawned | At a one-day threshold the ageless record survived alone, counted as kept |
-| A stack tranche holding a resting order is kept until it settles | Pending with an order id was kept at four hundred days; the same record removed once filled, and once cancelled |
-
-The target balance and the anchor are unchanged too, which the line the operator
-reads already claims.
-
-```
-_current_holdings          0.5   ->  0.5
-_target_balance          200.0   ->  200.0
-_anchor_target_balance   200.0   ->  200.0
-_hedge_bal               200.0   ->  200.0
-exchange calls               0   ->  0
-```
-
-The threshold is inclusive, as the tooltip says. A record at exactly seven days
-goes at a seven-day threshold and a record one second younger stays.
-
-```
-exactly 7 days     removed 1, 0 rows left
-one second under   removed 0, 1 row left
-```
-
-### Three declarations of one despawn predicate agree
-
-The predicate is written three times: once in the sweep that removes, once in the
-shared preview the Qt panel reads, and once again inside the React surface. Driven
-on one tape of records across thirteen thresholds, all three answer the same
-counts on every row.
-
-```
-days    sweep   shared preview   React preview
-   0     0/0             0/0            0/0
-   1     2/2             2/2            2/2
-   7     2/2             2/2            2/2
-  30     1/2             1/2            1/2
- 365     0/0             0/0            0/0
-30.9     1/2             1/2            1/2
-```
-
-The dollars agree as well, and the queue total recomputes to match what is left
-rather than being decremented.
-
-```
- 7 days   queue $138.00 -> $68.00   the sweep reports $70.00 removed
-30 days   queue $138.00 -> $98.00   the sweep reports $40.00 removed
-```
-
-A third copy of a predicate is a drift hazard rather than a present fault, and
-collapsing it would reach files other rows own.
-
-### The word a removal now uses
-
-Merge, despawn and clear are the only three things that collapse or remove a
-tranche, and despawn removes rather than delists. The sweep's own report and the
-line the operator read said delisted in five places, against a preview beside it
-that already said removed. The words now agree and the counts did not move.
-
-```
-before   TRANCHES DESPAWNED (>= 7d): delisted 2 fold tranche(s) holding $70.0000
-after    TRANCHES DESPAWNED (>= 7d): removed 2 fold tranche(s) holding $70.0000
-```
-
-The sweep's key set is now a subset of the preview's, so either report can be
-read by one consumer. [08-tabs/bot-swarm.md](08-tabs/bot-swarm.md) carries the
-block.
-
-```
-sweep     ageless_kept  fold_removed  stack_kept_live_order  stack_removed
-          threshold_days  usd_removed
-preview   the same six, plus fold_open, stack_open and units_removed
-```
-
-## 2026-09-12 - two settings the engine read and no screen set
-
-Two values sat on a bot's configuration with no row on any page. Neither was a
-preference the operator had ever been asked for, and both are gone. The
-behaviour each one bounded stays exactly where it was.
-
-### The adoption cap comes from Target Balance
-
-A bot that has never scrummed adopts the holding already sitting on the venue as
-its opening position, and a dollar ceiling bounds what it may take. That ceiling
-was read from a stored figure with a fallback to Target Balance. The stored
-figure never arrived: the restore path names its values one at a time and that
-name was not among them, so a record carrying 750 restored to a configuration
-holding zero, and the fallback was the only branch that ever ran.
-
-`src/trading/scrumming/tick_phases.py` - the ceiling, in `_tick_initialise`
-
-```python
-_cap_usd = float(self._target_balance or 0.0)
-```
-
-Target Balance is the figure the operator types. The creation wizard carries the
-row, and so does the live Bot Settings page, so the ceiling is now set from two
-screens instead of from nowhere.
-
-```
-src/gui/bot_wizard.py:826                 Target Balance, on the wizard
-src/gui/live_settings/settings_tab.py:407 Target Balance, on a running bot
-```
-
-### The log line that named a field nothing writes
-
-When the ceiling holds a bot back, the Activity Log says so and tells the
-operator what to raise. It named an internal field that no page offered, so the
-instruction could not be followed. It names the control instead.
-
-```
-before   ... units stay unmanaged. Raise max_adoptable_usd to change this.
-after    ... units stay unmanaged. Raise this bot's Target Balance to change this.
-```
-
-### The reservation has no off switch
-
-A bot claims the funds it is allowed to work with, which is what stops two bots
-on one asset from taking each other's money. A stored flag could turn that claim
-off, and nothing on any screen set it. The flag is gone and the claim is
-unconditional.
-
-`src/trading/scrumming/capital_reservation_mixin.py` - the claim, once per tick
-
-```python
-async def _ensure_capital_reservation(self, current_price: float) -> None:
-    if current_price is None or current_price <= 0:
-        return
-```
-
-Driven on two records that differed in that one flag, with the flag present and
-then removed. A record carrying the flag off placed no claim. The same record
-places one now.
-
-```
-flag off, before   reservation token None
-flag off, after    reservation token 8c4f5907ff4d4634b8db1ddcd8ab9ba8
-flag on,  before   reservation token 4fd7f1ce796540008fb4ebf0c0c6a70a
-flag on,  after    reservation token 762010f49abf452f8371841243828f31
-```
-
-### Where the claim holds, and where it gives way
-
-The claim holds. Two bots were restored from a record written for this reading,
-both on one asset, with thirty units at the venue and a price of one hundred
-dollars. The second bot's permitted sale fell to nineteen units, because the
-first bot had eleven of the thirty spoken for.
-
-```
-bot A target $1,000   claimed 11.0 units
-bot B target   $500   claimed  5.5 units
-registry total        16.5 units on the asset
-
-A may sell            24.5 units
-B may sell            19.0 units, where with no claim standing it is 30.0
-```
-
-Driving the real sell on the second bot both ways: a twenty-unit sell was refused
-and named the reservation, and an eighteen-unit sell was not refused by it.
-
-```
-sell 20.0   "sell refused by capital reservation:
-             amount=20.000000 effective=19.000000 asset=A15"
-sell 18.0   no reservation refusal
-```
-
-One reader of another bot's claim decides a sale. Nothing else in the platform
-reads a claim at all.
-
-`src/trading/scrumming/execution.py` — the sell pre-check
-
-```python
-_crr_effective = _crr_reg.effective_available(
-    asset=self.config.target_asset,
-    bot_id=self.bot_id,
-    total_holdings=float(self._current_holdings or 0),
-)
-if amount > _crr_effective + 1e-12:
-```
-
-No screen reads a claim. The dollar-denominated registry that sits beside the
-asset-unit one is built nowhere in the tree, and the method that would attach it
-to the bot manager has no caller, so every bot is admitted with no dollar claim
-written for it.
-
-```
-effective_available    1 reader that decides a sale
-reservations_for        1 reader, a bot's own headroom
-snapshot               0 callers
-set_capital_registry   0 callers
-CapitalRegistry built  0 times
-```
-
-#### What the counts above point at is removed
-
-Three of those five rows named code with no caller, and that code is gone.
-
-The dollar registry is gone. `src/trading/capital_registry.py` is removed, with
-the Qt table, the view model and the renderer page that drew it.
-
-That path is in neither the git index nor the working tree, so a reader cannot
-open it. The commit `d72f69cf` removed it. What holds the reservation behaviour
-now is the module named in the next paragraph, and the dated entry on this page
-for issue 881 reads the same absence back.
-
-The whole-table read is gone. `CapitalReservationRegistry` in
-`src/trading/capital_reservation.py` no longer declares `snapshot`. A bot reads
-another bot's claim through `reservations_for`, and a sale is decided by
-`effective_available`. Both stay.
-
-The two operator overrides are gone. That registry no longer declares
-`force_release` or `force_release_all`. A claim still leaves the table five
-ways: its owner calls `release`, a bot drops its own with `release_for`, the
-expiry sweep calls `prune_expired`, the fleet sweep calls `sweep_unknown_bots`,
-and a silent bot loses its claim on the heartbeat schedule.
-
-| Name | Call sites before | Call sites after | State |
-| ---- | ----------------: | ---------------: | ----- |
-| `CapitalRegistry` | 0 | 0 | removed |
-| `snapshot` on the claim registry | 0 | 0 | removed |
-| `force_release` | 0 | 0 | removed |
-| `force_release_all` | 0 | 0 | removed |
-| `effective_available` | 1 | 1 | kept |
-| `reservations_for` | 1 | 1 | kept |
-
-Five places let a bot through with no claim behind it. Each one is a choice to
-keep trading rather than to stop, and making any of them stop means refusing a
-bot that trades today.
-
-| where | what fails there | what happens |
-|---|---|---|
-| `src/trading/container/registry.py`, the admission branch | no registry is attached | the bot is admitted, nothing is claimed |
-| the same file, the rate branch | no price for the base currency | the bot is admitted, nothing is claimed |
-| the same file, the error branch | the consult raises | the bot is admitted, nothing is claimed |
-| `src/trading/extractor_bot.py`, the chunk-rate claim | the claim raises | the Extractor runs unclaimed |
-| the Scrumming claim in the reservation mixin | the claim raises | the bot ticks on, its token cleared |
-
-Seven further places on the same path behave the same way. The sell pre-check is
-the one that bears on money directly, because it is the only reader.
-
-#### The Extractor now reads its holdings before it claims
-
-The fourth row above described a claim placed with no holdings figure behind it.
-The Extractor reads the balance first now.
-
-`ExtractorBot._read_base_holdings` in `src/trading/extractor_bot.py` asks the
-venue for the free balance of the base currency. It answers a figure, or it
-answers nothing when the read fails.
-
-Nothing is not zero, and it is not room to claim. `set_initial_chunk_rate` takes
-that answer. It still rebases the chunk. It places no claim, and it writes one
-warning that names the bot and the asset.
-
-A figure goes to the registry with the claim, so the registry can compare the
-request against what the bot owns. This is the check the Scrumming bot already
-passes, and the Extractor now takes the same path.
-
-Driven three ways on a real Extractor, with the venue read stubbed and no
-network:
-
-| The balance read | The claim | What the log says |
-| ---------------- | --------- | ----------------- |
-| the read failed | none placed | the bot and the asset are named |
-| 1000 units free, chunk 100 | placed, 100 units | the token and the chunk are named |
-| 1 unit free, chunk 100 | refused, none placed | the request and the holdings are named |
-
-The second row is the control. It proves the run would have seen a claim if one
-had been placed.
-
-No bot on the saved fleet is an Extractor. All 38 records carry the Scrumming
-mode, and all 38 live claims carry the Scrumming kind, so this change moves
-nothing that trades today.
-
-### The log lines a missing claim writes
-
-Four places used to pass in silence, or to say so only at debug level. Each now
-writes one line naming what was lost, and none of them changes what a bot does.
-
-```
-the sell pre-check      warning, naming the sale that is not bounded
-the admission branch    warning, naming the allocation not held aside
-the Extractor claim     warning, when the base currency is empty
-the dollar grant        warning, when the wallet cannot be priced
-```
-
-### What a stored record does now
-
-A record written before the removal still loads. Two bots were restored from a
-record carrying both retired names, nothing was raised, and every field that
-remains came back holding what it held before.
-
-```
-declared fields      67 before, 65 after
-field readings       134 before, 130 after, 0 values different
-the four that moved  the two retired names, on each of the two bots
-```
-
-## 2026-09-13 - #665 - the restore path reads the same declaration
-
-A launch used to rebuild every bot from a second list of field names. Creation
-had already stopped doing that: one helper reads the declaration and keeps every
-key naming a field the config declares. The restore path kept its own list —
-fifteen shared names, thirty-four Scrumming names and fifteen Extractor names,
-each carrying a default typed beside it. Both paths now call the one helper.
-
-`src/trading/container/restore.py` — the whole selection
-
-```python
-_kwargs = bot_config_kwargs(mode, cfg, exchange_id=cfg["exchange_id"])
-if "stack_mode" not in cfg:
-    _kwargs["stack_mode"] = STACK_MODE_DEFAULT
-```
-
-### Every place the field set is declared
-
-The three frozensets partition the dataclass exactly: their union holds 65 names,
-no field sits outside them, and no name in them is absent from the dataclass. The
-restore file now adds no fourth list.
-
-```
-BotConfig, 65 fields                         config.py:49
-_BOT_CONFIG_SHARED_FIELDS, 16                config.py:267
-_BOT_CONFIG_SCRUMMING_ONLY_FIELDS, 34        config.py:290
-_BOT_CONFIG_EXTRACTOR_ONLY_FIELDS, 15        config.py:337
-bot_config_kwargs reads all four             config.py:629
-```
-
-### A field added to the declaration reaches both paths
-
-One run added a field to the declaration, typed 55.50 into it, and read that
-figure back off a bot built each way. The field count moved from 65 to 66, and a
-restored bot held the declared default until the restore path read the
-declaration.
-
-```
-before   creation 55.50      restore 0.00      1 of 2 paths carried it
-after    creation 55.50      restore 55.50     2 of 2 paths carried it
-```
-
-### What a stored record restores to
-
-A record shaped like the saved fleet file carried a value away from the default in
-every field it can hold, for one Scrumming bot and one Extractor. A third record
-held a venue and a mode and nothing else. All three restored on both sides of the
-change, and every reading matched.
-
-```
-record config fields      65 of 65 away from the declared default
-readings compared         213
-readings different        0
-the bare record           60 of 60 fields at the default they declare
-```
-
-The comparison can report a difference. One stored figure moved from 3.75 to
-9.99, the record restored again through the same path, and the comparison named
-that one field.
-
-```
-scrum_fire_pct   before 3.75   after 9.99   1 of 213 different
-```
-
-### The one value that changes, and the record that carries it
-
-An Extractor whose record holds a pool figure and no Target Balance used to come
-back at 200.00. Creation gives that bot its pool figure, and the restore path now
-agrees.
-
-```
-record      extractor_chunk_size_usd 777.00, no target_balance key
-before      restored target_balance 200.00
-after       restored target_balance 777.00
-creation    777.00, both before and after
-```
-
-Two writers reach the saved fleet file, and neither can write a configuration
-section short of a field. One writes the whole dataclass through `asdict`, and
-the other loads the file, edits a wire route and writes the file back. A record
-the program wrote therefore carries Target Balance, so no saved bot reaches the
-branch above.
-
-```
-src/trading/bot_container.py:591     "config": asdict(self.config)
-src/gui/bot_visualizer.py:1474       loads, edits one route, writes back
-```
-
-### Two defaults the restore path keeps as its own
-
-Stack Mode has two defaults, and they answer two different questions. Creation
-reads the retired Grid checkbox and treats its absence as off. A saved record
-never holds that key, so an absent Stack Mode on a restore takes the declared
-default instead.
-
-```
-creation   bulk_trading absent   stack_mode False
-restore    stack_mode absent     stack_mode True, STACK_MODE_DEFAULT
-```
-
-A stored null on the standing alt units, or on the pool picker's list, reaches a
-number and an empty list rather than a null. Both readings are unchanged by this
-entry and both are driven.
-
-```python
-if "inverted_extractor_standing_alt_units" in _kwargs:
-    # A stored null reaches float() as 0.0.
-    _kwargs["inverted_extractor_standing_alt_units"] = float(
-        _kwargs["inverted_extractor_standing_alt_units"] or 0.0
-    )
-```
-
-### One bad stored value used to stop the whole fleet
-
-The build of a bot's configuration now sits inside the handler that was already
-written for it. A record holding a boolean where the pool picker's list belongs,
-or a word where a quantity belongs, used to raise out of the loop: the bots
-already processed stayed, the rest never loaded, and no line named the record at
-fault. Each such record is now one skipped bot, named in the restore ledger, and
-the fleet around it comes back.
-
-```
-three bots, the middle record holding a boolean pool list
-before   the restore raised, 1 bot in the fleet, no ledger entry
-after    2 of 3 restored, ledger names the middle bot
-the same reading for a word where the standing quantity belongs
-```
-
-### What the earlier entries on this page now read
-
-Two sentences above describe the restore path as it stood. The corrected reading
-for each:
-
-| entry | the sentence above | what it now does |
-|---|---|---|
-| One declaration, at creation | "One declaration serves the wizard path and the restore path together, so every field the config declares reaches a new bot." | True of both paths now. The restore path reads the same helper, so a field added to the declaration reaches a restored bot with no second edit. |
-| Max adoptable USD | "`max_adoptable_usd` is the one `BotConfig` field no page offers and the restore path does not read either." | The field is gone. Row 135 removed it and its reader, and the accumulation ceiling reads Target Balance. No field on the dataclass is unread by the restore path. |
-
-### A stored phantom timeframe, read again
-
-The restore path passes the stored timeframe to the bot, and the bot keeps it
-where the venue offers that granularity. A stored 4h on Coinbase reaches an empty
-list because the venue has no 4h candle, and the bot writes its own note naming
-the entry it dropped.
-
-```
-stored '1d'   bot holds ['1d']
-stored '6h'   bot holds ['6h']
-stored '4h'   bot holds []      available_timeframes('coinbase') has no 4h
-absent        bot holds ['5m', '15m', '30m', '1h', '1d']
-```
-
-## 2026-09-13 - #665 - the bot's increment style is off the dataclass
-
-The bot field named for the retired mode's increment is gone. Nothing wrote it
-and nothing read it, on either build.
-
-```
-occurrences in code    2 before, 0 after
-writers                0 before, 0 after
-readers                0 before, 0 after
-```
-
-### The code block above no longer matches the restore path
-
-The block earlier on this page showing the scrumming fields a restart rebuilds
-lists a line for the removed name. The restore path stopped naming its fields
-one at a time when it moved to the shared declaration, and the dataclass no
-longer declares that name, so no such line exists in either place.
-
-```
-restore arguments   built from the fields the dataclass declares
-retired names       dropped at that filter, never passed on
-fields restored     65 before, 64 after, one different and it is the removed one
-```
-
-## 2026-09-13 - #665 - the Hedge Rebalance switch arms the reserve on a running bot
-
-Three rows on the running bot's Hedge Rebalance group: the switch, the ceiling
-and the reserve. The saved fleet was read first, and read only.
-
-```
-38 bots, all running
-Hedge Rebalance Active ON      6      OFF      32
-Hedge Balance $0.00           36      $200.00   2
-stored reserve $0.00          35      $1.40 and $185.19 and $200.00, one each
-```
-
-### The switch reaches the reserve
-
-The reserve is the figure a hedge buy is checked against. Ticking Hedge Rebalance
-Active now fills it; before this change the tick moved the flag alone and the box
-appeared to work.
-
-```mermaid
-flowchart LR
-  A["Hedge Rebalance Active"] --> B["Apply"]
-  B --> C["set_hedge_rebalance_active_live"]
-  C --> D["the reserve a hedge buy reads"]
-  E["Hedge Balance"] --> B
-  B --> F["set_hedge_balance_live"]
-  F --> G["the ceiling a refill stops at"]
-```
-
-Driven on a bot built with the box off at a Hedge Balance of $200.00.
-
-```
-the flag moved by hand       reserve   $0.00   a $25 hedge buy refused
-the box ticked through Apply reserve $200.00   a $25 hedge buy allowed
-the box unticked             reserve $200.00 kept, every hedge buy refused
-the box ticked a second time reserve $200.00, no second filling
-a word instead of a tick     refused, reserve $0.00, the switch unmoved
-```
-
-Ticking on raises the reserve to the Hedge Balance figure and never lowers a
-larger reserve, so the box cannot destroy a reserve the bot already holds.
-Unticking keeps the reserve and freezes it, because the arm test and the refill
-test both read the switch first.
-
-### The ceiling is stored once
-
-The ceiling is the Hedge Balance figure on the bot's configuration, and the bot
-reads it there rather than keeping a second copy.
-
-`src/trading/scrumming/tick_phases.py` — the one ceiling
-
-```python
-@property
-def _hedge_balance_initial(self) -> float:
-    if not self.config.hedge_rebalance_active:
-        return 0.0
-    return float(self.config.hedge_balance)
-```
-
-The reserve stays on the saved record, because it is a balance and not a setting.
-The configuration is the authority for the ceiling, so a restart cannot leave the
-two disagreeing. Every stored bot reads the same two figures as before.
-
-```
-switch on   Hedge Balance   $0.00   stored reserve   $0.00   ceiling   $0.00   reserve   $0.00
-switch off  Hedge Balance   $0.00   stored reserve $200.00   ceiling   $0.00   reserve $200.00
-switch on   Hedge Balance $200.00   stored reserve $185.19   ceiling $200.00   reserve $185.19
-```
-
-### A Hedge Balance of zero says what it is
-
-Zero is a figure the box accepts, and it is not an off switch. It is an empty
-reserve that never refills, and a reserve the bot already holds stays spendable
-until it drains. Both tooltips say so, on both builds, and the Activity Log says
-so as the figure is typed.
-
-```
-HEDGE BALANCE A11 LIVE UPDATE: $200.00 -> $0.00. A $0.00 Hedge Balance is an
-empty reserve that never refills, not an off switch. Untick Hedge Rebalance
-Active to turn the hedge off. Reserve $200.00 stays spendable until it drains.
-```
-
-Making zero mean off was not taken. Four of the thirty-eight running bots carry
-the switch on with a Hedge Balance of $0.00, so that meaning would change what
-those four do on their next fold.
-
-## 2026-09-13 - which build draws the Live tab
-
-The Live tab now picks its page from the variant seam. `src/gui/variant_surface.py`
-registers the screen `TRADING` and holds two loaders for it. `_qt_trading` returns
-the Qt page. `_react_trading` returns `TradingTabReact`.
-
-`src/gui/main_tabs/trading_tab.py` builds the Qt page on every start. `draws_react`
-then decides which page the tab shows. Under the Qt build the tab shows that page.
-Under the React build `_react_trading_page` makes the Qt page a hidden child of the
-React page and shows the React page.
-
-The Qt page keeps every widget the main window writes to. `MainWindow` writes to
-`_status_log` and `_indicator_panel` under both builds, so neither build may skip
-the Qt build step.
-
-`src/gui/react_trading_tab.py` — the page the React build shows
-
-```python
-def models(live: Any = None) -> dict:
-    tab = (
-        trading_tab_surface.bind_live(live)
-        if live is not None
-        else trading_tab_surface.view_model
-    )
-    return {
-        trading_tab_surface.METHOD: tab({}),
-        status_log_surface.METHOD: status_log_surface.view_model({}),
-        indicator_panel_surface.METHOD: indicator_panel_surface.view_model({}),
-    }
-```
-
-`TradingTabReact` reads the same bridge method the Qt tab reads. That method is
-`trading.tab`, and `trading_tab_surface.bind_live` serves it from the running
-program's own exchange list.
-
-The page carries five scripts and fetches nothing. `panel_host.js` comes first,
-then React, then `status_log.js`, `indicator_panel.js` and `trading_tab.js`. Each
-module is inlined, so no module can read its own file name off its script tag.
-`marker_script` names the module whose script tag comes next, and `namer_script`
-hands that name to the panel host.
-
-### The voting panel takes no entry of its own
-
-`trading_tab.js` mounts the voting panel itself. It keeps a slot for the panel and
-hands the slot to the panel host. `variant_surface.py` therefore registers no
-screen for the voting panel, and none is needed.
-
-The reading below comes from the running page under the React build.
-
-```
-registered panels   indicator_panel, status_log, trading_tab
-panel faults        none
-trading.tab         loaded
-```
-
-The same reading with `indicator_panel.js` taken off the page names the panel that
-did not draw, which is how the reading above is known to discriminate.
-
-```
-registered panels   status_log, trading_tab
-panel faults        indicator_panel: the manifest names no indicator_panel.js
-```
-
-### What the two builds draw
-
-Both pages were drawn at 1743 by 1088 pixels and compared. 91.67 percent of the
-sampled pixels differ. The Qt page paints its ground `#2d2d2d`. The React page
-paints its ground `#0a0a0f`.
-
-## 2026-09-13 - what the React Live page draws
-
-`src/gui/web/trading_tab.css` gives the React Live tab its chrome. The page
-carried no stylesheet of its own before. It painted flat text on a plain ground.
-
-`react_trading_tab.STYLE_ASSETS` names the file. `panel_html` inlines it into the
-page head, so the page still fetches nothing over the network.
-
-The page also carries four style-source modules. `react_trading_tab.roster` puts
-them ahead of the three panel modules. They are design_tokens.js, theme_engine.js,
-shared_widgets.js and header_strip.js.
-
-`trading_tab.js` parses every Qt style sheet in its payload with `styleOf`. That
-function reads header_strip.js. A page that leaves the four modules out gets an
-empty object back, and it paints no colour the payload asks for.
-
-The reading below comes from the running page under the React build.
-
-```
-registered panels   header_strip, indicator_panel, status_log, trading_tab
-panel faults        none
-stylesheet rules    23
-network requests    0
-```
-
-The same reading with the stylesheet emptied counts one stylesheet rule. That is
-how the reading above is known to discriminate.
-
-```
-registered panels   header_strip, indicator_panel, status_log, trading_tab
-panel faults        none
-stylesheet rules    1
-network requests    0
-```
-
-### The page chrome
-
-`trading_tab.css` sets colour, border and type. `trading_tab.js` writes every
-layout value on the element's own style attribute from the payload.
-
-One exchange layer shows at a time. A stack page carries a flex display on its own
-style attribute, and that outranks the browser rule for a hidden element. The
-stylesheet marks a hidden page `display:none`. Before that rule the Crypto layer
-and the Stock layer both drew, one above the other, each at half the height.
-
-The empty-state card takes its ground and its edge from the stylesheet. Qt counts
-the alpha of both in bytes. `keptSheet` drops a byte alpha from the payload, so
-only the card's corner radius survives the trip.
-
-Two buttons add an exchange, and the Qt page draws both. The corner button beside
-the tabs is plain chrome. The card button below it carries the layer accent, which
-`placeholder_add_style` publishes. The stylesheet paints the corner button only,
-so the two read as different controls.
-
-Each log pane is one bordered ground. The pane carries the border. The status log
-and the API log carry the read-only ground inside it. The lower half of the page
-was blank before those rules.
-
-Each splitter handle carries the border colour, so the pointer can see what it
-takes hold of.
-
-### The Indicator Voting Panel
-
-The panel draws one row per timeframe and one column per indicator. Each cell
-prints its vote direction as an arrow and its confidence as a percentage. Green is
-bullish and red is bearish.
-
-`indicator_panel_surface.indicator_cell_colors` publishes each cell's text colour
-and its tint. `indicator_panel.js` writes both on the cell. No rule in the
-stylesheet sets a colour on a cell.
-
-The stylesheet gives the head cells a ground of their own. It also clips a cell
-that is wider than its column, so a narrow panel shows an ellipsis instead of
-running one vote over the column beside it.
-
-Each mini-table holds its header plus two timeframe rows. The confidence bars
-below it take the rest of the height. A summary carrying more timeframes is cut at
-two rows. `indicator_panel.py` fixes the same height with `setFixedHeight`.
-
-### The coin badge and the header skin
-
-Each Symbol cell carries a coloured disc with the first letter of the name. The
-colour is derived from the characters of the name, so one asset always draws the
-same disc. `coin_disc_color` answers for the Qt widget and for the renderer
-module, and both bot tables read it.
-
-```python
-ICON_ASSET_SIZE_PX = ds.COIN_ICON_SIZE_PX   # 18 pixels, one figure, four readers
-```
-
-The venue stylesheet paints the column headers in the accent colour, bold, over
-a two-pixel accent underline. It paints a rule on each cell edge, and it gives
-the Fire and Detail buttons the card ground and a border, so the browser draws
-no button face of its own.
-
-```
-header text        the accent colour
-header underline   2px, the accent colour
-cell edges         one rule right and one rule below
-Fire and Detail    card ground, outline border, payload text colour
-coin badge         18px disc, first letter, maximum-contrast text
-```
-
-## 2026-09-13 - #23 - the venue page under the React build
-
-### Which build draws the venue page
-
-The React build draws the venue page inside the Live page. It does not draw it
-in a window of its own. `TradingTabReact` loads eleven renderer modules into one
-page. The last of them is `exchange_tab.js`, and that module draws the venue.
-
-The Qt build is different. It builds one `ExchangeTab` widget per venue and puts
-that widget in a tab strip. That path is unchanged.
-
-`src/gui/react_trading_tab.py` - the modules the React Live page carries
-
-```python
-CHILD_MODULES: tuple[str, ...] = (
-    "status_log.js",
-    "indicator_panel.js",
-    "table_cells.js",
-    "bot_status_table.js",
-    "extractor_bot_table.js",
-    "crypto_news_ticker.js",
-    "exchange_tab.js",
-)
-```
-
-### The pane that holds the venue
-
-`trading_tab.js` draws one empty box per layer and marks it
-`data-part="exchange-pane"`. `mountExchanges` finds that box and calls
-`renderExchangePane`. The venue module then draws the whole venue into it.
-
-The pane takes the height of the tab body. The two bot tables scroll inside it.
-The command bar keeps its own height and stays in view. This is what the Qt
-build does.
-
-`src/gui/web/trading_tab.css` - the boxes that take the pane's height
-
-```css
-[data-part="stack"],
-[data-part="page"],
-[data-part="tab-widget"],
-[data-part="tab-body"],
-[data-part="exchange-pane"] {
-  min-height: 0;
-}
-```
-
-### How one fleet load reaches the page
-
-The window builds one `ExchangeTabReact` per venue. It hands every fleet load to
-that object. The object rebuilds five payloads and emits `published`.
-
-`TradingTabReact.hold_venue` takes that object and connects the signal. Each
-emission rebuilds the venue payload and pushes it into the page. The page then
-seats each payload and redraws. One fleet load, one source, one draw.
-
-`src/gui/react_trading_tab.py` - the Live page follows one venue
-
-```python
-def hold_venue(self, venue: Any) -> bool:
-    """Draw ``venue`` in this tab and follow every payload it publishes."""
-    exchange_id = str(getattr(venue, "exchange_id", "") or "")
-    published = getattr(venue, "published", None)
-    if not exchange_id or published is None:
-        return False
-    self._venues[exchange_id] = venue
-    published.connect(self._venue_published)
-    self._venue_published()
-    return True
-```
-
-A venue module names its exchange in its request. The page answers from the bag
-it holds for that exchange. Two venues on two layers therefore read two
-different fleets from one page.
-
-### The three collated columns
-
-The Net, Comp and Conf cells hold more characters than the other cells. The Conf
-cell holds a ten-block bar and a percentage. The page wraps these three cells
-instead of cutting them. The bar takes the first line and the percentage takes
-the second. Nothing runs past the right edge of the panel.
-
-The other cells keep the clip rule above. Only the three collated cells wrap.
-
-`src/gui/web/trading_tab.css` - the cells that wrap
-
-```css
-[data-part="indicator-body-cell"][data-state="net"],
-[data-part="indicator-body-cell"][data-state="comp"],
-[data-part="indicator-body-cell"][data-state="conf"] {
-  white-space: normal;
-  overflow-wrap: anywhere;
-  text-overflow: clip;
-  line-height: 1.1;
-}
-```
-
-### The header strip ground
-
-Three pages in the header strip carry no style sheet: the five stat cards, the
-spendable strip, and the tab bar. `page_html` writes six chrome colours on the
-root element and paints nothing. Each of the three pages now paints its own
-ground from those colours.
-
-A stat card paints its face from `--btn-bg`. Every page paints its body from the
-theme ground. No page scrolls, so no scroll bar draws.
-
-`src/gui/react_dashboard_stat_card.py` - one card's ground
-
-```python
-PAGE_STYLE = (
-    "*{margin:0;padding:0;box-sizing:border-box}"
-    "html,body{height:100%;overflow:hidden}"
-    "body{background:var(--bg);color:var(--text)}"
-    f"#{CARD_ROOT_ID}{{height:100%}}"
-    '[data-part="card"]{height:100%;background:var(--btn-bg)}'
-)
-```
-
-## 2026-09-13 - #23 - the voting panel and the two bot tables on the React Live tab
-
-### The window feeds the voting panel
-
-The dashboard tick wrote to the Qt panel only. The React panel was built once
-from an empty model and nothing replaced it, so it read the placeholder text for
-ever however many bots were running.
-
-`src/gui/main_window.py` — `_publish_votes`
-
-```python
-            show = getattr(getattr(self, "_trading_tab", None), "show_votes", None)
-            if not callable(show):
-                return False
-            from .react_trading_tab import votes_payload
-```
-
-The tick now calls that method with the fleet, the selected bot and the reading
-it has just given the Qt panel. Both panels show one bot and one set of cells.
-
-`src/gui/react_trading_tab.py` — `votes_payload`
-
-```python
-    surface.view_model({"action": "set_bots", "bots": list(bots or [])})
-    if selected_bot_id:
-        surface.view_model({"action": "select_bot", "bot_id": str(selected_bot_id)})
-```
-
-`indicator_panel_surface.view_model` is the same handler the Electron renderer
-asks, so the window and the shell draw one panel.
-
-**Read off the running page, 38 bots.** The selector held one entry and no cell
-carried a value before. It holds thirty-eight entries now.
-
-```
-                 before              after
-bot selector     1 entry             38 entries
-bot shown        (select a bot)      A02/USD [c8e5c5db] (running)
-cells with text  0 of 0              17 of 20
-confidence bars  0                   12
-```
-
-### The bars arrive settled
-
-The bar model starts every bar at zero and steps it toward its target. The Qt
-widget runs its own frame timer. The page draws the frame it is handed and runs
-no timer, so the window hands it a settled one.
-
-`src/gui/react_trading_tab.py` — `settled_frames`
-
-```python
-    return math.ceil(
-        math.log(surface.BARS_SETTLE_DELTA) / math.log(1.0 - surface.BARS_LERP_FACTOR)
-    )
-```
-
-The two published factors answer forty-nine frames. The panel pushes that many
-steps before it publishes.
-
-### The log panes give the tables their room
-
-The main splitter gave the two empty log panes the bottom third of the page. It
-now gives them under a quarter, and the tables take the rest.
-
-`src/gui/main_tabs/trading_tab_surface.py` — `MAIN_SPLITTER`
-
-```python
-MAIN_SPLITTER = {
-    "orientation": "vertical",
-    "handle_width_px": HANDLE_WIDTH_PX,
-    "children_collapsible": False,
-    "children": ["top_splitter", "bottom_splitter"],
-    "sizes_px": [660, 190],
-}
-```
-
-The Qt page took the same four sizes from four literals of its own. It reads them
-from the surface now, so one declaration sets both builds.
-
-### One stretch per bot table
-
-The Scrumming table holds the whole accumulation fleet and grows into whatever
-room is left. The Extractor table keeps the height of its own rows, so its rows
-are never cut.
-
-`src/gui/main_tabs/exchange_tab_surface.py` — the two stretches
-
-```python
-SCRUM_TABLE_STRETCH = 1
-EXTRACTOR_TABLE_STRETCH = 0
-```
-
-The React page reads them onto the flex of each table space. The Qt page passes
-them to the layout, and the Extractor table answers the header plus every row
-when the layout asks how tall it wants to be.
-
-**Read off the running page at 1960 pixels, 38 Scrumming bots and 3 Extractor
-bots.** A whole row is one whose top and bottom both sit inside the table's
-visible box.
-
-```
-                      react before  react after  qt before  qt after
-Scrumming whole rows  5             7            2          3
-Extractor whole rows  0             3            2          3
-Extractor box height  21 px         116 px       62 px      90 px
-```
-
-The Scrumming table is a scrolling list of thirty-eight rows, so its bottom edge
-still ends inside the next row: one pixel of twenty-nine under React and four of
-thirty under Qt. Every other scrolling table in the application ends the same
-way.
-
-### The readings can fail
-
-The same readings were taken again with the feed cut and again with the page's
-style sheets emptied. Each one reported the loss.
-
-```
-feed cut          bot selector 1 entry, bot shown blank, cells 0 of 0, bars 0
-sheets emptied    style sheets 0, Scrumming table box 0 px
-```
-
-## 2026-09-13 - #23 - every Live tab feed reaches the React page
-
-### Every Activity Log call reaches the page
-
-Six modules write to the Activity Log, and each one calls the Qt pane directly.
-The React pane was built once from an empty model, so it held its placeholder
-while the fleet traded. The pane now reports every call to one listener.
-
-`src/gui/widgets/status_log.py` — `set_relay`
-
-```python
-        def set_relay(self, relay) -> None:
-            """Take the callable every ``log``, ``pause``, ``resume`` and
-            ``notice`` call is reported to."""
-            self._relay = relay
-```
-
-`TradingTabMixin._wire_live_feeds` hands that listener to the React tab when the
-tab is built. The listener drives `status_log_surface`, which paints the same
-line the Qt pane paints, so a pause, a resume and a watchdog line all arrive.
-
-The Qt pane paints through `status_log_surface` as well. It asks `line_style`
-for the shape and `line_html` for the line, rather than building either itself,
-so the two panes cannot disagree about what a message looks like.
-
-**Read off the running page, 38 bots restored.** The two panes hold the same
-seven lines in the same order.
-
-```
-                 before   after   qt
-activity lines   0        7       7
-```
-
-### The API Interaction Log takes the same block
-
-`MainWindow._on_api_event` builds one text block per API call. It handed that
-block to the Qt pane only. It now hands the block to the React tab first, so a
-paused pane holds it and a running pane paints it.
-
-`src/gui/main_window.py` — `_on_api_event`
-
-```python
-            block_text = "\n".join(plain_lines)
-            self._push_live_tab({"api_lines": [block_text]})
-```
-
-`trading_tab_surface.view_model` keeps the capped block buffer the Qt view keeps,
-so both panes drop the same oldest block.
-
-```
-                 before   after   qt
-api blocks       0        8       8
-```
-
-### The data-pool line reads the shared cache
-
-The Qt venue page runs a one-second timer that reads the market cache and writes
-the freshness line under the New Bot button. The React venue page ran no such
-timer, so its line stayed on its opening text.
-
-`src/gui/react_exchange_tab.py` — `_update_pull_rate_label`
-
-```python
-        def _update_pull_rate_label(self) -> None:
-            if self._stopped:
-                return
-            self._screen.update_pull_rate_label()
-            self._publish()
-```
-
-The publish carries the fresh payload to the venue's own page and to the Live
-page beside it.
-
-**Read with 38 bots holding pool slots.** Both builds print one string.
-
-```
-before   Next data pull: —
-after    Data pool: 76 slots · awaiting first fetch  ·  cache-hit 0%
-```
-
-### The panel header carries its state and its rates
-
-The voting panel prints two header lines. One says the reading on screen is the
-last one taken and how old it is. The other prints the A15 and A14 spot rates.
-Neither reached the React panel, because the payload the window pushed carried
-the cells alone.
-
-`src/gui/indicator_panel.py` — `panel_reading`
-
-```python
-            if self._showing_stored and self._shown_stored:
-                read.update(self._shown_stored)
-            if self._rates_seen:
-                read["rates"] = self._rate_snapshot
-```
-
-`react_trading_tab.votes_payload` turns that reading into the panel payload. The
-Qt panel formats the age once and hands the result over, so the two banners
-cannot drift apart.
-
-```
-before   A15 —   A14 —   (currency rates pending), no state line
-after    A15 —   A14 —
-after    ⏱ LAST TA READ, NOT CURRENT — taken 22:03:09, 30s ago. bot is idle
-```
-
-### The voting panel takes the pane height
-
-The panel's two graphs divide whatever height is left after the two tables. The
-host the tab kept for the panel was a plain block, so the panel measured itself
-against its own content and each graph fell back to its hundred-pixel floor.
-
-`src/gui/web/trading_tab.js` — the panel host
-
-```javascript
-    var panelProps = {
-      style: {
-        flex: AUTO,
-        overflow: AUTO,
-        display: FLEX,
-        flexDirection: COLUMN,
-        minHeight: ZERO
-      }
-    };
-```
-
-Each table also keeps the height Qt fixes it to, which is its header plus two
-rows of slack, so a table holding one row is the same height as one holding
-three.
-
-**Read off the running page at 1960 pixels.**
-
-```
-                   before   after   qt
-graph height       100 px   147 px  142 px
-table height       52 px    84 px   83 px
-```
-
-### Cutting each feed empties what it fed
-
-Each feed was cut in turn and the same readings were taken again. Every reading
-reported its own loss and no other.
-
-```
-feed cut     reading
-activity     activity lines 0, api blocks 8
-api          api blocks 0, activity lines 7
-panel        bot blank, rates pending, no state line
-data pool    Next data pull: —
-```
-
-## 2026-09-14 - #23 - the voting panel matches the Qt panel element by element
-
-The Net, Comp and Conf columns drew as two stacked bars with a black band
-between them. The band was the second table's header row. The page gave every
-header cell a solid ground, so that row painted over the pillar behind it.
-
-`src/gui/web/trading_tab.css` — the header cell lets the pillar through
-
-```css
-[data-part="indicator-head-cell"] {
-  background: transparent;
-  border: none;
-}
-```
-
-The window draws the same header through `QHeaderView::section`, which is
-transparent for the same reason. The pillar now runs from the upper graph to
-the lower one without a break.
-
-**Overtaken.** *"The pillar now runs from the upper graph to the lower one
-without a break."* A pillar now stands on the floor of that same space at its
-own fraction of it, so it reaches the upper graph only at a full reading. The
-space it may occupy, and the header it draws through without a band, are
-unchanged. See [Net, Comp and Conf](#net-comp-and-conf).
-
-### What the page now reads off the payload
-
-Eleven published values reached nothing. The page took a header ground the
-payload never gave it, and it guessed the rest of the list below.
-
-```
-value                what it sets on the page now
-arrow_min_height_px  the bar height an arrow needs
-shine_min_height_px  the bar height a highlight needs
-shine_limit_px       the tallest a highlight may grow
-glow_inset_px        the halo width beside a bar and beside a pillar
-column_min_pad_px    the narrowest pad beside a bar
-label_font           the face a bar name and a pillar name take
-arrow_font           the face and the size a bar arrow takes
-empty_font           the face the empty-graph note takes
-label_height_px      the box a bar name centres in
-label_offset_px      how far that box sits under the baseline
-margin_left_px       where the grid and the baseline start
-```
-
-### How an ornament decides now
-
-`ConfidenceBarsWidget.paintEvent` tests the bar it painted, in pixels. The page
-measured nothing, so it compared the vote against a share taken at the smallest
-graph the panel allows.
-
-A taller graph then dropped arrows the window kept.
-
-`renderPanel` in `src/gui/web/indicator_panel.js` measures the graph after it
-draws, draws again at the height it found, and watches for a resize.
-
-```
-                        window   page before   page after
-bar area height         129 px   126 px        129 px
-arrows drawn, 12 bars   8        6             8
-```
-
-### Two measurements that still differ
-
-The header strip is 23 pixels tall in the window and 18 on the page. Each engine
-sizes that strip from its own font, and no published value names a height, so
-a fixed height would write this machine's font metric into the product. Each table
-is 83 pixels in the window and 78 on the page for the same reason.
-
-The bot selector shows the whole bot name on the page. The window clips the last
-characters of it, because `QComboBox` fixed its width at its first show, before
-any bot had arrived.
-
-```
-                   window   page
-header strip       23 px    18 px
-mini-panel table   83 px    78 px
-graph pane         159 px   159 px
-bar area           129 px   129 px
-pillar             374 px   369 px
-```
-
-## 2026-09-14 - #23 - the window draws the panel without a band
-
-The window painted a band across the Net, Comp and Conf pillars. The band was
-the second table's header row. The theme gives every header section a ground
-and an underline, and the mini-panel container gives itself a ground as well.
-Both painted over the pillar behind them.
+def column_titles(subset: list, *, include_aggregates: bool = False) -> list:
+    titles = [TF_COLUMN_TITLE] + [short for _, short, _ in subset]
+    pad = AGGREGATE_TITLES if include_aggregates else []
+    titles = titles + list(pad)
+    return titles + [EMPTY_TITLE] * (PANEL_COLUMN_COUNT - len(titles))
+```
+
+The header row draws no ground of its own, in either build, so each pillar runs
+behind it rather than being cut by it. The window's theme normally gives a header
+section a ground and an underline, and the panel overrides both.
 
 `src/gui/indicator_panel.py` — the container and the table draw no ground
 
@@ -6403,366 +4829,249 @@ table.setStyleSheet(
 )
 ```
 
-The three pillars now run from the upper graph to the lower one without a
-break. Read off the rendered panel at the centre of the Net pillar, one colour
-runs from row 160 to row 599 with no other colour inside it.
+A pillar stands on the floor of the space it occupies, at its own fraction of that
+space, so it reaches the upper graph only at a full reading. The column heading
+takes the theme's accent colour in both builds, and each mini-table holds its header
+plus two timeframe rows, with the confidence bars below taking the rest of the
+height. A summary carrying more timeframes is cut at two rows.
 
-**Overtaken.** *"The three pillars now run from the upper graph to the lower
-one without a break."* Each pillar now stands at its own fraction of that
-space. One colour still runs the whole of a pillar with no other colour inside
-it, which is what this passage measured; the run is as tall as the reading.
-The `pillar 374 px / 369 px` row above measured a full-height pillar and now
-holds for a reading at full scale only. See
-[Net, Comp and Conf](#net-comp-and-conf).
+[07-indicators.md](07-indicators.md) carries the panel's own entry.
 
-### The pillars are named at their tops
+![The Trading tab in the Electron shell](../audits/2026-09-07_units/trading_tab_electron.png)
 
-Net, Comp and Conf carried a name only at the foot. `column_titles` in
-`src/gui/main_tabs/indicator_panel_surface.py` now heads those three columns on
-the table that holds the aggregate cells, and pads the other table as before.
+### The asset class group
+
+**HIS.**
+
+> "the large Crypto / Stock Wing button in the upper right of the GUI which will
+> now become a segmented group featuring one layer button per available market
+> sector"
+
+> "This should be one square segmented into rectangular buttons. You stated you
+> had inferred the meaning. This is not segmenting. This is copy / paste /
+> repurpose. OCIR. Will need to be fixed."
+
+> "Get these mode buttons corrected. I gave you a properly elaborated spec for
+> how this segmented of the ONE square was supposed to be done and yet, here I
+> am, in the latest build still seeing a STUPID design that the GUI Archetype
+> should have flagged as pure grade shit."
+
+**Functional.** The header strip ends in one square at the upper right of the
+window. Four asset classes divide it into four rectangles, two across and two
+down, by one vertical line and one horizontal line. The square is 68 pixels on each
+side and each segment is 34 by 34. Exactly one segment is active, and pressing a
+segment makes that class active, retitles the Add Exchange button and stores the
+choice, so the next launch opens on the same class.
+
+A segment past the first column drops the border it shares with the segment to its
+left, and a segment past the first row drops the border it shares with the segment
+above, so one line draws between two neighbours rather than two. Each segment rounds
+exactly one corner, and only the corner it shares with the square; every corner
+inside the square is square. The active segment fills with its class accent and
+keeps its own outline, which is what marks it at a glance.
+
+`src/gui/main_tabs/asset_class_surface.py` — `segment_box`
 
 ```python
-def column_titles(subset: list, *, include_aggregates: bool = False) -> list:
-    titles = [TF_COLUMN_TITLE] + [short for _, short, _ in subset]
-    pad = AGGREGATE_TITLES if include_aggregates else []
-    titles = titles + list(pad)
-    return titles + [EMPTY_TITLE] * (PANEL_COLUMN_COUNT - len(titles))
+said = [f"border: 1px solid {ds.OUTLINE}"]
+if column > 0:
+    said.append("border-left: none")
+if row > 0:
+    said.append("border-top: none")
+said.append("border-radius: 0px")
+if top and left:
+    said.append(f"border-top-left-radius: {corner}")
 ```
 
-The window and the page both call that function, so neither can head a column
-the other leaves blank. Both now draw 17 column headings where each drew 14.
+**Design intention.** A model that treats its members as a line cannot produce a
+square, so a segment carries a row and a column rather than a place on a line.
+`segment_cell` answers that place and `segment_box` reads it, and both builds take the
+same answer. The side is one declared number, `group_side_px`, so neither build
+measures its own row height and neither can draw a different square. The segments sit
+in a `QButtonGroup` set exclusive, so a second active segment is refused before any
+code of ours runs, and `_build_class_group` builds them from the taxonomy and reads
+the stored class back.
 
-### The page takes the heading colour the window paints
+`src/gui/main_tabs/asset_class_surface.py` — `grid_shape`
 
-The theme paints a header section in its own accent colour. The page inherited
-the page text colour instead, so the two drew the same headings in different
-colours. The page variable `--accent` carries that accent for all five themes.
+```python
+columns = math.isqrt(held)
+if columns * columns < held:
+    columns += 1
+rows = held // columns + (1 if held % columns else 0)
+```
 
-```css
-[data-part="indicator-head-cell"] {
-  background: transparent;
-  border: none;
-  color: var(--accent);
-  padding: 8px;
+`src/gui/web/header_strip.js` — the square's own style
+
+```js
+var side = length(model[SIDE]);
+var groupStyle = {
+  display: "grid",
+  gridTemplateColumns: tracks(cell(model[GRID_COLUMNS], 1)),
+  gridTemplateRows: tracks(cell(model[GRID_ROWS], 1)),
+  width: side,
+  height: side
+};
+```
+
+**Nothing is written as four.** The count comes from the taxonomy when the group is
+built, so a class added there gets a segment with no further edit. The columns are
+the integer square root of the count rounded up, and the rows follow, so the grid is
+the one nearest to square. The last row's segments share the columns the full rows
+use, so every row fills the width.
+
+```
+count   columns x rows   the last row
+1       1 x 1            one segment, rounding all four corners
+2       2 x 1            full
+3       2 x 2            one segment spanning both columns
+4       2 x 2            full
+5       3 x 2            two segments spanning 2 and 1 columns
+6       3 x 2            full
+9       3 x 3            full
+12      4 x 3            full
+```
+
+`src/trading/ata_spm.py` — the taxonomy the group reads
+
+```python
+ASSET_CLASSES = (
+    CLASS_CRYPTO,
+    CLASS_STOCKS,
+    CLASS_COMMODITIES,
+    CLASS_FOREX,
+)
+```
+
+**The square takes no spare width.** Its side is a declared number, so no slot of
+the header row takes the width the figures leave. Each part draws at the width its
+own text asks for, down to its floor, and the row inserts empty space before the
+square, which sits at the row's right end.
+
+`src/gui/main_tabs/header_strip.py` — the Qt insertion
+
+```python
+top_row.insertStretch(
+    surface.TOP_ROW_ORDER.index(surface.TOP_ROW_SPACER_BEFORE),
+    surface.TOP_ROW_SPACER_STRETCH,
+)
+```
+
+**Design intention.** A group that the GUI archetype could not judge is how a
+separated design survived two builds, so the archetype now carries a rule for it.
+GUI007 reads every function that names a segment and writes its own border box, and
+it refuses three shapes: a group that suppresses no shared edge, a branch that
+rounds more than one corner, and a spacing or gap constant that is not zero. Its
+fixture pair is `harness_fixtures/gui_archetype/known_good_segmented.py`, which
+exits zero, and `harness_fixtures/gui_archetype/known_bad_separated.py`, which exits
+one.
+
+`dev_harness/harness/gui_archetype.py` — `_scan_segmented_group_skin`
+
+```python
+shared = any(f"border-{edge}: none" in joined for edge in _SEGMENT_EDGES)
+if not shared:
+    findings.append(Finding(..., rule_id="GUI007", ...))
+```
+
+**The window keeps a model of the group as well as the widgets.** The bridge answers
+`main_window.state` from that model, and the model publishes the same group the strip
+draws, built from the same function, so one press names any class and nothing carries
+two answers. Reading the class list at call time removes the class the model could
+refuse.
+
+`src/gui/main_tabs/main_window_surface.py` — `MainWindowModel.select_asset_class`
+
+```python
+key = asset_class_surface.normalise(name)
+self.trading_mode = key
+self.class_buttons = asset_class_surface.class_buttons(key)
+self.trading_stack_index = asset_class_surface.layer_page(key)
+self.window_title = asset_class_surface.window_title(key)
+```
+
+The title is one format for every class, and the stack page comes from the taxonomy.
+
+`src/gui/main_tabs/asset_class_surface.py` — `window_title`
+
+```python
+return f"Acervator — {display_name(name).upper()} LAYER"
+```
+
+| class | stack page | window title | what the page draws |
+|---|---|---|---|
+| Crypto | 0 | `Acervator — CRYPTO LAYER` | the crypto trading layer |
+| Stock | 1 | `Acervator — STOCK LAYER` | the equity trading layer |
+| Commodities | 2 | `Acervator — COMMODITIES LAYER` | the card, reading `Commodities has no trading layer yet.` |
+| Forex | 2 | `Acervator — FOREX LAYER` | the card, reading `Forex has no trading layer yet.` |
+
+A class with no trading layer still takes a layer title, because the title names the
+active class and not the page. The sentence about the missing layer is the card's own
+note.
+
+**A retired class name reaches the class that holds its markets.** The taxonomy names
+the pair, and the group reads that name rather than carrying its own copy, so a
+selection stored under an older taxonomy still opens on the right class.
+
+`src/trading/ata_spm.py` — the retired names
+
+```python
+RETIRED_CLASSES = {
+    "metals": CLASS_COMMODITIES,
+    "energy": CLASS_COMMODITIES,
+    RETIRED_CLASS_DERIVATIVES: CLASS_CRYPTO,
 }
 ```
 
-Read off the two rendered panels, a column heading is rgb(0, 255, 204) on both.
-
-### What the two panels measure
-
-```
-                     window     page
-column headings      17         17
-bars                 12         12
-pillars              3          3
-heading row height   33 px      34 px
-bar area             156 px     159 px
-panel ground         10,10,15   10,10,15
-graph ground         10,10,18   10,10,18
-heading colour       0,255,204  0,255,204
-```
-
-### One measurement that still differs
-
-The bot selector is 34 pixels tall in the window. The whole header row is 23
-pixels on the page. The panel publishes ten heights and none of them names the
-header row, so each engine sizes that control from its own font.
-
-## 2026-09-23 - #154 - the voting panel's header row
-
-The row at the top of the Indicator Voting Panel now holds, from the left: the
-panel's title, a blue left arrow, the bot dropdown, a blue right arrow and the
-privacy control. The word `Bot:` is gone. A stretch sits on each side of the
-four controls, so the dropdown sits between the two arrows and the group sits
-in the middle of the space the title leaves.
-
-### The arrows
-
-Each arrow moves the dropdown one place along the list it already holds. The
-list does not wrap: a press at the first bot leaves the panel on the first bot,
-and a press at the last leaves it on the last. An arrow with nothing left to
-step to is greyed.
-
-`src/gui/indicator_panel.py` — `IndicatorVotingPanel._step_bot`
+`src/gui/main_tabs/asset_class_surface.py` — `normalise`
 
 ```python
-def _step_bot(self, by: int) -> int:
-    """Move the dropdown ``by`` places and answer the index it lands on.
-
-    The list does not wrap: a press at either end leaves the
-    selection where it is.
-    """
+asked = LEGACY_CLASS_WORDS.get(asked, asked)
+asked = RETIRED_CLASSES.get(asked, asked)
 ```
 
-The two glyphs, their size and their family are the Charts tab's own, imported
-rather than copied, so the two control rows cannot drift apart.
+| stored name | the class it opens on | the button reads | its accent |
+|---|---|---|---|
+| `metals` | commodities | Commodities | `#ffaa00` |
+| `energy` | commodities | Commodities | `#ffaa00` |
+| `derivatives` | crypto | Crypto | `#00ccaa` |
+| `stock` | stocks | Stock | `#6699ff` |
+| `equities` | stocks | Stock | `#6699ff` |
+| a name no class holds | crypto | Crypto | `#00ccaa` |
 
-`src/gui/main_tabs/indicator_panel_surface.py` — the arrows take the Charts
-tab's numbers
+**Design intention.** Derivatives names no sector. A futures contract is a form a
+contract takes, and the class belongs to the thing underneath it, so a future on an
+index sits with equities and a future on ether sits with crypto. A venue's dated
+futures and perpetuals are still read, from the same public product list, and each
+product takes the class of its own underlying.
+
+`src/trading/ata_asset_maps.py` — the placement one futures product takes
 
 ```python
-from .native_chart_surface import (
-    ARROW_GLYPH_FAMILY,
-    ARROW_GLYPH_PX,
-    CONTROL_HEIGHT_PX,
-)
+def futures_placement(product: dict) -> tuple[str, str, str]:
+    """The underlying, the asset class and the sector one futures product takes.
 ```
 
-Read off both running builds, each arrow is 34 by 26 pixels and draws U+25C0 or
-U+25B6 in Segoe UI Symbol at 16 pixels.
+**The naming.** The operator's words are "market sector". Under the published
+standards the top level is the **asset class**, and a sector is the tier below it.
+GICS names sectors inside equities. S&P GSCI names sectors inside commodities. The
+group therefore selects an asset class. Sectors stay the tier below, where the
+ATA-SMP scanner uses them.
 
-### The privacy control
+**The choice survives a restart.** The class is written into settings on every press
+and read back when the group is built.
 
-The panel draws the universal control, `PrivacyDot` in
-`src/gui/widgets/privacy_dot.py`, in place of the copy it used to carry. The
-glyph is a filled circle when the dropdown is readable and an empty circle when
-it is masked. The colour is the design system's `PRIMARY_BRIGHT`, and the
-control sizes to its own glyph rather than to a fixed square.
-
-`src/gui/design_system.py` — the token the dot paints in
+`src/core/settings.py` — the stored field
 
 ```python
-PRIMARY_BRIGHT = "#00ffee"  # Brighter cyan accent: privacy dot, Sim tab
+active_asset_class: str = "crypto"
 ```
 
-Read off the running window, the mark paints `#00ffee` at 17 by 19 pixels. On
-the page it paints `rgb(0, 255, 238)` at 16 by 17. The Charts tab's own dot
-takes its colour from the same token.
+#### The Add Exchange button follows the class
 
-### The page answers a press
-
-The React page used to draw the dropdown and the dot with no handler behind
-either, and its bridge served every ask from the payload the page was built
-with. An ask that names an action now goes to the window and moves the one Qt
-panel the window holds, so the page and the window never show two selections.
-
-`src/gui/main_tabs/trading_tab.py` — `TradingTabMixin._wire_live_feeds` binds it
-
-```python
-bind = getattr(getattr(self, "_trading_tab", None), "set_votes_handler", None)
-answer = getattr(self, "_answer_votes", None)
-if callable(bind) and callable(answer):
-    bind(answer)
-```
-
-### What the two rows measure
-
-```
-                       window        page
-row order              title, ◀, dropdown, ▶, dot
-row height             30            30
-arrow size             34 x 26       34 x 26
-arrow glyph family     Segoe UI Symbol 16 px on both
-dropdown entries       38            38
-privacy mark           17 x 19       16 x 17
-privacy colour         #00ffee       rgb(0, 255, 238)
-Bot: label             absent        absent
-```
-
-Before this entry the same two rows measured a `Bot:` label, no arrow, and a
-privacy mark of 12 by 12 painting `#3344ff`, and the page's row measured 23
-pixels tall.
-
-### Four sentences this entry overtakes
-
-"The Bot selector at the top names the bot whose votes the panel draws. The
-list refills every tick. The badge beside it counts the bullish, bearish and
-neutral voters." — the list still refills every tick, and it is still the
-control that names the bot. No `Bot:` word stands before it and no badge after
-it; an arrow stands on each side and the privacy control follows.
-
-"TF Lock chooses a timeframe below which an opposing trade is refused. The list
-opens on 'None (no lock)'." — no such control is on the panel. The line at the
-foot that names an active timeframe lock is a readout and stays.
-
-"The bot selector and its privacy dot moved there." — they are still in the
-upper part of the row, with an arrow on each side of the dropdown, and the
-privacy dot is now the universal control rather than the panel's own copy.
-
-"The bot selector is 34 pixels tall in the window. The whole header row is 23
-pixels on the page." — the arrows carry a control height the surface publishes,
-so each arrow measures 26 pixels tall in the window and 26 on the page. The row
-that holds them measures 30 pixels in the window and 30 on the page. It measured
-23 on the page before the arrows joined it.
-
-## 2026-09-23 - #858 - the bot list moves the Indicator Voting Panel
-
-A press on a row of the Scrumming Bots table draws that bot in the Indicator
-Voting Panel. Before this entry the two picked their bots apart: the table's
-selection reached one handler, which cleared the other table and named no
-panel, and the panel read its own dropdown.
-
-### One value behind both
-
-The bot the panel holds is the value. `IndicatorVotingPanel.select_bot` is the
-only thing that writes it, and every other control asks that one method.
-
-`src/gui/widgets/bot_selection.py` — `BotListPanelLink`
-
-```python
-def row_selected(self, bot_id: Optional[str]) -> str:
-    """Draw the pressed bot on the panel and answer the bot it holds."""
-    if self._settling:
-        return self.bot_id
-    self._settling = True
-    try:
-        return str(self._panel.select_bot(str(bot_id or "")) or "")
-    finally:
-        self._settling = False
-```
-
-The window builds one link and gives the panel's own topic a reader. The topic
-was already declared and the emit already ran; nothing listened to it.
-
-`src/gui/main_window.py` — `MainWindow._setup_bot_list_link`
-
-```python
-self._bus.subscribe(
-    _ivp_surface.BOT_SELECTED_TOPIC, self._bot_list_link.panel_selected
-)
-```
-
-### What a second press on one row does
-
-The decision is one function, and both build variants call it, so a press
-cannot mean two different things on the two screens.
-
-`src/gui/widgets/bot_status_table.py` — `BotStatusTable.mousePressEvent`
-
-```python
-shown = self.get_selected_bot_id()
-super().mousePressEvent(event)
-pressed = self.get_selected_bot_id()
-if not selection_after_press(pressed, shown):
-    self.clear_bot_selection()
-```
-
-`src/gui/main_tabs/bot_status_table_surface.py` — `BotStatusTableModel.on_row_pressed`
-
-```python
-wanted = selection_after_press(str(bot_id or ""), self.get_selected_bot_id())
-if wanted:
-    self.select_row_for_bot(wanted)
-else:
-    self.clear_selection()
-    self.current_row = NO_SELECTION_ROW
-```
-
-### How the press leaves the page
-
-The page's row carries a press of its own, alongside the four it already sent.
-It goes out on the same console line the privacy toggle and the column sort
-use, and the Fire and Detail buttons stop the press reaching the row so they
-keep their window behaviour.
-
-`src/gui/web/bot_status_table.js` — `sendRowPress`
-
-```javascript
-function sendRowPress(model, botId) {
-  return dispatch(
-    model,
-    actionNamed(model, ROW_PRESSED),
-    request(model, SELECT_BOT_PARAM, botId)
-  );
-}
-```
-
-`src/gui/react_trading_tab.py` — the venue answers three presses now
-
-```python
-VENUE_PRESSES = (
-    (scrum_surface.PRIVACY_TOGGLE_PARAM, "toggle_privacy"),
-    (scrum_surface.SORT_COLUMN_PARAM, "sort_by"),
-    (scrum_surface.SELECT_BOT_PARAM, "select_bot"),
-)
-```
-
-### What both builds now read
-
-Read off the running program in both builds at 700, 900 and 1400 pixels, with
-a fleet of 38 bots, the home on a scratch directory and every socket but
-loopback refused. Every figure below is identical at all three widths and in
-both builds.
-
-```
-press                          bot list highlight     panel draws
-none yet                       the panel's own bot    that bot
-a row                          that row's bot         that row's bot
-the same row again             no row                 the empty state
-that row a third time          that row's bot         that row's bot
-the panel's dropdown           that bot's row         that bot
-a column sorted, then row 0    row 0's bot            row 0's bot
-```
-
-The sorted reading moved the first row from one bot to another before the
-press, so the press could not have passed by position.
-
-### The empty state and the bot that is gone
-
-Two empty states, read in both builds. A selection cleared by a second press
-reports the cause `no_selection` and reads *"no bot is selected — press a bot
-row, or pick one from the dropdown above."* A bot the fleet no longer carries
-reports `bot_missing` and reads *"bot … is selected but no longer present in
-the fleet."* A bot the dropdown does not carry leaves the panel where it is, so
-a stale ask cannot blank it.
-
-### A reading the panel used to keep after it was over
-
-`panel_reading` names the cause of an empty state, and nothing cleared that
-cause when votes arrived. A panel drawing twelve voters still reported the
-reason it had been blank. It clears when a summary arrives now, and a stored
-reading keeps the cause of the missing live read, which is what its banner is
-about.
-
-`src/gui/indicator_panel.py` — `IndicatorVotingPanel.update_data`
-
-```python
-if multi_tf_summary:
-    self._no_data_cause = ""
-    self._no_data_message = ""
-```
-
-### One sentence this entry overtakes
-
-"The Bot selector at the top names the bot whose votes the panel draws." — the
-selector still names it and still refills every tick. It is no longer the only
-control that names it: a press on a row of the Scrumming Bots table names it
-too, and a second press on that row takes the panel off that bot.
-
-### The asset class group, and the Add Exchange button that follows it
-
-**Functional.** The header strip ends in a segmented group, at the upper right
-of the window. It holds one button per asset class, and exactly one is active.
-Pressing a button makes that class active, retitles the Add Exchange button and
-stores the choice, so the next launch opens on the same class.
-
-The group builds its buttons from the taxonomy at run time, so a class added to
-`ASSET_CLASSES` gets a button with no further edit.
-
-`src/gui/main_tabs/header_strip.py` — `_build_class_group`
-
-```python
-for name in asset_classes():
-    model = class_button(name, self._asset_class)
-    button = QPushButton(model["text"])
-    button.setCheckable(True)
-    button.clicked.connect(partial(self._on_class_clicked, model["class"]))
-    self._class_buttons.addButton(button)
-```
-
-Read off the running window, the group holds five buttons:
-
-```
-Crypto   Stock   Commodities   Derivatives   Forex
-```
-
-**One class at a time.** The buttons sit in a `QButtonGroup` set exclusive, so a
-second active button is refused before any code of ours runs. The active class
-is readable off the window as `_asset_class`.
-
-**The Add Exchange button follows the class.** Its text, its tooltip and whether
-it can act all come from the class, and each is read from one place.
+**Functional.** The button's text, its tooltip and whether it can act all come from
+the active class, and each is read from one place. A class with no configured venue
+says so and refuses the press; it does not offer another class's venue list.
 
 `src/gui/main_tabs/asset_class_surface.py` — `add_exchange_label`
 
@@ -6773,19 +5082,12 @@ if not state["served"]:
 return f"{ADD_PREFIX} {state['name']} {state['noun']}"
 ```
 
-Read for each class in turn, on the running window:
-
-| class | the button reads | it can act | venues |
-|---|---|---|---|
-| Crypto | `＋ Add Crypto Exchange` | yes | 15 |
-| Stock | `＋ Add Stock Broker` | yes | 9 |
-| Commodities | `Commodities — no venue yet` | no | 0 |
-| Derivatives | `＋ Add Derivatives Exchange` | yes | 1 |
-| Forex | `Forex — no venue yet` | no | 0 |
-
-**A class with no venue says so.** It does not offer another class's venue list.
-The button states the class and refuses the press, and the Trading tab draws a
-card naming what is missing.
+| class | the button reads | it can act |
+|---|---|---|
+| Crypto | `＋ Add Crypto Exchange` | yes |
+| Stock | `＋ Add Stock Broker` | yes |
+| Commodities | `Commodities — no venue yet` | no |
+| Forex | `Forex — no venue yet` | no |
 
 `src/gui/main_tabs/asset_class_surface.py` — the notes a class draws
 
@@ -6794,115 +5096,8 @@ NO_VENUE_NOTE = "No configured venue serves {name} yet."
 NO_LAYER_NOTE = "{name} has no trading layer yet."
 ```
 
-Commodities and Forex have no configured venue. Derivatives has one venue and no
-trading layer, so it draws the second note.
-
-**The Derivatives row above is overtaken, and so is the sentence naming its one
-venue.** Both stay exactly as written. The class they name retired on purpose,
-and the row records a taxonomy the program no longer declares.
-
-The row, quoted whole as the page sets it:
-
-```
-the row: | Derivatives | `＋ Add Derivatives Exchange` | yes | 1 |
-```
-
-> Commodities and Forex have no configured venue. Derivatives has one venue and no trading layer, so it draws the second note.
-
-The true sentence is: the taxonomy declares four classes, and Derivatives is not
-one of them. Read at run time, the tuple answers crypto, stocks, commodities and
-forex, and the group draws one button for each.
-
-```python
-# src/trading/ata_spm.py:55
-ASSET_CLASSES = (
-    CLASS_CRYPTO,
-    CLASS_STOCKS,
-    CLASS_COMMODITIES,
-    CLASS_FOREX,
-)
-```
-
-The one venue that row named is Coinbase. Asked which classes it serves, the
-surface answers crypto alone, because it answers only classes the live tuple
-holds. Coinbase's dated futures and perpetuals are still read, from the same
-public product list, and each product now takes the class of its own underlying
-instead of a class of its own.
-
-```python
-# src/trading/ata_asset_maps.py:1082
-def futures_placement(product: dict) -> tuple[str, str, str]:
-    """The underlying, the asset class and the sector one futures product takes.
-```
-
-A stored selection under the old name still opens on a live class. One map
-answers the old name, and for this one it answers crypto.
-
-```python
-# src/trading/ata_spm.py:77
-RETIRED_CLASSES = {
-    "metals": CLASS_COMMODITIES,
-    "energy": CLASS_COMMODITIES,
-    RETIRED_CLASS_DERIVATIVES: CLASS_CRYPTO,
-}
-```
-
-The retirement was a decision and not a slip. Derivatives names no sector. A
-futures contract is a form a contract takes, and the class belongs to the thing
-underneath it, so a future on an index sits with equities and a future on ether
-sits with crypto. A market a retail trader cannot reach from
-home still charts under its own class, and no bot deploys there.
-
-Read at run time, and searched over the git index across every tracked Python
-file:
-
-```
-classes the tuple declares                                  4
-the tuple holds derivatives                             False
-CONTROL the tuple holds crypto                           True
-classes the surface says Coinbase serves                    1
-buttons the group draws                                     4
-RETIRED_CLASS_DERIVATIVES                       4 occurrences
-CLASS_COMMODITIES                              29 occurrences
-CLASS_FOREX                                     7 occurrences
-CONTROL CLASS_ZORBONICS                         0 occurrences
-```
-
-The last row is the control. The same search finds three class names that are
-still read, so a zero above is a reading of the tree and not of the search.
-
-
-The class list is read from `ASSET_CLASSES` at run time. Unit S13 of issue 23
-replaced Metals and Energy with Commodities while this unit was open, and the
-group followed with no edit: it dropped to five buttons and drew the new class.
-
-**A retired class name reaches the class that holds its markets.** `ata_spm`
-names the pair, and the group reads that name rather than carrying its own copy,
-so a selection stored under the old taxonomy still opens on the right class.
-
-`src/gui/main_tabs/asset_class_surface.py` — `normalise`
-
-```python
-asked = LEGACY_CLASS_WORDS.get(asked, asked)
-asked = RETIRED_CLASSES.get(asked, asked)
-```
-
-Read for each name in turn, on the running window:
-
-| stored name | the class it opens on | the button reads | its accent |
-|---|---|---|---|
-| `metals` | commodities | Commodities | `#ffaa00` |
-| `energy` | commodities | Commodities | `#ffaa00` |
-| `stock` | stocks | Stock | `#6699ff` |
-| `equities` | stocks | Stock | `#6699ff` |
-| a name no class holds | crypto | Crypto | `#00ccaa` |
-
-Each of the five live classes draws its own label and its own accent. None
-falls back to the neutral default.
-
-**A venue may serve more than one class.** The active class filters the venue
-list; it never owns it. Coinbase serves crypto and derivatives, so it is offered
-under both.
+**A venue may serve more than one class.** The active class filters the venue list;
+it never owns it.
 
 `src/gui/main_tabs/asset_class_surface.py` — `venue_classes`
 
@@ -6914,115 +5109,11 @@ elif asked in crypto_venues():
     found.add("crypto")
 ```
 
-**The choice survives a restart.** `select_asset_class` writes the class into
-settings on every press, and `_build_class_group` reads it back at build.
-
-`src/core/settings.py` — the stored field
-
-```python
-active_asset_class: str = "crypto"
-```
-
-**The group at narrow widths.** The buttons share the group's width and shorten
-their own text to the room each has, so no label is cut mid-letter and no
-counter is pushed off the strip. The full class name stays in the tooltip.
-
-The table below replaces an earlier one on this page. That one measured the
-group on its own. This one measures it in the assembled window, where the KPI
-columns and the five counters share the row with it.
-
-> "Measured on the running window, at five widths: | 700 | 255 px | 49 px |
-> none in full |"
-
-The group draws 178 px at a 700 px window, not 255, because the KPI columns and
-the counters take the room they need first.
-
-#### The header row's width budget
-
-**Every part of the row declares a floor.** A floor is what the part draws at
-when the row cannot give it more, and the sum of the floors is the narrowest the
-window opens at. Without them a part's minimum is the width of its own text, and
-a six-figure amount widens the whole window past the screen.
-
-`src/gui/main_tabs/header_strip_surface.py` — the floors
-
-```python
-SPENDABLE_MIN_W = 180
-COUNTER_MIN_W = 48
-```
-
-The class group's floor is arithmetic over the class count, so a class added to
-the taxonomy widens the group and the window with it.
-
-`src/gui/main_tabs/asset_class_surface.py` — `group_min_w`
-
-```python
-held = len(asset_classes()) if count is None else int(count)
-return held * BUTTON_MIN_W + (held - 1) * GROUP_SPACING_PX
-```
-
-Five classes at 34 px with four gaps at 2 px is **178 px**. The whole row is
-180 + five counters at 48 + 178 + six gaps at 4 px = **622 px**, and the window
-is that plus the central layout's 6 px either side: **634 px**.
-
-**What each part gets, read off the running window.** Both builds, every class
-button reachable at every width.
-
-Qt:
-
-| window | pane | KPI strip | Scrummed | Folded | Trades | Bots | Errors | group | each button | reachable |
-|---|---|---|---|---|---|---|---|---|---|---|
-| 700 | 688 | 246 | 48 | 48 | 48 | 48 | 48 | 178 | 34 | 5 of 5 |
-| 900 | 888 | 446 | 48 | 48 | 48 | 48 | 48 | 178 | 34 | 5 of 5 |
-| 1400 | 1388 | 709 | 98 | 88 | 78 | 58 | 78 | 255 | 49 | 5 of 5 |
-| 1550 | 1538 | 709 | 98 | 88 | 78 | 58 | 78 | 405 | 79 | 5 of 5 |
-| 1920 | 1908 | 709 | 98 | 88 | 78 | 58 | 78 | 775 | 153 | 5 of 5 |
-
-React:
-
-| window | pane | KPI strip | Scrummed | Folded | Trades | Bots | Errors | group | each button | reachable |
-|---|---|---|---|---|---|---|---|---|---|---|
-| 700 | 688 | 246 | 48 | 48 | 48 | 48 | 48 | 178 | 34 | 5 of 5 |
-| 900 | 888 | 446 | 48 | 48 | 48 | 48 | 48 | 178 | 34 | 5 of 5 |
-| 1400 | 1388 | 686 | 100 | 100 | 100 | 100 | 100 | 178 | 34 | 5 of 5 |
-| 1550 | 1538 | 686 | 100 | 100 | 100 | 100 | 100 | 328 | 64 | 5 of 5 |
-| 1920 | 1908 | 686 | 100 | 100 | 100 | 100 | 100 | 698 | 138 | 5 of 5 |
-
-**The class group takes what the figures leave.** Every other part of the row
-draws at the width its own text asks for, and the group takes the rest down to
-its floor. A wide amount therefore shortens a class name and never a figure.
-
-`src/gui/main_tabs/header_strip_surface.py` — the stretch each slot takes
-
-```python
-TOP_ROW_STRETCH = [0, 0, 0, 0, 0, 0, 1]
-```
-
-**A shortened amount ends in an ellipsis.** Every caption and every amount in
-the KPI strip and the counters is an `ElidingLabel`. It keeps the whole text and
-draws what the width holds, so `$128,456.78` in a narrow row reads `$128,45…`
-and never `$128,45`.
-
-`src/gui/widgets/eliding_label.py` — `sizeHint`
-
-```python
-hint = super().sizeHint()
-metrics = self.fontMetrics()
-pad = hint.width() - metrics.horizontalAdvance(super().text())
-return QSize(metrics.horizontalAdvance(self._full) + max(pad, 0), hint.height())
-```
-
-The whole text goes to `setAccessibleName`, so a shortened amount still reaches
-a screen reader whole.
-
-**Below 634 px the row runs out.** Held to 500 px, in both builds, Derivatives
-and Forex fall outside the pane and the row's own hit test stops finding them.
-That is what the floor prevents: 634 px is the narrowest the window opens at,
-so the operator never reaches 500.
-
-**One venue list, read from one place.** The equity venue ids were written out
-three times, and the three copies were held together by a comment. They are now
-one name that all three sites import.
+**One venue list, read from one place.** Nine equity venue ids are declared once and
+six files read them. Order matters to the pages and membership matters to the layers:
+three view models publish the list to a page, so it is sorted where the Live view
+model reads it and every launch gives the pages the same nine in the same order.
+Which layer a venue is put on is decided by membership alone.
 
 `src/gui/main_tabs/asset_class_surface.py` — the one declaration
 
@@ -7042,100 +5133,34 @@ EQUITY_VENUES = frozenset(
 )
 ```
 
-#### Where the equity venue list lives
-
-The page carries the sentence above about that list. It is quoted whole here,
-marked overtaken, with the sentence that is true today beneath it.
-
-> "The equity venue ids were written out three times, and the three copies were
-> held together by a comment. They are now one name that all three sites
-> import."
-
-**Overtaken.** Three copies were collapsed onto the one name in that change, and
-three more were still in the tree: the Paper tab, the Live tab's view model and
-the Qt Simulator tab. All three now read the one name as well. Six files read it
-today and one file declares it.
-
 `src/gui/main_tabs/trading_tab_surface.py` — the order the pages are given
 
 ```python
 EQUITY_EXCHANGE_IDS = tuple(sorted(EQUITY_VENUES))
 ```
 
-`src/gui/simulator/sim_trading_tab.py` — the Simulator tab's own read
-
-```python
-self._equity_exchange_ids = acs.EQUITY_VENUES
-```
-
-**Order matters to the pages and membership matters to the layers.** Three view
-models publish the list to a page, so it is sorted where the Live view model
-reads it and every launch gives the pages the same nine in the same order.
-Nothing else reads the order. Which layer a venue is put on is decided by
-membership alone.
-
 | what reads the list | what it decides |
 |---|---|
 | the Live view model | the layer each venue is published under |
 | the Paper and Simulator view models | the same, on their own pages |
 | the Qt Live tab | the layer a venue tab is seated on |
-| the Qt Simulator tab | the layer a venue page is seated on |
+| `src/gui/simulator/sim_trading_tab.py` | the layer a venue page is seated on |
 | the Settings dialog | whether a venue's row is an equity row |
 
-**Two of the nine trade nowhere today.** One closed its interface on 10 May 2024
-and one publishes none, both recorded on
-[15-venue-compatibility.md](15-venue-compatibility.md). Both stay on the list.
-This entry records where the list lives, not what is on it.
+Two of the nine trade nowhere today. One closed its interface on 10 May 2024 and
+one publishes none, both recorded on
+[15-venue-compatibility.md](15-venue-compatibility.md). Both stay on the list,
+because this section records where the list lives and not what is on it.
 
-#### Sentences the asset class group overtakes
+#### Every tab but Status and Console follows the active asset class
 
-The page carries these sentences about the control that came before the group.
-Each is quoted as it stands, with the sentence that is true today beneath it.
-
-> "Press the mode button once and the title is rewritten to name the wing."
-
-The group has one button per class, so a press names a class rather than
-stepping to the next one. The title is rewritten to name the class:
-`Acervator — CRYPTO LAYER`.
-
-> "Pressing the mode button swaps the whole wing, tables and Paper Trader
-> together."
-
-A press makes one asset class active. Crypto and Stock each swap to their own
-trading layer. A class with no layer draws the card that names what is missing.
-Showing only that class's bots, charts and history is unit F2 and is not built.
-
-> "Crypto Mode at the right swaps the window between the two." — `08-tabs.md`
-
-The right of the strip now holds one button per asset class, and a press selects
-that class.
-
-> "The mode button on the right ends the row." — `08-tabs/portfolio-panels.md`
-
-The segmented asset class group ends the row.
-
-#### The naming the asset class group uses
-
-The operator's words are "market sector". Under the published standards the top
-level is the **asset class**, and a sector is the tier below it. GICS names
-sectors inside equities. S&P GSCI names sectors inside commodities. The group
-therefore selects an asset class. Sectors stay the tier below, where the ATA-SMP
-scanner uses them.
-
-### Every tab but Status and Console follows the active asset class
-
-**Functional.** Pressing a class button in the header strip filters the whole
-window. The bar carries nine tabs, and seven of them show only the exchanges,
-the bots, the charts and the rows of the class on show. Status and Console are
-left alone.
-
-Read off the running window, the bar holds these nine, left to right:
+**Functional.** Pressing a class segment filters the whole window. The bar carries
+nine tabs, and seven of them show only the exchanges, the bots, the charts and the
+rows of the class on show. Status and Console are left alone.
 
 ```
 Sim   Paper   Live   Charts   Inspector   Swarm   History   Status   Console
 ```
-
-What the filter means for each:
 
 | tab | what it shows for the active class |
 |---|---|
@@ -7157,8 +5182,8 @@ def select_asset_class(self, name: Any) -> None:
     self._apply_asset_class()
 ```
 
-**A bot belongs to the class of the market it trades.** A status carries the
-venue it trades on and the market it trades, and those two answer the class.
+**A bot belongs to the class of the market it trades.** A status carries the venue it
+trades on and the market it trades, and those two answer the class.
 
 `src/gui/main_tabs/class_filter_surface.py` — `market_class`
 
@@ -7170,24 +5195,10 @@ if DERIVATIVES in served and is_derivative(symbol):
     return DERIVATIVES
 ```
 
-**One venue, two classes, and the bots split between them.** Coinbase serves
-crypto and derivatives, so its sub-tab is offered under both. Its spot pairs
-answer crypto and its dated futures answer derivatives.
-
-Read on the running window with two markets added to the fleet, one Alpaca
-equity and one Coinbase dated future:
-
-```
-alpaca AAPL              -> stocks
-coinbase BIT-26DEC25-CDE -> derivatives
-crypto 38   stocks 1   commodities 0   derivatives 1   forex 0
-```
-
-The 38 Coinbase spot bots stayed under crypto while the one Coinbase future
-moved to derivatives, off the same venue.
-
-**A tab with nothing for the class says so.** It draws a heading, the thing it
-has none of, and the way back.
+**A tab with nothing for the class says so.** It draws a heading, the thing it has
+none of, and the way back. Both builds draw that note from the one model `note_model`
+writes, the Qt build in `EmptyTabQtPanel` and the React build with
+`src/gui/web/class_note.js`, so neither side holds a word of its own.
 
 `src/gui/main_tabs/class_filter_surface.py` — the sentences
 
@@ -7200,593 +5211,346 @@ EMPTY_HINT = (
 )
 ```
 
-Read off the Swarm tab with Forex active:
+**Two tabs keep a card of their own instead of the note.** The Live tab draws
+`No Stock Exchanges Configured` with its Add button on screen while no venue serves
+the class, and the Paper tab draws its own card the same way, with its Add Exchange
+button naming the class. The note replaces a tab only when a venue does serve the
+class and no bot trades it.
 
-```
-Forex — nothing to show
-No Forex bot to show.
-Forex is the active asset class. Press another class button in the header
-strip to see that class.
-```
+**A filter hides rows and changes nothing else.** No bot is stopped, no position is
+closed and no state is written by a press, and the class survives a restart: a fresh
+window with a class stored draws every one of the seven tabs for that class at first
+draw, with no button pressed.
 
-Both builds draw that note. The Qt build draws it in `EmptyTabQtPanel` and the
-React build draws it with `src/gui/web/class_note.js`, from the one model
-`note_model` writes, so neither side holds a word of its own.
+### Which build draws the Live tab
 
-**The Live tab keeps its own card when no venue serves the class.** With Stock
-active and no broker added, the Trading tab draws `No Stock Exchanges
-Configured` and its Add button stays on screen. The note replaces the Live tab
-only when a venue does serve the class and no bot trades it.
+The Live tab picks its page from the variant seam. `src/gui/variant_surface.py`
+registers the screen `TRADING` and holds two loaders for it: `_qt_trading` returns
+the Qt page and `_react_trading` returns `TradingTabReact`.
+`src/gui/main_tabs/trading_tab.py` builds the Qt page on every start, and
+`draws_react` then decides which page the tab shows. Under the Qt build the tab shows
+that page. Under the React build `_react_trading_page` makes the Qt page a hidden
+child of the React page and shows the React page.
 
-**The whole fleet is 38 crypto bots, so most classes are empty, and that is the
-correct reading.** Read on the running window in both builds, at 700, 900 and
-1400, with which page each tab draws:
+The Qt page keeps every widget the main window writes to. The window writes to its
+status log and to `_indicator_panel` under both builds, so neither build may skip the
+Qt build step.
 
-| class | Sim | Paper | Live | Charts | Inspector | Swarm | History |
-|---|---|---|---|---|---|---|---|
-| Crypto | its own | its own | 38 bots | 45 assets | its own | 76 nodes | its own |
-| Stock | note | note | Add card | note | note | note | note |
-| Commodities | note | note | Add card | note | note | note | note |
-| Derivatives | note | note | note | note | note | note | note |
-| Forex | note | note | Add card | note | note | note | note |
-
-Status drew the same 1317 page elements under all five, and Console the same
-tail. Neither carries a stack, so neither can be switched.
-
-**A filter hides rows and changes nothing else.** Switching class five times
-left the stored fleet byte-identical, hashed before and after. No bot is
-stopped, no position is closed and no state is written by a press.
-
-**The class survives a restart.** A fresh window with `forex` stored drew every
-one of the seven tabs on its note at first draw, with no button pressed.
-
-#### Sentences the tabs filter overtakes
-
-The page carries this sentence about the work that came before. It is quoted as
-it stands, with the sentence that is true today beneath it.
-
-> "Showing only that class's bots, charts and history is unit F2 and is not
-> built."
-
-It is built. Seven tabs follow the active class, and Status and Console do not.
-
-### The Add Exchange button reaches the Paper tab
-
-**Functional.** The Paper tab now carries the same Add Exchange button, in the
-same two seats, reading the same class. The header strip's group is the window's
-and needed no change to reach it.
-
-The Paper Trader page carries the readings, the press and the card rule:
-[the Paper Trader](08-tabs/paper-trader.md).
-
-#### One reading the Paper Add Exchange button overtakes
-
-The tabs-filter entry above reads each tab's page per class. Its Paper column is
-quoted as it stands, with the reading that is true today beneath it.
-
-> "Stock: Sim note, Paper note, Live Add card, Charts note, Inspector note,
-> Swarm note, History note."
-
-Paper draws its own card, not the note, while it holds no venue of the class, so
-its Add Exchange button stays on screen and names the class. Read on the running
-window at 700, 900 and 1400 with no venue seated:
-
-```
-Stock         Paper draws its own card, the button reads Add Stock Broker
-Commodities   Paper draws its own card, the button reads Commodities - no venue yet
-Forex         Paper draws its own card, the button reads Forex - no venue yet
-```
-
-Sim and History are untouched and still draw the note. The class list read four
-entries on that run, because Derivatives had by then been retired onto Crypto.
-
-## 2026-09-24 - #571 - the window model draws the asset class group
-
-### The window model publishes one button per class
-
-**Functional.** The window keeps a model of itself, apart from the widgets, and
-the bridge answers `main_window.state` from it. That model held a single button
-of its own, reading Crypto Mode, while the header strip already drew the
-segmented group. It now publishes the same group the strip draws, built from
-the same function, so one press names any class and nothing carries two
-answers.
-
-`src/gui/main_tabs/main_window_surface.py` — `MainWindowModel.select_asset_class`
+`src/gui/react_trading_tab.py` — the page the React build shows
 
 ```python
-key = asset_class_surface.normalise(name)
-self.trading_mode = key
-self.class_buttons = asset_class_surface.class_buttons(key)
-self.trading_stack_index = asset_class_surface.layer_page(key)
-self.window_title = asset_class_surface.window_title(key)
-```
-
-**Design intention.** The model exists to report a value that moved on one side
-and not the other. It could not report this one, because nothing on a screen
-drew its button, so the drift sat unseen from the day the group landed. Reading
-the class list at call time removes the class the model can refuse: every
-declared class answers, and a class added to the taxonomy needs no edit here.
-
-Read on the running program, one press a class, in both builds:
-
-```
-Crypto        stack page 0    Acervator - CRYPTO LAYER
-Stock         stack page 1    Acervator - STOCK LAYER
-Commodities   stack page 2    Commodities - no trading layer
-Forex         stack page 2    Forex - no trading layer
-```
-
-### The trading stack page comes from one place
-
-**Functional.** Three files used to state which page a class draws: the builder
-that adds the pages, the emitter that checks them, and the class selector that
-switches them. The taxonomy states it once now. A class with a trading layer
-takes its position in the layer list; every class without one draws the single
-card that names what is missing.
-
-`src/gui/main_tabs/asset_class_surface.py` — `layer_page`
-
-```python
-layered = layered_classes()
-key = normalise(name)
-return layered.index(key) if key in layered else len(layered)
-```
-
-**Design intention.** The stack holds one page a trading layer, and one card
-for every class that has none. Commodities and Forex share that card rather
-than getting empty layers of their own, because an empty layer would offer a
-venue list it cannot serve.
-
-### Blocks the window model overtakes
-
-Three code blocks near the top of this page describe the control that came
-before the group. Each is named where it stands, with what is true today
-beneath it.
-
-**The title block, under the heading naming the title after a swap.** It writes
-the wing title `Acervator — CRYPTO WING`. A press names a class, and the title
-is written from the class:
-
-```python
-self.setWindowTitle(window_title(key))
-```
-
-**The wing block, under the design intention for the two-layer stack.** It sets
-a mode word, retitles one button, checks it, and moves the stack to page one.
-The window holds no such button. One button per class sits in a group, the
-group checks the button the active class names, and the stack page is read off
-the taxonomy:
-
-```python
-stack.setCurrentIndex(layer_page(key))
-```
-
-**The stack block, under the screen itself.** It adds two pages and opens on
-page zero. The stack holds a third page, the card every class without a layer
-draws, and the opening page is read rather than typed:
-
-```python
-self._trading_stack.addWidget(crypto_page)
-self._trading_stack.addWidget(stock_page)
-self._trading_stack.addWidget(self._make_unlayered_page())
-self._trading_stack.setCurrentIndex(acs.layer_page("crypto"))
-```
-
-> "It makes two layers, one for crypto and one for equities, and stacks them so
-> only one is on show at a time."
-
-Still true, and a third page sits beside the two layers: the card a class with
-no trading layer draws.
-
-### What the builder's own check reported
-
-**Functional.** The builder emits one reading when it finishes, counting the
-things it got wrong. That count read one on every launch, because the check
-named two stack pages while the builder added three. It reads zero now, and the
-count it compares against is the taxonomy's.
-
-`src/gui/main_tabs/trading_tab.py` — `TradingTabMixin._build_trading_tab`
-
-```python
-self._trading_stack.count() != acs.stack_pages(),
-_crypto_page != acs.layer_page("crypto"),
-_stock_page != acs.layer_page("stocks"),
-```
-
-Read off the running window, before and after:
-
-```
-trading.12.001.postcondition.tab_assembled   1 fault  ->  0 faults
-```
-
-## 2026-09-25 - #858 - the command bar reaches Python on the React page
-
-The five controls of the bot list were read on the running program in both
-builds and set beside one another. Four matched. The command bar did not: on the
-Live page no button reached the application at all, so nothing happened when it
-was pressed.
-
-### The overtaken sentence
-
-**Overtaken.** *"Four of the five act on one bot, or on the whole fleet while you
-hold SHIFT."*
-
-**The true sentence.** Four of the five act on one bot, or on the whole fleet
-while you hold SHIFT, in the window build and in the page build. Before this
-entry that held in the window build only.
-
-### What the command bar press reached
-
-**Functional.** A press on the Live page goes out to the application only when it
-carries one of the fields the page forwards. The command bar's press carried none
-of them, so it was answered from the page's own held payload and the application
-never saw it. The command field now goes out beside the other three.
-
-`src/gui/react_trading_tab.py` — the page's own bridge
-
-```javascript
-if (
-  params &&
-  (owns(params, TOGGLE) ||
-    owns(params, SORT) ||
-    owns(params, PICK) ||
-    owns(params, COMMAND))
-) {
-```
-
-**Design intention.** The page answers a read from what it already holds, and
-sends a press on to the application, because the register, the fleet, the voting
-panel and the bot manager all live there. A command is a press, so it travels.
-
-### The venue a press names
-
-**Functional.** One page can draw more than one venue, so every press carries the
-exchange it came from. The bot table names that field one way and the venue page
-names it another, and the lookup read only the table's name. A command press
-therefore found no venue even once it arrived. The lookup now reads every name a
-press can use.
-
-`src/gui/react_trading_tab.py` — `venue_of_press`
-
-```python
-def venue_of_press(params: Any) -> str:
-    held = params if isinstance(params, dict) else {}
-    for name in VENUE_KEYS:
-        found = held.get(name)
-        if found:
-            return str(found)
-    return ""
-```
-
-### The bot the bar acts on
-
-**Functional.** The bar takes its bot from the table the operator pressed last.
-The page keeps two records of the Scrumming table: the one it draws, which a row
-press moves, and the one the bar reads. A row press moved only the first, so the
-bar found no bot and said "Select a bot first." The bar's own record now takes
-the bot the drawn list holds, every time a press arrives.
-
-`src/gui/main_tabs/exchange_tab_surface.py` — `ExchangeTabModel.hold_scrum_bot`
-
-```python
-row = (
-    table.bot_ids.index(wanted)
-    if wanted in table.bot_ids
-    else NO_SELECTION_ROW
-)
-was = table.block_signals(True)
-try:
-    table.clear_selection()
-    table.set_current_cell(row, 0)
-    if row != NO_SELECTION_ROW:
-        table.select_row(row)
-finally:
-    table.block_signals(was)
-```
-
-**Design intention.** The Paper tab and the Simulator keep the same two records,
-so the same call runs on all three. The Detail button already moved both records
-this way, and the row press now does what the Detail button did.
-
-### What the two builds read, after
-
-Read on the running program over 38 bots, at 700, 900 and 1400 pixels wide, with
-every socket but loopback refused. Identical at all three widths:
-
-```
-                  window build          page build
-plain press       1 bot, "stop"         1 bot, "stop"
-SHIFT press       stop_all, 0 bots      stop_all, 0 bots
-SHIFT labels      Start All, Pause All, Stop All, Restart All, Delete
-```
-
-Before the change the page build read 0 bots on the plain press and nothing at
-all on the SHIFT press.
-
-## 2026-09-25 - #571 - the asset class group becomes one segmented control
-
-### One square, divided into rectangular buttons
-
-**HIS.**
-
-> "This should be one square segmented into rectangular buttons. You stated you
-> had inferred the meaning. This is not segmenting. This is copy / paste /
-> repurpose. OCIR. Will need to be fixed."
-
-**Functional.** The group is one rectangle divided by three lines. Neighbours
-touch, so there is no gap between them. The two end segments round the group's
-outer corners and the segments between them round nothing. Every segment but
-the last drops the border it shares with its neighbour, so one line separates
-two segments rather than two lines meeting.
-
-The active segment still fills with its class accent and keeps its own outline,
-which is what marks it at a glance.
-
-`src/gui/main_tabs/asset_class_surface.py` — `segment_box`
-
-```python
-said = [f"border: 1px solid {ds.OUTLINE}"]
-if asked not in (SEGMENT_LAST, SEGMENT_ONLY):
-    said.append("border-right: none")
-said.append("border-radius: 0px")
-if asked in ends:
-    said.append(f"border-top-left-radius: {end}")
-    said.append(f"border-bottom-left-radius: {end}")
-```
-
-**Design intention.** One function decides where a segment sits, and one style
-sheet carries the answer. The page build reads that same sheet, so the two
-builds cannot drift apart on the shape. A class added to the taxonomy still
-needs no edit: the new button takes its position from its index.
-
-The page build also reads the active fill from that sheet now. It drew every
-segment alike before, because the reader took a sheet's plain block and left
-the state blocks behind.
-
-`src/gui/web/header_strip.js` — `checkedStyle`
-
-```js
-function checkedStyle(sheet) {
-  var found = {};
-  stateRules(sheet).forEach(function (block) {
-    if (carries(block.selector, CHECKED_STATE)) {
-      found = styleOf(block.body);
+def models(live: Any = None) -> dict:
+    tab = (
+        trading_tab_surface.bind_live(live)
+        if live is not None
+        else trading_tab_surface.view_model
+    )
+    return {
+        trading_tab_surface.METHOD: tab({}),
+        status_log_surface.METHOD: status_log_surface.view_model({}),
+        indicator_panel_surface.METHOD: indicator_panel_surface.view_model({}),
     }
-  });
-  return found;
+```
+
+`TradingTabReact` reads the same bridge method the Qt tab reads, which is
+`trading.tab`, and `bind_live` serves it from the running program's own exchange list.
+The page fetches nothing over the network: `panel_html` inlines every module and every
+stylesheet into the page head, and because a module cannot read its own file name off
+an inlined script tag, `marker_script` names the module whose tag comes next and
+`namer_script` hands that name to `panel_host.js`. `react_trading_tab.STYLE_ASSETS`
+names the two stylesheets, `trading_tab.css` and `exchange_tab.css`, and
+`react_trading_tab.roster` puts the four style-source modules ahead of the panel
+modules.
+
+The two builds paint different grounds. The Qt page paints `#2d2d2d` and the React
+page paints `#0a0a0f`.
+
+#### What the React Live page draws
+
+The React Live page carries seven child modules and two stylesheets, all inlined.
+
+`src/gui/react_trading_tab.py` — the modules the page carries
+
+```python
+CHILD_MODULES: tuple[str, ...] = (
+    "status_log.js",
+    "indicator_panel.js",
+    "table_cells.js",
+    "bot_status_table.js",
+    "extractor_bot_table.js",
+    "crypto_news_ticker.js",
+    "exchange_tab.js",
+)
+```
+
+`src/gui/web/trading_tab.css` gives the page its chrome: colour, border and type.
+`trading_tab.js` writes every layout value on the element's own style attribute from
+the payload, and it mounts the voting panel itself, keeping a slot for the panel and
+handing the slot to the panel host. The variant seam therefore registers no screen
+for the voting panel, and none is needed.
+
+The page also carries four style-source modules ahead of the panel modules —
+`design_tokens.js`, `theme_engine.js`, `shared_widgets.js` and `header_strip.js`.
+`trading_tab.js` parses every Qt style sheet in its payload with `styleOf`, which
+lives in the last of those, so a page without them paints no colour the payload asks
+for. `checkedStyle` reads the active fill out of the state blocks of that sheet, which
+a reader taking the plain block alone would leave behind.
+
+One exchange layer shows at a time. A stack page carries a flex display on its own
+style attribute, and the stylesheet marks a hidden page `display:none`, which is what
+keeps the Crypto layer and the Stock layer from drawing one above the other. The
+empty-state card takes its ground and its edge from the stylesheet, because Qt counts
+the alpha of both in bytes and `keptSheet` drops a byte alpha from the payload, so
+only the card's corner radius survives the trip. Two buttons add an exchange: the
+corner button beside the tabs is plain chrome and the card button below it carries the
+layer accent, which `placeholder_add_style` publishes, and the stylesheet paints the
+corner button only, so the two read as different controls. Each log pane is one
+bordered ground, and each splitter handle carries the border colour so the pointer can
+see what it takes hold of.
+
+**The voting panel's cells.** The panel draws one row per timeframe and one column
+per indicator, and each cell prints its vote direction as an arrow and its confidence
+as a percentage. Green is bullish and red is bearish.
+`indicator_panel_surface.indicator_cell_colors` publishes each cell's text colour and
+its tint and the page writes both on the cell, so no rule in the stylesheet sets a
+colour on a cell. The stylesheet gives the head cells a ground of their own and paints
+their text with the page variable `--accent`, which carries the theme's accent for all
+five themes, so the two builds draw a column heading in one colour. It clips a cell
+wider than its column, so a narrow panel shows an ellipsis instead of running one vote
+over the column beside it. The Net, Comp and Conf cells wrap instead of clipping,
+because the Conf cell holds a ten-block bar and a percentage: the bar takes the first
+line and the percentage takes the second.
+
+`src/gui/web/trading_tab.css` — the cells that wrap
+
+```css
+[data-part="indicator-body-cell"][data-state="net"],
+[data-part="indicator-body-cell"][data-state="comp"],
+[data-part="indicator-body-cell"][data-state="conf"] {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+  line-height: 1.1;
 }
 ```
 
-### The sentence the segment positions overtake
+**The bars arrive settled.** The bar model starts every bar at zero and steps it
+toward its target. The Qt widget runs its own frame timer; the page draws the frame it
+is handed and runs no timer, so the window hands it a settled one. The two published
+factors answer forty-nine frames, and the panel pushes that many steps before it
+publishes.
 
-The page carries this sentence about how many buttons the group holds. It is
-quoted as it stands, with the sentence that is true today beneath it.
-
-> "Read off the running window, the group holds five buttons:"
-
-The taxonomy holds four classes — Crypto, Stock, Commodities, Forex — because
-Derivatives retired onto Crypto. Read off the running window in both builds,
-the group holds four buttons, and the positions are first, middle, middle, last.
-
-### What the two builds read, after the segmentation
-
-Read off the running program at 700, 900 and 1400 pixels wide, with every
-socket but loopback refused. The window build was read from the widget's own
-style and geometry. The page build was read inside the desktop shell, from the
-drawn element's computed style.
-
-```
-reading                                   first    middle    last
-the gap to the next segment                 0         0        -
-the border on the shared edge            suppressed suppressed -
-the outer border present                    yes       yes      yes
-top-left / bottom-left radius              round      0        0
-top-right / bottom-right radius              0        0      round
-the active segment reads as active         yes       yes      yes
-```
-
-Both builds read the same six rows at all three widths. The group's outer
-bounds form one rectangle: the segment widths sum to the group's own width with
-nothing between them, 136 of 136 at 700 and 900, and 464.46 of 464.46 at 1400.
-
-Before the change both builds read a 2 pixel gap, a border on all four sides of
-every segment, and a 3 pixel radius on all four corners of every segment. The
-page build also drew the active segment with the same background and text
-colour as the three inactive ones.
-
-The group's floor fell from 142 to 136 pixels, because four segments that touch
-ask for six pixels less than four that do not. The five counters and the
-spendable strip beside it fit at every width.
-
-## 2026-09-25 - #858 - the SHIFT labels on the command bar read backwards
-
-> "Live - Bug - Bot List - Start / Stop / Pause (All) toggles 'normally on'
-> instead of remaining 'normally off' after releasing the SHIFT key. Can hold
-> SHIFT key to toggle back to the normal state but this is incorrect / inverted
-> behavior."
-
-### The sentence the labels contradicted
-
-**Overtaken.** *"Let go and they read their own names again."*
-
-**The true sentence.** Let go and they read their own names again, in the window
-build and in the page build. Before this entry the window build did the reverse:
-it read the all-bots names with no key held, and the buttons' own names while
-SHIFT was held down.
-
-### Where the label state came from
-
-**Functional.** The window build asked the application for the state of the SHIFT
-key. The application keeps one such value for the whole program, and for the
-SHIFT key's own press and release that value is the one thing this code does not
-decide. The labels followed it, and they read backwards. The window build now
-takes the state off the key event it is already holding: a SHIFT press means the
-key is down, a SHIFT release means it is up, and no other reading is possible.
-The page build always did this and was never wrong.
-
-### The label rule both window forks share
-
-`src/gui/main_tabs/exchange_tab_surface.py` — `shift_held_after_key`
+`src/gui/react_trading_tab.py` — `settled_frames`
 
 ```python
-def shift_held_after_key(
-    is_press: bool, key_is_shift: bool, event_has_shift: bool
-) -> bool:
-    if key_is_shift:
-        return is_press
-    return event_has_shift
+    return math.ceil(
+        math.log(surface.BARS_SETTLE_DELTA) / math.log(1.0 - surface.BARS_LERP_FACTOR)
+    )
 ```
 
-**Design intention.** The Live tab and the Paper tab drew the same labels from
-the same wrong reading, so both now call one rule and cannot drift apart. The
-rule holds whichever way the computer reports the key, which is why the reading
-below is identical under both.
+**An ornament decides from the drawn height.** `ConfidenceBarsWidget.paintEvent` tests
+the bar it painted, in pixels. The page measures the graph after it draws, draws again
+at the height it found, and watches for a resize, so a taller graph keeps the arrows
+the window keeps. Each mini-table keeps the height Qt fixes it to with
+`setFixedHeight`, which is its header plus two rows of slack, so a table holding one
+row is the same height as one holding three.
 
-### The five label readings, per build
+`src/gui/web/indicator_panel.js` — `renderPanel`
 
-Read on the real command bar and the real page, labels taken off each button and
-never off a picture, every socket but loopback refused:
-
-```
-                                 window build   page build
-at rest, no key held             single-bot     single-bot
-SHIFT pressed and held           all-bots       all-bots
-SHIFT released                   single-bot     single-bot
-window deactivated while held    single-bot     single-bot
-SHIFT pressed twice in a row     all-bots       all-bots
-```
-
-Before the change the window build read rows two, three and five wrong. The
-Paper window build read the same three wrong and now reads all five right.
-
-### The press target after the label repair
-
-**Functional.** The button still acts on what its label says. The press reads
-SHIFT from the mouse press, which carries the true state, and that reading was
-never wrong.
+Eleven published values reach the page and set the ornaments and the type:
 
 ```
-                  window build          page build
-plain press       1 bot, 0 fleet        1 bot, 0 fleet
-SHIFT press       stop_all, 0 bots      stop_all, 0 bots
+arrow_min_height_px  the bar height an arrow needs
+shine_min_height_px  the bar height a highlight needs
+shine_limit_px       the tallest a highlight may grow
+glow_inset_px        the halo width beside a bar and beside a pillar
+column_min_pad_px    the narrowest pad beside a bar
+label_font           the face a bar name and a pillar name take
+arrow_font           the face and the size a bar arrow takes
+empty_font           the face the empty-graph note takes
+label_height_px      the box a bar name centres in
+label_offset_px      how far that box sits under the baseline
+margin_left_px       where the grid and the baseline start
 ```
 
-## 2026-09-25 - #858 - the Indicator Voting Panel says why it is empty
+**What each engine still sizes for itself.** No published value names the header
+row's height or a mini-table's height, so each engine sizes those from its own font.
+The panel publishes ten heights and none of them names the header row.
 
-> "Live - Bug - IVP - Some bots IVP panels are not loading when selecting.
-> Observed with A19, A24, A11, and A35. Most are working. Cycled to through
-> the bot list a few times and some are consistently failing to load and also
-> giving the candle cache notice in the console but the panels never populate."
+#### The venue page inside the React Live page
 
-### The two causes an empty panel names
+The React build draws the venue page inside the Live page rather than in a window of
+its own. `trading_tab.js` draws one empty box per layer and marks it as the exchange
+pane; `mountExchanges` finds that box and calls `renderExchangePane`, and
+`exchange_tab.js` draws the whole venue into it. The pane takes the height of the tab
+body, the two bot tables scroll inside it, and the command bar keeps its own height and
+stays in view, which is what the Qt build does. The Qt build instead builds one
+`ExchangeTab` widget per venue and puts it in a tab strip.
 
-**Functional.** A panel holding no votes prints one sentence saying why. Before
-this entry it printed nothing and wrote that sentence to the Console alone, which
-made a market that cannot be voted look exactly like a fault.
+`src/gui/web/trading_tab.css` — the boxes that take the pane's height
 
-Two causes reach the panel. Too few candles means the venue returned fewer bars
-than the engine needs. Cold start means the bot is running and has computed no
-reading since the platform launched.
+```css
+[data-part="stack"],
+[data-part="page"],
+[data-part="tab-widget"],
+[data-part="tab-body"],
+[data-part="exchange-pane"] {
+  min-height: 0;
+}
+```
 
-`src/gui/indicator_panel.py` — the sentence each cause prints
+**One fleet load reaches the page once.** The window builds one `ExchangeTabReact`
+per venue and hands every fleet load to it. That object rebuilds five payloads and
+announces them; `TradingTabReact.hold_venue` takes the object, follows that
+announcement, rebuilds the venue payload and pushes it into the page. One fleet load,
+one source, one draw. A venue module names its exchange in its request and the page
+answers from the bag it holds for that exchange, so two venues on two layers read two
+different fleets from one page.
+
+`src/gui/react_trading_tab.py` — the Live page follows one venue
 
 ```python
-    "cold_start": "cold start — this bot is running and has computed no TA since "
-    "the platform launched. Its first read lands on the next TA "
-    "evaluation.",
-    "too_few_candles": "too few candles — {candles} cached for {symbol} {timeframe}, "
-    "and the TA engine needs 30.",
+def hold_venue(self, venue: Any) -> bool:
+    """Draw ``venue`` in this tab and follow every payload it publishes."""
+    exchange_id = str(getattr(venue, "exchange_id", "") or "")
+    published = getattr(venue, "published", None)
+    if not exchange_id or published is None:
+        return False
+    self._venues[exchange_id] = venue
+    published.connect(self._venue_published)
+    self._venue_published()
+    return True
 ```
 
-### The floor, and a market that sits under it legitimately
+**The header strip's own pages paint their own ground.** The five stat cards, the
+money strip and the tab bar carry no style sheet. `page_html` writes six chrome
+colours on the root element and paints nothing, and each of the three pages paints its
+own ground from them. A
+stat card paints its face from the button ground, every page paints its body from the
+theme ground, and no page scrolls, so no scroll bar draws.
 
-**Functional.** The engine needs thirty candles before any indicator votes. A
-market with a shorter history is refused a vote, and that refusal is correct
-rather than a fault, because an indicator computed on too little history is a
-wrong number. The floor was not lowered to make these panels fill.
-
-Measured on the markets named above, at five minutes:
-
-| market | candles the venue returned | the panel reads |
-|---|---|---|
-| A24 | 6 to 9 | too few candles |
-| A38 | 10 to 12 | too few candles |
-| A35 | 13 to 16 | too few candles |
-| A19 | 11 to 18 | too few candles |
-| A11 | 95 to 96 | cold start |
-| a market that votes | 100 | twelve voters |
-
-A11 holds three times the floor and reports the other cause, so a full panel is
-not the only healthy reading.
-
-### A stored reading draws with its age
-
-**Functional.** When a bot has a reading saved from an earlier evaluation, the
-panel draws that reading rather than emptying, with the time it was taken, how
-old it is, and the cause sentence after it. This is why some empty panels already
-explained themselves and others stayed blank: the ones that spoke had a saved
-reading behind them.
-
-`src/gui/indicator_panel.py` — the banner over a stored reading
+`src/gui/react_dashboard_stat_card.py` — one card's ground
 
 ```python
-            self._staleness_label.setText(
-                f"⏱ LAST TA READ, NOT CURRENT — taken {when}, "
-                f"{age_phrase(age_s)}. {message}"
-            )
-            self._staleness_label.show()
+PAGE_STYLE = (
+    "*{margin:0;padding:0;box-sizing:border-box}"
+    "html,body{height:100%;overflow:hidden}"
+    "body{background:var(--bg);color:var(--text)}"
+    f"#{CARD_ROOT_ID}{{height:100%}}"
+    '[data-part="card"]{height:100%;background:var(--btn-bg)}'
+)
 ```
 
-The window build and the page build draw the same sentence in the same place.
+#### Every Live tab feed reaches the React page
 
-## 2026-09-25 - #881 - the dollar registry citation names no file
+Six modules write to the Activity Log and each calls the Qt pane directly. The pane
+reports every call to one listener, and the window hands that listener to the React
+tab when the tab is built, so a pause, a resume and a watchdog line all arrive on
+both panes. The Qt pane paints through the same surface the React pane reads, asking
+it for the shape and for the line rather than building either itself, so the two panes
+cannot disagree about what a message looks like.
 
-One sentence on this page cites a module a reader cannot open. It is kept as
-written:
+`src/gui/widgets/status_log.py` — `set_relay`
 
-> The dollar registry is gone. `src/trading/capital_registry.py` is removed, with
-> the Qt table, the view model and the renderer page that drew it.
-
-What the tree holds is this. The path in that sentence is in neither the git index
-nor the working tree, and the commit that removed the module is the same commit
-that wrote the sentence citing it, on 2026-09-13. Nothing took the removed
-module's place. The reservation path sits in a second module that already existed
-at that commit, that still carries the registry class, and that six modules read.
-
-```
-src/trading/capital_reservation.py:87    CapitalReservationRegistry, 566 lines
-src/trading/capital_reservation.py:426   effective_available, the reader a sale uses
+```python
+        def set_relay(self, relay) -> None:
+            """Take the callable every ``log``, ``pause``, ``resume`` and
+            ``notice`` call is reported to."""
+            self._relay = relay
 ```
 
-The six readers are the bot, its reservation mixin, the scrumming package, the
-container restore path, the Extractor and the emitter contract. The removed
-module declared a different class, over 518 lines, and it was built zero times,
-which is why its removal changed no behaviour.
+The API Interaction Log takes the same route: `MainWindow._on_api_event` builds one
+text block per API call and hands the block to the React tab first, so a paused pane
+holds it and a running pane paints it. Both panes keep the same capped block buffer, so
+both drop the same oldest block.
 
-The absence was measured two ways, each with a control beside it. A lookup of the
-cited path in the git index exits non-zero, and the same lookup of the reservation
-module beside it exits zero. The documentation archetype reports one dead path on
-this page, at the line carrying that sentence, and reports none against the
-hundreds of other paths the page cites.
+`src/gui/main_window.py` — `_on_api_event`
 
-## 2026-09-26 - #928 - the candle cache keeps what it has and stops re-asking
+```python
+            block_text = "\n".join(plain_lines)
+            self._push_live_tab({"api_lines": [block_text]})
+```
+
+The data-pool line under the New Bot button is refreshed by a one-second timer on both
+venue pages, and the publish carries the fresh payload to the venue's own page and to
+the Live page beside it.
+
+`src/gui/react_exchange_tab.py` — `_update_pull_rate_label`
+
+```python
+        def _update_pull_rate_label(self) -> None:
+            if self._stopped:
+                return
+            self._screen.update_pull_rate_label()
+            self._publish()
+```
+
+The voting panel's two header lines travel with the cells. One says the reading on
+screen is the last one taken and how old it is; the other prints the A15 and A14 spot
+rates. The dashboard tick calls `_publish_votes` with the fleet, the selected bot and
+the reading it has just given the Qt panel, and `react_trading_tab.votes_payload`
+turns that reading into the panel payload, so both panels show one bot and one set of
+cells. The Qt panel formats the age once and hands the result over, so the two banners
+cannot drift apart.
+
+`src/gui/indicator_panel.py` — `panel_reading`
+
+```python
+            if self._showing_stored and self._shown_stored:
+                read.update(self._shown_stored)
+            if self._rates_seen:
+                read["rates"] = self._rate_snapshot
+```
+
+**The panes and the tables divide the page's height from one declaration.** The main
+splitter's four sizes were four literals in the Qt page and are now read from the
+surface, so one declaration sets both builds. The two log panes take under a quarter of
+the page and the tables take the rest.
+
+`src/gui/main_tabs/trading_tab_surface.py` — `MAIN_SPLITTER`
+
+```python
+MAIN_SPLITTER = {
+    "orientation": "vertical",
+    "handle_width_px": HANDLE_WIDTH_PX,
+    "children_collapsible": False,
+    "children": ["top_splitter", "bottom_splitter"],
+    "sizes_px": [660, 190],
+}
+```
+
+The voting panel's two graphs divide whatever height is left after the two tables, and
+the host the tab keeps for the panel is a flex column with no minimum, so the panel
+measures itself against the space rather than against its own content.
+
+`src/gui/web/trading_tab.js` — the panel host
+
+```javascript
+    var panelProps = {
+      style: {
+        flex: AUTO,
+        overflow: AUTO,
+        display: FLEX,
+        flexDirection: COLUMN,
+        minHeight: ZERO
+      }
+    };
+```
+
+### The shared candle cache behind the panel
+
+**HIS.**
 
 > "A19 stuck at 13...A24 stuck at 11...probably others...need to isolate the
 > issue."
 
-### A short series is no longer a cache miss
+The shared candle cache holds one slot for each exchange, symbol and timeframe. A
+slot answers a request while it is fresh and holds as many bars as the request asked
+for, or while it holds every row the venue has. A slot records how many bars the venue
+supplied whenever that is fewer than the number asked for, so a market that cannot
+supply the count is not re-fetched on every call.
 
-**Functional.** The shared candle cache holds one slot for each exchange, symbol
-and timeframe. Before this entry a slot answered a request only while it held as
-many bars as the request asked for. A market that cannot supply that many failed
-the test on every call, so the venue was called again every time and the panel
-still drew nothing.
-
-The slot now records how many bars the venue supplied, whenever that is fewer than
-the number asked for. A slot holding all of them answers the request instead of
-sending another call.
-
-`src/exchange/data_pool.py` - the one test both call sites now share
+`src/exchange/data_pool.py` — the one test both call sites share
 
 ```python
     def can_serve(self, limit: int) -> bool:
@@ -7801,22 +5565,13 @@ sending another call.
         )
 ```
 
-Driven on one market at five minutes, the venue answering thirteen bars, the slot
-never aged:
+**A fetch grows the series instead of replacing it.** A fetch merges what came back
+into the bars already held, keeps one row for each bar time, orders them oldest first,
+and keeps the newest rows up to the number the pool asked for. A venue that answers
+newest first, and a venue that repeats a bar time inside one answer, both land in time
+order with no repeat.
 
-| requests made | venue calls before | venue calls after |
-|---|---|---|
-| 5 | 5 | 1 |
-| 60 | 60 | 1 |
-
-### The series grows instead of being replaced
-
-**Functional.** A fetch used to replace the stored bars with whatever came back, so
-the count could never rise above one venue answer. A fetch now merges what came
-back into the bars already held, keeps one row for each bar time, orders them
-oldest first, and keeps the newest rows up to the number the pool asked for.
-
-`src/exchange/data_pool.py` - the merge
+`src/exchange/data_pool.py` — the merge
 
 ```python
 def _merge_candle_rows(stored: list, fetched: list) -> Optional[list]:
@@ -7831,30 +5586,12 @@ def _merge_candle_rows(stored: list, fetched: list) -> Optional[list]:
     return [by_time[at] for at in sorted(by_time)]
 ```
 
-Driven with two answers of thirteen and fourteen bars that share eleven, so
-twenty-seven rows arrive in all:
+**One venue call for each slot life.** A slot lives for the number of seconds its own
+timeframe names, which is three hundred at five minutes. A market that stays short is
+called once inside that window rather than once for each request, the same rate every
+other market already had. Nothing new sets this rate; it is the slot's own life.
 
-| reading | before | after |
-|---|---|---|
-| bars held after the second answer | 14 | 16 |
-| repeated bar times held | 0 | 0 |
-| bars in time order | yes | yes |
-| the oldest bar of the first answer | dropped | kept |
-
-Two further readings, taken the same way. When the venue answers newest first, the
-stored bars were left out of order before this entry and are in order after it.
-When the venue repeats a bar time inside one answer, the repeat was stored before
-this entry and is dropped after it.
-
-### One venue call for each slot life, not one for each request
-
-**Functional.** A slot lives for the number of seconds its own timeframe names,
-which is three hundred at five minutes. A market that stays short is now called
-once inside that window rather than once for each request, the same rate every
-other market already had. Nothing new sets this rate. It is the slot's own life,
-and it was already in the file.
-
-`src/exchange/data_pool.py` - where the rate comes from
+`src/exchange/data_pool.py` — where the rate comes from
 
 ```python
     @property
@@ -7866,400 +5603,14 @@ and it was already in the file.
         return self.age_seconds > self.ttl_seconds
 ```
 
-A market that genuinely has more bars still gets them. Driven with the venue
-answering one hundred bars and the slot aged past its life, the venue is called
-again on both sides of this entry, once each.
-
-### The sentence this overtakes
-
-One sentence on this page reads the count as what one venue answer returned. It is
-kept as written:
-
-> Too few candles means the venue returned fewer bars than the engine needs.
-
-What the tree holds is this. The count the panel reads is the number of bars the
-slot holds, and the slot now keeps bars from earlier answers beside the newest
-ones, so that count can rise between answers without any single answer returning
-more. The measured table above that sentence records what one answer returned on
-those markets, which is what it still says.
-
-A market that stays short now draws its indicators once enough bars have gathered.
-At five minutes a slot holding thirteen bars gains one every five minutes, and the
-engine's floor of thirty is reached about eighty-five minutes after the bot starts.
-Until then the panel prints the same sentence it printed before, and the venue is
-called once every five minutes rather than once for every request.
-
-### The floor is written once, and every reader resolves it there
-
-**Functional.** The number of candles the engine needs before it votes was written
-in twelve separate places, and three of those were the digits typed inside the
-sentence the panel prints. A sentence that states a threshold it does not read can
-go stale without anything reporting it, and the three panels held three copies of
-it. The figure now has one home, beside the engine that needs it, and every other
-place reads it from there.
-
-`src/trading/ta_engine.py` - the one place the floor is written
-
-```python
-#: The candles ``VotingEngine.compute_all`` needs before any indicator votes.
-MIN_CANDLES_FOR_TA = 30
-```
-
-The value did not change. Driven on the three real panels, a market holding
-twenty-nine bars still draws the refusal, and a market holding thirty draws the
-cold-start sentence instead. The sentence the operator reads is the same sentence,
-character for character, as the one this page already quotes.
-
-| reading | before | after |
-|---|---|---|
-| places holding the figure | 12 | 1 |
-| the cause at twenty-nine bars | too few candles | too few candles |
-| the cause at thirty bars | cold start | cold start |
-| the tightening detector's own window | 25 | 25 |
-
-A block earlier on this page quotes the panel's template with the figure typed into
-the prose. It is kept as written, and it is overtaken:
-
-```python
-    "too_few_candles": "too few candles — {candles} cached for {symbol} {timeframe}, "
-    "and the TA engine needs 30.",
-```
-
-What the tree holds is this. The figure arrives as a field, filled from the name the
-engine owns, so the prose carries no number and all three panels print the figure
-the engine is actually using:
-
-```python
-    "too_few_candles": "too few candles — {candles} cached for {symbol} {timeframe}, "
-    "and the TA engine needs {floor}.",
-```
-
-## 2026-09-26 - #571 - the asset class group becomes one square of two rows
-
-### Two columns by two rows, in one square boundary
-
-**HIS.**
-
-> "Get these mode buttons corrected. I gave you a properly elaborated spec for
-> how this segmented of the ONE square was supposed to be done and yet, here I
-> am, in the latest build still seeing a STUPID design that the GUI Archetype
-> should have flagged as pure grade shit."
-
-And the elaborated spec he gave, on this issue:
-
-> "the large Crypto / Stock Wing button in the upper right of the GUI which will
-> now become a segmented group featuring one layer button per available market
-> sector"
-
-**Functional.** The group is one square. Four asset classes divide it into four
-rectangles, two across and two down, by one vertical line and one horizontal
-line. The square is 68 pixels on each side and each segment is 34 by 34.
-
-A segment past the first column drops the border it shares with the segment to
-its left. A segment past the first row drops the border it shares with the
-segment above. One line therefore draws between two neighbours, never two.
-
-Each of the four segments rounds exactly one corner, and only the corner it
-shares with the square. Every corner inside the square is square.
-
-`src/gui/main_tabs/asset_class_surface.py` — `segment_box`
-
-```python
-said = [f"border: 1px solid {ds.OUTLINE}"]
-if column > 0:
-    said.append("border-left: none")
-if row > 0:
-    said.append("border-top: none")
-said.append("border-radius: 0px")
-if top and left:
-    said.append(f"border-top-left-radius: {corner}")
-```
-
-**Design intention.** A model that treats its members as a line cannot produce
-a square, so a segment now carries a row and a column instead of a place on a
-line. `segment_cell` answers that place and `segment_box` reads it, and both
-builds take the same answer.
-
-`src/gui/main_tabs/asset_class_surface.py` — `grid_shape`
-
-```python
-columns = math.isqrt(held)
-if columns * columns < held:
-    columns += 1
-rows = held // columns + (1 if held % columns else 0)
-```
-
-The side is one declared number, `group_side_px`, so the window build and the
-page build cannot draw two different squares. Neither build measures its own
-row height.
-
-`src/gui/web/header_strip.js` — the square's own style
-
-```js
-var side = length(model[SIDE]);
-var groupStyle = {
-  display: "grid",
-  gridTemplateColumns: tracks(cell(model[GRID_COLUMNS], 1)),
-  gridTemplateRows: tracks(cell(model[GRID_ROWS], 1)),
-  width: side,
-  height: side
-};
-```
-
-### The sentences the square overtakes
-
-Each is quoted whole, marked overtaken, with the sentence that is true today
-beneath it.
-
-**Overtaken.** *"The group is one rectangle divided by three lines."*
-
-The group is one square divided by one vertical line and one horizontal line.
-
-**Overtaken.** *"The two end segments round the group's outer corners and the
-segments between them round nothing."*
-
-Each of the four segments rounds one of the square's four outer corners, and
-rounds nothing else.
-
-**Overtaken.** *"Every segment but the last drops the border it shares with its
-neighbour, so one line separates two segments rather than two lines meeting."*
-
-A segment past the first column drops its shared left border and a segment past
-the first row drops its shared top border, so one line separates two
-neighbours in both directions.
-
-**Overtaken.** *"Read off the running window in both builds, the group holds
-four buttons, and the positions are first, middle, middle, last."*
-
-The group holds four buttons at row 0 column 0, row 0 column 1, row 1 column 0
-and row 1 column 1.
-
-**Overtaken.** *"The group's floor fell from 142 to 136 pixels, because four
-segments that touch ask for six pixels less than four that do not."*
-
-The square's side is 68 pixels, which is its two columns times the 34 pixel
-minimum one segment draws at.
-
-### What a class count other than four divides into
-
-The columns are the integer square root of the count rounded up, and the rows
-follow from that, so the grid is the one nearest to square. The last row's
-segments share the columns the full rows use, so every row fills the width.
-
-```
-count   columns x rows   the last row
-1       1 x 1            one segment, rounding all four corners
-2       2 x 1            full
-3       2 x 2            one segment spanning both columns
-4       2 x 2            full
-5       3 x 2            two segments spanning 2 and 1 columns
-6       3 x 2            full
-9       3 x 3            full
-12      4 x 3            full
-```
-
-Nothing is written as four. The count comes from
-`src.trading.ata_spm.ASSET_CLASSES` when the group is built.
-
-### What the two builds read of the square
-
-Read off the running program at 700, 900 and 1400 pixels wide, with the home
-directory redirected to a scratch folder. The window build was read from each
-widget's own geometry and style sheet. The page build was read inside the
-shell's renderer page, from each drawn element's client rectangle and computed
-style.
-
-```
-reading                                 window build   page build
-the group's width and height             68 x 68        68 x 68
-the width over the height                  1.0            1.0
-the rows and the columns                  2 x 2          2 x 2
-each segment's width and height          34 x 34        34 x 34
-the gap between two neighbours, across      0              0
-the gap between two neighbours, down        0              0
-segments rounding more than one corner      0              0
-```
-
-Both builds read the same seven rows at all three widths, and the page build
-reads them again with its row forced taller, so the side follows the declared
-number and not a row's height.
-
-Before the change both builds read one row of four, a group 136 by 58 in the
-window build and 389 by 17 in the page build, and two of the four segments
-rounding two corners each.
-
-### The rule that refuses a separated group
-
-**HIS.**
-
-> "a STUPID design that the GUI Archetype should have flagged"
-
-The GUI archetype now carries GUI007. It reads every function that names a
-segment and writes its own border box, and it refuses three shapes: a group
-that suppresses no shared edge, a branch that rounds more than one corner, and
-a spacing or gap constant that is not zero.
-
-`dev_harness/harness/gui_archetype.py` — `_scan_segmented_group_skin`
-
-```python
-shared = any(f"border-{edge}: none" in joined for edge in _SEGMENT_EDGES)
-if not shared:
-    findings.append(Finding(..., rule_id="GUI007", ...))
-```
-
-Run against the file as it stood before this change, the rule reports two high
-findings and the archetype reads `passed=False`. Run against the file as it
-stands now, it reports none and reads `passed=True`. Its fixture pair is
-`harness_fixtures/gui_archetype/known_good_segmented.py`, which exits zero, and
-`harness_fixtures/gui_archetype/known_bad_separated.py`, which exits one.
-
-### Where the spare width in the header row goes now
-
-The square is one fixed side, so it can no longer take the width the figures
-leave. The spendable strip takes it instead, which is the first slot of the row,
-so the square stays at the row's right end and the money figures elide less.
-
-`src/gui/main_tabs/header_strip_surface.py` — `TOP_ROW_STRETCH`
-
-```python
-TOP_ROW_STRETCH = [1, 0, 0, 0, 0, 0, 0]
-```
-
-**Overtaken.** *"A zero slot draws at the width its own text asks for; the class
-group takes what is left, so a long amount elides a class name and never a
-figure."*
-
-A zero slot draws at the width its own text asks for, and the spendable strip
-takes what is left.
-
-### The row's spare width is empty space
-
-The page carries two sentences about where that width goes. Both are quoted
-whole here, marked overtaken, with the sentence that is true today beneath.
-
-> "The class group takes what the figures leave. Every other part of the row
-> draws at the width its own text asks for, and the group takes the rest down
-> to its floor. A wide amount therefore shortens a class name and never a
-> figure."
-
-> "The square is one fixed side, so it can no longer take the width the figures
-> leave. The spendable strip takes it instead, which is the first slot of the
-> row, so the square stays at the row's right end and the money figures elide
-> less."
-
-**Overtaken.** No slot of the row takes the width the figures leave. Every
-share is zero, and the row inserts empty space before the square, which takes
-every spare pixel.
-
-`src/gui/main_tabs/header_strip_surface.py` — the shares and the empty space
-
-```python
-TOP_ROW_STRETCH = [0, 0, 0, 0, 0, 0, 0]
-TOP_ROW_SPACER_BEFORE = "mode_button"
-TOP_ROW_SPACER_STRETCH = 1
-```
-
-Both builds insert the same space. The Qt row inserts it at the index the
-order gives, and the page draws one empty division at the same place.
-
-`src/gui/main_tabs/header_strip.py` — the Qt insertion
-
-```python
-top_row.insertStretch(
-    surface.TOP_ROW_ORDER.index(surface.TOP_ROW_SPACER_BEFORE),
-    surface.TOP_ROW_SPACER_STRETCH,
-)
-```
-
-**What the operator sees.** Measured on the real widgets, Qt build, with the
-square held at the side it had before the square work, so the two rows differ
-in nothing but this change. At 1400 px and wider every slot is the width it
-was before the square work, and the empty space holds the remainder.
-
-| window | strip | Scrummed | Folded | Trades | Bots | Errors | empty space |
-|---|---|---|---|---|---|---|---|
-| 1400 | 706 | 155 | 156 | 75 | 55 | 75 | 0 |
-| 2560 | 709 | 158 | 158 | 78 | 58 | 78 | 1143 |
-| 3840 | 709 | 158 | 158 | 78 | 58 | 78 | 2423 |
-
-Before this change the strip drew 1750 px of a 2560 px window and 3030 px of a
-3840 px window, and every counter fell to 48 px.
-
-### Each counter's floor holds its own figure
-
-The page carries a sentence about the counter floor. It is quoted whole here,
-marked overtaken, with the sentence that is true today beneath.
-
-> "COUNTER_MIN_W = 48"
-
-**Overtaken.** One flat floor served five counters, and 48 px holds neither a
-ten-character amount nor a six-figure count. Each counter now declares the
-characters its own figure draws, and its floor is the room those characters
-take.
-
-`src/gui/main_tabs/header_strip_surface.py` — the characters and the floor
-
-```python
-COUNTER_CHARS = {
-    "scrummed": COUNTER_AMOUNT_CHARS,
-    "folded": COUNTER_AMOUNT_CHARS,
-    "trades": COUNTER_COUNT_CHARS,
-    "bots": COUNTER_BOTS_CHARS,
-    "errors": COUNTER_COUNT_CHARS,
-}
-```
-
-The money counters draw `$12,345.67` at their widest, so their floor is
-`COUNTER_NATURAL_W`, the room this page already records for a whole money
-amount. A trade or error count draws six figures and a bot count three, so each
-takes that room scaled by its own characters.
-
-| counter | characters | floor |
-|---|---|---|
-| Scrummed | 10 | 100 |
-| Folded | 10 | 100 |
-| Trades | 6 | 66 |
-| Bots | 3 | 41 |
-| Errors | 6 | 66 |
-
-**The tile holds the figure, and the window's narrowest grows with it.** The
-row's floors now sum to 137 px more than before, so the narrowest the window
-opens at rises by the same 137 px. Nothing is cut off at any width the window
-reaches; the window refuses to open narrower than its floors.
-
-## 2026-09-26 - #928 - the pool reaches back for the bars the engine needs
-
-### A short answer is not a short history
-
-**Functional.** A market that returns eleven bars is not a market that has eleven
-bars. The venue answers with the periods that traded inside a window ending now, so
-a market that trades rarely returns a handful however long it has been listed.
-
-Read from the console log for one of the named markets at five minutes, over four
-days and 5,494 recorded answers:
-
-| day | bars the venue returned |
-|---|---|
-| 2026-09-23 | 11 to 35 |
-| 2026-09-24 | 14 to 39 |
-| 2026-09-25 | 11 to 27 |
-| 2026-09-26 | 7 to 21 |
-
-The count falls as well as rises, and falls across days. A market limited by its own
-record gains bars and never loses them, so this count is the trading inside the
-window and not the length of the record. The history is there. The request was never
-reaching back for it.
-
-### The request asks for a span of time, not a count of bars
-
-**Functional.** The pool asked for the most recent bars and nothing else, so a
-market that fills few of the recent periods was sent the same short answer for ever.
-A slot the venue cannot fill now asks for the window immediately before the oldest
-bar it holds. Each refresh therefore adds older bars, the merge already in place
-folds them in on bar time, and the stored series grows until it holds what the engine
-needs.
-
-`src/exchange/data_pool.py` - the window a short slot asks for next
+**A short answer is not a short history.** The venue answers with the periods that
+traded inside a window ending now, so a market that trades rarely returns a handful
+however long it has been listed. A slot the venue cannot fill therefore asks for the
+window immediately before the oldest bar it holds. Each refresh adds older bars, the
+merge folds them in on bar time, and the stored series grows until it holds what the
+engine needs.
+
+`src/exchange/data_pool.py` — the window a short slot asks for next
 
 ```python
     def next_reach_back_ms(self, requested: int) -> Optional[int]:
@@ -8268,1069 +5619,283 @@ needs.
         ``REACH_BACK_PERIODS``."""
 ```
 
-### Where the span comes from, and what bounds it
+**What bounds the reach back.** Two figures already in the tree set the span and no
+third figure was chosen: the engine's floor, and the length of one period from the
+pool's own table of timeframes. The pool reaches back thirty periods for each of the
+thirty bars the engine needs, which is nine hundred periods, or seventy-five hours at
+five minutes. A market trading in fewer than one period in thirty cannot reach the
+floor inside that span; at that point the pool stops reaching back, keeps the bars it
+has, and the panel prints the sentence it printed before.
 
-**Functional.** Two figures already in the tree set the span, and no third figure was
-chosen. The engine's floor lives beside the engine that needs it, and the length of
-one period lives in the pool's own table of timeframes. The pool reaches back thirty
-periods for each of the thirty bars the engine needs, which is nine hundred periods,
-or seventy-five hours at five minutes.
-
-`src/exchange/data_pool.py` - the bound, built from the floor and the period
+`src/exchange/data_pool.py` — the bound, built from the floor and the period
 
 ```python
 REACH_BACK_PERIODS = MIN_CANDLES_FOR_TA * MIN_CANDLES_FOR_TA
 ```
 
-A market that trades in fewer than one period in thirty cannot reach the floor inside
-that span. At that point the pool stops reaching back, keeps the bars it has, and the
-panel prints the sentence it printed before.
+A market that fills the count carries no short-answer record, so no start time is
+computed for it and none is sent.
 
-Driven on a market trading one period in nine, twelve refreshes, the venue answering
-only what traded inside each window:
+### Bot creation and a restart read one declaration
 
-| reading | before | after |
-|---|---|---|
-| bars the slot holds | 12 | 34 |
-| venue calls | 12 | 12 |
-| refreshes that asked for an older window | 0 | 2 |
-| repeated bar times | 0 | 0 |
-| bars in time order | yes | yes |
+**Functional.** One function selects the settings a new bot is built with, and it
+reads the dataclass that declares them rather than a list of names. It keeps every
+key that names a field the config declares and drops the keys that belong to the other
+mode, which is the same rule the factory applies when it refuses one. The restart path
+calls the same function, so a field added to the declaration reaches both paths with
+no second edit.
 
-Driven again on a market trading one period in two hundred, the same twelve
-refreshes: five bars held, twelve venue calls, eight refreshes asked for an older
-window and the bound then stopped it, no repeated bar time, bars in time order. That
-market never reaches the floor, and it stops asking.
-
-### A market that fills the count is untouched
-
-**Functional.** A slot records how many bars the venue supplied only when that is
-fewer than the number asked for. A market that fills the count carries no such
-record, so no start time is computed for it and none is sent.
-
-Driven on a market where every period trades, twelve refreshes, every reading is the
-same on both sides of this entry: one hundred bars held, twelve venue calls, no start
-time sent, and the same oldest bar.
-
-### The sentence about waiting is overtaken
-
-**Overtaken.** *"At five minutes a slot holding thirteen bars gains one every five
-minutes, and the engine's floor of thirty is reached about eighty-five minutes after
-the bot starts."*
-
-A slot short of the floor asks for an older window on each refresh instead of waiting
-for new bars, so the floor is reached from the history the venue already holds.
-
-## 2026-09-26 - #936 - the bot list scrolls only by hand
-
-The operator reaches the Scrumming Bots table from the title bar and the menu
-row, through the tab row to the Trading tab, then the exchange sub-tab that
-fills the left of that tab. The Indicator Voting Panel fills the right.
-
-### The scroll bar stays where he put it
-
-**Functional.** The list no longer moves itself. Qt scrolls an item view to its
-current item while auto-scroll is on, and the bot list now turns that off, so
-the only thing that moves the scroll bar is the operator.
-
-`src/gui/widgets/bot_status_table.py` — `BotStatusTable.__init__`
+`src/trading/container/config.py` — `bot_config_kwargs`, the selection
 
 ```python
-self.setAutoScroll(False)
-self.verticalScrollBar().valueChanged.connect(
-    lambda _value: self.release_selection_off_view()
+foreign = (
+    _BOT_CONFIG_SCRUMMING_ONLY_FIELDS
+    if mode == BotMode.EXTRACTOR
+    else _BOT_CONFIG_EXTRACTOR_ONLY_FIELDS
 )
+# make_bot_config sets mode itself and raises on a foreign field.
+carried = {f.name for f in fields(BotConfig)} - foreign - {"mode"}
 ```
 
-### A highlight that leaves the drawn rows is released
-
-**Functional.** One rule decides it, and both builds ask that one function: a
-highlighted row the viewport no longer draws loses the highlight. The drop runs
-with the table's signals blocked, so nothing downstream hears it.
-
-`src/gui/main_tabs/bot_status_table_surface.py` — `selection_after_view_moved`
+`src/trading/container/restore.py` — the whole selection
 
 ```python
-if row < 0 or first < 0 or last < first:
-    return NO_SELECTION_ROW
-if first <= row <= last:
-    return row
-return NO_SELECTION_ROW
+_kwargs = bot_config_kwargs(mode, cfg, exchange_id=cfg["exchange_id"])
+if "stack_mode" not in cfg:
+    _kwargs["stack_mode"] = STACK_MODE_DEFAULT
 ```
 
-The React page reads its own drawn rows off the scroll box it sits in and sends
-the first and last of them, and the same function answers there.
-
-`src/gui/web/bot_status_table.js` — `visibleRowBand`
-
-```javascript
-if (span.top >= edge.top - 1 && span.bottom <= edge.bottom + 1) {
-  if (first < 0) {
-    first = at;
-  }
-  last = at;
-}
-```
-
-### A column sort counts as leaving the view
-
-**Functional.** A sort reorders every row while the scroll position stays, so the
-bot that was highlighted can land far below the rows on screen. That is the
-highlight leaving the view and it is released, the same as any other cause.
-
-Read on the running list, a 38-bot fleet, one column pressed twice with the
-scroll at the top:
+**Every place the field set is declared.** The three sets partition the dataclass
+exactly: their union holds every name, no field sits outside them, and no name in them
+is absent from the dataclass.
 
 ```
-                          before this entry    after
-scroll position           0 then 27            0 then 0
-rows drawn                0 to 11 then 26-37   0 to 11 both times
-that bot's row            37                   37
-its highlight             held, off screen     released
+BotConfig                                54 fields
+_BOT_CONFIG_SHARED_FIELDS                16
+_BOT_CONFIG_SCRUMMING_ONLY_FIELDS        33
+_BOT_CONFIG_EXTRACTOR_ONLY_FIELDS         5
 ```
 
-### The Voting Panel keeps its bot
+**Two defaults the restart path keeps as its own.** Stack Mode has two defaults, and
+they answer two different questions. Creation reads a retired Grid checkbox and treats
+its absence as off. A saved record never holds that key, so an absent Stack Mode on a
+restart takes the declared default instead.
 
-**Functional.** The list's highlight and the panel's bot are now two values. A
-release changes the list alone. The panel changes only when a bot is chosen, from
-a row or from the panel's own dropdown, and the Live page does not redraw the
-panel on a scroll.
+```
+creation   bulk_trading absent   stack_mode False
+restore    stack_mode absent     stack_mode True, STACK_MODE_DEFAULT
+```
 
-`src/gui/react_trading_tab.py` — the venue answers four presses now
+An Extractor whose record holds a pool figure and no Target Balance restores to that
+pool figure, which is what creation gives such a bot. Two writers reach the saved
+fleet file and neither can write a configuration section short of a field — one writes
+the whole dataclass and the other loads the file, edits a wire route and writes the
+file back — so a record the program wrote always carries Target Balance.
+
+```
+src/trading/bot_container.py     "config": asdict(self.config)
+src/gui/bot_visualizer.py        loads, edits one route, writes back
+```
+
+A stored null on a quantity or on a list reaches a number and an empty list rather
+than a null.
 
 ```python
-VENUE_PRESSES = (
-    (scrum_surface.PRIVACY_TOGGLE_PARAM, "toggle_privacy"),
-    (scrum_surface.SORT_COLUMN_PARAM, "sort_by"),
-    (scrum_surface.SELECT_BOT_PARAM, "select_bot"),
-    (scrum_surface.VIEW_BAND_PARAM, "scroll_view"),
-)
-```
-
-### What both builds read
-
-Read off the running program in both builds at 700, 900 and 1400 pixels, with a
-fleet of 38 bots, the home on a scratch directory and every host but loopback
-refused. Every figure is the same at all three widths.
-
-```
-the window build                       before    after
-auto-scroll                            on        off
-scroll after an off-screen highlight    27        13, unmoved
-that highlight                          held      released
-scroll after a hand drag                moves     moves
-the panel's bot after a release         held      held
-the panel after a row is chosen         follows   follows
-the panel after its dropdown is used    follows   follows
-```
-
-```
-the page build                         reading
-rows drawn                             38
-rows drawn before a hand drag          0 to 7
-rows drawn after it                    28 to 37
-the pair the page sent                 28 and 37
-the list's highlight after             released
-a pair still holding that row          highlight kept
-```
-
-Sibling widgets measured the same on both sides at all three widths: the table,
-the window, the panel, the header row, all ten column widths and the row
-heights.
-
-### The sentence about one value behind both is overtaken
-
-**Overtaken.** *"**Functional.** The highlight runs the other way as well. When
-the panel's own dropdown or one of its arrows moves the selection, the bot list
-puts its highlight on that bot's row. One value stands behind both, the bot the
-Voting Panel holds, so the list and the panel cannot name two different bots."*
-
-The panel's dropdown still puts the highlight on that bot's row, and now only
-while that row is drawn. The two can name different bots: the panel holds the
-bot it is drawing and the list holds a highlight it can release, which is what
-keeps the scroll bar still.
-
-## 2026-09-26 - #937 - the first column draws the target asset's logo
-
-The operator reaches the Scrumming Bots table from the title bar and the menu
-row, through the tab row to the Live tab, then the exchange sub-tab that fills
-the left of that tab. The first column no longer shows an eight-character bot
-id. It shows the target asset the bot accumulates.
-
-### The first column is the asset's own mark
-
-**Functional.** The column is headed Asset. Where a logo file is already kept
-for that asset, the cell draws it and holds no text. Where none is kept, the
-cell draws the asset's ticker instead, so the row still names what the bot
-accumulates. Nothing on this path fetches anything: the cell reads the kept
-directory and no further.
-
-`src/gui/main_tabs/bot_status_table_surface.py` — `logo_cell`
-
-```python
-if shown != asset or not asset:
-    return cell(shown)
-address = logo_data_address(path)
-if path and address:
-    return cell(
-        EMPTY_TEXT,
-        tooltip=LOGO_TIP_FORMAT.format(asset=asset),
-        logo_path=path,
-        logo_image=address,
-        logo_size=LOGO_SIZE_PX,
+if "inverted_extractor_standing_alt_units" in _kwargs:
+    # A stored null reaches float() as 0.0.
+    _kwargs["inverted_extractor_standing_alt_units"] = float(
+        _kwargs["inverted_extractor_standing_alt_units"] or 0.0
     )
-return cell(asset, tooltip=NO_LOGO_TIP_FORMAT.format(asset=asset))
 ```
 
-The asset a crypto bot names is kept under its base, and a currency pair under
-the whole pair, so both keys are asked in that order.
+**One bad stored value stops one bot.** The build of a bot's configuration sits inside
+the handler written for it. A record holding a boolean where a list belongs, or a word
+where a quantity belongs, is one skipped bot, named in the restart ledger, and the
+fleet around it comes back.
 
-`src/gui/main_tabs/bot_status_table_surface.py` — `kept_logo_path`
+**Three settings the wizard collects that a new bot cannot read.**
 
-```python
-for asked in (icon_asset_of(symbol), symbol):
-    if not asked:
-        continue
-    found = KEPT_LOGOS.kept_path(asked)
-    if found is not None:
-        _LOGO_PATHS[symbol] = str(found)
-        return str(found)
-```
+| setting | why |
+|---|---|
+| Lock duration (candles) | `lock_candle_count` is no field on `BotConfig` and no argument of `ScrummingBot.__init__`. The phantom coordinator holds an attribute of that name, and Bot Settings writes it there on a running bot. |
+| Profit Folding, on an Extractor | `BotCreationWizard.get_bot_config` writes the flag False for an Extractor. The field is Scrumming-only, so the factory refuses it on an Extractor config, and no control types it. |
 
-The React page cannot open a file by its path: the page's own rule allows an
-image from the page itself or from a data address and nothing else. The same
-bytes therefore travel to it as a data address, read once per file.
+### The Profit Folding Active row on a running bot
 
-`src/gui/web/bot_status_table.js` — `AssetLogo`
+The creation wizard's own group does not carry this row. The running bot's Scrumming
+Settings group does, and so does the row list the shell draws from.
 
-```javascript
-var logoProps = {
-  src: text(found[LOGO_IMAGE]),
-  alt: label(found[TOOLTIP]),
-  draggable: false,
-  className: TABLE_CLASS,
-  style: style
-};
-```
-
-Read on the running list, nine bots, one per state, at 700, 900 and 1400 wide:
+| | the control |
+| --- | --- |
+| Where | `src/gui/live_settings/settings_tab.py` |
+| React row | `src/gui/main_tabs/live_settings_tab_surface.py` |
+| Kind | checkbox, on at the start |
+| What it writes | the bot config key the engine reads four times |
 
 ```
-the bot's asset       first column            kept file
-A15/USD               the logo, 32 by 32      A15.png
-A14/USD               the logo, 32 by 32      A14.png
-A23/USD               the logo, 32 by 32      A23.png
-AAPL                  the logo, 32 by 32      AAPL.png
-GLD                   the logo, 32 by 32      GLD.png
-EUR/USD               the logo, 32 by 32      EUR-USD.png
-A17/USD              the ticker, A17        none
-ZZZQ/USD              the ticker, ZZZQ        none
-A22/USD              the ticker, A22        none
+on   surplus $10.00 applied $2.00   target $200.00 became $202.00   preview $2.00
+off  surplus $10.00 applied $0.00   target stayed $200.00           preview $0.00
 ```
 
-### The state colour and the mode tooltip sit on the Symbol cell
+Profit Folding Active - When it is on, a fold's surplus may raise Target Balance
+up to the Max Target Growth % cap. When it is off, the surplus is not applied, the
+preview of a prospective fold reads zero, and the bot writes a skipped line naming the
+flag. A bot restored from its own record takes its own flag and reads no application
+setting.
 
-**Functional.** The colour that says what a bot is doing moved one column right.
-The Symbol cell carries it, in the same seven named colours as before, with one
-further colour for a state the list does not name. That cell's tooltip names the
-mode and the state, and where the pair has a chart the chart's line follows
-underneath it. The underline is what marks the cell as the chart's link.
-
-`src/gui/main_tabs/bot_status_table_surface.py` — `BotStatusTableModel._symbol_cell`
+`src/trading/scrumming_bot.py` — the line the off state emits
 
 ```python
-found = cell(text, state_color(state), mode_tooltip(mode, state))
+f"[COMPOUND SKIPPED] ({source}): "
+f"profit_folding_active=False — the "
+f"compound-growth feature is off for "
+f"this bot. No target bump."
 ```
 
-Read on the running list, nine bots, one per state:
+The creation wizard holds a checkbox for the same flag on a page no route reaches, so
+a new bot opens on the declared default until that page is reachable.
+
+### The Tranche Despawn Timer
+
+The timer is the one row of the Hedge Rebalance group that a new bot cannot be given:
+neither wizard build carries it, so a new bot opens at the declared default of zero,
+which is off. The label on both screens reads Tranche Despawn Timer, and the control
+runs from 0 to 365 days with zero drawn as "Off".
 
 ```
-state       the Symbol cell's colour
-running     #00ff88
-idle        #888888
-paused      #ffaa00
-error       #ff3366
-cooldown    #ff6600
-stopped     #666666
-starting    #00e6ff
-not named   #e0e0f0
-not set     #e0e0f0
+src/gui/live_settings/settings_tab.py            the one control, 0 to 365 days
+src/gui/main_tabs/live_settings_tab_surface.py   the React row for it
 ```
 
-### The stand-in disc beside each symbol is gone
+The engine reads the stored figure exactly once, through one shared helper, and the
+sweep that uses it runs once per tick outside every exception handler. Every shape the
+control cannot type reads as off rather than as a number: a negative figure, a
+boolean, a string, an absent field, a not-a-number and an infinity all read zero, and
+a fractional figure truncates.
 
-**Functional.** The coloured circle carrying the asset's first letter no longer
-draws in the Symbol cell. The cell sets no fill and no letter, so the window
-paints no badge and the page draws no circle.
-
-`src/gui/main_tabs/bot_status_table_surface.py` — the Symbol cell's own fields
-
-```python
-found = cell(text, state_color(state), mode_tooltip(mode, state))
-```
-
-### The row height comes from the logo's drawn size
-
-**Functional.** A logo draws at 32 pixels square. A row keeps two pixels above
-and two below its content, which is what this widget's style answers for its own
-item margin, so a row takes 36 pixels. Before this change a row took 30, which
-was the size the style chose for a row of text.
-
-`src/gui/main_tabs/bot_status_table_surface.py` — the two figures and the sum
+`src/trading/container/config.py` — the one reading
 
 ```python
-LOGO_SIZE_PX = 32
-ROW_LOGO_MARGIN_PX = 2
-ROW_HEIGHT_PX = LOGO_SIZE_PX + 2 * ROW_LOGO_MARGIN_PX
+def despawn_threshold_days(config) -> int:
+    days = as_finite_float(getattr(config, "tranche_despawn_days", 0))
+    if days is None:
+        return 0
+    return min(DESPAWN_MAX_DAYS, max(0, int(days)))
 ```
 
-Read on the running tab at all three widths, with every other element of the tab
-read beside it:
+**What the tooltip promises, and what the sweep does.** The threshold is inclusive, so
+a record at exactly the threshold goes and a record one second younger stays.
+
+| The claim | What holds |
+| --- | --- |
+| Despawn is not a trade | No call reaches the exchange object, at any threshold |
+| No order is placed or cancelled | The sweep calls none of the order methods |
+| Holdings and cost basis are untouched | Holdings and both cost-basis lots are identical before and after |
+| A tranche with no timestamp is never despawned | An ageless record survives at a one-day threshold |
+| A stack tranche holding a resting order is kept until it settles | A pending record with an order id is kept at four hundred days, and removed once filled or cancelled |
+
+The target balance, the anchor and the hedge reserve are unchanged too, which the line
+the operator reads already claims. The queue total is recomputed to match what is left
+rather than being decremented.
+
+**The word a removal uses.** Merge, despawn and clear are the only three things that
+collapse or remove a tranche, and despawn removes rather than delists. The sweep's own
+report and the line the operator reads both say removed, and the sweep's key set is a
+subset of the preview's, so either report can be read by one consumer.
+[08-tabs/bot-swarm.md](08-tabs/bot-swarm.md) carries the block.
 
 ```
-reading                         before   after
-the row height                      30      36
-the icon size the table asks     style      32
-all ten column widths            same    same
-the header row's height             60      60
-the ten privacy dots             same    same
-the ten sort marks               same    same
-the table's size hint            same    same
-the table's minimum size hint    same    same
-the scroll bars                  same    same
-every other widget in the tab    same    same
+sweep     ageless_kept  fold_removed  stack_kept_live_order  stack_removed
+          threshold_days  usd_removed
+preview   the same six, plus fold_open, stack_open and units_removed
 ```
 
-### The page reads the same row height as the window
+The predicate is written three times: once in the sweep that removes, once in the
+shared preview the Qt panel reads, and once inside the React surface. All three answer
+the same counts and the same dollars on every row. A third copy of a predicate is a
+drift hazard rather than a present fault, and collapsing it would reach files other
+rows own.
 
-**Functional.** The page's own sheet gives every cell three pixels above and
-three below its content and a one-pixel rule beneath it, which is more room than
-the window's style leaves. A thirty-two pixel mark plus that padding is thirty-
-nine pixels, so the logo's own cell drops its vertical padding and the row keeps
-the height the payload set. No other cell and no rule in the sheet changes, so
-the Extractor table beneath is untouched.
+### The accumulation ceiling and the capital claim
 
-`src/gui/web/bot_status_table.js` — the logo's own cell
+**The adoption ceiling comes from Target Balance.** A bot that has never scrummed
+adopts the holding already sitting on the venue as its opening position, and a dollar
+ceiling bounds what it may take. That ceiling is Target Balance, the figure the
+operator types, so it is set from two screens: the creation wizard's row and the live
+Bot Settings page.
 
-```javascript
-style.paddingTop = NO_PAD;
-style.paddingBottom = NO_PAD;
-style.lineHeight = NO_PAD;
-```
-
-Read off the drawn page, nine rows, at all three widths:
-
-```
-reading                          before   after
-every row's drawn height          29-30      36
-the logo's drawn box                none   32 by 32
-the image behind it                 none   64 by 64
-the first column's drawn width      same    same
-every other column's drawn width    same    same
-the header row's drawn boxes        same    same
-the ten privacy dots               same    same
-the ten sort marks                 same    same
-```
-
-### The first column drawn off the page itself
-
-**Functional.** The same nine bots were driven through the React venue page and
-read off its own elements rather than off the payload. The page reported no fault
-of its own at any of the three widths.
-
-```
-state       first cell, before   Symbol cell, before   Symbol cell, after
-running     rgb(0,255,136)       rgb(102,204,255)      rgb(0,255,136)
-idle        rgb(136,136,136)     rgb(102,204,255)      rgb(136,136,136)
-paused      rgb(255,170,0)       rgb(102,204,255)      rgb(255,170,0)
-error       rgb(255,51,102)      rgb(102,204,255)      rgb(255,51,102)
-cooldown    rgb(255,102,0)       rgb(102,204,255)      rgb(255,102,0)
-stopped     rgb(102,102,102)     rgb(224,224,240)      rgb(102,102,102)
-starting    rgb(0,230,255)       rgb(224,224,240)      rgb(0,230,255)
-not named   rgb(224,224,240)     rgb(102,204,255)      rgb(224,224,240)
-not set     rgb(224,224,240)     rgb(102,204,255)      rgb(224,224,240)
-```
-
-The stand-in circle was present in all nine Symbol cells of the page before and
-in none of the nine after. Six of the nine first cells hold a drawn image and
-three hold their asset's ticker.
-
-### The bot id keeps its places outside the table
-
-**Functional.** The bot id is still the thing a row is identified by. It stays in
-the payload, once as the list of every drawn row's bot and once on each row. It
-stays in the line the list writes when a row is built. The Detail button still
-carries it, and the window that button opens still names its first eight
-characters in its own title.
-
-`src/gui/main_tabs/bot_live_settings_surface.py` — the title that names it
+`src/trading/scrumming/tick_phases.py` — the ceiling, in `_tick_initialise`
 
 ```python
-WINDOW_TITLE_FORMAT = "Bot Settings — {symbol} [{short_id}]"
+_cap_usd = float(self._target_balance or 0.0)
 ```
 
-Read on the running list, one bot, five routes:
+When the ceiling holds a bot back, the Activity Log says so and names the control to
+raise:
 
 ```
-route                                   read back
-the payload's list of bots              bot01ddddeeeeffff
-the row's own bot                       bot01ddddeeeeffff
-the line written when the row was built bot01ddddeeeeffff
-the window's selected bot               bot01ddddeeeeffff
-the Detail button, pressed              bot01ddddeeeeffff
+... units stay unmanaged. Raise this bot's Target Balance to change this.
 ```
 
-### The privacy dot over the first column still hides it
+**The claim has no off switch.** A bot claims the funds it is allowed to work with,
+which is what stops two bots on one asset from taking each other's money. The claim is
+unconditional and runs once per tick.
 
-**Functional.** The dot beneath the Asset label still masks that column. A masked
-first column draws no image and no ticker, only the mask, and revealing it brings
-the logo back.
-
-Read on the running list, the dot driven twice:
-
-```
-the dot         first column
-revealed        the logo, 32 by 32
-masked          ****, no image
-revealed again  the logo, 32 by 32
-```
-
-### The sentence about the state colour on the Bot ID cell is overtaken
-
-**Overtaken.** *"The state colour now sits on the Bot ID cell, which is green
-while running, amber while paused, grey while idle or stopped, red on error,
-orange in cooldown and cyan while starting. That cell's tooltip names the mode
-and the state."*
-
-The state colour now sits on the Symbol cell, in those same colours. That cell's
-tooltip names the mode and the state, and the chart's line follows it where the
-pair has a chart.
-
-### The sentence about Bot ID sorting as a word is overtaken
-
-**Overtaken.** *"**Functional.** Bot ID and Symbol sort as words."*
-
-The first column is headed Asset and sorts as a word, on the asset's ticker.
-Symbol still sorts as a word.
-
-## 2026-09-27 - #937 - the mark a row draws comes from the library on disk
-
-The first column of the Scrumming Bots table draws the target asset's own
-official mark. The mark is a file the logo library has already put on disk. The
-list never fetches one.
-
-### Where a row's mark comes from
-
-**Functional.** The library sits at `resources/logos`, under the repository, and
-is filled ahead of any bot. A crypto asset's mark comes from a coin data source;
-every other asset's mark comes from that organisation's own web site, read at
-the two places a browser reads one from. The library files each mark under its
-asset class and its sector, so one asset has one file wherever it is met.
-
-`src/trading/logo_library.py` — where one asset's file is put
+`src/trading/scrumming/capital_reservation_mixin.py` — the claim
 
 ```python
-def library_folder(asset_class: Any, sector: Any = "") -> str:
-    return kept_folder(f"{asset_class}/{sector}")
+async def _ensure_capital_reservation(self, current_price: float) -> None:
+    if current_price is None or current_price <= 0:
+        return
 ```
 
-The list reads that directory at any depth, so a mark filed under a sector
-answers the same way a mark filed flat does.
+**One reader of another bot's claim decides a sale.** Nothing else in the platform
+reads a claim, and no screen reads one. With two bots on one asset, thirty units at
+the venue and the first bot holding eleven of them spoken for, the second bot's
+permitted sale falls to nineteen units, and a twenty-unit sell is refused with the
+reservation named.
 
-`src/core/asset_logos.py` — the read at any depth
+`src/trading/scrumming/execution.py` — the sell pre-check
 
 ```python
-for found in self._cache_dir.rglob(f"{stem}.*"):
-    rank = ranks.get(found.name)
-    if rank is None or rank >= best_rank or not found.is_file():
-        continue
-    best, best_rank = found, rank
+_crr_effective = _crr_reg.effective_available(
+    asset=self.config.target_asset,
+    bot_id=self.bot_id,
+    total_holdings=float(self._current_holdings or 0),
+)
+if amount > _crr_effective + 1e-12:
 ```
 
-Read with fifteen real marks on disk, nine bots, at 700, 900 and 1400 wide:
-
-```
-sector                       marks on disk   an example
-crypto                                  10   A15, A14, A21, DOT
-stocks                                   4   AAPL, AMZN
-commodities                              1   SLV
-forex                                    0   none answered an image
-```
-
-### A mark keeps its own shape and its own detail
-
-**Functional.** A mark is drawn inside a box of the logo's own size and is never
-squeezed to fill it. A mark that is not square keeps its proportions in both
-builds. A mark whose file holds several sizes is drawn from the size nearest the
-box rather than from the smallest. A mark smaller than the box is drawn at its
-own size rather than enlarged.
-
-`src/gui/widgets/bot_status_table.py` — the window hands the file to the icon whole
-
-```python
-icon = QIcon(path)
-found = icon if icon.availableSizes() else None
-```
-
-`src/gui/web/bot_status_table.js` — the page bounds the mark rather than setting it
-
-```javascript
-style.maxWidth = size + PX;
-style.maxHeight = size + PX;
-```
-
-Read on both builds, at all three widths, one row per mark:
-
-```
-the asset   the file holds            the window draws   the page draws
-A15         50 by 50                  32 by 32           32 by 32
-A14         50 by 50                  32 by 32           32 by 32
-A21        50 by 50                  32 by 32           32 by 32
-AAPL        152 by 152                32 by 32           32 by 32
-SLV         16 by 16 and 32 by 32     32 by 32           32 by 32
-AMZN        48, 32 and 16 square      32 by 32           32 by 32
-DOT         47 by 50                  30 by 32           30.08 by 32
-A17        no file                   the ticker         the ticker
-ZZZQ        no file                   the ticker         the ticker
-```
-
-### A bot whose asset has no mark reads the same as before
-
-**Functional.** The cell draws that asset's ticker, and its tooltip says no mark
-is kept for it yet. Nothing about such a row changes: its height, its columns
-and every other cell read the same before and after.
-
-### The row height with real marks on the rows
-
-**Functional.** A row is 36 pixels tall, in the window and on the page, with a
-mark on it and without one. That is the figure the payload already carried, and
-real marks on real rows did not move it.
-
-```
-reading                              before   after
-the row height, the window               36       36
-the row height, the page                 36       36
-the icon size the table asks             32       32
-all ten column widths, the window      same     same
-all ten column widths, the page        same     same
-the header row above the list          same     same
-the seven slots of the header strip    same     same
-```
-## 2026-09-26 - #937 - a mark opens the organisation that owns the asset
-
-His words:
-
-> "Logos should also double as hyperlinks to the company or organization beyond
-> each asset. Want Acervator to feel like it is connected to all of these corners
-> of the investment world simultaneously like a creature with a thousand
-> tendrils..."
-
-The first column's mark is a link. Clicking it opens the front door of the
-company or organisation that owns the traded asset, in the operator's own
-browser. A mark whose asset has no known web address is not a link: it draws
-exactly as it drew before, it opens nothing, and its tooltip says so.
-
-### Where a mark's address comes from
-
-**Functional.** Two readers already in the tree answer an address, and the table
-asks them in one place. A crypto base answers the site its own record carries. A
-listed name answers the domain the asset maps hold for it. The regulator's
-company-search page is never answered, because a search result is not an
-organisation's own front door.
-
-`src/gui/main_tabs/bot_status_table_surface.py` — `organisation_address`
-
-```python
-for asked in (icon_asset_of(symbol), symbol):
-    if not asked:
-        continue
-    site, _ = CRYPTO_RECORDS.organisation_url(asked)
-    found = site or organisation_page(asked)
-    if found:
-        break
-address = opening_address(found)
-```
-
-Read by driving both readers over every row the asset maps hold and every record
-the crypto database holds:
-
-```
-class            rows   an organisation address   none
-stocks             47                        43      4
-currencies         28                        28      0
-commodities        14                        10      4
-crypto records     48                        10     38
-```
-
-The negative control: a planted asset name no map and no record holds answers an
-empty address, with the reason "no address is known".
-
-### What the address check refuses
-
-**Functional.** An address is checked before any browser is asked to open it.
-Only a secure web address with a host opens. Everything else is refused and
-nothing is opened, whatever the data carries.
-
-`src/gui/main_tabs/bot_status_table_surface.py` — `opening_address`
-
-```python
-OPENING_SCHEMES: tuple[str, ...] = ("https",)
-```
-
-Read by handing each value to the check, one per line, on both clickable
-columns:
-
-```
-what the data carried                     what happened
-http://evil.example/x                     refused
-file:///C:/Windows/System32/calc.exe      refused
-javascript:alert(document.cookie)         refused
-data:text/html;base64,...                 refused
-ftp://evil.example/x                      refused
-evil.example, a bare host                 refused
-https:///etc/passwd, no host              refused
-C:\Windows\System32\calc.exe              refused
-https://bitcoin.org                       opened
-```
-
-Twelve refusing shapes were driven and twelve were refused. Three secure
-addresses were driven and three opened, which is the control that the check can
-still say yes.
-
-### What a mark with no address draws
-
-**Functional.** The cell draws what it drew before the mark became a link. Its
-tooltip carries one extra line naming the absence, so the operator can see which
-marks are links and which are not without pressing one.
-
-Read off the running list and off the drawn page, one asset of each kind:
-
-```
-asset   the tooltip's second line
-A15     Open bitcoin.org in default browser: https://bitcoin.org
-PEPE    no web address is known for PEPE, so this mark is not a link
-```
-
-Of the target assets the saved fleet holds, 7 carry an organisation address and
-31 carry none.
-
-### The window and the page open the same address
-
-**Functional.** The window reads the address off the clicked cell and opens it.
-The page sends the row and the column out and Python opens it, so the page never
-opens anything itself. Both go through the one check.
-
-Read on the running window and on the drawn page, the same five bots:
-
-```
-what was pressed                     the window        the page
-a mark whose asset resolves          the same three addresses opened
-a mark whose asset resolves nothing  nothing opened    nothing opened
-an insecure address in the data      refused           refused
-a script address in the data         refused           refused
-every mark hovered, none pressed     nothing opened    nothing opened
-```
-
-The control on the quiet rows: after each of them, one real press was made and
-the same instrument recorded an address, so the quiet was the product and not
-the reading.
-
-### The overtaken sentence about what the table can be pressed on
-
-**Overtaken.** *"**Functional.** The four things the operator can press on the
-table each send one request and redraw from the answer. The dot under a column's
-label toggles that column's privacy mask, a Symbol cell opens the chart address,
-Fire hands the bot to Manual Fire, and Detail selects the row and opens the bot.
-A press on the label itself does nothing."*
-
-Five things are pressable. The dot under a column's label toggles that column's
-privacy mask, a mark in the first column opens its asset's own organisation, a
-Symbol cell opens the chart address, Fire hands the bot to Manual Fire, and
-Detail selects the row and opens the bot. A press on the label itself still does
-nothing.
-
-### The row heights and every column are unchanged
-
-**Functional.** The only thing this work changed in the first column is what a
-press on it does. Nothing was resized.
-
-Read at four window widths, on the window and on the page, against the state
-before this work and against the state before the logo column landed:
-
-```
-width   before the logo column   the current tip   this work
-         window    page           window   page     window   page
-900          30      29               36     36         36     36
-1100         30      30               36     36         36     36
-1400         30      30               36     36         36     36
-1800         30      30               36     36         36     36
-```
-
-Every column width, the header's height and the mark's own size read identical
-between the current tip and this work, at all four widths, on both. The reading
-reports 0 differences there and 14 between the two earlier states, which is the
-row growing from 30 to 36 to fit a mark at its proper size — the change his own
-words asked for, and one that landed before this work.
-
-### The removed dollar registry names where to look instead
-
-**Functional.** Two sentences on this page cite a module a reader cannot open.
-Both are kept as written, and each now carries the module that holds the
-behaviour today. The path was removed in the commit that also wrote the first of
-those sentences.
-
-Read with a search of the git index, and with the documentation check:
-
-```
-what was counted                                        figure
-the removed path, occurrences on this page                   2
-the check's findings for that path on this page              2
-a path on this page that does exist, occurrences             4
-```
-
-The reservation path lives in `src/trading/capital_reservation.py`, which still
-carries its registry class and which six modules read. A bot reads another bot's
-claim through `reservations_for`, and a sale is decided by `effective_available`.
-
-## 2026-09-28 - #937 - most marks were not links, and the ten records are why
-
-A mark opened only where this repository named a web address by hand, which it
-does on ten crypto records. Seven of the saved fleet's target assets are among
-those ten, so seven marks opened and thirty-one opened nothing. The address now
-comes from the same coin record the mark itself came from.
-
-### The site comes from the coin's own record, not from a hand-written row
-
-**Functional.** The library fill already settles one coin for each ticker and
-reads that coin's record to find the mark. The same record names the project's
-own front door, and the fill now keeps that beside the mark's address. The bot
-list reads the kept site first and the hand-written row second, so the ten that
-already worked still work.
-
-`src/exchange/crypto_assets.py` — `AssetManager.organisation_url`
-
-```python
-indexed = str(
-    (self.coin_index.get(name) or {}).get(COIN_INDEX_SITE_KEY) or ""
-).strip()
-if indexed:
-    return openable_url(indexed, allowed_schemes=COIN_SITE_SCHEMES)
-asset = self.get_asset(name)
-return openable_url(asset.website if asset else "")
-```
-
-Read by handing the reader five index rows, one of each kind:
-
-```
-the row the index holds              what the reader answered
-a kept site, https                   that site
-no kept site, a hand-written row     the hand-written site
-a kept site, http                    nothing, the http scheme does not open
-a row with no coin settled           nothing
-no row at all, a hand-written row    the hand-written site
-```
-
-### Which of the three coin addresses carries a site
-
-**Functional.** Three addresses at the coin data source answer this platform.
-The list names every coin, the market records name each mark, and only the
-third names a site. A site therefore costs one read for each settled coin, and
-a site already kept for the same coin is never read twice.
-
-`src/exchange/crypto_assets.py` — the third address
-
-```python
-COIN_DETAIL_URL = "https://api.coingecko.com/api/v3/coins/{id}"
-```
-
-Read live, one coin, all three addresses:
-
-```
-address            what it answered              carries a site
-/coins/list        every coin's id               no
-/coins/markets     26 fields for each coin       no
-/coins/{id}        a links block                 yes
-```
-
-### What the saved fleet resolves now
-
-**Functional.** Thirty-six of the thirty-eight target assets the saved fleet
-holds answer a web address. The two that do not are named with the reason, and
-neither is guessed at.
-
-Read by asking the reader for every target asset the saved fleet holds, before
-and after the fill, with a planted ticker no record holds as the control:
-
-```
-                                        before   after
-target assets in the saved fleet            38      38
-answered a web address                       7      36
-answered nothing                            31       2
-the planted ticker, nothing holds it    nothing  nothing
-Bitcoin, which a record does hold        a site   a site
-```
-
-The last two rows are the control: a ticker no record holds answers nothing in
-both readings, and one that a record holds answers in both, so the rise from
-seven to thirty-six is the fill and not the reading.
-
-The two, and why:
-
-```
-why an asset answers nothing                                 assets
-several coins carry its ticker at comparable market rank          1
-the coin record for it names no https web address                 1
-```
-
-Three coin records in the saved fleet name an insecure address and no secure
-one, so the check refuses all three. Two of the three are among the ten this
-repository names by hand and answer that hand-written address instead, which
-is why only one of them is counted above.
-
-### A walk over part of the fleet keeps the rest of the index
-
-**Functional.** The walk writes the tickers it asked about and keeps every
-other ticker the index already holds, so filling one roster never drops the
-rest.
-
-`src/trading/logo_library.py` — the merge before the write
-
-```python
-held.update(assets)
-```
-
-Read over a walk of 38 tickers against an index of 453:
-
-```
-rows in the index before the walk      453
-tickers the walk asked about            38
-rows in the index after the walk       453
-rows kept that the walk never asked     415
-```
-
-### The overtaken count of crypto records carrying a site
-
-**Overtaken.** *"Of the target assets the saved fleet holds, 7 carry an
-organisation address and 31 carry none."*
-
-Thirty-six carry one and two carry none. The count of hand-written records is
-unchanged at ten; what changed is that a record is no longer the only source.
-
-### The first column draws exactly as it drew
-
-**Functional.** Nothing about the column's look changed. The same marks draw at
-the same size, every column keeps its width, and the row keeps its height.
-
-Read by drawing the saved fleet at 1920 wide, at two heights, against the state
-before this work:
-
-```
-                        before   after
-row height                  36      36
-first column width         222     222
-marks drawn                 38      38
-the picture's fingerprint  same    same
-```
-
-## 2026-09-28 - the asset column sits on one palette ground the archetype checks
-
-**HIS.**
-
-> "Column fields must match logo background color."
-
-> "Some do not have a background color. Be sure to choose one that contrasts and
-> makes each one pop. Use a theme-consistent color."
-
-> "Do not want a bunch of random background colors in the Asset Column that smash
-> together and cause an eyesore."
-
-The three sentences settle each other. One colour sits behind the whole column.
-Every mark on it reads against that one colour. A column carrying its own tint
-per row is the thing he refused.
-
-### The rule that refuses a mismatched or a scattered ground
-
-The GUI archetype now carries GUI010. It reads a module's own colour declarations
-and refuses three departures.
-
-```
-a ground that does not carry what sits on it   the ratio misses the floor
-a ground the declared palette does not hold    no token, no published harmony
-a set giving one column several grounds        the eyesore, counted
-```
-
-`dev_harness/harness/gui_archetype.py` - `_scan_column_ground_colours`
-
-```python
-findings = _style_ground_faults(path, tree, known)
-findings.extend(_cell_ground_faults(path, tree, known))
-findings.extend(_named_ground_faults(path, tree, known))
-findings.extend(_ground_set_faults(path, tree, known))
-```
-
-Every finding is high. The archetype then reads `passed=False` and the command
-exits 1.
-
-### Where the palette and the floors come from
-
-The declared palette is `src/gui/design_system.py`. Its named tokens are the
-grounds the rule accepts, with one stated exception: a colour standing at a
-published harmony separation from a token on the hue circle, at that token's
-lightness and chroma. The published separations are 30, 120, 150 and 180 degrees
-- analogous, triadic, split-complementary and complementary. A hue angle means
-nothing for a grey, and a near-neutral colour therefore takes no harmony.
-
-The floors are the Web Content Accessibility Guidelines' own figures:
-
-```
-ordinary text on the ground       4.5 to 1   Contrast (Minimum), level AA
-large-scale text on the ground      3 to 1   the same criterion
-large-scale means                 18 point, or 14 point bold
-```
-
-The ratio comes from relative luminance, which linearises each channel before
-weighting it. A plain average of the raw channels returns a different number.
-
-Two grounds are compared in CIE 1976 L*a*b*, and they count as one ground while
-they sit within 2.3 of each other - the just-noticeable difference Mahy, Van
-Eycken and Oosterlinck measured.
-
-### What the ground rule leaves alone
-
-A border colour. The guidelines measure a boundary against the adjacent colour,
-and one declaration block names the fill on one of its two sides only. A block on
-the disabled state, which Contrast (Minimum) exempts as an inactive component. A
-colour the module never declares, such as the pixels inside a logo file.
-
-### The fixture pair the ground rule was watched fail against
-
-```
-harness_fixtures/gui_archetype/known_good_column_ground.py   exit 0
-harness_fixtures/gui_archetype/known_bad_column_ground.py    exit 1
-```
-
-The good file names one ground, the value `SURFACE_2` holds, and puts two palette
-colours on it at 13.16 and 13.23 to 1. The bad file plants all three departures:
-a ground no token holds, a colour on the ground at 2.42 to 1 against a floor of
-4.5, and three palette grounds down one column. The archetype reports four high
-findings on the bad file and none on the good one.
-
-Read over the shipped screens, the rule reports 16 findings in 15 files under
-`src/gui`. One sits in the asset column's own module: the Fire button's engaged
-ground carries white text at 3.44 to 1.
-
-## 2026-09-28 - the asset column's mark sits at the centre of the column
-
-**HIS.**
-
-> "Live - Asset Column - Logos are not hyperlinked. Should be centered in the
-> column. Column fields must match logo background color."
-
-The mark drew hard against the column's left edge. It now draws at the centre of
-the column, at the same size, in the same place up and down the row.
-
-### Why centre text alignment did not move the mark
-
-Every cell in the table takes centre text alignment. The first column's cell then
-takes its mark and its text is emptied. Text alignment governs text, so with no
-text left the mark laid out where a decoration lays out, which is the left edge.
-
-`src/gui/widgets/bot_status_table.py` - `_draw_logo`
-
-```python
-item.setIcon(icon)
-item.setText("")
-```
-
-Read off the drawn table, three rows, at 1920 by 700 and again at 1920 by 900:
-
-```
-                      before      after
-the cell, in pixels   x 0..219    x 0..219
-the cell's centre     110.0       110.0
-the mark              x 3..34     x 94..125
-the mark's size       32 by 32    32 by 32
-the mark's centre     19.0        110.0
-off the centre        -91.0       +0.0
-```
-
-Both heights gave the same numbers. The Symbol column's own text, which is
-centred, measured 2.5 pixels off centre in the same drawing, so the 91 is a fact
-about the mark.
-
-### What moves the mark
-
-One field of the style option the table reads while it draws. A delegate on the
-first column sets that field and touches nothing else.
-
-`src/gui/widgets/bot_status_table.py` - `CentredMarkDelegate`
-
-```python
-def initStyleOption(self, option, index) -> None:
-    super().initStyleOption(option, index)
-    option.decorationPosition = QStyleOptionViewItem.Top
-```
-
-Two other ways were tried first and measurement refused both. Setting the
-decoration's alignment to centre left the mark 91 pixels off. Painting the mark
-by hand drew it twice, once at each place.
-
-### The page already centred its own mark
-
-`src/gui/web/bot_status_table.js` - `AssetLogo`
-
-```javascript
-var DOT_MARGIN = "0 auto";
-```
-
-A block image with that margin sits at the centre of its cell. The window was the
-only build drawing the mark left, so this closes a difference between the two
-builds rather than opening one.
-
-### Nothing else in the list moved
-
-The whole drawn list was compared, the branch point against the branch, at both
-heights.
-
-```
-differing pixels                6144
-their box, in pixels            x 3..125, y 1..104
-the asset column                x 0..219
-one image against itself           0
-one planted pixel                  1
-```
-
-6144 is three rows times two squares of 32 by 32, the mark leaving one place and
-arriving at another. Every differing pixel sits inside the asset column, in the
-band the mark draws in. Row heights and every column width read the same before
-and after.
-
-### The Fire button's engaged ground now carries its own text
-
-The colour rule refused both of this column's files. The ground under white text
-missed the published floor.
-
-```
-token                hex       carries #ffffff   floor
-STATE_ENGAGED        #2d9d5f   3.4428 to 1       4.5     misses
-STATE_ENGAGED_DIM    #2d5f48   7.3891 to 1       4.5     reaches
-```
-
-`src/gui/main_tabs/bot_status_table_surface.py` - `FIRE_STYLE_FOLD_SOLID`
-
-```python
-FIRE_STYLE_HEAD + f"color: {ds.TEXT_MAX}; font-weight: bold; "
-f"background-color: {ds.STATE_ENGAGED_DIM}; "
-f"border: 1px solid {ds.STATE_ARMED};"
-```
-
-The declared palette names that token a dimmed engaged ground. Of its 146 tokens,
-77 reach the floor against white, and this one sits nearest the colour it
-replaces. The button keeps its bright border and its glow, which is what parts it
-from the button a position ceiling has stopped.
-
-```
-file                                              before   after
-src/gui/main_tabs/bot_status_table_surface.py     refused  passed
-src/gui/widgets/bot_status_table.py               refused  passed
-```
+A claim leaves the table five ways: its owner calls `release`, a bot drops its own
+with `release_for`, the expiry sweep calls `prune_expired`, the fleet sweep calls
+`sweep_unknown_bots`, and a silent bot loses its claim on the heartbeat schedule.
+
+**Five places let a bot through with no claim behind it.** Each one is a choice to keep
+trading rather than to stop, and each now writes a line naming what was lost.
+
+| where | what fails there | what happens |
+|---|---|---|
+| `src/trading/container/registry.py`, the admission branch | no registry is attached | the bot is admitted, nothing is claimed |
+| the same file, the rate branch | no price for the base currency | the bot is admitted, nothing is claimed |
+| the same file, the error branch | the consult raises | the bot is admitted, nothing is claimed |
+| `src/trading/extractor_bot.py`, the chunk-rate claim | the claim raises | the Extractor runs unclaimed |
+| the Scrumming claim in the reservation mixin | the claim raises | the bot ticks on, its token cleared |
+
+**The Extractor reads its holdings before it claims.** `ExtractorBot._read_base_holdings`
+asks the venue for the free balance of the base currency and answers a figure, or
+answers nothing when the read fails. Nothing is not zero, and it is not room to claim:
+`ExtractorBot.set_initial_chunk_rate` still rebases the chunk, places no claim, and
+writes one warning naming the bot and the asset. A figure goes to the registry with
+the claim, so the registry can compare the request against what the bot owns, which is
+the check the Scrumming bot already passes. `ExtractorBot._has_chunk_capacity` then
+decides whether the free pool covers one round.
+
+**Where the reservation lives.** `src/trading/capital_reservation.py` declares
+`CapitalReservationRegistry`, and six modules read it: the bot, its reservation mixin,
+the scrumming package, the container restore path, the Extractor and the emitter
+contract. A bot reads another bot's claim through `reservations_for`, and a sale is
+decided by `effective_available`. The dollar-denominated registry that once sat beside
+the asset-unit one is gone, with the Qt table, the view model and the renderer page
+that drew it; it was built zero times, which is why its removal changed no behaviour.
+That registry's two operator overrides went with it, so the claim table takes no
+force-release of any kind.
