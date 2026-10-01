@@ -216,6 +216,12 @@ COLUMNS = (
 COLUMN_ORDER = tuple(column["key"] for column in COLUMNS)
 FIELD_ID_BY_KEY = {column["key"]: column["field_id"] for column in COLUMNS}
 
+#: Every column drawing money. Those shrink to fit before they shorten;
+#: ``RENDER_COUNT`` draws a whole count, which stays at its declared size.
+MONEY_KEYS = tuple(
+    column["key"] for column in COLUMNS if column["render"] != RENDER_COUNT
+)
+
 ACTIONS: dict = {}
 TIMERS: dict = {}
 TIMER_DELAYS_MS: tuple = ()
@@ -426,6 +432,8 @@ def build_view_model(model: Optional[SpendableProfitsModel] = None) -> dict:
             "column_align": COLUMN_ALIGN,
             "column_stretch": COLUMN_STRETCH,
             "trailing_stretch": TRAILING_STRETCH,
+            "value_font_px": header.VALUE_FONT_PX,
+            "value_font_min_px": header.VALUE_FONT_MIN_PX,
         },
         "separator": {
             "text": SEPARATOR_TEXT,
@@ -441,6 +449,7 @@ def build_view_model(model: Optional[SpendableProfitsModel] = None) -> dict:
             {
                 **column,
                 **state.cells[column["key"]],
+                "fit": column["key"] in MONEY_KEYS,
                 "dot": state.dots[column["field_id"]],
             }
             for column in COLUMNS

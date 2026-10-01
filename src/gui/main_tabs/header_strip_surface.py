@@ -123,8 +123,37 @@ SPENDABLE_LAYOUT = {
 
 
 #: One caption font for every panel in the strip, and one amount font under it.
-LABEL_FONT = "font-size: 10px; font-weight: 600;"
-VALUE_FONT = "font-size: 14px; font-weight: bold;"
+LABEL_FONT_PX = 10
+LABEL_FONT = f"font-size: {LABEL_FONT_PX}px; font-weight: 600;"
+
+#: The size every money amount draws at where its column has the room.
+VALUE_FONT_PX = 14
+
+#: The smallest a money amount shrinks to, which is the caption's own size,
+#: so an amount never draws smaller than the caption above it. Measured in
+#: the application font, 10 px carries a signed amount past a thousand
+#: million dollars in a 93 px column; wider than that is elided.
+VALUE_FONT_MIN_PX = LABEL_FONT_PX
+
+VALUE_FONT = f"font-size: {VALUE_FONT_PX}px; font-weight: bold;"
+
+
+def value_font(size_px: Any) -> str:
+    """The amount font declaration at ``size_px``."""
+    return f"font-size: {int(size_px)}px; font-weight: bold;"
+
+
+def fitted_value_px(advance_at: Any, room_px: Any) -> int:
+    """The largest size from ``VALUE_FONT_PX`` down to ``VALUE_FONT_MIN_PX``
+    whose ``advance_at`` reading fits ``room_px``.
+
+    Answers ``VALUE_FONT_MIN_PX`` where no size fits, and the caller elides.
+    """
+    room = int(room_px or 0)
+    for size_px in range(VALUE_FONT_PX, VALUE_FONT_MIN_PX - 1, -1):
+        if int(advance_at(size_px)) <= room:
+            return size_px
+    return VALUE_FONT_MIN_PX
 
 KPI_LABEL_STYLE = f"color: {ds.CARD_METRIC_LABEL}; {LABEL_FONT}"
 SPENDABLE_LABEL_STYLE = f"color: {ds.PRIMARY}; {LABEL_FONT}"
