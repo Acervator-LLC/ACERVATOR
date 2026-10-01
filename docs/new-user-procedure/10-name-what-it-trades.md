@@ -1,8 +1,8 @@
-# Step 5 — Name what it trades
+# Step 10 — Name what it trades
 
 One step of the [New User Procedure](README.md) how-to.
 
-![Pick the venue, then the pair. Press Next.](figures/step-5-name-what-it-trades.png)
+![Pick the venue, then the pair. Press Next.](figures/step-10-name-what-it-trades.png)
 
 **Pick the venue, then the pair. Press Next.**
 
