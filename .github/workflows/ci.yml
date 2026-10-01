@@ -216,7 +216,7 @@ jobs:
         # [dev] carries the analyzers the archetypes shell out to, and PySide6
         # alone is ~1.2 GB installed. Caching the interpreter tree means that
         # cost is paid only when the dependency set changes.
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ${{ env.pythonLocation }}
           key: py-arch-${{ env.pythonLocation }}-${{ hashFiles('pyproject.toml', '.python-version') }}
