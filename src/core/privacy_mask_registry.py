@@ -1,7 +1,7 @@
 # Copyright (c) 2025 Anthony L. Brown (Ekthelius the Accumulator). All rights reserved.
 """Per-field-id privacy mask state.
 
-``ALL_FIELD_IDS`` names the 21 screen fields ``mask_or`` may replace with
+``ALL_FIELD_IDS`` names the 22 screen fields ``mask_or`` may replace with
 ``****``; a field_id outside it comes back unmasked. ``set_masked`` and
 ``set_all`` write the ``privacy_mask`` key of ``settings_path``, and
 ``reload_from_disk`` copies it back. ``get_privacy_mask_registry`` returns the
@@ -36,6 +36,7 @@ KPI_FIELD_IDS = (
     "kpi.exch",
     "kpi.ammo",
     "kpi.pnl",
+    "kpi.accumulated",
 )
 
 COUNTER_FIELD_IDS = (
@@ -69,9 +70,9 @@ ALL_FIELD_IDS = (
     + BOT_SWARM_FIELD_IDS
 )
 PRIVACY_FIELD_IDS = ALL_FIELD_IDS
-if len(ALL_FIELD_IDS) != 21:
+if len(ALL_FIELD_IDS) != 22:
     raise RuntimeError(
-        "The registry covers exactly 21 fields. "
+        "The registry covers exactly 22 fields. "
         "Update the spec and the tests before changing this count."
     )
 

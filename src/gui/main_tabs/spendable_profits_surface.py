@@ -51,7 +51,7 @@ DOT_ALIGN = "hcenter"
 COLUMN_ALIGN = "hcenter"
 SEPARATOR_ALIGN = "vcenter"
 
-#: One share of the row each, so the seven columns sit at one pitch.
+#: One share of the row each, so the eight columns sit at one pitch.
 TRAILING_STRETCH = False
 COLUMN_STRETCH = header.SPENDABLE_COLUMN_STRETCH
 
@@ -199,10 +199,28 @@ COLUMNS = (
         "initial_style": VALUE_STYLE_MUTED,
         "render": RENDER_AMMO,
     },
+    {
+        "key": "accumulated",
+        "label": header.ACCUMULATED_LABEL,
+        "label_style": LABEL_STYLE,
+        "label_tooltip": header.ACCUMULATED_TOOLTIP,
+        "field_id": "kpi.accumulated",
+        "source_key": "accumulated",
+        "default": None,
+        "initial_text": EMPTY_TEXT,
+        "initial_style": VALUE_STYLE_DEFAULT,
+        "render": RENDER_MONEY,
+    },
 )
 
 COLUMN_ORDER = tuple(column["key"] for column in COLUMNS)
 FIELD_ID_BY_KEY = {column["key"]: column["field_id"] for column in COLUMNS}
+
+#: Every column drawing money. Those shrink to fit before they shorten;
+#: ``RENDER_COUNT`` draws a whole count, which stays at its declared size.
+MONEY_KEYS = tuple(
+    column["key"] for column in COLUMNS if column["render"] != RENDER_COUNT
+)
 
 ACTIONS: dict = {}
 TIMERS: dict = {}
@@ -414,6 +432,8 @@ def build_view_model(model: Optional[SpendableProfitsModel] = None) -> dict:
             "column_align": COLUMN_ALIGN,
             "column_stretch": COLUMN_STRETCH,
             "trailing_stretch": TRAILING_STRETCH,
+            "value_font_px": header.VALUE_FONT_PX,
+            "value_font_min_px": header.VALUE_FONT_MIN_PX,
         },
         "separator": {
             "text": SEPARATOR_TEXT,
@@ -429,6 +449,7 @@ def build_view_model(model: Optional[SpendableProfitsModel] = None) -> dict:
             {
                 **column,
                 **state.cells[column["key"]],
+                "fit": column["key"] in MONEY_KEYS,
                 "dot": state.dots[column["field_id"]],
             }
             for column in COLUMNS
