@@ -85,7 +85,7 @@ packaging==26.3
     # via
     #   pyinstaller
     #   pyinstaller-hooks-contrib
-pandas==3.0.5
+pandas==3.0.6
     # via
     #   acervator (pyproject.toml)
     #   ta
