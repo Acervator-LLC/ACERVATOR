@@ -15,6 +15,9 @@ from .sizing import priced_usd
 
 logger = logging.getLogger("acervator.scrumming")
 
+# The value the per-bot P/L surfaces draw as their empty marker.
+UNREALISED_NO_READING = 0.0
+
 
 class ReconciliationEngineMixin:
     """Reconcile ``_current_holdings`` and ``_main_lots`` against the exchange.
@@ -49,19 +52,30 @@ class ReconciliationEngineMixin:
             self._fill_history = FillHistory(self.config.symbol)
         return await self._fill_history.refresh(self.exchange)
 
-    async def fetch_spot_position(self, asset: str) -> Any:
-        """The venue's ``SpotPosition`` for ``asset`` from ``exchange.get_spot_positions``, or None."""
+    async def fetch_spot_positions(self) -> Optional[dict]:
+        """The venue's open spot positions keyed by asset from ``exchange.get_spot_positions``, or None when the venue did not answer.
+
+        An empty mapping is an answer: the venue holds no open spot position. None
+        is the absence of an answer, so ``refresh_exchange_position_health`` can
+        tell a flat position from a venue it could not read.
+        """
         _get = getattr(self.exchange, "get_spot_positions", None)
         if _get is None:
             return None
         try:
             _positions = await _get()
         except Exception as _exc:
-            logger.debug("Bot %s get_spot_positions raised: %s", self.bot_id, _exc)
+            logger.warning(
+                "Bot %s %s: get_spot_positions raised, so the venue's "
+                "unrealised figure has no reading this refresh: %s",
+                self.bot_id,
+                self.config.symbol,
+                _exc,
+            )
             return None
-        if not _positions:
+        if _positions is None:
             return None
-        return _positions.get(asset)
+        return dict(_positions)
 
     def _log_basis_check(self, venue_basis: float, health: Any) -> str:
         """Log ``venue_basis`` against ``health.open_lot_basis_usd`` and ``health.cost_basis_total_usd``; returns the closer method's name."""
@@ -134,8 +148,20 @@ class ReconciliationEngineMixin:
                     float(self.stats.realized_pnl_exchange),
                     float(self.stats.fees_paid_exchange),
                 )
-            _venue = await self.fetch_spot_position(_asset_base)
+            _positions = await self.fetch_spot_positions()
+            _venue = None if _positions is None else _positions.get(_asset_base)
             if _venue is None:
+                _dropped = float(self.stats.unrealised_pnl)
+                self.stats.unrealised_pnl = UNREALISED_NO_READING
+                if _positions is None:
+                    logger.warning(
+                        "Bot %s %s: the venue answered no spot positions; the "
+                        "unrealised figure drops its last reading of %.4f "
+                        "rather than stand as current",
+                        self.bot_id,
+                        self.config.symbol,
+                        _dropped,
+                    )
                 if _complete:
                     self.stats.avg_entry_exchange = float(_ph.avg_entry)
                     self.stats.cost_basis_total_exchange = float(
