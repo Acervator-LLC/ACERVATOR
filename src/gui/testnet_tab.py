@@ -158,11 +158,12 @@ if _QT:
                 pass
 
         def _refresh_all(self):
-            """Run every refresh method.
+            """Run every refresh method. v3.13.1 — R28 FL applied.
             Previously four layers of `except Exception: pass` silently
             swallowed any refresh failure, leading to empty tables with
-            no diagnostic trail. Now: log the first 3 failures per
-            method to stderr + acervator.testnet logger.
+            no diagnostic trail. This pattern caused MEM-125, MEM-127,
+            MEM-139 all to hide. Now: log the first 3 failures per
+            method to stderr + acervator.testnet logger.  sadp: R28 FL
             """
             import sys, logging
 

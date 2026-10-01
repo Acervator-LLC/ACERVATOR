@@ -3,6 +3,8 @@
 acervator_watchdog.py — External crash watchdog for Acervator
 =============================================================
 
+MEM-217 (Session 24 Phase 3a)
+
 Purpose
 -------
 Launches Acervator as a separate subprocess, monitors it from OUTSIDE
@@ -11,7 +13,7 @@ when it dies — including thread dumps from py-spy if installed.
 
 This is the "separate crash handler" the operator asked for: when
 Acervator silently vanishes (Qt qFatal → abort(), unhandled signal,
-memory corruption, OS kill), the in-process crash hooks may not
+memory corruption, OS kill), the in-process MEM-216 hooks may not
 get a chance to flush. The watchdog runs in its own Python process
 and writes a detailed post-mortem to disk after the child dies.
 
@@ -25,8 +27,8 @@ What the watchdog does
 4. When the child exits, captures:
      - Exit code (helpful: 0xC0000005 = access violation, etc.)
      - Any final stdout/stderr lines
-     - Whatever crash log was being written
-     - Whatever faulthandler log was being written
+     - Whatever MEM-216 crash log was being written
+     - Whatever MEM-217 faulthandler log was being written
      - A py-spy dump of the child process's threads (if still alive)
 5. Writes a post-mortem bundle to
    ~/.acervator_logs/postmortem_YYYYMMDD_HHMMSS/
@@ -197,7 +199,7 @@ class ChildRunner:
         self._reader_thread.start()
 
     def _rotate_if_needed(self) -> None:
-        """Rotate when the active log exceeds ROTATE_BYTES.
+        """v3.18.5 — Rotate when the active log exceeds ROTATE_BYTES.
 
         Closes the active file handle, renames it to ``.1`` (shifting
         any existing ``.1`` → ``.2`` etc., dropping the oldest beyond
@@ -421,10 +423,10 @@ def prune_postmortem_bundles(
     max_age_days: int = POSTMORTEM_MAX_AGE_DAYS,
     log_dir: Path | None = None,
 ) -> tuple[int, int]:
-    """Prune accumulated post-mortem bundles to bound disk usage.
+    """v3.19.5 — Prune accumulated post-mortem bundles to bound disk usage.
 
     Operator-reported 2026-05-20: ``~/.acervator_logs/`` reached ~400 GB and
-    crashed the host system. Per-run file rotation never
+    crashed the host system. v3.18.5 added per-run file rotation but never
     capped the number of accumulated post-mortem BUNDLES. This function
     closes that hole.
 
@@ -510,7 +512,7 @@ def prune_postmortem_bundles(
 
 
 def report_log_dir_footprint(log_dir: Path | None = None) -> int:
-    """Print total log-dir size + warning if over threshold.
+    """v3.19.5 — Print total log-dir size + warning if over threshold.
 
     Called once at watchdog startup so a runaway log dir is visible
     in the operator's terminal before the next run can add to it.
@@ -576,9 +578,9 @@ def write_postmortem(runner: ChildRunner, exit_code: int | None, cause: str) -> 
 
     # Try to find most recent crash log + faulthandler log
     for pattern, label in [
-        ("crash_*.log", "crash log"),
-        ("faulthandler_*.log", "faulthandler log"),
-        ("thread_violation_*.log", "thread violation log"),
+        ("crash_*.log", "MEM-216 crash log"),
+        ("faulthandler_*.log", "MEM-217 faulthandler log"),
+        ("thread_violation_*.log", "MEM-216 thread violation log"),
     ]:
         recent = _recent_file(pattern)
         summary_lines.append("")
@@ -685,7 +687,7 @@ def main() -> int:
 
 
 # ─────────────────────────────────────────────────────────────────
-# Self-supervision mode
+# MEM-219 — Self-supervision mode
 # ─────────────────────────────────────────────────────────────────
 #
 # Called from main.py's __main__ dispatch when Acervator is launched
