@@ -8,12 +8,15 @@ from ...core.privacy_mask_registry import ABSENT_TEXT as _ABSENT_TEXT, mask_or
 from ...trading.target_bands import TERRITORY_FOLD, TERRITORY_SCRUM
 
 from .. import design_system as ds
+from ..main_tabs.header_strip_surface import VALUE_FONT_MIN_PX, VALUE_FONT_PX
+from ..main_tabs.spendable_profits_surface import MONEY_KEYS
 
 try:
     from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QVBoxLayout
     from PySide6.QtCore import Qt
 
     from .eliding_label import ElidingLabel
+    from .fitted_label import FittedLabel
     from .privacy_dot import PrivacyDot
 
     _HAS_QT = True
@@ -34,20 +37,20 @@ if _HAS_QT:
         )
         _LABEL_ALIGN = Qt.AlignHCenter | Qt.AlignBottom
         _VALUE_ALIGN = Qt.AlignHCenter | Qt.AlignTop
-        #: One share of the row each, so the seven columns sit at one pitch.
+        #: One share of the row each, so the eight columns sit at one pitch.
         _COLUMN_STRETCH = 1
-        _VALUE_STYLE_DEFAULT = (
-            f"color: {ds.TEXT_NEUTRAL}; font-size: 14px; font-weight: bold;"
-        )
-        _VALUE_STYLE_HIGHLIGHT = (
-            f"color: {ds.SUCCESS}; font-size: 14px; font-weight: bold;"
-        )
-        _VALUE_STYLE_NEGATIVE = (
-            f"color: {ds.ERROR}; font-size: 14px; font-weight: bold;"
-        )
-        _VALUE_STYLE_MUTED = (
-            f"color: {ds.CARD_METRIC_LABEL}; font-size: 14px; font-weight: bold;"
-        )
+        _VALUE_PX = VALUE_FONT_PX
+        _VALUE_MIN_PX = VALUE_FONT_MIN_PX
+        #: An amount's colour alone; ``FittedLabel`` appends the size it fits.
+        _VALUE_SKIN_DEFAULT = f"color: {ds.TEXT_NEUTRAL};"
+        _VALUE_SKIN_HIGHLIGHT = f"color: {ds.SUCCESS};"
+        _VALUE_SKIN_NEGATIVE = f"color: {ds.ERROR};"
+        _VALUE_SKIN_MUTED = f"color: {ds.CARD_METRIC_LABEL};"
+        _VALUE_FONT = f"font-size: {_VALUE_PX}px; font-weight: bold;"
+        _VALUE_STYLE_DEFAULT = f"{_VALUE_SKIN_DEFAULT} {_VALUE_FONT}"
+        _VALUE_STYLE_HIGHLIGHT = f"{_VALUE_SKIN_HIGHLIGHT} {_VALUE_FONT}"
+        _VALUE_STYLE_NEGATIVE = f"{_VALUE_SKIN_NEGATIVE} {_VALUE_FONT}"
+        _VALUE_STYLE_MUTED = f"{_VALUE_SKIN_MUTED} {_VALUE_FONT}"
         _SEPARATOR_STYLE = (
             f"color: {ds.MAIN_SEPARATOR}; font-size: 24px; margin: 0 2px;"
         )
@@ -57,9 +60,12 @@ if _HAS_QT:
         _RULE_W_PX = 12
         #: The skin each ``ammo_lean`` answer draws the Ammo total in.
         _AMMO_SKIN_BY_LEAN = {
-            TERRITORY_SCRUM: _VALUE_STYLE_HIGHLIGHT,
-            TERRITORY_FOLD: _VALUE_STYLE_NEGATIVE,
+            TERRITORY_SCRUM: _VALUE_SKIN_HIGHLIGHT,
+            TERRITORY_FOLD: _VALUE_SKIN_NEGATIVE,
         }
+
+        #: Every column drawing money, which shrinks rather than shortens.
+        _MONEY_KEYS = MONEY_KEYS
         _PNL_TIP = (
             "P/L — the unrealised profit and loss the exchange answers across "
             "every bot's open position. REALISED beside it carries the "
@@ -69,6 +75,10 @@ if _HAS_QT:
             "Total Ammo — every bot's Target Delta added together, in whole "
             "dollars. Green while more bots hold more than their target, red "
             "while more hold less."
+        )
+        _ACCUMULATED_TIP = (
+            "Accumulated — every bot's accrued funds added together, which is "
+            "each live Target Balance less the anchor it was set from."
         )
         _SPENDABLE_ABSENT_TIP = (
             "This amount is not in the data the strip was given for this refresh."
@@ -88,7 +98,7 @@ if _HAS_QT:
             label.setMinimumWidth(label.sizeHint().width())
 
         def _setup_ui(self) -> None:
-            """Build the frame, the seven KPI columns and their privacy dots."""
+            """Build the frame, the eight KPI columns and their privacy dots."""
             self.setFrameShape(QFrame.StyledPanel)
             self.setStyleSheet(
                 "SpendableProfitsWidget { "
@@ -119,8 +129,8 @@ if _HAS_QT:
                 "sharing one wallet."
             )
             spend_col.addWidget(self._spend_label)
-            self._amount = ElidingLabel(_ABSENT_TEXT)
-            self._amount.setStyleSheet(self._VALUE_STYLE_MUTED)
+            self._amount = FittedLabel(_ABSENT_TEXT, self._VALUE_PX, self._VALUE_MIN_PX)
+            self._amount.set_skin(self._VALUE_SKIN_MUTED)
             self._amount.setAlignment(self._VALUE_ALIGN)
             spend_col.addWidget(self._amount)
             # The dot sits at index 2, keeping label at 0 and value at 1.
@@ -131,7 +141,7 @@ if _HAS_QT:
             spend_col.addWidget(self._spend_dot, alignment=Qt.AlignHCenter)
             outer.addLayout(spend_col, self._COLUMN_STRETCH)
 
-            # Spendable is built above; these six share one KPI field shape.
+            # Spendable is built above; these seven share one KPI field shape.
             _KPI_FIELD_BY_KEY = {
                 "total_realised": "kpi.realised",
                 "pnl": "kpi.pnl",
@@ -139,6 +149,7 @@ if _HAS_QT:
                 "mature": "kpi.mature",
                 "exchanges": "kpi.exch",
                 "total_ammo": "kpi.ammo",
+                "accumulated": "kpi.accumulated",
             }
 
             self._stats = {}
@@ -149,6 +160,7 @@ if _HAS_QT:
                 ("MATURE", "mature", ""),
                 ("EXCH", "exchanges", ""),
                 ("AMMO", "total_ammo", self._AMMO_TIP),
+                ("ACCUMULATED", "accumulated", self._ACCUMULATED_TIP),
             ]:
                 sep = QLabel("|")
                 sep.setStyleSheet(self._SEPARATOR_STYLE)
@@ -167,8 +179,12 @@ if _HAS_QT:
                 self._hold_caption_width(lbl)
                 lbl.setToolTip(tip)
                 col.addWidget(lbl)
-                val = ElidingLabel(_ABSENT_TEXT)
-                val.setStyleSheet(self._VALUE_STYLE_DEFAULT)
+                if key in self._MONEY_KEYS:
+                    val = FittedLabel(_ABSENT_TEXT, self._VALUE_PX, self._VALUE_MIN_PX)
+                    val.set_skin(self._VALUE_SKIN_DEFAULT)
+                else:
+                    val = ElidingLabel(_ABSENT_TEXT)
+                    val.setStyleSheet(self._VALUE_STYLE_DEFAULT)
                 val.setAlignment(self._VALUE_ALIGN)
                 val.setToolTip(tip)
                 self._stats[key] = val
@@ -225,9 +241,9 @@ if _HAS_QT:
         def _ammo_skin(self, value, lean) -> str:
             """The skin the Ammo total draws in for one total and one lean."""
             if self._amount_of(value) is None:
-                return self._VALUE_STYLE_MUTED
+                return self._VALUE_SKIN_MUTED
             return self._AMMO_SKIN_BY_LEAN.get(
-                str(lean or ""), self._VALUE_STYLE_DEFAULT
+                str(lean or ""), self._VALUE_SKIN_DEFAULT
             )
 
         def update_profits(self, data: dict) -> None:
@@ -236,13 +252,13 @@ if _HAS_QT:
             sp = data.get("spendable")
             amount = self._amount_of(sp)
             if sp is None:
-                skin, tip = self._VALUE_STYLE_MUTED, self._SPENDABLE_ABSENT_TIP
+                skin, tip = self._VALUE_SKIN_MUTED, self._SPENDABLE_ABSENT_TIP
             elif amount is None:
-                skin, tip = self._VALUE_STYLE_MUTED, self._UNREADABLE_TIP
+                skin, tip = self._VALUE_SKIN_MUTED, self._UNREADABLE_TIP
             elif amount >= 0:
-                skin, tip = self._VALUE_STYLE_HIGHLIGHT, ""
+                skin, tip = self._VALUE_SKIN_HIGHLIGHT, ""
             else:
-                skin, tip = self._VALUE_STYLE_NEGATIVE, ""
+                skin, tip = self._VALUE_SKIN_NEGATIVE, ""
             ammo = data.get("total_ammo")
             drawn = {
                 "spendable": self._money_text(sp),
@@ -252,11 +268,12 @@ if _HAS_QT:
                 "mature": self._money_text(data.get("mature")),
                 "exchanges": self._count_text(data.get("exchange_count")),
                 "total_ammo": self._ammo_text(ammo),
+                "accumulated": self._money_text(data.get("accumulated")),
             }
-            self._stats["total_ammo"].setStyleSheet(
+            self._stats["total_ammo"].set_skin(
                 self._ammo_skin(ammo, data.get("ammo_lean"))
             )
-            self._amount.setStyleSheet(skin)
+            self._amount.set_skin(skin)
             self._amount.setToolTip(tip)
             self._amount.setText(mask_or(drawn["spendable"], "kpi.spendable"))
             for key, field_id in (
@@ -266,6 +283,7 @@ if _HAS_QT:
                 ("mature", "kpi.mature"),
                 ("exchanges", "kpi.exch"),
                 ("total_ammo", "kpi.ammo"),
+                ("accumulated", "kpi.accumulated"),
             ):
                 self._stats[key].setText(mask_or(drawn[key], field_id))
             self._last_data = kept
