@@ -155,6 +155,7 @@ def fitted_value_px(advance_at: Any, room_px: Any) -> int:
             return size_px
     return VALUE_FONT_MIN_PX
 
+
 KPI_LABEL_STYLE = f"color: {ds.CARD_METRIC_LABEL}; {LABEL_FONT}"
 SPENDABLE_LABEL_STYLE = f"color: {ds.PRIMARY}; {LABEL_FONT}"
 VALUE_STYLE_DEFAULT = f"color: {ds.TEXT_NEUTRAL}; {VALUE_FONT}"

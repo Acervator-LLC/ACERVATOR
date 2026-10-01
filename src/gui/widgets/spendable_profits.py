@@ -129,9 +129,7 @@ if _HAS_QT:
                 "sharing one wallet."
             )
             spend_col.addWidget(self._spend_label)
-            self._amount = FittedLabel(
-                _ABSENT_TEXT, self._VALUE_PX, self._VALUE_MIN_PX
-            )
+            self._amount = FittedLabel(_ABSENT_TEXT, self._VALUE_PX, self._VALUE_MIN_PX)
             self._amount.set_skin(self._VALUE_SKIN_MUTED)
             self._amount.setAlignment(self._VALUE_ALIGN)
             spend_col.addWidget(self._amount)
@@ -182,9 +180,7 @@ if _HAS_QT:
                 lbl.setToolTip(tip)
                 col.addWidget(lbl)
                 if key in self._MONEY_KEYS:
-                    val = FittedLabel(
-                        _ABSENT_TEXT, self._VALUE_PX, self._VALUE_MIN_PX
-                    )
+                    val = FittedLabel(_ABSENT_TEXT, self._VALUE_PX, self._VALUE_MIN_PX)
                     val.set_skin(self._VALUE_SKIN_DEFAULT)
                 else:
                     val = ElidingLabel(_ABSENT_TEXT)
