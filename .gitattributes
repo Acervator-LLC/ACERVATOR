@@ -75,6 +75,9 @@
 *.icns binary
 *.pdf  binary
 *.zip  binary
+# A .pptx is a zip. Measured without this line: git check-attr answers
+# text: auto on docs/new-user-procedure/New-User-Procedure.pptx.
+*.pptx binary
 *.gz   binary
 *.exe  binary
 *.dll  binary
