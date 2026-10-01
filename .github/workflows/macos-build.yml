@@ -65,7 +65,7 @@ jobs:
           # src/_version.py runs `git describe`, so the tags have to be here.
           fetch-depth: 0
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version-file: .python-version
 
