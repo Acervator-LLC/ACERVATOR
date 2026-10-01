@@ -1,12 +1,12 @@
 """capture_screen_figure.py -- draws the new-owner sequence with no display and
 puts one arrow and one caption on each screen.
 
-``STEPS`` names one builder per step. Each builder presses the step's control,
-reads what the program answers and returns the caption built from that reading,
-so no caption is written from anything but a reading. ``redirect_home``,
-``refuse_network`` and ``pin_variant`` run before the first Acervator import.
-``main`` refuses a figure whose caption or file name carries an asset name, and
-``check_rect`` refuses one whose arrow would fall outside the picture.
+``STEPS`` names one builder per step, and each builder presses the step's
+control and returns the caption built from what the program answered.
+``redirect_home``, ``refuse_network`` and ``pin_variant`` run before the first
+Acervator import. ``render`` refuses a figure whose named control falls outside
+the band, whose arrow or caption covers drawn pixels, or whose font draws a
+label character as an empty box.
 """
 
 from __future__ import annotations
@@ -26,23 +26,18 @@ FIGURE_DIR = ARTIFACT_ROOT / "figures"
 
 HOME_VARS = ("HOME", "USERPROFILE", "LOCALAPPDATA", "APPDATA")
 
-WINDOWS_FONT_NAMES = ("segoeui.ttf", "arial.ttf")
+WINDOWS_TEXT_FONTS = ("segoeui.ttf", "arial.ttf")
+#: Font files whose own tables draw the fullwidth forms a button label uses.
+#: The offscreen driver reports zero families, so it has no fallback of its own.
+WINDOWS_WIDE_FONTS = ("malgun.ttf", "msgothic.ttc", "simsun.ttc")
 POSIX_FONTS = (
     Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
     Path("/System/Library/Fonts/Supplemental/Arial.ttf"),
 )
 
-
-def font_candidates() -> tuple:
-    """Every font file this host may carry, Windows first when it names one."""
-    root = os.environ.get("SYSTEMROOT", "")
-    windows = (
-        tuple(Path(root) / "Fonts" / name for name in WINDOWS_FONT_NAMES)
-        if root
-        else ()
-    )
-    return windows + POSIX_FONTS
-
+#: A character no font carries. A label character drawing this much ink is
+#: drawing the empty box, not itself.
+ABSENT_CHARACTER = "\U0010fffd"
 
 WINDOW_WIDTH = 1400
 WINDOW_HEIGHT = 900
@@ -50,24 +45,39 @@ DIALOG_WIDTH = 1000
 DIALOG_HEIGHT = 700
 WIZARD_WIDTH = 1100
 WIZARD_HEIGHT = 620
-#: Rows kept below the tab bar, so the caption sits clear of the tabs. The band
-#: starts at the bar, because the money strip above it repaints a gradient
-#: between runs and a capture holding it is not reproducible.
-BAR_ROOM = 118
+
+#: Rows kept beyond the controls a caption names, so the caption has somewhere
+#: clear to sit. The money strip repaints its gradient between runs, so a band
+#: that reaches it is not reproducible.
+BAND_ROOM = 118
 
 ARROW_RGB = (255, 176, 0)
 CAPTION_FILL = (18, 18, 22)
 CAPTION_TEXT = (255, 255, 255)
 CAPTION_SIZE = 19
 CAPTION_PAD = 12
-CAPTION_MARGIN = 18
+CAPTION_MARGIN = 16
+CAPTION_STEP = 8
 ARROW_WIDTH = 3
 ARROW_HEAD = 13
-ARROW_GAP = 6
+ARROW_GAP = 7
+ARROW_CLEARANCE = 3
+GUTTER_STEP = 4
+#: Rows and columns a caption keeps from the control its arrow points at.
+CAPTION_CLEARANCE = 26
+#: A group box draws words only in its title strip; the rest of it is a frame.
+GROUP_TITLE_ROWS = 22
+#: Caption positions tried before the lightest route found so far is taken.
+CAPTION_TRIES = 60
+#: Columns kept beside a label's words, for the glyph edges the advance omits.
+LABEL_PAD = 10
+#: The arrow length at which the search stops looking for a longer one.
+GOOD_ARROW = 220
 
 LIVE_TAB = "Live"
 EXCHANGES_PAGE = "Exchanges"
 ACCUMULATION_PAGE = "Select Asset Pair"
+NEXT_LABEL = "Next"
 
 #: The React screens draw through a browser engine that composites outside the
 #: widget, so ``grab`` returns one flat colour for them. Every figure is Qt.
@@ -77,7 +87,7 @@ LABEL_DECORATION = re.compile(r"^[^\w]+|[^\w)]+$")
 
 
 class CaptureRefused(RuntimeError):
-    """Raised when ``font_file`` or ``main`` cannot take an honest capture."""
+    """Raised when ``main`` or a step cannot take an honest capture."""
 
 
 def redirect_home(scratch: Path) -> None:
@@ -95,27 +105,6 @@ def pin_variant() -> str:
     return CAPTURE_VARIANT
 
 
-def control_label(widget) -> str:
-    """The text *widget* shows, without the symbol a button wears."""
-    return LABEL_DECORATION.sub("", widget.text()).strip()
-
-
-def check_rect(image, rect: tuple, control: str) -> None:
-    """Refuse a figure whose control sits outside the captured picture."""
-    left, top, width, height = rect
-    inside = (
-        0 <= left
-        and 0 <= top
-        and left + width <= image.width
-        and top + height <= image.height
-    )
-    if not inside:
-        raise CaptureRefused(
-            f"{control!r} sits at {rect}, outside the "
-            f"{image.width}x{image.height} capture, so no arrow can land on it"
-        )
-
-
 def refuse_network() -> None:
     """Replace the ``socket`` calls that reach a venue with a raising
     stand-in."""
@@ -128,9 +117,23 @@ def refuse_network() -> None:
     setattr(socket, "create_connection", refused)
 
 
+def control_label(widget) -> str:
+    """The text *widget* shows, without the symbol a button wears."""
+    return LABEL_DECORATION.sub("", widget.text()).strip()
+
+
+def system_fonts(names: tuple) -> tuple:
+    """Every path under the system font folder that *names* lists."""
+    root = os.environ.get("SYSTEMROOT", "")
+    if not root:
+        return ()
+    folder = Path(root) / "Fonts"
+    return tuple(folder / name for name in names)
+
+
 def font_file() -> Path:
-    """The first path ``font_candidates`` names that exists."""
-    for candidate in font_candidates():
+    """The first text font this host carries, Windows before POSIX."""
+    for candidate in system_fonts(WINDOWS_TEXT_FONTS) + POSIX_FONTS:
         if candidate.exists():
             return candidate
     raise CaptureRefused(
@@ -139,23 +142,71 @@ def font_file() -> Path:
     )
 
 
+def wide_font_file():
+    """The first font file carrying the fullwidth forms, or None."""
+    for candidate in system_fonts(WINDOWS_WIDE_FONTS):
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def load_family(path: Path):
+    """The first family *path* contributes, or None when it contributes none."""
+    from PySide6.QtGui import QFontDatabase
+
+    handle = QFontDatabase.addApplicationFont(str(path))
+    families = QFontDatabase.applicationFontFamilies(handle)
+    return families[0] if families else None
+
+
+def character_ink(font, text: str) -> int:
+    """How many lit pixels *font* draws for *text* on its own."""
+    from PySide6.QtCore import Qt
+    from PySide6.QtGui import QImage, QPainter
+
+    image = QImage(64, 44, QImage.Format.Format_RGBA8888)
+    image.fill(Qt.GlobalColor.black)
+    painter = QPainter(image)
+    painter.setPen(Qt.GlobalColor.white)
+    painter.setFont(font)
+    painter.drawText(image.rect(), Qt.AlignmentFlag.AlignCenter, text)
+    painter.end()
+    raw = bytes(image.constBits())
+    stride = image.bytesPerLine()
+    lit = 0
+    for y in range(image.height()):
+        row = raw[y * stride : y * stride + image.width() * 4]
+        lit += sum(1 for x in range(0, image.width() * 4, 4) if row[x] > 40)
+    return lit
+
+
+def boxed_characters(font, text: str) -> list:
+    """Every character in *text* that draws the same ink as a missing one."""
+    box = character_ink(font, ABSENT_CHARACTER)
+    odd = sorted({one for one in text if ord(one) > 127})
+    return [one for one in odd if character_ink(font, one) == box]
+
+
 def build_application(path: Path):
-    """A QApplication carrying *path* as its font and the stored Acervator
-    theme."""
-    from PySide6.QtGui import QFont, QFontDatabase
+    """A QApplication whose font is *path*, with a wide font behind it."""
+    from PySide6.QtGui import QFont
     from PySide6.QtWidgets import QApplication
 
     app = QApplication([])
-    handle = QFontDatabase.addApplicationFont(str(path))
-    families = QFontDatabase.applicationFontFamilies(handle)
-    if not families:
+    family = load_family(path)
+    if family is None:
         raise CaptureRefused(f"{path.name} loaded no font family")
-    app.setFont(QFont(families[0], 9))
+    wide = wide_font_file()
+    behind = load_family(wide) if wide is not None else None
+    font = QFont()
+    font.setFamilies([family] + ([behind] if behind else []))
+    font.setPointSize(9)
+    app.setFont(font)
 
     from src.gui.theme_engine import DEFAULT_THEME_NAME, ThemeManager
 
     ThemeManager().apply_theme(DEFAULT_THEME_NAME, app)
-    return app, families[0], DEFAULT_THEME_NAME
+    return app, family, behind, DEFAULT_THEME_NAME
 
 
 def settle(app, rounds: int = 80) -> None:
@@ -193,13 +244,28 @@ def build_window(app):
 
 
 def build_wizard(app):
-    """``BotCreationWizard`` built with an empty venue list and shown."""
+    """``BotCreationWizard`` sized so its button row sits inside the widget.
+
+    The wizard wears the Aero style, which offsets its inner widget, and the
+    button row falls past the bottom until ``adjustSize`` has run.
+    """
+    from PySide6.QtWidgets import QWizard
+
     from src.gui.bot_wizard import BotCreationWizard
 
     wizard = BotCreationWizard([], {})
-    wizard.resize(WIZARD_WIDTH, WIZARD_HEIGHT)
     wizard.show()
+    settle(app, 20)
+    wizard.adjustSize()
+    wizard.resize(WIZARD_WIDTH, WIZARD_HEIGHT)
     settle(app, 40)
+    button = wizard.button(QWizard.NextButton)
+    corner = button.mapTo(wizard, button.rect().topLeft())
+    if corner.y() + button.height() > wizard.height():
+        raise CaptureRefused(
+            f"the wizard's button row sits at {corner.y()} in a "
+            f"{wizard.height()} tall widget, so no capture can hold it"
+        )
     return wizard
 
 
@@ -241,27 +307,218 @@ def grab(widget, band: tuple = ()):
     return to_image(widget.grab())
 
 
-def colour_count(image) -> int:
-    """How many distinct colours *image* holds, sampled every third row."""
-    pixels = image.convert("RGB")
-    width, height = pixels.size
-    seen = set()
-    for y in range(0, height, 3):
-        for x in range(0, width, 3):
-            seen.add(pixels.getpixel((x, y)))
-    return len(seen)
+def band_for(widget, rects: list, extra: int = 0) -> tuple:
+    """The rows holding every rect in *rects*, with room for a caption."""
+    room = BAND_ROOM + extra
+    top = max(0, min(one[1] for one in rects) - room)
+    bottom = min(widget.height(), max(one[1] + one[3] for one in rects) + room)
+    return top, bottom - top
 
 
-def caption_box(image, rect: tuple, size: tuple) -> tuple:
-    """Where the caption sits: the band furthest from *rect*, left aligned."""
-    _left, top, _width, height = rect
-    box_width, box_height = size
-    low = image.height - box_height - CAPTION_MARGIN
-    high = CAPTION_MARGIN
-    control_middle = top + height // 2
-    box_top = low if control_middle < image.height // 2 else high
-    box_left = min(CAPTION_MARGIN, max(0, image.width - box_width - CAPTION_MARGIN))
-    return box_left, box_top
+def candidate_bands(widget, rects: list, fixed: tuple) -> list:
+    """The bands to try, tightest first, widening until one holds a caption."""
+    if fixed:
+        return [tuple(fixed)]
+    out = []
+    for extra in (0, BAND_ROOM, BAND_ROOM * 3, widget.height()):
+        band = band_for(widget, rects, extra)
+        if band not in out:
+            out.append(band)
+    return out
+
+
+def shift(rect: tuple, top: int) -> tuple:
+    """*rect* moved from widget rows into the captured band's rows."""
+    return rect[0], rect[1] - top, rect[2], rect[3]
+
+
+def inside(image, rect: tuple) -> bool:
+    """True when every edge of *rect* lies within *image*."""
+    left, top, width, height = rect
+    return (
+        left >= 0
+        and top >= 0
+        and left + width <= image.width
+        and top + height <= image.height
+    )
+
+
+def text_widgets(root) -> list:
+    """Every visible widget under *root* that draws words."""
+    from PySide6.QtWidgets import (
+        QAbstractButton,
+        QComboBox,
+        QGroupBox,
+        QLabel,
+        QLineEdit,
+        QPlainTextEdit,
+        QTabBar,
+        QTextEdit,
+        QWidget,
+    )
+
+    kinds = (
+        QLabel,
+        QAbstractButton,
+        QGroupBox,
+        QLineEdit,
+        QComboBox,
+        QTabBar,
+        QPlainTextEdit,
+        QTextEdit,
+    )
+    out = []
+    for child in root.findChildren(QWidget):
+        if not isinstance(child, kinds) or not child.isVisible():
+            continue
+        if child.width() < 2 or child.height() < 2:
+            continue
+        rect = control_rect(root, child)
+        if isinstance(child, QGroupBox):
+            rect = (rect[0], rect[1], rect[2], min(rect[3], GROUP_TITLE_ROWS))
+        elif isinstance(child, QLabel):
+            if not child.text().strip():
+                continue
+            rect = label_rect(child, rect)
+        out.append(rect)
+    return out
+
+
+def label_rect(label, rect: tuple) -> tuple:
+    """*rect* narrowed to the words *label* draws, by its own alignment."""
+    from PySide6.QtCore import Qt
+    from PySide6.QtGui import QFontMetrics
+
+    advance = QFontMetrics(label.font()).horizontalAdvance(label.text())
+    left, top, width, height = rect
+    if advance >= width:
+        return rect
+    alignment = label.alignment()
+    if alignment & Qt.AlignmentFlag.AlignRight:
+        left = left + width - advance
+    elif alignment & Qt.AlignmentFlag.AlignHCenter:
+        left = left + (width - advance) // 2
+    return left - LABEL_PAD, top, advance + LABEL_PAD * 2, height
+
+
+def text_mask(root, band: tuple, size: tuple, target: tuple):
+    """A one-per-text-pixel array over the band, clear inside *target*."""
+    import numpy as np
+
+    top, _height = band
+    width, height = size
+    mask = np.zeros((height, width), dtype=np.int32)
+    for left, rect_top, rect_width, rect_height in text_widgets(root):
+        y0 = max(0, rect_top - top)
+        y1 = min(height, rect_top - top + rect_height)
+        x0 = max(0, left)
+        x1 = min(width, left + rect_width)
+        if y1 > y0 and x1 > x0:
+            mask[y0:y1, x0:x1] = 1
+    left, rect_top, rect_width, rect_height = target
+    mask[
+        max(0, rect_top) : max(0, rect_top + rect_height),
+        max(0, left) : max(0, left + rect_width),
+    ] = 0
+    return mask
+
+
+def box_text(mask, left: int, top: int, width: int, height: int) -> int:
+    """How many text pixels sit under the rectangle, clipped to the mask."""
+    rows, columns = mask.shape
+    top, left = max(0, top), max(0, left)
+    patch = mask[top : min(rows, top + height), left : min(columns, left + width)]
+    return int(patch.sum())
+
+
+def path_text(mask, points: list) -> int:
+    """How many text pixels sit under the arrow's stroke along *points*."""
+    import numpy as np
+
+    reach = ARROW_WIDTH // 2 + ARROW_CLEARANCE
+    xs: list = []
+    ys: list = []
+    for first, second in zip(points, points[1:]):
+        run, rise = second[0] - first[0], second[1] - first[1]
+        steps = max(abs(run), abs(rise))
+        share = np.linspace(0.0, 1.0, steps + 1) if steps else np.zeros(1)
+        xs.append(np.rint(first[0] + run * share))
+        ys.append(np.rint(first[1] + rise * share))
+    rows, columns = mask.shape
+    column = np.concatenate(xs).astype(np.int32)
+    row = np.concatenate(ys).astype(np.int32)
+    total = 0
+    for down in range(-reach, reach + 1):
+        for across in range(-reach, reach + 1):
+            moved_row, moved_column = row + down, column + across
+            keep = (
+                (moved_row >= 0)
+                & (moved_row < rows)
+                & (moved_column >= 0)
+                & (moved_column < columns)
+            )
+            total += int(mask[moved_row[keep], moved_column[keep]].sum())
+    return total
+
+
+def caption_drawing(caption: str, path: Path) -> tuple:
+    """The caption box size, the text lift, and the font that measured them."""
+    from PIL import Image, ImageDraw, ImageFont
+
+    draw = ImageDraw.Draw(Image.new("RGB", (8, 8)))
+    font = ImageFont.truetype(str(path), CAPTION_SIZE)
+    text = draw.textbbox((0, 0), caption, font=font)
+    return (
+        (text[2] - text[0]) + CAPTION_PAD * 2,
+        (text[3] - text[1]) + CAPTION_PAD * 2,
+        text[1],
+        font,
+    )
+
+
+def far_enough(box: tuple, rect: tuple) -> bool:
+    """True when *box* keeps its clearance from *rect* on every side."""
+    box_left, box_top, box_right, box_bottom = box
+    left, top, width, height = rect
+    return (
+        box_right + CAPTION_CLEARANCE <= left
+        or box_left >= left + width + CAPTION_CLEARANCE
+        or box_bottom + CAPTION_CLEARANCE <= top
+        or box_top >= top + height + CAPTION_CLEARANCE
+    )
+
+
+def caption_places(mask, image, size: tuple, rect: tuple) -> tuple:
+    """Every caption position covering no text, lowest first, and the lightest."""
+    width, height = size
+    clear = []
+    best = None
+    rows = range(
+        image.height - height - CAPTION_MARGIN, CAPTION_MARGIN - 1, -CAPTION_STEP
+    )
+    columns = range(
+        CAPTION_MARGIN, image.width - width - CAPTION_MARGIN + 1, CAPTION_STEP
+    )
+    for top in rows:
+        for left in columns:
+            box = (left, top, left + width, top + height)
+            if not far_enough(box, rect):
+                continue
+            covered = box_text(mask, left, top, width, height)
+            if covered == 0:
+                clear.append(box)
+            elif best is None or covered < best[1]:
+                best = (box, covered)
+    if not clear and best is None:
+        raise CaptureRefused("no caption position fits inside the capture")
+    aim_x, aim_y = aim_point(rect)
+    clear.sort(
+        key=lambda box: (
+            ((box[0] + box[2]) // 2 - aim_x) ** 2
+            + ((box[1] + box[3]) // 2 - aim_y) ** 2
+        )
+    )
+    return clear, best
 
 
 def aim_point(rect: tuple) -> tuple:
@@ -270,30 +527,148 @@ def aim_point(rect: tuple) -> tuple:
     return left + min(width, height * 2) // 2, top + height // 2
 
 
-def arrow_start(box: tuple, rect: tuple) -> tuple:
-    """The point on the caption box nearest the control."""
-    box_left, box_top, box_right, box_bottom = box
-    target_x, target_y = aim_point(rect)
-    start_x = min(max(target_x, box_left), box_right)
-    start_y = box_bottom if target_y > box_bottom else box_top
-    if box_top <= target_y <= box_bottom:
-        start_y = target_y
-        start_x = box_right if target_x > box_right else box_left
-    return start_x, start_y
+def approach(box: tuple, rect: tuple):
+    """The caption edge the arrow leaves from, or None when they overlap."""
+    _box_left, box_top, _box_right, box_bottom = box
+    _left, top, _width, height = rect
+    if box_top >= top + height:
+        return box_top, top + height + ARROW_GAP
+    if box_bottom <= top:
+        return box_bottom, top - ARROW_GAP
+    return None
 
 
-def arrow_tip(rect: tuple, start: tuple) -> tuple:
-    """The point just outside the control's edge that faces *start*."""
+def face_routes(box: tuple, rect: tuple) -> list:
+    """Routes meeting the control's top or bottom edge, nearest aim first."""
+    edges = approach(box, rect)
+    if edges is None:
+        return []
+    start_y, tip_y = edges
+    box_left, _box_top, box_right, _box_bottom = box
+    left, _top, width, height = rect
+    aim_x, _aim_y = aim_point(rect)
+    columns = sorted(
+        range(left + 4, left + width - 3, GUTTER_STEP), key=lambda one: abs(one - aim_x)
+    )
+    out = []
+    for column in columns:
+        anchor = min(max(column, box_left + 4), box_right - 4)
+        out.append([(anchor, start_y), (column, start_y), (column, tip_y)])
+    return out
+
+
+def side_routes(box: tuple, rect: tuple, image) -> list:
+    """Routes meeting the control's left or right edge through a clear column."""
+    edges = approach(box, rect)
+    if edges is None:
+        return []
+    start_y = edges[0]
+    box_left, _box_top, box_right, _box_bottom = box
     left, top, width, height = rect
-    middle_x, middle_y = aim_point(rect)
-    start_x, start_y = start
-    if start_y > top + height:
-        return middle_x, top + height + ARROW_GAP
-    if start_y < top:
-        return middle_x, top - ARROW_GAP
-    if start_x > left + width:
-        return left + width + ARROW_GAP, middle_y
-    return left - ARROW_GAP, middle_y
+    tip_y = top + height // 2
+    out = []
+    lefts = range(left - ARROW_GAP - GUTTER_STEP, 2, -GUTTER_STEP)
+    rights = range(left + width + ARROW_GAP + GUTTER_STEP, image.width - 2, GUTTER_STEP)
+    for column, tip_x in [(one, left - ARROW_GAP) for one in lefts] + [
+        (one, left + width + ARROW_GAP) for one in rights
+    ]:
+        anchor = min(max(column, box_left + 4), box_right - 4)
+        out.append(
+            [(anchor, start_y), (column, start_y), (column, tip_y), (tip_x, tip_y)]
+        )
+    return out
+
+
+def route_length(points: list) -> int:
+    """How far the arrow travels, summed over its segments."""
+    total = 0.0
+    for first, second in zip(points, points[1:]):
+        run, rise = second[0] - first[0], second[1] - first[1]
+        total += (run * run + rise * rise) ** 0.5
+    return int(total)
+
+
+def clear_reach(mask, column: int, face_y: int, step: int, limit: int) -> int:
+    """How far a column stays clear of text, walking away from the control."""
+    reach = ARROW_WIDTH // 2 + ARROW_CLEARANCE
+    rows, columns = mask.shape
+    row = face_y
+    while (row - limit) * step < 0:
+        if not 0 <= row < rows:
+            break
+        left = max(0, column - reach)
+        right = min(columns, column + reach + 1)
+        if int(mask[row, left:right].sum()):
+            break
+        row += step
+    return row - step
+
+
+def face_option(mask, image, size: tuple, rect: tuple):
+    """A caption and a straight arrow down a column that carries no text."""
+    width, height = size
+    left, top, rect_width, rect_height = rect
+    aim_x, _aim_y = aim_point(rect)
+    columns = sorted(
+        range(left + 4, left + rect_width - 3, GUTTER_STEP),
+        key=lambda one: abs(one - aim_x),
+    )
+    for column in columns:
+        if not CAPTION_MARGIN <= column < image.width - CAPTION_MARGIN:
+            continue
+        for step, face_y, limit in (
+            (1, top + rect_height + ARROW_GAP, image.height - CAPTION_MARGIN),
+            (-1, top - ARROW_GAP, CAPTION_MARGIN),
+        ):
+            edge = clear_reach(mask, column, face_y, step, limit)
+            if abs(edge - face_y) < height + CAPTION_CLEARANCE:
+                continue
+            box_top = edge - height if step > 0 else edge
+            box_left = min(
+                max(column - width // 2, CAPTION_MARGIN),
+                image.width - width - CAPTION_MARGIN,
+            )
+            box = (box_left, box_top, box_left + width, box_top + height)
+            if not far_enough(box, rect):
+                continue
+            if box_text(mask, box_left, box_top, width, height):
+                continue
+            start_y = box_top if step > 0 else box_top + height
+            anchor = min(max(column, box_left + 4), box[2] - 4)
+            route = [(anchor, start_y), (column, start_y), (column, face_y)]
+            if path_text(mask, route) == 0:
+                return box, route
+    return None
+
+
+def choose_route(mask, image, box: tuple, rect: tuple) -> tuple:
+    """The first route covering no text, a straight approach before a bent one."""
+    best = None
+    faces = [(one, "face") for one in face_routes(box, rect)]
+    sides = [(one, "side") for one in side_routes(box, rect, image)]
+    for route, kind in faces + sides:
+        covered = path_text(mask, route)
+        if covered == 0:
+            return route, 0, kind
+        if best is None or covered < best[1]:
+            best = (route, covered, kind)
+    if best is None:
+        raise CaptureRefused("no arrow route reaches the control")
+    return best
+
+
+def control_route(mask, box: tuple):
+    """A deliberately bad route: straight onto the text pixel nearest *box*."""
+    import numpy as np
+
+    lit = np.argwhere(mask)
+    if lit.size == 0:
+        return None
+    box_left, box_top, box_right, box_bottom = box
+    middle = ((box_left + box_right) // 2, (box_top + box_bottom) // 2)
+    gaps = (lit[:, 1] - middle[0]) ** 2 + (lit[:, 0] - middle[1]) ** 2
+    row, column = lit[int(gaps.argmin())]
+    return [middle, (int(column), int(row))]
 
 
 def head_points(tip: tuple, start: tuple) -> list:
@@ -312,32 +687,21 @@ def head_points(tip: tuple, start: tuple) -> list:
     ]
 
 
-def annotate(image, rect: tuple, caption: str, path: Path):
-    """Draw one arrow onto *rect* and one *caption* box, and return *image*."""
-    from PIL import ImageDraw, ImageFont
+def annotate(image, box: tuple, route: list, caption: str, drawn: tuple):
+    """Draw the caption box at *box* and the arrow along *route*."""
+    from PIL import ImageDraw
 
+    _width, _height, lift, font = drawn
     draw = ImageDraw.Draw(image)
-    font = ImageFont.truetype(str(path), CAPTION_SIZE)
-
-    text = draw.textbbox((0, 0), caption, font=font)
-    size = (
-        (text[2] - text[0]) + CAPTION_PAD * 2,
-        (text[3] - text[1]) + CAPTION_PAD * 2,
-    )
-    box_left, box_top = caption_box(image, rect, size)
-    box = (box_left, box_top, box_left + size[0], box_top + size[1])
     draw.rectangle(list(box), fill=CAPTION_FILL, outline=ARROW_RGB, width=2)
     draw.text(
-        (box_left + CAPTION_PAD, box_top + CAPTION_PAD - text[1]),
+        (box[0] + CAPTION_PAD, box[1] + CAPTION_PAD - lift),
         caption,
         font=font,
         fill=CAPTION_TEXT,
     )
-
-    start = arrow_start(box, rect)
-    tip = arrow_tip(rect, start)
-    draw.line([start, tip], fill=ARROW_RGB, width=ARROW_WIDTH)
-    draw.polygon(head_points(tip, start), fill=ARROW_RGB)
+    draw.line(route, fill=ARROW_RGB, width=ARROW_WIDTH, joint="curve")
+    draw.polygon(head_points(route[-1], route[-2]), fill=ARROW_RGB)
     return image
 
 
@@ -368,17 +732,20 @@ def step_window_opens(app, state: dict) -> dict:
     names = tab_names(book)
     shown = book.tabText(book.currentIndex())
     bar = book.tabBar()
-    top = bar.mapTo(window, bar.rect().topLeft()).y()
-    height = bar.height() + BAR_ROOM
-    left, tab_top, width, tab_height = tab_rect(window, book, LIVE_TAB)
+    bar_top = bar.mapTo(window, bar.rect().topLeft()).y()
     print(f"driven      window built; tab bar reads {names}")
     print(f"observed    the window shows {shown!r}")
     return {
         "name": "step-1-window-opens.png",
-        "image": grab(window, (top, height)),
-        "rect": (left, tab_top - top, width, tab_height),
+        "widget": window,
+        "band": (bar_top, bar.height() + BAND_ROOM),
+        "target": (LIVE_TAB, tab_rect(window, book, LIVE_TAB)),
+        "named": [
+            (LIVE_TAB, tab_rect(window, book, LIVE_TAB)),
+            (shown, tab_rect(window, book, shown)),
+        ],
         "caption": f"Acervator opens on {shown}. Press {LIVE_TAB}.",
-        "control": LIVE_TAB,
+        "labels": [LIVE_TAB, shown],
     }
 
 
@@ -408,10 +775,11 @@ def step_live_has_no_venue(app, state: dict) -> dict:
     print(f"observed    stored venues {stored}, card button {label!r}")
     return {
         "name": "step-2-live-has-no-venue.png",
-        "image": grab(layer),
-        "rect": control_rect(layer, add),
+        "widget": layer,
+        "target": (label, control_rect(layer, add)),
+        "named": [(label, control_rect(layer, add))],
         "caption": f"No venue is stored. Press {label}.",
-        "control": label,
+        "labels": [add.text()],
     }
 
 
@@ -437,15 +805,22 @@ def step_venue_form(app, state: dict) -> dict:
     print("not driven  the button is never pressed; it calls a venue")
     return {
         "name": "step-3-enter-the-venue-keys.png",
-        "image": grab(dialog),
-        "rect": control_rect(dialog, add),
+        "widget": dialog,
+        "target": (label, control_rect(dialog, add)),
+        "named": [
+            (label, control_rect(dialog, add)),
+            ("the key field", control_rect(dialog, dialog._new_api_key)),
+            ("the secret field", control_rect(dialog, dialog._new_api_secret)),
+        ],
         "caption": f"Type the key and the secret. Press {label}.",
-        "control": label,
+        "labels": [add.text()],
     }
 
 
 def step_trading_mode(app, state: dict) -> dict:
     """The page the wizard opens on, and where each engine radio routes."""
+    from PySide6.QtWidgets import QWizard
+
     wizard = build_wizard(app)
     state["wizard"] = wizard
     page = wizard._mode_page
@@ -461,18 +836,23 @@ def step_trading_mode(app, state: dict) -> dict:
         print(f"observed    {key}: is_extractor={row[1]} opens {row[2]!r}")
     if is_extractor:
         raise CaptureRefused(f"{label!r} reads as the extractor engine")
+    forward = wizard.button(QWizard.NextButton)
     return {
         "name": "step-4-choose-the-engine.png",
-        "image": grab(wizard),
-        "rect": control_rect(wizard, page._scrumming),
-        "caption": f"Press {label}, then Next. The wizard opens {routes_to}.",
-        "control": label,
+        "widget": wizard,
+        "target": (label, control_rect(wizard, page._scrumming)),
+        "named": [
+            (label, control_rect(wizard, page._scrumming)),
+            (NEXT_LABEL, control_rect(wizard, forward)),
+        ],
+        "caption": f"Press {label}, then {NEXT_LABEL}. The wizard opens {routes_to}.",
+        "labels": [label, forward.text()],
     }
 
 
 def step_asset_pair(app, state: dict) -> dict:
     """The page that names what one bot trades, and the lists it offers."""
-    from PySide6.QtWidgets import QComboBox
+    from PySide6.QtWidgets import QComboBox, QWizard
 
     wizard = state["wizard"]
     wizard.setStartId(tuple(wizard.pageIds())[0])
@@ -485,12 +865,17 @@ def step_asset_pair(app, state: dict) -> dict:
     counts = [one.count() for one in boxes]
     print(f"driven      wizard restarted on {page.title()!r}")
     print(f"observed    {len(boxes)} lists holding {counts} rows")
+    forward = wizard.button(QWizard.NextButton)
     return {
         "name": "step-5-name-what-it-trades.png",
-        "image": grab(wizard),
-        "rect": control_rect(wizard, boxes[0]),
-        "caption": "Pick the venue, then the pair. Press Next.",
-        "control": "the venue list",
+        "widget": wizard,
+        "target": ("the venue list", control_rect(wizard, boxes[0])),
+        "named": [
+            ("the venue list", control_rect(wizard, boxes[0])),
+            (NEXT_LABEL, control_rect(wizard, forward)),
+        ],
+        "caption": f"Pick the venue, then the pair. Press {NEXT_LABEL}.",
+        "labels": [forward.text()],
     }
 
 
@@ -501,6 +886,108 @@ STEPS = (
     step_trading_mode,
     step_asset_pair,
 )
+
+
+def lay_out(figure: dict, band: tuple, path: Path) -> dict:
+    """Capture *band* and place the caption and the arrow clear of every word."""
+    widget = figure["widget"]
+    top, height = band
+    image = grab(widget, band)
+    target = shift(figure["target"][1], top)
+
+    for label, rect in figure["named"]:
+        moved = shift(rect, top)
+        if not inside(image, moved):
+            return {"outside": (label, moved, image.width, image.height)}
+
+    mask = text_mask(widget, band, (image.width, image.height), target)
+    drawn = caption_drawing(figure["caption"], path)
+    straight = face_option(mask, image, drawn[:2], target)
+    caption_covered, route_covered = 0, 0
+    if straight is not None:
+        box, route = straight
+    else:
+        clear, lightest = caption_places(mask, image, drawn[:2], target)
+        box, route = None, None
+        longest = 0
+        for candidate in list(reversed(clear))[:CAPTION_TRIES]:
+            way, crossed, _kind = choose_route(mask, image, candidate, target)
+            if box is None or (route_covered and crossed < route_covered):
+                box, route, route_covered = candidate, way, crossed
+            if crossed:
+                continue
+            reach = route_length(way)
+            if reach > longest:
+                box, route, route_covered, longest = candidate, way, 0, reach
+            if longest >= GOOD_ARROW:
+                break
+        if box is None:
+            box, caption_covered = lightest
+            route, route_covered, _kind = choose_route(mask, image, box, target)
+    bad = control_route(mask, box)
+    return {
+        "image": image,
+        "mask": mask,
+        "target": target,
+        "box": box,
+        "route": route,
+        "drawn": drawn,
+        "caption_text": caption_covered,
+        "arrow_text": route_covered,
+        "control_text": path_text(mask, bad) if bad else 0,
+        "band": band,
+    }
+
+
+def render(figure: dict, path: Path, out_dir: Path) -> None:
+    """Capture the step at the first band that holds a clear caption and arrow."""
+    widget = figure["widget"]
+    rects = [rect for _label, rect in figure["named"]]
+    bands = candidate_bands(widget, rects, figure.get("band"))
+    laid = None
+    for band in bands:
+        laid = lay_out(figure, band, path)
+        if "outside" in laid:
+            continue
+        if laid["caption_text"] == 0 and laid["arrow_text"] == 0:
+            break
+    if laid is None or "outside" in laid:
+        label, moved, width, height = laid["outside"]
+        raise CaptureRefused(
+            f"{figure['name']}: the caption names {label!r}, whose rectangle "
+            f"{moved} falls outside the {width}x{height} capture"
+        )
+
+    top = laid["band"][0]
+    for label, rect in figure["named"]:
+        print(f"inband      {label!r} at {shift(rect, top)}")
+    print(
+        f"text        regions={int(laid['mask'].sum())} "
+        f"caption_text={laid['caption_text']} arrow_text={laid['arrow_text']} "
+        f"control_route_text={laid['control_text']}"
+    )
+    if laid["caption_text"] or laid["arrow_text"]:
+        raise CaptureRefused(
+            f"{figure['name']}: the caption covers {laid['caption_text']} text "
+            f"pixels and the arrow crosses {laid['arrow_text']}"
+        )
+    if laid["control_text"] == 0:
+        raise CaptureRefused(
+            f"{figure['name']}: the control route covers nothing, so the zero "
+            f"above says nothing about the reading"
+        )
+
+    image = laid["image"]
+    annotate(image, laid["box"], laid["route"], figure["caption"], laid["drawn"])
+    target_path = out_dir / figure["name"]
+    image.convert("RGB").save(target_path, format="PNG", optimize=False)
+    print(f"capture     {figure['name']} {image.width}x{image.height} band={top}")
+    print(
+        f"arrow       {figure['target'][0]!r} at {laid['target']} "
+        f"via {len(laid['route'])} points"
+    )
+    print(f"caption     {figure['caption']}")
+    print(f"sha256      {hashlib.sha256(target_path.read_bytes()).hexdigest()}")
 
 
 def main() -> int:
@@ -520,14 +1007,14 @@ def main() -> int:
     print(f"figure root {ARTIFACT_ROOT}")
     print(f"home        {os.environ['HOME']}")
     path = font_file()
-    app, family, theme = build_application(path)
-    print(f"font        {path.name} -> {family}")
+    app, family, behind, theme = build_application(path)
+    print(f"font        {path.name} -> {family}, behind it {behind}")
     print(f"theme       {theme}")
 
     from src._variant import resolve_variant
 
     variant = resolve_variant()
-    print(f"variant     pinned {pinned}, program answers {variant}")
+    print(f"variant     selected {pinned}, program answers {variant}")
     if variant != CAPTURE_VARIANT:
         raise CaptureRefused(
             f"the program answers {variant!r}, not {CAPTURE_VARIANT!r}"
@@ -550,18 +1037,15 @@ def main() -> int:
         swept += 1
         if hits:
             raise CaptureRefused(f"{figure['name']} carries {hits}")
-        image = figure["image"]
-        print(
-            f"capture     {figure['name']} {image.width}x{image.height} "
-            f"colours={colour_count(image)}"
-        )
-        check_rect(image, figure["rect"], figure["control"])
-        annotate(image, figure["rect"], figure["caption"], path)
-        target = out_dir / figure["name"]
-        image.convert("RGB").save(target, format="PNG", optimize=False)
-        print(f"arrow       {figure['control']!r} at {figure['rect']}")
-        print(f"caption     {figure['caption']}")
-        print(f"sha256      {hashlib.sha256(target.read_bytes()).hexdigest()}")
+        boxed = boxed_characters(app.font(), "".join(figure["labels"]))
+        print(f"glyphs      {len(figure['labels'])} labels, boxed={boxed}")
+        if boxed:
+            raise CaptureRefused(
+                f"{figure['name']}: the font draws "
+                f"{[hex(ord(one)) for one in boxed]} as an empty box, so the "
+                f"picture differs from the running program"
+            )
+        render(figure, path, out_dir)
     print(
         f"disclosure  {len(vocabulary[0])} tickers and {len(vocabulary[1])} "
         f"names swept over {swept} captions and file names, hits=[]"
