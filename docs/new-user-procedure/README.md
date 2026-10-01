@@ -38,10 +38,12 @@ it. Numbering the pages again is this table's job and nothing else's.
 | 13 | [Set the Target Balance](13-set-the-target-balance.md) | Set the balance the bot trades against. |
 | 14 | [The price window](14-the-price-window.md) | Set the ceiling and the floor. |
 | 15 | [What a cycle keeps](15-what-a-cycle-keeps.md) | Set the compounding rows. |
-| 16 | [Leave the shadow bot off](16-leave-the-shadow-bot-off.md) | Settle the phantom bots. |
-| 17 | [Create the bot](17-create-the-bot.md) | Finish the wizard. |
-| 18 | [Make the fleet](18-make-the-fleet.md) | Create more bots from one. |
-| 19 | [Start the fleet](19-start-the-fleet.md) | Start the bots. |
+| 16 | [The reserve for a dip](16-the-reserve-for-a-dip.md) | Settle the hedge reserve. |
+| 17 | [Leave the shadow bot off](17-leave-the-shadow-bot-off.md) | Settle the phantom bots. |
+| 18 | [How long a lock holds](18-how-long-a-lock-holds.md) | Settle the lock duration. |
+| 19 | [Create the bot](19-create-the-bot.md) | Finish the wizard. |
+| 20 | [Make the fleet](20-make-the-fleet.md) | Create more bots from one. |
+| 21 | [Start the fleet](21-start-the-fleet.md) | Start the bots. |
 
 ## Where the pictures sit
 

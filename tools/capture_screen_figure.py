@@ -89,6 +89,8 @@ EXCHANGES_PAGE = "Exchanges"
 ACCUMULATION_PAGE = "Select Asset Pair"
 PARAMS_PAGE = "Trading Parameters"
 PHANTOM_PAGE = "Phantom Bots"
+HEDGE_GROUP = "Hedge Rebalance"
+LOCK_GROUP = "Higher-TF Lock Duration"
 NEXT_LABEL = "Next"
 #: Rows kept below Target Balance when ``ensureWidgetVisible`` scrolls to it, so
 #: the field lands inside the scroll area rather than against its bottom edge.
@@ -1046,26 +1048,63 @@ def step_the_price_window(app, state: dict) -> dict:
 
 
 def step_what_a_cycle_keeps(app, state: dict) -> dict:
-    """The last three rows of the group, and the press that leaves the page."""
-    from PySide6.QtWidgets import QWizard
-
+    """The last three rows of the Scrumming Settings group."""
     wizard, page = state["wizard"], state["params"]
     field = page._scrum_fold_pct
     scroll_to(app, page, field)
     label, shown = scrum_reading(page, field)
     for other in (page._trading_fee, page._max_target_growth_pct):
         scrum_reading(page, other)
-    forward = wizard.button(QWizard.NextButton)
     return {
         "name": "step-15-what-a-cycle-keeps.png",
         "widget": wizard,
         "target": (label, control_rect(wizard, field)),
+        "named": [(label, control_rect(wizard, field))],
+        "caption": f"{label} opens at {shown}.",
+        "labels": [label],
+    }
+
+
+def group_row(group, field) -> str:
+    """The label *group*'s own form layout draws beside *field*."""
+    return control_label(group.layout().labelForField(field))
+
+
+def titled_group(page, title: str):
+    """The group box on *page* whose title is *title*, refusing any absence."""
+    from PySide6.QtWidgets import QGroupBox
+
+    for one in page.findChildren(QGroupBox):
+        if one.title() == title:
+            return one
+    raise CaptureRefused(f"{page.title()!r} draws no group titled {title!r}")
+
+
+def step_the_reserve_for_a_dip(app, state: dict) -> dict:
+    """The reserve group below Scrumming Settings, and the press that leaves."""
+    from PySide6.QtWidgets import QWizard
+
+    wizard, page = state["wizard"], state["params"]
+    group = titled_group(page, HEDGE_GROUP)
+    box = page._hedge_rebalance
+    scroll_to(app, page, box)
+    label = control_label(box)
+    amount = page._hedge_amount
+    money = group_row(group, amount)
+    print(f"observed    {HEDGE_GROUP!r} is drawn on {page.title()!r}")
+    print(f"observed    {label!r} reads checked={box.isChecked()}")
+    print(f"observed    {money!r} reads {amount.text()!r} from a defaults dict of {{}}")
+    forward = wizard.button(QWizard.NextButton)
+    return {
+        "name": "step-16-the-reserve-for-a-dip.png",
+        "widget": wizard,
+        "target": (label, control_rect(wizard, box)),
         "named": [
-            (label, control_rect(wizard, field)),
+            (label, control_rect(wizard, box)),
             (NEXT_LABEL, control_rect(wizard, forward)),
         ],
-        "caption": f"{label} opens at {shown}. Press {NEXT_LABEL}.",
-        "labels": [forward.text()],
+        "caption": f"{label} opens ticked. Press {NEXT_LABEL}.",
+        "labels": [box.text(), forward.text()],
     }
 
 
@@ -1080,12 +1119,34 @@ def step_phantom_choice(app, state: dict) -> dict:
     print(f"observed    {label!r} reads checked={box.isChecked()}")
     print(f"observed    the timeframe row opens with {ticked} ticked")
     return {
-        "name": "step-16-leave-the-shadow-bot-off.png",
+        "name": "step-17-leave-the-shadow-bot-off.png",
         "widget": wizard,
         "target": (label, control_rect(wizard, box)),
         "named": [(label, control_rect(wizard, box))],
         "caption": f"{label} opens clear. Leave it clear.",
         "labels": [box.text()],
+    }
+
+
+def step_how_long_a_lock_holds(app, state: dict) -> dict:
+    """The one group box on the Phantom Bots page, below the timeframe row."""
+    wizard, page = state["wizard"], state["phantom"]
+    group = titled_group(page, LOCK_GROUP)
+    box = page._lock_candles
+    label = group_row(group, box)
+    held = [name for name, one in page._tf_checks.items() if group.isAncestorOf(one)]
+    print(f"observed    {LOCK_GROUP!r} is drawn on {page.title()!r}")
+    print(f"observed    {label!r} reads {box.text()!r} from a defaults dict of {{}}")
+    print(f"observed    {label!r} runs {box.minimum()} to {box.maximum()}")
+    print(f"observed    the lock group holds {len(held)} of the timeframe boxes")
+    print(f"observed    {label!r} is enabled={box.isEnabled()} with phantoms clear")
+    return {
+        "name": "step-18-how-long-a-lock-holds.png",
+        "widget": wizard,
+        "target": (label, control_rect(wizard, box)),
+        "named": [(label, control_rect(wizard, box))],
+        "caption": f"{label} opens at {box.text()}.",
+        "labels": [label],
     }
 
 
@@ -1105,7 +1166,7 @@ def step_create_the_bot(app, state: dict) -> dict:
     print(f"observed    {done!r} visible={finish.isVisible()}")
     print(f"not driven  {done!r} is never pressed; it creates a bot")
     return {
-        "name": "step-17-create-the-bot.png",
+        "name": "step-19-create-the-bot.png",
         "widget": wizard,
         "target": (done, control_rect(wizard, finish)),
         "named": [(done, control_rect(wizard, finish))],
@@ -1125,7 +1186,9 @@ STEPS = (
     step_trading_params,
     step_the_price_window,
     step_what_a_cycle_keeps,
+    step_the_reserve_for_a_dip,
     step_phantom_choice,
+    step_how_long_a_lock_holds,
     step_create_the_bot,
 )
 

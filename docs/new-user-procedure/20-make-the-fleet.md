@@ -1,4 +1,4 @@
-# Step 18 — Make the fleet
+# Step 20 — Make the fleet
 
 One step of the [New User Procedure](README.md) how-to.
 

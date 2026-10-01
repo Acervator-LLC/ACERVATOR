@@ -2,9 +2,9 @@
 
 One step of the [New User Procedure](README.md) how-to.
 
-![Scrum Fold Ratio opens at 100 %. Press Next.](figures/step-15-what-a-cycle-keeps.png)
+![Scrum Fold Ratio opens at 100 %.](figures/step-15-what-a-cycle-keeps.png)
 
-**Leave the last three rows as they open, then press Next.**
+**Leave the last three rows as they open.**
 
 Scrum Fold Ratio opens at 100 % and sets how much of a sale's profit is queued
 to buy back in. The manual calls it the share redistributed to the bot's own
@@ -17,4 +17,5 @@ Trading Fee % opens at 0.60 % and holds the venue's fee per side. The manual
 says it is added to the minimum opposing trade distance, so a bot does not lose
 its gains to fees in a tight market.
 
-Next leaves Trading Parameters and opens Phantom Bots.
+Scrumming Settings ends here. One group further down the page carries the last
+step on it.
