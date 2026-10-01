@@ -1214,7 +1214,9 @@ def render_supplied(figure: dict, path: Path, out_dir: Path) -> None:
     annotate(image, box, route, figure["caption"], drawn)
     target_path = out_dir / figure["name"]
     image.save(target_path, format="PNG", optimize=False)
-    print(f"capture     {figure['name']} {image.width}x{image.height} crop={left},{top}")
+    print(
+        f"capture     {figure['name']} {image.width}x{image.height} crop={left},{top}"
+    )
     print(f"arrow       {figure['target']!r} at {aimed} via {len(route)} points")
     print(f"caption     {figure['caption']}")
     print(f"sha256      {hashlib.sha256(target_path.read_bytes()).hexdigest()}")
