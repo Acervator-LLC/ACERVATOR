@@ -74,10 +74,33 @@ LABEL_PAD = 10
 #: The arrow length at which the search stops looking for a longer one.
 GOOD_ARROW = 220
 
+#: The operator's own pictures of the Releases page. The producer reads and
+#: crops them and never draws them, because no Qt widget builds that page.
+SUPPLIED_DIR = REPO_ROOT / "docs" / "new-user-procedure" / "supplied"
+#: Channel distance from the page's own background at which a pixel carries ink.
+INK_DISTANCE = 24
+#: Rows and columns an ink pixel spreads, so a caption cannot touch a glyph edge.
+INK_SPREAD = 3
+#: Ink pixels a named rectangle must carry before its label is believed.
+NAMED_INK_FLOOR = 40
+
 LIVE_TAB = "Live"
+SIM_TAB = "Sim"
+PAPER_TAB = "Paper"
+CHARTS_TAB = "Charts"
+INSPECTOR_TAB = "Inspector"
+SWARM_TAB = "Swarm"
+HISTORY_TAB = "History"
 EXCHANGES_PAGE = "Exchanges"
 ACCUMULATION_PAGE = "Select Asset Pair"
+PARAMS_PAGE = "Trading Parameters"
+PHANTOM_PAGE = "Phantom Bots"
+HEDGE_GROUP = "Hedge Rebalance"
+LOCK_GROUP = "Higher-TF Lock Duration"
 NEXT_LABEL = "Next"
+#: Rows kept below Target Balance when ``ensureWidgetVisible`` scrolls to it, so
+#: the field lands inside the scroll area rather than against its bottom edge.
+TARGET_SCROLL_MARGIN = 60
 
 #: The React screens draw through a browser engine that composites outside the
 #: widget, so ``grab`` returns one flat colour for them. Every figure is Qt.
@@ -343,6 +366,29 @@ def inside(image, rect: tuple) -> bool:
     )
 
 
+def visible_rect(root, widget, rect: tuple) -> tuple:
+    """*rect* clipped to the viewport of every scroll area *widget* sits inside.
+
+    A scroll area paints nothing outside its viewport, so a row the viewport cuts
+    away carries no word for a caption or an arrow to cover.
+    """
+    from PySide6.QtWidgets import QAbstractScrollArea
+
+    left, top, width, height = rect
+    right, bottom = left + width, top + height
+    parent = widget.parentWidget()
+    while parent is not None and parent is not root:
+        if isinstance(parent, QAbstractScrollArea):
+            view_left, view_top, view_width, view_height = control_rect(
+                root, parent.viewport()
+            )
+            left, top = max(left, view_left), max(top, view_top)
+            right = min(right, view_left + view_width)
+            bottom = min(bottom, view_top + view_height)
+        parent = parent.parentWidget()
+    return left, top, max(0, right - left), max(0, bottom - top)
+
+
 def text_widgets(root) -> list:
     """Every visible widget under *root* that draws words."""
     from PySide6.QtWidgets import (
@@ -380,6 +426,9 @@ def text_widgets(root) -> list:
             if not child.text().strip():
                 continue
             rect = label_rect(child, rect)
+        rect = visible_rect(root, child, rect)
+        if rect[2] < 1 or rect[3] < 1:
+            continue
         out.append(rect)
     return out
 
@@ -636,7 +685,7 @@ def face_option(mask, image, size: tuple, rect: tuple):
             start_y = box_top if step > 0 else box_top + height
             anchor = min(max(column, box_left + 4), box[2] - 4)
             route = [(anchor, start_y), (column, start_y), (column, face_y)]
-            if path_text(mask, route) == 0:
+            if route_text(mask, route) == 0:
                 return box, route
     return None
 
@@ -647,7 +696,7 @@ def choose_route(mask, image, box: tuple, rect: tuple) -> tuple:
     faces = [(one, "face") for one in face_routes(box, rect)]
     sides = [(one, "side") for one in side_routes(box, rect, image)]
     for route, kind in faces + sides:
-        covered = path_text(mask, route)
+        covered = route_text(mask, route)
         if covered == 0:
             return route, 0, kind
         if best is None or covered < best[1]:
@@ -669,6 +718,21 @@ def control_route(mask, box: tuple):
     gaps = (lit[:, 1] - middle[0]) ** 2 + (lit[:, 0] - middle[1]) ** 2
     row, column = lit[int(gaps.argmin())]
     return [middle, (int(column), int(row))]
+
+
+def route_text(mask, route: list) -> int:
+    """How many text pixels the arrow covers, stroke and head together."""
+    return path_text(mask, route) + head_text(mask, route)
+
+
+def head_text(mask, route: list) -> int:
+    """How many text pixels sit under the arrow head drawn at the route's tip.
+
+    ``path_text`` walks the stroke, whose reach is narrower than the head, so the
+    head is counted here over its own three corners.
+    """
+    corners = [(round(x), round(y)) for x, y in head_points(route[-1], route[-2])]
+    return path_text(mask, corners + [corners[0]])
 
 
 def head_points(tip: tuple, start: tuple) -> list:
@@ -736,7 +800,7 @@ def step_window_opens(app, state: dict) -> dict:
     print(f"driven      window built; tab bar reads {names}")
     print(f"observed    the window shows {shown!r}")
     return {
-        "name": "step-1-window-opens.png",
+        "name": "step-6-window-opens.png",
         "widget": window,
         "band": (bar_top, bar.height() + BAND_ROOM),
         "target": (LIVE_TAB, tab_rect(window, book, LIVE_TAB)),
@@ -774,7 +838,7 @@ def step_live_has_no_venue(app, state: dict) -> dict:
     print(f"driven      {LIVE_TAB} selected; its sub-tabs read {card_tabs}")
     print(f"observed    stored venues {stored}, card button {label!r}")
     return {
-        "name": "step-2-live-has-no-venue.png",
+        "name": "step-7-live-has-no-venue.png",
         "widget": layer,
         "target": (label, control_rect(layer, add)),
         "named": [(label, control_rect(layer, add))],
@@ -804,7 +868,7 @@ def step_venue_form(app, state: dict) -> dict:
     print(f"observed    pages {tab_names(pages)}, store button {label!r}")
     print("not driven  the button is never pressed; it calls a venue")
     return {
-        "name": "step-3-enter-the-venue-keys.png",
+        "name": "step-8-enter-the-venue-keys.png",
         "widget": dialog,
         "target": (label, control_rect(dialog, add)),
         "named": [
@@ -838,7 +902,7 @@ def step_trading_mode(app, state: dict) -> dict:
         raise CaptureRefused(f"{label!r} reads as the extractor engine")
     forward = wizard.button(QWizard.NextButton)
     return {
-        "name": "step-4-choose-the-engine.png",
+        "name": "step-9-choose-the-engine.png",
         "widget": wizard,
         "target": (label, control_rect(wizard, page._scrumming)),
         "named": [
@@ -867,7 +931,7 @@ def step_asset_pair(app, state: dict) -> dict:
     print(f"observed    {len(boxes)} lists holding {counts} rows")
     forward = wizard.button(QWizard.NextButton)
     return {
-        "name": "step-5-name-what-it-trades.png",
+        "name": "step-10-name-what-it-trades.png",
         "widget": wizard,
         "target": ("the venue list", control_rect(wizard, boxes[0])),
         "named": [
@@ -879,12 +943,647 @@ def step_asset_pair(app, state: dict) -> dict:
     }
 
 
+def advance(app, wizard, title: str):
+    """Press Next and return the page it opened, refusing any other title."""
+    from PySide6.QtWidgets import QWizard
+
+    before = wizard.currentId()
+    wizard.button(QWizard.NextButton).click()
+    settle(app, 40)
+    page = wizard.currentPage()
+    print(f"driven      pressed {NEXT_LABEL} on page id {before}")
+    print(f"observed    the wizard opened {page.title()!r}")
+    if page.title() != title:
+        raise CaptureRefused(f"{NEXT_LABEL} opened {page.title()!r}, not {title!r}")
+    if wizard.currentId() == before:
+        raise CaptureRefused(f"{title!r} refused to open; the wizard did not move")
+    return page
+
+
+def scrum_row(page, field) -> str:
+    """The label the Scrumming Settings form draws beside *field*."""
+    return control_label(page._scrum_group.layout().labelForField(field))
+
+
+def scrum_reading(page, field) -> tuple:
+    """*field*'s row label and the text it shows, printed as one observation."""
+    label, shown = scrum_row(page, field), field.text()
+    print(f"observed    {label!r} reads {shown!r} from a defaults dict of {{}}")
+    return label, shown
+
+
+def scroll_to(app, page, field) -> None:
+    """Bring *field* into the page's scroll viewport and report where it sits."""
+    page._scroll.ensureWidgetVisible(field, 0, TARGET_SCROLL_MARGIN)
+    settle(app, 40)
+    bar = page._scroll.verticalScrollBar()
+    print(f"observed    the page scrolled to {bar.value()} of {bar.maximum()}")
+
+
+def step_how_far_price_must_move(app, state: dict) -> dict:
+    """The first Scrumming Settings row, and the page it opens on."""
+    wizard = state["wizard"]
+    page = advance(app, wizard, PARAMS_PAGE)
+    state["params"] = page
+    field = page._scrumming_interval
+    scroll_to(app, page, field)
+    label, shown = scrum_reading(page, field)
+    return {
+        "name": "step-11-how-far-price-must-move.png",
+        "widget": wizard,
+        "target": (label, control_rect(wizard, field)),
+        "named": [(label, control_rect(wizard, field))],
+        "caption": f"{label} opens at {shown}.",
+        "labels": [label],
+    }
+
+
+def step_what_it_watches(app, state: dict) -> dict:
+    """The three rows that pick the chart and the band the bot reads."""
+    wizard, page = state["wizard"], state["params"]
+    field = page._ta_timeframe
+    scroll_to(app, page, field)
+    label = scrum_row(page, field)
+    shown = field.currentText()
+    offered = [field.itemText(index) for index in range(field.count())]
+    print(f"observed    {label!r} reads {shown!r} from a defaults dict of {{}}")
+    print(f"observed    {label!r} offers {offered}")
+    for other in (page._bb_tolerance, page._ls_candles):
+        scrum_reading(page, other)
+    return {
+        "name": "step-12-what-it-watches.png",
+        "widget": wizard,
+        "target": (label, control_rect(wizard, field)),
+        "named": [(label, control_rect(wizard, field))],
+        "caption": f"{label} opens on {shown}.",
+        "labels": [label, shown],
+    }
+
+
+def step_trading_params(app, state: dict) -> dict:
+    """The row carrying Target Balance, scrolled until that field is on screen."""
+    wizard, page = state["wizard"], state["params"]
+    field = page._target_balance
+    scroll_to(app, page, field)
+    label, shown = scrum_reading(page, field)
+    return {
+        "name": "step-13-set-the-target-balance.png",
+        "widget": wizard,
+        "target": (label, control_rect(wizard, field)),
+        "named": [(label, control_rect(wizard, field))],
+        "caption": f"{label} opens at {shown}.",
+        "labels": [label],
+    }
+
+
+def step_the_price_window(app, state: dict) -> dict:
+    """The ceiling and the floor the two entry-price rows put on a first buy."""
+    wizard, page = state["wizard"], state["params"]
+    field = page._max_entry_px
+    scroll_to(app, page, field)
+    label, shown = scrum_reading(page, field)
+    scrum_reading(page, page._min_entry_px)
+    return {
+        "name": "step-14-the-price-window.png",
+        "widget": wizard,
+        "target": (label, control_rect(wizard, field)),
+        "named": [(label, control_rect(wizard, field))],
+        "caption": f"{label} opens at {shown}.",
+        "labels": [label],
+    }
+
+
+def step_what_a_cycle_keeps(app, state: dict) -> dict:
+    """The last three rows of the Scrumming Settings group."""
+    wizard, page = state["wizard"], state["params"]
+    field = page._scrum_fold_pct
+    scroll_to(app, page, field)
+    label, shown = scrum_reading(page, field)
+    for other in (page._trading_fee, page._max_target_growth_pct):
+        scrum_reading(page, other)
+    return {
+        "name": "step-15-what-a-cycle-keeps.png",
+        "widget": wizard,
+        "target": (label, control_rect(wizard, field)),
+        "named": [(label, control_rect(wizard, field))],
+        "caption": f"{label} opens at {shown}.",
+        "labels": [label],
+    }
+
+
+def group_row(group, field) -> str:
+    """The label *group*'s own form layout draws beside *field*."""
+    return control_label(group.layout().labelForField(field))
+
+
+def titled_group(page, title: str):
+    """The group box on *page* whose title is *title*, refusing any absence."""
+    from PySide6.QtWidgets import QGroupBox
+
+    for one in page.findChildren(QGroupBox):
+        if one.title() == title:
+            return one
+    raise CaptureRefused(f"{page.title()!r} draws no group titled {title!r}")
+
+
+def step_the_reserve_for_a_dip(app, state: dict) -> dict:
+    """The reserve group below Scrumming Settings, and the press that leaves."""
+    from PySide6.QtWidgets import QWizard
+
+    wizard, page = state["wizard"], state["params"]
+    group = titled_group(page, HEDGE_GROUP)
+    box = page._hedge_rebalance
+    scroll_to(app, page, box)
+    label = control_label(box)
+    amount = page._hedge_amount
+    money = group_row(group, amount)
+    print(f"observed    {HEDGE_GROUP!r} is drawn on {page.title()!r}")
+    print(f"observed    {label!r} reads checked={box.isChecked()}")
+    print(f"observed    {money!r} reads {amount.text()!r} from a defaults dict of {{}}")
+    forward = wizard.button(QWizard.NextButton)
+    return {
+        "name": "step-16-the-reserve-for-a-dip.png",
+        "widget": wizard,
+        "target": (label, control_rect(wizard, box)),
+        "named": [
+            (label, control_rect(wizard, box)),
+            (NEXT_LABEL, control_rect(wizard, forward)),
+        ],
+        "caption": f"{label} opens ticked. Press {NEXT_LABEL}.",
+        "labels": [box.text(), forward.text()],
+    }
+
+
+def step_phantom_choice(app, state: dict) -> dict:
+    """The last page of the Scrumming path, and the box that adds a shadow bot."""
+    wizard = state["wizard"]
+    page = advance(app, wizard, PHANTOM_PAGE)
+    state["phantom"] = page
+    box = page._enable
+    label = control_label(box)
+    ticked = [name for name, one in page._tf_checks.items() if one.isChecked()]
+    print(f"observed    {label!r} reads checked={box.isChecked()}")
+    print(f"observed    the timeframe row opens with {ticked} ticked")
+    return {
+        "name": "step-17-leave-the-shadow-bot-off.png",
+        "widget": wizard,
+        "target": (label, control_rect(wizard, box)),
+        "named": [(label, control_rect(wizard, box))],
+        "caption": f"{label} opens clear. Leave it clear.",
+        "labels": [box.text()],
+    }
+
+
+def step_how_long_a_lock_holds(app, state: dict) -> dict:
+    """The one group box on the Phantom Bots page, below the timeframe row."""
+    wizard, page = state["wizard"], state["phantom"]
+    group = titled_group(page, LOCK_GROUP)
+    box = page._lock_candles
+    label = group_row(group, box)
+    held = [name for name, one in page._tf_checks.items() if group.isAncestorOf(one)]
+    print(f"observed    {LOCK_GROUP!r} is drawn on {page.title()!r}")
+    print(f"observed    {label!r} reads {box.text()!r} from a defaults dict of {{}}")
+    print(f"observed    {label!r} runs {box.minimum()} to {box.maximum()}")
+    print(f"observed    the lock group holds {len(held)} of the timeframe boxes")
+    print(f"observed    {label!r} is enabled={box.isEnabled()} with phantoms clear")
+    return {
+        "name": "step-18-how-long-a-lock-holds.png",
+        "widget": wizard,
+        "target": (label, control_rect(wizard, box)),
+        "named": [(label, control_rect(wizard, box))],
+        "caption": f"{label} opens at {box.text()}.",
+        "labels": [label],
+    }
+
+
+def step_create_the_bot(app, state: dict) -> dict:
+    """The button row on the last page, where Finish stands in for Next."""
+    from PySide6.QtWidgets import QWizard
+
+    wizard = state["wizard"]
+    page = state["phantom"]
+    if not page.isFinalPage():
+        raise CaptureRefused(f"{PHANTOM_PAGE!r} is not the last page of this path")
+    forward = wizard.button(QWizard.NextButton)
+    finish = wizard.button(QWizard.FinishButton)
+    done, onward = control_label(finish), control_label(forward)
+    print(f"observed    {PHANTOM_PAGE!r} nextId is {wizard.nextId()}")
+    print(f"observed    {onward!r} visible={forward.isVisible()}")
+    print(f"observed    {done!r} visible={finish.isVisible()}")
+    print(f"not driven  {done!r} is never pressed; it creates a bot")
+    return {
+        "name": "step-19-create-the-bot.png",
+        "widget": wizard,
+        "target": (done, control_rect(wizard, finish)),
+        "named": [(done, control_rect(wizard, finish))],
+        "caption": f"{done} stands where {onward} stood. Press {done}.",
+        "labels": [finish.text()],
+    }
+
+
+def show_tab(app, state: dict, tab: str):
+    """Select *tab* on the window's bar and answer the page it draws."""
+    window, book = state["window"], state["book"]
+    names = tab_names(book)
+    if tab not in names:
+        raise CaptureRefused(f"the bar carries {names}, not {tab!r}")
+    book.setCurrentIndex(names.index(tab))
+    settle(app)
+    return window, book, book.currentWidget()
+
+
+def bar_band(window, book, bottom: int) -> tuple:
+    """The rows from the tab bar down to *bottom*, clear of the money strip."""
+    bar = book.tabBar()
+    top = bar.mapTo(window, bar.rect().topLeft()).y()
+    return top, min(window.height(), bottom) - top
+
+
+def class_note(page, tab: str):
+    """The label drawing the asset-class note on an emptied *tab*."""
+    from PySide6.QtWidgets import QLabel
+
+    from src.gui.main_tabs import class_filter_surface
+
+    wanted = class_filter_surface.empty_note(tab)
+    found = [
+        one
+        for one in page.findChildren(QLabel)
+        if one.isVisible() and one.text().strip() == wanted
+    ]
+    if len(found) != 1:
+        raise CaptureRefused(
+            f"the {tab} page draws {len(found)} copies of {wanted!r}, not one"
+        )
+    return found[0], wanted
+
+
+def empty_tab_figure(app, state: dict, tab: str, name: str, caption: str) -> dict:
+    """The *tab* selected, with the note it draws while the class holds nothing."""
+    window, book, page = show_tab(app, state, tab)
+    label, sentence = class_note(page, tab)
+    seat = tab_rect(window, book, tab)
+    note = control_rect(window, label)
+    print(f"driven      {tab!r} selected; the bar reads {tab_names(book)}")
+    print(f"observed    {tab} draws {sentence!r} from a store with no fleet")
+    return {
+        "name": name,
+        "widget": window,
+        "band": bar_band(window, book, note[1] + note[3] + BAND_ROOM),
+        "target": (tab, seat),
+        "named": [(tab, seat), (sentence, note)],
+        "caption": caption,
+        "labels": [tab, sentence],
+    }
+
+
+def step_the_simulator(app, state: dict) -> dict:
+    """The Sim tab, before any run has been played."""
+    return empty_tab_figure(
+        app,
+        state,
+        SIM_TAB,
+        "step-22-the-simulator.png",
+        f"Press {SIM_TAB}. It stays empty until a run plays.",
+    )
+
+
+def step_paper_first(app, state: dict) -> dict:
+    """The Paper tab's Get Started card, and the button that copies the fleet."""
+    from PySide6.QtWidgets import QPushButton, QTabWidget
+
+    _window, _book, page = show_tab(app, state, PAPER_TAB)
+    inner = [one for one in page.findChildren(QTabWidget) if one.isVisible()]
+    if len(inner) != 1:
+        raise CaptureRefused(f"the {PAPER_TAB} page shows {len(inner)} layers, not one")
+    layer = inner[0]
+    card = layer.currentWidget()
+    buttons = [one for one in card.findChildren(QPushButton) if one.text()]
+    wanted = [one for one in buttons if control_label(one) == "Import Live Fleet"]
+    if len(wanted) != 1:
+        raise CaptureRefused(
+            f"the Get Started card holds {len(wanted)} copies of Import Live "
+            f"Fleet, among {[control_label(one) for one in buttons]}"
+        )
+    copy = wanted[0]
+    label = control_label(copy)
+    seat = control_rect(layer, copy)
+    top = max(0, seat[1] - BAND_ROOM)
+    print(f"driven      {PAPER_TAB!r} selected; its card reads {tab_names(layer)}")
+    print(f"observed    the card offers {[control_label(one) for one in buttons]}")
+    return {
+        "name": "step-23-paper-first.png",
+        "widget": layer,
+        "band": (top, layer.height() - top),
+        "target": (label, seat),
+        "named": [(label, seat)],
+        "caption": f"No fleet is loaded. Press {label}.",
+        "labels": [copy.text()],
+    }
+
+
+def step_the_chart(app, state: dict) -> dict:
+    """The Charts tab, before a bot gives it a market to draw."""
+    return empty_tab_figure(
+        app,
+        state,
+        CHARTS_TAB,
+        "step-24-the-chart.png",
+        f"Press {CHARTS_TAB}. One panel appears per market a bot trades.",
+    )
+
+
+def step_the_market_inspector(app, state: dict) -> dict:
+    """The Inspector tab, before a scan has run."""
+    return empty_tab_figure(
+        app,
+        state,
+        INSPECTOR_TAB,
+        "step-25-the-market-inspector.png",
+        f"Press {INSPECTOR_TAB}. A scan fills it.",
+    )
+
+
+def step_the_swarm(app, state: dict) -> dict:
+    """The Swarm tab, before a bot exists to draw as a node."""
+    return empty_tab_figure(
+        app,
+        state,
+        SWARM_TAB,
+        "step-26-the-swarm.png",
+        f"Press {SWARM_TAB}. Each bot joins it as one node.",
+    )
+
+
+def step_what_it_has_traded(app, state: dict) -> dict:
+    """The History tab, before a venue has reported a fill."""
+    return empty_tab_figure(
+        app,
+        state,
+        HISTORY_TAB,
+        "step-27-what-it-has-traded.png",
+        f"Press {HISTORY_TAB}. The venue's own fills land here.",
+    )
+
+
 STEPS = (
     step_window_opens,
     step_live_has_no_venue,
     step_venue_form,
     step_trading_mode,
     step_asset_pair,
+    step_how_far_price_must_move,
+    step_what_it_watches,
+    step_trading_params,
+    step_the_price_window,
+    step_what_a_cycle_keeps,
+    step_the_reserve_for_a_dip,
+    step_phantom_choice,
+    step_how_long_a_lock_holds,
+    step_create_the_bot,
+    step_the_simulator,
+    step_paper_first,
+    step_the_chart,
+    step_the_market_inspector,
+    step_the_swarm,
+    step_what_it_has_traded,
+)
+
+
+def supplied_image(name: str):
+    """The operator's picture called *name*, opened and never redrawn."""
+    from PIL import Image
+
+    path = SUPPLIED_DIR / name
+    if not path.exists():
+        raise CaptureRefused(f"{path} is not in the tree")
+    return Image.open(path).convert("RGB")
+
+
+def spread_ink(lit, reach: int):
+    """*lit* grown by *reach* rows and columns, so a glyph edge keeps a border."""
+    import numpy as np
+
+    grown = lit
+    for axis in (0, 1):
+        stack = grown
+        for step in range(1, reach + 1):
+            stack = np.maximum(stack, np.roll(grown, step, axis=axis))
+            stack = np.maximum(stack, np.roll(grown, -step, axis=axis))
+        grown = stack
+    return grown
+
+
+def page_ink(image):
+    """One per pixel differing from the page's own background colour."""
+    import numpy as np
+
+    pixels = np.asarray(image, dtype=np.int16)
+    flat = pixels.reshape(-1, 3)
+    keys = (flat[:, 0].astype(np.int32) << 16) + (flat[:, 1] << 8) + flat[:, 2]
+    common = int(np.bincount(keys).argmax())
+    background = np.array(
+        [(common >> 16) & 255, (common >> 8) & 255, common & 255], dtype=np.int16
+    )
+    gap = np.abs(pixels - background).max(axis=2)
+    lit = (gap > INK_DISTANCE).astype(np.int32)
+    return spread_ink(lit, INK_SPREAD), tuple(int(c) for c in background)
+
+
+def ink_box(ink, search: tuple) -> tuple:
+    """The tightest rectangle holding the ink inside *search*."""
+    import numpy as np
+
+    left, top, width, height = search
+    patch = ink[top : top + height, left : left + width]
+    lit = np.argwhere(patch)
+    if lit.size == 0:
+        raise CaptureRefused(f"the search box {search} holds no ink to name")
+    rows, columns = lit[:, 0], lit[:, 1]
+    return (
+        left + int(columns.min()),
+        top + int(rows.min()),
+        int(columns.max() - columns.min()) + 1,
+        int(rows.max() - rows.min()) + 1,
+    )
+
+
+#: Rows and columns between the patches the quietest-box search tries.
+QUIET_STEP = 40
+
+
+def clear_box(ink, rect: tuple) -> dict:
+    """*rect* with its ink count, beside the count of the picture's quietest box."""
+    left, top, width, height = rect
+    rows, columns = ink.shape
+    quietest = None
+    for down in range(0, max(1, rows - height), QUIET_STEP):
+        for away in range(0, max(1, columns - width), QUIET_STEP):
+            found = box_text(ink, away, down, width, height)
+            if quietest is None or found < quietest:
+                quietest = found
+            if quietest == 0:
+                return {"named": box_text(ink, left, top, width, height), "quiet": 0}
+    return {
+        "named": box_text(ink, left, top, width, height),
+        "quiet": int(quietest or 0),
+    }
+
+
+def supplied_mask(ink, target: tuple):
+    """A copy of *ink* cleared inside *target*, so the arrow may land on it."""
+    mask = ink.copy()
+    left, top, width, height = target
+    mask[max(0, top) : top + height, max(0, left) : left + width] = 0
+    return mask
+
+
+def place(mask, image, drawn: tuple, target: tuple) -> tuple:
+    """A caption box and an arrow route covering no ink, straight route first."""
+    straight = face_option(mask, image, drawn[:2], target)
+    if straight is not None:
+        return straight[0], straight[1], 0, 0
+    clear, lightest = caption_places(mask, image, drawn[:2], target)
+    box, route, route_covered, longest = None, None, 0, 0
+    for candidate in list(reversed(clear))[:CAPTION_TRIES]:
+        way, crossed, _kind = choose_route(mask, image, candidate, target)
+        if box is None or (route_covered and crossed < route_covered):
+            box, route, route_covered = candidate, way, crossed
+        if crossed:
+            continue
+        reach = route_length(way)
+        if reach > longest:
+            box, route, route_covered, longest = candidate, way, 0, reach
+        if longest >= GOOD_ARROW:
+            break
+    if box is None:
+        box, covered = lightest
+        route, route_covered, _kind = choose_route(mask, image, box, target)
+        return box, route, covered, route_covered
+    return box, route, 0, route_covered
+
+
+def render_supplied(figure: dict, path: Path, out_dir: Path) -> None:
+    """Crop the operator's picture, name its controls, and draw one arrow."""
+    whole = supplied_image(figure["source"])
+    left, top, right, bottom = figure["crop"]
+    if not (0 <= left < right <= whole.width and 0 <= top < bottom <= whole.height):
+        raise CaptureRefused(
+            f"{figure['name']}: the crop {figure['crop']} falls outside the "
+            f"{whole.width}x{whole.height} picture"
+        )
+    whole_ink, background = page_ink(whole)
+    print(f"source      {figure['source']} {whole.width}x{whole.height}")
+    print(f"background  {background}, ink pixels {int(whole_ink.sum())}")
+
+    named = []
+    for label, search in figure["named"]:
+        rect = ink_box(whole_ink, search)
+        counts = clear_box(whole_ink, rect)
+        print(
+            f"named       {label!r} search={search} ink box={rect} "
+            f"ink={counts['named']} quietest box in the picture={counts['quiet']}"
+        )
+        if counts["named"] < NAMED_INK_FLOOR:
+            raise CaptureRefused(
+                f"{figure['name']}: {label!r} carries {counts['named']} ink "
+                f"pixels, under the {NAMED_INK_FLOOR} a drawn control carries"
+            )
+        named.append((label, rect))
+
+    image = whole.crop(figure["crop"])
+    moved = [(label, (r[0] - left, r[1] - top, r[2], r[3])) for label, r in named]
+    for label, rect in moved:
+        if not inside(image, rect):
+            raise CaptureRefused(
+                f"{figure['name']}: the caption names {label!r}, whose rectangle "
+                f"{rect} falls outside the {image.width}x{image.height} crop"
+            )
+        print(f"inband      {label!r} at {rect}")
+
+    ink, _background = page_ink(image)
+    aimed = dict(moved)[figure["target"]]
+    mask = supplied_mask(ink, aimed)
+    drawn = caption_drawing(figure["caption"], path)
+    box, route, caption_covered, route_covered = place(mask, image, drawn, aimed)
+    bad = control_route(mask, box)
+    control_covered = path_text(mask, bad) if bad else 0
+    head_covered = head_text(mask, route)
+    print(
+        f"ink         regions={int(mask.sum())} caption_ink={caption_covered} "
+        f"arrow_ink={route_covered} head_ink={head_covered} "
+        f"control_route_ink={control_covered}"
+    )
+    if caption_covered or route_covered or head_covered:
+        raise CaptureRefused(
+            f"{figure['name']}: the caption covers {caption_covered} ink pixels, "
+            f"the arrow crosses {route_covered} and its head covers {head_covered}"
+        )
+    if control_covered == 0:
+        raise CaptureRefused(
+            f"{figure['name']}: the control route covers nothing, so the zero "
+            f"above says nothing about the reading"
+        )
+    annotate(image, box, route, figure["caption"], drawn)
+    target_path = out_dir / figure["name"]
+    image.save(target_path, format="PNG", optimize=False)
+    print(
+        f"capture     {figure['name']} {image.width}x{image.height} crop={left},{top}"
+    )
+    print(f"arrow       {figure['target']!r} at {aimed} via {len(route)} points")
+    print(f"caption     {figure['caption']}")
+    print(f"sha256      {hashlib.sha256(target_path.read_bytes()).hexdigest()}")
+
+
+SUPPLIED = (
+    {
+        "name": "step-1-open-releases.png",
+        "source": "releases-panel.png",
+        "crop": (1330, 700, 1916, 1070),
+        "target": "Releases",
+        "named": [("Releases", (1360, 786, 104, 30))],
+        "caption": "The right column lists Releases. Open it.",
+        "labels": ["Releases"],
+    },
+    {
+        "name": "step-2-take-the-newest-release.png",
+        "source": "releases-panel.png",
+        "crop": (1330, 700, 1916, 1070),
+        "target": "Latest",
+        "named": [("Latest", (1650, 830, 70, 28))],
+        "caption": "The newest release wears Latest. Open that one.",
+        "labels": ["Latest"],
+    },
+    {
+        "name": "step-3-pick-one-file.png",
+        "source": "release-file-table.png",
+        "crop": (0, 590, 1918, 987),
+        "target": "the file table",
+        "named": [
+            ("the file table", (528, 652, 818, 238)),
+            ("your computer", (1076, 664, 140, 30)),
+        ],
+        "caption": "Pick one file. Choose by the middle column.",
+        "labels": [],
+    },
+    {
+        "name": "step-4-on-windows.png",
+        "source": "release-run-instructions.png",
+        "crop": (0, 0, 1918, 560),
+        "target": "Windows",
+        "named": [("Windows", (528, 18, 130, 44))],
+        "caption": "On Windows, the release page carries the steps.",
+        "labels": [],
+    },
+    {
+        "name": "step-5-on-a-mac.png",
+        "source": "release-run-instructions.png",
+        "crop": (0, 150, 1918, 585),
+        "target": "macOS",
+        "named": [("macOS", (528, 286, 120, 44))],
+        "caption": "On a Mac, the release page carries the steps.",
+        "labels": [],
+    },
 )
 
 
@@ -935,6 +1634,7 @@ def lay_out(figure: dict, band: tuple, path: Path) -> dict:
         "caption_text": caption_covered,
         "arrow_text": route_covered,
         "control_text": path_text(mask, bad) if bad else 0,
+        "head_text": head_text(mask, route),
         "band": band,
     }
 
@@ -964,12 +1664,14 @@ def render(figure: dict, path: Path, out_dir: Path) -> None:
     print(
         f"text        regions={int(laid['mask'].sum())} "
         f"caption_text={laid['caption_text']} arrow_text={laid['arrow_text']} "
+        f"head_text={laid['head_text']} "
         f"control_route_text={laid['control_text']}"
     )
-    if laid["caption_text"] or laid["arrow_text"]:
+    if laid["caption_text"] or laid["arrow_text"] or laid["head_text"]:
         raise CaptureRefused(
             f"{figure['name']}: the caption covers {laid['caption_text']} text "
-            f"pixels and the arrow crosses {laid['arrow_text']}"
+            f"pixels, the arrow crosses {laid['arrow_text']} and its head "
+            f"covers {laid['head_text']}"
         )
     if laid["control_text"] == 0:
         raise CaptureRefused(
@@ -1031,6 +1733,12 @@ def main() -> int:
     out_dir.mkdir(parents=True, exist_ok=True)
     state: dict = {}
     swept = 0
+    for figure in SUPPLIED:
+        hits = disclosure_hits(figure["caption"] + " " + figure["name"], vocabulary)
+        swept += 1
+        if hits:
+            raise CaptureRefused(f"{figure['name']} carries {hits}")
+        render_supplied(figure, path, out_dir)
     for step in STEPS:
         figure = step(app, state)
         hits = disclosure_hits(figure["caption"] + " " + figure["name"], vocabulary)
