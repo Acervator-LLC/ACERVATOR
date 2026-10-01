@@ -116,7 +116,7 @@ the AI state label. The parts below take that screen in that order.
 Privacy Mode is on, so every masked field draws four asterisks and the bot
 table reads as ten columns of them. The title bar is the one reading no part
 below names. It carries the version the tree answered with on the day of the
-capture, v0.1.0. Nothing types that string out. Git answers for a source
+capture. Nothing types that string out. Git answers for a source
 checkout and the baked file answers for a frozen bundle, so the title cannot
 name a release the build is not.
 
