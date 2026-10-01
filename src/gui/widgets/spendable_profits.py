@@ -2,14 +2,24 @@
 
 from __future__ import annotations
 
-import math
-
 from ...core.privacy_mask_registry import ABSENT_TEXT as _ABSENT_TEXT, mask_or
 from ...trading.target_bands import TERRITORY_FOLD, TERRITORY_SCRUM
 
 from .. import design_system as ds
-from ..main_tabs.header_strip_surface import VALUE_FONT_MIN_PX, VALUE_FONT_PX
-from ..main_tabs.spendable_profits_surface import MONEY_KEYS
+from ..main_tabs.header_strip_surface import (
+    VALUE_FONT_MIN_PX,
+    VALUE_FONT_PX,
+    ammo_total_text,
+    pnl_text,
+)
+from ..main_tabs.spendable_profits_surface import (
+    COLUMNS,
+    FIELD_ID_BY_KEY,
+    MONEY_KEYS,
+    count_text,
+    money_amount,
+    money_text,
+)
 
 try:
     from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QVBoxLayout
@@ -37,7 +47,7 @@ if _HAS_QT:
         )
         _LABEL_ALIGN = Qt.AlignHCenter | Qt.AlignBottom
         _VALUE_ALIGN = Qt.AlignHCenter | Qt.AlignTop
-        #: One share of the row each, so the eight columns sit at one pitch.
+        #: One share of the row each, so every column sits at one pitch.
         _COLUMN_STRETCH = 1
         _VALUE_PX = VALUE_FONT_PX
         _VALUE_MIN_PX = VALUE_FONT_MIN_PX
@@ -68,17 +78,13 @@ if _HAS_QT:
         _MONEY_KEYS = MONEY_KEYS
         _PNL_TIP = (
             "P/L — the unrealised profit and loss the exchange answers across "
-            "every bot's open position. REALISED beside it carries the "
-            "profit and loss already booked."
+            "every bot's open position. It is the only profit and loss figure "
+            "the strip carries."
         )
         _AMMO_TIP = (
             "Total Ammo — every bot's Target Delta added together, in whole "
             "dollars. Green while more bots hold more than their target, red "
             "while more hold less."
-        )
-        _ACCUMULATED_TIP = (
-            "Accumulated — every bot's accrued funds added together, which is "
-            "each live Target Balance less the anchor it was set from."
         )
         _SPENDABLE_ABSENT_TIP = (
             "This amount is not in the data the strip was given for this refresh."
@@ -86,6 +92,9 @@ if _HAS_QT:
         _UNREADABLE_TIP = (
             "This amount did not arrive as a number, so nothing is shown for it."
         )
+        #: The columns carrying a tooltip, by key. Every other column's
+        #: caption says all there is to say about it.
+        _TIP_BY_KEY = {"pnl": _PNL_TIP, "total_ammo": _AMMO_TIP}
 
         def __init__(self, parent=None):
             super().__init__(parent)
@@ -98,7 +107,7 @@ if _HAS_QT:
             label.setMinimumWidth(label.sizeHint().width())
 
         def _setup_ui(self) -> None:
-            """Build the frame, the eight KPI columns and their privacy dots."""
+            """Build the frame, one column per ``COLUMNS`` entry, and their dots."""
             self.setFrameShape(QFrame.StyledPanel)
             self.setStyleSheet(
                 "SpendableProfitsWidget { "
@@ -141,27 +150,13 @@ if _HAS_QT:
             spend_col.addWidget(self._spend_dot, alignment=Qt.AlignHCenter)
             outer.addLayout(spend_col, self._COLUMN_STRETCH)
 
-            # Spendable is built above; these seven share one KPI field shape.
-            _KPI_FIELD_BY_KEY = {
-                "total_realised": "kpi.realised",
-                "pnl": "kpi.pnl",
-                "locked": "kpi.locked",
-                "mature": "kpi.mature",
-                "exchanges": "kpi.exch",
-                "total_ammo": "kpi.ammo",
-                "accumulated": "kpi.accumulated",
-            }
-
+            # Spendable is built above; the rest come from the one column
+            # declaration both hosts read, so no caption is spelled twice.
             self._stats = {}
-            for label_text, key, tip in [
-                ("REALISED", "total_realised", ""),
-                ("P/L", "pnl", self._PNL_TIP),
-                ("LOCKED", "locked", ""),
-                ("MATURE", "mature", ""),
-                ("EXCH", "exchanges", ""),
-                ("AMMO", "total_ammo", self._AMMO_TIP),
-                ("ACCUMULATED", "accumulated", self._ACCUMULATED_TIP),
-            ]:
+            for column in COLUMNS[1:]:
+                label_text = column["label"]
+                key = column["key"]
+                tip = self._TIP_BY_KEY.get(key, "")
                 sep = QLabel("|")
                 sep.setStyleSheet(self._SEPARATOR_STYLE)
                 sep.setAlignment(Qt.AlignVCenter)
@@ -190,53 +185,19 @@ if _HAS_QT:
                 self._stats[key] = val
                 col.addWidget(val)
                 dot = PrivacyDot(
-                    _KPI_FIELD_BY_KEY[key], on_toggle=self._on_privacy_toggle
+                    FIELD_ID_BY_KEY[key], on_toggle=self._on_privacy_toggle
                 )
                 self._privacy_dots.append(dot)
                 col.addWidget(dot, alignment=Qt.AlignHCenter)
                 outer.addLayout(col, self._COLUMN_STRETCH)
 
-        @staticmethod
-        def _amount_of(value):
-            """The finite number a payload value carries, unconverted."""
-            if type(value) is int:
-                return value
-            if type(value) is float and math.isfinite(value):
-                return value
-            return None
-
-        @staticmethod
-        def _money_text(value) -> str:
-            """Render one amount as money text, or as the empty marker."""
-            amount = SpendableProfitsWidget._amount_of(value)
-            if amount is None:
-                return _ABSENT_TEXT
-            return f"${amount:,.2f}"
-
-        @staticmethod
-        def _count_text(value) -> str:
-            """Render a whole exchange count, or the empty marker."""
-            if type(value) is not int:
-                return _ABSENT_TEXT
-            return str(value)
-
-        @staticmethod
-        def _pnl_text(value) -> str:
-            """Render the unrealised amount with its sign, or the marker."""
-            amount = SpendableProfitsWidget._amount_of(value)
-            if amount is None:
-                return _ABSENT_TEXT
-            return f"${amount:+,.2f}"
-
-        @staticmethod
-        def _ammo_text(value) -> str:
-            """Render the fleet Ammo total in whole dollars, or the marker."""
-            amount = SpendableProfitsWidget._amount_of(value)
-            if amount is None:
-                return _ABSENT_TEXT
-            whole = round(amount)
-            sign = "-" if whole < 0 else ""
-            return f"{sign}${abs(whole):,.0f}"
+        # Every cell renders through the surface, so a format changed there
+        # reaches this screen and the page in one edit.
+        _amount_of = staticmethod(money_amount)
+        _money_text = staticmethod(money_text)
+        _count_text = staticmethod(count_text)
+        _pnl_text = staticmethod(pnl_text)
+        _ammo_text = staticmethod(ammo_total_text)
 
         def _ammo_skin(self, value, lean) -> str:
             """The skin the Ammo total draws in for one total and one lean."""
@@ -262,13 +223,11 @@ if _HAS_QT:
             ammo = data.get("total_ammo")
             drawn = {
                 "spendable": self._money_text(sp),
-                "total_realised": self._money_text(data.get("total_realised")),
                 "pnl": self._pnl_text(data.get("unrealised")),
                 "locked": self._money_text(data.get("locked")),
                 "mature": self._money_text(data.get("mature")),
                 "exchanges": self._count_text(data.get("exchange_count")),
                 "total_ammo": self._ammo_text(ammo),
-                "accumulated": self._money_text(data.get("accumulated")),
             }
             self._stats["total_ammo"].set_skin(
                 self._ammo_skin(ammo, data.get("ammo_lean"))
@@ -276,16 +235,8 @@ if _HAS_QT:
             self._amount.set_skin(skin)
             self._amount.setToolTip(tip)
             self._amount.setText(mask_or(drawn["spendable"], "kpi.spendable"))
-            for key, field_id in (
-                ("total_realised", "kpi.realised"),
-                ("pnl", "kpi.pnl"),
-                ("locked", "kpi.locked"),
-                ("mature", "kpi.mature"),
-                ("exchanges", "kpi.exch"),
-                ("total_ammo", "kpi.ammo"),
-                ("accumulated", "kpi.accumulated"),
-            ):
-                self._stats[key].setText(mask_or(drawn[key], field_id))
+            for key, label in self._stats.items():
+                label.setText(mask_or(drawn[key], FIELD_ID_BY_KEY[key]))
             self._last_data = kept
 
         def _on_privacy_toggle(self) -> None:

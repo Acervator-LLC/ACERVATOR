@@ -12,11 +12,14 @@
 #                  that are the only tests in the tree. foundry.toml resolves its
 #                  libraries from node_modules, so `npm ci` runs first. Runs when
 #                  `code` is true.
-#   * archetypes — runs the archetype that owns each changed file: coding for
+#   * archetypes — runs EVERY archetype that owns each changed file: coding for
 #                  .py, .sh/.bash/.zsh and .yml/.yaml, gui for
-#                  .js/.mjs/.cjs/.css/.html, docs for .md. A file of
-#                  any other extension has no owning archetype; the step names it
-#                  and counts it as unowned. A known-bad fixture under
+#                  .js/.mjs/.cjs/.css/.html, docs for .md. A .py file under
+#                  src/gui/ is owned twice — it is Python and it is a PySide6
+#                  screen — so it is read by the coding archetype AND the GUI
+#                  archetype, and either verdict going red fails the file. A file
+#                  of any other extension has no owning archetype; the step names
+#                  it and counts it as unowned. A known-bad fixture under
 #                  harness_fixtures/ is named and counted as exempt, because that
 #                  file exists to report passed=false. The lane fails when any
 #                  archetype reports passed=false on a file that is not one.
@@ -280,27 +283,45 @@ jobs:
                 continue
                 ;;
             esac
+            # A file can have more than one owner, so this names every archetype
+            # that owns the path, not the first one that matches. A PySide6
+            # screen under src/gui/ is Python and is also a screen, so it is read
+            # by the coding archetype and by the GUI archetype. `case` globs
+            # match across "/", so the branch covers every subdirectory.
+            # dev_harness/hooks/archetype_gate.py adds the GUI archetype to a
+            # written .py file too, deciding by the Qt widget base the file
+            # declares rather than by its directory.
+            modules=
             case "$path" in
-              *.py)                          module=coding_archetype ;;
-              *.sh|*.bash|*.zsh)             module=coding_archetype ;;
-              *.yml|*.yaml)                  module=coding_archetype ;;
-              *.js|*.mjs|*.cjs|*.css|*.html) module=gui_archetype ;;
-              *.md)                          module=docs_archetype ;;
+              src/gui/*.py)                  modules="coding_archetype gui_archetype" ;;
+              *.py)                          modules=coding_archetype ;;
+              *.sh|*.bash|*.zsh)             modules=coding_archetype ;;
+              *.yml|*.yaml)                  modules=coding_archetype ;;
+              *.js|*.mjs|*.cjs|*.css|*.html) modules=gui_archetype ;;
+              *.md)                          modules=docs_archetype ;;
               *)
                 echo "no owning archetype: $path"
                 unowned=$((unowned + 1))
                 continue
                 ;;
             esac
-            echo "::group::$module $path"
-            python -m "dev_harness.harness.$module" "$path"
-            code=$?
-            echo "::endgroup::"
             scanned=$((scanned + 1))
-            if [ "$code" -eq 0 ]; then
-              echo "$module $path passed=true"
-            else
-              echo "$module $path passed=false (exit $code)"
+            # One red verdict is enough to fail the file, and the remaining
+            # archetypes still run so every finding on it is reported.
+            red=0
+            for module in $modules; do
+              echo "::group::$module $path"
+              python -m "dev_harness.harness.$module" "$path"
+              code=$?
+              echo "::endgroup::"
+              if [ "$code" -eq 0 ]; then
+                echo "$module $path passed=true"
+              else
+                echo "$module $path passed=false (exit $code)"
+                red=1
+              fi
+            done
+            if [ "$red" -ne 0 ]; then
               failed=$((failed + 1))
             fi
           done <<< "$CHANGED_FILES"

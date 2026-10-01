@@ -765,14 +765,12 @@ def spendable_payload(aggregate: Any, exchange_count: Any) -> dict:
     if wallet_cash > 0 or crypto_value > 0:
         return {
             "spendable": wallet_cash,
-            "total_realised": SPENDABLE_UNKNOWN,
             "locked": crypto_value,
             "mature": SPENDABLE_UNKNOWN,
             "exchange_count": exchange_count,
         }
     return {
         "spendable": SPENDABLE_UNKNOWN,
-        "total_realised": SPENDABLE_UNKNOWN,
         "locked": SPENDABLE_UNKNOWN,
         "mature": SPENDABLE_UNKNOWN,
         "exchange_count": exchange_count,

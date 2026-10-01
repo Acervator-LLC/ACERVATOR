@@ -51,7 +51,7 @@ DOT_ALIGN = "hcenter"
 COLUMN_ALIGN = "hcenter"
 SEPARATOR_ALIGN = "vcenter"
 
-#: One share of the row each, so the eight columns sit at one pitch.
+#: One share of the row each, so every column sits at one pitch.
 TRAILING_STRETCH = False
 COLUMN_STRETCH = header.SPENDABLE_COLUMN_STRETCH
 
@@ -103,7 +103,6 @@ _DOT_FIELDS = (
     "cursor_shape",
 )
 
-REALISED_DEFAULT = None
 EXCHANGE_COUNT_DEFAULT = None
 
 #: How ``update_profits`` renders one column, named per column so no cell is
@@ -126,18 +125,6 @@ COLUMNS = (
         "initial_text": EMPTY_TEXT,
         "initial_style": VALUE_STYLE_MUTED,
         "render": RENDER_SPENDABLE,
-    },
-    {
-        "key": "total_realised",
-        "label": "REALISED",
-        "label_style": LABEL_STYLE,
-        "label_tooltip": "",
-        "field_id": "kpi.realised",
-        "source_key": "total_realised",
-        "default": REALISED_DEFAULT,
-        "initial_text": EMPTY_TEXT,
-        "initial_style": VALUE_STYLE_DEFAULT,
-        "render": RENDER_MONEY,
     },
     {
         "key": "pnl",
@@ -198,18 +185,6 @@ COLUMNS = (
         "initial_text": EMPTY_TEXT,
         "initial_style": VALUE_STYLE_MUTED,
         "render": RENDER_AMMO,
-    },
-    {
-        "key": "accumulated",
-        "label": header.ACCUMULATED_LABEL,
-        "label_style": LABEL_STYLE,
-        "label_tooltip": header.ACCUMULATED_TOOLTIP,
-        "field_id": "kpi.accumulated",
-        "source_key": "accumulated",
-        "default": None,
-        "initial_text": EMPTY_TEXT,
-        "initial_style": VALUE_STYLE_DEFAULT,
-        "render": RENDER_MONEY,
     },
 )
 
