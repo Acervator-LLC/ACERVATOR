@@ -1098,7 +1098,7 @@ class ExecutionEngineMixin:
                 msg = (
                     f"MANUAL FIRE FOLD FILLED: {fill_amount:.6f} @ "
                     f"${fill_price:.8f}. Discharged "
-                    f"{len(consumed)} tranche(s) bypassing MEM-171 "
+                    f"{len(consumed)} tranche(s) bypassing price-floor "
                     f"gates (operator override)."
                 )
             else:
@@ -1426,7 +1426,7 @@ class ExecutionEngineMixin:
                     "bot.log",
                     bot_id=self.bot_id,
                     message=(
-                        f"SCRUM REFUSED (opposing hysteresis v3.15.77): "
+                        f"SCRUM REFUSED (opposing hysteresis): "
                         f"pivot ref ${self._hyst_ref_scrum_side:.8f} "
                         f"(captured when Δ crossed positive after recent "
                         f"FOLD), current ${_px_check:.8f} "
@@ -1472,7 +1472,7 @@ class ExecutionEngineMixin:
                         _crr_who,
                     )
                 _crr_msg = (
-                    f"SELL REFUSED (capital reservation, v3.20.2): "
+                    f"SELL REFUSED (capital reservation): "
                     f"requested {amount:.6f} {self.config.target_asset} but "
                     f"only {_crr_effective:.6f} available to this bot — "
                     f"_current_holdings={float(self._current_holdings or 0):.6f}; "
@@ -1777,7 +1777,7 @@ class ExecutionEngineMixin:
                 "bot.log",
                 bot_id=self.bot_id,
                 message=(
-                    f"MEM-205 BUY TRACE: path={_path} "
+                    f"BUY TRACE: path={_path} "
                     f"value=${_value:.4f} target=${self._target_balance:.2f} "
                     f"delta=${_delta:+.4f} cost=${cost:.4f} price=${price:.8f} "
                     f"holdings={_holdings:.6f} "
@@ -1816,7 +1816,7 @@ class ExecutionEngineMixin:
                     "bot.log",
                     bot_id=self.bot_id,
                     message=(
-                        f"FOLD REFUSED (opposing hysteresis v3.15.77): "
+                        f"FOLD REFUSED (opposing hysteresis): "
                         f"pivot ref ${self._hyst_ref_fold_side:.8f} "
                         f"(captured when Δ crossed negative after recent "
                         f"SCRUM), current ${_px_check:.8f} "
@@ -1953,7 +1953,7 @@ class ExecutionEngineMixin:
         _budget_with_tol = _path_budget * (1.0 + _slippage_tol_pct / 100.0)
         if cost > _budget_with_tol:
             _reason = (
-                f"MEM-251 v2 LAYER 1 BREACH — buy REFUSED. "
+                f"LAYER 1 BREACH — buy REFUSED. "
                 f"Path={_path}. Current position=${_current_position_usd:.2f} "
                 f"({_fresh_units:.8f} {self.config.target_asset} @ "
                 f"${price:.8f}). Target=${self._target_balance:.2f}, "
@@ -1975,7 +1975,7 @@ class ExecutionEngineMixin:
             if _smart_ceiling_usd is not None and _smart_ceiling_usd > 0:
                 if _projected_position_usd > _smart_ceiling_usd:
                     _reason = (
-                        f"MEM-251 v2 LAYER 2 (POSITION CEILING) BREACH — "
+                        f"LAYER 2 (POSITION CEILING) BREACH — "
                         f"buy REFUSED. Path={_path}. Projected position "
                         f"${_projected_position_usd:.2f} > Position Ceiling "
                         f"${_smart_ceiling_usd:.2f} (anchor "

@@ -160,7 +160,7 @@ STATUS_TOOLTIP = (
 )
 FIRE_BUTTON_TOOLTIP = (
     "Operator-initiated fold-back of THIS tranche. Bypasses TA / OTD / "
-    "Target-Delta gates. Smart Ceiling + MEM-257 fail-closed still "
+    "Target-Delta gates. Smart Ceiling + fail-closed buy safety still "
     "apply. Bot must be RUNNING."
 )
 ARBITER_NOT_APPLICABLE_TOOLTIP = (
@@ -260,7 +260,7 @@ COLOUR_STYLE_FORMAT = "color: {colour};"
 PARKED_USD_VALUE_FORMAT = "${usd:,.4f}"
 UNREADABLE_SUFFIX_FORMAT = "  (+{count} unreadable)"
 OLDEST_NO_TRANCHES = "no open tranches"
-OLDEST_NO_TIMESTAMP = "— (pre-v3.16.39 tranches, no timestamp)"
+OLDEST_NO_TIMESTAMP = "— (older tranches, no timestamp)"
 CAP_TEXT_FORMAT = "${spent:,.4f} spent of ${budget:,.4f}"
 CAP_UNREADABLE = "- (unreadable)"
 COUNTERS_RESET_TIME_FORMAT = "%Y-%m-%d %H:%M"
@@ -662,7 +662,7 @@ FIRE_CONFIRM_TEXT_FORMAT = (
     "{moved}"
     "This will execute a MARKET buy at the current "
     "price, bypassing TA / OTD / Target-Delta gates. "
-    "Smart Ceiling and MEM-257 fail-closed still apply."
+    "Smart Ceiling and fail-closed buy safety still apply."
 )
 FIRE_NO_LOOP_TEXT = (
     "Bot manager async loop not running. Is the "

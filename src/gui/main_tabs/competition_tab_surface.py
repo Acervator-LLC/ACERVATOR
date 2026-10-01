@@ -185,7 +185,7 @@ DOT_TEXT = "●"
 NOT_CONNECTED_TEXT = "NOT CONNECTED  —  Relay server required"
 RELAY_LABEL = "Relay:"
 RELAY_URL = "wss://relay.acervator.io"
-CONNECT_BUTTON_TEXT = "Connect  (v3.9.0)"
+CONNECT_BUTTON_TEXT = "Connect"
 RELAY_FIELD_ENABLED = False
 CONNECT_BUTTON_ENABLED = False
 
@@ -193,7 +193,7 @@ NETWORK_LINES = (
     "A real PoA competition requires connection and mutual authentication",
     "with a second Acervator instance on a separate machine.",
     "",
-    "This tab will be rebuilt in v3.9.0 (ADR-009):",
+    "This tab will be rebuilt:",
     "  1.  Connect to relay  (wss://relay.acervator.io)",
     "  2.  Authenticate via Ed25519 keypair",
     "  3.  Discover bots, issue or receive a signed challenge",

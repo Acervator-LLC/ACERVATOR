@@ -221,7 +221,7 @@ def _setup_faulthandler():
                 pass
         return fh_file, fh_path
     except Exception as exc:
-        sys.stderr.write(f"MEM-217: faulthandler setup failed: {exc}\n")
+        sys.stderr.write(f"faulthandler setup failed: {exc}\n")
         return None, None
 
 
@@ -520,7 +520,7 @@ def main() -> int:
     import os as _os
 
     if _os.environ.get("_ACERVATOR_TEST_EXIT_IMMEDIATELY") == "1":
-        sys.stderr.write("MEM-219 test hook: main() entered, exiting 0\n")
+        sys.stderr.write("test hook: main() entered, exiting 0\n")
         return 0
 
     from src import __version__ as _acervator_version
@@ -684,9 +684,9 @@ def main() -> int:
     _gc_timer.timeout.connect(lambda: _gc.collect())
     _gc_timer.start(5000)
     log_manager.info(
-        "MEM-263: automatic GC disabled; periodic gc.collect() "
-        "scheduled on GUI thread (5s cadence). Mitigates CCXT-worker-"
-        "thread access violation pattern observed v3.18.1."
+        "automatic GC disabled; periodic gc.collect() "
+        "scheduled on GUI thread (5s cadence). Mitigates the CCXT-"
+        "worker-thread access violation pattern."
     )
     # A parentless timer needs a module-level reference to stay alive.
     globals()["_persistent_gc_timer"] = _gc_timer
@@ -1189,9 +1189,7 @@ if __name__ == "__main__":
 
             sys.exit(_wd.run_self_watchdog(frozen=_is_frozen))
         except Exception as _exc:
-            sys.stderr.write(
-                f"MEM-219: watchdog failed ({_exc}); " f"running app directly.\n"
-            )
+            sys.stderr.write(f"watchdog failed ({_exc}); " f"running app directly.\n")
             sys.exit(main())
     else:
         sys.exit(main())

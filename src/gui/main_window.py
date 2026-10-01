@@ -227,7 +227,7 @@ if _HAS_QT:
                 self._buy_confirmation_broker = _get_bcd_broker()
             except Exception as _bcd_exc:
                 logger.warning(
-                    "MEM-228 buy confirmation broker init failed: %s; "
+                    "buy confirmation broker init failed: %s; "
                     "buys requiring confirmation will fail-closed.",
                     _bcd_exc,
                 )
@@ -2609,9 +2609,7 @@ if _HAS_QT:
                             self._trade_history_tab.get_history_callback()
                         )
                 except Exception as _exc:
-                    logger.warning(
-                        "MEM-231 pre-connect history wiring " "failed: %s", _exc
-                    )
+                    logger.warning("pre-connect history wiring failed: %s", _exc)
 
                 connector.sync_connect(api_key, api_secret, passphrase or "")
 
@@ -2673,7 +2671,7 @@ if _HAS_QT:
                                 _base_usd_price = None
                     except Exception as _exc:
                         logger.warning(
-                            "v3.20.66: could not fetch %s/USD price "
+                            "could not fetch %s/USD price "
                             "for start-balance check: %s",
                             base,
                             _exc,
@@ -2745,7 +2743,7 @@ if _HAS_QT:
                     if hasattr(self, "_bot_manager") and self._bot_manager:
                         self._bot_manager.set_connector(connector)
                 except Exception as _exc:
-                    logger.warning("MEM-222 set_connector failed: %s", _exc)
+                    logger.warning("set_connector failed: %s", _exc)
 
                 _log.record(
                     exchange=eid,
@@ -2908,7 +2906,7 @@ if _HAS_QT:
                         f"Interval: {cfg.scrumming_interval_pct}% | "
                         f"TA TF: {cfg.ta_timeframe} | "
                         f"BB tol: {cfg.bb_tolerance_pct}%, strip: {cfg.bb_landing_strip_candles} | "
-                        f"P1.9: detect={cfg.scrum_detect_pct}%, fire={cfg.scrum_fire_pct}%, "
+                        f"Advanced: detect={cfg.scrum_detect_pct}%, fire={cfg.scrum_fire_pct}%, "
                         f"midline={mg}, bullseye={be}, travel={cfg.band_travel_pct}%, "
                         f"read={cfg.scrum_read_rate_min}min | "
                         f"Hedge: {hr} (${cfg.hedge_balance:.2f}) | "

@@ -136,9 +136,7 @@ PARAMS_SUBTITLE_SCRUMMING = (
 PARAMS_SUBTITLE_EXTRACTOR = (
     "Configure base-currency chunk, artillery sizing, " "and compounding-tier policy."
 )
-PARAMS_SUBTITLE_GRID = (
-    "Grid mode is retired (v3.23.21); no configurable fields on this page."
-)
+PARAMS_SUBTITLE_GRID = "Grid mode is retired; no configurable fields on this page."
 
 SPIN_DOUBLE = "double"
 SPIN_INT = "int"
@@ -462,11 +460,11 @@ def is_higher_timeframe(timeframe: Any, parent: Any) -> bool:
 GROUP_TITLES = {
     "mode_group": "Trading Parameters",
     "scrum_group": "Scrumming Settings",
-    "adv_group": "Advanced Scrumming (P1.9)",
+    "adv_group": "Advanced Scrumming",
     "hedge_group": "Hedge Rebalance",
-    "cb_group": "Circuit Breakers (v3.15.58)",
-    "risk_group": "Risk Controls (MEM-244)",
-    "gates_group": "Strategy Gate Flags (v3.16.15)",
+    "cb_group": "Circuit Breakers",
+    "risk_group": "Risk Controls",
+    "gates_group": "Strategy Gate Flags",
     "extractor_group": "Extractor — Pool & Artillery",
     "lock_group": "Higher-TF Lock Duration",
 }
@@ -736,7 +734,7 @@ TOOL_TIPS = {
     "target_balance": (
         "The balance this bot trades relative to. HARD-CAPPED: "
         "position can never exceed Target × (1 + Max Target "
-        "Growth %/100). MEM-246/249/251."
+        "Growth %/100)."
     ),
     "max_entry_px": (
         "Bot REFUSES any auto-buy when current price is ABOVE "
@@ -771,7 +769,7 @@ TOOL_TIPS = {
     "scrum_detect_pct": (
         "BB DETECT threshold: % distance from BB midline to "
         "band before SEARCH→TRACK. Lower = earlier detection. "
-        "v3.15.57 HARD GATE: SCRUM cannot occur below the "
+        "HARD GATE: SCRUM cannot occur below the "
         "Upper BB Detection Threshold; FOLD cannot occur "
         "above the Lower BB Detection Threshold. 75 % → "
         "upper gate at bb_pos ≥ 0.875, lower gate at "
@@ -828,22 +826,21 @@ TOOL_TIPS = {
         "When the position drifts beyond this %, the bot "
         "fires an immediate aggressive rebalance (bypasses "
         "BB Detection / hysteresis / soft CB / higher-TF "
-        "bias). Default 10 %. Set 0 to disable. v3.15.63."
+        "bias). Default 10 %. Set 0 to disable."
     ),
     "cartridge_smart_chk": (
         "When ON, Cartridge size is derived from current BB "
         "range rather than the static % above. Hard floor "
         "at the Opposing Trade Interval (cartridge cannot "
         "fire below the interval). Soft ceiling configured "
-        "below. Default OFF preserves static behavior. "
-        "v3.15.92."
+        "below. Default OFF preserves static behavior."
     ),
     "cartridge_smart_ceiling": (
         "Maximum effective cartridge threshold under Smart "
         "calibration. Prevents cartridge from being "
         "effectively disabled during volatility expansion. "
         "Only applies when Smart Cartridge is ON. Default "
-        "30 %. v3.15.92."
+        "30 %."
     ),
     "position_ceiling_enabled": (
         "Cap accumulation at Nx of the bot's INITIAL "
@@ -875,7 +872,7 @@ TOOL_TIPS = {
     ),
     "detonation_confidence_min": (
         "Minimum TA consensus confidence for detonation. "
-        "Default 0.75 (high conviction only, per MEM-244)."
+        "Default 0.75 — high conviction only."
     ),
     "gate_scrum_ta_chk": (
         "ON (Conservative): scrum auto-fire requires TA "

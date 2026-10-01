@@ -964,7 +964,7 @@ if _HAS_QT:
                             "delta < 0 but auto-fire blocked. "
                             "Clicking fires a MARKET buy sized to "
                             "rebalance back to target (bypasses "
-                            "auto's TA/BB/MEM-171 gates)."
+                            "auto's TA/BB/price-floor gates)."
                             + _blockers_text
                             + _risk_suffix()
                         )
@@ -1061,7 +1061,7 @@ if _HAS_QT:
                 logger.warning("Cell address open failed for %r: %s", url, _wb_exc)
 
         def _on_fire(self, bot_id: str) -> None:
-            """MEM-236 — Manual Fire button click handler."""
+            """Manual Fire button click handler."""
             if self._on_fire_clicked:
                 self._on_fire_clicked(bot_id)
 

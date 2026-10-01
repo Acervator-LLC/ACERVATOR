@@ -423,7 +423,7 @@ if _HAS_QT:
             return False  # Grid Bot deprecated
 
         def is_extractor(self) -> bool:
-            """v3.19.3 — True if the operator selected the Extractor
+            """True if the operator selected the Extractor
             radio. Consumed by TradingParamsPage.set_mode() to swap
             the form's visible widgets, and by BotCreationWizard.nextId()
             + get_config() to route the wizard properly."""
@@ -810,7 +810,7 @@ if _HAS_QT:
             self._target_balance.setToolTip(
                 "The balance this bot trades relative to. HARD-CAPPED: "
                 "position can never exceed Target × (1 + Max Target "
-                "Growth %/100). MEM-246/249/251."
+                "Growth %/100)."
             )
             sf.addRow("Target Balance:", self._target_balance)
 
@@ -882,7 +882,7 @@ if _HAS_QT:
 
             groups.addWidget(self._scrum_group)
 
-            self._adv_group = QGroupBox("Advanced Scrumming (P1.9)")
+            self._adv_group = QGroupBox("Advanced Scrumming")
             af = _mkform()
             self._adv_group.setLayout(af)
 
@@ -893,7 +893,7 @@ if _HAS_QT:
             self._scrum_detect_pct.setToolTip(
                 "BB DETECT threshold: % distance from BB midline to "
                 "band before SEARCH→TRACK. Lower = earlier detection. "
-                "v3.15.57 HARD GATE: SCRUM cannot occur below the "
+                "HARD GATE: SCRUM cannot occur below the "
                 "Upper BB Detection Threshold; FOLD cannot occur "
                 "above the Lower BB Detection Threshold. 75 % → "
                 "upper gate at bb_pos ≥ 0.875, lower gate at "
@@ -989,7 +989,7 @@ if _HAS_QT:
 
             groups.addWidget(self._hedge_group)
 
-            self._cb_group = QGroupBox("Circuit Breakers (v3.15.58)")
+            self._cb_group = QGroupBox("Circuit Breakers")
             cf = _mkform()
             self._cb_group.setLayout(cf)
 
@@ -1038,7 +1038,7 @@ if _HAS_QT:
                 "When the position drifts beyond this %, the bot "
                 "fires an immediate aggressive rebalance (bypasses "
                 "BB Detection / hysteresis / soft CB / higher-TF "
-                "bias). Default 10 %. Set 0 to disable. v3.15.63."
+                "bias). Default 10 %. Set 0 to disable."
             )
             cf.addRow("Max Cartridge Size:", self._max_cartridge_pct)
 
@@ -1049,8 +1049,7 @@ if _HAS_QT:
                 "range rather than the static % above. Hard floor "
                 "at the Opposing Trade Interval (cartridge cannot "
                 "fire below the interval). Soft ceiling configured "
-                "below. Default OFF preserves static behavior. "
-                "v3.15.92."
+                "below. Default OFF preserves static behavior."
             )
             cf.addRow("Smart Cartridge:", self._cartridge_smart_chk)
 
@@ -1064,13 +1063,13 @@ if _HAS_QT:
                 "calibration. Prevents cartridge from being "
                 "effectively disabled during volatility expansion. "
                 "Only applies when Smart Cartridge is ON. Default "
-                "30 %. v3.15.92."
+                "30 %."
             )
             cf.addRow("Smart Ceiling:", self._cartridge_smart_ceiling)
 
             groups.addWidget(self._cb_group)
 
-            self._risk_group = QGroupBox("Risk Controls (MEM-244)")
+            self._risk_group = QGroupBox("Risk Controls")
             rf = _mkform()
             self._risk_group.setLayout(rf)
 
@@ -1132,7 +1131,7 @@ if _HAS_QT:
             self._detonation_confidence_min.setValue(0.75)
             self._detonation_confidence_min.setToolTip(
                 "Minimum TA consensus confidence for detonation. "
-                "Default 0.75 (high conviction only, per MEM-244)."
+                "Default 0.75 — high conviction only."
             )
             rf.addRow("Min Confidence:", self._detonation_confidence_min)
 
@@ -1140,7 +1139,7 @@ if _HAS_QT:
 
             # Conservative = every gate ON (default), Lean = every gate OFF.
             # 39 sims x 2 profiles measured ~94.9 % win rate for both.
-            self._gates_group = QGroupBox("Strategy Gate Flags (v3.16.15)")
+            self._gates_group = QGroupBox("Strategy Gate Flags")
             gf = _mkform()
             self._gates_group.setLayout(gf)
 
@@ -1263,7 +1262,7 @@ if _HAS_QT:
             """Update UI elements when visibility mode changes."""
 
         def set_exchange_id(self, exchange_id: str | None) -> None:
-            """v3.15.61 — refilter the TA Timeframe combo based on the
+            """Refilter the TA Timeframe combo based on the
             selected exchange's supported granularities (operator
             directive 2026-04-26: "TF choices for given exchanges
             should change based on availability. For example, 4h
@@ -1498,7 +1497,7 @@ if _HAS_QT:
             }
 
         def set_exchange_id(self, exchange_id: str | None) -> None:
-            """v3.15.61 — disable phantom-TF checkboxes for TFs the
+            """Disable phantom-TF checkboxes for TFs the
             exchange does not support. Keeps the layout stable
             (checkboxes still visible, but greyed and unchecked) so the
             operator can SEE which TFs are unavailable on this exchange.

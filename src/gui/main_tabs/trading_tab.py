@@ -348,7 +348,7 @@ class TradingTabMixin:
             "Pause the Activity Log spool so errors don't scroll "
             "off-screen. Messages received while paused are "
             "buffered (cap 2000) and flushed on resume in "
-            "chronological order. v3.15.67."
+            "chronological order."
         )
 
         def _on_activity_pause_toggled(checked: bool):
@@ -472,8 +472,7 @@ class TradingTabMixin:
         self._api_pause_btn.setToolTip(
             "Freeze the API Interaction Log so you can capture an "
             "error without it scrolling away. Internal events keep "
-            "happening; the buffer just stops appending to the view. "
-            "v3.15.67."
+            "happening; the buffer just stops appending to the view."
         )
         # _on_api_event reads this flag; QPlainTextEdit has no StatusLog subclass.
         self._api_log_paused: bool = False

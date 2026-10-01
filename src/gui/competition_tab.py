@@ -296,7 +296,7 @@ if _QT:
                 "A real PoA competition requires connection and mutual authentication",
                 "with a second Acervator instance on a separate machine.",
                 "",
-                "This tab will be rebuilt in v3.9.0 (ADR-009):",
+                "This tab will be rebuilt:",
                 "  1.  Connect to relay  (wss://relay.acervator.io)",
                 "  2.  Authenticate via Ed25519 keypair",
                 "  3.  Discover bots, issue or receive a signed challenge",
@@ -327,7 +327,7 @@ if _QT:
                 " font-family:Consolas; font-size:10px; padding:4px 8px;"
             )
             url_row.addWidget(self._relay_url)
-            connect_btn = QPushButton("Connect  (v3.9.0)")
+            connect_btn = QPushButton("Connect")
             connect_btn.setEnabled(False)
             connect_btn.setStyleSheet(
                 "background:rgba(0,255,238,0.04); color:#334455;"
