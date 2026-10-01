@@ -74,7 +74,7 @@ multidict==6.7.1
     #   aiohttp
     #   ccxt
     #   yarl
-numpy==2.5.2
+numpy==2.5.3
     # via
     #   acervator (pyproject.toml)
     #   pandas
