@@ -68,7 +68,7 @@ jobs:
       code: ${{ steps.detect.outputs.code }}
       files: ${{ steps.detect.outputs.files }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # Full history so the base commit of the diff is present locally.
           fetch-depth: 0
@@ -153,7 +153,7 @@ jobs:
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
         with:
           python-version-file: .python-version
@@ -176,7 +176,7 @@ jobs:
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
           # package-lock.json was written by npm 11, which ships with node 24.
@@ -202,7 +202,7 @@ jobs:
       # gui_archetype imports PySide6; run it without a display server.
       QT_QPA_PLATFORM: offscreen
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
         with:
           python-version-file: .python-version
