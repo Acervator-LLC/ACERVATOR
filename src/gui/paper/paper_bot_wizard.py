@@ -119,7 +119,7 @@ if _HAS_QT:
                 return
             self._status.setText(f"Loading from {eid.capitalize()}...")
             self._status.repaint()
-            safe_process_events("legacy P4.1 site")
+            safe_process_events("legacy processEvents site")
             if eid not in self._markets_cache:
                 try:
                     self._markets_cache[eid] = self._fetch_markets(eid)
@@ -235,7 +235,7 @@ if _HAS_QT:
             return False  # Grid Bot deprecated
 
         def is_extractor(self) -> bool:
-            """True if the operator selected the Extractor
+            """Return True when the operator selected the Extractor
             radio. Consumed by TradingParamsPage.set_mode() to swap
             the form's visible widgets, and by BotCreationWizard.nextId()
             + get_config() to route the wizard properly."""
@@ -308,7 +308,7 @@ if _HAS_QT:
                 return
             self._status.setText(f"Loading {eid.capitalize()} markets...")
             self._status.repaint()
-            safe_process_events("legacy P4.1 site")
+            safe_process_events("legacy processEvents site")
             if eid not in self._markets_cache:
                 try:
                     self._markets_cache[eid] = self._fetch_markets(eid)

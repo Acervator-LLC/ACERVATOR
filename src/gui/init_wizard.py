@@ -33,7 +33,7 @@ try:
     _HAS_QT = True
 except ImportError:
     _HAS_QT = False
-from src.gui.qt_safe_events import safe_process_events  # v3.15.99 P4.1
+from src.gui.qt_safe_events import safe_process_events
 
 if _HAS_QT:
 
@@ -230,7 +230,7 @@ if _HAS_QT:
             self._feedback.setStyleSheet(f"color: {ds.STATUS_INFO};")
             self._test_btn.setEnabled(False)
 
-            safe_process_events("legacy P4.1 site")
+            safe_process_events("legacy processEvents site")
 
             try:
                 from ..exchange.api_validator import validate_credentials

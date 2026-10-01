@@ -1,5 +1,5 @@
 """
-src/gui/qt_safe_events.py — P4.1 closure (v3.15.99).
+src/gui/qt_safe_events.py — a reentrancy-safe processEvents.
 
 `QApplication.processEvents()` is a known reentrancy hazard. Calling it
 gives the Qt event loop license to dispatch other pending events

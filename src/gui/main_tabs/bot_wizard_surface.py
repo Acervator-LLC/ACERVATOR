@@ -1040,7 +1040,7 @@ API_WARNING_CONTINUE_TEXT = "Continue anyway"
 API_WARNING_BACK_ROLE = "RejectRole"
 API_WARNING_CONTINUE_ROLE = "AcceptRole"
 
-SAFE_EVENTS_REASON = "legacy P4.1 site"
+SAFE_EVENTS_REASON = "legacy processEvents site"
 
 DEFAULT_TARGET_BALANCE_KEY = "default_target_balance"
 DEFAULT_ENABLE_PHANTOMS_KEY = "default_enable_phantoms"

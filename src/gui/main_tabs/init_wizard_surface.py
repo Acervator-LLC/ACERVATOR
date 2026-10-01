@@ -204,7 +204,7 @@ USERNAME_REQUIRED_TITLE = "Username Required"
 USERNAME_REQUIRED_TEXT = "Please enter a username."
 NO_WARNING = None
 
-SAFE_EVENTS_REASON = "legacy P4.1 site"
+SAFE_EVENTS_REASON = "legacy processEvents site"
 
 SKIPPED_DEFAULT = False
 FRESH_START_ABSENT = None

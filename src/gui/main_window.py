@@ -2878,7 +2878,7 @@ if _HAS_QT:
                     f"⏳ Bot {bot_id}: connecting to {eid_display}...", "info"
                 )
 
-                safe_process_events("legacy P4.1 site")
+                safe_process_events("legacy processEvents site")
 
                 success, msg = self._connect_exchange_for_bot(bot)
                 if not success:
@@ -2888,7 +2888,7 @@ if _HAS_QT:
                     return
 
                 self._status_log.log(f"✓ Bot {bot_id}: {msg}", "success")
-                safe_process_events("legacy P4.1 site")
+                safe_process_events("legacy processEvents site")
 
                 if not getattr(bot, "_user_verified", False):
                     cfg = bot.config
@@ -2964,7 +2964,7 @@ if _HAS_QT:
                     "info",
                 )
 
-                safe_process_events("legacy P4.1 site")
+                safe_process_events("legacy processEvents site")
                 try:
                     self._schedule_async(bot.stop())
                     success, msg = self._connect_exchange_for_bot(bot)
