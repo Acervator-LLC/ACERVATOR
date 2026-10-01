@@ -2955,27 +2955,6 @@ class ScrummingBot(
         if self._cb_hard_tripped:
             return
 
-        try:
-            _live_px = float(getattr(ticker, "last", 0.0) or 0.0)
-            if _live_px > 0:
-                _cbx = float(
-                    getattr(self.stats, "cost_basis_total_exchange", 0.0) or 0.0
-                )
-                if _cbx > 0:
-                    _cost_basis = _cbx
-                else:
-                    _cost_basis = sum(
-                        float(l.get("units", 0) or 0)
-                        * float(l.get("initial_buy_price", 0) or 0)
-                        for l in (getattr(self, "_main_lots", []) or [])
-                    )
-                _market_value = (
-                    float(getattr(self, "_current_holdings", 0.0) or 0.0) * _live_px
-                )
-                self.stats.unrealised_pnl = _market_value - _cost_basis
-        except Exception as _sup:
-            logger.debug("suppressed in %s: %s: %s", "tick", type(_sup).__name__, _sup)
-
         summary = None
         bb_result = None
         if len(candles) >= MIN_CANDLES_FOR_TA:
