@@ -22,6 +22,26 @@ from .config import DOLLAR_PEGGED_CURRENCIES, BotState
 logger = logging.getLogger("acervator.bot")
 
 
+def accrued_growth_usd(target_balance: Any, anchor_target_balance: Any) -> float:
+    """One bot's compounded growth: its live target less its anchor target."""
+    return float(target_balance or 0.0) - float(anchor_target_balance or 0.0)
+
+
+def fleet_accrued_usd(bots: Any) -> float:
+    """Every bot's ``accrued_growth_usd`` added together, to the cent.
+
+    A bot carrying no ``_anchor_target_balance`` reads its own
+    ``_target_balance`` as the anchor, so it contributes nothing.
+    """
+    total = 0.0
+    for bot in bots:
+        target = getattr(bot, "_target_balance", 0.0)
+        total += accrued_growth_usd(
+            target, getattr(bot, "_anchor_target_balance", target)
+        )
+    return round(total, 4)
+
+
 class FleetAggregationMixin:
     """Aggregation half of ``BotManager``: totals computed across ``_bots``.
 
@@ -406,6 +426,8 @@ class FleetAggregationMixin:
             # The header strip's AMMO column sums these deltas and colours
             # itself by whichever territory count is larger.
             "total_target_delta_usd": round(total_target_delta_usd, 4),
+            # The header strip's ACCUMULATED column draws this sum.
+            "total_accrued_usd": fleet_accrued_usd(self._bots.values()),
             "bots_scrum_territory": bots_scrum_territory,
             "bots_fold_territory": bots_fold_territory,
             "total_trades": total_trades,

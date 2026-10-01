@@ -566,7 +566,7 @@
     var span = dotSpan();
     var columnStyle = boxStyle(layout, COLUMN_FLOW, COLUMN_MARGINS, COLUMN_SPACING);
     withAlign(columnStyle, layout, COLUMN_ALIGN);
-    // One share of the row each, so the seven columns sit at one pitch.
+    // One share of the row each, so the eight columns sit at one pitch.
     if (owns(layout, COLUMN_STRETCH)) {
       columnStyle.flex = String(layout[COLUMN_STRETCH]);
       columnStyle.minWidth = ZERO_WIDTH;

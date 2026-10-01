@@ -67,13 +67,13 @@ PAGE_STYLE = (
 
 STRIP_BODY = "<style>" + PAGE_STYLE + "</style>" + f'<div id="{STRIP_ROOT_ID}"></div>'
 
-#: The JS expression reading the five amounts the browser drew.
+#: The JS expression reading the eight amounts the browser drew.
 VALUE_TEXTS_JS = (
     "Array.from(document.querySelectorAll('[data-part=\"column-value\"]'))"
     ".map(function (n) { return n.textContent; })"
 )
 
-#: The JS expression reading the five dot glyphs the browser drew.
+#: The JS expression reading the eight dot glyphs the browser drew.
 DOT_GLYPHS_JS = (
     "Array.from(document.querySelectorAll('[data-part=\"column-dot\"]'))"
     ".map(function (n) { return n.textContent; })"
@@ -160,7 +160,7 @@ if _HAS_QT and _HAS_WEBENGINE:
                 self._owner.dot_pressed(press_field(message[len(CALL_PREFIX) :]))
 
     class SpendableProfitsReact(SpendableProfitsWidget):
-        """The five KPI columns and their dots, drawn by React.
+        """The eight KPI columns and their dots, drawn by React.
 
         ``update_profits`` and ``refresh_privacy_dots`` are the two calls
         the main window makes, and both redraw the page.
@@ -232,7 +232,7 @@ if _HAS_QT and _HAS_WEBENGINE:
             return True
 
         def values(self, callback: Callable[[Any], None]) -> bool:
-            """Run ``VALUE_TEXTS_JS`` and hand the five amounts to ``callback``.
+            """Run ``VALUE_TEXTS_JS`` and hand the eight amounts to ``callback``.
 
             Returns False and calls nothing while the page is not ready.
             """
@@ -242,7 +242,7 @@ if _HAS_QT and _HAS_WEBENGINE:
             return True
 
         def glyphs(self, callback: Callable[[Any], None]) -> bool:
-            """Run ``DOT_GLYPHS_JS`` and hand the five glyphs to ``callback``.
+            """Run ``DOT_GLYPHS_JS`` and hand the eight glyphs to ``callback``.
 
             Returns False and calls nothing while the page is not ready.
             """

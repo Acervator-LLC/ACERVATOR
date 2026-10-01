@@ -34,7 +34,7 @@ if _HAS_QT:
         )
         _LABEL_ALIGN = Qt.AlignHCenter | Qt.AlignBottom
         _VALUE_ALIGN = Qt.AlignHCenter | Qt.AlignTop
-        #: One share of the row each, so the seven columns sit at one pitch.
+        #: One share of the row each, so the eight columns sit at one pitch.
         _COLUMN_STRETCH = 1
         _VALUE_STYLE_DEFAULT = (
             f"color: {ds.TEXT_NEUTRAL}; font-size: 14px; font-weight: bold;"
@@ -70,6 +70,10 @@ if _HAS_QT:
             "dollars. Green while more bots hold more than their target, red "
             "while more hold less."
         )
+        _ACCUMULATED_TIP = (
+            "Accumulated — every bot's accrued funds added together, which is "
+            "each live Target Balance less the anchor it was set from."
+        )
         _SPENDABLE_ABSENT_TIP = (
             "This amount is not in the data the strip was given for this refresh."
         )
@@ -88,7 +92,7 @@ if _HAS_QT:
             label.setMinimumWidth(label.sizeHint().width())
 
         def _setup_ui(self) -> None:
-            """Build the frame, the seven KPI columns and their privacy dots."""
+            """Build the frame, the eight KPI columns and their privacy dots."""
             self.setFrameShape(QFrame.StyledPanel)
             self.setStyleSheet(
                 "SpendableProfitsWidget { "
@@ -131,7 +135,7 @@ if _HAS_QT:
             spend_col.addWidget(self._spend_dot, alignment=Qt.AlignHCenter)
             outer.addLayout(spend_col, self._COLUMN_STRETCH)
 
-            # Spendable is built above; these six share one KPI field shape.
+            # Spendable is built above; these seven share one KPI field shape.
             _KPI_FIELD_BY_KEY = {
                 "total_realised": "kpi.realised",
                 "pnl": "kpi.pnl",
@@ -139,6 +143,7 @@ if _HAS_QT:
                 "mature": "kpi.mature",
                 "exchanges": "kpi.exch",
                 "total_ammo": "kpi.ammo",
+                "accumulated": "kpi.accumulated",
             }
 
             self._stats = {}
@@ -149,6 +154,7 @@ if _HAS_QT:
                 ("MATURE", "mature", ""),
                 ("EXCH", "exchanges", ""),
                 ("AMMO", "total_ammo", self._AMMO_TIP),
+                ("ACCUMULATED", "accumulated", self._ACCUMULATED_TIP),
             ]:
                 sep = QLabel("|")
                 sep.setStyleSheet(self._SEPARATOR_STYLE)
@@ -252,6 +258,7 @@ if _HAS_QT:
                 "mature": self._money_text(data.get("mature")),
                 "exchanges": self._count_text(data.get("exchange_count")),
                 "total_ammo": self._ammo_text(ammo),
+                "accumulated": self._money_text(data.get("accumulated")),
             }
             self._stats["total_ammo"].setStyleSheet(
                 self._ammo_skin(ammo, data.get("ammo_lean"))
@@ -266,6 +273,7 @@ if _HAS_QT:
                 ("mature", "kpi.mature"),
                 ("exchanges", "kpi.exch"),
                 ("total_ammo", "kpi.ammo"),
+                ("accumulated", "kpi.accumulated"),
             ):
                 self._stats[key].setText(mask_or(drawn[key], field_id))
             self._last_data = kept

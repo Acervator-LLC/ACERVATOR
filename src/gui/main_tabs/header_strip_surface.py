@@ -65,7 +65,9 @@ TOP_ROW_ORDER = [
 SPENDABLE_MIN_W = 180
 
 #: The room one KPI column needs for a whole money amount at its own size.
-KPI_COLUMN_W = 110
+#: Ninety-four, not a hundred and ten: eight columns at this width keep
+#: ``spendable_natural_w`` at the 890 the seven held, so no other slot moves.
+KPI_COLUMN_W = 94
 
 #: The narrowest one counter card draws at, caption and amount both elided.
 COUNTER_MIN_W = 48
@@ -101,7 +103,7 @@ SPENDABLE_COLUMN_GAP_PX = 3
 #: counted none of it, so every column drew narrower than its own amount.
 SPENDABLE_RULE_W_PX = 12
 
-#: One share of the row each, so the seven columns sit at one pitch.
+#: One share of the row each, so the eight columns sit at one pitch.
 SPENDABLE_COLUMN_STRETCH = 1
 
 SPENDABLE_LAYOUT = {
@@ -164,6 +166,12 @@ PNL_TOOLTIP = (
     "P/L — the unrealised profit and loss the exchange answers across "
     "every bot's open position. Realised profit and loss has its own "
     "column in the strip on the left."
+)
+
+ACCUMULATED_LABEL = "ACCUMULATED"
+ACCUMULATED_TOOLTIP = (
+    "Accumulated — every bot's accrued funds added together, which is "
+    "each live Target Balance less the anchor it was set from."
 )
 
 KPI_COLUMNS = (
@@ -230,6 +238,15 @@ KPI_COLUMNS = (
         "initial_text": EMPTY_TEXT,
         "initial_style": VALUE_STYLE_MUTED,
     },
+    {
+        "key": "accumulated",
+        "label": ACCUMULATED_LABEL,
+        "label_style": KPI_LABEL_STYLE,
+        "label_tooltip": ACCUMULATED_TOOLTIP,
+        "field_id": "kpi.accumulated",
+        "initial_text": EMPTY_TEXT,
+        "initial_style": VALUE_STYLE_DEFAULT,
+    },
 )
 
 #: What a card leaves either side of its caption and its amount. Four, not
@@ -240,9 +257,13 @@ CARD_SIDE_MARGIN_PX = 4
 #: What a card's own margins take off the room its text has.
 COUNTER_TEXT_PAD = 2 * CARD_SIDE_MARGIN_PX
 
-#: The room one counter needs for a whole money amount at its own size. A
-#: counter draws the same amount a KPI column draws, inside a card's margins.
-COUNTER_NATURAL_W = KPI_COLUMN_W + COUNTER_TEXT_PAD
+#: The room one counter card gives its own amount. Declared here and not
+#: read off ``KPI_COLUMN_W``: a card holds one amount where the strip now
+#: divides its width eight ways.
+COUNTER_TEXT_W = 110
+
+#: The room one counter needs for a whole money amount at its own size.
+COUNTER_NATURAL_W = COUNTER_TEXT_W + COUNTER_TEXT_PAD
 
 CARD_LAYOUT = {
     "margins_px": [CARD_SIDE_MARGIN_PX, 4, CARD_SIDE_MARGIN_PX, 4],
@@ -361,6 +382,7 @@ PROFITS_SOURCE_KEYS = (
     "bots_with_fresh_exchange_data",
     "realised_history_complete",
     "total_target_delta_usd",
+    "total_accrued_usd",
     "bots_scrum_territory",
     "bots_fold_territory",
 )
@@ -689,6 +711,11 @@ def kpi_cells(profits: Optional[dict]) -> dict:
             "tooltip": "",
         },
         "total_ammo": ammo_cell(data.get("total_ammo"), data.get("ammo_lean")),
+        "accumulated": {
+            "text": mask_or(money_text(data.get("accumulated")), "kpi.accumulated"),
+            "style_sheet": VALUE_STYLE_DEFAULT,
+            "tooltip": "",
+        },
     }
 
 
@@ -764,6 +791,7 @@ def profits_payload(stats: Optional[dict], exchange_count: int = 0) -> dict:
         "mature": exchange_amount(data, "total_mature_exchange"),
         "exchange_count": int(exchange_count),
         "total_ammo": money_amount(data.get("total_target_delta_usd")),
+        "accumulated": money_amount(data.get("total_accrued_usd")),
         "ammo_lean": ammo_lean(
             data.get("bots_scrum_territory"), data.get("bots_fold_territory")
         ),
