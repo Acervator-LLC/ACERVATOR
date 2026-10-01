@@ -288,8 +288,9 @@ jobs:
             # screen under src/gui/ is Python and is also a screen, so it is read
             # by the coding archetype and by the GUI archetype. `case` globs
             # match across "/", so the branch covers every subdirectory.
-            # dev_harness/hooks/archetype_gate.py routes a written file the same
-            # way; this keeps the lane and the hook on one mapping.
+            # dev_harness/hooks/archetype_gate.py adds the GUI archetype to a
+            # written .py file too, deciding by the Qt widget base the file
+            # declares rather than by its directory.
             modules=
             case "$path" in
               src/gui/*.py)                  modules="coding_archetype gui_archetype" ;;
