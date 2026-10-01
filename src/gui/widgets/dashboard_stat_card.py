@@ -51,7 +51,9 @@ if _HAS_QT:
             self._label = ElidingLabel(label)
             self._label.setProperty("muted", True)
             self._label.setAlignment(Qt.AlignHCenter | Qt.AlignBottom)
-            self._label.setStyleSheet(f"font-size: 10px; color: {ds.MAIN_CAPTION};")
+            self._label.setStyleSheet(
+                f"color: {ds.MAIN_CAPTION}; font-size: 10px; font-weight: 600;"
+            )
             self._label_row.addStretch()
             self._label_row.addWidget(self._label)
             self._privacy_dot: Optional[PrivacyDot] = None
@@ -61,7 +63,7 @@ if _HAS_QT:
             self._value.setProperty("heading", True)
             self._value.setAlignment(Qt.AlignHCenter | Qt.AlignTop)
             self._value.setStyleSheet(
-                f"font-size: 14px; font-weight: bold; color: {ds.PRIMARY};"
+                f"color: {ds.PRIMARY}; font-size: 14px; font-weight: bold;"
             )
             layout.addLayout(self._label_row)
             layout.addWidget(self._value)
