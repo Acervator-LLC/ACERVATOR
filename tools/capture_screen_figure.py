@@ -26,13 +26,23 @@ FIGURE_DIR = ARTIFACT_ROOT / "figures"
 
 HOME_VARS = ("HOME", "USERPROFILE", "LOCALAPPDATA", "APPDATA")
 
-WINDOWS_FONTS = Path(os.environ.get("SYSTEMROOT", "C:/Windows")) / "Fonts"
-FONT_CANDIDATES = (
-    WINDOWS_FONTS / "segoeui.ttf",
-    WINDOWS_FONTS / "arial.ttf",
+WINDOWS_FONT_NAMES = ("segoeui.ttf", "arial.ttf")
+POSIX_FONTS = (
     Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
     Path("/System/Library/Fonts/Supplemental/Arial.ttf"),
 )
+
+
+def font_candidates() -> tuple:
+    """Every font file this host may carry, Windows first when it names one."""
+    root = os.environ.get("SYSTEMROOT", "")
+    windows = (
+        tuple(Path(root) / "Fonts" / name for name in WINDOWS_FONT_NAMES)
+        if root
+        else ()
+    )
+    return windows + POSIX_FONTS
+
 
 WINDOW_WIDTH = 1400
 WINDOW_HEIGHT = 900
@@ -119,8 +129,8 @@ def refuse_network() -> None:
 
 
 def font_file() -> Path:
-    """The first path in ``FONT_CANDIDATES`` that exists."""
-    for candidate in FONT_CANDIDATES:
+    """The first path ``font_candidates`` names that exists."""
+    for candidate in font_candidates():
         if candidate.exists():
             return candidate
     raise CaptureRefused(
