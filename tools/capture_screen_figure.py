@@ -85,6 +85,12 @@ INK_SPREAD = 3
 NAMED_INK_FLOOR = 40
 
 LIVE_TAB = "Live"
+SIM_TAB = "Sim"
+PAPER_TAB = "Paper"
+CHARTS_TAB = "Charts"
+INSPECTOR_TAB = "Inspector"
+SWARM_TAB = "Swarm"
+HISTORY_TAB = "History"
 EXCHANGES_PAGE = "Exchanges"
 ACCUMULATION_PAGE = "Select Asset Pair"
 PARAMS_PAGE = "Trading Parameters"
@@ -1175,6 +1181,151 @@ def step_create_the_bot(app, state: dict) -> dict:
     }
 
 
+def show_tab(app, state: dict, tab: str):
+    """Select *tab* on the window's bar and answer the page it draws."""
+    window, book = state["window"], state["book"]
+    names = tab_names(book)
+    if tab not in names:
+        raise CaptureRefused(f"the bar carries {names}, not {tab!r}")
+    book.setCurrentIndex(names.index(tab))
+    settle(app)
+    return window, book, book.currentWidget()
+
+
+def bar_band(window, book, bottom: int) -> tuple:
+    """The rows from the tab bar down to *bottom*, clear of the money strip."""
+    bar = book.tabBar()
+    top = bar.mapTo(window, bar.rect().topLeft()).y()
+    return top, min(window.height(), bottom) - top
+
+
+def class_note(page, tab: str):
+    """The label drawing the asset-class note on an emptied *tab*."""
+    from PySide6.QtWidgets import QLabel
+
+    from src.gui.main_tabs import class_filter_surface
+
+    wanted = class_filter_surface.empty_note(tab)
+    found = [
+        one
+        for one in page.findChildren(QLabel)
+        if one.isVisible() and one.text().strip() == wanted
+    ]
+    if len(found) != 1:
+        raise CaptureRefused(
+            f"the {tab} page draws {len(found)} copies of {wanted!r}, not one"
+        )
+    return found[0], wanted
+
+
+def empty_tab_figure(app, state: dict, tab: str, name: str, caption: str) -> dict:
+    """The *tab* selected, with the note it draws while the class holds nothing."""
+    window, book, page = show_tab(app, state, tab)
+    label, sentence = class_note(page, tab)
+    seat = tab_rect(window, book, tab)
+    note = control_rect(window, label)
+    print(f"driven      {tab!r} selected; the bar reads {tab_names(book)}")
+    print(f"observed    {tab} draws {sentence!r} from a store with no fleet")
+    return {
+        "name": name,
+        "widget": window,
+        "band": bar_band(window, book, note[1] + note[3] + BAND_ROOM),
+        "target": (tab, seat),
+        "named": [(tab, seat), (sentence, note)],
+        "caption": caption,
+        "labels": [tab, sentence],
+    }
+
+
+def step_the_simulator(app, state: dict) -> dict:
+    """The Sim tab, before any run has been played."""
+    return empty_tab_figure(
+        app,
+        state,
+        SIM_TAB,
+        "step-22-the-simulator.png",
+        f"Press {SIM_TAB}. It stays empty until a run plays.",
+    )
+
+
+def step_paper_first(app, state: dict) -> dict:
+    """The Paper tab's Get Started card, and the button that copies the fleet."""
+    from PySide6.QtWidgets import QPushButton, QTabWidget
+
+    _window, _book, page = show_tab(app, state, PAPER_TAB)
+    inner = [one for one in page.findChildren(QTabWidget) if one.isVisible()]
+    if len(inner) != 1:
+        raise CaptureRefused(f"the {PAPER_TAB} page shows {len(inner)} layers, not one")
+    layer = inner[0]
+    card = layer.currentWidget()
+    buttons = [one for one in card.findChildren(QPushButton) if one.text()]
+    wanted = [one for one in buttons if control_label(one) == "Import Live Fleet"]
+    if len(wanted) != 1:
+        raise CaptureRefused(
+            f"the Get Started card holds {len(wanted)} copies of Import Live "
+            f"Fleet, among {[control_label(one) for one in buttons]}"
+        )
+    copy = wanted[0]
+    label = control_label(copy)
+    seat = control_rect(layer, copy)
+    top = max(0, seat[1] - BAND_ROOM)
+    print(f"driven      {PAPER_TAB!r} selected; its card reads {tab_names(layer)}")
+    print(f"observed    the card offers {[control_label(one) for one in buttons]}")
+    return {
+        "name": "step-23-paper-first.png",
+        "widget": layer,
+        "band": (top, layer.height() - top),
+        "target": (label, seat),
+        "named": [(label, seat)],
+        "caption": f"No fleet is loaded. Press {label}.",
+        "labels": [copy.text()],
+    }
+
+
+def step_the_chart(app, state: dict) -> dict:
+    """The Charts tab, before a bot gives it a market to draw."""
+    return empty_tab_figure(
+        app,
+        state,
+        CHARTS_TAB,
+        "step-24-the-chart.png",
+        f"Press {CHARTS_TAB}. One panel appears per market a bot trades.",
+    )
+
+
+def step_the_market_inspector(app, state: dict) -> dict:
+    """The Inspector tab, before a scan has run."""
+    return empty_tab_figure(
+        app,
+        state,
+        INSPECTOR_TAB,
+        "step-25-the-market-inspector.png",
+        f"Press {INSPECTOR_TAB}. A scan fills it.",
+    )
+
+
+def step_the_swarm(app, state: dict) -> dict:
+    """The Swarm tab, before a bot exists to draw as a node."""
+    return empty_tab_figure(
+        app,
+        state,
+        SWARM_TAB,
+        "step-26-the-swarm.png",
+        f"Press {SWARM_TAB}. Each bot joins it as one node.",
+    )
+
+
+def step_what_it_has_traded(app, state: dict) -> dict:
+    """The History tab, before a venue has reported a fill."""
+    return empty_tab_figure(
+        app,
+        state,
+        HISTORY_TAB,
+        "step-27-what-it-has-traded.png",
+        f"Press {HISTORY_TAB}. The venue's own fills land here.",
+    )
+
+
 STEPS = (
     step_window_opens,
     step_live_has_no_venue,
@@ -1190,6 +1341,12 @@ STEPS = (
     step_phantom_choice,
     step_how_long_a_lock_holds,
     step_create_the_bot,
+    step_the_simulator,
+    step_paper_first,
+    step_the_chart,
+    step_the_market_inspector,
+    step_the_swarm,
+    step_what_it_has_traded,
 )
 
 

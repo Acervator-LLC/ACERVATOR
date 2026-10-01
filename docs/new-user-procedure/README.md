@@ -15,6 +15,17 @@ build. When a screen changes, the next capture replaces its picture and the page
 stays as it is. Two steps carry no picture, because driving them creates bots.
 Those two pages say so.
 
+The steps after the fleet starts walk the tab bar from left to right, one page
+per tab. They say what a tab is for and what to do there first, and they are not
+a reference for every control on it. Live needs no page of its own, because
+three earlier steps already reach it.
+
+Three tabs have no page. Accumulation has none because nothing builds it. Status
+has none because its screen draws through a web view, which returns one flat
+colour to a capture instead of a screen. Console has none because its log pane
+and its signal pane cover every row of the tab, leaving nowhere to put a caption
+that does not sit on top of the log.
+
 ## The order
 
 This table is the order. A page's number is its place in it. A new screen gets
@@ -44,6 +55,12 @@ it. Numbering the pages again is this table's job and nothing else's.
 | 19 | [Create the bot](19-create-the-bot.md) | Finish the wizard. |
 | 20 | [Make the fleet](20-make-the-fleet.md) | Create more bots from one. |
 | 21 | [Start the fleet](21-start-the-fleet.md) | Start the bots. |
+| 22 | [The Simulator](22-the-simulator.md) | Replay the fleet against stored history. |
+| 23 | [Paper first](23-paper-first.md) | Rehearse on live prices, with no money. |
+| 24 | [The chart](24-the-chart.md) | Watch the price a bot works against. |
+| 25 | [The market inspector](25-the-market-inspector.md) | Find the next market worth a bot. |
+| 26 | [The swarm](26-the-swarm.md) | See the fleet, and the money between its bots. |
+| 27 | [What it has traded](27-what-it-has-traded.md) | Check the venue's own fills. |
 
 ## Where the pictures sit
 
