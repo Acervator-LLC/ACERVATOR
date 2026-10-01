@@ -1,4 +1,4 @@
-# Step 7 — Start the fleet
+# Step 15 — Start the fleet
 
 One step of the [New User Procedure](README.md) how-to.
 
