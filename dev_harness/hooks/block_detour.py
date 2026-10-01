@@ -2,7 +2,8 @@
 
 `TOOL_PATH` matches a new file under a tooling directory, and `READING_STEP`
 matches an instruction to read something that is not the issue, the manual or a
-skill. `main` returns 2 for either.
+skill. `main` returns 2 for either. `COMMISSIONED` names the repository paths an
+item asks for and `new_tool` allows them.
 """
 
 import json
@@ -15,6 +16,10 @@ BRIEFS = {"Agent", "SendMessage"}
 
 TOOL_PATH = re.compile(r"(^|[\\/])(?:tools|scripts|bin|utils)[\\/][^\\/]+\.py$",
                        re.IGNORECASE)
+
+ROOT_MARKER = "pyproject.toml"
+
+COMMISSIONED = frozenset({"tools/capture_screen_figure.py"})
 
 READING_STEP = re.compile(
     r"\b(?:read|consult|review|refer to|open)\b[^.\n]{0,60}"
@@ -31,11 +36,23 @@ def text_of(payload):
     return "\n".join(part for part in parts if isinstance(part, str))
 
 
+def repo_relative(raw):
+    """Returns `raw` relative to the nearest folder holding `ROOT_MARKER`."""
+    path = pathlib.Path(raw).resolve()
+    for parent in path.parents:
+        if (parent / ROOT_MARKER).is_file():
+            return path.relative_to(parent).as_posix()
+    return ""
+
+
 def new_tool(payload):
-    """True when the call creates a file under a tooling directory."""
+    """True when the call creates a file under a tooling directory that
+    `COMMISSIONED` does not name."""
     data = payload.get("tool_input") or {}
     raw = data.get("file_path") or data.get("notebook_path") or ""
     if not isinstance(raw, str) or not TOOL_PATH.search(raw):
+        return False
+    if repo_relative(raw) in COMMISSIONED:
         return False
     return not pathlib.Path(raw).exists()
 
