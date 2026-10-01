@@ -38,9 +38,9 @@ FRAME_STYLE = (
 
 OUTER_MARGINS_PX = (
     header.SPENDABLE_SIDE_MARGIN_PX,
-    6,
+    4,
     header.SPENDABLE_SIDE_MARGIN_PX,
-    6,
+    4,
 )
 OUTER_SPACING_PX = 0
 COLUMN_MARGINS_PX = (0, 0, 0, 0)
@@ -48,22 +48,19 @@ COLUMN_SPACING_PX = 2
 SEPARATOR_GAP_PX = header.SPENDABLE_COLUMN_GAP_PX
 RULE_W_PX = header.SPENDABLE_RULE_W_PX
 DOT_ALIGN = "hcenter"
+COLUMN_ALIGN = "hcenter"
 SEPARATOR_ALIGN = "vcenter"
-TRAILING_STRETCH = True
 
-LABEL_STYLE = (
-    f"color: {ds.CARD_METRIC_LABEL}; font-size: 10px; "
-    "letter-spacing: 1px; font-weight: 600;"
-)
-SPENDABLE_LABEL_STYLE = (
-    f"color: {ds.PRIMARY}; font-size: 10px; letter-spacing: 1px; " "font-weight: 700;"
-)
-VALUE_STYLE_DEFAULT = f"color: {ds.TEXT_NEUTRAL}; font-size: 16px; font-weight: bold;"
-VALUE_STYLE_HIGHLIGHT = f"color: {ds.SUCCESS}; font-size: 16px; font-weight: bold;"
-VALUE_STYLE_NEGATIVE = f"color: {ds.ERROR}; font-size: 16px; font-weight: bold;"
-VALUE_STYLE_MUTED = (
-    f"color: {ds.CARD_METRIC_LABEL}; font-size: 16px; font-weight: bold;"
-)
+#: One share of the row each, so the seven columns sit at one pitch.
+TRAILING_STRETCH = False
+COLUMN_STRETCH = header.SPENDABLE_COLUMN_STRETCH
+
+LABEL_STYLE = f"color: {ds.CARD_METRIC_LABEL}; {header.LABEL_FONT}"
+SPENDABLE_LABEL_STYLE = f"color: {ds.PRIMARY}; {header.LABEL_FONT}"
+VALUE_STYLE_DEFAULT = f"color: {ds.TEXT_NEUTRAL}; {header.VALUE_FONT}"
+VALUE_STYLE_HIGHLIGHT = f"color: {ds.SUCCESS}; {header.VALUE_FONT}"
+VALUE_STYLE_NEGATIVE = f"color: {ds.ERROR}; {header.VALUE_FONT}"
+VALUE_STYLE_MUTED = f"color: {ds.CARD_METRIC_LABEL}; {header.VALUE_FONT}"
 SEPARATOR_STYLE = f"color: {ds.MAIN_SEPARATOR}; font-size: 24px; margin: 0 2px;"
 
 SEPARATOR_TEXT = "|"
@@ -394,7 +391,8 @@ def layout_items() -> list:
         items.append({"kind": "separator"})
         items.append({"kind": "spacing", "px": SEPARATOR_GAP_PX})
         items.append({"kind": "layout", "column": column["key"]})
-    items.append({"kind": "stretch"})
+    if TRAILING_STRETCH:
+        items.append({"kind": "stretch"})
     return items
 
 
@@ -413,6 +411,8 @@ def build_view_model(model: Optional[SpendableProfitsModel] = None) -> dict:
             "separator_gap_px": SEPARATOR_GAP_PX,
             "rule_w_px": RULE_W_PX,
             "dot_align": DOT_ALIGN,
+            "column_align": COLUMN_ALIGN,
+            "column_stretch": COLUMN_STRETCH,
             "trailing_stretch": TRAILING_STRETCH,
         },
         "separator": {
