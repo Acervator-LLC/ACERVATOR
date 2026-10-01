@@ -32,11 +32,11 @@ certifi==2026.6.17
     #   acervator (pyproject.toml)
     #   ccxt
     #   requests
-cffi==2.0.0
+cffi==2.1.1
     # via
     #   ccxt
     #   cryptography
-charset-normalizer==3.4.7
+charset-normalizer==3.5.1
     # via
     #   ccxt
     #   reportlab
@@ -69,12 +69,12 @@ more-itertools==11.1.0
     # via
     #   jaraco-classes
     #   jaraco-functools
-multidict==6.7.1
+multidict==7.0.0
     # via
     #   aiohttp
     #   ccxt
     #   yarl
-numpy==2.5.2
+numpy==2.5.3
     # via
     #   acervator (pyproject.toml)
     #   pandas
@@ -85,7 +85,7 @@ packaging==26.3
     # via
     #   pyinstaller
     #   pyinstaller-hooks-contrib
-pandas==3.0.5
+pandas==3.0.6
     # via
     #   acervator (pyproject.toml)
     #   ta
@@ -106,9 +106,9 @@ pycparser==3.0
     # via
     #   ccxt
     #   cffi
-pyinstaller==6.22.2
+pyinstaller==6.22.3
     # via acervator (pyproject.toml)
-pyinstaller-hooks-contrib==2026.6
+pyinstaller-hooks-contrib==2026.7
     # via pyinstaller
 pyside6==6.11.2
     # via acervator (pyproject.toml)
