@@ -326,7 +326,7 @@ class FleetAggregationMixin:
         crypto_position_value_usd = 0.0  # sum of per-bot position values
         total_mature_exchange = 0.0
         mature_positions = 0
-        total_target_delta_usd = 0.0
+        total_ammo_usd = 0.0
         bots_scrum_territory = 0
         bots_fold_territory = 0
 
@@ -377,7 +377,7 @@ class FleetAggregationMixin:
             crypto_position_value_usd += _bot_pos_val
             _target_usd = float(getattr(bot.config, "target_balance", 0.0) or 0.0)
             if _target_usd > 0:
-                total_target_delta_usd += target_delta(_bot_pos_val, _target_usd)
+                total_ammo_usd += abs(target_delta(_bot_pos_val, _target_usd))
                 _where = target_territory(_bot_pos_val, _target_usd)
                 if _where == TERRITORY_SCRUM:
                     bots_scrum_territory += 1
@@ -423,9 +423,10 @@ class FleetAggregationMixin:
                 wallet_cash_usd + crypto_position_value_usd, 4
             ),
             "total_realised_pnl": round(total_pnl, 4),
-            # The header strip's AMMO column sums these deltas and colours
-            # itself by whichever territory count is larger.
-            "total_target_delta_usd": round(total_target_delta_usd, 4),
+            # The header strip's AMMO column draws this: each bot's Ammo
+            # WITHOUT its sign, as the bot list's Ammo column draws it, so a
+            # bot above target cannot cancel one below.
+            "total_target_delta_usd": round(total_ammo_usd, 4),
             # The header strip's ACCUMULATED column draws this sum.
             "total_accrued_usd": fleet_accrued_usd(self._bots.values()),
             "bots_scrum_territory": bots_scrum_territory,
