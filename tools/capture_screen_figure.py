@@ -952,23 +952,112 @@ def advance(app, wizard, title: str):
     return page
 
 
-def step_trading_params(app, state: dict) -> dict:
-    """The page carrying Target Balance, scrolled until that field is on screen."""
-    from PySide6.QtWidgets import QWizard
+def scrum_row(page, field) -> str:
+    """The label the Scrumming Settings form draws beside *field*."""
+    return control_label(page._scrum_group.layout().labelForField(field))
 
-    wizard = state["wizard"]
-    page = advance(app, wizard, PARAMS_PAGE)
-    field = page._target_balance
+
+def scrum_reading(page, field) -> tuple:
+    """*field*'s row label and the text it shows, printed as one observation."""
+    label, shown = scrum_row(page, field), field.text()
+    print(f"observed    {label!r} reads {shown!r} from a defaults dict of {{}}")
+    return label, shown
+
+
+def scroll_to(app, page, field) -> None:
+    """Bring *field* into the page's scroll viewport and report where it sits."""
     page._scroll.ensureWidgetVisible(field, 0, TARGET_SCROLL_MARGIN)
     settle(app, 40)
     bar = page._scroll.verticalScrollBar()
-    label = control_label(page._scrum_group.layout().labelForField(field))
-    shown = field.text()
-    forward = wizard.button(QWizard.NextButton)
     print(f"observed    the page scrolled to {bar.value()} of {bar.maximum()}")
-    print(f"observed    {label!r} reads {shown!r} from a defaults dict of {{}}")
+
+
+def step_how_far_price_must_move(app, state: dict) -> dict:
+    """The first Scrumming Settings row, and the page it opens on."""
+    wizard = state["wizard"]
+    page = advance(app, wizard, PARAMS_PAGE)
+    state["params"] = page
+    field = page._scrumming_interval
+    scroll_to(app, page, field)
+    label, shown = scrum_reading(page, field)
     return {
-        "name": "step-11-set-the-target-balance.png",
+        "name": "step-11-how-far-price-must-move.png",
+        "widget": wizard,
+        "target": (label, control_rect(wizard, field)),
+        "named": [(label, control_rect(wizard, field))],
+        "caption": f"{label} opens at {shown}.",
+        "labels": [label],
+    }
+
+
+def step_what_it_watches(app, state: dict) -> dict:
+    """The three rows that pick the chart and the band the bot reads."""
+    wizard, page = state["wizard"], state["params"]
+    field = page._ta_timeframe
+    scroll_to(app, page, field)
+    label = scrum_row(page, field)
+    shown = field.currentText()
+    offered = [field.itemText(index) for index in range(field.count())]
+    print(f"observed    {label!r} reads {shown!r} from a defaults dict of {{}}")
+    print(f"observed    {label!r} offers {offered}")
+    for other in (page._bb_tolerance, page._ls_candles):
+        scrum_reading(page, other)
+    return {
+        "name": "step-12-what-it-watches.png",
+        "widget": wizard,
+        "target": (label, control_rect(wizard, field)),
+        "named": [(label, control_rect(wizard, field))],
+        "caption": f"{label} opens on {shown}.",
+        "labels": [label, shown],
+    }
+
+
+def step_trading_params(app, state: dict) -> dict:
+    """The row carrying Target Balance, scrolled until that field is on screen."""
+    wizard, page = state["wizard"], state["params"]
+    field = page._target_balance
+    scroll_to(app, page, field)
+    label, shown = scrum_reading(page, field)
+    return {
+        "name": "step-13-set-the-target-balance.png",
+        "widget": wizard,
+        "target": (label, control_rect(wizard, field)),
+        "named": [(label, control_rect(wizard, field))],
+        "caption": f"{label} opens at {shown}.",
+        "labels": [label],
+    }
+
+
+def step_the_price_window(app, state: dict) -> dict:
+    """The ceiling and the floor the two entry-price rows put on a first buy."""
+    wizard, page = state["wizard"], state["params"]
+    field = page._max_entry_px
+    scroll_to(app, page, field)
+    label, shown = scrum_reading(page, field)
+    scrum_reading(page, page._min_entry_px)
+    return {
+        "name": "step-14-the-price-window.png",
+        "widget": wizard,
+        "target": (label, control_rect(wizard, field)),
+        "named": [(label, control_rect(wizard, field))],
+        "caption": f"{label} opens at {shown}.",
+        "labels": [label],
+    }
+
+
+def step_what_a_cycle_keeps(app, state: dict) -> dict:
+    """The last three rows of the group, and the press that leaves the page."""
+    from PySide6.QtWidgets import QWizard
+
+    wizard, page = state["wizard"], state["params"]
+    field = page._scrum_fold_pct
+    scroll_to(app, page, field)
+    label, shown = scrum_reading(page, field)
+    for other in (page._trading_fee, page._max_target_growth_pct):
+        scrum_reading(page, other)
+    forward = wizard.button(QWizard.NextButton)
+    return {
+        "name": "step-15-what-a-cycle-keeps.png",
         "widget": wizard,
         "target": (label, control_rect(wizard, field)),
         "named": [
@@ -991,7 +1080,7 @@ def step_phantom_choice(app, state: dict) -> dict:
     print(f"observed    {label!r} reads checked={box.isChecked()}")
     print(f"observed    the timeframe row opens with {ticked} ticked")
     return {
-        "name": "step-12-leave-the-shadow-bot-off.png",
+        "name": "step-16-leave-the-shadow-bot-off.png",
         "widget": wizard,
         "target": (label, control_rect(wizard, box)),
         "named": [(label, control_rect(wizard, box))],
@@ -1016,7 +1105,7 @@ def step_create_the_bot(app, state: dict) -> dict:
     print(f"observed    {done!r} visible={finish.isVisible()}")
     print(f"not driven  {done!r} is never pressed; it creates a bot")
     return {
-        "name": "step-13-create-the-bot.png",
+        "name": "step-17-create-the-bot.png",
         "widget": wizard,
         "target": (done, control_rect(wizard, finish)),
         "named": [(done, control_rect(wizard, finish))],
@@ -1031,7 +1120,11 @@ STEPS = (
     step_venue_form,
     step_trading_mode,
     step_asset_pair,
+    step_how_far_price_must_move,
+    step_what_it_watches,
     step_trading_params,
+    step_the_price_window,
+    step_what_a_cycle_keeps,
     step_phantom_choice,
     step_create_the_bot,
 )

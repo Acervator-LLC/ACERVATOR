@@ -18,7 +18,8 @@ Those two pages say so.
 ## The order
 
 This table is the order. A page's number is its place in it. A new screen gets
-its own numbered page and one new row at the end of this table.
+its own numbered page and a row at the point in this table where a reader meets
+it. Numbering the pages again is this table's job and nothing else's.
 
 | # | page | the step |
 |---|---|---|
@@ -32,11 +33,15 @@ its own numbered page and one new row at the end of this table.
 | 8 | [Enter the venue keys](08-enter-the-venue-keys.md) | Store a venue. |
 | 9 | [Choose the engine](09-choose-the-engine.md) | Pick the trading engine. |
 | 10 | [Name what it trades](10-name-what-it-trades.md) | Pick the venue and the pair. |
-| 11 | [Set the Target Balance](11-set-the-target-balance.md) | Set the trading parameters. |
-| 12 | [Leave the shadow bot off](12-leave-the-shadow-bot-off.md) | Settle the phantom bots. |
-| 13 | [Create the bot](13-create-the-bot.md) | Finish the wizard. |
-| 14 | [Make the fleet](14-make-the-fleet.md) | Create more bots from one. |
-| 15 | [Start the fleet](15-start-the-fleet.md) | Start the bots. |
+| 11 | [How far price must move](11-how-far-price-must-move.md) | Set the opposing trade interval. |
+| 12 | [What it watches](12-what-it-watches.md) | Set the chart and the band. |
+| 13 | [Set the Target Balance](13-set-the-target-balance.md) | Set the balance the bot trades against. |
+| 14 | [The price window](14-the-price-window.md) | Set the ceiling and the floor. |
+| 15 | [What a cycle keeps](15-what-a-cycle-keeps.md) | Set the compounding rows. |
+| 16 | [Leave the shadow bot off](16-leave-the-shadow-bot-off.md) | Settle the phantom bots. |
+| 17 | [Create the bot](17-create-the-bot.md) | Finish the wizard. |
+| 18 | [Make the fleet](18-make-the-fleet.md) | Create more bots from one. |
+| 19 | [Start the fleet](19-start-the-fleet.md) | Start the bots. |
 
 ## Where the pictures sit
 

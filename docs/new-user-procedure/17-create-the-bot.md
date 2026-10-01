@@ -1,8 +1,8 @@
-# Step 13 — Create the bot
+# Step 17 — Create the bot
 
 One step of the [New User Procedure](README.md) how-to.
 
-![Finish stands where Next stood. Press Finish.](figures/step-13-create-the-bot.png)
+![Finish stands where Next stood. Press Finish.](figures/step-17-create-the-bot.png)
 
 **Press Finish.**
 
