@@ -32,11 +32,11 @@ certifi==2026.6.17
     #   acervator (pyproject.toml)
     #   ccxt
     #   requests
-cffi==2.0.0
+cffi==2.1.1
     # via
     #   ccxt
     #   cryptography
-charset-normalizer==3.4.7
+charset-normalizer==3.5.1
     # via
     #   ccxt
     #   reportlab
@@ -69,7 +69,7 @@ more-itertools==11.1.0
     # via
     #   jaraco-classes
     #   jaraco-functools
-multidict==6.7.1
+multidict==7.0.0
     # via
     #   aiohttp
     #   ccxt
