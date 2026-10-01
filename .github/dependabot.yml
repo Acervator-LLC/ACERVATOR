@@ -1,0 +1,40 @@
+---
+version: 2
+
+# target-branch moves version updates only. Security updates open against the
+# default branch, main, and are carried to current by hand.
+updates:
+  # pyproject.toml
+  - package-ecosystem: "pip"
+    directory: "/"
+    target-branch: "current"
+    schedule:
+      interval: "weekly"
+
+  # requirements/build-win32-py3.14.txt
+  - package-ecosystem: "pip"
+    directory: "/requirements"
+    target-branch: "current"
+    schedule:
+      interval: "weekly"
+
+  # package.json and package-lock.json
+  - package-ecosystem: "npm"
+    directory: "/"
+    target-branch: "current"
+    schedule:
+      interval: "weekly"
+
+  # desktop/package.json and desktop/package-lock.json
+  - package-ecosystem: "npm"
+    directory: "/desktop"
+    target-branch: "current"
+    schedule:
+      interval: "weekly"
+
+  # the action versions in .github/workflows/
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    target-branch: "current"
+    schedule:
+      interval: "weekly"

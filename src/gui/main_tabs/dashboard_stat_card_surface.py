@@ -22,7 +22,7 @@ from typing import Any, Optional
 
 from ...core.privacy_mask_registry import get_privacy_mask_registry, mask_or
 
-from . import privacy_dot_surface
+from . import header_strip_surface as header, privacy_dot_surface
 
 from .. import design_system as ds
 
@@ -55,8 +55,8 @@ LABEL_ALIGN = "hcenter|bottom"
 VALUE_ALIGN = "hcenter|top"
 DOT_ALIGN = "hcenter"
 
-LABEL_STYLE = f"font-size: 10px; color: {ds.MAIN_CAPTION};"
-VALUE_STYLE = f"font-size: 14px; font-weight: bold; color: {ds.PRIMARY};"
+LABEL_STYLE = f"color: {ds.MAIN_CAPTION}; {header.LABEL_FONT}"
+VALUE_STYLE = f"color: {ds.PRIMARY}; {header.VALUE_FONT}"
 LABEL_PROPERTY = "muted"
 VALUE_PROPERTY = "heading"
 

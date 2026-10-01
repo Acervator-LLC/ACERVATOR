@@ -79,6 +79,8 @@
   var RULE_W = "rule_w_px";
   var COLUMN_SPACING = "column_spacing_px";
   var DOT_ALIGN = "dot_align";
+  var COLUMN_ALIGN = "column_align";
+  var COLUMN_STRETCH = "column_stretch";
   var ALIGN = "align";
 
   var KIND = "kind";
@@ -109,6 +111,11 @@
   var COLUMN_PART = "column";
   var LABEL_PART = "column-label";
   var VALUE_PART = "column-value";
+  var FIT = "fit";
+  var FIT_ATTR = "data-fit";
+  var FIT_ON = "1";
+  var VALUE_FONT_PX = "value_font_px";
+  var VALUE_FONT_MIN_PX = "value_font_min_px";
   var DOT_PART = "column-dot";
   var SEPARATOR_PART = "separator";
   var SPACER_PART = "spacer";
@@ -153,6 +160,7 @@
   var CENTRE = "center";
   var FLEX_AUTO = "1 1 auto";
   var NO_SHRINK = "0 0 auto";
+  var ZERO_WIDTH = "0";
 
   var PADDING_SIDES = ["paddingLeft", "paddingTop", "paddingRight", "paddingBottom"];
 
@@ -561,9 +569,16 @@
     var column = isPlainObject(props.column) ? props.column : {};
     var layout = props.layout;
     var span = dotSpan();
+    var columnStyle = boxStyle(layout, COLUMN_FLOW, COLUMN_MARGINS, COLUMN_SPACING);
+    withAlign(columnStyle, layout, COLUMN_ALIGN);
+    // One share of the row each, so the eight columns sit at one pitch.
+    if (owns(layout, COLUMN_STRETCH)) {
+      columnStyle.flex = String(layout[COLUMN_STRETCH]);
+      columnStyle.minWidth = ZERO_WIDTH;
+    }
     var columnProps = {
       className: HOST_CLASS,
-      style: boxStyle(layout, COLUMN_FLOW, COLUMN_MARGINS, COLUMN_SPACING)
+      style: columnStyle
     };
     columnProps[PART_ATTR] = COLUMN_PART;
     columnProps[KEY_ATTR] = text(column[KEY]);
@@ -582,6 +597,9 @@
       title: label(column[TOOLTIP])
     };
     amountProps[PART_ATTR] = VALUE_PART;
+    if (column[FIT] === true) {
+      amountProps[FIT_ATTR] = FIT_ON;
+    }
 
     var dot = objectField(column, DOT);
     var dotProps = { className: HOST_CLASS, style: withAlign({}, layout, DOT_ALIGN) };
@@ -1085,11 +1103,39 @@
   }
 
   // `flushSync` makes the document current before `draw` returns.
-  function draw(target, node) {
+  // A money amount wider than its column's share is drawn a step smaller,
+  // down to `value_font_min_px`, so a whole figure is never cut.
+  function fitValues(target, model) {
+    var layout = objectField(model, LAYOUT);
+    var declared = Number(layout[VALUE_FONT_PX]);
+    var floor = Number(layout[VALUE_FONT_MIN_PX]);
+    if (!(declared > 0) || !(floor > 0) || floor > declared) {
+      return 0;
+    }
+    var shrunk = 0;
+    var marked = '[' + FIT_ATTR + '="' + FIT_ON + '"]';
+    var nodes = target.querySelectorAll(marked);
+    Array.prototype.forEach.call(nodes, function (node) {
+      var room = node.parentNode === null ? 0 : node.parentNode.clientWidth;
+      var size = declared;
+      node.style.fontSize = String(size) + PX_UNIT;
+      while (size > floor && room > 0 && node.scrollWidth > room) {
+        size -= 1;
+        node.style.fontSize = String(size) + PX_UNIT;
+      }
+      if (size !== declared) {
+        shrunk += 1;
+      }
+    });
+    return shrunk;
+  }
+
+  function draw(target, node, model) {
     var root = rootFor(target);
     global.ReactDOM.flushSync(function () {
       root.render(node);
     });
+    fitValues(target, model);
     return target;
   }
 
@@ -1098,13 +1144,14 @@
     if (!isPlainObject(payload)) {
       payload = held === null ? null : held.model;
     }
-    return draw(target, element(Strip, { model: payload }));
+    return draw(target, element(Strip, { model: payload }), payload);
   }
 
   // Every target already drawn into, redrawn from the state now held.
   function redraw() {
     roots.forEach(function (pair) {
-      draw(pair.node, element(Strip, { model: held === null ? null : held.model }));
+      var payload = held === null ? null : held.model;
+      draw(pair.node, element(Strip, { model: payload }), payload);
     });
   }
 
