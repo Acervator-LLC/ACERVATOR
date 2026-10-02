@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "generated_at": "2026-08-02T02:07:09+00:00",
+  "generated_at": "2026-10-02T14:27:17+00:00",
   "tablets": [
     {
       "asset": "00",
@@ -13,7 +13,8 @@
       "first_ts_ms": 1775002200000,
       "last_ts_ms": 1785608400000,
       "fetched_at": "2026-08-01T18:37:45+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775002200000
     },
     {
       "asset": "1INCH",
@@ -26,7 +27,8 @@
       "first_ts_ms": 1775010000000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T18:38:49+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775010000000
     },
     {
       "asset": "2Z",
@@ -39,7 +41,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T18:39:55+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "A8",
@@ -52,7 +55,8 @@
       "first_ts_ms": 1775001900000,
       "last_ts_ms": 1785608700000,
       "fetched_at": "2026-08-01T18:41:00+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001900000
     },
     {
       "asset": "AAVE",
@@ -65,7 +69,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T18:42:06+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "ABT",
@@ -78,7 +83,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-01T18:43:13+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "ACH",
@@ -91,7 +97,8 @@
       "first_ts_ms": 1775002200000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T18:44:19+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775002200000
     },
     {
       "asset": "ACS",
@@ -104,7 +111,8 @@
       "first_ts_ms": 1775002200000,
       "last_ts_ms": 1785607200000,
       "fetched_at": "2026-08-01T18:45:25+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775002200000
     },
     {
       "asset": "ADA",
@@ -112,12 +120,13 @@
       "timeframe": "5m",
       "year": 2026,
       "file": "ADA_5m_2026_coinbase.json",
-      "checksum_sha256": "d2f34c90968af106f1e845d5d3b31d68a1ece816027c4bd63a275f65776dc939",
-      "candle_count": 61181,
+      "checksum_sha256": "7e89d0ea4229ceb6e43e710619bf854eba96171912ffefb654ba284cfb1b46af",
+      "candle_count": 78986,
       "first_ts_ms": 1767225900000,
-      "last_ts_ms": 1785609300000,
-      "fetched_at": "2026-08-01T18:46:14+00:00",
-      "source": "coinbase_advanced_trade_candles_FIVE_MINUTE"
+      "last_ts_ms": 1790950800000,
+      "fetched_at": "2026-10-02T14:27:06+00:00",
+      "source": "coinbase_advanced_trade_candles_FIVE_MINUTE",
+      "listed_at_ms": 1767225900000
     },
     {
       "asset": "AERGO",
@@ -130,7 +139,8 @@
       "first_ts_ms": 1775005200000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T18:47:03+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775005200000
     },
     {
       "asset": "AERO",
@@ -138,12 +148,13 @@
       "timeframe": "5m",
       "year": 2026,
       "file": "AERO_5m_2026_coinbase.json",
-      "checksum_sha256": "8473aa0fb9f489ac2c24653cebe4b36ed327fdaaebdd9bb0d837631058605e1d",
-      "candle_count": 35257,
+      "checksum_sha256": "9fd1f072c96925de4a6328fc513f3074ebdcb3a7d1b480117375f67580f313f1",
+      "candle_count": 52521,
       "first_ts_ms": 1775001600000,
-      "last_ts_ms": 1785609300000,
-      "fetched_at": "2026-08-01T18:48:12+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "last_ts_ms": 1790950800000,
+      "fetched_at": "2026-10-02T14:25:18+00:00",
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "AGLD",
@@ -151,12 +162,13 @@
       "timeframe": "5m",
       "year": 2026,
       "file": "AGLD_5m_2026_coinbase.json",
-      "checksum_sha256": "2fc7eb3f3b29560c5da688bcaf1ac62c901271b37f0c6cd9d44612252970f6be",
-      "candle_count": 7916,
+      "checksum_sha256": "5e3b7111ea321b6edf9ed658d57362b44f31c9a4a8973901243321d537ce5412",
+      "candle_count": 10940,
       "first_ts_ms": 1775002200000,
-      "last_ts_ms": 1785609000000,
-      "fetched_at": "2026-08-01T18:49:19+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "last_ts_ms": 1790949600000,
+      "fetched_at": "2026-10-02T14:26:58+00:00",
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775002200000
     },
     {
       "asset": "AI",
@@ -169,7 +181,8 @@
       "first_ts_ms": 1777493700000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T18:50:25+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1777493700000
     },
     {
       "asset": "AIOZ",
@@ -182,7 +195,8 @@
       "first_ts_ms": 1775002500000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T18:51:31+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775002500000
     },
     {
       "asset": "AKT",
@@ -195,7 +209,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T18:52:38+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "ALCX",
@@ -208,7 +223,8 @@
       "first_ts_ms": 1775001900000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-01T18:53:46+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001900000
     },
     {
       "asset": "ALEO",
@@ -221,7 +237,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785597600000,
       "fetched_at": "2026-08-01T18:54:53+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "ALEPH",
@@ -234,7 +251,8 @@
       "first_ts_ms": 1775002200000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T18:56:00+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775002200000
     },
     {
       "asset": "ALGO",
@@ -247,7 +265,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T18:57:07+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "ALICE",
@@ -260,7 +279,8 @@
       "first_ts_ms": 1775002200000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-01T18:58:13+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775002200000
     },
     {
       "asset": "ALLO",
@@ -268,12 +288,13 @@
       "timeframe": "5m",
       "year": 2026,
       "file": "ALLO_5m_2026_coinbase.json",
-      "checksum_sha256": "5a0e79f4b273c1a985e5da9bfb812e8c82af0b39876de856cbca8129c3db69a5",
-      "candle_count": 34703,
+      "checksum_sha256": "589230a2cc2382a24fab701f1e94ad57c6c8ea73a88b7ea577653112aedea400",
+      "candle_count": 47201,
       "first_ts_ms": 1767225900000,
-      "last_ts_ms": 1785609300000,
-      "fetched_at": "2026-08-01T18:59:02+00:00",
-      "source": "coinbase_advanced_trade_candles_FIVE_MINUTE"
+      "last_ts_ms": 1790950800000,
+      "fetched_at": "2026-10-02T14:24:23+00:00",
+      "source": "coinbase_advanced_trade_candles_FIVE_MINUTE",
+      "listed_at_ms": 1767225900000
     },
     {
       "asset": "ALT",
@@ -286,7 +307,8 @@
       "first_ts_ms": 1775005200000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-01T18:59:51+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775005200000
     },
     {
       "asset": "AMP",
@@ -299,7 +321,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785608400000,
       "fetched_at": "2026-08-01T19:00:57+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "ANKR",
@@ -312,7 +335,8 @@
       "first_ts_ms": 1775001900000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-01T19:02:04+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001900000
     },
     {
       "asset": "APE",
@@ -325,7 +349,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-01T19:03:11+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "API3",
@@ -338,7 +363,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T19:04:16+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "APR",
@@ -351,7 +377,8 @@
       "first_ts_ms": 1775001900000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T19:05:24+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001900000
     },
     {
       "asset": "APT",
@@ -364,7 +391,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T19:06:32+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "ARB",
@@ -377,7 +405,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T19:07:39+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "ARKM",
@@ -390,7 +419,8 @@
       "first_ts_ms": 1775003700000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-01T19:08:46+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775003700000
     },
     {
       "asset": "ARPA",
@@ -403,7 +433,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785604800000,
       "fetched_at": "2026-08-01T19:09:51+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "ARX",
@@ -416,7 +447,8 @@
       "first_ts_ms": 1782131100000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T19:10:57+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1782131100000
     },
     {
       "asset": "ASM",
@@ -429,7 +461,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-01T19:12:02+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "AST",
@@ -442,7 +475,8 @@
       "first_ts_ms": 1775003700000,
       "last_ts_ms": 1785607200000,
       "fetched_at": "2026-08-01T19:13:08+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775003700000
     },
     {
       "asset": "ASTER",
@@ -455,7 +489,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-01T19:14:13+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "ATH",
@@ -468,7 +503,8 @@
       "first_ts_ms": 1775001900000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T19:15:20+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001900000
     },
     {
       "asset": "ATOM",
@@ -481,7 +517,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T19:16:29+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "AUCTION",
@@ -494,7 +531,8 @@
       "first_ts_ms": 1775009400000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-01T19:17:37+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775009400000
     },
     {
       "asset": "AUDD",
@@ -507,7 +545,8 @@
       "first_ts_ms": 1775005500000,
       "last_ts_ms": 1785597300000,
       "fetched_at": "2026-08-01T19:18:42+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775005500000
     },
     {
       "asset": "AUDIO",
@@ -520,7 +559,8 @@
       "first_ts_ms": 1775005800000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-01T19:19:16+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775005800000
     },
     {
       "asset": "AURORA",
@@ -533,7 +573,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-01T19:20:22+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "AVAX",
@@ -546,7 +587,8 @@
       "first_ts_ms": 1767225600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T19:21:12+00:00",
-      "source": "coinbase_advanced_trade_candles_FIVE_MINUTE"
+      "source": "coinbase_advanced_trade_candles_FIVE_MINUTE",
+      "listed_at_ms": 1767225600000
     },
     {
       "asset": "AVNT",
@@ -559,7 +601,8 @@
       "first_ts_ms": 1775002800000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T19:22:02+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775002800000
     },
     {
       "asset": "AVT",
@@ -572,7 +615,8 @@
       "first_ts_ms": 1775005500000,
       "last_ts_ms": 1785600000000,
       "fetched_at": "2026-08-01T19:23:10+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775005500000
     },
     {
       "asset": "AWE",
@@ -585,7 +629,8 @@
       "first_ts_ms": 1775010000000,
       "last_ts_ms": 1785602700000,
       "fetched_at": "2026-08-01T19:24:15+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775010000000
     },
     {
       "asset": "AXL",
@@ -598,7 +643,8 @@
       "first_ts_ms": 1775003100000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T19:25:22+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775003100000
     },
     {
       "asset": "AXS",
@@ -611,7 +657,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T19:26:30+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "AZTEC",
@@ -624,7 +671,8 @@
       "first_ts_ms": 1775002500000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-01T19:27:38+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775002500000
     },
     {
       "asset": "B3",
@@ -637,7 +685,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-01T19:28:47+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "BADGER",
@@ -650,7 +699,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785606300000,
       "fetched_at": "2026-08-01T19:29:54+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "BAL",
@@ -663,7 +713,8 @@
       "first_ts_ms": 1775004600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T19:31:00+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775004600000
     },
     {
       "asset": "BAND",
@@ -676,7 +727,8 @@
       "first_ts_ms": 1775009400000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T19:32:06+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775009400000
     },
     {
       "asset": "BARD",
@@ -689,7 +741,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T19:33:12+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "BASED1",
@@ -702,7 +755,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T19:34:20+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "BAT",
@@ -715,7 +769,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-01T19:35:28+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "BCH",
@@ -728,7 +783,8 @@
       "first_ts_ms": 1767225900000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T19:36:19+00:00",
-      "source": "coinbase_advanced_trade_candles_FIVE_MINUTE"
+      "source": "coinbase_advanced_trade_candles_FIVE_MINUTE",
+      "listed_at_ms": 1767225900000
     },
     {
       "asset": "BEAM",
@@ -741,7 +797,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-01T19:37:08+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "BERA",
@@ -754,7 +811,8 @@
       "first_ts_ms": 1775001900000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T19:38:15+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001900000
     },
     {
       "asset": "BICO",
@@ -762,12 +820,13 @@
       "timeframe": "5m",
       "year": 2026,
       "file": "BICO_5m_2026_coinbase.json",
-      "checksum_sha256": "45803c61db93285226f25c35738c7691858eb18092a8236e00b1038ef775901e",
-      "candle_count": 7975,
+      "checksum_sha256": "ff8e2d31dd06fea541f2afed5798f8dc30a3017450095b5645b68727c3016316",
+      "candle_count": 21070,
       "first_ts_ms": 1775001600000,
-      "last_ts_ms": 1785608100000,
-      "fetched_at": "2026-08-01T19:39:22+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "last_ts_ms": 1790950200000,
+      "fetched_at": "2026-10-02T14:18:03+00:00",
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "BIGTIME",
@@ -780,7 +839,8 @@
       "first_ts_ms": 1775002200000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T19:40:28+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775002200000
     },
     {
       "asset": "BILL",
@@ -788,12 +848,13 @@
       "timeframe": "5m",
       "year": 2026,
       "file": "BILL_5m_2026_coinbase.json",
-      "checksum_sha256": "292ea352f056f2cf4a74b55eec915390ec3135c5e4dd43124353679bd8ad1d6c",
-      "candle_count": 25547,
+      "checksum_sha256": "d6c54bed7bbc7e05fa69e1e9d0b42ed24435a6e8595f9c8075d0af9352d9fd00",
+      "candle_count": 39186,
       "first_ts_ms": 1777901700000,
-      "last_ts_ms": 1785609300000,
-      "fetched_at": "2026-08-01T19:41:18+00:00",
-      "source": "coinbase_advanced_trade_candles_FIVE_MINUTE"
+      "last_ts_ms": 1790950800000,
+      "fetched_at": "2026-10-02T14:24:23+00:00",
+      "source": "coinbase_advanced_trade_candles_FIVE_MINUTE",
+      "listed_at_ms": 1777901700000
     },
     {
       "asset": "BIO",
@@ -801,12 +862,13 @@
       "timeframe": "5m",
       "year": 2026,
       "file": "BIO_5m_2026_coinbase.json",
-      "checksum_sha256": "6b0774c8e4d7fa528fac6ba64e3f53050e195b967c5697be9093695894bf4701",
-      "candle_count": 40749,
+      "checksum_sha256": "7eafa874f8558f4209aca0325a3ddda1cbeeb2dc6c5a09729fb9906943ba672a",
+      "candle_count": 49638,
       "first_ts_ms": 1767225600000,
-      "last_ts_ms": 1785609000000,
-      "fetched_at": "2026-08-01T19:41:51+00:00",
-      "source": "coinbase_advanced_trade_candles_FIVE_MINUTE"
+      "last_ts_ms": 1790950200000,
+      "fetched_at": "2026-10-02T14:24:25+00:00",
+      "source": "coinbase_advanced_trade_candles_FIVE_MINUTE",
+      "listed_at_ms": 1767225600000
     },
     {
       "asset": "BIRB",
@@ -819,7 +881,8 @@
       "first_ts_ms": 1775002500000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-01T19:42:41+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775002500000
     },
     {
       "asset": "BLAST",
@@ -832,7 +895,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-01T19:43:47+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "BLEND",
@@ -845,7 +909,8 @@
       "first_ts_ms": 1777036800000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-01T19:44:53+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1777036800000
     },
     {
       "asset": "BLUR",
@@ -858,7 +923,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-01T19:46:00+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "BLZ",
@@ -871,7 +937,8 @@
       "first_ts_ms": 1775005500000,
       "last_ts_ms": 1785607800000,
       "fetched_at": "2026-08-01T19:47:06+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775005500000
     },
     {
       "asset": "BNB",
@@ -884,7 +951,8 @@
       "first_ts_ms": 1767225600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T19:47:55+00:00",
-      "source": "coinbase_advanced_trade_candles_FIVE_MINUTE"
+      "source": "coinbase_advanced_trade_candles_FIVE_MINUTE",
+      "listed_at_ms": 1767225600000
     },
     {
       "asset": "BNKR",
@@ -897,7 +965,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T19:48:46+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "BNT",
@@ -910,7 +979,8 @@
       "first_ts_ms": 1775003700000,
       "last_ts_ms": 1785607800000,
       "fetched_at": "2026-08-01T19:49:53+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775003700000
     },
     {
       "asset": "BOBA",
@@ -923,7 +993,8 @@
       "first_ts_ms": 1775003700000,
       "last_ts_ms": 1785608400000,
       "fetched_at": "2026-08-01T19:50:59+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775003700000
     },
     {
       "asset": "BOBBOB",
@@ -936,7 +1007,8 @@
       "first_ts_ms": 1775003100000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T19:52:06+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775003100000
     },
     {
       "asset": "BONK",
@@ -944,12 +1016,13 @@
       "timeframe": "5m",
       "year": 2026,
       "file": "BONK_5m_2026_coinbase.json",
-      "checksum_sha256": "cc345f672deb44a9950c560fdf0b33489bce40b6d3d5464a3110178c2f9f392c",
-      "candle_count": 57293,
+      "checksum_sha256": "393efd3babdfd37477e3f55269e64863b76cd9b2d1702e9ca2c57a54ccfd5e87",
+      "candle_count": 72287,
       "first_ts_ms": 1767225600000,
-      "last_ts_ms": 1785609300000,
-      "fetched_at": "2026-08-01T19:52:58+00:00",
-      "source": "coinbase_advanced_trade_candles_FIVE_MINUTE"
+      "last_ts_ms": 1790950800000,
+      "fetched_at": "2026-10-02T14:24:26+00:00",
+      "source": "coinbase_advanced_trade_candles_FIVE_MINUTE",
+      "listed_at_ms": 1767225600000
     },
     {
       "asset": "BREV",
@@ -962,7 +1035,8 @@
       "first_ts_ms": 1775004600000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-01T19:53:47+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775004600000
     },
     {
       "asset": "BTC",
@@ -970,12 +1044,13 @@
       "timeframe": "5m",
       "year": 2026,
       "file": "BTC_5m_2026_coinbase.json",
-      "checksum_sha256": "097701c42003e50b1ba2605aa87dcce61599c96fab3b565dc793ec8b759d5f1c",
-      "candle_count": 61200,
+      "checksum_sha256": "1a409bb1d82ace6a2977472627f6cc8317fc3ac82970523f520460d83449e198",
+      "candle_count": 79005,
       "first_ts_ms": 1767225900000,
-      "last_ts_ms": 1785609300000,
-      "fetched_at": "2026-08-01T19:54:37+00:00",
-      "source": "coinbase_advanced_trade_candles_FIVE_MINUTE"
+      "last_ts_ms": 1790950800000,
+      "fetched_at": "2026-10-02T14:24:28+00:00",
+      "source": "coinbase_advanced_trade_candles_FIVE_MINUTE",
+      "listed_at_ms": 1767225900000
     },
     {
       "asset": "BTRST",
@@ -988,7 +1063,8 @@
       "first_ts_ms": 1775001900000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T19:55:27+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001900000
     },
     {
       "asset": "C98",
@@ -1001,7 +1077,8 @@
       "first_ts_ms": 1775015100000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-01T19:56:33+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775015100000
     },
     {
       "asset": "CAKE",
@@ -1014,7 +1091,8 @@
       "first_ts_ms": 1775002500000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-01T19:57:39+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775002500000
     },
     {
       "asset": "CAP",
@@ -1022,12 +1100,13 @@
       "timeframe": "5m",
       "year": 2026,
       "file": "CAP_5m_2026_coinbase.json",
-      "checksum_sha256": "6d16e2db8cf4f3d06c8f028d1d6fddb76f2903256ed4ec6fef89f9f17580bae7",
-      "candle_count": 9795,
+      "checksum_sha256": "362562196840f84eac96621d960fb0e5832af45645aac2f8189e55b51754e881",
+      "candle_count": 26750,
       "first_ts_ms": 1782475800000,
-      "last_ts_ms": 1785609300000,
-      "fetched_at": "2026-08-01T19:58:45+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "last_ts_ms": 1790950800000,
+      "fetched_at": "2026-10-02T14:24:27+00:00",
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1782475800000
     },
     {
       "asset": "CBETH",
@@ -1040,7 +1119,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T19:59:53+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "CELR",
@@ -1053,7 +1133,8 @@
       "first_ts_ms": 1775005800000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-01T20:01:00+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775005800000
     },
     {
       "asset": "CFG",
@@ -1066,7 +1147,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T20:02:07+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "CGLD",
@@ -1079,7 +1161,8 @@
       "first_ts_ms": 1775003400000,
       "last_ts_ms": 1785608700000,
       "fetched_at": "2026-08-01T20:03:15+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775003400000
     },
     {
       "asset": "CHECK",
@@ -1092,7 +1175,8 @@
       "first_ts_ms": 1775146200000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-01T20:04:21+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775146200000
     },
     {
       "asset": "CHIP",
@@ -1100,12 +1184,13 @@
       "timeframe": "5m",
       "year": 2026,
       "file": "CHIP_5m_2026_coinbase.json",
-      "checksum_sha256": "ccac75301280b789d6e49fa214cb3ce0adaccad0253e7bda15d3b38e71dbe263",
-      "candle_count": 24503,
+      "checksum_sha256": "0b46426ce53b53e725cedd344d23be58ebede98e277251be397f06035dececb9",
+      "candle_count": 38463,
       "first_ts_ms": 1776778500000,
-      "last_ts_ms": 1785609300000,
-      "fetched_at": "2026-08-01T20:05:11+00:00",
-      "source": "coinbase_advanced_trade_candles_FIVE_MINUTE"
+      "last_ts_ms": 1790950800000,
+      "fetched_at": "2026-10-02T14:24:23+00:00",
+      "source": "coinbase_advanced_trade_candles_FIVE_MINUTE",
+      "listed_at_ms": 1776778500000
     },
     {
       "asset": "CHZ",
@@ -1118,7 +1203,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785608700000,
       "fetched_at": "2026-08-01T20:06:01+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "CLANKER",
@@ -1131,7 +1217,8 @@
       "first_ts_ms": 1775002200000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T20:07:09+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775002200000
     },
     {
       "asset": "COMP",
@@ -1144,7 +1231,8 @@
       "first_ts_ms": 1775001900000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T20:08:18+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001900000
     },
     {
       "asset": "COOKIE",
@@ -1157,7 +1245,8 @@
       "first_ts_ms": 1775001900000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T20:09:28+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001900000
     },
     {
       "asset": "CORECHAIN",
@@ -1170,7 +1259,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-01T20:10:35+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "COSMOSDYDX",
@@ -1183,7 +1273,8 @@
       "first_ts_ms": 1775002500000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-01T20:11:42+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775002500000
     },
     {
       "asset": "COTI",
@@ -1196,7 +1287,8 @@
       "first_ts_ms": 1775006400000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T20:12:48+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775006400000
     },
     {
       "asset": "COW",
@@ -1209,7 +1301,8 @@
       "first_ts_ms": 1775001900000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T20:13:56+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001900000
     },
     {
       "asset": "CRO",
@@ -1222,7 +1315,8 @@
       "first_ts_ms": 1775001900000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T20:15:04+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001900000
     },
     {
       "asset": "CRV",
@@ -1235,7 +1329,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T20:16:14+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "CTR",
@@ -1248,7 +1343,8 @@
       "first_ts_ms": 1779801900000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-01T20:17:23+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1779801900000
     },
     {
       "asset": "CTSI",
@@ -1261,7 +1357,8 @@
       "first_ts_ms": 1775003100000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T20:18:30+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775003100000
     },
     {
       "asset": "CTX",
@@ -1274,7 +1371,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785608100000,
       "fetched_at": "2026-08-01T20:19:37+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "CVC",
@@ -1287,7 +1385,8 @@
       "first_ts_ms": 1775003400000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-01T20:20:44+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775003400000
     },
     {
       "asset": "CVX",
@@ -1300,7 +1399,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T20:21:52+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "DASH",
@@ -1313,7 +1413,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T20:23:01+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "DBR",
@@ -1326,7 +1427,8 @@
       "first_ts_ms": 1775004600000,
       "last_ts_ms": 1785606600000,
       "fetched_at": "2026-08-01T20:24:09+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775004600000
     },
     {
       "asset": "DEEP",
@@ -1339,7 +1441,8 @@
       "first_ts_ms": 1775009100000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T20:25:16+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775009100000
     },
     {
       "asset": "DEGEN",
@@ -1352,7 +1455,8 @@
       "first_ts_ms": 1775005500000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-01T20:26:25+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775005500000
     },
     {
       "asset": "DEXT",
@@ -1365,7 +1469,8 @@
       "first_ts_ms": 1775007300000,
       "last_ts_ms": 1785600000000,
       "fetched_at": "2026-08-01T20:27:32+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775007300000
     },
     {
       "asset": "DIA",
@@ -1378,7 +1483,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-01T20:28:39+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "DIEM",
@@ -1391,7 +1497,8 @@
       "first_ts_ms": 1776874800000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-01T20:29:46+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1776874800000
     },
     {
       "asset": "DIMO",
@@ -1404,7 +1511,8 @@
       "first_ts_ms": 1775002800000,
       "last_ts_ms": 1785608400000,
       "fetched_at": "2026-08-01T20:30:54+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775002800000
     },
     {
       "asset": "DNT",
@@ -1417,7 +1525,8 @@
       "first_ts_ms": 1775005200000,
       "last_ts_ms": 1785607500000,
       "fetched_at": "2026-08-01T20:32:01+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775005200000
     },
     {
       "asset": "DOGE",
@@ -1425,12 +1534,13 @@
       "timeframe": "5m",
       "year": 2026,
       "file": "DOGE_5m_2026_coinbase.json",
-      "checksum_sha256": "0348d907c87d57264e159032951a343c5b274bfb89957276d53d3813317431a6",
-      "candle_count": 61198,
+      "checksum_sha256": "033a8d8355d09d69237007150c2b6435dcc42ffb1e8245fec4e8230a417980a5",
+      "candle_count": 79000,
       "first_ts_ms": 1767225900000,
-      "last_ts_ms": 1785609300000,
-      "fetched_at": "2026-08-01T20:32:51+00:00",
-      "source": "coinbase_advanced_trade_candles_FIVE_MINUTE"
+      "last_ts_ms": 1790950800000,
+      "fetched_at": "2026-10-02T14:24:32+00:00",
+      "source": "coinbase_advanced_trade_candles_FIVE_MINUTE",
+      "listed_at_ms": 1767225900000
     },
     {
       "asset": "DOGINME",
@@ -1443,7 +1553,8 @@
       "first_ts_ms": 1775003100000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-01T20:33:43+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775003100000
     },
     {
       "asset": "DOLO",
@@ -1456,7 +1567,8 @@
       "first_ts_ms": 1775003400000,
       "last_ts_ms": 1785606300000,
       "fetched_at": "2026-08-01T20:34:49+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775003400000
     },
     {
       "asset": "DOOD",
@@ -1469,7 +1581,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-01T20:35:56+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "DOT",
@@ -1482,7 +1595,8 @@
       "first_ts_ms": 1767225600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T20:36:46+00:00",
-      "source": "coinbase_advanced_trade_candles_FIVE_MINUTE"
+      "source": "coinbase_advanced_trade_candles_FIVE_MINUTE",
+      "listed_at_ms": 1767225600000
     },
     {
       "asset": "DRIFT",
@@ -1495,7 +1609,8 @@
       "first_ts_ms": 1775002500000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-01T20:37:38+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775002500000
     },
     {
       "asset": "DRV",
@@ -1508,7 +1623,8 @@
       "first_ts_ms": 1779984600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T20:38:46+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1779984600000
     },
     {
       "asset": "EDGE",
@@ -1521,7 +1637,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T20:39:53+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "EDGEX",
@@ -1534,7 +1651,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-01T20:41:00+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "EGLD",
@@ -1547,7 +1665,8 @@
       "first_ts_ms": 1775002200000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-01T20:42:08+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775002200000
     },
     {
       "asset": "EIGEN",
@@ -1560,7 +1679,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-01T20:43:15+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "ELA",
@@ -1573,7 +1693,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T20:44:23+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "ELSA",
@@ -1586,7 +1707,8 @@
       "first_ts_ms": 1775001900000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T20:45:30+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001900000
     },
     {
       "asset": "ENA",
@@ -1594,12 +1716,13 @@
       "timeframe": "5m",
       "year": 2026,
       "file": "ENA_5m_2026_coinbase.json",
-      "checksum_sha256": "a989a0008d759bfaa5acdc376e8c896bf4eb77afdd0f8edfef6896802f3f2b5e",
-      "candle_count": 32749,
+      "checksum_sha256": "5f1d76ab9826dd85fdb6febf16852d390656fc28d293fb928b7e17ee88850c9b",
+      "candle_count": 50503,
       "first_ts_ms": 1775001600000,
-      "last_ts_ms": 1785609300000,
-      "fetched_at": "2026-08-01T20:46:39+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "last_ts_ms": 1790950800000,
+      "fetched_at": "2026-10-02T14:27:07+00:00",
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "ENS",
@@ -1612,7 +1735,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T20:47:49+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "ERA",
@@ -1625,7 +1749,8 @@
       "first_ts_ms": 1775002800000,
       "last_ts_ms": 1785607200000,
       "fetched_at": "2026-08-01T20:48:57+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775002800000
     },
     {
       "asset": "ESP",
@@ -1638,7 +1763,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T20:50:06+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "ETC",
@@ -1651,7 +1777,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T20:51:15+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "ETH",
@@ -1659,12 +1786,13 @@
       "timeframe": "5m",
       "year": 2026,
       "file": "ETH_5m_2026_coinbase.json",
-      "checksum_sha256": "4677c4cc1bb5b7e05e7c182d7cc17bb6e999888b514ccc1e1fa8ebd3791cc2e7",
-      "candle_count": 61199,
+      "checksum_sha256": "699f6d8fe2a7457cafff623beb3c944acf466a71ee48bd521a4598a4ef3200cd",
+      "candle_count": 79004,
       "first_ts_ms": 1767225900000,
-      "last_ts_ms": 1785609300000,
-      "fetched_at": "2026-08-01T20:52:07+00:00",
-      "source": "coinbase_advanced_trade_candles_FIVE_MINUTE"
+      "last_ts_ms": 1790950800000,
+      "fetched_at": "2026-10-02T14:24:28+00:00",
+      "source": "coinbase_advanced_trade_candles_FIVE_MINUTE",
+      "listed_at_ms": 1767225900000
     },
     {
       "asset": "ETHFI",
@@ -1677,7 +1805,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T20:53:00+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "EUL",
@@ -1690,7 +1819,8 @@
       "first_ts_ms": 1775001900000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T20:54:09+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001900000
     },
     {
       "asset": "EURC",
@@ -1703,7 +1833,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T20:55:20+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "FAI",
@@ -1716,7 +1847,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-01T20:55:55+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "FARM",
@@ -1729,7 +1861,8 @@
       "first_ts_ms": 1775001900000,
       "last_ts_ms": 1785607200000,
       "fetched_at": "2026-08-01T20:57:03+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001900000
     },
     {
       "asset": "FARTCOIN",
@@ -1742,7 +1875,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T20:58:14+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "FET",
@@ -1755,7 +1889,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T20:59:25+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "FIDA",
@@ -1768,7 +1903,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-01T21:00:34+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "FIGHT",
@@ -1781,7 +1917,8 @@
       "first_ts_ms": 1775002500000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T21:01:44+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775002500000
     },
     {
       "asset": "FIL",
@@ -1794,7 +1931,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T21:02:53+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "FIS",
@@ -1807,7 +1945,8 @@
       "first_ts_ms": 1775001900000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-01T21:04:02+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001900000
     },
     {
       "asset": "FLOCK",
@@ -1820,7 +1959,8 @@
       "first_ts_ms": 1775001900000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T21:05:13+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001900000
     },
     {
       "asset": "FLOKI",
@@ -1833,7 +1973,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-01T21:06:21+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "FLOW",
@@ -1846,7 +1987,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T21:07:30+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "FLR",
@@ -1859,7 +2001,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T21:08:39+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "FLUID",
@@ -1872,7 +2015,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-01T21:09:50+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "FORT",
@@ -1885,7 +2029,8 @@
       "first_ts_ms": 1775004300000,
       "last_ts_ms": 1785601800000,
       "fetched_at": "2026-08-01T21:10:58+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775004300000
     },
     {
       "asset": "FORTH",
@@ -1898,7 +2043,8 @@
       "first_ts_ms": 1775001900000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T21:12:06+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001900000
     },
     {
       "asset": "FOX",
@@ -1911,7 +2057,8 @@
       "first_ts_ms": 1775003100000,
       "last_ts_ms": 1785607200000,
       "fetched_at": "2026-08-01T21:13:14+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775003100000
     },
     {
       "asset": "FUN1",
@@ -1924,7 +2071,8 @@
       "first_ts_ms": 1775004600000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-01T21:14:23+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775004600000
     },
     {
       "asset": "G",
@@ -1937,7 +2085,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-01T21:15:32+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "GEOD",
@@ -1950,7 +2099,8 @@
       "first_ts_ms": 1782232200000,
       "last_ts_ms": 1785608700000,
       "fetched_at": "2026-08-01T21:16:40+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1782232200000
     },
     {
       "asset": "GFI",
@@ -1963,7 +2113,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785608400000,
       "fetched_at": "2026-08-01T21:17:46+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "GHST",
@@ -1976,7 +2127,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785608100000,
       "fetched_at": "2026-08-01T21:18:53+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "GIGA",
@@ -1989,7 +2141,8 @@
       "first_ts_ms": 1775001900000,
       "last_ts_ms": 1785608100000,
       "fetched_at": "2026-08-01T21:20:02+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001900000
     },
     {
       "asset": "GLM",
@@ -2002,7 +2155,8 @@
       "first_ts_ms": 1775002500000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-01T21:21:09+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775002500000
     },
     {
       "asset": "GMT",
@@ -2015,7 +2169,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785606600000,
       "fetched_at": "2026-08-01T21:22:17+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "GNO",
@@ -2028,7 +2183,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-01T21:23:23+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "GODS",
@@ -2041,7 +2197,8 @@
       "first_ts_ms": 1775001900000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T21:24:30+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001900000
     },
     {
       "asset": "GROVE",
@@ -2049,12 +2206,13 @@
       "timeframe": "5m",
       "year": 2026,
       "file": "GROVE_5m_2026_coinbase.json",
-      "checksum_sha256": "c2d0f58a32aeeec6bb06c28c83c81767a6638b4d2291371b5e749103ef1f79aa",
-      "candle_count": 3826,
+      "checksum_sha256": "5e484dbadcdbf76c92b9bb157fa286f66b8e1df4595942d919120813bb9238a1",
+      "candle_count": 8734,
       "first_ts_ms": 1783374600000,
-      "last_ts_ms": 1785605100000,
-      "fetched_at": "2026-08-01T21:25:37+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "last_ts_ms": 1790950200000,
+      "fetched_at": "2026-10-02T14:20:18+00:00",
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1783374600000
     },
     {
       "asset": "GRT",
@@ -2067,7 +2225,8 @@
       "first_ts_ms": 1775002200000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T21:26:45+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775002200000
     },
     {
       "asset": "GRVT",
@@ -2080,7 +2239,8 @@
       "first_ts_ms": 1785414300000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T21:27:54+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1785414300000
     },
     {
       "asset": "GST",
@@ -2093,7 +2253,8 @@
       "first_ts_ms": 1775002800000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-01T21:29:02+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775002800000
     },
     {
       "asset": "GTC",
@@ -2106,7 +2267,8 @@
       "first_ts_ms": 1775001900000,
       "last_ts_ms": 1785608100000,
       "fetched_at": "2026-08-01T21:30:09+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001900000
     },
     {
       "asset": "GWEI",
@@ -2119,7 +2281,8 @@
       "first_ts_ms": 1775002200000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T21:31:18+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775002200000
     },
     {
       "asset": "HBAR",
@@ -2127,12 +2290,13 @@
       "timeframe": "5m",
       "year": 2026,
       "file": "HBAR_5m_2026_coinbase.json",
-      "checksum_sha256": "83b8358f615ce1ec53908c44c47834881a56af3a4a9d499e66978e30a79c2f80",
-      "candle_count": 61193,
+      "checksum_sha256": "fba4b64ce26b8bfd6de964613ff08038b7cd84ecaa23d515aae13416cdfffef1",
+      "candle_count": 78993,
       "first_ts_ms": 1767225900000,
-      "last_ts_ms": 1785609300000,
-      "fetched_at": "2026-08-01T21:32:11+00:00",
-      "source": "coinbase_advanced_trade_candles_FIVE_MINUTE"
+      "last_ts_ms": 1790950800000,
+      "fetched_at": "2026-10-02T14:25:17+00:00",
+      "source": "coinbase_advanced_trade_candles_FIVE_MINUTE",
+      "listed_at_ms": 1767225900000
     },
     {
       "asset": "HFT",
@@ -2145,7 +2309,8 @@
       "first_ts_ms": 1775003100000,
       "last_ts_ms": 1785607200000,
       "fetched_at": "2026-08-01T21:33:04+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775003100000
     },
     {
       "asset": "HIGH",
@@ -2158,7 +2323,8 @@
       "first_ts_ms": 1775003100000,
       "last_ts_ms": 1785608100000,
       "fetched_at": "2026-08-01T21:34:13+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775003100000
     },
     {
       "asset": "HNT",
@@ -2171,7 +2337,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-01T21:35:21+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "HOME",
@@ -2184,7 +2351,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T21:36:30+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "HONEY",
@@ -2197,7 +2365,8 @@
       "first_ts_ms": 1775001900000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T21:37:40+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001900000
     },
     {
       "asset": "HOPR",
@@ -2210,7 +2379,8 @@
       "first_ts_ms": 1775012400000,
       "last_ts_ms": 1785606900000,
       "fetched_at": "2026-08-01T21:38:48+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775012400000
     },
     {
       "asset": "HYPE",
@@ -2218,12 +2388,13 @@
       "timeframe": "5m",
       "year": 2026,
       "file": "HYPE_5m_2026_coinbase.json",
-      "checksum_sha256": "fd33e8f1e780b26f8aabf85e6a8d0993b2e9d6b82f0edd13a89d167936e35add",
-      "candle_count": 50765,
+      "checksum_sha256": "df5e9f5ae6951df0fd9f0c3570c79b0c1a72ff8158a9450069fa7f926fdc7123",
+      "candle_count": 68265,
       "first_ts_ms": 1770319200000,
-      "last_ts_ms": 1785609300000,
-      "fetched_at": "2026-08-01T21:39:40+00:00",
-      "source": "coinbase_advanced_trade_candles_FIVE_MINUTE"
+      "last_ts_ms": 1790950800000,
+      "fetched_at": "2026-10-02T14:25:02+00:00",
+      "source": "coinbase_advanced_trade_candles_FIVE_MINUTE",
+      "listed_at_ms": 1770319200000
     },
     {
       "asset": "HYPER",
@@ -2236,7 +2407,8 @@
       "first_ts_ms": 1775001900000,
       "last_ts_ms": 1785608400000,
       "fetched_at": "2026-08-01T21:40:31+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001900000
     },
     {
       "asset": "ICNT",
@@ -2249,7 +2421,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T21:41:41+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "ICP",
@@ -2262,7 +2435,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T21:42:52+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "IDEX",
@@ -2275,7 +2449,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785608400000,
       "fetched_at": "2026-08-01T21:44:06+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "ILV",
@@ -2288,7 +2463,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T21:45:16+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "IMU",
@@ -2296,12 +2472,13 @@
       "timeframe": "5m",
       "year": 2026,
       "file": "IMU_5m_2026_coinbase.json",
-      "checksum_sha256": "525ce3df538f73165ac214fa4ae34571cab491c327784bbe202b3a886afc6a9b",
-      "candle_count": 9426,
+      "checksum_sha256": "e608ec513b3b1da0f61ade26fae34fc9ddf32203b4f436f961732bfae12ffdf0",
+      "candle_count": 15736,
       "first_ts_ms": 1775001900000,
-      "last_ts_ms": 1785609300000,
-      "fetched_at": "2026-08-01T21:46:24+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "last_ts_ms": 1790949300000,
+      "fetched_at": "2026-10-02T14:17:49+00:00",
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001900000
     },
     {
       "asset": "IMX",
@@ -2314,7 +2491,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-01T21:47:34+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "INDEX",
@@ -2327,7 +2505,8 @@
       "first_ts_ms": 1775003700000,
       "last_ts_ms": 1785607200000,
       "fetched_at": "2026-08-01T21:48:44+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775003700000
     },
     {
       "asset": "INJ",
@@ -2340,7 +2519,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T21:49:53+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "INV",
@@ -2353,7 +2533,8 @@
       "first_ts_ms": 1775006400000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-01T21:51:04+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775006400000
     },
     {
       "asset": "INX",
@@ -2366,7 +2547,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-01T21:52:12+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "IO",
@@ -2379,7 +2561,8 @@
       "first_ts_ms": 1775001900000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T21:53:22+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001900000
     },
     {
       "asset": "IOTX",
@@ -2392,7 +2575,8 @@
       "first_ts_ms": 1775002500000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T21:54:31+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775002500000
     },
     {
       "asset": "IP",
@@ -2405,7 +2589,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T21:55:40+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "IRYS",
@@ -2418,7 +2603,8 @@
       "first_ts_ms": 1775002200000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T21:56:51+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775002200000
     },
     {
       "asset": "JASMY",
@@ -2431,7 +2617,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T21:58:01+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "JITOSOL",
@@ -2444,7 +2631,8 @@
       "first_ts_ms": 1775011500000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T21:59:10+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775011500000
     },
     {
       "asset": "JTO",
@@ -2457,7 +2645,8 @@
       "first_ts_ms": 1775001900000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T22:00:21+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001900000
     },
     {
       "asset": "JUPITER",
@@ -2470,7 +2659,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T22:01:33+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "KAIO",
@@ -2483,7 +2673,8 @@
       "first_ts_ms": 1778073900000,
       "last_ts_ms": 1785596400000,
       "fetched_at": "2026-08-01T22:02:41+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1778073900000
     },
     {
       "asset": "KAITO",
@@ -2496,7 +2687,8 @@
       "first_ts_ms": 1775001900000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T22:03:50+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001900000
     },
     {
       "asset": "KARRAT",
@@ -2509,7 +2701,8 @@
       "first_ts_ms": 1775007600000,
       "last_ts_ms": 1785603000000,
       "fetched_at": "2026-08-01T22:05:01+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775007600000
     },
     {
       "asset": "KAT",
@@ -2517,12 +2710,13 @@
       "timeframe": "5m",
       "year": 2026,
       "file": "KAT_5m_2026_coinbase.json",
-      "checksum_sha256": "7810e6854519c105f058ec538d2f81b535a0b6bfad0aacf8ea62d7f3f9d30edb",
-      "candle_count": 25032,
+      "checksum_sha256": "db2f80a309305bfd88b6ea1f59f0429bcd4fdb43f433b2601f7746e9ca31de54",
+      "candle_count": 33344,
       "first_ts_ms": 1773840300000,
-      "last_ts_ms": 1785609000000,
-      "fetched_at": "2026-08-01T22:05:53+00:00",
-      "source": "coinbase_advanced_trade_candles_FIVE_MINUTE"
+      "last_ts_ms": 1790950500000,
+      "fetched_at": "2026-10-02T14:24:24+00:00",
+      "source": "coinbase_advanced_trade_candles_FIVE_MINUTE",
+      "listed_at_ms": 1773840300000
     },
     {
       "asset": "KAVA",
@@ -2535,7 +2729,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-01T22:06:44+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "KERNEL",
@@ -2548,7 +2743,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T22:07:53+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "KEYCAT",
@@ -2561,7 +2757,8 @@
       "first_ts_ms": 1775006100000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-01T22:09:01+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775006100000
     },
     {
       "asset": "KITE",
@@ -2574,7 +2771,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-01T22:10:12+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "KMNO",
@@ -2587,7 +2785,8 @@
       "first_ts_ms": 1775003100000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T22:11:22+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775003100000
     },
     {
       "asset": "KNC",
@@ -2600,7 +2799,8 @@
       "first_ts_ms": 1775002200000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-01T22:12:31+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775002200000
     },
     {
       "asset": "KRL",
@@ -2613,7 +2813,8 @@
       "first_ts_ms": 1775001900000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-01T22:13:38+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001900000
     },
     {
       "asset": "KSM",
@@ -2626,7 +2827,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-01T22:14:46+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "KTA",
@@ -2639,7 +2841,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T22:15:54+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "L3",
@@ -2652,7 +2855,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-01T22:17:22+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "LA",
@@ -2665,7 +2869,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-01T22:18:32+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "LAYER",
@@ -2678,7 +2883,8 @@
       "first_ts_ms": 1775004000000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T22:19:40+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775004000000
     },
     {
       "asset": "LCX",
@@ -2691,7 +2897,8 @@
       "first_ts_ms": 1775002200000,
       "last_ts_ms": 1785608100000,
       "fetched_at": "2026-08-01T22:20:50+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775002200000
     },
     {
       "asset": "LDO",
@@ -2704,7 +2911,8 @@
       "first_ts_ms": 1775003100000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-01T22:21:59+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775003100000
     },
     {
       "asset": "LIGHTER",
@@ -2717,7 +2925,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T22:23:13+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "LINEA",
@@ -2730,7 +2939,8 @@
       "first_ts_ms": 1775001900000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-01T22:24:23+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001900000
     },
     {
       "asset": "LINK",
@@ -2738,12 +2948,13 @@
       "timeframe": "5m",
       "year": 2026,
       "file": "LINK_5m_2026_coinbase.json",
-      "checksum_sha256": "88494a6113230239cf09a253992909a2b207e060ca752685cda6f5185289cdf4",
-      "candle_count": 61199,
+      "checksum_sha256": "efcd54f2d2185a8c3c9eab8ce4634115ecf60ddf365a9b39fd53d56625ed9d3b",
+      "candle_count": 79003,
       "first_ts_ms": 1767225900000,
-      "last_ts_ms": 1785609300000,
-      "fetched_at": "2026-08-01T22:25:15+00:00",
-      "source": "coinbase_advanced_trade_candles_FIVE_MINUTE"
+      "last_ts_ms": 1790950800000,
+      "fetched_at": "2026-10-02T14:24:31+00:00",
+      "source": "coinbase_advanced_trade_candles_FIVE_MINUTE",
+      "listed_at_ms": 1767225900000
     },
     {
       "asset": "LMTS",
@@ -2756,7 +2967,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785605700000,
       "fetched_at": "2026-08-01T22:26:07+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "LPT",
@@ -2769,7 +2981,8 @@
       "first_ts_ms": 1775001900000,
       "last_ts_ms": 1785608700000,
       "fetched_at": "2026-08-01T22:27:16+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001900000
     },
     {
       "asset": "LQTY",
@@ -2782,7 +2995,8 @@
       "first_ts_ms": 1775002800000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T22:28:27+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775002800000
     },
     {
       "asset": "LRC",
@@ -2795,7 +3009,8 @@
       "first_ts_ms": 1775001900000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T22:29:37+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001900000
     },
     {
       "asset": "LRDS",
@@ -2808,7 +3023,8 @@
       "first_ts_ms": 1775001900000,
       "last_ts_ms": 1785605400000,
       "fetched_at": "2026-08-01T22:30:46+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001900000
     },
     {
       "asset": "LSETH",
@@ -2816,12 +3032,13 @@
       "timeframe": "5m",
       "year": 2026,
       "file": "LSETH_5m_2026_coinbase.json",
-      "checksum_sha256": "575ab02059a187a7aee99da46d0f89dd48e7803c4974e503df0b104e63a26a6b",
-      "candle_count": 4383,
+      "checksum_sha256": "4997f0a812bc7e57bd8aaec8827d0d7d656ee67c1c474780d00749634b01b613",
+      "candle_count": 6257,
       "first_ts_ms": 1775001600000,
-      "last_ts_ms": 1785609300000,
-      "fetched_at": "2026-08-01T22:31:54+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "last_ts_ms": 1790944500000,
+      "fetched_at": "2026-10-02T14:10:19+00:00",
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "LTC",
@@ -2829,12 +3046,13 @@
       "timeframe": "5m",
       "year": 2026,
       "file": "LTC_5m_2026_coinbase.json",
-      "checksum_sha256": "5a7e94f88be2a07795ab2562557652cc923524cbfbaa78b4ef4ad7df2cd8aef7",
-      "candle_count": 61199,
+      "checksum_sha256": "0ad2349c1d993e2759632c44e6758b34dd382f9e58e8b6b5c491f15c6c687dc9",
+      "candle_count": 79004,
       "first_ts_ms": 1767225900000,
-      "last_ts_ms": 1785609300000,
-      "fetched_at": "2026-08-01T22:32:46+00:00",
-      "source": "coinbase_advanced_trade_candles_FIVE_MINUTE"
+      "last_ts_ms": 1790950800000,
+      "fetched_at": "2026-10-02T14:27:12+00:00",
+      "source": "coinbase_advanced_trade_candles_FIVE_MINUTE",
+      "listed_at_ms": 1767225900000
     },
     {
       "asset": "MAGIC",
@@ -2847,7 +3065,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T22:33:39+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "MAMO",
@@ -2860,7 +3079,8 @@
       "first_ts_ms": 1775004600000,
       "last_ts_ms": 1785605400000,
       "fetched_at": "2026-08-01T22:34:46+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775004600000
     },
     {
       "asset": "MANA",
@@ -2873,7 +3093,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-01T22:35:54+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "MANTLE",
@@ -2886,7 +3107,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T22:37:05+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "MASK",
@@ -2899,7 +3121,8 @@
       "first_ts_ms": 1775005200000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-01T22:38:14+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775005200000
     },
     {
       "asset": "MATH",
@@ -2912,7 +3135,8 @@
       "first_ts_ms": 1775002800000,
       "last_ts_ms": 1785607200000,
       "fetched_at": "2026-08-01T22:39:25+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775002800000
     },
     {
       "asset": "MDT",
@@ -2925,7 +3149,8 @@
       "first_ts_ms": 1775001900000,
       "last_ts_ms": 1785606000000,
       "fetched_at": "2026-08-01T22:40:35+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001900000
     },
     {
       "asset": "ME",
@@ -2938,7 +3163,8 @@
       "first_ts_ms": 1775003400000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-01T22:41:43+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775003400000
     },
     {
       "asset": "MEGA",
@@ -2951,7 +3177,8 @@
       "first_ts_ms": 1777549800000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T22:42:53+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1777549800000
     },
     {
       "asset": "MET",
@@ -2964,7 +3191,8 @@
       "first_ts_ms": 1775001900000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-01T22:44:03+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001900000
     },
     {
       "asset": "META",
@@ -2977,7 +3205,8 @@
       "first_ts_ms": 1780001400000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T22:45:13+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1780001400000
     },
     {
       "asset": "METIS",
@@ -2990,7 +3219,8 @@
       "first_ts_ms": 1775003700000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-01T22:46:21+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775003700000
     },
     {
       "asset": "MEZO",
@@ -3003,7 +3233,8 @@
       "first_ts_ms": 1775052600000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-01T22:47:30+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775052600000
     },
     {
       "asset": "MINA",
@@ -3016,7 +3247,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-01T22:48:40+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "MLN",
@@ -3029,7 +3261,8 @@
       "first_ts_ms": 1775007600000,
       "last_ts_ms": 1785607200000,
       "fetched_at": "2026-08-01T22:49:50+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775007600000
     },
     {
       "asset": "MNDE",
@@ -3042,7 +3275,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785603600000,
       "fetched_at": "2026-08-01T22:51:00+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "MOG",
@@ -3055,7 +3289,8 @@
       "first_ts_ms": 1775003100000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T22:52:08+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775003100000
     },
     {
       "asset": "MON",
@@ -3068,7 +3303,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T22:53:20+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "MOODENG",
@@ -3081,7 +3317,8 @@
       "first_ts_ms": 1775002200000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T22:54:33+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775002200000
     },
     {
       "asset": "MORPHO",
@@ -3094,7 +3331,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T22:55:45+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "MPLX",
@@ -3107,7 +3345,8 @@
       "first_ts_ms": 1775004900000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-01T22:56:54+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775004900000
     },
     {
       "asset": "MSOL",
@@ -3120,7 +3359,8 @@
       "first_ts_ms": 1775023500000,
       "last_ts_ms": 1785606900000,
       "fetched_at": "2026-08-01T22:58:02+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775023500000
     },
     {
       "asset": "NCT",
@@ -3133,7 +3373,8 @@
       "first_ts_ms": 1775004300000,
       "last_ts_ms": 1785606000000,
       "fetched_at": "2026-08-01T22:59:13+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775004300000
     },
     {
       "asset": "NEAR",
@@ -3141,12 +3382,13 @@
       "timeframe": "5m",
       "year": 2026,
       "file": "NEAR_5m_2026_coinbase.json",
-      "checksum_sha256": "4509d9f2a465666048724a22d20ae5352e5fe564c48dae19db1dc5fdc2f93574",
-      "candle_count": 60691,
+      "checksum_sha256": "1c3a3cc78572b6250c218720b5b3b37a8e97607cb85d5cf5a8f69246ca106bf1",
+      "candle_count": 78491,
       "first_ts_ms": 1767225600000,
-      "last_ts_ms": 1785609300000,
-      "fetched_at": "2026-08-01T23:00:07+00:00",
-      "source": "coinbase_advanced_trade_candles_FIVE_MINUTE"
+      "last_ts_ms": 1790950800000,
+      "fetched_at": "2026-10-02T14:25:10+00:00",
+      "source": "coinbase_advanced_trade_candles_FIVE_MINUTE",
+      "listed_at_ms": 1767225600000
     },
     {
       "asset": "NEON",
@@ -3159,7 +3401,8 @@
       "first_ts_ms": 1775001900000,
       "last_ts_ms": 1785608700000,
       "fetched_at": "2026-08-01T23:01:00+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001900000
     },
     {
       "asset": "NEWT",
@@ -3172,7 +3415,8 @@
       "first_ts_ms": 1775001900000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-01T23:02:09+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001900000
     },
     {
       "asset": "NEX",
@@ -3185,7 +3429,8 @@
       "first_ts_ms": 1779290700000,
       "last_ts_ms": 1785607800000,
       "fetched_at": "2026-08-01T23:03:19+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1779290700000
     },
     {
       "asset": "NKN",
@@ -3198,7 +3443,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-01T23:04:30+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "NMR",
@@ -3211,7 +3457,8 @@
       "first_ts_ms": 1775004600000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-01T23:05:41+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775004600000
     },
     {
       "asset": "NOICE",
@@ -3224,7 +3471,8 @@
       "first_ts_ms": 1775001900000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T23:06:51+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001900000
     },
     {
       "asset": "NOM",
@@ -3237,7 +3485,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-01T23:08:03+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "O",
@@ -3250,7 +3499,8 @@
       "first_ts_ms": 1781711700000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T23:09:13+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1781711700000
     },
     {
       "asset": "OCEAN",
@@ -3263,7 +3513,8 @@
       "first_ts_ms": 1775007300000,
       "last_ts_ms": 1785608700000,
       "fetched_at": "2026-08-01T23:10:22+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775007300000
     },
     {
       "asset": "OGN",
@@ -3276,7 +3527,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-01T23:11:33+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "OMNI",
@@ -3289,7 +3541,8 @@
       "first_ts_ms": 1775002500000,
       "last_ts_ms": 1785595200000,
       "fetched_at": "2026-08-01T23:12:42+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775002500000
     },
     {
       "asset": "ONDO",
@@ -3297,12 +3550,13 @@
       "timeframe": "5m",
       "year": 2026,
       "file": "ONDO_5m_2026_coinbase.json",
-      "checksum_sha256": "b8eff7ed6444cd9004d31516190a8b59ccab12b9118b9cea46742ebfa7c21e74",
-      "candle_count": 61187,
+      "checksum_sha256": "bf9268dcc45195007e8f328697148c143a9c05770fcd05a8c288276b02060f75",
+      "candle_count": 78992,
       "first_ts_ms": 1767225900000,
-      "last_ts_ms": 1785609300000,
-      "fetched_at": "2026-08-01T23:13:35+00:00",
-      "source": "coinbase_advanced_trade_candles_FIVE_MINUTE"
+      "last_ts_ms": 1790950800000,
+      "fetched_at": "2026-10-02T14:24:29+00:00",
+      "source": "coinbase_advanced_trade_candles_FIVE_MINUTE",
+      "listed_at_ms": 1767225900000
     },
     {
       "asset": "OP",
@@ -3315,7 +3569,8 @@
       "first_ts_ms": 1775001900000,
       "last_ts_ms": 1785608700000,
       "fetched_at": "2026-08-01T23:14:29+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001900000
     },
     {
       "asset": "OPG",
@@ -3328,7 +3583,8 @@
       "first_ts_ms": 1776774300000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-01T23:15:39+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1776774300000
     },
     {
       "asset": "OPN",
@@ -3341,7 +3597,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785608100000,
       "fetched_at": "2026-08-01T23:16:52+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "ORCA",
@@ -3349,12 +3606,13 @@
       "timeframe": "5m",
       "year": 2026,
       "file": "ORCA_5m_2026_coinbase.json",
-      "checksum_sha256": "07b5e28aeb97b160ccd260c2ee532c10914fc8506b41259332c87dd26f21bc7b",
-      "candle_count": 44259,
+      "checksum_sha256": "8adc00d35a2eca14905b957353fb72f220f8d3f4e3332917e98003f638ad5a99",
+      "candle_count": 53988,
       "first_ts_ms": 1767225600000,
-      "last_ts_ms": 1785609300000,
-      "fetched_at": "2026-08-01T23:17:43+00:00",
-      "source": "coinbase_advanced_trade_candles_FIVE_MINUTE"
+      "last_ts_ms": 1790950800000,
+      "fetched_at": "2026-10-02T14:24:25+00:00",
+      "source": "coinbase_advanced_trade_candles_FIVE_MINUTE",
+      "listed_at_ms": 1767225600000
     },
     {
       "asset": "OSMO",
@@ -3367,7 +3625,8 @@
       "first_ts_ms": 1775004300000,
       "last_ts_ms": 1785605400000,
       "fetched_at": "2026-08-01T23:18:37+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775004300000
     },
     {
       "asset": "OXT",
@@ -3380,7 +3639,8 @@
       "first_ts_ms": 1775002800000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-01T23:19:48+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775002800000
     },
     {
       "asset": "PAX",
@@ -3393,7 +3653,8 @@
       "first_ts_ms": 1775030100000,
       "last_ts_ms": 1785602100000,
       "fetched_at": "2026-08-01T23:20:58+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775030100000
     },
     {
       "asset": "PAXG",
@@ -3406,7 +3667,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T23:22:09+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "PENDLE",
@@ -3419,7 +3681,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T23:23:22+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "PENGU",
@@ -3427,12 +3690,13 @@
       "timeframe": "5m",
       "year": 2026,
       "file": "PENGU_5m_2026_coinbase.json",
-      "checksum_sha256": "acd0e8427612b9a94a00ec1f51732efcaa3ff1e09ea79fc52e7be96f1237847a",
-      "candle_count": 60856,
+      "checksum_sha256": "4974d6b5ef85a81d44ad0eed675c00596f48e3b14ce6229aaa499b7f51f662d6",
+      "candle_count": 78332,
       "first_ts_ms": 1767225600000,
-      "last_ts_ms": 1785609300000,
-      "fetched_at": "2026-08-01T23:24:16+00:00",
-      "source": "coinbase_advanced_trade_candles_FIVE_MINUTE"
+      "last_ts_ms": 1790950800000,
+      "fetched_at": "2026-10-02T14:24:26+00:00",
+      "source": "coinbase_advanced_trade_candles_FIVE_MINUTE",
+      "listed_at_ms": 1767225600000
     },
     {
       "asset": "PEPE",
@@ -3445,7 +3709,8 @@
       "first_ts_ms": 1767225600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T23:24:52+00:00",
-      "source": "coinbase_advanced_trade_candles_FIVE_MINUTE"
+      "source": "coinbase_advanced_trade_candles_FIVE_MINUTE",
+      "listed_at_ms": 1767225600000
     },
     {
       "asset": "PERP",
@@ -3458,7 +3723,8 @@
       "first_ts_ms": 1775002500000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-01T23:25:46+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775002500000
     },
     {
       "asset": "PIRATE",
@@ -3471,7 +3737,8 @@
       "first_ts_ms": 1775003400000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T23:26:57+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775003400000
     },
     {
       "asset": "PLU",
@@ -3484,7 +3751,8 @@
       "first_ts_ms": 1775008500000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T23:28:07+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775008500000
     },
     {
       "asset": "PLUME",
@@ -3497,7 +3765,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T23:29:18+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "PNG",
@@ -3510,7 +3779,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785608400000,
       "fetched_at": "2026-08-01T23:30:30+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "PNUT",
@@ -3523,7 +3793,8 @@
       "first_ts_ms": 1775002800000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-01T23:31:40+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775002800000
     },
     {
       "asset": "POL",
@@ -3536,7 +3807,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T23:32:52+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "POLS",
@@ -3549,7 +3821,8 @@
       "first_ts_ms": 1775004300000,
       "last_ts_ms": 1785608700000,
       "fetched_at": "2026-08-01T23:34:05+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775004300000
     },
     {
       "asset": "POND",
@@ -3562,7 +3835,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785606900000,
       "fetched_at": "2026-08-01T23:35:15+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "POPCAT",
@@ -3575,7 +3849,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T23:36:26+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "POWR",
@@ -3588,7 +3863,8 @@
       "first_ts_ms": 1775003400000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T23:37:36+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775003400000
     },
     {
       "asset": "PRCL",
@@ -3601,7 +3877,8 @@
       "first_ts_ms": 1775001900000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-01T23:38:46+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001900000
     },
     {
       "asset": "PRIME",
@@ -3614,7 +3891,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-01T23:39:56+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "PRL",
@@ -3627,7 +3905,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785608400000,
       "fetched_at": "2026-08-01T23:41:07+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "PRO",
@@ -3640,7 +3919,8 @@
       "first_ts_ms": 1775004900000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-01T23:42:19+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775004900000
     },
     {
       "asset": "PROMPT",
@@ -3653,7 +3933,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T23:43:29+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "PROS",
@@ -3666,7 +3947,8 @@
       "first_ts_ms": 1777386300000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T23:44:41+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1777386300000
     },
     {
       "asset": "PROVE",
@@ -3679,7 +3961,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-01T23:45:52+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "PUMP",
@@ -3687,12 +3970,13 @@
       "timeframe": "5m",
       "year": 2026,
       "file": "PUMP_5m_2026_coinbase.json",
-      "checksum_sha256": "d3bd1fc2af5bd1e13ddddc078d8f14de5220e4f640adaa6d500f759da74470fd",
-      "candle_count": 33468,
+      "checksum_sha256": "607a4f8f81d56e926efe008a55475682366a18f8526b055fd0062267c9cc73fe",
+      "candle_count": 51228,
       "first_ts_ms": 1775001600000,
-      "last_ts_ms": 1785609300000,
-      "fetched_at": "2026-08-01T23:47:04+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "last_ts_ms": 1790950800000,
+      "fetched_at": "2026-10-02T14:25:03+00:00",
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "PUNDIX",
@@ -3705,7 +3989,8 @@
       "first_ts_ms": 1775003100000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-01T23:48:16+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775003100000
     },
     {
       "asset": "PYR",
@@ -3718,7 +4003,8 @@
       "first_ts_ms": 1775005500000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-01T23:49:25+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775005500000
     },
     {
       "asset": "PYTH",
@@ -3731,7 +4017,8 @@
       "first_ts_ms": 1775001900000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T23:50:36+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001900000
     },
     {
       "asset": "QI",
@@ -3744,7 +4031,8 @@
       "first_ts_ms": 1775004600000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-01T23:51:47+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775004600000
     },
     {
       "asset": "QNT",
@@ -3757,7 +4045,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-01T23:52:58+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "RAD",
@@ -3770,7 +4059,8 @@
       "first_ts_ms": 1775013600000,
       "last_ts_ms": 1785597900000,
       "fetched_at": "2026-08-01T23:54:09+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775013600000
     },
     {
       "asset": "RARE",
@@ -3783,7 +4073,8 @@
       "first_ts_ms": 1775004600000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-01T23:55:19+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775004600000
     },
     {
       "asset": "RARI",
@@ -3796,7 +4087,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-01T23:56:29+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "RAVE",
@@ -3804,12 +4096,13 @@
       "timeframe": "5m",
       "year": 2026,
       "file": "RAVE_5m_2026_coinbase.json",
-      "checksum_sha256": "5478d150f988c6dad22e280b9db8f2a163be456ef359b0ef2707cab248e75004",
-      "candle_count": 37833,
+      "checksum_sha256": "d0c300fbe55f5769ece0321c668262672eb4193753452ec7421989fedf5b1ee0",
+      "candle_count": 50380,
       "first_ts_ms": 1770831600000,
-      "last_ts_ms": 1785609300000,
-      "fetched_at": "2026-08-01T23:57:22+00:00",
-      "source": "coinbase_advanced_trade_candles_FIVE_MINUTE"
+      "last_ts_ms": 1790950800000,
+      "fetched_at": "2026-10-02T14:24:23+00:00",
+      "source": "coinbase_advanced_trade_candles_FIVE_MINUTE",
+      "listed_at_ms": 1770831600000
     },
     {
       "asset": "RAY",
@@ -3822,7 +4115,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-01T23:58:16+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "RE",
@@ -3830,12 +4124,13 @@
       "timeframe": "5m",
       "year": 2026,
       "file": "RE_5m_2026_coinbase.json",
-      "checksum_sha256": "92ce4ab4e6e450c17fdf7d841a8db1a35d24116262ebcbaa27407f95a8aa1626",
-      "candle_count": 12519,
+      "checksum_sha256": "33a8c42072a237e5b50a93280489f073f3bae51ab041b8eacaa32dfa9c91ff9a",
+      "candle_count": 25946,
       "first_ts_ms": 1781786400000,
-      "last_ts_ms": 1785609300000,
-      "fetched_at": "2026-08-01T23:59:25+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "last_ts_ms": 1790950800000,
+      "fetched_at": "2026-10-02T14:24:33+00:00",
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1781786400000
     },
     {
       "asset": "RECALL",
@@ -3848,7 +4143,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-02T00:00:34+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "RED",
@@ -3861,7 +4157,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-02T00:01:45+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "RENDER",
@@ -3874,7 +4171,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-02T00:02:56+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "REQ",
@@ -3887,7 +4185,8 @@
       "first_ts_ms": 1775008800000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-02T00:04:09+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775008800000
     },
     {
       "asset": "REZ",
@@ -3900,7 +4199,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-02T00:05:21+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "RLC",
@@ -3913,7 +4213,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-02T00:06:31+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "RLS",
@@ -3926,7 +4227,8 @@
       "first_ts_ms": 1775005200000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-02T00:07:43+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775005200000
     },
     {
       "asset": "RNBW",
@@ -3939,7 +4241,8 @@
       "first_ts_ms": 1775004300000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-02T00:08:55+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775004300000
     },
     {
       "asset": "ROBO",
@@ -3952,7 +4255,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-02T00:10:06+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "ROSE",
@@ -3965,7 +4269,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-02T00:11:17+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "RPL",
@@ -3978,7 +4283,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-02T00:12:28+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "RSC",
@@ -3991,7 +4297,8 @@
       "first_ts_ms": 1775002800000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-02T00:13:38+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775002800000
     },
     {
       "asset": "RSR",
@@ -4004,7 +4311,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-02T00:14:49+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "S",
@@ -4017,7 +4325,8 @@
       "first_ts_ms": 1775001900000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-02T00:16:01+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001900000
     },
     {
       "asset": "SAFE",
@@ -4030,7 +4339,8 @@
       "first_ts_ms": 1775004300000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-02T00:17:13+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775004300000
     },
     {
       "asset": "SAND",
@@ -4043,7 +4353,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-02T00:18:24+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "SAPIEN",
@@ -4056,7 +4367,8 @@
       "first_ts_ms": 1775001900000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-02T00:19:36+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001900000
     },
     {
       "asset": "SD",
@@ -4069,7 +4381,8 @@
       "first_ts_ms": 1775002500000,
       "last_ts_ms": 1785608700000,
       "fetched_at": "2026-08-02T00:20:48+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775002500000
     },
     {
       "asset": "SEI",
@@ -4082,7 +4395,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-02T00:22:00+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "SENT",
@@ -4095,7 +4409,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-02T00:23:13+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "SHDW",
@@ -4108,7 +4423,8 @@
       "first_ts_ms": 1775002200000,
       "last_ts_ms": 1785603900000,
       "fetched_at": "2026-08-02T00:24:24+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775002200000
     },
     {
       "asset": "SHIB",
@@ -4121,7 +4437,8 @@
       "first_ts_ms": 1767225600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-02T00:25:18+00:00",
-      "source": "coinbase_advanced_trade_candles_FIVE_MINUTE"
+      "source": "coinbase_advanced_trade_candles_FIVE_MINUTE",
+      "listed_at_ms": 1767225600000
     },
     {
       "asset": "SHPING",
@@ -4134,7 +4451,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-02T00:26:10+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "SIGN",
@@ -4147,7 +4465,8 @@
       "first_ts_ms": 1776785100000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-02T00:27:19+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1776785100000
     },
     {
       "asset": "SKL",
@@ -4160,7 +4479,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-02T00:28:28+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "SKR",
@@ -4173,7 +4493,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-02T00:29:40+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "SKY",
@@ -4186,7 +4507,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-02T00:30:52+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "SNX",
@@ -4199,7 +4521,8 @@
       "first_ts_ms": 1775004600000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-02T00:32:05+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775004600000
     },
     {
       "asset": "SOL",
@@ -4207,12 +4530,13 @@
       "timeframe": "5m",
       "year": 2026,
       "file": "SOL_5m_2026_coinbase.json",
-      "checksum_sha256": "27dc4d35609420aacd08961c3fdd93c362085173941685523f3b7d9eafaef231",
-      "candle_count": 61199,
+      "checksum_sha256": "fd2f7f37d0a117153daf6ee50fd09d6dcbc9a5e575ffd77220e998771b7de817",
+      "candle_count": 79004,
       "first_ts_ms": 1767225900000,
-      "last_ts_ms": 1785609300000,
-      "fetched_at": "2026-08-02T00:32:59+00:00",
-      "source": "coinbase_advanced_trade_candles_FIVE_MINUTE"
+      "last_ts_ms": 1790950800000,
+      "fetched_at": "2026-10-02T14:24:32+00:00",
+      "source": "coinbase_advanced_trade_candles_FIVE_MINUTE",
+      "listed_at_ms": 1767225900000
     },
     {
       "asset": "SPA",
@@ -4225,7 +4549,8 @@
       "first_ts_ms": 1775003700000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-02T00:33:53+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775003700000
     },
     {
       "asset": "SPELL",
@@ -4238,7 +4563,8 @@
       "first_ts_ms": 1775001900000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-02T00:35:05+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001900000
     },
     {
       "asset": "SPK",
@@ -4246,12 +4572,13 @@
       "timeframe": "5m",
       "year": 2026,
       "file": "SPK_5m_2026_coinbase.json",
-      "checksum_sha256": "272b7853c3a3de112624d2722c19384c33845e89644dd07f95fdd5e86a27d759",
-      "candle_count": 41847,
+      "checksum_sha256": "10cd6d59228a6484c7f673b3cad2d997fb9ad645a7a8dfe223dc032ec48be295",
+      "candle_count": 52751,
       "first_ts_ms": 1767225600000,
-      "last_ts_ms": 1785609300000,
-      "fetched_at": "2026-08-02T00:36:00+00:00",
-      "source": "coinbase_advanced_trade_candles_FIVE_MINUTE"
+      "last_ts_ms": 1790950800000,
+      "fetched_at": "2026-10-02T14:24:25+00:00",
+      "source": "coinbase_advanced_trade_candles_FIVE_MINUTE",
+      "listed_at_ms": 1767225600000
     },
     {
       "asset": "SPX",
@@ -4264,7 +4591,8 @@
       "first_ts_ms": 1775002200000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-02T00:36:55+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775002200000
     },
     {
       "asset": "SQD",
@@ -4277,7 +4605,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-02T00:38:08+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "STG",
@@ -4290,7 +4619,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-02T00:39:23+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "STORJ",
@@ -4303,7 +4633,8 @@
       "first_ts_ms": 1775006700000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-02T00:40:36+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775006700000
     },
     {
       "asset": "STRK",
@@ -4316,7 +4647,8 @@
       "first_ts_ms": 1775001900000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-02T00:41:48+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001900000
     },
     {
       "asset": "STX",
@@ -4329,7 +4661,8 @@
       "first_ts_ms": 1775002200000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-02T00:43:00+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775002200000
     },
     {
       "asset": "SUI",
@@ -4337,12 +4670,13 @@
       "timeframe": "5m",
       "year": 2026,
       "file": "SUI_5m_2026_coinbase.json",
-      "checksum_sha256": "bd6f0869288bb777330833e27ebd040878ce8fc4bcf0e63d9ce0f7c9c38f30d2",
-      "candle_count": 61194,
+      "checksum_sha256": "a375e326cda8f2838799218f4d24379651ebe244f9c22bf61515276875daa447",
+      "candle_count": 78996,
       "first_ts_ms": 1767225900000,
-      "last_ts_ms": 1785609300000,
-      "fetched_at": "2026-08-02T00:43:54+00:00",
-      "source": "coinbase_advanced_trade_candles_FIVE_MINUTE"
+      "last_ts_ms": 1790950800000,
+      "fetched_at": "2026-10-02T14:24:33+00:00",
+      "source": "coinbase_advanced_trade_candles_FIVE_MINUTE",
+      "listed_at_ms": 1767225900000
     },
     {
       "asset": "SUKU",
@@ -4355,7 +4689,8 @@
       "first_ts_ms": 1775002800000,
       "last_ts_ms": 1785608400000,
       "fetched_at": "2026-08-02T00:44:48+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775002800000
     },
     {
       "asset": "SUP",
@@ -4368,7 +4703,8 @@
       "first_ts_ms": 1775007300000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-02T00:45:57+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775007300000
     },
     {
       "asset": "SUPER",
@@ -4381,7 +4717,8 @@
       "first_ts_ms": 1775003700000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-02T00:47:08+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775003700000
     },
     {
       "asset": "SUSHI",
@@ -4394,7 +4731,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-02T00:48:22+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "SWELL",
@@ -4407,7 +4745,8 @@
       "first_ts_ms": 1775003100000,
       "last_ts_ms": 1785603900000,
       "fetched_at": "2026-08-02T00:49:36+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775003100000
     },
     {
       "asset": "SWFTC",
@@ -4420,7 +4759,8 @@
       "first_ts_ms": 1775002200000,
       "last_ts_ms": 1785607800000,
       "fetched_at": "2026-08-02T00:50:49+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775002200000
     },
     {
       "asset": "SXT",
@@ -4433,7 +4773,8 @@
       "first_ts_ms": 1775001900000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-02T00:52:01+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001900000
     },
     {
       "asset": "SYND",
@@ -4446,7 +4787,8 @@
       "first_ts_ms": 1775003400000,
       "last_ts_ms": 1785607200000,
       "fetched_at": "2026-08-02T00:53:13+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775003400000
     },
     {
       "asset": "SYRUP",
@@ -4459,7 +4801,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-02T00:54:26+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "T",
@@ -4472,7 +4815,8 @@
       "first_ts_ms": 1775003400000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-02T00:55:37+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775003400000
     },
     {
       "asset": "TAO",
@@ -4480,12 +4824,13 @@
       "timeframe": "5m",
       "year": 2026,
       "file": "TAO_5m_2026_coinbase.json",
-      "checksum_sha256": "36da34e1d32d32df172ff03c2506cbfe15cd23809aee3e7fbd8ba63d8863dbbe",
-      "candle_count": 61193,
+      "checksum_sha256": "be6a03f46b7cd72c883afad25cce5dd3157d5e10dd6b61a81e2e7a3c76155fe4",
+      "candle_count": 78992,
       "first_ts_ms": 1767225900000,
-      "last_ts_ms": 1785609300000,
-      "fetched_at": "2026-08-02T00:56:32+00:00",
-      "source": "coinbase_advanced_trade_candles_FIVE_MINUTE"
+      "last_ts_ms": 1790950800000,
+      "fetched_at": "2026-10-02T14:24:30+00:00",
+      "source": "coinbase_advanced_trade_candles_FIVE_MINUTE",
+      "listed_at_ms": 1767225900000
     },
     {
       "asset": "TGBP",
@@ -4498,7 +4843,8 @@
       "first_ts_ms": 1776873600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-02T00:57:25+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1776873600000
     },
     {
       "asset": "THQ",
@@ -4511,7 +4857,8 @@
       "first_ts_ms": 1775006100000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-02T00:58:05+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775006100000
     },
     {
       "asset": "TIA",
@@ -4524,7 +4871,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-02T00:59:19+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "TNSR",
@@ -4537,7 +4885,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-02T01:00:33+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "TON",
@@ -4550,7 +4899,8 @@
       "first_ts_ms": 1767225600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-02T01:01:30+00:00",
-      "source": "coinbase_advanced_trade_candles_FIVE_MINUTE"
+      "source": "coinbase_advanced_trade_candles_FIVE_MINUTE",
+      "listed_at_ms": 1767225600000
     },
     {
       "asset": "TOSHI",
@@ -4563,7 +4913,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-02T01:02:26+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "TOWNS",
@@ -4576,7 +4927,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-02T01:03:39+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "TRAC",
@@ -4589,7 +4941,8 @@
       "first_ts_ms": 1775003400000,
       "last_ts_ms": 1785608400000,
       "fetched_at": "2026-08-02T01:04:51+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775003400000
     },
     {
       "asset": "TRB",
@@ -4602,7 +4955,8 @@
       "first_ts_ms": 1775001900000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-02T01:06:04+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001900000
     },
     {
       "asset": "TREE",
@@ -4615,7 +4969,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-02T01:07:16+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "TRIA",
@@ -4628,7 +4983,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-02T01:08:32+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "TROLL",
@@ -4641,7 +4997,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-02T01:09:48+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "TRUMP",
@@ -4654,7 +5011,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-02T01:11:01+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "TRUST",
@@ -4667,7 +5025,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-02T01:12:15+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "TURBO",
@@ -4680,7 +5039,8 @@
       "first_ts_ms": 1775002200000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-02T01:13:27+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775002200000
     },
     {
       "asset": "UMA",
@@ -4693,7 +5053,8 @@
       "first_ts_ms": 1775002500000,
       "last_ts_ms": 1785607200000,
       "fetched_at": "2026-08-02T01:14:41+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775002500000
     },
     {
       "asset": "UNI",
@@ -4706,7 +5067,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-02T01:15:54+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "UP",
@@ -4719,7 +5081,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-02T01:17:08+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "USD1",
@@ -4732,7 +5095,8 @@
       "first_ts_ms": 1775002200000,
       "last_ts_ms": 1785608100000,
       "fetched_at": "2026-08-02T01:18:20+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775002200000
     },
     {
       "asset": "USDS",
@@ -4745,7 +5109,8 @@
       "first_ts_ms": 1775003400000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-02T01:19:32+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775003400000
     },
     {
       "asset": "USDT",
@@ -4758,7 +5123,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-02T01:20:46+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "USELESS",
@@ -4771,7 +5137,8 @@
       "first_ts_ms": 1775002500000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-02T01:22:01+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775002500000
     },
     {
       "asset": "VARA",
@@ -4784,7 +5151,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-02T01:23:14+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "VELO",
@@ -4797,7 +5165,8 @@
       "first_ts_ms": 1775003400000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-02T01:24:26+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775003400000
     },
     {
       "asset": "VET",
@@ -4810,7 +5179,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-02T01:25:38+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "VIRTUAL",
@@ -4823,7 +5193,8 @@
       "first_ts_ms": 1777485600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-02T01:26:51+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1777485600000
     },
     {
       "asset": "VOXEL",
@@ -4836,7 +5207,8 @@
       "first_ts_ms": 1775001900000,
       "last_ts_ms": 1785608400000,
       "fetched_at": "2026-08-02T01:28:04+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001900000
     },
     {
       "asset": "VTHO",
@@ -4849,7 +5221,8 @@
       "first_ts_ms": 1775002500000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-02T01:29:17+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775002500000
     },
     {
       "asset": "VVV",
@@ -4857,12 +5230,13 @@
       "timeframe": "5m",
       "year": 2026,
       "file": "VVV_5m_2026_coinbase.json",
-      "checksum_sha256": "dc51168cb4a42446385331762e7647eabf515fa2ad88df854b9cf3d9217476e3",
-      "candle_count": 58825,
+      "checksum_sha256": "ef8f9567444072a1ac41a3ea447bc6ae2c6f7adab596abe078fb15cee00ef1e5",
+      "candle_count": 76386,
       "first_ts_ms": 1767225600000,
-      "last_ts_ms": 1785609300000,
-      "fetched_at": "2026-08-02T01:30:12+00:00",
-      "source": "coinbase_advanced_trade_candles_FIVE_MINUTE"
+      "last_ts_ms": 1790950800000,
+      "fetched_at": "2026-10-02T14:24:27+00:00",
+      "source": "coinbase_advanced_trade_candles_FIVE_MINUTE",
+      "listed_at_ms": 1767225600000
     },
     {
       "asset": "W",
@@ -4875,7 +5249,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-02T01:31:10+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "WAL",
@@ -4888,7 +5263,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-02T01:32:23+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "WAXL",
@@ -4901,7 +5277,8 @@
       "first_ts_ms": 1775005500000,
       "last_ts_ms": 1785605100000,
       "fetched_at": "2026-08-02T01:33:34+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775005500000
     },
     {
       "asset": "WCT",
@@ -4914,7 +5291,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785608700000,
       "fetched_at": "2026-08-02T01:34:46+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "WELL",
@@ -4927,7 +5305,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785608700000,
       "fetched_at": "2026-08-02T01:35:58+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "WET",
@@ -4940,7 +5319,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-02T01:37:09+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "WIF",
@@ -4953,7 +5333,8 @@
       "first_ts_ms": 1775003400000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-02T01:38:23+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775003400000
     },
     {
       "asset": "WLD",
@@ -4966,7 +5347,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-02T01:39:37+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "WLFI",
@@ -4974,12 +5356,13 @@
       "timeframe": "5m",
       "year": 2026,
       "file": "WLFI_5m_2026_coinbase.json",
-      "checksum_sha256": "5035ae08d992936732e5c9e7242bf12c44e2aa1acf12557f82e9f35a3b3b0de4",
-      "candle_count": 33517,
+      "checksum_sha256": "e6a0fc77fd57b932a96ab31c7bdf2c21fb75e19b5a7fe03669c2b2549af74acc",
+      "candle_count": 49654,
       "first_ts_ms": 1775001600000,
-      "last_ts_ms": 1785609300000,
-      "fetched_at": "2026-08-02T01:40:54+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "last_ts_ms": 1790950800000,
+      "fetched_at": "2026-10-02T14:27:17+00:00",
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "WMTX",
@@ -4992,7 +5375,8 @@
       "first_ts_ms": 1775002500000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-02T01:42:08+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775002500000
     },
     {
       "asset": "WRON",
@@ -5005,7 +5389,8 @@
       "first_ts_ms": 1779121500000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-02T01:43:19+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1779121500000
     },
     {
       "asset": "XAN",
@@ -5018,7 +5403,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-02T01:44:33+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "XCN",
@@ -5031,7 +5417,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785608700000,
       "fetched_at": "2026-08-02T01:45:49+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "XLM",
@@ -5039,12 +5426,13 @@
       "timeframe": "5m",
       "year": 2026,
       "file": "XLM_5m_2026_coinbase.json",
-      "checksum_sha256": "4256a0af4baac4d32d33d7a4dadfba25761fe5e2f6b2c70316d6caa86766b6b9",
-      "candle_count": 61198,
+      "checksum_sha256": "b6fae4ae51d8c2da91dbdf9437ca8fc10c525d426a78c06411e23028ac9d70d7",
+      "candle_count": 79003,
       "first_ts_ms": 1767225900000,
-      "last_ts_ms": 1785609300000,
-      "fetched_at": "2026-08-02T01:46:47+00:00",
-      "source": "coinbase_advanced_trade_candles_FIVE_MINUTE"
+      "last_ts_ms": 1790950800000,
+      "fetched_at": "2026-10-02T14:25:03+00:00",
+      "source": "coinbase_advanced_trade_candles_FIVE_MINUTE",
+      "listed_at_ms": 1767225900000
     },
     {
       "asset": "XPL",
@@ -5057,7 +5445,8 @@
       "first_ts_ms": 1775001900000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-02T01:47:46+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001900000
     },
     {
       "asset": "XRP",
@@ -5065,12 +5454,13 @@
       "timeframe": "5m",
       "year": 2026,
       "file": "XRP_5m_2026_coinbase.json",
-      "checksum_sha256": "77dc859762ddeb31f6393e9a3d7231262f6b1cb2347df006f2884ef715ca23d6",
-      "candle_count": 61199,
+      "checksum_sha256": "2dc00b8e9825f14bc10d911e301ad1429478ff5b5f8206f28e5e02f0500482b3",
+      "candle_count": 79004,
       "first_ts_ms": 1767225900000,
-      "last_ts_ms": 1785609300000,
-      "fetched_at": "2026-08-02T01:48:43+00:00",
-      "source": "coinbase_advanced_trade_candles_FIVE_MINUTE"
+      "last_ts_ms": 1790950800000,
+      "fetched_at": "2026-10-02T14:24:30+00:00",
+      "source": "coinbase_advanced_trade_candles_FIVE_MINUTE",
+      "listed_at_ms": 1767225900000
     },
     {
       "asset": "XSGD",
@@ -5083,7 +5473,8 @@
       "first_ts_ms": 1775003100000,
       "last_ts_ms": 1785592800000,
       "fetched_at": "2026-08-02T01:49:40+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775003100000
     },
     {
       "asset": "XTZ",
@@ -5096,7 +5487,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-02T01:50:22+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "XYO",
@@ -5109,7 +5501,8 @@
       "first_ts_ms": 1775001900000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-02T01:51:35+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001900000
     },
     {
       "asset": "YB",
@@ -5122,7 +5515,8 @@
       "first_ts_ms": 1775002500000,
       "last_ts_ms": 1785594900000,
       "fetched_at": "2026-08-02T01:52:47+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775002500000
     },
     {
       "asset": "YFI",
@@ -5135,7 +5529,8 @@
       "first_ts_ms": 1775002200000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-02T01:54:00+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775002200000
     },
     {
       "asset": "ZAMA",
@@ -5148,7 +5543,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-02T01:55:14+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "ZEC",
@@ -5156,12 +5552,13 @@
       "timeframe": "5m",
       "year": 2026,
       "file": "ZEC_5m_2026_coinbase.json",
-      "checksum_sha256": "722d443db3c5747266d2e0b210de39f76153ae3676df195d29de3c3e479e98fb",
-      "candle_count": 61199,
+      "checksum_sha256": "ad6515d937d072840aad16691131c088f77d27cb575f3123b856313a0cb338ad",
+      "candle_count": 79004,
       "first_ts_ms": 1767225900000,
-      "last_ts_ms": 1785609300000,
-      "fetched_at": "2026-08-02T01:56:10+00:00",
-      "source": "coinbase_advanced_trade_candles_FIVE_MINUTE"
+      "last_ts_ms": 1790950800000,
+      "fetched_at": "2026-10-02T14:24:24+00:00",
+      "source": "coinbase_advanced_trade_candles_FIVE_MINUTE",
+      "listed_at_ms": 1767225900000
     },
     {
       "asset": "ZEN",
@@ -5174,7 +5571,8 @@
       "first_ts_ms": 1775001900000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-02T01:57:06+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001900000
     },
     {
       "asset": "ZETA",
@@ -5187,7 +5585,8 @@
       "first_ts_ms": 1775001900000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-02T01:58:19+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001900000
     },
     {
       "asset": "ZETACHAIN",
@@ -5200,7 +5599,8 @@
       "first_ts_ms": 1775004900000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-02T01:59:32+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775004900000
     },
     {
       "asset": "ZK",
@@ -5213,7 +5613,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-02T02:00:46+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "ZKC",
@@ -5226,7 +5627,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609000000,
       "fetched_at": "2026-08-02T02:02:01+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "ZKP",
@@ -5239,7 +5641,8 @@
       "first_ts_ms": 1775003400000,
       "last_ts_ms": 1785607800000,
       "fetched_at": "2026-08-02T02:03:14+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775003400000
     },
     {
       "asset": "ZORA",
@@ -5252,7 +5655,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-02T02:04:30+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "ZRO",
@@ -5265,7 +5669,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-02T02:05:45+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     },
     {
       "asset": "ZRX",
@@ -5278,7 +5683,8 @@
       "first_ts_ms": 1775001600000,
       "last_ts_ms": 1785609300000,
       "fetched_at": "2026-08-02T02:07:00+00:00",
-      "source": "coinbase_advanced_trade_v3_candles"
+      "source": "coinbase_advanced_trade_v3_candles",
+      "listed_at_ms": 1775001600000
     }
   ]
 }

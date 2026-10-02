@@ -180,7 +180,29 @@ if _HAS_QT:
 
             viz_lay.addLayout(header)
 
-            # register_live_run raises AttributeError: nothing sets _live_rows_layout.
+            self._live_rows_scroll = QScrollArea()
+            self._live_rows_scroll.setWidgetResizable(True)
+            self._live_rows_scroll.setStyleSheet(
+                f"QScrollArea{{border:1px solid {ds.VIZ_PANEL_BORDER};"
+                f"background:{ds.VIZ_SWARM_SURFACE};}}"
+            )
+            self._live_rows_widget = QWidget()
+            self._live_rows_widget.setStyleSheet(f"background:{ds.VIZ_SWARM_SURFACE};")
+            self._live_rows_layout = QVBoxLayout(self._live_rows_widget)
+            self._live_rows_layout.setSpacing(4)
+            self._live_rows_layout.setContentsMargins(4, 4, 4, 4)
+            self._live_rows_empty = QLabel("No live bots registered.")
+            self._live_rows_empty.setStyleSheet(
+                f"color:{ds.TEXT_PLACEHOLDER};font-size:8px;background:transparent;"
+            )
+            self._live_rows_layout.addWidget(self._live_rows_empty)
+            self._live_rows_layout.addStretch()
+            self._live_rows_scroll.setWidget(self._live_rows_widget)
+            self._live_rows_scroll.setMaximumHeight(140)
+            # Hidden while no live row exists, so _grid_layout keeps the tab height.
+            self._live_rows_scroll.setVisible(False)
+            viz_lay.addWidget(self._live_rows_scroll)
+
             self._live_bot_rows: dict = {}
 
             # No scroll area: _grid_layout wraps the locusts across rows.
@@ -1117,6 +1139,7 @@ if _HAS_QT:
 
             if hasattr(self, "_live_rows_empty"):
                 self._live_rows_empty.setVisible(False)
+            self._live_rows_scroll.setVisible(True)
             insert_pos = self._live_rows_layout.count() - 1
             self._live_rows_layout.insertWidget(insert_pos, handle["widget"])
 
@@ -1165,6 +1188,7 @@ if _HAS_QT:
                 h["widget"].deleteLater()
             if not self._live_bot_rows and hasattr(self, "_live_rows_empty"):
                 self._live_rows_empty.setVisible(True)
+                self._live_rows_scroll.setVisible(False)
 
         def _update_sim_summary(self):
             running = sum(1 for b in self._sim_bots if b.get("running"))
@@ -2132,8 +2156,11 @@ if _HAS_QT:
                 self._rebuild_exchange_selector_items()
                 self._refresh_visible_bots()
                 self._refresh_quick_routing_scope()
-            except Exception:  # noqa: S110
-                pass
+            except Exception:
+                logger.exception(
+                    "Bot Swarm refresh step failed; the exchange selector and the"
+                    " quick routing scope hold their previous contents"
+                )
 
 
 __all__ = [
