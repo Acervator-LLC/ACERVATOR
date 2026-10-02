@@ -185,6 +185,8 @@ if _HAS_QT:
             self._stat_positions = StockStatCard("Open Positions")
             self._stat_pdt = StockStatCard("Day Trades (5d)")
             self._stat_settlement = StockStatCard("Unsettled")
+            self._stat_signals = StockStatCard("Signals")
+            self._stat_winrate = StockStatCard("Win Rate")
             for card in [
                 self._stat_pnl,
                 self._stat_trades,
@@ -192,6 +194,8 @@ if _HAS_QT:
                 self._stat_positions,
                 self._stat_pdt,
                 self._stat_settlement,
+                self._stat_signals,
+                self._stat_winrate,
             ]:
                 dashboard.addWidget(card)
             main_layout.addLayout(dashboard)
@@ -593,8 +597,11 @@ if _HAS_QT:
                                 item.setTextAlignment(Qt.AlignCenter)
                                 self._alert_table.setItem(row, col, item)
 
-            except Exception as exc:
-                logger.error("STOCK DASHBOARD: refresh crashed: %s", exc)
+            except Exception:
+                logger.exception(
+                    "STOCK DASHBOARD: refresh crashed; the stat cells, the bot"
+                    " table and the alert table hold their previous values"
+                )
 
         def _log(self, message: str, level: str = "info"):
             """Log to activity panel."""
