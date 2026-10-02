@@ -12,12 +12,22 @@ measure the written PDF.
 from __future__ import annotations
 
 import argparse
+import csv
+import json
 import re
 import sys
+from bisect import bisect_right
+from collections import Counter
 from dataclasses import dataclass
+from datetime import datetime, timezone
+from statistics import median
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, cast
 
+from matplotlib.figure import Figure
+from matplotlib.patches import Rectangle
+from PIL import Image as PilImage
+from PIL import ImageDraw, ImageFont
 from pypdf import PdfReader
 from reportlab.lib.colors import HexColor
 from reportlab.lib.styles import ParagraphStyle
@@ -38,10 +48,17 @@ from reportlab.platypus import (
     TableStyle,
 )
 
-from src.design_system import COLORS, GRID, TYPE, validate_contrast
+from src.design_system import (
+    COLORS,
+    GRID,
+    TYPE,
+    apply_rcparams,
+    plt,
+    validate_contrast,
+)
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Iterator, Sequence
+    from collections.abc import Iterable, Iterator, Mapping, Sequence
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DOCS_DIR = REPO_ROOT / "docs" / "manual"
@@ -1632,6 +1649,649 @@ def verify_count_word(intro: str, total: int) -> tuple[bool, str]:
     return False, f"count word '{found.group(2)}' against {total} parts"
 
 
+EVIDENCE_DIR = REPO_ROOT / "artifacts" / "evidence-input"
+TRANSACTIONS_DIR = EVIDENCE_DIR / "transactions"
+PLACARDS_DIR = EVIDENCE_DIR / "placards"
+TABLETS_DIR = REPO_ROOT / "stone_tablets"
+BASELINE_DAY = datetime(2026, 4, 12, tzinfo=timezone.utc)
+QUOTE_ASSETS = frozenset({"USD", "USDC"})
+BUY_KINDS = frozenset({"Advanced Trade Buy", "Buy"})
+SELL_KINDS = frozenset({"Advanced Trade Sell", "Sell"})
+EXPORT_HEADER_CELL = "Transaction Type"
+PANEL_COLUMNS = 5
+PANEL_ROWS = 2
+PLACARD_COLUMNS = 4
+PLACARD_ROWS = 2
+FIGURE_SIZE = (11.0, 8.0)
+FIGURE_DPI = 150
+DAY_MS = 86_400_000
+WEEK_MS = 604_800_000
+MONDAY_OFFSET_MS = 259_200_000
+LOG_AXIS_SPAN = 8.0
+PLACARD_NAME_TOP = 0.23
+PLACARD_LOGO_RIGHT = 0.66
+PLACARD_CODE_LEFT = 0.72
+PLACARD_CODE_TOP = 0.77
+LIGHT_GROUND_SUM = 382
+
+
+@dataclass(frozen=True)
+class Fill:
+    """One venue fill: the base, the stamp, the side, the price and the quantity."""
+
+    asset: str
+    when: datetime
+    side: str
+    price: float
+    qty: float
+
+
+@dataclass(frozen=True)
+class HodlRow:
+    """One base's accumulated units against the units the same money would hold."""
+
+    label: str
+    units_now: float
+    units_hodl: float
+    net_cash: float
+    baseline_ms: int
+    baseline_price: float
+    final_price: float
+
+
+def parse_money(text: str) -> float:
+    """Return the number a money cell holds, reading a parenthesised value as negative."""
+    cell = (text or "").strip().replace("$", "").replace(",", "")
+    if not cell:
+        return 0.0
+    negative = cell.startswith("(") and cell.endswith(")")
+    if negative:
+        cell = cell[1:-1]
+    try:
+        value = float(cell)
+    except ValueError:
+        return 0.0
+    return -value if negative else value
+
+
+def parse_stamp(text: str) -> datetime:
+    """Return the UTC datetime an export timestamp cell holds."""
+    cell = (text or "").strip().replace(" UTC", "+00:00").replace("Z", "+00:00")
+    when = datetime.fromisoformat(cell)
+    return when if when.tzinfo else when.replace(tzinfo=timezone.utc)
+
+
+def export_rows(src: Path) -> list[dict[str, str]]:
+    """Return the body rows of a venue export, skipping the lines above the header."""
+    lines = src.read_text(encoding="utf-8-sig").splitlines()
+    start = next(
+        (i for i, line in enumerate(lines) if EXPORT_HEADER_CELL in line),
+        0,
+    )
+    return [dict(row) for row in csv.DictReader(lines[start:])]
+
+
+def load_fills(src: Path) -> tuple[list[Fill], Counter[str]]:
+    """Return the Fill list and a Counter keyed by drop cause."""
+    fills: list[Fill] = []
+    drops: Counter[str] = Counter()
+    for row in export_rows(src):
+        kind = row.get(EXPORT_HEADER_CELL, "")
+        asset = (row.get("Asset") or "").strip().upper()
+        if kind in BUY_KINDS:
+            side = "buy"
+        elif kind in SELL_KINDS:
+            side = "sell"
+        else:
+            drops[kind] += 1
+            continue
+        if asset in QUOTE_ASSETS:
+            drops["quote cash leg"] += 1
+            continue
+        fills.append(
+            Fill(
+                asset=asset,
+                when=parse_stamp(row.get("Timestamp", "")),
+                side=side,
+                price=parse_money(row.get("Price at Transaction", "")),
+                qty=abs(parse_money(row.get("Quantity Transacted", ""))),
+            )
+        )
+    return fills, drops
+
+
+def trajectory(
+    fills: Sequence[Fill],
+) -> tuple[list[datetime], list[float], list[float], list[float]]:
+    """Return times and the running buy VWAP, sell VWAP and net units."""
+    ordered = sorted(fills, key=lambda f: f.when)
+    times: list[datetime] = []
+    buy_v: list[float] = []
+    sell_v: list[float] = []
+    held: list[float] = []
+    bn = bd = sn = sd = pos = 0.0
+    for fill in ordered:
+        if fill.side == "buy":
+            bn += fill.price * fill.qty
+            bd += fill.qty
+            pos += fill.qty
+        else:
+            sn += fill.price * fill.qty
+            sd += fill.qty
+            pos -= fill.qty
+        times.append(fill.when)
+        buy_v.append(bn / bd if bd > 0 else float("nan"))
+        sell_v.append(sn / sd if sd > 0 else float("nan"))
+        held.append(pos)
+    return times, buy_v, sell_v, held
+
+
+def base_labels(fills: Sequence[Fill]) -> dict[str, str]:
+    """Return each base's A-label, ranked by fill count and then by first appearance."""
+    counts: Counter[str] = Counter(fill.asset for fill in fills)
+    return {asset: f"A{n:02d}" for n, (asset, _) in enumerate(counts.most_common(), 1)}
+
+
+def export_files() -> list[Path]:
+    """Return every venue export under the evidence input directory."""
+    return sorted(TRANSACTIONS_DIR.glob("*.csv"))
+
+
+def newest_export(indexed: Mapping[Path, list[Fill]]) -> Path:
+    """Return the export whose last fill is the most recent."""
+    return max(indexed, key=lambda p: max(f.when for f in indexed[p]))
+
+
+def label_export(indexed: Mapping[Path, list[Fill]]) -> Path:
+    """Return the oldest export carrying every base the newest export carries."""
+    bases = {fill.asset for fill in indexed[newest_export(indexed)]}
+    whole = [p for p, fills in indexed.items() if {f.asset for f in fills} == bases]
+    return min(whole, key=lambda p: max(f.when for f in indexed[p]))
+
+
+def tablet_candles(asset: str) -> list[list[float]]:
+    """Return one base's five-minute candles from the Stone Tablet store, oldest first."""
+    path = TABLETS_DIR / f"{asset.upper()}_5m_2026_coinbase.json"
+    if not path.is_file():
+        return []
+    body = json.loads(path.read_text(encoding="utf-8"))
+    rows = [[float(cell) for cell in row] for row in body.get("candles", [])]
+    rows.sort(key=lambda row: row[0])
+    return rows
+
+
+def week_start_ms(ts_ms: float) -> int:
+    """Return the Monday 00:00 UTC that opens the week holding ts_ms."""
+    stamp = int(ts_ms)
+    return stamp - (stamp + MONDAY_OFFSET_MS) % WEEK_MS
+
+
+def weekly_bars(rows: Sequence[Sequence[float]]) -> list[list[float]]:
+    """Return one [start, open, high, low, close] bar per Monday-anchored week."""
+    bars: dict[int, list[float]] = {}
+    for row in rows:
+        key = week_start_ms(row[0])
+        bar = bars.get(key)
+        if bar is None:
+            bars[key] = [float(key), row[1], row[2], row[3], row[4]]
+            continue
+        bar[2] = max(bar[2], row[2])
+        bar[3] = min(bar[3], row[3])
+        bar[4] = row[4]
+    return [bars[key] for key in sorted(bars)]
+
+
+def close_at(rows: Sequence[Sequence[float]], ts_ms: int) -> float:
+    """Return the close of the last candle at or before ts_ms, or 0.0 when none is."""
+    index = bisect_right([row[0] for row in rows], float(ts_ms)) - 1
+    return float(rows[index][4]) if index >= 0 else 0.0
+
+
+def hodl_rows(
+    fills: Sequence[Fill],
+    labels: Mapping[str, str],
+    candles: Mapping[str, list[list[float]]],
+) -> list[HodlRow]:
+    """Return each base's held units beside the units its net cash would hold from
+    the baseline day."""
+    units: Counter[str] = Counter()
+    cash: Counter[str] = Counter()
+    for fill in fills:
+        sign = 1.0 if fill.side == "buy" else -1.0
+        units[fill.asset] += sign * fill.qty
+        cash[fill.asset] += sign * fill.price * fill.qty
+    baseline_ms = int(BASELINE_DAY.timestamp() * 1000)
+    out: list[HodlRow] = []
+    for asset, label in sorted(labels.items(), key=lambda pair: pair[1]):
+        rows = candles.get(asset) or []
+        if not rows:
+            continue
+        moment = max(baseline_ms, int(rows[0][0]))
+        opening = close_at(rows, moment)
+        if opening <= 0.0:
+            continue
+        out.append(
+            HodlRow(
+                label=label,
+                units_now=units[asset],
+                units_hodl=cash[asset] / opening,
+                net_cash=cash[asset],
+                baseline_ms=moment,
+                baseline_price=opening,
+                final_price=float(rows[-1][4]),
+            )
+        )
+    return out
+
+
+def market_window(
+    candles: Mapping[str, list[list[float]]],
+) -> tuple[int, int, list[tuple[str, float]]]:
+    """Return the window every base reaching the baseline day shares, and each base's
+    close-to-close change across it."""
+    baseline_ms = int(BASELINE_DAY.timestamp() * 1000)
+    reaching = {
+        asset: rows
+        for asset, rows in candles.items()
+        if rows and rows[0][0] <= baseline_ms
+    }
+    if not reaching:
+        return 0, 0, []
+    start = max(int(rows[0][0]) for rows in reaching.values())
+    end = min(int(rows[-1][0]) for rows in reaching.values())
+    changes: list[tuple[str, float]] = []
+    for asset, rows in reaching.items():
+        first = close_at(rows, start)
+        last = close_at(rows, end)
+        if first > 0.0 and last > 0.0:
+            changes.append((asset, last / first - 1.0))
+    return start, end, changes
+
+
+def panel_pages(labels: Sequence[str], per_page: int) -> list[list[str]]:
+    """Return labels split into pages of at most per_page entries."""
+    return [list(labels[i : i + per_page]) for i in range(0, len(labels), per_page)]
+
+
+def _new_grid(rows: int, columns: int) -> tuple[Figure, Any]:
+    """Return a figure and its axes grid, sized and coloured from the design tokens."""
+    apply_rcparams()
+    figure, axes = plt.subplots(
+        rows,
+        columns,
+        figsize=FIGURE_SIZE,
+        dpi=FIGURE_DPI,
+        facecolor=ink("bg"),
+    )
+    return figure, axes
+
+
+def _flat_axes(axes: Any, total: int) -> list[Any]:
+    """Return the axes grid as one list of length total."""
+    return list(axes.flat)[:total] if hasattr(axes, "flat") else [axes][:total]
+
+
+def _blank(axis: Any) -> None:
+    """Hide every spine, tick and label on one axis."""
+    axis.set_axis_off()
+
+
+def _draw_weekly(axis: Any, label: str, bars: Sequence[Sequence[float]]) -> None:
+    """Draw one base's weekly candles on axis, with a logarithmic price axis on a
+    wide span."""
+    up = ink("win")
+    down = ink("loss")
+    for index, bar in enumerate(bars):
+        colour = up if bar[4] >= bar[1] else down
+        axis.vlines(index, bar[3], bar[2], color=colour, linewidth=0.8)
+        axis.add_patch(
+            Rectangle(
+                (index - 0.3, min(bar[1], bar[4])),
+                0.6,
+                max(abs(bar[4] - bar[1]), 1e-12),
+                facecolor=colour,
+                edgecolor=colour,
+                linewidth=0.4,
+            )
+        )
+    lows = [bar[3] for bar in bars if bar[3] > 0]
+    highs = [bar[2] for bar in bars if bar[2] > 0]
+    if lows and highs and max(highs) / min(lows) > LOG_AXIS_SPAN:
+        axis.set_yscale("log")
+    axis.set_title(label, fontsize=size("cap"), color=ink("ink_strong"))
+    axis.tick_params(labelsize=size("cap") * 0.7, colors=ink("ink_mute"))
+    axis.set_xticks([])
+
+
+def _draw_trace(axis: Any, label: str, rows: Sequence[Sequence[float]]) -> None:
+    """Draw one base's five-minute closes on axis against the candle stamp."""
+    stamps = [datetime.fromtimestamp(row[0] / 1000.0, tz=timezone.utc) for row in rows]
+    closes = [row[4] for row in rows]
+    axis.plot(stamps, closes, color=accessible_series()[0], linewidth=0.5)
+    if closes and min(c for c in closes if c > 0) > 0:
+        if max(closes) / min(c for c in closes if c > 0) > LOG_AXIS_SPAN:
+            axis.set_yscale("log")
+    axis.set_title(label, fontsize=size("cap"), color=ink("ink_strong"))
+    axis.tick_params(labelsize=size("cap") * 0.7, colors=ink("ink_mute"))
+    axis.set_xticks([])
+
+
+def obscured_placard(src: Path, label: str) -> PilImage.Image:
+    """Return the placard in grey with the mark, the asset name and the code square
+    painted out."""
+    card = PilImage.open(src).convert("L").convert("RGB")
+    width, height = card.size
+    ground = card.getpixel((width - 8, int(height * 0.18)))
+    split = int(height * 0.40)
+    for y in range(int(height * 0.20), height):
+        if card.getpixel((4, y)) != ground:
+            split = y
+            break
+    pen = ImageDraw.Draw(card)
+    pen.rectangle((0, 0, int(width * PLACARD_LOGO_RIGHT), split - 1), fill=ground)
+    pen.rectangle((0, int(height * PLACARD_NAME_TOP), width, split - 1), fill=ground)
+    pen.rectangle(
+        (
+            int(width * PLACARD_CODE_LEFT),
+            int(height * PLACARD_CODE_TOP),
+            width,
+            height,
+        ),
+        fill=card.getpixel((8, height - 8)),
+    )
+    light = sum(ground) > LIGHT_GROUND_SUM
+    pen.text(
+        (12, int(height * 0.265)),
+        label,
+        fill=(0, 0, 0) if light else (255, 255, 255),
+        font=ImageFont.truetype("arialbd.ttf", int(height * 0.062)),
+    )
+    return card
+
+
+def _save(figure: Figure, target: Path) -> str:
+    """Write figure to target on the page ground and close it."""
+    target.parent.mkdir(parents=True, exist_ok=True)
+    figure.savefig(target, facecolor=ink("bg"), bbox_inches="tight")
+    plt.close(figure)
+    return "wrote"
+
+
+def _write_weekly(
+    figures_dir: Path,
+    labels: Mapping[str, str],
+    candles: Mapping[str, list[list[float]]],
+) -> list[tuple[str, str]]:
+    """Write the weekly candle grids, ten bases to a page."""
+    ordered = sorted(labels.items(), key=lambda pair: pair[1])
+    pages = panel_pages([a for a, _ in ordered], PANEL_ROWS * PANEL_COLUMNS)
+    out: list[tuple[str, str]] = []
+    for number, page in enumerate(pages, 1):
+        name = f"evidence_weekly_{number:02d}.png"
+        missing = [a for a in page if not candles.get(a)]
+        if missing:
+            out.append((name, f"absent - no tablet for {len(missing)} base(s)"))
+            continue
+        figure, axes = _new_grid(PANEL_ROWS, PANEL_COLUMNS)
+        panes = _flat_axes(axes, PANEL_ROWS * PANEL_COLUMNS)
+        for axis, asset in zip(panes, page):
+            _draw_weekly(axis, labels[asset], weekly_bars(candles[asset]))
+        for axis in panes[len(page) :]:
+            _blank(axis)
+        figure.suptitle(
+            f"Weekly candles, {labels[page[0]]} to {labels[page[-1]]}",
+            fontsize=size("h3"),
+            color=ink("ink_strong"),
+        )
+        out.append((name, _save(figure, figures_dir / name)))
+    return out
+
+
+def _write_traces(
+    figures_dir: Path,
+    labels: Mapping[str, str],
+    candles: Mapping[str, list[list[float]]],
+) -> list[tuple[str, str]]:
+    """Write the five-minute price trace grids, ten bases to a page."""
+    ordered = sorted(labels.items(), key=lambda pair: pair[1])
+    pages = panel_pages([a for a, _ in ordered], PANEL_ROWS * PANEL_COLUMNS)
+    out: list[tuple[str, str]] = []
+    for number, page in enumerate(pages, 1):
+        name = f"evidence_trace_{number:02d}.png"
+        missing = [a for a in page if not candles.get(a)]
+        if missing:
+            out.append((name, f"absent - no tablet for {len(missing)} base(s)"))
+            continue
+        figure, axes = _new_grid(PANEL_ROWS, PANEL_COLUMNS)
+        panes = _flat_axes(axes, PANEL_ROWS * PANEL_COLUMNS)
+        for axis, asset in zip(panes, page):
+            _draw_trace(axis, labels[asset], candles[asset])
+        for axis in panes[len(page) :]:
+            _blank(axis)
+        figure.suptitle(
+            f"Five-minute closes, {labels[page[0]]} to {labels[page[-1]]}",
+            fontsize=size("h3"),
+            color=ink("ink_strong"),
+        )
+        out.append((name, _save(figure, figures_dir / name)))
+    return out
+
+
+def _write_placards(
+    figures_dir: Path,
+    labels: Mapping[str, str],
+) -> list[tuple[str, str]]:
+    """Write the obscured position-card sheets, eight cards to a page."""
+    cards: dict[str, Path] = {}
+    for path in sorted(PLACARDS_DIR.glob("*.png")):
+        ticker = path.name.split("_")[0].upper()
+        if ticker in labels:
+            cards[labels[ticker]] = path
+    per_page = PLACARD_ROWS * PLACARD_COLUMNS
+    pages = panel_pages(sorted(cards), per_page)
+    out: list[tuple[str, str]] = []
+    if not pages:
+        held = sorted(p.name for p in figures_dir.glob("evidence_placards_*.png"))
+        return [
+            (name, f"absent - no position card input under {PLACARDS_DIR.name}")
+            for name in held or ["evidence_placards_01.png"]
+        ]
+    for number, page in enumerate(pages, 1):
+        name = f"evidence_placards_{number:02d}.png"
+        figure, axes = _new_grid(PLACARD_ROWS, PLACARD_COLUMNS)
+        panes = _flat_axes(axes, per_page)
+        for axis, label in zip(panes, page):
+            axis.imshow(obscured_placard(cards[label], label))
+            _blank(axis)
+        for axis in panes[len(page) :]:
+            _blank(axis)
+        figure.suptitle(
+            f"Venue position cards, {page[0]} to {page[-1]}",
+            fontsize=size("h3"),
+            color=ink("ink_strong"),
+        )
+        out.append((name, _save(figure, figures_dir / name)))
+    return out
+
+
+def _write_hodl_units(figures_dir: Path, rows: Sequence[HodlRow]) -> tuple[str, str]:
+    """Write the units held against the units the same money would hold from the
+    baseline day."""
+    name = "evidence_hodl_units.png"
+    priced = [r for r in rows if r.net_cash > 0 and r.units_hodl > 0]
+    if not priced:
+        return (name, "absent - no base carries a baseline price and positive net cash")
+    priced = sorted(priced, key=lambda r: r.units_now / r.units_hodl)
+    baseline_ms = int(BASELINE_DAY.timestamp() * 1000)
+    apply_rcparams()
+    figure, axes = plt.subplots(
+        1,
+        2,
+        figsize=FIGURE_SIZE,
+        dpi=FIGURE_DPI,
+        facecolor=ink("bg"),
+        width_ratios=[4, 1],
+    )
+    ratios = [r.units_now / r.units_hodl for r in priced]
+    axes[0].barh(
+        [r.label for r in priced],
+        ratios,
+        color=[ink("win") if value >= 1.0 else ink("loss") for value in ratios],
+        edgecolor=[
+            ink("accent") if r.baseline_ms > baseline_ms else "none" for r in priced
+        ],
+        linewidth=1.4,
+    )
+    axes[0].axvline(1.0, color=ink("ink_strong"), linewidth=1.0)
+    axes[0].set_xscale("log")
+    axes[0].set_xlabel(
+        "units held now, over the units the same net cash buys at the baseline"
+    )
+    axes[0].tick_params(labelsize=size("cap") * 0.8, colors=ink("ink_mute"))
+    free = [r for r in rows if r.net_cash <= 0]
+    axes[1].barh(
+        [r.label for r in free] or ["none"],
+        [-r.net_cash for r in free] or [0.0],
+        color=ink("accent"),
+    )
+    axes[1].set_xlabel("dollars out above dollars in")
+    axes[1].tick_params(labelsize=size("cap") * 0.8, colors=ink("ink_mute"))
+    figure.suptitle(
+        "Accumulation against buy and hold, in units",
+        fontsize=size("h3"),
+        color=ink("ink_strong"),
+    )
+    return (name, _save(figure, figures_dir / name))
+
+
+def _write_hodl_dollars(figures_dir: Path, rows: Sequence[HodlRow]) -> tuple[str, str]:
+    """Write both positions valued at the same final price."""
+    name = "evidence_hodl_dollars.png"
+    priced = [r for r in rows if r.net_cash > 0 and r.units_hodl > 0]
+    if not priced:
+        return (name, "absent - no base carries a baseline price and positive net cash")
+    priced = sorted(priced, key=lambda r: r.units_now * r.final_price)
+    apply_rcparams()
+    figure, axis = plt.subplots(
+        figsize=FIGURE_SIZE, dpi=FIGURE_DPI, facecolor=ink("bg")
+    )
+    places = list(range(len(priced)))
+    actual = [r.units_now * r.final_price for r in priced]
+    baseline = [r.units_hodl * r.final_price for r in priced]
+    axis.barh(
+        [p + 0.2 for p in places],
+        actual,
+        height=0.4,
+        color=ink("win"),
+        label="held now",
+    )
+    axis.barh(
+        [p - 0.2 for p in places],
+        baseline,
+        height=0.4,
+        color=ink("ink_mute"),
+        label="same money held from 12 April",
+    )
+    axis.set_yticks(places)
+    axis.set_yticklabels([r.label for r in priced])
+    axis.set_xlabel("dollars at the final recorded price")
+    axis.tick_params(labelsize=size("cap") * 0.8, colors=ink("ink_mute"))
+    axis.legend(fontsize=size("cap"), frameon=False)
+    figure.suptitle(
+        "Accumulation against buy and hold, in dollars at one price",
+        fontsize=size("h3"),
+        color=ink("ink_strong"),
+    )
+    return (name, _save(figure, figures_dir / name))
+
+
+def _write_market(
+    figures_dir: Path,
+    labels: Mapping[str, str],
+    candles: Mapping[str, list[list[float]]],
+) -> tuple[str, str]:
+    """Write the per-base change and the equal-weight index across the common window."""
+    name = "evidence_market.png"
+    start, end, changes = market_window(candles)
+    if not changes:
+        return (name, "absent - no tablet covers the common window")
+    changes = sorted(changes, key=lambda pair: pair[1])
+    apply_rcparams()
+    figure, axes = plt.subplots(
+        1, 2, figsize=FIGURE_SIZE, dpi=FIGURE_DPI, facecolor=ink("bg")
+    )
+    colours = [ink("win") if value >= 0 else ink("loss") for _, value in changes]
+    axes[0].barh(
+        [labels[a] for a, _ in changes], [v * 100 for _, v in changes], color=colours
+    )
+    axes[0].axvline(0.0, color=ink("ink_strong"), linewidth=1.0)
+    axes[0].set_xlabel("close-to-close change across the window, percent")
+    axes[0].tick_params(labelsize=size("cap") * 0.8, colors=ink("ink_mute"))
+    days = list(range(start, end + 1, DAY_MS))
+    mean_line: list[float] = []
+    median_line: list[float] = []
+    for day in days:
+        held = sorted(
+            close_at(candles[a], day) / close_at(candles[a], start)
+            for a, _ in changes
+            if close_at(candles[a], start) > 0
+        )
+        mean_line.append(sum(held) / len(held) if held else float("nan"))
+        median_line.append(median(held) if held else float("nan"))
+    stamps = [datetime.fromtimestamp(d / 1000.0, tz=timezone.utc) for d in days]
+    pens = accessible_series()
+    axes[1].plot(stamps, mean_line, color=pens[0], linewidth=1.2, label="equal weight")
+    axes[1].plot(
+        stamps,
+        median_line,
+        color=pens[1],
+        linewidth=1.2,
+        linestyle="--",
+        label="median",
+    )
+    axes[1].axhline(1.0, color=ink("ink_strong"), linewidth=1.0)
+    axes[1].legend(fontsize=size("cap"), frameon=False)
+    axes[1].set_xlabel("the charted bases indexed to the window start")
+    axes[1].tick_params(labelsize=size("cap") * 0.8, colors=ink("ink_mute"))
+    figure.autofmt_xdate()
+    figure.suptitle(
+        "What the market did across the recorded window",
+        fontsize=size("h3"),
+        color=ink("ink_strong"),
+    )
+    return (name, _save(figure, figures_dir / name))
+
+
+def write_evidence_figures(figures_dir: Path) -> list[tuple[str, str]]:
+    """Write every evidence figure into figures_dir and return each name and outcome."""
+    names = [
+        *(f"evidence_weekly_{n:02d}.png" for n in range(1, 5)),
+        *(f"evidence_trace_{n:02d}.png" for n in range(1, 5)),
+        *(f"evidence_placards_{n:02d}.png" for n in range(1, 6)),
+        "evidence_hodl_units.png",
+        "evidence_hodl_dollars.png",
+        "evidence_market.png",
+    ]
+    paths = export_files()
+    if not paths:
+        return [
+            (name, f"absent - no venue export under {TRANSACTIONS_DIR}")
+            for name in names
+        ]
+    indexed = {path: load_fills(path)[0] for path in paths}
+    labels = base_labels(indexed[label_export(indexed)])
+    fills = indexed[newest_export(indexed)]
+    candles = {asset: tablet_candles(asset) for asset in labels}
+    out = _write_weekly(figures_dir, labels, candles)
+    out += _write_traces(figures_dir, labels, candles)
+    out += _write_placards(figures_dir, labels)
+    rows = hodl_rows(fills, labels, candles)
+    out.append(_write_hodl_units(figures_dir, rows))
+    out.append(_write_hodl_dollars(figures_dir, rows))
+    out.append(_write_market(figures_dir, labels, candles))
+    return out
+
+
 def build(docs_dir: Path, figures_dir: Path, output: Path) -> BuildResult:
     """Render the manual under ``docs_dir`` to ``output`` and measure the written PDF."""
     manual = load_manual(docs_dir, figures_dir)
@@ -1663,6 +2323,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--figures-dir", type=Path, default=DEFAULT_FIGURES_DIR)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     args = parser.parse_args(argv)
+
+    for figure, outcome in write_evidence_figures(args.figures_dir):
+        print(console_safe(f"figure {figure}: {outcome}"))
 
     result = build(args.docs_dir, args.figures_dir, args.output)
     for entry in result.entries:
