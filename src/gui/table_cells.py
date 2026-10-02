@@ -12,6 +12,15 @@ import time
 
 from . import design_system as ds
 
+# One definition of the texts the Electron table also draws.
+from .main_tabs.table_cells_surface import (
+    AGED_PRICE_TIP_FORMAT,
+    MANUAL_FIRE_NOOP_OLD_PRICE_SUFFIX,
+    MANUAL_FIRE_NOOP_TIP_FORMAT,
+    STALE_TIP_FORMAT,
+    units_text,
+)
+
 # The Ammo cell reads the engine's thresholds rather than restating them.
 from ..trading.target_bands import (
     MANUAL_FIRE_PCT,
@@ -234,34 +243,27 @@ def _compose_ammo_cell(
     manual_fire_noop = 0 < abs(delta) and manual_fire_will_noop(
         position_val, target_val
     )
-    if manual_fire_noop and not stale:
-        tip = (
-            f"{tip}\n\nMANUAL FIRE WILL NOT ACT: |delta| "
-            f"${abs(delta):,.4f} is inside Manual Fire's own dust "
-            f"band of ${mf_dust:,.2f} (1% of target). The autonomous "
-            f"engine still works this range; the button will no-op."
-        )
-
     text = _mag(delta) if target_val > 0 else "---"
+    old_price = False
     if stale:
         # The cached stats field was used; it never wears a signal colour.
         color = _AMMO_NEUTRAL
         text = f"{text} {_STALE_MARKER}"
-        tip = (
-            f"STALE — price unavailable this tick, so this is the last "
-            f"known position value (${stats_pv:,.4f}), not a current "
-            f"one. Do not fire on it."
-        )
+        tip = STALE_TIP_FORMAT.format(stats_pv=stats_pv)
+        old_price = True
     elif price_age_s is not None and price_age_s > _PRICE_STALE_AFTER_S:
         # The arithmetic ran; the input price is what aged.
         color = _AMMO_NEUTRAL
         text = f"{text} {_STALE_MARKER}"
-        tip = (
-            f"PRICE {price_age_s:,.0f}s OLD — this figure is computed "
-            f"from a price that has not refreshed recently, so the "
-            f"true delta may differ. Manual Fire will act on the "
-            f"CURRENT price, not this one."
+        tip = AGED_PRICE_TIP_FORMAT.format(price_age_s=price_age_s)
+        old_price = True
+    # Appended after all three tip writers, so no branch can drop it.
+    if manual_fire_noop:
+        tip = MANUAL_FIRE_NOOP_TIP_FORMAT.format(
+            tip=tip, magnitude=abs(delta), dust_band=mf_dust
         )
+        if old_price:
+            tip = f"{tip}{MANUAL_FIRE_NOOP_OLD_PRICE_SUFFIX}"
     return {
         "text": text,
         "color": color,
@@ -330,13 +332,6 @@ def _compose_table_target_denom_cell(
         else:
             _color = ds.ERROR
             _sign = ""
-        # Compact units — 5 sig figures below 1, 4 decimals above.
-        if _units >= 1:
-            _units_txt = f"{_units:.4f}"
-        elif _units >= 0.01:
-            _units_txt = f"{_units:.5f}"
-        else:
-            _units_txt = f"{_units:.6f}"
-        return (f"{_units_txt} ({_sign}{_delta:.1f}%)", _color)
+        return (f"{units_text(_units)} ({_sign}{_delta:.1f}%)", _color)
     except Exception:  # noqa: BLE001 - table paint best-effort
         return ("", _neutral)
