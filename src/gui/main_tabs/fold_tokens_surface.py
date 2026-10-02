@@ -59,10 +59,11 @@ TRANCHE_FIRE_BTN_INSET_PX = 8
 ARBITER_COLUMN_INDEX = 10
 ARBITER_COLUMN_HEADER = "Arbiter"
 
-# Five places print an em dash, for five unrelated reasons. Each keeps
-# its own name so a change to one cannot move the other four.
+# Six places print an em dash, for six unrelated reasons. Each keeps
+# its own name so a change to one cannot move the other five.
 ARBITER_NOT_APPLICABLE = "—"
 AGE_UNKNOWN = "—"
+UNITS_UNKNOWN = "—"
 CELL_NOT_APPLICABLE = "—"
 NO_MARK_TEXT = "—"
 RATIO_NO_DENOMINATOR_TEXT = "—  (nothing left to fold back)"
@@ -248,11 +249,13 @@ EXTRACTOR_TOOLTIP_HEADING = "EXTRACTOR TRANCHE — not this bot's inventory."
 EXTRACTOR_TOOLTIP_CHILD_FORMAT = "Child bot: {name} ({bot_id})"
 EXTRACTOR_TOOLTIP_PAIR_FORMAT = "Pair: {pair}"
 EXTRACTOR_TOOLTIP_STATE_FORMAT = "State: {state}"
+# Both take text already formatted, so a refused figure can print the
+# em dash where a float format would raise.
 EXTRACTOR_TOOLTIP_LEASE_FORMAT = (
-    "{base_deployed:.8f} {base_asset} of this bot's asset is leased to "
-    "that Extractor."
+    "{base_deployed} {base_asset} of this bot's asset is leased to that Extractor."
 )
-EXTRACTOR_TOOLTIP_ALT_FORMAT = "Alt units held: {alt_units:.8f}"
+EXTRACTOR_TOOLTIP_ALT_FORMAT = "Alt units held: {alt_units}"
+EXTRACTOR_TOOLTIP_FIGURE_FORMAT = "{figure:.8f}"
 EXTRACTOR_TOOLTIP_MARK_FORMAT = (
     "Last mark: {mark_price:.8f} {base_asset} per alt unit, recorded by "
     "the Extractor's own tick."
@@ -553,7 +556,8 @@ def format_tranche_age(seconds: Any) -> str:
     """Coarse age for a tranche row: ``3d 4h``, ``12m``, or an em dash.
 
     A missing age and a negative one both print the dash. A value that is
-    not a number raises, the way the shipped composer does.
+    not a number raises; every caller admits its seconds through
+    ``finite_number`` first.
     """
     if seconds is None or seconds < 0:
         return AGE_UNKNOWN
@@ -579,14 +583,21 @@ def extractor_tranche_cells(row: dict, now_ts: float) -> list:
 
     ``now_ts`` is passed in. Nothing here reads the clock.
 
-    ``base_deployed`` and ``opened_at`` are read with a plain float, so a
-    stored ``True`` prints one unit and stored text raises. Only
-    ``mark_value_usd`` passes the admission rule. That split is the
-    shipped behaviour and is reproduced rather than corrected.
+    ``opened_at``, ``base_deployed`` and ``mark_value_usd`` all pass the
+    admission rule, so Age, Units and ``USD parked`` each print an em
+    dash on a value that is not a finite number rather than a figure the
+    bot does not hold.
     """
-    opened = float(row.get("opened_at", 0.0) or 0.0)
-    age = format_tranche_age(now_ts - opened) if opened > 0 else AGE_UNKNOWN
-    units = float(row.get("base_deployed", 0.0) or 0.0)
+    opened = finite_number(row.get("opened_at"))
+    age = (
+        format_tranche_age(now_ts - opened)
+        if opened is not None and opened > 0
+        else AGE_UNKNOWN
+    )
+    units = finite_number(row.get("base_deployed"))
+    units_text = (
+        UNITS_CELL_FORMAT.format(units=units) if units is not None else UNITS_UNKNOWN
+    )
     mark_usd = finite_number(row.get("mark_value_usd"))
     usd_text = (
         MARK_USD_FORMAT.format(mark_usd=mark_usd)
@@ -598,7 +609,7 @@ def extractor_tranche_cells(row: dict, now_ts: float) -> list:
     return [
         EXTRACTOR_ROW_INDEX_TEXT,
         age,
-        UNITS_CELL_FORMAT.format(units=units),
+        units_text,
         usd_text,
         CELL_NOT_APPLICABLE,
         CELL_NOT_APPLICABLE,
@@ -614,9 +625,13 @@ def extractor_tranche_tooltip(row: dict) -> str:
 
     Carries what the columns cannot: which child holds the lease, the
     alt-denominated figures, and, where there is no mark, the fact that
-    no mark exists rather than a number standing in for one.
+    no mark exists rather than a number standing in for one. A leased
+    amount or an alt holding that is not a finite number prints an em
+    dash, the same mark the cell beside it shows.
     """
     base_asset = row.get("base_asset", "") or EXTRACTOR_DEFAULT_BASE_ASSET
+    deployed = finite_number(row.get("base_deployed"))
+    alt_units = finite_number(row.get("alt_units"))
     lines = [
         EXTRACTOR_TOOLTIP_HEADING,
         "",
@@ -632,11 +647,19 @@ def extractor_tranche_tooltip(row: dict) -> str:
         ),
         "",
         EXTRACTOR_TOOLTIP_LEASE_FORMAT.format(
-            base_deployed=float(row.get("base_deployed", 0.0) or 0.0),
+            base_deployed=(
+                EXTRACTOR_TOOLTIP_FIGURE_FORMAT.format(figure=deployed)
+                if deployed is not None
+                else UNITS_UNKNOWN
+            ),
             base_asset=base_asset,
         ),
         EXTRACTOR_TOOLTIP_ALT_FORMAT.format(
-            alt_units=float(row.get("alt_units", 0.0) or 0.0)
+            alt_units=(
+                EXTRACTOR_TOOLTIP_FIGURE_FORMAT.format(figure=alt_units)
+                if alt_units is not None
+                else UNITS_UNKNOWN
+            )
         ),
     ]
     mark_price = finite_number(row.get("mark_price_base_per_alt"))
