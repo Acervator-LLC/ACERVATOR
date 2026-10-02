@@ -1667,11 +1667,11 @@ QUOTE_ASSETS = frozenset({"USD", "USDC"})
 BUY_KINDS = frozenset({"Advanced Trade Buy", "Buy"})
 SELL_KINDS = frozenset({"Advanced Trade Sell", "Sell"})
 EXPORT_HEADER_CELL = "Transaction Type"
-PANEL_COLUMNS = 5
-PANEL_ROWS = 2
 PLACARD_COLUMNS = 4
 PLACARD_ROWS = 2
 FIGURE_SIZE = (11.0, 8.0)
+ASSET_FIGURE_SIZE = (9.0, 4.5)
+WEEKLY_TICK_STEP = 8
 FIGURE_DPI = 150
 DAY_MS = 86_400_000
 WEEK_MS = 604_800_000
@@ -2019,7 +2019,6 @@ def _draw_weekly(axis: Any, label: str, bars: Sequence[Sequence[float]]) -> None
         axis.set_yscale("log")
     axis.set_title(label, fontsize=size("cap"), color=ink("ink_strong"))
     axis.tick_params(labelsize=size("cap") * 0.7, colors=ink("ink_mute"))
-    axis.set_xticks([])
 
 
 def _draw_trace(axis: Any, label: str, rows: Sequence[Sequence[float]]) -> None:
@@ -2032,7 +2031,6 @@ def _draw_trace(axis: Any, label: str, rows: Sequence[Sequence[float]]) -> None:
             axis.set_yscale("log")
     axis.set_title(label, fontsize=size("cap"), color=ink("ink_strong"))
     axis.tick_params(labelsize=size("cap") * 0.7, colors=ink("ink_mute"))
-    axis.set_xticks([])
 
 
 def obscured_placard(src: Path, label: str) -> PilImage.Image:
@@ -2076,62 +2074,72 @@ def _save(figure: Figure, target: Path) -> str:
     return "wrote"
 
 
-def _write_weekly(
+def asset_figure_name(kind: str, label: str) -> str:
+    """Return the file name a per-asset figure of ``kind`` carries for ``label``."""
+    return f"{kind}_{label.lower()}.png"
+
+
+def _new_panel() -> tuple[Figure, Any]:
+    """Return a figure holding one axes, sized for a single per-asset chart."""
+    apply_rcparams()
+    figure, axis = plt.subplots(
+        figsize=ASSET_FIGURE_SIZE, dpi=FIGURE_DPI, facecolor=ink("bg")
+    )
+    return figure, axis
+
+
+def _label_week_axis(axis: Any, bars: Sequence[Sequence[float]]) -> None:
+    """Label the weekly x axis with the Monday opening every WEEKLY_TICK_STEP bar."""
+    places = list(range(0, len(bars), WEEKLY_TICK_STEP))
+    axis.set_xticks(places)
+    axis.set_xticklabels(
+        [
+            datetime.fromtimestamp(bars[i][0] / 1000.0, tz=timezone.utc).strftime(
+                "%d %b"
+            )
+            for i in places
+        ]
+    )
+
+
+def _write_asset_weekly(
     figures_dir: Path,
     labels: Mapping[str, str],
     candles: Mapping[str, list[list[float]]],
 ) -> list[tuple[str, str]]:
-    """Write the weekly candle grids, ten bases to a page."""
-    ordered = sorted(labels.items(), key=lambda pair: pair[1])
-    pages = panel_pages([a for a, _ in ordered], PANEL_ROWS * PANEL_COLUMNS)
+    """Write one weekly candle chart per charted base, named for that base's label."""
     out: list[tuple[str, str]] = []
-    for number, page in enumerate(pages, 1):
-        name = f"evidence_weekly_{number:02d}.png"
-        missing = [a for a in page if not candles.get(a)]
-        if missing:
-            out.append((name, f"absent - no tablet for {len(missing)} base(s)"))
+    for asset, label in sorted(labels.items(), key=lambda pair: pair[1]):
+        name = asset_figure_name("weekly", label)
+        rows = candles.get(asset) or []
+        if not rows:
+            out.append((name, f"absent - no tablet row for {label}"))
             continue
-        figure, axes = _new_grid(PANEL_ROWS, PANEL_COLUMNS)
-        panes = _flat_axes(axes, PANEL_ROWS * PANEL_COLUMNS)
-        for axis, asset in zip(panes, page):
-            _draw_weekly(axis, labels[asset], weekly_bars(candles[asset]))
-        for axis in panes[len(page) :]:
-            _blank(axis)
-        figure.suptitle(
-            f"Weekly candles, {labels[page[0]]} to {labels[page[-1]]}",
-            fontsize=size("h3"),
-            color=ink("ink_strong"),
-        )
+        bars = weekly_bars(rows)
+        figure, axis = _new_panel()
+        _draw_weekly(axis, f"{label} weekly candles", bars)
+        _label_week_axis(axis, bars)
         out.append((name, _save(figure, figures_dir / name)))
     return out
 
 
-def _write_traces(
+def _write_asset_traces(
     figures_dir: Path,
     labels: Mapping[str, str],
     candles: Mapping[str, list[list[float]]],
 ) -> list[tuple[str, str]]:
-    """Write the five-minute price trace grids, ten bases to a page."""
-    ordered = sorted(labels.items(), key=lambda pair: pair[1])
-    pages = panel_pages([a for a, _ in ordered], PANEL_ROWS * PANEL_COLUMNS)
+    """Write one five-minute price trace per charted base, named for that base's
+    label."""
     out: list[tuple[str, str]] = []
-    for number, page in enumerate(pages, 1):
-        name = f"evidence_trace_{number:02d}.png"
-        missing = [a for a in page if not candles.get(a)]
-        if missing:
-            out.append((name, f"absent - no tablet for {len(missing)} base(s)"))
+    for asset, label in sorted(labels.items(), key=lambda pair: pair[1]):
+        name = asset_figure_name("trace", label)
+        rows = candles.get(asset) or []
+        if not rows:
+            out.append((name, f"absent - no tablet row for {label}"))
             continue
-        figure, axes = _new_grid(PANEL_ROWS, PANEL_COLUMNS)
-        panes = _flat_axes(axes, PANEL_ROWS * PANEL_COLUMNS)
-        for axis, asset in zip(panes, page):
-            _draw_trace(axis, labels[asset], candles[asset])
-        for axis in panes[len(page) :]:
-            _blank(axis)
-        figure.suptitle(
-            f"Five-minute closes, {labels[page[0]]} to {labels[page[-1]]}",
-            fontsize=size("h3"),
-            color=ink("ink_strong"),
-        )
+        figure, axis = _new_panel()
+        _draw_trace(axis, f"{label} five-minute closes", rows)
+        figure.autofmt_xdate()
         out.append((name, _save(figure, figures_dir / name)))
     return out
 
@@ -2353,8 +2361,8 @@ def _write_market(
 def write_evidence_figures(figures_dir: Path) -> list[tuple[str, str]]:
     """Write every evidence figure into figures_dir and return each name and outcome."""
     names = [
-        *(f"evidence_weekly_{n:02d}.png" for n in range(1, 5)),
-        *(f"evidence_trace_{n:02d}.png" for n in range(1, 5)),
+        asset_figure_name("weekly", "a<NN>"),
+        asset_figure_name("trace", "a<NN>"),
         *(f"evidence_placards_{n:02d}.png" for n in range(1, 6)),
         "evidence_hodl_units.png",
         "evidence_hodl_dollars.png",
@@ -2370,8 +2378,8 @@ def write_evidence_figures(figures_dir: Path) -> list[tuple[str, str]]:
     labels = base_labels(indexed[label_export(indexed)])
     fills = indexed[newest_export(indexed)]
     candles = {asset: tablet_candles(asset) for asset in labels}
-    out = _write_weekly(figures_dir, labels, candles)
-    out += _write_traces(figures_dir, labels, candles)
+    out = _write_asset_weekly(figures_dir, labels, candles)
+    out += _write_asset_traces(figures_dir, labels, candles)
     out += _write_placards(figures_dir, labels)
     rows = hodl_rows(fills, labels, candles)
     out.append(_write_hodl_units(figures_dir, rows))
