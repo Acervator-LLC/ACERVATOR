@@ -396,16 +396,6 @@ if _HAS_QT:
 
             self._main_tabs.addTab(webhook_tab, "Webhooks")
 
-            try:
-                from .paper_trader_tab import PaperTraderTab
-
-                self._paper_trader = PaperTraderTab(asset_type="equity")
-                self._main_tabs.addTab(self._paper_trader, "Paper Trader")
-            except Exception as _e:
-                logging.getLogger("acervator").warning(
-                    f"Paper Trader tab unavailable: {_e}"
-                )
-
             # Never reassigned, so the three tab refreshes below never fire.
             self._analytics_tab = None
 
