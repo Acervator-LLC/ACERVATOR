@@ -1316,18 +1316,20 @@ def fold_row_colors(
 def extractor_row_cells(row: dict, now: float) -> list:
     """The eleven cell texts one Extractor Tranche fills a row with.
 
-    ``Units`` is read bare, the way the shipped composer reads it, so a
-    stored `True` prints one unit where the money cell beside it prints
-    an em dash. ``guarded_extractor_units`` states the other reading.
+    ``Age``, ``Units`` and the money cell all read through
+    ``finite_number``, so each prints an em dash on a stored value that
+    is not a finite number. ``Units`` goes through
+    ``guarded_extractor_units``, the one place that formats it.
     """
-    opened = float(row.get(EXTRACTOR_OPENED_KEY, 0.0) or 0.0)
-    age = coarse_age(now - opened) if opened > 0 else NO_VALUE_TEXT
-    units = float(row.get(EXTRACTOR_UNITS_KEY, 0.0) or 0.0)
+    opened = finite_number(row.get(EXTRACTOR_OPENED_KEY))
+    age = (
+        coarse_age(now - opened) if opened is not None and opened > 0 else NO_VALUE_TEXT
+    )
     mark = finite_number(row.get(EXTRACTOR_MARK_KEY))
     return [
         EXTRACTOR_ROW_NUMBER,
         age,
-        UNITS_FORMAT.format(units=units),
+        guarded_extractor_units(row),
         USD_FORMAT.format(usd=mark) if mark is not None else NO_VALUE_TEXT,
         NO_VALUE_TEXT,
         NO_VALUE_TEXT,
@@ -1342,10 +1344,11 @@ def extractor_row_cells(row: dict, now: float) -> list:
 
 
 def guarded_extractor_units(row: dict) -> str:
-    """The Units cell an Extractor row would show under the money rule.
+    """The Units cell an Extractor row shows, under the money rule.
 
-    Not wired into ``extractor_row_cells``: it states the reading the USD
-    cell beside it already uses, so the two can be compared.
+    ``extractor_row_cells`` calls this, so the Units cell and the USD
+    cell beside it cannot disagree about which stored values are
+    readable. A refused value prints an em dash, never zero.
     """
     units = finite_number(row.get(EXTRACTOR_UNITS_KEY))
     if units is None:
