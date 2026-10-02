@@ -18,83 +18,22 @@ class BotRegistryMixin:
     _boot_state_records: dict
     _bots: dict
     _bus: Any
-    _capital_registry: Any
     _connector: Any
     _data_pool: Any
     _dispatch_bootstrap: Callable[..., None]
-    _reservation_usd_and_mode: Callable[..., tuple]
     _restore_ledger: dict
     _smart_wire_mgr: Any
     _state_manager: Any
-    _usd_per_base_for: Callable[..., Any]
     _volume_guard: Any
 
     def register(self, bot: BotContainer) -> tuple[bool, "Optional[str]"]:
         """Add ``bot`` to ``_bots`` and return ``(granted, refusal_reason)``.
 
-        A wired ``_capital_registry`` is asked for a reservation first, and a
-        refusal returns ``(False, reason)`` without adding the bot;
-        ``main_window`` reads that reason and logs it. When ``_connector`` is
-        already attached, ``_dispatch_bootstrap`` runs the bot's live pull so
-        its holdings are not 0 until the first tick.
+        The bot claims its own capital on its first tick, through
+        ``CapitalReservationMixin._crr``, so admission writes no claim. When
+        ``_connector`` is already attached, ``_dispatch_bootstrap`` runs the
+        bot's live pull so its holdings are not 0 until the first tick.
         """
-        if self._capital_registry is None:
-            # set_capital_registry has no caller, so every admission takes this
-            # branch and request_reservation is never asked.
-            logger.warning(
-                "Bot %s was added WITHOUT a capital reservation: no capital "
-                "registry is attached to the bot manager, so its $%.2f "
-                "allocation is not held aside and another bot may claim it.",
-                bot.bot_id,
-                self._reservation_usd_and_mode(bot)[0],
-            )
-        else:
-            try:
-                usd_amount, mode_str = self._reservation_usd_and_mode(bot)
-                if usd_amount > 0:
-                    rate = self._usd_per_base_for(
-                        bot.config.exchange_id, bot.config.base_currency
-                    )
-                    if rate is None:
-                        # No rate means the claim cannot be sized, so the bot
-                        # is kept and no claim is written.
-                        logger.warning(
-                            "Bot %s was added WITHOUT a capital "
-                            "reservation: no %s price is available, so "
-                            "how much %s its $%.2f allocation comes to "
-                            "cannot be worked out. Its money is not "
-                            "held aside, so another bot may claim it.",
-                            bot.bot_id,
-                            bot.config.base_currency,
-                            bot.config.base_currency,
-                            usd_amount,
-                        )
-                    else:
-                        granted, reason, _ = self._capital_registry.request_reservation(
-                            bot_id=bot.bot_id,
-                            exchange_id=bot.config.exchange_id,
-                            base_currency=bot.config.base_currency,
-                            usd_amount=usd_amount,
-                            current_rate_usd_per_base=rate,
-                            bot_mode=mode_str,
-                        )
-                        if not granted:
-                            self._bus.emit(
-                                "bot.register_refused",
-                                bot_id=bot.bot_id,
-                                reason=reason or "CapitalRegistry refused",
-                            )
-                            return False, reason
-            except Exception as _reg_exc:
-                # A CapitalRegistry failure logs and falls through; it never
-                # blocks registration.
-                logger.warning(
-                    "CapitalRegistry consult failed for bot %s; "
-                    "proceeding without reservation: %s",
-                    bot.bot_id,
-                    _reg_exc,
-                )
-
         self._bots[bot.bot_id] = bot
         if self._volume_guard:
             bot._volume_guard = self._volume_guard
@@ -165,9 +104,9 @@ class BotRegistryMixin:
     def unregister(self, bot_id: str) -> None:
         """Remove ``bot_id`` from ``_bots``, from disk, and from every linkage.
 
-        A wired ``_capital_registry`` releases the bot's reservation so the
-        freed USD is claimable again. Releasing an unknown ``bot_id`` is a
-        no-op.
+        The bot released its own claim in ``stop()``, through
+        ``CapitalReservationMixin._release_capital_reservation``, and a claim
+        that outlives it expires on heartbeat staleness.
         """
         # These two pops clear caches only; save_state reads the file, so
         # delete_bot below is what removes the record.
@@ -182,17 +121,6 @@ class BotRegistryMixin:
                     "remains on disk and will be carried forward",
                     bot_id,
                     exc,
-                )
-        # Release the claim before the bot leaves _bots, so it cannot outlive
-        # its place there.
-        if self._capital_registry is not None:
-            try:
-                self._capital_registry.release_reservation(bot_id=bot_id)
-            except Exception as _rel_exc:
-                logger.warning(
-                    "CapitalRegistry release failed for bot %s: %s",
-                    bot_id,
-                    _rel_exc,
                 )
         bot = self._bots.pop(bot_id, None)
         if bot and self._connector:
