@@ -17,6 +17,8 @@ from __future__ import annotations
 import logging
 import time
 
+from . import design_system as ds
+
 try:
     from PySide6.QtWidgets import (
         QWidget,
@@ -397,7 +399,7 @@ if _QT:
         def _msg(self, text: str, color: str = MUTED):
             ts = time.strftime("%H:%M:%S")
             fmt = (
-                f'<span style="color:#445566">[{ts}]</span> '
+                f'<span style="color:{ds.VIZ_CAPTION}">[{ts}]</span> '
                 f'<span style="color:{color}">{text}</span>'
             )
             self._log.append(fmt)

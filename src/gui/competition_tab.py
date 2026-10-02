@@ -16,6 +16,8 @@ import time
 from pathlib import Path
 from typing import Optional
 
+from . import design_system as ds
+
 try:
     from PySide6.QtWidgets import (
         QWidget,
@@ -326,7 +328,7 @@ if _QT:
             self._relay_url = QLineEdit("wss://relay.acervator.io")
             self._relay_url.setEnabled(False)
             self._relay_url.setStyleSheet(
-                "background:#0A0A18; color:#445566;"
+                f"background:{ds.VIZ_LIST_SURFACE}; color:{ds.VIZ_CAPTION};"
                 " border:1px solid rgba(0,255,238,0.1);"
                 " font-family:Consolas; font-size:10px; padding:4px 8px;"
             )
