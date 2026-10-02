@@ -12,8 +12,9 @@ producer annotates them and never redraws them.
 
 Every other picture comes from the running program, and every one shows the Qt
 build. When a screen changes, the next capture replaces its picture and the page
-stays as it is. Two steps carry no picture, because driving them creates bots.
-Those two pages say so.
+stays as it is. Every step carries a picture. Two of them photograph the screen
+the step names without pressing the control on it, because that press creates
+bots or places an order. Those two pages say so.
 
 The steps after the fleet starts walk the tab bar from left to right, one page
 per tab. They say what a tab is for and what to do there first, and they are not
