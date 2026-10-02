@@ -54,7 +54,7 @@ PRIVACY_TOOLTIP = (
 )
 PRIVACY_STYLE_ON = (
     "QPushButton { "
-    f"  background-color: {ds.STATE_ENGAGED}; color: {ds.TEXT_MAX}; "
+    f"  background-color: {ds.STATE_ENGAGED_DIM}; color: {ds.TEXT_MAX}; "
     "  font-weight: bold; padding: 4px 12px; "
     f"  border: 1px solid {ds.STATE_ARMED}; border-radius: 4px; "
     "}"
