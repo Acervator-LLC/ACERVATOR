@@ -2,8 +2,10 @@
 
 One step of the [New User Procedure](README.md) how-to.
 
-This step carries no picture. A started bot places real orders on a real venue.
+![Press Start. The bot connects and begins trading.](figures/step-21-start-the-fleet.png)
 
 **Start each bot from the bot list under Live.**
 
-The fleet is running.
+The command row runs along the bottom of the venue page, under the bot list.
+The page hides the list until a bot exists, so the picture carries the row
+alone. Start acts on the bot the list has selected. The fleet is running.
