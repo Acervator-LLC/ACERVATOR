@@ -102,6 +102,7 @@ if _QT:
     class _IdentityPanel(_Section):
         def __init__(self, identity: Optional[BotIdentity], parent=None):
             super().__init__("Bot Identity", parent)
+            self.setAccessibleName("Bot Identity")
             row = QHBoxLayout()
             if identity:
                 id_lbl = QLabel(f"ID: {identity.short_id}...")
@@ -118,6 +119,7 @@ if _QT:
     class _WalletPanel(_Section):
         def __init__(self, ledger: TokenLedger, bot_id: str, parent=None):
             super().__init__("ACRV Wallet", parent)
+            self.setAccessibleName("ACRV Wallet")
             bal = ledger.balance(bot_id) if bot_id else 0
             awards = ledger.awards(bot_id) if bot_id else []
 
@@ -158,6 +160,7 @@ if _QT:
     class _SupplyPanel(_Section):
         def __init__(self, ledger: TokenLedger, season: int = 1, parent=None):
             super().__init__("Global Supply", parent)
+            self.setAccessibleName("Global Supply")
             s = ledger.supply_summary()
             row = QHBoxLayout()
             for label, val in [
@@ -185,6 +188,7 @@ if _QT:
     class _LeaderboardPanel(_Section):
         def __init__(self, registry: RatingRegistry, parent=None):
             super().__init__("Elo Leaderboard", parent)
+            self.setAccessibleName("Elo Leaderboard")
             rows = registry.leaderboard(10)
             if not rows:
                 self.inner().addWidget(QLabel("No matches played yet"))
@@ -347,9 +351,3 @@ if _QT:
             if not self._identity:
                 return 0
             return self._ledger.balance(self._identity.bot_id)
-
-else:
-    # Headless stub
-    class CompetitionTab:
-        def __init__(self, *args, **kwargs):
-            pass
