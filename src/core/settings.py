@@ -299,7 +299,7 @@ class SettingsManager:
                 loaded = tomllib.load(f)
             source_path = self._path_toml
         elif self._path_json.exists():
-            with open(self._path_json, "r") as f:
+            with open(self._path_json, "r", encoding="utf-8") as f:
                 loaded = json.load(f)
             source_path = self._path_json
 

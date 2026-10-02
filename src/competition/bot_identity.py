@@ -154,7 +154,7 @@ class BotIdentity:
             raise FileNotFoundError(
                 f"No bot identity at {self._key_path}. Call generate() first."
             )
-        data = json.loads(self._key_path.read_text())
+        data = json.loads(self._key_path.read_text(encoding="utf-8"))
         self._pubkey_hex = data["pubkey_hex"]
         self._created_at = data.get("created_at", 0.0)
         if not _CRYPTO_OK:
@@ -184,7 +184,8 @@ class BotIdentity:
                     "privkey_b64": privkey_b64,
                 },
                 indent=2,
-            )
+            ),
+            encoding="utf-8",
         )
 
     def sign_trade(self, record: TradeRecord) -> TradeRecord:

@@ -58,6 +58,7 @@ its own ledger files.
 from __future__ import annotations
 
 import json
+import logging
 import time
 from decimal import Decimal
 from pathlib import Path
@@ -406,6 +407,8 @@ MARK_SEAM_SOURCES: dict[str, str] = {
 }
 
 NO_MARK_TEXT = ""
+
+logger = logging.getLogger("acervator.poa_surface")
 
 NO_IDENTITY_TEXT = "none"
 NO_IDENTITY_NOTE = f"{IDENTITY_NAME} does not exist, so no participant is named."
@@ -1209,8 +1212,16 @@ def identity_created_text(path: Path) -> str:
     reaches no caller.
     """
     try:
-        made = json.loads(path.read_text()).get("created_at")
-    except (OSError, ValueError, AttributeError):
+        made = json.loads(path.read_text(encoding="utf-8")).get("created_at")
+    except (OSError, ValueError, AttributeError) as exc:
+        logger.error(
+            "identity record %s could NOT be read (%s: %s), so the panel "
+            "prints %r for created_at while the file is still on disk",
+            path,
+            type(exc).__name__,
+            exc,
+            NO_IDENTITY_TEXT,
+        )
         return NO_IDENTITY_TEXT
     if type(made) not in (int, float) or not made:
         return NO_IDENTITY_TEXT
