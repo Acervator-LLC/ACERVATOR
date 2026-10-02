@@ -204,8 +204,10 @@ jobs:
             done
             echo "--- the $variant bundle reported its window through: $ready"
 
+            # pgrep exits 1 on no match. wc -l still reads 0, so the guard
+            # keeps the zero and drops only the status GitHub's -e acts on.
             echo "--- QtWebEngineProcess instances while $variant runs ---"
-            web="$(pgrep -f QtWebEngineProcess | wc -l | tr -d ' ')"
+            web="$(pgrep -f QtWebEngineProcess | wc -l | tr -d ' ')" || true
             echo "$variant QtWebEngineProcess count: $web"
 
             # A web view paints seconds after the window is created, and the
@@ -218,7 +220,7 @@ jobs:
               sleep "$((moment - previous))"
               previous="$moment"
               front="$(lsappinfo info -only name "$(lsappinfo front)" 2>/dev/null \
-                       | sed -E 's/.*"LSDisplayName"="([^"]*)".*/\1/')"
+                       | sed -E 's/.*"LSDisplayName"="([^"]*)".*/\1/')" || true
               screencapture -x "$home/screen-$moment.png" || true
               echo "$variant at +${moment}s: front application is '${front:-unknown}'" \
                 | tee -a "$FRONT_READINGS"
@@ -232,7 +234,8 @@ jobs:
               || echo "NO HEARTBEAT: the event loop never ran"
 
             echo "--- the last 40 lines the $variant bundle logged about itself ---"
-            sysl="$(find "$home/.acervator_logs" -name system.log | head -1)"
+            sysl="$(find "$home/.acervator_logs" -name system.log \
+                    | head -1)" || true
             if [ -n "$sysl" ]; then
               tail -40 "$sysl"
             else
