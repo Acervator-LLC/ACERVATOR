@@ -903,7 +903,7 @@ class ExtractorBot(BotContainer):
                 f"{pair} ({pos.alt_units:.6f} units @ "
                 f"${alt_price_in_base:.8f}). Bypassing "
                 f"base-unit-profitability gate per operator-sovereignty "
-                f"invariant (v3.18.15)."
+                f"invariant."
             ),
         )
 
@@ -1032,7 +1032,7 @@ class ExtractorBot(BotContainer):
                     )
             except Exception as _exc:  # best-effort; must not block trade flow
                 logger.warning(
-                    "v3.20.72 profit notification failed for bot %s: %s",
+                    "profit notification failed for bot %s: %s",
                     self.bot_id,
                     _exc,
                 )

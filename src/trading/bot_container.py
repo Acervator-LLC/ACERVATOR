@@ -1301,7 +1301,7 @@ class BotManager(StateRestoreMixin, BotRegistryMixin, FleetAggregationMixin):
                     report=report,
                 )
                 logger.warning(
-                    "v3.20.73 capital drift on %s/%s: %.2f%% "
+                    "capital drift on %s/%s: %.2f%% "
                     "(wallet $%.2f vs reserved $%.2f)",
                     exchange_id,
                     base_currency,
@@ -1312,7 +1312,7 @@ class BotManager(StateRestoreMixin, BotRegistryMixin, FleetAggregationMixin):
             return report
         except Exception as _exc:
             logger.warning(
-                "v3.20.73 reconcile_capital_registry failed " "for %s/%s: %s",
+                "reconcile_capital_registry failed for %s/%s: %s",
                 exchange_id,
                 base_currency,
                 _exc,
@@ -1362,7 +1362,7 @@ class BotManager(StateRestoreMixin, BotRegistryMixin, FleetAggregationMixin):
             return granted, reason
         except Exception as _exc:
             logger.warning(
-                "v3.20.72 notify_bot_profit failed for bot %s " "(+$%.2f): %s",
+                "notify_bot_profit failed for bot %s (+$%.2f): %s",
                 bot_id,
                 profit_usd,
                 _exc,

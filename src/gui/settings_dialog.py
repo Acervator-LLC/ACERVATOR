@@ -297,7 +297,7 @@ if _HAS_QT:
             self._set_feedback(f"Testing connection to {eid.capitalize()}...", "info")
             self._test_btn.setEnabled(False)
             self._add_btn.setEnabled(False)
-            safe_process_events("legacy P4.1 site")
+            safe_process_events("legacy processEvents site")
 
             try:
                 from src.exchange.api_validator import validate_credentials
@@ -347,7 +347,7 @@ if _HAS_QT:
             # Prevent duplicate clicks
             self._add_btn.setEnabled(False)
             self._test_btn.setEnabled(False)
-            safe_process_events("legacy P4.1 site")
+            safe_process_events("legacy processEvents site")
 
             try:
                 eid = self._new_exchange.currentData()

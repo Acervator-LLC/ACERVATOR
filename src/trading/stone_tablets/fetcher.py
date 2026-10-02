@@ -216,7 +216,7 @@ class CoinGeckoAdapter(ExchangeAdapter):
             since_ms=since_ms,
             until_ms=until_ms,
             candles=[],
-            error="CoinGecko adapter is a placeholder in v3.23.99; "
+            error="CoinGecko adapter is a placeholder; "
             "Coinbase is primary for all current assets",
         )
 

@@ -954,12 +954,12 @@ PRIVACY_DOT_STYLE_SHEET = (
 BROKEN_DOT_STYLE_SHEET = (
     f"QFrame{{background:{VIZ_NUCLEAR_SURFACE_COLOR};border:1px solid "
     f"{VIZ_NUCLEAR_BORDER_COLOR};border-radius:3px;}}"
-    "/* wiring-broken indicator (v3.23.12) */"
+    "/* wiring-broken indicator */"
 )
 BROKEN_PRIVACY_BUTTON_STYLE_SHEET = (
     f"QPushButton{{background:{VIZ_NUCLEAR_SURFACE_COLOR};color:white;"
     f"border:1px solid {VIZ_NUCLEAR_BORDER_COLOR};padding:3px 12px;}}"
-    "/* wiring-broken (v3.23.18) */"
+    "/* wiring-broken */"
 )
 PRIVACY_ON_STYLE_SHEET = (
     f"QPushButton{{background:{VIZ_CONFIRM_SURFACE_COLOR};color:{SUCCESS_COLOR};"

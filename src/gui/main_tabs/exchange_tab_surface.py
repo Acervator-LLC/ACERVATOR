@@ -94,8 +94,7 @@ PULL_RATE_TOOLTIP = (
     "fetched slot. Stale = slots past their TTL "
     "(ticker 5s, balance 10s, OHLCV = timeframe). "
     "Cache-hit = coalesced-hits / (hits + fetches). "
-    "Coalescing added v3.23.74 (OHLCV) + v3.23.76 (balances) "
-    "to fix the CPM saturation the operator flagged 2026-07-31."
+    "Coalescing covers OHLCV and balances."
 )
 PULL_RATE_INTERVAL_MS = 1000
 PULL_RATE_IDLE_TEXT = "Data pool: idle (no active bots)"

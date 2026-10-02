@@ -236,8 +236,8 @@ class PositionsHeldTabMixin:
                         f"alt units, returning base currency to the "
                         f"pool. Bypasses the auto path's "
                         f"base-unit-profitability gate per "
-                        f"operator-sovereignty (v3.18.15 invariant).<br>"
-                        f"<br>MEM-257 fail-closed still applies.",
+                        f"operator-sovereignty invariant.<br>"
+                        f"<br>Fail-closed buy safety still applies.",
                         QMessageBox.Yes | QMessageBox.No,
                         QMessageBox.No,
                     )
@@ -291,8 +291,8 @@ class PositionsHeldTabMixin:
             "<b>Per-position Manual Fire</b> (operator decision #7): "
             "each button closes ITS position at current market "
             "price. Bypasses the auto path's base-unit-profitability "
-            "gate per operator-sovereignty invariant (v3.18.15). "
-            "MEM-257 FAIL-CLOSED still applies to any new buys the "
+            "gate per operator-sovereignty invariant. "
+            "FAIL-CLOSED BUY SAFETY still applies to any new buys the "
             "bot subsequently initiates (artillery, correction) on "
             "behalf of the pool."
         )

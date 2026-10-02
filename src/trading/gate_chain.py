@@ -373,7 +373,7 @@ class SmartCeilingGate(Gate):
     def evaluate(self, ctx: GateContext) -> GateResult:
         if not ctx.mem253_at_ceiling:
             return GateResult(passed=True)
-        return GateResult(passed=False, blocker_message="MEM-253-position-ceiling")
+        return GateResult(passed=False, blocker_message="position-ceiling")
 
 
 class RipeHarvestScrumOverride(Gate):

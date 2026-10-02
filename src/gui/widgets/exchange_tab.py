@@ -109,8 +109,7 @@ if _HAS_QT:
                 "fetched slot. Stale = slots past their TTL "
                 "(ticker 5s, balance 10s, OHLCV = timeframe). "
                 "Cache-hit = coalesced-hits / (hits + fetches). "
-                "Coalescing added v3.23.74 (OHLCV) + v3.23.76 (balances) "
-                "to fix the CPM saturation the operator flagged 2026-07-31."
+                "Coalescing covers OHLCV and balances."
             )
             layout.addWidget(self._pull_rate_lbl)
             self._pull_rate_timer = QTimer(self)

@@ -1,5 +1,5 @@
 """
-src/gui/qt_safe_events.py — P4.1 closure (v3.15.99).
+src/gui/qt_safe_events.py — a reentrancy-safe processEvents.
 
 `QApplication.processEvents()` is a known reentrancy hazard. Calling it
 gives the Qt event loop license to dispatch other pending events
@@ -8,9 +8,8 @@ any of those re-entrant events mutates state the current call is
 reading, you get inconsistent-state bugs that are nearly impossible to
 reproduce.
 
-ROADMAP P4.1 flagged 24 known sites of `QApplication.processEvents()`
-across the codebase, deferred from the v3.13.7 R61 CBF flamethrower
-(MEM-147). This module closes that audit:
+A code audit flagged 24 known sites of `QApplication.processEvents()`
+across the codebase. This module closes that audit:
 
   1. `safe_process_events(reason)` — drop-in replacement that:
         - skips if already inside another safe_process_events call

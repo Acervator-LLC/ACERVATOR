@@ -383,7 +383,7 @@ class SettingsTabMixin:
                 self._ta_tf.setCurrentIndex(fallback_idx)
             self._ta_tf.setToolTip(
                 "TA Timeframe — filtered to granularities supported "
-                "by this bot's exchange. v3.15.61."
+                "by this bot's exchange."
             )
             self._ta_tf.currentTextChanged.connect(
                 lambda v: self._mark_changed("ta_timeframe", v)
@@ -397,8 +397,7 @@ class SettingsTabMixin:
             self._target_bal.setValue(cfg.target_balance)
             self._target_bal.setToolTip(
                 "The balance this bot trades relative to. HARD-CAPPED: "
-                "position can never exceed Target × (1 + Max Target Growth %/100). "
-                "MEM-246/249/251."
+                "position can never exceed Target × (1 + Max Target Growth %/100)."
             )
             self._target_bal.valueChanged.connect(
                 lambda v: self._mark_changed("target_balance", v)
@@ -590,7 +589,7 @@ class SettingsTabMixin:
         layout.addWidget(scrum_group)
 
         # --- Advanced ---
-        adv_group = QGroupBox("Advanced Scrumming (P1.9)")
+        adv_group = QGroupBox("Advanced Scrumming")
         af = QFormLayout(adv_group)
         self._configure_form(af)
 
@@ -601,7 +600,7 @@ class SettingsTabMixin:
         self._detect_pct.setToolTip(
             "BB DETECT threshold: % distance from BB midline to "
             "band before SEARCH→TRACK. Lower = earlier detection. "
-            "v3.15.57 — also defines the HARD GATE: SCRUM cannot "
+            "Also defines the HARD GATE: SCRUM cannot "
             "occur below the Upper BB Detection Threshold; FOLD "
             "cannot occur above the Lower BB Detection Threshold. "
             "75% → upper gate at bb_pos≥0.875, lower gate at "
@@ -709,7 +708,7 @@ class SettingsTabMixin:
             "untouched. The record goes.\n\n"
             "WHAT THE RECORD HELD: the tranche's ref price, its\n"
             "parked fold USD, its units, and its initial_buy_price\n"
-            "(the MEM-171 provenance figure). The scrum sale that\n"
+            "(the provenance figure). The scrum sale that\n"
             "made it already happened, so those dollars are\n"
             "already in the wallet - the record was only the\n"
             "queued intent to buy the units back. A despawned\n"
@@ -789,7 +788,7 @@ class SettingsTabMixin:
 
         layout.addWidget(hedge_group)
 
-        cb_group = QGroupBox("Circuit Breakers (v3.15.58)")
+        cb_group = QGroupBox("Circuit Breakers")
         cf = QFormLayout(cb_group)
         self._configure_form(cf)
 
@@ -855,8 +854,7 @@ class SettingsTabMixin:
             "When the position drifts beyond this %, the bot "
             "fires an immediate aggressive rebalance "
             "(bypasses BB Detection / hysteresis / soft CB / "
-            "higher-TF bias). Default 10%. Set 0 to disable. "
-            "v3.15.63."
+            "higher-TF bias). Default 10%. Set 0 to disable."
         )
         self._max_cartridge_pct.valueChanged.connect(
             lambda v: self._mark_changed("max_cartridge_size_pct", float(v))
@@ -872,7 +870,7 @@ class SettingsTabMixin:
             "range rather than the static % above. Hard floor at "
             "the Opposing Trade Interval (cartridge cannot fire "
             "below the interval). Soft ceiling configured below. "
-            "Default OFF preserves static behavior. v3.15.92."
+            "Default OFF preserves static behavior."
         )
         self._cartridge_smart_chk.toggled.connect(
             lambda checked: self._mark_changed("max_cartridge_smart", bool(checked))
@@ -891,7 +889,7 @@ class SettingsTabMixin:
             "calibration. Prevents cartridge from being "
             "effectively disabled during volatility expansion. "
             "Only applies when Smart Cartridge is ON. "
-            "Default 30%. v3.15.92."
+            "Default 30%."
         )
         self._cartridge_smart_ceiling.valueChanged.connect(
             lambda v: self._mark_changed("max_cartridge_smart_ceiling_pct", float(v))
@@ -929,7 +927,7 @@ class SettingsTabMixin:
 
         layout.addWidget(cb_group)
 
-        sd_group = QGroupBox("DANGER ZONE — Self-Destruct (v3.15.62)")
+        sd_group = QGroupBox("DANGER ZONE — Self-Destruct")
         sd_group.setStyleSheet(
             f"QGroupBox{{border:1px solid {ds.ERROR};color:{ds.ERROR};}}"
             f"QGroupBox::title{{color:{ds.ERROR};font-weight:bold;}}"
@@ -959,7 +957,7 @@ class SettingsTabMixin:
         sdv.addWidget(self._self_destruct_btn)
         layout.addWidget(sd_group)
 
-        risk_group = QGroupBox("Risk Controls (MEM-244)")
+        risk_group = QGroupBox("Risk Controls")
         rf = QFormLayout(risk_group)
         self._configure_form(rf)
 
@@ -1039,7 +1037,7 @@ class SettingsTabMixin:
         self._deto_conf.setValue(float(getattr(cfg, "detonation_confidence_min", 0.75)))
         self._deto_conf.setToolTip(
             "Minimum TA consensus confidence for detonation. "
-            "Default 0.75 (high conviction only, per MEM-244)."
+            "Default 0.75 — high conviction only."
         )
         self._deto_conf.valueChanged.connect(
             lambda v: self._mark_changed("detonation_confidence_min", v)
@@ -1048,7 +1046,7 @@ class SettingsTabMixin:
 
         layout.addWidget(risk_group)
 
-        gates_group = QGroupBox("Strategy Gate Flags (v3.16.15)")
+        gates_group = QGroupBox("Strategy Gate Flags")
         gf = QFormLayout(gates_group)
         self._configure_form(gf)
 

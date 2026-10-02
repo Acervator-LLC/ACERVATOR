@@ -348,7 +348,7 @@ NO_SELECTION_FEEDBACK = "Select an exchange to remove."
 REMOVED_FEEDBACK_FORMAT = "{name} removed."
 REMOVED_LOG_FORMAT = "Exchange removed: {eid}"
 
-PROCESS_EVENTS_REASON = "legacy P4.1 site"
+PROCESS_EVENTS_REASON = "legacy processEvents site"
 
 VOLUME_LABEL_FORMAT = "{value}%"
 VOLUME_SCALE = 100.0
