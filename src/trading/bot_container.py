@@ -111,6 +111,45 @@ class BotContainer:
         """Manual fire hook; the base implementation does nothing."""
         return
 
+    def _invalidate_balance(
+        self,
+        currency: Optional[str] = None,
+    ) -> None:
+        """End the ``MarketDataPool`` balance window for this exchange and
+        currency, so the next ``_get_balance`` re-fetches.
+
+        A ``currency`` of None clears every slot this exchange holds.
+        """
+        if self._data_pool is None:
+            return
+        try:
+            self._data_pool.invalidate_balance(self.config.exchange_id, currency)
+        except Exception as _inv_exc:  # noqa: BLE001
+            logger.debug("Bot %s balance invalidate failed: %s", self.bot_id, _inv_exc)
+
+    def _invalidate_symbol_balances(self, symbol: str) -> None:
+        """End the balance window for both legs of ``symbol``.
+
+        A trade moves the base and the quote together, and naming both leaves
+        every other currency's slot alone. A ``symbol`` naming no leg clears
+        every slot this exchange holds rather than none.
+        """
+        if self._data_pool is None:
+            return
+        legs: list[str] = []
+        if isinstance(symbol, str):
+            legs = [leg for leg in symbol.split("/") if leg]
+        if not legs:
+            logger.debug(
+                "Bot %s invalidating every balance slot: %r names no currency",
+                self.bot_id,
+                symbol,
+            )
+            self._invalidate_balance()
+            return
+        for leg in legs:
+            self._invalidate_balance(leg)
+
     async def _get_market_rules(self, symbol: str) -> "MarketRules":
         """Return the venue's published ``MarketRules`` for ``symbol``, cached,
         and an all-``None`` record when the lookup fails or the venue lists no
@@ -431,6 +470,7 @@ class BotContainer:
             if not report.success:
                 raise Exception(f"VolumeGuard execution failed: {report.reason}")
 
+            self._invalidate_symbol_balances(symbol)
             return Order(
                 id=f"vg_{int(time.time()*1000)}",
                 symbol=symbol,
@@ -469,6 +509,9 @@ class BotContainer:
                 symbol, side, order_type, amount, price, client_order_id=_coid
             )
             _idem.mark_fulfilled(_intent)
+            # Every live order passes here, so the venue's figure is stale from
+            # this line on and the window ends at the one submitting site.
+            self._invalidate_symbol_balances(symbol)
             return order
         except Exception:
             raise
