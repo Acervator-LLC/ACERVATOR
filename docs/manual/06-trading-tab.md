@@ -855,16 +855,23 @@ inside the dust band.
 
 **Design intention.** The Ammo cell measures against the live target, not the
 frozen number typed into the wizard, so the reading follows the grown balance the
-engine re-zeroes to.
+engine re-zeroes to. The header strip's AMMO total takes the same target from the
+same function, so the row and the list cannot disagree.
 
-`src/gui/widgets/bot_status_table.py` — the target the Ammo cell measures against
+`src/trading/target_bands.py` — the target every Ammo reading measures against
 
 ```python
-target_val = float(
-    status.get("live_target_balance", status.get("target_balance", 0.0))
-    or status.get("target_balance", 0.0)
-    or 0.0
-)
+def ammo_target(live_target_balance: Any, configured_target_balance: Any) -> float:
+    live = float(live_target_balance or 0.0)
+    if live:
+        return live
+    return float(configured_target_balance or 0.0)
+```
+
+`src/gui/widgets/bot_status_table.py` — the row reads it through `target_value`
+
+```python
+target_val = target_value(status)
 ```
 
 **Target A15 and Target A14.** They restate the Target in those two assets, and go

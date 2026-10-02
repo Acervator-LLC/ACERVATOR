@@ -8,6 +8,8 @@ questions from a position value, which is what the dashboard holds.
 
 from __future__ import annotations
 
+from typing import Any
+
 #: The tick's park band as a fraction of target; ScrummingBot.tick exits inside it.
 AT_TARGET_PCT = 0.001
 
@@ -40,6 +42,20 @@ def target_delta(position_value: float, target_balance: float) -> float:
     ``target_territory`` and the Ammo cell both read the sign from here.
     """
     return float(position_value) - float(target_balance)
+
+
+def ammo_target(live_target_balance: Any, configured_target_balance: Any) -> float:
+    """The target an Ammo reading is measured against.
+
+    The engine's grown target wherever the bot carries one, and the
+    configured ``target_balance`` as the fallback. The bot list's Ammo
+    cell and the header strip's AMMO total both take their second
+    operand from here, so the row and the list cannot disagree.
+    """
+    live = float(live_target_balance or 0.0)
+    if live:
+        return live
+    return float(configured_target_balance or 0.0)
 
 
 def target_territory(position_value: float, target_balance: float) -> str:

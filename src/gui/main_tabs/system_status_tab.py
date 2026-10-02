@@ -1,9 +1,10 @@
 """``SystemStatusTabMixin`` builds the main window's Status tab.
 
-``_build_system_status_tab`` appends ``SystemStatusReactPanel``, which draws the
-emitter network read-out ``system_status_tab_surface`` serves.
-``_reorder_main_tabs`` moves it to its place on the bar afterwards. The screen
-has no Qt original, so no ``variant_surface`` entry decides the side.
+``_build_system_status_tab`` asks ``variant_surface`` which form of the Status
+tab to draw and appends what it answers. ``SystemStatusQtTab`` is the default
+and ``SystemStatusReactPanel`` draws the same read-out
+``system_status_tab_surface`` serves. ``_reorder_main_tabs`` moves the tab to
+its place on the bar afterwards.
 """
 
 from __future__ import annotations
@@ -23,11 +24,11 @@ class SystemStatusTabMixin:
     _main_tabs: Any
 
     def _build_system_status_tab(self) -> None:
-        """Append the Status tab, and hold None when its page cannot be built."""
+        """Append the Status tab, and hold None when its form cannot be built."""
         try:
-            from ..react_system_status_tab import SystemStatusReactPanel
+            from ..variant_surface import SYSTEM_STATUS, surface_class
 
-            self._system_status_tab = SystemStatusReactPanel()
+            self._system_status_tab = surface_class(SYSTEM_STATUS)()
             self._main_tabs.addTab(self._system_status_tab, HEADING)
         except Exception as exc:  # noqa: BLE001 - a missing tab is not a crash
             logger.warning("Status tab unavailable: %s", exc)
