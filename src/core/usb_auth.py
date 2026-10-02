@@ -17,6 +17,7 @@ import hmac
 import json
 import os
 import platform
+import re
 import shutil
 import struct
 import subprocess
@@ -128,6 +129,43 @@ def _kdf_stream(key: bytes, nonce: bytes, length: int) -> bytes:
     return stream[:length]
 
 
+DISKUTIL_PATHS = ("/usr/sbin/diskutil",)
+LSBLK_PATHS = ("/usr/bin/lsblk", "/bin/lsblk")
+
+_MACOS_DEVICE_IDENTIFIER = re.compile(r"^disk[0-9]+(?:s[0-9]+)*$")
+_LINUX_DEVICE_NODE = re.compile(r"^/dev/[A-Za-z0-9][A-Za-z0-9._+/-]*$")
+
+
+def _resolve_tool(name: str, known_paths: tuple[str, ...]) -> Optional[str]:
+    """Return the first of ``known_paths`` that is a file, else the ``shutil.which`` result.
+
+    A ``shutil.which`` result logs at WARNING and names *name*.
+    """
+    for candidate in known_paths:
+        if Path(candidate).is_file():
+            return candidate
+    found = shutil.which(name)
+    if found:
+        logger.warning(
+            "%s is not at %s; using %s from the search path, which this module "
+            "does not control",
+            name,
+            " or ".join(known_paths),
+            found,
+        )
+    return found
+
+
+def _is_macos_device_identifier(value: str) -> bool:
+    """Report whether *value* matches a diskutil identifier such as ``disk2s1``."""
+    return bool(_MACOS_DEVICE_IDENTIFIER.match(value))
+
+
+def _is_linux_device_node(value: str) -> bool:
+    """Report whether *value* names a /dev node and cannot be read as an lsblk option."""
+    return bool(_LINUX_DEVICE_NODE.match(value))
+
+
 @dataclass
 class USBVolume:
     """One removable volume, with ``auth_file`` set when ``AUTH_FILENAME`` is there."""
@@ -220,10 +258,10 @@ def _list_usb_windows() -> list[USBVolume]:
 def _list_usb_macos() -> list[USBVolume]:
     """Enumerate removable drives on macOS using ``diskutil``.
 
-    Returns an empty list where ``shutil.which`` cannot resolve ``diskutil``.
+    Returns an empty list where ``_resolve_tool`` cannot resolve ``diskutil``.
     """
     volumes: list[USBVolume] = []
-    diskutil = shutil.which("diskutil")
+    diskutil = _resolve_tool("diskutil", DISKUTIL_PATHS)
     if not diskutil:
         return volumes
     try:
@@ -242,13 +280,27 @@ def _list_usb_macos() -> list[USBVolume]:
                 if not mp:
                     continue
                 name = part.get("VolumeName", "USB Drive")
-                info = subprocess.run(
-                    [diskutil, "info", "-plist", part.get("DeviceIdentifier", "")],
-                    capture_output=True,
-                    text=True,
-                    timeout=5,
-                )
-                info_data = plistlib.loads(info.stdout.encode()) if info.stdout else {}
+                identifier = part.get("DeviceIdentifier", "")
+                info_data: dict = {}
+                if _is_macos_device_identifier(identifier):
+                    info = subprocess.run(
+                        [diskutil, "info", "-plist", identifier],
+                        capture_output=True,
+                        text=True,
+                        timeout=5,
+                    )
+                    info_data = (
+                        plistlib.loads(info.stdout.encode()) if info.stdout else {}
+                    )
+                else:
+                    logger.error(
+                        "diskutil named %r as the device identifier for %s, which is "
+                        "not a disk identifier; diskutil info is not asked about it "
+                        "and serial reads UNKNOWN, so find_auth_volume cannot match "
+                        "this volume",
+                        identifier,
+                        mp,
+                    )
                 serial = info_data.get("VolumeUUID", "UNKNOWN")
                 size_gb = part.get("Size", 0) / (1024**3)
                 volumes.append(
@@ -270,11 +322,11 @@ def _list_usb_macos() -> list[USBVolume]:
 def _list_usb_linux() -> list[USBVolume]:
     """Enumerate ``/proc/mounts`` entries under /media or /mnt on Linux.
 
-    ``lsblk`` supplies the removable flag, and an unresolved ``lsblk`` yields an
-    empty list.
+    ``lsblk`` supplies the removable flag for a device ``_is_linux_device_node``
+    accepts, and an unresolved ``lsblk`` yields an empty list.
     """
     volumes: list[USBVolume] = []
-    lsblk = shutil.which("lsblk")
+    lsblk = _resolve_tool("lsblk", LSBLK_PATHS)
     if not lsblk:
         return volumes
     try:
@@ -288,22 +340,32 @@ def _list_usb_linux() -> list[USBVolume]:
             device, mount = parts[0], parts[1]
             if not mount.startswith("/media") and not mount.startswith("/mnt"):
                 continue
-            try:
-                info = subprocess.run(
-                    [lsblk, "-no", "RM,SIZE,LABEL,SERIAL", device],
-                    capture_output=True,
-                    text=True,
-                    timeout=3,
+            if not _is_linux_device_node(device):
+                logger.error(
+                    "/proc/mounts names %r mounted at %s, which is not a /dev node; "
+                    "lsblk is not asked about it, so the removable flag is unchecked "
+                    "and serial falls back to the name",
+                    device,
+                    mount,
                 )
-                cols = info.stdout.strip().split()
-                if not cols or cols[0] != "1":
-                    continue
-                size_str = cols[1] if len(cols) > 1 else "0G"
-                size_gb = float(size_str.rstrip("GgMm")) if size_str else 0.0
-                label = cols[2] if len(cols) > 2 else "USB Drive"
-                serial = cols[3] if len(cols) > 3 else device.split("/")[-1]
-            except Exception:
                 serial, label, size_gb = device.split("/")[-1], "USB Drive", 0.0
+            else:
+                try:
+                    info = subprocess.run(
+                        [lsblk, "-no", "RM,SIZE,LABEL,SERIAL", device],
+                        capture_output=True,
+                        text=True,
+                        timeout=3,
+                    )
+                    cols = info.stdout.strip().split()
+                    if not cols or cols[0] != "1":
+                        continue
+                    size_str = cols[1] if len(cols) > 1 else "0G"
+                    size_gb = float(size_str.rstrip("GgMm")) if size_str else 0.0
+                    label = cols[2] if len(cols) > 2 else "USB Drive"
+                    serial = cols[3] if len(cols) > 3 else device.split("/")[-1]
+                except Exception:
+                    serial, label, size_gb = device.split("/")[-1], "USB Drive", 0.0
 
             volumes.append(
                 USBVolume(
