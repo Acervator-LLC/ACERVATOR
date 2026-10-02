@@ -1058,3 +1058,89 @@ def gate_cell_text(entry: Optional[dict]) -> str:
 A fill with no entry reads "no record" in the Gates column, and its tooltip
 says no gate record joined to the trade. Nothing measures coverage over a set
 of fills, and nothing names a reason a fill has no gate.
+
+## Weekly candles behind the fills
+
+The 38 charts above draw fills. This set draws the market those fills ran in.
+Each panel is one charted base and carries the same label, ten panels to a page.
+
+The bars are built here, not fetched. `weekly_bars` in
+`tools/build_product_manual.py` groups a base's five-minute Stone Tablet rows by
+the Monday 00:00 UTC that `week_start_ms` returns for each stamp. Each group
+gives one bar: the first row's open, the highest high across the group, the
+lowest low across the group, and the last row's close. A week the venue recorded
+no trade in produces no bar.
+
+One week of one series checks that rule against hand arithmetic. On A05, the
+week opening 2026-05-18 holds 2,016 five-minute rows.
+
+```
+weekly_bars   open 535.96  high 688.52  low 515.24  close 662.04
+by hand       open 535.96  high 688.52  low 515.24  close 662.04
+control       a last-open rule returns 662.10 for the open
+```
+
+The control matters because three of the four figures survive a wrong grouping.
+A rule taking the last open rather than the first moves only the open, and the
+comparison reports it.
+
+A panel's price axis turns logarithmic when its highest high exceeds its lowest
+low more than eightfold, the same rule the per-asset charts above use.
+
+![Weekly candles for A01 to A10, built from five-minute rows.](figures/evidence_weekly_01.png)
+
+![Weekly candles for A11 to A20, built from five-minute rows.](figures/evidence_weekly_02.png)
+
+![Weekly candles for A21 to A30, built from five-minute rows.](figures/evidence_weekly_03.png)
+
+![Weekly candles for A31 to A38, built from five-minute rows.](figures/evidence_weekly_04.png)
+
+## The price at the finest resolution the record carries
+
+Five minutes is the finest resolution the Stone Tablets hold.
+`StoneTabletsRegistry` in `src/trading/stone_tablets/registry.py` stores every
+tablet at that step and rolls every longer timeframe up from it, so no finer
+price exists in this repository. These panels plot the close of every
+five-minute candle across the recorded window, one line per charted base.
+
+The weekly bars above and these lines read the same rows and answer different
+questions. A weekly bar hides what happens inside its week, and inside the week
+is where the Scrum and Fold cycle works. A week that opens and closes at the
+same price can still hold the swings the engine sells into and buys back from.
+
+![Five-minute closes for A01 to A10.](figures/evidence_trace_01.png)
+
+![Five-minute closes for A11 to A20.](figures/evidence_trace_02.png)
+
+![Five-minute closes for A21 to A30.](figures/evidence_trace_03.png)
+
+![Five-minute closes for A31 to A38.](figures/evidence_trace_04.png)
+
+## The venue's own position cards
+
+The venue renders one card per open position. 37 cards cover the 38 charted
+bases, and A33 has none. Each card carries the entry price the venue holds for
+the open position, the current price, and the gain or loss in dollars and in
+percent.
+
+A card's entry price is not the buy line of the chart above it. The card follows
+the open position only: a buy re-weights it, a sell leaves it alone, and a full
+close resets it to zero. The buy line counts every buy in the record and never
+resets. That is the same difference this part sets out against
+`compute_position_health` in `src/exchange/position_health.py`.
+
+Each card is obscured before it is committed. `obscured_placard` in
+`tools/build_product_manual.py` converts the card to grey, paints the asset mark
+and the asset name out with the card's own ground colour, paints the code square
+out with the footer's ground colour, and writes the label where the name was.
+The venue's own figures are left as the venue rendered them.
+
+![Venue position cards for A01 to A08, with the mark, the name and the code square painted out.](figures/evidence_placards_01.png)
+
+![Venue position cards for A09 to A16.](figures/evidence_placards_02.png)
+
+![Venue position cards for A17 to A24.](figures/evidence_placards_03.png)
+
+![Venue position cards for A25 to A32.](figures/evidence_placards_04.png)
+
+![Venue position cards for A34 to A38, the five cards left after A33, which has none.](figures/evidence_placards_05.png)
