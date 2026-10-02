@@ -99,6 +99,13 @@ def row_lights(row: dict) -> list:
     return list(entries) if isinstance(entries, list) and entries else []
 
 
+def light_shape(lights: list) -> list:
+    """The bank and label of each light, in the order given."""
+    return [
+        (str(light.get("bank", "")), str(light.get("label", ""))) for light in lights
+    ]
+
+
 def group_banks(lights: list) -> list:
     """Consecutive runs of lights sharing a ``bank``, in the order given."""
     banks: list = []
@@ -122,10 +129,12 @@ if _HAS_QT:
             self._text = str(cell.get("text", ""))
             self._color = str(cell.get("color") or "")
             self._tooltip = str(cell.get("tooltip") or "")
+            self._dots: list = []
             box = QHBoxLayout(self)
             box.setContentsMargins(0, 0, 0, 0)
             box.setSpacing(TEXT_SPACING_PX)
-            box.addWidget(self._text_widget(cell))
+            self._label = self._text_widget(cell)
+            box.addWidget(self._label)
             for bank, items in group_banks(self._lights):
                 box.addWidget(self._bank_widget(bank, items))
             box.addStretch(1)
@@ -145,6 +154,26 @@ if _HAS_QT:
                 and self._tooltip == str(cell.get("tooltip") or "")
                 and self._lights == [dict(light) for light in lights]
             )
+
+        def redraw(self, cell: dict, lights: list) -> bool:
+            """Take ``cell`` and ``lights`` into the widgets already built.
+
+            Answers False when ``lights`` names a different run of banks and
+            labels, which is the one case needing the widgets built again.
+            """
+            if light_shape(lights) != light_shape(self._lights):
+                return False
+            self._text = str(cell.get("text", ""))
+            self._color = str(cell.get("color") or "")
+            self._tooltip = str(cell.get("tooltip") or "")
+            self._label.setText(self._text)
+            self._label.setStyleSheet(f"color: {self._color};" if self._color else "")
+            self.setToolTip(self._tooltip)
+            for dot, drawn, wanted in zip(self._dots, self._lights, lights):
+                if drawn != wanted:
+                    self._paint_dot(dot, wanted)
+            self._lights = [dict(light) for light in lights]
+            return True
 
         def _text_widget(self, cell: dict) -> "QLabel":
             """The blocker text, in the colour the cell carries."""
@@ -187,15 +216,20 @@ if _HAS_QT:
 
         def _dot_widget(self, light: dict) -> "QLabel":
             """The dot, whose fill and ``lightColor`` both read the one colour."""
-            colour = str(light.get("color", ""))
             dot = QLabel(self)
             dot.setFixedSize(LIGHT_DOT_PX, LIGHT_DOT_PX)
+            self._paint_dot(dot, light)
+            self._dots.append(dot)
+            return dot
+
+        def _paint_dot(self, dot: "QLabel", light: dict) -> None:
+            """Put one light's state and colour on ``dot``."""
+            colour = str(light.get("color", ""))
             dot.setProperty("lightState", str(light.get("state", "")))
             dot.setProperty("lightColor", colour)
             dot.setStyleSheet(
                 f"background: {colour}; border-radius: {LIGHT_DOT_PX // 2}px;"
             )
-            return dot
 
         def _marker_widget(self, bank: str) -> "QLabel":
             """The marker that closes a bank, carrying the bank's own name."""
@@ -279,6 +313,9 @@ if _HAS_QT:
         def _draw_rows(self, model: dict) -> None:
             rows = model_rows(model)
             self._table.setRowCount(len(rows))
+            header = self._table.horizontalHeader()
+            # ResizeToContents re-measures every column on each cell write.
+            header.setSectionResizeMode(QHeaderView.Interactive)
             regrew = False
             for row_index, row in enumerate(rows):
                 lights = row_lights(row)
@@ -286,15 +323,36 @@ if _HAS_QT:
                     gates = cell.get("key") == GATES_COLUMN_KEY
                     # GateLightsCell draws the Gates text; its item stays blank.
                     text = "" if gates and lights else str(cell.get("text", ""))
-                    self._table.setItem(
-                        row_index, cell_index, self._cell_item(cell, text)
-                    )
+                    self._draw_cell(row_index, cell_index, cell, text)
                     if not gates:
                         continue
                     if self._draw_gates(row_index, cell_index, cell, lights):
                         regrew = True
+            header.setSectionResizeMode(QHeaderView.ResizeToContents)
             if regrew:
                 self._table.resizeRowsToContents()
+
+        def _draw_cell(
+            self, row_index: int, cell_index: int, cell: dict, text: str
+        ) -> None:
+            """Write one cell, keeping an item that already carries these values."""
+            held = self._table.item(row_index, cell_index)
+            if held is not None and self._item_draws(held, cell, text):
+                return
+            self._table.setItem(row_index, cell_index, self._cell_item(cell, text))
+
+        def _item_draws(self, item: "QTableWidgetItem", cell: dict, text: str) -> bool:
+            """True when ``item`` already carries ``text`` and the cell's own
+            colour and tooltip."""
+            if item.text() != text:
+                return False
+            tooltip = cell.get("tooltip")
+            if item.toolTip() != (str(tooltip) if tooltip else ""):
+                return False
+            colour = cell.get("color")
+            if not colour:
+                return True
+            return item.foreground().color() == QColor(str(colour))
 
         # Overtaken: "Put a lights widget on the Gates cell, or take a stale one off."
         # True: it keeps an unchanged widget, and answers whether it built one.
@@ -306,8 +364,11 @@ if _HAS_QT:
                 self._table.removeCellWidget(row_index, cell_index)
                 return False
             held = self._table.cellWidget(row_index, cell_index)
-            if isinstance(held, GateLightsCell) and held.draws(cell, lights):
-                return False
+            if isinstance(held, GateLightsCell):
+                if held.draws(cell, lights):
+                    return False
+                if held.redraw(cell, lights):
+                    return False
             self._table.setCellWidget(
                 row_index, cell_index, GateLightsCell(cell, lights, self._table)
             )

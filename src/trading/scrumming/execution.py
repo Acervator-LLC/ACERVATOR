@@ -31,6 +31,9 @@ from .sizing import (
 
 logger = logging.getLogger("acervator.scrumming")
 
+# A fraction of the price a refusal was taken at, not a percent.
+REFUSAL_HOLD_MOVE_FRACTION: float = 0.001
+
 
 @dataclass
 class MemorisedTrade:
@@ -72,6 +75,7 @@ class ExecutionEngineMixin:
     _apply_scrum_fold_pct: Callable[..., None]
     _bound_new_fold_tranches: Callable[..., Any]
     _bus: Any
+    _cb_last_candle_ts: float
     _crr: Callable[..., Any]
     _current_holdings: float
     _emit_gate_decision_at_fire: Callable[..., None]
@@ -125,6 +129,9 @@ class ExecutionEngineMixin:
     _VENUE_FEE_REREADS = 1
     _VENUE_FEE_REREAD_DELAY_S = 0.2
 
+    # One entry per refusal reason, each holding the candle and price it was taken at.
+    _refusal_holds: Optional[dict] = None
+
     _SETTLED_FILL_DEFAULT_LABEL = "MANUAL FIRE"
     _SETTLED_FILL_LABELS = frozenset(
         (
@@ -134,6 +141,41 @@ class ExecutionEngineMixin:
             "STACK",
         )
     )
+
+    def _refusal_is_new(self, reason: str, price: float) -> bool:
+        """Record a refusal under ``reason`` and say whether it is a new decision.
+
+        Every refusal site in the trade path calls this to decide whether to
+        announce itself. The refusal itself always stands; only the announcement
+        is held. A refusal is new on the first call for ``reason``, on a different
+        candle from ``_cb_last_candle_ts``, when no candle is known, or once
+        ``price`` has moved ``REFUSAL_HOLD_MOVE_FRACTION`` from the price the held
+        refusal was taken at.
+        """
+        try:
+            px = float(price)
+        except (TypeError, ValueError):
+            return True
+
+        try:
+            bar = float(getattr(self, "_cb_last_candle_ts", 0.0) or 0.0)
+        except (TypeError, ValueError):
+            bar = 0.0
+
+        holds = self._refusal_holds
+        if holds is None:
+            holds = {}
+            self._refusal_holds = holds
+
+        held = holds.get(reason)
+        holds[reason] = (bar, px)
+
+        if held is None or bar <= 0.0:
+            return True
+        held_bar, held_px = held
+        if held_bar != bar or held_px <= 0.0 or px <= 0.0:
+            return True
+        return abs(px - held_px) / held_px >= REFUSAL_HOLD_MOVE_FRACTION
 
     @classmethod
     def _settled_fill_label(cls, label: object) -> str:
@@ -472,52 +514,55 @@ class ExecutionEngineMixin:
                 )
                 _absent = bool(getattr(_xbal, "absent", False))
             except Exception as _xb_exc:  # noqa: BLE001
-                self._bus.emit(
-                    "bot.log",
-                    bot_id=self.bot_id,
-                    message=(
-                        f"AUTONOMOUS FIRE REFUSED: could not read "
-                        f"{self.config.target_asset} balance to verify the "
-                        f"position ({_xb_exc}). Gates are bypassed on this "
-                        f"path, so an unverified position is not traded."
-                    ),
-                )
+                if self._refusal_is_new("manual_balance_unreadable", price):
+                    self._bus.emit(
+                        "bot.log",
+                        bot_id=self.bot_id,
+                        message=(
+                            f"AUTONOMOUS FIRE REFUSED: could not read "
+                            f"{self.config.target_asset} balance to verify the "
+                            f"position ({_xb_exc}). Gates are bypassed on this "
+                            f"path, so an unverified position is not traded."
+                        ),
+                    )
                 return
             if _absent:
-                self._bus.emit(
-                    "bot.log",
-                    bot_id=self.bot_id,
-                    message=(
-                        f"AUTONOMOUS FIRE REFUSED: exchange OMITTED "
-                        f"{self.config.target_asset} from its balance "
-                        f"response, so the position cannot be verified."
-                    ),
-                )
+                if self._refusal_is_new("manual_balance_omitted", price):
+                    self._bus.emit(
+                        "bot.log",
+                        bot_id=self.bot_id,
+                        message=(
+                            f"AUTONOMOUS FIRE REFUSED: exchange OMITTED "
+                            f"{self.config.target_asset} from its balance "
+                            f"response, so the position cannot be verified."
+                        ),
+                    )
                 return
             _xvalue = _xunits * price * _qrate
             if abs(_xvalue - current_value) > dust:
-                self._bus.emit(
-                    "bot.log",
-                    bot_id=self.bot_id,
-                    message=(
-                        f"AUTONOMOUS FIRE REFUSED (position mismatch): this "
-                        f"bot has {self._current_holdings:.6f} "
-                        f"{self.config.target_asset} (${current_value:.2f}) "
-                        f"but the exchange reports {_xunits:.6f} "
-                        f"(${_xvalue:.2f}). Gates are bypassed on this path, "
-                        f"so it will not trade on a disputed position. "
-                        f"Intended {'SELL' if delta_usd > 0 else 'BUY'} of "
-                        f"${abs(delta_usd):.2f} withheld."
-                    ),
-                )
-                logger.warning(
-                    "Bot %s autonomous fire refused: internal %.8f vs "
-                    "exchange %.8f %s",
-                    self.bot_id,
-                    self._current_holdings,
-                    _xunits,
-                    self.config.target_asset,
-                )
+                if self._refusal_is_new("manual_position_mismatch", price):
+                    self._bus.emit(
+                        "bot.log",
+                        bot_id=self.bot_id,
+                        message=(
+                            f"AUTONOMOUS FIRE REFUSED (position mismatch): this "
+                            f"bot has {self._current_holdings:.6f} "
+                            f"{self.config.target_asset} (${current_value:.2f}) "
+                            f"but the exchange reports {_xunits:.6f} "
+                            f"(${_xvalue:.2f}). Gates are bypassed on this path, "
+                            f"so it will not trade on a disputed position. "
+                            f"Intended {'SELL' if delta_usd > 0 else 'BUY'} of "
+                            f"${abs(delta_usd):.2f} withheld."
+                        ),
+                    )
+                    logger.warning(
+                        "Bot %s autonomous fire refused: internal %.8f vs "
+                        "exchange %.8f %s",
+                        self.bot_id,
+                        self._current_holdings,
+                        _xunits,
+                        self.config.target_asset,
+                    )
                 return
             if delta_usd < 0:
                 _growth = float(
@@ -526,6 +571,8 @@ class ExecutionEngineMixin:
                 _ceiling = float(self._target_balance) * (1.0 + _growth / 100.0)
                 _prospective = _xvalue + abs(delta_usd)
                 if _prospective > _ceiling + dust:
+                    if not self._refusal_is_new("manual_ceiling", price):
+                        return
                     self._bus.emit(
                         "bot.log",
                         bot_id=self.bot_id,
@@ -770,6 +817,8 @@ class ExecutionEngineMixin:
                         _best_rebuy = max(_thresholds)
                         _distance_ok = price <= _best_rebuy
                 except (TypeError, ValueError, OverflowError) as _otd_exc:
+                    if not self._refusal_is_new("manual_distance_unreadable", price):
+                        return
                     self._bus.emit(
                         "bot.log",
                         bot_id=self.bot_id,
@@ -821,6 +870,8 @@ class ExecutionEngineMixin:
                         len(_thresholds),
                     )
                 if not _distance_ok:
+                    if not self._refusal_is_new("manual_opposing_distance", price):
+                        return
                     self._bus.emit(
                         "bot.log",
                         bot_id=self.bot_id,
@@ -1422,24 +1473,27 @@ class ExecutionEngineMixin:
                     / self._hyst_ref_scrum_side
                     * 100.0
                 )
-                self._bus.emit(
-                    "bot.log",
-                    bot_id=self.bot_id,
-                    message=(
-                        f"SCRUM REFUSED (opposing hysteresis): "
-                        f"pivot ref ${self._hyst_ref_scrum_side:.8f} "
-                        f"(captured when Δ crossed positive after recent "
-                        f"FOLD), current ${_px_check:.8f} "
-                        f"(only {_rise_pct:+.2f}% from pivot). "
-                        f"Need ≥ {_eff_pct:.2f}% rise "
-                        f"(interval {_interval:.2f}% + fee {_fee:.2f}%; "
-                        f"price ≥ ${_required_min:.8f}) before "
-                        f"SCRUM can fire."
-                    ),
-                )
-                self._emit_trade_notification(
-                    "SCRUM", "CANCELLED", f"hysteresis (need ≥ {_eff_pct:.2f}% rise)"
-                )
+                if self._refusal_is_new("scrum_hysteresis", _px_check):
+                    self._bus.emit(
+                        "bot.log",
+                        bot_id=self.bot_id,
+                        message=(
+                            f"SCRUM REFUSED (opposing hysteresis): "
+                            f"pivot ref ${self._hyst_ref_scrum_side:.8f} "
+                            f"(captured when Δ crossed positive after recent "
+                            f"FOLD), current ${_px_check:.8f} "
+                            f"(only {_rise_pct:+.2f}% from pivot). "
+                            f"Need ≥ {_eff_pct:.2f}% rise "
+                            f"(interval {_interval:.2f}% + fee {_fee:.2f}%; "
+                            f"price ≥ ${_required_min:.8f}) before "
+                            f"SCRUM can fire."
+                        ),
+                    )
+                    self._emit_trade_notification(
+                        "SCRUM",
+                        "CANCELLED",
+                        f"hysteresis (need ≥ {_eff_pct:.2f}% rise)",
+                    )
                 return None
 
         try:
@@ -1480,66 +1534,69 @@ class ExecutionEngineMixin:
                     f"{_crr_holders or 'a bot the registry cannot name'}. "
                     f"Stopping a named bot releases its claim."
                 )
-                self._bus.emit("bot.log", bot_id=self.bot_id, message=_crr_msg)
-                self._emit_trade_notification(
-                    "SCRUM",
-                    "CANCELLED",
-                    f"capital reservation (avail {_crr_effective:.6f})",
-                )
-                logger.info(
-                    "Bot %s sell refused by capital reservation: "
-                    "amount=%.6f effective=%.6f asset=%s",
-                    self.bot_id,
-                    amount,
-                    _crr_effective,
-                    self.config.target_asset,
-                )
+                if self._refusal_is_new("sell_reservation", price):
+                    self._bus.emit("bot.log", bot_id=self.bot_id, message=_crr_msg)
+                    self._emit_trade_notification(
+                        "SCRUM",
+                        "CANCELLED",
+                        f"capital reservation (avail {_crr_effective:.6f})",
+                    )
+                    logger.info(
+                        "Bot %s sell refused by capital reservation: "
+                        "amount=%.6f effective=%.6f asset=%s",
+                        self.bot_id,
+                        amount,
+                        _crr_effective,
+                        self.config.target_asset,
+                    )
                 return None
         except Exception as _crr_exc:
             # The only reader of another bot's claim; without it this sell is
             # bounded by _current_holdings alone.
-            logger.warning(
-                "Bot %s sell of %.6f %s is NOT bounded by any other bot's "
-                "capital reservation: the pre-check raised %s: %s. A sibling "
-                "bot's claim on this asset is invisible to this sell.",
-                self.bot_id,
-                amount,
-                self.config.target_asset,
-                type(_crr_exc).__name__,
-                _crr_exc,
-            )
             # A raised pre-check has not answered, so this sell stops instead
             # of running on _current_holdings alone.
-            self._bus.emit(
-                "bot.log",
-                bot_id=self.bot_id,
-                message=(
-                    f"SELL REFUSED (capital reservation unreadable): the "
-                    f"pre-check raised {type(_crr_exc).__name__}: "
-                    f"{_crr_exc}. No sibling bot's claim on "
-                    f"{self.config.target_asset} could be read, so this sell "
-                    f"of {amount:.6f} is refused instead of placed unbounded. "
-                    f"The next tick reads the claim table again."
-                ),
-            )
-            self._emit_trade_notification(
-                "SCRUM", "CANCELLED", "capital reservation unreadable"
-            )
+            if self._refusal_is_new("sell_reservation_unreadable", price):
+                logger.warning(
+                    "Bot %s sell of %.6f %s is NOT bounded by any other bot's "
+                    "capital reservation: the pre-check raised %s: %s. A sibling "
+                    "bot's claim on this asset is invisible to this sell.",
+                    self.bot_id,
+                    amount,
+                    self.config.target_asset,
+                    type(_crr_exc).__name__,
+                    _crr_exc,
+                )
+                self._bus.emit(
+                    "bot.log",
+                    bot_id=self.bot_id,
+                    message=(
+                        f"SELL REFUSED (capital reservation unreadable): the "
+                        f"pre-check raised {type(_crr_exc).__name__}: "
+                        f"{_crr_exc}. No sibling bot's claim on "
+                        f"{self.config.target_asset} could be read, so this sell "
+                        f"of {amount:.6f} is refused instead of placed unbounded. "
+                        f"The next tick reads the claim table again."
+                    ),
+                )
+                self._emit_trade_notification(
+                    "SCRUM", "CANCELLED", "capital reservation unreadable"
+                )
             return None
 
         try:
             _open = await self.exchange.get_open_orders(self.config.symbol)
         except Exception as _oo_exc:
-            self._bus.emit(
-                "bot.log",
-                bot_id=self.bot_id,
-                message=(
-                    f"P0b SELL REFUSED (fail-closed): "
-                    f"get_open_orders raised {type(_oo_exc).__name__}: "
-                    f"{_oo_exc}. Cannot verify absence of stacked "
-                    f"orders. Refusing."
-                ),
-            )
+            if self._refusal_is_new("sell_open_orders_unreadable", price):
+                self._bus.emit(
+                    "bot.log",
+                    bot_id=self.bot_id,
+                    message=(
+                        f"P0b SELL REFUSED (fail-closed): "
+                        f"get_open_orders raised {type(_oo_exc).__name__}: "
+                        f"{_oo_exc}. Cannot verify absence of stacked "
+                        f"orders. Refusing."
+                    ),
+                )
             return None
         try:
             _open_sells = [
@@ -1556,17 +1613,18 @@ class ExecutionEngineMixin:
             ]
         if _open_sells:
             _ids = ", ".join(str(getattr(o, "id", "?")) for o in _open_sells[:3])
-            self._bus.emit(
-                "bot.log",
-                bot_id=self.bot_id,
-                message=(
-                    f"P0b STACKED SELL REFUSED: {len(_open_sells)} open "
-                    f"SELL order(s) already on exchange for "
-                    f"{self.config.symbol} (ids: {_ids}). "
-                    f"Refusing to place a second SELL on top. "
-                    f"Wait for existing order(s) to fill or cancel."
-                ),
-            )
+            if self._refusal_is_new("sell_stacked", price):
+                self._bus.emit(
+                    "bot.log",
+                    bot_id=self.bot_id,
+                    message=(
+                        f"P0b STACKED SELL REFUSED: {len(_open_sells)} open "
+                        f"SELL order(s) already on exchange for "
+                        f"{self.config.symbol} (ids: {_ids}). "
+                        f"Refusing to place a second SELL on top. "
+                        f"Wait for existing order(s) to fill or cancel."
+                    ),
+                )
             return None
 
         try:
@@ -1578,19 +1636,20 @@ class ExecutionEngineMixin:
             self.stats.verify_samples += vh_samples
             if vh_fp is None:
                 self.stats.verify_canceled += 1
-                self._bus.emit(
-                    "bot.log",
-                    bot_id=self.bot_id,
-                    message=f"SELL CANCELED (R55 VH): slippage would "
-                    f"exceed {self.config.target_asset} class "
-                    f"tolerance @ ${price:.8f}",
-                )
-                logger.info(
-                    "Bot %s VH-canceled sell of %.6f at %.4f",
-                    self.bot_id,
-                    amount,
-                    price,
-                )
+                if self._refusal_is_new("sell_slippage", price):
+                    self._bus.emit(
+                        "bot.log",
+                        bot_id=self.bot_id,
+                        message=f"SELL CANCELED (R55 VH): slippage would "
+                        f"exceed {self.config.target_asset} class "
+                        f"tolerance @ ${price:.8f}",
+                    )
+                    logger.info(
+                        "Bot %s VH-canceled sell of %.6f at %.4f",
+                        self.bot_id,
+                        amount,
+                        price,
+                    )
                 return
             if vh_status == "clean":
                 self.stats.verify_clean += 1
@@ -1812,24 +1871,27 @@ class ExecutionEngineMixin:
                     / self._hyst_ref_fold_side
                     * 100.0
                 )
-                self._bus.emit(
-                    "bot.log",
-                    bot_id=self.bot_id,
-                    message=(
-                        f"FOLD REFUSED (opposing hysteresis): "
-                        f"pivot ref ${self._hyst_ref_fold_side:.8f} "
-                        f"(captured when Δ crossed negative after recent "
-                        f"SCRUM), current ${_px_check:.8f} "
-                        f"(only {_drop_pct:+.2f}% from pivot). "
-                        f"Need ≥ {_eff_pct:.2f}% drop "
-                        f"(interval {_interval:.2f}% + fee {_fee:.2f}%; "
-                        f"price ≤ ${_required_max:.8f}) before "
-                        f"FOLD can fire."
-                    ),
-                )
-                self._emit_trade_notification(
-                    "FOLD", "CANCELLED", f"hysteresis (need ≥ {_eff_pct:.2f}% drop)"
-                )
+                if self._refusal_is_new("fold_hysteresis", _px_check):
+                    self._bus.emit(
+                        "bot.log",
+                        bot_id=self.bot_id,
+                        message=(
+                            f"FOLD REFUSED (opposing hysteresis): "
+                            f"pivot ref ${self._hyst_ref_fold_side:.8f} "
+                            f"(captured when Δ crossed negative after recent "
+                            f"SCRUM), current ${_px_check:.8f} "
+                            f"(only {_drop_pct:+.2f}% from pivot). "
+                            f"Need ≥ {_eff_pct:.2f}% drop "
+                            f"(interval {_interval:.2f}% + fee {_fee:.2f}%; "
+                            f"price ≤ ${_required_max:.8f}) before "
+                            f"FOLD can fire."
+                        ),
+                    )
+                    self._emit_trade_notification(
+                        "FOLD",
+                        "CANCELLED",
+                        f"hysteresis (need ≥ {_eff_pct:.2f}% drop)",
+                    )
                 return None
 
         _max_ep = getattr(self.config, "max_entry_price", None)
@@ -1839,43 +1901,46 @@ class ExecutionEngineMixin:
         except (TypeError, ValueError):
             _px = 0.0
         if _max_ep is not None and _px > 0 and _px > float(_max_ep):
-            self._bus.emit(
-                "bot.log",
-                bot_id=self.bot_id,
-                message=(
-                    f"BUY REFUSED (max_entry_price gate): current "
-                    f"price ${_px:.8f} > max_entry_price "
-                    f"${float(_max_ep):.8f}. Operator-set ceiling. "
-                    f"Bot stands down until price drops below."
-                ),
-            )
+            if self._refusal_is_new("buy_above_max_entry", _px):
+                self._bus.emit(
+                    "bot.log",
+                    bot_id=self.bot_id,
+                    message=(
+                        f"BUY REFUSED (max_entry_price gate): current "
+                        f"price ${_px:.8f} > max_entry_price "
+                        f"${float(_max_ep):.8f}. Operator-set ceiling. "
+                        f"Bot stands down until price drops below."
+                    ),
+                )
             return None
         if _min_ep is not None and _px > 0 and _px < float(_min_ep):
-            self._bus.emit(
-                "bot.log",
-                bot_id=self.bot_id,
-                message=(
-                    f"BUY REFUSED (min_entry_price gate): current "
-                    f"price ${_px:.8f} < min_entry_price "
-                    f"${float(_min_ep):.8f}. Operator-set floor. "
-                    f"Bot stands down until price rises above."
-                ),
-            )
+            if self._refusal_is_new("buy_below_min_entry", _px):
+                self._bus.emit(
+                    "bot.log",
+                    bot_id=self.bot_id,
+                    message=(
+                        f"BUY REFUSED (min_entry_price gate): current "
+                        f"price ${_px:.8f} < min_entry_price "
+                        f"${float(_min_ep):.8f}. Operator-set floor. "
+                        f"Bot stands down until price rises above."
+                    ),
+                )
             return None
 
         try:
             _open = await self.exchange.get_open_orders(self.config.symbol)
         except Exception as _oo_exc:
-            self._bus.emit(
-                "bot.log",
-                bot_id=self.bot_id,
-                message=(
-                    f"P0b BUY REFUSED (fail-closed): "
-                    f"get_open_orders raised {type(_oo_exc).__name__}: "
-                    f"{_oo_exc}. Cannot verify absence of stacked "
-                    f"orders. Refusing."
-                ),
-            )
+            if self._refusal_is_new("buy_open_orders_unreadable", price):
+                self._bus.emit(
+                    "bot.log",
+                    bot_id=self.bot_id,
+                    message=(
+                        f"P0b BUY REFUSED (fail-closed): "
+                        f"get_open_orders raised {type(_oo_exc).__name__}: "
+                        f"{_oo_exc}. Cannot verify absence of stacked "
+                        f"orders. Refusing."
+                    ),
+                )
             return None
         try:
             from ...exchange.base import OrderSide as _OS
@@ -1894,17 +1959,18 @@ class ExecutionEngineMixin:
             ]
         if _open_buys:
             _ids = ", ".join(str(getattr(o, "id", "?")) for o in _open_buys[:3])
-            self._bus.emit(
-                "bot.log",
-                bot_id=self.bot_id,
-                message=(
-                    f"P0b STACKED BUY REFUSED: {len(_open_buys)} open "
-                    f"BUY order(s) already on exchange for "
-                    f"{self.config.symbol} (ids: {_ids}). "
-                    f"Refusing to place a second BUY on top. "
-                    f"Wait for existing order(s) to fill or cancel."
-                ),
-            )
+            if self._refusal_is_new("buy_stacked", price):
+                self._bus.emit(
+                    "bot.log",
+                    bot_id=self.bot_id,
+                    message=(
+                        f"P0b STACKED BUY REFUSED: {len(_open_buys)} open "
+                        f"BUY order(s) already on exchange for "
+                        f"{self.config.symbol} (ids: {_ids}). "
+                        f"Refusing to place a second BUY on top. "
+                        f"Wait for existing order(s) to fill or cancel."
+                    ),
+                )
             return None
 
         _ctx = trace_context or {}
@@ -1917,8 +1983,11 @@ class ExecutionEngineMixin:
             path=_path
         )
         if _refuse_reason_msg:
-            self._bus.emit("bot.log", bot_id=self.bot_id, message=_refuse_reason_msg)
-            logger.warning("Bot %s %s", self.bot_id, _refuse_reason_msg)
+            if self._refusal_is_new("buy_safety", price):
+                self._bus.emit(
+                    "bot.log", bot_id=self.bot_id, message=_refuse_reason_msg
+                )
+                logger.warning("Bot %s %s", self.bot_id, _refuse_reason_msg)
             return None
 
         _qrate_buy = float(self._quote_to_usd or 1.0)
@@ -1963,8 +2032,9 @@ class ExecutionEngineMixin:
                 f"exceeds budget. No buy may exceed its path's Target-Delta "
                 f"+ per-cycle-growth allowance."
             )
-            self._bus.emit("bot.log", bot_id=self.bot_id, message=_reason)
-            logger.warning("Bot %s %s", self.bot_id, _reason)
+            if self._refusal_is_new("buy_layer1_budget", price):
+                self._bus.emit("bot.log", bot_id=self.bot_id, message=_reason)
+                logger.warning("Bot %s %s", self.bot_id, _reason)
             return None
 
         if getattr(self.config, "position_ceiling_enabled", False):
@@ -1985,8 +2055,9 @@ class ExecutionEngineMixin:
                         f"acquisition until detonation harvests grown "
                         f"position on next bullish higher-TF vote."
                     )
-                    self._bus.emit("bot.log", bot_id=self.bot_id, message=_reason)
-                    logger.warning("Bot %s %s", self.bot_id, _reason)
+                    if self._refusal_is_new("buy_layer2_ceiling", price):
+                        self._bus.emit("bot.log", bot_id=self.bot_id, message=_reason)
+                        logger.warning("Bot %s %s", self.bot_id, _reason)
                     return None
 
         try:
@@ -2002,16 +2073,20 @@ class ExecutionEngineMixin:
             self.stats.verify_samples += vh_samples
             if vh_fp is None:
                 self.stats.verify_canceled += 1
-                self._bus.emit(
-                    "bot.log",
-                    bot_id=self.bot_id,
-                    message=f"BUY CANCELED (R55 VH): slippage would "
-                    f"exceed {self.config.target_asset} class "
-                    f"tolerance @ ${price:.8f}",
-                )
-                logger.info(
-                    "Bot %s VH-canceled buy of %.6f at %.4f", self.bot_id, amount, price
-                )
+                if self._refusal_is_new("buy_slippage", price):
+                    self._bus.emit(
+                        "bot.log",
+                        bot_id=self.bot_id,
+                        message=f"BUY CANCELED (R55 VH): slippage would "
+                        f"exceed {self.config.target_asset} class "
+                        f"tolerance @ ${price:.8f}",
+                    )
+                    logger.info(
+                        "Bot %s VH-canceled buy of %.6f at %.4f",
+                        self.bot_id,
+                        amount,
+                        price,
+                    )
                 return
             if vh_status == "clean":
                 self.stats.verify_clean += 1

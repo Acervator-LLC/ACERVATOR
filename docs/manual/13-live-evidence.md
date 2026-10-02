@@ -500,3 +500,141 @@ falls back      _crr in src/trading/scrumming/capital_reservation_mixin.py
 the pre-check   effective_available, inside a try in
                 src/trading/scrumming/execution.py
 ```
+
+## Accumulation against buy and hold
+
+The claim under test is that a completed Scrum and Fold cycle ends holding more
+of the asset. Units carry that claim and dollars do not. A position worth more
+dollars can hold fewer units, and a rising market lifts both sides at once, so
+units are reported first here.
+
+The account was funded on 2026-04-12. The newest export carries one fill on that
+day, for $200 on one base, so a baseline read as the position held that day is
+one base rather than a portfolio. The baseline is the money instead. For each
+charted base it is the net cash the platform committed to that base, placed at
+that base's own price on 2026-04-12 and left untouched from that day.
+`hodl_rows` in `tools/build_product_manual.py` builds it. Net cash is every
+buy's price times quantity less every sell's, taken from the Price at
+Transaction and Quantity Transacted columns that the charts of
+[Part 9](10-live-trade-history.md) read, so both metrics run on the same rows.
+
+Four of the 38 bases took no net cash at all. On each of them the sales returned
+more dollars than the purchases spent, and units are still held. A05 is $73.54
+ahead of its own cost, A11 $31.27, A29 $7.56 and A30 $0.34. A buy-and-hold
+investor has no position to compare against a negative cost, so those four carry
+no ratio and sit in the right-hand panel of the first figure.
+
+Five bases have no 2026-04-12 price, because the venue listed them later. A02,
+A03, A11, A24 and A26 are baselined at their own first recorded candle instead,
+and their bars carry an outline.
+
+In units, across the 34 bases that took net cash:
+
+```
+ahead of buy and hold     26 of 34
+behind buy and hold        8 of 34
+median ratio           1.1930
+widest ahead           5.7905
+widest behind          0.5060
+```
+
+In dollars, both sides valued at the same final recorded price:
+
+```
+held now                      $3,555.04
+the same money held from the baseline   $3,316.34
+difference                      $238.70
+ratio                             1.0720
+```
+
+Across all 38 bases the platform holds $3,894.86 at the final recorded price
+against $3,694.42 of net cash committed.
+
+Read the two together. The dollar figure is one number and it rides whatever the
+market did; the unit figure is 34 separate answers to the question the engine is
+built to answer. Eight of those answers go the other way, and they are in the
+figure with the rest.
+
+![Units held now against the units the same net cash buys and holds from the baseline day, by charted base.](figures/evidence_hodl_units.png)
+
+![Both positions valued at the same final recorded price, by charted base.](figures/evidence_hodl_dollars.png)
+
+## What the market did across the window
+
+A unit result means little without the market it was taken in, and one average
+across the whole window would hide what that market did. `market_window` in
+`tools/build_product_manual.py` clamps every base to one window, and
+`regime_turn` splits that window at the month start whose equal-weight index is
+lowest. The window runs from the latest first candle among the bases whose
+record reaches the baseline day, to the earliest last candle among those same
+bases. A base the venue listed after the baseline day is dropped rather than
+measured over a shorter window.
+
+```
+window        2026-04-01 00:10 UTC to 2026-10-02 12:35 UTC
+bases          33 of 38; A02, A03, A11, A24 and A26 dropped as later listings
+turn          2026-08-01, the month start carrying the lowest index
+```
+
+The two stretches either side of that turn:
+
+```
+                        fell         median      index
+1 Apr to 1 Aug        21 of 33       -11.3%      1.0069
+1 Aug to 2 Oct         2 of 33       +56.3%      1.6912
+```
+
+Measured from the baseline day instead of the window start, the first stretch is
+weaker again: 22 of 33 bases below where they began, a median of -16.0% and an
+index of 0.9185.
+
+Month by month:
+
+```
+Apr    8 of 33 fell    median  +7.7%
+May   22 of 33 fell    median  -4.2%
+Jun   32 of 33 fell    median -21.8%
+Jul   21 of 33 fell    median  -3.4%
+Aug    3 of 33 fell    median +18.9%
+Sep    4 of 33 fell    median +25.1%
+```
+
+Three months fell in a row, and June took 32 of the 33 bases down with it.
+Measured from the day the account was funded, the median base reached 22.4%
+below its starting price on 1 July and the equal-weight index reached 0.9115 on
+2 August. The median base sat below its 12 April level on 96 of the window's 185
+days, the last of them 20 August.
+
+Four of the six months were soft and three of those four fell. The rise came
+late and it came fast.
+
+The turn is measured rather than chosen. The month start carrying the lowest
+index is 1 August, the monthly medians turn positive in August, and the median
+base regains its 12 April level on 20 August. September is a month later than
+the data places the turn.
+
+Over the whole window the same 33 bases read 27 up, 6 down, a median of +32.5%
+and an index of 1.7644. That single figure averages a falling stretch and a
+rising one, and it describes neither. It is recorded here so a reader who
+computes it finds the same value, not because it characterises the period.
+
+Dropping the two best and the two worst leaves that whole-window index at
+1.6224, so the late rise is not two outliers.
+
+The index panel of the figure below draws the equal-weight mean and the median
+of the same 33 bases, with a rule at the turn. The mean spikes to 3.86 on
+2026-04-18 and the median does not. One base, A01, prints a close 90.9 times its
+window-start close that day and falls back within the week. The spike is in the
+venue's own recorded candles, it moves the mean and not the median, and it is
+gone long before the window ends.
+
+The clamp is the difference between a reading and a mistake. The same 38 tablets
+measured each over its own whole length, with no common window, return a median
+of +1.4% against the clamped +32.5%, because a base with a shorter record is
+compared against a base with a longer one.
+
+The accumulation result above does not rest on any of this. It is an arithmetic
+comparison of units against units at one price, and it reads the same whichever
+way the market went.
+
+![Each base's change across the first stretch beside its change across the second, and the equal-weight index and median through the whole window.](figures/evidence_market.png)

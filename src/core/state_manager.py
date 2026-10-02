@@ -377,7 +377,7 @@ class StateManager:
         if not self._path.exists():
             return {}
         try:
-            with open(self._path, "r") as f:
+            with open(self._path, "r", encoding="utf-8") as f:
                 state = json.load(f)
             bot_count = len(state.get("bots", {}))
             saved_at = state.get("saved_at_human", "unknown")
@@ -387,7 +387,17 @@ class StateManager:
             logger.error("Corrupt state file, trying backup...")
             return self._try_backup()
         except Exception as exc:
-            logger.error("Failed to load bot state: %s", exc)
+            logger.error(
+                "Bot state file %s could NOT be read (%s: %s), returning 0 "
+                "bots. This is NOT the same as having no saved bots. %s "
+                "exists=%s and may hold a good copy — do NOT let a save "
+                "overwrite it.",
+                self._path,
+                type(exc).__name__,
+                exc,
+                self._backup_path.name,
+                self._backup_path.exists(),
+            )
             return {}
 
     def _try_backup(self) -> dict:
@@ -395,12 +405,19 @@ class StateManager:
         if not self._backup_path.exists():
             return {}
         try:
-            with open(self._backup_path, "r") as f:
+            with open(self._backup_path, "r", encoding="utf-8") as f:
                 state = json.load(f)
             logger.info("Loaded from backup: %d bots", len(state.get("bots", {})))
             return state
-        except Exception:
-            logger.error("Backup also corrupt")
+        except Exception as exc:
+            logger.error(
+                "Bot state backup %s could NOT be read either (%s: %s), "
+                "returning 0 bots. Both saved copies are unread; do NOT let "
+                "a save overwrite them.",
+                self._backup_path,
+                type(exc).__name__,
+                exc,
+            )
             return {}
 
     def clear_state(self) -> None:

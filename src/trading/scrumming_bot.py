@@ -2487,11 +2487,16 @@ class ScrummingBot(
             self._hyst_ref_scrum_side = 0.0
 
     def _reset_opposing_hysteresis_after_fill(self) -> None:
-        """Disarm both opposing-direction hysteresis states and clear their pivots."""
+        """Disarm both opposing-direction hysteresis states and clear their pivots.
+
+        Also drops every held refusal, because a fill moves the pivots every
+        refusal was measured against.
+        """
         self._hyst_armed_fold_side = False
         self._hyst_armed_scrum_side = False
         self._hyst_ref_fold_side = 0.0
         self._hyst_ref_scrum_side = 0.0
+        self._refusal_holds = None
 
     @property
     def position_value_usd(self) -> float:
@@ -4188,22 +4193,23 @@ class ScrummingBot(
             and not _bb_below_lower_dt
             and not _cb_blocks_fold
         ):
-            self._bus.emit(
-                "bot.log",
-                bot_id=self.bot_id,
-                message=(
-                    f"FOLD REFUSED (Lower BB Detection Threshold): "
-                    f"bb_pos={bb_pos:.3f} > lower_detect={_bb_lower_dt:.3f} "
-                    f"(scrum_detect_pct={self.config.scrum_detect_pct}%). "
-                    f"Operator rule: FOLD cannot occur above the Lower "
-                    f"BB Detection Threshold. All other gates passed."
-                ),
-            )
-            self._emit_trade_notification(
-                "FOLD",
-                "CANCELLED",
-                f"bb_pos {bb_pos:.3f} > lower detect {_bb_lower_dt:.3f}",
-            )
+            if self._refusal_is_new("fold_bb_lower_detect", ticker.last):
+                self._bus.emit(
+                    "bot.log",
+                    bot_id=self.bot_id,
+                    message=(
+                        f"FOLD REFUSED (Lower BB Detection Threshold): "
+                        f"bb_pos={bb_pos:.3f} > lower_detect={_bb_lower_dt:.3f} "
+                        f"(scrum_detect_pct={self.config.scrum_detect_pct}%). "
+                        f"Operator rule: FOLD cannot occur above the Lower "
+                        f"BB Detection Threshold. All other gates passed."
+                    ),
+                )
+                self._emit_trade_notification(
+                    "FOLD",
+                    "CANCELLED",
+                    f"bb_pos {bb_pos:.3f} > lower detect {_bb_lower_dt:.3f}",
+                )
 
         elif (
             self._fold_tranches
@@ -4290,17 +4296,18 @@ class ScrummingBot(
                         },
                     )
                     if hedge_fill is None or hedge_fill <= 0:
-                        self._bus.emit(
-                            "bot.log",
-                            bot_id=self.bot_id,
-                            message=(
-                                f"HEDGE ABORTED: buy failed at "
-                                f"${ticker.last:.8f} (gap=${_gap:.4f}, "
-                                f"reserve=${self._hedge_bal:.2f} "
-                                f"unchanged). No state update. "
-                                f"Retry next tick if gates still pass."
-                            ),
-                        )
+                        if self._refusal_is_new("hedge_buy_refused", ticker.last):
+                            self._bus.emit(
+                                "bot.log",
+                                bot_id=self.bot_id,
+                                message=(
+                                    f"HEDGE ABORTED: buy failed at "
+                                    f"${ticker.last:.8f} (gap=${_gap:.4f}, "
+                                    f"reserve=${self._hedge_bal:.2f} "
+                                    f"unchanged). No state update. "
+                                    f"Retry next tick if gates still pass."
+                                ),
+                            )
                     else:
                         _hedge_asset = _use / hedge_fill
                         self._main_lots.append(

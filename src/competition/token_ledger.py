@@ -218,13 +218,14 @@ class TokenLedger:
                     "events": [e.to_dict() for e in self._events],
                 },
                 indent=2,
-            )
+            ),
+            encoding="utf-8",
         )
 
     def load(self) -> "TokenLedger":
         if not self._path.exists():
             return self
-        data = json.loads(self._path.read_text())
+        data = json.loads(self._path.read_text(encoding="utf-8"))
         for rd in data.get("events", []):
             record = AwardRecord.from_dict(rd)
             self._events.append(record)
