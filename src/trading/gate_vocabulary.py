@@ -31,7 +31,7 @@ _GATE_ORDER_FOLD: tuple[str, ...] = (
     "TA",  # TA-not-bearish
     "LS",  # landing-strip override
     "TRNQ",  # no-tranches-queued
-    "CEIL",  # MEM-253 position ceiling
+    "CEIL",  # position ceiling
     "HTF",  # HTF-bearish
     "CB",  # circuit breaker
     "OTD",  # opposing-trade-distance hysteresis
@@ -61,7 +61,7 @@ _BLOCKER_PREFIXES: tuple[tuple[str, str], ...] = (
     ("fold_ok_midline", "MID"),
     ("TA-not-bearish", "TA"),
     ("no-tranches-queued", "TRNQ"),
-    ("MEM-253", "CEIL"),
+    ("position-ceiling", "CEIL"),
     ("HTF-bearish", "HTF"),
     # shared
     ("CB-soft-trip", "CB"),

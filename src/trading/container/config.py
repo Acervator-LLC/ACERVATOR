@@ -199,7 +199,7 @@ class BotConfig:
                 violations.append(
                     f"Extractor config has target_asset="
                     f"{self.target_asset!r}; expected '*' (pool "
-                    f"sigil). This is likely a stale pre-v3.19.28 "
+                    f"sigil). This is likely a stale "
                     f"wizard write or a mode-tag drift bug — the "
                     f"value will leak into the startup notification "
                     f"as an unrelated wallet balance."

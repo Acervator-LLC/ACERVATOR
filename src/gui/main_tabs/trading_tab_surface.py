@@ -157,13 +157,12 @@ ACTIVITY_PAUSE_TOOLTIP = (
     "Pause the Activity Log spool so errors don't scroll "
     "off-screen. Messages received while paused are "
     "buffered (cap 2000) and flushed on resume in "
-    "chronological order. v3.15.67."
+    "chronological order."
 )
 API_PAUSE_TOOLTIP = (
     "Freeze the API Interaction Log so you can capture an "
     "error without it scrolling away. Internal events keep "
-    "happening; the buffer just stops appending to the view. "
-    "v3.15.67."
+    "happening; the buffer just stops appending to the view."
 )
 
 STATUS_LOG_MAX_HEIGHT_PX = 16777215

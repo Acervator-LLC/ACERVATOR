@@ -99,7 +99,7 @@ COLUMN_TOOLTIPS = {
     ),
     3: "Total number of executed buy and sell trades",
     4: "Target Balance — the operator-set balance this bot trades\n"
-    "relative to. Hard-capped per MEM-246 Phase B.",
+    "relative to. Position can never exceed Target × (1 + Max Target Growth %).",
     5: (
         "Target Balance denominated in BTC (target USD ÷ BTC/USD spot).\n"
         "Suffix Δ = 24h % change of <target>/BTC minus 24h % of "
@@ -404,7 +404,7 @@ FIRE_TIP_FOLD_OUTLINE = (
     "delta < 0 but auto-fire blocked. "
     "Clicking fires a MARKET buy sized to "
     "rebalance back to target (bypasses "
-    "auto's TA/BB/MEM-171 gates)."
+    "auto's TA/BB/price-floor gates)."
 )
 FIRE_TIP_PHASE_FIRE = (
     "Organic FIRE phase — bot at band but "

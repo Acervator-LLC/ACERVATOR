@@ -1261,7 +1261,7 @@ if _HAS_QT:
                     self._bot_swarm_privacy_dot.setStyleSheet(
                         f"QFrame{{background:{ds.VIZ_NUCLEAR_SURFACE};border:1px solid "
                         f"{ds.VIZ_NUCLEAR_BORDER};border-radius:3px;}}"
-                        "/* wiring-broken indicator (v3.23.12) */"
+                        "/* wiring-broken indicator */"
                     )
                     return
                 reg = _get_privacy_mask_registry()
@@ -1275,7 +1275,7 @@ if _HAS_QT:
                 self._bot_swarm_privacy_dot.setStyleSheet(
                     f"QFrame{{background:{ds.VIZ_NUCLEAR_SURFACE};border:1px solid "
                     f"{ds.VIZ_NUCLEAR_BORDER};border-radius:3px;}}"
-                    "/* wiring-broken indicator (v3.23.12) */"
+                    "/* wiring-broken indicator */"
                 )
                 return
             self._refresh_bot_swarm_privacy_dot()
@@ -1331,7 +1331,7 @@ if _HAS_QT:
                     self._privacy_mode_btn.setStyleSheet(
                         f"QPushButton{{background:{ds.VIZ_NUCLEAR_SURFACE};color:white;"
                         f"border:1px solid {ds.VIZ_NUCLEAR_BORDER};padding:3px 12px;}}"
-                        "/* wiring-broken (v3.23.18) */"
+                        "/* wiring-broken */"
                     )
                     return
                 reg = _get_privacy_mask_registry()
@@ -1346,7 +1346,7 @@ if _HAS_QT:
                 self._privacy_mode_btn.setStyleSheet(
                     f"QPushButton{{background:{ds.VIZ_NUCLEAR_SURFACE};color:white;"
                     f"border:1px solid {ds.VIZ_NUCLEAR_BORDER};padding:3px 12px;}}"
-                    "/* wiring-broken (v3.23.18) */"
+                    "/* wiring-broken */"
                 )
                 return
             self._refresh_privacy_mode_btn()

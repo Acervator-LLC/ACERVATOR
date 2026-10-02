@@ -152,7 +152,7 @@ POOL_TEXT_FORMAT = "${amount:,.2f}"
 MODE_TIP_FORMAT = (
     "Mode: extractor (Base Currency Extractor Multi-Target)\n"
     "State: {state}\n"
-    "v3.19.1 — accumulates base-currency units via top-N pair scanning."
+    "Accumulates base-currency units via top-N pair scanning."
 )
 
 LIQUID_TIP_FORMAT = (

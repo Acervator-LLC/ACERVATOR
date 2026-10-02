@@ -26,6 +26,7 @@ from __future__ import annotations
 import time
 from typing import Any, Optional
 
+from .. import design_system as ds
 from ..color_alpha import css_colours
 
 METHOD = "testnet_tab.state"
@@ -252,7 +253,7 @@ EVENT_FALLBACK_COLOR = MUTED
 
 LOG_TIME_FORMAT = "%H:%M:%S"
 LOG_LINE_FORMAT = (
-    '<span style="color:#445566">[{stamp}]</span> '
+    f'<span style="color:{ds.VIZ_CAPTION}">[{{stamp}}]</span> '
     '<span style="color:{color}">{text}</span>'
 )
 

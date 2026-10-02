@@ -187,7 +187,7 @@ class StateRestoreMixin:
                 logger.error(
                     "Bot %s has unrecognized mode %r in saved state "
                     "— skipping restoration. (Legacy 'grid' mode was "
-                    "removed v3.20.4; persisted grid bots are not "
+                    "removed; persisted grid bots are not "
                     "restorable. Add an explicit branch in "
                     "restore_bots_from_state() if you intend to "
                     "support a new mode.)",
@@ -212,7 +212,7 @@ class StateRestoreMixin:
                     "Bot %s restoration FAILED — persisted config could "
                     "not be built: %s. Skipping "
                     "this bot. (Either operator manually edited "
-                    "state.json to a bad shape, or a pre-v3.20.32 "
+                    "state.json to a bad shape, or an older "
                     "config drifted out of mode invariants. To "
                     "recover: delete the bot's entry from state "
                     "and recreate via the wizard, OR fix the "

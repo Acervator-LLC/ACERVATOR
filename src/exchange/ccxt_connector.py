@@ -27,14 +27,14 @@ HistoryCallback = Callable[[str, HistoryAnalysis], object]
 
 
 # Submissions past this depth are refused rather than queued.
-MEM_220_QUEUE_CAP: int = 8
+SYNC_QUEUE_CAP: int = 8
 
 # sync_connect market-load budget: 3 tries, waiting 2s then 4s.
 CONNECT_ATTEMPTS: int = 3
 CONNECT_BACKOFF_STEP_S: float = 2.0
 
 # Outer wait_for budget for one sync CCXT call.
-MEM_220_CALL_TIMEOUT_SEC: float = 25.0
+SYNC_CALL_TIMEOUT_SEC: float = 25.0
 
 
 # ccxt caps a coinbase fetch_ohlcv page at this many candles.
@@ -635,16 +635,16 @@ class CCXTConnector(ExchangeInterface):
         """Run one sync CCXT call on the single worker, with a queue cap and a timeout.
 
         Raises:
-            CCXTQueueFullError: queue depth is at ``MEM_220_QUEUE_CAP``.
-            TimeoutError: the call exceeded ``MEM_220_CALL_TIMEOUT_SEC``.
+            CCXTQueueFullError: queue depth is at ``SYNC_QUEUE_CAP``.
+            TimeoutError: the call exceeded ``SYNC_CALL_TIMEOUT_SEC``.
             asyncio.CancelledError: the awaiter was cancelled; the worker runs on.
             Any CCXT exception: propagated unchanged.
         """
         # Read and written only on the asyncio loop thread, so no lock.
-        if self._sync_queue_depth >= MEM_220_QUEUE_CAP:
+        if self._sync_queue_depth >= SYNC_QUEUE_CAP:
             raise CCXTQueueFullError(
                 f"CCXT call queue at capacity ({self._sync_queue_depth}/"
-                f"{MEM_220_QUEUE_CAP}) for {self._exchange_id}; "
+                f"{SYNC_QUEUE_CAP}) for {self._exchange_id}; "
                 f"exchange is likely rate-limited or network is degraded. "
                 f"Call: {getattr(fn, '__name__', repr(fn))}"
             )
@@ -674,15 +674,15 @@ class CCXTConnector(ExchangeInterface):
                 fut = loop.run_in_executor(executor, fn, *args)
 
             try:
-                result = await asyncio.wait_for(fut, timeout=MEM_220_CALL_TIMEOUT_SEC)
+                result = await asyncio.wait_for(fut, timeout=SYNC_CALL_TIMEOUT_SEC)
                 return result
             except asyncio.TimeoutError:
                 # The worker thread runs on until CCXT returns; log the leak.
                 logger.warning(
-                    "MEM-220: sync CCXT call exceeded outer timeout "
+                    "sync CCXT call exceeded outer timeout "
                     "(%ss) for %s on %s; worker thread is leaked until "
                     "CCXT's own timeout fires",
-                    MEM_220_CALL_TIMEOUT_SEC,
+                    SYNC_CALL_TIMEOUT_SEC,
                     getattr(fn, "__name__", repr(fn)),
                     self._exchange_id,
                 )
@@ -923,7 +923,7 @@ class CCXTConnector(ExchangeInterface):
             try:
                 executor.shutdown(wait=True)
             except Exception as exc:
-                logger.warning("MEM-220: sync executor shutdown failed: %s", exc)
+                logger.warning("sync executor shutdown failed: %s", exc)
         logger.info("Disconnected from %s", self.display_name)
 
     def _ensure_connected(self) -> None:

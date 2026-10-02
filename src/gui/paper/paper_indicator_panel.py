@@ -739,7 +739,7 @@ if _HAS_QT:
                     "RAW signed z-value (NOT a percentage). "
                     "|z| >2: strong bearish/bullish mean-revert "
                     "signal. |z| <1.5: NEUTRAL (no action).\n\n"
-                    "v3.20.7 added ZScoreExtremityGate — ASYMMETRIC: "
+                    "ZScoreExtremityGate is ASYMMETRIC: "
                     "blocks SCRUM at z<-2 (don't sell the statistical "
                     "bottom), blocks FOLD at z>+2 (don't buy the "
                     "statistical top). High +z is exactly the right "

@@ -89,7 +89,7 @@ class BotRegistryMixin:
                 # A CapitalRegistry failure logs and falls through; it never
                 # blocks registration.
                 logger.warning(
-                    "v3.20.71 CapitalRegistry consult failed for bot %s; "
+                    "CapitalRegistry consult failed for bot %s; "
                     "proceeding without reservation: %s",
                     bot.bot_id,
                     _reg_exc,
@@ -190,7 +190,7 @@ class BotRegistryMixin:
                 self._capital_registry.release_reservation(bot_id=bot_id)
             except Exception as _rel_exc:
                 logger.warning(
-                    "v3.20.71 CapitalRegistry release failed for bot %s: %s",
+                    "CapitalRegistry release failed for bot %s: %s",
                     bot_id,
                     _rel_exc,
                 )

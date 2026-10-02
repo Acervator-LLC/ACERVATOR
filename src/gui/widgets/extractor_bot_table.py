@@ -179,7 +179,7 @@ if _HAS_QT:
                             f"Mode: extractor (Base Currency "
                             f"Extractor Multi-Target)\nState: "
                             f"{state.upper() if state else 'UNKNOWN'}\n"
-                            f"v3.19.1 — accumulates base-currency "
+                            f"Accumulates base-currency "
                             f"units via top-N pair scanning."
                         )
                     if col == 5:  # Liquid cell
