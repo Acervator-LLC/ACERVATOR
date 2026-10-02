@@ -98,7 +98,7 @@ class TickPhaseMixin:
     _settled_sale_proceeds: Callable[..., float]
     _smart_wire_mgr: Any
     _standing_surplus_usd: float
-    _sum_sibling_base_currency_claims: Callable[..., float]
+    _sum_sibling_base_currency_claims: Callable[..., Optional[float]]
     _ta_weights: Any
     _target_balance: Any
     _target_grow_last_side: Optional[str]
@@ -755,6 +755,25 @@ class TickPhaseMixin:
             return
 
         _sibling_claims = self._sum_sibling_base_currency_claims()
+        if _sibling_claims is None:
+            self._underfunded_log_counter = (
+                getattr(self, "_underfunded_log_counter", 0) + 1
+            )
+            if self._underfunded_log_counter % 60 == 1:
+                self._bus.emit(
+                    "bot.log",
+                    bot_id=self.bot_id,
+                    message=(
+                        f"INITIAL ENTRY BLOCKED: what the other bots have "
+                        f"claimed of the {self.config.base_currency} pool "
+                        f"could not be read in full, so the free balance "
+                        f"cannot be trusted. Refusing to buy rather than "
+                        f"spend {self.config.base_currency} another bot has "
+                        f"already claimed. Retrying next tick."
+                    ),
+                )
+            return
+
         _quote_free = _quote_free_raw - _sibling_claims
         if _quote_free < 0:
             self._underfunded_log_counter = (

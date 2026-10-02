@@ -642,6 +642,45 @@ class ScrummingBot(
         """Attach the BotManager for cross-bot registry coordination."""
         self._bot_manager = manager
 
+    def _sum_sibling_base_currency_claims(self) -> Optional[float]:
+        """What the other bots on this exchange have claimed of this bot's
+        base-currency pool, asked of the attached BotManager.
+
+        Only the manager holds the fleet, so the figure cannot be computed here.
+        None when no manager is attached or the manager could not read every
+        sibling; the initial-entry phase refuses on None rather than reading a
+        short total as money that is free.
+        """
+        reader = getattr(
+            getattr(self, "_bot_manager", None),
+            "sum_sibling_base_currency_claims",
+            None,
+        )
+        if not callable(reader):
+            logger.warning(
+                "Bot %s has no fleet to ask what the other bots have claimed "
+                "of the %s pool, so its free balance cannot be trusted",
+                self.bot_id,
+                self.config.base_currency,
+            )
+            return None
+        try:
+            claimed = reader(
+                self.bot_id,
+                self.config.exchange_id,
+                self.config.base_currency,
+            )
+        except Exception as _claims_exc:
+            logger.warning(
+                "Bot %s could not read sibling claims on the %s pool: %s: %s",
+                self.bot_id,
+                self.config.base_currency,
+                type(_claims_exc).__name__,
+                _claims_exc,
+            )
+            return None
+        return None if claimed is None else float(claimed)
+
     def set_target_balance_live(self, new_target: float) -> dict:
         """Apply an operator-initiated Target Balance change, comparing ``new_target``
         against ``_anchor_target_balance`` rather than the grown target.
@@ -4595,9 +4634,8 @@ class ScrummingBot(
         n_target = int(getattr(self.config, "stack_tranche_count_target", 3) or 3)
         split_dist = float(getattr(self.config, "split_distance", 1.0) or 1.0)
         spacing = str(getattr(self.config, "stack_spacing_mode", "linear") or "linear")
-        min_order = float(
-            getattr(self.exchange_interface, "min_order_size", 0.0) or 0.0
-        )
+        _rules = await self._get_market_rules(self.config.symbol)
+        min_order = float(_rules.smallest_amount or 0.0)
 
         try:
             tranches = split_scrum_into_tranches(
