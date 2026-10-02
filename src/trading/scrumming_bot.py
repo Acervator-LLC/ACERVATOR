@@ -161,8 +161,8 @@ the gate able to refuse. Subtracting the same 0.30 from 0.25 lands at or
 below zero and is the tautology again. Dividing preserves zero: however
 large the favour, a confidence of exactly 0.0 is still refused, and here
 the arm refuses everything below 0.25 / 1.30 = 0.1923. It is also what
-the operator's word means -- a skew SCALES, a shift OFFSETS, and v3.15.64
-shipped a shift.
+the operator's word means -- a skew SCALES, a shift OFFSETS, and a shift
+is what shipped.
 
 NO NEW NUMBER IS INTRODUCED. This floor is derived from the two constants
 already of record: the 0.25 floor and the 0.30 favour. The magnitude of
@@ -1650,7 +1650,7 @@ class ScrummingBot(
                 f"(usd ${cost:.4f}, ref ${tranche.get('ref', 0):.8f}, "
                 f"IBP ${ibp:.8f}) at current "
                 f"${price:.8f}. Bypasses TA/OTD/Target-Delta gates; "
-                f"Position Ceiling + MEM-257 still apply."
+                f"Position Ceiling + fail-closed buy safety still apply."
             ),
         )
 
@@ -1679,7 +1679,7 @@ class ScrummingBot(
                 "applied": False,
                 "reason": (
                     "_execute_buy refused or failed (Smart "
-                    "Ceiling / MEM-257 / P0b guard, or "
+                    "Ceiling / fail-closed buy safety / P0b guard, or "
                     "exchange rejection); tranche unchanged"
                 ),
             }
@@ -2626,7 +2626,7 @@ class ScrummingBot(
                 _budget_ceiling = (_target + _per_cycle_growth_budget) * (1.0 + _slip)
             if _projected > _budget_ceiling:
                 return False, (
-                    f"MEM-253 PRE-BUY REFUSED (path={path}, Layer 1): "
+                    f"PRE-BUY REFUSED (path={path}, Layer 1): "
                     f"projected position ${_projected:.2f} (current "
                     f"${_current_pos:.2f} + intended buy "
                     f"${intended_cost:.2f}) would exceed Target-Delta "
@@ -2643,7 +2643,7 @@ class ScrummingBot(
                     _smart_ceiling_usd = position_ceiling(_anchor, _smart_mult)
                     if _projected > _smart_ceiling_usd:
                         return False, (
-                            f"MEM-253 PRE-BUY REFUSED (path={path}, Layer 2): "
+                            f"PRE-BUY REFUSED (path={path}, Layer 2): "
                             f"projected position ${_projected:.2f} would "
                             f"exceed Position Ceiling ${_smart_ceiling_usd:.2f} "
                             f"(anchor ${_anchor:.2f} × Ceiling Multiple "
@@ -2660,7 +2660,7 @@ class ScrummingBot(
             return True, ""
         except Exception as exc:
             return False, (
-                f"MEM-253 PRE-BUY REFUSED (path={path}): pre-check raised "
+                f"PRE-BUY REFUSED (path={path}): pre-check raised "
                 f"{type(exc).__name__}: {exc}. Fail-closed."
             )
 
@@ -2897,8 +2897,8 @@ class ScrummingBot(
                             "bot.log",
                             bot_id=self.bot_id,
                             message=(
-                                f"MAX CARTRIDGE BLOCKED (hysteresis "
-                                f"v3.15.79): would fire {_direction} on "
+                                f"MAX CARTRIDGE BLOCKED (hysteresis): "
+                                f"would fire {_direction} on "
                                 f"|delta|=${abs(_cartridge_delta):.2f} "
                                 f"≥ ${_cartridge_threshold:.2f}, but "
                                 f"{_hyst_reason}. Refusing to prevent "
@@ -2954,27 +2954,6 @@ class ScrummingBot(
             )
         if self._cb_hard_tripped:
             return
-
-        try:
-            _live_px = float(getattr(ticker, "last", 0.0) or 0.0)
-            if _live_px > 0:
-                _cbx = float(
-                    getattr(self.stats, "cost_basis_total_exchange", 0.0) or 0.0
-                )
-                if _cbx > 0:
-                    _cost_basis = _cbx
-                else:
-                    _cost_basis = sum(
-                        float(l.get("units", 0) or 0)
-                        * float(l.get("initial_buy_price", 0) or 0)
-                        for l in (getattr(self, "_main_lots", []) or [])
-                    )
-                _market_value = (
-                    float(getattr(self, "_current_holdings", 0.0) or 0.0) * _live_px
-                )
-                self.stats.unrealised_pnl = _market_value - _cost_basis
-        except Exception as _sup:
-            logger.debug("suppressed in %s: %s: %s", "tick", type(_sup).__name__, _sup)
 
         summary = None
         bb_result = None
@@ -3449,8 +3428,8 @@ class ScrummingBot(
                 "bot.log",
                 bot_id=self.bot_id,
                 message=(
-                    f"MEM-196 RIPE-HARVEST (v3.15.75, override via "
-                    f"GateChain v3.18.13): Δ={delta_pct:.1f}% ≥ "
+                    f"RIPE-HARVEST (override via "
+                    f"GateChain): Δ={delta_pct:.1f}% ≥ "
                     f"interval {self.config.scrumming_interval_pct:.1f}% "
                     f"+ bb_pos={bb_pos:.2f} ≥ Upper Detect Threshold "
                     f"{_bb_upper_dt:.3f}. RipeHarvestScrumOverride "
@@ -3464,13 +3443,13 @@ class ScrummingBot(
                 "bot.log",
                 bot_id=self.bot_id,
                 message=(
-                    f"MEM-196 DEEP-FOLD (v3.15.75, override via "
-                    f"GateChain v3.18.13): Δ={delta_pct:.1f}% ≥ "
+                    f"DEEP-FOLD (override via "
+                    f"GateChain): Δ={delta_pct:.1f}% ≥ "
                     f"interval {self.config.scrumming_interval_pct:.1f}% "
                     f"+ bb_pos={bb_pos:.2f} ≤ Lower Detect Threshold "
                     f"{_bb_lower_dt:.3f}. DeepFoldOverride will "
-                    f"force-pass midline_fold + ta_bearish. MEM-171 "
-                    f"per-tranche price-floor still enforced downstream."
+                    f"force-pass midline_fold + ta_bearish. The "
+                    f"per-tranche price-floor is still enforced downstream."
                 ),
             )
 
@@ -3964,7 +3943,7 @@ class ScrummingBot(
         if not fold_ok_midline and not _deep_fold:
             _fold_blockers.append(f"fold_ok_midline=False(bb_pos={bb_pos:.2f})")
         if _mem253_at_ceiling:
-            _fold_blockers.append("MEM-253-position-ceiling")
+            _fold_blockers.append("position-ceiling")
         if not _bb_below_lower_dt:
             _fold_blockers.append(
                 f"BB-above-lower-detect(bb_pos={bb_pos:.2f}>{_bb_lower_dt:.2f})"

@@ -44,7 +44,7 @@ except Exception as _exc:
     _MEDIA_ERROR = str(_exc)
     QMediaPlayer = None
     QAudioOutput = None
-from src.gui.qt_safe_events import safe_process_events  # v3.15.99 P4.1
+from src.gui.qt_safe_events import safe_process_events
 
 #: The volume ``MusicPlayerPanel`` and ``Chime`` open their ``QAudioOutput`` at.
 MUSIC_VOLUME = 0.5
@@ -691,7 +691,7 @@ if _HAS_QT:
             a = 0
             errors = []
             self._st.setText("Generating...")
-            safe_process_events("legacy P4.1 site")
+            safe_process_events("legacy processEvents site")
             for ly in self._layers:
                 if ly._preset.currentData():
                     ly.gen_play(**fx)
@@ -720,7 +720,7 @@ if _HAS_QT:
                 (self._key.currentIndex() + 1) % self._key.count()
             )
             self._st.setText(f"Shifting to {self._key.currentData()}...")
-            safe_process_events("legacy P4.1 site")
+            safe_process_events("legacy processEvents site")
             self._gen_all()
 
         def _es(self):

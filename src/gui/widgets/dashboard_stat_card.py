@@ -11,13 +11,19 @@ from typing import Optional
 from ...core.privacy_mask_registry import mask_or
 
 from .. import design_system as ds
+from ..main_tabs.header_strip_surface import (
+    LABEL_FONT_MIN_PX,
+    LABEL_FONT_PX,
+    VALUE_FONT_MIN_PX,
+    VALUE_FONT_PX,
+)
 
 try:
     from PySide6.QtWidgets import QFrame, QHBoxLayout, QVBoxLayout
     from PySide6.QtCore import Qt, Signal
     from PySide6.QtGui import QMouseEvent
 
-    from .eliding_label import ElidingLabel
+    from .fitted_label import FittedLabel
     from .privacy_dot import PrivacyDot
 
     _HAS_QT = True
@@ -48,21 +54,25 @@ if _HAS_QT:
             self._label_row = QHBoxLayout()
             self._label_row.setContentsMargins(0, 0, 0, 0)
             self._label_row.setSpacing(4)
-            self._label = ElidingLabel(label)
+            # The caption shrinks too: a card is narrower than its own longest
+            # caption at the narrowest window, and a cut caption loses a word.
+            self._label = FittedLabel(
+                label, LABEL_FONT_PX, LABEL_FONT_MIN_PX, weight="600"
+            )
             self._label.setProperty("muted", True)
             self._label.setAlignment(Qt.AlignHCenter | Qt.AlignBottom)
-            self._label.setStyleSheet(f"font-size: 10px; color: {ds.MAIN_CAPTION};")
+            self._label.set_skin(f"color: {ds.MAIN_CAPTION};")
             self._label_row.addStretch()
             self._label_row.addWidget(self._label)
             self._privacy_dot: Optional[PrivacyDot] = None
             self._privacy_field_id: Optional[str] = None
             self._label_row.addStretch()
-            self._value = ElidingLabel(value)
+            # The same shrink rule the strip's money columns draw under: the
+            # amount loses type size before it loses a digit.
+            self._value = FittedLabel(value, VALUE_FONT_PX, VALUE_FONT_MIN_PX)
             self._value.setProperty("heading", True)
             self._value.setAlignment(Qt.AlignHCenter | Qt.AlignTop)
-            self._value.setStyleSheet(
-                f"font-size: 14px; font-weight: bold; color: {ds.PRIMARY};"
-            )
+            self._value.set_skin(f"color: {ds.PRIMARY};")
             layout.addLayout(self._label_row)
             layout.addWidget(self._value)
             # The unmasked text `refresh_privacy_dot` re-renders from.

@@ -25,6 +25,7 @@ from __future__ import annotations
 import math
 from typing import Any, Optional
 
+from .. import design_system as ds
 from ..visualizer import growth_stage
 
 METHOD = "bot_visualizer.state"
@@ -35,7 +36,7 @@ MASK_FIELD_ID = "bot_swarm.identifiers"
 MASK_TEXT = "****"
 
 SUCCESS_COLOR = "#00ff88"
-ERROR_COLOR = "#ff3366"
+ERROR_COLOR = ds.ERROR
 ACCENT_GOLD_COLOR = "#ffd700"
 PRIMARY_BRIGHT_COLOR = "#00ffee"
 TEXT_INACTIVE_COLOR = "#aaaaaa"
@@ -47,13 +48,13 @@ MENU_SURFACE_COLOR = "#1a1a2f"
 MENU_BORDER_COLOR = "#3a3a5f"
 MENU_ITEM_SELECTED_COLOR = "#2a2a4f"
 VIZ_PANEL_BORDER_COLOR = "#1a1a3f"
-VIZ_PANEL_SURFACE_COLOR = "#0c0c1a"
+VIZ_PANEL_SURFACE_COLOR = ds.VIZ_PANEL_SURFACE
 VIZ_SWARM_SURFACE_COLOR = "#070710"
-VIZ_TAB_TEXT_COLOR = "#666677"
+VIZ_TAB_TEXT_COLOR = ds.VIZ_TAB_TEXT
 VIZ_TAB_SELECTED_COLOR = "#0a0a20"
 VIZ_LANE_LIVE_COLOR = "#091a0e"
 VIZ_LANE_PAPER_COLOR = "#0e0e09"
-VIZ_CAPTION_COLOR = "#445566"
+VIZ_CAPTION_COLOR = ds.VIZ_CAPTION
 VIZ_CAPTION_DIM_COLOR = "#556677"
 VIZ_HEADING_COLOR = "#c8d8f0"
 VIZ_NUCLEAR_SURFACE_COLOR = "#ff0000"
@@ -953,12 +954,12 @@ PRIVACY_DOT_STYLE_SHEET = (
 BROKEN_DOT_STYLE_SHEET = (
     f"QFrame{{background:{VIZ_NUCLEAR_SURFACE_COLOR};border:1px solid "
     f"{VIZ_NUCLEAR_BORDER_COLOR};border-radius:3px;}}"
-    "/* wiring-broken indicator (v3.23.12) */"
+    "/* wiring-broken indicator */"
 )
 BROKEN_PRIVACY_BUTTON_STYLE_SHEET = (
     f"QPushButton{{background:{VIZ_NUCLEAR_SURFACE_COLOR};color:white;"
     f"border:1px solid {VIZ_NUCLEAR_BORDER_COLOR};padding:3px 12px;}}"
-    "/* wiring-broken (v3.23.18) */"
+    "/* wiring-broken */"
 )
 PRIVACY_ON_STYLE_SHEET = (
     f"QPushButton{{background:{VIZ_CONFIRM_SURFACE_COLOR};color:{SUCCESS_COLOR};"

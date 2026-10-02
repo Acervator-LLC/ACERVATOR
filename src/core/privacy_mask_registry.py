@@ -30,7 +30,6 @@ stays distinguishable from a masked field that holds money.
 
 KPI_FIELD_IDS = (
     "kpi.spendable",
-    "kpi.realised",
     "kpi.locked",
     "kpi.mature",
     "kpi.exch",
@@ -40,6 +39,7 @@ KPI_FIELD_IDS = (
 
 COUNTER_FIELD_IDS = (
     "counter.scrummed",
+    "counter.accumulated",
     "counter.folded",
     "counter.trades",
     "counter.bots",

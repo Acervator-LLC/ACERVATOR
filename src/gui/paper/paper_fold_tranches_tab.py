@@ -731,7 +731,7 @@ class PaperFoldTranchesTabMixin:
             oldest = max(ages_sec)
             oldest_str = self._format_age(oldest)
         elif tranches:
-            oldest_str = "— (pre-v3.16.39 tranches, no timestamp)"
+            oldest_str = "— (older tranches, no timestamp)"
         else:
             oldest_str = "no open tranches"
 
@@ -1182,7 +1182,7 @@ class PaperFoldTranchesTabMixin:
                 fire_btn.setToolTip(
                     "Operator-initiated fold-back of THIS tranche. "
                     "Bypasses TA / OTD / Target-Delta gates. Smart "
-                    "Ceiling + MEM-257 fail-closed still apply. "
+                    "Ceiling + fail-closed buy safety still apply. "
                     "Bot must be RUNNING."
                 )
                 # The inset leaves the row border delegate visible under the button.
@@ -1470,7 +1470,7 @@ class PaperFoldTranchesTabMixin:
                 f"{_moved_note}"
                 f"This will execute a MARKET buy at the current "
                 f"price, bypassing TA / OTD / Target-Delta gates. "
-                f"Smart Ceiling and MEM-257 fail-closed still apply."
+                f"Smart Ceiling and fail-closed buy safety still apply."
             )
             btn = QMessageBox.question(
                 self,

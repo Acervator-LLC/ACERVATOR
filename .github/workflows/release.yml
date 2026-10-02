@@ -31,12 +31,12 @@ jobs:
       LAUNCH_WAIT_SECONDS: 180
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # src/_version.py runs `git describe`, so the tags have to be here.
           fetch-depth: 0
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version-file: .python-version
 
@@ -237,7 +237,7 @@ jobs:
           }
           Pop-Location
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: acervator-windows
@@ -246,7 +246,7 @@ jobs:
           # The zips already hold compressed entries.
           compression-level: 0
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: acervator-windows-launch-evidence
@@ -263,12 +263,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # src/_version.py runs `git describe`, so the tags have to be here.
           fetch-depth: 0
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version-file: .python-version
 

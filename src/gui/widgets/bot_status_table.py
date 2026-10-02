@@ -46,6 +46,7 @@ from ..main_tabs.bot_status_table_surface import (
     sort_direction,
     sort_mark,
     sort_tooltip,
+    target_value,
 )
 from ..table_cells import (
     _ammo_price_pool,
@@ -684,12 +685,7 @@ if _HAS_QT:
             bid = status.get("bot_id", "")
             state = status.get("state", "")
             mode = status.get("mode", "")
-            # live_target_balance is the grown target the engine re-zeros to; config is the fallback.
-            target_val = float(
-                status.get("live_target_balance", status.get("target_balance", 0.0))
-                or status.get("target_balance", 0.0)
-                or 0.0
-            )
+            target_val = target_value(status)
             stats_pv = float(stats.get("position_value", 0.0))
             holdings = float(status.get("current_holdings", 0.0))
             # Display only; the trading path still reads stats.current_price.
@@ -964,7 +960,7 @@ if _HAS_QT:
                             "delta < 0 but auto-fire blocked. "
                             "Clicking fires a MARKET buy sized to "
                             "rebalance back to target (bypasses "
-                            "auto's TA/BB/MEM-171 gates)."
+                            "auto's TA/BB/price-floor gates)."
                             + _blockers_text
                             + _risk_suffix()
                         )
@@ -1061,7 +1057,7 @@ if _HAS_QT:
                 logger.warning("Cell address open failed for %r: %s", url, _wb_exc)
 
         def _on_fire(self, bot_id: str) -> None:
-            """MEM-236 — Manual Fire button click handler."""
+            """Manual Fire button click handler."""
             if self._on_fire_clicked:
                 self._on_fire_clicked(bot_id)
 

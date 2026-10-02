@@ -231,7 +231,7 @@ if _HAS_QT:
             self._conn_status.setStyleSheet(f"color: {ds.STATUS_INFO};")
             self._connect_btn.setEnabled(False)
 
-            safe_process_events("legacy P4.1 site")
+            safe_process_events("legacy processEvents site")
 
             try:
                 from ...exchange.ccxt_connector import CCXTConnector
@@ -436,7 +436,7 @@ if _HAS_QT:
             sym = self._symbol_input.text().strip()
             self._log(f"Running {test}...", f"Symbol: {sym}", level="info")
 
-            safe_process_events("legacy P4.1 site")
+            safe_process_events("legacy processEvents site")
 
             c = getattr(self._connector, "_ccxt_sync", self._connector._ccxt)
 
@@ -582,7 +582,7 @@ if _HAS_QT:
                 level="info",
             )
 
-            safe_process_events("legacy P4.1 site")
+            safe_process_events("legacy processEvents site")
 
             try:
                 start = _t.monotonic()
@@ -602,7 +602,7 @@ if _HAS_QT:
                 )
                 return
 
-            safe_process_events("legacy P4.1 site")
+            safe_process_events("legacy processEvents site")
 
             try:
                 start = _t.monotonic()
@@ -635,7 +635,7 @@ if _HAS_QT:
             except Exception as exc:
                 self._log("SSL FAILED", f"{type(exc).__name__}: {exc}", level="error")
 
-            safe_process_events("legacy P4.1 site")
+            safe_process_events("legacy processEvents site")
 
             try:
                 import certifi
@@ -662,7 +662,7 @@ if _HAS_QT:
                     "SSL+certifi FAILED", f"{type(exc).__name__}: {exc}", level="error"
                 )
 
-            safe_process_events("legacy P4.1 site")
+            safe_process_events("legacy processEvents site")
 
             probes = {
                 "coinbase": [
@@ -709,7 +709,7 @@ if _HAS_QT:
             self._log(
                 "HTTP PROBES", f"Testing {len(endpoints)} endpoints...", level="info"
             )
-            safe_process_events("legacy P4.1 site")
+            safe_process_events("legacy processEvents site")
 
             import contextlib
             import urllib.error
@@ -829,7 +829,7 @@ if _HAS_QT:
                         "error",
                     )
 
-                safe_process_events("legacy P4.1 site")
+                safe_process_events("legacy processEvents site")
 
             # A probe that raised is in neither ``_green`` nor ``_green_with_body``;
             # ``_attempted`` counts them all.
@@ -883,7 +883,7 @@ if _HAS_QT:
                 level="info",
             )
 
-            safe_process_events("legacy P4.1 site")
+            safe_process_events("legacy processEvents site")
 
             try:
                 start = _t.monotonic()

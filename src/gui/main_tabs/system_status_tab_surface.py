@@ -54,11 +54,23 @@ FEED_LABELS = (
     ("dropped", "dropped"),
 )
 
+#: The emitter read-out fields a subsystem panel draws, in column order. The
+#: first of each pair is the field the value is read from.
+EMITTER_COLUMNS = (
+    ("name", "Emitter"),
+    ("cadence", "Cadence"),
+    ("emitted", "Fired"),
+    ("failed", "Failed"),
+    ("latest", "Latest value"),
+)
+
+EMITTER_FIELDS = tuple(pair[0] for pair in EMITTER_COLUMNS)
+
 #: Every word the renderer module draws that no count or name supplies.
 LABELS = {
     "subsystems": "By subsystem",
     "tabs": "By tab",
-    "emitter_columns": ["Emitter", "Cadence", "Fired", "Failed", "Latest value"],
+    "emitter_columns": [pair[1] for pair in EMITTER_COLUMNS],
     "counts": [list(pair) for pair in COUNT_LABELS],
     "feed": [list(pair) for pair in FEED_LABELS],
     "totals": [["subsystems", "subsystems"]] + [list(p) for p in COUNT_LABELS],

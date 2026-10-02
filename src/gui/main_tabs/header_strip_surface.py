@@ -39,10 +39,11 @@ CENTRAL_LAYOUT = {
     "child_stretch": [0],
 }
 
-#: The stretch each ``TOP_ROW_ORDER`` slot takes. The six slots holding text
-#: divide the whole row between them; the class group's slot takes zero, so it
-#: shrinks to the square and the square sits against the row's right edge.
-TOP_ROW_STRETCH = [3, 1, 1, 1, 1, 1, 0]
+#: The stretch each ``TOP_ROW_ORDER`` slot takes. The strip takes six shares to
+#: the cards' one each, so spare width goes to the money columns rather than to
+#: the cards drawing a count; the class group's slot takes zero, so it shrinks
+#: to the square and the square sits against the row's right edge.
+TOP_ROW_STRETCH = [6, 1, 1, 1, 1, 1, 1, 0]
 
 TOP_ROW = {
     "margins_px": [0, 0, 0, 0],
@@ -53,6 +54,7 @@ TOP_ROW = {
 TOP_ROW_ORDER = [
     "spendable",
     "scrummed",
+    "accumulated",
     "folded",
     "trades",
     "bots",
@@ -65,15 +67,19 @@ TOP_ROW_ORDER = [
 SPENDABLE_MIN_W = 180
 
 #: The room one KPI column needs for a whole money amount at its own size.
-KPI_COLUMN_W = 110
+#: Ninety holds the widest signed amount the strip draws, 87 px in the
+#: application font at ``VALUE_FONT_PX``.
+KPI_COLUMN_W = 90
 
-#: The narrowest one counter card draws at, caption and amount both elided.
-COUNTER_MIN_W = 48
+#: The narrowest one counter card draws at: the longest ``COUNTER_CARDS``
+#: caption at ``LABEL_FONT_MIN_PX``, which is 54 px in the application font,
+#: plus ``COUNTER_TEXT_PAD``. Caption and amount both shrink into that room.
+COUNTER_MIN_W = 88
 
 #: The slot names the top row gives a declared floor, in row order. The
 #: class group is not here; ``asset_class_surface.group_side_px`` answers it,
 #: because the group's floor grows with the class count.
-COUNTER_SLOTS = ("scrummed", "folded", "trades", "bots", "errors")
+COUNTER_SLOTS = ("scrummed", "accumulated", "folded", "trades", "bots", "errors")
 
 #: The window's own tuple, so a tab renamed there renames here too.
 ISOLATED_TABS = main_window_surface.ISOLATED_TABS
@@ -85,15 +91,20 @@ SPENDABLE_STYLE = (
     "  border: 1px solid rgba(0,255,180,80); border-radius: 4px; }"
 )
 
+#: What the theme's ``QFrame[frameShape="6"]`` rule insets on each side of a
+#: StyledPanel: 12 px of padding and a 1 px border. The strip and every counter
+#: card wear that frame, so their text room is this much narrower than the
+#: widget, and neither pad below can be read off the margins alone.
+PANEL_FRAME_INSET_PX = 13
+
 #: What the strip leaves either side of its own columns.
 SPENDABLE_SIDE_MARGIN_PX = 6
 
-#: What the strip's own margins take off the room its text has.
-SPENDABLE_TEXT_PAD = 2 * SPENDABLE_SIDE_MARGIN_PX
+#: What the strip's own frame and margins take off the room its text has.
+SPENDABLE_TEXT_PAD = 2 * (SPENDABLE_SIDE_MARGIN_PX + PANEL_FRAME_INSET_PX)
 
-#: The gap the strip leaves either side of a rule between two columns. Four,
-#: not fourteen: ``spendable_natural_w`` counts twelve of them, and the room
-#: that returns is what the two new columns take.
+#: The gap the strip leaves either side of a rule between two columns.
+#: ``spendable_natural_w`` counts two per rule.
 SPENDABLE_COLUMN_GAP_PX = 3
 
 #: The width one rule between two columns draws at. Declared, not measured:
@@ -101,32 +112,68 @@ SPENDABLE_COLUMN_GAP_PX = 3
 #: counted none of it, so every column drew narrower than its own amount.
 SPENDABLE_RULE_W_PX = 12
 
+#: One share of the row each, so every column sits at one pitch.
+SPENDABLE_COLUMN_STRETCH = 1
+
 SPENDABLE_LAYOUT = {
-    "margins_px": [SPENDABLE_SIDE_MARGIN_PX, 6, SPENDABLE_SIDE_MARGIN_PX, 6],
+    "margins_px": [SPENDABLE_SIDE_MARGIN_PX, 4, SPENDABLE_SIDE_MARGIN_PX, 4],
     "spacing_px": 0,
     "column_spacing_px": SPENDABLE_COLUMN_GAP_PX,
     "column_margins_px": [0, 0, 0, 0],
     "column_spacing": 2,
+    "column_stretch": SPENDABLE_COLUMN_STRETCH,
     "rule_w_px": SPENDABLE_RULE_W_PX,
     "frame_shape": "StyledPanel",
     "separator_align": "vcenter",
+    "label_align": "hcenter|bottom",
+    "value_align": "hcenter|top",
     "dot_align": "hcenter",
 }
 
 
-KPI_LABEL_STYLE = (
-    f"color: {ds.CARD_METRIC_LABEL}; font-size: 10px; "
-    "letter-spacing: 1px; font-weight: 600;"
-)
-SPENDABLE_LABEL_STYLE = (
-    f"color: {ds.PRIMARY}; font-size: 10px; letter-spacing: 1px; " "font-weight: 700;"
-)
-VALUE_STYLE_DEFAULT = f"color: {ds.TEXT_NEUTRAL}; font-size: 16px; font-weight: bold;"
-VALUE_STYLE_HIGHLIGHT = f"color: {ds.SUCCESS}; font-size: 16px; font-weight: bold;"
-VALUE_STYLE_NEGATIVE = f"color: {ds.ERROR}; font-size: 16px; font-weight: bold;"
-VALUE_STYLE_MUTED = (
-    f"color: {ds.CARD_METRIC_LABEL}; font-size: 16px; font-weight: bold;"
-)
+#: One caption font for every panel in the strip, and one amount font under it.
+LABEL_FONT_PX = 10
+LABEL_FONT = f"font-size: {LABEL_FONT_PX}px; font-weight: 600;"
+
+#: The smallest a caption shrinks to. A counter card is narrower than its own
+#: longest caption at the narrowest window, and a caption that shrinks keeps
+#: every letter where one that elides loses the end of the word.
+LABEL_FONT_MIN_PX = 8
+
+#: The size every money amount draws at where its column has the room.
+VALUE_FONT_PX = 14
+
+#: The smallest a money amount shrinks to, which is the caption's declared
+#: size, so an amount never draws smaller than the caption above it.
+VALUE_FONT_MIN_PX = LABEL_FONT_PX
+
+VALUE_FONT = f"font-size: {VALUE_FONT_PX}px; font-weight: bold;"
+
+
+def value_font(size_px: Any) -> str:
+    """The amount font declaration at ``size_px``."""
+    return f"font-size: {int(size_px)}px; font-weight: bold;"
+
+
+def fitted_value_px(advance_at: Any, room_px: Any) -> int:
+    """The largest size from ``VALUE_FONT_PX`` down to ``VALUE_FONT_MIN_PX``
+    whose ``advance_at`` reading fits ``room_px``.
+
+    Answers ``VALUE_FONT_MIN_PX`` where no size fits, and the caller elides.
+    """
+    room = int(room_px or 0)
+    for size_px in range(VALUE_FONT_PX, VALUE_FONT_MIN_PX - 1, -1):
+        if int(advance_at(size_px)) <= room:
+            return size_px
+    return VALUE_FONT_MIN_PX
+
+
+KPI_LABEL_STYLE = f"color: {ds.CARD_METRIC_LABEL}; {LABEL_FONT}"
+SPENDABLE_LABEL_STYLE = f"color: {ds.PRIMARY}; {LABEL_FONT}"
+VALUE_STYLE_DEFAULT = f"color: {ds.TEXT_NEUTRAL}; {VALUE_FONT}"
+VALUE_STYLE_HIGHLIGHT = f"color: {ds.SUCCESS}; {VALUE_FONT}"
+VALUE_STYLE_NEGATIVE = f"color: {ds.ERROR}; {VALUE_FONT}"
+VALUE_STYLE_MUTED = f"color: {ds.CARD_METRIC_LABEL}; {VALUE_FONT}"
 SEPARATOR_STYLE = f"color: {ds.MAIN_SEPARATOR}; font-size: 24px; margin: 0 2px;"
 
 SEPARATOR = {"text": "|", "style_sheet": SEPARATOR_STYLE}
@@ -159,8 +206,14 @@ PNL_FORMAT = "+,.2f"
 
 PNL_TOOLTIP = (
     "P/L — the unrealised profit and loss the exchange answers across "
-    "every bot's open position. Realised profit and loss has its own "
-    "column in the strip on the left."
+    "every bot's open position. It is the only profit and loss figure "
+    "the strip carries."
+)
+
+ACCUMULATED_LABEL = "ACCUMULATED"
+ACCUMULATED_TOOLTIP = (
+    "Accumulated — every bot's accrued funds added together, which is "
+    "each live Target Balance less the anchor it was set from."
 )
 
 KPI_COLUMNS = (
@@ -172,15 +225,6 @@ KPI_COLUMNS = (
         "field_id": "kpi.spendable",
         "initial_text": EMPTY_TEXT,
         "initial_style": VALUE_STYLE_MUTED,
-    },
-    {
-        "key": "total_realised",
-        "label": "REALISED",
-        "label_style": KPI_LABEL_STYLE,
-        "label_tooltip": "",
-        "field_id": "kpi.realised",
-        "initial_text": EMPTY_TEXT,
-        "initial_style": VALUE_STYLE_DEFAULT,
     },
     {
         "key": "pnl",
@@ -229,17 +273,19 @@ KPI_COLUMNS = (
     },
 )
 
-#: What a card leaves either side of its caption and its amount. Four, not
-#: eight: the row draws six cards where it drew five, and the eight pixels
-#: this returns is the text room the widest amount needs.
+#: What a card leaves either side of its caption and its amount.
 CARD_SIDE_MARGIN_PX = 4
 
-#: What a card's own margins take off the room its text has.
-COUNTER_TEXT_PAD = 2 * CARD_SIDE_MARGIN_PX
+#: What a card's own frame and margins take off the room its text has.
+COUNTER_TEXT_PAD = 2 * (CARD_SIDE_MARGIN_PX + PANEL_FRAME_INSET_PX)
 
-#: The room one counter needs for a whole money amount at its own size. A
-#: counter draws the same amount a KPI column draws, inside a card's margins.
-COUNTER_NATURAL_W = KPI_COLUMN_W + COUNTER_TEXT_PAD
+#: The room one counter card gives its own amount. Declared here and not
+#: read off ``KPI_COLUMN_W``: a card holds one amount where the strip now
+#: divides its width eight ways.
+COUNTER_TEXT_W = 110
+
+#: The room one counter needs for a whole money amount at its own size.
+COUNTER_NATURAL_W = COUNTER_TEXT_W + COUNTER_TEXT_PAD
 
 CARD_LAYOUT = {
     "margins_px": [CARD_SIDE_MARGIN_PX, 4, CARD_SIDE_MARGIN_PX, 4],
@@ -254,8 +300,8 @@ CARD_LABEL_ROW = {
     "spacing_px": 4,
     "order": ["stretch", "label", "stretch"],
 }
-CARD_LABEL_STYLE = f"font-size: 10px; color: {ds.MAIN_CAPTION};"
-CARD_VALUE_STYLE = f"font-size: 14px; font-weight: bold; color: {ds.PRIMARY};"
+CARD_LABEL_STYLE = f"color: {ds.MAIN_CAPTION}; {LABEL_FONT}"
+CARD_VALUE_STYLE = f"color: {ds.PRIMARY}; {VALUE_FONT}"
 CARD_LABEL_PROPERTY = "muted"
 CARD_VALUE_PROPERTY = "heading"
 
@@ -294,7 +340,7 @@ def click_tooltip(base: Any, suffix: Any) -> str:
 COUNTER_CARDS = (
     {
         "key": "scrummed",
-        "label": "Scrummed",
+        "label": "SCRUMMED",
         "initial_text": "$0.00",
         "tooltip": SCRUMMED_TOOLTIP,
         "field_id": "counter.scrummed",
@@ -304,8 +350,19 @@ COUNTER_CARDS = (
         "format": MONEY_FORMAT,
     },
     {
+        "key": "accumulated",
+        "label": ACCUMULATED_LABEL,
+        "initial_text": "$0.00",
+        "tooltip": ACCUMULATED_TOOLTIP,
+        "field_id": "counter.accumulated",
+        "clickable": False,
+        "cursor": "arrow",
+        "source_key": "total_accrued_usd",
+        "format": MONEY_FORMAT,
+    },
+    {
         "key": "folded",
-        "label": "Folded",
+        "label": "FOLDED",
         "initial_text": "$0.00",
         "tooltip": FOLDED_TOOLTIP,
         "field_id": "counter.folded",
@@ -316,7 +373,7 @@ COUNTER_CARDS = (
     },
     {
         "key": "trades",
-        "label": "Trades",
+        "label": "TRADES",
         "initial_text": "0",
         "tooltip": TRADES_TOOLTIP,
         "field_id": "counter.trades",
@@ -327,7 +384,7 @@ COUNTER_CARDS = (
     },
     {
         "key": "bots",
-        "label": "Bots",
+        "label": "BOTS",
         "initial_text": "0",
         "tooltip": BOTS_TOOLTIP,
         "field_id": "counter.bots",
@@ -338,7 +395,7 @@ COUNTER_CARDS = (
     },
     {
         "key": "errors",
-        "label": "Errors",
+        "label": "ERRORS",
         "initial_text": "0",
         "tooltip": click_tooltip(ERRORS_TOOLTIP, ERRORS_CLICK_TOOLTIP),
         "field_id": "counter.errors",
@@ -352,11 +409,9 @@ COUNTER_CARDS = (
 PROFITS_SOURCE_KEYS = (
     "wallet_cash_usd",
     "crypto_position_value_usd",
-    "total_realized_exchange",
     "total_unrealized_exchange",
     "total_mature_exchange",
     "bots_with_fresh_exchange_data",
-    "realised_history_complete",
     "total_target_delta_usd",
     "bots_scrum_territory",
     "bots_fold_territory",
@@ -365,11 +420,6 @@ PROFITS_SOURCE_KEYS = (
 #: `get_aggregate_stats` counts the bots the venue has answered for. At zero
 #: neither exchange figure is a reading, so both columns stay absent.
 EXCHANGE_FRESHNESS_KEY = "bots_with_fresh_exchange_data"
-
-#: `get_aggregate_stats` answers False while any answered bot's fill history
-#: was cut short. The realised sum is then not a reading. An aggregate without
-#: the key walks no venue fill history at all, so its realised figure is whole.
-REALISED_COMPLETE_KEY = "realised_history_complete"
 
 STATS_KEYS = tuple(card["source_key"] for card in COUNTER_CARDS) + PROFITS_SOURCE_KEYS
 
@@ -543,15 +593,13 @@ def pnl_text(value: Any) -> str:
 def ammo_total_text(value: Any) -> str:
     """Render the fleet Ammo total in whole dollars, or the empty marker.
 
-    ``AMMO_FORMAT`` drops the decimal part, and a total below zero keeps its
-    minus ahead of ``MONEY_PREFIX``.
+    ``AMMO_FORMAT`` drops the decimal part and the magnitude carries no sign;
+    ``AMMO_LEAN_STYLES`` colours the cell by which territory holds more bots.
     """
     amount = money_amount(value)
     if amount is None:
         return EMPTY_TEXT
-    whole = round(amount)
-    sign = "-" if whole < 0 else ""
-    return f"{sign}{MONEY_PREFIX}{abs(whole):{AMMO_FORMAT}}"
+    return f"{MONEY_PREFIX}{abs(round(amount)):{AMMO_FORMAT}}"
 
 
 def ammo_lean(above: Any, below: Any) -> str:
@@ -658,11 +706,6 @@ def kpi_cells(profits: Optional[dict]) -> dict:
     data = profits if isinstance(profits, dict) else {}
     return {
         "spendable": spendable_cell(data.get("spendable")),
-        "total_realised": {
-            "text": mask_or(money_text(data.get("total_realised")), "kpi.realised"),
-            "style_sheet": VALUE_STYLE_DEFAULT,
-            "tooltip": "",
-        },
         "pnl": {
             "text": mask_or(pnl_text(data.get("unrealised")), "kpi.pnl"),
             "style_sheet": VALUE_STYLE_DEFAULT,
@@ -693,9 +736,11 @@ def counter_cells(stats: Optional[dict]) -> dict:
     """Every counter card's rendered value for one aggregate snapshot."""
     data = stats if isinstance(stats, dict) else {}
     scrummed = float(data.get("total_scrummed_usd", 0.0) or 0.0)
+    accrued = float(data.get("total_accrued_usd", 0.0) or 0.0)
     folded = float(data.get("total_folded_usd", 0.0) or 0.0)
     return {
         "scrummed": mask_or(money_text(scrummed), "counter.scrummed"),
+        "accumulated": mask_or(money_text(accrued), "counter.accumulated"),
         "folded": mask_or(money_text(folded), "counter.folded"),
         "trades": mask_or(count_text(data.get("total_trades", 0)), "counter.trades"),
         "bots": mask_or(count_text(data.get("running", 0)), "counter.bots"),
@@ -722,22 +767,6 @@ def exchange_amount(stats: Optional[dict], key: str) -> Any:
     return money_amount(float(data.get(key, 0.0) or 0.0))
 
 
-def realised_amount(stats: Optional[dict]) -> Any:
-    """The fleet realised figure, or ``None`` when it is not a reading.
-
-    ``exchange_amount`` answers ``None`` while the venue has answered for no
-    bot; this answers ``None`` as well when ``REALISED_COMPLETE_KEY`` reads
-    False, which is a venue fill history the walk could not finish. The column
-    then draws the strip's empty marker rather than a sum over part of a
-    history. The Paper and Simulator aggregates carry no such walk and omit
-    the key, so their realised figure passes through whole.
-    """
-    data = stats if isinstance(stats, dict) else {}
-    if not bool(data.get(REALISED_COMPLETE_KEY, True)):
-        return None
-    return exchange_amount(data, "total_realized_exchange")
-
-
 def unrealised_amount(stats: Optional[dict]) -> Any:
     """The fleet's unrealised profit and loss, or ``None`` while it is no reading.
 
@@ -755,7 +784,6 @@ def profits_payload(stats: Optional[dict], exchange_count: int = 0) -> dict:
     known = wallet_cash > 0 or position_value > 0
     return {
         "spendable": wallet_cash if known else None,
-        "total_realised": realised_amount(data),
         "locked": position_value if known else None,
         "unrealised": unrealised_amount(data),
         "mature": exchange_amount(data, "total_mature_exchange"),

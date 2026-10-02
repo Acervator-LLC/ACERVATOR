@@ -58,12 +58,12 @@ INFO_WORD_WRAP = True
 MODE_GROUP_TITLE = "Trading Parameters"
 SCRUM_GROUP_TITLE = "Scrumming Settings"
 SHARED_GROUP_TITLE = "Trading Parameters (continued)"
-ADVANCED_GROUP_TITLE = "Advanced Scrumming (P1.9)"
+ADVANCED_GROUP_TITLE = "Advanced Scrumming"
 HEDGE_GROUP_TITLE = "Hedge Rebalance"
-BREAKER_GROUP_TITLE = "Circuit Breakers (v3.15.58)"
-DANGER_GROUP_TITLE = "DANGER ZONE — Self-Destruct (v3.15.62)"
-RISK_GROUP_TITLE = "Risk Controls (MEM-244)"
-GATES_GROUP_TITLE = "Strategy Gate Flags (v3.16.15)"
+BREAKER_GROUP_TITLE = "Circuit Breakers"
+DANGER_GROUP_TITLE = "DANGER ZONE — Self-Destruct"
+RISK_GROUP_TITLE = "Risk Controls"
+GATES_GROUP_TITLE = "Strategy Gate Flags"
 EXTRACTOR_GROUP_TITLE = "Extractor — Pool & Artillery"
 
 SCRUMMING_MODE = "scrumming"
@@ -238,8 +238,8 @@ TOOLTIPS = {
     "stack_count": "Target number of Stack tranches to create from a SCRUM. Actual runtime count may be lower if (a) per-tranche size falls below the exchange minimum order size, or (b) two computed tranche prices land within 0.1% of each other (then merged upwards).",
     "stack_spacing": "Spacing model for successive Stack tranches. The sequences show Δp in units of Split Distance between consecutive tranches.",
     "personal_hold_qty": "Target-asset units to hold OUT of the bot's view (personal reserve). The bot won't buy or sell these units; they're also reserved from any sibling bot on the same asset via the CapitalReservationRegistry.",
-    "ta_tf": "TA Timeframe — filtered to granularities supported by this bot's exchange. v3.15.61.",
-    "target_bal": "The balance this bot trades relative to. HARD-CAPPED: position can never exceed Target × (1 + Max Target Growth %/100). MEM-246/249/251.",
+    "ta_tf": "TA Timeframe — filtered to granularities supported by this bot's exchange.",
+    "target_bal": "The balance this bot trades relative to. HARD-CAPPED: position can never exceed Target × (1 + Max Target Growth %/100).",
     "live_lbl": "The target the bot actually trades against.\n\nThe spinbox above is your input value and does not move when compounding grows the target. This row is the runtime figure.",
     "surplus_lbl": "Surplus parked above the per-cycle growth cap.\n\nThere is currently NO drain from this pool — it accrues and stays. Implementing the drain is Phase 2 of the tranche repair.",
     "over_lbl": "Tranches larger than the entire per-cycle budget.\n\nThe fold takes what the budget allows from the first of these that does not fit and leaves the remainder queued, so each needs more than one cycle to fold back in full.",
@@ -250,30 +250,30 @@ TOOLTIPS = {
     "trading_fee": "Coinbase trading fee tier (per side). The opposite-direction hysteresis safety adds this to the scrum interval — bot will not flip BUY↔SELL until price moves ≥ (interval + fee)% in the opposing direction. 0.6% = Coinbase Advanced Trade max-tier default. Lower this if you're on a discounted tier.",
     "max_target_growth": "Per-event cap on how much a fold surplus may grow Target Balance.\nAbsolute ceiling = Target × (1 + this%/100). Default 1%.\nTHIS IS THE ONLY MECHANISM ALLOWED TO INCREASE TARGET BALANCE.\nSet to 0% to freeze Target Balance entirely (no growth at all).",
     "profit_folding_active": "When ON, fold surplus grows the effective target balance via the compounding drain (subject to Max Target Growth % cap). OFF freezes target at anchor regardless of fold profit. Wizard parity: matches the dedicated Profit Folding page at bot creation.",
-    "detect_pct": "BB DETECT threshold: % distance from BB midline to band before SEARCH→TRACK. Lower = earlier detection. v3.15.57 — also defines the HARD GATE: SCRUM cannot occur below the Upper BB Detection Threshold; FOLD cannot occur above the Lower BB Detection Threshold. 75% → upper gate at bb_pos≥0.875, lower gate at bb_pos≤0.125. Live-editable.",
+    "detect_pct": "BB DETECT threshold: % distance from BB midline to band before SEARCH→TRACK. Lower = earlier detection. Also defines the HARD GATE: SCRUM cannot occur below the Upper BB Detection Threshold; FOLD cannot occur above the Lower BB Detection Threshold. 75% → upper gate at bb_pos≥0.875, lower gate at bb_pos≤0.125. Live-editable.",
     "fire_pct": "FIRE threshold: % distance from BB band to trigger trade.",
     "midline_gate": "When enabled: scrums ONLY fire above BB midline,\nfolds ONLY fire below midline (sell-high/buy-low).",
     "read_rate": "SEARCH-mode read rate in minutes. TRACK mode reads 10x faster.",
     "band_travel": "Secondary harvest trigger: % of BB band width price must travel since last fold. 0 disables.",
     "bullseye": "Counts a band touch within 0.5% (or a candle wick within 0.2%) as BB proximity.\nWith the delta at or over the interval that arms the BB priority skew, which lowers the TA confidence floor. The fire threshold and the midline gate are unchanged.",
     "scrum_fold_pct": "% of scrum sale proceeds queued for fold (rebuy).\n100% = full reentry (max accumulation, max risk).\nLower values preserve cash buffer — safer when\nprice keeps falling after the scrum.",
-    "tranche_despawn_days": "DESPAWN any tranche this old - both fold tranches\nand stack tranches, from this one setting. 0 = Off\n(default).\n\nMERGE, DESPAWN and CLEAR are the only three things\nthat collapse or remove a tranche. This is despawn:\nthe age-driven one.\n\nIT IS NOT A TRADE. No order is placed or cancelled,\nno balance moves, holdings and cost basis are\nuntouched. The record goes.\n\nWHAT THE RECORD HELD: the tranche's ref price, its\nparked fold USD, its units, and its initial_buy_price\n(the MEM-171 provenance figure). The scrum sale that\nmade it already happened, so those dollars are\nalready in the wallet - the record was only the\nqueued intent to buy the units back. A despawned\ntranche can no longer fold back, so that money goes\nfrom queued rebuy to ordinary spendable balance.\n\nA tranche is despawned at exactly this age or older.\nA tranche with no timestamp is NEVER despawned, and\na stack tranche holding a resting exchange order is\nkept until that order settles.\n\nSEE THE COUNT FIRST: the Fold Tranches tab prints how\nmany of this bot's tranches each candidate window\nwould remove, and what they hold.",
+    "tranche_despawn_days": "DESPAWN any tranche this old - both fold tranches\nand stack tranches, from this one setting. 0 = Off\n(default).\n\nMERGE, DESPAWN and CLEAR are the only three things\nthat collapse or remove a tranche. This is despawn:\nthe age-driven one.\n\nIT IS NOT A TRADE. No order is placed or cancelled,\nno balance moves, holdings and cost basis are\nuntouched. The record goes.\n\nWHAT THE RECORD HELD: the tranche's ref price, its\nparked fold USD, its units, and its initial_buy_price\n(the provenance figure). The scrum sale that\nmade it already happened, so those dollars are\nalready in the wallet - the record was only the\nqueued intent to buy the units back. A despawned\ntranche can no longer fold back, so that money goes\nfrom queued rebuy to ordinary spendable balance.\n\nA tranche is despawned at exactly this age or older.\nA tranche with no timestamp is NEVER despawned, and\na stack tranche holding a resting exchange order is\nkept until that order settles.\n\nSEE THE COUNT FIRST: the Fold Tranches tab prints how\nmany of this bot's tranches each candidate window\nwould remove, and what they hold.",
     "wire_inflow_stack_pct": "Wire inflow stacking percentage. Controls how aggressively the bot stacks new buy-side positions when fresh wire-inflow signals arrive. Default 1.0%; rarely adjusted in practice.",
     "hedge_active": "Separate USD reserve for buying on sharp drawdowns.\nNOT taken from Target Balance.\n\nTicking this on a running bot fills the reserve up to Hedge Balance at once.\nUnticking keeps the reserve and refuses every hedge buy and every refill.",
     "hedge_balance": "USD reserve amount for hedge rebalancing (separate from Target Balance).\n\n$ 0.00 is NOT an off switch. It is an empty reserve that never refills,\nand any reserve the bot already holds stays spendable until it drains.\nUntick Hedge Rebalance Active to turn the hedge off.",
     "cb_soft_pct": "SOFT Circuit Breaker threshold. Single-candle move ≥ this % interrupts the side of the market that just moved (UP→SCRUM, DOWN→FOLD). Re-opens after cooldown candles. Default 25%. Set 0 to disable.",
     "cb_hard_pct": "HARD Circuit Breaker threshold. Single-candle move ≥ this % PAUSES the bot. Operator reset required to resume. Persists across restart. Default 35%. Set 0 to disable.",
     "cb_cooldown": "Number of candles the soft breaker stays active before re-opening. Default 3.",
-    "max_cartridge_pct": "Maximum |Target Delta| as % of Target Balance. When the position drifts beyond this %, the bot fires an immediate aggressive rebalance (bypasses BB Detection / hysteresis / soft CB / higher-TF bias). Default 10%. Set 0 to disable. v3.15.63.",
-    "cartridge_smart_chk": "When ON, Cartridge size is derived from current BB range rather than the static % above. Hard floor at the Opposing Trade Interval (cartridge cannot fire below the interval). Soft ceiling configured below. Default OFF preserves static behavior. v3.15.92.",
-    "cartridge_smart_ceiling": "Maximum effective cartridge threshold under Smart calibration. Prevents cartridge from being effectively disabled during volatility expansion. Only applies when Smart Cartridge is ON. Default 30%. v3.15.92.",
+    "max_cartridge_pct": "Maximum |Target Delta| as % of Target Balance. When the position drifts beyond this %, the bot fires an immediate aggressive rebalance (bypasses BB Detection / hysteresis / soft CB / higher-TF bias). Default 10%. Set 0 to disable.",
+    "cartridge_smart_chk": "When ON, Cartridge size is derived from current BB range rather than the static % above. Hard floor at the Opposing Trade Interval (cartridge cannot fire below the interval). Soft ceiling configured below. Default OFF preserves static behavior.",
+    "cartridge_smart_ceiling": "Maximum effective cartridge threshold under Smart calibration. Prevents cartridge from being effectively disabled during volatility expansion. Only applies when Smart Cartridge is ON. Default 30%.",
     "cb_reset_all_btn": "Operator override: clears any active soft and hard circuit breakers. Hard reset also resumes the bot if it is PAUSED.",
     "self_destruct_btn": "Aggressively exit the entire position. Confirmation required.",
     "ceiling_enabled": "Cap accumulation at Nx of the bot's INITIAL target_balance (stable anchor set at creation).\nFold rate tapers 100% → 10% as value approaches ceiling (ratio 0.5 → 1.0), hard-stops at ceiling.\nScrum always allowed. Protects against runaway accumulation on conviction plays.",
     "ceiling_mult": "Ceiling multiplier. 1x = no accumulation beyond anchor. 10x = 10x runway. Default 5x.",
     "deto_enabled": "Monitor a higher TF for BULLISH + high-confidence signal. Edge-triggered: fires ONCE per transition into bullish state.\nOn trigger: MARKET sell everything above the anchor, then reset target_balance to anchor ('lock in' gains, re-accumulate from scratch).\nRate-limited to 1 check/hour.\nAdditional gate: fires only when current value is above the anchor — no harvest if the bot is below its initial anchor.",
     "deto_tf": "Timeframe to monitor for bullish detonation signal. 1D = daily, 1W = weekly. Higher = stronger conviction, fewer triggers.",
-    "deto_conf": "Minimum TA consensus confidence for detonation. Default 0.75 (high conviction only, per MEM-244).",
+    "deto_conf": "Minimum TA consensus confidence for detonation. Default 0.75 — high conviction only.",
     "gate_scrum_ta": "ON (Conservative): scrum auto-fire requires TA consensus BULLISH. Protects against scrumming false tops. OFF (Lean): scrum fires at BB-upper + delta regardless of TA.",
     "gate_scrum_uptrend": "ON (Conservative): if 65 %+ of last 20 candles were bullish, bot holds rather than scrumming each band touch. OFF (Lean): scrum every BB-upper touch regardless of trend strength.",
     "gate_scrum_htf": "ON (Conservative): refuse scrum when a higher-TF phantom signals BULLISH. OFF (Lean): cartridge captures HTF swings organically; this gate is redundant if Smart Cartridge is ON.",

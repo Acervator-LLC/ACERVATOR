@@ -585,7 +585,7 @@ class TickPhaseMixin:
                 f"Hysteresis clear. Firing aggressive "
                 f"rebalance — bypasses BB Detection / "
                 f"soft CB / higher-TF bias gates. "
-                f"v3.15.79 NO LONGER bypasses "
+                f"It does NOT bypass "
                 f"opposing-direction hysteresis."
             ),
         )

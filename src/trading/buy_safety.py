@@ -72,7 +72,7 @@ async def verify_buy_safe_or_refuse(
 
     if _refuse_reason or _fresh_units is None:
         return None, (
-            f"MEM-257 FAIL-CLOSED — buy REFUSED. "
+            f"FAIL-CLOSED — buy REFUSED. "
             f"Path={path}. Cannot positively verify current position. "
             f"{_refuse_reason or 'fresh_units=None'}. "
             f"No buy proceeds when position cannot be verified."
