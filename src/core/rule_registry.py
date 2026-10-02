@@ -240,7 +240,7 @@ class RuleRegistry:
         data = {}
         if self.path.exists():
             try:
-                data = json.loads(self.path.read_text())
+                data = json.loads(self.path.read_text(encoding="utf-8"))
             except (json.JSONDecodeError, OSError):
                 pass
 
@@ -259,7 +259,8 @@ class RuleRegistry:
         self.path.write_text(
             json.dumps(
                 {r: e.to_dict() for r, e in sorted(self._entries.items())}, indent=2
-            )
+            ),
+            encoding="utf-8",
         )
 
     def _validate_rule(self, rule: str) -> str:

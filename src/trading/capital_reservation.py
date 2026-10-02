@@ -164,7 +164,7 @@ class CapitalReservationRegistry:
         if not self._state_path.exists():
             return
         try:
-            payload = json.loads(self._state_path.read_text())
+            payload = json.loads(self._state_path.read_text(encoding="utf-8"))
             for d in payload.get("reservations", []):
                 r = Reservation.from_dict(d)
                 self._reservations[r.token] = r
@@ -176,10 +176,14 @@ class CapitalReservationRegistry:
             )
         except Exception as e:
             logger.error(
-                "CapitalReservationRegistry load failed (%s): %s — "
-                "starting with empty state. Operator should inspect "
-                "the file for manual recovery.",
+                "CapitalReservationRegistry load failed (%s) (%s: %s) — "
+                "starting with empty state. This is NOT the same as a file "
+                "holding no claims: every other bot's claim on every asset "
+                "now reads as 0, so effective_available returns the caller's "
+                "whole holding and no sell is bounded by a sibling. Operator "
+                "should inspect the file for manual recovery.",
                 self._state_path,
+                type(e).__name__,
                 e,
             )
 

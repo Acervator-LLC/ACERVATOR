@@ -460,5 +460,6 @@ class CompetitionEngine:
                     "adjudicated_at": self._result.adjudicated_at,
                 },
                 indent=2,
-            )
+            ),
+            encoding="utf-8",
         )
