@@ -35,6 +35,7 @@ SIM_BOT_WIZARD = "Simulator bot creation wizard"
 SIMULATOR = "Sim"
 SPENDABLE_PROFITS = "Spendable profits"
 START_ALL_PROGRESS = "Start All progress dialog"
+SYSTEM_STATUS = "Status"
 TRADING = "Trading"
 
 Loader = Callable[[], type]
@@ -393,6 +394,20 @@ def _react_sim_bot_wizard() -> type:
     return SimBotWizardReactDialog
 
 
+def _qt_system_status() -> type:
+    """Import and return the Qt Status tab."""
+    from .qt_system_status_tab import SystemStatusQtTab
+
+    return SystemStatusQtTab
+
+
+def _react_system_status() -> type:
+    """Import and return the React Status tab."""
+    from .react_system_status_tab import SystemStatusReactPanel
+
+    return SystemStatusReactPanel
+
+
 def _qt_buy_confirmation() -> type:
     """Import and return the Qt buy confirmation dialog."""
     from .buy_confirmation_dialog import BuyConfirmationDialog
@@ -414,6 +429,7 @@ register(MAIN_TAB_BOOK, _qt_main_tab_book, _react_main_tab_book)
 register(EMPTY_TAB, _qt_empty_tab, _react_empty_tab)
 register(BOT_SWARM, _qt_bot_swarm, _react_bot_swarm)
 register(CONSOLE, _qt_console, _react_console)
+register(SYSTEM_STATUS, _qt_system_status, _react_system_status)
 register(MARKET_INSPECTOR, _qt_market_inspector, _react_market_inspector)
 register(SETTINGS_DIALOG, _qt_settings_dialog, _react_settings_dialog)
 register(BOT_LIVE_SETTINGS, _qt_bot_live_settings, _react_bot_live_settings)
