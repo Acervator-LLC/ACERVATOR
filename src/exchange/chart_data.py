@@ -91,7 +91,7 @@ def extend_from_archive():
         manifest = d / "manifest.json"
         if manifest.exists():
             try:
-                m = json.loads(manifest.read_text())
+                m = json.loads(manifest.read_text(encoding="utf-8"))
                 for coin in m.get("coins", []):
                     sym = coin.get("symbol", "")
                     cg_id = coin.get("cg_id", "")
@@ -99,7 +99,11 @@ def extend_from_archive():
                         COINGECKO_IDS[sym] = cg_id
             except Exception as _sf_exc:  # noqa: BLE001
                 logger.warning(
-                    "chart data fetch failed — chart will show stale or empty series: %s",
+                    "manifest %s could NOT be read (%s: %s) — no symbol in it "
+                    "reaches COINGECKO_IDS, and charts for those symbols show "
+                    "stale or empty series",
+                    manifest,
+                    type(_sf_exc).__name__,
                     _sf_exc,
                 )
         # Also scan filenames: {cg_id}_{vs}_max.json

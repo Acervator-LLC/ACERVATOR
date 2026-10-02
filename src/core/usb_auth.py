@@ -278,7 +278,7 @@ def _list_usb_linux() -> list[USBVolume]:
     if not lsblk:
         return volumes
     try:
-        with open("/proc/mounts") as f:
+        with open("/proc/mounts", encoding="utf-8") as f:
             mounts = f.readlines()
 
         for line in mounts:
@@ -314,8 +314,10 @@ def _list_usb_linux() -> list[USBVolume]:
                 )
             )
     except Exception as _sf_exc:  # noqa: BLE001
-        logger.warning(
-            "Linux USB volume enumeration failed — no drives will be offered for auth: %s",
+        logger.error(
+            "/proc/mounts could NOT be read (%s: %s) — no drives are offered "
+            "for auth, which is not the same as no drive being plugged in",
+            type(_sf_exc).__name__,
             _sf_exc,
         )
     return volumes

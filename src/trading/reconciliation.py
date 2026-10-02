@@ -210,7 +210,7 @@ class TradeJournal:
         try:
             date_str = time.strftime("%Y-%m-%d", time.localtime(entry.timestamp))
             filepath = self._dir / f"journal_{date_str}.jsonl"
-            with open(filepath, "a") as f:
+            with open(filepath, "a", encoding="utf-8") as f:
                 f.write(json.dumps(asdict(entry)) + "\n")
         except Exception as e:
             logger.error("Failed to write journal entry: %s", e)
@@ -221,7 +221,7 @@ class TradeJournal:
             files = sorted(self._dir.glob("journal_*.jsonl"))
             # Load last 3 days
             for f in files[-3:]:
-                with open(f) as fh:
+                with open(f, encoding="utf-8") as fh:
                     for line in fh:
                         line = line.strip()
                         if line:
@@ -243,7 +243,15 @@ class TradeJournal:
                                 )
             logger.info("Loaded %d journal entries from disk", len(self._entries))
         except Exception as e:
-            logger.warning("Failed to load journal: %s", e)
+            logger.error(
+                "journal load from %s stopped (%s: %s) with %d entry(ies) "
+                "read. The remaining days are unread, so recovery sees fewer "
+                "trades than the files hold.",
+                self._dir,
+                type(e).__name__,
+                e,
+                len(self._entries),
+            )
 
 
 class ReconciliationEngine:
@@ -404,10 +412,16 @@ class CrashRecovery:
         if not filepath.exists():
             return None
         try:
-            with open(filepath) as f:
+            with open(filepath, encoding="utf-8") as f:
                 return json.load(f)
         except Exception as e:
-            logger.error("Snapshot load failed: %s", e)
+            logger.error(
+                "snapshot %s could NOT be read (%s: %s), so recovery reports "
+                "no snapshot while the file is still on disk",
+                filepath,
+                type(e).__name__,
+                e,
+            )
             return None
 
     def get_recovery_info(self) -> dict:
