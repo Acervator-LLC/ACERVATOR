@@ -463,17 +463,26 @@ def _compose_extractor_tranche_cells(row: dict, now_ts: float) -> list[str]:
     Units is the parent's base currency out on lease. USD parked
     carries the marked value once the child has priced the position,
     and an em dash rather than cost basis when it has not.
+
+    Age, Units and USD parked each print an em dash when the stored
+    value is not a finite number, so no cell reads as a quantity or an
+    age the bot does not hold.
     """
     # Exact type and finite; deferred, like every other trading import
     # in this module.
     from ...trading.bot_container import as_finite_float
 
-    opened = float(row.get("opened_at", 0.0) or 0.0)
-    age = _format_tranche_age(now_ts - opened) if opened > 0 else "—"
-
-    units = float(row.get("base_deployed", 0.0) or 0.0)
-
     # as_finite_float refuses bool, nan, inf and int overflow.
+    opened = as_finite_float(row.get("opened_at"))
+    age = (
+        _format_tranche_age(now_ts - opened)
+        if opened is not None and opened > 0
+        else "—"
+    )
+
+    units = as_finite_float(row.get("base_deployed"))
+    units_text = f"{units:.6f}" if units is not None else "—"
+
     mark_usd = as_finite_float(row.get("mark_value_usd"))
     usd_text = f"${mark_usd:,.4f}" if mark_usd is not None else "—"
 
@@ -483,7 +492,7 @@ def _compose_extractor_tranche_cells(row: dict, now_ts: float) -> list[str]:
     return [
         "EXT",  # 0  "#" — not a fold index; never a fire target
         age,  # 1  Age
-        f"{units:.6f}",  # 2  Units (parent's base currency on lease)
+        units_text,  # 2  Units (parent's base currency on lease)
         usd_text,  # 3  USD parked -> marked value, or em dash
         "—",  # 4  Sell ref $   (parent-asset price; N/A)
         "—",  # 5  Original cost $ (parent-asset price; N/A)
@@ -499,13 +508,18 @@ def _compose_extractor_tranche_tooltip(row: dict) -> str:
 
     Carries what the columns cannot: which child holds the lease, the
     alt-denominated figures, and, when there is no mark, that fact
-    rather than a number standing in for one.
+    rather than a number standing in for one. A leased amount or an alt
+    holding that is not a finite number prints an em dash here too.
     """
     # Same admission rule as the cell composer: the "—" cell and this
     # tooltip must never disagree about whether a mark exists.
     from ...trading.bot_container import as_finite_float
 
     base_asset = row.get("base_asset", "") or "base"
+    deployed = as_finite_float(row.get("base_deployed"))
+    deployed_text = f"{deployed:.8f}" if deployed is not None else "—"
+    alt_units = as_finite_float(row.get("alt_units"))
+    alt_units_text = f"{alt_units:.8f}" if alt_units is not None else "—"
     lines = [
         "EXTRACTOR TRANCHE — not this bot's inventory.",
         "",
@@ -517,11 +531,11 @@ def _compose_extractor_tranche_tooltip(row: dict) -> str:
         f"State: {row.get('state', '?')}",
         "",
         (
-            f"{float(row.get('base_deployed', 0.0) or 0.0):.8f} "
+            f"{deployed_text} "
             f"{base_asset} of this bot's asset is leased to that "
             f"Extractor."
         ),
-        f"Alt units held: {float(row.get('alt_units', 0.0) or 0.0):.8f}",
+        f"Alt units held: {alt_units_text}",
     ]
     mark_price = as_finite_float(row.get("mark_price_base_per_alt"))
     if mark_price is not None:
