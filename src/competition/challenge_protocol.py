@@ -158,13 +158,14 @@ class RatingRegistry:
                     "history": self._history,
                 },
                 indent=2,
-            )
+            ),
+            encoding="utf-8",
         )
 
     def load(self) -> "RatingRegistry":
         if not self._path.exists():
             return self
-        data = json.loads(self._path.read_text())
+        data = json.loads(self._path.read_text(encoding="utf-8"))
         for bid, rd in data.get("ratings", {}).items():
             self._ratings[bid] = BotRating(**rd)
         self._history = data.get("history", [])

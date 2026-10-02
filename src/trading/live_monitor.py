@@ -69,7 +69,7 @@ class TradeJournal:
             self._resume()
 
     def _resume(self):
-        with open(self._path) as f:
+        with open(self._path, encoding="utf-8") as f:
             for line in f:
                 r = json.loads(line.strip())
                 self._last_hash = r.get("chain_hash", self._last_hash)
@@ -86,7 +86,7 @@ class TradeJournal:
         e = asdict(trade)
         e["chain_hash"] = ch
         e["seq"] = self._seq
-        with open(self._path, "a") as f:
+        with open(self._path, "a", encoding="utf-8") as f:
             f.write(json.dumps(e, default=str) + "\n")
         self._last_hash = ch
         self._seq += 1
@@ -118,7 +118,7 @@ class TradeJournal:
             return True, 0
         n = 0
         last_hash = "GENESIS"
-        with open(self._path) as f:
+        with open(self._path, encoding="utf-8") as f:
             for line in f:
                 r = json.loads(line.strip())
                 stored = r.get("chain_hash")
@@ -155,9 +155,18 @@ class ReportGenerator:
         if not rr:
             return "GENESIS"
         try:
-            with open(rr[-1]) as f:
+            with open(rr[-1], encoding="utf-8") as f:
                 return json.load(f).get("report_hash", "GENESIS")
-        except Exception:
+        except Exception as exc:
+            logger.error(
+                "previous report %s could NOT be read (%s: %s), so the next "
+                "report chains from GENESIS and its link to the %d report(s) "
+                "already on disk is lost",
+                rr[-1],
+                type(exc).__name__,
+                exc,
+                len(rr),
+            )
             return "GENESIS"  # matches TradeJournal's own default chain-start value
 
     def generate(

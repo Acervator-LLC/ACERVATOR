@@ -198,7 +198,7 @@ def _setup_faulthandler():
     fh_path = log_dir / f"faulthandler_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
     try:
         fh_file = open(
-            fh_path, "a", buffering=1
+            fh_path, "a", buffering=1, encoding="utf-8"
         )  # noqa: SIM115 - open for the process lifetime
         fh_file.write(
             f"=== faulthandler started {datetime.now().isoformat()} "

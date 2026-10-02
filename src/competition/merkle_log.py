@@ -235,13 +235,13 @@ class MerkleTradeLog:
             "merkle_root": self.root,
             "records": [r.to_dict() for r in self._records],
         }
-        self._log_path.write_text(json.dumps(data, indent=2))
+        self._log_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
     def load(self) -> "MerkleTradeLog":
         """Load an existing log from disk."""
         if not self._log_path or not self._log_path.exists():
             return self
-        data = json.loads(self._log_path.read_text())
+        data = json.loads(self._log_path.read_text(encoding="utf-8"))
         self._opened_at = data.get("opened_at", self._opened_at)
         for rd in data.get("records", []):
             record = TradeRecord.from_dict(rd)
