@@ -1908,6 +1908,56 @@ def market_window(
     return start, end, changes
 
 
+def leg_ratios(
+    candles: Mapping[str, list[list[float]]],
+    assets: Sequence[str],
+    from_ms: int,
+    to_ms: int,
+) -> list[float]:
+    """Return each base's close at to_ms over its close at from_ms."""
+    out: list[float] = []
+    for asset in assets:
+        rows = candles.get(asset) or []
+        opening = close_at(rows, from_ms)
+        closing = close_at(rows, to_ms)
+        if opening > 0.0 and closing > 0.0:
+            out.append(closing / opening)
+    return out
+
+
+def month_starts(start_ms: int, end_ms: int) -> list[int]:
+    """Return every UTC month start strictly between start_ms and end_ms."""
+    opening = datetime.fromtimestamp(start_ms / 1000.0, tz=timezone.utc)
+    year, month = opening.year, opening.month
+    out: list[int] = []
+    while True:
+        month += 1
+        if month > 12:
+            year, month = year + 1, 1
+        stamp = int(datetime(year, month, 1, tzinfo=timezone.utc).timestamp() * 1000)
+        if stamp >= end_ms:
+            return out
+        out.append(stamp)
+
+
+def regime_turn(
+    candles: Mapping[str, list[list[float]]],
+    assets: Sequence[str],
+    start_ms: int,
+    end_ms: int,
+) -> int:
+    """Return the month start whose equal-weight index since start_ms is lowest."""
+    boundaries = month_starts(start_ms, end_ms)
+    if not boundaries:
+        return end_ms
+    return min(
+        boundaries,
+        key=lambda stamp: (
+            lambda legs: sum(legs) / len(legs) if legs else float("inf")
+        )(leg_ratios(candles, assets, start_ms, stamp)),
+    )
+
+
 def panel_pages(labels: Sequence[str], per_page: int) -> list[list[str]]:
     """Return labels split into pages of at most per_page entries."""
     return [list(labels[i : i + per_page]) for i in range(0, len(labels), per_page)]
@@ -2215,17 +2265,39 @@ def _write_market(
     start, end, changes = market_window(candles)
     if not changes:
         return (name, "absent - no tablet covers the common window")
-    changes = sorted(changes, key=lambda pair: pair[1])
+    assets = [asset for asset, _ in changes]
+    turn = regime_turn(candles, assets, start, end)
+    early = leg_ratios(candles, assets, start, turn)
+    late = leg_ratios(candles, assets, turn, end)
+    order = sorted(range(len(assets)), key=lambda i: early[i])
     apply_rcparams()
     figure, axes = plt.subplots(
         1, 2, figsize=FIGURE_SIZE, dpi=FIGURE_DPI, facecolor=ink("bg")
     )
-    colours = [ink("win") if value >= 0 else ink("loss") for _, value in changes]
+    places = list(range(len(order)))
+    turn_day = datetime.fromtimestamp(turn / 1000.0, tz=timezone.utc)
+    end_day = datetime.fromtimestamp(end / 1000.0, tz=timezone.utc)
+    start_day = datetime.fromtimestamp(start / 1000.0, tz=timezone.utc)
+    stretch_pens = accessible_series()
     axes[0].barh(
-        [labels[a] for a, _ in changes], [v * 100 for _, v in changes], color=colours
+        [p + 0.2 for p in places],
+        [(early[i] - 1.0) * 100 for i in order],
+        height=0.4,
+        color=stretch_pens[3],
+        label=f"{start_day:%d %b} to {turn_day:%d %b}",
     )
+    axes[0].barh(
+        [p - 0.2 for p in places],
+        [(late[i] - 1.0) * 100 for i in order],
+        height=0.4,
+        color=stretch_pens[0],
+        label=f"{turn_day:%d %b} to {end_day:%d %b}",
+    )
+    axes[0].set_yticks(places)
+    axes[0].set_yticklabels([labels[assets[i]] for i in order])
     axes[0].axvline(0.0, color=ink("ink_strong"), linewidth=1.0)
-    axes[0].set_xlabel("close-to-close change across the window, percent")
+    axes[0].set_xlabel("change across each stretch, percent")
+    axes[0].legend(fontsize=size("cap"), frameon=False, loc="lower right")
     axes[0].tick_params(labelsize=size("cap") * 0.8, colors=ink("ink_mute"))
     days = list(range(start, end + 1, DAY_MS))
     mean_line: list[float] = []
@@ -2250,6 +2322,13 @@ def _write_market(
         label="median",
     )
     axes[1].axhline(1.0, color=ink("ink_strong"), linewidth=1.0)
+    axes[1].axvline(
+        turn_day,
+        color=ink("ink_strong"),
+        linewidth=1.0,
+        linestyle=":",
+        label=f"{turn_day:%d %b}",
+    )
     axes[1].legend(fontsize=size("cap"), frameon=False)
     axes[1].set_xlabel("the charted bases indexed to the window start")
     axes[1].tick_params(labelsize=size("cap") * 0.8, colors=ink("ink_mute"))

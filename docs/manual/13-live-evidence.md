@@ -561,51 +561,80 @@ figure with the rest.
 
 ## What the market did across the window
 
-A unit result means little without the market it was taken in. `market_window`
-in `tools/build_product_manual.py` clamps every base to one window. The window
-runs from the latest first candle among the bases whose record reaches the
-baseline day, to the earliest last candle among those same bases. A base the
-venue listed after the baseline day is dropped rather than measured over a
-shorter window.
+A unit result means little without the market it was taken in, and one average
+across the whole window would hide what that market did. `market_window` in
+`tools/build_product_manual.py` clamps every base to one window, and
+`regime_turn` splits that window at the month start whose equal-weight index is
+lowest. The window runs from the latest first candle among the bases whose
+record reaches the baseline day, to the earliest last candle among those same
+bases. A base the venue listed after the baseline day is dropped rather than
+measured over a shorter window.
 
 ```
 window        2026-04-01 00:10 UTC to 2026-10-02 12:35 UTC
 bases          33 of 38; A02, A03, A11, A24 and A26 dropped as later listings
-rose           27
-fell            6
-median        +32.5%
-index         1.7644 equal weight
+turn          2026-08-01, the month start carrying the lowest index
 ```
 
-Dropping the two best and the two worst leaves the index at 1.6224, so the rise
-is not two outliers.
+The two stretches either side of that turn:
+
+```
+                        fell         median      index
+1 Apr to 1 Aug        21 of 33       -11.3%      1.0069
+1 Aug to 2 Oct         2 of 33       +56.3%      1.6912
+```
+
+Measured from the baseline day instead of the window start, the first stretch is
+weaker again: 22 of 33 bases below where they began, a median of -16.0% and an
+index of 0.9185.
+
+Month by month:
+
+```
+Apr    8 of 33 fell    median  +7.7%
+May   22 of 33 fell    median  -4.2%
+Jun   32 of 33 fell    median -21.8%
+Jul   21 of 33 fell    median  -3.4%
+Aug    3 of 33 fell    median +18.9%
+Sep    4 of 33 fell    median +25.1%
+```
+
+Three months fell in a row, and June took 32 of the 33 bases down with it.
+Measured from the day the account was funded, the median base reached 22.4%
+below its starting price on 1 July and the equal-weight index reached 0.9115 on
+2 August. The median base sat below its 12 April level on 96 of the window's 185
+days, the last of them 20 August.
+
+Four of the six months were soft and three of those four fell. The rise came
+late and it came fast.
+
+The turn is measured rather than chosen. The month start carrying the lowest
+index is 1 August, the monthly medians turn positive in August, and the median
+base regains its 12 April level on 20 August. September is a month later than
+the data places the turn.
+
+Over the whole window the same 33 bases read 27 up, 6 down, a median of +32.5%
+and an index of 1.7644. That single figure averages a falling stretch and a
+rising one, and it describes neither. It is recorded here so a reader who
+computes it finds the same value, not because it characterises the period.
+
+Dropping the two best and the two worst leaves that whole-window index at
+1.6224, so the late rise is not two outliers.
 
 The index panel of the figure below draws the equal-weight mean and the median
-of the same 33 bases. The mean spikes to 3.86 on 2026-04-18 and the median does
-not. One base, A01, prints a close 90.9 times its window-start close that day
-and falls back within the week. The spike is in the venue's own recorded
-candles, it moves the mean and not the median, and it is gone long before the
-window ends.
-
-The window holds two different markets, and the split matters to anyone reading
-the dollar figure above.
-
-```
-2026-04-01 to 2026-08-01   21 of 33 fell   median -12.4%   index 0.9960
-2026-08-01 to 2026-10-02    2 of 33 fell   median +59.4%   index 1.7077
-```
-
-The first four months were flat. The last two carried the whole rise. Measured
-from the baseline day rather than from the window start, the median is +26.6%
-and the index 1.5885.
-
-This is not a bear market. Over the recorded window the charted bases rose, and
-most of that rise landed in the final two months. The unit result above stands
-on its own arithmetic and does not need the market to have fallen.
+of the same 33 bases, with a rule at the turn. The mean spikes to 3.86 on
+2026-04-18 and the median does not. One base, A01, prints a close 90.9 times its
+window-start close that day and falls back within the week. The spike is in the
+venue's own recorded candles, it moves the mean and not the median, and it is
+gone long before the window ends.
 
 The clamp is the difference between a reading and a mistake. The same 38 tablets
 measured each over its own whole length, with no common window, return a median
 of +1.4% against the clamped +32.5%, because a base with a shorter record is
 compared against a base with a longer one.
 
-![Each base's change across the clamped window, and the equal-weight index of those bases through it.](figures/evidence_market.png)
+The accumulation result above does not rest on any of this. It is an arithmetic
+comparison of units against units at one price, and it reads the same whichever
+way the market went.
+
+![Each base's change across the first stretch beside its change across the second, and the equal-weight index and median through the whole window.](figures/evidence_market.png)
