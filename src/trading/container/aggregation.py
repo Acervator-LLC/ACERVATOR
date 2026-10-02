@@ -14,6 +14,7 @@ from ..smart_wire import is_mature, mature_profit_usd
 from ..target_bands import (
     TERRITORY_FOLD,
     TERRITORY_SCRUM,
+    ammo_target,
     target_delta,
     target_territory,
 )
@@ -375,7 +376,11 @@ class FleetAggregationMixin:
                     _pv_exc,
                 )
             crypto_position_value_usd += _bot_pos_val
-            _target_usd = float(getattr(bot.config, "target_balance", 0.0) or 0.0)
+            # The Ammo cells read the grown target, so the total reads it too.
+            _target_usd = ammo_target(
+                getattr(bot, "_target_balance", 0.0),
+                getattr(bot.config, "target_balance", 0.0),
+            )
             if _target_usd > 0:
                 total_ammo_usd += abs(target_delta(_bot_pos_val, _target_usd))
                 _where = target_territory(_bot_pos_val, _target_usd)
