@@ -415,35 +415,22 @@ if _HAS_QT:
             )
             self._console.setLineWrapMode(QTextEdit.NoWrap)
 
-            # emit() runs on any thread; the widget write is queued through
-            # _append_signal.
-            class _StockLogHandler(QObject, logging.Handler):
-                COLORS = {
-                    "DEBUG": ds.STOCK_LOG_DEBUG,
-                    "INFO": ds.STATUS_NEUTRAL,
-                    "WARNING": ds.STOCK_WARNING,
-                    "ERROR": ds.STOCK_NEGATIVE,
-                    "CRITICAL": ds.STOCK_LOG_CRITICAL,
-                }
-                _append_signal = Signal(str)
+            class _StockLogAppender(QObject):
+                """Carries one formatted line to ``te`` on the thread that
+                built this object.
+
+                Both ``appended`` and its slot live here, so
+                ``Qt.AutoConnection`` resolves against a receiver whose
+                affinity is the GUI thread and a write from any other thread
+                is queued onto it.
+                """
+
+                appended = Signal(str)
 
                 def __init__(self, te):
-                    QObject.__init__(self)
-                    logging.Handler.__init__(self)
+                    super().__init__()
                     self._te = te
-                    self._append_signal.connect(
-                        self._append_to_widget, Qt.AutoConnection
-                    )
-
-                def emit(self, record):
-                    try:
-                        msg = self.format(record)
-                        c = self.COLORS.get(record.levelname, ds.STATUS_NEUTRAL)
-                        self._append_signal.emit(
-                            f'<span style="color:{c}">{msg}</span>'
-                        )
-                    except Exception as _sf_exc:  # noqa: BLE001
-                        logger.debug("stock window log append failed: %s", _sf_exc)
+                    self.appended.connect(self._append_to_widget, Qt.AutoConnection)
 
                 @Slot(str)
                 def _append_to_widget(self, html):
@@ -451,6 +438,31 @@ if _HAS_QT:
                         self._te.append(html)
                         sb = self._te.verticalScrollBar()
                         sb.setValue(sb.maximum())
+                    except Exception as _sf_exc:  # noqa: BLE001
+                        logger.debug("stock window log append failed: %s", _sf_exc)
+
+            class _StockLogHandler(logging.Handler):
+                """Routes every root-logger record to the Stocks console."""
+
+                COLORS = {
+                    "DEBUG": ds.STOCK_LOG_DEBUG,
+                    "INFO": ds.STATUS_NEUTRAL,
+                    "WARNING": ds.STOCK_WARNING,
+                    "ERROR": ds.STOCK_NEGATIVE,
+                    "CRITICAL": ds.STOCK_LOG_CRITICAL,
+                }
+
+                def __init__(self, te):
+                    logging.Handler.__init__(self)
+                    self._appender = _StockLogAppender(te)
+
+                def emit(self, record):
+                    try:
+                        msg = self.format(record)
+                        c = self.COLORS.get(record.levelname, ds.STATUS_NEUTRAL)
+                        self._appender.appended.emit(
+                            f'<span style="color:{c}">{msg}</span>'
+                        )
                     except Exception as _sf_exc:  # noqa: BLE001
                         logger.debug("stock window log append failed: %s", _sf_exc)
 
