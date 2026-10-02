@@ -456,25 +456,9 @@ The third query is the control. The same walk over every branch does find a file
 that once existed and is gone, so the empty answer above is a fact about the
 battery and not about the query.
 
-## Where a figure and a run carry less than they read
+## Where a run carries less than it reads
 
-Two current-state findings bear on how a reader should take the numbers above.
-
-**The header counters and their tooltips name different figures.** The header
-cells read the two headline fields out of the fleet snapshot, and that snapshot
-fills both from the year-to-date sum whenever the sum exceeds zero. The tooltips
-beside them describe a cumulative total “since the platform run started” that
-“resets to $0.00 only on a fresh process start” — the lifetime accumulator, which
-the same snapshot carries separately and neither cell reads. The card and the
-tooltip describe two different figures.
-
-```
-src/gui/main_tabs/header_strip_surface.py   counter_cells reads
-                                                total_scrummed_usd
-                                                total_folded_usd
-src/gui/main_tabs/header_strip.py           the tooltips describe
-                                                total_scrummed_usd_lifetime
-```
+One current-state finding bears on how a reader should take the numbers above.
 
 **A Simulator run exercises an injected capital registry, not the live one.** The
 bot constructor takes a capital registry parameter. The two Simulator
