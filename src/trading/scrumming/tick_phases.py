@@ -90,6 +90,7 @@ class TickPhaseMixin:
     _plan_fold_consumption: Callable[..., Any]
     _quote_to_usd: float
     _refresh_quote_to_usd: Callable[..., Any]
+    _refusal_is_new: Callable[..., bool]
     _reset_opposing_hysteresis_after_fill: Callable[..., None]
     _route_scrum_proceeds_via_wires: Callable[..., float]
     _scrum_target_mode: str
@@ -948,16 +949,17 @@ class TickPhaseMixin:
                 },
             )
             if entry_fill is None or entry_fill <= 0:
-                self._bus.emit(
-                    "bot.log",
-                    bot_id=self.bot_id,
-                    message=(
-                        f"INITIAL ENTRY ABORTED: buy failed at "
-                        f"${price:.8f}; no main_lots entry added. "
-                        f"Bot will retry on next tick if gates "
-                        f"still pass."
-                    ),
-                )
+                if self._refusal_is_new("initial_entry_refused", price):
+                    self._bus.emit(
+                        "bot.log",
+                        bot_id=self.bot_id,
+                        message=(
+                            f"INITIAL ENTRY ABORTED: buy failed at "
+                            f"${price:.8f}; no main_lots entry added. "
+                            f"Bot will retry on next tick if gates "
+                            f"still pass."
+                        ),
+                    )
                 return
             bought_units = buy_cost / entry_fill
             self._main_lots.append(
@@ -1235,7 +1237,9 @@ class TickPhaseMixin:
         else:
             sell_fill = await self._execute_sell(scrum_asset, ticker.last, summary)
         if sell_fill is None or sell_fill <= 0:
-            if not _scrum_skipped_below_min:
+            if not _scrum_skipped_below_min and self._refusal_is_new(
+                "scrum_sell_refused", ticker.last
+            ):
                 self._bus.emit(
                     "bot.log",
                     bot_id=self.bot_id,
@@ -1720,7 +1724,9 @@ class TickPhaseMixin:
                     },
                 )
             if buy_fill is None or buy_fill <= 0:
-                if not _fold_skipped_below_min:
+                if not _fold_skipped_below_min and self._refusal_is_new(
+                    "fold_rebuy_refused", ticker.last
+                ):
                     self._bus.emit(
                         "bot.log",
                         bot_id=self.bot_id,
@@ -1985,16 +1991,17 @@ class TickPhaseMixin:
             if dist_asset > 0:
                 dist_fill = await self._execute_sell(dist_asset, ticker.last, summary)
                 if dist_fill is None or dist_fill <= 0:
-                    self._bus.emit(
-                        "bot.log",
-                        bot_id=self.bot_id,
-                        message=(
-                            f"DIST ABORTED: sell failed for "
-                            f"{dist_asset:.6f} excess @ ${ticker.last:.8f}. "
-                            f"Accumulator kept; no re-fold tranches "
-                            f"created. Retry next tick."
-                        ),
-                    )
+                    if self._refusal_is_new("dist_sell_refused", ticker.last):
+                        self._bus.emit(
+                            "bot.log",
+                            bot_id=self.bot_id,
+                            message=(
+                                f"DIST ABORTED: sell failed for "
+                                f"{dist_asset:.6f} excess @ ${ticker.last:.8f}. "
+                                f"Accumulator kept; no re-fold tranches "
+                                f"created. Retry next tick."
+                            ),
+                        )
                 else:
                     # _settled_sale_proceeds nets the venue's reported
                     # fee out of dist_asset * dist_fill.
