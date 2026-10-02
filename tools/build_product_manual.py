@@ -1141,6 +1141,16 @@ def code_points(lines: Sequence[str], room: float) -> float:
     return max(MONO_POINT_FLOOR, points * room / widest)
 
 
+def code_capacity(room: float, points: float) -> int:
+    """Return how many monospaced characters of ``points`` size fit across ``room``.
+
+    ``room`` and the width of one character are both in points, so the quotient
+    is a count of characters.
+    """
+    per_char = stringWidth("0", font_name("mono"), points) or 1.0
+    return int(room / per_char)
+
+
 def _code_flowables(block: Block, styles: dict[str, ParagraphStyle]) -> list[object]:
     lines = [line.rstrip() for line in block.text.split("\n")]
     while lines and not lines[0].strip():
@@ -1154,8 +1164,7 @@ def _code_flowables(block: Block, styles: dict[str, ParagraphStyle]) -> list[obj
     style = ParagraphStyle(
         "code_block", parent=styles["mono"], fontSize=points, leading=points * 1.35
     )
-    per_char = stringWidth("0", font_name("mono"), points) or 1.0
-    limit_chars = int(room / per_char)
+    limit_chars = code_capacity(room, points)
     widest_chars = max(len(line) for line in lines)
     listing = Preformatted(
         "\n".join(lines),
