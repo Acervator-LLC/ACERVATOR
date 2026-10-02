@@ -14,6 +14,7 @@ Panels:
 
 from __future__ import annotations
 
+import logging
 import time
 
 from . import design_system as ds
@@ -45,6 +46,8 @@ except ImportError:
 
 if _QT:
     pass
+
+_LOG = logging.getLogger("acervator.testnet")
 
 # ── Style ─────────────────────────────────────────────────────────────────────
 CYAN = "#00FFEE"
@@ -156,8 +159,12 @@ if _QT:
                 self._bridge.chain_reset.connect(
                     lambda reason: self._msg(f"⚠ Chain reset: {reason}", "#ffaa00")
                 )
-            except Exception:
-                pass
+            except Exception as exc:
+                _LOG.warning(
+                    "bridge wiring refused chain_updated/chain_reset (%s): %s",
+                    type(exc).__name__,
+                    exc,
+                )
 
         def _refresh_all(self):
             """Run every refresh method. v3.13.1 — R28 FL applied.
@@ -198,11 +205,12 @@ if _QT:
                                 type(exc).__name__,
                                 exc,
                             )
-                        except Exception:
-                            pass  # sadp: R61 ACCEPT —
-                        # logging module itself broken; stderr write
-                        # above already surfaced, looping would risk
-                        # recursive logger-failure spam.
+                        except Exception as log_exc:
+                            # stderr, not log: retrying the raising logger recurses.
+                            sys.stderr.write(
+                                f"TestnetTab._refresh_{name}: logger failed: "
+                                f"{type(log_exc).__name__}: {log_exc}\n"
+                            )
 
         def _setup_ui(self):
             root = QVBoxLayout(self)
@@ -461,11 +469,14 @@ if _QT:
                     self._bridge.competition_completed.connect(
                         self._on_bridge_competition, type=Qt.UniqueConnection
                     )
-                except Exception:
-                    pass  # sadp: R61 ACCEPT — already
-                # connected. Qt.UniqueConnection raises TypeError if
-                # the signal is already connected to this slot, which
-                # is the EXPECTED path on every subsequent button press.
+                except Exception as exc:
+                    # Qt.UniqueConnection raises from the second press onward.
+                    _LOG.debug(
+                        "competition_completed already wired for _run_competition "
+                        "(%s): %s",
+                        type(exc).__name__,
+                        exc,
+                    )
                 self._bridge.request_competition(req)
                 return  # button re-enabled in _on_bridge_competition
             try:
@@ -534,9 +545,14 @@ if _QT:
                     self._bridge.competition_completed.connect(
                         self._on_bridge_competition, type=Qt.UniqueConnection
                     )
-                except Exception:
-                    pass  # sadp: R61 ACCEPT — already
-                # connected. Same rationale as the single-run path above.
+                except Exception as exc:
+                    # Qt.UniqueConnection raises from the second press onward.
+                    _LOG.debug(
+                        "competition_completed already wired for _stress_test "
+                        "(%s): %s",
+                        type(exc).__name__,
+                        exc,
+                    )
                 for _ in range(10):
                     self._bridge.request_competition(
                         CompetitionRequest(
@@ -635,11 +651,3 @@ if _QT:
                     [addr[:14] + "...", f"{tokens:,.1f}", tier],
                     [MUTED, GREEN, col],
                 )
-
-else:
-
-    class TestnetTab:
-        def __init__(self, parent=None, *, shared_testnet, bridge):
-            """Hold ``shared_testnet`` and ``bridge`` so the no-Qt path takes the same arguments."""
-            self._testnet = shared_testnet
-            self._bridge = bridge
