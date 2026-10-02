@@ -41,6 +41,7 @@ from ...core.safe_url import openable_url
 from ...exchange.crypto_assets import AssetManager
 from ...exchange.exchange_chart_urls import chart_url
 from ...trading.ata_asset_maps import organisation_page
+from ...trading.target_bands import ammo_target
 from .. import design_system as ds
 from .table_cells_surface import (
     NO_TARGET_TEXT,
@@ -807,11 +808,14 @@ def blockers_text(blockers: list) -> str:
 
 
 def target_value(status: Any) -> float:
-    """The target the engine re-zeros to, or the configured target_balance."""
-    return float(
-        status.get("live_target_balance", status.get("target_balance", NO_TARGET_VALUE))
-        or status.get("target_balance", NO_TARGET_VALUE)
-        or NO_TARGET_VALUE
+    """The target the engine re-zeros to, or the configured target_balance.
+
+    ``ammo_target`` holds the rule, so the header strip's AMMO total reads
+    the same target this row's Ammo cell is measured against.
+    """
+    return ammo_target(
+        status.get("live_target_balance", NO_TARGET_VALUE),
+        status.get("target_balance", NO_TARGET_VALUE),
     )
 
 
