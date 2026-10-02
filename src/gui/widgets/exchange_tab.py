@@ -526,7 +526,8 @@ if _HAS_QT:
                 self._privacy_mode_btn.setText("Privacy Mode: ON")
                 self._privacy_mode_btn.setStyleSheet(
                     "QPushButton { "
-                    f"  background-color: {ds.STATE_ENGAGED}; color: {ds.TEXT_MAX}; "
+                    f"  background-color: {ds.STATE_ENGAGED_DIM}; "
+                    f"color: {ds.TEXT_MAX}; "
                     "  font-weight: bold; padding: 4px 12px; "
                     f"  border: 1px solid {ds.STATE_ARMED}; border-radius: 4px; "
                     "}"
