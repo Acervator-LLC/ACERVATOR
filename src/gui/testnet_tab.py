@@ -456,8 +456,8 @@ if _QT:
                     n_bots=self._n_bots.value(),
                 )
                 try:
-                    # v3.12.3 — Qt.UniqueConnection is 0x80, NOT 3.
-                    # Value 3 = BlockingQueuedConnection (can deadlock).
+                    # Qt.UniqueConnection is 0x80, not 3;
+                    # 3 is BlockingQueuedConnection and can deadlock.
                     from PySide6.QtCore import Qt
 
                     self._bridge.competition_completed.connect(
@@ -500,12 +500,6 @@ if _QT:
         def _on_bridge_competition(self, result: dict):
             """Bridge callback when any queued competition finishes.
             Re-enables the run button and logs the outcome.
-
-            v3.13.1 — added explicit _refresh_all() call. Previously
-            relied solely on the 3s auto-refresh timer and the
-            chain_updated signal, but screenshot evidence from user
-            showed tables stayed empty for >1 minute after a successful
-            competition. Surfaces a diagnostic tail to figure out why.
             """
             self._run_btn.setEnabled(True)
             self._stress_btn.setEnabled(True)
@@ -522,9 +516,6 @@ if _QT:
                 f"Awarded: {result.get('tokens_awarded',0):,} ACRV",
                 GREEN,
             )
-            # Explicit refresh — R28 FL  (the prior reliance on 3s
-            # timer + chain_updated signal was not observably firing
-            # for the user in v3.13.0)
             self._refresh_all()
 
         def _stress_test(self):
