@@ -25,6 +25,7 @@ reaches it. Nothing here imports Qt.
 from __future__ import annotations
 
 import logging
+import math
 import time
 from typing import Any, Optional
 
@@ -89,6 +90,10 @@ MANUAL_FIRE_NOOP_TIP_FORMAT = (
     "${magnitude:,.4f} is inside Manual Fire's own dust "
     "band of ${dust_band:,.2f} (1% of target). The autonomous "
     "engine still works this range; the button will no-op."
+)
+MANUAL_FIRE_NOOP_OLD_PRICE_SUFFIX = (
+    " The delta above rests on the old price named here, so the no-op is "
+    "likely rather than certain."
 )
 STALE_TIP_FORMAT = (
     "STALE — price unavailable this tick, so this is the last "
@@ -184,12 +189,12 @@ UNLISTED_TEXT = "—"
 MISSING_QUOTE_USD = 0.0
 MISSING_USD_PCT = 0.0
 DIVERGENCE_DUST_PCT = 0.1
-UNITS_WHOLE_MIN = 1
-UNITS_SMALL_MIN = 0.01
+UNITS_SIG_FIGURES = 5
+UNITS_MIN_DECIMALS = 4
+UNITS_MAX_DECIMALS = 12
 
-UNITS_WHOLE_FORMAT = "{units:.4f}"
-UNITS_SMALL_FORMAT = "{units:.5f}"
-UNITS_TINY_FORMAT = "{units:.6f}"
+UNITS_FORMAT = "{units:.{decimals}f}"
+UNITS_UNDERFLOW_FORMAT = "<{floor:.{decimals}f}"
 DENOM_TEXT_FORMAT = "{units_text} ({sign}{delta:.1f}%)"
 
 SIGN_UP = "+"
@@ -311,12 +316,21 @@ def ammo_text(delta: float, target_val: float) -> str:
 
 
 def units_text(units: float) -> str:
-    """The target restated in the quote asset, at one of three widths."""
-    if units >= UNITS_WHOLE_MIN:
-        return UNITS_WHOLE_FORMAT.format(units=units)
-    if units >= UNITS_SMALL_MIN:
-        return UNITS_SMALL_FORMAT.format(units=units)
-    return UNITS_TINY_FORMAT.format(units=units)
+    """The target restated in the quote asset, at ``UNITS_SIG_FIGURES``.
+
+    A ``units`` above zero never reads as zeros: under ``UNITS_MAX_DECIMALS``
+    the cell draws ``UNITS_UNDERFLOW_FORMAT`` instead.
+    """
+    if units <= 0:
+        return UNITS_FORMAT.format(units=units, decimals=UNITS_MIN_DECIMALS)
+    decimals = UNITS_SIG_FIGURES - 1 - math.floor(math.log10(units))
+    decimals = min(max(decimals, UNITS_MIN_DECIMALS), UNITS_MAX_DECIMALS)
+    text = UNITS_FORMAT.format(units=units, decimals=decimals)
+    if float(text) > 0:
+        return text
+    return UNITS_UNDERFLOW_FORMAT.format(
+        floor=10.0**-UNITS_MAX_DECIMALS, decimals=UNITS_MAX_DECIMALS
+    )
 
 
 def divergence_colour(delta: float) -> tuple[str, str]:
@@ -560,21 +574,26 @@ class TableCellsModel:
         manual_fire_noop = 0 < abs(delta) and manual_fire_will_noop(
             position_val, target_val
         )
-        if manual_fire_noop and not stale:
-            tip = MANUAL_FIRE_NOOP_TIP_FORMAT.format(
-                tip=tip, magnitude=abs(delta), dust_band=dust_band
-            )
-            self.calls.append([AMMO_NOOP, dust_band])
         text = ammo_text(delta, target_val)
+        old_price = False
         if stale:
             color = AMMO_NEUTRAL_COLOR
             text = STALE_TEXT_FORMAT.format(text=text, marker=STALE_MARKER)
             tip = STALE_TIP_FORMAT.format(stats_pv=stats_pv)
+            old_price = True
         elif price_age_s is not None and price_age_s > PRICE_STALE_AFTER_S:
             color = AMMO_NEUTRAL_COLOR
             text = STALE_TEXT_FORMAT.format(text=text, marker=STALE_MARKER)
             tip = AGED_PRICE_TIP_FORMAT.format(price_age_s=price_age_s)
+            old_price = True
             self.calls.append([AMMO_AGED, price_age_s])
+        if manual_fire_noop:
+            tip = MANUAL_FIRE_NOOP_TIP_FORMAT.format(
+                tip=tip, magnitude=abs(delta), dust_band=dust_band
+            )
+            if old_price:
+                tip = f"{tip}{MANUAL_FIRE_NOOP_OLD_PRICE_SUFFIX}"
+            self.calls.append([AMMO_NOOP, dust_band])
         return self._finish(
             AMMO_PATH_SIGNAL,
             {
