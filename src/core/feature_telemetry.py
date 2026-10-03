@@ -319,8 +319,6 @@ class FeatureTelemetry:
                 )
         return lines
 
-    # ── markdown report (v3.24.8) ────────────────────────────────
-
     def write_markdown_report(
         self,
         path: Optional[Path] = None,
