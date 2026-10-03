@@ -487,6 +487,7 @@ WIRED_PATHS = (
     "_pump_market_pairs_scout",
     "_refresh_all_privacy_widgets",
     "_register_fire_glow",
+    "_report_fetch_stall",
     "_report_stored_credentials_on_startup",
     "_schedule_async",
     "_setup_bot_list_link",

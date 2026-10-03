@@ -578,8 +578,9 @@ class SettingsTabMixin:
             "When ON, fold surplus grows the effective target "
             "balance via the compounding drain (subject to Max "
             "Target Growth % cap). OFF freezes target at anchor "
-            "regardless of fold profit. Wizard parity: matches "
-            "the dedicated Profit Folding page at bot creation."
+            "regardless of fold profit. The creation wizard "
+            "carries no row for this, so a new bot opens ON and "
+            "this is the only place that turns it off."
         )
         self._profit_folding_active.toggled.connect(
             lambda v: self._mark_changed("profit_folding_active", v)

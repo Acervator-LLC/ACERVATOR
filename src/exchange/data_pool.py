@@ -27,6 +27,11 @@ logger = logging.getLogger("acervator.data_pool")
 # next_reach_back_ms stops at one traded row in MIN_CANDLES_FOR_TA.
 REACH_BACK_PERIODS = MIN_CANDLES_FOR_TA * MIN_CANDLES_FOR_TA
 
+#: Lifetime of a ticker slot, seconds. `TickerEntry.is_stale` is the contract.
+TICKER_TTL_SECONDS = 5.0
+#: Lifetime of a balance slot, seconds. `BalanceEntry.is_stale` is the contract.
+BALANCE_TTL_SECONDS = 10.0
+
 TF_SECONDS = {
     "1m": 60,
     "3m": 180,
@@ -161,7 +166,7 @@ class BalanceEntry:
 
     @property
     def is_stale(self) -> bool:
-        return (time.time() - self.fetch_time) > 10.0
+        return (time.time() - self.fetch_time) > BALANCE_TTL_SECONDS
 
     @property
     def has_data(self) -> bool:
@@ -187,7 +192,7 @@ class TickerEntry:
 
     @property
     def is_stale(self) -> bool:
-        return (time.time() - self.fetch_time) > 5.0
+        return (time.time() - self.fetch_time) > TICKER_TTL_SECONDS
 
     @property
     def has_data(self) -> bool:
@@ -637,7 +642,7 @@ class MarketDataPool:
         for te in self._tickers.values():
             if te.fetch_time <= 0:
                 continue
-            remaining = max(0.0, 5.0 - (now - te.fetch_time))
+            remaining = max(0.0, TICKER_TTL_SECONDS - (now - te.fetch_time))
             if remaining < best:
                 best = remaining
         for ce in self._candles.values():
@@ -649,7 +654,7 @@ class MarketDataPool:
         for be in self._balances.values():
             if be.fetch_time <= 0:
                 continue
-            remaining = max(0.0, 10.0 - (now - be.fetch_time))
+            remaining = max(0.0, BALANCE_TTL_SECONDS - (now - be.fetch_time))
             if remaining < best:
                 best = remaining
         return best
@@ -667,7 +672,7 @@ class MarketDataPool:
             if te.fetch_time <= 0:
                 continue
             age = now - te.fetch_time
-            ages.append((age, age > 5.0))
+            ages.append((age, age > TICKER_TTL_SECONDS))
         for ce in self._candles.values():
             if ce.fetch_time <= 0:
                 continue
@@ -677,7 +682,7 @@ class MarketDataPool:
             if be.fetch_time <= 0:
                 continue
             age = now - be.fetch_time
-            ages.append((age, age > 10.0))
+            ages.append((age, age > BALANCE_TTL_SECONDS))
         if not ages:
             return {
                 "freshest_age_s": None,

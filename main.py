@@ -281,13 +281,40 @@ def _crash_log(category: str, message: str) -> None:
         logger.debug("crash log write suppressed exception: %s", _crash_exc)
 
 
+def _traceback_frames(tb) -> list[str]:
+    """Name every frame of ``tb`` as ``file:line in function``.
+
+    Reads the traceback by attribute access alone, so it imports nothing and
+    names the frames the packager's dialog reports it could not obtain.
+    """
+    frames = []
+    while tb is not None:
+        code = tb.tb_frame.f_code
+        frames.append(f"{code.co_filename}:{tb.tb_lineno} in {code.co_name}")
+        tb = tb.tb_next
+    return frames
+
+
+def _render_traceback(exc_type, exc_value, tb, _frames=_traceback_frames) -> str:
+    """Render ``tb`` as text, or as ``_frames`` alone when that raises.
+
+    ``traceback.format_exception`` reads each frame's source line and raises
+    once interpreter finalisation has cleared the modules it needs.
+    """
+    try:
+        return "".join(traceback.format_exception(exc_type, exc_value, tb))
+    except BaseException:  # noqa: BLE001 - the renderer must never lose the record
+        rendered = "".join(f"    {frame}\n" for frame in _frames(tb))
+        return rendered or "    no traceback frames\n"
+
+
 def _install_diagnostic_hooks() -> None:
     """Install sys and threading excepthooks that write the crash log before the original sys hook."""
 
     _original_excepthook = sys.excepthook
 
-    def _sys_excepthook(exc_type, exc_value, tb):
-        tb_text = "".join(traceback.format_exception(exc_type, exc_value, tb))
+    def _sys_excepthook(exc_type, exc_value, tb, _render=_render_traceback):
+        tb_text = _render(exc_type, exc_value, tb)
         _crash_log("SYS_EXCEPTHOOK", f"{exc_type.__name__}: {exc_value}\n{tb_text}")
         logger.error("UNCAUGHT EXCEPTION: %s: %s", exc_type.__name__, exc_value)
         import contextlib
@@ -297,12 +324,8 @@ def _install_diagnostic_hooks() -> None:
 
     sys.excepthook = _sys_excepthook
 
-    def _thread_excepthook(args):
-        tb_text = "".join(
-            traceback.format_exception(
-                args.exc_type, args.exc_value, args.exc_traceback
-            )
-        )
+    def _thread_excepthook(args, _render=_render_traceback):
+        tb_text = _render(args.exc_type, args.exc_value, args.exc_traceback)
         thread_name = args.thread.name if args.thread else "unknown"
         _crash_log(
             "THREAD_EXCEPTHOOK",
@@ -327,13 +350,11 @@ def _install_diagnostic_hooks() -> None:
 def _install_asyncio_handler(loop) -> None:
     """Route unhandled exceptions on loop to the crash log and logger.error."""
 
-    def _asyncio_exception_handler(loop, context):
+    def _asyncio_exception_handler(loop, context, _render=_render_traceback):
         msg = context.get("message", "")
         exc = context.get("exception")
         if exc:
-            tb_text = "".join(
-                traceback.format_exception(type(exc), exc, exc.__traceback__)
-            )
+            tb_text = _render(type(exc), exc, exc.__traceback__)
             _crash_log(
                 "ASYNCIO", f"{type(exc).__name__}: {exc} | message={msg}\n{tb_text}"
             )
@@ -375,20 +396,6 @@ def _install_qt_message_handler() -> None:
 
     qInstallMessageHandler(_qt_message_handler)
     _crash_log("BOOT", "Qt message handler installed.")
-
-
-def _traceback_frames(tb) -> list[str]:
-    """Name every frame of ``tb`` as ``file:line in function``.
-
-    Reads the traceback by attribute access alone, so it imports nothing and
-    names the frames the packager's dialog reports it could not obtain.
-    """
-    frames = []
-    while tb is not None:
-        code = tb.tb_frame.f_code
-        frames.append(f"{code.co_filename}:{tb.tb_lineno} in {code.co_name}")
-        tb = tb.tb_next
-    return frames
 
 
 def _unraisable_report(unraisable, frame_walker) -> str:

@@ -1190,6 +1190,41 @@ if _HAS_QT:
                 self._live_rows_empty.setVisible(True)
                 self._live_rows_scroll.setVisible(False)
 
+        def _sync_live_rows(self, bot_statuses: list[dict]) -> None:
+            """Hold one ``_live_bot_rows`` row per bot in one fleet load.
+
+            A row is rebuilt when the identifier mask changes the id it
+            shows, and a bot no longer in the load loses its row.
+            """
+            from .main_tabs import bot_visualizer_surface as surface
+            from .visualizer.privacy import _mask_or
+
+            seen: list[str] = []
+            for status in bot_statuses:
+                if not isinstance(status, dict):
+                    continue
+                bot_id = status.get("bot_id", "")
+                if not bot_id:
+                    continue
+                seen.append(bot_id)
+                label = _mask_or(surface.live_row_id(bot_id), "bot_swarm.identifiers")
+                handle = self._live_bot_rows.get(bot_id)
+                if handle is None or handle["id_lbl"].text() != label:
+                    self.register_live_run(bot_id, label, surface.live_row_cfg(status))
+                self.update_live_run(bot_id, **surface.live_row_tick(status))
+            for bot_id in [one for one in self._live_bot_rows if one not in seen]:
+                self._remove_live_bot_row(bot_id)
+
+        def _relabel_live_rows(self) -> None:
+            """Write the masked or revealed id into every live row's id column."""
+            from .main_tabs import bot_visualizer_surface as surface
+            from .visualizer.privacy import _mask_or
+
+            for bot_id, handle in self._live_bot_rows.items():
+                handle["id_lbl"].setText(
+                    _mask_or(surface.live_row_id(bot_id), "bot_swarm.identifiers")
+                )
+
         def _update_sim_summary(self):
             running = sum(1 for b in self._sim_bots if b.get("running"))
             running += sum(1 for h in self._live_sim_rows.values() if h.get("running"))
@@ -1306,6 +1341,7 @@ if _HAS_QT:
             self._refresh_privacy_mode_btn()
             for w in self._bot_widgets.values():
                 w.update()
+            self._relabel_live_rows()
             # The Source and Destination labels re-read the mask on re-render.
             self._rebuild_quick_routing_scope_in_place()
 
@@ -1377,6 +1413,7 @@ if _HAS_QT:
             self._refresh_bot_swarm_privacy_dot()
             for w in self._bot_widgets.values():
                 w.update()
+            self._relabel_live_rows()
             # The Source and Destination labels re-read the masks on re-render.
             self._rebuild_quick_routing_scope_in_place()
 
@@ -2146,6 +2183,8 @@ if _HAS_QT:
 
             if not self._bot_widgets:
                 self._empty_label.setVisible(True)
+
+            self._sync_live_rows(bot_statuses)
 
             # A new widget would stack over _wire_canvas and eat its mouse events.
             if self._wire_canvas.isVisible():
