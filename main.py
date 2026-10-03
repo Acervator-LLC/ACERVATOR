@@ -377,7 +377,76 @@ def _install_qt_message_handler() -> None:
     _crash_log("BOOT", "Qt message handler installed.")
 
 
+def _traceback_frames(tb) -> list[str]:
+    """Name every frame of ``tb`` as ``file:line in function``.
+
+    Reads the traceback by attribute access alone, so it imports nothing and
+    names the frames the packager's dialog reports it could not obtain.
+    """
+    frames = []
+    while tb is not None:
+        code = tb.tb_frame.f_code
+        frames.append(f"{code.co_filename}:{tb.tb_lineno} in {code.co_name}")
+        tb = tb.tb_next
+    return frames
+
+
+def _unraisable_report(unraisable, frame_walker) -> str:
+    """Render one ``sys.unraisablehook`` argument as its crash-log block."""
+    exc_type = getattr(unraisable.exc_type, "__name__", unraisable.exc_type)
+    lines = [
+        f"[UNRAISABLE] {exc_type}: {unraisable.exc_value!r}\n",
+        f"    err_msg={unraisable.err_msg!r} object={unraisable.object!r}\n",
+    ]
+    frames = frame_walker(unraisable.exc_traceback)
+    if not frames:
+        lines.append("    no traceback frames\n")
+    lines.extend(f"    {frame}\n" for frame in frames)
+    return "".join(lines)
+
+
+def _install_unraisable_hook() -> None:
+    """Record every exception the interpreter cannot propagate, by file descriptor.
+
+    A finaliser, an exit handler and interpreter finalisation reach
+    ``sys.unraisablehook``, whose default writes to ``sys.stderr``; a windowed
+    frozen build has none, so the failure reaches no file. This hook binds its
+    writer, its renderer and the frame walker as default arguments and writes to
+    a descriptor opened at import, so it needs neither the module dictionary nor
+    the error channel.
+    """
+    import contextlib
+
+    try:
+        report_fd = os.open(
+            str(_get_crash_log_path()), os.O_WRONLY | os.O_CREAT | os.O_APPEND
+        )
+    except OSError as exc:
+        _crash_log("BOOT", f"Unraisable-exception hook setup failed: {exc}")
+        return
+
+    _previous_hook = sys.unraisablehook
+
+    def _unraisable_hook(
+        unraisable,
+        _fd=report_fd,
+        _write=os.write,
+        _render=_unraisable_report,
+        _frames=_traceback_frames,
+        _previous=_previous_hook,
+        _suppress=contextlib.suppress,
+    ) -> None:
+        with _suppress(BaseException):
+            _write(_fd, _render(unraisable, _frames).encode("utf-8", "replace"))
+        with _suppress(BaseException):
+            _previous(unraisable)
+
+    sys.unraisablehook = _unraisable_hook
+    _crash_log("BOOT", "Unraisable-exception hook installed.")
+
+
 _install_diagnostic_hooks()
+_install_unraisable_hook()
 
 
 def _heartbeat_path() -> Path:
