@@ -1192,7 +1192,7 @@ if _HAS_QT:
             groups.addWidget(self._gates_group)
 
             # One group, so every Extractor widget shows and hides together.
-            self._extractor_group = QGroupBox("Extractor — Pool & Artillery")
+            self._extractor_group = QGroupBox("Extractor — Pool && Artillery")
             self._extractor_group.setVisible(False)
             eform = QFormLayout(self._extractor_group)
             eform.setLabelAlignment(Qt.AlignRight | Qt.AlignVCenter)
