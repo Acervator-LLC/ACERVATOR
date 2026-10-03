@@ -88,7 +88,7 @@ class BotSwarmTabMixin:
 
         ledger = ledgers.get(bot_id)
 
-        summary = QGroupBox("Swarm Connections & Capital Flow")
+        summary = QGroupBox("Swarm Connections && Capital Flow")
         sf = QFormLayout(summary)
         self._configure_form(sf)
 
@@ -144,7 +144,7 @@ class BotSwarmTabMixin:
         layout.addWidget(summary)
 
         if ledger is not None:
-            prov_group = QGroupBox("Provenance & Mature-Profit Spawn State")
+            prov_group = QGroupBox("Provenance && Mature-Profit Spawn State")
             pf = QFormLayout(prov_group)
             self._configure_form(pf)
 
