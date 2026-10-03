@@ -50,6 +50,14 @@ HEARTBEAT_TTL = 120.0
 RESTART_GRACE_SECONDS = 60.0
 
 
+class ClaimsUnreadable(RuntimeError):
+    """Raised by ``effective_available`` when ``_load`` could not read the file.
+
+    ``_state_read`` is False, so the claim table is empty for want of a read and
+    not because no bot holds a claim.
+    """
+
+
 @dataclass
 class Reservation:
     """One ``bot_id``'s claim on ``qty`` units of ``asset``.
@@ -119,6 +127,8 @@ class CapitalReservationRegistry:
         self._heartbeats: dict[str, float] = {}
         self._last_prune = self._boot_time
         self._unpersisted = 0
+        # An absent file is a read; only a failed read clears this.
+        self._state_read = True
 
         self._load()
 
@@ -127,10 +137,25 @@ class CapitalReservationRegistry:
 
         Returns False only when a write was attempted and failed, leaving the
         table in memory alone and ``_unpersisted`` counting the lost changes.
-        Writes nothing, and returns True, when ``_autosave`` is False.
+        Writes nothing, and returns True, when ``_autosave`` is False, and
+        writes nothing when ``_state_read`` is False.
         """
         if not self._autosave:
             return True
+        if not self._state_read:
+            self._unpersisted += 1
+            logger.error(
+                "CapitalReservationRegistry will not write %s: the file did "
+                "not read at start-up, so this table never held what was "
+                "already claimed there. Writing it would replace the "
+                "operator's claims with %d claim(s) this run knows about. "
+                "%d change(s) are not on disk. Repair or move the file and "
+                "restart.",
+                self._state_path,
+                len(self._reservations),
+                self._unpersisted,
+            )
+            return False
         try:
             payload = {
                 "version": "1.0",
@@ -175,13 +200,14 @@ class CapitalReservationRegistry:
                 self._state_path,
             )
         except Exception as e:
+            self._state_read = False
             logger.error(
-                "CapitalReservationRegistry load failed (%s) (%s: %s) — "
-                "starting with empty state. This is NOT the same as a file "
-                "holding no claims: every other bot's claim on every asset "
-                "now reads as 0, so effective_available returns the caller's "
-                "whole holding and no sell is bounded by a sibling. Operator "
-                "should inspect the file for manual recovery.",
+                "CapitalReservationRegistry load failed (%s) (%s: %s) — the "
+                "claim table is empty for want of a read, which is NOT the "
+                "same as a file holding no claims. effective_available now "
+                "refuses to answer, so every sell that asks it is refused "
+                "rather than placed unbounded, and _save will not overwrite "
+                "the file. Repair or move the file and restart.",
                 self._state_path,
                 type(e).__name__,
                 e,
@@ -433,10 +459,18 @@ class CapitalReservationRegistry:
         """Return ``total_holdings`` minus every ``Reservation`` on ``asset``
         whose owner is not ``bot_id``.
 
-        Runs ``_prune_on_schedule`` first, so a dead owner's claim does not
+        Raises ``ClaimsUnreadable`` when ``_state_read`` is False. Otherwise
+        runs ``_prune_on_schedule`` first, so a dead owner's claim does not
         bound this caller. A negative result is logged at ERROR and clamped
         to 0.0.
         """
+        if not self._state_read:
+            raise ClaimsUnreadable(
+                f"the claim file {self._state_path.name} did not read at "
+                f"start-up, so no other bot's claim on {asset} is known and "
+                f"an empty table here means nothing. Repair or move the file "
+                f"and restart"
+            )
         self._prune_on_schedule()
         with self._lock:
             others_reserved = sum(
