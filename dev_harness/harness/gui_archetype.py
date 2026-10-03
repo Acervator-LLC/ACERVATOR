@@ -1534,7 +1534,7 @@ _GEOMETRY_CALIBRATION_GOOD = "2ffe9682"
 
 #: The squash merge on `current` carrying the reference header row in `src` and
 #: `harness_fixtures`, which every clone reaches.
-_GEOMETRY_REFERENCE_COMMIT = "c10325d3caae7e668669641556abad462a312d81"
+_GEOMETRY_REFERENCE_COMMIT = "60bab216d2a35908ae041f304cc2e15b6450e7bb"
 
 #: The scripts the React header page loads, in load order.
 _HEADER_ROW_ASSETS: tuple[str, ...] = (
