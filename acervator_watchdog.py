@@ -7,7 +7,7 @@ Purpose
 -------
 Launches Acervator as a separate subprocess, monitors it from OUTSIDE
 the Python process that can crash, and produces a complete post-mortem
-when it dies — including thread dumps from py-spy if installed.
+when it dies.
 
 When Acervator silently vanishes (Qt qFatal → abort(), unhandled signal,
 memory corruption, OS kill), the in-process crash hooks may not get a
@@ -16,7 +16,8 @@ a detailed post-mortem to disk after the child dies.
 
 What the watchdog does
 ----------------------
-1. Launches `python main.py` as a subprocess.
+1. Launches this application as a subprocess: the frozen executable
+   re-entered with --child, or `python main.py --child` in a source tree.
 2. Tees stdout+stderr to console AND to a watchdog-owned log.
 3. Polls the heartbeat file (~/.acervator_logs/heartbeat.txt).
    If the mtime stops advancing for > STALL_SECONDS, considers
@@ -26,7 +27,7 @@ What the watchdog does
      - Any final stdout/stderr lines
      - Whatever crash log was being written
      - Whatever faulthandler log was being written
-     - A py-spy dump of the child process's threads (if still alive)
+     - Whatever thread-violation log was being written
 5. Writes a post-mortem bundle to
    ~/.acervator_logs/postmortem_YYYYMMDD_HHMMSS/
    with all the above correlated.
@@ -46,7 +47,6 @@ Usage
     python acervator_watchdog.py --stall 30             # hung after 30s
     python acervator_watchdog.py --no-terminate-on-stall
     python acervator_watchdog.py --no-postmortem-on-stall
-    python acervator_watchdog.py --python <interpreter>
 
 Exit codes
 ----------
@@ -198,42 +198,6 @@ def _ensure_log_dir() -> None:
 
 
 # ─────────────────────────────────────────────────────────────────
-# py-spy integration (optional)
-# ─────────────────────────────────────────────────────────────────
-
-
-def _pyspy_path() -> str | None:
-    """Absolute path of the py-spy executable, or None when absent."""
-    return shutil.which("py-spy")
-
-
-def _pyspy_available() -> bool:
-    return _pyspy_path() is not None
-
-
-def _pyspy_dump(pid: int, out_path: Path) -> bool:
-    """Run the resolved py-spy executable with ``dump --pid PID`` and save
-    its output to out_path. Returns True on success."""
-    exe = _pyspy_path()
-    if exe is None:
-        return False
-    try:
-        # --pid dumps the current stack of every thread in the target process
-        with open(out_path, "w", encoding="utf-8") as f:
-            proc = subprocess.run(
-                [exe, "dump", "--pid", str(pid)],
-                stdout=f,
-                stderr=subprocess.STDOUT,
-                timeout=30,
-                check=False,
-            )
-    except Exception as exc:
-        _record("_pyspy_dump: the py-spy dump command failed", exc)
-        return False
-    return proc.returncode == 0
-
-
-# ─────────────────────────────────────────────────────────────────
 # Process launch + stdout/stderr tail capture
 # ─────────────────────────────────────────────────────────────────
 
@@ -254,9 +218,13 @@ class ChildRunner:
     ROTATE_KEEP: int = 3  # active + 3 backups
 
     def __init__(
-        self, cmd: list[str], log_path: Path, tail_size: int = CAPTURE_TAIL_LINES
+        self,
+        log_path: Path,
+        *,
+        frozen: bool = False,
+        tail_size: int = CAPTURE_TAIL_LINES,
     ) -> None:
-        self.cmd = cmd
+        self.frozen = frozen
         self.log_path = log_path
         self.tail_size = tail_size
         self.tail: list[str] = []
@@ -277,6 +245,18 @@ class ChildRunner:
         belt-and-suspenders child-mode marker in addition to --child."""
         self._start_internal(env=env)
 
+    def command(self) -> list[str]:
+        """The command the watchdog launches, for the log lines that name it.
+
+        It is this application re-entered with --child: the frozen
+        executable on its own, or main.py under this interpreter. The launch
+        itself spells the same two commands out literally, so nothing the
+        watchdog is handed can become a command it runs.
+        """
+        if self.frozen:
+            return [sys.executable, "--child"]
+        return [sys.executable, "main.py", "--child"]
+
     def _start_internal(self, env: dict[str, str] | None) -> None:
         _ensure_log_dir()
         # Open log file in line-buffered text mode
@@ -284,23 +264,34 @@ class ChildRunner:
             self.log_path, "w", buffering=1, encoding="utf-8", errors="replace"
         )
         self._log_fh.write(
-            f"=== Acervator launched {_isoformat_now()} cmd={self.cmd} ===\n"
+            f"=== Acervator launched {_isoformat_now()} cmd={self.command()} ===\n"
         )
         self._log_fh.flush()
 
-        # Launch self.cmd — argv[0] is the interpreter or the frozen
-        # executable, the rest are its arguments. stderr merges into
-        # stdout so both are read on one stream. env=None inherits this
-        # process's environment.
-        self.proc = subprocess.Popen(
-            self.cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            bufsize=1,
-            universal_newlines=True,
-            cwd=str(SCRIPT_DIR),
-            env=env,
-        )
+        # main.py resolves against cwd, which is this file's directory, so
+        # the source-tree form names the same file the frozen form re-enters.
+        # stderr merges into stdout so both are read on one stream.
+        # env=None inherits this process's environment.
+        if self.frozen:
+            self.proc = subprocess.Popen(
+                [sys.executable, "--child"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                bufsize=1,
+                universal_newlines=True,
+                cwd=str(SCRIPT_DIR),
+                env=env,
+            )
+        else:
+            self.proc = subprocess.Popen(
+                [sys.executable, "main.py", "--child"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                bufsize=1,
+                universal_newlines=True,
+                cwd=str(SCRIPT_DIR),
+                env=env,
+            )
 
         self._reader_thread = threading.Thread(
             target=self._reader_loop, name="ChildStdoutReader", daemon=True
@@ -691,7 +682,19 @@ def report_log_dir_footprint(log_dir: Path | None = None) -> int:
 def write_postmortem(runner: ChildRunner, exit_code: int | None, cause: str) -> Path:
     """Assemble a post-mortem directory. cause is a human-readable
     description of why the child died (or was terminated by us)."""
-    bundle = LOG_DIR / f"postmortem_{_ts()}"
+    # A stall post-mortem and the crash post-mortem of the child it then
+    # terminates land in the same second, so the name carries a serial or the
+    # second write replaces the first one's SUMMARY.
+    stamp = _ts()
+    bundle = LOG_DIR / f"postmortem_{stamp}"
+    try:
+        serial = 2
+        while bundle.exists():
+            bundle = LOG_DIR / f"postmortem_{stamp}_{serial}"
+            serial += 1
+    except Exception as exc:
+        _record("write_postmortem: could not find a free bundle name", exc)
+        bundle = LOG_DIR / f"postmortem_{stamp}"
     try:
         bundle.mkdir(parents=True, exist_ok=True)
     except Exception as exc:
@@ -760,25 +763,10 @@ def write_postmortem(runner: ChildRunner, exit_code: int | None, cause: str) -> 
     except Exception as exc:
         _record("write_postmortem: could not copy the console log into the bundle", exc)
 
-    # py-spy dump if child is still alive (hung case)
-    if runner.is_alive() and runner.pid is not None:
-        dump_path = bundle / "pyspy_thread_dump.txt"
-        if _pyspy_dump(runner.pid, dump_path):
-            summary_lines.append("")
-            summary_lines.append(f"--- py-spy thread dump: {dump_path} ---")
-            try:
-                with open(dump_path, encoding="utf-8", errors="replace") as f:
-                    summary_lines.append(f.read())
-            except Exception as exc:
-                _record("write_postmortem: could not read the py-spy dump back", exc)
-        else:
-            summary_lines.append("")
-            summary_lines.append("--- py-spy thread dump: not captured ---")
-            summary_lines.append(
-                "Install py-spy via `pip install py-spy` for thread dumps "
-                "on hung processes (STRONGLY recommended — it shows "
-                "exactly which line every thread was on when the app froze)."
-            )
+    summary_lines.append("")
+    summary_lines.append(
+        f"--- child still running when this was written: {runner.is_alive()} ---"
+    )
 
     summary_lines.append("")
     summary_lines.extend(_record_summary_lines())
@@ -827,16 +815,10 @@ def main() -> int:
         action="store_true",
         help="Don't terminate the child if it stalls (just post-mortem)",
     )
-    parser.add_argument(
-        "--python",
-        default=sys.executable,
-        help="Python interpreter to use for the child (default: same as watchdog)",
-    )
     args = parser.parse_args()
 
-    cmd = [args.python, "main.py"]
     return _run_watchdog(
-        cmd,
+        getattr(sys, "frozen", False),
         args.stall,
         postmortem_on_stall=not args.no_postmortem_on_stall,
         terminate_on_stall=not args.no_terminate_on_stall,
@@ -867,21 +849,13 @@ def run_self_watchdog(
             In that case sys.executable is the .exe itself.
             In dev mode sys.executable is python; we pass main.py explicitly.
     """
-    if frozen:
-        # Frozen build — sys.executable is Acervator.exe; reinvoke self
-        cmd = [sys.executable, "--child"]
-    else:
-        # Dev mode — run python main.py --child
-        main_py = str(SCRIPT_DIR / "main.py")
-        cmd = [sys.executable, main_py, "--child"]
-
     return _run_watchdog(
-        cmd, stall_seconds, postmortem_on_stall=True, terminate_on_stall=True
+        frozen, stall_seconds, postmortem_on_stall=True, terminate_on_stall=True
     )
 
 
 def _run_watchdog(
-    cmd: list[str],
+    frozen: bool,
     stall_seconds: float,
     postmortem_on_stall: bool,
     terminate_on_stall: bool,
@@ -909,26 +883,17 @@ def _run_watchdog(
         _record("_run_watchdog: could not remove the stale heartbeat file", exc)
 
     console_log = LOG_DIR / f"console_{_ts()}.log"
-    _log(f"launching: {cmd}")
+    runner = ChildRunner(console_log, frozen=frozen)
+    _log(f"launching: {runner.command()}")
     _log(f"console log: {console_log}")
     _log(f"heartbeat:   {HEARTBEAT_PATH}")
     _log(f"error log:   {ERROR_LOG_PATH}")
     _log(f"stall limit: {stall_seconds}s")
-    _log(
-        "py-spy:      "
-        + (
-            "available"
-            if _pyspy_available()
-            else "NOT installed — run `pip install py-spy` for thread dumps"
-        )
-    )
-
     # Pass ACERVATOR_CHILD=1 to the subprocess so that even if --child
     # is stripped somewhere, the env var still identifies child mode.
     child_env = os.environ.copy()
     child_env["ACERVATOR_CHILD"] = "1"
 
-    runner = ChildRunner(cmd, console_log)
     try:
         runner.start_with_env(child_env)
     except AttributeError as exc:
