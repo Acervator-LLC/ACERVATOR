@@ -735,6 +735,11 @@ class BotContainer:
                 "exchange_data_fresh_ts": float(
                     getattr(self.stats, "exchange_data_fresh_ts", 0.0) or 0.0
                 ),
+                # The fills behind total_trades, published beside it so a
+                # multi-piece order is readable as one trade and several fills.
+                "exchange_fill_count": int(
+                    getattr(self.stats, "exchange_fill_count", 0) or 0
+                ),
                 # Saved beside the figure it describes, so a restart draws the
                 # last complete reading instead of recomputing a short one.
                 "fill_history_complete": bool(
