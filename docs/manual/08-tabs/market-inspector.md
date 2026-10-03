@@ -1110,19 +1110,27 @@ def is_flat(series: Any) -> bool:
 ```
 
 Both packages are imported inside the three functions that call them, and nowhere
-else, so the built application starts without them. The build's own exclusion list
-names one of the two, and a missing package is re-raised as itself rather than
-recorded as a refused pair.
+else, so the application starts before either is loaded. Both are declared, and
+the bundle carries both, so the test runs in the built application and in a
+source run alike. A missing package is re-raised as itself rather than recorded
+as a refused pair.
 
-`tools/spec_common.py` — the packages the bundle leaves out
+`pyproject.toml` — the two packages the tests need
 
-```python
-EXCLUDES: tuple[str, ...] = ("tkinter", "matplotlib", "scipy", "PIL", ...)
+```toml
+"scipy>=1.18.1",
+"statsmodels>=0.15.0",
 ```
 
-In the built bundle a proposals refresh with market data reports the missing package
-in the zone's status line, and a scan that reaches the test reports it as the scan
-error.
+`tools/spec_common.py` — the packages the bundle still leaves out
+
+```python
+EXCLUDES: tuple[str, ...] = ("tkinter", "matplotlib", "PIL", ...)
+```
+
+A name in that list must not also sit in `dependencies`. The two statistics
+packages sit in `dependencies` and not in the list, which is what lets the
+Opposing Pairs table and the Bot Swarm Topologies zone draw rows.
 
 The zone's own line names the whole funnel: markets read, markets with a
 direction, pairs tested, and whether any held equilibrium.

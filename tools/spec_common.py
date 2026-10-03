@@ -181,11 +181,11 @@ def hiddenimports_for(platform: str) -> list[str]:
     return [*COMMON_HIDDENIMPORTS, backend]
 
 
-# Passed to PyInstaller by both spec files.
+# Passed to PyInstaller by both spec files. A name here must not appear in
+# pyproject.toml `dependencies`; `pair_selection.py` imports scipy, so it does not.
 EXCLUDES: tuple[str, ...] = (
     "tkinter",
     "matplotlib",
-    "scipy",
     "PIL",
     "IPython",
     "jupyter",
