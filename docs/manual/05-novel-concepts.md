@@ -533,11 +533,11 @@ setting, and it defaults to one percent.
 wire_inflow_stack_pct: float = 1.0
 ```
 
-One routing path is dead. The two spawn-and-route functions have no caller
-anywhere in the repository, while the fold distribution and wire registration
-beside them are called throughout. Issue #404 carries it, and issue #239 carries
-the Bot Swarm tab's live rows. Deploying a pre-connected cluster from the Market
-Inspector is an intention.
+Two mechanisms move capital between bots, and both are called throughout. The
+fold distribution sends a share of each realised fold to every wired target,
+and the scrum routing sends a share of each sale's proceeds along the same
+wires. No mechanism funds a new bot out of a parent's mature profit. Deploying
+a pre-connected cluster from the Market Inspector is an intention.
 
 ## 8 - Hunger and Satiety Indices
 

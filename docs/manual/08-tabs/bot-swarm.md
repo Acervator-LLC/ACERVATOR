@@ -165,12 +165,12 @@ how much of it has aged enough to move on.
 | ---------------------- | ------- |
 | `predominant_source` | Which bot sent the most of what this one holds |
 | `mature_profit_total` | Wire profit past its maturity age |
-| `mature_profit_available` | How much of that is free to move now |
+| `mature_profit_available` | The mature figure less what a saved ledger recorded as allocated |
 
 Maturity is a growth threshold, not an age and not a share. A bot's capital is
 mature once it is worth more than three times what it started with, and the
 mature figure is then the whole profit above that starting capital. Below the
-threshold the figure is zero, so a bot cannot fund a child on a small gain.
+threshold the figure is zero.
 
 `src/trading/smart_wire.py` — `mature_profit_usd`
 
@@ -184,8 +184,8 @@ return value - basis
 
 One function decides maturity everywhere. The per-bot ledger reads it against
 the seed capital, and the header strip reads it against the exchange cost basis
-of each bot's holdings, so the spawn gate and the screen cannot disagree about
-what mature means.
+of each bot's holdings, so the two readings cannot disagree about what mature
+means.
 
 `src/trading/smart_wire.py` — `BotLedger.mature_profit_total`
 
