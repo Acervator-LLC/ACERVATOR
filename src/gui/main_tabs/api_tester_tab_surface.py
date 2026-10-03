@@ -33,7 +33,7 @@ METHOD = "api_tester_tab.state"
 
 LOGGER_NAME = "acervator.gui"
 
-CONNECTION_TITLE = "Exchange Connection (Isolated - does not affect bots)"
+CONNECTION_TITLE = "Exchange Connection (this screen only - your bots are not touched)"
 EXCHANGE_LABEL = "Exchange:"
 USE_STORED_LABEL = "Use stored credentials"
 USE_STORED_TIP = "Use API keys saved in Settings instead of entering manually"
@@ -229,7 +229,7 @@ CONNECTED_TITLE_FORMAT = "CONNECTED to {exchange}"
 CONNECTED_DETAIL_FORMAT = (
     "Markets: {markets}\n"
     "Auth: not checked - press Fetch Balances\n"
-    "This connection is isolated from bots."
+    "This connection is for this screen only. Your bots are not touched."
 )
 CONNECT_FAILED_TITLE = "CONNECTION FAILED"
 NO_MARKETS = 0
