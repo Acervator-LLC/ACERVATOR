@@ -3574,10 +3574,10 @@ for g in (
 self._extractor_group.setVisible(is_extractor)
 ```
 
-The group title in the source reads Extractor, an em dash, Pool, an ampersand,
-then Artillery. Qt reads that ampersand as a keyboard-mnemonic marker, so the
-rendered title drops it and underlines the A of Artillery. The figure shows the
-gap the dropped character leaves. Issue #421 carries this.
+The group heading reads Extractor, an em dash, Pool, an ampersand, then
+Artillery. Qt reads a single ampersand in a group heading as the marker that
+names a keyboard shortcut, so the source writes two. The pair draws as one
+ampersand and sets no shortcut.
 
 Chunk size (USD) - This determines the maximum amount of the parent’s pool that the Extractor can use.
 
