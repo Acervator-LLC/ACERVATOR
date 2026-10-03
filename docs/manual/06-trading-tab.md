@@ -192,8 +192,10 @@ in crypto, and Exch counts the open exchange sub-tabs.
 
 The five cards are Scrummed, Folded, Trades, Bots and Errors. Scrummed and Folded
 total the fleet's sold and bought dollars, Bots counts the bots that are running,
-and Errors totals the lifetime error count. Click Errors and the rolling error
-log opens. The small circle under every column and every card is a privacy dot,
+and Errors totals the lifetime error count. Trades counts the orders the exchange
+filled for the fleet since the year-to-date anchor, one per order however many
+pieces the exchange filled it in, and a bot the exchange has not answered for
+completely counts nothing rather than its last figure. Click Errors and the rolling error log opens. The small circle under every column and every card is a privacy dot,
 and it masks that one field on its own.
 
 `src/gui/main_tabs/header_strip_surface.py` — the seven columns, declared once
