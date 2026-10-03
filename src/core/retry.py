@@ -15,6 +15,7 @@ submission — see TD-014 in ``src/exchange/ccxt_connector.py``.
 from __future__ import annotations
 
 import asyncio
+import functools
 import logging
 import time
 from collections.abc import Awaitable, Callable
@@ -168,6 +169,7 @@ def with_retry(
     emit = log if log is not None else logger
 
     def decorator(func: AsyncMethod) -> AsyncMethod:
+        @functools.wraps(func)
         async def wrapper(self: Any, *args: Any, **kwargs: Any) -> Any:
             def note(
                 exc: BaseException, attempt: int, will_retry: bool, delay: float
