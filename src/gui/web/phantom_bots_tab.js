@@ -39,6 +39,7 @@
   var PHANTOM_GROUP = "phantom_group";
   var PHANTOM_TABLE = "phantom_table";
   var SIGNAL_COUNT = "signal_count";
+  var STEP_REFUSAL = "step_refusal";
   var STEPS = "steps";
   var STRETCH_SHOWN = "stretch_shown";
   var SUMMARY_GROUP = "summary_group";
@@ -91,6 +92,7 @@
     PHANTOM_GROUP,
     PHANTOM_TABLE,
     SIGNAL_COUNT,
+    STEP_REFUSAL,
     STEPS,
     STRETCH_SHOWN,
     SUMMARY_GROUP,
@@ -130,6 +132,7 @@
     NO_REFUSAL,
     PHANTOM_GROUP,
     PHANTOM_TABLE,
+    STEP_REFUSAL,
     SUMMARY_GROUP,
     TABLE_RULES,
     TEXTS,
@@ -236,6 +239,7 @@
 
   var TAB_PART = "phantom-bots-tab";
   var INFO_NOTE_PART = "info-note";
+  var STEP_REFUSAL_PART = "step-refusal";
   var ENABLE_GROUP_PART = "enable-group";
   var ENABLE_TITLE_PART = "enable-group-title";
   var ENABLE_ROW_PART = "enable-check-row";
@@ -843,6 +847,7 @@
   function wordsDrawn(found) {
     var words = [
       [INFO_LABEL, objectField(found, INFO_LABEL)[TEXT]],
+      [STEP_REFUSAL, objectField(found, STEP_REFUSAL)[TEXT]],
       [TIMEFRAME_HINT, objectField(found, TIMEFRAME_HINT)[TEXT]],
       [EMPTY_LABEL, objectField(found, EMPTY_LABEL)[TEXT]],
       [ENABLE_CHECK, objectField(found, ENABLE_CHECK)[TEXT]],
@@ -1316,6 +1321,13 @@
         part: INFO_NOTE_PART,
         model: found,
         field: INFO_LABEL
+      }),
+      element(Note, {
+        key: STEP_REFUSAL_PART,
+        part: STEP_REFUSAL_PART,
+        model: found,
+        field: STEP_REFUSAL,
+        hides: true
       }),
       element(EnableGroup, {
         key: ENABLE_GROUP_PART,
