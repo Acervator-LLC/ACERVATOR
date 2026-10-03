@@ -844,11 +844,6 @@ def main() -> int:
             f"NOT in the primary state file: {', '.join(_damaged[:5])}"
         )
 
-    from src.trading.volume_guard import VolumeGuard, VolumeGuardConfig
-
-    volume_guard = VolumeGuard(config=VolumeGuardConfig())
-    bot_manager.set_volume_guard(volume_guard)
-
     from src.exchange.data_pool import get_data_pool
 
     data_pool = get_data_pool()

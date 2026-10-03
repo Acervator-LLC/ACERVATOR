@@ -696,8 +696,7 @@ the venue's published step. `src/trading/bot_container.py:260` calls
 `sized_order` at the one site every live order passes, so a recorded
 `amount_increment` floors the amount, a recorded `min_amount` refuses it at
 `:264`, and an amount that floors to nothing refuses at `:273`. The sized amount
-reaches the VolumeGuard branch and `exchange.place_order` alike, and `min_cost` is
-measured on it.
+reaches `exchange.place_order`, and `min_cost` is measured on it.
 
 Driven on a bare host with the home redirected, every socket but loopback
 refused, and an exchange stand-in that raises on every order call, an amount of

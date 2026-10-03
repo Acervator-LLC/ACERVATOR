@@ -42,8 +42,6 @@ class OrderStatus(str, Enum):
     OPEN = "open"
     FILLED = "filled"
     PARTIALLY_FILLED = "partially_filled"
-    # guarded_place_order returns CLOSED for a VolumeGuard order that filled.
-    CLOSED = "closed"
     CANCELLED = "cancelled"
     FAILED = "failed"
 
