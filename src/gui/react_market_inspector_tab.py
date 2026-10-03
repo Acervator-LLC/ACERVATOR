@@ -69,6 +69,8 @@ TIMER_CLOSE_KEY = surface.TIMER_CLOSE_PART
 #: The parts phases five and six are pressed with, each handled by
 #: ``MarketInspectorScreenModel.push_action``.
 PUSH_KEYS = surface.PUSH_PARTS
+#: The Push to Sim key, reported by an open candidate entry and by the preview.
+PUSH_TO_SIM_KEY = surface.PUSH_TO_SIM_PART
 #: The three of them that send or open, run on the inherited hand-off worker.
 HAND_OFF_KEYS = (
     surface.POST_SELECTED_PART,
@@ -229,17 +231,34 @@ def topology_push_script(model: dict, preview_at: Optional[int]) -> str:
     )
 
 
+class PaneSignal:
+    """One pane signal a connect lands on, with no Qt.
+
+    ``connect`` appends to ``handlers``, which is the list
+    ``TopologiesPaneHost`` calls when the press arrives.
+    """
+
+    def __init__(self, handlers: list) -> None:
+        self.handlers = handlers
+
+    def connect(self, handler: Callable[[dict], Any]) -> None:
+        """Wire one handler onto this signal."""
+        self.handlers.append(handler)
+
+
 class TopologiesPaneHost:
     """The Market Inspector's right pane, drawn by React.
 
     Answers ``set_dismiss_store``, ``set_proposal_source``,
-    ``current_proposals`` and the ``adoptRequested`` connect the tab makes,
-    and holds the ``TopologiesPaneModel`` the page is drawn from.
+    ``current_proposals`` and the ``adoptRequested`` and
+    ``pushToSimRequested`` connects the tab makes, and holds the
+    ``TopologiesPaneModel`` the page is drawn from.
     """
 
     def __init__(self) -> None:
         self.model = topo_surface.TopologiesPaneModel()
         self.adopt_handlers: list = []
+        self.push_to_sim_handlers: list = []
         self.preview_at: Optional[int] = None
 
     def set_dismiss_store(self, store: Any) -> None:
@@ -266,6 +285,11 @@ class TopologiesPaneHost:
     def adoptRequested(self) -> "TopologiesPaneHost":  # noqa: N802 - Qt signal name
         """The Adopt signal the tab wires the main window onto."""
         return self
+
+    @property
+    def pushToSimRequested(self) -> PaneSignal:  # noqa: N802 - Qt signal name
+        """The Push to Sim signal the tab wires the main window onto."""
+        return PaneSignal(self.push_to_sim_handlers)
 
     def connect(self, handler: Callable[[dict], Any]) -> None:
         """Wire one handler onto the Adopt signal."""
@@ -297,15 +321,24 @@ class TopologiesPaneHost:
             self.model.on_dismiss(name)
             self.preview_at = None
             return
+        if key == PUSH_TO_SIM_KEY:
+            self._push_preview(name)
+            return
         if key in (CANCEL_KEY, ADOPT_KEY):
             self._close_preview(name, adopt=key == ADOPT_KEY)
 
-    def _close_preview(self, at: Any, adopt: bool) -> None:
-        """Reject or adopt the preview ``at`` names and close it."""
+    def _preview_at(self, at: Any) -> Any:
+        """The preview ``at`` names, or None with the screen closed."""
         try:
-            preview = self.model.previews[int(at)]
+            return self.model.previews[int(at)]
         except (IndexError, TypeError, ValueError):
             self.preview_at = None
+            return None
+
+    def _close_preview(self, at: Any, adopt: bool) -> None:
+        """Reject or adopt the preview ``at`` names and close it."""
+        preview = self._preview_at(at)
+        if preview is None:
             return
         if not adopt:
             preview.reject()
@@ -318,6 +351,19 @@ class TopologiesPaneHost:
                 handler(proposal)
             except Exception as exc:  # noqa: BLE001 - handler is the main window
                 logger.warning("topology adopt handler failed: %s", exc)
+
+    def _push_preview(self, at: Any) -> None:
+        """Push the preview ``at`` names to the Simulator and close it."""
+        preview = self._preview_at(at)
+        if preview is None:
+            return
+        proposal = self.model.push_from(preview)
+        self.preview_at = None
+        for handler in self.push_to_sim_handlers:
+            try:
+                handler(proposal)
+            except Exception as exc:  # noqa: BLE001 - handler is the main window
+                logger.warning("topology push to sim handler failed: %s", exc)
 
 
 if _HAS_QT and _HAS_WEBENGINE:
@@ -437,6 +483,9 @@ if _HAS_QT and _HAS_WEBENGINE:
                 self.push()
             elif key == TIMEFRAME_BOX_KEY:
                 self._screen.toggle_timeframe(request.get("value"))
+                self.push()
+            elif key == PUSH_TO_SIM_KEY:
+                self._push_pair_to_sim()
                 self.push()
             elif key == SCAN_NOW_KEY:
                 self._on_scan_now()

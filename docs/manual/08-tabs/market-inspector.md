@@ -1777,14 +1777,61 @@ creates anything.
 
 ## Push to the Simulator, the Paper Trader and Live
 
-No such control exists on either zone. A simulator can read the proposals on
-display, and that is a read with no write behind it: it wires nothing and it starts
-nothing. Nothing reports a push to a target that is not built, because nothing
-pushes. The two targets are named on
-[the promotion pipeline page](promotion-pipeline.md), which is where a push from
-this screen would land.
+Both candidate zones carry a Push to Sim button. An open Opposing Trades entry
+draws it under the pair's headline, and the topology preview draws it beside
+Adopt. One press sends the candidate's bots to the Simulator, which holds them
+under its Back Test mode and leaves that mode in force.
 
-In development.
+`src/gui/main_tabs/market_inspector_surface.py` — the one button both zones draw
+
+```python
+def push_to_sim_actions() -> list:
+    """Push to Sim, the one button an open candidate entry draws."""
+    return [
+        action_row(
+            PUSH_TO_SIM_PART,
+            PUSH_TO_SIM_LABEL,
+            PUSH_TO_SIM_TOOLTIP,
+            PUSH_TO_SIM_WIDTH_PX,
+        )
+    ]
+```
+
+A topology names several bots and an opposing pair names two assets. Both reduce
+to rows of one market and one dollar target, and the Simulator turns each row
+into a held bot on the venue its Stone Tablet was recorded on.
+
+`src/gui/main_tabs/market_inspector_topologies_surface.py` — a proposal's rows
+
+```python
+def proposal_push_candidates(proposal: Any) -> list:
+    """Every bot one proposal names as a ``{"symbol", "target_usd"}`` row.
+
+    A proposal's wires carry no field a sim bot record holds, so a push takes
+    its bots alone and the wiring does not travel.
+    """
+```
+
+An asset no Stone Tablet names has no tape for Back Test to walk, so the push is
+refused whole. The Activity Log names the asset, nothing is held, and the run
+mode does not move. The same refusal is written when no Simulator tab is built.
+
+`src/gui/simulator/sim_trading_tab_surface.py` — the refusal the operator reads
+
+```python
+PUSH_NO_TABLET_FORMAT = (
+    "Push to Sim refused: no Stone Tablet names {assets}, so Back Test has no "
+    "tape to walk. The run mode is unchanged."
+)
+```
+
+A pushed bot is a simulated record, never a live bot and never an order. It
+reaches the Simulator's own fleet file and its own bus, and the live engine and
+the live logs see nothing of it.
+
+The Paper Trader has no mode a candidate could land under, so no push targets
+it. Live takes no push either. The two targets are named on
+[the promotion pipeline page](promotion-pipeline.md).
 
 ## ATA-SMP
 

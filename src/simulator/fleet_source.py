@@ -12,7 +12,9 @@ from the YTD trade files, both read only.
 alone and sends nothing, and ``__getattr__`` raises ``SendRefused`` for every
 other name. It holds one fleet per run mode of ``MODES``, and ``set_mode``
 names the one every other reader and act works on; the sim fleet file holds
-all three under ``FLEETS_KEY``, and a file holding one ``bots`` map at the top
+all three under ``FLEETS_KEY``, names the mode in force under ``MODE_KEY``,
+which ``__init__`` reads back so a chosen mode survives to the next draw, and
+a file holding one ``bots`` map at the top
 is read as the ``MODE_VALIDATION`` fleet. ``bots``, ``exchanges``,
 ``statuses`` and ``aggregate`` read the
 held records alone, so the tab starts empty; ``stored_records`` and
@@ -77,6 +79,9 @@ MODES = (MODE_VALIDATION, MODE_BACK_TEST, MODE_PORTFOLIO_BATTERY)
 
 #: The sim fleet file's key holding one entry per mode of ``MODES``.
 FLEETS_KEY = "fleets"
+
+#: The sim fleet file's key naming the mode in force, read back by ``__init__``.
+MODE_KEY = "mode"
 
 #: Every name ``FleetSource`` answers. ``__getattr__`` refuses the rest.
 READ_NAMES = (
@@ -439,6 +444,31 @@ def _held_bot(bot_id: str, record: dict) -> Optional[SimBot]:
     )
 
 
+def pushed_config(
+    asset: str,
+    exchange_id: str,
+    ta_timeframe: str,
+    target_usd: float,
+    base_currency: str = "USD",
+) -> dict:
+    """The ``create`` config for one asset a pushed candidate names.
+
+    Both candidate shapes reduce to this, so ``symbol``, ``target_balance`` and
+    ``ta_timeframe`` are spelled in one place.
+    """
+    base = str(asset or "").upper()
+    quote = str(base_currency or "USD").upper()
+    return {
+        "symbol": f"{base}/{quote}",
+        "target_asset": base,
+        "base_currency": quote,
+        "exchange_id": str(exchange_id or ""),
+        "ta_timeframe": str(ta_timeframe or ""),
+        "target_balance": float(target_usd),
+        "mode": SCRUMMING_MODE,
+    }
+
+
 def wizard_record(config: dict) -> dict:
     """The stored-record shape ``get_full_state`` writes, built from the bot
     wizard's ``get_bot_config`` dict through ``bot_config_kwargs`` and
@@ -780,6 +810,35 @@ def _empty_fleets() -> dict[str, dict[str, dict]]:
     return {mode: {} for mode in MODES}
 
 
+def _read_sim_mode(path: Path) -> str:
+    """The mode named under ``MODE_KEY`` in the sim fleet file at ``path``.
+
+    An absent, unreadable, malformed or unrecognised name answers ``MODES[0]``,
+    and an unrecognised one is named in one warning line.
+    """
+    if not path.exists():
+        return MODES[0]
+    try:
+        loaded = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return MODES[0]
+    if not isinstance(loaded, dict):
+        return MODES[0]
+    named = loaded.get(MODE_KEY)
+    if named is None:
+        return MODES[0]
+    if named in MODES:
+        return str(named)
+    logger.warning(
+        "sim fleet file %s names mode %r outside %s; %s is in force",
+        path,
+        named,
+        MODES,
+        MODES[0],
+    )
+    return MODES[0]
+
+
 def _read_sim_records(path: Path) -> dict[str, dict[str, dict]]:
     """One ``bots`` map per mode of ``MODES`` from the sim fleet file at
     ``path``: each mode's entry under ``FLEETS_KEY``, a mode name outside
@@ -854,12 +913,12 @@ class FleetSource:
         self, root: Optional[Path] = None, sim_dir: Optional[Path] = None
     ) -> None:
         """Read the sim fleet file from ``sim_dir``, or from ``get_sim_dir``
-        when it is None, with ``MODES[0]`` in force; ``bot_state.json`` under
-        ``root``, or under ``~/.acervator`` when it is None, is read on
-        ``stored_records`` alone."""
+        when it is None, with the mode it names under ``MODE_KEY`` in force;
+        ``bot_state.json`` under ``root``, or under ``~/.acervator`` when it is
+        None, is read on ``stored_records`` alone."""
         self._root = Path(root) if root is not None else Path.home() / ".acervator"
         self._sim_dir = Path(sim_dir) if sim_dir is not None else get_sim_dir()
-        self._mode: str = MODES[0]
+        self._mode: str = _read_sim_mode(self.sim_path())
         self._fleets: dict[str, dict[str, dict]] = _read_sim_records(self.sim_path())
 
     @property
@@ -1139,7 +1198,8 @@ class FleetSource:
     def save(self) -> Optional[Path]:
         """Write every mode's held records to ``sim_path`` through
         ``atomic_write_json``: ``saved_at``, ``saved_at_human``, ``bot_count``
-        summed over ``MODES``, and ``FLEETS_KEY`` holding one entry per mode
+        summed over ``MODES``, ``MODE_KEY`` naming the mode in force, and
+        ``FLEETS_KEY`` holding one entry per mode
         under the keys ``StateManager.save_state`` writes, ``saved_at``,
         ``saved_at_human``, ``bot_count`` and ``bots``; answers the path, or
         None when the write fails."""
@@ -1149,6 +1209,7 @@ class FleetSource:
             "saved_at": saved_at,
             "saved_at_human": saved_at_human,
             "bot_count": sum(len(records) for records in self._fleets.values()),
+            MODE_KEY: self._mode,
             FLEETS_KEY: {
                 mode: {
                     "saved_at": saved_at,
@@ -1296,6 +1357,7 @@ __all__ = [
     "LIVE_ORIGIN",
     "MODES",
     "MODE_BACK_TEST",
+    "MODE_KEY",
     "MODE_PORTFOLIO_BATTERY",
     "MODE_VALIDATION",
     "NEW_ORIGIN",
@@ -1319,6 +1381,7 @@ __all__ = [
     "extractor_pool_color",
     "live_fleet",
     "loaded_idle",
+    "pushed_config",
     "row_status",
     "wizard_phantom_timeframes",
     "wizard_record",

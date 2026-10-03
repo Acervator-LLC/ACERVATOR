@@ -28,7 +28,14 @@ import logging
 import time
 from typing import Any, Callable, Optional
 
-from .main_tabs.market_inspector_surface import SCAN_FINISHED, step_to
+from .main_tabs.market_inspector_surface import (
+    PUSH_TO_SIM_LABEL,
+    PUSH_TO_SIM_PART,
+    PUSH_TO_SIM_TOOLTIP,
+    PUSH_TO_SIM_WIDTH_PX,
+    SCAN_FINISHED,
+    step_to,
+)
 from .main_tabs.market_inspector_topologies_surface import (
     DISMISS_PART,
     FOOTER_STYLE,
@@ -115,6 +122,7 @@ if _HAS_QT:
         """
 
         adoptClicked = Signal(dict)  # emits the proposal on Adopt
+        pushToSimClicked = Signal(dict)  # emits the proposal on Push to Sim
 
         def __init__(
             self,
@@ -256,10 +264,21 @@ if _HAS_QT:
                 )
             self._adopt_btn.clicked.connect(self._on_adopt)
             btn_row.addWidget(self._adopt_btn)
+            self._push_to_sim_btn = QPushButton(PUSH_TO_SIM_LABEL)
+            self._push_to_sim_btn.setObjectName(PUSH_TO_SIM_PART)
+            self._push_to_sim_btn.setAccessibleName(PUSH_TO_SIM_PART)
+            self._push_to_sim_btn.setToolTip(PUSH_TO_SIM_TOOLTIP)
+            self._push_to_sim_btn.setMinimumWidth(PUSH_TO_SIM_WIDTH_PX)
+            self._push_to_sim_btn.clicked.connect(self._on_push_to_sim)
+            btn_row.addWidget(self._push_to_sim_btn)
             root.addLayout(btn_row)
 
         def _on_adopt(self) -> None:
             self.adoptClicked.emit(self._proposal)
+            self.accept()
+
+        def _on_push_to_sim(self) -> None:
+            self.pushToSimClicked.emit(self._proposal)
             self.accept()
 
     class MarketInspectorTopologies(QWidget):
@@ -271,6 +290,7 @@ if _HAS_QT:
         """
 
         adoptRequested = Signal(dict)
+        pushToSimRequested = Signal(dict)
 
         def __init__(self, parent: Optional[QWidget] = None) -> None:
             super().__init__(parent)
@@ -543,6 +563,7 @@ if _HAS_QT:
                 return
             dlg = TopologyPreviewDialog(p, parent=self)
             dlg.adoptClicked.connect(self.adoptRequested.emit)
+            dlg.pushToSimClicked.connect(self.pushToSimRequested.emit)
             dlg.exec()
 
         def _on_dismiss(self, proposal_id: str) -> None:

@@ -39,7 +39,7 @@ from ...core.fmt import fmt_price_coerced
 from ...core.log_paths import get_log_root
 from ...exchange.ytd_trade_store import MANIFEST_NAME
 from ...simulator import portfolio_battery
-from ...simulator.fleet_source import BATTERY_ORIGIN, BOT_STATE_NAME
+from ...simulator.fleet_source import BATTERY_ORIGIN, BOT_STATE_NAME, pushed_config
 from ...simulator.read_only_connector import EXCHANGE_ID
 from ...simulator.sim_api_log import TABLET_ACTION, YTD_ACTION
 from ...simulator.sim_bus import fill_line
@@ -306,6 +306,93 @@ def imported_line(count: int, exchange_id: Any) -> str:
 def no_stored_bot_line() -> str:
     """The Activity Log line for a ``BOT_STATE_NAME`` naming no bot."""
     return NO_STORED_BOT_FORMAT.format(file=BOT_STATE_NAME)
+
+
+#: The Activity Log lines a Push to Sim writes on both hosts.
+PUSH_NO_CANDIDATE_TEXT = "Push to Sim: the candidate names no asset; nothing pushed."
+PUSH_NO_TABLET_FORMAT = (
+    "Push to Sim refused: no Stone Tablet names {assets}, so Back Test has no "
+    "tape to walk. The run mode is unchanged."
+)
+PUSH_HELD_FORMAT = "Pushed {count} bot(s) to Back Test: {assets}."
+PUSH_NO_SIM_TAB_TEXT = (
+    "Push to Sim refused: the Sim tab did not build. The run mode is unchanged."
+)
+PUSH_IN_FLIGHT_TEXT = (
+    "Push to Sim refused: a run is in flight, so the run mode did not move to "
+    "Back Test. Nothing was pushed."
+)
+
+
+def tablet_venues(entries: Any) -> dict[str, tuple]:
+    """Per asset a Stone Tablet manifest names, its newest entry's
+    ``(exchange_id, timeframe)``.
+
+    One asset can hold several tablets, and the latest ``last_ts_ms`` wins, so
+    a pushed candidate takes the venue its freshest tape was recorded on.
+    """
+    found: dict[str, tuple] = {}
+    newest: dict[str, int] = {}
+    for entry in entries or []:
+        asset = str(getattr(entry, "asset", "") or "").upper()
+        if not asset:
+            continue
+        stamp = int(getattr(entry, "last_ts_ms", 0) or 0)
+        if asset in newest and newest[asset] >= stamp:
+            continue
+        newest[asset] = stamp
+        found[asset] = (
+            str(getattr(entry, "exchange_id", "") or ""),
+            str(getattr(entry, "timeframe", "") or ""),
+        )
+    return found
+
+
+def push_configs(candidates: Any, entries: Any) -> tuple:
+    """``(configs, missing)`` for one pushed candidate's symbols.
+
+    Each candidate is ``{"symbol", "target_usd"}``; a symbol whose ``base_of``
+    asset ``tablet_venues`` names becomes a ``pushed_config`` on that tablet's
+    venue and timeframe, and every other asset is returned in ``missing`` so
+    the push is refused whole.
+    """
+    venues = tablet_venues(entries)
+    configs: list[dict] = []
+    missing: list[str] = []
+    for candidate in candidates or []:
+        asset = base_of((candidate or {}).get("symbol"))
+        if not asset:
+            continue
+        held = venues.get(asset)
+        if held is None:
+            if asset not in missing:
+                missing.append(asset)
+            continue
+        exchange_id, timeframe = held
+        configs.append(
+            pushed_config(
+                asset,
+                exchange_id,
+                timeframe,
+                float((candidate or {}).get("target_usd") or 0.0),
+            )
+        )
+    return configs, missing
+
+
+def push_refused_line(missing: Any) -> str:
+    """The Activity Log line for a push whose assets no Stone Tablet names."""
+    named = [str(one) for one in (missing or []) if str(one)]
+    if not named:
+        return PUSH_NO_CANDIDATE_TEXT
+    return PUSH_NO_TABLET_FORMAT.format(assets=", ".join(sorted(named)))
+
+
+def push_held_line(configs: Any) -> str:
+    """The Activity Log line for the bots a push held under Back Test."""
+    held = [str((one or {}).get("symbol") or "") for one in (configs or [])]
+    named = [one for one in held if one]
+    return PUSH_HELD_FORMAT.format(count=len(named), assets=", ".join(named))
 
 
 #: The Activity Log lines Generate From YTD writes on both hosts.

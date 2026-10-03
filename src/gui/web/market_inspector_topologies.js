@@ -138,6 +138,10 @@
   var MIN_HEIGHT = "min_height";
   var MIN_WIDTH = "min_width";
   var NEW_BOT_COLOR = "new_bot_color";
+  var PUSH_TO_SIM_PART_KEY = "push_to_sim_part";
+  var PUSH_TO_SIM_TEXT = "push_to_sim_text";
+  var PUSH_TO_SIM_TOOLTIP = "push_to_sim_tooltip";
+  var PUSH_TO_SIM_WIDTH_PX = "push_to_sim_width_px";
   var NOTE_FORMAT = "note_format";
   var NOTE_STYLE = "note_style";
   var NOTE_WORD_WRAP = "note_word_wrap";
@@ -276,6 +280,10 @@
     NOTE_FORMAT,
     NOTE_STYLE,
     NOTE_WORD_WRAP,
+    PUSH_TO_SIM_PART_KEY,
+    PUSH_TO_SIM_TEXT,
+    PUSH_TO_SIM_TOOLTIP,
+    PUSH_TO_SIM_WIDTH_PX,
     RESIZE_MODE,
     ROOT_IS_DECORATED,
     SPACING,
@@ -1106,12 +1114,27 @@
     adoptProps.onClick = function () {
       act(ADOPT_PART, props.at);
     };
+    var pushPart = text(dialog[PUSH_TO_SIM_PART_KEY]);
+    var pushStyle = asButton({});
+    pushStyle.minWidth = length(dialog[PUSH_TO_SIM_WIDTH_PX]);
+    var pushProps = {
+      key: pushPart,
+      type: BUTTON_TYPE,
+      style: pushStyle,
+      title: label(dialog[PUSH_TO_SIM_TOOLTIP])
+    };
+    pushProps[PART_ATTR] = pushPart;
+    pushProps[NAME_ATTR] = pushPart;
+    pushProps.onClick = function () {
+      act(pushPart, props.at);
+    };
     return element(
       DIV_TAG,
       rowProps,
       element(Spacer, { key: BUTTON_STRETCH_PART, part: BUTTON_STRETCH_PART }),
       element(BUTTON_TAG, cancelProps, text(dialog[CANCEL_TEXT])),
-      element(BUTTON_TAG, adoptProps, text(dialog[ADOPT_TEXT]))
+      element(BUTTON_TAG, adoptProps, text(dialog[ADOPT_TEXT])),
+      element(BUTTON_TAG, pushProps, text(dialog[PUSH_TO_SIM_TEXT]))
     );
   }
 

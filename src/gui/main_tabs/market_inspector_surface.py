@@ -834,6 +834,47 @@ ACTIVE_NO = "—"
 SCORE_FORMAT = "{score:.2f}"
 CORRELATION_FORMAT = "{correlation:+.3f}"
 PAIR_SIDE_FORMAT = "{symbol} ({signal})"
+
+#: The Push to Sim button, on an open Opposing Trades entry and in the topology
+#: preview, and the one part name both report.
+PUSH_TO_SIM_PART = "push-to-sim-button"
+PUSH_TO_SIM_LABEL = "Push to Sim"
+PUSH_TO_SIM_TOOLTIP = (
+    "Hold this candidate's bots under the Simulator's Back Test mode and leave "
+    "the Sim tab in that mode."
+)
+PUSH_TO_SIM_WIDTH_PX = 108
+
+#: The Activity Log lines a Push to Sim press leaves on both Inspector hosts.
+PUSH_NO_CANDIDATE_TEXT = "Push to Sim: nothing is on show to push."
+PUSH_UNWIRED_TEXT = (
+    "Push to Sim: no Simulator is wired, so nothing was pushed and no mode moved."
+)
+PUSH_FAILED_FORMAT = "Push to Sim failed: {error}. No mode moved."
+PUSH_PUSHED_FORMAT = "Pushed {held} bot(s) to the Simulator; its run mode is {mode}."
+
+
+def push_failed_line(error: Any) -> str:
+    """The Activity Log line for a Push to Sim whose handler raised."""
+    return PUSH_FAILED_FORMAT.format(error=error)
+
+
+def push_outcome_line(answered: Any) -> str:
+    """The Activity Log line for what the Push to Sim handler answered.
+
+    A ``refused`` text is echoed as it stands, so the Inspector reports the
+    refusal the Simulator wrote; otherwise the held count and the mode in force
+    are reported.
+    """
+    held = answered if isinstance(answered, dict) else {}
+    refusal = str(held.get("refused") or "")
+    if refusal:
+        return refusal
+    return PUSH_PUSHED_FORMAT.format(
+        held=int(held.get("held") or 0), mode=str(held.get("mode") or "")
+    )
+
+
 PAIR_SCORE_FORMAT = "{score:.2f}"
 
 MINUTE_S = 60
@@ -3680,6 +3721,41 @@ PAIR_HEADLINE_FORMAT = "{long}  ▸  {short}"
 PAIR_META_FORMAT = "score {score}  •  correlation {correlation}"
 
 
+def push_to_sim_actions() -> list:
+    """Push to Sim, the one button an open candidate entry draws."""
+    return [
+        action_row(
+            PUSH_TO_SIM_PART,
+            PUSH_TO_SIM_LABEL,
+            PUSH_TO_SIM_TOOLTIP,
+            PUSH_TO_SIM_WIDTH_PX,
+        )
+    ]
+
+
+def pair_push_candidates(pair: Any) -> list:
+    """Both sides of one opposing pair as ``{"symbol", "target_usd"}`` rows.
+
+    The pair names no dollar figure, so each side takes the Bot Wizard's own
+    ``target_balance`` default, which is what ``new_bot_specs`` gives a new
+    Back Test bot.
+    """
+    from .bot_wizard_surface import NUMBER_FIELDS
+
+    target_usd = float(NUMBER_FIELDS["target_balance"]["value"])
+    sides = [
+        str(getattr(getattr(pair, "long_side", None), "symbol", "") or ""),
+        str(getattr(getattr(pair, "short_side", None), "symbol", "") or ""),
+    ]
+    out: list = []
+    seen: set = set()
+    for symbol in sides:
+        if symbol and symbol not in seen:
+            seen.add(symbol)
+            out.append({"symbol": symbol, "target_usd": target_usd})
+    return out
+
+
 def pair_entry(pair: Any) -> dict:
     """One opposing pair as the entry its zone steps through."""
     method = getattr(pair, "method", None)
@@ -3699,6 +3775,7 @@ def pair_entry(pair: Any) -> dict:
             correlation=CORRELATION_FORMAT.format(correlation=pair.correlation_30d),
         ),
         method.as_dict() if hasattr(method, "as_dict") else method,
+        actions=push_to_sim_actions(),
     )
 
 
