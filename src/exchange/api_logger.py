@@ -1,19 +1,36 @@
-"""In-memory record of exchange API interactions.
+"""Record of exchange API interactions, buffered in memory and failures on disk.
 
 ``APIInteractionLog.record`` stores one entry per call and emits one ``logger``
 line holding the action, reason, result and elapsed time, never the params.
-``_redact`` masks credential-named params before they reach that entry.
-``get_api_log`` returns the process-wide ``APIInteractionLog``.
+``_redact`` masks credential-named params and ``_scrub_text`` masks
+credential-labelled values in the free-text fields before they reach that entry.
+``get_api_log`` returns the process-wide ``APIInteractionLog``, whose
+``APIFailureStore`` keeps the ``PERSISTED_LEVELS`` entries across a restart.
 """
 
 from __future__ import annotations
 
 import functools
 import logging
+import re
 import time
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Callable, Optional
 
 logger = logging.getLogger("acervator.api")
+
+PERSISTED_LEVELS = frozenset({"error", "warning"})
+"""The ``record`` levels ``APIFailureStore`` writes to disk."""
+
+API_LOG_MAX_BYTES = 5 * 1024 * 1024
+"""Rotation threshold for the failure file."""
+
+API_LOG_BACKUP_COUNT = 5
+"""Backups the failure file keeps, bounding the set at six files."""
+
+API_LOG_RESTORE_COUNT = 100
+"""Persisted entries ``restore_from_store`` reads back into the buffer."""
 
 
 def _listener_name(cb: object) -> str:
@@ -32,17 +49,93 @@ def _listener_name(cb: object) -> str:
     return object.__repr__(cb)
 
 
+class APIFailureStore:
+    """NDJSON file holding the ``PERSISTED_LEVELS`` entries under ``get_api_dir``.
+
+    ``write`` appends one entry and ``read_recent`` returns the newest the file
+    holds, so an entry recorded before a restart is readable after one.
+    """
+
+    FILENAME = "api_failures.ndjson"
+
+    def __init__(self, path: Optional[Path] = None) -> None:
+        self._path = path
+        self._writer: Optional[object] = None
+
+    def _resolve_path(self) -> Path:
+        """Return the file path, deriving it from ``get_api_dir`` when unset."""
+        if self._path is None:
+            from src.core.log_paths import get_api_dir
+
+            self._path = get_api_dir() / self.FILENAME
+        return self._path
+
+    def _ndjson_writer(self):
+        """Return the ``NDJSONWriter``, building it on first use."""
+        if self._writer is None:
+            from src.core.logging_engine import NDJSONWriter
+
+            self._writer = NDJSONWriter(
+                self._resolve_path(),
+                max_bytes=API_LOG_MAX_BYTES,
+                backup_count=API_LOG_BACKUP_COUNT,
+            )
+        return self._writer
+
+    def write(self, entry: dict) -> None:
+        """Append ``entry`` as one NDJSON record under its own exchange name."""
+        from src.core.logging_engine import LogCategory, LogEntry
+
+        self._ndjson_writer().write(
+            LogEntry(
+                timestamp=datetime.fromtimestamp(
+                    float(entry.get("timestamp") or 0.0), timezone.utc
+                ).isoformat(),
+                category=LogCategory.SYSTEM.value,
+                exchange=str(entry.get("exchange") or ""),
+                data=dict(entry),
+            )
+        )
+
+    def read_recent(self, count: int) -> list[dict]:
+        """Return the newest ``count`` entries the file holds, oldest first."""
+        if not self._resolve_path().exists():
+            return []
+        records = self._ndjson_writer().read_all()
+        return [r["data"] for r in records[-count:] if isinstance(r.get("data"), dict)]
+
+
 class APIInteractionLog:
     """Ring buffer of API interaction entries, capped at ``max_entries``.
 
-    ``record`` appends one entry and notifies every callback given to
-    ``add_listener``; ``get_recent`` and ``get_for_exchange`` read them back.
+    ``record`` appends one entry, writes it to ``store`` when its level is in
+    ``PERSISTED_LEVELS``, and notifies every callback given to ``add_listener``;
+    ``get_recent`` and ``get_for_exchange`` read them back.
     """
 
-    def __init__(self, max_entries: int = 500):
+    def __init__(self, max_entries: int = 500, store: Optional[APIFailureStore] = None):
         self._entries: list[dict] = []
         self._max = max_entries
         self._listeners: list[Callable] = []
+        self._store = store
+
+    def restore_from_store(self, count: int = API_LOG_RESTORE_COUNT) -> int:
+        """Read the newest persisted entries into the buffer and return how many."""
+        if self._store is None:
+            return 0
+        try:
+            restored = self._store.read_recent(count)
+        except Exception as exc:
+            logger.error(
+                "api_logger could not read %s: %s: %s",
+                APIFailureStore.FILENAME,
+                type(exc).__name__,
+                exc,
+                exc_info=True,
+            )
+            return 0
+        self._entries = (restored + self._entries)[-self._max :]
+        return len(restored)
 
     def add_listener(self, callback: Callable) -> None:
         """Register ``callback`` to receive every entry ``record`` appends."""
@@ -65,6 +158,9 @@ class APIInteractionLog:
         ``params`` passes through ``_redact`` before storage, and the ``logger``
         line carries ``action``, ``reason``, ``result`` and ``elapsed_ms`` only.
         """
+        reason = _scrub_text(reason)
+        result = _scrub_text(result)
+        data_usage = _scrub_text(data_usage)
         entry = {
             "timestamp": time.time(),
             "exchange": exchange,
@@ -81,6 +177,18 @@ class APIInteractionLog:
         self._entries.append(entry)
         if len(self._entries) > self._max:
             self._entries = self._entries[-self._max :]
+
+        if self._store is not None and level in PERSISTED_LEVELS:
+            try:
+                self._store.write(entry)
+            except Exception as exc:
+                logger.error(
+                    "api_logger could not persist %s: %s: %s",
+                    action,
+                    type(exc).__name__,
+                    exc,
+                    exc_info=True,
+                )
 
         log_line = (
             f"[{exchange.upper()}] {action} | {reason} | "
@@ -136,6 +244,36 @@ class APIInteractionLog:
         return "\n".join(lines)
 
 
+_SENSITIVE_LABEL = (
+    r"api[_-]?key|access[_-]?key|secret[_-]?key|private[_-]?key|key|secret"
+    r"|password|passphrase|token|signature|sign|authorization|credential"
+)
+
+_LABELLED_SECRET = re.compile(
+    rf"(?i)\b({_SENSITIVE_LABEL})\b(\s*[=:]\s*)([^\s,;&)\]}}\"']+)"
+)
+
+_BEARER_SECRET = re.compile(r"(?i)\b(bearer)(\s+)(\S+)")
+
+REDACTED = "***REDACTED***"
+"""The value ``_redact`` and ``_scrub_text`` write in place of a credential."""
+
+
+def _scrub_text(text: str) -> str:
+    """Mask every credential-labelled value in ``text`` with ``REDACTED``.
+
+    A venue's own error message can echo the request that carried the key, so
+    the free-text fields pass through here before they reach an entry. The
+    space-separated ``bearer`` form is masked first, because a label pattern
+    matching ``authorization:`` would otherwise consume the word ``Bearer`` and
+    leave the token beside it in the clear.
+    """
+    if not text:
+        return text
+    scrubbed = _BEARER_SECRET.sub(rf"\1\2{REDACTED}", text)
+    return _LABELLED_SECRET.sub(rf"\1\2{REDACTED}", scrubbed)
+
+
 def _redact(params: dict) -> dict:
     """Replace every credential-named value in ``params`` with "***REDACTED***".
 
@@ -157,7 +295,7 @@ def _redact(params: dict) -> dict:
     }
     for k, v in params.items():
         if any(s in k.lower() for s in sensitive):
-            redacted[k] = "***REDACTED***"
+            redacted[k] = REDACTED
         elif isinstance(v, str) and len(v) > 50:
             redacted[k] = v[:20] + "..."
         else:
@@ -169,10 +307,15 @@ _global_log: Optional[APIInteractionLog] = None
 
 
 def get_api_log() -> APIInteractionLog:
-    """Return the process-wide ``APIInteractionLog``, building it on first call."""
+    """Return the process-wide ``APIInteractionLog``, building it on first call.
+
+    The one built here carries an ``APIFailureStore`` and reads back what the
+    previous process persisted, so a refusal outlives the run that recorded it.
+    """
     global _global_log
     if _global_log is None:
-        _global_log = APIInteractionLog()
+        _global_log = APIInteractionLog(store=APIFailureStore())
+        _global_log.restore_from_store()
     return _global_log
 
 

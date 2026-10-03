@@ -31,11 +31,16 @@ times price to a year-to-date scrummed sum; each unique buy adds to a folded sum
 ```python
 YTD_TRADE_ANCHOR_UTC = 1_775_001_600.0      # src/trading/scrumming/reconciliation.py
 YTD_TRADE_PAGE_LIMIT = 500
-YTD_TRADE_MAX_PAGES = 40
+YTD_TRADE_WINDOW_SEC = 30 * 24 * 3600.0
 
 async def sync_ytd_trade_count(self) -> Optional[int]:
-    """Walk ``get_my_trades`` in 30-day windows from the YTD anchor."""
+    """Walk ``get_my_trades`` from the YTD anchor to the present in 30-day windows."""
 ```
+
+The anchor is 2026-04-01T00:00:00Z. [Part 9](10-live-trade-history.md) records
+the fleet's first fill as 12 April, so the anchor is a floor eleven days before
+the earliest fill the venue holds. It is fixed because the start of a record does
+not move; a rolling date would drop the oldest fills out of the count.
 
 | Field the walk writes | Value written |
 | --- | --- |
@@ -48,23 +53,19 @@ async def sync_ytd_trade_count(self) -> Optional[int]:
 Every counter write takes a `max`, so a walk raises a counter toward the venue
 and never lowers one. Three paths leave the persisted counters alone and answer
 nothing: a raise inside the walk, an absent exchange, and an exchange that does
-not serve the trade call. Eight checks drive it against a stubbed exchange — one
-pins the anchor, three drive those three paths, two pin that the count never
-falls, and two walk a paged, duplicated window set.
+not serve the trade call. The tree tracks no check over the walk:
+`git ls-files tests` returns 7 files and none of them names the walk.
 
-```python
-def test_anchor_is_2026_04_01_utc(self): ...        # tests/test_ytd_trade_sync.py
-def test_single_page_under_limit(self): ...
-def test_chunked_window_walk_dedupes_by_id(self): ...
-def test_never_lowers_persisted_count(self): ...
-def test_does_not_toggle_downward_when_prev_exchange_higher(self): ...
-def test_returns_none_when_no_exchange(self): ...
-def test_returns_none_when_method_missing(self): ...
-def test_returns_none_on_api_exception(self): ...
-```
+The loop runs until the cursor reaches the present, so the request count follows
+the distance from the anchor instead of a fixed number. Driven against a stubbed
+venue: 7 requests at today's 186-day span, 13 at a year, 61 at five years, one
+per 30 days of span.
 
-The loop stops after twelve windows. Twelve 30-day windows reach 360 days past
-the anchor, the furthest forward one sync can carry.
+A window whose page comes back at the 500-row limit resumes at its newest fill
+rather than stepping past the remainder. One shape still returns short: a full
+page whose rows all carry the same timestamp cannot be resumed. That case writes
+a warning naming the window and the row count, so a short answer never passes
+in silence.
 
 The fleet aggregator sums those per-bot fields across every bot. Its two headline
 fields carry the year-to-date sum whenever that sum exceeds zero, and fall back
@@ -285,13 +286,12 @@ run says the refusal still fires.
   control, and read the emitted log line for any param value — with a control
   proving the same handler sees a value placed in a benign field. One substring
   covers two credential spellings at once.
-- Two modules call the venue's order method directly: the bot container, inside
-  the guard itself, and the volume guard the container dispatches to. Ten sites
-  across three trading modules call the guard, and no other route out exists.
-  Five checks cover it: one drives unusable amount shapes into a recorder
-  standing where the exchange stands, one drives a real amount through as the
-  positive control, and three more pin the text of the refusal and which check
-  turns an undersized order back.
+- One module calls the venue's order method directly: the bot container, inside
+  the guard itself. Nine sites across three trading modules call the guard, and no
+  other route out exists. Five checks cover it: one drives unusable amount shapes
+  into a recorder standing where the exchange stands, one drives a real amount
+  through as the positive control, and three more pin the text of the refusal and
+  which check turns an undersized order back.
 
 The modules on each side of the last two, and the one substring that covers two
 spellings:
@@ -301,11 +301,10 @@ tests/test_api_logger_redaction.py      "sign" masks signature and CB-ACCESS-SIG
                                         the control places a value in reason
 
 exchange.place_order called by      src/trading/bot_container.py
-                                    src/trading/volume_guard.py
 guarded_place_order called by       src/trading/scrumming/execution.py
                                     src/trading/scrumming_bot.py
                                     src/trading/extractor_bot.py
-                                    ten sites, no other route out
+                                    nine sites, no other route out
 tests/test_u6_venue_amount_gate.py      five checks
 ```
 

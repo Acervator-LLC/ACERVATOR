@@ -4,7 +4,7 @@ One step of the [New User Procedure](README.md) how-to.
 
 ![Hedge Rebalance Active opens ticked. Press Next.](figures/step-16-the-reserve-for-a-dip.png)
 
-**Leave Hedge Rebalance Active ticked, then press Next.**
+**Hedge Rebalance Active decides whether the dip reserve may be spent.**
 
 Hedge Rebalance is a group further down the same page, below Advanced Scrumming.
 It holds money the bot keeps apart from Target Balance.
@@ -23,5 +23,23 @@ the reserve holds at that moment.
 A reserve of zero is not an off switch. The manual is explicit about it: zero is
 an empty reserve that never refills, and whatever the bot already holds stays
 spendable until it drains. Clearing the tick is what turns the hedge off.
+
+With the box clear, the reserve ceiling reads zero whatever Hedge Balance says, so
+the reserve can fund nothing. With the box ticked, the ceiling is the Hedge
+Balance figure, and the reserve refills itself slowly out of the bot's own
+compound growth, taking eight cents in every dollar of growth until it reaches the
+ceiling again.
+
+This is money beyond Target Balance. It is the one setting in the wizard that
+lets a bot spend more than the line the reader drew on the step before. That is
+its whole point and also its whole risk: it buys deeper into a fall, which pays
+well if the fall ends and costs more if it does not.
+
+The live fleet runs it off on 32 of its 38 bots and on for 6. The box opens
+ticked, so a reader starting now sees it ticked and the fleet mostly runs it
+clear. Thirty-six of the 38 hold a reserve of zero; the other two hold the figure
+a fresh install ships. Starting with the box clear keeps a first bot inside one
+number the reader chose, which is the easier thing to judge after a week of
+trading.
 
 Next leaves Trading Parameters and opens Phantom Bots.
