@@ -1725,27 +1725,30 @@ passes both answers on rather than flattening them.
 
 ## Dismissal
 
-Dismissing a card hides it for a day. The write-through never raises, because
-losing a dismissal is a nuisance and taking down the pane is not.
+Dismissing a card hides it for a day, and the dismissal survives a restart. The
+pane writes each held id against the second it lapses at into the operator's
+settings, under `topology_dismissed_proposals`.
 
 `src/gui/market_inspector_topologies.py` — `_persist_dismissed`
 
 ```python
 def _persist_dismissed(self) -> None:
-    """Best-effort write-through. Never raises: losing a
-    dismissal is a nuisance, taking down the pane is not."""
+    """Write ``_dismissed`` to the store, recording a refusal."""
     if self._dismiss_store is None:
         return
     try:
         self._dismiss_store.set(DISMISS_SETTINGS_KEY, dict(self._dismissed))
 ```
 
-That write fails on every call. The key it writes is declared in no settings
-schema, so the pane logs the failure, carries on, and the dismissed count reads
-zero on every launch.
+A write the store refuses leaves the card hidden for the session and puts the
+cause on the line beside Refresh, which reads `Dismissal NOT saved:` in place of
+the count until the next write lands. The pane stays up either way.
 
-`set_dismiss_store` hands the pane the settings manager it persists through. The
-pane never resolves settings itself.
+`src/core/settings.py` — `AppSettings.topology_dismissed_proposals` is the field
+the write lands in. `set_dismiss_store` hands the pane the settings manager it
+persists through, and the pane never resolves settings itself. Entries already
+lapsed are dropped at load and written back out, so a day's suppression is not
+extended across a restart and the stored set does not grow without bound.
 
 ## Adopt
 
