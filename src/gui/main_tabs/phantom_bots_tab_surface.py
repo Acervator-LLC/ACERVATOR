@@ -12,7 +12,8 @@ explanatory lines instead.
 and fills every box. ``enable_changed``, ``timeframe_chosen`` and
 ``lock_changed`` are the three settings the operator can move; each
 records the change the host dialog is told about. ``run_steps`` drives a
-list of those in order and reports the step that refused.
+list of those in order and reports the step that refused, and
+``note_steps`` holds that report so the pane draws it.
 
 ``BotConfig``, ``PhantomSource``, ``PhantomManagerSource``,
 ``CoordinatorSource`` and ``BotSource`` are plain stand-ins for the
@@ -242,6 +243,36 @@ STEP_LOCK = "lock"
 NO_REFUSAL_INDEX = -1
 NO_REFUSAL_NAME = ""
 
+STEP_LABELS = {
+    STEP_BUILD: ENABLE_GROUP_TITLE,
+    STEP_ENABLE: ENABLE_CHECK_TEXT,
+    STEP_TIMEFRAME: TF_GROUP_TITLE,
+    STEP_LOCK: LOCK_ROW_LABEL.rstrip(":"),
+}
+UNKNOWN_STEP_LABEL = "an unnamed setting"
+REFUSED_UNREADABLE = "The pane could not read that change. Nothing moved."
+REFUSED_UNKNOWN_STEP = "This pane has no setting called {step}. Nothing moved."
+REFUSED_UNKNOWN_VALUE = "{label} does not offer {value}. Nothing moved."
+REFUSED_NO_VALUE = "{label} was changed with no value. Nothing moved."
+REFUSED_NOT_A_NUMBER = "{label} takes a number, and {value} is not one. Nothing moved."
+REFUSED_OTHER = "{label} could not be changed. Nothing moved."
+STEP_REFUSAL_STYLE_FORMAT = "color: {color_hex}; font-size: 10px;"
+STEP_REFUSAL_WORD_WRAP = True
+NO_STEP_REFUSAL = {
+    "index": NO_REFUSAL_INDEX,
+    "step": NO_REFUSAL_NAME,
+    "refusal": NO_REFUSAL_NAME,
+    "text": REFUSAL_NONE,
+}
+
+STORED_UNKNOWN_FORMAT = (
+    "{stored} is stored on this bot and is not a timeframe this pane lists, "
+    "so the picker shows {current}."
+)
+STORED_NOT_OFFERED_FORMAT = (
+    "{current} is stored on this bot and {exchange} does not offer it."
+)
+
 BUILD_START = "build.start"
 BUILD_INFO = "build.info"
 BUILD_ENABLE = "build.enable"
@@ -249,6 +280,7 @@ BUILD_TF_ALLOWED = "build.tf_allowed"
 BUILD_TF_FALLBACK = "build.tf_fallback"
 BUILD_TF_ITEM = "build.tf_item"
 BUILD_TF_CURRENT = "build.tf_current"
+BUILD_TF_STORED = "build.tf_stored"
 BUILD_LOCK_FORM = "build.lock_form"
 BUILD_LOCK_FROM_COORDINATOR = "build.lock_from_coordinator"
 BUILD_LOCK_WITHOUT_COORDINATOR = "build.lock_without_coordinator"
@@ -276,6 +308,7 @@ ENABLE_CHANGED = "enable.changed"
 TIMEFRAME_CHOSEN = "timeframe.chosen"
 TIMEFRAME_REFUSED = "timeframe.refused"
 LOCK_CHANGED = "lock.changed"
+STEP_REFUSED = "step.refused"
 
 ModelCall = list
 
@@ -287,6 +320,7 @@ CALL_NAMES = (
     BUILD_TF_FALLBACK,
     BUILD_TF_ITEM,
     BUILD_TF_CURRENT,
+    BUILD_TF_STORED,
     BUILD_LOCK_FORM,
     BUILD_LOCK_FROM_COORDINATOR,
     BUILD_LOCK_WITHOUT_COORDINATOR,
@@ -314,6 +348,7 @@ CALL_NAMES = (
     TIMEFRAME_CHOSEN,
     TIMEFRAME_REFUSED,
     LOCK_CHANGED,
+    STEP_REFUSED,
 )
 
 
@@ -380,6 +415,57 @@ def timeframe_refusal(
             timeframe=timeframe, exchange=exchange_id or UNKNOWN_EXCHANGE_TEXT
         )
     return REFUSAL_NONE
+
+
+def stored_timeframe_notice(
+    stored: Any, current: Any, offered: Any, exchange_id: Any
+) -> str:
+    """Name a stored timeframe the build replaced, or one ``offered`` omits.
+
+    Hands back ``REFUSAL_NONE`` when the picker holds a stored name the venue
+    serves, and for a bot with nothing stored.
+    """
+    held = [str(one) for one in list(stored or ()) if one]
+    if not held:
+        return REFUSAL_NONE
+    unlisted = [one for one in held if one not in list(TIMEFRAMES)]
+    if unlisted:
+        return STORED_UNKNOWN_FORMAT.format(
+            stored=timeframes_text(unlisted), current=current
+        )
+    if current not in list(offered or ()):
+        return STORED_NOT_OFFERED_FORMAT.format(
+            current=current, exchange=exchange_id or UNKNOWN_EXCHANGE_TEXT
+        )
+    return REFUSAL_NONE
+
+
+def step_name_and_value(step: Any) -> tuple:
+    """The setting name and the value one step carries, empty where unreadable."""
+    try:
+        name = str(step[0])
+    except Exception:
+        return NO_REFUSAL_NAME, NO_REFUSAL_NAME
+    try:
+        return name, step[1]
+    except Exception:
+        return name, NO_REFUSAL_NAME
+
+
+def step_refusal_text(name: Any, value: Any, exc: BaseException) -> str:
+    """The line the pane shows for a step ``run_steps`` refused."""
+    if not name:
+        return REFUSED_UNREADABLE
+    label = STEP_LABELS.get(name, UNKNOWN_STEP_LABEL)
+    if isinstance(exc, KeyError):
+        return REFUSED_UNKNOWN_VALUE.format(label=label, value=value)
+    if isinstance(exc, IndexError):
+        return REFUSED_NO_VALUE.format(label=label)
+    if isinstance(exc, TypeError) and name == STEP_LOCK:
+        return REFUSED_NOT_A_NUMBER.format(label=label, value=value)
+    if isinstance(exc, LookupError):
+        return REFUSED_UNKNOWN_STEP.format(step=name)
+    return REFUSED_OTHER.format(label=label)
 
 
 def clamp_lock(value: Any) -> int:
@@ -667,6 +753,7 @@ class PhantomBotsTabModel:
         self.timeframe_current = TIMEFRAME_DEFAULT
         self.parent_timeframe = PARENT_TIMEFRAME_DEFAULT
         self.refusal = REFUSAL_NONE
+        self.step_refusal: dict = dict(NO_STEP_REFUSAL)
         self.exchange_id: Any = NO_EXCHANGE_ID
         self.allowed: tuple = ()
         self.lock_requested = LOCK_DEFAULT
@@ -700,6 +787,7 @@ class PhantomBotsTabModel:
         self.timeframe_current = TIMEFRAME_DEFAULT
         self.parent_timeframe = PARENT_TIMEFRAME_DEFAULT
         self.refusal = REFUSAL_NONE
+        self.step_refusal = dict(NO_STEP_REFUSAL)
         self.exchange_id = NO_EXCHANGE_ID
         self.allowed = ()
         self.lock_requested = LOCK_DEFAULT
@@ -764,6 +852,14 @@ class PhantomBotsTabModel:
         self.calls.append(
             [BUILD_TF_CURRENT, self.timeframe_current, self.parent_timeframe]
         )
+        self.refusal = stored_timeframe_notice(
+            getattr(bot, TIMEFRAMES_ATTRIBUTE, []) or [],
+            self.timeframe_current,
+            self.allowed,
+            self.exchange_id,
+        )
+        if self.refusal:
+            self.calls.append([BUILD_TF_STORED, self.refusal])
 
         self.forms_configured += 1
         self.calls.append([BUILD_LOCK_FORM])
@@ -962,28 +1058,56 @@ class PhantomBotsTabModel:
     def run_steps(self, steps: Any) -> dict:
         """Take each step in order and report the one that refused.
 
-        Returns the index and the name of the step that refused with the
-        type of the refusal, or an index of minus one when every step
-        was taken.
+        Returns the index, the name and the value of the step that refused,
+        the type of the refusal and the line the pane shows for it, or an
+        index of minus one when every step was taken.
         """
         wanted = list(steps or ())
         for index, step in enumerate(wanted):
-            name = step[0]
+            name, value = step_name_and_value(step)
             try:
                 self.take_step(step)
             except Exception as exc:
                 return {
                     "refused_at": index,
                     "refused_step": name,
+                    "refused_value": value,
                     "refusal": type(exc).__name__,
+                    "refusal_text": step_refusal_text(name, value, exc),
                     "steps_taken": index,
                 }
         return {
             "refused_at": NO_REFUSAL_INDEX,
             "refused_step": NO_REFUSAL_NAME,
+            "refused_value": NO_REFUSAL_NAME,
             "refusal": NO_REFUSAL_NAME,
+            "refusal_text": REFUSAL_NONE,
             "steps_taken": len(wanted),
         }
+
+    def note_steps(self, record: Any) -> None:
+        """Hold what ``run_steps`` reported, so the pane draws a refusal.
+
+        A refusal replaces the line already held and records one
+        ``STEP_REFUSED`` call the first time that wording arrives, so a
+        renderer resending the same refused step adds no second entry. A
+        record with no refusal clears both.
+        """
+        held = dict(record or {})
+        text = str(held.get("refusal_text", REFUSAL_NONE) or REFUSAL_NONE)
+        if not text:
+            self.step_refusal = dict(NO_STEP_REFUSAL)
+            return None
+        taken = {
+            "index": held.get("refused_at", NO_REFUSAL_INDEX),
+            "step": str(held.get("refused_step", NO_REFUSAL_NAME) or NO_REFUSAL_NAME),
+            "refusal": str(held.get("refusal", NO_REFUSAL_NAME) or NO_REFUSAL_NAME),
+            "text": text,
+        }
+        if text != self.step_refusal.get("text", REFUSAL_NONE):
+            self.calls.append([STEP_REFUSED, taken["step"], text])
+        self.step_refusal = taken
+        return None
 
 
 def build_view_model(model: PhantomBotsTabModel, build_now: bool = False) -> dict:
@@ -1003,6 +1127,15 @@ def build_view_model(model: PhantomBotsTabModel, build_now: bool = False) -> dic
             "text": INFO_TEXT,
             "style_sheet": INFO_STYLE_FORMAT.format(color_hex=NOTE_COLOR),
             "word_wrap": INFO_WORD_WRAP,
+        },
+        "step_refusal": {
+            "text": model.step_refusal.get("text", REFUSAL_NONE),
+            "style_sheet": STEP_REFUSAL_STYLE_FORMAT.format(color_hex=LOSS_COLOR),
+            "word_wrap": STEP_REFUSAL_WORD_WRAP,
+            "shown": bool(model.step_refusal.get("text", REFUSAL_NONE)),
+            "step": model.step_refusal.get("step", NO_REFUSAL_NAME),
+            "refusal": model.step_refusal.get("refusal", NO_REFUSAL_NAME),
+            "index": model.step_refusal.get("index", NO_REFUSAL_INDEX),
         },
         "enable_group": {"title": ENABLE_GROUP_TITLE},
         "enable_check": {"text": ENABLE_CHECK_TEXT, "checked": model.enable_checked},
@@ -1246,6 +1379,6 @@ def view_model(params: dict) -> dict:
         )
     steps = params.get("steps")
     if steps:
-        PANE_MODEL.run_steps(steps)
+        PANE_MODEL.note_steps(PANE_MODEL.run_steps(steps))
         return build_view_model(PANE_MODEL)
     return build_view_model(PANE_MODEL, params.get("build", bot is not None))
