@@ -261,7 +261,9 @@ HEARTBEAT_POLL_INTERVAL = 2.0
 
 The Watchdog writes a post-mortem bundle every time the application dies. Each
 bundle copies the runner's console log, the crash log, the fault-handler log
-and a thread dump, which runs to hundreds of megabytes. Per-run log rotation
+and the thread-violation log. The console log runs to hundreds of megabytes.
+A hang writes two bundles: one while the child is still alive, and one after
+the Watchdog has stopped it. Per-run log rotation
 capped the size of one run's logs and capped nothing about the number of
 bundles, so weeks of restarts grew without limit until the log directory took
 the host down.
