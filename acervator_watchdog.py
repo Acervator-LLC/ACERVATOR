@@ -525,7 +525,7 @@ class HeartbeatMonitor:
 
 # Bundle retention. Each crash or restart cycle writes a new
 # postmortem_YYYYMMDD_HHMMSS/ directory holding the console log, the
-# crash log, the faulthandler log and the py-spy dump, so an uncapped
+# crash log, the faulthandler log and the thread-violation log, so an uncapped
 # count once reached ~400 GB and crashed the host. The count cap and the
 # age cap both apply, at startup and after every bundle write.
 POSTMORTEM_KEEP_LATEST: int = 20  # most-recent N bundles preserved
