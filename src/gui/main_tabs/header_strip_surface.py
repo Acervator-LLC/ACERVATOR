@@ -317,7 +317,12 @@ FOLDED_TOOLTIP = (
     "trade history, so the venue and the card agree. Every buy "
     "adds to it. It survives a restart."
 )
-TRADES_TOOLTIP = "Total executed buy and sell trades across all active bots."
+TRADES_TOOLTIP = (
+    "Total Trades — the orders the exchange has filled for every bot so "
+    "far this year. One order counts once, however many pieces the "
+    "exchange filled it in. A bot the exchange has not answered for "
+    "completely counts nothing rather than its last figure."
+)
 BOTS_TOOLTIP = "Bots currently in RUNNING state (actively trading)."
 ERRORS_TOOLTIP = (
     "Error count across all bots since last reset. "
