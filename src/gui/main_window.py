@@ -689,7 +689,11 @@ if _HAS_QT:
             self.setStatusBar(status)
 
         # Class attributes: one ThrottledFault per pump, shared by every MainWindow.
+        from ..exchange.fetch_stall import FetchStallReport
         from ..exchange.lazy_singleton import ThrottledFault
+
+        # One report for the fleet, shared by every MainWindow.
+        _fetch_stall_report = FetchStallReport()
 
         _currency_pump_fault = ThrottledFault(
             "the currency rate pump",
@@ -738,6 +742,27 @@ if _HAS_QT:
                 self._scout_pump_fault.note_success()
             except Exception as exc:  # noqa: BLE001
                 self._scout_pump_fault.note_failure(exc)
+
+        def _report_fetch_stall(self) -> None:
+            """Tell the Console when no exchange call has come back across the fleet.
+
+            Reads ``MarketDataPool.slot_ages`` and the highest
+            ``calls_per_minute`` of the connected exchanges, and hands both to
+            ``fetch_stall.stall_seconds``.
+            """
+            from ..exchange.api_load_monitor import get_load_monitor
+            from ..exchange.data_pool import get_data_pool
+            from ..exchange.fetch_stall import stall_seconds
+
+            connectors = getattr(self, "_exchange_connectors", {}) or {}
+            if not connectors:
+                return
+            monitor = get_load_monitor()
+            busiest_cpm = max(
+                monitor.sample(eid).calls_per_minute for eid in connectors
+            )
+            freshest_age_s = get_data_pool().slot_ages().get("freshest_age_s")
+            self._fetch_stall_report.note(stall_seconds(freshest_age_s, busiest_cpm))
 
         def _refresh_api_load_pill(self) -> None:
             """Set the API-load pill from the worst-loaded connected exchange."""
@@ -1259,6 +1284,11 @@ if _HAS_QT:
                         self._refresh_api_load_pill()
                     except Exception as _api_pill_exc:
                         logger.debug("API-load pill refresh raised: %s", _api_pill_exc)
+
+                    try:
+                        self._report_fetch_stall()
+                    except Exception as _stall_exc:
+                        logger.debug("fetch stall report raised: %s", _stall_exc)
 
                     try:
                         self._pump_currency_rates()
