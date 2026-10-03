@@ -192,8 +192,10 @@ in crypto, and Exch counts the open exchange sub-tabs.
 
 The five cards are Scrummed, Folded, Trades, Bots and Errors. Scrummed and Folded
 total the fleet's sold and bought dollars, Bots counts the bots that are running,
-and Errors totals the lifetime error count. Click Errors and the rolling error
-log opens. The small circle under every column and every card is a privacy dot,
+and Errors totals the lifetime error count. Trades counts the orders the exchange
+filled for the fleet since the year-to-date anchor, one per order however many
+pieces the exchange filled it in, and a bot the exchange has not answered for
+completely counts nothing rather than its last figure. Click Errors and the rolling error log opens. The small circle under every column and every card is a privacy dot,
 and it masks that one field on its own.
 
 `src/gui/main_tabs/header_strip_surface.py` — the seven columns, declared once
@@ -1660,6 +1662,21 @@ function press(name, step) {
 }
 ```
 
+**What the fleet runs.** The mode is the one setting this page writes, and it decides
+which engine class the bot becomes and which pages the wizard shows next. Every live
+record carries the Scrumming mode, so Accumulation Trading is both the choice the page
+opens on and the only kind of bot the live run has used.
+
+Nothing is lost by taking the opening choice here. The Extractor pages later in this
+part describe a bot that has never run, and the Extractor's own description marks it
+partially built and untested. A reader following this walkthrough should take the
+Scrumming path and read the Extractor sections as a design.
+
+```
+mode   the page opens on   Accumulation Trading
+       the fleet runs      scrumming on 38 of 38
+```
+
 ![The wizard's asset page: exchange, base currency and target asset.](p17-i0.png)
 
 After Scrumming / Accumulation is selected, next we are presented with Exchange, Base Currency, and Target Asset options.
@@ -1716,6 +1733,26 @@ a reading rule of the wizard's own, and a refused volume sorts as
 `VOLUME_REFUSED_USD` and labels as nothing. A saved number too large to be a float
 therefore costs that one pair its volume figure instead of losing the whole pair
 list.
+
+**What the fleet runs.** The three rows on this page decide more than the pair. The
+venue picked here rebuilds the TA Timeframe list two pages on, so a venue that does
+not carry a timeframe removes it from the choice, and the Trading Fee row exists
+because the venue sets what a round trip costs.
+
+All 38 live bots sit on one venue. Every timeframe this walkthrough names below is
+therefore a timeframe that venue serves, and the fee split described further on is
+not a difference between venues.
+
+The base currency and the target asset are each bot's own identity and have no fleet
+value to quote. What is worth knowing is the shape: one bot holds one target asset
+against one base, and the pool sigil an Extractor hands on instead is the only
+departure from that rule anywhere in the wizard.
+
+```
+exchange         the fleet runs   one venue across 38 of 38
+base currency    the fleet runs   per bot
+target asset     the fleet runs   one asset per bot
+```
 
 ### Trading Parameters
 
@@ -1812,6 +1849,21 @@ below report a value that arrives and a behaviour that waits.
 ```
 AttributeError: 'ScrummingBot' object has no attribute 'exchange_interface'
 ```
+
+**What the fleet runs.** This is the row to read twice. The box opens **ticked**,
+because it takes its start state from the engine's own declaration, and all 38 live
+bots run Stack Mode **off**. A reader who walks the wizard and leaves this page alone
+builds a bot configured differently from every bot on the fleet.
+
+The three rows below it only matter while this box is ticked. Split Distance, Tranche
+Count and Spacing shape the ladder a Stack builds, and no live bot has built one, so
+the figures those three carry on the fleet are the page's own opening values and not
+tuned choices. There is nothing to suggest about them, because nothing has run them.
+
+The refusal above is why. One method appends a Stack tranche and it raises before it
+gets there, so a ticked box today changes what the record says and not what the bot
+does. That is a different thing from the box being off on purpose, and both are true
+of the fleet at once.
 
 Split Distance - This setting determines the spacing between tranches if Tranche Spread (not available yet) is being used.
 
@@ -1999,6 +2051,34 @@ records of three restored, 26 of 27 stored fields identical, none different, and
 nothing raised — but a bot carrying a hold would be free to sell the units the
 hold keeps back. The removal is safe only for a bot whose hold reads zero.
 
+**What the fleet runs.** Personal Hold reads zero on all 38 live bots, so the five
+readers listed above subtract nothing from any claim today, and the removal above is
+safe for every bot on the fleet.
+
+Order Visibility is the row in this group that changes a live trade. At Order Book
+the engine rests limit orders and the trade waits for the market; at Internal it
+sends market orders and takes the price on offer. 37 bots run Order Book and one runs
+Internal, so a reader following the page is following what nearly the whole fleet
+does.
+
+Aggressive Trading is clear on all 38, which matches the box. Leaving it clear costs
+nothing today either way: the flag reaches the bot and reaches no order, as the two
+paragraphs above measure.
+
+Stack Mode and the three rows under it carry their own note above, because the box
+opens the other way from the fleet.
+
+```
+setting              the page opens at   the fleet runs
+Order Visibility     Order Book          Order Book 37, Internal 1
+Aggressive Trading   clear               off on 38
+Stack Mode           ticked              off on 38
+Split Distance       1.00 %              1.0 on 38
+Tranche Count        3                   3 on 38
+Spacing              Linear              linear on 38
+Personal Hold        0                   0.0 on 38
+```
+
 ![The Scrumming Settings group.](p19-i0.png)
 
 Scrolling down we next find the first block of Scrumming Settings. These are the core or basic metrics for a Scrumming Bot.
@@ -2036,6 +2116,17 @@ pivot $100.00000000, one tick later at $101.00000000
 
 Asked for a figure under its floor the box answers the floor: asked for 0.00 it
 answers 0.10.
+
+**What the fleet runs.** The box opens at 1.00 % and all 38 live bots run 5.00 %.
+On a $200 target that is a $10 drift before the tick reads any gate, where the
+opening figure would start reading gates at $2. The Trading Fee is added on top, so
+the real reversal distance on the fleet is 5 % plus that bot's own fee.
+
+This is the row that decides how often a bot trades at all. A smaller figure makes
+the bot act on smaller moves and pay the fee more often; a larger one waits for a
+move worth acting on. Five per cent is the figure the live run has used throughout,
+and it is also the floor the cartridge threshold is clamped to, so raising it raises
+that floor as well.
 
 BB Tolerance - Determines the minimum distance of the Bollinger Band extent price action must be in order for a trade action to occur.
 
@@ -2126,6 +2217,22 @@ one bot, one tick each, two stored names
   1d   chart asked for 1d   consensus BEARISH 0.0863   band position 0.976123
 ```
 
+**What the fleet runs.** The box opens on 1h because its starting choice is index
+four of the seven entries. No live bot runs 1h. All 38 run 5m, the second entry, and
+they have run it for the whole live test. A reader who walks this page and leaves the
+row alone builds a bot on a chart the operator has never traded.
+
+Pick 5m to match the fleet, or pick a slower chart deliberately and know what it
+costs. A slower chart smooths every indicator vote, so the bot sees fewer moves and
+fires less often; a faster one sees more moves and pays more fees to act on them.
+This row and the Read Rate row further on decide that together: the chart sets what
+a candle means, and the read rate sets how often the bot looks at it.
+
+The choice also reaches two rows that are counted in candles rather than in minutes.
+The Soft CB Cooldown and the Extractor's watch-list refresh both scale with this
+pick, so changing the chart changes how long those two last without either figure
+moving.
+
 Target Balance - This is the intended starting and locked value for the investment position that the Scrumming Bot is controlling.
 
 From $1.00 to $1,000,000.00. Its start value is whatever default the wizard was
@@ -2205,6 +2312,16 @@ self._trading_fee.setDecimals(2)
 self._trading_fee.setSingleStep(0.05)
 self._trading_fee.setValue(0.6)
 ```
+
+**What the fleet runs.** The box opens at 0.60 % and the live fleet is split: 24
+bots run 1.6 % and 14 run 0.6 %. All 38 sit on one venue, so the split is not a
+venue difference, and nothing else in the stored record separates the two groups.
+
+The higher figure is the more conservative one, and that is worth understanding
+before changing it. The fee is added to the Opposing Trade Interval, so a reversal
+on a 1.6 % bot has to travel further before it may fire. A reader setting this row
+is not only recording what the venue charges; they are also setting how far price
+must move between a sell and the next buy.
 
 Max Target Growth % - This determines the maximum amount of growth the Target Balance can increase in a given Market Cycle with a cycle being a Fold / Scrum / Fold sequence. Essentially any Fold preceded by a Scrum will be allowed to Fold an amount of profit back in and, if Surplus remains after the Target Delta is re-zero’d, it can be used to increase Target Balance up to this hard limit for that cycle. This is the organic compounding mechanic.
 
@@ -2399,6 +2516,43 @@ The clamp's lower bound is zero and both controls start at one, so a record
 carrying a zero empties the sale's whole fold queue and retires the cash instead.
 Raising the clamp to match the controls would change what such a bot rebuys on its
 next sale.
+
+**What the fleet runs.** Three of the ten rows in this group are set away from what
+the page opens at, and the two most important are the rows a reader is most likely
+to leave alone. Those two carry their own notes above. The other eight match the
+page, and that match is the suggestion.
+
+Target Balance is the one row with no fleet value to quote. It is set per bot: ten
+distinct figures across the 38, chosen against each position rather than against a
+rule. Both entry-price rows are unset on all 38, which also settles the literal-zero
+case described above. No live record carries the zero that would refuse every
+automatic buy, so that hazard is on the page and not on the fleet.
+
+Max Target Growth sits at 1.00 % on every bot, the same figure the operator's own
+line earlier in this part names as the conservative global setting for the live run.
+Scrum Fold Ratio reads 100 on 30 bots and 50 on eight; at 100 the branch that trims
+a sale's tranches never runs at all, so those 30 bots requeue every dollar a sale
+produced.
+
+The two tolerance rows match the page and work on the same candles from different
+sides. BB Tolerance decides whether a close counts as sitting at a band, and Landing
+Strip Candles decides how long a tight run has to be before it counts as a pattern.
+Loosening the first finds more band touches; raising the second finds fewer
+patterns.
+
+```
+setting                   the page opens at     the fleet runs
+Opposing Trade Interval    1.00 %               5.0 on 38
+BB Tolerance               1.00 %               1.0 on 38
+Landing Strip Candles      3 candles            3 on 38
+TA Timeframe               1h                   5m on 38
+Target Balance             the Settings figure  ten distinct figures across 38
+Max Entry Price            $0.00000000          unset on 38
+Min Entry Price            $0.00000000          unset on 38
+Trading Fee %              0.60 %               1.6 on 24, 0.6 on 14
+Max Target Growth %        1.00 %               1.0 on 38
+Scrum Fold Ratio           100 %                100 on 30, 50 on 8
+```
 
 ![The Advanced Scrumming and Hedge Rebalance groups.](p20-i0.png)
 
@@ -2762,6 +2916,43 @@ The group title on screen carries an internal release identifier after the
 words Advanced Scrumming. Issue #420 carries that, and four more group titles
 with it.
 
+**What the fleet runs.** Read Rate is the row that differs most from the page. The
+box opens at five minutes, and 30 of the 38 live bots run it at one minute, with
+eight at five. At one minute the search throttle skips twelve ticks and works one;
+once the bot reaches track or fire it reads ten times faster, which is every tick.
+That is the difference between a bot that notices a move inside a five-minute candle
+and one that waits out the candle first.
+
+Hedge Rebalance Active opens ticked and is off on 32 of the 38, on for six. With it
+off the bot holds no reserve outside Target Balance, so the Hedge Balance row below
+has nothing to size and the hedge path never runs. A reader who wants the hedge must
+tick the switch and give the reserve a figure; one without the other does nothing.
+
+The rest of the group matches the page, and that uniformity is the suggestion.
+Detect Threshold at 75 puts the two marks at 0.125 and 0.875 of the band, Fire
+Threshold is the page's own 0.5 % on 37 bots and tighter on one, and Band Travel is
+70 on 34 bots and 75 on four. Nothing in the stored record separates the smaller
+groups from the larger ones. The whole fleet sits on one venue, and each split is a
+per-bot choice rather than a venue or a class difference.
+
+Read the three band rows together, because they gate in sequence. Detect Threshold
+decides when the bot starts looking, Fire Threshold decides when it may shoot, and
+BB Midline Gate refuses a sell below the midline and a buy above it whatever the
+other two say. Band Travel sits outside that chain and can release a trade the trend
+gates were holding, so it is the one row that loosens rather than tightens.
+
+```
+setting                the page opens at   the fleet runs
+Detect Threshold       75 %                75 on 38
+Fire Threshold         0.50 %              0.5 on 37, 0.1 on 1
+BB Midline Gate        ticked              on on 38
+Read Rate              5 min               1 on 30, 5 on 8
+Band Travel            70 %                70 on 34, 75 on 4
+BB Bullseye Check      ticked              on on 38
+Wire Inflow Stack      1.00 %              1.0 on 38
+Hedge Rebalance Active ticked              off on 32, on on 6
+```
+
 ![The Circuit Breakers group.](p21-i0.png)
 
 Now we arrive at some safety controls. Circuit Breakers are designed to fully inhibit trade actions for a given period should an extreme volatility (pump and dump) event occur. Soft Circuit Breakers have a candle-count based timer whereas Hard Circuit Breakers require the user to clear the bot to continue trading.
@@ -2946,6 +3137,34 @@ CircuitBreakerGate(side="scrum"),
 
 ```python
 CircuitBreakerGate(side="fold"),
+```
+
+**What the fleet runs.** Two rows in this group are set away from what the page
+opens at, and together they change what the Max Cartridge row means. Max Cartridge
+Size runs at 5.0 % against an opening 10.0 %, and Smart Cartridge is ticked on every
+bot although the box opens clear.
+
+With Smart Cartridge on, the threshold comes from the live band range rather than
+from the fixed percentage, held between the Opposing Trade Interval below it and
+Smart Ceiling above it. On the fleet those two bounds are 5 % and 30 % of target, so
+the cartridge fires somewhere in that span and follows the market's own width. The
+fixed 5.0 % is then used only on the first worked tick after a start, before the bot
+has read a band. A reader who leaves Smart Cartridge clear gets the fixed figure on
+every tick instead, which is a fixed dollar trigger in a market whose width moves.
+
+The three breaker rows match the page. Read the cooldown against the bot's own
+chart rather than against the clock: the fleet runs five-minute candles, so three
+candles is fifteen minutes with one side shut, and the same 3 on an hourly bot would
+be three hours.
+
+```
+setting              the page opens at   the fleet runs
+Soft CB Threshold    25.0 %              25.0 on 38
+Hard CB Threshold    35.0 %              35.0 on 38
+Soft CB Cooldown     3 candles           3 on 38, fifteen minutes at 5m
+Max Cartridge Size   10.0 %              5.0 on 38
+Smart Cartridge      clear               ticked on 38
+Smart Ceiling        30.0 %              30.0 on 38
 ```
 
 ![The Risk Controls and Strategy Gate Flags groups.](p22-i0.png)
@@ -3343,6 +3562,39 @@ That gate reads the bullish count after the scrum checkbox has been applied to i
 so as written it would hold a buy during an uptrend. A downtrend figure and a
 checkbox have to arrive with it.
 
+**What the fleet runs.** Both switches in Risk Controls are off on all 38 live
+bots, which is the state the page opens in. With the ceiling off a position grows
+without a brake and the fold never tapers. With Detonation off no bot sells a whole
+position. The three figures beside those switches therefore sit unread on every
+record, at the values the page opens at.
+
+That pairing is the thing to understand before changing either switch. The ceiling
+brakes buying and the detonation sells the position, and the detonation does not
+wait for the ceiling: its own bar is the anchor, which any grown position is above.
+Ticking Detonation alone arms a full exit well below any multiple, so a reader who
+wants the ceiling behaviour described above has to tick both.
+
+The five Strategy Gate Flags are the opposite case, and the fleet's uniformity is
+the whole suggestion. All five are ticked on all 38, which is the strictest reading
+the page offers: a sell needs a bullish vote, holds through a sustained uptrend and
+defers to the higher timeframe, and a buy needs a bearish vote and defers as well.
+Unticking one lets the bot trade more often on weaker evidence. None has been
+relaxed in the live run.
+
+```
+setting                     the page opens at   the fleet runs
+Enable Position Ceiling     clear               off on 38
+Ceiling Multiple            5.0x anchor         5.0 on 38, unread
+Enable Detonation           clear               off on 38
+Detonation TF               1d                  1d on 38, unread
+Min Confidence              0.75                0.75 on 38, unread
+SCRUM requires bullish TA   ticked              on on 38
+SCRUM holds in uptrend      ticked              on on 38
+SCRUM defers to higher-TF   ticked              on on 38
+FOLD requires bearish TA    ticked              on on 38
+FOLD defers to higher-TF    ticked              on on 38
+```
+
 ![The Profit Routing group.](p22-i1.png)
 
 Moving onto the final section, we have Profit Routing which was intended to allow profits to be routed differently during initial set-up. This will be re-evaluated and potentially removed.
@@ -3385,6 +3637,22 @@ any screen. Investment amount was saved and restored and read by nothing.
 Spacing style was saved and restored and read by nothing, and the placement the
 engine derives from Opposing Trade Distance and the band extension is the
 method that replaced it.
+
+**What the fleet runs.** Neither removed row has a figure to report, because
+neither ever reached a saved record. What runs in their place is profit folding,
+which is on for all 38 live bots, and the Smart Wires drawn on the Bot Swarm tab,
+which carry every share that crosses from one bot to another.
+
+A reader asking where a bot's profit goes should follow two paths and not a route.
+Profit from a fold stays with the bot, through the fold tranches and the target
+growth the Max Target Growth row caps. Profit that leaves a bot travels along a
+wire the operator drew, and the Wire Inflow Stack row decides what the receiving
+bot does with it.
+
+```
+profit_folding_active   the fleet runs    true on 38 of 38
+a stored route          the fleet holds   none; the key is dropped on restore
+```
 
 ![The Phantom Bots page.](p23-i0.png)
 
@@ -3460,6 +3728,27 @@ proposed for the page.
 
 In development.
 
+**What the fleet runs.** Phantom Bots are off on all 38 live bots, which is the
+state the page opens in. Every record still carries one stored timeframe, 15m, and
+no bot reads it while the box is clear. The lock count reads two candles on all 38,
+the figure the page opens at.
+
+The stored 15m shows the page's own rule at work. A phantom must outrank the bot's
+own TA Timeframe, and the fleet runs 5m, so 15m is the next step the page allows. A
+reader building a bot on a slower chart has to pick a higher step again, and a box
+at or below the bot's chart stays clear and says why in its tooltip.
+
+Nothing is suggested about turning this on. The engine behind the page is
+unfinished, so the only honest reading of the clear box is that the feature waits
+on the build rather than on a setting.
+
+```
+setting               the page opens at   the fleet runs
+Enable Phantom Bots   clear               off on 38
+Active Timeframe      all clear           15m stored on 38, unread
+Candles to lock       2                   2 on 38
+```
+
 ### Extractor Bot (Partially Built; Untested)
 
 The second type of bot offered within Acervator is the Extractor. These operate quite differently from Scrumming Bots and actually operate as Siblings of them. In fact, an Extractor Bot cannot even be called unless a corresponding Base Currency Scrumming Bot (i.e. A15:USD or A14:USD) is already active. This is due to the core operating principle of the Extractor bot to acquire more of these base currencies by performing trades against available alternate currency pairings. It does this by using and blocking off a portion of the Parent’s position within an Extractor Tranche that represents an active position taken against one of the available alternate pairs. The Extractor Tranche remains open until its opposing accumulating (or Short Position if preferred by the user) or profit taking trade is filled. Extractor Tranches can be of any size but should generally be a relatively small fraction of the Parent’s total position which will allow the Extractor to take multiple positions if available and allowed by the specific user.
@@ -3496,6 +3785,24 @@ if self._mode_page.is_extractor():
 else:
     config["mode"] = "scrumming"
     config.update(self._asset_page.get_config())
+```
+
+**What the fleet runs.** The mode is the one choice on this page that cannot be
+changed afterwards. It is stamped onto the configuration, the two kinds of bot are
+different engine classes, and nothing downstream re-reads the radio. Every live
+record carries the Scrumming mode, so the pages that follow describe a build and
+not a running configuration.
+
+The two hard False values above are why an Extractor never shows a Phantom page
+and never shows a profit-folding row. On the Scrumming side both of those run the
+other way, and that contrast is the quickest way to see what the Extractor gives
+up: it takes no higher-timeframe override and it compounds nothing of its own.
+
+```
+setting                 on a Scrumming Bot    on an Extractor
+mode                    scrumming on 38       no live bot
+profit_folding_active   true on 38            forced false
+enable_phantoms         off on 38             forced false
 ```
 
 ![The Extractor Pool page.](p24-i1.png)
@@ -3970,6 +4277,35 @@ has named, and the toggle waits on it.
 No bot on the saved fleet is an Extractor. All thirty-eight records carry the
 Scrumming mode, and all thirty-eight live claims carry the Scrumming kind.
 
+**What the fleet runs.** All five Extractor settings sit on every saved record,
+because one declaration carries every field to every bot. A Scrumming Bot reads
+none of them. All 38 records hold exactly the figures this page opens at, and
+those are starting values rather than tuned choices, because no Extractor has run.
+
+Read the two size rows as the pair that bounds the whole bot. Chunk size is the
+pool. Artillery size is one round drawn from it. The pool divided by the round is
+how many positions the bot can hold at once, so a reader who wants more open
+positions raises the pool or lowers the round. Both figures are converted into
+base-currency units on the first watch-list refresh, so the dollar amount you type
+is read once and then held as coin.
+
+Watch list refresh interacts with the bot's own timeframe rather than standing on
+its own. The count is candles, so the same 60 is one hour on a one-minute bot and
+two and a half days on an hourly one. A reader who wants an hourly re-rank must
+set the count against the timeframe the bot is on.
+
+```
+setting                the page opens at   the fleet holds       a live bot reads it
+Chunk size (USD)       $100.00             the opening figure    no
+Artillery size (USD)   $5.00               the opening figure    no
+Watch list top-N       8                   8 on 38               no
+Watch list refresh     60 candles          60 on 38              no
+Exit %                 100.0 %             100.0 on 38           no
+```
+
+The eight rows marked Removed above have no figure to report. They are off both
+screens and off the engine's declaration, so nothing saves a value for them.
+
 ### Additional Main Window > Trading Tab Features
 
 #### Trade Logic and Gate Activity
@@ -4296,6 +4632,14 @@ thread ends the process. An entry carries a timestamp, the exchange name, the
 action and a Reason line, then Endpoint, Result, Response time and Data usage
 wherever the record holds them. Pause API Log buffers up to 2,000 lines and
 flushes them on resume with a count.
+
+An order the venue refuses writes its own entry. The entry reads
+`ORDER_REFUSED`, carries the venue's own message on its Reason and Result lines,
+and is marked as an error. Every entry marked error or warning is also appended
+to `api_failures.ndjson` in the `api/` bucket of the runtime log directory, so a
+refusal is readable after a restart. The file rotates at 5 MB and keeps five
+backups, which bounds the set at six files. Every other entry lives in memory
+for the run and goes when the process goes.
 
 `src/gui/main_window.py` — `_on_api_event`, the thread check
 

@@ -102,7 +102,6 @@ class BotContainer:
         self._pause_event.set()  # Not paused initially
         self._start_time: float = 0.0
         self._bus = get_event_bus()
-        self._volume_guard = None  # set by BotManager.set_volume_guard
         self._data_pool = None  # set by BotManager.set_data_pool
         self._market_rules_cache: dict[str, "MarketRules"] = {}
         self._phantoms_enabled: bool = False
@@ -263,18 +262,17 @@ class BotContainer:
         amount: float,
         price: Optional[float] = None,
         purpose: str = "trade",
-    ) -> Optional["Order"]:
-        """Place an order via the VolumeGuard or ``exchange.place_order``,
-        sizing ``amount`` onto the market's own rules first and refusing a
-        non-finite, non-positive or sub-minimum size with ``PRE-FLIGHT
-        REJECTED``.
+    ) -> Optional[Order]:
+        """Place an order through ``exchange.place_order``, sizing ``amount``
+        onto the market's own rules first and refusing a non-finite,
+        non-positive or sub-minimum size with ``PRE-FLIGHT REJECTED``.
 
         OVERTAKEN: "sizing ``amount`` onto the market's own rules first".
         ``amount`` reaches ``place_order`` unchanged; the market's rules are read
         to refuse a sub-minimum size and a sub-minimum notional, and
         ``CCXTConnector.place_order`` is where a size is stepped.
         """
-        from ..exchange.base import OrderSide, OrderType, Order, OrderStatus
+        from ..exchange.base import OrderSide, OrderType
 
         # Exact type test: ``isinstance`` would admit bool, and every
         # comparison against NaN below is False.
@@ -401,8 +399,8 @@ class BotContainer:
             )
             return None
 
-        # The venue's own rules pick the variant. Both branches run before the
-        # VolumeGuard, which reads ``order_type`` for its own word.
+        # The venue's own rules pick the variant, and both branches run before
+        # the order is sent.
         _ref_px = 0.0
         if price is not None and type(price) in (int, float):
             _ref_px = float(price)
@@ -453,40 +451,6 @@ class BotContainer:
                 f"LIMIT FOR A VENUE TAKING NO MARKET ORDER: {_side_str} "
                 f"{symbol} {_amt:.10f} at ${_limit_px:.8f} on a price tick of "
                 f"{_rules.price_increment} ({_variant})."
-            )
-
-        if self._volume_guard and self._volume_guard.enabled:
-            side_str = "buy" if side == OrderSide.BUY else "sell"
-            ot_str = "market" if order_type == OrderType.MARKET else "limit"
-            report = await self._volume_guard.execute(
-                symbol,
-                side_str,
-                amount,
-                price=price or 0,
-                order_type=ot_str,
-                exchange=self.exchange,
-            )
-
-            if not report.success:
-                raise Exception(f"VolumeGuard execution failed: {report.reason}")
-
-            self._invalidate_symbol_balances(symbol)
-            return Order(
-                id=f"vg_{int(time.time()*1000)}",
-                symbol=symbol,
-                side=side,
-                type=order_type,
-                amount=report.requested_amount,
-                price=report.avg_fill_price,
-                filled=report.executed_amount,
-                remaining=report.requested_amount - report.executed_amount,
-                average=report.avg_fill_price,
-                status=(
-                    OrderStatus.CLOSED
-                    if report.executed_amount > 0
-                    else OrderStatus.FAILED
-                ),
-                timestamp=time.time(),
             )
 
         # Deterministic client_order_id derived from the trade intent,
@@ -771,6 +735,11 @@ class BotContainer:
                 "exchange_data_fresh_ts": float(
                     getattr(self.stats, "exchange_data_fresh_ts", 0.0) or 0.0
                 ),
+                # The fills behind total_trades, published beside it so a
+                # multi-piece order is readable as one trade and several fills.
+                "exchange_fill_count": int(
+                    getattr(self.stats, "exchange_fill_count", 0) or 0
+                ),
                 # Saved beside the figure it describes, so a restart draws the
                 # last complete reading instead of recomputing a short one.
                 "fill_history_complete": bool(
@@ -871,7 +840,6 @@ class BotManager(StateRestoreMixin, BotRegistryMixin, FleetAggregationMixin):
         self._bus = bus if bus is not None else get_event_bus()
         self._state_manager = None
         self._ta_weights: Optional[dict] = None  # set from the settings store
-        self._volume_guard = None  # one VolumeGuard shared by every bot
         self._data_pool = None  # one MarketDataPool shared by every bot
         self._ticker_refresh_task = None
         self._ticker_refresh_stop = False
@@ -1007,15 +975,6 @@ class BotManager(StateRestoreMixin, BotRegistryMixin, FleetAggregationMixin):
         except Exception as exc:
             logger.warning("force_fire failed on %s: %s", bot_id, exc)
             return False
-
-    def set_volume_guard(self, guard) -> None:
-        """Attach a VolumeGuard for market-safe trade execution."""
-        self._volume_guard = guard
-        for bot in self._bots.values():
-            bot._volume_guard = guard
-        logger.info(
-            "VolumeGuard attached to BotManager (%d existing bots)", len(self._bots)
-        )
 
     def set_data_pool(self, pool) -> None:
         """Attach shared MarketDataPool for efficient API usage."""

@@ -206,6 +206,10 @@ jobs:
       QT_QPA_PLATFORM: offscreen
     steps:
       - uses: actions/checkout@v7
+        with:
+          # Full history so gui_archetype can read its reference commit; a
+          # shallow clone makes `git archive` on that commit exit 128.
+          fetch-depth: 0
       - uses: actions/setup-python@v7
         with:
           python-version-file: .python-version

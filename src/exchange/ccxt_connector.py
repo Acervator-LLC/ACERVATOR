@@ -1280,6 +1280,27 @@ class CCXTConnector(ExchangeInterface):
                     exec_price,
                 )
         except Exception as _exc:
+            _venue_said = f"{type(_exc).__name__}: {_exc}"
+            _log.record(
+                exchange=self._exchange_id,
+                action="ORDER_REFUSED",
+                reason=(
+                    f"{self._exchange_id} refused {side.value.upper()} "
+                    f"{order_type.value} on {symbol}: {_venue_said}"
+                ),
+                endpoint="create_order",
+                params={
+                    "symbol": symbol,
+                    "side": side.value,
+                    "type": order_type.value,
+                    "amount": float(amount),
+                    "price": exec_price,
+                },
+                result=f"ERROR: {_venue_said}",
+                elapsed_ms=(time.monotonic() - start) * 1000,
+                level="error",
+                data_usage="No fill is booked. The breaker counts this failure.",
+            )
             # The breaker opens after enough consecutive failures.
             _breaker.record_failure(_exc)
             raise

@@ -1,7 +1,7 @@
 """``APITesterTab`` drives one exchange call at a time through its own connector.
 
 ``_do_connect`` decrypts the stored key and secret and then hands the live
-``CCXTConnector`` to ``set_history_callback`` and to ``_bot_manager.set_connector``.
+``CCXTConnector`` to ``set_history_callback``. No bot receives it.
 """
 
 from __future__ import annotations
@@ -53,7 +53,7 @@ if _HAS_QT:
             layout.setSpacing(4)
 
             conn_group = QGroupBox(
-                "Exchange Connection (Isolated - does not affect bots)"
+                "Exchange Connection (this screen only - your bots are not touched)"
             )
             conn_layout = QVBoxLayout(conn_group)
             conn_layout.setContentsMargins(6, 14, 6, 6)
@@ -301,7 +301,8 @@ if _HAS_QT:
                     f"CONNECTED to {eid.capitalize()}",
                     f"Markets: {shown}\n"
                     f"Auth: not checked - press Fetch Balances\n"
-                    f"This connection is isolated from bots.",
+                    f"This connection is for this screen only. "
+                    f"Your bots are not touched.",
                     elapsed,
                     "success",
                 )
@@ -314,8 +315,6 @@ if _HAS_QT:
                         conn.set_history_callback(
                             main_win._trade_history_tab.get_history_callback()
                         )
-                        if hasattr(main_win, "_bot_manager") and main_win._bot_manager:
-                            main_win._bot_manager.set_connector(conn)
                 except Exception as _e:
                     logger.debug("History callback registration: %s", _e)
             except Exception as exc:

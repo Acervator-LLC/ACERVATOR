@@ -3,8 +3,11 @@
 A how-to. It takes a new owner from the Releases page to a running fleet, one
 screen at a time.
 
-Each page is one step. A step carries one picture, one instruction, and one line
-saying what changes.
+Each page is one step. A step carries one picture. A step that is a navigation
+action carries the instruction for that action. A step that covers a setting names
+the control, says what the bot does differently when it moves, says which other
+setting it touches, says what a wrong choice costs, and gives the value the live
+fleet runs against the value the field opens on.
 
 The first five pictures are the operator's own captures of the Releases page,
 cropped to the part each caption concerns. They sit in `supplied/`, and the
@@ -51,7 +54,7 @@ it. Numbering the pages again is this table's job and nothing else's.
 | 14 | [The price window](14-the-price-window.md) | Set the ceiling and the floor. |
 | 15 | [What a cycle keeps](15-what-a-cycle-keeps.md) | Set the compounding rows. |
 | 16 | [The reserve for a dip](16-the-reserve-for-a-dip.md) | Settle the hedge reserve. |
-| 17 | [Leave the shadow bot off](17-leave-the-shadow-bot-off.md) | Settle the phantom bots. |
+| 17 | [The shadow bot](17-leave-the-shadow-bot-off.md) | Settle the phantom bots. |
 | 18 | [How long a lock holds](18-how-long-a-lock-holds.md) | Settle the lock duration. |
 | 19 | [Create the bot](19-create-the-bot.md) | Finish the wizard. |
 | 20 | [Make the fleet](20-make-the-fleet.md) | Create more bots from one. |

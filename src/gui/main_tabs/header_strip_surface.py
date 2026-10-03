@@ -306,18 +306,23 @@ CARD_LABEL_PROPERTY = "muted"
 CARD_VALUE_PROPERTY = "heading"
 
 SCRUMMED_TOOLTIP = (
-    "Total Scrummed (high score) — cumulative USD sold "
-    "across all bots since the platform run started. Grows "
-    "with every SCRUM (sell at upper-band) + MANUAL_SCRUM "
-    "fill. Resets to $0.00 only on a fresh process start."
+    "Total Scrummed (high score) — the dollars every bot has sold "
+    "so far this year. The figure comes from the exchange's own "
+    "trade history, so the venue and the card agree. Every sell "
+    "adds to it. It survives a restart."
 )
 FOLDED_TOOLTIP = (
-    "Total Folded (high score) — cumulative USD bought "
-    "across all bots since the platform run started. Grows "
-    "with every FOLD (buy at lower-band) + MANUAL_FOLD "
-    "fill. Resets to $0.00 only on a fresh process start."
+    "Total Folded (high score) — the dollars every bot has bought "
+    "so far this year. The figure comes from the exchange's own "
+    "trade history, so the venue and the card agree. Every buy "
+    "adds to it. It survives a restart."
 )
-TRADES_TOOLTIP = "Total executed buy and sell trades across all active bots."
+TRADES_TOOLTIP = (
+    "Total Trades — the orders the exchange has filled for every bot so "
+    "far this year. One order counts once, however many pieces the "
+    "exchange filled it in. A bot the exchange has not answered for "
+    "completely counts nothing rather than its last figure."
+)
 BOTS_TOOLTIP = "Bots currently in RUNNING state (actively trading)."
 ERRORS_TOOLTIP = (
     "Error count across all bots since last reset. "

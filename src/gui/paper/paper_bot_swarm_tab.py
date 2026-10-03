@@ -169,7 +169,7 @@ class PaperBotSwarmTabMixin:
             else:
                 pf.addRow("Predominant funder (PPS):", QLabel("— (SEED-funded only)"))
 
-            # These three feed can_fund_new_bot, which no caller reaches.
+            # Read-outs; no code in this build writes mature_profit_allocated.
             try:
                 mature_total = float(ledger.mature_profit_total)
                 mature_avail = float(ledger.mature_profit_available)
