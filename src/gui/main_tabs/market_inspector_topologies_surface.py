@@ -188,6 +188,9 @@ STATUS_UNWIRED = "No proposal source wired yet."
 STATUS_READY = "Ready — press Refresh."
 STATUS_COUNT_FORMAT = "{proposals} proposal(s); {dismissed} dismissed"
 STATUS_ERROR_FORMAT = "Detector error: {error_text}"
+STATUS_SAVE_FAILED_FORMAT = (
+    "Dismissal NOT saved: {error_text} — this card returns on the next launch."
+)
 STATUS_STYLE = "color: #aaa; font-size: 11px;"
 LIST_GROUP_TITLE = "Topology Proposals"
 SCROLL_WIDGET_RESIZABLE = True
@@ -491,6 +494,11 @@ def status_error(error_text: Any) -> str:
     return STATUS_ERROR_FORMAT.format(error_text=error_text)
 
 
+def status_save_failed(error_text: Any) -> str:
+    """The line the pane shows when the store refused a dismissal."""
+    return STATUS_SAVE_FAILED_FORMAT.format(error_text=error_text)
+
+
 def confirm_text(proposal_id: Any) -> str:
     """The question the pane asks before it suppresses a proposal."""
     return CONFIRM_TEXT_FORMAT.format(proposal_id=proposal_id)
@@ -747,6 +755,7 @@ class TopologiesPaneModel:
         self.cards: list = []
         self.scroll_body: list = []
         self.status_text = STATUS_UNWIRED
+        self.save_error = ""
         self.timer_interval_ms = AUTO_REFRESH_MS
         self.timer_running = TIMER_STARTED_AT_BUILD
         self.previews: list = []
@@ -809,8 +818,14 @@ class TopologiesPaneModel:
         self.calls.append([REFRESH_FILTERED, len(self.proposals)])
         self.render()
         self.calls.append([REFRESH_RENDERED])
-        self.status_text = status_count(len(self.proposals), len(self.dismissed))
+        self.status_text = self.status_line()
         self.calls.append([REFRESH_COUNTED])
+
+    def status_line(self) -> str:
+        """The count beside Refresh, or the unsaved-dismissal line over it."""
+        if self.save_error:
+            return status_save_failed(self.save_error)
+        return status_count(len(self.proposals), len(self.dismissed))
 
     def current_proposals(self) -> list:
         """The non-dismissed proposals currently on display."""
@@ -832,6 +847,7 @@ class TopologiesPaneModel:
         ]
         self.calls.append([DISMISS_DROPPED, len(self.proposals)])
         self.render()
+        self.status_text = self.status_line()
 
     def is_dismissed(self, proposal_id: Any, now: Optional[float] = None) -> bool:
         """Whether one id is still suppressed, dropping it once it lapses."""
@@ -885,15 +901,20 @@ class TopologiesPaneModel:
                 loaded += 1
         self.warnings.append([LEVEL_INFO, load_restored_line(loaded, len(raw))])
         self.calls.append([STORE_LOADED, loaded, len(raw)])
+        if loaded < len(raw):
+            self.persist_dismissed()
 
     def persist_dismissed(self) -> None:
-        """Best-effort write-through. Never raises."""
+        """Write the held dismissals to the store, recording a refusal."""
         if self.dismiss_store is None:
             return
         try:
             self.dismiss_store.set(DISMISS_SETTINGS_KEY, dict(self.dismissed))
         except Exception as exc:
+            self.save_error = str(exc)
             self.warnings.append([LEVEL_WARNING, persist_failed_line(exc)])
+        else:
+            self.save_error = ""
 
     def clear_cards(self) -> None:
         """Take every card and every stretch out of the list."""
@@ -1006,6 +1027,7 @@ def build_view_model(model: TopologiesPaneModel) -> dict:
                 [str(key) for key in one[1]]
                 for one in getattr(model.dismiss_store, "wrote", [])
             ],
+            "save_error": model.save_error,
         },
         "score": {
             "high": SCORE_HIGH,
@@ -1117,6 +1139,7 @@ def build_view_model(model: TopologiesPaneModel) -> dict:
             "status_ready": STATUS_READY,
             "status_count_format": STATUS_COUNT_FORMAT,
             "status_error_format": STATUS_ERROR_FORMAT,
+            "status_save_failed_format": STATUS_SAVE_FAILED_FORMAT,
             "status_style": STATUS_STYLE,
             "group_margins": list(GROUP_MARGINS_PX),
             "list_group_title": LIST_GROUP_TITLE,
