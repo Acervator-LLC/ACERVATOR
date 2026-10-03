@@ -286,7 +286,7 @@ run says the refusal still fires.
   proving the same handler sees a value placed in a benign field. One substring
   covers two credential spellings at once.
 - One module calls the venue's order method directly: the bot container, inside
-  the guard itself. Ten sites across three trading modules call the guard, and no
+  the guard itself. Nine sites across three trading modules call the guard, and no
   other route out exists. Five checks cover it: one drives unusable amount shapes
   into a recorder standing where the exchange stands, one drives a real amount
   through as the positive control, and three more pin the text of the refusal and
@@ -303,7 +303,7 @@ exchange.place_order called by      src/trading/bot_container.py
 guarded_place_order called by       src/trading/scrumming/execution.py
                                     src/trading/scrumming_bot.py
                                     src/trading/extractor_bot.py
-                                    ten sites, no other route out
+                                    nine sites, no other route out
 tests/test_u6_venue_amount_gate.py      five checks
 ```
 
