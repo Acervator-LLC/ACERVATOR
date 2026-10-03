@@ -93,8 +93,6 @@ class TradeJournal:
         self._load_recent()
 
     def record(self, entry: JournalEntry):
-
-        # sadp: R28 R29 R33  # reconcile record: fail-loudly(R28) idempotent(R29) append-only(R33)
         """Record a journal entry (memory + disk)."""
         self._entries.append(entry)
         if len(self._entries) > self._max_memory:
@@ -127,8 +125,6 @@ class TradeJournal:
         execution_strategy: str = "market",
         slippage_pct: float = 0,
     ):
-
-        # sadp: R28 R29 R33  # reconcile record: fail-loudly(R28) idempotent(R29) append-only(R33)
         """Convenience method to record from trade parameters."""
         ta_dir = ""
         ta_conf = 0.0
@@ -204,8 +200,6 @@ class TradeJournal:
         }
 
     def _write_entry(self, entry: JournalEntry):
-
-        # sadp: R28 R33  # journal write: fail-loudly(R28) append-only(R33)
         """Append entry to daily journal file."""
         try:
             date_str = time.strftime("%Y-%m-%d", time.localtime(entry.timestamp))
