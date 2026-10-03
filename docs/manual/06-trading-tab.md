@@ -3705,7 +3705,7 @@ def get_config(self):
     checked = [
         tf
         for tf, cb in self._tf_checks.items()
-        if cb.isChecked() and cb.isEnabled()
+        if cb.isChecked() and not self._timeframe_refusal(tf)
     ]
     return {
         "enable_phantoms": self._enable.isChecked(),
@@ -3715,11 +3715,18 @@ def get_config(self):
 ```
 
 `enable_phantoms` and `phantom_timeframes` reach the bot as arguments to
-`ScrummingBot.__init__` rather than through the bot config. `lock_candle_count` is
-no field on `BotConfig` and no argument of that constructor: the phantom
-coordinator holds an attribute of that name, and Bot Settings writes it there on a
-running bot. A stored timeframe the venue does not serve reaches the bot as an
-empty list, and the bot writes its own note naming the entry it dropped.
+`ScrummingBot.__init__` rather than through the bot config, so the box and the
+timeframe on this page are what the new bot opens on. A stored timeframe the
+venue does not serve reaches the bot as an empty list, and the bot writes its own
+note naming the entry it dropped.
+
+`lock_candle_count` is the one figure on this page a new bot does not receive. It
+is no field on `BotConfig` and no argument of that constructor: the phantom
+coordinator holds an attribute of that name, and Bot Settings writes it there on
+a running bot, which opens on the coordinator's own default of two. The attribute
+changes nothing yet either way. `TimeframeCoordinator.create_lock` is the only
+code that reads it, nothing calls `create_lock`, and so the lock list stays
+empty and `is_locked` answers no on every pass.
 
 **Design intention.** The engine behind this page is unfinished. The Indicator
 Voting Panel section of this manual records that phantom bots are still in
@@ -6064,12 +6071,18 @@ the handler written for it. A record holding a boolean where a list belongs, or 
 where a quantity belongs, is one skipped bot, named in the restart ledger, and the
 fleet around it comes back.
 
-**Three settings the wizard collects that a new bot cannot read.**
+**Two settings the wizard collects that a new bot cannot read.**
 
 | setting | why |
 |---|---|
-| Lock duration (candles) | `lock_candle_count` is no field on `BotConfig` and no argument of `ScrummingBot.__init__`. The phantom coordinator holds an attribute of that name, and Bot Settings writes it there on a running bot. |
+| Lock duration (candles) | `lock_candle_count` is no field on `BotConfig` and no argument of `ScrummingBot.__init__`. The phantom coordinator holds an attribute of that name, and Bot Settings writes it there on a running bot. Nothing calls `TimeframeCoordinator.create_lock`, the one reader of that attribute, so the figure changes no decision on a running bot either. |
 | Profit Folding, on an Extractor | `BotCreationWizard.get_bot_config` writes the flag False for an Extractor. The field is Scrumming-only, so the factory refuses it on an Extractor config, and no control types it. |
+
+**Two the wizard collects that a new bot does read.** `enable_phantoms` and
+`phantom_timeframes` reach `ScrummingBot.__init__` as arguments from
+`src/gui/main_window.py`, so the figure on the phantom page is the figure the
+new bot opens on. The selector drops both, and the constructor call carries
+them instead.
 
 ### The Profit Folding Active row on a running bot
 
@@ -6081,7 +6094,7 @@ Settings group does, and so does the row list the shell draws from.
 | Where | `src/gui/live_settings/settings_tab.py` |
 | React row | `src/gui/main_tabs/live_settings_tab_surface.py` |
 | Kind | checkbox, on at the start |
-| What it writes | the bot config key the engine reads four times |
+| What it writes | the bot config key the engine reads seven times: three decide a fold, three write a log line, one fills a snapshot |
 
 ```
 on   surplus $10.00 applied $2.00   target $200.00 became $202.00   preview $2.00
@@ -6103,8 +6116,10 @@ f"compound-growth feature is off for "
 f"this bot. No target bump."
 ```
 
-The creation wizard holds a checkbox for the same flag on a page no route reaches, so
-a new bot opens on the declared default until that page is reachable.
+No wizard holds a checkbox for this flag. Each of the four wizard builds names
+`profit_folding_active` once, and every one of those writes is the Extractor
+branch switching it off. A new Scrumming bot therefore opens on the declared
+default, which is on, and this row is the only control over it.
 
 ### The Tranche Despawn Timer
 
