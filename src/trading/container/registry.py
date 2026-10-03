@@ -24,7 +24,6 @@ class BotRegistryMixin:
     _restore_ledger: dict
     _smart_wire_mgr: Any
     _state_manager: Any
-    _volume_guard: Any
 
     def register(self, bot: BotContainer) -> tuple[bool, "Optional[str]"]:
         """Add ``bot`` to ``_bots`` and return ``(granted, refusal_reason)``.
@@ -35,8 +34,6 @@ class BotRegistryMixin:
         bot's live pull so its holdings are not 0 until the first tick.
         """
         self._bots[bot.bot_id] = bot
-        if self._volume_guard:
-            bot._volume_guard = self._volume_guard
         if hasattr(self, "_data_pool") and self._data_pool:
             bot._data_pool = self._data_pool
         # attach_bot fills _bot_refs; register_bot fills _ledgers, where the
