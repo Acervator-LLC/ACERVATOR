@@ -164,13 +164,12 @@ The table renders those fields and derives none of them. A cost, a grade, a
 colour or a gate light on screen is always the contract's answer, which is what
 keeps a second implementation of History from growing behind the renderer.
 
-Two strings depart from that pattern. The contract already declares the summary
-line and the page counter, and the tab builds both itself, so two
-implementations of the same two strings stand in the tree. Issue #425 carries
-it.
+The footer's two strings follow the same rule. The contract declares the page
+counter and the summary line, and the tab calls the contract for both, so one
+arithmetic produces each string for every surface that draws it.
 
-`src/exchange/history_read_contract.py` — `page_label`, the declaration the tab
-does not call
+`src/exchange/history_read_contract.py` — `page_label`, the counter the tab
+calls
 
 ```python
 def page_label(page: int, total: int) -> str:
@@ -422,10 +421,9 @@ the table item under that cell blank. A row whose gate log holds no entry has no
 lights cell, and there the table item carries the `no record` text itself.
 
 Prev, the page counter and Next page the result at the foot, and Export CSV
-writes the current selection out. The tab builds the summary line and the page
-counter itself, and the read contract already declares both, so two
-implementations of the same two strings stand in the tree. Issue #425 carries
-it.
+writes the current selection out. The read contract declares both footer
+strings, and the tab calls it for both, so the counter and the summary read the
+same on this tab as on the React panel.
 
 History Tab (React):
 
