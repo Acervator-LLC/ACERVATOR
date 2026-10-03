@@ -1667,8 +1667,6 @@ QUOTE_ASSETS = frozenset({"USD", "USDC"})
 BUY_KINDS = frozenset({"Advanced Trade Buy", "Buy"})
 SELL_KINDS = frozenset({"Advanced Trade Sell", "Sell"})
 EXPORT_HEADER_CELL = "Transaction Type"
-PLACARD_COLUMNS = 4
-PLACARD_ROWS = 2
 FIGURE_SIZE = (11.0, 8.0)
 ASSET_FIGURE_SIZE = (9.0, 4.5)
 WEEKLY_TICK_STEP = 8
@@ -1967,34 +1965,6 @@ def regime_turn(
     )
 
 
-def panel_pages(labels: Sequence[str], per_page: int) -> list[list[str]]:
-    """Return labels split into pages of at most per_page entries."""
-    return [list(labels[i : i + per_page]) for i in range(0, len(labels), per_page)]
-
-
-def _new_grid(rows: int, columns: int) -> tuple[Figure, Any]:
-    """Return a figure and its axes grid, sized and coloured from the design tokens."""
-    apply_rcparams()
-    figure, axes = plt.subplots(
-        rows,
-        columns,
-        figsize=FIGURE_SIZE,
-        dpi=FIGURE_DPI,
-        facecolor=ink("bg"),
-    )
-    return figure, axes
-
-
-def _flat_axes(axes: Any, total: int) -> list[Any]:
-    """Return the axes grid as one list of length total."""
-    return list(axes.flat)[:total] if hasattr(axes, "flat") else [axes][:total]
-
-
-def _blank(axis: Any) -> None:
-    """Hide every spine, tick and label on one axis."""
-    axis.set_axis_off()
-
-
 def _draw_weekly(axis: Any, label: str, bars: Sequence[Sequence[float]]) -> None:
     """Draw one base's weekly candles on axis, with a logarithmic price axis on a
     wide span."""
@@ -2144,40 +2114,36 @@ def _write_asset_traces(
     return out
 
 
-def _write_placards(
-    figures_dir: Path,
-    labels: Mapping[str, str],
-) -> list[tuple[str, str]]:
-    """Write the obscured position-card sheets, eight cards to a page."""
-    cards: dict[str, Path] = {}
+def placard_sources(labels: Mapping[str, str]) -> dict[str, Path]:
+    """Return each label's supplied position card, keyed by the label its ticker maps
+    to."""
+    found: dict[str, Path] = {}
     for path in sorted(PLACARDS_DIR.glob("*.png")):
         ticker = path.name.split("_")[0].upper()
         if ticker in labels:
-            cards[labels[ticker]] = path
-    per_page = PLACARD_ROWS * PLACARD_COLUMNS
-    pages = panel_pages(sorted(cards), per_page)
+            found[labels[ticker]] = path
+    return found
+
+
+def _write_asset_placards(
+    figures_dir: Path,
+    labels: Mapping[str, str],
+) -> list[tuple[str, str]]:
+    """Write one obscured position card per charted base, named for that base's label.
+
+    A base the venue supplied no card for reports absent and writes nothing, so the
+    page that embeds it stops the build by name."""
+    sources = placard_sources(labels)
+    figures_dir.mkdir(parents=True, exist_ok=True)
     out: list[tuple[str, str]] = []
-    if not pages:
-        held = sorted(p.name for p in figures_dir.glob("evidence_placards_*.png"))
-        return [
-            (name, f"absent - no position card input under {PLACARDS_DIR.name}")
-            for name in held or ["evidence_placards_01.png"]
-        ]
-    for number, page in enumerate(pages, 1):
-        name = f"evidence_placards_{number:02d}.png"
-        figure, axes = _new_grid(PLACARD_ROWS, PLACARD_COLUMNS)
-        panes = _flat_axes(axes, per_page)
-        for axis, label in zip(panes, page):
-            axis.imshow(obscured_placard(cards[label], label))
-            _blank(axis)
-        for axis in panes[len(page) :]:
-            _blank(axis)
-        figure.suptitle(
-            f"Venue position cards, {page[0]} to {page[-1]}",
-            fontsize=size("h3"),
-            color=ink("ink_strong"),
-        )
-        out.append((name, _save(figure, figures_dir / name)))
+    for label in sorted(labels.values()):
+        name = asset_figure_name("card", label)
+        src = sources.get(label)
+        if src is None:
+            out.append((name, f"absent - no position card input for {label}"))
+            continue
+        obscured_placard(src, label).save(figures_dir / name)
+        out.append((name, "wrote"))
     return out
 
 
@@ -2363,7 +2329,7 @@ def write_evidence_figures(figures_dir: Path) -> list[tuple[str, str]]:
     names = [
         asset_figure_name("weekly", "a<NN>"),
         asset_figure_name("trace", "a<NN>"),
-        *(f"evidence_placards_{n:02d}.png" for n in range(1, 6)),
+        asset_figure_name("card", "a<NN>"),
         "evidence_hodl_units.png",
         "evidence_hodl_dollars.png",
         "evidence_market.png",
@@ -2380,7 +2346,7 @@ def write_evidence_figures(figures_dir: Path) -> list[tuple[str, str]]:
     candles = {asset: tablet_candles(asset) for asset in labels}
     out = _write_asset_weekly(figures_dir, labels, candles)
     out += _write_asset_traces(figures_dir, labels, candles)
-    out += _write_placards(figures_dir, labels)
+    out += _write_asset_placards(figures_dir, labels)
     rows = hodl_rows(fills, labels, candles)
     out.append(_write_hodl_units(figures_dir, rows))
     out.append(_write_hodl_dollars(figures_dir, rows))
