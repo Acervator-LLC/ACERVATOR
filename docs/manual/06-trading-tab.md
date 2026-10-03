@@ -4631,6 +4631,14 @@ action and a Reason line, then Endpoint, Result, Response time and Data usage
 wherever the record holds them. Pause API Log buffers up to 2,000 lines and
 flushes them on resume with a count.
 
+An order the venue refuses writes its own entry. The entry reads
+`ORDER_REFUSED`, carries the venue's own message on its Reason and Result lines,
+and is marked as an error. Every entry marked error or warning is also appended
+to `api_failures.ndjson` in the `api/` bucket of the runtime log directory, so a
+refusal is readable after a restart. The file rotates at 5 MB and keeps five
+backups, which bounds the set at six files. Every other entry lives in memory
+for the run and goes when the process goes.
+
 `src/gui/main_window.py` — `_on_api_event`, the thread check
 
 ```python
