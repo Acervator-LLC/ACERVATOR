@@ -285,13 +285,12 @@ run says the refusal still fires.
   control, and read the emitted log line for any param value — with a control
   proving the same handler sees a value placed in a benign field. One substring
   covers two credential spellings at once.
-- Two modules call the venue's order method directly: the bot container, inside
-  the guard itself, and the volume guard the container dispatches to. Ten sites
-  across three trading modules call the guard, and no other route out exists.
-  Five checks cover it: one drives unusable amount shapes into a recorder
-  standing where the exchange stands, one drives a real amount through as the
-  positive control, and three more pin the text of the refusal and which check
-  turns an undersized order back.
+- One module calls the venue's order method directly: the bot container, inside
+  the guard itself. Ten sites across three trading modules call the guard, and no
+  other route out exists. Five checks cover it: one drives unusable amount shapes
+  into a recorder standing where the exchange stands, one drives a real amount
+  through as the positive control, and three more pin the text of the refusal and
+  which check turns an undersized order back.
 
 The modules on each side of the last two, and the one substring that covers two
 spellings:
@@ -301,7 +300,6 @@ tests/test_api_logger_redaction.py      "sign" masks signature and CB-ACCESS-SIG
                                         the control places a value in reason
 
 exchange.place_order called by      src/trading/bot_container.py
-                                    src/trading/volume_guard.py
 guarded_place_order called by       src/trading/scrumming/execution.py
                                     src/trading/scrumming_bot.py
                                     src/trading/extractor_bot.py
