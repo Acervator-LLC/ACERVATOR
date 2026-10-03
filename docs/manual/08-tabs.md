@@ -634,23 +634,24 @@ the score: teal at the high threshold and above, amber at the middle one, grey
 below. Every card in the figure comes from the sector-cluster detector. Preview
 lists the wires as Source, Target, Pct and Rationale.
 
-Dismiss hides a card for a day, and the dismissal does not survive a restart.
-The write-through never raises, so the pane logs the failure and carries on,
-which leaves the dismissed count at zero on every launch.
+Dismiss hides a card for a day, and the dismissal survives a restart. The pane
+writes the held ids into the operator's settings under
+`topology_dismissed_proposals` and reads them back on the next launch, so the
+count beside Refresh names what is held rather than zero.
 
 `src/gui/main_tabs/market_inspector_topologies_surface.py` — `persist_dismissed`
 
 ```python
 def persist_dismissed(self) -> None:
-    """Best-effort write-through. Never raises."""
+    """Write the held dismissals to the store, recording a refusal."""
     if self.dismiss_store is None:
         return
     try:
-    self.dismiss_store.set(DISMISS_SETTINGS_KEY, dict(self.dismissed))
+        self.dismiss_store.set(DISMISS_SETTINGS_KEY, dict(self.dismissed))
 ```
 
-The key it writes is not one the settings schema declares, so the write fails
-every time. Issue #424 carries it.
+A refused write puts `Dismissal NOT saved:` and the cause on that same line in
+place of the count, and the card stays hidden for the session.
 
 The footer names the auto-refresh period and the adopt route. The status bar
 under it carries the API load pill, drawn green below half load, amber above
