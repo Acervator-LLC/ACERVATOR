@@ -40,9 +40,13 @@ from .main_tabs.market_inspector_topologies_surface import (
     REFRESH_TEXT,
     REFRESH_TOOLTIP,
     REFRESH_WIDTH_PX,
+    STATUS_READY,
     STATUS_STYLE,
     STATUS_UNWIRED,
     pane_view,
+    status_count,
+    status_error,
+    status_save_failed,
 )
 
 logger = logging.getLogger("acervator.topology_proposals_gui")
@@ -277,6 +281,8 @@ if _HAS_QT:
             self._dismissed: dict[str, float] = {}
             # Injected by ``set_dismiss_store``; unset keeps dismissals in memory.
             self._dismiss_store: Optional[Any] = None
+            # The store's refusal text while a dismissal stands unsaved.
+            self._save_error: str = ""
             self._proposals: list[dict[str, Any]] = []
             self._at = 0
             self._expanded = False
@@ -333,7 +339,7 @@ if _HAS_QT:
             getter: Callable[[], list[dict]],
         ) -> None:
             self._proposal_source = getter
-            self._status_lbl.setText("Ready — press Refresh.")
+            self._status_lbl.setText(STATUS_READY)
 
         def set_scan_state_source(self, getter: Callable[[], Any]) -> None:
             """Wire the Inspector scan state the empty sentence is built from."""
@@ -357,16 +363,19 @@ if _HAS_QT:
                 raw = self._proposal_source() or []
             except Exception as exc:  # noqa: BLE001 - detector surface
                 logger.exception("topology proposals refresh failed: %s", exc)
-                self._status_lbl.setText(f"Detector error: {exc}")
+                self._status_lbl.setText(status_error(exc))
                 return
             now = time.time()
             self._sweep_dismissed(now)
             self._proposals = [p for p in raw if p.get("id") not in self._dismissed]
             self._render()
-            self._status_lbl.setText(
-                f"{len(self._proposals)} proposal(s); "
-                f"{len(self._dismissed)} dismissed"
-            )
+            self._status_lbl.setText(self._status_line())
+
+        def _status_line(self) -> str:
+            """The count beside Refresh, or the unsaved-dismissal line over it."""
+            if self._save_error:
+                return status_save_failed(self._save_error)
+            return status_count(len(self._proposals), len(self._dismissed))
 
         def current_proposals(self) -> list:
             """The non-dismissed proposals currently on display.
@@ -400,6 +409,7 @@ if _HAS_QT:
             self._persist_dismissed()
             self._proposals = [p for p in self._proposals if p.get("id") != proposal_id]
             self._render()
+            self._status_lbl.setText(self._status_line())
 
         def is_dismissed(
             self,
@@ -462,19 +472,24 @@ if _HAS_QT:
                 loaded,
                 len(raw),
             )
+            if loaded < len(raw):
+                self._persist_dismissed()
 
         def _persist_dismissed(self) -> None:
-            """Write ``_dismissed`` to the store. Logs and returns on failure."""
+            """Write ``_dismissed`` to the store, recording a refusal."""
             if self._dismiss_store is None:
                 return
             try:
                 self._dismiss_store.set(DISMISS_SETTINGS_KEY, dict(self._dismissed))
-            except Exception as exc:  # persistence is best-effort
+            except Exception as exc:  # _save_error carries it to the status line
+                self._save_error = str(exc)
                 logger.warning(
                     "topology dismissal could not be persisted (%s); it "
                     "will not survive restart",
                     exc,
                 )
+            else:
+                self._save_error = ""
 
         # ── rendering ────────────────────────────────────────────────
         def _shown(self) -> int:

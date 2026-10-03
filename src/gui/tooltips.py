@@ -15,8 +15,9 @@ from PySide6.QtWidgets import QApplication, QProxyStyle, QStyle, QWidget
 
 __all__ = ["TOOLTIP_DELAY_MS", "WakeDelayStyle", "install", "set_description"]
 
-#: Milliseconds the pointer rests on a control before Qt draws its description.
-TOOLTIP_DELAY_MS = 3000
+#: Milliseconds the pointer must rest UNMOVED before Qt draws a description;
+#: Qt restarts this wait on every pointer move, however small.
+TOOLTIP_DELAY_MS = 1000
 
 
 def set_description(widget: QWidget, text: str) -> None:

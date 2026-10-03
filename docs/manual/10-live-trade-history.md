@@ -651,6 +651,11 @@ its VWAP chart, its weekly chart and its price trace. The VWAP chart draws the
 fills. The weekly chart and the price trace draw the market those fills ran in,
 from the Stone Tablet rows the next two sections set out.
 
+A fourth figure follows those three: the venue's own position card for that base,
+obscured as the position-card section below sets out. A33 is the one base the
+venue supplied no card for, and its heading holds three figures and a line saying
+so.
+
 ### A01
 
 ![A01, 900 fills, a logarithmic price axis, and a net-units panel that empties twice.](figures/vwap_a01.png)
@@ -659,6 +664,7 @@ from the Stone Tablet rows the next two sections set out.
 
 ![A01 price trace, 50,380 five-minute closes across the recorded window.](figures/trace_a01.png)
 
+![A01 position card, with the mark, the name and the code square painted out.](figures/card_a01.png)
 The most-traded base of the 38, and one of the two charts whose price axis runs
 logarithmic. Both lines step down together to about 1.00 by early May, then to
 about 0.67 at the end of June, where the sell line settles below the buy line
@@ -684,6 +690,7 @@ if hi / lo > 8:
 
 ![A02 price trace, 38,463 five-minute closes across the recorded window.](figures/trace_a02.png)
 
+![A02 position card, with the mark, the name and the code square painted out.](figures/card_a02.png)
 The sell line runs above the buy line across the whole window and the two meet
 in September. Net units climb to 11,699 in mid-August and end at 4,765.
 
@@ -695,6 +702,7 @@ in September. Net units climb to 11,699 in mid-August and end at 4,765.
 
 ![A03 price trace, 39,186 five-minute closes across the recorded window.](figures/trace_a03.png)
 
+![A03 position card, with the mark, the name and the code square painted out.](figures/card_a03.png)
 The second logarithmic axis, at a span of 13.25. Both lines hold near 0.09
 through June, then break down in mid-July. Net units end at the highest point
 of the window, 18,510.
@@ -720,6 +728,7 @@ ax.tick_params(axis="y", which="minor", labelsize=TYPE["cap"]["size"])
 
 ![A04 price trace, 47,201 five-minute closes across the recorded window.](figures/trace_a04.png)
 
+![A04 position card, with the mark, the name and the code square painted out.](figures/card_a04.png)
 One of eleven charts with more sells than buys. Both lines dip to about 0.22 in
 early June and climb after it. Net units step from about 120 to about 500
 through late July.
@@ -732,6 +741,7 @@ through late July.
 
 ![A05 price trace, 79,004 five-minute closes across the recorded window.](figures/trace_a05.png)
 
+![A05 position card, with the mark, the name and the code square painted out.](figures/card_a05.png)
 The buy line rises from 359.67 to 485.05, the largest climb among the eight in
 the combined chart. Net units fall to near zero in mid-July, then rebuild to
 about 0.20.
@@ -744,6 +754,7 @@ about 0.20.
 
 ![A06 price trace, 33,344 five-minute closes across the recorded window.](figures/trace_a06.png)
 
+![A06 position card, with the mark, the name and the code square painted out.](figures/card_a06.png)
 The sell line runs above the buy line until mid-June, then the two converge and
 the sell line finishes just below. Net units grow to 47,574 and end at 44,795.
 
@@ -755,6 +766,7 @@ the sell line finishes just below. Net units grow to 47,574 and end at 44,795.
 
 ![A07 price trace, 49,638 five-minute closes across the recorded window.](figures/trace_a07.png)
 
+![A07 position card, with the mark, the name and the code square painted out.](figures/card_a07.png)
 One step down at the start of June takes the buy line from about 0.044 to about
 0.039, and a slow decline follows. The sell line crosses below the buy line at
 that same step.
@@ -767,6 +779,7 @@ that same step.
 
 ![A08 price trace, 52,751 five-minute closes across the recorded window.](figures/trace_a08.png)
 
+![A08 position card, with the mark, the name and the code square painted out.](figures/card_a08.png)
 The crossing holds for the rest of the window. Net units peak at 15,301 in
 mid-August, then fall to 9,483.
 
@@ -778,6 +791,7 @@ mid-August, then fall to 9,483.
 
 ![A09 price trace, 53,988 five-minute closes across the recorded window.](figures/trace_a09.png)
 
+![A09 position card, with the mark, the name and the code square painted out.](figures/card_a09.png)
 Both lines rise to a peak near 1 May, then fall to a flat run from July. Net
 units drop from 140 to about 20 at the end of June and hold near 40 after that.
 
@@ -789,6 +803,7 @@ units drop from 140 to about 20 at the end of June and hold near 40 after that.
 
 ![A10 price trace, 72,287 five-minute closes across the recorded window.](figures/trace_a10.png)
 
+![A10 position card, with the mark, the name and the code square painted out.](figures/card_a10.png)
 The lowest-priced base in the record. The buy line holds near 6.3e-06 from late
 April while the fill dots fall from 8.0e-06 to 2.3e-06. Net units spike to
 1.02e+08 in late April and end at 3.22e+07.
@@ -820,6 +835,7 @@ def fmt_price(v, _pos=None) -> str:
 
 ![A11 price trace, 26,750 five-minute closes across the recorded window.](figures/trace_a11.png)
 
+![A11 position card, with the mark, the name and the code square painted out.](figures/card_a11.png)
 The buy line rises from 0.01722 to 0.02979, an index of 1.730 and the largest
 of the 38. Both lines climb through August. Net units drop across that same
 climb, 2,669 down to 1,107.
@@ -832,6 +848,7 @@ climb, 2,669 down to 1,107.
 
 ![A12 price trace, 78,332 five-minute closes across the recorded window.](figures/trace_a12.png)
 
+![A12 position card, with the mark, the name and the code square painted out.](figures/card_a12.png)
 The buy line holds near 0.0098 through May and the sell line near 0.0105, then
 both step down at the start of June. Net units reach 17,089 in early August and
 end at 11,612.
@@ -844,6 +861,7 @@ end at 11,612.
 
 ![A13 price trace, 76,386 five-minute closes across the recorded window.](figures/trace_a13.png)
 
+![A13 position card, with the mark, the name and the code square painted out.](figures/card_a13.png)
 The sell line stays above the buy line for the whole window, ending near 15.4
 against 14.7. Net units peak at 7.13 and end at 4.71.
 
@@ -855,6 +873,7 @@ against 14.7. Net units peak at 7.13 and end at 4.71.
 
 ![A14 price trace, 79,004 five-minute closes across the recorded window.](figures/trace_a14.png)
 
+![A14 position card, with the mark, the name and the code square painted out.](figures/card_a14.png)
 The window closes on 21 August, the earliest close of the 38 apart from A37.
 The two lines run together until the start of June, then split, with the sell
 line about 100 dollars above through June and July. They meet again in August.
@@ -867,6 +886,7 @@ line about 100 dollars above through June and July. They meet again in August.
 
 ![A15 price trace, 79,005 five-minute closes across the recorded window.](figures/trace_a15.png)
 
+![A15 position card, with the mark, the name and the code square painted out.](figures/card_a15.png)
 The highest-priced base in the record. Both lines hold near 78,000 through May.
 At the start of June the sell line drops to about 68,000 and the buy line to
 about 72,000, and the gap holds until late August. Net units end at 0.0031.
@@ -879,6 +899,7 @@ about 72,000, and the gap holds until late August. Net units end at 0.0031.
 
 ![A16 price trace, 78,992 five-minute closes across the recorded window.](figures/trace_a16.png)
 
+![A16 position card, with the mark, the name and the code square painted out.](figures/card_a16.png)
 The sell line peaks near 312 in mid-May, about 30 dollars above the buy line,
 and crosses below it in mid-June. Net units end at 0.34.
 
@@ -890,6 +911,7 @@ and crosses below it in mid-June. Net units end at 0.34.
 
 ![A17 price trace, 78,992 five-minute closes across the recorded window.](figures/trace_a17.png)
 
+![A17 position card, with the mark, the name and the code square painted out.](figures/card_a17.png)
 The buy line sits near 0.362 and the sell line near 0.382 from mid-June to the
 close, a gap of about 0.02 held across eleven weeks.
 
@@ -901,6 +923,7 @@ close, a gap of about 0.02 held across eleven weeks.
 
 ![A18 price trace, 79,004 five-minute closes across the recorded window.](figures/trace_a18.png)
 
+![A18 position card, with the mark, the name and the code square painted out.](figures/card_a18.png)
 The two lines run within about 0.01 of each other for the whole window. Net
 units spike to 175 at the start, then hold near 55.
 
@@ -912,6 +935,7 @@ units spike to 175 at the start, then hold near 55.
 
 ![A19 price trace, 15,736 five-minute closes across the recorded window.](figures/trace_a19.png)
 
+![A19 position card, with the mark, the name and the code square painted out.](figures/card_a19.png)
 The second-shortest window of the 38. The buy line falls from 0.00395 to about
 0.0030 in the first four days, then flattens. The two lines nearly overlap
 after 17 August.
@@ -924,6 +948,7 @@ after 17 August.
 
 ![A20 price trace, 21,070 five-minute closes across the recorded window.](figures/trace_a20.png)
 
+![A20 position card, with the mark, the name and the code square painted out.](figures/card_a20.png)
 Buys number 32 against 55 sells. The buy line starts at 0.0698 and falls to
 0.0337 across 24 days, the steepest fall of the three assets that start in
 August.
@@ -936,6 +961,7 @@ August.
 
 ![A21 price trace, 79,003 five-minute closes across the recorded window.](figures/trace_a21.png)
 
+![A21 position card, with the mark, the name and the code square painted out.](figures/card_a21.png)
 The sell line falls below the buy line at the start of June and stays there
 until late August, when both turn up and cross again.
 
@@ -947,6 +973,7 @@ until late August, when both turn up and cross again.
 
 ![A22 price trace, 79,000 five-minute closes across the recorded window.](figures/trace_a22.png)
 
+![A22 position card, with the mark, the name and the code square painted out.](figures/card_a22.png)
 The sell line runs above the buy line from May to mid-August, then the two
 converge near 0.088 and finish together. Net units end at 1,153.
 
@@ -958,6 +985,7 @@ converge near 0.088 and finish together. Net units end at 1,153.
 
 ![A23 price trace, 79,004 five-minute closes across the recorded window.](figures/trace_a23.png)
 
+![A23 position card, with the mark, the name and the code square painted out.](figures/card_a23.png)
 Both lines hold near 85 through May, step to about 83 at the start of June, and
 end within a dollar of each other. Net units end below one whole unit, at 0.75.
 
@@ -969,6 +997,7 @@ end within a dollar of each other. Net units end below one whole unit, at 0.75.
 
 ![A24 price trace, 8,734 five-minute closes across the recorded window.](figures/trace_a24.png)
 
+![A24 position card, with the mark, the name and the code square painted out.](figures/card_a24.png)
 A July starter. The buy line falls from 0.02809 to 0.01168 in eight weeks, and
 the sell line converges onto it by the close. Net units end at 13,268.
 
@@ -980,6 +1009,7 @@ the sell line converges onto it by the close. Net units end at 13,268.
 
 ![A25 price trace, 78,996 five-minute closes across the recorded window.](figures/trace_a25.png)
 
+![A25 position card, with the mark, the name and the code square painted out.](figures/card_a25.png)
 The sell line falls from 1.27 to 0.87 across late May and early June, crossing
 below the buy line, and the two hold about 0.04 apart afterwards.
 
@@ -991,6 +1021,7 @@ below the buy line, and the two hold about 0.04 apart afterwards.
 
 ![A26 price trace, 25,946 five-minute closes across the recorded window.](figures/trace_a26.png)
 
+![A26 position card, with the mark, the name and the code square painted out.](figures/card_a26.png)
 The sell line jumps from 0.42 to 0.52 in the last week of July, then settles
 near 0.50 against a buy line near 0.476.
 
@@ -1002,6 +1033,7 @@ near 0.50 against a buy line near 0.476.
 
 ![A27 price trace, 79,003 five-minute closes across the recorded window.](figures/trace_a27.png)
 
+![A27 position card, with the mark, the name and the code square painted out.](figures/card_a27.png)
 The gap between the two lines holds across the whole window, and both drift
 down. Net units grow to 311 and end at 285.
 
@@ -1013,6 +1045,7 @@ down. Net units grow to 311 and end at 285.
 
 ![A28 price trace, 68,265 five-minute closes across the recorded window.](figures/trace_a28.png)
 
+![A28 position card, with the mark, the name and the code square painted out.](figures/card_a28.png)
 29 buys against 37 sells. The sell line peaks near 72.6 in early June and ends
 near 67, and the buy line holds between 61 and 65 across the window.
 
@@ -1024,6 +1057,7 @@ near 67, and the buy line holds between 61 and 65 across the window.
 
 ![A29 price trace, 51,228 five-minute closes across the recorded window.](figures/trace_a29.png)
 
+![A29 position card, with the mark, the name and the code square painted out.](figures/card_a29.png)
 23 buys against 40 sells. The buy line rises from 0.001603 to 0.002051, and the
 sell line rises faster, ending about 0.0007 above it. Net units drop across the
 window, 29,987 down to 12,032.
@@ -1036,6 +1070,7 @@ window, 29,987 down to 12,032.
 
 ![A30 price trace, 78,491 five-minute closes across the recorded window.](figures/trace_a30.png)
 
+![A30 position card, with the mark, the name and the code square painted out.](figures/card_a30.png)
 The sell line runs about 0.1 above the buy line from June to late August, then
 the two converge near 2.05. Net units end at 26.
 
@@ -1047,6 +1082,7 @@ the two converge near 2.05. Net units end at 26.
 
 ![A31 price trace, 78,993 five-minute closes across the recorded window.](figures/trace_a31.png)
 
+![A31 position card, with the mark, the name and the code square painted out.](figures/card_a31.png)
 The first of the eight thin charts. The sell line starts at 0.1048, steps down
 through June and July, and crosses below the buy line in late July. Net units
 end at 626.
@@ -1071,6 +1107,7 @@ ax.plot(t, buy_v, color=COLORS["series"][0], lw=2.0, marker=dot,
 
 ![A32 price trace, 52,521 five-minute closes across the recorded window.](figures/trace_a32.png)
 
+![A32 position card, with the mark, the name and the code square painted out.](figures/card_a32.png)
 A thin chart. The buy line holds near 0.4225 until late August, then rises to
 0.4310. The sell line jumps from 0.444 to 0.481 in the same week.
 
@@ -1081,6 +1118,8 @@ A thin chart. The buy line holds near 0.4225 until late August, then rises to
 ![A33 weekly chart, 27 weekly candles built from 50,503 five-minute rows.](figures/weekly_a33.png)
 
 ![A33 price trace, 50,503 five-minute closes across the recorded window.](figures/trace_a33.png)
+
+A33 has no position card. The venue's card set covers the other 37 bases.
 
 A thin chart, and the shortest window here. Eight buys against fifteen sells.
 Both lines step up once, on 28 August.
@@ -1093,6 +1132,7 @@ Both lines step up once, on 28 August.
 
 ![A34 price trace, 78,986 five-minute closes across the recorded window.](figures/trace_a34.png)
 
+![A34 position card, with the mark, the name and the code square painted out.](figures/card_a34.png)
 A thin chart. The sell line climbs from 0.1645 to about 0.202, while the buy
 line moves from 0.1696 to 0.1748 across the same six weeks.
 
@@ -1104,6 +1144,7 @@ line moves from 0.1696 to 0.1748 across the same six weeks.
 
 ![A35 price trace, 10,940 five-minute closes across the recorded window.](figures/trace_a35.png)
 
+![A35 position card, with the mark, the name and the code square painted out.](figures/card_a35.png)
 A thin chart. The buy line settles at 0.1605 in late July and holds. The sell
 line dips to 0.159 in early August, then steps back to 0.1648.
 
@@ -1115,6 +1156,7 @@ line dips to 0.159 in early August, then steps back to 0.1648.
 
 ![A36 price trace, 79,004 five-minute closes across the recorded window.](figures/trace_a36.png)
 
+![A36 position card, with the mark, the name and the code square painted out.](figures/card_a36.png)
 The buy line is nearly flat at 46.33, since all three buys land near one price.
 The sell line runs about 5 dollars above it. Net units end at 0.49.
 
@@ -1126,6 +1168,7 @@ The sell line runs about 5 dollars above it. Net units end at 0.49.
 
 ![A37 price trace, 49,654 five-minute closes across the recorded window.](figures/trace_a37.png)
 
+![A37 position card, with the mark, the name and the code square painted out.](figures/card_a37.png)
 The earliest close of the 38. Three buys and three sells, all inside four
 weeks. The buy line drifts from 0.0600 to 0.0590.
 
@@ -1137,6 +1180,7 @@ weeks. The buy line drifts from 0.0600 to 0.0590.
 
 ![A38 price trace, 6,257 five-minute closes across the recorded window.](figures/trace_a38.png)
 
+![A38 position card, with the mark, the name and the code square painted out.](figures/card_a38.png)
 The only base in the record with a single buy. One buy makes the buy line a
 single horizontal line at 2,148.63 and its index exactly 1.000. The sell line
 rises across the four sells, 2,307 up to 2,577. Net units drop across the
@@ -1295,12 +1339,7 @@ and the asset name out with the card's own ground colour, paints the code square
 out with the footer's ground colour, and writes the label where the name was.
 The venue's own figures are left as the venue rendered them.
 
-![Venue position cards for A01 to A08, with the mark, the name and the code square painted out.](figures/evidence_placards_01.png)
-
-![Venue position cards for A09 to A16.](figures/evidence_placards_02.png)
-
-![Venue position cards for A17 to A24.](figures/evidence_placards_03.png)
-
-![Venue position cards for A25 to A32.](figures/evidence_placards_04.png)
-
-![Venue position cards for A34 to A38, the five cards left after A33, which has none.](figures/evidence_placards_05.png)
+`_write_asset_placards` in `tools/build_product_manual.py` writes one card per
+base, named for that base's label. Each card is embedded under its own heading
+above, beside that base's three charts. A base the venue supplied no card for is
+reported absent and stops the build, so no heading can carry another base's card.

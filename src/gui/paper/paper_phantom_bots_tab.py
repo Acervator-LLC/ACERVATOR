@@ -115,7 +115,14 @@ class PaperPhantomBotsTabMixin:
             max(0, self._phantom_timeframe.findData(self._phantom_tf_current))
         )
         self._phantom_timeframe.setToolTip(surface.TF_TOOLTIP)
-        self._phantom_tf_refusal = QLabel("")
+        self._phantom_tf_refusal = QLabel(
+            surface.stored_timeframe_notice(
+                getattr(bot, "_phantom_timeframes", []) or [],
+                self._phantom_tf_current,
+                self._phantom_tf_allowed,
+                self._phantom_tf_exchange,
+            )
+        )
         self._phantom_tf_refusal.setStyleSheet(f"color: {ds.ERROR}; font-size: 10px;")
         self._phantom_tf_refusal.setWordWrap(True)
         self._phantom_timeframe.currentIndexChanged.connect(self._phantom_tf_chosen)

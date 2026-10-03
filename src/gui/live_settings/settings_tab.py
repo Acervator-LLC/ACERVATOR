@@ -1122,7 +1122,7 @@ class SettingsTabMixin:
         layout.addWidget(gates_group)
 
         if cfg.mode.value == "extractor":
-            ext_group = QGroupBox("Extractor — Pool & Artillery")
+            ext_group = QGroupBox("Extractor — Pool && Artillery")
             ef = QFormLayout(ext_group)
             self._configure_form(ef)
 
