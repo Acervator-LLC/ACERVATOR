@@ -490,6 +490,53 @@ def live_cfg(cfg: dict) -> dict:
     }
 
 
+LIVE_ROW_ID_CHARS = 8
+
+
+def live_row_id(bot_id: Any) -> str:
+    """The id column of one live row: ``bot_id`` cut to ``LIVE_ROW_ID_CHARS``."""
+    return str(bot_id)[:LIVE_ROW_ID_CHARS]
+
+
+def live_row_number(value: Any) -> float:
+    """One stored reading as a money or count column writes it.
+
+    A bool, a text value, an overflowing value and a value that is not
+    finite all read 0.0, so no stored reading can stop a row drawing.
+    """
+    if isinstance(value, bool):
+        return 0.0
+    try:
+        found = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return 0.0
+    return found if math.isfinite(found) else 0.0
+
+
+def live_row_cfg(status: dict) -> dict:
+    """One bot status in the shape ``register_live_run`` takes."""
+    return {
+        "pair": status.get("symbol") or MISSING_TEXT,
+        "mode": str(status.get("mode") or LIVE_MODE).upper(),
+        "timeframe": status.get("ta_timeframe") or MISSING_TEXT,
+        "capital": live_row_number(status.get("target_balance")),
+    }
+
+
+def live_row_tick(status: dict) -> dict:
+    """One bot status in the shape ``update_live_run`` takes."""
+    stats = status.get("stats")
+    if not isinstance(stats, dict):
+        stats = {}
+    return {
+        "price": live_row_number(stats.get("current_price")),
+        "pnl": live_row_number(stats.get("realised_pnl"))
+        + live_row_number(stats.get("unrealised_pnl")),
+        "trades": int(live_row_number(stats.get("total_trades"))),
+        "status": str(status.get("state") or STATUS_RUNNING).upper(),
+    }
+
+
 LAYER_CFG_BUILDERS = {SIM_KIND: sim_cfg, PAPER_KIND: paper_cfg, LIVE_KIND: live_cfg}
 LAYER_ID_KEYS = {SIM_KIND: "sim_id", PAPER_KIND: "paper_id", LIVE_KIND: "bot_id"}
 LAYER_STOP_STATUS = {
@@ -1924,7 +1971,30 @@ class BotVisualizerModel:
         """Take one fleet load, then cut the wires of every bot that left."""
         for bot_id in self.grid.update_bots(bot_statuses):
             self.board.drop_bot(bot_id)
+        self.sync_live_rows(bot_statuses)
         self.set_exchange(self.exchange)
+
+    def sync_live_rows(self, bot_statuses: list) -> None:
+        """Hold one ``self.live`` row per bot in one fleet load.
+
+        A row is rebuilt when ``masked`` changes the id it shows, and a
+        bot no longer in the load loses its row.
+        """
+        seen: list[str] = []
+        for status in bot_statuses:
+            if not isinstance(status, dict):
+                continue
+            bot_id = status.get("bot_id", "")
+            if not bot_id:
+                continue
+            seen.append(bot_id)
+            label = mask_or(live_row_id(bot_id), self.masked)
+            held = self.live.rows.get(bot_id)
+            if held is None or held.get("id_lbl", {}).get("text") != label:
+                self.live.register(bot_id, label, live_row_cfg(status))
+            self.live.update(bot_id, **live_row_tick(status))
+        for bot_id in [one for one in list(self.live.order) if one not in seen]:
+            self.live.remove(bot_id)
 
     def set_exchange(self, exchange: str) -> None:
         """Choose one exchange to filter by.
@@ -1972,10 +2042,16 @@ class BotVisualizerModel:
             registry.set_masked(MASK_FIELD_ID, wanted)
             self.masked = wanted
         self.any_masked = self.any_mask_on()
+        self.relabel_live_rows()
         self.privacy_mode_shown = {
             "text": privacy_mode_text(self.any_masked),
             "style_sheet": privacy_mode_style_sheet(self.any_masked),
         }
+
+    def relabel_live_rows(self) -> None:
+        """Write the masked or revealed id into every live row's id column."""
+        for bot_id, handle in self.live.rows.items():
+            handle["id_lbl"]["text"] = mask_or(live_row_id(bot_id), self.masked)
 
     def any_mask_on(self) -> bool:
         """Whether ``mask_registry`` holds any mask on.
