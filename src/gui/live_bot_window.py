@@ -335,10 +335,7 @@ class LiteLiveBotWindow(QMainWindow):
                 return
             self._sig_console.emit(f"Connected to {exchange_id}")
 
-            # Build config — v3.20.35 routes through make_bot_config
-            # factory so mode-foreign kwargs are caught at construction
-            # time (operator directive 2026-05-25, fitness rule
-            # test_no_direct_botconfig_construction_outside_factory).
+            # make_bot_config raises on a kwarg that is foreign to the mode.
             cfg = make_bot_config(
                 BotMode.SCRUMMING,
                 exchange_id=exchange_id,
@@ -389,8 +386,12 @@ class LiteLiveBotWindow(QMainWindow):
         for unsub in self._unsubs:
             try:
                 unsub()
-            except Exception:
-                pass  # sadp: R61 ACCEPT — best-effort unsubscribe on teardown (bus may already be gone or subscription already released)
+            except Exception as exc:
+                logger.warning(
+                    "Lite Live Bot unsubscribe failed on stop: %s: %s",
+                    type(exc).__name__,
+                    exc,
+                )
         self._unsubs = []
 
         self._bot = None

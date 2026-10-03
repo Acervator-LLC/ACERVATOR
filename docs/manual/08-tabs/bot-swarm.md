@@ -391,10 +391,19 @@ The bridge no longer offers the method. `build_registry` in
 `capital_registry`. The renderer manifest lists 68 modules, and every one has a
 file on disk.
 
+The slot that held the dollar registry is removed with it. `BotManager` carried
+a `_capital_registry` attribute, a setter with no caller, and five methods that
+read it. Every method they called on it — `request_reservation`,
+`release_reservation`, `grow_reservation`, `get_reservations` and
+`reconcile_with_exchange` — has no definition anywhere in the tree, so filling
+the slot would have raised on the first call. The attribute, the setter and the
+five readers are gone.
+
 Claims in asset units are a different mechanism and they stay.
 `CapitalReservationRegistry` in `src/trading/capital_reservation.py` holds one
 claim per bot in target-asset units. The saved claim state held 38 of them on
-2026-09-13.
+2026-09-13. A bot resolves that registry itself, through
+`CapitalReservationMixin._crr`, and claims on its first tick.
 
 ## Bridge
 
