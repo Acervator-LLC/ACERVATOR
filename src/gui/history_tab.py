@@ -317,26 +317,10 @@ if _HAS_QT:
             self._page_label.setText(hrc.page_label(self._page, total))
             self._prev_btn.setEnabled(self._page > 0)
             self._next_btn.setEnabled(self._page < max_page)
-
-            if self._last_fetched_ts > 0:
-                age_s = int(time.time() - self._last_fetched_ts)
-                fetched_str = f"fetched {age_s}s ago"
-            else:
-                fetched_str = "no fetch yet"
-            total_loaded = len(self._all_trades)
-            buy_count = sum(1 for r in self._filtered if r.get("side") == "BUY")
-            sell_count = sum(1 for r in self._filtered if r.get("side") == "SELL")
-            buy_usd = sum(
-                r.get("cost", 0) for r in self._filtered if r.get("side") == "BUY"
-            )
-            sell_usd = sum(
-                r.get("cost", 0) for r in self._filtered if r.get("side") == "SELL"
-            )
             self._set_status(
-                f"{total} of {total_loaded} trades shown · "
-                f"BUYs: {buy_count} (${buy_usd:,.2f}) · "
-                f"SELLs: {sell_count} (${sell_usd:,.2f}) · "
-                f"{fetched_str}"
+                hrc.summary_line(
+                    self._filtered, len(self._all_trades), self._last_fetched_ts
+                )
             )
 
         def _remember_to_bound(self) -> None:
