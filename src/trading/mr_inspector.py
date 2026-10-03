@@ -34,8 +34,6 @@ The Boosted Fold:
   - Queue entire amount as fold-back at SMA (mean)
   - When price reverts → fold captures full reversion move
   - Funded by existing position, not new capital
-
-v3.1.70 — Initial implementation
 """
 
 from __future__ import annotations
@@ -118,8 +116,6 @@ class MRInspector:
         self._signals_confirmed = 0  # With tightening
 
     def scan(self, asset: str, candles: list[Candle]) -> Optional[MRSignal]:
-
-        # sadp: R28  # MR scan: fail-loudly on bad candles(R28)
         """
         Scan a single asset for MR conditions.
         Call this every N candles from the Market Map refresh cycle.
