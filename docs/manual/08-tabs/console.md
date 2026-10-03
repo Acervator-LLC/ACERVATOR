@@ -505,10 +505,13 @@ src/trading/extractor_bot.py           at the chunk-rate claim
 src/trading/capital_registry.py        at the dollar grant
 ```
 
-Two of those three lines have changed. `src/trading/capital_registry.py` is
+All three of those lines have changed. `src/trading/capital_registry.py` is
 removed, so no dollar grant is made and that warning can no longer be written.
-The Extractor writes a second warning now, described under the next heading but
-one.
+The admission warning in `src/trading/container/registry.py` is removed as well.
+It was never true. A bot claims its own capital on its first tick, through
+`CapitalReservationMixin._crr`, so admission writes no claim and nothing is
+lost there. The Extractor writes a second warning now, described under the next
+heading but one.
 
 ### The sale stops when the claim cannot be read
 
@@ -545,6 +548,42 @@ after    SELL REFUSED (capital reservation unreadable)
 
 The operator sees a cancelled scrum with its reason in the upper pane, where a
 completed sale used to appear.
+
+### A claim file that will not read
+
+A read can fail in two shapes, and only one of them raises. The claim file is
+read once, at start-up, by `_load` in `src/trading/capital_reservation.py`. A
+file that will not parse is caught there. The table is then empty because
+nothing was read, which is not the same as a file holding no claims.
+
+The sale used to go through on that shape. The table read as empty, so
+`effective_available` reported the bot's whole holding as free, the pre-check
+passed it, and the operator saw a scrum sent.
+
+`effective_available` now refuses to answer instead. It raises
+`ClaimsUnreadable`, which the pre-check one screen away already turns into a
+refusal. Both shapes of a failed read now end the same way.
+
+Driven on the real sell path, with the claim file on disk holding bytes that
+will not parse. Both readings are the record the bot itself emitted.
+
+```
+before   SELL signal: 4.000000 @ $100.00000000 (VH:clean, LIMIT)
+         SCRUM SENT, venue order calls 1
+after    SELL REFUSED (capital reservation unreadable)
+         SCRUM CANCELLED, venue order calls 0
+```
+
+The refusal names the file and what to do:
+
+> "the claim file reservation_state.json did not read at start-up, so no other
+> bot's claim on the asset is known and an empty table here means nothing.
+> Repair or move the file and restart"
+
+The writer holds back on the same shape. `_save` will not write a file it could
+not read, because writing it would replace the operator's claims with the few
+this run happens to know about. It logs an error naming the file and the count
+of changes that are not on the disk.
 
 ### A claim that never reached the disk
 
