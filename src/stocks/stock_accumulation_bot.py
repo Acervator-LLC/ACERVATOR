@@ -29,8 +29,6 @@ try:
     from ..trading.mr_inspector import MRInspector
     from ..trading.smart_wire import SmartWireManager
 
-    # v3.19.12 — removed unused MarketHoursTracker import (vulture-flagged;
-    # in-progress placeholder; re-add when the implementation lands).
     _HAS_DEPS = True
 except ImportError:
     _HAS_DEPS = False
@@ -266,11 +264,6 @@ class StockAccumulationBot:
                 )
                 self._last_summary = summary
             except Exception as _ta_exc:  # noqa: BLE001 - tick must continue
-                # v3.24.21 — was a bare swallow. On failure
-                # `_last_summary` keeps its PREVIOUS value, so the bot
-                # goes on trading against a stale TA snapshot that looks
-                # current to every downstream consumer. Silent staleness
-                # is worse than a visible gap.
                 logger.warning(
                     "%s TA compute failed (%s): %s — retaining previous "
                     "summary; downstream signals are STALE",
