@@ -277,6 +277,22 @@ list in its tool tip.
 | the Comp tool tip | `src/gui/main_tabs/indicator_panel_surface.py` | `comp_skipped_tooltip` |
 | the engine record | `src/trading/phantom_balance.py` | `TimeframeCoordinator.get_higher_tf_bias` |
 
+**A refused change is named too.** A line under the timeframe picker names a
+stored timeframe the venue does not offer, and names a stored timeframe the
+tab does not list beside the one the picker shows instead. Both builds draw
+that line. In the React build a second line at the top of the tab names a
+change the tab would not take and the setting it came from, and it is replaced
+rather than repeated while the same change keeps arriving. The Qt build moves
+its own controls and carries no second line. A change the tab takes shows
+neither line.
+
+| reading | module | symbol |
+| ------- | ------ | ------ |
+| the stored timeframe | `src/gui/main_tabs/phantom_bots_tab_surface.py` | `stored_timeframe_notice` |
+| the refused change | `src/gui/main_tabs/phantom_bots_tab_surface.py` | `step_refusal_text` |
+| the one announcement | `src/gui/main_tabs/phantom_bots_tab_surface.py` | `PhantomBotsTabModel.note_steps` |
+| the drawn line | `src/gui/web/phantom_bots_tab.js` | `step-refusal` |
+
 ## 3 - The Landing Strip
 
 Perhaps the earliest assumption that hit me the most and really presented the catalyzing challenge to creating all of my alternate trading methods, is that you cannot predict what the market will do and after only a short while of actively trading I asked the questions: “But what if I don’t have to?” “What if I decide that I do not have to speculate at all?” I do not remember exactly when I first used the term but I think it was when I was trading A34 and A27 some years ago while participating in a Telegram group with some psytrance friends and associations called the Better Bitcoin Bureau. The name changed a few times but this is the one I recall.
