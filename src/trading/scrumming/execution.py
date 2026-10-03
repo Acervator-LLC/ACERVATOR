@@ -1575,7 +1575,7 @@ class ExecutionEngineMixin:
                         f"{_crr_exc}. No sibling bot's claim on "
                         f"{self.config.target_asset} could be read, so this sell "
                         f"of {amount:.6f} is refused instead of placed unbounded. "
-                        f"The next tick reads the claim table again."
+                        f"The next tick asks the claim table again."
                     ),
                 )
                 self._emit_trade_notification(

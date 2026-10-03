@@ -826,8 +826,8 @@ if _HAS_QT:
                     live.append(e)
                 except RuntimeError:
                     pass
-                except Exception:  # noqa: S110
-                    pass
+                except Exception as glow_exc:
+                    logger.debug("fire-glow effect probe failed: %s", glow_exc)
             live.append(effect)
             self._fire_glow_effects = live
 
@@ -865,14 +865,17 @@ if _HAS_QT:
                     and self._spendable_widget is not None
                 ):
                     self._spendable_widget.refresh_privacy_dots()
-            except Exception:  # noqa: S110
-                pass
+            except Exception as spendable_exc:
+                logger.debug(
+                    "spendable widget privacy refresh failed: %s",
+                    spendable_exc,
+                )
             for card in (getattr(self, "_stat_cards", None) or {}).values():
                 try:
                     if hasattr(card, "refresh_privacy_dot"):
                         card.refresh_privacy_dot()
-                except Exception:  # noqa: S110
-                    pass
+                except Exception as card_exc:
+                    logger.debug("stat card privacy refresh failed: %s", card_exc)
             try:
                 for tab in getattr(self, "_exchange_tabs", {}).values():
                     if hasattr(tab, "_refresh_privacy_mode_btn_style"):
@@ -883,10 +886,13 @@ if _HAS_QT:
                                 tab.exchange_id
                             )
                             tab.update_bots(statuses)
-                    except Exception:  # noqa: S110
-                        pass
-            except Exception:  # noqa: S110
-                pass
+                    except Exception as tab_bots_exc:
+                        logger.debug(
+                            "exchange tab bot list refresh failed: %s",
+                            tab_bots_exc,
+                        )
+            except Exception as tabs_exc:
+                logger.debug("exchange tab privacy refresh failed: %s", tabs_exc)
             try:
                 if (
                     hasattr(self, "_indicator_panel")
@@ -895,8 +901,8 @@ if _HAS_QT:
                 ):
                     self._indicator_panel.refresh_privacy_dot()
                     self._publish_votes()
-            except Exception:  # noqa: S110
-                pass
+            except Exception as panel_exc:
+                logger.debug("indicator panel privacy refresh failed: %s", panel_exc)
 
         def _setup_tooltips(self) -> None:
             """Build `_abbreviation_tooltips` and rescan widgets every 5000 ms."""
@@ -1396,15 +1402,18 @@ if _HAS_QT:
                         hasattr(self, "_exchange_connectors")
                         and self._exchange_connectors
                     ):
-                        try:  # noqa: SIM105
+                        try:
                             self._schedule_coalesced(
                                 "_pending_chart_fetch",
                                 self._charts_tab.fetch_chart_data(
                                     self._exchange_connectors
                                 ),
                             )
-                        except Exception:  # noqa: S110
-                            pass
+                        except Exception as chart_fetch_exc:
+                            logger.debug(
+                                "chart data fetch schedule failed: %s",
+                                chart_fetch_exc,
+                            )
 
                 try:
                     if self._risk_manager:
@@ -2450,15 +2459,21 @@ if _HAS_QT:
                 dlg = _cls(current_bot, self._bot_manager, self)
                 dlg.settings_changed.connect(self._on_live_settings_changed)
                 if saved_geometry is not None:
-                    try:  # noqa: SIM105
+                    try:
                         dlg.setGeometry(saved_geometry)
-                    except Exception:  # noqa: S110
-                        pass
+                    except Exception as geometry_exc:
+                        logger.debug(
+                            "bot settings geometry restore failed: %s",
+                            geometry_exc,
+                        )
                 if saved_tab_index is not None:
-                    try:  # noqa: SIM105
+                    try:
                         dlg._tabs.setCurrentIndex(int(saved_tab_index))
-                    except Exception:  # noqa: S110
-                        pass
+                    except Exception as tab_index_exc:
+                        logger.debug(
+                            "bot settings tab restore failed: %s",
+                            tab_index_exc,
+                        )
                 dlg.exec()
                 try:
                     saved_geometry = dlg.geometry()
@@ -2789,8 +2804,8 @@ if _HAS_QT:
                     from ..core.sound_engine import get_sound_engine
 
                     get_sound_engine().play_fire()
-                except Exception:  # noqa: S110
-                    pass
+                except Exception as fire_sound_exc:
+                    logger.debug("fire sound playback failed: %s", fire_sound_exc)
             else:
                 self._status_log.log(
                     f"Manual Fire unavailable for {bot_id[:8]} "
@@ -2812,8 +2827,8 @@ if _HAS_QT:
                     se.play_profit()
                 if ttype == "FOLD":
                     se.play_drip()
-            except Exception:  # noqa: S110
-                pass
+            except Exception as trade_sfx_exc:
+                logger.debug("trade fill sound playback failed: %s", trade_sfx_exc)
 
         def _dispatch_tracking_beep(self, statuses: list) -> None:
             """Beep every 200 ms when a scrumming bot is in FIRE, 800 ms in TRACK."""
@@ -2846,8 +2861,8 @@ if _HAS_QT:
                 from ..core.sound_engine import get_sound_engine
 
                 get_sound_engine().play_track()
-            except Exception:  # noqa: S110
-                pass
+            except Exception as beep_exc:
+                logger.debug("tracking beep playback failed: %s", beep_exc)
 
         def _on_bot_command(self, bot_id: str, command: str) -> None:
             if not self._bot_manager:
@@ -3788,10 +3803,13 @@ if _HAS_QT:
                                 f"Bot creation refused by CapitalRegistry: "
                                 f"{_refuse_reason or 'over-allocation'}"
                             )
-                            try:  # noqa: SIM105
+                            try:
                                 self._status_log.log(_msg, "error")
-                            except Exception:  # noqa: S110
-                                pass
+                            except Exception as refusal_log_exc:
+                                logger.debug(
+                                    "bot refusal message not shown in status log: %s",
+                                    refusal_log_exc,
+                                )
                             return
 
                     if bot_config.mode == BotMode.SCRUMMING:
@@ -3805,8 +3823,11 @@ if _HAS_QT:
                                 ta_timeframe=bot_config.ta_timeframe,
                             )
                             self._publish_votes()
-                        except Exception:  # noqa: S110
-                            pass
+                        except Exception as panel_seed_exc:
+                            logger.debug(
+                                "indicator panel seed for the new bot failed: %s",
+                                panel_seed_exc,
+                            )
 
                     msg = (
                         f"Bot {bot.bot_id} created: {bot_config.symbol} "

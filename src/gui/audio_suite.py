@@ -296,16 +296,11 @@ class Chime:
 
 
 def _sc(func, *a, **kw):
-    # v3.13.6 R61 CBF — was bare `except:` (catches KeyboardInterrupt
-    # and SystemExit). This is a Qt safe-call helper used all over this
-    # module to call deleted-object-prone Qt methods; swallowing is
-    # deliberate (helper's purpose IS to suppress the common "wrapped
-    # C/C++ object deleted" RuntimeError after widget teardown). But
-    # scope to Exception so Ctrl-C still works.
+    # Suppresses the RuntimeError Qt raises after a widget is deleted.
     try:
         return func(*a, **kw)
     except Exception:
-        return None  # sadp: R61 ACCEPT (Qt safe-call)
+        return None
 
 
 if _HAS_QT:
@@ -481,9 +476,6 @@ if _HAS_QT:
                     self._player.setSource(QUrl.fromLocalFile(self._wav))
                     self._player.play()
             except Exception as exc:
-                # v3.13.6 R28 FL + R61 CBF — was bare `except:` which
-                # catches BaseException (KeyboardInterrupt, SystemExit).
-                # Now Exception-scoped + logged.
                 logger.warning(
                     "drone EndOfMedia handler: %s: %s", type(exc).__name__, exc
                 )
@@ -539,7 +531,6 @@ if _HAS_QT:
                 self._ao.setVolume(MUSIC_VOLUME)
                 self._player.mediaStatusChanged.connect(self._oe)
             except Exception as exc:
-                # v3.13.6 R28 FL + R61 CBF — was bare `except:`
                 logger.warning(
                     "MusicPlayer Qt init failed: %s: %s", type(exc).__name__, exc
                 )
@@ -576,7 +567,6 @@ if _HAS_QT:
                 self._now.setText(f"Playing: {os.path.basename(self._files[i])}")
                 self._pl.setCurrentRow(i)
             except Exception as exc:
-                # v3.13.6 R28 FL + R61 CBF — was bare `except:`
                 logger.warning(
                     "music play track %d failed: %s: %s", i, type(exc).__name__, exc
                 )
@@ -600,7 +590,6 @@ if _HAS_QT:
                 if st == QMediaPlayer.MediaStatus.EndOfMedia:
                     self._nxt()
             except Exception as exc:
-                # v3.13.6 R28 FL + R61 CBF — was bare `except:`
                 logger.warning(
                     "music EndOfMedia handler: %s: %s", type(exc).__name__, exc
                 )

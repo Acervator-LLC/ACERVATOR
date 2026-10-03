@@ -1801,6 +1801,9 @@ if _HAS_QT:
                     tf_item = QTableWidgetItem(tf)
                     tf_item.setTextAlignment(Qt.AlignCenter)
                     tf_item.setFont(QFont("", -1, QFont.Bold))
+                    tf_item.setToolTip(
+                        self._HEADER_TOOLTIPS.get(ivp.TF_COLUMN_TITLE, tf)
+                    )
                     _tbl.setItem(row, 0, tf_item)
 
                 # Row A: indicator columns 1..6

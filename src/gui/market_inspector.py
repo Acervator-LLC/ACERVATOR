@@ -1086,7 +1086,7 @@ if _HAS_QT:
             top_row.addWidget(self._status_lbl)
             zone.insertLayout(0, top_row)
 
-            # v3.23.68 — right pane hosts the topology-proposal cards.
+            # The right pane holds the topology-proposal cards.
             try:
                 from .market_inspector_topologies import MarketInspectorTopologies
 
@@ -2837,11 +2837,7 @@ if _HAS_QT:
                 logger.warning("topology proposals refresh after scan failed: %s", exc)
 
         def set_adopt_handler(self, handler) -> None:
-            """v3.23.69 — wire the Adopt handoff (proposal → main window).
-
-            ``handler`` receives one proposal dict and orchestrates the
-            wizard + wire flow. No-op if the pane wasn't constructed.
-            """
+            """Connect handler, taking one proposal dict, to the pane Adopt signal."""
             pane = getattr(self, "_topologies_pane", None)
             if pane is None:
                 return

@@ -148,6 +148,9 @@ class AppSettings:
     # is to hold; sms_engine.sms_config_from_settings reads this group back.
     message_channels: dict = field(default_factory=lambda: asdict(SMSConfig()))
 
+    # Topology proposal id -> the epoch second its dismissal lapses at.
+    topology_dismissed_proposals: dict = field(default_factory=dict)
+
 
 _DEFAULT_DIR = Path.home() / ".acervator"
 
