@@ -18,6 +18,11 @@ logger = logging.getLogger("acervator.scrumming")
 # The value the per-bot P/L surfaces draw as their empty marker.
 UNREALISED_NO_READING = 0.0
 
+# The values the venue-sourced trade counters and the YTD dollar sums draw when
+# the walk finished without counting every window.
+TRADE_COUNT_NO_READING = 0
+YTD_USD_NO_READING = 0.0
+
 
 class ReconciliationEngineMixin:
     """Reconcile ``_current_holdings`` and ``_main_lots`` against the exchange.
@@ -238,17 +243,37 @@ class ReconciliationEngineMixin:
     YTD_TRADE_PAGE_LIMIT = 500
     YTD_TRADE_WINDOW_SEC = 30 * 24 * 3600.0
 
-    def _ytd_next_cursor(self, page: list, cursor: float, end: float) -> float:
-        """Where the next request starts: the window end, or the newest fill when the page filled.
+    @staticmethod
+    def _venue_order_key(trade: Any, fill_key: Any) -> tuple:
+        """The venue's order identifier for one fill, or the fill's own key when the venue gave none.
+
+        ccxt sets the unified ``order`` key on every ``fetch_my_trades`` row and
+        ``CCXTConnector.get_my_trades`` keeps the row in ``Trade.raw``, so the
+        several fills of one order share one key here. A fill the venue did not
+        group counts as an order of its own. The leading tag keeps an order
+        identifier from ever colliding with a fill identifier.
+        """
+        _raw = getattr(trade, "raw", None)
+        if isinstance(_raw, dict):
+            _oid = _raw.get("order")
+            if _oid:
+                return ("order", str(_oid))
+        return ("fill", fill_key)
+
+    def _ytd_next_cursor(
+        self, page: list, cursor: float, end: float
+    ) -> tuple[float, bool]:
+        """Where the next request starts, and whether this window was counted whole.
 
         A page holding ``YTD_TRADE_PAGE_LIMIT`` rows means the venue had more
         inside the window than it would serve, so the walk resumes at the newest
         fill instead of stepping past the remainder. A full page carrying no
         timestamp later than ``cursor`` cannot be resumed; that window's
-        remainder goes uncounted and the walk logs a warning naming it.
+        remainder goes uncounted, the walk logs a warning naming it, and the
+        second element comes back False.
         """
         if len(page) < self.YTD_TRADE_PAGE_LIMIT:
-            return end
+            return end, True
         _newest = cursor
         for _tr in page:
             try:
@@ -264,7 +289,7 @@ class ReconciliationEngineMixin:
             if _ts > _newest:
                 _newest = _ts
         if cursor < _newest < end:
-            return _newest
+            return _newest, True
         logger.warning(
             "Bot %s YTD walk truncated inside window [%.0f..%.0f]: the venue "
             "served %d rows at its page limit and none carries a timestamp "
@@ -275,17 +300,26 @@ class ReconciliationEngineMixin:
             end,
             len(page),
         )
-        return end
+        return end, False
 
     async def sync_ytd_trade_count(self) -> Optional[int]:
         """Walk ``get_my_trades`` from the YTD anchor to the present in 30-day windows.
 
         The request count follows the distance from the anchor to now, so the
-        walk covers the whole span however far apart the two become.
-        ``stats.total_trades`` and ``stats.exchange_trade_count`` take the
-        ``max`` of the persisted and the counted value, which is returned;
+        walk covers the whole span however far apart the two become. One trade
+        is one order the venue filled, so the walk counts distinct venue order
+        identifiers and returns that figure; the distinct fill count goes to
+        ``stats.exchange_fill_count`` beside it.
+
+        A walk that counted every window writes the venue's own numbers over
+        ``stats.exchange_trade_count``, ``stats.total_trades``,
+        ``stats.ytd_scrummed_usd`` and ``stats.ytd_folded_usd``, upwards or
+        downwards. A walk that skipped a window's remainder has no complete
+        reading, so all five figures drop to their no-reading markers rather
+        than leave the stored numbers standing as current.
+
         ``None`` comes back when ``self.exchange`` cannot serve
-        ``get_my_trades`` or the walk raises.
+        ``get_my_trades``, when the walk raises, or when the walk read short.
         """
         if self.exchange is None:
             return None
@@ -298,6 +332,8 @@ class ReconciliationEngineMixin:
         _window_s = self.YTD_TRADE_WINDOW_SEC
         _cursor = self.YTD_TRADE_ANCHOR_UTC
         _seen_ids: set = set()
+        _order_keys: set = set()
+        _every_window_whole = True
         _requests = 0
         _ytd_scrum_usd = 0.0
         _ytd_fold_usd = 0.0
@@ -321,6 +357,7 @@ class ReconciliationEngineMixin:
                     if _tid in _seen_ids:
                         continue
                     _seen_ids.add(_tid)
+                    _order_keys.add(self._venue_order_key(_tr, _tid))
                     _new += 1
                     try:
                         _amt = float(getattr(_tr, "amount", 0) or 0)
@@ -351,21 +388,25 @@ class ReconciliationEngineMixin:
                     len(_seen_ids),
                 )
                 _requests += 1
-                _cursor = self._ytd_next_cursor(_page, _cursor, _end)
-            _count = len(_seen_ids)
+                _cursor, _window_whole = self._ytd_next_cursor(_page, _cursor, _end)
+                _every_window_whole = _every_window_whole and _window_whole
+            _fill_count = len(_seen_ids)
+            _order_count = len(_order_keys)
             logger.info(
                 "Bot %s YTD sync via chunked-window walk: "
-                "symbol=%s returned %d unique trades over %d requests "
-                "spanning [%.0f..%.0f] "
-                "(scrummed=$%.2f folded=$%.2f)",
+                "symbol=%s returned %d unique fills in %d venue orders "
+                "over %d requests spanning [%.0f..%.0f] "
+                "(scrummed=$%.2f folded=$%.2f every_window_whole=%s)",
                 self.bot_id,
                 self.config.symbol,
-                _count,
+                _fill_count,
+                _order_count,
                 _requests,
                 self.YTD_TRADE_ANCHOR_UTC,
                 _cursor,
                 _ytd_scrum_usd,
                 _ytd_fold_usd,
+                _every_window_whole,
             )
         except Exception as _exc:
             logger.warning(
@@ -377,26 +418,41 @@ class ReconciliationEngineMixin:
             )
             return None
         _prev_exc = int(getattr(self.stats, "exchange_trade_count", 0) or 0)
-        _reconciled = max(_persisted, _prev_exc, _count)
-        self.stats.total_trades = _reconciled
-        self.stats.exchange_trade_count = _reconciled
-        _prev_scrum = float(getattr(self.stats, "ytd_scrummed_usd", 0.0) or 0.0)
-        _prev_fold = float(getattr(self.stats, "ytd_folded_usd", 0.0) or 0.0)
-        self.stats.ytd_scrummed_usd = max(_prev_scrum, _ytd_scrum_usd)
-        self.stats.ytd_folded_usd = max(_prev_fold, _ytd_fold_usd)
+        if not _every_window_whole:
+            logger.warning(
+                "Bot %s YTD walk skipped a window's remainder, so it holds no "
+                "complete reading; the trade count and the YTD dollars drop "
+                "their last reading of %d and $%.2f/$%.2f rather than stand "
+                "as current",
+                self.bot_id,
+                _prev_exc,
+                float(getattr(self.stats, "ytd_scrummed_usd", 0.0) or 0.0),
+                float(getattr(self.stats, "ytd_folded_usd", 0.0) or 0.0),
+            )
+            self.stats.exchange_trade_count = TRADE_COUNT_NO_READING
+            self.stats.exchange_fill_count = TRADE_COUNT_NO_READING
+            self.stats.total_trades = TRADE_COUNT_NO_READING
+            self.stats.ytd_scrummed_usd = YTD_USD_NO_READING
+            self.stats.ytd_folded_usd = YTD_USD_NO_READING
+            return None
+        self.stats.exchange_trade_count = _order_count
+        self.stats.exchange_fill_count = _fill_count
+        self.stats.total_trades = _order_count
+        self.stats.ytd_scrummed_usd = _ytd_scrum_usd
+        self.stats.ytd_folded_usd = _ytd_fold_usd
         import time as _t
 
         self.stats.exchange_data_fresh_ts = _t.time()
         logger.info(
-            "Bot %s YTD trade-count sync: exchange=%d persisted=%d "
-            "prev_exchange=%d reconciled=%d",
+            "Bot %s YTD trade-count sync: venue_orders=%d venue_fills=%d "
+            "platform_tally=%d prev_venue_orders=%d",
             self.bot_id,
-            _count,
+            _order_count,
+            _fill_count,
             _persisted,
             _prev_exc,
-            _reconciled,
         )
-        return _reconciled
+        return _order_count
 
     async def bootstrap_exchange_state(self) -> None:
         """One-shot live pull of exchange state after the connector attaches.
