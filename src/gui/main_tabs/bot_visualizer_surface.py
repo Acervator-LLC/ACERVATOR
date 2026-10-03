@@ -1910,7 +1910,7 @@ ACTIONS = {
     "register_live": "Build a Bot Swarm row for one live bot",
     "update_live": "Write one live tick into its row",
     "stop_live": "Mark one live bot stopped",
-    "update_bots": "Take one fleet load into the locust grid",
+    "update_bots": "Take one fleet load into the locust grid and the live rows",
     "wire_created": "Take one wire.created message",
     "wire_removed": "Take one wire.removed message",
     "remove_wire": "Cut one wire",
