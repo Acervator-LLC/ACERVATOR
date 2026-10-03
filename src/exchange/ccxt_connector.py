@@ -36,6 +36,15 @@ CONNECT_BACKOFF_STEP_S: float = 2.0
 # Outer wait_for budget for one sync CCXT call.
 SYNC_CALL_TIMEOUT_SEC: float = 25.0
 
+# Gap between ccxt abandoning a request and the outer wait firing.
+CCXT_TIMEOUT_HEADROOM_SEC: float = 5.0
+
+# ccxt's own per-request timeout, kept below the outer wait so ccxt gives up
+# first and returns the single worker instead of leaking it.
+CCXT_REQUEST_TIMEOUT_MS: int = int(
+    (SYNC_CALL_TIMEOUT_SEC - CCXT_TIMEOUT_HEADROOM_SEC) * 1000
+)
+
 
 # ccxt caps a coinbase fetch_ohlcv page at this many candles.
 EFFECTIVE_OHLCV_PAGE_SIZE = 300
@@ -430,7 +439,7 @@ class CCXTConnector(ExchangeInterface):
             "apiKey": api_key,
             "secret": api_secret,
             "enableRateLimit": True,
-            "timeout": 30000,
+            "timeout": CCXT_REQUEST_TIMEOUT_MS,
             "options": {"defaultType": "spot"},
         }
 
@@ -679,12 +688,13 @@ class CCXTConnector(ExchangeInterface):
             except asyncio.TimeoutError:
                 # The worker thread runs on until CCXT returns; log the leak.
                 logger.warning(
-                    "sync CCXT call exceeded outer timeout "
-                    "(%ss) for %s on %s; worker thread is leaked until "
-                    "CCXT's own timeout fires",
+                    "sync CCXT call exceeded the outer wait (%ss) for %s on %s; "
+                    "ccxt's own %sms timeout did not return, so the worker "
+                    "thread is leaked",
                     SYNC_CALL_TIMEOUT_SEC,
                     getattr(fn, "__name__", repr(fn)),
                     self._exchange_id,
+                    CCXT_REQUEST_TIMEOUT_MS,
                 )
                 raise
             except asyncio.CancelledError:
