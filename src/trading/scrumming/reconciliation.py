@@ -236,11 +236,52 @@ class ReconciliationEngineMixin:
 
     YTD_TRADE_ANCHOR_UTC = 1_775_001_600.0
     YTD_TRADE_PAGE_LIMIT = 500
-    YTD_TRADE_MAX_PAGES = 40
+    YTD_TRADE_WINDOW_SEC = 30 * 24 * 3600.0
+
+    def _ytd_next_cursor(self, page: list, cursor: float, end: float) -> float:
+        """Where the next request starts: the window end, or the newest fill when the page filled.
+
+        A page holding ``YTD_TRADE_PAGE_LIMIT`` rows means the venue had more
+        inside the window than it would serve, so the walk resumes at the newest
+        fill instead of stepping past the remainder. A full page carrying no
+        timestamp later than ``cursor`` cannot be resumed; that window's
+        remainder goes uncounted and the walk logs a warning naming it.
+        """
+        if len(page) < self.YTD_TRADE_PAGE_LIMIT:
+            return end
+        _newest = cursor
+        for _tr in page:
+            try:
+                _ts = float(getattr(_tr, "timestamp", 0.0) or 0.0)
+            except (TypeError, ValueError) as _sup:
+                logger.debug(
+                    "suppressed in %s: %s: %s",
+                    "_ytd_next_cursor",
+                    type(_sup).__name__,
+                    _sup,
+                )
+                continue
+            if _ts > _newest:
+                _newest = _ts
+        if cursor < _newest < end:
+            return _newest
+        logger.warning(
+            "Bot %s YTD walk truncated inside window [%.0f..%.0f]: the venue "
+            "served %d rows at its page limit and none carries a timestamp "
+            "later than the window start, so the rest of that window is "
+            "not counted",
+            self.bot_id,
+            cursor,
+            end,
+            len(page),
+        )
+        return end
 
     async def sync_ytd_trade_count(self) -> Optional[int]:
-        """Walk ``get_my_trades`` in 30-day windows from the YTD anchor.
+        """Walk ``get_my_trades`` from the YTD anchor to the present in 30-day windows.
 
+        The request count follows the distance from the anchor to now, so the
+        walk covers the whole span however far apart the two become.
         ``stats.total_trades`` and ``stats.exchange_trade_count`` take the
         ``max`` of the persisted and the counted value, which is returned;
         ``None`` comes back when ``self.exchange`` cannot serve
@@ -254,25 +295,28 @@ class ReconciliationEngineMixin:
         import time as _t
 
         _now = _t.time()
-        _window_s = 30 * 24 * 3600.0
+        _window_s = self.YTD_TRADE_WINDOW_SEC
         _cursor = self.YTD_TRADE_ANCHOR_UTC
         _seen_ids: set = set()
-        _windows = 0
+        _requests = 0
         _ytd_scrum_usd = 0.0
         _ytd_fold_usd = 0.0
         _qrate = float(getattr(self, "_quote_to_usd", 1.0) or 1.0)
         try:
-            while _cursor < _now and _windows < 12:
+            while _cursor < _now:
                 _end = min(_cursor + _window_s, _now)
                 _end_ms = int(_end * 1000)
-                _window_trades = await self.exchange.get_my_trades(
-                    self.config.symbol,
-                    since=_cursor,
-                    limit=self.YTD_TRADE_PAGE_LIMIT,
-                    params={"paginate": True, "until": _end_ms},
+                _page = list(
+                    await self.exchange.get_my_trades(
+                        self.config.symbol,
+                        since=_cursor,
+                        limit=self.YTD_TRADE_PAGE_LIMIT,
+                        params={"paginate": True, "until": _end_ms},
+                    )
+                    or []
                 )
                 _new = 0
-                for _tr in _window_trades or []:
+                for _tr in _page:
                     _tid = getattr(_tr, "id", None) or id(_tr)
                     if _tid in _seen_ids:
                         continue
@@ -296,27 +340,30 @@ class ReconciliationEngineMixin:
                             _sup,
                         )
                 logger.debug(
-                    "Bot %s YTD window %d: [%.0f..%.0f] returned=%d "
+                    "Bot %s YTD request %d: [%.0f..%.0f] returned=%d "
                     "new=%d cumulative_unique=%d",
                     self.bot_id,
-                    _windows + 1,
+                    _requests + 1,
                     _cursor,
                     _end,
-                    len(_window_trades or []),
+                    len(_page),
                     _new,
                     len(_seen_ids),
                 )
-                _windows += 1
-                _cursor = _end
+                _requests += 1
+                _cursor = self._ytd_next_cursor(_page, _cursor, _end)
             _count = len(_seen_ids)
             logger.info(
                 "Bot %s YTD sync via chunked-window walk: "
-                "symbol=%s returned %d unique trades over %d windows "
+                "symbol=%s returned %d unique trades over %d requests "
+                "spanning [%.0f..%.0f] "
                 "(scrummed=$%.2f folded=$%.2f)",
                 self.bot_id,
                 self.config.symbol,
                 _count,
-                _windows,
+                _requests,
+                self.YTD_TRADE_ANCHOR_UTC,
+                _cursor,
                 _ytd_scrum_usd,
                 _ytd_fold_usd,
             )
