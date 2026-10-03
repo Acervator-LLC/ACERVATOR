@@ -697,9 +697,10 @@ class ExtractorBot(BotContainer):
         return OrderSide.SELL
 
     def set_bot_manager(self, manager) -> None:
-        """Accept a back-reference to BotManager so profit credits can
-        call notify_bot_profit(). Called by BotManager during bot
-        lifecycle wire-up, same pattern as ScrummingBot.set_bot_manager.
+        """Store ``manager`` in ``_bot_manager``.
+
+        Called by BotManager during bot lifecycle wire-up, the same pattern as
+        ``ScrummingBot.set_bot_manager``.
         """
         self._bot_manager = manager
 
@@ -1017,25 +1018,6 @@ class ExtractorBot(BotContainer):
         self._cycle_extracted_total += gain_base
         self._lifetime_extracted_total += gain_base
         self._chunk_extracted_total += gain_base
-
-        # Grows the registry reservation at once, so no sibling claims the profit.
-        if (
-            gain_base > 0
-            and self._bot_manager is not None
-            and self._usd_per_base_rate > 0
-        ):
-            try:
-                gain_usd = self._base_to_usd(gain_base)
-                if gain_usd > 0:
-                    self._bot_manager.notify_bot_profit(
-                        bot_id=self.bot_id, profit_usd=gain_usd
-                    )
-            except Exception as _exc:  # best-effort; must not block trade flow
-                logger.warning(
-                    "profit notification failed for bot %s: %s",
-                    self.bot_id,
-                    _exc,
-                )
 
         # The sale has filled, so the base currency is back. Tell the
         # parent bot, which is what stops the parent selling it away.
