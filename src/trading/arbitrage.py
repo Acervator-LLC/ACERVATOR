@@ -292,12 +292,3 @@ class ArbitrageMonitor:
                 else 0
             ),
         }
-
-
-# v3.19.41 (sadp R28 FL): `from typing import Optional` moved from
-# end-of-file to top with the other imports. Pre-fix the import was at
-# the bottom AFTER class definitions that referenced `Optional[str]` —
-# only `from __future__ import annotations` (PEP 563) prevented a
-# NameError at module load by making annotations lazy strings. If
-# anyone called `typing.get_type_hints(ArbitrageMonitor)` at runtime
-# they would have hit the broken ordering. Now correct-by-construction.
