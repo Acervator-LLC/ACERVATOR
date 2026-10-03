@@ -3,8 +3,11 @@
 A how-to. It takes a new owner from the Releases page to a running fleet, one
 screen at a time.
 
-Each page is one step. A step carries one picture, one instruction, and one line
-saying what changes.
+Each page is one step. A step carries one picture. A step that is a navigation
+action carries the instruction for that action. A step that covers a setting names
+the control, says what the bot does differently when it moves, says which other
+setting it touches, says what a wrong choice costs, and gives the value the live
+fleet runs against the value the field opens on.
 
 The first five pictures are the operator's own captures of the Releases page,
 cropped to the part each caption concerns. They sit in `supplied/`, and the
