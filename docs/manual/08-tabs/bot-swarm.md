@@ -164,7 +164,7 @@ how much of it has aged enough to move on.
 | Reading on `BotLedger` | Answers |
 | ---------------------- | ------- |
 | `predominant_source` | Which bot sent the most of what this one holds |
-| `mature_profit_total` | Wire profit past its maturity age |
+| `mature_profit_total` | Profit above the bot's maturity threshold |
 | `mature_profit_available` | The mature figure less what a saved ledger recorded as allocated |
 
 Maturity is a growth threshold, not an age and not a share. A bot's capital is
