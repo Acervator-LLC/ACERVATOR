@@ -69,6 +69,42 @@ The grid of locust cards is the whole screen. The wire overlay covers it,
 because the grid is the only surface whose coordinates a wire can be drawn
 against.
 
+## The live rows
+
+A strip above the locust grid holds one dense row per live bot: the id, the
+pair, the mode, the timeframe, the capital, the state, the price, the profit
+and the trade count. The strip is hidden while the fleet is empty. The same
+fleet load that draws the locusts fills it.
+
+`src/gui/bot_visualizer.py` — `BotVisualizationTab._sync_live_rows`
+
+```python
+def _sync_live_rows(self, bot_statuses: list[dict]) -> None:
+    """Hold one ``_live_bot_rows`` row per bot in one fleet load.
+
+    A row is rebuilt when the identifier mask changes the id it
+    shows, and a bot no longer in the load loses its row.
+    """
+```
+
+The React build fills the same rows through `BotVisualizerModel.sync_live_rows`
+and draws them in `LiveRows`.
+
+`src/gui/main_tabs/bot_visualizer_surface.py` — `BotVisualizerModel.sync_live_rows`
+
+```python
+def sync_live_rows(self, bot_statuses: list) -> None:
+    """Hold one ``self.live`` row per bot in one fleet load.
+
+    A row is rebuilt when ``masked`` changes the id it shows, and a
+    bot no longer in the load loses its row.
+    """
+```
+
+A stored reading that is text, a bool, not finite or too large to hold reads
+zero in a money or count column, so no stored value stops a row drawing. The
+identifier privacy dot masks the id column in both builds.
+
 ## Drawing a wire
 
 Drag from one node to another. Wires that arrive on the bus draw through the
