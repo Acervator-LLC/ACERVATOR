@@ -5,8 +5,6 @@ Smart wire profit routing between accumulation bots.
 SmartWireManager holds the wire topology and one BotLedger per bot.
 distribute_fold_profit moves a percentage of a source bot's realized
 fold profit to each wired target, capped by compute_safe_outflow_pct.
-No caller in the application reaches process_wires or
-execute_spawn_wire.
 """
 
 from __future__ import annotations
@@ -139,8 +137,9 @@ class BotLedger:
     """Profit provenance and wire totals for one bot.
 
     provenance maps each funder id to the amount it supplied, with
-    "SEED" for the initial capital. mature_profit_allocated records
-    what execute_spawn_wire has transferred to child bots.
+    "SEED" for the initial capital. mature_profit_allocated carries what
+    a saved ledger recorded as transferred to child bots; no code in this
+    build writes it.
     """
 
     bot_id: str
@@ -178,10 +177,9 @@ class BotLedger:
     def mature_profit_available(self) -> float:
         """Return mature_profit_total minus mature_profit_allocated.
 
-        can_fund_new_bot compares the result against
-        primary_provenance_starting_balance; it goes negative when a
-        spawn is followed by a loss. The Bot Swarm settings tab of each build
-        draws it, and no caller in the application reaches the spawn gate.
+        The Bot Swarm settings tab of each build draws it. Nothing in this
+        build writes mature_profit_allocated, so the result equals
+        mature_profit_total.
         """
         return self.mature_profit_total - self.mature_profit_allocated
 
@@ -197,16 +195,12 @@ class SmartWireManager:
 
     def __init__(
         self,
-        wire_back_pct: float = 0.30,
-        mr_fund_pct: float = 0.15,
         min_wire_amount: float = 0.01,
         bus=None,
     ):
         # None makes each emit site call get_event_bus(); an injected bus
         # stays off the live bus.
         self._bus = bus
-        self._wire_back_pct = wire_back_pct
-        self._mr_fund_pct = mr_fund_pct
         self._min_wire = min_wire_amount
         self._ledgers: dict[str, BotLedger] = {}
         self._transactions: list[WireTransaction] = []
@@ -1023,7 +1017,7 @@ class SmartWireManager:
             bot_id=bot_id,
             asset=asset,
             provenance=provenance,
-            starting_balance=seed_amount,  # read by primary_provenance_starting_balance
+            starting_balance=seed_amount,  # the cost basis mature_profit_total reads
         )
         source_label = funder_bot_id or "SEED"
         logger.info(
@@ -1034,100 +1028,6 @@ class SmartWireManager:
             source_label,
         )
 
-    def primary_provenance_starting_balance(self, bot_id: str) -> Optional[float]:
-        """Return the starting_balance of this bot's predominant_source.
-
-        Falls back to provenance["SEED"] with no other-bot source and to
-        this bot's own starting_balance when that source has no ledger;
-        None for an unknown bot_id.
-        """
-        ledger = self._ledgers.get(bot_id)
-        if ledger is None:
-            return None
-        pps = ledger.predominant_source
-        if pps is None:
-            return float(ledger.provenance.get("SEED", 0.0))
-        pps_ledger = self._ledgers.get(pps)
-        if pps_ledger is None:
-            return ledger.starting_balance
-        return pps_ledger.starting_balance
-
-    def can_fund_new_bot(self, bot_id: str) -> tuple[bool, float, str]:
-        """Compare mature_profit_available against
-        primary_provenance_starting_balance.
-
-        Returns (True, that balance, "ok") when it clears, and
-        (False, 0.0, reason) otherwise.
-        """
-        ledger = self._ledgers.get(bot_id)
-        if ledger is None:
-            return False, 0.0, f"unknown_bot ({bot_id})"
-
-        threshold = self.primary_provenance_starting_balance(bot_id)
-        if threshold is None or threshold <= 0:
-            return False, 0.0, "no_pps_starting_balance"
-
-        available = ledger.mature_profit_available
-        if available < threshold:
-            return (
-                False,
-                0.0,
-                f"insufficient_mature (${available:.2f} < " f"${threshold:.2f})",
-            )
-
-        return True, threshold, "ok"
-
-    def execute_spawn_wire(
-        self,
-        funder_bot_id: str,
-        new_bot_id: str,
-        new_bot_asset: str,
-        timestamp: int = 0,
-    ) -> Optional[WireTransaction]:
-        """Debit funder_bot_id's mature_profit_allocated by the
-        can_fund_new_bot amount and register_bot the new bot.
-
-        Returns the MR_FUND WireTransaction, or None when can_fund_new_bot
-        declines.
-        """
-        approved, amount, reason = self.can_fund_new_bot(funder_bot_id)
-        if not approved:
-            logger.info(
-                "SmartWire spawn gate declined: funder=%s reason=%s",
-                funder_bot_id,
-                reason,
-            )
-            return None
-
-        funder = self._ledgers[funder_bot_id]
-        funder.mature_profit_allocated += amount
-        funder.wired_out += amount
-
-        self.register_bot(
-            new_bot_id, new_bot_asset, seed_amount=amount, funder_bot_id=funder_bot_id
-        )
-        # wired_in reflects funding by another bot, not SEED.
-        self._ledgers[new_bot_id].wired_in = amount
-
-        tx = WireTransaction(
-            timestamp=timestamp,
-            source_bot=funder_bot_id,
-            target_bot=new_bot_id,
-            amount=amount,
-            wire_type="MR_FUND",
-            reason=(f"mature-profit cascade spawn " f"(threshold=${amount:.2f})"),
-        )
-        self._transactions.append(tx)
-        logger.info(
-            "SmartWire cascade: %s → %s funded with $%.2f "
-            "(funder retains stake + $%.2f excess mature)",
-            funder_bot_id,
-            new_bot_id,
-            amount,
-            funder.mature_profit_available,
-        )
-        return tx
-
     def record_profit(self, bot_id: str, amount: float) -> None:
         """Add amount to bot_id's total_profit and available_profit.
 
@@ -1136,82 +1036,6 @@ class SmartWireManager:
         if bot_id in self._ledgers:
             self._ledgers[bot_id].total_profit += amount
             self._ledgers[bot_id].available_profit += amount
-
-    def process_wires(
-        self, undervalued_bots: list[str] = None, timestamp: int = 0
-    ) -> list[WireTransaction]:
-        """Move available_profit between _ledgers and return the
-        WireTransaction rows booked.
-
-        _mr_fund_pct funds each id in undervalued_bots and _wire_back_pct
-        returns to predominant_source; no caller in the application reaches
-        process_wires.
-        """
-        if not self._enabled:
-            return []
-
-        wires = []
-
-        if undervalued_bots:
-            for bot_id, ledger in self._ledgers.items():
-                if ledger.available_profit < self._min_wire * 2:
-                    continue
-                deploy = ledger.available_profit * self._mr_fund_pct
-                if deploy < self._min_wire:
-                    continue
-
-                for target_id in undervalued_bots:
-                    if target_id == bot_id:
-                        continue
-                    if target_id not in self._ledgers:
-                        continue
-
-                    wire = WireTransaction(
-                        timestamp=timestamp,
-                        source_bot=bot_id,
-                        target_bot=target_id,
-                        amount=deploy,
-                        wire_type="MR_FUND",
-                        reason=f"MR undervalued: {target_id}",
-                    )
-                    wires.append(wire)
-
-                    ledger.available_profit -= deploy
-                    ledger.wired_out += deploy
-                    target = self._ledgers[target_id]
-                    target.wired_in += deploy
-                    if bot_id not in target.provenance:
-                        target.provenance[bot_id] = 0
-                    target.provenance[bot_id] += deploy
-                    break  # One deployment per source per cycle
-
-        for bot_id, ledger in self._ledgers.items():
-            if ledger.available_profit < self._min_wire:
-                continue
-            source = ledger.predominant_source
-            if not source or source not in self._ledgers:
-                continue
-
-            wire_amount = ledger.available_profit * self._wire_back_pct
-            if wire_amount < self._min_wire:
-                continue
-
-            wire = WireTransaction(
-                timestamp=timestamp,
-                source_bot=bot_id,
-                target_bot=source,
-                amount=wire_amount,
-                wire_type="WIRE_BACK",
-                reason=f"Provenance return to {source}",
-            )
-            wires.append(wire)
-
-            ledger.available_profit -= wire_amount
-            ledger.wired_out += wire_amount
-            self._ledgers[source].wired_in += wire_amount
-
-        self._transactions.extend(wires)
-        return wires
 
     def get_ledger(self, bot_id: str) -> Optional[BotLedger]:
         return self._ledgers.get(bot_id)
