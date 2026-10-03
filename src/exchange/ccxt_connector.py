@@ -36,8 +36,10 @@ CONNECT_BACKOFF_STEP_S: float = 2.0
 # Outer wait_for budget for one sync CCXT call.
 SYNC_CALL_TIMEOUT_SEC: float = 25.0
 
-# Gap between ccxt abandoning a request and the outer wait firing.
-CCXT_TIMEOUT_HEADROOM_SEC: float = 5.0
+# Gap between ccxt abandoning a request and the outer wait firing. It only has
+# to cover the hand-off from the worker thread back to the loop, measured at
+# 90ms, so a wider gap would refuse slow reads that still return a price.
+CCXT_TIMEOUT_HEADROOM_SEC: float = 1.0
 
 # ccxt's own per-request timeout, kept below the outer wait so ccxt gives up
 # first and returns the single worker instead of leaking it.
