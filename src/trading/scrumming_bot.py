@@ -1459,6 +1459,9 @@ class ScrummingBot(
         self._anchor_target_balance = _a_after
         # END ATOMIC ARRIVAL
 
+        # The child traded on this same venue account, and one pool is shared.
+        self._invalidate_symbol_balances(self.config.symbol)
+
         try:
             self.config.target_balance = self._target_balance
         except Exception as _mirror_exc:
@@ -1972,18 +1975,6 @@ class ScrummingBot(
             except Exception:
                 raise
         return await self.exchange.get_balance(currency)
-
-    def _invalidate_balance(
-        self,
-        currency: Optional[str] = None,
-    ) -> None:
-        """Force the next ``_get_balance`` for this exchange and currency."""
-        if self._data_pool is None:
-            return
-        try:
-            self._data_pool.invalidate_balance(self.config.exchange_id, currency)
-        except Exception as _inv_exc:  # noqa: BLE001
-            logger.debug("Bot %s balance invalidate failed: %s", self.bot_id, _inv_exc)
 
     async def _refresh_quote_to_usd(self) -> Optional[float]:
         """Refresh the cached quote→USD rate, at most once per 30s and 1.0 for
@@ -4817,6 +4808,9 @@ class ScrummingBot(
                 t["fill_price"] = float(_avg or t["price"])
                 t["filled_amount"] = _filled
                 settled += 1
+                # A resting order filled with nobody watching, so the window
+                # that began before it is already wrong.
+                self._invalidate_symbol_balances(self.config.symbol)
                 self._bus.emit(
                     "bot.log",
                     bot_id=self.bot_id,
