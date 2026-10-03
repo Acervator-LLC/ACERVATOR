@@ -88,8 +88,6 @@ class AnalyticsEngine:
         self._max_equity_points = 17280  # 48 hours at 10-sec intervals
 
     def record_trade(self, trade: TradeRecord):
-
-        # sadp: R28 R29 R33  # trade record: fail-loudly(R28) idempotent(R29) append-only(R33)
         """Add a completed trade to the analytics store."""
         self._trades.append(trade)
         if len(self._trades) > self._max_trades:
@@ -99,8 +97,6 @@ class AnalyticsEngine:
         )
 
     def record_trade_from_dict(self, d: dict):
-
-        # sadp: R28 R29 R33  # trade record: fail-loudly(R28) idempotent(R29) append-only(R33)
         """Record a trade from a dictionary (convenience method)."""
         trade = TradeRecord(
             trade_id=d.get("trade_id", f"t_{time.time():.0f}"),
@@ -123,8 +119,6 @@ class AnalyticsEngine:
         self.record_trade(trade)
 
     def snapshot_equity(self, bot_manager) -> EquityPoint:
-
-        # sadp: R28 R33  # equity snapshot: fail-loudly(R28) append-only(R33)
         """Take an equity snapshot from current portfolio state."""
         agg = bot_manager.get_aggregate_stats()
         total_pnl = agg.get("total_realised_pnl", 0)

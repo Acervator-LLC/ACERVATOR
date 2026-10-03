@@ -66,8 +66,6 @@ class StatusTabMixin:
                     f"(FIFO-matched buy/sell pairs from {_tc} trades). "
                     f"Refreshed {_age_str} ago."
                 )
-                # v3.23.7 Anomaly B: label dropped the "(exchange)"
-                # qualifier — this is now the only P/L row.
                 sf.addRow("Realised P/L:", rep_lbl)
 
                 if _ue != 0:
@@ -90,7 +88,6 @@ class StatusTabMixin:
                     "completed. First refresh fires on bot bootstrap; "
                     "subsequent every 5 minutes."
                 )
-                # v3.23.7 Anomaly B: label dropped "(exchange)" qualifier.
                 sf.addRow("Realised P/L:", pending_lbl)
 
         sf.addRow("Total Trades:", QLabel(str(stats.get("total_trades", 0))))
@@ -109,9 +106,6 @@ class StatusTabMixin:
             err.setWordWrap(True)
             sf.addRow("Last Error:", err)
         layout.addWidget(stats_group)
-
-        # v3.20.4 — Grid Levels table removed (grid_bot deleted
-        # v3.16.0; no live bot has a `grid` attribute).
 
         layout.addStretch()
         return w
