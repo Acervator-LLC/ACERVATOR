@@ -2465,9 +2465,8 @@ flowchart LR
 
 ### What the file holds
 
-The file carries `saved_at`, `saved_at_human`, `bot_count` and `bots`, the
-keys the live state file carries less the smart-wire lists the Simulator has
-none of. Each entry under `bots` is the per-bot record the live process
+The file carries `saved_at`, `saved_at_human`, `bot_count` and `bots`, the same
+keys the live state file carries. Each entry under `bots` is the per-bot record the live process
 writes, `config`, `stats`, `scrumming_state`, `state_when_saved` and
 `bot_id`, so the one record reader that maps a stored live bot to a row maps
 a stored sim bot the same way. At unit 12a the file held the wizard's bots and
@@ -2519,6 +2518,40 @@ and survive a restart under their own modes.
                 for mode, records in self._fleets.items()
             },
         }
+```
+
+### A mode's entry carries its wires
+
+Each mode's entry also carries `smart_wires` and `smart_wire_ledgers`, the two
+keys `bot_state.json` carries for the live fleet. A wire belongs to one mode's
+fleet, so Back Test's wires are saved and read back under Back Test and
+Validation's under Validation. `FleetSource.hold_wire_manager` takes a
+`SimWireManager`'s rows onto the mode in force and `FleetSource.wire_manager`
+builds the manager back at the next launch, so a simulated wire survives a
+restart the way a live one does.
+
+A file written before these keys existed reads as a fleet with no wire, and a
+build that does not know the keys reads the same bots, the same mode and the
+same rows it read before. Both were driven: the unchanged tree's reader and this
+one gave an identical reading of a file carrying both keys, and the same
+comparison reported a difference the moment one value was changed by hand.
+
+`src/simulator/fleet_source.py` — the write, per mode
+
+```python
+            FLEETS_KEY: {
+                mode: {
+                    "saved_at": saved_at,
+                    "saved_at_human": saved_at_human,
+                    "bot_count": len(records),
+                    "bots": dict(records),
+                    WIRES_KEY: [dict(one) for one in self._wires[mode]],
+                    WIRE_LEDGERS_KEY: [
+                        dict(one) for one in self._wire_ledgers[mode]
+                    ],
+                }
+                for mode, records in self._fleets.items()
+            },
 ```
 
 ### Absent, empty, malformed
@@ -2646,7 +2679,7 @@ flowchart LR
 | Settings | `config`, the live target, the anchor, the surplus, the consumed budget | Target A15 and Target A14 from the fleet's own A15 and A14 rows; the budget row reads an unreadable dash |
 | Fold Tranches | `fold_tranches`, the parked credits, the ledger, the four counters | no Extractor Tranche row, Live's own answer with no bot manager |
 | Stack Tranches | `stack_tranches`, the two counters | — |
-| Bot Swarm | nothing named a wire manager | Live's own line, Bot Swarm not active for this bot |
+| Bot Swarm | the `SimWireManager` the view was built with | Live's own line, Bot Swarm not active for this bot |
 | Market Inspector | nothing; a scan is not a record | Live's own no-scan screen; the shared analyzer is never asked |
 | Phantom Bots | `phantoms_enabled`, `phantom_timeframes`, `lock_candle_count` | the runtime rows as a bot before its first tick |
 | Positions Held | `extractor_state.positions`, the four chunk figures | — |
@@ -9135,6 +9168,69 @@ def target_growth_applied(
     available = max(0.0, float(surplus_usd)) + max(0.0, float(standing_usd))
     applied = min(available, float(cap_remaining_usd))
     return applied, max(0.0, available - applied)
+```
+
+### A fold's growth travels the wires to another sim bot
+
+A simulated bot can send part of a fold's growth to another simulated bot. A
+wire names a source, a target and a percentage. The moment a fold compounds its
+growth into the source's target balance, the wire's share of that same figure is
+credited to the other bot. The source keeps its own growth whole and the share
+is new money at the destination, which is how the live fold route behaves.
+
+The share lands in the target's standing fold tranches, split evenly, the way
+wire credits land on a live bot. A sim bot holds no position between walks, so a
+share arriving while the target is not walking is parked on its ledger and
+spread over the first tranche its own walk builds. The ledger carries the
+lifetime sent, the lifetime received, the provenance per funder and the parked
+pool.
+
+`SimWireManager` in `src/simulator/sim_wire.py` owns the topology and one
+ledger per sim bot.
+
+| verb | what it does |
+|---|---|
+| `register_wire` | sets the source-to-target percentage, from 0 up to 100 |
+| `unregister_wire` | drops one route |
+| `attach_bot` | holds the position of a walk in progress a share can reach |
+| `release_bot` | gives that position back when the walk ends |
+| `distribute_fold_profit` | moves each wire's share of one fold's growth |
+| `land_parked_credits` | spreads a parked pool over standing tranches |
+| `export_wires`, `import_wires` | the routes the sim fleet file carries |
+| `export_ledgers`, `import_ledgers` | the ledgers the sim fleet file carries |
+
+`src/simulator/back_test.py` — the fold hands its growth on
+
+```python
+    growth = grow_target(bot, position, units, slices, float(price), int(ts_ms))
+    if wires is not None and growth > 0.0:
+        route_fold_growth(wires, bot.bot_id, growth, float(price))
+```
+
+One fold driven over an empty scratch home, two bots at a $200.0000 target, a
+scrum at $110.00 and a fold at $95.00, with one wire at 40 per cent between
+them:
+
+```
+the fold's growth on the source       7.4550
+the wire's rate                         40.0 per cent
+the share that leaves                   2.9820
+the target's fold queue before         54.6700
+the target's fold queue after          57.6520
+the source's lifetime sent              2.9820
+the target's lifetime received          2.9820
+```
+
+The same pair walked over a whole tape sends four times. The source's own walk
+is unchanged by the wire, 5 scrums and 4 folds either way, and the target ends
+holding more of its asset because the wired money bought more on its folds.
+
+```
+                        no wire       a wire at 40 per cent
+source scrums, folds    5, 4          5, 4
+source end target       295.9112      295.9112
+target end units        3.2066        3.2334
+target lifetime received  0.0000       38.3645
 ```
 
 ### The higher timeframes come from the walk's own candles
