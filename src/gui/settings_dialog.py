@@ -1,6 +1,4 @@
-"""
-settings_dialog.py - Settings Menu Dialog v1.1
-"""
+"""Declares ``SettingsDialog``, the Qt Settings window ``variant_surface`` returns."""
 
 from __future__ import annotations
 
@@ -49,7 +47,7 @@ if _HAS_QT:
         def __init__(
             self, settings_manager, status_log=None, parent=None, wing: str = "crypto"
         ):
-            """v3.16.20 — wing-aware Settings dialog.
+            """Wing-aware Settings dialog.
 
             Parameters
             ----------

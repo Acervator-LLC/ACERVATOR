@@ -1,7 +1,7 @@
 """Bollinger M-Top -- the bearish double-tap of the upper band.
 
-Moved out of ``ta_engine.py`` for issue #73. The body below is a
-verbatim line slice of that file: no arithmetic was retyped.
+``detect_m_top`` holds the pattern test, exported by
+``src.trading.indicators`` and ``src.trading.ta_engine``.
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ def detect_m_top(
     min_separation: int = 5,
     lookback: int = 30,
 ) -> dict:
-    """v3.19.25 -- Bollinger M-Top pattern (L2 closure, bearish half).
+    """Bollinger M-Top pattern -- the bearish half of the band-test pair.
 
     Mirror of W-Bottom: two distinct highs touching the upper band, with
     the second high at LOWER absolute price AND LOWER bb_position than
@@ -30,8 +30,6 @@ def detect_m_top(
 
     Returns dict matching detect_w_bottom shape but with test_1_high /
     test_2_high instead of low, and the directional inequalities flipped.
-
-    sadp: R28 R55 R63
     """
     n = len(candles)
     if n < 2 or len(bb_pos_history) != n:
