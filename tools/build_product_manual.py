@@ -1612,8 +1612,9 @@ def verify_sections_present(
 def verify_no_raw_markup(pdf_path: Path) -> tuple[bool, str]:
     """Return whether the pages of ``_pdf_page_prose`` carry no markdown markup.
 
-    A backtick and a ``RAW_PIPE_RUN`` are read over the prose alone, where a
-    code block quotes both as source; the other two scans read the whole page.
+    A backtick, a ``RAW_TABLE_ROW`` and a ``RAW_PIPE_RUN`` are read over the
+    prose alone, where a code block quotes each as source; ``DIAGRAM_WORD``
+    reads the whole page, where an unparsed diagram falls back to the mono face.
     """
     pages = _pdf_page_prose(pdf_path)
     leaks: list[str] = []
@@ -1622,7 +1623,7 @@ def verify_no_raw_markup(pdf_path: Path) -> tuple[bool, str]:
         for name, hits in (
             ("backtick", prose.count("`")),
             ("mermaid source", len(DIAGRAM_WORD.findall(whole))),
-            ("markdown table row", len(RAW_TABLE_ROW.findall(whole))),
+            ("markdown table row", len(RAW_TABLE_ROW.findall(prose))),
             ("pipe run", len(RAW_PIPE_RUN.findall(prose))),
         ):
             if hits:
