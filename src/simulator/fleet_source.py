@@ -59,6 +59,7 @@ from ..trading.container.config import (
 )
 from ..trading.scrumming.sizing import DRAWDOWN_STATE, priced_usd
 from ..trading.smart_wire import mature_profit_usd
+from ..trading.target_bands import fleet_ammo
 from .sim_wire import SimWireManager
 from .tablet_source import SendRefused
 
@@ -693,7 +694,9 @@ def aggregate_stats(bots: Sequence[SimBot], budget_usd: Optional[float] = None) 
     of ``holdings``, ``current_price`` and ``quote_to_usd`` when both are
     positive and ``position_value_usd`` otherwise, maturity is read only where
     ``exchange_data_fresh_ts`` is positive, and each YTD sum falls back to the
-    lifetime sum at zero."""
+    lifetime sum at zero. The AMMO total and the two territory counts are
+    ``fleet_ammo`` over one reading per bot, the same call the live aggregate
+    publishes them from."""
     total_pnl = 0.0
     total_trades = 0
     running = 0
@@ -711,6 +714,7 @@ def aggregate_stats(bots: Sequence[SimBot], budget_usd: Optional[float] = None) 
     crypto_position_value_usd = 0.0
     total_mature_exchange = 0.0
     mature_positions = 0
+    ammo_readings: list = []
 
     for bot in bots:
         total_pnl += bot.realised_pnl_usd
@@ -734,6 +738,8 @@ def aggregate_stats(bots: Sequence[SimBot], budget_usd: Optional[float] = None) 
                 bot.holdings, bot.current_price, bot.quote_to_usd
             )
         crypto_position_value_usd += position_value
+        # The Ammo cells read the grown target, so the total reads it too.
+        ammo_readings.append((position_value, bot.live_target_usd, bot.target_usd))
         if fresh:
             mature = mature_profit_usd(bot.cost_basis_exchange_usd, position_value)
             if mature > 0:
@@ -745,6 +751,7 @@ def aggregate_stats(bots: Sequence[SimBot], budget_usd: Optional[float] = None) 
             errored += 1
     if budget_usd is not None:
         wallet_cash_usd = float(budget_usd)
+    ammo = fleet_ammo(ammo_readings)
 
     return {
         "total_bots": len(bots),
@@ -763,6 +770,12 @@ def aggregate_stats(bots: Sequence[SimBot], budget_usd: Optional[float] = None) 
             wallet_cash_usd + crypto_position_value_usd, 4
         ),
         "total_realised_pnl": round(total_pnl, 4),
+        # The header strip's AMMO column draws this: each bot's Ammo
+        # WITHOUT its sign, as the bot list's Ammo column draws it, so a
+        # bot above target cannot cancel one below.
+        "total_target_delta_usd": ammo["total_target_delta_usd"],
+        "bots_scrum_territory": ammo["bots_scrum_territory"],
+        "bots_fold_territory": ammo["bots_fold_territory"],
         "total_trades": total_trades,
         "total_scrummed_usd": round(
             total_scrummed_ytd if total_scrummed_ytd > 0 else total_scrummed, 4

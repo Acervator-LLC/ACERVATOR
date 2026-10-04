@@ -8,7 +8,7 @@ questions from a position value, which is what the dashboard holds.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Iterable, Sequence
 
 #: The tick's park band as a fraction of target; ScrummingBot.tick exits inside it.
 AT_TARGET_PCT = 0.001
@@ -71,6 +71,33 @@ def target_territory(position_value: float, target_balance: float) -> str:
     if delta < -band:
         return TERRITORY_FOLD
     return TERRITORY_AT_TARGET
+
+
+def fleet_ammo(readings: Iterable[Sequence[Any]]) -> dict:
+    """The header strip's three AMMO figures over one reading per bot.
+
+    A reading is a position value in dollars, the engine's grown target and the
+    configured ``target_balance``; a bot whose ``ammo_target`` is not above
+    zero contributes nothing. Every fleet source publishes these three keys
+    from here, so no two of them can sum one dollar figure differently.
+    """
+    total_usd = 0.0
+    scrum_bots = 0
+    fold_bots = 0
+    for position_value, live_target, configured_target in readings:
+        target_usd = ammo_target(live_target, configured_target)
+        if target_usd > 0:
+            total_usd += abs(target_delta(position_value, target_usd))
+            where = target_territory(position_value, target_usd)
+            if where == TERRITORY_SCRUM:
+                scrum_bots += 1
+            elif where == TERRITORY_FOLD:
+                fold_bots += 1
+    return {
+        "total_target_delta_usd": round(total_usd, 4),
+        "bots_scrum_territory": scrum_bots,
+        "bots_fold_territory": fold_bots,
+    }
 
 
 def manual_fire_will_noop(position_value: float, target_balance: float) -> bool:
