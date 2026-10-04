@@ -1584,7 +1584,7 @@ class CCXTConnector(ExchangeInterface):
                     {"product_type": product_type, "limit": PRODUCTS_PAGE_LIMIT}
                 )
                 rows = (body or {}).get(PRODUCTS_KEY) or []
-            except Exception as exc:  # noqa: BLE001 - one class must not fail the load
+            except Exception as exc:
                 logger.warning(
                     "%s served no %s products: %s",
                     self._exchange_id,
