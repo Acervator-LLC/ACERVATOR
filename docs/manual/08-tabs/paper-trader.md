@@ -2786,6 +2786,25 @@ A pushed market keeps the quote its symbol names. `BTC/USD` becomes a bot on
 `BTC/USD` and `BTC/USDC` becomes a bot on `BTC/USDC`. A symbol naming no pair
 spawns nothing, and one market named twice spawns one bot.
 
+### The Target Balance is checked before a bot is held
+
+A topology proposal that names no dollar figure reaches the push as a zero, and
+a zero takes the same 200 the Bot Wizard offers, read off `BotConfig`. Every
+other unusable figure refuses the whole push instead of holding a bot that
+cannot trade: a true or false in place of a dollar amount, an infinity, a
+not-a-number, a negative figure, and any value that is not a number at all.
+
+`src/paper/fleet_source.py` — what one pushed market's Target Balance may be
+
+```python
+def pushed_target_usd(value: Any) -> Optional[float]:
+```
+
+Driven on the real push, each of those five answered its own refusal with no
+bot held and no wire registered. Without the check an infinity and a
+not-a-number each became a bot whose Target Balance read zero, and a true
+became a bot trading against one dollar.
+
 ### The wires travel with the bots
 
 Each wire is registered on the fleet's own `PaperWireManager` between the bot
@@ -2801,7 +2820,10 @@ def register_pushed_wires(manager: Any, wires: Any, bot_ids: Any) -> list:
 A wire that cannot travel refuses the whole push. Four gaps do it: a wire end
 naming no market, both ends naming the one market, an end naming a market the
 push did not create, and a rate outside the range `register_wire` takes. Each
-refusal spawns nothing and registers nothing.
+refusal spawns nothing and registers nothing. A wire row the push cannot read
+at all counts as naming no market, so it is refused rather than dropped, and
+the wire count the push reports can never fall below the rows the payload
+carried.
 
 `src/paper/fleet_source.py` — the four wire refusals
 

@@ -110,6 +110,16 @@ PUSHED_TIMEFRAME_DEFAULT = str(
     )
 )
 
+#: ``target_balance`` a pushed market takes when its candidate names no dollar
+#: figure, read off ``BotConfig``'s own field default for the same reason.
+PUSHED_TARGET_DEFAULT = float(
+    next(
+        one.default
+        for one in dataclass_fields(BotConfig)
+        if one.name == "target_balance"
+    )
+)
+
 #: The Bot Settings window's three non-``BotConfig`` fields and the record key
 #: each one is stored under.
 RECORD_FIELDS = {
@@ -151,6 +161,11 @@ PUSH_WIRE_REFUSED_FORMAT = (
 )
 PUSH_WIRE_FORMAT = "{source} to {target} at {pct:.2f}%"
 PUSH_WIRED_FORMAT = "Wired {count} of them: {wires}."
+PUSH_TARGET_FORMAT = "{asset}: {target} is not a Target Balance a bot can trade"
+PUSH_TARGET_REFUSED_FORMAT = (
+    "Push to Paper refused: {count} market(s) name no usable Target Balance - "
+    "{reasons}. No paper bot was spawned."
+)
 
 #: The ``state`` an ``ExtractorBot`` writes on a position below its entry value,
 #: the one ``DRAWDOWN_STATE`` that ``POSITION_STATE_DRAWDOWN`` also reads.
@@ -514,47 +529,105 @@ def pushed_config(
 
 
 def push_payload(candidate: Any) -> tuple:
-    """``(bots, wires)`` of one pushed candidate.
+    """``(bots, wires)`` of one pushed candidate, each the rows it holds.
 
-    Both Inspector producers answer ``{"bots", "wires"}``, and anything else
-    reads as no bot and no wire, which ``push_candidate`` refuses as naming no
-    market.
+    Both Inspector producers answer ``{"bots", "wires"}``; anything else reads
+    as no bot and no wire, and every row is kept so ``undeliverable_wires``
+    names a wire row it cannot read.
     """
     held = candidate if isinstance(candidate, dict) else {}
-    return list(held.get("bots") or []), list(held.get("wires") or [])
+    return _row_list(held.get("bots")), _row_list(held.get("wires"))
 
 
-def push_configs(candidates: Any, exchange_id: str, ta_timeframe: str) -> list:
-    """One ``pushed_config`` per distinct market ``candidates`` names, all on
-    ``exchange_id`` at ``ta_timeframe``.
+def _row_list(held: Any) -> list:
+    """``held`` as a list of rows; a mapping, a string and anything outside a
+    list or a tuple all read as no row."""
+    return list(held) if isinstance(held, (list, tuple)) else []
 
-    Each candidate is a ``{"symbol", "target_usd"}`` row. Paper reads the
-    venue's own live data rather than a recorded tape, so no market is refused
-    here for want of one; a market the venue does not trade is reported by the
-    feed read the push runs afterwards.
+
+def _row(held: Any) -> dict:
+    """``held`` as one payload row; a row that is not a dict reads as an empty
+    one, which names no market and no wire end."""
+    return held if isinstance(held, dict) else {}
+
+
+def pushed_target_usd(value: Any) -> Optional[float]:
+    """The Target Balance one pushed market takes, or None for a figure no bot
+    can trade against.
+
+    A candidate naming no figure, or naming zero, takes
+    ``PUSHED_TARGET_DEFAULT``; a bool, a non-finite number, a negative number
+    and a value ``float`` cannot read are each refused, keeping any Target
+    Balance ``as_finite_float`` would turn into ``REFUSED_FIGURE`` off a held
+    record.
+    """
+    if isinstance(value, bool):
+        return None
+    if value is None:
+        return PUSHED_TARGET_DEFAULT
+    if not isinstance(value, (int, float, str)):
+        return None
+    try:
+        wanted = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    if not math.isfinite(wanted) or wanted < 0.0:
+        return None
+    return PUSHED_TARGET_DEFAULT if wanted == 0.0 else wanted
+
+
+def push_configs(candidates: Any, exchange_id: str, ta_timeframe: str) -> tuple:
+    """``(configs, refused)`` for the distinct markets ``candidates`` names,
+    every config on ``exchange_id`` at ``ta_timeframe``.
+
+    Each candidate is a ``{"symbol", "target_usd"}`` row, and a market whose
+    ``pushed_target_usd`` is None lands in ``refused`` so ``push_candidate``
+    can decline the whole push.
     """
     configs: list[dict] = []
+    refused: list[str] = []
     seen: set[str] = set()
     for candidate in candidates or []:
-        base, quote = market_parts((candidate or {}).get("symbol"))
+        row = _row(candidate)
+        base, quote = market_parts(row.get("symbol"))
         if not base or base in seen:
             continue
         seen.add(base)
+        target_usd = pushed_target_usd(row.get("target_usd"))
+        if target_usd is None:
+            refused.append(
+                PUSH_TARGET_FORMAT.format(asset=base, target=row.get("target_usd"))
+            )
+            continue
         configs.append(
             pushed_config(
                 base,
                 exchange_id,
                 ta_timeframe,
-                float((candidate or {}).get("target_usd") or 0.0),
+                target_usd,
                 base_currency=quote,
             )
         )
-    return configs
+    return configs, refused
+
+
+def push_target_refused_line(reasons: Any) -> str:
+    """The Activity Log line for a push whose markets ``push_configs`` refused
+    a Target Balance for, listing each reason."""
+    named = [str(one) for one in (reasons or []) if str(one)]
+    return PUSH_TARGET_REFUSED_FORMAT.format(count=len(named), reasons="; ".join(named))
 
 
 def _is_wire_rate(pct: Any) -> bool:
     """Whether ``pct`` reads as a real number in ``0 < pct <= 100``, the range
-    ``PaperWireManager.register_wire`` accepts."""
+    ``PaperWireManager.register_wire`` accepts.
+
+    A bool and any value outside ``int``, ``float`` and ``str`` read as no
+    rate, so no ``__float__`` of a pushed wire's own is ever called by
+    ``undeliverable_wires``.
+    """
+    if isinstance(pct, bool) or not isinstance(pct, (int, float, str)):
+        return False
     try:
         rate = float(pct)
     except (TypeError, ValueError, OverflowError):
@@ -570,13 +643,12 @@ def undeliverable_wires(wires: Any, configs: Any) -> list:
     its markets, when both its ends name the one market, or when its ``pct``
     is outside the range ``register_wire`` takes.
     """
-    held = {
-        str((one or {}).get("target_asset") or "").upper() for one in (configs or [])
-    }
+    held = {str(_row(one).get("target_asset") or "").upper() for one in (configs or [])}
     out: list = []
-    for one in wires or []:
-        source = str((one or {}).get("source_asset") or "").upper()
-        target = str((one or {}).get("target_asset") or "").upper()
+    for wire in wires or []:
+        row = _row(wire)
+        source = str(row.get("source_asset") or "").upper()
+        target = str(row.get("target_asset") or "").upper()
         if not source or not target:
             out.append(PUSH_WIRE_UNNAMED_TEXT)
             continue
@@ -591,7 +663,7 @@ def undeliverable_wires(wires: Any, configs: Any) -> list:
                 )
             )
             continue
-        pct = (one or {}).get("pct")
+        pct = row.get("pct")
         if not _is_wire_rate(pct):
             out.append(
                 PUSH_WIRE_RATE_FORMAT.format(source=source, target=target, pct=pct)
@@ -639,14 +711,15 @@ def register_pushed_wires(manager: Any, wires: Any, bot_ids: Any) -> list:
     """
     ids = {str(key).upper(): str(value) for key, value in (bot_ids or {}).items()}
     out: list = []
-    for one in wires or []:
-        source_asset = str((one or {}).get("source_asset") or "").upper()
-        target_asset = str((one or {}).get("target_asset") or "").upper()
+    for wire in wires or []:
+        row = _row(wire)
+        source_asset = str(row.get("source_asset") or "").upper()
+        target_asset = str(row.get("target_asset") or "").upper()
         source_id = ids.get(source_asset, "")
         target_id = ids.get(target_asset, "")
         if not source_id or not target_id:
             continue
-        pct = float((one or {}).get("pct") or 0.0)
+        pct = float(row.get("pct") or 0.0)
         answer = manager.register_wire(source_id, target_id, pct)
         if not answer.get("applied"):
             logger.warning(
@@ -1126,15 +1199,16 @@ class PaperFleetSource:
         a push moves none: the bots are spawned idle and the next Start Paper
         Run works them against the venue's own data.
 
-        A payload naming no market, and a wire ``undeliverable_wires`` refuses,
-        each refuse the whole push, spawn nothing and register nothing. The
-        wires that applied are held on the fleet through ``hold_wire_manager``
-        and reach the paper fleet file on the next ``save``.
+        A payload naming no market, a Target Balance ``push_configs`` refused,
+        and a wire ``undeliverable_wires`` refused each decline the whole push,
+        spawn nothing and register nothing. The wires that applied are held on
+        the fleet through ``hold_wire_manager`` and reach the paper fleet file
+        on the next ``save``.
         """
         bots, wires = push_payload(candidate)
         venue = str(exchange_id or VENUE)
         timeframe = str(ta_timeframe or PUSHED_TIMEFRAME_DEFAULT)
-        configs = push_configs(bots, venue, timeframe)
+        configs, refused_targets = push_configs(bots, venue, timeframe)
         answer = {
             "held": 0,
             "wires": 0,
@@ -1142,6 +1216,8 @@ class PaperFleetSource:
             "symbols": [],
             "venue": venue,
         }
+        if refused_targets:
+            return {**answer, "refused": push_target_refused_line(refused_targets)}
         if not configs:
             return {**answer, "refused": PUSH_NO_CANDIDATE_TEXT}
         undeliverable = undeliverable_wires(wires, configs)
@@ -1444,9 +1520,12 @@ __all__ = [
     "POOL_RED",
     "POOL_YELLOW",
     "PRE_TICK_AUTO_FIRE",
+    "PUSHED_TARGET_DEFAULT",
     "PUSHED_TIMEFRAME_DEFAULT",
     "PUSH_NO_CANDIDATE_TEXT",
     "PUSH_SPAWNED_FORMAT",
+    "PUSH_TARGET_FORMAT",
+    "PUSH_TARGET_REFUSED_FORMAT",
     "PUSH_WIRED_FORMAT",
     "PUSH_WIRE_FORMAT",
     "PUSH_WIRE_RATE_FORMAT",
@@ -1474,9 +1553,11 @@ __all__ = [
     "push_configs",
     "push_payload",
     "push_spawned_line",
+    "push_target_refused_line",
     "push_wire_refused_line",
     "push_wired_line",
     "pushed_config",
+    "pushed_target_usd",
     "register_pushed_wires",
     "row_status",
     "strip_aggregate",
