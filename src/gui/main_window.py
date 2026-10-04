@@ -1898,6 +1898,32 @@ if _HAS_QT:
                 }
             return dict(push(candidate) or {})
 
+        def _push_candidate_to_paper(self, candidate: dict) -> dict:
+            """Hand one Inspector candidate to the Paper tab, which spawns the
+            paper bots it names.
+
+            ``candidate`` is the ``{"bots", "wires"}`` payload the Inspector
+            built. With no Paper tab the push is refused and nothing is
+            spawned, which is what the Inspector reports. Answers the Paper
+            Trader's ``{"held", "wires", "wired", "venue", "symbols",
+            "refused"}``.
+            """
+            from .paper.paper_trading_tab_surface import PUSH_NO_PAPER_TAB_TEXT
+
+            tab = getattr(self, "_paper_trader_tab", None)
+            push = getattr(tab, "push_to_paper", None)
+            if push is None:
+                self._status_log.log(PUSH_NO_PAPER_TAB_TEXT, "warning")
+                return {
+                    "held": 0,
+                    "wires": 0,
+                    "wired": [],
+                    "symbols": [],
+                    "venue": "",
+                    "refused": PUSH_NO_PAPER_TAB_TEXT,
+                }
+            return dict(push(candidate) or {})
+
         def _adopt_topology_proposal(self, proposal: dict) -> None:
             """Confirm, open the wizard for each new bot, then emit `wire.created`."""
             from PySide6.QtWidgets import QMessageBox

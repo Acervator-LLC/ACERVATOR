@@ -146,6 +146,13 @@ RUN_ENDED_FORMAT = (
 )
 RUN_FAILED_FORMAT = "Paper run failed: {error}"
 
+#: Why a Push to Paper from the Market Inspector reached no destination. The
+#: Paper tab declares no run mode, so the refusal names none.
+PUSH_NO_PAPER_TAB_TEXT = (
+    "Push to Paper refused: the Paper tab did not build, so no paper bot was "
+    "spawned."
+)
+
 #: The milliseconds between two redraws of the rows while a run writes stats,
 #: Live's own dashboard interval and the Simulator's ``STATS_REDRAW_MS``.
 STATS_REDRAW_MS = 2000
