@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 
-from .main_tabs.launcher_surface import crypto_features
+from .main_tabs.launcher_surface import WINDOW_STYLE, crypto_features
 
 logger = logging.getLogger("acervator.gui")
 
@@ -127,7 +127,7 @@ if _HAS_QT:
             self.setAccessibleName("Launcher Window")
             self.setWindowTitle("Acervator")
             self.setFixedSize(900, 560)
-            self.setStyleSheet("background: #08080f;")
+            self.setStyleSheet(WINDOW_STYLE)
 
             layout = QVBoxLayout(self)
             layout.setContentsMargins(40, 30, 40, 30)

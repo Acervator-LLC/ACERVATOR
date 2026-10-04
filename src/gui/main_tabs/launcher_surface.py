@@ -25,12 +25,13 @@ from __future__ import annotations
 from typing import Any, Optional
 
 from ...trading.ta_engine import DEFAULT_WEIGHTS
+from .. import design_system as ds
 
 METHOD = "launcher.state"
 
 LOGGER_NAME = "acervator.gui"
 
-WINDOW_BACKGROUND = "#08080f"
+WINDOW_BACKGROUND = ds.SURFACE_0
 CARD_BACKGROUND = "#0e0e1a"
 CARD_BORDER = "#1a1a2f"
 HEADING_COLOR = "#e0e0f0"
