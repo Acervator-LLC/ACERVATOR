@@ -24,11 +24,14 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
+from ...trading.ta_engine import DEFAULT_WEIGHTS
+from .. import design_system as ds
+
 METHOD = "launcher.state"
 
 LOGGER_NAME = "acervator.gui"
 
-WINDOW_BACKGROUND = "#08080f"
+WINDOW_BACKGROUND = ds.SURFACE_0
 CARD_BACKGROUND = "#0e0e1a"
 CARD_BORDER = "#1a1a2f"
 HEADING_COLOR = "#e0e0f0"
@@ -136,14 +139,22 @@ SHADOW_ATTACHED = False
 CRYPTO_TITLE = "Crypto Trading"
 CRYPTO_SUBTITLE = "Multi-exchange cryptocurrency trading with Grid and Scrumming bots"
 CRYPTO_ICON = "₿"
-CRYPTO_FEATURES = (
-    "Multi-exchange (30+ supported)",
-    "Grid Bot & Scrumming Bot",
-    "7-Indicator TA Voting Engine",
-    "Profit Folding & Distribution",
-    "Phantom Balance Bots",
-    "24/7 Trading",
-)
+#: The voter count is filled from DEFAULT_WEIGHTS, never typed in.
+CRYPTO_TA_FEATURE_FORMAT = "{indicator_count}-Indicator TA Voting Engine"
+
+
+def crypto_features() -> tuple[str, ...]:
+    """The Crypto card's feature lines, counting the voters
+    ``DEFAULT_WEIGHTS`` declares."""
+    return (
+        "Multi-exchange (30+ supported)",
+        "Grid Bot & Scrumming Bot",
+        CRYPTO_TA_FEATURE_FORMAT.format(indicator_count=len(DEFAULT_WEIGHTS)),
+        "Profit Folding & Distribution",
+        "Phantom Balance Bots",
+        "24/7 Trading",
+    )
+
 
 STOCKS_TITLE = "Stock Trading"
 STOCKS_SUBTITLE = "Equity trading via TradingView signals with broker integration"
@@ -406,7 +417,7 @@ class LauncherModel:
                 subtitle=CRYPTO_SUBTITLE,
                 icon_char=CRYPTO_ICON,
                 color=CRYPTO_COLOR,
-                features=CRYPTO_FEATURES,
+                features=crypto_features(),
             ),
             STOCKS_CARD: ModeCardModel(
                 title=STOCKS_TITLE,
@@ -512,7 +523,7 @@ def build_view_model(model: LauncherModel, presses=None) -> dict:
                 "subtitle": CRYPTO_SUBTITLE,
                 "icon_char": CRYPTO_ICON,
                 "color": CRYPTO_COLOR,
-                "features": list(CRYPTO_FEATURES),
+                "features": list(crypto_features()),
             },
             STOCKS_CARD: {
                 "title": STOCKS_TITLE,

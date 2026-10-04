@@ -12,6 +12,8 @@ import logging
 import time
 from datetime import datetime
 
+from .main_tabs.stock_main_window_surface import new_bot_text
+
 logger = logging.getLogger("acervator.gui.stocks")
 
 try:
@@ -629,17 +631,7 @@ if _HAS_QT:
 
             dlg = QMessageBox(self)
             dlg.setWindowTitle("New Accumulation Bot")
-            dlg.setText(
-                "Create an Accumulation Trading bot for stocks?\n\n"
-                "• Harvest-Fold cycle (same as crypto mode)\n"
-                "• 7-indicator TA voting engine\n"
-                "• MR Inspector + Boosted Fold\n"
-                "• Smart Wire cross-compounding\n"
-                "• Market hours enforcement\n"
-                "• PDT protection (3 day-trades / 5 days)\n"
-                "• T+2 settlement tracking\n\n"
-                "Symbol: AAPL | Target: $200 | TF: 1D"
-            )
+            dlg.setText(new_bot_text())
             dlg.setStandardButtons(QMessageBox.Ok | QMessageBox.Cancel)
             if dlg.exec() == QMessageBox.Ok:
                 config = StockAccumulationConfig(
