@@ -231,25 +231,29 @@ return mature_profit_usd(
 )
 ```
 
-The tab's own row label carries the threshold and reads the same constant the
-maths reads, so the words on screen and the rule applied to the money move
-together.
-
-`src/gui/main_tabs/bot_swarm_tab_surface.py` — the row label
-
-```python
-MATURE_TOTAL_ROW_FORMAT = "Mature profit total (position grown past {pct}%):"
-
-def mature_growth_pct() -> int:
-    return int(round(smart_wire.MATURE_GROWTH_PCT))
-```
-
 ### What the group draws now
 
 The Provenance & Mature-Profit Spawn State group draws three rows: the starting
 balance, the predominant funder and the provenance breakdown. It drew three more
 — the mature profit total, the mature profit allocated to spawns and the mature
 profit available — and those three came off every screen that shows the group.
+
+The heading is written once, and the three screens in the table below read it
+from there, so changing the heading is one edit. A single ampersand in a box
+title is read as a keyboard shortcut mark, so the doubled form is what the three
+boxes are given and one ampersand is what each screen draws. The Electron panel
+reads the same words out of the shared model.
+
+`src/gui/main_tabs/bot_swarm_tab_surface.py` — the heading and the three rows
+
+```python
+PROVENANCE_GROUP_TITLE = "Provenance & Mature-Profit Spawn State"
+PROVENANCE_GROUP_TITLE_QT = PROVENANCE_GROUP_TITLE.replace("&", "&&")
+
+STARTING_ROW_LABEL = "Starting balance (seed):"
+PREDOMINANT_ROW_LABEL = "Predominant funder (PPS):"
+PROVENANCE_ROW_LABEL = "Provenance breakdown:"
+```
 
 Each of the three could only ever read `$0.0000`. Nothing in the program works
 out the allocated figure; three places write it and each only copies it back out

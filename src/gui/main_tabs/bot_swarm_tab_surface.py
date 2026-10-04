@@ -122,6 +122,8 @@ EMPTY_WORD_WRAP = True
 
 SUMMARY_GROUP_TITLE = "Swarm Connections & Capital Flow"
 PROVENANCE_GROUP_TITLE = "Provenance & Mature-Profit Spawn State"
+# A QGroupBox title reads a single ampersand as a mnemonic mark, so Qt takes two.
+PROVENANCE_GROUP_TITLE_QT = PROVENANCE_GROUP_TITLE.replace("&", "&&")
 FORM_CONFIGURED_BY_HOST = True
 
 OUTBOUND_ROW_LABEL = "Outbound wires:"
