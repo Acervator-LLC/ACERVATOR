@@ -154,6 +154,7 @@ def crypto_features() -> tuple[str, ...]:
         "24/7 Trading",
     )
 
+
 STOCKS_TITLE = "Stock Trading"
 STOCKS_SUBTITLE = "Equity trading via TradingView signals with broker integration"
 STOCKS_ICON = "↑"

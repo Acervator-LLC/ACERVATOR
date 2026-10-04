@@ -333,6 +333,7 @@ def about_text() -> str:
     ``DEFAULT_WEIGHTS`` declares."""
     return ABOUT_TEXT_FORMAT.format(indicator_count=len(DEFAULT_WEIGHTS))
 
+
 RESET_TITLE = "Reset All Settings"
 RESET_TEXT = (
     "This will clear ALL settings, exchanges, and stored credentials.\n"
