@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtGui import QColor
 
 from .. import design_system as ds
+from ..main_tabs.bot_swarm_tab_surface import PROVENANCE_GROUP_TITLE_QT
 
 logger = logging.getLogger("acervator.gui")
 
@@ -143,7 +144,7 @@ class PaperBotSwarmTabMixin:
         layout.addWidget(summary)
 
         if ledger is not None:
-            prov_group = QGroupBox("Provenance && Mature-Profit Spawn State")
+            prov_group = QGroupBox(PROVENANCE_GROUP_TITLE_QT)
             pf = QFormLayout(prov_group)
             self._configure_form(pf)
 
