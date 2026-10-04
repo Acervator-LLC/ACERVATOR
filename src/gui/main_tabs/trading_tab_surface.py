@@ -2,12 +2,11 @@
 
 Describes the whole tab as plain data: one exchange layer per layered
 asset class and the stack that holds them, each layer's add button and
-empty-state card, the
-indicator panel beside the stack, the four splitters and their sizes, the
-Activity Log pane with its pause toggle and the API Interaction Log pane
-with its own. Colours, paddings and fonts come from ``design_system``
-tokens, so a page carries the values the Qt tab paints rather than a
-second palette.
+empty-state card, the indicator panel beside the stack, the four
+splitters and their sizes, the Activity Log pane with its pause toggle
+and the API Interaction Log pane with its own. Colours, paddings and
+fonts come from ``design_system`` tokens, so a page carries the values
+the Qt tab paints rather than a second palette.
 
 It also holds the behaviours the tab owns rather than describes: the two
 pause buttons' captions, the API pause buffer and the resume marker it
