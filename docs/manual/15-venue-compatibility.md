@@ -225,11 +225,15 @@ left out, so no crypto market can be replaced by a stock.
 
 | what the recording holds for Coinbase | before | after |
 | ------------------------------------- | ------ | ----- |
-| rows in all | 1,144 | 2,131 |
+| rows in all | 1,144 | about 2,135 |
 | crypto | 1,144 | 1,123 |
 | commodities | 0 | 21 |
-| stocks | 0 | 987 |
+| stocks | 0 | about 990 |
 | forex | 0 | 0 |
+
+The crypto and commodity counts are fixed. The stock count moves with the slice
+the venue serves and with how many of its tickers a crypto pair already holds:
+two loads minutes apart recorded 987 and 993.
 
 The 1,144 crypto and commodity rows are the same symbols as before, carrying
 the same increments, minimums and ticks. An equity row carries the four figures
