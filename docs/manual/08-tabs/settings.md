@@ -1060,6 +1060,19 @@ bot_config_kwargs carries lock_candle_count    False
 ScrummingBot.__init__ has lock_candle_count    False
 ```
 
+The third reading has moved. `ScrummingBot.__init__` takes a `lock_candle_count`
+keyword argument, and `phantom_init_kwargs` in
+`src/trading/container/config.py` carries it from the wizard's collected config,
+so the figure reaches the new bot's coordinator. The first two readings stand:
+the bot configuration still declares no field of that name and `bot_config_kwargs`
+still carries none.
+
+```
+BotConfig has a lock_candle_count field        False
+bot_config_kwargs carries lock_candle_count    False
+ScrummingBot.__init__ has lock_candle_count    True
+```
+
 Those eleven boxes are the eleven timeframes the voting engine already weights,
 from 1m at 0.3 up to 1w at 1.6, so a slower chart counts for more when several
 are combined.

@@ -3768,6 +3768,40 @@ changes nothing yet either way. `TimeframeCoordinator.create_lock` is the only
 code that reads it, nothing calls `create_lock`, and so the lock list stays
 empty and `is_locked` answers no on every pass.
 
+**What the page delivers to a new bot.** All three figures on this page reach
+the bot that is built. One helper selects them and the constructor call carries
+them, so the lock count arrives as the coordinator's own count.
+
+| the page writes | the constructor argument | read on the new bot at |
+| --- | --- | --- |
+| `enable_phantoms` | `enable_phantoms` | `_phantoms_enabled` |
+| `phantom_timeframes` | `phantom_timeframes` | `_phantom_timeframes` |
+| `lock_candle_count` | `lock_candle_count` | `_coordinator.lock_candle_count` |
+
+| step | module | symbol |
+| ---- | ------ | ------ |
+| select the three | `src/trading/container/config.py` | `phantom_init_kwargs` |
+| hand them over | `src/gui/main_window.py` | the `ScrummingBot` call |
+| hold the count | `src/trading/scrumming_bot.py` | `ScrummingBot.__init__` |
+
+Driven on a one-hour Coinbase bot with the box ticked, `1d` picked and the spin
+box at seven, against the page's own defaults of clear, nothing and two:
+
+```
+                      page   new bot
+enable_phantoms       True   True
+phantom_timeframes    1d     1d
+lock_candle_count     7      7
+```
+
+A config carrying no count leaves the argument out, so the coordinator keeps its
+own figure of two. An Extractor holds no coordinator and takes no count.
+
+The count still creates no lock, because `create_lock` still has no caller. What
+it reaches is the attribute the state file saves, the restore path writes back
+and the Bot Settings phantom page shows, so each of those reads the figure the
+page was set to rather than two.
+
 **Design intention.** The engine behind this page is unfinished. The Indicator
 Voting Panel section of this manual records that phantom bots are still in
 active development and that related features do not yet work, so nothing is
@@ -6196,6 +6230,13 @@ fleet around it comes back.
 |---|---|
 | Lock duration (candles) | `lock_candle_count` is no field on `BotConfig` and no argument of `ScrummingBot.__init__`. The phantom coordinator holds an attribute of that name, and Bot Settings writes it there on a running bot. Nothing calls `TimeframeCoordinator.create_lock`, the one reader of that attribute, so the figure changes no decision on a running bot either. |
 | Profit Folding, on an Extractor | `BotCreationWizard.get_bot_config` writes the flag False for an Extractor. The field is Scrumming-only, so the factory refuses it on an Extractor config, and no control types it. |
+
+**The lock row reaches a new bot as well.** `lock_candle_count` is a keyword
+argument of `ScrummingBot.__init__`, and `phantom_init_kwargs` in
+`src/trading/container/config.py` carries it beside the other two, so the
+figure the phantom page was set to becomes the new bot's coordinator count. The
+Profit Folding row above stands as written: the field is Scrumming-only and no
+control types it.
 
 **Two the wizard collects that a new bot does read.** `enable_phantoms` and
 `phantom_timeframes` reach `ScrummingBot.__init__` as arguments from

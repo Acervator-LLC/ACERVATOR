@@ -3807,6 +3807,7 @@ if _HAS_QT:
                     from ..trading.bot_container import (
                         bot_config_kwargs,
                         make_bot_config,
+                        phantom_init_kwargs,
                     )
 
                     _wizard_kwargs = bot_config_kwargs(
@@ -3861,8 +3862,7 @@ if _HAS_QT:
                         bot = ScrummingBot(
                             bot_config,
                             _PlaceholderExchange(bot_config.exchange_id),
-                            enable_phantoms=config.get("enable_phantoms", False),
-                            phantom_timeframes=config.get("phantom_timeframes", []),
+                            **phantom_init_kwargs(config),
                             ta_weights=self._stored_ta_weights(),
                         )
 

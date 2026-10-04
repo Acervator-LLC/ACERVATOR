@@ -50,6 +50,7 @@ from .container.config import (
     despawn_preview,
     despawn_threshold_days,
     make_bot_config,
+    phantom_init_kwargs,
 )
 
 logger = logging.getLogger("acervator.bot")
@@ -76,6 +77,7 @@ __all__ = [
     "despawn_preview",
     "despawn_threshold_days",
     "make_bot_config",
+    "phantom_init_kwargs",
 ]
 
 
