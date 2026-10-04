@@ -121,7 +121,6 @@ class StockAccumulationBot:
         self._base_read_interval = 60.0  # 1 min for stocks (vs 5s for crypto)
         self._current_read_interval = self._base_read_interval
 
-        # TA engine (same 7 indicators)
         self._voting_engine = VotingEngine() if _HAS_DEPS else None
         self._last_summary: Optional[VotingSummary] = None
 
