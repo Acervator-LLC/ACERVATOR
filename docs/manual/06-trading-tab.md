@@ -4813,6 +4813,44 @@ The dialog in `src/gui/settings_dialog.py` has no such method yet. The proposal
 adds one rather than changing the call shape, so the wing argument already
 passed here keeps working exactly as it does.
 
+#### Add Exchange opens the Settings dialog on the Exchanges tab
+
+**Functional.** The press opens Settings with the Exchanges tab already showing.
+The tab is named at the point of opening, so the tab order is untouched and the
+File menu's Settings still opens where it always did.
+
+`src/gui/main_window.py` — `_add_exchange`
+
+```python
+dlg = _cls(self._settings, self._status_log, self, wing=_wing)
+dlg.show_tab(EXCHANGE_TAB)
+dlg.exec()
+```
+
+**The tab is found by its title, never by its position.** A tab added in front
+of Exchanges does not move which tab the press lands on.
+
+`src/gui/settings_dialog.py` — `show_tab`
+
+```python
+for at in range(book.count()):
+    if book.tabText(at) == title:
+        book.setCurrentIndex(at)
+        return
+```
+
+Both builds answer the same title on every route. Driven in a live window:
+
+| route | asset class | the tab shown |
+| ----- | ----------- | ------------- |
+| Add Exchange, corner button | Crypto | Exchanges |
+| Add Exchange, corner button | Stock | Exchanges |
+| Exchange menu, Add Exchange | Crypto | Exchanges |
+| File menu, Settings | Crypto | User |
+
+Commodities and Forex carry no Add Exchange button of their own, and a press
+from the Exchange menu under either class is refused before a dialog is built.
+
 **The exchange row in the Electron shell.** The shell draws one tab button per
 configured exchange, and the screen under the button is drawn by
 `exchange_tab.js`. A layer shows its empty card only while it holds no

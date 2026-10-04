@@ -3406,10 +3406,12 @@ if _HAS_QT:
             self._status_log.log(
                 f"Opening settings to add exchange " f"({_wing} class)..."
             )
+            from .main_tabs.settings_dialog_surface import EXCHANGE_TAB
             from .variant_surface import SETTINGS_DIALOG, surface_class
 
             _cls = surface_class(SETTINGS_DIALOG)
             dlg = _cls(self._settings, self._status_log, self, wing=_wing)
+            dlg.show_tab(EXCHANGE_TAB)
             dlg.exec()
             self._sync_exchange_tabs()
 

@@ -95,6 +95,7 @@ if _HAS_QT:
             tabs.addTab(self._create_sound_tab(), "Sound")
             tabs.addTab(self._create_sms_tab(), "SMS")
             tabs.addTab(self._create_ai_monitor_tab(), "AI Monitor")
+            self._tabs = tabs
             layout.addWidget(tabs)
 
             btn_row = QHBoxLayout()
@@ -108,6 +109,28 @@ if _HAS_QT:
             self._save_btn.clicked.connect(lambda: self._save())
             btn_row.addWidget(self._save_btn)
             layout.addLayout(btn_row)
+
+        @property
+        def tab(self) -> str:
+            """The title of the tab the dialog is showing."""
+            book = getattr(self, "_tabs", None)
+            if book is None:
+                return ""
+            return book.tabText(book.currentIndex())
+
+        def show_tab(self, title: str) -> None:
+            """Show the tab whose title is ``title``, and ignore an unknown one.
+
+            The match is on the title each tab carries, so a tab added before
+            another does not move which one a caller gets.
+            """
+            book = getattr(self, "_tabs", None)
+            if book is None:
+                return
+            for at in range(book.count()):
+                if book.tabText(at) == title:
+                    book.setCurrentIndex(at)
+                    return
 
         def _create_user_tab(self) -> QWidget:
             w = QWidget()
