@@ -368,7 +368,9 @@ order after the venue recovers is checked again.
 
 The refusal table above carries this row, and it is kept as written:
 
-> | `guarded_place_order` | `src/trading/bot_container.py` | an order whose amount is not a finite positive number, at the single point every engine order passes through |
+```
+| `guarded_place_order` | `src/trading/bot_container.py` | an order whose amount is not a finite positive number, at the single point every engine order passes through |
+```
 
 That row is narrower than what the method does. The true sentence is: an order
 whose amount is not a finite positive number, an order under the market's
