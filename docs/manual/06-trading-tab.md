@@ -4657,29 +4657,32 @@ if current != "MainThread":
 ```
 
 **Design intention.** The pane should tell you what the platform did with the
-bytes it just paid for. One line does the opposite. The candle fetch writes a
-Data usage note naming a seven-indicator engine and lists seven names. The
-engine builds twelve and the Voting Panel shows all twelve, so the log tells
-you something the screen next to it contradicts.
+bytes it just paid for. The candle fetch writes a Data usage note naming how
+many voters the engine builds and naming every one of them, taken from the
+engine's own declaration, so the note agrees with the Voting Panel beside it.
 
-`src/exchange/ccxt_connector.py` — `get_ohlcv`, what it writes today
-
-```python
-data_usage="Fed into 7-indicator TA engine (BB, Vortex, MACD, StochRSI, Ichimoku, Volume, Slingshot) for voting",
-```
-
-*Proposed, not present:*
+`src/exchange/ccxt_connector.py` — `ohlcv_data_usage`, what the fetch writes
 
 ```python
-data_usage=(
-    "Fed into the "
-    f"{len(DEFAULT_WEIGHTS)}-indicator TA engine for voting"
-),
+def ohlcv_data_usage() -> str:
+    voters = ", ".join(DEFAULT_WEIGHTS)
+    return f"Fed into {len(DEFAULT_WEIGHTS)}-indicator TA engine ({voters}) for voting"
 ```
+
+The pane draws this today:
+
+```
+  Data usage: Fed into 12-indicator TA engine (bollinger_bands, vortex, macd,
+  stochastic_rsi, ichimoku, volume, slingshot, adx, kaufman_er, supertrend,
+  zscore, rsi) for voting
+```
+
+The pane draws it on one unwrapped line; it is broken over three here to fit
+the page.
 
 `DEFAULT_WEIGHTS` in `src/trading/ta_engine.py` is the one declaration of the
-voter set, so a count taken from it cannot drift again. Issue #417 carries
-this.
+voter set, so a count taken from it cannot drift again. A thirteenth voter
+reaches the note with no edit to the connector.
 
 #### Two mechanisms with no control on this tab
 
