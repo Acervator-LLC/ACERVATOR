@@ -706,3 +706,90 @@ react bundle after   desktop, 11 files: 3 shell files and the renderer
 A build that names a renderer folder which is not on disk ships no renderer,
 and its Status tab raises the missing asset again. That is how the reading is
 known to be able to fail.
+
+### The crash log and the five writers that fill it
+
+`~/.acervator_logs/crash_<date>_<time>.log` is the file that holds a fault. One
+file per run. The Watchdog copies it into every post-mortem bundle, beside the
+console log and the fault-handler log.
+
+Five writers reach it. `main.py` installs all five at import, before the window
+exists.
+
+| writer | what reaches it | installed at |
+|---|---|---|
+| `sys.excepthook` | an exception no `except` caught | `main.py` |
+| `threading.excepthook` | the same, on a worker thread | `main.py` |
+| `sys.unraisablehook` | a failure the interpreter cannot propagate | `main.py` |
+| the Qt message handler | every message Qt emits | `main.py` |
+| `_CrashLogHandler` | every log record at ERROR and above | `main.py` |
+
+The fifth is the one that sees a fault the other four cannot. A broad `except`
+that reports through `logger.error` and returns reaches no excepthook at all.
+`logging_engine` clears `acervator.propagate`, so the handler attaches to two
+logger names.
+
+`main.py` — the two attach points
+
+```python
+# Two disjoint attach points: `logging_engine` clears `acervator.propagate`.
+CRASH_LOG_HANDLER_LOGGERS = ("", "acervator")
+```
+
+A record that carries no exception of its own is written with the exception
+live at the call site, labelled `exception live at log time`. A record that
+carries one is labelled `exception declared on the record`.
+
+#### A fault that cannot be printed is still named
+
+`traceback.format_exception` reads each frame's source line. It raises when the
+module it needs is gone, and an exception whose own `__str__` raises defeats it
+as well. Both happened on the operator's build, and the handler died without
+writing.
+
+`_crash_record` names the exception type and its message first, through
+`_safe_text`, and adds the frames second. The type and the message therefore
+reach the file when no frame can be read. A frame that cannot be read is
+written as `<frame unreadable>` and the walk continues past it.
+
+#### A repeating entry is counted, not repeated
+
+An entry equal to the one before it is counted. The count lands as a `REPEAT`
+entry when a different entry arrives, at `CRASH_REPEAT_RELEASE_AT`, or at exit.
+The first copy of the entry is always written immediately.
+
+```
+[..] [QT_WARNING] [thread=MainThread] DirectWrite: CreateFontFaceFromHDC() failed ...
+[..] [REPEAT]     [thread=MainThread] previous QT_WARNING entry repeated 58 more times
+```
+
+No category is silenced and no distinct entry is dropped. One font warning that
+repeats for the life of the process costs two lines instead of hundreds.
+
+#### Read off the crash log
+
+One crash log per run, read back off disk. A fault whose message cannot be
+rendered, raised through the installed `sys.excepthook`:
+
+```
+                       crash log lines    the exception named in it
+before                        2           no
+after                        16           yes
+```
+
+The same fault caught by a broad `except` and reported with `logger.error`:
+
+```
+before                        2           no
+after                        15           yes
+```
+
+Fifty-nine copies of the font warning, then the fault:
+
+```
+before                       63           no    (59 of the 63 are the warning)
+after                        19           yes   (1 warning, 1 REPEAT line)
+```
+
+The `before` column is the operator's own file: 63 lines, 59 of them the font
+warning, three boot lines, one `QFont::setPointSize` warning, and no crash.
