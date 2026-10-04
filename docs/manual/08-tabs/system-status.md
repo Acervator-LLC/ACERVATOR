@@ -793,3 +793,11 @@ after                        19           yes   (1 warning, 1 REPEAT line)
 
 The `before` column is the operator's own file: 63 lines, 59 of them the font
 warning, three boot lines, one `QFont::setPointSize` warning, and no crash.
+
+The hardest case, with the frame source cache broken and the message
+unrenderable at once, so nothing about the exception can be formatted:
+
+```
+before                        2           no
+after                         9           yes   (all three frames named)
+```
