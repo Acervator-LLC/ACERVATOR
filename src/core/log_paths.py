@@ -14,12 +14,12 @@ Three top-level buckets matching operator's stated concerns:
   * ``console/``    CODE FAULTS    (stdout/stderr/tracebacks, existing autoprune)
   * ``trade/``      TRADE + TRADE LOGIC (parity-critical, persistent retention)
 
-Status v3.23.0: SCAFFOLD-ONLY. Writers + handlers wired; runtime
-verification (V1-V6 in DOCKET) pending. Sim does NOT consume these
-paths until Phase C (boundary lockdown) ships in v3.23.x+.
+Status: SCAFFOLD-ONLY. Writers + handlers wired; runtime verification
+pending. Sim does NOT consume these paths until the boundary lockdown
+ships.
 
 Why centralize:
-  The pre-v3.23.0 codebase used four different log roots:
+  Four different log roots existed before this module:
     1. ``~/.acervator_logs/`` (console, crash, faulthandler, postmortem)
     2. ``~/.acervator/logs/``  (system.log + pnl/ — LogManager dev mode)
     3. ``<exe_dir>/logs/real_market/`` (system.log + trade.log + pnl/
@@ -57,10 +57,9 @@ def get_log_root() -> Path:
 def get_activity_dir() -> Path:
     """``activity/`` bucket — platform faults (subsystem-level NDJSON).
 
-    Reserved for the Step 5 ``log_activity()`` writer queued in v3.23.2+
-    (after V1-V6 verify-loop closes). Dir created up front so the layout
-    is observable from the operator's file browser the moment v3.23.0
-    runs.
+    Reserved for a queued activity writer; nothing writes here yet. Dir
+    created up front so the layout is observable from the operator's
+    file browser the moment the platform runs.
     """
     p = _LOG_ROOT / "activity"
     p.mkdir(parents=True, exist_ok=True)
@@ -70,9 +69,9 @@ def get_activity_dir() -> Path:
 def get_api_dir() -> Path:
     """``api/`` bucket — exchange + REST call NDJSON (subset of platform faults).
 
-    Reserved for the Step 5 ``log_api()`` writer queued in v3.23.2+.
-    Dir created up front for the same observability reason as
-    ``activity/``.
+    ``src.exchange.api_logger.APIFailureStore`` writes
+    ``api_failures.ndjson`` here. Dir created up front for the same
+    observability reason as ``activity/``.
     """
     p = _LOG_ROOT / "api"
     p.mkdir(parents=True, exist_ok=True)
@@ -98,9 +97,9 @@ def get_trade_dir() -> Path:
     only; no age-prune to ensure long windows remain queryable by the
     sim parity tool and operator-facing dashboards.
 
-    Sub-files written here in v3.23.0:
+    Sub-files written here:
       * ``trade.log``        — every executed trade (existing pipeline)
-      * ``gate.log``         — every gate decision (new in v3.23.0)
+      * ``gate.log``         — every gate decision
       * ``pnl/<day>.ndjson`` — daily PnL snapshots (existing PnLCascade)
     """
     p = _LOG_ROOT / "trade"
@@ -137,10 +136,10 @@ def get_exchange_history_dir() -> Path:
 def get_meta_dir() -> Path:
     """``_meta/`` bucket — startup markers + index.json discovery file.
 
-    The pre-v3.23.0 markers ( ``~/.acervator_logs/<marker>`` ) move
-    into this subdir to keep the top level clean. Existing marker
-    consumers are unchanged in v3.23.0; the migration happens
-    transparently when the marker is rewritten.
+    Markers that sat directly under ``~/.acervator_logs/`` move into
+    this subdir to keep the top level clean. Existing marker consumers
+    are unchanged; the migration happens transparently when the marker
+    is rewritten.
     """
     p = _LOG_ROOT / "_meta"
     p.mkdir(parents=True, exist_ok=True)

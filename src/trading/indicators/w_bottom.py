@@ -1,7 +1,7 @@
 """Bollinger W-Bottom -- the bullish double-tap of the lower band.
 
-Moved out of ``ta_engine.py`` for issue #73. The body below is a
-verbatim line slice of that file: no arithmetic was retyped.
+``detect_w_bottom`` holds the pattern test, exported by
+``src.trading.indicators`` and ``src.trading.ta_engine``.
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ def detect_w_bottom(
     min_separation: int = 5,
     lookback: int = 30,
 ) -> dict:
-    """v3.19.25 -- Bollinger W-Bottom pattern (L2 closure, bullish half).
+    """Bollinger W-Bottom pattern -- the bullish half of the band-test pair.
 
     Canonical Bollinger W-Bottom (from Bollinger on Bollinger Bands):
       The pattern is a double-tap of the lower band where:
@@ -49,8 +49,6 @@ def detect_w_bottom(
     Returns dict with keys: triggered, name, test_1_idx, test_2_idx,
     test_1_low, test_2_low, test_1_bb_pos, test_2_bb_pos, pullback_idx,
     pullback_bb_pos, components_met.
-
-    sadp: R28 R55 R63
     """
     n = len(candles)
     if n < 2 or len(bb_pos_history) != n:

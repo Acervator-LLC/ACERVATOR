@@ -776,7 +776,7 @@ if _HAS_QT:
 
         @staticmethod
         def _format_age(seconds: float) -> str:
-            """Human-readable age string. v3.16.39 P2-VIS helper."""
+            """Seconds as a short age string with an s, m, h or d suffix."""
             if seconds < 60:
                 return f"{int(seconds)}s"
             if seconds < 3600:
