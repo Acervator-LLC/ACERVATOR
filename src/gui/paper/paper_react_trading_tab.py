@@ -969,7 +969,11 @@ if _HAS_WEBENGINE:
             ``run_rule`` of ``exchange().venue()``, one ``PaperRunner`` on the
             ``RUN_THREAD_NAME`` thread reading ``_states``, the started line,
             and the page's run button redrawn Stop; a fleet holding no record
-            or a venue with no cited rule writes one line and starts nothing."""
+            or a venue with no cited rule writes one line and starts nothing.
+
+            The runner is handed ``wire_manager``, the fleet's saved wire
+            topology and ledgers, so a fold on one paper bot routes its share
+            to another."""
             bots = self._fleet_source.bots()
             if not bots:
                 self.log(tab_surface.RUN_NO_BOT_TEXT, "warning")
@@ -993,6 +997,7 @@ if _HAS_WEBENGINE:
                 on_finished=self.run_finished.emit,
                 on_stats=self.bot_stats.emit,
                 say=lambda line: self.run_line.emit(line, "info"),
+                wires=self._fleet_source.wire_manager(),
             )
             self._runner.start()
             self.log(
@@ -1014,12 +1019,26 @@ if _HAS_WEBENGINE:
                 self._runner.stop()
 
         def _take_paper_run(self, run: PaperRun) -> None:
-            """The runner's end on the GUI thread: the final figures held,
+            """The runner's end on the GUI thread: the final figures held, the
+            run's wire rows and ledgers written to the paper fleet file,
             ``run_ended_line`` written and the run button redrawn Start."""
             self._figures = run.figures()
+            self._hold_run_wires()
             self.log(tab_surface.run_ended_line(run), "info")
             self._state.run_running = False
             self.show_tab({})
+
+        def _hold_run_wires(self) -> dict:
+            """Take the runner's wire manager onto the fleet through
+            ``hold_wire_manager`` and ``save`` it, so a paper wire and what it
+            carried survive the next launch; answers the row counts held."""
+            runner = self._runner
+            manager = runner.wires if runner is not None else None
+            if manager is None:
+                return {"wires": 0, "ledgers": 0}
+            held = self._fleet_source.hold_wire_manager(manager)
+            self._fleet_source.save()
+            return held
 
         def _take_figures(self, figures: dict) -> None:
             """Hold the ledger figures the runner posted, what ``aggregate`` reads."""
