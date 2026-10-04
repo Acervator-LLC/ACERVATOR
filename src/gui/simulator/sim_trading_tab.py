@@ -70,9 +70,12 @@ scrumming bot on that exchange to ``running``
 through ``SimBotManager.start``, fires ``fleet_changed``, writes the started
 line and runs ``_compute_run`` on a daemon thread: ``validation.run`` over
 ``TabletSource``, a ``YtdTradeSource`` and a ``GateLogSource`` in Validation,
-``back_test.run`` over ``TabletSource`` in Back Test, each fill crossing on
+``back_test.run`` over ``TabletSource`` in Back Test, carrying the mode's
+``wire_manager`` so a fold routes its share to another sim bot as the tape
+walks, each fill crossing on
 ``run_trade`` to ``log_trade`` and the outcome on ``run_finished`` to
-``_take_run``, which moves the run's bots to ``stopped`` and writes the run's
+``_take_run``, which moves the run's bots to ``stopped``, writes the run's wire
+rows and ledgers back through ``_hold_run_wires`` and writes the run's
 lines and the report line; Stop on a run row reaches ``_stop_run``, which sets
 the event the runner reads, so the pass ends where it is and the report reads
 ``stopped``; each Start Run press emits ``START_PRESSED_SIGNAL`` through
@@ -1130,7 +1133,12 @@ class SimTradingTab(QWidget):
         candles, the files, the evaluations and the minutes) and
         ``_compute_run`` on a daemon thread; a venue holding no scrumming bot
         writes one line and starts nothing. Answers ``START_OUTCOME_NO_BOT``
-        or ``START_OUTCOME_STARTED``."""
+        or ``START_OUTCOME_STARTED``.
+
+        A Back Test run is handed ``wire_manager``, the mode's saved wire
+        topology and ledgers, so a fold on one sim bot routes its share to
+        another while the tape walks; Validation is handed none, because a
+        wire belongs to the fleet of the mode it was pushed into."""
         bots = self._run_bots(exchange_id)
         if not bots:
             self._status_log.log(
@@ -1138,11 +1146,17 @@ class SimTradingTab(QWidget):
             )
             return tab_surface.START_OUTCOME_NO_BOT
         self._run_stop.clear()
+        wires = (
+            self._fleet_source.wire_manager()
+            if mode == surface.MODE_BACK_TEST
+            else None
+        )
         self._run = {
             "mode": mode,
             "exchange_id": exchange_id,
             "bot_ids": [one.bot_id for one in bots],
             "stopper": "",
+            "wires": wires,
         }
         self._begin_fills()
         cost = None
@@ -1166,20 +1180,25 @@ class SimTradingTab(QWidget):
         )
         self._run_thread = threading.Thread(
             target=self._compute_run,
-            args=(mode, bots, exchange_id),
+            args=(mode, bots, exchange_id, wires),
             name=tab_surface.RUN_THREAD_NAME,
             daemon=True,
         )
         self._run_thread.start()
         return tab_surface.START_OUTCOME_STARTED
 
-    def _compute_run(self, mode: str, bots: list, exchange_id: str) -> None:
+    def _compute_run(
+        self, mode: str, bots: list, exchange_id: str, wires: Any = None
+    ) -> None:
         """Run ``validation.run`` or ``back_test.run`` over ``bots`` and the
         tab's sources on the worker thread, each fill through ``run_trade``,
         each Back Test walk's lines through ``run_line`` and the outcome
         through ``run_finished``, the thread routed to the sim signal sink by
         ``routed_run`` for the run's length; a run that raises writes the
-        failed line and hands None to ``run_finished``."""
+        failed line and hands None to ``run_finished``.
+
+        ``wires`` is the ``SimWireManager`` ``back_test.run`` routes each
+        fold's growth over; None walks the tape with no wire."""
         with routed_run(mode, lambda line: self.run_line.emit(line, "info")):
             try:
                 if mode == surface.MODE_VALIDATION:
@@ -1204,6 +1223,7 @@ class SimTradingTab(QWidget):
                         stop=self._run_stop.is_set,
                         bus=self._bus,
                         progress=lambda line: self.run_line.emit(line, "info"),
+                        wires=wires,
                     )
             except Exception as exc:
                 logger.exception("%s run failed: %s", mode, exc)
@@ -1226,12 +1246,17 @@ class SimTradingTab(QWidget):
         """Move every run bot to ``stopped`` through ``SimBotManager.stop`` and
         fire ``fleet_changed``; write Live's stopped line for the bot Stop was
         pressed on, the finished run's ``lines`` and its report line through
-        ``log_report`` on the GUI thread."""
+        ``log_report`` on the GUI thread.
+
+        ``_hold_run_wires`` writes the run's wire rows and ledgers back to the
+        sim fleet file first, so what a wire carried is on disk whether the pass
+        finished or raised."""
         for bot_id in self._run.get("bot_ids", []):
             try:
                 self._bot_manager.stop(bot_id)
             except KeyError:
                 continue
+        self._hold_run_wires()
         self.fleet_changed.emit()
         stopper = self._run.get("stopper")
         if stopper:
@@ -1246,6 +1271,19 @@ class SimTradingTab(QWidget):
         if outcome.report is not None:
             self.log_report(outcome.report)
         self._refresh_replay(follow_run=True)
+
+    def _hold_run_wires(self) -> dict:
+        """Take the finished run's wire manager onto the fleet through
+        ``hold_wire_manager`` and ``save`` it, so a simulated wire and what it
+        carried survive the next launch; answers the row counts held.
+
+        A Validation run holds no manager and nothing is written."""
+        manager = self._run.get("wires")
+        if manager is None:
+            return {"wires": 0, "ledgers": 0}
+        held = self._fleet_source.hold_wire_manager(manager)
+        self._fleet_source.save()
+        return held
 
     def _begin_fills(self) -> None:
         """Empty ``_fills`` and drop ``_battery_outcome`` as a run starts, so
