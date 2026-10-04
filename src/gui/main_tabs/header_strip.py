@@ -93,6 +93,7 @@ class HeaderStripMixin:
 
     # TradingTabMixin builds these; select_asset_class reads them by name.
     _trading_stack: Any
+    _class_layers: dict
     _crypto_tab_widget: Any
     _stock_tab_widget: Any
     _crypto_exchange_tabs: dict
@@ -216,16 +217,10 @@ class HeaderStripMixin:
                 self._show_unlayered_class(key)
             else:
                 stack.setCurrentIndex(layer_page(key))
-                stock = key == "stocks"
-                self._tab_widget = (
-                    self._stock_tab_widget if stock else self._crypto_tab_widget
-                )
-                self._exchange_tabs = (
-                    self._stock_exchange_tabs if stock else self._crypto_exchange_tabs
-                )
-                self._empty_placeholder = (
-                    self._stock_placeholder if stock else self._crypto_placeholder
-                )
+                held = (getattr(self, "_class_layers", None) or {}).get(key) or {}
+                self._tab_widget = held.get("tabs")
+                self._exchange_tabs = held.get("exchange_tabs") or {}
+                self._empty_placeholder = held.get("placeholder")
 
         self.setWindowTitle(window_title(key))
         self._status_log.log(selection_log(key), "info")

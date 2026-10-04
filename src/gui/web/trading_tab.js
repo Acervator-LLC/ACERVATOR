@@ -68,6 +68,7 @@
   var PLACEHOLDER_SHOWN = "placeholder_shown";
   var TEXT = "text";
   var TOOLTIP = "tooltip";
+  var ENABLED = "enabled";
   var MINIMUM_WIDTH = "minimum_width_px";
   var MINIMUM_SIZE = "minimum_size_px";
   var CORNER_WIDGET = "corner_widget";
@@ -234,6 +235,7 @@
   var EXCHANGE_ATTR = "data-exchange";
   var HOVERED_ATTR = "data-hovered";
   var CHECKED_ATTR = "data-checked";
+  var ENABLED_ATTR = "data-enabled";
   var BLOCKS_ATTR = "data-block-count";
   var MAX_BLOCKS_ATTR = "data-max-blocks";
   var WRAP_ATTR = "data-wrap";
@@ -692,10 +694,12 @@
       style: style,
       type: BUTTON_TYPE,
       title: label(model[TOOLTIP]),
+      disabled: model[ENABLED] === false,
       onClick: addExchangeAsked
     };
     buttonProps[PART_ATTR] = ADD_BUTTON_PART;
     buttonProps[KEY_ATTR] = text(props.layer[KEY]);
+    buttonProps[ENABLED_ATTR] = text(model[ENABLED]);
     buttonProps[ACTION_ATTR] = text(props.actions[ADD_ACTION]);
     buttonProps[SLOT_ATTR] = text(model[CORNER_WIDGET]);
     return element(BUTTON_TAG, buttonProps, text(model[TEXT]));
@@ -722,10 +726,12 @@
       className: LAYER_CLASS,
       style: style,
       type: BUTTON_TYPE,
+      disabled: model[ENABLED] === false,
       onClick: addExchangeAsked
     };
     buttonProps[PART_ATTR] = PLACEHOLDER_ADD_PART;
     buttonProps[KEY_ATTR] = text(props.layerKey);
+    buttonProps[ENABLED_ATTR] = text(model[ENABLED]);
     buttonProps[ACTION_ATTR] = text(props.actions[PLACEHOLDER_ADD_ACTION]);
     return element(BUTTON_TAG, buttonProps, text(model[TEXT]));
   }

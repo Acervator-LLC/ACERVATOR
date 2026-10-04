@@ -154,6 +154,33 @@ self._trading_stack.addWidget(self._make_unlayered_page())
 self._trading_stack.setCurrentIndex(acs.layer_page("crypto"))
 ```
 
+OVERTAKEN, and the sentences above are kept as written. Every asset class has its
+own trading layer. The stack holds four layers in taxonomy order and keeps the
+card page behind them, so Commodities and Forex each draw their own empty state
+instead of sharing one card.
+
+`src/gui/main_tabs/trading_tab.py` — one layer per layered class
+
+```python
+for layered in acs.layered_classes():
+    page, bar, store, card = _make_layer(layered, acs.accent(layered))
+    self._class_layers[layered] = {
+        "page": page,
+        "tabs": bar,
+        "exchange_tabs": store,
+        "placeholder": card,
+    }
+    self._trading_stack.addWidget(page)
+```
+
+The taxonomy names the four classes a layer stands behind.
+
+`src/gui/main_tabs/asset_class_surface.py` — the classes a layer stands behind
+
+```python
+LAYERED_CLASSES = frozenset({"crypto", "stocks", "commodities", "forex"})
+```
+
 **Design intention.** The stack holds one page per trading layer and one card for
 every class without one. A class with no layer shares that card rather than
 getting an empty layer, because an empty layer would offer a venue list it cannot
@@ -165,6 +192,19 @@ serve. Which page a class draws is stated once, in the taxonomy.
 layered = layered_classes()
 key = normalise(name)
 return layered.index(key) if key in layered else len(layered)
+```
+
+OVERTAKEN, and the paragraph above is kept as written. The stack holds one page per
+asset class and keeps the card page last, which no live class now reaches. An empty
+layer offers no venue list. It draws its empty state and an Add Exchange button that
+cannot act while no venue serves the class.
+
+`src/gui/main_tabs/asset_class_surface.py` — what the button answers for a class
+
+```python
+def add_exchange_enabled(name: Any) -> bool:
+    """Whether Add Exchange can act for one asset class."""
+    return class_state(name)["served"]
 ```
 
 The builder counts its own faults when it finishes and reports them on the System
@@ -4851,6 +4891,22 @@ Both builds answer the same title on every route. Driven in a live window:
 Commodities and Forex carry no Add Exchange button of their own, and a press
 from the Exchange menu under either class is refused before a dialog is built.
 
+OVERTAKEN, and the sentences above are kept as written. Commodities and Forex each
+carry two Add Exchange buttons of their own, on their own layer: the corner button
+on the tab bar and the one on the empty-state card. Both read the class name and
+both are dead while no venue serves the class, so a press under either class is
+still refused before a dialog is built. Driven in a live window with a venue
+serving Commodities, the layer's own button opened the dialog on the Exchanges tab.
+
+`src/gui/main_window.py` — the press the guard refuses
+
+```python
+_wing = normalise(getattr(self, "_asset_class", None))
+if not add_exchange_enabled(_wing):
+    self._status_log.log(class_state(_wing)["note"], "warning")
+    return
+```
+
 **The exchange row in the Electron shell.** The shell draws one tab button per
 configured exchange, and the screen under the button is drawn by
 `exchange_tab.js`. A layer shows its empty card only while it holds no
@@ -4866,6 +4922,16 @@ for entry in entries or []:
         continue
     layer = "stock" if is_equity_exchange(exchange_id) else "crypto"
     split[layer][exchange_id] = exchange_display_name(holder)
+```
+
+OVERTAKEN, and the block above is kept as written. The shell's layer names come
+from the same taxonomy the Qt stack reads, so an equity venue routes to the stocks
+layer under that name and the shell draws one layer per asset class.
+
+`src/gui/main_tabs/trading_tab_surface.py` — the layer an equity venue routes to
+
+```python
+layer = "stocks" if is_equity_exchange(exchange_id) else "crypto"
 ```
 
 **One caption for one exchange.** The caption on a tab comes from a single
@@ -5407,6 +5473,18 @@ return f"Acervator — {display_name(name).upper()} LAYER"
 A class with no trading layer still takes a layer title, because the title names the
 active class and not the page. The sentence about the missing layer is the card's own
 note.
+
+OVERTAKEN, and the table and the paragraph above are kept as written. Commodities
+draws stack page 2 and Forex page 3, each its own trading layer with its own empty
+state. The card page sits last at page 4 and no live class reaches it. Read in a
+live window by pressing each segment:
+
+| class | stack page | window title | what the page draws |
+|---|---|---|---|
+| Crypto | 0 | `Acervator — CRYPTO LAYER` | `No Crypto Exchanges Configured` |
+| Stock | 1 | `Acervator — STOCK LAYER` | `No Stock Exchanges Configured` |
+| Commodities | 2 | `Acervator — COMMODITIES LAYER` | `No Commodities Exchanges Configured` |
+| Forex | 3 | `Acervator — FOREX LAYER` | `No Forex Exchanges Configured` |
 
 **A retired class name reaches the class that holds its markets.** The taxonomy names
 the pair, and the group reads that name rather than carrying its own copy, so a

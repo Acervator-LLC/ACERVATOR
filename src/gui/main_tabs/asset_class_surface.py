@@ -80,7 +80,7 @@ LEGACY_CLASS_WORDS = {"stock": "stocks", "equities": "stocks", "equity": "stocks
 
 #: The classes a trading layer stands behind. A class outside this set draws
 #: its state and offers no venue.
-LAYERED_CLASSES = frozenset({"crypto", "stocks"})
+LAYERED_CLASSES = frozenset({"crypto", "stocks", "commodities", "forex"})
 
 #: Display names. A class absent here is titled from its own key.
 CLASS_NAMES = {
