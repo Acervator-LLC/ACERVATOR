@@ -1583,33 +1583,72 @@ if _HAS_WEBENGINE:
             self.log(tab_surface.imported_line(len(imported), chosen), "success")
             self.fleet_changed.emit()
 
-        def push_to_back_test(self, candidates: Any) -> dict:
-            """Hold one sim bot per pushed candidate under Back Test and leave
-            that the run mode.
+        def push_to_back_test(self, candidate: Any) -> dict:
+            """Hold one sim bot per pushed market under Back Test, register the
+            wires between them, and leave Back Test the run mode.
 
-            ``candidates`` are ``{"asset", "target_usd"}`` rows from the Market
-            Inspector. Every asset must be named by a Stone Tablet; one that is
-            not refuses the whole push, writes ``push_refused_line`` and leaves
-            the run mode as it stands. Answers
-            ``{"mode", "held", "refused"}``.
+            ``candidate`` is the Market Inspector's ``{"bots", "wires"}``
+            payload. Every market must be named by a Stone Tablet and every
+            wire must reach two different held bots; either gap refuses the
+            whole push through ``push_refused_line`` or
+            ``push_wire_refused_line``, holds nothing, registers nothing and
+            leaves the run mode as it stands. Answers
+            ``{"mode", "held", "wires", "refused"}``.
             """
+            bots, wires = tab_surface.push_payload(candidate)
             configs, missing = tab_surface.push_configs(
-                candidates, self._tablet_source.entries()
+                bots, self._tablet_source.entries()
             )
             if missing or not configs:
                 refusal = tab_surface.push_refused_line(missing)
                 self.log(refusal, "warning")
-                return {"mode": self.mode(), "held": 0, "refused": refusal}
+                return {
+                    "mode": self.mode(),
+                    "held": 0,
+                    "wires": 0,
+                    "refused": refusal,
+                }
+            undeliverable = tab_surface.undeliverable_wires(wires, configs)
+            if undeliverable:
+                refusal = tab_surface.push_wire_refused_line(undeliverable)
+                self.log(refusal, "warning")
+                return {
+                    "mode": self.mode(),
+                    "held": 0,
+                    "wires": 0,
+                    "refused": refusal,
+                }
             self.set_mode(sim.MODE_BACK_TEST)
             if self.mode() != sim.MODE_BACK_TEST:
                 refusal = tab_surface.PUSH_IN_FLIGHT_TEXT
                 self.log(refusal, "warning")
-                return {"mode": self.mode(), "held": 0, "refused": refusal}
+                return {
+                    "mode": self.mode(),
+                    "held": 0,
+                    "wires": 0,
+                    "refused": refusal,
+                }
+            manager = self._fleet_source.wire_manager()
+            bot_ids: dict[str, str] = {}
             for config in configs:
-                self._fleet_source.create(config)
+                bot = self._fleet_source.create(config)
+                asset = str(config.get("target_asset") or "").upper()
+                bot_ids[asset] = bot.bot_id
+                manager.register_bot(
+                    bot.bot_id, asset, float(config.get("target_balance") or 0.0)
+                )
+            registered = tab_surface.register_pushed_wires(manager, wires, bot_ids)
+            self._fleet_source.hold_wire_manager(manager)
             self.log(tab_surface.push_held_line(configs), "success")
+            if wires:
+                self.log(tab_surface.push_wired_line(registered), "success")
             self.fleet_changed.emit()
-            return {"mode": self.mode(), "held": len(configs), "refused": ""}
+            return {
+                "mode": self.mode(),
+                "held": len(configs),
+                "wires": len(registered),
+                "refused": "",
+            }
 
         def log_report(self, report: ParityReport) -> None:
             """One Activity Log line, ``report_line`` over ``report``, through

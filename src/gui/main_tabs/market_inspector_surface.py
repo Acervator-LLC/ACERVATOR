@@ -3733,8 +3733,9 @@ def push_to_sim_actions() -> list:
     ]
 
 
-def pair_push_candidates(pair: Any) -> list:
-    """Both sides of one opposing pair as ``{"symbol", "target_usd"}`` rows.
+def pair_push_candidates(pair: Any) -> dict:
+    """One opposing pair as ``{"bots", "wires"}``, the payload a push takes:
+    one ``{"symbol", "target_usd"}`` row per side and an empty ``wires``.
 
     The pair names no dollar figure, so each side takes the Bot Wizard's own
     ``target_balance`` default, which is what ``new_bot_specs`` gives a new
@@ -3747,13 +3748,13 @@ def pair_push_candidates(pair: Any) -> list:
         str(getattr(getattr(pair, "long_side", None), "symbol", "") or ""),
         str(getattr(getattr(pair, "short_side", None), "symbol", "") or ""),
     ]
-    out: list = []
+    bots: list = []
     seen: set = set()
     for symbol in sides:
         if symbol and symbol not in seen:
             seen.add(symbol)
-            out.append({"symbol": symbol, "target_usd": target_usd})
-    return out
+            bots.append({"symbol": symbol, "target_usd": target_usd})
+    return {"bots": bots, "wires": []}
 
 
 def pair_entry(pair: Any) -> dict:

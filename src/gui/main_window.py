@@ -1876,13 +1876,13 @@ if _HAS_QT:
                 "warning",
             )
 
-        def _push_candidate_to_sim(self, candidates: list) -> dict:
+        def _push_candidate_to_sim(self, candidate: dict) -> dict:
             """Hand one Inspector candidate to the Sim tab's Back Test mode.
 
-            ``candidates`` are the ``{"symbol", "target_usd"}`` rows the
-            Inspector built. With no Sim tab the push is refused and no mode
-            moves, which is what the Inspector reports. Answers the Simulator's
-            ``{"mode", "held", "refused"}``.
+            ``candidate`` is the ``{"bots", "wires"}`` payload the Inspector
+            built. With no Sim tab the push is refused and no mode moves, which
+            is what the Inspector reports. Answers the Simulator's
+            ``{"mode", "held", "wires", "refused"}``.
             """
             from .simulator.sim_trading_tab_surface import PUSH_NO_SIM_TAB_TEXT
 
@@ -1890,8 +1890,13 @@ if _HAS_QT:
             push = getattr(tab, "push_to_back_test", None)
             if push is None:
                 self._status_log.log(PUSH_NO_SIM_TAB_TEXT, "warning")
-                return {"mode": "", "held": 0, "refused": PUSH_NO_SIM_TAB_TEXT}
-            return dict(push(candidates) or {})
+                return {
+                    "mode": "",
+                    "held": 0,
+                    "wires": 0,
+                    "refused": PUSH_NO_SIM_TAB_TEXT,
+                }
+            return dict(push(candidate) or {})
 
         def _adopt_topology_proposal(self, proposal: dict) -> None:
             """Confirm, open the wizard for each new bot, then emit `wire.created`."""

@@ -594,26 +594,36 @@ class DismissStore:
         self.wrote.append([key, dict(value)])
 
 
-def proposal_push_candidates(proposal: Any) -> list:
-    """Every bot one proposal names as a ``{"symbol", "target_usd"}`` row.
+def proposal_push_candidates(proposal: Any) -> dict:
+    """One proposal as ``{"bots", "wires"}``, the payload a push takes.
 
-    A proposal's wires carry no field a sim bot record holds, so a push takes
-    its bots alone and the wiring does not travel.
+    Each bot is a ``{"symbol", "target_usd"}`` row and each wire is a
+    ``{"source_asset", "target_asset", "pct"}`` row, so the routing the
+    proposal describes travels with the bots it names.
     """
-    out: list = []
+    bots: list = []
     seen: set = set()
     for bot in (proposal or {}).get("bots", []) or []:
         symbol = str((bot or {}).get("symbol") or "")
         if not symbol or symbol in seen:
             continue
         seen.add(symbol)
-        out.append(
+        bots.append(
             {
                 "symbol": symbol,
                 "target_usd": float((bot or {}).get("suggested_target_usd") or 0.0),
             }
         )
-    return out
+    wires: list = []
+    for one in (proposal or {}).get("wires", []) or []:
+        wires.append(
+            {
+                "source_asset": str((one or {}).get("source_asset") or "").upper(),
+                "target_asset": str((one or {}).get("target_asset") or "").upper(),
+                "pct": float((one or {}).get("pct") or 0.0),
+            }
+        )
+    return {"bots": bots, "wires": wires}
 
 
 class TopologyPreviewModel:
