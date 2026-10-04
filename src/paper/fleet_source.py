@@ -4,7 +4,10 @@ Import Live Fleet copies out of the live bot_state record, read only.
 
 ``PaperFleetSource`` answers ``READ_NAMES``, holds one fleet and no run mode,
 writes ``paper_path`` alone, and ``__getattr__`` raises ``SendRefused`` for
-every other name. ``bots``, ``exchanges``, ``statuses`` and ``aggregate`` read
+every other name. ``wire_manager`` builds the ``PaperWireManager`` a run routes
+over from the ``WIRES_KEY`` and ``WIRE_LEDGERS_KEY`` rows the paper fleet file
+holds at its top level, Paper having no run mode to nest them under, and
+``hold_wire_manager`` takes a run's manager back for the next ``save``. ``bots``, ``exchanges``, ``statuses`` and ``aggregate`` read
 the held records alone; ``stored_records`` and ``stored_exchanges`` read
 ``bot_state.json``, and ``import_live_fleet`` copies its records on one
 exchange whole into the held map under their own ids with ``LIVE_ORIGIN``,
@@ -41,6 +44,7 @@ from ..trading.scrumming.sizing import DRAWDOWN_STATE, priced_usd
 from ..trading.smart_wire import mature_profit_usd
 from .live_feed_source import SendRefused
 from .paper_paths import PAPER_FLEET_NAME, get_paper_root
+from .paper_wire import PaperWireManager
 
 logger = logging.getLogger("acervator.paper.fleet")
 
@@ -49,6 +53,14 @@ STATE_DIR_NAME = ".acervator"
 
 #: The ``saved_at_human`` format ``StateManager.save_state`` writes.
 SAVED_AT_HUMAN_FORMAT = "%Y-%m-%d %H:%M:%S"
+
+#: The paper fleet file's key holding the wire rows, the name ``bot_state.json``
+#: uses. Paper has no run mode, so it sits at the top level beside ``bots``.
+WIRES_KEY = "smart_wires"
+
+#: The paper fleet file's key holding the wire ledger rows, the name
+#: ``bot_state.json`` uses.
+WIRE_LEDGERS_KEY = "smart_wire_ledgers"
 
 #: Every name ``PaperFleetSource`` answers. ``__getattr__`` refuses the rest.
 READ_NAMES = (
@@ -75,6 +87,10 @@ READ_NAMES = (
     "paper_dir",
     "paper_path",
     "save",
+    "wire_rows",
+    "wire_ledger_rows",
+    "wire_manager",
+    "hold_wire_manager",
 )
 
 #: Every field ``BotConfig`` declares, the names a paper record's ``config``
@@ -702,6 +718,32 @@ def _records_of(stored: dict, path: Path) -> dict[str, dict]:
     return records
 
 
+def _rows_under(loaded: Any, key: str) -> list[dict]:
+    """The dict rows ``loaded`` holds under ``key``, or an empty list."""
+    if not isinstance(loaded, dict):
+        return []
+    stored = loaded.get(key)
+    if not isinstance(stored, list):
+        return []
+    return [dict(one) for one in stored if isinstance(one, dict)]
+
+
+def _read_paper_wires(path: Path) -> tuple[list[dict], list[dict]]:
+    """The ``WIRES_KEY`` rows and the ``WIRE_LEDGERS_KEY`` rows of the paper
+    fleet file at ``path``.
+
+    A file that is absent, unreadable, malformed or carries neither key answers
+    two empty lists.
+    """
+    if not path.exists():
+        return [], []
+    try:
+        loaded = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return [], []
+    return _rows_under(loaded, WIRES_KEY), _rows_under(loaded, WIRE_LEDGERS_KEY)
+
+
 def _read_paper_records(path: Path) -> dict[str, dict]:
     """The ``bots`` map of the paper fleet file at ``path``, each record read
     through ``_records_of``. An absent, empty or malformed file answers an
@@ -741,6 +783,7 @@ class PaperFleetSource:
         self._root = Path(root) if root is not None else Path.home() / STATE_DIR_NAME
         self._paper_dir = Path(paper_dir) if paper_dir is not None else get_paper_root()
         self._records: dict[str, dict] = _read_paper_records(self.paper_path())
+        self._wires, self._wire_ledgers = _read_paper_wires(self.paper_path())
 
     def root(self) -> Path:
         """The directory holding the ``bot_state.json`` this source reads."""
@@ -927,27 +970,74 @@ class PaperFleetSource:
         return written
 
     def remove(self, bot_id: str) -> bool:
-        """Drop the held record under ``bot_id`` and answer whether one was
-        held; the paper fleet file loses it on the next ``save``."""
-        return self._records.pop(str(bot_id), None) is not None
+        """Drop the held record under ``bot_id``, its wire ledger row and every
+        wire row naming it, as ``StateManager.remove_bot`` drops a live bot's,
+        and answer whether a record was held; the paper fleet file loses them
+        on the next ``save``."""
+        wanted = str(bot_id)
+        held = self._records.pop(wanted, None) is not None
+        self._wire_ledgers = [
+            one for one in self._wire_ledgers if str(one.get("bot_id")) != wanted
+        ]
+        self._wires = [
+            one
+            for one in self._wires
+            if wanted not in (str(one.get("source_id")), str(one.get("target_id")))
+        ]
+        return held
 
     def clear(self) -> int:
-        """Drop every held record on every exchange and answer how many were
-        held; the paper fleet file loses them on the next ``save``."""
+        """Drop every held record on every exchange, every wire row and every
+        wire ledger row, and answer how many records were held; the paper fleet
+        file loses them on the next ``save``."""
         count = len(self._records)
         self._records = {}
+        self._wires = []
+        self._wire_ledgers = []
         return count
+
+    def wire_rows(self) -> list[dict]:
+        """The ``WIRES_KEY`` rows the paper fleet holds, each a copy."""
+        return [dict(one) for one in self._wires]
+
+    def wire_ledger_rows(self) -> list[dict]:
+        """The ``WIRE_LEDGERS_KEY`` rows the paper fleet holds, each a copy."""
+        return [dict(one) for one in self._wire_ledgers]
+
+    def wire_manager(self) -> PaperWireManager:
+        """A ``PaperWireManager`` holding the fleet's wire rows and ledger rows,
+        through ``import_wires`` and ``import_ledgers``."""
+        manager = PaperWireManager()
+        manager.import_wires(self.wire_rows())
+        manager.import_ledgers(self.wire_ledger_rows())
+        return manager
+
+    def hold_wire_manager(self, manager: PaperWireManager) -> dict[str, int]:
+        """Take ``manager``'s ``export_wires`` and ``export_ledgers`` onto the
+        fleet and answer how many rows of each were held.
+
+        The paper fleet file carries them on the next ``save``, under
+        ``WIRES_KEY`` and ``WIRE_LEDGERS_KEY`` at its top level.
+        """
+        wires = list(manager.export_wires())
+        ledgers = list(manager.export_ledgers())
+        self._wires = wires
+        self._wire_ledgers = ledgers
+        return {"wires": len(wires), "ledgers": len(ledgers)}
 
     def save(self) -> Optional[Path]:
         """Write the held records to ``paper_path`` through
         ``atomic_write_json`` under the keys ``StateManager.save_state``
-        writes, ``saved_at``, ``saved_at_human``, ``bot_count`` and ``bots``,
-        and answer the path, or None when the write fails."""
+        writes, ``saved_at``, ``saved_at_human``, ``bot_count``, ``bots``,
+        ``WIRES_KEY`` and ``WIRE_LEDGERS_KEY``, and answer the path, or None
+        when the write fails."""
         payload = {
             "saved_at": time.time(),
             "saved_at_human": datetime.now().strftime(SAVED_AT_HUMAN_FORMAT),
             "bot_count": len(self._records),
             "bots": dict(self._records),
+            WIRES_KEY: [dict(one) for one in self._wires],
+            WIRE_LEDGERS_KEY: [dict(one) for one in self._wire_ledgers],
         }
         path = self.paper_path()
         try:

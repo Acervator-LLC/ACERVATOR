@@ -962,6 +962,111 @@ file holds and nothing else, so with no paper fleet there is no venue, no row
 and no figure until Import Live Fleet loads one. On the next launch the tab
 reads the paper fleet file once and draws the imported rows from it.
 
+### The file's top level carries the wires
+
+Beside `bots`, the paper fleet file carries `smart_wires` and
+`smart_wire_ledgers`, the two keys `bot_state.json` carries for the live fleet.
+The Paper tab holds one fleet and no run mode, so both keys sit at the file's top
+level rather than inside a mode's entry the way the Simulator nests them.
+
+`PaperFleetSource.hold_wire_manager` takes a `PaperWireManager`'s rows onto the
+fleet and `PaperFleetSource.wire_manager` builds the manager back at the next
+launch, so a paper wire survives a restart the way a live one does. Stop Paper
+Run holds the run's manager and saves the file, so what a wire carried during a
+run is on disk before the tab is closed.
+
+A file written before these keys existed reads as a fleet with no wire, and a
+build that does not know the keys reads the same bots, the same venues and the
+same rows it read before. Both were driven: the unchanged tree's reader and this
+one gave an identical reading of a file carrying both keys, and the same
+comparison reported a difference the moment one value was changed by hand.
+
+`src/paper/fleet_source.py` — the write
+
+```python
+        payload = {
+            "saved_at": time.time(),
+            "saved_at_human": datetime.now().strftime(SAVED_AT_HUMAN_FORMAT),
+            "bot_count": len(self._records),
+            "bots": dict(self._records),
+            WIRES_KEY: [dict(one) for one in self._wires],
+            WIRE_LEDGERS_KEY: [dict(one) for one in self._wire_ledgers],
+        }
+```
+
+Deleting a paper bot drops its ledger row and every wire row naming it, the way
+the live state file drops a removed bot's, so no route is left pointing at a bot
+the fleet no longer holds.
+
+### A fold's growth travels the wires to another paper bot
+
+A paper bot can send part of a fold's growth to another paper bot. A wire names a
+source, a target and a percentage. The moment a paper fold compounds its growth
+into the source's target balance, the wire's share of that same figure is
+credited to the other bot. The source keeps its own growth whole and the share is
+new money at the destination, which is how the live fold route behaves.
+
+The share lands in the target's standing fold tranches, split evenly, the way
+wire credits land on a live bot. A paper balance opens on the target's first
+worked tick, so a share arriving before that is parked on its ledger and spread
+over the tranches the target holds when it opens, or over the first tranche its
+own scrum builds. The ledger carries the lifetime sent, the lifetime received,
+the provenance per funder and the parked pool.
+
+`PaperWireManager` in `src/paper/paper_wire.py` owns the topology and one ledger
+per paper bot.
+
+| verb | what it does |
+|---|---|
+| `register_wire` | sets the source-to-target percentage, from 0 up to 100 |
+| `unregister_wire` | drops one route |
+| `attach_bot` | holds the fake balance of an open paper bot a share can reach |
+| `release_bot` | gives that balance back when the run ends |
+| `distribute_fold_profit` | moves each wire's share of one fold's growth |
+| `land_parked_credits` | spreads a parked pool over standing tranches |
+| `export_wires`, `import_wires` | the routes the paper fleet file carries |
+| `export_ledgers`, `import_ledgers` | the ledgers the paper fleet file carries |
+
+`src/paper/paper_run.py` — the fold hands its growth on
+
+```python
+    growth = grow_target(bot, balance, units, slices, float(price), int(candle_ts_ms))
+    if wires is not None and growth > 0.0:
+        route_fold_growth(wires, bot.bot_id, growth, float(price))
+```
+
+One fold driven over an empty scratch home, two bots at a $200.0000 target, a
+scrum at $110.00 and a fold at $95.00, with one wire at 40 per cent between them:
+
+```
+the fold's growth on the source       6.7773
+the wire's rate                         40.0 per cent
+the share that leaves                   2.7109
+the target's fold queue before         49.7000
+the target's fold queue after          52.4109
+the source's lifetime sent              2.7109
+the target's lifetime received          2.7109
+```
+
+The same pair ticked over a whole price series sends four times. The source's own
+walk is unchanged by the wire, 5 scrums and 4 folds either way, and the target
+ends holding more of its asset because the wired money bought more on its folds.
+
+```
+                          no wire       a wire at 40 per cent
+source scrums, folds      5, 4          5, 4
+source end target       249.3815      249.3815
+target end units          2.8997        3.1297
+target lifetime received  0.0000       19.7526
+```
+
+A paper wire reaches paper money only. The manager holds one ledger per paper bot
+and delivers nothing to an id it has no ledger for, so a wire pointed at a live
+bot or at a simulated bot books no transfer and reports that the target has no
+ledger. That was driven against a real live bot id and a real simulated bot id:
+both routes answered `target bot has no ledger`, no transfer was booked, and
+both state files read the same digest before and after.
+
 ### A loaded bot reads IDLE
 
 Import Live Fleet copies each stored record and writes its state `idle`,

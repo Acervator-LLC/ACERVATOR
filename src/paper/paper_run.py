@@ -22,6 +22,11 @@ forked over ``src.trading.scrumming.sizing`` and a ``FakeBalance``".
 ``start``, and ``sized_order`` sizes both fills on those rules where they were
 recorded and on the cited unit rule where they were not. Every ``PaperTrade``
 carries the ``rule_source`` that sized it.
+
+``route_fold_growth`` hands the growth ``grow_target`` applied to a
+``PaperWireManager``, which moves each wire's share onto another paper bot's
+fold tranches, and ``land_wire_credits`` spreads a pool parked for a bot whose
+balance was not yet open.
 """
 
 from __future__ import annotations
@@ -100,6 +105,7 @@ from ..trading.scrumming.sizing import (
 from . import paper_log
 from .fake_balance import FakeBalance, PaperLedger, opening_ledger
 from .fleet_source import PaperBot
+from .paper_wire import PaperWireManager
 
 logger = logging.getLogger("acervator.paper.run")
 
@@ -346,6 +352,47 @@ def paper_tape_context(
     )
 
 
+def route_fold_growth(wires: Any, bot_id: str, growth_usd: float, price: float) -> list:
+    """Hand ``growth_usd`` to ``wires.distribute_fold_profit`` and answer its
+    result rows.
+
+    A manager that raises is logged and answers an empty list, leaving the
+    growth booked on ``balance.target_usd``.
+    """
+    try:
+        return list(
+            wires.distribute_fold_profit(
+                source_id=str(bot_id),
+                profit_usd=float(growth_usd),
+                ref=f"fold-compound@{float(price):.8f}",
+            )
+        )
+    except Exception as exc:  # noqa: BLE001 - the growth stays booked locally
+        logger.warning(
+            "%s: paper wire fold route raised: %s; the fold growth stays booked",
+            bot_id,
+            exc,
+        )
+        return []
+
+
+def land_wire_credits(wires: Any, bot_id: str, balance: FakeBalance) -> float:
+    """Hand ``balance`` to ``wires.land_parked_credits`` and answer the USD
+    that landed in ``balance.fold_tranches``.
+
+    A manager that raises is logged and answers 0.0, leaving the pool parked.
+    """
+    try:
+        return float(wires.land_parked_credits(str(bot_id), balance))
+    except Exception as exc:  # noqa: BLE001 - the pool stays parked
+        logger.warning(
+            "%s: paper wire credit landing raised: %s; the pool stays parked",
+            bot_id,
+            exc,
+        )
+        return 0.0
+
+
 # OVERTAKEN: "Sell ``scrum_units`` of ``delta`` at ``price``".
 # ``sized_order`` sizes the sale: ``rules`` floors it onto the venue's recorded
 # size step and refuses it under the venue's recorded minimum, and ``rule``
@@ -362,13 +409,17 @@ def apply_scrum(
     rule: str,
     rules: Optional[MarketRules] = None,
     on_refusal: Optional[Callable[[str], None]] = None,
+    wires: Any = None,
 ) -> Optional[PaperTrade]:
     """Sell ``scrum_units`` of ``delta`` at ``price``, the tick's ``best_bid``,
     under ``rule`` from the highest-priced ``main_lots`` first, and queue the
     proceeds ``sale_proceeds_usd`` leaves after ``estimated_fee_usd`` as one
     fold tranche per lot sold from, the Simulator's ``apply_scrum`` over a
     ``FakeBalance``; nothing fills when the balance holds fewer units than
-    the sell needs or a whole-unit ``delta`` buys under one unit."""
+    the sell needs or a whole-unit ``delta`` buys under one unit.
+
+    A ``wires`` manager lands its parked credits on the tranches the sale
+    builds through ``land_wire_credits``."""
     if outside_session(getattr(rules, "session", None), float(now_s)):
         logger.info(
             "%s: a scrum of $%.2f is %s; nothing fills and nothing changes",
@@ -443,6 +494,8 @@ def apply_scrum(
     balance.scrum_sells += 1
     balance.total_scrummed_usd += notional
     balance.trade_volume += notional
+    if wires is not None:
+        land_wire_credits(wires, bot.bot_id, balance)
     return PaperTrade(
         bot_id=bot.bot_id,
         symbol=bot.symbol,
@@ -480,6 +533,7 @@ def apply_fold(
     rule: str,
     rules: Optional[MarketRules] = None,
     on_refusal: Optional[Callable[[str], None]] = None,
+    wires: Any = None,
 ) -> Optional[PaperTrade]:
     """Rebuy the tranches ``eligible_fold_tranches`` names at ``ticker_last``
     under ``fold_rebuy_factor``, planned under ``cycle_growth_cap_usd`` by
@@ -493,7 +547,8 @@ def apply_fold(
 
     ``grow_target`` then compounds that surplus into ``balance.target_usd``
     under the cycle cap, as ``_apply_fold_target_growth`` compounds a live
-    bot's.
+    bot's, and a ``wires`` manager takes that same growth figure to its wire
+    targets through ``route_fold_growth``.
     """
     if outside_session(getattr(rules, "session", None), float(now_s)):
         logger.info(
@@ -598,7 +653,9 @@ def apply_fold(
     balance.total_folded_usd += spend
     balance.trade_volume += spend
     realized = fold_surplus_usd(units, slices, float(price))
-    grow_target(bot, balance, units, slices, float(price), int(candle_ts_ms))
+    growth = grow_target(bot, balance, units, slices, float(price), int(candle_ts_ms))
+    if wires is not None and growth > 0.0:
+        route_fold_growth(wires, bot.bot_id, growth, float(price))
     return PaperTrade(
         bot_id=bot.bot_id,
         symbol=bot.symbol,
@@ -669,6 +726,7 @@ def tick(
     now_s: float,
     engine: Any = None,
     rules: Optional[MarketRules] = None,
+    wires: Any = None,
 ) -> PaperTick:
     """Evaluate the shipped chains against ``book``'s last trade over the
     newest bar of ``candles`` and fill what latched at ``book``'s
@@ -677,7 +735,8 @@ def tick(
 
     ``reset_growth_cycle`` reads the bar's band position before the context is
     built, as the Simulator's walk reads it, so the growth cycle and the gates
-    see the same bar.
+    see the same bar. ``wires`` reaches ``apply_scrum`` and ``apply_fold``
+    unchanged.
     """
     from ..trading.ta_engine import VotingEngine
 
@@ -715,11 +774,20 @@ def tick(
     refused: list[str] = []
     if armed["scrum_armed"]:
         filled = apply_scrum(
-            bot, balance, bid, now_s, stamp, context.delta, rule, rules, refused.append
+            bot,
+            balance,
+            bid,
+            now_s,
+            stamp,
+            context.delta,
+            rule,
+            rules,
+            refused.append,
+            wires,
         )
     elif armed["fold_armed"]:
         filled = apply_fold(
-            bot, balance, ask, last, now_s, stamp, rule, rules, refused.append
+            bot, balance, ask, last, now_s, stamp, rule, rules, refused.append, wires
         )
     if filled is not None:
         filled = replace(
@@ -881,7 +949,11 @@ class PaperRunner:
     ``PaperTick``, ``on_stats`` each ``BotStatsSnapshot``, ``on_figures`` the
     ledger's figures after each worked pass, ``on_finished`` the run when the
     loop ends, ``say`` each line, and ``clock`` is the one seam time is read
-    through."""
+    through.
+
+    ``wires`` is the ``PaperWireManager`` the run routes fold growth over: each
+    balance is held through ``attach_bot`` on the tick that opens it and given
+    back through ``release_bot`` when the loop ends."""
 
     def __init__(
         self,
@@ -896,9 +968,11 @@ class PaperRunner:
         say: Optional[Callable[[str], None]] = None,
         clock: Optional[WallClock] = None,
         tick_interval_s: float = TICK_INTERVAL_S,
+        wires: Optional[PaperWireManager] = None,
     ) -> None:
         from ..trading.ta_engine import VotingEngine
 
+        self._wires = wires
         self._run = run
         self._exchange = exchange
         self._states = states
@@ -919,6 +993,11 @@ class PaperRunner:
     def run(self) -> PaperRun:
         """The run this runner ticks."""
         return self._run
+
+    @property
+    def wires(self) -> Optional[PaperWireManager]:
+        """The ``PaperWireManager`` this run routes fold growth over, or None."""
+        return self._wires
 
     @property
     def thread(self) -> Optional[threading.Thread]:
@@ -956,8 +1035,21 @@ class PaperRunner:
                 self._say(f"Paper run failed: {exc}")
         stop(self._run)
         self.close_stats()
+        self.release_balances()
         if self._on_finished is not None:
             self._on_finished(self._run)
+
+    def release_balances(self) -> int:
+        """Give every attached balance back to ``_wires`` through
+        ``release_bot`` and answer how many were held; the wires and the
+        ledgers stay, so the next run routes over the same topology."""
+        if self._wires is None:
+            return 0
+        released = 0
+        for bot in self._run.bots:
+            if self._wires.release_bot(bot.bot_id):
+                released += 1
+        return released
 
     def close_stats(self) -> int:
         """Post one ``SNAPSHOT_END`` snapshot per opened balance carrying
@@ -1012,6 +1104,10 @@ class PaperRunner:
         ``post_stats`` carries the opening snapshot on the tick the balance
         opens, with ``SNAPSHOT_START`` and ``RUNNING_STATE``, and one snapshot
         after every tick, ``SNAPSHOT_FILL`` when it filled.
+
+        The tick that opens a balance hands it to ``_wires.attach_bot`` and
+        runs ``land_wire_credits`` once, so a share parked before this bot
+        opened reaches the tranches it already holds.
         """
         book = self._exchange.ticker(bot.symbol)
         candles = candles_for(self._exchange, bot)
@@ -1023,6 +1119,9 @@ class PaperRunner:
             balance = opening_balance(bot, price, self._run.rule, market)
             self._run.balances[bot.bot_id] = balance
             opened = True
+            if self._wires is not None:
+                self._wires.attach_bot(bot.bot_id, balance)
+                land_wire_credits(self._wires, bot.bot_id, balance)
         held = balance or FakeBalance()
         seen = tick(
             bot,
@@ -1033,6 +1132,7 @@ class PaperRunner:
             self._clock.now(),
             self._engine,
             market,
+            self._wires,
         )
         record(self._run, bot, seen)
         priced = seen.last or seen.price
@@ -1111,9 +1211,11 @@ __all__ = [
     "apply_scrum",
     "candles_for",
     "fold_taper",
+    "land_wire_credits",
     "opening_balance",
     "record",
     "refusal_for",
+    "route_fold_growth",
     "run_market_rules",
     "run_rule",
     "start",
