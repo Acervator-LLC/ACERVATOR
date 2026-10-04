@@ -133,8 +133,6 @@
   var WORD_WRAPS = "word_wraps";
   var ROW_STYLES = "styles";
   var BREAKDOWN = "breakdown";
-  var MATURE_GROWTH_PCT = "mature_growth_pct";
-  var MATURE_REFUSED = "mature_refused";
   var PREDOMINANT_REFUSED = "predominant_refused";
   var FORMS_CONFIGURED = "forms_configured";
   var CONFIGURED_BY_HOST = "configured_by_host";
@@ -432,10 +430,6 @@
 
   function notActive() {
     return objectField(model(), NOT_ACTIVE_LABEL);
-  }
-
-  function emptyNote() {
-    return objectField(model(), EMPTY_LABEL);
   }
 
   function summaryGroup() {
@@ -1035,9 +1029,7 @@
     valueProps[WRAP_ATTR] = text(provenanceWrap(props.at));
     valueProps[PAINTED_ATTR] = String(sheet !== undefined && sheet !== EMPTY);
     valueProps[STYLED_ATTR] = String(Boolean(declarations(sheet).length));
-    valueProps[REFUSED_ATTR] = String(
-      group[MATURE_REFUSED] === true || group[PREDOMINANT_REFUSED] === true
-    );
+    valueProps[REFUSED_ATTR] = String(group[PREDOMINANT_REFUSED] === true);
     var carried =
       name === labelNamed(PROVENANCE_LABEL) && breakdown().length
         ? breakdownNodes()
@@ -1060,10 +1052,7 @@
     groupProps[PART_ATTR] = PROVENANCE_GROUP_PART;
     groupProps[SHOWN_ATTR] = text(group[SHOWN]);
     groupProps[COUNT_ATTR] = text(provenanceRows().length);
-    groupProps[INDEX_ATTR] = text(group[MATURE_GROWTH_PCT]);
-    groupProps[REFUSED_ATTR] = String(
-      group[MATURE_REFUSED] === true || group[PREDOMINANT_REFUSED] === true
-    );
+    groupProps[REFUSED_ATTR] = String(group[PREDOMINANT_REFUSED] === true);
     var titleProps = { className: TAB_CLASS };
     titleProps[PART_ATTR] = PROVENANCE_TITLE_PART;
     var drawn = [element(SPAN_TAG, titleProps, text(group[TITLE]))];

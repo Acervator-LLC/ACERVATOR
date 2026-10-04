@@ -18,8 +18,6 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtGui import QColor
 
-from ...trading import smart_wire
-
 from .. import design_system as ds
 
 logger = logging.getLogger("acervator.gui")
@@ -168,33 +166,6 @@ class PaperBotSwarmTabMixin:
                 pf.addRow("Predominant funder (PPS):", QLabel(str(pred_src)))
             else:
                 pf.addRow("Predominant funder (PPS):", QLabel("— (SEED-funded only)"))
-
-            # Read-outs; no code in this build writes mature_profit_allocated.
-            try:
-                mature_total = float(ledger.mature_profit_total)
-                mature_avail = float(ledger.mature_profit_available)
-                mature_alloc = float(getattr(ledger, "mature_profit_allocated", 0) or 0)
-            except Exception:  # R28-OK: defensive math probe
-                mature_total = mature_avail = mature_alloc = 0.0
-
-            # Read off the module, so the label cannot state a threshold
-            # `mature_profit_usd` does not apply.
-            _growth_pct = int(round(smart_wire.MATURE_GROWTH_PCT))
-            pf.addRow(
-                f"Mature profit total (position grown past {_growth_pct}%):",
-                QLabel(f"${mature_total:,.4f}"),
-            )
-            pf.addRow(
-                "Mature profit allocated to spawns:",
-                QLabel(f"${mature_alloc:,.4f}"),
-            )
-
-            avail_lbl = QLabel(f"${mature_avail:,.4f}")
-            if mature_avail > 0:
-                avail_lbl.setStyleSheet(f"color: {ds.SUCCESS};")
-            else:
-                avail_lbl.setStyleSheet(f"color: {ds.TEXT_INACTIVE};")
-            pf.addRow("Mature profit available (spawn-eligible):", avail_lbl)
 
             prov_dict = dict(getattr(ledger, "provenance", {}) or {})
             if prov_dict:
