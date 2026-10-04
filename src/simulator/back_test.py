@@ -1119,6 +1119,47 @@ def tape_context(
 # Every zero-unit sale is logged, carrying the reason ``sized_order`` named.
 # ``variant_refuses_sale`` replaces ``variant_trades_market`` here, so a sale out
 # of a market ``MarketRules.expires`` names still fills where a fold refuses.
+def route_fold_growth(wires: Any, bot_id: str, growth_usd: float, price: float) -> list:
+    """Hand ``growth_usd`` to ``wires.distribute_fold_profit`` and answer its
+    result rows.
+
+    A manager that raises is logged and answers an empty list, leaving the
+    growth booked on ``position.target_usd``.
+    """
+    try:
+        return list(
+            wires.distribute_fold_profit(
+                source_id=str(bot_id),
+                profit_usd=float(growth_usd),
+                ref=f"fold-compound@{float(price):.8f}",
+            )
+        )
+    except Exception as exc:  # noqa: BLE001 - the growth stays booked locally
+        logger.warning(
+            "%s: sim wire fold route raised: %s; the fold growth stays booked",
+            bot_id,
+            exc,
+        )
+        return []
+
+
+def land_wire_credits(wires: Any, bot_id: str, position: SimPosition) -> float:
+    """Hand ``position`` to ``wires.land_parked_credits`` and answer the USD
+    that landed in ``position.fold_tranches``.
+
+    A manager that raises is logged and answers 0.0, leaving the pool parked.
+    """
+    try:
+        return float(wires.land_parked_credits(str(bot_id), position))
+    except Exception as exc:  # noqa: BLE001 - the pool stays parked
+        logger.warning(
+            "%s: sim wire credit landing raised: %s; the pool stays parked",
+            bot_id,
+            exc,
+        )
+        return 0.0
+
+
 def apply_scrum(
     bot: SimBot,
     position: SimPosition,
@@ -1128,6 +1169,7 @@ def apply_scrum(
     rule: str,
     rules: Optional[MarketRules] = None,
     on_refusal: Optional[Callable[[str], None]] = None,
+    wires: Any = None,
 ) -> Optional[SimTrade]:
     """Sell ``scrum_units`` of ``delta`` at ``price`` under ``rule`` from the
     highest-priced ``main_lots`` first and queue the proceeds net of
@@ -1137,7 +1179,9 @@ def apply_scrum(
     them.
 
     Nothing fills when ``position`` holds fewer units than the sell needs, or
-    when a whole-unit ``delta`` buys under one unit, which is logged.
+    when a whole-unit ``delta`` buys under one unit, which is logged. A
+    ``wires`` manager lands its parked credits on the tranches the sale builds
+    through ``land_wire_credits``.
     """
     if outside_session(getattr(rules, "session", None), float(ts_ms) / 1000.0):
         logger.info(
@@ -1213,6 +1257,8 @@ def apply_scrum(
     position.scrum_sells += 1
     position.total_scrummed_usd += notional
     position.trade_volume += notional
+    if wires is not None:
+        land_wire_credits(wires, bot.bot_id, position)
     return SimTrade(
         bot_id=bot.bot_id,
         symbol=bot.symbol,
@@ -1267,6 +1313,7 @@ def apply_fold(
     rule: str,
     rules: Optional[MarketRules] = None,
     on_refusal: Optional[Callable[[str], None]] = None,
+    wires: Any = None,
 ) -> Optional[SimTrade]:
     """Rebuy the eligible tranches as ``_tick_execute_fold`` does: the tranches
     ``eligible_fold_tranches`` names under ``fold_rebuy_factor``, sorted highest
@@ -1284,7 +1331,9 @@ def apply_fold(
     units join ``main_lots`` per consumed tranche's share, and the surplus
     ``fold_surplus_usd`` reads grows ``position.target_usd`` through
     ``target_growth_applied`` under the cycle cap, as
-    ``_apply_fold_target_growth`` grows a live bot's target.
+    ``_apply_fold_target_growth`` grows a live bot's target. A ``wires``
+    manager is handed that growth through ``distribute_fold_profit``, the
+    moment ``tick_phases`` hands a live bot's to ``SmartWireManager``.
     """
     del delta
     if outside_session(getattr(rules, "session", None), float(ts_ms) / 1000.0):
@@ -1391,6 +1440,8 @@ def apply_fold(
     position.total_folded_usd += spend
     position.trade_volume += spend
     growth = grow_target(bot, position, units, slices, float(price), int(ts_ms))
+    if wires is not None and growth > 0.0:
+        route_fold_growth(wires, bot.bot_id, growth, float(price))
     return SimTrade(
         bot_id=bot.bot_id,
         symbol=bot.symbol,
@@ -1527,6 +1578,7 @@ def walk(
     stop: Optional[Callable[[], bool]] = None,
     emitter: Optional[RunEmitter] = None,
     on_tick: Optional[Callable[[int, int, int], None]] = None,
+    wires: Any = None,
 ) -> BotResult:
     """Run ``bot`` over ``candles``, one gate-chain evaluation every ``step``
     bars, each fold funded as ``funding`` says and every fill sized under
@@ -1539,7 +1591,10 @@ def walk(
     answering True before a tick ends the walk at the last bar ticked with
     ``stopped`` set. Each tick reads the higher-timeframe bias over
     ``phantom_tapes`` and the growth cycle over the tick's Bollinger reading
-    before its gates, as ``ScrummingBot.tick`` orders them."""
+    before its gates, as ``ScrummingBot.tick`` orders them. A ``wires`` manager
+    holds ``position`` through ``attach_bot`` for the length of the walk and
+    gives it back through ``release_bot``, and ``land_wire_credits`` runs once
+    before the first tick."""
     from ..trading.ta_engine import VotingEngine
 
     if len(candles) < MIN_CANDLES:
@@ -1570,6 +1625,9 @@ def walk(
         order_refusals[reason] = order_refusals.get(reason, 0) + 1
 
     position = opening_position(bot, float(candles[MIN_CANDLES - 1].close), rule, rules)
+    if wires is not None:
+        wires.attach_bot(bot.bot_id, position)
+        land_wire_credits(wires, bot.bot_id, position)
     start_units = position.units
     trades: list[SimTrade] = []
     scrum_latched = 0
@@ -1609,7 +1667,15 @@ def walk(
         if armed["scrum_armed"]:
             scrum_latched += 1
             filled = apply_scrum(
-                bot, position, price, stamp, context.delta, rule, rules, note_refusal
+                bot,
+                position,
+                price,
+                stamp,
+                context.delta,
+                rule,
+                rules,
+                note_refusal,
+                wires,
             )
         elif armed["fold_armed"]:
             fold_latched += 1
@@ -1623,6 +1689,7 @@ def walk(
                 rule=rule,
                 rules=rules,
                 on_refusal=note_refusal,
+                wires=wires,
             )
         if filled is not None:
             filled = replace(
@@ -1684,6 +1751,8 @@ def walk(
         emitter.bot_line(
             bot.bot_id, order_refusal_line(bot.bot_id, bot.symbol, order_refusals)
         )
+    if wires is not None:
+        wires.release_bot(bot.bot_id)
     return BotResult(
         bot_id=bot.bot_id,
         symbol=bot.symbol,
@@ -1944,15 +2013,16 @@ def run(
     stop: Optional[Callable[[], bool]] = None,
     bus: Any = None,
     progress: Optional[Callable[[str], None]] = None,
+    wires: Any = None,
 ) -> BackTestRun:
     """Walk every bot over every bar of its whole tablet through
     ``_walk_fleet`` and write the pass through ``write_report`` onto
     ``BackTestRun.report``.
 
-    ``funding``, ``on_trade``, ``stop`` and ``progress`` reach ``_walk_fleet``
-    unchanged; ``bus`` becomes the ``RunEmitter`` every row of the pass goes
-    through, under ``new_run_id``; a ``_walk_fleet`` that raises reaches
-    ``write_partial`` with the exception and re-raises.
+    ``funding``, ``on_trade``, ``stop``, ``progress`` and ``wires`` reach
+    ``_walk_fleet`` unchanged; ``bus`` becomes the ``RunEmitter`` every row of
+    the pass goes through, under ``new_run_id``; a ``_walk_fleet`` that raises
+    reaches ``write_partial`` with the exception and re-raises.
     """
     from .parity_report import BACK_TEST, new_run_id, write_partial, write_report
 
@@ -1967,6 +2037,7 @@ def run(
             stop,
             emitter,
             progress,
+            wires,
         )
     except Exception as exc:
         emitter.close()
@@ -1995,12 +2066,14 @@ def _walk_bot(
     emitter: Optional[RunEmitter],
     say: Callable[[str], None],
     rules: Optional[MarketRules] = None,
+    wires: Any = None,
 ) -> BotResult:
     """``walk`` over every bar of ``bars`` for ``bot``, timed around the walk
     alone, with ``WALK_STARTED_LINE_FORMAT`` before it,
     ``WALK_PROGRESS_LINE_FORMAT`` every ``PROGRESS_EVERY_BARS`` bars and
     ``WALK_ENDED_LINE_FORMAT`` or ``stopped_at`` after it through ``say``, and
-    ``BOT_WALKED_SIGNAL`` emitted once."""
+    ``BOT_WALKED_SIGNAL`` emitted once. ``wires`` reaches ``walk``
+    unchanged."""
     from ..trading.indicators.types import candles_from_raw
 
     keys = tuple(tablet_key_of(one) for one in files)
@@ -2051,6 +2124,7 @@ def _walk_bot(
         stop=stop,
         emitter=emitter,
         on_tick=on_tick,
+        wires=wires,
     )
     seconds = time.perf_counter() - started
     result = replace(
@@ -2111,6 +2185,7 @@ def _walk_fleet(
     stop: Optional[Callable[[], bool]] = None,
     emitter: Optional[RunEmitter] = None,
     progress: Optional[Callable[[str], None]] = None,
+    wires: Any = None,
 ) -> BackTestRun:
     """Walk every bot over every bar of every year file the store holds for
     its asset on its venue and report what the gates latched.
@@ -2122,7 +2197,9 @@ def _walk_fleet(
     read before each bot as well; ``progress`` is handed each bot's lines; a
     bot whose ``cited_rule_for`` answers no rule is ``UNCITED_RULE`` and a bot
     with no bar at its timeframe is ``NO_TABLET``, each named through
-    ``emitter.bot_line`` and ``progress`` and walking nothing.
+    ``emitter.bot_line`` and ``progress`` and walking nothing. ``wires`` reaches
+    every ``_walk_bot`` unchanged, so one manager holds the whole fleet's
+    ledgers for the pass.
     """
     budget = run_budget_usd(bots) if funding == FUNDED_BY_TARGETS else None
 
@@ -2191,7 +2268,7 @@ def _walk_fleet(
             emitter.bot_line(bot.bot_id, line)
         say(line)
         walked = _walk_bot(
-            bot, files, raw, funding, rule, on_trade, stop, emitter, say, market
+            bot, files, raw, funding, rule, on_trade, stop, emitter, say, market, wires
         )
         halted = halted or walked.stopped
         results.append(replace(walked, asset_class=class_name, venue=venue))
@@ -2310,6 +2387,7 @@ __all__ = [
     "fold_taper",
     "grow_target",
     "higher_tf_bias",
+    "land_wire_credits",
     "missing_pairs",
     "native_entries",
     "new_bot",
@@ -2323,6 +2401,7 @@ __all__ = [
     "pin_stats_written",
     "reset_growth_cycle",
     "rolled_bars",
+    "route_fold_growth",
     "rule_source_line",
     "run",
     "run_budget_usd",

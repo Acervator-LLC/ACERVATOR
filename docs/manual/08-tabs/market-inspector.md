@@ -1777,14 +1777,81 @@ creates anything.
 
 ## Push to the Simulator, the Paper Trader and Live
 
-No such control exists on either zone. A simulator can read the proposals on
-display, and that is a read with no write behind it: it wires nothing and it starts
-nothing. Nothing reports a push to a target that is not built, because nothing
-pushes. The two targets are named on
-[the promotion pipeline page](promotion-pipeline.md), which is where a push from
-this screen would land.
+Both candidate zones carry a Push to Sim button. An open Opposing Trades entry
+draws it under the pair's headline, and the topology preview draws it beside
+Adopt. One press sends the candidate's bots to the Simulator, which holds them
+under its Back Test mode and leaves that mode in force.
 
-In development.
+`src/gui/main_tabs/market_inspector_surface.py` — the one button both zones draw
+
+```python
+def push_to_sim_actions() -> list:
+    """Push to Sim, the one button an open candidate entry draws."""
+    return [
+        action_row(
+            PUSH_TO_SIM_PART,
+            PUSH_TO_SIM_LABEL,
+            PUSH_TO_SIM_TOOLTIP,
+            PUSH_TO_SIM_WIDTH_PX,
+        )
+    ]
+```
+
+A topology names several bots and the wires between them; an opposing pair names
+two assets and no wire. Both reduce to the same payload — rows of one market and
+one dollar target, plus the wires — and the Simulator turns each row into a held
+bot on the venue its Stone Tablet was recorded on.
+
+`src/gui/main_tabs/market_inspector_topologies_surface.py` — a proposal's payload
+
+```python
+def proposal_push_candidates(proposal: Any) -> dict:
+    """One proposal as ``{"bots", "wires"}``, the payload a push takes.
+
+    Each bot is a ``{"symbol", "target_usd"}`` row and each wire is a
+    ``{"source_asset", "target_asset", "pct"}`` row, so the routing the
+    proposal describes travels with the bots it names.
+    """
+```
+
+An asset no Stone Tablet names has no tape for Back Test to walk, so the push is
+refused whole. The Activity Log names the asset, nothing is held, and the run
+mode does not move. The same refusal is written when no Simulator tab is built.
+
+`src/gui/simulator/sim_trading_tab_surface.py` — the refusal the operator reads
+
+```python
+PUSH_NO_TABLET_FORMAT = (
+    "Push to Sim refused: no Stone Tablet names {assets}, so Back Test has no "
+    "tape to walk. The run mode is unchanged."
+)
+```
+
+A wire is refused the same way. Its two ends name markets, and the push creates
+one simulated bot per market, so a wire whose source or target names a market
+the push did not create has no bot to reach. A wire naming one market at both
+ends has only one bot to reach, which is what `detect_distance_to_band` builds:
+it pairs a scrum-deep live bot with a fold-deep live bot on the same market, and
+those two collapse to one simulated bot. Either gap refuses the whole push,
+names the wire and says why.
+
+`src/gui/simulator/sim_trading_tab_surface.py` — the wire refusals
+
+```python
+PUSH_WIRE_UNHELD_FORMAT = "{source} to {target}: nothing was pushed for {asset}"
+PUSH_WIRE_SELF_FORMAT = (
+    "{source} to {target}: both ends are the one bot pushed for {source}"
+)
+```
+
+A pushed bot is a simulated record, never a live bot and never an order. It
+reaches the Simulator's own fleet file and its own bus, and the live engine and
+the live logs see nothing of it. A pushed wire is the same: it is registered on
+the Simulator's own `SimWireManager` and never on the live `SmartWireManager`.
+
+The Paper Trader has no mode a candidate could land under, so no push targets
+it. Live takes no push either. The two targets are named on
+[the promotion pipeline page](promotion-pipeline.md).
 
 ## ATA-SMP
 

@@ -31,6 +31,7 @@ from .fleet_source import (
     extractor_pool_color,
     row_status,
 )
+from .sim_wire import SimWireManager
 from .tablet_source import SendRefused
 
 #: Every name the Bot Settings window writes a bot through; ``set_config_field``
@@ -120,9 +121,18 @@ class PhantomLock:
 
 
 class SimBotView:
-    """One ``SimBot`` and its record, read through a live bot's attribute names."""
+    """One ``SimBot`` and its record, read through a live bot's attribute names.
 
-    def __init__(self, bot: SimBot, record: Optional[dict] = None) -> None:
+    ``wires`` is held as ``_smart_wire_mgr``, the name the Bot Swarm tab reads
+    off a live bot, and None draws that tab's Bot Swarm not active line.
+    """
+
+    def __init__(
+        self,
+        bot: SimBot,
+        record: Optional[dict] = None,
+        wires: Optional[SimWireManager] = None,
+    ) -> None:
         stored = dict(record) if isinstance(record, dict) else {}
         saved = stored.get("scrumming_state")
         saved = saved if isinstance(saved, dict) else {}
@@ -130,6 +140,7 @@ class SimBotView:
         pool = pool if isinstance(pool, dict) else {}
         self.bot = bot
         self.record = stored
+        self._smart_wire_mgr = wires
         self.bot_id = bot.bot_id
         self.state = bot.state
         self.config = config_of(stored) if stored else _config_from_bot(bot)

@@ -1000,6 +1000,55 @@ class SimTradingTab(QWidget):
         )
         self.fleet_changed.emit()
 
+    def push_to_back_test(self, candidate: Any) -> dict:
+        """Hold one sim bot per pushed market under Back Test, register the
+        wires between them, and leave Back Test the run mode.
+
+        ``candidate`` is the Market Inspector's ``{"bots", "wires"}`` payload.
+        Every market must be named by a Stone Tablet and every wire must reach
+        two different held bots; either gap refuses the whole push through
+        ``push_refused_line`` or ``push_wire_refused_line``, holds nothing,
+        registers nothing and leaves the run mode as it stands. Answers
+        ``{"mode", "held", "wires", "refused"}``.
+        """
+        bots, wires = tab_surface.push_payload(candidate)
+        configs, missing = tab_surface.push_configs(bots, self._tablet_source.entries())
+        if missing or not configs:
+            refusal = tab_surface.push_refused_line(missing)
+            self._status_log.log(refusal, "warning")
+            return {"mode": self._mode, "held": 0, "wires": 0, "refused": refusal}
+        undeliverable = tab_surface.undeliverable_wires(wires, configs)
+        if undeliverable:
+            refusal = tab_surface.push_wire_refused_line(undeliverable)
+            self._status_log.log(refusal, "warning")
+            return {"mode": self._mode, "held": 0, "wires": 0, "refused": refusal}
+        self.set_mode(surface.MODE_BACK_TEST)
+        if self._mode != surface.MODE_BACK_TEST:
+            refusal = tab_surface.PUSH_IN_FLIGHT_TEXT
+            self._status_log.log(refusal, "warning")
+            return {"mode": self._mode, "held": 0, "wires": 0, "refused": refusal}
+        manager = self._fleet_source.wire_manager()
+        bot_ids: dict[str, str] = {}
+        for config in configs:
+            bot = self._fleet_source.create(config)
+            asset = str(config.get("target_asset") or "").upper()
+            bot_ids[asset] = bot.bot_id
+            manager.register_bot(
+                bot.bot_id, asset, float(config.get("target_balance") or 0.0)
+            )
+        registered = tab_surface.register_pushed_wires(manager, wires, bot_ids)
+        self._fleet_source.hold_wire_manager(manager)
+        self._status_log.log(tab_surface.push_held_line(configs), "success")
+        if wires:
+            self._status_log.log(tab_surface.push_wired_line(registered), "success")
+        self.fleet_changed.emit()
+        return {
+            "mode": self._mode,
+            "held": len(configs),
+            "wires": len(registered),
+            "refused": "",
+        }
+
     def log_report(self, report: ParityReport) -> None:
         """One Activity Log line, ``report_line`` over ``report``, through
         ``SimStatusLog.log`` at the ``success`` level ``_import_live_fleet`` uses."""

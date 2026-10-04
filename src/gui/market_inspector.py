@@ -15,7 +15,7 @@ import base64
 import html
 import logging
 import threading
-from typing import Any, Callable
+from typing import Any, Callable, Optional
 
 from ..core import encryption
 from ..trading import (
@@ -193,6 +193,9 @@ from .main_tabs.market_inspector_surface import (
     COUNTER_PART,
     POSITION_EMPTY_TEXT,
     POSITION_STYLE,
+    PUSH_NO_CANDIDATE_TEXT,
+    PUSH_TO_SIM_PART,
+    PUSH_UNWIRED_TEXT,
     STEP_BACK_TEXT,
     STEP_BACK_TOOLTIP,
     STEP_BUTTON_STYLE,
@@ -201,9 +204,13 @@ from .main_tabs.market_inspector_surface import (
     STEP_NEXT_TEXT,
     STEP_NEXT_TOOLTIP,
     pair_entry,
+    pair_push_candidates,
+    push_failed_line,
+    push_outcome_line,
     step_to as _step_to,
     zone_view,
 )
+from .main_tabs.market_inspector_topologies_surface import proposal_push_candidates
 
 logger = logging.getLogger("acervator.market_inspector_gui")
 
@@ -1027,6 +1034,8 @@ if _HAS_QT:
             self._zone_at: dict = {}
             self._zone_open: dict = {}
             self._pairs: list = []
+            # Wired by set_push_to_sim_handler; unset refuses every push.
+            self._push_to_sim_handler: Optional[Callable[[list], Any]] = None
             self._scan_counts: dict = {}
             self._left_zone_groups: list = []
             self._right_zone_groups: list = []
@@ -1860,6 +1869,9 @@ if _HAS_QT:
                 return
             elif key == CHART_FOLDER_PART:
                 answered = open_chart_folder()
+            elif key == PUSH_TO_SIM_PART:
+                self._push_pair_to_sim()
+                return
             elif key == THUMBNAIL_PART:
                 self._zone_open[READY_TO_SEND_ZONE] = True
             self._say_lines(push_press_lines(board, key, answered))
@@ -2845,6 +2857,59 @@ if _HAS_QT:
             if adopt_signal is None:
                 return
             adopt_signal.connect(handler)
+
+        def set_push_to_sim_handler(self, handler) -> None:
+            """Take the handler a Push to Sim press reaches, on both panes.
+
+            ``handler`` takes one candidate's ``{"bots", "wires"}`` payload and
+            answers the Simulator's ``{"mode", "held", "wires", "refused"}``.
+            It is held for the Opposing Trades zone and connected to the
+            topology pane's ``pushToSimRequested``.
+            """
+            self._push_to_sim_handler = handler
+            pane = getattr(self, "_topologies_pane", None)
+            push_signal = getattr(pane, "pushToSimRequested", None)
+            if push_signal is None:
+                return
+            push_signal.connect(self._push_proposal_to_sim)
+
+        def _push_proposal_to_sim(self, proposal: dict) -> None:
+            """Send one topology proposal's bots and the wires between them to
+            the Simulator's Back Test."""
+            self._send_to_sim(proposal_push_candidates(proposal))
+
+        def _push_pair_to_sim(self) -> None:
+            """Send the opposing pair on show to the Simulator's Back Test."""
+            at = self._zone_at.get(OPPOSING_TRADES_MODULE, 0)
+            if not self._pairs or at >= len(self._pairs):
+                self._say(PUSH_NO_CANDIDATE_TEXT, ACTIVITY_WARNING)
+                return
+            self._send_to_sim(pair_push_candidates(self._pairs[at]))
+
+        def _send_to_sim(self, candidate: dict) -> None:
+            """Hand ``candidate`` to the Push to Sim handler and log what it did.
+
+            With no handler wired the press writes one line and changes
+            nothing, so the Simulator's run mode cannot move without a
+            destination.
+            """
+            handler = getattr(self, "_push_to_sim_handler", None)
+            if handler is None:
+                self._say(PUSH_UNWIRED_TEXT, ACTIVITY_WARNING)
+                return
+            if not (candidate or {}).get("bots"):
+                self._say(PUSH_NO_CANDIDATE_TEXT, ACTIVITY_WARNING)
+                return
+            try:
+                answered = dict(handler(candidate) or {})
+            except Exception as exc:  # noqa: BLE001 - handler is the main window
+                logger.warning("push to sim handler failed: %s", exc)
+                self._say(push_failed_line(exc), ACTIVITY_WARNING)
+                return
+            self._say(
+                push_outcome_line(answered),
+                ACTIVITY_WARNING if answered.get("refused") else ACTIVITY_INFO,
+            )
 
         def current_topology_proposals(self) -> "list | None":
             """The proposals on display, for a simulator to read and wire.

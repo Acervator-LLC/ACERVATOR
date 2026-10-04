@@ -12,7 +12,9 @@ from the YTD trade files, both read only.
 alone and sends nothing, and ``__getattr__`` raises ``SendRefused`` for every
 other name. It holds one fleet per run mode of ``MODES``, and ``set_mode``
 names the one every other reader and act works on; the sim fleet file holds
-all three under ``FLEETS_KEY``, and a file holding one ``bots`` map at the top
+all three under ``FLEETS_KEY``, names the mode in force under ``MODE_KEY``,
+which ``__init__`` reads back so a chosen mode survives to the next draw, and
+a file holding one ``bots`` map at the top
 is read as the ``MODE_VALIDATION`` fleet. ``bots``, ``exchanges``,
 ``statuses`` and ``aggregate`` read the
 held records alone, so the tab starts empty; ``stored_records`` and
@@ -57,6 +59,7 @@ from ..trading.container.config import (
 )
 from ..trading.scrumming.sizing import DRAWDOWN_STATE, priced_usd
 from ..trading.smart_wire import mature_profit_usd
+from .sim_wire import SimWireManager
 from .tablet_source import SendRefused
 
 logger = logging.getLogger("acervator.simulator.fleet")
@@ -77,6 +80,15 @@ MODES = (MODE_VALIDATION, MODE_BACK_TEST, MODE_PORTFOLIO_BATTERY)
 
 #: The sim fleet file's key holding one entry per mode of ``MODES``.
 FLEETS_KEY = "fleets"
+
+#: The sim fleet file's key naming the mode in force, read back by ``__init__``.
+MODE_KEY = "mode"
+
+#: The key holding one mode's wire rows, the name ``bot_state.json`` uses.
+WIRES_KEY = "smart_wires"
+
+#: The key holding one mode's wire ledger rows, the name ``bot_state.json`` uses.
+WIRE_LEDGERS_KEY = "smart_wire_ledgers"
 
 #: Every name ``FleetSource`` answers. ``__getattr__`` refuses the rest.
 READ_NAMES = (
@@ -107,6 +119,10 @@ READ_NAMES = (
     "sim_dir",
     "sim_path",
     "save",
+    "wire_rows",
+    "wire_ledger_rows",
+    "wire_manager",
+    "hold_wire_manager",
 )
 
 LIVE_ORIGIN = "live"
@@ -437,6 +453,31 @@ def _held_bot(bot_id: str, record: dict) -> Optional[SimBot]:
     return _sim_bot_from_record(
         bot_id, record, origin=str(record.get("origin") or NEW_ORIGIN)
     )
+
+
+def pushed_config(
+    asset: str,
+    exchange_id: str,
+    ta_timeframe: str,
+    target_usd: float,
+    base_currency: str = "USD",
+) -> dict:
+    """The ``create`` config for one asset a pushed candidate names.
+
+    Both candidate shapes reduce to this, so ``symbol``, ``target_balance`` and
+    ``ta_timeframe`` are spelled in one place.
+    """
+    base = str(asset or "").upper()
+    quote = str(base_currency or "USD").upper()
+    return {
+        "symbol": f"{base}/{quote}",
+        "target_asset": base,
+        "base_currency": quote,
+        "exchange_id": str(exchange_id or ""),
+        "ta_timeframe": str(ta_timeframe or ""),
+        "target_balance": float(target_usd),
+        "mode": SCRUMMING_MODE,
+    }
 
 
 def wizard_record(config: dict) -> dict:
@@ -780,6 +821,77 @@ def _empty_fleets() -> dict[str, dict[str, dict]]:
     return {mode: {} for mode in MODES}
 
 
+def _empty_wire_rows() -> dict[str, list[dict]]:
+    """One empty row list per mode of ``MODES``."""
+    return {mode: [] for mode in MODES}
+
+
+def _rows_under(entry: Any, key: str) -> list[dict]:
+    """The dict rows ``entry`` holds under ``key``, or an empty list."""
+    if not isinstance(entry, dict):
+        return []
+    stored = entry.get(key)
+    if not isinstance(stored, list):
+        return []
+    return [dict(one) for one in stored if isinstance(one, dict)]
+
+
+def _read_sim_wires(path: Path) -> tuple[dict[str, list[dict]], dict[str, list[dict]]]:
+    """One ``WIRES_KEY`` list and one ``WIRE_LEDGERS_KEY`` list per mode of
+    ``MODES`` from the sim fleet file at ``path``.
+
+    A file that is absent, unreadable, malformed or carries neither key answers
+    empty lists under every mode of ``MODES``.
+    """
+    wires = _empty_wire_rows()
+    ledgers = _empty_wire_rows()
+    if not path.exists():
+        return wires, ledgers
+    try:
+        loaded = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return wires, ledgers
+    if not isinstance(loaded, dict):
+        return wires, ledgers
+    stored_fleets = loaded.get(FLEETS_KEY)
+    if not isinstance(stored_fleets, dict):
+        return wires, ledgers
+    for mode in MODES:
+        entry = stored_fleets.get(mode)
+        wires[mode] = _rows_under(entry, WIRES_KEY)
+        ledgers[mode] = _rows_under(entry, WIRE_LEDGERS_KEY)
+    return wires, ledgers
+
+
+def _read_sim_mode(path: Path) -> str:
+    """The mode named under ``MODE_KEY`` in the sim fleet file at ``path``.
+
+    An absent, unreadable, malformed or unrecognised name answers ``MODES[0]``,
+    and an unrecognised one is named in one warning line.
+    """
+    if not path.exists():
+        return MODES[0]
+    try:
+        loaded = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return MODES[0]
+    if not isinstance(loaded, dict):
+        return MODES[0]
+    named = loaded.get(MODE_KEY)
+    if named is None:
+        return MODES[0]
+    if named in MODES:
+        return str(named)
+    logger.warning(
+        "sim fleet file %s names mode %r outside %s; %s is in force",
+        path,
+        named,
+        MODES,
+        MODES[0],
+    )
+    return MODES[0]
+
+
 def _read_sim_records(path: Path) -> dict[str, dict[str, dict]]:
     """One ``bots`` map per mode of ``MODES`` from the sim fleet file at
     ``path``: each mode's entry under ``FLEETS_KEY``, a mode name outside
@@ -854,13 +966,14 @@ class FleetSource:
         self, root: Optional[Path] = None, sim_dir: Optional[Path] = None
     ) -> None:
         """Read the sim fleet file from ``sim_dir``, or from ``get_sim_dir``
-        when it is None, with ``MODES[0]`` in force; ``bot_state.json`` under
-        ``root``, or under ``~/.acervator`` when it is None, is read on
-        ``stored_records`` alone."""
+        when it is None, with the mode it names under ``MODE_KEY`` in force;
+        ``bot_state.json`` under ``root``, or under ``~/.acervator`` when it is
+        None, is read on ``stored_records`` alone."""
         self._root = Path(root) if root is not None else Path.home() / ".acervator"
         self._sim_dir = Path(sim_dir) if sim_dir is not None else get_sim_dir()
-        self._mode: str = MODES[0]
+        self._mode: str = _read_sim_mode(self.sim_path())
         self._fleets: dict[str, dict[str, dict]] = _read_sim_records(self.sim_path())
+        self._wires, self._wire_ledgers = _read_sim_wires(self.sim_path())
 
     @property
     def _records(self) -> dict[str, dict]:
@@ -1134,27 +1247,63 @@ class FleetSource:
         ``save``."""
         count = len(self._records)
         self._fleets[self._mode] = {}
+        self._wires[self._mode] = []
+        self._wire_ledgers[self._mode] = []
         return count
+
+    def wire_rows(self) -> list[dict]:
+        """The ``WIRES_KEY`` rows of the mode in force, each a copy."""
+        return [dict(one) for one in self._wires[self._mode]]
+
+    def wire_ledger_rows(self) -> list[dict]:
+        """The ``WIRE_LEDGERS_KEY`` rows of the mode in force, each a copy."""
+        return [dict(one) for one in self._wire_ledgers[self._mode]]
+
+    def wire_manager(self) -> SimWireManager:
+        """A ``SimWireManager`` holding the mode in force's wire rows and
+        ledger rows, through ``import_wires`` and ``import_ledgers``."""
+        manager = SimWireManager()
+        manager.import_wires(self.wire_rows())
+        manager.import_ledgers(self.wire_ledger_rows())
+        return manager
+
+    def hold_wire_manager(self, manager: SimWireManager) -> dict[str, int]:
+        """Take ``manager``'s ``export_wires`` and ``export_ledgers`` onto the
+        mode in force and answer how many rows of each were held.
+
+        The sim fleet file carries them on the next ``save``, under
+        ``WIRES_KEY`` and ``WIRE_LEDGERS_KEY`` of this mode's entry.
+        """
+        wires = list(manager.export_wires())
+        ledgers = list(manager.export_ledgers())
+        self._wires[self._mode] = wires
+        self._wire_ledgers[self._mode] = ledgers
+        return {"wires": len(wires), "ledgers": len(ledgers)}
 
     def save(self) -> Optional[Path]:
         """Write every mode's held records to ``sim_path`` through
         ``atomic_write_json``: ``saved_at``, ``saved_at_human``, ``bot_count``
-        summed over ``MODES``, and ``FLEETS_KEY`` holding one entry per mode
+        summed over ``MODES``, ``MODE_KEY`` naming the mode in force, and
+        ``FLEETS_KEY`` holding one entry per mode
         under the keys ``StateManager.save_state`` writes, ``saved_at``,
-        ``saved_at_human``, ``bot_count`` and ``bots``; answers the path, or
-        None when the write fails."""
+        ``saved_at_human``, ``bot_count``, ``bots``, ``WIRES_KEY`` and
+        ``WIRE_LEDGERS_KEY``; answers the path, or None when the write
+        fails."""
         saved_at = time.time()
         saved_at_human = datetime.now().strftime(SAVED_AT_HUMAN_FORMAT)
         payload = {
             "saved_at": saved_at,
             "saved_at_human": saved_at_human,
             "bot_count": sum(len(records) for records in self._fleets.values()),
+            MODE_KEY: self._mode,
             FLEETS_KEY: {
                 mode: {
                     "saved_at": saved_at,
                     "saved_at_human": saved_at_human,
                     "bot_count": len(records),
                     "bots": dict(records),
+                    WIRES_KEY: [dict(one) for one in self._wires[mode]],
+                    WIRE_LEDGERS_KEY: [dict(one) for one in self._wire_ledgers[mode]],
                 }
                 for mode, records in self._fleets.items()
             },
@@ -1296,6 +1445,7 @@ __all__ = [
     "LIVE_ORIGIN",
     "MODES",
     "MODE_BACK_TEST",
+    "MODE_KEY",
     "MODE_PORTFOLIO_BATTERY",
     "MODE_VALIDATION",
     "NEW_ORIGIN",
@@ -1308,6 +1458,8 @@ __all__ = [
     "SAVED_AT_HUMAN_FORMAT",
     "SCRUMMING_MODE",
     "SIM_FLEET_NAME",
+    "WIRES_KEY",
+    "WIRE_LEDGERS_KEY",
     "YTD_ORIGIN",
     "FleetSource",
     "SendRefused",
@@ -1319,6 +1471,7 @@ __all__ = [
     "extractor_pool_color",
     "live_fleet",
     "loaded_idle",
+    "pushed_config",
     "row_status",
     "wizard_phantom_timeframes",
     "wizard_record",

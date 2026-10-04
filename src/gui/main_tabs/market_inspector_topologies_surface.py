@@ -29,6 +29,10 @@ from typing import Any, Callable, Optional
 
 from .market_inspector_surface import (
     METHOD_LINE_FORMAT,
+    PUSH_TO_SIM_LABEL,
+    PUSH_TO_SIM_PART,
+    PUSH_TO_SIM_TOOLTIP,
+    PUSH_TO_SIM_WIDTH_PX,
     SCAN_FINISHED,
     SCAN_NOT_ASKED,
     SCAN_RUNNING,
@@ -256,9 +260,18 @@ ACTIONS = {
     "preview.cancel_button.clicked": "preview.reject",
     "preview.adopt_button.clicked": "preview.adopt",
     "preview.adoptClicked": "adoptRequested",
+    "preview.push_to_sim_button.clicked": "preview.push_to_sim",
+    "preview.pushToSimClicked": "pushToSimRequested",
 }
 
-SIGNALS = ("adoptClicked", "previewClicked", "dismissClicked", "adoptRequested")
+SIGNALS = (
+    "adoptClicked",
+    "previewClicked",
+    "dismissClicked",
+    "adoptRequested",
+    "pushToSimClicked",
+    "pushToSimRequested",
+)
 
 TIMERS = {"auto_refresh": AUTO_REFRESH_MS}
 TIMER_DELAYS_MS = (AUTO_REFRESH_MS,)
@@ -289,6 +302,7 @@ STORE_LOADED = "store.loaded"
 PREVIEW_MISSING = "preview.missing"
 PREVIEW_OPENED = "preview.opened"
 PREVIEW_ADOPTED = "preview.adopted"
+PREVIEW_PUSHED = "preview.pushed"
 STEP_TAKEN = "step.taken"
 EXPAND_TOGGLED = "expand.toggled"
 CONFIRM_ASKED = "confirm.asked"
@@ -318,6 +332,7 @@ CALL_NAMES = (
     PREVIEW_MISSING,
     PREVIEW_OPENED,
     PREVIEW_ADOPTED,
+    PREVIEW_PUSHED,
     CONFIRM_ASKED,
     CONFIRM_REFUSED,
     STEP_TAKEN,
@@ -579,6 +594,38 @@ class DismissStore:
         self.wrote.append([key, dict(value)])
 
 
+def proposal_push_candidates(proposal: Any) -> dict:
+    """One proposal as ``{"bots", "wires"}``, the payload a push takes.
+
+    Each bot is a ``{"symbol", "target_usd"}`` row and each wire is a
+    ``{"source_asset", "target_asset", "pct"}`` row, so the routing the
+    proposal describes travels with the bots it names.
+    """
+    bots: list = []
+    seen: set = set()
+    for bot in (proposal or {}).get("bots", []) or []:
+        symbol = str((bot or {}).get("symbol") or "")
+        if not symbol or symbol in seen:
+            continue
+        seen.add(symbol)
+        bots.append(
+            {
+                "symbol": symbol,
+                "target_usd": float((bot or {}).get("suggested_target_usd") or 0.0),
+            }
+        )
+    wires: list = []
+    for one in (proposal or {}).get("wires", []) or []:
+        wires.append(
+            {
+                "source_asset": str((one or {}).get("source_asset") or "").upper(),
+                "target_asset": str((one or {}).get("target_asset") or "").upper(),
+                "pct": float((one or {}).get("pct") or 0.0),
+            }
+        )
+    return {"bots": bots, "wires": wires}
+
+
 class TopologyPreviewModel:
     """The preview screen one proposal opens.
 
@@ -604,6 +651,7 @@ class TopologyPreviewModel:
         self.adopt_tooltip = NO_TEXT
         self.order: list = []
         self.adopted: list = []
+        self.pushed: list = []
         self.accepted = 0
         self.rejected = 0
 
@@ -669,6 +717,12 @@ class TopologyPreviewModel:
     def adopt(self) -> Any:
         """Hand the proposal to whoever listens, then close the screen."""
         self.adopted.append(self.proposal)
+        self.accepted += 1
+        return self.proposal
+
+    def push_to_sim(self) -> Any:
+        """Hand the proposal to whoever listens on Push to Sim, then close."""
+        self.pushed.append(self.proposal)
         self.accepted += 1
         return self.proposal
 
@@ -760,6 +814,7 @@ class TopologiesPaneModel:
         self.timer_running = TIMER_STARTED_AT_BUILD
         self.previews: list = []
         self.adopt_requests: list = []
+        self.push_requests: list = []
         self.confirms: list = []
         self.confirm_answer = CONFIRM_YES
         self.warnings: list = []
@@ -995,6 +1050,13 @@ class TopologiesPaneModel:
         self.calls.append([PREVIEW_ADOPTED])
         return proposal
 
+    def push_from(self, preview: TopologyPreviewModel) -> Any:
+        """Forward one preview's Push to Sim to whoever listens on the pane."""
+        proposal = preview.push_to_sim()
+        self.push_requests.append(proposal)
+        self.calls.append([PREVIEW_PUSHED])
+        return proposal
+
     def on_dismiss(self, proposal_id: Any, now: Optional[float] = None) -> None:
         """Ask before suppressing, and suppress only on a Yes."""
         if not proposal_id:
@@ -1104,6 +1166,10 @@ def build_view_model(model: TopologiesPaneModel) -> dict:
             "adopt_text": ADOPT_TEXT,
             "adopt_tooltip": ADOPT_TOOLTIP,
             "adopt_disabled_tooltip": ADOPT_DISABLED_TOOLTIP,
+            "push_to_sim_part": PUSH_TO_SIM_PART,
+            "push_to_sim_text": PUSH_TO_SIM_LABEL,
+            "push_to_sim_tooltip": PUSH_TO_SIM_TOOLTIP,
+            "push_to_sim_width_px": PUSH_TO_SIM_WIDTH_PX,
         },
         "card": {
             "accessible_name": CARD_ACCESSIBLE_NAME,
@@ -1225,6 +1291,7 @@ def build_view_model(model: TopologiesPaneModel) -> dict:
             for preview in model.previews
         ],
         "adopt_requests": [proposal.get("id") for proposal in model.adopt_requests],
+        "push_requests": [proposal.get("id") for proposal in model.push_requests],
         "persisted": [list(one) for one in getattr(model.dismiss_store, "wrote", [])],
         "warnings": [list(one) for one in model.warnings],
     }
@@ -1245,9 +1312,9 @@ def view_model(params: dict) -> dict:
     """Bridge handler for ``market_inspector_topologies.state``.
 
     Reads ``reset``, ``now``, ``proposals``, ``error``, ``store``,
-    ``refresh``, ``preview``, ``adopt``, ``dismiss`` and ``confirm``
-    from the request parameters. The pane's state persists between calls
-    because the pane does; ``reset`` is what a fresh paint sends.
+    ``refresh``, ``preview``, ``adopt``, ``push_to_sim``, ``dismiss`` and
+    ``confirm`` from the request parameters. The pane's state persists between
+    calls because the pane does; ``reset`` is what a fresh paint sends.
     """
     global PANE_MODEL
     if params.get("reset", False):
@@ -1282,6 +1349,8 @@ def view_model(params: dict) -> dict:
         model.on_preview(params["preview"])
     if params.get("adopt", False) and model.previews:
         model.adopt_from(model.previews[-1])
+    if params.get("push_to_sim", False) and model.previews:
+        model.push_from(model.previews[-1])
     if params.get("dismiss"):
         model.on_dismiss(params["dismiss"])
     return build_view_model(model)
