@@ -930,6 +930,41 @@ flowchart LR
     live --> strip
 ```
 
+### AMMO reads the paper fleet's own total
+
+AMMO on the strip is every paper bot's Target Delta added together, in whole
+dollars and with no sign, so a bot above its target cannot cancel one below.
+It draws green while more paper bots hold more than their target and red while
+more hold less, which is the rule the Trading tab page gives the column. The
+fleet source publishes the total and the two bot counts the colour reads.
+
+`src/paper/fleet_source.py` — `aggregate_stats`
+
+```python
+ammo_readings.append((position_value, bot.live_target_usd, bot.target_usd))
+...
+"total_target_delta_usd": ammo["total_target_delta_usd"],
+"bots_scrum_territory": ammo["bots_scrum_territory"],
+"bots_fold_territory": ammo["bots_fold_territory"],
+```
+
+One call sums those three figures for every fleet source, so the Paper
+Trader's total, the Simulator's and Live's cannot be worked out differently.
+
+`src/trading/target_bands.py` — `fleet_ammo`
+
+```python
+target_usd = ammo_target(live_target, configured_target)
+if target_usd > 0:
+    total_usd += abs(target_delta(position_value, target_usd))
+    where = target_territory(position_value, target_usd)
+```
+
+A reading takes the grown target wherever a paper bot carries one, which is the
+target that bot's own Ammo cell is measured against. The strip's total is
+therefore the sum of the column above it. A paper bot with no target
+contributes nothing to either figure.
+
 ### Import Live Fleet fills the tables and the strip
 
 Import Live Fleet copies the stored bots of one exchange out of the live fleet
