@@ -1876,6 +1876,23 @@ if _HAS_QT:
                 "warning",
             )
 
+        def _push_candidate_to_sim(self, candidates: list) -> dict:
+            """Hand one Inspector candidate to the Sim tab's Back Test mode.
+
+            ``candidates`` are the ``{"symbol", "target_usd"}`` rows the
+            Inspector built. With no Sim tab the push is refused and no mode
+            moves, which is what the Inspector reports. Answers the Simulator's
+            ``{"mode", "held", "refused"}``.
+            """
+            from .simulator.sim_trading_tab_surface import PUSH_NO_SIM_TAB_TEXT
+
+            tab = getattr(self, "_simulator_tab", None)
+            push = getattr(tab, "push_to_back_test", None)
+            if push is None:
+                self._status_log.log(PUSH_NO_SIM_TAB_TEXT, "warning")
+                return {"mode": "", "held": 0, "refused": PUSH_NO_SIM_TAB_TEXT}
+            return dict(push(candidates) or {})
+
         def _adopt_topology_proposal(self, proposal: dict) -> None:
             """Confirm, open the wizard for each new bot, then emit `wire.created`."""
             from PySide6.QtWidgets import QMessageBox

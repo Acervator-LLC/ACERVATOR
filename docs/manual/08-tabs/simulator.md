@@ -1009,6 +1009,28 @@ def new_bot_specs(entry) -> list[dict]:
     defaults."""
 ```
 
+### A third way in: a push from the Market Inspector
+
+Press Push to Sim on a swarm topology proposal or on an opposing-trade pair and
+the Simulator holds one bot per market the candidate names, under Back Test, and
+leaves Back Test the run mode. Open the Sim tab afterwards and it is already in
+that mode with those bots in its table. Nothing starts: the bots are held idle
+and Start Run is the press that walks them.
+
+`src/gui/simulator/sim_trading_tab.py` — where a push lands
+
+```python
+def push_to_back_test(self, candidates: Any) -> dict:
+    """Hold one sim bot per pushed candidate under Back Test and leave that
+    the run mode.
+    """
+```
+
+Each market takes the venue and the timeframe of its own Stone Tablet, so a
+pushed bot walks the tape the Simulator already holds for it. A market with no
+tablet refuses the whole push and moves no mode, which
+[the Market Inspector page](market-inspector.md) describes at the button.
+
 ### One clock
 
 Every bot ticks on one cadence. The step is sized once from the longest tape in
@@ -3323,8 +3345,19 @@ planted into it moved the hash.
 
 ## The mode choice is wired and the way-ins follow it
 
-The tab holds one run mode, in both builds. Validation is the run mode when
-the tab opens, the first of `MODES`. A press on Validation, Back Test or
+The tab holds one run mode, in both builds. The sim fleet file names the mode
+in force, and the tab opens in the mode that file names. A file naming no mode,
+or naming one the Simulator does not have, opens the tab in Validation, the
+first of `MODES`, which is what a first launch reads.
+
+`src/simulator/fleet_source.py` — the key the file carries
+
+```python
+#: The sim fleet file's key naming the mode in force, read back by ``__init__``.
+MODE_KEY = "mode"
+```
+
+A press on Validation, Back Test or
 Portfolio Battery in a venue page's header makes that mode the run mode; its
 button carries Live's Privacy-Mode ON sheet and the two others carry the OFF
 sheet, on every seated venue page at once. The corner Live gives

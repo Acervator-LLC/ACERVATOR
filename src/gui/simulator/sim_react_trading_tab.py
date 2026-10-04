@@ -1583,6 +1583,34 @@ if _HAS_WEBENGINE:
             self.log(tab_surface.imported_line(len(imported), chosen), "success")
             self.fleet_changed.emit()
 
+        def push_to_back_test(self, candidates: Any) -> dict:
+            """Hold one sim bot per pushed candidate under Back Test and leave
+            that the run mode.
+
+            ``candidates`` are ``{"asset", "target_usd"}`` rows from the Market
+            Inspector. Every asset must be named by a Stone Tablet; one that is
+            not refuses the whole push, writes ``push_refused_line`` and leaves
+            the run mode as it stands. Answers
+            ``{"mode", "held", "refused"}``.
+            """
+            configs, missing = tab_surface.push_configs(
+                candidates, self._tablet_source.entries()
+            )
+            if missing or not configs:
+                refusal = tab_surface.push_refused_line(missing)
+                self.log(refusal, "warning")
+                return {"mode": self.mode(), "held": 0, "refused": refusal}
+            self.set_mode(sim.MODE_BACK_TEST)
+            if self.mode() != sim.MODE_BACK_TEST:
+                refusal = tab_surface.PUSH_IN_FLIGHT_TEXT
+                self.log(refusal, "warning")
+                return {"mode": self.mode(), "held": 0, "refused": refusal}
+            for config in configs:
+                self._fleet_source.create(config)
+            self.log(tab_surface.push_held_line(configs), "success")
+            self.fleet_changed.emit()
+            return {"mode": self.mode(), "held": len(configs), "refused": ""}
+
         def log_report(self, report: ParityReport) -> None:
             """One Activity Log line, ``report_line`` over ``report``, through
             ``log`` at the ``success`` level ``_import_live_fleet`` uses."""
