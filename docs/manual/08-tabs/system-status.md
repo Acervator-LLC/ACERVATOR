@@ -832,26 +832,30 @@ automatic collector is switched off, and it is untouched.
 
 #### Measured on the collection depth
 
-Both sides were driven on one machine, on a heap holding 343,220 tracked
-objects, with the collector's own `gc.DEBUG_STATS` report supplying the object
-counts and `time.perf_counter` the clock. Each side ran one twelve-tick round,
-which is one minute of the real timer.
+Both sides were driven on one machine, on a heap holding 343,283 tracked
+objects built by importing all 487 modules under `src`, with the collector's own
+`gc.DEBUG_STATS` report supplying the object counts and `time.perf_counter` the
+clock. Each side ran one twelve-tick round, which is one minute of the real
+timer.
 
 ```
                      seconds per collection      objects read per collection
-before               0.102207 mean               352,428 mean
-                     0.124480 worst              352,439 worst
+before               0.079518 mean               352,491 mean
+                     0.090910 worst              352,502 worst
 
-after                0.025225 mean                37,625 mean
-                     0.139462 worst              352,440 worst
+after                0.015458 mean                37,630 mean
+                     0.081259 worst              352,503 worst
 
-per minute           1.226484s  ->  0.302701s    4,229,136  ->  451,505
+per minute           0.954211s  ->  0.185494s    4,229,892  ->  451,568
 ```
 
 The deepest read costs the same as it always did; the worst single tick is that
 read, and it is unchanged. What falls is how many times a minute the program
 pays for it. Objects read per minute falls by 9.37 times, and that figure is the
-one the page-fault rate follows.
+one the page-fault rate follows. The seconds column moves with whatever else the
+machine is doing - the same pair of rounds read a ratio of 4.05, 4.64 and 5.14
+across three runs with the live platform sharing the machine - while the objects
+column read 9.37 every time.
 
 The timer was then driven through a real Qt event loop for twenty-four ticks.
 Twenty-two shallow reads and two deep ones ran, `gc.get_stats()` reported
