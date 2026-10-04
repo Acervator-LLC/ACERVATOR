@@ -3475,9 +3475,9 @@ if _HAS_QT:
                 ]
                 if unseated:
                     self.add_exchange_tab(eid, name)
+                    seated_on = ", ".join(unseated)
                     self._status_log.log(
-                        f"Exchange tab added: {name} "
-                        f"({', '.join(unseated)} layer)",
+                        f"Exchange tab added: {name} ({seated_on} layer)",
                         "success",
                     )
 
