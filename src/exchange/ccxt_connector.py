@@ -10,6 +10,7 @@ from ..core.encryption import unescape_pem_newlines
 from ..core.fmt import fmt_price_coerced
 from ..core.retry import linear_delay, retry_any, retry_sync, with_retry
 from ..core.safe_url import SafeRequest, safe_urlopen
+from ..trading.ta_engine import DEFAULT_WEIGHTS
 import asyncio
 import logging
 import math
@@ -312,6 +313,13 @@ def record_price(market: Any) -> Optional[float]:
     if parsed is None or parsed <= 0.0:
         return None
     return parsed
+
+
+def ohlcv_data_usage() -> str:
+    """The Data usage line a candle fetch writes, naming every voter
+    ``DEFAULT_WEIGHTS`` declares."""
+    voters = ", ".join(DEFAULT_WEIGHTS)
+    return f"Fed into {len(DEFAULT_WEIGHTS)}-indicator TA engine ({voters}) for voting"
 
 
 _LOGO_CDN = "https://assets.coingecko.com/coins/images/{id}/small/{symbol}.png"
@@ -1080,7 +1088,7 @@ class CCXTConnector(ExchangeInterface):
             ),
             elapsed_ms=elapsed,
             level="success",
-            data_usage="Fed into 7-indicator TA engine (BB, Vortex, MACD, StochRSI, Ichimoku, Volume, Slingshot) for voting",
+            data_usage=ohlcv_data_usage(),
         )
         return data
 
