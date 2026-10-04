@@ -1619,12 +1619,11 @@ if _HAS_QT:
             self._push_live_tab({})
 
             # `_landed` asks each layer's own tab bar, never the store written above.
-            _landed = sorted(
-                name
-                for name in _seated
-                if layers[name]["tabs"].indexOf(layers[name]["exchange_tabs"][exchange_id])
-                >= 0
-            )
+            _landed = []
+            for name in sorted(_seated):
+                held = layers[name]
+                if held["tabs"].indexOf(held["exchange_tabs"][exchange_id]) >= 0:
+                    _landed.append(name)
             import contextlib
 
             with contextlib.suppress(Exception):
