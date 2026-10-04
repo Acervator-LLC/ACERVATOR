@@ -168,6 +168,82 @@ METALS_PHYSICAL: tuple[AssetListing, ...] = tuple(
 )
 ```
 
+### Coinbase serves three of the four classes
+
+OVERTAKEN, and the Coinbase row above is kept as written. Its classes read
+"crypto spot; US futures products over the same API". The same Advanced Trade
+products endpoint also answers stocks, and it labels part of its futures list
+with a commodity underlying, so Coinbase is listed under Crypto, Stock and
+Commodities.
+
+The endpoint takes a product type. Asked on 4 October 2026 with no credential
+and no private route, it answered these counts.
+
+```
+product_type asked                       products answered
+  (omitted)                              921, every one SPOT
+  SPOT                                   921
+  FUTURE                                 100, the dated contracts
+  FUTURE, expiry type PERPETUAL          131
+  EQUITY                                 1000
+  OPTION_GROUP                           0
+  FUTURE_GROUP                           0
+  FOREX                                  refused, not a valid value
+  COMMODITY                              refused, not a valid value
+```
+
+**There is no forex on this endpoint.** The venue refuses the word, and none of
+the types it accepts answers a currency pair. Forex stays a sector with no
+connected venue, and the three forex firms in the table above remain
+unconnected.
+
+**The equity list is capped and it is not stable.** One call answers at most
+1,000 rows, a second page repeats the first, and two calls an instant apart
+share only about a fifth of their rows. One market load records the 1,000 the
+venue served that call.
+
+**The commodity contracts are named by the venue, not by a table here.** Each
+futures product carries its own asset-type label, and three of those labels name
+a commodity family: metals, energy and commodities. Twenty-one products carried
+one on 4 October 2026 — gold, silver, copper, platinum, natural gas and oil.
+
+```python
+# src/exchange/ccxt_connector.py
+COMMODITY_FUTURES_ASSET_TYPES: frozenset = frozenset(
+    {
+        "FUTURES_ASSET_TYPE_COMMODITIES",
+        "FUTURES_ASSET_TYPE_ENERGY",
+        "FUTURES_ASSET_TYPE_METALS",
+    }
+)
+```
+
+**A stock whose ticker is already a crypto pair is not recorded.** Fifteen of
+one equity call's thousand rows named a symbol the crypto list already held,
+`BTC/USDC` among them. The crypto market keeps the symbol and the equity is
+left out, so no crypto market can be replaced by a stock.
+
+| what the recording holds for Coinbase | before | after |
+| ------------------------------------- | ------ | ----- |
+| rows in all | 1,144 | about 2,135 |
+| crypto | 1,144 | 1,123 |
+| commodities | 0 | 21 |
+| stocks | 0 | about 990 |
+| forex | 0 | 0 |
+
+The crypto and commodity counts are fixed. The stock count moves with the slice
+the venue serves and with how many of its tickers a crypto pair already holds:
+two loads minutes apart recorded 987 and 993.
+
+The 1,144 crypto and commodity rows are the same symbols as before, carrying
+the same increments, minimums and ticks. An equity row carries the four figures
+an order needs, read from the venue's own product record.
+
+```
+ZBH/USDC    stock   amount increment 1e-05   minimum 1e-05   tick 0.01
+BTC/USD     crypto  amount increment 1e-08   minimum 1e-08   tick 0.01
+```
+
 ## How an order names its size
 
 A venue names an order's size in one of three ways: units of the base asset, a

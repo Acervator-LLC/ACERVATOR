@@ -261,6 +261,16 @@ def layer_order() -> tuple:
     return asset_class_surface.layered_classes()
 
 
+def exchange_layers(exchange_id: Any) -> tuple:
+    """Every layer one venue's tab sits on, in ``layer_order`` order.
+
+    ``asset_class_surface.venue_classes`` answers the sectors the venue serves,
+    and a venue serving several is answered for each of them.
+    """
+    served = asset_class_surface.venue_classes(exchange_id)
+    return tuple(name for name in layer_order() if name in served)
+
+
 def layer_exchanges(entries: Any) -> dict:
     """Each layer's exchanges as ``exchange_id`` to caption, in the order given.
 
@@ -273,8 +283,8 @@ def layer_exchanges(entries: Any) -> dict:
         exchange_id = str(holder.get("exchange_id") or "")
         if not exchange_id:
             continue
-        layer = "stocks" if is_equity_exchange(exchange_id) else "crypto"
-        split[layer][exchange_id] = exchange_display_name(holder)
+        for layer in exchange_layers(exchange_id) or ("crypto",):
+            split[layer][exchange_id] = exchange_display_name(holder)
     return split
 
 

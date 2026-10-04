@@ -5620,6 +5620,51 @@ elif asked in crypto_venues():
     found.add("crypto")
 ```
 
+OVERTAKEN, and the block above is kept as written. Two lines of it changed. A
+venue id now takes every class it serves rather than stopping at the first, and
+a class name an earlier taxonomy used is resolved onto the live class holding
+it instead of being dropped.
+
+`src/gui/main_tabs/asset_class_surface.py` — `venue_classes` today
+
+```python
+found = {retired_onto(one) for one in EXTRA_VENUE_CLASSES.get(asked, ())}
+if asked in EQUITY_VENUES:
+    found.add("stocks")
+if asked in crypto_venues():
+    found.add("crypto")
+```
+
+OVERTAKEN, and the table above is kept as written. Coinbase serves three
+classes, so the Commodities button can act and the table's last two rows read
+differently.
+
+| class | the button reads | it can act | venues |
+|---|---|---|---|
+| Crypto | `＋ Add Crypto Exchange` | yes | 15 |
+| Stock | `＋ Add Stock Broker` | yes | 10 |
+| Commodities | `＋ Add Commodities Exchange` | yes | 1 |
+| Forex | `Forex — no venue yet` | no | 0 |
+
+**Coinbase is the first venue on three layers at once.** Its tab is seated on
+the Crypto layer, the Stock layer and the Commodities layer, and each layer
+drops its Get Started card when the tab arrives. Pressing a class moves the
+Live stack to that class's own layer.
+
+`src/gui/main_window.py` — the layers one venue's tab is seated on
+
+```python
+wanted = [
+    name
+    for name in self._served_layers(exchange_id)
+    if name in layers and exchange_id not in layers[name]["exchange_tabs"]
+]
+```
+
+**Forex draws its empty card still.** No connected venue serves a currency
+pair, so the Forex layer keeps `No Forex Exchanges Configured` and its button
+refuses the press.
+
 **One venue list, read from one place.** Nine equity venue ids are declared once and
 six files read them. Order matters to the pages and membership matters to the layers:
 three view models publish the list to a page, so it is sorted where the Live view

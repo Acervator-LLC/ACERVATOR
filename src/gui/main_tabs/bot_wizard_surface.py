@@ -1391,15 +1391,23 @@ def rules_from_row(row: Any) -> Any:
     )
 
 
-def recorded_market_rows(venue: Any) -> list:
+def recorded_market_rows(venue: Any, asset_class: Any = "") -> list:
     """One market row per pair the recording holds for ``venue``, in symbol
     order, each carrying its symbol, base and quote and no traded figure.
 
-    The asset page lists these where no live market fetch answered, so the pairs
-    offered are the ones that venue published rather than an invented set.
+    The asset page lists these where no live market fetch answered, and
+    ``asset_class`` keeps only the rows recorded under that class.
     """
+    asked = str(asset_class or "").strip().lower()
+    rows = recorded_venue_rows(venue)
     found = []
-    for symbol in sorted(recorded_venue_rows(venue)):
+    for symbol in sorted(rows):
+        if asked:
+            from ...exchange.market_rules_store import CLASS_FIELD
+
+            held = rows.get(symbol) or {}
+            if str(held.get(CLASS_FIELD, "") or "").lower() != asked:
+                continue
         base, _, quote = str(symbol).partition(MARKET_SYMBOL_SEPARATOR)
         if not base or not quote:
             continue

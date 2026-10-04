@@ -264,7 +264,9 @@ if _HAS_QT:
                     # so an unreachable venue offers no pair it does not list.
                     from .main_tabs.bot_wizard_surface import recorded_market_rows
 
-                    return recorded_market_rows(exchange_id)
+                    # The fetch above admits `type == "spot"` only, so the
+                    # fallback answers the same class and no other.
+                    return recorded_market_rows(exchange_id, "crypto")
                 except Exception:
                     return []
 
