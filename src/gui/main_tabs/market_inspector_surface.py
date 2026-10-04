@@ -854,9 +854,56 @@ PUSH_FAILED_FORMAT = "Push to Sim failed: {error}. No mode moved."
 PUSH_PUSHED_FORMAT = "Pushed {held} bot(s) to the Simulator; its run mode is {mode}."
 
 
+#: The Push to Paper button, drawn beside Push to Sim on an open Opposing
+#: Trades entry and in the topology preview, and the one part name both report.
+PUSH_TO_PAPER_PART = "push-to-paper-button"
+PUSH_TO_PAPER_LABEL = "Push to Paper"
+PUSH_TO_PAPER_TOOLTIP = (
+    "Spawn this candidate's bots on the Paper Trader, where they trade the "
+    "venue's own data. The Paper tab has no run mode and none is moved."
+)
+PUSH_TO_PAPER_WIDTH_PX = 120
+
+#: The Activity Log lines a Push to Paper press leaves on both Inspector hosts.
+PUSH_PAPER_NO_CANDIDATE_TEXT = "Push to Paper: nothing is on show to push."
+PUSH_PAPER_UNWIRED_TEXT = (
+    "Push to Paper: no Paper Trader is wired, so nothing was pushed and no "
+    "paper bot was spawned."
+)
+PUSH_PAPER_FAILED_FORMAT = "Push to Paper failed: {error}. No paper bot was spawned."
+PUSH_PAPER_PUSHED_FORMAT = (
+    "Pushed {held} bot(s) to the Paper Trader on {venue}; {wires} wire(s) "
+    "travelled with them."
+)
+
+
 def push_failed_line(error: Any) -> str:
     """The Activity Log line for a Push to Sim whose handler raised."""
     return PUSH_FAILED_FORMAT.format(error=error)
+
+
+def push_paper_failed_line(error: Any) -> str:
+    """``PUSH_PAPER_FAILED_FORMAT`` over the ``error`` a Push to Paper handler
+    raised."""
+    return PUSH_PAPER_FAILED_FORMAT.format(error=error)
+
+
+def push_paper_outcome_line(answered: Any) -> str:
+    """The Activity Log line for what the Push to Paper handler answered.
+
+    A ``refused`` text is echoed as it stands, and otherwise
+    ``PUSH_PAPER_PUSHED_FORMAT`` reports the spawned count, the venue and the
+    wire count, with no run mode named.
+    """
+    held = answered if isinstance(answered, dict) else {}
+    refusal = str(held.get("refused") or "")
+    if refusal:
+        return refusal
+    return PUSH_PAPER_PUSHED_FORMAT.format(
+        held=int(held.get("held") or 0),
+        venue=str(held.get("venue") or ""),
+        wires=int(held.get("wires") or 0),
+    )
 
 
 def push_outcome_line(answered: Any) -> str:
@@ -3733,6 +3780,25 @@ def push_to_sim_actions() -> list:
     ]
 
 
+def push_to_paper_actions() -> list:
+    """Push to Paper, the button an open candidate entry draws beside Push to
+    Sim."""
+    return [
+        action_row(
+            PUSH_TO_PAPER_PART,
+            PUSH_TO_PAPER_LABEL,
+            PUSH_TO_PAPER_TOOLTIP,
+            PUSH_TO_PAPER_WIDTH_PX,
+        )
+    ]
+
+
+def candidate_push_actions() -> list:
+    """Both destination buttons an open candidate entry draws, Push to Sim then
+    Push to Paper."""
+    return [*push_to_sim_actions(), *push_to_paper_actions()]
+
+
 def pair_push_candidates(pair: Any) -> dict:
     """One opposing pair as ``{"bots", "wires"}``, the payload a push takes:
     one ``{"symbol", "target_usd"}`` row per side and an empty ``wires``.
@@ -3776,7 +3842,7 @@ def pair_entry(pair: Any) -> dict:
             correlation=CORRELATION_FORMAT.format(correlation=pair.correlation_30d),
         ),
         method.as_dict() if hasattr(method, "as_dict") else method,
-        actions=push_to_sim_actions(),
+        actions=candidate_push_actions(),
     )
 
 

@@ -142,6 +142,10 @@
   var PUSH_TO_SIM_TEXT = "push_to_sim_text";
   var PUSH_TO_SIM_TOOLTIP = "push_to_sim_tooltip";
   var PUSH_TO_SIM_WIDTH_PX = "push_to_sim_width_px";
+  var PUSH_TO_PAPER_PART_KEY = "push_to_paper_part";
+  var PUSH_TO_PAPER_TEXT = "push_to_paper_text";
+  var PUSH_TO_PAPER_TOOLTIP = "push_to_paper_tooltip";
+  var PUSH_TO_PAPER_WIDTH_PX = "push_to_paper_width_px";
   var NOTE_FORMAT = "note_format";
   var NOTE_STYLE = "note_style";
   var NOTE_WORD_WRAP = "note_word_wrap";
@@ -284,6 +288,10 @@
     PUSH_TO_SIM_TEXT,
     PUSH_TO_SIM_TOOLTIP,
     PUSH_TO_SIM_WIDTH_PX,
+    PUSH_TO_PAPER_PART_KEY,
+    PUSH_TO_PAPER_TEXT,
+    PUSH_TO_PAPER_TOOLTIP,
+    PUSH_TO_PAPER_WIDTH_PX,
     RESIZE_MODE,
     ROOT_IS_DECORATED,
     SPACING,
@@ -1128,13 +1136,28 @@
     pushProps.onClick = function () {
       act(pushPart, props.at);
     };
+    var paperPart = text(dialog[PUSH_TO_PAPER_PART_KEY]);
+    var paperStyle = asButton({});
+    paperStyle.minWidth = length(dialog[PUSH_TO_PAPER_WIDTH_PX]);
+    var paperProps = {
+      key: paperPart,
+      type: BUTTON_TYPE,
+      style: paperStyle,
+      title: label(dialog[PUSH_TO_PAPER_TOOLTIP])
+    };
+    paperProps[PART_ATTR] = paperPart;
+    paperProps[NAME_ATTR] = paperPart;
+    paperProps.onClick = function () {
+      act(paperPart, props.at);
+    };
     return element(
       DIV_TAG,
       rowProps,
       element(Spacer, { key: BUTTON_STRETCH_PART, part: BUTTON_STRETCH_PART }),
       element(BUTTON_TAG, cancelProps, text(dialog[CANCEL_TEXT])),
       element(BUTTON_TAG, adoptProps, text(dialog[ADOPT_TEXT])),
-      element(BUTTON_TAG, pushProps, text(dialog[PUSH_TO_SIM_TEXT]))
+      element(BUTTON_TAG, pushProps, text(dialog[PUSH_TO_SIM_TEXT])),
+      element(BUTTON_TAG, paperProps, text(dialog[PUSH_TO_PAPER_TEXT]))
     );
   }
 

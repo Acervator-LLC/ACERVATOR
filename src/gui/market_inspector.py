@@ -194,6 +194,9 @@ from .main_tabs.market_inspector_surface import (
     POSITION_EMPTY_TEXT,
     POSITION_STYLE,
     PUSH_NO_CANDIDATE_TEXT,
+    PUSH_PAPER_NO_CANDIDATE_TEXT,
+    PUSH_PAPER_UNWIRED_TEXT,
+    PUSH_TO_PAPER_PART,
     PUSH_TO_SIM_PART,
     PUSH_UNWIRED_TEXT,
     STEP_BACK_TEXT,
@@ -207,6 +210,8 @@ from .main_tabs.market_inspector_surface import (
     pair_push_candidates,
     push_failed_line,
     push_outcome_line,
+    push_paper_failed_line,
+    push_paper_outcome_line,
     step_to as _step_to,
     zone_view,
 )
@@ -1036,6 +1041,8 @@ if _HAS_QT:
             self._pairs: list = []
             # Wired by set_push_to_sim_handler; unset refuses every push.
             self._push_to_sim_handler: Optional[Callable[[list], Any]] = None
+            # Wired by set_push_to_paper_handler; unset refuses every push.
+            self._push_to_paper_handler: Optional[Callable[[list], Any]] = None
             self._scan_counts: dict = {}
             self._left_zone_groups: list = []
             self._right_zone_groups: list = []
@@ -1871,6 +1878,9 @@ if _HAS_QT:
                 answered = open_chart_folder()
             elif key == PUSH_TO_SIM_PART:
                 self._push_pair_to_sim()
+                return
+            elif key == PUSH_TO_PAPER_PART:
+                self._push_pair_to_paper()
                 return
             elif key == THUMBNAIL_PART:
                 self._zone_open[READY_TO_SEND_ZONE] = True
@@ -2908,6 +2918,60 @@ if _HAS_QT:
                 return
             self._say(
                 push_outcome_line(answered),
+                ACTIVITY_WARNING if answered.get("refused") else ACTIVITY_INFO,
+            )
+
+        def set_push_to_paper_handler(self, handler) -> None:
+            """Take the handler a Push to Paper press reaches, on both panes.
+
+            ``handler`` takes one candidate's ``{"bots", "wires"}`` payload and
+            answers the Paper Trader's ``{"held", "wires", "venue", "refused"}``.
+            It is held for the Opposing Trades zone and connected to the
+            topology pane's ``pushToPaperRequested``.
+            """
+            self._push_to_paper_handler = handler
+            pane = getattr(self, "_topologies_pane", None)
+            push_signal = getattr(pane, "pushToPaperRequested", None)
+            if push_signal is None:
+                return
+            push_signal.connect(self._push_proposal_to_paper)
+
+        def _push_proposal_to_paper(self, proposal: dict) -> None:
+            """Send one topology proposal's bots and the wires between them to
+            the Paper Trader."""
+            self._send_to_paper(proposal_push_candidates(proposal))
+
+        def _push_pair_to_paper(self) -> None:
+            """Send the opposing pair on show to the Paper Trader."""
+            at = self._zone_at.get(OPPOSING_TRADES_MODULE, 0)
+            if not self._pairs or at >= len(self._pairs):
+                self._say(PUSH_PAPER_NO_CANDIDATE_TEXT, ACTIVITY_WARNING)
+                return
+            self._send_to_paper(pair_push_candidates(self._pairs[at]))
+
+        def _send_to_paper(self, candidate: dict) -> None:
+            """Hand ``candidate`` to the Push to Paper handler and log what it
+            did.
+
+            With no handler wired the press writes
+            ``PUSH_PAPER_UNWIRED_TEXT`` and spawns nothing, so no paper bot can
+            come into being without a destination.
+            """
+            handler = getattr(self, "_push_to_paper_handler", None)
+            if handler is None:
+                self._say(PUSH_PAPER_UNWIRED_TEXT, ACTIVITY_WARNING)
+                return
+            if not (candidate or {}).get("bots"):
+                self._say(PUSH_PAPER_NO_CANDIDATE_TEXT, ACTIVITY_WARNING)
+                return
+            try:
+                answered = dict(handler(candidate) or {})
+            except Exception as exc:  # noqa: BLE001 - handler is the main window
+                logger.warning("push to paper handler failed: %s", exc)
+                self._say(push_paper_failed_line(exc), ACTIVITY_WARNING)
+                return
+            self._say(
+                push_paper_outcome_line(answered),
                 ACTIVITY_WARNING if answered.get("refused") else ACTIVITY_INFO,
             )
 
