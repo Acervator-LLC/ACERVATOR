@@ -721,6 +721,21 @@ def _make_async_pump_timer(
     return timer
 
 
+GC_TICK_INTERVAL_MS = 5000
+GC_FULL_EVERY_TICKS = 12
+
+
+def periodic_gc_generation(tick: int) -> int:
+    """Return the gc generation the periodic collection reads on tick, counted from 1.
+
+    Generation 0 falls on every tick, so a collection still happens at the
+    timer's own cadence. A full generation 2 pass reads every live object, and
+    so every page the heap occupies; it falls on one tick in
+    ``GC_FULL_EVERY_TICKS``.
+    """
+    return 2 if tick % GC_FULL_EVERY_TICKS == 0 else 0
+
+
 def build_instance_guard(state_mgr, app_version: str):
     """Return an InstanceGuard pointed at ``state_mgr.config_dir``.
 
@@ -979,15 +994,23 @@ def main() -> int:
     _install_qt_message_handler()
 
     import gc as _gc
+    import itertools
 
     _gc.disable()
+    _gc_ticks = itertools.count(1)
+
+    def _collect_periodically() -> None:
+        _gc.collect(periodic_gc_generation(next(_gc_ticks)))
+
     _gc_timer = QTimer()
-    _gc_timer.timeout.connect(lambda: _gc.collect())
-    _gc_timer.start(5000)
+    _gc_timer.timeout.connect(_collect_periodically)
+    _gc_timer.start(GC_TICK_INTERVAL_MS)
     log_manager.info(
         "automatic GC disabled; periodic gc.collect() "
         "scheduled on GUI thread (5s cadence). Mitigates the CCXT-"
         "worker-thread access violation pattern."
+        " Each tick collects generation 0; the full generation 2 pass falls on "
+        f"one tick in {GC_FULL_EVERY_TICKS}."
     )
     # A parentless timer needs a module-level reference to stay alive.
     globals()["_persistent_gc_timer"] = _gc_timer
