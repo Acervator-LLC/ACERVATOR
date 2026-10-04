@@ -623,6 +623,27 @@ def bot_config_kwargs(mode, collected: dict, *, exchange_id: str = "") -> dict:
     return kwargs
 
 
+def phantom_init_kwargs(collected: dict) -> dict:
+    """Return the phantom constructor kwargs for a Scrumming bot out of
+    `collected`.
+
+    `bot_config_kwargs` carries the declared `BotConfig` fields; the wizard's
+    phantom page writes three keys that are none of them. The enable flag and
+    the timeframe list are runtime attributes and the lock count belongs to the
+    bot's `TimeframeCoordinator`, so all three travel as keyword arguments
+    instead. An absent `lock_candle_count` is left out, which keeps the
+    coordinator's own declared count.
+    """
+    kwargs: dict = {
+        "enable_phantoms": collected.get("enable_phantoms", False),
+        "phantom_timeframes": collected.get("phantom_timeframes", []),
+    }
+    lock_candles = collected.get("lock_candle_count")
+    if lock_candles is not None:
+        kwargs["lock_candle_count"] = lock_candles
+    return kwargs
+
+
 @dataclass
 class BotStats:
     """Mutable runtime statistics — updated by the bot during operation."""
