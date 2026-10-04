@@ -1044,6 +1044,14 @@ src/gui/main_tabs/asset_class_surface.py:46   EQUITY_VENUES, nine ids
 src/gui/main_tabs/asset_class_surface.py:65   LAYERED_CLASSES, crypto and stocks
 ```
 
+OVERTAKEN, and the block above is kept as written. The layered class set now holds
+all four asset classes, so Commodities and Forex each stand behind their own trading
+layer on the Live tab.
+
+```python
+LAYERED_CLASSES = frozenset({"crypto", "stocks", "commodities", "forex"})
+```
+
 Two further citations elsewhere in this arc have moved the same way, and both
 name a constant that exists. The cited unit rule table sits at line 57 of its
 module rather than line 46, and the per-venue candle lengths sit at line 47 of

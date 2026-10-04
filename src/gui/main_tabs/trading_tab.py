@@ -155,7 +155,7 @@ class TradingTabMixin:
         # ── Equity exchange IDs (routes to Stock layer) ────────────
         self._equity_exchange_ids = acs.EQUITY_VENUES
 
-        # ── QStackedWidget: page 0 Crypto, 1 Stock, 2 every unlayered class ──
+        # ── QStackedWidget: one page per layered class, then the note page ──
         from PySide6.QtWidgets import QStackedWidget
 
         self._trading_stack = QStackedWidget()
@@ -216,25 +216,26 @@ class TradingTabMixin:
             page_layout.addWidget(tab_w)
             return page, tab_w, {}, placeholder
 
-        # Build both layers
-        (
-            crypto_page,
-            self._crypto_tab_widget,
-            _crypto_tabs,
-            self._crypto_placeholder,
-        ) = _make_layer("crypto", ds.LAYER_CRYPTO)
-        (
-            stock_page,
-            self._stock_tab_widget,
-            _stock_tabs,
-            self._stock_placeholder,
-        ) = _make_layer("stocks", ds.LAYER_STOCK)
+        # One layer per layered class, added in the order layer_page numbers.
+        self._class_layers: dict = {}
+        for layered in acs.layered_classes():
+            page, bar, store, card = _make_layer(layered, acs.accent(layered))
+            self._class_layers[layered] = {
+                "page": page,
+                "tabs": bar,
+                "exchange_tabs": store,
+                "placeholder": card,
+            }
+            self._trading_stack.addWidget(page)
 
-        self._crypto_exchange_tabs: dict = _crypto_tabs
-        self._stock_exchange_tabs: dict = _stock_tabs
+        self._crypto_tab_widget = self._class_layers["crypto"]["tabs"]
+        self._crypto_placeholder = self._class_layers["crypto"]["placeholder"]
+        self._stock_tab_widget = self._class_layers["stocks"]["tabs"]
+        self._stock_placeholder = self._class_layers["stocks"]["placeholder"]
 
-        self._trading_stack.addWidget(crypto_page)
-        self._trading_stack.addWidget(stock_page)
+        self._crypto_exchange_tabs: dict = self._class_layers["crypto"]["exchange_tabs"]
+        self._stock_exchange_tabs: dict = self._class_layers["stocks"]["exchange_tabs"]
+
         self._trading_stack.addWidget(self._make_unlayered_page())
         self._trading_stack.setCurrentIndex(acs.layer_page("crypto"))
 

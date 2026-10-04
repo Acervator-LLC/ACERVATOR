@@ -3349,7 +3349,9 @@ if _HAS_QT:
                 if _alias_host is not None
                 else -1
             )
-            _stock_wing = self._trading_mode == "stock"
+            _held = (getattr(self, "_class_layers", None) or {}).get(
+                normalise(getattr(self, "_asset_class", None))
+            ) or {}
             import contextlib
 
             with contextlib.suppress(Exception):
@@ -3362,17 +3364,9 @@ if _HAS_QT:
                     context={
                         "mode": self._trading_mode,
                         "tabs_alias_ok": self._exchange_tabs
-                        is (
-                            self._stock_exchange_tabs
-                            if _stock_wing
-                            else self._crypto_exchange_tabs
-                        ),
+                        is _held.get("exchange_tabs"),
                         "placeholder_alias_ok": self._empty_placeholder
-                        is (
-                            self._stock_placeholder
-                            if _stock_wing
-                            else self._crypto_placeholder
-                        ),
+                        is _held.get("placeholder"),
                         "tabs_in_alias": self._tab_widget.count(),
                         "stack_pages": self._trading_stack.count(),
                     },
@@ -3382,15 +3376,14 @@ if _HAS_QT:
             """Tint the layer tab bars with the active asset class's accent."""
             from .main_tabs.main_window_surface import mode_tab_styles
 
-            tabs_ready = hasattr(self, "_crypto_tab_widget") and hasattr(
-                self, "_stock_tab_widget"
-            )
+            layers = getattr(self, "_class_layers", None) or {}
+            tabs_ready = bool(layers)
             if not tabs_ready:
                 return
 
             sheets = mode_tab_styles(getattr(self, "_asset_class", None), tabs_ready)
-            self._crypto_tab_widget.setStyleSheet(sheets.get("crypto", ""))
-            self._stock_tab_widget.setStyleSheet(sheets.get("stocks", ""))
+            for _name, _held in layers.items():
+                _held["tabs"].setStyleSheet(sheets.get(_name, ""))
 
         def _add_exchange(self) -> None:
             from .main_tabs.asset_class_surface import (
