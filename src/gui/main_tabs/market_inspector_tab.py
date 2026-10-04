@@ -11,7 +11,7 @@ logger = logging.getLogger("acervator.gui")
 
 
 class MarketInspectorTabMixin:
-    """Builds the Inspector tab and wires its proposal and adopt handlers.
+    """Builds the Inspector tab and wires its proposal, adopt and push handlers.
 
     ``variant_surface`` decides whether that tab is the Qt one or the React one.
     """
@@ -19,6 +19,7 @@ class MarketInspectorTabMixin:
     # MainWindow supplies these at runtime; the annotations create no attribute.
     _adopt_topology_proposal: Callable[..., Any]
     _push_candidate_to_sim: Callable[..., Any]
+    _push_candidate_to_paper: Callable[..., Any]
     _build_topology_proposals: Callable[..., Any]
     _main_tabs: Any
     _schedule_async: Callable[..., Any]
@@ -45,6 +46,12 @@ class MarketInspectorTabMixin:
             self._market_inspector.set_push_to_sim_handler(self._push_candidate_to_sim)
         except Exception as _ps_exc:  # noqa: BLE001 - the Sim tab may not build
             logger.debug("Push to Sim wiring skipped: %s", _ps_exc)
+        try:
+            self._market_inspector.set_push_to_paper_handler(
+                self._push_candidate_to_paper
+            )
+        except Exception as _pp_exc:  # noqa: BLE001 - the Paper tab may not build
+            logger.debug("Push to Paper wiring skipped: %s", _pp_exc)
         self._wire_ata_chart_list(self._market_inspector)
         self._wire_ata_activity_log(self._market_inspector)
         self._main_tabs.addTab(self._market_inspector, INSPECTOR_TAB)

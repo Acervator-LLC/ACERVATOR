@@ -92,6 +92,8 @@ from ...paper.fleet_source import (
     PaperFleetSource,
     SendRefused,
     exchange_choice,
+    push_spawned_line,
+    push_wired_line,
     strip_aggregate,
 )
 from ...paper.paper_bot_manager import PaperBotManager
@@ -509,6 +511,34 @@ class PaperTradingTab(QWidget):
         )
         self.fleet_changed.emit()
         self._read_feed([bot.symbol for bot in imported])
+
+    def push_to_paper(self, candidate: Any) -> dict:
+        """Spawn the paper bots one pushed Market Inspector candidate names
+        through ``PaperFleetSource.push_candidate``, and answer its
+        ``{"held", "wires", "venue", "symbols", "refused"}``.
+
+        ``candidate`` is the Inspector's ``{"bots", "wires"}`` payload. A
+        refusal writes its own Activity Log line and spawns nothing; a push
+        that lands writes ``push_spawned_line``, writes ``push_wired_line``
+        when the candidate carried wires, fires ``fleet_changed`` so the venue
+        tables re-seat, and reads the venue feed for the pushed symbols.
+        """
+        answered = self._fleet_source.push_candidate(
+            candidate, exchange_id=self._exchange.venue()
+        )
+        refusal = str(answered.get("refused") or "")
+        if refusal:
+            self._status_log.log(refusal, "warning")
+            return answered
+        self._status_log.log(
+            push_spawned_line(answered.get("symbols"), answered.get("venue")),
+            "success",
+        )
+        if int(answered.get("wires") or 0):
+            self._status_log.log(push_wired_line(answered.get("wired")), "success")
+        self.fleet_changed.emit()
+        self._read_feed(list(answered.get("symbols") or []))
+        return answered
 
     def _read_feed(self, symbols: list) -> None:
         """Run ``read_fleet`` over ``exchange()`` for ``symbols`` on one

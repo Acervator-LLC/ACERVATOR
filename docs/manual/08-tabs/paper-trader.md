@@ -2729,4 +2729,148 @@ CORNER_BUTTONS = (
 )
 ```
 
+## 2026-10-04 - #1103 - a pushed candidate spawns paper bots
+
+The Market Inspector draws a Push to Paper button beside Push to Sim, on an
+open Opposing Trades entry and in the topology preview. One press spawns one
+paper scrumming bot per market the candidate names and registers the wires
+between them.
+
+The operator's ruling:
+
+> "For Paper Trader, the pushed topology must spawn the corresponding paper
+> scrumming bots. Paper tab does not have multiple run modes. It pretends to
+> trade against actual exchange data and records the result."
+
+> "If the wiring does not travel then its not a complete or valid topology
+> push."
+
+### Paper has no run mode, and none is added
+
+The Simulator holds a candidate under its Back Test mode and leaves that mode
+in force. Paper has no mode to land a candidate under and gains none here. A
+pushed bot is simply held, idle, the way a bot the wizard created is held, and
+Start Paper Run works it against the venue's own data.
+
+`src/paper/fleet_source.py` — the push, on the fleet source itself
+
+```python
+def push_candidate(
+    self,
+    candidate: Any,
+    exchange_id: str = "",
+    ta_timeframe: str = "",
+) -> dict:
+```
+
+### The venue is Paper's own, and so is the timeframe
+
+The Simulator resolves each pushed market to the venue its Stone Tablet was
+recorded on. Paper reads the venue live, so it needs no tablet: every pushed
+bot takes the venue `PaperExchange.venue` answers and the timeframe
+`BotConfig` declares as its own default.
+
+`src/paper/fleet_source.py` — the timeframe is read off the dataclass
+
+```python
+PUSHED_TIMEFRAME_DEFAULT = str(
+    next(
+        one.default
+        for one in dataclass_fields(BotConfig)
+        if one.name == "ta_timeframe"
+    )
+)
+```
+
+A pushed market keeps the quote its symbol names. `BTC/USD` becomes a bot on
+`BTC/USD` and `BTC/USDC` becomes a bot on `BTC/USDC`. A symbol naming no pair
+spawns nothing, and one market named twice spawns one bot.
+
+### The wires travel with the bots
+
+Each wire is registered on the fleet's own `PaperWireManager` between the bot
+ids the push created, and `hold_wire_manager` puts the rows on the fleet so the
+next `save` carries them in the paper fleet file.
+
+`src/paper/fleet_source.py` — the wires that applied
+
+```python
+def register_pushed_wires(manager: Any, wires: Any, bot_ids: Any) -> list:
+```
+
+A wire that cannot travel refuses the whole push. Four gaps do it: a wire end
+naming no market, both ends naming the one market, an end naming a market the
+push did not create, and a rate outside the range `register_wire` takes. Each
+refusal spawns nothing and registers nothing.
+
+`src/paper/fleet_source.py` — the four wire refusals
+
+```python
+PUSH_WIRE_UNNAMED_TEXT = "a wire names no market at one of its ends"
+PUSH_WIRE_UNHELD_FORMAT = "{source} to {target}: nothing was pushed for {asset}"
+```
+
+### What the Activity Log carries
+
+A push that lands writes the spawned line and, when the candidate carried
+wires, the wired line. A refusal writes its own line and nothing else moves.
+No line names a run mode.
+
+`src/paper/fleet_source.py` — the line a landed push writes
+
+```python
+PUSH_SPAWNED_FORMAT = (
+    "Pushed {count} paper bot(s) on {venue}, trading the venue's own data: "
+    "{assets}."
+)
+```
+
+A press that reaches no Paper tab is refused by the window, which names the
+missing tab and spawns nothing.
+
+`src/gui/paper/paper_trading_tab_surface.py` — the refusal with no tab
+
+```python
+PUSH_NO_PAPER_TAB_TEXT = (
+    "Push to Paper refused: the Paper tab did not build, so no paper bot was "
+    "spawned."
+)
+```
+
+### A pushed bot is a paper record and nothing else
+
+It reaches the paper fleet file alone. No live bot is created, no order is
+placed and the live engine and the live logs see nothing of it. A pushed wire
+is the same: it is registered on `PaperWireManager` and never on the live
+`SmartWireManager`.
+
+### What the driven push answered
+
+The push was driven from the Inspector press through the window's handler to
+the Paper tab, with the venue read blocked at its edge. A two-market candidate
+carrying one wire between the two was the input.
+
+| read at the Paper tab | before this entry | after it |
+|---|---|---|
+| paper bots held afterwards | 0 | 2 |
+| wire rows held afterwards | 0 | 1 |
+
+Both bots read `coinbase`, `1h`, `scrumming` and `idle`, and both were reached
+again through `PaperBotManager.get_bot`. The before column is the same script
+run against the tree as it stood, where the Inspector offers no Push to Paper
+at all.
+
+### One sentence this entry overtakes
+
+It is quoted whole and kept where it stands, on
+[the Market Inspector page](market-inspector.md), with the sentence that is
+true today beneath it.
+
+> "The Paper Trader has no mode a candidate could land under, so no push
+> targets it."
+
+The Paper Trader still has no mode a candidate could land under, and a push
+targets it anyway: the candidate's bots are spawned on Paper's own venue rather
+than held under a mode.
+
 Back to [the subsystem index](README.md).

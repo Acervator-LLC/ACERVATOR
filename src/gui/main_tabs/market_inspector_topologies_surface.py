@@ -29,6 +29,10 @@ from typing import Any, Callable, Optional
 
 from .market_inspector_surface import (
     METHOD_LINE_FORMAT,
+    PUSH_TO_PAPER_LABEL,
+    PUSH_TO_PAPER_PART,
+    PUSH_TO_PAPER_TOOLTIP,
+    PUSH_TO_PAPER_WIDTH_PX,
     PUSH_TO_SIM_LABEL,
     PUSH_TO_SIM_PART,
     PUSH_TO_SIM_TOOLTIP,
@@ -262,6 +266,8 @@ ACTIONS = {
     "preview.adoptClicked": "adoptRequested",
     "preview.push_to_sim_button.clicked": "preview.push_to_sim",
     "preview.pushToSimClicked": "pushToSimRequested",
+    "preview.push_to_paper_button.clicked": "preview.push_to_paper",
+    "preview.pushToPaperClicked": "pushToPaperRequested",
 }
 
 SIGNALS = (
@@ -271,6 +277,8 @@ SIGNALS = (
     "adoptRequested",
     "pushToSimClicked",
     "pushToSimRequested",
+    "pushToPaperClicked",
+    "pushToPaperRequested",
 )
 
 TIMERS = {"auto_refresh": AUTO_REFRESH_MS}
@@ -303,6 +311,7 @@ PREVIEW_MISSING = "preview.missing"
 PREVIEW_OPENED = "preview.opened"
 PREVIEW_ADOPTED = "preview.adopted"
 PREVIEW_PUSHED = "preview.pushed"
+PREVIEW_PUSHED_TO_PAPER = "preview.pushed_to_paper"
 STEP_TAKEN = "step.taken"
 EXPAND_TOGGLED = "expand.toggled"
 CONFIRM_ASKED = "confirm.asked"
@@ -333,6 +342,7 @@ CALL_NAMES = (
     PREVIEW_OPENED,
     PREVIEW_ADOPTED,
     PREVIEW_PUSHED,
+    PREVIEW_PUSHED_TO_PAPER,
     CONFIRM_ASKED,
     CONFIRM_REFUSED,
     STEP_TAKEN,
@@ -652,6 +662,7 @@ class TopologyPreviewModel:
         self.order: list = []
         self.adopted: list = []
         self.pushed: list = []
+        self.pushed_to_paper: list = []
         self.accepted = 0
         self.rejected = 0
 
@@ -723,6 +734,12 @@ class TopologyPreviewModel:
     def push_to_sim(self) -> Any:
         """Hand the proposal to whoever listens on Push to Sim, then close."""
         self.pushed.append(self.proposal)
+        self.accepted += 1
+        return self.proposal
+
+    def push_to_paper(self) -> Any:
+        """Hand the proposal to whoever listens on Push to Paper, then close."""
+        self.pushed_to_paper.append(self.proposal)
         self.accepted += 1
         return self.proposal
 
@@ -815,6 +832,7 @@ class TopologiesPaneModel:
         self.previews: list = []
         self.adopt_requests: list = []
         self.push_requests: list = []
+        self.push_paper_requests: list = []
         self.confirms: list = []
         self.confirm_answer = CONFIRM_YES
         self.warnings: list = []
@@ -1057,6 +1075,13 @@ class TopologiesPaneModel:
         self.calls.append([PREVIEW_PUSHED])
         return proposal
 
+    def push_paper_from(self, preview: TopologyPreviewModel) -> Any:
+        """Forward one preview's Push to Paper to whoever listens on the pane."""
+        proposal = preview.push_to_paper()
+        self.push_paper_requests.append(proposal)
+        self.calls.append([PREVIEW_PUSHED_TO_PAPER])
+        return proposal
+
     def on_dismiss(self, proposal_id: Any, now: Optional[float] = None) -> None:
         """Ask before suppressing, and suppress only on a Yes."""
         if not proposal_id:
@@ -1170,6 +1195,10 @@ def build_view_model(model: TopologiesPaneModel) -> dict:
             "push_to_sim_text": PUSH_TO_SIM_LABEL,
             "push_to_sim_tooltip": PUSH_TO_SIM_TOOLTIP,
             "push_to_sim_width_px": PUSH_TO_SIM_WIDTH_PX,
+            "push_to_paper_part": PUSH_TO_PAPER_PART,
+            "push_to_paper_text": PUSH_TO_PAPER_LABEL,
+            "push_to_paper_tooltip": PUSH_TO_PAPER_TOOLTIP,
+            "push_to_paper_width_px": PUSH_TO_PAPER_WIDTH_PX,
         },
         "card": {
             "accessible_name": CARD_ACCESSIBLE_NAME,
@@ -1292,6 +1321,9 @@ def build_view_model(model: TopologiesPaneModel) -> dict:
         ],
         "adopt_requests": [proposal.get("id") for proposal in model.adopt_requests],
         "push_requests": [proposal.get("id") for proposal in model.push_requests],
+        "push_paper_requests": [
+            proposal.get("id") for proposal in model.push_paper_requests
+        ],
         "persisted": [list(one) for one in getattr(model.dismiss_store, "wrote", [])],
         "warnings": [list(one) for one in model.warnings],
     }
@@ -1312,7 +1344,8 @@ def view_model(params: dict) -> dict:
     """Bridge handler for ``market_inspector_topologies.state``.
 
     Reads ``reset``, ``now``, ``proposals``, ``error``, ``store``,
-    ``refresh``, ``preview``, ``adopt``, ``push_to_sim``, ``dismiss`` and
+    ``refresh``, ``preview``, ``adopt``, ``push_to_sim``, ``push_to_paper``,
+    ``dismiss`` and
     ``confirm`` from the request parameters. The pane's state persists between
     calls because the pane does; ``reset`` is what a fresh paint sends.
     """
@@ -1351,6 +1384,8 @@ def view_model(params: dict) -> dict:
         model.adopt_from(model.previews[-1])
     if params.get("push_to_sim", False) and model.previews:
         model.push_from(model.previews[-1])
+    if params.get("push_to_paper", False) and model.previews:
+        model.push_paper_from(model.previews[-1])
     if params.get("dismiss"):
         model.on_dismiss(params["dismiss"])
     return build_view_model(model)
