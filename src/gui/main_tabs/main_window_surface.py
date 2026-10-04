@@ -40,6 +40,7 @@ from __future__ import annotations
 import math
 from typing import Any, Optional
 
+from ...trading.ta_engine import DEFAULT_WEIGHTS
 from .. import design_system as ds
 from . import asset_class_surface
 from . import bot_visualizer_surface
@@ -315,15 +316,22 @@ BOX_INFORMATION = "information"
 BOX_ABOUT = "about"
 
 ABOUT_TITLE = "About Acervator"
-ABOUT_TEXT = (
+#: The voter count is filled from DEFAULT_WEIGHTS, never typed in.
+ABOUT_TEXT_FORMAT = (
     "Acervator v1.7\n\n"
     "A multi-exchange crypto auto-trading platform.\n"
     "Grid Mode - Speculative Scrumming\n"
     "Profit Folding - Upward Distribution\n"
-    "Phantom Bots - 7-Indicator TA Voting\n"
+    "Phantom Bots - {indicator_count}-Indicator TA Voting\n"
     "TradingView Charts - Multi-Timeframe Analysis\n"
     "Verbose API Interaction Logging"
 )
+
+
+def about_text() -> str:
+    """``ABOUT_TEXT_FORMAT`` filled with the number of voters
+    ``DEFAULT_WEIGHTS`` declares."""
+    return ABOUT_TEXT_FORMAT.format(indicator_count=len(DEFAULT_WEIGHTS))
 
 RESET_TITLE = "Reset All Settings"
 RESET_TEXT = (
@@ -1714,7 +1722,9 @@ class MainWindowModel:
 
     def show_about(self) -> "MainWindowModel":
         """The Help menu's About."""
-        self.boxes.append({"kind": BOX_ABOUT, "title": ABOUT_TITLE, "text": ABOUT_TEXT})
+        self.boxes.append(
+            {"kind": BOX_ABOUT, "title": ABOUT_TITLE, "text": about_text()}
+        )
         self._record("about", ABOUT_TITLE)
         return self
 

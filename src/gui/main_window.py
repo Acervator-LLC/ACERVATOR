@@ -16,11 +16,13 @@ from ..core.event_bus import get_event_bus
 from .. import __version__
 from . import design_system as ds
 from .main_tabs.main_window_surface import (
+    ABOUT_TITLE,
     ACCUMULATION_TAB,
     BAR_TAB_ORDER,
     HISTORY_TAB,
     ISOLATED_TABS,
     UNBUILT_TABS,
+    about_text,
     header_strip_reads_paper,
     header_strip_reads_sim,
 )
@@ -3992,14 +3994,4 @@ if _HAS_QT:
                 )
 
         def _show_about(self) -> None:
-            QMessageBox.about(
-                self,
-                "About Acervator",
-                "Acervator v1.7\n\n"
-                "A multi-exchange crypto auto-trading platform.\n"
-                "Grid Mode - Speculative Scrumming\n"
-                "Profit Folding - Upward Distribution\n"
-                "Phantom Bots - 7-Indicator TA Voting\n"
-                "TradingView Charts - Multi-Timeframe Analysis\n"
-                "Verbose API Interaction Logging",
-            )
+            QMessageBox.about(self, ABOUT_TITLE, about_text())

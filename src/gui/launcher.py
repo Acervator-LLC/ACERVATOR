@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import logging
 
+from .main_tabs.launcher_surface import crypto_features
+
 logger = logging.getLogger("acervator.gui")
 
 try:
@@ -109,7 +111,7 @@ if _HAS_QT:
             shadow.setOffset(0, 0)
             self.setGraphicsEffect(shadow)
 
-        def mousePressEvent(self, event):
+        def mousePressEvent(self, _event):
             self.clicked.emit()
 
     class LauncherWindow(QWidget):
@@ -158,14 +160,7 @@ if _HAS_QT:
                 "Grid and Scrumming bots",
                 icon_char="\u20bf",  # ₿
                 color="#00ffcc",
-                features=[
-                    "Multi-exchange (30+ supported)",
-                    "Grid Bot & Scrumming Bot",
-                    "7-Indicator TA Voting Engine",
-                    "Profit Folding & Distribution",
-                    "Phantom Balance Bots",
-                    "24/7 Trading",
-                ],
+                features=list(crypto_features()),
             )
             crypto_card.clicked.connect(self.crypto_selected.emit)
             cards.addWidget(crypto_card)
@@ -200,7 +195,7 @@ if _HAS_QT:
             footer.setStyleSheet("font-size: 11px; color: #555;")
             layout.addWidget(footer)
 
-        def paintEvent(self, event):
+        def paintEvent(self, _event):
             """Draw subtle gradient background."""
             p = QPainter(self)
             grad = QLinearGradient(0, 0, 0, self.height())
