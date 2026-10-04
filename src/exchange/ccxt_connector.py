@@ -182,6 +182,47 @@ DISABLE_FETCH_CURRENCIES: set[str] = {
     "coinbase",  # v2/currencies deprecated for CDP keys
 }
 
+#: The products method each venue answers an extra asset class's products on,
+#: and the method ``_sector_products`` calls. ccxt exposes it as an implicit
+#: endpoint method on the exchange instance.
+VENUE_PRODUCTS_METHOD: dict[str, str] = {
+    "coinbase": "v3PublicGetBrokerageMarketProducts",
+}
+
+#: The ``product_type`` each venue serves one asset class under. ccxt's
+#: ``fetch_markets_v3`` asks for the default set and for FUTURE twice, so a
+#: type named here is one ``load_markets`` never requests.
+VENUE_CLASS_PRODUCT_TYPES: dict[str, dict[str, str]] = {
+    "coinbase": {"stocks": "EQUITY"},
+}
+
+#: The key a products response carries its rows under.
+PRODUCTS_KEY = "products"
+
+#: Rows one products call asks for. Coinbase caps a page at 1000 and ignores
+#: ``offset``, so a second page repeats the first and is not requested.
+PRODUCTS_PAGE_LIMIT = 1000
+
+#: The record a futures product carries its venue labels under.
+FUTURES_DETAILS_KEY = "future_product_details"
+
+#: The venue's own label for what a futures contract is written on.
+FUTURES_ASSET_TYPE_KEY = "futures_asset_type"
+
+#: The ``futures_asset_type`` values naming a commodity underlying. Measured on
+#: Coinbase's own product list: 12 metals, 5 energy and 4 commodities.
+COMMODITY_FUTURES_ASSET_TYPES: frozenset = frozenset(
+    {
+        "FUTURES_ASSET_TYPE_COMMODITIES",
+        "FUTURES_ASSET_TYPE_ENERGY",
+        "FUTURES_ASSET_TYPE_METALS",
+    }
+)
+
+#: The ccxt market type an equity product parses as, off its own
+#: ``product_type``.
+EQUITY_MARKET_TYPE = "equity"
+
 # CCXT precisionMode values — precision means a different thing under each.
 CCXT_DECIMAL_PLACES: int = 2
 CCXT_SIGNIFICANT_DIGITS: int = 3
@@ -302,6 +343,59 @@ def market_rules(
         # CCXT parses Coinbase's future_product_details.contract_expiry here; a
         # spot record and a perpetual both carry None.
         expiry_ms=limit_to_float((market or {}).get("expiry")),
+    )
+
+
+def futures_asset_type(market: Any) -> str:
+    """The venue's own ``futures_asset_type`` label off one loaded market record.
+
+    Empty for a record carrying no ``future_product_details``, which every spot
+    and equity product is.
+    """
+    raw = (market or {}).get("info") or {}
+    detail = raw.get(FUTURES_DETAILS_KEY) or {}
+    if not isinstance(detail, dict):
+        return ""
+    return str(detail.get(FUTURES_ASSET_TYPE_KEY) or "").strip().upper()
+
+
+def market_asset_class(market: Any) -> str:
+    """The asset class one loaded market record belongs to.
+
+    ``futures_asset_type`` naming a commodity family answers commodities, an
+    ``EQUITY_MARKET_TYPE`` record answers stocks, and every other record
+    answers crypto. ``record_venue`` writes this beside the market's rules, so
+    the recording can be read one class at a time.
+    """
+    from ..trading.ata_spm import CLASS_COMMODITIES, CLASS_CRYPTO, CLASS_STOCKS
+
+    if futures_asset_type(market) in COMMODITY_FUTURES_ASSET_TYPES:
+        return CLASS_COMMODITIES
+    if str((market or {}).get("type") or "").lower() == EQUITY_MARKET_TYPE:
+        return CLASS_STOCKS
+    return CLASS_CRYPTO
+
+
+def asset_info(
+    symbol: Any,
+    market: Any,
+    precision_mode: int,
+    order_types: Optional[str] = None,
+) -> AssetInfo:
+    """One ``AssetInfo`` from a loaded CCXT market record.
+
+    ``get_markets`` builds every market it answers through this, so a spot
+    pair, a futures contract and an equity product carry one record shape.
+    """
+    held = market or {}
+    return AssetInfo(
+        symbol=str(symbol),
+        base=held.get("base", ""),
+        quote=held.get("quote", ""),
+        rules=market_rules(held, precision_mode, order_types),
+        maker_fee=float(held.get("maker", 0.001) or 0.001),
+        taker_fee=float(held.get("taker", 0.001) or 0.001),
+        active=held.get("active", True),
     )
 
 
@@ -1469,6 +1563,52 @@ class CCXTConnector(ExchangeInterface):
         return positions
 
     # -- Asset discovery ------------------------------------------------
+    def _sector_products(self) -> dict[str, dict]:
+        """Every market record this venue serves an extra asset class under.
+
+        ``VENUE_CLASS_PRODUCT_TYPES`` names the ``product_type`` per class, and
+        each row is parsed by the ccxt exchange's own ``parse_spot_market`` so
+        a product carries the same record shape ``load_markets`` builds. The
+        call is the venue's public products endpoint and reads no credential.
+        """
+        asked = VENUE_CLASS_PRODUCT_TYPES.get(self._exchange_id) or {}
+        method_name = VENUE_PRODUCTS_METHOD.get(self._exchange_id, "")
+        method = getattr(self._ex, method_name, None) if method_name else None
+        parse = getattr(self._ex, "parse_spot_market", None)
+        if not asked or not callable(method) or not callable(parse):
+            return {}
+        found: dict[str, dict] = {}
+        for product_type in sorted(set(asked.values())):
+            try:
+                body = method(
+                    {"product_type": product_type, "limit": PRODUCTS_PAGE_LIMIT}
+                )
+                rows = (body or {}).get(PRODUCTS_KEY) or []
+            except Exception as exc:  # noqa: BLE001 - one class must not fail the load
+                logger.warning(
+                    "%s served no %s products: %s",
+                    self._exchange_id,
+                    product_type,
+                    exc,
+                )
+                continue
+            admitted = 0
+            for row in rows:
+                record = parse(row, {})
+                symbol = str((record or {}).get("symbol") or "")
+                if not symbol or not (record or {}).get("active", True):
+                    continue
+                found[symbol] = record
+                admitted += 1
+            logger.info(
+                "%s served %d %s products, %d active",
+                self._exchange_id,
+                len(rows),
+                product_type,
+                admitted,
+            )
+        return found
+
     @_with_retry()
     async def get_markets(self) -> list[AssetInfo]:
         self._ensure_connected()
@@ -1476,6 +1616,7 @@ class CCXTConnector(ExchangeInterface):
             return self._markets_cache
 
         markets = []
+        classes: dict[str, str] = {}
         precision_mode = getattr(self._ex, "precisionMode", CCXT_DECIMAL_PLACES)
         # The capability map belongs to the exchange, not to a market record, so
         # it is read once here and stamped onto every market of this venue.
@@ -1484,22 +1625,22 @@ class CCXTConnector(ExchangeInterface):
             if not info.get("active", True):
                 continue
 
-            markets.append(
-                AssetInfo(
-                    symbol=sym,
-                    base=info.get("base", ""),
-                    quote=info.get("quote", ""),
-                    rules=market_rules(info, precision_mode, declared),
-                    maker_fee=float(info.get("maker", 0.001) or 0.001),
-                    taker_fee=float(info.get("taker", 0.001) or 0.001),
-                    active=info.get("active", True),
-                )
-            )
+            markets.append(asset_info(sym, info, precision_mode, declared))
+            classes[str(sym)] = market_asset_class(info)
+
+        # A symbol load_markets already answered is kept, so no crypto market is
+        # replaced by a product another class serves under the same pair.
+        for sym, info in self._sector_products().items():
+            if sym in classes:
+                continue
+            markets.append(asset_info(sym, info, precision_mode, declared))
+            classes[sym] = market_asset_class(info)
+
         self._markets_cache = markets
         # The Simulator and the Paper Trader reach no venue, so the rules read
         # here are recorded once per read for them to size an order by.
         try:
-            record_venue(self._exchange_id, markets)
+            record_venue(self._exchange_id, markets, classes=classes)
         except OSError as exc:
             logger.warning(
                 "market rules for %s not recorded: %s", self._exchange_id, exc

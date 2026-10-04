@@ -40,6 +40,11 @@ RULE_FIELDS = (
 #: recorded before one holds no such key and answers None.
 TEXT_RULE_FIELDS = ("order_types",)
 
+#: The asset class a row records beside its rules, so one venue's recording can
+#: be read one class at a time. A row recorded before it holds no such key and
+#: ``recorded_classes`` answers an empty class for it.
+CLASS_FIELD = "asset_class"
+
 
 def store_path() -> Path:
     """``STORE_NAME`` under the runtime home, resolved on every call and never
@@ -87,24 +92,31 @@ def load_document(path: Optional[Path] = None) -> dict:
 
 
 def record_venue(
-    venue: str, markets: Iterable[Any], path: Optional[Path] = None
+    venue: str,
+    markets: Iterable[Any],
+    path: Optional[Path] = None,
+    classes: Optional[dict] = None,
 ) -> int:
     """Write every market of ``markets`` under ``venue``, keeping the other
     venues' rows, and answer how many markets were written.
 
-    ``markets`` are ``AssetInfo`` records, each read for its ``symbol`` and its
-    ``rules``; a market naming no symbol is skipped.
+    ``markets`` are ``AssetInfo`` records read for ``symbol`` and ``rules``,
+    and ``classes`` maps a symbol to the ``CLASS_FIELD`` it records under.
     """
     name = str(venue or "")
     if not name:
         return 0
     target = path or store_path()
+    held_classes = dict(classes or {})
     rows: dict[str, dict] = {}
     for market in markets:
         symbol = str(getattr(market, "symbol", "") or "")
         if not symbol:
             continue
         rows[symbol] = rules_row(getattr(market, "rules", None))
+        asset_class = str(held_classes.get(symbol, "") or "")
+        if asset_class:
+            rows[symbol][CLASS_FIELD] = asset_class
     document = load_document(target)
     document[name] = rows
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -137,12 +149,30 @@ def recorded_rules(venue: str, symbol: str, path: Optional[Path] = None) -> Mark
     )
 
 
+def recorded_classes(venue: str, path: Optional[Path] = None) -> dict[str, str]:
+    """Every symbol recorded for ``venue`` mapped to its ``CLASS_FIELD``.
+
+    A row recorded before the field answers an empty class, so a recording
+    written by an earlier build reads as one class nobody named.
+    """
+    rows = load_document(path).get(str(venue or "")) or {}
+    if not isinstance(rows, dict):
+        return {}
+    return {
+        str(symbol): str((row or {}).get(CLASS_FIELD, "") or "")
+        for symbol, row in rows.items()
+        if isinstance(row, dict)
+    }
+
+
 __all__ = [
+    "CLASS_FIELD",
     "RULE_FIELDS",
     "STORE_NAME",
     "TEXT_RULE_FIELDS",
     "load_document",
     "record_venue",
+    "recorded_classes",
     "recorded_rules",
     "rule_text",
     "rule_value",

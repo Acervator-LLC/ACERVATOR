@@ -1550,69 +1550,81 @@ if _HAS_QT:
             """Return True if this exchange ID belongs to the stock/equity layer."""
             return exchange_id.lower() in self._equity_exchange_ids
 
+        def _served_layers(self, exchange_id: str) -> tuple:
+            """Every trading layer this exchange's tab belongs on.
+
+            ``trading_tab_surface.exchange_layers`` reads the sector map, and a
+            venue it answers no layer for keeps the crypto layer.
+            """
+            from .main_tabs.trading_tab_surface import exchange_layers
+
+            return exchange_layers(exchange_id) or ("crypto",)
+
         def add_exchange_tab(self, exchange_id: str, display_name: str) -> None:
-            """Add exchange tab to the correct layer (crypto or stock)."""
-            is_equity = self._is_equity_exchange(exchange_id)
-
-            if is_equity:
-                target_tabs = self._stock_exchange_tabs
-                target_widget = self._stock_tab_widget
-                target_ph_attr = "_stock_placeholder"
-            else:
-                target_tabs = self._crypto_exchange_tabs
-                target_widget = self._crypto_tab_widget
-                target_ph_attr = "_crypto_placeholder"
-
-            if exchange_id in target_tabs:
-                return
-
-            ph = getattr(self, target_ph_attr, None)
-            # ph stays set, so _drop_unlisted_exchange_tabs can add it back.
-            _ph_dropped = False
-            if ph is not None:
-                idx = target_widget.indexOf(ph)
-                if idx >= 0:
-                    target_widget.removeTab(idx)
-                    _ph_dropped = True
-
+            """Seat one exchange tab on every layer the sector map serves it under."""
             from .variant_surface import EXCHANGE, surface_class
+
+            layers = getattr(self, "_class_layers", None) or {}
+            wanted = [
+                name
+                for name in self._served_layers(exchange_id)
+                if name in layers and exchange_id not in layers[name]["exchange_tabs"]
+            ]
+            if not wanted:
+                return
 
             try:
                 page_class = surface_class(EXCHANGE)
             except Exception as exc:
                 logger.warning("React exchange page unavailable: %s", exc)
                 page_class = ExchangeTab
-            tab = page_class(
-                exchange_id,
-                display_name,
-                on_new_bot=self._create_bot,
-                on_bot_clicked=self._on_bot_clicked,
-                on_bot_cmd=self._on_bot_command,
-                on_fleet_cmd=self._global_bot_cmd,
-                on_bot_fire=self._on_bot_fire,
-                status_log=self._status_log,
-                on_bot_selected=self._on_bot_row_selected,
-            )
-            target_widget.addTab(tab, display_name)
-            target_tabs[exchange_id] = tab
 
-            if target_tabs is self._exchange_tabs:
-                self._exchange_tabs[exchange_id] = tab
-
-            # Only TradingTabReact holds a venue; the Qt page draws its own.
-            hold_venue = getattr(
-                getattr(self, "_trading_tab", None), "hold_venue", None
-            )
-            if callable(hold_venue):
-                hold_venue(tab)
+            _ph_dropped = 0
+            _seated: list = []
+            for name in wanted:
+                held = layers[name]
+                target_tabs, target_widget = held["exchange_tabs"], held["tabs"]
+                ph = held.get("placeholder")
+                # ph stays set, so _drop_unlisted_exchange_tabs can add it back.
+                if ph is not None:
+                    idx = target_widget.indexOf(ph)
+                    if idx >= 0:
+                        target_widget.removeTab(idx)
+                        _ph_dropped += 1
+                tab = page_class(
+                    exchange_id,
+                    display_name,
+                    on_new_bot=self._create_bot,
+                    on_bot_clicked=self._on_bot_clicked,
+                    on_bot_cmd=self._on_bot_command,
+                    on_fleet_cmd=self._global_bot_cmd,
+                    on_bot_fire=self._on_bot_fire,
+                    status_log=self._status_log,
+                    on_bot_selected=self._on_bot_row_selected,
+                )
+                target_widget.addTab(tab, display_name)
+                target_tabs[exchange_id] = tab
+                if target_tabs is self._exchange_tabs:
+                    self._exchange_tabs[exchange_id] = tab
+                _seated.append(name)
+                if len(_seated) > 1:
+                    continue
+                # Only TradingTabReact holds a venue, keyed by exchange id, so
+                # the first seated tab is the one it follows.
+                hold_venue = getattr(
+                    getattr(self, "_trading_tab", None), "hold_venue", None
+                )
+                if callable(hold_venue):
+                    hold_venue(tab)
             self._push_live_tab({})
 
-            # `_landed` asks both layer widgets, never `target_widget`, the argument.
-            _landed = "none"
-            if self._stock_tab_widget.indexOf(tab) >= 0:
-                _landed = "stock"
-            elif self._crypto_tab_widget.indexOf(tab) >= 0:
-                _landed = "crypto"
+            # `_landed` asks each layer's own tab bar, never the store written above.
+            _landed = sorted(
+                name
+                for name in _seated
+                if layers[name]["tabs"].indexOf(layers[name]["exchange_tabs"][exchange_id])
+                >= 0
+            )
             import contextlib
 
             with contextlib.suppress(Exception):
@@ -1621,13 +1633,14 @@ if _HAS_QT:
                 _tr_emit(
                     "trading.12.002.postcondition.exchange_tab_routed",
                     actual=_landed,
-                    expected="stock" if is_equity else "crypto",
+                    expected=sorted(wanted),
                     context={
                         "exchange": exchange_id,
-                        "stock_tabs": self._stock_tab_widget.count(),
-                        "crypto_tabs": self._crypto_tab_widget.count(),
-                        "in_layer_store": target_tabs.get(exchange_id) is tab,
-                        "placeholder_dropped": _ph_dropped,
+                        "served_layers": list(self._served_layers(exchange_id)),
+                        "layer_tab_counts": {
+                            name: held["tabs"].count() for name, held in layers.items()
+                        },
+                        "placeholders_dropped": _ph_dropped,
                     },
                 )
 
@@ -3416,19 +3429,8 @@ if _HAS_QT:
             """
             kept = set(listed)
             dropped = 0
-            layers = (
-                (
-                    self._crypto_exchange_tabs,
-                    self._crypto_tab_widget,
-                    "_crypto_placeholder",
-                ),
-                (
-                    self._stock_exchange_tabs,
-                    self._stock_tab_widget,
-                    "_stock_placeholder",
-                ),
-            )
-            for store, bar, ph_attr in layers:
+            for held in (getattr(self, "_class_layers", None) or {}).values():
+                store, bar = held["exchange_tabs"], held["tabs"]
                 for eid in [one for one in store if one not in kept]:
                     tab = store.pop(eid)
                     self._exchange_tabs.pop(eid, None)
@@ -3442,7 +3444,7 @@ if _HAS_QT:
                     tab.deleteLater()
                     dropped += 1
                     self._status_log.log(f"Exchange tab removed: {eid}", "warning")
-                ph = getattr(self, ph_attr, None)
+                ph = held.get("placeholder")
                 if ph is not None and not store and bar.indexOf(ph) < 0:
                     bar.addTab(ph, PLACEHOLDER_TAB_TITLE)
             if dropped:
@@ -3457,6 +3459,7 @@ if _HAS_QT:
             """
             if not self._settings:
                 return
+            layers = getattr(self, "_class_layers", None) or {}
             _wanted: list[str] = []
             for exch in self._settings.list_exchanges():
                 eid = exch.get("exchange_id", "")
@@ -3464,16 +3467,17 @@ if _HAS_QT:
                 if not eid:
                     continue
                 _wanted.append(eid)
-                target = (
-                    self._stock_exchange_tabs
-                    if self._is_equity_exchange(eid)
-                    else self._crypto_exchange_tabs
-                )
-                if eid not in target:
+                served = self._served_layers(eid)
+                unseated = [
+                    one
+                    for one in served
+                    if one in layers and eid not in layers[one]["exchange_tabs"]
+                ]
+                if unseated:
                     self.add_exchange_tab(eid, name)
                     self._status_log.log(
                         f"Exchange tab added: {name} "
-                        f"({'stock' if self._is_equity_exchange(eid) else 'crypto'} layer)",
+                        f"({', '.join(unseated)} layer)",
                         "success",
                     )
 
@@ -3482,15 +3486,13 @@ if _HAS_QT:
             # `_missing` asks the layer tab bar, not the store the loop above wrote.
             _missing = 0
             for _eid in _wanted:
-                if self._is_equity_exchange(_eid):
-                    _store = self._stock_exchange_tabs
-                    _bar = self._stock_tab_widget
-                else:
-                    _store = self._crypto_exchange_tabs
-                    _bar = self._crypto_tab_widget
-                _tab = _store.get(_eid)
-                if _tab is None or _bar.indexOf(_tab) < 0:
-                    _missing += 1
+                for _name in self._served_layers(_eid):
+                    _held = layers.get(_name)
+                    if _held is None:
+                        continue
+                    _tab = _held["exchange_tabs"].get(_eid)
+                    if _tab is None or _held["tabs"].indexOf(_tab) < 0:
+                        _missing += 1
             import contextlib
 
             with contextlib.suppress(Exception):
@@ -3503,10 +3505,14 @@ if _HAS_QT:
                     context={
                         "configured": len(_wanted),
                         "dropped": _gone,
-                        "crypto_bar": self._crypto_tab_widget.count(),
-                        "stock_bar": self._stock_tab_widget.count(),
-                        "crypto_store": len(self._crypto_exchange_tabs),
-                        "stock_store": len(self._stock_exchange_tabs),
+                        "layer_bars": {
+                            _name: _held["tabs"].count()
+                            for _name, _held in layers.items()
+                        },
+                        "layer_stores": {
+                            _name: len(_held["exchange_tabs"])
+                            for _name, _held in layers.items()
+                        },
                     },
                 )
 
@@ -3632,18 +3638,20 @@ if _HAS_QT:
             """The Bot Creation Wizard, handed each venue's recorded market rows.
 
             The React wizard draws the market list from the payload alone, so the
-            rows the local recording holds are passed in; the Qt wizard fetches
-            its own and ignores them.
+            rows the local recording holds for the active asset class are passed
+            in; the Qt wizard fetches its own and ignores them.
             """
             import inspect
 
+            from .main_tabs.asset_class_surface import normalise
             from .main_tabs.bot_wizard_surface import recorded_market_rows
 
             if "markets" not in inspect.signature(wizard_class).parameters:
                 return wizard_class(exchanges, defaults, self)
+            _wing = normalise(getattr(self, "_asset_class", None))
             rows = {
                 str(one.get("exchange_id", "")): recorded_market_rows(
-                    one.get("exchange_id", "")
+                    one.get("exchange_id", ""), _wing
                 )
                 for one in exchanges
                 if one.get("exchange_id", "")

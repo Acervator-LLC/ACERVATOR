@@ -147,13 +147,18 @@ class ClassFilterTabMixin:
     def _live_layer_for(self, key: str, venues: list) -> None:
         """Put the Live stack on the layer widget holding ``venues``.
 
-        A class ``has_layer`` refuses still shows the venues serving it.
+        ``key``'s own layer is taken where it holds one of ``venues``, so a
+        venue seated on several layers does not pull the stack to the first.
         """
         stack = getattr(self, "_trading_stack", None)
         if stack is None or not venues:
             return
         tabs = store = None
-        for held in (getattr(self, "_class_layers", None) or {}).values():
+        layers = getattr(self, "_class_layers", None) or {}
+        asked = layers.get(key)
+        order = [asked] if asked is not None else []
+        order += [held for held in layers.values() if held is not asked]
+        for held in order:
             if set(venues) & set(held["exchange_tabs"]):
                 tabs, store = held["tabs"], held["exchange_tabs"]
                 break

@@ -105,9 +105,11 @@ CLASS_ACCENTS = {
 }
 DEFAULT_ACCENT = ds.STATUS_NEUTRAL
 
-#: Venues serving a class other than the one their own id implies. Coinbase
-#: lists dated futures and perpetuals, read by ata_asset_maps.futures_listings.
-EXTRA_VENUE_CLASSES = {"coinbase": ("derivatives",)}
+#: Venues serving a class other than the one their own id implies. Coinbase's
+#: products endpoint answers 1000 EQUITY products and labels 21 futures with a
+#: commodity underlying; ``derivatives`` resolves onto crypto through
+#: ``RETIRED_CLASSES``.
+EXTRA_VENUE_CLASSES = {"coinbase": ("derivatives", "stocks", "commodities")}
 
 NO_VENUE_NOTE = "No configured venue serves {name} yet."
 NO_LAYER_NOTE = "{name} has no trading layer yet."
@@ -314,19 +316,32 @@ def crypto_venues() -> frozenset:
     return frozenset(SUPPORTED_EXCHANGES)
 
 
+def retired_onto(name: Any) -> str:
+    """The live class one retired or legacy class name resolves onto.
+
+    A name neither ``LEGACY_CLASS_WORDS`` nor ``RETIRED_CLASSES`` holds is
+    answered unchanged, which ``asset_classes`` then drops.
+    """
+    from src.trading.ata_spm import RETIRED_CLASSES
+
+    asked = str(name or "").strip().lower()
+    asked = LEGACY_CLASS_WORDS.get(asked, asked)
+    return RETIRED_CLASSES.get(asked, asked)
+
+
 def venue_classes(venue_id: Any) -> frozenset:
     """Every asset class one venue serves.
 
     A venue carries the class its own registry lists it under, plus every
-    class ``EXTRA_VENUE_CLASSES`` adds to it.
+    class ``EXTRA_VENUE_CLASSES`` adds through ``retired_onto``.
     """
     asked = str(venue_id or "").strip().lower()
     if not asked:
         return frozenset()
-    found = set(EXTRA_VENUE_CLASSES.get(asked, ()))
+    found = {retired_onto(one) for one in EXTRA_VENUE_CLASSES.get(asked, ())}
     if asked in EQUITY_VENUES:
         found.add("stocks")
-    elif asked in crypto_venues():
+    if asked in crypto_venues():
         found.add("crypto")
     return frozenset(found & set(asset_classes()))
 
