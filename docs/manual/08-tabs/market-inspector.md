@@ -1797,18 +1797,20 @@ def push_to_sim_actions() -> list:
     ]
 ```
 
-A topology names several bots and an opposing pair names two assets. Both reduce
-to rows of one market and one dollar target, and the Simulator turns each row
-into a held bot on the venue its Stone Tablet was recorded on.
+A topology names several bots and the wires between them; an opposing pair names
+two assets and no wire. Both reduce to the same payload — rows of one market and
+one dollar target, plus the wires — and the Simulator turns each row into a held
+bot on the venue its Stone Tablet was recorded on.
 
-`src/gui/main_tabs/market_inspector_topologies_surface.py` — a proposal's rows
+`src/gui/main_tabs/market_inspector_topologies_surface.py` — a proposal's payload
 
 ```python
-def proposal_push_candidates(proposal: Any) -> list:
-    """Every bot one proposal names as a ``{"symbol", "target_usd"}`` row.
+def proposal_push_candidates(proposal: Any) -> dict:
+    """One proposal as ``{"bots", "wires"}``, the payload a push takes.
 
-    A proposal's wires carry no field a sim bot record holds, so a push takes
-    its bots alone and the wiring does not travel.
+    Each bot is a ``{"symbol", "target_usd"}`` row and each wire is a
+    ``{"source_asset", "target_asset", "pct"}`` row, so the routing the
+    proposal describes travels with the bots it names.
     """
 ```
 
@@ -1825,9 +1827,27 @@ PUSH_NO_TABLET_FORMAT = (
 )
 ```
 
+A wire is refused the same way. Its two ends name markets, and the push creates
+one simulated bot per market, so a wire whose source or target names a market
+the push did not create has no bot to reach. A wire naming one market at both
+ends has only one bot to reach, which is what `detect_distance_to_band` builds:
+it pairs a scrum-deep live bot with a fold-deep live bot on the same market, and
+those two collapse to one simulated bot. Either gap refuses the whole push,
+names the wire and says why.
+
+`src/gui/simulator/sim_trading_tab_surface.py` — the wire refusals
+
+```python
+PUSH_WIRE_UNHELD_FORMAT = "{source} to {target}: nothing was pushed for {asset}"
+PUSH_WIRE_SELF_FORMAT = (
+    "{source} to {target}: both ends are the one bot pushed for {source}"
+)
+```
+
 A pushed bot is a simulated record, never a live bot and never an order. It
 reaches the Simulator's own fleet file and its own bus, and the live engine and
-the live logs see nothing of it.
+the live logs see nothing of it. A pushed wire is the same: it is registered on
+the Simulator's own `SimWireManager` and never on the live `SmartWireManager`.
 
 The Paper Trader has no mode a candidate could land under, so no push targets
 it. Live takes no push either. The two targets are named on

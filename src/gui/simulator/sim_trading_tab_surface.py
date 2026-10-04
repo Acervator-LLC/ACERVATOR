@@ -31,6 +31,7 @@ call of a Stone Tablet retrieval and one per Generate From YTD read.
 from __future__ import annotations
 
 import logging
+import math
 import time
 from datetime import datetime
 from typing import Any, Optional, cast
@@ -315,12 +316,27 @@ PUSH_NO_TABLET_FORMAT = (
     "tape to walk. The run mode is unchanged."
 )
 PUSH_HELD_FORMAT = "Pushed {count} bot(s) to Back Test: {assets}."
+PUSH_WIRED_FORMAT = "Wired {count} of them: {wires}."
+PUSH_WIRE_FORMAT = "{source} to {target} at {pct:.1f}%"
 PUSH_NO_SIM_TAB_TEXT = (
     "Push to Sim refused: the Sim tab did not build. The run mode is unchanged."
 )
 PUSH_IN_FLIGHT_TEXT = (
     "Push to Sim refused: a run is in flight, so the run mode did not move to "
     "Back Test. Nothing was pushed."
+)
+
+#: Why one wire of a pushed topology cannot be delivered, and the refusal the
+#: whole push answers with. Each mirrors a check ``register_wire`` makes.
+PUSH_WIRE_UNNAMED_TEXT = "a wire naming no source or no target"
+PUSH_WIRE_UNHELD_FORMAT = "{source} to {target}: nothing was pushed for {asset}"
+PUSH_WIRE_SELF_FORMAT = (
+    "{source} to {target}: both ends are the one bot pushed for {source}"
+)
+PUSH_WIRE_RATE_FORMAT = "{source} to {target}: {pct} is not a rate in (0, 100]"
+PUSH_WIRE_REFUSED_FORMAT = (
+    "Push to Sim refused: {count} wire(s) of this topology cannot be "
+    "delivered: {reasons}. Nothing was pushed and the run mode is unchanged."
 )
 
 
@@ -346,6 +362,16 @@ def tablet_venues(entries: Any) -> dict[str, tuple]:
             str(getattr(entry, "timeframe", "") or ""),
         )
     return found
+
+
+def push_payload(candidate: Any) -> tuple:
+    """``(bots, wires)`` of one pushed candidate.
+
+    Both producers answer ``{"bots", "wires"}``, and anything else reads as no
+    bot and no wire, which ``push_configs`` refuses as naming no asset.
+    """
+    held = candidate if isinstance(candidate, dict) else {}
+    return list(held.get("bots") or []), list(held.get("wires") or [])
 
 
 def push_configs(candidates: Any, entries: Any) -> tuple:
@@ -393,6 +419,112 @@ def push_held_line(configs: Any) -> str:
     held = [str((one or {}).get("symbol") or "") for one in (configs or [])]
     named = [one for one in held if one]
     return PUSH_HELD_FORMAT.format(count=len(named), assets=", ".join(named))
+
+
+def undeliverable_wires(wires: Any, configs: Any) -> list:
+    """One line per wire of a pushed topology that cannot be registered over
+    ``configs``, and an empty list when every wire travels.
+
+    A wire is undeliverable when ``push_configs`` built no config for one of
+    its assets, when both its ends name the one asset, or when its ``pct`` is
+    outside the ``0 < pct <= 100`` range ``SimWireManager.register_wire``
+    takes.
+    """
+    held = {
+        str((one or {}).get("target_asset") or "").upper() for one in (configs or [])
+    }
+    out: list = []
+    for one in wires or []:
+        source = str((one or {}).get("source_asset") or "").upper()
+        target = str((one or {}).get("target_asset") or "").upper()
+        if not source or not target:
+            out.append(PUSH_WIRE_UNNAMED_TEXT)
+            continue
+        if source == target:
+            out.append(PUSH_WIRE_SELF_FORMAT.format(source=source, target=target))
+            continue
+        absent = [one for one in (source, target) if one not in held]
+        if absent:
+            out.append(
+                PUSH_WIRE_UNHELD_FORMAT.format(
+                    source=source, target=target, asset=absent[0]
+                )
+            )
+            continue
+        pct = (one or {}).get("pct")
+        if not _is_wire_rate(pct):
+            out.append(
+                PUSH_WIRE_RATE_FORMAT.format(source=source, target=target, pct=pct)
+            )
+    return out
+
+
+def _is_wire_rate(pct: Any) -> bool:
+    """Whether ``pct`` reads as a real number in ``0 < pct <= 100``, the range
+    ``SimWireManager.register_wire`` accepts."""
+    try:
+        rate = float(pct)
+    except (TypeError, ValueError):
+        return False
+    return math.isfinite(rate) and 0.0 < rate <= 100.0
+
+
+def push_wire_refused_line(reasons: Any) -> str:
+    """The Activity Log line for a push whose wires ``undeliverable_wires``
+    named, listing each reason."""
+    named = [str(one) for one in (reasons or []) if str(one)]
+    return PUSH_WIRE_REFUSED_FORMAT.format(count=len(named), reasons="; ".join(named))
+
+
+def push_wired_line(registered: Any) -> str:
+    """The Activity Log line for the wires a push registered between the bots
+    it held, each as ``PUSH_WIRE_FORMAT``."""
+    rows = [
+        PUSH_WIRE_FORMAT.format(
+            source=str((one or {}).get("source_asset") or ""),
+            target=str((one or {}).get("target_asset") or ""),
+            pct=float((one or {}).get("pct") or 0.0),
+        )
+        for one in (registered or [])
+    ]
+    return PUSH_WIRED_FORMAT.format(count=len(rows), wires=", ".join(rows))
+
+
+def register_pushed_wires(manager: Any, wires: Any, bot_ids: Any) -> list:
+    """Register each of ``wires`` on ``manager`` between the pushed bot ids
+    ``bot_ids`` names per asset, and answer the wire rows that applied.
+
+    ``undeliverable_wires`` has already refused every wire this cannot place,
+    so a short answer says a wire ``register_wire`` was expected to take was
+    declined and the count the push reports falls below the wire count.
+    """
+    ids = {str(key).upper(): str(value) for key, value in (bot_ids or {}).items()}
+    out: list = []
+    for one in wires or []:
+        source_asset = str((one or {}).get("source_asset") or "").upper()
+        target_asset = str((one or {}).get("target_asset") or "").upper()
+        source_id = ids.get(source_asset, "")
+        target_id = ids.get(target_asset, "")
+        if not source_id or not target_id:
+            continue
+        pct = float((one or {}).get("pct") or 0.0)
+        answer = manager.register_wire(source_id, target_id, pct)
+        if not answer.get("applied"):
+            logger.warning(
+                "push to sim: %s to %s was declined: %s",
+                source_asset,
+                target_asset,
+                answer.get("reason", ""),
+            )
+            continue
+        out.append(
+            {
+                "source_asset": source_asset,
+                "target_asset": target_asset,
+                "pct": pct,
+            }
+        )
+    return out
 
 
 #: The Activity Log lines Generate From YTD writes on both hosts.

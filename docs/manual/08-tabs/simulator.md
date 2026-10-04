@@ -1020,9 +1020,9 @@ and Start Run is the press that walks them.
 `src/gui/simulator/sim_trading_tab.py` — where a push lands
 
 ```python
-def push_to_back_test(self, candidates: Any) -> dict:
-    """Hold one sim bot per pushed candidate under Back Test and leave that
-    the run mode.
+def push_to_back_test(self, candidate: Any) -> dict:
+    """Hold one sim bot per pushed market under Back Test, register the
+    wires between them, and leave Back Test the run mode.
     """
 ```
 
@@ -1030,6 +1030,25 @@ Each market takes the venue and the timeframe of its own Stone Tablet, so a
 pushed bot walks the tape the Simulator already holds for it. A market with no
 tablet refuses the whole push and moves no mode, which
 [the Market Inspector page](market-inspector.md) describes at the button.
+
+A swarm topology also names the wires between its bots, and those travel with
+them. Each pushed bot gets its own `SimWireLedger`, each wire is registered
+between two of those bots at the rate the proposal names, and the sim fleet file
+carries both under Back Test. A fold on a pushed source bot then routes its
+share to the pushed target, which is the routing
+[A fold's growth travels the wires to another sim bot](#a-folds-growth-travels-the-wires-to-another-sim-bot)
+describes.
+
+The Activity Log reports both halves:
+
+```python
+PUSH_HELD_FORMAT = "Pushed {count} bot(s) to Back Test: {assets}."
+PUSH_WIRED_FORMAT = "Wired {count} of them: {wires}."
+```
+
+A wire the push cannot deliver refuses the whole push, exactly as a missing
+tablet does: no bot is held, no wire is registered and the run mode does not
+move.
 
 ### One clock
 

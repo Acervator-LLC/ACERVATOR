@@ -2861,10 +2861,10 @@ if _HAS_QT:
         def set_push_to_sim_handler(self, handler) -> None:
             """Take the handler a Push to Sim press reaches, on both panes.
 
-            ``handler`` takes the ``{"symbol", "target_usd"}`` rows of one
-            candidate and answers the Simulator's ``{"mode", "held",
-            "refused"}``. It is held for the Opposing Trades zone and
-            connected to the topology pane's ``pushToSimRequested``.
+            ``handler`` takes one candidate's ``{"bots", "wires"}`` payload and
+            answers the Simulator's ``{"mode", "held", "wires", "refused"}``.
+            It is held for the Opposing Trades zone and connected to the
+            topology pane's ``pushToSimRequested``.
             """
             self._push_to_sim_handler = handler
             pane = getattr(self, "_topologies_pane", None)
@@ -2874,7 +2874,8 @@ if _HAS_QT:
             push_signal.connect(self._push_proposal_to_sim)
 
         def _push_proposal_to_sim(self, proposal: dict) -> None:
-            """Send one topology proposal's bots to the Simulator's Back Test."""
+            """Send one topology proposal's bots and the wires between them to
+            the Simulator's Back Test."""
             self._send_to_sim(proposal_push_candidates(proposal))
 
         def _push_pair_to_sim(self) -> None:
@@ -2885,8 +2886,8 @@ if _HAS_QT:
                 return
             self._send_to_sim(pair_push_candidates(self._pairs[at]))
 
-        def _send_to_sim(self, candidates: list) -> None:
-            """Hand ``candidates`` to the Push to Sim handler and log what it did.
+        def _send_to_sim(self, candidate: dict) -> None:
+            """Hand ``candidate`` to the Push to Sim handler and log what it did.
 
             With no handler wired the press writes one line and changes
             nothing, so the Simulator's run mode cannot move without a
@@ -2896,11 +2897,11 @@ if _HAS_QT:
             if handler is None:
                 self._say(PUSH_UNWIRED_TEXT, ACTIVITY_WARNING)
                 return
-            if not candidates:
+            if not (candidate or {}).get("bots"):
                 self._say(PUSH_NO_CANDIDATE_TEXT, ACTIVITY_WARNING)
                 return
             try:
-                answered = dict(handler(candidates) or {})
+                answered = dict(handler(candidate) or {})
             except Exception as exc:  # noqa: BLE001 - handler is the main window
                 logger.warning("push to sim handler failed: %s", exc)
                 self._say(push_failed_line(exc), ACTIVITY_WARNING)
