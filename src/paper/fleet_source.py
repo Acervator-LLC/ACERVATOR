@@ -151,6 +151,9 @@ PUSH_WIRE_SELF_FORMAT = (
     "{source} to {target}: both ends are the one bot pushed for {source}"
 )
 PUSH_WIRE_UNHELD_FORMAT = "{source} to {target}: nothing was pushed for {asset}"
+PUSH_WIRE_TWICE_FORMAT = (
+    "{source} to {target} is named twice, and one pair holds one rate"
+)
 PUSH_WIRE_RATE_FORMAT = (
     "{source} to {target}: {pct} is not a rate in (0, 100], so no wire "
     "could carry it"
@@ -640,11 +643,13 @@ def undeliverable_wires(wires: Any, configs: Any) -> list:
     ``configs``, and an empty list when every wire travels.
 
     A wire is undeliverable when ``push_configs`` built no config for one of
-    its markets, when both its ends name the one market, or when its ``pct``
-    is outside the range ``register_wire`` takes.
+    its markets, when both its ends name the one market, when ``wires`` names
+    one pair twice, or when its ``pct`` is outside the range ``register_wire``
+    takes.
     """
     held = {str(_row(one).get("target_asset") or "").upper() for one in (configs or [])}
     out: list = []
+    named: set = set()
     for wire in wires or []:
         row = _row(wire)
         source = str(row.get("source_asset") or "").upper()
@@ -655,6 +660,10 @@ def undeliverable_wires(wires: Any, configs: Any) -> list:
         if source == target:
             out.append(PUSH_WIRE_SELF_FORMAT.format(source=source, target=target))
             continue
+        if (source, target) in named:
+            out.append(PUSH_WIRE_TWICE_FORMAT.format(source=source, target=target))
+            continue
+        named.add((source, target))
         absent = [one for one in (source, target) if one not in held]
         if absent:
             out.append(
@@ -1531,6 +1540,7 @@ __all__ = [
     "PUSH_WIRE_RATE_FORMAT",
     "PUSH_WIRE_REFUSED_FORMAT",
     "PUSH_WIRE_SELF_FORMAT",
+    "PUSH_WIRE_TWICE_FORMAT",
     "PUSH_WIRE_UNHELD_FORMAT",
     "PUSH_WIRE_UNNAMED_TEXT",
     "READ_NAMES",

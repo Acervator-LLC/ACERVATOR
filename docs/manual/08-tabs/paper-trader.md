@@ -2817,13 +2817,25 @@ next `save` carries them in the paper fleet file.
 def register_pushed_wires(manager: Any, wires: Any, bot_ids: Any) -> list:
 ```
 
-A wire that cannot travel refuses the whole push. Four gaps do it: a wire end
+A wire that cannot travel refuses the whole push. Five gaps do it: a wire end
 naming no market, both ends naming the one market, an end naming a market the
-push did not create, and a rate outside the range `register_wire` takes. Each
-refusal spawns nothing and registers nothing. A wire row the push cannot read
-at all counts as naming no market, so it is refused rather than dropped, and
-the wire count the push reports can never fall below the rows the payload
-carried.
+push did not create, the one pair named twice, and a rate outside the range
+`register_wire` takes. Each refusal spawns nothing and registers nothing.
+
+A wire row the push cannot read at all counts as naming no market, so it is
+refused rather than dropped. One pair named twice is refused for the same
+reason: a pair holds one rate, so keeping the second row would report two
+wires where the fleet holds one.
+
+`src/paper/fleet_source.py` — the refusal for one pair named twice
+
+```python
+PUSH_WIRE_TWICE_FORMAT = (
+    "{source} to {target} is named twice, and one pair holds one rate"
+)
+```
+
+The count the push reports is therefore the count the fleet holds.
 
 `src/paper/fleet_source.py` — the four wire refusals
 
