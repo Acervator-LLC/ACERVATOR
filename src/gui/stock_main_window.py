@@ -12,7 +12,7 @@ import logging
 import time
 from datetime import datetime
 
-from .main_tabs.stock_main_window_surface import new_bot_text
+from .main_tabs.stock_main_window_surface import about_box, new_bot_text
 
 logger = logging.getLogger("acervator.gui.stocks")
 
@@ -701,16 +701,8 @@ if _HAS_QT:
                 self._launcher_callback()
 
         def _show_about(self):
-            QMessageBox.about(
-                self,
-                "About",
-                "Acervator — Stock Trading v3.1\n\n"
-                "TradingView Webhook Integration\n"
-                "Alpaca Broker Support\n"
-                "Signal • DCA • Swing • Grid Bots\n"
-                "Market Hours Awareness\n"
-                "Shared Analytics & Risk Management",
-            )
+            box = about_box()
+            QMessageBox.about(self, box["title"], box["text"])
 
         def set_launcher_callback(self, callback):
             """Set callback to return to launcher."""

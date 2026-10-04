@@ -128,6 +128,66 @@ Six modules read the resolved version, and none of them restates it.
 - `src/core/version_sweep.py` takes it as the canonical value and reports any
   literal that shadows it.
 
+**Overtaken.** That first sentence stays whole here:
+
+> Six modules read the resolved version, and none of them restates it.
+
+Twelve modules read it. Eleven already did, and the stocks About box is the
+twelfth.
+
+```
+main.py                                         src/__init__.py
+src/core/version_sweep.py                       src/gui/main_window.py
+src/gui/main_tabs/main_window_surface.py        src/simulator/parity_report.py
+src/gui/main_tabs/splash_screen_surface.py      src/trading/live_monitor.py
+src/gui/main_tabs/stock_main_window_surface.py  tools/build_release_zip.py
+tools/capture_live_baseline.py                  tools/spec_common.py
+```
+
+### What the About box tells the operator
+
+Help holds About on the crypto window and on the stock window. The box names
+the build the operator is running. It reads the same answer the title bar
+carries, so the two cannot name different builds on one screen.
+
+`src/gui/main_tabs/main_window_surface.py` — the crypto box
+
+```python
+ABOUT_TEXT_FORMAT = (
+    "Acervator v{version}\n\n"
+    "A multi-exchange crypto auto-trading platform.\n"
+    ...
+)
+
+
+def about_text() -> str:
+    return ABOUT_TEXT_FORMAT.format(
+        version=running_version(), indicator_count=len(DEFAULT_WEIGHTS)
+    )
+```
+
+The stock window and its surface read one declaration. The surface fills the
+text, and the window draws what it is handed, so the heading moves in one edit.
+
+`src/gui/main_tabs/stock_main_window_surface.py` — the stocks box
+
+```python
+def about_box() -> dict:
+    """The box the Help menu shows."""
+    return {"title": ABOUT_TITLE, "text": about_text()}
+```
+
+`src/gui/stock_main_window.py` — the window draws what the surface hands it
+
+```python
+def _show_about(self):
+    box = about_box()
+    QMessageBox.about(self, box["title"], box["text"])
+```
+
+Neither box carries a typed number. A release that moves carries both boxes
+with it, and no source edit follows a release.
+
 ## What a frozen bundle carries
 
 A bundle ships no repository, so the git call finds nothing, returns an empty

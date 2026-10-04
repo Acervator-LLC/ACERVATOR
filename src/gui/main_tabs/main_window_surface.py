@@ -316,9 +316,9 @@ BOX_INFORMATION = "information"
 BOX_ABOUT = "about"
 
 ABOUT_TITLE = "About Acervator"
-#: The voter count is filled from DEFAULT_WEIGHTS, never typed in.
+#: The version and the voter count are read from the program, never typed in.
 ABOUT_TEXT_FORMAT = (
-    "Acervator v1.7\n\n"
+    "Acervator v{version}\n\n"
     "A multi-exchange crypto auto-trading platform.\n"
     "Grid Mode - Speculative Scrumming\n"
     "Profit Folding - Upward Distribution\n"
@@ -329,9 +329,11 @@ ABOUT_TEXT_FORMAT = (
 
 
 def about_text() -> str:
-    """``ABOUT_TEXT_FORMAT`` filled with the number of voters
+    """``ABOUT_TEXT_FORMAT`` filled with ``running_version`` and the voters
     ``DEFAULT_WEIGHTS`` declares."""
-    return ABOUT_TEXT_FORMAT.format(indicator_count=len(DEFAULT_WEIGHTS))
+    return ABOUT_TEXT_FORMAT.format(
+        version=running_version(), indicator_count=len(DEFAULT_WEIGHTS)
+    )
 
 
 RESET_TITLE = "Reset All Settings"

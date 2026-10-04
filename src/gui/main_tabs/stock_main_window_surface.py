@@ -339,14 +339,28 @@ WEBHOOK_STOPPED_MESSAGE = "Webhook server stopped"
 WEBHOOK_STARTED_FORMAT = "Webhook server started on port {port}"
 
 ABOUT_TITLE = "About"
-ABOUT_TEXT = (
-    "Acervator — Stock Trading v3.1\n\n"
+#: The version is read from the program, never typed in.
+ABOUT_TEXT_FORMAT = (
+    "Acervator — Stock Trading v{version}\n\n"
     "TradingView Webhook Integration\n"
     "Alpaca Broker Support\n"
     "Signal • DCA • Swing • Grid Bots\n"
     "Market Hours Awareness\n"
     "Shared Analytics & Risk Management"
 )
+
+
+def running_version() -> str:
+    """Returns ``src.__version__`` for ``ABOUT_TEXT_FORMAT``."""
+    from src import __version__
+
+    return str(__version__)
+
+
+def about_text() -> str:
+    """``ABOUT_TEXT_FORMAT`` filled with ``running_version``."""
+    return ABOUT_TEXT_FORMAT.format(version=running_version())
+
 
 WINDOW_READY_MESSAGE = "Stock Trading window initialized"
 REFRESH_CRASH_FORMAT = "STOCK DASHBOARD: refresh crashed: %s"
@@ -649,7 +663,7 @@ def new_bot_box() -> dict:
 
 def about_box() -> dict:
     """The box the Help menu shows."""
-    return {"title": ABOUT_TITLE, "text": ABOUT_TEXT}
+    return {"title": ABOUT_TITLE, "text": about_text()}
 
 
 class BotConfigSource:
@@ -1302,7 +1316,7 @@ def build_view_model(
             "no_bridge": NO_BRIDGE_MESSAGE,
             "webhook_stopped": WEBHOOK_STOPPED_MESSAGE,
         },
-        "about": {"title": ABOUT_TITLE, "text": ABOUT_TEXT},
+        "about": about_box(),
         "formats": {
             "market_text": MARKET_TEXT_FORMAT,
             "market_style": MARKET_STYLE_FORMAT,
