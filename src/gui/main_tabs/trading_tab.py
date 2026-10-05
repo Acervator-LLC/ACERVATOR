@@ -28,6 +28,8 @@ from .trading_tab_surface import (
     LOG_SPLITTER_SIZES_PX,
     MAIN_SPLITTER_SIZES_PX,
     TOP_SPLITTER_SIZES_PX,
+    placeholder_hint_text,
+    placeholder_title_text,
 )
 from .notify_stub import _NotifyStub
 
@@ -191,7 +193,7 @@ class TradingTabMixin:
             ph_layout = QVBoxLayout(ph_card)
             ph_layout.setAlignment(Qt.AlignCenter)
             ph_layout.setSpacing(12)
-            ph_title = QLabel(f"No {label_text} Exchanges Configured")
+            ph_title = QLabel(placeholder_title_text(label_text))
             ph_title.setStyleSheet(f"color: {ds.TEXT_INACTIVE}; border: none;")
             ph_title.setAlignment(Qt.AlignCenter)
             ph_layout.addWidget(ph_title)
@@ -204,7 +206,7 @@ class TradingTabMixin:
             ph_add.clicked.connect(self._add_exchange)
             self._add_exchange_buttons.append(ph_add)
             ph_layout.addWidget(ph_add, alignment=Qt.AlignCenter)
-            ph_hint = QLabel(f"Add a {label_text} exchange to begin trading")
+            ph_hint = QLabel(placeholder_hint_text(label_text))
             ph_hint.setStyleSheet(
                 f"color: {ds.TEXT_PLACEHOLDER}; font-size: 10px; border: none;"
             )
