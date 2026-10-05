@@ -214,8 +214,13 @@ says so.
 
 | Question | What answers it | Who asks |
 | -------- | --------------- | -------- |
-| what could this venue serve | `venue_classes` | the Exchange Status panel, the Add Exchange picker, the Live tab filter |
-| what does this venue serve | `venue_served_classes` | a reader that needs a product to exist |
+| what could this venue serve | `venue_classes` | the Exchange Status panel, the Add Exchange picker, the Live tab filter, the Live tab bot rows, a bot's sector badge |
+| what does this venue serve | `venue_served_classes` | nothing today, count 0 |
+
+Every screen that lists venues asks the first question, because the page exists
+so he can add credentials for a venue nothing has reached. **Nothing asks the
+second question yet.** A reader that must know a product exists before it offers
+a market is the reader that will.
 
 `src/gui/main_tabs/asset_class_surface.py:128` — the registry half
 
