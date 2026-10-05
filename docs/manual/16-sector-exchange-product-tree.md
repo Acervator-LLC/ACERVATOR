@@ -331,6 +331,18 @@ The constraint is already live on a quarter of the recording: 325 of the 1,144
 rows publish a step of exactly 1. Of those, 184 are spot rows, 100 are dated
 contracts and 41 are perpetual contracts.
 
+An equity product publishes a fractional step of its own. Three read off the
+equity list:
+
+```
+base currency KOF    base_increment 0.00001    product id 64 hex characters
+base currency NINE   base_increment 0.00001    product id 64 hex characters
+base currency ATR    base_increment 0.00001    product id 64 hex characters
+```
+
+So the whole-share rule is not the product's step. It is a session rule that
+overrides the step, and it binds only outside the normal trading session.
+
 Equities take a further set of rules. Read from the venue's create-order
 reference and **not confirmed by any call this page made**, because confirming
 an order shape means placing an order:
@@ -366,8 +378,8 @@ itself moves: 170 of 1,000 rows changed inside half a minute. No single call
 sees all of it, and no two calls minutes apart see the same thousand. A stable
 list of tradable equities needs a different route or a store that accumulates.
 
-An equity's product id is a 64-character hash. Its ticker is the product's base
-currency, not its id.
+An equity's product id is a 64-character hash, every character a hexadecimal
+digit. Its ticker is the product's base currency, not its id.
 
 **Carried over, and this page disagrees with it:** the issue records two calls an
 instant apart sharing only 209 of 1,000 rows. Two calls back to back shared all
@@ -390,6 +402,7 @@ claim that the list moves is confirmed; the figure 209 is not.
 | the three refusals | the same endpoint, one call each |
 | the `CDE` and `INTX` suffix counts | the same endpoint, two calls |
 | every `base_increment` | the venue's own product record, one call each |
+| the equity id shape and its ticker | the equity list, one call |
 | the paging and drift readings | the same endpoint, five calls |
 | the equity order rules | the venue's create-order reference, not called |
 | the Deribit service details | the issue, carried over unconfirmed |
