@@ -114,14 +114,34 @@ CLASS_ACCENTS = {
 }
 DEFAULT_ACCENT = ds.STATUS_NEUTRAL
 
+# OVERTAKEN, quoted whole:
+#   "Venues serving a class other than the one their own id implies. Coinbase's
+#   products endpoint answers 1000 EQUITY products and labels 21 futures with a
+#   commodity underlying; ``derivatives`` resolves onto crypto through
+#   ``RETIRED_CLASSES``."
+# True today: the same entry also names forex, indices and futures_perps, which
+# ``market_asset_class`` answers for 20, 6 and 168 of the venue's products.
 #: Venues serving a class other than the one their own id implies. Coinbase's
 #: products endpoint answers 1000 EQUITY products and labels 21 futures with a
 #: commodity underlying; ``derivatives`` resolves onto crypto through
 #: ``RETIRED_CLASSES``.
-EXTRA_VENUE_CLASSES = {"coinbase": ("derivatives", "stocks", "commodities")}
+EXTRA_VENUE_CLASSES = {
+    "coinbase": (
+        "derivatives",
+        "stocks",
+        "commodities",
+        "forex",
+        "indices",
+        "futures_perps",
+    )
+}
 
 #: The two articles a sentence takes before a sector name, and the first
 #: letters taking the second.
+#: The last recording read, under its ``recording_stamp``. One Live tab refresh
+#: asks ``venue_classes`` once a bot, and the file is 235 KB.
+_RECORDED_CACHE: dict = {}
+
 ARTICLE_DEFAULT = "a"
 ARTICLE_VOWEL = "an"
 ARTICLE_VOWEL_LETTERS = "aeio"
@@ -354,11 +374,65 @@ def retired_onto(name: Any) -> str:
     return RETIRED_CLASSES.get(asked, asked)
 
 
-def venue_classes(venue_id: Any) -> frozenset:
-    """Every asset class one venue serves.
+def recording_stamp() -> tuple:
+    """The recording file's path, modification time and size, or an empty tuple
+    while no file is there.
 
-    A venue carries the class its own registry lists it under, plus every
-    class ``EXTRA_VENUE_CLASSES`` adds through ``retired_onto``.
+    ``recorded_venue_classes`` reads the recording again only when this moves.
+    """
+    try:
+        from ...exchange.market_rules_store import store_path
+    except ImportError:
+        return ()
+    try:
+        target = store_path()
+        held = target.stat()
+    except OSError:
+        return ()
+    return (str(target), held.st_mtime_ns, held.st_size)
+
+
+def recorded_venue_classes(document: Any = None) -> dict:
+    """Every venue in the ``market_rules_store`` recording mapped to the asset
+    classes its recorded rows carry under ``CLASS_FIELD``.
+
+    ``document`` stands in for ``load_document`` and skips the
+    ``recording_stamp`` cache, and neither asks a venue.
+    """
+    try:
+        from ...exchange.market_rules_store import CLASS_FIELD, load_document
+    except ImportError:
+        return {}
+    stamp = () if isinstance(document, dict) else recording_stamp()
+    if stamp and _RECORDED_CACHE.get("stamp") == stamp:
+        return dict(_RECORDED_CACHE["classes"])
+    body = document if isinstance(document, dict) else load_document()
+    declared = set(asset_classes())
+    found: dict = {}
+    for venue, rows in body.items():
+        if not isinstance(rows, dict):
+            continue
+        held = set()
+        for row in rows.values():
+            if not isinstance(row, dict):
+                continue
+            named = retired_onto(row.get(CLASS_FIELD, ""))
+            if named in declared:
+                held.add(named)
+        found[str(venue).strip().lower()] = frozenset(held)
+    if stamp:
+        _RECORDED_CACHE["stamp"] = stamp
+        _RECORDED_CACHE["classes"] = dict(found)
+    return found
+
+
+def venue_classes(venue_id: Any, recorded: Any = None) -> frozenset:
+    """Every asset class one venue could serve: the class its own registry
+    lists it under, every class ``EXTRA_VENUE_CLASSES`` adds through
+    ``retired_onto``, and every class its recorded rows carry.
+
+    ``recorded`` stands in for ``recorded_venue_classes``, so one read of the
+    recording serves a whole panel.
     """
     asked = str(venue_id or "").strip().lower()
     if not asked:
@@ -368,17 +442,40 @@ def venue_classes(venue_id: Any) -> frozenset:
         found.add("stocks")
     if asked in crypto_venues():
         found.add("crypto")
+    held = recorded if isinstance(recorded, dict) else recorded_venue_classes()
+    found |= set(held.get(asked, frozenset()))
     return frozenset(found & set(asset_classes()))
 
 
-def venues_for_class(name: Any) -> frozenset:
-    """Every venue id serving one asset class.
+def venue_served_classes(venue_id: Any, document: Any = None) -> frozenset:
+    """Every asset class one venue's recorded rows carry, the recording alone
+    and no registry.
 
-    A venue whose ``venue_classes`` holds two classes is answered for both.
+    A venue ``recorded_venue_classes`` holds no rows for answers empty, while
+    ``venue_classes`` still answers what that venue could serve.
+    """
+    asked = str(venue_id or "").strip().lower()
+    if not asked:
+        return frozenset()
+    return frozenset(recorded_venue_classes(document).get(asked, frozenset()))
+
+
+def venues_for_class(name: Any) -> frozenset:
+    """Every venue id serving one asset class, a venue whose ``venue_classes``
+    holds two classes answered for both.
+
+    A venue ``recorded_venue_classes`` alone knows is answered for the classes
+    its recorded rows carry.
     """
     key = normalise(name)
-    known = set(crypto_venues()) | set(EQUITY_VENUES) | set(EXTRA_VENUE_CLASSES)
-    return frozenset(vid for vid in known if key in venue_classes(vid))
+    recorded = recorded_venue_classes()
+    known = (
+        set(crypto_venues())
+        | set(EQUITY_VENUES)
+        | set(EXTRA_VENUE_CLASSES)
+        | set(recorded)
+    )
+    return frozenset(vid for vid in known if key in venue_classes(vid, recorded))
 
 
 def serves(venue_id: Any, name: Any) -> bool:

@@ -114,6 +114,22 @@ The three empty sectors answer an empty set, not a short one. Their layer pages
 read `No <sector> Exchanges Configured` and their Add Exchange button cannot
 act.
 
+OVERTAKEN, and the table and the sentences above are kept as written. No sector
+answers an empty set any more. Read in one running process on this branch, with
+nothing recorded at all:
+
+| Sector | Venues the registry answers | Was |
+| ------ | --------------------------- | --- |
+| Crypto | 15 | 15 |
+| Stocks | 10 | 10 |
+| Commodities | 1, Coinbase | 1 |
+| Forex | 1, Coinbase | none, count 0 |
+| Indices | 1, Coinbase | none, count 0 |
+| Futures / Perps | 1, Coinbase | none, count 0 |
+
+Crypto's fifteen names and Stocks' ten names are the same names, and the two
+drawn panels differ by 0 pixels against the same panels on `origin/current`.
+
 **A venue in a registry is not a venue proved to work.** One venue has ever
 traded. [15-venue-compatibility.md](15-venue-compatibility.md) states it at
 line 99:
@@ -183,6 +199,62 @@ knows and that table as what was investigated.
 Coinbase serves products in all three of these sectors. It is registered under
 Crypto, Stocks and Commodities only, so none of its index or contract rows
 reaches an Indices or a Futures / Perps venue list today.
+
+OVERTAKEN, and the heading and the sentences above are kept as written.
+Coinbase is now registered under all six sectors, so each of the three lists one
+venue. The Exchange Status panel for Forex draws `Coinbase (coinbase)` and the
+Add Forex Exchange box offers Coinbase with its key and secret fields, read off
+the drawn panel.
+
+### A venue's sectors come from two places, and they answer two questions
+
+The registry answers what a venue **could** serve. The recording answers what it
+**does** serve. Both are read, and a venue is listed under a sector when either
+says so.
+
+| Question | What answers it | Who asks |
+| -------- | --------------- | -------- |
+| what could this venue serve | `venue_classes` | the Exchange Status panel, the Add Exchange picker, the Live tab filter, the Live tab bot rows, a bot's sector badge |
+| what does this venue serve | `venue_served_classes` | nothing today, count 0 |
+
+Every screen that lists venues asks the first question, because the page exists
+so he can add credentials for a venue nothing has reached. **Nothing asks the
+second question yet.** A reader that must know a product exists before it offers
+a market is the reader that will.
+
+`src/gui/main_tabs/asset_class_surface.py:128` — the registry half
+
+```python
+EXTRA_VENUE_CLASSES = {
+    "coinbase": (
+        "derivatives",
+        "stocks",
+        "commodities",
+        "forex",
+        "indices",
+        "futures_perps",
+    )
+}
+```
+
+The recording half reads `recorded_classes` and names no venue at all, so a
+venue whose products carry a sector is listed under it with no edit here.
+Measured in one running process, over a recording holding two rows for a venue
+in no hand-written list:
+
+```
+venue id in EQUITY_VENUES          False
+venue id in EXTRA_VENUE_CLASSES    False
+venue id in crypto_venues          False
+venue_classes answers              forex, futures_perps
+venues_for_class("forex") lists it yes
+```
+
+**The registry is the floor and it cannot be dropped.** Read on this branch with
+nothing recorded, `venue_served_classes` answers nothing for Kraken and nothing
+for Alpaca, while `venue_classes` answers Crypto and Stocks. A fresh install has
+recorded nothing, and a venue the operator has never configured is recorded
+nowhere, so a derived-only answer would empty every sector on both.
 
 ## Product
 
@@ -440,6 +512,15 @@ written, so the label survives the write and the read. His own recording still
 holds no label, because it was written before the write path merged, and his
 next venue read rewrites it.
 
+OVERTAKEN, and the two blocks and the sentences above are kept as written. No
+function named `recorded_market_rows` is in the tree, count 0. The reader that
+answers a venue's recorded sectors is `recorded_classes` at
+`src/exchange/market_rules_store.py:152`, which answers symbol to sector for one
+venue, and `recorded_venue_classes` at
+`src/gui/main_tabs/asset_class_surface.py:373` folds that into the set of
+sectors one venue's rows carry. The seven row counts above stand; the name they
+were read through does not.
+
 The 1,000 equity products are not in it either. `AAPL/USDC:USDC`,
 `TSLA/USDC:USDC` and `SPY/USDC:USDC` are each one perpetual contract row, and no
 row carries an equity product id.
@@ -622,3 +703,8 @@ claim that the list moves is confirmed; the figure 209 is not.
 | the paging and drift readings | the same endpoint, five calls |
 | the equity order rules | the venue's create-order reference, not called |
 | the Deribit service details | the issue, carried over unconfirmed |
+| the six venue counts on this branch | `venues_for_class`, one running process |
+| Coinbase's six registered sectors | `src/gui/main_tabs/asset_class_surface.py:128` |
+| the recorded half of a venue's sectors | `src/gui/main_tabs/asset_class_surface.py:373` |
+| what a venue does serve | `src/gui/main_tabs/asset_class_surface.py:421` |
+| the drawn Forex panel and its 0-pixel pairs | the Settings dialog, one running process |
