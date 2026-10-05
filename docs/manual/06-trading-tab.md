@@ -221,6 +221,11 @@ its empty state in its own accent. Pressing its segment is what shows the page.
 No venue serves Indices or Futures / Perps yet, so each page reads
 `No <sector> Exchanges Configured` and its Add Exchange button cannot act.
 
+A sector is the first of three nested levels. What each sector's venue list holds
+today, and what products a venue serves under it, are in
+[16-sector-exchange-product-tree.md](16-sector-exchange-product-tree.md), with
+the count behind every empty row.
+
 The hint under that card takes its article from the sector name, so the Indices
 page reads "Add an Indices exchange to begin trading" and the other five keep
 "a". The Qt page and the React page read the one sentence.
