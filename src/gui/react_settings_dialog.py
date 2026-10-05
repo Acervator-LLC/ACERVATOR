@@ -533,6 +533,7 @@ if _HAS_QT and _HAS_WEBENGINE:
             self._last_model: dict = {}
             self._passphrase_exchanges = surface.passphrase_exchange_ids()
             self._build_holders()
+            self._refresh_exchange_status()
 
             self.setAccessibleName(ACCESSIBLE_NAME)
             layout = QVBoxLayout(self)
@@ -666,10 +667,25 @@ if _HAS_QT and _HAS_WEBENGINE:
                 return
             if "row" in asked:
                 self._exchange_list.setCurrentRow(asked.get("row"))
+                self._open_credentials_for_row(asked.get("row"))
                 return
             handler = ACTION_HANDLERS.get(str(asked.get("key") or ""))
             if handler is not None:
                 getattr(self, handler)()
+
+        def _refresh_exchange_status(self) -> None:
+            """Put the recorded venue states on the model and redraw the page.
+
+            Reads the records off disk, so a redraw places no venue call.
+            """
+            self._model.venue_states = self._recorded_venue_states()
+            self._model.values["exchange_list"] = list(
+                surface.exchange_status_lines(
+                    self._model.asset_class, self._model.venue_states
+                )
+            )
+            self._model.texts["list_label"] = surface.exchange_status_label()
+            self.redraw()
 
         def show_tab(self, title: str) -> None:
             """Draw the tab named ``title`` and leave the others hidden."""

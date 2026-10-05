@@ -12,6 +12,9 @@ from dataclasses import dataclass, field
 
 logger = logging.getLogger("acervator.exchange")
 
+#: What a venue needing no extra phrase is asked with.
+EMPTY_PHRASE = ""
+
 
 @dataclass
 class ValidationResult:
@@ -29,7 +32,7 @@ def validate_credentials(
     exchange_id: str,
     api_key: str,
     api_secret: str,
-    passphrase: str = "",
+    passphrase: str = EMPTY_PHRASE,
 ) -> ValidationResult:
     """
     Test API credentials synchronously. Single connection, single balance
@@ -86,6 +89,9 @@ def validate_credentials(
         elapsed = (time.monotonic() - start) * 1000
         market_count = len(sync_exch.markets) if sync_exch and sync_exch.markets else 0
 
+        from .credential_state import record_validated
+
+        record_validated(exchange_id)
         return ValidationResult(
             success=True,
             exchange_id=exchange_id,
@@ -104,7 +110,9 @@ def validate_credentials(
     except Exception as exc:  # R28-OK: error surfaced via ValidationResult below
         elapsed = (time.monotonic() - start) * 1000
         from .ccxt_connector import CCXTConnector
+        from .credential_state import record_connection_lost
 
+        record_connection_lost(exchange_id)
         detail = CCXTConnector._format_exchange_error(exc)
         return ValidationResult(
             success=False,

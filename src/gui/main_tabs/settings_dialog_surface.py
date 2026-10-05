@@ -99,6 +99,8 @@ SAVE_BUTTON_STYLE = "font-weight: bold; padding: 6px 24px;"
 ACCENT_PROPERTY = "accent"
 DANGER_PROPERTY = "danger"
 
+from .. import design_system as ds  # noqa: E402
+from . import asset_class_surface as acs  # noqa: E402
 from .asset_class_surface import EQUITY_VENUES as EQUITY_EXCHANGE_IDS  # noqa: E402
 
 EQUITY_ITEM_FORMAT = "{name} (planned, not yet live)"
@@ -177,6 +179,37 @@ STOCK_LIST_LABEL = "Configured Stock Brokers:"
 CRYPTO_ADD_GROUP = "Add Crypto Exchange"
 STOCK_ADD_GROUP = "Add Stock Broker"
 REMOVE_BUTTON_TEXT = "Remove Selected"
+
+EXCHANGE_STATUS_LABEL = "Exchange Status"
+
+VENUE_STATE_VALIDATED = "validated"
+VENUE_STATE_LOST = "lost"
+VENUE_STATE_UNSET = "unset"
+
+#: The ``design_system`` token each venue state paints with.
+VENUE_STATE_TOKENS = {
+    VENUE_STATE_VALIDATED: "SUCCESS",
+    VENUE_STATE_LOST: "ERROR",
+    VENUE_STATE_UNSET: "STATUS_NEUTRAL",
+}
+VENUE_STATE_COLOURS = {
+    VENUE_STATE_VALIDATED: ds.SUCCESS,
+    VENUE_STATE_LOST: ds.ERROR,
+    VENUE_STATE_UNSET: ds.STATUS_NEUTRAL,
+}
+VENUE_STATE_WORDS = {
+    VENUE_STATE_VALIDATED: "credentials validated",
+    VENUE_STATE_LOST: "API connection lost",
+    VENUE_STATE_UNSET: "no valid credentials",
+}
+VENUE_ROW_FORMAT = "{name} ({venue})"
+VENUE_ROW_STYLE = (
+    "color: {colour}; border: none; border-left: 3px solid {colour}; "
+    "background: " + ds.SURFACE_CONTROL + "; padding: 4px 8px; text-align: left;"
+)
+VENUE_ROW_TOOLTIP = "{name} — {words}. Press to enter credentials."
+VENUE_FORM_BOUND = "Enter credentials for {name}."
+VENUE_HAS_NO_FORM = "{name} has no credential form on this tab."
 
 LOCK_GROUP_TITLE = "Higher-TF Lock Settings"
 SMS_PROVIDER_GROUP_TITLE = "SMS Provider"
@@ -1465,6 +1498,80 @@ def add_group_title(wing: str) -> str:
     return STOCK_ADD_GROUP if wing == STOCK_WING else CRYPTO_ADD_GROUP
 
 
+def exchange_status_label() -> str:
+    """The heading above the Exchange Status panel, the same in both builds."""
+    return EXCHANGE_STATUS_LABEL
+
+
+def venue_state(venue_id: Any, states: Any = None) -> str:
+    """One venue's recorded state, ``VENUE_STATE_UNSET`` while nothing recorded one."""
+    held = states if isinstance(states, dict) else {}
+    found = str(held.get(str(venue_id or "").strip().lower()) or "")
+    return found if found in VENUE_STATE_TOKENS else VENUE_STATE_UNSET
+
+
+def venue_state_token(state: Any) -> str:
+    """The ``design_system`` token name one venue state resolves."""
+    return VENUE_STATE_TOKENS.get(str(state), VENUE_STATE_TOKENS[VENUE_STATE_UNSET])
+
+
+def venue_state_colour(state: Any) -> str:
+    """The colour one venue state draws."""
+    return VENUE_STATE_COLOURS.get(str(state), VENUE_STATE_COLOURS[VENUE_STATE_UNSET])
+
+
+def venue_row_style(state: Any) -> str:
+    """The declarations one Exchange Status row paints its state with."""
+    return VENUE_ROW_STYLE.format(colour=venue_state_colour(state))
+
+
+def exchange_status_rows(wing: Any, states: Any = None) -> tuple:
+    """Every venue ``venues_for_class`` answers for one sector, as drawn rows.
+
+    A row is ``(text, venue_id, state, colour, style, tooltip)``, and a sector
+    with no venue draws ``class_state``'s note under an empty venue id.
+    """
+    held = states if isinstance(states, dict) else {}
+    found = []
+    for venue in sorted(acs.venues_for_class(wing)):
+        state = venue_state(venue, held)
+        name = venue.capitalize()
+        found.append(
+            (
+                VENUE_ROW_FORMAT.format(name=name, venue=venue),
+                venue,
+                state,
+                venue_state_colour(state),
+                venue_row_style(state),
+                VENUE_ROW_TOOLTIP.format(name=name, words=VENUE_STATE_WORDS[state]),
+            )
+        )
+    if not found:
+        note = acs.class_state(wing)["note"]
+        state = VENUE_STATE_UNSET
+        found.append(
+            (note, "", state, venue_state_colour(state), venue_row_style(state), note)
+        )
+    return tuple(found)
+
+
+def exchange_status_lines(wing: Any, states: Any = None) -> tuple:
+    """The text of every Exchange Status row, in drawn order."""
+    return tuple(row[0] for row in exchange_status_rows(wing, states))
+
+
+def row_venue_id(wing: Any, at: Any, states: Any = None) -> str:
+    """The venue the row at ``at`` names, empty where that row names none."""
+    rows = exchange_status_rows(wing, states)
+    try:
+        found = int(at)
+    except (TypeError, ValueError):
+        return ""
+    if not 0 <= found < len(rows):
+        return ""
+    return str(rows[found][1])
+
+
 def listed_exchange_position(listed: Any, exchange_id: Any) -> int:
     """Where ``exchange_id`` already sits in ``listed``, or ``NO_MATCH_INDEX``.
 
@@ -1909,6 +2016,11 @@ class SettingsDialogModel:
         self.settings = settings
         self.status_log = status_log
         self.wing = wing_or_default(wing)
+        #: The sector the dialog was opened from, before `wing_or_default`
+        #: collapses it onto one of two wings. Only the Exchange Status
+        #: panel reads it.
+        self.asset_class = acs.normalise(wing)
+        self.venue_states: dict = {}
         self.validator = validator
         self.sound = sound
         self.encryptor = encryptor
@@ -1963,7 +2075,10 @@ class SettingsDialogModel:
             self.texts[name] = text
             self.styles[name] = style
             self.rows.append([tab, group, label, name])
-        self.texts["list_label"] = list_label_for(self.wing)
+        self.texts["list_label"] = exchange_status_label()
+        self.values["exchange_list"] = list(
+            exchange_status_lines(self.asset_class, self.venue_states)
+        )
         self.texts["add_group"] = add_group_title(self.wing)
         self.texts["banner"] = STOCK_BANNER_TEXT if self.wing == STOCK_WING else ""
         self.styles["banner"] = STOCK_BANNER_STYLE if self.wing == STOCK_WING else ""
@@ -2667,6 +2782,14 @@ def build_view_model(model: SettingsDialogModel) -> dict:
         "tooltips": dict(model.tooltips),
         "control_specs": [_plain(dict(one)) for one in CONTROL_SPECS],
         "exchange_items": [list(one) for one in exchange_items(model.wing)],
+        "exchange_status": {
+            "label": exchange_status_label(),
+            "asset_class": model.asset_class,
+            "rows": [
+                list(one)
+                for one in exchange_status_rows(model.asset_class, model.venue_states)
+            ],
+        },
         TA_ROWS: [list(one) for one in ta_rows(model.values)],
         "sound_test_buttons": [list(one) for one in SOUND_TEST_BUTTONS],
         "spacing": {
