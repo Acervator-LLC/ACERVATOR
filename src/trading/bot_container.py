@@ -170,9 +170,7 @@ class BotContainer:
         try:
             from ..exchange.market_rules_store import recorded_classes
 
-            named = str(
-                recorded_classes(self.config.exchange_id).get(symbol, "") or ""
-            )
+            named = str(recorded_classes(self.config.exchange_id).get(symbol, "") or "")
         except Exception as exc:
             logger.debug(
                 "Bot %s could not read the recorded class for %s: %s",
@@ -484,9 +482,7 @@ class BotContainer:
             getattr(self.stats, "position_value", 0.0),
         )
         if _opening and side == OrderSide.BUY:
-            self._refuse_order(
-                f"PRE-FLIGHT REJECTED: BUY {_opening} API not called."
-            )
+            self._refuse_order(f"PRE-FLIGHT REJECTED: BUY {_opening} API not called.")
 
         if _closing:
             _left = _rules.days_to_expiry(time.time())
