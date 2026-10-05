@@ -3634,20 +3634,22 @@ if _HAS_QT:
             return [one for one in held if serves(one.get("exchange_id", ""), wing)]
 
         def _build_wizard(self, wizard_class, exchanges: list, defaults: dict):
-            """The Bot Creation Wizard, handed each venue's recorded market rows.
+            """The Bot Creation Wizard, handed the pressed sector and each
+            venue's recorded market rows.
 
             The React wizard draws the market list from the payload alone, so the
             rows the local recording holds for the active asset class are passed
-            in; the Qt wizard fetches its own and ignores them.
+            in; the Qt wizard fetches its own and ignores them. Both are handed
+            the sector, so each opens on the layer New Bot was pressed on.
             """
             import inspect
 
             from .main_tabs.asset_class_surface import normalise
             from .main_tabs.bot_wizard_surface import recorded_market_rows
 
-            if "markets" not in inspect.signature(wizard_class).parameters:
-                return wizard_class(exchanges, defaults, self)
             _wing = normalise(getattr(self, "_asset_class", None))
+            if "markets" not in inspect.signature(wizard_class).parameters:
+                return wizard_class(exchanges, defaults, self, sector=_wing)
             rows = {
                 str(one.get("exchange_id", "")): recorded_market_rows(
                     one.get("exchange_id", ""), _wing
@@ -3655,7 +3657,7 @@ if _HAS_QT:
                 for one in exchanges
                 if one.get("exchange_id", "")
             }
-            return wizard_class(exchanges, defaults, self, markets=rows)
+            return wizard_class(exchanges, defaults, self, markets=rows, sector=_wing)
 
         def _create_bot(
             self,

@@ -1063,6 +1063,61 @@ MARKET_PRICE_KEY = "price"
 #: What divides the base from the quote in a recorded market symbol.
 MARKET_SYMBOL_SEPARATOR = "/"
 
+#: The sector a wizard opened with no sector holds, which keeps the crypto
+#: product list every bot built before the sectors was offered.
+SECTOR_DEFAULT = "crypto"
+
+#: The one venue ``CITED_UNIT_RULES`` cites a sector row for.
+SECTOR_RULE_VENUE = "coinbase"
+
+#: What the unit rule line says for each rule, naming the smallest move.
+UNIT_RULE_FRACTIONAL_TEXT = (
+    "This market divides, so the bot sizes in fractions of a unit."
+)
+UNIT_RULE_WHOLE_TEXT = "This market does not divide, so the bot sizes in whole units."
+UNIT_RULE_UNREAD_TEXT = (
+    "This venue published no size step for this market, so the smallest move is "
+    "unread."
+)
+
+#: What the two-unit minimum says where one unit's price is unread.
+POSITION_MINIMUM_NOTE_FORMAT = "A whole-unit position opens at {minimum} units."
+
+#: What the two-unit minimum says where one unit's price is read.
+POSITION_MINIMUM_COST_FORMAT = (
+    "A whole-unit position opens at {minimum} units, which cost "
+    "${needed:,.2f} at ${price:,.8f} a unit."
+)
+
+#: What the interval line says where ``100 / interval_pct`` is a whole number.
+INTERVAL_UNITS_FORMAT = "One unit equals one {interval:g}% interval at {units:g} units."
+
+#: What the interval line says where that figure carries a fraction, naming the
+#: next whole unit a whole-unit position can hold.
+INTERVAL_UNITS_PART_FORMAT = (
+    "One unit equals one {interval:g}% interval at {units:g} units, so a "
+    "whole-unit position reaches that interval at {whole} units."
+)
+
+#: What a position below the interval-matched size costs, said and not refused.
+COARSE_POSITION_FORMAT = (
+    "${balance:,.2f} buys {units:g} units, so one unit moves {share:g}% of the "
+    "position against a {interval:g}% interval. The bot still trades; every "
+    "move is coarser than the interval it was given."
+)
+
+#: The part each unit note is drawn under, one name per line.
+UNIT_RULE_NOTE = "unit_rule_note"
+UNIT_MINIMUM_NOTE = "unit_minimum_note"
+UNIT_INTERVAL_NOTE = "unit_interval_note"
+UNIT_COARSE_NOTE = "unit_coarse_note"
+UNIT_NOTES = (
+    UNIT_RULE_NOTE,
+    UNIT_MINIMUM_NOTE,
+    UNIT_INTERVAL_NOTE,
+    UNIT_COARSE_NOTE,
+)
+
 REFUSAL_WRONG_NUMBER = "a number field takes a number, not {kind}"
 REFUSAL_WRONG_CHECK = "a check box takes a whole number, not {kind}"
 REFUSAL_WRONG_TEXT = "a text field takes text, not {kind}"
@@ -1423,20 +1478,213 @@ def recorded_market_rows(venue: Any, asset_class: Any = "") -> list:
     return found
 
 
-def market_reason(rows: Any, market: Any) -> str:
-    """Why no built bot variant trades one market, empty while one does.
+def normalise_sector(name: Any) -> str:
+    """``asset_class_surface.normalise`` read for ``name``, ``SECTOR_DEFAULT``
+    where it is empty, so a wizard opened with no sector lists crypto."""
+    from .asset_class_surface import normalise
 
-    ``rows`` are the venue's recorded rule rows. The answer is
-    ``sizing.untradeable_reason`` at the market's own price, so the asset page
-    names a market it keeps in the list and Finish refuses.
+    held = normalise(name)
+    return held or SECTOR_DEFAULT
+
+
+def market_unit_rule(rows: Any, market: Any, sector: Any = "", venue: Any = "") -> str:
+    """The unit rule governing one market, through ``sizing.market_unit_rule``.
+
+    The market's own recorded ``amount_increment`` answers first and the
+    ``sector`` row answers only where the venue published no step, so a
+    tokenised metal in a whole-unit sector still reads as fractional.
     """
-    from ...trading.scrumming.sizing import untradeable_reason
+    from ...trading.scrumming.sizing import market_unit_rule as rule_for
 
     symbol = bag_text(market, MARKET_SYMBOL_KEY)
     if not symbol:
         return EMPTY_TEXT
     rules = rules_from_row(readable_bag(rows).get(symbol))
-    return untradeable_reason(rules, bag_number(market, MARKET_PRICE_KEY))
+    held = rule_for(
+        rules,
+        normalise_sector(sector),
+        str(venue or SECTOR_RULE_VENUE),
+    )
+    return str(held or EMPTY_TEXT)
+
+
+def sizes_in_whole_units(rule: Any) -> bool:
+    """True while ``rule`` is ``sizing.WHOLE_UNITS``."""
+    from ...trading.scrumming.sizing import WHOLE_UNITS
+
+    return str(rule) == WHOLE_UNITS
+
+
+def whole_unit_minimum() -> int:
+    """``sizing.WHOLE_UNIT_POSITION_MINIMUM``, the units a whole-unit position
+    opens at, read from the engine so the wizard states no second figure."""
+    from ...trading.scrumming.sizing import WHOLE_UNIT_POSITION_MINIMUM
+
+    return int(WHOLE_UNIT_POSITION_MINIMUM)
+
+
+def interval_unit_count(interval_pct: Any) -> Optional[float]:
+    """The units at which one unit equals one scrumming interval:
+    ``100 / interval_pct``.
+
+    None where ``interval_pct`` is not a positive finite number, which is the
+    same unknown the position lines answer for an unread figure.
+    """
+    if type(interval_pct) not in (int, float):
+        return None
+    held = float(interval_pct)
+    if not math.isfinite(held) or held <= 0.0:
+        return None
+    return 100.0 / held
+
+
+def whole_interval_units(interval_pct: Any) -> Optional[int]:
+    """``interval_unit_count`` raised to the next whole unit, because a
+    whole-unit position cannot hold a fraction of one."""
+    held = interval_unit_count(interval_pct)
+    if held is None:
+        return None
+    return int(math.ceil(held))
+
+
+def position_unit_count(balance_usd: Any, price: Any) -> Optional[float]:
+    """The units ``balance_usd`` buys at ``price``, None for either figure
+    unread or a price at or below zero."""
+    if type(balance_usd) not in (int, float) or type(price) not in (int, float):
+        return None
+    held, each = float(balance_usd), float(price)
+    if not math.isfinite(held) or not math.isfinite(each) or each <= 0.0:
+        return None
+    if held < 0.0:
+        return None
+    return held / each
+
+
+def unit_share_pct(units: Any) -> Optional[float]:
+    """The share of a position one unit moves: ``100 / units``.
+
+    None for a unit count that is not a positive finite number.
+    """
+    if type(units) not in (int, float):
+        return None
+    held = float(units)
+    if not math.isfinite(held) or held <= 0.0:
+        return None
+    return 100.0 / held
+
+
+def position_minimum_note(price: Any) -> str:
+    """The two-unit minimum a whole-unit position opens at, carrying what it
+    costs where ``price`` is read and the count alone where it is not."""
+    from ...trading.scrumming.sizing import (
+        WHOLE_UNIT_POSITION_MINIMUM,
+        whole_unit_position_usd,
+    )
+
+    needed = whole_unit_position_usd(price)
+    if needed is None:
+        return POSITION_MINIMUM_NOTE_FORMAT.format(minimum=WHOLE_UNIT_POSITION_MINIMUM)
+    return POSITION_MINIMUM_COST_FORMAT.format(
+        minimum=WHOLE_UNIT_POSITION_MINIMUM,
+        needed=needed,
+        price=float(price),
+    )
+
+
+def interval_units_note(interval_pct: Any) -> str:
+    """The position at which one unit equals one interval, empty where
+    ``interval_unit_count`` reads no figure."""
+    units = interval_unit_count(interval_pct)
+    whole = whole_interval_units(interval_pct)
+    if units is None or whole is None:
+        return EMPTY_TEXT
+    shown = round(units, 2)
+    if float(whole) == shown:
+        return INTERVAL_UNITS_FORMAT.format(interval=float(interval_pct), units=shown)
+    return INTERVAL_UNITS_PART_FORMAT.format(
+        interval=float(interval_pct), units=shown, whole=whole
+    )
+
+
+def coarse_position_note(balance_usd: Any, price: Any, interval_pct: Any) -> str:
+    """What a position below the interval-matched size costs, empty at or above
+    it and empty while either figure is unread.
+
+    The note states the coarseness and never refuses: the operator has ruled a
+    coarse position a real choice.
+    """
+    units = position_unit_count(balance_usd, price)
+    wanted = interval_unit_count(interval_pct)
+    if units is None or wanted is None:
+        return EMPTY_TEXT
+    if units + 1e-9 >= wanted:
+        return EMPTY_TEXT
+    share = unit_share_pct(units)
+    if share is None:
+        return EMPTY_TEXT
+    return COARSE_POSITION_FORMAT.format(
+        balance=float(balance_usd),
+        units=round(units, 4),
+        share=round(share, 2),
+        interval=float(interval_pct),
+    )
+
+
+def unit_rule_note(rule: Any, market_picked: Any = True) -> str:
+    """The sentence naming the smallest move one market's rule allows.
+
+    Empty while ``market_picked`` is false, so a bot picking no single market
+    draws no unit line at all.
+    """
+    from ...trading.scrumming.sizing import FRACTIONAL_UNITS, WHOLE_UNITS
+
+    if str(rule) == WHOLE_UNITS:
+        return UNIT_RULE_WHOLE_TEXT
+    if str(rule) == FRACTIONAL_UNITS:
+        return UNIT_RULE_FRACTIONAL_TEXT
+    return UNIT_RULE_UNREAD_TEXT if market_picked else EMPTY_TEXT
+
+
+def unit_notes(
+    rule: Any,
+    price: Any,
+    balance_usd: Any,
+    interval_pct: Any,
+    market_picked: Any = True,
+) -> dict[str, str]:
+    """Every unit line the params page draws, keyed by the name it draws under.
+
+    A market sizing in fractions carries the rule line alone, so the two-unit
+    minimum and the interval figures reach no bot that never quantises.
+    """
+    held = {name: EMPTY_TEXT for name in UNIT_NOTES}
+    held[UNIT_RULE_NOTE] = unit_rule_note(rule, market_picked)
+    if not sizes_in_whole_units(rule):
+        return held
+    held[UNIT_MINIMUM_NOTE] = position_minimum_note(price)
+    held[UNIT_INTERVAL_NOTE] = interval_units_note(interval_pct)
+    held[UNIT_COARSE_NOTE] = coarse_position_note(balance_usd, price, interval_pct)
+    return held
+
+
+def market_reason(rows: Any, market: Any, sector: Any = "", venue: Any = "") -> str:
+    """Why no built bot variant trades one market, empty while one does.
+
+    ``sizing.variant_holds_market`` reads ``rows``, ``sector`` and ``venue``,
+    so a whole-unit market the program holds a variant for keeps no refusal.
+    """
+    from ...trading.scrumming.sizing import untradeable_reason, variant_holds_market
+
+    symbol = bag_text(market, MARKET_SYMBOL_KEY)
+    if not symbol:
+        return EMPTY_TEXT
+    rules = rules_from_row(readable_bag(rows).get(symbol))
+    price = bag_number(market, MARKET_PRICE_KEY)
+    if variant_holds_market(
+        rules, normalise_sector(sector), str(venue or SECTOR_RULE_VENUE), price
+    ):
+        return EMPTY_TEXT
+    return untradeable_reason(rules, price)
 
 
 def volume_text(volume: Any) -> str:
@@ -1518,9 +1766,15 @@ class BotWizardModel:
         defaults: Any = None,
         markets: Any = None,
         timeframes: Any = None,
+        sector: Any = "",
     ) -> None:
-        """Lay out the five pages from the venue list and the stored defaults."""
+        """Lay out the five pages from the venue list and the stored defaults.
+
+        ``sector`` is the layer the operator pressed New Bot on, and it keeps
+        the target list to that sector's products.
+        """
         self.calls: list[list] = []
+        self.sector = normalise_sector(sector)
         self.exchanges = [readable_bag(one) for one in (readable_list(exchanges) or [])]
         self.defaults = readable_bag(defaults)
         self.markets = readable_markets(markets)
@@ -1553,6 +1807,8 @@ class BotWizardModel:
         self.target_items: list[list] = []
         self.target_hues: list[int] = []
         self.target_reasons: list[str] = []
+        self.target_unit_rules: list[str] = []
+        self.target_prices: list[Optional[float]] = []
         self.target_index = -1
         self.alt_items: list[list] = []
         self.asset_status = EMPTY_TEXT
@@ -1816,7 +2072,7 @@ class BotWizardModel:
         if found not in self.markets:
             self.calls.append([MARKET_FETCH, found])
             self.fetched.append(found)
-            self.markets[found] = []
+            self.markets[found] = recorded_market_rows(found, self.sector)
         self.filter_assets()
 
     def filter_assets(self) -> None:
@@ -1836,20 +2092,28 @@ class BotWizardModel:
         self.target_items = []
         self.target_hues = []
         self.target_reasons = []
+        self.target_unit_rules = []
+        self.target_prices = []
         recorded = recorded_venue_rows(found)
         for row in kept:
             label = pair_label(row)
             named = bag_text(row, MARKET_BASE_KEY)
-            reason = market_reason(recorded, row)
+            reason = market_reason(recorded, row, self.sector, found)
             if reason:
                 label = UNTRADEABLE_LABEL_FORMAT.format(label=label, reason=reason)
             self.target_items.append([label, named])
             self.target_hues.append(icon_hue(named))
             self.target_reasons.append(reason)
+            self.target_unit_rules.append(
+                market_unit_rule(recorded, row, self.sector, found)
+            )
+            self.target_prices.append(bag_number(row, MARKET_PRICE_KEY))
             self.calls.append([COMBO_ADD_ITEM, "asset_target", label, named])
         if not kept:
             self.target_items.append([NO_PAIRS_TEXT, NO_PAIRS_DATA])
             self.target_reasons.append(EMPTY_TEXT)
+            self.target_unit_rules.append(EMPTY_TEXT)
+            self.target_prices.append(None)
             self.calls.append(
                 [COMBO_ADD_ITEM, "asset_target", NO_PAIRS_TEXT, NO_PAIRS_DATA]
             )
@@ -1875,6 +2139,35 @@ class BotWizardModel:
         if 0 <= self.target_index < len(self.target_reasons):
             return self.target_reasons[self.target_index]
         return EMPTY_TEXT
+
+    def target_unit_rule(self) -> str:
+        """The unit rule the pair the target list shows demands, empty while no
+        pair is picked."""
+        if 0 <= self.target_index < len(self.target_unit_rules):
+            return self.target_unit_rules[self.target_index]
+        return EMPTY_TEXT
+
+    def target_price(self) -> Optional[float]:
+        """One unit's price for the pair the target list shows, None where the
+        list carries no price for it."""
+        if 0 <= self.target_index < len(self.target_prices):
+            return self.target_prices[self.target_index]
+        return None
+
+    def is_whole_unit(self) -> bool:
+        """True while the picked pair sizes in whole units."""
+        return sizes_in_whole_units(self.target_unit_rule())
+
+    def unit_notes(self) -> dict:
+        """The unit lines the parameter page draws for the picked pair, read at
+        the target balance and the interval the page holds."""
+        return unit_notes(
+            self.target_unit_rule(),
+            self.target_price(),
+            self.numbers["target_balance"],
+            self.numbers["scrumming_interval"],
+            bool(self.target_data()) and not self.is_extractor(),
+        )
 
     def creatable(self) -> bool:
         """Whether a bot can be created on the pair the target list shows."""
@@ -1918,11 +2211,14 @@ class BotWizardModel:
         self.calls.append([MESSAGE_BOX_INFORMATION, *self.info_box])
 
     def asset_config(self) -> dict:
-        """The venue, base and target the asset page collected."""
+        """The venue, base, target, sector and unit rule the asset page
+        collected, so the bot is created under the rule its market demands."""
         return {
             "exchange_id": self.exchange_id_at(self.exchange_index),
             "base_currency": self.combo_text("base").strip().upper(),
             "target_asset": self.target_data() or EMPTY_TEXT,
+            "asset_class": self.sector,
+            "sizing_mode": self.target_unit_rule(),
         }
 
     # -- the pool page -------------------------------------------------
@@ -2393,6 +2689,8 @@ CONFIG_FIELDS = (
     "exchange_id",
     "base_currency",
     "target_asset",
+    "asset_class",
+    "sizing_mode",
     "visibility",
     "aggressive_trading",
 )
@@ -2609,6 +2907,7 @@ def asset_page_state(model: BotWizardModel) -> dict:
         "target_items": [list(one) for one in model.target_items],
         "target_hues": list(model.target_hues),
         "target_reasons": list(model.target_reasons),
+        "target_unit_rules": list(model.target_unit_rules),
         "target_index": model.target_index,
         "target_data": model.target_data(),
         "target_reason": model.target_reason(),
@@ -2620,6 +2919,24 @@ def asset_page_state(model: BotWizardModel) -> dict:
         "target_icon_size_px": list(TARGET_COMBO_ICON_SIZE_PX),
         "info_button_style": INFO_BUTTON_STYLE,
         "config": model.asset_config(),
+    }
+
+
+def unit_page_state(model: BotWizardModel) -> dict:
+    """The sector the wizard holds, the picked market's unit rule and every
+    unit line the parameter page draws."""
+    return {
+        "sector": model.sector,
+        "rule": model.target_unit_rule(),
+        "whole": model.is_whole_unit(),
+        "price": model.target_price(),
+        "notes": model.unit_notes(),
+        "note_names": list(UNIT_NOTES),
+        "minimum": whole_unit_minimum(),
+        "interval_units": interval_unit_count(model.numbers["scrumming_interval"]),
+        "whole_interval_units": whole_interval_units(
+            model.numbers["scrumming_interval"]
+        ),
     }
 
 
@@ -2667,10 +2984,16 @@ def build_view_model(
     markets: Any = None,
     steps: Optional[dict] = None,
     timeframes: Any = None,
+    sector: Any = "",
 ) -> dict:
-    """Give back the whole wizard state as one serialisable dict."""
+    """Give back the whole wizard state as one serialisable dict.
+
+    ``sector`` is the layer New Bot was pressed on, and it decides both the
+    target list and the unit rule the pages state.
+    """
     model = drive_model(
-        BotWizardModel(exchanges, defaults, markets, timeframes), dict(steps or {})
+        BotWizardModel(exchanges, defaults, markets, timeframes, sector),
+        dict(steps or {}),
     )
     return {
         "method": METHOD,
@@ -2704,6 +3027,7 @@ def build_view_model(
             "params_subtitle_grid": PARAMS_SUBTITLE_GRID,
         },
         "asset_page": asset_page_state(model),
+        "unit_page": unit_page_state(model),
         "pool_page": pool_page_state(model),
         "phantom_page": phantom_page_state(model),
         "timeframes": {
@@ -2783,6 +3107,7 @@ def view_model(params: dict) -> dict:
         params.get("markets"),
         steps,
         params.get("timeframes"),
+        params.get("sector"),
     )
 
 
