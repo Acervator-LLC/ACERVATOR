@@ -18,6 +18,13 @@ No venue was contacted to write this page. Every venue fact below was read from
 the publisher's own page outside this repository and handed to the page on
 2026-09-24. Every tree fact carries its file and line.
 
+This page is the venue level on its own. The three nested levels an operator
+walks — the sector he presses, the venues that sector reaches, and the products
+each venue serves under it — are in
+[16-sector-exchange-product-tree.md](16-sector-exchange-product-tree.md). That
+page also marks which of the venues listed here this platform has actually
+reached, and which are research rather than connections.
+
 ## What a scrum asks of a venue
 
 A scrum computes a size and submits it. Two steps stand between that size and
