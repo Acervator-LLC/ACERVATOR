@@ -138,6 +138,10 @@ EXTRA_VENUE_CLASSES = {
 
 #: The two articles a sentence takes before a sector name, and the first
 #: letters taking the second.
+#: The last recording read, under its ``recording_stamp``. One Live tab refresh
+#: asks ``venue_classes`` once a bot, and the file is 235 KB.
+_RECORDED_CACHE: dict = {}
+
 ARTICLE_DEFAULT = "a"
 ARTICLE_VOWEL = "an"
 ARTICLE_VOWEL_LETTERS = "aeio"
@@ -370,16 +374,38 @@ def retired_onto(name: Any) -> str:
     return RETIRED_CLASSES.get(asked, asked)
 
 
+def recording_stamp() -> tuple:
+    """The recording file's path, modification time and size, or an empty tuple
+    while no file is there.
+
+    ``recorded_venue_classes`` reads the recording again only when this moves.
+    """
+    try:
+        from ...exchange.market_rules_store import store_path
+    except ImportError:
+        return ()
+    try:
+        target = store_path()
+        held = target.stat()
+    except OSError:
+        return ()
+    return (str(target), held.st_mtime_ns, held.st_size)
+
+
 def recorded_venue_classes(document: Any = None) -> dict:
     """Every venue in the ``market_rules_store`` recording mapped to the asset
     classes its recorded rows carry under ``CLASS_FIELD``.
 
-    ``document`` stands in for ``load_document``, which asks no venue.
+    ``document`` stands in for ``load_document`` and skips the
+    ``recording_stamp`` cache, and neither asks a venue.
     """
     try:
         from ...exchange.market_rules_store import CLASS_FIELD, load_document
     except ImportError:
         return {}
+    stamp = () if isinstance(document, dict) else recording_stamp()
+    if stamp and _RECORDED_CACHE.get("stamp") == stamp:
+        return dict(_RECORDED_CACHE["classes"])
     body = document if isinstance(document, dict) else load_document()
     declared = set(asset_classes())
     found: dict = {}
@@ -394,6 +420,9 @@ def recorded_venue_classes(document: Any = None) -> dict:
             if named in declared:
                 held.add(named)
         found[str(venue).strip().lower()] = frozenset(held)
+    if stamp:
+        _RECORDED_CACHE["stamp"] = stamp
+        _RECORDED_CACHE["classes"] = dict(found)
     return found
 
 
