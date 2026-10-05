@@ -706,3 +706,182 @@ react bundle after   desktop, 11 files: 3 shell files and the renderer
 A build that names a renderer folder which is not on disk ships no renderer,
 and its Status tab raises the missing asset again. That is how the reading is
 known to be able to fail.
+
+### The crash log and the five writers that fill it
+
+`~/.acervator_logs/crash_<date>_<time>.log` is the file that holds a fault. One
+file per run. The Watchdog copies it into every post-mortem bundle, beside the
+console log and the fault-handler log.
+
+Five writers reach it. `main.py` installs all five at import, before the window
+exists.
+
+| writer | what reaches it | installed at |
+|---|---|---|
+| `sys.excepthook` | an exception no `except` caught | `main.py` |
+| `threading.excepthook` | the same, on a worker thread | `main.py` |
+| `sys.unraisablehook` | a failure the interpreter cannot propagate | `main.py` |
+| the Qt message handler | every message Qt emits | `main.py` |
+| `_CrashLogHandler` | every log record at ERROR and above | `main.py` |
+
+The fifth is the one that sees a fault the other four cannot. A broad `except`
+that reports through `logger.error` and returns reaches no excepthook at all.
+`logging_engine` clears `acervator.propagate`, so the handler attaches to two
+logger names.
+
+`main.py` — the two attach points
+
+```python
+# Two disjoint attach points: `logging_engine` clears `acervator.propagate`.
+CRASH_LOG_HANDLER_LOGGERS = ("", "acervator")
+```
+
+A record that carries no exception of its own is written with the exception
+live at the call site, labelled `exception live at log time`. A record that
+carries one is labelled `exception declared on the record`.
+
+#### A fault that cannot be printed is still named
+
+`traceback.format_exception` reads each frame's source line. It raises when the
+module it needs is gone, and an exception whose own `__str__` raises defeats it
+as well. Both happened on the operator's build, and the handler died without
+writing.
+
+`_crash_record` names the exception type and its message first, through
+`_safe_text`, and adds the frames second. The type and the message therefore
+reach the file when no frame can be read. A frame that cannot be read is
+written as `<frame unreadable>` and the walk continues past it.
+
+#### A repeating entry is counted, not repeated
+
+An entry equal to the one before it is counted. The count lands as a `REPEAT`
+entry when a different entry arrives, at `CRASH_REPEAT_RELEASE_AT`, or at exit.
+The first copy of the entry is always written immediately.
+
+```
+[..] [QT_WARNING] [thread=MainThread] DirectWrite: CreateFontFaceFromHDC() failed ...
+[..] [REPEAT]     [thread=MainThread] previous QT_WARNING entry repeated 58 more times
+```
+
+No category is silenced and no distinct entry is dropped. One font warning that
+repeats for the life of the process costs two lines instead of hundreds.
+
+#### Read off the crash log
+
+One crash log per run, read back off disk. A fault whose message cannot be
+rendered, raised through the installed `sys.excepthook`:
+
+```
+                       crash log lines    the exception named in it
+before                        2           no
+after                        16           yes
+```
+
+The same fault caught by a broad `except` and reported with `logger.error`:
+
+```
+before                        2           no
+after                        15           yes
+```
+
+Fifty-nine copies of the font warning, then the fault:
+
+```
+before                       63           no    (59 of the 63 are the warning)
+after                        19           yes   (1 warning, 1 REPEAT line)
+```
+
+The `before` column is the operator's own file: 63 lines, 59 of them the font
+warning, three boot lines, one `QFont::setPointSize` warning, and no crash.
+
+The hardest case, with the frame source cache broken and the message
+unrenderable at once, so nothing about the exception can be formatted:
+
+```
+before                        2           no
+after                         9           yes   (all three frames named)
+```
+
+### 2026-10-04 - #410 - the periodic collection reads the young objects on eleven ticks in twelve
+
+Python's own automatic memory collector is switched off at startup. A timer on
+the thread that draws the window collects in its place, every five seconds.
+That has not changed, and the switch-off has not changed. What changed is how
+deep each collection reads.
+
+A collection has three depths. The shallowest reads only the objects made since
+the last collection. The deepest reads every live object the program holds, and
+so touches every page of memory the program occupies. Until this change every
+tick ran the deepest one, twelve times a minute.
+
+Now eleven ticks in twelve run the shallowest read, and the twelfth runs the
+deepest. A collection still happens every five seconds, so nothing is collected
+less often than before. One full read a minute replaces twelve.
+
+`main.py` - the depth each tick reads
+
+```python
+def periodic_gc_generation(tick: int) -> int:
+    """Return the gc generation the periodic collection reads on tick, counted from 1."""
+    return 2 if tick % GC_FULL_EVERY_TICKS == 0 else 0
+```
+
+The timer still belongs to the thread that draws the window, so the collector
+still never runs on an exchange worker thread. That is the whole reason the
+automatic collector is switched off, and it is untouched.
+
+#### Measured on the collection depth
+
+Both sides were driven on one machine, on a heap holding 343,283 tracked
+objects built by importing all 487 modules under `src`, with the collector's own
+`gc.DEBUG_STATS` report supplying the object counts and `time.perf_counter` the
+clock. Each side ran one twelve-tick round, which is one minute of the real
+timer.
+
+```
+                     seconds per collection      objects read per collection
+before               0.079518 mean               352,491 mean
+                     0.090910 worst              352,502 worst
+
+after                0.015458 mean                37,630 mean
+                     0.081259 worst              352,503 worst
+
+per minute           0.954211s  ->  0.185494s    4,229,892  ->  451,568
+```
+
+The deepest read costs the same as it always did; the worst single tick is that
+read, and it is unchanged. What falls is how many times a minute the program
+pays for it. Objects read per minute falls by 9.37 times, and that figure is the
+one the page-fault rate follows. The seconds column moves with whatever else the
+machine is doing - the same pair of rounds read a ratio of 4.05, 4.64 and 5.14
+across three runs with the live platform sharing the machine - while the objects
+column read 9.37 every time.
+
+The timer was then driven through a real Qt event loop for twenty-four ticks.
+Twenty-two shallow reads and two deep ones ran, `gc.get_stats()` reported
+twenty-four collections, every one of them ran on the thread that draws the
+window, and the automatic collector stayed off throughout.
+
+A third depth, read every fourth tick, was measured and left out. It held the
+same number of objects as leaving it out did - a peak of 126,004 above a quiet
+heap either way - and cost more time, so it earns nothing.
+
+`gc.set_threshold` cannot be part of this. While the automatic collector is
+switched off the thresholds are never read. Measured: the most aggressive
+threshold the interpreter accepts, then 20,000 unreachable reference cycles
+made, gives **0** collections with the collector off and **858** with it on.
+
+#### What this does not prove
+
+The crash the switch-off guards against cannot be shown to stay away by any
+reading taken here. That needs his own machine, his own fleet, and hours of
+running. What to watch for: a hard exit with no traceback, and a new file under
+`~/.acervator_logs/` named `faulthandler_*.log` naming a thread that is not the
+one drawing the window.
+
+The deepest read now runs once a minute, so reference cycles that outlive one
+shallow read wait up to a minute instead of five seconds. Measured on a heap
+driven at 9,000 such objects every five seconds, the peak held 126,004 objects
+above a quiet heap against 26,998 before. Objects not in a reference cycle are
+freed the instant nothing points at them, and that is untouched. What to watch
+for: a resident set that climbs through a minute and does not fall back.

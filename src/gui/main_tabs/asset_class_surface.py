@@ -80,41 +80,78 @@ LEGACY_CLASS_WORDS = {"stock": "stocks", "equities": "stocks", "equity": "stocks
 
 #: The classes a trading layer stands behind. A class outside this set draws
 #: its state and offers no venue.
-LAYERED_CLASSES = frozenset({"crypto", "stocks"})
+LAYERED_CLASSES = frozenset(
+    {"crypto", "stocks", "commodities", "forex", "indices", "futures_perps"}
+)
 
 #: Display names. A class absent here is titled from its own key.
+#: ``layer_card`` indexes ``LAYER_LABEL``, so a layered class absent here
+#: refuses the React page.
 CLASS_NAMES = {
     "crypto": "Crypto",
     "stocks": "Stock",
     "derivatives": "Derivatives",
     "forex": "Forex",
     "commodities": "Commodities",
+    "indices": "Indices",
+    "futures_perps": "Futures / Perps",
 }
 
 #: What a venue is called in each class. Equities are brokered, not exchanged.
 CLASS_VENUE_NOUNS = {"stocks": "Broker"}
 DEFAULT_VENUE_NOUN = "Exchange"
 
-#: Accents, every one an existing design system token.
+#: Accents, every one an existing design system token. ``futures_perps`` keeps
+#: the accent ``derivatives`` carried, which no live class draws.
 CLASS_ACCENTS = {
     "crypto": ds.LAYER_CRYPTO,
     "stocks": ds.LAYER_STOCK,
     "derivatives": ds.SECONDARY,
     "forex": ds.INFO,
     "commodities": ds.WARNING,
+    "indices": ds.ACCENT_GOLD,
+    "futures_perps": ds.SECONDARY,
 }
 DEFAULT_ACCENT = ds.STATUS_NEUTRAL
 
-#: Venues serving a class other than the one their own id implies. Coinbase
-#: lists dated futures and perpetuals, read by ata_asset_maps.futures_listings.
-EXTRA_VENUE_CLASSES = {"coinbase": ("derivatives",)}
+# OVERTAKEN, quoted whole:
+#   "Venues serving a class other than the one their own id implies. Coinbase's
+#   products endpoint answers 1000 EQUITY products and labels 21 futures with a
+#   commodity underlying; ``derivatives`` resolves onto crypto through
+#   ``RETIRED_CLASSES``."
+# True today: the same entry also names forex, indices and futures_perps, which
+# ``market_asset_class`` answers for 20, 6 and 168 of the venue's products.
+#: Venues serving a class other than the one their own id implies. Coinbase's
+#: products endpoint answers 1000 EQUITY products and labels 21 futures with a
+#: commodity underlying; ``derivatives`` resolves onto crypto through
+#: ``RETIRED_CLASSES``.
+EXTRA_VENUE_CLASSES = {
+    "coinbase": (
+        "derivatives",
+        "stocks",
+        "commodities",
+        "forex",
+        "indices",
+        "futures_perps",
+    )
+}
+
+#: The two articles a sentence takes before a sector name, and the first
+#: letters taking the second.
+#: The last recording read, under its ``recording_stamp``. One Live tab refresh
+#: asks ``venue_classes`` once a bot, and the file is 235 KB.
+_RECORDED_CACHE: dict = {}
+
+ARTICLE_DEFAULT = "a"
+ARTICLE_VOWEL = "an"
+ARTICLE_VOWEL_LETTERS = "aeio"
 
 NO_VENUE_NOTE = "No configured venue serves {name} yet."
 NO_LAYER_NOTE = "{name} has no trading layer yet."
 SERVED_NOTE = "{count} venue(s) serve {name}."
 EMPTY_LABEL = "{name} — no venue yet"
 EMPTY_TOOLTIP = "{note} Nothing is added for this class."
-ADD_TOOLTIP = "Add a {name} {noun_lower} connection"
+ADD_TOOLTIP = "Add {article} {name} {noun_lower} connection"
 
 
 def asset_classes() -> tuple:
@@ -295,6 +332,16 @@ def display_name(name: Any) -> str:
     return CLASS_NAMES.get(key, key.replace("_", " ").title())
 
 
+def article(label: Any) -> str:
+    """The article a sentence takes before one display name.
+
+    Answers ``ARTICLE_VOWEL`` while the name opens on a letter in
+    ``ARTICLE_VOWEL_LETTERS``, so the Indices layer reads "an Indices".
+    """
+    first = str(label or "").strip()[:1].lower()
+    return ARTICLE_VOWEL if first in ARTICLE_VOWEL_LETTERS else ARTICLE_DEFAULT
+
+
 def venue_noun(name: Any) -> str:
     """What one asset class calls a venue."""
     return CLASS_VENUE_NOUNS.get(normalise(name), DEFAULT_VENUE_NOUN)
@@ -314,31 +361,121 @@ def crypto_venues() -> frozenset:
     return frozenset(SUPPORTED_EXCHANGES)
 
 
-def venue_classes(venue_id: Any) -> frozenset:
-    """Every asset class one venue serves.
+def retired_onto(name: Any) -> str:
+    """The live class one retired or legacy class name resolves onto.
 
-    A venue carries the class its own registry lists it under, plus every
-    class ``EXTRA_VENUE_CLASSES`` adds to it.
+    A name neither ``LEGACY_CLASS_WORDS`` nor ``RETIRED_CLASSES`` holds is
+    answered unchanged, which ``asset_classes`` then drops.
+    """
+    from src.trading.ata_spm import RETIRED_CLASSES
+
+    asked = str(name or "").strip().lower()
+    asked = LEGACY_CLASS_WORDS.get(asked, asked)
+    return RETIRED_CLASSES.get(asked, asked)
+
+
+def recording_stamp() -> tuple:
+    """The recording file's path, modification time and size, or an empty tuple
+    while no file is there.
+
+    ``recorded_venue_classes`` reads the recording again only when this moves.
+    """
+    try:
+        from ...exchange.market_rules_store import store_path
+    except ImportError:
+        return ()
+    try:
+        target = store_path()
+        held = target.stat()
+    except OSError:
+        return ()
+    return (str(target), held.st_mtime_ns, held.st_size)
+
+
+def recorded_venue_classes(document: Any = None) -> dict:
+    """Every venue in the ``market_rules_store`` recording mapped to the asset
+    classes its recorded rows carry under ``CLASS_FIELD``.
+
+    ``document`` stands in for ``load_document`` and skips the
+    ``recording_stamp`` cache, and neither asks a venue.
+    """
+    try:
+        from ...exchange.market_rules_store import CLASS_FIELD, load_document
+    except ImportError:
+        return {}
+    stamp = () if isinstance(document, dict) else recording_stamp()
+    if stamp and _RECORDED_CACHE.get("stamp") == stamp:
+        return dict(_RECORDED_CACHE["classes"])
+    body = document if isinstance(document, dict) else load_document()
+    declared = set(asset_classes())
+    found: dict = {}
+    for venue, rows in body.items():
+        if not isinstance(rows, dict):
+            continue
+        held = set()
+        for row in rows.values():
+            if not isinstance(row, dict):
+                continue
+            named = retired_onto(row.get(CLASS_FIELD, ""))
+            if named in declared:
+                held.add(named)
+        found[str(venue).strip().lower()] = frozenset(held)
+    if stamp:
+        _RECORDED_CACHE["stamp"] = stamp
+        _RECORDED_CACHE["classes"] = dict(found)
+    return found
+
+
+def venue_classes(venue_id: Any, recorded: Any = None) -> frozenset:
+    """Every asset class one venue could serve: the class its own registry
+    lists it under, every class ``EXTRA_VENUE_CLASSES`` adds through
+    ``retired_onto``, and every class its recorded rows carry.
+
+    ``recorded`` stands in for ``recorded_venue_classes``, so one read of the
+    recording serves a whole panel.
     """
     asked = str(venue_id or "").strip().lower()
     if not asked:
         return frozenset()
-    found = set(EXTRA_VENUE_CLASSES.get(asked, ()))
+    found = {retired_onto(one) for one in EXTRA_VENUE_CLASSES.get(asked, ())}
     if asked in EQUITY_VENUES:
         found.add("stocks")
-    elif asked in crypto_venues():
+    if asked in crypto_venues():
         found.add("crypto")
+    held = recorded if isinstance(recorded, dict) else recorded_venue_classes()
+    found |= set(held.get(asked, frozenset()))
     return frozenset(found & set(asset_classes()))
 
 
-def venues_for_class(name: Any) -> frozenset:
-    """Every venue id serving one asset class.
+def venue_served_classes(venue_id: Any, document: Any = None) -> frozenset:
+    """Every asset class one venue's recorded rows carry, the recording alone
+    and no registry.
 
-    A venue whose ``venue_classes`` holds two classes is answered for both.
+    A venue ``recorded_venue_classes`` holds no rows for answers empty, while
+    ``venue_classes`` still answers what that venue could serve.
+    """
+    asked = str(venue_id or "").strip().lower()
+    if not asked:
+        return frozenset()
+    return frozenset(recorded_venue_classes(document).get(asked, frozenset()))
+
+
+def venues_for_class(name: Any) -> frozenset:
+    """Every venue id serving one asset class, a venue whose ``venue_classes``
+    holds two classes answered for both.
+
+    A venue ``recorded_venue_classes`` alone knows is answered for the classes
+    its recorded rows carry.
     """
     key = normalise(name)
-    known = set(crypto_venues()) | set(EQUITY_VENUES) | set(EXTRA_VENUE_CLASSES)
-    return frozenset(vid for vid in known if key in venue_classes(vid))
+    recorded = recorded_venue_classes()
+    known = (
+        set(crypto_venues())
+        | set(EQUITY_VENUES)
+        | set(EXTRA_VENUE_CLASSES)
+        | set(recorded)
+    )
+    return frozenset(vid for vid in known if key in venue_classes(vid, recorded))
 
 
 def serves(venue_id: Any, name: Any) -> bool:
@@ -416,7 +553,11 @@ def add_exchange_tooltip(name: Any) -> str:
     state = class_state(name)
     if not state["served"]:
         return EMPTY_TOOLTIP.format(note=state["note"])
-    return ADD_TOOLTIP.format(name=state["name"], noun_lower=state["noun"].lower())
+    return ADD_TOOLTIP.format(
+        article=article(state["name"]),
+        name=state["name"],
+        noun_lower=state["noun"].lower(),
+    )
 
 
 def add_exchange_enabled(name: Any) -> bool:

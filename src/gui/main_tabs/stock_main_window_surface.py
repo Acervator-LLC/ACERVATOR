@@ -34,6 +34,7 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
+from ...trading.ta_engine import DEFAULT_WEIGHTS
 from .. import design_system as ds
 
 METHOD = "stock_main_window.state"
@@ -308,10 +309,11 @@ REFRESH_INTERVAL_MS = 2000
 TAB_REFRESH_SECONDS = 4
 
 NEW_BOT_TITLE = "New Accumulation Bot"
-NEW_BOT_TEXT = (
+#: The voter count is filled from DEFAULT_WEIGHTS, never typed in.
+NEW_BOT_TEXT_FORMAT = (
     "Create an Accumulation Trading bot for stocks?\n\n"
     "• Harvest-Fold cycle (same as crypto mode)\n"
-    "• 7-indicator TA voting engine\n"
+    "• {indicator_count}-indicator TA voting engine\n"
     "• MR Inspector + Boosted Fold\n"
     "• Smart Wire cross-compounding\n"
     "• Market hours enforcement\n"
@@ -337,14 +339,28 @@ WEBHOOK_STOPPED_MESSAGE = "Webhook server stopped"
 WEBHOOK_STARTED_FORMAT = "Webhook server started on port {port}"
 
 ABOUT_TITLE = "About"
-ABOUT_TEXT = (
-    "Acervator — Stock Trading v3.1\n\n"
+#: The version is read from the program, never typed in.
+ABOUT_TEXT_FORMAT = (
+    "Acervator — Stock Trading v{version}\n\n"
     "TradingView Webhook Integration\n"
     "Alpaca Broker Support\n"
     "Signal • DCA • Swing • Grid Bots\n"
     "Market Hours Awareness\n"
     "Shared Analytics & Risk Management"
 )
+
+
+def running_version() -> str:
+    """Returns ``src.__version__`` for ``ABOUT_TEXT_FORMAT``."""
+    from src import __version__
+
+    return str(__version__)
+
+
+def about_text() -> str:
+    """``ABOUT_TEXT_FORMAT`` filled with ``running_version``."""
+    return ABOUT_TEXT_FORMAT.format(version=running_version())
+
 
 WINDOW_READY_MESSAGE = "Stock Trading window initialized"
 REFRESH_CRASH_FORMAT = "STOCK DASHBOARD: refresh crashed: %s"
@@ -630,18 +646,24 @@ def paper_trader_failure_text(error: Any) -> str:
     return PAPER_TRADER_FAILURE_FORMAT.format(error=error)
 
 
+def new_bot_text() -> str:
+    """``NEW_BOT_TEXT_FORMAT`` filled with the number of voters
+    ``DEFAULT_WEIGHTS`` declares."""
+    return NEW_BOT_TEXT_FORMAT.format(indicator_count=len(DEFAULT_WEIGHTS))
+
+
 def new_bot_box() -> dict:
     """The Ok or Cancel box the operator answers before a bot is made."""
     return {
         "title": NEW_BOT_TITLE,
-        "text": NEW_BOT_TEXT,
+        "text": new_bot_text(),
         "buttons_value": NEW_BOT_BUTTONS_VALUE,
     }
 
 
 def about_box() -> dict:
     """The box the Help menu shows."""
-    return {"title": ABOUT_TITLE, "text": ABOUT_TEXT}
+    return {"title": ABOUT_TITLE, "text": about_text()}
 
 
 class BotConfigSource:
@@ -1278,7 +1300,7 @@ def build_view_model(
         },
         "new_bot": {
             "title": NEW_BOT_TITLE,
-            "text": NEW_BOT_TEXT,
+            "text": new_bot_text(),
             "buttons_value": NEW_BOT_BUTTONS_VALUE,
             "ok_value": OK_BUTTON_VALUE,
             "cancel_value": CANCEL_BUTTON_VALUE,
@@ -1294,7 +1316,7 @@ def build_view_model(
             "no_bridge": NO_BRIDGE_MESSAGE,
             "webhook_stopped": WEBHOOK_STOPPED_MESSAGE,
         },
-        "about": {"title": ABOUT_TITLE, "text": ABOUT_TEXT},
+        "about": about_box(),
         "formats": {
             "market_text": MARKET_TEXT_FORMAT,
             "market_style": MARKET_STYLE_FORMAT,

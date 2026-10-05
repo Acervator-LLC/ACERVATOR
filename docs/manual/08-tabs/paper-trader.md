@@ -930,6 +930,41 @@ flowchart LR
     live --> strip
 ```
 
+### AMMO reads the paper fleet's own total
+
+AMMO on the strip is every paper bot's Target Delta added together, in whole
+dollars and with no sign, so a bot above its target cannot cancel one below.
+It draws green while more paper bots hold more than their target and red while
+more hold less, which is the rule the Trading tab page gives the column. The
+fleet source publishes the total and the two bot counts the colour reads.
+
+`src/paper/fleet_source.py` — `aggregate_stats`
+
+```python
+ammo_readings.append((position_value, bot.live_target_usd, bot.target_usd))
+...
+"total_target_delta_usd": ammo["total_target_delta_usd"],
+"bots_scrum_territory": ammo["bots_scrum_territory"],
+"bots_fold_territory": ammo["bots_fold_territory"],
+```
+
+One call sums those three figures for every fleet source, so the Paper
+Trader's total, the Simulator's and Live's cannot be worked out differently.
+
+`src/trading/target_bands.py` — `fleet_ammo`
+
+```python
+target_usd = ammo_target(live_target, configured_target)
+if target_usd > 0:
+    total_usd += abs(target_delta(position_value, target_usd))
+    where = target_territory(position_value, target_usd)
+```
+
+A reading takes the grown target wherever a paper bot carries one, which is the
+target that bot's own Ammo cell is measured against. The strip's total is
+therefore the sum of the column above it. A paper bot with no target
+contributes nothing to either figure.
+
 ### Import Live Fleet fills the tables and the strip
 
 Import Live Fleet copies the stored bots of one exchange out of the live fleet
@@ -961,6 +996,111 @@ The tab starts empty. The fleet source answers the records the paper fleet
 file holds and nothing else, so with no paper fleet there is no venue, no row
 and no figure until Import Live Fleet loads one. On the next launch the tab
 reads the paper fleet file once and draws the imported rows from it.
+
+### The file's top level carries the wires
+
+Beside `bots`, the paper fleet file carries `smart_wires` and
+`smart_wire_ledgers`, the two keys `bot_state.json` carries for the live fleet.
+The Paper tab holds one fleet and no run mode, so both keys sit at the file's top
+level rather than inside a mode's entry the way the Simulator nests them.
+
+`PaperFleetSource.hold_wire_manager` takes a `PaperWireManager`'s rows onto the
+fleet and `PaperFleetSource.wire_manager` builds the manager back at the next
+launch, so a paper wire survives a restart the way a live one does. Stop Paper
+Run holds the run's manager and saves the file, so what a wire carried during a
+run is on disk before the tab is closed.
+
+A file written before these keys existed reads as a fleet with no wire, and a
+build that does not know the keys reads the same bots, the same venues and the
+same rows it read before. Both were driven: the unchanged tree's reader and this
+one gave an identical reading of a file carrying both keys, and the same
+comparison reported a difference the moment one value was changed by hand.
+
+`src/paper/fleet_source.py` — the write
+
+```python
+        payload = {
+            "saved_at": time.time(),
+            "saved_at_human": datetime.now().strftime(SAVED_AT_HUMAN_FORMAT),
+            "bot_count": len(self._records),
+            "bots": dict(self._records),
+            WIRES_KEY: [dict(one) for one in self._wires],
+            WIRE_LEDGERS_KEY: [dict(one) for one in self._wire_ledgers],
+        }
+```
+
+Deleting a paper bot drops its ledger row and every wire row naming it, the way
+the live state file drops a removed bot's, so no route is left pointing at a bot
+the fleet no longer holds.
+
+### A fold's growth travels the wires to another paper bot
+
+A paper bot can send part of a fold's growth to another paper bot. A wire names a
+source, a target and a percentage. The moment a paper fold compounds its growth
+into the source's target balance, the wire's share of that same figure is
+credited to the other bot. The source keeps its own growth whole and the share is
+new money at the destination, which is how the live fold route behaves.
+
+The share lands in the target's standing fold tranches, split evenly, the way
+wire credits land on a live bot. A paper balance opens on the target's first
+worked tick, so a share arriving before that is parked on its ledger and spread
+over the tranches the target holds when it opens, or over the first tranche its
+own scrum builds. The ledger carries the lifetime sent, the lifetime received,
+the provenance per funder and the parked pool.
+
+`PaperWireManager` in `src/paper/paper_wire.py` owns the topology and one ledger
+per paper bot.
+
+| verb | what it does |
+|---|---|
+| `register_wire` | sets the source-to-target percentage, from 0 up to 100 |
+| `unregister_wire` | drops one route |
+| `attach_bot` | holds the fake balance of an open paper bot a share can reach |
+| `release_bot` | gives that balance back when the run ends |
+| `distribute_fold_profit` | moves each wire's share of one fold's growth |
+| `land_parked_credits` | spreads a parked pool over standing tranches |
+| `export_wires`, `import_wires` | the routes the paper fleet file carries |
+| `export_ledgers`, `import_ledgers` | the ledgers the paper fleet file carries |
+
+`src/paper/paper_run.py` — the fold hands its growth on
+
+```python
+    growth = grow_target(bot, balance, units, slices, float(price), int(candle_ts_ms))
+    if wires is not None and growth > 0.0:
+        route_fold_growth(wires, bot.bot_id, growth, float(price))
+```
+
+One fold driven over an empty scratch home, two bots at a $200.0000 target, a
+scrum at $110.00 and a fold at $95.00, with one wire at 40 per cent between them:
+
+```
+the fold's growth on the source       6.7773
+the wire's rate                         40.0 per cent
+the share that leaves                   2.7109
+the target's fold queue before         49.7000
+the target's fold queue after          52.4109
+the source's lifetime sent              2.7109
+the target's lifetime received          2.7109
+```
+
+The same pair ticked over a whole price series sends four times. The source's own
+walk is unchanged by the wire, 5 scrums and 4 folds either way, and the target
+ends holding more of its asset because the wired money bought more on its folds.
+
+```
+                          no wire       a wire at 40 per cent
+source scrums, folds      5, 4          5, 4
+source end target       249.3815      249.3815
+target end units          2.8997        3.1297
+target lifetime received  0.0000       19.7526
+```
+
+A paper wire reaches paper money only. The manager holds one ledger per paper bot
+and delivers nothing to an id it has no ledger for, so a wire pointed at a live
+bot or at a simulated bot books no transfer and reports that the target has no
+ledger. That was driven against a real live bot id and a real simulated bot id:
+both routes answered `target bot has no ledger`, no transfer was booked, and
+both state files read the same digest before and after.
 
 ### A loaded bot reads IDLE
 
@@ -2623,5 +2763,183 @@ CORNER_BUTTONS = (
     (START_RUN_ACTION, START_RUN_TEXT),
 )
 ```
+
+## 2026-10-04 - #1103 - a pushed candidate spawns paper bots
+
+The Market Inspector draws a Push to Paper button beside Push to Sim, on an
+open Opposing Trades entry and in the topology preview. One press spawns one
+paper scrumming bot per market the candidate names and registers the wires
+between them.
+
+The operator's ruling:
+
+> "For Paper Trader, the pushed topology must spawn the corresponding paper
+> scrumming bots. Paper tab does not have multiple run modes. It pretends to
+> trade against actual exchange data and records the result."
+
+> "If the wiring does not travel then its not a complete or valid topology
+> push."
+
+### Paper has no run mode, and none is added
+
+The Simulator holds a candidate under its Back Test mode and leaves that mode
+in force. Paper has no mode to land a candidate under and gains none here. A
+pushed bot is simply held, idle, the way a bot the wizard created is held, and
+Start Paper Run works it against the venue's own data.
+
+`src/paper/fleet_source.py` — the push, on the fleet source itself
+
+```python
+def push_candidate(
+    self,
+    candidate: Any,
+    exchange_id: str = "",
+    ta_timeframe: str = "",
+) -> dict:
+```
+
+### The venue is Paper's own, and so is the timeframe
+
+The Simulator resolves each pushed market to the venue its Stone Tablet was
+recorded on. Paper reads the venue live, so it needs no tablet: every pushed
+bot takes the venue `PaperExchange.venue` answers and the timeframe
+`BotConfig` declares as its own default.
+
+`src/paper/fleet_source.py` — the timeframe is read off the dataclass
+
+```python
+PUSHED_TIMEFRAME_DEFAULT = str(
+    next(
+        one.default
+        for one in dataclass_fields(BotConfig)
+        if one.name == "ta_timeframe"
+    )
+)
+```
+
+A pushed market keeps the quote its symbol names. `BTC/USD` becomes a bot on
+`BTC/USD` and `BTC/USDC` becomes a bot on `BTC/USDC`. A symbol naming no pair
+spawns nothing, and one market named twice spawns one bot.
+
+### The Target Balance is checked before a bot is held
+
+A topology proposal that names no dollar figure reaches the push as a zero, and
+a zero takes the same 200 the Bot Wizard offers, read off `BotConfig`. Every
+other unusable figure refuses the whole push instead of holding a bot that
+cannot trade: a true or false in place of a dollar amount, an infinity, a
+not-a-number, a negative figure, and any value that is not a number at all.
+
+`src/paper/fleet_source.py` — what one pushed market's Target Balance may be
+
+```python
+def pushed_target_usd(value: Any) -> Optional[float]:
+```
+
+Driven on the real push, each of those five answered its own refusal with no
+bot held and no wire registered. Without the check an infinity and a
+not-a-number each became a bot whose Target Balance read zero, and a true
+became a bot trading against one dollar.
+
+### The wires travel with the bots
+
+Each wire is registered on the fleet's own `PaperWireManager` between the bot
+ids the push created, and `hold_wire_manager` puts the rows on the fleet so the
+next `save` carries them in the paper fleet file.
+
+`src/paper/fleet_source.py` — the wires that applied
+
+```python
+def register_pushed_wires(manager: Any, wires: Any, bot_ids: Any) -> list:
+```
+
+A wire that cannot travel refuses the whole push. Five gaps do it: a wire end
+naming no market, both ends naming the one market, an end naming a market the
+push did not create, the one pair named twice, and a rate outside the range
+`register_wire` takes. Each refusal spawns nothing and registers nothing.
+
+A wire row the push cannot read at all counts as naming no market, so it is
+refused rather than dropped. One pair named twice is refused for the same
+reason: a pair holds one rate, so keeping the second row would report two
+wires where the fleet holds one.
+
+`src/paper/fleet_source.py` — the refusal for one pair named twice
+
+```python
+PUSH_WIRE_TWICE_FORMAT = (
+    "{source} to {target} is named twice, and one pair holds one rate"
+)
+```
+
+The count the push reports is therefore the count the fleet holds.
+
+`src/paper/fleet_source.py` — the four wire refusals
+
+```python
+PUSH_WIRE_UNNAMED_TEXT = "a wire names no market at one of its ends"
+PUSH_WIRE_UNHELD_FORMAT = "{source} to {target}: nothing was pushed for {asset}"
+```
+
+### What the Activity Log carries
+
+A push that lands writes the spawned line and, when the candidate carried
+wires, the wired line. A refusal writes its own line and nothing else moves.
+No line names a run mode.
+
+`src/paper/fleet_source.py` — the line a landed push writes
+
+```python
+PUSH_SPAWNED_FORMAT = (
+    "Pushed {count} paper bot(s) on {venue}, trading the venue's own data: "
+    "{assets}."
+)
+```
+
+A press that reaches no Paper tab is refused by the window, which names the
+missing tab and spawns nothing.
+
+`src/gui/paper/paper_trading_tab_surface.py` — the refusal with no tab
+
+```python
+PUSH_NO_PAPER_TAB_TEXT = (
+    "Push to Paper refused: the Paper tab did not build, so no paper bot was "
+    "spawned."
+)
+```
+
+### A pushed bot is a paper record and nothing else
+
+It reaches the paper fleet file alone. No live bot is created, no order is
+placed and the live engine and the live logs see nothing of it. A pushed wire
+is the same: it is registered on `PaperWireManager` and never on the live
+`SmartWireManager`.
+
+### What the driven push answered
+
+The push was driven from the Inspector press through the window's handler to
+the Paper tab, with the venue read blocked at its edge. A two-market candidate
+carrying one wire between the two was the input.
+
+| read at the Paper tab | before this entry | after it |
+|---|---|---|
+| paper bots held afterwards | 0 | 2 |
+| wire rows held afterwards | 0 | 1 |
+
+Both bots read `coinbase`, `1h`, `scrumming` and `idle`, and both were reached
+again through `PaperBotManager.get_bot`. The before column is the same script
+run against the tree as it stood, where the Inspector offers no Push to Paper
+at all.
+
+### One sentence this entry overtakes
+
+It is quoted whole and kept where it stands, on
+[the Market Inspector page](market-inspector.md), with the sentence that is
+true today beneath it.
+
+> "The Paper Trader has no mode a candidate could land under, so no push
+> targets it."
+
+The Paper Trader still has no mode a candidate could land under, and a push
+targets it anyway: the candidate's bots are spawned on Paper's own venue rather
+than held under a mode.
 
 Back to [the subsystem index](README.md).

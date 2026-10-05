@@ -135,6 +135,11 @@ the rest of the session, and only a restart brings it back.
 self.setWindowTitle(window_title(key))
 ```
 
+The capture above predates the two added sectors. Its square carries four
+segments where the running window now carries six, and its title names a layer
+the same way. Everything else in the capture stands. Replacing it needs a fresh
+screenshot of the running platform.
+
 #### The screen itself
 
 **Functional.** One method builds this whole screen. It makes one page per
@@ -154,6 +159,85 @@ self._trading_stack.addWidget(self._make_unlayered_page())
 self._trading_stack.setCurrentIndex(acs.layer_page("crypto"))
 ```
 
+OVERTAKEN, and the sentences above are kept as written. Every asset class has its
+own trading layer. The stack holds four layers in taxonomy order and keeps the
+card page behind them, so Commodities and Forex each draw their own empty state
+instead of sharing one card.
+
+`src/gui/main_tabs/trading_tab.py` — one layer per layered class
+
+```python
+for layered in acs.layered_classes():
+    page, bar, store, card = _make_layer(layered, acs.accent(layered))
+    self._class_layers[layered] = {
+        "page": page,
+        "tabs": bar,
+        "exchange_tabs": store,
+        "placeholder": card,
+    }
+    self._trading_stack.addWidget(page)
+```
+
+The taxonomy names the four classes a layer stands behind.
+
+`src/gui/main_tabs/asset_class_surface.py` — the classes a layer stands behind
+
+```python
+LAYERED_CLASSES = frozenset({"crypto", "stocks", "commodities", "forex"})
+```
+
+OVERTAKEN, and the sentence and block above are kept as written. Six sectors are
+declared and every one stands behind its own layer, so the stack holds six layers
+in taxonomy order and keeps the card page behind them. Indices and Futures / Perps
+each draw their own empty state.
+
+`src/gui/main_tabs/asset_class_surface.py` — the sectors a layer stands behind
+
+```python
+LAYERED_CLASSES = frozenset(
+    {"crypto", "stocks", "commodities", "forex", "indices", "futures_perps"}
+)
+```
+
+Sector is the operator's word for an investment product category, and these six
+are the categories the venue's own market list draws.
+
+> "We will need to add the two additional Sectors (really mean that as investment
+> product categories...its my invention or renaming) which are Indices and
+> Futures / Perps."
+
+Each sector draws the stack page its position in the taxonomy names, and paints
+its empty state in its own accent. Pressing its segment is what shows the page.
+
+| sector | the page it draws | its accent |
+|---|---|---|
+| Crypto | page 0 | `#00ccaa` |
+| Stock | page 1 | `#6699ff` |
+| Commodities | page 2 | `#ffaa00` |
+| Forex | page 3 | `#4fc3ff` |
+| Indices | page 4 | `#ffd700` |
+| Futures / Perps | page 5 | `#ff00aa` |
+
+No venue serves Indices or Futures / Perps yet, so each page reads
+`No <sector> Exchanges Configured` and its Add Exchange button cannot act.
+
+A sector is the first of three nested levels. What each sector's venue list holds
+today, and what products a venue serves under it, are in
+[16-sector-exchange-product-tree.md](16-sector-exchange-product-tree.md), with
+the count behind every empty row.
+
+The hint under that card takes its article from the sector name, so the Indices
+page reads "Add an Indices exchange to begin trading" and the other five keep
+"a". The Qt page and the React page read the one sentence.
+
+`src/gui/main_tabs/asset_class_surface.py` — the article a sector name takes
+
+```python
+def article(label: Any) -> str:
+    first = str(label or "").strip()[:1].lower()
+    return ARTICLE_VOWEL if first in ARTICLE_VOWEL_LETTERS else ARTICLE_DEFAULT
+```
+
 **Design intention.** The stack holds one page per trading layer and one card for
 every class without one. A class with no layer shares that card rather than
 getting an empty layer, because an empty layer would offer a venue list it cannot
@@ -165,6 +249,19 @@ serve. Which page a class draws is stated once, in the taxonomy.
 layered = layered_classes()
 key = normalise(name)
 return layered.index(key) if key in layered else len(layered)
+```
+
+OVERTAKEN, and the paragraph above is kept as written. The stack holds one page per
+asset class and keeps the card page last, which no live class now reaches. An empty
+layer offers no venue list. It draws its empty state and an Add Exchange button that
+cannot act while no venue serves the class.
+
+`src/gui/main_tabs/asset_class_surface.py` — what the button answers for a class
+
+```python
+def add_exchange_enabled(name: Any) -> bool:
+    """Whether Add Exchange can act for one asset class."""
+    return class_state(name)["served"]
 ```
 
 The builder counts its own faults when it finishes and reports them on the System
@@ -1754,11 +1851,137 @@ base currency    the fleet runs   per bot
 target asset     the fleet runs   one asset per bot
 ```
 
+OVERTAKEN, and the paragraphs and the block above are kept as written. The wizard
+opens on the sector pressed on the Live tab, and the three rows on this page are
+that sector's. The target list is the products the recording holds under that
+sector, so a Stocks bot is never offered a crypto pair and a Crypto bot is never
+offered a ticker.
+
+`src/gui/main_tabs/bot_wizard_surface.py` — the sector the wizard holds
+
+```python
+def normalise_sector(name: Any) -> str:
+    from .asset_class_surface import normalise
+
+    held = normalise(name)
+    return held or SECTOR_DEFAULT
+```
+
+The sector also decides the smallest order the bot may place. The venue publishes
+a size step for each market, and that step answers first; the sector answers only
+where the venue published none. Coinbase lists a tokenised metal and a dated
+contract under the same Commodities tab, and one divides while the other does not,
+so the sector alone cannot say.
+
+`src/trading/scrumming/sizing.py` — which rule governs one market
+
+```python
+def market_unit_rule(
+    recorded: Any, asset_class: str = "", venue: str = ""
+) -> Optional[str]:
+    declared = recorded_unit_rule(recorded)
+    if declared is not None:
+        return declared
+    return unit_rule(asset_class, venue)
+```
+
+Driven with every outbound connection refused, on a recording carrying one market
+per sector, the wizard answers this for the market picked:
+
+| sector | market | the rule the market demands |
+|---|---|---|
+| Crypto | a spot pair | fractional |
+| Stocks | a share | whole |
+| Commodities | a tokenised metal | fractional |
+| Commodities | a dated contract | whole |
+| Forex | a tokenised fiat pair | whole |
+| Forex | a pair the venue divides | fractional |
+| Indices | an index contract | whole |
+| Futures / Perps | a perpetual contract | whole |
+
+The two Commodities rows and the two Forex rows are the point. Both sectors carry
+markets of both kinds, and the row the sector cites never overrides the step the
+venue published.
+
+A sector with no configured venue opens no wizard. Pressing New Bot there writes
+one line to the status log instead. All six sectors have a venue today, so all
+six open.
+
+`src/gui/main_window.py` — what New Bot answers with no venue for the sector
+
+```python
+exchanges = self._matching_exchanges()
+if not exchanges:
+    self._status_log.log(NO_MATCHING_VENUE_LOG, "warning")
+    return
+```
+
 ### Trading Parameters
 
 Next we come to the combined Scrumming Bot configuration page which has several sections for fine tuning how the specific instance behaves. Given that Acervator, at the time of this writing, is still in active development the description for each setting should be seen as a design intention should any issues be encountered.
 
 ![The Trading Parameters group of the wizard's parameter page.](p18-i0.png)
+
+OVERTAKEN, and the paragraph and the picture above are kept as written. Four lines
+sit under Scrum Fold Ratio in the Scrumming Settings group, and a market that
+divides draws only the first of them.
+
+`src/gui/main_tabs/bot_wizard_surface.py` — the four lines
+
+```python
+UNIT_RULE_NOTE = "unit_rule_note"
+UNIT_MINIMUM_NOTE = "unit_minimum_note"
+UNIT_INTERVAL_NOTE = "unit_interval_note"
+UNIT_COARSE_NOTE = "unit_coarse_note"
+```
+
+The first line names the smallest move. The second names the two units a
+whole-unit position opens at and what they cost at one unit's price. The third
+names the position at which one unit equals one Opposing Trade Interval, which is
+`100` divided by the interval: at a 5% interval that is 20 units. The fourth is
+drawn only below that size, and it says what the coarseness costs.
+
+A smaller position is accepted. The wizard says the cost and Finish still creates
+the bot. Being priced out of a fine position is the market's nature, the same way
+being priced out of a market is.
+
+`src/gui/main_tabs/bot_wizard_surface.py` — the position at which one unit is one
+interval
+
+```python
+def interval_unit_count(interval_pct: Any) -> Optional[float]:
+    if type(interval_pct) not in (int, float):
+        return None
+    held = float(interval_pct)
+    if not math.isfinite(held) or held <= 0.0:
+        return None
+    return 100.0 / held
+```
+
+Driven on a share priced at $250 with a 5% interval, the four lines read:
+
+```
+This market does not divide, so the bot sizes in whole units.
+A whole-unit position opens at 2 units, which cost $500.00 at $250.00000000 a unit.
+One unit equals one 5% interval at 20 units.
+$1,000.00 buys 4 units, so one unit moves 25% of the position against a 5%
+interval. The bot still trades; every move is coarser than the interval it was
+given.
+```
+
+Raising the Target Balance to $5,000 drops the fourth line. 20 units at $250 is
+$5,000, which is the size at which one unit and one interval are the same move.
+
+Both builds draw the same four lines. The React page reads them from the same
+payload the Qt page reads, so neither can carry a word the other does not.
+
+`src/gui/web/bot_wizard.js` — where the React page draws them
+
+```javascript
+if (name === PARAMS_PAGE_NAME) {
+  return rows.concat(groups).concat(unitNotes());
+}
+```
 
 Order Visibility - Trades are listed on the order books or tracked internally to the platform.
 
@@ -3728,6 +3951,40 @@ changes nothing yet either way. `TimeframeCoordinator.create_lock` is the only
 code that reads it, nothing calls `create_lock`, and so the lock list stays
 empty and `is_locked` answers no on every pass.
 
+**What the page delivers to a new bot.** All three figures on this page reach
+the bot that is built. One helper selects them and the constructor call carries
+them, so the lock count arrives as the coordinator's own count.
+
+| the page writes | the constructor argument | read on the new bot at |
+| --- | --- | --- |
+| `enable_phantoms` | `enable_phantoms` | `_phantoms_enabled` |
+| `phantom_timeframes` | `phantom_timeframes` | `_phantom_timeframes` |
+| `lock_candle_count` | `lock_candle_count` | `_coordinator.lock_candle_count` |
+
+| step | module | symbol |
+| ---- | ------ | ------ |
+| select the three | `src/trading/container/config.py` | `phantom_init_kwargs` |
+| hand them over | `src/gui/main_window.py` | the `ScrummingBot` call |
+| hold the count | `src/trading/scrumming_bot.py` | `ScrummingBot.__init__` |
+
+Driven on a one-hour Coinbase bot with the box ticked, `1d` picked and the spin
+box at seven, against the page's own defaults of clear, nothing and two:
+
+```
+                      page   new bot
+enable_phantoms       True   True
+phantom_timeframes    1d     1d
+lock_candle_count     7      7
+```
+
+A config carrying no count leaves the argument out, so the coordinator keeps its
+own figure of two. An Extractor holds no coordinator and takes no count.
+
+The count still creates no lock, because `create_lock` still has no caller. What
+it reaches is the attribute the state file saves, the restore path writes back
+and the Bot Settings phantom page shows, so each of those reads the figure the
+page was set to rather than two.
+
 **Design intention.** The engine behind this page is unfinished. The Indicator
 Voting Panel section of this manual records that phantom bots are still in
 active development and that related features do not yet work, so nothing is
@@ -4657,29 +4914,32 @@ if current != "MainThread":
 ```
 
 **Design intention.** The pane should tell you what the platform did with the
-bytes it just paid for. One line does the opposite. The candle fetch writes a
-Data usage note naming a seven-indicator engine and lists seven names. The
-engine builds twelve and the Voting Panel shows all twelve, so the log tells
-you something the screen next to it contradicts.
+bytes it just paid for. The candle fetch writes a Data usage note naming how
+many voters the engine builds and naming every one of them, taken from the
+engine's own declaration, so the note agrees with the Voting Panel beside it.
 
-`src/exchange/ccxt_connector.py` — `get_ohlcv`, what it writes today
-
-```python
-data_usage="Fed into 7-indicator TA engine (BB, Vortex, MACD, StochRSI, Ichimoku, Volume, Slingshot) for voting",
-```
-
-*Proposed, not present:*
+`src/exchange/ccxt_connector.py` — `ohlcv_data_usage`, what the fetch writes
 
 ```python
-data_usage=(
-    "Fed into the "
-    f"{len(DEFAULT_WEIGHTS)}-indicator TA engine for voting"
-),
+def ohlcv_data_usage() -> str:
+    voters = ", ".join(DEFAULT_WEIGHTS)
+    return f"Fed into {len(DEFAULT_WEIGHTS)}-indicator TA engine ({voters}) for voting"
 ```
+
+The pane draws this today:
+
+```
+  Data usage: Fed into 12-indicator TA engine (bollinger_bands, vortex, macd,
+  stochastic_rsi, ichimoku, volume, slingshot, adx, kaufman_er, supertrend,
+  zscore, rsi) for voting
+```
+
+The pane draws it on one unwrapped line; it is broken over three here to fit
+the page.
 
 `DEFAULT_WEIGHTS` in `src/trading/ta_engine.py` is the one declaration of the
-voter set, so a count taken from it cannot drift again. Issue #417 carries
-this.
+voter set, so a count taken from it cannot drift again. A thirteenth voter
+reaches the note with no edit to the connector.
 
 #### Two mechanisms with no control on this tab
 
@@ -4810,6 +5070,60 @@ The dialog in `src/gui/settings_dialog.py` has no such method yet. The proposal
 adds one rather than changing the call shape, so the wing argument already
 passed here keeps working exactly as it does.
 
+#### Add Exchange opens the Settings dialog on the Exchanges tab
+
+**Functional.** The press opens Settings with the Exchanges tab already showing.
+The tab is named at the point of opening, so the tab order is untouched and the
+File menu's Settings still opens where it always did.
+
+`src/gui/main_window.py` — `_add_exchange`
+
+```python
+dlg = _cls(self._settings, self._status_log, self, wing=_wing)
+dlg.show_tab(EXCHANGE_TAB)
+dlg.exec()
+```
+
+**The tab is found by its title, never by its position.** A tab added in front
+of Exchanges does not move which tab the press lands on.
+
+`src/gui/settings_dialog.py` — `show_tab`
+
+```python
+for at in range(book.count()):
+    if book.tabText(at) == title:
+        book.setCurrentIndex(at)
+        return
+```
+
+Both builds answer the same title on every route. Driven in a live window:
+
+| route | asset class | the tab shown |
+| ----- | ----------- | ------------- |
+| Add Exchange, corner button | Crypto | Exchanges |
+| Add Exchange, corner button | Stock | Exchanges |
+| Exchange menu, Add Exchange | Crypto | Exchanges |
+| File menu, Settings | Crypto | User |
+
+Commodities and Forex carry no Add Exchange button of their own, and a press
+from the Exchange menu under either class is refused before a dialog is built.
+
+OVERTAKEN, and the sentences above are kept as written. Commodities and Forex each
+carry two Add Exchange buttons of their own, on their own layer: the corner button
+on the tab bar and the one on the empty-state card. Both read the class name and
+both are dead while no venue serves the class, so a press under either class is
+still refused before a dialog is built. Driven in a live window with a venue
+serving Commodities, the layer's own button opened the dialog on the Exchanges tab.
+
+`src/gui/main_window.py` — the press the guard refuses
+
+```python
+_wing = normalise(getattr(self, "_asset_class", None))
+if not add_exchange_enabled(_wing):
+    self._status_log.log(class_state(_wing)["note"], "warning")
+    return
+```
+
 **The exchange row in the Electron shell.** The shell draws one tab button per
 configured exchange, and the screen under the button is drawn by
 `exchange_tab.js`. A layer shows its empty card only while it holds no
@@ -4825,6 +5139,16 @@ for entry in entries or []:
         continue
     layer = "stock" if is_equity_exchange(exchange_id) else "crypto"
     split[layer][exchange_id] = exchange_display_name(holder)
+```
+
+OVERTAKEN, and the block above is kept as written. The shell's layer names come
+from the same taxonomy the Qt stack reads, so an equity venue routes to the stocks
+layer under that name and the shell draws one layer per asset class.
+
+`src/gui/main_tabs/trading_tab_surface.py` — the layer an equity venue routes to
+
+```python
+layer = "stocks" if is_equity_exchange(exchange_id) else "crypto"
 ```
 
 **One caption for one exchange.** The caption on a tab comes from a single
@@ -5301,6 +5625,34 @@ ASSET_CLASSES = (
 )
 ```
 
+OVERTAKEN, and the block above is kept as written. The taxonomy holds six
+sectors, so the square divides into six rectangles, three across and two down,
+which is the count table's six row.
+
+`src/trading/ata_spm.py` — the taxonomy the group reads
+
+```python
+ASSET_CLASSES = (
+    CLASS_CRYPTO,
+    CLASS_STOCKS,
+    CLASS_COMMODITIES,
+    CLASS_FOREX,
+    CLASS_INDICES,
+    CLASS_FUTURES_PERPS,
+)
+```
+
+OVERTAKEN, and the Functional paragraph above is kept as written. The side is not
+68 pixels and is not a typed figure. It is the column count times the widest
+sector name's room plus its padding, with a floor of 34 pixels a segment.
+
+Measured offscreen with 172 font families loaded, at ten pixels bold:
+
+| sectors | widest name | its room | segment | square side |
+|---|---|---|---|---|
+| four | Commodities | 44 px | 56 px | 112 px |
+| six | Futures / Perps | 56 px | 68 px | 204 px |
+
 **The square takes no spare width.** Its side is a declared number, so no slot of
 the header row takes the width the figures leave. Each part draws at the width its
 own text asks for, down to its floor, and the row inserts empty space before the
@@ -5367,6 +5719,18 @@ A class with no trading layer still takes a layer title, because the title names
 active class and not the page. The sentence about the missing layer is the card's own
 note.
 
+OVERTAKEN, and the table and the paragraph above are kept as written. Commodities
+draws stack page 2 and Forex page 3, each its own trading layer with its own empty
+state. The card page sits last at page 4 and no live class reaches it. Read in a
+live window by pressing each segment:
+
+| class | stack page | window title | what the page draws |
+|---|---|---|---|
+| Crypto | 0 | `Acervator — CRYPTO LAYER` | `No Crypto Exchanges Configured` |
+| Stock | 1 | `Acervator — STOCK LAYER` | `No Stock Exchanges Configured` |
+| Commodities | 2 | `Acervator — COMMODITIES LAYER` | `No Commodities Exchanges Configured` |
+| Forex | 3 | `Acervator — FOREX LAYER` | `No Forex Exchanges Configured` |
+
 **A retired class name reaches the class that holds its markets.** The taxonomy names
 the pair, and the group reads that name rather than carrying its own copy, so a
 selection stored under an older taxonomy still opens on the right class.
@@ -5415,6 +5779,16 @@ standards the top level is the **asset class**, and a sector is the tier below i
 GICS names sectors inside equities. S&P GSCI names sectors inside commodities. The
 group therefore selects an asset class. Sectors stay the tier below, where the
 ATA-SMP scanner uses them.
+
+OVERTAKEN, and the paragraph above is kept as written. Sector is his word for the
+top level, and it is his invention rather than a published term.
+
+> "really mean that as investment product categories...its my invention or
+> renaming"
+
+Every screen and every page of this manual calls the top level a sector. The
+code's own names keep the asset-class spelling, because `sector` already names
+the tier below in the scanner's maps and one word cannot name both tiers.
 
 **The choice survives a restart.** The class is written into settings on every press
 and read back when the group is built.
@@ -5466,6 +5840,51 @@ if asked in EQUITY_VENUES:
 elif asked in crypto_venues():
     found.add("crypto")
 ```
+
+OVERTAKEN, and the block above is kept as written. Two lines of it changed. A
+venue id now takes every class it serves rather than stopping at the first, and
+a class name an earlier taxonomy used is resolved onto the live class holding
+it instead of being dropped.
+
+`src/gui/main_tabs/asset_class_surface.py` — `venue_classes` today
+
+```python
+found = {retired_onto(one) for one in EXTRA_VENUE_CLASSES.get(asked, ())}
+if asked in EQUITY_VENUES:
+    found.add("stocks")
+if asked in crypto_venues():
+    found.add("crypto")
+```
+
+OVERTAKEN, and the table above is kept as written. Coinbase serves three
+classes, so the Commodities button can act and the table's last two rows read
+differently.
+
+| class | the button reads | it can act | venues |
+|---|---|---|---|
+| Crypto | `＋ Add Crypto Exchange` | yes | 15 |
+| Stock | `＋ Add Stock Broker` | yes | 10 |
+| Commodities | `＋ Add Commodities Exchange` | yes | 1 |
+| Forex | `Forex — no venue yet` | no | 0 |
+
+**Coinbase is the first venue on three layers at once.** Its tab is seated on
+the Crypto layer, the Stock layer and the Commodities layer, and each layer
+drops its Get Started card when the tab arrives. Pressing a class moves the
+Live stack to that class's own layer.
+
+`src/gui/main_window.py` — the layers one venue's tab is seated on
+
+```python
+wanted = [
+    name
+    for name in self._served_layers(exchange_id)
+    if name in layers and exchange_id not in layers[name]["exchange_tabs"]
+]
+```
+
+**Forex draws its empty card still.** No connected venue serves a currency
+pair, so the Forex layer keeps `No Forex Exchanges Configured` and its button
+refuses the press.
 
 **One venue list, read from one place.** Nine equity venue ids are declared once and
 six files read them. Order matters to the pages and membership matters to the layers:
@@ -6077,6 +6496,13 @@ fleet around it comes back.
 |---|---|
 | Lock duration (candles) | `lock_candle_count` is no field on `BotConfig` and no argument of `ScrummingBot.__init__`. The phantom coordinator holds an attribute of that name, and Bot Settings writes it there on a running bot. Nothing calls `TimeframeCoordinator.create_lock`, the one reader of that attribute, so the figure changes no decision on a running bot either. |
 | Profit Folding, on an Extractor | `BotCreationWizard.get_bot_config` writes the flag False for an Extractor. The field is Scrumming-only, so the factory refuses it on an Extractor config, and no control types it. |
+
+**The lock row reaches a new bot as well.** `lock_candle_count` is a keyword
+argument of `ScrummingBot.__init__`, and `phantom_init_kwargs` in
+`src/trading/container/config.py` carries it beside the other two, so the
+figure the phantom page was set to becomes the new bot's coordinator count. The
+Profit Folding row above stands as written: the field is Scrumming-only and no
+control types it.
 
 **Two the wizard collects that a new bot does read.** `enable_phantoms` and
 `phantom_timeframes` reach `ScrummingBot.__init__` as arguments from

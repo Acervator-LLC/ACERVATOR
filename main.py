@@ -178,6 +178,7 @@ import sys  # noqa: E402
 _check_stale_dist_binary()
 
 import asyncio
+import atexit
 import faulthandler
 import logging
 import os
@@ -269,75 +270,222 @@ def _get_crash_log_path() -> Path:
     return _CRASH_LOG_PATH
 
 
+# Reentrant: a crash handler that deadlocks on itself records nothing at all.
+_CRASH_LOG_LOCK = threading.RLock()
+_CRASH_REPEAT_KEY: Optional[tuple[str, str]] = None
+_CRASH_REPEAT_COUNT = 0
+_CRASH_REPEAT_TS = ""
+
+# The count is released at this many repeats, bounding what a kill loses.
+CRASH_REPEAT_RELEASE_AT = 100
+
+
+def _crash_entry(ts: str, category: str, message: str) -> str:
+    """Render one crash-log entry as the timestamped line ``_write_crash_text`` appends."""
+    return f"[{ts}] [{category}] [thread={threading.current_thread().name}] {message}\n"
+
+
+def _release_crash_repeats() -> str:
+    """Return the ``REPEAT`` entry ``_CRASH_REPEAT_COUNT`` owes, and reset it to zero."""
+    global _CRASH_REPEAT_COUNT
+    if _CRASH_REPEAT_COUNT <= 0:
+        return ""
+    category = _CRASH_REPEAT_KEY[0] if _CRASH_REPEAT_KEY else "UNKNOWN"
+    entry = _crash_entry(
+        _CRASH_REPEAT_TS,
+        "REPEAT",
+        f"previous {category} entry repeated {_CRASH_REPEAT_COUNT} more times",
+    )
+    _CRASH_REPEAT_COUNT = 0
+    return entry
+
+
+def _write_crash_text(text: str) -> None:
+    """Append ``text`` to ``_get_crash_log_path`` and flush it."""
+    with open(_get_crash_log_path(), "a", encoding="utf-8") as f:
+        f.write(text)
+        f.flush()
+
+
 def _crash_log(category: str, message: str) -> None:
-    """Append one timestamped line to the crash log and flush; never raises."""
+    """Append one timestamped entry to the crash log and flush; never raises.
+
+    An entry equal to the one before it increments ``_CRASH_REPEAT_COUNT`` and
+    is released as a ``REPEAT`` entry on the next distinct entry, at
+    ``CRASH_REPEAT_RELEASE_AT``, or by ``_flush_crash_repeats`` at exit.
+    """
+    global _CRASH_REPEAT_KEY, _CRASH_REPEAT_COUNT, _CRASH_REPEAT_TS
     try:
         ts = datetime.now().isoformat(timespec="milliseconds")
-        line = f"[{ts}] [{category}] [thread={threading.current_thread().name}] {message}\n"
-        with open(_get_crash_log_path(), "a", encoding="utf-8") as f:
-            f.write(line)
-            f.flush()
+        with _CRASH_LOG_LOCK:
+            if (category, message) == _CRASH_REPEAT_KEY:
+                _CRASH_REPEAT_COUNT += 1
+                _CRASH_REPEAT_TS = ts
+                if _CRASH_REPEAT_COUNT < CRASH_REPEAT_RELEASE_AT:
+                    return
+                _write_crash_text(_release_crash_repeats())
+                return
+            text = _release_crash_repeats() + _crash_entry(ts, category, message)
+            _CRASH_REPEAT_KEY = (category, message)
+            _CRASH_REPEAT_TS = ts
+            _write_crash_text(text)
     except Exception as _crash_exc:  # noqa: BLE001
         logger.debug("crash log write suppressed exception: %s", _crash_exc)
+
+
+def _flush_crash_repeats() -> None:
+    """Release what ``_CRASH_REPEAT_COUNT`` still owes through ``_write_crash_text``; never raises."""
+    try:
+        with _CRASH_LOG_LOCK:
+            text = _release_crash_repeats()
+        if text:
+            _write_crash_text(text)
+    except Exception as _flush_exc:  # noqa: BLE001
+        logger.debug("crash log repeat flush suppressed exception: %s", _flush_exc)
+
+
+atexit.register(_flush_crash_repeats)
+
+
+def _safe_type_name(value) -> str:
+    """Name ``value``'s type, or return ``<unreadable>`` when even ``type`` raises."""
+    try:
+        return f"<unreadable {type(value).__name__}>"
+    except BaseException:
+        return "<unreadable>"
+
+
+def _safe_repr(value) -> str:
+    """Return ``repr(value)``, or ``_safe_type_name`` when ``__repr__`` raises."""
+    try:
+        return repr(value)
+    except BaseException:
+        return _safe_type_name(value)
+
+
+def _safe_text(value) -> str:
+    """Return ``str(value)``, or ``_safe_repr`` when ``__str__`` raises.
+
+    Every name ``_crash_record`` prints is read through ``_safe_text``.
+    """
+    try:
+        return str(value)
+    except BaseException:
+        return _safe_repr(value)
+
+
+def _exc_headline(exc_type, exc_value) -> str:
+    """Name an exception as ``Type: message``, reading ``exc_type`` and ``exc_value`` through ``_safe_text``."""
+    try:
+        name = exc_type.__name__
+    except BaseException:
+        name = _safe_text(exc_type)
+    return f"{name}: {_safe_text(exc_value)}"
 
 
 def _traceback_frames(tb) -> list[str]:
     """Name every frame of ``tb`` as ``file:line in function``.
 
-    Reads the traceback by attribute access alone, so it imports nothing and
-    names the frames the packager's dialog reports it could not obtain.
+    A frame ``_traceback_frames`` cannot read is named ``<frame unreadable>``
+    and ``tb_next`` carries the walk past it.
     """
     frames = []
     while tb is not None:
-        code = tb.tb_frame.f_code
-        frames.append(f"{code.co_filename}:{tb.tb_lineno} in {code.co_name}")
-        tb = tb.tb_next
+        try:
+            code = tb.tb_frame.f_code
+            frames.append(f"{code.co_filename}:{tb.tb_lineno} in {code.co_name}")
+        except BaseException:
+            frames.append("<frame unreadable>")
+        try:
+            tb = tb.tb_next
+        except BaseException:
+            break
     return frames
 
 
-def _render_traceback(exc_type, exc_value, tb, _frames=_traceback_frames) -> str:
-    """Render ``tb`` as text, or as ``_frames`` alone when that raises.
+def _frame_text(tb, _frames=_traceback_frames) -> str:
+    """Render the ``_frames`` walk of ``tb``, or ``traceback unreadable`` when it raises."""
+    try:
+        rendered = "".join(f"    {frame}\n" for frame in _frames(tb))
+    except BaseException:
+        return "    traceback unreadable\n"
+    return rendered or "    no traceback frames\n"
 
-    ``traceback.format_exception`` reads each frame's source line and raises
-    once interpreter finalisation has cleared the modules it needs.
+
+def _render_traceback(exc_type, exc_value, tb, _frames=_traceback_frames) -> str:
+    """Render ``tb`` as text, or through ``_frame_text`` when ``traceback.format_exception`` raises.
+
+    ``_frames`` reaches ``_frame_text`` so a caller can bind its own walker.
     """
     try:
         return "".join(traceback.format_exception(exc_type, exc_value, tb))
     except BaseException:  # noqa: BLE001 - the renderer must never lose the record
-        rendered = "".join(f"    {frame}\n" for frame in _frames(tb))
-        return rendered or "    no traceback frames\n"
+        return _frame_text(tb, _frames)
+
+
+def _crash_record(category: str, exc_type, exc_value, tb, prefix: str = "") -> None:
+    """Write one exception through ``_crash_log``, naming it with ``_exc_headline`` before ``_render_traceback`` walks ``tb``.
+
+    ``exc_type`` and ``exc_value`` reach the file when no frame can be read.
+    """
+    headline = _exc_headline(exc_type, exc_value)
+    try:
+        body = _render_traceback(exc_type, exc_value, tb)
+    except BaseException:
+        body = "    traceback unreadable\n"
+    _crash_log(category, f"{prefix}{headline}\n{body}")
 
 
 def _install_diagnostic_hooks() -> None:
-    """Install sys and threading excepthooks that write the crash log before the original sys hook."""
+    """Install sys and threading excepthooks that write the crash log before the original sys hook.
+
+    Each hook binds ``_crash_record`` and ``contextlib.suppress`` as default
+    arguments and guards its three steps apart.
+    """
+    import contextlib
 
     _original_excepthook = sys.excepthook
 
-    def _sys_excepthook(exc_type, exc_value, tb, _render=_render_traceback):
-        tb_text = _render(exc_type, exc_value, tb)
-        _crash_log("SYS_EXCEPTHOOK", f"{exc_type.__name__}: {exc_value}\n{tb_text}")
-        logger.error("UNCAUGHT EXCEPTION: %s: %s", exc_type.__name__, exc_value)
-        import contextlib
-
-        with contextlib.suppress(Exception):
-            _original_excepthook(exc_type, exc_value, tb)
+    def _sys_excepthook(
+        exc_type,
+        exc_value,
+        tb,
+        _record=_crash_record,
+        _headline=_exc_headline,
+        _suppress=contextlib.suppress,
+        _original=_original_excepthook,
+    ):
+        with _suppress(BaseException):
+            _record("SYS_EXCEPTHOOK", exc_type, exc_value, tb)
+        with _suppress(BaseException):
+            logger.error("UNCAUGHT EXCEPTION: %s", _headline(exc_type, exc_value))
+        with _suppress(BaseException):
+            _original(exc_type, exc_value, tb)
 
     sys.excepthook = _sys_excepthook
 
-    def _thread_excepthook(args, _render=_render_traceback):
-        tb_text = _render(args.exc_type, args.exc_value, args.exc_traceback)
-        thread_name = args.thread.name if args.thread else "unknown"
-        _crash_log(
-            "THREAD_EXCEPTHOOK",
-            f"thread={thread_name} {args.exc_type.__name__}: "
-            f"{args.exc_value}\n{tb_text}",
-        )
-        logger.error(
-            "UNCAUGHT EXCEPTION in thread %s: %s: %s",
-            thread_name,
-            args.exc_type.__name__,
-            args.exc_value,
-        )
+    def _thread_excepthook(
+        args,
+        _record=_crash_record,
+        _headline=_exc_headline,
+        _text=_safe_text,
+        _suppress=contextlib.suppress,
+    ):
+        thread_name = _text(getattr(getattr(args, "thread", None), "name", "unknown"))
+        with _suppress(BaseException):
+            _record(
+                "THREAD_EXCEPTHOOK",
+                args.exc_type,
+                args.exc_value,
+                args.exc_traceback,
+                prefix=f"thread={thread_name} ",
+            )
+        with _suppress(BaseException):
+            logger.error(
+                "UNCAUGHT EXCEPTION in thread %s: %s",
+                thread_name,
+                _headline(args.exc_type, args.exc_value),
+            )
 
     threading.excepthook = _thread_excepthook
 
@@ -349,24 +497,36 @@ def _install_diagnostic_hooks() -> None:
 
 def _install_asyncio_handler(loop) -> None:
     """Route unhandled exceptions on loop to the crash log and logger.error."""
+    import contextlib
 
-    def _asyncio_exception_handler(loop, context, _render=_render_traceback):
-        msg = context.get("message", "")
+    def _asyncio_exception_handler(
+        loop,
+        context,
+        _record=_crash_record,
+        _headline=_exc_headline,
+        _text=_safe_text,
+        _suppress=contextlib.suppress,
+    ):
+        msg = _text(context.get("message", ""))
         exc = context.get("exception")
-        if exc:
-            tb_text = _render(type(exc), exc, exc.__traceback__)
-            _crash_log(
-                "ASYNCIO", f"{type(exc).__name__}: {exc} | message={msg}\n{tb_text}"
-            )
-            logger.error(
-                "UNHANDLED ASYNCIO EXCEPTION: %s: %s | message=%s",
-                type(exc).__name__,
-                exc,
-                msg,
-            )
-        else:
-            _crash_log("ASYNCIO", f"message={msg} | context={context}")
-            logger.error("ASYNCIO ERROR: %s", msg)
+        if exc is not None:
+            with _suppress(BaseException):
+                _record(
+                    "ASYNCIO",
+                    type(exc),
+                    exc,
+                    getattr(exc, "__traceback__", None),
+                    prefix=f"message={msg} | ",
+                )
+            with _suppress(BaseException):
+                logger.error(
+                    "UNHANDLED ASYNCIO EXCEPTION: %s | message=%s",
+                    _headline(type(exc), exc),
+                    msg,
+                )
+            return
+        _crash_log("ASYNCIO", f"message={msg} | context={_text(context)}")
+        logger.error("ASYNCIO ERROR: %s", msg)
 
     loop.set_exception_handler(_asyncio_exception_handler)
 
@@ -452,8 +612,73 @@ def _install_unraisable_hook() -> None:
     _crash_log("BOOT", "Unraisable-exception hook installed.")
 
 
+# Two disjoint attach points: `logging_engine` clears `acervator.propagate`.
+CRASH_LOG_HANDLER_LOGGERS = ("", "acervator")
+
+
+def _record_message(record: logging.LogRecord) -> str:
+    """Return ``record.getMessage()`` through ``_safe_text``, or name ``record.msg`` when it raises."""
+    try:
+        return _safe_text(record.getMessage())
+    except BaseException:
+        return f"unformattable record {_safe_repr(record.msg)}"
+
+
+class _CrashLogHandler(logging.Handler):
+    """Write every record at ERROR and above into the crash log through ``_crash_record``.
+
+    A broad ``except`` reporting through ``logger.error`` reaches no excepthook,
+    and ``_CrashLogHandler`` reads ``sys.exc_info`` when ``record.exc_info`` is
+    empty.
+    """
+
+    _last_record = None
+
+    def emit(self, record: logging.LogRecord) -> None:
+        """Record one ``logging.LogRecord``; never raises."""
+        try:
+            if record is self._last_record:
+                return
+            self._last_record = record
+            self._write(record)
+        except BaseException:
+            _crash_log("LOG_ERROR", f"handler failed on {_safe_repr(record)}")
+
+    def _write(self, record: logging.LogRecord) -> None:
+        """Name ``record`` and the exception live at its call site in the crash log."""
+        message = _record_message(record)
+        exc_info = record.exc_info
+        origin = "declared on the record"
+        if not exc_info or exc_info[0] is None:
+            exc_info = sys.exc_info()
+            origin = "live at log time"
+        if exc_info and exc_info[0] is not None:
+            _crash_record(
+                "LOG_ERROR",
+                exc_info[0],
+                exc_info[1],
+                exc_info[2],
+                prefix=f"{record.name}: {message} | exception {origin}: ",
+            )
+            return
+        _crash_log("LOG_ERROR", f"{record.name}: {message}")
+
+
+def _install_crash_log_handler() -> None:
+    """Attach one ``_CrashLogHandler`` at ERROR to every name in ``CRASH_LOG_HANDLER_LOGGERS``.
+
+    ``logging_engine`` clears ``acervator.propagate`` and the root logger alone
+    never sees a record from ``acervator.gui``.
+    """
+    handler = _CrashLogHandler(level=logging.ERROR)
+    for name in CRASH_LOG_HANDLER_LOGGERS:
+        logging.getLogger(name).addHandler(handler)
+    _crash_log("BOOT", "Crash-log error handler installed.")
+
+
 _install_diagnostic_hooks()
 _install_unraisable_hook()
+_install_crash_log_handler()
 
 
 def _heartbeat_path() -> Path:
@@ -494,6 +719,21 @@ def _make_async_pump_timer(
     timer.setInterval(interval_ms)
     timer.timeout.connect(pump_async)
     return timer
+
+
+GC_TICK_INTERVAL_MS = 5000
+GC_FULL_EVERY_TICKS = 12
+
+
+def periodic_gc_generation(tick: int) -> int:
+    """Return the gc generation the periodic collection reads on tick, counted from 1.
+
+    Generation 0 falls on every tick, so a collection still happens at the
+    timer's own cadence. A full generation 2 pass reads every live object, and
+    so every page the heap occupies; it falls on one tick in
+    ``GC_FULL_EVERY_TICKS``.
+    """
+    return 2 if tick % GC_FULL_EVERY_TICKS == 0 else 0
 
 
 def build_instance_guard(state_mgr, app_version: str):
@@ -754,15 +994,23 @@ def main() -> int:
     _install_qt_message_handler()
 
     import gc as _gc
+    import itertools
 
     _gc.disable()
+    _gc_ticks = itertools.count(1)
+
+    def _collect_periodically() -> None:
+        _gc.collect(periodic_gc_generation(next(_gc_ticks)))
+
     _gc_timer = QTimer()
-    _gc_timer.timeout.connect(lambda: _gc.collect())
-    _gc_timer.start(5000)
+    _gc_timer.timeout.connect(_collect_periodically)
+    _gc_timer.start(GC_TICK_INTERVAL_MS)
     log_manager.info(
         "automatic GC disabled; periodic gc.collect() "
         "scheduled on GUI thread (5s cadence). Mitigates the CCXT-"
         "worker-thread access violation pattern."
+        " Each tick collects generation 0; the full generation 2 pass falls on "
+        f"one tick in {GC_FULL_EVERY_TICKS}."
     )
     # A parentless timer needs a module-level reference to stay alive.
     globals()["_persistent_gc_timer"] = _gc_timer

@@ -62,6 +62,8 @@ from ...paper.fleet_source import (
     PaperFleetSource,
     SendRefused,
     exchange_choice,
+    push_spawned_line,
+    push_wired_line,
     strip_aggregate,
 )
 from ...paper.paper_bot_manager import PaperBotManager
@@ -969,7 +971,11 @@ if _HAS_WEBENGINE:
             ``run_rule`` of ``exchange().venue()``, one ``PaperRunner`` on the
             ``RUN_THREAD_NAME`` thread reading ``_states``, the started line,
             and the page's run button redrawn Stop; a fleet holding no record
-            or a venue with no cited rule writes one line and starts nothing."""
+            or a venue with no cited rule writes one line and starts nothing.
+
+            The runner is handed ``wire_manager``, the fleet's saved wire
+            topology and ledgers, so a fold on one paper bot routes its share
+            to another."""
             bots = self._fleet_source.bots()
             if not bots:
                 self.log(tab_surface.RUN_NO_BOT_TEXT, "warning")
@@ -993,6 +999,7 @@ if _HAS_WEBENGINE:
                 on_finished=self.run_finished.emit,
                 on_stats=self.bot_stats.emit,
                 say=lambda line: self.run_line.emit(line, "info"),
+                wires=self._fleet_source.wire_manager(),
             )
             self._runner.start()
             self.log(
@@ -1014,12 +1021,26 @@ if _HAS_WEBENGINE:
                 self._runner.stop()
 
         def _take_paper_run(self, run: PaperRun) -> None:
-            """The runner's end on the GUI thread: the final figures held,
+            """The runner's end on the GUI thread: the final figures held, the
+            run's wire rows and ledgers written to the paper fleet file,
             ``run_ended_line`` written and the run button redrawn Start."""
             self._figures = run.figures()
+            self._hold_run_wires()
             self.log(tab_surface.run_ended_line(run), "info")
             self._state.run_running = False
             self.show_tab({})
+
+        def _hold_run_wires(self) -> dict:
+            """Take the runner's wire manager onto the fleet through
+            ``hold_wire_manager`` and ``save`` it, so a paper wire and what it
+            carried survive the next launch; answers the row counts held."""
+            runner = self._runner
+            manager = runner.wires if runner is not None else None
+            if manager is None:
+                return {"wires": 0, "ledgers": 0}
+            held = self._fleet_source.hold_wire_manager(manager)
+            self._fleet_source.save()
+            return held
 
         def _take_figures(self, figures: dict) -> None:
             """Hold the ledger figures the runner posted, what ``aggregate`` reads."""
@@ -1136,6 +1157,35 @@ if _HAS_WEBENGINE:
             self.log(tab_surface.imported_line(len(imported), chosen), "success")
             self.fleet_changed.emit()
             self._read_feed([bot.symbol for bot in imported])
+
+        def push_to_paper(self, candidate: Any) -> dict:
+            """Spawn the paper bots one pushed Market Inspector candidate names
+            through ``PaperFleetSource.push_candidate``, and answer its
+            ``{"held", "wires", "wired", "venue", "symbols", "refused"}``.
+
+            ``candidate`` is the Inspector's ``{"bots", "wires"}`` payload. A
+            refusal writes its own Activity Log line and spawns nothing; a push
+            that lands writes ``push_spawned_line``, writes ``push_wired_line``
+            when the candidate carried wires, fires ``fleet_changed`` so the
+            venue tables re-seat, and reads the venue feed for the pushed
+            symbols.
+            """
+            answered = self._fleet_source.push_candidate(
+                candidate, exchange_id=self._exchange.venue()
+            )
+            refusal = str(answered.get("refused") or "")
+            if refusal:
+                self.log(refusal, "warning")
+                return answered
+            self.log(
+                push_spawned_line(answered.get("symbols"), answered.get("venue")),
+                "success",
+            )
+            if int(answered.get("wires") or 0):
+                self.log(push_wired_line(answered.get("wired")), "success")
+            self.fleet_changed.emit()
+            self._read_feed(list(answered.get("symbols") or []))
+            return answered
 
         def _read_feed(self, symbols: list) -> None:
             """Run ``read_fleet`` over ``exchange()`` for ``symbols`` on one

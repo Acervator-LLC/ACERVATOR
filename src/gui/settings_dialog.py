@@ -1,6 +1,4 @@
-"""
-settings_dialog.py - Settings Menu Dialog v1.1
-"""
+"""Declares ``SettingsDialog``, the Qt Settings window ``variant_surface`` returns."""
 
 from __future__ import annotations
 
@@ -26,6 +24,7 @@ try:
         QPushButton,
         QSlider,
         QListWidget,
+        QListWidgetItem,
         QTextEdit,
         QFormLayout,
         QMessageBox,
@@ -40,6 +39,7 @@ from src.gui.qt_safe_events import safe_process_events
 if _HAS_QT:
 
     from .main_tabs import asset_class_surface as acs
+    from .main_tabs import settings_dialog_surface as sds
     from .main_tabs.asset_class_surface import EQUITY_VENUES as EQUITY_EXCHANGE_IDS
 
     class SettingsDialog(QDialog):
@@ -49,7 +49,7 @@ if _HAS_QT:
         def __init__(
             self, settings_manager, status_log=None, parent=None, wing: str = "crypto"
         ):
-            """v3.16.20 — wing-aware Settings dialog.
+            """Wing-aware Settings dialog.
 
             Parameters
             ----------
@@ -95,6 +95,7 @@ if _HAS_QT:
             tabs.addTab(self._create_sound_tab(), "Sound")
             tabs.addTab(self._create_sms_tab(), "SMS")
             tabs.addTab(self._create_ai_monitor_tab(), "AI Monitor")
+            self._tabs = tabs
             layout.addWidget(tabs)
 
             btn_row = QHBoxLayout()
@@ -108,6 +109,28 @@ if _HAS_QT:
             self._save_btn.clicked.connect(lambda: self._save())
             btn_row.addWidget(self._save_btn)
             layout.addLayout(btn_row)
+
+        @property
+        def tab(self) -> str:
+            """The title of the tab the dialog is showing."""
+            book = getattr(self, "_tabs", None)
+            if book is None:
+                return ""
+            return book.tabText(book.currentIndex())
+
+        def show_tab(self, title: str) -> None:
+            """Show the tab whose title is ``title``, and ignore an unknown one.
+
+            The match is on the title each tab carries, so a tab added before
+            another does not move which one a caller gets.
+            """
+            book = getattr(self, "_tabs", None)
+            if book is None:
+                return
+            for at in range(book.count()):
+                if book.tabText(at) == title:
+                    book.setCurrentIndex(at)
+                    return
 
         def _create_user_tab(self) -> QWidget:
             w = QWidget()
@@ -139,11 +162,7 @@ if _HAS_QT:
                 layout.addWidget(_banner)
 
             self._exchange_list = QListWidget()
-            _list_label = (
-                f"Configured {acs.display_name(self._wing)} "
-                f"{acs.venue_noun(self._wing)}s:"
-            )
-            layout.addWidget(QLabel(_list_label))
+            layout.addWidget(QLabel(sds.exchange_status_label()))
             layout.addWidget(self._exchange_list)
 
             add_group = QGroupBox(
@@ -250,7 +269,65 @@ if _HAS_QT:
             layout.addWidget(rm_btn)
 
             self._on_exchange_changed()
+            self._refresh_exchange_status()
             return w
+
+        def _status_class(self) -> str:
+            """The sector the Exchange Status panel lists venues for."""
+            return acs.normalise(self._wing)
+
+        def _recorded_venue_states(self) -> dict:
+            """Every venue's last recorded credential check, read off disk."""
+            from src.exchange.credential_state import recorded_states
+
+            try:
+                return recorded_states()
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Exchange Status read no recorded state: %s", exc)
+                return {}
+
+        def _refresh_exchange_status(self) -> None:
+            """Draw one pressable row per venue serving the dialog's sector.
+
+            Reads the recorded states off disk, so a redraw places no venue call.
+            """
+            states = self._recorded_venue_states()
+            self._venue_states = states
+            rows = sds.exchange_status_rows(self._status_class(), states)
+            self._exchange_list.clear()
+            for at, (words, venue, _state, _colour, style, tip) in enumerate(rows):
+                # The item keeps the row text so _list_exchange_once and
+                # _remove_exchange read the venue id off it; the button covers it.
+                item = QListWidgetItem(words)
+                self._exchange_list.addItem(item)
+                press = QPushButton(words)
+                press.setStyleSheet(style)
+                press.setToolTip(tip)
+                press.setEnabled(bool(venue))
+                press.clicked.connect(
+                    lambda *_ignored, row=at: self._open_credentials_for_row(row)
+                )
+                item.setSizeHint(press.sizeHint())
+                self._exchange_list.setItemWidget(item, press)
+
+        def _open_credentials_for_row(self, at) -> None:
+            """Bind the Add-exchange form to the venue the row at ``at`` names."""
+            states = getattr(self, "_venue_states", {})
+            venue = sds.row_venue_id(self._status_class(), at, states)
+            if not venue:
+                return
+            self._exchange_list.setCurrentRow(int(at))
+            found = self._new_exchange.findData(venue)
+            if found < 0:
+                self._set_feedback(
+                    sds.VENUE_HAS_NO_FORM.format(name=venue.capitalize()), "warning"
+                )
+                return
+            self._new_exchange.setCurrentIndex(found)
+            self._on_exchange_changed()
+            self._set_feedback(
+                sds.VENUE_FORM_BOUND.format(name=venue.capitalize()), "info"
+            )
 
         def _on_exchange_changed(self) -> None:
             eid = self._new_exchange.currentData()
@@ -332,6 +409,7 @@ if _HAS_QT:
             finally:
                 self._test_btn.setEnabled(True)
                 self._add_btn.setEnabled(True)
+                self._refresh_exchange_status()
 
         def _set_feedback(self, message: str, level: str = "info") -> None:
             colors = {
@@ -379,6 +457,7 @@ if _HAS_QT:
 
                 self._sm.add_exchange(config)
                 self._list_exchange_once(eid)
+                self._refresh_exchange_status()
                 self._new_api_key.clear()
                 self._new_api_secret.clear()
                 self._new_passphrase.clear()
@@ -429,8 +508,12 @@ if _HAS_QT:
                 return
             text = item.text()
             eid = text.split("(")[-1].rstrip(")")
+            from src.exchange.credential_state import forget
+
             self._sm.remove_exchange(eid)
             self._exchange_list.takeItem(self._exchange_list.row(item))
+            forget(eid)
+            self._refresh_exchange_status()
             self._set_feedback(f"{eid.capitalize()} removed.", "info")
             if self._status_log:
                 self._status_log.log(f"Exchange removed: {eid}", "warning")
@@ -1291,9 +1374,7 @@ if _HAS_QT:
                 _eid = (exch.get("exchange_id", "") or "").lower()
                 if not acs.serves(_eid, self._wing):
                     continue
-                self._exchange_list.addItem(
-                    f"{exch.get('display_name', '')} ({exch.get('exchange_id', '')})"
-                )
+                self._list_exchange_once(_eid)
             self._push_sound_config()
 
         def _save(self) -> None:

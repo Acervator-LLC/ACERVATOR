@@ -4,7 +4,13 @@ Import Live Fleet copies out of the live bot_state record, read only.
 
 ``PaperFleetSource`` answers ``READ_NAMES``, holds one fleet and no run mode,
 writes ``paper_path`` alone, and ``__getattr__`` raises ``SendRefused`` for
-every other name. ``bots``, ``exchanges``, ``statuses`` and ``aggregate`` read
+every other name. ``wire_manager`` builds the ``PaperWireManager`` a run routes
+over from the ``WIRES_KEY`` and ``WIRE_LEDGERS_KEY`` rows the paper fleet file
+holds at its top level, Paper having no run mode to nest them under, and
+``hold_wire_manager`` takes a run's manager back for the next ``save``.
+``push_candidate`` spawns one held bot per market a pushed Market Inspector
+candidate names and registers the wires between them, Paper having no run mode
+for a push to leave in force. ``bots``, ``exchanges``, ``statuses`` and ``aggregate`` read
 the held records alone; ``stored_records`` and ``stored_exchanges`` read
 ``bot_state.json``, and ``import_live_fleet`` copies its records on one
 exchange whole into the held map under their own ids with ``LIVE_ORIGIN``,
@@ -20,6 +26,7 @@ from __future__ import annotations
 import copy
 import json
 import logging
+import math
 import time
 import uuid
 from dataclasses import asdict, dataclass
@@ -39,8 +46,10 @@ from ..trading.container.config import (
 )
 from ..trading.scrumming.sizing import DRAWDOWN_STATE, priced_usd
 from ..trading.smart_wire import mature_profit_usd
-from .live_feed_source import SendRefused
+from ..trading.target_bands import fleet_ammo
+from .live_feed_source import VENUE, SendRefused
 from .paper_paths import PAPER_FLEET_NAME, get_paper_root
+from .paper_wire import PaperWireManager
 
 logger = logging.getLogger("acervator.paper.fleet")
 
@@ -49,6 +58,14 @@ STATE_DIR_NAME = ".acervator"
 
 #: The ``saved_at_human`` format ``StateManager.save_state`` writes.
 SAVED_AT_HUMAN_FORMAT = "%Y-%m-%d %H:%M:%S"
+
+#: The paper fleet file's key holding the wire rows, the name ``bot_state.json``
+#: uses. Paper has no run mode, so it sits at the top level beside ``bots``.
+WIRES_KEY = "smart_wires"
+
+#: The paper fleet file's key holding the wire ledger rows, the name
+#: ``bot_state.json`` uses.
+WIRE_LEDGERS_KEY = "smart_wire_ledgers"
 
 #: Every name ``PaperFleetSource`` answers. ``__getattr__`` refuses the rest.
 READ_NAMES = (
@@ -75,11 +92,34 @@ READ_NAMES = (
     "paper_dir",
     "paper_path",
     "save",
+    "wire_rows",
+    "wire_ledger_rows",
+    "wire_manager",
+    "hold_wire_manager",
+    "push_candidate",
 )
 
 #: Every field ``BotConfig`` declares, the names a paper record's ``config``
 #: may hold.
 CONFIG_FIELD_NAMES = frozenset(one.name for one in dataclass_fields(BotConfig))
+
+#: ``ta_timeframe`` a pushed market takes, read off ``BotConfig``'s own field
+#: default so the push and the bot wizard cannot name two different timeframes.
+PUSHED_TIMEFRAME_DEFAULT = str(
+    next(
+        one.default for one in dataclass_fields(BotConfig) if one.name == "ta_timeframe"
+    )
+)
+
+#: ``target_balance`` a pushed market takes when its candidate names no dollar
+#: figure, read off ``BotConfig``'s own field default for the same reason.
+PUSHED_TARGET_DEFAULT = float(
+    next(
+        one.default
+        for one in dataclass_fields(BotConfig)
+        if one.name == "target_balance"
+    )
+)
 
 #: The Bot Settings window's three non-``BotConfig`` fields and the record key
 #: each one is stored under.
@@ -95,8 +135,41 @@ NEW_ORIGIN = "new"
 SCRUMMING_MODE = "scrumming"
 EXTRACTOR_MODE = "extractor"
 
+#: The quote a pushed market takes when its symbol names none.
+DEFAULT_QUOTE = "USD"
+
 #: The characters of ``uuid4`` a live bot keeps as its ``bot_id``.
 BOT_ID_LENGTH = 8
+
+#: The Activity Log lines a Push to Paper press leaves. Paper declares no run
+#: mode, so no line names one: a push spawns the bots and nothing else moves.
+PUSH_NO_CANDIDATE_TEXT = "Push to Paper: nothing is on show to push."
+PUSH_SPAWNED_FORMAT = (
+    "Pushed {count} paper bot(s) on {venue}, trading the venue's own data: " "{assets}."
+)
+PUSH_WIRE_UNNAMED_TEXT = "a wire names no market at one of its ends"
+PUSH_WIRE_SELF_FORMAT = (
+    "{source} to {target}: both ends are the one bot pushed for {source}"
+)
+PUSH_WIRE_UNHELD_FORMAT = "{source} to {target}: nothing was pushed for {asset}"
+PUSH_WIRE_TWICE_FORMAT = (
+    "{source} to {target} is named twice, and one pair holds one rate"
+)
+PUSH_WIRE_RATE_FORMAT = (
+    "{source} to {target}: {pct} is not a rate in (0, 100], so no wire "
+    "could carry it"
+)
+PUSH_WIRE_REFUSED_FORMAT = (
+    "Push to Paper refused: {count} wire(s) cannot travel - {reasons}. "
+    "No paper bot was spawned."
+)
+PUSH_WIRE_FORMAT = "{source} to {target} at {pct:.2f}%"
+PUSH_WIRED_FORMAT = "Wired {count} of them: {wires}."
+PUSH_TARGET_FORMAT = "{asset}: {target} is not a Target Balance a bot can trade"
+PUSH_TARGET_REFUSED_FORMAT = (
+    "Push to Paper refused: {count} market(s) name no usable Target Balance - "
+    "{reasons}. No paper bot was spawned."
+)
 
 #: The ``state`` an ``ExtractorBot`` writes on a position below its entry value,
 #: the one ``DRAWDOWN_STATE`` that ``POSITION_STATE_DRAWDOWN`` also reads.
@@ -422,6 +495,260 @@ def _held_bot(bot_id: str, record: dict) -> Optional[PaperBot]:
     )
 
 
+def market_parts(symbol: Any) -> tuple[str, str]:
+    """The base and the quote of ``symbol`` upper-cased, ``("BTC", "USD")`` for
+    ``BTC/USD``; a symbol naming no pair answers two empty strings and a pair
+    naming no quote takes ``DEFAULT_QUOTE``."""
+    text = str(symbol or "")
+    if "/" not in text:
+        return "", ""
+    base, _, quote = text.partition("/")
+    return base.strip().upper(), (quote.strip().upper() or DEFAULT_QUOTE)
+
+
+def pushed_config(
+    asset: str,
+    exchange_id: str,
+    ta_timeframe: str,
+    target_usd: float,
+    base_currency: str = DEFAULT_QUOTE,
+) -> dict:
+    """The ``create`` config for one asset a pushed candidate names.
+
+    Both candidate shapes reduce to this, so ``symbol``, ``target_balance`` and
+    ``ta_timeframe`` are spelled in one place, as the Simulator's own
+    ``pushed_config`` spells them for a Back Test push.
+    """
+    base = str(asset or "").upper()
+    quote = str(base_currency or DEFAULT_QUOTE).upper()
+    return {
+        "symbol": f"{base}/{quote}",
+        "target_asset": base,
+        "base_currency": quote,
+        "exchange_id": str(exchange_id or ""),
+        "ta_timeframe": str(ta_timeframe or ""),
+        "target_balance": float(target_usd),
+        "mode": SCRUMMING_MODE,
+    }
+
+
+def push_payload(candidate: Any) -> tuple:
+    """``(bots, wires)`` of one pushed candidate, each the rows it holds.
+
+    Both Inspector producers answer ``{"bots", "wires"}``; anything else reads
+    as no bot and no wire, and every row is kept so ``undeliverable_wires``
+    names a wire row it cannot read.
+    """
+    held = candidate if isinstance(candidate, dict) else {}
+    return _row_list(held.get("bots")), _row_list(held.get("wires"))
+
+
+def _row_list(held: Any) -> list:
+    """``held`` as a list of rows; a mapping, a string and anything outside a
+    list or a tuple all read as no row."""
+    return list(held) if isinstance(held, (list, tuple)) else []
+
+
+def _row(held: Any) -> dict:
+    """``held`` as one payload row; a row that is not a dict reads as an empty
+    one, which names no market and no wire end."""
+    return held if isinstance(held, dict) else {}
+
+
+def pushed_target_usd(value: Any) -> Optional[float]:
+    """The Target Balance one pushed market takes, or None for a figure no bot
+    can trade against.
+
+    A candidate naming no figure, or naming zero, takes
+    ``PUSHED_TARGET_DEFAULT``; a bool, a non-finite number, a negative number
+    and a value ``float`` cannot read are each refused, keeping any Target
+    Balance ``as_finite_float`` would turn into ``REFUSED_FIGURE`` off a held
+    record.
+    """
+    if isinstance(value, bool):
+        return None
+    if value is None:
+        return PUSHED_TARGET_DEFAULT
+    if not isinstance(value, (int, float, str)):
+        return None
+    try:
+        wanted = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    if not math.isfinite(wanted) or wanted < 0.0:
+        return None
+    return PUSHED_TARGET_DEFAULT if wanted == 0.0 else wanted
+
+
+def push_configs(candidates: Any, exchange_id: str, ta_timeframe: str) -> tuple:
+    """``(configs, refused)`` for the distinct markets ``candidates`` names,
+    every config on ``exchange_id`` at ``ta_timeframe``.
+
+    Each candidate is a ``{"symbol", "target_usd"}`` row, and a market whose
+    ``pushed_target_usd`` is None lands in ``refused`` so ``push_candidate``
+    can decline the whole push.
+    """
+    configs: list[dict] = []
+    refused: list[str] = []
+    seen: set[str] = set()
+    for candidate in candidates or []:
+        row = _row(candidate)
+        base, quote = market_parts(row.get("symbol"))
+        if not base or base in seen:
+            continue
+        seen.add(base)
+        target_usd = pushed_target_usd(row.get("target_usd"))
+        if target_usd is None:
+            refused.append(
+                PUSH_TARGET_FORMAT.format(asset=base, target=row.get("target_usd"))
+            )
+            continue
+        configs.append(
+            pushed_config(
+                base,
+                exchange_id,
+                ta_timeframe,
+                target_usd,
+                base_currency=quote,
+            )
+        )
+    return configs, refused
+
+
+def push_target_refused_line(reasons: Any) -> str:
+    """The Activity Log line for a push whose markets ``push_configs`` refused
+    a Target Balance for, listing each reason."""
+    named = [str(one) for one in (reasons or []) if str(one)]
+    return PUSH_TARGET_REFUSED_FORMAT.format(count=len(named), reasons="; ".join(named))
+
+
+def _is_wire_rate(pct: Any) -> bool:
+    """Whether ``pct`` reads as a real number in ``0 < pct <= 100``, the range
+    ``PaperWireManager.register_wire`` accepts.
+
+    A bool and any value outside ``int``, ``float`` and ``str`` read as no
+    rate, so no ``__float__`` of a pushed wire's own is ever called by
+    ``undeliverable_wires``.
+    """
+    if isinstance(pct, bool) or not isinstance(pct, (int, float, str)):
+        return False
+    try:
+        rate = float(pct)
+    except (TypeError, ValueError, OverflowError):
+        return False
+    return math.isfinite(rate) and 0.0 < rate <= 100.0
+
+
+def undeliverable_wires(wires: Any, configs: Any) -> list:
+    """One line per wire of a pushed topology that cannot be registered over
+    ``configs``, and an empty list when every wire travels.
+
+    A wire is undeliverable when ``push_configs`` built no config for one of
+    its markets, when both its ends name the one market, when ``wires`` names
+    one pair twice, or when its ``pct`` is outside the range ``register_wire``
+    takes.
+    """
+    held = {str(_row(one).get("target_asset") or "").upper() for one in (configs or [])}
+    out: list = []
+    named: set = set()
+    for wire in wires or []:
+        row = _row(wire)
+        source = str(row.get("source_asset") or "").upper()
+        target = str(row.get("target_asset") or "").upper()
+        if not source or not target:
+            out.append(PUSH_WIRE_UNNAMED_TEXT)
+            continue
+        if source == target:
+            out.append(PUSH_WIRE_SELF_FORMAT.format(source=source, target=target))
+            continue
+        if (source, target) in named:
+            out.append(PUSH_WIRE_TWICE_FORMAT.format(source=source, target=target))
+            continue
+        named.add((source, target))
+        absent = [one for one in (source, target) if one not in held]
+        if absent:
+            out.append(
+                PUSH_WIRE_UNHELD_FORMAT.format(
+                    source=source, target=target, asset=absent[0]
+                )
+            )
+            continue
+        pct = row.get("pct")
+        if not _is_wire_rate(pct):
+            out.append(
+                PUSH_WIRE_RATE_FORMAT.format(source=source, target=target, pct=pct)
+            )
+    return out
+
+
+def push_spawned_line(symbols: Any, exchange_id: Any) -> str:
+    """The Activity Log line for the paper bots a push spawned on
+    ``exchange_id``."""
+    named = [str(one) for one in (symbols or []) if str(one)]
+    return PUSH_SPAWNED_FORMAT.format(
+        count=len(named), venue=str(exchange_id or ""), assets=", ".join(named)
+    )
+
+
+def push_wire_refused_line(reasons: Any) -> str:
+    """The Activity Log line for a push whose wires ``undeliverable_wires``
+    named, listing each reason."""
+    named = [str(one) for one in (reasons or []) if str(one)]
+    return PUSH_WIRE_REFUSED_FORMAT.format(count=len(named), reasons="; ".join(named))
+
+
+def push_wired_line(registered: Any) -> str:
+    """The Activity Log line for the wires a push registered between the paper
+    bots it spawned, each as ``PUSH_WIRE_FORMAT``."""
+    rows = [
+        PUSH_WIRE_FORMAT.format(
+            source=str((one or {}).get("source_asset") or ""),
+            target=str((one or {}).get("target_asset") or ""),
+            pct=float((one or {}).get("pct") or 0.0),
+        )
+        for one in (registered or [])
+    ]
+    return PUSH_WIRED_FORMAT.format(count=len(rows), wires=", ".join(rows))
+
+
+def register_pushed_wires(manager: Any, wires: Any, bot_ids: Any) -> list:
+    """Register each of ``wires`` on ``manager`` between the paper bot ids
+    ``bot_ids`` names per asset, and answer the wire rows that applied.
+
+    ``undeliverable_wires`` has already refused every wire this cannot place,
+    so a short answer says a wire ``register_wire`` was expected to take was
+    declined and the count the push reports falls below the wire count.
+    """
+    ids = {str(key).upper(): str(value) for key, value in (bot_ids or {}).items()}
+    out: list = []
+    for wire in wires or []:
+        row = _row(wire)
+        source_asset = str(row.get("source_asset") or "").upper()
+        target_asset = str(row.get("target_asset") or "").upper()
+        source_id = ids.get(source_asset, "")
+        target_id = ids.get(target_asset, "")
+        if not source_id or not target_id:
+            continue
+        pct = float(row.get("pct") or 0.0)
+        answer = manager.register_wire(source_id, target_id, pct)
+        if not answer.get("applied"):
+            logger.warning(
+                "push to paper: %s to %s was declined: %s",
+                source_asset,
+                target_asset,
+                answer.get("reason", ""),
+            )
+            continue
+        out.append(
+            {
+                "source_asset": source_asset,
+                "target_asset": target_asset,
+                "pct": pct,
+            }
+        )
+    return out
+
+
 def wizard_record(config: dict) -> dict:
     """The stored-record shape ``get_full_state`` writes, built from the bot
     wizard's ``get_bot_config`` dict through ``bot_config_kwargs`` and
@@ -557,7 +884,9 @@ def aggregate_stats(bots: Sequence[PaperBot]) -> dict:
     a position is ``priced_usd`` of ``holdings``, ``current_price`` and
     ``quote_to_usd`` when both are positive and ``position_value_usd``
     otherwise, maturity is read only where ``exchange_data_fresh_ts`` is
-    positive, and each YTD sum falls back to the lifetime sum at zero."""
+    positive, and each YTD sum falls back to the lifetime sum at zero. The AMMO
+    total and the two territory counts are ``fleet_ammo`` over one reading per
+    bot, the same call the live aggregate publishes them from."""
     total_pnl = 0.0
     total_trades = 0
     running = 0
@@ -575,6 +904,7 @@ def aggregate_stats(bots: Sequence[PaperBot]) -> dict:
     crypto_position_value_usd = 0.0
     total_mature_exchange = 0.0
     mature_positions = 0
+    ammo_readings: list = []
 
     for bot in bots:
         total_pnl += bot.realised_pnl_usd
@@ -598,6 +928,8 @@ def aggregate_stats(bots: Sequence[PaperBot]) -> dict:
                 bot.holdings, bot.current_price, bot.quote_to_usd
             )
         crypto_position_value_usd += position_value
+        # The Ammo cells read the grown target, so the total reads it too.
+        ammo_readings.append((position_value, bot.live_target_usd, bot.target_usd))
         if fresh:
             mature = mature_profit_usd(bot.cost_basis_exchange_usd, position_value)
             if mature > 0:
@@ -607,6 +939,7 @@ def aggregate_stats(bots: Sequence[PaperBot]) -> dict:
             running += 1
         if bot.state == BotState.ERROR.value:
             errored += 1
+    ammo = fleet_ammo(ammo_readings)
 
     return {
         "total_bots": len(bots),
@@ -625,6 +958,12 @@ def aggregate_stats(bots: Sequence[PaperBot]) -> dict:
             wallet_cash_usd + crypto_position_value_usd, 4
         ),
         "total_realised_pnl": round(total_pnl, 4),
+        # The header strip's AMMO column draws this: each bot's Ammo
+        # WITHOUT its sign, as the bot list's Ammo column draws it, so a
+        # bot above target cannot cancel one below.
+        "total_target_delta_usd": ammo["total_target_delta_usd"],
+        "bots_scrum_territory": ammo["bots_scrum_territory"],
+        "bots_fold_territory": ammo["bots_fold_territory"],
         "total_trades": total_trades,
         "total_scrummed_usd": round(
             total_scrummed_ytd if total_scrummed_ytd > 0 else total_scrummed, 4
@@ -702,6 +1041,32 @@ def _records_of(stored: dict, path: Path) -> dict[str, dict]:
     return records
 
 
+def _rows_under(loaded: Any, key: str) -> list[dict]:
+    """The dict rows ``loaded`` holds under ``key``, or an empty list."""
+    if not isinstance(loaded, dict):
+        return []
+    stored = loaded.get(key)
+    if not isinstance(stored, list):
+        return []
+    return [dict(one) for one in stored if isinstance(one, dict)]
+
+
+def _read_paper_wires(path: Path) -> tuple[list[dict], list[dict]]:
+    """The ``WIRES_KEY`` rows and the ``WIRE_LEDGERS_KEY`` rows of the paper
+    fleet file at ``path``.
+
+    A file that is absent, unreadable, malformed or carries neither key answers
+    two empty lists.
+    """
+    if not path.exists():
+        return [], []
+    try:
+        loaded = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return [], []
+    return _rows_under(loaded, WIRES_KEY), _rows_under(loaded, WIRE_LEDGERS_KEY)
+
+
 def _read_paper_records(path: Path) -> dict[str, dict]:
     """The ``bots`` map of the paper fleet file at ``path``, each record read
     through ``_records_of``. An absent, empty or malformed file answers an
@@ -741,6 +1106,7 @@ class PaperFleetSource:
         self._root = Path(root) if root is not None else Path.home() / STATE_DIR_NAME
         self._paper_dir = Path(paper_dir) if paper_dir is not None else get_paper_root()
         self._records: dict[str, dict] = _read_paper_records(self.paper_path())
+        self._wires, self._wire_ledgers = _read_paper_wires(self.paper_path())
 
     def root(self) -> Path:
         """The directory holding the ``bot_state.json`` this source reads."""
@@ -838,6 +1204,76 @@ class PaperFleetSource:
         self._records[bot_id] = record
         return bot
 
+    def push_candidate(
+        self,
+        candidate: Any,
+        exchange_id: str = "",
+        ta_timeframe: str = "",
+    ) -> dict:
+        """Spawn one held paper scrumming bot per market a pushed Market
+        Inspector candidate names, register the wires between them, and answer
+        ``{"held", "wires", "wired", "refused", "symbols", "venue"}``.
+
+        ``candidate`` is the ``{"bots", "wires"}`` payload both Inspector
+        producers build. ``exchange_id`` defaults to ``VENUE``, the venue the
+        Paper Trader reads its live data from, and ``ta_timeframe`` to
+        ``PUSHED_TIMEFRAME_DEFAULT``. The Paper Trader declares no run mode, so
+        a push moves none: the bots are spawned idle and the next Start Paper
+        Run works them against the venue's own data.
+
+        A payload naming no market, a Target Balance ``push_configs`` refused,
+        and a wire ``undeliverable_wires`` refused each decline the whole push,
+        spawn nothing and register nothing. The wires that applied are held on
+        the fleet through ``hold_wire_manager`` and reach the paper fleet file
+        on the next ``save``.
+        """
+        bots, wires = push_payload(candidate)
+        venue = str(exchange_id or VENUE)
+        timeframe = str(ta_timeframe or PUSHED_TIMEFRAME_DEFAULT)
+        configs, refused_targets = push_configs(bots, venue, timeframe)
+        answer = {
+            "held": 0,
+            "wires": 0,
+            "wired": [],
+            "symbols": [],
+            "venue": venue,
+        }
+        if refused_targets:
+            return {**answer, "refused": push_target_refused_line(refused_targets)}
+        if not configs:
+            return {**answer, "refused": PUSH_NO_CANDIDATE_TEXT}
+        undeliverable = undeliverable_wires(wires, configs)
+        if undeliverable:
+            return {**answer, "refused": push_wire_refused_line(undeliverable)}
+        manager = self.wire_manager()
+        bot_ids: dict[str, str] = {}
+        symbols: list[str] = []
+        for config in configs:
+            bot = self.create(config)
+            asset = str(config.get("target_asset") or "").upper()
+            bot_ids[asset] = bot.bot_id
+            symbols.append(bot.symbol)
+            manager.register_bot(
+                bot.bot_id, asset, float(config.get("target_balance") or 0.0)
+            )
+        registered = register_pushed_wires(manager, wires, bot_ids)
+        self.hold_wire_manager(manager)
+        logger.info(
+            "push to paper: spawned %d bot(s) on %s and wired %d of %d",
+            len(symbols),
+            venue,
+            len(registered),
+            len(wires),
+        )
+        return {
+            "held": len(symbols),
+            "wires": len(registered),
+            "wired": registered,
+            "symbols": symbols,
+            "venue": venue,
+            "refused": "",
+        }
+
     def paper_bot_for(self, bot_id: str) -> Optional[PaperBot]:
         """The ``PaperBot`` of the held record under ``bot_id``, or None; a
         record in ``bot_state.json`` that ``import_live_fleet`` has not copied
@@ -927,27 +1363,74 @@ class PaperFleetSource:
         return written
 
     def remove(self, bot_id: str) -> bool:
-        """Drop the held record under ``bot_id`` and answer whether one was
-        held; the paper fleet file loses it on the next ``save``."""
-        return self._records.pop(str(bot_id), None) is not None
+        """Drop the held record under ``bot_id``, its wire ledger row and every
+        wire row naming it, as ``StateManager.remove_bot`` drops a live bot's,
+        and answer whether a record was held; the paper fleet file loses them
+        on the next ``save``."""
+        wanted = str(bot_id)
+        held = self._records.pop(wanted, None) is not None
+        self._wire_ledgers = [
+            one for one in self._wire_ledgers if str(one.get("bot_id")) != wanted
+        ]
+        self._wires = [
+            one
+            for one in self._wires
+            if wanted not in (str(one.get("source_id")), str(one.get("target_id")))
+        ]
+        return held
 
     def clear(self) -> int:
-        """Drop every held record on every exchange and answer how many were
-        held; the paper fleet file loses them on the next ``save``."""
+        """Drop every held record on every exchange, every wire row and every
+        wire ledger row, and answer how many records were held; the paper fleet
+        file loses them on the next ``save``."""
         count = len(self._records)
         self._records = {}
+        self._wires = []
+        self._wire_ledgers = []
         return count
+
+    def wire_rows(self) -> list[dict]:
+        """The ``WIRES_KEY`` rows the paper fleet holds, each a copy."""
+        return [dict(one) for one in self._wires]
+
+    def wire_ledger_rows(self) -> list[dict]:
+        """The ``WIRE_LEDGERS_KEY`` rows the paper fleet holds, each a copy."""
+        return [dict(one) for one in self._wire_ledgers]
+
+    def wire_manager(self) -> PaperWireManager:
+        """A ``PaperWireManager`` holding the fleet's wire rows and ledger rows,
+        through ``import_wires`` and ``import_ledgers``."""
+        manager = PaperWireManager()
+        manager.import_wires(self.wire_rows())
+        manager.import_ledgers(self.wire_ledger_rows())
+        return manager
+
+    def hold_wire_manager(self, manager: PaperWireManager) -> dict[str, int]:
+        """Take ``manager``'s ``export_wires`` and ``export_ledgers`` onto the
+        fleet and answer how many rows of each were held.
+
+        The paper fleet file carries them on the next ``save``, under
+        ``WIRES_KEY`` and ``WIRE_LEDGERS_KEY`` at its top level.
+        """
+        wires = list(manager.export_wires())
+        ledgers = list(manager.export_ledgers())
+        self._wires = wires
+        self._wire_ledgers = ledgers
+        return {"wires": len(wires), "ledgers": len(ledgers)}
 
     def save(self) -> Optional[Path]:
         """Write the held records to ``paper_path`` through
         ``atomic_write_json`` under the keys ``StateManager.save_state``
-        writes, ``saved_at``, ``saved_at_human``, ``bot_count`` and ``bots``,
-        and answer the path, or None when the write fails."""
+        writes, ``saved_at``, ``saved_at_human``, ``bot_count``, ``bots``,
+        ``WIRES_KEY`` and ``WIRE_LEDGERS_KEY``, and answer the path, or None
+        when the write fails."""
         payload = {
             "saved_at": time.time(),
             "saved_at_human": datetime.now().strftime(SAVED_AT_HUMAN_FORMAT),
             "bot_count": len(self._records),
             "bots": dict(self._records),
+            WIRES_KEY: [dict(one) for one in self._wires],
+            WIRE_LEDGERS_KEY: [dict(one) for one in self._wire_ledgers],
         }
         path = self.paper_path()
         try:
@@ -1053,11 +1536,26 @@ __all__ = [
     "LEDGER_TO_AGGREGATE",
     "LIVE_ORIGIN",
     "NEW_ORIGIN",
+    "DEFAULT_QUOTE",
     "PHANTOMS_ENABLED_DEFAULT",
     "POOL_GREEN",
     "POOL_RED",
     "POOL_YELLOW",
     "PRE_TICK_AUTO_FIRE",
+    "PUSHED_TARGET_DEFAULT",
+    "PUSHED_TIMEFRAME_DEFAULT",
+    "PUSH_NO_CANDIDATE_TEXT",
+    "PUSH_SPAWNED_FORMAT",
+    "PUSH_TARGET_FORMAT",
+    "PUSH_TARGET_REFUSED_FORMAT",
+    "PUSH_WIRED_FORMAT",
+    "PUSH_WIRE_FORMAT",
+    "PUSH_WIRE_RATE_FORMAT",
+    "PUSH_WIRE_REFUSED_FORMAT",
+    "PUSH_WIRE_SELF_FORMAT",
+    "PUSH_WIRE_TWICE_FORMAT",
+    "PUSH_WIRE_UNHELD_FORMAT",
+    "PUSH_WIRE_UNNAMED_TEXT",
     "READ_NAMES",
     "RECORD_FIELDS",
     "SAVED_AT_HUMAN_FORMAT",
@@ -1072,10 +1570,21 @@ __all__ = [
     "extractor_pool_color",
     "live_fleet",
     "loaded_idle",
+    "market_parts",
     "paper_bot_from_record",
     "paper_fleet",
+    "push_configs",
+    "push_payload",
+    "push_spawned_line",
+    "push_target_refused_line",
+    "push_wire_refused_line",
+    "push_wired_line",
+    "pushed_config",
+    "pushed_target_usd",
+    "register_pushed_wires",
     "row_status",
     "strip_aggregate",
+    "undeliverable_wires",
     "wizard_phantom_timeframes",
     "wizard_record",
 ]

@@ -18,6 +18,13 @@ No venue was contacted to write this page. Every venue fact below was read from
 the publisher's own page outside this repository and handed to the page on
 2026-09-24. Every tree fact carries its file and line.
 
+This page is the venue level on its own. The three nested levels an operator
+walks — the sector he presses, the venues that sector reaches, and the products
+each venue serves under it — are in
+[16-sector-exchange-product-tree.md](16-sector-exchange-product-tree.md). That
+page also marks which of the venues listed here this platform has actually
+reached, and which are research rather than connections.
+
 ## What a scrum asks of a venue
 
 A scrum computes a size and submits it. Two steps stand between that size and
@@ -166,6 +173,82 @@ METALS_PHYSICAL: tuple[AssetListing, ...] = tuple(
     AssetListing(symbol=one, quote=USD, venue=VENUE_YAHOO, ticker=one, form=FORM_ETF)
     for one in ("GLD", "SLV", "PPLT", "PALL")
 )
+```
+
+### Coinbase serves three of the four classes
+
+OVERTAKEN, and the Coinbase row above is kept as written. Its classes read
+"crypto spot; US futures products over the same API". The same Advanced Trade
+products endpoint also answers stocks, and it labels part of its futures list
+with a commodity underlying, so Coinbase is listed under Crypto, Stock and
+Commodities.
+
+The endpoint takes a product type. Asked on 4 October 2026 with no credential
+and no private route, it answered these counts.
+
+```
+product_type asked                       products answered
+  (omitted)                              921, every one SPOT
+  SPOT                                   921
+  FUTURE                                 100, the dated contracts
+  FUTURE, expiry type PERPETUAL          131
+  EQUITY                                 1000
+  OPTION_GROUP                           0
+  FUTURE_GROUP                           0
+  FOREX                                  refused, not a valid value
+  COMMODITY                              refused, not a valid value
+```
+
+**There is no forex on this endpoint.** The venue refuses the word, and none of
+the types it accepts answers a currency pair. Forex stays a sector with no
+connected venue, and the three forex firms in the table above remain
+unconnected.
+
+**The equity list is capped and it is not stable.** One call answers at most
+1,000 rows, a second page repeats the first, and two calls an instant apart
+share only about a fifth of their rows. One market load records the 1,000 the
+venue served that call.
+
+**The commodity contracts are named by the venue, not by a table here.** Each
+futures product carries its own asset-type label, and three of those labels name
+a commodity family: metals, energy and commodities. Twenty-one products carried
+one on 4 October 2026 — gold, silver, copper, platinum, natural gas and oil.
+
+```python
+# src/exchange/ccxt_connector.py
+COMMODITY_FUTURES_ASSET_TYPES: frozenset = frozenset(
+    {
+        "FUTURES_ASSET_TYPE_COMMODITIES",
+        "FUTURES_ASSET_TYPE_ENERGY",
+        "FUTURES_ASSET_TYPE_METALS",
+    }
+)
+```
+
+**A stock whose ticker is already a crypto pair is not recorded.** Fifteen of
+one equity call's thousand rows named a symbol the crypto list already held,
+`BTC/USDC` among them. The crypto market keeps the symbol and the equity is
+left out, so no crypto market can be replaced by a stock.
+
+| what the recording holds for Coinbase | before | after |
+| ------------------------------------- | ------ | ----- |
+| rows in all | 1,144 | about 2,135 |
+| crypto | 1,144 | 1,123 |
+| commodities | 0 | 21 |
+| stocks | 0 | about 990 |
+| forex | 0 | 0 |
+
+The crypto and commodity counts are fixed. The stock count moves with the slice
+the venue serves and with how many of its tickers a crypto pair already holds:
+two loads minutes apart recorded 987 and 993.
+
+The 1,144 crypto and commodity rows are the same symbols as before, carrying
+the same increments, minimums and ticks. An equity row carries the four figures
+an order needs, read from the venue's own product record.
+
+```
+ZBH/USDC    stock   amount increment 1e-05   minimum 1e-05   tick 0.01
+BTC/USD     crypto  amount increment 1e-08   minimum 1e-08   tick 0.01
 ```
 
 ## How an order names its size
@@ -1044,6 +1127,14 @@ src/gui/main_tabs/asset_class_surface.py:46   EQUITY_VENUES, nine ids
 src/gui/main_tabs/asset_class_surface.py:65   LAYERED_CLASSES, crypto and stocks
 ```
 
+OVERTAKEN, and the block above is kept as written. The layered class set now holds
+all four asset classes, so Commodities and Forex each stand behind their own trading
+layer on the Live tab.
+
+```python
+LAYERED_CLASSES = frozenset({"crypto", "stocks", "commodities", "forex"})
+```
+
 Two further citations elsewhere in this arc have moved the same way, and both
 name a constant that exists. The cited unit rule table sits at line 57 of its
 module rather than line 46, and the per-venue candle lengths sit at line 47 of
@@ -1052,6 +1143,20 @@ theirs rather than line 50.
 Every other sentence above stands as written. The per-venue size table, the
 excess figure, the three-answer rule and the per-market answer are unchanged by
 this entry.
+
+OVERTAKEN, and the block and sentences above are kept as written. The layered
+sector set now holds six, so Indices and Futures / Perps each stand behind their
+own trading layer on the Live tab beside the other four.
+
+```python
+LAYERED_CLASSES = frozenset(
+    {"crypto", "stocks", "commodities", "forex", "indices", "futures_perps"}
+)
+```
+
+No venue serves either added sector. The venue-to-sector map is unchanged, so
+Coinbase still answers crypto, stocks and commodities and nothing else, and each
+added sector draws its empty state with an Add Exchange button that cannot act.
 
 ## 2026-09-25 - a venue's own rules select the bot variant
 
@@ -1536,3 +1641,179 @@ venue the fleet trades. It sits in that class's own option map instead, where it
 defaults to on. A reader that asked the capability map whether a price is needed
 would answer no, and removing the price would break every live market buy on
 that venue.
+
+## 2026-10-04 - every sector has a unit rule, and a whole-unit position opens at two units
+
+Nothing above this heading is deleted or reworded. Two sentences are overtaken
+and both are quoted whole below.
+
+The platform's owner set the rule for a market that cannot be held in fractions.
+
+> Whole Unit Scrumming can be achieved as long as Target Delta drifts and the
+> market structure satisfies the gates. Being forced to buy entire units only
+> increases the risk due to having to put in or take out more than desired. As
+> such, we can require the minimum units for initiating such a variant to be 2
+> stock units. This will cut people out of the big markets but that is how it is
+> regardless. We must have 2 units because we always have to have one or more
+> units to move. We only move more than one unit when target delta exceeds value
+> of one whole unit.
+
+One unit cannot scrum. Selling the excess would hand back the whole position, so
+two is the smallest a position can be and still give a unit away.
+
+### The determination table answers all six sectors
+
+Before this entry the table held two rows, so five of the six sectors Coinbase
+serves had no rule at all. Each one now has a Coinbase row.
+
+```python
+# src/trading/scrumming/sizing.py:80
+CITED_UNIT_RULES: dict[tuple[str, str], str] = {
+    (CLASS_CRYPTO, "coinbase"): FRACTIONAL_UNITS,
+    (CLASS_STOCKS, "alpaca"): FRACTIONAL_UNITS,
+    (CLASS_FOREX, "coinbase"): FRACTIONAL_UNITS,
+    (CLASS_STOCKS, "coinbase"): WHOLE_UNITS,
+    (CLASS_COMMODITIES, "coinbase"): WHOLE_UNITS,
+    (CLASS_INDICES, "coinbase"): WHOLE_UNITS,
+    (CLASS_FUTURES_PERPS, "coinbase"): WHOLE_UNITS,
+}
+```
+
+| sector | the rule | what the venue publishes |
+| --- | --- | --- |
+| Crypto | fractional | a spot pair sizes to eight decimal places |
+| FX | fractional | a tokenised fiat pair is a spot pair |
+| Stocks | whole | a share size must be a positive whole number outside the normal session |
+| Commodities | whole | the dated contracts are indivisible; the tokenised metals are not, and their own step says so |
+| Indices | whole | an index contract is indivisible |
+| Futures and Perps | whole | a contract is indivisible |
+
+### The venue's own record answers before the sector
+
+A sector is not enough on its own. Coinbase puts a tokenised metal and a dated
+contract in the same Commodities tab, and one of them divides while the other
+does not. The size step the venue publishes for the market decides it, and the
+sector row answers only where the venue published no step.
+
+```python
+# src/trading/scrumming/sizing.py:170
+def market_unit_rule(
+    recorded: Any, asset_class: str = "", venue: str = ""
+) -> Optional[str]:
+```
+
+Driven on a made-up recording, with the home redirected and every outbound
+socket refused:
+
+| market | recorded step | sector row | the rule read |
+| --- | --- | --- | --- |
+| a dated metal contract | one whole unit | whole | whole |
+| a tokenised metal | a hundred-millionth | whole | fractional |
+| an equity the venue published no step for | none | whole | whole |
+| a crypto pair | a hundred-millionth | fractional | fractional |
+
+### A bot reads its own sector rather than one fixed name
+
+The order gate named one asset class for every bot. It now reads the class the
+market recording holds for the symbol, and reads crypto where the recording
+holds none, which is every market the recording was written for before the
+sectors existed.
+
+```python
+# src/trading/bot_container.py:157
+    def _asset_class(self, symbol: str) -> str:
+
+# src/trading/bot_container.py:376
+        _class = self._asset_class(symbol)
+        _rule = market_unit_rule(_rules, _class, self.config.exchange_id)
+        _sized = sized_order(_amt, _rule, _rules)
+```
+
+OVERTAKEN, and the sentence above the first code block on this page is kept as
+written: "The flooring runs through `sized_order`, the one function the
+Simulator and the Paper Trader size with." The flooring still runs there. What
+changed is the rule handed to it: the symbol's own class on the bot's venue,
+rather than crypto for every bot.
+
+### An opening order carries two whole units or it is refused
+
+A whole-unit market is traded only by a position large enough to give one unit
+back. The gate refuses a buy that would open such a position below two units,
+and the refusal names the market, the units the order carries, one unit's price
+and what two units cost.
+
+```
+PRE-FLIGHT REJECTED: BUY AAPL/USD: a whole-unit position opens at 2 units and
+this order carries 1. One unit prices at $100.00000000, so 2 units cost
+$200.0000. API not called.
+```
+
+The refusal only reaches an order that would open the position. A bot already
+holding units buys one at a time, which is what a cycle moves by default.
+
+```python
+# src/trading/scrumming/sizing.py:673
+WHOLE_UNIT_POSITION_MINIMUM = 2
+
+# src/trading/scrumming/sizing.py:727
+def position_minimum_refusal(
+    symbol: Any, units: Any, price: Any, rule: Any, position_usd: Any
+) -> str:
+```
+
+### A cycle moves the units the target delta justifies
+
+The unit count a scrum sells is the target delta divided by one unit's price,
+floored. Swept at a unit price of 100 dollars, from a target delta of nothing to
+500 dollars in steps of 10, the count is 0 below 100, 1 from 100, 2 from 200, 3
+from 300, 4 from 400 and 5 at 500. Every one of the 51 readings is a whole
+number with no remainder above the module's grain, and the same sweep under the
+fractional rule carries a fraction in 45 of the 51.
+
+```python
+# src/trading/scrumming/sizing.py:560
+def sized_units(units: float, rule: str) -> float:
+```
+
+### What the whole-unit variant now trades
+
+The variant was declared and nothing held it. It is held for a market whose own
+rule reads whole, and a market that can be held in fractions keeps the refusal
+it had.
+
+```python
+# src/trading/scrumming/sizing.py:508
+def variant_holds_market(
+    rules: Any,
+    asset_class: str = "",
+    venue: str = "",
+    price: Optional[float] = None,
+    excess_usd: float = REFERENCE_SCRUM_EXCESS_USD,
+) -> bool:
+```
+
+OVERTAKEN, and the comment it quotes is kept as written: the module recorded
+that the whole-unit variant "waits on the scrum trigger's ruling". The ruling is
+the specification quoted at the head of this entry. The set of built variant
+names is itself unchanged, so every other reader of it answers exactly what it
+answered before.
+
+### Where the sizing mode lives
+
+Nowhere. No bot field holds it. It is worked out at each use from the symbol's
+recorded class, the bot's venue and the market's own recorded step, the same way
+the session, the order types and the settlement delay are already worked out. A
+stored copy would be a third answer that can disagree with both the venue and
+the table after a venue changes a rule.
+
+### What this entry does not reach
+
+The screen that builds a bot does not yet offer whole-unit sizing or hide a
+market whose unit price puts two units out of reach. A market read as whole on
+the Market Inspector still shows the refusal it showed before, because that
+reading is taken without the symbol's class. Both are the wizard's row of the
+build order.
+
+An equity order still carries no session metadata, and a futures position is
+still read from a spot balance rather than from the futures endpoints. Those are
+the sector-specific order paths, a later row again.

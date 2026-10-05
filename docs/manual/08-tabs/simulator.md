@@ -1037,7 +1037,9 @@ between two of those bots at the rate the proposal names, and the sim fleet file
 carries both under Back Test. A fold on a pushed source bot then routes its
 share to the pushed target, which is the routing
 [A fold's growth travels the wires to another sim bot](#a-folds-growth-travels-the-wires-to-another-sim-bot)
-describes.
+describes and
+[Start Run carries the fleet's wires, and the run's end saves them](#start-run-carries-the-fleets-wires-and-the-runs-end-saves-them)
+drives.
 
 The Activity Log reports both halves:
 
@@ -1983,6 +1985,41 @@ flowchart LR
     sim --> strip[the ten cells]
     live --> strip
 ```
+
+### AMMO reads the sim fleet's own total
+
+AMMO on the strip is every sim bot's Target Delta added together, in whole
+dollars and with no sign, so a bot above its target cannot cancel one below.
+It draws green while more sim bots hold more than their target and red while
+more hold less, which is the rule the Trading tab page gives the column. The
+fleet source publishes the total and the two bot counts the colour reads.
+
+`src/simulator/fleet_source.py` — `aggregate_stats`
+
+```python
+ammo_readings.append((position_value, bot.live_target_usd, bot.target_usd))
+...
+"total_target_delta_usd": ammo["total_target_delta_usd"],
+"bots_scrum_territory": ammo["bots_scrum_territory"],
+"bots_fold_territory": ammo["bots_fold_territory"],
+```
+
+One call sums those three figures for every fleet source, so the Simulator's
+total and Live's cannot be worked out differently.
+
+`src/trading/target_bands.py` — `fleet_ammo`
+
+```python
+target_usd = ammo_target(live_target, configured_target)
+if target_usd > 0:
+    total_usd += abs(target_delta(position_value, target_usd))
+    where = target_territory(position_value, target_usd)
+```
+
+A reading takes the grown target wherever a sim bot carries one, which is the
+target that bot's own Ammo cell is measured against. The strip's total is
+therefore the sum of the column above it. A sim bot with no target contributes
+nothing to either figure.
 
 ## The venue stack seats the fleet's exchanges
 
@@ -9251,6 +9288,67 @@ source end target       295.9112      295.9112
 target end units        3.2066        3.2334
 target lifetime received  0.0000       38.3645
 ```
+
+### Start Run carries the fleet's wires, and the run's end saves them
+
+Start Run in Back Test hands the run the mode's own `SimWireManager`, built
+from the sim fleet file by `FleetSource.wire_manager`. A fold then routes its
+share while the tape walks, which is what makes a pushed topology's wiring
+mean anything. Validation is handed no manager, because a wire belongs to the
+fleet of the mode it was pushed into.
+
+`src/gui/simulator/sim_trading_tab.py` — Start Run builds the manager
+
+```python
+            wires = (
+                self._fleet_source.wire_manager()
+                if mode == surface.MODE_BACK_TEST
+                else None
+            )
+```
+
+When the run ends, `_hold_run_wires` takes the manager back onto the fleet
+through `FleetSource.hold_wire_manager` and saves the file, so what a wire
+carried during a run is on disk before the tab is closed. A run that raises
+saves the same way, so a partial pass keeps what it booked. Both builds do
+this: the React host's `_start_run`, `_compute_run` and `_take_run` carry the
+manager the same way.
+
+One pair driven over a synthetic tape, two bots at a $200.0000 target and one
+wire at 40 per cent between them, 15 scrums and 128 folds each:
+
+```
+                           no wire     a wire at 40 per cent
+source scrums, folds       15, 128     15, 128
+source end target         204.9836    204.9836
+source end units            1.7574      1.7574
+target fold queue         102.9692    104.8879
+source lifetime sent        0.0000      1.9187
+target lifetime received    0.0000      1.9187
+transfers booked                 0          49
+```
+
+The source's own walk is identical either way. The target's fold queue carries
+the wired dollars: `104.8879 - 102.9692 = 1.9187`, which is the figure both
+ledgers book.
+
+The whole of the source's compounded growth passes the wire. It grew
+`204.9836 - 200.0000 = 4.9836` over the run and 40 per cent of that is
+`1.9934`; `1.9187` of it cleared `MIN_WIRE_USD` and the remaining `0.0747`,
+over 79 folds, was dust the floor refused. One fold's own arithmetic:
+
+```
+the fold's growth on the source       0.1467
+the wire's rate                         40.0 per cent
+the per-wire safety cap                100.0 per cent
+the share that leaves                   0.0587
+```
+
+A sim bot walks its whole tape before the next bot starts, so a share leaving
+the source is parked on the target's ledger and lands on the first tranches
+the target's own walk builds. In this pair all 49 shares parked, and the
+target's ledger ends with `parked_usd` at zero and 49 wire-credit rows
+standing on its 15 tranches.
 
 ### The higher timeframes come from the walk's own candles
 

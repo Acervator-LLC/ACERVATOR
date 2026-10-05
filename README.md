@@ -1088,9 +1088,10 @@ definition yet and nothing here to attach it to, so nothing is proposed. Issue
     """How many of the nineteen lights read the same on both sides."""
 ```
 
-Two standing defects touch the panel. The API Interaction Log still tells the
-operator that seven indicators read the candles (issue #417), and eight
+One standing defect touches the panel: eight
 indicator implementations depart from their published formulae (issue #414).
+The API Interaction Log and the Stocks window's New Accumulation Bot box both
+name the twelve voters the engine builds.
 
 ### 17 - Tiered Strategy Validation and Workflow
 

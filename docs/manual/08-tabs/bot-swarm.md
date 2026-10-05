@@ -231,18 +231,49 @@ return mature_profit_usd(
 )
 ```
 
-The tab's own row label carries the threshold and reads the same constant the
-maths reads, so the words on screen and the rule applied to the money move
-together.
+### What the group draws now
 
-`src/gui/main_tabs/bot_swarm_tab_surface.py` — the row label
+The Provenance & Mature-Profit Spawn State group draws three rows: the starting
+balance, the predominant funder and the provenance breakdown. It drew three more
+— the mature profit total, the mature profit allocated to spawns and the mature
+profit available — and those three came off every screen that shows the group.
+
+The heading is written once, and the three screens in the table below read it
+from there, so changing the heading is one edit. A single ampersand in a box
+title is read as a keyboard shortcut mark, so the doubled form is what the three
+boxes are given and one ampersand is what each screen draws. The Electron panel
+reads the same words out of the shared model.
+
+`src/gui/main_tabs/bot_swarm_tab_surface.py` — the heading and the three rows
 
 ```python
-MATURE_TOTAL_ROW_FORMAT = "Mature profit total (position grown past {pct}%):"
+PROVENANCE_GROUP_TITLE = "Provenance & Mature-Profit Spawn State"
+PROVENANCE_GROUP_TITLE_QT = PROVENANCE_GROUP_TITLE.replace("&", "&&")
 
-def mature_growth_pct() -> int:
-    return int(round(smart_wire.MATURE_GROWTH_PCT))
+STARTING_ROW_LABEL = "Starting balance (seed):"
+PREDOMINANT_ROW_LABEL = "Predominant funder (PPS):"
+PROVENANCE_ROW_LABEL = "Provenance breakdown:"
 ```
+
+Each of the three could only ever read `$0.0000`. Nothing in the program works
+out the allocated figure; three places write it and each only copies it back out
+of a saved row, so a zero saved comes back as a zero. The total and the
+available figure are worked out from a ledger's `total_profit`, and the only
+method that adds to `total_profit` is called from one place that nothing calls.
+A money figure that can only read zero tells the operator nothing, because he
+cannot tell a true zero from a reading that was never fed.
+
+The sum itself is sound and stays where it is. `mature_profit_usd`,
+`BotLedger.mature_profit_total` and `BotLedger.mature_profit_available` are
+unchanged, and the header strip still reads maturity against the exchange cost
+basis of each bot's holdings. Only the three rows on the tab came off.
+
+| Screen | Where |
+| ------ | ----- |
+| Live | `src/gui/live_settings/bot_swarm_tab.py` |
+| Paper | `src/gui/paper/paper_bot_swarm_tab.py` |
+| Simulator | `src/gui/simulator/sim_bot_swarm_tab.py` |
+| The shared model the panel reads | `src/gui/main_tabs/bot_swarm_tab_surface.py` |
 
 One function bounds what a bot may send away. It reads the target balance, the
 band edges, the ammunition the next fold needs and the cash on hand, and returns

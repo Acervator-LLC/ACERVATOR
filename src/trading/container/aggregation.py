@@ -11,13 +11,7 @@ import math
 from typing import Any, Optional
 
 from ..smart_wire import is_mature, mature_profit_usd
-from ..target_bands import (
-    TERRITORY_FOLD,
-    TERRITORY_SCRUM,
-    ammo_target,
-    target_delta,
-    target_territory,
-)
+from ..target_bands import fleet_ammo
 from .config import DOLLAR_PEGGED_CURRENCIES, BotState
 
 logger = logging.getLogger("acervator.bot")
@@ -327,9 +321,7 @@ class FleetAggregationMixin:
         crypto_position_value_usd = 0.0  # sum of per-bot position values
         total_mature_exchange = 0.0
         mature_positions = 0
-        total_ammo_usd = 0.0
-        bots_scrum_territory = 0
-        bots_fold_territory = 0
+        ammo_readings: list = []
 
         for bot in self._bots.values():
             total_pnl += bot.stats.realised_pnl
@@ -377,17 +369,13 @@ class FleetAggregationMixin:
                 )
             crypto_position_value_usd += _bot_pos_val
             # The Ammo cells read the grown target, so the total reads it too.
-            _target_usd = ammo_target(
-                getattr(bot, "_target_balance", 0.0),
-                getattr(bot.config, "target_balance", 0.0),
+            ammo_readings.append(
+                (
+                    _bot_pos_val,
+                    getattr(bot, "_target_balance", 0.0),
+                    getattr(bot.config, "target_balance", 0.0),
+                )
             )
-            if _target_usd > 0:
-                total_ammo_usd += abs(target_delta(_bot_pos_val, _target_usd))
-                _where = target_territory(_bot_pos_val, _target_usd)
-                if _where == TERRITORY_SCRUM:
-                    bots_scrum_territory += 1
-                elif _where == TERRITORY_FOLD:
-                    bots_fold_territory += 1
             # The cost basis is exchange-pulled, so a bot the venue has not
             # answered for contributes no maturity reading either way.
             if _fresh_ts > 0:
@@ -402,6 +390,7 @@ class FleetAggregationMixin:
             if bot.state == BotState.ERROR:
                 errored += 1
 
+        ammo = fleet_ammo(ammo_readings)
         return {
             "total_bots": len(self._bots),
             "running": running,
@@ -431,11 +420,11 @@ class FleetAggregationMixin:
             # The header strip's AMMO column draws this: each bot's Ammo
             # WITHOUT its sign, as the bot list's Ammo column draws it, so a
             # bot above target cannot cancel one below.
-            "total_target_delta_usd": round(total_ammo_usd, 4),
+            "total_target_delta_usd": ammo["total_target_delta_usd"],
             # The header strip's ACCUMULATED column draws this sum.
             "total_accrued_usd": fleet_accrued_usd(self._bots.values()),
-            "bots_scrum_territory": bots_scrum_territory,
-            "bots_fold_territory": bots_fold_territory,
+            "bots_scrum_territory": ammo["bots_scrum_territory"],
+            "bots_fold_territory": ammo["bots_fold_territory"],
             "total_trades": total_trades,
             # Falls back to the platform-run accumulator when the YTD sum
             # is zero, so a fresh install is not blank.

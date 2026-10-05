@@ -371,10 +371,9 @@ Two of those lines are worth reading against the code. The repeated warning
 naming a capital-reservation over-commit comes from
 `src/trading/capital_reservation.py`, where a claim whose total would pass the
 holdings is refused and the existing claims, the request and the holdings are
-named. The `FETCH_OHLCV` line names a seven-indicator engine and lists seven
-indicators; the voting engine builds twelve and the Indicator Voting Panel
-shows twelve, so the count in the log line and the count in the engine
-disagree.
+named. The `FETCH_OHLCV` line names a twelve-indicator engine and lists all
+twelve indicators, which is the number the voting engine builds and the number
+the Indicator Voting Panel shows.
 
 The lower pane opens with the header `SIGNALS — name · expected · actual`. Each
 record draws a pass marker, a fail marker or a neutral one, then the signal

@@ -1,12 +1,12 @@
 """trading_tab_surface.py -- the Trading tab view model served to a frontend.
 
-Describes the whole tab as plain data: the two exchange layers and the
-stack that holds them, each layer's add button and empty-state card, the
-indicator panel beside the stack, the four splitters and their sizes, the
-Activity Log pane with its pause toggle and the API Interaction Log pane
-with its own. Colours, paddings and fonts come from ``design_system``
-tokens, so a page carries the values the Qt tab paints rather than a
-second palette.
+Describes the whole tab as plain data: one exchange layer per layered
+asset class and the stack that holds them, each layer's add button and
+empty-state card, the indicator panel beside the stack, the four
+splitters and their sizes, the Activity Log pane with its pause toggle
+and the API Interaction Log pane with its own. Colours, paddings and
+fonts come from ``design_system`` tokens, so a page carries the values
+the Qt tab paints rather than a second palette.
 
 It also holds the behaviours the tab owns rather than describes: the two
 pause buttons' captions, the API pause buffer and the resume marker it
@@ -25,6 +25,7 @@ from typing import Any, Optional
 
 from .. import design_system as ds
 from ..color_alpha import rgba
+from . import asset_class_surface
 from .asset_class_surface import EQUITY_VENUES
 
 METHOD = "trading.tab"
@@ -84,10 +85,8 @@ LOG_SPLITTER = {
     "sizes_px": LOG_SPLITTER_SIZES_PX,
 }
 
-LAYER_ORDER = ("crypto", "stock")
-
-LAYER_ACCENT = {"crypto": ds.LAYER_CRYPTO, "stock": ds.LAYER_STOCK}
-LAYER_LABEL = {"crypto": CRYPTO_LABEL, "stock": STOCK_LABEL}
+LAYER_ACCENT = dict(asset_class_surface.CLASS_ACCENTS)
+LAYER_LABEL = dict(asset_class_surface.CLASS_NAMES)
 
 PAGE_LAYOUT = {"margins_px": [0, 0, 0, 0], "children": ["tab_widget"]}
 
@@ -206,7 +205,7 @@ def add_button_text(label: Any) -> str:
 
 def add_button_tooltip(label: Any) -> str:
     """The corner add button's tooltip for one layer."""
-    return f"Add a {label} exchange connection"
+    return f"Add {asset_class_surface.article(label)} {label} exchange connection"
 
 
 def placeholder_title_text(label: Any) -> str:
@@ -216,7 +215,8 @@ def placeholder_title_text(label: Any) -> str:
 
 def placeholder_hint_text(label: Any) -> str:
     """The line under the empty-state card's button for one layer."""
-    return f"Add a {label} exchange to begin trading"
+    said = asset_class_surface.article(label)
+    return f"Add {said} {label} exchange to begin trading"
 
 
 def placeholder_card_style(accent: Any) -> str:
@@ -253,30 +253,55 @@ def is_equity_exchange(exchange_id: Any) -> bool:
     return str(exchange_id).lower() in EQUITY_EXCHANGE_IDS
 
 
+def layer_order() -> tuple:
+    """Every class a trading layer stands behind, in taxonomy order.
+
+    Read at call time from ``asset_class_surface``, so the React page draws
+    the layers the Qt stack holds and this module imports no Qt.
+    """
+    return asset_class_surface.layered_classes()
+
+
+def exchange_layers(exchange_id: Any) -> tuple:
+    """Every layer one venue's tab sits on, in ``layer_order`` order.
+
+    ``asset_class_surface.venue_classes`` answers the sectors the venue serves,
+    and a venue serving several is answered for each of them.
+    """
+    served = asset_class_surface.venue_classes(exchange_id)
+    return tuple(name for name in layer_order() if name in served)
+
+
 def layer_exchanges(entries: Any) -> dict:
     """Each layer's exchanges as ``exchange_id`` to caption, in the order given.
 
     An entry naming no ``exchange_id`` is left out, the way
     ``_sync_exchange_tabs`` skips it.
     """
-    split: dict = {name: {} for name in LAYER_ORDER}
+    split: dict = {name: {} for name in layer_order()}
     for entry in entries or []:
         holder = entry if isinstance(entry, dict) else {}
         exchange_id = str(holder.get("exchange_id") or "")
         if not exchange_id:
             continue
-        layer = "stock" if is_equity_exchange(exchange_id) else "crypto"
-        split[layer][exchange_id] = exchange_display_name(holder)
+        for layer in exchange_layers(exchange_id) or ("crypto",):
+            split[layer][exchange_id] = exchange_display_name(holder)
     return split
+
+
+def layer_named(key: Any) -> str:
+    """The layer ``key`` names, or ``ALIAS_LAYER`` when no layer carries it."""
+    name = asset_class_surface.normalise(key)
+    return name if name in layer_order() else ALIAS_LAYER
 
 
 def layer_card(key: Any, exchanges: Any = None, current: Any = None) -> dict:
     """One trading layer: its page, tab widget, add button and empty state.
 
-    A key other than ``stock`` reads as crypto, which is the layer the
+    A key no layer carries reads as ``ALIAS_LAYER``, which is the layer the
     stack shows when the tab is built.
     """
-    name = "stock" if str(key) == "stock" else "crypto"
+    name = layer_named(key)
     tabs = dict(exchanges or {})
     order = list(tabs)
     on_show = str(current or "")
@@ -290,8 +315,9 @@ def layer_card(key: Any, exchanges: Any = None, current: Any = None) -> dict:
         "accent": accent,
         "page_layout": dict(PAGE_LAYOUT),
         "add_button": {
-            "text": add_button_text(label),
-            "tooltip": add_button_tooltip(label),
+            "text": asset_class_surface.add_exchange_label(name),
+            "tooltip": asset_class_surface.add_exchange_tooltip(name),
+            "enabled": asset_class_surface.add_exchange_enabled(name),
             "minimum_width_px": ADD_BUTTON_MIN_WIDTH_PX,
             "corner_widget": True,
         },
@@ -312,7 +338,8 @@ def layer_card(key: Any, exchanges: Any = None, current: Any = None) -> dict:
                 "align": "center",
             },
             "add_button": {
-                "text": add_button_text(label),
+                "text": asset_class_surface.add_exchange_label(name),
+                "enabled": asset_class_surface.add_exchange_enabled(name),
                 "minimum_size_px": list(PLACEHOLDER_ADD_MIN_SIZE_PX),
                 "style_sheet": placeholder_add_style(accent),
                 "align": "center",
@@ -637,7 +664,8 @@ def build_view_model(
     ``layer`` names the stack page on show; ``exchanges`` is the list
     ``list_exchanges`` returns and ``layer_exchanges`` routes to a layer.
     """
-    key = "stock" if str(layer) == "stock" else "crypto"
+    key = layer_named(layer)
+    order = layer_order()
     buffer = ApiPauseBuffer() if api_buffer is None else api_buffer
     pane = ApiLogPane() if api_pane is None else api_pane
     counters = WatchdogState() if watchdog is None else watchdog
@@ -651,12 +679,10 @@ def build_view_model(
         "log_splitter": dict(LOG_SPLITTER),
         "equity_exchange_ids": list(EQUITY_EXCHANGE_IDS),
         "trading_stack": {
-            "pages": list(LAYER_ORDER),
-            "current_index": LAYER_ORDER.index(key),
+            "pages": list(order),
+            "current_index": order.index(key),
         },
-        "layers": [
-            layer_card(name, routed[name], current_exchange) for name in LAYER_ORDER
-        ],
+        "layers": [layer_card(name, routed[name], current_exchange) for name in order],
         "alias_layer": ALIAS_LAYER,
         "chart_present": CHART_PRESENT,
         "activity_pane": {

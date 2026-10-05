@@ -29,6 +29,10 @@ import time
 from typing import Any, Callable, Optional
 
 from .main_tabs.market_inspector_surface import (
+    PUSH_TO_PAPER_LABEL,
+    PUSH_TO_PAPER_PART,
+    PUSH_TO_PAPER_TOOLTIP,
+    PUSH_TO_PAPER_WIDTH_PX,
     PUSH_TO_SIM_LABEL,
     PUSH_TO_SIM_PART,
     PUSH_TO_SIM_TOOLTIP,
@@ -123,6 +127,7 @@ if _HAS_QT:
 
         adoptClicked = Signal(dict)  # emits the proposal on Adopt
         pushToSimClicked = Signal(dict)  # emits the proposal on Push to Sim
+        pushToPaperClicked = Signal(dict)  # emits the proposal on Push to Paper
 
         def __init__(
             self,
@@ -271,6 +276,13 @@ if _HAS_QT:
             self._push_to_sim_btn.setMinimumWidth(PUSH_TO_SIM_WIDTH_PX)
             self._push_to_sim_btn.clicked.connect(self._on_push_to_sim)
             btn_row.addWidget(self._push_to_sim_btn)
+            self._push_to_paper_btn = QPushButton(PUSH_TO_PAPER_LABEL)
+            self._push_to_paper_btn.setObjectName(PUSH_TO_PAPER_PART)
+            self._push_to_paper_btn.setAccessibleName(PUSH_TO_PAPER_PART)
+            self._push_to_paper_btn.setToolTip(PUSH_TO_PAPER_TOOLTIP)
+            self._push_to_paper_btn.setMinimumWidth(PUSH_TO_PAPER_WIDTH_PX)
+            self._push_to_paper_btn.clicked.connect(self._on_push_to_paper)
+            btn_row.addWidget(self._push_to_paper_btn)
             root.addLayout(btn_row)
 
         def _on_adopt(self) -> None:
@@ -279,6 +291,10 @@ if _HAS_QT:
 
         def _on_push_to_sim(self) -> None:
             self.pushToSimClicked.emit(self._proposal)
+            self.accept()
+
+        def _on_push_to_paper(self) -> None:
+            self.pushToPaperClicked.emit(self._proposal)
             self.accept()
 
     class MarketInspectorTopologies(QWidget):
@@ -291,6 +307,7 @@ if _HAS_QT:
 
         adoptRequested = Signal(dict)
         pushToSimRequested = Signal(dict)
+        pushToPaperRequested = Signal(dict)
 
         def __init__(self, parent: Optional[QWidget] = None) -> None:
             super().__init__(parent)
@@ -564,6 +581,7 @@ if _HAS_QT:
             dlg = TopologyPreviewDialog(p, parent=self)
             dlg.adoptClicked.connect(self.adoptRequested.emit)
             dlg.pushToSimClicked.connect(self.pushToSimRequested.emit)
+            dlg.pushToPaperClicked.connect(self.pushToPaperRequested.emit)
             dlg.exec()
 
         def _on_dismiss(self, proposal_id: str) -> None:

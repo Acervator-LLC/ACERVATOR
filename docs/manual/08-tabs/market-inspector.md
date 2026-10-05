@@ -203,6 +203,27 @@ standard, sorts each product by its own form rather than by a class of its own.
 ASSET_CLASSES = (CLASS_CRYPTO, CLASS_STOCKS, CLASS_COMMODITIES, CLASS_FOREX)
 ```
 
+OVERTAKEN, and the sentence and block above are kept as written. Six sectors
+ship. The two added are Indices and Futures / Perps, and the class box, the class
+table and every scan read all six.
+
+`src/trading/ata_spm.py` — the sector set every button, menu and scan reads
+
+```python
+ASSET_CLASSES = (
+    CLASS_CRYPTO,
+    CLASS_STOCKS,
+    CLASS_COMMODITIES,
+    CLASS_FOREX,
+    CLASS_INDICES,
+    CLASS_FUTURES_PERPS,
+)
+```
+
+Neither added sector carries a listed market yet, so a scan of either walks no
+sector at all. The map store answers an empty set for a class it holds no entry
+for, which is what it already does for crypto.
+
 The operator asked for the published names rather than this project's own.
 
 > I just want to adopt the standard categorization and language so that the implementation is professional and accurate...
@@ -1852,6 +1873,44 @@ the Simulator's own `SimWireManager` and never on the live `SmartWireManager`.
 The Paper Trader has no mode a candidate could land under, so no push targets
 it. Live takes no push either. The two targets are named on
 [the promotion pipeline page](promotion-pipeline.md).
+
+### Push to Paper
+
+That first sentence is overtaken, and it is kept above as it stands. The Paper
+Trader still has no mode a candidate could land under, and a push targets it
+anyway. Both candidate zones carry a Push to Paper button beside Push to Sim,
+and one press spawns one paper scrumming bot per market the candidate names.
+
+`src/gui/main_tabs/market_inspector_surface.py` — the two buttons an open entry
+draws
+
+```python
+def candidate_push_actions() -> list:
+    """Both destination buttons an open candidate entry draws, Push to Sim then
+    Push to Paper."""
+    return [*push_to_sim_actions(), *push_to_paper_actions()]
+```
+
+The payload is the same one Push to Sim takes. Paper reads its venue live, so
+it needs no Stone Tablet: every pushed bot takes the venue the Paper Trader's
+own `PaperExchange` names. The wires travel with the bots, and a wire that
+cannot reach two different pushed bots refuses the whole push, exactly as it
+does on the Simulator.
+
+`src/paper/fleet_source.py` — where a pushed candidate lands on Paper
+
+```python
+def push_candidate(
+    self,
+    candidate: Any,
+    exchange_id: str = "",
+    ta_timeframe: str = "",
+) -> dict:
+```
+
+No run mode is named anywhere on this press, and the Activity Log line names
+none. [The Paper Trader page](paper-trader.md) carries what the spawned bots
+read and what each refusal says. Live still takes no push.
 
 ## ATA-SMP
 

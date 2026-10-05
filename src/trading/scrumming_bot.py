@@ -341,6 +341,7 @@ class ScrummingBot(
         ta_weights: Optional[dict[str, float]] = None,
         phantom_timeframes: Optional[list[str]] = None,
         enable_phantoms: bool = True,
+        lock_candle_count: Optional[int] = None,
         sim_mode: bool = False,
         capital_registry: Optional[Any] = None,
     ) -> None:
@@ -393,7 +394,11 @@ class ScrummingBot(
         self._scrum_chain = build_scrumming_scrum_chain()
         self._fold_chain = build_scrumming_fold_chain()
 
-        self._coordinator = coordinator or TimeframeCoordinator(bus=self._bus)
+        # An absent lock_candle_count keeps TimeframeCoordinator's own count.
+        _coord_kwargs: dict = {"bus": self._bus}
+        if lock_candle_count is not None:
+            _coord_kwargs["lock_candle_count"] = max(1, int(lock_candle_count))
+        self._coordinator = coordinator or TimeframeCoordinator(**_coord_kwargs)
         self._phantom_mgr = PhantomBalanceManager(self._coordinator)
 
         try:

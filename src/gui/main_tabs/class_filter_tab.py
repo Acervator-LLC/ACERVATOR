@@ -49,6 +49,7 @@ class ClassFilterTabMixin:
     _stock_exchange_tabs: dict
     _crypto_tab_widget: Any
     _stock_tab_widget: Any
+    _class_layers: dict
     _tab_widget: Any
     _trading_stack: Any
     _push_live_tab: Callable[..., Any]
@@ -131,10 +132,8 @@ class ClassFilterTabMixin:
         classes is answered under both.
         """
         shown: list = []
-        for store, widget in (
-            (self._crypto_exchange_tabs, self._crypto_tab_widget),
-            (self._stock_exchange_tabs, self._stock_tab_widget),
-        ):
+        for held in (getattr(self, "_class_layers", None) or {}).values():
+            store, widget = held["exchange_tabs"], held["tabs"]
             for eid, tab in store.items():
                 at = widget.indexOf(tab)
                 if at < 0:
@@ -148,16 +147,22 @@ class ClassFilterTabMixin:
     def _live_layer_for(self, key: str, venues: list) -> None:
         """Put the Live stack on the layer widget holding ``venues``.
 
-        A class ``has_layer`` refuses still shows the venues serving it.
+        ``key``'s own layer is taken where it holds one of ``venues``, so a
+        venue seated on several layers does not pull the stack to the first.
         """
         stack = getattr(self, "_trading_stack", None)
         if stack is None or not venues:
             return
-        if set(venues) & set(self._stock_exchange_tabs):
-            tabs, store = self._stock_tab_widget, self._stock_exchange_tabs
-        elif set(venues) & set(self._crypto_exchange_tabs):
-            tabs, store = self._crypto_tab_widget, self._crypto_exchange_tabs
-        else:
+        tabs = store = None
+        layers = getattr(self, "_class_layers", None) or {}
+        asked = layers.get(key)
+        order = [asked] if asked is not None else []
+        order += [held for held in layers.values() if held is not asked]
+        for held in order:
+            if set(venues) & set(held["exchange_tabs"]):
+                tabs, store = held["tabs"], held["exchange_tabs"]
+                break
+        if tabs is None or store is None:
             return
         host = tabs.parentWidget()
         while host is not None and stack.indexOf(host) < 0:
@@ -170,9 +175,10 @@ class ClassFilterTabMixin:
     def _apply_asset_class(self) -> None:
         """Refilter every tab that follows the active asset class."""
         key = cfs.set_active(getattr(self, "_asset_class", None))
-        configured = sorted(
-            set(self._crypto_exchange_tabs) | set(self._stock_exchange_tabs)
-        )
+        held: set = set()
+        for layer in (getattr(self, "_class_layers", None) or {}).values():
+            held |= set(layer["exchange_tabs"])
+        configured = sorted(held)
         venues = cfs.venues_of_class(configured, key)
         self._live_layer_for(key, venues)
         shown = self._filter_live_sub_tabs(key)

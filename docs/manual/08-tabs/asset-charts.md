@@ -1779,8 +1779,7 @@ fall inside the pane, and the fills fed and the fills off the window in its
 context." - it is also written when the fills fed or the fills off the
 window change, and it names no floor.
 
-"55 floors off the record | 55 lines fed, 16 inside the pane, 7 tags | the
-same" - a reading of the floors, which no longer draw.
+"`55 floors off the record | 55 lines fed, 16 inside the pane, 7 tags | the same`" - a reading of the floors, which no longer draw.
 
 "An ATA-SMP market has no bot behind it, so the chart draws its candles
 without the trade markers, the target lines, the tranche floors and the

@@ -1060,6 +1060,19 @@ bot_config_kwargs carries lock_candle_count    False
 ScrummingBot.__init__ has lock_candle_count    False
 ```
 
+The third reading has moved. `ScrummingBot.__init__` takes a `lock_candle_count`
+keyword argument, and `phantom_init_kwargs` in
+`src/trading/container/config.py` carries it from the wizard's collected config,
+so the figure reaches the new bot's coordinator. The first two readings stand:
+the bot configuration still declares no field of that name and `bot_config_kwargs`
+still carries none.
+
+```
+BotConfig has a lock_candle_count field        False
+bot_config_kwargs carries lock_candle_count    False
+ScrummingBot.__init__ has lock_candle_count    True
+```
+
 Those eleven boxes are the eleven timeframes the voting engine already weights,
 from 1m at 0.3 up to 1w at 1.6, so a slower chart counts for more when several
 are combined.
@@ -6988,5 +7001,130 @@ passed over is the whole of the change.
 Nothing. The name appears in zero lines under `docs/`, so no sentence anywhere
 describes it. Its own comment named bookkeeping for the distribution mechanics
 the Profit Folding sections above already record as removed.
+
+## 2026-10-04 - Exchange Status, the sector's venues in three colours
+
+The list at the top of the Exchanges page is headed Exchange Status. It carries
+every venue the active sector can trade through, not only the venues already
+configured. Each line is a button, and pressing one points the Add form below at
+that venue.
+
+### Which venues the panel lists
+
+The sector decides the list. `venues_for_class` answers it, and a venue serving
+more than one sector is answered for each of them.
+
+`src/gui/main_tabs/settings_dialog_surface.py` — `exchange_status_rows`
+
+```python
+for venue in sorted(acs.venues_for_class(wing)):
+    state = venue_state(venue, held)
+    name = venue.capitalize()
+```
+
+Driven on the real dialog for all six sectors, with every outbound socket
+refused:
+
+| Sector | Venues the registry answers | Rows drawn |
+| ------ | ---: | ---: |
+| Crypto | 15 | 15 |
+| Stock | 10 | 10 |
+| Commodities | 1 | 1 |
+| Forex | 0 | 1 note |
+| Indices | 0 | 1 note |
+| Futures / Perps | 0 | 1 note |
+
+A sector no venue serves draws one line saying so, rather than an empty box.
+Coinbase is listed under Crypto, Stock and Commodities, because it serves all
+three.
+
+### What the three colours mean
+
+Grey is the resting colour. It says nobody has checked, not that something
+failed. Green says a credential check succeeded. Red says a check reached the
+venue and the venue refused it.
+
+| State | Colour token | Colour |
+| ----- | ------------ | ------ |
+| Credentials validated | `SUCCESS` | `#00ff88` |
+| API connection lost | `ERROR` | `#ff3366` |
+| No valid credentials | `STATUS_NEUTRAL` | `#8899aa` |
+
+### Where the colour comes from
+
+`src/exchange/credential_state.py` keeps one record per venue, under
+`~/.acervator/exchange_credential_state.json`. The credential checker is the
+only writer, and it writes only after a venue has answered.
+
+`src/exchange/api_validator.py` — `validate_credentials`
+
+```python
+from .credential_state import record_validated
+
+record_validated(exchange_id)
+```
+
+A missing key or a missing passphrase is refused before any call is placed, and
+those refusals record nothing, so the venue stays grey.
+
+```mermaid
+flowchart LR
+  TEST["Test Connection"]
+  VAL["api_validator<br/>validate_credentials"]
+  STORE["credential_state<br/>exchange_credential_state.json"]
+  PANEL["Exchange Status<br/>_refresh_exchange_status"]
+  TEST --> VAL
+  VAL -->|answered| STORE
+  STORE -->|read on redraw| PANEL
+```
+
+### A redraw reaches no venue
+
+Drawing the panel reads the stored record and nothing else. Measured with every
+outbound socket refused and a refusal counter watching: ten redraws of the
+crypto panel, fifteen rows each time, and the counter never moved off the one
+refusal its own control produced.
+
+A recorded green does not fade with time. The colour reports the last recorded
+answer, and a timer turning it grey would say nobody had checked when somebody
+had. A venue that stops answering turns red through its next check.
+
+### Pressing a line
+
+A press selects the line and points the Exchange row of the Add form at that
+venue, then writes the venue's name into the feedback line.
+
+`src/gui/settings_dialog.py` — `_open_credentials_for_row`
+
+```python
+self._new_exchange.setCurrentIndex(found)
+self._on_exchange_changed()
+self._set_feedback(
+    sds.VENUE_FORM_BOUND.format(name=venue.capitalize()), "info"
+)
+```
+
+Driven on both builds, pressing the Kraken, Gemini and Coinbase lines bound the
+form to `kraken`, `gemini` and `coinbase` in that order, in Qt and in the React
+page alike.
+
+### Both builds draw one panel
+
+The Qt build and the React page read the same rows from the same surface, so the
+heading and the line text cannot drift apart. Read back off the drawn React
+page beside the Qt widgets: the heading is Exchange Status on both, and all
+fifteen crypto lines match character for character.
+
+### The sentences the Exchange Status panel replaces
+
+Each sentence below stands in an earlier section and no longer describes the
+code. The earlier text stays where it is.
+
+| Earlier sentence | What the code does now |
+| ---------------- | ---------------------- |
+| "`_create_exchange_tab` lists the configured exchanges and offers a form to add one: the exchange picker, an API key, an API secret, and a passphrase field that appears only when the exchange needs one." | The page lists every venue the sector can trade through, coloured by its last credential check, above the same add form. |
+| "Configured Crypto Exchanges lists what the manager returns for this wing, each entry naming its display name and its exchange id." | Exchange Status lists every venue the sector serves, each line naming the venue and its exchange id. |
+| "The stock wing lists the equity ids instead and disables both buttons." | Every sector lists its own venues. The stock wing still disables both buttons. |
+| "\| `_remove_exchange` \| Drops the selected entry \|" | `_remove_exchange` drops the stored entry and its recorded check, and the line returns to grey. |
 
 Back to [the subsystem index](README.md).

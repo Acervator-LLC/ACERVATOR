@@ -18,6 +18,7 @@
   var EMITTED = "emitted";
   var ENABLED = "enabled";
   var EXCHANGE_ITEMS = "exchange_items";
+  var EXCHANGE_STATUS = "exchange_status";
   var GROUPS = "groups";
   var HEADINGS = "headings";
   var LAYOUT = "layout";
@@ -62,6 +63,7 @@
     EMITTED,
     ENABLED,
     EXCHANGE_ITEMS,
+    EXCHANGE_STATUS,
     GROUPS,
     HEADINGS,
     LAYOUT,
@@ -97,6 +99,7 @@
     BUTTONS,
     CONNECTIONS,
     ENABLED,
+    EXCHANGE_STATUS,
     GROUPS,
     HEADINGS,
     LAYOUT,
@@ -273,6 +276,7 @@
   var NUMBER_TYPE = "number";
   var CHECKBOX_TYPE = "checkbox";
   var RANGE_TYPE = "range";
+  var BUTTON_TYPE = "button";
 
   var DIALOG_PART = "settings-dialog";
   var TITLE_PART = "window-title";
@@ -300,6 +304,7 @@
   var COMBO_ITEM_PART = "combo-item";
   var LIST_BOX_PART = "list-box";
   var LIST_ITEM_PART = "list-item";
+  var LIST_ROW_PART = "list-row";
   var TA_ROWS_PART = "ta-rows";
   var TA_ROW_PART = "ta-row";
   var TA_LABEL_PART = "ta-label";
@@ -337,12 +342,17 @@
   var ECHO_ATTR = "data-echo";
   var HEIGHT_ATTR = "data-height";
   var TICKED_ATTR = "data-ticked";
+  var STATE_ATTR = "data-state";
   var ARIA_LABEL = "aria-label";
   var TITLE_ATTR = "title";
 
   var SELECT_OPEN = "[";
   var SELECT_IS = "=\"";
   var SELECT_CLOSE = "\"]";
+
+  var DECLARATION_SPLIT = ";";
+  var DECLARATION_MARK = ":";
+  var WORD_SPLIT = "-";
 
   // HASH_ESCAPE decodes to the mark every colour opens with.
   var HASH_ESCAPE = "%23";
@@ -372,9 +382,14 @@
   var STEP = Number(true);
   var SECOND = STEP + STEP;
   var THIRD = SECOND + STEP;
+  var FOURTH = THIRD + STEP;
+  var FIFTH = FOURTH + STEP;
 
   // A ta_rows row carries a label, a position, a figure and its slider's name.
   var TA_ROW_WIDTH = THIRD + STEP;
+
+  // An exchange_status row carries text, venue id, state, colour, style, tooltip.
+  var VENUE_ROW_WIDTH = FIFTH + STEP;
 
   // Every drawn control and TA slider carries both, so one selector reaches all.
   var DRAWN_SELECT = SELECT_OPEN + NAME_ATTR + "]" + SELECT_OPEN + KIND_ATTR + "]";
@@ -687,6 +702,50 @@
 
   function exchangeItems() {
     return listField(model(), EXCHANGE_ITEMS);
+  }
+
+  // camelFor turns one CSS property name into the key React draws it under.
+  function camelFor(name) {
+    return String(name)
+      .split(WORD_SPLIT)
+      .map(function (part, index) {
+        if (index === ZERO) {
+          return part;
+        }
+        return part.charAt(ZERO).toUpperCase() + part.slice(STEP);
+      })
+      .join(EMPTY);
+  }
+
+  // rowStyle reads one row's own sheet, so no other module has to be loaded.
+  function rowStyle(sheet) {
+    var found = {};
+    String(sheet)
+      .split(DECLARATION_SPLIT)
+      .forEach(function (one) {
+        var cut = one.indexOf(DECLARATION_MARK);
+        if (cut <= ZERO) {
+          return;
+        }
+        var name = one.slice(ZERO, cut).trim();
+        var value = one.slice(cut + STEP).trim();
+        if (name === EMPTY || value === EMPTY) {
+          return;
+        }
+        found[camelFor(name)] = value;
+      });
+    return found;
+  }
+
+  // An exchange_status row carries its text, venue id, state, colour, style
+  // and tooltip, in that order.
+  function exchangeStatusRows() {
+    return listField(objectField(model(), EXCHANGE_STATUS), ROWS);
+  }
+
+  function exchangeStatusRow(index) {
+    var row = at(exchangeStatusRows(), index);
+    return Array.isArray(row) ? row : undefined;
   }
 
   function exchangeItemNamed(id) {
@@ -1089,6 +1148,13 @@
         note(AT + String(index), EXCHANGE_ITEMS, SHORT_LIST_FAULT, kindOf(row));
       }
     });
+    listField(objectField(found, EXCHANGE_STATUS), ROWS).forEach(
+      function (row, index) {
+        if (!Array.isArray(row) || row.length !== VENUE_ROW_WIDTH) {
+          note(AT + String(index), EXCHANGE_STATUS, SHORT_LIST_FAULT, kindOf(row));
+        }
+      }
+    );
     listField(found, BUTTON_NAMES).forEach(function (row, index) {
       if (!Array.isArray(row) || row.length !== SECOND) {
         note(AT + String(index), BUTTON_NAMES, SHORT_LIST_FAULT, kindOf(row));
@@ -1316,7 +1382,21 @@
     var one = partProps(LIST_ITEM_PART);
     one[KEY_ATTR] = text(props.words);
     one[INDEX_ATTR] = text(props.at);
-    return element(LIST_ITEM_TAG, one, text(props.words));
+    var row = exchangeStatusRow(props.at);
+    if (row === undefined) {
+      return element(LIST_ITEM_TAG, one, text(props.words));
+    }
+    var press = partProps(LIST_ROW_PART, rowStyle(text(at(row, FOURTH))));
+    press[NAME_ATTR] = text(at(row, STEP));
+    press[STATE_ATTR] = text(at(row, SECOND));
+    press[TITLE_ATTR] = text(at(row, FIFTH));
+    press.type = BUTTON_TYPE;
+    press.disabled = text(at(row, STEP)) === EMPTY;
+    return element(
+      LIST_ITEM_TAG,
+      one,
+      element(BUTTON_TAG, press, text(props.words))
+    );
   }
 
   function controlStyle(spec) {

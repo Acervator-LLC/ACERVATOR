@@ -116,11 +116,14 @@ if _HAS_QT:
     PAGE_EXTRACTOR_POOL = 4
 
     class AssetSelectionPage(QWizardPage):
-        def __init__(self, exchanges: list[dict], parent=None):
+        def __init__(self, exchanges: list[dict], parent=None, sector: str = ""):
             super().__init__(parent)
             self.setTitle("Select Asset Pair")
             self.setSubTitle("Choose the exchange and trading pair.")
             self._exchanges = exchanges
+            from .main_tabs.bot_wizard_surface import normalise_sector
+
+            self._sector = normalise_sector(sector)
             form = QFormLayout(self)
 
             self._exchange = QComboBox()
@@ -193,6 +196,15 @@ if _HAS_QT:
             self._filter_assets()
 
         def _fetch_markets(self, exchange_id):
+            from .main_tabs.bot_wizard_surface import (
+                SECTOR_DEFAULT,
+                recorded_market_rows,
+            )
+
+            # The ccxt fetch below reads no sector, so only the crypto layer
+            # may use it; every other sector is answered by the recording.
+            if self._sector != SECTOR_DEFAULT:
+                return recorded_market_rows(exchange_id, self._sector)
             try:
                 import ccxt as ccxt_sync
                 from src.exchange.ccxt_connector import (
@@ -262,9 +274,10 @@ if _HAS_QT:
                     #   every crypto_assets ASSETS name as "<asset>/USDT"
                     # True today: the pairs this venue's own recording holds,
                     # so an unreachable venue offers no pair it does not list.
-                    from .main_tabs.bot_wizard_surface import recorded_market_rows
-
-                    return recorded_market_rows(exchange_id)
+                    # The fetch above admits `type == "spot"` only, and this
+                    # branch is reached on the crypto layer alone, so the
+                    # fallback answers the sector the operator pressed.
+                    return recorded_market_rows(exchange_id, self._sector)
                 except Exception:
                     return []
 
@@ -274,6 +287,7 @@ if _HAS_QT:
                 UNTRADEABLE_COUNT_FORMAT,
                 UNTRADEABLE_LABEL_FORMAT,
                 market_reason,
+                market_unit_rule,
                 recorded_venue_rows,
             )
 
@@ -282,6 +296,8 @@ if _HAS_QT:
             markets = self._markets_cache.get(eid, [])
             self._target.clear()
             self._target_reasons = []
+            self._target_unit_rules = []
+            self._target_prices = []
             filtered = [
                 m
                 for m in markets
@@ -311,10 +327,14 @@ if _HAS_QT:
                     parts.append(f"Volat: {m['volatility']:.1f}%")
                 named = _market_text(m.get("base"))
                 label = named + (f"  ({', '.join(parts)})" if parts else "")
-                reason = market_reason(recorded, m)
+                reason = market_reason(recorded, m, self._sector, eid)
                 if reason:
                     label = UNTRADEABLE_LABEL_FORMAT.format(label=label, reason=reason)
                 self._target_reasons.append(reason)
+                self._target_unit_rules.append(
+                    market_unit_rule(recorded, m, self._sector, eid)
+                )
+                self._target_prices.append(as_finite_float(m.get("price")))
                 # The cached icon only, since a download here blocks the GUI thread.
                 icon = _get_coin_icon(named)
                 if icon:
@@ -324,6 +344,8 @@ if _HAS_QT:
             if not filtered:
                 self._target.addItem("No pairs found", "")
                 self._target_reasons.append("")
+                self._target_unit_rules.append("")
+                self._target_prices.append(None)
             refused = sum(1 for one in self._target_reasons if one)
             self._status.setText(
                 f"{len(filtered)} {base} pairs"
@@ -351,6 +373,20 @@ if _HAS_QT:
             held = getattr(self, "_target_reasons", [])
             return held[at] if 0 <= at < len(held) else ""
 
+        def target_unit_rule(self) -> str:
+            """The unit rule the pair the target combo shows demands, empty
+            while the venue published no step and the sector cites no row."""
+            at = self._target.currentIndex()
+            held = getattr(self, "_target_unit_rules", [])
+            return held[at] if 0 <= at < len(held) else ""
+
+        def target_price(self):
+            """One unit's price for the pair the target combo shows, None where
+            the list carries no price for it."""
+            at = self._target.currentIndex()
+            held = getattr(self, "_target_prices", [])
+            return held[at] if 0 <= at < len(held) else None
+
         def _update_info(self):
             sym = self._target.currentData()
             desc = self._descriptions_cache.get(sym, "")
@@ -377,6 +413,8 @@ if _HAS_QT:
                 "exchange_id": self._exchange.currentData(),
                 "base_currency": self._base.currentText().strip().upper(),
                 "target_asset": self._target.currentData() or "",
+                "asset_class": self._sector,
+                "sizing_mode": self.target_unit_rule(),
             }
 
     class ModeSelectionPage(QWizardPage):
@@ -880,6 +918,22 @@ if _HAS_QT:
             )
             sf.addRow("Scrum Fold Ratio:", self._scrum_fold_pct)
 
+            from .main_tabs.bot_wizard_surface import UNIT_NOTES
+
+            self._unit_rule = ""
+            self._unit_price = None
+            self._unit_notes: dict = {}
+            for _note in UNIT_NOTES:
+                _line = QLabel("")
+                _line.setWordWrap(True)
+                _line.setObjectName(_note)
+                _line.setAccessibleName(_note)
+                _line.setVisible(False)
+                self._unit_notes[_note] = _line
+                sf.addRow(_line)
+            self._scrumming_interval.valueChanged.connect(self._write_unit_notes)
+            self._target_balance.valueChanged.connect(self._write_unit_notes)
+
             groups.addWidget(self._scrum_group)
 
             self._adv_group = QGroupBox("Advanced Scrumming")
@@ -1286,6 +1340,38 @@ if _HAS_QT:
             self._ta_timeframe.setCurrentIndex(idx)
             self._ta_timeframe.blockSignals(False)
 
+        def set_market(
+            self, unit_rule: str | None, price=None, picked: bool = True
+        ) -> None:
+            """Hold the picked market's unit rule and unit price, then rewrite
+            the unit lines under the Scrumming Settings group."""
+            self._unit_rule = unit_rule or ""
+            self._unit_price = price
+            self._unit_market_picked = bool(picked)
+            self._write_unit_notes()
+
+        def _write_unit_notes(self) -> None:
+            """Rewrite every unit line, hiding the ones carrying no text."""
+            from .main_tabs.bot_wizard_surface import unit_notes
+
+            held = unit_notes(
+                self._unit_rule,
+                self._unit_price,
+                self._target_balance.value(),
+                self._scrumming_interval.value(),
+                getattr(self, "_unit_market_picked", True),
+            )
+            for name, line in self._unit_notes.items():
+                text = held.get(name, "")
+                line.setText(text)
+                line.setVisible(bool(text))
+
+        def unit_note_text(self, name: str) -> str:
+            """The text one unit line draws, empty for a line with no text and
+            for a name the page holds no line for."""
+            line = self._unit_notes.get(name)
+            return line.text() if line is not None else ""
+
         def set_mode(self, is_grid: bool, is_extractor: bool = False):
             """Show the seven Scrumming groups, the Extractor group, or neither.
 
@@ -1590,8 +1676,19 @@ if _HAS_QT:
             return clicked is not back_btn
 
     class BotCreationWizard(QWizard):
-        def __init__(self, exchanges: list[dict], defaults: dict, parent=None):
+        def __init__(
+            self,
+            exchanges: list[dict],
+            defaults: dict,
+            parent=None,
+            sector: str = "",
+        ):
+            """``sector`` is the layer New Bot was pressed on, and it decides
+            the target list and the unit rule the parameter page states."""
             super().__init__(parent)
+            from .main_tabs.bot_wizard_surface import normalise_sector
+
+            self._sector = normalise_sector(sector)
             self.setWindowTitle("Create Auto Trader")
             self.setAccessibleName("Create Auto Trader")
             self.setAccessibleDescription(
@@ -1600,7 +1697,7 @@ if _HAS_QT:
             )
             self.setMinimumSize(700, 550)
             self.resize(1100, 750)
-            self._asset_page = AssetSelectionPage(exchanges)
+            self._asset_page = AssetSelectionPage(exchanges, sector=self._sector)
             self._mode_page = ModeSelectionPage()
             self._extractor_pool_page = ExtractorPoolPage(exchanges)
             self._params_page = TradingParamsPage(defaults)
@@ -1625,6 +1722,14 @@ if _HAS_QT:
                     self._params_page.set_exchange_id(eid)
                 except Exception as _tf_exc:  # noqa: BLE001 - TF-filter best-effort
                     logger.debug("params_page.set_exchange_id failed: %s", _tf_exc)
+                if self._mode_page.is_extractor():
+                    self._params_page.set_market("", None, picked=False)
+                else:
+                    self._params_page.set_market(
+                        self._asset_page.target_unit_rule(),
+                        self._asset_page.target_price(),
+                        picked=bool(self._asset_page._target.currentData()),
+                    )
             elif page_id == PAGE_PHANTOM:
                 try:
                     eid = self._asset_page._exchange.currentData()
