@@ -310,8 +310,51 @@ exchange would clear it.
 
 ### How an order is sized, per product
 
-The size rule is published on the product, not on the sector. Read on the
-venue's own product records, and matching the recording:
+**The venue's recorded size step decides, and the sector answers only where the
+venue published no step.** The sector alone cannot decide it, because Coinbase
+puts a divisible product and an indivisible one in the same tab. A tokenised
+metal is spot and divides; a dated metal contract is a future and does not; both
+are Commodities.
+
+Each sector does carry a rule, and that rule is the fallback. Driven in one
+running process, venue `coinbase`:
+
+```
+src/trading/scrumming/sizing.py:144      unit_rule, the sector's own answer
+src/trading/scrumming/sizing.py:170      market_unit_rule, the step first
+
+crypto          fractional        forex            fractional
+stocks          whole             indices          whole
+commodities     whole             futures_perps    whole
+```
+
+The seven rows behind those answers are declared at
+`src/trading/scrumming/sizing.py:80`, and the dated entry in
+[15-venue-compatibility.md](15-venue-compatibility.md) describes the order of
+resolution and what the whole-unit variant does with it.
+
+Driven over the real recording, the step overrides the sector in every row the
+recording holds:
+
+| Market | Recorded step | Its sector's rule | The rule read |
+| ------ | ------------- | ----------------- | ------------- |
+| `EURC/USDC` | 1.0 | Forex, fractional | whole |
+| `TGBP/USDC` | 1.0 | Forex, fractional | whole |
+| `PAXG/USD` | 0.00001 | Commodities, whole | fractional |
+| `AAVE/USD:USD-891230` | 1.0 | Futures, whole | whole |
+| `AAPL/USDC:USDC` | 0.01 | Stocks, whole | fractional |
+| `BTC/USD` | 0.00000001 | Crypto, fractional | fractional |
+
+Two rows are the sharp ones. Tokenised euro sits in a fractional sector and takes
+whole units. Tokenised gold sits in a whole-unit sector and takes fractions.
+Reading either from its sector would give the wrong answer.
+
+The control is a market the recording holds no row for. Asked for one, the
+recording answers unread with no step, and the sector's rule is what comes back:
+Commodities answers whole. So the sector row is reached, and it is reached only
+when no step exists.
+
+Read on the venue's own product records, and matching the recording:
 
 | Product | `base_increment` | Smallest size |
 | ------- | ---------------- | ------------- |
@@ -325,7 +368,8 @@ venue's own product records, and matching the recording:
 All six are `SPOT`. **Spot is not uniformly fractional.** Tokenised gold steps
 in fractions and tokenised fiat does not, and both are spot products on the same
 endpoint. A scrum's excess is an arbitrary fraction, so it does not survive the
-size rule on a row stepping in whole units.
+size rule on a row stepping in whole units. That is what the step-before-sector
+order above exists for.
 
 The constraint is already live on a quarter of the recording: 325 of the 1,144
 rows publish a step of exactly 1. Of those, 184 are spot rows, 100 are dated
@@ -403,6 +447,8 @@ claim that the list moves is confirmed; the figure 209 is not.
 | the `CDE` and `INTX` suffix counts | the same endpoint, two calls |
 | every `base_increment` | the venue's own product record, one call each |
 | the equity id shape and its ticker | the equity list, one call |
+| each sector's unit rule | `unit_rule`, one running process |
+| the step-before-sector readings | `market_unit_rule` over the recording |
 | the paging and drift readings | the same endpoint, five calls |
 | the equity order rules | the venue's create-order reference, not called |
 | the Deribit service details | the issue, carried over unconfirmed |

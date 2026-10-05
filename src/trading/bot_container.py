@@ -106,6 +106,7 @@ class BotContainer:
         self._bus = get_event_bus()
         self._data_pool = None  # set by BotManager.set_data_pool
         self._market_rules_cache: dict[str, "MarketRules"] = {}
+        self._asset_class_cache: dict[str, str] = {}
         self._phantoms_enabled: bool = False
 
     def force_fire(self, aggressive: bool = False) -> None:
@@ -151,13 +152,44 @@ class BotContainer:
         for leg in legs:
             self._invalidate_balance(leg)
 
+    # A recording naming no class reads as ``CLASS_CRYPTO``, the one class a
+    # container's connector served before the venue's other sectors.
+    def _asset_class(self, symbol: str) -> str:
+        """The asset class ``market_rules_store`` recorded for ``symbol`` on
+        this bot's venue, cached for the container's life.
+
+        ``CLASS_CRYPTO`` where the recording holds no class for the pair and
+        where it could not be read at all.
+        """
+        from .scrumming.sizing import CLASS_CRYPTO
+
+        held = self._asset_class_cache.get(symbol)
+        if held is not None:
+            return held
+        named = ""
+        try:
+            from ..exchange.market_rules_store import recorded_classes
+
+            named = str(recorded_classes(self.config.exchange_id).get(symbol, "") or "")
+        except Exception as exc:
+            logger.debug(
+                "Bot %s could not read the recorded class for %s: %s",
+                self.bot_id,
+                symbol,
+                exc,
+            )
+        resolved = named or CLASS_CRYPTO
+        self._asset_class_cache[symbol] = resolved
+        return resolved
+
+    # OVERTAKEN, every ``CLASS_CRYPTO`` below: ``_asset_class`` answers the
+    # class the recording holds for the symbol, and crypto where it holds none.
     async def _get_market_rules(self, symbol: str) -> "MarketRules":
         """Return the venue's published ``MarketRules`` for ``symbol``, cached,
         and an all-``None`` record when the lookup fails or the venue lists no
         such market."""
         from ..exchange.base import MarketRules
         from .scrumming.sizing import (
-            CLASS_CRYPTO,
             order_types_for,
             venue_session,
             venue_settlement_days,
@@ -167,10 +199,13 @@ class BotContainer:
         if cached is not None:
             return cached
         # Every connector a container holds is a crypto connector.
-        session = venue_session(CLASS_CRYPTO, self.config.exchange_id)
+        # OVERTAKEN, the sentence above: the venue's Stocks and Commodities tabs
+        # reach the same connector, so ``_asset_class`` reads the symbol's class.
+        asset_class = self._asset_class(symbol)
+        session = venue_session(asset_class, self.config.exchange_id)
         # No record was read here, so only the cited table can answer.
-        order_types = order_types_for(None, CLASS_CRYPTO, self.config.exchange_id)
-        settlement = venue_settlement_days(CLASS_CRYPTO, self.config.exchange_id)
+        order_types = order_types_for(None, asset_class, self.config.exchange_id)
+        settlement = venue_settlement_days(asset_class, self.config.exchange_id)
         unread = MarketRules(
             read=False,
             session=session,
@@ -201,7 +236,7 @@ class BotContainer:
                         session=session,
                         # The venue's own declaration rode in on this record.
                         order_types=order_types_for(
-                            rules, CLASS_CRYPTO, self.config.exchange_id
+                            rules, asset_class, self.config.exchange_id
                         ),
                         settlement_days=settlement,
                     )
@@ -256,6 +291,11 @@ class BotContainer:
     # unbuilt variant": ``variant_permits_close`` exempts one unbuilt variant,
     # ``VARIANT_ROLLING_POSITION``, and only for ``OrderSide.SELL``, so a
     # position in a market the venue expires can still be closed.
+    # OVERTAKEN, the same sentence: ``variant_holds_market`` reads the refusal,
+    # and it holds ``VARIANT_WHOLE_UNIT`` where ``market_unit_rule`` reads
+    # ``WHOLE_UNITS`` for the symbol's own class and venue.
+    # ``position_minimum_refusal`` then refuses a BUY opening such a position
+    # below ``WHOLE_UNIT_POSITION_MINIMUM`` units.
     async def guarded_place_order(
         self,
         symbol: str,
@@ -322,13 +362,13 @@ class BotContainer:
         from .scrumming.sizing import (
             BELOW_MINIMUM_AMOUNT,
             BELOW_ONE_UNIT,
-            CLASS_CRYPTO,
             HELD_OUTSIDE_SESSION,
+            market_unit_rule,
             outside_session,
+            position_minimum_refusal,
             sized_order,
-            unit_rule,
             untradeable_reason,
-            variant_built,
+            variant_holds_market,
             variant_permits_close,
             variant_replaces_market_order,
             venue_variant,
@@ -336,9 +376,12 @@ class BotContainer:
 
         # Every connector a container holds is a crypto connector; nothing
         # constructs a broker one.
-        _sized = sized_order(
-            _amt, unit_rule(CLASS_CRYPTO, self.config.exchange_id), _rules
-        )
+        # OVERTAKEN, the two sentences above: a broker is still unbuilt, and the
+        # crypto connector lists the venue's other sectors, so the class comes
+        # from ``_asset_class`` and the rule from ``market_unit_rule``.
+        _class = self._asset_class(symbol)
+        _rule = market_unit_rule(_rules, _class, self.config.exchange_id)
+        _sized = sized_order(_amt, _rule, _rules)
 
         if _sized.refusal == BELOW_MINIMUM_AMOUNT:
             self._refuse_order(
@@ -417,7 +460,10 @@ class BotContainer:
         # reaches the exception.
         _closing = variant_permits_close(_variant) and side == OrderSide.SELL
 
-        if not variant_built(_variant) and not _closing:
+        _held = variant_holds_market(
+            _rules, _class, self.config.exchange_id, _ref_px or None
+        )
+        if not _held and not _closing:
             self._refuse_order(
                 f"PRE-FLIGHT REJECTED: {_side_str} {symbol} needs a bot "
                 f"variant the program does not hold. "
@@ -425,6 +471,18 @@ class BotContainer:
                 f"The market is still read and still charted. "
                 f"API not called."
             )
+
+        # A whole-unit market is traded only by a position that can give one
+        # unit back and remain a position, so an opening order carries two.
+        _opening = position_minimum_refusal(
+            symbol,
+            _amt,
+            _ref_px,
+            _rule,
+            getattr(self.stats, "position_value", 0.0),
+        )
+        if _opening and side == OrderSide.BUY:
+            self._refuse_order(f"PRE-FLIGHT REJECTED: BUY {_opening} API not called.")
 
         if _closing:
             _left = _rules.days_to_expiry(time.time())
