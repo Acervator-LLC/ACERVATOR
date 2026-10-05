@@ -1634,3 +1634,179 @@ venue the fleet trades. It sits in that class's own option map instead, where it
 defaults to on. A reader that asked the capability map whether a price is needed
 would answer no, and removing the price would break every live market buy on
 that venue.
+
+## 2026-10-04 - every sector has a unit rule, and a whole-unit position opens at two units
+
+Nothing above this heading is deleted or reworded. Two sentences are overtaken
+and both are quoted whole below.
+
+The platform's owner set the rule for a market that cannot be held in fractions.
+
+> Whole Unit Scrumming can be achieved as long as Target Delta drifts and the
+> market structure satisfies the gates. Being forced to buy entire units only
+> increases the risk due to having to put in or take out more than desired. As
+> such, we can require the minimum units for initiating such a variant to be 2
+> stock units. This will cut people out of the big markets but that is how it is
+> regardless. We must have 2 units because we always have to have one or more
+> units to move. We only move more than one unit when target delta exceeds value
+> of one whole unit.
+
+One unit cannot scrum. Selling the excess would hand back the whole position, so
+two is the smallest a position can be and still give a unit away.
+
+### The determination table answers all six sectors
+
+Before this entry the table held two rows, so five of the six sectors Coinbase
+serves had no rule at all. Each one now has a Coinbase row.
+
+```python
+# src/trading/scrumming/sizing.py:80
+CITED_UNIT_RULES: dict[tuple[str, str], str] = {
+    (CLASS_CRYPTO, "coinbase"): FRACTIONAL_UNITS,
+    (CLASS_STOCKS, "alpaca"): FRACTIONAL_UNITS,
+    (CLASS_FOREX, "coinbase"): FRACTIONAL_UNITS,
+    (CLASS_STOCKS, "coinbase"): WHOLE_UNITS,
+    (CLASS_COMMODITIES, "coinbase"): WHOLE_UNITS,
+    (CLASS_INDICES, "coinbase"): WHOLE_UNITS,
+    (CLASS_FUTURES_PERPS, "coinbase"): WHOLE_UNITS,
+}
+```
+
+| sector | the rule | what the venue publishes |
+| --- | --- | --- |
+| Crypto | fractional | a spot pair sizes to eight decimal places |
+| FX | fractional | a tokenised fiat pair is a spot pair |
+| Stocks | whole | a share size must be a positive whole number outside the normal session |
+| Commodities | whole | the dated contracts are indivisible; the tokenised metals are not, and their own step says so |
+| Indices | whole | an index contract is indivisible |
+| Futures and Perps | whole | a contract is indivisible |
+
+### The venue's own record answers before the sector
+
+A sector is not enough on its own. Coinbase puts a tokenised metal and a dated
+contract in the same Commodities tab, and one of them divides while the other
+does not. The size step the venue publishes for the market decides it, and the
+sector row answers only where the venue published no step.
+
+```python
+# src/trading/scrumming/sizing.py:170
+def market_unit_rule(
+    recorded: Any, asset_class: str = "", venue: str = ""
+) -> Optional[str]:
+```
+
+Driven on a made-up recording, with the home redirected and every outbound
+socket refused:
+
+| market | recorded step | sector row | the rule read |
+| --- | --- | --- | --- |
+| a dated metal contract | one whole unit | whole | whole |
+| a tokenised metal | a hundred-millionth | whole | fractional |
+| an equity the venue published no step for | none | whole | whole |
+| a crypto pair | a hundred-millionth | fractional | fractional |
+
+### A bot reads its own sector rather than one fixed name
+
+The order gate named one asset class for every bot. It now reads the class the
+market recording holds for the symbol, and reads crypto where the recording
+holds none, which is every market the recording was written for before the
+sectors existed.
+
+```python
+# src/trading/bot_container.py:157
+    def _asset_class(self, symbol: str) -> str:
+
+# src/trading/bot_container.py:376
+        _class = self._asset_class(symbol)
+        _rule = market_unit_rule(_rules, _class, self.config.exchange_id)
+        _sized = sized_order(_amt, _rule, _rules)
+```
+
+OVERTAKEN, and the sentence above the first code block on this page is kept as
+written: "The flooring runs through `sized_order`, the one function the
+Simulator and the Paper Trader size with." The flooring still runs there. What
+changed is the rule handed to it: the symbol's own class on the bot's venue,
+rather than crypto for every bot.
+
+### An opening order carries two whole units or it is refused
+
+A whole-unit market is traded only by a position large enough to give one unit
+back. The gate refuses a buy that would open such a position below two units,
+and the refusal names the market, the units the order carries, one unit's price
+and what two units cost.
+
+```
+PRE-FLIGHT REJECTED: BUY AAPL/USD: a whole-unit position opens at 2 units and
+this order carries 1. One unit prices at $100.00000000, so 2 units cost
+$200.0000. API not called.
+```
+
+The refusal only reaches an order that would open the position. A bot already
+holding units buys one at a time, which is what a cycle moves by default.
+
+```python
+# src/trading/scrumming/sizing.py:673
+WHOLE_UNIT_POSITION_MINIMUM = 2
+
+# src/trading/scrumming/sizing.py:727
+def position_minimum_refusal(
+    symbol: Any, units: Any, price: Any, rule: Any, position_usd: Any
+) -> str:
+```
+
+### A cycle moves the units the target delta justifies
+
+The unit count a scrum sells is the target delta divided by one unit's price,
+floored. Swept at a unit price of 100 dollars, from a target delta of nothing to
+500 dollars in steps of 10, the count is 0 below 100, 1 from 100, 2 from 200, 3
+from 300, 4 from 400 and 5 at 500. Every one of the 51 readings is a whole
+number with no remainder above the module's grain, and the same sweep under the
+fractional rule carries a fraction in 45 of the 51.
+
+```python
+# src/trading/scrumming/sizing.py:560
+def sized_units(units: float, rule: str) -> float:
+```
+
+### What the whole-unit variant now trades
+
+The variant was declared and nothing held it. It is held for a market whose own
+rule reads whole, and a market that can be held in fractions keeps the refusal
+it had.
+
+```python
+# src/trading/scrumming/sizing.py:508
+def variant_holds_market(
+    rules: Any,
+    asset_class: str = "",
+    venue: str = "",
+    price: Optional[float] = None,
+    excess_usd: float = REFERENCE_SCRUM_EXCESS_USD,
+) -> bool:
+```
+
+OVERTAKEN, and the comment it quotes is kept as written: the module recorded
+that the whole-unit variant "waits on the scrum trigger's ruling". The ruling is
+the specification quoted at the head of this entry. The set of built variant
+names is itself unchanged, so every other reader of it answers exactly what it
+answered before.
+
+### Where the sizing mode lives
+
+Nowhere. No bot field holds it. It is worked out at each use from the symbol's
+recorded class, the bot's venue and the market's own recorded step, the same way
+the session, the order types and the settlement delay are already worked out. A
+stored copy would be a third answer that can disagree with both the venue and
+the table after a venue changes a rule.
+
+### What this entry does not reach
+
+The screen that builds a bot does not yet offer whole-unit sizing or hide a
+market whose unit price puts two units out of reach. A market read as whole on
+the Market Inspector still shows the refusal it showed before, because that
+reading is taken without the symbol's class. Both are the wizard's row of the
+build order.
+
+An equity order still carries no session metadata, and a futures position is
+still read from a spot balance rather than from the futures endpoints. Those are
+the sector-specific order paths, a later row again.
