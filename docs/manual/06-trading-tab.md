@@ -1903,9 +1903,9 @@ The two Commodities rows and the two Forex rows are the point. Both sectors carr
 markets of both kinds, and the row the sector cites never overrides the step the
 venue published.
 
-Three sectors reach no wizard today, because no configured venue is mapped to
-them. Pressing New Bot on Forex, Indices or Futures / Perps writes one line to the
-status log instead of opening anything.
+A sector with no configured venue opens no wizard. Pressing New Bot there writes
+one line to the status log instead. All six sectors have a venue today, so all
+six open.
 
 `src/gui/main_window.py` — what New Bot answers with no venue for the sector
 
