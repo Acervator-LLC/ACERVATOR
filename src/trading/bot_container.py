@@ -200,6 +200,9 @@ class BotContainer:
         cached = self._market_rules_cache.get(symbol)
         if cached is not None:
             return cached
+        # Every connector a container holds is a crypto connector.
+        # OVERTAKEN, the sentence above: the venue's Stocks and Commodities tabs
+        # reach the same connector, so ``_asset_class`` reads the symbol's class.
         asset_class = self._asset_class(symbol)
         session = venue_session(asset_class, self.config.exchange_id)
         # No record was read here, so only the cited table can answer.
@@ -373,6 +376,11 @@ class BotContainer:
             venue_variant,
         )
 
+        # Every connector a container holds is a crypto connector; nothing
+        # constructs a broker one.
+        # OVERTAKEN, the two sentences above: a broker is still unbuilt, and the
+        # crypto connector lists the venue's other sectors, so the class comes
+        # from ``_asset_class`` and the rule from ``market_unit_rule``.
         _class = self._asset_class(symbol)
         _rule = market_unit_rule(_rules, _class, self.config.exchange_id)
         _sized = sized_order(_amt, _rule, _rules)
