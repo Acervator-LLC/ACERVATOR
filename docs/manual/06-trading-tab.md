@@ -1851,11 +1851,137 @@ base currency    the fleet runs   per bot
 target asset     the fleet runs   one asset per bot
 ```
 
+OVERTAKEN, and the paragraphs and the block above are kept as written. The wizard
+opens on the sector pressed on the Live tab, and the three rows on this page are
+that sector's. The target list is the products the recording holds under that
+sector, so a Stocks bot is never offered a crypto pair and a Crypto bot is never
+offered a ticker.
+
+`src/gui/main_tabs/bot_wizard_surface.py` — the sector the wizard holds
+
+```python
+def normalise_sector(name: Any) -> str:
+    from .asset_class_surface import normalise
+
+    held = normalise(name)
+    return held or SECTOR_DEFAULT
+```
+
+The sector also decides the smallest order the bot may place. The venue publishes
+a size step for each market, and that step answers first; the sector answers only
+where the venue published none. Coinbase lists a tokenised metal and a dated
+contract under the same Commodities tab, and one divides while the other does not,
+so the sector alone cannot say.
+
+`src/trading/scrumming/sizing.py` — which rule governs one market
+
+```python
+def market_unit_rule(
+    recorded: Any, asset_class: str = "", venue: str = ""
+) -> Optional[str]:
+    declared = recorded_unit_rule(recorded)
+    if declared is not None:
+        return declared
+    return unit_rule(asset_class, venue)
+```
+
+Driven with every outbound connection refused, on a recording carrying one market
+per sector, the wizard answers this for the market picked:
+
+| sector | market | the rule the market demands |
+|---|---|---|
+| Crypto | a spot pair | fractional |
+| Stocks | a share | whole |
+| Commodities | a tokenised metal | fractional |
+| Commodities | a dated contract | whole |
+| Forex | a tokenised fiat pair | whole |
+| Forex | a pair the venue divides | fractional |
+| Indices | an index contract | whole |
+| Futures / Perps | a perpetual contract | whole |
+
+The two Commodities rows and the two Forex rows are the point. Both sectors carry
+markets of both kinds, and the row the sector cites never overrides the step the
+venue published.
+
+Three sectors reach no wizard today, because no configured venue is mapped to
+them. Pressing New Bot on Forex, Indices or Futures / Perps writes one line to the
+status log instead of opening anything.
+
+`src/gui/main_window.py` — what New Bot answers with no venue for the sector
+
+```python
+exchanges = self._matching_exchanges()
+if not exchanges:
+    self._status_log.log(NO_MATCHING_VENUE_LOG, "warning")
+    return
+```
+
 ### Trading Parameters
 
 Next we come to the combined Scrumming Bot configuration page which has several sections for fine tuning how the specific instance behaves. Given that Acervator, at the time of this writing, is still in active development the description for each setting should be seen as a design intention should any issues be encountered.
 
 ![The Trading Parameters group of the wizard's parameter page.](p18-i0.png)
+
+OVERTAKEN, and the paragraph and the picture above are kept as written. Four lines
+sit under Scrum Fold Ratio in the Scrumming Settings group, and a market that
+divides draws only the first of them.
+
+`src/gui/main_tabs/bot_wizard_surface.py` — the four lines
+
+```python
+UNIT_RULE_NOTE = "unit_rule_note"
+UNIT_MINIMUM_NOTE = "unit_minimum_note"
+UNIT_INTERVAL_NOTE = "unit_interval_note"
+UNIT_COARSE_NOTE = "unit_coarse_note"
+```
+
+The first line names the smallest move. The second names the two units a
+whole-unit position opens at and what they cost at one unit's price. The third
+names the position at which one unit equals one Opposing Trade Interval, which is
+`100` divided by the interval: at a 5% interval that is 20 units. The fourth is
+drawn only below that size, and it says what the coarseness costs.
+
+A smaller position is accepted. The wizard says the cost and Finish still creates
+the bot. Being priced out of a fine position is the market's nature, the same way
+being priced out of a market is.
+
+`src/gui/main_tabs/bot_wizard_surface.py` — the position at which one unit is one
+interval
+
+```python
+def interval_unit_count(interval_pct: Any) -> Optional[float]:
+    if type(interval_pct) not in (int, float):
+        return None
+    held = float(interval_pct)
+    if not math.isfinite(held) or held <= 0.0:
+        return None
+    return 100.0 / held
+```
+
+Driven on a share priced at $250 with a 5% interval, the four lines read:
+
+```
+This market does not divide, so the bot sizes in whole units.
+A whole-unit position opens at 2 units, which cost $500.00 at $250.00000000 a unit.
+One unit equals one 5% interval at 20 units.
+$1,000.00 buys 4 units, so one unit moves 25% of the position against a 5%
+interval. The bot still trades; every move is coarser than the interval it was
+given.
+```
+
+Raising the Target Balance to $5,000 drops the fourth line. 20 units at $250 is
+$5,000, which is the size at which one unit and one interval are the same move.
+
+Both builds draw the same four lines. The React page reads them from the same
+payload the Qt page reads, so neither can carry a word the other does not.
+
+`src/gui/web/bot_wizard.js` — where the React page draws them
+
+```javascript
+if (name === PARAMS_PAGE_NAME) {
+  return rows.concat(groups).concat(unitNotes());
+}
+```
 
 Order Visibility - Trades are listed on the order books or tracked internally to the platform.
 

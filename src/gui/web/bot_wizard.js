@@ -30,6 +30,9 @@
   var PAGES = "pages";
   var PHANTOM_PAGE = "phantom_page";
   var POOL_PAGE = "pool_page";
+  var UNIT_PAGE = "unit_page";
+  var UNIT_NOTES = "notes";
+  var UNIT_NOTE_NAMES = "note_names";
   var REFUSALS = "refusals";
   var RUNTIME_CONNECT_TOTAL = "runtime_connect_total";
   var SAFE_EVENTS_REASON = "safe_events_reason";
@@ -122,6 +125,7 @@
     THRESHOLDS,
     TIMEFRAMES,
     TIMERS,
+    UNIT_PAGE,
     VALUES,
     WALK,
     WINDOW
@@ -304,6 +308,7 @@
   var CHECK_TEXT_PART = "field-check-text";
   var STATUS_PART = "page-status";
   var NOTE_PART = "page-note";
+  var UNIT_NOTE_PART = "unit-note";
   var TARGET_PART = "target-combo";
   var TARGET_ICON_PART = "target-icon";
   var OPTION_PART = "field-option";
@@ -988,6 +993,13 @@
         drawn.push([WARNING_BOX, String(at), one]);
       }
     );
+    var units = objectField(found, UNIT_PAGE);
+    var unitNamed = objectField(units, UNIT_NOTES);
+    listField(units, UNIT_NOTE_NAMES).forEach(function (one) {
+      if (typeof unitNamed[one] === "string" && unitNamed[one].length) {
+        drawn.push([UNIT_PAGE, one, unitNamed[one]]);
+      }
+    });
     return drawn;
   }
 
@@ -1508,6 +1520,28 @@
     );
   }
 
+  function unitNotes() {
+    var held = bag(UNIT_PAGE);
+    var named = objectField(held, UNIT_NOTES);
+    var drawn = [];
+    listField(held, UNIT_NOTE_NAMES).forEach(function (one) {
+      var line = named[one];
+      if (typeof line === "string" && line.length) {
+        drawn.push(
+          element(Note, {
+            key: one,
+            part: UNIT_NOTE_PART,
+            name: one,
+            value: line,
+            muted: false,
+            wrapped: true
+          })
+        );
+      }
+    });
+    return drawn;
+  }
+
   function pageBody(name, wired) {
     var handlers = copyOf(wired);
     handlers.page = name === POOL_PAGE_NAME ? POOL_PAGE : ASSET_PAGE;
@@ -1571,6 +1605,9 @@
         warning: phantom[WARNING_BOX],
         onTimeframe: handlers.onTimeframe
       });
+    }
+    if (name === PARAMS_PAGE_NAME) {
+      return rows.concat(groups).concat(unitNotes());
     }
     if (name === MODE_PAGE_NAME) {
       listField(bag(MODES), NAMES).forEach(function (one) {

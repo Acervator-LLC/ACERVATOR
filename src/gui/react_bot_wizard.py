@@ -93,6 +93,14 @@ DRAWN_ROWS_JS = (
     " + n.textContent; }));"
 )
 
+#: The JS expression reading the unit notes the browser drew.
+UNIT_NOTES_JS = (
+    "JSON.stringify(Array.from("
+    "document.querySelectorAll('[data-part=\"unit-note\"]'))"
+    ".map(function (n) { return n.getAttribute('data-name') + '='"
+    " + n.textContent; }));"
+)
+
 #: The class ``bot_wizard.js`` puts on the one element it owns.
 WIZARD_CLASS = "acervator-bot-wizard"
 
@@ -246,13 +254,16 @@ if _HAS_WEBENGINE:
             theme: object = None,
             markets: Any = None,
             timeframes: Any = None,
+            sector: Any = "",
         ) -> None:
-            """Hold the venue list and the defaults the payload is built from."""
+            """Hold the venue list, the defaults and the sector the payload is
+            built from, ``sector`` being the layer New Bot was pressed on."""
             super().__init__(parent)
             self._exchanges = exchanges
             self._defaults = defaults
             self._markets = markets
             self._timeframes = timeframes
+            self._sector = surface.normalise_sector(sector)
             self._steps: dict = {}
             self._page_ready = False
             self._payload = self.model()
@@ -286,14 +297,15 @@ if _HAS_WEBENGINE:
         def model(self, steps: Any = None) -> dict:
             """The whole wizard as one payload, built from ``steps``.
 
-            The venue list, the defaults, the markets and the offered
-            timeframes are put in around the steps the page sends.
+            The venue list, the defaults, the markets, the offered timeframes
+            and the sector are put in around the steps the page sends.
             """
             asked = dict(steps or {})
             asked.setdefault("exchanges", self._exchanges)
             asked.setdefault("defaults", self._defaults)
             asked.setdefault("markets", self._markets)
             asked.setdefault("timeframes", self._timeframes)
+            asked.setdefault("sector", self._sector)
             return surface.view_model(asked)
 
         def payload(self) -> dict:
@@ -383,6 +395,14 @@ if _HAS_WEBENGINE:
             if not self._page_ready:
                 return False
             self._web.page().runJavaScript(DRAWN_ROWS_JS, callback)
+            return True
+
+        def drawn_unit_notes(self, callback: Callable[[Any], None]) -> bool:
+            """Run ``UNIT_NOTES_JS`` and hand the drawn unit notes to
+            ``callback``, which reads the text the browser drew."""
+            if not self._page_ready:
+                return False
+            self._web.page().runJavaScript(UNIT_NOTES_JS, callback)
             return True
 
         def _on_load_finished(self, ok: bool) -> None:
