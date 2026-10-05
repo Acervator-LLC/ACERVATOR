@@ -54,6 +54,10 @@ only when a venue read answers.
 record_venue(self._exchange_id, markets, classes=classes)
 ```
 
+OVERTAKEN, and the citation above is kept as written. That call now stands at
+`src/exchange/ccxt_connector.py:1756`, moved by the sector rules added above it.
+The line it writes is unchanged.
+
 The broker path writes its own rows at `src/stocks/broker_base.py:238`.
 
 ## Sector
@@ -161,6 +165,11 @@ COMMODITY_FUTURES_ASSET_TYPES: frozenset = frozenset(
 )
 ```
 
+OVERTAKEN, and the citation above is kept as written, here and in the source
+table at the foot of this page. That set now stands at
+`src/exchange/ccxt_connector.py:218`, moved by the index and equity label sets
+declared beside it. Its three members are unchanged.
+
 ### Forex, Indices and Futures / Perps, no venue each
 
 `venues_for_class` answers an empty set for all three. The count is zero.
@@ -216,6 +225,147 @@ Commodities    SPOT for tokenised metal, FUTURE for dated contracts
 Indices        FUTURE, index contracts
 ```
 
+OVERTAKEN, and the block above is kept as written. The classifier now answers
+all six sectors instead of three, and Futures / Perps is the sixth: a contract,
+dated or perpetual, written on a crypto underlying.
+
+### The underlying decides the sector, and the contract form does not
+
+A dated gold contract is both a commodity and a future. It answers Commodities,
+because the sector follows what the product is written on. The same holds the
+other way: a perpetual on a crypto asset answers Futures / Perps however it is
+quoted.
+
+The order the classifier reads, the first match winning:
+
+```
+1  the venue's futures label names a commodity family   Commodities
+2  the venue's futures label names an index             Indices
+3  the venue's futures label names equities             Stocks
+4  the product type is an equity product                Stocks
+5  the base asset is a precious metal                   Commodities
+6  both legs are currencies                             Forex
+7  the record is a dated contract or a perpetual        Futures / Perps
+8  everything else                                      Crypto
+```
+
+Two rules sit in that order for a reason a product demonstrates.
+
+An index label beats an equity label, and five perpetuals need it. SPY, QQQ,
+EWY, SOXL and DRAM each carry both labels, and each is a basket rather than one
+company's share, so each answers Indices.
+
+The venue's label beats any asset code, and one perpetual needs it.
+`AMD-PERP-INTX` is written on Advanced Micro Devices and its root unit is AMD,
+which is also the currency code for the Armenian dram. Its label names equities,
+so it answers Stocks and never Forex.
+
+`src/exchange/ccxt_connector.py:456` — the order above
+
+```python
+    labels = futures_asset_types(market)
+    if labels & COMMODITY_FUTURES_ASSET_TYPES:
+        return CLASS_COMMODITIES
+    if labels & INDEX_FUTURES_ASSET_TYPES:
+        return CLASS_INDICES
+    if labels & EQUITY_FUTURES_ASSET_TYPES:
+        return CLASS_STOCKS
+    if str((market or {}).get("type") or "").lower() == EQUITY_MARKET_TYPE:
+        return CLASS_STOCKS
+    base = underlying_code((market or {}).get("base"))
+    if base in PRECIOUS_METAL_CODES:
+        return CLASS_COMMODITIES
+    if base and underlying_code((market or {}).get("quote")):
+        return CLASS_FOREX
+    if is_contract_market(market):
+        return CLASS_FUTURES_PERPS
+    return CLASS_CRYPTO
+```
+
+### Where each sector's answer is read from
+
+The venue labels a contract and labels nothing else. Measured over all 2,152
+rows the public endpoint answered: every one of the 231 contract rows carries a
+label naming what it is written on, and all 921 spot rows and all 1,000 equity
+rows carry none. Each spot row's three resource-name fields are empty strings.
+
+So the three contract sectors read a venue label, and the two spot sectors read
+the asset codes on the pair's two legs.
+
+```
+Commodities, Indices, Stocks, Futures / Perps   the venue's own contract label
+Forex                                           both legs are currency codes
+Commodities, spot                               the base is a metal code
+```
+
+The richer label is the plural one. Five perpetuals read an unknown value under
+the single label and name two families under the list, so the list is read first.
+
+`src/exchange/ccxt_connector.py:214` — the two keys, the list read first
+
+```python
+FUTURES_ASSET_TYPES_KEY = "futures_asset_types"
+```
+
+The currency codes are Coinbase's own published currency list, 174 codes read
+from its public currency endpoint and held in the repository so the classifier
+reaches no venue. Four of the 174 name a precious metal by the troy ounce rather
+than a currency, and those four answer Commodities.
+
+`src/exchange/ccxt_connector.py:262` — the four metal codes
+
+```python
+PRECIOUS_METAL_CODES: frozenset = frozenset({"XAG", "XAU", "XPD", "XPT"})
+```
+
+**A tokenised asset has no published label on this venue, and this is the one
+list of names the classifier carries.** A product record says nothing about
+whether a token redeems for a currency or a metal, so nine entries name the
+redemption each token's issuer publishes. A token outside those nine answers
+Crypto, which is what every token answered before.
+
+`src/exchange/ccxt_connector.py:266` — the nine
+
+```python
+TOKEN_UNDERLYING_CODES: dict[str, str] = {
+    "AUDD": "AUD",
+    "EURC": "EUR",
+    "PAXG": "XAU",
+    "TGBP": "GBP",
+    "USD1": "USD",
+    "USDC": "USD",
+    "USDS": "USD",
+    "USDT": "USD",
+    "XSGD": "SGD",
+}
+```
+
+### What the classifier answers per sector
+
+Driven in one process over 2,142 market records, each parsed from the venue's
+own product rows by the connector's own parsers, then recorded and read back.
+
+| Sector | On `origin/current` | With this classifier |
+| ------ | ------------------- | -------------------- |
+| Crypto | 1,121 | 890 |
+| Stocks | 1,000 | 1,033 |
+| Commodities | 21 | 25 |
+| Forex | none, count 0 | 20 |
+| Indices | none, count 0 | 6 |
+| Futures / Perps | none, count 0 | 168 |
+
+231 products changed sector and every one of them left Crypto: 168 to Futures /
+Perps, 33 to Stocks, 20 to Forex, 6 to Indices and 4 to Commodities. Nothing
+already answering Stocks or Commodities moved, counts 0 and 0.
+
+The 20 Forex rows are the four tokenised-fiat pairs quoted in USDC, the seven
+USDC markets quoted in a fiat currency, the four USDT markets, four markets on
+two further tokenised dollars, and one perpetual written on the euro.
+
+The four new Commodities rows are tokenised gold against dollars and against
+USDC, one dated gold contract and one perpetual on gold. The venue labels all
+three contracts crypto; the underlying is gold, so the sector is Commodities.
+
 ### What the recording holds
 
 `record_venue` writes one row per market under the venue's id, and the recorded
@@ -269,6 +419,26 @@ recorded_market_rows("coinbase", "futures_perps")      0 rows
 The label reaches a row only on the next venue read, because `record_venue`
 writes it from the `classes` map `get_markets` builds. The recording read for
 this page was written on 2026-10-04 and holds no label on any of its 1,144 rows.
+
+OVERTAKEN, and the sentences and the block above are kept as written. A
+recording written by the classifier does carry a label on every row, and the
+reader answers each of the six sectors off it. Measured by recording 2,142
+market records into a scratch home and reading them straight back:
+
+```
+recorded_market_rows("coinbase")                   2,142 rows
+recorded_market_rows("coinbase", "crypto")           890 rows
+recorded_market_rows("coinbase", "stocks")         1,033 rows
+recorded_market_rows("coinbase", "commodities")       25 rows
+recorded_market_rows("coinbase", "forex")             20 rows
+recorded_market_rows("coinbase", "indices")            6 rows
+recorded_market_rows("coinbase", "futures_perps")    168 rows
+```
+
+Those seven readings match what the classifier answered before anything was
+written, so the label survives the write and the read. His own recording still
+holds no label, because it was written before the write path merged, and his
+next venue read rewrites it.
 
 The 1,000 equity products are not in it either. `AAPL/USDC:USDC`,
 `TSLA/USDC:USDC` and `SPY/USDC:USDC` are each one perpetual contract row, and no

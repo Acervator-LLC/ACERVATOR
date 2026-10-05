@@ -209,6 +209,10 @@ FUTURES_DETAILS_KEY = "future_product_details"
 #: The venue's own label for what a futures contract is written on.
 FUTURES_ASSET_TYPE_KEY = "futures_asset_type"
 
+#: The venue's own label list for what a futures contract is written on, held
+#: beside the singular ``FUTURES_ASSET_TYPE_KEY``.
+FUTURES_ASSET_TYPES_KEY = "futures_asset_types"
+
 #: The ``futures_asset_type`` values naming a commodity underlying. Measured on
 #: Coinbase's own product list: 12 metals, 5 energy and 4 commodities.
 COMMODITY_FUTURES_ASSET_TYPES: frozenset = frozenset(
@@ -219,9 +223,57 @@ COMMODITY_FUTURES_ASSET_TYPES: frozenset = frozenset(
     }
 )
 
+#: The ``futures_asset_type`` values naming an index underlying.
+INDEX_FUTURES_ASSET_TYPES: frozenset = frozenset({"FUTURES_ASSET_TYPE_INDICES"})
+
+#: The ``futures_asset_type`` values naming an equity underlying.
+EQUITY_FUTURES_ASSET_TYPES: frozenset = frozenset({"FUTURES_ASSET_TYPE_STOCKS"})
+
 #: The ccxt market type an equity product parses as, off its own
 #: ``product_type``.
 EQUITY_MARKET_TYPE = "equity"
+
+#: The ccxt market types a contract product parses as, a dated contract and a
+#: perpetual.
+CONTRACT_MARKET_TYPES: frozenset = frozenset({"future", "swap"})
+
+#: The ccxt market field set True on every contract record.
+CONTRACT_MARKET_KEY = "contract"
+
+#: The codes Coinbase's own public currency list answers for a currency, held
+#: here so the classifier reads a label and calls no venue.
+FIAT_CURRENCY_CODES: frozenset = frozenset("""
+    AED AFN ALL AMD ANG AOA ARS ARSMEP AUD AWG AZN BAM BBD BDT
+    BGN BHD BIF BMD BND BOB BRL BSD BTN BWP BYN BYR BZD CAD
+    CDF CHF CLF CLP CNH CNY COP CRC CUC CUP CVE CZK DJF DKK
+    DOP DZD EGP ETB EUR FJD FKP GBP GEL GGP GHS GIP GMD GNF
+    GTQ GYD HKD HNL HRK HTG HUF IDR ILS IMP INR IQD IRR ISK
+    JEP JMD JOD JPY KES KGS KHR KMF KRW KWD KYD KZT LAK LBP
+    LKR LRD LSL LTL LVL LYD MAD MDL MGA MKD MMK MNT MOP MRO
+    MRU MUR MVR MWK MXN MYR MZN NAD NGN NIO NOK NPR NZD OMR
+    PAB PEN PGK PHP PKR PLN PYG QAR RON RSD RUB RWF SAR SBD
+    SCR SDG SEK SGD SHP SKK SLL SOS SRD SSP STD SVC SYP SZL
+    THB TJS TMM TMT TND TOP TRY TTD TWD TZS UAH UGX USD UYU
+    UZS VEF VES VND VUV WST XAF XCD XDR XOF XPF YER ZAR ZMK
+    ZMW ZWD
+    """.split())
+
+#: The codes that same list answers for a precious metal by the troy ounce.
+PRECIOUS_METAL_CODES: frozenset = frozenset({"XAG", "XAU", "XPD", "XPT"})
+
+#: The code each tokenised asset Coinbase lists redeems for. A product record
+#: carries no asset-level label, so each entry names the issuer's redemption.
+TOKEN_UNDERLYING_CODES: dict[str, str] = {
+    "AUDD": "AUD",
+    "EURC": "EUR",
+    "PAXG": "XAU",
+    "TGBP": "GBP",
+    "USD1": "USD",
+    "USDC": "USD",
+    "USDS": "USD",
+    "USDT": "USD",
+    "XSGD": "SGD",
+}
 
 # CCXT precisionMode values — precision means a different thing under each.
 CCXT_DECIMAL_PLACES: int = 2
@@ -359,20 +411,81 @@ def futures_asset_type(market: Any) -> str:
     return str(detail.get(FUTURES_ASSET_TYPE_KEY) or "").strip().upper()
 
 
-def market_asset_class(market: Any) -> str:
-    """The asset class one loaded market record belongs to.
+def futures_asset_types(market: Any) -> frozenset:
+    """Every ``futures_asset_type`` label one loaded market record carries.
 
-    ``futures_asset_type`` naming a commodity family answers commodities, an
-    ``EQUITY_MARKET_TYPE`` record answers stocks, and every other record
-    answers crypto. ``record_venue`` writes this beside the market's rules, so
-    the recording can be read one class at a time.
+    ``FUTURES_ASSET_TYPES_KEY`` is read before ``FUTURES_ASSET_TYPE_KEY``, and
+    a record carrying no ``FUTURES_DETAILS_KEY`` answers an empty frozenset.
     """
-    from ..trading.ata_spm import CLASS_COMMODITIES, CLASS_CRYPTO, CLASS_STOCKS
+    raw = (market or {}).get("info") or {}
+    detail = raw.get(FUTURES_DETAILS_KEY) or {}
+    if not isinstance(detail, dict):
+        return frozenset()
+    listed = detail.get(FUTURES_ASSET_TYPES_KEY)
+    if isinstance(listed, (list, tuple, set, frozenset)):
+        held = {str(name or "").strip().upper() for name in listed}
+        held.discard("")
+        if held:
+            return frozenset(held)
+    single = futures_asset_type(market)
+    return frozenset({single}) if single else frozenset()
 
-    if futures_asset_type(market) in COMMODITY_FUTURES_ASSET_TYPES:
+
+def is_contract_market(market: Any) -> bool:
+    """Whether one loaded market record sets ``CONTRACT_MARKET_KEY`` or carries
+    a type ``CONTRACT_MARKET_TYPES`` holds."""
+    held = market or {}
+    if held.get(CONTRACT_MARKET_KEY):
+        return True
+    return str(held.get("type") or "").lower() in CONTRACT_MARKET_TYPES
+
+
+def underlying_code(code: Any) -> str:
+    """The ``FIAT_CURRENCY_CODES`` or ``PRECIOUS_METAL_CODES`` code one asset
+    code stands for, upper case.
+
+    ``TOKEN_UNDERLYING_CODES`` answers for a tokenised asset, and a code
+    neither holds answers an empty string.
+    """
+    held = str(code or "").strip().upper()
+    if held in FIAT_CURRENCY_CODES or held in PRECIOUS_METAL_CODES:
+        return held
+    return TOKEN_UNDERLYING_CODES.get(held, "")
+
+
+def market_asset_class(market: Any) -> str:
+    """The asset class one loaded market record belongs to, read off
+    ``futures_asset_types`` first and off ``base`` and ``quote`` where that
+    answers nothing.
+
+    ``record_venue`` writes this beside the market's rules, so the recording
+    can be read one class at a time.
+    """
+    from ..trading.ata_spm import (
+        CLASS_COMMODITIES,
+        CLASS_CRYPTO,
+        CLASS_FOREX,
+        CLASS_FUTURES_PERPS,
+        CLASS_INDICES,
+        CLASS_STOCKS,
+    )
+
+    labels = futures_asset_types(market)
+    if labels & COMMODITY_FUTURES_ASSET_TYPES:
         return CLASS_COMMODITIES
+    if labels & INDEX_FUTURES_ASSET_TYPES:
+        return CLASS_INDICES
+    if labels & EQUITY_FUTURES_ASSET_TYPES:
+        return CLASS_STOCKS
     if str((market or {}).get("type") or "").lower() == EQUITY_MARKET_TYPE:
         return CLASS_STOCKS
+    base = underlying_code((market or {}).get("base"))
+    if base in PRECIOUS_METAL_CODES:
+        return CLASS_COMMODITIES
+    if base and underlying_code((market or {}).get("quote")):
+        return CLASS_FOREX
+    if is_contract_market(market):
+        return CLASS_FUTURES_PERPS
     return CLASS_CRYPTO
 
 
