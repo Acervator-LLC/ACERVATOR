@@ -1137,6 +1137,20 @@ Every other sentence above stands as written. The per-venue size table, the
 excess figure, the three-answer rule and the per-market answer are unchanged by
 this entry.
 
+OVERTAKEN, and the block and sentences above are kept as written. The layered
+sector set now holds six, so Indices and Futures / Perps each stand behind their
+own trading layer on the Live tab beside the other four.
+
+```python
+LAYERED_CLASSES = frozenset(
+    {"crypto", "stocks", "commodities", "forex", "indices", "futures_perps"}
+)
+```
+
+No venue serves either added sector. The venue-to-sector map is unchanged, so
+Coinbase still answers crypto, stocks and commodities and nothing else, and each
+added sector draws its empty state with an Add Exchange button that cannot act.
+
 ## 2026-09-25 - a venue's own rules select the bot variant
 
 A venue's own published rules pick the bot's shape. No setting offers the choice

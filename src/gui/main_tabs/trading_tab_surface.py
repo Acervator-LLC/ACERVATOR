@@ -205,7 +205,7 @@ def add_button_text(label: Any) -> str:
 
 def add_button_tooltip(label: Any) -> str:
     """The corner add button's tooltip for one layer."""
-    return f"Add a {label} exchange connection"
+    return f"Add {asset_class_surface.article(label)} {label} exchange connection"
 
 
 def placeholder_title_text(label: Any) -> str:
@@ -215,7 +215,8 @@ def placeholder_title_text(label: Any) -> str:
 
 def placeholder_hint_text(label: Any) -> str:
     """The line under the empty-state card's button for one layer."""
-    return f"Add a {label} exchange to begin trading"
+    said = asset_class_surface.article(label)
+    return f"Add {said} {label} exchange to begin trading"
 
 
 def placeholder_card_style(accent: Any) -> str:

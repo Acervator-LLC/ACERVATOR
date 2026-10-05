@@ -203,6 +203,27 @@ standard, sorts each product by its own form rather than by a class of its own.
 ASSET_CLASSES = (CLASS_CRYPTO, CLASS_STOCKS, CLASS_COMMODITIES, CLASS_FOREX)
 ```
 
+OVERTAKEN, and the sentence and block above are kept as written. Six sectors
+ship. The two added are Indices and Futures / Perps, and the class box, the class
+table and every scan read all six.
+
+`src/trading/ata_spm.py` — the sector set every button, menu and scan reads
+
+```python
+ASSET_CLASSES = (
+    CLASS_CRYPTO,
+    CLASS_STOCKS,
+    CLASS_COMMODITIES,
+    CLASS_FOREX,
+    CLASS_INDICES,
+    CLASS_FUTURES_PERPS,
+)
+```
+
+Neither added sector carries a listed market yet, so a scan of either walks no
+sector at all. The map store answers an empty set for a class it holds no entry
+for, which is what it already does for crypto.
+
 The operator asked for the published names rather than this project's own.
 
 > I just want to adopt the standard categorization and language so that the implementation is professional and accurate...

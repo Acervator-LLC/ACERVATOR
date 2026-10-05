@@ -50,6 +50,10 @@ CLASS_CRYPTO = "crypto"
 CLASS_STOCKS = "stocks"
 CLASS_COMMODITIES = "commodities"
 CLASS_FOREX = "forex"
+CLASS_INDICES = "indices"
+
+#: One sector over both of the venue's contract-form tabs, Futures and Perps.
+CLASS_FUTURES_PERPS = "futures_perps"
 
 #: Every major asset class that charts and takes TA.
 ASSET_CLASSES = (
@@ -57,6 +61,8 @@ ASSET_CLASSES = (
     CLASS_STOCKS,
     CLASS_COMMODITIES,
     CLASS_FOREX,
+    CLASS_INDICES,
+    CLASS_FUTURES_PERPS,
 )
 
 #: What ``asset_class_named`` answers for a name no live or retired class holds.

@@ -80,28 +80,37 @@ LEGACY_CLASS_WORDS = {"stock": "stocks", "equities": "stocks", "equity": "stocks
 
 #: The classes a trading layer stands behind. A class outside this set draws
 #: its state and offers no venue.
-LAYERED_CLASSES = frozenset({"crypto", "stocks", "commodities", "forex"})
+LAYERED_CLASSES = frozenset(
+    {"crypto", "stocks", "commodities", "forex", "indices", "futures_perps"}
+)
 
 #: Display names. A class absent here is titled from its own key.
+#: ``layer_card`` indexes ``LAYER_LABEL``, so a layered class absent here
+#: refuses the React page.
 CLASS_NAMES = {
     "crypto": "Crypto",
     "stocks": "Stock",
     "derivatives": "Derivatives",
     "forex": "Forex",
     "commodities": "Commodities",
+    "indices": "Indices",
+    "futures_perps": "Futures / Perps",
 }
 
 #: What a venue is called in each class. Equities are brokered, not exchanged.
 CLASS_VENUE_NOUNS = {"stocks": "Broker"}
 DEFAULT_VENUE_NOUN = "Exchange"
 
-#: Accents, every one an existing design system token.
+#: Accents, every one an existing design system token. ``futures_perps`` keeps
+#: the accent ``derivatives`` carried, which no live class draws.
 CLASS_ACCENTS = {
     "crypto": ds.LAYER_CRYPTO,
     "stocks": ds.LAYER_STOCK,
     "derivatives": ds.SECONDARY,
     "forex": ds.INFO,
     "commodities": ds.WARNING,
+    "indices": ds.ACCENT_GOLD,
+    "futures_perps": ds.SECONDARY,
 }
 DEFAULT_ACCENT = ds.STATUS_NEUTRAL
 
@@ -111,12 +120,18 @@ DEFAULT_ACCENT = ds.STATUS_NEUTRAL
 #: ``RETIRED_CLASSES``.
 EXTRA_VENUE_CLASSES = {"coinbase": ("derivatives", "stocks", "commodities")}
 
+#: The two articles a sentence takes before a sector name, and the first
+#: letters taking the second.
+ARTICLE_DEFAULT = "a"
+ARTICLE_VOWEL = "an"
+ARTICLE_VOWEL_LETTERS = "aeio"
+
 NO_VENUE_NOTE = "No configured venue serves {name} yet."
 NO_LAYER_NOTE = "{name} has no trading layer yet."
 SERVED_NOTE = "{count} venue(s) serve {name}."
 EMPTY_LABEL = "{name} — no venue yet"
 EMPTY_TOOLTIP = "{note} Nothing is added for this class."
-ADD_TOOLTIP = "Add a {name} {noun_lower} connection"
+ADD_TOOLTIP = "Add {article} {name} {noun_lower} connection"
 
 
 def asset_classes() -> tuple:
@@ -297,6 +312,16 @@ def display_name(name: Any) -> str:
     return CLASS_NAMES.get(key, key.replace("_", " ").title())
 
 
+def article(label: Any) -> str:
+    """The article a sentence takes before one display name.
+
+    Answers ``ARTICLE_VOWEL`` while the name opens on a letter in
+    ``ARTICLE_VOWEL_LETTERS``, so the Indices layer reads "an Indices".
+    """
+    first = str(label or "").strip()[:1].lower()
+    return ARTICLE_VOWEL if first in ARTICLE_VOWEL_LETTERS else ARTICLE_DEFAULT
+
+
 def venue_noun(name: Any) -> str:
     """What one asset class calls a venue."""
     return CLASS_VENUE_NOUNS.get(normalise(name), DEFAULT_VENUE_NOUN)
@@ -431,7 +456,11 @@ def add_exchange_tooltip(name: Any) -> str:
     state = class_state(name)
     if not state["served"]:
         return EMPTY_TOOLTIP.format(note=state["note"])
-    return ADD_TOOLTIP.format(name=state["name"], noun_lower=state["noun"].lower())
+    return ADD_TOOLTIP.format(
+        article=article(state["name"]),
+        name=state["name"],
+        noun_lower=state["noun"].lower(),
+    )
 
 
 def add_exchange_enabled(name: Any) -> bool:

@@ -135,6 +135,11 @@ the rest of the session, and only a restart brings it back.
 self.setWindowTitle(window_title(key))
 ```
 
+The capture above predates the two added sectors. Its square carries four
+segments where the running window now carries six, and its title names a layer
+the same way. Everything else in the capture stands. Replacing it needs a fresh
+screenshot of the running platform.
+
 #### The screen itself
 
 **Functional.** One method builds this whole screen. It makes one page per
@@ -179,6 +184,53 @@ The taxonomy names the four classes a layer stands behind.
 
 ```python
 LAYERED_CLASSES = frozenset({"crypto", "stocks", "commodities", "forex"})
+```
+
+OVERTAKEN, and the sentence and block above are kept as written. Six sectors are
+declared and every one stands behind its own layer, so the stack holds six layers
+in taxonomy order and keeps the card page behind them. Indices and Futures / Perps
+each draw their own empty state.
+
+`src/gui/main_tabs/asset_class_surface.py` — the sectors a layer stands behind
+
+```python
+LAYERED_CLASSES = frozenset(
+    {"crypto", "stocks", "commodities", "forex", "indices", "futures_perps"}
+)
+```
+
+Sector is the operator's word for an investment product category, and these six
+are the categories the venue's own market list draws.
+
+> "We will need to add the two additional Sectors (really mean that as investment
+> product categories...its my invention or renaming) which are Indices and
+> Futures / Perps."
+
+Each sector draws the stack page its position in the taxonomy names, and paints
+its empty state in its own accent. Pressing its segment is what shows the page.
+
+| sector | the page it draws | its accent |
+|---|---|---|
+| Crypto | page 0 | `#00ccaa` |
+| Stock | page 1 | `#6699ff` |
+| Commodities | page 2 | `#ffaa00` |
+| Forex | page 3 | `#4fc3ff` |
+| Indices | page 4 | `#ffd700` |
+| Futures / Perps | page 5 | `#ff00aa` |
+
+No venue serves Indices or Futures / Perps yet, so each page reads
+`No <sector> Exchanges Configured` and its Add Exchange button cannot act.
+
+The hint under that card takes its article from the sector name, so the Indices
+page reads "Add an Indices exchange to begin trading" and the other five keep
+"a". The Qt page and the React page read the one sentence.
+
+`src/gui/main_tabs/asset_class_surface.py` — the article a sector name takes
+
+```python
+def article(label: Any) -> str:
+    first = str(label or "").strip()[:1].lower()
+    return ARTICLE_VOWEL if first in ARTICLE_VOWEL_LETTERS else ARTICLE_DEFAULT
 ```
 
 **Design intention.** The stack holds one page per trading layer and one card for
@@ -5442,6 +5494,34 @@ ASSET_CLASSES = (
 )
 ```
 
+OVERTAKEN, and the block above is kept as written. The taxonomy holds six
+sectors, so the square divides into six rectangles, three across and two down,
+which is the count table's six row.
+
+`src/trading/ata_spm.py` — the taxonomy the group reads
+
+```python
+ASSET_CLASSES = (
+    CLASS_CRYPTO,
+    CLASS_STOCKS,
+    CLASS_COMMODITIES,
+    CLASS_FOREX,
+    CLASS_INDICES,
+    CLASS_FUTURES_PERPS,
+)
+```
+
+OVERTAKEN, and the Functional paragraph above is kept as written. The side is not
+68 pixels and is not a typed figure. It is the column count times the widest
+sector name's room plus its padding, with a floor of 34 pixels a segment.
+
+Measured offscreen with 172 font families loaded, at ten pixels bold:
+
+| sectors | widest name | its room | segment | square side |
+|---|---|---|---|---|
+| four | Commodities | 44 px | 56 px | 112 px |
+| six | Futures / Perps | 56 px | 68 px | 204 px |
+
 **The square takes no spare width.** Its side is a declared number, so no slot of
 the header row takes the width the figures leave. Each part draws at the width its
 own text asks for, down to its floor, and the row inserts empty space before the
@@ -5568,6 +5648,16 @@ standards the top level is the **asset class**, and a sector is the tier below i
 GICS names sectors inside equities. S&P GSCI names sectors inside commodities. The
 group therefore selects an asset class. Sectors stay the tier below, where the
 ATA-SMP scanner uses them.
+
+OVERTAKEN, and the paragraph above is kept as written. Sector is his word for the
+top level, and it is his invention rather than a published term.
+
+> "really mean that as investment product categories...its my invention or
+> renaming"
+
+Every screen and every page of this manual calls the top level a sector. The
+code's own names keep the asset-class spelling, because `sector` already names
+the tier below in the scanner's maps and one word cannot name both tiers.
 
 **The choice survives a restart.** The class is written into settings on every press
 and read back when the group is built.
