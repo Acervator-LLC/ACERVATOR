@@ -241,7 +241,11 @@ class LogManager:
         self._sys_logger = logging.getLogger("acervator")
         self._sys_logger.setLevel(logging.DEBUG)
         self._sys_logger.propagate = False
-        if not self._sys_logger.handlers:
+        # main.py attaches its own handler to "acervator" before this runs.
+        if not any(
+            isinstance(attached, SizeBoundedFileHandler)
+            for attached in self._sys_logger.handlers
+        ):
             # cp1252 raises on the arrow and em-dash glyphs, dropping the record.
             handler = SizeBoundedFileHandler(
                 self._console_dir / "system.log",
