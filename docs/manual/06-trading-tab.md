@@ -540,6 +540,48 @@ def _sync_exchange_tabs(self) -> None:
     """Add a tab for each configured exchange missing one, in its own layer."""
 ```
 
+#### When the data pool stops refreshing
+
+**Functional.** A red line appears directly under the data pool line when
+nothing has come back from the venue for a full minute. It names the venue, says
+how long the screen has been showing old figures, and tells you to restart the
+platform. It is hidden at every other time. It clears itself the moment a
+reading lands.
+
+`src/gui/widgets/exchange_tab.py` — `ExchangeTab._draw_pool_stopped`
+
+```python
+"DATA POOL STOPPED REFRESHING — nothing has come back from "
+f"{self._exchange_name} for {span_words(stopped_for)}. Every "
+"price, balance and ammo figure below is at least that old. "
+"Restart the platform to recover it."
+```
+
+**Design intention.** Single slots passing their time to live is ordinary. A
+ticker slot lives five seconds and a balance slot lives ten, and the pool
+refetches a slot because it aged out. So the line never watches one slot. It
+watches the age of the newest reading anywhere in the pool. While the pool is
+healthy, something was fetched a moment ago, so that age stays near zero even
+when most slots are stale.
+
+The span is one minute. It is the window the call rate is measured over, so a
+rate of zero calls is a complete reading only across that minute. Measured in
+the pool's own lifetimes it is twelve ticker lifetimes and six balance
+lifetimes, and it is twelve passes of the five-second trading tick that drives
+the fetching.
+
+`src/exchange/fetch_stall.py` — the span and the verdict both tabs read
+
+```python
+STALL_THRESHOLD_SECONDS = DEFAULT_WINDOW_SECONDS
+TICKER_LIFETIMES_PER_THRESHOLD = STALL_THRESHOLD_SECONDS / TICKER_TTL_SECONDS
+BALANCE_LIFETIMES_PER_THRESHOLD = STALL_THRESHOLD_SECONDS / BALANCE_TTL_SECONDS
+```
+
+**What to do when it appears.** Restart the platform. Nothing else brings the
+fetching back. The Console carries the same reading as a log line, so a run that
+is already closed can still be read there.
+
 #### The news line
 
 **Functional.** The headline between Privacy Mode and + New Bot is one item
