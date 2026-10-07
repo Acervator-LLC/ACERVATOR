@@ -6781,3 +6781,67 @@ the asset-unit one is gone, with the Qt table, the view model and the renderer p
 that drew it; it was built zero times, which is why its removal changed no behaviour.
 That registry's two operator overrides went with it, so the claim table takes no
 force-release of any kind.
+
+### One connector per venue, shared by every bot on it
+
+A fleet builds one exchange connector for each venue it trades on, not one for
+each bot. The first bot to start on a venue opens that connection, and every
+later bot on the same venue is handed the same object. Ten bots across two
+venues hold two connectors between them. A bot is never handed the connector of
+a venue it does not trade on.
+
+`src/gui/main_window.py` — `MainWindow._live_connector`
+
+```python
+held = self._exchange_connectors.get(eid)
+if held is None:
+    return None
+if getattr(held, "is_connected", False):
+    return held
+```
+
+**What one connector is responsible for.** It holds the session for its own
+venue and nothing else. It paces every request against that venue's rate limit,
+keeps the market list the venue loaded, answers the balance and ticker reads the
+tab draws, and runs the trade-history scan for each symbol registered on it. The
+symbols registered on a venue's connector are the symbols of the bots on that
+venue, and each bot is registered once.
+
+`src/trading/bot_container.py` — `BotManager.set_connector`
+
+```python
+for bot in self._bots.values():
+    if eid is not None and getattr(bot.config, "exchange_id", eid) != eid:
+        continue
+    candidates += 1
+    if bot.bot_id in registered:
+        continue
+```
+
+**A dropped connection is released before a replacement opens.** A held
+connector that no longer reports itself connected is dropped from the venue
+dictionary and released. Its scan set is cleared, both venue handles are
+dropped, and its worker pool is shut, so no retired connector keeps scanning
+behind the live one. The next bot to start on that venue then opens a fresh
+session.
+
+`src/exchange/ccxt_connector.py` — `CCXTConnector.release`
+
+```python
+cleared = len(self._scan_symbols)
+self._scan_symbols.clear()
+self._injected_ex = None
+self._ccxt_sync = None
+self._ccxt = None
+self._connected = False
+```
+
+A fleet of ten bots, eight on one venue and two on a second, started in full:
+
+```
+connector objects built                      2
+bots holding their own venue's connector    10
+bots holding another venue's connector       0
+bot registrations performed on a connector  10
+retired connectors still scanning            0
+```
