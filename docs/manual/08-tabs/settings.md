@@ -7115,6 +7115,91 @@ heading and the line text cannot drift apart. Read back off the drawn React
 page beside the Qt widgets: the heading is Exchange Status on both, and all
 fifteen crypto lines match character for character.
 
+### How current a colour is
+
+Each colour is set by one event, and the panel reads the record those events
+leave. A colour is therefore exactly as current as the last event that wrote it.
+
+| Event | What it records | What writes it |
+| ----- | --------------- | -------------- |
+| A venue answered an authenticated call | green | Test Connection, and the balance fetch a running bot makes |
+| A venue did not answer a call | red | the connector, on the call that failed |
+| A venue rejected the credential | grey | the connector, on the call it refused |
+| A venue asked for a slower rate | no change | nothing is written |
+
+`src/exchange/ccxt_connector.py` - `note_venue_refusal`
+
+```python
+kind = classify_venue_refusal(exc)
+if kind == VENUE_LOST:
+    if recorded_state(exchange_id) != CONNECTION_LOST:
+        record_connection_lost(exchange_id)
+elif kind == VENUE_CREDENTIAL_REJECTED:
+    forget(exchange_id)
+```
+
+A slower rate writes nothing on purpose. ccxt files every rate limit under its
+own `NetworkError` class, so a check reading that class alone would draw a venue
+red every time the venue asked it to wait. One launch produced 785 such
+refusals.
+
+`src/exchange/ccxt_connector.py` - `_refusal_order`
+
+```python
+(VENUE_CREDENTIAL_REJECTED, _ccxt_error_types(("AuthenticationError",))),
+(VENUE_RATE_LIMITED, _ccxt_error_types(("RateLimitExceeded", "DDoSProtection"))),
+(VENUE_ANSWERED, _ccxt_error_types(("ExchangeNotAvailable", "InvalidNonce")) + (HTTPError,)),
+(VENUE_LOST, _ccxt_error_types(("NetworkError",)) + (TimeoutError, URLError)),
+```
+
+Driven on one venue holding a green record, with every outbound socket and every
+name lookup refused:
+
+| Exception raised into the connector | State the store then held |
+| ----------------------------------- | ------------------------- |
+| a dropped connection | red |
+| a rate limit | green, unchanged |
+| a rejected credential | grey |
+
+```mermaid
+flowchart LR
+  CALL["a bot's exchange call<br/>_call_sync"]
+  CLASS["classify_venue_refusal"]
+  STORE["credential_state<br/>exchange_credential_state.json"]
+  PANEL["Exchange Status"]
+  CALL -->|refused| CLASS
+  CLASS -->|did not answer| STORE
+  CLASS -->|rate limit| DROP["nothing written"]
+  CALL -->|answered| STORE
+  STORE -->|read on redraw| PANEL
+```
+
+### When a colour is stale
+
+Every event above fires on a call to the venue. A venue nobody calls keeps the
+colour its last call left, so the age of a colour is the age of that call.
+
+| What the line shows | How old the colour is |
+| ------------------- | --------------------- |
+| green, with bots running on this venue | seconds, because each balance fetch refreshes it |
+| green, with no bots on this venue | as old as the last Test Connection |
+| red | the moment a call failed, and it stays until a call succeeds |
+| grey | nothing has been recorded for this venue |
+
+A green line means the last call to this venue succeeded. It is not a promise
+that the venue is answering now.
+
+The store already stamps the time of each record, and the panel does not draw
+it. The field is there to read.
+
+`src/exchange/credential_state.py` - `recorded_at`
+
+```python
+def recorded_at(exchange_id: Any, path: Any = None) -> Optional[float]:
+    """When one venue was last checked, as epoch seconds, or None."""
+    entry = _read(path).get(normalise_id(exchange_id))
+```
+
 ### The sentences the Exchange Status panel replaces
 
 Each sentence below stands in an earlier section and no longer describes the
@@ -7126,6 +7211,7 @@ code. The earlier text stays where it is.
 | "Configured Crypto Exchanges lists what the manager returns for this wing, each entry naming its display name and its exchange id." | Exchange Status lists every venue the sector serves, each line naming the venue and its exchange id. |
 | "The stock wing lists the equity ids instead and disables both buttons." | Every sector lists its own venues. The stock wing still disables both buttons. |
 | "\| `_remove_exchange` \| Drops the selected entry \|" | `_remove_exchange` drops the stored entry and its recorded check, and the line returns to grey. |
+| "A venue that stops answering turns red through its next check." | A venue that stops answering turns red on the call that failed, with no check pressed. |
 
 ## 2026-10-06 - Six sectors on the Exchanges page
 

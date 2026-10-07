@@ -89,9 +89,9 @@ def validate_credentials(
         elapsed = (time.monotonic() - start) * 1000
         market_count = len(sync_exch.markets) if sync_exch and sync_exch.markets else 0
 
-        from .credential_state import record_validated
+        from .ccxt_connector import note_venue_answered
 
-        record_validated(exchange_id)
+        note_venue_answered(exchange_id)
         return ValidationResult(
             success=True,
             exchange_id=exchange_id,
@@ -109,10 +109,9 @@ def validate_credentials(
         )
     except Exception as exc:  # R28-OK: error surfaced via ValidationResult below
         elapsed = (time.monotonic() - start) * 1000
-        from .ccxt_connector import CCXTConnector
-        from .credential_state import record_connection_lost
+        from .ccxt_connector import CCXTConnector, note_venue_refusal
 
-        record_connection_lost(exchange_id)
+        note_venue_refusal(exchange_id, exc)
         detail = CCXTConnector._format_exchange_error(exc)
         return ValidationResult(
             success=False,
