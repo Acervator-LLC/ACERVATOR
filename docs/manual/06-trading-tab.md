@@ -582,6 +582,54 @@ BALANCE_LIFETIMES_PER_THRESHOLD = STALL_THRESHOLD_SECONDS / BALANCE_TTL_SECONDS
 fetching back. The Console carries the same reading as a log line, so a run that
 is already closed can still be read there.
 
+#### What comes back on its own
+
+**Functional.** Two readings rebuild themselves and need no restart. The BTC/USD
+and ETH/USD strip comes back once its last reading is two minutes old. The
+cross-pair rows come back once every venue the scout polled is twenty seconds
+past its reading. Each one drops the figures it was holding, so the strip reads
+`BTC —` and a cross-pair cell reads `pending` until the next refresh lands. The
+Console carries one line for each rebuild.
+
+`src/exchange/lazy_singleton.py` — the cached reader is replaced in place
+
+```python
+            self._instance = instance
+            if cached is None:
+                self._fault.note_success()
+            else:
+                self._fault.note_rebuild()
+```
+
+**Design intention.** The old reader is served until its replacement is built,
+so nothing on the screen is ever handed an empty answer in the gap. A reading
+that keeps stopping is rebuilt after thirty seconds the first time, then at
+doubling gaps up to five minutes, so one stop cannot turn into a stream of
+rebuilds.
+
+`src/exchange/currency_rate_monitor.py` — the rate feed's own test for a stop
+
+```python
+def _monitor_has_stopped(monitor: CurrencyRateMonitor) -> bool:
+    return monitor.snapshot().last_updated > 0 and monitor.is_stale()
+```
+
+**Functional.** Nothing else comes back on its own. The data pool, each bot's
+own fetching, the trade history and the Market Inspector all fetch outside this
+mechanism, so the red line above still means a restart. Measured across the
+source tree: three of thirty-eight venue fetches sit behind it and thirty-five
+do not. A bot is also handed the scout once, when it is registered, so a
+rebuilt scout reaches the screen and not the bots.
+
+`src/exchange/market_pairs_scout.py` — the scout rebuilds only when every venue
+it polled has stopped
+
+```python
+def _scout_has_stopped(scout: MarketPairsScout) -> bool:
+    polled = scout.polled_exchanges()
+    return bool(polled) and all(scout.is_stale(eid) for eid in polled)
+```
+
 #### The news line
 
 **Functional.** The headline between Privacy Mode and + New Bot is one item
