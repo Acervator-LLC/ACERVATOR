@@ -7127,4 +7127,69 @@ code. The earlier text stays where it is.
 | "The stock wing lists the equity ids instead and disables both buttons." | Every sector lists its own venues. The stock wing still disables both buttons. |
 | "\| `_remove_exchange` \| Drops the selected entry \|" | `_remove_exchange` drops the stored entry and its recorded check, and the line returns to grey. |
 
+## 2026-10-06 - Six sectors on the Exchanges page
+
+### The sector table, overtaken
+
+OVERTAKEN, and the table above is kept as written. Coinbase is registered under
+all six sectors, so the three sectors recorded there as serving no venue each
+draw one venue row. Driven again on the real dialog, one sector at a time, with
+the home trees redirected and every outbound socket refused:
+
+| Sector | The table above records | Measured now |
+| ------ | ---: | ---: |
+| Crypto | 15 rows | 15 rows |
+| Stock | 10 rows | 10 rows |
+| Commodities | 1 row | 1 row |
+| Forex | 1 note | 1 row, `Coinbase (coinbase)` |
+| Indices | 1 note | 1 row, `Coinbase (coinbase)` |
+| Futures / Perps | 1 note | 1 row, `Coinbase (coinbase)` |
+
+[The sector and product tree](../16-sector-exchange-product-tree.md) records the
+same six registrations.
+
+### The Add box is named after the sector
+
+The box under the list takes its title from the sector the page was opened on.
+The sector's display name and its venue noun fill the title, so a sector outside
+the crypto and stock wings is named rather than drawn as crypto.
+
+`src/gui/main_tabs/settings_dialog_surface.py` — `add_group_title`
+
+```python
+return ADD_GROUP_FORMAT.format(
+    name=acs.display_name(sector), noun=acs.venue_noun(sector)
+)
+```
+
+Read off the drawn Qt box beside the title the view model publishes to the React
+page, for all six sectors:
+
+| Sector | The box's title | Both builds agree |
+| ------ | --------------- | ----------------- |
+| Crypto | Add Crypto Exchange | yes |
+| Stock | Add Stock Broker | yes |
+| Commodities | Add Commodities Exchange | yes |
+| Forex | Add Forex Exchange | yes |
+| Indices | Add Indices Exchange | yes |
+| Futures / Perps | Add Futures / Perps Exchange | yes |
+
+Both builds call the one function, so the two titles cannot drift apart.
+
+### Which tab each route opens
+
+Three routes reach this dialog. Driven on a live window, with the credential
+store empty and every outbound socket refused:
+
+| Route | Tab it opens on |
+| ----- | --------------- |
+| Exchange ▸ Add Exchange | Exchanges |
+| An asset class's Add Exchange button | Exchanges |
+| File ▸ Settings | User |
+
+The asset class button was pressed under each of the six sectors in turn. Every
+press opened the Exchanges tab, and the panel listed that sector's venues. The
+refusal counter stayed at zero across all eight routes, against a control that
+moved it to one on a single deliberate reach for a socket.
+
 Back to [the subsystem index](README.md).
