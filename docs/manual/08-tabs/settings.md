@@ -7122,7 +7122,7 @@ leave. A colour is therefore exactly as current as the last event that wrote it.
 
 | Event | What it records | What writes it |
 | ----- | --------------- | -------------- |
-| A venue answered an authenticated call | green | Test Connection, and the balance fetch a running bot makes |
+| A venue answered an authenticated call | green | Test Connection, and a running bot's first balance fetch after it connects |
 | A venue did not answer a call | red | the connector, on the call that failed |
 | A venue rejected the credential | grey | the connector, on the call it refused |
 | A venue asked for a slower rate | no change | nothing is written |
@@ -7181,13 +7181,13 @@ colour its last call left, so the age of a colour is the age of that call.
 
 | What the line shows | How old the colour is |
 | ------------------- | --------------------- |
-| green, with bots running on this venue | seconds, because each balance fetch refreshes it |
+| green, with bots running on this venue | set when the connection opened, and set again on the first call that succeeds after one fails |
 | green, with no bots on this venue | as old as the last Test Connection |
 | red | the moment a call failed, and it stays until a call succeeds |
 | grey | nothing has been recorded for this venue |
 
-A green line means the last call to this venue succeeded. It is not a promise
-that the venue is answering now.
+A green line means no call has failed to reach this venue since the colour
+was recorded. It is not a promise that the venue is answering now.
 
 The store already stamps the time of each record, and the panel does not draw
 it. The field is there to read.
