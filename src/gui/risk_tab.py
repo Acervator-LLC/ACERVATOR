@@ -32,7 +32,7 @@ try:
         QColor,
         QPen,
         QFont,
-    )  # v3.19.12 removed unused QConicalGradient
+    )
 
     from . import design_system as ds
 
@@ -58,7 +58,7 @@ if _HAS_QT:
             self._max = max_pct
             self.update()
 
-        def paintEvent(self, event):
+        def paintEvent(self, _event):
             p = QPainter(self)
             p.setRenderHint(QPainter.Antialiasing)
             size = min(self.width(), self.height())
