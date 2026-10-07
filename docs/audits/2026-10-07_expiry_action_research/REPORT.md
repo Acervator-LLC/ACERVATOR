@@ -612,8 +612,8 @@ XXX/XXX:XXX-261224   expires 2026-12-24
 XXX/XXX:XXX-891230   expires 2089-12-30
 ```
 
-The 31 distinct symbol shapes group on four expiry dates, and the twelve
-commonest shapes account for 81 of the 100.
+The 100 carry 31 distinct symbol shapes over 26 distinct expiry epochs, and the
+twelve commonest shapes account for 81 of them.
 
 ```
 XXX/XXX:XXX-891230    13      XXXX/XXX:XXX-261127     6
