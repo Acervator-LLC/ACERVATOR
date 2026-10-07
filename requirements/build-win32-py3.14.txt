@@ -95,7 +95,7 @@ pillow==12.3.0
     # via
     #   acervator (pyproject.toml)
     #   reportlab
-propcache==0.5.2
+propcache==0.5.4
     # via
     #   aiohttp
     #   ccxt
