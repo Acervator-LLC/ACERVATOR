@@ -232,6 +232,10 @@ class MarketPairsScout:
     def last_refresh(self, exchange_id: str) -> float:
         return float(self._last_refresh.get(exchange_id, 0.0))
 
+    def polled_exchanges(self) -> list[str]:
+        """Exchange ids ``ingest_tickers`` has recorded a refresh for, ascending."""
+        return sorted(eid for eid, at in self._last_refresh.items() if float(at) > 0.0)
+
     def last_error(self, exchange_id: str) -> Optional[str]:
         return self._last_error.get(exchange_id)
 
@@ -343,11 +347,23 @@ class MarketPairsScout:
 
 # Process-wide shared scout
 
+
+def _scout_has_stopped(scout: MarketPairsScout) -> bool:
+    """True when ``is_stale`` reports every exchange in ``polled_exchanges``.
+
+    ``_SCOUT`` passes this as ``has_stopped``, so one fresh exchange keeps
+    the scout and an empty ``polled_exchanges`` never reports stopped.
+    """
+    polled = scout.polled_exchanges()
+    return bool(polled) and all(scout.is_stale(eid) for eid in polled)
+
+
 _SCOUT: LazySingleton[MarketPairsScout] = LazySingleton(
     MarketPairsScout,
     "the market pairs scout",
     "The Target BTC and Target ETH rows, and every other cross-pair "
     "reading, will hold their last value and stop updating.",
+    has_stopped=_scout_has_stopped,
 )
 
 
