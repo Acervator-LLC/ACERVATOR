@@ -35,6 +35,15 @@ from .container.config import (
     DESPAWN_MAX_DAYS,
     DESPAWN_PREVIEW_WINDOWS,
     DOLLAR_PEGGED_CURRENCIES,
+    EXPIRY_CLOSE_ACTIONS,
+    EXPIRY_CLOSE_FINISH_LADDER,
+    EXPIRY_CLOSE_SELL_ALL,
+    EXPIRY_HORIZON_DAYS_DEFAULT,
+    EXPIRY_LEAD_ABSOLUTE,
+    EXPIRY_LEAD_DAYS_DEFAULT,
+    EXPIRY_LEAD_FRACTION,
+    EXPIRY_LEAD_FRACTION_DEFAULT,
+    EXPIRY_LEAD_MODES,
     STACK_MODE_DEFAULT,
     START_ALL_GAP_SECONDS,
     BotConfig,
@@ -50,8 +59,10 @@ from .container.config import (
     bot_config_kwargs,
     despawn_preview,
     despawn_threshold_days,
+    expiry_close_decision,
     make_bot_config,
     phantom_init_kwargs,
+    whole_position_units,
 )
 
 logger = logging.getLogger("acervator.bot")
@@ -60,6 +71,15 @@ __all__ = [
     "DESPAWN_MAX_DAYS",
     "DESPAWN_PREVIEW_WINDOWS",
     "DOLLAR_PEGGED_CURRENCIES",
+    "EXPIRY_CLOSE_ACTIONS",
+    "EXPIRY_CLOSE_FINISH_LADDER",
+    "EXPIRY_CLOSE_SELL_ALL",
+    "EXPIRY_HORIZON_DAYS_DEFAULT",
+    "EXPIRY_LEAD_ABSOLUTE",
+    "EXPIRY_LEAD_DAYS_DEFAULT",
+    "EXPIRY_LEAD_FRACTION",
+    "EXPIRY_LEAD_FRACTION_DEFAULT",
+    "EXPIRY_LEAD_MODES",
     "STACK_MODE_DEFAULT",
     "START_ALL_GAP_SECONDS",
     "BotConfig",
@@ -77,8 +97,10 @@ __all__ = [
     "bot_config_kwargs",
     "despawn_preview",
     "despawn_threshold_days",
+    "expiry_close_decision",
     "make_bot_config",
     "phantom_init_kwargs",
+    "whole_position_units",
 ]
 
 
@@ -109,6 +131,9 @@ class BotContainer:
         self._market_rules_cache: dict[str, "MarketRules"] = {}
         self._asset_class_cache: dict[str, str] = {}
         self._phantoms_enabled: bool = False
+        # Wall-clock second start() stamped, which the fraction lead mode
+        # measures a contract's remaining life at. 0 until the bot starts.
+        self._expiry_start_s: float = 0.0
 
     def force_fire(self, aggressive: bool = False) -> None:
         """Manual fire hook; the base implementation does nothing."""
@@ -358,6 +383,43 @@ class BotContainer:
                 f"Acervator checks nothing here."
             )
 
+        # The bot's own expiry close, read before the venue's step below so a
+        # raised size is stepped and its notional measured like any other.
+        _expiry = expiry_close_decision(
+            self.config, _rules, time.time(), self._expiry_start_s
+        )
+        if _expiry["acts"] and side == OrderSide.BUY:
+            self._refuse_order(
+                f"PRE-FLIGHT REJECTED: BUY {symbol} {_amt:.10f} is refused "
+                f"{_expiry['days_left']:.2f} days before the venue expires "
+                f"this contract, inside this bot's lead time of "
+                f"{_expiry['lead_days']:.2f} days "
+                f"({_expiry['mode']} mode, horizon "
+                f"{_expiry['horizon_days']:.2f} days). The expiry close is "
+                f"{_expiry['action']}, so nothing buys this contract again. "
+                f"API not called."
+            )
+        if (
+            _expiry["acts"]
+            and side == OrderSide.SELL
+            and _expiry["action"] == EXPIRY_CLOSE_SELL_ALL
+        ):
+            _position_usd = getattr(self.stats, "position_value", 0.0)
+            _whole = whole_position_units(_position_usd, price)
+            if _whole is None:
+                _whole = whole_position_units(
+                    _position_usd, getattr(self.stats, "current_price", 0.0)
+                )
+            if _whole is not None and _whole > _amt:
+                self._warn_order(
+                    f"EXPIRY CLOSE, SELL ALL: SELL {symbol} raised from "
+                    f"{_amt:.10f} to {_whole:.10f}, the whole position worth "
+                    f"${_position_usd:.4f}, {_expiry['days_left']:.2f} days "
+                    f"before expiry. One order, not a ladder rung."
+                )
+                _amt = _whole
+                amount = _whole
+
         # Every live order passes here, so the venue's own step is applied at
         # the one submitting site and not at each composing site.
         from .scrumming.sizing import (
@@ -488,11 +550,15 @@ class BotContainer:
         if _closing:
             _left = _rules.days_to_expiry(time.time())
             _left_text = "an unreadable number of" if _left is None else f"{_left:.2f}"
+            _lead = _expiry["lead_days"]
+            _lead_text = "no" if _lead is None else f"{_lead:.2f}"
             self._warn_order(
                 f"CLOSING AN EXPIRING MARKET: SELL {symbol} {_amt:.10f} is "
                 f"submitted where a BUY is refused, because the venue expires "
                 f"this contract in {_left_text} days ({_variant}). Nothing "
-                f"rebuys it."
+                f"rebuys it. The bot's expiry close is {_expiry['action']} at "
+                f"{_lead_text} days of lead ({_expiry['mode']} mode, horizon "
+                f"{_expiry['horizon_days']:.2f} days); {_expiry['reason']}."
             )
 
         if variant_replaces_market_order(_variant) and order_type == OrderType.MARKET:
@@ -554,6 +620,7 @@ class BotContainer:
         self.state = BotState.STARTING
         self._stop_event.clear()
         self._start_time = time.monotonic()
+        self._expiry_start_s = time.time()
         if self._data_pool:
             self._data_pool.register(
                 self.config.exchange_id,
