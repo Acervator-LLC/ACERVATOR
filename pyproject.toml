@@ -80,9 +80,9 @@ dependencies = [
 #            importers and no matplotlib import. A relative import in a
 #            package __init__ resolves to it, not to src/design_system.py.
 #   monitor  `LiveMonitor._call` in src/trading/live_monitor.py imports
-#            httpx with no guard. No install list in the tree ever
-#            installed it. This extra declares that dependency; it does
-#            not make it optional.
+#            httpx with no guard, so the call raises without it. The
+#            `build` consumer in tools/deps.py installs this extra, so
+#            the packaged build carries httpx and its dependencies.
 #   contracts  `contracts/deploy.py` is a standalone CLI that deploys
 #            ACRV.sol, CompetitionRegistry.sol and AcervatorTrophy.sol
 #            to Base Sepolia or Base Mainnet. It imports web3 and
