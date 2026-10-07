@@ -5,7 +5,7 @@
 or UNKNOWN. ``TradeClassifier.pair_cycles`` joins a SCRUM to the next
 buy and reports ``CycleSummary.cycle_advantage``. ``scan_on_connect``
 runs the scan over a list of symbols and returns one ``HistoryAnalysis``
-each.
+each. ``_FETCH_GATE`` spaces every fetch at ``HISTORY_FETCH_INTERVAL_S``.
 """
 
 from __future__ import annotations
@@ -13,11 +13,14 @@ from __future__ import annotations
 import asyncio
 import logging
 import statistics
+import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Optional
+
+from src.core.retry import exponential_delay, is_transient, retry_sync
 
 logger = logging.getLogger("acervator.trade_historian")
 
@@ -29,6 +32,50 @@ FOLD_SIZE_TOLERANCE = 1.5
 MIN_TRADES_FOR_STATS = 3
 # ccxt caps one fetch_my_trades page here on most venues.
 MAX_HISTORY_FETCH = 500
+# Coinbase publishes 10 requests per second per profile on the private
+# /fills endpoint: docs.cdp.coinbase.com/exchange/introduction/rate-limits-overview
+PUBLISHED_FILLS_RPS = 10.0
+HISTORY_FETCH_INTERVAL_S = 1.0 / PUBLISHED_FILLS_RPS
+HISTORY_FETCH_ATTEMPTS = 3
+HISTORY_RETRY_BASE_DELAY_S = 1.0
+MISSING_HISTORY_FORMAT = (
+    "Trade history missing for {refused} of {scanned} markets — "
+    "the venue refused the fetch."
+)
+
+
+def missing_history_line(refused: int, scanned: int) -> str:
+    """The line a surface shows once a history fetch has come back refused.
+
+    ``refused`` and ``scanned`` are symbol counts the caller has recorded.
+    """
+    return MISSING_HISTORY_FORMAT.format(refused=int(refused), scanned=int(scanned))
+
+
+class _HistoryFetchGate:
+    """Holds each history fetch back until ``interval_s`` since the last one.
+
+    ``_FETCH_GATE`` is the one instance every ``TradeHistorian`` shares.
+    """
+
+    def __init__(self, interval_s: float) -> None:
+        self._interval_s = float(interval_s)
+        self._lock = threading.Lock()
+        self._next_at = 0.0
+
+    def wait(self) -> float:
+        """Sleep until this caller's turn and return the seconds slept."""
+        with self._lock:
+            now = time.monotonic()
+            turn_at = max(now, self._next_at)
+            self._next_at = turn_at + self._interval_s
+        delay = turn_at - now
+        if delay > 0:
+            time.sleep(delay)
+        return delay
+
+
+_FETCH_GATE = _HistoryFetchGate(HISTORY_FETCH_INTERVAL_S)
 
 
 @dataclass
@@ -393,14 +440,41 @@ class TradeHistorian:
         self._cache.clear()
 
     def _fetch_sync(self, symbol: str, limit: int) -> list[dict]:
-        """Call ``fetch_my_trades`` on the sync ccxt exchange.
+        """Call ``fetch_my_trades`` on the sync ccxt exchange, paced and retried.
 
-        A ccxt failure is re-raised as ``RuntimeError`` naming ``symbol``.
+        ``_FETCH_GATE`` spaces the call at ``HISTORY_FETCH_INTERVAL_S`` and
+        ``retry_sync`` repeats a transient refusal up to
+        ``HISTORY_FETCH_ATTEMPTS`` times before the ``RuntimeError``.
         """
-        try:
-            trades = self._exchange.fetch_my_trades(symbol, limit=limit)
+
+        def one_fetch() -> list[dict]:
+            _FETCH_GATE.wait()
+            trades = self._exchange.fetch_my_trades(symbol, limit=limit) or []
             logger.info("TradeHistorian: fetched %d trades for %s", len(trades), symbol)
-            return trades or []
+            return trades
+
+        def note(
+            exc: BaseException, attempt: int, will_retry: bool, delay: float
+        ) -> None:
+            if not will_retry:
+                return
+            logger.warning(
+                "TradeHistorian: %s on %s (attempt %d/%d), retrying in %.1fs",
+                type(exc).__name__,
+                symbol,
+                attempt + 1,
+                HISTORY_FETCH_ATTEMPTS,
+                delay,
+            )
+
+        try:
+            return retry_sync(
+                one_fetch,
+                attempts=HISTORY_FETCH_ATTEMPTS,
+                delay_for=exponential_delay(HISTORY_RETRY_BASE_DELAY_S),
+                is_retryable=is_transient,
+                on_failure=note,
+            )
         except Exception as e:
             raise RuntimeError(
                 f"Exchange trade history fetch failed for {symbol}: {e}"
