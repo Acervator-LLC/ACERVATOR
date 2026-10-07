@@ -87,6 +87,10 @@ EXPIRY_OUTSIDE_LEAD: str = "the expiry is outside the lead time"
 #: ``expiry_close_decision``'s answer when the close acts.
 EXPIRY_INSIDE_LEAD: str = "the expiry is inside the lead time"
 
+#: Default ``asset_class``, what ``BotContainer._asset_class`` answers for a
+#: market the recording holds no class for.
+ASSET_CLASS_DEFAULT: str = "crypto"
+
 
 @dataclass
 class BotConfig:
@@ -97,6 +101,8 @@ class BotConfig:
     target_asset: str  # e.g. "BTC"
     symbol: str = ""  # Derived: "BTC/USDT"
     mode: BotMode = BotMode.SCRUMMING
+    # The sector this bot's market belongs to; the wizard's asset page sets it.
+    asset_class: str = ASSET_CLASS_DEFAULT
 
     profit_folding_active: bool = True
 
@@ -296,6 +302,8 @@ _BOT_CONFIG_SHARED_FIELDS: frozenset = frozenset(
         "target_asset",
         "symbol",
         "mode",
+        # A bot in either mode trades a market belonging to one sector.
+        "asset_class",
         "target_balance",  # mode-overloaded but always required
         "ta_timeframe",
         "trading_fee_pct",

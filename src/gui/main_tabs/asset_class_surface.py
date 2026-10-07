@@ -515,6 +515,44 @@ def venue_served_classes(venue_id: Any, document: Any = None) -> frozenset:
     return frozenset(recorded_venue_classes(document).get(asked, frozenset()))
 
 
+def recorded_symbol_classes(venue_id: Any) -> dict:
+    """Every symbol one venue's recording holds mapped to its ``CLASS_FIELD``,
+    empty while the recording cannot be read."""
+    try:
+        from ...exchange.market_rules_store import recorded_classes
+    except ImportError:
+        return {}
+    asked = str(venue_id or "").strip().lower()
+    if not asked:
+        return {}
+    return recorded_classes(asked)
+
+
+def markets_of_class(rows: Any, venue_id: Any, name: Any, recorded: Any = None) -> list:
+    """Every market row of ``rows`` recorded under one asset class, in the
+    order given.
+
+    A symbol the recording holds no class for reads ``CLASS_CRYPTO``, the class
+    ``BotContainer._asset_class`` answers for one, so a recording written
+    before ``CLASS_FIELD`` keeps the crypto list whole. An empty ``name``
+    narrows nothing.
+    """
+    from src.trading.ata_spm import CLASS_CRYPTO
+
+    key = normalise(name)
+    listed = [one for one in (rows or []) if isinstance(one, dict)]
+    if not key:
+        return listed
+    held = recorded if isinstance(recorded, dict) else recorded_symbol_classes(venue_id)
+    found = []
+    for row in listed:
+        symbol = str(row.get("symbol") or "")
+        named = retired_onto(held.get(symbol, "")) or CLASS_CRYPTO
+        if named == key:
+            found.append(row)
+    return found
+
+
 def venues_for_class(name: Any) -> frozenset:
     """Every venue id serving one asset class, a venue whose ``venue_classes``
     holds two classes answered for both.
