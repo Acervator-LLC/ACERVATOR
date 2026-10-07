@@ -443,27 +443,35 @@ selects the rolling-position variant the program does not hold.
 
 ---
 
-## Forex — three venues list a real currency pair
+## Forex — two venues list a real currency pair
 
-This is the sector the research narrowed rather than widened. Only three of the
+This is the sector the research narrowed rather than widened. Only two of the
 fifteen crypto venues list a market whose two legs are both national
 currencies, read 2026-10-07.
 
 ```
 gemini      a euro-dollar market, 0.1 minimum, limit only
 bitstamp    a euro-dollar market, five decimals, market and limit
-bitfinex    euro and pound perpetuals, plus two spot pairs
 ```
 
-Kraken lists currency perpetuals through its European entity, and the global
-futures host answered that every instrument it serves is a crypto one. OKX lists
-none and the reading is controlled: a euro-dollar underlying returned the venue's
-own "index does not exist" code while three other underlyings returned live
-instruments on the same endpoint.
+Three more list a currency market whose other leg is a dollar stablecoin, which
+is the same shape Coinbase lists and not a pair of national currencies.
 
-Coinbase lists no market with two national-currency legs. What it lists, and
-what the program reads as forex, is a currency token against a dollar
-stablecoin or a fiat quote.
+```
+bitfinex    euro and pound perpetuals against a dollar stablecoin, plus two
+            spot pairs of the same shape
+kraken      currency perpetuals through its European entity; the global futures
+            host answered that every instrument it serves is a crypto one
+coinbase    21 markets the program reads as forex, each a currency token
+            against a dollar stablecoin or a fiat quote
+```
+
+OKX lists none and the reading is controlled: a euro-dollar underlying returned
+the venue's own "index does not exist" code while three other underlyings
+returned live instruments on the same endpoint.
+
+Coinbase lists no market with two national-currency legs, and its own product
+list carries three stablecoin-against-fiat markets.
 
 ```
 recorded markets the program reads as forex   21
