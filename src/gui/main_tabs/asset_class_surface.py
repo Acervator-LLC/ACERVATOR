@@ -45,6 +45,10 @@ BUTTON_MIN_W = 34
 #: line draws between neighbours and never two.
 GROUP_SPACING_PX = 0
 
+#: The segments one row holds, fixed, so a further class divides the square's
+#: height and never its width.
+GRID_COLUMNS = 2
+
 #: The radius the square's four outer corners carry, in both variants. Every
 #: corner inside the square is zero.
 OUTER_RADIUS_PX = 3
@@ -164,6 +168,11 @@ def asset_classes() -> tuple:
     return tuple(ASSET_CLASSES)
 
 
+# OVERTAKEN, quoted whole:
+#   "``columns`` is the integer square root rounded up, so the grid is the one
+#   nearest to square for that count."
+# True today: ``columns`` is ``GRID_COLUMNS``, or ``count`` while that is
+# smaller, and the rows follow, so a further class divides only the height.
 def grid_shape(count: Any = None) -> tuple:
     """The rows and columns ``count`` segments divide the square into.
 
@@ -174,10 +183,8 @@ def grid_shape(count: Any = None) -> tuple:
     held = len(asset_classes()) if count is None else int(count)
     if held <= 0:
         return (0, 0)
-    columns = math.isqrt(held)
-    if columns * columns < held:
-        columns += 1
-    rows = held // columns + (1 if held % columns else 0)
+    columns = min(GRID_COLUMNS, held)
+    rows = math.ceil(held / columns)
     return (rows, columns)
 
 
@@ -281,6 +288,16 @@ def widest_label_px(labels: Any = None) -> int:
     return max((label_width_px(each) for each in names), default=0)
 
 
+def reference_labels() -> list:
+    """The class names ``group_side_px`` measures the square's side from.
+
+    The first ``GRID_COLUMNS`` squared classes fill the square once, so a
+    class past them divides the height and leaves the side alone.
+    """
+    held = asset_classes()[: GRID_COLUMNS * GRID_COLUMNS]
+    return [display_name(each) for each in held]
+
+
 def segment_width_px(labels: Any = None) -> int:
     """One segment's width: its widest class name plus ``BUTTON_TEXT_PAD``.
 
@@ -295,6 +312,12 @@ def segment_width_px(labels: Any = None) -> int:
 #   side follows the class count and no variant measures its own row height."
 # True today: its widest row holds ``columns`` segments of ``segment_width_px``
 # each, so the side follows the class count and the widest class name.
+# OVERTAKEN, quoted whole:
+#   "True today: its widest row holds ``columns`` segments of
+#   ``segment_width_px`` each, so the side follows the class count and the
+#   widest class name."
+# True today: the side holds ``GRID_COLUMNS`` segments of ``reference_labels``
+# room, so neither the class count nor a later class name moves it.
 def group_side_px(count: Any = None, labels: Any = None) -> int:
     """The square's side in pixels, the same number in both variants.
 
@@ -304,8 +327,40 @@ def group_side_px(count: Any = None, labels: Any = None) -> int:
     held = len(asset_classes()) if count is None else int(count)
     if held <= 0:
         return 0
-    columns = grid_shape(held)[1]
-    return columns * segment_width_px(labels) + (columns - 1) * GROUP_SPACING_PX
+    names = reference_labels() if labels is None else labels
+    width = segment_width_px(names)
+    return GRID_COLUMNS * width + (GRID_COLUMNS - 1) * GROUP_SPACING_PX
+
+
+def segment_size_px(count: Any = None) -> tuple:
+    """One segment's width and height in pixels, the same in both variants.
+
+    The square's side divides by its columns and by its rows, so every one of
+    ``count`` segments draws the same rectangle.
+    """
+    rows, columns = grid_shape(count)
+    if rows <= 0 or columns <= 0:
+        return (0, 0)
+    side = group_side_px(count)
+    width = (side - (columns - 1) * GROUP_SPACING_PX) // columns
+    height = (side - (rows - 1) * GROUP_SPACING_PX) // rows
+    return (width, height)
+
+
+def grid_margins_px(count: Any = None) -> tuple:
+    """The square's left, top, right and bottom margins, in that order.
+
+    They carry what ``segment_size_px`` leaves of the side after an uneven
+    division, so the segments stay equal and the side stays whole.
+    """
+    rows, columns = grid_shape(count)
+    if rows <= 0 or columns <= 0:
+        return (0, 0, 0, 0)
+    width, height = segment_size_px(count)
+    side = group_side_px(count)
+    spare_w = side - columns * width - (columns - 1) * GROUP_SPACING_PX
+    spare_h = side - rows * height - (rows - 1) * GROUP_SPACING_PX
+    return (spare_w // 2, spare_h // 2, spare_w - spare_w // 2, spare_h - spare_h // 2)
 
 
 def normalise(name: Any) -> str:

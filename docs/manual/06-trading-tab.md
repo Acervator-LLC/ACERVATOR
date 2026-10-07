@@ -5629,6 +5629,21 @@ OVERTAKEN, and the block above is kept as written. The taxonomy holds six
 sectors, so the square divides into six rectangles, three across and two down,
 which is the count table's six row.
 
+OVERTAKEN, and the count table above is kept as written. Every row holds two
+segments, so the columns no longer follow the count and only the rows do:
+
+```
+count   columns x rows   the last row
+1       1 x 1            one segment, rounding all four corners
+2       2 x 1            full
+3       2 x 2            one segment spanning both columns
+4       2 x 2            full
+5       2 x 3            one segment spanning both columns
+6       2 x 3            full
+9       2 x 5            one segment spanning both columns
+12      2 x 6            full
+```
+
 `src/trading/ata_spm.py` — the taxonomy the group reads
 
 ```python
@@ -5652,6 +5667,81 @@ Measured offscreen with 172 font families loaded, at ten pixels bold:
 |---|---|---|---|---|
 | four | Commodities | 44 px | 56 px | 112 px |
 | six | Futures / Perps | 56 px | 68 px | 204 px |
+
+OVERTAKEN, and both tables above are kept as written. The square's side no longer
+follows the sector count. `GRID_COLUMNS` is two, so every row holds two segments
+and a further sector adds a row instead of a column; the side is two segments of
+the room the first four sector names need. Six sectors therefore draw two across
+and three down, in the side four sectors draw.
+
+The operator set this:
+
+> "I would prefer if we keep all six Sector buttons in the same square area but
+> just have it divided into six equal rectangles. The current updated version for
+> 2205 makes the area much wider and I do not want height or width of the square
+> area to change."
+
+Measured on the Windows platform plugin, which is the one the application runs,
+at ten pixels bold, with the window drawn at 700 and at 900 pixels:
+
+| sectors | columns x rows | segment | square side |
+|---|---|---|---|
+| four | 2 x 2 | 74 x 74 px | 148 px |
+| six | 2 x 3 | 74 x 49 px | 148 px |
+
+The offscreen host reads different widths for the same names, so the table above
+it is that host's figures and not the application's.
+
+`src/gui/main_tabs/asset_class_surface.py` — the side and the segment
+
+```python
+def segment_size_px(count: Any = None) -> tuple:
+    rows, columns = grid_shape(count)
+    if rows <= 0 or columns <= 0:
+        return (0, 0)
+    side = group_side_px(count)
+    width = (side - (columns - 1) * GROUP_SPACING_PX) // columns
+    height = (side - (rows - 1) * GROUP_SPACING_PX) // rows
+    return (width, height)
+```
+
+Three rows of 49 fill 147 of the 148, so `grid_margins_px` carries the pixel left
+over as a bottom margin and all six rectangles stay the same size.
+
+**A sector name too wide for its segment breaks before it is shortened.** A name
+holding a space breaks on the last space that leaves both lines inside the
+segment, and a name holding none is shortened with an ellipsis as before. Six
+sectors draw `Futures / Perps` over two lines and `Commodities` as `Commoditi…`,
+which is what four sectors already draw.
+
+`src/gui/main_tabs/header_strip.py` — `ClassGroupBar._fitted`
+
+```python
+if whole(full):
+    return full
+for at in range(len(full) - 1, 0, -1):
+    if full[at] != " ":
+        continue
+    head = full[:at]
+    tail = full[at + 1 :]
+    if whole(head) and whole(tail):
+        return head + "\n" + tail
+return metrics.elidedText(full, Qt.ElideRight, room)
+```
+
+The React page reads the same figures and applies the same rule: its tracks are
+`repeat(2, 74px)` by `repeat(3, 49px)` in a 148 pixel box, and a name holding a
+space takes `white-space: normal` while a name holding none keeps its ellipsis.
+
+`src/gui/web/header_strip.js` — the square's own tracks
+
+```js
+gridTemplateColumns: tracks(
+  cell(model[GRID_COLUMNS], 1),
+  cell(model[MINIMUM_WIDTH])
+),
+gridTemplateRows: tracks(cell(model[GRID_ROWS], 1), cell(model[SEGMENT_HEIGHT])),
+```
 
 **The square takes no spare width.** Its side is a declared number, so no slot of
 the header row takes the width the figures leave. Each part draws at the width its
