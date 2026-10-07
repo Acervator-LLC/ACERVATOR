@@ -167,14 +167,23 @@ def classify_venue_refusal(exc: BaseException) -> str:
 
 
 def _alert_venue(event_name: str, title: str, message: str) -> None:
-    try:
-        from ..core.notifications import AlertEvent, get_notification_manager
+    """Send one venue alert on its own thread, so no channel blocks a venue call.
 
-        event = getattr(AlertEvent, event_name, None)
-        if event is not None:
-            get_notification_manager().send(event, title, message)
-    except Exception as exc:  # an alert channel must not fail a venue call
-        logger.warning("Venue alert %s not sent: %s", event_name, exc)
+    The Telegram channel places an HTTPS request, and the callers run on the
+    asyncio loop thread.
+    """
+
+    def deliver() -> None:
+        try:
+            from ..core.notifications import AlertEvent, get_notification_manager
+
+            event = getattr(AlertEvent, event_name, None)
+            if event is not None:
+                get_notification_manager().send(event, title, message)
+        except Exception as exc:  # an alert channel must not fail a venue call
+            logger.warning("Venue alert %s not sent: %s", event_name, exc)
+
+    threading.Thread(target=deliver, daemon=True, name="venue-alert").start()
 
 
 def note_venue_refusal(exchange_id: str, exc: BaseException) -> str:
