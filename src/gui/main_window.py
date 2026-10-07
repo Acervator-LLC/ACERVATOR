@@ -2630,8 +2630,38 @@ if _HAS_QT:
                     _cancel_exc,
                 )
 
+        def _live_connector(self, eid: str):
+            """Return the connector held for *eid* while it reports connected.
+
+            A held connector that reports disconnected is released and dropped
+            from `_exchange_connectors`, so the caller builds a fresh one.
+            """
+            held = self._exchange_connectors.get(eid)
+            if held is None:
+                return None
+            if getattr(held, "is_connected", False):
+                return held
+            self._exchange_connectors.pop(eid, None)
+            release = getattr(held, "release", None)
+            if release is not None:
+                try:
+                    release()
+                except Exception as exc:
+                    logger.warning("connector release for %s failed: %s", eid, exc)
+            return None
+
+        def _wire_connector_for_bot(self, connector, bot) -> None:
+            """Register *bot*'s symbol on *connector* and feed the history tab."""
+            try:
+                connector.add_scan_symbol(bot.config.symbol)
+                tab = getattr(self, "_trade_history_tab", None)
+                if tab is not None:
+                    connector.set_history_callback(tab.get_history_callback())
+            except Exception as exc:
+                logger.warning("pre-connect history wiring failed: %s", exc)
+
         def _connect_exchange_for_bot(self, bot) -> tuple[bool, str]:
-            """Build a CCXTConnector from stored credentials; returns (ok, message)."""
+            """Reuse the exchange's connector, or build one; returns (ok, message)."""
             from ..exchange.api_logger import get_api_log
 
             _log = get_api_log()
@@ -2680,52 +2710,55 @@ if _HAS_QT:
                 return False, msg
 
             try:
-                from ..core.encryption import decrypt, vault_phrase
+                connector = self._live_connector(eid)
 
-                master = vault_phrase(self._settings.get("username", ""))
-                api_key = decrypt(exch_config["api_key_enc"], master)
-                api_secret = decrypt(exch_config["api_secret_enc"], master)
-                # None means no stored passphrase; `sync_connect` still receives "".
-                passphrase: str | None = None
-                if exch_config.get("passphrase_enc"):
-                    passphrase = decrypt(exch_config["passphrase_enc"], master)
+                if connector is not None:
+                    self._wire_connector_for_bot(connector, bot)
+                    _log.record(
+                        exchange=eid,
+                        action="BOT_CONNECT_REUSED",
+                        reason=f"{eid.capitalize()} already has a live connection",
+                        result=f"Reusing the {eid.capitalize()} connector, checking balances...",
+                        level="info",
+                        data_usage="No second session is opened and no credential is decrypted",
+                    )
+                else:
+                    from ..core.encryption import decrypt, vault_phrase
 
-                _log.record(
-                    exchange=eid,
-                    action="BOT_AUTHENTICATING",
-                    reason="Credentials decrypted, connecting to exchange API",
-                    result="Calling exchange.connect()...",
-                    level="info",
-                    data_usage="Will load markets and verify API key validity",
-                )
+                    master = vault_phrase(self._settings.get("username", ""))
+                    api_key = decrypt(exch_config["api_key_enc"], master)
+                    api_secret = decrypt(exch_config["api_secret_enc"], master)
+                    # None means no stored passphrase; `sync_connect` still receives "".
+                    passphrase: str | None = None
+                    if exch_config.get("passphrase_enc"):
+                        passphrase = decrypt(exch_config["passphrase_enc"], master)
 
-                from ..exchange.ccxt_connector import CCXTConnector
+                    _log.record(
+                        exchange=eid,
+                        action="BOT_AUTHENTICATING",
+                        reason="Credentials decrypted, connecting to exchange API",
+                        result="Calling exchange.connect()...",
+                        level="info",
+                        data_usage="Will load markets and verify API key validity",
+                    )
 
-                connector = CCXTConnector(eid)
+                    from ..exchange.ccxt_connector import CCXTConnector
 
-                # Registered before `sync_connect`, which starts the scan thread.
-                try:
-                    connector.add_scan_symbol(bot.config.symbol)
-                    if (
-                        hasattr(self, "_trade_history_tab")
-                        and self._trade_history_tab is not None
-                    ):
-                        connector.set_history_callback(
-                            self._trade_history_tab.get_history_callback()
-                        )
-                except Exception as _exc:
-                    logger.warning("pre-connect history wiring failed: %s", _exc)
+                    connector = CCXTConnector(eid)
 
-                connector.sync_connect(api_key, api_secret, passphrase or "")
+                    # Registered before `sync_connect`, which starts the scan thread.
+                    self._wire_connector_for_bot(connector, bot)
 
-                _log.record(
-                    exchange=eid,
-                    action="BOT_CONNECTED",
-                    reason="Exchange API authenticated successfully",
-                    result="Markets loaded, checking balances...",
-                    level="success",
-                    data_usage="Bot now has a live exchange connection for trading",
-                )
+                    connector.sync_connect(api_key, api_secret, passphrase or "")
+
+                    _log.record(
+                        exchange=eid,
+                        action="BOT_CONNECTED",
+                        reason="Exchange API authenticated successfully",
+                        result="Markets loaded, checking balances...",
+                        level="success",
+                        data_usage="Bot now has a live exchange connection for trading",
+                    )
 
                 balances_raw = (
                     connector._ccxt_sync.fetch_balance()

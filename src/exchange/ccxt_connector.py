@@ -1321,6 +1321,34 @@ class CCXTConnector(ExchangeInterface):
                 logger.warning("sync executor shutdown failed: %s", exc)
         logger.info("Disconnected from %s", self.display_name)
 
+    def release(self) -> int:
+        """Clear the scan set, drop both ccxt handles and shut the sync executor.
+
+        Returns the number of scan symbols cleared; `_scan_trade_history` reads
+        `_ccxt_sync`, so a scan already running returns at its next guard.
+        """
+        cleared = len(self._scan_symbols)
+        self._scan_symbols.clear()
+        self._injected_ex = None
+        self._ccxt_sync = None
+        self._ccxt = None
+        self._connected = False
+        self._markets_cache = None
+        with self._sync_executor_lock:
+            executor = self._sync_executor
+            self._sync_executor = None
+        if executor is not None:
+            try:
+                executor.shutdown(wait=False)
+            except Exception as exc:
+                logger.warning("sync executor shutdown failed: %s", exc)
+        logger.info(
+            "Released %s connector — %d scan symbol(s) dropped",
+            self.display_name,
+            cleared,
+        )
+        return cleared
+
     def _ensure_connected(self) -> None:
         if not self._connected:
             raise RuntimeError(f"Not connected to {self.display_name}")
