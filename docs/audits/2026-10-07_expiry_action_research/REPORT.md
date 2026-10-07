@@ -124,15 +124,36 @@ expected present and sixteen absent. Every one landed where it was expected, so
 the method tells a real field from an invented one.
 
 ```
-expiry_ms                 14 lines   present
-days_to_expiry             3 lines   present
-VARIANT_ROLLING_POSITION  10 lines   present
-scrum_defer_to_htf        24 lines   present
-open_interest              0 lines   absent
-successor_symbol           0 lines   absent
-expiry_lead_days           0 lines   absent
-ZZQQNOTAREALNAME           0 lines   absent
-mismatches                 0 of 25
+name                      expected   lines   verdict
+expiry_ms                 present       14   OK
+days_to_expiry            present        3   OK
+MarketRules               present       79   OK
+scrum_defer_to_htf        present       24   OK
+detonation_timeframe      present       48   OK
+available_timeframes      present       42   OK
+ta_timeframe              present      229   OK
+VARIANT_ROLLING_POSITION  present       10   OK
+variant_permits_close     present        7   OK
+open_interest             absent         0   OK
+openInterest              absent         0   OK
+contango                  absent         0   OK
+backwardation             absent         0   OK
+roll_yield                absent         0   OK
+term_structure            absent         0   OK
+futures_basis             absent         0   OK
+successor_symbol          absent         0   OK
+next_contract             absent         0   OK
+roll_target               absent         0   OK
+expiry_action             absent         0   OK
+close_before_expiry       absent         0   OK
+expiry_lead_days          absent         0   OK
+settlement_price          absent         0   OK
+contract_size             absent         0   OK
+ZZQQNOTAREALNAME          absent         0   OK
+
+mismatches                              0   of 25
+expecting present                       9
+expecting absent                       16
 ```
 
 A symbol the recording never held reads back unknown rather than empty, which is
@@ -317,9 +338,25 @@ src/trading/indicators/types.py:83
     Candle: timestamp, open, high, low, close, volume
 ```
 
-Every one of the forty-four signatures was read. None takes a second market's
-series, and none takes open interest. The indicators that bear on a direction
-reading, and that carry a published author, are these.
+Twenty-nine of the forty-four exports are callable and every signature was read.
+None takes a second market's series, and none takes open interest.
+
+```
+12   (self, candles, timeframe)   the voting indicators
+ 2   (self, candles)              ATR and the gap finder
+ 5   (candles, ...)               the pattern detectors, plus tuning numbers
+ 1   (raw)                        the candle reader
+ 1   (histogram, lookback)        the taper detector, handed one series
+ 1   (voting_summary, ...)        the spring detector, reading a vote
+ 7   a dataclass                  the signal and result records
+```
+
+The control on that search: a parameter named `front_candles` is caught by the
+filter, and the real package yields nothing. The absence is a reading, not a
+blind spot.
+
+The indicators that bear on a direction reading, and that carry a published
+author, are these.
 
 ```
 adx.py          Wilder's ADX and DMI
@@ -469,18 +506,168 @@ make the choice his.
 
 ---
 
-## Raw evidence
+## The readings behind the figures
 
-Five readings sit under `raw/` in this directory. Every one was taken with the
-home directory redirected before any import, and the recorded market rules were
-opened read-only. Absolute paths in the captures are replaced by a placeholder.
+Every reading below was taken with the home directory redirected before any
+import, and the recorded market rules were opened read-only. No venue was
+contacted. The redirected home held no file afterwards, so nothing was written.
+
+### The recorded store, and what a row carries
+
+The store read 234,625 bytes, sha256 beginning `1b17cb46ebe59fd4`, holding one
+venue. A row carries six keys and no others.
 
 ```
-raw/recorded_rules.txt   the recorded store, its keys and its expiring rows
-raw/successor.txt        the family derivation and its control
-raw/variant.txt          venue_variant driven over all 1,142 recorded markets
-raw/availability.txt     the twenty-five-name search and its control
-raw/timeframes.txt       the venue's granularities and the indicator signatures
+markets recorded                        1,142
+markets carrying a positive expiry        100
+distinct expiry epochs                     26
+earliest expiry                    2026-10-19
+latest expiry                      2089-12-30
+
+key                     rows        key                     rows
+amount_increment       1,142        min_cost               1,142
+expiry_ms              1,142        order_types            1,142
+min_amount             1,142        price_increment        1,142
+```
+
+Nine further readings were searched for in the expiring rows and none is there.
+
+```
+field                  rows   field                  rows
+open_interest             0   next_contract             0
+volume_24h                0   underlying_index          0
+last_price                0   front_month               0
+successor_symbol          0   settlement_price          0
+contract_size             0
+```
+
+The same reading taken through the program's own `recorded_rules` path answers
+`expires` True for 100 of 100. One expiring row read back, ticker withheld,
+carries a whole-unit size rule and a cent tick.
+
+```
+read               True        min_cost            0.0
+expires            True        order_types         market and limit
+min_amount          1.0        settlement_days     None
+amount_increment    1.0        session             None
+price_increment     0.01
+```
+
+The control on that reading: a symbol the recording never held answers
+`read` False and `expires` False, so the method can report an absence.
+
+### The variant, driven over every recorded market
+
+```
+none                      816
+whole-unit position       226
+rolling position          100
+
+days to expiry on the 100 rolling-position markets
+minimum                 12.77
+median                  78.67
+maximum             23,095.67
+at or under   1 day         0
+at or under   3 days        0
+at or under   7 days        0
+at or under  30 days       19
+at or under 365 days       71
+at or under 3650 days      78
+```
+
+Two controls, both driven through the real call. A market publishing no expiry
+answers the empty variant, and the close test reads False for it. A planted
+market expiring in five days answers `rolling position`, and the same test reads
+True. No built variant set holds that name.
+
+```
+a market with no expiry      venue_variant -> none, close permitted False
+a planted 5-day contract     venue_variant -> rolling position, close True
+VARIANTS_BUILT               limit-only order, none
+```
+
+### The contract families, and the successor derivation
+
+Stripping every digit from the 100 symbols leaves 36 families.
+
+```
+families                                        36
+families holding 1 contract                     12
+families holding 2 contracts                     1
+families holding 3 contracts                      6
+families holding 4 contracts                     17
+
+contracts with a later sibling in the family    64
+contracts with NO later sibling                 36
+```
+
+One family, with every letter of its tickers replaced, so the derivation can be
+judged. The 2089 contract sits in the same family as the three dated months, so
+the next contract after December is the 2089 one.
+
+```
+XXX/XXX:XXX-261030   expires 2026-10-30
+XXX/XXX:XXX-261127   expires 2026-11-27
+XXX/XXX:XXX-261224   expires 2026-12-24
+XXX/XXX:XXX-891230   expires 2089-12-30
+```
+
+The 31 distinct symbol shapes group on four expiry dates, and the twelve
+commonest shapes account for 81 of the 100.
+
+```
+XXX/XXX:XXX-891230    13      XXXX/XXX:XXX-261127     6
+XXX/XXX:XXX-261030    11      XXXX/XXX:XXX-261224     6
+XXX/XXX:XXX-261127    11      XXXXXX/XXX:XXX-301219   3
+XXX/XXX:XXX-261224    11      XXXXXX/XXX:XXX-261125   2
+XXXX/XXX:XXX-891230    9      XXXX/XXX:XXX-301220     2
+XXXX/XXX:XXX-261030    6      XXXXX/XXX:XXX-301219    1
+```
+
+The control on the derivation: a planted pair sharing a root lands in one
+family, and an invented root that was never planted is absent. Read through the
+program, no successor field exists on the rules record at all, while the expiry
+field does.
+
+```
+successor_symbol   absent      roll_target   absent
+next_contract      absent      front_month   absent
+expiry_ms          present
+```
+
+### The timeframes each venue offers
+
+The declared ladder runs eleven names, and the phantom order matches it exactly.
+
+```
+all names   1m 5m 15m 30m 1h 2h 4h 6h 12h 1d 1w
+
+venue       offered                                 missing        highest
+coinbase    1m 5m 15m 30m 1h 2h 6h 1d               4h 12h 1w      1d
+binanceus   every name                              none           1w
+kraken      1m 5m 15m 30m 1h 4h 1d 1w               2h 6h 12h      1w
+unknown     every name                              none           1w
+```
+
+The one higher-timeframe observer a bot gets, restricted to what Coinbase
+offers, runs out at the daily bar.
+
+```
+parent 1h   ->  2h
+parent 6h   ->  1d
+parent 1d   ->  nothing
+```
+
+The per-bot settings read off a fresh configuration, and the venue's answer for
+the two values the last one offers.
+
+```
+ta_timeframe                1h        detonation_enabled          False
+scrum_defer_to_htf          True      detonation_timeframe        1d
+fold_defer_to_htf           True      detonation_confidence_min   0.75
+
+coinbase serves 1d          True
+coinbase serves 1w          False
 ```
 
 ---
