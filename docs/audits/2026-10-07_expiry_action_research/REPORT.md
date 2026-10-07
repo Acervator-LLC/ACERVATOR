@@ -140,12 +140,20 @@ the second half of the same control.
 
 ### What the venue publishes and the program does not read
 
-Coinbase names these on a futures product record, and no field on the order path
-carries them: `open_interest`, `settlement_price`, `index_price`,
-`contract_size`, `funding_rate`, `time_to_expiry_ms` and
-`contract_expiry_type`. The record itself reaches the connector, so the gap is a
-field and a reader, not a venue call. No successor field appears in that schema
-at all.
+Coinbase names seven market readings on a futures product record, and no field
+on the order path carries any of them. The record itself reaches the connector,
+so the gap is a field and a reader, not a venue call. No successor field appears
+in that schema at all.
+
+```
+open_interest          contracts still open on this one
+settlement_price       the price the venue settled it at
+index_price            the spot reference the contract tracks
+contract_size          units of the underlying per contract
+funding_rate           the rate a perpetual charges
+time_to_expiry_ms      the venue's own countdown
+contract_expiry_type   EXPIRING or PERPETUAL
+```
 
 ---
 
@@ -340,10 +348,10 @@ fold_defer_to_htf         True by default, read on all three order paths
 detonation_timeframe      "1d" by default, offering "1w"
 ```
 
-Coinbase serves no `1w`, so that last setting's `1w` value has no candle behind
-it on the venue holding every expiring contract. A bot already set to the daily
-timeframe gets no higher-timeframe observer at all on Coinbase, because nothing
-above `1d` is offered there.
+Coinbase serves no weekly candle, so that last setting's `1w` value has nothing
+behind it on the venue holding every expiring contract. A bot already set to the
+daily timeframe gets no higher-timeframe observer at all there, because nothing
+above `1d` is offered.
 
 ---
 
