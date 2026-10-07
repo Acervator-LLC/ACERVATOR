@@ -167,7 +167,8 @@ does not match it.
 | stocks | about 990 | 0 |
 
 The equity and commodity rows have never reached his recording. The code that
-records them exists and the recording he runs against predates it.
+records them exists on `current` and the build he launches predates it, which
+the next section measures.
 
 Classifying all 1142 recorded symbols through the program's own
 `market_asset_class` gives the sector split the program would read if the labels
@@ -207,6 +208,49 @@ BotConfig fields naming a venue or sector:  exchange_id, and nothing else
 ```
 
 ---
+
+## Why the recording carries no sector — the build, not the code
+
+The sector mechanisms are on `current` and have never run. The build the
+operator launches predates them.
+
+The recording was rewritten at 13:45 on 2026-10-07 and read back at 14:18 with
+byte-identical content: one venue, 1142 rows, zero sectors. So this is not a
+stale file from an old run. The running build wrote it that way today.
+
+That build is `Acervator-0.2.0-dev.2194.ge3dcc15f-qt`, whose commit is dated
+2026-10-04 and sits 33 commits behind `current`. Comparing it against `current`
+over the three modules an order's rules travel through:
+
+```
+symbol                      launched build   current
+CLASS_FIELD                              0         6
+_sector_products                         0         3
+VENUE_CLASS_PRODUCT_TYPES                0         3
+market_asset_class                       0         3
+declared_order_types                     4         4
+expiry_ms                                5         5
+VARIANT_ROLLING_POSITION                 9         9
+```
+
+The three rows that read the same are exactly the three facts the recording
+does carry: order types on all 1142 rows, an expiry on 100, and the
+rolling-position variant selecting on those 100. The four rows that read zero
+are exactly the four facts it lacks: no sector label, no equity product fetch,
+no product-type map and no classifier.
+
+So the first step in the sector work is a rebuild, not a line of code. Four
+mechanisms already written would begin recording sectors and fetching equity
+products on the next launch of a current build.
+
+```
+after a rebuild   the recording gains a sector per market and the equity
+                  products the venue serves, so _asset_class stops answering
+                  crypto for every market
+still needed      the whole-unit variant, the rolling-position variant, a
+                  sector on BotConfig, a product list narrowed by sector, and
+                  the broker construction
+```
 
 ## The venue and sector grid the program draws
 
