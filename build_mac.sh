@@ -162,6 +162,10 @@ if [ "$MAKE_DMG" = true ]; then
             exit 1
         fi
 
+        # The next image in the loop carries a different volume name, so this
+        # one is released here rather than by the next iteration's detach.
+        hdiutil detach "$VOLUME_PATH" -force || true
+
         rm -rf "$STAGING"
         echo "  DMG created: ${DMG_PATH}"
     done

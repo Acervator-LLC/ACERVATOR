@@ -572,13 +572,13 @@ log_manager.info("Application ready — main window displayed")   # main.py
 
 The disk image step can fail on a resource that is busy rather than on anything
 wrong with the build. The script writes the same image again instead of ending
-the run, and it detaches any volume still attached under that image's name before
-every attempt.
+the run. Each image is also released as soon as it is written, so the next image
+in the run never starts against a volume the previous one left attached.
 
 ```
 DMG_CREATE_ATTEMPTS   3     # build_mac.sh, attempts per disk image
 DMG_RETRY_WAIT_S      10    # the wait between attempts, in seconds
-hdiutil detach              # runs before each attempt; its own failure is ignored
+hdiutil detach              # before every attempt, and again after each image
 ```
 
 Three attempts is the whole allowance. A step that fails all three writes no disk
