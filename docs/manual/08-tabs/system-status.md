@@ -852,6 +852,54 @@ scratch A       scratch B       scratch B
 real home       scratch B       scratch B
 ```
 
+#### Every log directory the override moves
+
+The four writers named above are not the whole set. The resolver those two lines
+show now lives in `src/core/log_paths.py`, under the name `resolve_log_root`,
+and the entry point calls it there. Thirteen things follow it.
+
+The four entry-point files:
+
+```
+crash_<timestamp>.log            the crash log
+faulthandler_<timestamp>.log     the fault-handler log
+STALE_DIST_WARNING.txt           the stale-build marker
+heartbeat.txt                    the file the Watchdog polls
+```
+
+The nine bucket directories, one per bucket function:
+
+```
+activity/            get_activity_dir
+api/                 get_api_dir
+console/             get_console_dir
+trade/               get_trade_dir
+trade/pnl/           get_pnl_dir
+exchange_history/    get_exchange_history_dir
+_meta/               get_meta_dir
+reports/             get_reports_dir
+sim/                 get_sim_dir
+```
+
+The variable is `ACERVATOR_CRASH_LOG_ROOT`. Set it to a directory and all
+thirteen are written there. An empty value counts as unset.
+
+With the variable unset every one of the thirteen resolves under the home tree,
+at the same place it resolved before the buckets were wired to the resolver. The
+trade log, the gate log and the daily profit files do not move unless the
+variable is set.
+
+The root is read on each call, not once when the module loads. A run that sets
+the variable after the module has been imported still moves all nine buckets.
+
+Read off the resolved paths, all nine buckets, in two environments:
+
+```
+variable        where the nine resolved         entry point agreed
+unset           home / .acervator_logs / *      yes, 9 of 9
+scratch B       scratch B / *                   yes, 9 of 9
+```
+
 ### 2026-10-04 - #410 - the periodic collection reads the young objects on eleven ticks in twelve
 
 Python's own automatic memory collector is switched off at startup. A timer on
