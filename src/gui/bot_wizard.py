@@ -196,13 +196,14 @@ if _HAS_QT:
             self._filter_assets()
 
         def _fetch_markets(self, exchange_id):
+            from .main_tabs.asset_class_surface import markets_of_class
             from .main_tabs.bot_wizard_surface import (
                 SECTOR_DEFAULT,
                 recorded_market_rows,
             )
 
-            # The ccxt fetch below reads no sector, so only the crypto layer
-            # may use it; every other sector is answered by the recording.
+            # A sector other than crypto is served by the recording alone,
+            # which recorded_market_rows already narrows.
             if self._sector != SECTOR_DEFAULT:
                 return recorded_market_rows(exchange_id, self._sector)
             try:
@@ -266,7 +267,9 @@ if _HAS_QT:
                         type(_vol_exc).__name__,
                         _vol_exc,
                     )
-                return markets
+                # A fetched record carries no class, so the recording decides
+                # each symbol's sector and an unrecorded symbol reads crypto.
+                return markets_of_class(markets, exchange_id, self._sector)
             except Exception as exc:
                 logger.warning("Market fetch failed for %s: %s", exchange_id, exc)
                 try:
