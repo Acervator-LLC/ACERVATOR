@@ -37,8 +37,16 @@ def _early_debug(msg: str, *args: object) -> None:
         pass  # noqa: S110
 
 
-# Overrides ~/.acervator_logs for the crash log, faulthandler log and stale marker.
+# Overrides ~/.acervator_logs for the crash log, faulthandler, marker and heartbeat.
 CRASH_LOG_ROOT_ENV = "ACERVATOR_CRASH_LOG_ROOT"
+
+
+def _crash_log_root() -> Path:
+    """Return ACERVATOR_CRASH_LOG_ROOT if set and non-empty, else ~/.acervator_logs."""
+    from pathlib import Path as _P
+
+    _override = os.environ.get(CRASH_LOG_ROOT_ENV)
+    return _P(_override) if _override else _P.home() / ".acervator_logs"
 
 
 def _check_stale_dist_binary() -> None:
@@ -105,11 +113,7 @@ def _check_stale_dist_binary() -> None:
             return found
 
         def _marker_path():
-            from pathlib import Path as _P
-
-            _override = os.environ.get(CRASH_LOG_ROOT_ENV)
-            marker_dir = _P(_override) if _override else _P.home() / ".acervator_logs"
-            return marker_dir / "STALE_DIST_WARNING.txt"
+            return _crash_log_root() / "STALE_DIST_WARNING.txt"
 
         def _report_clear_failure(path, exc):
             """Write a stderr notice naming the stale marker file that could not be removed."""
@@ -190,8 +194,7 @@ from pathlib import Path
 
 def _setup_faulthandler():
     """Enable faulthandler into a per-run log and return its open handle and path."""
-    _override = os.environ.get(CRASH_LOG_ROOT_ENV)
-    log_dir = Path(_override) if _override else Path.home() / ".acervator_logs"
+    log_dir = _crash_log_root()
     try:
         log_dir.mkdir(parents=True, exist_ok=True)
     except Exception:
@@ -259,8 +262,7 @@ def _get_crash_log_path() -> Path:
     global _CRASH_LOG_PATH
     if _CRASH_LOG_PATH is not None:
         return _CRASH_LOG_PATH
-    _override = os.environ.get(CRASH_LOG_ROOT_ENV)
-    log_dir = Path(_override) if _override else Path.home() / ".acervator_logs"
+    log_dir = _crash_log_root()
     try:
         log_dir.mkdir(parents=True, exist_ok=True)
     except Exception as _mk_exc:  # noqa: BLE001
@@ -682,7 +684,7 @@ _install_crash_log_handler()
 
 
 def _heartbeat_path() -> Path:
-    log_dir = Path.home() / ".acervator_logs"
+    log_dir = _crash_log_root()
     try:
         log_dir.mkdir(parents=True, exist_ok=True)
     except Exception:
