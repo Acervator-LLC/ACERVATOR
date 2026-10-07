@@ -8,7 +8,7 @@ whether a bot can place an order there today. It builds nothing. No file under
 `docs/manual/` changed.
 
 **FALSIFICATION.** This report is wrong if any cited path or symbol is absent
-from the tree it ships on, if a verdict called READY turns out to refuse a real
+from the tree it ships on, if a cell called READY turns out to refuse a real
 order, if a venue called out of a sector lists a product in it, or if the
 recorded market rules change the counts after this date.
 
@@ -46,19 +46,40 @@ Schwab, Tradier, tastytrade, TD Ameritrade, Fidelity and Robinhood fail the
 cycle test. None of the six places a fractional sale over its interface.
 ```
 
-A fractional sale is a property of a venue **and a sector**, not of a venue.
-A broker that cannot sell a fraction of a share may sell a fraction of a coin.
-Rejecting the firm on a share limit removes its other sectors with it.
+That line is wrong about four of the six, right about one, and moot about the
+last. Each reading below was fetched from the firm's own page on 2026-10-07.
 
-The cycle test has two answers per venue per sector and neither rejects a venue.
+| Firm | the line says | the firm's own page says |
+| --- | --- | --- |
+| Schwab | no fractional sale | a Stock Slice fraction is "held or sold individually" |
+| Robinhood | no fractional sale | "buy or sell a fractional share" above one dollar |
+| tastytrade | no fractional sale | crypto takes eight decimals; equities are not documented |
+| Fidelity | no fractional sale | real-time fractional trading exists; no public order interface does |
+| Tradier | no fractional sale | correct — "in whole numbers" |
+| TD Ameritrade | no fractional sale | moot — the developer host has no DNS record |
+
+The rule the line generalised is real, and it belongs to one sector on one
+venue. Coinbase's own order documentation states it and its exact boundary.
+
+```
+In pre-market, after-hours, overnight, or multi-session trading, specify a
+positive whole-share base_size; quote_size and fractional sizing are not
+supported.
+```
+
+Coinbase's own product record then makes the fraction a property of the product
+rather than of the venue: each product carries a `fractionable` boolean and a
+minimum notional size beside it. So the whole-share rule is equities, outside
+the regular session, on one venue.
+
+A fractional sale is a property of a venue **and a sector**, not of a venue. A
+venue leaves a sector only when it lists no product in that sector, or when no
+order path our code can reach exists for it.
 
 ```
 fractional sell available   the original scrumming logic works there
 whole units only            that sector needs the whole-unit variant
 ```
-
-A venue leaves a sector only when it lists no product in that sector, or when no
-order path our code can reach exists for it.
 
 ---
 
@@ -117,8 +138,9 @@ the PEM secret shape           one branch, coinbase only, on the secret text
 Three readings, all taken on 2026-10-07 with the home redirected to a scratch
 directory and the live recording read as a copy.
 
-The recorded rules hold one venue. The store is `src/exchange/market_rules_store.py` and the file sits under the
-runtime home, read through `market_rules_store.load_document`.
+The recorded rules hold one venue. The store is
+`src/exchange/market_rules_store.py` and the file sits under the runtime home,
+read through its own `load_document`.
 
 ```
 venues recorded                 1   coinbase
@@ -154,8 +176,8 @@ were written.
 ```
 crypto           890
 futures_perps    227   99 of them expiring
-forex             21   EURC, AUDD, TGBP and XSGD pairs
-commodities         4   PAXG, tokenised gold
+forex             21   euro, Australian dollar, pound and Singapore tokens
+commodities         4   tokenised gold
 stocks              0
 indices             0
 ```
@@ -164,10 +186,10 @@ Two caveats on that split, and both are limits of the reading, not of the code.
 The recording stores no product type, so a Coinbase equity product would be read
 as crypto by this reconstruction rather than as stocks. The recording stores no
 futures asset label either, so a commodity-underlying or index-underlying
-contract is read as futures_perps.
+contract is read as futures and perpetuals.
 
-Nothing filters a market list by sector. `market_asset_class` has exactly two
-callers and both are inside `CCXTConnector.get_markets`, writing the recording.
+Nothing filters a market list by sector. The classifier has exactly two callers
+and both are inside `CCXTConnector.get_markets`, writing the recording.
 
 ```
 market_asset_class        2 callers, both writing the recording
@@ -175,10 +197,10 @@ recorded_classes          1 reader, BotContainer._asset_class
 venue_served_classes      0 readers outside asset_class_surface
 ```
 
-The bot wizard asks the operator for a sector and drops the answer.
-`BotWizard.get_config` returns an asset-class key and a sizing-mode key;
-`BotConfig` declares neither, and `bot_config_kwargs` keeps only the fields
-`BotConfig` declares.
+The bot wizard asks the operator for a sector and drops the answer. Its own
+`get_config` returns an asset-class key and a sizing-mode key; `BotConfig`
+declares neither, and `bot_config_kwargs` keeps only the fields `BotConfig`
+declares.
 
 ```
 BotConfig fields naming a venue or sector:  exchange_id, and nothing else
@@ -219,10 +241,8 @@ tree names, read 2026-10-07.
 | webull | - | yes | - | - | - | - |
 
 Twenty-nine of the one hundred forty-four cells carry a yes. Coinbase carries
-six of them and every other venue carries one.
-
-Two venue ids name one firm. `EQUITY_VENUES` holds both of Interactive Brokers'
-ids, so one firm occupies two rows on his screen.
+six and every other venue carries one. Two venue ids name one firm, because
+`EQUITY_VENUES` holds both of Interactive Brokers' ids.
 
 ---
 
@@ -243,14 +263,67 @@ ABSENT    the venue lists no product in that sector
 WRONG     the program lists this sector for this venue and the venue has none
 ```
 
-### Crypto — 15 venues, all READY in code
+A verdict marked with a question mark is one whose venue offering could not be
+fetched. It still counts as its verdict, because the program reaches nothing
+there either way, and all twenty-eight are named at the end of this report.
+
+| Venue | crypto | stocks | commodities | forex | indices | futures_perps |
+| --- | --- | --- | --- | --- | --- | --- |
+| coinbase | READY | BLOCKED | BLOCKED | READY | BLOCKED | BLOCKED |
+| binance | READY | BLOCKED | BLOCKED | BLOCKED | BLOCKED? | BLOCKED |
+| kraken | READY | BLOCKED | BLOCKED | BLOCKED | BLOCKED | BLOCKED |
+| gemini | READY | ABSENT | BLOCKED | BLOCKED | ABSENT | BLOCKED |
+| bitstamp | READY | ABSENT | BLOCKED | BLOCKED | ABSENT | ABSENT |
+| cryptocom | READY | BLOCKED | BLOCKED? | BLOCKED? | BLOCKED? | BLOCKED |
+| okx | READY | BLOCKED | BLOCKED | ABSENT | BLOCKED | BLOCKED |
+| bybit | READY | BLOCKED? | BLOCKED? | BLOCKED? | BLOCKED? | BLOCKED |
+| poloniex | READY | BLOCKED? | ABSENT | ABSENT | BLOCKED? | BLOCKED? |
+| huobi | READY | BLOCKED | ABSENT | BLOCKED? | BLOCKED? | BLOCKED? |
+| kucoin | READY | BLOCKED | BLOCKED | BLOCKED? | BLOCKED? | BLOCKED |
+| gateio | READY | BLOCKED | BLOCKED | BLOCKED? | BLOCKED? | BLOCKED? |
+| mexc | READY | BLOCKED | ABSENT | BLOCKED? | BLOCKED? | BLOCKED |
+| bitget | READY | BLOCKED | BLOCKED | BLOCKED? | BLOCKED | BLOCKED |
+| bitfinex | READY | ABSENT | BLOCKED | BLOCKED | BLOCKED | BLOCKED |
+| alpaca | BLOCKED | BLOCKED | BLOCKED | ABSENT | BLOCKED | ABSENT |
+| ibkr | BLOCKED | BLOCKED | BLOCKED | BLOCKED | BLOCKED | BLOCKED |
+| interactivebrokers | ABSENT | WRONG | ABSENT | ABSENT | ABSENT | ABSENT |
+| schwab | BLOCKED | BLOCKED | BLOCKED | BLOCKED? | BLOCKED | BLOCKED |
+| tastytrade | BLOCKED | BLOCKED | BLOCKED | ABSENT | BLOCKED | BLOCKED |
+| webull | BLOCKED | BLOCKED | BLOCKED | ABSENT | BLOCKED | BLOCKED |
+| etrade | ABSENT | BLOCKED | BLOCKED | ABSENT | BLOCKED | ABSENT |
+| fidelity | BLOCKED? | BLOCKED | BLOCKED? | BLOCKED? | BLOCKED? | BLOCKED? |
+| tdameritrade | ABSENT | WRONG | ABSENT | ABSENT | ABSENT | ABSENT |
+| tradier | ABSENT | BLOCKED | BLOCKED | ABSENT | BLOCKED | ABSENT |
+| robinhood | BLOCKED | BLOCKED | BLOCKED | ABSENT | BLOCKED | BLOCKED |
+
+### The four totals
+
+```
+READY       16
+BLOCKED    106
+ABSENT      32
+WRONG        2
+            ---
+total      156
+```
+
+READY is every crypto cell plus Coinbase forex. BLOCKED is every cell where a
+venue lists the product and our code cannot place the order; 28 of the 106 carry
+an unfetched offering. ABSENT is every cell where the venue lists no product,
+and every one rests on a two-sided control described below. WRONG is two cells
+and both are named.
+
+---
+
+## Crypto — 15 venues, all READY
 
 Every one of the fifteen reaches the same path. A connector constructs for any
 id in `SUPPORTED_EXCHANGES`, the settings dialog offers all fifteen, and
 `get_markets` records any of them on first connect.
 
-The order-type reading was taken from each venue's own ccxt capability map,
-ccxt 4.5.85, on 2026-10-07. The reader answered for 15 of 15.
+The order-type reading was taken twice: from each venue's own ccxt capability
+map on 2026-10-07, and from each venue's own order documentation on the same
+day. The two agree on all fifteen.
 
 | Venue | createMarketOrder | order types read | US account |
 | --- | --- | --- | --- |
@@ -270,13 +343,15 @@ ccxt 4.5.85, on 2026-10-07. The reader answered for 15 of 15.
 | bitget | True | market and limit | terms refuse a US account |
 | bitfinex | True | market and limit | terms refuse a US account |
 
-Gemini declines a market order and our code already answers that: the record
-reads limit only, `venue_variant` selects the limit-only variant,
-`VARIANTS_BUILT` holds it, and `variant_replaces_market_order` prices a limit
-at the venue's own tick. No second code path is needed for Gemini.
+Gemini declines a market order and both readings say so. Its own order page
+accepts only a limit and a stop-limit type, and tells the caller to use an
+immediate-or-cancel limit at an aggressive price instead. Our code already
+answers that: the record reads limit only, `venue_variant` selects the
+limit-only variant, `VARIANTS_BUILT` holds it, and
+`variant_replaces_market_order` prices a limit at the venue's own tick.
 
 The venue's own options also name which venues price a market buy by its total
-cost rather than its size. Read from each ccxt class on 2026-10-07.
+cost rather than its size.
 
 ```
 market buy requires a price, True    coinbase, gateio, huobi, poloniex
@@ -287,16 +362,44 @@ the option is unset                  the other ten
 The connector fetches a ticker for every market buy that arrives with no price,
 whatever the venue, so all four are already covered.
 
-Verdict: **15 READY**. The nine US-refused accounts are an account matter, not
-a code matter, and they are stated in the table rather than folded into a
-verdict.
+No venue in this set imposes a whole-unit rule on crypto. The nine US-refused
+accounts are an account matter, not a code matter, and they are stated in the
+table rather than folded into a verdict.
 
-### Stocks — 1 listed venue serving no recorded product, 11 venues with no path
+---
 
-Coinbase lists stocks and its products endpoint answers equity products. The
-recording holds none of them, nothing filters a product list by sector, no
-session row exists for the pair, and the cited rule names whole units while the
-whole-unit variant is not one the program holds.
+## Stocks — the sector the matrix changes most
+
+Nine of the fifteen crypto venues list tokenised equities or equity perpetuals,
+and eight of those nine sell a fraction of a share. Every figure below is the
+smallest sellable piece the venue's own system published on 2026-10-07.
+
+| Venue | product | smallest sellable piece |
+| --- | --- | --- |
+| coinbase | EQUITY product type, with a per-product fraction flag | fractional in session, whole shares outside it |
+| binance | tokenised equities | 0.001 share |
+| kraken | tokenised equities and funds, 131 assets | about one dollar |
+| kucoin | a dedicated Stocks market, five symbols | 0.001 share |
+| gateio | tokenised equities | 0.0001 share |
+| bitget | tokenised equities, 36 assets | 0.0001 share |
+| okx | equity perpetual | 0.01 share |
+| cryptocom | equity perpetual | 0.01 share |
+| mexc | equity perpetual, whole contracts of 0.01 share | one contract |
+
+Three crypto venues list no equity and the reading is controlled: Gemini's 468
+symbols, Bitstamp's 383 pairs and Bitfinex's 342 exchange pairs all returned
+complete, with no equity ticker in any of them. HTX carries equity symbols whose
+state reads offline, so nothing there is sellable today.
+
+On our side, one broker's connector is written and nothing constructs it.
+`AlpacaConnector` appears once outside its own module, in that class's own
+docstring. `StockMainWindow` is defined and nothing builds it. The other brokers
+have no connector module at all, and `BrokerBase.place_order` is abstract with
+Alpaca as its only subclass.
+
+Coinbase lists stocks and the recording holds none of them, nothing filters a
+product list by sector, no session row exists for the pair, and the cited rule
+names whole units while the whole-unit variant is not one the program holds.
 
 ```
 the cited unit rule for stocks on coinbase    whole
@@ -305,83 +408,110 @@ the variants the program holds                limit-only order, none
 the whole-unit variant                        not held
 ```
 
-Alpaca is the one broker whose connector is written. Nothing constructs it.
-`AlpacaConnector` appears once outside its own module, in that class's own
-docstring. `StockMainWindow` is defined and nothing builds it.
+---
 
-The other brokers have no connector module at all. `BrokerBase.place_order` is
-abstract and Alpaca is its only subclass.
+## Commodities — ten venues, almost all through tokenised gold
 
-Verdict: **12 BLOCKED** — coinbase, alpaca, etrade, fidelity, ibkr,
-interactivebrokers, schwab, tastytrade, webull, tradier, robinhood, and
-tdameritrade is treated separately below. The missing piece differs by venue and
-each is named in the issue this report opens.
+Tokenised gold is the common product and every venue that lists it sells it in
+fractions. Bitfinex is the widest: silver, platinum, palladium and oil beside
+gold. Readings taken 2026-10-07.
 
-### Commodities — 1 listed venue with a partial product, 11 with no row
+| Venue | commodity product | fractional |
+| --- | --- | --- |
+| coinbase | tokenised gold spot, plus commodity perpetuals | yes on spot |
+| binance | tokenised gold, 0.0001 step | yes |
+| kraken | a gold fund token, plus gold, silver, oil and gas futures | yes on the token |
+| kucoin | tokenised gold, 0.0001 step | yes |
+| gateio | tokenised gold, 0.001 step | yes |
+| bitget | tokenised gold, four decimals | yes |
+| okx | tokenised gold, plus a crude oil perpetual | yes on gold, no on the perpetual |
+| gemini | tokenised gold, 0.0001 minimum | yes |
+| bitstamp | tokenised gold against dollar and euro | yes |
+| bitfinex | gold spot, plus gold, silver, palladium, platinum and oil perpetuals | yes on spot |
 
-Coinbase lists commodities and the recording holds four tokenised gold rows.
-The venue also lists commodity-underlying futures; the manual records 21 of them
-on 4 October 2026, and none is in the live recording.
+Three venues list none and the reading is controlled: HTX, MEXC and Poloniex
+each returned an empty result for a gold token against a populated result for
+their own main crypto pair on the same endpoint.
 
-```
-recorded commodity rows, by the program's own reader      4
-the manual's reading of the venue's commodity contracts   21
-```
+Every equity broker reaches commodities as a fund share, and a fund share sizes
+like a share. The program lists no broker under commodities.
 
-The four tokenised rows size as ordinary spot markets: three carry a fractional
-step, one carries a whole step, all four read market and limit, and
-`venue_variant` selects a variant the program holds. An order on those four
-would place.
+The four tokenised rows in the live Coinbase recording size as ordinary spot
+markets and an order on them would place. The 21 commodity contracts the manual
+records would not: they carry a whole step and an expiry, and an expiring market
+selects the rolling-position variant the program does not hold.
 
-The 21 contracts would not. They carry a whole step and an expiry, and an
-expiring market selects the rolling-position variant, which the program does not
-hold.
+---
 
-Every equity broker reaches commodities as a fund share, and the program lists
-none of them under commodities.
+## Forex — three venues list a real currency pair
 
-Verdict: **1 BLOCKED** for coinbase, because the sector's contract half refuses
-and nothing filters its product suite. **11 BLOCKED** for the brokers that list
-commodity fund shares and that the program lists under no such sector.
-
-### Forex — 1 READY venue
-
-Coinbase lists forex and the program reads 21 forex markets in the live
-recording: euro, Australian dollar, pound and Singapore dollar tokens against
-dollar quotes. `underlying_code` maps each token to the currency it redeems for.
+This is the sector the research narrowed rather than widened. Only three of the
+fifteen crypto venues list a market whose two legs are both national
+currencies, read 2026-10-07.
 
 ```
-recorded forex rows                       21
-with a fractional step                    17
-with a whole step                          4
-order types                               market and limit
-the cited unit rule for forex on coinbase  fractional
+gemini      a euro-dollar market, 0.1 minimum, limit only
+bitstamp    a euro-dollar market, five decimals, market and limit
+bitfinex    euro and pound perpetuals, plus two spot pairs
 ```
 
-The path reaches them. The rules are recorded, the step is applied, the variant
-is one the program holds, and the cited rule agrees with the recorded step on
-17 of 21.
+Kraken lists currency perpetuals through its European entity, and the global
+futures host answered that every instrument it serves is a crypto one. OKX lists
+none and the reading is controlled: a euro-dollar underlying returned the venue's
+own "index does not exist" code while three other underlyings returned live
+instruments on the same endpoint.
 
-Verdict: **1 READY** for coinbase. The three dedicated forex firms the manual
-names have no venue id and no connector, and the program lists no broker under
-forex, so those are BLOCKED cells counted under the brokers.
+Coinbase lists no market with two national-currency legs. What it lists, and
+what the program reads as forex, is a currency token against a dollar
+stablecoin or a fiat quote.
 
-### Indices — 1 listed venue, no recorded product
+```
+recorded markets the program reads as forex   21
+with a fractional step                        17
+with a whole step                              4
+order types                                   market and limit
+the cited unit rule for forex on coinbase     fractional
+```
 
-Coinbase lists indices. The program's own comment in `asset_class_surface`
-records its classifier answering indices for six of the venue's products. The
-live recording holds none, because it stores no futures asset label.
+Those 21 place today, which is why the cell reads READY. Whether a euro token
+against a dollar stablecoin counts as a forex market is a product judgment and
+it is his to make.
+
+Among the brokers, only Interactive Brokers documents a direct currency security
+type, sizeable by the second currency's notional. Alpaca, tastytrade, Tradier
+and E\*TRADE list none; Robinhood, Webull and Schwab reach currencies only as
+futures.
+
+---
+
+## Indices — five venues, mostly as perpetuals or fund tokens
+
+Read 2026-10-07.
+
+```
+bitfinex   eight national index perpetuals
+okx        a perpetual on a large US index fund
+bitget     an index fund token, four decimals
+kraken     index futures through its European entity
+gateio     an index fund token seen in the pair list, not confirmed alone
+```
+
+Gemini and Bitstamp list none and both readings are controlled by a complete
+symbol list. Coinbase lists index products: its own derivatives overview names
+equity and commodity perpetuals without naming a contract, and the program's own
+comment in `asset_class_surface` records its classifier answering indices for
+six of the venue's products. The live recording holds none.
 
 An index contract carries a whole step and an expiry, so it selects the
-rolling-position variant that the program does not hold.
+rolling-position variant that the program does not hold. Every broker reaches
+index exposure as a fund share.
 
-Verdict: **1 BLOCKED** for coinbase.
+---
 
-### Futures and perpetuals — 1 listed venue, half the sector refusing
+## Futures and perpetuals — the sector with the most recorded product
 
-Coinbase lists futures and perpetuals and the recording holds 227 of them, 99
-with an expiry. This is the sector with the most recorded product and the
-sharpest split.
+Coinbase's recording holds 227 contract markets, 99 with an expiry. This is
+where the split between a placeable order and a refused one is sharpest.
 
 ```
 recorded futures and perpetual rows   227
@@ -397,48 +527,20 @@ expiring market. A perpetual with a whole step is admitted, because
 `variant_holds_market` admits the whole-unit variant when the recorded step
 reads whole units.
 
-Verdict: **1 BLOCKED** for coinbase, on the dated half. Thirteen crypto venues
-list perpetuals and the program lists none of them under the sector, so those
-are BLOCKED cells.
-
-### Tradier, Robinhood and TD Ameritrade
-
-Tradier appears twice in the whole tree, both times in the manual's venue page,
-and never in source. It has no venue id, so the program lists it under nothing.
-
-Robinhood appears nowhere in the tree at all. The operator raised it, so its
-offering is sourced in its own section below.
-
-TD Ameritrade has a venue id and a row on his screen under stocks. The manual
-records its API discontinued on 10 May 2024, registrations not carried over, and
-the firm folded into Schwab. A venue id naming a firm that can take no order at
-all is a wrong row.
+Thirteen crypto venues list a perpetual or a dated contract and the program
+lists one venue under the sector. Bitstamp lists none and the reading is
+controlled: its 383 pairs returned complete with no contract among them, and its
+own interface page publishes only spot endpoints.
 
 ---
 
-## The four totals
-
-One hundred fifty-six cells, each counted once.
+## Every WRONG cell
 
 ```
-READY       16
-BLOCKED     48
-ABSENT      90
-WRONG        2
-```
-
-READY is the 15 crypto venues plus Coinbase forex. BLOCKED is every cell where a
-venue lists the product and our code cannot place the order. ABSENT is every
-cell where the venue lists no product in that sector. WRONG is two cells and
-both are named.
-
-### Every WRONG cell
-
-```
-tdameritrade, stocks           the firm's API closed on 10 May 2024 and the
-                               firm folded into Schwab; the id names no venue
-                               that can take an order, and the row is on his
-                               screen today
+tdameritrade, stocks           the developer host has no DNS record, measured
+                               2026-10-07; the firm folded into Schwab. The id
+                               names no venue that can take an order and the
+                               row is on his screen today
 
 interactivebrokers, stocks     a second id for the firm the other id already
                                names; one firm occupies two rows, so one of the
@@ -451,20 +553,20 @@ WRONG column exists to catch.
 
 ### How the method could have found a WRONG cell
 
-The WRONG count is small, so the method needs showing. Take a venue and sector
+The WRONG count is two, so the method needs showing. Take a venue and sector
 the program records and confirm the venue serves it.
 
 Coinbase and crypto: the program lists it, the recording holds 890 crypto rows
-read through the program's own classifier, and the venue's spot product list
-answers them. The cell is not wrong, and the check said so.
+read through the program's own classifier, and the venue's own product list
+answered 696 spot products on 2026-10-07. The cell is not wrong and the check
+said so.
 
 Now the same check with the sector moved. Coinbase and indices: the program
 lists it, and the live recording holds zero index rows. The check reported a
 mismatch, which is exactly what it would report for a genuinely wrong row. It
-reads BLOCKED rather than WRONG only because the venue does list index
-contracts — the program's own comment records six — so the mismatch is in our
-recording. The same check applied to an id naming no reachable venue reported
-WRONG, and it did so twice.
+reads BLOCKED rather than WRONG only because the venue does list index products,
+so the mismatch is in our recording. Run against an id naming no reachable
+venue, the same check reported WRONG, and it did so twice.
 
 ---
 
@@ -511,8 +613,9 @@ would only matter if the venue published no step.
 
 ## One BLOCKED cell, with its missing piece
 
-Alpaca and stocks. The venue lists equities, the fractional sell is documented,
-the connector is written, and nothing constructs it.
+Alpaca and stocks. The venue lists equities, the fractional sell is documented
+to nine decimal places and marked long, the connector is written, and nothing
+constructs it.
 
 ```
 present   src/stocks/broker_base.py             BrokerBase, the equities contract
@@ -526,19 +629,61 @@ absent    nothing hands a broker to BotContainer as its exchange
 ```
 
 The missing piece is the construction and the wiring, not the connector. One
-site builds a crypto connector from stored credentials, in `src/gui/main_window.py`, and
-no equivalent site builds a broker one.
+site builds a crypto connector from stored credentials, in
+`src/gui/main_window.py`, and no equivalent site builds a broker one.
+
+One thing a wiring unit must not take from a single page: Alpaca's own
+documentation disagrees with itself on which order types carry a fractional
+quantity. Its order reference says market and day; its fractional-trading page
+says market, limit, stop and stop-limit with day; its orders page says a market
+order is refused for a fractional quantity. All three agree that the time in
+force is day and that the sell is placeable.
 
 ---
 
 ## Robinhood
 
-The operator raised Robinhood specifically. Its facts are sourced in the venue
-documentation section below, with the page and the date for each.
+The operator raised Robinhood specifically. Every reading below was fetched from
+a Robinhood-owned page on 2026-10-07.
 
-Robinhood has no venue id in this tree, no connector, and no row on his screen.
-Its cells are BLOCKED on our side before any venue fact is read, because there
-is nothing here to reach it with.
+```
+crypto      offered, through a separate crypto account. Fractional, buy and
+            sell, from one cent. Market, limit, stop and stop-limit
+stocks      US listed shares, funds and closed-end funds, plus some warrants,
+            preferreds and over-the-counter equities. Fractional, buy and sell,
+            above one dollar
+commodities commodity futures through a derivatives account, plus commodity
+            fund shares as ordinary tickers
+forex       no spot currency market. Currencies appear only as a futures class
+indices     cash-settled index options on five indices, plus index fund shares
+futures     futures across equities, energy, currencies, crypto and metals;
+            dated against perpetual is not stated on the page
+```
+
+**Is a fractional sell placeable over Robinhood's current public interface?**
+Four answers, because the account and the interface differ, and shares and
+crypto differ.
+
+```
+shares, in the account      yes. "buy or sell a fractional share" above $1
+shares, over the interface  not documented. The only public equities route is
+                            an agent protocol server, launched 2026-05-27,
+                            equities only, and its order tool's quantity
+                            parameter was not reachable
+crypto, in the account      yes. "buy or sell crypto at fractional amounts"
+crypto, over the interface  not established. Robinhood's own support page names
+                            a place-crypto-order action in two versions; the
+                            endpoint page renders in script and returned one
+                            word to a fetch
+```
+
+Robinhood does have a public documented crypto trading interface, announced on
+2024-05-30, which is after #881's line was written. So the firm's rejection was
+wrong twice: the fraction is sellable, and a public programmatic route exists.
+
+On our side Robinhood has no venue id, no connector and no row on his screen.
+Its cells are BLOCKED before any venue fact is read, because there is nothing
+here to reach it with.
 
 ---
 
@@ -565,9 +710,10 @@ the client-order-id field      four branches at one site, the fourth being
                               ccxt's canonical name, which ccxt translates
 ```
 
-**No per-venue variant is needed for crypto.** The one venue that looks like it
-needs one, Gemini, is already served by the limit-only variant the program
-holds, selected from the venue's own capability map rather than from a table.
+**No per-venue variant is needed.** The one venue that looks like it needs one,
+Gemini, is already served by the limit-only variant the program holds, selected
+from the venue's own capability map rather than from a table. The venue's own
+order page confirms the map.
 
 The variants the program names are shaped by market form, not by venue, and that
 is the right axis.
@@ -605,10 +751,11 @@ Every sector holds whole-step markets, crypto included. 180 of 890 recorded
 crypto markets take whole units, so the whole-unit variant is not a stocks
 feature. It is needed in every sector the platform trades.
 
-Two sectors need it before they can trade at all.
+Two sectors need it before they can trade at all, and the venue pages agree.
 
 ```
-stocks    a share is a whole unit wherever a broker declines fractions
+stocks    a share is whole wherever a broker declines fractions, and whole on
+          Coinbase outside the regular session whatever the product flag says
 indices   an index contract is a whole contract
 ```
 
@@ -618,6 +765,11 @@ And one sector needs a second variant beside it.
 futures_perps   99 of 227 recorded markets carry an expiry, so the sector needs
                 the rolling-position variant as well as the whole-unit one
 ```
+
+Three venues size a whole contract rather than a fraction, each from its own
+system on 2026-10-07: KuCoin's perpetual lot is one contract, MEXC's minimum
+volume is one contract, and OKX's crude oil perpetual steps in whole contracts.
+A contract that represents a hundredth of a share is still one contract.
 
 ---
 
@@ -644,6 +796,8 @@ mirrored  the order path, through a broker constructed the way a crypto
           connector is constructed
 augment   a session, because a share does not trade at every hour; the session
           hold is built and the cited table holds one row
+augment   a session-dependent unit rule, because Coinbase's own page takes a
+          fraction in session and only whole shares outside it
 augment   settlement, because a sale's cash is not available at once; the
           unsettled-cash cap is built and the cited table holds one row
 augment   the whole-unit variant, for a broker declining fractions
@@ -665,7 +819,7 @@ augment   the equity session and settlement, for a commodity fund share
 ```
 mirrored  complete for the 21 token pairs on Coinbase today
 augment   nothing for those pairs
-augment   a lot size, if a dedicated forex firm is ever connected, because a
+augment   a lot size, if a dedicated currency firm is ever connected, because a
           currency lot is neither a fraction nor a whole unit
 ```
 
@@ -685,6 +839,8 @@ mirrored  the order path, and 128 of 227 recorded markets already place
 augment   the rolling-position variant, which decides whether a position rolls
           into the next contract or closes before expiry
 augment   the whole-unit variant, for the 140 whole-step markets
+augment   a contract size, because a venue's lot can be one contract standing
+          for a fraction of the underlying
 ```
 
 ---
@@ -713,40 +869,37 @@ Each needs an order placed, and this unit places none.
 
 One control, and it separates what the venue offers from what our code reaches.
 
-Every cell was counted into exactly one verdict and the four totals are given
-above. Then a READY cell was traced function by function, a BLOCKED cell's
-missing piece was named as a list of present and absent sites, and both WRONG
-cells were named.
+Every cell was counted into exactly one verdict and the four totals above sum to
+156, which is 26 venues by 6 sectors. Then a READY cell was traced function by
+function, a BLOCKED cell's missing piece was named as a list of present and
+absent sites, and both WRONG cells were named.
 
 The WRONG count is two, which is small enough that the method needs proving. The
 proof is in the section above: the same check run on a cell that is not wrong
 reported no mismatch, and run on a cell with a recording gap reported the
 mismatch it would report for a wrong row.
 
-The venue-document instrument was calibrated separately. A fetch of a page that
-does not exist on a venue's own documentation host was run first, so an absence
-reported here is one the instrument can tell from a block page.
-
 ---
 
 ## The readings behind the figures
 
-Every figure in this report came from one of four readings, all taken on
-2026-10-07.
+Every figure came from one of four readings, all taken on 2026-10-07.
 
 ```
-the recording    the runtime market_rules.json, copied and read read-only,
-                 through load_document and recorded_rules
+the recording    the runtime market rules, copied and read read-only, through
+                 load_document and recorded_rules
 the program      the real functions driven on that recording with the home
-                 redirected to a scratch directory, Path.home() printed first
+                 redirected to a scratch directory, the home printed first
 the venue maps   each ccxt exchange class's own has map and options, ccxt
                  4.5.85, constructed offline with no venue call
-the venue pages  public documentation, fetched live, each with its date
+the venue pages  public documentation and public product endpoints, fetched
+                 live, each with its date
 ```
 
 The home redirect was confirmed by printing the resolved home before any import.
 The live recording was never opened for writing and the credentials file was
-never opened at all.
+never opened at all. No order was placed, priced, amended or cancelled, and no
+authenticated endpoint was touched.
 
 ### The order-type reader's own control
 
@@ -773,6 +926,68 @@ an index future      indices
 a perpetual          futures_perps
 ```
 
+### The venue-document instrument's own control
+
+A page that does not exist was fetched on every documentation host relied on,
+before any venue row was trusted. Five crypto hosts returned a clean not-found
+with no body, so a missing page is distinguishable from a real one.
+
+Two hosts failed that test and both failures are recorded rather than smoothed
+over. One broker documentation host returned a full navigation tree with a
+success code for a page that does not exist, so every row from that host rests
+on topic-specific quoted content rather than on a success code. One venue's
+support host returned a complete page for a fabricated article id, carrying only
+the sentence that the article does not exist, and no row rests on that host.
+
+Three further outcomes separate a real absence from our own blindness, and the
+split is what makes the ABSENT column trustworthy.
+
+```
+not found        the page is gone and the host is alive
+forbidden        the host is alive and refusing us; no absence claimed
+no DNS record    the host itself is gone; a stronger absence than not found
+```
+
+Two developer hosts returned no DNS record: TD Ameritrade's and Fidelity's. The
+same instrument read five other brokers' developer portals in the same session,
+so it is not blind to developer portals.
+
+Every ABSENT cell also rests on a two-sided reading of the venue's own product
+endpoint: a known-present symbol beside a known-absent one on the same URL
+shape, so each zero has a matching one.
+
+```
+a gold token absent beside a main crypto pair present   huobi, mexc, poloniex
+an equity symbol absent beside a gold token present      okx
+a currency underlying absent beside three present        okx
+a complete symbol list with no equity in it              gemini, bitstamp, bitfinex
+```
+
+A truncated product list never produced an ABSENT cell. Where a list did not
+return whole, the cell reads BLOCKED with its offering marked unfetched.
+
+### The twenty-eight cells whose venue offering was not fetched
+
+```
+binance     indices
+cryptocom   commodities, forex, indices
+bybit       stocks, commodities, forex, indices
+poloniex    stocks, indices, futures_perps
+huobi       forex, indices, futures_perps
+kucoin      forex, indices
+gateio      forex, indices, futures_perps
+mexc        forex, indices
+bitget      forex
+schwab      forex
+fidelity    crypto, commodities, forex, indices, futures_perps
+```
+
+What blocked each: one venue's futures host refused a US address with no mirror;
+three of Bybit's own hosts refused or timed out, leaving it the one venue with
+no product established; several product lists returned truncated; and two
+broker hosts refused every request including the control. Confirming these is
+the first step of the sector-coverage work, not a wiring step.
+
 ---
 
 ## One finding about a page this report does not change
@@ -780,6 +995,8 @@ a perpetual          futures_perps
 The manual's venue page states that Coinbase serves no forex and that forex has
 no connected venue. The program's own classifier reads 21 forex markets in the
 live Coinbase recording, and the surface's own comment records 20, so that
-sentence is contradicted by the code beside it.
+sentence is contradicted by the code beside it. The venue's own product list
+agrees with the page on the narrow point that no market has two national-currency
+legs, which makes this a disagreement about what counts as a currency market.
 
 The page is not edited here. Another unit holds the manual.
