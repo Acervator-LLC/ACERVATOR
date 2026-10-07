@@ -1,0 +1,33 @@
+Path.home() = __SCRATCH__/redirected_home
+repo = __SCRATCH__/worktree
+
+name                       expected  lines  verdict
+  expiry_ms                  present     14  OK
+  days_to_expiry             present      3  OK
+  MarketRules                present     79  OK
+  scrum_defer_to_htf         present     24  OK
+  detonation_timeframe       present     48  OK
+  available_timeframes       present     42  OK
+  ta_timeframe               present    229  OK
+  VARIANT_ROLLING_POSITION   present     10  OK
+  variant_permits_close      present      7  OK
+  open_interest              absent       0  OK
+  openInterest               absent       0  OK
+  contango                   absent       0  OK
+  backwardation              absent       0  OK
+  roll_yield                 absent       0  OK
+  term_structure             absent       0  OK
+  futures_basis              absent       0  OK
+  successor_symbol           absent       0  OK
+  next_contract              absent       0  OK
+  roll_target                absent       0  OK
+  expiry_action              absent       0  OK
+  close_before_expiry        absent       0  OK
+  expiry_lead_days           absent       0  OK
+  settlement_price           absent       0  OK
+  contract_size              absent       0  OK
+  ZZQQNOTAREALNAME           absent       0  OK
+
+mismatches = 0
+probes expecting present = 9, expecting absent = 16
+the method discriminates only while both counts are above zero

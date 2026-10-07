@@ -1,0 +1,78 @@
+__SCRATCH__/worktree DeprecationWarning: datetime.datetime.utcfromtimestamp() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.fromtimestamp(timestamp, datetime.UTC).
+  print(f"  earliest = {datetime.datetime.utcfromtimestamp(low).date()}")
+__SCRATCH__/worktree DeprecationWarning: datetime.datetime.utcfromtimestamp() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.fromtimestamp(timestamp, datetime.UTC).
+  print(f"  latest   = {datetime.datetime.utcfromtimestamp(high).date()}")
+Path.home() = __SCRATCH__/redirected_home
+store_path() under the redirect = __RUNTIME_HOME__/.acervator/market_rules.json
+RULE_FIELDS = ('min_amount', 'min_cost', 'amount_increment', 'price_increment', 'expiry_ms')
+TEXT_RULE_FIELDS = ('order_types',)
+CLASS_FIELD = asset_class
+MarketRules fields = ['min_amount', 'min_cost', 'amount_increment', 'price_increment', 'session', 'order_types', 'expiry_ms', 'settlement_days', 'read']
+
+recorded store bytes = 234625
+recorded store sha256 = 1b17cb46ebe59fd4
+venues recorded = ['coinbase']
+
+markets recorded = 1142
+markets carrying a positive expiry_ms = 100
+
+every key any recorded row carries, with its count:
+  amount_increment         1142
+  expiry_ms                1142
+  min_amount               1142
+  min_cost                 1142
+  order_types              1142
+  price_increment          1142
+
+every key an EXPIRING row carries, with its count:
+  amount_increment         100
+  expiry_ms                100
+  min_amount               100
+  min_cost                 100
+  order_types              100
+  price_increment          100
+
+asset_class over all rows: {'': 1142}
+asset_class over expiring rows: {'': 100}
+
+per-field presence in the recorded store, expiring rows only:
+  expiry_ms                rows= 100  PRESENT
+  min_amount               rows= 100  PRESENT
+  amount_increment         rows= 100  PRESENT
+  price_increment          rows= 100  PRESENT
+  min_cost                 rows= 100  PRESENT
+  order_types              rows= 100  PRESENT
+  open_interest            rows=   0  ABSENT
+  volume_24h               rows=   0  ABSENT
+  last_price               rows=   0  ABSENT
+  successor_symbol         rows=   0  ABSENT
+  next_contract            rows=   0  ABSENT
+  underlying_index         rows=   0  ABSENT
+  front_month              rows=   0  ABSENT
+  settlement_price         rows=   0  ABSENT
+  contract_size            rows=   0  ABSENT
+
+expiry spread over the expiring rows:
+  distinct expiry epochs = 26
+  earliest = 2026-10-19
+  latest   = 2089-12-30
+
+the same reading taken THROUGH recorded_rules, the program's own path:
+  rows whose MarketRules.expires answers True = 100 of 100
+  one expiring row read back, ticker withheld:
+    read              = True
+    expires           = True
+    days_to_expiry    = 23460.666666666668
+    min_amount        = 1.0
+    amount_increment  = 1.0
+    price_increment   = 0.01
+    min_cost          = 0.0
+    order_types       = market and limit
+    settlement_days   = None
+    session           = None
+
+the negative control, a symbol never recorded:
+  read = False, expires = False
+
+nothing was written: the redirected home holds
+  files = 0

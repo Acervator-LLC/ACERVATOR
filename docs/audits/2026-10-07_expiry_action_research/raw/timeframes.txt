@@ -1,0 +1,108 @@
+Path.home() = __SCRATCH__/redirected_home
+
+ALL_TIMEFRAMES = ('1m', '5m', '15m', '30m', '1h', '2h', '4h', '6h', '12h', '1d', '1w')
+TIMEFRAME_ORDER == list(ALL_TIMEFRAMES): True
+
+coinbase:
+  offered = ['1m', '5m', '15m', '30m', '1h', '2h', '6h', '1d']
+  missing = ['4h', '12h', '1w']
+  highest offered = 1d
+
+binanceus:
+  offered = ['1m', '5m', '15m', '30m', '1h', '2h', '4h', '6h', '12h', '1d', '1w']
+  missing = []
+  highest offered = 1w
+
+kraken:
+  offered = ['1m', '5m', '15m', '30m', '1h', '4h', '1d', '1w']
+  missing = ['2h', '6h', '12h']
+  highest offered = 1w
+
+not-a-venue:
+  offered = ['1m', '5m', '15m', '30m', '1h', '2h', '4h', '6h', '12h', '1d', '1w']
+  missing = []
+  highest offered = 1w
+
+the one phantom a 1h bot gets, restricted to what coinbase offers:
+  parent 1h  -> ['2h']
+  parent 6h  -> ['1d']
+  parent 1d  -> []
+
+the per-bot timeframe settings BotConfig already carries:
+  ta_timeframe                 = '1h'
+  scrum_defer_to_htf           = True
+  fold_defer_to_htf            = True
+  detonation_enabled           = False
+  detonation_timeframe         = '1d'
+  detonation_confidence_min    = 0.75
+
+detonation_timeframe offers 1d and 1w; coinbase offers:
+  1d: True
+  1w: False
+
+Candle fields = ['timestamp', 'open', 'high', 'low', 'close', 'volume']
+
+modules under src/trading/indicators = 24
+  __init__.py
+  adx.py
+  atr.py
+  bb_proximity.py
+  bollinger.py
+  fvg.py
+  heikin_ashi.py
+  helpers.py
+  ichimoku.py
+  kaufman_er.py
+  landing_strip.py
+  m_top.py
+  macd.py
+  macd_taper.py
+  rsi.py
+  slingshot.py
+  spring.py
+  stochastic_rsi.py
+  supertrend.py
+  types.py
+  volume.py
+  vortex.py
+  w_bottom.py
+  zscore.py
+
+names src.trading.indicators exports = 44
+  ['ADXIndicator', 'ATRIndicator', 'BBProximityResult', 'BollingerBands', 'Candle', 'CandleDomainError', 'FVGIndicator', 'FVG_BEAR_BOOST', 'FVG_BULL_BOOST', 'FVG_LOOKBACK', 'FVG_PROXIMITY_PCT', 'HACandle', 'HA_BODY_PCT_UNIT', 'INDICATOR_MODULES', 'IchimokuCloud', 'KaufmanERIndicator', 'MACD', 'NO_SHRINK_RATIO', 'PERCENT_PER_RATIO_UNIT', 'RSIIndicator', 'SHARED_MODULES', 'Signal', 'SignalDirection', 'SlingshotIndicator', 'StochasticRSI', 'SupertrendIndicator', 'TighteningResult', 'VOLUME_SPIKE_PCT', 'VX_CEILING', 'VX_CEILING_PCT', 'VX_FLOOR', 'VX_FLOOR_PCT', 'VolumeAnalysis', 'VortexIndicator', 'VotingSummary', 'ZScoreIndicator', 'candles_from_raw', 'compute_heikin_ashi', 'detect_bb_proximity', 'detect_landing_strip_v2', 'detect_m_top', 'detect_macd_taper', 'detect_volume_confirmed_spring', 'detect_w_bottom']
+
+every exported callable's parameters, so a second-series reader shows:
+  ADXIndicator                       ['self', 'candles', 'timeframe']
+  ATRIndicator                       ['self', 'candles']
+  BBProximityResult                  ['upper', 'middle', 'lower', 'bb_position', 'near_upper', 'near_lower', 'tolerance_pct', 'landing_strip', 'landing_strip_side', 'landing_strip_candles', 'ha_body_avg', 'consolidation_strength']
+  BollingerBands                     ['self', 'candles', 'timeframe']
+  Candle                             ['timestamp', 'open', 'high', 'low', 'close', 'volume']
+  FVGIndicator                       ['self', 'candles']
+  HACandle                           ['timestamp', 'open', 'high', 'low', 'close', 'body_pct']
+  IchimokuCloud                      ['self', 'candles', 'timeframe']
+  KaufmanERIndicator                 ['self', 'candles', 'timeframe']
+  MACD                               ['self', 'candles', 'timeframe']
+  RSIIndicator                       ['self', 'candles', 'timeframe']
+  Signal                             ['indicator', 'timeframe', 'direction', 'confidence', 'weight', 'details', 'timestamp', 'abstained']
+  SignalDirection                    ['values']
+  SlingshotIndicator                 ['self', 'candles', 'timeframe']
+  StochasticRSI                      ['self', 'candles', 'timeframe']
+  SupertrendIndicator                ['self', 'candles', 'timeframe']
+  TighteningResult                   ['detected', 'side', 'length', 'tightening_ratio', 'bb_position', 'confidence_boost', 'raw_tightenings']
+  VolumeAnalysis                     ['self', 'candles', 'timeframe']
+  VortexIndicator                    ['self', 'candles', 'timeframe']
+  VotingSummary                      ['bullish_count', 'bearish_count', 'neutral_count', 'total_bullish_score', 'total_bearish_score', 'net_score', 'consensus_confidence', 'signals', 'timeframe']
+  ZScoreIndicator                    ['self', 'candles', 'timeframe']
+  candles_from_raw                   ['raw']
+  compute_heikin_ashi                ['candles']
+  detect_bb_proximity                ['candles', 'tolerance_pct', 'consolidation_threshold', 'min_pattern_candles', 'max_pattern_candles', 'bb_period', 'bb_std']
+  detect_landing_strip_v2            ['candles', 'min_consecutive', 'shrink_threshold', 'bb_tolerance_pct', 'use_ha', 'bb_period', 'bb_std']
+  detect_m_top                       ['candles', 'bb_pos_history', 'upper_threshold', 'midline_pullback', 'min_separation', 'lookback']
+  detect_macd_taper                  ['histogram', 'lookback']
+  detect_volume_confirmed_spring     ['voting_summary', 'bb_proximity', 'bb_pos_threshold']
+  detect_w_bottom                    ['candles', 'bb_pos_history', 'lower_threshold', 'midline_recovery', 'min_separation', 'lookback']
+
+exported callables naming a second market series = []
+
+the redirected home still holds
+  files = 0
