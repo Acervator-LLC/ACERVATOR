@@ -35,6 +35,12 @@ dependencies = [
     "pandas>=2.1.0",
     "numpy>=1.26.0",
     "ta>=0.11.0",
+    # src/core/settings.py:29 names tomli, and no requirement declares it.
+    # It sits in the ImportError arm under `import tomllib`, which is stdlib
+    # from 3.11, so `requires-python = ">=3.14,<3.15"` above never reaches
+    # that arm. The published Windows bundle carries 0 tomli modules and
+    # reads TOML, so no requirement is owed. tomli_w is a separate package
+    # and src/core/settings.py:36 imports it.
     "tomli_w>=1.0.0",
     "aiohttp>=3.9.0",
     "psutil>=5.9.0",
@@ -61,13 +67,18 @@ dependencies = [
 #            ImportError. The sweep still runs and writes its JSON report.
 #   charts   src/design_system.py imports matplotlib at module level with
 #            NO guard. It is an extra and not a core dependency for a
-#            different reason: the only tracked modules importing
-#            `src.design_system` are tools/build_product_manual.py and
-#            tests/test_design_system_chart_tokens.py, neither .spec
-#            collects tools/, and `EXCLUDES` in tools/spec_common.py --
-#            which both .spec files pass to PyInstaller -- names
-#            'matplotlib', so the frozen application never reaches that
-#            import.
+#            different reason: one tracked module imports
+#            `src.design_system`, tools/build_product_manual.py:51, and
+#            `EXCLUDES` in tools/spec_common.py -- which both .spec files
+#            pass to PyInstaller -- names 'matplotlib', so the frozen
+#            application never reaches that import.
+#            Measured on the published Windows bundle: it carries
+#            src.design_system and 0 matplotlib modules, and it does not
+#            carry tools.build_product_manual. The module ships and
+#            nothing in the bundle imports it.
+#            src/gui/design_system.py is a different module with 110
+#            importers and no matplotlib import. A relative import in a
+#            package __init__ resolves to it, not to src/design_system.py.
 #   monitor  `LiveMonitor._call` in src/trading/live_monitor.py imports
 #            httpx with no guard. No install list in the tree ever
 #            installed it. This extra declares that dependency; it does
