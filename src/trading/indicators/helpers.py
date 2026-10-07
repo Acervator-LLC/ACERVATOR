@@ -5,8 +5,7 @@ indicator's OUTPUT is computed here. These are the moving
 average, the deviation and the true range that several
 published formulae are each built from.
 
-Moved out of ``ta_engine.py`` for issue #73. The body below is a
-verbatim line slice of that file: no arithmetic was retyped.
+``src/trading/ta_engine.py`` re-exports every name here.
 """
 
 from __future__ import annotations
@@ -44,7 +43,7 @@ def _ema(values: list[float], period: int) -> list[float | None]:
     the point of misuse rather than a plausible wrong number. That is
     the same contract ``_sma_tail`` states below, for the same reason.
 
-    WHAT THIS REPAIRED (issue #99). The body used to end with
+    WHAT A BACK-FILL WOULD COST. An earlier body ended with
 
         for i in range(period - 1):
             result[i] = result[period - 1]
@@ -109,8 +108,8 @@ def _sma_tail(
 ) -> list[float]:
     """Simple moving average, computing only the last ``tail`` entries.
 
-    v3.24.22. The full-history form is O(n*period): every one of n
-    outputs re-sums a window of `period` values. Consumers read at most
+    The full-history form is O(n*period): every one of n outputs
+    re-sums a window of `period` values. Consumers read at most
     the last 35 entries, so the first n-35 were computed and discarded
     on every tick, for every bot, for every candle.
 
@@ -222,13 +221,9 @@ def _true_range(candles: list[Candle]) -> list[float]:
         second row.
       VortexIndicator -- ``[1:]``, for the same reason: VM+ and VM-
         (Botes and Siepman, 2010) each reach back one bar.
-      SlingshotIndicator -- computes its own, deliberately (see that
-        class's docstring and tests/test_slingshot_canonical.py). Its
-        first bar is ``high - low``, so it agrees with this one.
-
-    v3.26.x: this docstring said only "True Range series" and four
-    other copies of the per-bar formula had drifted apart on the
-    first bar. The arithmetic below is unchanged.
+      SlingshotIndicator -- computes its own, deliberately; see that
+        class's docstring. Its first bar is ``high - low``, so it
+        agrees with this one.
     """
     tr = [candles[0].high - candles[0].low]
     for i in range(1, len(candles)):

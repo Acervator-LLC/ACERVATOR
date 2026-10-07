@@ -168,8 +168,7 @@ class SystemLoadOscillator:
         """Background sampler. Runs at SAMPLING_HZ independent of the
         engine tick rate. Writes COOLING state under lock.
 
-        sadp: R61 CBF — any exception surfaces to stderr, does not
-        silently kill the monitor.
+        Any exception surfaces to stderr and does not kill the monitor.
         """
         interval = 1.0 / self.SAMPLING_HZ  # 0.2s by default
         while not self._stop_event.is_set():
