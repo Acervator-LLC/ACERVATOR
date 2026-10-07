@@ -40,12 +40,11 @@ This module is pure -- no imports from ``src.trading`` (avoids circular
 deps), no exchange calls, no state.
 
 WHERE THE INPUTS COME FROM IS PART OF THE ONE DEFINITION
-The arithmetic was single-sourced here in v3.25.8, and the READS were
-not. The Fold-Tranche panel did its own read, took the interval and NOT
-the fee, and printed a rebuy price above the one the executor applies --
-six false greens on live tranches, measured 2026-08-23 (GitHub issue
-#97). One definition of the arithmetic does not stop a caller feeding it
-different inputs, so
+The arithmetic is single-sourced here and the READS were not. The
+Fold-Tranche panel did its own read, took the interval and NOT the fee,
+and printed a rebuy price above the one the executor applies -- six
+false greens on live tranches, measured 2026-08-23. One definition of
+the arithmetic does not stop a caller feeding it different inputs, so
 ``minimum_opposing_trade_distance_pct_from_config`` below defines the
 read as well.
 
@@ -53,16 +52,11 @@ WHICH CALLERS USE IT TODAY, AND WHICH DO NOT
 The Fold-Tranche panel (``gui/bot_live_settings.py``) calls it. The two
 executor sites -- the autonomous tick fold gate and the manual-rebalance
 refusal in ``scrumming_bot.py`` -- still spell the ``getattr`` pair
-inline. The reader reproduces their coercion exactly, quirk for
-quirk, and ``tests/test_fold_panel_asks_the_executor.py`` proves the
-agreement over all 1,707 live fold tranches rather than asserting it.
+inline. The reader reproduces their coercion exactly, quirk for quirk.
 
 THAT IS STILL TWO STATEMENTS OF ONE DEFAULT, AND IT IS NAMED, NOT
 HIDDEN. Routing those two sites through this reader is the obvious
-finish and is NOT done here: ``test_the_twin_is_the_pre_change_file``
-in ``tests/test_autonomous_fold_price_gate.py`` is a prior unit's
-byte-for-byte reversibility proof over ``scrumming_bot.py``, and any
-edit to that file breaks it. Re-homing the two reads is its own unit.
+finish and is NOT done here.
 
 Public API:
     minimum_opposing_trade_distance_pct(interval_pct, fee_pct) -> float

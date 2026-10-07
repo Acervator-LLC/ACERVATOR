@@ -2,8 +2,8 @@
 
 WHY THIS PACKAGE EXISTS. Indicator formulae are PUBLISHED. Each
 indicator has its own discrete maths and is never blended with
-another's. Issue #73 found nineteen of them in one 4,009-line file,
-which made that rule a habit rather than a structure.
+another's. One module per indicator makes that rule a structure
+rather than a habit.
 
 THE SEAM. Two modules hold what is genuinely shared, and neither one
 computes an indicator's output:
@@ -23,9 +23,7 @@ Every other module holds exactly ONE indicator and imports only
 ``types``, ``helpers`` and the standard library. There is one declared
 exception -- both Landing Strip detectors read ``compute_heikin_ashi``,
 because Heikin Ashi is a candle TRANSFORM rather than a voter and both
-detectors are defined in terms of it. That edge is named in
-``tests/test_one_indicator_per_module.py``, which fails if a second one
-appears or if any module grows a second indicator.
+detectors are defined in terms of it.
 
 The public surface is unchanged: ``src/trading/ta_engine.py``
 re-exports every name in this package, so ``from ..trading.ta_engine
