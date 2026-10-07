@@ -44,6 +44,49 @@ class BotMode(str, Enum):
 #: Default for ``BotConfig.stack_mode`` and the wizard's checkbox.
 STACK_MODE_DEFAULT: bool = True
 
+#: ``BotConfig.expiry_close_action``: stop buying and let the sell ladder run.
+EXPIRY_CLOSE_FINISH_LADDER: str = "finish_ladder"
+#: ``BotConfig.expiry_close_action``: one order for the whole remaining position.
+EXPIRY_CLOSE_SELL_ALL: str = "sell_all"
+#: The two close meanings, in the order the control offers them.
+EXPIRY_CLOSE_ACTIONS: tuple = (EXPIRY_CLOSE_FINISH_LADDER, EXPIRY_CLOSE_SELL_ALL)
+
+#: ``BotConfig.expiry_lead_mode``: a share of the contract's life at bot start.
+EXPIRY_LEAD_FRACTION: str = "fraction"
+#: ``BotConfig.expiry_lead_mode``: a figure in days read from the contract's end.
+EXPIRY_LEAD_ABSOLUTE: str = "absolute"
+#: The two lead modes, in the order the control offers them.
+EXPIRY_LEAD_MODES: tuple = (EXPIRY_LEAD_FRACTION, EXPIRY_LEAD_ABSOLUTE)
+
+#: Default ``expiry_lead_fraction``. The recorded Coinbase ladder steps 11 days
+#: between expiry dates over a median contract life of 51.17 days, which is
+#: 0.2150, taken to the nearest 0.05 step the control offers.
+EXPIRY_LEAD_FRACTION_DEFAULT: float = 0.20
+
+#: Default ``expiry_lead_days``, read in absolute mode. The recorded ladder's
+#: median step between consecutive expiry dates.
+EXPIRY_LEAD_DAYS_DEFAULT: float = 11.0
+
+#: Default ``expiry_horizon_days``. The recorded dated ladder's longest contract
+#: runs 264.21 days and the next expiry date is 1,534.42 days out, so one
+#: calendar year holds the whole ladder and nothing beyond it.
+EXPIRY_HORIZON_DAYS_DEFAULT: float = 365.0
+
+#: ``expiry_close_decision``'s answer when the market publishes no expiry.
+EXPIRY_NOT_EXPIRING: str = "the venue publishes no expiry for this market"
+#: ``expiry_close_decision``'s answer when the epoch cannot be read as days.
+EXPIRY_UNREADABLE: str = "the expiry epoch cannot be read as a number of days"
+#: ``expiry_close_decision``'s answer beyond ``expiry_horizon_days``.
+EXPIRY_BEYOND_HORIZON: str = "the expiry is beyond the horizon"
+#: ``expiry_close_decision``'s answer when ``expiry_horizon_days`` is zero.
+EXPIRY_HORIZON_OFF: str = "the horizon is off"
+#: ``expiry_close_decision``'s answer when the resolved lead is zero or less.
+EXPIRY_LEAD_OFF: str = "the lead time is off"
+#: ``expiry_close_decision``'s answer before the lead time is reached.
+EXPIRY_OUTSIDE_LEAD: str = "the expiry is outside the lead time"
+#: ``expiry_close_decision``'s answer when the close acts.
+EXPIRY_INSIDE_LEAD: str = "the expiry is inside the lead time"
+
 
 @dataclass
 class BotConfig:
@@ -160,6 +203,17 @@ class BotConfig:
         0.75  # BULLISH confidence threshold; operator-adjustable 0.50-1.00
     )
 
+    # Read through expiry_close_decision() below, never raw. The close acts only
+    # inside the resolved lead time and inside expiry_horizon_days.
+    expiry_close_action: str = EXPIRY_CLOSE_FINISH_LADDER
+    expiry_lead_mode: str = EXPIRY_LEAD_FRACTION
+    # Share of the contract's remaining life at bot start; 0 is off.
+    expiry_lead_fraction: float = EXPIRY_LEAD_FRACTION_DEFAULT
+    # Days before expiry, read in absolute mode; 0 is off.
+    expiry_lead_days: float = EXPIRY_LEAD_DAYS_DEFAULT
+    # A contract expiring beyond this reads as non-expiring and gains no action.
+    expiry_horizon_days: float = EXPIRY_HORIZON_DAYS_DEFAULT
+
     # Target-asset units held out of the bot's decision math and reservation.
     personal_hold_qty: float = 0.0
 
@@ -253,6 +307,12 @@ _BOT_CONFIG_SHARED_FIELDS: frozenset = frozenset(
         "stack_spacing_mode",
         "max_entry_price",
         "min_entry_price",
+        # Every order path reads the expiry close, so both modes carry it.
+        "expiry_close_action",
+        "expiry_lead_mode",
+        "expiry_lead_fraction",
+        "expiry_lead_days",
+        "expiry_horizon_days",
     }
 )
 
@@ -506,6 +566,184 @@ def despawn_preview(
     _despawn_preview_fold(_fold, _cutoff, _now, report)
     _despawn_preview_stack(_stack, _cutoff, _now, report)
     return report
+
+
+def expiry_close_action(config) -> str:
+    """Return this bot's close meaning: `finish_ladder` or `sell_all`.
+
+    A stored value `EXPIRY_CLOSE_ACTIONS` does not hold reads as
+    `EXPIRY_CLOSE_FINISH_LADDER`, which leaves the bot's own sell ladder running.
+
+    Args:
+      config: any object; the field is read with `getattr`.
+
+    Returns:
+      One name out of `EXPIRY_CLOSE_ACTIONS`.
+    """
+    held = getattr(config, "expiry_close_action", EXPIRY_CLOSE_FINISH_LADDER)
+    return held if held in EXPIRY_CLOSE_ACTIONS else EXPIRY_CLOSE_FINISH_LADDER
+
+
+def expiry_lead_mode(config) -> str:
+    """Return this bot's lead-time mode: `fraction` or `absolute`.
+
+    A stored value `EXPIRY_LEAD_MODES` does not hold reads as
+    `EXPIRY_LEAD_FRACTION`.
+
+    Args:
+      config: any object; the field is read with `getattr`.
+
+    Returns:
+      One name out of `EXPIRY_LEAD_MODES`.
+    """
+    held = getattr(config, "expiry_lead_mode", EXPIRY_LEAD_FRACTION)
+    return held if held in EXPIRY_LEAD_MODES else EXPIRY_LEAD_FRACTION
+
+
+def expiry_horizon_days(config) -> float:
+    """Return this bot's expiry horizon in whole and fractional days; 0 is OFF.
+
+    Reads `config.expiry_horizon_days` through `as_finite_float`. A non-numeric
+    or non-finite setting reads as `EXPIRY_HORIZON_DAYS_DEFAULT` and a negative
+    one reads as 0.
+
+    Args:
+      config: any object; the field is read with `getattr`.
+
+    Returns:
+      Days in [0.0, inf). 0.0 means no contract gets an expiry action.
+    """
+    days = as_finite_float(
+        getattr(config, "expiry_horizon_days", EXPIRY_HORIZON_DAYS_DEFAULT)
+    )
+    if days is None:
+        return EXPIRY_HORIZON_DAYS_DEFAULT
+    return max(0.0, days)
+
+
+def expiry_lead_resolved_days(config, life_days) -> Optional[float]:
+    """Return the lead time in days this bot acts at, or None when it is off.
+
+    In `fraction` mode the lead is `expiry_lead_fraction` of `life_days`, which
+    is the contract's remaining life at the bot's own start, so one setting
+    covers contracts whose lives differ by orders of magnitude. In `absolute`
+    mode the lead is `expiry_lead_days` and `life_days` is not read.
+
+    Args:
+      config: any object; the fields are read with `getattr`.
+      life_days: the contract's remaining life in days at the bot's start.
+
+    Returns:
+      A positive number of days, or None when the figure is unusable or zero.
+    """
+    if expiry_lead_mode(config) == EXPIRY_LEAD_ABSOLUTE:
+        days = as_finite_float(
+            getattr(config, "expiry_lead_days", EXPIRY_LEAD_DAYS_DEFAULT)
+        )
+        return days if days is not None and days > 0.0 else None
+    share = as_finite_float(
+        getattr(config, "expiry_lead_fraction", EXPIRY_LEAD_FRACTION_DEFAULT)
+    )
+    life = as_finite_float(life_days)
+    if share is None or share <= 0.0 or life is None or life <= 0.0:
+        return None
+    return share * life
+
+
+def whole_position_units(position_value_usd, price) -> Optional[float]:
+    """Return the base units a position worth `position_value_usd` holds at `price`.
+
+    None when either figure is not a finite positive number, so an unread
+    position and a price of zero both size no order at all.
+
+    Args:
+      position_value_usd: the position's value in quote currency.
+      price: quote currency per base unit.
+
+    Returns:
+      Base units, or None.
+    """
+    value = as_finite_float(position_value_usd)
+    at = as_finite_float(price)
+    if value is None or value <= 0.0 or at is None or at <= 0.0:
+        return None
+    return value / at
+
+
+def expiry_close_decision(config, rules, moment_s, start_s=0.0) -> dict:
+    """Report what this bot's expiry close does for one market at `moment_s`.
+
+    `acts` is True only while the contract's expiry is inside
+    `expiry_horizon_days` AND inside the lead time
+    `expiry_lead_resolved_days` returns. The horizon is read first, so a
+    contract dated beyond it never acts whatever its lead time resolves to.
+    Decides nothing about permission: a sale out of an expiring market already
+    passes the order path's own pre-flight and a purchase into one already
+    refuses.
+
+    Args:
+      config: the bot's `BotConfig`.
+      rules: the market's `MarketRules`, or None.
+      moment_s: the wall-clock second the decision is taken at.
+      start_s: the wall-clock second the bot started, which `fraction` mode
+        measures the contract's life at; 0 reads `moment_s` instead.
+
+    Returns:
+      A dict carrying `acts`, `action`, `mode`, `lead_days`, `days_left`,
+      `life_days`, `horizon_days` and `reason`. `reason` names why `acts` is
+      False, and `EXPIRY_INSIDE_LEAD` when it is True.
+    """
+    answer: dict = {
+        "acts": False,
+        "action": expiry_close_action(config),
+        "mode": expiry_lead_mode(config),
+        "lead_days": None,
+        "days_left": None,
+        "life_days": None,
+        "horizon_days": expiry_horizon_days(config),
+        "reason": EXPIRY_NOT_EXPIRING,
+    }
+    if rules is None or not getattr(rules, "expires", False):
+        return answer
+    moment = as_finite_float(moment_s)
+    if moment is None:
+        answer["reason"] = EXPIRY_UNREADABLE
+        return answer
+    left = as_finite_float(_days_to_expiry(rules, moment))
+    if left is None:
+        answer["reason"] = EXPIRY_UNREADABLE
+        return answer
+    answer["days_left"] = left
+    horizon = answer["horizon_days"]
+    if horizon <= 0.0:
+        answer["reason"] = EXPIRY_HORIZON_OFF
+        return answer
+    if left > horizon:
+        answer["reason"] = EXPIRY_BEYOND_HORIZON
+        return answer
+    start = as_finite_float(start_s)
+    if start is None or start <= 0.0:
+        start = moment
+    answer["life_days"] = as_finite_float(_days_to_expiry(rules, start))
+    lead = expiry_lead_resolved_days(config, answer["life_days"])
+    if lead is None:
+        answer["reason"] = EXPIRY_LEAD_OFF
+        return answer
+    answer["lead_days"] = lead
+    if left > lead:
+        answer["reason"] = EXPIRY_OUTSIDE_LEAD
+        return answer
+    answer["acts"] = True
+    answer["reason"] = EXPIRY_INSIDE_LEAD
+    return answer
+
+
+def _days_to_expiry(rules, moment: float):
+    """Return `rules.days_to_expiry(moment)`, or None when the call cannot answer."""
+    try:
+        return rules.days_to_expiry(moment)
+    except (AttributeError, TypeError, ValueError):
+        return None
 
 
 def _sanitize_deprecated_kwargs(kwargs: dict) -> dict:
