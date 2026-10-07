@@ -11,6 +11,7 @@ import logging
 import math
 import time
 import uuid
+import weakref
 from dataclasses import replace
 from typing import Callable, Optional, TYPE_CHECKING
 
@@ -905,6 +906,10 @@ class BotManager(StateRestoreMixin, BotRegistryMixin, FleetAggregationMixin):
         self._ticker_refresh_stop = False
         self._live_monitor = None  # AI feedback loop (LiveMonitor)
         self._connector = None  # CcxtConnector — set via set_connector()
+        # Bot ids already registered on a connector object, keyed by that object.
+        self._connector_registrations: weakref.WeakKeyDictionary[object, set[str]] = (
+            weakref.WeakKeyDictionary()
+        )
         # Set by set_async_loop(); shared by _dispatch_bootstrap.
         self._async_loop = None
         from .smart_wire import SmartWireManager
@@ -1281,10 +1286,23 @@ class BotManager(StateRestoreMixin, BotRegistryMixin, FleetAggregationMixin):
         return self._live_monitor.connection_info
 
     def set_connector(self, connector) -> None:
-        """Attach the CcxtConnector, register every bot's symbol, and
-        bootstrap each bot's exchange state."""
+        """Attach the CcxtConnector and register each bot on its exchange once.
+
+        A bot on another exchange is skipped, and a bot this connector object has
+        already registered is not registered or bootstrapped a second time.
+        """
         self._connector = connector
+        eid = getattr(connector, "exchange_id", None)
+        registered = self._connector_registrations.setdefault(connector, set())
+        candidates = 0
+        newly = 0
         for bot in self._bots.values():
+            if eid is not None and getattr(bot.config, "exchange_id", eid) != eid:
+                continue
+            candidates += 1
+            if bot.bot_id in registered:
+                continue
+            registered.add(bot.bot_id)
             connector.add_scan_symbol(bot.config.symbol)
             # Only fill an empty exchange handle; an existing one
             # is left alone.
@@ -1301,10 +1319,13 @@ class BotManager(StateRestoreMixin, BotRegistryMixin, FleetAggregationMixin):
                     )
             if hasattr(bot, "bootstrap_exchange_state"):
                 self._dispatch_bootstrap(bot, "set_connector")
+            newly += 1
         logger.info(
-            "Connector attached to BotManager — "
-            "%d symbol(s) registered for history scanning + bootstrap",
-            len(self._bots),
+            "Connector attached to BotManager — %d of %d bot(s) on %s newly "
+            "registered for history scanning + bootstrap",
+            newly,
+            candidates,
+            eid or "the attached venue",
         )
 
     async def _await_running(self, bot, timeout_seconds: float) -> bool:
