@@ -149,7 +149,7 @@ urllib3==2.8.0
     #   requests
 winloop==0.6.3
     # via ccxt
-yarl==1.24.5
+yarl==1.25.1
     # via
     #   aiohttp
     #   ccxt
