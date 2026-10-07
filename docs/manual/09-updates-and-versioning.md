@@ -568,6 +568,36 @@ line the program writes to its own log once the main window is on screen.
 log_manager.info("Application ready — main window displayed")   # main.py
 ```
 
+### What happens when the disk image step fails
+
+The disk image step can fail on a resource that is busy rather than on anything
+wrong with the build. The script writes the same image again instead of ending
+the run, and it detaches any volume still attached under that image's name before
+every attempt.
+
+```
+DMG_CREATE_ATTEMPTS   3     # build_mac.sh, attempts per disk image
+DMG_RETRY_WAIT_S      10    # the wait between attempts, in seconds
+hdiutil detach              # runs before each attempt; its own failure is ignored
+```
+
+Three attempts is the whole allowance. A step that fails all three writes no disk
+image, names the image it could not write, and ends the run with a failure. It
+never reports success without an image.
+
+```
+hdiutil create failed on attempt 3 of 3 for dist/<name>.dmg
+ERROR: hdiutil create failed 3 times; dist/<name>.dmg was not written.
+```
+
+A release needs both platforms, so a macOS packaging failure holds the whole
+release back. The Windows build of the same run is discarded with it, and the
+Releases panel keeps the version it already carried.
+
+```yaml
+publish: {needs: [windows, macos]}   # .github/workflows/release.yml
+```
+
 ### Where the macOS build is downloaded
 
 The finished run page carries an Artifacts section. One entry holds both

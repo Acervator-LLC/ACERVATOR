@@ -20,6 +20,9 @@ VERSION="$(python3 -c 'import src; print(src.__version__)' 2>/dev/null || echo "
 [ -z "$VERSION" ] && VERSION="unknown"
 SIGN_IDENTITY=""
 MAKE_DMG=false
+# hdiutil reports "Resource busy" while a volume from a prior image still detaches.
+DMG_CREATE_ATTEMPTS=3
+DMG_RETRY_WAIT_S=10
 VARIANT_ARGS=()
 
 # Parse arguments
@@ -128,12 +131,36 @@ if [ "$MAKE_DMG" = true ]; then
 
         # The volume name carries the variant too, so mounting both at once
         # gives two volumes a reader can tell apart.
-        hdiutil create \
-            -volname "$BUNDLE_NAME" \
-            -srcfolder "$STAGING" \
-            -ov -format UDZO \
-            -imagekey zlib-level=9 \
-            "$DMG_PATH"
+        VOLUME_PATH="/Volumes/${BUNDLE_NAME}"
+        DMG_WRITTEN=false
+        ATTEMPT=1
+        while [ "$ATTEMPT" -le "$DMG_CREATE_ATTEMPTS" ]; do
+            # A volume left attached under this name is what makes the next
+            # create report a busy resource, so detach it first either way.
+            hdiutil detach "$VOLUME_PATH" -force || true
+
+            if hdiutil create \
+                -volname "$BUNDLE_NAME" \
+                -srcfolder "$STAGING" \
+                -ov -format UDZO \
+                -imagekey zlib-level=9 \
+                "$DMG_PATH"; then
+                DMG_WRITTEN=true
+                break
+            fi
+
+            echo "  hdiutil create failed on attempt ${ATTEMPT} of ${DMG_CREATE_ATTEMPTS} for ${DMG_PATH}"
+            if [ "$ATTEMPT" -lt "$DMG_CREATE_ATTEMPTS" ]; then
+                sleep "$DMG_RETRY_WAIT_S"
+            fi
+            ATTEMPT=$((ATTEMPT + 1))
+        done
+
+        if [ "$DMG_WRITTEN" != true ]; then
+            rm -rf "$STAGING"
+            echo "ERROR: hdiutil create failed ${DMG_CREATE_ATTEMPTS} times; ${DMG_PATH} was not written."
+            exit 1
+        fi
 
         rm -rf "$STAGING"
         echo "  DMG created: ${DMG_PATH}"
