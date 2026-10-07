@@ -141,7 +141,7 @@ tomli-w==1.2.0
     # via acervator (pyproject.toml)
 typing-extensions==4.16.0
     # via ccxt
-tzdata==2026.3
+tzdata==2026.5
     # via pandas
 urllib3==2.8.0
     # via
