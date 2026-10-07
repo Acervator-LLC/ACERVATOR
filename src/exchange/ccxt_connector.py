@@ -18,6 +18,8 @@ import threading
 import time
 from decimal import Decimal, InvalidOperation
 from collections.abc import Callable
+from functools import lru_cache
+from urllib.error import HTTPError, URLError
 from concurrent.futures import ThreadPoolExecutor
 
 from src.core.trade_historian import HistoryAnalysis, scan_on_connect
@@ -102,6 +104,144 @@ CCXT_CLASS_ALIASES: dict[str, str] = {
     "gateio": "gate",
     "huobi": "htx",
 }
+
+
+VENUE_LOST = "lost_connection"
+VENUE_RATE_LIMITED = "rate_limited"
+VENUE_CREDENTIAL_REJECTED = "credential_rejected"
+VENUE_ANSWERED = "answered"
+
+
+def _ccxt_error_types(names: tuple[str, ...]) -> tuple[type[BaseException], ...]:
+    try:
+        from ccxt.base import errors
+    except ImportError:
+        return ()
+    found = []
+    for name in names:
+        held = getattr(errors, name, None)
+        if isinstance(held, type) and issubclass(held, BaseException):
+            found.append(held)
+    return tuple(found)
+
+
+@lru_cache(maxsize=1)
+def _refusal_order() -> tuple[tuple[str, tuple[type[BaseException], ...]], ...]:
+    """The four refusal classes with their ccxt types, in the order they are tested.
+
+    The order is load-bearing. ccxt files every rate limit under ``NetworkError``
+    in ``ccxt/base/errors.py``, so the classes its ``order_router`` names as the
+    venue answering are matched before the transport class. That leaves
+    ``RequestTimeout`` and a bare ``NetworkError`` as the only ccxt types meaning
+    the call came back without an answer. The connect pre-flight runs on urllib
+    rather than ccxt, so ``URLError`` joins the transport class and the
+    ``HTTPError`` it parents joins the answering class, ahead of it.
+    """
+    return (
+        (VENUE_CREDENTIAL_REJECTED, _ccxt_error_types(("AuthenticationError",))),
+        (
+            VENUE_RATE_LIMITED,
+            _ccxt_error_types(("RateLimitExceeded", "DDoSProtection")),
+        ),
+        (
+            VENUE_ANSWERED,
+            _ccxt_error_types(("ExchangeNotAvailable", "InvalidNonce")) + (HTTPError,),
+        ),
+        (
+            VENUE_LOST,
+            _ccxt_error_types(("NetworkError",)) + (TimeoutError, URLError),
+        ),
+    )
+
+
+def classify_venue_refusal(exc: BaseException) -> str:
+    """Name which of the four refusal classes one venue's failure belongs to.
+
+    The Exchange Status panel colours a venue from what this records, so a rate
+    limit and a rejected credential must not read as a lost connection.
+    """
+    for label, types in _refusal_order():
+        if types and isinstance(exc, types):
+            return label
+    return VENUE_ANSWERED
+
+
+def _alert_venue(event_name: str, title: str, message: str) -> None:
+    """Send one venue alert on its own thread, so no channel blocks a venue call.
+
+    The Telegram channel places an HTTPS request, and the callers run on the
+    asyncio loop thread.
+    """
+
+    def deliver() -> None:
+        try:
+            from ..core.notifications import AlertEvent, get_notification_manager
+
+            event = getattr(AlertEvent, event_name, None)
+            if event is not None:
+                get_notification_manager().send(event, title, message)
+        except Exception as exc:  # an alert channel must not fail a venue call
+            logger.warning("Venue alert %s not sent: %s", event_name, exc)
+
+    threading.Thread(target=deliver, daemon=True, name="venue-alert").start()
+
+
+def note_venue_refusal(exchange_id: str, exc: BaseException) -> str:
+    """Record one venue refusal where it changes the venue's state, and name its class.
+
+    Called from the connector paths that already catch a venue refusing a call.
+    A lost connection writes the record the Exchange Status panel draws red and
+    sends the lost-connection alert. A rejected credential drops the record, so
+    the panel draws the venue unchecked, which is the colour the manual labels
+    "No valid credentials". A rate limit writes nothing, because the venue
+    answered.
+    """
+    from .credential_state import (
+        CONNECTION_LOST,
+        forget,
+        record_connection_lost,
+        recorded_state,
+    )
+
+    kind = classify_venue_refusal(exc)
+    if kind == VENUE_LOST:
+        if recorded_state(exchange_id) != CONNECTION_LOST:
+            record_connection_lost(exchange_id)
+            _alert_venue(
+                "CONNECTION_LOST",
+                f"{exchange_id.capitalize()} connection lost",
+                f"{type(exc).__name__} on an exchange call. "
+                "The venue did not answer.",
+            )
+    elif kind == VENUE_CREDENTIAL_REJECTED:
+        forget(exchange_id)
+    return kind
+
+
+def note_venue_answered(exchange_id: str) -> bool:
+    """Record that one venue answered an authenticated call, and say whether it changed.
+
+    Every call records validated and restamps the time, so a red left by a
+    dropped connection clears once the venue answers again and an explicit check
+    refreshes the stamp. The restored alert is sent only where the record being
+    replaced was a lost connection.
+    """
+    from .credential_state import (
+        CONNECTION_LOST,
+        VALIDATED,
+        record_validated,
+        recorded_state,
+    )
+
+    was = recorded_state(exchange_id)
+    record_validated(exchange_id)
+    if was == CONNECTION_LOST:
+        _alert_venue(
+            "CONNECTION_RESTORED",
+            f"{exchange_id.capitalize()} connection restored",
+            "The venue answered an authenticated call again.",
+        )
+    return was != VALIDATED
 
 
 def resolve_ccxt_class(ccxt_module: Any, ccxt_id: str) -> Any:
@@ -582,6 +722,9 @@ class CCXTConnector(ExchangeInterface):
         )
         # In-flight plus queued calls; touched only on the asyncio loop thread.
         self._sync_queue_depth: int = 0
+        # Set once this connector has recorded the venue as validated, so a
+        # steady stream of balance fetches reads the store no further.
+        self._venue_answer_noted: bool = False
         # disconnect() may run on a different thread than _call_sync.
         self._sync_executor_lock = threading.Lock()
         # Serialises history scans; add_scan_symbol spawns one thread per symbol.
@@ -753,6 +896,9 @@ class CCXTConnector(ExchangeInterface):
                     level="error",
                     data_usage="Network/SSL issue. Check firewall and internet connection.",
                 )
+                # Classified here because this exit never reaches the
+                # load-markets path below.
+                self._note_venue_refusal(pf_exc)
                 raise ConnectionError(
                     f"Cannot reach {self._exchange_id} API. "
                     f"Pre-flight check failed: {type(pf_exc).__name__}: {pf_exc} | "
@@ -852,8 +998,26 @@ class CCXTConnector(ExchangeInterface):
                 on_failure=_note_load_failure,
             )
         except Exception as exc:
+            # Classified here because the wrap below drops the ccxt type.
+            self._note_venue_refusal(exc)
             # `from None` keeps the traceback single-frame.
             raise ConnectionError(self._format_exchange_error(exc)) from None
+
+    # ── Venue state ─────────────────────────────────────────────────────────
+
+    def _note_venue_refusal(self, exc: BaseException) -> str:
+        """Record one refusal of this connector's venue and name its class."""
+        kind = note_venue_refusal(self._exchange_id, exc)
+        if kind in (VENUE_LOST, VENUE_CREDENTIAL_REJECTED):
+            self._venue_answer_noted = False
+        return kind
+
+    def _note_venue_answer(self) -> None:
+        """Record that this connector's venue answered an authenticated call."""
+        if self._venue_answer_noted:
+            return
+        note_venue_answered(self._exchange_id)
+        self._venue_answer_noted = True
 
     # ── Sync CCXT serialization ─────────────────────────────────────────────
 
@@ -902,7 +1066,7 @@ class CCXTConnector(ExchangeInterface):
             try:
                 result = await asyncio.wait_for(fut, timeout=SYNC_CALL_TIMEOUT_SEC)
                 return result
-            except asyncio.TimeoutError:
+            except asyncio.TimeoutError as timed_out:
                 # The worker thread runs on until CCXT returns; log the leak.
                 logger.warning(
                     "sync CCXT call exceeded the outer wait (%ss) for %s on %s; "
@@ -913,9 +1077,13 @@ class CCXTConnector(ExchangeInterface):
                     self._exchange_id,
                     CCXT_REQUEST_TIMEOUT_MS,
                 )
+                self._note_venue_refusal(timed_out)
                 raise
             except asyncio.CancelledError:
                 # The worker keeps running until CCXT returns.
+                raise
+            except Exception as refused:
+                self._note_venue_refusal(refused)
                 raise
         finally:
             self._sync_queue_depth = max(0, self._sync_queue_depth - 1)
@@ -1307,6 +1475,7 @@ class CCXTConnector(ExchangeInterface):
         _log = get_api_log()
         start = time.monotonic()
         raw = await self._call_sync(self._ex.fetch_balance)
+        self._note_venue_answer()
         elapsed = (time.monotonic() - start) * 1000
         result: dict[str, Balance] = {}
         for currency, info in raw.get("total", {}).items():
