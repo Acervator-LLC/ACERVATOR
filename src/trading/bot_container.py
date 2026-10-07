@@ -178,14 +178,15 @@ class BotContainer:
         for leg in legs:
             self._invalidate_balance(leg)
 
-    # A recording naming no class reads as ``CLASS_CRYPTO``, the one class a
-    # container's connector served before the venue's other sectors.
+    # The recording is the venue's own product record, so it answers before
+    # the sector ``BotConfig`` declares.
     def _asset_class(self, symbol: str) -> str:
-        """The asset class ``market_rules_store`` recorded for ``symbol`` on
-        this bot's venue, cached for the container's life.
+        """The sector this bot trades ``symbol`` under, cached for the
+        container's life: the class ``market_rules_store`` recorded for the
+        pair on this bot's venue, else ``config.asset_class``.
 
-        ``CLASS_CRYPTO`` where the recording holds no class for the pair and
-        where it could not be read at all.
+        ``CLASS_CRYPTO`` where the recording holds no class for the pair, where
+        it could not be read at all, and where the config names no sector.
         """
         from .scrumming.sizing import CLASS_CRYPTO
 
@@ -204,12 +205,13 @@ class BotContainer:
                 symbol,
                 exc,
             )
-        resolved = named or CLASS_CRYPTO
+        declared = str(getattr(self.config, "asset_class", "") or "")
+        resolved = named or declared or CLASS_CRYPTO
         self._asset_class_cache[symbol] = resolved
         return resolved
 
     # OVERTAKEN, every ``CLASS_CRYPTO`` below: ``_asset_class`` answers the
-    # class the recording holds for the symbol, and crypto where it holds none.
+    # class the recording holds for the symbol, then the class the bot declares.
     async def _get_market_rules(self, symbol: str) -> "MarketRules":
         """Return the venue's published ``MarketRules`` for ``symbol``, cached,
         and an all-``None`` record when the lookup fails or the venue lists no
