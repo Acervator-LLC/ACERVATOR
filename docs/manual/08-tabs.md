@@ -1358,7 +1358,6 @@ rather than typed.
 | `src/gui/react_proof_of_accumulation_tab.py` | no | - | no | no | no | - | no | React side |
 | `src/gui/react_simulator_tab.py` | no | - | no | no | no | - | no | React side |
 | `src/gui/react_system_status_tab.py` | no | - | no | no | no | - | no | React side |
-| `src/gui/risk_tab.py` | `risk_tab.js` | yes | yes | yes | no | yes | no | shelved |
 | `src/gui/settings_dialog.py` | `settings_dialog.js` | yes | yes | yes | - | yes | yes | in scope |
 | `src/gui/shared_testnet.py` | `shared_testnet.js` | no | yes | yes | no | yes | no | shelved |
 | `src/gui/simulator_tab.py` | `simulator_tab.js` | yes | yes | yes | yes | yes | yes | in scope |
@@ -2050,7 +2049,6 @@ than a screen, and it stays where it is.
 | `journal_tab.py` | Not reachable from a live tab |
 | `launcher.py` | Not reachable from a live tab |
 | `live_bot_window.py` | Not reachable from a live tab |
-| `risk_tab.py` | Not reachable from a live tab |
 | `stock_main_window.py` | Not reachable from a live tab |
 | `testnet_tab.py` | Not reachable from a live tab |
 | `usb_auth_widget.py` | Not reachable from a live tab |
