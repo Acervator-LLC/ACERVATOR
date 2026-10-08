@@ -1,14 +1,10 @@
 """market_inspector_topologies.py — right-pane widget for cross-market
 topology proposals + the preview modal.
 
-Reference specification (Diataxis: reference). Consumes proposals from
-`src/trading/topology_proposals.py`. Design doc:
-`docs/engineering-notes/2026-07-31_market_inspector_topology_proposals_design.md`.
+Consumes proposals from `src/trading/topology_proposals.py`.
 
-v3.23.68 — GUI cascade 2 of 3 for Market Inspector Piece 3.
-The Adopt button in the preview modal is **disabled** in this cascade
-(safe eyeballing only). v3.23.69 enables Adopt via the Bot Wizard
-handoff to `SmartWireManager.set_wire`.
+The Adopt button in the preview modal reaches the Bot Wizard handoff to
+`SmartWireManager.set_wire`.
 
 Two public classes:
     * ``MarketInspectorTopologies`` — the right-pane widget with the
@@ -18,8 +14,6 @@ Two public classes:
 
 Both classes are Qt widgets, so this module is import-guarded on
 ``PySide6`` availability (matching `market_inspector.py`).
-
-sadp: R28 SSS + R70 RCN
 """
 
 from __future__ import annotations
@@ -121,8 +115,7 @@ if _HAS_QT:
             * Adopt-summary line at the bottom
             * [Cancel] (default) and [Adopt] buttons
 
-        The Adopt button is force-disabled in v3.23.68; v3.23.69
-        removes ``force_adopt_disabled`` and wires the click.
+        ``force_adopt_disabled`` suppresses the Adopt click.
         """
 
         adoptClicked = Signal(dict)  # emits the proposal on Adopt
@@ -417,8 +410,8 @@ if _HAS_QT:
         def current_proposals(self) -> list:
             """The non-dismissed proposals currently on display.
 
-            v3.24.79 — read access for Nuclear Mode, which stresses a
-            proposal's topology across SIM bots under cycling load.
+            Read access for the mode that stresses a proposal's topology
+            across SIM bots under cycling load.
             Operator directive 2026-08-07: Nuclear "is supposed to be
             able to receive strategy injections from the Market
             Inspector to test the strategy propagation function and

@@ -1,11 +1,11 @@
-// React History panel. Issue #128 units R4 and R6.
+// React History panel.
 //
 // This file RENDERS. It does not compute. Every string on screen is a
 // `text` field the Python contract already produced, every colour is its
 // `color` field, and every gate light is a `state`/`color` pair from
 // `src/trading/gate_vocabulary.py`. Deriving a cost, a grade, a colour or
-// a light state here would be a second implementation of the thing R3
-// exists to be the only one of.
+// a light state here would be a second implementation of the Python
+// contract.
 (function (global) {
   "use strict";
 
