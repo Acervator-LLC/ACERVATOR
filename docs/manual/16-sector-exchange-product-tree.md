@@ -60,6 +60,11 @@ The line it writes is unchanged.
 
 The broker path writes its own rows at `src/stocks/broker_base.py:238`.
 
+OVERTAKEN, and the citation above is kept as written. That write stands at
+`src/stocks/broker_base.py`, in `record_markets`, and it runs once the broker's
+session is open. An empty asset list writes nothing and keeps the rows already
+recorded.
+
 ## Sector
 
 The six categories are the operator's, and his words name the two most recently
@@ -129,6 +134,33 @@ nothing recorded at all:
 
 Crypto's fifteen names and Stocks' ten names are the same names, and the two
 drawn panels differ by 0 pixels against the same panels on `origin/current`.
+
+OVERTAKEN, and the table and the sentences above are kept as written. Every
+sector now lists every venue confirmed to offer a product in it. Read in one
+running process on this branch, with nothing recorded at all:
+
+| Sector | Venues the registry answers | Was |
+| ------ | --------------------------- | --- |
+| Crypto | 20 | 15 |
+| Stocks | 19 | 10 |
+| Commodities | 16 | 1, Coinbase |
+| Forex | 4 | 1, Coinbase |
+| Indices | 11 | 1, Coinbase |
+| Futures / Perps | 15 | 1, Coinbase |
+
+Eighty-five of the one hundred forty-four venue-and-sector cells answer yes,
+and twenty-nine did before. The source is the venue-and-sector readiness
+matrix in
+[../audits/2026-10-07_venue_sector_readiness_matrix/REPORT.md](../audits/2026-10-07_venue_sector_readiness_matrix/REPORT.md).
+A venue is listed under a sector when that matrix states the venue lists a
+product there. A cell the matrix marks unfetched is left out, so Gate.io under
+Indices, Fidelity outside Stocks and Poloniex outside Stocks are absent.
+
+Forex is the one sector read strictly. A venue is listed under Forex only when
+it offers a market whose two legs are both national currencies. Gemini and
+Bitstamp each offer a euro-dollar market, and Interactive Brokers documents a
+currency security type. A currency token quoted against a dollar stablecoin is
+not counted.
 
 **A venue in a registry is not a venue proved to work.** One venue has ever
 traded. [15-venue-compatibility.md](15-venue-compatibility.md) states it at
@@ -206,6 +238,11 @@ venue. The Exchange Status panel for Forex draws `Coinbase (coinbase)` and the
 Add Forex Exchange box offers Coinbase with its key and secret fields, read off
 the drawn panel.
 
+OVERTAKEN, and the two notes above are kept as written. Forex lists four
+venues, Indices eleven and Futures / Perps fifteen. The Exchange Status panel
+for Forex draws Bitstamp, Coinbase, Gemini and Ibkr, read through
+`settings_dialog_surface.exchange_status_lines` in one running process.
+
 ### A venue's sectors come from two places, and they answer two questions
 
 The registry answers what a venue **could** serve. The recording answers what it
@@ -236,6 +273,23 @@ EXTRA_VENUE_CLASSES = {
     )
 }
 ```
+
+OVERTAKEN, and the citation and the code block above are kept as written.
+`EXTRA_VENUE_CLASSES` now holds twenty venue ids and not one. Each id lists the
+sectors beyond the one its own registry implies, so a crypto venue that offers
+a tokenised share names Stocks and a broker that offers a fund share names
+Commodities and Indices. The entry for Coinbase is unchanged.
+
+```python
+# src/gui/main_tabs/asset_class_surface.py, in EXTRA_VENUE_CLASSES
+    "bitstamp": ("commodities", "forex"),
+    "kraken": ("stocks", "commodities", "indices", "futures_perps"),
+    "ibkr": ("crypto", "commodities", "forex", "indices", "futures_perps"),
+```
+
+Poloniex holds no entry, because the matrix confirms no offering for it beyond
+crypto. Fidelity, Interactive Brokers' second id and TD Ameritrade hold none
+either.
 
 The recording half reads `recorded_classes` and names no venue at all, so a
 venue whose products carry a sector is listed under it with no edit here.
@@ -512,6 +566,21 @@ written, so the label survives the write and the read. His own recording still
 holds no label, because it was written before the write path merged, and his
 next venue read rewrites it.
 
+OVERTAKEN, and the sentence above reading "His own recording still holds no
+label" is kept as written. His recording now holds a label on every one of its
+1,146 rows, read on 2026-10-08 with the home redirected and the file not
+written. The venue read that rewrote it has happened.
+
+| Sector the row carries | Rows |
+| --- | --- |
+| crypto | 894 |
+| futures_perps | 168 |
+| stocks | 33 |
+| commodities | 25 |
+| forex | 20 |
+| indices | 6 |
+| no label | 0 |
+
 OVERTAKEN, and the two blocks and the sentences above are kept as written. No
 function named `recorded_market_rows` is in the tree, count 0. The reader that
 answers a venue's recorded sectors is `recorded_classes` at
@@ -571,8 +640,8 @@ Each sector does carry a rule, and that rule is the fallback. Driven in one
 running process, venue `coinbase`:
 
 ```
-src/trading/scrumming/sizing.py:144      unit_rule, the sector's own answer
-src/trading/scrumming/sizing.py:170      market_unit_rule, the step first
+src/trading/scrumming/sizing.py, in unit_rule          the sector's own answer
+src/trading/scrumming/sizing.py, in market_unit_rule   the session, then the step
 
 crypto          fractional        forex            fractional
 stocks          whole             indices          whole
