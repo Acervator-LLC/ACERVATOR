@@ -31,7 +31,8 @@ record was recorded."
 sector where the venue published none, with ``WHOLE_UNITS`` winning wherever
 either reads it. ``variant_holds_market`` holds ``VARIANT_WHOLE_UNIT`` for such
 a market and ``position_minimum_refusal`` refuses its opening order under
-``WHOLE_UNIT_POSITION_MINIMUM``.
+``opening_position_minimum``, which reads the bot's own
+``whole_unit_opening_units`` and floors it at ``WHOLE_UNIT_POSITION_MINIMUM``.
 """
 
 from __future__ import annotations
@@ -467,28 +468,19 @@ VARIANT_MARKETS: dict[str, str] = {
 # and a cash amount names the quote currency rather than a unit count.
 
 #: The variants the running program holds. ``VARIANT_CASH_AMOUNT`` has no caller
-#: to reach it and ``VARIANT_WHOLE_UNIT`` waits on the scrum trigger's ruling.
-VARIANTS_BUILT = frozenset({VARIANT_NONE, VARIANT_LIMIT_ONLY})
-
-# OVERTAKEN, the comment above reading "``VARIANT_CASH_AMOUNT`` has no caller to
-# reach it and ``VARIANT_WHOLE_UNIT`` waits on the scrum trigger's ruling":
-# ``VARIANT_ROLLING_POSITION`` is also absent, and it waits on the rule naming
-# which contract a position rolls into.
-# OVERTAKEN, the sentence above reading "``VARIANT_WHOLE_UNIT`` waits on the
-# scrum trigger's ruling": ``variant_holds_market`` holds that variant for a
-# market ``market_unit_rule`` reads as ``WHOLE_UNITS``, and
-# ``position_minimum_refusal`` refuses its opening order under
-# ``WHOLE_UNIT_POSITION_MINIMUM``. ``VARIANTS_BUILT`` itself is unchanged, so
-# every caller of ``variant_built`` and ``variant_trades_market`` reads what it
-# read before.
-# OVERTAKEN, the sentence above reading "every caller of ``variant_built`` and
-# ``variant_trades_market`` reads what it read before": ``variant_refuses_sale``
-# reads ``variant_holds_market``, so a sale out of a ``WHOLE_UNITS`` market
-# fills where a buy into it fills. ``variant_trades_market`` has no caller.
+#: and ``VARIANT_ROLLING_POSITION`` waits on an order the expiry close starts.
+VARIANTS_BUILT = frozenset({VARIANT_NONE, VARIANT_LIMIT_ONLY, VARIANT_WHOLE_UNIT})
 
 #: What a market no built variant trades carries, naming the variant it needs
 #: and the shape that variant absorbs.
 UNTRADEABLE_REASON_FORMAT = "{variant} is not built: {market}"
+
+#: Why a market ``VARIANT_WHOLE_UNIT`` selects is still not traded: the variant
+#: sizes whole units and this market's own step is a fraction.
+WHOLE_UNIT_STEP_IS_A_FRACTION = (
+    "the whole-unit position variant sizes whole units and this market steps in "
+    "fractions, so no built variant sizes an order costing this much"
+)
 
 
 # OVERTAKEN in venue_variant's docstring below: "``VARIANT_WHOLE_UNIT`` while
@@ -547,9 +539,9 @@ def variant_trades_market(
     price: Optional[float] = None,
     excess_usd: float = REFERENCE_SCRUM_EXCESS_USD,
 ) -> bool:
-    """True while the variant ``venue_variant`` selects for one market is one
-    ``VARIANTS_BUILT`` holds."""
-    return variant_built(venue_variant(rules, price, excess_usd))
+    """True while the program holds the variant one market selects, with no
+    class and no venue asked, so ``market_unit_rule`` reads the recorded step."""
+    return variant_holds_market(rules, "", "", price, excess_usd)
 
 
 def variant_holds_market(
@@ -564,13 +556,13 @@ def variant_holds_market(
 
     ``VARIANTS_BUILT`` answers every name, and ``VARIANT_WHOLE_UNIT`` needs
     ``market_unit_rule`` to read ``WHOLE_UNITS`` as well, so a market held in
-    fractions keeps the refusal ``variant_trades_market`` gives it.
+    fractions is refused although the variant is built.
     """
     variant = venue_variant(rules, price, excess_usd)
-    if variant_built(variant):
-        return True
-    if variant != VARIANT_WHOLE_UNIT:
+    if not variant_built(variant):
         return False
+    if variant != VARIANT_WHOLE_UNIT:
+        return True
     return market_unit_rule(rules, asset_class, venue) == WHOLE_UNITS
 
 
@@ -595,12 +587,21 @@ def untradeable_reason(
     rules: Any,
     price: Optional[float] = None,
     excess_usd: float = REFERENCE_SCRUM_EXCESS_USD,
+    asset_class: str = "",
+    venue: str = "",
 ) -> str:
-    """Why one market is read and not traded, through
-    ``UNTRADEABLE_REASON_FORMAT``, and empty while a built variant trades it."""
+    """Why one market is read and not traded, empty while
+    ``variant_holds_market`` holds it.
+
+    ``UNTRADEABLE_REASON_FORMAT`` names a variant ``VARIANTS_BUILT`` lacks, and
+    ``WHOLE_UNIT_STEP_IS_A_FRACTION`` names a built ``VARIANT_WHOLE_UNIT`` whose
+    market steps in fractions.
+    """
     variant = venue_variant(rules, price, excess_usd)
-    if variant_built(variant):
+    if variant_holds_market(rules, asset_class, venue, price, excess_usd):
         return ""
+    if variant_built(variant):
+        return WHOLE_UNIT_STEP_IS_A_FRACTION
     return UNTRADEABLE_REASON_FORMAT.format(
         variant=variant, market=variant_market(variant)
     )
@@ -746,9 +747,14 @@ def sized_order(units: float, rule: Optional[str], rules: Any = None) -> SizedOr
 #: scrum: giving it back closes the position instead of rebalancing it.
 WHOLE_UNIT_POSITION_MINIMUM = 2
 
-#: Why a ``WHOLE_UNITS`` market refuses an order that would open a position.
-BELOW_POSITION_MINIMUM = (
-    f"a whole-unit position opens at {WHOLE_UNIT_POSITION_MINIMUM} units"
+#: Why a ``WHOLE_UNITS`` market refuses an order that would open a position,
+#: naming the units ``opening_position_minimum`` requires.
+BELOW_POSITION_MINIMUM_FORMAT = "a whole-unit position opens at {minimum} units"
+
+#: ``BELOW_POSITION_MINIMUM_FORMAT`` at ``WHOLE_UNIT_POSITION_MINIMUM``, the
+#: refusal reason a caller naming no configured minimum carries.
+BELOW_POSITION_MINIMUM = BELOW_POSITION_MINIMUM_FORMAT.format(
+    minimum=WHOLE_UNIT_POSITION_MINIMUM
 )
 
 #: What ``position_minimum_refusal`` names: the market, the units the order
@@ -759,9 +765,35 @@ POSITION_MINIMUM_FORMAT = (
 )
 
 
-def whole_unit_position_usd(price: Any) -> Optional[float]:
+def opening_position_minimum(configured: Any = None) -> int:
+    """The whole units an opening order carries on a ``WHOLE_UNITS`` market:
+    ``configured`` where it raises ``WHOLE_UNIT_POSITION_MINIMUM``, and that
+    constant otherwise.
+
+    ``WHOLE_UNIT_POSITION_MINIMUM`` is a floor ``configured`` cannot lower.
+    """
+    if type(configured) not in (int, float):
+        return WHOLE_UNIT_POSITION_MINIMUM
+    try:
+        held = float(configured)
+    except (OverflowError, TypeError, ValueError):
+        return WHOLE_UNIT_POSITION_MINIMUM
+    if not math.isfinite(held):
+        return WHOLE_UNIT_POSITION_MINIMUM
+    return max(WHOLE_UNIT_POSITION_MINIMUM, int(held))
+
+
+def position_minimum_reason(configured: Any = None) -> str:
+    """Why a ``WHOLE_UNITS`` market refuses an opening order, through
+    ``BELOW_POSITION_MINIMUM_FORMAT`` at ``opening_position_minimum``."""
+    return BELOW_POSITION_MINIMUM_FORMAT.format(
+        minimum=opening_position_minimum(configured)
+    )
+
+
+def whole_unit_position_usd(price: Any, configured: Any = None) -> Optional[float]:
     """What opening a position costs under ``WHOLE_UNITS``:
-    ``WHOLE_UNIT_POSITION_MINIMUM`` units at ``price``.
+    ``opening_position_minimum`` units at ``price``.
 
     None where ``price`` is not a positive finite number, the same unknown
     ``smallest_order_usd`` answers for an unknown price.
@@ -771,12 +803,14 @@ def whole_unit_position_usd(price: Any) -> Optional[float]:
     held = float(price)
     if not math.isfinite(held) or held <= 0.0:
         return None
-    return float(WHOLE_UNIT_POSITION_MINIMUM) * held
+    return float(opening_position_minimum(configured)) * held
 
 
-def opens_below_position_minimum(units: Any, rule: Any, position_usd: Any) -> bool:
+def opens_below_position_minimum(
+    units: Any, rule: Any, position_usd: Any, configured: Any = None
+) -> bool:
     """True while an order of ``units`` under ``rule`` opens a position holding
-    fewer than ``WHOLE_UNIT_POSITION_MINIMUM`` units.
+    fewer than ``opening_position_minimum`` units.
 
     False for every rule but ``WHOLE_UNITS``, and false while ``position_usd``
     reads a position already open.
@@ -795,20 +829,25 @@ def opens_below_position_minimum(units: Any, rule: Any, position_usd: Any) -> bo
         return True
     if not math.isfinite(carried):
         return True
-    return carried + WHOLE_UNIT_GRAIN < float(WHOLE_UNIT_POSITION_MINIMUM)
+    return carried + WHOLE_UNIT_GRAIN < float(opening_position_minimum(configured))
 
 
 def position_minimum_refusal(
-    symbol: Any, units: Any, price: Any, rule: Any, position_usd: Any
+    symbol: Any,
+    units: Any,
+    price: Any,
+    rule: Any,
+    position_usd: Any,
+    configured: Any = None,
 ) -> str:
     """Why a ``WHOLE_UNITS`` market refuses an opening order, through
     ``POSITION_MINIMUM_FORMAT`` and naming ``symbol`` and ``price``.
 
     Empty while ``opens_below_position_minimum`` reads False.
     """
-    if not opens_below_position_minimum(units, rule, position_usd):
+    if not opens_below_position_minimum(units, rule, position_usd, configured):
         return ""
-    needed = whole_unit_position_usd(price)
+    needed = whole_unit_position_usd(price, configured)
     shown_price = float(price) if needed is not None else 0.0
     try:
         shown_units = float(units) if type(units) in (int, float) else 0.0
@@ -817,9 +856,9 @@ def position_minimum_refusal(
     return POSITION_MINIMUM_FORMAT.format(
         symbol=symbol,
         units=shown_units,
-        reason=BELOW_POSITION_MINIMUM,
+        reason=position_minimum_reason(configured),
         price=shown_price,
-        minimum=WHOLE_UNIT_POSITION_MINIMUM,
+        minimum=opening_position_minimum(configured),
         needed=needed if needed is not None else 0.0,
     )
 
@@ -1064,6 +1103,7 @@ def cartridge_threshold_usd(target_balance: float, cartridge_pct: float) -> floa
 
 __all__ = [
     "BELOW_POSITION_MINIMUM",
+    "BELOW_POSITION_MINIMUM_FORMAT",
     "CEILING_MULTIPLE_MAX",
     "CEILING_MULTIPLE_MIN",
     "CITED_CASH_MARKET_BUY",
@@ -1114,6 +1154,7 @@ __all__ = [
     "WHOLE_UNITS",
     "WHOLE_UNIT_GRAIN",
     "WHOLE_UNIT_POSITION_MINIMUM",
+    "WHOLE_UNIT_STEP_IS_A_FRACTION",
     "cartridge_threshold_usd",
     "cycle_growth_cap_usd",
     "delta_below_interval",
@@ -1128,6 +1169,7 @@ __all__ = [
     "growth_cycle_side",
     "market_buy_names_cash",
     "market_unit_rule",
+    "opening_position_minimum",
     "opens_below_position_minimum",
     "opposing_trade_distance_pct",
     "opposing_trade_distances",
@@ -1136,6 +1178,7 @@ __all__ = [
     "plan_fold_consumption",
     "plan_source_price",
     "position_ceiling",
+    "position_minimum_reason",
     "position_minimum_refusal",
     "priced_usd",
     "ratio_to_ceiling",

@@ -1280,8 +1280,8 @@ VARIANT_MARKETS: dict[str, str] = {
 }
 
 #: The variants the running program holds. ``VARIANT_CASH_AMOUNT`` has no caller
-#: to reach it and ``VARIANT_WHOLE_UNIT`` waits on the scrum trigger's ruling.
-VARIANTS_BUILT = frozenset({VARIANT_NONE, VARIANT_LIMIT_ONLY})
+#: and ``VARIANT_ROLLING_POSITION`` waits on an order the expiry close starts.
+VARIANTS_BUILT = frozenset({VARIANT_NONE, VARIANT_LIMIT_ONLY, VARIANT_WHOLE_UNIT})
 ```
 
 ### The limit-only variant, and the one venue it reaches
@@ -1312,14 +1312,13 @@ src/stocks/broker_base.py:145      place_order, declared, called by nothing
 src/stocks/alpaca_connector.py     imported by no file in src/, main.py or tools/
 ```
 
-The whole-unit variant is named and waits on a decision that is the operator's.
-It would hold an excess until that excess reaches one whole unit, then sell one
-unit. Refusing a market too small to scrum and changing that market's scrum
-trigger build two different variants, and the issue's first open decision picks
-between them.
+The whole-unit variant is built. It holds an excess until that excess reaches one
+whole unit, then sells whole units. `VARIANTS_BUILT` holds its name, and
+`variant_holds_market` reads the market's own step as well, so the variant
+governs a market `market_unit_rule` reads as whole and no other.
 
-```
-In development. Decision 1 on the issue owns it.
+```python
+VARIANTS_BUILT = frozenset({VARIANT_NONE, VARIANT_LIMIT_ONLY, VARIANT_WHOLE_UNIT})
 ```
 
 ### A market no variant trades is scanned, charted and reported
@@ -1562,11 +1561,14 @@ leave the live autonomous one spending cash it does not yet have.
 
 ### Which markets carry an expiry today
 
-None of them. The recording every back test and every paper run reads holds one
-venue and 1,146 markets, and not one row carries an expiry. The recording holds
-only four field names, and the expiry is not among them, because the recording
-predates the field. Each such row answers absent, which is exactly what a venue
-publishing no expiry answers.
+One hundred of them. The recording every back test and every paper run reads
+holds one venue and 1,146 markets, and 100 rows carry an expiry. The recording
+holds seven field names and the expiry is among them, so each dated row answers
+a date and every other row answers absent, which is what a venue publishing no
+expiry answers.
+
+The figures below were read before the venue was recorded again, when the
+recording held four field names and no expiry.
 
 ```
 recorded coinbase markets                                1146
@@ -1587,11 +1589,11 @@ a reading of the file and not of the reader. Two of the rows matter together: on
 hundred recorded symbols carry a dated contract suffix and none of them carries
 an expiry, because the recording predates the field. A fresh recording of that
 venue would fill those hundred rows, and those hundred markets would then select
-the fifth variant.
+the fifth variant. The venue has since been recorded again and those hundred
+rows carry a date, so all one hundred select the fifth variant today.
 
 This reaches no live market. No symbol the saved fleet trades carries a dated
-contract suffix, no recorded row carries an expiry, and the settlement table
-cites this venue at zero days.
+contract suffix, and the settlement table cites this venue at zero days.
 
 ### The sentences on this page that this entry overtakes
 
@@ -1638,8 +1640,8 @@ The fourth is the count of variant names:
 > answers per market whether the variant that market selects is one of the two.
 
 The true sentence is: five names exist, counting the bot as written, and the
-program still holds two of them. The fifth name is the rolling position, which
-the program names and does not build.
+program holds three of them. The fifth name is the rolling position, which the
+program names and does not build.
 
 The fifth is the market table quoted under that count. It stands as written, and
 it carries a fifth row now, naming a market the venue expires on a date.
@@ -1648,9 +1650,9 @@ The sixth is the heading over the unbuilt variants:
 
 > The two variants named and not built
 
-The true count is three named and not built: the cash-amount variant with no
-caller, the whole-unit variant waiting on a decision, and the rolling position
-waiting on the rule that names which contract a position rolls into.
+The true count is two named and not built: the cash-amount variant with no
+caller, and the rolling position waiting on an order the expiry close starts by
+itself.
 
 The seventh is the sentence about what an order path does with such a market:
 
@@ -1888,9 +1890,9 @@ def variant_holds_market(
 
 OVERTAKEN, and the comment it quotes is kept as written: the module recorded
 that the whole-unit variant "waits on the scrum trigger's ruling". The ruling is
-the specification quoted at the head of this entry. The set of built variant
-names is itself unchanged, so every other reader of it answers exactly what it
-answered before.
+the specification quoted at the head of this entry. `VARIANTS_BUILT` now holds
+the name as well, and `variant_holds_market` answers for every market exactly
+what it answered before.
 
 ### Where the sizing mode lives
 
@@ -1904,10 +1906,107 @@ the table after a venue changes a rule.
 
 The screen that builds a bot does not yet offer whole-unit sizing or hide a
 market whose unit price puts two units out of reach. A market read as whole on
-the Market Inspector still shows the refusal it showed before, because that
-reading is taken without the symbol's class. Both are the wizard's row of the
-build order.
+the Market Inspector still shows the refusal it showed before in its tradeable
+column, which reads `tradeable_answer` and not the built set. Both are the
+wizard's row of the build order.
 
 An equity order still carries no session metadata, and a futures position is
 still read from a spot balance rather than from the futures endpoints. Those are
 the sector-specific order paths, a later row again.
+
+## 2026-10-08 - the whole-unit variant is built, and its opening size is the operator's
+
+Nothing above this heading is deleted. Ten passages are corrected in place
+because the running program contradicts them, and each correction stands where
+the old sentence stood.
+
+The variant was held for a whole-unit market and the set of built names did not
+hold it. The set holds it now, so every reader of that set answers for a
+whole-unit market the way the order path already acted on one.
+
+```python
+VARIANTS_BUILT = frozenset({VARIANT_NONE, VARIANT_LIMIT_ONLY, VARIANT_WHOLE_UNIT})
+```
+
+### No market changes hands differently
+
+`variant_holds_market` reads the set first and the market's own step second, so a
+market whose smallest order costs more than a scrum's excess is held only where
+`market_unit_rule` reads whole. Driven over all 1,146 recorded Coinbase markets
+with no venue asked and no order placed, the variant, the hold answer and the
+sized amount are the same figures before the change and after it.
+
+| market form | rows | variant | held | 3.5 units size to |
+| --- | --- | --- | --- | --- |
+| fractional step | 821 | `none` | yes | 3.5 |
+| whole step, no date | 225 | `whole-unit position` | yes | 3.0 |
+| dated contract | 100 | `rolling position` | no | 3.0 |
+
+### The scan note stops naming a market it trades
+
+`ata_spm.untradeable_markets` and `ata_spm.untradeable_note` read
+`untradeable_reason` as their own test, so the Market Inspector's scan note named
+every whole-unit market as read and not traded while the order path traded it.
+Driven over the recording, the note names the 100 dated contracts and no others.
+
+| the scan note | before | after |
+| --- | --- | --- |
+| markets named read and not traded | 325 | 100 |
+| characters of note | 4,923 | 2,204 |
+
+The Simulator's Activity Log is unchanged. `back_test.variant_line` reads
+`variant_holds_market` and its 1,146 lines hash the same before and after, 1,046
+trading and 100 not traded.
+
+### The refusal reason a built variant needs
+
+A market selecting the whole-unit name whose own step is a fraction is still
+refused, and the old reason said the variant was not built. `untradeable_reason`
+reads `variant_holds_market` now and carries
+`WHOLE_UNIT_STEP_IS_A_FRACTION` for that market instead.
+
+```python
+WHOLE_UNIT_STEP_IS_A_FRACTION = (
+    "the whole-unit position variant sizes whole units and this market steps in "
+    "fractions, so no built variant sizes an order costing this much"
+)
+```
+
+### Open Position At reaches the refusal
+
+The wizard's Open Position At box writes `whole_unit_opening_units` and the
+refusal read a constant, so the figure the operator set changed nothing.
+`opening_position_minimum` reads that figure now, and
+`BotContainer.guarded_place_order` hands it to `position_minimum_refusal`.
+
+The constant is a floor the setting cannot lower. The platform's owner set two
+units as the smallest a whole-unit position may be, quoted under *2026-10-04 -
+every sector has a unit rule, and a whole-unit position opens at two units*, so
+a figure of one unit still opens at two.
+
+Driven on a recorded whole-step market at one hundred dollars a unit, with no
+venue asked and no order placed:
+
+| Open Position At | the engine's minimum | a buy of 2 units |
+| --- | --- | --- |
+| 0, the engine's own | 2 | reaches the venue |
+| 5 | 5 | refused, and the message names five units at $500 |
+
+### The contract variant is still not built
+
+A dated contract refuses every buy, and a sale out of one still passes.
+`expiry_close_decision` reads the bot's own close action, lead mode, lead figure
+and horizon, and raises a sale to the whole position under
+`EXPIRY_CLOSE_SELL_ALL`. What is missing is an order the close starts by itself.
+
+```
+src/trading/scrumming/execution.py       no expiry read
+src/trading/scrumming_bot.py             no expiry read
+src/trading/extractor_bot.py             no expiry read
+src/trading/scrumming/tick_phases.py     no expiry read
+```
+
+Every caller of `guarded_place_order` sits in those four files, so the close only
+reshapes a sale the scrum ladder already decided to place. A contract whose price
+never fires a scrum inside the lead time would expire held. The name stays out of
+the built set until an order starts that close.
