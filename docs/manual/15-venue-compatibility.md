@@ -175,6 +175,54 @@ METALS_PHYSICAL: tuple[AssetListing, ...] = tuple(
 )
 ```
 
+OVERTAKEN, and the table and the sentences above are kept as written. The
+Classes served column reads "crypto spot" for fourteen of the fifteen crypto
+venues. Thirteen of those fourteen also offer a product in a second sector, and
+`asset_class_surface.venue_classes` now answers it. The readings are the
+venue-and-sector readiness matrix in
+[../audits/2026-10-07_venue_sector_readiness_matrix/REPORT.md](../audits/2026-10-07_venue_sector_readiness_matrix/REPORT.md).
+
+| Venue | Sectors `venue_classes` answers |
+| ----- | ------------------------------- |
+| coinbase | crypto, stocks, commodities, forex, indices, futures_perps |
+| kraken | crypto, stocks, commodities, indices, futures_perps |
+| okx | crypto, stocks, commodities, indices, futures_perps |
+| bitget | crypto, stocks, commodities, indices, futures_perps |
+| bitfinex | crypto, commodities, indices, futures_perps |
+| binance | crypto, stocks, commodities, futures_perps |
+| kucoin | crypto, stocks, commodities, futures_perps |
+| gemini | crypto, commodities, forex, futures_perps |
+| gateio | crypto, stocks, commodities |
+| bitstamp | crypto, commodities, forex |
+| cryptocom | crypto, stocks, futures_perps |
+| mexc | crypto, stocks, futures_perps |
+| bybit | crypto, futures_perps |
+| huobi | crypto, stocks |
+| poloniex | crypto |
+
+Poloniex is the one venue that stays in crypto alone. Its own offering outside
+crypto was not fetched, so it waits on the confirmation step.
+
+Every broker but three gains a sector as well. A broker reaches a commodity and
+an index as a fund share, which sizes like a share.
+
+| Broker | Sectors `venue_classes` answers |
+| ------ | ------------------------------- |
+| ibkr | crypto, stocks, commodities, forex, indices, futures_perps |
+| schwab | crypto, stocks, commodities, indices, futures_perps |
+| tastytrade | crypto, stocks, commodities, indices, futures_perps |
+| webull | crypto, stocks, commodities, indices, futures_perps |
+| alpaca | crypto, stocks, commodities, indices |
+| etrade | stocks, commodities, indices |
+| fidelity | stocks |
+| interactivebrokers | stocks |
+| tdameritrade | stocks |
+
+Fidelity holds stocks alone because its host refused every request, the control
+included. The other two ids are the rows the issue names as wrong: one is a
+second id for a firm already named, and the other names a firm whose developer
+host has no DNS record.
+
 ### Coinbase serves three of the four classes
 
 OVERTAKEN, and the Coinbase row above is kept as written. Its classes read
