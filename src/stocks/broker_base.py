@@ -114,10 +114,67 @@ class BrokerBase(ABC):
     def __init__(self, broker_id: str):
         self.broker_id = broker_id
         self._connected = False
+        self._scan_symbols: set[str] = set()
+        self._history_callback: Any = None
+        self._assets: list[dict] = []
 
     @property
     def connected(self) -> bool:
         return self._connected
+
+    @property
+    def exchange_id(self) -> str:
+        """``broker_id`` under the name every fleet site reads to tell one
+        venue's connector from another's.
+
+        ``BotManager.set_connector`` skips a bot whose ``config.exchange_id``
+        differs from this, so a broker connector never reaches a crypto bot.
+        """
+        return self.broker_id
+
+    @property
+    def display_name(self) -> str:
+        """``broker_id`` capitalised, the label the window writes to the log."""
+        return self.broker_id.capitalize()
+
+    @property
+    def is_connected(self) -> bool:
+        """``_connected`` under the name ``_live_connector`` reads."""
+        return self._connected
+
+    @property
+    def scan_symbols(self) -> set[str]:
+        """Every symbol ``add_scan_symbol`` holds."""
+        return set(self._scan_symbols)
+
+    def add_scan_symbol(self, symbol: str) -> None:
+        """Hold ``symbol`` in ``scan_symbols``; a broker runs no history scan
+        thread, so nothing is started."""
+        if symbol:
+            self._scan_symbols.add(str(symbol))
+
+    def set_history_callback(self, callback: Any) -> None:
+        """Hold ``callback`` for the trade history pane."""
+        self._history_callback = callback
+
+    def release(self) -> int:
+        """Clear the scan set and the history callback, mark this broker
+        disconnected, and answer how many scan symbols were cleared."""
+        cleared = len(self._scan_symbols)
+        self._scan_symbols.clear()
+        self._history_callback = None
+        self._connected = False
+        logger.info(
+            "Released %s connector — %d scan symbol(s) dropped",
+            self.display_name,
+            cleared,
+        )
+        return cleared
+
+    def held_assets(self) -> list[dict]:
+        """Every asset record this broker last read, which ``record_markets``
+        writes to the recording."""
+        return list(self._assets)
 
     @abstractmethod
     async def connect(self, api_key: str, api_secret: str, paper: bool = True) -> bool:

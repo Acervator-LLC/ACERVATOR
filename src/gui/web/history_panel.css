@@ -1,4 +1,4 @@
-/* React History panel chrome. Issue #128 units R4 and R6.
+/* React History panel chrome.
  *
  * Chrome only. Every cell colour arrives on the cell's own `style`
  * attribute from the Python contract, so no rule here may set a `color`
