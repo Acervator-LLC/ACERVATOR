@@ -438,6 +438,10 @@ VARIANTS_BUILT = frozenset({VARIANT_NONE, VARIANT_LIMIT_ONLY})
 # ``WHOLE_UNIT_POSITION_MINIMUM``. ``VARIANTS_BUILT`` itself is unchanged, so
 # every caller of ``variant_built`` and ``variant_trades_market`` reads what it
 # read before.
+# OVERTAKEN, the sentence above reading "every caller of ``variant_built`` and
+# ``variant_trades_market`` reads what it read before": ``variant_refuses_sale``
+# reads ``variant_holds_market``, so a sale out of a ``WHOLE_UNITS`` market
+# fills where a buy into it fills. ``variant_trades_market`` has no caller.
 
 #: What a market no built variant trades carries, naming the variant it needs
 #: and the shape that variant absorbs.
@@ -529,17 +533,19 @@ def variant_holds_market(
 
 def variant_refuses_sale(
     rules: Any,
+    asset_class: str = "",
+    venue: str = "",
     price: Optional[float] = None,
     excess_usd: float = REFERENCE_SCRUM_EXCESS_USD,
 ) -> bool:
-    """True while a sale out of one market refuses as a buy into it refuses: the
-    variant is one ``VARIANTS_BUILT`` lacks and ``variant_permits_close`` denies.
-
-    A market publishing no expiry answers exactly what ``variant_trades_market``
-    denies, so nothing a venue leaves unpublished changes here.
+    """True while a sale out of one market refuses as a buy into it refuses:
+    ``variant_holds_market`` denies the market and ``variant_permits_close``
+    denies the variant, the pair ``BotContainer.guarded_place_order`` reads for
+    a sell.
     """
     variant = venue_variant(rules, price, excess_usd)
-    return not variant_built(variant) and not variant_permits_close(variant)
+    held = variant_holds_market(rules, asset_class, venue, price, excess_usd)
+    return not held and not variant_permits_close(variant)
 
 
 def untradeable_reason(
