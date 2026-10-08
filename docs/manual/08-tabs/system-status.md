@@ -802,6 +802,104 @@ before                        2           no
 after                         9           yes   (all three frames named)
 ```
 
+### The heartbeat file and the root that holds it
+
+The Watchdog half above says what the heartbeat is for. It polls the file, and a
+modification time that stops advancing past the stall threshold counts as a
+hang. The file is `heartbeat.txt`, one per log directory. It holds a single line:
+a timestamp and the process id of the run that wrote it.
+
+`main.py` — the line written on every tick
+
+```python
+f.write(f"{datetime.now().isoformat()} pid={os.getpid()}\n")
+```
+
+The line is rewritten every two seconds for the life of the process. The
+modification time is the signal the Watchdog reads. The contents only name which
+run stamped it.
+
+`main.py` — the timer that drives the write
+
+```python
+heartbeat_timer.start(2000)
+```
+
+The directory is `~/.acervator_logs/`, the same root that holds the crash log,
+the fault-handler log and the stale-binary marker. One environment variable
+moves all four. Set `ACERVATOR_CRASH_LOG_ROOT` to a directory and every one of
+them is written there instead.
+
+`main.py` — the resolver the four writers share
+
+```python
+_override = os.environ.get(CRASH_LOG_ROOT_ENV)
+return _P(_override) if _override else _P.home() / ".acervator_logs"
+```
+
+An empty value counts as unset, so the root falls back to the home directory. A
+run that redirects the home directory carries the heartbeat with it, whether the
+variable is set or not.
+
+#### Read off the resolved path
+
+The path the shipped resolver returns, read in three environments:
+
+```
+home            variable        heartbeat written to
+scratch A       unset           scratch A / .acervator_logs
+scratch A       scratch B       scratch B
+real home       scratch B       scratch B
+```
+
+#### Every log directory the override moves
+
+The four writers named above are not the whole set. The resolver those two lines
+show now lives in `src/core/log_paths.py`, under the name `resolve_log_root`,
+and the entry point calls it there. Thirteen things follow it.
+
+The four entry-point files:
+
+```
+crash_<timestamp>.log            the crash log
+faulthandler_<timestamp>.log     the fault-handler log
+STALE_DIST_WARNING.txt           the stale-build marker
+heartbeat.txt                    the file the Watchdog polls
+```
+
+The nine bucket directories, one per bucket function:
+
+```
+activity/            get_activity_dir
+api/                 get_api_dir
+console/             get_console_dir
+trade/               get_trade_dir
+trade/pnl/           get_pnl_dir
+exchange_history/    get_exchange_history_dir
+_meta/               get_meta_dir
+reports/             get_reports_dir
+sim/                 get_sim_dir
+```
+
+The variable is `ACERVATOR_CRASH_LOG_ROOT`. Set it to a directory and all
+thirteen are written there. An empty value counts as unset.
+
+With the variable unset every one of the thirteen resolves under the home tree,
+at the same place it resolved before the buckets were wired to the resolver. The
+trade log, the gate log and the daily profit files do not move unless the
+variable is set.
+
+The root is read on each call, not once when the module loads. A run that sets
+the variable after the module has been imported still moves all nine buckets.
+
+Read off the resolved paths, all nine buckets, in two environments:
+
+```
+variable        where the nine resolved         entry point agreed
+unset           home / .acervator_logs / *      yes, 9 of 9
+scratch B       scratch B / *                   yes, 9 of 9
+```
+
 ### 2026-10-04 - #410 - the periodic collection reads the young objects on eleven ticks in twelve
 
 Python's own automatic memory collector is switched off at startup. A timer on

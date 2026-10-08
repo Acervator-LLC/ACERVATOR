@@ -6,10 +6,12 @@ import asyncio
 import contextlib
 import csv
 import logging
+import threading
 import time
 from datetime import datetime, timezone
 from typing import Optional
 
+from src.core.trade_historian import missing_history_line
 from src.exchange import history_read_contract as hrc
 
 from . import design_system as ds
@@ -86,6 +88,11 @@ if _HAS_QT:
             self._page_gate_index: dict = {}
             self._page_voting_index: dict = {}
             self._to_default_ts: int = 0
+            # The historian calls back off its own thread, so the two sets
+            # are read and written under _history_lock.
+            self._history_lock = threading.Lock()
+            self._history_scanned: set[str] = set()
+            self._history_refused: set[str] = set()
             self._build_ui()
 
         def set_bot_manager(self, bot_manager) -> None:
@@ -111,8 +118,32 @@ if _HAS_QT:
             self._kick_async_fetch()
 
         def get_history_callback(self):
-            """Return a no-op callable; the tab pulls history instead."""
-            return lambda *_a, **_kw: None
+            """Return the callable the connector calls as ``(symbol, analysis)``."""
+            return self._record_history_scan
+
+        def _record_history_scan(self, symbol, analysis, *_a, **_kw) -> None:
+            """Record one scan result into ``_history_scanned`` and
+            ``_history_refused``.
+
+            A truthy ``analysis.analysis_error`` marks ``symbol`` refused.
+            """
+            name = str(symbol)
+            refused = bool(getattr(analysis, "analysis_error", "") or "")
+            with self._history_lock:
+                self._history_scanned.add(name)
+                if refused:
+                    self._history_refused.add(name)
+                else:
+                    self._history_refused.discard(name)
+
+        def missing_history_status(self) -> str:
+            """``missing_history_line`` for the refused symbols, else empty."""
+            with self._history_lock:
+                refused = len(self._history_refused)
+                scanned = len(self._history_scanned)
+            if not refused:
+                return ""
+            return missing_history_line(refused, scanned)
 
         def _build_ui(self) -> None:
             outer = QVBoxLayout(self)
@@ -317,11 +348,11 @@ if _HAS_QT:
             self._page_label.setText(hrc.page_label(self._page, total))
             self._prev_btn.setEnabled(self._page > 0)
             self._next_btn.setEnabled(self._page < max_page)
-            self._set_status(
-                hrc.summary_line(
-                    self._filtered, len(self._all_trades), self._last_fetched_ts
-                )
+            summary = hrc.summary_line(
+                self._filtered, len(self._all_trades), self._last_fetched_ts
             )
+            missing = self.missing_history_status()
+            self._set_status(f"{summary}  {missing}" if missing else summary)
 
         def _remember_to_bound(self) -> None:
             """Record the To value the tab itself wrote, read back off the

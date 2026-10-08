@@ -24,6 +24,7 @@ try:
         QHBoxLayout,
         QLabel,
         QPushButton,
+        QSizePolicy,
         QVBoxLayout,
         QWidget,
     )
@@ -112,6 +113,29 @@ if _HAS_QT:
                 "Coalescing covers OHLCV and balances."
             )
             layout.addWidget(self._pull_rate_lbl)
+
+            self._pool_stopped_lbl = QLabel("")
+            self._pool_stopped_lbl.setWordWrap(True)
+            # Without this the line takes the spare height whenever the bot
+            # tables are hidden.
+            _stopped_policy = self._pool_stopped_lbl.sizePolicy()
+            _stopped_policy.setVerticalPolicy(QSizePolicy.Maximum)
+            _stopped_policy.setHeightForWidth(True)
+            self._pool_stopped_lbl.setSizePolicy(_stopped_policy)
+            self._pool_stopped_lbl.setStyleSheet(
+                f"background-color:{ds.MAIN_ALERT_SURFACE}; color:{ds.TEXT_MAX}; "
+                f"border:1px solid {ds.ERROR}; border-radius:4px; "
+                "font-size:13px; font-weight:bold; padding:6px 8px;"
+            )
+            self._pool_stopped_lbl.setToolTip(
+                "Appears only while nothing is coming back from this venue. "
+                "The age it names is the time since the last reading of any "
+                "kind landed in the data pool. Single slots passing their "
+                "time to live is ordinary and does not raise this line."
+            )
+            self._pool_stopped_lbl.setVisible(False)
+            layout.addWidget(self._pool_stopped_lbl)
+
             self._pull_rate_timer = QTimer(self)
             self._pull_rate_timer.setInterval(1000)
             self._pull_rate_timer.timeout.connect(self._update_pull_rate_label)
@@ -231,6 +255,7 @@ if _HAS_QT:
                 summary = pool.pull_rate_summary()
             except Exception:  # noqa: BLE001,S110 - countdown best-effort
                 return
+            self._draw_pool_stopped(summary.get("freshest_age_s"))
             tick_s = summary["ticker_slots"]
             ohlc_s = summary["ohlcv_slots"]
             bal_s = summary.get("balance_slots", 0)
@@ -265,6 +290,37 @@ if _HAS_QT:
                 f"oldest {old:>4.0f}s  ·  "
                 f"{stale} stale  ·  cache-hit {hit_rate:.0f}%"
             )
+
+        def _draw_pool_stopped(self, freshest_age_s) -> None:
+            """Show one line while the data pool has stopped refreshing, and
+            hide it again once a reading comes back.
+
+            ``freshest_age_s`` is the pool's own age of its most recently
+            fetched slot. The verdict comes from ``fetch_stall.stall_seconds``,
+            the same function the Console line uses, read here with this
+            venue's own calls-per-minute. A single slot passing its time to
+            live is ordinary and leaves the line hidden.
+            """
+            try:
+                from ...exchange.api_load_monitor import get_load_monitor
+                from ...exchange.fetch_stall import span_words, stall_seconds
+
+                rate = get_load_monitor().sample(self.exchange_id)
+                stopped_for = stall_seconds(freshest_age_s, rate.calls_per_minute)
+            except Exception as exc:  # noqa: BLE001 - never hide a live stop
+                logger.debug("pool-stopped line could not be read: %s", exc)
+                return
+            if stopped_for is None:
+                self._pool_stopped_lbl.clear()
+                self._pool_stopped_lbl.setVisible(False)
+                return
+            self._pool_stopped_lbl.setText(
+                "DATA POOL STOPPED REFRESHING — nothing has come back from "
+                f"{self._exchange_name} for {span_words(stopped_for)}. Every "
+                "price, balance and ammo figure below is at least that old. "
+                "Restart the platform to recover it."
+            )
+            self._pool_stopped_lbl.setVisible(True)
 
         def eventFilter(self, watched, event) -> bool:  # noqa: N802 - Qt name
             """Redraw the command bar's labels whenever the Shift key moves.
@@ -449,7 +505,7 @@ if _HAS_QT:
                     not snapshot.get(fid, False) for fid in reg.known_field_ids()
                 )
                 reg.set_all(any_revealed)
-            except Exception:  # R28-OK
+            except Exception:
                 return
             # set_all swallows its persist errors, so a half-applied flip
             # raises nothing. The tooltip says 18 fields; there are 19.
@@ -502,7 +558,7 @@ if _HAS_QT:
                 root = self.window()
                 if hasattr(root, "refresh_all_privacy_widgets"):
                     root.refresh_all_privacy_widgets()
-            except Exception:  # R28-OK: best-effort propagation  # noqa: S110
+            except Exception:  # Other widgets stay unrefreshed.  # noqa: S110
                 pass
 
         def _refresh_privacy_mode_btn_style(self) -> None:

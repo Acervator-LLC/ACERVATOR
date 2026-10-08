@@ -1,6 +1,6 @@
 """Soft reservations against a wallet many bots share.
 
-THE DEFECT THIS CLOSES (operator item 2, M3, 2026-08-06)
+THE DEFECT THIS CLOSES
 The Manual Fire FOLD branch clips its buy to available cash:
 
     usd_balance = quote_free * _qrate
