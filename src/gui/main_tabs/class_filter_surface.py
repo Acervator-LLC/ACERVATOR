@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from typing import Any, Iterable, Optional
 
-from .asset_class_surface import display_name, normalise, venue_classes
+from .asset_class_surface import display_name, normalise, symbol_class, venue_classes
 
 DERIVATIVES = "derivatives"
 
@@ -88,8 +88,8 @@ def is_derivative(symbol: Any) -> bool:
 def market_class(venue_id: Any, symbol: Any = "") -> str:
     """The asset class one market belongs to, or an empty string for none.
 
-    A venue serving two classes is narrowed by ``is_derivative``: a Coinbase
-    spot pair answers crypto and a Coinbase futures product answers derivatives.
+    A venue serving one class answers it, and a venue serving several is
+    narrowed to the class ``symbol_class`` holds for the symbol.
     """
     served = venue_classes(venue_id)
     if not served:
@@ -98,13 +98,20 @@ def market_class(venue_id: Any, symbol: Any = "") -> str:
         return next(iter(served))
     if DERIVATIVES in served and is_derivative(symbol):
         return DERIVATIVES
-    rest = sorted(served - {DERIVATIVES})
-    return rest[0] if rest else DERIVATIVES
+    return symbol_class(venue_id, symbol)
 
 
 def bot_class(status: Any) -> str:
-    """The asset class of the market one bot status trades."""
+    """The asset class of the market one bot status trades, the class the bot
+    published under ``asset_class`` answering first.
+
+    ``BotContainer._asset_class`` resolved that class, and a status carrying
+    none is narrowed by ``market_class`` from its venue and symbol.
+    """
     held = status if isinstance(status, dict) else {}
+    declared = str(held.get("asset_class") or "").strip()
+    if declared:
+        return normalise(declared)
     venue = held.get("exchange") or held.get("exchange_id") or ""
     return market_class(venue, held.get("symbol", ""))
 

@@ -528,29 +528,34 @@ def recorded_symbol_classes(venue_id: Any) -> dict:
     return recorded_classes(asked)
 
 
-def markets_of_class(rows: Any, venue_id: Any, name: Any, recorded: Any = None) -> list:
-    """Every market row of ``rows`` recorded under one asset class, in the
-    order given.
+def symbol_class(venue_id: Any, symbol: Any, recorded: Any = None) -> str:
+    """The class ``recorded_symbol_classes`` holds for ``symbol`` on
+    ``venue_id``, else ``CLASS_CRYPTO``, the class ``BotContainer._asset_class``
+    answers for a symbol the recording holds none for.
 
-    A symbol the recording holds no class for reads ``CLASS_CRYPTO``, the class
-    ``BotContainer._asset_class`` answers for one, so a recording written
-    before ``CLASS_FIELD`` keeps the crypto list whole. An empty ``name``
-    narrows nothing.
+    Every surface narrowing a market by sector reads this, so a bot and the tab
+    filtering it answer one class.
     """
     from src.trading.ata_spm import CLASS_CRYPTO
 
+    held = recorded if isinstance(recorded, dict) else recorded_symbol_classes(venue_id)
+    return retired_onto(held.get(str(symbol or ""), "")) or CLASS_CRYPTO
+
+
+def markets_of_class(rows: Any, venue_id: Any, name: Any, recorded: Any = None) -> list:
+    """Every market row of ``rows`` whose ``symbol_class`` on ``venue_id`` is
+    one asset class, in the order given.
+
+    An empty ``name`` narrows nothing.
+    """
     key = normalise(name)
     listed = [one for one in (rows or []) if isinstance(one, dict)]
     if not key:
         return listed
     held = recorded if isinstance(recorded, dict) else recorded_symbol_classes(venue_id)
-    found = []
-    for row in listed:
-        symbol = str(row.get("symbol") or "")
-        named = retired_onto(held.get(symbol, "")) or CLASS_CRYPTO
-        if named == key:
-            found.append(row)
-    return found
+    return [
+        row for row in listed if symbol_class(venue_id, row.get("symbol"), held) == key
+    ]
 
 
 def venues_for_class(name: Any) -> frozenset:
