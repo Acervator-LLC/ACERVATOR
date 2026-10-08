@@ -201,7 +201,9 @@ class BrokerBase(ABC):
             return False
         opened = bool(await self.connect(api_key, api_secret, paper))
         if not opened:
-            self._session_refusal = "the broker opened no session"
+            self._session_refusal = (
+                "the connect attempt failed; the cause is in system.log"
+            )
         return opened
 
     @abstractmethod
