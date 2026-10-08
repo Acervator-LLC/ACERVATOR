@@ -31,11 +31,17 @@ on:
   workflow_dispatch:
   push:
     paths:
+      # How a build is made.
       - build_mac.sh
       - Acervator_mac.spec
       - tools/build_launcher.py
       - tools/build_variants.py
       - tools/spec_common.py
+      # What a build installs: the extras deps.py names, the packages
+      # pyproject.toml holds, the interpreter .python-version picks.
+      - tools/deps.py
+      - pyproject.toml
+      - .python-version
       - .github/workflows/macos-build.yml
 
 concurrency:

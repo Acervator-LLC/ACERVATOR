@@ -438,6 +438,10 @@ VARIANTS_BUILT = frozenset({VARIANT_NONE, VARIANT_LIMIT_ONLY})
 # ``WHOLE_UNIT_POSITION_MINIMUM``. ``VARIANTS_BUILT`` itself is unchanged, so
 # every caller of ``variant_built`` and ``variant_trades_market`` reads what it
 # read before.
+# OVERTAKEN, the sentence above reading "every caller of ``variant_built`` and
+# ``variant_trades_market`` reads what it read before": ``variant_refuses_sale``
+# reads ``variant_holds_market``, so a sale out of a ``WHOLE_UNITS`` market
+# fills where a buy into it fills. ``variant_trades_market`` has no caller.
 
 #: What a market no built variant trades carries, naming the variant it needs
 #: and the shape that variant absorbs.
@@ -529,17 +533,19 @@ def variant_holds_market(
 
 def variant_refuses_sale(
     rules: Any,
+    asset_class: str = "",
+    venue: str = "",
     price: Optional[float] = None,
     excess_usd: float = REFERENCE_SCRUM_EXCESS_USD,
 ) -> bool:
-    """True while a sale out of one market refuses as a buy into it refuses: the
-    variant is one ``VARIANTS_BUILT`` lacks and ``variant_permits_close`` denies.
-
-    A market publishing no expiry answers exactly what ``variant_trades_market``
-    denies, so nothing a venue leaves unpublished changes here.
+    """True while a sale out of one market refuses as a buy into it refuses:
+    ``variant_holds_market`` denies the market and ``variant_permits_close``
+    denies the variant, the pair ``BotContainer.guarded_place_order`` reads for
+    a sell.
     """
     variant = venue_variant(rules, price, excess_usd)
-    return not variant_built(variant) and not variant_permits_close(variant)
+    held = variant_holds_market(rules, asset_class, venue, price, excess_usd)
+    return not held and not variant_permits_close(variant)
 
 
 def untradeable_reason(
@@ -626,6 +632,22 @@ def amount_on_increment(units: float, increment: Optional[float]) -> float:
         return units
 
 
+def grained_units(units: float, increment: Optional[float]) -> float:
+    """``units`` with ``WHOLE_UNIT_GRAIN`` added where ``increment`` steps in
+    whole units, and unchanged on every smaller or unpublished step.
+
+    ``sized_units`` reads a count within ``WHOLE_UNIT_GRAIN`` of a whole number
+    as that number, and this answers ``amount_on_increment`` the same count.
+    """
+    if type(units) not in (int, float):
+        return units
+    if not math.isfinite(float(units)):
+        return units
+    if not rule_published(increment) or float(increment or 0.0) < 1.0:
+        return units
+    return float(units) + WHOLE_UNIT_GRAIN
+
+
 def recorded_size_rules(rules: Any) -> bool:
     """True while ``rules`` was read and published a size step or a minimum
     amount, the two figures ``sized_order`` sizes and refuses by."""
@@ -649,14 +671,23 @@ def sized_order(units: float, rule: Optional[str], rules: Any = None) -> SizedOr
     ``amount_increment``."
     A market the venue published a ``min_amount`` for and no step is sized by
     ``rule`` instead, so a ``WHOLE_UNITS`` sector still reaches a whole amount.
+
+    OVERTAKEN: "a recorded ``min_amount`` refuses it through
+    ``MarketRules.steps_below_minimum``."
+    ``grained_units`` answers the count both ``MarketRules.steps_below_minimum``
+    and ``amount_on_increment`` read, and a step ``sized_units`` floored is
+    measured against ``min_amount`` again.
     """
     if recorded_size_rules(rules):
-        if rules.steps_below_minimum(units):
+        held = grained_units(units, getattr(rules, "amount_increment", None))
+        if rules.steps_below_minimum(held):
             return SizedOrder(0.0, RULE_SOURCE_RECORDED, BELOW_MINIMUM_AMOUNT)
-        stepped = amount_on_increment(units, rules.amount_increment)
+        stepped = amount_on_increment(held, rules.amount_increment)
         if not rule_published(getattr(rules, "amount_increment", None)):
             if rule in UNIT_RULES:
                 stepped = sized_units(stepped, str(rule))
+                if rules.steps_below_minimum(stepped):
+                    return SizedOrder(0.0, RULE_SOURCE_RECORDED, BELOW_MINIMUM_AMOUNT)
         if stepped <= 0.0:
             return SizedOrder(0.0, RULE_SOURCE_RECORDED, BELOW_ONE_UNIT)
         return SizedOrder(stepped, RULE_SOURCE_RECORDED)
@@ -1047,6 +1078,7 @@ __all__ = [
     "fold_spend_usd",
     "fold_surplus_usd",
     "fold_units",
+    "grained_units",
     "growth_cycle_side",
     "market_unit_rule",
     "opens_below_position_minimum",
