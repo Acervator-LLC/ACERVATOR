@@ -3,9 +3,9 @@ token_ledger.py — ACRV Hard-Capped Token Ledger
 ================================================
 Hard cap: 10,000,000 ACRV.  Once minted, tokens cannot be destroyed.
 Awards are idempotent: awarding the same competition result twice
-produces exactly one entry (R29).
+produces exactly one entry.
 
-The ledger is append-only (R33): every award event is logged with:
+The ledger is append-only: every award event is logged with:
   bot_id, competition_id, tier, amount, timestamp, competition_root
 
 Balances are computed by replaying the append-only log.
@@ -88,16 +88,14 @@ class TokenLedger:
         rank_pct: float,
         competition_root: str,
     ) -> Optional[AwardRecord]:
-
-        # sadp: R28 R29 R33  # fail-loudly(R28) idempotent-via-event_id(R29) append-only-log(R33)
         """
         Award tokens for a verified competition result.
 
-        R29 (Idempotency): Each (bot_id, competition_id, tier) triple
-        produces exactly one award event regardless of how many times
-        this method is called.
+        Idempotent: each (bot_id, competition_id, tier) triple produces
+        exactly one award event regardless of how many times this method
+        is called.
 
-        R28 (Fail Loudly): Raises if supply cap would be exceeded.
+        Raises if supply cap would be exceeded.
 
         Returns the AwardRecord if a new award was created, None if duplicate.
         """
@@ -150,14 +148,10 @@ class TokenLedger:
     # ── Queries ───────────────────────────────────────────────────────────────
 
     def balance(self, bot_id: str) -> int:
-
-        # sadp: R33  # balance query: read-only ledger(R33)
         """Total ACRV held by a bot (sum of all award amounts)."""
         return sum(e.amount for e in self._events if e.bot_id == bot_id)
 
     def awards(self, bot_id: str) -> List[AwardRecord]:
-
-        # sadp: R28 R29 R33  # token award — already annotated
         """All award records for a bot, newest first."""
         return sorted(
             [e for e in self._events if e.bot_id == bot_id],
@@ -207,7 +201,6 @@ class TokenLedger:
 
     def save(self):
 
-        # sadp: R28 R33  # ledger save: fail-loudly(R28) append-only(R33)
         self._path.parent.mkdir(parents=True, exist_ok=True)
         self._path.write_text(
             json.dumps(

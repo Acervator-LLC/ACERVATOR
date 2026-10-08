@@ -79,6 +79,14 @@ SPACING_ITEMS = (
     ("Exponential (1, 2, 4, 8…)", "exponential"),
 )
 DETONATION_ITEMS = ("1d", "1w")
+EXPIRY_CLOSE_ITEMS = (
+    ("Finish the sell ladder", "finish_ladder"),
+    ("Sell the whole position", "sell_all"),
+)
+EXPIRY_LEAD_ITEMS = (
+    ("Share of the contract's life", "fraction"),
+    ("A number of days", "absolute"),
+)
 FALLBACK_TIMEFRAMES = (
     "1m",
     "5m",
@@ -97,6 +105,11 @@ NO_MATCH_INDEX = -1
 
 SPACING_DEFAULT = "linear"
 DETONATION_TF_DEFAULT = "1d"
+EXPIRY_CLOSE_DEFAULT = "finish_ladder"
+EXPIRY_LEAD_MODE_DEFAULT = "fraction"
+EXPIRY_LEAD_FRACTION_DEFAULT = 0.20
+EXPIRY_LEAD_DAYS_DEFAULT = 11.0
+EXPIRY_HORIZON_DAYS_DEFAULT = 365.0
 
 DENOM_PLACEHOLDER = "—"
 DENOM_NOT_LISTED = "(not listed on exchange)"
@@ -274,6 +287,11 @@ TOOLTIPS = {
     "deto_enabled": "Monitor a higher TF for BULLISH + high-confidence signal. Edge-triggered: fires ONCE per transition into bullish state.\nOn trigger: MARKET sell everything above the anchor, then reset target_balance to anchor ('lock in' gains, re-accumulate from scratch).\nRate-limited to 1 check/hour.\nAdditional gate: fires only when current value is above the anchor — no harvest if the bot is below its initial anchor.",
     "deto_tf": "Timeframe to monitor for bullish detonation signal. 1D = daily, 1W = weekly. Higher = stronger conviction, fewer triggers.",
     "deto_conf": "Minimum TA consensus confidence for detonation. Default 0.75 — high conviction only.",
+    "expiry_action": "What this bot does as a dated contract nears its end.\nFinish the sell ladder: stop buying this contract and let the open sell levels run to their end.\nSell the whole position: one order for everything still held.",
+    "expiry_lead_mode": "How the lead time is written.\nShare of the contract's life: a fraction of the days left when the bot started, so one setting covers contracts days apart and years apart.\nA number of days: the Lead Days figure below.",
+    "expiry_lead_fraction": "Share of the contract's remaining life measured when the bot started. 0 is off.\nAt 0.20, a contract with 12 days left at start closes 2.4 days out, and one with 264 days left closes 53 days out.",
+    "expiry_lead_days": "Days before expiry the close fires. Read only in A number of days mode. 0 is off.",
+    "expiry_horizon": "A contract expiring beyond this many days counts as non-expiring and gets no close at all. 0 turns every close off.\nThe venue publishes contracts dated 2030 and 2089; 365 days leaves both of those alone and still covers every dated month.",
     "gate_scrum_ta": "ON (Conservative): scrum auto-fire requires TA consensus BULLISH. Protects against scrumming false tops. OFF (Lean): scrum fires at BB-upper + delta regardless of TA.",
     "gate_scrum_uptrend": "ON (Conservative): if 65 %+ of last 20 candles were bullish, bot holds rather than scrumming each band touch. OFF (Lean): scrum every BB-upper touch regardless of trend strength.",
     "gate_scrum_htf": "ON (Conservative): refuse scrum when a higher-TF phantom signals BULLISH. OFF (Lean): cartridge captures HTF swings organically; this gate is redundant if Smart Cartridge is ON.",
@@ -995,6 +1013,64 @@ CONTROL_SPECS = (
         "range": (0.50, 1.00),
         "decimals": 2,
         "step": 0.05,
+    },
+    {
+        "name": "expiry_action",
+        "kind": COMBO_DATA,
+        "group": RISK_GROUP,
+        "row_label": "Expiry Close:",
+        "field": "expiry_close_action",
+        "reading": BARE_READING,
+        "default": EXPIRY_CLOSE_DEFAULT,
+        "items": EXPIRY_CLOSE_ITEMS,
+    },
+    {
+        "name": "expiry_lead_mode",
+        "kind": COMBO_DATA,
+        "group": RISK_GROUP,
+        "row_label": "Expiry Lead Mode:",
+        "field": "expiry_lead_mode",
+        "reading": BARE_READING,
+        "default": EXPIRY_LEAD_MODE_DEFAULT,
+        "items": EXPIRY_LEAD_ITEMS,
+    },
+    {
+        "name": "expiry_lead_fraction",
+        "kind": DOUBLE_SPIN,
+        "group": RISK_GROUP,
+        "row_label": "Lead Fraction:",
+        "field": "expiry_lead_fraction",
+        "reading": FLOAT_READING,
+        "default": EXPIRY_LEAD_FRACTION_DEFAULT,
+        "range": (0.00, 1.00),
+        "decimals": 2,
+        "step": 0.05,
+    },
+    {
+        "name": "expiry_lead_days",
+        "kind": DOUBLE_SPIN,
+        "group": RISK_GROUP,
+        "row_label": "Lead Days:",
+        "field": "expiry_lead_days",
+        "reading": FLOAT_READING,
+        "default": EXPIRY_LEAD_DAYS_DEFAULT,
+        "range": (0.0, 36500.0),
+        "decimals": 1,
+        "step": 1.0,
+        "suffix": " days",
+    },
+    {
+        "name": "expiry_horizon",
+        "kind": DOUBLE_SPIN,
+        "group": RISK_GROUP,
+        "row_label": "Expiry Horizon:",
+        "field": "expiry_horizon_days",
+        "reading": FLOAT_READING,
+        "default": EXPIRY_HORIZON_DAYS_DEFAULT,
+        "range": (0.0, 36500.0),
+        "decimals": 1,
+        "step": 30.0,
+        "suffix": " days",
     },
     {
         "name": "gate_scrum_ta",
@@ -1893,10 +1969,17 @@ def build_view_model(
             "visibility": [list(one) for one in VISIBILITY_ITEMS],
             "spacing": [list(one) for one in SPACING_ITEMS],
             "detonation": list(DETONATION_ITEMS),
+            "expiry_close": [list(one) for one in EXPIRY_CLOSE_ITEMS],
+            "expiry_lead_mode": [list(one) for one in EXPIRY_LEAD_ITEMS],
         },
         "defaults": {
             "spacing": SPACING_DEFAULT,
             "detonation_tf": DETONATION_TF_DEFAULT,
+            "expiry_close": EXPIRY_CLOSE_DEFAULT,
+            "expiry_lead_mode": EXPIRY_LEAD_MODE_DEFAULT,
+            "expiry_lead_fraction": EXPIRY_LEAD_FRACTION_DEFAULT,
+            "expiry_lead_days": EXPIRY_LEAD_DAYS_DEFAULT,
+            "expiry_horizon_days": EXPIRY_HORIZON_DAYS_DEFAULT,
         },
         "reading_kinds": reading_kinds(),
         "bare_number_fields": list(bare_number_fields()),
