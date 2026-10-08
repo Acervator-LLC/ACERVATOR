@@ -59,8 +59,6 @@ Stone Tablets are immutable + append-only by directive, so this
 holds. If a tablet were ever back-filled with candles EARLIER than
 its current first candle, every address for that ticker would
 shift. ``verify_addressing_stable()`` exists to detect that.
-
-sadp: R28 SSS + R70 RCN
 """
 
 from __future__ import annotations

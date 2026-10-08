@@ -165,9 +165,7 @@ if _HAS_QT:
             layout.addWidget(QLabel(sds.exchange_status_label()))
             layout.addWidget(self._exchange_list)
 
-            add_group = QGroupBox(
-                f"Add {acs.display_name(self._wing)} {acs.venue_noun(self._wing)}"
-            )
+            add_group = QGroupBox(sds.add_group_title(self._wing))
             add_form = QFormLayout(add_group)
 
             self._new_exchange = QComboBox()

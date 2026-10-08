@@ -55,11 +55,37 @@ class ClassGroupBar(QWidget):
         super().resizeEvent(event)
         self._elide()
 
+    # OVERTAKEN, quoted whole:
+    #   "Shorten each button's text to the room that button now has."
+    # True today: a name too wide for one line breaks on a space before it is
+    # shortened, because a segment of six is tall enough for two lines.
     def _elide(self) -> None:
         """Shorten each button's text to the room that button now has."""
         for button, full in self._labels.items():
             room = max(button.width() - CLASS_BUTTON_TEXT_PAD, 0)
-            button.setText(button.fontMetrics().elidedText(full, Qt.ElideRight, room))
+            button.setText(self._fitted(button, full, room))
+
+    def _fitted(self, button, full: str, room: int) -> str:
+        """One class name on one line, broken over two, or shortened to ``room``.
+
+        The break is the last space leaving both lines inside ``room``, which
+        is where a browser breaks the same name.
+        """
+        metrics = button.fontMetrics()
+
+        def whole(text: str) -> bool:
+            return metrics.elidedText(text, Qt.ElideRight, room) == text
+
+        if whole(full):
+            return full
+        for at in range(len(full) - 1, 0, -1):
+            if full[at] != " ":
+                continue
+            head = full[:at]
+            tail = full[at + 1 :]
+            if whole(head) and whole(tail):
+                return head + "\n" + tail
+        return metrics.elidedText(full, Qt.ElideRight, room)
 
 
 def _spendable_profits_class() -> type:
@@ -124,10 +150,11 @@ class HeaderStripMixin:
         """
         from .asset_class_surface import (
             class_buttons,
+            grid_margins_px,
             grid_shape,
             group_side_px,
             normalise,
-            segment_width_px,
+            segment_size_px,
         )
 
         stored = None
@@ -140,7 +167,7 @@ class HeaderStripMixin:
         rows, columns = grid_shape()
         holder = ClassGroupBar()
         grid = QGridLayout(holder)
-        grid.setContentsMargins(0, 0, 0, 0)
+        grid.setContentsMargins(*grid_margins_px())
         grid.setHorizontalSpacing(CLASS_GROUP_SPACING)
         grid.setVerticalSpacing(CLASS_GROUP_SPACING)
         for at in range(columns):
@@ -152,7 +179,7 @@ class HeaderStripMixin:
         self._class_buttons.setExclusive(True)
         self._class_group = {}
         self._class_names: dict = {}
-        segment_w = segment_width_px()
+        segment_w, segment_h = segment_size_px()
 
         for model in class_buttons(self._asset_class):
             button = QPushButton(model["text"])
@@ -163,7 +190,7 @@ class HeaderStripMixin:
             # Preferred, never Minimum: the group must give width back to the
             # counters when the window is narrow.
             button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-            button.setMinimumWidth(segment_w)
+            button.setMinimumSize(segment_w, segment_h)
             button.clicked.connect(partial(self._on_class_clicked, model["class"]))
             self._class_buttons.addButton(button)
             self._class_group[model["class"]] = button
@@ -178,6 +205,9 @@ class HeaderStripMixin:
 
         holder.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         holder.set_side(group_side_px())
+        # activate before set_labels: each name is fitted to the width its own
+        # segment ends at, not the width it holds before the grid runs.
+        grid.activate()
         holder.set_labels(
             {
                 button: self._class_names[key]

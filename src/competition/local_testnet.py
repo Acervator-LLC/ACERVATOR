@@ -691,7 +691,6 @@ class LocalRegistry:
         final_cents: int,
         trade_count: int,
     ) -> TxRecord:
-        # sadp: R28 R29 R33  # R29 idempotent: _subs[comp_id] guards duplicate submissions
         self._require_comp(comp_id, "SUBMISSION")
         if wallet not in self._entries[comp_id]:
             raise ValueError(f"Bot {wallet[:10]} not registered")
@@ -856,8 +855,6 @@ class LocalTestnet:
         trade_count: int,
         wallet: Optional[str] = None,
     ) -> str:
-        # sadp: R28 R29  # fail-loudly(R28) idempotent-via-already-submitted-check(R29)
-        # R29 idempotent: LocalRegistry.submit_result raises ValueError if already submitted (_seen via _subs dict)
         w = wallet or _fake_addr(comp_id + "bot")
         root = bytes.fromhex(merkle_root.lstrip("0x").ljust(64, "0"))
         tx = self._registry.submit_result(
