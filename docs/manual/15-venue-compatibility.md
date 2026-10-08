@@ -2300,14 +2300,22 @@ and never written; its modification time is the same before and after every run.
 | the same market, 5 units, a contract size of a hundredth | 500 contracts |
 | the same market, 0.0137 units, a contract size of a hundredth | 1 contract, floored from 1.37 |
 | a spot market with no contract size, 5 units | 5 units before, 5 units after |
+| the expiry close selling a 5 unit position, a contract size of a hundredth | 500 contracts |
+| the same close with no contract size and with a contract size of one | 5 contracts in both |
 | every order decision over the whole recording | 1,146 markets, 27,504 answers, 0 moved |
 | the same decisions with a hundredth set on three sectors | 4,382 answers moved, 199 markets |
+| the arithmetic over 15 contract sizes and 11 unit counts | 165 pairs, 0 faults either way |
 
-The last two rows are a pair. The recording carries no contract size on any of
-its 1,146 rows, so nothing moves. The same reading, run against a contract size
-set on the futures, commodities and indices rows, moves 4,382 of 27,504 answers
-across 199 markets, and every mover sits in those three sectors. Crypto, stocks
-and forex moved nothing in either run.
+The two whole-recording rows are a pair. The recording carries no contract size
+on any of its 1,146 rows, so nothing moves. The same reading, run against a
+contract size set on the futures, commodities and indices rows, moves 4,382 of
+27,504 answers across 199 markets, and every mover sits in those three sectors.
+Crypto, stocks and forex moved nothing in either run.
+
+The arithmetic row swept every pair of 15 contract sizes against 11 unit counts.
+A contract under one unit raised the count in all 55 of its pairs, a contract
+over one unit lowered it in all 33, and `units_for_contracts` returned every one
+of them to the unit count it started from.
 
 ### What a contract size changes on screen
 
