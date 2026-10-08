@@ -426,9 +426,9 @@ class BotContainer:
             if _whole is not None and _whole > _amt:
                 self._warn_order(
                     f"EXPIRY CLOSE, SELL ALL: SELL {symbol} raised from "
-                    f"{_amt:.10f} to {_whole:.10f}, the whole position worth "
-                    f"${_position_usd:.4f} read from {_units_source}, "
-                    f"{_expiry['days_left']:.2f} days "
+                    f"{_amt:.10f} to {_whole:.10f}, counted from "
+                    f"{_units_source}, the whole position worth "
+                    f"${_position_usd:.4f}, {_expiry['days_left']:.2f} days "
                     f"before expiry. One order, not a ladder rung."
                 )
                 _amt = _whole
