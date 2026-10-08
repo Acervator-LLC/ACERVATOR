@@ -2189,13 +2189,118 @@ a scratch recording and read back out of it.
 ### What this changes on screen
 
 Nothing yet. The three values are recorded and no screen draws them. The live
-order path replaces a recorded session with the cited table's own answer, so a
-recorded session reaches no order today. `BotContainer._get_market_rules` is the
-one site that has to read the recorded session first, which is the precedence it
-already takes for a recorded order type.
+order path reads a recorded session through `session_for` and a recorded
+contract size through `contracts_for_units`, so both reach an order today.
+`BotContainer._get_market_rules` reads the recorded session first, the
+precedence it already takes for a recorded order type.
 
 ### The price-step sentence this entry overtakes
 
 The 2026-09-25 entry on the price step quotes a five-line copy of the carrier
 and says a venue publishes three order rules. The carrier now holds ten rules
 and a read flag. Every sentence of that entry stands as written.
+
+## 2026-10-08 - a contract's size sizes the order
+
+One contract can stand for a fraction of a unit. The venue's size field names a
+count of contracts, and a count of units is then not the number to send. The
+order path divides the unit count by the contract's own size before it sends
+anything.
+
+`src/trading/scrumming/sizing.py` - the two counts
+
+```python
+def contracts_for_units(units: float, contract_size: Optional[float]) -> float:
+def units_for_contracts(contracts: float, contract_size: Optional[float]) -> float:
+```
+
+### Which count the venue's size field carries
+
+Coinbase describes the order body's size as the amount of the first asset in the
+pair. Its position endpoint and its close endpoint both call a futures size a
+count of contracts. The two readings meet at one market shape: the venue's step
+for a contract market is one contract, so the size field carries contracts and
+the step floors contracts.
+
+The venue's own sentences are quoted in
+`docs/audits/2026-10-08_coinbase_sector_order_formats/REPORT.md`.
+
+### Where the division sits
+
+`BotContainer.guarded_place_order` divides the unit count into contracts, then
+hands the contract count to `sized_order`. The step and the minimum the venue
+publishes for a contract market are both counts of contracts, so they are
+measured against the contract count. The dollar checks stay in units. The
+smallest order value and the whole-unit position floor read the same figures
+they always read.
+
+```mermaid
+flowchart TD
+    A[the venue publishes a contract size] --> B[contract_units reads it]
+    B --> C[market_rules writes MarketRules.contract_size]
+    C --> D[rules_row records it on the row]
+    D --> E[recorded_rules reads the row back]
+    E --> F[contracts_for_units divides the unit count]
+    F --> G[sized_order floors the contract count onto the step]
+    G --> H[place_order receives a contract count]
+```
+
+### An absent contract size divides nothing
+
+A contract size the venue did not publish is absent, and absent is not one. For
+sizing, absent means the size field already carries units. Nothing divides and
+the amount is unchanged.
+
+`contract_size_divides` reads False for an absent contract size and False for a
+published zero, which no division can use. A published zero stays
+distinguishable from absent on the recorded row.
+
+| the venue published | the order path divides by |
+| --- | --- |
+| no contract size | nothing; the unit count is sent |
+| a contract size of one | nothing; one contract is one unit |
+| a contract size of a hundredth | a hundredth; 5 units send 500 contracts |
+| a contract size of zero | nothing; no division can use it |
+
+### What the operator reads
+
+A market with a contract size writes one more line before the order goes out. It
+names the contract count, the unit count and the units one contract stands for.
+The two size refusals and the step notice carry the same sentence, so a refused
+order says which count fell short.
+
+```
+SIZED IN CONTRACTS: BUY <market> names 500.0000000000 contracts on a size step
+of 1.0. One contract stands for 0.01 units, so 5.0000000000 units name
+500.0000000000 contracts.
+```
+
+A market with no contract size writes no such line. Its order lines read exactly
+as they read before.
+
+### What the contract size was driven against
+
+Driven in one process with the home redirected to a scratch directory, the
+transport replaced by one that raises, and no order sent. The recording was read
+and never written; its modification time is the same before and after every run.
+
+| the drive | the reading |
+| --- | --- |
+| one contract market, 5 units, a contract size of one | 5 contracts |
+| the same market, 5 units, a contract size of a hundredth | 500 contracts |
+| the same market, 0.0137 units, a contract size of a hundredth | 1 contract, floored from 1.37 |
+| a spot market with no contract size, 5 units | 5 units before, 5 units after |
+| every order decision over the whole recording | 1,146 markets, 27,504 answers, 0 moved |
+| the same decisions with a hundredth set on three sectors | 4,382 answers moved, 199 markets |
+
+The last two rows are a pair. The recording carries no contract size on any of
+its 1,146 rows, so nothing moves. The same reading, run against a contract size
+set on the futures, commodities and indices rows, moves 4,382 of 27,504 answers
+across 199 markets, and every mover sits in those three sectors. Crypto, stocks
+and forex moved nothing in either run.
+
+### What a contract size changes on screen
+
+Nothing yet. No row of the live recording carries a contract size, because the
+running build predates the field. The futures and commodities markets move once
+a build carrying the field records the venue again.

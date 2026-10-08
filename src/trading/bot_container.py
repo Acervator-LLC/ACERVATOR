@@ -331,6 +331,9 @@ class BotContainer:
     # ``WHOLE_UNITS`` for the symbol's own class and venue.
     # ``position_minimum_refusal`` then refuses a BUY opening such a position
     # below ``WHOLE_UNIT_POSITION_MINIMUM`` units.
+    # OVERTAKEN, the ``sized_order`` sentence above: ``contracts_for_units``
+    # divides the unit count by ``MarketRules.contract_size`` first, so the step
+    # floors a contract count and ``place_order`` receives one.
     async def guarded_place_order(
         self,
         symbol: str,
@@ -448,11 +451,14 @@ class BotContainer:
             BELOW_ONE_UNIT,
             HELD_OUTSIDE_SESSION,
             MARKET_BUY_NAMES_CASH,
+            contract_count_note,
+            contracts_for_units,
             market_unit_rule,
             outside_session,
             position_minimum_refusal,
             session_unit_rule,
             sized_order,
+            units_for_contracts,
             untradeable_reason,
             variant_holds_market,
             variant_permits_close,
@@ -471,7 +477,15 @@ class BotContainer:
         # so the moment is read here and not at a composing site.
         _now = time.time()
         _rule = market_unit_rule(_rules, _class, self.config.exchange_id, _now)
-        _sized = sized_order(_amt, _rule, _rules)
+        # The venue's size field names contracts on a contract market, and its
+        # step is a step in contracts, so the unit count divides before it.
+        _contracts = contracts_for_units(_amt, _rules.contract_size)
+        _sized = sized_order(_contracts, _rule, _rules)
+        # The contract size named the amount where the venue published one, so
+        # every size line carries both counts. Empty otherwise.
+        _contract_note = contract_count_note(_amt, _rules.contract_size)
+        if _contract_note:
+            _contract_note = f" {_contract_note}"
         # The session sized the amount where it answers, so the refusal and the
         # notice name it rather than the step it overrode. Empty otherwise.
         _session_note = (
@@ -488,7 +502,7 @@ class BotContainer:
                 f"PRE-FLIGHT REJECTED: {_side_str} {symbol} amount "
                 f"{_amt:.10f} is below min_amount {_rules.min_amount} "
                 f"on a size increment of {_rules.amount_increment}. "
-                f"{BELOW_MINIMUM_AMOUNT}.{_session_note} "
+                f"{BELOW_MINIMUM_AMOUNT}.{_session_note}{_contract_note} "
                 f"API not called."
             )
 
@@ -496,20 +510,23 @@ class BotContainer:
             self._refuse_order(
                 f"PRE-FLIGHT REJECTED: {_side_str} {symbol} amount "
                 f"{_amt:.10f} floors to nothing on a size increment of "
-                f"{_rules.amount_increment}. {BELOW_ONE_UNIT}.{_session_note} "
+                f"{_rules.amount_increment}. {BELOW_ONE_UNIT}.{_session_note}"
+                f"{_contract_note} "
                 f"API not called."
             )
 
         # A venue that published no step and a pair with no cited rule both
         # leave the amount as it came in, and neither refuses on that ground.
-        if 0.0 < _sized.units < _amt:
+        if 0.0 < _sized.units < _contracts:
             self._warn_order(
                 f"SIZED ON THE VENUE'S STEP: {_side_str} {symbol} "
-                f"{_amt:.10f} to {_sized.units:.10f} on a size increment of "
-                f"{_rules.amount_increment} ({_sized.source}).{_session_note}"
+                f"{_contracts:.10f} to {_sized.units:.10f} on a size increment "
+                f"of {_rules.amount_increment} ({_sized.source})."
+                f"{_session_note}{_contract_note}"
             )
-            _amt = _sized.units
-            amount = _sized.units
+            _contracts = _sized.units
+            _amt = units_for_contracts(_contracts, _rules.contract_size)
+            amount = _amt
 
         if _rules.min_cost is not None and price is not None:
             try:
@@ -653,6 +670,17 @@ class BotContainer:
                 f"{_rules.amount_increment}, so the venue credits "
                 f"{_amt:.10f} units. {MARKET_BUY_NAMES_CASH}."
             )
+
+        # The venue's size field names contracts, so the count it receives is
+        # the contract count and the unit count is what the bot holds.
+        _submit_note = contract_count_note(_amt, _rules.contract_size)
+        if _submit_note:
+            self._warn_order(
+                f"SIZED IN CONTRACTS: {_side_str} {symbol} names "
+                f"{_contracts:.10f} contracts on a size step of "
+                f"{_rules.amount_increment}. {_submit_note}"
+            )
+        amount = _contracts
 
         # Deterministic client_order_id derived from the trade intent,
         # so a retry of the same intent reuses the same coid.
