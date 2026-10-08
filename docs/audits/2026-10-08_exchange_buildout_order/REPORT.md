@@ -144,7 +144,10 @@ tier 1. No figure on any tier is estimated, converted or inferred.
 
 ### Tier 1, the published volumes
 
-### The crypto venues
+Twenty ids answer here. The crypto venues answer on one third party's figure and
+the brokers on their own.
+
+#### The crypto venues
 
 None of the fifteen publishes a figure of its own that compares with the
 others, so the figure is a third-party one. Two aggregators were read on
@@ -207,7 +210,7 @@ venue fixed second already owns one of the fifteen. The id `huobi` reaches the
 library class `htx` through `src/exchange/ccxt_connector.py`,
 `CCXT_CLASS_ALIASES`, and both aggregators list it as HTX.
 
-### The brokers
+#### The brokers
 
 A broker publishes no spot volume. What each firm publishes is named below with
 what it measures. A trade count is not a dollar figure, and the two are never
