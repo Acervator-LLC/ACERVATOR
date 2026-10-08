@@ -322,6 +322,14 @@ class AlpacaConnector(BrokerBase):
             "next_close": data.get("next_close", ""),
         }
 
+    async def list_assets(self, status: str = "active") -> list[dict]:
+        """Every asset record the broker publishes for ``status``, held for
+        ``held_assets`` so ``record_markets`` can write them."""
+        answered = await self._request("GET", f"/v2/assets?status={status}")
+        rows: list[Any] = answered if isinstance(answered, list) else []
+        self._assets = [row for row in rows if isinstance(row, dict)]
+        return list(self._assets)
+
     def market_rules(self, asset: Any) -> MarketRules:
         """The ``MarketRules`` one of this broker's own asset records publishes,
         read through ``asset_rules`` so no broker is contacted."""
@@ -365,3 +373,37 @@ class AlpacaConnector(BrokerBase):
             else:
                 text = await resp.text()
                 raise Exception(f"Alpaca API {resp.status}: {text}")
+
+
+#: Each venue id in ``SUPPORTED_BROKERS`` that has a ``BrokerBase`` subclass.
+#: ``tradingview_webhook`` publishes no order interface and holds no class.
+BROKER_CONNECTORS: dict[str, type[BrokerBase]] = {
+    "alpaca": AlpacaConnector,
+}
+
+
+def broker_connector_class(venue_id: Any) -> Optional[type[BrokerBase]]:
+    """The ``BrokerBase`` subclass ``BROKER_CONNECTORS`` holds for ``venue_id``,
+    and None for a venue with no broker connector.
+
+    ``MainWindow._connect_exchange_for_bot`` reads this to tell a broker venue
+    from a crypto one, so a venue id answering None takes the crypto path.
+    """
+    if not isinstance(venue_id, str):
+        return None
+    return BROKER_CONNECTORS.get(venue_id.strip().lower())
+
+
+__all__ = [
+    "BROKER_CONNECTORS",
+    "DATA_BASE",
+    "LIVE_BASE",
+    "PAPER_BASE",
+    "SUPPORTED_BROKERS",
+    "WHOLE_SHARE_INCREMENT",
+    "AlpacaConnector",
+    "asset_rules",
+    "broker_connector_class",
+    "rule_number",
+    "size_increment",
+]
