@@ -346,6 +346,25 @@ PRODUCTS_PAGE_LIMIT = 1000
 #: The record a futures product carries its venue labels under.
 FUTURES_DETAILS_KEY = "future_product_details"
 
+#: The key ``FUTURES_DETAILS_KEY`` carries the base units one contract stands
+#: for under. ccxt's own ``parse_contract_market`` reads it into
+#: ``CONTRACT_SIZE_FIELD``, and ``parse_spot_market`` reads nothing into it.
+CONTRACT_SIZE_KEY = "contract_size"
+
+#: The ccxt market field a parsed contract record carries its contract size
+#: under.
+CONTRACT_SIZE_FIELD = "contractSize"
+
+#: The key a product record carries the step a cash amount moves by under. ccxt
+#: reads it into ``precision.price`` only where the product published no
+#: ``price_increment``, so no parsed field names the quote step alone.
+QUOTE_INCREMENT_KEY = "quote_increment"
+
+#: The record a product carries the venue's own trading session under. Coinbase
+#: publishes it on every product, holding a daily window on a dated contract and
+#: nothing on a spot pair and a perpetual.
+SESSION_DETAILS_KEY = "fcm_trading_session_details"
+
 #: The venue's own label for what a futures contract is written on.
 FUTURES_ASSET_TYPE_KEY = "futures_asset_type"
 
@@ -509,6 +528,60 @@ def declared_order_types(exchange: Any) -> Optional[str]:
     return None
 
 
+def quote_step(market: Any) -> Optional[float]:
+    """The step a cash amount moves by on one loaded market record.
+
+    ``QUOTE_INCREMENT_KEY`` under ``info`` answers it, and ``precision.price``
+    does not, which carries a product's own price step. None where the venue
+    published no ``QUOTE_INCREMENT_KEY``.
+    """
+    raw = (market or {}).get("info") or {}
+    if not isinstance(raw, dict):
+        return None
+    return limit_to_float(raw.get(QUOTE_INCREMENT_KEY))
+
+
+def contract_units(market: Any) -> Optional[float]:
+    """The base units one contract stands for on one loaded market record.
+
+    ccxt's own ``CONTRACT_SIZE_FIELD`` answers first, and ``FUTURES_DETAILS_KEY``
+    answers where the record came through ``parse_spot_market``, which sets no
+    contract size. None for a product carrying no contract size.
+    """
+    held = market or {}
+    parsed = limit_to_float(held.get(CONTRACT_SIZE_FIELD))
+    if parsed is not None:
+        return parsed
+    raw = held.get("info") or {}
+    if not isinstance(raw, dict):
+        return None
+    detail = raw.get(FUTURES_DETAILS_KEY) or {}
+    if not isinstance(detail, dict):
+        return None
+    return limit_to_float(detail.get(CONTRACT_SIZE_KEY))
+
+
+def market_session(market: Any) -> Optional[str]:
+    """The session name one loaded market record publishes.
+
+    ``SESSION_US_EQUITY`` for an ``EQUITY_MARKET_TYPE`` product, and
+    ``SESSION_CONTINUOUS`` where ``SESSION_DETAILS_KEY`` holds no window. None
+    where the record carries no ``SESSION_DETAILS_KEY`` and None where
+    ``SESSION_DETAILS_KEY`` holds a daily window, which neither name states.
+    """
+    from ..trading.scrumming.sizing import SESSION_CONTINUOUS, SESSION_US_EQUITY
+
+    held = market or {}
+    if str(held.get("type") or "").lower() == EQUITY_MARKET_TYPE:
+        return SESSION_US_EQUITY
+    raw = held.get("info") or {}
+    if not isinstance(raw, dict) or SESSION_DETAILS_KEY not in raw:
+        return None
+    if isinstance(raw.get(SESSION_DETAILS_KEY), dict):
+        return None
+    return SESSION_CONTINUOUS
+
+
 # OVERTAKEN in market_rules's docstring below: "The ``MarketRules`` one loaded
 # CCXT market record publishes."
 # ``order_types`` comes from the exchange's own ``has`` map through
@@ -532,6 +605,9 @@ def market_rules(
         ),
         # CCXT maps Coinbase's price_increment, else its quote_increment, here.
         price_increment=precision_to_increment(precision.get("price"), precision_mode),
+        quote_increment=quote_step(market),
+        contract_size=contract_units(market),
+        session=market_session(market),
         # CCXT parses Coinbase's future_product_details.contract_expiry here; a
         # spot record and a perpetual both carry None.
         expiry_ms=limit_to_float((market or {}).get("expiry")),
@@ -1947,6 +2023,15 @@ class CCXTConnector(ExchangeInterface):
             classes[sym] = market_asset_class(info)
 
         self._markets_cache = markets
+        if not markets:
+            # The count tells an empty market map from one whose every market
+            # is inactive.
+            logger.warning(
+                "%s served no active market out of %d market records, so no "
+                "market rule row is recorded",
+                self._exchange_id,
+                len(getattr(self._ex, "markets", None) or {}),
+            )
         # The Simulator and the Paper Trader reach no venue, so the rules read
         # here are recorded once per read for them to size an order by.
         try:
