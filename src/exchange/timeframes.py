@@ -1,6 +1,6 @@
 """
-timeframes.py — Per-exchange timeframe availability map (v3.15.61)
-==================================================================
+timeframes.py — Per-exchange timeframe availability map
+=======================================================
 Operator directive 2026-04-26:
   "TF choices for given exchanges should change based on availability.
    For example, 4h should be disabled for Coinbase."

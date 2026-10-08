@@ -157,7 +157,7 @@ class BotSwarmTabMixin:
             pred_refused = False
             try:
                 pred_src = ledger.predominant_source
-            except Exception:  # R28-OK: defensive accessor probe
+            except Exception:  # pred_refused marks the funder row unknown.
                 pred_refused = True
                 pred_src = None
             if pred_refused:

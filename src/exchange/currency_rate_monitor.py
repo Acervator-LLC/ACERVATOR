@@ -158,11 +158,22 @@ class CurrencyRateMonitor:
 
 # Process-wide shared monitor
 
+
+def _monitor_has_stopped(monitor: CurrencyRateMonitor) -> bool:
+    """True when ``monitor`` holds a reading and ``is_stale`` now reports it.
+
+    ``_MONITOR`` passes this as ``has_stopped``, and a monitor whose
+    ``last_updated`` is still zero is never reported stopped.
+    """
+    return monitor.snapshot().last_updated > 0 and monitor.is_stale()
+
+
 _MONITOR: LazySingleton[CurrencyRateMonitor] = LazySingleton(
     CurrencyRateMonitor,
     "the currency rate feed",
     "BTC/USD and ETH/USD, and the satoshi and wei denominated prices "
     "derived from them, will hold their last value and stop updating.",
+    has_stopped=_monitor_has_stopped,
 )
 
 

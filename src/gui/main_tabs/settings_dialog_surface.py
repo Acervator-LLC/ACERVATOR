@@ -177,7 +177,7 @@ STOCK_DISABLED_CONTROLS = (
 CRYPTO_LIST_LABEL = "Configured Crypto Exchanges:"
 STOCK_LIST_LABEL = "Configured Stock Brokers:"
 CRYPTO_ADD_GROUP = "Add Crypto Exchange"
-STOCK_ADD_GROUP = "Add Stock Broker"
+ADD_GROUP_FORMAT = "Add {name} {noun}"
 REMOVE_BUTTON_TEXT = "Remove Selected"
 
 EXCHANGE_STATUS_LABEL = "Exchange Status"
@@ -1493,9 +1493,15 @@ def list_label_for(wing: str) -> str:
     return STOCK_LIST_LABEL if wing == STOCK_WING else CRYPTO_LIST_LABEL
 
 
-def add_group_title(wing: str) -> str:
-    """The title of the box holding the Add-exchange form."""
-    return STOCK_ADD_GROUP if wing == STOCK_WING else CRYPTO_ADD_GROUP
+def add_group_title(sector: Any) -> str:
+    """The title of the box holding the Add-exchange form, naming one sector.
+
+    ``acs.display_name`` and ``acs.venue_noun`` fill ``ADD_GROUP_FORMAT``, and
+    both builds read this one answer.
+    """
+    return ADD_GROUP_FORMAT.format(
+        name=acs.display_name(sector), noun=acs.venue_noun(sector)
+    )
 
 
 def exchange_status_label() -> str:
@@ -1836,14 +1842,14 @@ def specs_on(tab: str) -> tuple:
     return tuple(spec for spec in CONTROL_SPECS if spec["tab"] == tab)
 
 
-def group_titles(tab: str, wing: str) -> tuple:
+def group_titles(tab: str, sector: Any) -> tuple:
     """Every boxed group title on one tab, in painted order."""
     found = []
     for owner, title in GROUPS:
         if owner != tab:
             continue
         if owner == EXCHANGE_TAB and title == CRYPTO_ADD_GROUP:
-            found.append(add_group_title(wing))
+            found.append(add_group_title(sector))
         else:
             found.append(title)
     return tuple(found)
@@ -2079,7 +2085,7 @@ class SettingsDialogModel:
         self.values["exchange_list"] = list(
             exchange_status_lines(self.asset_class, self.venue_states)
         )
-        self.texts["add_group"] = add_group_title(self.wing)
+        self.texts["add_group"] = add_group_title(self.asset_class)
         self.texts["banner"] = STOCK_BANNER_TEXT if self.wing == STOCK_WING else ""
         self.styles["banner"] = STOCK_BANNER_STYLE if self.wing == STOCK_WING else ""
         if self.wing == STOCK_WING:
@@ -2733,7 +2739,7 @@ class _Walker:
         if role == GROUP:
             title = item[1]
             if title == ADD_GROUP_BY_WING:
-                title = add_group_title(self.model.wing)
+                title = add_group_title(self.model.asset_class)
             self.emit(GROUP, title)
             self.block(item[2])
             return
@@ -2770,7 +2776,9 @@ def build_view_model(model: SettingsDialogModel) -> dict:
         "wing": model.wing,
         "tabs": list(TAB_TITLES),
         "scrolling_tabs": list(SCROLLING_TABS),
-        "groups": {tab: list(group_titles(tab, model.wing)) for tab in TAB_TITLES},
+        "groups": {
+            tab: list(group_titles(tab, model.asset_class)) for tab in TAB_TITLES
+        },
         "painted": model.painted(),
         "layout": {tab: _plain(LAYOUT[tab]) for tab in TAB_TITLES},
         "rows": [list(one) for one in model.rows],
