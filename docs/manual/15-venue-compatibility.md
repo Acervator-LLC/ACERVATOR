@@ -1906,9 +1906,9 @@ the table after a venue changes a rule.
 
 The screen that builds a bot does not yet offer whole-unit sizing or hide a
 market whose unit price puts two units out of reach. A market read as whole on
-the Market Inspector still shows the refusal it showed before, because that
-reading is taken without the symbol's class. Both are the wizard's row of the
-build order.
+the Market Inspector still shows the refusal it showed before in its tradeable
+column, which reads `tradeable_answer` and not the built set. Both are the
+wizard's row of the build order.
 
 An equity order still carries no session metadata, and a futures position is
 still read from a spot balance rather than from the futures endpoints. Those are
@@ -1916,7 +1916,7 @@ the sector-specific order paths, a later row again.
 
 ## 2026-10-08 - the whole-unit variant is built, and its opening size is the operator's
 
-Nothing above this heading is deleted. Six sentences are corrected in place
+Nothing above this heading is deleted. Ten passages are corrected in place
 because the running program contradicts them, and each correction stands where
 the old sentence stood.
 
@@ -1941,6 +1941,22 @@ sized amount are the same figures before the change and after it.
 | fractional step | 821 | `none` | yes | 3.5 |
 | whole step, no date | 225 | `whole-unit position` | yes | 3.0 |
 | dated contract | 100 | `rolling position` | no | 3.0 |
+
+### The scan note stops naming a market it trades
+
+`ata_spm.untradeable_markets` and `ata_spm.untradeable_note` read
+`untradeable_reason` as their own test, so the Market Inspector's scan note named
+every whole-unit market as read and not traded while the order path traded it.
+Driven over the recording, the note names the 100 dated contracts and no others.
+
+| the scan note | before | after |
+| --- | --- | --- |
+| markets named read and not traded | 325 | 100 |
+| characters of note | 4,923 | 2,204 |
+
+The Simulator's Activity Log is unchanged. `back_test.variant_line` reads
+`variant_holds_market` and its 1,146 lines hash the same before and after, 1,046
+trading and 100 not traded.
 
 ### The refusal reason a built variant needs
 
