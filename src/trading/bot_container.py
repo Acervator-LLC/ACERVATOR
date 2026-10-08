@@ -223,7 +223,7 @@ class BotContainer:
         from ..exchange.base import MarketRules
         from .scrumming.sizing import (
             order_types_for,
-            venue_session,
+            session_for,
             venue_settlement_days,
         )
 
@@ -234,8 +234,8 @@ class BotContainer:
         # OVERTAKEN, the sentence above: the venue's Stocks and Commodities tabs
         # reach the same connector, so ``_asset_class`` reads the symbol's class.
         asset_class = self._asset_class(symbol)
-        session = venue_session(asset_class, self.config.exchange_id)
         # No record was read here, so only the cited table can answer.
+        session = session_for(None, asset_class, self.config.exchange_id)
         order_types = order_types_for(None, asset_class, self.config.exchange_id)
         settlement = venue_settlement_days(asset_class, self.config.exchange_id)
         unread = MarketRules(
@@ -265,7 +265,10 @@ class BotContainer:
                 else:
                     rules = replace(
                         rules,
-                        session=session,
+                        # The venue's own session rode in on this record.
+                        session=session_for(
+                            rules, asset_class, self.config.exchange_id
+                        ),
                         # The venue's own declaration rode in on this record.
                         order_types=order_types_for(
                             rules, asset_class, self.config.exchange_id
@@ -448,6 +451,7 @@ class BotContainer:
             market_unit_rule,
             outside_session,
             position_minimum_refusal,
+            session_unit_rule,
             sized_order,
             untradeable_reason,
             variant_holds_market,
@@ -463,15 +467,28 @@ class BotContainer:
         # crypto connector lists the venue's other sectors, so the class comes
         # from ``_asset_class`` and the rule from ``market_unit_rule``.
         _class = self._asset_class(symbol)
-        _rule = market_unit_rule(_rules, _class, self.config.exchange_id)
+        # The market's own session overrides its step outside its normal hours,
+        # so the moment is read here and not at a composing site.
+        _now = time.time()
+        _rule = market_unit_rule(_rules, _class, self.config.exchange_id, _now)
         _sized = sized_order(_amt, _rule, _rules)
+        # The session sized the amount where it answers, so the refusal and the
+        # notice name it rather than the step it overrode. Empty otherwise.
+        _session_note = (
+            ""
+            if session_unit_rule(getattr(_rules, "session", None), _now) is None
+            else (
+                f" The venue's {_rules.session} session takes a whole unit "
+                f"alone at this hour, so the step did not size it."
+            )
+        )
 
         if _sized.refusal == BELOW_MINIMUM_AMOUNT:
             self._refuse_order(
                 f"PRE-FLIGHT REJECTED: {_side_str} {symbol} amount "
                 f"{_amt:.10f} is below min_amount {_rules.min_amount} "
                 f"on a size increment of {_rules.amount_increment}. "
-                f"{BELOW_MINIMUM_AMOUNT}. "
+                f"{BELOW_MINIMUM_AMOUNT}.{_session_note} "
                 f"API not called."
             )
 
@@ -479,7 +496,7 @@ class BotContainer:
             self._refuse_order(
                 f"PRE-FLIGHT REJECTED: {_side_str} {symbol} amount "
                 f"{_amt:.10f} floors to nothing on a size increment of "
-                f"{_rules.amount_increment}. {BELOW_ONE_UNIT}. "
+                f"{_rules.amount_increment}. {BELOW_ONE_UNIT}.{_session_note} "
                 f"API not called."
             )
 
@@ -489,7 +506,7 @@ class BotContainer:
             self._warn_order(
                 f"SIZED ON THE VENUE'S STEP: {_side_str} {symbol} "
                 f"{_amt:.10f} to {_sized.units:.10f} on a size increment of "
-                f"{_rules.amount_increment} ({_sized.source})."
+                f"{_rules.amount_increment} ({_sized.source}).{_session_note}"
             )
             _amt = _sized.units
             amount = _sized.units

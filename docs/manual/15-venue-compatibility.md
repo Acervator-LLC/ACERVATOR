@@ -1629,9 +1629,11 @@ The first is the count of a venue's order rules:
 
 The true sentence is: a venue's own product record publishes five rules, not
 three. The four already named on this page sit beside the date the venue closes
-the contract on. Three further fields on the record come from cited tables
-rather than from the product record, and they are the trading session, the order
-types and the settlement delay.
+the contract on. Two further fields on the record come from cited tables
+rather than from the product record, and they are the order types and the
+settlement delay. The trading session comes from the product record, and the
+cited table answers only where the record carries no session.
+`src/trading/scrumming/sizing.py, in session_for` reads the two in that order.
 
 The second is the field block under that sentence. It lists four rules and the
 read flag, and it stays as written. The true block carries eight fields before
@@ -1811,13 +1813,15 @@ CITED_UNIT_RULES: dict[tuple[str, str], str] = {
 
 A sector is not enough on its own. Coinbase puts a tokenised metal and a dated
 contract in the same Commodities tab, and one of them divides while the other
-does not. The size step the venue publishes for the market decides it, and the
-sector row answers only where the venue published no step.
+does not. The market's own trading session decides it ahead of both, where the
+caller names the moment the order is sized. The size step the venue publishes
+for the market decides it, and the sector row answers only where the venue
+published no step.
 
 ```python
-# src/trading/scrumming/sizing.py:170
+# src/trading/scrumming/sizing.py, in market_unit_rule
 def market_unit_rule(
-    recorded: Any, asset_class: str = "", venue: str = ""
+    recorded: Any, asset_class: str = "", venue: str = "", moment_s: Any = None
 ) -> Optional[str]:
 ```
 
@@ -1831,6 +1835,37 @@ socket refused:
 | an equity the venue published no step for | none | whole | whole |
 | a crypto pair | a hundred-millionth | fractional | fractional |
 
+### The market's own session answers before its step
+
+A US equity market takes a fraction of a share inside its normal hours and a
+whole share outside them. The same market is therefore two size rules at two
+hours of one day, and the step the venue publishes is the one its fractional
+order carries. `session_for` names the session off the market's own record, and
+the cited table answers only where the record carries none.
+
+```python
+# src/trading/scrumming/sizing.py, in session_for and session_unit_rule
+def session_for(recorded: Any, asset_class: str, venue: str) -> Optional[str]:
+def session_unit_rule(session: Optional[str], moment_s: Any) -> Optional[str]:
+```
+
+A US equity session wins wherever either source names it, so neither source
+widens the hours the other restricts. A record carrying no session holds nothing
+and demands nothing.
+
+One market was driven through the order path twice, with the home redirected,
+the transport raising on every call and no order sent. Its step is a hundredth
+of a share, its minimum size a hundredth and its minimum cost ten dollars. The
+order asked for 1.57 shares at six in the evening, New York time:
+
+```
+recorded session us_equity    rule whole        1.00 share, then held
+recorded session continuous   rule fractional   1.57 shares, submitted
+```
+
+At eleven in the morning both answer 1.57 shares. A crypto market read 1.57
+shares at both hours and in both runs, because its session gates no size.
+
 ### A bot reads its own sector rather than one fixed name
 
 The order gate named one asset class for every bot. It now reads the class the
@@ -1839,12 +1874,13 @@ holds none, which is every market the recording was written for before the
 sectors existed.
 
 ```python
-# src/trading/bot_container.py:157
+# src/trading/bot_container.py, in _asset_class
     def _asset_class(self, symbol: str) -> str:
 
-# src/trading/bot_container.py:376
+# src/trading/bot_container.py, in guarded_place_order, at _rule
         _class = self._asset_class(symbol)
-        _rule = market_unit_rule(_rules, _class, self.config.exchange_id)
+        _now = time.time()
+        _rule = market_unit_rule(_rules, _class, self.config.exchange_id, _now)
         _sized = sized_order(_amt, _rule, _rules)
 ```
 
