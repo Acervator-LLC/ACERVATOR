@@ -2814,6 +2814,11 @@ class ScrummingBot(
         _delta_early = target_delta_usd(current_value, self._target_balance)
         self._update_opposing_hysteresis_state(_delta_early, ticker.last)
 
+        # Ahead of every early return below: a position at target leaves the tick
+        # at the dust band, and a dated contract must still close.
+        if await self._tick_expiry_close(ticker):
+            return
+
         # Within the dust band of target the tick returns; manual fire bypasses it.
         _dust_band_usd = at_target_dust_band(self._target_balance)
         if (

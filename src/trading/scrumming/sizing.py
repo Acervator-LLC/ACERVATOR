@@ -467,9 +467,15 @@ VARIANT_MARKETS: dict[str, str] = {
 # "a market whose size is a whole share": a whole share is ``VARIANT_WHOLE_UNIT``,
 # and a cash amount names the quote currency rather than a unit count.
 
-#: The variants the running program holds. ``VARIANT_CASH_AMOUNT`` has no caller
-#: and ``VARIANT_ROLLING_POSITION`` waits on an order the expiry close starts.
-VARIANTS_BUILT = frozenset({VARIANT_NONE, VARIANT_LIMIT_ONLY, VARIANT_WHOLE_UNIT})
+#: The variants the running program holds. ``VARIANT_CASH_AMOUNT`` has no caller.
+VARIANTS_BUILT = frozenset(
+    {
+        VARIANT_NONE,
+        VARIANT_LIMIT_ONLY,
+        VARIANT_WHOLE_UNIT,
+        VARIANT_ROLLING_POSITION,
+    }
+)
 
 #: What a market no built variant trades carries, naming the variant it needs
 #: and the shape that variant absorbs.
@@ -512,8 +518,8 @@ def venue_variant(
 
 
 def variant_permits_close(variant: Any) -> bool:
-    """True only for ``VARIANT_ROLLING_POSITION``, out of whose market a bot may
-    still sell although ``VARIANTS_BUILT`` does not hold the variant."""
+    """True only for ``VARIANT_ROLLING_POSITION``, whose sell carries the expiry
+    notice ``BotContainer.guarded_place_order`` emits."""
     return str(variant) == VARIANT_ROLLING_POSITION
 
 

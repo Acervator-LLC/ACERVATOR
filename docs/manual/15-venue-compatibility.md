@@ -1279,9 +1279,15 @@ VARIANT_MARKETS: dict[str, str] = {
     VARIANT_WHOLE_UNIT: "a market whose smallest order costs more than the excess",
 }
 
-#: The variants the running program holds. ``VARIANT_CASH_AMOUNT`` has no caller
-#: and ``VARIANT_ROLLING_POSITION`` waits on an order the expiry close starts.
-VARIANTS_BUILT = frozenset({VARIANT_NONE, VARIANT_LIMIT_ONLY, VARIANT_WHOLE_UNIT})
+#: The variants the running program holds. ``VARIANT_CASH_AMOUNT`` has no caller.
+VARIANTS_BUILT = frozenset(
+    {
+        VARIANT_NONE,
+        VARIANT_LIMIT_ONLY,
+        VARIANT_WHOLE_UNIT,
+        VARIANT_ROLLING_POSITION,
+    }
+)
 ```
 
 ### The limit-only variant, and the one venue it reaches
@@ -1318,7 +1324,14 @@ whole unit, then sells whole units. `VARIANTS_BUILT` holds its name, and
 governs a market `market_unit_rule` reads as whole and no other.
 
 ```python
-VARIANTS_BUILT = frozenset({VARIANT_NONE, VARIANT_LIMIT_ONLY, VARIANT_WHOLE_UNIT})
+VARIANTS_BUILT = frozenset(
+    {
+        VARIANT_NONE,
+        VARIANT_LIMIT_ONLY,
+        VARIANT_WHOLE_UNIT,
+        VARIANT_ROLLING_POSITION,
+    }
+)
 ```
 
 ### A market no variant trades is scanned, charted and reported
@@ -1344,10 +1357,11 @@ count under the variants this comparison implies:
 > Three, and no more. Each is named by what it absorbs. None is built here, and
 > one of the three cannot be designed until a decision on the issue is answered.
 
-The true sentence is: four variant names exist, counting the bot as written, and
-the program holds two of them. The limit-only variant is built and Gemini is its
-one venue. The cash-amount variant is named and has no caller. The whole-unit
-variant is named and waits on the issue's first open decision.
+The true sentence is: five variant names exist, counting the bot as written, and
+the program holds four of them. The limit-only variant is built and Gemini is its
+one venue. The whole-unit variant is built. The rolling position is built, and
+`_tick_expiry_close` starts its close. The cash-amount variant is named and has
+no caller.
 
 The second is the heading over the earlier proposal:
 
@@ -1499,23 +1513,32 @@ its own cycles, and nothing rebuys it.
 ```
 
 The sell that passes says so where the operator watches. The Console line names
-the days left and states that nothing will rebuy the position.
+the days left and whether a buy back into the contract still passes.
 
 ```
-CLOSING AN EXPIRING MARKET: SELL <symbol> <units> is submitted where a BUY is
-refused, because the venue expires this contract in <n> days (rolling
-position). Nothing rebuys it.
+CLOSING AN EXPIRING MARKET: SELL <symbol> <units> is submitted, and the venue
+expires this contract in <n> days (rolling position). A BUY is refused and
+nothing rebuys it. The bot's expiry close is <action> at <n> days of lead.
 ```
 
-### The action at expiry is not built
+Outside the lead time the same line reads *A BUY into it still passes until the
+lead time is reached*, because the buy refusal fires only while the close acts.
 
-The program reads the date and starts nothing from it. A purchase into an
-expiring market is refused, a sale out of one passes, and the Console line above
-names the days left as the date approaches. No code closes such a position on
-the program's own initiative, and no code rolls it into another contract.
+### The action at expiry
 
-```
-In development. Decision 5 on the issue owns it.
+The program starts the close itself.
+`src/trading/scrumming/tick_phases.py, in TickPhaseMixin._tick_expiry_close`
+reads the decision every tick and sells the held count in one order under
+`EXPIRY_CLOSE_SELL_ALL`. `src/trading/scrumming_bot.py, in ScrummingBot.tick`
+calls it ahead of every early return, so a position resting at its target still
+closes. Under `EXPIRY_CLOSE_FINISH_LADDER` the program starts nothing and the
+sell ladder finishes the position, which is what that setting means. No code
+rolls a position into another contract.
+
+```python
+# src/trading/scrumming_bot.py, in ScrummingBot.tick
+        if await self._tick_expiry_close(ticker):
+            return
 ```
 
 ### A fold waits while the venue holds the cash
@@ -1640,7 +1663,7 @@ The fourth is the count of variant names:
 > answers per market whether the variant that market selects is one of the two.
 
 The true sentence is: five names exist, counting the bot as written, and the
-program holds three of them. The fifth name is the rolling position, which the
+program holds four of them. The fifth name is the cash-amount variant, which the
 program names and does not build.
 
 The fifth is the market table quoted under that count. It stands as written, and
@@ -1650,9 +1673,9 @@ The sixth is the heading over the unbuilt variants:
 
 > The two variants named and not built
 
-The true count is two named and not built: the cash-amount variant with no
-caller, and the rolling position waiting on an order the expiry close starts by
-itself.
+The true count is one named and not built: the cash-amount variant, which has no
+caller. The rolling position is built, and `_tick_expiry_close` is the order the
+expiry close starts by itself.
 
 The seventh is the sentence about what an order path does with such a market:
 
@@ -1671,8 +1694,8 @@ first set out:
 
 > The true count is four names, two of them built.
 
-The same figure overtakes both. Five variant names exist and the program holds two
-of them.
+The same figure overtakes both. Five variant names exist and the program holds
+four of them.
 
 ## 2026-09-26 - a market buy with no price is refused by the connector and names why
 
@@ -1922,10 +1945,19 @@ the old sentence stood.
 
 The variant was held for a whole-unit market and the set of built names did not
 hold it. The set holds it now, so every reader of that set answers for a
-whole-unit market the way the order path already acted on one.
+whole-unit market the way the order path already acted on one. The set holds the
+rolling position as well, which the section *The contract variant is built*
+below records.
 
 ```python
-VARIANTS_BUILT = frozenset({VARIANT_NONE, VARIANT_LIMIT_ONLY, VARIANT_WHOLE_UNIT})
+VARIANTS_BUILT = frozenset(
+    {
+        VARIANT_NONE,
+        VARIANT_LIMIT_ONLY,
+        VARIANT_WHOLE_UNIT,
+        VARIANT_ROLLING_POSITION,
+    }
+)
 ```
 
 ### No market changes hands differently
@@ -1992,21 +2024,42 @@ venue asked and no order placed:
 | 0, the engine's own | 2 | reaches the venue |
 | 5 | 5 | refused, and the message names five units at $500 |
 
-### The contract variant is still not built
+### The contract variant is built
 
-A dated contract refuses every buy, and a sale out of one still passes.
+A dated contract trades, and the bot gets itself out before the date.
 `expiry_close_decision` reads the bot's own close action, lead mode, lead figure
-and horizon, and raises a sale to the whole position under
-`EXPIRY_CLOSE_SELL_ALL`. What is missing is an order the close starts by itself.
+and horizon. `_tick_expiry_close` reads that answer on every tick and places the
+order the close starts by itself, so a contract whose price never fires a scrum
+no longer expires held. Only the buy is refused, and only inside the lead time.
 
-```
-src/trading/scrumming/execution.py       no expiry read
-src/trading/scrumming_bot.py             no expiry read
-src/trading/extractor_bot.py             no expiry read
-src/trading/scrumming/tick_phases.py     no expiry read
+```python
+# src/trading/scrumming/tick_phases.py, in TickPhaseMixin._tick_expiry_close
+        if not decision["acts"]:
+            return False
+        if decision["action"] != EXPIRY_CLOSE_SELL_ALL:
+            return False
+
+        held = self._current_holdings
 ```
 
-Every caller of `guarded_place_order` sits in those four files, so the close only
-reshapes a sale the scrum ladder already decided to place. A contract whose price
-never fires a scrum inside the lead time would expire held. The name stays out of
-the built set until an order starts that close.
+Driven on a recorded dated row at one hundred dollars a unit, with the home
+redirected, no venue contacted and no order leaving the process. The same bot,
+the same market, and the lead time set to eleven days:
+
+| days to expiry | units held | what the tick does |
+| --- | --- | --- |
+| 3 | 5 | sells 5 units in one order |
+| 40 | 5 | nothing; the ladder decides |
+| 800 | 5 | nothing; beyond the horizon |
+| 3 | 0 | nothing; no position to close |
+
+A send the venue reports no fill for is not sent twice.
+`_expiry_close_sent_units` holds the count that went out, and the close stands
+down while the held count still equals it.
+
+### The Simulator and the Paper Trader do not start the close
+
+Both read `variant_holds_market` and `variant_refuses_sale`, and neither reads
+`expiry_close_decision`. A dated contract now passes their buy, and no close
+fires in either, so a dated position runs to its date in both. The platform's
+owner deferred both surfaces until every variant is built.
