@@ -1,9 +1,14 @@
 # Splash delay measurement
 
-Build 2234 was reported as slow to show its splash. Measured against the
-earlier builds that left a record, build 2234 is not slower. It starts 0.78
-seconds faster than build 2180. The slow start is real, and it is older than
-today's merges.
+Build 2234 was reported as slow to show its splash. On the record it is the
+slowest launch measured: 10.345 seconds from process start to the last step
+that runs before the splash. The four earlier launches on record took 5.242,
+4.523, 8.160 and 9.573 seconds.
+
+The step from build 2180 to build 2234 is 0.772 seconds. The only run-to-run
+spread the record offers is 0.719 seconds, so that step is not a measured
+difference. The large rise happened between build 2058 and build 2141, five
+days before the build he reported.
 
 Nothing under `dist/` was launched for this measurement. Every figure comes
 from the bundles on disk, from source worktrees, and from the launch records
@@ -11,9 +16,9 @@ the running program already wrote.
 
 ## What runs before the splash
 
-The main window is created first. The crypto window is built, shown and raised,
-and only then does the splash appear. So every cost in the window's
-construction lands before the first pixel.
+The main window is created first. Its tabs are built, the saved bots are
+restored, the window is shown and raised, and only then is the splash created.
+So the restore is the last logged step before the first pixel.
 
 ```mermaid
 flowchart TD
@@ -22,51 +27,75 @@ flowchart TD
     C --> D[settings, log manager, bot manager]
     D --> E[QApplication and theme]
     E --> F[MainWindow builds every tab]
-    F --> G[showMaximized and raise]
-    G --> H[SplashScreen shown]
+    F --> G[saved bots are restored]
+    G --> H[showMaximized and raise]
+    H --> I[SplashScreen shown]
 ```
 
-`SplashScreen` and `MainWindow` are both constructed in `main.py`, in that
-order.
+`SplashScreen` is constructed in `main.py` after the restore, which is why the
+restore line is the landmark used below.
 
 ## His own launches
 
-The log pairs a start line with the line the Console tab writes once it is
-live. That tab is built inside the main window, so the interval below ends
-shortly before the splash. Five launches survive in the rotated logs.
+Five launches survive in the rotated logs. The process start comes from the
+launch banner, and the end comes from the line the restore writes when every
+saved bot is loaded.
 
-| build | launched | bots restored | start to Console tab |
-|-------|----------|---------------|----------------------|
-| 1987 | 2026-10-01 07:33 | 38 | 4.534 s |
-| 2058 | 2026-10-01 16:51 | 38 | 3.873 s |
-| 2141 | 2026-10-02 16:33 | 38 | 7.337 s |
-| 2180 | 2026-10-03 21:58 | 39 | 8.846 s |
-| 2234 | 2026-10-07 18:38 | 39 | 8.069 s |
+| build | launched | bots | start to restore done |
+|-------|----------|------|-----------------------|
+| 1987 | 2026-10-01 07:33 | 38 | 5.242 s |
+| 2058 | 2026-10-01 16:51 | 38 | 4.523 s |
+| 2141 | 2026-10-02 16:33 | 38 | 8.160 s |
+| 2180 | 2026-10-03 21:58 | 39 | 9.573 s |
+| 2234 | 2026-10-07 18:38 | 39 | 10.345 s |
 
-The interval roughly doubles between build 2058 and build 2141. Build 2234 is
-lower than build 2180. Each row is a single launch, so no row carries a spread
-of its own.
+Each row is one launch, so no row carries a spread of its own. Builds 1987 and
+2058 ran on the same day with the same bot count, and they differ by 0.719
+seconds. That is the only estimate of run-to-run spread available.
 
-Build 2194 is the build he returned to. No surviving log holds its start line,
+Against it, the step from build 2058 to build 2141 is 3.637 seconds, five times
+the spread. The step from build 2180 to build 2234 is 0.772 seconds, about one
+times the spread. The first is a reading and the second is not.
+
+Build 2194 is the build he returned to. No surviving log holds its landmarks,
 so the one comparison he actually made cannot be measured.
 
-## Where the time goes inside a launch
+## Which segment moved
 
-Two launches recorded the full landmark sequence. Both spend most of the
-interval in one silent stretch, with no log line written.
+Splitting each launch at the line the Console tab writes isolates where build
+2234 differs. Four launches spend under 0.4 seconds between that line and the
+restore. Build 2234 spends 1.837 seconds.
 
-| landmark | build 2180 | build 2234 |
-|----------|-----------|-----------|
-| start line | 21:58:43.677 | 18:38:41.181 |
-| paper indicator panel | 21:58:45.219 | 18:38:43.043 |
-| Console tab live | 21:58:52.523 | 18:38:49.250 |
-| silent stretch | 7.303 s | 6.205 s |
+| build | start to Console tab | Console tab to restore done |
+|-------|---------------------|-----------------------------|
+| 1987 | 4.936 s | 0.306 s |
+| 2058 | 4.244 s | 0.279 s |
+| 2141 | 7.802 s | 0.358 s |
+| 2180 | 9.184 s | 0.389 s |
+| 2234 | 8.508 s | 1.837 s |
 
-The silent stretch is the largest single block in both launches, and it is
-1.098 seconds shorter in build 2234. It falls inside the tab construction that
-`MainWindow` performs. Nothing between those two landmarks writes a log line,
-so the cost cannot be attributed to a named tab without constructing the
-window.
+Build 2234 reaches the Console tab faster than build 2180 and then loses 1.448
+seconds in the segment that follows. It is the only launch of the five whose
+news fetches fall inside that segment: ten failed outbound requests between
+18:38:49.733 and 18:38:51.023, spanning 1.290 seconds. The failures are
+certificate verification errors and rate-limit refusals.
+
+Those fetches run on their own thread, so this is a coincidence of timing and
+not a proven cause. It is recorded because it is the only thing that differs in
+the only segment that moved.
+
+## The first segment is the bulk, and it logs nothing
+
+The stretch from the paper indicator panel line to the Console tab line holds
+most of every launch and writes no log line. It falls inside the tab
+construction that `MainWindow` performs.
+
+| build | silent stretch |
+|-------|---------------|
+| 2180 | 7.304 s |
+| 2234 | 6.207 s |
+
+It cannot be attributed to a named tab without constructing the window.
 
 ## The interpreter and the imports
 
@@ -82,13 +111,12 @@ discarded warm-up round.
 | 53713cf6 | 2233 | 0.650 s | 0.619 | 0.725 | 0.106 s | 663 |
 | ca61770a | 2234 | 0.667 s | 0.589 | 0.728 | 0.139 s | 663 |
 
-The step from build 2233 to build 2234 measures 0.017 seconds. The run-to-run
-spread on the same commit reaches 0.139 seconds, which is eight times larger.
-Nothing is measured there.
+The step from build 2233 to build 2234 measures 0.017 seconds against a
+same-commit spread reaching 0.139 seconds. Nothing is measured there.
 
 The loaded module set is identical across all four commits: 236 modules under
 `src`, 663 in total. No import was added. The symbols today's merges introduced
-all sit in modules the entry point already loaded, so they cost no new import.
+all sit in modules the entry point already loaded.
 
 | symbol | file | new module |
 |--------|------|-----------|
@@ -183,11 +211,13 @@ row reports nothing.
 ## What is not measured
 
 The silent stretch inside tab construction cannot be split further without
-building the main window, and the window takes a bot manager, which this
-measurement may not construct.
+building the main window, and the window takes a bot manager this measurement
+may not construct.
 
-Build 2194's start line is in no surviving log, so the pair he compared is not
+Build 2194's landmarks are in no surviving log, so the pair he compared is not
 measurable from the records.
+
+Each build has one launch on record, so no build carries a spread of its own.
 
 Disk contention from the three bundles written in the hour before the launch is
 not measurable from anything on disk.
