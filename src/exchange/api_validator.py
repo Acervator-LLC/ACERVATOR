@@ -107,7 +107,7 @@ def validate_credentials(
             exchange_id=exchange_id,
             message="ccxt package not installed.",
         )
-    except Exception as exc:  # R28-OK: error surfaced via ValidationResult below
+    except Exception as exc:  # The ValidationResult below carries the error.
         elapsed = (time.monotonic() - start) * 1000
         from .ccxt_connector import CCXTConnector, note_venue_refusal
 

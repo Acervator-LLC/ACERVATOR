@@ -1406,10 +1406,10 @@ market the venue removes on its own date takes on a thing that ends; the bot
 would accumulate into a market that stops existing, and no rule in the tree yet
 says which contract a position rolls into. Selling out of a position already
 held takes on nothing. A bot holding such a position keeps scrumming it down by
-its own cycles and closes it before the date, and nothing rebuys it.
+its own cycles, and nothing rebuys it.
 
 ```python
-# src/trading/bot_container.py:375
+# src/trading/bot_container.py, in guarded_place_order
         _closing = variant_permits_close(_variant) and side == OrderSide.SELL
 
         if not variant_built(_variant) and not _closing:
@@ -1423,6 +1423,17 @@ the days left and states that nothing will rebuy the position.
 CLOSING AN EXPIRING MARKET: SELL <symbol> <units> is submitted where a BUY is
 refused, because the venue expires this contract in <n> days (rolling
 position). Nothing rebuys it.
+```
+
+### The action at expiry is not built
+
+The program reads the date and starts nothing from it. A purchase into an
+expiring market is refused, a sale out of one passes, and the Console line above
+names the days left as the date approaches. No code closes such a position on
+the program's own initiative, and no code rolls it into another contract.
+
+```
+In development. Decision 5 on the issue owns it.
 ```
 
 ### A fold waits while the venue holds the cash

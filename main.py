@@ -37,16 +37,19 @@ def _early_debug(msg: str, *args: object) -> None:
         pass  # noqa: S110
 
 
-# Overrides ~/.acervator_logs for the crash log, faulthandler, marker and heartbeat.
-CRASH_LOG_ROOT_ENV = "ACERVATOR_CRASH_LOG_ROOT"
-
-
 def _crash_log_root() -> Path:
-    """Return ACERVATOR_CRASH_LOG_ROOT if set and non-empty, else ~/.acervator_logs."""
+    """Return the path ``src.core.log_paths.resolve_log_root`` returns.
+
+    ``_early_debug`` records an import failure, and ``_P.cwd`` is returned.
+    """
     from pathlib import Path as _P
 
-    _override = os.environ.get(CRASH_LOG_ROOT_ENV)
-    return _P(_override) if _override else _P.home() / ".acervator_logs"
+    try:
+        from src.core.log_paths import resolve_log_root
+    except Exception as _res_exc:  # noqa: BLE001
+        _early_debug("log root resolver unavailable, using cwd: %s", _res_exc)
+        return _P.cwd()
+    return resolve_log_root()
 
 
 def _check_stale_dist_binary() -> None:

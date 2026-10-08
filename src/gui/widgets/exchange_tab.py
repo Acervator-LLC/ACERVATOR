@@ -505,7 +505,7 @@ if _HAS_QT:
                     not snapshot.get(fid, False) for fid in reg.known_field_ids()
                 )
                 reg.set_all(any_revealed)
-            except Exception:  # R28-OK
+            except Exception:
                 return
             # set_all swallows its persist errors, so a half-applied flip
             # raises nothing. The tooltip says 18 fields; there are 19.
@@ -558,7 +558,7 @@ if _HAS_QT:
                 root = self.window()
                 if hasattr(root, "refresh_all_privacy_widgets"):
                     root.refresh_all_privacy_widgets()
-            except Exception:  # R28-OK: best-effort propagation  # noqa: S110
+            except Exception:  # Other widgets stay unrefreshed.  # noqa: S110
                 pass
 
         def _refresh_privacy_mode_btn_style(self) -> None:

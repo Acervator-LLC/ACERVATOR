@@ -1,6 +1,6 @@
 """position_health.py — derive avg_entry / realized P/L from exchange trade history.
 
-v3.16.46 — Operator directive 2026-05-10: *"Everything that is
+Operator directive 2026-05-10: *"Everything that is
 available on the exchange and is related to position health should
 not be getting calculated locally in some strange manner."*
 

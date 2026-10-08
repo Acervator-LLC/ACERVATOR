@@ -321,7 +321,7 @@ def get_sim_dir() -> Path:
     here; ``~/.acervator/bot_state.json`` is never written from the
     Simulator.
     """
-    p = _LOG_ROOT / "sim"
+    p = resolve_log_root() / "sim"
 ```
 
 ### The Indicator Voting Panel and the replay layer behind it
@@ -2493,7 +2493,7 @@ def get_sim_dir() -> Path:
     here; ``~/.acervator/bot_state.json`` is never written from the
     Simulator.
     """
-    p = _LOG_ROOT / "sim"
+    p = resolve_log_root() / "sim"
     p.mkdir(parents=True, exist_ok=True)
     return p
 ```
