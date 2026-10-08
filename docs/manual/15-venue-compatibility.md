@@ -175,6 +175,54 @@ METALS_PHYSICAL: tuple[AssetListing, ...] = tuple(
 )
 ```
 
+OVERTAKEN, and the table and the sentences above are kept as written. The
+Classes served column reads "crypto spot" for fourteen of the fifteen crypto
+venues. Thirteen of those fourteen also offer a product in a second sector, and
+`asset_class_surface.venue_classes` now answers it. The readings are the
+venue-and-sector readiness matrix in
+[../audits/2026-10-07_venue_sector_readiness_matrix/REPORT.md](../audits/2026-10-07_venue_sector_readiness_matrix/REPORT.md).
+
+| Venue | Sectors `venue_classes` answers |
+| ----- | ------------------------------- |
+| coinbase | crypto, stocks, commodities, forex, indices, futures_perps |
+| kraken | crypto, stocks, commodities, indices, futures_perps |
+| okx | crypto, stocks, commodities, indices, futures_perps |
+| bitget | crypto, stocks, commodities, indices, futures_perps |
+| bitfinex | crypto, commodities, indices, futures_perps |
+| binance | crypto, stocks, commodities, futures_perps |
+| kucoin | crypto, stocks, commodities, futures_perps |
+| gemini | crypto, commodities, forex, futures_perps |
+| gateio | crypto, stocks, commodities |
+| bitstamp | crypto, commodities, forex |
+| cryptocom | crypto, stocks, futures_perps |
+| mexc | crypto, stocks, futures_perps |
+| bybit | crypto, futures_perps |
+| huobi | crypto, stocks |
+| poloniex | crypto |
+
+Poloniex is the one venue that stays in crypto alone. Its own offering outside
+crypto was not fetched, so it waits on the confirmation step.
+
+Every broker but three gains a sector as well. A broker reaches a commodity and
+an index as a fund share, which sizes like a share.
+
+| Broker | Sectors `venue_classes` answers |
+| ------ | ------------------------------- |
+| ibkr | crypto, stocks, commodities, forex, indices, futures_perps |
+| schwab | crypto, stocks, commodities, indices, futures_perps |
+| tastytrade | crypto, stocks, commodities, indices, futures_perps |
+| webull | crypto, stocks, commodities, indices, futures_perps |
+| alpaca | crypto, stocks, commodities, indices |
+| etrade | stocks, commodities, indices |
+| fidelity | stocks |
+| interactivebrokers | stocks |
+| tdameritrade | stocks |
+
+Fidelity holds stocks alone because its host refused every request, the control
+included. The other two ids are the rows the issue names as wrong: one is a
+second id for a firm already named, and the other names a firm whose developer
+host has no DNS record.
+
 ### Coinbase serves three of the four classes
 
 OVERTAKEN, and the Coinbase row above is kept as written. Its classes read
@@ -679,6 +727,17 @@ market record, and no code in the tree constructs a broker connector, so there
 is nothing on that path for a rule to reach. The crypto record carries the
 rules; the two order contracts stay separate.
 
+OVERTAKEN, and the sentences above are kept as written. The broker path records
+a market rule row for every asset record its own session reads. A session that
+does not open reads no market list and leaves the rows already recorded alone.
+
+```
+src/gui/main_window.py       _connect_broker_for_bot opens the broker's session
+src/gui/main_window.py       _read_broker_markets reads the asset list once a session
+src/stocks/broker_base.py    open_session answers whether the session opened
+src/stocks/broker_base.py    record_markets writes one row per asset record
+```
+
 ## Where each venue fact was read
 
 Each publisher's page was opened as a document outside this repository and
@@ -826,6 +885,16 @@ the bot that exists today, with no variant.
    src/exchange/ccxt_connector.py:245    market_rules
 ```
 
+OVERTAKEN for requirement 1, and the block above is kept as written. The broker
+connector has a caller, and that caller opens the broker's session.
+
+```
+src/gui/main_window.py             _connect_exchange_for_bot sends a broker venue
+                                   down the broker path
+src/gui/main_window.py             _connect_broker_for_bot builds the connector
+src/stocks/alpaca_connector.py     broker_connector_class names the class per venue
+```
+
 ### Whether Acervator itself can reach a venue today
 
 The reachability column higher up this page answers whether the venue accepts a
@@ -858,6 +927,20 @@ git grep -n ccxt_connector -- src/ main.py tools/
 The equities order path is a contract with no caller. A venue served only by
 that path cannot be traded today whatever its own rules allow, and that is the
 reason every stocks row above reads no.
+
+OVERTAKEN for the Alpaca row and for the sentences above, and all of them are
+kept as written. A Start press on a stock bot now builds the Alpaca connector,
+opens its session on the broker's paper host with the stored key and secret, and
+records one market rule row for every asset record the session answers. A key
+stored for one host reaches that host alone. The order call is still not
+reached, because a bot holds one crypto exchange and the two order contracts
+name their size differently.
+
+```
+src/gui/main_window.py        _connect_exchange_for_bot, on a Start press
+src/gui/main_window.py        BROKER_SESSION_PAPER, the host the session opens on
+src/trading/bot_container.py  guarded_place_order, the one order call
+```
 
 ### Every venue's order shape, set side by side
 

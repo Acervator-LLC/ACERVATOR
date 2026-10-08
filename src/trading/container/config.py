@@ -91,6 +91,10 @@ EXPIRY_INSIDE_LEAD: str = "the expiry is inside the lead time"
 #: market the recording holds no class for.
 ASSET_CLASS_DEFAULT: str = "crypto"
 
+#: ``whole_unit_opening_units`` reading OFF, where the engine's own
+#: ``sizing.WHOLE_UNIT_POSITION_MINIMUM`` decides the opening size.
+WHOLE_UNIT_OPENING_ENGINE: int = 0
+
 
 @dataclass
 class BotConfig:
@@ -220,6 +224,10 @@ class BotConfig:
     # A contract expiring beyond this reads as non-expiring and gains no action.
     expiry_horizon_days: float = EXPIRY_HORIZON_DAYS_DEFAULT
 
+    # Read through whole_unit_opening_units() below, never raw. Whole units a
+    # position on a market that places no fraction opens at; 0 is the engine's.
+    whole_unit_opening_units: int = WHOLE_UNIT_OPENING_ENGINE
+
     # Target-asset units held out of the bot's decision math and reservation.
     personal_hold_qty: float = 0.0
 
@@ -321,6 +329,9 @@ _BOT_CONFIG_SHARED_FIELDS: frozenset = frozenset(
         "expiry_lead_fraction",
         "expiry_lead_days",
         "expiry_horizon_days",
+        # Every order path is sized by the market's unit rule, so both modes
+        # carry the opening size a whole-unit market takes.
+        "whole_unit_opening_units",
     }
 )
 
@@ -656,6 +667,29 @@ def expiry_lead_resolved_days(config, life_days) -> Optional[float]:
     if share is None or share <= 0.0 or life is None or life <= 0.0:
         return None
     return share * life
+
+
+def whole_unit_opening_units(config) -> int:
+    """Return the whole units this bot opens a position at on a market that
+    places no fraction of a unit; `WHOLE_UNIT_OPENING_ENGINE` means the
+    engine's own minimum decides.
+
+    Reads `config.whole_unit_opening_units` through `as_finite_float` and
+    truncates toward zero, so a non-numeric, non-finite or negative setting
+    leaves `sizing.WHOLE_UNIT_POSITION_MINIMUM` deciding the opening size.
+
+    Args:
+      config: any object; the field is read with `getattr`.
+
+    Returns:
+      Whole units in [0, inf). 0 reads the engine's own minimum.
+    """
+    units = as_finite_float(
+        getattr(config, "whole_unit_opening_units", WHOLE_UNIT_OPENING_ENGINE)
+    )
+    if units is None:
+        return WHOLE_UNIT_OPENING_ENGINE
+    return max(WHOLE_UNIT_OPENING_ENGINE, int(units))
 
 
 def whole_position_units(position_value_usd, price) -> Optional[float]:

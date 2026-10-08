@@ -406,16 +406,28 @@ class BotContainer:
             and side == OrderSide.SELL
             and _expiry["action"] == EXPIRY_CLOSE_SELL_ALL
         ):
+            # ``_current_holdings`` is the count itself. The fallback inverts
+            # ``priced_usd``, which wrote ``position_value`` at
+            # ``current_price``; the order's own price is a ladder rung and
+            # sizes a fraction of the position out of the close.
             _position_usd = getattr(self.stats, "position_value", 0.0)
-            _whole = whole_position_units(_position_usd, price)
+            _held = getattr(self, "_current_holdings", 0.0)
+            _whole: Optional[float] = None
+            _units_source = "the position value"
+            if type(_held) in (int, float) and math.isfinite(_held) and _held > 0.0:
+                _whole = float(_held)
+                _units_source = "the held unit count"
             if _whole is None:
-                _whole = whole_position_units(
-                    _position_usd, getattr(self.stats, "current_price", 0.0)
-                )
+                _mark_usd = getattr(self.stats, "current_price", 0.0)
+                _quote_usd = getattr(self, "_quote_to_usd", 1.0)
+                if type(_mark_usd) in (int, float) and type(_quote_usd) in (int, float):
+                    _mark_usd = float(_mark_usd) * (float(_quote_usd) or 1.0)
+                _whole = whole_position_units(_position_usd, _mark_usd)
             if _whole is not None and _whole > _amt:
                 self._warn_order(
                     f"EXPIRY CLOSE, SELL ALL: SELL {symbol} raised from "
-                    f"{_amt:.10f} to {_whole:.10f}, the whole position worth "
+                    f"{_amt:.10f} to {_whole:.10f}, counted from "
+                    f"{_units_source}, the whole position worth "
                     f"${_position_usd:.4f}, {_expiry['days_left']:.2f} days "
                     f"before expiry. One order, not a ladder rung."
                 )
@@ -428,6 +440,7 @@ class BotContainer:
             BELOW_MINIMUM_AMOUNT,
             BELOW_ONE_UNIT,
             HELD_OUTSIDE_SESSION,
+            MARKET_BUY_NAMES_CASH,
             market_unit_rule,
             outside_session,
             position_minimum_refusal,
@@ -437,6 +450,7 @@ class BotContainer:
             variant_permits_close,
             variant_replaces_market_order,
             venue_variant,
+            whole_unit_buy_needs_limit,
         )
 
         # Every connector a container holds is a crypto connector; nothing
@@ -580,6 +594,34 @@ class BotContainer:
                 f"LIMIT FOR A VENUE TAKING NO MARKET ORDER: {_side_str} "
                 f"{symbol} {_amt:.10f} at ${_limit_px:.8f} on a price tick of "
                 f"{_rules.price_increment} ({_variant})."
+            )
+
+        # A market buy on this venue names a cash amount, so the whole unit
+        # count ``sized_order`` floored rides on a limit order instead.
+        if (
+            side == OrderSide.BUY
+            and order_type == OrderType.MARKET
+            and whole_unit_buy_needs_limit(symbol, self.config.exchange_id, _rule)
+        ):
+            _buy_px = _rules.price_on_tick(_ref_px) if _ref_px else None
+            if _buy_px is None or not math.isfinite(_buy_px) or _buy_px <= 0.0:
+                _buy_px = _ref_px
+            if _buy_px <= 0.0:
+                self._refuse_order(
+                    f"PRE-FLIGHT REJECTED: BUY {symbol} {_amt:.10f} needs a "
+                    f"limit price to name a unit count, because "
+                    f"{MARKET_BUY_NAMES_CASH}, and no price is known for this "
+                    f"market. "
+                    f"API not called."
+                )
+            order_type = OrderType.LIMIT
+            price = _buy_px
+            self._warn_order(
+                f"LIMIT FOR A WHOLE-UNIT BUY: BUY {symbol} names "
+                f"{_amt:.10f} units at ${_buy_px:.8f} on a price tick of "
+                f"{_rules.price_increment} and a size step of "
+                f"{_rules.amount_increment}, so the venue credits "
+                f"{_amt:.10f} units. {MARKET_BUY_NAMES_CASH}."
             )
 
         # Deterministic client_order_id derived from the trade intent,

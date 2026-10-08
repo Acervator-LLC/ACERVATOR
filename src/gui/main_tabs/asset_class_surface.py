@@ -123,8 +123,11 @@ DEFAULT_ACCENT = ds.STATUS_NEUTRAL
 #   products endpoint answers 1000 EQUITY products and labels 21 futures with a
 #   commodity underlying; ``derivatives`` resolves onto crypto through
 #   ``RETIRED_CLASSES``."
-# True today: the same entry also names forex, indices and futures_perps, which
-# ``market_asset_class`` answers for 20, 6 and 168 of the venue's products.
+# OVERTAKEN, quoted whole:
+#   "True today: the same entry also names forex, indices and futures_perps,
+#   which ``market_asset_class`` answers for 20, 6 and 168 of the venue's
+#   products."
+# True today: twenty venue ids carry an extra sector, not Coinbase alone.
 #: Venues serving a class other than the one their own id implies. Coinbase's
 #: products endpoint answers 1000 EQUITY products and labels 21 futures with a
 #: commodity underlying; ``derivatives`` resolves onto crypto through
@@ -137,7 +140,26 @@ EXTRA_VENUE_CLASSES = {
         "forex",
         "indices",
         "futures_perps",
-    )
+    ),
+    "binance": ("stocks", "commodities", "futures_perps"),
+    "bitfinex": ("commodities", "indices", "futures_perps"),
+    "bitget": ("stocks", "commodities", "indices", "futures_perps"),
+    "bitstamp": ("commodities", "forex"),
+    "bybit": ("futures_perps",),
+    "cryptocom": ("stocks", "futures_perps"),
+    "gateio": ("stocks", "commodities"),
+    "gemini": ("commodities", "forex", "futures_perps"),
+    "huobi": ("stocks",),
+    "kraken": ("stocks", "commodities", "indices", "futures_perps"),
+    "kucoin": ("stocks", "commodities", "futures_perps"),
+    "mexc": ("stocks", "futures_perps"),
+    "okx": ("stocks", "commodities", "indices", "futures_perps"),
+    "alpaca": ("crypto", "commodities", "indices"),
+    "etrade": ("commodities", "indices"),
+    "ibkr": ("crypto", "commodities", "forex", "indices", "futures_perps"),
+    "schwab": ("crypto", "commodities", "indices", "futures_perps"),
+    "tastytrade": ("crypto", "commodities", "indices", "futures_perps"),
+    "webull": ("crypto", "commodities", "indices", "futures_perps"),
 }
 
 #: The two articles a sentence takes before a sector name, and the first
