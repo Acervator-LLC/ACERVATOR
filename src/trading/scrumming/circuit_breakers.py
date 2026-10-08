@@ -241,7 +241,7 @@ class CircuitBreakerMixin(_Host):
             )
         except (
             Exception
-        ) as _sup:  # R28-OK: best-effort optional update / telemetry probe
+        ) as _sup:  # An emit failure reaches the debug log and no bot.log line.
             logger.debug(
                 "suppressed in %s: %s: %s",
                 "reset_circuit_breaker",

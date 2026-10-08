@@ -817,6 +817,7 @@ def mode_card(mode: Any) -> dict:
     """
     key = asset_class_surface.normalise(mode)
     rows, columns = asset_class_surface.grid_shape()
+    segment_w, segment_h = asset_class_surface.segment_size_px()
     return {
         "mode": key,
         "next_mode": next_mode(key),
@@ -826,7 +827,8 @@ def mode_card(mode: Any) -> dict:
         "group_spacing_px": asset_class_surface.GROUP_SPACING_PX,
         "grid_rows": rows,
         "grid_columns": columns,
-        "minimum_width_px": asset_class_surface.segment_width_px(),
+        "minimum_width_px": segment_w,
+        "segment_height_px": segment_h,
         "side_px": asset_class_surface.group_side_px(),
         "window_title": asset_class_surface.window_title(key),
         "add_exchange": {

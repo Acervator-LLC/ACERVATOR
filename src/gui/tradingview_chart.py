@@ -1,6 +1,6 @@
 """
-tradingview_chart.py — TradingView Chart Integration v1.1
-==========================================================
+tradingview_chart.py — TradingView Chart Integration
+=====================================================
 Embeds TradingView's lightweight-charts library inside a Qt WebEngine
 widget.  This provides professional candlestick charts with:
 

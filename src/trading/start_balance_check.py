@@ -49,8 +49,8 @@ def check_start_balance(
         ``target_balance``.
 
     For Scrumming mode:
-      • Preserved from the v3.20.5 behavior: needs base_free ≥ 1.0
-        OR target_free > 0 (the latter lets the bot start with
+      • Needs base_free ≥ 1.0 OR target_free > 0
+        (the latter lets the bot start with
         existing positions even if the spend wallet is depleted).
       • The error message references "target balance" and
         ``target_balance``.

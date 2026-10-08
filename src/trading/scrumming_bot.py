@@ -109,10 +109,9 @@ _TA_CONFIDENCE_FLOOR = 0.25
 _BB_PRIORITY_SKEW = 0.30
 """How far the BB-priority arm relaxes ``_TA_CONFIDENCE_FLOOR``.
 
-The number is the one v3.15.64 shipped. What changed is its UNIT: it was
-0.30 of confidence ADDED to the measurement, and it is now a 0.30
-PROPORTIONAL relaxation of the threshold the measurement is judged
-against. See ``_BB_PRIORITY_CONFIDENCE_FLOOR``.
+The 0.30 is a PROPORTIONAL relaxation of the threshold the measurement
+is judged against, not confidence added to the measurement. See
+``_BB_PRIORITY_CONFIDENCE_FLOOR``.
 """
 
 _BB_PRIORITY_CONFIDENCE_FLOOR = _TA_CONFIDENCE_FLOOR / (1.0 + _BB_PRIORITY_SKEW)
@@ -131,17 +130,16 @@ first attempt WAS an override -- ``_bb_priority_scrum`` /
 ``_bb_priority_fold`` clauses bolted onto the SCRUM/FOLD if-conditions --
 and the operator refused it by name.
 
-WHAT SHIPPED INSTEAD, AND WHY IT WAS THE SAME OVERRIDE. v3.15.64 replaced
-those clauses with ``eff_confidence += 0.30``, sized in the chronicle as
-"enough to lift any low-confidence NEUTRAL reading (0.0-0.24) over the
-0.25 threshold". Confidence is bounded [0, 1]. A skew of 0.30 against a
-floor of 0.25 reduces ``eff_confidence + 0.30 >= 0.25`` to
-``eff_confidence >= -0.05``, which EVERY reading satisfies, including
+WHAT SHIPPED INSTEAD, AND WHY IT WAS THE SAME OVERRIDE. An earlier build
+replaced those clauses with ``eff_confidence += 0.30``, sized in the
+chronicle as "enough to lift any low-confidence NEUTRAL reading
+(0.0-0.24) over the 0.25 threshold". Confidence is bounded [0, 1]. A skew
+of 0.30 against a floor of 0.25 reduces ``eff_confidence + 0.30 >= 0.25``
+to ``eff_confidence >= -0.05``, which EVERY reading satisfies, including
 exactly 0.0. So the confidence conjunct became universally true on that
-arm: the refused override, restored in arithmetic. Issue #102, found by
-the #100 unit when a decision sweep on that arm returned a structural
-zero -- not "no decisions changed" but "this comparison has no false
-case".
+arm: the refused override, restored in arithmetic. A decision sweep on
+that arm returned a structural zero -- not "no decisions changed" but
+"this comparison has no false case".
 
 A SECOND DEFECT IN THE SAME LINE. The chronicle also required the skew
 to be "not so large that it inflates already-confident readings into
@@ -169,13 +167,13 @@ already of record: the 0.25 floor and the 0.30 favour. The magnitude of
 the favour is unchanged; only its form and its target are.
 
 WHAT IS DELIBERATELY NOT CHANGED. The direction conjunct
-(``eff_direction in (BULLISH, NEUTRAL)``) still gates the trade, exactly
-as v3.15.64 preserved it -- actively-contradicting TA still refuses. The
-non-priority arm keeps ``_TA_CONFIDENCE_FLOOR`` untouched.
+(``eff_direction in (BULLISH, NEUTRAL)``) still gates the trade --
+actively-contradicting TA still refuses. The non-priority arm keeps
+``_TA_CONFIDENCE_FLOOR`` untouched.
 
-v3.26.x (issue #104) -- THIS CONSTANT IS NO LONGER THE WHOLE FLOOR ON
-THE ARM. Two further favours were found in the same shape and repaired
-the same way, so the arm's skew is now one term of a sum that
+THIS CONSTANT IS NO LONGER THE WHOLE FLOOR ON THE ARM. Two further
+favours were found in the same shape and repaired the same way, so the
+arm's skew is now one term of a sum that
 ``_skewed_confidence_floor`` divides by. With the other two at zero the
 answer is still exactly this number, which is why it is kept and still
 quoted in the log line.

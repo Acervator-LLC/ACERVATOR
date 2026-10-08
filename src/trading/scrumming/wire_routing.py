@@ -542,8 +542,8 @@ class WireRoutingMixin(_Host):
     def _land_pending_wire_credits(self) -> float:
         """Move the parked pool into a fold queue that now holds tranches.
 
-        issue #133 unit 11. `_pending_wire_credits` is the bucket
-        `apply_wire_income` case 2 fills when the fold queue is empty.
+        `_pending_wire_credits` is the bucket `apply_wire_income`
+        case 2 fills when the fold queue is empty.
         Case 1 distributes evenly the moment a tranche exists, so a
         parked pool standing beside an open tranche is money that missed
         its destination.

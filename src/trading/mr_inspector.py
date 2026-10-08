@@ -169,7 +169,7 @@ class MRInspector:
                 candles, min_consecutive=3, shrink_threshold=0.90, bb_tolerance_pct=3.0
             )
             state.tightening = tight
-        except Exception:  # R28-OK: BB-tightening probe; None state is the safe default
+        except Exception:  # None tightening keeps tightening_confirmed False.
             tight = None
             state.tightening = None
 

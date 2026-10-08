@@ -41,8 +41,6 @@ def elo_expected(rating_a: float, rating_b: float) -> float:
 def elo_update(
     winner_rating: float, loser_rating: float, k: float = ELO_K_FACTOR
 ) -> tuple[float, float]:
-
-    # sadp: R28  # Elo calc: fail-loudly on invalid inputs(R28)
     """Return (new_winner_rating, new_loser_rating)."""
     exp_w = elo_expected(winner_rating, loser_rating)
     exp_l = elo_expected(loser_rating, winner_rating)
@@ -105,8 +103,6 @@ class RatingRegistry:
         return self._ratings[bot_id]
 
     def record_result(self, winner_id: str, loser_id: str, competition_id: str):
-
-        # sadp: R28 R29 R33  # Elo record: fail-loudly(R28) idempotent(R29) append-only(R33)
         """Update Elo ratings after a competition result."""
         w = self.get_or_create(winner_id)
         l = self.get_or_create(loser_id)
