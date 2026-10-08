@@ -440,6 +440,7 @@ class BotContainer:
             BELOW_MINIMUM_AMOUNT,
             BELOW_ONE_UNIT,
             HELD_OUTSIDE_SESSION,
+            MARKET_BUY_NAMES_CASH,
             market_unit_rule,
             outside_session,
             position_minimum_refusal,
@@ -449,6 +450,7 @@ class BotContainer:
             variant_permits_close,
             variant_replaces_market_order,
             venue_variant,
+            whole_unit_buy_needs_limit,
         )
 
         # Every connector a container holds is a crypto connector; nothing
@@ -592,6 +594,34 @@ class BotContainer:
                 f"LIMIT FOR A VENUE TAKING NO MARKET ORDER: {_side_str} "
                 f"{symbol} {_amt:.10f} at ${_limit_px:.8f} on a price tick of "
                 f"{_rules.price_increment} ({_variant})."
+            )
+
+        # A market buy on this venue names a cash amount, so the whole unit
+        # count ``sized_order`` floored rides on a limit order instead.
+        if (
+            side == OrderSide.BUY
+            and order_type == OrderType.MARKET
+            and whole_unit_buy_needs_limit(symbol, self.config.exchange_id, _rule)
+        ):
+            _buy_px = _rules.price_on_tick(_ref_px) if _ref_px else None
+            if _buy_px is None or not math.isfinite(_buy_px) or _buy_px <= 0.0:
+                _buy_px = _ref_px
+            if _buy_px <= 0.0:
+                self._refuse_order(
+                    f"PRE-FLIGHT REJECTED: BUY {symbol} {_amt:.10f} needs a "
+                    f"limit price to name a unit count, because "
+                    f"{MARKET_BUY_NAMES_CASH}, and no price is known for this "
+                    f"market. "
+                    f"API not called."
+                )
+            order_type = OrderType.LIMIT
+            price = _buy_px
+            self._warn_order(
+                f"LIMIT FOR A WHOLE-UNIT BUY: BUY {symbol} names "
+                f"{_amt:.10f} units at ${_buy_px:.8f} on a price tick of "
+                f"{_rules.price_increment} and a size step of "
+                f"{_rules.amount_increment}, so the venue credits "
+                f"{_amt:.10f} units. {MARKET_BUY_NAMES_CASH}."
             )
 
         # Deterministic client_order_id derived from the trade intent,
