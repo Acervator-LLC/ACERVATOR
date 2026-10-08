@@ -418,10 +418,14 @@ VARIANT_ROLLING_POSITION = "rolling position"
 VARIANT_MARKETS: dict[str, str] = {
     VARIANT_NONE: "a market naming a unit count on a venue taking a market order",
     VARIANT_LIMIT_ONLY: "a market on a venue declaring no market order",
-    VARIANT_CASH_AMOUNT: "a market whose size is a whole share",
+    VARIANT_CASH_AMOUNT: "a market sized by a cash amount in the quote currency",
     VARIANT_WHOLE_UNIT: "a market whose smallest order costs more than the excess",
     VARIANT_ROLLING_POSITION: "a market the venue expires on a date",
 }
+
+# OVERTAKEN, the VARIANT_MARKETS row above for ``VARIANT_CASH_AMOUNT`` reading
+# "a market whose size is a whole share": a whole share is ``VARIANT_WHOLE_UNIT``,
+# and a cash amount names the quote currency rather than a unit count.
 
 #: The variants the running program holds. ``VARIANT_CASH_AMOUNT`` has no caller
 #: to reach it and ``VARIANT_WHOLE_UNIT`` waits on the scrum trigger's ruling.
