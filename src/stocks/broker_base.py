@@ -117,6 +117,7 @@ class BrokerBase(ABC):
         self._scan_symbols: set[str] = set()
         self._history_callback: Any = None
         self._assets: list[dict] = []
+        self._session_refusal = ""
 
     @property
     def connected(self) -> bool:
@@ -141,6 +142,12 @@ class BrokerBase(ABC):
     def is_connected(self) -> bool:
         """``_connected`` under the name ``_live_connector`` reads."""
         return self._connected
+
+    @property
+    def session_refusal(self) -> str:
+        """Why the last ``open_session`` call left this broker disconnected, and
+        "" where a session opened or none was tried."""
+        return self._session_refusal
 
     @property
     def scan_symbols(self) -> set[str]:
@@ -180,6 +187,30 @@ class BrokerBase(ABC):
     async def connect(self, api_key: str, api_secret: str, paper: bool = True) -> bool:
         """Connect to broker. paper=True for paper trading."""
         del api_key, api_secret, paper
+        raise NotImplementedError
+
+    async def open_session(self, api_key: str, api_secret: str, paper: bool) -> bool:
+        """Open this broker's session through ``connect``, answering whether it
+        opened and holding any refusal in ``session_refusal``.
+
+        An empty ``api_key`` or ``api_secret`` calls ``connect`` on no broker.
+        """
+        self._session_refusal = ""
+        if not api_key or not api_secret:
+            self._session_refusal = "no API key and secret are stored"
+            return False
+        opened = bool(await self.connect(api_key, api_secret, paper))
+        if not opened:
+            self._session_refusal = (
+                "the connect attempt failed; the cause is in system.log"
+            )
+        return opened
+
+    @abstractmethod
+    async def list_assets(self, status: str = "active") -> list[dict]:
+        """Every asset record this broker publishes for ``status``, held so
+        ``held_assets`` answers them and ``record_markets`` can write them."""
+        del status
         raise NotImplementedError
 
     @abstractmethod
@@ -269,8 +300,9 @@ class BrokerBase(ABC):
         """Every asset record of ``assets`` as an ``AssetInfo``, recorded under
         ``broker_id`` so ``recorded_rules`` answers each market's rules.
 
-        Each record is read as handed in and no broker is contacted; a record
-        naming no symbol is skipped.
+        No broker is contacted, a record naming no symbol is skipped, an empty
+        ``assets`` keeps the rows already recorded, and a failed write raises
+        ``OSError``.
         """
         built: list[AssetInfo] = []
         for asset in assets:
@@ -291,8 +323,6 @@ class BrokerBase(ABC):
                     taker_fee=0.0,
                 )
             )
-        try:
+        if built:
             record_venue(self.broker_id, built)
-        except OSError as exc:
-            logger.warning("market rules for %s not recorded: %s", self.broker_id, exc)
         return built

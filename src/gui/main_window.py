@@ -57,6 +57,10 @@ FLEET_SEQUENCE_MIN_GAP_MS = 2000
 #: absent from here takes every held bot.
 FLEET_SEQUENCE_STATES = {"start": ("idle", "stopped")}
 
+#: Chooses the paper host in ``AlpacaConnector.connect``. A key reaches one
+#: host only, paper or live.
+BROKER_SESSION_PAPER = True
+
 #: The progress topic ``StartAllProgressDialog`` draws from.
 FLEET_SEQUENCE_TOPIC = "bot_manager.start_all_progress"
 
@@ -129,6 +133,7 @@ from src.gui.qt_safe_events import safe_process_events
 
 __all__ = [
     "APITesterTab",
+    "BROKER_SESSION_PAPER",
     "BotStatusTable",
     "EXTRACTOR_COLUMNS",
     "ExchangeTab",
@@ -2610,6 +2615,17 @@ if _HAS_QT:
                 pool.submit(asyncio.run, coro)
             return None
 
+        def _await_async(self, coro):
+            """Run ``coro`` to completion and answer its result.
+
+            ``_async_loop`` is advanced by ``pump_once`` from a timer and is not
+            running between pumps, so ``run_until_complete`` drives it here.
+            """
+            loop = getattr(self, "_async_loop", None)
+            if loop is None:
+                return asyncio.run(coro)
+            return loop.run_until_complete(coro)
+
         def _schedule_coalesced(self, slot: str, coro):
             """Cancel the future in ``slot``, schedule ``coro`` and store it there.
 
@@ -2679,30 +2695,102 @@ if _HAS_QT:
             held = self._exchange_connectors.get(eid)
             return held if isinstance(held, BrokerBase) else None
 
-        def _record_broker_markets(self, connector) -> int:
+        def _record_broker_markets(self, connector) -> tuple[int, str]:
             """Record every asset record *connector* holds and answer the row
-            count written.
+            count written with the failure that stopped it, "" where none did.
 
             ``BrokerBase.record_markets`` reads each record through the broker's
             own ``market_rules``, so no broker is contacted.
             """
             try:
-                return len(connector.record_markets(connector.held_assets()))
+                return len(connector.record_markets(connector.held_assets())), ""
             except Exception as exc:
+                failure = f"{type(exc).__name__}: {exc}"
                 logger.warning(
                     "broker markets for %s not recorded: %s",
                     getattr(connector, "exchange_id", "<unknown broker>"),
-                    exc,
+                    failure,
                 )
-                return 0
+                return 0, failure
+
+        def _broker_credential(self, eid: str) -> tuple[str, str]:
+            """The stored API key and secret for *eid*, decrypted, and ("", "")
+            where the venue has no stored entry or no stored secret.
+
+            ``_connect_broker_for_bot`` hands these to ``open_session``.
+            """
+            exchanges = self._settings.list_exchanges() if self._settings else []
+            stored = None
+            for entry in exchanges:
+                if entry.get("exchange_id") == eid:
+                    stored = entry
+                    break
+            if not stored:
+                return "", ""
+            if not stored.get("api_key_enc") or not stored.get("api_secret_enc"):
+                return "", ""
+
+            from ..core.encryption import decrypt, vault_phrase
+
+            master = vault_phrase(self._settings.get("username", ""))
+            return (
+                decrypt(stored["api_key_enc"], master),
+                decrypt(stored["api_secret_enc"], master),
+            )
+
+        def _open_broker_session(self, connector, eid: str) -> tuple[bool, str]:
+            """Open *connector*'s session with the stored credential for *eid*
+            and answer whether it opened with the refusal that stopped it.
+
+            ``BrokerBase.open_session`` contacts the broker, so a venue with no
+            stored credential is refused here and nothing is sent.
+            """
+            if getattr(connector, "is_connected", False):
+                return True, ""
+            try:
+                api_key, api_secret = self._broker_credential(eid)
+            except Exception as exc:
+                return False, f"the stored credential would not decrypt: {exc}"
+            if not api_key or not api_secret:
+                return False, "no API credentials are stored"
+            try:
+                opened = bool(
+                    self._await_async(
+                        connector.open_session(
+                            api_key, api_secret, BROKER_SESSION_PAPER
+                        )
+                    )
+                )
+            except Exception as exc:
+                refusal = f"{type(exc).__name__}: {exc}"
+                logger.warning("broker session for %s not opened: %s", eid, refusal)
+                return False, refusal
+            if opened:
+                return True, ""
+            return False, getattr(connector, "session_refusal", "") or "refused"
+
+        def _read_broker_markets(self, connector, eid: str) -> tuple[int, str]:
+            """Read *connector*'s asset list over its open session and record it,
+            answering the row count written with the failure that stopped it.
+
+            ``list_assets`` needs the session ``_open_broker_session`` opened, and
+            runs once a session: a second bot records what the first read.
+            """
+            if not connector.held_assets():
+                try:
+                    self._await_async(connector.list_assets())
+                except Exception as exc:
+                    failure = f"{type(exc).__name__}: {exc}"
+                    logger.warning("broker assets for %s not read: %s", eid, failure)
+                    return 0, failure
+            return self._record_broker_markets(connector)
 
         def _connect_broker_for_bot(self, bot) -> tuple[bool, str]:
-            """Reuse the broker's connector, or build one, and hand it to *bot*;
-            returns (ok, message).
+            """Build or reuse the broker's connector, open its session, record its
+            markets and hand it to *bot*; returns (ok, message).
 
-            The connector is constructed and the bot's exchange handle filled
-            without any broker being contacted, and the result is False until a
-            broker session is opened, so no bot starts against a closed one.
+            ``ok`` stays False while ``BotContainer`` takes only a crypto
+            exchange, so no bot starts against the broker order contract.
             """
             from ..exchange.api_logger import get_api_log
             from ..stocks.alpaca_connector import broker_connector_class
@@ -2762,8 +2850,6 @@ if _HAS_QT:
             except Exception as exc:
                 logger.warning("set_connector failed for %s: %s", eid, exc)
 
-            recorded = self._record_broker_markets(connector)
-
             _log.record(
                 exchange=eid,
                 action="BROKER_CONNECTOR_BUILT",
@@ -2772,38 +2858,69 @@ if _HAS_QT:
                     if built_now
                     else f"{eid.capitalize()} connector reused"
                 ),
-                result=f"{recorded} market rule row(s) recorded for {eid}",
+                result=f"Opening the {eid.capitalize()} session...",
                 level="info",
-                data_usage="Recorded market rules size every later order",
+                data_usage="No market is read until the session is open",
             )
 
-            exchanges = self._settings.list_exchanges() if self._settings else []
-            stored = None
-            for entry in exchanges:
-                if entry.get("exchange_id") == eid:
-                    stored = entry
-                    break
+            venue = eid.capitalize()
+            opened, refusal = self._open_broker_session(connector, eid)
 
-            if not stored or not stored.get("api_key_enc"):
+            if not opened:
                 msg = (
-                    f"{eid.capitalize()} connector built and "
-                    f"{recorded} market rule row(s) recorded, but no API "
-                    f"credentials are stored. Add them in Settings."
+                    f"{venue} session not opened: {refusal}. No market list was "
+                    f"read, and the market rules already recorded for {venue} "
+                    f"are unchanged."
                 )
-            else:
-                msg = (
-                    f"{eid.capitalize()} connector built and "
-                    f"{recorded} market rule row(s) recorded. No broker "
-                    f"session is opened yet, so the bot cannot trade."
+                _log.record(
+                    exchange=eid,
+                    action="BROKER_SESSION_REFUSED",
+                    reason=refusal,
+                    result=msg,
+                    level="error",
+                    data_usage="No market was read and no rule row was written",
                 )
+                return False, msg
 
             _log.record(
                 exchange=eid,
-                action="BROKER_SESSION_ABSENT",
-                reason="No broker session is opened by this path",
+                action="BROKER_SESSION_OPEN",
+                reason=f"{venue} accepted the stored credential",
+                result=f"Reading the {venue} market list...",
+                level="success",
+                data_usage="Recorded market rules size every later order",
+            )
+
+            recorded, failure = self._read_broker_markets(connector, eid)
+
+            if failure:
+                msg = (
+                    f"{venue} session is open and its markets were NOT "
+                    f"recorded: {failure}. An order on {venue} would be sized "
+                    f"without the venue's own rules."
+                )
+                _log.record(
+                    exchange=eid,
+                    action="BROKER_MARKETS_NOT_RECORDED",
+                    reason=failure,
+                    result=msg,
+                    level="error",
+                    data_usage="Without recorded rules an order is sized blind",
+                )
+                return False, msg
+
+            msg = (
+                f"{venue} session is open and {recorded} market rule row(s) "
+                f"recorded. The bot does not start yet: a bot takes a crypto "
+                f"exchange and not a broker."
+            )
+            _log.record(
+                exchange=eid,
+                action="BROKER_MARKETS_RECORDED",
+                reason=f"{recorded} market rule row(s) written for {eid}",
                 result=msg,
                 level="warning",
-                data_usage="Bot will NOT start until a broker session is opened",
+                data_usage="Recorded market rules size every later order",
             )
             return False, msg
 
