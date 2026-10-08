@@ -33,6 +33,13 @@ either reads it. ``variant_holds_market`` holds ``VARIANT_WHOLE_UNIT`` for such
 a market and ``position_minimum_refusal`` refuses its opening order under
 ``opening_position_minimum``, which reads the bot's own
 ``whole_unit_opening_units`` and floors it at ``WHOLE_UNIT_POSITION_MINIMUM``.
+
+OVERTAKEN: "``recorded_unit_rule`` reads the venue's own step and ``unit_rule``
+answers the sector where the venue published none".
+``session_unit_rule`` answers before both, reading ``WHOLE_UNITS`` while the
+market's own session takes a whole unit alone at the moment the order is sized,
+and ``session_for`` names that session off the market's own record with
+``CITED_VENUE_SESSIONS`` answering where the record carries none.
 """
 
 from __future__ import annotations
@@ -44,7 +51,7 @@ from decimal import ROUND_FLOOR, Decimal, InvalidOperation
 from typing import Any, Optional, Sequence
 
 from ...exchange.base import SETTLEMENT_DAY_SECONDS
-from ...stocks.market_hours import accepts_order
+from ...stocks.market_hours import MarketSession, accepts_order, session_at
 
 #: The ``state`` an ``ExtractorBot`` writes on a position below its entry value.
 DRAWDOWN_STATE = "drawdown"
@@ -168,15 +175,23 @@ def recorded_unit_rule(recorded: Any) -> Optional[str]:
 
 # ``CLASS_COMMODITIES`` holds a tokenised metal and a dated contract, which
 # size differently, so ``recorded_unit_rule`` answers before the sector row.
+# OVERTAKEN, the docstring below reading "A recorded step is never raised to
+# ``WHOLE_UNITS`` by the sector row": ``session_unit_rule`` raises it, because
+# the market's own session takes a whole unit alone outside its normal hours.
+# A caller naming no ``moment_s`` reads no session and raises nothing.
 def market_unit_rule(
-    recorded: Any, asset_class: str = "", venue: str = ""
+    recorded: Any, asset_class: str = "", venue: str = "", moment_s: Any = None
 ) -> Optional[str]:
-    """The unit rule governing one market: ``recorded_unit_rule`` where the
-    venue published a step, else the ``CITED_UNIT_RULES`` row for the pair.
+    """The unit rule governing one market: ``session_unit_rule`` at
+    ``moment_s``, then ``recorded_unit_rule`` where the venue published a step,
+    else the ``CITED_UNIT_RULES`` row for the pair.
 
     A recorded step is never raised to ``WHOLE_UNITS`` by the sector row, so
     this answers the rule ``sized_order`` sizes the same amount under.
     """
+    demanded = session_unit_rule(getattr(recorded, "session", None), moment_s)
+    if demanded is not None:
+        return demanded
     declared = recorded_unit_rule(recorded)
     if declared is not None:
         return declared
@@ -187,6 +202,10 @@ def market_unit_rule(
 #: the NYSE and NASDAQ session ``market_hours`` declares.
 SESSION_CONTINUOUS = "continuous"
 SESSION_US_EQUITY = "us_equity"
+
+#: The two names above, closed. A session outside this pair is no session, so a
+#: corrupt recorded value reads as a venue that published nothing.
+SESSIONS_DECLARED = (SESSION_CONTINUOUS, SESSION_US_EQUITY)
 
 #: The session each ``(asset class, venue)`` publishes, keyed as
 #: ``CITED_UNIT_RULES`` is keyed. A pair absent here publishes no session.
@@ -287,6 +306,26 @@ def venue_session(asset_class: str, venue: str) -> Optional[str]:
     return CITED_VENUE_SESSIONS.get((str(asset_class), str(venue)))
 
 
+# OVERTAKEN, the CITED_VENUE_SESSIONS comment above reading "The session each
+# ``(asset class, venue)`` publishes": the venue's own product record publishes
+# it through ``market_session``, and the table answers where it published none.
+def session_for(recorded: Any, asset_class: str, venue: str) -> Optional[str]:
+    """The session governing one market: ``recorded.session`` where the venue
+    published one ``SESSIONS_DECLARED`` holds, else the ``CITED_VENUE_SESSIONS``
+    row for the pair.
+
+    ``SESSION_US_EQUITY`` wins wherever either source reads it, so neither
+    source can widen the hours the other restricts.
+    """
+    declared = getattr(recorded, "session", None)
+    if type(declared) is not str or declared not in SESSIONS_DECLARED:
+        declared = None
+    cited = venue_session(asset_class, venue)
+    if declared == SESSION_US_EQUITY or cited == SESSION_US_EQUITY:
+        return SESSION_US_EQUITY
+    return declared or cited
+
+
 #: The settlement delay each ``(asset class, venue)`` publishes, in days, keyed
 #: as ``CITED_UNIT_RULES`` is keyed. A pair absent here publishes none, and a
 #: cited zero is a venue returning the cash of a sale at once.
@@ -363,6 +402,26 @@ def outside_session(session: Optional[str], moment_s: Any) -> bool:
         return not accepts_order(float(moment_s))
     except (OSError, OverflowError, ValueError):
         return False
+
+
+# ``MarketSession`` decides this and not ``outside_session``: a venue takes a
+# whole-unit order in windows where ``accepts_order`` refuses an order.
+def session_unit_rule(session: Optional[str], moment_s: Any) -> Optional[str]:
+    """``WHOLE_UNITS`` while ``session`` takes a whole unit alone at
+    ``moment_s``, epoch seconds, and None at every other moment.
+
+    ``SESSION_US_EQUITY`` takes a fraction inside ``MarketSession.REGULAR`` and
+    a whole unit in every window outside it.
+    """
+    if session != SESSION_US_EQUITY:
+        return None
+    if type(moment_s) not in (int, float) or not math.isfinite(float(moment_s)):
+        return None
+    try:
+        regular = session_at(float(moment_s)) == MarketSession.REGULAR
+    except (OSError, OverflowError, ValueError):
+        return None
+    return None if regular else WHOLE_UNITS
 
 
 #: The three answers a market gives about the built variant, the bot that names
@@ -698,6 +757,20 @@ def grained_units(units: float, increment: Optional[float]) -> float:
     return float(units) + WHOLE_UNIT_GRAIN
 
 
+def whole_unit_over_fractional_step(rule: Any, increment: Optional[float]) -> bool:
+    """True while ``rule`` reads ``WHOLE_UNITS`` and ``increment`` is a
+    published step below one unit.
+
+    The step a market publishes is the step its fractional order carries, so
+    ``WHOLE_UNITS`` overrides it rather than flooring onto it.
+    """
+    if str(rule) != WHOLE_UNITS:
+        return False
+    if not rule_published(increment):
+        return False
+    return float(increment or 0.0) > 0.0 and float(increment or 0.0) < 1.0
+
+
 def recorded_size_rules(rules: Any) -> bool:
     """True while ``rules`` was read and published a size step or a minimum
     amount, the two figures ``sized_order`` sizes and refuses by."""
@@ -708,6 +781,11 @@ def recorded_size_rules(rules: Any) -> bool:
     return rule_published(getattr(rules, "min_amount", None))
 
 
+# OVERTAKEN in sized_order's docstring below: "A market the venue published a
+# ``min_amount`` for and no step is sized by ``rule`` instead."
+# ``whole_unit_over_fractional_step`` sizes a ``WHOLE_UNITS`` market by ``rule``
+# as well, over a published step below one unit, and measures the whole count
+# against ``min_amount`` again.
 def sized_order(units: float, rule: Optional[str], rules: Any = None) -> SizedOrder:
     """``units`` sized to the market's own recorded rules where it has them, and
     to ``rule`` from ``CITED_UNIT_RULES`` where it has none.
@@ -732,6 +810,13 @@ def sized_order(units: float, rule: Optional[str], rules: Any = None) -> SizedOr
         held = grained_units(units, getattr(rules, "amount_increment", None))
         if rules.steps_below_minimum(held):
             return SizedOrder(0.0, RULE_SOURCE_RECORDED, BELOW_MINIMUM_AMOUNT)
+        if whole_unit_over_fractional_step(rule, rules.amount_increment):
+            whole = sized_units(held, WHOLE_UNITS)
+            if whole <= 0.0:
+                return SizedOrder(0.0, RULE_SOURCE_RECORDED, BELOW_ONE_UNIT)
+            if rules.steps_below_minimum(whole):
+                return SizedOrder(0.0, RULE_SOURCE_RECORDED, BELOW_MINIMUM_AMOUNT)
+            return SizedOrder(whole, RULE_SOURCE_RECORDED)
         stepped = amount_on_increment(held, rules.amount_increment)
         if not rule_published(getattr(rules, "amount_increment", None)):
             if rule in UNIT_RULES:
@@ -1139,6 +1224,7 @@ __all__ = [
     "ORDER_TYPES_WITH_MARKET",
     "POSITION_MINIMUM_FORMAT",
     "REFERENCE_SCRUM_EXCESS_USD",
+    "SESSIONS_DECLARED",
     "SESSION_CONTINUOUS",
     "SESSION_US_EQUITY",
     "SETTLEMENT_DAY_SECONDS",
@@ -1192,6 +1278,8 @@ __all__ = [
     "sale_proceeds_usd",
     "scrum_units",
     "scrumming_interval_usd",
+    "session_for",
+    "session_unit_rule",
     "settle_fold_plan",
     "sized_units",
     "smallest_order_usd",
@@ -1217,5 +1305,6 @@ __all__ = [
     "venue_variant",
     "wallet_capped_spend_usd",
     "whole_unit_buy_needs_limit",
+    "whole_unit_over_fractional_step",
     "whole_unit_position_usd",
 ]

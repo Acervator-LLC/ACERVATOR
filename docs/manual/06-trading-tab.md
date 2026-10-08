@@ -1967,13 +1967,20 @@ so the sector alone cannot say.
 
 ```python
 def market_unit_rule(
-    recorded: Any, asset_class: str = "", venue: str = ""
+    recorded: Any, asset_class: str = "", venue: str = "", moment_s: Any = None
 ) -> Optional[str]:
+    demanded = session_unit_rule(getattr(recorded, "session", None), moment_s)
+    if demanded is not None:
+        return demanded
     declared = recorded_unit_rule(recorded)
     if declared is not None:
         return declared
     return unit_rule(asset_class, venue)
 ```
+
+The wizard names no moment, so it reads no session and the step answers first.
+The order path in `guarded_place_order` names the moment, so a market whose own
+session takes a whole share alone reads whole outside its normal hours.
 
 Driven with every outbound connection refused, on a recording carrying one market
 per sector, the wizard answers this for the market picked:

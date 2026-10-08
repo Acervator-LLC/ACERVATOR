@@ -640,8 +640,8 @@ Each sector does carry a rule, and that rule is the fallback. Driven in one
 running process, venue `coinbase`:
 
 ```
-src/trading/scrumming/sizing.py:144      unit_rule, the sector's own answer
-src/trading/scrumming/sizing.py:170      market_unit_rule, the step first
+src/trading/scrumming/sizing.py, in unit_rule          the sector's own answer
+src/trading/scrumming/sizing.py, in market_unit_rule   the session, then the step
 
 crypto          fractional        forex            fractional
 stocks          whole             indices          whole
