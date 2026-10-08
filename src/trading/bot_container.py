@@ -406,17 +406,29 @@ class BotContainer:
             and side == OrderSide.SELL
             and _expiry["action"] == EXPIRY_CLOSE_SELL_ALL
         ):
+            # ``_current_holdings`` is the count itself. The fallback inverts
+            # ``priced_usd``, which wrote ``position_value`` at
+            # ``current_price``; the order's own price is a ladder rung and
+            # sizes a fraction of the position out of the close.
             _position_usd = getattr(self.stats, "position_value", 0.0)
-            _whole = whole_position_units(_position_usd, price)
+            _held = getattr(self, "_current_holdings", 0.0)
+            _whole: Optional[float] = None
+            _units_source = "the position value"
+            if type(_held) in (int, float) and math.isfinite(_held) and _held > 0.0:
+                _whole = float(_held)
+                _units_source = "the held unit count"
             if _whole is None:
-                _whole = whole_position_units(
-                    _position_usd, getattr(self.stats, "current_price", 0.0)
-                )
+                _mark_usd = getattr(self.stats, "current_price", 0.0)
+                _quote_usd = getattr(self, "_quote_to_usd", 1.0)
+                if type(_mark_usd) in (int, float) and type(_quote_usd) in (int, float):
+                    _mark_usd = float(_mark_usd) * (float(_quote_usd) or 1.0)
+                _whole = whole_position_units(_position_usd, _mark_usd)
             if _whole is not None and _whole > _amt:
                 self._warn_order(
                     f"EXPIRY CLOSE, SELL ALL: SELL {symbol} raised from "
                     f"{_amt:.10f} to {_whole:.10f}, the whole position worth "
-                    f"${_position_usd:.4f}, {_expiry['days_left']:.2f} days "
+                    f"${_position_usd:.4f} read from {_units_source}, "
+                    f"{_expiry['days_left']:.2f} days "
                     f"before expiry. One order, not a ladder rung."
                 )
                 _amt = _whole
