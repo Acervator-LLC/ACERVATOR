@@ -52,6 +52,7 @@ from ..trading.gate_chain import GateContext
 from ..trading.otd_math import fold_rebuy_factor
 from ..trading.scrumming.sizing import (
     BELOW_ONE_UNIT,
+    BELOW_POSITION_MINIMUM,
     GROWTH_SIDE_LOWER,
     HELD_OUTSIDE_SESSION,
     HELD_UNSETTLED_CASH,
@@ -64,9 +65,11 @@ from ..trading.scrumming.sizing import (
     fold_spend_usd,
     fold_surplus_usd,
     growth_cycle_side,
+    market_unit_rule,
     plan_fold_consumption,
     plan_source_price,
     position_ceiling,
+    position_minimum_refusal,
     priced_usd,
     ratio_to_ceiling,
     recorded_size_rules,
@@ -84,9 +87,8 @@ from ..trading.scrumming.sizing import (
     unit_rule,
     unsettled_usd,
     untradeable_reason,
-    variant_built,
+    variant_holds_market,
     variant_refuses_sale,
-    variant_trades_market,
     venue_session,
     venue_settlement_days,
     venue_variant,
@@ -711,14 +713,22 @@ def rule_source_line(
     )
 
 
-def variant_line(bot_id: str, symbol: str, rules: Any, price: Any) -> str:
+def variant_line(
+    bot_id: str,
+    symbol: str,
+    rules: Any,
+    price: Any,
+    asset_class: str = "",
+    venue: str = "",
+) -> str:
     """The Activity Log line naming the variant ``symbol``'s own rules select at
-    ``price``, and naming ``untradeable_reason`` for an unbuilt one."""
+    ``price``, and naming ``untradeable_reason`` for a variant the program does
+    not hold for ``asset_class`` on ``venue``."""
     reference: Optional[float] = float(price) if type(price) in (int, float) else None
     if reference is not None and not math.isfinite(reference):
         reference = None
     variant = venue_variant(rules, reference)
-    if variant_built(variant):
+    if variant_holds_market(rules, asset_class, venue, reference):
         return f"{bot_id}: {symbol} trades under bot variant {variant}."
     return (
         f"{bot_id}: {symbol} is read and not traded: "
@@ -1195,7 +1205,8 @@ def apply_scrum(
         return None
     # A sale out of a market the venue expires still fills, because a position
     # that cannot be sold cannot close before its expiry.
-    if variant_refuses_sale(rules, float(price)):
+    class_name, venue, _cited = cited_rule_for(bot.asset, bot.exchange_id)
+    if variant_refuses_sale(rules, class_name, venue, float(price)):
         held = untradeable_reason(rules, float(price))
         logger.info(
             "%s: a scrum of $%.2f is read and not traded: %s",
@@ -1345,7 +1356,8 @@ def apply_fold(
         if on_refusal is not None:
             on_refusal(HELD_OUTSIDE_SESSION)
         return None
-    if not variant_trades_market(rules, float(price)):
+    class_name, venue, _cited = cited_rule_for(bot.asset, bot.exchange_id)
+    if not variant_holds_market(rules, class_name, venue, float(price)):
         held = untradeable_reason(rules, float(price))
         logger.info(
             "%s: a fold is read and not traded: %s; the tranches stay queued",
@@ -1412,6 +1424,18 @@ def apply_fold(
         )
         if on_refusal is not None:
             on_refusal(order.refusal)
+        return None
+    opening = position_minimum_refusal(
+        bot.symbol,
+        units,
+        float(price),
+        market_unit_rule(rules, class_name, venue),
+        position.value_usd(float(price)),
+    )
+    if opening:
+        logger.info("%s: a fold is refused: %s", bot.bot_id, opening)
+        if on_refusal is not None:
+            on_refusal(BELOW_POSITION_MINIMUM)
         return None
     bought_usd = priced_usd(units, float(price))
     if bought_usd < spend:
@@ -2263,7 +2287,14 @@ def _walk_fleet(
             emitter.bot_line(bot.bot_id, line)
         say(line)
         # The last close is the price the variant's smallest order is measured at.
-        line = variant_line(bot.bot_id, bot.symbol, market, raw[-1][4] if raw else None)
+        line = variant_line(
+            bot.bot_id,
+            bot.symbol,
+            market,
+            raw[-1][4] if raw else None,
+            class_name,
+            venue,
+        )
         if emitter is not None:
             emitter.bot_line(bot.bot_id, line)
         say(line)
