@@ -781,6 +781,88 @@ def recorded_size_rules(rules: Any) -> bool:
     return rule_published(getattr(rules, "min_amount", None))
 
 
+#: Why an order's amount is a contract count, naming the units one contract
+#: stands for beside the two counts.
+CONTRACT_COUNT_FORMAT = (
+    "One contract stands for {size} units, so {units:.10f} units name "
+    "{contracts:.10f} contracts."
+)
+
+
+def contract_size_divides(contract_size: Any) -> bool:
+    """True while ``contract_size`` is a published positive finite count of base
+    units.
+
+    False for the None an unpublished contract size carries and for a published
+    zero, which ``contracts_for_units`` cannot divide by.
+    """
+    if not rule_published(contract_size):
+        return False
+    return float(contract_size or 0.0) > 0.0
+
+
+def contracts_for_units(units: float, contract_size: Optional[float]) -> float:
+    """``units`` as the contract count the venue's size field carries.
+
+    A contract standing for ``contract_size`` base units takes ``units`` divided
+    by it, and ``units`` is answered unchanged where ``contract_size_divides``
+    reads False or one contract stands for one unit.
+    """
+    if type(units) not in (int, float):
+        return units
+    try:
+        held = float(units)
+    except (OverflowError, TypeError, ValueError):
+        return units
+    if not math.isfinite(held) or not contract_size_divides(contract_size):
+        return units
+    size = float(contract_size or 0.0)
+    if size == 1.0:
+        return units
+    try:
+        return float(Decimal(repr(held)) / Decimal(repr(size)))
+    except (ArithmeticError, InvalidOperation, TypeError, ValueError):
+        return units
+
+
+def units_for_contracts(contracts: float, contract_size: Optional[float]) -> float:
+    """``contracts`` as the base units they stand for, the inverse of
+    ``contracts_for_units``.
+
+    ``contracts`` is answered unchanged where ``contract_size_divides`` reads
+    False or one contract stands for one unit.
+    """
+    if type(contracts) not in (int, float):
+        return contracts
+    try:
+        held = float(contracts)
+    except (OverflowError, TypeError, ValueError):
+        return contracts
+    if not math.isfinite(held) or not contract_size_divides(contract_size):
+        return contracts
+    size = float(contract_size or 0.0)
+    if size == 1.0:
+        return contracts
+    try:
+        return float(Decimal(repr(held)) * Decimal(repr(size)))
+    except (ArithmeticError, InvalidOperation, TypeError, ValueError):
+        return contracts
+
+
+def contract_count_note(units: float, contract_size: Optional[float]) -> str:
+    """Why an order's amount is a contract count, through
+    ``CONTRACT_COUNT_FORMAT``.
+
+    Empty where ``contracts_for_units`` answers ``units`` unchanged.
+    """
+    counted = contracts_for_units(units, contract_size)
+    if counted == units:
+        return ""
+    return CONTRACT_COUNT_FORMAT.format(
+        size=contract_size, units=float(units), contracts=float(counted)
+    )
+
+
 # OVERTAKEN in sized_order's docstring below: "A market the venue published a
 # ``min_amount`` for and no step is sized by ``rule`` instead."
 # ``whole_unit_over_fractional_step`` sizes a ``WHOLE_UNITS`` market by ``rule``
@@ -1208,6 +1290,7 @@ __all__ = [
     "CLASS_FUTURES_PERPS",
     "CLASS_INDICES",
     "CLASS_STOCKS",
+    "CONTRACT_COUNT_FORMAT",
     "DRAWDOWN_STATE",
     "FLEET_SCRUMMING_INTERVAL_PCT",
     "FRACTIONAL_UNITS",
@@ -1248,6 +1331,9 @@ __all__ = [
     "WHOLE_UNIT_POSITION_MINIMUM",
     "WHOLE_UNIT_STEP_IS_A_FRACTION",
     "cartridge_threshold_usd",
+    "contract_count_note",
+    "contract_size_divides",
+    "contracts_for_units",
     "cycle_growth_cap_usd",
     "delta_below_interval",
     "eligible_fold_tranches",
@@ -1290,6 +1376,7 @@ __all__ = [
     "tradeable_answer",
     "trim_fold_plan",
     "unit_rule",
+    "units_for_contracts",
     "unsettled_usd",
     "untradeable_reason",
     "variant_built",
