@@ -63,6 +63,7 @@ from .container.config import (
     make_bot_config,
     phantom_init_kwargs,
     whole_position_units,
+    whole_unit_opening_units,
 )
 
 logger = logging.getLogger("acervator.bot")
@@ -546,19 +547,21 @@ class BotContainer:
             self._refuse_order(
                 f"PRE-FLIGHT REJECTED: {_side_str} {symbol} needs a bot "
                 f"variant the program does not hold. "
-                f"{untradeable_reason(_rules, _ref_px or None)}. "
+                f"{untradeable_reason(_rules, _ref_px or None, asset_class=_class, venue=self.config.exchange_id)}. "
                 f"The market is still read and still charted. "
                 f"API not called."
             )
 
         # A whole-unit market is traded only by a position that can give one
         # unit back and remain a position, so an opening order carries two.
+        # ``whole_unit_opening_units`` raises that floor and never lowers it.
         _opening = position_minimum_refusal(
             symbol,
             _amt,
             _ref_px,
             _rule,
             getattr(self.stats, "position_value", 0.0),
+            whole_unit_opening_units(self.config),
         )
         if _opening and side == OrderSide.BUY:
             self._refuse_order(f"PRE-FLIGHT REJECTED: BUY {_opening} API not called.")
