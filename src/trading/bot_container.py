@@ -779,6 +779,7 @@ class BotContainer:
             "state": self.state.value,
             "exchange": self.config.exchange_id,
             "symbol": self.config.symbol,
+            "asset_class": self._asset_class(self.config.symbol),
             "mode": self.config.mode.value,
             "scrum_target_mode": scrum_mode,
             "armed_action": armed_action,
