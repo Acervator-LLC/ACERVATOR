@@ -135,6 +135,9 @@ class BotContainer:
         # Wall-clock second start() stamped, which the fraction lead mode
         # measures a contract's remaining life at. 0 until the bot starts.
         self._expiry_start_s: float = 0.0
+        # Units the last expiry close sent. ``_tick_expiry_close`` refuses a
+        # second send while the held count still equals this figure.
+        self._expiry_close_sent_units: float = 0.0
 
     def force_fire(self, aggressive: bool = False) -> None:
         """Manual fire hook; the base implementation does nothing."""
@@ -571,12 +574,19 @@ class BotContainer:
             _left_text = "an unreadable number of" if _left is None else f"{_left:.2f}"
             _lead = _expiry["lead_days"]
             _lead_text = "no" if _lead is None else f"{_lead:.2f}"
+            # The BUY refusal above fires only while the close acts, so the
+            # notice claims it only then.
+            _rebuy_text = (
+                "A BUY is refused and nothing rebuys it"
+                if _expiry["acts"]
+                else "A BUY into it still passes until the lead time is reached"
+            )
             self._warn_order(
                 f"CLOSING AN EXPIRING MARKET: SELL {symbol} {_amt:.10f} is "
-                f"submitted where a BUY is refused, because the venue expires "
-                f"this contract in {_left_text} days ({_variant}). Nothing "
-                f"rebuys it. The bot's expiry close is {_expiry['action']} at "
-                f"{_lead_text} days of lead ({_expiry['mode']} mode, horizon "
+                f"submitted, and the venue expires this contract in "
+                f"{_left_text} days ({_variant}). {_rebuy_text}. The bot's "
+                f"expiry close is {_expiry['action']} at {_lead_text} days of "
+                f"lead ({_expiry['mode']} mode, horizon "
                 f"{_expiry['horizon_days']:.2f} days); {_expiry['reason']}."
             )
 
