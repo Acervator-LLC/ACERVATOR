@@ -882,13 +882,15 @@ reason every stocks row above reads no.
 
 OVERTAKEN for the Alpaca row and for the sentences above, and all of them are
 kept as written. A Start press on a stock bot now builds the Alpaca connector,
-opens its session with the stored key and secret, and records one market rule
-row for every asset record the session answers. The order call is still not
+opens its session on the broker's paper host with the stored key and secret, and
+records one market rule row for every asset record the session answers. A key
+stored for one host reaches that host alone. The order call is still not
 reached, because a bot holds one crypto exchange and the two order contracts
 name their size differently.
 
 ```
 src/gui/main_window.py        _connect_exchange_for_bot, on a Start press
+src/gui/main_window.py        BROKER_SESSION_PAPER, the host the session opens on
 src/trading/bot_container.py  guarded_place_order, the one order call
 ```
 

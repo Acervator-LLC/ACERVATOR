@@ -57,9 +57,9 @@ FLEET_SEQUENCE_MIN_GAP_MS = 2000
 #: absent from here takes every held bot.
 FLEET_SEQUENCE_STATES = {"start": ("idle", "stopped")}
 
-#: The broker account ``_connect_broker_for_bot`` opens. This window's bot list
-#: is the live fleet, so the session is the live account and not the paper one.
-BROKER_SESSION_PAPER = False
+#: Chooses the paper host in ``AlpacaConnector.connect``. A key reaches one
+#: host only, paper or live.
+BROKER_SESSION_PAPER = True
 
 #: The progress topic ``StartAllProgressDialog`` draws from.
 FLEET_SEQUENCE_TOPIC = "bot_manager.start_all_progress"
