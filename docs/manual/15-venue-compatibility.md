@@ -2225,6 +2225,16 @@ the step floors contracts.
 The venue's own sentences are quoted in
 `docs/audits/2026-10-08_coinbase_sector_order_formats/REPORT.md`.
 
+The connector library maps the venue the same way. Its order writer puts the
+amount into the venue's size field with nothing in between, and its position
+reader reports a count of contracts beside the contract size.
+
+```
+coinbase.create_order      base_size written straight from amount
+coinbase.parse_order       filled read from filled_size
+coinbase.parse_position    contracts from net_size, contractSize beside it
+```
+
 ### Where the division sits
 
 `BotContainer.guarded_place_order` divides the unit count into contracts, then
