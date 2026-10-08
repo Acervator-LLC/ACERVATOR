@@ -60,6 +60,11 @@ The line it writes is unchanged.
 
 The broker path writes its own rows at `src/stocks/broker_base.py:238`.
 
+OVERTAKEN, and the citation above is kept as written. That write stands at
+`src/stocks/broker_base.py`, in `record_markets`, and it runs once the broker's
+session is open. An empty asset list writes nothing and keeps the rows already
+recorded.
+
 ## Sector
 
 The six categories are the operator's, and his words name the two most recently
