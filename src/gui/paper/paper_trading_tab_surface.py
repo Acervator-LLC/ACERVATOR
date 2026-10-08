@@ -580,7 +580,8 @@ def build_view_model(
     names the stack page on show, ``exchanges`` the venues seated,
     ``run_running`` whether the run button reads Stop and ``asset_class`` the
     class the Add Exchange seat reads."""
-    key = "stock" if str(layer) == "stock" else "crypto"
+    key = live.layer_named(layer)
+    order = live.layer_order()
     buffer = live.ApiPauseBuffer() if api_buffer is None else api_buffer
     pane = live.ApiLogPane() if api_pane is None else api_pane
     routed = live.layer_exchanges(exchanges)
@@ -593,12 +594,12 @@ def build_view_model(
         "log_splitter": dict(live.LOG_SPLITTER),
         "equity_exchange_ids": list(live.EQUITY_EXCHANGE_IDS),
         "trading_stack": {
-            "pages": list(live.LAYER_ORDER),
-            "current_index": live.LAYER_ORDER.index(key),
+            "pages": list(order),
+            "current_index": order.index(key),
         },
         "layers": [
             layer_card(name, routed[name], current_exchange, run_running, asset_class)
-            for name in live.LAYER_ORDER
+            for name in order
         ],
         "alias_layer": live.ALIAS_LAYER,
         "chart_present": live.CHART_PRESENT,
