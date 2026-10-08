@@ -101,7 +101,9 @@ def record_venue(
     venues' rows, and answer how many markets were written.
 
     ``markets`` are ``AssetInfo`` records read for ``symbol`` and ``rules``,
-    and ``classes`` maps a symbol to the ``CLASS_FIELD`` it records under.
+    and ``classes`` maps a symbol to the ``CLASS_FIELD`` it records under. An
+    empty ``markets`` writes nothing and answers 0, so ``venue``'s own
+    recorded rows stand.
     """
     name = str(venue or "")
     if not name:
@@ -118,6 +120,14 @@ def record_venue(
         if asset_class:
             rows[symbol][CLASS_FIELD] = asset_class
     document = load_document(target)
+    if not rows:
+        standing = document.get(name)
+        logger.warning(
+            "read no market for %s, so its %d recorded market rule rows stand",
+            name,
+            len(standing) if isinstance(standing, dict) else 0,
+        )
+        return 0
     document[name] = rows
     target.parent.mkdir(parents=True, exist_ok=True)
     scratch = target.with_name(target.name + ".writing")
