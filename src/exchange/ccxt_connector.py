@@ -1947,6 +1947,15 @@ class CCXTConnector(ExchangeInterface):
             classes[sym] = market_asset_class(info)
 
         self._markets_cache = markets
+        if not markets:
+            # The count tells an empty market map from one whose every market
+            # is inactive.
+            logger.warning(
+                "%s served no active market out of %d market records, so no "
+                "market rule row is recorded",
+                self._exchange_id,
+                len(getattr(self._ex, "markets", None) or {}),
+            )
         # The Simulator and the Paper Trader reach no venue, so the rules read
         # here are recorded once per read for them to size an order by.
         try:
