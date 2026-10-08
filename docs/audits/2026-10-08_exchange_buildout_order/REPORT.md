@@ -9,8 +9,9 @@ is chosen from a figure and not from a guess. It builds nothing. No file under
 
 **FALSIFICATION.** This report is wrong if a venue id it names is absent from
 the two module constants it reads, if a sector count it gives differs from the
-matrix it counted, if a volume figure it quotes is absent from the page it
-cites, or if the recording holds more than one venue.
+matrix it counted, if any figure it quotes is absent from the page it cites, if a
+row's basis tier is not the first tier that answers for that venue, or if the
+recording holds more than one venue.
 
 ---
 
@@ -119,10 +120,29 @@ neither is ranked.
 
 ---
 
-## Key two, trade volume
+## Key two, the popularity ladder
 
-This is the figure the ranking had to establish. No figure here is estimated,
-converted or inferred.
+Trade volume alone cannot order this list, because not every venue publishes
+one. The operator set the basis:
+
+> Might just have to sequence the Exchanges by some other "popularity" metric
+> since trading volume is not provided by everyone.
+
+So each venue is placed on the first tier that answers for it, and every row
+says which tier its figure came from.
+
+```
+tier 1  a published volume figure, the venue's own or a named third party's
+tier 2  published market breadth, the count of markets the venue lists
+tier 3  a published reach figure: funded accounts, assets held, monthly users
+tier 4  nothing published of any kind
+```
+
+Twenty of the twenty-three ranked ids answer at tier 1, two at tier 2 and one at
+tier 4. Tier 3 is unused, because tier 2 answered for both venues that fell past
+tier 1. No figure on any tier is estimated, converted or inferred.
+
+### Tier 1, the published volumes
 
 ### The crypto venues
 
@@ -191,43 +211,83 @@ library class `htx` through `src/exchange/ccxt_connector.py`,
 
 A broker publishes no spot volume. What each firm publishes is named below with
 what it measures. A trade count is not a dollar figure, and the two are never
-mixed in one order.
+mixed in one order. Three of the eight firms publish no volume of any kind.
 
 | Firm, and its id or ids | Figure as printed | What it measures | Period | Published | Reported by |
 | --- | --- | --- | --- | --- | --- |
-| Charles Schwab, `schwab` | "Client Daily Average Trades (DATs) (in thousands)" 9,821 | all client trades per day | August 2026 | 15 September 2026 | the firm |
-| Fidelity, `fidelity` | 5.7 million daily average trades | "total customer/client trades divided by the number of trading days in the applicable reporting period" | the quarter to 30 June 2026 | the firm's quarterly business update | the firm |
-| Interactive Brokers, `ibkr` and `interactivebrokers` | 4.111 million Daily Average Revenue Trades | revenue-earning trades per day, a narrower count than a daily average trade | September 2026 | 1 October 2026 | the firm, quoted from a third party that reported it |
-| Webull, `webull` | "Equity notional volume" grew to $279 billion | the dollar value of equity trades | the quarter to 30 June 2026 | 19 August 2026, Form 6-K | the firm |
-| Alpaca, `alpaca` | no published figure | the firm publishes growth percentages and no volume | — | — | a third party gives $180 billion annualised for 2024 |
-| tastytrade, `tastytrade` | no published volume figure | its parent publishes net trading revenue of $65.3 million, which is revenue and not volume | the quarter to 30 September 2026 | the parent's quarterly trading update | the parent |
-| E\*TRADE, `etrade` | no published figure | its parent publishes a percentage change in self-directed daily average revenue trades and no figure | — | — | — |
-| TD Ameritrade, `tdameritrade` | no published figure | the firm reports nothing; it was absorbed and its interface was discontinued on 10 May 2024 | — | — | — |
+| Firm, and its id or ids | Figure as printed | What it measures | Period | Published | Reported by |
+| --- | --- | --- | --- | --- | --- |
+| Charles Schwab, `schwab` | "daily average trades equaling 9.8 million" | every client trade, per day | August 2026 | 15 September 2026 | the firm |
+| Fidelity, `fidelity` | "Daily average trades 5.7 million" | "total customer/client trades divided by the number of trading days in the applicable reporting period" | the quarter to 30 June 2026 | 4 August 2026 | the firm |
+| Interactive Brokers, `ibkr` and `interactivebrokers` | "4.111 million Daily Average Revenue Trades (DARTs)" | revenue-earning trades per day, a narrower count than every client trade | September 2026 | 1 October 2026 | the firm |
+| Webull, `webull` | "Equity notional volume grew to $279 billion" and "DARTs increased to 1.6 million" | the dollar value of equity trades, and a trade count beside it | the quarter to 30 June 2026 | 19 August 2026, Form 6-K | the firm |
+| E\*TRADE, `etrade` | "Daily average revenue trades (000's) \| 1,278" | "the total self-directed trades in a period divided by the number of trading days during that period", the self-directed channel being the former E\*TRADE | the quarter to 30 June 2026 | 15 July 2026, Form 8-K | the parent |
+| Alpaca, `alpaca` | no published figure | the firm publishes growth rates and account counts and no volume | — | — | a third party gives "$180B annualized in 2024" |
+| tastytrade, `tastytrade` | no published volume figure | its parent publishes net trading revenue, active customers and first trades, none of which is a volume | the quarter to 30 September 2026 | the parent's quarterly update | the parent |
+| TD Ameritrade, `tdameritrade` | no published figure | the firm reports nothing | — | — | — |
 
-Three readings need a note. Schwab's figure is printed in thousands, so 9,821
-is 9.821 million trades a day. Interactive Brokers' own release and the wire
-copy of it both answered HTTP 403 to a fetch, so the figure is quoted from a
-named third-party report of that release rather than from the release itself;
-the release is published and is not behind a sign-in. A daily average revenue
-trade counts only revenue-earning trades, so it is not the same measure as a
-daily average trade and the two are marked where they appear.
+Five readings need a note.
 
-Robinhood is fixed second and is not ranked. Its own August 2026 operating data
-gives equity notional trading volumes of $335 billion for the month and an
-average daily volume of $16.0 billion. The release page did not answer inside
-the fetch timeout, so that reading comes from the search index of the firm's own
-release and not from the page.
+Schwab counts every client trade and Interactive Brokers counts only
+revenue-earning trades, so a Schwab trade and a DART are not the same unit; each
+row says which it is. Webull publishes both a dollar volume and a trade count in
+one release, so its row carries both.
+
+Interactive Brokers' own release host and the wire copy of it both answered HTTP
+403 to a fetch, and the firm files its monthly metrics with no regulator, so the
+quote is taken from a page that reproduces the release. The release is published
+and is not behind a sign-in.
+
+TD Ameritrade's absence rests on a filing record, not on a search. Its
+registration was terminated by a Form 15 filed on 2020-10-16 and it has filed
+nothing of any kind since October 2020, so no figure after 2020 exists to find.
+The discontinuation date of 10 May 2024 in this report is the one
+[15-venue-compatibility.md](../../manual/15-venue-compatibility.md) records for
+the interface, and no primary page stating that date was fetched here.
+
+Robinhood is fixed second and is not ranked. Its own release of 10 September
+2026 states "Equity Notional Trading Volumes were $335 billion (up 1% from July
+2026, up 68% year-over-year)". It publishes no trade count.
+
+### Tier 2, the published market breadth
+
+Two ids fall past tier 1 and are rescued by a count of the markets the firm
+itself lists. Both readings were taken from the firm's own page on 2026-10-08.
+
+| Firm, and its id | Figure as printed | What it measures |
+| --- | --- | --- |
+| Alpaca, `alpaca` | "Alpaca currently supports over 11,000 U.S. listed stocks and ETFs." | the markets the firm lists in one sector |
+| tastytrade, `tastytrade` | the firm's own page of available cryptocurrencies lists 26 coins | the markets the firm lists in one sector |
+
+Neither figure is a volume and neither compares with the other, because one
+counts equities and the other counts coins. Each rescues its venue from tier 4
+and orders it inside its own coverage group, which is all the ladder asks of it.
+tastytrade's page states no total, so the 26 is the length of the list the firm
+publishes. Alpaca also publishes a reach figure, which tier 3 would have used,
+and tier 2 answered first.
+
+### Tier 4, nothing published
+
+One id reaches no tier. TD Ameritrade publishes no volume, no market count and
+no reach figure, and the filing record below says why.
 
 ---
 
 ## The ranking rule
 
-**Sector coverage groups the list and trade volume orders each group: the crypto
-venues come first inside a group, ordered by the 24-hour spot dollar volume one
-third party measures the same way for all fifteen, and the brokers follow,
-ordered by whatever each firm publishes and last where it publishes nothing,
-because no published figure compares a broker's trade count or quarterly
-notional against a venue's 24-hour spot volume.**
+**Sector coverage groups the list and the ladder orders each group, highest tier
+first, and inside one tier the crypto venues come first on the 24-hour spot
+dollar volume one third party measures the same way for all fifteen, with the
+brokers following on whatever each firm publishes, because no published figure
+compares a broker's trade count against a venue's spot volume.**
+
+**Rows resting on different tiers are not strictly comparable.** Three
+comparisons in the table are sound and the rest are not. Any two crypto venues
+compare, because both carry the same measure from one source on one day. Schwab
+compares with Fidelity, because both count every client trade in a day.
+Interactive Brokers compares with E\*TRADE, because both count revenue trades in
+a day. Every other pair rests on two different measures, and the basis column
+says which each row used.
 
 The two keys disagree, so the rule matters. Both orders are shown. The ranking
 makes no weighted score, so there is no score to show inputs for.
@@ -236,36 +296,36 @@ makes no weighted score, so there is no score to show inputs for.
 
 ## Table A, the build-out order
 
-Coverage groups the list and volume orders each group. This is the order this
-report recommends.
+Coverage groups the list and the ladder orders each group. This is the order this
+report recommends. The basis column names the tier behind every row.
 
-| # | Venue | Sectors | Volume key | Measure |
-| --- | --- | --- | --- | --- |
-| — | coinbase | 6 | 4,110,778,788 | fixed first by instruction |
-| — | robinhood | 5 | 335,000,000,000 for the month | fixed second by instruction |
-| 1 | binance | 6 | 12,313,776,868 | spot 24h, USD |
-| 2 | bybit | 6 | 2,165,543,168 | spot 24h, USD |
-| 3 | gateio | 6 | 1,899,524,136 | spot 24h, USD |
-| 4 | kraken | 6 | 1,826,079,158 | spot 24h, USD |
-| 5 | kucoin | 6 | 1,377,543,491 | spot 24h, USD |
-| 6 | cryptocom | 6 | 826,680,594 | spot 24h, USD |
-| 7 | bitget | 6 | 813,319,184 | spot 24h, USD |
-| 8 | schwab | 6 | 9,821 thousand | client trades a day |
-| 9 | fidelity | 6 | 5.7 million | client trades a day |
-| 10 | ibkr | 6 | 4.111 million | revenue trades a day |
-| 11 | okx | 5 | 2,207,798,651 | spot 24h, USD |
-| 12 | mexc | 5 | 1,599,542,322 | spot 24h, USD |
-| 13 | bitfinex | 5 | 1,157,463,688 | spot 24h, USD |
-| 14 | huobi | 5 | 856,251,198 | spot 24h, USD |
-| 15 | webull | 5 | 279,000,000,000 for the quarter | equity notional, USD |
-| 16 | tastytrade | 5 | no published figure | — |
-| 17 | poloniex | 4 | 945,777,788 | spot 24h, USD |
-| 18 | gemini | 4 | 55,636,483 | spot 24h, USD |
-| 19 | alpaca | 4 | no published figure | — |
-| 20 | bitstamp | 3 | 445,456,235 | spot 24h, USD |
-| 21 | etrade | 3 | no published figure | — |
-| 22 | interactivebrokers | 0 | 4.111 million | revenue trades a day |
-| 23 | tdameritrade | 0 | no published figure | — |
+| # | Venue | Sectors | Basis | Figure | Measure |
+| --- | --- | --- | --- | --- | --- |
+| — | coinbase | 6 | 1 volume | 4,110,778,788 | fixed first by instruction |
+| — | robinhood | 5 | 1 volume | 335,000,000,000 for the month | fixed second by instruction |
+| 1 | binance | 6 | 1 volume | 12,313,776,868 | spot 24h, USD |
+| 2 | bybit | 6 | 1 volume | 2,165,543,168 | spot 24h, USD |
+| 3 | gateio | 6 | 1 volume | 1,899,524,136 | spot 24h, USD |
+| 4 | kraken | 6 | 1 volume | 1,826,079,158 | spot 24h, USD |
+| 5 | kucoin | 6 | 1 volume | 1,377,543,491 | spot 24h, USD |
+| 6 | cryptocom | 6 | 1 volume | 826,680,594 | spot 24h, USD |
+| 7 | bitget | 6 | 1 volume | 813,319,184 | spot 24h, USD |
+| 8 | schwab | 6 | 1 volume | 9,821 thousand | client trades a day |
+| 9 | fidelity | 6 | 1 volume | 5.7 million | client trades a day |
+| 10 | ibkr | 6 | 1 volume | 4.111 million | revenue trades a day |
+| 11 | okx | 5 | 1 volume | 2,207,798,651 | spot 24h, USD |
+| 12 | mexc | 5 | 1 volume | 1,599,542,322 | spot 24h, USD |
+| 13 | bitfinex | 5 | 1 volume | 1,157,463,688 | spot 24h, USD |
+| 14 | huobi | 5 | 1 volume | 856,251,198 | spot 24h, USD |
+| 15 | webull | 5 | 1 volume | 279,000,000,000 for the quarter | equity notional, USD |
+| 16 | tastytrade | 5 | 2 breadth | 26 | coins the firm lists |
+| 17 | poloniex | 4 | 1 volume | 945,777,788 | spot 24h, USD |
+| 18 | gemini | 4 | 1 volume | 55,636,483 | spot 24h, USD |
+| 19 | alpaca | 4 | 2 breadth | over 11,000 | stocks and funds the firm lists |
+| 20 | bitstamp | 3 | 1 volume | 445,456,235 | spot 24h, USD |
+| 21 | etrade | 3 | 1 volume | 1,278 thousand | self-directed revenue trades a day |
+| 22 | interactivebrokers | 0 | 1 volume | 4.111 million | revenue trades a day |
+| 23 | tdameritrade | 0 | 4 none | no published figure | — |
 
 The id `interactivebrokers` names the same firm as `ibkr` and carries the same
 figure. It sits at 22 because the matrix gives it no sector, not because the
@@ -273,40 +333,42 @@ firm is small.
 
 ---
 
-## Table B, volume first
+## Table B, the ladder alone
 
-The same twenty-three ids on the volume key alone, with coverage beside each.
-This is what changes if volume outranks coverage.
+The same twenty-three ids on the ladder alone, coverage ignored, with each
+venue's coverage beside it. This is what changes if the ladder outranks
+coverage.
 
-| # | Venue | Volume key | Measure | Sectors |
-| --- | --- | --- | --- | --- |
-| 1 | binance | 12,313,776,868 | spot 24h, USD | 6 |
-| 2 | okx | 2,207,798,651 | spot 24h, USD | 5 |
-| 3 | bybit | 2,165,543,168 | spot 24h, USD | 6 |
-| 4 | gateio | 1,899,524,136 | spot 24h, USD | 6 |
-| 5 | kraken | 1,826,079,158 | spot 24h, USD | 6 |
-| 6 | mexc | 1,599,542,322 | spot 24h, USD | 5 |
-| 7 | kucoin | 1,377,543,491 | spot 24h, USD | 6 |
-| 8 | bitfinex | 1,157,463,688 | spot 24h, USD | 5 |
-| 9 | poloniex | 945,777,788 | spot 24h, USD | 4 |
-| 10 | huobi | 856,251,198 | spot 24h, USD | 5 |
-| 11 | cryptocom | 826,680,594 | spot 24h, USD | 6 |
-| 12 | bitget | 813,319,184 | spot 24h, USD | 6 |
-| 13 | bitstamp | 445,456,235 | spot 24h, USD | 3 |
-| 14 | gemini | 55,636,483 | spot 24h, USD | 4 |
-| 15 | webull | 279,000,000,000 for the quarter | equity notional, USD | 5 |
-| 16 | schwab | 9,821 thousand | client trades a day | 6 |
-| 17 | fidelity | 5.7 million | client trades a day | 6 |
-| 18 | ibkr | 4.111 million | revenue trades a day | 6 |
-| 19 | interactivebrokers | 4.111 million | revenue trades a day | 0 |
-| 20 | alpaca | no published figure | — | 4 |
-| 21 | tastytrade | no published figure | — | 5 |
-| 22 | etrade | no published figure | — | 3 |
-| 23 | tdameritrade | no published figure | — | 0 |
+| # | Venue | Basis | Figure | Measure | Sectors |
+| --- | --- | --- | --- | --- | --- |
+| 1 | binance | 1 volume | 12,313,776,868 | spot 24h, USD | 6 |
+| 2 | okx | 1 volume | 2,207,798,651 | spot 24h, USD | 5 |
+| 3 | bybit | 1 volume | 2,165,543,168 | spot 24h, USD | 6 |
+| 4 | gateio | 1 volume | 1,899,524,136 | spot 24h, USD | 6 |
+| 5 | kraken | 1 volume | 1,826,079,158 | spot 24h, USD | 6 |
+| 6 | mexc | 1 volume | 1,599,542,322 | spot 24h, USD | 5 |
+| 7 | kucoin | 1 volume | 1,377,543,491 | spot 24h, USD | 6 |
+| 8 | bitfinex | 1 volume | 1,157,463,688 | spot 24h, USD | 5 |
+| 9 | poloniex | 1 volume | 945,777,788 | spot 24h, USD | 4 |
+| 10 | huobi | 1 volume | 856,251,198 | spot 24h, USD | 5 |
+| 11 | cryptocom | 1 volume | 826,680,594 | spot 24h, USD | 6 |
+| 12 | bitget | 1 volume | 813,319,184 | spot 24h, USD | 6 |
+| 13 | bitstamp | 1 volume | 445,456,235 | spot 24h, USD | 3 |
+| 14 | gemini | 1 volume | 55,636,483 | spot 24h, USD | 4 |
+| 15 | webull | 1 volume | 279,000,000,000 for the quarter | equity notional, USD | 5 |
+| 16 | schwab | 1 volume | 9,821 thousand | client trades a day | 6 |
+| 17 | fidelity | 1 volume | 5.7 million | client trades a day | 6 |
+| 18 | ibkr | 1 volume | 4.111 million | revenue trades a day | 6 |
+| 19 | interactivebrokers | 1 volume | 4.111 million | revenue trades a day | 0 |
+| 20 | etrade | 1 volume | 1,278 thousand | self-directed revenue trades a day | 3 |
+| 21 | alpaca | 2 breadth | over 11,000 | stocks and funds the firm lists | 4 |
+| 22 | tastytrade | 2 breadth | 26 | coins the firm lists | 5 |
+| 23 | tdameritrade | 4 none | no published figure | — | 0 |
 
-The two tables differ most on three venues. Volume first moves okx from 11 to 2,
-moves mexc from 12 to 6, and pushes the three large brokers from 8, 9 and 10
-down to 16, 17 and 18. Every other venue moves by three places or fewer.
+The two tables differ most on three venues. The ladder first moves okx from 2 to
+11, moves mexc from 6 to 12, and lifts the three largest brokers from 16, 17 and
+18 up to 8, 9 and 10. Every other venue moves by three places or fewer, and the
+ladder changes no venue's basis, only where its row sits.
 
 ---
 
@@ -393,8 +455,9 @@ as the spot figures above and it is not used in the ranking.
 **It returned no published figure for one known absent.** A search for a
 current published trade volume for TD Ameritrade returned a delisted company
 profile and material from earlier years, and no current figure from the firm.
-That matches the manual, which records the TD Ameritrade interface as
-discontinued on 10 May 2024.
+The filing record says why: a Form 15 filed on 2020-10-16 terminated the
+registration, and the firm has filed nothing of any kind since October 2020. The
+answer "no published figure" is therefore a reading, not a failure to look.
 
 **An invented path was refused by both hosts.** Neither host answered success
 for a path that does not exist.
@@ -437,21 +500,31 @@ no file under dist/ launched
 | coingecko.com, the exchanges page | the `24h Volume` column per venue | 2026-10-08 |
 | pressroom.aboutschwab.com, Monthly Activity Highlights of 15 September 2026 | client daily average trades for August 2026 | 2026-10-08 |
 | about.fidelity.com, the quarterly business update to 30 June 2026 | daily average trades and the firm's own definition of them | 2026-10-08 |
-| fxnewsgroup.com, reporting Interactive Brokers' release of 1 October 2026 | daily average revenue trades for September 2026 | 2026-10-08 |
-| sec.gov, Webull Form 6-K of 19 August 2026 | equity notional volume for the quarter to 30 June 2026 | 2026-10-08 |
-| iggroup.com and its quarterly trading update | tastytrade net trading revenue, which is not a volume | 2026-10-08 |
-| investors.robinhood.com, August 2026 operating data | equity notional trading volumes for the month | 2026-10-08 |
-| sacra.com | the only Alpaca volume figure found, a third-party estimate for 2024 | 2026-10-08 |
+| a page reproducing Interactive Brokers' release of 1 October 2026 | daily average revenue trades for September 2026 | 2026-10-08 |
+| sec.gov, Webull Form 6-K of 19 August 2026 | equity notional volume and DARTs for the quarter to 30 June 2026 | 2026-10-08 |
+| sec.gov, Morgan Stanley Form 8-K of 15 July 2026, the financial supplement | self-directed daily average revenue trades and their definition | 2026-10-08 |
+| sec.gov, the Form 15 filed for TD Ameritrade on 2020-10-16 | the registration termination and the absence of any later filing | 2026-10-08 |
+| iggroup.com, the half-year and quarterly updates, and tastytrade's own press releases | tastytrade net trading revenue and the absence of a volume | 2026-10-08 |
+| Robinhood's own operating-data release of 10 September 2026 | equity notional trading volumes for August 2026 | 2026-10-08 |
+| alpaca.markets, the stocks page | the count of stocks and funds the firm lists | 2026-10-08 |
+| tastytrade.com, the available-cryptocurrencies page | the firm's own list of coins | 2026-10-08 |
+| sacra.com | the only Alpaca volume figure found, a third party's for 2024, on a page showing "Standard membership required" | 2026-10-08 |
 | sec.gov, Coinbase shareholder letter of 30 October 2025 | total trading volume for the quarter | 2026-10-08 |
 
 ---
 
 ## What is not resolved
 
+One figure is gated. The only Alpaca volume figure found anywhere is a third
+party's "$180B annualized in 2024", and the page holding it shows "Standard
+membership required" and offers an upgrade. The sentence carrying the figure was
+readable without a sign-in, and no sign-in was made. The ranking does not rest
+on it: Alpaca is placed at tier 2 on its own published market count.
+
 One figure could not be quoted from its own page: Interactive Brokers' monthly
 metrics release, whose own host and whose wire copy both answered HTTP 403 to a
-fetch. The figure is published and is not behind a sign-in, and it is quoted
-here from a named third party that reported the same release.
+fetch. The figure is published, it is not behind a sign-in, and it is quoted here
+from a page that reproduces the release.
 
 One decision is the operator's: whether he accepts the ranking rule, which he
 judges from Table A against Table B.
