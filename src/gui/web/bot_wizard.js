@@ -158,6 +158,7 @@
   var PARAMS_SUBTITLE = "params_subtitle";
 
   var NUMBERS = "numbers";
+  var NUMBER_SPECS = "number_specs";
   var CHECKS = "checks";
   var RADIOS = "radios";
   var COMBOS = "combos";
@@ -563,7 +564,13 @@
     return owns(shown, name) ? shown[name] === true : true;
   }
 
+  // values.number_specs carries the spec the picked market leaves a field
+  // under; fields.numbers is the declared one every market starts from.
   function numberSpec(name) {
+    var live = objectField(bag(VALUES), NUMBER_SPECS);
+    if (owns(live, name)) {
+      return live[name];
+    }
     return objectField(objectField(bag(FIELDS), NUMBERS), name);
   }
 
