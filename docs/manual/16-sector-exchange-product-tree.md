@@ -566,6 +566,21 @@ written, so the label survives the write and the read. His own recording still
 holds no label, because it was written before the write path merged, and his
 next venue read rewrites it.
 
+OVERTAKEN, and the sentence above reading "His own recording still holds no
+label" is kept as written. His recording now holds a label on every one of its
+1,146 rows, read on 2026-10-08 with the home redirected and the file not
+written. The venue read that rewrote it has happened.
+
+| Sector the row carries | Rows |
+| --- | --- |
+| crypto | 894 |
+| futures_perps | 168 |
+| stocks | 33 |
+| commodities | 25 |
+| forex | 20 |
+| indices | 6 |
+| no label | 0 |
+
 OVERTAKEN, and the two blocks and the sentences above are kept as written. No
 function named `recorded_market_rows` is in the tree, count 0. The reader that
 answers a venue's recorded sectors is `recorded_classes` at
