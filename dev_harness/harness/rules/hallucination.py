@@ -44,6 +44,17 @@ ArchetypeReport schema in tools.harness.coding_archetype:
         Requires three or more dots and no whitespace in the joined
         text, which leaves wrapped prose alone. Python targets only.
 
+    H006 (medium) — CITATION ANCHORED TO A LINE NUMBER
+        Markdown citing ``some/file.py:412`` or ``some/file.py line
+        412``. The line stops naming that code as soon as anything
+        above it in the file moves, and the path stays correct, so
+        nothing else reports the drift. Name the symbol instead:
+        ``some/file.py, in guarded_place_order``, which survives
+        every edit short of a rename. Markdown targets only, and
+        silent under the _H006_EXEMPT_DIRS directories, where a line
+        number records a measurement rather than pointing a reader
+        at code.
+
 FALSIFICATION — this rule module is wrong if:
   (a) H001 fires on a path that exists via a case-sensitivity
       quirk (Windows FS is case-insensitive; the check is
@@ -56,6 +67,14 @@ FALSIFICATION — this rule module is wrong if:
   (d) H001/H002/H003 fires on a fenced code block in markdown
       that is intentionally showing "how it USED to be" — no
       fenced-block filter is implemented for v1.
+  (e) H006 fires on a markdown number that is not a citation — a
+      port, a quantity, a release count — which the file extension
+      _CITED_LINE requires is what keeps out; or it stays silent on
+      a decayed citation written in a third spelling that neither
+      a colon nor the word "line" separates.
+  (f) H006 reports at medium, so a page carrying one still answers
+      passed=True. Its silence on a page means that page cites
+      symbols; its findings do not stop a merge.
 
 sadp: R28 SSS + R70 RCN
 """
@@ -229,6 +248,41 @@ def _resolve_cited(raw: str, repo_root: Path) -> Path | None:
     return matches[0] if len(matches) == 1 else None
 
 
+# A markdown file under one of these records a measurement, so a line number in
+# it is evidence of what was read and not a pointer for a reader to follow.
+_H006_EXEMPT_DIRS = (
+    "docs/audits/",
+    "docs/hop_scratch/",
+    "docs-archive/",
+    "_archive/",
+    "dev_harness/skills/",
+)
+
+
+def _is_h006_exempt(target: Path, repo_root: Path) -> bool:
+    """True when target sits under a directory H006 stays silent in."""
+    try:
+        rel = target.resolve().relative_to(repo_root.resolve()).as_posix()
+    except ValueError:
+        rel = target.as_posix()
+    return any(rel.startswith(d) for d in _H006_EXEMPT_DIRS)
+
+
+def _find_line_anchored_citations(source: str) -> list[tuple[int, str, int]]:
+    """Return (line, cited path, cited number) per line-anchored citation.
+
+    Reads `_CITED_LINE`, the same regex H004 reads, so one spelling of a
+    citation serves both rules. Every occurrence is returned, including a
+    repeat of one already seen, because each sits on its own line and is
+    repointed on its own.
+    """
+    hits: list[tuple[int, str, int]] = []
+    for i, line in enumerate(source.splitlines(), start=1):
+        for match in _CITED_LINE.finditer(line):
+            hits.append((i, match.group(1).replace("\\", "/"), int(match.group(2))))
+    return hits
+
+
 def _find_out_of_range_citations(
     source: str,
     repo_root: Path,
@@ -369,6 +423,24 @@ def scan(target: Path, source: str) -> list[Any]:
                 ),
             )
         )
+
+    if suffix in (".md", ".markdown") and not _is_h006_exempt(target, repo_root):
+        for line, cited, number in _find_line_anchored_citations(source):
+            findings.append(
+                Finding(
+                    tool="hallucination",
+                    severity="medium",
+                    file=str(target),
+                    line=line,
+                    rule_id="H006",
+                    message=(
+                        f"citation {cited}:{number} is anchored to a line "
+                        f"number. The line stops naming that code as soon as "
+                        f"anything above it moves. Name the symbol instead: "
+                        f"{cited}, in <the function or class>."
+                    ),
+                )
+            )
 
     if suffix == ".py":
         for line, joined in _find_split_dotted_names(source):

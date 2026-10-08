@@ -540,6 +540,96 @@ def _sync_exchange_tabs(self) -> None:
     """Add a tab for each configured exchange missing one, in its own layer."""
 ```
 
+#### When the data pool stops refreshing
+
+**Functional.** A red line appears directly under the data pool line when
+nothing has come back from the venue for a full minute. It names the venue, says
+how long the screen has been showing old figures, and tells you to restart the
+platform. It is hidden at every other time. It clears itself the moment a
+reading lands.
+
+`src/gui/widgets/exchange_tab.py` — `ExchangeTab._draw_pool_stopped`
+
+```python
+"DATA POOL STOPPED REFRESHING — nothing has come back from "
+f"{self._exchange_name} for {span_words(stopped_for)}. Every "
+"price, balance and ammo figure below is at least that old. "
+"Restart the platform to recover it."
+```
+
+**Design intention.** Single slots passing their time to live is ordinary. A
+ticker slot lives five seconds and a balance slot lives ten, and the pool
+refetches a slot because it aged out. So the line never watches one slot. It
+watches the age of the newest reading anywhere in the pool. While the pool is
+healthy, something was fetched a moment ago, so that age stays near zero even
+when most slots are stale.
+
+The span is one minute. It is the window the call rate is measured over, so a
+rate of zero calls is a complete reading only across that minute. Measured in
+the pool's own lifetimes it is twelve ticker lifetimes and six balance
+lifetimes, and it is twelve passes of the five-second trading tick that drives
+the fetching.
+
+`src/exchange/fetch_stall.py` — the span and the verdict both tabs read
+
+```python
+STALL_THRESHOLD_SECONDS = DEFAULT_WINDOW_SECONDS
+TICKER_LIFETIMES_PER_THRESHOLD = STALL_THRESHOLD_SECONDS / TICKER_TTL_SECONDS
+BALANCE_LIFETIMES_PER_THRESHOLD = STALL_THRESHOLD_SECONDS / BALANCE_TTL_SECONDS
+```
+
+**What to do when it appears.** Restart the platform. Nothing else brings the
+fetching back. The Console carries the same reading as a log line, so a run that
+is already closed can still be read there.
+
+#### What comes back on its own
+
+**Functional.** Two readings rebuild themselves and need no restart. The BTC/USD
+and ETH/USD strip comes back once its last reading is two minutes old. The
+cross-pair rows come back once every venue the scout polled is twenty seconds
+past its reading. Each one drops the figures it was holding, so the strip reads
+`BTC —` and a cross-pair cell reads `pending` until the next refresh lands. The
+Console carries one line for each rebuild.
+
+`src/exchange/lazy_singleton.py` — the cached reader is replaced in place
+
+```python
+            self._instance = instance
+            if cached is None:
+                self._fault.note_success()
+            else:
+                self._fault.note_rebuild()
+```
+
+**Design intention.** The old reader is served until its replacement is built,
+so nothing on the screen is ever handed an empty answer in the gap. A reading
+that keeps stopping is rebuilt after thirty seconds the first time, then at
+doubling gaps up to five minutes, so one stop cannot turn into a stream of
+rebuilds.
+
+`src/exchange/currency_rate_monitor.py` — the rate feed's own test for a stop
+
+```python
+def _monitor_has_stopped(monitor: CurrencyRateMonitor) -> bool:
+    return monitor.snapshot().last_updated > 0 and monitor.is_stale()
+```
+
+**Functional.** Nothing else comes back on its own. The data pool, each bot's
+own fetching, the trade history and the Market Inspector all fetch outside this
+mechanism, so the red line above still means a restart. Measured across the
+source tree: three of thirty-eight venue fetches sit behind it and thirty-five
+do not. A bot is also handed the scout once, when it is registered, so a
+rebuilt scout reaches the screen and not the bots.
+
+`src/exchange/market_pairs_scout.py` — the scout rebuilds only when every venue
+it polled has stopped
+
+```python
+def _scout_has_stopped(scout: MarketPairsScout) -> bool:
+    polled = scout.polled_exchanges()
+    return bool(polled) and all(scout.is_stale(eid) for eid in polled)
+```
+
 #### The news line
 
 **Functional.** The headline between Privacy Mode and + New Bot is one item
@@ -5629,6 +5719,21 @@ OVERTAKEN, and the block above is kept as written. The taxonomy holds six
 sectors, so the square divides into six rectangles, three across and two down,
 which is the count table's six row.
 
+OVERTAKEN, and the count table above is kept as written. Every row holds two
+segments, so the columns no longer follow the count and only the rows do:
+
+```
+count   columns x rows   the last row
+1       1 x 1            one segment, rounding all four corners
+2       2 x 1            full
+3       2 x 2            one segment spanning both columns
+4       2 x 2            full
+5       2 x 3            one segment spanning both columns
+6       2 x 3            full
+9       2 x 5            one segment spanning both columns
+12      2 x 6            full
+```
+
 `src/trading/ata_spm.py` — the taxonomy the group reads
 
 ```python
@@ -5652,6 +5757,81 @@ Measured offscreen with 172 font families loaded, at ten pixels bold:
 |---|---|---|---|---|
 | four | Commodities | 44 px | 56 px | 112 px |
 | six | Futures / Perps | 56 px | 68 px | 204 px |
+
+OVERTAKEN, and both tables above are kept as written. The square's side no longer
+follows the sector count. `GRID_COLUMNS` is two, so every row holds two segments
+and a further sector adds a row instead of a column; the side is two segments of
+the room the first four sector names need. Six sectors therefore draw two across
+and three down, in the side four sectors draw.
+
+The operator set this:
+
+> "I would prefer if we keep all six Sector buttons in the same square area but
+> just have it divided into six equal rectangles. The current updated version for
+> 2205 makes the area much wider and I do not want height or width of the square
+> area to change."
+
+Measured on the Windows platform plugin, which is the one the application runs,
+at ten pixels bold, with the window drawn at 700 and at 900 pixels:
+
+| sectors | columns x rows | segment | square side |
+|---|---|---|---|
+| four | 2 x 2 | 74 x 74 px | 148 px |
+| six | 2 x 3 | 74 x 49 px | 148 px |
+
+The offscreen host reads different widths for the same names, so the table above
+it is that host's figures and not the application's.
+
+`src/gui/main_tabs/asset_class_surface.py` — the side and the segment
+
+```python
+def segment_size_px(count: Any = None) -> tuple:
+    rows, columns = grid_shape(count)
+    if rows <= 0 or columns <= 0:
+        return (0, 0)
+    side = group_side_px(count)
+    width = (side - (columns - 1) * GROUP_SPACING_PX) // columns
+    height = (side - (rows - 1) * GROUP_SPACING_PX) // rows
+    return (width, height)
+```
+
+Three rows of 49 fill 147 of the 148, so `grid_margins_px` carries the pixel left
+over as a bottom margin and all six rectangles stay the same size.
+
+**A sector name too wide for its segment breaks before it is shortened.** A name
+holding a space breaks on the last space that leaves both lines inside the
+segment, and a name holding none is shortened with an ellipsis as before. Six
+sectors draw `Futures / Perps` over two lines and `Commodities` as `Commoditi…`,
+which is what four sectors already draw.
+
+`src/gui/main_tabs/header_strip.py` — `ClassGroupBar._fitted`
+
+```python
+if whole(full):
+    return full
+for at in range(len(full) - 1, 0, -1):
+    if full[at] != " ":
+        continue
+    head = full[:at]
+    tail = full[at + 1 :]
+    if whole(head) and whole(tail):
+        return head + "\n" + tail
+return metrics.elidedText(full, Qt.ElideRight, room)
+```
+
+The React page reads the same figures and applies the same rule: its tracks are
+`repeat(2, 74px)` by `repeat(3, 49px)` in a 148 pixel box, and a name holding a
+space takes `white-space: normal` while a name holding none keeps its ellipsis.
+
+`src/gui/web/header_strip.js` — the square's own tracks
+
+```js
+gridTemplateColumns: tracks(
+  cell(model[GRID_COLUMNS], 1),
+  cell(model[MINIMUM_WIDTH])
+),
+gridTemplateRows: tracks(cell(model[GRID_ROWS], 1), cell(model[SEGMENT_HEIGHT])),
+```
 
 **The square takes no spare width.** Its side is a declared number, so no slot of
 the header row takes the width the figures leave. Each part draws at the width its
@@ -6691,3 +6871,67 @@ the asset-unit one is gone, with the Qt table, the view model and the renderer p
 that drew it; it was built zero times, which is why its removal changed no behaviour.
 That registry's two operator overrides went with it, so the claim table takes no
 force-release of any kind.
+
+### One connector per venue, shared by every bot on it
+
+A fleet builds one exchange connector for each venue it trades on, not one for
+each bot. The first bot to start on a venue opens that connection, and every
+later bot on the same venue is handed the same object. Ten bots across two
+venues hold two connectors between them. A bot is never handed the connector of
+a venue it does not trade on.
+
+`src/gui/main_window.py` — `MainWindow._live_connector`
+
+```python
+held = self._exchange_connectors.get(eid)
+if held is None:
+    return None
+if getattr(held, "is_connected", False):
+    return held
+```
+
+**What one connector is responsible for.** It holds the session for its own
+venue and nothing else. It paces every request against that venue's rate limit,
+keeps the market list the venue loaded, answers the balance and ticker reads the
+tab draws, and runs the trade-history scan for each symbol registered on it. The
+symbols registered on a venue's connector are the symbols of the bots on that
+venue, and each bot is registered once.
+
+`src/trading/bot_container.py` — `BotManager.set_connector`
+
+```python
+for bot in self._bots.values():
+    if eid is not None and getattr(bot.config, "exchange_id", eid) != eid:
+        continue
+    candidates += 1
+    if bot.bot_id in registered:
+        continue
+```
+
+**A dropped connection is released before a replacement opens.** A held
+connector that no longer reports itself connected is dropped from the venue
+dictionary and released. Its scan set is cleared, both venue handles are
+dropped, and its worker pool is shut, so no retired connector keeps scanning
+behind the live one. The next bot to start on that venue then opens a fresh
+session.
+
+`src/exchange/ccxt_connector.py` — `CCXTConnector.release`
+
+```python
+cleared = len(self._scan_symbols)
+self._scan_symbols.clear()
+self._injected_ex = None
+self._ccxt_sync = None
+self._ccxt = None
+self._connected = False
+```
+
+A fleet of ten bots, eight on one venue and two on a second, started in full:
+
+```
+connector objects built                      2
+bots holding their own venue's connector    10
+bots holding another venue's connector       0
+bot registrations performed on a connector  10
+retired connectors still scanning            0
+```

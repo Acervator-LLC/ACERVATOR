@@ -9,8 +9,6 @@ exchange = adding one row.
 Returns ``None`` when the exchange is unknown or the symbol shape
 isn't parseable — the caller renders a non-clickable cell rather
 than opening a broken link.
-
-sadp: R28 SSS
 """
 
 from __future__ import annotations

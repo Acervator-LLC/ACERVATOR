@@ -6,34 +6,25 @@ trading pair the exchange lists, grouped by base asset, so callers can
 ask "what pairs trade ETH on this exchange right now, and how are they
 moving?".
 
-Introduced 2026-07-28 as v3.23.47 in the multi-base coordination
-cascade (see docs/engineering-notes/2026-07-28_multibase_coordination_and_cross_pair_intelligence_plan.md
-§ 6, Cascade #2). Delivers the **read-only** cross-pair awareness that
-the ScrummingBot needs before any smart-routing conversation can start.
-The prior-art research
-(docs/engineering-notes/2026-07-28_prior_art_multibase_coordination_research.md
-§ 3) explicitly warned that DEX-pathfinder patterns are a category
-error for a persistent-inventory scrumming bot — this module deliberately
+Delivers **read-only** cross-pair awareness. This module deliberately
 does **not** rank / pick / route. It observes.
 
 Sourcing:
     ``connector.get_all_tickers()`` — one bulk CCXT call per exchange
     per refresh cycle. On Coinbase this is the correct primitive
-    (ccxt issue #26170: ``fetch_ticker`` vs ``fetch_tickers`` return
-    different shapes; always use tickers-plural here for consistency).
+    (``fetch_ticker`` and ``fetch_tickers`` return different shapes;
+    always use tickers-plural here for consistency).
 
 Consumers (planned):
     * ScrummingBot — reads ``pairs_for(target_asset)`` in the tick to
       log divergence and, in a future cascade, potentially route.
     * Bot Details Status tab — renders "Target BTC / Target ETH"
-      rows + Δ24h vs USD % (v3.23.48).
+      rows + Δ24h vs USD %.
     * Any future calibration harness that wants historical spread /
       volume / drift per pair (data collected here in advance).
 
 Not persisted — a fresh process starts with an empty snapshot and
 populates on the first successful poll.
-
-sadp: R28 SSS + R70 RCN
 """
 
 from __future__ import annotations
@@ -87,9 +78,8 @@ def row_quote_volume_24h(row: object) -> float:
 class PairSnapshot:
     """One trading pair on one exchange at one moment.
 
-    Fields chosen so the same struct powers both the v3.23.48 GUI
-    rendering AND any future Approach-B calibration work (spread,
-    volume, drift are all here).
+    Fields chosen so the same struct powers both the GUI rendering AND
+    any future calibration work (spread, volume, drift are all here).
     """
 
     symbol: str  # e.g. "ETH/BTC"
@@ -232,6 +222,10 @@ class MarketPairsScout:
     def last_refresh(self, exchange_id: str) -> float:
         return float(self._last_refresh.get(exchange_id, 0.0))
 
+    def polled_exchanges(self) -> list[str]:
+        """Exchange ids ``ingest_tickers`` has recorded a refresh for, ascending."""
+        return sorted(eid for eid, at in self._last_refresh.items() if float(at) > 0.0)
+
     def last_error(self, exchange_id: str) -> Optional[str]:
         return self._last_error.get(exchange_id)
 
@@ -343,11 +337,23 @@ class MarketPairsScout:
 
 # Process-wide shared scout
 
+
+def _scout_has_stopped(scout: MarketPairsScout) -> bool:
+    """True when ``is_stale`` reports every exchange in ``polled_exchanges``.
+
+    ``_SCOUT`` passes this as ``has_stopped``, so one fresh exchange keeps
+    the scout and an empty ``polled_exchanges`` never reports stopped.
+    """
+    polled = scout.polled_exchanges()
+    return bool(polled) and all(scout.is_stale(eid) for eid in polled)
+
+
 _SCOUT: LazySingleton[MarketPairsScout] = LazySingleton(
     MarketPairsScout,
     "the market pairs scout",
     "The Target BTC and Target ETH rows, and every other cross-pair "
     "reading, will hold their last value and stop updating.",
+    has_stopped=_scout_has_stopped,
 )
 
 

@@ -10,6 +10,11 @@ first failure at ERROR, one summary per window at WARNING, one line on
 recovery. The window starts at 30 s and doubles to a 300 s ceiling —
 291 attempts a day, against 43,200 at tick rate.
 
+``has_stopped`` is the owner's own test for an instance that constructed
+and then stopped updating. ``get`` rebuilds such an instance once per
+window and keeps serving the cached one until the factory answers, so a
+singleton that has answered once never reverts to None.
+
 ``_describe`` guards ``str(exc)``. An exception whose ``__str__`` raises
 propagates out of the logging call and into the caller. Measured.
 """
@@ -169,6 +174,14 @@ class ThrottledFault:
             self._emit(logging.WARNING, line)
             self._reset_counts()
 
+    def note_rebuild(self) -> None:
+        """Report one rebuilt instance and start the next window."""
+        with self._lock:
+            self._next_report_at = self._clock() + self._window
+            self._emit(logging.WARNING, self._rebuilt_line())
+            self._window = min(self._cap, self._window * BACKOFF_FACTOR)
+            self._reset_counts()
+
     def reset(self) -> None:
         """Clear the window and every counter. Test-only."""
         with self._lock:
@@ -219,6 +232,14 @@ class ThrottledFault:
             f"and {self._suppressed} call(s) were suppressed."
         )
 
+    def _rebuilt_line(self) -> str:
+        return (
+            f"FEATURE REBUILT - {self._feature} had stopped updating and has "
+            f"been built again. Its last readings are gone and new ones start "
+            f"at the next refresh. No further rebuild for "
+            f"{self._window:.0f} s."
+        )
+
 
 class LazySingleton(Generic[T]):
     """Caches on first use. Cools off instead of storming on a failure."""
@@ -229,13 +250,19 @@ class LazySingleton(Generic[T]):
         feature: str,
         impact: str,
         *,
+        has_stopped: Callable[[T], bool] | None = None,
         base_cooloff_s: float = DEFAULT_BASE_COOLOFF_S,
         max_cooloff_s: float = DEFAULT_MAX_COOLOFF_S,
         clock: Callable[[], float] = time.monotonic,
         log: logging.Logger | None = None,
     ) -> None:
-        """Wrap ``factory``. ``feature`` and ``impact`` reach every log line."""
+        """Wrap ``factory``. ``feature`` and ``impact`` reach every log line.
+
+        ``has_stopped`` answers whether a cached instance has stopped
+        updating, and ``get`` builds a replacement for one that has.
+        """
         self._factory = factory
+        self._has_stopped = has_stopped
         self._instance: T | None = None
         self._lock = threading.RLock()
         self._constructions = 0
@@ -269,23 +296,33 @@ class LazySingleton(Generic[T]):
         """Return the instance, or None while it is down. Never raises.
 
         None means skip the feature this tick. The failure is already
-        reported and the next attempt is already scheduled.
+        reported and the next attempt is already scheduled. A cached
+        instance ``has_stopped`` reports stopped is replaced, and the
+        cached one is served until the factory answers.
         """
         with self._lock:
-            if self._instance is not None:
-                return self._instance
-            if self._fault.quiet():
-                self._fault.note_skip()
-                return None
+            cached = self._instance
             try:
+                if cached is not None and not self._stopped(cached):
+                    return cached
+                if self._fault.quiet():
+                    self._fault.note_skip()
+                    return cached
                 self._constructions += 1
                 instance = self._factory()
             except Exception as exc:  # noqa: BLE001 - a pump must not raise
                 self._fault.note_failure(exc)
-                return None
+                return cached
             self._instance = instance
-            self._fault.note_success()
+            if cached is None:
+                self._fault.note_success()
+            else:
+                self._fault.note_rebuild()
             return instance
+
+    def _stopped(self, instance: T) -> bool:
+        """True when ``has_stopped`` is set and reports ``instance`` stopped."""
+        return self._has_stopped is not None and self._has_stopped(instance)
 
     def reset(self) -> None:
         """Drop the instance and clear the cooling-off. Test-only."""
