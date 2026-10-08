@@ -1547,8 +1547,14 @@ if _HAS_QT:
             return bool(show(votes_payload(statuses, panel.panel_reading())))
 
         def _is_equity_exchange(self, exchange_id: str) -> bool:
-            """Return True if this exchange ID belongs to the stock/equity layer."""
-            return exchange_id.lower() in self._equity_exchange_ids
+            """True where ``EQUITY_VENUES`` names ``exchange_id``.
+
+            Read from ``asset_class_surface`` rather than an instance attribute,
+            which this window never set.
+            """
+            from .main_tabs.asset_class_surface import EQUITY_VENUES
+
+            return exchange_id.lower() in EQUITY_VENUES
 
         def _served_layers(self, exchange_id: str) -> tuple:
             """Every trading layer this exchange's tab belongs on.
@@ -2660,12 +2666,161 @@ if _HAS_QT:
             except Exception as exc:
                 logger.warning("pre-connect history wiring failed: %s", exc)
 
-        def _connect_exchange_for_bot(self, bot) -> tuple[bool, str]:
-            """Reuse the exchange's connector, or build one; returns (ok, message)."""
+        def _held_broker(self, eid: str):
+            """The broker connector held for *eid*, or None where the slot holds
+            a crypto connector or nothing.
+
+            A broker connector holds no scan thread and no venue handle, so it is
+            reused whether or not its session is open; one object serves every bot
+            on that broker.
+            """
+            from ..stocks.broker_base import BrokerBase
+
+            held = self._exchange_connectors.get(eid)
+            return held if isinstance(held, BrokerBase) else None
+
+        def _record_broker_markets(self, connector) -> int:
+            """Record every asset record *connector* holds and answer the row
+            count written.
+
+            ``BrokerBase.record_markets`` reads each record through the broker's
+            own ``market_rules``, so no broker is contacted.
+            """
+            try:
+                return len(connector.record_markets(connector.held_assets()))
+            except Exception as exc:
+                logger.warning(
+                    "broker markets for %s not recorded: %s",
+                    getattr(connector, "exchange_id", "<unknown broker>"),
+                    exc,
+                )
+                return 0
+
+        def _connect_broker_for_bot(self, bot) -> tuple[bool, str]:
+            """Reuse the broker's connector, or build one, and hand it to *bot*;
+            returns (ok, message).
+
+            The connector is constructed and the bot's exchange handle filled
+            without any broker being contacted, and the result is False until a
+            broker session is opened, so no bot starts against a closed one.
+            """
             from ..exchange.api_logger import get_api_log
+            from ..stocks.alpaca_connector import broker_connector_class
 
             _log = get_api_log()
             eid = bot.config.exchange_id
+
+            _log.record(
+                exchange=eid,
+                action="BROKER_CONNECT",
+                reason=f"Connecting bot {bot.bot_id} to {eid.capitalize()}",
+                result="Building the broker connector...",
+                level="info",
+                data_usage="No broker is contacted while the connector is built",
+            )
+
+            connector = self._held_broker(eid)
+            built_now = connector is None
+            if connector is None:
+                connector_class = broker_connector_class(eid)
+                if connector_class is None:
+                    msg = (
+                        f"No broker connector for {eid.capitalize()}. "
+                        f"The venue has no connector module."
+                    )
+                    _log.record(
+                        exchange=eid,
+                        action="BROKER_CONNECT_FAILED",
+                        reason="No broker connector class for this venue",
+                        result=msg,
+                        level="error",
+                        data_usage="Bot cannot trade without a venue connector",
+                    )
+                    return False, msg
+                connector = connector_class()
+                self._exchange_connectors[eid] = connector
+
+            self._wire_connector_for_bot(connector, bot)
+
+            try:
+                bot.exchange = connector
+            except Exception as exc:
+                msg = f"Bot {bot.bot_id} would not accept the {eid} connector: {exc}"
+                _log.record(
+                    exchange=eid,
+                    action="BROKER_CONNECT_FAILED",
+                    reason="The bot refused the connector",
+                    result=msg,
+                    level="error",
+                    data_usage="Bot cannot trade without a venue connector",
+                )
+                return False, msg
+
+            try:
+                if getattr(self, "_bot_manager", None):
+                    self._bot_manager.set_connector(connector)
+            except Exception as exc:
+                logger.warning("set_connector failed for %s: %s", eid, exc)
+
+            recorded = self._record_broker_markets(connector)
+
+            _log.record(
+                exchange=eid,
+                action="BROKER_CONNECTOR_BUILT",
+                reason=(
+                    f"{eid.capitalize()} connector built"
+                    if built_now
+                    else f"{eid.capitalize()} connector reused"
+                ),
+                result=f"{recorded} market rule row(s) recorded for {eid}",
+                level="info",
+                data_usage="Recorded market rules size every later order",
+            )
+
+            exchanges = self._settings.list_exchanges() if self._settings else []
+            stored = None
+            for entry in exchanges:
+                if entry.get("exchange_id") == eid:
+                    stored = entry
+                    break
+
+            if not stored or not stored.get("api_key_enc"):
+                msg = (
+                    f"{eid.capitalize()} connector built and "
+                    f"{recorded} market rule row(s) recorded, but no API "
+                    f"credentials are stored. Add them in Settings."
+                )
+            else:
+                msg = (
+                    f"{eid.capitalize()} connector built and "
+                    f"{recorded} market rule row(s) recorded. No broker "
+                    f"session is opened yet, so the bot cannot trade."
+                )
+
+            _log.record(
+                exchange=eid,
+                action="BROKER_SESSION_ABSENT",
+                reason="No broker session is opened by this path",
+                result=msg,
+                level="warning",
+                data_usage="Bot will NOT start until a broker session is opened",
+            )
+            return False, msg
+
+        def _connect_exchange_for_bot(self, bot) -> tuple[bool, str]:
+            """Reuse the exchange's connector, or build one; returns (ok, message).
+
+            A venue ``broker_connector_class`` names takes the broker path, and
+            every other venue takes the crypto one.
+            """
+            from ..exchange.api_logger import get_api_log
+            from ..stocks.alpaca_connector import broker_connector_class
+
+            _log = get_api_log()
+            eid = bot.config.exchange_id
+
+            if broker_connector_class(eid) is not None:
+                return self._connect_broker_for_bot(bot)
 
             _log.record(
                 exchange=eid,
