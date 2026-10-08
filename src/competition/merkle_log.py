@@ -104,7 +104,7 @@ class MerkleTradeLog:
     Append-only log of signed trade records backed by a Merkle tree.
 
     Every append:
-      1. Verifies the incoming record's signature (R28 — fail loudly)
+      1. Verifies the incoming record's signature, raising if it is invalid
       2. Appends the leaf hash to the tree
       3. Recomputes the root
       4. Writes the updated log to disk (if persistent)
@@ -126,16 +126,14 @@ class MerkleTradeLog:
     # ── Append ────────────────────────────────────────────────────────────────
 
     def append(self, record: TradeRecord, skip_sig_verify: bool = False) -> str:
-
-        # sadp: R28 R33  # fail-loudly-on-invalid-record(R28) append-only-never-delete(R33)
         """
         Append a signed trade record.  Returns the leaf hash.
 
-        R28: Raises ValueError if:
+        Raises ValueError if:
           - record belongs to a different competition
           - record belongs to a different bot
           - signature is invalid (unless skip_sig_verify=True for testing)
-        R33: Records can never be removed after appending.
+        Records can never be removed after appending.
         """
         if record.competition != self.competition_id:
             raise ValueError(
@@ -167,8 +165,6 @@ class MerkleTradeLog:
         return len(self._records)
 
     def proof_for(self, trade_seq: int) -> dict:
-
-        # sadp: R28 R33  # inclusion proof: fail-loudly on missing seq(R28) read-only(R33)
         """
         Generate an inclusion proof for the trade with the given sequence number.
         Returns: {"leaf_hash": hex, "proof": [...], "root": hex, "trade_seq": int}
@@ -188,8 +184,6 @@ class MerkleTradeLog:
         }
 
     def verify_inclusion(self, trade_seq: int) -> bool:
-
-        # sadp: R28 R33  # fail-loudly-on-missing-seq(R28) read-only-never-modify(R33)
         """Self-check: verify the trade is provably in the current tree."""
         try:
             p = self.proof_for(trade_seq)
@@ -200,8 +194,6 @@ class MerkleTradeLog:
     # ── Summary for competition submission ────────────────────────────────────
 
     def submission_summary(self) -> dict:
-
-        # sadp: R33  # summary: read-only Merkle log(R33)
         """
         The summary a bot submits to a competition arbiter.
         Contains: bot ID, competition ID, root hash, trade count,
@@ -224,7 +216,7 @@ class MerkleTradeLog:
     # ── Persistence ───────────────────────────────────────────────────────────
 
     def save(self):
-        """Save the full log to disk (R33 — never overwrites, appends)."""
+        """Save the full log to disk; it never overwrites, it appends."""
         if not self._log_path:
             return
         self._log_path.parent.mkdir(parents=True, exist_ok=True)

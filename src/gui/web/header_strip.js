@@ -73,6 +73,7 @@
   var NEXT_MODE = "next_mode";
   var MODE_PARAM_FIELD = "mode_param";
   var SIDE = "side_px";
+  var SEGMENT_HEIGHT = "segment_height_px";
   var GRID_ROWS = "grid_rows";
   var GRID_COLUMNS = "grid_columns";
   var SEGMENT_ROW = "row";
@@ -258,10 +259,13 @@
     return VAR_OPEN + name + VAR_SPLIT + String(value) + VAR_CLOSE;
   }
 
-  // A row or column of the square, each track an equal share and none sized
-  // by the class name it holds.
-  function tracks(count) {
-    return "repeat(" + String(count) + ", minmax(0, 1fr))";
+  // OVERTAKEN, quoted whole:
+  //   "A row or column of the square, each track an equal share and none sized
+  //   by the class name it holds."
+  // True today: each track is `sizePx`, the figure Qt gives its own segment, so
+  // no track takes a fraction of a pixel.
+  function tracks(count, sizePx) {
+    return "repeat(" + String(count) + ", " + String(sizePx) + "px)";
   }
 
   // A grid row, column or span arrives as a whole number and never a token.
@@ -574,7 +578,12 @@
       style.minWidth = length(model[MINIMUM_WIDTH]);
       style.overflow = "hidden";
       style.textOverflow = "ellipsis";
-      style.whiteSpace = "nowrap";
+      // OVERTAKEN, quoted whole:
+      //   "style.whiteSpace = `nowrap`;"
+      // True today: a name holding a space breaks on it and a name holding
+      // none keeps its ellipsis, which is `ClassGroupBar._fitted`'s own rule.
+      style.whiteSpace =
+        text(each[TEXT]).indexOf(" ") >= 0 ? "normal" : "nowrap";
       style.gridRow = String(cell(each[SEGMENT_ROW]) + 1);
       style.gridColumn =
         String(cell(each[SEGMENT_COLUMN]) + 1) +
@@ -599,14 +608,23 @@
     // OVERTAKEN, quoted whole:
     //   "Both sides are `SIDE`, the number the Qt widget is fixed to, so a track
     //   is `minmax(0, 1fr)` and no class name widens the square."
-    // True today: both sides are `SIDE`, the number the Qt widget is fixed to,
-    // and the widest class name is what widens it.
+    // OVERTAKEN, quoted whole:
+    //   "True today: both sides are `SIDE`, the number the Qt widget is fixed
+    //   to, and the widest class name is what widens it."
+    // True today: both sides are `SIDE` and every track is the pixel figure Qt
+    // gives its own segment, centred in `SIDE` by `alignContent`.
     var side = length(model[SIDE]);
     var groupStyle = {
       display: "grid",
       gap: length(model[GROUP_SPACING]),
-      gridTemplateColumns: tracks(cell(model[GRID_COLUMNS], 1)),
-      gridTemplateRows: tracks(cell(model[GRID_ROWS], 1)),
+      gridTemplateColumns: tracks(
+        cell(model[GRID_COLUMNS], 1),
+        cell(model[MINIMUM_WIDTH])
+      ),
+      gridTemplateRows: tracks(
+        cell(model[GRID_ROWS], 1),
+        cell(model[SEGMENT_HEIGHT])
+      ),
       width: side,
       height: side,
       minWidth: side,
@@ -614,6 +632,8 @@
       flexGrow: 0,
       flexShrink: 0,
       alignSelf: "center",
+      alignContent: "center",
+      justifyContent: "center",
       overflow: "hidden"
     };
     var groupProps = {

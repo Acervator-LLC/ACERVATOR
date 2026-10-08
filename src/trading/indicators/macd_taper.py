@@ -4,8 +4,7 @@ Reads a histogram LIST handed in by the caller. It never
 calls MACD itself, so it computes no moving average of
 its own and cannot drift from the one the caller used.
 
-Moved out of ``ta_engine.py`` for issue #73. The body below is a
-verbatim line slice of that file: no arithmetic was retyped.
+``src/trading/ta_engine.py`` re-exports every name here.
 """
 
 from __future__ import annotations

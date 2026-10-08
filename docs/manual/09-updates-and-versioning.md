@@ -246,6 +246,76 @@ def datas_candidates(project_root: str, variant: str) -> list[tuple[str, str]]: 
 `build_graceful_datas` prints and skips a source folder that is not on disk. A
 clone that never installed the shell therefore builds with no Electron runtime.
 
+### Which outside packages a bundle carries
+
+The application uses 21 packages that are not part of Python itself. Eighteen of
+them are declared as requirements. Three are named by code that guards its own
+absence, and the dependency list records why none of the three is owed.
+
+A build does not install every declared package. It installs the core set plus
+two named groups, so a package declared in any other group never reaches the
+bundle. Two further names are installed and then deliberately left out.
+
+```python
+CONSUMER_EXTRAS["build"] = ("build", "report")   # tools/deps.py
+EXCLUDES = ("tkinter", "matplotlib", "PIL", ...)  # tools/spec_common.py
+```
+
+Counts below were read from the published Windows bundle. A package written in
+pure Python ships inside one archive rather than as its own folder, so a folder
+listing alone cannot answer whether a package shipped. The ccxt row is the proof:
+the application imports it in nine places, and it has no folder.
+
+| package | declared | the build installs it | in the bundle |
+| --- | --- | --- | --- |
+| PySide6 | core | yes | yes |
+| ccxt | core | yes | yes, 430 modules, no folder |
+| scipy | core | yes | yes, 500 modules |
+| statsmodels | core | yes | yes, 163 modules |
+| pandas | core | yes | yes, 280 modules |
+| numpy | core | yes | yes, 140 modules |
+| cryptography | core | yes | yes |
+| aiohttp | core | yes | yes |
+| keyring | core | yes | yes |
+| certifi | core | yes | yes |
+| defusedxml | core | yes | yes |
+| psutil | core | yes | yes |
+| ta | core | yes | yes |
+| tomli_w | core | yes | yes |
+| reportlab | report group | yes | yes |
+| PIL | build group | yes | no, the exclusion list names it |
+| matplotlib | charts group | no | no |
+| httpx | monitor group | no | no |
+| luma, RPLCD, smbus2 | display group | no | no, Raspberry Pi only |
+| ST7789, waveshare_epd, tomli | recorded, not required | no | no |
+
+Two rows read as a package the application wants and the bundle does not hold.
+
+The matplotlib row costs the running application nothing. One module imports
+matplotlib, and the only module that imports that one is a manual-building tool
+that no bundle carries. The bundle holds the chart module and nothing inside the
+bundle ever asks for it.
+
+```
+src/design_system.py        imports matplotlib when it loads
+  its one importer           tools/build_product_manual.py, not in any bundle
+  in the bundle              the module is there, matplotlib is not
+```
+
+The httpx row is different, and it is live. The AI feedback loop calls out over
+the network, and the call imports httpx with nothing to catch a failure. The
+monitor group holds that package and a build installs the build and report groups
+only, so the shipped application reaches that line with nothing to import.
+
+```python
+async def _call(self, msg):          # src/trading/live_monitor.py:338
+    import httpx
+```
+
+`src/gui/design_system.py` is a separate module with 110 importers and no
+matplotlib import. Every screen reads that one. The two files have the same name
+and are not the same thing.
+
 ## A version that moves while the suite runs
 
 Three test modules compare a freshly resolved version against the cached
@@ -496,6 +566,36 @@ line the program writes to its own log once the main window is on screen.
 
 ```python
 log_manager.info("Application ready — main window displayed")   # main.py
+```
+
+### What happens when the disk image step fails
+
+The disk image step can fail on a resource that is busy rather than on anything
+wrong with the build. The script writes the same image again instead of ending
+the run. Each image is also released as soon as it is written, so the next image
+in the run never starts against a volume the previous one left attached.
+
+```
+DMG_CREATE_ATTEMPTS   3     # build_mac.sh, attempts per disk image
+DMG_RETRY_WAIT_S      10    # the wait between attempts, in seconds
+hdiutil detach              # before every attempt, and again after each image
+```
+
+Three attempts is the whole allowance. A step that fails all three writes no disk
+image, names the image it could not write, and ends the run with a failure. It
+never reports success without an image.
+
+```
+hdiutil create failed on attempt 3 of 3 for dist/<name>.dmg
+ERROR: hdiutil create failed 3 times; dist/<name>.dmg was not written.
+```
+
+A release needs both platforms, so a macOS packaging failure holds the whole
+release back. The Windows build of the same run is discarded with it, and the
+Releases panel keeps the version it already carried.
+
+```yaml
+publish: {needs: [windows, macos]}   # .github/workflows/release.yml
 ```
 
 ### Where the macOS build is downloaded

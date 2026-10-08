@@ -36,22 +36,28 @@ The functions below each CREATE the bucket dir if missing
 unconditionally without separate "ensure exists" steps.
 """
 
+import os
 from pathlib import Path
 
-# Single canonical root — all log buckets live under here.
-_LOG_ROOT = Path.home() / ".acervator_logs"
+# Set to a directory and the nine buckets below, plus main.py's four writers, follow it.
+LOG_ROOT_ENV = "ACERVATOR_CRASH_LOG_ROOT"
+
+
+def resolve_log_root() -> Path:
+    """Return the log root ``LOG_ROOT_ENV`` names, else ``~/.acervator_logs``.
+
+    An empty ``LOG_ROOT_ENV`` counts as unset, and ``resolve_log_root``
+    creates nothing.
+    """
+    override = os.environ.get(LOG_ROOT_ENV)
+    return Path(override) if override else Path.home() / ".acervator_logs"
 
 
 def get_log_root() -> Path:
-    """Return the single canonical log root: ``~/.acervator_logs/``.
-
-    All disk-writing log machinery resolves paths through this function
-    rather than computing their own location. Replaces the dual-resolution
-    in ``LogManager.__init__`` (frozen-vs-source split) that hid trade.log
-    in different places on dev vs production builds.
-    """
-    _LOG_ROOT.mkdir(parents=True, exist_ok=True)
-    return _LOG_ROOT
+    """Return the root ``resolve_log_root`` names, created by ``mkdir`` when missing."""
+    root = resolve_log_root()
+    root.mkdir(parents=True, exist_ok=True)
+    return root
 
 
 def get_activity_dir() -> Path:
@@ -61,7 +67,7 @@ def get_activity_dir() -> Path:
     created up front so the layout is observable from the operator's
     file browser the moment the platform runs.
     """
-    p = _LOG_ROOT / "activity"
+    p = resolve_log_root() / "activity"
     p.mkdir(parents=True, exist_ok=True)
     return p
 
@@ -73,7 +79,7 @@ def get_api_dir() -> Path:
     ``api_failures.ndjson`` here. Dir created up front for the same
     observability reason as ``activity/``.
     """
-    p = _LOG_ROOT / "api"
+    p = resolve_log_root() / "api"
     p.mkdir(parents=True, exist_ok=True)
     return p
 
@@ -85,7 +91,7 @@ def get_console_dir() -> Path:
     keeps this bucket bounded. Existing console-prune logic continues to
     handle this bucket unchanged.
     """
-    p = _LOG_ROOT / "console"
+    p = resolve_log_root() / "console"
     p.mkdir(parents=True, exist_ok=True)
     return p
 
@@ -102,7 +108,7 @@ def get_trade_dir() -> Path:
       * ``gate.log``         — every gate decision
       * ``pnl/<day>.ndjson`` — daily PnL snapshots (existing PnLCascade)
     """
-    p = _LOG_ROOT / "trade"
+    p = resolve_log_root() / "trade"
     p.mkdir(parents=True, exist_ok=True)
     return p
 
@@ -128,7 +134,7 @@ def get_exchange_history_dir() -> Path:
     export. ``ytd_trade_store.get_ytd_root`` resolves this path and
     accepts the ``ACERVATOR_YTD_TRADES_ROOT`` override.
     """
-    p = _LOG_ROOT / "exchange_history"
+    p = resolve_log_root() / "exchange_history"
     p.mkdir(parents=True, exist_ok=True)
     return p
 
@@ -141,7 +147,7 @@ def get_meta_dir() -> Path:
     are unchanged; the migration happens transparently when the marker
     is rewritten.
     """
-    p = _LOG_ROOT / "_meta"
+    p = resolve_log_root() / "_meta"
     p.mkdir(parents=True, exist_ok=True)
     return p
 
@@ -154,7 +160,7 @@ def get_reports_dir() -> Path:
     sweep resolves its default through here instead of composing a path
     under the repo root.
     """
-    p = _LOG_ROOT / "reports"
+    p = resolve_log_root() / "reports"
     p.mkdir(parents=True, exist_ok=True)
     return p
 
@@ -166,7 +172,7 @@ def get_sim_dir() -> Path:
     here; ``~/.acervator/bot_state.json`` is never written from the
     Simulator.
     """
-    p = _LOG_ROOT / "sim"
+    p = resolve_log_root() / "sim"
     p.mkdir(parents=True, exist_ok=True)
     return p
 

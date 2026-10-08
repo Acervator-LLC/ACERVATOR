@@ -21,9 +21,8 @@ network.
 
 ``src.core.desktop_bridge`` registers ``view_model`` as the handler for
 the ``risk_tab.state`` method, which is how the Electron renderer
-reaches it. Every value below is written out here rather than read from
-``src.gui.risk_tab``, so a value changed on one side alone is reported.
-Nothing here imports Qt.
+reaches it. Every value below is written out here, so the renderer reads
+them from this module alone. Nothing here imports Qt.
 """
 
 from __future__ import annotations

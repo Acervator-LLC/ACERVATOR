@@ -1,6 +1,6 @@
 """
-crypto_assets.py — Cryptocurrency asset database v1.1
-======================================================
+crypto_assets.py — Cryptocurrency asset database
+=================================================
 Maintains metadata for supported cryptocurrencies including:
   • Logo/icon URLs (from CoinGecko and CryptoCompare CDNs)
   • White paper summaries and reference links

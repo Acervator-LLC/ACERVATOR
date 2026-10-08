@@ -1,6 +1,6 @@
 """
-instance_consent_dialog.py - the consent surface for issue #96
-===============================================================
+instance_consent_dialog.py - the consent surface the instance guard raises
+==========================================================================
 
 The guard in `src/core/instance_guard.py` decides whether this launch
 may start the saved fleet by itself. When it refuses, the operator has
@@ -277,5 +277,5 @@ _STYLE_SHEET = (
     f"QPushButton:focus {{ outline: none;"
     f" border: {ds.FOCUS_RING_WIDTH}px solid {ds.FOCUS_RING_COLOR}; }}"
 )
-"""Built from `design_system` tokens only. A hex literal in widget code
-is an R65 violation, and the linter reads this file like any other."""
+"""Built from `design_system` tokens only; no hex literal appears in
+widget code."""

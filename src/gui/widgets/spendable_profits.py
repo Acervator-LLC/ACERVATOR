@@ -249,7 +249,7 @@ if _HAS_QT:
             for d in self._privacy_dots:
                 try:  # noqa: SIM105
                     d.refresh()
-                except Exception:  # R28-OK  # noqa: S110
+                except Exception:  # noqa: S110
                     pass
             if self._last_data:
                 self.update_profits(self._last_data)

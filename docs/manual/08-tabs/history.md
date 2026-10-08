@@ -522,4 +522,98 @@ and therefore reads as a **D**, not as ungraded. A fully specified trade scores
 1.0 and reads A+. A column of Ds may mean the trades were poor, or it may mean
 the surrounding price context never arrived.
 
+## 2026-10-06 - #1133 - the trade historian's own fetch
+
+Refresh is not the only thing that asks the venue for fills. A launch also
+runs the trade historian, once for every market in the fleet, and the
+historian calls the venue directly rather than through the connector's
+paced read path.
+
+`src/core/trade_historian.py` — the call
+
+```python
+trades = self._exchange.fetch_my_trades(symbol, limit=limit) or []
+```
+
+### The published limit
+
+Coinbase publishes the limit for the private fills endpoint as ten requests
+per second per profile, with bursts up to twenty. One fetch every hundred
+milliseconds sits on that published figure, and the platform derives the
+interval from it rather than picking a number.
+
+`src/core/trade_historian.py` — the interval
+
+```python
+PUBLISHED_FILLS_RPS = 10.0
+HISTORY_FETCH_INTERVAL_S = 1.0 / PUBLISHED_FILLS_RPS
+```
+
+The gate is one object for the whole program, so every market's fetch
+queues behind the last one. A second connector's threads wait their turn
+in the same queue, which is what keeps the request rate at the published
+figure no matter how many connectors a launch builds.
+
+`src/core/trade_historian.py` — the gate
+
+```python
+_FETCH_GATE = _HistoryFetchGate(HISTORY_FETCH_INTERVAL_S)
+```
+
+### A refused fetch
+
+A venue can refuse for reasons the platform does not control, so a refusal
+is tried again. The historian uses the retry the exchange paths already
+share: three attempts, doubling the wait each time, and only for the error
+classes that name a transient condition.
+
+`src/core/trade_historian.py` — the attempt budget
+
+```python
+HISTORY_FETCH_ATTEMPTS = 3
+HISTORY_RETRY_BASE_DELAY_S = 1.0
+```
+
+A refusal is the venue answering normally, so it records nothing about the
+connection. Nothing on this path writes the lost-connection state that
+turns a venue's row red in Settings, and that state keeps its one writer in
+the credential validator.
+
+`src/exchange/credential_state.py` — the lost-connection writer
+
+```python
+def record_connection_lost(
+    exchange_id: Any, when: Any = None, path: Any = None
+) -> bool:
+```
+
+Once every attempt is spent the market gets no history, and the line above
+the table says so with the count.
+
+`src/core/trade_historian.py` — the line
+
+```python
+MISSING_HISTORY_FORMAT = (
+    "Trade history missing for {refused} of {scanned} markets — "
+    "the venue refused the fetch."
+)
+```
+
+One sentence above is overtaken. Quoted whole:
+
+> The read contract declares both footer strings, and the tab calls it for both, so the counter and the summary read the
+> same on this tab as on the React panel.
+
+The read contract still declares both footer strings and the tab still calls
+it for both. When a history fetch has been refused the Qt tab appends the
+missing-history line to the summary it got back, so on that one state the
+summary reads longer here than on the React panel.
+
+`src/gui/history_tab.py` — the append
+
+```python
+missing = self.missing_history_status()
+self._set_status(f"{summary}  {missing}" if missing else summary)
+```
+
 Back to [the subsystem index](README.md).
