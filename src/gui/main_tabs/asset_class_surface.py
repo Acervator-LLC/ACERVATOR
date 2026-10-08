@@ -515,6 +515,49 @@ def venue_served_classes(venue_id: Any, document: Any = None) -> frozenset:
     return frozenset(recorded_venue_classes(document).get(asked, frozenset()))
 
 
+def recorded_symbol_classes(venue_id: Any) -> dict:
+    """Every symbol one venue's recording holds mapped to its ``CLASS_FIELD``,
+    empty while the recording cannot be read."""
+    try:
+        from ...exchange.market_rules_store import recorded_classes
+    except ImportError:
+        return {}
+    asked = str(venue_id or "").strip().lower()
+    if not asked:
+        return {}
+    return recorded_classes(asked)
+
+
+def symbol_class(venue_id: Any, symbol: Any, recorded: Any = None) -> str:
+    """The class ``recorded_symbol_classes`` holds for ``symbol`` on
+    ``venue_id``, else ``CLASS_CRYPTO``, the class ``BotContainer._asset_class``
+    answers for a symbol the recording holds none for.
+
+    Every surface narrowing a market by sector reads this, so a bot and the tab
+    filtering it answer one class.
+    """
+    from src.trading.ata_spm import CLASS_CRYPTO
+
+    held = recorded if isinstance(recorded, dict) else recorded_symbol_classes(venue_id)
+    return retired_onto(held.get(str(symbol or ""), "")) or CLASS_CRYPTO
+
+
+def markets_of_class(rows: Any, venue_id: Any, name: Any, recorded: Any = None) -> list:
+    """Every market row of ``rows`` whose ``symbol_class`` on ``venue_id`` is
+    one asset class, in the order given.
+
+    An empty ``name`` narrows nothing.
+    """
+    key = normalise(name)
+    listed = [one for one in (rows or []) if isinstance(one, dict)]
+    if not key:
+        return listed
+    held = recorded if isinstance(recorded, dict) else recorded_symbol_classes(venue_id)
+    return [
+        row for row in listed if symbol_class(venue_id, row.get("symbol"), held) == key
+    ]
+
+
 def venues_for_class(name: Any) -> frozenset:
     """Every venue id serving one asset class, a venue whose ``venue_classes``
     holds two classes answered for both.

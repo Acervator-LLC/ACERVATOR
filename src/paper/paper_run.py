@@ -68,6 +68,7 @@ from ..trading.container.config import BotState
 from ..trading.gate_chain import GateContext
 from ..trading.otd_math import fold_rebuy_factor
 from ..trading.scrumming.sizing import (
+    BELOW_POSITION_MINIMUM,
     CLASS_CRYPTO,
     HELD_OUTSIDE_SESSION,
     HELD_UNSETTLED_CASH,
@@ -79,11 +80,13 @@ from ..trading.scrumming.sizing import (
     fold_rate_taper,
     fold_spend_usd,
     fold_surplus_usd,
+    market_unit_rule,
     plan_fold_consumption,
     order_types_for,
     outside_session,
     plan_source_price,
     position_ceiling,
+    position_minimum_refusal,
     priced_usd,
     ratio_to_ceiling,
     sale_proceeds_usd,
@@ -97,8 +100,8 @@ from ..trading.scrumming.sizing import (
     unit_rule,
     unsettled_usd,
     untradeable_reason,
+    variant_holds_market,
     variant_refuses_sale,
-    variant_trades_market,
     venue_session,
     venue_settlement_days,
 )
@@ -432,7 +435,9 @@ def apply_scrum(
         return None
     # A sale out of a market the venue expires still fills, because a position
     # that cannot be sold cannot close before its expiry.
-    if variant_refuses_sale(rules, float(price)):
+    if variant_refuses_sale(
+        rules, CLASS_CRYPTO, str(bot.exchange_id or ""), float(price)
+    ):
         held = untradeable_reason(rules, float(price))
         logger.info(
             "%s: a scrum of $%.2f is read and not traded: %s",
@@ -559,7 +564,9 @@ def apply_fold(
         if on_refusal is not None:
             on_refusal(HELD_OUTSIDE_SESSION)
         return None
-    if not variant_trades_market(rules, float(ticker_last)):
+    if not variant_holds_market(
+        rules, CLASS_CRYPTO, str(bot.exchange_id or ""), float(ticker_last)
+    ):
         held = untradeable_reason(rules, float(ticker_last))
         logger.info(
             "%s: a fold is read and not traded: %s; the tranches stay queued",
@@ -625,6 +632,18 @@ def apply_fold(
         )
         if on_refusal is not None:
             on_refusal(order.refusal)
+        return None
+    opening = position_minimum_refusal(
+        bot.symbol,
+        units,
+        float(price),
+        market_unit_rule(rules, CLASS_CRYPTO, str(bot.exchange_id or "")),
+        balance.value_usd(float(price)),
+    )
+    if opening:
+        logger.info("%s: a fold is refused: %s", bot.bot_id, opening)
+        if on_refusal is not None:
+            on_refusal(BELOW_POSITION_MINIMUM)
         return None
     bought_usd = priced_usd(units, float(price))
     if bought_usd < spend:
