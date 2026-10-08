@@ -2301,7 +2301,7 @@ and never written; its modification time is the same before and after every run.
 | the same market, 0.0137 units, a contract size of a hundredth | 1 contract, floored from 1.37 |
 | a spot market with no contract size, 5 units | 5 units before, 5 units after |
 | the expiry close selling a 5 unit position, a contract size of a hundredth | 500 contracts |
-| the same close with no contract size and with a contract size of one | 5 contracts in both |
+| the same close with no contract size and with a contract size of one | sends 5 in both |
 | every order decision over the whole recording | 1,146 markets, 27,504 answers, 0 moved |
 | the same decisions with a hundredth set on three sectors | 4,382 answers moved, 199 markets |
 | the arithmetic over 15 contract sizes and 11 unit counts | 165 pairs, 0 faults either way |
