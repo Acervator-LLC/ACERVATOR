@@ -2063,3 +2063,103 @@ Both read `variant_holds_market` and `variant_refuses_sale`, and neither reads
 `expiry_close_decision`. A dated contract now passes their buy, and no close
 fires in either, so a dated position runs to its date in both. The platform's
 owner deferred both surfaces until every variant is built.
+
+## 2026-10-08 - a recorded market carries its session, its contract size and its quote step
+
+A venue publishes three more facts per market, and the recording held none of
+them. A recorded row now carries all three. The row's seven earlier keys are
+unchanged.
+
+```python
+# src/exchange/base.py, in MarketRules
+    quote_increment: Optional[float] = None  # quote units a cash amount steps by
+    contract_size: Optional[float] = None  # base units one contract stands for
+    session: Optional[str] = None  # the session name the venue publishes
+```
+
+Each value is read off the venue's own product record. The reader for each one
+is named below, with the field the venue publishes it under.
+
+| what the row carries | the venue's own field | the reader |
+| --- | --- | --- |
+| the step a cash amount moves by | `quote_increment` | `quote_step` |
+| the units one contract stands for | `contract_size` | `contract_units` |
+| the session the market trades in | `fcm_trading_session_details` | `market_session` |
+
+### Why a quote step is a separate rule
+
+A spot market buy reaches Coinbase as a cash amount, not as a count of units.
+The venue rounds that amount by its own quote step. The recording held the price
+step alone, because the connector library reads a product's price step first and
+falls back to its quote step, so one recorded number could mean either. The
+quote step is now read on its own and recorded beside the price step.
+
+### Why a contract size is a separate rule
+
+One contract can stand for a fraction of a unit. A count of contracts is then
+not a count of units. The connector library reads this off a futures product and
+reads nothing off a spot product, so the reader falls back to the venue's own
+contract record.
+
+```python
+# src/exchange/ccxt_connector.py, in contract_units
+    parsed = limit_to_float(held.get(CONTRACT_SIZE_FIELD))
+    if parsed is not None:
+        return parsed
+    raw = held.get("info") or {}
+```
+
+### Which session a market trades in
+
+An equity product trades the United States equity session. Coinbase takes a
+market order for one only in regular hours, and takes whole shares alone in
+every other session. A product carrying no session window takes an order at any
+hour, which every spot pair and every perpetual does. A dated contract carries a
+daily window, which is a moment and not a market rule, so no session name is
+recorded for it.
+
+```
+equity product                             us_equity
+no session window on the record            continuous
+a daily window on the record               no name recorded
+no session field on the record             no name recorded
+```
+
+### An absent rule and a rule of zero are different facts
+
+A rule the venue did not publish is recorded as absent. A rule it published as
+zero is recorded as zero. A reader of the recording tells the two apart.
+
+| the venue published | on the row | read back |
+| --- | --- | --- |
+| no quote step | absent | absent |
+| a quote step of zero | 0 | zero |
+| no session | absent | absent |
+
+### What was driven
+
+Driven in one process with the home redirected to a scratch directory, every
+socket to a venue refused, and no order placed. The three fields were written to
+a scratch recording and read back out of it.
+
+| the drive | the reading |
+| --- | --- |
+| the three fields written and read back | 6 markets, every value returned |
+| every field of every live row read back | 1,146 rows, 6,876 values, 0 lost |
+| a row written before the three fields | every earlier value kept, the three absent |
+| a market read answering nothing | 0 rows written, 1,146 recorded rows stand |
+| every order decision, the fields set against unset | 1,146 markets, 37,818 answers, 0 moved |
+
+### What this changes on screen
+
+Nothing yet. The three values are recorded and no screen draws them. The live
+order path replaces a recorded session with the cited table's own answer, so a
+recorded session reaches no order today. `BotContainer._get_market_rules` is the
+one site that has to read the recorded session first, which is the precedence it
+already takes for a recorded order type.
+
+### The price-step sentence this entry overtakes
+
+The 2026-09-25 entry on the price step quotes a five-line copy of the carrier
+and says a venue publishes three order rules. The carrier now holds ten rules
+and a read flag. Every sentence of that entry stands as written.

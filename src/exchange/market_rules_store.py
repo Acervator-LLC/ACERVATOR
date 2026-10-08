@@ -26,19 +26,26 @@ STORE_NAME = "market_rules.json"
 # ``expiry_ms`` is a fifth, so the Simulator and the Paper Trader read an expiry
 # the venue published. A row recorded before it holds no such key and answers
 # None, which changes nothing for a market already recorded.
+# OVERTAKEN, the two comments above: ``quote_increment`` and ``contract_size``
+# are recorded beside them, the step a cash amount moves by and the base units
+# one contract stands for.
 RULE_FIELDS = (
     "min_amount",
     "min_cost",
     "amount_increment",
     "price_increment",
+    "quote_increment",
+    "contract_size",
     "expiry_ms",
 )
 
 # OVERTAKEN, the comment above reading "``expiry_ms`` is a fifth": ``RULE_FIELDS``
 # holds the five NUMERIC rules, and ``order_types`` is a string.
+# OVERTAKEN, the sentence above reading "the five NUMERIC rules": ``RULE_FIELDS``
+# holds seven, and ``session`` is a second string.
 #: The text rules ``MarketRules`` carries, each recorded under its own name. A row
 #: recorded before one holds no such key and answers None.
-TEXT_RULE_FIELDS = ("order_types",)
+TEXT_RULE_FIELDS = ("order_types", "session")
 
 #: The asset class a row records beside its rules, so one venue's recording can
 #: be read one class at a time. A row recorded before it holds no such key and
@@ -144,6 +151,9 @@ def recorded_rules(venue: str, symbol: str, path: Optional[Path] = None) -> Mark
 
     ``read`` is False when the recording holds no row for the pair, the same
     unknown a venue that answered no market record carries.
+
+    Every name of ``RULE_FIELDS`` and ``TEXT_RULE_FIELDS`` is read back here, so
+    a rule ``rules_row`` writes never goes unread.
     """
     row = (load_document(path).get(str(venue or "")) or {}).get(str(symbol or ""))
     if not isinstance(row, dict):
@@ -153,8 +163,11 @@ def recorded_rules(venue: str, symbol: str, path: Optional[Path] = None) -> Mark
         min_cost=rule_value(row.get("min_cost")),
         amount_increment=rule_value(row.get("amount_increment")),
         price_increment=rule_value(row.get("price_increment")),
+        quote_increment=rule_value(row.get("quote_increment")),
+        contract_size=rule_value(row.get("contract_size")),
         expiry_ms=rule_value(row.get("expiry_ms")),
         order_types=rule_text(row.get("order_types")),
+        session=rule_text(row.get("session")),
         read=True,
     )
 
