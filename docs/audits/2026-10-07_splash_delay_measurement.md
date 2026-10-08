@@ -181,11 +181,25 @@ and most of the 2.71 MiB that bundle gained.
 | 2233 react | 0 |
 | 2233 qt | 0 |
 
-The entry point removes every such folder it finds under the bundle root at
-module level, and `project_root` in `src/_version.py` confirms that root is the
-directory the bundle unpacks into. Launching that bundle therefore deletes 19
-folders from inside itself before the splash. He runs the Qt variant, so this
-did not cause what he saw.
+The entry point removes every such folder it finds under its own directory at
+module level, and `project_root` in `src/_version.py` confirms that directory
+is where the bundle unpacks. Launching that bundle therefore deletes 19 folders
+from inside itself before the splash. He runs the Qt variant, so this did not
+cause what he saw.
+
+The same loop reaches further when the entry point runs from the source tree,
+because its root is then the repository root and the build directory sits
+inside it. Driven over a scratch tree shaped the same way, the loop removed a
+folder nested four levels down inside a build directory, and skipping the loop
+left it in place.
+
+| arm | bundle folder after |
+|-----|--------------------|
+| loop skipped | present |
+| loop run | gone |
+
+The 19 folders were counted at 18:55 and were absent at 19:22, with no launch
+banner and no rebuild in between. Which process removed them was not observed.
 
 ## Ruled out by measurement
 
