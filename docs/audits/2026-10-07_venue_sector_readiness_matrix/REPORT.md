@@ -1042,6 +1042,326 @@ the first step of the sector-coverage work, not a wiring step.
 
 ---
 
+### The twenty-eight cells, each answered from the venue's own page
+
+Every one of the twenty-eight was read again on 2026-10-07. Each verdict rests
+on the venue's own published page and on nothing else. No venue was contacted in
+any other way. No endpoint was called, no account was opened, no key was held
+and no order was placed. The sector each verdict uses is the sector the program
+itself assigns, in `src/exchange/ccxt_connector.py`, in `market_asset_class`.
+
+Three answers are possible. The venue offers a product in that sector, the venue
+does not offer one, or the venue publishes no answer a reader can quote. The
+third answer is written wherever it is true. It is never replaced by a reading
+taken from a sibling venue or from a connector library.
+
+| Venue | Sector | Verdict | An order takes |
+| --- | --- | --- | --- |
+| binance | indices | offers | no published step |
+| cryptocom | commodities | offers | a fraction |
+| cryptocom | forex | offers | a whole contract |
+| cryptocom | indices | offers | no published step |
+| bybit | stocks | no published answer | no published step |
+| bybit | commodities | no published answer | no published step |
+| bybit | forex | no published answer | no published step |
+| bybit | indices | no published answer | no published step |
+| poloniex | stocks | offers | a fraction |
+| poloniex | indices | offers | a fraction |
+| poloniex | futures_perps | offers | a whole contract |
+| huobi | forex | no published answer | no published step |
+| huobi | indices | does not offer | no product to size |
+| huobi | futures_perps | offers | a whole contract |
+| kucoin | forex | offers | a fraction |
+| kucoin | indices | offers | a fraction |
+| gateio | forex | offers | no published step |
+| gateio | indices | offers | no published step |
+| gateio | futures_perps | offers | a whole contract |
+| mexc | forex | offers | a fraction |
+| mexc | indices | does not offer | no product to size |
+| bitget | forex | offers | no published step |
+| schwab | forex | no published answer | no published step |
+| fidelity | crypto | offers | no published step |
+| fidelity | commodities | offers | a whole share |
+| fidelity | forex | does not offer | no product to size |
+| fidelity | indices | offers | a whole share |
+| fidelity | futures_perps | does not offer | no product to size |
+
+#### The three counts
+
+```
+offers                18
+does not offer         4
+no published answer    6
+                      ---
+total                 28
+```
+
+The total is the twenty-eight named above this section. It was counted twice
+before any page was read: the matrix carries twenty-eight question-marked cells,
+and the named list carries twenty-eight across eleven venue ids. The two
+readings agree.
+
+#### The page behind every verdict
+
+Each entry carries the URL and the sentence that page carries.
+
+```
+binance, indices — offers
+  binance.com/en/support/announcement/binance-futures-launches-defi-composite
+  -index-perpetual-contract-with-up-to-50x-leverage-ebee6da5df3946519fdb9ab27
+  706d1a4
+  "Binance Futures will launch a DEFI/USDT composite index perpetual contract"
+  "The underlying asset of the DEFI Composite Index perpetual contract consists
+  of a basket of decentralized finance (DeFi) protocol tokens listed on
+  Binance."
+  The index is a basket of crypto tokens, not an equity index.
+
+cryptocom, commodities — offers
+  crypto.com/en/product-news/exchange-tokenized-perpetual-gold-markets
+  "Eligible users on the Crypto.com Exchange can now access tokenized gold
+  markets through: XAUT (Tether Gold) PAXG (Pax Gold)"
+  crypto.com/en/product-news/exchange-tradfi-perpetuals-launch
+  "Trade Gold (XAU), Silver (XAG), Platinum (XPT), Palladium (XPD), and Copper
+  (XCU)."
+  crypto.com/us/crypto/learn/what-is-tokenized-gold-how-does-it-work
+  "As low as $0.01. Tokens like PAXG or XAUT are divisible to 18 decimal
+  places."
+
+cryptocom, forex — offers
+  help.crypto.com/en/articles/8462828-about-strike-options
+  "Strike Options are available for the following Forex pairs: AUD/USD,
+  EUR/USD, GBP/USD, USD/JPY"
+  "The position limit for FX Strike Options is 2,500"
+  A contract is priced between US$0 and US$10, so the order is a contract count.
+
+cryptocom, indices — offers
+  crypto.com/en/product-news/exchange-tradfi-perpetuals-launch
+  "Position on the Nasdaq-100 (QQQ) and S&P 500 (SPY) benchmarks."
+  The page names leverage and no order step.
+
+bybit, stocks — no published answer
+bybit, commodities — no published answer
+bybit, forex — no published answer
+bybit, indices — no published answer
+  Eight Bybit paths were read on five Bybit hosts. Seven timed out at 60
+  seconds, including the host root. One answered.
+  bybit-exchange.github.io/docs/v5/intro
+  "V5 unifies the APIs of various trading products into one, providing users
+  the capability to trade Spot, Derivatives and Options contracts with a single
+  API."
+  That page names no stock, commodity, currency or index product. The pages
+  that would answer are on the hosts that timed out. Bybit is the one venue
+  with nothing established.
+
+poloniex, stocks — offers
+  poloniex.com/price/Wrapped-Intercontinental-Exchange-Tokenized-Stock-
+  (xStock)-wICEx
+  "Wrapped Intercontinental Exchange Tokenized Stock (xStock) (wICEx) is a
+  cryptocurrency and operates on the X Layer platform."
+  The page carries a 24-hour volume and a Trade action on Poloniex.
+
+poloniex, indices — offers
+  poloniex.com/price/Wrapped-Nasdaq-Tokenized-ETF-(xStock)-WQQQX
+  "Wrapped Nasdaq Tokenized ETF (xStock) (wQQQx)"
+  "Buy your first wQQQx on Poloniex"
+
+poloniex, futures_perps — offers
+  api-docs.poloniex.com/v3/futures/api/market/get-product-info
+  "Contract face value, e.g., 0.001 BTC (per contract) - applicable only to
+  futures trading"
+  "Order size precision. The amount of futures trades is measured in Cont,
+  while the amount of spot trades is measured in the base currency."
+
+  The fraction for the two spot cells above comes from the same host.
+  api-docs.poloniex.com/spot/api/public/reference-data
+  "minQuantity and minAmount refer to the minimum size of the order."
+  The field quantityScale is the decimal precision for quantity.
+
+huobi, forex — no published answer
+  HTX's market and support hosts returned an empty body on every path read.
+  Its own documentation host answered and names no currency pair.
+  huobiapi.github.io/docs/spot/v1/en/
+  "Take the symbol BTC/USDT as an example, BTC is the base currency, and USDT
+  is the quote currency."
+  No fiat quote currency is named anywhere on that page. HTX's own pages name
+  a EUR deposit, a EUR withdrawal and a EUR quick trade, none of which is a
+  market.
+
+huobi, indices — does not offer
+  huobiapi.github.io/docs/usdt_swap/v1/en/
+  The page covers USDT-margined swap and futures contracts only. It names
+  contract codes of the form "BTC-USDT" and "BTC-USDT-CW" and no index
+  product.
+  huobiapi.github.io/docs/spot/v1/en/ names no index product either. The index
+  HTX publishes is a price reference used to mark a crypto contract.
+
+huobi, futures_perps — offers
+  huobiapi.github.io/docs/usdt_swap/v1/en/
+  Swap contracts are perpetual and take the form "BTC-USDT". Futures contracts
+  are deliverable and take the form "BTC-USDT-CW" for the current week and
+  "BTC-USDT-NQ" for the next quarter. The page names no contract-size field.
+
+kucoin, forex — offers
+  kucoin.com/announcement/en-eur-trading-pairs-to-go-live-on-kucoin
+  "The BTC/EUR, ETH/EUR and USDT/EUR fiat trading pairs will be released on
+  KuCoin at 12:00:00(UTC) on Jun 28, 2022"
+  USDT/EUR is the row with two currency legs.
+
+kucoin, indices — offers
+  kucoin.com/announcement/en-kucoin-spot-to-list-xstocks-spyx-crclx-tslax-
+  mstrx-nvdax
+  "SPYX/USDT, CRCLX/USDT, TSLAX/USDT, MSTRX/USDT and NVDAX/USDT"
+  "SPYX/USDT, CRCLX/USDT, and TSLAX/USDT will open at 09:00 on July 18, 2025
+  (UTC)"
+  SPYX tracks the S&P 500 ETF. One other KuCoin page disagrees: its
+  how-to-buy page for the same asset reads "Although KuCoin currently does not
+  support SP500 xStock (SPYX)". The listing announcement is the product record
+  and the how-to-buy page is a guide, so the announcement decides the cell.
+
+  The fraction for both KuCoin cells comes from KuCoin's own order rules.
+  kucoin.com/docs-new/rest/spot-trading/market-data/get-all-symbols
+  "baseIncrement": "0.00000001" and "baseMinSize": "0.00001"
+
+gateio, forex — offers
+gateio, indices — offers
+  gate.com/announcements/article/49240
+  "contracts for difference (CFD) covering traditional financial assets,
+  including gold, foreign exchange, stock indices, commodities and popular
+  equities."
+  gate.com/docs/developers/apiv4/en/
+  The same host names "comprehensive CFD API endpoints for MT5-based forex and
+  CFD trading". Neither page names an order step.
+
+gateio, futures_perps — offers
+  gate.com/docs/developers/apiv4/en/
+  The documentation lists "Spot & Margin, Perpetual Futures, Delivery Futures,
+  CFD, Stock, Options, Unified, Alpha, CrossEx".
+  "order_size_min, order_size_max, trade_size, position_size"
+  A futures order is a contract count against a quanto_multiplier.
+
+mexc, forex — offers
+  mexc.com/announcements/article/mexc-will-launch-eur-related-trading-pair-on-
+  mexc-spot-17827791519517
+  "USDT/EUR" at "2024-11-06 09:00 (UTC)" and "USDC/EUR" at "2024-11-07 07:00
+  (UTC)"
+  mexcdevelop.github.io/apidocs/spot_v3_en/
+  "baseSizePrecision": "0.0001" is the min order quantity.
+
+mexc, indices — does not offer
+  mexc.com/price/nasdaq-xstock
+  The page marks Nasdaq xStock (QQQX) "Unlisted" and states "This token data is
+  sourced from third parties. MEXC acts solely as an information aggregator."
+  mexc.com/stocks
+  "RealStocks (held via a regulated broker partner), Tokenized Stocks that
+  trade 24/7 with self-custody, and Stock Futures with up to 200x leverage."
+  That list names equities and equity futures and no index product.
+
+bitget, forex — offers
+  bitget.com/support/articles/12560603776372
+  "USDT/EUR, BTC/EUR, ETH/EUR, USDT/GBP, BTC/GBP ETH/GBP"
+  USDT/EUR and USDT/GBP are the rows with two currency legs. Bitget's own API
+  documentation host served an account overview on every spot symbol path read,
+  so the order step has no answer this method can quote.
+
+schwab, forex — no published answer
+  Five Schwab paths were read on three Schwab hosts and every one refused.
+  schwab.com/forex and schwab.com/futures/forex-trading and
+  schwab.com/node/42546 answered "We're sorry, but we were unable to authorize
+  your request." content.schwab.com returned 403 and international.schwab.com
+  returned 403. The page exists and this method cannot read it, so no absence
+  is claimed.
+
+fidelity, crypto — offers
+  fidelity.com/crypto/overview
+  "Buy, sell, and transfer crypto like bitcoin, ethereum, and solana, all
+  backed by industry-leading security."
+  The page names no order step.
+
+fidelity, commodities — offers
+  fidelity.com/trading/investment-choices/overview
+  The page lists "Precious metals", described as "Buy gold, silver, platinum,
+  and palladium".
+
+fidelity, forex — does not offer
+  fidelity.com/trading/investment-choices/overview
+  The page lists every investment type Fidelity offers and names no currency or
+  forex product.
+  fidelity.com/trading/commissions-margin-rates
+  The page prices stocks, ETFs, options, bonds, CDs, mutual funds and U.S.
+  Treasury, and names no forex product. Its one foreign-exchange line is
+  "Foreign exchange wire: Up to 3% of principal", a wire fee and not a market.
+
+fidelity, indices — offers
+  fidelity.com/mutual-funds/fidelity-funds/why-index-funds
+  The page lists index funds by ticker, among them "Fidelity 500 Index Fund
+  (FXAIX)" and "Fidelity ZERO Total Market Index Fund (FZROX)".
+  A fund share is a whole share.
+
+fidelity, futures_perps — does not offer
+  fidelity.com/trading/commissions-margin-rates
+  The page names no futures product.
+  fidelity.com/trading/investment-choices/overview
+  The page names no futures product.
+```
+
+#### Four cells move verdict
+
+BLOCKED means the venue lists the product and our code cannot reach it. Four of
+the twenty-eight hold no product, so ABSENT is the verdict they take.
+
+| Cell | The matrix reads | The research reads |
+| --- | --- | --- |
+| huobi, indices | BLOCKED? | ABSENT |
+| mexc, indices | BLOCKED? | ABSENT |
+| fidelity, forex | BLOCKED? | ABSENT |
+| fidelity, futures_perps | BLOCKED? | ABSENT |
+
+OVERTAKEN, and the four totals above are kept as written. The totals that follow
+from this research are BLOCKED 102 and ABSENT 36, with READY 16 and WRONG 2
+unchanged. The sum is still 156. Nothing the program does changes, because the
+program reaches none of the four either way.
+
+#### The hosts that refused, and the absences not claimed
+
+Two venues answered nothing a verdict can rest on, and both are recorded as a
+refusal and not as an absence.
+
+```
+bybit     7 of 8 paths timed out at 60 s, the host root among them
+schwab    5 of 5 paths refused on 3 hosts, 2 of them with 403
+```
+
+Two further hosts served a page body that carries no product content. HTX's
+market and support hosts returned an empty body on every path read. Bitget's API
+documentation host served an account overview on every path read. Neither
+produced an absence.
+
+#### This method's own two-sided control
+
+The method is one reading: fetch the venue's own page and quote the sentence it
+carries. It was proved able to return both answers before any cell was trusted.
+
+```
+it can return no published answer
+  bybit-exchange.github.io/docs/v5/acervator-control-page-does-not-exist
+  HTTP 404 Not Found, no body
+  kucoin.com/announcement/en-kucoin-supports-euro-eur-fiat-trading
+  HTTP 404 Not Found, no body
+
+it can return a confirmation
+  the cell read was binance and commodities, already established in the matrix
+  binance.com/en/trade/PAXG_USDT
+  "Trade PAXG/USDT Spot | Crypto, bStocks & tCommodities | Binance"
+  the tokenised gold market read back as listed
+```
+
+One host failed the control and no verdict rests on its status code. A fabricated
+article id on Binance's support host returned the live FAQ landing page with a
+success code. The Binance verdict above therefore rests on the quoted content of
+the announcement page and not on the code that page returned.
+
+---
+
 ## One finding about a page this report does not change
 
 The manual's venue page states that Coinbase serves no forex and that forex has
