@@ -221,6 +221,45 @@ def venue_order_types(asset_class: str, venue: str) -> Optional[str]:
     return CITED_VENUE_ORDER_TYPES.get((str(asset_class), str(venue)))
 
 
+#: The separator a unified symbol puts before its settle currency. A symbol
+#: carrying it names a contract, whose market buy names a unit count.
+SETTLE_LEG = ":"
+
+#: The venues whose own order path turns a spot market buy into a cash amount,
+#: read from each one's order builder. ``coinbase`` sends ``quote_size`` for a
+#: spot buy and a unit count on every other order.
+CITED_CASH_MARKET_BUY: frozenset[str] = frozenset({"coinbase"})
+
+#: Why a ``WHOLE_UNITS`` market buy names a limit order.
+MARKET_BUY_NAMES_CASH = "a market buy names a cash amount, not a unit count"
+
+
+def market_buy_names_cash(symbol: Any, venue: Any) -> bool:
+    """True while a market buy into ``symbol`` reaches ``venue`` as a cash
+    amount.
+
+    False for a ``venue`` outside ``CITED_CASH_MARKET_BUY`` and for a
+    ``symbol`` carrying ``SETTLE_LEG``.
+    """
+    if str(venue) not in CITED_CASH_MARKET_BUY:
+        return False
+    if type(symbol) is not str or not symbol:
+        return False
+    return SETTLE_LEG not in symbol
+
+
+def whole_unit_buy_needs_limit(symbol: Any, venue: Any, rule: Any) -> bool:
+    """True while ``rule`` reads ``WHOLE_UNITS`` and ``market_buy_names_cash``
+    reads True for ``symbol`` on ``venue``.
+
+    False for every other ``rule``, so a market held in fractions keeps the
+    market order it came in as.
+    """
+    if str(rule) != WHOLE_UNITS:
+        return False
+    return market_buy_names_cash(symbol, venue)
+
+
 # OVERTAKEN, the CITED_VENUE_ORDER_TYPES comment above reading "The order types
 # each ``(asset class, venue)`` declares": the venue's own record declares them
 # through ``declared_order_types``, and the table answers where it declared none.
@@ -1027,6 +1066,7 @@ __all__ = [
     "BELOW_POSITION_MINIMUM",
     "CEILING_MULTIPLE_MAX",
     "CEILING_MULTIPLE_MIN",
+    "CITED_CASH_MARKET_BUY",
     "CITED_UNIT_RULES",
     "CITED_VENUE_ORDER_TYPES",
     "CITED_VENUE_SESSIONS",
@@ -1047,6 +1087,7 @@ __all__ = [
     "HELD_OUTSIDE_SESSION",
     "HELD_UNSETTLED_CASH",
     "LARGEST_FLEET_TARGET_USD",
+    "MARKET_BUY_NAMES_CASH",
     "ORDER_TYPES_DECLARED",
     "ORDER_TYPES_LIMIT_ONLY",
     "ORDER_TYPES_WITH_MARKET",
@@ -1055,6 +1096,7 @@ __all__ = [
     "SESSION_CONTINUOUS",
     "SESSION_US_EQUITY",
     "SETTLEMENT_DAY_SECONDS",
+    "SETTLE_LEG",
     "TAPER_DROP",
     "TAPER_START_RATIO",
     "TRADEABLE_NO",
@@ -1084,6 +1126,7 @@ __all__ = [
     "fold_units",
     "grained_units",
     "growth_cycle_side",
+    "market_buy_names_cash",
     "market_unit_rule",
     "opens_below_position_minimum",
     "opposing_trade_distance_pct",
@@ -1124,5 +1167,6 @@ __all__ = [
     "venue_settlement_days",
     "venue_variant",
     "wallet_capped_spend_usd",
+    "whole_unit_buy_needs_limit",
     "whole_unit_position_usd",
 ]
