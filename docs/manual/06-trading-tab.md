@@ -6067,7 +6067,7 @@ pair, so the Forex layer keeps `No Forex Exchanges Configured` and its button
 refuses the press.
 
 **One venue list, read from one place.** Nine equity venue ids are declared once and
-six files read them. Order matters to the pages and membership matters to the layers:
+eight files name them. Order matters to the pages and membership matters to the layers:
 three view models publish the list to a page, so it is sorted where the Live view
 model reads it and every launch gives the pages the same nine in the same order.
 Which layer a venue is put on is decided by membership alone.
