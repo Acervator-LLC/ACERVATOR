@@ -243,6 +243,86 @@ class ReconciliationEngineMixin:
     YTD_TRADE_PAGE_LIMIT = 500
     YTD_TRADE_WINDOW_SEC = 30 * 24 * 3600.0
 
+    YTD_BULK_READ_ATTEMPTS = 2
+
+    async def _await_ytd_read_slot(self) -> float:
+        """Seconds ``exchange.await_bulk_read_slot`` waited before this window's call.
+
+        The walk is a bulk reader on the connector every bot of a venue shares,
+        so each window's request waits here for a free call queue. An exchange
+        without the method, and a wait that raises, both answer 0.0 and the
+        request goes ahead, so a connector that does not serialise its calls is
+        unaffected.
+        """
+        _slot = getattr(self.exchange, "await_bulk_read_slot", None)
+        if _slot is None:
+            return 0.0
+        try:
+            _waited = float(await _slot())
+        except (AttributeError, TypeError, ValueError) as _slot_exc:
+            logger.debug(
+                "Bot %s YTD bulk-read slot wait skipped: %s: %s",
+                self.bot_id,
+                type(_slot_exc).__name__,
+                _slot_exc,
+            )
+            return 0.0
+        if _waited > 0:
+            logger.debug(
+                "Bot %s YTD walk waited %.3fs for a free venue call queue",
+                self.bot_id,
+                _waited,
+            )
+        return _waited
+
+    @staticmethod
+    def _is_bulk_queue_full(exc: BaseException) -> bool:
+        """True when ``exc`` is a connector's refusal at its call-queue cap."""
+        try:
+            from ...exchange.ccxt_connector import CCXTQueueFullError
+        except ImportError:
+            return False
+        return isinstance(exc, CCXTQueueFullError)
+
+    async def _ytd_window_page(self, cursor: float, end_ms: int) -> list:
+        """One window's ``get_my_trades`` rows, each attempt behind ``_await_ytd_read_slot``.
+
+        The rows, their order and their count are the connector's own answer to
+        the same request the walk made before the wait was added.
+        ``YTD_BULK_READ_ATTEMPTS`` bounds the attempts and
+        ``_is_bulk_queue_full`` decides which refusal earns another; every other
+        exception, and a refusal on the last attempt, propagate, so
+        ``sync_ytd_trade_count`` reports no reading rather than count this
+        window short.
+        """
+        _attempt = 0
+        while True:
+            await self._await_ytd_read_slot()
+            _attempt += 1
+            try:
+                return list(
+                    await self.exchange.get_my_trades(
+                        self.config.symbol,
+                        since=cursor,
+                        limit=self.YTD_TRADE_PAGE_LIMIT,
+                        params={"paginate": True, "until": end_ms},
+                    )
+                    or []
+                )
+            except Exception as _page_exc:
+                if _attempt < self.YTD_BULK_READ_ATTEMPTS and self._is_bulk_queue_full(
+                    _page_exc
+                ):
+                    logger.debug(
+                        "Bot %s YTD window ending %d refused at the call-queue "
+                        "cap on attempt %d; waiting for room again",
+                        self.bot_id,
+                        end_ms,
+                        _attempt,
+                    )
+                    continue
+                raise
+
     @staticmethod
     def _venue_order_key(trade: Any, fill_key: Any) -> tuple:
         """The venue's order identifier for one fill, or the fill's own key when the venue gave none.
@@ -309,7 +389,10 @@ class ReconciliationEngineMixin:
         walk covers the whole span however far apart the two become. One trade
         is one order the venue filled, so the walk counts distinct venue order
         identifiers and returns that figure; the distinct fill count goes to
-        ``stats.exchange_fill_count`` beside it.
+        ``stats.exchange_fill_count`` beside it. Every window's request goes
+        through ``_ytd_window_page``, which waits for a free venue call queue
+        first, so the walk does not hold the connector's worker against the
+        balance, ticker, open-order and candle reads the running platform polls.
 
         A walk that counted every window writes the venue's own numbers over
         ``stats.exchange_trade_count``, ``stats.total_trades``,
@@ -342,15 +425,7 @@ class ReconciliationEngineMixin:
             while _cursor < _now:
                 _end = min(_cursor + _window_s, _now)
                 _end_ms = int(_end * 1000)
-                _page = list(
-                    await self.exchange.get_my_trades(
-                        self.config.symbol,
-                        since=_cursor,
-                        limit=self.YTD_TRADE_PAGE_LIMIT,
-                        params={"paginate": True, "until": _end_ms},
-                    )
-                    or []
-                )
+                _page = await self._ytd_window_page(_cursor, _end_ms)
                 _new = 0
                 for _tr in _page:
                     _tid = getattr(_tr, "id", None) or id(_tr)
