@@ -8,7 +8,7 @@ aiohappyeyeballs==2.7.1
     # via
     #   aiohttp
     #   ccxt
-aiohttp==3.14.3
+aiohttp==3.14.4
     # via
     #   acervator (pyproject.toml)
     #   aiohttp-fast-zlib
@@ -41,7 +41,7 @@ charset-normalizer==3.5.2
     #   ccxt
     #   reportlab
     #   requests
-cryptography==50.0.0
+cryptography==50.0.2
     # via
     #   acervator (pyproject.toml)
     #   ccxt
@@ -79,7 +79,7 @@ numpy==2.5.3
     #   acervator (pyproject.toml)
     #   pandas
     #   ta
-orjson==3.11.9
+orjson==3.12.0
     # via ccxt
 packaging==26.3
     # via
@@ -95,7 +95,7 @@ pillow==12.3.0
     # via
     #   acervator (pyproject.toml)
     #   reportlab
-propcache==0.5.2
+propcache==0.5.4
     # via
     #   aiohttp
     #   ccxt
@@ -108,7 +108,7 @@ pycparser==3.0
     #   cffi
 pyinstaller==6.22.3
     # via acervator (pyproject.toml)
-pyinstaller-hooks-contrib==2026.7
+pyinstaller-hooks-contrib==2026.8
     # via pyinstaller
 pyside6==6.11.2
     # via acervator (pyproject.toml)
@@ -141,15 +141,15 @@ tomli-w==1.2.0
     # via acervator (pyproject.toml)
 typing-extensions==4.16.0
     # via ccxt
-tzdata==2026.3
+tzdata==2026.5
     # via pandas
 urllib3==2.8.0
     # via
     #   ccxt
     #   requests
-winloop==0.6.3
+winloop==0.7.1
     # via ccxt
-yarl==1.24.5
+yarl==1.25.1
     # via
     #   aiohttp
     #   ccxt
