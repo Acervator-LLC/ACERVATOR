@@ -19,6 +19,7 @@ from typing import Any, Callable, Dict, Optional
 
 from .. import design_system as ds
 from ..color_alpha import coin_disc_color
+from .bot_status_table_surface import BUTTON_HEIGHT_PX
 
 METHOD = "extractor_bot_table.state"
 
@@ -166,7 +167,9 @@ LIQUID_TIP_FORMAT = (
 
 FIRE_LABEL = "Fire"
 DETAIL_LABEL = "Detail"
-BUTTON_HEIGHT = 22
+#: The one declared height every bot table's buttons take, so Fire and
+#: Detail fill their cell in the browser build as they do in Qt.
+BUTTON_HEIGHT = BUTTON_HEIGHT_PX
 FIRE_ENABLED = False
 DETAIL_ENABLED = True
 FIRE_FOCUS_POLICY = "NoFocus"
