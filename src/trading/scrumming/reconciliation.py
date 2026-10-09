@@ -47,6 +47,11 @@ class ReconciliationEngineMixin:
     exchange: Any
     stats: Any
 
+    # Written by the YTD walk itself on its first complete reading; nothing is
+    # held on disk, so a restart walks every window again.
+    _ytd_settled_segments: list[dict]
+    _ytd_full_walk_ts: float
+
     EXCHANGE_HEALTH_REFRESH_COOLDOWN_SEC = 300.0
 
     async def fetch_fill_history(self) -> Optional[list]:
@@ -243,6 +248,89 @@ class ReconciliationEngineMixin:
     YTD_TRADE_PAGE_LIMIT = 500
     YTD_TRADE_WINDOW_SEC = 30 * 24 * 3600.0
 
+    YTD_BULK_READ_ATTEMPTS = 2
+
+    YTD_SETTLE_LAG_SEC = 7 * 24 * 3600.0
+    YTD_FULL_REWALK_SEC = 3600.0
+
+    async def _await_ytd_read_slot(self) -> float:
+        """Seconds ``exchange.await_bulk_read_slot`` waited before this window's call.
+
+        The walk is a bulk reader on the connector every bot of a venue shares,
+        so each window's request waits here for a free call queue. An exchange
+        without the method, and a wait that raises, both answer 0.0 and the
+        request goes ahead, so a connector that does not serialise its calls is
+        unaffected.
+        """
+        _slot = getattr(self.exchange, "await_bulk_read_slot", None)
+        if _slot is None:
+            return 0.0
+        try:
+            _waited = float(await _slot())
+        except (AttributeError, TypeError, ValueError) as _slot_exc:
+            logger.debug(
+                "Bot %s YTD bulk-read slot wait skipped: %s: %s",
+                self.bot_id,
+                type(_slot_exc).__name__,
+                _slot_exc,
+            )
+            return 0.0
+        if _waited > 0:
+            logger.debug(
+                "Bot %s YTD walk waited %.3fs for a free venue call queue",
+                self.bot_id,
+                _waited,
+            )
+        return _waited
+
+    @staticmethod
+    def _is_bulk_queue_full(exc: BaseException) -> bool:
+        """True when ``exc`` is a connector's refusal at its call-queue cap."""
+        try:
+            from ...exchange.ccxt_connector import CCXTQueueFullError
+        except ImportError:
+            return False
+        return isinstance(exc, CCXTQueueFullError)
+
+    async def _ytd_window_page(self, cursor: float, end_ms: int) -> list:
+        """One window's ``get_my_trades`` rows, each attempt behind ``_await_ytd_read_slot``.
+
+        The rows, their order and their count are the connector's own answer to
+        the same request the walk made before the wait was added.
+        ``YTD_BULK_READ_ATTEMPTS`` bounds the attempts and
+        ``_is_bulk_queue_full`` decides which refusal earns another; every other
+        exception, and a refusal on the last attempt, propagate, so
+        ``sync_ytd_trade_count`` reports no reading rather than count this
+        window short.
+        """
+        _attempt = 0
+        while True:
+            await self._await_ytd_read_slot()
+            _attempt += 1
+            try:
+                return list(
+                    await self.exchange.get_my_trades(
+                        self.config.symbol,
+                        since=cursor,
+                        limit=self.YTD_TRADE_PAGE_LIMIT,
+                        params={"paginate": True, "until": end_ms},
+                    )
+                    or []
+                )
+            except Exception as _page_exc:
+                if _attempt < self.YTD_BULK_READ_ATTEMPTS and self._is_bulk_queue_full(
+                    _page_exc
+                ):
+                    logger.debug(
+                        "Bot %s YTD window ending %d refused at the call-queue "
+                        "cap on attempt %d; waiting for room again",
+                        self.bot_id,
+                        end_ms,
+                        _attempt,
+                    )
+                    continue
+                raise
+
     @staticmethod
     def _venue_order_key(trade: Any, fill_key: Any) -> tuple:
         """The venue's order identifier for one fill, or the fill's own key when the venue gave none.
@@ -259,6 +347,110 @@ class ReconciliationEngineMixin:
             if _oid:
                 return ("order", str(_oid))
         return ("fill", fill_key)
+
+    @staticmethod
+    def _ytd_fill_row(trade: Any, fill_key: Any, order_key: tuple) -> tuple:
+        """One fill as the walk accounts it: its keys and the venue's own amount, price and side.
+
+        The venue's figures are carried unconverted, so a replayed row and a
+        freshly read one reach ``_ytd_tally_fill`` in the same form and a row
+        the venue sent uncoercible still counts as a fill.
+        """
+        return (
+            fill_key,
+            order_key,
+            getattr(trade, "amount", 0),
+            getattr(trade, "price", 0),
+            getattr(trade, "side", None),
+        )
+
+    def _ytd_tally_fill(
+        self,
+        row: tuple,
+        seen_ids: set,
+        order_keys: set,
+        scrum_fold_usd: list,
+        quote_to_usd: float,
+    ) -> bool:
+        """Count one ``_ytd_fill_row`` into the walk's running figures; False when already counted.
+
+        A fill key already in ``seen_ids`` is the same fill read twice and
+        changes nothing. Otherwise the fill joins ``seen_ids``, its order key
+        joins ``order_keys``, and ``amount * price * quote_to_usd`` is added to
+        index 0 of ``scrum_fold_usd`` for a sale and index 1 for a buy. A
+        replayed row and a freshly read one take this one path, so the dollar
+        figures depend on the order of the fills and not on which windows were
+        read this walk.
+        """
+        _fill_key, _order_key, _amount, _price, _side = row
+        if _fill_key in seen_ids:
+            return False
+        seen_ids.add(_fill_key)
+        order_keys.add(_order_key)
+        try:
+            _usd = float(_amount or 0) * float(_price or 0) * quote_to_usd
+            _side_str = str(getattr(_side, "value", _side) or "").lower()
+            if "sell" in _side_str:
+                scrum_fold_usd[0] += _usd
+            elif "buy" in _side_str:
+                scrum_fold_usd[1] += _usd
+        except (TypeError, ValueError) as _sup:
+            logger.debug(
+                "suppressed in %s: %s: %s",
+                "_ytd_tally_fill",
+                type(_sup).__name__,
+                _sup,
+            )
+        return True
+
+    def _ytd_resume_point(self, now: float) -> tuple[list, float]:
+        """The settled windows this walk replays, and the span start it must read from.
+
+        A window is settled when its own request counted it whole and its end
+        is older than ``YTD_SETTLE_LAG_SEC``, so a fill the venue reports or
+        amends inside that lag is read again rather than replayed. The held
+        windows are dropped altogether once ``YTD_FULL_REWALK_SEC`` has passed
+        since the last walk that started at the anchor, which bounds how long a
+        fill arriving later than the lag can go uncounted. The lag is positive,
+        so the replayed span never reaches ``now`` and every walk still makes at
+        least one request; a venue refusing that request raises as before.
+        """
+        _segments = list(getattr(self, "_ytd_settled_segments", ()) or ())
+        _last_full_walk = float(getattr(self, "_ytd_full_walk_ts", 0.0) or 0.0)
+        if not _segments or now - _last_full_walk >= self.YTD_FULL_REWALK_SEC:
+            return [], self.YTD_TRADE_ANCHOR_UTC
+        _settle_horizon = now - self.YTD_SETTLE_LAG_SEC
+        _replayed: list = []
+        for _segment in _segments:
+            if float(_segment["end"]) > _settle_horizon:
+                break
+            _replayed.append(_segment)
+        if not _replayed:
+            return [], self.YTD_TRADE_ANCHOR_UTC
+        return _replayed, float(_replayed[-1]["next_cursor"])
+
+    def _ytd_settled_cache(
+        self, replayed: list, read: list, settle_horizon: float
+    ) -> list:
+        """The windows the next walk may replay: ``replayed`` plus the settled leading run of ``read``.
+
+        The run stops at the first window that read short or that ends after
+        ``settle_horizon``, so what is held stays one contiguous span starting
+        at the anchor and the next walk reads everything past it.
+        """
+        _cache = list(replayed)
+        for _segment in read:
+            if not _segment["whole"] or float(_segment["end"]) > settle_horizon:
+                break
+            _cache.append(
+                {
+                    "cursor": _segment["cursor"],
+                    "end": _segment["end"],
+                    "next_cursor": _segment["next_cursor"],
+                    "rows": _segment["rows"],
+                }
+            )
+        return _cache
 
     def _ytd_next_cursor(
         self, page: list, cursor: float, end: float
@@ -305,11 +497,20 @@ class ReconciliationEngineMixin:
     async def sync_ytd_trade_count(self) -> Optional[int]:
         """Walk ``get_my_trades`` from the YTD anchor to the present in 30-day windows.
 
-        The request count follows the distance from the anchor to now, so the
-        walk covers the whole span however far apart the two become. One trade
-        is one order the venue filled, so the walk counts distinct venue order
-        identifiers and returns that figure; the distinct fill count goes to
-        ``stats.exchange_fill_count`` beside it.
+        The accounted span always starts at the anchor, but only the windows
+        ``_ytd_resume_point`` leaves unsettled are requested; the settled ones
+        are replayed from the fills the last walk read, so the request count
+        follows the unsettled tail and not the distance from the anchor. One
+        trade is one order the venue filled, so the walk counts distinct venue
+        order identifiers and returns that figure; the distinct fill count goes
+        to ``stats.exchange_fill_count`` beside it. Every request goes through
+        ``_ytd_window_page``, which waits for a free venue call queue first, so
+        the walk does not hold the connector's worker against the balance,
+        ticker, open-order and candle reads the running platform polls.
+
+        Each fill, replayed or freshly read, is counted by ``_ytd_tally_fill``
+        in window order, so the five figures are the same whichever windows
+        this walk requested.
 
         A walk that counted every window writes the venue's own numbers over
         ``stats.exchange_trade_count``, ``stats.total_trades``,
@@ -330,52 +531,38 @@ class ReconciliationEngineMixin:
 
         _now = _t.time()
         _window_s = self.YTD_TRADE_WINDOW_SEC
-        _cursor = self.YTD_TRADE_ANCHOR_UTC
+        _settle_horizon = _now - self.YTD_SETTLE_LAG_SEC
+        _replayed, _cursor = self._ytd_resume_point(_now)
+        _read_from = _cursor
         _seen_ids: set = set()
         _order_keys: set = set()
         _every_window_whole = True
         _requests = 0
-        _ytd_scrum_usd = 0.0
-        _ytd_fold_usd = 0.0
+        _scrum_fold_usd = [0.0, 0.0]
         _qrate = float(getattr(self, "_quote_to_usd", 1.0) or 1.0)
+        for _segment in _replayed:
+            for _row in _segment["rows"]:
+                self._ytd_tally_fill(
+                    _row, _seen_ids, _order_keys, _scrum_fold_usd, _qrate
+                )
+        _read: list = []
         try:
             while _cursor < _now:
                 _end = min(_cursor + _window_s, _now)
                 _end_ms = int(_end * 1000)
-                _page = list(
-                    await self.exchange.get_my_trades(
-                        self.config.symbol,
-                        since=_cursor,
-                        limit=self.YTD_TRADE_PAGE_LIMIT,
-                        params={"paginate": True, "until": _end_ms},
-                    )
-                    or []
-                )
+                _page = await self._ytd_window_page(_cursor, _end_ms)
+                _rows: list = []
                 _new = 0
-                for _tr in _page:
-                    _tid = getattr(_tr, "id", None) or id(_tr)
-                    if _tid in _seen_ids:
-                        continue
-                    _seen_ids.add(_tid)
-                    _order_keys.add(self._venue_order_key(_tr, _tid))
-                    _new += 1
-                    try:
-                        _amt = float(getattr(_tr, "amount", 0) or 0)
-                        _px = float(getattr(_tr, "price", 0) or 0)
-                        _usd = _amt * _px * _qrate
-                        _side = getattr(_tr, "side", None)
-                        _side_str = str(getattr(_side, "value", _side) or "").lower()
-                        if "sell" in _side_str:
-                            _ytd_scrum_usd += _usd
-                        elif "buy" in _side_str:
-                            _ytd_fold_usd += _usd
-                    except (TypeError, ValueError) as _sup:
-                        logger.debug(
-                            "suppressed in %s: %s: %s",
-                            "sync_ytd_trade_count",
-                            type(_sup).__name__,
-                            _sup,
-                        )
+                for _index, _tr in enumerate(_page):
+                    _tid = getattr(_tr, "id", None) or ("unkeyed", _cursor, _index)
+                    _row = self._ytd_fill_row(
+                        _tr, _tid, self._venue_order_key(_tr, _tid)
+                    )
+                    _rows.append(_row)
+                    if self._ytd_tally_fill(
+                        _row, _seen_ids, _order_keys, _scrum_fold_usd, _qrate
+                    ):
+                        _new += 1
                 logger.debug(
                     "Bot %s YTD request %d: [%.0f..%.0f] returned=%d "
                     "new=%d cumulative_unique=%d",
@@ -388,15 +575,29 @@ class ReconciliationEngineMixin:
                     len(_seen_ids),
                 )
                 _requests += 1
-                _cursor, _window_whole = self._ytd_next_cursor(_page, _cursor, _end)
+                _next_cursor, _window_whole = self._ytd_next_cursor(
+                    _page, _cursor, _end
+                )
                 _every_window_whole = _every_window_whole and _window_whole
+                _read.append(
+                    {
+                        "cursor": _cursor,
+                        "end": _end,
+                        "next_cursor": _next_cursor,
+                        "rows": tuple(_rows),
+                        "whole": _window_whole,
+                    }
+                )
+                _cursor = _next_cursor
             _fill_count = len(_seen_ids)
             _order_count = len(_order_keys)
+            _ytd_scrum_usd, _ytd_fold_usd = _scrum_fold_usd
             logger.info(
                 "Bot %s YTD sync via chunked-window walk: "
                 "symbol=%s returned %d unique fills in %d venue orders "
                 "over %d requests spanning [%.0f..%.0f] "
-                "(scrummed=$%.2f folded=$%.2f every_window_whole=%s)",
+                "(replayed_windows=%d read_from=%.0f scrummed=$%.2f "
+                "folded=$%.2f every_window_whole=%s)",
                 self.bot_id,
                 self.config.symbol,
                 _fill_count,
@@ -404,6 +605,8 @@ class ReconciliationEngineMixin:
                 _requests,
                 self.YTD_TRADE_ANCHOR_UTC,
                 _cursor,
+                len(_replayed),
+                _read_from,
                 _ytd_scrum_usd,
                 _ytd_fold_usd,
                 _every_window_whole,
@@ -440,6 +643,11 @@ class ReconciliationEngineMixin:
         self.stats.total_trades = _order_count
         self.stats.ytd_scrummed_usd = _ytd_scrum_usd
         self.stats.ytd_folded_usd = _ytd_fold_usd
+        self._ytd_settled_segments = self._ytd_settled_cache(
+            _replayed, _read, _settle_horizon
+        )
+        if not _replayed:
+            self._ytd_full_walk_ts = _now
         import time as _t
 
         self.stats.exchange_data_fresh_ts = _t.time()
