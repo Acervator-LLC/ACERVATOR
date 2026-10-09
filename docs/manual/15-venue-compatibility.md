@@ -103,7 +103,7 @@ stock window's own files, the broker connector is named once, in a docstring.
 
 ## The venues and the classes they serve
 
-Fifteen crypto venues are offered. One has ever traded. The equity venue list
+Sixteen crypto venues are offered. One has ever traded. The equity venue list
 holds nine ids for eight firms, and two of those firms have no API to reach.
 
 | Venue | Classes served | Reachable from the United States | Credential shape | Source |
@@ -2512,3 +2512,151 @@ markets and the first row covers them.
 
 Two sentences above carry the number of variant names. Both are corrected where
 they stand, because the program now holds a sixth name.
+
+## 2026-10-08 - Robinhood's crypto sector reaches an order, and its other sectors do not
+
+Robinhood is the sixteenth crypto venue and the first that `ccxt` does not
+carry. `'robinhood' in ccxt.exchanges` answers False on `ccxt` 4.5.85, so no
+`CCXTConnector` can reach it and the connector is hand-written.
+
+```python
+# src/exchange/robinhood_connector.py, in RobinhoodCryptoConnector
+class RobinhoodCryptoConnector(ExchangeInterface):
+```
+
+### Which of Robinhood's sectors the program reaches
+
+One of six. Robinhood sells a product in five sectors and publishes a
+programmatic order route for three of them, and two of those three are reachable
+only through a Model Context Protocol server this repository holds no client
+for.
+
+| sector | Robinhood's own route | reached today |
+| --- | --- | --- |
+| crypto | the signed Crypto Trading API | yes |
+| stocks | `place_equity_order` on the Trading MCP | no client for the protocol |
+| indices | `place_option_order` on the Trading MCP | no client for the protocol |
+| commodities | a fund share through `place_equity_order` | no client for the protocol |
+| forex | no published order route | no route to build |
+| futures and perpetuals | no published order route | no route to build |
+
+Every verdict is read from Robinhood's own pages, quoted with its URL, in
+[../audits/2026-10-08_robinhood_order_interface/REPORT.md](../audits/2026-10-08_robinhood_order_interface/REPORT.md).
+
+### Why it is a crypto connector and not a broker one
+
+`BrokerBase` in `src/stocks/broker_base.py` declares an order with no client
+order id and answers a `StockOrder`. Robinhood's crypto order body requires a
+client order id as a valid UUID, and the order path asks for one on every
+submission, so the equities contract cannot carry a Robinhood crypto order.
+
+```python
+# src/trading/bot_container.py, in guarded_place_order, at the submitting call
+            order = await self.exchange.place_order(
+                symbol, side, order_type, amount, price, client_order_id=_coid
+            )
+```
+
+### Where the venue id is read
+
+The crypto sector reads two registries now. `SUPPORTED_EXCHANGES` still holds
+fifteen `ccxt` ids and gains nothing, and `CRYPTO_CONNECTORS` holds each venue
+whose connector is written by hand.
+
+```python
+# src/gui/main_tabs/asset_class_surface.py, in crypto_venues
+    return ccxt_crypto_venues() | written_crypto_venues()
+```
+
+`venue_classes` answers `crypto` alone for this venue, because
+`EXTRA_VENUE_CLASSES` holds no row for it and `EQUITY_VENUES` does not name it.
+A sector with no order route is not listed.
+
+### The order body the venue receives
+
+Four fields and the configuration object the order type requires. A market
+order and a limit order both name a count of the asset through
+`asset_quantity`, so the units the venue credits are the units the scrum asked
+for.
+
+```python
+# src/exchange/robinhood_connector.py, in order_body
+    return {
+        "symbol": named,
+        "client_order_id": client_order_uuid(client_order_id),
+        "side": OrderSide(side).value,
+        "type": kind,
+        ORDER_CONFIG_KEYS[kind]: config,
+    }
+```
+
+### The cash amount this venue publishes and the bot does not name
+
+Robinhood permits `quote_amount` in place of `asset_quantity` on all four of its
+order configurations. `pair_rules` records both shapes, so
+`permitted_order_shape` answers `SHAPE_FRACTIONAL_UNITS` and the order names a
+count. `VARIANT_CASH_AMOUNT` stays outside `VARIANTS_BUILT`, because no
+Robinhood market permits a cash amount alone and nothing selects the variant.
+
+```python
+# src/trading/scrumming/sizing.py, at VARIANTS_BUILT
+#: The variants the running program holds. ``VARIANT_CASH_AMOUNT`` has no caller.
+```
+
+### How a request is signed
+
+`signed_headers` answers the three headers Robinhood requires, over the API
+key, the timestamp, the path, the method and the body, with the body omitted on
+a request that carries none. The signature is Ed25519 and `signature` reads the
+stored key as a base64 seed.
+
+```python
+# src/exchange/robinhood_connector.py, in signed_message
+    return f"{api_key}{timestamp}{path}{str(method).upper()}{body or ''}"
+```
+
+A locally generated key signs the message and its public half verifies the
+result, and the same signature fails against a message of one extra character.
+Whether Robinhood's own host accepts the message is unproved: that needs a
+request, a key and an account, and none exists.
+
+### What reads and what refuses
+
+`place_order` is the only method that builds a request. Every read method raises
+`RobinhoodPathUnpublished`, because Robinhood publishes the two order paths and
+no read path, so a price, a book, a candle, a balance, an order status and a
+cancel all answer the same refusal. `get_markets` raises the same refusal until
+`record_pairs` holds a trading-pair record.
+
+| the condition | what happens |
+| --- | --- |
+| no key and no private key stored | `RobinhoodOrderRefused`, nothing signed |
+| a symbol holding no pair record | `RobinhoodOrderRefused`, nothing signed |
+| a pair reading `is_api_tradable` False | `RobinhoodOrderRefused`, still charted |
+| an immediate-or-cancel order | `RobinhoodOrderRefused`, no such time in force |
+| a market order on a held pair | a signed POST to the order path |
+
+### What the Robinhood order was driven against
+
+No request reached Robinhood. The runtime home was redirected to a scratch
+directory, `_send` was replaced by a recorder that raises, and the real
+recording's modification time was the same before and after.
+
+A scrum of $25 of excess on a market at $0.21436 reached the transport as
+`asset_quantity` of `116.63` against a size step of `0.000001`. Raising the
+excess to $50 and to $100 doubled and quadrupled that count. An order with no
+key stored and an order on an unlisted market each handed the transport nothing.
+
+Every recorded market was read through the order path before and after this
+change: 1,146 markets, 28 readings each, 32,088 answers, and 0 moved. The same
+reading taken against one deliberately changed comparison in `recorded_unit_rule`
+moved 4,184 answers across 726 markets, so a zero from it is a reading and not a
+silence.
+
+### What is not built
+
+A Robinhood bot is created and charted and does not start.
+`MainWindow._connect_exchange_for_bot` reads `broker_connector_class` and does
+not read `crypto_connector_class`, so no Robinhood connector is constructed from
+the window yet. The venue's own trading-pair path is also unpublished, so
+nothing fetches a market list.
