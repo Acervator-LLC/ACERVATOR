@@ -7,6 +7,7 @@ the Simulator's name.
 from __future__ import annotations
 
 from .. import design_system as ds
+from ..main_tabs.bot_status_table_surface import BUTTON_HEIGHT_PX, ROW_HEIGHT_PX
 
 try:
     from PySide6.QtWidgets import QPushButton, QTableWidgetItem
@@ -95,6 +96,9 @@ if _HAS_QT:
             super().__init__(parent=parent)
             self._on_bot_clicked = on_bot_clicked
             self._bot_ids = []
+            # One declared row height for every bot table, so Fire and
+            # Detail fill a cell the style would otherwise size.
+            self.verticalHeader().setDefaultSectionSize(ROW_HEIGHT_PX)
 
         def sizeHint(self):  # noqa: N802
             """The header plus every row, so a stretch of 0 shows whole rows.
@@ -192,7 +196,7 @@ if _HAS_QT:
                     self.setItem(row, col, item)
 
                 fire_btn = QPushButton("Fire")
-                fire_btn.setFixedHeight(22)
+                fire_btn.setFixedHeight(BUTTON_HEIGHT_PX)
                 fire_btn.setFocusPolicy(Qt.NoFocus)
                 fire_btn.setEnabled(False)
                 fire_btn.setStyleSheet(
@@ -205,7 +209,7 @@ if _HAS_QT:
                 self.setCellWidget(row, 6, fire_btn)
 
                 detail_btn = QPushButton("Detail")
-                detail_btn.setFixedHeight(22)
+                detail_btn.setFixedHeight(BUTTON_HEIGHT_PX)
                 detail_btn.setStyleSheet("font-size: 10px; padding: 1px 6px;")
                 detail_btn.setToolTip(
                     "View full bot status, configuration, and error " "details"
