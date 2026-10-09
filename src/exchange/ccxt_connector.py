@@ -32,20 +32,15 @@ HistoryCallback = Callable[[str, HistoryAnalysis], object]
 # Submissions past this depth are refused rather than queued.
 SYNC_QUEUE_CAP: int = 8
 
-# A bulk read submits only while the resident sync calls are at or below this
-# depth, so the whole of SYNC_QUEUE_CAP stays available to the balance, ticker,
-# portfolio and OHLCV reads the running platform polls.
-BULK_READ_ADMIT_DEPTH: int = 0
-
-# Longest await_bulk_read_slot prefers that depth. Past it the wait ends once
-# BULK_READ_RESERVE_SLOTS are free instead, so a busy queue delays a bulk read
-# and never shortens its answer.
-BULK_READ_WAIT_BUDGET_SEC: float = 60.0
-
-# Slots of SYNC_QUEUE_CAP a bulk read leaves free when it submits past the
-# budget: one for its own call and one for the next reader, so its submission
-# is never the one that fills the queue.
+# Slots of SYNC_QUEUE_CAP a bulk read leaves free: one for its own call and one
+# for the next reader, so its submission is never the one that fills the queue.
 BULK_READ_RESERVE_SLOTS: int = 2
+
+# Resident sync calls a bulk read submits at or below.
+BULK_READ_ADMIT_DEPTH: int = SYNC_QUEUE_CAP - BULK_READ_RESERVE_SLOTS
+
+# Longest await_bulk_read_slot waits before it submits regardless of depth.
+BULK_READ_WAIT_BUDGET_SEC: float = 60.0
 
 # Gap between two reads of _sync_queue_depth while a bulk read waits.
 BULK_READ_WAIT_SLICE_SEC: float = 0.05
@@ -1005,6 +1000,8 @@ class CCXTConnector(ExchangeInterface):
         )
         # In-flight plus queued calls; touched only on the asyncio loop thread.
         self._sync_queue_depth: int = 0
+        # The one task await_bulk_read_slot admitted, until its call finishes.
+        self._bulk_read_admitted: Optional[asyncio.Task] = None
         # Set once this connector has recorded the venue as validated, so a
         # steady stream of balance fetches reads the store no further.
         self._venue_answer_noted: bool = False
@@ -1309,25 +1306,32 @@ class CCXTConnector(ExchangeInterface):
     async def await_bulk_read_slot(
         self, budget_sec: float = BULK_READ_WAIT_BUDGET_SEC
     ) -> float:
-        """Yield until no other sync call is resident, then answer seconds waited.
+        """Yield until the call queue has room for a bulk read, then answer seconds waited.
 
         A bulk read awaits this before each of its venue calls, so a 39-symbol
         History refresh cannot hold the connector's single worker against the
-        readers that share ``SYNC_QUEUE_CAP``. Past ``budget_sec`` the wait
-        ends once ``BULK_READ_RESERVE_SLOTS`` are free rather than on an empty
-        queue, so a bulk read is never the submission that fills the queue and
-        never loses its own answer to a refusal.
+        balance, ticker, portfolio and OHLCV calls that share
+        ``SYNC_QUEUE_CAP``. One bulk read holds admission at a time and the
+        depth it waits on is ``BULK_READ_ADMIT_DEPTH``, so 39 bots walking at
+        once add one call to the queue rather than 39. Past ``budget_sec`` it
+        submits regardless and takes the queue cap's own answer.
         """
-        admit_past_budget = SYNC_QUEUE_CAP - BULK_READ_RESERVE_SLOTS
         start = time.monotonic()
         while True:
-            depth = self._sync_queue_depth
-            if depth <= BULK_READ_ADMIT_DEPTH:
+            held = self._bulk_read_admitted
+            free = held is None or held.done() or held is asyncio.current_task()
+            if free and self._sync_queue_depth <= BULK_READ_ADMIT_DEPTH:
                 break
-            if time.monotonic() - start >= budget_sec and depth <= admit_past_budget:
+            if time.monotonic() - start >= budget_sec:
                 break
             await asyncio.sleep(BULK_READ_WAIT_SLICE_SEC)
+        self._bulk_read_admitted = asyncio.current_task()
         return time.monotonic() - start
+
+    def _release_bulk_read_slot(self) -> None:
+        """Clear ``_bulk_read_admitted`` when this task is the one holding it."""
+        if self._bulk_read_admitted is asyncio.current_task():
+            self._bulk_read_admitted = None
 
     async def _call_sync(self, fn, *args, **kwargs):
         """Run one sync CCXT call on the single worker, with a queue cap and a timeout.
@@ -1340,6 +1344,7 @@ class CCXTConnector(ExchangeInterface):
         """
         # Read and written only on the asyncio loop thread, so no lock.
         if self._sync_queue_depth >= SYNC_QUEUE_CAP:
+            self._release_bulk_read_slot()
             raise CCXTQueueFullError(
                 f"CCXT call queue at capacity ({self._sync_queue_depth}/"
                 f"{SYNC_QUEUE_CAP}) for {self._exchange_id}; "
@@ -1352,6 +1357,7 @@ class CCXTConnector(ExchangeInterface):
         with self._sync_executor_lock:
             executor = self._sync_executor
             if executor is None:
+                self._release_bulk_read_slot()
                 raise RuntimeError(
                     f"CCXTConnector({self._exchange_id}) has been disconnected; "
                     f"cannot submit new sync calls."
@@ -1395,6 +1401,7 @@ class CCXTConnector(ExchangeInterface):
                 raise
         finally:
             self._sync_queue_depth = max(0, self._sync_queue_depth - 1)
+            self._release_bulk_read_slot()
 
     # ── Trade history scanning ───────────────────────────────────────────────
 
