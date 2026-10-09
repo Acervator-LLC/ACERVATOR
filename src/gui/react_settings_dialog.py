@@ -44,9 +44,13 @@ ACCESSIBLE_NAME = "React Settings Dialog"
 DIALOG_STYLE_ASSETS: tuple[str, ...] = ("settings_dialog.css",)
 
 #: The three scripts the page carries. Order is load order.
+#: ``header_strip.js`` owns the rule that turns a Qt style sheet into CSS, and
+#: ``settings_dialog.js`` reads it off ``window.acervatorHeader``, so the venue
+#: array's Sector button skin reaches the page only while it is loaded first.
 DIALOG_SCRIPT_ASSETS: tuple[str, ...] = (
     "vendor/react.production.min.js",
     "vendor/react-dom.production.min.js",
+    "header_strip.js",
     "settings_dialog.js",
 )
 
@@ -54,6 +58,9 @@ DIALOG_BODY = f'<div id="{DIALOG_ROOT_ID}"></div>'
 
 #: The count of drawn controls, read back off the page.
 CONTROL_COUNT_JS = "document.querySelectorAll('[data-part=\"control\"]').length"
+
+#: What ``QListWidget.currentRow`` reports while no line is selected.
+NO_SELECTED_ROW = -1
 
 #: The bridge this host answers. The Electron shell binds ``window.acervator``
 #: in its own preload, so this source is never a file under ``src/gui/web``.
@@ -332,7 +339,7 @@ class PageList(_Held):
 
     def __init__(self, owner: Any, name: str) -> None:
         super().__init__(owner, name)
-        self._current = -1
+        self._current = NO_SELECTED_ROW
 
     def _lines(self) -> list:
         held = self._get()
@@ -364,7 +371,15 @@ class PageList(_Held):
         try:
             self._current = int(at)
         except (TypeError, ValueError):
-            self._current = -1
+            self._current = NO_SELECTED_ROW
+
+    def currentRow(self) -> int:  # noqa: N802
+        """The selected line's index, ``NO_SELECTED_ROW`` while none is.
+
+        ``_draw_venue_array`` reads this to mark the venue button a press
+        bound, so the page draws the same checked segment the Qt array does.
+        """
+        return self._current
 
     def currentItem(self) -> Optional[ListRow]:  # noqa: N802
         """The selected line, or None while nothing is selected."""
@@ -456,6 +471,7 @@ PRESS_NAMES: tuple[str, ...] = tuple(surface.BUTTON_NAMES_BY_TEXT.values())
 
 #: What the page reports a press of each button as, and the method it runs.
 ACTION_HANDLERS: dict[str, str] = {
+    "venue_pages_btn": "_next_venue_page",
     "test_btn": "_test_api_connection",
     "add_btn": "_add_exchange",
     "remove_btn": "_remove_exchange",
@@ -530,6 +546,7 @@ if _HAS_QT and _HAS_WEBENGINE:
             self._model.build()
             self._tab = surface.TAB_TITLES[0]
             self._page_ready = False
+            self._venue_page = 0
             self._last_model: dict = {}
             self._passphrase_exchanges = surface.passphrase_exchange_ids()
             self._build_holders()
@@ -609,6 +626,7 @@ if _HAS_QT and _HAS_WEBENGINE:
                 )
                 for spec in found["control_specs"]
             ]
+            found["exchange_status"].update(self._venue_array_payload())
             self._last_model = found
             if self._page_ready:
                 self._run(push_script(found, self._tab))
@@ -672,6 +690,41 @@ if _HAS_QT and _HAS_WEBENGINE:
             handler = ACTION_HANDLERS.get(str(asked.get("key") or ""))
             if handler is not None:
                 getattr(self, handler)()
+
+        def _venue_array_payload(self) -> dict:
+            """The venue array's page, its pages control and the bound row.
+
+            ``build_view_model`` answers page zero, so the page the operator
+            paged to is read from ``_venue_page`` here, exactly as the Qt
+            build's ``_draw_venue_array`` reads it. ``group_spacing`` carries
+            the gap the Sector segmented group leaves, so the array shares its
+            borders rather than naming a figure of its own.
+            """
+            from .main_tabs import asset_class_surface as acs
+
+            sector = self._status_class()
+            states = self._model.venue_states
+            pages = surface.venue_pages_button(sector, self._venue_page, states)
+            self._venue_page = pages["page"]
+            return {
+                "page": [
+                    dict(one)
+                    for one in surface.exchange_status_page(
+                        sector, self._venue_page, states
+                    )
+                ],
+                "pages": pages,
+                "selected": self._exchange_list.currentRow(),
+                "group_spacing": acs.GROUP_SPACING_PX,
+            }
+
+        def _next_venue_page(self) -> None:
+            """Draw the next page of the venue array, the first after the last."""
+            pages = surface.venue_page_count(
+                self._status_class(), self._model.venue_states
+            )
+            self._venue_page = surface.venue_next_page(self._venue_page, pages)
+            self.redraw()
 
         def _refresh_exchange_status(self) -> None:
             """Put the recorded venue states on the model and redraw the page.
