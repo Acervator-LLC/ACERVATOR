@@ -18,6 +18,18 @@
   // The bridge method the pager re-asks for a neighbouring page.
   var VIEW_MODEL_METHOD = "history.view_model";
 
+  // The Gates column's key, which is the one column drawn as two zones.
+  var GATES_COLUMN_KEY = "gates";
+
+  // Pixels every Gates cell holds open for its indicator zone, lights or
+  // none. The nineteen lights measure 297px after the 8px `.gate-lights`
+  // margin in history_panel.css, so 312 clears the widest row there is.
+  var GATE_ZONE_PX = 312;
+
+  // Pixels between the indicator zone and the text, matching the 8px the
+  // same stylesheet puts in front of `.gate-lights`.
+  var GATE_TEXT_GAP_PX = 8;
+
   // The one shape the bridge may deliver. A payload missing any of these
   // renders the error banner instead of a half-drawn table.
   var REQUIRED_KEYS = [
@@ -317,16 +329,50 @@
     );
   }
 
+  // The Gates cell's two zones: the lights on the left in a width every row
+  // holds open, then the text on the right. A row missing either part keeps
+  // the other where the rest of the column draws it.
+  function GateZones(props) {
+    return [
+      h(
+        "span",
+        {
+          key: "zone-lights",
+          className: "gate-zone-lights",
+          style: {
+            display: "inline-block",
+            width: GATE_ZONE_PX + "px",
+            verticalAlign: "middle"
+          }
+        },
+        h(GateLights, { lights: props.lights })
+      ),
+      h(
+        "span",
+        {
+          key: "zone-text",
+          className: "gate-zone-text",
+          style: {
+            display: "inline-block",
+            marginLeft: GATE_TEXT_GAP_PX + "px",
+            verticalAlign: "middle"
+          }
+        },
+        props.text
+      )
+    ];
+  }
+
   function Cell(props) {
     var cell = props.cell;
     var style = {};
     if (cell.color) {
       style.color = cell.color;
     }
-    var kids = [cell.text];
-    if (props.gateLights) {
-      kids.push(h(GateLights, { key: "lights", lights: props.gateLights }));
-    }
+    var kids =
+      cell.key === GATES_COLUMN_KEY
+        ? GateZones({ lights: props.gateLights, text: cell.text })
+        : [cell.text];
     // No `title` attribute. The tooltip is drawn by renderTooltip, which
     // honours the markup Qt honours; a `title` would show the same text
     // a second time, unrendered.
