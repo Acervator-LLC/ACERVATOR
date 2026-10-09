@@ -144,6 +144,13 @@ NO_IMMEDIATE_OR_CANCEL = (
     "immediate-or-cancel, so an IOC order names a field the venue has none of"
 )
 
+#: Why an order refuses on a pair the venue takes no order on, which is still
+#: read and still charted.
+NOT_API_TRADABLE_FORMAT = (
+    "Robinhood reads {key} False for {symbol}, and its order endpoint takes an "
+    "order only on a symbol reading True"
+)
+
 
 class RobinhoodPathUnpublished(RuntimeError):
     """Raised where Robinhood names an endpoint and publishes no path for it."""
@@ -625,6 +632,12 @@ class RobinhoodCryptoConnector(ExchangeInterface):
             )
             self._record_refusal(log, symbol, side, order_type, amount, refusal)
             raise RobinhoodOrderRefused(refusal)
+        if self._pairs[named].get(PAIR_API_TRADABLE_KEY) is False:
+            refusal = NOT_API_TRADABLE_FORMAT.format(
+                key=PAIR_API_TRADABLE_KEY, symbol=named
+            )
+            self._record_refusal(log, symbol, side, order_type, amount, refusal)
+            raise RobinhoodOrderRefused(refusal)
         try:
             body = order_body(symbol, side, order_type, amount, price, client_order_id)
         except (RobinhoodOrderRefused, ValueError) as exc:
@@ -856,6 +869,7 @@ __all__ = [
     "HEADER_API_KEY",
     "HEADER_SIGNATURE",
     "HEADER_TIMESTAMP",
+    "NOT_API_TRADABLE_FORMAT",
     "NO_CREDENTIAL",
     "NO_IMMEDIATE_OR_CANCEL",
     "ORDERS_PATH",

@@ -2632,6 +2632,7 @@ cancel all answer the same refusal. `get_markets` raises the same refusal until
 | --- | --- |
 | no key and no private key stored | `RobinhoodOrderRefused`, nothing signed |
 | a symbol holding no pair record | `RobinhoodOrderRefused`, nothing signed |
+| a pair reading `is_api_tradable` False | `RobinhoodOrderRefused`, still charted |
 | an immediate-or-cancel order | `RobinhoodOrderRefused`, no such time in force |
 | a market order on a held pair | a signed POST to the order path |
 
