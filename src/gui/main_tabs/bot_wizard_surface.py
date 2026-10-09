@@ -20,6 +20,9 @@ text in ``TOOL_TIPS``.
 
 ``BotWizardModel`` holds every page. ``select_mode`` picks accumulation
 or extractor and re-lays the parameter page around the choice.
+``set_market_groups`` shows ``whole_unit_group`` for a market sizing in
+whole units and ``expiry_group`` for one the venue expires on a date, and
+``offered_rows`` answers every row the parameter page offers.
 ``set_number``, ``set_check``, ``set_combo_index`` and ``set_text`` take
 what the operator types. ``go_next``, ``go_back``, ``cancel`` and
 ``finish`` walk the pages. ``validate_page`` is the one refusal the
@@ -157,6 +160,39 @@ NUMBER_FIELDS: dict[str, dict] = {
         "maximum": 1_000_000_000.0,
         "decimals": 10,
         "value": 0.0,
+    },
+    "whole_unit_open_units": {
+        "kind": SPIN_INT,
+        "minimum": 0,
+        "maximum": 1000,
+        "value": 0,
+        "suffix": " units",
+    },
+    "expiry_lead_fraction": {
+        "kind": SPIN_DOUBLE,
+        "minimum": 0.00,
+        "maximum": 1.00,
+        "decimals": 2,
+        "step": 0.05,
+        "value": 0.20,
+    },
+    "expiry_lead_days": {
+        "kind": SPIN_DOUBLE,
+        "minimum": 0.0,
+        "maximum": 36500.0,
+        "decimals": 1,
+        "step": 1.0,
+        "suffix": " days",
+        "value": 11.0,
+    },
+    "expiry_horizon": {
+        "kind": SPIN_DOUBLE,
+        "minimum": 0.0,
+        "maximum": 36500.0,
+        "decimals": 1,
+        "step": 30.0,
+        "suffix": " days",
+        "value": 365.0,
     },
     "scrumming_interval": {
         "kind": SPIN_DOUBLE,
@@ -362,6 +398,17 @@ NUMBER_FIELDS: dict[str, dict] = {
 
 STACK_MODE_DEFAULT = True
 
+#: ``personal_hold_qty``'s control on a market that places no fraction of a
+#: unit: whole units, stepped by one, so no unplaceable figure is typeable.
+WHOLE_UNIT_HOLD_FIELD: dict = {
+    "kind": SPIN_DOUBLE,
+    "minimum": 0.0,
+    "maximum": 1_000_000_000.0,
+    "decimals": 0,
+    "step": 1.0,
+    "value": 0.0,
+}
+
 CHECK_FIELDS: dict[str, bool] = {
     "aggressive": False,
     "stack_mode": STACK_MODE_DEFAULT,
@@ -420,6 +467,14 @@ COMBO_FIELDS: dict[str, tuple] = {
         ("1d", "1d"),
     ),
     "detonation_timeframe": (("1d", "1d"), ("1w", "1w")),
+    "expiry_close": (
+        ("Finish the sell ladder", "finish_ladder"),
+        ("Sell the whole position", "sell_all"),
+    ),
+    "expiry_lead_mode": (
+        ("Share of the contract's life", "fraction"),
+        ("A number of days", "absolute"),
+    ),
 }
 COMBO_DEFAULT_INDEX: dict[str, int] = {
     "base": 0,
@@ -428,6 +483,8 @@ COMBO_DEFAULT_INDEX: dict[str, int] = {
     "stack_spacing": 0,
     "ta_timeframe": 4,
     "detonation_timeframe": 0,
+    "expiry_close": 0,
+    "expiry_lead_mode": 0,
 }
 POOL_BASES = tuple(label for label, _value in COMBO_FIELDS["pool_base"])
 BASE_CURRENCIES = tuple(label for label, _value in COMBO_FIELDS["base"])
@@ -465,6 +522,8 @@ GROUP_TITLES = {
     "cb_group": "Circuit Breakers",
     "risk_group": "Risk Controls",
     "gates_group": "Strategy Gate Flags",
+    "whole_unit_group": "Whole-Unit Market",
+    "expiry_group": "Contract Expiry",
     "extractor_group": "Extractor — Pool & Artillery",
     "lock_group": "Higher-TF Lock Duration",
 }
@@ -522,6 +581,14 @@ GROUP_ROWS = {
         "gate_fold_ta_chk",
         "gate_fold_htf_chk",
     ),
+    "whole_unit_group": ("whole_unit_open_units",),
+    "expiry_group": (
+        "expiry_close",
+        "expiry_lead_mode",
+        "expiry_lead_fraction",
+        "expiry_lead_days",
+        "expiry_horizon",
+    ),
     "extractor_group": (
         "ext_chunk_size_usd",
         "ext_artillery_size_usd",
@@ -541,13 +608,16 @@ SCRUM_GROUPS = (
     "risk_group",
     "gates_group",
 )
+#: The groups the picked market decides, not the mode. ``set_market_groups``
+#: shows one only while the market's own rules call for it.
+MARKET_GROUPS = ("whole_unit_group", "expiry_group")
 EXTRACTOR_GROUPS = ("extractor_group",)
 PHANTOM_GROUPS = ("lock_group",)
 
 PAGE_GROUPS = {
     ASSET: (),
     MODE: (),
-    PARAMS: SCRUM_GROUPS + EXTRACTOR_GROUPS,
+    PARAMS: SCRUM_GROUPS + MARKET_GROUPS + EXTRACTOR_GROUPS,
     PHANTOM: PHANTOM_GROUPS,
     EXTRACTOR_POOL: (),
 }
@@ -569,6 +639,12 @@ ROW_LABELS = {
     "stack_count": "Tranche Count:",
     "stack_spacing": "Spacing:",
     "personal_hold_qty": "Personal Hold (units):",
+    "whole_unit_open_units": "Open Position At:",
+    "expiry_close": "Expiry Close:",
+    "expiry_lead_mode": "Expiry Lead Mode:",
+    "expiry_lead_fraction": "Lead Fraction:",
+    "expiry_lead_days": "Lead Days:",
+    "expiry_horizon": "Expiry Horizon:",
     "scrumming_interval": "Opposing Trade Interval:",
     "bb_tolerance": "BB Tolerance:",
     "ls_candles": "Landing Strip Candles:",
@@ -719,6 +795,40 @@ TOOL_TIPS = {
         "units; they're also reserved from any sibling bot on "
         "the same asset. Leave at 0 unless you want the bot "
         "to ignore a personal stash on the exchange."
+    ),
+    "whole_unit_open_units": (
+        "Whole units this bot opens its position at on a market "
+        "that places no fraction of a unit. 0 leaves the engine's "
+        "own two-unit minimum deciding. A larger figure makes every "
+        "one-unit move a smaller share of the position, so the move "
+        "sits closer to the Opposing Trade Interval."
+    ),
+    "expiry_close": (
+        "What this bot does as a dated contract nears its end.\n"
+        "Finish the sell ladder: stop buying this contract and let "
+        "the open sell levels run to their end.\n"
+        "Sell the whole position: one order for everything still held."
+    ),
+    "expiry_lead_mode": (
+        "How the lead time is written.\n"
+        "Share of the contract's life: a fraction of the days left "
+        "when the bot started, so one setting covers contracts days "
+        "apart and years apart.\n"
+        "A number of days: the Lead Days figure below."
+    ),
+    "expiry_lead_fraction": (
+        "Share of the contract's remaining life measured when the "
+        "bot started. 0 is off. At 0.20, a contract with 12 days "
+        "left at start closes 2.4 days out, and one with 264 days "
+        "left closes 53 days out."
+    ),
+    "expiry_lead_days": (
+        "Days before expiry the close fires. Read only in A number "
+        "of days mode. 0 is off."
+    ),
+    "expiry_horizon": (
+        "A contract dated beyond this reads as non-expiring and "
+        "gains no close at all. 0 turns the close off."
     ),
     "scrumming_interval": "Minimum market move before the bot takes action.",
     "bb_tolerance": "Bollinger Band proximity tolerance for Landing Strip.",
@@ -1508,6 +1618,20 @@ def market_unit_rule(rows: Any, market: Any, sector: Any = "", venue: Any = "") 
     return str(held or EMPTY_TEXT)
 
 
+def market_expires(rows: Any, market: Any) -> bool:
+    """True while the recording holds an expiry epoch for one market, read
+    through ``MarketRules.expires``.
+
+    The expiry is the market's own, so a sector holding both dated contracts
+    and undated ones answers per market.
+    """
+    symbol = bag_text(market, MARKET_SYMBOL_KEY)
+    if not symbol:
+        return False
+    rules = rules_from_row(readable_bag(rows).get(symbol))
+    return bool(getattr(rules, "expires", False))
+
+
 def sizes_in_whole_units(rule: Any) -> bool:
     """True while ``rule`` is ``sizing.WHOLE_UNITS``."""
     from ...trading.scrumming.sizing import WHOLE_UNITS
@@ -1788,6 +1912,7 @@ class BotWizardModel:
         self.params_is_extractor = False
         self.closed_page = False
         self.numbers = {name: spec["value"] for name, spec in NUMBER_FIELDS.items()}
+        self.number_specs = {name: dict(spec) for name, spec in NUMBER_FIELDS.items()}
         self.checks = dict(CHECK_FIELDS)
         self.radios = dict(RADIO_FIELDS)
         self.combo_indexes = dict(COMBO_DEFAULT_INDEX)
@@ -1809,6 +1934,7 @@ class BotWizardModel:
         self.target_reasons: list[str] = []
         self.target_unit_rules: list[str] = []
         self.target_prices: list[Optional[float]] = []
+        self.target_expiries: list[bool] = []
         self.target_index = -1
         self.alt_items: list[list] = []
         self.asset_status = EMPTY_TEXT
@@ -1818,6 +1944,8 @@ class BotWizardModel:
         self.warning_box: Optional[list] = None
         self.group_visible: dict[str, bool] = dict.fromkeys(SCRUM_GROUPS, True)
         self.group_visible["extractor_group"] = False
+        for name in MARKET_GROUPS:
+            self.group_visible[name] = False
         self.params_subtitle = EMPTY_TEXT
         self.current_page = START_PAGE
         self.history: list[str] = []
@@ -1948,8 +2076,9 @@ class BotWizardModel:
     # -- fields --------------------------------------------------------
 
     def set_number(self, name: str, value: Any) -> None:
-        """Type a number into one field."""
-        spec = NUMBER_FIELDS.get(name)
+        """Type a number into one field, held to the spec the picked market
+        leaves that field under."""
+        spec = self.number_specs.get(name)
         if spec is None:
             raise KeyError(REFUSAL_UNKNOWN_FIELD.format(name=name))
         self.numbers[name] = number_value(value, spec)
@@ -2094,6 +2223,7 @@ class BotWizardModel:
         self.target_reasons = []
         self.target_unit_rules = []
         self.target_prices = []
+        self.target_expiries = []
         recorded = recorded_venue_rows(found)
         for row in kept:
             label = pair_label(row)
@@ -2108,12 +2238,14 @@ class BotWizardModel:
                 market_unit_rule(recorded, row, self.sector, found)
             )
             self.target_prices.append(bag_number(row, MARKET_PRICE_KEY))
+            self.target_expiries.append(market_expires(recorded, row))
             self.calls.append([COMBO_ADD_ITEM, "asset_target", label, named])
         if not kept:
             self.target_items.append([NO_PAIRS_TEXT, NO_PAIRS_DATA])
             self.target_reasons.append(EMPTY_TEXT)
             self.target_unit_rules.append(EMPTY_TEXT)
             self.target_prices.append(None)
+            self.target_expiries.append(False)
             self.calls.append(
                 [COMBO_ADD_ITEM, "asset_target", NO_PAIRS_TEXT, NO_PAIRS_DATA]
             )
@@ -2132,6 +2264,7 @@ class BotWizardModel:
         )
         self.calls.append([LABEL_SET_TEXT, "asset_status", self.asset_status])
         self.update_info()
+        self.set_market_groups()
 
     def target_reason(self) -> str:
         """Why no built bot variant trades the pair the target list shows, empty
@@ -2157,6 +2290,54 @@ class BotWizardModel:
     def is_whole_unit(self) -> bool:
         """True while the picked pair sizes in whole units."""
         return sizes_in_whole_units(self.target_unit_rule())
+
+    def target_expires(self) -> bool:
+        """True while the recording holds an expiry epoch for the picked pair."""
+        if 0 <= self.target_index < len(self.target_expiries):
+            return self.target_expiries[self.target_index]
+        return False
+
+    def set_market_groups(self) -> None:
+        """Show ``whole_unit_group`` for a pair sizing in whole units and
+        ``expiry_group`` for a pair the venue expires, and hide each otherwise.
+
+        An Extractor trades a pool of pairs rather than one market, so neither
+        group reaches it. ``personal_hold_qty`` takes
+        ``WHOLE_UNIT_HOLD_FIELD`` wherever the whole-unit group shows, so no
+        fraction of a unit is typeable into a market that places none.
+        """
+        picked = bool(self.target_data()) and not self.is_extractor()
+        whole = picked and self.is_whole_unit()
+        dated = picked and self.target_expires()
+        for name, shown in (("whole_unit_group", whole), ("expiry_group", dated)):
+            self.group_visible[name] = shown
+            self.calls.append([GROUP_SET_VISIBLE, name, shown])
+        spec = WHOLE_UNIT_HOLD_FIELD if whole else NUMBER_FIELDS["personal_hold_qty"]
+        self.number_specs["personal_hold_qty"] = dict(spec)
+        self.numbers["personal_hold_qty"] = number_value(
+            self.numbers["personal_hold_qty"], spec
+        )
+        self.calls.append(
+            [
+                NUMBER_SET_VALUE,
+                "personal_hold_qty",
+                self.numbers["personal_hold_qty"],
+            ]
+        )
+
+    def offered_rows(self) -> list:
+        """Every parameter-page row the menu offers for the picked market, in
+        page order.
+
+        Reads ``group_visible``, so a group the mode or the market hides offers
+        none of its rows.
+        """
+        held: list = []
+        for name in PAGE_GROUPS[PARAMS]:
+            if not self.group_visible.get(name):
+                continue
+            held.extend(GROUP_ROWS[name])
+        return held
 
     def unit_notes(self) -> dict:
         """The unit lines the parameter page draws for the picked pair, read at
@@ -2185,6 +2366,7 @@ class BotWizardModel:
         self.target_index = list_position(value, len(self.target_items))
         self.calls.append([COMBO_SET_CURRENT_INDEX, "asset_target", self.target_index])
         self.update_info()
+        self.set_market_groups()
 
     def target_data(self) -> Any:
         """The asset behind the pair the target list shows."""
@@ -2297,6 +2479,7 @@ class BotWizardModel:
             self.calls.append([GROUP_SET_VISIBLE, name, scrum_visible])
         self.group_visible["extractor_group"] = extractor
         self.calls.append([GROUP_SET_VISIBLE, "extractor_group", extractor])
+        self.set_market_groups()
         if extractor:
             self.params_subtitle = PARAMS_SUBTITLE_EXTRACTOR
         elif grid:
@@ -2509,6 +2692,20 @@ class BotWizardModel:
                 "fold_defer_to_htf": self.checks["gate_fold_htf_chk"],
             }
         )
+        if self.group_visible.get("whole_unit_group"):
+            config["whole_unit_opening_units"] = int(
+                self.numbers["whole_unit_open_units"]
+            )
+        if self.group_visible.get("expiry_group"):
+            config.update(
+                {
+                    "expiry_close_action": self.combo_data("expiry_close"),
+                    "expiry_lead_mode": self.combo_data("expiry_lead_mode"),
+                    "expiry_lead_fraction": self.numbers["expiry_lead_fraction"],
+                    "expiry_lead_days": self.numbers["expiry_lead_days"],
+                    "expiry_horizon_days": self.numbers["expiry_horizon"],
+                }
+            )
         return config
 
     # -- the phantom page ----------------------------------------------
@@ -2929,6 +3126,7 @@ def unit_page_state(model: BotWizardModel) -> dict:
         "sector": model.sector,
         "rule": model.target_unit_rule(),
         "whole": model.is_whole_unit(),
+        "expires": model.target_expires(),
         "price": model.target_price(),
         "notes": model.unit_notes(),
         "note_names": list(UNIT_NOTES),
@@ -3009,6 +3207,9 @@ def build_view_model(
         "fields": field_catalogue(),
         "values": {
             "numbers": dict(model.numbers),
+            "number_specs": {
+                name: dict(spec) for name, spec in model.number_specs.items()
+            },
             "checks": dict(model.checks),
             "radios": dict(model.radios),
             "combo_indexes": dict(model.combo_indexes),
@@ -3017,10 +3218,12 @@ def build_view_model(
         "groups": {
             "titles": dict(GROUP_TITLES),
             "scrum": list(SCRUM_GROUPS),
+            "market": list(MARKET_GROUPS),
             "extractor": list(EXTRACTOR_GROUPS),
             "phantom": list(PHANTOM_GROUPS),
             "rows": {name: list(found) for name, found in GROUP_ROWS.items()},
             "visible": dict(model.group_visible),
+            "offered": model.offered_rows(),
             "params_subtitle": model.params_subtitle,
             "params_subtitle_scrumming": PARAMS_SUBTITLE_SCRUMMING,
             "params_subtitle_extractor": PARAMS_SUBTITLE_EXTRACTOR,
