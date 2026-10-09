@@ -33,7 +33,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          # src/_version.py runs `git describe`, so the tags have to be here.
+          # The whole history. src/_version.py reads HEAD's own date and id,
+          # and no tag.
           fetch-depth: 0
 
       - uses: actions/setup-python@v7
@@ -265,7 +266,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          # src/_version.py runs `git describe`, so the tags have to be here.
+          # The whole history. src/_version.py reads HEAD's own date and id,
+          # and no tag.
           fetch-depth: 0
 
       - uses: actions/setup-python@v7
@@ -288,8 +290,8 @@ jobs:
           version="$(python -c 'import src; from tools.build_variants import sanitise; print(sanitise(src.__version__))')"
           echo "the build stamps $version"
           echo "version=$version" >> "$GITHUB_ENV"
-          # `v[0-9]*` is the glob src/_version.py matches, so a tag named this
-          # way cannot change the version the next build resolves.
+          # src/_version.py reads no tag, so no tag this workflow pushes can
+          # change the version the next build resolves.
           echo "tag=build-$version" >> "$GITHUB_ENV"
 
       - name: Refuse a set of files that do not all carry that version

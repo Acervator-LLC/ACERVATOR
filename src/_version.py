@@ -1,10 +1,11 @@
 # Copyright (c) 2025 Anthony L. Brown (Ekthelius the Accumulator). All rights reserved.
 """Resolve the version of the ``src`` package.
 
-``RELEASE`` declares the release number for a tree with no tags, no history and
-no network. ``describe`` adds the build count and the commit as a PEP 440 local
-segment after a ``+``. ``UNRESOLVED_LOCAL`` names a count ``describe`` could not
-derive, and ``BAKED_FILENAME`` carries the value a build stamped in.
+``RELEASE`` declares the release number for a tree with no history and no
+network. ``read_stamp`` adds the two facts that identify one commit, its own
+date and its own id, as a PEP 440 local segment after a ``+``.
+``UNRESOLVED_LOCAL`` names a commit ``read_stamp`` could not reach, and
+``BAKED_FILENAME`` carries the value a build stamped in.
 """
 
 from __future__ import annotations
@@ -19,11 +20,16 @@ DIRTY_SUFFIX = ".dirty"
 UNRESOLVED_LOCAL = "unknown"
 UNKNOWN_VERSION = f"{RELEASE}+{UNRESOLVED_LOCAL}"
 
-# `git describe` answers for this one tag or not at all. A pattern admitting
-# any version tag lets a machine missing one count from an older tag.
-RELEASE_TAG = f"v{RELEASE}"
+# HEAD's committer date, rendered in the zone the commit itself records. It
+# orders two builds without counting commits; a distance from a tag is equal
+# for many commits and names none of them.
+MOMENT_FORMAT = "%Y%m%d.%H%M"
 
-_DESCRIBE_PARTS = 3
+# Fixed width. Git's own abbreviation grows with a clone's object count, so
+# one commit would otherwise answer different widths in different clones.
+COMMIT_DIGITS = 12
+
+_STAMP_PARTS = 2
 
 
 def is_frozen() -> bool:
@@ -43,60 +49,43 @@ def project_root() -> Path:
     return Path(__file__).resolve().parents[1]
 
 
-def describe(root: str | Path) -> str:
-    """Return ``git describe`` output for the repository at ``root``, or ''.
+def read_stamp(root: str | Path) -> str:
+    """Return HEAD's date and id at ``root``, with ``DIRTY_SUFFIX``, or ''.
 
-    Every git subprocess in this repository belongs to the gate wrapper, so
-    the call is delegated and imported lazily: a frozen bundle ships no
-    ``tools`` package and must never depend on one. A directory with no
-    ``.git`` answers '', which stops a bundle unpacked inside a checkout
-    from reporting the enclosing repository's version.
+    ``tools.gate`` holds both git calls and is imported lazily for a frozen
+    bundle that ships no ``tools`` package, and a tree with no ``.git``
+    answers ''.
     """
     base = Path(root)
     if not (base / ".git").exists():
         return ""
     try:
-        from tools.gate import describe_tags
+        from tools.gate import commit_stamp, tree_is_dirty
     except ImportError:
         return ""
-    return describe_tags(base, RELEASE_TAG, DIRTY_SUFFIX)
+    stamp = commit_stamp(base, MOMENT_FORMAT)
+    if not stamp:
+        return ""
+    return stamp + DIRTY_SUFFIX if tree_is_dirty(base) else stamp
 
 
-def _split_describe(text: str) -> tuple[int, str] | None:
-    """Split ``v<tag>-<distance>-g<commit>`` into its distance and its commit.
+def format_stamp(text: str) -> str:
+    """Turn ``read_stamp`` output into the version string to report.
 
-    Splits from the right, so a tag that itself contains a hyphen keeps it.
-    Returns None for the bare commit id that ``--always`` falls back to.
-    """
-    parts = text.rsplit("-", 2)
-    if len(parts) != _DESCRIBE_PARTS:
-        return None
-    tag, distance, commit = parts
-    if not tag.startswith("v") or not distance.isdigit():
-        return None
-    if not commit.startswith("g"):
-        return None
-    return int(distance), commit
-
-
-def format_describe(text: str) -> str:
-    """Turn ``git describe`` output into the version string to report.
-
-    ``RELEASE`` is the whole number before the ``+``. A distance, a modified
-    tree and a ``RELEASE_TAG`` that ``describe`` could not reach each add a
-    local segment.
+    ``RELEASE`` leads, the local segment carries the date and the first
+    ``COMMIT_DIGITS`` of the id, and a modified tree adds one more term.
     """
     dirty = text.endswith(DIRTY_SUFFIX)
     core = text[: -len(DIRTY_SUFFIX)] if dirty else text
-    split = _split_describe(core)
-    if split is None:
-        local = [UNRESOLVED_LOCAL] + ([f"g{core}"] if core else [])
+    parts = core.split()
+    if len(parts) != _STAMP_PARTS:
+        local = [UNRESOLVED_LOCAL]
     else:
-        distance, commit = split
-        local = [] if distance == 0 else ["dev", str(distance), commit]
+        moment, commit = parts
+        local = [moment, f"g{commit[:COMMIT_DIGITS]}"]
     if dirty:
-        local.append("dirty")
-    return f"{RELEASE}+{'.'.join(local)}" if local else RELEASE
+        local.append(DIRTY_SUFFIX.lstrip("."))
+    return f"{RELEASE}+{'.'.join(local)}"
 
 
 def baked_path(root: str | Path) -> Path:
@@ -123,7 +112,7 @@ def resolve_version(root: str | Path | None = None) -> str:
         frozen_baked = read_baked_version(base)
         if frozen_baked:
             return frozen_baked
-    described = describe(base)
-    if described:
-        return format_describe(described)
+    stamp = read_stamp(base)
+    if stamp:
+        return format_stamp(stamp)
     return read_baked_version(base) or UNKNOWN_VERSION

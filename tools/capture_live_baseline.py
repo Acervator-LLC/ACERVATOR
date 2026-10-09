@@ -230,7 +230,7 @@ def _read_lines(path: Path) -> Iterator[str]:
 def read_resolved_version(root: Path) -> str | None:
     """Version the tree at `root` resolves to, or None when nothing answers.
 
-    Read from the git tag through `src._version`, never from a literal.
+    Read from HEAD through `src._version`, never from a literal.
     """
     if str(REPO_ROOT) not in sys.path:
         sys.path.insert(0, str(REPO_ROOT))

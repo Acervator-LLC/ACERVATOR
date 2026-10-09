@@ -68,7 +68,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          # src/_version.py runs `git describe`, so the tags have to be here.
+          # The whole history. src/_version.py reads HEAD's own date and id,
+          # and no tag.
           fetch-depth: 0
 
       - uses: actions/setup-python@v7
