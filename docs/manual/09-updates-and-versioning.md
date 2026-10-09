@@ -21,13 +21,27 @@ Group entries under `Added`, `Changed`, `Deprecated`, `Removed`, `Fixed` or
 
 ## Where the number comes from
 
-One resolver answers the version, and no file in the tree writes it down. It runs
-`git describe` against a tag pattern that admits only a tag beginning with a v
-and a digit, then turns that output into the reported string. The package
-initialiser calls the resolver once at import and binds the answer.
+One resolver answers the version, and no file in the tree writes it down. The
+package initialiser calls the resolver once at import and binds the answer.
+
+### The tag-pattern sentence, overtaken
+
+OVERTAKEN, quoted whole:
+
+> "It runs `git describe` against a tag pattern that admits only a tag beginning
+> with a v and a digit, then turns that output into the reported string."
 
 ```python
 TAG_GLOB = "v[0-9]*"                        # src/_version.py
+```
+
+True today: the match is one exact tag name, not a pattern. `src/_version.py`
+builds `RELEASE_TAG` as a v in front of the release number, and `describe`
+hands that one name to git as the only eligible tag. A machine missing that tag
+gets no version from a nearer one.
+
+```python
+RELEASE_TAG = f"v{RELEASE}"                 # src/_version.py
 def describe(root: str | Path) -> str: ...
 def format_describe(text: str) -> str: ...
 def resolve_version(root: str | Path | None = None) -> str: ...
@@ -35,18 +49,29 @@ def resolve_version(root: str | Path | None = None) -> str: ...
 __version__ = resolve_version()             # src/__init__.py
 ```
 
-Three checks hold that shape in place. The first fails the moment the package
-initialiser gains a written-in number. The second drives a tree whose nearest tag
-is a local backup name and asserts the resolver skips it. The third drives the
-same tree without the tag pattern and asserts the backup tag does come back. That
-last one is the control on the second: without it, a green could mean nothing
-more than a tree carrying no backup tag.
+### The three resolver checks, overtaken
+
+OVERTAKEN, quoted whole:
+
+> "Three checks hold that shape in place. The first fails the moment the package
+> initialiser gains a written-in number. The second drives a tree whose nearest
+> tag is a local backup name and asserts the resolver skips it. The third drives
+> the same tree without the tag pattern and asserts the backup tag does come
+> back. That last one is the control on the second: without it, a green could
+> mean nothing more than a tree carrying no backup tag."
 
 ```python
 def test_src_init_holds_no_version_literal() -> None: ...       # tests/test_version_resolution.py
 def test_a_backup_tag_never_becomes_the_version(tmp_path) -> None: ...
 def test_the_unguarded_form_would_adopt_a_backup_tag(tmp_path) -> None: ...
 ```
+
+True today: no check holds the shape. The file named above is not in the tree,
+and the repository tracks one Python module under `tests/`, its own conftest.
+
+The code still carries the guard. `src/_version.py`, in `describe`, hands git
+one exact tag name, so a local backup tag is never eligible. The package
+initialiser holds no written-in number and reads the resolver instead.
 
 **Overtaken.** These two sentences stay whole here:
 
@@ -80,13 +105,25 @@ derive a build count, the version says so and never takes one from an older tag.
 The formatter returns a bare release number for one state only: a clean tree
 sitting exactly on a version tag. Distance past the tag, a modified working tree,
 and an unreachable version tag each append a PEP 440 local segment after a `+`.
-One check asserts every other shape carries that `+`.
 
 ```python
 def format_describe(text: str) -> str: ...      # src/_version.py
+```
 
+### The formatter check, overtaken
+
+OVERTAKEN, quoted whole:
+
+> "One check asserts every other shape carries that `+`."
+
+```python
 def test_only_an_exact_clean_tag_reports_a_release_number(described: str) -> None: ...  # tests/test_version_resolution.py
 ```
+
+True today: no check asserts it. The file named above is not in the tree. The
+formatter itself carries the rule: it returns the bare release number only when
+its local list comes out empty, and the list stays empty only at distance zero
+on a clean tree.
 
 Two things follow. The number on a working checkout is rarely a release
 number, and the distance term inside it counts commits, not features. And the
@@ -207,15 +244,28 @@ def bake_version_datas(project_root: str) -> list[tuple[str, str]]: ...
 
 The frozen check makes a bundle prefer the baked value even when a repository
 sits around it, so a bundle unpacked inside a checkout reports its own build
-number rather than the enclosing tree's. Two tests drive it: one with a
-repository around the bundle, one with git taken away.
+number rather than the enclosing tree's.
 
 ```python
 def is_frozen() -> bool: ...        # src/_version.py
+```
 
+### The two frozen-bundle checks, overtaken
+
+OVERTAKEN, quoted whole:
+
+> "Two tests drive it: one with a repository around the bundle, one with git
+> taken away."
+
+```python
 def test_a_frozen_bundle_prefers_the_baked_value_over_a_repository() -> None: ...   # tests/test_version_resolution.py
 def test_a_baked_tree_keeps_its_version_after_git_is_removed() -> None: ...
 ```
+
+True today: no check drives it. The file named above is not in the tree. The
+resolver still reads the baked file first inside a bundle, and `describe`
+returns an empty string for any directory holding no `.git`, so an unpacked
+bundle cannot adopt the enclosing tree's number.
 
 ### What each variant ships
 
@@ -308,7 +358,7 @@ monitor group holds that package and a build installs the build and report group
 only, so the shipped application reaches that line with nothing to import.
 
 ```python
-async def _call(self, msg):          # src/trading/live_monitor.py:338
+async def _call(self, msg):          # src/trading/live_monitor.py, in _call
     import httpx
 ```
 
@@ -318,9 +368,14 @@ and are not the same thing.
 
 ## A version that moves while the suite runs
 
-Three test modules compare a freshly resolved version against the cached
-`src.__version__`. That cached value is computed once, when the package is first
-imported. The value it is measured against is computed when the assertion runs.
+### The three comparing modules, overtaken
+
+OVERTAKEN, quoted whole:
+
+> "Three test modules compare a freshly resolved version against the cached
+> `src.__version__`. That cached value is computed once, when the package is
+> first imported. The value it is measured against is computed when the
+> assertion runs."
 
 ```
 tests/test_specs_parity.py
@@ -328,11 +383,17 @@ tests/test_version_resolution.py
 tests/test_build_variants_and_version_reach.py
 ```
 
-A commit landing between those two moments changes the distance term, and the
-two strings disagree. That failure is a property of a git-derived version
-rather than a defect in the resolver: the derived number moves with every
-commit and the cached copy does not. Committing to the repository while the
-suite is running reproduces it.
+> "A commit landing between those two moments changes the distance term, and the
+> two strings disagree. That failure is a property of a git-derived version
+> rather than a defect in the resolver: the derived number moves with every
+> commit and the cached copy does not. Committing to the repository while the
+> suite is running reproduces it."
+
+True today: none of the three modules is in the tree, so nothing makes that
+comparison and the race has no caller. The property of the number has not
+changed. A cached version is computed at first import and a freshly resolved one
+is computed at the moment it is asked for, so any reader comparing the two
+across a commit still sees them disagree.
 
 ## The release gate
 
@@ -350,17 +411,31 @@ python -m dev_harness.harness.check_release_readiness
 ```
 
 The gate declines to declare a release ready when a check was skipped or when a
-green pytest run collected nothing. Two tests pin both: one drives the gate with
-each skip flag and asserts it declines to print the ready line, the other drives
-a pytest run that collected nothing and asserts the gate calls it a failure.
+green pytest run collected nothing.
+
+### The two gate-refusal checks, overtaken
+
+OVERTAKEN, quoted whole:
+
+> "Two tests pin both: one drives the gate with each skip flag and asserts it
+> declines to print the ready line, the other drives a pytest run that collected
+> nothing and asserts the gate calls it a failure."
 
 ```python
 def test_any_skip_flag_refuses_to_declare_ready(...) -> None: ...   # tests/test_check_release_readiness.py
 def test_green_pytest_with_zero_tests_is_a_failure(...) -> None: ...
 ```
 
-The gate module is `dev_harness/harness/check_release_readiness.py`, which is
-the path that test imports. No copy of it lives under `tools/`.
+> "The gate module is `dev_harness/harness/check_release_readiness.py`, which is
+> the path that test imports. No copy of it lives under `tools/`."
+
+True today: no check pins either refusal. The file named above is not in the
+tree. The gate module is still the one the second sentence names, and no copy of
+it lives under `tools/`. No module imports it either; the gate wrapper
+`tools/gate.py` starts it as its own process.
+
+Both refusals are still in the module's own code. A skipped step and a green run
+that collected nothing each leave the ready line unprinted and exit non-zero.
 
 ## What the workflow runs on a pull request
 
