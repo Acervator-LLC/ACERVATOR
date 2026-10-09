@@ -265,7 +265,9 @@ SETTLE_LEG = ":"
 #: read from each one's order builder. ``coinbase`` sends ``quote_size`` and
 #: ``binance`` sends ``quoteOrderQty`` for a spot buy, and both send a unit
 #: count on every other order.
-CITED_CASH_MARKET_BUY: frozenset[str] = frozenset({"binance", "coinbase"})
+# ``gateio`` is a third: its ``POST /spot/orders`` reads ``amount`` as the quote
+# currency on a market buy and as the base currency on a market sell.
+CITED_CASH_MARKET_BUY: frozenset[str] = frozenset({"binance", "coinbase", "gateio"})
 
 #: Why a ``WHOLE_UNITS`` market buy names a limit order.
 MARKET_BUY_NAMES_CASH = "a market buy names a cash amount, not a unit count"
