@@ -455,6 +455,110 @@ main      a force-push is refused, and a deletion is refused
 main      a direct push is allowed, which is how the branch is synced
 ```
 
+## How dependency updates reach the branch
+
+The dependency service opens a pull request when a package it watches publishes
+a new version. The file declares five ecosystems, and every one checks weekly.
+
+```
+.github/dependabot.yml
+
+pip             /              pyproject.toml
+pip             /requirements  requirements/build-win32-py3.14.txt
+npm             /              package.json and package-lock.json
+npm             /desktop       desktop/package.json and its lock file
+github-actions  /              the action versions in .github/workflows/
+```
+
+Each ecosystem declares two groups. The `routine-versions` group carries version
+updates and the `security-fixes` group carries security updates. A group
+collapses a week's bumps into one pull request, so an ecosystem opens one
+routine pull request rather than one for every package.
+
+Each ecosystem also sets `open-pull-requests-limit` to 1, which makes five the
+hard ceiling for routine pull requests across the repository. Security updates
+are exempt from that limit, so a security fix is never held back by it.
+
+### What clears the queue
+
+One scheduled workflow clears the queue. It runs at 13 and 43 minutes past every
+hour, and it accepts a manual run that only reports.
+
+```
+.github/workflows/dependency-queue.yml
+
+select   lists the open service pull requests on current
+report   writes every candidate and its verdict to the run summary
+merge    merges one pull request that is green and level with current
+rebase   asks the service to rebase the branches the merge left behind
+```
+
+The workflow has no checkout step. Every step reads and writes through the `gh`
+command, so no file from a pull request reaches the runner and no script from a
+pull request runs.
+
+### Which pull requests it touches
+
+The step named select in `.github/workflows/dependency-queue.yml` keeps a pull
+request only when all four of these hold.
+
+```
+the author is a bot, and its login is the dependency service
+the head branch names the routine-versions group
+ci-gate reports SUCCESS
+no other check is failed, cancelled or still running
+```
+
+A security pull request is never selected, because its branch names the
+`security-fixes` group instead. A human pull request is never selected, because
+its author is not the service. A pull request that cannot merge stays open for
+the operator, and the workflow never closes one.
+
+### Why the clearing is serial
+
+The `current` ruleset sets `strict_required_status_checks_policy` to true, so a
+branch must be level with the branch it targets before it merges. Every merge
+pushes every other open branch one commit behind, which means one branch is
+level at a time and the queue drains in order.
+
+GitHub's own auto-merge does not update a branch that has fallen behind, so
+arming it leaves the queue stalled. The workflow instead reads how many commits
+behind each branch is and comments `@dependabot rebase` on the ones that need
+it. The service performs the rebase and pushes it, and that push starts
+`ci.yml` on the new head commit.
+
+A push made with the workflow's own token would not start `ci.yml`. GitHub
+documents that an event triggered by `GITHUB_TOKEN` does not create a new
+workflow run. The workflow asks the service to push, rather than pushing the
+update itself.
+
+```mermaid
+flowchart TD
+    A[a package publishes a version] --> B[weekly run opens one grouped pull request]
+    B --> C[ci.yml reports ci-gate]
+    C --> D{green and level with current}
+    D -- yes --> E[the workflow merges it]
+    E --> F[every other branch is now one commit behind]
+    F --> G[the workflow asks the service to rebase]
+    G --> H[the service pushes the rebase]
+    H --> C
+    D -- no, behind --> G
+    D -- no, red --> I[left open for the operator]
+```
+
+### What the workflow may do
+
+```
+contents: write        writes the merge commit to current
+pull-requests: write   reads the queue and calls the merge endpoint
+issues: write          posts the rebase comment, which the API files as an
+                       issue comment
+```
+
+It requests nothing else, and the workflow's top level grants nothing at all.
+Turning off the strict rule on the `current` ruleset would remove the
+behind problem and the rebase step with it. That switch belongs to the operator.
+
 ## How a build is produced
 
 Two files at the repository root are the ones to open, one per variant. A third

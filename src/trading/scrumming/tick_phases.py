@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 import time
 from typing import Any, Callable, Optional
 
 from ...core.event_bus import LINE_KIND_WIRE_STACK
+from ...exchange.base import OrderSide, OrderType
+from ..container.config import EXPIRY_CLOSE_SELL_ALL, expiry_close_decision
 from ..target_bands import at_target_dust_band
 from ..ta_engine import (
     MIN_CANDLES_FOR_TA,
@@ -56,6 +59,8 @@ class TickPhaseMixin:
     _execute_detonation: Callable[..., Any]
     _execute_manual_rebalance: Callable[..., Any]
     _execute_sell: Callable[..., Any]
+    _expiry_close_sent_units: float
+    _expiry_start_s: float
     _fold_cycle_cap_consumed: float
     _fold_diag_last_blocker_set: str
     _fold_diag_tick: int
@@ -68,6 +73,7 @@ class TickPhaseMixin:
     _get_market_rules: Callable[..., Any]
     _get_ohlcv: Callable[..., Any]
     _get_ticker: Callable[..., Any]
+    guarded_place_order: Callable[..., Any]
     _hedge_bal: float
     _hedge_trades: int
     _initialised: Any
@@ -642,6 +648,139 @@ class TickPhaseMixin:
                 )
                 logger.exception("Detonation raised")
         return False
+
+    async def _tick_expiry_close(self, ticker: Any) -> bool:
+        """Return True when this bot's expiry close placed a sale and the tick stops.
+
+        Reads ``expiry_close_decision`` against the market's recorded expiry each
+        tick and sells the held count under ``EXPIRY_CLOSE_SELL_ALL``.
+        """
+        symbol = self.config.symbol
+        try:
+            rules = await self._get_market_rules(symbol)
+        except Exception as exc:
+            logger.debug("Bot %s expiry rules read raised: %s", self.bot_id, exc)
+            return False
+
+        decision = expiry_close_decision(
+            self.config, rules, time.time(), getattr(self, "_expiry_start_s", 0.0)
+        )
+        if not decision["acts"]:
+            return False
+        if decision["action"] != EXPIRY_CLOSE_SELL_ALL:
+            return False
+
+        held = self._current_holdings
+        if type(held) not in (int, float):
+            return False
+        held = float(held)
+        if not math.isfinite(held) or held <= 0.0:
+            return False
+
+        # A send whose fill the venue did not report leaves the count unchanged,
+        # and selling it twice would sell units the bot no longer holds.
+        if float(getattr(self, "_expiry_close_sent_units", 0.0) or 0.0) == held:
+            self._bus.emit(
+                "bot.log",
+                bot_id=self.bot_id,
+                message=(
+                    f"EXPIRY CLOSE HELD: SELL {symbol} {held:.10f} is not sent "
+                    f"again, because the previous expiry close sent the same "
+                    f"count and the venue reported no fill. "
+                    f"{decision['days_left']:.2f} days to expiry. Check the "
+                    f"venue for the order's state."
+                ),
+            )
+            return False
+
+        price = getattr(ticker, "last", None)
+        try:
+            mark = float(price) if price is not None else 0.0
+        except (TypeError, ValueError):
+            mark = 0.0
+        value_usd = priced_usd(held, mark, float(self._quote_to_usd or 1.0))
+
+        self._bus.emit(
+            "bot.log",
+            bot_id=self.bot_id,
+            message=(
+                f"EXPIRY CLOSE FIRING: market-sell {held:.10f} "
+                f"{self.config.target_asset} (~${value_usd:.2f}) on {symbol}, "
+                f"{decision['days_left']:.2f} days before the venue expires "
+                f"this contract and inside this bot's lead time of "
+                f"{decision['lead_days']:.2f} days ({decision['mode']} mode, "
+                f"horizon {decision['horizon_days']:.2f} days). One order for "
+                f"the whole position, not a ladder rung. Nothing rebuys it."
+            ),
+        )
+
+        self._expiry_close_sent_units = held
+        try:
+            order = await self.guarded_place_order(
+                symbol=symbol,
+                side=OrderSide.SELL,
+                order_type=OrderType.MARKET,
+                amount=held,
+                price=None,
+            )
+        except Exception as exc:
+            self._expiry_close_sent_units = 0.0
+            self._bus.emit(
+                "bot.log",
+                bot_id=self.bot_id,
+                message=(
+                    f"EXPIRY CLOSE REFUSED: SELL {symbol} {held:.10f} raised "
+                    f"{type(exc).__name__}: {exc}. The position is still held "
+                    f"and the next tick tries again."
+                ),
+            )
+            return True
+
+        if order is None:
+            self._expiry_close_sent_units = 0.0
+            self._bus.emit(
+                "bot.log",
+                bot_id=self.bot_id,
+                message=(
+                    f"EXPIRY CLOSE FAILED: {symbol} returned no order. The "
+                    f"position is still held and the next tick tries again."
+                ),
+            )
+            return True
+
+        # A venue reporting a filled count of zero filled nothing. Only a venue
+        # omitting the field entirely falls back to the count it accepted.
+        reported = getattr(order, "filled", None)
+        if reported is None:
+            reported = getattr(order, "amount", None)
+        try:
+            filled = float(reported) if reported is not None else 0.0
+        except (TypeError, ValueError):
+            filled = 0.0
+        if not math.isfinite(filled) or filled <= 0.0:
+            self._bus.emit(
+                "bot.log",
+                bot_id=self.bot_id,
+                message=(
+                    f"EXPIRY CLOSE SENT, NO FILL REPORTED: {symbol} "
+                    f"{held:.10f} was accepted and the venue reported no "
+                    f"filled amount. The held count is unchanged and the next "
+                    f"tick sends nothing. Check the venue."
+                ),
+            )
+            return True
+
+        self._current_holdings = max(0.0, held - filled)
+        self._bus.emit(
+            "bot.log",
+            bot_id=self.bot_id,
+            message=(
+                f"EXPIRY CLOSE FILLED: {symbol} sold {filled:.10f} of "
+                f"{held:.10f}, leaving {self._current_holdings:.10f} held, "
+                f"{decision['days_left']:.2f} days before expiry."
+            ),
+        )
+        return True
 
     async def _tick_initial_entry(
         self, ticker: Any, symbol: str, current_value: float

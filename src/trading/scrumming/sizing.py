@@ -31,7 +31,15 @@ record was recorded."
 sector where the venue published none, with ``WHOLE_UNITS`` winning wherever
 either reads it. ``variant_holds_market`` holds ``VARIANT_WHOLE_UNIT`` for such
 a market and ``position_minimum_refusal`` refuses its opening order under
-``WHOLE_UNIT_POSITION_MINIMUM``.
+``opening_position_minimum``, which reads the bot's own
+``whole_unit_opening_units`` and floors it at ``WHOLE_UNIT_POSITION_MINIMUM``.
+
+OVERTAKEN: "``recorded_unit_rule`` reads the venue's own step and ``unit_rule``
+answers the sector where the venue published none".
+``session_unit_rule`` answers before both, reading ``WHOLE_UNITS`` while the
+market's own session takes a whole unit alone at the moment the order is sized,
+and ``session_for`` names that session off the market's own record with
+``CITED_VENUE_SESSIONS`` answering where the record carries none.
 """
 
 from __future__ import annotations
@@ -43,7 +51,7 @@ from decimal import ROUND_FLOOR, Decimal, InvalidOperation
 from typing import Any, Optional, Sequence
 
 from ...exchange.base import SETTLEMENT_DAY_SECONDS
-from ...stocks.market_hours import accepts_order
+from ...stocks.market_hours import MarketSession, accepts_order, session_at
 
 #: The ``state`` an ``ExtractorBot`` writes on a position below its entry value.
 DRAWDOWN_STATE = "drawdown"
@@ -167,15 +175,23 @@ def recorded_unit_rule(recorded: Any) -> Optional[str]:
 
 # ``CLASS_COMMODITIES`` holds a tokenised metal and a dated contract, which
 # size differently, so ``recorded_unit_rule`` answers before the sector row.
+# OVERTAKEN, the docstring below reading "A recorded step is never raised to
+# ``WHOLE_UNITS`` by the sector row": ``session_unit_rule`` raises it, because
+# the market's own session takes a whole unit alone outside its normal hours.
+# A caller naming no ``moment_s`` reads no session and raises nothing.
 def market_unit_rule(
-    recorded: Any, asset_class: str = "", venue: str = ""
+    recorded: Any, asset_class: str = "", venue: str = "", moment_s: Any = None
 ) -> Optional[str]:
-    """The unit rule governing one market: ``recorded_unit_rule`` where the
-    venue published a step, else the ``CITED_UNIT_RULES`` row for the pair.
+    """The unit rule governing one market: ``session_unit_rule`` at
+    ``moment_s``, then ``recorded_unit_rule`` where the venue published a step,
+    else the ``CITED_UNIT_RULES`` row for the pair.
 
     A recorded step is never raised to ``WHOLE_UNITS`` by the sector row, so
     this answers the rule ``sized_order`` sizes the same amount under.
     """
+    demanded = session_unit_rule(getattr(recorded, "session", None), moment_s)
+    if demanded is not None:
+        return demanded
     declared = recorded_unit_rule(recorded)
     if declared is not None:
         return declared
@@ -186,6 +202,10 @@ def market_unit_rule(
 #: the NYSE and NASDAQ session ``market_hours`` declares.
 SESSION_CONTINUOUS = "continuous"
 SESSION_US_EQUITY = "us_equity"
+
+#: The two names above, closed. A session outside this pair is no session, so a
+#: corrupt recorded value reads as a venue that published nothing.
+SESSIONS_DECLARED = (SESSION_CONTINUOUS, SESSION_US_EQUITY)
 
 #: The session each ``(asset class, venue)`` publishes, keyed as
 #: ``CITED_UNIT_RULES`` is keyed. A pair absent here publishes no session.
@@ -221,6 +241,45 @@ def venue_order_types(asset_class: str, venue: str) -> Optional[str]:
     return CITED_VENUE_ORDER_TYPES.get((str(asset_class), str(venue)))
 
 
+#: The separator a unified symbol puts before its settle currency. A symbol
+#: carrying it names a contract, whose market buy names a unit count.
+SETTLE_LEG = ":"
+
+#: The venues whose own order path turns a spot market buy into a cash amount,
+#: read from each one's order builder. ``coinbase`` sends ``quote_size`` for a
+#: spot buy and a unit count on every other order.
+CITED_CASH_MARKET_BUY: frozenset[str] = frozenset({"coinbase"})
+
+#: Why a ``WHOLE_UNITS`` market buy names a limit order.
+MARKET_BUY_NAMES_CASH = "a market buy names a cash amount, not a unit count"
+
+
+def market_buy_names_cash(symbol: Any, venue: Any) -> bool:
+    """True while a market buy into ``symbol`` reaches ``venue`` as a cash
+    amount.
+
+    False for a ``venue`` outside ``CITED_CASH_MARKET_BUY`` and for a
+    ``symbol`` carrying ``SETTLE_LEG``.
+    """
+    if str(venue) not in CITED_CASH_MARKET_BUY:
+        return False
+    if type(symbol) is not str or not symbol:
+        return False
+    return SETTLE_LEG not in symbol
+
+
+def whole_unit_buy_needs_limit(symbol: Any, venue: Any, rule: Any) -> bool:
+    """True while ``rule`` reads ``WHOLE_UNITS`` and ``market_buy_names_cash``
+    reads True for ``symbol`` on ``venue``.
+
+    False for every other ``rule``, so a market held in fractions keeps the
+    market order it came in as.
+    """
+    if str(rule) != WHOLE_UNITS:
+        return False
+    return market_buy_names_cash(symbol, venue)
+
+
 # OVERTAKEN, the CITED_VENUE_ORDER_TYPES comment above reading "The order types
 # each ``(asset class, venue)`` declares": the venue's own record declares them
 # through ``declared_order_types``, and the table answers where it declared none.
@@ -245,6 +304,26 @@ def venue_session(asset_class: str, venue: str) -> Optional[str]:
     """The session ``CITED_VENUE_SESSIONS`` cites for ``asset_class`` on
     ``venue``, or None when the table cites none for the pair."""
     return CITED_VENUE_SESSIONS.get((str(asset_class), str(venue)))
+
+
+# OVERTAKEN, the CITED_VENUE_SESSIONS comment above reading "The session each
+# ``(asset class, venue)`` publishes": the venue's own product record publishes
+# it through ``market_session``, and the table answers where it published none.
+def session_for(recorded: Any, asset_class: str, venue: str) -> Optional[str]:
+    """The session governing one market: ``recorded.session`` where the venue
+    published one ``SESSIONS_DECLARED`` holds, else the ``CITED_VENUE_SESSIONS``
+    row for the pair.
+
+    ``SESSION_US_EQUITY`` wins wherever either source reads it, so neither
+    source can widen the hours the other restricts.
+    """
+    declared = getattr(recorded, "session", None)
+    if type(declared) is not str or declared not in SESSIONS_DECLARED:
+        declared = None
+    cited = venue_session(asset_class, venue)
+    if declared == SESSION_US_EQUITY or cited == SESSION_US_EQUITY:
+        return SESSION_US_EQUITY
+    return declared or cited
 
 
 #: The settlement delay each ``(asset class, venue)`` publishes, in days, keyed
@@ -323,6 +402,26 @@ def outside_session(session: Optional[str], moment_s: Any) -> bool:
         return not accepts_order(float(moment_s))
     except (OSError, OverflowError, ValueError):
         return False
+
+
+# ``MarketSession`` decides this and not ``outside_session``: a venue takes a
+# whole-unit order in windows where ``accepts_order`` refuses an order.
+def session_unit_rule(session: Optional[str], moment_s: Any) -> Optional[str]:
+    """``WHOLE_UNITS`` while ``session`` takes a whole unit alone at
+    ``moment_s``, epoch seconds, and None at every other moment.
+
+    ``SESSION_US_EQUITY`` takes a fraction inside ``MarketSession.REGULAR`` and
+    a whole unit in every window outside it.
+    """
+    if session != SESSION_US_EQUITY:
+        return None
+    if type(moment_s) not in (int, float) or not math.isfinite(float(moment_s)):
+        return None
+    try:
+        regular = session_at(float(moment_s)) == MarketSession.REGULAR
+    except (OSError, OverflowError, ValueError):
+        return None
+    return None if regular else WHOLE_UNITS
 
 
 #: The three answers a market gives about the built variant, the bot that names
@@ -418,34 +517,35 @@ VARIANT_ROLLING_POSITION = "rolling position"
 VARIANT_MARKETS: dict[str, str] = {
     VARIANT_NONE: "a market naming a unit count on a venue taking a market order",
     VARIANT_LIMIT_ONLY: "a market on a venue declaring no market order",
-    VARIANT_CASH_AMOUNT: "a market whose size is a whole share",
+    VARIANT_CASH_AMOUNT: "a market sized by a cash amount in the quote currency",
     VARIANT_WHOLE_UNIT: "a market whose smallest order costs more than the excess",
     VARIANT_ROLLING_POSITION: "a market the venue expires on a date",
 }
 
-#: The variants the running program holds. ``VARIANT_CASH_AMOUNT`` has no caller
-#: to reach it and ``VARIANT_WHOLE_UNIT`` waits on the scrum trigger's ruling.
-VARIANTS_BUILT = frozenset({VARIANT_NONE, VARIANT_LIMIT_ONLY})
+# OVERTAKEN, the VARIANT_MARKETS row above for ``VARIANT_CASH_AMOUNT`` reading
+# "a market whose size is a whole share": a whole share is ``VARIANT_WHOLE_UNIT``,
+# and a cash amount names the quote currency rather than a unit count.
 
-# OVERTAKEN, the comment above reading "``VARIANT_CASH_AMOUNT`` has no caller to
-# reach it and ``VARIANT_WHOLE_UNIT`` waits on the scrum trigger's ruling":
-# ``VARIANT_ROLLING_POSITION`` is also absent, and it waits on the rule naming
-# which contract a position rolls into.
-# OVERTAKEN, the sentence above reading "``VARIANT_WHOLE_UNIT`` waits on the
-# scrum trigger's ruling": ``variant_holds_market`` holds that variant for a
-# market ``market_unit_rule`` reads as ``WHOLE_UNITS``, and
-# ``position_minimum_refusal`` refuses its opening order under
-# ``WHOLE_UNIT_POSITION_MINIMUM``. ``VARIANTS_BUILT`` itself is unchanged, so
-# every caller of ``variant_built`` and ``variant_trades_market`` reads what it
-# read before.
-# OVERTAKEN, the sentence above reading "every caller of ``variant_built`` and
-# ``variant_trades_market`` reads what it read before": ``variant_refuses_sale``
-# reads ``variant_holds_market``, so a sale out of a ``WHOLE_UNITS`` market
-# fills where a buy into it fills. ``variant_trades_market`` has no caller.
+#: The variants the running program holds. ``VARIANT_CASH_AMOUNT`` has no caller.
+VARIANTS_BUILT = frozenset(
+    {
+        VARIANT_NONE,
+        VARIANT_LIMIT_ONLY,
+        VARIANT_WHOLE_UNIT,
+        VARIANT_ROLLING_POSITION,
+    }
+)
 
 #: What a market no built variant trades carries, naming the variant it needs
 #: and the shape that variant absorbs.
 UNTRADEABLE_REASON_FORMAT = "{variant} is not built: {market}"
+
+#: Why a market ``VARIANT_WHOLE_UNIT`` selects is still not traded: the variant
+#: sizes whole units and this market's own step is a fraction.
+WHOLE_UNIT_STEP_IS_A_FRACTION = (
+    "the whole-unit position variant sizes whole units and this market steps in "
+    "fractions, so no built variant sizes an order costing this much"
+)
 
 
 # OVERTAKEN in venue_variant's docstring below: "``VARIANT_WHOLE_UNIT`` while
@@ -477,8 +577,8 @@ def venue_variant(
 
 
 def variant_permits_close(variant: Any) -> bool:
-    """True only for ``VARIANT_ROLLING_POSITION``, out of whose market a bot may
-    still sell although ``VARIANTS_BUILT`` does not hold the variant."""
+    """True only for ``VARIANT_ROLLING_POSITION``, whose sell carries the expiry
+    notice ``BotContainer.guarded_place_order`` emits."""
     return str(variant) == VARIANT_ROLLING_POSITION
 
 
@@ -504,9 +604,9 @@ def variant_trades_market(
     price: Optional[float] = None,
     excess_usd: float = REFERENCE_SCRUM_EXCESS_USD,
 ) -> bool:
-    """True while the variant ``venue_variant`` selects for one market is one
-    ``VARIANTS_BUILT`` holds."""
-    return variant_built(venue_variant(rules, price, excess_usd))
+    """True while the program holds the variant one market selects, with no
+    class and no venue asked, so ``market_unit_rule`` reads the recorded step."""
+    return variant_holds_market(rules, "", "", price, excess_usd)
 
 
 def variant_holds_market(
@@ -521,13 +621,13 @@ def variant_holds_market(
 
     ``VARIANTS_BUILT`` answers every name, and ``VARIANT_WHOLE_UNIT`` needs
     ``market_unit_rule`` to read ``WHOLE_UNITS`` as well, so a market held in
-    fractions keeps the refusal ``variant_trades_market`` gives it.
+    fractions is refused although the variant is built.
     """
     variant = venue_variant(rules, price, excess_usd)
-    if variant_built(variant):
-        return True
-    if variant != VARIANT_WHOLE_UNIT:
+    if not variant_built(variant):
         return False
+    if variant != VARIANT_WHOLE_UNIT:
+        return True
     return market_unit_rule(rules, asset_class, venue) == WHOLE_UNITS
 
 
@@ -552,12 +652,21 @@ def untradeable_reason(
     rules: Any,
     price: Optional[float] = None,
     excess_usd: float = REFERENCE_SCRUM_EXCESS_USD,
+    asset_class: str = "",
+    venue: str = "",
 ) -> str:
-    """Why one market is read and not traded, through
-    ``UNTRADEABLE_REASON_FORMAT``, and empty while a built variant trades it."""
+    """Why one market is read and not traded, empty while
+    ``variant_holds_market`` holds it.
+
+    ``UNTRADEABLE_REASON_FORMAT`` names a variant ``VARIANTS_BUILT`` lacks, and
+    ``WHOLE_UNIT_STEP_IS_A_FRACTION`` names a built ``VARIANT_WHOLE_UNIT`` whose
+    market steps in fractions.
+    """
     variant = venue_variant(rules, price, excess_usd)
-    if variant_built(variant):
+    if variant_holds_market(rules, asset_class, venue, price, excess_usd):
         return ""
+    if variant_built(variant):
+        return WHOLE_UNIT_STEP_IS_A_FRACTION
     return UNTRADEABLE_REASON_FORMAT.format(
         variant=variant, market=variant_market(variant)
     )
@@ -648,6 +757,20 @@ def grained_units(units: float, increment: Optional[float]) -> float:
     return float(units) + WHOLE_UNIT_GRAIN
 
 
+def whole_unit_over_fractional_step(rule: Any, increment: Optional[float]) -> bool:
+    """True while ``rule`` reads ``WHOLE_UNITS`` and ``increment`` is a
+    published step below one unit.
+
+    The step a market publishes is the step its fractional order carries, so
+    ``WHOLE_UNITS`` overrides it rather than flooring onto it.
+    """
+    if str(rule) != WHOLE_UNITS:
+        return False
+    if not rule_published(increment):
+        return False
+    return float(increment or 0.0) > 0.0 and float(increment or 0.0) < 1.0
+
+
 def recorded_size_rules(rules: Any) -> bool:
     """True while ``rules`` was read and published a size step or a minimum
     amount, the two figures ``sized_order`` sizes and refuses by."""
@@ -658,6 +781,93 @@ def recorded_size_rules(rules: Any) -> bool:
     return rule_published(getattr(rules, "min_amount", None))
 
 
+#: Why an order's amount is a contract count, naming the units one contract
+#: stands for beside the two counts.
+CONTRACT_COUNT_FORMAT = (
+    "One contract stands for {size} units, so {units:.10f} units name "
+    "{contracts:.10f} contracts."
+)
+
+
+def contract_size_divides(contract_size: Any) -> bool:
+    """True while ``contract_size`` is a published positive finite count of base
+    units.
+
+    False for the None an unpublished contract size carries and for a published
+    zero, which ``contracts_for_units`` cannot divide by.
+    """
+    if not rule_published(contract_size):
+        return False
+    return float(contract_size or 0.0) > 0.0
+
+
+def contracts_for_units(units: float, contract_size: Optional[float]) -> float:
+    """``units`` as the contract count the venue's size field carries.
+
+    A contract standing for ``contract_size`` base units takes ``units`` divided
+    by it, and ``units`` is answered unchanged where ``contract_size_divides``
+    reads False or one contract stands for one unit.
+    """
+    if type(units) not in (int, float):
+        return units
+    try:
+        held = float(units)
+    except (OverflowError, TypeError, ValueError):
+        return units
+    if not math.isfinite(held) or not contract_size_divides(contract_size):
+        return units
+    size = float(contract_size or 0.0)
+    if size == 1.0:
+        return units
+    try:
+        return float(Decimal(repr(held)) / Decimal(repr(size)))
+    except (ArithmeticError, InvalidOperation, TypeError, ValueError):
+        return units
+
+
+def units_for_contracts(contracts: float, contract_size: Optional[float]) -> float:
+    """``contracts`` as the base units they stand for, the inverse of
+    ``contracts_for_units``.
+
+    ``contracts`` is answered unchanged where ``contract_size_divides`` reads
+    False or one contract stands for one unit.
+    """
+    if type(contracts) not in (int, float):
+        return contracts
+    try:
+        held = float(contracts)
+    except (OverflowError, TypeError, ValueError):
+        return contracts
+    if not math.isfinite(held) or not contract_size_divides(contract_size):
+        return contracts
+    size = float(contract_size or 0.0)
+    if size == 1.0:
+        return contracts
+    try:
+        return float(Decimal(repr(held)) * Decimal(repr(size)))
+    except (ArithmeticError, InvalidOperation, TypeError, ValueError):
+        return contracts
+
+
+def contract_count_note(units: float, contract_size: Optional[float]) -> str:
+    """Why an order's amount is a contract count, through
+    ``CONTRACT_COUNT_FORMAT``.
+
+    Empty where ``contracts_for_units`` answers ``units`` unchanged.
+    """
+    counted = contracts_for_units(units, contract_size)
+    if counted == units:
+        return ""
+    return CONTRACT_COUNT_FORMAT.format(
+        size=contract_size, units=float(units), contracts=float(counted)
+    )
+
+
+# OVERTAKEN in sized_order's docstring below: "A market the venue published a
+# ``min_amount`` for and no step is sized by ``rule`` instead."
+# ``whole_unit_over_fractional_step`` sizes a ``WHOLE_UNITS`` market by ``rule``
+# as well, over a published step below one unit, and measures the whole count
+# against ``min_amount`` again.
 def sized_order(units: float, rule: Optional[str], rules: Any = None) -> SizedOrder:
     """``units`` sized to the market's own recorded rules where it has them, and
     to ``rule`` from ``CITED_UNIT_RULES`` where it has none.
@@ -682,6 +892,13 @@ def sized_order(units: float, rule: Optional[str], rules: Any = None) -> SizedOr
         held = grained_units(units, getattr(rules, "amount_increment", None))
         if rules.steps_below_minimum(held):
             return SizedOrder(0.0, RULE_SOURCE_RECORDED, BELOW_MINIMUM_AMOUNT)
+        if whole_unit_over_fractional_step(rule, rules.amount_increment):
+            whole = sized_units(held, WHOLE_UNITS)
+            if whole <= 0.0:
+                return SizedOrder(0.0, RULE_SOURCE_RECORDED, BELOW_ONE_UNIT)
+            if rules.steps_below_minimum(whole):
+                return SizedOrder(0.0, RULE_SOURCE_RECORDED, BELOW_MINIMUM_AMOUNT)
+            return SizedOrder(whole, RULE_SOURCE_RECORDED)
         stepped = amount_on_increment(held, rules.amount_increment)
         if not rule_published(getattr(rules, "amount_increment", None)):
             if rule in UNIT_RULES:
@@ -703,9 +920,14 @@ def sized_order(units: float, rule: Optional[str], rules: Any = None) -> SizedOr
 #: scrum: giving it back closes the position instead of rebalancing it.
 WHOLE_UNIT_POSITION_MINIMUM = 2
 
-#: Why a ``WHOLE_UNITS`` market refuses an order that would open a position.
-BELOW_POSITION_MINIMUM = (
-    f"a whole-unit position opens at {WHOLE_UNIT_POSITION_MINIMUM} units"
+#: Why a ``WHOLE_UNITS`` market refuses an order that would open a position,
+#: naming the units ``opening_position_minimum`` requires.
+BELOW_POSITION_MINIMUM_FORMAT = "a whole-unit position opens at {minimum} units"
+
+#: ``BELOW_POSITION_MINIMUM_FORMAT`` at ``WHOLE_UNIT_POSITION_MINIMUM``, the
+#: refusal reason a caller naming no configured minimum carries.
+BELOW_POSITION_MINIMUM = BELOW_POSITION_MINIMUM_FORMAT.format(
+    minimum=WHOLE_UNIT_POSITION_MINIMUM
 )
 
 #: What ``position_minimum_refusal`` names: the market, the units the order
@@ -716,9 +938,35 @@ POSITION_MINIMUM_FORMAT = (
 )
 
 
-def whole_unit_position_usd(price: Any) -> Optional[float]:
+def opening_position_minimum(configured: Any = None) -> int:
+    """The whole units an opening order carries on a ``WHOLE_UNITS`` market:
+    ``configured`` where it raises ``WHOLE_UNIT_POSITION_MINIMUM``, and that
+    constant otherwise.
+
+    ``WHOLE_UNIT_POSITION_MINIMUM`` is a floor ``configured`` cannot lower.
+    """
+    if type(configured) not in (int, float):
+        return WHOLE_UNIT_POSITION_MINIMUM
+    try:
+        held = float(configured)
+    except (OverflowError, TypeError, ValueError):
+        return WHOLE_UNIT_POSITION_MINIMUM
+    if not math.isfinite(held):
+        return WHOLE_UNIT_POSITION_MINIMUM
+    return max(WHOLE_UNIT_POSITION_MINIMUM, int(held))
+
+
+def position_minimum_reason(configured: Any = None) -> str:
+    """Why a ``WHOLE_UNITS`` market refuses an opening order, through
+    ``BELOW_POSITION_MINIMUM_FORMAT`` at ``opening_position_minimum``."""
+    return BELOW_POSITION_MINIMUM_FORMAT.format(
+        minimum=opening_position_minimum(configured)
+    )
+
+
+def whole_unit_position_usd(price: Any, configured: Any = None) -> Optional[float]:
     """What opening a position costs under ``WHOLE_UNITS``:
-    ``WHOLE_UNIT_POSITION_MINIMUM`` units at ``price``.
+    ``opening_position_minimum`` units at ``price``.
 
     None where ``price`` is not a positive finite number, the same unknown
     ``smallest_order_usd`` answers for an unknown price.
@@ -728,12 +976,14 @@ def whole_unit_position_usd(price: Any) -> Optional[float]:
     held = float(price)
     if not math.isfinite(held) or held <= 0.0:
         return None
-    return float(WHOLE_UNIT_POSITION_MINIMUM) * held
+    return float(opening_position_minimum(configured)) * held
 
 
-def opens_below_position_minimum(units: Any, rule: Any, position_usd: Any) -> bool:
+def opens_below_position_minimum(
+    units: Any, rule: Any, position_usd: Any, configured: Any = None
+) -> bool:
     """True while an order of ``units`` under ``rule`` opens a position holding
-    fewer than ``WHOLE_UNIT_POSITION_MINIMUM`` units.
+    fewer than ``opening_position_minimum`` units.
 
     False for every rule but ``WHOLE_UNITS``, and false while ``position_usd``
     reads a position already open.
@@ -752,20 +1002,25 @@ def opens_below_position_minimum(units: Any, rule: Any, position_usd: Any) -> bo
         return True
     if not math.isfinite(carried):
         return True
-    return carried + WHOLE_UNIT_GRAIN < float(WHOLE_UNIT_POSITION_MINIMUM)
+    return carried + WHOLE_UNIT_GRAIN < float(opening_position_minimum(configured))
 
 
 def position_minimum_refusal(
-    symbol: Any, units: Any, price: Any, rule: Any, position_usd: Any
+    symbol: Any,
+    units: Any,
+    price: Any,
+    rule: Any,
+    position_usd: Any,
+    configured: Any = None,
 ) -> str:
     """Why a ``WHOLE_UNITS`` market refuses an opening order, through
     ``POSITION_MINIMUM_FORMAT`` and naming ``symbol`` and ``price``.
 
     Empty while ``opens_below_position_minimum`` reads False.
     """
-    if not opens_below_position_minimum(units, rule, position_usd):
+    if not opens_below_position_minimum(units, rule, position_usd, configured):
         return ""
-    needed = whole_unit_position_usd(price)
+    needed = whole_unit_position_usd(price, configured)
     shown_price = float(price) if needed is not None else 0.0
     try:
         shown_units = float(units) if type(units) in (int, float) else 0.0
@@ -774,9 +1029,9 @@ def position_minimum_refusal(
     return POSITION_MINIMUM_FORMAT.format(
         symbol=symbol,
         units=shown_units,
-        reason=BELOW_POSITION_MINIMUM,
+        reason=position_minimum_reason(configured),
         price=shown_price,
-        minimum=WHOLE_UNIT_POSITION_MINIMUM,
+        minimum=opening_position_minimum(configured),
         needed=needed if needed is not None else 0.0,
     )
 
@@ -1021,8 +1276,10 @@ def cartridge_threshold_usd(target_balance: float, cartridge_pct: float) -> floa
 
 __all__ = [
     "BELOW_POSITION_MINIMUM",
+    "BELOW_POSITION_MINIMUM_FORMAT",
     "CEILING_MULTIPLE_MAX",
     "CEILING_MULTIPLE_MIN",
+    "CITED_CASH_MARKET_BUY",
     "CITED_UNIT_RULES",
     "CITED_VENUE_ORDER_TYPES",
     "CITED_VENUE_SESSIONS",
@@ -1033,6 +1290,7 @@ __all__ = [
     "CLASS_FUTURES_PERPS",
     "CLASS_INDICES",
     "CLASS_STOCKS",
+    "CONTRACT_COUNT_FORMAT",
     "DRAWDOWN_STATE",
     "FLEET_SCRUMMING_INTERVAL_PCT",
     "FRACTIONAL_UNITS",
@@ -1043,14 +1301,17 @@ __all__ = [
     "HELD_OUTSIDE_SESSION",
     "HELD_UNSETTLED_CASH",
     "LARGEST_FLEET_TARGET_USD",
+    "MARKET_BUY_NAMES_CASH",
     "ORDER_TYPES_DECLARED",
     "ORDER_TYPES_LIMIT_ONLY",
     "ORDER_TYPES_WITH_MARKET",
     "POSITION_MINIMUM_FORMAT",
     "REFERENCE_SCRUM_EXCESS_USD",
+    "SESSIONS_DECLARED",
     "SESSION_CONTINUOUS",
     "SESSION_US_EQUITY",
     "SETTLEMENT_DAY_SECONDS",
+    "SETTLE_LEG",
     "TAPER_DROP",
     "TAPER_START_RATIO",
     "TRADEABLE_NO",
@@ -1068,7 +1329,11 @@ __all__ = [
     "WHOLE_UNITS",
     "WHOLE_UNIT_GRAIN",
     "WHOLE_UNIT_POSITION_MINIMUM",
+    "WHOLE_UNIT_STEP_IS_A_FRACTION",
     "cartridge_threshold_usd",
+    "contract_count_note",
+    "contract_size_divides",
+    "contracts_for_units",
     "cycle_growth_cap_usd",
     "delta_below_interval",
     "eligible_fold_tranches",
@@ -1080,7 +1345,9 @@ __all__ = [
     "fold_units",
     "grained_units",
     "growth_cycle_side",
+    "market_buy_names_cash",
     "market_unit_rule",
+    "opening_position_minimum",
     "opens_below_position_minimum",
     "opposing_trade_distance_pct",
     "opposing_trade_distances",
@@ -1089,6 +1356,7 @@ __all__ = [
     "plan_fold_consumption",
     "plan_source_price",
     "position_ceiling",
+    "position_minimum_reason",
     "position_minimum_refusal",
     "priced_usd",
     "ratio_to_ceiling",
@@ -1096,6 +1364,8 @@ __all__ = [
     "sale_proceeds_usd",
     "scrum_units",
     "scrumming_interval_usd",
+    "session_for",
+    "session_unit_rule",
     "settle_fold_plan",
     "sized_units",
     "smallest_order_usd",
@@ -1106,6 +1376,7 @@ __all__ = [
     "tradeable_answer",
     "trim_fold_plan",
     "unit_rule",
+    "units_for_contracts",
     "unsettled_usd",
     "untradeable_reason",
     "variant_built",
@@ -1120,5 +1391,7 @@ __all__ = [
     "venue_settlement_days",
     "venue_variant",
     "wallet_capped_spend_usd",
+    "whole_unit_buy_needs_limit",
+    "whole_unit_over_fractional_step",
     "whole_unit_position_usd",
 ]

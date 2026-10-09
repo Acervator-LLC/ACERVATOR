@@ -134,6 +134,8 @@ class MarketRules:
     min_cost: Optional[float] = None  # quote units
     amount_increment: Optional[float] = None  # base units a size steps by
     price_increment: Optional[float] = None  # quote units a price steps by
+    quote_increment: Optional[float] = None  # quote units a cash amount steps by
+    contract_size: Optional[float] = None  # base units one contract stands for
     session: Optional[str] = None  # the session name the venue publishes
     order_types: Optional[str] = None  # the order types the venue declares
     expiry_ms: Optional[float] = None  # epoch ms the venue closes the contract on
