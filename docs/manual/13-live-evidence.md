@@ -84,10 +84,13 @@ bounded by `YTD_BULK_READ_ATTEMPTS`. A refusal on the last attempt raises, so th
 walk holds no reading rather than count that window short, and the five fields
 drop to their no-reading markers as they already do for a skipped remainder.
 
-Measured against the fleet's own 39 bots and the platform read rate the operator's
-`console/system.log` records in its refusal-free minutes: 300 platform reads
-offered, refusals at the cap before and after the gate, and the floor with the
-walk not running at all.
+The connector writes its own report of the contention. Over one six-hour live
+log, `~/.acervator_logs/console/system.log` carries 565 lines naming the call
+queue at its cap, 117 of them raised out of `sync_ytd_trade_count`. The calls
+the connector names in those lines are `fetch_balance` 281 times,
+`fetch_my_trades` 168, `fetch_open_orders` 64, `fetch_tickers` 35 and
+`fetch_ohlcv` 12. The same line is what reads the gate's effect: a walk that
+waits for its turn stops appearing there.
 
 The fleet aggregator sums those per-bot fields across every bot. Its two headline
 fields carry the year-to-date sum whenever that sum exceeds zero, and fall back
