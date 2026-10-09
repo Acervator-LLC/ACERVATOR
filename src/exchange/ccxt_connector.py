@@ -391,6 +391,34 @@ EQUITY_SELL_FLAGS = (
     "sell_notional",
 )
 
+#: The ccxt market field set True on a tokenised equity record, which parses as
+#: a spot market and carries no ``EQUITY_MARKET_TYPE`` type.
+STOCK_MARKET_KEY = "stock"
+
+#: The key a tokenised equity row names its permitted sides under. Binance
+#: publishes ``BUY_SELL``, ``BUY``, ``SELL`` or ``NONE`` on
+#: ``/sapi/v1/equity/market/exchangeInfo``.
+TRADABILITY_KEY = "tradability"
+
+#: The ``TRADABILITY_KEY`` value permitting each side.
+TRADABILITY_BUY = frozenset({"BUY_SELL", "BUY"})
+TRADABILITY_SELL = frozenset({"BUY_SELL", "SELL"})
+
+#: The keys a tokenised equity row names fractional support under, one for the
+#: regular session and one for extended hours.
+FRACTIONABLE_KEY = "fractionable"
+FRACTIONABLE_EXTENDED_KEY = "fractionableEh"
+
+#: The keys a tokenised equity row names its sessions beyond the regular one
+#: under. A row setting neither trades inside the regular session alone.
+EXTENDED_SESSION_KEY = "extendedSession"
+OVERNIGHT_SESSION_KEY = "overnightSupported"
+
+#: The ccxt market field set True on a contract settled in its own base asset.
+#: Binance publishes that contract's size in the quote currency, so no base-unit
+#: contract size is read off such a record.
+INVERSE_MARKET_KEY = "inverse"
+
 #: The venue's own label for what a futures contract is written on.
 FUTURES_ASSET_TYPE_KEY = "futures_asset_type"
 
@@ -572,9 +600,12 @@ def contract_units(market: Any) -> Optional[float]:
 
     ccxt's own ``CONTRACT_SIZE_FIELD`` answers first, and ``FUTURES_DETAILS_KEY``
     answers where the record came through ``parse_spot_market``, which sets no
-    contract size. None for a product carrying no contract size.
+    contract size. None for a product carrying no contract size and None for an
+    ``INVERSE_MARKET_KEY`` record, whose size is a quote-currency amount.
     """
     held = market or {}
+    if held.get(INVERSE_MARKET_KEY):
+        return None
     parsed = limit_to_float(held.get(CONTRACT_SIZE_FIELD))
     if parsed is not None:
         return parsed
@@ -587,17 +618,36 @@ def contract_units(market: Any) -> Optional[float]:
     return limit_to_float(detail.get(CONTRACT_SIZE_KEY))
 
 
+def equity_trades_outside_regular(market: Any) -> bool:
+    """Whether one tokenised equity record publishes a session beyond the
+    regular one, off ``EXTENDED_SESSION_KEY`` or ``OVERNIGHT_SESSION_KEY``."""
+    raw = (market or {}).get("info") or {}
+    if not isinstance(raw, dict):
+        return False
+    return (
+        raw.get(EXTENDED_SESSION_KEY) is True or raw.get(OVERNIGHT_SESSION_KEY) is True
+    )
+
+
 def market_session(market: Any) -> Optional[str]:
     """The session name one loaded market record publishes.
 
-    ``SESSION_US_EQUITY`` for an ``EQUITY_MARKET_TYPE`` product, and
-    ``SESSION_CONTINUOUS`` where ``SESSION_DETAILS_KEY`` holds no window. None
-    where the record carries no ``SESSION_DETAILS_KEY`` and None where
-    ``SESSION_DETAILS_KEY`` holds a daily window, which neither name states.
+    ``SESSION_US_EQUITY`` for an ``EQUITY_MARKET_TYPE`` product and for a
+    ``STOCK_MARKET_KEY`` record ``equity_trades_outside_regular`` reads False
+    for, and ``SESSION_CONTINUOUS`` for every other ``STOCK_MARKET_KEY`` record
+    and where ``SESSION_DETAILS_KEY`` holds no window. None where the record
+    carries neither key and None where ``SESSION_DETAILS_KEY`` holds a daily
+    window, which neither name states.
     """
     from ..trading.scrumming.sizing import SESSION_CONTINUOUS, SESSION_US_EQUITY
 
     held = market or {}
+    if held.get(STOCK_MARKET_KEY):
+        return (
+            SESSION_CONTINUOUS
+            if equity_trades_outside_regular(held)
+            else SESSION_US_EQUITY
+        )
     if str(held.get("type") or "").lower() == EQUITY_MARKET_TYPE:
         return SESSION_US_EQUITY
     raw = held.get("info") or {}
@@ -643,6 +693,72 @@ def equity_size_shapes(market: Any) -> tuple:
     )
 
 
+def stock_size_shapes(market: Any) -> tuple:
+    """The size shapes one tokenised equity record permits on a buy and on a
+    sell, off ``TRADABILITY_KEY``, ``FRACTIONABLE_KEY`` and
+    ``FRACTIONABLE_EXTENDED_KEY``.
+
+    Two Nones for a record carrying no ``TRADABILITY_KEY``, and an empty
+    frozenset on a side ``TRADABILITY_KEY`` does not name.
+    """
+    from ..trading.scrumming.sizing import (
+        SHAPE_CASH_AMOUNT,
+        SHAPE_FRACTIONAL_UNITS,
+        SHAPE_WHOLE_UNITS,
+    )
+
+    raw = (market or {}).get("info") or {}
+    if not isinstance(raw, dict):
+        return (None, None)
+    tradability = str(raw.get(TRADABILITY_KEY) or "").strip().upper()
+    if not tradability:
+        return (None, None)
+    counted = {SHAPE_WHOLE_UNITS}
+    if raw.get(FRACTIONABLE_KEY) is True or raw.get(FRACTIONABLE_EXTENDED_KEY) is True:
+        counted.add(SHAPE_FRACTIONAL_UNITS)
+    # A market buy names a notional and a market sell names a quantity, so the
+    # cash amount is a buy shape alone.
+    buy = frozenset(counted | {SHAPE_CASH_AMOUNT})
+    sell = frozenset(counted)
+    return (
+        buy if tradability in TRADABILITY_BUY else frozenset(),
+        sell if tradability in TRADABILITY_SELL else frozenset(),
+    )
+
+
+def quote_contract_size_shapes(market: Any) -> tuple:
+    """``SHAPE_CASH_AMOUNT`` on both sides of an ``INVERSE_MARKET_KEY`` record,
+    whose size field counts fixed quote-currency amounts.
+
+    Two Nones for every other record.
+    """
+    from ..trading.scrumming.sizing import SHAPE_CASH_AMOUNT
+
+    if not (market or {}).get(INVERSE_MARKET_KEY):
+        return (None, None)
+    cash = frozenset({SHAPE_CASH_AMOUNT})
+    return (cash, cash)
+
+
+def size_shapes_published(market: Any) -> tuple:
+    """The size shapes one loaded market record publishes per side, reading
+    ``equity_size_shapes``, then ``stock_size_shapes``, then
+    ``quote_contract_size_shapes``.
+
+    Two Nones where no reader answers, which ``permits_size_shapes`` tells from
+    a set naming no shape.
+    """
+    for reader in (
+        equity_size_shapes,
+        stock_size_shapes,
+        quote_contract_size_shapes,
+    ):
+        buy, sell = reader(market)
+        if buy is not None or sell is not None:
+            return (buy, sell)
+    return (None, None)
+
+
 # OVERTAKEN in market_rules's docstring below: "The ``MarketRules`` one loaded
 # CCXT market record publishes."
 # ``order_types`` comes from the exchange's own ``has`` map through
@@ -657,7 +773,7 @@ def market_rules(
     """
     limits = (market or {}).get("limits") or {}
     precision = (market or {}).get("precision") or {}
-    buy_shapes, sell_shapes = equity_size_shapes(market)
+    buy_shapes, sell_shapes = size_shapes_published(market)
     return MarketRules(
         order_types=order_types,
         min_amount=limit_to_float((limits.get("amount") or {}).get("min")),
@@ -758,6 +874,8 @@ def market_asset_class(market: Any) -> str:
     if labels & EQUITY_FUTURES_ASSET_TYPES:
         return CLASS_STOCKS
     if str((market or {}).get("type") or "").lower() == EQUITY_MARKET_TYPE:
+        return CLASS_STOCKS
+    if (market or {}).get(STOCK_MARKET_KEY):
         return CLASS_STOCKS
     base = underlying_code((market or {}).get("base"))
     if base in PRECIOUS_METAL_CODES:

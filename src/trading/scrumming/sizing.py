@@ -262,9 +262,10 @@ def venue_order_types(asset_class: str, venue: str) -> Optional[str]:
 SETTLE_LEG = ":"
 
 #: The venues whose own order path turns a spot market buy into a cash amount,
-#: read from each one's order builder. ``coinbase`` sends ``quote_size`` for a
-#: spot buy and a unit count on every other order.
-CITED_CASH_MARKET_BUY: frozenset[str] = frozenset({"coinbase"})
+#: read from each one's order builder. ``coinbase`` sends ``quote_size`` and
+#: ``binance`` sends ``quoteOrderQty`` for a spot buy, and both send a unit
+#: count on every other order.
+CITED_CASH_MARKET_BUY: frozenset[str] = frozenset({"binance", "coinbase"})
 
 #: Why a ``WHOLE_UNITS`` market buy names a limit order.
 MARKET_BUY_NAMES_CASH = "a market buy names a cash amount, not a unit count"

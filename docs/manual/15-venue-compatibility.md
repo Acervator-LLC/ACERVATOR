@@ -189,7 +189,7 @@ venue-and-sector readiness matrix in
 | okx | crypto, stocks, commodities, indices, futures_perps |
 | bitget | crypto, stocks, commodities, indices, futures_perps |
 | bitfinex | crypto, commodities, indices, futures_perps |
-| binance | crypto, stocks, commodities, futures_perps |
+| binance | crypto, stocks, commodities, forex, indices, futures_perps |
 | kucoin | crypto, stocks, commodities, futures_perps |
 | gemini | crypto, commodities, forex, futures_perps |
 | gateio | crypto, stocks, commodities |
