@@ -152,18 +152,31 @@ The venue registry carries its own status sets, all in `ccxt_connector.py`.
 | `US_ACCOUNT_RESTRICTED_EXCHANGES` | 2 |
 | `VERIFIED_EXCHANGES` | 1 |
 
-One function turns those sets into the picker text a user sees. A blocked venue
-is labelled as blocked, any other unverified venue is labelled untested, and a
-venue needing a passphrase says so. Driven over the whole registry, fourteen of
-the fifteen labels carry a caveat and one does not.
+Two functions turn those sets into the picker text a user sees. `restriction_note`
+names the refusal a venue carries and `exchange_label` joins it to the passphrase
+note. A venue whose address is refused is labelled as address refused, a venue
+whose terms refuse the account is labelled as account restricted, any other
+unverified venue is labelled untested, and a venue needing a passphrase says so.
+Driven over the whole registry, fourteen of the fifteen labels carry a caveat and
+one does not.
 
 ```python
+def restriction_note(exchange_id: str) -> str:      # src/exchange/ccxt_connector.py
+    """Name the refusal *exchange_id* carries, which exchange_label and sync_connect read."""
+    if exchange_id in US_IP_BLOCKED_EXCHANGES:
+        return US_IP_BLOCKED_NOTE
+    if exchange_id in US_ACCOUNT_RESTRICTED_EXCHANGES:
+        return US_ACCOUNT_RESTRICTED_NOTE
+    return ""
+
+
 def exchange_label(exchange_id: str) -> str:        # src/exchange/ccxt_connector.py
     """Return the picker label for *exchange_id*, carrying its status notes."""
     label = exchange_id.capitalize()
     notes: list[str] = []
-    if exchange_id in US_IP_BLOCKED_EXCHANGES:
-        notes.append("blocked from US")
+    refusal = restriction_note(exchange_id)
+    if refusal:
+        notes.append(refusal)
     elif exchange_id not in VERIFIED_EXCHANGES:
         notes.append("untested")
     if exchange_id in PASSPHRASE_EXCHANGES:
@@ -172,6 +185,20 @@ def exchange_label(exchange_id: str) -> str:        # src/exchange/ccxt_connecto
         label += f" ({', '.join(notes)})"
     return label
 ```
+
+The two refusals read in different words, so the picker tells one from the other.
+The connect path names the same refusal in the same words, because
+`CCXTConnector.sync_connect` reads `restriction_note` for the line it logs, then
+proceeds. No path refuses a connection on the restriction, and the line says the
+reading was taken on the date `VENUE_MEASUREMENT_DATE` carries and quotes no page
+the venue publishes.
+
+| Venue | Set | Label | Connect |
+| ----- | --- | ----- | ------- |
+| binance, bybit | `US_IP_BLOCKED_EXCHANGES` | US address refused | warns, then proceeds |
+| poloniex, huobi | `US_ACCOUNT_RESTRICTED_EXCHANGES` | US account restricted | warns, then proceeds |
+| kraken and nine more | neither | untested | proceeds, no line |
+| coinbase | neither, and verified | no note | proceeds, no line |
 
 Fifteen checks cover those sets. One resolves every registry id to an importable
 ccxt class through the connector's own resolver. One requires an https pre-flight

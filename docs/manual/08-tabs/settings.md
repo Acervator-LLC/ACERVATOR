@@ -2852,12 +2852,14 @@ for label:
 | The surface list | `settings_dialog_surface.exchange_items` | 15 |
 | The loaded React page | the `<option>` elements the page drew | 15 |
 
-In order: Binance (blocked from US), Bitfinex, Bitget (passphrase required),
-Bitstamp, Bybit (blocked from US), Coinbase, Cryptocom, Gateio, Gemini, Huobi,
-Kraken, Kucoin (passphrase required), Mexc, Okx (passphrase required),
-Poloniex. Every label except Coinbase carries a note, because `exchange_label`
-marks a venue that is blocked from a US address, or untested, or needs a
-passphrase.
+In order: Binance (US address refused), Bitfinex (untested), Bitget (untested,
+passphrase required), Bitstamp (untested), Bybit (US address refused), Coinbase,
+Cryptocom (untested), Gateio (untested), Gemini (untested), Huobi (US account
+restricted), Kraken (untested), Kucoin (untested, passphrase required), Mexc
+(untested), Okx (untested, passphrase required), Poloniex (US account
+restricted). Every label except Coinbase carries a note, because `exchange_label`
+marks a venue whose address is refused, or whose terms refuse the account, or
+that is untested, or that needs a passphrase.
 
 Binance stands first because the list is in id order and `binance` sorts first.
 
