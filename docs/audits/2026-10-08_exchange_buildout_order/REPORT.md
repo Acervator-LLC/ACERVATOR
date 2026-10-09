@@ -375,6 +375,108 @@ ladder changes no venue's basis, only where its row sits.
 
 ---
 
+## Table C, the build-out order with reachability first
+
+**This is the order to build from.** The operator holds a United States account.
+A venue that refuses one cannot be built against today, whatever its volume and
+whatever its coverage, so reachability is asked before either.
+
+**The rule: reachability bands the list, sector coverage then groups each band,
+and the ladder then orders each group, exactly as Tables A and B order theirs.**
+
+Three bands, read out of `src/exchange/ccxt_connector.py` in a running process.
+The two sets there are not one refusal, and the bands keep them apart.
+
+```
+band 1   no refusal recorded   the id is in neither set
+band 2   account refused       US_ACCOUNT_RESTRICTED_EXCHANGES, two ids
+band 3   address refused       US_IP_BLOCKED_EXCHANGES, two ids
+```
+
+Band 2 sits above band 3 because the two refusals differ in kind. The
+address-refused set holds the venues whose public endpoints refused the address.
+The account-refused set holds venues the address reaches, whose terms refuse the
+account.
+
+| # | Venue | Reachable from the US | Sectors | Basis | Figure | Measure |
+| --- | --- | --- | --- | --- | --- | --- |
+| — | coinbase | no refusal recorded | 6 | 1 volume | 4,110,778,788 | fixed first by instruction |
+| — | robinhood | no refusal recorded | 5 | 1 volume | 335,000,000,000 for the month | fixed second by instruction |
+| 1 | gateio | no refusal recorded | 6 | 1 volume | 1,899,524,136 | spot 24h, USD |
+| 2 | kraken | no refusal recorded | 6 | 1 volume | 1,826,079,158 | spot 24h, USD |
+| 3 | kucoin | no refusal recorded | 6 | 1 volume | 1,377,543,491 | spot 24h, USD |
+| 4 | cryptocom | no refusal recorded | 6 | 1 volume | 826,680,594 | spot 24h, USD |
+| 5 | bitget | no refusal recorded | 6 | 1 volume | 813,319,184 | spot 24h, USD |
+| 6 | schwab | no refusal recorded | 6 | 1 volume | 9,821 thousand | client trades a day |
+| 7 | fidelity | no refusal recorded | 6 | 1 volume | 5.7 million | client trades a day |
+| 8 | ibkr | no refusal recorded | 6 | 1 volume | 4.111 million | revenue trades a day |
+| 9 | okx | no refusal recorded | 5 | 1 volume | 2,207,798,651 | spot 24h, USD |
+| 10 | mexc | no refusal recorded | 5 | 1 volume | 1,599,542,322 | spot 24h, USD |
+| 11 | bitfinex | no refusal recorded | 5 | 1 volume | 1,157,463,688 | spot 24h, USD |
+| 12 | webull | no refusal recorded | 5 | 1 volume | 279,000,000,000 for the quarter | equity notional, USD |
+| 13 | tastytrade | no refusal recorded | 5 | 2 breadth | 26 | coins the firm lists |
+| 14 | gemini | no refusal recorded | 4 | 1 volume | 55,636,483 | spot 24h, USD |
+| 15 | alpaca | no refusal recorded | 4 | 2 breadth | over 11,000 | stocks and funds the firm lists |
+| 16 | bitstamp | no refusal recorded | 3 | 1 volume | 445,456,235 | spot 24h, USD |
+| 17 | etrade | no refusal recorded | 3 | 1 volume | 1,278 thousand | self-directed revenue trades a day |
+| 18 | interactivebrokers | no refusal recorded | 0 | 1 volume | 4.111 million | revenue trades a day |
+| 19 | tdameritrade | no refusal recorded | 0 | 4 none | no published figure | — |
+| 20 | huobi | account refused | 5 | 1 volume | 856,251,198 | spot 24h, USD |
+| 21 | poloniex | account refused | 4 | 1 volume | 945,777,788 | spot 24h, USD |
+| 22 | binance | address refused | 6 | 1 volume | 12,313,776,868 | spot 24h, USD |
+| 23 | bybit | address refused | 6 | 1 volume | 2,165,543,168 | spot 24h, USD |
+
+The two sets name four crypto ids between them. Every other row above is in
+neither set, and Robinhood has an id in neither constant, so band 1 reads no
+refusal recorded and not a confirmation. A broker in band 1 still has no
+connector, which is the cost the next section counts and not a refusal of the
+account.
+
+**Twenty-three of the twenty-three ranked ids change their number.** Four fall to
+the bottom and nineteen rise, because the four left the top.
+
+```
+binance     1 -> 22   down 21
+bybit       2 -> 23   down 21
+huobi      14 -> 20   down 6
+poloniex   17 -> 21   down 4
+nineteen others        up two, three or four places each
+```
+
+No figure moved. Every row carries the sectors, basis, figure and measure its
+Table A row carries, from the source and the date that row names. The bands
+changed where a row sits and changed nothing in it.
+
+### What the four restricted venues are still worth
+
+They are ranked and marked, not deleted. Three facts hold about them.
+
+**Two of them lead both earlier keys.** Binance sits first on the ladder in Table
+B and covers six sectors. Bybit sits third on that ladder and covers six sectors.
+Deleting the two would delete the top of the list the two earlier keys produced,
+and the band already records why they sit at the bottom instead.
+
+**Their order research is done and does not expire.** Binance's order shape is
+established one row per sector, with the endpoint, the fields, the size field,
+the granularity and the order types, in
+[2026-10-08_binance_sector_order_formats/REPORT.md](../2026-10-08_binance_sector_order_formats/REPORT.md),
+and that work is merged. A venue's published order format does not change because
+an address was refused.
+
+**The band rests on a dated measurement.**
+`src/exchange/ccxt_connector.py`, `VENUE_MEASUREMENT_DATE` reads 2026-08-28. A
+venue leaves band 2 or band 3 when that measurement is taken again and the id
+leaves the set, and the row then takes the place its coverage and its figure
+already give it.
+
+**FALSIFICATION for this table.** This order is wrong if an id it bands is in a
+different set in `src/exchange/ccxt_connector.py` than its band names, if a band
+holds a different count than the set it names, if any row's sectors, basis,
+figure or measure differs from that row in Table A, or if an id Table A ranks is
+absent here.
+
+---
+
 ## What each build-out costs
 
 Four costs apply, and the first three are the same for whole groups of venues.
