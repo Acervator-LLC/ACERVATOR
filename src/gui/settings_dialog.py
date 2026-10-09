@@ -12,6 +12,9 @@ try:
         QDialog,
         QVBoxLayout,
         QHBoxLayout,
+        QGridLayout,
+        QSizePolicy,
+        QButtonGroup,
         QTabWidget,
         QWidget,
         QLabel,
@@ -41,6 +44,61 @@ if _HAS_QT:
     from .main_tabs import asset_class_surface as acs
     from .main_tabs import settings_dialog_surface as sds
     from .main_tabs.asset_class_surface import EQUITY_VENUES as EQUITY_EXCHANGE_IDS
+
+    class VenueArrayPanel(QWidget):
+        """The Exchange Status array, one segment per venue of one sector.
+
+        ``set_labels`` keeps each button's full venue label, and every resize
+        re-elides that label to the width its own segment has, which is how
+        the Sector button group fits its class names.
+        """
+
+        def __init__(self, parent=None):
+            super().__init__(parent)
+            self._labels: dict = {}
+            self.setAccessibleName("Exchange Status array")
+            self.setAccessibleDescription(
+                "One button per venue serving this sector, each accented by "
+                "its own API state. Press one to enter its credentials."
+            )
+
+        def set_labels(self, labels: dict) -> None:
+            """Hold the full label every venue button draws before elision."""
+            self._labels = dict(labels)
+            self._elide()
+
+        def resizeEvent(self, event):  # noqa: N802
+            """Re-elide every label to the width its own segment now has."""
+            super().resizeEvent(event)
+            self._elide()
+
+        def _elide(self) -> None:
+            """Shorten each button's label to the room that button now has."""
+            for button, full in self._labels.items():
+                room = max(button.width() - acs.BUTTON_TEXT_PAD, 0)
+                button.setText(self._fitted(button, full, room))
+
+        def _fitted(self, button, full: str, room: int) -> str:
+            """One venue label on one line, broken over two, or shortened.
+
+            The break is the last space leaving both lines inside ``room``, so
+            a long venue id drops under its own name instead of being clipped.
+            """
+            metrics = button.fontMetrics()
+
+            def whole(text: str) -> bool:
+                return metrics.elidedText(text, Qt.ElideRight, room) == text
+
+            if whole(full):
+                return full
+            for at in range(len(full) - 1, 0, -1):
+                if full[at] != " ":
+                    continue
+                head = full[:at]
+                tail = full[at + 1 :]
+                if whole(head) and whole(tail):
+                    return head + "\n" + tail
+            return metrics.elidedText(full, Qt.ElideRight, room)
 
     class SettingsDialog(QDialog):
 
@@ -161,9 +219,27 @@ if _HAS_QT:
                 )
                 layout.addWidget(_banner)
 
-            self._exchange_list = QListWidget()
+            # The list stays the configured-exchange line model that
+            # _list_exchange_once, _remove_exchange and the React build's
+            # PageList stand-in all read; the array below is what draws.
+            self._exchange_list = QListWidget(w)
+            self._exchange_list.setVisible(False)
+            self._venue_page = 0
+            self._venue_buttons: dict = {}
+            self._venue_array = VenueArrayPanel(w)
+            self._venue_grid = QGridLayout(self._venue_array)
+            self._venue_grid.setContentsMargins(0, 0, 0, 0)
+            self._venue_grid.setHorizontalSpacing(acs.GROUP_SPACING_PX)
+            self._venue_grid.setVerticalSpacing(acs.GROUP_SPACING_PX)
+            self._venue_array.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+            self._venue_group = QButtonGroup(self._venue_array)
+            self._venue_group.setExclusive(True)
+            self._venue_pages = QPushButton(w)
+            self._venue_pages.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+            self._venue_pages.clicked.connect(self._next_venue_page)
             layout.addWidget(QLabel(sds.exchange_status_label()))
-            layout.addWidget(self._exchange_list)
+            layout.addWidget(self._venue_array)
+            layout.addWidget(self._venue_pages)
 
             add_group = QGroupBox(sds.add_group_title(self._wing))
             add_form = QFormLayout(add_group)
@@ -294,19 +370,108 @@ if _HAS_QT:
             rows = sds.exchange_status_rows(self._status_class(), states)
             self._exchange_list.clear()
             for at, (words, venue, _state, _colour, style, tip) in enumerate(rows):
-                # The item keeps the row text so _list_exchange_once and
-                # _remove_exchange read the venue id off it; the button covers it.
+                # OVERTAKEN, quoted whole:
+                #   "The item keeps the row text so _list_exchange_once and
+                #   _remove_exchange read the venue id off it; the button covers it."
+                # True today: the item keeps the row text for those two readers
+                # and for the React build's PageList stand-in, and the button
+                # sits at its own cell in _venue_array's grid.
                 item = QListWidgetItem(words)
                 self._exchange_list.addItem(item)
-                press = QPushButton(words)
-                press.setStyleSheet(style)
-                press.setToolTip(tip)
-                press.setEnabled(bool(venue))
+            self._draw_venue_array(states)
+
+        def _draw_venue_array(self, states: dict) -> None:
+            """Fill the venue array with one page of Sector-styled buttons.
+
+            Every button takes its own API state colour as the accent of
+            ``asset_class_surface.button_style``, sits at the ``venue_cell``
+            the surface gives it, and reports the row index a press binds.
+            """
+            while self._venue_grid.count():
+                taken = self._venue_grid.takeAt(0)
+                gone = taken.widget()
+                if gone is not None:
+                    self._venue_group.removeButton(gone)
+                    gone.setParent(None)
+                    gone.deleteLater()
+            self._venue_buttons = {}
+            sector = self._status_class()
+            pages = sds.venue_pages_button(sector, self._venue_page, states)
+            self._venue_page = pages["page"]
+            drawn = sds.exchange_status_page(sector, self._venue_page, states)
+            width, height = self._venue_button_size(states)
+            tallest = sds.venue_grid_shape(sds.VENUE_PAGE_HOLDS)[0]
+            # A page holding fewer venues than VENUE_GRID_COLUMNS stretches
+            # only the columns it fills, so one note button takes the width.
+            held, wide = sds.venue_grid_shape(len(drawn))
+            for at in range(sds.VENUE_GRID_COLUMNS):
+                self._venue_grid.setColumnStretch(at, 1 if at < wide else 0)
+            for at in range(tallest):
+                self._venue_grid.setRowStretch(at, 1 if at < held else 0)
+            labels = {}
+            selected = self._exchange_list.currentRow()
+            for one in drawn:
+                press = QPushButton(one["text"], self._venue_array)
+                press.setFont(acs.segment_font())
+                press.setStyleSheet(one["style_sheet"])
+                press.setToolTip(one["tooltip"])
+                press.setEnabled(bool(one["venue"]))
+                press.setCheckable(bool(one["venue"]))
+                press.setChecked(int(one["at"]) == selected)
+                press.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+                press.setMinimumSize(width, height)
                 press.clicked.connect(
-                    lambda *_ignored, row=at: self._open_credentials_for_row(row)
+                    lambda *_ignored, row=one["at"]: self._open_credentials_for_row(row)
                 )
-                item.setSizeHint(press.sizeHint())
-                self._exchange_list.setItemWidget(item, press)
+                self._venue_group.addButton(press)
+                self._venue_buttons[str(one["venue"])] = press
+                labels[press] = one["text"]
+                self._venue_grid.addWidget(
+                    press,
+                    int(one["row"]),
+                    int(one["grid_column"]),
+                    1,
+                    int(one["column_span"]),
+                )
+            self._venue_pages.setText(pages["text"])
+            self._venue_pages.setToolTip(pages["tooltip"])
+            self._venue_pages.setStyleSheet(pages["style_sheet"])
+            self._venue_pages.setFont(acs.segment_font())
+            self._venue_pages.setMinimumHeight(height)
+            self._venue_pages.setVisible(bool(pages["shown"]))
+            # activate before set_labels: each label is fitted to the width its
+            # own segment ends at, not the width it holds before the grid runs.
+            self._venue_grid.activate()
+            self._venue_array.set_labels(labels)
+
+        def _venue_button_size(self, states: dict) -> tuple:
+            """The width and height every venue button is held to.
+
+            The width seats the wider half of the widest venue label, so a
+            label too long for one line breaks on its space and no venue id is
+            clipped; the height seats ``VENUE_BUTTON_LINES`` segment lines.
+            """
+            from PySide6.QtGui import QFontMetrics
+
+            widest = 0
+            for row in sds.exchange_status_rows(self._status_class(), states):
+                if not row[1]:
+                    continue
+                for part in str(row[0]).split(" ", 1):
+                    widest = max(widest, acs.label_width_px(part))
+            metrics = QFontMetrics(acs.segment_font())
+            tall = metrics.lineSpacing() * sds.VENUE_BUTTON_LINES
+            return (
+                max(acs.BUTTON_MIN_W, widest + acs.BUTTON_TEXT_PAD),
+                tall + acs.BUTTON_TEXT_PAD,
+            )
+
+        def _next_venue_page(self) -> None:
+            """Draw the next page of the venue array, the first after the last."""
+            states = getattr(self, "_venue_states", {})
+            pages = sds.venue_page_count(self._status_class(), states)
+            self._venue_page = sds.venue_next_page(self._venue_page, pages)
+            self._draw_venue_array(states)
 
         def _open_credentials_for_row(self, at) -> None:
             """Bind the Add-exchange form to the venue the row at ``at`` names."""
