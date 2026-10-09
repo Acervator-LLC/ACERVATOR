@@ -211,6 +211,23 @@ VENUE_ROW_TOOLTIP = "{name} — {words}. Press to enter credentials."
 VENUE_FORM_BOUND = "Enter credentials for {name}."
 VENUE_HAS_NO_FORM = "{name} has no credential form on this tab."
 
+#: The venues one page of the Exchange Status array holds. Past this a pages
+#: button draws and the array still never scrolls.
+VENUE_PAGE_HOLDS = 16
+
+#: The columns one page divides into, so a further venue adds a row and never
+#: a column. Four, because ``VENUE_PAGE_HOLDS`` then fills four rows of four
+#: exactly, and the widest venue label measures 152px with its padding against
+#: the 164px each of four columns holds in a dialog at its 700px floor.
+VENUE_GRID_COLUMNS = 4
+
+#: The lines one venue button is tall enough for, so a label too wide for one
+#: line breaks on its space instead of being clipped.
+VENUE_BUTTON_LINES = 2
+
+VENUE_PAGES_FORMAT = "Page {page} of {pages} ▸"
+VENUE_PAGES_TOOLTIP = "Press for page {next} of {pages}."
+
 LOCK_GROUP_TITLE = "Higher-TF Lock Settings"
 SMS_PROVIDER_GROUP_TITLE = "SMS Provider"
 SMS_EVENTS_GROUP_TITLE = "Notification Events"
@@ -1578,6 +1595,161 @@ def row_venue_id(wing: Any, at: Any, states: Any = None) -> str:
     return str(rows[found][1])
 
 
+def venue_grid_shape(count: Any = None) -> tuple:
+    """The rows and columns ``count`` venue buttons divide one page into.
+
+    ``VENUE_GRID_COLUMNS`` fixes the width, so both builds read one shape and
+    a further venue lengthens the array rather than narrowing a button.
+    """
+    held = max(int(count or 0), 0)
+    if held <= 0:
+        return (0, 0)
+    columns = min(VENUE_GRID_COLUMNS, held)
+    rows = math.ceil(held / columns)
+    return (rows, columns)
+
+
+def venue_row_holds(count: Any = None) -> list:
+    """How many venue buttons each row of one page holds, the top row first.
+
+    Every row but the last holds a full ``columns`` and the last holds what is
+    left, so no row is empty and the last row's buttons widen to fill it.
+    """
+    held = max(int(count or 0), 0)
+    rows, columns = venue_grid_shape(held)
+    if rows <= 0:
+        return []
+    counts = [columns] * (rows - 1)
+    counts.append(held - columns * (rows - 1))
+    return counts
+
+
+def venue_cell(at: Any, count: Any = None) -> dict:
+    """Where venue button ``at`` of ``count`` sits on its page, and what it spans.
+
+    Carries the fields ``asset_class_surface.segment_cell`` answers, so
+    ``segment_box`` paints the array's shared borders and rounds only the four
+    outer corners, exactly as it does for the Sector buttons.
+    """
+    held = max(int(count or 0), 0)
+    rows, columns = venue_grid_shape(held)
+    counts = venue_row_holds(held)
+    index = min(max(int(at), 0), max(held - 1, 0))
+    row = 0
+    before = 0
+    for holds in counts:
+        if index < before + holds:
+            break
+        before += holds
+        row += 1
+    if row >= len(counts):
+        row = max(len(counts) - 1, 0)
+        before = sum(counts[:row])
+    holds = counts[row] if counts else 0
+    column = index - before
+    spans = acs.column_spans(columns, holds)
+    return {
+        "row": row,
+        "column": column,
+        "rows": rows,
+        "columns": columns,
+        "row_holds": holds,
+        "grid_column": sum(spans[:column]) if spans else 0,
+        "column_span": spans[column] if spans and column < len(spans) else 1,
+    }
+
+
+def venue_page_count(wing: Any, states: Any = None) -> int:
+    """How many pages the sector's venues fill, one page at the fewest.
+
+    Exactly ``VENUE_PAGE_HOLDS`` venues fill one page, so a sector at the
+    limit draws no pages button.
+    """
+    held = len(exchange_status_rows(wing, states))
+    return max(math.ceil(held / VENUE_PAGE_HOLDS), 1)
+
+
+def venue_page_at(page: Any, pages: Any) -> int:
+    """``page`` brought inside ``pages``, wrapping the last back to the first."""
+    many = max(int(pages or 0), 1)
+    try:
+        found = int(page)
+    except (TypeError, ValueError):
+        return 0
+    return found % many
+
+
+def venue_next_page(page: Any, pages: Any) -> int:
+    """The page the pages button moves to, the first again after the last."""
+    return venue_page_at(venue_page_at(page, pages) + 1, pages)
+
+
+def venue_page_offset(page: Any, pages: Any) -> int:
+    """The ``exchange_status_rows`` index the first button of ``page`` names."""
+    return venue_page_at(page, pages) * VENUE_PAGE_HOLDS
+
+
+def venue_button_style(state: Any, cell: Any = None) -> str:
+    """The Sector button skin one venue draws, accented by its API state.
+
+    The form is ``asset_class_surface.button_style`` unchanged -- transparent
+    ground, bold segment font, shared borders, hover, checked and disabled --
+    and the accent is the colour ``venue_state_colour`` gives that state.
+    """
+    return acs.button_style(venue_state_colour(state), cell)
+
+
+def exchange_status_page(wing: Any, page: Any = 0, states: Any = None) -> tuple:
+    """The venue buttons one page of the Exchange Status array draws.
+
+    Each button carries its row's own text, venue id, state, colour, row style
+    and tooltip unchanged, plus the ``venue_cell`` it sits at and the Sector
+    button skin its state accents. ``at`` stays the index into
+    ``exchange_status_rows``, so a press reports the same row in either build.
+    """
+    rows = exchange_status_rows(wing, states)
+    pages = max(math.ceil(len(rows) / VENUE_PAGE_HOLDS), 1)
+    first = venue_page_offset(page, pages)
+    held = rows[first : first + VENUE_PAGE_HOLDS]
+    found = []
+    for at, row in enumerate(held):
+        cell = venue_cell(at, len(held))
+        one = {
+            "at": first + at,
+            "text": row[0],
+            "venue": row[1],
+            "state": row[2],
+            "colour": row[3],
+            "style": row[4],
+            "tooltip": row[5],
+            "style_sheet": venue_button_style(row[2], cell),
+        }
+        one.update(cell)
+        found.append(one)
+    return tuple(found)
+
+
+def venue_pages_button(wing: Any, page: Any = 0, states: Any = None) -> dict:
+    """The pages control under the venue array, drawn only past one page.
+
+    ``shown`` is False at ``VENUE_PAGE_HOLDS`` venues or fewer, so a sector
+    that fits one page carries neither a pages button nor a scroll bar. The
+    button takes the sector's own accent in the Sector button skin.
+    """
+    pages = venue_page_count(wing, states)
+    here = venue_page_at(page, pages)
+    onward = venue_next_page(here, pages)
+    return {
+        "shown": pages > 1,
+        "page": here,
+        "pages": pages,
+        "next": onward,
+        "text": VENUE_PAGES_FORMAT.format(page=here + 1, pages=pages),
+        "tooltip": VENUE_PAGES_TOOLTIP.format(next=onward + 1, pages=pages),
+        "style_sheet": acs.button_style(acs.accent(wing), venue_cell(0, 1)),
+    }
+
+
 def listed_exchange_position(listed: Any, exchange_id: Any) -> int:
     """Where ``exchange_id`` already sits in ``listed``, or ``NO_MATCH_INDEX``.
 
@@ -2797,6 +2969,15 @@ def build_view_model(model: SettingsDialogModel) -> dict:
                 list(one)
                 for one in exchange_status_rows(model.asset_class, model.venue_states)
             ],
+            "page": [
+                dict(one)
+                for one in exchange_status_page(
+                    model.asset_class, 0, model.venue_states
+                )
+            ],
+            "pages": venue_pages_button(model.asset_class, 0, model.venue_states),
+            "page_holds": VENUE_PAGE_HOLDS,
+            "grid_columns": VENUE_GRID_COLUMNS,
         },
         TA_ROWS: [list(one) for one in ta_rows(model.values)],
         "sound_test_buttons": [list(one) for one in SOUND_TEST_BUTTONS],
