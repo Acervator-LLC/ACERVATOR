@@ -192,7 +192,7 @@ venue-and-sector readiness matrix in
 | binance | crypto, stocks, commodities, forex, indices, futures_perps |
 | kucoin | crypto, stocks, commodities, futures_perps |
 | gemini | crypto, commodities, forex, futures_perps |
-| gateio | crypto, stocks, commodities |
+| gateio | crypto, stocks, commodities, forex, indices, futures_perps |
 | bitstamp | crypto, commodities, forex |
 | cryptocom | crypto, stocks, futures_perps |
 | mexc | crypto, stocks, futures_perps |

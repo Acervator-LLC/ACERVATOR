@@ -156,6 +156,28 @@ A venue is listed under a sector when that matrix states the venue lists a
 product there. A cell the matrix marks unfetched is left out, so Gate.io under
 Indices, Fidelity outside Stocks and Poloniex outside Stocks are absent.
 
+OVERTAKEN, and the table and the sentences above are kept as written. Every one
+of the matrix's unfetched cells now carries a verdict read from the venue's own
+page, so Gate.io is no longer left out of a sector it serves. Gate.io lists a
+product under Forex, Indices and Futures / Perps, and `venue_classes` answers
+all three. Read in one running process with nothing recorded, over the
+twenty-five venue ids the surface answers for and the one hundred fifty cells
+they make:
+
+| Sector | Venues the registry answers | Was |
+| ------ | --------------------------- | --- |
+| Forex | 6 | 5 |
+| Indices | 13 | 12 |
+| Futures / Perps | 16 | 15 |
+
+Ninety-one of those one hundred fifty cells answer yes, and eighty-eight did
+before. The three that moved are Gate.io's. The order format Gate.io requires in
+each of its six sectors, and the bot variant each format demands, are in
+[../audits/2026-10-09_gateio_sector_order_formats/REPORT.md](../audits/2026-10-09_gateio_sector_order_formats/REPORT.md).
+Forex and Indices reach Gate.io only through its contracts-for-difference
+product line, which the installed trading library carries no endpoint for, so
+both sectors are listed and charted and neither takes an order.
+
 Forex is the one sector read strictly. A venue is listed under Forex only when
 it offers a market whose two legs are both national currencies. Gemini and
 Bitstamp each offer a euro-dollar market, and Interactive Brokers documents a

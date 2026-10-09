@@ -480,6 +480,8 @@ PRECIOUS_METAL_CODES: frozenset = frozenset({"XAG", "XAU", "XPD", "XPT"})
 
 #: The code each tokenised asset Coinbase lists redeems for. A product record
 #: carries no asset-level label, so each entry names the issuer's redemption.
+# OVERTAKEN, "each tokenised asset Coinbase lists": ``XAUT`` is a Gate.io spot
+# listing, so this map holds a redemption no Coinbase market names.
 TOKEN_UNDERLYING_CODES: dict[str, str] = {
     "AUDD": "AUD",
     "EURC": "EUR",
@@ -489,6 +491,7 @@ TOKEN_UNDERLYING_CODES: dict[str, str] = {
     "USDC": "USD",
     "USDS": "USD",
     "USDT": "USD",
+    "XAUT": "XAU",
     "XSGD": "SGD",
 }
 

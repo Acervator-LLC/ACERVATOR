@@ -147,7 +147,7 @@ EXTRA_VENUE_CLASSES = {
     "bitstamp": ("commodities", "forex"),
     "bybit": ("futures_perps",),
     "cryptocom": ("stocks", "futures_perps"),
-    "gateio": ("stocks", "commodities"),
+    "gateio": ("stocks", "commodities", "forex", "indices", "futures_perps"),
     "gemini": ("commodities", "forex", "futures_perps"),
     "huobi": ("stocks",),
     "kraken": ("stocks", "commodities", "indices", "futures_perps"),
