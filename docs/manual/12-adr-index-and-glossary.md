@@ -15,8 +15,8 @@ different question.
   [09-updates-and-versioning.md](09-updates-and-versioning.md) for what the
   changelog holds today.
 
-Beside those, `docs/audits/` holds ten audit directories. Each one records a
-measurement with the figures it read and the source it read them from.
+Beside those, `docs/audits/` holds ten audit directories and one audit page.
+An audit records one measurement, and the issue it answers cites it by name.
 
 ### The four places, overtaken
 
