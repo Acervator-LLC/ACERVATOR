@@ -840,6 +840,12 @@ _PINNING_SETTERS: frozenset[str] = frozenset(
     {"setFixedHeight", "setFixedWidth", "setFixedSize"}
 )
 
+#: The calls that declare how tall a table's rows are, so a pin reading what
+#: one of them is given carries the row's own height.
+_ROW_HEIGHT_SETTERS: frozenset[str] = frozenset(
+    {"setDefaultSectionSize", "setMinimumSectionSize", "setRowHeight"}
+)
+
 
 def _dotted_name(node: ast.expr) -> str | None:
     """The dotted name a Name or an attribute chain of names spells, else None."""
@@ -968,16 +974,35 @@ def _cell_placed_widgets(scope: ast.AST) -> set[str]:
     return placed
 
 
+def _row_height_names(tree: ast.AST) -> set[str]:
+    """Every name this file hands to a call that declares a row's height.
+
+    A pin reading a name `_ROW_HEIGHT_SETTERS` is given takes the row's own
+    declared height, whatever that name is declared from.
+    """
+    names: set[str] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
+            continue
+        if node.func.attr not in _ROW_HEIGHT_SETTERS:
+            continue
+        for arg in node.args:
+            if isinstance(arg, ast.Name):
+                names.add(arg.id)
+    return names
+
+
 def _scan_pinned_cell_widgets(path: Path, tree: ast.AST) -> list[Finding]:
     """GUI011 — a cell widget's pinned size derives from the row height or fails.
 
-    Within one function, a name handed to `setCellWidget` and pinned by
-    `setFixedHeight`, `setFixedWidth` or `setFixedSize` is refused when the
-    pinned number is a literal, or a name this file declares once as a literal.
-    A pin reading an imported or computed value is not reported: that value can
-    carry the row's declared height, and the literal cannot.
+    Within one function, a name handed to `setCellWidget` and pinned by a
+    `_PINNING_SETTERS` call is refused when the pinned number is a literal, or
+    a name this file declares once as a literal.
+    A pin reading an imported value, a computed value or a `_row_height_names`
+    entry is not reported: each of those can carry the row's declared height.
     """
     declared = _declared_numbers(tree)
+    from_row = _row_height_names(tree)
     findings: list[Finding] = []
     for scope in ast.walk(tree):
         if not isinstance(scope, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -997,22 +1022,21 @@ def _scan_pinned_cell_widgets(path: Path, tree: ast.AST) -> list[Finding]:
             if holder not in placed:
                 continue
             shown: list[str] = []
-            numbers: list[str] = []
+            written: list[str] = []
             for arg in node.args:
                 direct = _as_number(arg)
                 if direct is not None:
                     shown.append(repr(direct))
-                    numbers.append(repr(direct))
+                    written.append(repr(direct))
                     continue
                 name = arg.id if isinstance(arg, ast.Name) else None
-                if name is not None and name in declared:
-                    shown.append(name)
-                    numbers.append(f"{name} is {declared[name]!r}, which")
-                    continue
-                shown.append(ast.unparse(arg))
-            if not numbers:
+                shown.append(name if name else ast.unparse(arg))
+                if name is not None and name in declared and name not in from_row:
+                    written.append(f"{name} ({declared[name]!r})")
+            if not written:
                 continue
             call = f"{setter}({', '.join(shown)})"
+            carries = "is" if len(written) == 1 else "are"
             findings.append(
                 Finding(
                     tool="gui-static",
@@ -1023,12 +1047,12 @@ def _scan_pinned_cell_widgets(path: Path, tree: ast.AST) -> list[Finding]:
                     message=(
                         f"{holder} is placed into a table cell by "
                         f"{_CELL_PLACEMENT_SETTER} and pinned by {call}. "
-                        f"{' and '.join(numbers)} is a literal this file writes, so "
-                        f"the pinned size derives from no declared row height. The "
-                        f"row keeps whatever height it is given and paints the rest "
-                        f"of the cell as background around the widget, and a change "
-                        f"to the row height leaves this number behind. Pin the "
-                        f"widget from the constant that declares the row height."
+                        f"{' and '.join(written)} {carries} written into this file "
+                        f"and read from no declared row height, so the row keeps "
+                        f"whatever height it is given and paints the rest of the "
+                        f"cell as background around the widget, and a change to the "
+                        f"row height leaves the pinned size behind. Pin the widget "
+                        f"from the constant that declares the row height."
                     ),
                 )
             )

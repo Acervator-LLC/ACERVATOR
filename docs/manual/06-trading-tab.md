@@ -1084,10 +1084,11 @@ ROW_HEIGHT_PX = LOGO_SIZE_PX + 2 * ROW_LOGO_MARGIN_PX
 ```
 
 **A cell widget's pinned size reads the row height.** GUI011 in the GUI archetype
-refuses a widget placed into a table cell whose size is pinned to a literal, or to
-a name the same file declares once as a literal. A pin reading an imported or a
-computed value is not reported, because that value can carry the row's declared
-height and a literal cannot. The finding is high, so the verdict reads
+refuses a widget placed into a table cell whose size is pinned to a bare number,
+or to a name the same file declares once as a bare number. Three readings are left
+alone, each able to carry the row's declared height: a value imported from another
+module, a value the file computes, and a name the file also hands to the call that
+declares how tall its rows are. The finding is high, so the verdict reads
 `passed=False` and the command exits 1.
 
 `dev_harness/harness/gui_archetype.py, in _scan_pinned_cell_widgets` — the rule
@@ -1098,12 +1099,17 @@ _CELL_PLACEMENT_SETTER = "setCellWidget"
 _PINNING_SETTERS: frozenset[str] = frozenset(
     {"setFixedHeight", "setFixedWidth", "setFixedSize"}
 )
+
+_ROW_HEIGHT_SETTERS: frozenset[str] = frozenset(
+    {"setDefaultSectionSize", "setMinimumSectionSize", "setRowHeight"}
+)
 ```
 
-The rule's fixture pair holds one table that pins both cell buttons from a height
-declared from the row's own, and one that pins a button to a bare number beside a
-button pinned to a height declared on its own. The good file exits 0 and the bad
-one draws two high findings and exits 1.
+The rule's fixture pair holds two tables of the same three cells. In the good one
+the buttons read a height declared from the row's own and the logo square reads
+the row height itself. In the bad one one button takes a bare number, the other
+takes a height declared on its own, and the logo square takes two bare numbers.
+The good file exits 0 and the bad one draws three high findings and exits 1.
 
 `harness_fixtures/gui_archetype/known_good_cell_widget_height.py` — the good half
 
