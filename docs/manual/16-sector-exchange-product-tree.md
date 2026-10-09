@@ -141,7 +141,7 @@ running process on this branch, with nothing recorded at all:
 
 | Sector | Venues the registry answers | Was |
 | ------ | --------------------------- | --- |
-| Crypto | 20 | 15 |
+| Crypto | 21 | 15 |
 | Stocks | 19 | 10 |
 | Commodities | 16 | 1, Coinbase |
 | Forex | 4 | 1, Coinbase |
@@ -166,20 +166,23 @@ not counted.
 traded. [15-venue-compatibility.md](15-venue-compatibility.md) states it at
 line 99:
 
-> Fifteen crypto venues are offered. One has ever traded. The equity venue list
+> Sixteen crypto venues are offered. One has ever traded. The equity venue list
 > holds nine ids for eight firms, and two of those firms have no API to reach.
 
-### Crypto, 15 venues
+### Crypto, 16 venues
 
 ```
 binance   bitfinex   bitget    bitstamp   bybit
 coinbase  cryptocom  gateio    gemini     huobi
 kraken    kucoin     mexc      okx        poloniex
+robinhood
 ```
 
-Coinbase is the one that has traded. Five of the fifteen refuse a United States
+Coinbase is the one that has traded. Five of the sixteen refuse a United States
 address or account, and [15-venue-compatibility.md](15-venue-compatibility.md)
-carries the refusal per venue with the date it was read.
+carries the refusal per venue with the date it was read. Robinhood is the one
+that is not a `ccxt` venue, and `crypto_venues` reads it off
+`hand_written_crypto_venues` instead.
 
 ### Stocks, 10 venues
 

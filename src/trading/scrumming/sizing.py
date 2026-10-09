@@ -92,6 +92,8 @@ CLASS_FUTURES_PERPS = "futures_perps"
 # so no sector the venue serves falls to ``NO_SIZE_RULE``.
 CITED_UNIT_RULES: dict[tuple[str, str], str] = {
     (CLASS_CRYPTO, "coinbase"): FRACTIONAL_UNITS,
+    # Robinhood publishes asset_increment to 18 decimal places.
+    (CLASS_CRYPTO, "robinhood"): FRACTIONAL_UNITS,
     (CLASS_STOCKS, "alpaca"): FRACTIONAL_UNITS,
     (CLASS_FOREX, "coinbase"): FRACTIONAL_UNITS,
     (CLASS_STOCKS, "coinbase"): WHOLE_UNITS,
@@ -244,6 +246,8 @@ ORDER_TYPES_DECLARED = (ORDER_TYPES_WITH_MARKET, ORDER_TYPES_LIMIT_ONLY)
 CITED_VENUE_ORDER_TYPES: dict[tuple[str, str], str] = {
     (CLASS_CRYPTO, "coinbase"): ORDER_TYPES_WITH_MARKET,
     (CLASS_CRYPTO, "gemini"): ORDER_TYPES_LIMIT_ONLY,
+    # Robinhood publishes market, limit, stop_loss and stop_limit.
+    (CLASS_CRYPTO, "robinhood"): ORDER_TYPES_WITH_MARKET,
 }
 
 
