@@ -44,7 +44,7 @@ ArchetypeReport schema in tools.harness.coding_archetype:
         Requires three or more dots and no whitespace in the joined
         text, which leaves wrapped prose alone. Python targets only.
 
-    H006 (medium) — CITATION ANCHORED TO A LINE NUMBER
+    H006 (high) — CITATION ANCHORED TO A LINE NUMBER
         Markdown citing ``some/file.py:412`` or ``some/file.py line
         412``. The line stops naming that code as soon as anything
         above it in the file moves, and the path stays correct, so
@@ -72,9 +72,9 @@ FALSIFICATION — this rule module is wrong if:
       _CITED_LINE requires is what keeps out; or it stays silent on
       a decayed citation written in a third spelling that neither
       a colon nor the word "line" separates.
-  (f) H006 reports at medium, so a page carrying one still answers
-      passed=True. Its silence on a page means that page cites
-      symbols; its findings do not stop a merge.
+  (f) H006 reports at high, so a page carrying one answers
+      passed=False. Its silence on a page means that page cites
+      symbols; its findings stop a merge.
 
 sadp: R28 SSS + R70 RCN
 """
@@ -429,7 +429,7 @@ def scan(target: Path, source: str) -> list[Any]:
             findings.append(
                 Finding(
                     tool="hallucination",
-                    severity="medium",
+                    severity="high",
                     file=str(target),
                     line=line,
                     rule_id="H006",
