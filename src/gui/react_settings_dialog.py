@@ -208,7 +208,7 @@ class PageLine(_Held):
         held = self._get()
         return "" if held is None else str(held)
 
-    def setText(self, words: Any) -> None:  # noqa: N802
+    def setText(self, words: Any) -> None:
         """Put ``words`` in the field and redraw."""
         self._put("" if words is None else str(words))
 
@@ -216,7 +216,7 @@ class PageLine(_Held):
         """Empty the field and redraw."""
         self._put("")
 
-    def setVisible(self, shown: Any) -> None:  # noqa: N802
+    def setVisible(self, shown: Any) -> None:
         """Show or hide the field and redraw."""
         self._owner.set_visible(self._name, bool(shown))
 
@@ -224,7 +224,7 @@ class PageLine(_Held):
 class PageTextArea(_Held):
     """A block of text, as ``QTextEdit`` reports it."""
 
-    def toPlainText(self) -> str:  # noqa: N802
+    def toPlainText(self) -> str:
         """Every line in the box, with no markup."""
         held = self._get()
         return "" if held is None else str(held)
@@ -237,11 +237,11 @@ class PageTextArea(_Held):
 class PageToggle(_Held):
     """A tick box, as ``QCheckBox`` reports it."""
 
-    def isChecked(self) -> bool:  # noqa: N802
+    def isChecked(self) -> bool:
         """True while the box is ticked."""
         return self._get() is True
 
-    def setChecked(self, ticked: Any) -> None:  # noqa: N802
+    def setChecked(self, ticked: Any) -> None:
         """Tick or clear the box and redraw."""
         self._put(bool(ticked))
 
@@ -253,7 +253,7 @@ class PageNumber(_Held):
         """The number the control is showing."""
         return self._get()
 
-    def setValue(self, number: Any) -> None:  # noqa: N802
+    def setValue(self, number: Any) -> None:
         """Show ``number`` and redraw. The spec's kind decides the type."""
         self._put(number)
 
@@ -283,31 +283,31 @@ class PageCombo(_Held):
             return None
         return self._items[at] if 0 <= at < len(self._items) else None
 
-    def currentText(self) -> str:  # noqa: N802
+    def currentText(self) -> str:
         """The words the drop-down is showing."""
         one = self._at()
         if one is None:
             return ""
         return str(one[0]) if isinstance(one, list) else str(one)
 
-    def currentData(self) -> Any:  # noqa: N802
+    def currentData(self) -> Any:
         """The value carried beside the words, or None for a plain list."""
         one = self._at()
         if one is None:
             return None
         return one[1] if isinstance(one, list) else None
 
-    def setCurrentIndex(self, at: Any) -> None:  # noqa: N802
+    def setCurrentIndex(self, at: Any) -> None:
         """Show the choice at ``at`` and redraw."""
         self._put(at)
 
-    def setCurrentText(self, words: Any) -> None:  # noqa: N802
+    def setCurrentText(self, words: Any) -> None:
         """Show the choice whose words are ``words``, if the list holds it."""
         at = self.findText(words)
         if at >= 0:
             self._put(at)
 
-    def findText(self, words: Any) -> int:  # noqa: N802
+    def findText(self, words: Any) -> int:
         """The position of ``words`` in the list, or -1."""
         for at, one in enumerate(self._items):
             found = one[0] if isinstance(one, list) else one
@@ -315,7 +315,7 @@ class PageCombo(_Held):
                 return at
         return -1
 
-    def findData(self, value: Any) -> int:  # noqa: N802
+    def findData(self, value: Any) -> int:
         """The position of the choice carrying ``value``, or -1."""
         for at, one in enumerate(self._items):
             if isinstance(one, list) and one[1] == value:
@@ -349,7 +349,7 @@ class PageList(_Held):
         """How many lines the list holds."""
         return len(self._lines())
 
-    def addItem(self, words: Any) -> None:  # noqa: N802
+    def addItem(self, words: Any) -> None:
         """Append ``words`` as the last line and redraw."""
         lines = self._lines()
         lines.append(str(words))
@@ -366,7 +366,7 @@ class PageList(_Held):
             return None
         return ListRow(lines[found])
 
-    def setCurrentRow(self, at: Any) -> None:  # noqa: N802
+    def setCurrentRow(self, at: Any) -> None:
         """Select the line at ``at``."""
         try:
             self._current = int(at)
@@ -381,7 +381,7 @@ class PageList(_Held):
         """
         return self._current
 
-    def currentItem(self) -> Optional[ListRow]:  # noqa: N802
+    def currentItem(self) -> Optional[ListRow]:
         """The selected line, or None while nothing is selected."""
         lines = self._lines()
         if 0 <= self._current < len(lines):
@@ -394,7 +394,7 @@ class PageList(_Held):
         lines = self._lines()
         return lines.index(words) if words in lines else -1
 
-    def takeItem(self, at: Any) -> Optional[ListRow]:  # noqa: N802
+    def takeItem(self, at: Any) -> Optional[ListRow]:
         """Remove the line at ``at``, redraw, and return it."""
         lines = self._lines()
         try:
@@ -421,11 +421,11 @@ class PageText:
         held = self._owner.store().texts.get(self._name)
         return "" if held is None else str(held)
 
-    def setText(self, words: Any) -> None:  # noqa: N802
+    def setText(self, words: Any) -> None:
         """Show ``words`` and redraw."""
         self._owner.set_text(self._name, "" if words is None else str(words))
 
-    def setStyleSheet(self, sheet: Any) -> None:  # noqa: N802
+    def setStyleSheet(self, sheet: Any) -> None:
         """Paint the label with ``sheet`` and redraw."""
         self._owner.set_style(self._name, "" if sheet is None else str(sheet))
 
@@ -437,11 +437,11 @@ class PagePress:
         self._owner = owner
         self._name = name
 
-    def isEnabled(self) -> bool:  # noqa: N802
+    def isEnabled(self) -> bool:
         """True while the button takes a press."""
         return self._owner.store().enabled.get(self._name) is True
 
-    def setEnabled(self, on: Any) -> None:  # noqa: N802
+    def setEnabled(self, on: Any) -> None:
         """Take presses or refuse them, and redraw."""
         self._owner.set_enabled(self._name, bool(on))
 
