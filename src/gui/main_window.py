@@ -2695,6 +2695,37 @@ if _HAS_QT:
             held = self._exchange_connectors.get(eid)
             return held if isinstance(held, BrokerBase) else None
 
+        def _written_crypto_credential(self, eid: str) -> tuple[str, str, str]:
+            """The stored API key, signing key and account number for *eid*,
+            decrypted, and ("", "", "") where no entry holds the first two.
+
+            ``_connect_written_crypto_for_bot`` hands these to ``connect``, where
+            the second signs a request and the third names the account the order
+            path takes.
+            """
+            exchanges = self._settings.list_exchanges() if self._settings else []
+            stored = None
+            for entry in exchanges:
+                if entry.get("exchange_id") == eid:
+                    stored = entry
+                    break
+            if not stored:
+                return "", "", ""
+            if not stored.get("api_key_enc") or not stored.get("api_secret_enc"):
+                return "", "", ""
+
+            from ..core.encryption import decrypt, vault_phrase
+
+            master = vault_phrase(self._settings.get("username", ""))
+            account_number = ""
+            if stored.get("passphrase_enc"):
+                account_number = decrypt(stored["passphrase_enc"], master)
+            return (
+                decrypt(stored["api_key_enc"], master),
+                decrypt(stored["api_secret_enc"], master),
+                account_number,
+            )
+
         def _record_broker_markets(self, connector) -> tuple[int, str]:
             """Record every asset record *connector* holds and answer the row
             count written with the failure that stopped it, "" where none did.
@@ -2924,13 +2955,152 @@ if _HAS_QT:
             )
             return False, msg
 
+        def _connect_written_crypto_for_bot(self, bot) -> tuple[bool, str]:
+            """Build or reuse the hand-written crypto connector for *bot*'s venue,
+            hold the stored credential on it and hand it to *bot*; returns
+            (ok, message).
+
+            ``crypto_connector_class`` names the class, and no read method is
+            called: ``RobinhoodCryptoConnector`` raises
+            ``RobinhoodPathUnpublished`` on a market list and on a balance.
+            """
+            from ..exchange.api_logger import get_api_log
+            from ..exchange.robinhood_connector import crypto_connector_class
+
+            _log = get_api_log()
+            eid = bot.config.exchange_id
+            venue = eid.capitalize()
+
+            _log.record(
+                exchange=eid,
+                action="BOT_CONNECT",
+                reason=f"Connecting bot {bot.bot_id} to {venue}",
+                result="Building the hand-written crypto connector...",
+                level="info",
+                data_usage="No venue is contacted while the connector is built",
+            )
+
+            connector_class = crypto_connector_class(eid)
+            if connector_class is None:
+                msg = (
+                    f"No hand-written connector for {venue}. "
+                    f"The venue has no connector module."
+                )
+                _log.record(
+                    exchange=eid,
+                    action="BOT_CONNECT_FAILED",
+                    reason="No hand-written connector class for this venue",
+                    result=msg,
+                    level="error",
+                    data_usage="Bot cannot trade without a venue connector",
+                )
+                return False, msg
+
+            api_key, signing_key, account_number = self._written_crypto_credential(eid)
+            if not api_key or not signing_key:
+                msg = (
+                    f"No API credentials for {venue}. Add them in Settings. "
+                    f"No connector was built."
+                )
+                _log.record(
+                    exchange=eid,
+                    action="BOT_CONNECT_FAILED",
+                    reason="No API credentials stored",
+                    result=msg,
+                    level="error",
+                    data_usage="No connector is built and nothing is signed",
+                )
+                return False, msg
+
+            connector = self._live_connector(eid)
+            built_now = connector is None
+            if connector is None:
+                connector = connector_class()
+
+            self._wire_connector_for_bot(connector, bot)
+
+            if not getattr(connector, "is_connected", False):
+                try:
+                    self._await_async(
+                        connector.connect(api_key, signing_key, account_number)
+                    )
+                except Exception as exc:
+                    msg = (
+                        f"{venue} connector would not hold the credential: "
+                        f"{type(exc).__name__}: {exc}"
+                    )
+                    _log.record(
+                        exchange=eid,
+                        action="BOT_CONNECT_FAILED",
+                        reason=f"{type(exc).__name__}: {exc}",
+                        result=msg,
+                        level="error",
+                        data_usage="No request was signed and no order was sent",
+                    )
+                    return False, msg
+
+            if not getattr(connector, "is_connected", False):
+                msg = (
+                    f"The {venue} connector holds no credential, so no request "
+                    f"can be signed. Check the stored key and secret in Settings."
+                )
+                _log.record(
+                    exchange=eid,
+                    action="BOT_CONNECT_FAILED",
+                    reason="The connector reports no credential held",
+                    result=msg,
+                    level="error",
+                    data_usage="No request was signed and no order was sent",
+                )
+                return False, msg
+
+            try:
+                bot.exchange = connector
+            except Exception as exc:
+                msg = f"Bot {bot.bot_id} would not accept the {eid} connector: {exc}"
+                _log.record(
+                    exchange=eid,
+                    action="BOT_CONNECT_FAILED",
+                    reason="The bot refused the connector",
+                    result=msg,
+                    level="error",
+                    data_usage="Bot cannot trade without a venue connector",
+                )
+                return False, msg
+
+            self._exchange_connectors[eid] = connector
+
+            try:
+                if getattr(self, "_bot_manager", None):
+                    self._bot_manager.set_connector(connector)
+            except Exception as exc:
+                logger.warning("set_connector failed for %s: %s", eid, exc)
+
+            msg = (
+                f"{venue} connector {'built' if built_now else 'reused'} and held "
+                f"by the bot. No market list and no balance was read, because "
+                f"{venue} publishes no address for either. The bot runs and an "
+                f"order waits on a recorded market."
+            )
+            _log.record(
+                exchange=eid,
+                action="BOT_READY",
+                reason=f"{venue} connector holds the stored credential",
+                result=msg,
+                level="success",
+                data_usage="Recorded trading pairs size every later order",
+            )
+            return True, msg
+
         def _connect_exchange_for_bot(self, bot) -> tuple[bool, str]:
             """Reuse the exchange's connector, or build one; returns (ok, message).
 
-            A venue ``broker_connector_class`` names takes the broker path, and
-            every other venue takes the crypto one.
+            A venue ``broker_connector_class`` names takes the broker path, a
+            venue ``crypto_connector_class`` names takes the hand-written crypto
+            one, and every other venue takes the ccxt one.
             """
             from ..exchange.api_logger import get_api_log
+            from ..exchange.robinhood_connector import crypto_connector_class
             from ..stocks.alpaca_connector import broker_connector_class
 
             _log = get_api_log()
@@ -2938,6 +3108,9 @@ if _HAS_QT:
 
             if broker_connector_class(eid) is not None:
                 return self._connect_broker_for_bot(bot)
+
+            if crypto_connector_class(eid) is not None:
+                return self._connect_written_crypto_for_bot(bot)
 
             _log.record(
                 exchange=eid,

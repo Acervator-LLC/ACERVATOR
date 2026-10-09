@@ -5789,13 +5789,16 @@ def vault_phrase(username: str) -> str:
     return MASTER_FORMAT.format(username=str(username) or UNNAMED_OPERATOR)
 ```
 
-The four callers are the encrypt site on the Exchanges page, the two decrypt
+The seven callers are the encrypt site on the Exchanges page, the five decrypt
 sites that open a stored secret, and the drawn page's own phrase builder.
 
 ```
 src/gui/settings_dialog.py        _add_exchange                seals
-src/gui/main_window.py            _connect_exchange_for_bot    opens
+src/gui/main_window.py            _connect_exchange_for_bot    opens, the ccxt venues
+src/gui/main_window.py            _broker_credential           opens, the broker venues
+src/gui/main_window.py            _written_crypto_credential   opens, the hand-written venues
 src/gui/widgets/api_tester_tab.py _do_connect                  opens
+src/core/encryption.py            default_vault                opens the file vault
 src/gui/main_tabs/settings_dialog_surface.py  _master_phrase   the drawn page
 ```
 
