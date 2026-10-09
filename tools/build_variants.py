@@ -32,7 +32,8 @@ _FILE_VERSION_FIELDS = 4
 def sanitise(text: str) -> str:
     """Return ``text`` with every ``_UNSAFE`` run collapsed to a single '-'.
 
-    ``3.28.0+dev.5.gabc1234`` answers ``3.28.0-dev.5.gabc1234``.
+    ``0.2.0+20261009.2122.gabc123456789`` answers
+    ``0.2.0-20261009.2122.gabc123456789``.
     """
     return _UNSAFE.sub("-", text).strip("-") or "unknown"
 
@@ -86,8 +87,8 @@ def requested_variant(environ: dict | None = None) -> str:
 def windows_file_version(version: str) -> str:
     """Return ``version`` as the ``_FILE_VERSION_FIELDS``-number Windows string.
 
-    ``3.28.0+dev.5.gabc1234`` answers ``3.28.0.0``, and a version holding no
-    digit answers all zeroes.
+    ``0.2.0+20261009.2122.gabc123456789`` answers ``0.2.0.0``, and a version
+    holding no digit answers all zeroes.
     """
     digits = re.findall(r"\d+", version.split("+")[0])[:_FILE_VERSION_FIELDS]
     padded = digits + ["0"] * (_FILE_VERSION_FIELDS - len(digits))

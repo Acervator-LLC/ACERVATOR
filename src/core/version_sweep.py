@@ -530,9 +530,9 @@ class VersionSweep:
     def _get_version(self) -> str:
         """Return the version resolved for the tree under sweep.
 
-        Derived from the git tag, or from the value a build baked in. There
-        is no literal left to scan for, so no parse can fail and leave
-        ``check_version_consistency`` with nothing to compare against.
+        Derived from HEAD's own date and id, or from the value a build baked
+        in. There is no literal left to scan for, so no parse can fail and
+        leave ``check_version_consistency`` with nothing to compare against.
         """
         return resolve_version(self.root)
 
@@ -634,8 +634,8 @@ class VersionSweep:
                 "CONSISTENCY",
                 self.root / "src" / "_version.py",
                 0,
-                "Version unresolvable — no git tag and no baked stamp",
-                "Tag the repository; a baked stamp exists only in a bundle.",
+                "Version unresolvable — no git commit and no baked stamp",
+                "Run it in a git checkout; a baked stamp exists only in a bundle.",
             )
 
         for path in self._version_subject_files():

@@ -3,7 +3,8 @@
 `main` writes `STAMP_PATH` with the HEAD sha only on a green run of a clean
 tree, and `clear_stamp` removes it otherwise. `SIDECAR_PATH` carries a version
 and a test count but names no commit, which is what `head_sha` supplies.
-`describe_tags` is the one git call `src/_version.py` reaches for.
+`commit_stamp` and `tree_is_dirty` are the git calls `src/_version.py` reaches
+for; neither reads a tag, a branch or the history above HEAD.
 
     python -m tools.gate
 """
@@ -50,29 +51,28 @@ def head_sha() -> str:
     return _git("rev-parse", "HEAD")
 
 
-def tree_is_dirty() -> bool:
-    """True when tracked content in `REPO` differs from HEAD.
+def tree_is_dirty(root: str | Path | None = None) -> bool:
+    """True when tracked content differs from HEAD, in `root` or in `REPO`.
 
     Untracked files do not count: `_git` is called with `--untracked-files=no`.
     """
-    return bool(_git("status", "--porcelain", "--untracked-files=no"))
+    where = [] if root is None else ["-C", str(root)]
+    return bool(_git(*where, "status", "--porcelain", "--untracked-files=no"))
 
 
-def describe_tags(root: str | Path, match: str, dirty_suffix: str) -> str:
-    """Return `git describe` output for the repository at `root`, or ''.
+def commit_stamp(root: str | Path, date_format: str) -> str:
+    """Return HEAD's own date and full id at `root`, space separated, or ''.
 
-    `match` limits the eligible tags; a tree with none falls back to a commit id.
+    `date_format` is rendered in the zone HEAD records, so every clone of one
+    commit answers the same text whatever its own timezone, depth or tags.
     """
     return _git(
         "-C",
         str(root),
-        "describe",
-        "--tags",
-        "--match",
-        match,
-        "--long",
-        f"--dirty={dirty_suffix}",
-        "--always",
+        "log",
+        "-1",
+        f"--date=format:{date_format}",
+        "--format=%cd %H",
     )
 
 

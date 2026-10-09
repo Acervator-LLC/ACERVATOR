@@ -35,18 +35,35 @@ OVERTAKEN, quoted whole:
 TAG_GLOB = "v[0-9]*"                        # src/_version.py
 ```
 
-True today: the match is one exact tag name, not a pattern. `src/_version.py`
-builds `RELEASE_TAG` as a v in front of the release number, and `describe`
-hands that one name to git as the only eligible tag. A machine missing that tag
-gets no version from a nearer one.
+**Overtaken.** That whole sentence, and the correction under it, stay here:
+
+> "It runs `git describe` against a tag pattern that admits only a tag beginning
+> with a v and a digit, then turns that output into the reported string."
+
+> True today: the match is one exact tag name, not a pattern. `src/_version.py`
+> builds `RELEASE_TAG` as a v in front of the release number, and `describe`
+> hands that one name to git as the only eligible tag. A machine missing that tag
+> gets no version from a nearer one.
+
+The resolver reads no tag at all. It reads the two facts that belong to the
+commit itself — the date the commit records and the commit's own id — and a tag,
+a branch and the history above HEAD change neither of them.
 
 ```python
-RELEASE_TAG = f"v{RELEASE}"                 # src/_version.py
-def describe(root: str | Path) -> str: ...
-def format_describe(text: str) -> str: ...
+MOMENT_FORMAT = "%Y%m%d.%H%M"               # src/_version.py
+COMMIT_DIGITS = 12
+def read_stamp(root: str | Path) -> str: ...
+def format_stamp(text: str) -> str: ...
 def resolve_version(root: str | Path | None = None) -> str: ...
 
 __version__ = resolve_version()             # src/__init__.py
+```
+
+Two git calls answer those facts, and both live in the gate wrapper.
+
+```python
+def commit_stamp(root: str | Path, date_format: str) -> str: ...    # tools/gate.py
+def tree_is_dirty(root: str | Path | None = None) -> bool: ...
 ```
 
 ### The three resolver checks, overtaken
@@ -69,9 +86,14 @@ def test_the_unguarded_form_would_adopt_a_backup_tag(tmp_path) -> None: ...
 True today: no check holds the shape. The file named above is not in the tree,
 and the repository tracks one Python module under `tests/`, its own conftest.
 
-The code still carries the guard. `src/_version.py`, in `describe`, hands git
-one exact tag name, so a local backup tag is never eligible. The package
-initialiser holds no written-in number and reads the resolver instead.
+**Overtaken.** That correction stays whole here:
+
+> The code still carries the guard. `src/_version.py`, in `describe`, hands git
+> one exact tag name, so a local backup tag is never eligible.
+
+No tag guard is needed now. `src/_version.py`, in `read_stamp`, asks git for
+HEAD's own date and id, and no tag of any name can be chosen or missed. The
+package initialiser holds no written-in number and reads the resolver instead.
 
 **Overtaken.** These two sentences stay whole here:
 
@@ -79,36 +101,65 @@ initialiser holds no written-in number and reads the resolver instead.
 > `git describe` against a tag pattern that admits only a tag beginning with a v
 > and a digit, then turns that output into the reported string.
 
-The resolver declares the release number. The git call no longer decides it. That
-call matches the one tag the declared release names, and it adds the build count
-and the commit after a `+`.
+And that correction stays whole here:
+
+> The resolver declares the release number. The git call no longer decides it. That
+> call matches the one tag the declared release names, and it adds the build count
+> and the commit after a `+`.
+
+The resolver declares the release number. The git calls no longer decide it.
+They read HEAD alone, and they add the commit's date and the commit's id after
+a `+`.
 
 ```python
 RELEASE                                     # src/_version.py, the declared release
-RELEASE_TAG = f"v{RELEASE}"
 UNRESOLVED_LOCAL = "unknown"
 UNKNOWN_VERSION = f"{RELEASE}+{UNRESOLVED_LOCAL}"
 ```
 
-One commit reports one release number in every state. When the git call cannot
-derive a build count, the version says so and never takes one from an older tag.
+And that correction stays whole here:
+
+> One commit reports one release number in every state. When the git call cannot
+> derive a build count, the version says so and never takes one from an older tag.
+
+One commit reports one version on every machine. A tag, a branch, a clone's
+depth and a clone's object count are all absent from the answer.
 
 | what the machine holds | what the version carries |
 | --- | --- |
-| the release tag | the release, the build count and the commit |
-| an older version tag only | the release, the absent word and the commit |
-| no tags | the release, the absent word and the commit |
+| HEAD and any tags | the release, the commit's date and the commit's id |
+| HEAD and no tags | the release, the commit's date and the commit's id |
+| HEAD at depth one | the release, the commit's date and the commit's id |
 | no git history | the release and the absent word |
 
 ## What the string says
 
-The formatter returns a bare release number for one state only: a clean tree
-sitting exactly on a version tag. Distance past the tag, a modified working tree,
-and an unreachable version tag each append a PEP 440 local segment after a `+`.
+**Overtaken.** That passage stays whole here:
+
+> The formatter returns a bare release number for one state only: a clean tree
+> sitting exactly on a version tag. Distance past the tag, a modified working tree,
+> and an unreachable version tag each append a PEP 440 local segment after a `+`.
+
+The formatter always appends a PEP 440 local segment after a `+`, and the
+segment names the tree. Two terms when git answers — the date the commit
+records and the first `COMMIT_DIGITS` of the commit's id — one more term when
+the working tree differs from that commit, and one word when git answers
+nothing.
 
 ```python
-def format_describe(text: str) -> str: ...      # src/_version.py
+def format_stamp(text: str) -> str: ...         # src/_version.py
 ```
+
+```
+0.2.0+20261009.2122.g45daf9564bec          the commit, clean
+0.2.0+20261009.2122.g45daf9564bec.dirty    the commit, with uncommitted edits
+0.2.0+unknown                              no git answer
+```
+
+The date is rendered in the zone the commit itself records, so a machine in
+another zone reads the same text. The id is cut to a fixed width, because git's
+own abbreviation grows with a clone's object count and would otherwise give one
+commit two widths.
 
 ### The formatter check, overtaken
 
@@ -120,36 +171,41 @@ OVERTAKEN, quoted whole:
 def test_only_an_exact_clean_tag_reports_a_release_number(described: str) -> None: ...  # tests/test_version_resolution.py
 ```
 
-True today: no check asserts it. The file named above is not in the tree. The
-formatter itself carries the rule: it returns the bare release number only when
-its local list comes out empty, and the list stays empty only at distance zero
-on a clean tree.
+True today: no check asserts it. The file named above is not in the tree. No
+state returns a bare release number any more, and that correction stays whole
+here:
 
-Two things follow. The number on a working checkout is rarely a release
-number, and the distance term inside it counts commits, not features. And the
-version tag the operator's own tree describes from is local to that machine:
-`git ls-remote --tags` lists an older version tag alone, so a fresh clone
-resolves a lower release number from the same commit.
+> The formatter itself carries the rule: it returns the bare release number only
+> when its local list comes out empty, and the list stays empty only at distance
+> zero on a clean tree.
 
-**Overtaken.** That last sentence stays whole here:
+**Overtaken.** These sentences, and the correction under them, stay here:
 
-> And the version tag the operator's own tree describes from is local to that
-> machine: `git ls-remote --tags` lists an older version tag alone, so a fresh
-> clone resolves a lower release number from the same commit.
+> Two things follow. The number on a working checkout is rarely a release
+> number, and the distance term inside it counts commits, not features. And the
+> version tag the operator's own tree describes from is local to that machine:
+> `git ls-remote --tags` lists an older version tag alone, so a fresh clone
+> resolves a lower release number from the same commit.
 
-The server carries both version tags. The newer one is an annotated tag, so the
-listing prints it twice, once for the tag object and once for the commit it
-points at. A fresh clone reports the release number the tree declares, and the
-release number no longer moves when a tag is absent.
+> The server carries both version tags. The newer one is an annotated tag, so the
+> listing prints it twice, once for the tag object and once for the commit it
+> points at. A fresh clone reports the release number the tree declares, and the
+> release number no longer moves when a tag is absent.
+
+There is no distance term. A distance from a tag counts the commits a tag
+cannot reach, and that count is equal for many commits, so it names none of
+them. Two commits measured on 2026-10-09 both counted 2294 from the release
+tag: the head of the working branch, and the commit the newest published
+release was built from. The number the operator read was the same on both, and
+the code in them was not.
 
 ```
-git ls-remote --tags origin
-
-refs/tags/build-<version>
-refs/tags/<older version tag>
-refs/tags/<newer version tag>
-refs/tags/<newer version tag>^{}
+45daf956   2294 commits from the release tag, on the working branch
+4853d342   2294 commits from the release tag, on the published branch
 ```
+
+Tags no longer reach the version at all, so which tags a clone holds, and
+whether the remote carries them, changes nothing.
 
 ## The six readers
 
@@ -262,10 +318,15 @@ def test_a_frozen_bundle_prefers_the_baked_value_over_a_repository() -> None: ..
 def test_a_baked_tree_keeps_its_version_after_git_is_removed() -> None: ...
 ```
 
-True today: no check drives it. The file named above is not in the tree. The
-resolver still reads the baked file first inside a bundle, and `describe`
-returns an empty string for any directory holding no `.git`, so an unpacked
-bundle cannot adopt the enclosing tree's number.
+True today: no check drives it. The file named above is not in the tree. That
+sentence stays whole here:
+
+> The resolver still reads the baked file first inside a bundle, and `describe`
+> returns an empty string for any directory holding no `.git`, so an unpacked
+> bundle cannot adopt the enclosing tree's number.
+
+`read_stamp` is the function that now returns that empty string, and the rest of
+the sentence holds.
 
 ### What each variant ships
 
@@ -391,9 +452,11 @@ tests/test_build_variants_and_version_reach.py
 
 True today: none of the three modules is in the tree, so nothing makes that
 comparison and the race has no caller. The property of the number has not
-changed. A cached version is computed at first import and a freshly resolved one
-is computed at the moment it is asked for, so any reader comparing the two
-across a commit still sees them disagree.
+changed. There is no distance term, and the two terms that replaced it move the
+same way: a new commit carries a new date and a new id. A cached version is
+computed at first import and a
+freshly resolved one is computed at the moment it is asked for, so any reader
+comparing the two across a commit still sees them disagree.
 
 ## The release gate
 
@@ -795,13 +858,39 @@ on:
 
 A third thing starts it, and it is the one the operator uses: a Mac builder at
 the repository root, double-clicked. Each one asks for a run on the branch his
-copy is on, or joins a run already going on that branch rather than starting a
-second one, because the workflow cancels an earlier run of the same group.
+copy is on, and joins a run already going on that branch only when that run is
+building the commit his copy is on.
 
 ```python
 VARIANT = QT                                    # Qt_MAC_BUILD.py
 VARIANT = REACT                                 # React_MAC_BUILD.py
 def launch_macos(variants: tuple[str, ...]) -> bool   # tools/build_launcher.py
+def live_macos_run(ref: str, commit: str) -> dict | None
+def head_commit() -> str
+```
+
+**Overtaken.** That sentence stays whole here:
+
+> Each one asks for a run on the branch his copy is on, or joins a run already
+> going on that branch rather than starting a second one, because the workflow
+> cancels an earlier run of the same group.
+
+A run building another commit is not joined. Joining one handed back a bundle
+naming a tree the operator was not on, which is how a macOS build came to carry
+a different number from the Windows build of the same session.
+
+The builder prints both commits before it waits, and names the gap when GitHub
+holds a different one. GitHub builds its own copy of the branch, so a commit
+that is not pushed cannot be the commit the runner builds.
+
+```
+Your copy is on commit: 45daf9564bec
+GitHub is building commit: 4853d342a1b0
+  THE MAC BUILD IS NOT BUILDING YOUR COPY
+```
+
+```python
+COMMIT_GAP_NOTICE                               # tools/build_launcher.py
 ```
 
 The run does not stop at a finished build. It reads the size of every bundle and
@@ -948,42 +1037,40 @@ Acervator-<version>-qt.dmg              macOS, the Qt interface
 Acervator-<version>-react.dmg           macOS, the React interface
 ```
 
-The tag carries that same version behind a prefix the version reader's own tag
-glob rejects, so publishing a release cannot move the version the next build
-resolves.
-
-```python
-TAG_GLOB = "v[0-9]*"                 # src/_version.py
-build-<version>                      # a release tag, which that glob rejects
-```
-
-A runner resolves that version from the tags the remote carries, and the newer
-version tag is not one of them, so a runner build and a local build of one commit
-report different numbers. The commit is the same in both, and every file name
-carries it.
+The tag carries that same version behind a `build-` prefix.
 
 ```
-git ls-remote --tags origin    the older version tag, and the build- tags
-a local clone                  the older and the newer version tag
+build-<version>                      # a release tag
 ```
-
-Pushing the newer tag would change the number every runner build reports, which
-the release cascade above governs.
 
 **Overtaken.** These two passages stay whole here:
 
+> The tag carries that same version behind a prefix the version reader's own tag
+> glob rejects, so publishing a release cannot move the version the next build
+> resolves.
+
 > A runner resolves that version from the tags the remote carries, and the newer
 > version tag is not one of them, so a runner build and a local build of one commit
-> report different numbers.
+> report different numbers. The commit is the same in both, and every file name
+> carries it. Pushing the newer tag would change the number every runner build
+> reports, which the release cascade above governs.
 
-> Pushing the newer tag would change the number every runner build reports, which
-> the release cascade above governs.
+And that correction stays whole here:
 
-The remote carries the newer version tag. A runner build and a local build of one
-commit report the same release number, because the resolver reads the release the
-tree declares and not a tag name. A tag that a runner cannot see now changes the
-build count alone, and the version names that count absent rather than counting
-from an older tag.
+> The remote carries the newer version tag. A runner build and a local build of one
+> commit report the same release number, because the resolver reads the release the
+> tree declares and not a tag name. A tag that a runner cannot see now changes the
+> build count alone, and the version names that count absent rather than counting
+> from an older tag.
+
+No tag reaches the version, so no tag name can be rejected and no tag needs to
+be. A runner build and a local build of one commit report the same whole string,
+and nothing about either machine's tags, remote or clone depth enters it.
+
+The release names the commit it was built from. A release built from the
+default branch and a local build of the working branch are two different
+commits, so their strings differ, and the difference is the one fact the
+operator needs: he is not running the released code.
 
 The publish step refuses a set whose file names do not all carry one version, and
 the Windows step refuses a build folder holding any logo file. Neither guard has
