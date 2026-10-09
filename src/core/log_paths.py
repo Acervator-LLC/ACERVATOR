@@ -132,17 +132,24 @@ UNNAMED_SEGMENT = "unnamed"
 
 _SEGMENT_KEEP = frozenset("abcdefghijklmnopqrstuvwxyz0123456789-_")
 
+SEGMENT_MAX_CHARS = 64
+"""Characters ``path_segment`` keeps, well inside the 255 a directory name takes.
+
+The longest sector name is thirteen characters and the longest venue id is under
+twenty, so no name the platform holds reaches this.
+"""
+
 
 def path_segment(value: object) -> str:
     """``value`` as one lowercase directory name, or ``UNNAMED_SEGMENT``.
 
-    Every character outside ``_SEGMENT_KEEP`` becomes an underscore, so a
-    venue id or a sector name cannot reach a parent directory or a drive
-    through the path the gate writer composes from it.
+    Every character outside ``_SEGMENT_KEEP`` becomes an underscore and
+    ``SEGMENT_MAX_CHARS`` bounds the length, so a venue id or a sector name
+    cannot reach a parent directory, a drive, or a name the filesystem refuses.
     """
     text = str(value or "").strip().lower()
     folded = "".join(one if one in _SEGMENT_KEEP else "_" for one in text)
-    return folded.strip("_") or UNNAMED_SEGMENT
+    return folded.strip("_")[:SEGMENT_MAX_CHARS].strip("_") or UNNAMED_SEGMENT
 
 
 def gate_root(trade_dir: Optional[Path] = None) -> Path:
