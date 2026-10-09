@@ -40,6 +40,36 @@ longer free and has to be bought:
 Pick one before the first edit. No third option exists, and "the change is
 small" is not one.
 
+## A FRESH WORKTREE IS BLIND UNTIL ITS PACKAGES ARE INSTALLED
+
+`dev_harness/harness/web_analyzers.py` resolves `NODE_MODULES` as
+`REPO_ROOT / "node_modules"`, and `REPO_ROOT` is the tree the run happens in. A
+new `git worktree` carries no `node_modules`, so `eslint`, `stylelint` and
+`html-validate` all report `missing` there. Installing them globally does NOT
+help: the lookup is by path, not by `PATH`.
+
+**So the first command in any new worktree is:**
+
+```bash
+npm install --no-audit --no-fund
+```
+
+Measured 2026-10-09 in a bare worktree, on the GUI archetype's own JavaScript
+fixture pair:
+
+```
+before   known_good exit 1   known_bad exit 1   eslint=missing
+after    known_good exit 0   known_bad exit 1   eslint=ok
+```
+
+Before the install the pair **cannot separate**, so every JavaScript verdict
+taken in that worktree was void — including a `passed=True` on a 2,400-line
+file, which was the analyzer not running rather than the file being clean.
+
+**Read `tool_availability` before quoting any verdict.** A tool reading
+`missing` did not run, and its silence is not a pass. Zero findings on a large
+file is a statement about the tooling until that field says otherwise.
+
 ## TWO PROTECTIONS THE SWITCH REMOVED. NAME THEM.
 
 This repo's own finding is that **blocking mechanisms bind and prose does not**.
