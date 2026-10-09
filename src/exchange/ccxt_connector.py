@@ -286,6 +286,10 @@ VERIFIED_EXCHANGES: set[str] = {
     "coinbase",
 }
 
+# The words exchange_label shows and sync_connect logs for each refusal.
+US_IP_BLOCKED_NOTE: str = "US address refused"
+US_ACCOUNT_RESTRICTED_NOTE: str = "US account restricted"
+
 # Pre-flight test URLs — public endpoints requiring no auth
 PREFLIGHT_URLS: dict[str, str] = {
     "binance": "https://api.binance.com/api/v3/ping",
@@ -1102,9 +1106,11 @@ class CCXTConnector(ExchangeInterface):
             _log.record(
                 exchange=self._exchange_id,
                 action="US_RESTRICTION_WARNING",
-                reason=f"{self.display_name} may restrict US-based users",
-                result="Proceeding with connection attempt. If it fails with 403/Forbidden, "
-                "this exchange does not serve your region.",
+                reason=f"{self.display_name}: {restriction_note(self._exchange_id)}",
+                result="Proceeding with connection attempt. A 403 or Forbidden from "
+                "the venue confirms it. This reading was taken on "
+                f"{VENUE_MEASUREMENT_DATE}, quotes no page the venue publishes, and "
+                "the venue's own answer decides.",
                 level="warning",
                 data_usage="Check exchange terms of service for your region.",
             )
@@ -2289,12 +2295,22 @@ def list_supported_exchanges() -> list[dict[str, str | bool]]:
     ]
 
 
+def restriction_note(exchange_id: str) -> str:
+    """Name the refusal *exchange_id* carries, which exchange_label and sync_connect read."""
+    if exchange_id in US_IP_BLOCKED_EXCHANGES:
+        return US_IP_BLOCKED_NOTE
+    if exchange_id in US_ACCOUNT_RESTRICTED_EXCHANGES:
+        return US_ACCOUNT_RESTRICTED_NOTE
+    return ""
+
+
 def exchange_label(exchange_id: str) -> str:
     """Return the picker label for *exchange_id*, carrying its status notes."""
     label = exchange_id.capitalize()
     notes: list[str] = []
-    if exchange_id in US_IP_BLOCKED_EXCHANGES:
-        notes.append("blocked from US")
+    refusal = restriction_note(exchange_id)
+    if refusal:
+        notes.append(refusal)
     elif exchange_id not in VERIFIED_EXCHANGES:
         notes.append("untested")
     if exchange_id in PASSPHRASE_EXCHANGES:
