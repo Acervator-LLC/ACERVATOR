@@ -682,7 +682,8 @@ def whole_unit_opening_units(config) -> int:
       config: any object; the field is read with `getattr`.
 
     Returns:
-      Whole units in [0, inf). 0 reads the engine's own minimum.
+      Whole units in [0, inf). 0 reads the engine's own minimum, and
+      `sizing.opening_position_minimum` floors every other figure at it.
     """
     units = as_finite_float(
         getattr(config, "whole_unit_opening_units", WHOLE_UNIT_OPENING_ENGINE)

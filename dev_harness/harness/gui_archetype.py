@@ -832,6 +832,233 @@ def _scan_row_spare_width(path: Path, tree: ast.AST) -> list[Finding]:
     return findings
 
 
+_CELL_PLACEMENT_SETTER = "setCellWidget"
+
+#: The setters that fix a widget's size, so it neither grows nor shrinks with
+#: the cell it is placed in.
+_PINNING_SETTERS: frozenset[str] = frozenset(
+    {"setFixedHeight", "setFixedWidth", "setFixedSize"}
+)
+
+#: The calls that declare how tall a table's rows are, so a pin reading what
+#: one of them is given carries the row's own height.
+_ROW_HEIGHT_SETTERS: frozenset[str] = frozenset(
+    {"setDefaultSectionSize", "setMinimumSectionSize", "setRowHeight"}
+)
+
+
+def _dotted_name(node: ast.expr) -> str | None:
+    """The dotted name a Name or an attribute chain of names spells, else None."""
+    parts: list[str] = []
+    walk: ast.expr = node
+    while isinstance(walk, ast.Attribute):
+        parts.append(walk.attr)
+        walk = walk.value
+    if not isinstance(walk, ast.Name):
+        return None
+    parts.append(walk.id)
+    return ".".join(reversed(parts))
+
+
+def _as_number(node: ast.expr | None) -> int | float | None:
+    """The number a node spells as a literal, else None. ``True`` is not one."""
+    if not isinstance(node, ast.Constant):
+        return None
+    if isinstance(node.value, bool) or not isinstance(node.value, (int, float)):
+        return None
+    return node.value
+
+
+def _assignment_pairs(node: ast.AST) -> tuple[list[ast.expr], ast.expr | None]:
+    """The targets and the value one assignment statement carries."""
+    if isinstance(node, ast.Assign):
+        return list(node.targets), node.value
+    if isinstance(node, ast.AnnAssign):
+        return [node.target], node.value
+    return [], None
+
+
+def _binding_counts(tree: ast.AST) -> dict[str, int]:
+    """How many times this file binds each plain name, by any binding form.
+
+    Counts assignments, augmented assignments, walrus targets, loop and `with`
+    and comprehension targets, function parameters, import aliases and
+    `except ... as` names, so a name bound once is a name with one declaration.
+    """
+    counts: dict[str, int] = {}
+
+    def count(name: str | None) -> None:
+        if name:
+            counts[name] = counts.get(name, 0) + 1
+
+    def count_target(node: ast.expr) -> None:
+        for part in ast.walk(node):
+            if isinstance(part, ast.Name):
+                count(part.id)
+
+    for node in ast.walk(tree):
+        targets, _value = _assignment_pairs(node)
+        for target in targets:
+            count_target(target)
+        if isinstance(node, (ast.AugAssign, ast.NamedExpr)):
+            count_target(node.target)
+        elif isinstance(node, (ast.For, ast.AsyncFor, ast.comprehension)):
+            count_target(node.target)
+        elif isinstance(node, ast.withitem) and node.optional_vars is not None:
+            count_target(node.optional_vars)
+        elif isinstance(node, (ast.Import, ast.ImportFrom)):
+            for alias in node.names:
+                count((alias.asname or alias.name).split(".")[0])
+        elif isinstance(node, ast.ExceptHandler):
+            count(node.name)
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+            spec = node.args
+            for arg in [*spec.posonlyargs, *spec.args, *spec.kwonlyargs]:
+                count(arg.arg)
+            for extra in (spec.vararg, spec.kwarg):
+                if extra is not None:
+                    count(extra.arg)
+    return counts
+
+
+def _declared_numbers(tree: ast.AST) -> dict[str, int | float]:
+    """Each name declared once in this file, at module scope, as a number.
+
+    A name bound anywhere else in the file is left out, so a pin reading a
+    reassigned name or a parameter never resolves to a number. A name imported
+    from another module is left out too: this file does not declare it.
+    """
+    if not isinstance(tree, ast.Module):
+        return {}
+    declared: dict[str, int | float] = {}
+
+    def walk_scope(body: list[ast.stmt]) -> None:
+        for node in body:
+            if isinstance(node, ast.If):
+                walk_scope(node.body)
+                walk_scope(node.orelse)
+                continue
+            if isinstance(node, ast.Try):
+                walk_scope(node.body)
+                walk_scope(node.orelse)
+                walk_scope(node.finalbody)
+                for handler in node.handlers:
+                    walk_scope(handler.body)
+                continue
+            targets, value = _assignment_pairs(node)
+            number = _as_number(value)
+            if number is None:
+                continue
+            for target in targets:
+                if isinstance(target, ast.Name):
+                    declared[target.id] = number
+
+    walk_scope(tree.body)
+    counts = _binding_counts(tree)
+    return {
+        name: number for name, number in declared.items() if counts.get(name, 0) == 1
+    }
+
+
+def _cell_placed_widgets(scope: ast.AST) -> set[str]:
+    """Every name this scope hands to ``setCellWidget`` as the placed widget."""
+    placed: set[str] = set()
+    for node in ast.walk(scope):
+        if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
+            continue
+        if node.func.attr != _CELL_PLACEMENT_SETTER or len(node.args) < 3:
+            continue
+        held = _dotted_name(node.args[2])
+        if held:
+            placed.add(held)
+    return placed
+
+
+def _row_height_names(tree: ast.AST) -> set[str]:
+    """Every name this file hands to a call that declares a row's height.
+
+    A pin reading a name `_ROW_HEIGHT_SETTERS` is given takes the row's own
+    declared height, whatever that name is declared from.
+    """
+    names: set[str] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
+            continue
+        if node.func.attr not in _ROW_HEIGHT_SETTERS:
+            continue
+        for arg in node.args:
+            if isinstance(arg, ast.Name):
+                names.add(arg.id)
+    return names
+
+
+def _scan_pinned_cell_widgets(path: Path, tree: ast.AST) -> list[Finding]:
+    """GUI011 — a cell widget's pinned size derives from the row height or fails.
+
+    Within one function, a name handed to `setCellWidget` and pinned by a
+    `_PINNING_SETTERS` call is refused when the pinned number is a literal, or
+    a name this file declares once as a literal.
+    A pin reading an imported value, a computed value or a `_row_height_names`
+    entry is not reported: each of those can carry the row's declared height.
+    """
+    declared = _declared_numbers(tree)
+    from_row = _row_height_names(tree)
+    findings: list[Finding] = []
+    for scope in ast.walk(tree):
+        if not isinstance(scope, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        placed = _cell_placed_widgets(scope)
+        if not placed:
+            continue
+        for node in ast.walk(scope):
+            if not isinstance(node, ast.Call):
+                continue
+            if not isinstance(node.func, ast.Attribute):
+                continue
+            setter = node.func.attr
+            if setter not in _PINNING_SETTERS:
+                continue
+            holder = _dotted_name(node.func.value)
+            if holder not in placed:
+                continue
+            shown: list[str] = []
+            written: list[str] = []
+            for arg in node.args:
+                direct = _as_number(arg)
+                if direct is not None:
+                    shown.append(repr(direct))
+                    written.append(repr(direct))
+                    continue
+                name = arg.id if isinstance(arg, ast.Name) else None
+                shown.append(name if name else ast.unparse(arg))
+                if name is not None and name in declared and name not in from_row:
+                    written.append(f"{name} ({declared[name]!r})")
+            if not written:
+                continue
+            call = f"{setter}({', '.join(shown)})"
+            carries = "is" if len(written) == 1 else "are"
+            findings.append(
+                Finding(
+                    tool="gui-static",
+                    severity="high",
+                    file=str(path),
+                    line=node.lineno,
+                    rule_id="GUI011",
+                    message=(
+                        f"{holder} is placed into a table cell by "
+                        f"{_CELL_PLACEMENT_SETTER} and pinned by {call}. "
+                        f"{' and '.join(written)} {carries} written into this file "
+                        f"and read from no declared row height, so the row keeps "
+                        f"whatever height it is given and paints the rest of the "
+                        f"cell as background around the widget, and a change to the "
+                        f"row height leaves the pinned size behind. Pin the widget "
+                        f"from the constant that declares the row height."
+                    ),
+                )
+            )
+    return findings
+
+
 def _scan_model_only_colour_asserts(path: Path, tree: ast.AST) -> list[Finding]:
     """GUI006 — a colour assertion on a live widget with no pixel check.
 
@@ -1484,6 +1711,7 @@ def _run_gui_static(target: Path) -> list[Finding]:
         findings.extend(_scan_model_only_colour_asserts(f, tree))
         findings.extend(_scan_segmented_group_skin(f, tree))
         findings.extend(_scan_row_spare_width(f, tree))
+        findings.extend(_scan_pinned_cell_widgets(f, tree))
         findings.extend(_scan_column_ground_colours(f, tree))
     return findings
 

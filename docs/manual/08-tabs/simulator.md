@@ -546,6 +546,32 @@ carrying the run id the report carries. The live bucket's files are untouched.
 SIM_LOG_FILES = ("trade.log", "gate.log", "voting.log", "diagnostics.log")
 ```
 
+One sentence and the block above are overtaken. They are quoted whole, and what
+replaces them follows.
+
+> Live's log manager writes them under the sim bucket as four files: one row per
+> gate evaluation, per fill and per voting summary, each gate and voting row
+> carrying the run id the report carries.
+
+> SIM_LOG_FILES = ("trade.log", "gate.log", "voting.log", "diagnostics.log")
+
+The gate rows no longer share one file. Live's log manager writes them under the
+sim bucket as three fixed files plus one gate log per exchange and sector, at
+`gate/<exchange>/<sector>/gate.log` relative to that bucket.
+`src/simulator/sim_bus.py, in sim_asset_class` answers the sector per market
+through `src/simulator/portfolios.py, in asset_class`, so a sim decision is
+filed under the sector its live twin is filed under, and
+`src/simulator/sim_bus.py, in sim_log_paths` lists the fixed three with one key
+per gate log present. The live bucket's files are still untouched. The layout
+and the carry of the records written before the split are in
+[the live trade history reference](../10-live-trade-history.md).
+
+```python
+#: The files ``LogManager.attach_to_bus`` writes the four topics into. The gate
+#: topic reaches one file per exchange and sector, which ``sim_log_paths`` lists.
+SIM_LOG_FILES = ("trade.log", "voting.log", "diagnostics.log")
+```
+
 Every emit a run raises on its worker thread, the TA engine's postcondition
 pins among them, lands in the Simulator's own signal sink,
 `signals/session.jsonl` under the sim bucket, and none in the process sink

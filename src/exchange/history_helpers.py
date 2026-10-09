@@ -30,6 +30,11 @@ CHUNK_PER_CALL_LIMIT = 500
 """``_fetch_paginated`` passes this as the ``limit`` of each
 ``get_my_trades`` call."""
 
+BULK_READ_ATTEMPTS = 2
+"""Submissions ``_fetch_paginated`` makes for one symbol. A refusal at the
+connector's call-queue cap drops the symbol's rows, so one refusal earns a
+second wait for room."""
+
 JOIN_TOLERANCE_SECONDS = 60.0
 """Largest gap ``_best_entry_within_window`` accepts between a trade and a log
 entry, and the backdate the index builders apply to ``since``."""
@@ -139,44 +144,101 @@ def _pairs_from_bot_manager(bot_manager: Any) -> dict[str, tuple[Any, set[str]]]
     return by_exchange
 
 
+async def _await_slot(exch: Any, symbol: str) -> float:
+    """Wait for ``exch.await_bulk_read_slot`` and answer the seconds waited.
+
+    An ``exch`` with no such method, or one whose wait raises, answers 0.0 and
+    the caller's venue call goes ahead, so a connector that does not serialise
+    its calls is unaffected by this gate.
+    """
+    slot = getattr(exch, "await_bulk_read_slot", None)
+    if slot is None:
+        return 0.0
+    try:
+        waited = float(await slot())
+    except Exception as exc:  # noqa: BLE001 - the venue call must still run
+        logger.debug(
+            "history_helpers: bulk-read slot wait for %s skipped: %s", symbol, exc
+        )
+        return 0.0
+    if waited > 0:
+        logger.debug(
+            "history_helpers: %s waited %.3fs for a free venue call queue",
+            symbol,
+            waited,
+        )
+    return waited
+
+
+def _is_queue_full(exc: BaseException) -> bool:
+    """True when ``exc`` is a connector's refusal at its call-queue cap."""
+    try:
+        from .ccxt_connector import CCXTQueueFullError
+    except Exception:  # noqa: BLE001 - no ccxt connector in this process
+        return False
+    return isinstance(exc, CCXTQueueFullError)
+
+
+async def _one_page(
+    exch: Any,
+    symbol: str,
+    since_ts: float,
+    per_page_limit: int,
+) -> list[Any]:
+    """One ``get_my_trades`` call for ``symbol`` with ``paginate`` set."""
+    try:
+        trades = await exch.get_my_trades(
+            symbol=symbol,
+            since=since_ts if since_ts > 0 else None,
+            limit=per_page_limit,
+            params={"paginate": True},
+        )
+    except TypeError:
+        # A connector without a ``params`` kwarg returns at most
+        # ``per_page_limit`` trades from ``since_ts``.
+        trades = await exch.get_my_trades(
+            symbol=symbol,
+            since=since_ts if since_ts > 0 else None,
+            limit=per_page_limit,
+        )
+    return list(trades or [])
+
+
 async def _fetch_paginated(
     exch: Any,
     symbol: str,
     since_ts: float,
     per_page_limit: int = CHUNK_PER_CALL_LIMIT,
 ) -> list[Any]:
-    """One ``get_my_trades`` call for ``symbol`` with ``paginate`` set.
+    """``_one_page`` for ``symbol``, each attempt behind ``_await_slot``.
 
-    An ``exch`` without ``get_my_trades`` gives an empty list, and a raising
-    call is logged and gives an empty list.
+    ``BULK_READ_ATTEMPTS`` bounds the attempts and ``_is_queue_full`` decides
+    which refusal earns another; an ``exch`` without ``get_my_trades``, and a
+    raising call, both give an empty list.
     """
     if not hasattr(exch, "get_my_trades"):
         return []
-    try:
+    for attempt in range(BULK_READ_ATTEMPTS):
+        await _await_slot(exch, symbol)
         try:
-            trades = await exch.get_my_trades(
-                symbol=symbol,
-                since=since_ts if since_ts > 0 else None,
-                limit=per_page_limit,
-                params={"paginate": True},
+            return await _one_page(exch, symbol, since_ts, per_page_limit)
+        except Exception as exc:  # noqa: BLE001 - per-symbol best-effort
+            if _is_queue_full(exc) and attempt + 1 < BULK_READ_ATTEMPTS:
+                logger.debug(
+                    "history_helpers: %s refused at the call-queue cap on "
+                    "attempt %d; waiting for room again",
+                    symbol,
+                    attempt + 1,
+                )
+                continue
+            logger.warning(
+                "history_helpers: get_my_trades(%s, since=%.0f) raised: %s",
+                symbol,
+                since_ts,
+                exc,
             )
-        except TypeError:
-            # A connector without a ``params`` kwarg returns at most
-            # ``per_page_limit`` trades from ``since_ts``.
-            trades = await exch.get_my_trades(
-                symbol=symbol,
-                since=since_ts if since_ts > 0 else None,
-                limit=per_page_limit,
-            )
-        return list(trades or [])
-    except Exception as exc:  # noqa: BLE001 - per-symbol best-effort
-        logger.warning(
-            "history_helpers: get_my_trades(%s, since=%.0f) raised: %s",
-            symbol,
-            since_ts,
-            exc,
-        )
-        return []
+            return []
+    return []
 
 
 async def fetch_all_history_chunked(
@@ -618,6 +680,7 @@ __all__ = [
     "DEFAULT_START_DATE",
     "CHUNK_WINDOW_DAYS",
     "CHUNK_PER_CALL_LIMIT",
+    "BULK_READ_ATTEMPTS",
     "JOIN_TOLERANCE_SECONDS",
     "normalize_trade",
     "fetch_all_history_chunked",

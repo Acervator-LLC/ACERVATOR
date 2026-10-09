@@ -56,10 +56,116 @@ nothing: a raise inside the walk, an absent exchange, and an exchange that does
 not serve the trade call. The tree tracks no check over the walk:
 `git ls-files tests` returns 7 files and none of them names the walk.
 
+### The counter sentences this overtakes
+
+OVERTAKEN, quoted whole, from the table and the paragraph above:
+
+```
+| `stats.total_trades` | `max` of the persisted count, the previous exchange count, and the count just walked |
+| `stats.ytd_scrummed_usd` | `max` of the persisted sum and the walked sell sum |
+| `stats.ytd_folded_usd` | `max` of the persisted sum and the walked buy sum |
+```
+
+> "Every counter write takes a `max`, so a walk raises a counter toward the
+> venue and never lowers one."
+
+True today: a walk can lower a counter, and it does. No write in the walk takes
+a `max`. The walk assigns each figure the number it counted, so a venue reading
+below the stored figure replaces it.
+
+```python
+# src/trading/scrumming/reconciliation.py, in sync_ytd_trade_count
+self.stats.exchange_trade_count = _order_count
+self.stats.exchange_fill_count = _fill_count
+self.stats.total_trades = _order_count
+self.stats.ytd_scrummed_usd = _ytd_scrum_usd
+self.stats.ytd_folded_usd = _ytd_fold_usd
+```
+
+A fourth path joins the three named above, and it does not leave the stored
+numbers alone. A walk that skipped a window's remainder holds no complete
+reading, so it drops all five figures to their no-reading markers and answers
+nothing.
+
+```python
+# src/trading/scrumming/reconciliation.py
+TRADE_COUNT_NO_READING = 0
+YTD_USD_NO_READING = 0.0
+```
+
+Driven against a stubbed venue, with no order placed, on a bot holding 4242
+trades against $999.00 scrummed and $888.00 folded. A whole walk that counted
+two venue orders wrote 2 trades, $20.00 and $10.00, so all five figures fell. A
+walk whose window returned a full page at one timestamp wrote 0 trades and
+$0.00 against both sums. The same instrument read 0 up to 2 on a bot that held
+nothing, so it moves in both directions.
+
+The walk writes six fields: five figures and the freshness stamp.
+
+| Field the walk writes | Value written |
+| --- | --- |
+| `stats.total_trades` | the distinct venue order count this walk read |
+| `stats.exchange_trade_count` | the same value |
+| `stats.exchange_fill_count` | the distinct fill count this walk read |
+| `stats.ytd_scrummed_usd` | the walked sell sum, in dollars |
+| `stats.ytd_folded_usd` | the walked buy sum, in dollars |
+| `stats.exchange_data_fresh_ts` | the clock reading at the end of the walk |
+
+The fill count is the field the earlier table leaves out. One trade is one
+order the venue filled, so the trade count counts distinct order identifiers
+and the fill count counts distinct fills beside it.
+
 The loop runs until the cursor reaches the present, so the request count follows
 the distance from the anchor instead of a fixed number. Driven against a stubbed
 venue: 7 requests at today's 186-day span, 13 at a year, 61 at five years, one
 per 30 days of span.
+
+### The request-count sentences this overtakes
+
+OVERTAKEN, quoted whole:
+
+> "The loop runs until the cursor reaches the present, so the request count
+> follows the distance from the anchor instead of a fixed number."
+
+> "Driven against a stubbed venue: 7 requests at today's 186-day span, 13 at a
+> year, 61 at five years, one per 30 days of span."
+
+True today: the accounted span still starts at the anchor, and the walk asks
+the venue only for the windows it has not already settled. A window settles
+once its own request counted it whole and its end is older than the settle lag,
+so the request count follows the unsettled tail rather than the distance from
+the anchor.
+
+```python
+# src/trading/scrumming/reconciliation.py, in ReconciliationEngineMixin
+YTD_SETTLE_LAG_SEC = 7 * 24 * 3600.0
+YTD_FULL_REWALK_SEC = 3600.0
+```
+
+The walk replays the settled windows from the fills the last walk read, in
+window order, so the five figures come out the same whichever windows this walk
+asked for. It drops the held windows once the re-walk interval has passed since
+the last walk that started at the anchor. That bounds how long a fill arriving
+later than the lag can go uncounted. The lag is positive, so every walk still
+makes at least one request.
+
+Driven against a stubbed venue at three anchors, with no order placed. A first
+walk holds nothing and reads the whole span, returning the counts the overtaken
+sentence recorded. Every later walk inside the hour reads the tail alone.
+
+| Span from the anchor | First walk | A later walk, inside the hour |
+| --- | --- | --- |
+| 192 days, today's span | 7 requests | 1 request |
+| one year | 13 requests | 2 requests |
+| five years | 61 requests | 1 request |
+
+The tail is one request or two. The windows step thirty days from the anchor
+and the lag is seven days, so the unread span runs between seven and
+thirty-seven days. One year reads two requests because its last settled
+boundary falls thirty-five days back, and five years reads one because its
+boundary falls twenty-five days back. Past the re-walk interval the same bot
+read 7 requests again, so the short reading is the holding and not the
+instrument.
 
 A window whose page comes back at the 500-row limit resumes at its newest fill
 rather than stepping past the remainder. One shape still returns short: a full
@@ -103,6 +209,18 @@ class FeatureCounter: ...       # src/core/feature_telemetry.py
 class FeatureTelemetry: ...
 def get_telemetry() -> FeatureTelemetry: ...
 ```
+
+### The reader row this overtakes
+
+OVERTAKEN, quoted whole:
+
+```
+| `sync_ytd_trade_count` (`src/trading/scrumming/reconciliation.py`) | `get_my_trades` pages from the venue | the five `stats` fields above |
+```
+
+True today: the walk writes six fields. The row counts four figures and the
+freshness stamp as five, and the fill count is the field it leaves out. The
+overtaking table earlier on this page carries all six.
 
 ## The connectors
 
@@ -152,18 +270,31 @@ The venue registry carries its own status sets, all in `ccxt_connector.py`.
 | `US_ACCOUNT_RESTRICTED_EXCHANGES` | 2 |
 | `VERIFIED_EXCHANGES` | 1 |
 
-One function turns those sets into the picker text a user sees. A blocked venue
-is labelled as blocked, any other unverified venue is labelled untested, and a
-venue needing a passphrase says so. Driven over the whole registry, fourteen of
-the fifteen labels carry a caveat and one does not.
+Two functions turn those sets into the picker text a user sees. `restriction_note`
+names the refusal a venue carries and `exchange_label` joins it to the passphrase
+note. A venue whose address is refused is labelled as address refused, a venue
+whose terms refuse the account is labelled as account restricted, any other
+unverified venue is labelled untested, and a venue needing a passphrase says so.
+Driven over the whole registry, fourteen of the fifteen labels carry a caveat and
+one does not.
 
 ```python
+def restriction_note(exchange_id: str) -> str:      # src/exchange/ccxt_connector.py
+    """Name the refusal *exchange_id* carries, which exchange_label and sync_connect read."""
+    if exchange_id in US_IP_BLOCKED_EXCHANGES:
+        return US_IP_BLOCKED_NOTE
+    if exchange_id in US_ACCOUNT_RESTRICTED_EXCHANGES:
+        return US_ACCOUNT_RESTRICTED_NOTE
+    return ""
+
+
 def exchange_label(exchange_id: str) -> str:        # src/exchange/ccxt_connector.py
     """Return the picker label for *exchange_id*, carrying its status notes."""
     label = exchange_id.capitalize()
     notes: list[str] = []
-    if exchange_id in US_IP_BLOCKED_EXCHANGES:
-        notes.append("blocked from US")
+    refusal = restriction_note(exchange_id)
+    if refusal:
+        notes.append(refusal)
     elif exchange_id not in VERIFIED_EXCHANGES:
         notes.append("untested")
     if exchange_id in PASSPHRASE_EXCHANGES:
@@ -173,14 +304,44 @@ def exchange_label(exchange_id: str) -> str:        # src/exchange/ccxt_connecto
     return label
 ```
 
-Fifteen checks cover those sets. One resolves every registry id to an importable
-ccxt class through the connector's own resolver. One requires an https pre-flight
-URL for every supported id. One pins the verified set to a single member. One
-reads the label of every registry id against the rule above.
+The two refusals read in different words, so the picker tells one from the other.
+The connect path names the same refusal in the same words, because
+`CCXTConnector.sync_connect` reads `restriction_note` for the line it logs, then
+proceeds. No path refuses a connection on the restriction, and the line says the
+reading was taken on the date `VENUE_MEASUREMENT_DATE` carries and quotes no page
+the venue publishes.
+
+| Venue | Set | Label | Connect |
+| ----- | --- | ----- | ------- |
+| binance, bybit | `US_IP_BLOCKED_EXCHANGES` | US address refused | warns, then proceeds |
+| poloniex, huobi | `US_ACCOUNT_RESTRICTED_EXCHANGES` | US account restricted | warns, then proceeds |
+| kraken and nine more | neither | untested | proceeds, no line |
+| coinbase | neither, and verified | no note | proceeds, no line |
+
+### The fifteen registry checks, overtaken
+
+OVERTAKEN, quoted whole:
+
+> "Fifteen checks cover those sets. One resolves every registry id to an
+> importable ccxt class through the connector's own resolver. One requires an
+> https pre-flight URL for every supported id. One pins the verified set to a
+> single member. One reads the label of every registry id against the rule
+> above."
 
 ```python
 def resolve_ccxt_class(...): ...        # src/exchange/ccxt_connector.py
                                         # tests/test_exchange_registry.py, fifteen checks
+```
+
+True today: no check covers the sets. The file named above is not in the tree,
+and the repository tracks one Python module under `tests/`, its own conftest.
+
+The resolver is still the one site that answers a registry id. It reads the id
+off the ccxt module, falls back to the id's alias, and answers nothing when
+neither name is there.
+
+```python
+def resolve_ccxt_class(...): ...        # src/exchange/ccxt_connector.py
 ```
 
 The exchange package holds 23 modules beside its package initialiser. Twenty sit
@@ -235,10 +396,22 @@ module                  files importing it
 
 ## How a test stands in for a venue
 
-No test opens a socket to an exchange and none carries a credential. Each check
-measures the shape of a call and the code around it, never a venue's answer.
-Five stand-ins do that work.
+No test opens a socket to an exchange and none carries a credential. The
+repository tracks one Python module under `tests/`, its own conftest, and that
+module opens no socket and holds no credential.
 
+One stand-in is still in the tree, and it is not a test file:
+`src/exchange/tablet_backend.py` supplies the ccxt surface beneath a real
+connector, so a connector can answer without a venue.
+
+### The five stand-ins, overtaken
+
+OVERTAKEN, quoted whole:
+
+> "Each check measures the shape of a call and the code around it, never a
+> venue's answer. Five stand-ins do that work."
+
+```
 | Stand-in | Where | Replaces |
 | --- | --- | --- |
 | a fake `ccxt` module put into `sys.modules` | 2 of the 70 files | the venue library, sync and async support both |
@@ -246,22 +419,29 @@ Five stand-ins do that work.
 | a `socket.socket.connect` that raises | 19 test files | the wire itself, for the whole file |
 | `tests/fixtures/venue_precision_metadata.json` | `tests/test_venue_precision_is_decimal_places.py` | published market metadata for 13 venues, captured from a public `load_markets` with no credential |
 | `TabletBackend` | `src/exchange/tablet_backend.py` | the ccxt surface beneath a real connector |
+```
 
-The fixture covers 13 of the 15 registry ids. The two ids missing from it are
-the pair in `US_IP_BLOCKED_EXCHANGES`, which refused the address the capture ran
-from.
+> "The fixture covers 13 of the 15 registry ids. The two ids missing from it are
+> the pair in `US_IP_BLOCKED_EXCHANGES`, which refused the address the capture
+> ran from."
 
-The credential file name appears in the test tree three times, across two
-modules. Each of the three is a check that a tool raises rather than opening such
-a file, and each builds its target under a temporary path. One of them, the
-parametrised refusal over the runtime directories, sits beside a positive control
-that lets a path outside them through.
+> "The credential file name appears in the test tree three times, across two
+> modules. Each of the three is a check that a tool raises rather than opening
+> such a file, and each builds its target under a temporary path. One of them,
+> the parametrised refusal over the runtime directories, sits beside a positive
+> control that lets a path outside them through."
 
 ```
 coinbase_credentials    3 occurrences under tests/
     tests/test_capture_live_baseline.py
     tests/test_migration_verifier.py
 ```
+
+True today: four of the five stand-ins are gone with the files that held them,
+and the captured metadata file is gone too. Nothing now covers the 13 registry
+ids it carried, and nothing refuses a tool that opens the credential file. The
+two ids the capture could not reach are still the pair in
+`US_IP_BLOCKED_EXCHANGES`.
 
 ## The four refusals around an exchange call
 
@@ -272,29 +452,41 @@ coinbase_credentials    3 occurrences under tests/
 | `_redact` | `src/exchange/api_logger.py` | a param whose key holds any of nine credential substrings, swapping a mask in before `record` stores the entry |
 | `guarded_place_order` | `src/trading/bot_container.py` | an order whose amount is not a finite positive number, at the single point every engine order passes through |
 
-Each of the four carries checks that drive it to the refusal itself, so a green
-run says the refusal still fires.
+The first of the four is a check and is in the tree. `tests/conftest.py` reads
+`_live_roots` before and after a run and fails the run on any new path under
+them. The other three are refusals inside the product, and each still fires from
+its own module.
 
-- `_live_roots` is injectable, so `tests/test_live_tree_guard.py` drives the
-  guard against temporary roots across 22 checks. Two of them replay the two
-  isolation breaches this project has shipped: a telemetry file created in the
-  live tree, and a reservation-state autosave.
-- `tests/test_safe_url_scheme_policy.py` holds 40 checks, splitting the policy
-  half from the transport half because either can fail alone.
-- The redaction checks name 13 credential field spellings that must come back
-  masked, five benign fields that must come back unchanged as the positive
-  control, and read the emitted log line for any param value — with a control
-  proving the same handler sees a value placed in a benign field. One substring
-  covers two credential spellings at once.
-- One module calls the venue's order method directly: the bot container, inside
-  the guard itself. Nine sites across three trading modules call the guard, and no
-  other route out exists. Five checks cover it: one drives unusable amount shapes
-  into a recorder standing where the exchange stands, one drives a real amount
-  through as the positive control, and three more pin the text of the refusal and
-  which check turns an undersized order back.
+### The checks around the four refusals, overtaken
 
-The modules on each side of the last two, and the one substring that covers two
-spellings:
+OVERTAKEN, quoted whole:
+
+> "Each of the four carries checks that drive it to the refusal itself, so a
+> green run says the refusal still fires."
+
+> "`_live_roots` is injectable, so `tests/test_live_tree_guard.py` drives the
+> guard against temporary roots across 22 checks. Two of them replay the two
+> isolation breaches this project has shipped: a telemetry file created in the
+> live tree, and a reservation-state autosave."
+
+> "`tests/test_safe_url_scheme_policy.py` holds 40 checks, splitting the policy
+> half from the transport half because either can fail alone."
+
+> "The redaction checks name 13 credential field spellings that must come back
+> masked, five benign fields that must come back unchanged as the positive
+> control, and read the emitted log line for any param value — with a control
+> proving the same handler sees a value placed in a benign field. One substring
+> covers two credential spellings at once."
+
+> "One module calls the venue's order method directly: the bot container, inside
+> the guard itself. Nine sites across three trading modules call the guard, and
+> no other route out exists. Five checks cover it: one drives unusable amount
+> shapes into a recorder standing where the exchange stands, one drives a real
+> amount through as the positive control, and three more pin the text of the
+> refusal and which check turns an undersized order back."
+
+> "The modules on each side of the last two, and the one substring that covers
+> two spellings:"
 
 ```
 tests/test_api_logger_redaction.py      "sign" masks signature and CB-ACCESS-SIGN
@@ -306,6 +498,25 @@ guarded_place_order called by       src/trading/scrumming/execution.py
                                     src/trading/extractor_bot.py
                                     nine sites, no other route out
 tests/test_u6_venue_amount_gate.py      five checks
+```
+
+True today: three of the four refusals carry no check. Every file named above
+is absent except `tests/conftest.py`, so the 22 guard checks, the 40 policy
+checks, the redaction checks and the five amount checks are all gone, and with
+them every positive control they held.
+
+The refusals themselves did not move, and the route out is unchanged:
+
+```
+the live-tree guard     tests/conftest.py, in _live_roots
+the scheme policy       src/core/safe_url.py
+the credential mask     src/exchange/api_logger.py, in _redact
+the amount refusal      src/trading/bot_container.py, in guarded_place_order
+
+exchange.place_order called by      src/trading/bot_container.py
+guarded_place_order called by       src/trading/scrumming/execution.py
+                                    src/trading/scrumming_bot.py
+                                    src/trading/extractor_bot.py
 ```
 
 ## When the order guard could not read the market's limits

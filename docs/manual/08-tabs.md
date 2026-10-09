@@ -719,8 +719,17 @@ matches at 21,194 characters.
 
 The earlier comparison that closed these two rows read its table items out of
 the payload. `signalRow` and `pairRow` handed back cells from the model, which
-agreed on both sides whatever the page drew. This change drops both. The run is
-in [2026-09-09_market_inspector_tables.md](../../tests/debug_reports/2026-09-09_market_inspector_tables.md).
+agreed on both sides whatever the page drew. This change drops both.
+
+OVERTAKEN, quoted whole:
+
+> "The run is in
+> [2026-09-09_market_inspector_tables.md](../../tests/debug_reports/2026-09-09_market_inspector_tables.md)."
+
+True today: the run record is not in the tree. The repository tracks one Python
+module under `tests/`, its own conftest, and no directory of run records beside
+it. The two figures the run produced are the ones in this entry: both pictures
+match byte for byte, and the drawn markup matches at 21,194 characters.
 
 ### 2026-09-09 23:05 - #128 - the Electron shell draws the Inspector tab and its proposals pane
 
@@ -774,8 +783,16 @@ Both screens were driven on one payload of 54 markets, 300 daily candles each
 and three ranked proposals. Twenty-seven of twenty-seven picture items match,
 so rows 878 and 879 read `yes` under Registers in Electron. The Opposing Pairs
 rows match at nothing on either side, so that item proves the column set and
-not the rows. The run is in
-[2026-09-09_market_inspector_register.md](../../tests/debug_reports/2026-09-09_market_inspector_register.md).
+not the rows.
+
+OVERTAKEN, quoted whole:
+
+> "The run is in
+> [2026-09-09_market_inspector_register.md](../../tests/debug_reports/2026-09-09_market_inspector_register.md)."
+
+True today: the run record is not in the tree. The figures it produced are the
+ones in this entry: one payload of 54 markets, 300 daily candles each, three
+ranked proposals, and twenty-seven of twenty-seven picture items matching.
 
 ## Asset Charts
 

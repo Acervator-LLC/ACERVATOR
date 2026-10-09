@@ -141,7 +141,7 @@ running process on this branch, with nothing recorded at all:
 
 | Sector | Venues the registry answers | Was |
 | ------ | --------------------------- | --- |
-| Crypto | 20 | 15 |
+| Crypto | 21 | 15 |
 | Stocks | 19 | 10 |
 | Commodities | 16 | 1, Coinbase |
 | Forex | 4 | 1, Coinbase |
@@ -156,6 +156,28 @@ A venue is listed under a sector when that matrix states the venue lists a
 product there. A cell the matrix marks unfetched is left out, so Gate.io under
 Indices, Fidelity outside Stocks and Poloniex outside Stocks are absent.
 
+OVERTAKEN, and the table and the sentences above are kept as written. Every one
+of the matrix's unfetched cells now carries a verdict read from the venue's own
+page, so Gate.io is no longer left out of a sector it serves. Gate.io lists a
+product under Forex, Indices and Futures / Perps, and `venue_classes` answers
+all three. Read in one running process with nothing recorded, over the
+twenty-five venue ids the surface answers for and the one hundred fifty cells
+they make:
+
+| Sector | Venues the registry answers | Was |
+| ------ | --------------------------- | --- |
+| Forex | 6 | 5 |
+| Indices | 13 | 12 |
+| Futures / Perps | 16 | 15 |
+
+Ninety-one of those one hundred fifty cells answer yes, and eighty-eight did
+before. The three that moved are Gate.io's. The order format Gate.io requires in
+each of its six sectors, and the bot variant each format demands, are in
+[../audits/2026-10-09_gateio_sector_order_formats/REPORT.md](../audits/2026-10-09_gateio_sector_order_formats/REPORT.md).
+Forex and Indices reach Gate.io only through its contracts-for-difference
+product line, which the installed trading library carries no endpoint for, so
+both sectors are listed and charted and neither takes an order.
+
 Forex is the one sector read strictly. A venue is listed under Forex only when
 it offers a market whose two legs are both national currencies. Gemini and
 Bitstamp each offer a euro-dollar market, and Interactive Brokers documents a
@@ -166,20 +188,23 @@ not counted.
 traded. [15-venue-compatibility.md](15-venue-compatibility.md) states it at
 line 99:
 
-> Fifteen crypto venues are offered. One has ever traded. The equity venue list
+> Sixteen crypto venues are offered. One has ever traded. The equity venue list
 > holds nine ids for eight firms, and two of those firms have no API to reach.
 
-### Crypto, 15 venues
+### Crypto, 16 venues
 
 ```
 binance   bitfinex   bitget    bitstamp   bybit
 coinbase  cryptocom  gateio    gemini     huobi
 kraken    kucoin     mexc      okx        poloniex
+robinhood
 ```
 
-Coinbase is the one that has traded. Five of the fifteen refuse a United States
+Coinbase is the one that has traded. Five of the sixteen refuse a United States
 address or account, and [15-venue-compatibility.md](15-venue-compatibility.md)
-carries the refusal per venue with the date it was read.
+carries the refusal per venue with the date it was read. Robinhood is the one
+that is not a `ccxt` venue, and `crypto_venues` reads it off
+`hand_written_crypto_venues` instead.
 
 ### Stocks, 10 venues
 
@@ -238,9 +263,9 @@ venue. The Exchange Status panel for Forex draws `Coinbase (coinbase)` and the
 Add Forex Exchange box offers Coinbase with its key and secret fields, read off
 the drawn panel.
 
-OVERTAKEN, and the two notes above are kept as written. Forex lists four
-venues, Indices eleven and Futures / Perps fifteen. The Exchange Status panel
-for Forex draws Bitstamp, Coinbase, Gemini and Ibkr, read through
+OVERTAKEN, and the two notes above are kept as written. Forex lists five
+venues, Indices twelve and Futures / Perps fifteen. The Exchange Status panel
+for Forex draws Binance, Bitstamp, Coinbase, Gemini and Ibkr, read through
 `settings_dialog_surface.exchange_status_lines` in one running process.
 
 ### A venue's sectors come from two places, and they answer two questions
@@ -566,6 +591,21 @@ written, so the label survives the write and the read. His own recording still
 holds no label, because it was written before the write path merged, and his
 next venue read rewrites it.
 
+OVERTAKEN, and the sentence above reading "His own recording still holds no
+label" is kept as written. His recording now holds a label on every one of its
+1,146 rows, read on 2026-10-08 with the home redirected and the file not
+written. The venue read that rewrote it has happened.
+
+| Sector the row carries | Rows |
+| --- | --- |
+| crypto | 894 |
+| futures_perps | 168 |
+| stocks | 33 |
+| commodities | 25 |
+| forex | 20 |
+| indices | 6 |
+| no label | 0 |
+
 OVERTAKEN, and the two blocks and the sentences above are kept as written. No
 function named `recorded_market_rows` is in the tree, count 0. The reader that
 answers a venue's recorded sectors is `recorded_classes` at
@@ -625,8 +665,8 @@ Each sector does carry a rule, and that rule is the fallback. Driven in one
 running process, venue `coinbase`:
 
 ```
-src/trading/scrumming/sizing.py:144      unit_rule, the sector's own answer
-src/trading/scrumming/sizing.py:170      market_unit_rule, the step first
+src/trading/scrumming/sizing.py, in unit_rule          the sector's own answer
+src/trading/scrumming/sizing.py, in market_unit_rule   the session, then the step
 
 crypto          fractional        forex            fractional
 stocks          whole             indices          whole

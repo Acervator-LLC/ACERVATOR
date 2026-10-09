@@ -23,6 +23,13 @@
 #                  harness_fixtures/ is named and counted as exempt, because that
 #                  file exists to report passed=false. The lane fails when any
 #                  archetype reports passed=false on a file that is not one.
+#                  Markdown is the one exception: docs_archetype runs on every
+#                  changed .md file and prints every finding in its group, and
+#                  the step counts that verdict as reported rather than judged,
+#                  so a prose finding never fails the lane and never blocks a
+#                  merge. The summary line counts judged and reported files
+#                  separately, and the step marks each file judged or reported
+#                  on its own line.
 #                  Runs when `any` is true, so a documentation-only pull request
 #                  is still adjudicated.
 #
@@ -261,6 +268,8 @@ jobs:
           set +e
 
           scanned=0
+          judged=0
+          reported=0
           unowned=0
           exempt=0
           failed=0
@@ -296,13 +305,19 @@ jobs:
             # written .py file too, deciding by the Qt widget base the file
             # declares rather than by its directory.
             modules=
+            blocking=1
             case "$path" in
               src/gui/*.py)                  modules="coding_archetype gui_archetype" ;;
               *.py)                          modules=coding_archetype ;;
               *.sh|*.bash|*.zsh)             modules=coding_archetype ;;
               *.yml|*.yaml)                  modules=coding_archetype ;;
               *.js|*.mjs|*.cjs|*.css|*.html) modules=gui_archetype ;;
-              *.md)                          modules=docs_archetype ;;
+              # docs_archetype still runs and still prints every finding; a
+              # markdown verdict is reported and never reaches `failed`.
+              *.md)
+                modules=docs_archetype
+                blocking=0
+                ;;
               *)
                 echo "no owning archetype: $path"
                 unowned=$((unowned + 1))
@@ -325,12 +340,22 @@ jobs:
                 red=1
               fi
             done
-            if [ "$red" -ne 0 ]; then
-              failed=$((failed + 1))
+            if [ "$blocking" -eq 1 ]; then
+              judged=$((judged + 1))
+              echo "judged, a red verdict fails this lane: $path"
+              if [ "$red" -ne 0 ]; then
+                failed=$((failed + 1))
+              fi
+            else
+              reported=$((reported + 1))
+              echo "reported only, this verdict cannot fail the lane: $path"
             fi
           done <<< "$CHANGED_FILES"
 
-          echo "scanned=$scanned unowned=$unowned exempt=$exempt failed=$failed"
+          echo "scanned=$scanned judged=$judged reported=$reported" \
+               "unowned=$unowned exempt=$exempt failed=$failed"
+          echo "judged: a red verdict blocks the merge." \
+               "reported: the verdict is printed and blocks nothing."
           [ "$failed" -eq 0 ]
 
   ci-gate:

@@ -40,6 +40,54 @@ if is_stale and not in_flight:
     hist.refresh()
 ```
 
+### The venue call queue a refresh shares
+
+One connector serves every bot on a venue and runs a single worker, so every
+caller on that venue shares one call queue eight deep. A refresh asks for one
+symbol at a time, and before each ask it waits for that queue to empty. The
+balance, ticker, portfolio and OHLCV reads the running platform polls therefore
+take the worker first. Past its budget the ask goes through behind two reserved
+slots instead, so a refresh is never the submission that fills the queue, and a
+busy venue changes when a refresh runs and never which rows it answers.
+
+`src/exchange/ccxt_connector.py` — `CCXTConnector.await_bulk_read_slot`
+
+```python
+if depth <= BULK_READ_ADMIT_DEPTH:
+    break
+if time.monotonic() - start >= budget_sec and depth <= admit_past_budget:
+    break
+await asyncio.sleep(BULK_READ_WAIT_SLICE_SEC)
+```
+
+`src/exchange/history_helpers.py` — `_await_slot`
+
+Measured on a fleet of thirty-nine bots on one venue, with two hundred platform
+reads issued while a refresh ran: forty-seven of those reads were refused at the
+queue's cap while the refresh held the worker back to back, and six once the
+refresh waited its turn. The same two hundred reads with no refresh running at
+all were refused five times, so the refresh now costs the platform about one
+read where it used to cost forty-two. Both runs returned the same 8,558 rows.
+
+A refusal at the cap costs a symbol its rows, so the wait never ends while the
+queue is full and one refused submission earns a second wait.
+
+`src/exchange/history_helpers.py` — `BULK_READ_ATTEMPTS`
+
+```python
+BULK_READ_ATTEMPTS = 2
+```
+
+A venue that does not serialise its calls needs no turn-taking, and the default
+waits for nothing.
+
+`src/exchange/base.py` — `ExchangeInterface.await_bulk_read_slot`
+
+```python
+del budget_sec
+return 0.0
+```
+
 ## Where the trade record is kept
 
 Refresh reads the venue live and keeps nothing. The year of trades the Simulator
@@ -129,6 +177,16 @@ def build_page(
     only disk read on this path.
     """
 ```
+
+One sentence above is overtaken. Quoted whole:
+
+> One function returns the rendered page: the rows plus the pager state. It is
+> the only disk read on that path.
+
+The page builder still returns the rows and the pager state. It makes no disk
+read when the tab draws, because the tab hands it both join indexes. The tab
+reads the logs once per fetch, on its own thread, and the page builder's own
+read only runs for a caller that supplies neither index.
 
 Thirteen columns each yield one cell carrying a value, its text, its colour and
 its tooltip.
@@ -293,6 +351,57 @@ Nothing measures coverage across a window.
 `build_page_voting_index` and `lookup_voting_entry` do the same for the
 indicator voting snapshot behind each trade.
 
+## When the logs are read
+
+The tab reads the gate log and the voting log once, when a fetch lands, on a
+thread of its own. Drawing a page and pressing Prev or Next read the indexes
+already in hand and touch no file.
+
+`src/gui/history_tab.py` — `HistoryTab._start_join_index_build`
+
+```python
+def _start_join_index_build(self) -> None:
+    """Read the gate and voting indexes for ``_all_trades`` off this thread.
+
+    ``_render_page`` then reads the held indexes, so no page draw and no
+    pager press touches disk; the newest build wins and an older
+    build's answer is dropped.
+    """
+```
+
+The read keeps only the minutes a cell can ask for. A lookup reads a trade's
+own minute and the two beside it, so an entry in any other minute can never
+reach a cell and is not held.
+
+`src/gui/history_tab.py` — `join_bucket_keys`
+
+```python
+def join_bucket_keys(rows: list, bot_manager) -> set:
+    """The ``(bot_id, minute)`` keys the gate and voting lookups can reach.
+
+    ``lookup_gate_entry`` reads a row's own minute and the two beside it, so an
+    index holding only these keys answers every lookup identically.
+    """
+```
+
+Measured on the operator's own logs, with a six-megabyte active gate log, five
+rotated copies of fifty-two megabytes each and a sixteen-megabyte voting log:
+3,494 rows over 35 pages. The gate read kept 2,895 minutes and the voting read
+2,955, against 167,944 gate entries parsed before. The longest stretch in which
+the window could not repaint fell from 4.2 seconds to 0.06, which is what an
+idle window reads on the same instrument. Every Gates cell and every light row
+on four sampled pages matched the earlier values exactly.
+
+Nothing paces the fetch itself. One tab activation asks the venue for fills
+once per bot symbol, and those calls share one worker thread and a queue of
+eight with every other venue reader on the platform.
+
+`src/exchange/ccxt_connector.py` — the shared queue
+
+```python
+SYNC_QUEUE_CAP: int = 8
+```
+
 ## The renderer
 
 `HistoryWebTable` in `src/gui/react_history_panel.py` draws the table with
@@ -441,13 +550,13 @@ STATUS_TEXT = {
     "no_bot_manager": "Bot manager unavailable — cannot fetch history.",
     "no_async_loop": "Async loop not ready — try again after platform starts.",
     "fetching": "Fetching trade history from exchanges…",
-    "timeout": "Fetch timeout (60s). Exchange may be rate-limited; try again.",
+    "timeout": "Fetch timeout (300s). Exchange may be rate-limited; try again.",
 }
 ```
 
 Two constants bound the fetch, in the same module: the poll runs on a 400 ms
 timer, so an observed latency is the true latency plus up to one interval, and
-the fetch is abandoned after sixty seconds.
+the fetch is abandoned after three hundred seconds.
 
 `src/exchange/history_read_contract.py` — the fetch bounds
 

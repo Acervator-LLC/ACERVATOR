@@ -103,26 +103,26 @@ stock window's own files, the broker connector is named once, in a docstring.
 
 ## The venues and the classes they serve
 
-Fifteen crypto venues are offered. One has ever traded. The equity venue list
+Sixteen crypto venues are offered. One has ever traded. The equity venue list
 holds nine ids for eight firms, and two of those firms have no API to reach.
 
 | Venue | Classes served | Reachable from the United States | Credential shape | Source |
 | ----- | -------------- | -------------------------------- | ---------------- | ------ |
-| coinbase | crypto spot; US futures products over the same API | no refusal recorded, 2026-08-28 | key and secret | `src/exchange/ccxt_connector.py:67`; Coinbase developer documentation, Advanced Trade US derivatives |
-| kraken | crypto spot | no refusal recorded, 2026-08-28 | key and secret | `src/exchange/ccxt_connector.py:67` |
-| gateio | crypto spot | no refusal recorded, 2026-08-28 | key and secret | `src/exchange/ccxt_connector.py:67` |
-| mexc | crypto spot | no refusal recorded, 2026-08-28 | key and secret | `src/exchange/ccxt_connector.py:67` |
-| bitfinex | crypto spot | no refusal recorded, 2026-08-28 | key and secret | `src/exchange/ccxt_connector.py:67` |
-| gemini | crypto spot | no refusal recorded, 2026-08-28 | key and secret | `src/exchange/ccxt_connector.py:67` |
-| bitstamp | crypto spot | no refusal recorded, 2026-08-28 | key and secret | `src/exchange/ccxt_connector.py:67` |
-| cryptocom | crypto spot | no refusal recorded, 2026-08-28 | key and secret | `src/exchange/ccxt_connector.py:67` |
-| kucoin | crypto spot | no refusal recorded, 2026-08-28 | key, secret and passphrase | `src/exchange/ccxt_connector.py:102` |
-| okx | crypto spot | no refusal recorded, 2026-08-28 | key, secret and passphrase | `src/exchange/ccxt_connector.py:102` |
-| bitget | crypto spot | no refusal recorded, 2026-08-28 | key, secret and passphrase | `src/exchange/ccxt_connector.py:102` |
-| binance | crypto spot | no, public endpoints refused a US address, 2026-08-28 | key and secret | `src/exchange/ccxt_connector.py:113` |
-| bybit | crypto spot | no, public endpoints refused a US address, 2026-08-28 | key and secret | `src/exchange/ccxt_connector.py:113` |
-| poloniex | crypto spot | no, the terms refuse a US account, 2026-08-28 | key and secret | `src/exchange/ccxt_connector.py:119` |
-| huobi | crypto spot | no, the terms refuse a US account, 2026-08-28 | key and secret | `src/exchange/ccxt_connector.py:119` |
+| coinbase | crypto spot; US futures products over the same API | no refusal recorded, 2026-08-28 | key and secret | `src/exchange/ccxt_connector.py, in SUPPORTED_EXCHANGES`; Coinbase developer documentation, Advanced Trade US derivatives |
+| kraken | crypto spot | no refusal recorded, 2026-08-28 | key and secret | `src/exchange/ccxt_connector.py, in SUPPORTED_EXCHANGES` |
+| gateio | crypto spot | no refusal recorded, 2026-08-28 | key and secret | `src/exchange/ccxt_connector.py, in SUPPORTED_EXCHANGES` |
+| mexc | crypto spot | no refusal recorded, 2026-08-28 | key and secret | `src/exchange/ccxt_connector.py, in SUPPORTED_EXCHANGES` |
+| bitfinex | crypto spot | no refusal recorded, 2026-08-28 | key and secret | `src/exchange/ccxt_connector.py, in SUPPORTED_EXCHANGES` |
+| gemini | crypto spot | no refusal recorded, 2026-08-28 | key and secret | `src/exchange/ccxt_connector.py, in SUPPORTED_EXCHANGES` |
+| bitstamp | crypto spot | no refusal recorded, 2026-08-28 | key and secret | `src/exchange/ccxt_connector.py, in SUPPORTED_EXCHANGES` |
+| cryptocom | crypto spot | no refusal recorded, 2026-08-28 | key and secret | `src/exchange/ccxt_connector.py, in SUPPORTED_EXCHANGES` |
+| kucoin | crypto spot | no refusal recorded, 2026-08-28 | key, secret and passphrase | `src/exchange/ccxt_connector.py, in PASSPHRASE_EXCHANGES` |
+| okx | crypto spot | no refusal recorded, 2026-08-28 | key, secret and passphrase | `src/exchange/ccxt_connector.py, in PASSPHRASE_EXCHANGES` |
+| bitget | crypto spot | no refusal recorded, 2026-08-28 | key, secret and passphrase | `src/exchange/ccxt_connector.py, in PASSPHRASE_EXCHANGES` |
+| binance | crypto spot | no, public endpoints refused a US address, 2026-08-28 | key and secret | `src/exchange/ccxt_connector.py, in US_IP_BLOCKED_EXCHANGES` |
+| bybit | crypto spot | no, public endpoints refused a US address, 2026-08-28 | key and secret | `src/exchange/ccxt_connector.py, in US_IP_BLOCKED_EXCHANGES` |
+| poloniex | crypto spot | no, the terms refuse a US account, 2026-08-28 | key and secret | `src/exchange/ccxt_connector.py, in US_ACCOUNT_RESTRICTED_EXCHANGES` |
+| huobi | crypto spot | no, the terms refuse a US account, 2026-08-28 | key and secret | `src/exchange/ccxt_connector.py, in US_ACCOUNT_RESTRICTED_EXCHANGES` |
 | Alpaca | equities and exchange-traded funds, which is every commodity row this tree carries | yes, US broker | key and secret | `src/gui/main_tabs/asset_class_surface.py:33`; Alpaca fractional trading documentation, read 2026-09-24 |
 | Interactive Brokers | equities, funds, futures and 100 or more currency pairs | yes, US broker | a TWS session, shape not stated by the pages read | `src/gui/main_tabs/asset_class_surface.py:33`; Interactive Brokers TWS API documentation, read 2026-09-24 |
 | Schwab | equities and options, individual accounts | yes, US broker | issued on the Schwab developer portal, shape not stated by the pages read | `src/gui/main_tabs/asset_class_surface.py:33`; Schwab Trader API developer portal, read 2026-09-24 |
@@ -189,10 +189,10 @@ venue-and-sector readiness matrix in
 | okx | crypto, stocks, commodities, indices, futures_perps |
 | bitget | crypto, stocks, commodities, indices, futures_perps |
 | bitfinex | crypto, commodities, indices, futures_perps |
-| binance | crypto, stocks, commodities, futures_perps |
+| binance | crypto, stocks, commodities, forex, indices, futures_perps |
 | kucoin | crypto, stocks, commodities, futures_perps |
 | gemini | crypto, commodities, forex, futures_perps |
-| gateio | crypto, stocks, commodities |
+| gateio | crypto, stocks, commodities, forex, indices, futures_perps |
 | bitstamp | crypto, commodities, forex |
 | cryptocom | crypto, stocks, futures_perps |
 | mexc | crypto, stocks, futures_perps |
@@ -341,8 +341,8 @@ table TradersPost publishes for the brokers it connects.
 | coinbase, spot | yes | yes | nine decimal places, and the size is truncated to the product's decimal places and refused under the product's minimum before the API is called, at `src/trading/bot_container.py:264`. Coinbase developer documentation, read 2026-09-24 |
 | coinbase, US futures | yes | no | a futures contract is whole, so an excess under one contract cannot be sold. Coinbase developer documentation, Advanced Trade US derivatives, read 2026-09-24 |
 | kraken, kucoin, okx, gateio, bitget, mexc, bitfinex, gemini, bitstamp, cryptocom | yes | yes | nine decimal places. Each venue's own documentation, read 2026-09-24 |
-| binance, bybit | yes, and the address is refused from the United States | yes | nine decimal places. Each venue's own documentation, read 2026-09-24. The refusal is a tree reading dated 2026-08-28, at `src/exchange/ccxt_connector.py:113` |
-| poloniex, huobi | yes, and a United States account is restricted | yes | nine decimal places. Each venue's own documentation, read 2026-09-24. The restriction is a tree reading dated 2026-08-28, at `src/exchange/ccxt_connector.py:119` |
+| binance, bybit | yes, and the address is refused from the United States | yes | nine decimal places. Each venue's own documentation, read 2026-09-24. The refusal is a tree reading dated 2026-08-28, at `src/exchange/ccxt_connector.py, in US_IP_BLOCKED_EXCHANGES` |
+| poloniex, huobi | yes, and a United States account is restricted | yes | nine decimal places. Each venue's own documentation, read 2026-09-24. The restriction is a tree reading dated 2026-08-28, at `src/exchange/ccxt_connector.py, in US_ACCOUNT_RESTRICTED_EXCHANGES` |
 | Alpaca | yes | yes | nine decimal places on a share quantity. The 1.00 USD floor is published for a buy, and the tree sends a share quantity and never a dollar amount, at `src/stocks/alpaca_connector.py:176`. Alpaca fractional trading documentation, read 2026-09-24 |
 | Webull | yes | yes | two decimal places on a share quantity, which is finer than one dollar on any share this fleet holds. The fractional-support table TradersPost publishes, read 2026-09-24 |
 | Interactive Brokers | yes | no | a quantity order rounds down to whole shares, and a fraction is reached only by naming a cash amount. Interactive Brokers TWS API documentation, read 2026-09-24 |
@@ -1279,9 +1279,15 @@ VARIANT_MARKETS: dict[str, str] = {
     VARIANT_WHOLE_UNIT: "a market whose smallest order costs more than the excess",
 }
 
-#: The variants the running program holds. ``VARIANT_CASH_AMOUNT`` has no caller
-#: to reach it and ``VARIANT_WHOLE_UNIT`` waits on the scrum trigger's ruling.
-VARIANTS_BUILT = frozenset({VARIANT_NONE, VARIANT_LIMIT_ONLY})
+#: The variants the running program holds. ``VARIANT_CASH_AMOUNT`` has no caller.
+VARIANTS_BUILT = frozenset(
+    {
+        VARIANT_NONE,
+        VARIANT_LIMIT_ONLY,
+        VARIANT_WHOLE_UNIT,
+        VARIANT_ROLLING_POSITION,
+    }
+)
 ```
 
 ### The limit-only variant, and the one venue it reaches
@@ -1312,14 +1318,20 @@ src/stocks/broker_base.py:145      place_order, declared, called by nothing
 src/stocks/alpaca_connector.py     imported by no file in src/, main.py or tools/
 ```
 
-The whole-unit variant is named and waits on a decision that is the operator's.
-It would hold an excess until that excess reaches one whole unit, then sell one
-unit. Refusing a market too small to scrum and changing that market's scrum
-trigger build two different variants, and the issue's first open decision picks
-between them.
+The whole-unit variant is built. It holds an excess until that excess reaches one
+whole unit, then sells whole units. `VARIANTS_BUILT` holds its name, and
+`variant_holds_market` reads the market's own step as well, so the variant
+governs a market `market_unit_rule` reads as whole and no other.
 
-```
-In development. Decision 1 on the issue owns it.
+```python
+VARIANTS_BUILT = frozenset(
+    {
+        VARIANT_NONE,
+        VARIANT_LIMIT_ONLY,
+        VARIANT_WHOLE_UNIT,
+        VARIANT_ROLLING_POSITION,
+    }
+)
 ```
 
 ### A market no variant trades is scanned, charted and reported
@@ -1345,10 +1357,11 @@ count under the variants this comparison implies:
 > Three, and no more. Each is named by what it absorbs. None is built here, and
 > one of the three cannot be designed until a decision on the issue is answered.
 
-The true sentence is: four variant names exist, counting the bot as written, and
-the program holds two of them. The limit-only variant is built and Gemini is its
-one venue. The cash-amount variant is named and has no caller. The whole-unit
-variant is named and waits on the issue's first open decision.
+The true sentence is: six variant names exist, counting the bot as written, and
+the program holds five of them. The limit-only variant is built and Gemini is its
+one venue. The whole-unit variant is built. The rolling position is built, and
+`_tick_expiry_close` starts its close. The cash-amount variant is named and has
+no caller.
 
 The second is the heading over the earlier proposal:
 
@@ -1500,23 +1513,32 @@ its own cycles, and nothing rebuys it.
 ```
 
 The sell that passes says so where the operator watches. The Console line names
-the days left and states that nothing will rebuy the position.
+the days left and whether a buy back into the contract still passes.
 
 ```
-CLOSING AN EXPIRING MARKET: SELL <symbol> <units> is submitted where a BUY is
-refused, because the venue expires this contract in <n> days (rolling
-position). Nothing rebuys it.
+CLOSING AN EXPIRING MARKET: SELL <symbol> <units> is submitted, and the venue
+expires this contract in <n> days (rolling position). A BUY is refused and
+nothing rebuys it. The bot's expiry close is <action> at <n> days of lead.
 ```
 
-### The action at expiry is not built
+Outside the lead time the same line reads *A BUY into it still passes until the
+lead time is reached*, because the buy refusal fires only while the close acts.
 
-The program reads the date and starts nothing from it. A purchase into an
-expiring market is refused, a sale out of one passes, and the Console line above
-names the days left as the date approaches. No code closes such a position on
-the program's own initiative, and no code rolls it into another contract.
+### The action at expiry
 
-```
-In development. Decision 5 on the issue owns it.
+The program starts the close itself.
+`src/trading/scrumming/tick_phases.py, in TickPhaseMixin._tick_expiry_close`
+reads the decision every tick and sells the held count in one order under
+`EXPIRY_CLOSE_SELL_ALL`. `src/trading/scrumming_bot.py, in ScrummingBot.tick`
+calls it ahead of every early return, so a position resting at its target still
+closes. Under `EXPIRY_CLOSE_FINISH_LADDER` the program starts nothing and the
+sell ladder finishes the position, which is what that setting means. No code
+rolls a position into another contract.
+
+```python
+# src/trading/scrumming_bot.py, in ScrummingBot.tick
+        if await self._tick_expiry_close(ticker):
+            return
 ```
 
 ### A fold waits while the venue holds the cash
@@ -1562,11 +1584,14 @@ leave the live autonomous one spending cash it does not yet have.
 
 ### Which markets carry an expiry today
 
-None of them. The recording every back test and every paper run reads holds one
-venue and 1,146 markets, and not one row carries an expiry. The recording holds
-only four field names, and the expiry is not among them, because the recording
-predates the field. Each such row answers absent, which is exactly what a venue
-publishing no expiry answers.
+One hundred of them. The recording every back test and every paper run reads
+holds one venue and 1,146 markets, and 100 rows carry an expiry. The recording
+holds seven field names and the expiry is among them, so each dated row answers
+a date and every other row answers absent, which is what a venue publishing no
+expiry answers.
+
+The figures below were read before the venue was recorded again, when the
+recording held four field names and no expiry.
 
 ```
 recorded coinbase markets                                1146
@@ -1587,11 +1612,11 @@ a reading of the file and not of the reader. Two of the rows matter together: on
 hundred recorded symbols carry a dated contract suffix and none of them carries
 an expiry, because the recording predates the field. A fresh recording of that
 venue would fill those hundred rows, and those hundred markets would then select
-the fifth variant.
+the fifth variant. The venue has since been recorded again and those hundred
+rows carry a date, so all one hundred select the fifth variant today.
 
 This reaches no live market. No symbol the saved fleet trades carries a dated
-contract suffix, no recorded row carries an expiry, and the settlement table
-cites this venue at zero days.
+contract suffix, and the settlement table cites this venue at zero days.
 
 ### The sentences on this page that this entry overtakes
 
@@ -1604,9 +1629,11 @@ The first is the count of a venue's order rules:
 
 The true sentence is: a venue's own product record publishes five rules, not
 three. The four already named on this page sit beside the date the venue closes
-the contract on. Three further fields on the record come from cited tables
-rather than from the product record, and they are the trading session, the order
-types and the settlement delay.
+the contract on. Two further fields on the record come from cited tables
+rather than from the product record, and they are the order types and the
+settlement delay. The trading session comes from the product record, and the
+cited table answers only where the record carries no session.
+`src/trading/scrumming/sizing.py, in session_for` reads the two in that order.
 
 The second is the field block under that sentence. It lists four rules and the
 read flag, and it stays as written. The true block carries eight fields before
@@ -1638,8 +1665,8 @@ The fourth is the count of variant names:
 > answers per market whether the variant that market selects is one of the two.
 
 The true sentence is: five names exist, counting the bot as written, and the
-program still holds two of them. The fifth name is the rolling position, which
-the program names and does not build.
+program holds four of them. The fifth name is the cash-amount variant, which the
+program names and does not build.
 
 The fifth is the market table quoted under that count. It stands as written, and
 it carries a fifth row now, naming a market the venue expires on a date.
@@ -1648,9 +1675,9 @@ The sixth is the heading over the unbuilt variants:
 
 > The two variants named and not built
 
-The true count is three named and not built: the cash-amount variant with no
-caller, the whole-unit variant waiting on a decision, and the rolling position
-waiting on the rule that names which contract a position rolls into.
+The true count is one named and not built: the cash-amount variant, which has no
+caller. The rolling position is built, and `_tick_expiry_close` is the order the
+expiry close starts by itself.
 
 The seventh is the sentence about what an order path does with such a market:
 
@@ -1669,8 +1696,8 @@ first set out:
 
 > The true count is four names, two of them built.
 
-The same figure overtakes both. Five variant names exist and the program holds two
-of them.
+The same figure overtakes both. Six variant names exist and the program holds
+five of them.
 
 ## 2026-09-26 - a market buy with no price is refused by the connector and names why
 
@@ -1786,13 +1813,15 @@ CITED_UNIT_RULES: dict[tuple[str, str], str] = {
 
 A sector is not enough on its own. Coinbase puts a tokenised metal and a dated
 contract in the same Commodities tab, and one of them divides while the other
-does not. The size step the venue publishes for the market decides it, and the
-sector row answers only where the venue published no step.
+does not. The market's own trading session decides it ahead of both, where the
+caller names the moment the order is sized. The size step the venue publishes
+for the market decides it, and the sector row answers only where the venue
+published no step.
 
 ```python
-# src/trading/scrumming/sizing.py:170
+# src/trading/scrumming/sizing.py, in market_unit_rule
 def market_unit_rule(
-    recorded: Any, asset_class: str = "", venue: str = ""
+    recorded: Any, asset_class: str = "", venue: str = "", moment_s: Any = None
 ) -> Optional[str]:
 ```
 
@@ -1806,6 +1835,37 @@ socket refused:
 | an equity the venue published no step for | none | whole | whole |
 | a crypto pair | a hundred-millionth | fractional | fractional |
 
+### The market's own session answers before its step
+
+A US equity market takes a fraction of a share inside its normal hours and a
+whole share outside them. The same market is therefore two size rules at two
+hours of one day, and the step the venue publishes is the one its fractional
+order carries. `session_for` names the session off the market's own record, and
+the cited table answers only where the record carries none.
+
+```python
+# src/trading/scrumming/sizing.py, in session_for and session_unit_rule
+def session_for(recorded: Any, asset_class: str, venue: str) -> Optional[str]:
+def session_unit_rule(session: Optional[str], moment_s: Any) -> Optional[str]:
+```
+
+A US equity session wins wherever either source names it, so neither source
+widens the hours the other restricts. A record carrying no session holds nothing
+and demands nothing.
+
+One market was driven through the order path twice, with the home redirected,
+the transport raising on every call and no order sent. Its step is a hundredth
+of a share, its minimum size a hundredth and its minimum cost ten dollars. The
+order asked for 1.57 shares at six in the evening, New York time:
+
+```
+recorded session us_equity    rule whole        1.00 share, then held
+recorded session continuous   rule fractional   1.57 shares, submitted
+```
+
+At eleven in the morning both answer 1.57 shares. A crypto market read 1.57
+shares at both hours and in both runs, because its session gates no size.
+
 ### A bot reads its own sector rather than one fixed name
 
 The order gate named one asset class for every bot. It now reads the class the
@@ -1814,12 +1874,13 @@ holds none, which is every market the recording was written for before the
 sectors existed.
 
 ```python
-# src/trading/bot_container.py:157
+# src/trading/bot_container.py, in _asset_class
     def _asset_class(self, symbol: str) -> str:
 
-# src/trading/bot_container.py:376
+# src/trading/bot_container.py, in guarded_place_order, at _rule
         _class = self._asset_class(symbol)
-        _rule = market_unit_rule(_rules, _class, self.config.exchange_id)
+        _now = time.time()
+        _rule = market_unit_rule(_rules, _class, self.config.exchange_id, _now)
         _sized = sized_order(_amt, _rule, _rules)
 ```
 
@@ -1888,9 +1949,9 @@ def variant_holds_market(
 
 OVERTAKEN, and the comment it quotes is kept as written: the module recorded
 that the whole-unit variant "waits on the scrum trigger's ruling". The ruling is
-the specification quoted at the head of this entry. The set of built variant
-names is itself unchanged, so every other reader of it answers exactly what it
-answered before.
+the specification quoted at the head of this entry. `VARIANTS_BUILT` now holds
+the name as well, and `variant_holds_market` answers for every market exactly
+what it answered before.
 
 ### Where the sizing mode lives
 
@@ -1904,10 +1965,776 @@ the table after a venue changes a rule.
 
 The screen that builds a bot does not yet offer whole-unit sizing or hide a
 market whose unit price puts two units out of reach. A market read as whole on
-the Market Inspector still shows the refusal it showed before, because that
-reading is taken without the symbol's class. Both are the wizard's row of the
-build order.
+the Market Inspector still shows the refusal it showed before in its tradeable
+column, which reads `tradeable_answer` and not the built set. Both are the
+wizard's row of the build order.
 
 An equity order still carries no session metadata, and a futures position is
 still read from a spot balance rather than from the futures endpoints. Those are
 the sector-specific order paths, a later row again.
+
+## 2026-10-08 - the whole-unit variant is built, and its opening size is the operator's
+
+Nothing above this heading is deleted. Ten passages are corrected in place
+because the running program contradicts them, and each correction stands where
+the old sentence stood.
+
+The variant was held for a whole-unit market and the set of built names did not
+hold it. The set holds it now, so every reader of that set answers for a
+whole-unit market the way the order path already acted on one. The set holds the
+rolling position as well, which the section *The contract variant is built*
+below records.
+
+```python
+VARIANTS_BUILT = frozenset(
+    {
+        VARIANT_NONE,
+        VARIANT_LIMIT_ONLY,
+        VARIANT_WHOLE_UNIT,
+        VARIANT_ROLLING_POSITION,
+    }
+)
+```
+
+### No market changes hands differently
+
+`variant_holds_market` reads the set first and the market's own step second, so a
+market whose smallest order costs more than a scrum's excess is held only where
+`market_unit_rule` reads whole. Driven over all 1,146 recorded Coinbase markets
+with no venue asked and no order placed, the variant, the hold answer and the
+sized amount are the same figures before the change and after it.
+
+| market form | rows | variant | held | 3.5 units size to |
+| --- | --- | --- | --- | --- |
+| fractional step | 821 | `none` | yes | 3.5 |
+| whole step, no date | 225 | `whole-unit position` | yes | 3.0 |
+| dated contract | 100 | `rolling position` | no | 3.0 |
+
+### The scan note stops naming a market it trades
+
+`ata_spm.untradeable_markets` and `ata_spm.untradeable_note` read
+`untradeable_reason` as their own test, so the Market Inspector's scan note named
+every whole-unit market as read and not traded while the order path traded it.
+Driven over the recording, the note names the 100 dated contracts and no others.
+
+| the scan note | before | after |
+| --- | --- | --- |
+| markets named read and not traded | 325 | 100 |
+| characters of note | 4,923 | 2,204 |
+
+The Simulator's Activity Log is unchanged. `back_test.variant_line` reads
+`variant_holds_market` and its 1,146 lines hash the same before and after, 1,046
+trading and 100 not traded.
+
+### The refusal reason a built variant needs
+
+A market selecting the whole-unit name whose own step is a fraction is still
+refused, and the old reason said the variant was not built. `untradeable_reason`
+reads `variant_holds_market` now and carries
+`WHOLE_UNIT_STEP_IS_A_FRACTION` for that market instead.
+
+```python
+WHOLE_UNIT_STEP_IS_A_FRACTION = (
+    "the whole-unit position variant sizes whole units and this market steps in "
+    "fractions, so no built variant sizes an order costing this much"
+)
+```
+
+### Open Position At reaches the refusal
+
+The wizard's Open Position At box writes `whole_unit_opening_units` and the
+refusal read a constant, so the figure the operator set changed nothing.
+`opening_position_minimum` reads that figure now, and
+`BotContainer.guarded_place_order` hands it to `position_minimum_refusal`.
+
+The constant is a floor the setting cannot lower. The platform's owner set two
+units as the smallest a whole-unit position may be, quoted under *2026-10-04 -
+every sector has a unit rule, and a whole-unit position opens at two units*, so
+a figure of one unit still opens at two.
+
+Driven on a recorded whole-step market at one hundred dollars a unit, with no
+venue asked and no order placed:
+
+| Open Position At | the engine's minimum | a buy of 2 units |
+| --- | --- | --- |
+| 0, the engine's own | 2 | reaches the venue |
+| 5 | 5 | refused, and the message names five units at $500 |
+
+### The contract variant is built
+
+A dated contract trades, and the bot gets itself out before the date.
+`expiry_close_decision` reads the bot's own close action, lead mode, lead figure
+and horizon. `_tick_expiry_close` reads that answer on every tick and places the
+order the close starts by itself, so a contract whose price never fires a scrum
+no longer expires held. Only the buy is refused, and only inside the lead time.
+
+```python
+# src/trading/scrumming/tick_phases.py, in TickPhaseMixin._tick_expiry_close
+        if not decision["acts"]:
+            return False
+        if decision["action"] != EXPIRY_CLOSE_SELL_ALL:
+            return False
+
+        held = self._current_holdings
+```
+
+Driven on a recorded dated row at one hundred dollars a unit, with the home
+redirected, no venue contacted and no order leaving the process. The same bot,
+the same market, and the lead time set to eleven days:
+
+| days to expiry | units held | what the tick does |
+| --- | --- | --- |
+| 3 | 5 | sells 5 units in one order |
+| 40 | 5 | nothing; the ladder decides |
+| 800 | 5 | nothing; beyond the horizon |
+| 3 | 0 | nothing; no position to close |
+
+A send the venue reports no fill for is not sent twice.
+`_expiry_close_sent_units` holds the count that went out, and the close stands
+down while the held count still equals it.
+
+### The Simulator and the Paper Trader do not start the close
+
+Both read `variant_holds_market` and `variant_refuses_sale`, and neither reads
+`expiry_close_decision`. A dated contract now passes their buy, and no close
+fires in either, so a dated position runs to its date in both. The platform's
+owner deferred both surfaces until every variant is built.
+
+## 2026-10-08 - a recorded market carries its session, its contract size and its quote step
+
+A venue publishes three more facts per market, and the recording held none of
+them. A recorded row now carries all three. The row's seven earlier keys are
+unchanged.
+
+```python
+# src/exchange/base.py, in MarketRules
+    quote_increment: Optional[float] = None  # quote units a cash amount steps by
+    contract_size: Optional[float] = None  # base units one contract stands for
+    session: Optional[str] = None  # the session name the venue publishes
+```
+
+Each value is read off the venue's own product record. The reader for each one
+is named below, with the field the venue publishes it under.
+
+| what the row carries | the venue's own field | the reader |
+| --- | --- | --- |
+| the step a cash amount moves by | `quote_increment` | `quote_step` |
+| the units one contract stands for | `contract_size` | `contract_units` |
+| the session the market trades in | `fcm_trading_session_details` | `market_session` |
+
+### Why a quote step is a separate rule
+
+A spot market buy reaches Coinbase as a cash amount, not as a count of units.
+The venue rounds that amount by its own quote step. The recording held the price
+step alone, because the connector library reads a product's price step first and
+falls back to its quote step, so one recorded number could mean either. The
+quote step is now read on its own and recorded beside the price step.
+
+### Why a contract size is a separate rule
+
+One contract can stand for a fraction of a unit. A count of contracts is then
+not a count of units. The connector library reads this off a futures product and
+reads nothing off a spot product, so the reader falls back to the venue's own
+contract record.
+
+```python
+# src/exchange/ccxt_connector.py, in contract_units
+    parsed = limit_to_float(held.get(CONTRACT_SIZE_FIELD))
+    if parsed is not None:
+        return parsed
+    raw = held.get("info") or {}
+```
+
+### Which session a market trades in
+
+An equity product trades the United States equity session. Coinbase takes a
+market order for one only in regular hours, and takes whole shares alone in
+every other session. A product carrying no session window takes an order at any
+hour, which every spot pair and every perpetual does. A dated contract carries a
+daily window, which is a moment and not a market rule, so no session name is
+recorded for it.
+
+```
+equity product                             us_equity
+no session window on the record            continuous
+a daily window on the record               no name recorded
+no session field on the record             no name recorded
+```
+
+### An absent rule and a rule of zero are different facts
+
+A rule the venue did not publish is recorded as absent. A rule it published as
+zero is recorded as zero. A reader of the recording tells the two apart.
+
+| the venue published | on the row | read back |
+| --- | --- | --- |
+| no quote step | absent | absent |
+| a quote step of zero | 0 | zero |
+| no session | absent | absent |
+
+### What was driven
+
+Driven in one process with the home redirected to a scratch directory, every
+socket to a venue refused, and no order placed. The three fields were written to
+a scratch recording and read back out of it.
+
+| the drive | the reading |
+| --- | --- |
+| the three fields written and read back | 6 markets, every value returned |
+| every field of every live row read back | 1,146 rows, 6,876 values, 0 lost |
+| a row written before the three fields | every earlier value kept, the three absent |
+| a market read answering nothing | 0 rows written, 1,146 recorded rows stand |
+| every order decision, the fields set against unset | 1,146 markets, 37,818 answers, 0 moved |
+
+### What this changes on screen
+
+Nothing yet. The three values are recorded and no screen draws them. The live
+order path reads a recorded session through `session_for` and a recorded
+contract size through `contracts_for_units`, so both reach an order today.
+`BotContainer._get_market_rules` reads the recorded session first, the
+precedence it already takes for a recorded order type.
+
+### The price-step sentence this entry overtakes
+
+The 2026-09-25 entry on the price step quotes a five-line copy of the carrier
+and says a venue publishes three order rules. The carrier now holds ten rules
+and a read flag. Every sentence of that entry stands as written.
+
+## 2026-10-08 - a contract's size sizes the order
+
+One contract can stand for a fraction of a unit. The venue's size field names a
+count of contracts, and a count of units is then not the number to send. The
+order path divides the unit count by the contract's own size before it sends
+anything.
+
+`src/trading/scrumming/sizing.py` - the two counts
+
+```python
+def contracts_for_units(units: float, contract_size: Optional[float]) -> float:
+def units_for_contracts(contracts: float, contract_size: Optional[float]) -> float:
+```
+
+### Which count the venue's size field carries
+
+Coinbase describes the order body's size as the amount of the first asset in the
+pair. Its position endpoint and its close endpoint both call a futures size a
+count of contracts. The two readings meet at one market shape: the venue's step
+for a contract market is one contract, so the size field carries contracts and
+the step floors contracts.
+
+The venue's own sentences are quoted in
+`docs/audits/2026-10-08_coinbase_sector_order_formats/REPORT.md`.
+
+The connector library maps the venue the same way. Its order writer puts the
+amount into the venue's size field with nothing in between, and its position
+reader reports a count of contracts beside the contract size.
+
+```
+coinbase.create_order      base_size written straight from amount
+coinbase.parse_order       filled read from filled_size
+coinbase.parse_position    contracts from net_size, contractSize beside it
+```
+
+### Where the division sits
+
+`BotContainer.guarded_place_order` divides the unit count into contracts, then
+hands the contract count to `sized_order`. The step and the minimum the venue
+publishes for a contract market are both counts of contracts, so they are
+measured against the contract count. The dollar checks stay in units. The
+smallest order value and the whole-unit position floor read the same figures
+they always read.
+
+```mermaid
+flowchart TD
+    A[the venue publishes a contract size] --> B[contract_units reads it]
+    B --> C[market_rules writes MarketRules.contract_size]
+    C --> D[rules_row records it on the row]
+    D --> E[recorded_rules reads the row back]
+    E --> F[contracts_for_units divides the unit count]
+    F --> G[sized_order floors the contract count onto the step]
+    G --> H[place_order receives a contract count]
+```
+
+### An absent contract size divides nothing
+
+A contract size the venue did not publish is absent, and absent is not one. For
+sizing, absent means the size field already carries units. Nothing divides and
+the amount is unchanged.
+
+`contract_size_divides` reads False for an absent contract size and False for a
+published zero, which no division can use. A published zero stays
+distinguishable from absent on the recorded row.
+
+| the venue published | the order path divides by |
+| --- | --- |
+| no contract size | nothing; the unit count is sent |
+| a contract size of one | nothing; one contract is one unit |
+| a contract size of a hundredth | a hundredth; 5 units send 500 contracts |
+| a contract size of zero | nothing; no division can use it |
+
+### What the operator reads
+
+A market with a contract size writes one more line before the order goes out. It
+names the contract count, the unit count and the units one contract stands for.
+The two size refusals and the step notice carry the same sentence, so a refused
+order says which count fell short.
+
+```
+SIZED IN CONTRACTS: BUY <market> names 500.0000000000 contracts on a size step
+of 1.0. One contract stands for 0.01 units, so 5.0000000000 units name
+500.0000000000 contracts.
+```
+
+A market with no contract size writes no such line. Its order lines read exactly
+as they read before.
+
+### What the contract size was driven against
+
+Driven in one process with the home redirected to a scratch directory, the
+transport replaced by one that raises, and no order sent. The recording was read
+and never written; its modification time is the same before and after every run.
+
+| the drive | the reading |
+| --- | --- |
+| one contract market, 5 units, a contract size of one | 5 contracts |
+| the same market, 5 units, a contract size of a hundredth | 500 contracts |
+| the same market, 0.0137 units, a contract size of a hundredth | 1 contract, floored from 1.37 |
+| a spot market with no contract size, 5 units | 5 units before, 5 units after |
+| the expiry close selling a 5 unit position, a contract size of a hundredth | 500 contracts |
+| the same close with no contract size and with a contract size of one | sends 5 in both |
+| every order decision over the whole recording | 1,146 markets, 27,504 answers, 0 moved |
+| the same decisions with a hundredth set on three sectors | 4,382 answers moved, 199 markets |
+| the arithmetic over 15 contract sizes and 11 unit counts | 165 pairs, 0 faults either way |
+
+The two whole-recording rows are a pair. The recording carries no contract size
+on any of its 1,146 rows, so nothing moves. The same reading, run against a
+contract size set on the futures, commodities and indices rows, moves 4,382 of
+27,504 answers across 199 markets, and every mover sits in those three sectors.
+Crypto, stocks and forex moved nothing in either run.
+
+The arithmetic row swept every pair of 15 contract sizes against 11 unit counts.
+A contract under one unit raised the count in all 55 of its pairs, a contract
+over one unit lowered it in all 33, and `units_for_contracts` returned every one
+of them to the unit count it started from.
+
+### What a contract size changes on screen
+
+Nothing yet. No row of the live recording carries a contract size, because the
+running build predates the field. The futures and commodities markets move once
+a build carrying the field records the venue again.
+## 2026-10-08 - an equity order names the one size shape its product permits
+
+One equity market takes three different size shapes at three hours of one day.
+Coinbase publishes a permission per side and per shape on every equity product,
+and the recording held none of them. A recorded row now carries both sides, and
+the order path names the shape that is left.
+
+`src/exchange/base.py`, in `MarketRules` - the two sides
+
+```python
+    buy_size_shapes: Optional[frozenset] = None  # size shapes a buy may name
+    sell_size_shapes: Optional[frozenset] = None  # size shapes a sell may name
+```
+
+### The three shapes a size field takes
+
+A size is a count of whole units, a count carrying a fraction, or a cash amount
+in the quote currency. `SIZE_SHAPES` in `src/trading/scrumming/sizing.py` holds
+the three names and nothing else. A name outside the three is no shape, so a
+corrupt recorded value widens nothing.
+
+```
+whole units          a positive whole count of the asset
+fractional units     a count carrying a fraction, floored onto the venue's step
+cash amount          an amount of the quote currency, not a count
+```
+
+### Where the permission is read
+
+The venue names the permission on the product itself. Its own reply carries one
+flag per side and per shape, and the connector library keeps the whole reply
+beside the parsed record. `equity_size_shapes` reads the flags off that reply.
+
+| the venue's own flag | the side | the shape it permits |
+| --- | --- | --- |
+| `buy_whole_shares` | buy | whole units |
+| `buy_fractional_shares` | buy | fractional units |
+| `buy_notional` | buy | cash amount |
+| `sell_whole_shares` | sell | whole units |
+| `sell_fractional_shares` | sell | fractional units |
+| `sell_notional` | sell | cash amount |
+
+A flag carries only a true or a false. Any other value is a reply this reader
+does not recognise, and it names no shape.
+
+### Which shape one order names
+
+Two things narrow the choice. The product's permission set names what the
+product allows, and the market's own session narrows that to whole units outside
+normal hours. `permitted_order_shape` answers the one shape both leave, reading
+the finest count first.
+
+```
+the product permits          the hour            the order names
+all three shapes             normal hours        fractional units
+all three shapes             outside them        whole units
+whole shares only            normal hours        whole units
+fractions only               outside them        nothing; refused
+```
+
+The finest count comes first so a product that allows a fraction keeps the step
+the venue published for it. A whole-unit order on this venue rides on a limit
+order, because a market buy here names a cash amount and not a count.
+
+### An absent permission is not a refusal
+
+A product that publishes no permission set is a different fact from one that
+publishes a set allowing nothing. The first is recorded as absent and sizes
+exactly as it sized before. The second is recorded as an empty list and every
+order into it is refused.
+
+| the venue published | on the row | what sizing does |
+| --- | --- | --- |
+| no permission set | absent | the session and the step size the order |
+| a set allowing nothing | an empty list | every order of that side is refused |
+| a set allowing a shape | the shape names | that shape sizes the order |
+
+### What a refused order says
+
+A refusal names the permission, never the step. `size_shape_refusal` writes one
+of three sentences, and each one names the cause the operator can act on.
+
+```
+PRE-FLIGHT REJECTED: BUY <market> 1.5700000000: the venue's own permission set
+for this product names no buy size shape, so no whole unit, no fraction and no
+cash amount may be named. The market is still read and still charted. API not
+called.
+
+PRE-FLIGHT REJECTED: BUY <market> 1.5700000000: the venue permits fractional
+units on a buy of this product, and its us_equity session takes a whole unit
+alone at this hour, so no shape is left to name. The market is still read and
+still charted. API not called.
+
+PRE-FLIGHT REJECTED: BUY <market> 1.5700000000: the venue permits a cash amount
+alone on a buy of this product, and cash-amount order is not built: a market
+sized by a cash amount in the quote currency. The market is still read and still
+charted. API not called.
+```
+
+The third sentence names a product that allows a cash amount and nothing else.
+The bot names a count of units, so no built variant sizes such an order. That is
+the cash-amount variant, which has no caller.
+
+### The variant this market selects
+
+`venue_variant` answers a sixth name for a market whose record publishes a
+permission set, and `VARIANTS_BUILT` holds it. The name says what it absorbs, as
+the other five do.
+
+```python
+VARIANT_PERMITTED_SHAPE = "permitted-shape order"
+
+VARIANTS_BUILT = frozenset(
+    {
+        VARIANT_NONE,
+        VARIANT_LIMIT_ONLY,
+        VARIANT_WHOLE_UNIT,
+        VARIANT_ROLLING_POSITION,
+        VARIANT_PERMITTED_SHAPE,
+    }
+)
+```
+
+### The path from the venue's reply to the size
+
+```mermaid
+flowchart TD
+    A[the venue publishes equity_trading_flags on the product] --> B[equity_size_shapes reads one flag per side and shape]
+    B --> C[market_rules writes buy_size_shapes and sell_size_shapes]
+    C --> D[rules_row records both as sorted lists]
+    D --> E[recorded_rules reads them back as sets]
+    E --> F[permitted_order_shape names the shape the set and the session leave]
+    F --> G[market_unit_rule answers the rule that shape sizes under]
+    G --> H[sized_order floors the amount onto the venue's step]
+    H --> I[place_order receives the count]
+```
+
+### What the size shape was driven against
+
+Driven in one process with the home redirected to a scratch directory, the
+transport replaced by one that raises, and no order sent. The recording was read
+and never written; its modification time is the same before and after every run.
+
+| the drive | the reading |
+| --- | --- |
+| one equity market, normal hours, all shapes permitted | 1.57 units, a market order |
+| the same market outside normal hours | 1 whole unit, then held |
+| the same market, normal hours, whole shares only on a buy | 1 whole unit, a limit order |
+| a buy of 1.57 opening a position under whole shares only | refused at two units |
+| a buy of 2.4 opening a position under whole shares only | 2 whole units |
+| a sell of 1.57, all shapes permitted | 1.57 units |
+| a sell of 1.57, whole shares only on a sell | 1 whole unit |
+| a permission set allowing nothing | refused, naming the permission |
+| a product the venue marks not tradable | refused, naming the permission |
+| a permission set allowing a cash amount alone | refused, naming the cash shape |
+| fractions only, outside normal hours | refused, naming both causes |
+| the venue's own reply through the recording to the order | 1 whole unit on a buy, 1.57 units on a sell |
+| every order decision over the whole recording | 1,146 markets, 27,504 answers, 0 moved |
+| the same decisions with a whole-unit permission on the equity rows | 528 answers moved, 33 markets |
+
+The last two rows are a pair. No row of the live recording carries a permission
+set, so nothing moves. The same reading, run against a whole-unit permission set
+written onto the 33 recorded equity rows, moves 528 of 27,504 answers, and every
+mover sits in those 33 markets.
+
+### What a permitted shape changes on screen
+
+Nothing yet. No row of the live recording carries a permission set, because the
+running build predates the field. The 33 recorded equity markets size by their
+own permission once a build carrying the field reads Coinbase again.
+
+### Which of Coinbase's six sectors are complete
+
+Five of the six now have every order form their market shape needs. Forex has no
+published order route on this venue, so its recorded markets are crypto spot
+markets and the first row covers them.
+
+| sector | the shape it needs | complete |
+| --- | --- | --- |
+| crypto | a count of units, a fraction or a whole one | yes |
+| stocks | the shape its session and its permission leave | yes |
+| futures and perpetuals | a count of contracts on a dated market | yes |
+| commodities | a count of contracts, or a count of units | yes |
+| indices | a count of contracts | yes |
+| forex | no published order route on this venue | no route to build |
+
+### The two counts this entry corrects
+
+Two sentences above carry the number of variant names. Both are corrected where
+they stand, because the program now holds a sixth name.
+
+## 2026-10-08 - Robinhood's crypto sector reaches an order, and its other sectors do not
+
+Robinhood is the sixteenth crypto venue and the first that `ccxt` does not
+carry. `'robinhood' in ccxt.exchanges` answers False on `ccxt` 4.5.85, so no
+`CCXTConnector` can reach it and the connector is hand-written.
+
+```python
+# src/exchange/robinhood_connector.py, in RobinhoodCryptoConnector
+class RobinhoodCryptoConnector(ExchangeInterface):
+```
+
+### Which of Robinhood's sectors the program reaches
+
+One of six. Robinhood sells a product in five sectors and publishes a
+programmatic order route for three of them, and two of those three are reachable
+only through a Model Context Protocol server this repository holds no client
+for.
+
+| sector | Robinhood's own route | reached today |
+| --- | --- | --- |
+| crypto | the signed Crypto Trading API | yes |
+| stocks | `place_equity_order` on the Trading MCP | no client for the protocol |
+| indices | `place_option_order` on the Trading MCP | no client for the protocol |
+| commodities | a fund share through `place_equity_order` | no client for the protocol |
+| forex | no published order route | no route to build |
+| futures and perpetuals | no published order route | no route to build |
+
+Every verdict is read from Robinhood's own pages, quoted with its URL, in
+[../audits/2026-10-08_robinhood_order_interface/REPORT.md](../audits/2026-10-08_robinhood_order_interface/REPORT.md).
+
+### Why it is a crypto connector and not a broker one
+
+`BrokerBase` in `src/stocks/broker_base.py` declares an order with no client
+order id and answers a `StockOrder`. Robinhood's crypto order body requires a
+client order id as a valid UUID, and the order path asks for one on every
+submission, so the equities contract cannot carry a Robinhood crypto order.
+
+```python
+# src/trading/bot_container.py, in guarded_place_order, at the submitting call
+            order = await self.exchange.place_order(
+                symbol, side, order_type, amount, price, client_order_id=_coid
+            )
+```
+
+### Where the venue id is read
+
+The crypto sector reads two registries now. `SUPPORTED_EXCHANGES` still holds
+fifteen `ccxt` ids and gains nothing, and `CRYPTO_CONNECTORS` holds each venue
+whose connector is written by hand.
+
+```python
+# src/gui/main_tabs/asset_class_surface.py, in crypto_venues
+    return ccxt_crypto_venues() | written_crypto_venues()
+```
+
+`venue_classes` answers `crypto` alone for this venue, because
+`EXTRA_VENUE_CLASSES` holds no row for it and `EQUITY_VENUES` does not name it.
+A sector with no order route is not listed.
+
+### The order body the venue receives
+
+Four fields and the configuration object the order type requires. A market
+order and a limit order both name a count of the asset through
+`asset_quantity`, so the units the venue credits are the units the scrum asked
+for.
+
+```python
+# src/exchange/robinhood_connector.py, in order_body
+    return {
+        "symbol": named,
+        "client_order_id": client_order_uuid(client_order_id),
+        "side": OrderSide(side).value,
+        "type": kind,
+        ORDER_CONFIG_KEYS[kind]: config,
+    }
+```
+
+### The cash amount this venue publishes and the bot does not name
+
+Robinhood permits `quote_amount` in place of `asset_quantity` on all four of its
+order configurations. `pair_rules` records both shapes, so
+`permitted_order_shape` answers `SHAPE_FRACTIONAL_UNITS` and the order names a
+count. `VARIANT_CASH_AMOUNT` stays outside `VARIANTS_BUILT`, because no
+Robinhood market permits a cash amount alone and nothing selects the variant.
+
+```python
+# src/trading/scrumming/sizing.py, at VARIANTS_BUILT
+#: The variants the running program holds. ``VARIANT_CASH_AMOUNT`` has no caller.
+```
+
+### How a request is signed
+
+`signed_headers` answers the three headers Robinhood requires, over the API
+key, the timestamp, the path, the method and the body, with the body omitted on
+a request that carries none. The signature is Ed25519 and `signature` reads the
+stored key as a base64 seed.
+
+```python
+# src/exchange/robinhood_connector.py, in signed_message
+    return f"{api_key}{timestamp}{path}{str(method).upper()}{body or ''}"
+```
+
+A locally generated key signs the message and its public half verifies the
+result, and the same signature fails against a message of one extra character.
+Whether Robinhood's own host accepts the message is unproved: that needs a
+request, a key and an account, and none exists.
+
+### What reads and what refuses
+
+`place_order` is the only method that builds a request. Every read method raises
+`RobinhoodPathUnpublished`, because Robinhood publishes the two order paths and
+no read path, so a price, a book, a candle, a balance, an order status and a
+cancel all answer the same refusal. `get_markets` raises the same refusal until
+`record_pairs` holds a trading-pair record.
+
+| the condition | what happens |
+| --- | --- |
+| no key and no private key stored | `RobinhoodOrderRefused`, nothing signed |
+| a symbol holding no pair record | `RobinhoodOrderRefused`, nothing signed |
+| a pair reading `is_api_tradable` False | `RobinhoodOrderRefused`, still charted |
+| an immediate-or-cancel order | `RobinhoodOrderRefused`, no such time in force |
+| a market order on a held pair | a signed POST to the order path |
+
+### What the Robinhood order was driven against
+
+No request reached Robinhood. The runtime home was redirected to a scratch
+directory, `_send` was replaced by a recorder that raises, and the real
+recording's modification time was the same before and after.
+
+A scrum of $25 of excess on a market at $0.21436 reached the transport as
+`asset_quantity` of `116.63` against a size step of `0.000001`. Raising the
+excess to $50 and to $100 doubled and quadrupled that count. An order with no
+key stored and an order on an unlisted market each handed the transport nothing.
+
+Every recorded market was read through the order path before and after this
+change: 1,146 markets, 28 readings each, 32,088 answers, and 0 moved. The same
+reading taken against one deliberately changed comparison in `recorded_unit_rule`
+moved 4,184 answers across 726 markets, so a zero from it is a reading and not a
+silence.
+
+### What is not built
+
+A Robinhood bot is created and charted and starts holding no market.
+`MainWindow._connect_exchange_for_bot` reads `broker_connector_class` and then
+`crypto_connector_class`, so the Robinhood connector is constructed from the
+window on a Start press. The venue's own trading-pair path is also unpublished, so
+nothing fetches a market list.
+
+### The three paths a Start press can take
+
+One press, three connector paths, and the venue id picks one.
+`src/gui/main_window.py`, in `_connect_exchange_for_bot` reads the two class
+registries in order and falls through to the trading library.
+
+| the venue id answers | the path | what is constructed |
+| --- | --- | --- |
+| `broker_connector_class` | `_connect_broker_for_bot` | the `BrokerBase` subclass named for the venue |
+| `crypto_connector_class` | `_connect_written_crypto_for_bot` | the hand-written `ExchangeInterface` subclass named for the venue |
+| neither | the rest of `_connect_exchange_for_bot` | `CCXTConnector`, which asks the trading library for the venue |
+
+```python
+# src/gui/main_window.py, in _connect_exchange_for_bot
+            if broker_connector_class(eid) is not None:
+                return self._connect_broker_for_bot(bot)
+
+            if crypto_connector_class(eid) is not None:
+                return self._connect_written_crypto_for_bot(bot)
+```
+
+Each path reuses the one connector held for the venue, so a second bot on a
+venue holds the object the first bot built. `_live_connector` answers the held
+connector while it reports connected and releases it otherwise, and `_held_broker`
+answers the held broker whether or not its session is open.
+
+```mermaid
+flowchart TD
+    A[Start pressed on a bot row] --> B[_on_bot_command, command start]
+    B --> C[_connect_exchange_for_bot]
+    C --> D{broker_connector_class answers a class}
+    D -->|yes| E[_connect_broker_for_bot]
+    D -->|no| F{crypto_connector_class answers a class}
+    F -->|yes| G[_connect_written_crypto_for_bot]
+    F -->|no| H[CCXTConnector, then sync_connect]
+    E --> K[bot.exchange is the connector]
+    G --> K
+    H --> K
+    K --> L[bot.start scheduled]
+```
+
+### What the hand-written crypto path does and does not read
+
+`_written_crypto_credential` reads the venue's stored row and decrypts three
+values: the API key, the signing key, and the account number the order path
+takes. `connect` holds all three and sends nothing, so `is_connected` reports
+whether a credential is held and not whether the venue answered.
+
+The path calls no read method. Robinhood publishes no market list path and no
+balance path, so a Robinhood bot starts with no market rules recorded and no
+balance checked, and `src/trading/bot_container.py`, in `guarded_place_order`
+sizes against the rules `record_pairs` records.
+
+Three refusals, each naming its own case, and none of them constructs a
+connector.
+
+| the condition | what the status line says |
+| --- | --- |
+| no API key or no signing key stored | `No API credentials for Robinhood. Add them in Settings. No connector was built.` |
+| the connector holds no credential after `connect` | `The Robinhood connector holds no credential, so no request can be signed.` |
+| no registry names a class for the venue id | `Exchange <id> not found in settings. Add it in Settings first.` |
+
+### What the Start press was driven against
+
+No venue was contacted. The runtime home was redirected to a scratch directory,
+every off-machine socket connect raised, `CCXTConnector.sync_connect`,
+`AlpacaConnector.open_session` and `RobinhoodCryptoConnector._send` were each
+replaced by a call that raises, and each replacement was shown to raise before
+the first press. The real recording's modification time was the same before and
+after.
+
+A Start press on a Robinhood bot built a `RobinhoodCryptoConnector`, set it as
+the bot's `exchange`, handed it to `BotManager.set_connector`, and scheduled
+`bot.start`. Two bots on the venue held one connector carrying both their
+symbols; with the reuse removed, the same reading gave two connectors carrying
+one symbol each. The ccxt press and the broker press each read the same seven
+lines before and after, and the Robinhood press was the one reading that moved.

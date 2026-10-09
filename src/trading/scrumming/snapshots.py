@@ -410,13 +410,19 @@ class SnapshotEmitterMixin(_Host):
         (manual fire, self_destruct, manual rebalance, detonation) see the
         most-recent autonomous tick's state — informational, not
         authoritative (the consumer differentiates via trade_action).
+
+        ``asset_class`` carries ``BotContainer._asset_class`` for the traded
+        symbol, which is the sector ``LogManager._gate_writer_for`` files the
+        decision under.
         """
+        symbol = getattr(self.config, "symbol", "") or ""
         try:
             self._bus.emit(
                 "bot.gate_decision",
                 bot_id=self.bot_id,
                 exchange=getattr(self.config, "exchange_id", "") or "",
-                symbol=getattr(self.config, "symbol", "") or "",
+                asset_class=self._asset_class(symbol),
+                symbol=symbol,
                 side=str(side or "").upper(),
                 trade_action=str(trade_action or "") or "",
                 scrum_armed=bool(self._last_gate_state.get("scrum_armed", False)),

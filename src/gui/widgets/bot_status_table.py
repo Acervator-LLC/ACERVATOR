@@ -10,6 +10,7 @@ from .. import design_system as ds
 from ..main_tabs.bot_status_table_surface import (
     BOT_ID_COLUMN,
     BROWSER_NEW_WINDOW,
+    BUTTON_HEIGHT_PX,
     COLUMN_LABELS,
     COLUMN_TOOLTIPS,
     FIXED_WIDTHS,
@@ -804,7 +805,7 @@ if _HAS_QT:
             )
             # Masking is display only; the button stays clickable.
             fire_btn = QPushButton(mask_or("Fire", "bot_table.fire"))
-            fire_btn.setFixedHeight(22)
+            fire_btn.setFixedHeight(BUTTON_HEIGHT_PX)
             # NoFocus stops Qt's autoScroll from jumping the table on a focus grab.
             fire_btn.setFocusPolicy(Qt.NoFocus)
             is_scrumming = mode == "scrumming"
@@ -1013,7 +1014,7 @@ if _HAS_QT:
             self.setCellWidget(row, 8, fire_btn)
 
             detail_btn = QPushButton("Detail")
-            detail_btn.setFixedHeight(22)
+            detail_btn.setFixedHeight(BUTTON_HEIGHT_PX)
             detail_btn.setStyleSheet("font-size: 10px; padding: 1px 6px;")
             detail_btn.setToolTip(
                 "View full bot status, configuration, and error details"

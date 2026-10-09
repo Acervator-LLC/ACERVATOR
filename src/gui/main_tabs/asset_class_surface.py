@@ -141,13 +141,13 @@ EXTRA_VENUE_CLASSES = {
         "indices",
         "futures_perps",
     ),
-    "binance": ("stocks", "commodities", "futures_perps"),
+    "binance": ("stocks", "commodities", "forex", "indices", "futures_perps"),
     "bitfinex": ("commodities", "indices", "futures_perps"),
     "bitget": ("stocks", "commodities", "indices", "futures_perps"),
     "bitstamp": ("commodities", "forex"),
     "bybit": ("futures_perps",),
     "cryptocom": ("stocks", "futures_perps"),
-    "gateio": ("stocks", "commodities"),
+    "gateio": ("stocks", "commodities", "forex", "indices", "futures_perps"),
     "gemini": ("commodities", "forex", "futures_perps"),
     "huobi": ("stocks",),
     "kraken": ("stocks", "commodities", "indices", "futures_perps"),
@@ -429,13 +429,32 @@ def accent(name: Any) -> str:
     return CLASS_ACCENTS.get(normalise(name), DEFAULT_ACCENT)
 
 
-def crypto_venues() -> frozenset:
+def ccxt_crypto_venues() -> frozenset:
     """Every venue id ``SUPPORTED_EXCHANGES`` lists, or none while it is absent."""
     try:
         from src.exchange.ccxt_connector import SUPPORTED_EXCHANGES
     except Exception:  # noqa: BLE001 - the connector is optional at import time
         return frozenset()
     return frozenset(SUPPORTED_EXCHANGES)
+
+
+def written_crypto_venues() -> frozenset:
+    """Every venue id ``CRYPTO_CONNECTORS`` holds a hand-written class for, or
+    none while that connector is absent."""
+    try:
+        from src.exchange.robinhood_connector import hand_written_crypto_venues
+    except Exception:  # noqa: BLE001 - the connector is optional at import time
+        return frozenset()
+    return frozenset(hand_written_crypto_venues())
+
+
+def crypto_venues() -> frozenset:
+    """Every venue id either crypto connector registry lists.
+
+    ccxt carries no entry for a hand-written venue, so ``ccxt_crypto_venues``
+    alone would list it under no sector.
+    """
+    return ccxt_crypto_venues() | written_crypto_venues()
 
 
 def retired_onto(name: Any) -> str:

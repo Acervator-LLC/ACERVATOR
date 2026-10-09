@@ -44,9 +44,13 @@ ACCESSIBLE_NAME = "React Settings Dialog"
 DIALOG_STYLE_ASSETS: tuple[str, ...] = ("settings_dialog.css",)
 
 #: The three scripts the page carries. Order is load order.
+#: ``header_strip.js`` owns the rule that turns a Qt style sheet into CSS, and
+#: ``settings_dialog.js`` reads it off ``window.acervatorHeader``, so the venue
+#: array's Sector button skin reaches the page only while it is loaded first.
 DIALOG_SCRIPT_ASSETS: tuple[str, ...] = (
     "vendor/react.production.min.js",
     "vendor/react-dom.production.min.js",
+    "header_strip.js",
     "settings_dialog.js",
 )
 
@@ -54,6 +58,9 @@ DIALOG_BODY = f'<div id="{DIALOG_ROOT_ID}"></div>'
 
 #: The count of drawn controls, read back off the page.
 CONTROL_COUNT_JS = "document.querySelectorAll('[data-part=\"control\"]').length"
+
+#: What ``QListWidget.currentRow`` reports while no line is selected.
+NO_SELECTED_ROW = -1
 
 #: The bridge this host answers. The Electron shell binds ``window.acervator``
 #: in its own preload, so this source is never a file under ``src/gui/web``.
@@ -201,7 +208,7 @@ class PageLine(_Held):
         held = self._get()
         return "" if held is None else str(held)
 
-    def setText(self, words: Any) -> None:  # noqa: N802
+    def setText(self, words: Any) -> None:
         """Put ``words`` in the field and redraw."""
         self._put("" if words is None else str(words))
 
@@ -209,7 +216,7 @@ class PageLine(_Held):
         """Empty the field and redraw."""
         self._put("")
 
-    def setVisible(self, shown: Any) -> None:  # noqa: N802
+    def setVisible(self, shown: Any) -> None:
         """Show or hide the field and redraw."""
         self._owner.set_visible(self._name, bool(shown))
 
@@ -217,7 +224,7 @@ class PageLine(_Held):
 class PageTextArea(_Held):
     """A block of text, as ``QTextEdit`` reports it."""
 
-    def toPlainText(self) -> str:  # noqa: N802
+    def toPlainText(self) -> str:
         """Every line in the box, with no markup."""
         held = self._get()
         return "" if held is None else str(held)
@@ -230,11 +237,11 @@ class PageTextArea(_Held):
 class PageToggle(_Held):
     """A tick box, as ``QCheckBox`` reports it."""
 
-    def isChecked(self) -> bool:  # noqa: N802
+    def isChecked(self) -> bool:
         """True while the box is ticked."""
         return self._get() is True
 
-    def setChecked(self, ticked: Any) -> None:  # noqa: N802
+    def setChecked(self, ticked: Any) -> None:
         """Tick or clear the box and redraw."""
         self._put(bool(ticked))
 
@@ -246,7 +253,7 @@ class PageNumber(_Held):
         """The number the control is showing."""
         return self._get()
 
-    def setValue(self, number: Any) -> None:  # noqa: N802
+    def setValue(self, number: Any) -> None:
         """Show ``number`` and redraw. The spec's kind decides the type."""
         self._put(number)
 
@@ -276,31 +283,31 @@ class PageCombo(_Held):
             return None
         return self._items[at] if 0 <= at < len(self._items) else None
 
-    def currentText(self) -> str:  # noqa: N802
+    def currentText(self) -> str:
         """The words the drop-down is showing."""
         one = self._at()
         if one is None:
             return ""
         return str(one[0]) if isinstance(one, list) else str(one)
 
-    def currentData(self) -> Any:  # noqa: N802
+    def currentData(self) -> Any:
         """The value carried beside the words, or None for a plain list."""
         one = self._at()
         if one is None:
             return None
         return one[1] if isinstance(one, list) else None
 
-    def setCurrentIndex(self, at: Any) -> None:  # noqa: N802
+    def setCurrentIndex(self, at: Any) -> None:
         """Show the choice at ``at`` and redraw."""
         self._put(at)
 
-    def setCurrentText(self, words: Any) -> None:  # noqa: N802
+    def setCurrentText(self, words: Any) -> None:
         """Show the choice whose words are ``words``, if the list holds it."""
         at = self.findText(words)
         if at >= 0:
             self._put(at)
 
-    def findText(self, words: Any) -> int:  # noqa: N802
+    def findText(self, words: Any) -> int:
         """The position of ``words`` in the list, or -1."""
         for at, one in enumerate(self._items):
             found = one[0] if isinstance(one, list) else one
@@ -308,7 +315,7 @@ class PageCombo(_Held):
                 return at
         return -1
 
-    def findData(self, value: Any) -> int:  # noqa: N802
+    def findData(self, value: Any) -> int:
         """The position of the choice carrying ``value``, or -1."""
         for at, one in enumerate(self._items):
             if isinstance(one, list) and one[1] == value:
@@ -332,7 +339,7 @@ class PageList(_Held):
 
     def __init__(self, owner: Any, name: str) -> None:
         super().__init__(owner, name)
-        self._current = -1
+        self._current = NO_SELECTED_ROW
 
     def _lines(self) -> list:
         held = self._get()
@@ -342,7 +349,7 @@ class PageList(_Held):
         """How many lines the list holds."""
         return len(self._lines())
 
-    def addItem(self, words: Any) -> None:  # noqa: N802
+    def addItem(self, words: Any) -> None:
         """Append ``words`` as the last line and redraw."""
         lines = self._lines()
         lines.append(str(words))
@@ -359,14 +366,22 @@ class PageList(_Held):
             return None
         return ListRow(lines[found])
 
-    def setCurrentRow(self, at: Any) -> None:  # noqa: N802
+    def setCurrentRow(self, at: Any) -> None:
         """Select the line at ``at``."""
         try:
             self._current = int(at)
         except (TypeError, ValueError):
-            self._current = -1
+            self._current = NO_SELECTED_ROW
 
-    def currentItem(self) -> Optional[ListRow]:  # noqa: N802
+    def currentRow(self) -> int:
+        """The selected line's index, ``NO_SELECTED_ROW`` while none is.
+
+        ``_draw_venue_array`` reads this to mark the venue button a press
+        bound, so the page draws the same checked segment the Qt array does.
+        """
+        return self._current
+
+    def currentItem(self) -> Optional[ListRow]:
         """The selected line, or None while nothing is selected."""
         lines = self._lines()
         if 0 <= self._current < len(lines):
@@ -379,7 +394,7 @@ class PageList(_Held):
         lines = self._lines()
         return lines.index(words) if words in lines else -1
 
-    def takeItem(self, at: Any) -> Optional[ListRow]:  # noqa: N802
+    def takeItem(self, at: Any) -> Optional[ListRow]:
         """Remove the line at ``at``, redraw, and return it."""
         lines = self._lines()
         try:
@@ -406,11 +421,11 @@ class PageText:
         held = self._owner.store().texts.get(self._name)
         return "" if held is None else str(held)
 
-    def setText(self, words: Any) -> None:  # noqa: N802
+    def setText(self, words: Any) -> None:
         """Show ``words`` and redraw."""
         self._owner.set_text(self._name, "" if words is None else str(words))
 
-    def setStyleSheet(self, sheet: Any) -> None:  # noqa: N802
+    def setStyleSheet(self, sheet: Any) -> None:
         """Paint the label with ``sheet`` and redraw."""
         self._owner.set_style(self._name, "" if sheet is None else str(sheet))
 
@@ -422,11 +437,11 @@ class PagePress:
         self._owner = owner
         self._name = name
 
-    def isEnabled(self) -> bool:  # noqa: N802
+    def isEnabled(self) -> bool:
         """True while the button takes a press."""
         return self._owner.store().enabled.get(self._name) is True
 
-    def setEnabled(self, on: Any) -> None:  # noqa: N802
+    def setEnabled(self, on: Any) -> None:
         """Take presses or refuse them, and redraw."""
         self._owner.set_enabled(self._name, bool(on))
 
@@ -456,6 +471,7 @@ PRESS_NAMES: tuple[str, ...] = tuple(surface.BUTTON_NAMES_BY_TEXT.values())
 
 #: What the page reports a press of each button as, and the method it runs.
 ACTION_HANDLERS: dict[str, str] = {
+    "venue_pages_btn": "_next_venue_page",
     "test_btn": "_test_api_connection",
     "add_btn": "_add_exchange",
     "remove_btn": "_remove_exchange",
@@ -530,6 +546,7 @@ if _HAS_QT and _HAS_WEBENGINE:
             self._model.build()
             self._tab = surface.TAB_TITLES[0]
             self._page_ready = False
+            self._venue_page = 0
             self._last_model: dict = {}
             self._passphrase_exchanges = surface.passphrase_exchange_ids()
             self._build_holders()
@@ -609,6 +626,7 @@ if _HAS_QT and _HAS_WEBENGINE:
                 )
                 for spec in found["control_specs"]
             ]
+            found["exchange_status"].update(self._venue_array_payload())
             self._last_model = found
             if self._page_ready:
                 self._run(push_script(found, self._tab))
@@ -672,6 +690,41 @@ if _HAS_QT and _HAS_WEBENGINE:
             handler = ACTION_HANDLERS.get(str(asked.get("key") or ""))
             if handler is not None:
                 getattr(self, handler)()
+
+        def _venue_array_payload(self) -> dict:
+            """The venue array's page, its pages control and the bound row.
+
+            ``build_view_model`` answers page zero, so the page the operator
+            paged to is read from ``_venue_page`` here, exactly as the Qt
+            build's ``_draw_venue_array`` reads it. ``group_spacing`` carries
+            the gap the Sector segmented group leaves, so the array shares its
+            borders rather than naming a figure of its own.
+            """
+            from .main_tabs import asset_class_surface as acs
+
+            sector = self._status_class()
+            states = self._model.venue_states
+            pages = surface.venue_pages_button(sector, self._venue_page, states)
+            self._venue_page = pages["page"]
+            return {
+                "page": [
+                    dict(one)
+                    for one in surface.exchange_status_page(
+                        sector, self._venue_page, states
+                    )
+                ],
+                "pages": pages,
+                "selected": self._exchange_list.currentRow(),
+                "group_spacing": acs.GROUP_SPACING_PX,
+            }
+
+        def _next_venue_page(self) -> None:
+            """Draw the next page of the venue array, the first after the last."""
+            pages = surface.venue_page_count(
+                self._status_class(), self._model.venue_states
+            )
+            self._venue_page = surface.venue_next_page(self._venue_page, pages)
+            self.redraw()
 
         def _refresh_exchange_status(self) -> None:
             """Put the recorded venue states on the model and redraw the page.

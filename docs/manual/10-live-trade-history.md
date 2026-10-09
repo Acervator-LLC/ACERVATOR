@@ -1262,6 +1262,94 @@ A fill with no entry reads "no record" in the Gates column, and its tooltip
 says no gate record joined to the trade. Nothing measures coverage over a set
 of fills, and nothing names a reason a fill has no gate.
 
+### One gate log per exchange and per sector
+
+A decision is written to the venue it was taken on and the sector of the market
+it was taken in. The path is `trade/gate/<exchange>/<sector>/gate.log` under the
+log root, and the row carries its own sector in `data.asset_class`, so a row
+names the file it is in.
+
+```
+~/.acervator_logs/trade/gate/coinbase/crypto/gate.log
+~/.acervator_logs/trade/gate/robinhood/crypto/gate.log
+~/.acervator_logs/trade/gate/robinhood/stocks/gate.log
+```
+
+`src/core/log_paths.py, in gate_log_path` composes it, and `path_segment` folds
+each name to one lowercase directory, so a venue id cannot reach a parent
+directory through the path. `src/core/logging_engine.py, in
+LogManager._gate_writer_for` holds one writer per pair and opens it on the first
+decision, so every bot on one venue trading one sector appends to a single file.
+
+The sector reaches the writer from the bot.
+`src/trading/scrumming/snapshots.py, in _emit_gate_decision_at_fire` reads
+`BotContainer._asset_class` for the traded symbol, which answers the sector the
+venue's market recording holds, then the sector the bot's own config declares,
+then crypto. The Simulator answers the same question through
+`src/simulator/sim_bus.py, in sim_asset_class`, so a sim decision is filed where
+its live twin is filed.
+
+Each pair's active file rotates at 50 MB and keeps five backups, so one pair
+bounds at 300 MB and each further pair adds 300 MB of its own.
+
+#### Reading every decision, wherever it was written
+
+`src/core/log_paths.py, in gate_log_files` lists every gate log once: the
+pre-split file while it is still there, then each pair's archive members,
+rotations and active file. Every reader goes through it.
+
+| reader | what it draws |
+|---|---|
+| `src/trading/live_log_reader.py, in live_gate_decisions` | the entries the History tab and the parity tools join against |
+| `src/exchange/history_helpers.py, in build_page_gate_index` | the per-page bot-and-minute index |
+| `src/gui/history_tab.py, in read_join_indexes` | the same index, read off the GUI thread |
+| `src/simulator/gate_log_source.py, in GateLogSource.files` | the Simulator's read-only `GateRow` records |
+| `src/simulator/sim_bus.py, in sim_log_paths` | the paths the parity report prints |
+| `tools/capture_live_baseline.py, in gate_members` | the baseline snapshot's latch distribution |
+
+#### What became of the records written before the split
+
+`src/core/logging_engine.py, in migrate_legacy_gate_logs` carries them, once,
+when the first `LogManager` of a build with this layout is built. It runs before
+any gate writer opens, so no handle is held on a file it moves.
+
+Each pre-split file leaves every reader's view in one rename before any bucket
+file appears, under a `.consumed-` name the archive member will take. A file
+whose records all belong to one pair is then renamed again into that pair's
+archive, with no byte copied. A file holding more than one pair is streamed into
+a `.pending-` file per pair, and each is promoted in turn. A carry cut short
+leaves the `.consumed-` name in place and the next `LogManager` finishes it, so
+a decision is never recorded twice.
+
+An archive member never rotates and nothing prunes it. The records are
+decisions behind real fills, not a running stream.
+
+Measured over a full-size copy of the operator's own gate records, with no write
+to his tree:
+
+```
+in     6 files   167,947 decisions   268,798,267 bytes
+out    7 files   167,947 decisions   268,798,267 bytes   1.81 seconds
+
+gate/coinbase/crypto/archive/     6 files, the five rotations and the active file
+gate/fleet_sim/crypto/archive/    1 file, 136 decisions an older simulator wrote
+```
+
+The byte totals are equal because the carry copies each line as the bytes on
+disk hold it. The two destinations are the two values the `exchange` field
+carries across those records: `coinbase` on 167,811 of them and `fleet_sim` on
+136. No record carried a sector, so every one is filed under the sector
+`src/core/logging_engine.py, in default_gate_sector` answers, which is the
+sector `BotContainer._asset_class` answers for a market the recording labels
+none.
+
+Two controls were read on the same copy. A comparison of the line sets before
+and against after reports `lost=1` when one decision is removed from the result
+and `duplicated=1` when one is repeated, so the equal reading above is a
+measurement. A carry interrupted after its first pair was promoted reads 3,245
+of 3,381 decisions readable, 136 lost and 0 duplicated; the next `LogManager`
+reads 3,381, 0 lost and 0 duplicated.
+
 ## Weekly candles behind the fills
 
 The 38 charts above draw fills. This set draws the market those fills ran in.

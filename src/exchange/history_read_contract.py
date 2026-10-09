@@ -57,15 +57,20 @@ FETCH_POLL_INTERVAL_S = 0.4
 """``HistoryTab`` polls the fetch future on a 400 ms timer, so an observed
 fetch latency is the true latency plus up to one interval."""
 
-FETCH_TIMEOUT_S = 60.0
-"""``HistoryTab`` abandons a fetch after 60 s."""
+FETCH_TIMEOUT_S = 300.0
+"""``HistoryTab`` abandons a fetch after 300 s.
+
+The same 300 s ``_on_main_tab_changed`` treats a fetch as stale after, so the
+tab stops waiting exactly when what the fetch would deliver is no longer
+current. ``fetch_all_history_chunked`` waits per symbol for a free venue call
+queue, so a fetch under load takes longer than the venue calls alone."""
 
 STATUS_TEXT = {
     "idle": "No history loaded yet — click Refresh.",
     "no_bot_manager": "Bot manager unavailable — cannot fetch history.",
     "no_async_loop": "Async loop not ready — try again after platform starts.",
     "fetching": "Fetching trade history from exchanges…",
-    "timeout": "Fetch timeout (60s). Exchange may be rate-limited; try again.",
+    "timeout": "Fetch timeout (300s). Exchange may be rate-limited; try again.",
 }
 """The five fixed status strings shown before any row exists. The two
 variable ones are ``Schedule failed: {exc}`` and
@@ -126,9 +131,10 @@ COLUMNS: tuple[HistoryColumn, ...] = (
         11,
         "gates",
         "Gates",
-        "Join against ~/.acervator_logs/trade/gate.log entries "
-        "within ±60s of the trade. Hover any cell for the full "
-        "scrum/fold arm state + blocker list at trade time.",
+        "Join against the ~/.acervator_logs/trade/gate/<exchange>/"
+        "<sector>/gate.log entries within ±60s of the trade. Hover "
+        "any cell for the full scrum/fold arm state + blocker list "
+        "at trade time.",
     ),
     HistoryColumn(
         12,

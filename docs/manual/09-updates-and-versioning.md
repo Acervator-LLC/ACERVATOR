@@ -21,13 +21,27 @@ Group entries under `Added`, `Changed`, `Deprecated`, `Removed`, `Fixed` or
 
 ## Where the number comes from
 
-One resolver answers the version, and no file in the tree writes it down. It runs
-`git describe` against a tag pattern that admits only a tag beginning with a v
-and a digit, then turns that output into the reported string. The package
-initialiser calls the resolver once at import and binds the answer.
+One resolver answers the version, and no file in the tree writes it down. The
+package initialiser calls the resolver once at import and binds the answer.
+
+### The tag-pattern sentence, overtaken
+
+OVERTAKEN, quoted whole:
+
+> "It runs `git describe` against a tag pattern that admits only a tag beginning
+> with a v and a digit, then turns that output into the reported string."
 
 ```python
 TAG_GLOB = "v[0-9]*"                        # src/_version.py
+```
+
+True today: the match is one exact tag name, not a pattern. `src/_version.py`
+builds `RELEASE_TAG` as a v in front of the release number, and `describe`
+hands that one name to git as the only eligible tag. A machine missing that tag
+gets no version from a nearer one.
+
+```python
+RELEASE_TAG = f"v{RELEASE}"                 # src/_version.py
 def describe(root: str | Path) -> str: ...
 def format_describe(text: str) -> str: ...
 def resolve_version(root: str | Path | None = None) -> str: ...
@@ -35,18 +49,29 @@ def resolve_version(root: str | Path | None = None) -> str: ...
 __version__ = resolve_version()             # src/__init__.py
 ```
 
-Three checks hold that shape in place. The first fails the moment the package
-initialiser gains a written-in number. The second drives a tree whose nearest tag
-is a local backup name and asserts the resolver skips it. The third drives the
-same tree without the tag pattern and asserts the backup tag does come back. That
-last one is the control on the second: without it, a green could mean nothing
-more than a tree carrying no backup tag.
+### The three resolver checks, overtaken
+
+OVERTAKEN, quoted whole:
+
+> "Three checks hold that shape in place. The first fails the moment the package
+> initialiser gains a written-in number. The second drives a tree whose nearest
+> tag is a local backup name and asserts the resolver skips it. The third drives
+> the same tree without the tag pattern and asserts the backup tag does come
+> back. That last one is the control on the second: without it, a green could
+> mean nothing more than a tree carrying no backup tag."
 
 ```python
 def test_src_init_holds_no_version_literal() -> None: ...       # tests/test_version_resolution.py
 def test_a_backup_tag_never_becomes_the_version(tmp_path) -> None: ...
 def test_the_unguarded_form_would_adopt_a_backup_tag(tmp_path) -> None: ...
 ```
+
+True today: no check holds the shape. The file named above is not in the tree,
+and the repository tracks one Python module under `tests/`, its own conftest.
+
+The code still carries the guard. `src/_version.py`, in `describe`, hands git
+one exact tag name, so a local backup tag is never eligible. The package
+initialiser holds no written-in number and reads the resolver instead.
 
 **Overtaken.** These two sentences stay whole here:
 
@@ -80,13 +105,25 @@ derive a build count, the version says so and never takes one from an older tag.
 The formatter returns a bare release number for one state only: a clean tree
 sitting exactly on a version tag. Distance past the tag, a modified working tree,
 and an unreachable version tag each append a PEP 440 local segment after a `+`.
-One check asserts every other shape carries that `+`.
 
 ```python
 def format_describe(text: str) -> str: ...      # src/_version.py
+```
 
+### The formatter check, overtaken
+
+OVERTAKEN, quoted whole:
+
+> "One check asserts every other shape carries that `+`."
+
+```python
 def test_only_an_exact_clean_tag_reports_a_release_number(described: str) -> None: ...  # tests/test_version_resolution.py
 ```
+
+True today: no check asserts it. The file named above is not in the tree. The
+formatter itself carries the rule: it returns the bare release number only when
+its local list comes out empty, and the list stays empty only at distance zero
+on a clean tree.
 
 Two things follow. The number on a working checkout is rarely a release
 number, and the distance term inside it counts commits, not features. And the
@@ -207,15 +244,28 @@ def bake_version_datas(project_root: str) -> list[tuple[str, str]]: ...
 
 The frozen check makes a bundle prefer the baked value even when a repository
 sits around it, so a bundle unpacked inside a checkout reports its own build
-number rather than the enclosing tree's. Two tests drive it: one with a
-repository around the bundle, one with git taken away.
+number rather than the enclosing tree's.
 
 ```python
 def is_frozen() -> bool: ...        # src/_version.py
+```
 
+### The two frozen-bundle checks, overtaken
+
+OVERTAKEN, quoted whole:
+
+> "Two tests drive it: one with a repository around the bundle, one with git
+> taken away."
+
+```python
 def test_a_frozen_bundle_prefers_the_baked_value_over_a_repository() -> None: ...   # tests/test_version_resolution.py
 def test_a_baked_tree_keeps_its_version_after_git_is_removed() -> None: ...
 ```
+
+True today: no check drives it. The file named above is not in the tree. The
+resolver still reads the baked file first inside a bundle, and `describe`
+returns an empty string for any directory holding no `.git`, so an unpacked
+bundle cannot adopt the enclosing tree's number.
 
 ### What each variant ships
 
@@ -308,7 +358,7 @@ monitor group holds that package and a build installs the build and report group
 only, so the shipped application reaches that line with nothing to import.
 
 ```python
-async def _call(self, msg):          # src/trading/live_monitor.py:338
+async def _call(self, msg):          # src/trading/live_monitor.py, in _call
     import httpx
 ```
 
@@ -318,9 +368,14 @@ and are not the same thing.
 
 ## A version that moves while the suite runs
 
-Three test modules compare a freshly resolved version against the cached
-`src.__version__`. That cached value is computed once, when the package is first
-imported. The value it is measured against is computed when the assertion runs.
+### The three comparing modules, overtaken
+
+OVERTAKEN, quoted whole:
+
+> "Three test modules compare a freshly resolved version against the cached
+> `src.__version__`. That cached value is computed once, when the package is
+> first imported. The value it is measured against is computed when the
+> assertion runs."
 
 ```
 tests/test_specs_parity.py
@@ -328,11 +383,17 @@ tests/test_version_resolution.py
 tests/test_build_variants_and_version_reach.py
 ```
 
-A commit landing between those two moments changes the distance term, and the
-two strings disagree. That failure is a property of a git-derived version
-rather than a defect in the resolver: the derived number moves with every
-commit and the cached copy does not. Committing to the repository while the
-suite is running reproduces it.
+> "A commit landing between those two moments changes the distance term, and the
+> two strings disagree. That failure is a property of a git-derived version
+> rather than a defect in the resolver: the derived number moves with every
+> commit and the cached copy does not. Committing to the repository while the
+> suite is running reproduces it."
+
+True today: none of the three modules is in the tree, so nothing makes that
+comparison and the race has no caller. The property of the number has not
+changed. A cached version is computed at first import and a freshly resolved one
+is computed at the moment it is asked for, so any reader comparing the two
+across a commit still sees them disagree.
 
 ## The release gate
 
@@ -350,17 +411,31 @@ python -m dev_harness.harness.check_release_readiness
 ```
 
 The gate declines to declare a release ready when a check was skipped or when a
-green pytest run collected nothing. Two tests pin both: one drives the gate with
-each skip flag and asserts it declines to print the ready line, the other drives
-a pytest run that collected nothing and asserts the gate calls it a failure.
+green pytest run collected nothing.
+
+### The two gate-refusal checks, overtaken
+
+OVERTAKEN, quoted whole:
+
+> "Two tests pin both: one drives the gate with each skip flag and asserts it
+> declines to print the ready line, the other drives a pytest run that collected
+> nothing and asserts the gate calls it a failure."
 
 ```python
 def test_any_skip_flag_refuses_to_declare_ready(...) -> None: ...   # tests/test_check_release_readiness.py
 def test_green_pytest_with_zero_tests_is_a_failure(...) -> None: ...
 ```
 
-The gate module is `dev_harness/harness/check_release_readiness.py`, which is
-the path that test imports. No copy of it lives under `tools/`.
+> "The gate module is `dev_harness/harness/check_release_readiness.py`, which is
+> the path that test imports. No copy of it lives under `tools/`."
+
+True today: no check pins either refusal. The file named above is not in the
+tree. The gate module is still the one the second sentence names, and no copy of
+it lives under `tools/`. No module imports it either; the gate wrapper
+`tools/gate.py` starts it as its own process.
+
+Both refusals are still in the module's own code. A skipped step and a green run
+that collected nothing each leave the ready line unprinted and exit non-zero.
 
 ## What the workflow runs on a pull request
 
@@ -410,6 +485,49 @@ file and counts it as unowned, and the hook that runs on every save now says the
 same thing rather than staying silent: this file type was not examined, which is
 not the same as clean.
 
+### The lane reports prose, and never blocks a merge on it
+
+A finding in a markdown file no longer stops a merge. The docs archetype still
+runs on every changed markdown file, and every finding it reports still prints
+in the log under that file's own group. What changed is where the verdict goes.
+The step counts a markdown verdict as reported rather than judged, so it never
+reaches the counter the lane fails on.
+
+The step names every file it read and marks each one judged or reported, so a
+green lane never hides a page the lane did not judge.
+
+```
+docs_archetype docs/manual/09-updates-and-versioning.md passed=false (exit 1)
+reported only, this verdict cannot fail the lane: docs/manual/09-updates-and-versioning.md
+coding_archetype src/core/log_paths.py passed=true
+judged, a red verdict fails this lane: src/core/log_paths.py
+scanned=2 judged=1 reported=1 unowned=0 exempt=0 failed=0
+judged: a red verdict blocks the merge. reported: the verdict is printed and blocks nothing.
+```
+
+Every other type blocks exactly as before. A red verdict on a Python file, a
+shell script, a workflow file, JavaScript, CSS or HTML still fails the lane, and
+a failed lane still leaves the merge blocked.
+
+```
+.py                         judged, and a red verdict blocks the merge
+.sh .bash .zsh              judged, and a red verdict blocks the merge
+.yml .yaml                  judged, and a red verdict blocks the merge
+.js .mjs .cjs .css .html    judged, and a red verdict blocks the merge
+.md                         reported, and no verdict blocks the merge
+```
+
+Prose is still read before it reaches the branch. The gate that runs on every
+save refuses a markdown write that introduces a high or critical finding the
+file does not already carry, so the rule still holds where a unit writes a page.
+That gate refuses at save time and never blocked a merge.
+
+```
+dev_harness/hooks/archetype_gate.py, in the --pre mode
+    a write that adds a high or critical finding is denied
+    a write that adds no high or critical finding is allowed
+```
+
 ### What a green result means
 
 Green means every changed file passed the archetype that owns it, the Solidity
@@ -420,6 +538,29 @@ test suite ran. The tree holds no Python test.
 git ls-files tests/                   7 files
 git ls-files tests/contracts/*.sol    6 files
 git ls-files tests/test_*.py          0 files
+```
+
+#### A changed markdown file is the one thing green does not cover
+
+The first sentence above is overtaken for one file type. Before and after, side
+by side:
+
+```
+before   Green means every changed file passed the archetype that owns it,
+         the Solidity tests passed, and the formatting and lint lanes passed.
+
+after    Green means every changed file the lane judged passed the archetype
+         that owns it, the Solidity tests passed, and the formatting and lint
+         lanes passed. A changed markdown file is reported, not judged, so a
+         green lane says nothing about whether its prose verdict was clean.
+```
+
+Read the step's own summary to tell the two apart. The `reported` count gives
+the number of markdown files whose verdict the step printed without judging, and
+the step names each one on its own line above the summary.
+
+```
+scanned=2 judged=1 reported=1 unowned=0 exempt=0 failed=0
 ```
 
 ### The two pytest lanes, overtaken
@@ -454,6 +595,110 @@ current   a force-push is refused, and a deletion is refused
 main      a force-push is refused, and a deletion is refused
 main      a direct push is allowed, which is how the branch is synced
 ```
+
+## How dependency updates reach the branch
+
+The dependency service opens a pull request when a package it watches publishes
+a new version. The file declares five ecosystems, and every one checks weekly.
+
+```
+.github/dependabot.yml
+
+pip             /              pyproject.toml
+pip             /requirements  requirements/build-win32-py3.14.txt
+npm             /              package.json and package-lock.json
+npm             /desktop       desktop/package.json and its lock file
+github-actions  /              the action versions in .github/workflows/
+```
+
+Each ecosystem declares two groups. The `routine-versions` group carries version
+updates and the `security-fixes` group carries security updates. A group
+collapses a week's bumps into one pull request, so an ecosystem opens one
+routine pull request rather than one for every package.
+
+Each ecosystem also sets `open-pull-requests-limit` to 1, which makes five the
+hard ceiling for routine pull requests across the repository. Security updates
+are exempt from that limit, so a security fix is never held back by it.
+
+### What clears the queue
+
+One scheduled workflow clears the queue. It runs at 13 and 43 minutes past every
+hour, and it accepts a manual run that only reports.
+
+```
+.github/workflows/dependency-queue.yml
+
+select   lists the open service pull requests on current
+report   writes every candidate and its verdict to the run summary
+merge    merges one pull request that is green and level with current
+rebase   asks the service to rebase the branches the merge left behind
+```
+
+The workflow has no checkout step. Every step reads and writes through the `gh`
+command, so no file from a pull request reaches the runner and no script from a
+pull request runs.
+
+### Which pull requests it touches
+
+The step named select in `.github/workflows/dependency-queue.yml` keeps a pull
+request only when all four of these hold.
+
+```
+the author is a bot, and its login is the dependency service
+the head branch names the routine-versions group
+ci-gate reports SUCCESS
+no other check is failed, cancelled or still running
+```
+
+A security pull request is never selected, because its branch names the
+`security-fixes` group instead. A human pull request is never selected, because
+its author is not the service. A pull request that cannot merge stays open for
+the operator, and the workflow never closes one.
+
+### Why the clearing is serial
+
+The `current` ruleset sets `strict_required_status_checks_policy` to true, so a
+branch must be level with the branch it targets before it merges. Every merge
+pushes every other open branch one commit behind, which means one branch is
+level at a time and the queue drains in order.
+
+GitHub's own auto-merge does not update a branch that has fallen behind, so
+arming it leaves the queue stalled. The workflow instead reads how many commits
+behind each branch is and comments `@dependabot rebase` on the ones that need
+it. The service performs the rebase and pushes it, and that push starts
+`ci.yml` on the new head commit.
+
+A push made with the workflow's own token would not start `ci.yml`. GitHub
+documents that an event triggered by `GITHUB_TOKEN` does not create a new
+workflow run. The workflow asks the service to push, rather than pushing the
+update itself.
+
+```mermaid
+flowchart TD
+    A[a package publishes a version] --> B[weekly run opens one grouped pull request]
+    B --> C[ci.yml reports ci-gate]
+    C --> D{green and level with current}
+    D -- yes --> E[the workflow merges it]
+    E --> F[every other branch is now one commit behind]
+    F --> G[the workflow asks the service to rebase]
+    G --> H[the service pushes the rebase]
+    H --> C
+    D -- no, behind --> G
+    D -- no, red --> I[left open for the operator]
+```
+
+### What the workflow may do
+
+```
+contents: write        writes the merge commit to current
+pull-requests: write   reads the queue and calls the merge endpoint
+issues: write          posts the rebase comment, which the API files as an
+                       issue comment
+```
+
+It requests nothing else, and the workflow's top level grants nothing at all.
+Turning off the strict rule on the `current` ruleset would remove the
+behind problem and the rebase step with it. That switch belongs to the operator.
 
 ## How a build is produced
 

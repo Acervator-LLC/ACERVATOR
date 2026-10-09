@@ -26,19 +26,31 @@ STORE_NAME = "market_rules.json"
 # ``expiry_ms`` is a fifth, so the Simulator and the Paper Trader read an expiry
 # the venue published. A row recorded before it holds no such key and answers
 # None, which changes nothing for a market already recorded.
+# OVERTAKEN, the two comments above: ``quote_increment`` and ``contract_size``
+# are recorded beside them, the step a cash amount moves by and the base units
+# one contract stands for.
 RULE_FIELDS = (
     "min_amount",
     "min_cost",
     "amount_increment",
     "price_increment",
+    "quote_increment",
+    "contract_size",
     "expiry_ms",
 )
 
 # OVERTAKEN, the comment above reading "``expiry_ms`` is a fifth": ``RULE_FIELDS``
 # holds the five NUMERIC rules, and ``order_types`` is a string.
+# OVERTAKEN, the sentence above reading "the five NUMERIC rules": ``RULE_FIELDS``
+# holds seven, and ``session`` is a second string.
 #: The text rules ``MarketRules`` carries, each recorded under its own name. A row
 #: recorded before one holds no such key and answers None.
-TEXT_RULE_FIELDS = ("order_types",)
+TEXT_RULE_FIELDS = ("order_types", "session")
+
+#: The permission rules ``MarketRules`` carries, each recorded as a sorted list
+#: of size-shape names. A row recorded before one holds no such key, which
+#: ``recorded_shapes`` answers None for and no sizing path reads as a refusal.
+SHAPE_RULE_FIELDS = ("buy_size_shapes", "sell_size_shapes")
 
 #: The asset class a row records beside its rules, so one venue's recording can
 #: be read one class at a time. A row recorded before it holds no such key and
@@ -67,9 +79,33 @@ def rule_text(value: Any) -> Optional[str]:
     return value or None
 
 
+def rule_shapes(value: Any) -> Optional[list]:
+    """``value`` as a sorted list of shape names when it is a set, else None.
+
+    An empty set answers an empty list, which a venue permitting no shape is
+    recorded as and ``recorded_shapes`` reads back as an empty frozenset.
+    """
+    if not isinstance(value, (frozenset, set)):
+        return None
+    return sorted(str(one) for one in value)
+
+
+def recorded_shapes(value: Any) -> Optional[frozenset]:
+    """``value`` as a frozenset of shape names when it is a list, else None.
+
+    None is the absent permission set a row recorded before ``SHAPE_RULE_FIELDS``
+    carries, which is not a venue permitting nothing.
+    """
+    if not isinstance(value, list):
+        return None
+    return frozenset(str(one) for one in value)
+
+
 # OVERTAKEN in rules_row's docstring below: "``rules``'s ``RULE_FIELDS`` as one
 # row, an unpublished rule None."
 # ``TEXT_RULE_FIELDS`` is written into the same row through ``rule_text``.
+# ``SHAPE_RULE_FIELDS`` is written into the same row through ``rule_shapes``,
+# each as a sorted list of size-shape names.
 def rules_row(rules: Any) -> dict[str, Any]:
     """``rules``'s ``RULE_FIELDS`` as one row, an unpublished rule None."""
     row: dict[str, Any] = {
@@ -77,6 +113,8 @@ def rules_row(rules: Any) -> dict[str, Any]:
     }
     for name in TEXT_RULE_FIELDS:
         row[name] = rule_text(getattr(rules, name, None))
+    for name in SHAPE_RULE_FIELDS:
+        row[name] = rule_shapes(getattr(rules, name, None))
     return row
 
 
@@ -144,6 +182,9 @@ def recorded_rules(venue: str, symbol: str, path: Optional[Path] = None) -> Mark
 
     ``read`` is False when the recording holds no row for the pair, the same
     unknown a venue that answered no market record carries.
+
+    Every name of ``RULE_FIELDS``, ``TEXT_RULE_FIELDS`` and ``SHAPE_RULE_FIELDS``
+    is read back here, so a rule ``rules_row`` writes never goes unread.
     """
     row = (load_document(path).get(str(venue or "")) or {}).get(str(symbol or ""))
     if not isinstance(row, dict):
@@ -153,8 +194,13 @@ def recorded_rules(venue: str, symbol: str, path: Optional[Path] = None) -> Mark
         min_cost=rule_value(row.get("min_cost")),
         amount_increment=rule_value(row.get("amount_increment")),
         price_increment=rule_value(row.get("price_increment")),
+        quote_increment=rule_value(row.get("quote_increment")),
+        contract_size=rule_value(row.get("contract_size")),
         expiry_ms=rule_value(row.get("expiry_ms")),
         order_types=rule_text(row.get("order_types")),
+        session=rule_text(row.get("session")),
+        buy_size_shapes=recorded_shapes(row.get("buy_size_shapes")),
+        sell_size_shapes=recorded_shapes(row.get("sell_size_shapes")),
         read=True,
     )
 
@@ -178,12 +224,15 @@ def recorded_classes(venue: str, path: Optional[Path] = None) -> dict[str, str]:
 __all__ = [
     "CLASS_FIELD",
     "RULE_FIELDS",
+    "SHAPE_RULE_FIELDS",
     "STORE_NAME",
     "TEXT_RULE_FIELDS",
     "load_document",
     "record_venue",
     "recorded_classes",
     "recorded_rules",
+    "recorded_shapes",
+    "rule_shapes",
     "rule_text",
     "rule_value",
     "rules_row",

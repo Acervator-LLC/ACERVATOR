@@ -32,6 +32,24 @@ HistoryCallback = Callable[[str, HistoryAnalysis], object]
 # Submissions past this depth are refused rather than queued.
 SYNC_QUEUE_CAP: int = 8
 
+# A bulk read submits only while the resident sync calls are at or below this
+# depth, so the whole of SYNC_QUEUE_CAP stays available to the balance, ticker,
+# portfolio and OHLCV reads the running platform polls.
+BULK_READ_ADMIT_DEPTH: int = 0
+
+# Longest await_bulk_read_slot prefers that depth. Past it the wait ends once
+# BULK_READ_RESERVE_SLOTS are free instead, so a busy queue delays a bulk read
+# and never shortens its answer.
+BULK_READ_WAIT_BUDGET_SEC: float = 60.0
+
+# Slots of SYNC_QUEUE_CAP a bulk read leaves free when it submits past the
+# budget: one for its own call and one for the next reader, so its submission
+# is never the one that fills the queue.
+BULK_READ_RESERVE_SLOTS: int = 2
+
+# Gap between two reads of _sync_queue_depth while a bulk read waits.
+BULK_READ_WAIT_SLICE_SEC: float = 0.05
+
 # sync_connect market-load budget: 3 tries, waiting 2s then 4s.
 CONNECT_ATTEMPTS: int = 3
 CONNECT_BACKOFF_STEP_S: float = 2.0
@@ -286,6 +304,10 @@ VERIFIED_EXCHANGES: set[str] = {
     "coinbase",
 }
 
+# The words exchange_label shows and sync_connect logs for each refusal.
+US_IP_BLOCKED_NOTE: str = "US address refused"
+US_ACCOUNT_RESTRICTED_NOTE: str = "US account restricted"
+
 # Pre-flight test URLs — public endpoints requiring no auth
 PREFLIGHT_URLS: dict[str, str] = {
     "binance": "https://api.binance.com/api/v3/ping",
@@ -346,6 +368,79 @@ PRODUCTS_PAGE_LIMIT = 1000
 #: The record a futures product carries its venue labels under.
 FUTURES_DETAILS_KEY = "future_product_details"
 
+#: The key ``FUTURES_DETAILS_KEY`` carries the base units one contract stands
+#: for under. ccxt's own ``parse_contract_market`` reads it into
+#: ``CONTRACT_SIZE_FIELD``, and ``parse_spot_market`` reads nothing into it.
+CONTRACT_SIZE_KEY = "contract_size"
+
+#: The ccxt market field a parsed contract record carries its contract size
+#: under.
+CONTRACT_SIZE_FIELD = "contractSize"
+
+#: The key a product record carries the step a cash amount moves by under. ccxt
+#: reads it into ``precision.price`` only where the product published no
+#: ``price_increment``, so no parsed field names the quote step alone.
+QUOTE_INCREMENT_KEY = "quote_increment"
+
+#: The record a product carries the venue's own trading session under. Coinbase
+#: publishes it on every product, holding a daily window on a dated contract and
+#: nothing on a spot pair and a perpetual.
+SESSION_DETAILS_KEY = "fcm_trading_session_details"
+
+#: The record an equity product carries its own trading permissions under. ccxt's
+#: ``parse_spot_market`` reads nothing out of it and keeps the whole raw product
+#: row under ``info``, so the record survives the parse.
+EQUITY_DETAILS_KEY = "equity_product_details"
+
+#: The key ``EQUITY_DETAILS_KEY`` carries one permission flag per side and per
+#: size shape under.
+EQUITY_FLAGS_KEY = "equity_trading_flags"
+
+#: The flag naming whether any buy or sell flow is enabled on the product.
+EQUITY_TRADABLE_FLAG = "tradable"
+
+#: The flag each buy shape is published under, read in ``equity_size_shapes``.
+EQUITY_BUY_FLAGS = (
+    "buy_whole_shares",
+    "buy_fractional_shares",
+    "buy_notional",
+)
+
+#: The flag each sell shape is published under, in the same shape order.
+EQUITY_SELL_FLAGS = (
+    "sell_whole_shares",
+    "sell_fractional_shares",
+    "sell_notional",
+)
+
+#: The ccxt market field set True on a tokenised equity record, which parses as
+#: a spot market and carries no ``EQUITY_MARKET_TYPE`` type.
+STOCK_MARKET_KEY = "stock"
+
+#: The key a tokenised equity row names its permitted sides under. Binance
+#: publishes ``BUY_SELL``, ``BUY``, ``SELL`` or ``NONE`` on
+#: ``/sapi/v1/equity/market/exchangeInfo``.
+TRADABILITY_KEY = "tradability"
+
+#: The ``TRADABILITY_KEY`` value permitting each side.
+TRADABILITY_BUY = frozenset({"BUY_SELL", "BUY"})
+TRADABILITY_SELL = frozenset({"BUY_SELL", "SELL"})
+
+#: The keys a tokenised equity row names fractional support under, one for the
+#: regular session and one for extended hours.
+FRACTIONABLE_KEY = "fractionable"
+FRACTIONABLE_EXTENDED_KEY = "fractionableEh"
+
+#: The keys a tokenised equity row names its sessions beyond the regular one
+#: under. A row setting neither trades inside the regular session alone.
+EXTENDED_SESSION_KEY = "extendedSession"
+OVERNIGHT_SESSION_KEY = "overnightSupported"
+
+#: The ccxt market field set True on a contract settled in its own base asset.
+#: Binance publishes that contract's size in the quote currency, so no base-unit
+#: contract size is read off such a record.
+INVERSE_MARKET_KEY = "inverse"
+
 #: The venue's own label for what a futures contract is written on.
 FUTURES_ASSET_TYPE_KEY = "futures_asset_type"
 
@@ -403,6 +498,8 @@ PRECIOUS_METAL_CODES: frozenset = frozenset({"XAG", "XAU", "XPD", "XPT"})
 
 #: The code each tokenised asset Coinbase lists redeems for. A product record
 #: carries no asset-level label, so each entry names the issuer's redemption.
+# OVERTAKEN, "each tokenised asset Coinbase lists": ``XAUT`` is a Gate.io spot
+# listing, so this map holds a redemption no Coinbase market names.
 TOKEN_UNDERLYING_CODES: dict[str, str] = {
     "AUDD": "AUD",
     "EURC": "EUR",
@@ -412,6 +509,7 @@ TOKEN_UNDERLYING_CODES: dict[str, str] = {
     "USDC": "USD",
     "USDS": "USD",
     "USDT": "USD",
+    "XAUT": "XAU",
     "XSGD": "SGD",
 }
 
@@ -509,6 +607,183 @@ def declared_order_types(exchange: Any) -> Optional[str]:
     return None
 
 
+def quote_step(market: Any) -> Optional[float]:
+    """The step a cash amount moves by on one loaded market record.
+
+    ``QUOTE_INCREMENT_KEY`` under ``info`` answers it, and ``precision.price``
+    does not, which carries a product's own price step. None where the venue
+    published no ``QUOTE_INCREMENT_KEY``.
+    """
+    raw = (market or {}).get("info") or {}
+    if not isinstance(raw, dict):
+        return None
+    return limit_to_float(raw.get(QUOTE_INCREMENT_KEY))
+
+
+def contract_units(market: Any) -> Optional[float]:
+    """The base units one contract stands for on one loaded market record.
+
+    ccxt's own ``CONTRACT_SIZE_FIELD`` answers first, and ``FUTURES_DETAILS_KEY``
+    answers where the record came through ``parse_spot_market``, which sets no
+    contract size. None for a product carrying no contract size and None for an
+    ``INVERSE_MARKET_KEY`` record, whose size is a quote-currency amount.
+    """
+    held = market or {}
+    if held.get(INVERSE_MARKET_KEY):
+        return None
+    parsed = limit_to_float(held.get(CONTRACT_SIZE_FIELD))
+    if parsed is not None:
+        return parsed
+    raw = held.get("info") or {}
+    if not isinstance(raw, dict):
+        return None
+    detail = raw.get(FUTURES_DETAILS_KEY) or {}
+    if not isinstance(detail, dict):
+        return None
+    return limit_to_float(detail.get(CONTRACT_SIZE_KEY))
+
+
+def equity_trades_outside_regular(market: Any) -> bool:
+    """Whether one tokenised equity record publishes a session beyond the
+    regular one, off ``EXTENDED_SESSION_KEY`` or ``OVERNIGHT_SESSION_KEY``."""
+    raw = (market or {}).get("info") or {}
+    if not isinstance(raw, dict):
+        return False
+    return (
+        raw.get(EXTENDED_SESSION_KEY) is True or raw.get(OVERNIGHT_SESSION_KEY) is True
+    )
+
+
+def market_session(market: Any) -> Optional[str]:
+    """The session name one loaded market record publishes.
+
+    ``SESSION_US_EQUITY`` for an ``EQUITY_MARKET_TYPE`` product and for a
+    ``STOCK_MARKET_KEY`` record ``equity_trades_outside_regular`` reads False
+    for, and ``SESSION_CONTINUOUS`` for every other ``STOCK_MARKET_KEY`` record
+    and where ``SESSION_DETAILS_KEY`` holds no window. None where the record
+    carries neither key and None where ``SESSION_DETAILS_KEY`` holds a daily
+    window, which neither name states.
+    """
+    from ..trading.scrumming.sizing import SESSION_CONTINUOUS, SESSION_US_EQUITY
+
+    held = market or {}
+    if held.get(STOCK_MARKET_KEY):
+        return (
+            SESSION_CONTINUOUS
+            if equity_trades_outside_regular(held)
+            else SESSION_US_EQUITY
+        )
+    if str(held.get("type") or "").lower() == EQUITY_MARKET_TYPE:
+        return SESSION_US_EQUITY
+    raw = held.get("info") or {}
+    if not isinstance(raw, dict) or SESSION_DETAILS_KEY not in raw:
+        return None
+    if isinstance(raw.get(SESSION_DETAILS_KEY), dict):
+        return None
+    return SESSION_CONTINUOUS
+
+
+def equity_size_shapes(market: Any) -> tuple:
+    """The size shapes one loaded market record permits on a buy and on a sell,
+    off ``EQUITY_FLAGS_KEY`` under ``EQUITY_DETAILS_KEY``.
+
+    Two Nones where the record carries no permission set, and two empty
+    frozensets where ``EQUITY_TRADABLE_FLAG`` reads False.
+    """
+    from ..trading.scrumming.sizing import (
+        SHAPE_CASH_AMOUNT,
+        SHAPE_FRACTIONAL_UNITS,
+        SHAPE_WHOLE_UNITS,
+    )
+
+    raw = (market or {}).get("info") or {}
+    if not isinstance(raw, dict):
+        return (None, None)
+    detail = raw.get(EQUITY_DETAILS_KEY) or {}
+    if not isinstance(detail, dict):
+        return (None, None)
+    flags = detail.get(EQUITY_FLAGS_KEY)
+    if not isinstance(flags, dict):
+        return (None, None)
+    if flags.get(EQUITY_TRADABLE_FLAG) is False:
+        return (frozenset(), frozenset())
+    shapes = (SHAPE_WHOLE_UNITS, SHAPE_FRACTIONAL_UNITS, SHAPE_CASH_AMOUNT)
+    # Each flag carries only a bool, so any other value is a record this reader
+    # does not recognise and names no shape.
+    return tuple(
+        frozenset(
+            shape for flag, shape in zip(side_flags, shapes) if flags.get(flag) is True
+        )
+        for side_flags in (EQUITY_BUY_FLAGS, EQUITY_SELL_FLAGS)
+    )
+
+
+def stock_size_shapes(market: Any) -> tuple:
+    """The size shapes one tokenised equity record permits on a buy and on a
+    sell, off ``TRADABILITY_KEY``, ``FRACTIONABLE_KEY`` and
+    ``FRACTIONABLE_EXTENDED_KEY``.
+
+    Two Nones for a record carrying no ``TRADABILITY_KEY``, and an empty
+    frozenset on a side ``TRADABILITY_KEY`` does not name.
+    """
+    from ..trading.scrumming.sizing import (
+        SHAPE_CASH_AMOUNT,
+        SHAPE_FRACTIONAL_UNITS,
+        SHAPE_WHOLE_UNITS,
+    )
+
+    raw = (market or {}).get("info") or {}
+    if not isinstance(raw, dict):
+        return (None, None)
+    tradability = str(raw.get(TRADABILITY_KEY) or "").strip().upper()
+    if not tradability:
+        return (None, None)
+    counted = {SHAPE_WHOLE_UNITS}
+    if raw.get(FRACTIONABLE_KEY) is True or raw.get(FRACTIONABLE_EXTENDED_KEY) is True:
+        counted.add(SHAPE_FRACTIONAL_UNITS)
+    # A market buy names a notional and a market sell names a quantity, so the
+    # cash amount is a buy shape alone.
+    buy = frozenset(counted | {SHAPE_CASH_AMOUNT})
+    sell = frozenset(counted)
+    return (
+        buy if tradability in TRADABILITY_BUY else frozenset(),
+        sell if tradability in TRADABILITY_SELL else frozenset(),
+    )
+
+
+def quote_contract_size_shapes(market: Any) -> tuple:
+    """``SHAPE_CASH_AMOUNT`` on both sides of an ``INVERSE_MARKET_KEY`` record,
+    whose size field counts fixed quote-currency amounts.
+
+    Two Nones for every other record.
+    """
+    from ..trading.scrumming.sizing import SHAPE_CASH_AMOUNT
+
+    if not (market or {}).get(INVERSE_MARKET_KEY):
+        return (None, None)
+    cash = frozenset({SHAPE_CASH_AMOUNT})
+    return (cash, cash)
+
+
+def size_shapes_published(market: Any) -> tuple:
+    """The size shapes one loaded market record publishes per side, reading
+    ``equity_size_shapes``, then ``stock_size_shapes``, then
+    ``quote_contract_size_shapes``.
+
+    Two Nones where no reader answers, which ``permits_size_shapes`` tells from
+    a set naming no shape.
+    """
+    for reader in (
+        equity_size_shapes,
+        stock_size_shapes,
+        quote_contract_size_shapes,
+    ):
+        buy, sell = reader(market)
+        if buy is not None or sell is not None:
+            return (buy, sell)
+    return (None, None)
+
+
 # OVERTAKEN in market_rules's docstring below: "The ``MarketRules`` one loaded
 # CCXT market record publishes."
 # ``order_types`` comes from the exchange's own ``has`` map through
@@ -523,6 +798,7 @@ def market_rules(
     """
     limits = (market or {}).get("limits") or {}
     precision = (market or {}).get("precision") or {}
+    buy_shapes, sell_shapes = size_shapes_published(market)
     return MarketRules(
         order_types=order_types,
         min_amount=limit_to_float((limits.get("amount") or {}).get("min")),
@@ -532,6 +808,11 @@ def market_rules(
         ),
         # CCXT maps Coinbase's price_increment, else its quote_increment, here.
         price_increment=precision_to_increment(precision.get("price"), precision_mode),
+        quote_increment=quote_step(market),
+        contract_size=contract_units(market),
+        session=market_session(market),
+        buy_size_shapes=buy_shapes,
+        sell_size_shapes=sell_shapes,
         # CCXT parses Coinbase's future_product_details.contract_expiry here; a
         # spot record and a perpetual both carry None.
         expiry_ms=limit_to_float((market or {}).get("expiry")),
@@ -618,6 +899,8 @@ def market_asset_class(market: Any) -> str:
     if labels & EQUITY_FUTURES_ASSET_TYPES:
         return CLASS_STOCKS
     if str((market or {}).get("type") or "").lower() == EQUITY_MARKET_TYPE:
+        return CLASS_STOCKS
+    if (market or {}).get(STOCK_MARKET_KEY):
         return CLASS_STOCKS
     base = underlying_code((market or {}).get("base"))
     if base in PRECIOUS_METAL_CODES:
@@ -844,9 +1127,11 @@ class CCXTConnector(ExchangeInterface):
             _log.record(
                 exchange=self._exchange_id,
                 action="US_RESTRICTION_WARNING",
-                reason=f"{self.display_name} may restrict US-based users",
-                result="Proceeding with connection attempt. If it fails with 403/Forbidden, "
-                "this exchange does not serve your region.",
+                reason=f"{self.display_name}: {restriction_note(self._exchange_id)}",
+                result="Proceeding with connection attempt. A 403 or Forbidden from "
+                "the venue confirms it. This reading was taken on "
+                f"{VENUE_MEASUREMENT_DATE}, quotes no page the venue publishes, and "
+                "the venue's own answer decides.",
                 level="warning",
                 data_usage="Check exchange terms of service for your region.",
             )
@@ -1020,6 +1305,29 @@ class CCXTConnector(ExchangeInterface):
         self._venue_answer_noted = True
 
     # ── Sync CCXT serialization ─────────────────────────────────────────────
+
+    async def await_bulk_read_slot(
+        self, budget_sec: float = BULK_READ_WAIT_BUDGET_SEC
+    ) -> float:
+        """Yield until no other sync call is resident, then answer seconds waited.
+
+        A bulk read awaits this before each of its venue calls, so a 39-symbol
+        History refresh cannot hold the connector's single worker against the
+        readers that share ``SYNC_QUEUE_CAP``. Past ``budget_sec`` the wait
+        ends once ``BULK_READ_RESERVE_SLOTS`` are free rather than on an empty
+        queue, so a bulk read is never the submission that fills the queue and
+        never loses its own answer to a refusal.
+        """
+        admit_past_budget = SYNC_QUEUE_CAP - BULK_READ_RESERVE_SLOTS
+        start = time.monotonic()
+        while True:
+            depth = self._sync_queue_depth
+            if depth <= BULK_READ_ADMIT_DEPTH:
+                break
+            if time.monotonic() - start >= budget_sec and depth <= admit_past_budget:
+                break
+            await asyncio.sleep(BULK_READ_WAIT_SLICE_SEC)
+        return time.monotonic() - start
 
     async def _call_sync(self, fn, *args, **kwargs):
         """Run one sync CCXT call on the single worker, with a queue cap and a timeout.
@@ -2031,12 +2339,22 @@ def list_supported_exchanges() -> list[dict[str, str | bool]]:
     ]
 
 
+def restriction_note(exchange_id: str) -> str:
+    """Name the refusal *exchange_id* carries, which exchange_label and sync_connect read."""
+    if exchange_id in US_IP_BLOCKED_EXCHANGES:
+        return US_IP_BLOCKED_NOTE
+    if exchange_id in US_ACCOUNT_RESTRICTED_EXCHANGES:
+        return US_ACCOUNT_RESTRICTED_NOTE
+    return ""
+
+
 def exchange_label(exchange_id: str) -> str:
     """Return the picker label for *exchange_id*, carrying its status notes."""
     label = exchange_id.capitalize()
     notes: list[str] = []
-    if exchange_id in US_IP_BLOCKED_EXCHANGES:
-        notes.append("blocked from US")
+    refusal = restriction_note(exchange_id)
+    if refusal:
+        notes.append(refusal)
     elif exchange_id not in VERIFIED_EXCHANGES:
         notes.append("untested")
     if exchange_id in PASSPHRASE_EXCHANGES:

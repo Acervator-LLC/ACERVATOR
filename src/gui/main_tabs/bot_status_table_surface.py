@@ -277,7 +277,8 @@ BROWSER_NEW_WINDOW = 2
 FIRE_LABEL = "Fire"
 FIRE_MASK_FIELD = "bot_table.fire"
 DETAIL_LABEL = "Detail"
-BUTTON_HEIGHT_PX = 22
+#: Fire and Detail fill their cell, so a row press paints no band around them.
+BUTTON_HEIGHT_PX = ROW_HEIGHT_PX
 FOCUS_POLICY = "NoFocus"
 
 GLOW_BLUR_RADIUS = 18

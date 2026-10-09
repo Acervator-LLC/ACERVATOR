@@ -38,6 +38,7 @@ unconditionally without separate "ensure exists" steps.
 
 import os
 from pathlib import Path
+from typing import Optional
 
 # Set to a directory and the nine buckets below, plus main.py's four writers, follow it.
 LOG_ROOT_ENV = "ACERVATOR_CRASH_LOG_ROOT"
@@ -105,12 +106,176 @@ def get_trade_dir() -> Path:
 
     Sub-files written here:
       * ``trade.log``        — every executed trade (existing pipeline)
-      * ``gate.log``         — every gate decision
+      * ``gate/<exchange>/<sector>/gate.log`` — every gate decision
       * ``pnl/<day>.ndjson`` — daily PnL snapshots (existing PnLCascade)
     """
     p = resolve_log_root() / "trade"
     p.mkdir(parents=True, exist_ok=True)
     return p
+
+
+GATE_DIR_NAME = "gate"
+"""The ``trade/`` subdir holding one directory per exchange."""
+
+GATE_LOG_NAME = "gate.log"
+"""The active gate log inside one exchange-and-sector directory."""
+
+GATE_ARCHIVE_DIR_NAME = "archive"
+"""The subdir holding gate records carried over from the pre-split layout.
+
+``NDJSONWriter`` never rotates these files and nothing prunes them, because
+they are recorded decisions behind real fills rather than a running stream.
+"""
+
+UNNAMED_SEGMENT = "unnamed"
+"""The path segment a gate record with no exchange or no sector lands under."""
+
+_SEGMENT_KEEP = frozenset("abcdefghijklmnopqrstuvwxyz0123456789-_")
+
+SEGMENT_MAX_CHARS = 64
+"""Characters ``path_segment`` keeps, well inside the 255 a directory name takes.
+
+The longest sector name is thirteen characters and the longest venue id is under
+twenty, so no name the platform holds reaches this.
+"""
+
+
+def path_segment(value: object) -> str:
+    """``value`` as one lowercase directory name, or ``UNNAMED_SEGMENT``.
+
+    Every character outside ``_SEGMENT_KEEP`` becomes an underscore and
+    ``SEGMENT_MAX_CHARS`` bounds the length, so a venue id or a sector name
+    cannot reach a parent directory, a drive, or a name the filesystem refuses.
+    """
+    text = str(value or "").strip().lower()
+    folded = "".join(one if one in _SEGMENT_KEEP else "_" for one in text)
+    return folded.strip("_")[:SEGMENT_MAX_CHARS].strip("_") or UNNAMED_SEGMENT
+
+
+def gate_root(trade_dir: Optional[Path] = None) -> Path:
+    """The ``gate/`` directory under ``trade_dir``, or under ``get_trade_dir()``.
+
+    Creates nothing, so a reader can enumerate a layout no bot has written
+    into yet.
+    """
+    base = Path(trade_dir) if trade_dir is not None else get_trade_dir()
+    return base / GATE_DIR_NAME
+
+
+def gate_log_dir(
+    exchange: object,
+    asset_class: object,
+    trade_dir: Optional[Path] = None,
+) -> Path:
+    """The directory one exchange-and-sector's gate records live in, created.
+
+    ``LogManager._gate_writer_for`` resolves a writer through this, so every
+    bot on one venue trading one sector appends to a single file.
+    """
+    p = gate_root(trade_dir) / path_segment(exchange) / path_segment(asset_class)
+    p.mkdir(parents=True, exist_ok=True)
+    return p
+
+
+def gate_log_path(
+    exchange: object,
+    asset_class: object,
+    trade_dir: Optional[Path] = None,
+) -> Path:
+    """The active gate log one exchange-and-sector's decisions append to."""
+    return gate_log_dir(exchange, asset_class, trade_dir) / GATE_LOG_NAME
+
+
+def gate_archive_dir(
+    exchange: object,
+    asset_class: object,
+    trade_dir: Optional[Path] = None,
+) -> Path:
+    """The archive directory of one exchange-and-sector bucket, created."""
+    p = gate_log_dir(exchange, asset_class, trade_dir) / GATE_ARCHIVE_DIR_NAME
+    p.mkdir(parents=True, exist_ok=True)
+    return p
+
+
+def legacy_gate_logs(trade_dir: Optional[Path] = None) -> list[Path]:
+    """The pre-split ``trade/gate.log`` and its rotations, oldest first.
+
+    ``migrate_legacy_gate_logs`` empties this list on the first run of a
+    build carrying the split layout; until then every reader still reads
+    these files, so a decision recorded before the split stays readable.
+    """
+    base = Path(trade_dir) if trade_dir is not None else get_trade_dir()
+    active = base / GATE_LOG_NAME
+    return _rotations_in(base) + ([active] if active.is_file() else [])
+
+
+def _rotations_in(where: Path) -> list[Path]:
+    """``GATE_LOG_NAME`` rotations in ``where``, the highest number first.
+
+    A name whose suffix is not a number is left out, so an archive member and
+    a carry marker are never read as a rotation.
+    """
+    if not where.is_dir():
+        return []
+    found = [
+        one
+        for one in where.iterdir()
+        if one.is_file()
+        and one.name.startswith(GATE_LOG_NAME + ".")
+        and one.suffix.lstrip(".").isdigit()
+    ]
+    return sorted(found, key=lambda one: int(one.suffix.lstrip(".")), reverse=True)
+
+
+def _archive_members(archive: Path) -> list[Path]:
+    """Every promoted member of one ``GATE_ARCHIVE_DIR_NAME`` directory.
+
+    A name starting with a dot is a carry still in flight and is left out, so
+    a reader never sees a decision twice.
+    """
+    if not archive.is_dir():
+        return []
+    found = [
+        one
+        for one in archive.iterdir()
+        if one.is_file() and not one.name.startswith(".")
+    ]
+    return sorted(found, key=lambda one: one.name)
+
+
+def _bucket_gate_logs(bucket: Path) -> list[Path]:
+    """One bucket's archive members, rotations and active file, oldest first."""
+    found = _archive_members(bucket / GATE_ARCHIVE_DIR_NAME)
+    found.extend(_rotations_in(bucket))
+    active = bucket / GATE_LOG_NAME
+    if active.is_file():
+        found.append(active)
+    return found
+
+
+def gate_log_buckets(trade_dir: Optional[Path] = None) -> list[tuple[str, str, Path]]:
+    """Every ``(exchange, sector, directory)`` the gate layout holds, sorted."""
+    root = gate_root(trade_dir)
+    if not root.is_dir():
+        return []
+    found: list[tuple[str, str, Path]] = []
+    for venue in sorted(one for one in root.iterdir() if one.is_dir()):
+        for sector in sorted(one for one in venue.iterdir() if one.is_dir()):
+            found.append((venue.name, sector.name, sector))
+    return found
+
+
+def gate_log_files(trade_dir: Optional[Path] = None) -> list[Path]:
+    """Every gate log a reader must read to see all recorded decisions.
+
+    The pre-split files come first, then each bucket in sorted order with its
+    archive members, rotations and active file oldest first. Nothing is listed
+    twice, so a reader joining a fill to its decision finds exactly one row.
+    """
+    found = legacy_gate_logs(trade_dir)
+    for _venue, _sector, bucket in gate_log_buckets(trade_dir):
+        found.extend(_bucket_gate_logs(bucket))
+    return found
 
 
 def get_pnl_dir() -> Path:

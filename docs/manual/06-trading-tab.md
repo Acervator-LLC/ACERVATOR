@@ -1068,10 +1068,12 @@ blank when the pair is unlisted or when the target already is that asset.
 
 **The row's height.** A logo draws at 32 pixels square. A row keeps two pixels
 above and two below its content, which is what this widget's style answers for its
-own item margin, so a row takes 36 pixels. The page's own sheet leaves more room
-than the window's style, so the logo's cell drops its vertical padding and the row
-keeps the height the payload set. No other cell and no rule in the sheet changes,
-so the Extractor table beneath is untouched.
+own item margin, so a row takes 36 pixels. Every bot table's Fire and Detail
+buttons take that same height, so a selected row paints no band around them —
+`src/gui/main_tabs/bot_status_table_surface.py, in BUTTON_HEIGHT_PX`. The page's
+own sheet leaves more room than the window's style, so the logo's cell drops its
+vertical padding and the row keeps the height the payload set. No other cell and
+no rule in the sheet changes, so the Extractor table beneath is untouched.
 
 `src/gui/main_tabs/bot_status_table_surface.py` — the two figures and the sum
 
@@ -1080,6 +1082,41 @@ LOGO_SIZE_PX = 32
 ROW_LOGO_MARGIN_PX = 2
 ROW_HEIGHT_PX = LOGO_SIZE_PX + 2 * ROW_LOGO_MARGIN_PX
 ```
+
+**A cell widget's pinned size reads the row height.** GUI011 in the GUI archetype
+refuses a widget placed into a table cell whose size is pinned to a bare number,
+or to a name the same file declares once as a bare number. Three readings are left
+alone, each able to carry the row's declared height: a value imported from another
+module, a value the file computes, and a name the file also hands to the call that
+declares how tall its rows are. The finding is high, so the verdict reads
+`passed=False` and the command exits 1.
+
+`dev_harness/harness/gui_archetype.py, in _scan_pinned_cell_widgets` — the rule
+
+```python
+_CELL_PLACEMENT_SETTER = "setCellWidget"
+
+_PINNING_SETTERS: frozenset[str] = frozenset(
+    {"setFixedHeight", "setFixedWidth", "setFixedSize"}
+)
+
+_ROW_HEIGHT_SETTERS: frozenset[str] = frozenset(
+    {"setDefaultSectionSize", "setMinimumSectionSize", "setRowHeight"}
+)
+```
+
+The rule's fixture pair holds two tables of the same three cells. In the good one
+the buttons read a height declared from the row's own and the logo square reads
+the row height itself. In the bad one one button takes a bare number, the other
+takes a height declared on its own, and the logo square takes two bare numbers.
+The good file exits 0 and the bad one draws three high findings and exits 1.
+
+`harness_fixtures/gui_archetype/known_good_cell_widget_height.py` — the good half
+
+The three Positions Held tables read the same two figures as the bot list, so each
+Manual Fire button fills the cell it sits in.
+
+`src/gui/live_settings/positions_held_tab.py, in _create_positions_held_tab` — one of the three
 
 **The bot id.** The bot id is still the thing a row is identified by. It stays in
 the payload, once as the list of every drawn row's bot and once on each row. It
@@ -1967,13 +2004,20 @@ so the sector alone cannot say.
 
 ```python
 def market_unit_rule(
-    recorded: Any, asset_class: str = "", venue: str = ""
+    recorded: Any, asset_class: str = "", venue: str = "", moment_s: Any = None
 ) -> Optional[str]:
+    demanded = session_unit_rule(getattr(recorded, "session", None), moment_s)
+    if demanded is not None:
+        return demanded
     declared = recorded_unit_rule(recorded)
     if declared is not None:
         return declared
     return unit_rule(asset_class, venue)
 ```
+
+The wizard names no moment, so it reads no session and the step answers first.
+The order path in `guarded_place_order` names the moment, so a market whose own
+session takes a whole share alone reads whole outside its normal hours.
 
 Driven with every outbound connection refused, on a recording carrying one market
 per sector, the wizard answers this for the market picked:
