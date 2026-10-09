@@ -468,10 +468,17 @@ for direction, voters in grouped.items():
     voters.sort(key=lambda one: (-one[0], one[1]))
 ```
 
-The measurement behind the change is in
-[tests/debug_reports/2026-09-07_activity_log_format.md](../../tests/debug_reports/2026-09-07_activity_log_format.md):
-the dictionary form measured 1,005 to 1,017 characters across 1,143 recorded
-snapshots, and the grouped form of the same panel measures 322.
+OVERTAKEN, quoted whole:
+
+> "The measurement behind the change is in
+> [tests/debug_reports/2026-09-07_activity_log_format.md](../../tests/debug_reports/2026-09-07_activity_log_format.md):
+> the dictionary form measured 1,005 to 1,017 characters across 1,143 recorded
+> snapshots, and the grouped form of the same panel measures 322."
+
+True today: the measurement record is not in the tree, and its figures are the
+ones the sentence above carries. The dictionary form measured 1,005 to 1,017
+characters across 1,143 recorded snapshots, and the grouped form of the same
+panel measures 322.
 
 Three further emitters sit in the same mixin: a trade notification carrying its
 own text prefix, a voting-panel snapshot at fire time, and a gate decision at

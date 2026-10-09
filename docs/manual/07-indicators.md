@@ -395,20 +395,36 @@ detectors     fvg.py, landing_strip.py, m_top.py, w_bottom.py,
 ```
 
 **Design intention.** One module holds one indicator, and a module that casts
-no vote still lives here so the voters can read it. Nothing borrows another
-indicator's arithmetic, and a test in `tests/` fails the moment one starts to.
+no vote still lives here so the voters can read it.
 
-`tests/test_one_indicator_per_module.py` — the rule, held as tests
+### The per-module rule sentences, overtaken
+
+OVERTAKEN, quoted whole:
+
+> "Nothing borrows another indicator's arithmetic, and a test in `tests/` fails
+> the moment one starts to."
+
+> "`tests/test_one_indicator_per_module.py` — the rule, held as tests"
+
+> "`tests/test_one_indicator_per_module.py` — and the name check beside it"
 
 ```python
 def test_the_module_holds_exactly_one(self, module):
-```
-
-`tests/test_one_indicator_per_module.py` — and the name check beside it
-
-```python
 def test_no_two_modules_define_the_same_name(self):
 ```
+
+True today: no check in the tree holds the rule. The repository tracks one
+Python module under `tests/`, its own conftest, so the file named above and its
+two checks are gone.
+
+The package layout carries the rule instead. Each indicator is one module, and
+`src/trading/ta_engine.py` imports each indicator class or detector function by
+name from its own module.
+
+Two imports cross between the indicator modules, and both reach a module in the
+measurements row above rather than a voter. `bb_proximity.py` and
+`landing_strip.py` each read the Heikin-Ashi measurement. Beside those, every
+module reads the shared helpers and types. No voter imports another voter.
 
 ## Indicator formulae
 
@@ -417,9 +433,16 @@ that computes it, then what the code does today and what the reading is meant
 to give the platform. The operator's own reading of each indicator opens this
 part and is not repeated here.
 
-Every indicator computes its own maths from candles alone. No indicator borrows
-another's arithmetic, and `tests/test_one_indicator_per_module.py` fails when
-one starts to.
+Every indicator computes its own maths from candles alone.
+
+OVERTAKEN, quoted whole:
+
+> "No indicator borrows another's arithmetic, and
+> `tests/test_one_indicator_per_module.py` fails when one starts to."
+
+True today: no voter borrows another voter's arithmetic, and no check in the
+tree holds that. [The twelve voters](#the-twelve-voters) above names the module
+layout that holds it instead.
 
 Where the code departs from the published formula, the code is the defect.
 [Departures](#departures-from-the-published-maths) lists the ones found.
@@ -1165,9 +1188,14 @@ it can reach zero on a real market, and the indicator refuses to vote on that
 bar.
 
 **Design intention.** An indicator has to read the same on every asset, because
-one threshold serves the whole fleet. Four test files hold that property for
-the twelve, one shape at a time, by running the same tape at several price
-scales and comparing the readings.
+one threshold serves the whole fleet.
+
+### The four scale-invariance files, overtaken
+
+OVERTAKEN, quoted whole:
+
+> "Four test files hold that property for the twelve, one shape at a time, by
+> running the same tape at several price scales and comparing the readings."
 
 ```
 tests/test_bollinger_and_slingshot_are_scale_invariant.py
@@ -1175,6 +1203,12 @@ tests/test_vortex_and_landing_strip_are_scale_invariant.py
 tests/test_macd_and_kaufman_er_are_scale_invariant.py
 tests/test_the_last_eight_indicators_are_scale_invariant.py
 ```
+
+True today: no check in the tree holds the property. None of the four files is
+there, and the repository tracks one Python module under `tests/`, its own
+conftest. The runs recorded in the entries further down this page hold the
+property instead, each naming the scales it drove and the readings it compared.
+The bounds the readings must stay inside are in `src/trading/ta_invariants.py`.
 
 Issue #414 owns the two readings above. Both are deliberate choices in
 Acervator's own reading of a published indicator, not arithmetic errors, and
@@ -2094,14 +2128,24 @@ reading becomes.
 Three figures the page already carries need restating against this run. The
 departures section above says two departures remain, the Vortex direction
 overwrite and the RSI rounding. Both are repaired: the Vortex on 2026-09-08 and
-the RSI on the same day, each in its own entry above. The section also lists
-four scale-invariance test files. None is in the tree, which now holds its
-conftest and these debug reports and nothing else, so the property they held is
-held by the runs recorded in each entry instead.
+the RSI on the same day, each in its own entry above.
+
+### The debug-report citation, overtaken
+
+OVERTAKEN, quoted whole:
+
+> "The section also lists four scale-invariance test files. None is in the tree,
+> which now holds its conftest and these debug reports and nothing else, so the
+> property they held is held by the runs recorded in each entry instead."
 
 ```
 tests/debug_reports/2026-09-09_indicator_rounding.md
 ```
+
+True today: the four files are still absent, and so is the report named above.
+The repository tracks one Python module under `tests/`, its own conftest, and no
+directory of debug reports beside it. The runs recorded in the entries on this
+page are the whole record of the property.
 
 What changes for an operator: a bot on a market priced in millionths of a
 dollar now sees a Bollinger channel with a real width instead of a flat line,
