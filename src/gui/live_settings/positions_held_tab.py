@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
 )
 
 from .. import design_system as ds
+from ..main_tabs.bot_status_table_surface import BUTTON_HEIGHT_PX, ROW_HEIGHT_PX
 
 
 class PositionsHeldTabMixin:
@@ -136,6 +137,8 @@ class PositionsHeldTabMixin:
         table.setRowCount(len(positions))
         table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
         table.verticalHeader().setVisible(False)
+        # The row height every bot table takes, so Fire fills its cell.
+        table.verticalHeader().setDefaultSectionSize(ROW_HEIGHT_PX)
         table.setEditTriggers(QTableWidget.NoEditTriggers)
         table.setSelectionBehavior(QTableWidget.SelectRows)
         table.setAlternatingRowColors(True)
@@ -214,7 +217,7 @@ class PositionsHeldTabMixin:
                 table.setItem(row, col, item)
 
             fire_btn = QPushButton("Fire")
-            fire_btn.setFixedHeight(24)
+            fire_btn.setFixedHeight(BUTTON_HEIGHT_PX)
             fire_btn.setStyleSheet(
                 f"QPushButton {{ background: {ds.WARNING_STRONG}; color: white; "
                 "border: none; border-radius: 4px; padding: 4px 12px; "
