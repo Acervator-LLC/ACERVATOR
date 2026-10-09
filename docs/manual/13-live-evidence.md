@@ -56,10 +56,116 @@ nothing: a raise inside the walk, an absent exchange, and an exchange that does
 not serve the trade call. The tree tracks no check over the walk:
 `git ls-files tests` returns 7 files and none of them names the walk.
 
+### The counter sentences this overtakes
+
+OVERTAKEN, quoted whole, from the table and the paragraph above:
+
+```
+| `stats.total_trades` | `max` of the persisted count, the previous exchange count, and the count just walked |
+| `stats.ytd_scrummed_usd` | `max` of the persisted sum and the walked sell sum |
+| `stats.ytd_folded_usd` | `max` of the persisted sum and the walked buy sum |
+```
+
+> "Every counter write takes a `max`, so a walk raises a counter toward the
+> venue and never lowers one."
+
+True today: a walk can lower a counter, and it does. No write in the walk takes
+a `max`. The walk assigns each figure the number it counted, so a venue reading
+below the stored figure replaces it.
+
+```python
+# src/trading/scrumming/reconciliation.py, in sync_ytd_trade_count
+self.stats.exchange_trade_count = _order_count
+self.stats.exchange_fill_count = _fill_count
+self.stats.total_trades = _order_count
+self.stats.ytd_scrummed_usd = _ytd_scrum_usd
+self.stats.ytd_folded_usd = _ytd_fold_usd
+```
+
+A fourth path joins the three named above, and it does not leave the stored
+numbers alone. A walk that skipped a window's remainder holds no complete
+reading, so it drops all five figures to their no-reading markers and answers
+nothing.
+
+```python
+# src/trading/scrumming/reconciliation.py
+TRADE_COUNT_NO_READING = 0
+YTD_USD_NO_READING = 0.0
+```
+
+Driven against a stubbed venue, with no order placed, on a bot holding 4242
+trades against $999.00 scrummed and $888.00 folded. A whole walk that counted
+two venue orders wrote 2 trades, $20.00 and $10.00, so all five figures fell. A
+walk whose window returned a full page at one timestamp wrote 0 trades and
+$0.00 against both sums. The same instrument read 0 up to 2 on a bot that held
+nothing, so it moves in both directions.
+
+The walk writes six fields: five figures and the freshness stamp.
+
+| Field the walk writes | Value written |
+| --- | --- |
+| `stats.total_trades` | the distinct venue order count this walk read |
+| `stats.exchange_trade_count` | the same value |
+| `stats.exchange_fill_count` | the distinct fill count this walk read |
+| `stats.ytd_scrummed_usd` | the walked sell sum, in dollars |
+| `stats.ytd_folded_usd` | the walked buy sum, in dollars |
+| `stats.exchange_data_fresh_ts` | the clock reading at the end of the walk |
+
+The fill count is the field the earlier table leaves out. One trade is one
+order the venue filled, so the trade count counts distinct order identifiers
+and the fill count counts distinct fills beside it.
+
 The loop runs until the cursor reaches the present, so the request count follows
 the distance from the anchor instead of a fixed number. Driven against a stubbed
 venue: 7 requests at today's 186-day span, 13 at a year, 61 at five years, one
 per 30 days of span.
+
+### The request-count sentences this overtakes
+
+OVERTAKEN, quoted whole:
+
+> "The loop runs until the cursor reaches the present, so the request count
+> follows the distance from the anchor instead of a fixed number."
+
+> "Driven against a stubbed venue: 7 requests at today's 186-day span, 13 at a
+> year, 61 at five years, one per 30 days of span."
+
+True today: the accounted span still starts at the anchor, and the walk asks
+the venue only for the windows it has not already settled. A window settles
+once its own request counted it whole and its end is older than the settle lag,
+so the request count follows the unsettled tail rather than the distance from
+the anchor.
+
+```python
+# src/trading/scrumming/reconciliation.py, in ReconciliationEngineMixin
+YTD_SETTLE_LAG_SEC = 7 * 24 * 3600.0
+YTD_FULL_REWALK_SEC = 3600.0
+```
+
+The walk replays the settled windows from the fills the last walk read, in
+window order, so the five figures come out the same whichever windows this walk
+asked for. It drops the held windows once the re-walk interval has passed since
+the last walk that started at the anchor. That bounds how long a fill arriving
+later than the lag can go uncounted. The lag is positive, so every walk still
+makes at least one request.
+
+Driven against a stubbed venue at three anchors, with no order placed. A first
+walk holds nothing and reads the whole span, returning the counts the overtaken
+sentence recorded. Every later walk inside the hour reads the tail alone.
+
+| Span from the anchor | First walk | A later walk, inside the hour |
+| --- | --- | --- |
+| 192 days, today's span | 7 requests | 1 request |
+| one year | 13 requests | 2 requests |
+| five years | 61 requests | 1 request |
+
+The tail is one request or two. The windows step thirty days from the anchor
+and the lag is seven days, so the unread span runs between seven and
+thirty-seven days. One year reads two requests because its last settled
+boundary falls thirty-five days back, and five years reads one because its
+boundary falls twenty-five days back. Past the re-walk interval the same bot
+read 7 requests again, so the short reading is the holding and not the
+instrument.
 
 A window whose page comes back at the 500-row limit resumes at its newest fill
 rather than stepping past the remainder. One shape still returns short: a full
@@ -103,6 +209,18 @@ class FeatureCounter: ...       # src/core/feature_telemetry.py
 class FeatureTelemetry: ...
 def get_telemetry() -> FeatureTelemetry: ...
 ```
+
+### The reader row this overtakes
+
+OVERTAKEN, quoted whole:
+
+```
+| `sync_ytd_trade_count` (`src/trading/scrumming/reconciliation.py`) | `get_my_trades` pages from the venue | the five `stats` fields above |
+```
+
+True today: the walk writes six fields. The row counts four figures and the
+freshness stamp as five, and the fill count is the field it leaves out. The
+overtaking table earlier on this page carries all six.
 
 ## The connectors
 
