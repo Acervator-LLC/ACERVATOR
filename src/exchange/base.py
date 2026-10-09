@@ -265,8 +265,10 @@ class ExchangeInterface(ABC):
     """The contract a connector class implements.
 
     Every method is abstract except ``get_my_trades``, which raises
-    ``NotImplementedError`` unless a subclass overrides it, and
-    ``get_spot_positions``, which returns None until a subclass overrides it.
+    ``NotImplementedError`` unless a subclass overrides it,
+    ``get_spot_positions``, which returns None until a subclass overrides it,
+    and ``await_bulk_read_slot``, which waits for nothing until a subclass
+    overrides it.
     """
 
     @property
@@ -385,6 +387,17 @@ class ExchangeInterface(ABC):
         raise NotImplementedError(
             f"{type(self).__name__} does not implement get_my_trades"
         )
+
+    async def await_bulk_read_slot(self, budget_sec: float = 0.0) -> float:
+        """Yield until this venue's call queue has room for a bulk read.
+
+        A bulk reader such as ``fetch_all_history_chunked`` awaits this before
+        each venue call so its run does not starve the venue's other readers.
+        This body waits for nothing and answers 0.0; a connector that
+        serialises its calls overrides it.
+        """
+        del budget_sec
+        return 0.0
 
     async def get_spot_positions(self) -> Optional[dict[str, "SpotPosition"]]:
         """Return the venue's open spot positions keyed by asset, or None.

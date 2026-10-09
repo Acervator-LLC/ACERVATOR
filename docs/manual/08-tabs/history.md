@@ -40,6 +40,54 @@ if is_stale and not in_flight:
     hist.refresh()
 ```
 
+### The venue call queue a refresh shares
+
+One connector serves every bot on a venue and runs a single worker, so every
+caller on that venue shares one call queue eight deep. A refresh asks for one
+symbol at a time, and before each ask it waits for that queue to empty. The
+balance, ticker, portfolio and OHLCV reads the running platform polls therefore
+take the worker first. Past its budget the ask goes through behind two reserved
+slots instead, so a refresh is never the submission that fills the queue, and a
+busy venue changes when a refresh runs and never which rows it answers.
+
+`src/exchange/ccxt_connector.py` — `CCXTConnector.await_bulk_read_slot`
+
+```python
+if depth <= BULK_READ_ADMIT_DEPTH:
+    break
+if time.monotonic() - start >= budget_sec and depth <= admit_past_budget:
+    break
+await asyncio.sleep(BULK_READ_WAIT_SLICE_SEC)
+```
+
+`src/exchange/history_helpers.py` — `_await_slot`
+
+Measured on a fleet of thirty-nine bots on one venue, with two hundred platform
+reads issued while a refresh ran: forty-seven of those reads were refused at the
+queue's cap while the refresh held the worker back to back, and six once the
+refresh waited its turn. The same two hundred reads with no refresh running at
+all were refused five times, so the refresh now costs the platform about one
+read where it used to cost forty-two. Both runs returned the same 8,558 rows.
+
+A refusal at the cap costs a symbol its rows, so the wait never ends while the
+queue is full and one refused submission earns a second wait.
+
+`src/exchange/history_helpers.py` — `BULK_READ_ATTEMPTS`
+
+```python
+BULK_READ_ATTEMPTS = 2
+```
+
+A venue that does not serialise its calls needs no turn-taking, and the default
+waits for nothing.
+
+`src/exchange/base.py` — `ExchangeInterface.await_bulk_read_slot`
+
+```python
+del budget_sec
+return 0.0
+```
+
 ## Where the trade record is kept
 
 Refresh reads the venue live and keeps nothing. The year of trades the Simulator
@@ -502,13 +550,13 @@ STATUS_TEXT = {
     "no_bot_manager": "Bot manager unavailable — cannot fetch history.",
     "no_async_loop": "Async loop not ready — try again after platform starts.",
     "fetching": "Fetching trade history from exchanges…",
-    "timeout": "Fetch timeout (60s). Exchange may be rate-limited; try again.",
+    "timeout": "Fetch timeout (300s). Exchange may be rate-limited; try again.",
 }
 ```
 
 Two constants bound the fetch, in the same module: the poll runs on a 400 ms
 timer, so an observed latency is the true latency plus up to one interval, and
-the fetch is abandoned after sixty seconds.
+the fetch is abandoned after three hundred seconds.
 
 `src/exchange/history_read_contract.py` — the fetch bounds
 

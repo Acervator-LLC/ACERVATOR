@@ -570,7 +570,7 @@ if _HAS_QT:
                         self._populate_filter_options()
                         self._apply_filters()
                         return
-                    if time.monotonic() - start_ts > 60.0:
+                    if time.monotonic() - start_ts > hrc.FETCH_TIMEOUT_S:
                         poll_timer.stop()
                         self._set_fetching(False)
                         self._set_status(hrc.STATUS_TEXT["timeout"])

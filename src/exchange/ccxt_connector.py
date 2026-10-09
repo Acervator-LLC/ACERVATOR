@@ -32,6 +32,24 @@ HistoryCallback = Callable[[str, HistoryAnalysis], object]
 # Submissions past this depth are refused rather than queued.
 SYNC_QUEUE_CAP: int = 8
 
+# A bulk read submits only while the resident sync calls are at or below this
+# depth, so the whole of SYNC_QUEUE_CAP stays available to the balance, ticker,
+# portfolio and OHLCV reads the running platform polls.
+BULK_READ_ADMIT_DEPTH: int = 0
+
+# Longest await_bulk_read_slot prefers that depth. Past it the wait ends once
+# BULK_READ_RESERVE_SLOTS are free instead, so a busy queue delays a bulk read
+# and never shortens its answer.
+BULK_READ_WAIT_BUDGET_SEC: float = 60.0
+
+# Slots of SYNC_QUEUE_CAP a bulk read leaves free when it submits past the
+# budget: one for its own call and one for the next reader, so its submission
+# is never the one that fills the queue.
+BULK_READ_RESERVE_SLOTS: int = 2
+
+# Gap between two reads of _sync_queue_depth while a bulk read waits.
+BULK_READ_WAIT_SLICE_SEC: float = 0.05
+
 # sync_connect market-load budget: 3 tries, waiting 2s then 4s.
 CONNECT_ATTEMPTS: int = 3
 CONNECT_BACKOFF_STEP_S: float = 2.0
@@ -1287,6 +1305,29 @@ class CCXTConnector(ExchangeInterface):
         self._venue_answer_noted = True
 
     # ── Sync CCXT serialization ─────────────────────────────────────────────
+
+    async def await_bulk_read_slot(
+        self, budget_sec: float = BULK_READ_WAIT_BUDGET_SEC
+    ) -> float:
+        """Yield until no other sync call is resident, then answer seconds waited.
+
+        A bulk read awaits this before each of its venue calls, so a 39-symbol
+        History refresh cannot hold the connector's single worker against the
+        readers that share ``SYNC_QUEUE_CAP``. Past ``budget_sec`` the wait
+        ends once ``BULK_READ_RESERVE_SLOTS`` are free rather than on an empty
+        queue, so a bulk read is never the submission that fills the queue and
+        never loses its own answer to a refusal.
+        """
+        admit_past_budget = SYNC_QUEUE_CAP - BULK_READ_RESERVE_SLOTS
+        start = time.monotonic()
+        while True:
+            depth = self._sync_queue_depth
+            if depth <= BULK_READ_ADMIT_DEPTH:
+                break
+            if time.monotonic() - start >= budget_sec and depth <= admit_past_budget:
+                break
+            await asyncio.sleep(BULK_READ_WAIT_SLICE_SEC)
+        return time.monotonic() - start
 
     async def _call_sync(self, fn, *args, **kwargs):
         """Run one sync CCXT call on the single worker, with a queue cap and a timeout.
