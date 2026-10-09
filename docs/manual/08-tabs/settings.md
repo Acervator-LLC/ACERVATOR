@@ -7352,12 +7352,28 @@ Two figures fix the shape, and both live on the surface.
 | Buttons across a row | `VENUE_GRID_COLUMNS` | 4 |
 | Buttons on a page | `VENUE_PAGE_HOLDS` | 16 |
 
-A page holding fewer than four buttons stretches only the columns it fills. A
-short last row widens its buttons to fill the array, so the array ends with no
+A short last row widens its buttons to fill the array, so the array ends with no
 gap. The row, the column and the span of every button come from `venue_cell`.
 
-A sector no venue serves draws its note as one disabled button. That button
-spans the whole array.
+A page holding fewer than four buttons narrows its grid to the count it holds.
+`venue_grid_shape` answers that width, and both builds draw only the columns
+the page fills. The Qt build stretches the first of them and leaves the rest at
+zero. The browser build declares that many grid tracks, in
+`src/gui/web/settings_dialog.js`, in `venuePageColumns`.
+
+| Buttons on the page | Grid the surface answers | Spans |
+| ---: | --- | --- |
+| 1 | 1 row, 1 column | 1 |
+| 3 | 1 row, 3 columns | 1, 1, 1 |
+| 5 | 2 rows, 4 columns | 1, 1, 1, 1, 4 |
+| 6 | 2 rows, 4 columns | 1, 1, 1, 1, 2, 2 |
+| 13 | 4 rows, 4 columns | twelve of 1, then 4 |
+| 16 | 4 rows, 4 columns | sixteen of 1 |
+
+A sector no venue serves draws its note as one disabled button. That page holds
+one button in a one-column grid, so the note spans the whole array. Read back
+off the drawn page, the note button carries no venue id, reports disabled, and
+draws at `repeat(1, minmax(0, 1fr))`.
 
 ### The pages button appears at seventeen venues
 

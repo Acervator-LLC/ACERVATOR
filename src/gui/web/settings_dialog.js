@@ -203,6 +203,7 @@
   var VENUE_TEXT = "text";
   var VENUE_TOOLTIP = "tooltip";
   var VENUE_ROW = "row";
+  var VENUE_COLUMNS = "columns";
   var VENUE_COLUMN = "grid_column";
   var VENUE_SPAN = "column_span";
   var VENUE_NEXT = "next";
@@ -368,10 +369,6 @@
   var SELECT_IS = "=\"";
   var SELECT_CLOSE = "\"]";
 
-  var DECLARATION_SPLIT = ";";
-  var DECLARATION_MARK = ":";
-  var WORD_SPLIT = "-";
-
   // The Qt state selector that paints the segment a press has bound.
   var CHECKED_STATE = "checked";
   // What `currentRow` reports while no venue is bound to the Add form.
@@ -388,8 +385,6 @@
   var PAGES_KEY = "venue-pages";
   // What the page reports a press of the pages control as.
   var VENUE_PAGES_NAME = "venue_pages_btn";
-  // The control the venue array draws in place of, named by its spec.
-  var EXCHANGE_LIST_NAME = "exchange_list";
 
   // HASH_ESCAPE decodes to the mark every colour opens with.
   var HASH_ESCAPE = "%23";
@@ -432,6 +427,7 @@
   var VENUE_ENTRY_FIELDS = [
     VENUE_AT,
     VENUE_COLUMN,
+    VENUE_COLUMNS,
     VENUE_ID,
     VENUE_ROW,
     VENUE_SPAN,
@@ -765,50 +761,6 @@
     return listField(model(), EXCHANGE_ITEMS);
   }
 
-  // camelFor turns one CSS property name into the key React draws it under.
-  function camelFor(name) {
-    return String(name)
-      .split(WORD_SPLIT)
-      .map(function (part, index) {
-        if (index === ZERO) {
-          return part;
-        }
-        return part.charAt(ZERO).toUpperCase() + part.slice(STEP);
-      })
-      .join(EMPTY);
-  }
-
-  // rowStyle reads one row's own sheet, so no other module has to be loaded.
-  function rowStyle(sheet) {
-    var found = {};
-    String(sheet)
-      .split(DECLARATION_SPLIT)
-      .forEach(function (one) {
-        var cut = one.indexOf(DECLARATION_MARK);
-        if (cut <= ZERO) {
-          return;
-        }
-        var name = one.slice(ZERO, cut).trim();
-        var value = one.slice(cut + STEP).trim();
-        if (name === EMPTY || value === EMPTY) {
-          return;
-        }
-        found[camelFor(name)] = value;
-      });
-    return found;
-  }
-
-  // An exchange_status row carries its text, venue id, state, colour, style
-  // and tooltip, in that order.
-  function exchangeStatusRows() {
-    return listField(objectField(model(), EXCHANGE_STATUS), ROWS);
-  }
-
-  function exchangeStatusRow(index) {
-    var row = at(exchangeStatusRows(), index);
-    return Array.isArray(row) ? row : undefined;
-  }
-
   // The venue buttons one page of the Exchange Status array draws.
   function exchangeStatusPage() {
     return listField(objectField(model(), EXCHANGE_STATUS), VENUE_PAGE);
@@ -830,9 +782,21 @@
     return isFiniteNumber(held) && held >= ZERO ? held : ZERO;
   }
 
-  // Every column an even share of the array's width, never a pixel figure.
+  // How wide the drawn page's own grid is, which `venue_grid_shape` narrows to
+  // the count on a page holding fewer than `grid_columns` buttons.
+  function venuePageColumns() {
+    var drawn = exchangeStatusPage();
+    var first = drawn.length ? drawn[ZERO] : null;
+    if (isPlainObject(first) && isFiniteNumber(first[VENUE_COLUMNS])) {
+      return Math.max(Math.floor(first[VENUE_COLUMNS]), STEP);
+    }
+    return venueGridColumns();
+  }
+
+  // Every column an even share of the array's width, never a pixel figure. A
+  // page of one draws one track, so a sector's note button spans the array.
   function venueTracks() {
-    return TRACK_OPEN + text(venueGridColumns()) + TRACK_EVEN;
+    return TRACK_OPEN + text(venuePageColumns()) + TRACK_EVEN;
   }
 
   // A grid row, column or span arrives as a whole number and never a token.
@@ -1515,27 +1479,6 @@
     return element(OPTION_TAG, one, comboItemText(props.item));
   }
 
-  function ListItem(props) {
-    var one = partProps(LIST_ITEM_PART);
-    one[KEY_ATTR] = text(props.words);
-    one[INDEX_ATTR] = text(props.at);
-    var row = exchangeStatusRow(props.at);
-    if (row === undefined) {
-      return element(LIST_ITEM_TAG, one, text(props.words));
-    }
-    var press = partProps(LIST_ROW_PART, rowStyle(text(at(row, FOURTH))));
-    press[NAME_ATTR] = text(at(row, STEP));
-    press[STATE_ATTR] = text(at(row, SECOND));
-    press[TITLE_ATTR] = text(at(row, FIFTH));
-    press.type = BUTTON_TYPE;
-    press.disabled = text(at(row, STEP)) === EMPTY;
-    return element(
-      LIST_ITEM_TAG,
-      one,
-      element(BUTTON_TAG, press, text(props.words))
-    );
-  }
-
   // One venue of the array: the Sector button skin its API state accents,
   // placed at the cell `venue_cell` gave it.
   function VenueButton(props) {
@@ -1689,24 +1632,7 @@
     var one = controlProps(spec, props.name);
     var tag = controlTag(kind);
     if (tag === LIST_TAG) {
-      if (String(props.name) === EXCHANGE_LIST_NAME) {
-        return element(VenueArray, { name: props.name, kind: kind });
-      }
-      var lines = Array.isArray(seeded) ? seeded : [];
-      var listProps = partProps(LIST_BOX_PART, controlStyle(spec));
-      listProps[NAME_ATTR] = text(props.name);
-      listProps[KIND_ATTR] = text(kind);
-      listProps[COUNT_ATTR] = text(lines.length);
-      listProps[ENABLED_ATTR] = String(enabledOf(props.name) === true);
-      listProps[SHOWN_ATTR] = String(visibleOf(props.name) === true);
-      listProps.hidden = visibleOf(props.name) !== true;
-      return element(
-        LIST_TAG,
-        listProps,
-        lines.map(function (words, index) {
-          return element(ListItem, { key: String(index), words: words, at: index });
-        })
-      );
+      return element(VenueArray, { name: props.name, kind: kind });
     }
     if (tag === SELECT_TAG) {
       var items = comboItems(props.name);
@@ -2442,6 +2368,7 @@
     exchangeStatusPage: exchangeStatusPage,
     venuePages: venuePages,
     venueGridColumns: venueGridColumns,
+    venuePageColumns: venuePageColumns,
     venueGap: venueGap,
     venueTracks: venueTracks,
     venueSelected: venueSelected,
