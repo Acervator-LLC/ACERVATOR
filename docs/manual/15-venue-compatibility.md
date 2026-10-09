@@ -2478,13 +2478,14 @@ and never written; its modification time is the same before and after every run.
 | a product the venue marks not tradable | refused, naming the permission |
 | a permission set allowing a cash amount alone | refused, naming the cash shape |
 | fractions only, outside normal hours | refused, naming both causes |
-| the venue's own reply through the recording to the order | the same two answers |
+| the venue's own reply through the recording to the order | 1 whole unit on a buy, 1.57 units on a sell |
 | every order decision over the whole recording | 1,146 markets, 27,504 answers, 0 moved |
-| the same decisions with a whole-unit permission on the stocks rows | the planted reading below |
+| the same decisions with a whole-unit permission on the equity rows | 528 answers moved, 33 markets |
 
 The last two rows are a pair. No row of the live recording carries a permission
 set, so nothing moves. The same reading, run against a whole-unit permission set
-written onto the 33 recorded equity rows, moves the answers that reading names.
+written onto the 33 recorded equity rows, moves 528 of 27,504 answers, and every
+mover sits in those 33 markets.
 
 ### What a permitted shape changes on screen
 
