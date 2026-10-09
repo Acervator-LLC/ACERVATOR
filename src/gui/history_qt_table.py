@@ -37,7 +37,11 @@ from __future__ import annotations
 import logging
 from typing import Any, Callable
 
-from ..trading.gate_vocabulary import BANK_MARKER_COLOR, LIGHT_LABEL_COLOR
+from ..trading.gate_vocabulary import (
+    BANK_MARKER_COLOR,
+    LIGHT_LABEL_COLOR,
+    gate_light_row,
+)
 
 try:
     from PySide6.QtCore import Qt
@@ -82,6 +86,7 @@ GATES_COLUMN_KEY = "gates"
 
 GATE_LIGHTS_NAME = "Gate lights"
 GATE_TEXT_NAME = "Gate text"
+GATE_ZONE_NAME = "Gate lights zone"
 
 # Sizes taken from history_panel.css .light-dot, .light-label, .bank-marker.
 LIGHT_DOT_PX = 7
@@ -119,8 +124,103 @@ def group_banks(lights: list) -> list:
 
 if _HAS_QT:
 
+    def paint_dot(dot: "QLabel", light: dict) -> None:
+        """Put one light's state and colour on ``dot``."""
+        colour = str(light.get("color", ""))
+        dot.setProperty("lightState", str(light.get("state", "")))
+        dot.setProperty("lightColor", colour)
+        dot.setStyleSheet(
+            f"background: {colour}; border-radius: {LIGHT_DOT_PX // 2}px;"
+        )
+
+    def build_dot(parent: "QWidget", light: dict) -> "QLabel":
+        """The dot, whose fill and ``lightColor`` both read the one colour."""
+        dot = QLabel(parent)
+        dot.setFixedSize(LIGHT_DOT_PX, LIGHT_DOT_PX)
+        paint_dot(dot, light)
+        return dot
+
+    def build_light(parent: "QWidget", light: dict, dots: list) -> "QWidget":
+        """One light: its label above its dot. Appends that dot to ``dots``."""
+        holder = QWidget(parent)
+        text = str(light.get("label", ""))
+        holder.setAccessibleName(f"Gate {light.get('bank', '')} {text}")
+        box = QVBoxLayout(holder)
+        box.setContentsMargins(0, 0, 0, 0)
+        box.setSpacing(1)
+        box.setAlignment(Qt.AlignHCenter)
+        label = QLabel(text, holder)
+        label.setStyleSheet(
+            f"color: {LIGHT_LABEL_COLOR}; font-size: {LIGHT_LABEL_PX}px;"
+        )
+        box.addWidget(label)
+        dot = build_dot(holder, light)
+        dots.append(dot)
+        box.addWidget(dot)
+        return holder
+
+    def build_marker(parent: "QWidget", bank: str) -> "QLabel":
+        """The marker that closes a bank, carrying the bank's own name."""
+        marker = QLabel(bank, parent)
+        marker.setAccessibleName(f"Gate bank marker {bank}")
+        marker.setStyleSheet(
+            f"color: {BANK_MARKER_COLOR}; font-size: {BANK_MARKER_PX}px;"
+        )
+        return marker
+
+    def build_bank(parent: "QWidget", bank: str, items: list, dots: list) -> "QWidget":
+        """One bank's lights, closed by its own marker."""
+        holder = QWidget(parent)
+        holder.setAccessibleName(f"Gate bank {bank}")
+        box = QHBoxLayout(holder)
+        box.setContentsMargins(0, 0, 0, 0)
+        box.setSpacing(LIGHT_SPACING_PX)
+        box.setAlignment(Qt.AlignBottom)
+        for light in items:
+            box.addWidget(build_light(holder, light, dots))
+        box.addWidget(build_marker(holder, bank))
+        return holder
+
+    def build_lights_zone(parent: "QWidget", lights: list) -> tuple:
+        """The Gates cell's indicator zone and its dots, in draw order.
+
+        An empty ``lights`` still builds a zone, which ``lights_zone_width``
+        sizes exactly as it sizes a full one.
+        """
+        zone = QWidget(parent)
+        zone.setAccessibleName(GATE_ZONE_NAME)
+        box = QHBoxLayout(zone)
+        box.setContentsMargins(0, 0, 0, 0)
+        box.setSpacing(BANK_SPACING_PX)
+        dots: list = []
+        for bank, items in group_banks(lights):
+            box.addWidget(build_bank(zone, bank, items, dots))
+        box.addStretch(1)
+        return zone, dots
+
+    _ZONE_WIDTH = 0
+
+    def lights_zone_width(parent: "QWidget") -> int:
+        """Pixels every ``GateLightsCell`` reserves for its indicator zone.
+
+        Measured once off a zone holding ``gate_light_row``'s full nineteen
+        lights, built under ``parent`` to carry the table's own font.
+        """
+        global _ZONE_WIDTH
+        if not _ZONE_WIDTH:
+            reference, _ = build_lights_zone(parent, gate_light_row(False, False))
+            reference.hide()
+            _ZONE_WIDTH = reference.sizeHint().width()
+            reference.setParent(None)
+            reference.deleteLater()
+        return _ZONE_WIDTH
+
     class GateLightsCell(QWidget):
-        """The Gates cell: its blocker text, then the row's resolved lights."""
+        """The Gates cell: the row's lights on the left, its text on the right.
+
+        ``build_lights_zone`` gives every cell the same fixed-width indicator
+        zone, which opens both zones at one x down the whole column.
+        """
 
         def __init__(self, cell: dict, lights: list, parent=None) -> None:
             super().__init__(parent)
@@ -129,18 +229,17 @@ if _HAS_QT:
             self._text = str(cell.get("text", ""))
             self._color = str(cell.get("color") or "")
             self._tooltip = str(cell.get("tooltip") or "")
-            self._dots: list = []
             box = QHBoxLayout(self)
             box.setContentsMargins(0, 0, 0, 0)
             box.setSpacing(TEXT_SPACING_PX)
+            self._zone, self._dots = build_lights_zone(self, self._lights)
+            self._zone.setFixedWidth(lights_zone_width(self))
+            box.addWidget(self._zone)
             self._label = self._text_widget(cell)
             box.addWidget(self._label)
-            for bank, items in group_banks(self._lights):
-                box.addWidget(self._bank_widget(bank, items))
             box.addStretch(1)
-            tooltip = cell.get("tooltip")
-            if tooltip:
-                self.setToolTip(str(tooltip))
+            if self._tooltip:
+                self.setToolTip(self._tooltip)
 
         def lights(self) -> list:
             """The light records this cell drew, in draw order."""
@@ -171,7 +270,7 @@ if _HAS_QT:
             self.setToolTip(self._tooltip)
             for dot, drawn, wanted in zip(self._dots, self._lights, lights):
                 if drawn != wanted:
-                    self._paint_dot(dot, wanted)
+                    paint_dot(dot, wanted)
             self._lights = [dict(light) for light in lights]
             return True
 
@@ -183,62 +282,6 @@ if _HAS_QT:
             if colour:
                 label.setStyleSheet(f"color: {colour};")
             return label
-
-        def _bank_widget(self, bank: str, items: list) -> "QWidget":
-            """One bank's lights, closed by its own marker."""
-            holder = QWidget(self)
-            holder.setAccessibleName(f"Gate bank {bank}")
-            box = QHBoxLayout(holder)
-            box.setContentsMargins(0, 0, 0, 0)
-            box.setSpacing(LIGHT_SPACING_PX)
-            box.setAlignment(Qt.AlignBottom)
-            for light in items:
-                box.addWidget(self._light_widget(light))
-            box.addWidget(self._marker_widget(bank))
-            return holder
-
-        def _light_widget(self, light: dict) -> "QWidget":
-            """One light: its label above its dot."""
-            holder = QWidget(self)
-            text = str(light.get("label", ""))
-            holder.setAccessibleName(f"Gate {light.get('bank', '')} {text}")
-            box = QVBoxLayout(holder)
-            box.setContentsMargins(0, 0, 0, 0)
-            box.setSpacing(1)
-            box.setAlignment(Qt.AlignHCenter)
-            label = QLabel(text, holder)
-            label.setStyleSheet(
-                f"color: {LIGHT_LABEL_COLOR}; font-size: {LIGHT_LABEL_PX}px;"
-            )
-            box.addWidget(label)
-            box.addWidget(self._dot_widget(light))
-            return holder
-
-        def _dot_widget(self, light: dict) -> "QLabel":
-            """The dot, whose fill and ``lightColor`` both read the one colour."""
-            dot = QLabel(self)
-            dot.setFixedSize(LIGHT_DOT_PX, LIGHT_DOT_PX)
-            self._paint_dot(dot, light)
-            self._dots.append(dot)
-            return dot
-
-        def _paint_dot(self, dot: "QLabel", light: dict) -> None:
-            """Put one light's state and colour on ``dot``."""
-            colour = str(light.get("color", ""))
-            dot.setProperty("lightState", str(light.get("state", "")))
-            dot.setProperty("lightColor", colour)
-            dot.setStyleSheet(
-                f"background: {colour}; border-radius: {LIGHT_DOT_PX // 2}px;"
-            )
-
-        def _marker_widget(self, bank: str) -> "QLabel":
-            """The marker that closes a bank, carrying the bank's own name."""
-            marker = QLabel(bank, self)
-            marker.setAccessibleName(f"Gate bank marker {bank}")
-            marker.setStyleSheet(
-                f"color: {BANK_MARKER_COLOR}; font-size: {BANK_MARKER_PX}px;"
-            )
-            return marker
 
     class HistoryQtTable(QWidget):
         """The History table, drawn by QTableWidget.
@@ -322,7 +365,7 @@ if _HAS_QT:
                 for cell_index, cell in enumerate(row.get("cells", [])):
                     gates = cell.get("key") == GATES_COLUMN_KEY
                     # GateLightsCell draws the Gates text; its item stays blank.
-                    text = "" if gates and lights else str(cell.get("text", ""))
+                    text = "" if gates else str(cell.get("text", ""))
                     self._draw_cell(row_index, cell_index, cell, text)
                     if not gates:
                         continue
@@ -354,15 +397,14 @@ if _HAS_QT:
                 return True
             return item.foreground().color() == QColor(str(colour))
 
-        # Overtaken: "Put a lights widget on the Gates cell, or take a stale one off."
-        # True: it keeps an unchanged widget, and answers whether it built one.
         def _draw_gates(
             self, row_index: int, cell_index: int, cell: dict, lights: list
         ) -> bool:
-            """Put a lights widget on the Gates cell, or take a stale one off."""
-            if not lights:
-                self._table.removeCellWidget(row_index, cell_index)
-                return False
+            """Put a ``GateLightsCell`` on the Gates cell, and say whether it is new.
+
+            Every Gates cell gets one, lights or none, which is what keeps a
+            lightless row's zones at the same x as a lit row's.
+            """
             held = self._table.cellWidget(row_index, cell_index)
             if isinstance(held, GateLightsCell):
                 if held.draws(cell, lights):
