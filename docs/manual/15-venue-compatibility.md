@@ -1357,8 +1357,8 @@ count under the variants this comparison implies:
 > Three, and no more. Each is named by what it absorbs. None is built here, and
 > one of the three cannot be designed until a decision on the issue is answered.
 
-The true sentence is: five variant names exist, counting the bot as written, and
-the program holds four of them. The limit-only variant is built and Gemini is its
+The true sentence is: six variant names exist, counting the bot as written, and
+the program holds five of them. The limit-only variant is built and Gemini is its
 one venue. The whole-unit variant is built. The rolling position is built, and
 `_tick_expiry_close` starts its close. The cash-amount variant is named and has
 no caller.
@@ -1696,8 +1696,8 @@ first set out:
 
 > The true count is four names, two of them built.
 
-The same figure overtakes both. Five variant names exist and the program holds
-four of them.
+The same figure overtakes both. Six variant names exist and the program holds
+five of them.
 
 ## 2026-09-26 - a market buy with no price is refused by the connector and names why
 
@@ -2322,3 +2322,192 @@ of them to the unit count it started from.
 Nothing yet. No row of the live recording carries a contract size, because the
 running build predates the field. The futures and commodities markets move once
 a build carrying the field records the venue again.
+## 2026-10-08 - an equity order names the one size shape its product permits
+
+One equity market takes three different size shapes at three hours of one day.
+Coinbase publishes a permission per side and per shape on every equity product,
+and the recording held none of them. A recorded row now carries both sides, and
+the order path names the shape that is left.
+
+`src/exchange/base.py`, in `MarketRules` - the two sides
+
+```python
+    buy_size_shapes: Optional[frozenset] = None  # size shapes a buy may name
+    sell_size_shapes: Optional[frozenset] = None  # size shapes a sell may name
+```
+
+### The three shapes a size field takes
+
+A size is a count of whole units, a count carrying a fraction, or a cash amount
+in the quote currency. `SIZE_SHAPES` in `src/trading/scrumming/sizing.py` holds
+the three names and nothing else. A name outside the three is no shape, so a
+corrupt recorded value widens nothing.
+
+```
+whole units          a positive whole count of the asset
+fractional units     a count carrying a fraction, floored onto the venue's step
+cash amount          an amount of the quote currency, not a count
+```
+
+### Where the permission is read
+
+The venue names the permission on the product itself. Its own reply carries one
+flag per side and per shape, and the connector library keeps the whole reply
+beside the parsed record. `equity_size_shapes` reads the flags off that reply.
+
+| the venue's own flag | the side | the shape it permits |
+| --- | --- | --- |
+| `buy_whole_shares` | buy | whole units |
+| `buy_fractional_shares` | buy | fractional units |
+| `buy_notional` | buy | cash amount |
+| `sell_whole_shares` | sell | whole units |
+| `sell_fractional_shares` | sell | fractional units |
+| `sell_notional` | sell | cash amount |
+
+A flag carries only a true or a false. Any other value is a reply this reader
+does not recognise, and it names no shape.
+
+### Which shape one order names
+
+Two things narrow the choice. The product's permission set names what the
+product allows, and the market's own session narrows that to whole units outside
+normal hours. `permitted_order_shape` answers the one shape both leave, reading
+the finest count first.
+
+```
+the product permits          the hour            the order names
+all three shapes             normal hours        fractional units
+all three shapes             outside them        whole units
+whole shares only            normal hours        whole units
+fractions only               outside them        nothing; refused
+```
+
+The finest count comes first so a product that allows a fraction keeps the step
+the venue published for it. A whole-unit order on this venue rides on a limit
+order, because a market buy here names a cash amount and not a count.
+
+### An absent permission is not a refusal
+
+A product that publishes no permission set is a different fact from one that
+publishes a set allowing nothing. The first is recorded as absent and sizes
+exactly as it sized before. The second is recorded as an empty list and every
+order into it is refused.
+
+| the venue published | on the row | what sizing does |
+| --- | --- | --- |
+| no permission set | absent | the session and the step size the order |
+| a set allowing nothing | an empty list | every order of that side is refused |
+| a set allowing a shape | the shape names | that shape sizes the order |
+
+### What a refused order says
+
+A refusal names the permission, never the step. `size_shape_refusal` writes one
+of three sentences, and each one names the cause the operator can act on.
+
+```
+PRE-FLIGHT REJECTED: BUY <market> 1.5700000000: the venue's own permission set
+for this product names no buy size shape, so no whole unit, no fraction and no
+cash amount may be named. The market is still read and still charted. API not
+called.
+
+PRE-FLIGHT REJECTED: BUY <market> 1.5700000000: the venue permits fractional
+units on a buy of this product, and its us_equity session takes a whole unit
+alone at this hour, so no shape is left to name. The market is still read and
+still charted. API not called.
+
+PRE-FLIGHT REJECTED: BUY <market> 1.5700000000: the venue permits a cash amount
+alone on a buy of this product, and cash-amount order is not built: a market
+sized by a cash amount in the quote currency. The market is still read and still
+charted. API not called.
+```
+
+The third sentence names a product that allows a cash amount and nothing else.
+The bot names a count of units, so no built variant sizes such an order. That is
+the cash-amount variant, which has no caller.
+
+### The variant this market selects
+
+`venue_variant` answers a sixth name for a market whose record publishes a
+permission set, and `VARIANTS_BUILT` holds it. The name says what it absorbs, as
+the other five do.
+
+```python
+VARIANT_PERMITTED_SHAPE = "permitted-shape order"
+
+VARIANTS_BUILT = frozenset(
+    {
+        VARIANT_NONE,
+        VARIANT_LIMIT_ONLY,
+        VARIANT_WHOLE_UNIT,
+        VARIANT_ROLLING_POSITION,
+        VARIANT_PERMITTED_SHAPE,
+    }
+)
+```
+
+### The path from the venue's reply to the size
+
+```mermaid
+flowchart TD
+    A[the venue publishes equity_trading_flags on the product] --> B[equity_size_shapes reads one flag per side and shape]
+    B --> C[market_rules writes buy_size_shapes and sell_size_shapes]
+    C --> D[rules_row records both as sorted lists]
+    D --> E[recorded_rules reads them back as sets]
+    E --> F[permitted_order_shape names the shape the set and the session leave]
+    F --> G[market_unit_rule answers the rule that shape sizes under]
+    G --> H[sized_order floors the amount onto the venue's step]
+    H --> I[place_order receives the count]
+```
+
+### What the size shape was driven against
+
+Driven in one process with the home redirected to a scratch directory, the
+transport replaced by one that raises, and no order sent. The recording was read
+and never written; its modification time is the same before and after every run.
+
+| the drive | the reading |
+| --- | --- |
+| one equity market, normal hours, all shapes permitted | 1.57 units, a market order |
+| the same market outside normal hours | 1 whole unit, then held |
+| the same market, normal hours, whole shares only on a buy | 1 whole unit, a limit order |
+| a buy of 1.57 opening a position under whole shares only | refused at two units |
+| a buy of 2.4 opening a position under whole shares only | 2 whole units |
+| a sell of 1.57, all shapes permitted | 1.57 units |
+| a sell of 1.57, whole shares only on a sell | 1 whole unit |
+| a permission set allowing nothing | refused, naming the permission |
+| a product the venue marks not tradable | refused, naming the permission |
+| a permission set allowing a cash amount alone | refused, naming the cash shape |
+| fractions only, outside normal hours | refused, naming both causes |
+| the venue's own reply through the recording to the order | the same two answers |
+| every order decision over the whole recording | 1,146 markets, 27,504 answers, 0 moved |
+| the same decisions with a whole-unit permission on the stocks rows | the planted reading below |
+
+The last two rows are a pair. No row of the live recording carries a permission
+set, so nothing moves. The same reading, run against a whole-unit permission set
+written onto the 33 recorded equity rows, moves the answers that reading names.
+
+### What a permitted shape changes on screen
+
+Nothing yet. No row of the live recording carries a permission set, because the
+running build predates the field. The 33 recorded equity markets size by their
+own permission once a build carrying the field reads Coinbase again.
+
+### Which of Coinbase's six sectors are complete
+
+Five of the six now have every order form their market shape needs. Forex has no
+published order route on this venue, so its recorded markets are crypto spot
+markets and the first row covers them.
+
+| sector | the shape it needs | complete |
+| --- | --- | --- |
+| crypto | a count of units, a fraction or a whole one | yes |
+| stocks | the shape its session and its permission leave | yes |
+| futures and perpetuals | a count of contracts on a dated market | yes |
+| commodities | a count of contracts, or a count of units | yes |
+| indices | a count of contracts | yes |
+| forex | no published order route on this venue | no route to build |
+
+### The two counts this entry corrects
+
+Two sentences above carry the number of variant names. Both are corrected where
+they stand, because the program now holds a sixth name.

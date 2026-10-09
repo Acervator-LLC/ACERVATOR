@@ -365,6 +365,32 @@ QUOTE_INCREMENT_KEY = "quote_increment"
 #: nothing on a spot pair and a perpetual.
 SESSION_DETAILS_KEY = "fcm_trading_session_details"
 
+#: The record an equity product carries its own trading permissions under. ccxt's
+#: ``parse_spot_market`` reads nothing out of it and keeps the whole raw product
+#: row under ``info``, so the record survives the parse.
+EQUITY_DETAILS_KEY = "equity_product_details"
+
+#: The key ``EQUITY_DETAILS_KEY`` carries one permission flag per side and per
+#: size shape under.
+EQUITY_FLAGS_KEY = "equity_trading_flags"
+
+#: The flag naming whether any buy or sell flow is enabled on the product.
+EQUITY_TRADABLE_FLAG = "tradable"
+
+#: The flag each buy shape is published under, read in ``equity_size_shapes``.
+EQUITY_BUY_FLAGS = (
+    "buy_whole_shares",
+    "buy_fractional_shares",
+    "buy_notional",
+)
+
+#: The flag each sell shape is published under, in the same shape order.
+EQUITY_SELL_FLAGS = (
+    "sell_whole_shares",
+    "sell_fractional_shares",
+    "sell_notional",
+)
+
 #: The venue's own label for what a futures contract is written on.
 FUTURES_ASSET_TYPE_KEY = "futures_asset_type"
 
@@ -582,6 +608,41 @@ def market_session(market: Any) -> Optional[str]:
     return SESSION_CONTINUOUS
 
 
+def equity_size_shapes(market: Any) -> tuple:
+    """The size shapes one loaded market record permits on a buy and on a sell,
+    off ``EQUITY_FLAGS_KEY`` under ``EQUITY_DETAILS_KEY``.
+
+    Two Nones where the record carries no permission set, and two empty
+    frozensets where ``EQUITY_TRADABLE_FLAG`` reads False.
+    """
+    from ..trading.scrumming.sizing import (
+        SHAPE_CASH_AMOUNT,
+        SHAPE_FRACTIONAL_UNITS,
+        SHAPE_WHOLE_UNITS,
+    )
+
+    raw = (market or {}).get("info") or {}
+    if not isinstance(raw, dict):
+        return (None, None)
+    detail = raw.get(EQUITY_DETAILS_KEY) or {}
+    if not isinstance(detail, dict):
+        return (None, None)
+    flags = detail.get(EQUITY_FLAGS_KEY)
+    if not isinstance(flags, dict):
+        return (None, None)
+    if flags.get(EQUITY_TRADABLE_FLAG) is False:
+        return (frozenset(), frozenset())
+    shapes = (SHAPE_WHOLE_UNITS, SHAPE_FRACTIONAL_UNITS, SHAPE_CASH_AMOUNT)
+    # Each flag carries only a bool, so any other value is a record this reader
+    # does not recognise and names no shape.
+    return tuple(
+        frozenset(
+            shape for flag, shape in zip(side_flags, shapes) if flags.get(flag) is True
+        )
+        for side_flags in (EQUITY_BUY_FLAGS, EQUITY_SELL_FLAGS)
+    )
+
+
 # OVERTAKEN in market_rules's docstring below: "The ``MarketRules`` one loaded
 # CCXT market record publishes."
 # ``order_types`` comes from the exchange's own ``has`` map through
@@ -596,6 +657,7 @@ def market_rules(
     """
     limits = (market or {}).get("limits") or {}
     precision = (market or {}).get("precision") or {}
+    buy_shapes, sell_shapes = equity_size_shapes(market)
     return MarketRules(
         order_types=order_types,
         min_amount=limit_to_float((limits.get("amount") or {}).get("min")),
@@ -608,6 +670,8 @@ def market_rules(
         quote_increment=quote_step(market),
         contract_size=contract_units(market),
         session=market_session(market),
+        buy_size_shapes=buy_shapes,
+        sell_size_shapes=sell_shapes,
         # CCXT parses Coinbase's future_product_details.contract_expiry here; a
         # spot record and a perpetual both carry None.
         expiry_ms=limit_to_float((market or {}).get("expiry")),

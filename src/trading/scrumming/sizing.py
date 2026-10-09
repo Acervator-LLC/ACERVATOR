@@ -36,10 +36,15 @@ a market and ``position_minimum_refusal`` refuses its opening order under
 
 OVERTAKEN: "``recorded_unit_rule`` reads the venue's own step and ``unit_rule``
 answers the sector where the venue published none".
-``session_unit_rule`` answers before both, reading ``WHOLE_UNITS`` while the
-market's own session takes a whole unit alone at the moment the order is sized,
-and ``session_for`` names that session off the market's own record with
-``CITED_VENUE_SESSIONS`` answering where the record carries none.
+``permitted_order_shape`` answers before all of them for a market whose own
+record publishes a permission set, naming the one member of ``SIZE_SHAPES`` that
+set and ``session_size_shapes`` leave, and ``size_shape_refusal`` names the
+permission where they leave none; ``venue_variant`` answers
+``VARIANT_PERMITTED_SHAPE`` for such a market. ``session_unit_rule`` answers
+next, reading ``WHOLE_UNITS`` while the market's own session takes a whole unit
+alone at the moment the order is sized, and ``session_for`` names that session
+off the market's own record with ``CITED_VENUE_SESSIONS`` answering where the
+record carries none.
 """
 
 from __future__ import annotations
@@ -178,17 +183,24 @@ def recorded_unit_rule(recorded: Any) -> Optional[str]:
 # OVERTAKEN, the docstring below reading "A recorded step is never raised to
 # ``WHOLE_UNITS`` by the sector row": ``session_unit_rule`` raises it, because
 # the market's own session takes a whole unit alone outside its normal hours.
-# A caller naming no ``moment_s`` reads no session and raises nothing.
+# A caller naming no ``moment_s`` reads no session, and one naming no ``side``
+# reads no permission set; neither raises a recorded step.
 def market_unit_rule(
-    recorded: Any, asset_class: str = "", venue: str = "", moment_s: Any = None
+    recorded: Any,
+    asset_class: str = "",
+    venue: str = "",
+    moment_s: Any = None,
+    side: Any = "",
 ) -> Optional[str]:
-    """The unit rule governing one market: ``session_unit_rule`` at
-    ``moment_s``, then ``recorded_unit_rule`` where the venue published a step,
-    else the ``CITED_UNIT_RULES`` row for the pair.
+    """The unit rule governing one market: ``permitted_order_shape`` for a
+    market publishing a permission set, then ``session_unit_rule`` at
+    ``moment_s``, then ``recorded_unit_rule``, else the ``CITED_UNIT_RULES`` row.
 
     A recorded step is never raised to ``WHOLE_UNITS`` by the sector row, so
     this answers the rule ``sized_order`` sizes the same amount under.
     """
+    if str(side) in ORDER_SIDES and permits_size_shapes(recorded):
+        return shape_unit_rule(permitted_order_shape(recorded, side, moment_s))
     demanded = session_unit_rule(getattr(recorded, "session", None), moment_s)
     if demanded is not None:
         return demanded
@@ -424,6 +436,109 @@ def session_unit_rule(session: Optional[str], moment_s: Any) -> Optional[str]:
     return None if regular else WHOLE_UNITS
 
 
+#: The three shapes a venue's size field takes: a count of whole units, a count
+#: carrying a fraction, and a cash amount in the quote currency.
+SHAPE_WHOLE_UNITS = "whole units"
+SHAPE_FRACTIONAL_UNITS = "fractional units"
+SHAPE_CASH_AMOUNT = "cash amount"
+
+#: The three names above, closed. A name outside this set is no shape, so a
+#: corrupt recorded value names nothing rather than widening what is permitted.
+SIZE_SHAPES = (SHAPE_WHOLE_UNITS, SHAPE_FRACTIONAL_UNITS, SHAPE_CASH_AMOUNT)
+
+#: The order the shapes are read in: the finest count first, so a market
+#: permitting a fraction names the step the venue published for it.
+SHAPE_PREFERENCE = (SHAPE_FRACTIONAL_UNITS, SHAPE_WHOLE_UNITS, SHAPE_CASH_AMOUNT)
+
+#: The two sides a venue's permission set names a shape on separately.
+SIDE_BUY = "buy"
+SIDE_SELL = "sell"
+ORDER_SIDES = (SIDE_BUY, SIDE_SELL)
+
+
+def shapes_named(shapes: Any) -> str:
+    """``shapes`` as one phrase in ``SHAPE_PREFERENCE`` order, empty for a set
+    naming no member of it."""
+    held = shapes or frozenset()
+    return ", ".join(one for one in SHAPE_PREFERENCE if one in held)
+
+
+def permits_size_shapes(recorded: Any) -> bool:
+    """True while ``recorded`` publishes a permission set on either side,
+    telling an absent set from one naming no shape."""
+    for name in ("buy_size_shapes", "sell_size_shapes"):
+        if isinstance(getattr(recorded, name, None), (frozenset, set)):
+            return True
+    return False
+
+
+def permitted_size_shapes(recorded: Any, side: Any) -> Optional[frozenset]:
+    """The shapes ``recorded`` permits on ``side``, off ``buy_size_shapes`` or
+    ``sell_size_shapes``.
+
+    None where the venue published no set, an empty frozenset where it published
+    one naming no shape, and ``ValueError`` for a side outside ``ORDER_SIDES``.
+    """
+    held = str(side)
+    if held == SIDE_BUY:
+        published = getattr(recorded, "buy_size_shapes", None)
+    elif held == SIDE_SELL:
+        published = getattr(recorded, "sell_size_shapes", None)
+    else:
+        raise ValueError(f"order side {side!r} is not one of {ORDER_SIDES}")
+    if not isinstance(published, (frozenset, set)):
+        return None
+    return frozenset(str(one) for one in published if str(one) in SIZE_SHAPES)
+
+
+def session_size_shapes(session: Any, moment_s: Any) -> Optional[frozenset]:
+    """The shapes ``session`` leaves at ``moment_s``, epoch seconds.
+
+    ``SHAPE_WHOLE_UNITS`` alone where ``session_unit_rule`` reads
+    ``WHOLE_UNITS``, and None at every other moment.
+    """
+    if session_unit_rule(session, moment_s) != WHOLE_UNITS:
+        return None
+    return frozenset({SHAPE_WHOLE_UNITS})
+
+
+def permitted_order_shape(
+    recorded: Any, side: Any, moment_s: Any = None
+) -> Optional[str]:
+    """The shape an order of ``side`` into ``recorded`` names at ``moment_s``,
+    the first of ``SHAPE_PREFERENCE`` both its permission set and
+    ``session_size_shapes`` leave.
+
+    None where the record publishes no permission set and None where the set and
+    the session leave no shape, which ``permits_size_shapes`` tells apart.
+    """
+    allowed = permitted_size_shapes(recorded, side)
+    if allowed is None:
+        return None
+    narrowed = session_size_shapes(getattr(recorded, "session", None), moment_s)
+    if narrowed is not None:
+        allowed = allowed & narrowed
+    for shape in SHAPE_PREFERENCE:
+        if shape in allowed:
+            return shape
+    return None
+
+
+def shape_unit_rule(shape: Any) -> Optional[str]:
+    """The ``UNIT_RULES`` member ``shape`` sizes a unit count under.
+
+    ``FRACTIONAL_UNITS`` for ``SHAPE_FRACTIONAL_UNITS``, ``WHOLE_UNITS`` for
+    ``SHAPE_WHOLE_UNITS``, and None for ``SHAPE_CASH_AMOUNT``, which names no
+    unit count.
+    """
+    held = str(shape)
+    if held == SHAPE_FRACTIONAL_UNITS:
+        return FRACTIONAL_UNITS
+    if held == SHAPE_WHOLE_UNITS:
+        return WHOLE_UNITS
+    return None
+
+
 #: The three answers a market gives about the built variant, the bot that names
 #: a unit count. ``TRADEABLE_UNKNOWN`` is never read as either other.
 TRADEABLE_YES = "can size a scrum"
@@ -513,6 +628,10 @@ VARIANT_WHOLE_UNIT = "whole-unit position"
 # names": ``VARIANT_ROLLING_POSITION`` is a fourth, named the same way.
 VARIANT_ROLLING_POSITION = "rolling position"
 
+#: A market whose own permission set names which of ``SIZE_SHAPES`` each side
+#: may take, so one market names three sizes at three hours of one day.
+VARIANT_PERMITTED_SHAPE = "permitted-shape order"
+
 #: The market shape each variant absorbs, one row per variant.
 VARIANT_MARKETS: dict[str, str] = {
     VARIANT_NONE: "a market naming a unit count on a venue taking a market order",
@@ -520,6 +639,10 @@ VARIANT_MARKETS: dict[str, str] = {
     VARIANT_CASH_AMOUNT: "a market sized by a cash amount in the quote currency",
     VARIANT_WHOLE_UNIT: "a market whose smallest order costs more than the excess",
     VARIANT_ROLLING_POSITION: "a market the venue expires on a date",
+    VARIANT_PERMITTED_SHAPE: (
+        "a market whose own permission set names the size shapes each side may "
+        "take, narrowed by its session"
+    ),
 }
 
 # OVERTAKEN, the VARIANT_MARKETS row above for ``VARIANT_CASH_AMOUNT`` reading
@@ -533,6 +656,7 @@ VARIANTS_BUILT = frozenset(
         VARIANT_LIMIT_ONLY,
         VARIANT_WHOLE_UNIT,
         VARIANT_ROLLING_POSITION,
+        VARIANT_PERMITTED_SHAPE,
     }
 )
 
@@ -554,6 +678,8 @@ WHOLE_UNIT_STEP_IS_A_FRACTION = (
 # other record, an unread one included."
 # ``VARIANT_ROLLING_POSITION`` is answered first, while ``MarketRules.expires``
 # is True; the three answers above follow it unchanged and read no expiry.
+# ``VARIANT_PERMITTED_SHAPE`` follows the expiry, while ``permits_size_shapes``
+# reads a published permission set; a market carrying none reads no further.
 def venue_variant(
     rules: Any,
     price: Optional[float] = None,
@@ -569,6 +695,8 @@ def venue_variant(
         return VARIANT_NONE
     if getattr(rules, "expires", False):
         return VARIANT_ROLLING_POSITION
+    if permits_size_shapes(rules):
+        return VARIANT_PERMITTED_SHAPE
     if tradeable_answer(rules, price, excess_usd) == TRADEABLE_NO:
         return VARIANT_WHOLE_UNIT
     if getattr(rules, "order_types", None) == ORDER_TYPES_LIMIT_ONLY:
@@ -669,6 +797,57 @@ def untradeable_reason(
         return WHOLE_UNIT_STEP_IS_A_FRACTION
     return UNTRADEABLE_REASON_FORMAT.format(
         variant=variant, market=variant_market(variant)
+    )
+
+
+#: Why a product's own permission set refuses an order: it names no shape at all
+#: for that side, so no count and no cash amount may be sent.
+NO_PERMITTED_SHAPE_FORMAT = (
+    "the venue's own permission set for this product names no {side} size "
+    "shape, so no whole unit, no fraction and no cash amount may be named"
+)
+
+#: Why a product's session refuses every shape its permission set permits.
+SESSION_REFUSES_SHAPES_FORMAT = (
+    "the venue permits {allowed} on a {side} of this product, and its "
+    "{session} session takes a whole unit alone at this hour, so no shape is "
+    "left to name"
+)
+
+#: Why a product permitting a cash amount alone is not sized: the bot names a
+#: unit count and ``VARIANT_CASH_AMOUNT`` has no caller.
+CASH_SHAPE_ONLY_FORMAT = (
+    "the venue permits a {shape} alone on a {side} of this product, and "
+    "{variant} is not built: {market}"
+)
+
+
+def size_shape_refusal(recorded: Any, side: Any, moment_s: Any = None) -> str:
+    """Why ``recorded`` refuses an order of ``side`` at ``moment_s`` on its own
+    permitted shape, through one of three formats naming the permission set.
+
+    Empty where the record publishes no set and empty where the shape
+    ``permitted_order_shape`` leaves names a unit count.
+    """
+    if not permits_size_shapes(recorded):
+        return ""
+    allowed = permitted_size_shapes(recorded, side) or frozenset()
+    shape = permitted_order_shape(recorded, side, moment_s)
+    if shape is None:
+        if not allowed:
+            return NO_PERMITTED_SHAPE_FORMAT.format(side=side)
+        return SESSION_REFUSES_SHAPES_FORMAT.format(
+            allowed=shapes_named(allowed),
+            side=side,
+            session=getattr(recorded, "session", None),
+        )
+    if shape_unit_rule(shape) is not None:
+        return ""
+    return CASH_SHAPE_ONLY_FORMAT.format(
+        shape=shape,
+        side=side,
+        variant=VARIANT_CASH_AMOUNT,
+        market=variant_market(VARIANT_CASH_AMOUNT),
     )
 
 
@@ -1277,6 +1456,7 @@ def cartridge_threshold_usd(target_balance: float, cartridge_pct: float) -> floa
 __all__ = [
     "BELOW_POSITION_MINIMUM",
     "BELOW_POSITION_MINIMUM_FORMAT",
+    "CASH_SHAPE_ONLY_FORMAT",
     "CEILING_MULTIPLE_MAX",
     "CEILING_MULTIPLE_MIN",
     "CITED_CASH_MARKET_BUY",
@@ -1302,6 +1482,8 @@ __all__ = [
     "HELD_UNSETTLED_CASH",
     "LARGEST_FLEET_TARGET_USD",
     "MARKET_BUY_NAMES_CASH",
+    "NO_PERMITTED_SHAPE_FORMAT",
+    "ORDER_SIDES",
     "ORDER_TYPES_DECLARED",
     "ORDER_TYPES_LIMIT_ONLY",
     "ORDER_TYPES_WITH_MARKET",
@@ -1309,9 +1491,17 @@ __all__ = [
     "REFERENCE_SCRUM_EXCESS_USD",
     "SESSIONS_DECLARED",
     "SESSION_CONTINUOUS",
+    "SESSION_REFUSES_SHAPES_FORMAT",
     "SESSION_US_EQUITY",
     "SETTLEMENT_DAY_SECONDS",
     "SETTLE_LEG",
+    "SHAPE_CASH_AMOUNT",
+    "SHAPE_FRACTIONAL_UNITS",
+    "SHAPE_PREFERENCE",
+    "SHAPE_WHOLE_UNITS",
+    "SIDE_BUY",
+    "SIDE_SELL",
+    "SIZE_SHAPES",
     "TAPER_DROP",
     "TAPER_START_RATIO",
     "TRADEABLE_NO",
@@ -1324,6 +1514,7 @@ __all__ = [
     "VARIANT_LIMIT_ONLY",
     "VARIANT_MARKETS",
     "VARIANT_NONE",
+    "VARIANT_PERMITTED_SHAPE",
     "VARIANT_ROLLING_POSITION",
     "VARIANT_WHOLE_UNIT",
     "WHOLE_UNITS",
@@ -1353,6 +1544,9 @@ __all__ = [
     "opposing_trade_distances",
     "order_types_for",
     "outside_session",
+    "permits_size_shapes",
+    "permitted_order_shape",
+    "permitted_size_shapes",
     "plan_fold_consumption",
     "plan_source_price",
     "position_ceiling",
@@ -1365,8 +1559,12 @@ __all__ = [
     "scrum_units",
     "scrumming_interval_usd",
     "session_for",
+    "session_size_shapes",
     "session_unit_rule",
     "settle_fold_plan",
+    "shape_unit_rule",
+    "shapes_named",
+    "size_shape_refusal",
     "sized_units",
     "smallest_order_usd",
     "spend_less_unsettled_usd",
