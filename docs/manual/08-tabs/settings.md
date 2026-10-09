@@ -7283,4 +7283,195 @@ press opened the Exchanges tab, and the panel listed that sector's venues. The
 refusal counter stayed at zero across all eight routes, against a control that
 moved it to one on a single deliberate reach for a socket.
 
+## 2026-10-09 - Exchange Status is an array of buttons, not a list
+
+The panel is now an array of rectangular buttons. Four buttons sit across every
+row. One page holds sixteen buttons. A pages button sits under the array, and it
+appears only when the sector serves more than sixteen venues. Neither build
+draws a scroll bar.
+
+### The list sentences, replaced
+
+OVERTAKEN, quoted whole:
+
+> "The list at the top of the Exchanges page is headed Exchange Status."
+
+> "Each line is a button, and pressing one points the Add form below at that
+> venue."
+
+True today: the panel at the top of the Exchanges page still carries the
+heading Exchange Status, and it draws an array of buttons rather than a column
+of lines. Each button is one venue. Pressing one still points the Add form below
+at that venue, and it still reports the same phrase.
+
+OVERTAKEN, quoted whole:
+
+> "`src/gui/main_tabs/settings_dialog_surface.py` — `exchange_status_rows`"
+
+True today: `exchange_status_rows` still answers every venue the sector serves,
+and the drawing path is now `exchange_status_page`. That function takes a page
+number and answers one page of buttons. Each button carries the index into
+`exchange_status_rows` that a press reports, so the press path did not move.
+
+### What draws the array
+
+Both builds read one surface. Neither computes a cell of its own.
+
+| Build | What draws the array | What draws the pages button |
+| ----- | -------------------- | --------------------------- |
+| Qt | `src/gui/settings_dialog.py`, in `_draw_venue_array` | the same function |
+| Browser | `src/gui/web/settings_dialog.js`, in `VenueArray` | `in VenuePagesButton` |
+
+The surface answers both. `src/gui/main_tabs/settings_dialog_surface.py`, in
+`exchange_status_page`, gives one page of buttons. In `venue_pages_button`, it
+gives the control's text, its tooltip and its shown flag.
+
+```mermaid
+flowchart LR
+  REG["venues_for_class"]
+  ROWS["exchange_status_rows"]
+  PAGE["exchange_status_page"]
+  CTRL["venue_pages_button"]
+  QT["Qt<br/>_draw_venue_array"]
+  WEB["Browser<br/>VenueArray"]
+  REG --> ROWS
+  ROWS --> PAGE
+  ROWS --> CTRL
+  PAGE --> QT
+  PAGE --> WEB
+  CTRL --> QT
+  CTRL --> WEB
+```
+
+### The shape of one page
+
+Two figures fix the shape, and both live on the surface.
+
+| Figure | Name | Value |
+| ------ | ---- | ----: |
+| Buttons across a row | `VENUE_GRID_COLUMNS` | 4 |
+| Buttons on a page | `VENUE_PAGE_HOLDS` | 16 |
+
+A page holding fewer than four buttons stretches only the columns it fills. A
+short last row widens its buttons to fill the array, so the array ends with no
+gap. The row, the column and the span of every button come from `venue_cell`.
+
+A sector no venue serves draws its note as one disabled button. That button
+spans the whole array.
+
+### The pages button appears at seventeen venues
+
+Driven on the real surface with the venue registry standing in at each count,
+and with the home trees redirected:
+
+| Venues the sector serves | Pages | Pages button drawn | First page holds |
+| ---: | ---: | --- | ---: |
+| 15 | 1 | no | 15 |
+| 16 | 1 | no | 16 |
+| 17 | 2 | yes | 16 |
+| 32 | 2 | yes | 16 |
+| 33 | 3 | yes | 16 |
+
+Sixteen venues fill one page exactly, so a sector at the limit draws neither a
+pages button nor a scroll bar.
+
+### Measured page counts, all six sectors
+
+Read back off the browser page's own drawn tree, with the home trees redirected
+and no venue contacted:
+
+| Sector | Venues | Pages | Buttons on page 1 | Buttons on page 2 | Pages button |
+| ------ | ---: | ---: | ---: | ---: | --- |
+| Commodities | 16 | 1 | 16 | — | hidden |
+| Crypto | 21 | 2 | 16 | 5 | shown |
+| Forex | 6 | 1 | 6 | — | hidden |
+| Futures / Perps | 16 | 1 | 16 | — | hidden |
+| Indices | 13 | 1 | 13 | — | hidden |
+| Stocks | 19 | 2 | 16 | 3 | shown |
+
+Every page drew four columns. No page drew a scroll bar.
+
+### The pages button moves the set
+
+The button steps to the next page, and the last page steps back to the first.
+`venue_next_page` answers that step, and `venue_page_offset` answers the first
+row index of a page.
+
+Driven on the two sectors that fill more than one page:
+
+| Sector | Page 1 holds | Page 2 holds | Venues on both pages | Venues reached |
+| ------ | ---: | ---: | ---: | --- |
+| Crypto | 16 | 5 | 0 | 21 of 21 |
+| Stocks | 16 | 3 | 0 | 19 of 19 |
+
+No venue appears on two pages, and every venue in the sector is reachable. A
+control drawing the same venues on both pages is the failure this reading
+catches. A planted payload doing exactly that read red, so the reading can fail
+rather than pass on anything.
+
+### Every button carries the Sector button skin
+
+A venue button takes the skin the Sector buttons take. The accent is that
+venue's own state colour. `src/gui/main_tabs/asset_class_surface.py`, in
+`button_style`, gives the skin, and `venue_button_style` fills it with the
+state colour.
+
+The three colours keep the meanings the table above records. Green says a
+credential check succeeded. Red says a venue refused a check. Grey says nobody
+has checked.
+
+The browser page reads the Qt style sheet through
+`src/gui/web/header_strip.js`, in `styleOf`. That module is now loaded on the
+dialog page, so the skin reaches the buttons. Read back off the drawn page,
+every venue button on all eight sector pages carried between eleven and
+thirteen style declarations, and the pages button carried eleven.
+
+### A press still points the Add form at its venue
+
+A press reports the row index into `exchange_status_rows`, exactly as the list
+lines did. `src/gui/settings_dialog.py`, in `_open_credentials_for_row`, binds
+the Add form and writes the phrase.
+
+Driven on the crypto sector, with every outbound socket refused:
+
+| Row pressed | Venue | The Add form bound to | The phrase reported |
+| ---: | ----- | --------------------- | ------------------- |
+| 15 | okx | `okx` | Enter credentials for Okx. |
+| 16 | poloniex | `poloniex` | Enter credentials for Poloniex. |
+| 0 | alpaca | nothing | Alpaca has no credential form on this tab. |
+| 20 | webull | nothing | Webull has no credential form on this tab. |
+
+Row 16 is the first button of page two, and it bound the form like any other.
+A venue with no credential form on this tab reports so, and binds nothing.
+
+### What the browser build holds of its own
+
+The view model answers page zero. The browser host holds the page the operator
+paged to. `src/gui/react_settings_dialog.py`, in `_venue_array_payload`, reads
+the surface at that page and puts the answer on the payload. In
+`_next_venue_page`, it steps the page and redraws.
+
+| What it holds | Where |
+| ------------- | ----- |
+| The current page number | `src/gui/react_settings_dialog.py`, in `_venue_array_payload` |
+| The step to the next page | `in _next_venue_page` |
+| The row a press bound | `in currentRow` on `PageList` |
+
+The Qt build holds the same page number in `_venue_page` and steps it in
+`_next_venue_page`, so the two builds page the same way.
+
+### More sentences the Exchange Status panel replaces
+
+Each sentence below stands in an earlier section and no longer describes the
+code. The earlier text stays where it is.
+
+| Earlier sentence | What the code does now |
+| ---------------- | ---------------------- |
+| "The list at the top of the Exchanges page is headed Exchange Status." | The panel keeps that heading and draws an array of buttons, four across and sixteen to a page. |
+| "Each line is a button, and pressing one points the Add form below at that venue." | Each button is one venue, and pressing one still points the Add form at that venue. |
+| "\| Sector \| Venues the registry answers \| Rows drawn \|" | The registry answers 16 commodities, 21 crypto, 6 forex, 16 futures / perps, 13 indices and 19 stocks venues. |
+| "`src/gui/main_tabs/settings_dialog_surface.py` — `exchange_status_rows`" | `exchange_status_page` draws the panel, and `exchange_status_rows` answers the whole sector behind it. |
+| "ten redraws of the crypto panel, fifteen rows each time" | A redraw still reaches no venue. The crypto panel now draws sixteen buttons on page one and five on page two. |
+| "all fifteen crypto lines match character for character" | Both builds draw the same twenty-one crypto venues from one surface, sixteen on page one and five on page two. |
+
 Back to [the subsystem index](README.md).

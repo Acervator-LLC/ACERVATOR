@@ -190,6 +190,22 @@
   var STRONG_WEIGHT = "strong_weight";
   var STYLE_SHEET = "style_sheet";
   var WORD_WRAP = "word_wrap";
+
+  // The fields one page of the venue array and its pages control carry.
+  var VENUE_PAGE = "page";
+  var VENUE_PAGES = "pages";
+  var VENUE_GRID_COLUMNS = "grid_columns";
+  var VENUE_GROUP_SPACING = "group_spacing";
+  var VENUE_SELECTED = "selected";
+  var VENUE_AT = "at";
+  var VENUE_ID = "venue";
+  var VENUE_STATE = "state";
+  var VENUE_TEXT = "text";
+  var VENUE_TOOLTIP = "tooltip";
+  var VENUE_ROW = "row";
+  var VENUE_COLUMN = "grid_column";
+  var VENUE_SPAN = "column_span";
+  var VENUE_NEXT = "next";
   var TINT = "tint";
   var RGB = "rgb";
   var ALPHA = "alpha";
@@ -305,6 +321,8 @@
   var LIST_BOX_PART = "list-box";
   var LIST_ITEM_PART = "list-item";
   var LIST_ROW_PART = "list-row";
+  var VENUE_ARRAY_PART = "venue-array";
+  var VENUE_PAGES_PART = "venue-pages";
   var TA_ROWS_PART = "ta-rows";
   var TA_ROW_PART = "ta-row";
   var TA_LABEL_PART = "ta-label";
@@ -354,6 +372,25 @@
   var DECLARATION_MARK = ":";
   var WORD_SPLIT = "-";
 
+  // The Qt state selector that paints the segment a press has bound.
+  var CHECKED_STATE = "checked";
+  // What `currentRow` reports while no venue is bound to the Add form.
+  var NO_ROW = -1;
+  var GRID = "grid";
+  var WHOLE = "100%";
+  var NO_LENGTH = "0";
+  var SPACE_MARK = " ";
+  var SPAN_MARK = " / span ";
+  var TRACK_OPEN = "repeat(";
+  var TRACK_EVEN = ", minmax(0, 1fr))";
+  var ARIA_PRESSED = "aria-pressed";
+  var ARRAY_KEY = "venue-array";
+  var PAGES_KEY = "venue-pages";
+  // What the page reports a press of the pages control as.
+  var VENUE_PAGES_NAME = "venue_pages_btn";
+  // The control the venue array draws in place of, named by its spec.
+  var EXCHANGE_LIST_NAME = "exchange_list";
+
   // HASH_ESCAPE decodes to the mark every colour opens with.
   var HASH_ESCAPE = "%23";
   var HEX_MARK = decodeURIComponent(HASH_ESCAPE);
@@ -390,6 +427,30 @@
 
   // An exchange_status row carries text, venue id, state, colour, style, tooltip.
   var VENUE_ROW_WIDTH = FIFTH + STEP;
+
+  // Every field one venue button of `exchange_status.page` is drawn from.
+  var VENUE_ENTRY_FIELDS = [
+    VENUE_AT,
+    VENUE_COLUMN,
+    VENUE_ID,
+    VENUE_ROW,
+    VENUE_SPAN,
+    VENUE_STATE,
+    VENUE_TEXT,
+    VENUE_TOOLTIP,
+    STYLE_SHEET
+  ];
+
+  // Every field the pages control is drawn from.
+  var VENUE_PAGES_FIELDS = [
+    SHOWN,
+    STYLE_SHEET,
+    VENUE_NEXT,
+    VENUE_PAGE,
+    VENUE_PAGES,
+    VENUE_TEXT,
+    VENUE_TOOLTIP
+  ];
 
   // Every drawn control and TA slider carries both, so one selector reaches all.
   var DRAWN_SELECT = SELECT_OPEN + NAME_ATTR + "]" + SELECT_OPEN + KIND_ATTR + "]";
@@ -746,6 +807,63 @@
   function exchangeStatusRow(index) {
     var row = at(exchangeStatusRows(), index);
     return Array.isArray(row) ? row : undefined;
+  }
+
+  // The venue buttons one page of the Exchange Status array draws.
+  function exchangeStatusPage() {
+    return listField(objectField(model(), EXCHANGE_STATUS), VENUE_PAGE);
+  }
+
+  // The pages control under the array, its `shown` false inside one page.
+  function venuePages() {
+    return objectField(objectField(model(), EXCHANGE_STATUS), VENUE_PAGES);
+  }
+
+  function venueGridColumns() {
+    var held = objectField(model(), EXCHANGE_STATUS)[VENUE_GRID_COLUMNS];
+    return isFiniteNumber(held) && held > ZERO ? held : STEP;
+  }
+
+  // The gap the Sector segmented group leaves, so the array shares its borders.
+  function venueGap() {
+    var held = objectField(model(), EXCHANGE_STATUS)[VENUE_GROUP_SPACING];
+    return isFiniteNumber(held) && held >= ZERO ? held : ZERO;
+  }
+
+  // Every column an even share of the array's width, never a pixel figure.
+  function venueTracks() {
+    return TRACK_OPEN + text(venueGridColumns()) + TRACK_EVEN;
+  }
+
+  // A grid row, column or span arrives as a whole number and never a token.
+  function cellOf(value, floor) {
+    var read = Number(value);
+    var least = floor === undefined ? ZERO : floor;
+    if (!isFiniteNumber(read) || read < least) {
+      return least;
+    }
+    return Math.floor(read);
+  }
+
+  // The row a press last bound the Add form to, -1 while none is bound.
+  function venueSelected() {
+    var held = objectField(model(), EXCHANGE_STATUS)[VENUE_SELECTED];
+    return isFiniteNumber(held) ? held : NO_ROW;
+  }
+
+  // The accent Qt fills the pressed segment with, read off its own sheet.
+  function checkedStyle(sheet) {
+    var found = {};
+    stateRules(sheet).forEach(function (rule) {
+      if (!carries(rule.selector, CHECKED_STATE)) {
+        return;
+      }
+      var fill = styleOf(rule.body);
+      Object.keys(fill).forEach(function (property) {
+        found[property] = fill[property];
+      });
+    });
+    return found;
   }
 
   function exchangeItemNamed(id) {
@@ -1155,6 +1273,25 @@
         }
       }
     );
+    listField(objectField(found, EXCHANGE_STATUS), VENUE_PAGE).forEach(
+      function (one, index) {
+        if (!isPlainObject(one)) {
+          note(AT + String(index), VENUE_PAGE, NOT_AN_OBJECT_FAULT, kindOf(one));
+          return;
+        }
+        VENUE_ENTRY_FIELDS.forEach(function (name) {
+          if (!owns(one, name)) {
+            note(AT + String(index), VENUE_PAGE, MISSING_FAULT, name);
+          }
+        });
+      }
+    );
+    var paged = objectField(objectField(found, EXCHANGE_STATUS), VENUE_PAGES);
+    VENUE_PAGES_FIELDS.forEach(function (name) {
+      if (!owns(paged, name)) {
+        note(VENUE_PAGES, EXCHANGE_STATUS, MISSING_FAULT, name);
+      }
+    });
     listField(found, BUTTON_NAMES).forEach(function (row, index) {
       if (!Array.isArray(row) || row.length !== SECOND) {
         note(AT + String(index), BUTTON_NAMES, SHORT_LIST_FAULT, kindOf(row));
@@ -1399,6 +1536,96 @@
     );
   }
 
+  // One venue of the array: the Sector button skin its API state accents,
+  // placed at the cell `venue_cell` gave it.
+  function VenueButton(props) {
+    var one = props.entry;
+    var bound = Number(one[VENUE_AT]) === venueSelected();
+    var style = styleOf(one[STYLE_SHEET]);
+    if (bound) {
+      var fill = checkedStyle(one[STYLE_SHEET]);
+      Object.keys(fill).forEach(function (property) {
+        style[property] = fill[property];
+      });
+    }
+    style.width = WHOLE;
+    style.height = WHOLE;
+    // A label holding a space breaks on it, as `_venue_button_size` seats the
+    // wider half, so no venue id is clipped; one holding none keeps nowrap.
+    style.whiteSpace = carries(one[VENUE_TEXT], SPACE_MARK) ? NORMAL : NOWRAP;
+    var cell = partProps(LIST_ITEM_PART, {
+      gridRow: text(cellOf(one[VENUE_ROW]) + STEP),
+      gridColumn:
+        text(cellOf(one[VENUE_COLUMN]) + STEP) +
+        SPAN_MARK +
+        text(cellOf(one[VENUE_SPAN], STEP))
+    });
+    cell[INDEX_ATTR] = text(one[VENUE_AT]);
+    cell[KEY_ATTR] = text(one[VENUE_ID]) || text(one[VENUE_TEXT]);
+    var press = partProps(LIST_ROW_PART, style);
+    press[NAME_ATTR] = text(one[VENUE_ID]);
+    press[STATE_ATTR] = text(one[VENUE_STATE]);
+    press[TITLE_ATTR] = text(one[VENUE_TOOLTIP]);
+    press[ARIA_PRESSED] = text(bound);
+    press.type = BUTTON_TYPE;
+    press.disabled = text(one[VENUE_ID]) === EMPTY;
+    return element(
+      LIST_ITEM_TAG,
+      cell,
+      element(BUTTON_TAG, press, text(one[VENUE_TEXT]))
+    );
+  }
+
+  // The pages control, drawn only where the sector fills more than one page.
+  function VenuePagesButton() {
+    var one = venuePages();
+    var holder = partProps(VENUE_PAGES_PART);
+    holder[SHOWN_ATTR] = text(one[SHOWN] === true);
+    holder.hidden = one[SHOWN] !== true;
+    var press = partProps(BUTTON_PART, styleOf(one[STYLE_SHEET]));
+    press[NAME_ATTR] = VENUE_PAGES_NAME;
+    press[INDEX_ATTR] = text(one[VENUE_NEXT]);
+    press[TITLE_ATTR] = text(one[VENUE_TOOLTIP]);
+    press.type = BUTTON_TYPE;
+    return element(
+      DIV_TAG,
+      holder,
+      element(BUTTON_TAG, press, text(one[VENUE_TEXT]))
+    );
+  }
+
+  // The array that replaces the Exchange Status list: `grid_columns` buttons
+  // across, `page_holds` to a page, the pages control under it.
+  function VenueArray(props) {
+    var drawn = exchangeStatusPage();
+    var listProps = partProps(LIST_BOX_PART, {
+      display: GRID,
+      gap: length(venueGap()),
+      gridTemplateColumns: venueTracks(),
+      listStyle: DISPLAY_NONE,
+      margin: NO_LENGTH,
+      padding: NO_LENGTH
+    });
+    listProps[NAME_ATTR] = text(props.name);
+    listProps[KIND_ATTR] = text(props.kind);
+    listProps[COUNT_ATTR] = text(drawn.length);
+    listProps[ENABLED_ATTR] = String(enabledOf(props.name) === true);
+    listProps[SHOWN_ATTR] = String(visibleOf(props.name) === true);
+    listProps.hidden = visibleOf(props.name) !== true;
+    var array = copyOf(listProps);
+    array.key = ARRAY_KEY;
+    return element(DIV_TAG, partProps(VENUE_ARRAY_PART), [
+      element(
+        LIST_TAG,
+        array,
+        drawn.map(function (one, index) {
+          return element(VenueButton, { key: String(index), entry: one });
+        })
+      ),
+      element(VenuePagesButton, { key: PAGES_KEY })
+    ]);
+  }
+
   function controlStyle(spec) {
     var style = {};
     if (spec[MIN_HEIGHT] !== undefined) {
@@ -1462,6 +1689,9 @@
     var one = controlProps(spec, props.name);
     var tag = controlTag(kind);
     if (tag === LIST_TAG) {
+      if (String(props.name) === EXCHANGE_LIST_NAME) {
+        return element(VenueArray, { name: props.name, kind: kind });
+      }
       var lines = Array.isArray(seeded) ? seeded : [];
       var listProps = partProps(LIST_BOX_PART, controlStyle(spec));
       listProps[NAME_ATTR] = text(props.name);
@@ -2172,6 +2402,9 @@
     TabPage: TabPage,
     Banner: Banner,
     Control: Control,
+    VenueArray: VenueArray,
+    VenueButton: VenueButton,
+    VenuePagesButton: VenuePagesButton,
     Footer: Footer,
     payload: payload,
     declaredNames: declaredNames,
@@ -2206,6 +2439,13 @@
     soundButtonNamed: soundButtonNamed,
     exchangeItems: exchangeItems,
     exchangeItemNamed: exchangeItemNamed,
+    exchangeStatusPage: exchangeStatusPage,
+    venuePages: venuePages,
+    venueGridColumns: venueGridColumns,
+    venueGap: venueGap,
+    venueTracks: venueTracks,
+    venueSelected: venueSelected,
+    checkedStyle: checkedStyle,
     comboItems: comboItems,
     connectOrder: connectOrder,
     connectSignals: connectSignals,
