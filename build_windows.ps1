@@ -32,7 +32,7 @@ if ($LASTEXITCODE -ne 0 -or -not $requested) {
 $requested = @($requested | ForEach-Object { $_.Trim() } | Where-Object { $_ })
 
 # The version is derived, never written down, so there is no literal to parse.
-# src/_version.py resolves it from the git tag and answers through the package.
+# src/_version.py resolves it from HEAD alone and answers through the package.
 $versionStr = "unknown"
 try {
     $resolved = & python -c "import src; print(src.__version__)" 2>$null

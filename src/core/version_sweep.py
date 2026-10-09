@@ -530,9 +530,9 @@ class VersionSweep:
     def _get_version(self) -> str:
         """Return the version resolved for the tree under sweep.
 
-        Derived from the git tag, or from the value a build baked in. There
-        is no literal left to scan for, so no parse can fail and leave
-        ``check_version_consistency`` with nothing to compare against.
+        Derived from HEAD's own date and id, or from the value a build baked
+        in. There is no literal left to scan for, so no parse can fail and
+        leave ``check_version_consistency`` with nothing to compare against.
         """
         return resolve_version(self.root)
 

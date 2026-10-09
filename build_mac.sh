@@ -15,7 +15,7 @@ set -e
 
 APP_NAME="Acervator"
 # The version is derived, never written down, so there is no literal to parse.
-# src/_version.py resolves it from the git tag and answers through the package.
+# src/_version.py resolves it from HEAD alone and answers through the package.
 VERSION="$(python3 -c 'import src; print(src.__version__)' 2>/dev/null || echo "unknown")"
 [ -z "$VERSION" ] && VERSION="unknown"
 SIGN_IDENTITY=""

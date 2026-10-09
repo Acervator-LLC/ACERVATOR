@@ -19,6 +19,8 @@ import sys
 import tempfile
 import time
 
+from src._version import COMMIT_DIGITS
+
 # Every argv below runs `sys.executable` or a `shutil.which` result, so no
 # bare program name is resolved through PATH at build time.
 # ruff: noqa: S603
@@ -168,6 +170,19 @@ DISK_IMAGE_NOTICE = """
   On a Mac, open the .dmg. A .dmg keeps the file permissions
   a Mac needs; the .app folder beside it is downloaded as
   plain files and does not.
+"""
+
+COMMIT_GAP_NOTICE = """
+------------------------------------------------------------
+  THE MAC BUILD IS NOT BUILDING YOUR COPY
+
+  GitHub builds the commit its own copy of this branch holds,
+  and yours holds a different one. The Mac build will carry a
+  different build number from the Windows build.
+
+  1. Push this branch to GitHub
+  2. Double-click this builder again
+------------------------------------------------------------
 """
 
 
@@ -617,23 +632,31 @@ def github_reach() -> tuple[int, str]:
     return result.returncode, gh_said(result)
 
 
-def current_branch() -> str:
-    """Return the branch ``git rev-parse`` names for ``PROJECT_ROOT``, or ''."""
+def git_said(*args: str) -> str:
+    """Return git's stripped stdout in ``PROJECT_ROOT``, or '' on any failure."""
     git = shutil.which("git")
     if not git:
         return ""
     result = subprocess.run(
-        [git, "rev-parse", "--abbrev-ref", "HEAD"],
+        [git, *args],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,
         check=False,
         timeout=GH_CALL_SECONDS,
     )
-    named = result.stdout.strip()
-    if result.returncode != 0 or named == "HEAD":
-        return ""
-    return named
+    return result.stdout.strip() if result.returncode == 0 else ""
+
+
+def current_branch() -> str:
+    """Return the branch ``git_said`` names for ``PROJECT_ROOT``, or ''."""
+    named = git_said("rev-parse", "--abbrev-ref", "HEAD")
+    return "" if named == "HEAD" else named
+
+
+def head_commit() -> str:
+    """Return the full commit id ``git_said`` names for HEAD, or ''."""
+    return git_said("rev-parse", "HEAD")
 
 
 def macos_runs(ref: str) -> list[dict]:
@@ -649,7 +672,7 @@ def macos_runs(ref: str) -> list[dict]:
             "--limit",
             RUN_LIST_LIMIT,
             "--json",
-            "databaseId,status,conclusion,url",
+            "databaseId,status,conclusion,url,headSha",
         ]
     )
     if result.returncode != 0:
@@ -657,11 +680,18 @@ def macos_runs(ref: str) -> list[dict]:
     return json.loads(result.stdout or "[]")
 
 
-def live_macos_run(ref: str) -> dict | None:
-    """Return the newest ``macos_runs`` entry on ``ref`` still in ``LIVE_RUN_STATES``."""
+def live_macos_run(ref: str, commit: str) -> dict | None:
+    """Return the live ``macos_runs`` entry on ``ref`` whose head is ``commit``.
+
+    A run in ``LIVE_RUN_STATES`` building any other commit is not returned, so
+    joining it cannot hand back a bundle naming a tree the caller is not on.
+    """
     for run in macos_runs(ref):
-        if run.get("status") in LIVE_RUN_STATES:
-            return run
+        if run.get("status") not in LIVE_RUN_STATES:
+            continue
+        if commit and run.get("headSha") != commit:
+            continue
+        return run
     return None
 
 
@@ -818,15 +848,22 @@ def launch_macos(variants: tuple[str, ...]) -> bool:
         return False
     print(f"  Branch: {ref}")
 
+    here = head_commit()
+    print(f"  Your copy is on commit: {here[:COMMIT_DIGITS] or 'unreadable'}")
+
     try:
         print("\n[2/4] Starting the Mac build...")
-        run = live_macos_run(ref)
+        run = live_macos_run(ref, here)
         if run is None:
             run = start_macos_run(ref)
             print(f"  Started run {run['databaseId']}")
         else:
             print(f"  Joined run {run['databaseId']}, already building")
         print(f"  Watch it at: {run['url']}")
+        built = str(run.get("headSha") or "")
+        print(f"  GitHub is building commit: {built[:COMMIT_DIGITS] or 'unreported'}")
+        if here and built and here != built:
+            print(COMMIT_GAP_NOTICE)
 
         print("\n[3/4] Waiting. A Mac build takes about 13 minutes.")
         conclusion = wait_for_run(run["databaseId"])
@@ -858,6 +895,7 @@ def launch_macos(variants: tuple[str, ...]) -> bool:
 __all__ = [
     "APP_SUFFIX",
     "BUILDER_NAMES",
+    "COMMIT_GAP_NOTICE",
     "CONSUMER",
     "DEFENDER_PROMPT_SECONDS",
     "DISK_IMAGE_NOTICE",
@@ -898,7 +936,9 @@ __all__ = [
     "gh_exe",
     "gh_output",
     "gh_said",
+    "git_said",
     "github_reach",
+    "head_commit",
     "install_package",
     "is_macos",
     "is_windows",
