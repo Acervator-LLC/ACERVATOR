@@ -5,38 +5,55 @@ uses, each anchored to the module that implements it.
 
 ## Where a decision is recorded
 
-Four places hold the decisions this repository has made. Each answers a
+Two places hold the decisions this repository has made. Each answers a
 different question.
 
-- `docs/engineering-notes/` — 21 notes, ten with an evidence directory beside
-  them holding the rows and the script that produced them. One note per
-  question, each naming the standard it measures against and the control beside
-  every measurement.
 - `.claude/rules/` — three binding standards, on code comments, on documentation
   and on tests. `CLAUDE.md` at the root holds the repository rules above them:
   one role per folder, and no machine-specific path anywhere committed.
-- Executable guards in the test suite. One holds a reason for every tracked file
-  at the repository root, and a reason has to name a mechanism. A second holds
-  the retirement of the older protocol, and it records driving itself both ways:
-  reverting the five files it guards failed four of its checks, and restoring
-  them passed all seven. A decision written as a guard fails when someone
-  reverses it, which a decision written as prose does not.
 - `CHANGELOG.md` and the commit history. See
   [09-updates-and-versioning.md](09-updates-and-versioning.md) for what the
   changelog holds today.
 
-The two guards:
+Beside those, `docs/audits/` holds ten audit directories and one audit page.
+An audit records one measurement, and the issue it answers cites it by name.
+
+### The four places, overtaken
+
+OVERTAKEN, quoted whole:
+
+> "Four places hold the decisions this repository has made. Each answers a
+> different question."
+
+> "`docs/engineering-notes/` — 21 notes, ten with an evidence directory beside
+> them holding the rows and the script that produced them. One note per
+> question, each naming the standard it measures against and the control beside
+> every measurement."
+
+> "Executable guards in the test suite. One holds a reason for every tracked file
+> at the repository root, and a reason has to name a mechanism. A second holds
+> the retirement of the older protocol, and it records driving itself both ways:
+> reverting the five files it guards failed four of its checks, and restoring
+> them passed all seven. A decision written as a guard fails when someone
+> reverses it, which a decision written as prose does not."
+
+> "The two guards:"
 
 ```
 tests/test_repo_root_inventory.py         a reason per tracked root file
 tests/test_no_dead_sadp_references.py     the older protocol's retirement
 ```
 
-`docs/engineering-notes/ci_failure_ledger.md` is the narrowest of these: one row
-per continuous-integration failure, its class, the change that closed it, and
-the run that shows it closed. A row leaves the file after three consecutive
-green runs hold its tests, and the file states its own ceiling — past 20 rows,
-the work is producing failures faster than it closes them.
+> "`docs/engineering-notes/ci_failure_ledger.md` is the narrowest of these: one
+> row per continuous-integration failure, its class, the change that closed it,
+> and the run that shows it closed. A row leaves the file after three consecutive
+> green runs hold its tests, and the file states its own ceiling — past 20 rows,
+> the work is producing failures faster than it closes them."
+
+True today: two of the four places are gone, so two remain. The repository
+tracks no engineering-notes directory and no ledger file inside one. It tracks
+one Python module under `tests/`, its own conftest, so neither guard is there
+either and no decision in this repository is held as an executable guard.
 
 ## Glossary
 
