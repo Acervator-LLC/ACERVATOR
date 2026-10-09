@@ -67,6 +67,97 @@ def _resolve_bot_label(bot_manager, exchange_id: str, symbol: str) -> str:
     return ""
 
 
+def _parse_iso_ts(s: str) -> Optional[float]:
+    """Parse an ISO-8601 timestamp into unix seconds, or None when unreadable."""
+    if not s:
+        return None
+    try:
+        if s.endswith("Z"):
+            s = s[:-1] + "+00:00"
+        return datetime.fromisoformat(s).timestamp()
+    except (ValueError, TypeError):
+        return None
+
+
+def _entry_bucket_key(entry: dict) -> Optional[tuple]:
+    """The ``(bot_id, minute)`` key of one log entry, or None when unreadable."""
+    bot_id = str(entry.get("bot_id", "") or "")
+    if not bot_id:
+        return None
+    ts = _parse_iso_ts(entry.get("timestamp", ""))
+    if ts is None:
+        return None
+    return (bot_id, int(ts) // 60)
+
+
+def join_bucket_keys(rows: list, bot_manager) -> set:
+    """The ``(bot_id, minute)`` keys the gate and voting lookups can reach.
+
+    ``lookup_gate_entry`` reads a row's own minute and the two beside it, so an
+    index holding only these keys answers every lookup identically.
+    """
+    from src.exchange.history_helpers import resolve_bot_id_for_row
+
+    keys: set = set()
+    bot_ids: dict = {}
+    for row in rows:
+        ts = float(row.get("timestamp", 0) or 0)
+        if ts <= 0:
+            continue
+        row_identity = (
+            str(row.get("bot_id", "") or ""),
+            str(row.get("symbol", "") or ""),
+        )
+        bot_id = bot_ids.get(row_identity)
+        if bot_id is None:
+            bot_id = resolve_bot_id_for_row(bot_manager, row)
+            bot_ids[row_identity] = bot_id
+        if not bot_id:
+            continue
+        minute = int(ts) // 60
+        keys.add((bot_id, minute - 1))
+        keys.add((bot_id, minute))
+        keys.add((bot_id, minute + 1))
+    return keys
+
+
+def read_join_indexes(since, wanted_keys: set) -> tuple[dict, dict, int]:
+    """The gate and voting indexes from ``since``, holding only ``wanted_keys``.
+
+    Answers the two indexes and the entries kept; a raising read empties that
+    side's index while the count stands, so a caller can see the loss.
+    """
+    from src.trading.live_log_reader import (
+        live_gate_decisions,
+        live_voting_panel_snapshots,
+    )
+
+    gate_index: dict = {}
+    voting_index: dict = {}
+    kept = 0
+    try:
+        for entry in live_gate_decisions(since=since, validate=False):
+            key = _entry_bucket_key(entry)
+            if key is None or key not in wanted_keys:
+                continue
+            gate_index.setdefault(key, []).append(entry)
+            kept += 1
+    except Exception as _gate_exc:  # noqa: BLE001 - a torn log read
+        logger.debug("history: gate index read fail-soft: %s", _gate_exc)
+        gate_index = {}
+    try:
+        for entry in live_voting_panel_snapshots(since=since):
+            key = _entry_bucket_key(entry)
+            if key is None or key not in wanted_keys:
+                continue
+            voting_index.setdefault(key, []).append(entry)
+            kept += 1
+    except Exception as _vote_exc:  # noqa: BLE001 - a torn log read
+        logger.debug("history: voting index read fail-soft: %s", _vote_exc)
+        voting_index = {}
+    return gate_index, voting_index, kept
+
+
 if _HAS_QT:
 
     class HistoryTab(QWidget):
@@ -75,6 +166,7 @@ if _HAS_QT:
         PAGE_SIZE = 100
 
         history_refreshed = Signal(list)
+        join_indexes_ready = Signal(object)
 
         def __init__(self, parent=None) -> None:
             super().__init__(parent)
@@ -87,6 +179,7 @@ if _HAS_QT:
             self._last_fetched_ts: float = 0.0
             self._page_gate_index: dict = {}
             self._page_voting_index: dict = {}
+            self._join_build_id: int = 0
             self._to_default_ts: int = 0
             # The historian calls back off its own thread, so the two sets
             # are read and written under _history_lock.
@@ -94,6 +187,7 @@ if _HAS_QT:
             self._history_scanned: set[str] = set()
             self._history_refused: set[str] = set()
             self._build_ui()
+            self.join_indexes_ready.connect(self._on_join_indexes_ready)
 
         def set_bot_manager(self, bot_manager) -> None:
             self._bot_manager = bot_manager
@@ -431,6 +525,7 @@ if _HAS_QT:
                             logger.warning("history fetch raised: %s", rx)
                             return
                         self._all_trades = list(result or [])
+                        self._start_join_index_build()
                         _dur_elapsed = time.monotonic() - start_ts
                         # _admissible re-counts _all_trades against since_ts
                         # and (exchange, symbol, id) uniqueness.
@@ -619,11 +714,6 @@ if _HAS_QT:
             total = len(self._filtered)
             last_page = max(0, (total - 1) // self.PAGE_SIZE)
             self._page = min(max(self._page, 0), last_page)
-            start = self._page * self.PAGE_SIZE
-            end = min(start + self.PAGE_SIZE, total)
-            rows = self._filtered[start:end]
-
-            self._build_joiner_indexes_for_page(rows)
 
             model = self._build_model()
             self._table.set_model(model)
@@ -667,66 +757,76 @@ if _HAS_QT:
 
             return grade_row(row_i, page_rows, r)
 
-        def _build_joiner_indexes_for_page(self, page_rows: list) -> None:
-            """Bucket the page log entries by (bot_id, 60s) for the row joiner."""
-            self._page_gate_index = {}
-            self._page_voting_index = {}
-            if not page_rows:
-                return
-            try:
-                min_ts = min(
-                    float(r.get("timestamp", 0) or 0)
-                    for r in page_rows
-                    if (r.get("timestamp") or 0) > 0
-                )
-                since_ts = max(0.0, min_ts - 60.0)
-                since: Optional[datetime] = None
-                if since_ts > 0:
-                    since = datetime.fromtimestamp(since_ts, tz=timezone.utc)
-            except (ValueError, TypeError):
-                since = None
+        def _start_join_index_build(self) -> None:
+            """Read the gate and voting indexes for ``_all_trades`` off this thread.
 
-            try:
-                from src.trading.live_log_reader import (
-                    live_gate_decisions,
-                    live_voting_panel_snapshots,
-                )
-            except Exception:
-                return
-
-            _join_t0 = time.monotonic()
-            _gate_accepted = 0
-            try:
-                for entry in live_gate_decisions(since=since, validate=False):
-                    bot_id = str(entry.get("bot_id", "") or "")
-                    if not bot_id:
-                        continue
-                    ts = self._parse_entry_ts(entry.get("timestamp", ""))
-                    if ts is None:
-                        continue
-                    key = (bot_id, int(ts) // 60)
-                    self._page_gate_index.setdefault(key, []).append(entry)
-                    _gate_accepted += 1
-            except Exception:
+            ``_render_page`` then reads the held indexes, so no page draw and no
+            pager press touches disk; the newest build wins and an older
+            build's answer is dropped.
+            """
+            self._join_build_id += 1
+            build_id = self._join_build_id
+            rows = list(self._all_trades)
+            if not rows:
                 self._page_gate_index = {}
-
-            _voting_accepted = 0
-            try:
-                for entry in live_voting_panel_snapshots(since=since):
-                    bot_id = str(entry.get("bot_id", "") or "")
-                    if not bot_id:
-                        continue
-                    ts = self._parse_entry_ts(entry.get("timestamp", ""))
-                    if ts is None:
-                        continue
-                    key = (bot_id, int(ts) // 60)
-                    self._page_voting_index.setdefault(key, []).append(entry)
-                    _voting_accepted += 1
-            except Exception:
                 self._page_voting_index = {}
-            _join_s = time.monotonic() - _join_t0
+                return
+            wanted_keys = join_bucket_keys(rows, self._bot_manager)
+            since = self._join_since(rows)
+            row_count = len(rows)
+            emit_ready = self.join_indexes_ready.emit
 
-            # An emptied index collapses _bucketed while its counter stands.
+            def _read_indexes() -> None:
+                read_t0 = time.monotonic()
+                try:
+                    gate_index, voting_index, kept = read_join_indexes(
+                        since, wanted_keys
+                    )
+                except Exception as _read_exc:  # noqa: BLE001 - a torn log read
+                    logger.debug("history: join index read failed: %s", _read_exc)
+                    gate_index, voting_index, kept = {}, {}, 0
+                with contextlib.suppress(RuntimeError):
+                    emit_ready(
+                        {
+                            "build_id": build_id,
+                            "gate": gate_index,
+                            "voting": voting_index,
+                            "kept": kept,
+                            "rows": row_count,
+                            "seconds": time.monotonic() - read_t0,
+                        }
+                    )
+
+            threading.Thread(
+                target=_read_indexes,
+                name=f"history-join-{build_id}",
+                daemon=True,
+            ).start()
+
+        @staticmethod
+        def _join_since(rows: list) -> Optional[datetime]:
+            """The read's lower bound: the earliest row less the join tolerance."""
+            from src.exchange.history_helpers import JOIN_TOLERANCE_SECONDS
+
+            stamps = [
+                float(r.get("timestamp", 0) or 0)
+                for r in rows
+                if (r.get("timestamp") or 0) > 0
+            ]
+            if not stamps:
+                return None
+            return datetime.fromtimestamp(
+                max(0.0, min(stamps) - JOIN_TOLERANCE_SECONDS), tz=timezone.utc
+            )
+
+        def _on_join_indexes_ready(self, payload: dict) -> None:
+            """Hold a finished index pair and redraw the page it covers."""
+            if payload.get("build_id") != self._join_build_id:
+                return
+            self._page_gate_index = payload.get("gate") or {}
+            self._page_voting_index = payload.get("voting") or {}
+
+            # An emptied index collapses _bucketed while kept stands.
             _bucketed = sum(len(v) for v in self._page_gate_index.values()) + sum(
                 len(v) for v in self._page_voting_index.values()
             )
@@ -736,28 +836,16 @@ if _HAS_QT:
                 _hist_emit(
                     "history.05.006.postcondition.joiner_indexes_built",
                     actual=_bucketed,
-                    expected=_gate_accepted + _voting_accepted,
+                    expected=int(payload.get("kept") or 0),
                     context={
-                        "gate_accepted": _gate_accepted,
-                        "voting_accepted": _voting_accepted,
                         "gate_buckets": len(self._page_gate_index),
                         "voting_buckets": len(self._page_voting_index),
-                        "page_rows": len(page_rows),
+                        "loaded_rows": int(payload.get("rows") or 0),
+                        "off_gui_thread": True,
                     },
-                    duration=_join_s,
+                    duration=float(payload.get("seconds") or 0.0),
                 )
-
-        @staticmethod
-        def _parse_entry_ts(s: str) -> Optional[float]:
-            """Parse an ISO-8601 timestamp into unix seconds, or None."""
-            if not s:
-                return None
-            try:
-                if s.endswith("Z"):
-                    s = s[:-1] + "+00:00"
-                return datetime.fromisoformat(s).timestamp()
-            except (ValueError, TypeError):
-                return None
+            self._render_page()
 
         def _prev_page(self) -> None:
             self._page -= 1
