@@ -1068,10 +1068,12 @@ blank when the pair is unlisted or when the target already is that asset.
 
 **The row's height.** A logo draws at 32 pixels square. A row keeps two pixels
 above and two below its content, which is what this widget's style answers for its
-own item margin, so a row takes 36 pixels. The page's own sheet leaves more room
-than the window's style, so the logo's cell drops its vertical padding and the row
-keeps the height the payload set. No other cell and no rule in the sheet changes,
-so the Extractor table beneath is untouched.
+own item margin, so a row takes 36 pixels. Every bot table's Fire and Detail
+buttons take that same height, so a selected row paints no band around them —
+`src/gui/main_tabs/bot_status_table_surface.py, in BUTTON_HEIGHT_PX`. The page's
+own sheet leaves more room than the window's style, so the logo's cell drops its
+vertical padding and the row keeps the height the payload set. No other cell and
+no rule in the sheet changes, so the Extractor table beneath is untouched.
 
 `src/gui/main_tabs/bot_status_table_surface.py` — the two figures and the sum
 
