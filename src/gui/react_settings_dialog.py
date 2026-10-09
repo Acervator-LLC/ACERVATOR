@@ -373,7 +373,7 @@ class PageList(_Held):
         except (TypeError, ValueError):
             self._current = NO_SELECTED_ROW
 
-    def currentRow(self) -> int:  # noqa: N802
+    def currentRow(self) -> int:
         """The selected line's index, ``NO_SELECTED_ROW`` while none is.
 
         ``_draw_venue_array`` reads this to mark the venue button a press
