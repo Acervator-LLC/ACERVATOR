@@ -67,6 +67,28 @@ page whose rows all carry the same timestamp cannot be resumed. That case writes
 a warning naming the window and the row count, so a short answer never passes
 in silence.
 
+## The walk takes its turn
+
+The walk shares one connector with every reader the running platform polls, and
+it waits for its turn before each window. `src/trading/scrumming/reconciliation.py,
+in _ytd_page` awaits `src/exchange/ccxt_connector.py, in await_bulk_read_slot`,
+which yields until no other call of that connector is resident.
+
+One connector serves every bot of a venue, so without a second gate each bot's
+walk is a bulk reader of its own and the connector has 39 of them to hand one
+turn to. `src/trading/scrumming/reconciliation.py, in ytd_walk_lock` holds one
+lock per connector, so the fleet's walks run one at a time.
+
+A window refused at the connector's call-queue cap earns a second wait for room,
+bounded by `YTD_BULK_READ_ATTEMPTS`. A refusal on the last attempt raises, so the
+walk holds no reading rather than count that window short, and the five fields
+drop to their no-reading markers as they already do for a skipped remainder.
+
+Measured against the fleet's own 39 bots and the platform read rate the operator's
+`console/system.log` records in its refusal-free minutes: 300 platform reads
+offered, refusals at the cap before and after the gate, and the floor with the
+walk not running at all.
+
 The fleet aggregator sums those per-bot fields across every bot. Its two headline
 fields carry the year-to-date sum whenever that sum exceeds zero, and fall back
 to the platform-run accumulator otherwise. Two further fields carry the two

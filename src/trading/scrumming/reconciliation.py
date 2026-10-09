@@ -7,8 +7,10 @@ position health from the exchange, then books any difference into
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import math
+import weakref
 from typing import Any, Callable, Optional
 
 from .sizing import priced_usd
@@ -22,6 +24,22 @@ UNREALISED_NO_READING = 0.0
 # the walk finished without counting every window.
 TRADE_COUNT_NO_READING = 0
 YTD_USD_NO_READING = 0.0
+
+_YTD_WALK_LOCKS: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()
+
+
+def ytd_walk_lock(exchange: Any) -> asyncio.Lock:
+    """The one lock every ``sync_ytd_trade_count`` holds on ``exchange``.
+
+    One connector serves every bot of a venue, so this lock makes the fleet's
+    walks the single bulk reader that ``await_bulk_read_slot`` can hand a turn
+    to, and ``_YTD_WALK_LOCKS`` drops the entry when the connector is released.
+    """
+    _lock = _YTD_WALK_LOCKS.get(exchange)
+    if _lock is None:
+        _lock = asyncio.Lock()
+        _YTD_WALK_LOCKS[exchange] = _lock
+    return _lock
 
 
 class ReconciliationEngineMixin:
@@ -242,6 +260,81 @@ class ReconciliationEngineMixin:
     YTD_TRADE_ANCHOR_UTC = 1_775_001_600.0
     YTD_TRADE_PAGE_LIMIT = 500
     YTD_TRADE_WINDOW_SEC = 30 * 24 * 3600.0
+    YTD_BULK_READ_ATTEMPTS = 2
+
+    async def _await_ytd_read_slot(self) -> float:
+        """Seconds ``exchange.await_bulk_read_slot`` waited before this window's call.
+
+        An exchange without the method, and a wait that raises, both answer 0.0
+        and the window's call goes ahead, so a connector that does not
+        serialise its calls is unaffected.
+        """
+        _slot = getattr(self.exchange, "await_bulk_read_slot", None)
+        if _slot is None:
+            return 0.0
+        try:
+            _waited = float(await _slot())
+        except (AttributeError, TypeError, ValueError) as _slot_exc:
+            logger.debug(
+                "Bot %s YTD bulk-read slot wait skipped: %s: %s",
+                self.bot_id,
+                type(_slot_exc).__name__,
+                _slot_exc,
+            )
+            return 0.0
+        if _waited > 0:
+            logger.debug(
+                "Bot %s YTD walk waited %.3fs for a free venue call queue",
+                self.bot_id,
+                _waited,
+            )
+        return _waited
+
+    @staticmethod
+    def _is_queue_full(exc: BaseException) -> bool:
+        """True when ``exc`` is a connector's refusal at its call-queue cap."""
+        try:
+            from ...exchange.ccxt_connector import CCXTQueueFullError
+        except ImportError:
+            return False
+        return isinstance(exc, CCXTQueueFullError)
+
+    async def _ytd_page(self, cursor: float, end: float) -> list:
+        """One window's ``get_my_trades`` rows, each attempt behind ``_await_ytd_read_slot``.
+
+        ``YTD_BULK_READ_ATTEMPTS`` bounds the attempts and ``_is_queue_full``
+        decides which refusal earns another; a refusal on the last attempt
+        raises, so ``sync_ytd_trade_count`` holds no reading rather than count
+        this window short.
+        """
+        _attempt = 0
+        while True:
+            await self._await_ytd_read_slot()
+            _attempt += 1
+            try:
+                return list(
+                    await self.exchange.get_my_trades(
+                        self.config.symbol,
+                        since=cursor,
+                        limit=self.YTD_TRADE_PAGE_LIMIT,
+                        params={"paginate": True, "until": int(end * 1000)},
+                    )
+                    or []
+                )
+            except Exception as _page_exc:
+                if _attempt < self.YTD_BULK_READ_ATTEMPTS and self._is_queue_full(
+                    _page_exc
+                ):
+                    logger.debug(
+                        "Bot %s YTD window [%.0f..%.0f] refused at the "
+                        "call-queue cap on attempt %d; waiting for room again",
+                        self.bot_id,
+                        cursor,
+                        end,
+                        _attempt,
+                    )
+                    continue
+                raise
 
     @staticmethod
     def _venue_order_key(trade: Any, fill_key: Any) -> tuple:
@@ -338,19 +431,12 @@ class ReconciliationEngineMixin:
         _ytd_scrum_usd = 0.0
         _ytd_fold_usd = 0.0
         _qrate = float(getattr(self, "_quote_to_usd", 1.0) or 1.0)
+        _walk_lock = ytd_walk_lock(self.exchange)
+        await _walk_lock.acquire()
         try:
             while _cursor < _now:
                 _end = min(_cursor + _window_s, _now)
-                _end_ms = int(_end * 1000)
-                _page = list(
-                    await self.exchange.get_my_trades(
-                        self.config.symbol,
-                        since=_cursor,
-                        limit=self.YTD_TRADE_PAGE_LIMIT,
-                        params={"paginate": True, "until": _end_ms},
-                    )
-                    or []
-                )
+                _page = await self._ytd_page(_cursor, _end)
                 _new = 0
                 for _tr in _page:
                     _tid = getattr(_tr, "id", None) or id(_tr)
@@ -417,6 +503,8 @@ class ReconciliationEngineMixin:
                 _persisted,
             )
             return None
+        finally:
+            _walk_lock.release()
         _prev_exc = int(getattr(self.stats, "exchange_trade_count", 0) or 0)
         if not _every_window_whole:
             logger.warning(
@@ -521,6 +609,7 @@ class ReconciliationEngineMixin:
                 _units * _price * float(self._quote_to_usd or 1.0),
             )
 
+            _refreshed = False
             try:
                 _refreshed = await self.refresh_exchange_position_health(force=True)
                 if _refreshed:
@@ -540,15 +629,16 @@ class ReconciliationEngineMixin:
                     self.bot_id,
                     _ph_exc,
                 )
-            try:
-                await self.sync_ytd_trade_count()
-            except Exception as _ytd_exc:
-                logger.warning(
-                    "Bot %s bootstrap YTD trade-count sync failed: %s "
-                    "(persisted counter retained)",
-                    self.bot_id,
-                    _ytd_exc,
-                )
+            if not _refreshed:
+                try:
+                    await self.sync_ytd_trade_count()
+                except Exception as _ytd_exc:
+                    logger.warning(
+                        "Bot %s bootstrap YTD trade-count sync failed: %s "
+                        "(persisted counter retained)",
+                        self.bot_id,
+                        _ytd_exc,
+                    )
         except Exception as exc:
             logger.warning(
                 "Bot %s bootstrap_exchange_state raised %s: %s "
