@@ -241,9 +241,9 @@ venue. The Exchange Status panel for Forex draws `Coinbase (coinbase)` and the
 Add Forex Exchange box offers Coinbase with its key and secret fields, read off
 the drawn panel.
 
-OVERTAKEN, and the two notes above are kept as written. Forex lists four
-venues, Indices eleven and Futures / Perps fifteen. The Exchange Status panel
-for Forex draws Bitstamp, Coinbase, Gemini and Ibkr, read through
+OVERTAKEN, and the two notes above are kept as written. Forex lists five
+venues, Indices twelve and Futures / Perps fifteen. The Exchange Status panel
+for Forex draws Binance, Bitstamp, Coinbase, Gemini and Ibkr, read through
 `settings_dialog_surface.exchange_status_lines` in one running process.
 
 ### A venue's sectors come from two places, and they answer two questions

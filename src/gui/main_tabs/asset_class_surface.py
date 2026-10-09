@@ -141,7 +141,7 @@ EXTRA_VENUE_CLASSES = {
         "indices",
         "futures_perps",
     ),
-    "binance": ("stocks", "commodities", "futures_perps"),
+    "binance": ("stocks", "commodities", "forex", "indices", "futures_perps"),
     "bitfinex": ("commodities", "indices", "futures_perps"),
     "bitget": ("stocks", "commodities", "indices", "futures_perps"),
     "bitstamp": ("commodities", "forex"),
