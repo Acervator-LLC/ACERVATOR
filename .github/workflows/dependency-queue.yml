@@ -1,0 +1,152 @@
+---
+name: dependency queue
+
+on:
+  schedule:
+    - cron: "13,43 * * * *"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "report changes nothing, clear merges and rebases"
+        type: choice
+        options:
+          - report
+          - clear
+        default: report
+
+permissions: {}
+
+concurrency:
+  group: dependency-queue
+  cancel-in-progress: false
+
+jobs:
+  clear:
+    name: clear
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+      MODE: ${{ inputs.mode || 'clear' }}
+      ROUTINE_GROUP: routine-versions
+      BASE: current
+      PR_FIELDS: >-
+        number,author,headRefName,mergeStateStatus,statusCheckRollup
+    steps:
+      - name: select the routine dependency pull requests
+        run: |
+          set -euo pipefail
+          gh pr list --state open --base "$BASE" --limit 100 \
+            --json "$PR_FIELDS" > open.json
+          jq --arg group "$ROUTINE_GROUP" '
+            [ .[]
+              | select(.author.is_bot == true)
+              | select(.author.login
+                       | test("^(app/)?dependabot(\\[bot\\])?$"))
+              | select(.headRefName | contains($group))
+              | { number: .number,
+                  head: .headRefName,
+                  reported: .mergeStateStatus,
+                  gate: ([ .statusCheckRollup[]?
+                           | select((.name // .context) == "ci-gate")
+                           | (.conclusion // .state) ] | first // "ABSENT"),
+                  unfinished: [ .statusCheckRollup[]?
+                                | (.conclusion // .state)
+                                | select(. != "SUCCESS"
+                                         and . != "SKIPPED"
+                                         and . != "NEUTRAL") ] } ]
+            | sort_by(.number)' open.json > candidates.json
+          echo "[]" > queue.json
+          for n in $(jq -r '.[].number' candidates.json); do
+            ref=$(jq -r --argjson n "$n" \
+              '.[] | select(.number == $n) | .head' candidates.json)
+            behind=$(gh api \
+              "repos/$GH_REPO/compare/$BASE...$ref" --jq '.behind_by')
+            jq --argjson n "$n" --argjson behind "$behind" '
+              map(if .number == $n
+                  then . + { behind: $behind,
+                             green: (.gate == "SUCCESS"
+                                     and (.unfinished | length) == 0) }
+                  else . end)' candidates.json > candidates.next
+            mv candidates.next candidates.json
+          done
+          jq 'map(select(has("behind")))' candidates.json > queue.json
+          echo "selected $(jq 'length' queue.json) of" \
+               "$(jq 'length' open.json) open pull requests"
+          jq . queue.json
+
+      - name: report what the selection holds
+        run: |
+          set -euo pipefail
+          {
+            echo "## dependency queue"
+            echo
+            echo "mode \`$MODE\`, group \`$ROUTINE_GROUP\`, base \`$BASE\`"
+            echo
+            echo "| pull request | ci-gate | commits behind | green |"
+            echo "| --- | --- | --- | --- |"
+            jq -r '.[] | "| #\(.number) | \(.gate) | \(.behind) |" +
+                         " \(.green) |"' queue.json
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: merge one green pull request
+        if: env.MODE == 'clear'
+        run: |
+          set -euo pipefail
+          target=$(jq -r \
+            'map(select(.green and .behind == 0)) | .[0].number // empty' \
+            queue.json)
+          if [ -z "$target" ]; then
+            echo "no pull request is both green and up to date" \
+              >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          if gh pr merge "$target" --squash; then
+            echo "merged #$target" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "#$target stayed open, GitHub refused the merge" \
+              >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: ask the service to rebase the branches left behind
+        if: env.MODE == 'clear'
+        run: |
+          set -euo pipefail
+          gh pr list --state open --base "$BASE" --limit 100 \
+            --json "$PR_FIELDS" > open.json
+          jq --arg group "$ROUTINE_GROUP" '
+            [ .[]
+              | select(.author.is_bot == true)
+              | select(.author.login
+                       | test("^(app/)?dependabot(\\[bot\\])?$"))
+              | select(.headRefName | contains($group))
+              | { number: .number, head: .headRefName } ]
+            | sort_by(.number)' open.json > left.json
+          for n in $(jq -r '.[].number' left.json); do
+            ref=$(jq -r --argjson n "$n" \
+              '.[] | select(.number == $n) | .head' left.json)
+            behind=$(gh api \
+              "repos/$GH_REPO/compare/$BASE...$ref" --jq '.behind_by')
+            if [ "$behind" -eq 0 ]; then
+              continue
+            fi
+            head_date=$(gh api \
+              "repos/$GH_REPO/commits/$ref" --jq '.commit.committer.date')
+            asked=$(gh api "repos/$GH_REPO/issues/$n/comments" --paginate \
+              --jq '[ .[]
+                      | select(.user.login == "github-actions[bot]")
+                      | select(.body | contains("@dependabot rebase"))
+                      | .created_at ] | last // ""')
+            if [ -n "$asked" ] && [[ "$asked" > "$head_date" ]]; then
+              echo "#$n already asked to rebase" \
+                >> "$GITHUB_STEP_SUMMARY"
+              continue
+            fi
+            gh pr comment "$n" --body "@dependabot rebase"
+            echo "#$n asked to rebase, $behind commits behind" \
+              >> "$GITHUB_STEP_SUMMARY"
+          done
