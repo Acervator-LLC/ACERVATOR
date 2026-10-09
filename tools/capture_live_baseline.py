@@ -22,6 +22,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from src.core.log_paths import GATE_LOG_NAME, gate_log_files
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 RUNTIME_DIR = Path.home() / ".acervator"
 LOG_DIR = Path.home() / ".acervator_logs"
@@ -171,6 +173,18 @@ def rotation_members(base: Path) -> list[Path]:
 def live_member_only(base: Path) -> list[Path]:
     """Return only the live member of a rotation set."""
     return [base] if base.is_file() else []
+
+
+def gate_members(*, rotations: bool) -> list[Path]:
+    """Return the gate logs to read: every one, or each bucket's active file.
+
+    `gate_log_files` lists the pre-split file while it is still there and then
+    each exchange-and-sector bucket's archive, rotations and active file.
+    """
+    found = gate_log_files(LOG_DIR / "trade")
+    if rotations:
+        return found
+    return [one for one in found if one.name == GATE_LOG_NAME]
 
 
 def _file_provenance(path: Path) -> Json:
@@ -709,7 +723,7 @@ def capture(*, rotations: bool = True, since: str | None = None) -> Json:
     picker: Callable[[Path], list[Path]] = (
         rotation_members if rotations else live_member_only
     )
-    gate = capture_gate(picker(LOG_DIR / "trade" / "gate.log"), since=since)
+    gate = capture_gate(gate_members(rotations=rotations), since=since)
     console = capture_console(picker(LOG_DIR / "console" / "system.log"), symbols)
     declared = load_declared_pins()
     emitters = capture_emitters(picker(LOG_DIR / "signals" / "session.jsonl"), declared)

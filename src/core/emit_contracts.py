@@ -90,6 +90,7 @@ CONTRACTS: tuple[EmitContract, ...] = (
         topic="bot.gate_decision",
         required=("symbol",),
         optional=(
+            "asset_class",
             "scrum_armed",
             "fold_armed",
             "scrum_blockers",
@@ -97,7 +98,9 @@ CONTRACTS: tuple[EmitContract, ...] = (
             "scrum_fixture",
             "fold_fixture",
         ),
-        description="Gate evaluation snapshot at fire time.",
+        description="Gate evaluation snapshot at fire time. `asset_class` is "
+        "the market's sector, and it picks the gate log the decision is "
+        "written to beside the venue named in `exchange`.",
     ),
     EmitContract(
         topic="pnl.event",

@@ -1,10 +1,12 @@
 """Structured trade, gate-decision and P/L logging in NDJSON.
 
 ``LogManager`` routes each ``LogEntry`` to an ``NDJSONWriter``: ``trade.log``,
-``gate.log``, ``voting.log`` and ``diagnostics.log`` under ``get_trade_dir()``,
-with the ``acervator`` logger going to ``system.log`` under
-``get_console_dir()``. ``PnLCascade`` writes one file per day under
-``get_pnl_dir()``.
+``voting.log`` and ``diagnostics.log`` under ``get_trade_dir()``, and one
+``gate/<exchange>/<sector>/gate.log`` per venue and sector, with the
+``acervator`` logger going to ``system.log`` under ``get_console_dir()``.
+``PnLCascade`` writes one file per day under ``get_pnl_dir()``.
+``migrate_legacy_gate_logs`` carries the records of the single pre-split
+``gate.log`` into those buckets, once, at construction.
 """
 
 from __future__ import annotations
@@ -18,12 +20,17 @@ from enum import Enum
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from threading import Lock
-from typing import Callable, Optional
+from typing import Any, Callable, Optional
 
 from src.core.log_paths import (
-    get_trade_dir,
+    gate_archive_dir,
+    gate_log_path,
+    gate_root,
     get_console_dir,
     get_pnl_dir,
+    get_trade_dir,
+    legacy_gate_logs,
+    path_segment,
 )
 
 
@@ -129,6 +136,149 @@ class NDJSONWriter:
         self._path.replace(backup)
 
 
+GATE_CONSUMED_PREFIX = ".consumed-"
+"""Marks a pre-split gate log taken out of every reader's view, mid-carry."""
+
+GATE_PENDING_PREFIX = ".pending-"
+"""Marks one bucket's share of a consumed file ahead of its promotion."""
+
+
+def default_gate_sector() -> str:
+    """``ASSET_CLASS_DEFAULT`` names the sector a gate record carrying none is
+    filed under.
+
+    ``gate_bucket_of`` reads it for every record written before the split.
+    """
+    try:
+        from src.trading.container.config import ASSET_CLASS_DEFAULT
+    except ImportError:
+        return ""
+    return str(ASSET_CLASS_DEFAULT or "")
+
+
+def gate_bucket_of(entry: dict, default_sector: str) -> tuple[str, str]:
+    """The ``(exchange, sector)`` pair one parsed gate ``entry`` belongs to.
+
+    An ``entry`` whose ``data`` names no ``asset_class`` takes
+    ``default_sector``.
+    """
+    data = entry.get("data")
+    held = data.get("asset_class") if isinstance(data, dict) else ""
+    return (
+        str(entry.get("exchange", "") or ""),
+        str(held or "") or default_sector,
+    )
+
+
+def _bucket_of_raw(raw: bytes, default_sector: str) -> Optional[tuple[str, str]]:
+    """The ``path_segment`` pair ``gate_bucket_of`` answers for one raw line.
+
+    None for a blank line and for a line ``json.loads`` refuses.
+    """
+    stripped = raw.strip()
+    if not stripped:
+        return None
+    try:
+        entry = json.loads(stripped)
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return None
+    if not isinstance(entry, dict):
+        return None
+    venue, sector = gate_bucket_of(entry, default_sector)
+    return (path_segment(venue), path_segment(sector))
+
+
+def _buckets_in(path: Path, default_sector: str) -> set[tuple[str, str]]:
+    """Every ``_bucket_of_raw`` answer over the lines of ``path``.
+
+    A line counted in no bucket is left out of the set.
+    """
+    found: set[tuple[str, str]] = set()
+    with open(path, "rb") as handle:
+        for raw in handle:
+            key = _bucket_of_raw(raw, default_sector)
+            if key is not None:
+                found.add(key)
+    return found
+
+
+def _split_into_pending(
+    source: Path, token: str, default_sector: str, trade_dir: Path
+) -> list[tuple[Path, Path]]:
+    """Each bucket's share of ``source`` written under ``GATE_PENDING_PREFIX``.
+
+    Every line is copied as the bytes ``source`` holds, and the return is the
+    ``(pending, final)`` pair ``_carry_consumed`` promotes per bucket.
+    """
+    handles: dict[tuple[str, str], Any] = {}
+    places: dict[tuple[str, str], tuple[Path, Path]] = {}
+    try:
+        with open(source, "rb") as reader:
+            for raw in reader:
+                key = _bucket_of_raw(raw, default_sector)
+                if key is None:
+                    continue
+                handle = handles.get(key)
+                if handle is None:
+                    archive = gate_archive_dir(key[0], key[1], trade_dir)
+                    pending = archive / (GATE_PENDING_PREFIX + token)
+                    places[key] = (pending, archive / token)
+                    handle = open(pending, "wb")
+                    handles[key] = handle
+                handle.write(raw)
+    finally:
+        for handle in handles.values():
+            handle.close()
+    return list(places.values())
+
+
+def _carry_consumed(consumed: Path, default_sector: str, trade_dir: Path) -> int:
+    """Carry one ``GATE_CONSUMED_PREFIX`` file into the buckets ``_buckets_in``
+    answers, and return the archive count.
+
+    A one-bucket file is renamed; ``_split_into_pending`` handles the rest.
+    """
+    token = consumed.name[len(GATE_CONSUMED_PREFIX) :]
+    buckets = _buckets_in(consumed, default_sector)
+    if not buckets:
+        consumed.unlink()
+        return 0
+    if len(buckets) == 1:
+        venue, sector = next(iter(buckets))
+        consumed.replace(gate_archive_dir(venue, sector, trade_dir) / token)
+        return 1
+    pairs = _split_into_pending(consumed, token, default_sector, trade_dir)
+    for pending, final in pairs:
+        pending.replace(final)
+    consumed.unlink()
+    return len(pairs)
+
+
+def migrate_legacy_gate_logs(trade_dir: Path) -> dict[str, int]:
+    """Carry every ``legacy_gate_logs`` file under ``trade_dir`` into its gate
+    bucket, and resume any carry a previous run left part-done.
+
+    ``LogManager.__init__`` calls it ahead of its first gate writer and the
+    return counts the ``files`` moved and the ``archives`` written.
+    """
+    root = gate_root(trade_dir)
+    root.mkdir(parents=True, exist_ok=True)
+    sector = default_gate_sector()
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%f")
+    for one in legacy_gate_logs(trade_dir):
+        one.replace(root / f"{GATE_CONSUMED_PREFIX}{one.name}-{stamp}")
+    moved = 0
+    archives = 0
+    for consumed in sorted(
+        one
+        for one in root.iterdir()
+        if one.is_file() and one.name.startswith(GATE_CONSUMED_PREFIX)
+    ):
+        archives += _carry_consumed(consumed, sector, trade_dir)
+        moved += 1
+    return {"files": moved, "archives": archives}
+
+
 SYSTEM_LOG_MAX_BYTES = 50 * 1024 * 1024
 """Rotation threshold for ``system.log``, matching the ``NDJSONWriter`` default."""
 
@@ -228,7 +378,10 @@ class LogManager:
             self._dir = self._trade_dir
 
         self._trade_writer = NDJSONWriter(self._trade_dir / "trade.log")
-        self._gate_writer = NDJSONWriter(self._trade_dir / "gate.log")
+        # Runs before the first gate writer opens, so no handle is held on it.
+        self._gate_carry = migrate_legacy_gate_logs(self._trade_dir)
+        self._gate_writers: dict[tuple[str, str], NDJSONWriter] = {}
+        self._gate_writers_lock = Lock()
         # _on_bot_log_bus routes the bot.log topic here unfiltered.
         self._diag_writer = NDJSONWriter(self._trade_dir / "diagnostics.log")
         # One entry per fired trade, not per tick.
@@ -258,6 +411,47 @@ class LogManager:
                 logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
             )
             self._sys_logger.addHandler(handler)
+
+        if self._gate_carry["files"]:
+            self._sys_logger.info(
+                "LogManager carried %d pre-split gate log(s) into %d bucket "
+                "archive(s) under %s",
+                self._gate_carry["files"],
+                self._gate_carry["archives"],
+                gate_root(self._trade_dir),
+            )
+
+    def gate_carry_counts(self) -> dict[str, int]:
+        """What ``migrate_legacy_gate_logs`` moved for this ``LogManager``.
+
+        The keys are ``files`` and ``archives``, both zero once no pre-split
+        ``gate.log`` is left under ``_trade_dir``.
+        """
+        return dict(self._gate_carry)
+
+    def gate_writer_keys(self) -> list[tuple[str, str]]:
+        """Every ``(exchange, sector)`` segment pair ``_gate_writer_for`` opened.
+
+        A diagnostics surface reads it to name the buckets this run wrote to.
+        """
+        with self._gate_writers_lock:
+            return sorted(self._gate_writers)
+
+    def _gate_writer_for(self, exchange: object, asset_class: object) -> NDJSONWriter:
+        """The ``NDJSONWriter`` for one exchange and sector, opened on demand.
+
+        One writer serves every bot on that pair, so ``gate_log_path`` names
+        the single file their decisions append to.
+        """
+        key = (path_segment(exchange), path_segment(asset_class))
+        with self._gate_writers_lock:
+            held = self._gate_writers.get(key)
+            if held is None:
+                held = NDJSONWriter(
+                    gate_log_path(exchange, asset_class, self._trade_dir)
+                )
+                self._gate_writers[key] = held
+            return held
 
     def _note_internal_failure(self, where: str, exc: BaseException) -> None:
         """Record a fault inside this module's own plumbing, raising nothing.
@@ -348,16 +542,22 @@ class LogManager:
         indicators: Optional[dict] = None,
         state_snapshot: Optional[dict] = None,
         extra: Optional[dict] = None,
+        asset_class: str = "",
     ) -> None:
-        """Write one ``LogCategory.GATE`` entry to ``gate.log``.
+        """Write one ``LogCategory.GATE`` entry to the ``_gate_writer_for``
+        this ``exchange`` and ``asset_class``.
 
         ``ScrummingBot._emit_gate_decision_at_fire`` reaches this once per fired
-        trade through ``_on_gate_decision_bus``.
+        trade through ``_on_gate_decision_bus``. ``data["asset_class"]`` carries
+        the same ``path_segment`` the directory is named with, so a row names
+        the file it is in.
 
         Args:
             exchange:           Source exchange tag.
             bot_id:             Bot identifier.
             symbol:             Asset symbol.
+            asset_class:        Sector of the market, from
+                                ``BotContainer._asset_class``.
             scrum_armed:        True when the scrum chain decided to fire.
             fold_armed:         True when the fold chain decided to fire.
             scrum_blockers:     Names that blocked the scrum chain.
@@ -371,6 +571,7 @@ class LogManager:
         """
         data: dict = {
             "symbol": symbol,
+            "asset_class": path_segment(asset_class),
             "scrum_armed": bool(scrum_armed),
             "fold_armed": bool(fold_armed),
             "scrum_blockers": list(scrum_blockers or []),
@@ -394,7 +595,7 @@ class LogManager:
             bot_id=bot_id,
             data=data,
         )
-        self._gate_writer.write(entry)
+        self._gate_writer_for(exchange, asset_class).write(entry)
 
     def log_voting_panel_snapshot(
         self,
@@ -514,7 +715,7 @@ class LogManager:
             self.info(
                 "LogManager attached to bus: trade.filled → trade.log, "
                 "pnl.event → pnl/daily/<day>.ndjson, "
-                "bot.gate_decision → gate.log, "
+                "bot.gate_decision → gate/<exchange>/<sector>/gate.log, "
                 "bot.voting_panel_snapshot → voting.log, "
                 "bot.log → diagnostics.log"
             )
@@ -592,6 +793,7 @@ class LogManager:
                 fold_fixture=merged.get("fold_fixture"),
                 indicators=merged.get("indicators"),
                 state_snapshot=merged.get("state"),
+                asset_class=str(merged.get("asset_class", "") or ""),
                 extra={
                     k: v
                     for k, v in merged.items()
@@ -600,6 +802,7 @@ class LogManager:
                         "bot_id",
                         "exchange",
                         "symbol",
+                        "asset_class",
                         "scrum_armed",
                         "fold_armed",
                         "scrum_blockers",
