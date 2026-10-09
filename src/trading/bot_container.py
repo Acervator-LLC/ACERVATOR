@@ -451,12 +451,16 @@ class BotContainer:
             BELOW_ONE_UNIT,
             HELD_OUTSIDE_SESSION,
             MARKET_BUY_NAMES_CASH,
+            SIDE_BUY,
+            SIDE_SELL,
             contract_count_note,
             contracts_for_units,
             market_unit_rule,
             outside_session,
+            permitted_order_shape,
             position_minimum_refusal,
             session_unit_rule,
+            size_shape_refusal,
             sized_order,
             units_for_contracts,
             untradeable_reason,
@@ -476,7 +480,33 @@ class BotContainer:
         # The market's own session overrides its step outside its normal hours,
         # so the moment is read here and not at a composing site.
         _now = time.time()
-        _rule = market_unit_rule(_rules, _class, self.config.exchange_id, _now)
+        # The venue names a permission per side, so the side is read here too.
+        _side_name = SIDE_BUY if side == OrderSide.BUY else SIDE_SELL
+        _rule = market_unit_rule(
+            _rules, _class, self.config.exchange_id, _now, _side_name
+        )
+
+        # The product's own permission set names which size shapes each side may
+        # take, so a shape it refuses is refused here and never at the step.
+        _shape_refusal = size_shape_refusal(_rules, _side_name, _now)
+        if _shape_refusal:
+            self._refuse_order(
+                f"PRE-FLIGHT REJECTED: {_side_str} {symbol} {_amt:.10f}: "
+                f"{_shape_refusal}. The market is still read and still "
+                f"charted. "
+                f"API not called."
+            )
+        _shape = permitted_order_shape(_rules, _side_name, _now)
+        # The permission sized the amount where it answers, so the refusal and
+        # the notice name the shape it left. Empty otherwise.
+        _shape_note = (
+            ""
+            if _shape is None
+            else (
+                f" The venue permits this {_side_name} as {_shape} at this "
+                f"hour, so the order names that shape."
+            )
+        )
         # The venue's size field names contracts on a contract market, and its
         # step is a step in contracts, so the unit count divides before it.
         _contracts = contracts_for_units(_amt, _rules.contract_size)
@@ -502,7 +532,8 @@ class BotContainer:
                 f"PRE-FLIGHT REJECTED: {_side_str} {symbol} amount "
                 f"{_amt:.10f} is below min_amount {_rules.min_amount} "
                 f"on a size increment of {_rules.amount_increment}. "
-                f"{BELOW_MINIMUM_AMOUNT}.{_session_note}{_contract_note} "
+                f"{BELOW_MINIMUM_AMOUNT}.{_shape_note}{_session_note}"
+                f"{_contract_note} "
                 f"API not called."
             )
 
@@ -510,8 +541,8 @@ class BotContainer:
             self._refuse_order(
                 f"PRE-FLIGHT REJECTED: {_side_str} {symbol} amount "
                 f"{_amt:.10f} floors to nothing on a size increment of "
-                f"{_rules.amount_increment}. {BELOW_ONE_UNIT}.{_session_note}"
-                f"{_contract_note} "
+                f"{_rules.amount_increment}. {BELOW_ONE_UNIT}.{_shape_note}"
+                f"{_session_note}{_contract_note} "
                 f"API not called."
             )
 
@@ -522,7 +553,7 @@ class BotContainer:
                 f"SIZED ON THE VENUE'S STEP: {_side_str} {symbol} "
                 f"{_contracts:.10f} to {_sized.units:.10f} on a size increment "
                 f"of {_rules.amount_increment} ({_sized.source})."
-                f"{_session_note}{_contract_note}"
+                f"{_shape_note}{_session_note}{_contract_note}"
             )
             _contracts = _sized.units
             _amt = units_for_contracts(_contracts, _rules.contract_size)
