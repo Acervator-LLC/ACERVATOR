@@ -105,25 +105,40 @@ def rate_fields(snapshot: object) -> dict | None:
 
 
 _NO_DATA_CAUSE_TEXT: dict[str, str] = {
-    "no_selection": "no bot is selected — pick one from the Bot dropdown.",
-    "bot_missing": "bot {bot} is selected but no longer present in the fleet.",
-    "not_running": "bot is {state} — a bot that is not running evaluates no TA.",
-    "bot_error": "bot stopped in ERROR: {error}",
-    "parked_at_target": "parked at target — position ${position} against target "
-    "${target} (delta ${delta}). The tick exits before the TA "
-    "block by design, so this bot computes no TA while it sits "
-    "here. Not a fault, and not transient.",
-    "cold_start": "cold start — this bot is running and has computed no TA since "
-    "the platform launched. Its first read lands on the next TA "
-    "evaluation.",
-    "too_few_candles": "too few candles — {candles} cached for {symbol} {timeframe}, "
-    "and the TA engine needs {floor}.",
-    "new_bot": "new bot — created just now, still ahead of its first TA read.",
+    "no_selection": "No bot is picked. Choose one from the Bot list above, "
+    "and its votes appear here.",
+    "bot_missing": "Bot {bot} is gone. It is still picked here, but it is no "
+    "longer one of your bots. Pick another bot.",
+    "not_running": "This bot is {state}. A bot reads the market only while it "
+    "runs, so no new votes arrive. Start it when you want them.",
+    "bot_error": "This bot stopped on an error. It reads nothing until the "
+    "error is cleared. The error says: {error}",
+    "parked_at_target": "This bot sits at its target. It holds ${position} "
+    "against a target of ${target}, a difference of "
+    "${delta}. A bot at its target has nothing to buy or "
+    "sell, so it stops reading the market and these votes "
+    "hold still. This is normal. Nothing for you to do. "
+    "New votes arrive once the price moves the bot off its "
+    "target.",
+    "cold_start": "This bot is running and has not read the market yet since "
+    "the platform started. Its first votes arrive the next time it "
+    "checks the market. Nothing for you to do.",
+    "too_few_candles": "Not enough price history yet. This bot holds {candles} "
+    "candles for {symbol} on {timeframe}, and it needs "
+    "{floor} before it can vote. The count climbs as new "
+    "candles arrive. A count that stays put means no price "
+    "data is reaching this bot.",
+    "new_bot": "This bot was created just now and has not read the market yet. "
+    "Its first votes arrive the next time it checks the market. "
+    "Nothing for you to do.",
 }
 
 #: Fallback for an unrecognised cause token; names the token rather
 #: than inventing an explanation.
-_UNKNOWN_CAUSE_TEXT = "no TA read available (unrecognised cause {cause!r})."
+_UNKNOWN_CAUSE_TEXT = (
+    "No votes, and this panel cannot say why. The reason it was given, "
+    "{cause!r}, is not one it knows. Treat this as a fault."
+)
 
 
 def _selector_entry_text(status: dict) -> str:
@@ -1101,7 +1116,7 @@ if _HAS_QT:
                 "message": self._no_data_message,
             }
             self._staleness_label.setText(
-                f"⏱ LAST TA READ, NOT CURRENT — taken {when}, {age}. {message}"
+                ivp.STALENESS_FORMAT.format(when=when, age=age, message=message)
             )
             self._staleness_label.show()
             logger.info(

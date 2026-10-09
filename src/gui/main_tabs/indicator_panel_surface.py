@@ -395,15 +395,15 @@ def universal_dot_payload(*, masked: bool) -> dict:
 STALENESS_TEXT_COLOR = "#ffb020"
 STALENESS_BACKGROUND_RGB = (60, 45, 15)
 STALENESS_BACKGROUND_ALPHA = 90
-STALENESS_FORMAT = "⏱ LAST TA READ, NOT CURRENT — taken {when}, {age}. {message}"
+STALENESS_FORMAT = "⏱ THESE VOTES ARE OLD — read at {when}, {age}. {message}"
 
 STALENESS_TOOLTIP = (
-    "Shown when the panel is displaying the LAST TA read "
-    "this bot produced rather than a current one, with the "
-    "age of that reading and the reason no current one "
-    "exists. Nothing is recomputed to draw it. "
-    "Also shown when this bot has no stored reading either, "
-    "naming the one cause that applies."
+    "Shown when the votes below are the last ones this bot "
+    "produced, not current ones. It carries the time they "
+    "were read, how old they are, and why no current ones "
+    "exist. Nothing is recalculated to show it. "
+    "The same line also appears with no votes below it, "
+    "naming the one reason that applies."
 )
 
 RATE_STRIP_TEXT_COLOR = "#66ccff"
@@ -445,7 +445,7 @@ LOCK_ENTRY_FORMAT = (
 LOCKS_MAXIMUM_HEIGHT_PX = 20
 LOCKS_MARGINS_PX = [4, 2, 4, 2]
 
-NO_DATA_FORMAT = "No TA data — {message}"
+NO_DATA_FORMAT = "No votes — {message}"
 
 EMPTY_TEXT = ""
 
