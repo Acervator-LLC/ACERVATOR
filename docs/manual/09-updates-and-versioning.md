@@ -410,6 +410,49 @@ file and counts it as unowned, and the hook that runs on every save now says the
 same thing rather than staying silent: this file type was not examined, which is
 not the same as clean.
 
+### The lane reports prose, and never blocks a merge on it
+
+A finding in a markdown file no longer stops a merge. The docs archetype still
+runs on every changed markdown file, and every finding it reports still prints
+in the log under that file's own group. What changed is where the verdict goes.
+The step counts a markdown verdict as reported rather than judged, so it never
+reaches the counter the lane fails on.
+
+The step names every file it read and marks each one judged or reported, so a
+green lane never hides a page the lane did not judge.
+
+```
+docs_archetype docs/manual/09-updates-and-versioning.md passed=false (exit 1)
+reported only, this verdict cannot fail the lane: docs/manual/09-updates-and-versioning.md
+coding_archetype src/core/log_paths.py passed=true
+judged, a red verdict fails this lane: src/core/log_paths.py
+scanned=2 judged=1 reported=1 unowned=0 exempt=0 failed=0
+judged: a red verdict blocks the merge. reported: the verdict is printed and blocks nothing.
+```
+
+Every other type blocks exactly as before. A red verdict on a Python file, a
+shell script, a workflow file, JavaScript, CSS or HTML still fails the lane, and
+a failed lane still leaves the merge blocked.
+
+```
+.py                         judged, and a red verdict blocks the merge
+.sh .bash .zsh              judged, and a red verdict blocks the merge
+.yml .yaml                  judged, and a red verdict blocks the merge
+.js .mjs .cjs .css .html    judged, and a red verdict blocks the merge
+.md                         reported, and no verdict blocks the merge
+```
+
+Prose is still read before it reaches the branch. The gate that runs on every
+save refuses a markdown write that introduces a high or critical finding the
+file does not already carry, so the rule still holds where a unit writes a page.
+That gate refuses at save time and never blocked a merge.
+
+```
+dev_harness/hooks/archetype_gate.py, in the --pre mode
+    a write that adds a high or critical finding is denied
+    a write that adds no high or critical finding is allowed
+```
+
 ### What a green result means
 
 Green means every changed file passed the archetype that owns it, the Solidity
@@ -420,6 +463,29 @@ test suite ran. The tree holds no Python test.
 git ls-files tests/                   7 files
 git ls-files tests/contracts/*.sol    6 files
 git ls-files tests/test_*.py          0 files
+```
+
+#### A changed markdown file is the one thing green does not cover
+
+The first sentence above is overtaken for one file type. Before and after, side
+by side:
+
+```
+before   Green means every changed file passed the archetype that owns it,
+         the Solidity tests passed, and the formatting and lint lanes passed.
+
+after    Green means every changed file the lane judged passed the archetype
+         that owns it, the Solidity tests passed, and the formatting and lint
+         lanes passed. A changed markdown file is reported, not judged, so a
+         green lane says nothing about whether its prose verdict was clean.
+```
+
+Read the step's own summary to tell the two apart. The `reported` count gives
+the number of markdown files whose verdict the step printed without judging, and
+the step names each one on its own line above the summary.
+
+```
+scanned=2 judged=1 reported=1 unowned=0 exempt=0 failed=0
 ```
 
 ### The two pytest lanes, overtaken
