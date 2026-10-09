@@ -1392,7 +1392,8 @@ def build_view_model(
     them, and ``held`` how many records the fleet holds, which puts Clear
     Fleet on the card.
     """
-    key = "stock" if str(layer) == "stock" else "crypto"
+    key = live.layer_named(layer)
+    order = live.layer_order()
     buffer = live.ApiPauseBuffer() if api_buffer is None else api_buffer
     pane = live.ApiLogPane() if api_pane is None else api_pane
     routed = live.layer_exchanges(exchanges)
@@ -1408,14 +1409,14 @@ def build_view_model(
         "layer_splitter": dict(LAYER_SPLITTER),
         "equity_exchange_ids": list(live.EQUITY_EXCHANGE_IDS),
         "trading_stack": {
-            "pages": list(live.LAYER_ORDER),
-            "current_index": live.LAYER_ORDER.index(key),
+            "pages": list(order),
+            "current_index": order.index(key),
         },
         "mode": active,
         "held": int(held or 0),
         "layers": [
             layer_card(name, routed[name], current_exchange, active, held)
-            for name in live.LAYER_ORDER
+            for name in order
         ],
         "alias_layer": live.ALIAS_LAYER,
         "chart_present": live.CHART_PRESENT,

@@ -289,6 +289,7 @@ if _HAS_QT:
                 NO_CREATABLE_PAIR_TEXT,
                 UNTRADEABLE_COUNT_FORMAT,
                 UNTRADEABLE_LABEL_FORMAT,
+                market_expires,
                 market_reason,
                 market_unit_rule,
                 recorded_venue_rows,
@@ -301,6 +302,7 @@ if _HAS_QT:
             self._target_reasons = []
             self._target_unit_rules = []
             self._target_prices = []
+            self._target_expiries = []
             filtered = [
                 m
                 for m in markets
@@ -338,6 +340,7 @@ if _HAS_QT:
                     market_unit_rule(recorded, m, self._sector, eid)
                 )
                 self._target_prices.append(as_finite_float(m.get("price")))
+                self._target_expiries.append(market_expires(recorded, m))
                 # The cached icon only, since a download here blocks the GUI thread.
                 icon = _get_coin_icon(named)
                 if icon:
@@ -349,6 +352,7 @@ if _HAS_QT:
                 self._target_reasons.append("")
                 self._target_unit_rules.append("")
                 self._target_prices.append(None)
+                self._target_expiries.append(False)
             refused = sum(1 for one in self._target_reasons if one)
             self._status.setText(
                 f"{len(filtered)} {base} pairs"
@@ -389,6 +393,13 @@ if _HAS_QT:
             at = self._target.currentIndex()
             held = getattr(self, "_target_prices", [])
             return held[at] if 0 <= at < len(held) else None
+
+        def target_expires(self) -> bool:
+            """True while the recording holds an expiry epoch for the pair the
+            target combo shows."""
+            at = self._target.currentIndex()
+            held = getattr(self, "_target_expiries", [])
+            return bool(held[at]) if 0 <= at < len(held) else False
 
         def _update_info(self):
             sym = self._target.currentData()
@@ -1248,6 +1259,80 @@ if _HAS_QT:
 
             groups.addWidget(self._gates_group)
 
+            from .main_tabs.bot_wizard_surface import (
+                COMBO_FIELDS as _WIZARD_COMBOS,
+            )
+            from .main_tabs.bot_wizard_surface import (
+                GROUP_TITLES as _WIZARD_GROUP_TITLES,
+            )
+            from .main_tabs.bot_wizard_surface import (
+                TOOL_TIPS as _WIZARD_TIPS,
+            )
+
+            # set_market shows this only for a market the venue publishes a
+            # whole-unit step for.
+            self._whole_unit_group = QGroupBox(_WIZARD_GROUP_TITLES["whole_unit_group"])
+            self._whole_unit_group.setVisible(False)
+            uf = _mkform()
+            self._whole_unit_group.setLayout(uf)
+
+            self._whole_unit_open_units = QSpinBox()
+            self._whole_unit_open_units.setRange(0, 1000)
+            self._whole_unit_open_units.setValue(0)
+            self._whole_unit_open_units.setSuffix(" units")
+            self._whole_unit_open_units.setToolTip(
+                _WIZARD_TIPS["whole_unit_open_units"]
+            )
+            uf.addRow("Open Position At:", self._whole_unit_open_units)
+
+            groups.addWidget(self._whole_unit_group)
+
+            # set_market shows this only for a market the venue expires on a date.
+            self._expiry_group = QGroupBox(_WIZARD_GROUP_TITLES["expiry_group"])
+            self._expiry_group.setVisible(False)
+            xf = _mkform()
+            self._expiry_group.setLayout(xf)
+
+            self._expiry_close = QComboBox()
+            for _label, _code in _WIZARD_COMBOS["expiry_close"]:
+                self._expiry_close.addItem(_label, _code)
+            self._expiry_close.setToolTip(_WIZARD_TIPS["expiry_close"])
+            xf.addRow("Expiry Close:", self._expiry_close)
+
+            self._expiry_lead_mode = QComboBox()
+            for _label, _code in _WIZARD_COMBOS["expiry_lead_mode"]:
+                self._expiry_lead_mode.addItem(_label, _code)
+            self._expiry_lead_mode.setToolTip(_WIZARD_TIPS["expiry_lead_mode"])
+            xf.addRow("Expiry Lead Mode:", self._expiry_lead_mode)
+
+            self._expiry_lead_fraction = QDoubleSpinBox()
+            self._expiry_lead_fraction.setRange(0.00, 1.00)
+            self._expiry_lead_fraction.setDecimals(2)
+            self._expiry_lead_fraction.setSingleStep(0.05)
+            self._expiry_lead_fraction.setValue(0.20)
+            self._expiry_lead_fraction.setToolTip(_WIZARD_TIPS["expiry_lead_fraction"])
+            xf.addRow("Lead Fraction:", self._expiry_lead_fraction)
+
+            self._expiry_lead_days = QDoubleSpinBox()
+            self._expiry_lead_days.setRange(0.0, 36500.0)
+            self._expiry_lead_days.setDecimals(1)
+            self._expiry_lead_days.setSingleStep(1.0)
+            self._expiry_lead_days.setSuffix(" days")
+            self._expiry_lead_days.setValue(11.0)
+            self._expiry_lead_days.setToolTip(_WIZARD_TIPS["expiry_lead_days"])
+            xf.addRow("Lead Days:", self._expiry_lead_days)
+
+            self._expiry_horizon = QDoubleSpinBox()
+            self._expiry_horizon.setRange(0.0, 36500.0)
+            self._expiry_horizon.setDecimals(1)
+            self._expiry_horizon.setSingleStep(30.0)
+            self._expiry_horizon.setSuffix(" days")
+            self._expiry_horizon.setValue(365.0)
+            self._expiry_horizon.setToolTip(_WIZARD_TIPS["expiry_horizon"])
+            xf.addRow("Expiry Horizon:", self._expiry_horizon)
+
+            groups.addWidget(self._expiry_group)
+
             # One group, so every Extractor widget shows and hides together.
             self._extractor_group = QGroupBox("Extractor — Pool && Artillery")
             self._extractor_group.setVisible(False)
@@ -1344,13 +1429,43 @@ if _HAS_QT:
             self._ta_timeframe.blockSignals(False)
 
         def set_market(
-            self, unit_rule: str | None, price=None, picked: bool = True
+            self,
+            unit_rule: str | None,
+            price=None,
+            picked: bool = True,
+            expires: bool = False,
         ) -> None:
-            """Hold the picked market's unit rule and unit price, then rewrite
-            the unit lines under the Scrumming Settings group."""
+            """Hold the picked market's unit rule, unit price and expiry, then
+            rewrite the unit lines and re-gate the two market groups.
+
+            ``Whole-Unit Market`` shows for a market sizing in whole units and
+            ``Contract Expiry`` for one the venue expires on a date. Personal
+            Hold takes whole units wherever the first shows, because such a
+            market places no fraction of a unit.
+            """
+            from .main_tabs.bot_wizard_surface import (
+                WHOLE_UNIT_HOLD_FIELD,
+                sizes_in_whole_units,
+            )
+
             self._unit_rule = unit_rule or ""
             self._unit_price = price
             self._unit_market_picked = bool(picked)
+            self._market_expires = bool(expires) and bool(picked)
+            whole = bool(picked) and sizes_in_whole_units(self._unit_rule)
+            self._market_whole_unit = whole
+            self._whole_unit_group.setVisible(whole)
+            self._expiry_group.setVisible(self._market_expires)
+            if whole:
+                self._personal_hold_qty.setDecimals(
+                    int(WHOLE_UNIT_HOLD_FIELD["decimals"])
+                )
+                self._personal_hold_qty.setSingleStep(
+                    float(WHOLE_UNIT_HOLD_FIELD["step"])
+                )
+            else:
+                self._personal_hold_qty.setDecimals(10)
+                self._personal_hold_qty.setSingleStep(1.0)
             self._write_unit_notes()
 
         def _write_unit_notes(self) -> None:
@@ -1473,6 +1588,22 @@ if _HAS_QT:
                     "fold_defer_to_htf": self._gate_fold_htf_chk.isChecked(),
                 }
             )
+            # The two flags set_market holds, not the widget's visibility: a
+            # child reads invisible while the wizard window is still hidden.
+            if getattr(self, "_market_whole_unit", False):
+                cfg["whole_unit_opening_units"] = int(
+                    self._whole_unit_open_units.value()
+                )
+            if getattr(self, "_market_expires", False):
+                cfg.update(
+                    {
+                        "expiry_close_action": self._expiry_close.currentData(),
+                        "expiry_lead_mode": self._expiry_lead_mode.currentData(),
+                        "expiry_lead_fraction": self._expiry_lead_fraction.value(),
+                        "expiry_lead_days": self._expiry_lead_days.value(),
+                        "expiry_horizon_days": self._expiry_horizon.value(),
+                    }
+                )
             return cfg
 
     class PhantomConfigPage(QWizardPage):
@@ -1732,6 +1863,7 @@ if _HAS_QT:
                         self._asset_page.target_unit_rule(),
                         self._asset_page.target_price(),
                         picked=bool(self._asset_page._target.currentData()),
+                        expires=self._asset_page.target_expires(),
                     )
             elif page_id == PAGE_PHANTOM:
                 try:

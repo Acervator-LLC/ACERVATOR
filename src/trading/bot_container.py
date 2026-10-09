@@ -63,6 +63,7 @@ from .container.config import (
     make_bot_config,
     phantom_init_kwargs,
     whole_position_units,
+    whole_unit_opening_units,
 )
 
 logger = logging.getLogger("acervator.bot")
@@ -134,6 +135,9 @@ class BotContainer:
         # Wall-clock second start() stamped, which the fraction lead mode
         # measures a contract's remaining life at. 0 until the bot starts.
         self._expiry_start_s: float = 0.0
+        # Units the last expiry close sent. ``_tick_expiry_close`` refuses a
+        # second send while the held count still equals this figure.
+        self._expiry_close_sent_units: float = 0.0
 
     def force_fire(self, aggressive: bool = False) -> None:
         """Manual fire hook; the base implementation does nothing."""
@@ -219,7 +223,7 @@ class BotContainer:
         from ..exchange.base import MarketRules
         from .scrumming.sizing import (
             order_types_for,
-            venue_session,
+            session_for,
             venue_settlement_days,
         )
 
@@ -230,8 +234,8 @@ class BotContainer:
         # OVERTAKEN, the sentence above: the venue's Stocks and Commodities tabs
         # reach the same connector, so ``_asset_class`` reads the symbol's class.
         asset_class = self._asset_class(symbol)
-        session = venue_session(asset_class, self.config.exchange_id)
         # No record was read here, so only the cited table can answer.
+        session = session_for(None, asset_class, self.config.exchange_id)
         order_types = order_types_for(None, asset_class, self.config.exchange_id)
         settlement = venue_settlement_days(asset_class, self.config.exchange_id)
         unread = MarketRules(
@@ -261,7 +265,10 @@ class BotContainer:
                 else:
                     rules = replace(
                         rules,
-                        session=session,
+                        # The venue's own session rode in on this record.
+                        session=session_for(
+                            rules, asset_class, self.config.exchange_id
+                        ),
                         # The venue's own declaration rode in on this record.
                         order_types=order_types_for(
                             rules, asset_class, self.config.exchange_id
@@ -324,6 +331,9 @@ class BotContainer:
     # ``WHOLE_UNITS`` for the symbol's own class and venue.
     # ``position_minimum_refusal`` then refuses a BUY opening such a position
     # below ``WHOLE_UNIT_POSITION_MINIMUM`` units.
+    # OVERTAKEN, the ``sized_order`` sentence above: ``contracts_for_units``
+    # divides the unit count by ``MarketRules.contract_size`` first, so the step
+    # floors a contract count and ``place_order`` receives one.
     async def guarded_place_order(
         self,
         symbol: str,
@@ -406,16 +416,28 @@ class BotContainer:
             and side == OrderSide.SELL
             and _expiry["action"] == EXPIRY_CLOSE_SELL_ALL
         ):
+            # ``_current_holdings`` is the count itself. The fallback inverts
+            # ``priced_usd``, which wrote ``position_value`` at
+            # ``current_price``; the order's own price is a ladder rung and
+            # sizes a fraction of the position out of the close.
             _position_usd = getattr(self.stats, "position_value", 0.0)
-            _whole = whole_position_units(_position_usd, price)
+            _held = getattr(self, "_current_holdings", 0.0)
+            _whole: Optional[float] = None
+            _units_source = "the position value"
+            if type(_held) in (int, float) and math.isfinite(_held) and _held > 0.0:
+                _whole = float(_held)
+                _units_source = "the held unit count"
             if _whole is None:
-                _whole = whole_position_units(
-                    _position_usd, getattr(self.stats, "current_price", 0.0)
-                )
+                _mark_usd = getattr(self.stats, "current_price", 0.0)
+                _quote_usd = getattr(self, "_quote_to_usd", 1.0)
+                if type(_mark_usd) in (int, float) and type(_quote_usd) in (int, float):
+                    _mark_usd = float(_mark_usd) * (float(_quote_usd) or 1.0)
+                _whole = whole_position_units(_position_usd, _mark_usd)
             if _whole is not None and _whole > _amt:
                 self._warn_order(
                     f"EXPIRY CLOSE, SELL ALL: SELL {symbol} raised from "
-                    f"{_amt:.10f} to {_whole:.10f}, the whole position worth "
+                    f"{_amt:.10f} to {_whole:.10f}, counted from "
+                    f"{_units_source}, the whole position worth "
                     f"${_position_usd:.4f}, {_expiry['days_left']:.2f} days "
                     f"before expiry. One order, not a ladder rung."
                 )
@@ -428,15 +450,21 @@ class BotContainer:
             BELOW_MINIMUM_AMOUNT,
             BELOW_ONE_UNIT,
             HELD_OUTSIDE_SESSION,
+            MARKET_BUY_NAMES_CASH,
+            contract_count_note,
+            contracts_for_units,
             market_unit_rule,
             outside_session,
             position_minimum_refusal,
+            session_unit_rule,
             sized_order,
+            units_for_contracts,
             untradeable_reason,
             variant_holds_market,
             variant_permits_close,
             variant_replaces_market_order,
             venue_variant,
+            whole_unit_buy_needs_limit,
         )
 
         # Every connector a container holds is a crypto connector; nothing
@@ -445,15 +473,36 @@ class BotContainer:
         # crypto connector lists the venue's other sectors, so the class comes
         # from ``_asset_class`` and the rule from ``market_unit_rule``.
         _class = self._asset_class(symbol)
-        _rule = market_unit_rule(_rules, _class, self.config.exchange_id)
-        _sized = sized_order(_amt, _rule, _rules)
+        # The market's own session overrides its step outside its normal hours,
+        # so the moment is read here and not at a composing site.
+        _now = time.time()
+        _rule = market_unit_rule(_rules, _class, self.config.exchange_id, _now)
+        # The venue's size field names contracts on a contract market, and its
+        # step is a step in contracts, so the unit count divides before it.
+        _contracts = contracts_for_units(_amt, _rules.contract_size)
+        _sized = sized_order(_contracts, _rule, _rules)
+        # The contract size named the amount where the venue published one, so
+        # every size line carries both counts. Empty otherwise.
+        _contract_note = contract_count_note(_amt, _rules.contract_size)
+        if _contract_note:
+            _contract_note = f" {_contract_note}"
+        # The session sized the amount where it answers, so the refusal and the
+        # notice name it rather than the step it overrode. Empty otherwise.
+        _session_note = (
+            ""
+            if session_unit_rule(getattr(_rules, "session", None), _now) is None
+            else (
+                f" The venue's {_rules.session} session takes a whole unit "
+                f"alone at this hour, so the step did not size it."
+            )
+        )
 
         if _sized.refusal == BELOW_MINIMUM_AMOUNT:
             self._refuse_order(
                 f"PRE-FLIGHT REJECTED: {_side_str} {symbol} amount "
                 f"{_amt:.10f} is below min_amount {_rules.min_amount} "
                 f"on a size increment of {_rules.amount_increment}. "
-                f"{BELOW_MINIMUM_AMOUNT}. "
+                f"{BELOW_MINIMUM_AMOUNT}.{_session_note}{_contract_note} "
                 f"API not called."
             )
 
@@ -461,20 +510,23 @@ class BotContainer:
             self._refuse_order(
                 f"PRE-FLIGHT REJECTED: {_side_str} {symbol} amount "
                 f"{_amt:.10f} floors to nothing on a size increment of "
-                f"{_rules.amount_increment}. {BELOW_ONE_UNIT}. "
+                f"{_rules.amount_increment}. {BELOW_ONE_UNIT}.{_session_note}"
+                f"{_contract_note} "
                 f"API not called."
             )
 
         # A venue that published no step and a pair with no cited rule both
         # leave the amount as it came in, and neither refuses on that ground.
-        if 0.0 < _sized.units < _amt:
+        if 0.0 < _sized.units < _contracts:
             self._warn_order(
                 f"SIZED ON THE VENUE'S STEP: {_side_str} {symbol} "
-                f"{_amt:.10f} to {_sized.units:.10f} on a size increment of "
-                f"{_rules.amount_increment} ({_sized.source})."
+                f"{_contracts:.10f} to {_sized.units:.10f} on a size increment "
+                f"of {_rules.amount_increment} ({_sized.source})."
+                f"{_session_note}{_contract_note}"
             )
-            _amt = _sized.units
-            amount = _sized.units
+            _contracts = _sized.units
+            _amt = units_for_contracts(_contracts, _rules.contract_size)
+            amount = _amt
 
         if _rules.min_cost is not None and price is not None:
             try:
@@ -532,19 +584,21 @@ class BotContainer:
             self._refuse_order(
                 f"PRE-FLIGHT REJECTED: {_side_str} {symbol} needs a bot "
                 f"variant the program does not hold. "
-                f"{untradeable_reason(_rules, _ref_px or None)}. "
+                f"{untradeable_reason(_rules, _ref_px or None, asset_class=_class, venue=self.config.exchange_id)}. "
                 f"The market is still read and still charted. "
                 f"API not called."
             )
 
         # A whole-unit market is traded only by a position that can give one
         # unit back and remain a position, so an opening order carries two.
+        # ``whole_unit_opening_units`` raises that floor and never lowers it.
         _opening = position_minimum_refusal(
             symbol,
             _amt,
             _ref_px,
             _rule,
             getattr(self.stats, "position_value", 0.0),
+            whole_unit_opening_units(self.config),
         )
         if _opening and side == OrderSide.BUY:
             self._refuse_order(f"PRE-FLIGHT REJECTED: BUY {_opening} API not called.")
@@ -554,12 +608,19 @@ class BotContainer:
             _left_text = "an unreadable number of" if _left is None else f"{_left:.2f}"
             _lead = _expiry["lead_days"]
             _lead_text = "no" if _lead is None else f"{_lead:.2f}"
+            # The BUY refusal above fires only while the close acts, so the
+            # notice claims it only then.
+            _rebuy_text = (
+                "A BUY is refused and nothing rebuys it"
+                if _expiry["acts"]
+                else "A BUY into it still passes until the lead time is reached"
+            )
             self._warn_order(
                 f"CLOSING AN EXPIRING MARKET: SELL {symbol} {_amt:.10f} is "
-                f"submitted where a BUY is refused, because the venue expires "
-                f"this contract in {_left_text} days ({_variant}). Nothing "
-                f"rebuys it. The bot's expiry close is {_expiry['action']} at "
-                f"{_lead_text} days of lead ({_expiry['mode']} mode, horizon "
+                f"submitted, and the venue expires this contract in "
+                f"{_left_text} days ({_variant}). {_rebuy_text}. The bot's "
+                f"expiry close is {_expiry['action']} at {_lead_text} days of "
+                f"lead ({_expiry['mode']} mode, horizon "
                 f"{_expiry['horizon_days']:.2f} days); {_expiry['reason']}."
             )
 
@@ -581,6 +642,45 @@ class BotContainer:
                 f"{symbol} {_amt:.10f} at ${_limit_px:.8f} on a price tick of "
                 f"{_rules.price_increment} ({_variant})."
             )
+
+        # A market buy on this venue names a cash amount, so the whole unit
+        # count ``sized_order`` floored rides on a limit order instead.
+        if (
+            side == OrderSide.BUY
+            and order_type == OrderType.MARKET
+            and whole_unit_buy_needs_limit(symbol, self.config.exchange_id, _rule)
+        ):
+            _buy_px = _rules.price_on_tick(_ref_px) if _ref_px else None
+            if _buy_px is None or not math.isfinite(_buy_px) or _buy_px <= 0.0:
+                _buy_px = _ref_px
+            if _buy_px <= 0.0:
+                self._refuse_order(
+                    f"PRE-FLIGHT REJECTED: BUY {symbol} {_amt:.10f} needs a "
+                    f"limit price to name a unit count, because "
+                    f"{MARKET_BUY_NAMES_CASH}, and no price is known for this "
+                    f"market. "
+                    f"API not called."
+                )
+            order_type = OrderType.LIMIT
+            price = _buy_px
+            self._warn_order(
+                f"LIMIT FOR A WHOLE-UNIT BUY: BUY {symbol} names "
+                f"{_amt:.10f} units at ${_buy_px:.8f} on a price tick of "
+                f"{_rules.price_increment} and a size step of "
+                f"{_rules.amount_increment}, so the venue credits "
+                f"{_amt:.10f} units. {MARKET_BUY_NAMES_CASH}."
+            )
+
+        # The venue's size field names contracts, so the count it receives is
+        # the contract count and the unit count is what the bot holds.
+        _submit_note = contract_count_note(_amt, _rules.contract_size)
+        if _submit_note:
+            self._warn_order(
+                f"SIZED IN CONTRACTS: {_side_str} {symbol} names "
+                f"{_contracts:.10f} contracts on a size step of "
+                f"{_rules.amount_increment}. {_submit_note}"
+            )
+        amount = _contracts
 
         # Deterministic client_order_id derived from the trade intent,
         # so a retry of the same intent reuses the same coid.

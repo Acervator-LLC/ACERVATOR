@@ -1,8 +1,8 @@
 ---
 version: 2
 
-# target-branch moves version updates only. Security updates open against the
-# default branch, main, and are carried to current by hand.
+# current is the default branch, so version and security updates both open
+# against it.
 updates:
   # pyproject.toml
   - package-ecosystem: "pip"
@@ -10,6 +10,16 @@ updates:
     target-branch: "current"
     schedule:
       interval: "weekly"
+    open-pull-requests-limit: 1
+    groups:
+      routine-versions:
+        applies-to: version-updates
+        patterns:
+          - "*"
+      security-fixes:
+        applies-to: security-updates
+        patterns:
+          - "*"
 
   # requirements/build-win32-py3.14.txt
   - package-ecosystem: "pip"
@@ -17,6 +27,16 @@ updates:
     target-branch: "current"
     schedule:
       interval: "weekly"
+    open-pull-requests-limit: 1
+    groups:
+      routine-versions:
+        applies-to: version-updates
+        patterns:
+          - "*"
+      security-fixes:
+        applies-to: security-updates
+        patterns:
+          - "*"
 
   # package.json and package-lock.json
   - package-ecosystem: "npm"
@@ -24,6 +44,16 @@ updates:
     target-branch: "current"
     schedule:
       interval: "weekly"
+    open-pull-requests-limit: 1
+    groups:
+      routine-versions:
+        applies-to: version-updates
+        patterns:
+          - "*"
+      security-fixes:
+        applies-to: security-updates
+        patterns:
+          - "*"
 
   # desktop/package.json and desktop/package-lock.json
   - package-ecosystem: "npm"
@@ -31,6 +61,16 @@ updates:
     target-branch: "current"
     schedule:
       interval: "weekly"
+    open-pull-requests-limit: 1
+    groups:
+      routine-versions:
+        applies-to: version-updates
+        patterns:
+          - "*"
+      security-fixes:
+        applies-to: security-updates
+        patterns:
+          - "*"
 
   # the action versions in .github/workflows/
   - package-ecosystem: "github-actions"
@@ -38,3 +78,13 @@ updates:
     target-branch: "current"
     schedule:
       interval: "weekly"
+    open-pull-requests-limit: 1
+    groups:
+      routine-versions:
+        applies-to: version-updates
+        patterns:
+          - "*"
+      security-fixes:
+        applies-to: security-updates
+        patterns:
+          - "*"
