@@ -2655,8 +2655,86 @@ silence.
 
 ### What is not built
 
-A Robinhood bot is created and charted and does not start.
-`MainWindow._connect_exchange_for_bot` reads `broker_connector_class` and does
-not read `crypto_connector_class`, so no Robinhood connector is constructed from
-the window yet. The venue's own trading-pair path is also unpublished, so
+A Robinhood bot is created and charted and starts holding no market.
+`MainWindow._connect_exchange_for_bot` reads `broker_connector_class` and then
+`crypto_connector_class`, so the Robinhood connector is constructed from the
+window on a Start press. The venue's own trading-pair path is also unpublished, so
 nothing fetches a market list.
+
+### The three paths a Start press can take
+
+One press, three connector paths, and the venue id picks one.
+`src/gui/main_window.py`, in `_connect_exchange_for_bot` reads the two class
+registries in order and falls through to the trading library.
+
+| the venue id answers | the path | what is constructed |
+| --- | --- | --- |
+| `broker_connector_class` | `_connect_broker_for_bot` | the `BrokerBase` subclass named for the venue |
+| `crypto_connector_class` | `_connect_written_crypto_for_bot` | the hand-written `ExchangeInterface` subclass named for the venue |
+| neither | the rest of `_connect_exchange_for_bot` | `CCXTConnector`, which asks the trading library for the venue |
+
+```python
+# src/gui/main_window.py, in _connect_exchange_for_bot
+            if broker_connector_class(eid) is not None:
+                return self._connect_broker_for_bot(bot)
+
+            if crypto_connector_class(eid) is not None:
+                return self._connect_written_crypto_for_bot(bot)
+```
+
+Each path reuses the one connector held for the venue, so a second bot on a
+venue holds the object the first bot built. `_live_connector` answers the held
+connector while it reports connected and releases it otherwise, and `_held_broker`
+answers the held broker whether or not its session is open.
+
+```mermaid
+flowchart TD
+    A[Start pressed on a bot row] --> B[_on_bot_command, command start]
+    B --> C[_connect_exchange_for_bot]
+    C --> D{broker_connector_class answers a class}
+    D -->|yes| E[_connect_broker_for_bot]
+    D -->|no| F{crypto_connector_class answers a class}
+    F -->|yes| G[_connect_written_crypto_for_bot]
+    F -->|no| H[CCXTConnector, then sync_connect]
+    E --> K[bot.exchange is the connector]
+    G --> K
+    H --> K
+    K --> L[bot.start scheduled]
+```
+
+### What the hand-written crypto path does and does not read
+
+`_written_crypto_credential` reads the venue's stored row and decrypts three
+values: the API key, the signing key, and the account number the order path
+takes. `connect` holds all three and sends nothing, so `is_connected` reports
+whether a credential is held and not whether the venue answered.
+
+The path calls no read method. Robinhood publishes no market list path and no
+balance path, so a Robinhood bot starts with no market rules recorded and no
+balance checked, and `src/trading/bot_container.py`, in `guarded_place_order`
+sizes against the rules `record_pairs` records.
+
+Three refusals, each naming its own case, and none of them constructs a
+connector.
+
+| the condition | what the status line says |
+| --- | --- |
+| no API key or no signing key stored | `No API credentials for Robinhood. Add them in Settings. No connector was built.` |
+| the connector holds no credential after `connect` | `The Robinhood connector holds no credential, so no request can be signed.` |
+| no registry names a class for the venue id | `Exchange <id> not found in settings. Add it in Settings first.` |
+
+### What the Start press was driven against
+
+No venue was contacted. The runtime home was redirected to a scratch directory,
+every off-machine socket connect raised, `CCXTConnector.sync_connect`,
+`AlpacaConnector.open_session` and `RobinhoodCryptoConnector._send` were each
+replaced by a call that raises, and each replacement was shown to raise before
+the first press. The real recording's modification time was the same before and
+after.
+
+A Start press on a Robinhood bot built a `RobinhoodCryptoConnector`, set it as
+the bot's `exchange`, handed it to `BotManager.set_connector`, and scheduled
+`bot.start`. Two bots on the venue held one connector carrying both their
+symbols; with the reuse removed, the same reading gave two connectors carrying
+one symbol each. The ccxt press and the broker press each read the same seven
+lines before and after, and the Robinhood press was the one reading that moved.
