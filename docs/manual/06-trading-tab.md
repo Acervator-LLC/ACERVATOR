@@ -1083,6 +1083,35 @@ ROW_LOGO_MARGIN_PX = 2
 ROW_HEIGHT_PX = LOGO_SIZE_PX + 2 * ROW_LOGO_MARGIN_PX
 ```
 
+**A cell widget's pinned size reads the row height.** GUI011 in the GUI archetype
+refuses a widget placed into a table cell whose size is pinned to a literal, or to
+a name the same file declares once as a literal. A pin reading an imported or a
+computed value is not reported, because that value can carry the row's declared
+height and a literal cannot. The finding is high, so the verdict reads
+`passed=False` and the command exits 1.
+
+`dev_harness/harness/gui_archetype.py, in _scan_pinned_cell_widgets` — the rule
+
+```python
+_CELL_PLACEMENT_SETTER = "setCellWidget"
+
+_PINNING_SETTERS: frozenset[str] = frozenset(
+    {"setFixedHeight", "setFixedWidth", "setFixedSize"}
+)
+```
+
+The rule's fixture pair holds one table that pins both cell buttons from a height
+declared from the row's own, and one that pins a button to a bare number beside a
+button pinned to a height declared on its own. The good file exits 0 and the bad
+one draws two high findings and exits 1.
+
+`harness_fixtures/gui_archetype/known_good_cell_widget_height.py` — the good half
+
+The three Positions Held tables read the same two figures as the bot list, so each
+Manual Fire button fills the cell it sits in.
+
+`src/gui/live_settings/positions_held_tab.py, in _create_positions_held_tab` — one of the three
+
 **The bot id.** The bot id is still the thing a row is identified by. It stays in
 the payload, once as the list of every drawn row's bot and once on each row. It
 stays in the line the list writes when a row is built. The Detail button carries
