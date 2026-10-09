@@ -1316,21 +1316,24 @@ class CCXTConnector(ExchangeInterface):
         once add one call to the queue rather than 39. Past ``budget_sec`` it
         submits regardless and takes the queue cap's own answer.
         """
+        asking = asyncio.current_task()
         start = time.monotonic()
         while True:
             held = self._bulk_read_admitted
-            free = held is None or held.done() or held is asyncio.current_task()
+            free = held is None or held.done() or held is asking
             if free and self._sync_queue_depth <= BULK_READ_ADMIT_DEPTH:
                 break
             if time.monotonic() - start >= budget_sec:
                 break
             await asyncio.sleep(BULK_READ_WAIT_SLICE_SEC)
-        self._bulk_read_admitted = asyncio.current_task()
+        if asking is not None:
+            self._bulk_read_admitted = asking
         return time.monotonic() - start
 
     def _release_bulk_read_slot(self) -> None:
         """Clear ``_bulk_read_admitted`` when this task is the one holding it."""
-        if self._bulk_read_admitted is asyncio.current_task():
+        held = self._bulk_read_admitted
+        if held is not None and held is asyncio.current_task():
             self._bulk_read_admitted = None
 
     async def _call_sync(self, fn, *args, **kwargs):
