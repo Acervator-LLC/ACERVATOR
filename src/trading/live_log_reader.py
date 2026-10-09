@@ -14,8 +14,15 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterator, Optional
 
+from src.core.log_paths import (
+    GATE_ARCHIVE_DIR_NAME,
+    gate_log_buckets,
+    gate_log_files,
+)
+
 LIVE_LOG_ROOT: Path = Path.home() / ".acervator_logs"
 LIVE_TRADE_DIR: Path = LIVE_LOG_ROOT / "trade"
+# The pre-split path. Readers reach every gate log through live_gate_log_files.
 LIVE_GATE_LOG: Path = LIVE_TRADE_DIR / "gate.log"
 LIVE_TRADE_LOG: Path = LIVE_TRADE_DIR / "trade.log"
 # One voting-panel snapshot per fired trade.
@@ -40,6 +47,7 @@ GATE_LOG_REQUIRED_DATA_FIELDS = (
     "fold_blockers",
 )
 GATE_LOG_OPTIONAL_DATA_FIELDS = (
+    "asset_class",
     "evaluated_at_tick",
     "scrum_fixture",
     "fold_fixture",
@@ -196,10 +204,14 @@ def _file_predates(path: Path, since: datetime) -> bool:
     guessed wrong would silently drop gate decisions.
 
     The ACTIVE log is never skipped (it is still being appended to, so
-    its mtime says nothing about its oldest row); only rotated files,
-    which are closed and immutable, are eligible.
+    its mtime says nothing about its oldest row); only rotated files and
+    the members of a ``GATE_ARCHIVE_DIR_NAME`` directory, which are closed
+    and immutable, are eligible.
     """
-    if not path.suffix.lstrip(".").isdigit():
+    closed = (
+        path.suffix.lstrip(".").isdigit() or path.parent.name == GATE_ARCHIVE_DIR_NAME
+    )
+    if not closed:
         return False
     try:
         mtime = path.stat().st_mtime
@@ -248,10 +260,28 @@ def _rotated_files_for(path: Path) -> list[Path]:
     return files
 
 
+def live_gate_log_files() -> list[Path]:
+    """Every gate log under ``LIVE_TRADE_DIR`` a decision can be recorded in.
+
+    ``gate_log_files`` lists the pre-split file while it is still there and
+    then every exchange-and-sector bucket, each path once.
+    """
+    return gate_log_files(LIVE_TRADE_DIR)
+
+
+def live_gate_log_buckets() -> list[tuple[str, str, Path]]:
+    """Every ``(exchange, sector, directory)`` ``gate_log_buckets`` holds under
+    ``LIVE_TRADE_DIR``.
+
+    ``layout_summary`` reports one row per pair.
+    """
+    return gate_log_buckets(LIVE_TRADE_DIR)
+
+
 def live_gate_decisions(
     since: Optional[datetime] = None, validate: bool = True
 ) -> Iterator[dict]:
-    """Yield gate-decision entries from ``LIVE_GATE_LOG`` and its rotations.
+    """Yield gate-decision entries from every ``live_gate_log_files`` member.
 
     Args:
         since:    If set, only yield entries with timestamp >= since.
@@ -262,7 +292,7 @@ def live_gate_decisions(
     Yields a fresh dict per entry; the caller is free to mutate it.
     """
     since_prefix = since.isoformat()[:19] if since is not None else ""
-    for path in _rotated_files_for(LIVE_GATE_LOG):
+    for path in live_gate_log_files():
         if since is not None and _file_predates(path, since):
             continue
         for line in _iter_ndjson_lines(path):
@@ -412,6 +442,14 @@ def layout_summary() -> dict[str, Any]:
         "gate_log_exists": LIVE_GATE_LOG.is_file(),
         "gate_log_size_bytes": (
             LIVE_GATE_LOG.stat().st_size if LIVE_GATE_LOG.is_file() else 0
+        ),
+        "gate_log_buckets": [
+            {"exchange": venue, "asset_class": sector, "dir": str(where)}
+            for venue, sector, where in live_gate_log_buckets()
+        ],
+        "gate_log_files": [str(one) for one in live_gate_log_files()],
+        "gate_log_bytes": sum(
+            one.stat().st_size for one in live_gate_log_files() if one.is_file()
         ),
         "trade_log": str(LIVE_TRADE_LOG),
         "trade_log_exists": LIVE_TRADE_LOG.is_file(),

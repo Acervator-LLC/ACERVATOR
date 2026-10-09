@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING, Any, Callable, Iterator, Optional
 
 from ..core.emit_contracts import CONTRACTS, EmitContract, EmitObserver
 from ..core.event_bus import EventBus
-from ..core.log_paths import get_sim_dir
+from ..core.log_paths import gate_log_files, get_sim_dir
 from ..core.logging_engine import LogManager
 from ..core.signal_contract import (
     PROCESS_SINK_FLUSH_EVERY,
@@ -46,8 +46,9 @@ BOT_LOG_TOPIC = "bot.log"
 #: The topics ``CONTRACTS`` declares among the four the Simulator emits.
 SIM_TOPICS = (TRADE_TOPIC, GATE_TOPIC)
 
-#: The files ``LogManager.attach_to_bus`` writes the four topics into.
-SIM_LOG_FILES = ("trade.log", "gate.log", "voting.log", "diagnostics.log")
+#: The files ``LogManager.attach_to_bus`` writes the four topics into. The gate
+#: topic reaches one file per exchange and sector, which ``sim_log_paths`` lists.
+SIM_LOG_FILES = ("trade.log", "voting.log", "diagnostics.log")
 
 SCRUM_SIDE = "sell"
 FOLD_SIDE = "buy"
@@ -143,10 +144,29 @@ def sim_contracts() -> tuple[EmitContract, ...]:
     return tuple(one for one in CONTRACTS if one.topic in SIM_TOPICS)
 
 
+def sim_asset_class(symbol: str, exchange_id: str) -> str:
+    """The sector ``portfolios.asset_class`` answers for one sim market.
+
+    A market it answers None for takes ``default_gate_sector``, the same
+    fallback ``migrate_legacy_gate_logs`` files an unlabelled record under.
+    """
+    from ..core.logging_engine import default_gate_sector
+    from .portfolios import asset_class
+
+    return str(asset_class(symbol, exchange_id) or "") or default_gate_sector()
+
+
 def sim_log_paths() -> dict[str, str]:
-    """Each of ``SIM_LOG_FILES`` under ``get_sim_dir``, keyed by file name."""
+    """Each of ``SIM_LOG_FILES`` under ``get_sim_dir``, plus every gate log.
+
+    A gate key reads ``gate/<exchange>/<sector>/gate.log`` relative to the sim
+    directory, one key per file ``gate_log_files`` lists there.
+    """
     root = get_sim_dir()
-    return {name: str(root / name) for name in SIM_LOG_FILES}
+    found = {name: str(root / name) for name in SIM_LOG_FILES}
+    for one in gate_log_files(root):
+        found[one.relative_to(root).as_posix()] = str(one)
+    return found
 
 
 def sim_log_manager(
@@ -354,11 +374,15 @@ class RunEmitter:
         """Emit ``GATE_TOPIC`` for ``bot`` with the fields
         ``_emit_gate_decision_at_fire`` puts in the event, the fixtures read
         off ``context`` and ``reading``, ``evaluated_at_tick`` as ``tick``, and
-        ``extra`` merged beside them."""
+        ``extra`` merged beside them.
+
+        ``asset_class`` comes from ``sim_asset_class``, so a sim decision is
+        filed under the sector its live twin is filed under."""
         self._send(
             GATE_TOPIC,
             bot_id=bot.bot_id,
             exchange=bot.exchange_id,
+            asset_class=sim_asset_class(bot.symbol, bot.exchange_id),
             symbol=bot.symbol,
             side=str(side or "").upper(),
             trade_action=str(trade_action or ""),
@@ -488,6 +512,7 @@ __all__ = [
     "scrum_fixture",
     "sim_contracts",
     "sim_log_manager",
+    "sim_asset_class",
     "sim_log_paths",
     "sim_signal_sink",
     "tranche_snapshot",

@@ -1,10 +1,11 @@
 """The Simulator's gate-log path: the recorded gate decisions, read only.
 
 ``GateLogSource`` answers ``root``, ``path``, ``files``, ``rows``, ``bot_ids``
-and ``span`` from ``gate.log`` and its rotations. It holds no venue and defines
-no write, and ``__getattr__`` raises ``SendRefused`` for every other name.
-``GateRow`` carries one recorded decision: the two armed flags, the two blocker
-lists and the two fixtures ``ScrummingBot`` wrote.
+and ``span`` over every exchange-and-sector gate log ``gate_log_files`` lists.
+It holds no venue and defines no write, and ``__getattr__`` raises
+``SendRefused`` for every other name. ``GateRow`` carries one recorded
+decision: the two armed flags, the two blocker lists and the two fixtures
+``ScrummingBot`` wrote, under the ``asset_class`` its bucket is named with.
 """
 
 from __future__ import annotations
@@ -16,6 +17,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterator, Optional
 
+from ..core.log_paths import GATE_LOG_NAME, gate_log_files, gate_root
 from ..trading.live_log_reader import (
     GATE_LOG_REQUIRED_DATA_FIELDS,
     GATE_LOG_REQUIRED_TOP_FIELDS,
@@ -26,7 +28,6 @@ from .tablet_source import SendRefused
 
 logger = logging.getLogger("acervator.simulator.gate_log")
 
-GATE_LOG_NAME = "gate.log"
 TRADE_DIR_NAME = "trade"
 
 #: Every name ``GateLogSource`` answers. ``__getattr__`` refuses the rest.
@@ -43,6 +44,7 @@ class GateRow:
     exchange_id: str
     scrum_armed: bool
     fold_armed: bool
+    asset_class: str = ""
     scrum_blockers: tuple[str, ...] = ()
     fold_blockers: tuple[str, ...] = ()
     scrum_fixture: dict = field(default_factory=dict)
@@ -76,6 +78,7 @@ def row_from_entry(entry: dict) -> Optional[GateRow]:
         bot_id=str(entry.get("bot_id") or ""),
         symbol=str(data.get("symbol") or ""),
         exchange_id=str(entry.get("exchange") or ""),
+        asset_class=str(data.get("asset_class") or ""),
         scrum_armed=bool(data.get("scrum_armed")),
         fold_armed=bool(data.get("fold_armed")),
         scrum_blockers=tuple(str(one) for one in data.get("scrum_blockers") or []),
@@ -111,20 +114,16 @@ class GateLogSource:
         return self._root
 
     def path(self) -> Path:
-        """The active ``gate.log``."""
-        return self._root / TRADE_DIR_NAME / GATE_LOG_NAME
+        """The ``gate_root`` directory the exchange-and-sector buckets sit in."""
+        return gate_root(self._root / TRADE_DIR_NAME)
 
     def files(self) -> list[Path]:
-        """``gate.log`` and its rotations, oldest rotation first."""
-        active = self.path()
-        found = sorted(
-            (one for one in active.parent.glob(GATE_LOG_NAME + ".*") if one.is_file()),
-            key=lambda one: one.name,
-            reverse=True,
-        )
-        if active.is_file():
-            found.append(active)
-        return found
+        """Every gate log ``gate_log_files`` lists under ``root``.
+
+        A bucket's archive members come first, then its rotations, then its
+        active file, each path once.
+        """
+        return gate_log_files(self._root / TRADE_DIR_NAME)
 
     def rows(
         self,

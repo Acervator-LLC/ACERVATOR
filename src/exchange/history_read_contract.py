@@ -131,9 +131,10 @@ COLUMNS: tuple[HistoryColumn, ...] = (
         11,
         "gates",
         "Gates",
-        "Join against ~/.acervator_logs/trade/gate.log entries "
-        "within ±60s of the trade. Hover any cell for the full "
-        "scrum/fold arm state + blocker list at trade time.",
+        "Join against the ~/.acervator_logs/trade/gate/<exchange>/"
+        "<sector>/gate.log entries within ±60s of the trade. Hover "
+        "any cell for the full scrum/fold arm state + blocker list "
+        "at trade time.",
     ),
     HistoryColumn(
         12,
