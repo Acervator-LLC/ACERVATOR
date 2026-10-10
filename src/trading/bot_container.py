@@ -341,6 +341,11 @@ class BotContainer:
     # ``WHOLE_UNITS`` for the symbol's own class and venue.
     # ``position_minimum_refusal`` then refuses a BUY opening such a position
     # below ``WHOLE_UNIT_POSITION_MINIMUM`` units.
+    # OVERTAKEN, the two sentences above naming ``VARIANT_ROLLING_POSITION`` and
+    # ``VARIANT_WHOLE_UNIT`` as what ``venue_variant`` selects: ``sector_variant``
+    # selects the variant off the sector, ``market_permits_close`` reads the
+    # expiry off the market, and ``market_replaces_market_order`` reads the
+    # venue's missing market order off it.
     # OVERTAKEN, the ``sized_order`` sentence above: ``contracts_for_units``
     # divides the unit count by ``MarketRules.contract_size`` first, so the step
     # floors a contract count and ``place_order`` receives one.
@@ -473,10 +478,11 @@ class BotContainer:
             size_shape_refusal,
             sized_order,
             units_for_contracts,
+            market_permits_close,
+            market_replaces_market_order,
+            sector_variant,
             untradeable_reason,
             variant_holds_market,
-            variant_permits_close,
-            variant_replaces_market_order,
             venue_variant,
             whole_unit_buy_needs_limit,
         )
@@ -607,6 +613,9 @@ class BotContainer:
 
         # The venue's own rules pick the variant, and both branches run before
         # the order is sent.
+        # OVERTAKEN, the sentence above: the SECTOR picks the variant through
+        # ``sector_variant``, and the venue's own rules pick the order-formatting
+        # mechanic beside it through ``venue_variant``.
         _ref_px = 0.0
         if price is not None and type(price) in (int, float):
             _ref_px = float(price)
@@ -614,12 +623,18 @@ class BotContainer:
             _ref_px = float(getattr(self.stats, "current_price", 0.0) or 0.0)
         if not math.isfinite(_ref_px) or _ref_px <= 0.0:
             _ref_px = 0.0
-        _variant = venue_variant(_rules, _ref_px or None)
+        _mechanic = venue_variant(_rules, _ref_px or None)
+        _variant = sector_variant(_class, _rules, _ref_px or None)
 
         # A position already open in an expiring market must still be able to
         # close, so a SELL passes where a BUY refuses and only that one variant
         # reaches the exception.
-        _closing = variant_permits_close(_variant) and side == OrderSide.SELL
+        # OVERTAKEN, the sentence above reading "only that one variant reaches
+        # the exception": the expiry is a mechanic and ``market_permits_close``
+        # reads it off the market, so the sector variant is not consulted here.
+        _closing = (
+            market_permits_close(_rules, _ref_px or None) and side == OrderSide.SELL
+        )
 
         _held = variant_holds_market(
             _rules, _class, self.config.exchange_id, _ref_px or None
@@ -662,13 +677,16 @@ class BotContainer:
             self._warn_order(
                 f"CLOSING AN EXPIRING MARKET: SELL {symbol} {_amt:.10f} is "
                 f"submitted, and the venue expires this contract in "
-                f"{_left_text} days ({_variant}). {_rebuy_text}. The bot's "
+                f"{_left_text} days ({_variant}, {_mechanic}). {_rebuy_text}. The bot's "
                 f"expiry close is {_expiry['action']} at {_lead_text} days of "
                 f"lead ({_expiry['mode']} mode, horizon "
                 f"{_expiry['horizon_days']:.2f} days); {_expiry['reason']}."
             )
 
-        if variant_replaces_market_order(_variant) and order_type == OrderType.MARKET:
+        if (
+            market_replaces_market_order(_rules, _ref_px or None)
+            and order_type == OrderType.MARKET
+        ):
             _limit_px = _rules.price_on_tick(_ref_px) if _ref_px else None
             if _limit_px is None or not math.isfinite(_limit_px) or _limit_px <= 0.0:
                 _limit_px = _ref_px
@@ -684,7 +702,7 @@ class BotContainer:
             self._warn_order(
                 f"LIMIT FOR A VENUE TAKING NO MARKET ORDER: {_side_str} "
                 f"{symbol} {_amt:.10f} at ${_limit_px:.8f} on a price tick of "
-                f"{_rules.price_increment} ({_variant})."
+                f"{_rules.price_increment} ({_variant}, {_mechanic})."
             )
 
         # A market buy on this venue names a cash amount, so the whole unit
