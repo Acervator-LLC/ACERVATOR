@@ -98,7 +98,7 @@ try:
     from .main_tabs.class_filter_tab import ClassFilterTabMixin
     from .main_tabs.console_tab import ConsoleTabMixin
     from .main_tabs import header_strip_surface
-    from .main_tabs.header_strip import HeaderStripMixin
+    from .main_tabs.header_strip import HeaderStripMixin, SectorUnknown
     from .main_tabs.history_tab import HistoryTabMixin
     from .main_tabs.market_inspector_tab import MarketInspectorTabMixin
     from .main_tabs.paper_trader_tab import PaperTraderTabMixin
@@ -3736,7 +3736,11 @@ if _HAS_QT:
                 self._status_log.log(f"{command} failed: {exc}", "error")
 
         def _open_settings(self) -> None:
-            _wing = getattr(self, "_trading_mode", "crypto") or "crypto"
+            try:
+                _wing = self.active_sector()
+            except SectorUnknown as exc:
+                self._status_log.log(f"Settings not opened: {exc}", "error")
+                return
             self._status_log.log(f"Opening settings ({_wing} wing)...")
             from .variant_surface import SETTINGS_DIALOG, surface_class
 
@@ -3879,10 +3883,13 @@ if _HAS_QT:
             from .main_tabs.asset_class_surface import (
                 add_exchange_enabled,
                 class_state,
-                normalise,
             )
 
-            _wing = normalise(getattr(self, "_asset_class", None))
+            try:
+                _wing = self.active_sector()
+            except SectorUnknown as exc:
+                self._status_log.log(f"Add Exchange not opened: {exc}", "error")
+                return
             if not add_exchange_enabled(_wing):
                 self._status_log.log(class_state(_wing)["note"], "warning")
                 return
