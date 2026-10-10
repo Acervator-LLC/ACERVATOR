@@ -175,8 +175,9 @@ ORDER_CONFIG_KEYS: dict[str, str] = {
     ORDER_TYPE_STOP_LIMIT: "stop_limit_order_config",
 }
 
-#: The order types whose configuration carries a time in force.
-TIMED_ORDER_TYPES = (ORDER_TYPE_LIMIT, ORDER_TYPE_STOP_LOSS, ORDER_TYPE_STOP_LIMIT)
+#: The configuration field carrying a time in force. ``order_body`` writes it
+#: only where the submitting path's own schema names it.
+TIME_IN_FORCE_FIELD = "time_in_force"
 
 #: Every order-configuration field the ``AddOrder`` request schema names, which
 #: is the body ``ORDERS_PATH`` takes. Its limit configuration names no time in
@@ -185,10 +186,16 @@ ADD_ORDER_CONFIG_FIELDS: dict[str, frozenset] = {
     ORDER_TYPE_MARKET: frozenset({"asset_quantity"}),
     ORDER_TYPE_LIMIT: frozenset({"quote_amount", "asset_quantity", "limit_price"}),
     ORDER_TYPE_STOP_LOSS: frozenset(
-        {"quote_amount", "asset_quantity", "stop_price", "time_in_force"}
+        {"quote_amount", "asset_quantity", "stop_price", TIME_IN_FORCE_FIELD}
     ),
     ORDER_TYPE_STOP_LIMIT: frozenset(
-        {"quote_amount", "asset_quantity", "limit_price", "stop_price", "time_in_force"}
+        {
+            "quote_amount",
+            "asset_quantity",
+            "limit_price",
+            "stop_price",
+            TIME_IN_FORCE_FIELD,
+        }
     ),
 }
 
@@ -198,7 +205,7 @@ ADD_ORDER_CONFIG_FIELDS: dict[str, frozenset] = {
 ADD_ORDER_V2_CONFIG_FIELDS: dict[str, frozenset] = {
     **ADD_ORDER_CONFIG_FIELDS,
     ORDER_TYPE_LIMIT: frozenset(
-        {"quote_amount", "asset_quantity", "limit_price", "time_in_force"}
+        {"quote_amount", "asset_quantity", "limit_price", TIME_IN_FORCE_FIELD}
     ),
 }
 
@@ -671,11 +678,17 @@ def order_body(
     price: Any = None,
     client_order_id: Any = None,
     time_in_force: str = TIME_IN_FORCE_GTC,
+    path: Any = ORDERS_PATH,
 ) -> dict:
-    """The order body Robinhood publishes for a crypto order.
+    """The order body Robinhood publishes for a crypto order submitted on
+    ``path``.
 
     Four fields and the ``ORDER_CONFIG_KEYS`` object the type requires, with
-    the size riding as ``SIZE_FIELD_UNITS``.
+    the size riding as ``SIZE_FIELD_UNITS``. ``TIME_IN_FORCE_FIELD`` rides only
+    where ``published_order_config_fields`` names it for the type, so a limit
+    order carries it on ``ORDERS_PATH_FEE_TIERS``, whose ``AddOrderV2`` schema
+    publishes it, and not on ``ORDERS_PATH``, whose ``AddOrder`` schema does
+    not.
     """
     named = venue_symbol(symbol)
     if not named:
@@ -694,8 +707,8 @@ def order_body(
         if price is None:
             raise RobinhoodOrderRefused(f"a {kind} order carries no stop price")
         config["stop_price"] = decimal_text(price)
-    if kind in TIMED_ORDER_TYPES:
-        config["time_in_force"] = time_in_force
+    if TIME_IN_FORCE_FIELD in published_order_config_fields(path, kind):
+        config[TIME_IN_FORCE_FIELD] = time_in_force
     return {
         "symbol": named,
         "client_order_id": client_order_uuid(client_order_id),
@@ -1426,12 +1439,20 @@ class RobinhoodCryptoConnector(ExchangeInterface):
         if refusal:
             self._record_refusal(log, symbol, side, order_type, amount, refusal)
             raise RobinhoodOrderRefused(refusal)
+        path = orders_path(self._account_number)
         try:
-            body = order_body(symbol, side, order_type, amount, price, client_order_id)
+            body = order_body(
+                symbol,
+                side,
+                order_type,
+                amount,
+                price,
+                client_order_id,
+                path=path,
+            )
         except (RobinhoodOrderRefused, ValueError) as exc:
             self._record_refusal(log, symbol, side, order_type, amount, str(exc))
             raise
-        path = orders_path(self._account_number)
         unpublished = order_body_refusal(body, path)
         if unpublished:
             self._record_refusal(log, symbol, side, order_type, amount, unpublished)
@@ -1870,7 +1891,7 @@ __all__ = [
     "STATUS_UNTRADABLE",
     "STATUS_UNTRADABLE_FORMAT",
     "SYMBOL_QUERY_KEY",
-    "TIMED_ORDER_TYPES",
+    "TIME_IN_FORCE_FIELD",
     "TIME_IN_FORCE_GTC",
     "TRADING_HOST",
     "TRADING_PAIRS_PATH",

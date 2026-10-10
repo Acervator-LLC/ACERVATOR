@@ -57,8 +57,10 @@ FLEET_SEQUENCE_MIN_GAP_MS = 2000
 #: absent from here takes every held bot.
 FLEET_SEQUENCE_STATES = {"start": ("idle", "stopped")}
 
-#: Chooses the paper host in ``AlpacaConnector.connect``. A key reaches one
-#: host only, paper or live.
+#: The route a broker publishing a paper one opens on, which chooses the paper
+#: host in ``AlpacaConnector.connect``. A key reaches one host only, paper or
+#: live, and ``broker_paper_route`` False drops this to a live session because
+#: the paper host does not exist.
 BROKER_SESSION_PAPER = True
 
 #: Why ``_open_broker_session`` refused before reaching the venue.
@@ -2816,7 +2818,13 @@ if _HAS_QT:
 
             ``BrokerBase.open_session`` contacts the broker, so a venue with no
             stored credential is refused here and nothing is sent.
+            ``broker_paper_route`` picks the route: a broker publishing a paper
+            one opens on ``BROKER_SESSION_PAPER`` and a broker publishing none
+            opens live, because asking for a host the venue does not serve
+            refuses every session.
             """
+            from ..stocks.broker_base import broker_paper_route
+
             if getattr(connector, "is_connected", False):
                 return True, ""
             try:
@@ -2825,12 +2833,11 @@ if _HAS_QT:
                 return False, f"the stored credential would not decrypt: {exc}"
             if not api_key or not api_secret:
                 return False, NO_BROKER_CREDENTIAL
+            paper = BROKER_SESSION_PAPER and broker_paper_route(connector)
             try:
                 opened = bool(
                     self._await_async(
-                        connector.open_session(
-                            api_key, api_secret, BROKER_SESSION_PAPER
-                        )
+                        connector.open_session(api_key, api_secret, paper)
                     )
                 )
             except Exception as exc:
@@ -2959,10 +2966,14 @@ if _HAS_QT:
                 )
                 return False, msg
 
+            from ..stocks.broker_base import session_mode_words
+
+            route = session_mode_words(getattr(connector, "session_mode", ""))
+
             _log.record(
                 exchange=eid,
                 action="BROKER_SESSION_OPEN",
-                reason=f"{venue} accepted the stored credential",
+                reason=f"{venue} accepted the stored credential {route}",
                 result=f"Reading the {venue} market list...",
                 level="success",
                 data_usage="Recorded market rules size every later order",
@@ -2972,7 +2983,7 @@ if _HAS_QT:
 
             if failure:
                 msg = (
-                    f"{venue} session is open and its markets were NOT "
+                    f"{venue} session is open {route} and its markets were NOT "
                     f"recorded: {failure}. An order on {venue} would be sized "
                     f"without the venue's own rules."
                 )
@@ -2987,9 +2998,9 @@ if _HAS_QT:
                 return False, msg
 
             msg = (
-                f"{venue} session is open and {recorded} market rule row(s) "
-                f"recorded. The bot does not start yet: a bot takes a crypto "
-                f"exchange and not a broker."
+                f"{venue} session is open {route} and {recorded} market rule "
+                f"row(s) recorded. The bot does not start yet: a bot takes a "
+                f"crypto exchange and not a broker."
             )
             _log.record(
                 exchange=eid,
