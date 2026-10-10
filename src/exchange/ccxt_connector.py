@@ -283,8 +283,12 @@ US_IP_BLOCKED_EXCHANGES: set[str] = {
     "bybit",
 }
 
-# Venues reachable from a US IP whose terms refuse a US account.
+# Venues reachable from a US IP whose terms refuse a US account. Gate.io's own
+# user agreement clause 2.10 states it does not intend to provide services to
+# "U.S. persons" and "expressly prohibit the same from using any of our
+# Services", and its restricted-locations page names the United States first.
 US_ACCOUNT_RESTRICTED_EXCHANGES: set[str] = {
+    "gateio",
     "poloniex",
     "huobi",
 }
@@ -352,6 +356,21 @@ VENUE_PRODUCTS_METHOD: dict[str, str] = {
 VENUE_CLASS_PRODUCT_TYPES: dict[str, dict[str, str]] = {
     "coinbase": {"stocks": "EQUITY"},
 }
+
+#: The public, credential-free method each venue publishes its own asset
+#: sectors on, and the method ``_published_asset_sectors`` calls. Gate.io's
+#: ``/spot/currencies`` carries a ``category`` list per asset code naming
+#: ``stocks``, ``indices``, ``metals``, ``commodities`` or ``forex``, which is
+#: the platform's own vocabulary with ``metals`` retired onto commodities.
+VENUE_ASSET_CATEGORY_METHOD: dict[str, str] = {
+    "gateio": "publicSpotGetCurrencies",
+}
+
+#: The field an asset-category row names its code under.
+ASSET_CODE_KEY = "currency"
+
+#: The field an asset-category row names its sector list under.
+ASSET_CATEGORY_KEY = "category"
 
 #: The key a products response carries its rows under.
 PRODUCTS_KEY = "products"
@@ -466,6 +485,13 @@ EQUITY_MARKET_TYPE = "equity"
 #: The ccxt market types a contract product parses as, a dated contract and a
 #: perpetual.
 CONTRACT_MARKET_TYPES: frozenset = frozenset({"future", "swap"})
+
+#: The ccxt market type an option contract parses as, beside the ``option``
+#: flag the same record sets.
+OPTION_MARKET_TYPE = "option"
+
+#: The ccxt market field set True on every option record.
+OPTION_MARKET_KEY = "option"
 
 #: The ccxt market field set True on every contract record.
 CONTRACT_MARKET_KEY = "contract"
@@ -869,13 +895,35 @@ def underlying_code(code: Any) -> str:
     return TOKEN_UNDERLYING_CODES.get(held, "")
 
 
-def market_asset_class(market: Any) -> str:
-    """The asset class one loaded market record belongs to, read off
-    ``futures_asset_types`` first and off ``base`` and ``quote`` where that
-    answers nothing.
+def is_option_market(market: Any) -> bool:
+    """Whether one loaded market record sets ``OPTION_MARKET_KEY`` or carries
+    ``OPTION_MARKET_TYPE``."""
+    held = market or {}
+    if held.get(OPTION_MARKET_KEY):
+        return True
+    return str(held.get("type") or "").lower() == OPTION_MARKET_TYPE
 
-    ``record_venue`` writes this beside the market's rules, so the recording
-    can be read one class at a time.
+
+def _published_sector(published: Any, market: Any) -> Any:
+    """The sector ``published`` names for one market's base code, None where
+    ``published`` is None.
+
+    ``market_asset_class`` reads None as the venue publishing no sector list
+    and an empty string as that list naming no sector for this base.
+    """
+    if not isinstance(published, dict):
+        return None
+    return published.get(str((market or {}).get("base") or "").strip().upper(), "")
+
+
+def market_asset_class(market: Any, published: Any = None) -> str:
+    """The asset class one loaded market record belongs to, read off
+    ``futures_asset_types`` first, off ``published`` second, and off ``base``
+    and ``quote`` only where ``published`` is None.
+
+    ``record_venue`` writes this beside the market's rules, and
+    ``_published_asset_sectors`` supplies ``published`` as the sector the
+    venue's own asset record names, empty where that record names none.
     """
     from ..trading.ata_spm import (
         CLASS_COMMODITIES,
@@ -883,6 +931,7 @@ def market_asset_class(market: Any) -> str:
         CLASS_FOREX,
         CLASS_FUTURES_PERPS,
         CLASS_INDICES,
+        CLASS_OPTIONS,
         CLASS_STOCKS,
     )
 
@@ -897,11 +946,16 @@ def market_asset_class(market: Any) -> str:
         return CLASS_STOCKS
     if (market or {}).get(STOCK_MARKET_KEY):
         return CLASS_STOCKS
-    base = underlying_code((market or {}).get("base"))
-    if base in PRECIOUS_METAL_CODES:
-        return CLASS_COMMODITIES
-    if base and underlying_code((market or {}).get("quote")):
-        return CLASS_FOREX
+    if is_option_market(market):
+        return CLASS_OPTIONS
+    if published is None:
+        base = underlying_code((market or {}).get("base"))
+        if base in PRECIOUS_METAL_CODES:
+            return CLASS_COMMODITIES
+        if base and underlying_code((market or {}).get("quote")):
+            return CLASS_FOREX
+    elif str(published or ""):
+        return str(published)
     if is_contract_market(market):
         return CLASS_FUTURES_PERPS
     return CLASS_CRYPTO
@@ -2236,6 +2290,55 @@ class CCXTConnector(ExchangeInterface):
             )
         return found
 
+    def _published_asset_sectors(self) -> Optional[dict[str, str]]:
+        """Every asset code this venue publishes a sector for, mapped onto the
+        platform's own class name, and None where the venue publishes none.
+
+        ``VENUE_ASSET_CATEGORY_METHOD`` names the public, credential-free
+        method, ``asset_class_named`` resolves each published category, and the
+        first category of a row that resolves is the sector that row names.
+        """
+        from ..trading.ata_spm import asset_class_named
+
+        method_name = VENUE_ASSET_CATEGORY_METHOD.get(self._exchange_id, "")
+        method = getattr(self._ex, method_name, None) if method_name else None
+        if not callable(method):
+            return None
+        try:
+            rows = method()
+        except Exception as exc:
+            logger.warning("%s served no asset sector list: %s", self._exchange_id, exc)
+            return None
+        if not isinstance(rows, list):
+            logger.warning(
+                "%s served an asset sector list of %s, so no sector is read",
+                self._exchange_id,
+                type(rows).__name__,
+            )
+            return None
+        found: dict[str, str] = {}
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            code = str(row.get(ASSET_CODE_KEY) or "").strip().upper()
+            if not code:
+                continue
+            named = row.get(ASSET_CATEGORY_KEY)
+            listed = named if isinstance(named, (list, tuple)) else [named]
+            found[code] = ""
+            for one in listed:
+                held = asset_class_named(one)
+                if held:
+                    found[code] = held
+                    break
+        logger.info(
+            "%s published a sector for %d of its %d asset codes",
+            self._exchange_id,
+            sum(1 for one in found.values() if one),
+            len(found),
+        )
+        return found
+
     @_with_retry()
     async def get_markets(self) -> list[AssetInfo]:
         self._ensure_connected()
@@ -2244,6 +2347,7 @@ class CCXTConnector(ExchangeInterface):
 
         markets = []
         classes: dict[str, str] = {}
+        published = self._published_asset_sectors()
         precision_mode = getattr(self._ex, "precisionMode", CCXT_DECIMAL_PLACES)
         # The capability map belongs to the exchange, not to a market record, so
         # it is read once here and stamped onto every market of this venue.
@@ -2253,7 +2357,9 @@ class CCXTConnector(ExchangeInterface):
                 continue
 
             markets.append(asset_info(sym, info, precision_mode, declared))
-            classes[str(sym)] = market_asset_class(info)
+            classes[str(sym)] = market_asset_class(
+                info, _published_sector(published, info)
+            )
 
         # A symbol load_markets already answered is kept, so no crypto market is
         # replaced by a product another class serves under the same pair.
@@ -2261,7 +2367,7 @@ class CCXTConnector(ExchangeInterface):
             if sym in classes:
                 continue
             markets.append(asset_info(sym, info, precision_mode, declared))
-            classes[sym] = market_asset_class(info)
+            classes[sym] = market_asset_class(info, _published_sector(published, info))
 
         self._markets_cache = markets
         if not markets:
