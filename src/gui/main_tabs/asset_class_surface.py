@@ -150,6 +150,11 @@ EXTRA_VENUE_CLASSES = {
     ),
     "binance": ("stocks", "commodities", "forex", "indices", "futures_perps"),
     "bitfinex": ("commodities", "indices", "futures_perps"),
+    # Bitget's own instrument record publishes four sector words — stock,
+    # crypto, metal and commodity — and no index word on any of its 4603 rows.
+    # Its eight index-fund tokens, RSPYUSDT and RQQQUSDT among them, each
+    # publish symbolType stock, so the indices row offers the venue and its
+    # recording answers no market under that sector.
     "bitget": ("stocks", "commodities", "indices", "futures_perps"),
     "bitstamp": ("commodities", "forex"),
     "bybit": ("futures_perps",),

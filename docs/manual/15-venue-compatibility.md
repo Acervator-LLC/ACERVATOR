@@ -4510,3 +4510,199 @@ Two limits, stated plainly. No reading used a credential, so nothing here
 proves the venue accepts a live order from this program. And the venue will not
 open an account to a United States person, so every yes above is an order path
 and not a trade the operator can place today.
+
+---
+
+## 2026-10-10 - Bitget records its own sectors, and the venue refuses the account
+
+Bitget is offered under five sectors. Before this unit the stocks sector held
+no market while the venue listed 3141 of them, the forex sector held sixteen
+markets none of which was a currency, and the indices sector held none and the
+venue publishes none. Bitget publishes the sector of every market it lists on a
+public record, and the program now reads it.
+
+### The Bitget sentences this overtakes
+
+OVERTAKEN, quoted whole:
+
+> | bitget | crypto spot | no refusal recorded, 2026-08-28 | key, secret and passphrase | `src/exchange/ccxt_connector.py, in PASSPHRASE_EXCHANGES` |
+
+True today: the venue serves four sectors by its own record and its own Terms
+of Use refuse a United States person. Section 1 defines "Prohibited Countries"
+as a list "including ... the United States (including the following U.S.
+Territories: Puerto Rico, Guam, U.S. Virgin Islands, American Samoa and the
+Northern Mariana Islands ...)", section 2.8 requires the account holder to be
+"not a Restricted Person", which section 1 defines as one who "resides or is
+established, or has operations in any of the Prohibited Countries", and section
+11.1(xvii) forbids anyone to "access, use, or attempt to access or use,
+Services directly or indirectly with (1) jurisdictions Bitget has deemed high
+risk, including but not limited to, the Prohibited Countries".
+`src/exchange/ccxt_connector.py, at US_ACCOUNT_RESTRICTED_EXCHANGES` now holds
+the venue, so a connect press records the refusal in the log. No venue picker
+carries those words, for the reason the Gate.io section above records.
+
+OVERTAKEN, quoted whole:
+
+> | bitget | yes | yes | — |
+
+True today: the bot's shape fits and no order can reach the venue from a United
+States account, so the row belongs with poloniex and huobi rather than with
+Kraken. The venue's address is not the obstacle. Its public endpoints answer
+this address, and the refusal is an account matter.
+
+### The five sectors, and what each costs
+
+| Sector | Verdict | The cost |
+| --- | --- | --- |
+| crypto | yes-if | the venue's terms refuse a U.S. person |
+| stocks | yes-if | the same account refusal |
+| commodities | yes-if | the same account refusal |
+| futures_perps | yes-if | the same account refusal, and two markets of 876 refuse on the cash-amount shape |
+| indices | yes-if | the same account refusal, and the venue files its index funds under stocks, so the sector lists no market of its own |
+
+Forex is the sixth sector and the screen does not offer Bitget under it. The
+venue publishes no currency family on any of its 4603 instrument rows, and no
+spot pair it lists has two national-currency legs. That is a proven absence and
+not an unknown one.
+
+### Bitget publishes its own sectors, so the program stops guessing
+
+`GET /api/v3/market/instruments` carries a `symbolType` per market and needs no
+key. The record is read five times, once per product type, because the venue
+refuses a call that names no category.
+
+```
+with no category parameter   400172 "Parameter verification failed"
+category=SPOT                3389 rows   stock 2809, crypto  578, metal 2
+category=USDT-FUTURES         820 rows   crypto 478, stock  332, metal 7,
+                                         commodity 3
+category=COIN-FUTURES          24 rows   crypto  24
+category=USDC-FUTURES          49 rows   crypto  49
+category=MARGIN               321 rows   crypto 321
+                             ----
+                             4603 rows
+```
+
+`src/exchange/ccxt_connector.py, at VENUE_ASSET_SECTOR_RECORDS` holds the
+method, the five requests, the field naming the asset code, the field naming
+the sector, and the venue's own four words.
+
+```
+stock      -> stocks           metal     -> metals, retired onto commodities
+commodity  -> commodities      crypto    -> NO_PUBLISHED_FAMILY
+```
+
+`crypto` maps onto nothing on purpose. Gate.io says the same thing by leaving
+an asset's category list empty, and Bitget says it with a word. Either way the
+venue is stating the asset belongs to no family outside crypto, and
+`src/exchange/ccxt_connector.py, in is_contract_market` still decides whether
+the market is a spot pair or a perpetual. Mapping the word onto the crypto
+class instead moved 526 perpetual contracts out of the futures sector, which
+the drive caught before this section was written.
+
+### Why the tickers had to stop being read
+
+Sixteen markets read as forex and every one was a ticker collision.
+
+```
+AMD/USDT:USDT   Advanced Micro Devices, read as the Armenian dram
+COP/USDT:USDT   ConocoPhillips, read as the Colombian peso
+NIO/USDT:USDT   NIO Inc., read as the Nicaraguan cordoba
+RON/USDT        the venue publishes stock, read as the Romanian leu
+RWF/USDT        the venue publishes stock, read as the Rwandan franc
+eleven more     a dollar stablecoin against a currency or another stablecoin
+```
+
+### What the five sectors hold
+
+Measured over all 4258 active markets the library loads, with the home
+redirected and no order placed.
+
+| Sector | Markets before | Markets after |
+| --- | --- | --- |
+| crypto | 3368 | 571 |
+| stocks | 0 | 3141 |
+| commodities | 8 | 12 |
+| futures_perps | 866 | 534 |
+| indices | 0 | 0 |
+| forex | 16 | 0 |
+
+3156 markets moved, and every move is named by where it came from.
+
+| From | To | Markets |
+| --- | --- | --- |
+| crypto | stocks | 2807 |
+| futures_perps | stocks | 329 |
+| forex | crypto | 10 |
+| forex | stocks | 5 |
+| futures_perps | commodities | 4 |
+| forex | futures_perps | 1 |
+
+The 2807 are tokenised equity spot pairs and the 329 are equity perpetuals, so
+the stocks sector gains its markets from two product lines at once. The four
+that reach commodities are the energy contracts and copper, which no list of
+precious metals can carry.
+
+### The indices sector lists no Bitget market, and the exposure is still reachable
+
+`symbolType` reads `index` on none of the 4603 rows, against a control of 3141
+rows reading `stock`. Eight index-fund tokens are listed and the venue publishes
+each one as a stock.
+
+```
+RSPYUSDT SPY    RQQQUSDT QQQ    RDIAUSDT DIA    RIWMUSDT IWM
+RVOOUSDT VOO    RIVVUSDT IVV    RVTIUSDT VTI    REEMUSDT EEM
+```
+
+So the operator reaches the identical product under stocks. The indices row
+stays on the screen and its empty market list is recorded here, because
+removing a sector from a venue is the operator's decision.
+
+### The order bodies the sectors take
+
+Crypto, stocks and commodities reach a spot pair. Futures and perpetuals reach
+a contract. Bitget's own Place Order page states the size unit per order type.
+
+> **Spot/Margin market buy orders**: the unit is quote coin
+> **Limit and market sell orders**: the unit is base coin
+> **USDT/USDC-Futures**: The unit is base coin
+> **COIN-Futures**: The unit is quote coin
+
+`src/trading/scrumming/sizing.py, at CITED_CASH_MARKET_BUY` now holds the
+venue, so `src/trading/scrumming/sizing.py, in whole_unit_buy_needs_limit`
+answers True for 36 of the venue's markets. Each of those 36 is a spot market
+whose published step is a whole unit, and each now takes a limit order in place
+of a market buy. The futures body carries a unit count on both sides, so the
+rule does not reach the contract sector.
+
+Two markets take the COIN-Futures shape and both are the venue's own demo
+symbols, `SBTC/SUSD:SBTC` and `SETH/SUSD:SETH`.
+`src/exchange/ccxt_connector.py, in quote_contract_size_shapes` answers a cash
+amount on both sides, and `src/trading/scrumming/sizing.py, in
+size_shape_refusal` names the cash-amount variant as not built, so each refuses
+before the connector.
+
+### What the Bitget unit drove
+
+```
+reading                               what it reported
+4258 active markets, classified       3156 moved sector; blinding the venue's
+                                      own record leaves 24 moving, which are
+                                      the 24 the ticker heuristic had guessed
+get_markets end to end                4258 rows recorded, every one naming a
+                                      sector, into a redirected home
+the live recording, read read-only    one venue, coinbase, 2148 rows, no
+                                      bitget key, modification time and size
+                                      identical before and after
+Gate.io's own reading, after the      5640 codes, 607 carrying a sector,
+record was renamed                    identical to its own page
+the step-five subtraction             five sectors offered, four with markets,
+                                      two markets of 4258 refused
+the venue's own host                  a real path answered 200 and an invented
+                                      one answered 404, in the same run
+```
+
+Two limits, stated plainly. No reading used a credential, so nothing here
+proves the venue accepts a live order from this program. And the venue will not
+open an account to a United States person, so every yes above is an order path
+and not a trade the operator can place today.

@@ -276,7 +276,12 @@ SETTLE_LEG = ":"
 #: count on every other order.
 # ``gateio`` is a third: its ``POST /spot/orders`` reads ``amount`` as the quote
 # currency on a market buy and as the base currency on a market sell.
-CITED_CASH_MARKET_BUY: frozenset[str] = frozenset({"binance", "coinbase", "gateio"})
+# ``bitget`` is a fourth: its own Place Order page states "Spot/Margin market
+# buy orders: the unit is quote coin" and "Limit and market sell orders: the
+# unit is base coin", and its ``size`` field carries both.
+CITED_CASH_MARKET_BUY: frozenset[str] = frozenset(
+    {"binance", "bitget", "coinbase", "gateio"}
+)
 
 #: Why a ``WHOLE_UNITS`` market buy names a limit order.
 MARKET_BUY_NAMES_CASH = "a market buy names a cash amount, not a unit count"
