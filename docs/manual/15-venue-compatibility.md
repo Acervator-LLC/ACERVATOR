@@ -2559,6 +2559,11 @@ JSON-RPC over HTTP, and it publishes `place_equity_order`,
 reason the program does not place an equity order on Robinhood is that no
 module here speaks that protocol and no account token exists to speak it with.
 
+The same route carries the price history a bot sizes against, so the sector
+needs no second data source. `get_equity_historicals` answers OHLCV bars over a
+time range, and the route publishes fourteen equity tools in all, the rest of
+them research reads.
+
 | what the route takes | where it stands |
 | --- | --- |
 | a Robinhood MCP account | the operator opens it; nothing in software substitutes |
