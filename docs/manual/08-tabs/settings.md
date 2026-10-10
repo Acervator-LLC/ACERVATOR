@@ -54,14 +54,15 @@ payload the shell draws:
 | | the declaration | the Qt window | the shell payload |
 | --- | ---: | ---: | ---: |
 | Pages | 9 | 9 tabs | 9 |
-| Controls | 66 | not counted whole | 66 specs |
+| Controls | 65 | not counted whole | 65 specs |
 | Tick boxes | 23 | 23 drawn | 23 |
-| Drop-downs | 6 | 6 drawn | 6 |
+| Drop-downs | 5 | 5 drawn | 5 |
 | Radio buttons | 0 | 0 drawn | 0 |
 
 The Qt window was read by walking its own widget tree, so the tick-box and
-drop-down rows are drawn counts and the whole-dialog figure of 66 is the
-declaration's. The browser page was rendered as well and reported 0 radio
+drop-down rows are drawn counts and the whole-dialog figure of 65 is the
+declaration's. The counts fell by one when the Exchange drop-down became the
+`chosen_venue` label. The browser page was rendered as well and reported 0 radio
 inputs, against 23 checkbox inputs on the same reading.
 
 ## What each page persists
@@ -72,7 +73,7 @@ keeps its build-time default for the life of the process and reaches no engine.
 | Page | Controls | `_save` writes | `_load_current` restores |
 | ---- | -------: | -------------- | ------------------------ |
 | User | 1 | the row | the row |
-| Exchanges | 6 plus 3 buttons | on Add and Remove | the configured list |
+| Exchanges | 5 plus 3 buttons | on Add and Remove | the configured list |
 | Trading | 6 | all six | four of six |
 | Profit Folding | 11 | the whole group | `active` alone |
 | TA Indicators | 12 | nothing | nothing |
@@ -2703,7 +2704,7 @@ This table replaces the restores column in
 | Page | Controls | `_save` writes | `_load_current` restores |
 | ---- | -------: | -------------- | ------------------------ |
 | User | 1 | the row | the row |
-| Exchanges | 6 plus 3 buttons | on Add and Remove | the configured list |
+| Exchanges | 5 plus 3 buttons | on Add and Remove | the configured list |
 | Trading | 6 | all six | all six |
 | Profit Folding | 11 | the whole group | the whole group |
 | TA Indicators | 12 | nothing | nothing |
