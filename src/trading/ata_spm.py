@@ -68,6 +68,12 @@ ASSET_CLASSES = (
 #: What ``asset_class_named`` answers for a name no live or retired class holds.
 NO_ASSET_CLASS = ""
 
+#: The sector an option contract records under. ``ASSET_CLASSES`` omits it, so
+#: no screen offers it and ``sector_variant`` names a variant
+#: ``VARIANTS_BUILT`` lacks, which refuses the market rather than sizing it as
+#: a perpetual.
+CLASS_OPTIONS = "options"
+
 #: A class name an earlier taxonomy drew for every futures contract. ISO 10962
 #: sorts a future as one of six instrument categories, beside equities and
 #: debt, so the class belongs to the underlying and the contract form rides on
