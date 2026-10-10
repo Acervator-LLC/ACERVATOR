@@ -101,7 +101,6 @@ DANGER_PROPERTY = "danger"
 
 from .. import design_system as ds  # noqa: E402
 from . import asset_class_surface as acs  # noqa: E402
-from .asset_class_surface import EQUITY_VENUES as EQUITY_EXCHANGE_IDS  # noqa: E402
 
 STRONG_OPEN = "<b>"
 STRONG_CLOSE = "</b>"
@@ -1846,6 +1845,15 @@ def approval_level(state: Any) -> str:
     return ERROR_LEVEL
 
 
+def serves_wing(venue_id: Any, wing: Any) -> bool:
+    """Whether one venue serves the sector a wing stands for.
+
+    ``acs.serves`` is the read, and ``class_of_wing`` turns the
+    wing word into the sector name it asks under.
+    """
+    return bool(acs.serves(venue_id, class_of_wing(wing)))
+
+
 def class_of_wing(wing: Any) -> str:
     """The asset class word one wing word names, and "" for an empty ``wing``.
 
@@ -2639,12 +2647,14 @@ class SettingsDialogModel:
                     group + "." + key, show, read_mapping(stored, key, fallback)
                 )
 
+        # OVERTAKEN, quoted whole:
+        #   "is_equity = eid in EQUITY_EXCHANGE_IDS"
+        # True today: one venue id can serve both wings, so membership of the
+        # equity set no longer tells the two apart. asset_class_surface.serves
+        # answers whether the venue serves the wing's own sector.
         for entry in self.settings.list_exchanges():
             eid = (entry.get(EXCHANGE_ID_KEY, "") or "").lower()
-            is_equity = eid in EQUITY_EXCHANGE_IDS
-            if self.wing == STOCK_WING and not is_equity:
-                continue
-            if self.wing == CRYPTO_WING and is_equity:
+            if not serves_wing(eid, self.wing):
                 continue
             self.listed_exchanges.append(
                 CONFIGURED_ITEM_FORMAT.format(
