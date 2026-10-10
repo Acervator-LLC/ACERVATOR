@@ -2533,8 +2533,8 @@ class RobinhoodCryptoConnector(ExchangeInterface):
 
 ### Which of Robinhood's sectors the program reaches
 
-One of six. Robinhood sells a product in five sectors and publishes a
-programmatic order route for three of them, and two of those three are reachable
+One of six. Robinhood sells a product in all six sectors and publishes a
+programmatic order route for four of them, and three of those four are reachable
 only through a Model Context Protocol server this repository holds no client
 for.
 
