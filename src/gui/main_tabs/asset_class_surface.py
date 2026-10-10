@@ -76,6 +76,9 @@ EQUITY_VENUES = frozenset(
         "fidelity",
         "etrade",
         "interactivebrokers",
+        # robinhood_broker.VENUE_ID. The crypto id "robinhood" is a separate
+        # venue and stays out of this set.
+        "robinhoodmcp",
     }
 )
 
@@ -162,6 +165,9 @@ EXTRA_VENUE_CLASSES = {
     "schwab": ("crypto", "commodities", "indices", "futures_perps"),
     "tastytrade": ("crypto", "commodities", "indices", "futures_perps"),
     "webull": ("crypto", "commodities", "indices", "futures_perps"),
+    # One equity route, four sectors: each of these trades as a fund share, and
+    # robinhood_broker.SECTORS_SERVED names the same four.
+    "robinhoodmcp": ("commodities", "indices", "forex"),
 }
 
 #: The two articles a sentence takes before a sector name, and the first

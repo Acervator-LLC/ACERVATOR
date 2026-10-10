@@ -113,6 +113,8 @@ STOCK_BANNER_TAIL = (
     "queued — no live brokers are wired up yet. The "
     "list below shows the planned brokers; Add / Test "
     "are disabled until the broker connectors ship. "
+    "A broker the program signs in at a browser keeps its own "
+    "Connect with a Browser press. "
     "Use the Crypto Wing for active trading today."
 )
 STOCK_BANNER_PIECES = (STOCK_BANNER_LEAD, STOCK_BANNER_TAIL)
@@ -1776,6 +1778,167 @@ def stored_credential_phrase(entry: Any) -> str:
     if any(holder.get(name) for name in CREDENTIAL_FIELDS):
         return ADDED_WITH_CREDENTIALS
     return ADDED_WITHOUT_CREDENTIALS
+
+
+#: The two kinds of credential a venue takes. ``credential_kind`` answers one
+#: and the Add form asks for that one alone.
+CREDENTIAL_TYPED_KEY = "key and secret"
+CREDENTIAL_BROWSER_AUTHORIZATION = "browser authorization"
+
+#: What the Add button says for a venue signing in at a browser.
+BROWSER_ADD_BUTTON_TEXT = "Connect with a Browser"
+
+#: Why Test Connection is disabled for a venue holding no key to test.
+NO_KEY_TO_TEST = (
+    "This venue takes a browser authorization and no API key, so there is "
+    "nothing to test. Press Connect with a Browser."
+)
+
+#: The Add form's own prompt per credential kind, which ``venue_form_bound``
+#: writes into the feedback row when a venue button is pressed.
+KEY_FORM_PROMPT = "Enter the API key and secret for {name}."
+BROWSER_FORM_PROMPT = (
+    "{name} takes a browser authorization, not an API key and secret. "
+    "Press Connect with a Browser to sign in at the venue."
+)
+
+#: What the feedback row carries once a browser sign-in stored its credential.
+BROWSER_CONNECTED_FORMAT = "{name} connected. {approval}"
+
+
+def approval_level(state: Any) -> str:
+    """The feedback level one trade-approval state draws.
+
+    ``APPROVAL_OFF`` draws ``WARNING_LEVEL``, since nothing at the venue holds
+    an order this program sends, and an unread state draws ``ERROR_LEVEL``.
+    """
+    from src.stocks.robinhood_broker import APPROVAL_OFF, APPROVAL_ON
+
+    held = str(state)
+    if held == APPROVAL_ON:
+        return SUCCESS_LEVEL
+    if held == APPROVAL_OFF:
+        return WARNING_LEVEL
+    return ERROR_LEVEL
+
+
+def credential_kind(venue_id: Any) -> str:
+    """``CREDENTIAL_BROWSER_AUTHORIZATION`` for a venue
+    ``ata_spm_signin.BROWSER_AUTHORIZATION_VENUES`` names, else
+    ``CREDENTIAL_TYPED_KEY``.
+
+    Every reader of the Add form's shape takes the kind from here, so the rows
+    drawn and the credential stored cannot disagree.
+    """
+    from src.trading.ata_spm_signin import takes_browser_authorization
+
+    if takes_browser_authorization(venue_id):
+        return CREDENTIAL_BROWSER_AUTHORIZATION
+    return CREDENTIAL_TYPED_KEY
+
+
+def takes_browser_authorization(venue_id: Any) -> bool:
+    """Whether ``credential_kind`` answers
+    ``CREDENTIAL_BROWSER_AUTHORIZATION`` for one venue id."""
+    return credential_kind(venue_id) == CREDENTIAL_BROWSER_AUTHORIZATION
+
+
+def credential_form(venue_id: Any) -> dict:
+    """Every row and button word the Add form draws for one venue's own
+    credential kind.
+
+    ``key_rows`` false hides the API Key, API Secret and passphrase rows, and an
+    empty ``venue_id`` keeps the key-and-secret shape the form opens with.
+    """
+    kind = credential_kind(venue_id)
+    browser = kind == CREDENTIAL_BROWSER_AUTHORIZATION
+    name = str(venue_id or "").capitalize()
+    return {
+        "kind": kind,
+        "key_rows": not browser,
+        "add_text": BROWSER_ADD_BUTTON_TEXT if browser else ADD_BUTTON_TEXT,
+        "test_enabled": not browser,
+        "test_tip": NO_KEY_TO_TEST if browser else "",
+        "prompt": (BROWSER_FORM_PROMPT if browser else KEY_FORM_PROMPT).format(
+            name=name
+        ),
+    }
+
+
+def venue_form_bound(venue_id: Any) -> str:
+    """The feedback words one pressed venue button writes, naming the credential
+    its own ``credential_kind`` takes."""
+    return str(credential_form(venue_id)["prompt"])
+
+
+def browser_credential_fields(venue_id: Any) -> tuple:
+    """The client-id and bearer field names one venue's own sign-in answers.
+
+    A venue taking a typed key answers ("", ""), and no field name is written
+    twice.
+    """
+    from src.trading import ata_spm_signin
+
+    if str(venue_id or "").strip().lower() == ata_spm_signin.ROBINHOOD_MCP_VENUE:
+        return (
+            ata_spm_signin.ROBINHOOD_CLIENT_ID_FIELD,
+            ata_spm_signin.ROBINHOOD_BEARER_FIELD,
+        )
+    return ("", "")
+
+
+def connect_browser_venue(
+    venue_id: Any,
+    connect_one: Any,
+    stored_client_id: Any = "",
+    read_approval: Any = None,
+) -> dict:
+    """Sign one browser-authorization venue in and answer what to store and say.
+
+    ``connect_one`` is ``ata_spm_signin.build_connector``'s callable, a refusal
+    from it raises, and a trade-approval read that refuses answers
+    ``APPROVAL_UNREAD`` with its own ``refusal`` beside the credential.
+    """
+    from src.stocks.robinhood_broker import (
+        APPROVAL_UNREAD,
+        RouteRefused,
+        read_trade_approval,
+    )
+
+    reader = read_approval or read_trade_approval
+    client_field, bearer_field = browser_credential_fields(venue_id)
+    typed = {client_field: str(stored_client_id or "")} if client_field else {}
+    issued = dict(connect_one(venue_id, typed))
+    bearer = str(issued.get(bearer_field, "") or "")
+    refusal = ""
+    try:
+        approval = reader(bearer)
+    except (RouteRefused, OSError, ValueError) as exc:
+        refusal = str(exc)
+        approval = APPROVAL_UNREAD
+    return {
+        "venue": str(venue_id or "").strip().lower(),
+        "client_id": str(issued.get(client_field, "") or ""),
+        "bearer": bearer,
+        "approval": approval,
+        "refusal": refusal,
+        "level": approval_level(approval),
+        "words": browser_connected_words(venue_id, approval),
+    }
+
+
+def browser_connected_words(venue_id: Any, approval: Any) -> str:
+    """What the feedback row carries after a browser sign-in, carrying the
+    venue's own trade-approval reading.
+
+    ``robinhood_broker.approval_words`` is the one source of that sentence, so
+    the page and the broker read one wording.
+    """
+    from src.stocks.robinhood_broker import approval_words
+
+    return BROWSER_CONNECTED_FORMAT.format(
+        name=str(venue_id or "").capitalize(), approval=approval_words(approval)
+    )
 
 
 def banner_of(wing: str) -> dict:

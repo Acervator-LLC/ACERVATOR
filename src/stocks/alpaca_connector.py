@@ -13,6 +13,8 @@ import time
 from typing import Any, Optional
 
 from ..exchange.base import MarketRules
+from .robinhood_broker import VENUE_ID as ROBINHOOD_MCP_VENUE_ID
+from .robinhood_broker import RobinhoodMcpBroker
 from .broker_base import (
     BrokerBase,
     AccountInfo,
@@ -379,6 +381,7 @@ class AlpacaConnector(BrokerBase):
 #: ``tradingview_webhook`` publishes no order interface and holds no class.
 BROKER_CONNECTORS: dict[str, type[BrokerBase]] = {
     "alpaca": AlpacaConnector,
+    ROBINHOOD_MCP_VENUE_ID: RobinhoodMcpBroker,
 }
 
 

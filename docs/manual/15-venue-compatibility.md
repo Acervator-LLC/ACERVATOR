@@ -2973,3 +2973,285 @@ So no Robinhood sector needs a new variant. A fractional market selects the
 permitted-shape variant, a whole-share market selects the whole-unit variant,
 and an expiring market selects the rolling-position variant. All three sit
 inside `VARIANTS_BUILT`.
+
+## 2026-10-10 - an operator connects their own Robinhood MCP account, and four sectors become tradable
+
+Nothing of this venue is hardwired. The operator opens his own Robinhood MCP
+account, presses the venue on the credentials page, and signs in at his own
+browser. The program earns its own client id at the venue on that first press
+and holds the bearer the venue issues, encrypted, in the operator's own runtime
+directory. Four sectors then offer this venue: stocks, commodities, indices and
+forex.
+
+### What the operator does, in order
+
+Five steps, and only the first happens away from this program.
+
+```
+1  open a Robinhood MCP account at the venue
+2  Settings, Exchanges tab, Stock Wing
+3  press the Robinhoodmcp button in the venue array
+4  press Connect with a Browser
+5  approve in the browser that opens, then read the trade-approval line
+```
+
+The press binds the form, and `src/gui/settings_dialog.py`, in
+`_open_credentials_for_row`, writes the prompt that names what this venue takes.
+
+```python
+# src/gui/settings_dialog.py, in _open_credentials_for_row
+            self._set_feedback(sds.venue_form_bound(venue), "info")
+```
+
+### The credentials page asks for what the venue takes
+
+The Add form has two shapes and the pressed venue chooses one.
+`src/gui/main_tabs/settings_dialog_surface.py`, in `credential_kind`, answers
+which, and `credential_form` answers every row and button word that follows.
+A venue taking a browser authorization hides the API Key row, the API Secret row
+and the passphrase tick, renames the Add press, and disables Test Connection,
+because no key exists to test.
+
+```
+pressed venue   rows drawn                    Add press
+robinhoodmcp    none; no key is typed         Connect with a Browser
+coinbase        API Key, API Secret, phrase   Test and Add Exchange
+alpaca          API Key, API Secret, phrase   Test and Add Exchange
+```
+
+```python
+# src/gui/settings_dialog.py, in _sync_credential_kind
+            form = sds.credential_form(eid)
+            typed = bool(form["key_rows"])
+```
+
+Both readings were taken in one run. The venue id answers `key_rows` false, and
+the other two answer it true with their own button words unchanged.
+
+### The sign-in is a row on the mechanism, not a second mechanism
+
+The sign-in already in this product gains one row in each of its three tables.
+`src/trading/ata_spm_signin.py`, in `sign_in_robinhood_mcp`, is the route;
+`REDIRECT_POLICIES` holds the loopback address this venue registers; and
+`AUTHORIZE_ADDRESSES` holds the page the system browser opens. No listener,
+receiver or redirect behaviour changed, and every push target already using the
+mechanism answers exactly what it answered before.
+
+```python
+# src/trading/ata_spm_signin.py, at SIGN_IN_ROUTES
+    ROBINHOOD_MCP_VENUE: sign_in_robinhood_mcp,
+```
+
+The venue publishes an empty client authentication method, so the route is a
+public client. It sends the PKCE verifier and holds no secret.
+`register_robinhood_client` earns the client id on a first connect, and it runs
+only where the operator holds none, because it writes a record at the venue.
+
+### Nothing of any one operator is in the repository
+
+The credential lives where every other venue credential already lives: one
+encrypted entry per venue inside the operator's own settings file, under his home
+directory and outside this repository. `src/core/settings.py`, in
+`ExchangeConfig`, is that entry, and `add_exchange` stores it.
+
+```python
+# src/gui/settings_dialog.py, in _connect_browser_venue
+            config.api_key_enc = encrypt(answered["client_id"], master)
+            config.api_secret_enc = encrypt(answered["bearer"], master)
+```
+
+The client id the venue issued goes in the first field and the bearer in the
+second. Both are encrypted with the operator's own vault phrase, so no account
+id, client id, bearer or key is in any tracked file.
+
+### The trade-approval setting is read before any order is sized
+
+Robinhood turns trade approvals off by default for an external agent, so an order
+this program sends can reach the market unseen. The program now reads that
+setting back from the venue and refuses an order while it cannot.
+`src/stocks/robinhood_broker.py`, in `read_trade_approval`, asks the route for
+its own tool listing, finds the tool whose name carries the venue's own two
+words, calls it, and answers on, off or unread.
+
+```python
+# src/stocks/robinhood_broker.py, in RobinhoodMcpBroker.place_order
+        if self._approval not in (APPROVAL_ON, APPROVAL_OFF):
+            raise RouteRefused(APPROVAL_NOT_READ)
+```
+
+A venue that cannot answer it does not get an order, at three separate points.
+The session refuses to open, the order refuses to be built, and the credentials
+page draws the reading in its own feedback row.
+
+```
+reading   what the operator's screen says                        level
+on        an order waits for the operator to approve it          success
+off       an order reaches the market with no second pair of eyes warning
+unread    the venue did not answer, so no order is sized         error
+```
+
+`approval_words` in the broker module is the only place those sentences exist,
+and `approval_level` in the settings surface is the only place their colours do,
+so the page and the broker cannot disagree.
+
+OVERTAKEN, quoted whole:
+
+```
+A unit that builds the order path reads that setting back before it sizes
+anything.
+```
+
+True today: that unit landed. `RobinhoodMcpBroker.connect` reads the setting and
+refuses the session where the reading is unread.
+
+### The order body is built from the route's own published schema
+
+Robinhood publishes a tool name and a one-line description for each equity tool
+and publishes no field list for any of them. So this connector holds no field
+names of its own. It reads the tool's input schema off the route and builds the
+body against that, and it refuses by name where the schema asks for something
+the order cannot fill.
+
+```python
+# src/stocks/robinhood_broker.py, in order_body
+    missing = [one for one in required if one not in built]
+    if missing:
+        raise RouteRefused(
+            NO_FIELD_FORMAT.format(tool=tool, field=", ".join(sorted(missing)))
+        )
+```
+
+Both refusals were driven and each names what it expected.
+
+```
+a required property no order fills   place_equity_order requires account_number
+                                     and this order carries no value for it
+a value of the wrong declared type   place_equity_order declares quantity as
+                                     string and this order carries float
+```
+
+### Where the venue sits, and which id is which
+
+Two Robinhood venues now exist and they are separate venues with separate ids.
+The crypto connector keeps the id `robinhood` and stays an `ExchangeInterface`;
+the equity broker takes the id `robinhoodmcp` and is a `BrokerBase`. No id sits
+in both registries, so a Start press on a crypto bot cannot reach the broker.
+
+```python
+# src/stocks/alpaca_connector.py, at BROKER_CONNECTORS
+    ROBINHOOD_MCP_VENUE_ID: RobinhoodMcpBroker,
+```
+
+```
+registry                              holds
+CRYPTO_CONNECTORS                     robinhood
+BROKER_CONNECTORS                     alpaca, robinhoodmcp
+the two sets intersected              empty
+```
+
+OVERTAKEN, quoted whole:
+
+```
+| a JSON-RPC client over HTTP | no module in this tree provides one |
+| a `BrokerBase` subclass and a `BROKER_CONNECTORS` row | neither exists for this venue |
+```
+
+True today: both exist. `src/stocks/robinhood_broker.py`, in
+`RobinhoodMcpBroker`, is the subclass, `mcp_request` is the envelope the route
+takes, and `read_result` reads the reply or refuses.
+
+OVERTAKEN, quoted whole:
+
+```
+The
+reason the program does not place an equity order on Robinhood is that no
+module here speaks that protocol and no account token exists to speak it with.
+```
+
+True today: a module speaks the protocol. What is still missing is one
+operator's own account and the bearer it grants, which no software supplies.
+
+### The four sectors this one route serves
+
+One route, four sectors, and every one of them trades as a fund share.
+`src/gui/main_tabs/asset_class_surface.py`, at `EQUITY_VENUES`, answers the first;
+`EXTRA_VENUE_CLASSES` answers the other three; and
+`src/stocks/robinhood_broker.py`, at `SECTORS_SERVED`, names the same four.
+
+```
+sector        offered   gate log bucket
+stocks        yes       trade/gate/robinhoodmcp/stocks/gate.log
+commodities   yes       trade/gate/robinhoodmcp/commodities/gate.log
+indices       yes       trade/gate/robinhoodmcp/indices/gate.log
+forex         yes       trade/gate/robinhoodmcp/forex/gate.log
+```
+
+No new sizing variant is needed. A fund share sizes like a share, so a
+fractional market selects the permitted-shape variant and a whole-share market
+selects the whole-unit variant, both already inside `VARIANTS_BUILT`.
+
+OVERTAKEN, quoted whole:
+
+```
+| stocks | `place_equity_order` on the Trading MCP | no client for the protocol |
+| commodities | a fund share through `place_equity_order` | no client for the protocol |
+```
+
+True today: a client for the protocol exists in both rows. Each sector is
+offered on the credentials page and each has its own gate log bucket.
+
+OVERTAKEN, quoted whole:
+
+```
+Three of those four are reachable
+only through the Robinhood Trading MCP, and the program holds no client for it.
+```
+
+True today: the program holds a client for it.
+
+### What is not reachable yet
+
+A bot still does not trade this venue, for two reasons the operator can see.
+The Start press opens a broker session with paper true, and this venue publishes
+no paper route, so the session is refused with that reason in its own words.
+A bot container also still takes a crypto exchange and not a broker, which is the
+same ceiling the Alpaca broker sits under.
+
+```python
+# src/stocks/robinhood_broker.py, at NO_PAPER_ROUTE
+NO_PAPER_ROUTE = (
+    "Robinhood MCP publishes no paper route, so this venue opens no paper session"
+)
+```
+
+The market list is the one point where this venue differs from Coinbase. The
+route publishes no whole-catalogue tool, so `list_assets` confirms one symbol at
+a time through `get_equity_tradability` over the scan set it holds, and an empty
+scan set records no market.
+
+### What this unit drove, and what no reading here can prove
+
+Every reading ran with the home directory redirected to a scratch tree and with
+both send paths replaced by a refusal, so no socket could open. The run reported
+forty checks and no failures, nineteen envelopes seen by the stand-in, and an
+empty scratch home afterwards.
+
+```
+a market list, a quote, a position read, a candle   read back
+an order body                                        built, never sent
+the trade-approval setting                           read on, off and unread
+the failure side                                     missing field, wrong type,
+                                                     no bearer, expired bearer,
+                                                     401 at the HTTP layer
+the existing sign-in                                 nine push targets unchanged
+```
+
+Two limits, stated plainly. No reading here used a token, so nothing proves the
+venue accepts this program; that is the first operator's own connect. And
+Robinhood publishes no field list for any tool on this route, so every property
+name in the stand-in's schema stands in for whatever the route publishes rather
+than naming it; the body is built from the schema the route answers, which is why
+a wrong name refuses instead of sending.
+
+The whole translation, point by point, is in
+[../audits/2026-10-10_robinhood_sector_translation/REPORT.md](../audits/2026-10-10_robinhood_sector_translation/REPORT.md).
