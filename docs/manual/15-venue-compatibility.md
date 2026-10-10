@@ -4374,6 +4374,20 @@ our Services", and its restricted-locations page names the United States first.
 `src/exchange/ccxt_connector.py, at US_ACCOUNT_RESTRICTED_EXCHANGES` now holds
 the venue, so a connect press shows "US account restricted" beside it.
 
+OVERTAKEN, quoted whole:
+
+> `src/exchange/ccxt_connector.py, at US_ACCOUNT_RESTRICTED_EXCHANGES` now holds
+> the venue, so a connect press shows "US account restricted" beside it.
+
+True today: the press records a `US_RESTRICTION_WARNING` naming those words and
+no venue picker carries them. `src/exchange/ccxt_connector.py, in
+exchange_label` composes the note, and its only reader is
+`src/exchange/ccxt_connector.py, in list_supported_exchanges`, which no screen
+calls. The first-run wizard's own `exchange_label` in
+`src/gui/main_tabs/init_wizard_surface.py` is a different function and notes a
+passphrase alone. So the refusal reaches the log and not the button, and
+putting it on the button is its own row.
+
 ### The six sectors, and what each costs
 
 | Sector | Verdict | The cost |
