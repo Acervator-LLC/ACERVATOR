@@ -16,8 +16,10 @@ import logging
 import math
 import threading
 import time
+from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
-from collections.abc import Callable
+from types import MappingProxyType
+from collections.abc import Callable, Mapping
 from functools import lru_cache
 from urllib.error import HTTPError, URLError
 from concurrent.futures import ThreadPoolExecutor
@@ -287,7 +289,17 @@ US_IP_BLOCKED_EXCHANGES: set[str] = {
 # user agreement clause 2.10 states it does not intend to provide services to
 # "U.S. persons" and "expressly prohibit the same from using any of our
 # Services", and its restricted-locations page names the United States first.
+# Bitget's Terms of Use define "Prohibited Countries" in section 1 as a list
+# "including ... the United States (including the following U.S. Territories:
+# Puerto Rico, Guam, U.S. Virgin Islands, American Samoa and the Northern
+# Mariana Islands ...)", section 2.8 requires the account holder to be "not a
+# Restricted Person", which section 1 defines as one who "resides or is
+# established, or has operations in any of the Prohibited Countries", and
+# section 11.1(xvii) forbids anyone to "access, use, or attempt to access or
+# use, Services directly or indirectly with (1) jurisdictions Bitget has deemed
+# high risk, including but not limited to, the Prohibited Countries".
 US_ACCOUNT_RESTRICTED_EXCHANGES: set[str] = {
+    "bitget",
     "gateio",
     "poloniex",
     "huobi",
@@ -357,20 +369,75 @@ VENUE_CLASS_PRODUCT_TYPES: dict[str, dict[str, str]] = {
     "coinbase": {"stocks": "EQUITY"},
 }
 
-#: The public, credential-free method each venue publishes its own asset
-#: sectors on, and the method ``_published_asset_sectors`` calls. Gate.io's
-#: ``/spot/currencies`` carries a ``category`` list per asset code naming
-#: ``stocks``, ``indices``, ``metals``, ``commodities`` or ``forex``, which is
-#: the platform's own vocabulary with ``metals`` retired onto commodities.
-VENUE_ASSET_CATEGORY_METHOD: dict[str, str] = {
-    "gateio": "publicSpotGetCurrencies",
-}
-
 #: The field an asset-category row names its code under.
 ASSET_CODE_KEY = "currency"
 
 #: The field an asset-category row names its sector list under.
 ASSET_CATEGORY_KEY = "category"
+
+#: The key an asset-sector response carries its rows under where the response
+#: is a mapping rather than the row list itself.
+ASSET_SECTOR_ROWS_KEY = "data"
+
+
+@dataclass(frozen=True)
+class AssetSectorRecord:
+    """How one venue publishes its own asset sectors.
+
+    ``_published_asset_sectors`` calls ``method`` once per entry in
+    ``requests``, reads each row's ``code_key`` as the asset code and its
+    ``sector_key`` as the sector, and translates that sector through ``words``
+    before ``asset_class_named`` resolves it.
+    """
+
+    method: str
+    requests: tuple[dict[str, str], ...] = ()
+    code_key: str = ASSET_CODE_KEY
+    sector_key: str = ASSET_CATEGORY_KEY
+    words: Mapping[str, str] = MappingProxyType({})
+
+
+#: What a ``words`` row maps a venue's own category word onto where that word
+#: names no family outside crypto. ``market_asset_class`` then reads the sector
+#: as published and empty, which leaves ``is_contract_market`` to tell a spot
+#: pair from a perpetual, exactly as a venue omitting the word is read.
+NO_PUBLISHED_FAMILY = ""
+
+
+#: The public, credential-free asset-sector record each venue publishes, and
+#: the record ``_published_asset_sectors`` reads. Gate.io's ``/spot/currencies``
+#: carries a ``category`` list per asset code naming ``stocks``, ``indices``,
+#: ``metals``, ``commodities`` or ``forex``, which is the platform's own
+#: vocabulary with ``metals`` retired onto commodities. Bitget's
+#: ``/v3/market/instruments`` carries a ``symbolType`` per market naming
+#: ``crypto``, ``stock``, ``metal`` or ``commodity``, refuses a call with no
+#: ``category``, and publishes no currency and no index family. Its ``crypto``
+#: word names what Gate.io's empty list names, so it maps onto
+#: ``NO_PUBLISHED_FAMILY`` and a crypto-underlying perpetual keeps the sector
+#: ``is_contract_market`` gives it.
+VENUE_ASSET_SECTOR_RECORDS: dict[str, AssetSectorRecord] = {
+    "gateio": AssetSectorRecord(method="publicSpotGetCurrencies"),
+    "bitget": AssetSectorRecord(
+        method="publicUtaGetV3MarketInstruments",
+        requests=(
+            {"category": "SPOT"},
+            {"category": "USDT-FUTURES"},
+            {"category": "COIN-FUTURES"},
+            {"category": "USDC-FUTURES"},
+            {"category": "MARGIN"},
+        ),
+        code_key="baseCoin",
+        sector_key="symbolType",
+        words=MappingProxyType(
+            {
+                "stock": "stocks",
+                "metal": "metals",
+                "commodity": "commodities",
+                "crypto": NO_PUBLISHED_FAMILY,
+            }
+        ),
+    ),
+}
 
 #: The key a products response carries its rows under.
 PRODUCTS_KEY = "products"
@@ -2294,50 +2361,85 @@ class CCXTConnector(ExchangeInterface):
         """Every asset code this venue publishes a sector for, mapped onto the
         platform's own class name, and None where the venue publishes none.
 
-        ``VENUE_ASSET_CATEGORY_METHOD`` names the public, credential-free
-        method, ``asset_class_named`` resolves each published category, and the
-        first category of a row that resolves is the sector that row names.
+        ``VENUE_ASSET_SECTOR_RECORDS`` names the public, credential-free method
+        and the requests it takes, and ``asset_class_named`` resolves each
+        published category once the record's own ``words`` have translated it.
         """
-        from ..trading.ata_spm import asset_class_named
-
-        method_name = VENUE_ASSET_CATEGORY_METHOD.get(self._exchange_id, "")
-        method = getattr(self._ex, method_name, None) if method_name else None
-        if not callable(method):
-            return None
-        try:
-            rows = method()
-        except Exception as exc:
-            logger.warning("%s served no asset sector list: %s", self._exchange_id, exc)
-            return None
-        if not isinstance(rows, list):
-            logger.warning(
-                "%s served an asset sector list of %s, so no sector is read",
-                self._exchange_id,
-                type(rows).__name__,
-            )
+        record = VENUE_ASSET_SECTOR_RECORDS.get(self._exchange_id)
+        method = getattr(self._ex, record.method, None) if record else None
+        if record is None or not callable(method):
             return None
         found: dict[str, str] = {}
-        for row in rows:
-            if not isinstance(row, dict):
-                continue
-            code = str(row.get(ASSET_CODE_KEY) or "").strip().upper()
-            if not code:
-                continue
-            named = row.get(ASSET_CATEGORY_KEY)
-            listed = named if isinstance(named, (list, tuple)) else [named]
-            found[code] = ""
-            for one in listed:
-                held = asset_class_named(one)
-                if held:
-                    found[code] = held
-                    break
+        served = 0
+        for request in record.requests or ({},):
+            rows = self._asset_sector_rows(method, request)
+            if rows is None:
+                return None
+            served += len(rows)
+            self._read_asset_sector_rows(rows, record, found)
         logger.info(
-            "%s published a sector for %d of its %d asset codes",
+            "%s published a sector for %d of its %d asset codes, over %d rows",
             self._exchange_id,
             sum(1 for one in found.values() if one),
             len(found),
+            served,
         )
         return found
+
+    def _asset_sector_rows(self, method: Any, request: Any) -> Optional[list]:
+        """The rows one asset-sector call serves, taking the response itself
+        where it is a list and ``ASSET_SECTOR_ROWS_KEY`` where it is a mapping.
+
+        None where the call raised or served neither shape, which
+        ``_published_asset_sectors`` reads as the venue publishing no record.
+        """
+        try:
+            served = method(request) if request else method()
+        except Exception as exc:
+            logger.warning(
+                "%s served no asset sector list for %s: %s",
+                self._exchange_id,
+                request or "no request",
+                exc,
+            )
+            return None
+        if isinstance(served, dict):
+            served = served.get(ASSET_SECTOR_ROWS_KEY)
+        if not isinstance(served, list):
+            logger.warning(
+                "%s served an asset sector list of %s, so no sector is read",
+                self._exchange_id,
+                type(served).__name__,
+            )
+            return None
+        return served
+
+    def _read_asset_sector_rows(
+        self, rows: Any, record: AssetSectorRecord, found: dict[str, str]
+    ) -> None:
+        """Each row's own sector written into ``found`` under its asset code,
+        leaving a code a previous row already named untouched.
+
+        A venue naming one code over several product types therefore answers the
+        first sector it published for it, which ``record.requests`` orders.
+        """
+        from ..trading.ata_spm import asset_class_named
+
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            code = str(row.get(record.code_key) or "").strip().upper()
+            if not code or found.get(code):
+                continue
+            named = row.get(record.sector_key)
+            listed = named if isinstance(named, (list, tuple)) else [named]
+            found[code] = ""
+            for one in listed:
+                word = record.words.get(str(one), str(one or ""))
+                held = asset_class_named(word)
+                if held:
+                    found[code] = held
+                    break
 
     @_with_retry()
     async def get_markets(self) -> list[AssetInfo]:
