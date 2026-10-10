@@ -3948,3 +3948,192 @@ Two limits, stated plainly. No reading used a real token, so nothing here proves
 the venue accepts this program; that is the first operator's own connect. And a
 bot on the four protocol sectors was not started, because nothing starts one
 until a bot container takes a broker.
+
+## 2026-10-10 - A bot container takes a broker, and every broker sector trades
+
+### The sentence this overtakes
+
+OVERTAKEN, quoted whole:
+
+> "The four protocol sectors stop at one place, and it is the same place Alpaca
+> stops at. `src/trading/bot_container.py`, in `BotContainer`, takes a crypto
+> exchange, so `src/gui/main_window.py`, in `_connect_broker_for_bot`, opens the
+> session, records the markets and then answers that the bot does not start."
+
+True today: `src/stocks/broker_exchange.py`, in `BrokerExchange`, holds one
+broker and answers the exchange contract, so `_connect_broker_for_bot` hands
+that object to the bot and answers that the bot starts. The four protocol
+sectors and all four of Alpaca's now start.
+
+OVERTAKEN, quoted whole:
+
+> ```
+> sector        route         a bot starts   what is still missing
+> crypto        signed REST   yes            the operator's own Ed25519 API key
+> stocks        protocol      no             a broker as a bot's exchange
+> commodities   protocol      no             a broker as a bot's exchange
+> indices       protocol      no             a broker as a bot's exchange
+> forex         protocol      no             a broker as a bot's exchange
+> ```
+
+True today: every row reads yes.
+
+```
+sector        route         a bot starts   what is still missing
+crypto        signed REST   yes            the operator's own Ed25519 API key
+stocks        protocol      yes            the operator's own MCP bearer
+commodities   protocol      yes            the operator's own MCP bearer
+indices       protocol      yes            the operator's own MCP bearer
+forex         protocol      yes            the operator's own MCP bearer
+```
+
+### Why a holder, and not one class
+
+`src/stocks/broker_base.py`, in `BrokerBase`, and `src/exchange/base.py`, in
+`ExchangeInterface`, publish five members under one name with different
+contracts. One object cannot publish both of each pair, so the two are
+reconciled by a holder rather than by a merge.
+
+```
+member             BrokerBase takes                 ExchangeInterface takes
+connect            key, secret, paper               key, secret, passphrase
+place_order        quantity, limit, stop, tif       type, amount, price, coid
+get_order          order id                         order id and market
+get_open_orders    nothing                          a market
+cancel_order       order id, answers a boolean      order id and market, an Order
+```
+
+The two also carry separate `OrderSide` and `OrderType` enumerations.
+`src/stocks/broker_exchange.py`, in `BROKER_SIDES` and `BROKER_ORDER_TYPES`,
+maps between them by member and never by spelling.
+
+### What the window builds, and where each object sits
+
+```mermaid
+flowchart LR
+    A[Start press] --> B[_connect_exchange_for_bot]
+    B -->|broker_serves_sector| C[_connect_broker_for_bot]
+    C --> D[_held_broker or a fresh BrokerBase]
+    D --> E[_broker_exchange: one BrokerExchange per broker]
+    E --> F[bot.exchange]
+    D --> G[_open_broker_session]
+    G --> H[_read_broker_markets]
+```
+
+The broker itself stays in `_exchange_connectors`, which `_held_broker`,
+`_live_connector` and the connector pumps read. `_broker_exchanges` holds the
+`BrokerExchange`, one per broker object, so `BotManager.set_connector` registers
+one object per venue and every bot on that broker trades through it.
+
+### What a broker answers, member by member
+
+`src/trading/bot_container.py`, in `BotContainer` and `guarded_place_order`, and
+the mixins under `src/trading/scrumming/` read twenty-two members on
+`bot.exchange`. Seven were already on `BrokerBase`; the rest are answered by
+translation.
+
+```
+member                 what BrokerBase publishes        BrokerExchange answers from
+exchange_id            exchange_id                      the broker
+display_name           display_name                     the broker
+is_connected           is_connected                     the broker
+add_scan_symbol        add_scan_symbol                  the broker
+remove_scan_symbol     remove_scan_symbol               the broker
+set_history_callback   set_history_callback             the broker
+release                release                          the broker
+held_assets            held_assets                      the broker
+get_markets            asset_infos over held_assets     the held asset list
+get_ticker             get_quote                        a StockQuote
+get_ohlcv              get_bars                         bars, moments as epoch ms
+get_balance            get_account, get_position        cash, or a held quantity
+get_balances           get_account, get_positions       cash and every position
+place_order            place_order                      a StockOrder
+get_order              get_order                        a StockOrder
+get_open_orders        get_open_orders                  the book, narrowed here
+cancel_order           cancel_order                     a boolean
+await_bulk_read_slot   nothing                          the interface default
+get_spot_positions     no cost basis                    the interface default, None
+get_asset_logo_url     nothing                          an empty string
+get_orderbook          nothing                          NotImplementedError
+get_my_trades          nothing                          NotImplementedError
+```
+
+`asset_infos` is the build half of `record_markets`, split out so `get_markets`
+reads the markets the session already obtained and leaves the recording
+untouched.
+
+### The three points no broker answers, and what each costs
+
+**No depth.** Neither broker publishes an order book tool.
+`src/stocks/broker_exchange.py`, in `get_orderbook`, raises and names the venue.
+No caller in this tree reads depth, so no sector loses a trade.
+
+**No fill ledger.** Neither broker publishes a filled-trade history.
+`get_my_trades` raises, and
+`src/trading/scrumming/reconciliation.py`, in
+`refresh_exchange_position_health`, answers False for an exchange that cannot
+serve it. A broker bot's venue-side realised profit, fee total, cost basis and
+unrealised figure therefore have no reading. The order path is unaffected: the
+ladder sizes from the recorded market rules and the bot's own lots.
+
+**No locked figure.** A broker publishes no held-against-orders amount on a
+position or on an account, so `_position_balance` and `_cash_balance` answer
+`used` of 0.0 and carry the whole quantity as free. `Balance.used` is carried
+through `src/exchange/data_pool.py` and read for no decision.
+
+### The refusals that were added, and the ones that did not move
+
+`src/stocks/broker_exchange.py`, in `place_order`, refuses before the broker is
+reached: a size that is not a finite positive number, a limit order naming no
+finite positive price, an order type `BROKER_ORDER_TYPES` does not hold, and a
+side `BROKER_SIDES` does not hold. Each raises `ValueError` naming the venue and
+what it could not shape.
+
+Nothing in `guarded_place_order` moved. Its pre-flight refusals, its expiry
+close and the session hold are untouched, and a broker bot and a crypto bot
+refuse the same amount with the same sentence.
+
+### What a bot can do on each broker sector
+
+```
+venue       sector        route     a bot starts   the exchange it holds
+robinhood   crypto        REST      yes            RobinhoodCryptoConnector
+robinhood   stocks        protocol  yes            BrokerExchange
+robinhood   commodities   protocol  yes            BrokerExchange
+robinhood   indices       protocol  yes            BrokerExchange
+robinhood   forex         protocol  yes            BrokerExchange
+alpaca      stocks        REST      yes            BrokerExchange
+alpaca      commodities   REST      yes            BrokerExchange
+alpaca      indices       REST      yes            BrokerExchange
+alpaca      crypto        REST      yes            BrokerExchange
+```
+
+### What this unit drove
+
+Every reading ran with the home directory redirected to a scratch tree, every
+socket outside loopback refused, and each venue's own transport replaced by a
+stand-in shaped from that route's published reply. No credential was real and no
+order body left the machine.
+
+```
+reading                               what it reported
+twenty rows, venue by sector          four Robinhood and four Alpaca sectors
+                                      moved from no to yes; the crypto sectors
+                                      and Coinbase read the same on both trees
+twenty-two members                    eleven absent and three mis-shaped on
+                                      BrokerBase; all twenty-two answered or
+                                      named their refusal on BrokerExchange
+the approval guard                    unread refused the order, read reached
+                                      the route
+the session-route guard               a broker naming no route refused, beside
+                                      one that names a route and opened
+an order refusal                      a non-finite size refused on a broker bot
+                                      and on a crypto bot with one sentence
+the adapter's own refusals            three shapes passed, seven refused
+one adapter per broker                two bots on one broker held one object
+```
+
+Two limits, stated plainly. No reading used a real token, so nothing here proves
+either venue accepts a live order from this program. And the fill ledger stays
+unread on both brokers, so a broker bot's venue-side profit figures are blank
+until a fill path is built.
