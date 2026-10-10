@@ -821,3 +821,41 @@ whether a tokenised equity's 24/7 or 24/5 window reaches the session rule
   the mirror the six points are walked against
 - [`docs/audits/2026-10-07_venue_sector_readiness_matrix/REPORT.md`](../2026-10-07_venue_sector_readiness_matrix/REPORT.md)
   which venue reaches which sector
+
+---
+
+## The symbol this page names was renamed, and the venue's own reading did not move
+
+OVERTAKEN, quoted whole:
+
+> VENUE_ASSET_CATEGORY_METHOD names the public, credential-free method a
+> venue publishes its own asset sectors on
+
+True today: `src/exchange/ccxt_connector.py, at VENUE_ASSET_SECTOR_RECORDS`
+names it, holding one `AssetSectorRecord` per venue. The record carries the
+method, the requests the method takes, the field naming the asset code, the
+field naming the sector, and the venue's own words for a class. Gate.io's row
+takes every default, so its reading is the reading this page already records.
+
+```
+gateio codes                5640
+gateio codes with a sector   607
+  stocks 567 | commodities 18 | indices 18 | forex 4
+AAPLX -> stocks      SPX500 -> indices
+XAUT  -> commodities EURUSD -> forex
+CAD   -> ''          BTC    -> ''
+NOTACODE -> absent
+```
+
+Driven after the rename, with the home redirected and no credential sent. Every
+figure matches the ones above in this page.
+
+OVERTAKEN, quoted whole:
+
+> `VENUE_ASSET_CATEGORY_METHOD` names one venue and it is not the recorded one,
+
+True today: `VENUE_ASSET_SECTOR_RECORDS` names two venues, Gate.io and Bitget,
+and neither is the recorded one. The operator's own recording holds Coinbase
+alone, so the conclusion this sentence supports is unchanged. The Bitget
+readings are in
+[`docs/audits/2026-10-10_bitget_wired_sectors/REPORT.md`](../2026-10-10_bitget_wired_sectors/REPORT.md).
