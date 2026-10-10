@@ -221,7 +221,7 @@ classifier as it stood.
 
 | Sector | Markets the sector's list held | What was wrong |
 | --- | --- | --- |
-| crypto | 2187 | held 156 markets the venue calls a stock, an index or a metal |
+| crypto | 2187 | held 163 tokenised equities and 3 metal tokens, and lacked 10 markets of its own that read forex |
 | stocks | 0 | the operator could reach no market at all |
 | commodities | 138 | 130 of the 138 were option contracts |
 | forex | 20 | **every one of the twenty was not a currency** |
@@ -357,6 +357,25 @@ markets whose sector moved          612
 | indices | 0 | 18 |
 | futures_perps | 1044 | 619 |
 | options, which no screen offers | 3418 | 3418 |
+
+Every one of the 612 moves, named by where it came from and where it went.
+
+| From | To | Markets |
+| --- | --- | --- |
+| futures_perps | stocks | 399 |
+| crypto | stocks | 163 |
+| futures_perps | indices | 18 |
+| forex | crypto | 10 |
+| futures_perps | commodities | 9 |
+| forex | futures_perps | 4 |
+| crypto | commodities | 3 |
+| forex | stocks | 3 |
+| futures_perps | forex | 3 |
+
+The 399 are equity perpetuals and the 163 are tokenised equity spot pairs, so
+the stocks sector gains its markets from two product lines at once. The ten
+that leave forex for crypto are the stablecoin and token pairs the ticker
+collision caught.
 
 The before column reads the classifier with no published sector supplied, which
 is what every other venue still gets. The two columns differ by 612 markets and
@@ -534,7 +553,7 @@ Coinbase is the mirror. Every row below is answered on all six points.
 | Sector | Market list | Order route | Order shape | Position and fill read | Candles | Bot variant |
 | --- | --- | --- | --- | --- | --- | --- |
 | crypto | `load_markets`, 2031 markets | `POST /spot/orders` | `amount`, cash on a market buy | the library's own balance and trade reads | `src/exchange/timeframes.py, at gateio`, nine timeframes | Crypto Scrumming |
-| stocks | `load_markets`, 165 tokenised spot pairs and 400 equity perpetuals | `POST /spot/orders` and `POST /futures/usdt/orders` | `amount`, and `size` on the perpetual | the same two reads | the same nine | Stock Scrumming, Whole Unit Scrumming |
+| stocks | `load_markets`, 163 tokenised spot pairs and 402 equity perpetuals | `POST /spot/orders` and `POST /futures/usdt/orders` | `amount`, and `size` on the perpetual | the same two reads | the same nine | Stock Scrumming, Whole Unit Scrumming |
 | commodities | `load_markets`, 5 metal spot pairs and 15 metal perpetuals | the same two routes | the same two bodies | the same two reads | the same nine | Commodity Scrumming, Whole Unit Scrumming |
 | forex | `load_markets`, 6 markets the venue's own record calls forex | the same two routes | the same two bodies | the same two reads | the same nine | Forex Scrumming |
 | indices | `load_markets`, 18 index perpetuals | `POST /futures/usdt/orders` | `size`, signed | the same two reads | the same nine | Index Scrumming, Whole Unit Scrumming |
