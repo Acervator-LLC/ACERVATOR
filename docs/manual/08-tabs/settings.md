@@ -7505,4 +7505,84 @@ code. The earlier text stays where it is.
 | "ten redraws of the crypto panel, fifteen rows each time" | A redraw still reaches no venue. The crypto panel now draws sixteen buttons on page one and five on page two. |
 | "all fifteen crypto lines match character for character" | Both builds draw the same twenty-one crypto venues from one surface, sixteen on page one and five on page two. |
 
+## 2026-10-09 - The first-run wizard offers every venue the platform holds
+
+Page two of the setup wizard listed the venues the ccxt library carries. A
+venue with a hand-written connector was absent, so a venue the Exchanges tab
+accepts could not be chosen during first-time setup.
+
+Both screens now read one answer. `src/gui/main_tabs/asset_class_surface.py`,
+in `known_venues`, holds every venue id the platform has: both crypto connector
+registries, `EQUITY_VENUES`, every venue `EXTRA_VENUE_CLASSES` adds a sector
+for, and every venue the market-rules recording holds rows for.
+
+```mermaid
+flowchart LR
+    A[CRYPTO_CONNECTORS] --> C[crypto_venues]
+    B[SUPPORTED_EXCHANGES] --> C
+    C --> K[known_venues]
+    E[EQUITY_VENUES] --> K
+    X[EXTRA_VENUE_CLASSES] --> K
+    R[recorded_venue_classes] --> K
+    K --> W[exchange_ids, the wizard's page two]
+    K --> V[venues_for_class, one sector]
+    V --> S[exchange_status_rows, the Exchanges tab]
+```
+
+### What each screen offers
+
+The wizard has no sector control, so it offers the whole set. The Exchanges tab
+narrows the same set to the sector the operator is on.
+
+| Sector | The tab offers | Venues the tab offered and the wizard did not, before | After |
+| ------ | -------------: | ----------------------------------------------------- | ----- |
+| crypto | 21 | alpaca, ibkr, robinhood, schwab, tastytrade, webull | none |
+| stocks | 19 | alpaca, etrade, fidelity, ibkr, interactivebrokers, schwab, tastytrade, tdameritrade, webull | none |
+| commodities | 16 | alpaca, etrade, ibkr, schwab, tastytrade, webull | none |
+| forex | 6 | ibkr | none |
+| indices | 13 | alpaca, etrade, ibkr, schwab, tastytrade, webull | none |
+| futures / perps | 16 | ibkr, schwab, tastytrade, webull | none |
+
+The wizard offered 15 venues and offers 25. Robinhood is one of them, and the
+operator can pick it and carry it to the credentials page.
+
+### What the wizard does with the pick
+
+| Step | Where | Driven result |
+| ---- | ----- | ------------- |
+| The list is drawn | `src/gui/main_tabs/init_wizard_surface.py`, in `exchange_items` | 25 entries, Robinhood at position 20 |
+| The pick is held | `in selected_exchange` | `robinhood` |
+| The pick is handed on | `in get_results` | `exchange_id` reads `robinhood` |
+| A written connector is tested | `src/exchange/api_validator.py`, in `validate_credentials` | reads `crypto_connector_class` before the ccxt path |
+
+The Qt page and the browser page draw the same list. `src/gui/init_wizard.py`
+fills its drop-down from `exchange_items`, and `src/gui/web/init_wizard.js`, in
+`exchangeItems`, reads the same entries off the payload.
+
+### A test with no venue bound
+
+`src/gui/main_tabs/init_wizard_surface.py`, in `test_api`, set its no-venue
+path and then read the venue's name, which raised. It now writes `Choose an
+exchange first.` and returns, so no credential reaches a validator under no
+venue.
+
+### What did not change
+
+`PASSPHRASE_EXCHANGES` still names bitget, kucoin and okx, and only those three
+draw the passphrase row and the `(requires passphrase)` note. Driven over six
+venues: the three show the row, and coinbase, robinhood and schwab do not.
+
+The wizard still pre-selects the first entry of its list. That entry was
+binance and is now alpaca.
+
+### The venue lists this did not reach
+
+| List | Where | Why it was left |
+| ---- | ----- | --------------- |
+| the API tester's picker | `src/gui/main_tabs/api_tester_tab_surface.py`, in `supported_exchanges` | `src/gui/widgets/api_tester_tab.py`, in `_do_connect`, builds a `CCXTConnector` for the id, so a hand-written venue would be offered and then refused |
+| the lite bot runner's picker | `src/gui/main_tabs/live_bot_window_surface.py`, in `offered_exchange_ids` | the window drops the group box holding its pickers, and nothing builds `LiveBotWindow` |
+| the Simulator's venue set | `src/simulator/portfolios.py`, in `crypto_venues` | it labels a sim symbol's sector and offers nothing to choose from |
+| the bot wizard's picker | `src/gui/main_tabs/bot_wizard_surface.py`, in `exchange_items` | it lists the configured exchanges, not a registry |
+| the visualizer's picker | `src/gui/main_tabs/bot_visualizer_surface.py`, in `exchange_items` | it lists the fleet's own exchanges, not a registry |
+
 Back to [the subsystem index](README.md).
