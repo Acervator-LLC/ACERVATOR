@@ -16,9 +16,9 @@ import logging
 import math
 import threading
 import time
-import types
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
+from types import MappingProxyType
 from collections.abc import Callable, Mapping
 from functools import lru_cache
 from urllib.error import HTTPError, URLError
@@ -394,7 +394,7 @@ class AssetSectorRecord:
     requests: tuple[dict[str, str], ...] = ()
     code_key: str = ASSET_CODE_KEY
     sector_key: str = ASSET_CATEGORY_KEY
-    words: Mapping[str, str] = types.MappingProxyType({})
+    words: Mapping[str, str] = MappingProxyType({})
 
 
 #: What a ``words`` row maps a venue's own category word onto where that word
@@ -428,7 +428,7 @@ VENUE_ASSET_SECTOR_RECORDS: dict[str, AssetSectorRecord] = {
         ),
         code_key="baseCoin",
         sector_key="symbolType",
-        words=types.MappingProxyType(
+        words=MappingProxyType(
             {
                 "stock": "stocks",
                 "metal": "metals",
