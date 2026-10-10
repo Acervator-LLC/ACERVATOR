@@ -586,13 +586,13 @@ the documentation host's sitemap                         5 URLs, all crypto
 the support host, 7 forex and futures slugs              404 each
 occurrences of the word forex on the agent tool page       0
 occurrences of forex in the crypto specification           0
-forex tools among the published agent tools                0
+forex tools among the 71 published agent tools             0
 
 control, same hosts, same run
-the documentation host     3 real paths 200, 3 invented paths 404
-the support host           real articles 200, invented articles 404, and
+the documentation host     3 real paths 200, 4 absent paths 404
+the support host           13 real pages 200, 18 absent pages 404, and
                            index-options, a real article, answered 200
-the agent host             3 metadata documents 200, 7 invented paths 404
+the agent host             3 metadata documents 200, 11 absent paths 404
 ```
 
 **The detour is open, and the earlier pass did not search it.** A currency fund
@@ -651,7 +651,7 @@ A REST route is closed by a separate published sentence.
 | a futures order tool on the agent route | 0 of the 71 tool-shaped names on the page name futures or a perpetual. Control: the same extraction found 14 equity tools, 12 option tools and 9 crypto tools |
 | `place_advanced_order`, which names no asset class | the page's own order-type list has five entries, all order types and no asset class, and the three classes it names exclude futures. Recorded as not a futures route on any published reading |
 | a futures path on the documentation host | 404, with a control answering 200 on three real paths. The sitemap lists crypto only |
-| a futures article on the support host | 7 slugs, 404 each, with a control answering 200 on five real articles |
+| a futures article on the support host | 7 slugs, 404 each, with a control answering 200 on ten real articles |
 | a separate futures API | the written-authorization sentence above closes it |
 | a futures-tracking fund share | reaches the underlying, and it is the commodities or indices row. A fund share is not a contract with an expiry, which is what this sector names |
 | a perpetual product of any kind | no occurrence of the word across the crypto specification, the agent tool page and the venue's own futures product page. There is no product to reach |
@@ -802,14 +802,20 @@ control, same run
 **Every host discriminates, measured in the same run as every reading.**
 
 ```
-docs.robinhood.com    the crypto page 200, its script 200, the sitemap 200
-                      5 invented paths 404
-robinhood.com         5 real support articles 200, the agentic hub 200, the
-                      futures product page 200, the launch post 200
-                      10 invented slugs 404
-agent.robinhood.com   3 metadata documents 200 with JSON bodies
-                      the trading endpoint 405 on GET
-                      7 invented paths 404 with empty bodies
+host                  answered 200          answered 404
+docs.robinhood.com    3  the crypto page,   4  three agent-route paths and
+                         its script and        one invented path
+                         the sitemap
+robinhood.com         13 ten support         18 twelve plausible slugs and
+                         articles, the          six invented paths
+                         agentic hub, the
+                         futures product
+                         page, the launch
+                         post
+agent.robinhood.com   3  metadata documents 11 eight surface paths and
+                         with JSON bodies      three invented paths,
+                      and the trading          every body empty
+                      endpoint 405 on GET
 ```
 
 **The specification was parsed, not pattern-matched.** The document was decoded
