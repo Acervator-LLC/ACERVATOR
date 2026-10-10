@@ -601,6 +601,22 @@ def markets_of_class(rows: Any, venue_id: Any, name: Any, recorded: Any = None) 
     ]
 
 
+def known_venues(recorded: Any = None) -> frozenset:
+    """Every venue id the platform holds: ``crypto_venues``, ``EQUITY_VENUES``,
+    every venue ``EXTRA_VENUE_CLASSES`` adds a sector for, and every venue
+    ``recorded_venue_classes`` holds rows for, with ``recorded`` standing in for
+    that read.
+
+    ``venues_for_class`` narrows this by sector and ``init_wizard_surface``'s
+    ``exchange_ids`` offers it whole, so neither list can hold a venue the other
+    does not.
+    """
+    held = recorded if isinstance(recorded, dict) else recorded_venue_classes()
+    return frozenset(
+        set(crypto_venues()) | set(EQUITY_VENUES) | set(EXTRA_VENUE_CLASSES) | set(held)
+    )
+
+
 def venues_for_class(name: Any) -> frozenset:
     """Every venue id serving one asset class, a venue whose ``venue_classes``
     holds two classes answered for both.
@@ -610,13 +626,9 @@ def venues_for_class(name: Any) -> frozenset:
     """
     key = normalise(name)
     recorded = recorded_venue_classes()
-    known = (
-        set(crypto_venues())
-        | set(EQUITY_VENUES)
-        | set(EXTRA_VENUE_CLASSES)
-        | set(recorded)
+    return frozenset(
+        vid for vid in known_venues(recorded) if key in venue_classes(vid, recorded)
     )
-    return frozenset(vid for vid in known if key in venue_classes(vid, recorded))
 
 
 def serves(venue_id: Any, name: Any) -> bool:

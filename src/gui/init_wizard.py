@@ -109,16 +109,13 @@ if _HAS_QT:
             p2_layout = QVBoxLayout(page2)
             p2_layout.addWidget(QLabel("Exchange:"))
             self._exchange_combo = QComboBox()
-            from ..exchange.ccxt_connector import (
-                SUPPORTED_EXCHANGES,
-                PASSPHRASE_EXCHANGES,
+            from .main_tabs.init_wizard_surface import (
+                exchange_items,
+                passphrase_exchange_ids,
             )
 
-            self._passphrase_exchanges = PASSPHRASE_EXCHANGES
-            for eid in sorted(SUPPORTED_EXCHANGES.keys()):
-                label = eid.capitalize()
-                if eid in PASSPHRASE_EXCHANGES:
-                    label += " (requires passphrase)"
+            self._passphrase_exchanges = passphrase_exchange_ids()
+            for label, eid in exchange_items():
                 self._exchange_combo.addItem(label, eid)
             p2_layout.addWidget(self._exchange_combo)
 
