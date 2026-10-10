@@ -3427,6 +3427,31 @@ No file on the credentials page names this firm. `credential_kind`,
 read a table or an accessor in `src/trading/ata_spm_signin.py`, and a venue added
 to that table later reads the same way with no screen edit.
 
+### The configured list asks what a venue serves
+
+The Exchanges tab narrows the venues already configured to the wing it is on.
+It used to narrow them by membership of the equity venue set, which told the two
+wings apart only while no id sat in both. One id in both sets made that test
+answer equity for a crypto venue, and a configured Robinhood went missing from
+the crypto wing.
+
+`src/gui/main_tabs/settings_dialog_surface.py`, in `serves_wing`, is the test
+now. It reads `asset_class_surface.serves`, the same function the Add list reads
+through `venues_for_class`, so the venues offered and the venues listed cannot
+disagree.
+
+```
+wing          listed before the repair            listed after
+crypto        coinbase, kraken                    alpaca, coinbase, kraken, robinhood
+stocks        alpaca, robinhood                   alpaca, coinbase, kraken, robinhood
+```
+
+Both readings were taken in one run, over the same four configured venues.
+A venue now appears on every wing whose sector it serves, which widens the list
+and hides nothing. `src/gui/settings_dialog.py`, in `_remove_exchange`, reads the
+venue id out of the pressed row's own text, so a longer list cannot mis-target a
+removal.
+
 ### Where the two credentials sit
 
 One venue row holds both legs, because one firm reaches two transports.
