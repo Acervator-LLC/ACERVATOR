@@ -375,7 +375,7 @@ record is blinded.** With every published sector replaced by an empty string, 24
 markets move and not 3156. Those 24 are exactly the 16 forex and 8 commodities
 rows the ticker heuristic had guessed, which stop being guessed as soon as the
 venue answers anything. So the 3156 is a reading of Bitget's record and not of
-the instrument.
+the reading method.
 
 **Control: Gate.io's own reading is unchanged by the rename.** Driven after the
 change, with the home redirected and no credential sent.
@@ -702,9 +702,9 @@ A real path answered 200, a real path with a missing parameter answered its own
 error code, and an invented path answered 404, all in the same run. So each 200
 above is a reading and not a host that agrees with every request.
 
-### The instruments the readings were taken with
+### The archetypes the readings were taken with
 
-Every archetype was calibrated before its reading was trusted. Exit codes read
+Every archetype was calibrated before its verdict was trusted. Exit codes read
 directly:
 
 ```
