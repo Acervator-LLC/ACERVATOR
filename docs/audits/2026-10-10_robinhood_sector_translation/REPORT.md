@@ -392,10 +392,23 @@ when the program would least expect it.
 > agents), and are turned off by default for MCP accounts (external agents).
 
 **What this tree does not hold.** The program speaks no JSON remote-procedure
-call over HTTP, which is the framing this route takes. One mention of the
-protocol's name exists under the source tree and it is a docstring recording the
-absence, in `src/exchange/robinhood_connector.py, in pair_asset_class`. The
-transport underneath it does exist, in the same module's `_send`.
+call over HTTP, which is the framing this route takes. The protocol's name
+appears under the source tree in exactly one docstring, and that docstring
+records the absence, in `src/exchange/robinhood_connector.py, in
+pair_asset_class`. The transport underneath it does exist, in the same module's
+`_send`.
+
+```
+searched across src/, case-insensitive          matching lines
+jsonrpc, json-rpc, JSON-RPC                     0 each
+modelcontextprotocol, Model Context Protocol    0 each
+the protocol's short name                       2, both in one docstring
+a declared dependency for either                0
+
+control, same searches, same run
+aiohttp                                        16
+ccxt                                          317, and declared in pyproject
+```
 
 ---
 
