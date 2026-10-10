@@ -4335,7 +4335,7 @@ reading                               what it reported
 twenty rows, venue by sector          four Robinhood and four Alpaca sectors
                                       moved from no to yes; the crypto sectors
                                       and Coinbase read the same on both trees
-twenty-two members                    eleven absent and three mis-shaped on
+twenty-two members                    ten absent and three mis-shaped on
                                       BrokerBase; all twenty-two answered or
                                       named their refusal on BrokerExchange
 the approval guard                    unread refused the order, read reached
