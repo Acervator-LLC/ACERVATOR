@@ -241,7 +241,7 @@ searched                                              occurrences
 the specification, 14 paths                           0 candle paths
 candle, historical, ohlc, bar, granularity, span      0 each
 open_price, high_price, low_price, close_price        0 each
-the agent route's crypto tools                        8, none a candle tool
+the agent route's crypto tools                        9, none a candle tool
 
 control, same searches, same run
 the agent route's history tools                       3 found
@@ -333,6 +333,19 @@ whole sign-in shape.
     grant_types_supported              authorization_code, refresh_token
     code_challenge_methods_supported   S256
     token_endpoint_auth_methods_supported   none
+```
+
+The route publishes 71 tool-shaped names, grouped by the page's own headings.
+The counts decide four of the six rows below, so they are given whole.
+
+```
+equity    14    every one marked available to an external agent
+option    12
+crypto     9
+index       3    get_indexes, get_index_quotes, get_index_historicals
+charting    4    available to an external agent and to no built-in agent
+futures     0
+perpetual   0
 ```
 
 **The sign-in this needs is already built and already approved.** The challenge
@@ -635,7 +648,7 @@ A REST route is closed by a separate published sentence.
 
 | detour | what closed it |
 | --- | --- |
-| a futures order tool on the agent route | none of the published tools names futures. Control: the same extraction found 14 equity tools, 10 option tools and 8 crypto tools |
+| a futures order tool on the agent route | 0 of the 71 tool-shaped names on the page name futures or a perpetual. Control: the same extraction found 14 equity tools, 12 option tools and 9 crypto tools |
 | `place_advanced_order`, which names no asset class | the page's own order-type list has five entries, all order types and no asset class, and the three classes it names exclude futures. Recorded as not a futures route on any published reading |
 | a futures path on the documentation host | 404, with a control answering 200 on three real paths. The sitemap lists crypto only |
 | a futures article on the support host | 7 slugs, 404 each, with a control answering 200 on five real articles |
