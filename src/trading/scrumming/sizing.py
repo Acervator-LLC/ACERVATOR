@@ -45,6 +45,15 @@ next, reading ``WHOLE_UNITS`` while the market's own session takes a whole unit
 alone at the moment the order is sized, and ``session_for`` names that session
 off the market's own record with ``CITED_VENUE_SESSIONS`` answering where the
 record carries none.
+
+OVERTAKEN: "``venue_variant`` answers ``VARIANT_PERMITTED_SHAPE`` for such a
+market."
+``sector_variant`` is the one place that names the variant one market trades
+under: ``SECTOR_VARIANTS`` names it off the sector, and ``VARIANT_WHOLE_UNIT``
+answers ahead of the sector while the venue's smallest order costs more than the
+excess. ``venue_variant`` answers the venue's order-formatting mechanic beside
+it, one ``MECHANIC_MARKETS`` name per market, which ``market_permits_close`` and
+``market_replaces_market_order`` read on the order path.
 """
 
 from __future__ import annotations
@@ -626,50 +635,85 @@ def tradeable_answer(
 
 #: The bot as written, and the three variants the venue comparison names. Each
 #: variant is named by the venue shape it absorbs.
-VARIANT_NONE = "none"
-VARIANT_LIMIT_ONLY = "limit-only order"
-VARIANT_CASH_AMOUNT = "cash-amount order"
-VARIANT_WHOLE_UNIT = "whole-unit position"
+# OVERTAKEN, the comment above reading "Each variant is named by the venue shape
+# it absorbs": a variant is named by the SECTOR it serves, and the venue shape it
+# absorbs is a mechanic the variant reads. ``SECTOR_VARIANTS`` names the first
+# axis and ``MECHANIC_MARKETS`` the second.
+# OVERTAKEN, the four names below reading ``VARIANT_NONE``,
+# ``VARIANT_LIMIT_ONLY``, ``VARIANT_CASH_AMOUNT`` and
+# ``VARIANT_ROLLING_POSITION``: each named a venue order-formatting mechanic
+# rather than a sector, so each is a ``MECHANIC_`` name below and none is a
+# variant. ``VARIANT_CASH_AMOUNT`` is gone; ``size_shape_refusal`` names the
+# shape ``permitted_order_shape`` left instead.
 
-# OVERTAKEN, the comment above reading "the three variants the venue comparison
-# names": ``VARIANT_ROLLING_POSITION`` is a fourth, named the same way.
-VARIANT_ROLLING_POSITION = "rolling position"
+#: The variant each sector names, the first axis: a variant exists because a
+#: sector needs one. Every key is spelled as ``ata_spm.ASSET_CLASSES`` spells it.
+SECTOR_VARIANTS: dict[str, str] = {
+    CLASS_CRYPTO: "Crypto Scrumming",
+    CLASS_STOCKS: "Stock Scrumming",
+    CLASS_COMMODITIES: "Commodity Scrumming",
+    CLASS_FOREX: "Forex Scrumming",
+    CLASS_INDICES: "Index Scrumming",
+    CLASS_FUTURES_PERPS: "Futures Scrumming",
+}
+
+#: The variant a market whose smallest order costs more than the excess trades
+#: under, whatever its sector. The one variant name the operator approved.
+VARIANT_WHOLE_UNIT = "Whole Unit Scrumming"
+
+#: The variant a market read with no sector named trades under, which the Market
+#: Inspector's ticker rows and ``variant_trades_market`` ask for.
+VARIANT_SECTOR_UNNAMED = "Scrumming"
+
+#: What a market naming a sector no ``SECTOR_VARIANTS`` row holds carries, so a
+#: sector with no variant is refused rather than traded under another's.
+SECTOR_VARIANT_UNBUILT_FORMAT = "{sector} Scrumming"
+
+#: The second axis: the one order-formatting difference one venue's own protocol
+#: puts on a market. A mechanic is a property a sector variant reads while
+#: sizing, never a variant of its own.
+MECHANIC_NONE = "no order-formatting difference"
+MECHANIC_LIMIT_ONLY = "the venue declares no market order"
+MECHANIC_EXPIRY = "the venue expires this market on a date"
+MECHANIC_SMALLEST_ORDER_OVER_EXCESS = (
+    "the venue's smallest order costs more than the excess"
+)
 
 #: A market whose own permission set names which of ``SIZE_SHAPES`` each side
 #: may take, so one market names three sizes at three hours of one day.
-VARIANT_PERMITTED_SHAPE = "permitted-shape order"
+MECHANIC_PERMITTED_SHAPE = "the venue publishes the size shapes each side may take"
 
-#: The market shape each variant absorbs, one row per variant.
-VARIANT_MARKETS: dict[str, str] = {
-    VARIANT_NONE: "a market naming a unit count on a venue taking a market order",
-    VARIANT_LIMIT_ONLY: "a market on a venue declaring no market order",
-    VARIANT_CASH_AMOUNT: "a market sized by a cash amount in the quote currency",
-    VARIANT_WHOLE_UNIT: "a market whose smallest order costs more than the excess",
-    VARIANT_ROLLING_POSITION: "a market the venue expires on a date",
-    VARIANT_PERMITTED_SHAPE: (
+#: The market shape each mechanic absorbs, one row per mechanic.
+MECHANIC_MARKETS: dict[str, str] = {
+    MECHANIC_NONE: "a market naming a unit count on a venue taking a market order",
+    MECHANIC_LIMIT_ONLY: "a market on a venue declaring no market order",
+    MECHANIC_SMALLEST_ORDER_OVER_EXCESS: (
+        "a market whose smallest order costs more than the excess"
+    ),
+    MECHANIC_EXPIRY: "a market the venue expires on a date",
+    MECHANIC_PERMITTED_SHAPE: (
         "a market whose own permission set names the size shapes each side may "
         "take, narrowed by its session"
     ),
 }
 
-# OVERTAKEN, the VARIANT_MARKETS row above for ``VARIANT_CASH_AMOUNT`` reading
-# "a market whose size is a whole share": a whole share is ``VARIANT_WHOLE_UNIT``,
-# and a cash amount names the quote currency rather than a unit count.
-
-#: The variants the running program holds. ``VARIANT_CASH_AMOUNT`` has no caller.
-VARIANTS_BUILT = frozenset(
-    {
-        VARIANT_NONE,
-        VARIANT_LIMIT_ONLY,
-        VARIANT_WHOLE_UNIT,
-        VARIANT_ROLLING_POSITION,
-        VARIANT_PERMITTED_SHAPE,
-    }
-)
+#: The variants the running program holds: one per sector, the operator's
+#: approved whole-unit variant, and the one a market read with no sector asked
+#: trades under. A sector outside ``SECTOR_VARIANTS`` is absent here, so
+#: ``variant_holds_market`` refuses it.
+VARIANTS_BUILT = frozenset(SECTOR_VARIANTS.values()) | {
+    VARIANT_WHOLE_UNIT,
+    VARIANT_SECTOR_UNNAMED,
+}
 
 #: What a market no built variant trades carries, naming the variant it needs
 #: and the shape that variant absorbs.
 UNTRADEABLE_REASON_FORMAT = "{variant} is not built: {market}"
+
+#: The market shape a sector variant absorbs, read into
+#: ``UNTRADEABLE_REASON_FORMAT`` where ``VARIANTS_BUILT`` holds no variant for
+#: the sector the market names.
+SECTOR_MARKET_FORMAT = "a market the venue serves in its {sector} sector"
 
 #: Why a market ``VARIANT_WHOLE_UNIT`` selects is still not traded: the variant
 #: sizes whole units and this market's own step is a fraction.
@@ -687,34 +731,70 @@ WHOLE_UNIT_STEP_IS_A_FRACTION = (
 # is True; the three answers above follow it unchanged and read no expiry.
 # ``VARIANT_PERMITTED_SHAPE`` follows the expiry, while ``permits_size_shapes``
 # reads a published permission set; a market carrying none reads no further.
+# OVERTAKEN, every sentence above: ``venue_variant`` answers a ``MECHANIC_``
+# name and not a variant, under the same five tests in the same order, so no
+# market's answer moves. ``sector_variant`` answers the variant.
+# ``MECHANIC_EXPIRY`` is answered first, then ``MECHANIC_PERMITTED_SHAPE``, then
+# ``MECHANIC_SMALLEST_ORDER_OVER_EXCESS``, then ``MECHANIC_LIMIT_ONLY``, and
+# ``MECHANIC_NONE`` answers every other record, an unread one included.
 def venue_variant(
     rules: Any,
     price: Optional[float] = None,
     excess_usd: float = REFERENCE_SCRUM_EXCESS_USD,
 ) -> str:
-    """The variant one market's own rules select.
+    """The order-formatting mechanic one market's own rules carry, the second
+    axis a ``SECTOR_VARIANTS`` variant reads while sizing.
 
-    ``VARIANT_WHOLE_UNIT`` while ``tradeable_answer`` reads ``TRADEABLE_NO``,
-    ``VARIANT_LIMIT_ONLY`` while the record declares ``ORDER_TYPES_LIMIT_ONLY``,
-    and ``VARIANT_NONE`` for every other record, an unread one included.
+    One ``MECHANIC_MARKETS`` name per market, the first of the five tests that
+    answers.
     """
     if rules is None or not getattr(rules, "read", False):
-        return VARIANT_NONE
+        return MECHANIC_NONE
     if getattr(rules, "expires", False):
-        return VARIANT_ROLLING_POSITION
+        return MECHANIC_EXPIRY
     if permits_size_shapes(rules):
-        return VARIANT_PERMITTED_SHAPE
+        return MECHANIC_PERMITTED_SHAPE
     if tradeable_answer(rules, price, excess_usd) == TRADEABLE_NO:
-        return VARIANT_WHOLE_UNIT
+        return MECHANIC_SMALLEST_ORDER_OVER_EXCESS
     if getattr(rules, "order_types", None) == ORDER_TYPES_LIMIT_ONLY:
-        return VARIANT_LIMIT_ONLY
-    return VARIANT_NONE
+        return MECHANIC_LIMIT_ONLY
+    return MECHANIC_NONE
 
 
-def variant_permits_close(variant: Any) -> bool:
-    """True only for ``VARIANT_ROLLING_POSITION``, whose sell carries the expiry
-    notice ``BotContainer.guarded_place_order`` emits."""
-    return str(variant) == VARIANT_ROLLING_POSITION
+def sector_variant(
+    asset_class: str = "",
+    rules: Any = None,
+    price: Optional[float] = None,
+    excess_usd: float = REFERENCE_SCRUM_EXCESS_USD,
+) -> str:
+    """The variant one market trades under: ``SECTOR_VARIANTS`` names it, and
+    ``VARIANT_WHOLE_UNIT`` answers ahead of the sector while ``venue_variant``
+    reads ``MECHANIC_SMALLEST_ORDER_OVER_EXCESS``.
+
+    ``VARIANT_SECTOR_UNNAMED`` where no sector is asked, and
+    ``SECTOR_VARIANT_UNBUILT_FORMAT`` for a sector ``SECTOR_VARIANTS`` has no
+    row for, which ``VARIANTS_BUILT`` lacks.
+    """
+    if venue_variant(rules, price, excess_usd) == MECHANIC_SMALLEST_ORDER_OVER_EXCESS:
+        return VARIANT_WHOLE_UNIT
+    named = str(asset_class or "")
+    if not named:
+        return VARIANT_SECTOR_UNNAMED
+    held = SECTOR_VARIANTS.get(named)
+    if held is not None:
+        return held
+    return SECTOR_VARIANT_UNBUILT_FORMAT.format(sector=named)
+
+
+def market_permits_close(
+    rules: Any,
+    price: Optional[float] = None,
+    excess_usd: float = REFERENCE_SCRUM_EXCESS_USD,
+) -> bool:
+    """True only while ``venue_variant`` reads ``MECHANIC_EXPIRY`` for one
+    market, whose sell carries the expiry notice
+    ``BotContainer.guarded_place_order`` emits."""
+    return venue_variant(rules, price, excess_usd) == MECHANIC_EXPIRY
 
 
 def variant_built(variant: Any) -> bool:
@@ -722,16 +802,20 @@ def variant_built(variant: Any) -> bool:
     return str(variant) in VARIANTS_BUILT
 
 
-def variant_market(variant: Any) -> str:
-    """The market shape ``VARIANT_MARKETS`` names for ``variant``, empty for a
+def mechanic_market(mechanic: Any) -> str:
+    """The market shape ``MECHANIC_MARKETS`` names for ``mechanic``, empty for a
     name no row holds."""
-    return VARIANT_MARKETS.get(str(variant), "")
+    return MECHANIC_MARKETS.get(str(mechanic), "")
 
 
-def variant_replaces_market_order(variant: Any) -> bool:
-    """True only for ``VARIANT_LIMIT_ONLY``, which names a limit order where the
-    bot names a market order."""
-    return str(variant) == VARIANT_LIMIT_ONLY
+def market_replaces_market_order(
+    rules: Any,
+    price: Optional[float] = None,
+    excess_usd: float = REFERENCE_SCRUM_EXCESS_USD,
+) -> bool:
+    """True only while ``venue_variant`` reads ``MECHANIC_LIMIT_ONLY`` for one
+    market, which names a limit order where the bot names a market order."""
+    return venue_variant(rules, price, excess_usd) == MECHANIC_LIMIT_ONLY
 
 
 def variant_trades_market(
@@ -758,7 +842,7 @@ def variant_holds_market(
     ``market_unit_rule`` to read ``WHOLE_UNITS`` as well, so a market held in
     fractions is refused although the variant is built.
     """
-    variant = venue_variant(rules, price, excess_usd)
+    variant = sector_variant(asset_class, rules, price, excess_usd)
     if not variant_built(variant):
         return False
     if variant != VARIANT_WHOLE_UNIT:
@@ -774,13 +858,12 @@ def variant_refuses_sale(
     excess_usd: float = REFERENCE_SCRUM_EXCESS_USD,
 ) -> bool:
     """True while a sale out of one market refuses as a buy into it refuses:
-    ``variant_holds_market`` denies the market and ``variant_permits_close``
-    denies the variant, the pair ``BotContainer.guarded_place_order`` reads for
+    ``variant_holds_market`` denies the market and ``market_permits_close``
+    denies the mechanic, the pair ``BotContainer.guarded_place_order`` reads for
     a sell.
     """
-    variant = venue_variant(rules, price, excess_usd)
     held = variant_holds_market(rules, asset_class, venue, price, excess_usd)
-    return not held and not variant_permits_close(variant)
+    return not held and not market_permits_close(rules, price, excess_usd)
 
 
 def untradeable_reason(
@@ -797,13 +880,14 @@ def untradeable_reason(
     ``WHOLE_UNIT_STEP_IS_A_FRACTION`` names a built ``VARIANT_WHOLE_UNIT`` whose
     market steps in fractions.
     """
-    variant = venue_variant(rules, price, excess_usd)
+    variant = sector_variant(asset_class, rules, price, excess_usd)
     if variant_holds_market(rules, asset_class, venue, price, excess_usd):
         return ""
     if variant_built(variant):
         return WHOLE_UNIT_STEP_IS_A_FRACTION
     return UNTRADEABLE_REASON_FORMAT.format(
-        variant=variant, market=variant_market(variant)
+        variant=variant,
+        market=SECTOR_MARKET_FORMAT.format(sector=str(asset_class or "")),
     )
 
 
@@ -823,9 +907,13 @@ SESSION_REFUSES_SHAPES_FORMAT = (
 
 #: Why a product permitting a cash amount alone is not sized: the bot names a
 #: unit count and ``VARIANT_CASH_AMOUNT`` has no caller.
+# OVERTAKEN, the comment above: ``VARIANT_CASH_AMOUNT`` is gone, because a cash
+# amount is a venue order-formatting difference and not a sector, so no variant
+# is named here and every ``VARIANTS_BUILT`` name sizes a unit count.
 CASH_SHAPE_ONLY_FORMAT = (
-    "the venue permits a {shape} alone on a {side} of this product, and "
-    "{variant} is not built: {market}"
+    "the venue permits a {shape} alone on a {side} of this product, and every "
+    "built variant sizes a unit count rather than a cash amount in the quote "
+    "currency"
 )
 
 
@@ -850,12 +938,7 @@ def size_shape_refusal(recorded: Any, side: Any, moment_s: Any = None) -> str:
         )
     if shape_unit_rule(shape) is not None:
         return ""
-    return CASH_SHAPE_ONLY_FORMAT.format(
-        shape=shape,
-        side=side,
-        variant=VARIANT_CASH_AMOUNT,
-        market=variant_market(VARIANT_CASH_AMOUNT),
-    )
+    return CASH_SHAPE_ONLY_FORMAT.format(shape=shape, side=side)
 
 
 def sized_units(units: float, rule: str) -> float:
@@ -1516,13 +1599,17 @@ __all__ = [
     "TRADEABLE_YES",
     "UNIT_RULES",
     "UNTRADEABLE_REASON_FORMAT",
+    "MECHANIC_EXPIRY",
+    "MECHANIC_LIMIT_ONLY",
+    "MECHANIC_MARKETS",
+    "MECHANIC_NONE",
+    "MECHANIC_PERMITTED_SHAPE",
+    "MECHANIC_SMALLEST_ORDER_OVER_EXCESS",
+    "SECTOR_MARKET_FORMAT",
+    "SECTOR_VARIANTS",
+    "SECTOR_VARIANT_UNBUILT_FORMAT",
     "VARIANTS_BUILT",
-    "VARIANT_CASH_AMOUNT",
-    "VARIANT_LIMIT_ONLY",
-    "VARIANT_MARKETS",
-    "VARIANT_NONE",
-    "VARIANT_PERMITTED_SHAPE",
-    "VARIANT_ROLLING_POSITION",
+    "VARIANT_SECTOR_UNNAMED",
     "VARIANT_WHOLE_UNIT",
     "WHOLE_UNITS",
     "WHOLE_UNIT_GRAIN",
@@ -1544,7 +1631,10 @@ __all__ = [
     "grained_units",
     "growth_cycle_side",
     "market_buy_names_cash",
+    "market_permits_close",
+    "market_replaces_market_order",
     "market_unit_rule",
+    "mechanic_market",
     "opening_position_minimum",
     "opens_below_position_minimum",
     "opposing_trade_distance_pct",
@@ -1564,6 +1654,7 @@ __all__ = [
     "recorded_unit_rule",
     "sale_proceeds_usd",
     "scrum_units",
+    "sector_variant",
     "scrumming_interval_usd",
     "session_for",
     "session_size_shapes",
@@ -1586,10 +1677,7 @@ __all__ = [
     "untradeable_reason",
     "variant_built",
     "variant_holds_market",
-    "variant_market",
-    "variant_permits_close",
     "variant_refuses_sale",
-    "variant_replaces_market_order",
     "variant_trades_market",
     "venue_order_types",
     "venue_session",
