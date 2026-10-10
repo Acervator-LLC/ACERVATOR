@@ -1805,6 +1805,29 @@ BROWSER_FORM_PROMPT = (
 #: What the feedback row carries once a browser sign-in stored its credential.
 BROWSER_CONNECTED_FORMAT = "{name} connected. {approval}"
 
+#: What the feedback row carries while the browser sign-in is in flight, with
+#: the wait ``LoopbackReceiver`` serves one callback for.
+BROWSER_WAITING_FORMAT = (
+    "{name}: approve in the browser that just opened. This page waits up to "
+    "{seconds:.0f} seconds for the venue to answer."
+)
+
+#: Why one browser venue's stored client id could not be read back.
+CLIENT_ID_UNREADABLE_FORMAT = "{name}: the stored client id would not decrypt: {said}"
+
+
+def browser_waiting_words(venue_id: Any) -> str:
+    """What the feedback row says while one browser sign-in waits.
+
+    ``ata_spm_signin.CALLBACK_TIMEOUT_SECONDS`` is the wait, so the page names
+    no second figure.
+    """
+    from src.trading.ata_spm_signin import CALLBACK_TIMEOUT_SECONDS
+
+    return BROWSER_WAITING_FORMAT.format(
+        name=str(venue_id or "").capitalize(), seconds=CALLBACK_TIMEOUT_SECONDS
+    )
+
 
 def approval_level(state: Any) -> str:
     """The feedback level one trade-approval state draws.
@@ -1843,22 +1866,31 @@ def takes_browser_authorization(venue_id: Any) -> bool:
     return credential_kind(venue_id) == CREDENTIAL_BROWSER_AUTHORIZATION
 
 
-def credential_form(venue_id: Any) -> dict:
+def credential_form(venue_id: Any, wing: Any = "") -> dict:
     """Every row and button word the Add form draws for one venue's own
-    credential kind.
+    credential kind, on one wing.
 
-    ``key_rows`` false hides the API Key, API Secret and passphrase rows, and an
-    empty ``venue_id`` keeps the key-and-secret shape the form opens with.
+    ``key_rows`` false hides the API Key, API Secret and passphrase rows, an
+    empty ``venue_id`` keeps the key-and-secret shape the form opens with, and
+    ``STOCK_WING`` keeps ``STOCK_DISABLED_TIP`` on a venue taking a typed key.
     """
     kind = credential_kind(venue_id)
     browser = kind == CREDENTIAL_BROWSER_AUTHORIZATION
     name = str(venue_id or "").capitalize()
+    # CLASS_WINGS maps the asset class word "stocks" onto this module's own
+    # wing word "stock", so either name resolves one wing.
+    held = CLASS_WINGS.get(str(wing), str(wing))
+    tip = ""
+    if browser:
+        tip = NO_KEY_TO_TEST
+    elif held == STOCK_WING:
+        tip = STOCK_DISABLED_TIP
     return {
         "kind": kind,
         "key_rows": not browser,
         "add_text": BROWSER_ADD_BUTTON_TEXT if browser else ADD_BUTTON_TEXT,
         "test_enabled": not browser,
-        "test_tip": NO_KEY_TO_TEST if browser else "",
+        "test_tip": tip,
         "prompt": (BROWSER_FORM_PROMPT if browser else KEY_FORM_PROMPT).format(
             name=name
         ),
