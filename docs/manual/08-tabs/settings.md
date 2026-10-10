@@ -312,6 +312,12 @@ _cls = surface_class(SETTINGS_DIALOG)
 dlg = _cls(self._settings, self._status_log, self, wing=_wing)
 ```
 
+`_wing` is the sector the header strip's class group has active.
+`src/gui/main_tabs/header_strip.py`, in `active_sector` answers it, and raises
+`SectorUnknown` for a window holding none. `_open_settings` and `_add_exchange`
+catch that, write the fault to the status log and open nothing, so neither
+screen can open on a sector the operator is not on.
+
 The React side is a subclass, not a rewrite. It replaces only the method that
 builds the widgets, so the loading and the saving below are the same code on
 both sides. Each named control gets a small holder that answers the same calls
