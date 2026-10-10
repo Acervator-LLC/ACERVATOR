@@ -3948,3 +3948,218 @@ Two limits, stated plainly. No reading used a real token, so nothing here proves
 the venue accepts this program; that is the first operator's own connect. And a
 bot on the four protocol sectors was not started, because nothing starts one
 until a bot container takes a broker.
+## 2026-10-10 - the sector names the variant, and the venue's order formatting is a property inside it
+
+A variant is a bot the operator adds. The sector he picks names it. What one
+venue does to an order is a second thing the variant reads while it sizes, not a
+variant of its own.
+
+Six names used to sit in `src/trading/scrumming/sizing.py`. Five of them named
+what a venue does to an order: `none`, `limit-only order`, `cash-amount order`,
+`rolling position` and `permitted-shape order`. None of them named a sector, so
+none of them told the operator which bot he was looking at.
+
+### What each of the six became, and why
+
+| old name | markets that chose it | what it became | the reading behind it |
+| --- | --- | --- | --- |
+| `whole-unit position` | 511 at $250.00 | **Whole Unit Scrumming** | the one name the operator approved, carried as he wrote it |
+| `rolling position` | 100 | a property, `MECHANIC_EXPIRY` | three sectors chose it, so it belongs to no sector |
+| `permitted-shape order` | 1000 | a property, `MECHANIC_PERMITTED_SHAPE` | one sector chose it, and 33 markets of that same sector did not |
+| `limit-only order` | 0 | a property, `MECHANIC_LIMIT_ONLY` | it names a venue's missing market order, which is order formatting |
+| `none` | 1048 | a property, `MECHANIC_NONE` | every sector chose it; it is the absence of a difference, not a bot |
+| `cash-amount order` | 0 | removed | nothing selected it and nothing built it |
+
+The counts are every market in the recorded copy of one venue's own rules, read
+through `src/exchange/market_rules_store.py, in recorded_rules`. The whole-unit
+count is read at a reference price of $250.00, where a market's smallest order
+can cost more than the excess; read with no price, no market chooses it.
+
+### The two axes, in the order he states them
+
+```mermaid
+flowchart TD
+    S["Sector<br/>crypto, stocks, commodities,<br/>forex, indices, futures"] --> V["SECTOR_VARIANTS<br/>names the variant"]
+    V --> W{"does the venue's smallest<br/>order cost more than<br/>the excess?"}
+    W -- yes --> WU["Whole Unit Scrumming"]
+    W -- no --> SV["Crypto Scrumming,<br/>Stock Scrumming,<br/>Commodity Scrumming,<br/>Forex Scrumming,<br/>Index Scrumming,<br/>Futures Scrumming"]
+    M["Venue order formatting<br/>MECHANIC_MARKETS"] --> MR["the variant reads it<br/>while it sizes"]
+    WU --> MR
+    SV --> MR
+```
+
+`src/trading/scrumming/sizing.py, in sector_variant` answers the first axis. It
+reads the sector and answers the variant. `Whole Unit Scrumming` answers ahead
+of the sector, because a market whose smallest order costs more than the excess
+is sized that way whatever sector it sits in.
+
+`src/trading/scrumming/sizing.py, in venue_variant` answers the second axis. It
+reads one market's own recorded rules and answers one `MECHANIC_MARKETS` name,
+the first of five tests that answers. Its five tests, and their order, are the
+five it always had, so no market's answer moved.
+
+Two readers sit on the mechanic and nothing else:
+`src/trading/scrumming/sizing.py, in market_permits_close` lets a sell out of an
+expiring market through where a buy into it is refused, and
+`src/trading/scrumming/sizing.py, in market_replaces_market_order` turns a
+market order into a limit order on a venue that declares no market order. Both
+read the market, not the variant name.
+
+### What the program is allowed to trade
+
+`VARIANTS_BUILT` is the set of variants the program holds. A market whose
+variant is outside it is read, charted, and refused an order.
+
+```
+before   none, limit-only order, permitted-shape order,
+         rolling position, whole-unit position
+
+after    Crypto Scrumming, Stock Scrumming, Commodity Scrumming,
+         Forex Scrumming, Index Scrumming, Futures Scrumming,
+         Whole Unit Scrumming, Scrumming
+```
+
+`Scrumming` is the variant a market read with no sector named trades under. The
+Market Inspector's ticker rows ask that way, through
+`src/trading/scrumming/sizing.py, in variant_trades_market`, so the name keeps
+those rows answering as they did.
+
+The set now refuses one thing it did not refuse before. A bot whose configured
+sector is not one of the six names a variant `VARIANTS_BUILT` lacks, through
+`src/trading/scrumming/sizing.py, in sector_variant`, and
+`src/trading/bot_container.py, in guarded_place_order` refuses its order. Before
+this change such a bot traded under whichever order-formatting name its market
+happened to carry. No market in the recording has such a sector, so no market
+moved; the old answer was wrong and this is the correction.
+
+### Every market's order came out the same
+
+Each of the 2,148 recorded markets was sized twice, once on the current code and
+once on the code before it, at a reference price of $250.00 with a reference
+scrum of $60.00 and a reference fold of $45.00.
+
+| reading | markets that moved |
+| --- | --- |
+| the unit rule that governs the order | 0 |
+| the scrum's amount, its rule source and its refusal | 0 |
+| the fold's amount, its rule source and its refusal | 0 |
+| whether the program holds the market | 0 |
+| whether a sale out of the market is refused | 0 |
+| whether the expiry close is permitted | 0 |
+| whether a market order becomes a limit order | 0 |
+| the refusal text the operator reads | 0 |
+
+The comparison was shown to work before that zero was trusted. One sector was
+pointed at a variant name `VARIANTS_BUILT` does not hold, in memory only, and
+the same comparison then reported 2,058 moved readings across all 1,033 markets
+of that sector. The planted fault was removed and the clean run reproduced
+byte for byte.
+
+One figure in that control is worth reading. Of the 1,033 stock markets,
+1,025 changed their answer on whether a sale is refused, and 8 did not. Those 8
+are the expiring ones, and `market_permits_close` let their sale through on the
+market's own expiry without consulting the variant at all. That is the expiry
+close proving it no longer depends on a variant name.
+
+### What the operator now reads on an order
+
+The two notices `src/trading/bot_container.py, in guarded_place_order` emits
+name both axes. The expiry notice and the limit-substitution notice each carry
+the variant first and the venue's order formatting second, in that order.
+
+### Sentences this section overtakes
+
+OVERTAKEN, quoted whole: "The true sentence is: six variant names exist,
+counting the bot as written, and the program holds five of them. The limit-only
+variant is built and Gemini is its one venue. The whole-unit variant is built.
+The rolling position is built, and `_tick_expiry_close` starts its close. The
+cash-amount variant is named and has no caller."
+
+True today: eight variant names exist, one per sector plus Whole Unit Scrumming
+plus the unnamed-sector name, and the program holds all eight. The limit-only,
+rolling-position and cash-amount names are not variants. `_tick_expiry_close`
+starts its close on the market's own expiry, through `market_permits_close`.
+
+OVERTAKEN, quoted whole: "| whole step, no date | 225 | `whole-unit position` |
+yes | 3.0 |"
+
+True today: that row's variant is `Whole Unit Scrumming`.
+
+OVERTAKEN, quoted whole: "| dated contract | 100 | `rolling position` | no |
+3.0 |"
+
+True today: that row's variant is the one its sector names, and its expiry is
+`MECHANIC_EXPIRY` beside it.
+
+OVERTAKEN, quoted whole: "PRE-FLIGHT REJECTED: BUY <market> 1.5700000000: the
+venue permits a cash amount alone on a buy of this product, and cash-amount
+order is not built: a market sized by a cash amount in the quote currency. The
+market is still read and still charted. API not called."
+
+True today: `CASH_SHAPE_ONLY_FORMAT` names no variant. It reads "the venue
+permits a cash amount alone on a buy of this product, and every built variant
+sizes a unit count rather than a cash amount in the quote currency".
+
+OVERTAKEN, quoted whole: "So no Robinhood sector needs a new variant. A
+fractional market selects the permitted-shape variant, a whole-share market
+selects the whole-unit variant, and an expiring market selects the
+rolling-position variant. All three sit inside `VARIANTS_BUILT`."
+
+True today: every Robinhood sector is one of the six `SECTOR_VARIANTS` names, so
+no Robinhood sector needs a new variant. A fractional market reads
+`MECHANIC_PERMITTED_SHAPE`, a whole-share market selects `Whole Unit Scrumming`,
+and an expiring market reads `MECHANIC_EXPIRY`.
+
+OVERTAKEN, quoted whole: "No new sizing variant is needed. A fund share sizes
+like a share, so a fractional market selects the permitted-shape variant and a
+whole-share market selects the whole-unit variant, both already inside
+`VARIANTS_BUILT`."
+
+True today: a fund share sizes like a share, so it trades under
+`Stock Scrumming`, and a whole-share market trades under `Whole Unit Scrumming`.
+`MECHANIC_PERMITTED_SHAPE` is the property the first reads.
+
+### What no reading here can prove
+
+No venue was contacted and no order was placed, priced, previewed or cancelled.
+Every reading ran with the home directory redirected to a scratch tree, and the
+recorded rules were read through the `path` argument
+`src/exchange/market_rules_store.py, in load_document` takes.
+
+Two readings here would read the same whether this works or not. The count of
+markets choosing `limit-only order` was zero before and the count reading
+`MECHANIC_LIMIT_ONLY` is zero after, because no recorded market declares a
+limit-only venue; that zero says nothing about the substitution working. The
+same holds for the removed `cash-amount order`, which nothing selected either
+way. Both are proved only by the planted-fault control above, which moved the
+readings that do fire.
+
+### Two refusal messages carried the retired name
+
+The refusal a market reads most often is
+`src/trading/scrumming/sizing.py, in untradeable_reason` answering
+`WHOLE_UNIT_STEP_IS_A_FRACTION`, and it fires on 286 of the 2,148 recorded
+markets at the reference price. It named the whole-unit position variant, which
+is the name the operator could not read. So did
+`BELOW_POSITION_MINIMUM_FORMAT`, which
+`src/trading/scrumming/sizing.py, in position_minimum_refusal` puts in front of
+an opening buy.
+
+Both now name `Whole Unit Scrumming`. These are the only two readings whose
+operator text moved in this unit, and no order's amount moved with them.
+
+OVERTAKEN, quoted whole: "the whole-unit position variant sizes whole units and
+this market steps in fractions, so no built variant sizes an order costing this
+much"
+
+True today: `WHOLE_UNIT_STEP_IS_A_FRACTION` reads "Whole Unit Scrumming sizes
+whole units and this market steps in fractions, so no built variant sizes an
+order costing this much".
+
+OVERTAKEN, quoted whole: "a whole-unit position opens at {minimum} units"
+
+True today: `BELOW_POSITION_MINIMUM_FORMAT` reads "Whole Unit Scrumming opens at
+{minimum} units".
+
+Every other passage on this page that quotes either message keeps the words it
+was written with, and those words name the variant as it was called then.
