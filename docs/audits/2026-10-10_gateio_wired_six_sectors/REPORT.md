@@ -122,9 +122,18 @@ before   'gateio' in US_ACCOUNT_RESTRICTED_EXCHANGES    False
          'gateio' in US_RESTRICTED_EXCHANGES            False
 after    'gateio' in US_ACCOUNT_RESTRICTED_EXCHANGES    True
          'gateio' in US_RESTRICTED_EXCHANGES            True
-         the words the connect path now shows           US account restricted
+         the words the connect path now records         US account restricted
+         the record it writes                           US_RESTRICTION_WARNING
 control  'coinbase' in US_RESTRICTED_EXCHANGES          False, before and after
 ```
+
+**The warning reaches the log and not the venue picker.**
+`src/exchange/ccxt_connector.py, in exchange_label` composes the note, and its
+only reader is `src/exchange/ccxt_connector.py, in list_supported_exchanges`,
+which no screen calls. The first-run wizard's own `exchange_label` in
+`src/gui/main_tabs/init_wizard_surface.py` is a different function and notes a
+passphrase alone. Putting the refusal beside the venue's own button is its own
+row, and this page does not reshape a screen.
 
 **The address is not the refusal.** The venue's public endpoints answer a US
 address, so this is an account matter and not an IP block, which is why the
