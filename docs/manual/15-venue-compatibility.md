@@ -3357,6 +3357,18 @@ The press binds the form, and `src/gui/settings_dialog.py`, in
             self._set_feedback(sds.venue_form_bound(venue), "info")
 ```
 
+The page says it is waiting while step five is open, and it names the wait
+rather than leaving the operator guessing. `browser_waiting_words` in the
+settings surface reads the receiver's own timeout, so the figure has one source.
+
+```
+Robinhoodmcp: approve in the browser that just opened. This page waits up to
+180 seconds for the venue to answer.
+```
+
+A stored client id that will not decrypt stops the press before the browser
+opens, and the feedback row names that instead of the sign-in.
+
 ### The credentials page asks for what the venue takes
 
 The Add form has two shapes and the pressed venue chooses one.

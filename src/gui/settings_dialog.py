@@ -303,11 +303,7 @@ if _HAS_QT:
             add_form.addRow(self._api_feedback)
 
             if self._wing == "stocks":
-                _disabled_tip = (
-                    "Stock broker connector integration is queued; "
-                    "no live brokers ship yet. Use the Crypto Wing "
-                    "for active trading."
-                )
+                _disabled_tip = sds.STOCK_DISABLED_TIP
                 # setEnabled and setToolTip refuse only a deleted C++ object,
                 # and _create_exchange_tab builds every widget named here.
                 for _w in (
@@ -513,7 +509,7 @@ if _HAS_QT:
             rows and keeps its own Add press enabled on the stock wing, and every
             key-and-secret venue keeps all three rows and its own button words.
             """
-            form = sds.credential_form(eid)
+            form = sds.credential_form(eid, self._wing)
             typed = bool(form["key_rows"])
             for row, label in (
                 (self._new_api_key, self._api_key_label),
@@ -709,8 +705,17 @@ if _HAS_QT:
             stored = self._sm.get_exchange(eid) or {}
             client_id = ""
             if stored.get("api_key_enc"):
-                client_id = decrypt(stored["api_key_enc"], master)
-            self._set_feedback(sds.venue_form_bound(eid), "info")
+                try:
+                    client_id = decrypt(stored["api_key_enc"], master)
+                except ValueError as exc:
+                    self._set_feedback(
+                        sds.CLIENT_ID_UNREADABLE_FORMAT.format(
+                            name=eid.capitalize(), said=exc
+                        ),
+                        "error",
+                    )
+                    return
+            self._set_feedback(sds.browser_waiting_words(eid), "info")
             safe_process_events("legacy processEvents site")
             try:
                 answered = sds.connect_browser_venue(
