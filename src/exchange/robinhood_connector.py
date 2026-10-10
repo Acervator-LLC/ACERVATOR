@@ -1,9 +1,9 @@
 """Hand-written :class:`ExchangeInterface` for Robinhood's crypto markets.
 
 ``order_body`` builds the venue's own order shape and ``signed_headers`` signs
-it with an Ed25519 key. ``get_markets`` reads the published Get Crypto Trading
-Pairs path, follows every page of it and hands the records to ``record_pairs``,
-and ``pair_rules`` turns one record into the ``MarketRules``
+it with an Ed25519 key. Robinhood's published OpenAPI document names 14 paths
+on two API versions, and every read here but ``get_ohlcv`` reads one of them;
+``pair_rules`` turns one trading-pair record into the ``MarketRules``
 ``BotContainer.guarded_place_order`` sizes against.
 ``crypto_connector_class`` answers this class for ``VENUE_ID``, and ccxt 4.5.85
 carries no robinhood entry for ``CCXTConnector`` to reach.
@@ -68,6 +68,51 @@ TRADING_PAIRS_PATH = "/api/v1/crypto/trading/trading_pairs/"
 #: ``PAIR_API_TRADABLE_KEY``.
 TRADING_PAIRS_PATH_FEE_TIERS = "/api/v2/crypto/trading/trading_pairs/"
 
+#: The best-price paths, published under Get Best Price on both versions. The
+#: first answers a mid price with its two spreads and the second answers a bid
+#: and an ask.
+BEST_PRICE_PATH = "/api/v1/crypto/marketdata/best_bid_ask/"
+BEST_PRICE_PATH_FEE_TIERS = "/api/v2/crypto/marketdata/best_bid_ask/"
+
+#: The holdings paths, published under Get Crypto Holdings and Get Holdings.
+HOLDINGS_PATH = "/api/v1/crypto/trading/holdings/"
+HOLDINGS_PATH_FEE_TIERS = "/api/v2/crypto/trading/holdings/"
+
+#: The cancel paths, which take the order id in the path and answer a string.
+CANCEL_PATH_FORMAT = "/api/v1/crypto/trading/orders/{order_id}/cancel/"
+CANCEL_PATH_FEE_TIERS_FORMAT = "/api/v2/crypto/trading/orders/{order_id}/cancel/"
+
+#: The query parameters the read paths publish.
+SYMBOL_QUERY_KEY = "symbol"
+ASSET_CODE_QUERY_KEY = "asset_code"
+ORDER_ID_QUERY_KEY = "id"
+ORDER_STATE_QUERY_KEY = "state"
+
+#: The order state the order list filters an open order under.
+ORDER_STATE_OPEN = "open"
+
+#: The keys one published holdings record carries.
+HOLDING_ASSET_CODE_KEY = "asset_code"
+HOLDING_TOTAL_KEY = "total_quantity"
+HOLDING_AVAILABLE_KEY = "quantity_available_for_trading"
+
+#: The keys the first version's best-price record carries. It publishes a mid
+#: price and the two spread-inclusive prices, and no plain bid or ask.
+PRICE_SYMBOL_KEY = "symbol"
+PRICE_MID_KEY = "price"
+PRICE_BID_INCLUSIVE_KEY = "bid_inclusive_of_sell_spread"
+PRICE_ASK_INCLUSIVE_KEY = "ask_inclusive_of_buy_spread"
+
+#: The keys the fee-tier version's best-price record carries.
+PRICE_BID_KEY = "bid"
+PRICE_ASK_KEY = "ask"
+
+#: The quantity one level of a book built from a best-price record carries.
+#: Robinhood defines a QuoteBook schema and publishes no path that answers one,
+#: so no depth is published and a level carries no size.
+BOOK_LEVEL_QUANTITY = 0.0
+
+
 #: The keys one page of a paginated Robinhood list response carries.
 PAGE_RESULTS_KEY = "results"
 PAGE_NEXT_KEY = "next"
@@ -98,6 +143,30 @@ ORDER_CONFIG_KEYS: dict[str, str] = {
 
 #: The order types whose configuration carries a time in force.
 TIMED_ORDER_TYPES = (ORDER_TYPE_LIMIT, ORDER_TYPE_STOP_LOSS, ORDER_TYPE_STOP_LIMIT)
+
+#: Every order-configuration field the ``AddOrder`` request schema names, which
+#: is the body ``ORDERS_PATH`` takes. Its limit configuration names no time in
+#: force.
+ADD_ORDER_CONFIG_FIELDS: dict[str, frozenset] = {
+    ORDER_TYPE_MARKET: frozenset({"asset_quantity"}),
+    ORDER_TYPE_LIMIT: frozenset({"quote_amount", "asset_quantity", "limit_price"}),
+    ORDER_TYPE_STOP_LOSS: frozenset(
+        {"quote_amount", "asset_quantity", "stop_price", "time_in_force"}
+    ),
+    ORDER_TYPE_STOP_LIMIT: frozenset(
+        {"quote_amount", "asset_quantity", "limit_price", "stop_price", "time_in_force"}
+    ),
+}
+
+#: Every order-configuration field the ``AddOrderV2`` request schema names,
+#: which is the body ``ORDERS_PATH_FEE_TIERS`` takes. Its limit configuration
+#: names a time in force where ``ADD_ORDER_CONFIG_FIELDS`` does not.
+ADD_ORDER_V2_CONFIG_FIELDS: dict[str, frozenset] = {
+    **ADD_ORDER_CONFIG_FIELDS,
+    ORDER_TYPE_LIMIT: frozenset(
+        {"quote_amount", "asset_quantity", "limit_price", "time_in_force"}
+    ),
+}
 
 #: The size field naming a count of the base currency. Robinhood permits
 #: ``quote_amount`` instead, which no built variant selects.
@@ -173,7 +242,8 @@ RATE_LIMIT_WINDOW_S = 60.0
 #: intent names one UUID.
 CLIENT_ORDER_NAMESPACE = uuid.UUID("6ba7b811-9dad-11d1-80b4-00c04fd430c8")
 
-#: Why a read refuses: Robinhood names the endpoint and publishes no path.
+#: Why a read refuses where Robinhood names an endpoint and publishes no path
+#: for it. ``NO_CANDLE_PATH_FORMAT`` is the one case still reached.
 PATH_UNPUBLISHED_FORMAT = (
     "Robinhood names a {endpoint} endpoint for crypto and publishes no path for "
     "it, so {asked} is not fetched and nothing is sent"
@@ -276,6 +346,32 @@ MISSING_PAIR_KEY_FORMAT = (
 UNPARSED_PAIR_NUMBER_FORMAT = (
     "{path} record {index} for {symbol} reads {key} {held!r}, which is not a "
     "positive decimal an order can be sized against"
+)
+
+#: Why a read refuses on a reply naming no record for the symbol asked for.
+NO_RECORD_FOR_SYMBOL_FORMAT = (
+    "{path} answered {held} record(s) and none names {symbol}, so no {asked} "
+    "is read for it"
+)
+
+#: Why a read refuses on a record missing a key its published schema names.
+MISSING_RECORD_KEY_FORMAT = (
+    "{path} record for {symbol} names no {key}, and its published schema "
+    "carries one; the record names {names}"
+)
+
+#: Why a candle read refuses. Robinhood's published document names 14 paths
+#: and no candle path, and the public reader behind this serves three
+#: granularities.
+NO_CANDLE_PATH_FORMAT = (
+    "Robinhood publishes no candle path, and the public candle reader behind "
+    "this serves {served} and not {timeframe}"
+)
+
+#: Why an order refuses on a body naming a field its path's schema omits.
+UNPUBLISHED_ORDER_FIELD_FORMAT = (
+    "a {kind} order body for {path} names {fields}, which its published "
+    "request schema does not carry, so the body is not sent"
 )
 
 
@@ -411,6 +507,116 @@ def trading_pairs_path(account_number: Any = None) -> str:
     return TRADING_PAIRS_PATH_FEE_TIERS
 
 
+def query_string(pairs: Any) -> str:
+    """One query string from ``pairs``, and empty for no pair.
+
+    A repeated key rides once per value, the shape Robinhood publishes for
+    ``SYMBOL_QUERY_KEY`` and ``ASSET_CODE_QUERY_KEY``.
+    """
+    held = [
+        f"{key}={value}"
+        for key, value in (pairs or ())
+        if str(value or "").strip() != ""
+    ]
+    return f"?{'&'.join(held)}" if held else ""
+
+
+def best_price_path(account_number: Any = None, symbols: Any = ()) -> str:
+    """The best-price path one price read takes, with every symbol of
+    ``symbols`` under ``SYMBOL_QUERY_KEY``.
+
+    The fee-tier version where an account number is held, matching the version
+    ``orders_path`` submits on.
+    """
+    base = (
+        BEST_PRICE_PATH_FEE_TIERS
+        if str(account_number or "").strip()
+        else BEST_PRICE_PATH
+    )
+    return base + query_string(
+        [(SYMBOL_QUERY_KEY, venue_symbol(one)) for one in symbols or ()]
+    )
+
+
+def holdings_path(account_number: Any = None, asset_codes: Any = ()) -> str:
+    """The holdings path one balance read takes, with every code of
+    ``asset_codes`` under ``ASSET_CODE_QUERY_KEY``.
+
+    The fee-tier version takes ``ACCOUNT_QUERY_KEY`` as a published required
+    parameter, and the first version takes none.
+    """
+    held = str(account_number or "").strip()
+    pairs = [
+        (ASSET_CODE_QUERY_KEY, str(one or "").upper()) for one in asset_codes or ()
+    ]
+    if not held:
+        return HOLDINGS_PATH + query_string(pairs)
+    return HOLDINGS_PATH_FEE_TIERS + query_string([(ACCOUNT_QUERY_KEY, held), *pairs])
+
+
+def order_list_path(account_number: Any = None, filters: Any = ()) -> str:
+    """The order-list path one order read takes, with each pair of ``filters``
+    as a published query parameter.
+
+    The same two paths ``orders_path`` submits on, read with ``GET``.
+    """
+    held = str(account_number or "").strip()
+    if not held:
+        return ORDERS_PATH + query_string(filters)
+    return ORDERS_PATH_FEE_TIERS + query_string(
+        [(ACCOUNT_QUERY_KEY, held), *(filters or ())]
+    )
+
+
+def cancel_path(order_id: Any, account_number: Any = None) -> str:
+    """The cancel path for ``order_id``, which the venue takes in the path.
+
+    The fee-tier version where an account number is held, matching the version
+    ``orders_path`` submits on.
+    """
+    held = str(account_number or "").strip()
+    chosen = CANCEL_PATH_FEE_TIERS_FORMAT if held else CANCEL_PATH_FORMAT
+    return chosen.format(order_id=str(order_id or "").strip())
+
+
+def published_order_config_fields(path: Any, kind: Any) -> frozenset:
+    """Every configuration field the request schema of ``path`` names for
+    ``kind``.
+
+    ``ADD_ORDER_V2_CONFIG_FIELDS`` for the fee-tier path and
+    ``ADD_ORDER_CONFIG_FIELDS`` for the first version.
+    """
+    held = str(path or "")
+    source = (
+        ADD_ORDER_V2_CONFIG_FIELDS
+        if held.startswith(ORDERS_PATH_FEE_TIERS)
+        else ADD_ORDER_CONFIG_FIELDS
+    )
+    return source.get(str(kind), frozenset())
+
+
+def order_body_refusal(body: Any, path: Any) -> str:
+    """Why ``body`` names a configuration field the request schema of ``path``
+    does not publish, and empty where every field is published.
+
+    ``ORDERS_PATH`` takes ``AddOrder``, whose limit configuration names no time
+    in force, and ``ORDERS_PATH_FEE_TIERS`` takes ``AddOrderV2``, whose limit
+    configuration does.
+    """
+    if not isinstance(body, dict):
+        return ""
+    kind = str(body.get("type") or "")
+    config = body.get(ORDER_CONFIG_KEYS.get(kind, ""), None)
+    if not isinstance(config, dict):
+        return ""
+    unpublished = set(config) - set(published_order_config_fields(path, kind))
+    if not unpublished:
+        return ""
+    return UNPUBLISHED_ORDER_FIELD_FORMAT.format(
+        kind=kind, path=path, fields=sorted(unpublished)
+    )
+
+
 def order_body(
     symbol: Any,
     side: Any,
@@ -537,6 +743,90 @@ def pair_symbol(pair: Any) -> str:
     return unified_symbol(pair.get(PAIR_SYMBOL_KEY))
 
 
+def price_bid_ask(record: Any) -> tuple:
+    """The bid and the ask one published best-price record names.
+
+    The fee-tier record names ``PRICE_BID_KEY`` and ``PRICE_ASK_KEY``, and the
+    first version's record names the two spread-inclusive prices instead.
+    """
+    if not isinstance(record, dict):
+        return (None, None)
+    bid = pair_number(record.get(PRICE_BID_KEY))
+    ask = pair_number(record.get(PRICE_ASK_KEY))
+    if bid is None:
+        bid = pair_number(record.get(PRICE_BID_INCLUSIVE_KEY))
+    if ask is None:
+        ask = pair_number(record.get(PRICE_ASK_INCLUSIVE_KEY))
+    return (bid, ask)
+
+
+def price_ticker(record: Any, symbol: str, moment_s: float) -> Ticker:
+    """One ``Ticker`` from one published best-price record.
+
+    ``last`` is ``PRICE_MID_KEY`` where the record names it and the midpoint of
+    the bid and the ask otherwise, and ``volume_24h`` is zero because neither
+    best-price schema publishes a volume.
+    """
+    bid, ask = price_bid_ask(record)
+    if bid is None or ask is None:
+        raise RobinhoodResponseUnexpected(
+            MISSING_RECORD_KEY_FORMAT.format(
+                path=BEST_PRICE_PATH,
+                symbol=symbol,
+                key=f"{PRICE_BID_KEY}/{PRICE_ASK_KEY} nor "
+                f"{PRICE_BID_INCLUSIVE_KEY}/{PRICE_ASK_INCLUSIVE_KEY}",
+                names=sorted(record) if isinstance(record, dict) else record,
+            )
+        )
+    mid = pair_number(record.get(PRICE_MID_KEY)) or (bid + ask) / 2.0
+    return Ticker(
+        symbol=symbol,
+        bid=bid,
+        ask=ask,
+        last=mid,
+        volume_24h=0.0,
+        timestamp=moment_s,
+    )
+
+
+def price_orderbook(record: Any, symbol: str, moment_s: float) -> OrderBook:
+    """One ``OrderBook`` of one level from one published best-price record.
+
+    Robinhood defines a ``QuoteBook`` schema and publishes no path that answers
+    one, so each level carries ``BOOK_LEVEL_QUANTITY`` and no depth.
+    """
+    bid, ask = price_bid_ask(record)
+    held = price_ticker(record, symbol, moment_s)
+    return OrderBook(
+        symbol=symbol,
+        bids=[(held.bid, BOOK_LEVEL_QUANTITY)] if bid is not None else [],
+        asks=[(held.ask, BOOK_LEVEL_QUANTITY)] if ask is not None else [],
+        timestamp=moment_s,
+    )
+
+
+def holding_balance(record: Any) -> Optional[Balance]:
+    """One ``Balance`` from one published holdings record.
+
+    None for a record naming no ``HOLDING_ASSET_CODE_KEY``, and ``used`` is the
+    total less the quantity the venue publishes as available for trading.
+    """
+    if not isinstance(record, dict):
+        return None
+    currency = str(record.get(HOLDING_ASSET_CODE_KEY) or "").strip().upper()
+    if not currency:
+        return None
+    total = pair_number(record.get(HOLDING_TOTAL_KEY)) or 0.0
+    free = pair_number(record.get(HOLDING_AVAILABLE_KEY)) or 0.0
+    return Balance(
+        currency=currency,
+        free=free,
+        used=max(total - free, 0.0),
+        total=total,
+        absent=False,
+    )
+
+
 def pair_status(pair: Any) -> str:
     """The tradability status one published trading-pair record names, lower
     case.
@@ -606,9 +896,60 @@ def page_records(raw: Any, path: str) -> list[dict]:
     """Every trading-pair record one page of ``path`` carries under
     ``PAGE_RESULTS_KEY``.
 
+    ``RobinhoodResponseUnexpected`` names the key and the type where
+    ``page_list`` refuses the page or where ``pair_record_refusal`` reads a
+    member.
+    """
+    held = page_list(raw, path)
+    for index, record in enumerate(held):
+        refusal = pair_record_refusal(record, index, path)
+        if refusal:
+            raise RobinhoodResponseUnexpected(refusal)
+    return held
+
+
+def order_from_record(record: Any) -> Order:
+    """One ``Order`` from one published order record.
+
+    The amount rides inside the configuration object the record's type names,
+    and a state outside the published enum reads ``OrderStatus.OPEN``.
+    """
+    held = record if isinstance(record, dict) else {}
+    status_map = {
+        "open": OrderStatus.OPEN,
+        "filled": OrderStatus.FILLED,
+        "partially_filled": OrderStatus.PARTIALLY_FILLED,
+        "canceled": OrderStatus.CANCELLED,
+        "cancelled": OrderStatus.CANCELLED,
+        "failed": OrderStatus.FAILED,
+        "rejected": OrderStatus.FAILED,
+    }
+    kind = str(held.get("type") or ORDER_TYPE_LIMIT)
+    config = held.get(ORDER_CONFIG_KEYS.get(kind, ""), None)
+    config = config if isinstance(config, dict) else {}
+    amount = pair_number(config.get(SIZE_FIELD_UNITS)) or 0.0
+    filled = pair_number(held.get("filled_asset_quantity")) or 0.0
+    return Order(
+        id=str(held.get("id") or ""),
+        symbol=unified_symbol(held.get("symbol")),
+        side=OrderSide(str(held.get("side") or OrderSide.BUY.value)),
+        type=OrderType.MARKET if kind == ORDER_TYPE_MARKET else OrderType.LIMIT,
+        amount=amount,
+        price=pair_number(config.get("limit_price")) or 0.0,
+        filled=filled,
+        remaining=max(amount - filled, 0.0),
+        status=status_map.get(str(held.get("state") or ""), OrderStatus.OPEN),
+        average=pair_number(held.get("average_price")) or 0.0,
+        raw=held,
+    )
+
+
+def page_list(raw: Any, path: str) -> list[dict]:
+    """Every record one page of ``path`` carries under ``PAGE_RESULTS_KEY``.
+
     ``RobinhoodResponseUnexpected`` names the key and the type where the page
     is not an object, where it carries no array under ``PAGE_RESULTS_KEY``, or
-    where ``pair_record_refusal`` reads a member.
+    where a member is not an object.
     """
     if not isinstance(raw, dict):
         raise RobinhoodResponseUnexpected(
@@ -632,9 +973,14 @@ def page_records(raw: Any, path: str) -> list[dict]:
             )
         )
     for index, record in enumerate(held):
-        refusal = pair_record_refusal(record, index, path)
-        if refusal:
-            raise RobinhoodResponseUnexpected(refusal)
+        if not isinstance(record, dict):
+            raise RobinhoodResponseUnexpected(
+                UNEXPECTED_RESPONSE_FORMAT.format(
+                    path=path,
+                    expected=f"{PAGE_RESULTS_KEY}[{index}] as an object",
+                    got=type(record).__name__,
+                )
+            )
     return list(held)
 
 
@@ -683,12 +1029,13 @@ def pair_declared_order_types() -> str:
 def pair_size_shapes() -> frozenset:
     """The size shapes a Robinhood crypto order may name on either side.
 
-    Every ``ORDER_CONFIG_KEYS`` object takes ``SIZE_FIELD_UNITS`` or a quote
-    amount, and neither side permits one of the two alone.
+    The market configuration of ``ADD_ORDER_CONFIG_FIELDS`` names
+    ``SIZE_FIELD_UNITS`` alone and carries no quote amount, so units is the one
+    shape every type of ``pair_declared_order_types`` publishes.
     """
-    from ..trading.scrumming.sizing import SHAPE_CASH_AMOUNT, SHAPE_FRACTIONAL_UNITS
+    from ..trading.scrumming.sizing import SHAPE_FRACTIONAL_UNITS
 
-    return frozenset({SHAPE_FRACTIONAL_UNITS, SHAPE_CASH_AMOUNT})
+    return frozenset({SHAPE_FRACTIONAL_UNITS})
 
 
 def pair_rules(pair: Any) -> MarketRules:
@@ -765,8 +1112,9 @@ class RobinhoodCryptoConnector(ExchangeInterface):
     reads.
 
     ``place_order`` signs the venue's own body and hands it to ``_send``, and
-    ``get_markets`` reads ``trading_pairs_path`` through the same transport.
-    Every other read method raises ``RobinhoodPathUnpublished``.
+    every read but ``get_ohlcv`` signs a published path through the same
+    transport. ``get_ohlcv`` reads ``CoinbasePublicCandles``, because
+    Robinhood's published document names no candle path.
     """
 
     def __init__(self, exchange_id: str = VENUE_ID) -> None:
@@ -969,37 +1317,20 @@ class RobinhoodCryptoConnector(ExchangeInterface):
         from .api_logger import get_api_log
 
         first = trading_pairs_path(self._account_number)
-        path = first
-        held: list[dict] = []
-        for page in range(MAX_PAIR_PAGES):
-            raw = await self._read(path)
-            records = page_records(raw, path)
-            held.extend(records)
-            following = page_next_path(raw, path, records)
-            if not following:
-                if not held:
-                    raise RobinhoodResponseUnexpected(
-                        NO_PAIR_SERVED_FORMAT.format(path=first)
-                    )
-                get_api_log().record(
-                    exchange=self._exchange_id,
-                    action="GET_MARKETS",
-                    reason=f"Read the {VENUE_LABEL} trading pairs",
-                    endpoint=first,
-                    params={"pages": page + 1},
-                    result=f"{len(held)} trading pair record(s)",
-                    level="info",
-                    data_usage=(
-                        "Recorded market rules size every later order on this " "venue"
-                    ),
-                )
-                return held
-            path = following
-        raise RobinhoodResponseUnexpected(
-            PAGES_EXHAUSTED_FORMAT.format(
-                path=first, pages=MAX_PAIR_PAGES, key=PAGE_NEXT_KEY
-            )
+        held = await self._read_pages(first, reader=page_records)
+        if not held:
+            raise RobinhoodResponseUnexpected(NO_PAIR_SERVED_FORMAT.format(path=first))
+        get_api_log().record(
+            exchange=self._exchange_id,
+            action="GET_MARKETS",
+            reason=f"Read the {VENUE_LABEL} trading pairs",
+            endpoint=first,
+            params={"records": len(held)},
+            result=f"{len(held)} trading pair record(s)",
+            level="info",
+            data_usage="Recorded market rules size every later order on this venue",
         )
+        return held
 
     async def _read(self, path: str) -> Any:
         """Send one signed GET to ``path`` and answer the JSON it replies.
@@ -1055,6 +1386,10 @@ class RobinhoodCryptoConnector(ExchangeInterface):
             self._record_refusal(log, symbol, side, order_type, amount, str(exc))
             raise
         path = orders_path(self._account_number)
+        unpublished = order_body_refusal(body, path)
+        if unpublished:
+            self._record_refusal(log, symbol, side, order_type, amount, unpublished)
+            raise RobinhoodOrderRefused(unpublished)
         text = body_text(body)
         headers = signed_headers(
             self._api_key, self._private_key_b64, path, "POST", text
@@ -1187,23 +1522,78 @@ class RobinhoodCryptoConnector(ExchangeInterface):
                 raise RuntimeError(f"{VENUE_LABEL} {reply.status}: {text}")
             return json.loads(text) if text else {}
 
-    def _read_refused(self, endpoint: str, asked: str) -> RobinhoodPathUnpublished:
-        """The ``RobinhoodPathUnpublished`` every read method raises.
+    async def _read_pages(
+        self, path: str, reader: Any = None, cap: int = MAX_PAIR_PAGES
+    ) -> list[dict]:
+        """Every record ``path`` serves, following each page the published
+        ``PAGE_NEXT_KEY`` names.
 
-        ``PATH_UNPUBLISHED_FORMAT`` names the ``endpoint`` and the ``asked``.
+        ``reader`` reads one page's records and defaults to ``page_list``, and
+        ``RobinhoodResponseUnexpected`` names what was expected where a page
+        departs from the published shape or the chain outruns ``cap``.
         """
-        return RobinhoodPathUnpublished(
-            PATH_UNPUBLISHED_FORMAT.format(endpoint=endpoint, asked=asked)
+        read_page = reader or page_list
+        first = path
+        held: list[dict] = []
+        for _ in range(cap):
+            raw = await self._read(path)
+            records = read_page(raw, path)
+            held.extend(records)
+            following = page_next_path(raw, path, records)
+            if not following:
+                return held
+            path = following
+        raise RobinhoodResponseUnexpected(
+            PAGES_EXHAUSTED_FORMAT.format(path=first, pages=cap, key=PAGE_NEXT_KEY)
+        )
+
+    def _signing_refusal(self, asked: str) -> str:
+        """Why no request can be signed, and empty where one can."""
+        if self._api_key and self._private_key_b64:
+            return ""
+        return f"{NO_CREDENTIAL} and {asked} is not read"
+
+    async def _best_price_record(self, symbol: str) -> dict:
+        """The published best-price record ``symbol`` names.
+
+        ``RobinhoodReadRefused`` with no credential stored, and
+        ``RobinhoodResponseUnexpected`` where the reply names no record for it.
+        """
+        named = unified_symbol(symbol)
+        refusal = self._signing_refusal(f"a price for {named or symbol}")
+        if refusal:
+            raise RobinhoodReadRefused(refusal)
+        path = best_price_path(self._account_number, [named])
+        records = await self._read_pages(path)
+        for record in records:
+            if unified_symbol(record.get(PRICE_SYMBOL_KEY)) == named:
+                return record
+        raise RobinhoodResponseUnexpected(
+            NO_RECORD_FOR_SYMBOL_FORMAT.format(
+                path=path, held=len(records), symbol=named, asked="price"
+            )
         )
 
     async def get_ticker(self, symbol: str) -> Ticker:
-        """``RobinhoodPathUnpublished`` for ``symbol``."""
-        raise self._read_refused("Get Crypto Best Bid Ask", f"a price for {symbol}")
+        """The ``Ticker`` Robinhood's published best-price path answers for
+        ``symbol``.
+
+        ``volume_24h`` is zero because neither published best-price schema
+        names a volume.
+        """
+        record = await self._best_price_record(symbol)
+        return price_ticker(record, unified_symbol(symbol), time.time())
 
     async def get_orderbook(self, symbol: str, limit: int = 20) -> OrderBook:
-        """``RobinhoodPathUnpublished`` for ``symbol``."""
+        """The one-level ``OrderBook`` Robinhood's published best-price path
+        answers for ``symbol``.
+
+        ``limit`` is unread, and Robinhood publishes no path answering its own
+        ``QuoteBook`` depth schema.
+        """
         del limit
-        raise self._read_refused("Get Crypto Best Bid Ask", f"a book for {symbol}")
+        record = await self._best_price_record(symbol)
+        return price_orderbook(record, unified_symbol(symbol), time.time())
 
     async def get_ohlcv(
         self,
@@ -1212,32 +1602,113 @@ class RobinhoodCryptoConnector(ExchangeInterface):
         limit: int = 100,
         since: Optional[int] = None,
     ) -> list[list[float]]:
-        """``RobinhoodPathUnpublished`` for ``symbol``."""
-        del timeframe, limit, since
-        raise self._read_refused("crypto candle", f"candles for {symbol}")
+        """The candle rows the public Coinbase reader answers for ``symbol``.
+
+        Robinhood's published document names 14 paths and no candle path, so
+        ``CoinbasePublicCandles`` is the source and a timeframe it does not
+        serve raises ``RobinhoodPathUnpublished``.
+        """
+        from ..trading.stone_tablets.ra_fetcher import CoinbasePublicCandles
+
+        reader = CoinbasePublicCandles()
+        if timeframe not in reader.GRANULARITY_S:
+            raise RobinhoodPathUnpublished(
+                NO_CANDLE_PATH_FORMAT.format(
+                    served=sorted(reader.GRANULARITY_S), timeframe=timeframe
+                )
+            )
+        return await reader.get_ohlcv(symbol, timeframe, limit, since)
 
     async def get_balances(self) -> dict[str, Balance]:
-        """``RobinhoodPathUnpublished`` for every currency."""
-        raise self._read_refused("Get Crypto Holdings", "a balance")
+        """Every ``Balance`` Robinhood's published holdings path answers,
+        keyed by currency.
+
+        ``RobinhoodReadRefused`` with no credential stored, and a record naming
+        no asset code is skipped.
+        """
+        refusal = self._signing_refusal("a balance")
+        if refusal:
+            raise RobinhoodReadRefused(refusal)
+        records = await self._read_pages(holdings_path(self._account_number))
+        held: dict[str, Balance] = {}
+        for record in records:
+            balance = holding_balance(record)
+            if balance is not None:
+                held[balance.currency] = balance
+        return held
 
     async def get_balance(self, currency: str) -> Balance:
-        """``RobinhoodPathUnpublished`` for ``currency``."""
-        raise self._read_refused("Get Crypto Holdings", f"a balance for {currency}")
+        """The ``Balance`` Robinhood's published holdings path answers for
+        ``currency``.
+
+        ``absent`` is True where the reply names no record for it, the same
+        unknown ``Balance`` carries for a currency the venue omitted.
+        """
+        refusal = self._signing_refusal(f"a balance for {currency}")
+        if refusal:
+            raise RobinhoodReadRefused(refusal)
+        named = str(currency or "").strip().upper()
+        records = await self._read_pages(holdings_path(self._account_number, [named]))
+        for record in records:
+            balance = holding_balance(record)
+            if balance is not None and balance.currency == named:
+                return balance
+        return Balance(currency=named, free=0.0, used=0.0, total=0.0, absent=True)
 
     async def cancel_order(self, order_id: str, symbol: str) -> Order:
-        """``RobinhoodPathUnpublished`` for ``order_id``."""
-        del symbol
-        raise self._read_refused("Cancel Crypto Order", f"a cancel of {order_id}")
+        """Cancel ``order_id`` through Robinhood's published cancel path and
+        answer the order it then reads.
+
+        The cancel answers a string naming the order, so the ``Order`` comes
+        from ``get_order`` after it.
+        """
+        refusal = self._signing_refusal(f"a cancel of {order_id}")
+        if refusal:
+            raise RobinhoodReadRefused(refusal)
+        path = cancel_path(order_id, self._account_number)
+        headers = signed_headers(self._api_key, self._private_key_b64, path, "POST", "")
+        await self._pace()
+        await self._send("POST", path, "", headers)
+        return await self.get_order(order_id, symbol)
 
     async def get_order(self, order_id: str, symbol: str) -> Order:
-        """``RobinhoodPathUnpublished`` for ``order_id``."""
+        """The ``Order`` Robinhood's published order list answers for
+        ``order_id``.
+
+        The list takes ``ORDER_ID_QUERY_KEY`` as a published filter, and
+        ``RobinhoodResponseUnexpected`` where the reply names no record for it.
+        """
         del symbol
-        raise self._read_refused("Get Crypto Order", f"order {order_id}")
+        refusal = self._signing_refusal(f"order {order_id}")
+        if refusal:
+            raise RobinhoodReadRefused(refusal)
+        named = str(order_id or "").strip()
+        path = order_list_path(self._account_number, [(ORDER_ID_QUERY_KEY, named)])
+        records = await self._read_pages(path)
+        for record in records:
+            if str(record.get("id") or "") == named:
+                return order_from_record(record)
+        raise RobinhoodResponseUnexpected(
+            NO_RECORD_FOR_SYMBOL_FORMAT.format(
+                path=path, held=len(records), symbol=named, asked="order"
+            )
+        )
 
     async def get_open_orders(self, symbol: Optional[str] = None) -> list[Order]:
-        """``RobinhoodPathUnpublished`` for every open order."""
-        del symbol
-        raise self._read_refused("Get Crypto Orders", "the open orders")
+        """Every open ``Order`` Robinhood's published order list answers.
+
+        The list takes ``ORDER_STATE_QUERY_KEY`` and ``SYMBOL_QUERY_KEY`` as
+        published filters, and ``symbol`` rides as the second where it is held.
+        """
+        refusal = self._signing_refusal("the open orders")
+        if refusal:
+            raise RobinhoodReadRefused(refusal)
+        filters = [(ORDER_STATE_QUERY_KEY, ORDER_STATE_OPEN)]
+        named = venue_symbol(symbol)
+        if named:
+            filters.append((SYMBOL_QUERY_KEY, named))
+        records = await self._read_pages(order_list_path(self._account_number, filters))
+        return [order_from_record(record) for record in records]
 
     async def get_asset_logo_url(self, currency: str) -> str:
         """Empty, and Robinhood publishes no asset logo endpoint."""
@@ -1275,6 +1746,14 @@ def hand_written_crypto_venues() -> frozenset:
 
 __all__ = [
     "ACCOUNT_QUERY_KEY",
+    "ADD_ORDER_CONFIG_FIELDS",
+    "ADD_ORDER_V2_CONFIG_FIELDS",
+    "ASSET_CODE_QUERY_KEY",
+    "BEST_PRICE_PATH",
+    "BEST_PRICE_PATH_FEE_TIERS",
+    "BOOK_LEVEL_QUANTITY",
+    "CANCEL_PATH_FEE_TIERS_FORMAT",
+    "CANCEL_PATH_FORMAT",
     "CLIENT_ORDER_NAMESPACE",
     "CRYPTO_CONNECTORS",
     "EMPTY_PROMISED_PAGE_FORMAT",
@@ -1282,17 +1761,28 @@ __all__ = [
     "HEADER_API_KEY",
     "HEADER_SIGNATURE",
     "HEADER_TIMESTAMP",
+    "HOLDINGS_PATH",
+    "HOLDINGS_PATH_FEE_TIERS",
+    "HOLDING_ASSET_CODE_KEY",
+    "HOLDING_AVAILABLE_KEY",
+    "HOLDING_TOTAL_KEY",
     "MAX_PAIR_PAGES",
     "MISSING_PAIR_KEY_FORMAT",
+    "MISSING_RECORD_KEY_FORMAT",
     "NOT_API_TRADABLE_FORMAT",
     "NO_API_KEY",
+    "NO_CANDLE_PATH_FORMAT",
     "NO_CREDENTIAL",
     "NO_CREDENTIAL_FOR_READ",
     "NO_IMMEDIATE_OR_CANCEL",
     "NO_PAIR_SERVED_FORMAT",
+    "NO_RECORD_FOR_SYMBOL_FORMAT",
     "ORDERS_PATH",
     "ORDERS_PATH_FEE_TIERS",
     "ORDER_CONFIG_KEYS",
+    "ORDER_ID_QUERY_KEY",
+    "ORDER_STATE_OPEN",
+    "ORDER_STATE_QUERY_KEY",
     "ORDER_TYPE_LIMIT",
     "ORDER_TYPE_MARKET",
     "ORDER_TYPE_STOP_LIMIT",
@@ -1313,6 +1803,12 @@ __all__ = [
     "PAIR_STATUS_KEY",
     "PAIR_SYMBOL_KEY",
     "PATH_UNPUBLISHED_FORMAT",
+    "PRICE_ASK_INCLUSIVE_KEY",
+    "PRICE_ASK_KEY",
+    "PRICE_BID_INCLUSIVE_KEY",
+    "PRICE_BID_KEY",
+    "PRICE_MID_KEY",
+    "PRICE_SYMBOL_KEY",
     "RATE_LIMIT_BURST_PER_MINUTE",
     "RATE_LIMIT_PER_MINUTE",
     "RATE_LIMIT_WINDOW_S",
@@ -1324,6 +1820,7 @@ __all__ = [
     "STATUS_UNNAMED_FORMAT",
     "STATUS_UNTRADABLE",
     "STATUS_UNTRADABLE_FORMAT",
+    "SYMBOL_QUERY_KEY",
     "TIMED_ORDER_TYPES",
     "TIME_IN_FORCE_GTC",
     "TRADING_HOST",
@@ -1333,6 +1830,7 @@ __all__ = [
     "UNIFIED_PAIR_SEPARATOR",
     "UNLISTED_MARKET_FORMAT",
     "UNPARSED_PAIR_NUMBER_FORMAT",
+    "UNPUBLISHED_ORDER_FIELD_FORMAT",
     "VENUE_DECIMAL_PLACES",
     "VENUE_ID",
     "VENUE_LABEL",
@@ -1345,13 +1843,21 @@ __all__ = [
     "RobinhoodPathUnpublished",
     "RobinhoodReadRefused",
     "RobinhoodResponseUnexpected",
+    "best_price_path",
     "body_text",
+    "cancel_path",
     "client_order_uuid",
     "crypto_connector_class",
     "decimal_text",
     "hand_written_crypto_venues",
+    "holding_balance",
+    "holdings_path",
     "order_body",
+    "order_body_refusal",
+    "order_from_record",
+    "order_list_path",
     "orders_path",
+    "page_list",
     "page_next_path",
     "page_records",
     "pair_asset_class",
@@ -1363,6 +1869,11 @@ __all__ = [
     "pair_size_shapes",
     "pair_status",
     "pair_symbol",
+    "price_bid_ask",
+    "price_orderbook",
+    "price_ticker",
+    "published_order_config_fields",
+    "query_string",
     "signature",
     "signed_headers",
     "signed_message",

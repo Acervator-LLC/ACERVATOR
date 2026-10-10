@@ -3006,9 +3006,8 @@ OVERTAKEN, quoted whole:
 > sizes against the rules `record_pairs` records."
 
 True today: Robinhood publishes the trading-pair path and `get_markets` reads
-it. The balance half stands, and `get_balances` still raises
-`RobinhoodPathUnpublished`. `record_pairs` has a caller, and that caller is
-`get_markets`.
+it. It publishes a holdings path too, and `get_balances` reads that.
+`record_pairs` has a caller, and that caller is `get_markets`.
 
 OVERTAKEN, quoted whole:
 
@@ -3017,9 +3016,10 @@ OVERTAKEN, quoted whole:
 > no read path, so a price, a book, a candle, a balance, an order status and a
 > cancel all answer the same refusal."
 
-True today: `get_markets` reads a path. Every other read method still raises
-`RobinhoodPathUnpublished`, so a price, a book, a candle, a balance, an order
-status and a cancel all answer the same refusal.
+True today: Robinhood publishes a read path for a price, a book, a balance, an
+order status and a cancel, on both API versions. Each of those five now reads
+one. A candle is the single exception, and `get_ohlcv` reads
+`CoinbasePublicCandles` for it.
 
 ### Which path one read takes
 
@@ -3163,3 +3163,147 @@ the fee-tier path answers on an account this platform holds, and the number of
 markets the venue serves. A reply that departs from the published shape raises
 one of the refusals above and names what it expected, so the first connect
 reports a wrong reading rather than sizing a bot against nothing.
+
+## 2026-10-10 - Robinhood's published document names 14 paths, and six reads now reach them
+
+Robinhood publishes an OpenAPI 3.0.1 document titled Robinhood Crypto Trading
+API. It names 14 paths, 16 operations and 25 schemas, over the one server
+`https://trading.robinhood.com/`. `src/exchange/robinhood_connector.py` refused
+a price, a book, a balance, an order status and a cancel on the claim that no
+read path exists. All five are published, on both API versions, and each one
+now reads its path.
+
+### Where the document was read
+
+The page at `https://docs.robinhood.com/crypto/trading/` serves a 23,678-byte
+shell. It hands the document to `JSON.parse` inside
+`https://docs.robinhood.com/_next/static/chunks/pages/crypto/trading-b3a861110e68c0f85423.js`,
+an 84,271-byte script. The literal is a JavaScript string whose value is the
+JSON, so its JavaScript escapes decode first and the JSON parses after.
+
+### The 14 published paths
+
+| method and path | published summary | what reads it |
+| --- | --- | --- |
+| `GET /api/v1/crypto/trading/accounts/` | Get Crypto Trading Account Details | nothing here |
+| `GET /api/v1/crypto/trading/trading_pairs/` | Get Crypto Trading Pairs | `get_markets` |
+| `GET /api/v1/crypto/trading/holdings/` | Get Crypto Holdings | `get_balances` and `get_balance` |
+| `GET /api/v1/crypto/trading/orders/` | Get Crypto Orders | `get_order` and `get_open_orders` |
+| `POST /api/v1/crypto/trading/orders/` | Place New Crypto Order | `place_order` |
+| `POST /api/v1/crypto/trading/orders/{id}/cancel/` | Cancel Open Crypto Order | `cancel_order` |
+| `GET /api/v1/crypto/marketdata/best_bid_ask/` | Get Best Price | `get_ticker` and `get_orderbook` |
+| `GET /api/v1/crypto/marketdata/estimated_price/` | Get Estimated Price | nothing here |
+| `GET /api/v2/crypto/trading/accounts/` | Get Accounts | nothing here |
+| `GET /api/v2/crypto/trading/trading_pairs/` | Get Trading Pairs | `get_markets` |
+| `GET /api/v2/crypto/trading/holdings/` | Get Holdings | `get_balances` and `get_balance` |
+| `GET /api/v2/crypto/trading/orders/` | Get Orders | `get_order` and `get_open_orders` |
+| `POST /api/v2/crypto/trading/orders/` | Place New Crypto Order | `place_order` |
+| `POST /api/v2/crypto/trading/orders/{id}/cancel/` | Cancel Open Crypto Order | `cancel_order` |
+| `GET /api/v2/crypto/marketdata/best_bid_ask/` | Get Best Price | `get_ticker` and `get_orderbook` |
+| `GET /api/v2/crypto/trading/estimated_price/` | Get Estimated Price | nothing here |
+
+Each read picks its version the way `orders_path` picks the order path: the
+fee-tier version where an account number is held, and the first version where
+none is. `best_price_path`, `holdings_path`, `order_list_path` and
+`cancel_path` each do that.
+
+### What the five reads answer
+
+| the method | the path it reads | what the venue publishes |
+| --- | --- | --- |
+| `get_ticker` | `best_price_path` | the first version answers `price` with `bid_inclusive_of_sell_spread` and `ask_inclusive_of_buy_spread`; the fee-tier version answers `bid` and `ask` |
+| `get_orderbook` | `best_price_path` | one level per side, and no depth |
+| `get_balances` | `holdings_path` | `asset_code`, `total_quantity`, `quantity_available_for_trading` |
+| `get_balance` | `holdings_path` with `asset_code` | the same record, filtered |
+| `get_order` | `order_list_path` with `id` | one `OrderResponse` record |
+| `get_open_orders` | `order_list_path` with `state=open` | every open record, paginated |
+| `cancel_order` | `cancel_path` | a string naming the order, so the `Order` comes from `get_order` after it |
+
+`price_bid_ask` reads whichever pair of price keys the version served.
+`holding_balance` reads the available quantity as `free` and the total less the
+available as `used`. `order_from_record` reads the amount out of the
+configuration object the record's own type names.
+
+`Ticker.volume_24h` is zero. Neither published best-price schema names a
+volume, so the field carries zero and no figure is invented for it.
+
+### The order book Robinhood defines and does not serve
+
+The document defines a `QuoteBook` schema with `bids` and `asks` arrays of
+`QuoteBookItem`, each a price and a quantity. No path in the document answers
+it. `get_orderbook` therefore answers one level per side from the best-price
+record, and each level carries `BOOK_LEVEL_QUANTITY`, which is zero.
+
+The count that makes this a reading rather than a silence: the same scan over
+the document's paths counts `Holdings` four times, `OrderResponse` twice and
+`BidAskPrice` once, and `QuoteBook` zero times.
+
+### The one read with no published path
+
+No path in the document answers a candle, on either version.
+`src/trading/stone_tablets/ra_fetcher.py`, in `CoinbasePublicCandles` already
+serves public candles with no key, from
+`https://api.exchange.coinbase.com/products`, at `1d`, `1h` and `5m`.
+`get_ohlcv` reads that. A timeframe it does not serve raises
+`RobinhoodPathUnpublished` naming the three it does.
+
+`RA_TIMEFRAME` in that module is `1d`. The `get_ohlcv` contract's own default
+is `1h`, and `CoinbasePublicCandles` serves that too.
+
+### The time in force the first version does not publish
+
+`order_body` writes `time_in_force` into the limit configuration for every
+version. The published request schemas disagree by version.
+
+| the request schema | the path that takes it | its limit configuration |
+| --- | --- | --- |
+| `AddOrder` | `ORDERS_PATH` | `quote_amount`, `asset_quantity`, `limit_price` |
+| `AddOrderV2` | `ORDERS_PATH_FEE_TIERS` | the same three, and `time_in_force` |
+
+`orders_path` takes `ORDERS_PATH` where no account number is stored, so a limit
+order built there names a field `AddOrder` does not carry.
+`ADD_ORDER_CONFIG_FIELDS` and `ADD_ORDER_V2_CONFIG_FIELDS` hold the two field
+sets, `published_order_config_fields` answers the set for a path, and
+`order_body_refusal` names any field the set omits. `place_order` refuses on
+that message before anything is signed.
+
+The body `order_body` builds is unchanged. The repair that removes the field
+belongs to `order_body` and is not made here.
+
+### The cash amount the market configuration does not publish
+
+Both request schemas name `asset_quantity` alone in `market_order_config`, with
+no `quote_amount`. `pair_declared_order_types` answers market and limit for
+this venue, so units is the one shape every type it places publishes.
+`pair_size_shapes` answers that one shape.
+
+`SHAPE_PREFERENCE` puts fractional units first, so `permitted_order_shape`
+answered units before this change and answers units after it.
+
+### What the reads were driven against
+
+No request reached Robinhood. The runtime home was redirected to a scratch
+directory and `Path.home()` was read back from it. `_send` was replaced by a
+recorder answering one published page per call.
+
+`get_ticker` read `/api/v1/crypto/marketdata/best_bid_ask/?symbol=` and
+answered a bid of 100.0, an ask of 101.0 and a last of 100.5 off the first
+version's record; the same call with an account number read the fee-tier path
+and answered the same three off `bid` and `ask`. `get_orderbook` answered one
+bid level and one ask level, each at quantity zero. `get_balances` answered a
+holding of free 2.0, used 1.5 and total 3.5 out of a published total of 3.5 and
+an available 2.0. `get_balance` on a currency the reply omits answered `absent`
+True. `get_order` read `?id=` and answered an amount of 1.25 and a price of
+101.0 out of the limit configuration. `get_open_orders` read
+`?state=open&symbol=` and answered one order. `cancel_order` sent one `POST` to
+the cancel path and then one `GET` to the order list.
+
+Each of the six reads refused with no credential stored, under
+`RobinhoodReadRefused`. A price record naming neither pair of price keys and a
+reply naming another symbol each raised `RobinhoodResponseUnexpected` naming
+what was expected.
+
+The control is the module at the commit this change branched from. On it,
+`get_markets`, `get_ticker`, `get_orderbook`, `get_balances`, `get_order`,
+`get_open_orders`, `cancel_order` and `get_ohlcv` all raise
+`RobinhoodPathUnpublished`, and the recorder is never called.
