@@ -1,8 +1,10 @@
 """Hand-written :class:`ExchangeInterface` for Robinhood's crypto markets.
 
 ``order_body`` builds the venue's own order shape and ``signed_headers`` signs
-it with an Ed25519 key. ``pair_rules`` turns one published trading-pair record
-into the ``MarketRules`` ``BotContainer.guarded_place_order`` sizes against.
+it with an Ed25519 key. ``get_markets`` reads the published Get Crypto Trading
+Pairs path, follows every page of it and hands the records to ``record_pairs``,
+and ``pair_rules`` turns one record into the ``MarketRules``
+``BotContainer.guarded_place_order`` sizes against.
 ``crypto_connector_class`` answers this class for ``VENUE_ID``, and ccxt 4.5.85
 carries no robinhood entry for ``CCXTConnector`` to reach.
 """
@@ -58,9 +60,21 @@ HEADER_API_KEY = "x-api-key"
 HEADER_SIGNATURE = "x-signature"
 HEADER_TIMESTAMP = "x-timestamp"
 
-#: Robinhood names a Get Crypto Trading Pairs endpoint and publishes no path
-#: for it, so none is held.
-TRADING_PAIRS_PATH: Optional[str] = None
+#: The trading-pair path carrying no fee tier, which Robinhood's OpenAPI
+#: document names under Get Crypto Trading Pairs.
+TRADING_PAIRS_PATH = "/api/v1/crypto/trading/trading_pairs/"
+
+#: The trading-pair path carrying fee tiers, whose records alone name
+#: ``PAIR_API_TRADABLE_KEY``.
+TRADING_PAIRS_PATH_FEE_TIERS = "/api/v2/crypto/trading/trading_pairs/"
+
+#: The keys one page of a paginated Robinhood list response carries.
+PAGE_RESULTS_KEY = "results"
+PAGE_NEXT_KEY = "next"
+
+#: The pages one market read follows. Robinhood publishes no maximum page
+#: size, so this is this reader's own loop guard and not a venue figure.
+MAX_PAIR_PAGES = 50
 
 #: The four order types Robinhood publishes for a crypto order.
 ORDER_TYPE_MARKET = "market"
@@ -103,11 +117,50 @@ UNIFIED_PAIR_SEPARATOR = "/"
 
 #: The keys one published trading-pair record carries its rules under.
 PAIR_SYMBOL_KEY = "symbol"
+PAIR_ASSET_CODE_KEY = "asset_code"
+PAIR_QUOTE_CODE_KEY = "quote_code"
 PAIR_ASSET_INCREMENT_KEY = "asset_increment"
 PAIR_QUOTE_INCREMENT_KEY = "quote_increment"
 PAIR_MAX_ORDER_SIZE_KEY = "max_order_size"
+PAIR_STATUS_KEY = "status"
+
+#: The minimum the ``TRADING_PAIRS_PATH`` record names, in the base currency.
+PAIR_MIN_ORDER_SIZE_KEY = "min_order_size"
+
+#: The minimum the ``TRADING_PAIRS_PATH_FEE_TIERS`` record names, in the quote
+#: currency.
 PAIR_MIN_ORDER_AMOUNT_KEY = "min_order_amount"
+
+#: Read only on a ``TRADING_PAIRS_PATH_FEE_TIERS`` record, whose publication
+#: names it the flag for support on the fee-tier order path.
 PAIR_API_TRADABLE_KEY = "is_api_tradable"
+
+#: The keys both published trading-pair schemas name on every record, each as
+#: a string.
+PAIR_REQUIRED_KEYS = (
+    PAIR_SYMBOL_KEY,
+    PAIR_ASSET_CODE_KEY,
+    PAIR_QUOTE_CODE_KEY,
+    PAIR_ASSET_INCREMENT_KEY,
+    PAIR_QUOTE_INCREMENT_KEY,
+    PAIR_MAX_ORDER_SIZE_KEY,
+    PAIR_STATUS_KEY,
+)
+
+#: The required keys carrying a decimal string an order is sized against.
+PAIR_NUMERIC_KEYS = (
+    PAIR_ASSET_INCREMENT_KEY,
+    PAIR_QUOTE_INCREMENT_KEY,
+    PAIR_MAX_ORDER_SIZE_KEY,
+)
+
+#: The three tradability statuses ``TRADING_PAIRS_PATH`` publishes as its
+#: ``PAIR_STATUS_KEY`` enum. ``TRADING_PAIRS_PATH_FEE_TIERS`` names the same
+#: field and publishes no enum for it.
+STATUS_TRADABLE = "tradable"
+STATUS_UNTRADABLE = "untradable"
+STATUS_SELL_ONLY = "sellonly"
+VENUE_PAIR_STATUSES = (STATUS_TRADABLE, STATUS_UNTRADABLE, STATUS_SELL_ONLY)
 
 #: The requests a minute Robinhood publishes per account, and its burst figure.
 RATE_LIMIT_PER_MINUTE = 100
@@ -159,6 +212,72 @@ NOT_API_TRADABLE_FORMAT = (
     "order only on a symbol reading True"
 )
 
+#: Why an order refuses on a status the venue publishes as taking no order.
+STATUS_UNTRADABLE_FORMAT = (
+    "Robinhood reads {key} {status!r} for {symbol}, and a pair at that status "
+    "takes no order on either side"
+)
+
+#: Why a buy refuses on the status the venue publishes as selling only.
+STATUS_SELL_ONLY_FORMAT = (
+    "Robinhood reads {key} {status!r} for {symbol}, so a sell is taken and a "
+    "buy is not"
+)
+
+#: Why an order refuses on a status no published value names.
+STATUS_UNNAMED_FORMAT = (
+    "Robinhood reads {key} {status!r} for {symbol}, which is none of the "
+    "published statuses {published}, so nothing published says what it permits"
+)
+
+#: Why a market read refuses with no credential stored.
+NO_CREDENTIAL_FOR_READ = (
+    "no Robinhood API key and no Ed25519 private key are stored, so the "
+    "trading-pair request cannot be signed and no market list is read"
+)
+
+#: Why a market read refuses on a reply departing from the published shape.
+UNEXPECTED_RESPONSE_FORMAT = (
+    "{path} is published to answer {expected} and answered {got}, so no "
+    "market list is built from it"
+)
+
+#: Why a market read refuses on a page naming a next page and serving nothing.
+EMPTY_PROMISED_PAGE_FORMAT = (
+    "{path} answered 0 record(s) beside a {key} naming a further page, so a "
+    "page the venue promised served none"
+)
+
+#: Why a market read refuses on a next page outside ``TRADING_HOST``.
+FOREIGN_NEXT_HOST_FORMAT = (
+    "{path} answered a {key} of {held!r}, which does not begin with "
+    "{host}, and a signed request is sent to no other host"
+)
+
+#: Why a market read refuses where the pages outrun ``MAX_PAIR_PAGES``.
+PAGES_EXHAUSTED_FORMAT = (
+    "{path} served {pages} page(s) and still named a {key}, so the read stops "
+    "short of an unbounded chain"
+)
+
+#: Why a market read refuses on an unfiltered reply serving no record.
+NO_PAIR_SERVED_FORMAT = (
+    "{path} is published to answer all tradable currency pairs where no "
+    "symbol filter is sent, and answered 0 record(s)"
+)
+
+#: Why a market read refuses on a record missing a published key.
+MISSING_PAIR_KEY_FORMAT = (
+    "{path} record {index} names no {key} as a string, and every published "
+    "trading-pair schema carries one; the record names {held}"
+)
+
+#: Why a market read refuses on a published decimal that is not a number.
+UNPARSED_PAIR_NUMBER_FORMAT = (
+    "{path} record {index} for {symbol} reads {key} {held!r}, which is not a "
+    "positive decimal an order can be sized against"
+)
+
 
 class RobinhoodPathUnpublished(RuntimeError):
     """Raised where Robinhood names an endpoint and publishes no path for it."""
@@ -166,6 +285,18 @@ class RobinhoodPathUnpublished(RuntimeError):
 
 class RobinhoodOrderRefused(RuntimeError):
     """Raised where this connector refuses an order before any request."""
+
+
+class RobinhoodReadRefused(RuntimeError):
+    """Raised where this connector refuses a read before any request."""
+
+
+class RobinhoodResponseUnexpected(RuntimeError):
+    """Raised where a Robinhood reply departs from its published shape.
+
+    ``get_markets`` raises this in place of answering a market whose size
+    rule the reply did not carry.
+    """
 
 
 def pair_number(value: Any) -> Optional[float]:
@@ -266,6 +397,18 @@ def orders_path(account_number: Any = None) -> str:
     if not held:
         return ORDERS_PATH
     return f"{ORDERS_PATH_FEE_TIERS}?{ACCOUNT_QUERY_KEY}={held}"
+
+
+def trading_pairs_path(account_number: Any = None) -> str:
+    """The trading-pair path one market read takes.
+
+    ``TRADING_PAIRS_PATH_FEE_TIERS`` where an account number is held, matching
+    the path ``orders_path`` then submits on, and ``TRADING_PAIRS_PATH`` where
+    none is.
+    """
+    if not str(account_number or "").strip():
+        return TRADING_PAIRS_PATH
+    return TRADING_PAIRS_PATH_FEE_TIERS
 
 
 def order_body(
@@ -394,6 +537,138 @@ def pair_symbol(pair: Any) -> str:
     return unified_symbol(pair.get(PAIR_SYMBOL_KEY))
 
 
+def pair_status(pair: Any) -> str:
+    """The tradability status one published trading-pair record names, lower
+    case.
+
+    Empty for a record naming no ``PAIR_STATUS_KEY`` string.
+    """
+    if not isinstance(pair, dict):
+        return ""
+    held = pair.get(PAIR_STATUS_KEY)
+    if type(held) is not str:
+        return ""
+    return held.strip().lower()
+
+
+def status_order_refusal(pair: Any, side: Any) -> str:
+    """Why the published ``PAIR_STATUS_KEY`` refuses one order on ``pair``.
+
+    ``STATUS_TRADABLE`` refuses nothing, ``STATUS_SELL_ONLY`` refuses a buy,
+    ``STATUS_UNTRADABLE`` refuses both sides, and a status outside
+    ``VENUE_PAIR_STATUSES`` refuses both sides.
+    """
+    status = pair_status(pair)
+    symbol = pair_symbol(pair) or str(pair)
+    if status == STATUS_TRADABLE:
+        return ""
+    fields = {"key": PAIR_STATUS_KEY, "status": status, "symbol": symbol}
+    if status == STATUS_SELL_ONLY:
+        if OrderSide(side) == OrderSide.SELL:
+            return ""
+        return STATUS_SELL_ONLY_FORMAT.format(**fields)
+    if status == STATUS_UNTRADABLE:
+        return STATUS_UNTRADABLE_FORMAT.format(**fields)
+    return STATUS_UNNAMED_FORMAT.format(published=VENUE_PAIR_STATUSES, **fields)
+
+
+def pair_record_refusal(record: Any, index: Any, path: str) -> str:
+    """Why one record of ``path`` departs from the published trading-pair
+    schema.
+
+    Empty where every ``PAIR_REQUIRED_KEYS`` key carries a string and every
+    ``PAIR_NUMERIC_KEYS`` key carries a positive decimal.
+    """
+    if not isinstance(record, dict):
+        return UNEXPECTED_RESPONSE_FORMAT.format(
+            path=path,
+            expected=f"{PAGE_RESULTS_KEY}[{index}] as an object",
+            got=type(record).__name__,
+        )
+    for key in PAIR_REQUIRED_KEYS:
+        if type(record.get(key)) is not str:
+            return MISSING_PAIR_KEY_FORMAT.format(
+                path=path, index=index, key=key, held=sorted(record)
+            )
+    for key in PAIR_NUMERIC_KEYS:
+        if pair_number(record.get(key)) is None:
+            return UNPARSED_PAIR_NUMBER_FORMAT.format(
+                path=path,
+                index=index,
+                symbol=pair_symbol(record),
+                key=key,
+                held=record.get(key),
+            )
+    return ""
+
+
+def page_records(raw: Any, path: str) -> list[dict]:
+    """Every trading-pair record one page of ``path`` carries under
+    ``PAGE_RESULTS_KEY``.
+
+    ``RobinhoodResponseUnexpected`` names the key and the type where the page
+    is not an object, where it carries no array under ``PAGE_RESULTS_KEY``, or
+    where ``pair_record_refusal`` reads a member.
+    """
+    if not isinstance(raw, dict):
+        raise RobinhoodResponseUnexpected(
+            UNEXPECTED_RESPONSE_FORMAT.format(
+                path=path,
+                expected=f"an object naming {PAGE_RESULTS_KEY!r}",
+                got=type(raw).__name__,
+            )
+        )
+    held = raw.get(PAGE_RESULTS_KEY)
+    if not isinstance(held, list):
+        raise RobinhoodResponseUnexpected(
+            UNEXPECTED_RESPONSE_FORMAT.format(
+                path=path,
+                expected=f"{PAGE_RESULTS_KEY!r} as an array",
+                got=(
+                    f"the keys {sorted(raw)}"
+                    if PAGE_RESULTS_KEY not in raw
+                    else type(held).__name__
+                ),
+            )
+        )
+    for index, record in enumerate(held):
+        refusal = pair_record_refusal(record, index, path)
+        if refusal:
+            raise RobinhoodResponseUnexpected(refusal)
+    return list(held)
+
+
+def page_next_path(raw: Any, path: str, records: Any) -> str:
+    """The path the published ``PAGE_NEXT_KEY`` URI of one page names.
+
+    Empty where the page names no further page, and
+    ``RobinhoodResponseUnexpected`` where ``PAGE_NEXT_KEY`` is neither null nor
+    a ``TRADING_HOST`` URI, or where a page naming one served no record.
+    """
+    held = raw.get(PAGE_NEXT_KEY) if isinstance(raw, dict) else None
+    if held is None or held == "":
+        return ""
+    if type(held) is not str:
+        raise RobinhoodResponseUnexpected(
+            UNEXPECTED_RESPONSE_FORMAT.format(
+                path=path,
+                expected=f"{PAGE_NEXT_KEY!r} as a URI or null",
+                got=type(held).__name__,
+            )
+        )
+    if not held.startswith(TRADING_HOST):
+        raise RobinhoodResponseUnexpected(
+            FOREIGN_NEXT_HOST_FORMAT.format(
+                path=path, key=PAGE_NEXT_KEY, held=held, host=TRADING_HOST
+            )
+        )
+    if not records:
+        raise RobinhoodResponseUnexpected(
+            EMPTY_PROMISED_PAGE_FORMAT.format(path=path, key=PAGE_NEXT_KEY)
+        )
+    return held[len(TRADING_HOST) :]
+
+
 def pair_declared_order_types() -> str:
     """The order types Robinhood declares for every crypto pair.
 
@@ -419,19 +694,27 @@ def pair_size_shapes() -> frozenset:
 def pair_rules(pair: Any) -> MarketRules:
     """The ``MarketRules`` one published trading-pair record publishes.
 
-    ``read`` is False for a non-record and for a pair ``PAIR_API_TRADABLE_KEY``
-    reads False on, and a rule the record does not name is None.
+    ``read`` is False for a non-record, for a pair ``PAIR_API_TRADABLE_KEY``
+    reads False on, and for a status ``STATUS_TRADABLE`` and
+    ``STATUS_SELL_ONLY`` do not name; a rule the record does not name is None.
     """
     if not isinstance(pair, dict):
         return MarketRules(read=False)
     if pair.get(PAIR_API_TRADABLE_KEY) is False:
         return MarketRules(read=False)
+    if pair_status(pair) not in (STATUS_TRADABLE, STATUS_SELL_ONLY):
+        return MarketRules(read=False)
     shapes = pair_size_shapes()
     return MarketRules(
         amount_increment=pair_number(pair.get(PAIR_ASSET_INCREMENT_KEY)),
+        # Published as the minimum price increment of the quote currency, which
+        # a limit price steps by and a cash amount steps by alike.
+        price_increment=pair_number(pair.get(PAIR_QUOTE_INCREMENT_KEY)),
         quote_increment=pair_number(pair.get(PAIR_QUOTE_INCREMENT_KEY)),
-        # Robinhood publishes a minimum in the quote currency and none in the
-        # asset currency.
+        # TRADING_PAIRS_PATH publishes a minimum in the base currency and
+        # TRADING_PAIRS_PATH_FEE_TIERS one in the quote currency, and no record
+        # carries both.
+        min_amount=pair_number(pair.get(PAIR_MIN_ORDER_SIZE_KEY)),
         min_cost=pair_number(pair.get(PAIR_MIN_ORDER_AMOUNT_KEY)),
         order_types=pair_declared_order_types(),
         buy_size_shapes=shapes,
@@ -461,16 +744,19 @@ def pair_asset_info(pair: Any) -> Optional[AssetInfo]:
     symbol = pair_symbol(pair)
     if not symbol:
         return None
-    base, _, quote = symbol.partition(UNIFIED_PAIR_SEPARATOR)
+    split_base, _, split_quote = symbol.partition(UNIFIED_PAIR_SEPARATOR)
     return AssetInfo(
         symbol=symbol,
-        base=base,
-        quote=quote,
+        base=venue_symbol(pair.get(PAIR_ASSET_CODE_KEY)) or split_base,
+        quote=venue_symbol(pair.get(PAIR_QUOTE_CODE_KEY)) or split_quote,
         rules=pair_rules(pair),
         # A pair record publishes no fee, so AssetInfo carries zero.
         maker_fee=0.0,
         taker_fee=0.0,
-        active=pair.get(PAIR_API_TRADABLE_KEY) is not False,
+        active=(
+            pair.get(PAIR_API_TRADABLE_KEY) is not False
+            and pair_status(pair) != STATUS_UNTRADABLE
+        ),
     )
 
 
@@ -479,7 +765,8 @@ class RobinhoodCryptoConnector(ExchangeInterface):
     reads.
 
     ``place_order`` signs the venue's own body and hands it to ``_send``, and
-    every read method raises ``RobinhoodPathUnpublished``.
+    ``get_markets`` reads ``trading_pairs_path`` through the same transport.
+    Every other read method raises ``RobinhoodPathUnpublished``.
     """
 
     def __init__(self, exchange_id: str = VENUE_ID) -> None:
@@ -489,6 +776,7 @@ class RobinhoodCryptoConnector(ExchangeInterface):
         self._account_number = ""
         self._connected = False
         self._pairs: dict[str, dict] = {}
+        self._markets_cache: Optional[list[AssetInfo]] = None
         self._scan_symbols: set[str] = set()
         self._history_callback: Any = None
         self._sent_at_s: deque = deque()
@@ -538,6 +826,7 @@ class RobinhoodCryptoConnector(ExchangeInterface):
         self._scan_symbols.clear()
         self._history_callback = None
         self._connected = False
+        self._markets_cache = None
         logger.info(
             "Released %s connector — %d scan symbol(s) dropped",
             VENUE_LABEL,
@@ -589,6 +878,7 @@ class RobinhoodCryptoConnector(ExchangeInterface):
         self._connected = False
         self._api_key = ""
         self._private_key_b64 = ""
+        self._markets_cache = None
         if self._session is not None:
             try:
                 await self._session.close()
@@ -600,38 +890,126 @@ class RobinhoodCryptoConnector(ExchangeInterface):
         """Hold every published trading-pair record of ``pairs`` and record its
         rules under ``exchange_id``, answering one ``AssetInfo`` per market.
 
-        No venue is contacted, a record naming no symbol is skipped, and an
-        empty ``pairs`` keeps the rows already recorded.
+        No venue is contacted, a record naming no symbol or a status outside
+        ``STATUS_TRADABLE`` and ``STATUS_SELL_ONLY`` is skipped, and only a
+        market whose ``MarketRules`` ``read`` is True reaches ``record_venue``.
         """
         built: list[AssetInfo] = []
         held: dict[str, dict] = {}
         classes: dict[str, str] = {}
+        skipped: list[str] = []
         for pair in pairs:
             info = pair_asset_info(pair)
             if info is None:
                 continue
+            status = pair_status(pair)
+            if status not in (STATUS_TRADABLE, STATUS_SELL_ONLY):
+                skipped.append(f"{info.symbol} {status!r}")
+                continue
             held[info.symbol] = dict(pair)
             classes[info.symbol] = pair_asset_class(pair)
             built.append(info)
-        if built:
-            self._pairs.update(held)
-            record_venue(self._exchange_id, built, classes=classes)
+        if skipped:
+            # A skipped symbol holds no record, so place_order refuses it under
+            # UNLISTED_MARKET_FORMAT.
+            logger.warning(
+                "%s named %d pair(s) at a %s outside %s, which are not listed: " "%s",
+                VENUE_LABEL,
+                len(skipped),
+                PAIR_STATUS_KEY,
+                (STATUS_TRADABLE, STATUS_SELL_ONLY),
+                ", ".join(skipped),
+            )
+        if not built:
+            logger.warning(
+                "%s served no tradable trading-pair record, so no market rule "
+                "row is recorded",
+                VENUE_LABEL,
+            )
+            return built
+        self._pairs.update(held)
+        self._markets_cache = list(built)
+        # The Simulator and the Paper Trader reach no venue, so the rules read
+        # here are recorded once per read for them to size an order by. A
+        # market whose rules went unread records no row, because a recorded row
+        # reads back as read=True whatever it holds.
+        recorded = [info for info in built if info.rules.read]
+        try:
+            record_venue(self._exchange_id, recorded, classes=classes)
+        except OSError as exc:
+            logger.warning(
+                "market rules for %s not recorded: %s", self._exchange_id, exc
+            )
         return built
 
     async def get_markets(self) -> list[AssetInfo]:
-        """One ``AssetInfo`` per trading pair this connector holds.
+        """One ``AssetInfo`` per trading pair Robinhood publishes for this
+        venue.
 
-        ``RobinhoodPathUnpublished`` while ``held_pairs`` is empty, and
-        Robinhood publishes no path for its Get Crypto Trading Pairs endpoint.
+        ``trading_pairs_path`` is read once and every page of it followed, the
+        records reach ``record_pairs``, and a later call answers the list it
+        built.
         """
-        if not self._pairs:
-            raise RobinhoodPathUnpublished(
-                PATH_UNPUBLISHED_FORMAT.format(
-                    endpoint="Get Crypto Trading Pairs", asked="the market list"
+        if self._markets_cache is not None:
+            return self._markets_cache
+        if self._pairs:
+            return self.record_pairs(list(self._pairs.values()))
+        if not self._api_key or not self._private_key_b64:
+            raise RobinhoodReadRefused(NO_CREDENTIAL_FOR_READ)
+        return self.record_pairs(await self._fetch_pairs())
+
+    async def _fetch_pairs(self) -> list[dict]:
+        """Every trading-pair record ``trading_pairs_path`` serves, following
+        each page the published ``PAGE_NEXT_KEY`` names.
+
+        ``RobinhoodResponseUnexpected`` names what was expected and what
+        arrived where a page departs from the published shape, where the first
+        page serves no record, and where the chain outruns ``MAX_PAIR_PAGES``.
+        """
+        from .api_logger import get_api_log
+
+        first = trading_pairs_path(self._account_number)
+        path = first
+        held: list[dict] = []
+        for page in range(MAX_PAIR_PAGES):
+            raw = await self._read(path)
+            records = page_records(raw, path)
+            held.extend(records)
+            following = page_next_path(raw, path, records)
+            if not following:
+                if not held:
+                    raise RobinhoodResponseUnexpected(
+                        NO_PAIR_SERVED_FORMAT.format(path=first)
+                    )
+                get_api_log().record(
+                    exchange=self._exchange_id,
+                    action="GET_MARKETS",
+                    reason=f"Read the {VENUE_LABEL} trading pairs",
+                    endpoint=first,
+                    params={"pages": page + 1},
+                    result=f"{len(held)} trading pair record(s)",
+                    level="info",
+                    data_usage=(
+                        "Recorded market rules size every later order on this " "venue"
+                    ),
                 )
+                return held
+            path = following
+        raise RobinhoodResponseUnexpected(
+            PAGES_EXHAUSTED_FORMAT.format(
+                path=first, pages=MAX_PAIR_PAGES, key=PAGE_NEXT_KEY
             )
-        answered = [pair_asset_info(pair) for pair in self._pairs.values()]
-        return [info for info in answered if info is not None]
+        )
+
+    async def _read(self, path: str) -> Any:
+        """Send one signed GET to ``path`` and answer the JSON it replies.
+
+        ``signed_headers`` signs the path with its query string and no body,
+        the shape Robinhood's own published sample signs a read under.
+        """
+        headers = signed_headers(self._api_key, self._private_key_b64, path, "GET", "")
+        await self._pace()
+        return await self._send("GET", path, "", headers)
 
     async def place_order(
         self,
@@ -665,6 +1043,10 @@ class RobinhoodCryptoConnector(ExchangeInterface):
             refusal = NOT_API_TRADABLE_FORMAT.format(
                 key=PAIR_API_TRADABLE_KEY, symbol=named
             )
+            self._record_refusal(log, symbol, side, order_type, amount, refusal)
+            raise RobinhoodOrderRefused(refusal)
+        refusal = status_order_refusal(self._pairs[named], side)
+        if refusal:
             self._record_refusal(log, symbol, side, order_type, amount, refusal)
             raise RobinhoodOrderRefused(refusal)
         try:
@@ -895,13 +1277,19 @@ __all__ = [
     "ACCOUNT_QUERY_KEY",
     "CLIENT_ORDER_NAMESPACE",
     "CRYPTO_CONNECTORS",
+    "EMPTY_PROMISED_PAGE_FORMAT",
+    "FOREIGN_NEXT_HOST_FORMAT",
     "HEADER_API_KEY",
     "HEADER_SIGNATURE",
     "HEADER_TIMESTAMP",
+    "MAX_PAIR_PAGES",
+    "MISSING_PAIR_KEY_FORMAT",
     "NOT_API_TRADABLE_FORMAT",
     "NO_API_KEY",
     "NO_CREDENTIAL",
+    "NO_CREDENTIAL_FOR_READ",
     "NO_IMMEDIATE_OR_CANCEL",
+    "NO_PAIR_SERVED_FORMAT",
     "ORDERS_PATH",
     "ORDERS_PATH_FEE_TIERS",
     "ORDER_CONFIG_KEYS",
@@ -909,11 +1297,20 @@ __all__ = [
     "ORDER_TYPE_MARKET",
     "ORDER_TYPE_STOP_LIMIT",
     "ORDER_TYPE_STOP_LOSS",
+    "PAGES_EXHAUSTED_FORMAT",
+    "PAGE_NEXT_KEY",
+    "PAGE_RESULTS_KEY",
     "PAIR_API_TRADABLE_KEY",
+    "PAIR_ASSET_CODE_KEY",
     "PAIR_ASSET_INCREMENT_KEY",
     "PAIR_MAX_ORDER_SIZE_KEY",
     "PAIR_MIN_ORDER_AMOUNT_KEY",
+    "PAIR_MIN_ORDER_SIZE_KEY",
+    "PAIR_NUMERIC_KEYS",
+    "PAIR_QUOTE_CODE_KEY",
     "PAIR_QUOTE_INCREMENT_KEY",
+    "PAIR_REQUIRED_KEYS",
+    "PAIR_STATUS_KEY",
     "PAIR_SYMBOL_KEY",
     "PATH_UNPUBLISHED_FORMAT",
     "RATE_LIMIT_BURST_PER_MINUTE",
@@ -921,21 +1318,33 @@ __all__ = [
     "RATE_LIMIT_WINDOW_S",
     "SIGNING_KEY_REFUSED_FORMAT",
     "SIZE_FIELD_UNITS",
+    "STATUS_SELL_ONLY",
+    "STATUS_SELL_ONLY_FORMAT",
+    "STATUS_TRADABLE",
+    "STATUS_UNNAMED_FORMAT",
+    "STATUS_UNTRADABLE",
+    "STATUS_UNTRADABLE_FORMAT",
     "TIMED_ORDER_TYPES",
     "TIME_IN_FORCE_GTC",
     "TRADING_HOST",
     "TRADING_PAIRS_PATH",
+    "TRADING_PAIRS_PATH_FEE_TIERS",
+    "UNEXPECTED_RESPONSE_FORMAT",
     "UNIFIED_PAIR_SEPARATOR",
     "UNLISTED_MARKET_FORMAT",
+    "UNPARSED_PAIR_NUMBER_FORMAT",
     "VENUE_DECIMAL_PLACES",
     "VENUE_ID",
     "VENUE_LABEL",
     "VENUE_ORDER_TYPES",
     "VENUE_PAIR_SEPARATOR",
+    "VENUE_PAIR_STATUSES",
     "VENUE_TIMES_IN_FORCE",
     "RobinhoodCryptoConnector",
     "RobinhoodOrderRefused",
     "RobinhoodPathUnpublished",
+    "RobinhoodReadRefused",
+    "RobinhoodResponseUnexpected",
     "body_text",
     "client_order_uuid",
     "crypto_connector_class",
@@ -943,16 +1352,22 @@ __all__ = [
     "hand_written_crypto_venues",
     "order_body",
     "orders_path",
+    "page_next_path",
+    "page_records",
     "pair_asset_class",
     "pair_asset_info",
     "pair_declared_order_types",
     "pair_number",
+    "pair_record_refusal",
     "pair_rules",
     "pair_size_shapes",
+    "pair_status",
     "pair_symbol",
     "signature",
     "signed_headers",
     "signed_message",
+    "status_order_refusal",
+    "trading_pairs_path",
     "unified_symbol",
     "venue_order_type",
     "venue_symbol",

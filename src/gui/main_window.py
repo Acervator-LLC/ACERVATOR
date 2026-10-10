@@ -2962,7 +2962,7 @@ if _HAS_QT:
 
             ``crypto_connector_class`` names the class, and no read method is
             called: ``RobinhoodCryptoConnector`` raises
-            ``RobinhoodPathUnpublished`` on a market list and on a balance.
+            ``RobinhoodPathUnpublished`` on a balance.
             """
             from ..exchange.api_logger import get_api_log
             from ..exchange.robinhood_connector import crypto_connector_class
