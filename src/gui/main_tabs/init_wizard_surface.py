@@ -4,9 +4,9 @@ Describes the wizard the application opens on a first run and on a
 version upgrade. Page one asks for a display name and offers a button
 that skips the whole setup. Page two lists every venue
 ``asset_class_surface``'s ``known_venues`` holds and marks the ones
-``PASSPHRASE_EXCHANGES`` names. Page
-three takes an API key, an API secret and a passphrase, hides them
-behind a show-credentials switch, and tests them against the venue.
+``PASSPHRASE_EXCHANGES`` names. Page three takes an API key, an API
+secret and a passphrase, hides them behind a show-credentials switch,
+and tests them against the venue.
 
 Eighteen widgets are named in ``WIDGET_NAMES``, and every piece of
 wording the wizard paints is held in a table keyed by that name:
