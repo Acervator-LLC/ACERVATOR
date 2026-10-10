@@ -201,14 +201,8 @@ if _HAS_QT:
             layout = QVBoxLayout(w)
 
             if self._wing == "stocks":
-                _banner = QLabel(
-                    "<b>Stock Wing:</b> equity-broker integration is "
-                    "queued — no live brokers are wired up yet. The "
-                    "list below shows the planned brokers; Add / Test "
-                    "are disabled until the broker connectors ship. "
-                    "Use the Crypto Wing for active trading today."
-                )
-                _banner.setWordWrap(True)
+                _banner = QLabel(sds.STOCK_BANNER_TEXT)
+                _banner.setWordWrap(sds.STOCK_BANNER_WORD_WRAP)
                 # Qt reads eight hex digits alpha-first, so the edge is
                 # written rgba and draws the tint it names.
                 _banner.setStyleSheet(
@@ -287,6 +281,11 @@ if _HAS_QT:
             self._pp_check.toggled.connect(lambda: self._sync_passphrase_row())
             add_form.addRow(self._pp_check)
             add_form.addRow("", self._new_passphrase)
+
+            # _sync_credential_kind hides a row and its label together, and
+            # labelForField answers the label addRow built from each string.
+            self._api_key_label = add_form.labelForField(self._new_api_key)
+            self._api_secret_label = add_form.labelForField(self._new_api_secret)
 
             btn_row = QHBoxLayout()
             self._test_btn = QPushButton("Test Connection")
@@ -495,9 +494,7 @@ if _HAS_QT:
                 return
             self._exchange_list.setCurrentRow(int(at))
             self._on_exchange_changed()
-            self._set_feedback(
-                sds.VENUE_FORM_BOUND.format(name=venue.capitalize()), "info"
-            )
+            self._set_feedback(sds.venue_form_bound(venue), "info")
 
         def _on_exchange_changed(self) -> None:
             eid = self._bound_venue()
@@ -505,7 +502,38 @@ if _HAS_QT:
             needs_pp = eid in self._passphrase_exchanges
             self._pp_check.setChecked(needs_pp)
             self._sync_passphrase_row()
+            self._sync_credential_kind(eid)
             self._api_feedback.setText("")
+
+        def _sync_credential_kind(self, eid: str) -> None:
+            """Draw the rows and button words the pressed venue's credential kind
+            asks for.
+
+            A browser-authorization venue hides the key, secret and passphrase
+            rows and keeps its own Add press enabled on the stock wing, and every
+            key-and-secret venue keeps all three rows and its own button words.
+            """
+            form = sds.credential_form(eid)
+            typed = bool(form["key_rows"])
+            for row, label in (
+                (self._new_api_key, self._api_key_label),
+                (self._new_api_secret, self._api_secret_label),
+            ):
+                row.setVisible(typed)
+                if label is not None:
+                    label.setVisible(typed)
+            self._pp_check.setVisible(typed)
+            if not typed:
+                self._new_passphrase.setVisible(False)
+            self._add_btn.setText(str(form["add_text"]))
+            self._test_btn.setToolTip(str(form["test_tip"]))
+            if self._wing == "stocks":
+                # The wing disables both presses at build; a venue the program
+                # signs in at a browser earns back its own Add press alone.
+                self._add_btn.setEnabled(not typed)
+                self._test_btn.setEnabled(False)
+            else:
+                self._test_btn.setEnabled(typed)
 
         def _sync_passphrase_row(self) -> None:
             """Draw ``_new_passphrase`` while ``_pp_check`` is ticked.
@@ -606,6 +634,9 @@ if _HAS_QT:
                 if not eid:
                     self._set_feedback(sds.NO_VENUE_FEEDBACK, "error")
                     return
+                if sds.takes_browser_authorization(eid):
+                    self._connect_browser_venue(eid)
+                    return
                 key = self._new_api_key.text().strip()
                 secret = self._typed_secret()
                 pp = (
@@ -659,6 +690,52 @@ if _HAS_QT:
             finally:
                 self._add_btn.setEnabled(True)
                 self._test_btn.setEnabled(True)
+                self._sync_credential_kind(self._bound_venue())
+
+        def _connect_browser_venue(self, eid: str) -> None:
+            """Sign one browser-authorization venue in, store what it issued and
+            write the venue's own trade-approval setting to the feedback row.
+
+            No API key or secret row is read, and a refusal leaves the stored
+            credential exactly as it was.
+            """
+            from src.core.encryption import decrypt, encrypt, vault_phrase
+            from src.core.settings import ExchangeConfig
+            from src.trading.ata_spm_signin import SignInError, build_connector
+
+            from .sign_in_view import sign_in_session
+
+            master = vault_phrase(self._sm.get("username", ""))
+            stored = self._sm.get_exchange(eid) or {}
+            client_id = ""
+            if stored.get("api_key_enc"):
+                client_id = decrypt(stored["api_key_enc"], master)
+            self._set_feedback(sds.venue_form_bound(eid), "info")
+            safe_process_events("legacy processEvents site")
+            try:
+                answered = sds.connect_browser_venue(
+                    eid, build_connector(sign_in_session()), client_id
+                )
+            except (SignInError, OSError, ValueError, KeyError) as exc:
+                self._set_feedback(f"{eid.capitalize()} not connected: {exc}", "error")
+                if self._status_log:
+                    self._status_log.log(
+                        f"{eid.capitalize()} sign-in refused: {exc}", "error"
+                    )
+                return
+            config = ExchangeConfig(exchange_id=eid, display_name=eid.capitalize())
+            config.api_key_enc = encrypt(answered["client_id"], master)
+            config.api_secret_enc = encrypt(answered["bearer"], master)
+            self._sm.add_exchange(config)
+            self._list_exchange_once(eid)
+            self._refresh_exchange_status()
+            words = str(answered["words"])
+            if answered["refusal"]:
+                words = words + " " + str(answered["refusal"])
+            level = str(answered["level"])
+            self._set_feedback(words, level)
+            if self._status_log:
+                self._status_log.log(words, level)
 
         def _list_exchange_once(self, eid: str) -> None:
             """Draw ``eid`` in ``_exchange_list`` while no line names it yet.

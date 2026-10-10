@@ -193,14 +193,15 @@ class BrokerBase(ABC):
         """Open this broker's session through ``connect``, answering whether it
         opened and holding any refusal in ``session_refusal``.
 
-        An empty ``api_key`` or ``api_secret`` calls ``connect`` on no broker.
+        An empty ``api_key`` or ``api_secret`` calls ``connect`` on no broker, and
+        a refusal ``connect`` wrote itself is kept word for word.
         """
         self._session_refusal = ""
         if not api_key or not api_secret:
             self._session_refusal = "no API key and secret are stored"
             return False
         opened = bool(await self.connect(api_key, api_secret, paper))
-        if not opened:
+        if not opened and not self._session_refusal:
             self._session_refusal = (
                 "the connect attempt failed; the cause is in system.log"
             )
