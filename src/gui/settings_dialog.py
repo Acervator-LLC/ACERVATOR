@@ -43,7 +43,6 @@ if _HAS_QT:
 
     from .main_tabs import asset_class_surface as acs
     from .main_tabs import settings_dialog_surface as sds
-    from .main_tabs.asset_class_surface import EQUITY_VENUES as EQUITY_EXCHANGE_IDS
 
     class VenueArrayPanel(QWidget):
         """The Exchange Status array, one segment per venue of one sector.
@@ -244,27 +243,15 @@ if _HAS_QT:
             add_group = QGroupBox(sds.add_group_title(self._wing))
             add_form = QFormLayout(add_group)
 
-            self._new_exchange = QComboBox()
-            from src.exchange.ccxt_connector import (
-                SUPPORTED_EXCHANGES,
-                PASSPHRASE_EXCHANGES,
-                exchange_label,
-            )
+            from src.exchange.ccxt_connector import PASSPHRASE_EXCHANGES
 
             self._passphrase_exchanges = PASSPHRASE_EXCHANGES
 
-            # The active class filters the venue list. A venue serving two
-            # classes is offered under both.
-            for eid in sorted(acs.venues_for_class(self._wing)):
-                if eid in EQUITY_EXCHANGE_IDS:
-                    self._new_exchange.addItem(
-                        f"{eid.capitalize()} (planned, not yet live)",
-                        eid,
-                    )
-                elif eid in SUPPORTED_EXCHANGES:
-                    self._new_exchange.addItem(exchange_label(eid), eid)
-            self._new_exchange.currentIndexChanged.connect(self._on_exchange_changed)
-            add_form.addRow("Exchange:", self._new_exchange)
+            # A label, so the only venue this tab names is the pressed button's.
+            self._chosen_venue = QLabel(sds.NO_VENUE_CHOSEN)
+            self._chosen_venue.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+            self._chosen_venue.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+            add_form.addRow("Exchange:", self._chosen_venue)
 
             self._new_api_key = QLineEdit()
             self._new_api_key.setPlaceholderText(
@@ -368,6 +355,9 @@ if _HAS_QT:
             states = self._recorded_venue_states()
             self._venue_states = states
             rows = sds.exchange_status_rows(self._status_class(), states)
+            # clear() drops the selection, and the rows return in the same
+            # order, so the pressed venue survives a redraw.
+            pressed = self._exchange_list.currentRow()
             self._exchange_list.clear()
             for at, (words, venue, _state, _colour, style, tip) in enumerate(rows):
                 # OVERTAKEN, quoted whole:
@@ -378,7 +368,10 @@ if _HAS_QT:
                 # sits at its own cell in _venue_array's grid.
                 item = QListWidgetItem(words)
                 self._exchange_list.addItem(item)
+            if 0 <= pressed < self._exchange_list.count():
+                self._exchange_list.setCurrentRow(pressed)
             self._draw_venue_array(states)
+            self._draw_chosen_venue()
 
         def _draw_venue_array(self, states: dict) -> None:
             """Fill the venue array with one page of Sector-styled buttons.
@@ -473,27 +466,42 @@ if _HAS_QT:
             self._venue_page = sds.venue_next_page(self._venue_page, pages)
             self._draw_venue_array(states)
 
+        def _bound_venue(self) -> str:
+            """The venue id the pressed button names, empty while none is pressed.
+
+            The venue array's selected row is this tab's only venue choice, so
+            every reader of the chosen venue takes it from here.
+            """
+            return sds.row_venue_id(
+                self._status_class(), self._exchange_list.currentRow()
+            )
+
+        def _draw_chosen_venue(self) -> None:
+            """Write the pressed row's own words into the Add form's Exchange row.
+
+            ``chosen_venue_text`` reads the same row ``_bound_venue`` does, so
+            the form and the button cannot name two venues.
+            """
+            self._chosen_venue.setText(
+                sds.chosen_venue_text(
+                    self._status_class(), self._exchange_list.currentRow()
+                )
+            )
+
         def _open_credentials_for_row(self, at) -> None:
             """Bind the Add-exchange form to the venue the row at ``at`` names."""
-            states = getattr(self, "_venue_states", {})
-            venue = sds.row_venue_id(self._status_class(), at, states)
+            venue = sds.row_venue_id(self._status_class(), at)
             if not venue:
                 return
             self._exchange_list.setCurrentRow(int(at))
-            found = self._new_exchange.findData(venue)
-            if found < 0:
-                self._set_feedback(
-                    sds.VENUE_HAS_NO_FORM.format(name=venue.capitalize()), "warning"
-                )
-                return
-            self._new_exchange.setCurrentIndex(found)
             self._on_exchange_changed()
             self._set_feedback(
                 sds.VENUE_FORM_BOUND.format(name=venue.capitalize()), "info"
             )
 
         def _on_exchange_changed(self) -> None:
-            eid = self._new_exchange.currentData()
+            eid = self._bound_venue()
+            self._draw_chosen_venue()
             needs_pp = eid in self._passphrase_exchanges
             self._pp_check.setChecked(needs_pp)
             self._sync_passphrase_row()
@@ -521,7 +529,10 @@ if _HAS_QT:
             return typed
 
         def _test_api_connection(self):
-            eid = self._new_exchange.currentData()
+            eid = self._bound_venue()
+            if not eid:
+                self._set_feedback(sds.NO_VENUE_FEEDBACK, "error")
+                return None
             key = self._new_api_key.text().strip()
             secret = self._typed_secret()
             pp = (
@@ -591,7 +602,10 @@ if _HAS_QT:
             safe_process_events("legacy processEvents site")
 
             try:
-                eid = self._new_exchange.currentData()
+                eid = self._bound_venue()
+                if not eid:
+                    self._set_feedback(sds.NO_VENUE_FEEDBACK, "error")
+                    return
                 key = self._new_api_key.text().strip()
                 secret = self._typed_secret()
                 pp = (

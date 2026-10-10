@@ -399,6 +399,18 @@ class ExchangeInterface(ABC):
         del budget_sec
         return 0.0
 
+    @staticmethod
+    def credential_refusal(api_key: str, api_secret: str, phrase: str) -> str:
+        """Why this venue cannot sign a request with these credentials, empty
+        where it can.
+
+        ``api_validator.validate_credentials`` reads this where the venue
+        publishes no read path to check a credential against; this body
+        refuses nothing until a subclass overrides it.
+        """
+        del api_key, api_secret, phrase
+        return ""
+
     async def get_spot_positions(self) -> Optional[dict[str, "SpotPosition"]]:
         """Return the venue's open spot positions keyed by asset, or None.
 

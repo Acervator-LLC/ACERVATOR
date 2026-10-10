@@ -25,8 +25,8 @@ the ``settings_dialog.state`` method, which is how the Electron renderer
 reaches it. Every value below is written out here rather than read from
 ``src.gui.settings_dialog``, and nothing compares the two copies. Three
 values are not written out and so cannot drift: the twelve indicator weights
-read ``ta_engine.DEFAULT_WEIGHTS``, and ``crypto_exchange_items`` and
-``passphrase_exchange_ids`` read the connector registry.
+read ``ta_engine.DEFAULT_WEIGHTS``, and ``exchange_status_rows`` and
+``passphrase_exchange_ids`` read the venue registries.
 Nothing here imports Qt, and nothing runs at import time that
 reads a clock, opens a file or reaches a network.
 """
@@ -102,8 +102,6 @@ DANGER_PROPERTY = "danger"
 from .. import design_system as ds  # noqa: E402
 from . import asset_class_surface as acs  # noqa: E402
 from .asset_class_surface import EQUITY_VENUES as EQUITY_EXCHANGE_IDS  # noqa: E402
-
-EQUITY_ITEM_FORMAT = "{name} (planned, not yet live)"
 
 STRONG_OPEN = "<b>"
 STRONG_CLOSE = "</b>"
@@ -209,7 +207,15 @@ VENUE_ROW_STYLE = (
 )
 VENUE_ROW_TOOLTIP = "{name} — {words}. Press to enter credentials."
 VENUE_FORM_BOUND = "Enter credentials for {name}."
-VENUE_HAS_NO_FORM = "{name} has no credential form on this tab."
+
+#: The Add form's Exchange row while no venue button is pressed.
+NO_VENUE_CHOSEN = "Press a venue above to choose it."
+
+#: The Exchange Status row a dialog holds while no venue button is pressed.
+NO_VENUE_ROW = -1
+
+#: Why Test Connection and Test and Add refuse before reading a credential.
+NO_VENUE_FEEDBACK = "Press a venue above to choose one first."
 
 #: The venues one page of the Exchange Status array holds. Past this a pages
 #: button draws and the array still never scrolls.
@@ -562,13 +568,6 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "label": None,
         "name": "exchange_list",
         "kind": LIST,
-    },
-    {
-        "tab": EXCHANGE_TAB,
-        "group": CRYPTO_ADD_GROUP,
-        "label": "Exchange:",
-        "name": "new_exchange",
-        "kind": COMBO_DATA,
     },
     {
         "tab": EXCHANGE_TAB,
@@ -1108,6 +1107,14 @@ NO_STYLE = ""
 
 TEXT_ROWS = (
     (
+        EXCHANGE_TAB,
+        CRYPTO_ADD_GROUP,
+        "Exchange:",
+        "chosen_venue",
+        NO_VENUE_CHOSEN,
+        NO_STYLE,
+    ),
+    (
         AI_TAB,
         AI_STATUS_GROUP_TITLE,
         "Status:",
@@ -1140,7 +1147,6 @@ STATUS_ROWS = tuple(
 )
 
 EXCHANGE_CONNECTIONS = (
-    ("new_exchange.currentIndexChanged", "on_exchange_changed"),
     ("pp_check.toggled", "show_passphrase"),
     ("test_btn.clicked", "test_api_connection"),
     ("add_btn.clicked", "add_exchange"),
@@ -1256,7 +1262,7 @@ LAYOUT = {
                 (
                     FORM,
                     (
-                        (CONTROL, "new_exchange"),
+                        (TEXT, "chosen_venue"),
                         (CONTROL, "new_api_key"),
                         (CONTROL, "new_api_secret"),
                         (CONTROL, "pp_check"),
@@ -1471,19 +1477,6 @@ def wing_or_default(wing: Any) -> str:
     return CLASS_WINGS.get(str(wing or "").strip().lower(), DEFAULT_WING)
 
 
-def crypto_exchange_items() -> tuple:
-    """Every ``SUPPORTED_EXCHANGES`` id with its ``exchange_label``, in id order.
-
-    ``SUPPORTED_EXCHANGES`` is imported when first asked, so importing this
-    file loads no exchange library and reads no settings.
-    """
-    from ...exchange.ccxt_connector import SUPPORTED_EXCHANGES, exchange_label
-
-    return tuple(
-        (exchange_label(eid), eid) for eid in sorted(SUPPORTED_EXCHANGES.keys())
-    )
-
-
 def passphrase_exchange_ids() -> frozenset:
     """``PASSPHRASE_EXCHANGES``, the set ``on_exchange_changed`` ticks the box on.
 
@@ -1493,16 +1486,6 @@ def passphrase_exchange_ids() -> frozenset:
     from ...exchange.ccxt_connector import PASSPHRASE_EXCHANGES
 
     return frozenset(PASSPHRASE_EXCHANGES)
-
-
-def exchange_items(wing: str) -> tuple:
-    """The Add-exchange dropdown items for one wing, as (text, id) pairs."""
-    if wing == STOCK_WING:
-        return tuple(
-            (EQUITY_ITEM_FORMAT.format(name=eid.capitalize()), eid)
-            for eid in sorted(EQUITY_EXCHANGE_IDS)
-        )
-    return crypto_exchange_items()
 
 
 def list_label_for(wing: str) -> str:
@@ -1584,7 +1567,11 @@ def exchange_status_lines(wing: Any, states: Any = None) -> tuple:
 
 
 def row_venue_id(wing: Any, at: Any, states: Any = None) -> str:
-    """The venue the row at ``at`` names, empty where that row names none."""
+    """The venue the row at ``at`` names, empty where that row names none.
+
+    ``exchange_status_rows`` orders by venue id, so the answer is the same
+    whatever ``states`` carries.
+    """
     rows = exchange_status_rows(wing, states)
     try:
         found = int(at)
@@ -1593,6 +1580,22 @@ def row_venue_id(wing: Any, at: Any, states: Any = None) -> str:
     if not 0 <= found < len(rows):
         return ""
     return str(rows[found][1])
+
+
+def chosen_venue_text(wing: Any, at: Any, states: Any = None) -> str:
+    """The Add form's Exchange row, naming the venue the row at ``at`` chose.
+
+    Answers that row's own ``exchange_status_rows`` words, and
+    ``NO_VENUE_CHOSEN`` while the row names no venue.
+    """
+    rows = exchange_status_rows(wing, states)
+    try:
+        found = int(at)
+    except (TypeError, ValueError):
+        return NO_VENUE_CHOSEN
+    if not 0 <= found < len(rows) or not rows[found][1]:
+        return NO_VENUE_CHOSEN
+    return str(rows[found][0])
 
 
 def venue_grid_shape(count: Any = None) -> tuple:
@@ -2199,6 +2202,9 @@ class SettingsDialogModel:
         #: panel reads it.
         self.asset_class = acs.normalise(wing)
         self.venue_states: dict = {}
+        #: The Exchange Status row a press bound the Add form to, the dialog's
+        #: only venue choice. ``NO_VENUE_ROW`` while no button is pressed.
+        self.venue_row: int = NO_VENUE_ROW
         self.validator = validator
         self.sound = sound
         self.encryptor = encryptor
@@ -2242,9 +2248,6 @@ class SettingsDialogModel:
                 self.rows.append([spec["tab"], spec["group"], spec["label"], name])
         for button in BUTTON_NAMES_BY_TEXT.values():
             self.enabled[button] = True
-        self.values["new_exchange_items"] = [
-            list(one) for one in exchange_items(self.wing)
-        ]
         self.values[TA_ROWS] = [list(one) for one in ta_rows(self.values)]
         self.texts["vol_label"] = volume_label_text(spec_for("sound_volume")["value"])
         self.texts["api_feedback"] = ""
@@ -2307,8 +2310,6 @@ class SettingsDialogModel:
         raise KeyError(name)
 
     def _items_for(self, spec: dict) -> Any:
-        if spec["name"] == "new_exchange":
-            return self.values["new_exchange_items"]
         return spec["items"]
 
     def _show_stored(self, name: str, raw: Any) -> None:
@@ -2458,12 +2459,28 @@ class SettingsDialogModel:
             self.push_sound_config()
 
     def current_exchange_id(self) -> Any:
-        """The id of the exchange the dropdown is showing."""
-        items = self.values["new_exchange_items"]
-        at = self.values["new_exchange"]
-        if not items or at < FIRST_INDEX or at >= len(items):
-            return None
-        return items[at][1]
+        """The id of the venue ``venue_row`` names, None while it names none.
+
+        ``venue_row`` is the Exchange Status array's own selected row, so the
+        array is the only control naming a venue.
+        """
+        return row_venue_id(self.asset_class, self.venue_row) or None
+
+    def bind_venue_row(self, at: Any) -> None:
+        """Bind the Add form to the venue the array's row ``at`` names.
+
+        A row naming no venue leaves ``venue_row`` where it was, exactly as
+        ``SettingsDialog._open_credentials_for_row`` does.
+        """
+        self._record("bind_venue_row", at)
+        if not row_venue_id(self.asset_class, at):
+            return
+        self.venue_row = int(at)
+        self.on_exchange_changed()
+        self.set_feedback(
+            VENUE_FORM_BOUND.format(name=self.current_exchange_id().capitalize()),
+            INFO_LEVEL,
+        )
 
     def on_exchange_changed(self) -> None:
         """Tick the passphrase box for an exchange that needs one.
@@ -2471,6 +2488,7 @@ class SettingsDialogModel:
         ``show_passphrase`` then draws ``new_passphrase`` for that venue alone.
         """
         eid = self.current_exchange_id()
+        self.texts["chosen_venue"] = chosen_venue_text(self.asset_class, self.venue_row)
         self.values["pp_check"] = eid in passphrase_exchange_ids()
         self.texts["api_feedback"] = ""
         self._record("on_exchange_changed", eid)
@@ -2504,6 +2522,9 @@ class SettingsDialogModel:
         """Check the typed credentials and report on the feedback line."""
         self._record("test_api_connection")
         eid = self.current_exchange_id()
+        if not eid:
+            self.set_feedback(NO_VENUE_FEEDBACK, ERROR_LEVEL)
+            return None
         key, secret, phrase = self._typed_credentials()
 
         if not key or not secret:
@@ -2566,6 +2587,9 @@ class SettingsDialogModel:
 
         try:
             eid = self.current_exchange_id()
+            if not eid:
+                self.set_feedback(NO_VENUE_FEEDBACK, ERROR_LEVEL)
+                return
             key, secret, phrase = self._typed_credentials()
 
             if key and secret:
@@ -2858,7 +2882,7 @@ def control_painted_text(spec: dict, values: dict) -> str:
     if kind == "combo":
         if spec["kind"] == COMBO_DATA:
             at = values[spec["name"]]
-            items = spec["items"] if "items" in spec else values["new_exchange_items"]
+            items = spec["items"]
             if not isinstance(at, int) or at < FIRST_INDEX or at >= len(items):
                 return EMPTY_TEXT
             return items[at][0]
@@ -2961,7 +2985,6 @@ def build_view_model(model: SettingsDialogModel) -> dict:
         "visible": dict(model.visible),
         "tooltips": dict(model.tooltips),
         "control_specs": [_plain(dict(one)) for one in CONTROL_SPECS],
-        "exchange_items": [list(one) for one in exchange_items(model.wing)],
         "exchange_status": {
             "label": exchange_status_label(),
             "asset_class": model.asset_class,

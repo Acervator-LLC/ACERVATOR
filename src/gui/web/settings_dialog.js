@@ -17,7 +17,6 @@
   var CONTROL_SPECS = "control_specs";
   var EMITTED = "emitted";
   var ENABLED = "enabled";
-  var EXCHANGE_ITEMS = "exchange_items";
   var EXCHANGE_STATUS = "exchange_status";
   var GROUPS = "groups";
   var HEADINGS = "headings";
@@ -62,7 +61,6 @@
     CONTROL_SPECS,
     EMITTED,
     ENABLED,
-    EXCHANGE_ITEMS,
     EXCHANGE_STATUS,
     GROUPS,
     HEADINGS,
@@ -121,7 +119,6 @@
     CONNECT_ORDER,
     CONTROL_SPECS,
     EMITTED,
-    EXCHANGE_ITEMS,
     LISTED_EXCHANGES,
     MESSAGE_BOXES,
     MINIMUM_SIZE,
@@ -757,10 +754,6 @@
     return found;
   }
 
-  function exchangeItems() {
-    return listField(model(), EXCHANGE_ITEMS);
-  }
-
   // The venue buttons one page of the Exchange Status array draws.
   function exchangeStatusPage() {
     return listField(objectField(model(), EXCHANGE_STATUS), VENUE_PAGE);
@@ -830,26 +823,13 @@
     return found;
   }
 
-  function exchangeItemNamed(id) {
-    var found;
-    exchangeItems().forEach(function (row) {
-      if (Array.isArray(row) && String(at(row, STEP)) === String(id)) {
-        found = row;
-      }
-    });
-    return found;
-  }
-
-  // The items one combo draws, the exchange list read from the payload.
+  // The items one combo draws, every one carried on its own spec.
   function comboItems(name) {
     var spec = specFor(name);
-    if (!isPlainObject(spec)) {
+    if (!isPlainObject(spec) || !Array.isArray(spec[ITEMS])) {
       return [];
     }
-    if (Array.isArray(spec[ITEMS])) {
-      return spec[ITEMS];
-    }
-    return exchangeItems();
+    return spec[ITEMS];
   }
 
   function comboItemText(one) {
@@ -1225,11 +1205,6 @@
         note(AT + String(index), SOUND_TEST_BUTTONS, SHORT_LIST_FAULT, kindOf(row));
       }
     });
-    listField(found, EXCHANGE_ITEMS).forEach(function (row, index) {
-      if (!Array.isArray(row) || row.length !== SECOND) {
-        note(AT + String(index), EXCHANGE_ITEMS, SHORT_LIST_FAULT, kindOf(row));
-      }
-    });
     listField(objectField(found, EXCHANGE_STATUS), ROWS).forEach(
       function (row, index) {
         if (!Array.isArray(row) || row.length !== VENUE_ROW_WIDTH) {
@@ -1341,9 +1316,6 @@
     });
     listField(found, TA_ROWS_FIELD).forEach(function (row, index) {
       checkMarkup(AT + String(index), TA_ROWS_FIELD, at(row, ZERO));
-    });
-    listField(found, EXCHANGE_ITEMS).forEach(function (row, index) {
-      checkMarkup(AT + String(index), EXCHANGE_ITEMS, at(row, ZERO));
     });
     Object.keys(objectField(found, BUTTONS)).forEach(function (name) {
       if (name !== SAVE_STYLE && name !== AI_TEST_STYLE) {
@@ -2363,8 +2335,6 @@
     taRowNamed: taRowNamed,
     soundButtons: soundButtons,
     soundButtonNamed: soundButtonNamed,
-    exchangeItems: exchangeItems,
-    exchangeItemNamed: exchangeItemNamed,
     exchangeStatusPage: exchangeStatusPage,
     venuePages: venuePages,
     venueGridColumns: venueGridColumns,

@@ -126,6 +126,14 @@ PATH_UNPUBLISHED_FORMAT = (
     "it, so {asked} is not fetched and nothing is sent"
 )
 
+#: Why ``credential_refusal`` refuses with no API key typed.
+NO_API_KEY = "no Robinhood API key is typed, so no request can be signed"
+
+#: Why ``credential_refusal`` refuses a signing key ``signature`` cannot load.
+SIGNING_KEY_REFUSED_FORMAT = (
+    "the typed Robinhood private key is not an Ed25519 signing key: {error}"
+)
+
 #: Why an order refuses with nothing stored.
 NO_CREDENTIAL = (
     "no Robinhood API key and no Ed25519 private key are stored, so no request "
@@ -554,6 +562,25 @@ class RobinhoodCryptoConnector(ExchangeInterface):
             "yes" if self._connected else "no",
         )
 
+    @staticmethod
+    def credential_refusal(api_key: str, api_secret: str, phrase: str) -> str:
+        """Why these credentials cannot sign a Robinhood request, empty where
+        they can.
+
+        ``signature`` loads ``api_secret`` as the base64 Ed25519 seed and names
+        a seed it refuses, and no venue is contacted.
+        """
+        del phrase
+        if not api_key:
+            return NO_API_KEY
+        try:
+            signature(api_secret, api_key, 0, ORDERS_PATH, "GET")
+        except ValueError as exc:
+            return str(exc)
+        except Exception as exc:  # the reader names what it could not load
+            return SIGNING_KEY_REFUSED_FORMAT.format(error=exc)
+        return ""
+
     async def disconnect(self) -> None:
         """Drop the credential, close any session, and make ``is_connected``
         False."""
@@ -870,6 +897,7 @@ __all__ = [
     "HEADER_SIGNATURE",
     "HEADER_TIMESTAMP",
     "NOT_API_TRADABLE_FORMAT",
+    "NO_API_KEY",
     "NO_CREDENTIAL",
     "NO_IMMEDIATE_OR_CANCEL",
     "ORDERS_PATH",
@@ -889,6 +917,7 @@ __all__ = [
     "RATE_LIMIT_BURST_PER_MINUTE",
     "RATE_LIMIT_PER_MINUTE",
     "RATE_LIMIT_WINDOW_S",
+    "SIGNING_KEY_REFUSED_FORMAT",
     "SIZE_FIELD_UNITS",
     "TIMED_ORDER_TYPES",
     "TIME_IN_FORCE_GTC",
