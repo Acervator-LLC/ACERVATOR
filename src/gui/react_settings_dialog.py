@@ -459,6 +459,7 @@ HOLDER_BY_KIND = {
 
 #: The labels the dialog writes into, beside the named controls.
 TEXT_NAMES: tuple[str, ...] = (
+    "chosen_venue",
     "api_feedback",
     "ai_status",
     "ai_hash",
@@ -483,25 +484,22 @@ ACTION_HANDLERS: dict[str, str] = {
 #: The control whose edit runs a method, and the method it runs. ``apply_edit``
 #: calls with no argument, so every entry names a method that takes none.
 EDIT_HANDLERS: dict[str, str] = {
-    "new_exchange": "_on_exchange_changed",
     "sms_carrier": "_fill_gateway_email",
     surface.VOLUME_NAME: "_push_sound_config",
     **{name: "_push_sound_config" for _key, name in surface.SOUND_CONFIG_FIELDS},
 }
 
 
-def combo_items(name: str, wing: str = surface.DEFAULT_WING) -> tuple:
+def combo_items(name: str) -> tuple:
     """The choices one drop-down offers, from the module the Qt side reads.
 
-    ``theme_combo`` comes from ``theme_engine`` and ``new_exchange`` follows
-    ``wing``; every other drop-down carries its list on its spec.
+    ``theme_combo`` comes from ``theme_engine``, and every other drop-down
+    carries its list on its spec.
     """
     if name == "theme_combo":
         from .theme_engine import THEMES
 
         return tuple((tokens.display_name, key) for key, tokens in THEMES.items())
-    if name == "new_exchange":
-        return tuple(tuple(one) for one in surface.exchange_items(wing))
     return tuple(surface.spec_for(name).get("items") or ())
 
 
@@ -738,6 +736,7 @@ if _HAS_QT and _HAS_WEBENGINE:
                 )
             )
             self._model.texts["list_label"] = surface.exchange_status_label()
+            self._draw_chosen_venue()
             self.redraw()
 
         def show_tab(self, title: str) -> None:

@@ -198,23 +198,26 @@ derive the same key.
 
 ## Settings, Exchanges page
 
-`_create_exchange_tab` lists the configured exchanges and offers a form to add
-one: the exchange picker, an API key, an API secret, and a passphrase field
-that appears only when the exchange needs one.
+`_create_exchange_tab` draws the Exchange Status array and a form to add one
+venue: the Exchange row, an API key, an API secret, and a passphrase field that
+appears only when the exchange needs one.
 
-The picker lists what the connector layer can actually reach.
+The array is the only control that chooses a venue. One button per venue the
+sector serves, and a press binds the form to that venue. The Exchange row is a
+label, not a picker, so the form cannot name a venue other than the one whose
+button is pressed.
 
-`src/exchange/ccxt_connector.py` — `SUPPORTED_EXCHANGES`, the first six
+`src/gui/settings_dialog.py` — `_bound_venue` and `_draw_chosen_venue` read the
+one pressed row; `src/gui/main_tabs/settings_dialog_surface.py` — `row_venue_id`
+gives the id and `chosen_venue_text` gives the words.
 
-```python
-SUPPORTED_EXCHANGES: dict[str, str] = {
-    "binance": "binance",
-    "coinbase": "coinbase",
-    "kraken": "kraken",
-    "kucoin": "kucoin",
-    "bybit": "bybit",
-    "okx": "okx",
-```
+The array lists every venue `venues_for_class` answers for the sector, and
+every one of them binds. Crypto draws 21 buttons and all 21 bind, Robinhood
+among them.
+
+With no button pressed the row reads `NO_VENUE_CHOSEN`, and Test Connection and
+Test and Add Exchange refuse with `NO_VENUE_FEEDBACK` before reading a
+credential.
 
 Three venues need a passphrase, and the field appears for those alone.
 
@@ -239,6 +242,14 @@ Three handlers sit behind the buttons.
 | `_test_api_connection` | Authenticates against the venue and reports through `_set_feedback` |
 | `_add_exchange` | Runs that test first and stores nothing when it fails |
 | `_remove_exchange` | Drops the selected entry |
+
+A venue ccxt carries no entry for takes its own connector instead.
+`src/exchange/api_validator.py`, in `validate_credentials`, asks
+`crypto_connector_class` first and routes to `hand_written_result`, which reads
+that connector's `credential_refusal` and reaches no venue. Robinhood's
+override in `src/exchange/robinhood_connector.py`, in `credential_refusal`,
+loads the typed secret as its Ed25519 signing key and names a key it cannot
+load.
 
 ### The stock wing
 
@@ -436,22 +447,14 @@ MASTER_FORMAT = "qat_{username}_vault"
 
 ### Settings > Exchanges
 
-The page lists the configured exchanges and adds one: the exchange picker, an
-API key, an API secret, and a passphrase field that appears only when the venue
-needs it. The picker fills from the connector layer, so it lists what that
-layer can reach.
+The page draws the Exchange Status array and adds one venue: the Exchange row,
+an API key, an API secret, and a passphrase field that appears only when the
+venue needs it. The array is the only control that chooses a venue, and the
+Exchange row is a label that repeats the pressed button's own words.
 
-`src/exchange/ccxt_connector.py` — `SUPPORTED_EXCHANGES`, the first six
-
-```python
-SUPPORTED_EXCHANGES: dict[str, str] = {
-    "binance": "binance",
-    "coinbase": "coinbase",
-    "kraken": "kraken",
-    "kucoin": "kucoin",
-    "bybit": "bybit",
-    "okx": "okx",
-```
+`src/gui/main_tabs/settings_dialog_surface.py` — `exchange_status_rows` gives
+the array its venues, `row_venue_id` the pressed row's id, and
+`chosen_venue_text` the words the Exchange row reads.
 
 Three venues need the passphrase field, and it appears for those alone.
 
@@ -498,25 +501,27 @@ Configured Crypto Exchanges lists what the manager returns for this wing, each
 entry naming its display name and its exchange id. The stock wing lists the
 equity ids instead and disables both buttons.
 
-The Add Crypto Exchange group holds four rows. Exchange fills from the
-supported list. API Key takes a plain key or a Coinbase CDP key string, and its
+The Add Crypto Exchange group holds four rows. Exchange reads the pressed
+button's venue. API Key takes a plain key or a Coinbase CDP key string, and its
 placeholder shows the CDP shape. API Secret takes a plain secret or a PEM
 elliptic-curve private key, and escaped newlines inside a pasted PEM convert on
 the way in. The passphrase checkbox appears for the three venues above.
 
-The picker in the figure reads Binance, the first supported id in alphabetical
-order, and the passphrase box under it stays clear. Changing the picker sets
-that box for the three venues that need one and clears it for the rest. It also
-wipes the feedback line, so an answer about the last venue cannot stand as an
-answer about this one.
+The figure predates the array and shows the picker the array replaced. With no
+button pressed the Exchange row reads `NO_VENUE_CHOSEN` and the passphrase box
+stays clear. A press sets that box for the three venues that need one and
+clears it for the rest. It also wipes the feedback line, so an answer about the
+last venue cannot stand as an answer about this one.
 
 `src/gui/settings_dialog.py` — `_on_exchange_changed`
 
 ```python
 def _on_exchange_changed(self) -> None:
-    eid = self._new_exchange.currentData()
+    eid = self._bound_venue()
+    self._draw_chosen_venue()
     needs_pp = eid in self._passphrase_exchanges
     self._pp_check.setChecked(needs_pp)
+    self._sync_passphrase_row()
     self._api_feedback.setText("")
 ```
 
@@ -1972,7 +1977,7 @@ no argument.
 
 ```python
 EDIT_HANDLERS: dict[str, str] = {
-    "new_exchange": "_on_exchange_changed",
+    "sms_carrier": "_fill_gateway_email",
     surface.VOLUME_NAME: "_push_sound_config",
     **{name: "_push_sound_config" for _key, name in surface.SOUND_CONFIG_FIELDS},
 }
@@ -2811,6 +2816,14 @@ section records which list fills it, which build paints it, and every place the
 chosen venue id arrives.
 
 ### Which build paints the picker
+
+OVERTAKEN, and this section is kept as written. There is no picker. The
+Exchange Status array is the only control that chooses a venue, and the
+Exchange row of the Add form is a label reading `chosen_venue_text`. The two
+item lists this section traces — `crypto_exchange_items` and `exchange_items`
+in `src/gui/main_tabs/settings_dialog_surface.py` — are gone with the picker,
+and so is the `exchange_items` field of `view_model`. Both builds now take the
+chosen venue from `row_venue_id` over the array's one selected row.
 
 Two builds draw the row. `src/_variant.py` sets `DEFAULT_VARIANT = REACT`, so a
 checkout with no baked variant file and no `ACERVATOR_VARIANT` draws the React
@@ -7102,16 +7115,17 @@ venue, then writes the venue's name into the feedback line.
 `src/gui/settings_dialog.py` — `_open_credentials_for_row`
 
 ```python
-self._new_exchange.setCurrentIndex(found)
+self._exchange_list.setCurrentRow(int(at))
 self._on_exchange_changed()
 self._set_feedback(
     sds.VENUE_FORM_BOUND.format(name=venue.capitalize()), "info"
 )
 ```
 
-Driven on both builds, pressing the Kraken, Gemini and Coinbase lines bound the
-form to `kraken`, `gemini` and `coinbase` in that order, in Qt and in the React
-page alike.
+Every venue the array draws binds. Driven over all six sectors with the home
+redirected and no venue contacted: 91 of 91 buttons that name a venue bound the
+form to that venue, 21 of 21 under crypto, with the Exchange row, the checked
+button and the feedback line all naming the one venue.
 
 ### Both builds draw one panel
 
