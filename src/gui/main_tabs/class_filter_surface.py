@@ -3,7 +3,8 @@
 
 ``asset_class_surface`` owns the class list and the venue map; this module
 narrows a fleet, a venue list and a trade history to one of those classes, and
-writes the sentence an emptied tab draws. Both variants read it, so the Qt tab
+writes the sentence an emptied tab draws and the ``BUILD_LABEL`` it offers
+beside it. Both variants read it, so the Qt tab
 and the React page filter one fleet the same way. ``set_active`` records the
 class the header strip group last selected and ``active`` answers it.
 """
@@ -13,6 +14,7 @@ from __future__ import annotations
 from typing import Any, Iterable, Optional
 
 from .asset_class_surface import (
+    article,
     display_name,
     normalise,
     symbol_class,
@@ -43,6 +45,12 @@ TAB_SUBJECTS = {
 #: The tabs that hold no class-bearing content. Neither filters, by his rule.
 UNFILTERED_TABS = ("Status", "Console")
 
+#: The tabs whose note offers to build a bot. Each of these is emptied by the
+#: sector holding no live bot, and the window's own ``_create_bot`` hands the
+#: pressed sector to the wizard. The Sim and the Paper tab open a wizard of
+#: their own that takes no sector, so neither offers the build.
+BUILD_TABS = ("Live", "Swarm", "Charts", "Inspector", "History")
+
 #: The bridge method ``src/gui/web/class_note.js`` registers under, which is
 #: also the renderer module the React empty panel draws the note with.
 NOTE_METHOD = "class_note.model"
@@ -55,15 +63,24 @@ ADD_VENUE_MENU = "Exchange"
 EMPTY_HEADING = "{name} — nothing to show"
 EMPTY_NOTE = "No {name} {subject} to show."
 
-#: The second line an emptied tab draws. A sector one or more venues serve
-#: carries the count, that the operator can trade it, and where he adds a
-#: venue. A sector no venue serves carries that fact alone, because no
-#: control on screen can act on it.
+#: The second line an emptied tab draws while no venue he added serves the
+#: sector. A sector one or more venues serve carries the count, that the
+#: operator can trade it, and where he adds a venue. A sector no venue serves
+#: carries that fact alone, because no control on screen can act on it.
 SERVED_HINT = (
     "You can trade {name}. {count} {venues} {serve} {name}. "
     "Add one from the {menu} menu."
 )
 UNSERVED_HINT = "No venue serves {name} yet."
+
+#: The second line an emptied tab draws while a venue he added serves the
+#: sector. He is short of a bot, not of a venue, so the line counts what he
+#: added and the button beside it builds the bot.
+BUILD_HINT = "You can trade {name} now. {count} {venues} you added {serve} {name}."
+
+#: The button that line carries. Pressing it opens the Bot Creation Wizard on
+#: the sector the note names.
+BUILD_LABEL = "Build {article} {name} bot"
 
 VENUE_NOUN_ONE = "venue"
 VENUE_NOUN_MANY = "venues"
@@ -187,10 +204,13 @@ def empty_note(tab: Any, name: Optional[Any] = None) -> str:
     return EMPTY_NOTE.format(subject=subject, name=display_name(key))
 
 
-def note_model(tab: Any, name: Optional[Any] = None) -> dict:
+def note_model(
+    tab: Any, name: Optional[Any] = None, venues: Optional[Any] = None
+) -> dict:
     """The view model the note page draws for one emptied tab.
 
-    ``EmptyTabQtPanel`` and the React empty panel read the same four fields.
+    ``EmptyTabQtPanel`` and the React empty panel read the same six fields, and
+    ``build_class`` is the sector a press on ``build_text`` builds a bot on.
     """
     key = normalise(name) if name is not None else active()
     shown = display_name(key)
@@ -199,37 +219,65 @@ def note_model(tab: Any, name: Optional[Any] = None) -> dict:
         "method": NOTE_METHOD,
         "heading": EMPTY_HEADING.format(name=shown),
         "state_text": empty_note(tab, key),
-        "issue_text": empty_hint(key),
+        "issue_text": empty_hint(key, venues),
+        "build_text": build_label(tab, key, venues),
+        "build_class": key,
     }
 
 
-def empty_hint(name: Optional[Any] = None) -> str:
+def empty_hint(name: Optional[Any] = None, venues: Optional[Any] = None) -> str:
     """The second line an emptied tab draws under ``empty_note``.
 
-    A sector ``venues_for_class`` counts venues for takes ``SERVED_HINT`` and
-    one it counts none for takes ``UNSERVED_HINT``, the count read on every
-    call so no venue name is written into either.
+    One or more configured ``venues`` serving the sector takes ``BUILD_HINT``,
+    and none of those falls back to ``venues_for_class``, whose own count takes
+    ``SERVED_HINT`` or, at zero, ``UNSERVED_HINT``.
     """
     key = normalise(name) if name is not None else active()
     shown = display_name(key)
+    added = len(list(venues or ()))
+    if added:
+        return BUILD_HINT.format(name=shown, count=added, **_venue_words(added))
     count = len(venues_for_class(key))
     if not count:
         return UNSERVED_HINT.format(name=shown)
-    alone = count == 1
     return SERVED_HINT.format(
         name=shown,
         count=count,
-        venues=VENUE_NOUN_ONE if alone else VENUE_NOUN_MANY,
-        serve=VENUE_VERB_ONE if alone else VENUE_VERB_MANY,
         menu=ADD_VENUE_MENU,
+        **_venue_words(count),
     )
 
 
-def tab_state(tab: Any, statuses: Any, name: Optional[Any] = None) -> dict:
+def _venue_words(count: int) -> dict:
+    """The ``VENUE_NOUN_ONE`` and ``VENUE_VERB_ONE`` pair one count takes."""
+    alone = count == 1
+    return {
+        "venues": VENUE_NOUN_ONE if alone else VENUE_NOUN_MANY,
+        "serve": VENUE_VERB_ONE if alone else VENUE_VERB_MANY,
+    }
+
+
+def build_label(
+    tab: Any, name: Optional[Any] = None, venues: Optional[Any] = None
+) -> str:
+    """The text on the button an emptied tab offers, or an empty string.
+
+    A tab ``BUILD_TABS`` holds draws ``BUILD_LABEL`` while ``venues`` holds one
+    the operator configured for the sector, and every other state draws none.
+    """
+    if str(tab) not in BUILD_TABS or not list(venues or ()):
+        return ""
+    shown = display_name(normalise(name) if name is not None else active())
+    return BUILD_LABEL.format(article=article(shown), name=shown)
+
+
+def tab_state(
+    tab: Any, statuses: Any, name: Optional[Any] = None, venues: Optional[Any] = None
+) -> dict:
     """What one tab holds for an asset class, and the note it draws when none.
 
     Both variants read this dict, so the Qt pane and the React page draw one
-    count and one sentence.
+    count, one sentence and one ``build`` label.
     """
     key = normalise(name) if name is not None else active()
     kept = bots_of_class(statuses, key)
@@ -242,5 +290,6 @@ def tab_state(tab: Any, statuses: Any, name: Optional[Any] = None) -> dict:
         "bot_count": len(kept),
         "empty": not kept,
         "note": empty_note(tab, key) if not kept else "",
-        "hint": empty_hint(key) if not kept else "",
+        "hint": empty_hint(key, venues) if not kept else "",
+        "build": build_label(tab, key, venues) if not kept else "",
     }
