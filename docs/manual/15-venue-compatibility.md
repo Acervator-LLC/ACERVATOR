@@ -185,7 +185,7 @@ venue-and-sector readiness matrix in
 | Venue | Sectors `venue_classes` answers |
 | ----- | ------------------------------- |
 | coinbase | crypto, stocks, commodities, forex, indices, futures_perps |
-| kraken | crypto, stocks, commodities, indices, futures_perps |
+| kraken | crypto, stocks, commodities, forex, indices, futures_perps |
 | okx | crypto, stocks, commodities, indices, futures_perps |
 | bitget | crypto, stocks, commodities, indices, futures_perps |
 | bitfinex | crypto, commodities, indices, futures_perps |
@@ -962,19 +962,26 @@ Three differences the crypto path already absorbs per venue, and each is a line
 in one connector rather than a variant.
 
 ```
-src/exchange/ccxt_connector.py:1169   the client-order-id field name per venue
-                                      coinbase   client_order_id
-                                      binance    newClientOrderId
-                                      kraken     userref
-                                      every other  clientOrderId
+src/exchange/ccxt_connector.py, in place_order
+    the client-order-id field name per venue
+        coinbase     client_order_id
+        binance      newClientOrderId
+        every other  clientOrderId
 
-src/exchange/ccxt_connector.py:1183   no venue carries an immediate-or-cancel
-                                      type, so it is sent as a limit order
-                                      carrying timeInForce IOC
+    no venue carries an immediate-or-cancel type, so it is sent as a limit
+    order carrying timeInForce IOC
 
-src/exchange/ccxt_connector.py:1132   a spot market buy on Coinbase needs a
-                                      price, so a ticker is fetched first
+    a spot market buy on Coinbase needs a price, so a ticker is fetched first
 ```
+
+OVERTAKEN, and the block above is kept as written. Kraken carried a fourth row
+reading `userref`, which Kraken's own AddOrder page describes as a numeric
+identifier, and the program's own client order id reads `acrv-` followed by a
+hexadecimal digest. Kraken now takes the `clientOrderId` row, which the library
+maps onto Kraken's own alphanumeric `cl_ord_id` field. Driven with the transport
+replaced and no order sent, the body posted to `AddOrder` moved and the other
+fourteen venues' bodies are unchanged. The readings are in
+[../audits/2026-10-09_kraken_sector_order_formats/REPORT.md](../audits/2026-10-09_kraken_sector_order_formats/REPORT.md).
 
 ### The order types each crypto venue declares
 

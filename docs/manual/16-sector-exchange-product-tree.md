@@ -308,7 +308,7 @@ Commodities and Indices. The entry for Coinbase is unchanged.
 ```python
 # src/gui/main_tabs/asset_class_surface.py, in EXTRA_VENUE_CLASSES
     "bitstamp": ("commodities", "forex"),
-    "kraken": ("stocks", "commodities", "indices", "futures_perps"),
+    "kraken": ("stocks", "commodities", "forex", "indices", "futures_perps"),
     "ibkr": ("crypto", "commodities", "forex", "indices", "futures_perps"),
 ```
 

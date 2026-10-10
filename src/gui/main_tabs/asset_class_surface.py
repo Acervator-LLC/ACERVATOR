@@ -150,7 +150,9 @@ EXTRA_VENUE_CLASSES = {
     "gateio": ("stocks", "commodities", "forex", "indices", "futures_perps"),
     "gemini": ("commodities", "forex", "futures_perps"),
     "huobi": ("stocks",),
-    "kraken": ("stocks", "commodities", "indices", "futures_perps"),
+    # Kraken quotes 12 spot pairs whose two legs are both a national currency
+    # it lists, among them ZEURZUSD, ZGBPZUSD and AUDUSD.
+    "kraken": ("stocks", "commodities", "forex", "indices", "futures_perps"),
     "kucoin": ("stocks", "commodities", "futures_perps"),
     "mexc": ("stocks", "futures_perps"),
     "okx": ("stocks", "commodities", "indices", "futures_perps"),
