@@ -8,7 +8,9 @@ Charts and the Inspector are fed, and the rows the History, the Sim and the
 Paper tab hold. ``class_filter_surface`` decides which class a market belongs
 to and writes the sentence an emptied tab draws, and ``_tab_keeps_card`` leaves
 a tab its own card while it holds no venue of the class, so an Add Exchange
-button on that card stays reachable.
+button on that card stays reachable. ``_note_panel`` offers the build on a
+sector ``_wizard_venues`` holds a venue for, and ``_on_build_bot_clicked``
+opens the Bot Creation Wizard on it.
 """
 
 from __future__ import annotations
@@ -52,7 +54,9 @@ class ClassFilterTabMixin:
     _class_layers: dict
     _tab_widget: Any
     _trading_stack: Any
+    _settings: Any
     _push_live_tab: Callable[..., Any]
+    _create_bot: Callable[..., Any]
 
     # `_wrap_tabs_for_class` assigns this.
     _class_stacks: dict
@@ -62,8 +66,6 @@ class ClassFilterTabMixin:
 
         Answers the stacks by tab title.
         """
-        from .empty_tabs import _empty_tab_class
-
         self._class_stacks = {}
         for index in range(self._main_tabs.count()):
             title = self._main_tabs.tabText(index)
@@ -76,17 +78,54 @@ class ClassFilterTabMixin:
             stack = QStackedWidget()
             stack.setAccessibleName(f"{title} class filter stack")
             stack.addWidget(page)
-            stack.addWidget(_empty_tab_class()(cfs.note_model(title)))
+            stack.addWidget(self._note_panel(title))
             self._main_tabs.insertTab(index, stack, title)
             self._class_stacks[title] = stack
         return self._class_stacks
 
-    def _redraw_class_note(self, title: str, stack: Any) -> None:
-        """Rebuild one stack's note page for the active asset class."""
+    def _wizard_venues(self) -> list:
+        """Every venue the operator configured that serves the active class.
+
+        This is the venue set ``MainWindow._matching_exchanges`` hands the Bot
+        Creation Wizard, so the note offers the build exactly when the wizard
+        would open with a venue in it.
+        """
+        store = getattr(self, "_settings", None)
+        held = store.list_exchanges() if store is not None else []
+        return cfs.venues_of_class(
+            [str(one.get("exchange_id", "")) for one in held or []], cfs.active()
+        )
+
+    def _note_panel(self, title: str) -> Any:
+        """One tab's note page, wired so its build button opens the wizard."""
         from .empty_tabs import _empty_tab_class
 
+        panel = _empty_tab_class()(cfs.note_model(title, None, self._wizard_venues()))
+        asked = getattr(panel, "buildRequested", None)
+        if asked is not None:
+            asked.connect(self._on_build_bot_clicked)
+        return panel
+
+    def _on_build_bot_clicked(self, name: Any) -> None:
+        """Open the Bot Creation Wizard on the sector the pressed note names.
+
+        ``MainWindow._create_bot`` takes its sector from ``_asset_class``, so a
+        press naming any other sector is dropped rather than built on the wrong
+        one, and the venue handed over is the first configured one serving it.
+        """
+        if str(name) != cfs.active():
+            logger.debug("a %s note was pressed while %s is active", name, cfs.active())
+            return
+        venues = self._wizard_venues()
+        if not venues:
+            logger.debug("the %s note offered a build with no venue", name)
+            return
+        self._create_bot(venues[0])
+
+    def _redraw_class_note(self, title: str, stack: Any) -> None:
+        """Rebuild one stack's note page for the active asset class."""
         old = stack.widget(NOTE_PAGE)
-        stack.addWidget(_empty_tab_class()(cfs.note_model(title)))
+        stack.addWidget(self._note_panel(title))
         if old is not None:
             stack.removeWidget(old)
             old.deleteLater()

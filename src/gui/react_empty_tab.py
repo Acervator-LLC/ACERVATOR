@@ -5,6 +5,9 @@
 draws the renderer module the model's ``method`` field names. ``panel_html``
 builds the page from that module, the shared ``empty_tab.css`` skin and the
 Electron shell's ``panel_host.js``, so neither side holds a colour of its own.
+``EmptyTabPage`` carries the page's own bridge calls back to ``run_action``,
+which fires ``buildRequested`` with the sector a press on the build button
+names.
 """
 
 from __future__ import annotations
@@ -18,6 +21,8 @@ from .react_history_panel import page_html
 from .react_main_window import read_renderer_asset
 
 try:
+    from PySide6.QtCore import Signal
+    from PySide6.QtWebEngineCore import QWebEnginePage
     from PySide6.QtWebEngineWidgets import QWebEngineView
     from PySide6.QtWidgets import QVBoxLayout, QWidget
 
@@ -47,6 +52,29 @@ SHELL_SCRIPT = "panel_host.js"
 #: The JS expression that reads back the whole text the page drew.
 DRAWN_TEXT_JS = 'document.getElementById("' + PANEL_ROOT_ID + '").textContent'
 
+#: The console line a page writes to carry one bridge call back to Qt, the
+#: same route ``react_exchange_tab`` and ``react_trading_tab`` use.
+ACTION_PREFIX = "acervator-empty-tab:"
+
+#: The request field the page sends when the build button is pressed, matching
+#: ``BUILD_PARAM`` in ``src/gui/web/class_note.js``.
+BUILD_PARAM = "build_bot"
+
+#: The class ``class_note.js`` gives the build button, which the page's own
+#: rule paints from the ``--empty-tab-build-`` properties.
+BUILD_SELECTOR = ".acervator-empty-tab-build"
+
+_BUILD_RULE = (
+    BUILD_SELECTOR + "{align-self:flex-start;margin-top:"
+    "var(--empty-tab-build-top);padding:var(--empty-tab-build-pad);"
+    "border:none;border-radius:var(--empty-tab-build-radius);"
+    "background:var(--empty-tab-build-ground);"
+    "color:var(--empty-tab-build-colour);font-family:inherit;"
+    "font-size:var(--empty-tab-body-size);font-weight:bold;cursor:pointer;}"
+    + BUILD_SELECTOR
+    + ":hover{background:var(--empty-tab-build-hover);}"
+)
+
 
 def module_name(model: dict) -> str:
     """The renderer module the model's ``method`` field names, without ``.js``."""
@@ -54,9 +82,13 @@ def module_name(model: dict) -> str:
 
 
 def skin_rule() -> str:
-    """The ``:root`` rule carrying ``empty_tabs.SKIN`` to the page."""
+    """The ``:root`` rule carrying ``empty_tabs.SKIN`` to the page.
+
+    ``_BUILD_RULE`` rides with it, so the build button reads the same numbers
+    ``empty_tabs.BUILD_STYLE`` paints the Qt one from.
+    """
     body = "".join(f"{name}:{value};" for name, value in empty_tabs.SKIN.items())
-    return ":root{" + body + "}"
+    return ":root{" + body + "}" + _BUILD_RULE
 
 
 _NAMER_SOURCE = """(function (global) {
@@ -83,10 +115,14 @@ _HOST_SOURCE = """(function (global) {
 
   var MODEL = %(model)s;
   var NAME = %(name)s;
+  var PREFIX = %(prefix)s;
 
   global.ACERVATOR_MODULES = [NAME + ".js"];
   global.acervator = {
-    call: function () {
+    call: function (method, params) {
+      global.console.log(
+        PREFIX + JSON.stringify({ method: method, params: params || {} })
+      );
       return Promise.resolve(MODEL);
     }
   };
@@ -99,12 +135,37 @@ _HOST_SOURCE = """(function (global) {
 
 
 def host_script(model: dict) -> str:
-    """The page's own glue: the model, the roster and the one panel to open."""
+    """The page's own glue: the model, the roster and the one panel to open.
+
+    ``ACTION_PREFIX`` rides on every ``acervator.call``, so a press reaches
+    ``EmptyTabPage.javaScriptConsoleMessage`` and nothing else.
+    """
     return _HOST_SOURCE % {
         "model": json.dumps(model, ensure_ascii=True),
         "name": json.dumps(module_name(model), ensure_ascii=True),
         "root": PANEL_ROOT_ID,
+        "prefix": json.dumps(ACTION_PREFIX, ensure_ascii=True),
     }
+
+
+def pressed_class(payload: str, method: str) -> str:
+    """The sector one page's bridge call names, or an empty string for none.
+
+    A payload that is not JSON, names a method other than ``method``, or
+    carries no ``BUILD_PARAM`` answers an empty string, so no press is invented.
+    """
+    try:
+        asked = json.loads(payload)
+    except ValueError:
+        return ""
+    if not isinstance(asked, dict):
+        return ""
+    if str(asked.get("method") or "") != str(method):
+        return ""
+    params = asked.get("params")
+    if not isinstance(params, dict):
+        return ""
+    return str(params.get(BUILD_PARAM) or "")
 
 
 def panel_html(model: dict, theme: object = None) -> str:
@@ -130,12 +191,34 @@ def panel_html(model: dict, theme: object = None) -> str:
 
 if _HAS_WEBENGINE:
 
+    class EmptyTabPage(QWebEnginePage):
+        """The panel's page, carrying its own bridge calls back to the panel.
+
+        A console line beginning ``ACTION_PREFIX`` is the page reporting a
+        press, and every other line is handed to the logger.
+        """
+
+        def __init__(self, owner) -> None:
+            """Hold the panel ``_on_page_call`` answers."""
+            super().__init__(owner)
+            self._owner = owner
+
+        def javaScriptConsoleMessage(self, level, message, line, source) -> None:
+            """Hand a bridge call to the panel and drop every other line."""
+            del level, line, source
+            if message.startswith(ACTION_PREFIX):
+                self._owner.run_action(message[len(ACTION_PREFIX) :])
+
     class EmptyTabReactPanel(QWidget):
         """One unbuilt tab whose empty state is drawn by its renderer module.
 
         Takes the view model ``_add_empty_tab`` already read from the surface,
         and builds its web view on the first show.
         """
+
+        #: Carries ``build_class`` when the page reports a press on the button,
+        #: matching ``EmptyTabQtPanel.buildRequested``.
+        buildRequested = Signal(str)  # noqa: N815 - Qt signal name
 
         def __init__(self, model: dict, parent=None) -> None:
             """Hold ``model`` and lay out the space its page will fill."""
@@ -166,11 +249,23 @@ if _HAS_WEBENGINE:
             super().showEvent(event)
             self.build_panel()
 
+        def run_action(self, payload: str) -> str:
+            """Fire ``buildRequested`` for a press the page reported.
+
+            Answers the sector carried, or an empty string where ``payload``
+            named no press on this panel's own method.
+            """
+            key = pressed_class(payload, str(self._model["method"]))
+            if key:
+                self.buildRequested.emit(key)
+            return key
+
         def build_panel(self) -> None:
             """Create the panel's web view and load its page, once."""
             if self._web is not None:
                 return
             self._web = QWebEngineView(self)
+            self._web.setPage(EmptyTabPage(self))
             self._web.setAccessibleName(self._model["accessible_name"])
             self._web.loadFinished.connect(self._on_load_finished)
             self._web.setHtml(panel_html(self._model))
