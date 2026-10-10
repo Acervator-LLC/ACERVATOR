@@ -114,8 +114,9 @@ APPROVAL_WORDS = {
     ),
 }
 
-#: Robinhood publishes no paper route for an MCP account, and ``open_session``
-#: is called with paper true, so a paper session is refused here.
+#: Robinhood publishes no paper route for an MCP account, so ``connect``
+#: refuses a paper session. ``HAS_PAPER_ROUTE`` False keeps the window from
+#: asking for one.
 NO_PAPER_ROUTE = (
     "Robinhood MCP publishes no paper route, so this venue opens no paper session"
 )
@@ -493,6 +494,10 @@ class RobinhoodMcpBroker(BrokerBase):
     #: built. ``crypto`` is absent, so a crypto bot on this venue falls through
     #: to ``crypto_connector_class`` and the signed REST route.
     SECTORS_SERVED = ROBINHOOD_MCP_SECTORS
+
+    #: This route publishes no paper host, so every session it opens is live.
+    #: ``broker_paper_route`` reads it before ``open_session`` picks a route.
+    HAS_PAPER_ROUTE = False
 
     def __init__(self, transport: Any = urlopen_route) -> None:
         super().__init__(VENUE_ID)

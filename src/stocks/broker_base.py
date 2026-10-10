@@ -18,6 +18,53 @@ from ..exchange.market_rules_store import record_venue
 
 logger = logging.getLogger("acervator.stocks")
 
+#: The route one ``open_session`` call opened on, which ``session_mode``
+#: answers. ``SESSION_MODE_NONE`` is a broker with no session open.
+SESSION_MODE_PAPER = "paper"
+SESSION_MODE_LIVE = "live"
+SESSION_MODE_NONE = ""
+SESSION_MODES = (SESSION_MODE_PAPER, SESSION_MODE_LIVE)
+
+#: What each route reads as on the operator's screen, so he sees which one a
+#: venue opened on before any order is sized.
+SESSION_MODE_WORDS = {
+    SESSION_MODE_PAPER: (
+        "on the venue's PAPER route, where no order reaches a real market"
+    ),
+    SESSION_MODE_LIVE: (
+        "on the venue's LIVE route, where a filled order moves real money"
+    ),
+    SESSION_MODE_NONE: "on no route this broker names",
+}
+
+#: Why ``open_session`` closed a session whose broker named no route for it.
+NO_SESSION_MODE = (
+    "the broker opened a session and names no route for it, so no order is sized"
+)
+
+
+def session_mode_words(mode: Any) -> str:
+    """The sentence the operator's screen carries for one session route.
+
+    ``SESSION_MODE_WORDS`` holds the three readings, and a route outside them
+    reads as ``SESSION_MODE_NONE`` does.
+    """
+    return SESSION_MODE_WORDS.get(
+        str(mode or ""), SESSION_MODE_WORDS[SESSION_MODE_NONE]
+    )
+
+
+def broker_paper_route(broker: Any) -> bool:
+    """Whether ``broker`` — a ``BrokerBase`` class or one of its instances —
+    publishes a paper route.
+
+    ``MainWindow._open_broker_session`` reads this to pick the route it opens
+    on, so a venue publishing no paper route opens a live session instead of
+    being refused. A broker declaring nothing reads True, the paper route every
+    broker before this one had.
+    """
+    return bool(getattr(broker, "HAS_PAPER_ROUTE", True))
+
 
 class OrderType(Enum):
     MARKET = "market"
@@ -116,6 +163,11 @@ class BrokerBase(ABC):
     #: tuple narrows nothing, which is every sector the venue is offered for.
     SECTORS_SERVED: tuple = ()
 
+    #: Whether this broker publishes a paper route, read by
+    #: ``broker_paper_route`` with no instance built. A broker declaring False
+    #: opens a live session, because the paper one does not exist.
+    HAS_PAPER_ROUTE: bool = True
+
     def __init__(self, broker_id: str):
         self.broker_id = broker_id
         self._connected = False
@@ -123,6 +175,7 @@ class BrokerBase(ABC):
         self._history_callback: Any = None
         self._assets: list[dict] = []
         self._session_refusal = ""
+        self._session_mode = SESSION_MODE_NONE
 
     @property
     def connected(self) -> bool:
@@ -153,6 +206,21 @@ class BrokerBase(ABC):
         """Why the last ``open_session`` call left this broker disconnected, and
         "" where a session opened or none was tried."""
         return self._session_refusal
+
+    @property
+    def session_mode(self) -> str:
+        """The route this broker's open session runs on: ``SESSION_MODE_PAPER``,
+        ``SESSION_MODE_LIVE``, or ``SESSION_MODE_NONE`` with no session open.
+
+        ``MainWindow._connect_broker_for_bot`` writes it to the status log, so
+        the operator reads which route a venue is on before an order is sized.
+        """
+        return self._session_mode if self._connected else SESSION_MODE_NONE
+
+    @property
+    def session_mode_words(self) -> str:
+        """The sentence the operator's screen carries for ``session_mode``."""
+        return session_mode_words(self.session_mode)
 
     @property
     def scan_symbols(self) -> set[str]:
@@ -195,22 +263,33 @@ class BrokerBase(ABC):
         raise NotImplementedError
 
     async def open_session(self, api_key: str, api_secret: str, paper: bool) -> bool:
-        """Open this broker's session through ``connect``, answering whether it
-        opened and holding any refusal in ``session_refusal``.
+        """Open this broker's session through ``connect``, record the route it
+        opened on in ``session_mode``, and answer whether it opened, holding any
+        refusal in ``session_refusal``.
 
         An empty ``api_key`` or ``api_secret`` calls ``connect`` on no broker, and
-        a refusal ``connect`` wrote itself is kept word for word.
+        a refusal ``connect`` wrote itself is kept word for word. A broker whose
+        session opens and names no route is closed again with
+        ``NO_SESSION_MODE``, so no order is sized on a route nobody can read.
         """
         self._session_refusal = ""
+        self._session_mode = SESSION_MODE_NONE
         if not api_key or not api_secret:
             self._session_refusal = "no API key and secret are stored"
             return False
         opened = bool(await self.connect(api_key, api_secret, paper))
-        if not opened and not self._session_refusal:
-            self._session_refusal = (
-                "the connect attempt failed; the cause is in system.log"
-            )
-        return opened
+        if not opened:
+            if not self._session_refusal:
+                self._session_refusal = (
+                    "the connect attempt failed; the cause is in system.log"
+                )
+            return False
+        self._session_mode = SESSION_MODE_PAPER if paper else SESSION_MODE_LIVE
+        if self.session_mode not in SESSION_MODES:
+            self._session_refusal = NO_SESSION_MODE
+            self._connected = False
+            return False
+        return True
 
     @abstractmethod
     async def list_assets(self, status: str = "active") -> list[dict]:

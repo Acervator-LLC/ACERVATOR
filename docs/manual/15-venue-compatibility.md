@@ -3819,3 +3819,132 @@ a wrong name refuses instead of sending.
 
 The whole translation, point by point, is in
 [../audits/2026-10-10_robinhood_sector_translation/REPORT.md](../audits/2026-10-10_robinhood_sector_translation/REPORT.md).
+
+## 2026-10-10 - A broker opens the session route it has, and the order body matches its path
+
+Two things stopped a Robinhood bot and both are closed. A broker declares which
+session route it publishes, and the crypto order body carries a field only where
+the submitting path's own schema names it.
+
+### A broker declares its own session route
+
+`src/stocks/broker_base.py`, at `HAS_PAPER_ROUTE`, is the declaration. Alpaca
+leaves it True and opens on the paper host. `src/stocks/robinhood_broker.py`, at
+`HAS_PAPER_ROUTE`, is False, because this route publishes no paper host.
+
+`src/gui/main_window.py`, in `_open_broker_session`, reads the declaration
+through `src/stocks/broker_base.py`, in `broker_paper_route`, and takes it with
+`BROKER_SESSION_PAPER`. A broker publishing a paper route still opens on paper.
+A broker publishing none opens live, so its session opens instead of being
+refused.
+
+OVERTAKEN, quoted whole:
+
+```
+A bot still does not trade this venue, for two reasons the operator can see.
+The Start press opens a broker session with paper true, and this venue publishes
+no paper route, so the session is refused with that reason in its own words.
+A bot container also still takes a crypto exchange and not a broker, which is the
+same ceiling the Alpaca broker sits under.
+```
+
+True today: the Start press opens the route the broker publishes, so the session
+opens and the market rules record. One of those two reasons remains, the second
+one. `src/trading/bot_container.py`, in `BotContainer`, takes a crypto exchange
+and not a broker, so a bot on one of the four protocol sectors still does not
+start.
+
+`src/stocks/robinhood_broker.py`, in `RobinhoodMcpBroker.connect`, still refuses
+a paper session in its own words. Nothing weakened that refusal. The window
+stopped asking for a route this venue does not serve.
+
+### The screen names the route before anything trades
+
+`src/stocks/broker_base.py`, at `SESSION_MODE_WORDS`, holds one sentence per
+route and `session_mode_words` answers it. `BrokerBase.session_mode` answers
+`paper` or `live` while a session is open and nothing while none is.
+`src/gui/main_window.py`, in `_connect_broker_for_bot`, puts that sentence in
+the status line the operator reads, on every open and on a market-rule failure.
+
+```
+Robinhood   Robinhood session is open on the venue's LIVE route, where a filled
+            order moves real money and 1 market rule row(s) recorded.
+Alpaca      Alpaca session is open on the venue's PAPER route, where no order
+            reaches a real market and 1 market rule row(s) recorded.
+```
+
+A broker that opens a session and names no route is closed again.
+`src/stocks/broker_base.py`, in `open_session`, holds `NO_SESSION_MODE` as the
+refusal and leaves the broker disconnected, so no order is sized over a route
+nobody can read.
+
+### The order body carries the field its path publishes
+
+Robinhood publishes two crypto order paths and one request schema for each.
+`src/exchange/robinhood_connector.py`, in `orders_path`, takes the first version
+where no account number is stored and the fee-tier version where one is.
+
+```
+no account number   /api/v1/crypto/trading/orders/   AddOrder
+an account number   /api/v2/crypto/trading/orders/   AddOrderV2
+```
+
+`AddOrder`'s limit configuration publishes no time in force and `AddOrderV2`'s
+publishes one. `src/exchange/robinhood_connector.py`, in `order_body`, takes the
+path and writes the field only where `published_order_config_fields` names it
+for that order type.
+
+```
+kind     path   field in the body   the schema publishes it
+market   v1     no                  no
+limit    v1     no                  no
+market   v2     no                  no
+limit    v2     yes                 yes
+```
+
+`place_order` names the path before it builds the body, so the two cannot
+disagree. `order_body_refusal` stays and reads empty on every row above. The
+same body submitted on the other version's path still refuses by name and sends
+nothing.
+
+`TIME_IN_FORCE_FIELD` is the one name for that field. Both schema maps and
+`order_body` read it, so the body and the schema cannot drift apart.
+
+### What a bot can do on each of Robinhood's five sectors
+
+```
+sector        route         a bot starts   what is still missing
+crypto        signed REST   yes            the operator's own Ed25519 API key
+stocks        protocol      no             a broker as a bot's exchange
+commodities   protocol      no             a broker as a bot's exchange
+indices       protocol      no             a broker as a bot's exchange
+forex         protocol      no             a broker as a bot's exchange
+```
+
+The four protocol sectors stop at one place, and it is the same place Alpaca
+stops at. `src/trading/bot_container.py`, in `BotContainer`, takes a crypto
+exchange, so `src/gui/main_window.py`, in `_connect_broker_for_bot`, opens the
+session, records the markets and then answers that the bot does not start.
+
+### What the session and order-field unit drove
+
+Seventy checks and no failures, with the home directory redirected to a scratch
+tree and every network method replaced, so no socket could open and no order was
+sent. Each reading carried a control reporting both a yes and a no in the same
+run.
+
+```
+the route each broker declares      Alpaca a paper route, Robinhood none
+the session and the screen line     both brokers, and the paper refusal that
+                                    the window no longer asks for
+a broker naming no route            refused, beside two brokers that name one
+the approval setting                on, off, and unread refusing the session
+the order body                      four rows, both versions, with and without
+                                    an account number stored
+place_order's own path and body     both versions, captured and never sent
+```
+
+Two limits, stated plainly. No reading used a real token, so nothing here proves
+the venue accepts this program; that is the first operator's own connect. And a
+bot on the four protocol sectors was not started, because nothing starts one
+until a bot container takes a broker.
