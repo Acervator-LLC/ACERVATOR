@@ -3224,6 +3224,26 @@ none is. `best_price_path`, `holdings_path`, `order_list_path` and
 available as `used`. `order_from_record` reads the amount out of the
 configuration object the record's own type names.
 
+### The query filters each order list publishes
+
+The two order-list paths publish different filter sets. `ORDERS_PATH` names
+`id` and `limit`; `ORDERS_PATH_FEE_TIERS` names neither, and requires
+`account_number`.
+
+| the filter | `ORDERS_PATH` | `ORDERS_PATH_FEE_TIERS` |
+| --- | --- | --- |
+| `account_number` | no | required |
+| `id` | yes | no |
+| `limit` | yes | no |
+| `cursor`, `symbol`, `side`, `state`, `type` | yes | yes |
+| the four created and updated time bounds | yes | yes |
+
+`ORDER_LIST_FILTERS` and `ORDER_LIST_FILTERS_FEE_TIERS` hold the two sets and
+`published_order_list_filters` answers the one a path publishes.
+`order_list_path` leaves a filter outside that set off the query. `get_order`
+matches the id on the records either path answers, so an order is found on the
+fee-tier path with no id filter sent.
+
 `Ticker.volume_24h` is zero. Neither published best-price schema names a
 volume, so the field carries zero and no figure is invented for it.
 

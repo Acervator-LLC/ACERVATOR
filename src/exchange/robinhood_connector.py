@@ -91,6 +91,40 @@ ORDER_STATE_QUERY_KEY = "state"
 #: The order state the order list filters an open order under.
 ORDER_STATE_OPEN = "open"
 
+#: Every query filter ``ORDERS_PATH`` publishes on its order list.
+ORDER_LIST_FILTERS = frozenset(
+    {
+        "created_at_start",
+        "created_at_end",
+        "updated_at_start",
+        "updated_at_end",
+        "symbol",
+        "id",
+        "side",
+        "state",
+        "type",
+        "cursor",
+        "limit",
+    }
+)
+
+#: Every query filter ``ORDERS_PATH_FEE_TIERS`` publishes on its order list. It
+#: names no id and no limit, where ``ORDER_LIST_FILTERS`` names both.
+ORDER_LIST_FILTERS_FEE_TIERS = frozenset(
+    {
+        "account_number",
+        "cursor",
+        "created_at_start",
+        "created_at_end",
+        "updated_at_start",
+        "updated_at_end",
+        "symbol",
+        "side",
+        "type",
+        "state",
+    }
+)
+
 #: The keys one published holdings record carries.
 HOLDING_ASSET_CODE_KEY = "asset_code"
 HOLDING_TOTAL_KEY = "total_quantity"
@@ -554,18 +588,30 @@ def holdings_path(account_number: Any = None, asset_codes: Any = ()) -> str:
     return HOLDINGS_PATH_FEE_TIERS + query_string([(ACCOUNT_QUERY_KEY, held), *pairs])
 
 
-def order_list_path(account_number: Any = None, filters: Any = ()) -> str:
-    """The order-list path one order read takes, with each pair of ``filters``
-    as a published query parameter.
+def published_order_list_filters(account_number: Any = None) -> frozenset:
+    """Every query filter the order-list path of ``account_number`` publishes.
 
-    The same two paths ``orders_path`` submits on, read with ``GET``.
+    ``ORDER_LIST_FILTERS_FEE_TIERS`` where an account number is held and
+    ``ORDER_LIST_FILTERS`` where none is.
+    """
+    if str(account_number or "").strip():
+        return ORDER_LIST_FILTERS_FEE_TIERS
+    return ORDER_LIST_FILTERS
+
+
+def order_list_path(account_number: Any = None, filters: Any = ()) -> str:
+    """The order-list path one order read takes, carrying every pair of
+    ``filters`` the path publishes.
+
+    ``published_order_list_filters`` names the set, and a filter outside it is
+    left off the query.
     """
     held = str(account_number or "").strip()
+    published = published_order_list_filters(held)
+    kept = [(key, value) for key, value in (filters or ()) if str(key) in published]
     if not held:
-        return ORDERS_PATH + query_string(filters)
-    return ORDERS_PATH_FEE_TIERS + query_string(
-        [(ACCOUNT_QUERY_KEY, held), *(filters or ())]
-    )
+        return ORDERS_PATH + query_string(kept)
+    return ORDERS_PATH_FEE_TIERS + query_string([(ACCOUNT_QUERY_KEY, held), *kept])
 
 
 def cancel_path(order_id: Any, account_number: Any = None) -> str:
@@ -1675,8 +1721,9 @@ class RobinhoodCryptoConnector(ExchangeInterface):
         """The ``Order`` Robinhood's published order list answers for
         ``order_id``.
 
-        The list takes ``ORDER_ID_QUERY_KEY`` as a published filter, and
-        ``RobinhoodResponseUnexpected`` where the reply names no record for it.
+        ``ORDERS_PATH`` publishes ``ORDER_ID_QUERY_KEY`` as a filter and
+        ``ORDERS_PATH_FEE_TIERS`` does not, so the id is matched on the records
+        either path answers.
         """
         del symbol
         refusal = self._signing_refusal(f"order {order_id}")
@@ -1781,6 +1828,8 @@ __all__ = [
     "ORDERS_PATH_FEE_TIERS",
     "ORDER_CONFIG_KEYS",
     "ORDER_ID_QUERY_KEY",
+    "ORDER_LIST_FILTERS",
+    "ORDER_LIST_FILTERS_FEE_TIERS",
     "ORDER_STATE_OPEN",
     "ORDER_STATE_QUERY_KEY",
     "ORDER_TYPE_LIMIT",
@@ -1873,6 +1922,7 @@ __all__ = [
     "price_orderbook",
     "price_ticker",
     "published_order_config_fields",
+    "published_order_list_filters",
     "query_string",
     "signature",
     "signed_headers",
