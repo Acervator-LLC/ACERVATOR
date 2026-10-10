@@ -439,6 +439,27 @@ market_buy_names_cash('BTC/USDT', 'gateio')    True
 CITED_CASH_MARKET_BUY                          binance, coinbase, gateio
 ```
 
+
+The cash rule reaches 896 of the venue's markets, every one of them a crypto
+spot pair whose published step is a whole unit.
+`src/trading/scrumming/sizing.py, in whole_unit_buy_needs_limit` answers True
+for those, so the buy becomes a limit order priced to cross and the unit count
+the size rule floored is the count the venue credits. A market buy sized in
+cash cannot hold a unit count, which is why the limit order is the treatment.
+
+| Sector | Unit rule | Cash market buy | The buy needs a limit order | Markets |
+| --- | --- | --- | --- | --- |
+| crypto | whole | yes | yes | 896 |
+| crypto | fractional | yes | no | 1135 |
+| stocks | fractional | yes | no | 163 |
+| stocks | whole | no | no | 402 |
+| commodities | fractional | yes | no | 5 |
+| commodities | whole | no | no | 15 |
+| forex | fractional | yes | no | 2 |
+| forex | whole | no | no | 4 |
+| indices | whole | no | no | 18 |
+| futures_perps | whole | no | no | 619 |
+
 ### The futures body, which forex, indices and futures_perps take
 
 ```
