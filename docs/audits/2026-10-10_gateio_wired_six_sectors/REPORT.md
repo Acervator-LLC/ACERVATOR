@@ -404,6 +404,33 @@ kraken _published_asset_sectors()        None
 
 ---
 
+### The operator's own recording cannot move
+
+The live recording was read read-only through the `path` argument
+`src/exchange/market_rules_store.py, in load_document` takes, and its
+modification time and size were read before and after.
+
+```
+top-level venue keys                1, coinbase
+rows under that key              2148
+rows carrying a sector           2148   stocks 1033, crypto 896,
+                                        futures_perps 168, commodities 25,
+                                        forex 20, indices 6
+option-shaped symbols               0
+modification time, before == after  True
+size, before == after               True
+```
+
+**Nothing in this branch can move a row of it.**
+`VENUE_ASSET_CATEGORY_METHOD` names one venue and it is not the recorded one,
+so `market_asset_class` reads `published` as None for every recorded row and
+answers exactly what it answered before. No recorded symbol is an option, so
+`CLASS_OPTIONS` reaches none of them. Every recorded row already names a
+sector the resolver knows, so `symbol_class`'s narrowed fallback changes none
+of them either.
+
+---
+
 ## Row six, the order shape
 
 Two bodies serve all six sectors. The spot body carries three of them and the
