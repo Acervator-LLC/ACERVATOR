@@ -182,6 +182,16 @@ class BotContainer:
         for leg in legs:
             self._invalidate_balance(leg)
 
+    @property
+    def sector(self) -> str:
+        """The sector this bot trades ``config.symbol`` under, which
+        ``_asset_class`` answers.
+
+        ``MainWindow._connect_exchange_for_bot`` reads this to pick which
+        transport the bot's venue reaches.
+        """
+        return self._asset_class(self.config.symbol)
+
     # The recording is the venue's own product record, so it answers before
     # the sector ``BotConfig`` declares.
     def _asset_class(self, symbol: str) -> str:

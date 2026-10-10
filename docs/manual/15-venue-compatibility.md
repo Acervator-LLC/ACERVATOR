@@ -3394,6 +3394,68 @@ alpaca          API Key, API Secret, phrase   Test and Add Exchange
 Both readings were taken in one run. The venue id answers `key_rows` false, and
 the other two answer it true with their own button words unchanged.
 
+OVERTAKEN, quoted whole:
+
+```
+pressed venue   rows drawn                    Add press
+robinhoodmcp    none; no key is typed         Connect with a Browser
+```
+
+True today: the sector the page was opened from chooses the shape, and
+`robinhoodmcp` is no longer a venue the operator can press.
+`credential_kind` takes a sector beside the venue id, and
+`src/trading/ata_spm_signin.py`, at `BROWSER_AUTHORIZATION_SECTORS`, is the
+table it reads. One firm reaches a browser on the sectors named beside it and a
+typed key on every other sector it serves.
+
+```
+pressed venue   sector        rows drawn                    Add press
+robinhood       crypto        API Key, API Secret, phrase   Test and Add Exchange
+robinhood       stocks        none; no key is typed         Connect with a Browser
+robinhood       commodities   none; no key is typed         Connect with a Browser
+robinhood       forex         none; no key is typed         Connect with a Browser
+robinhood       indices       none; no key is typed         Connect with a Browser
+coinbase        crypto        API Key, API Secret, phrase   Test and Add Exchange
+coinbase        stocks        API Key, API Secret, phrase   Test and Add Exchange
+```
+
+Every row was read in one run. The control venue answers `key_rows` true on both
+sectors, so the sector narrows one firm and not the page.
+
+No file on the credentials page names this firm. `credential_kind`,
+`browser_credential_fields`, `approval_level` and `browser_connected_words` each
+read a table or an accessor in `src/trading/ata_spm_signin.py`, and a venue added
+to that table later reads the same way with no screen edit.
+
+### Where the two credentials sit
+
+One venue row holds both legs, because one firm reaches two transports.
+`src/core/settings.py`, at `ExchangeConfig`, carries the typed pair under
+`api_key_enc` and `api_secret_enc` and the protocol leg under
+`mcp_client_id_enc` and `mcp_bearer_enc`. Both new names end in `_enc`, so
+`CREDENTIAL_FIELDS` carries them and `add_exchange` keeps whichever leg an add
+leaves blank.
+
+`src/trading/ata_spm_signin.py`, in `credential_store_fields`, names which pair a
+route reads, and `src/gui/main_window.py`, in `_broker_credential`, reads that
+pair.
+
+```
+venue       sector        fields read
+robinhood   crypto        api_key_enc, api_secret_enc
+robinhood   stocks        mcp_client_id_enc, mcp_bearer_enc
+robinhood   commodities   mcp_client_id_enc, mcp_bearer_enc
+robinhood   forex         mcp_client_id_enc, mcp_bearer_enc
+robinhood   indices       mcp_client_id_enc, mcp_bearer_enc
+coinbase    crypto        api_key_enc, api_secret_enc
+```
+
+A connection the operator has not made is asked for at the moment a bot's route
+wants it. `src/gui/main_window.py`, in `_ask_for_venue_connection`, opens the
+same configuration window `_open_settings` draws, on the bot's own sector, and
+`_connect_broker_for_bot` and `_connect_written_crypto_for_bot` each call it once
+and then read the stored credential again.
+
 ### The sign-in is a row on the mechanism, not a second mechanism
 
 The sign-in already in this product gains one row in each of its three tables.
@@ -3518,6 +3580,89 @@ the two sets intersected              empty
 OVERTAKEN, quoted whole:
 
 ```
+Two Robinhood venues now exist and they are separate venues with separate ids.
+The crypto connector keeps the id `robinhood` and stays an `ExchangeInterface`;
+the equity broker takes the id `robinhoodmcp` and is a `BrokerBase`. No id sits
+in both registries, so a Start press on a crypto bot cannot reach the broker.
+```
+
+OVERTAKEN, quoted whole:
+
+```
+registry                              holds
+BROKER_CONNECTORS                     alpaca, robinhoodmcp
+the two sets intersected              empty
+```
+
+OVERTAKEN, quoted whole: `ROBINHOOD_MCP_VENUE_ID`, the import alias the sample
+above names.
+
+True today: the alias is `ROBINHOOD_VENUE_ID`, and it reads
+`src/stocks/robinhood_broker.py`, at `VENUE_ID`, as it did before.
+`src/trading/ata_spm_signin.py`, at `ROBINHOOD_VENUE`, is the one definition of
+the string behind it. One firm, one venue id, and the id sits in both registries
+on purpose.
+
+```
+registry                              holds
+CRYPTO_CONNECTORS                     robinhood
+BROKER_CONNECTORS                     alpaca, robinhood
+the two sets intersected              robinhood
+```
+
+The transport is chosen below the venue, by the sector the bot trades.
+`src/stocks/broker_base.py`, at `BrokerBase.SECTORS_SERVED`, is where a broker
+declares which sectors it brokers, and an empty tuple narrows nothing.
+`src/stocks/alpaca_connector.py`, in `broker_serves_sector`, reads that
+declaration, and `src/gui/main_window.py`, in `_connect_exchange_for_bot`, asks
+it before it asks `crypto_connector_class`.
+
+`src/trading/bot_container.py`, at the `sector` property, is the sector a bot
+carries. It answers through `_asset_class`, so the venue's own recording decides
+first and the sector the bot declares decides where the recording is silent.
+
+```
+venue       bot.sector    route reached
+robinhood   crypto        signed REST -> RobinhoodCryptoConnector
+robinhood   stocks        broker -> RobinhoodMcpBroker
+robinhood   commodities   broker -> RobinhoodMcpBroker
+robinhood   forex         broker -> RobinhoodMcpBroker
+robinhood   indices       broker -> RobinhoodMcpBroker
+alpaca      crypto        broker -> AlpacaConnector
+alpaca      stocks        broker -> AlpacaConnector
+coinbase    crypto        ccxt
+```
+
+Every row was read in one run. A Start press on a crypto bot still cannot reach
+the broker, and what stops it is now the bot's own sector rather than a second
+venue id.
+
+### The flow mirrors Coinbase, step for step
+
+The operator walks one path for every venue, and Robinhood walks the same one.
+
+```
+step            Coinbase                        Robinhood
+Sector          asset_class_surface.venues_for_class
+                                                the same function
+Live tab        trading_tab.add_exchange_label  the same function
+Add Exchange    settings_dialog_surface         the same function, which now
+                .credential_form                reads the sector beside the id
+Add Bot         bot_container.BotContainer      the same class
+the route       main_window                     the same method, which reads
+                ._connect_exchange_for_bot      BotContainer.sector
+the credential  main_window._broker_credential  the same method, reading the
+                                                pair credential_store_fields
+                                                names
+```
+
+No step is Robinhood's own. The one function that reads differently is
+`credential_form`, and it reads differently for every venue whose sectors reach
+two transports.
+
+OVERTAKEN, quoted whole:
+
+```
 | a JSON-RPC client over HTTP | no module in this tree provides one |
 | a `BrokerBase` subclass and a `BROKER_CONNECTORS` row | neither exists for this venue |
 ```
@@ -3551,6 +3696,34 @@ commodities   yes       trade/gate/robinhoodmcp/commodities/gate.log
 indices       yes       trade/gate/robinhoodmcp/indices/gate.log
 forex         yes       trade/gate/robinhoodmcp/forex/gate.log
 ```
+
+OVERTAKEN, quoted whole:
+
+```
+sector        offered   gate log bucket
+stocks        yes       trade/gate/robinhoodmcp/stocks/gate.log
+commodities   yes       trade/gate/robinhoodmcp/commodities/gate.log
+indices       yes       trade/gate/robinhoodmcp/indices/gate.log
+forex         yes       trade/gate/robinhoodmcp/forex/gate.log
+```
+
+True today: the bucket carries the venue id, and the venue id is `robinhood`.
+A fifth sector joins the list, which the signed REST route serves instead.
+
+```
+sector        offered   route         gate log bucket
+crypto        yes       signed REST   trade/gate/robinhood/crypto/gate.log
+stocks        yes       protocol      trade/gate/robinhood/stocks/gate.log
+commodities   yes       protocol      trade/gate/robinhood/commodities/gate.log
+indices       yes       protocol      trade/gate/robinhood/indices/gate.log
+forex         yes       protocol      trade/gate/robinhood/forex/gate.log
+```
+
+`src/trading/ata_spm_signin.py`, at `ROBINHOOD_MCP_SECTORS`, is the one
+definition of the four the protocol route serves.
+`src/stocks/robinhood_broker.py`, at `SECTORS_SERVED`, reads it, and
+`BROWSER_AUTHORIZATION_SECTORS` reads it as well, so the sectors that sign in at
+a browser and the sectors the broker trades cannot drift apart.
 
 No new sizing variant is needed. A fund share sizes like a share, so a
 fractional market selects the permitted-shape variant and a whole-share market

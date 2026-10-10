@@ -16,7 +16,7 @@ import urllib.error
 from typing import Any, Optional
 
 from ..exchange.base import MarketRules
-from ..trading.ata_spm_signin import ROBINHOOD_MCP_VENUE
+from ..trading.ata_spm_signin import ROBINHOOD_MCP_SECTORS, ROBINHOOD_VENUE
 from .broker_base import (
     AccountInfo,
     BrokerBase,
@@ -29,11 +29,16 @@ from .broker_base import (
     TimeInForce,
 )
 
-logger = logging.getLogger("acervator.stocks.robinhoodmcp")
+logger = logging.getLogger("acervator.stocks.robinhood")
 
-#: The venue id ``BROKER_CONNECTORS``, ``EQUITY_VENUES`` and ``SIGN_IN_ROUTES``
-#: all carry for this venue.
-VENUE_ID = ROBINHOOD_MCP_VENUE
+# OVERTAKEN, quoted whole:
+#   "The venue id ``BROKER_CONNECTORS``, ``EQUITY_VENUES`` and
+#   ``SIGN_IN_ROUTES`` all carry for this venue."
+# True today: ``CRYPTO_CONNECTORS`` carries the same id, and
+# ``broker_serves_sector`` reads ``SECTORS_SERVED`` to pick between the two.
+#: The venue id ``BROKER_CONNECTORS``, ``CRYPTO_CONNECTORS``, ``EQUITY_VENUES``
+#: and ``SIGN_IN_ROUTES`` all carry for this firm.
+VENUE_ID = ROBINHOOD_VENUE
 
 #: The route's own address. GET answers 405 and POST with no bearer answers 401.
 MCP_ENDPOINT = "https://agent.robinhood.com/mcp/trading"
@@ -74,7 +79,9 @@ EQUITY_TOOLS = (
 )
 
 #: The sectors this one route serves, every one traded as a fund share.
-SECTORS_SERVED = ("stocks", "commodities", "indices", "forex")
+#: ``ata_spm_signin.ROBINHOOD_MCP_SECTORS`` is the one definition, which
+#: ``BROWSER_AUTHORIZATION_SECTORS`` reads for the same four.
+SECTORS_SERVED = ROBINHOOD_MCP_SECTORS
 
 APPROVAL_ON = "on"
 APPROVAL_OFF = "off"
@@ -481,6 +488,11 @@ class RobinhoodMcpBroker(BrokerBase):
     ``connect`` refuses a paper session and refuses an unread approval state, so
     ``place_order`` reaches the route only over a session that read it.
     """
+
+    #: ``SECTORS_SERVED``, read by ``broker_serves_sector`` with no instance
+    #: built. ``crypto`` is absent, so a crypto bot on this venue falls through
+    #: to ``crypto_connector_class`` and the signed REST route.
+    SECTORS_SERVED = ROBINHOOD_MCP_SECTORS
 
     def __init__(self, transport: Any = urlopen_route) -> None:
         super().__init__(VENUE_ID)

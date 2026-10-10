@@ -111,6 +111,11 @@ class StockQuote:
 class BrokerBase(ABC):
     """Abstract broker interface for stock trading."""
 
+    #: The sectors this broker route serves, read by
+    #: ``alpaca_connector.broker_serves_sector`` with no instance built. An empty
+    #: tuple narrows nothing, which is every sector the venue is offered for.
+    SECTORS_SERVED: tuple = ()
+
     def __init__(self, broker_id: str):
         self.broker_id = broker_id
         self._connected = False

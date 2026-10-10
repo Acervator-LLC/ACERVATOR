@@ -630,7 +630,7 @@ if _HAS_QT:
                 if not eid:
                     self._set_feedback(sds.NO_VENUE_FEEDBACK, "error")
                     return
-                if sds.takes_browser_authorization(eid):
+                if sds.takes_browser_authorization(eid, self._wing):
                     self._connect_browser_venue(eid)
                     return
                 key = self._new_api_key.text().strip()
@@ -704,9 +704,9 @@ if _HAS_QT:
             master = vault_phrase(self._sm.get("username", ""))
             stored = self._sm.get_exchange(eid) or {}
             client_id = ""
-            if stored.get("api_key_enc"):
+            if stored.get("mcp_client_id_enc"):
                 try:
-                    client_id = decrypt(stored["api_key_enc"], master)
+                    client_id = decrypt(stored["mcp_client_id_enc"], master)
                 except ValueError as exc:
                     self._set_feedback(
                         sds.CLIENT_ID_UNREADABLE_FORMAT.format(
@@ -729,8 +729,8 @@ if _HAS_QT:
                     )
                 return
             config = ExchangeConfig(exchange_id=eid, display_name=eid.capitalize())
-            config.api_key_enc = encrypt(answered["client_id"], master)
-            config.api_secret_enc = encrypt(answered["bearer"], master)
+            config.mcp_client_id_enc = encrypt(answered["client_id"], master)
+            config.mcp_bearer_enc = encrypt(answered["bearer"], master)
             self._sm.add_exchange(config)
             self._list_exchange_once(eid)
             self._refresh_exchange_status()
