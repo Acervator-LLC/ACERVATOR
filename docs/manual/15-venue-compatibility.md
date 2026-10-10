@@ -2534,9 +2534,8 @@ class RobinhoodCryptoConnector(ExchangeInterface):
 ### Which of Robinhood's sectors the program reaches
 
 One of six. Robinhood sells a product in all six sectors and publishes a
-programmatic order route for four of them, and three of those four are reachable
-only through a Model Context Protocol server this repository holds no client
-for.
+programmatic order route for four of them. Three of those four are reachable
+only through the Robinhood Trading MCP, and the program holds no client for it.
 
 | sector | Robinhood's own route | reached today |
 | --- | --- | --- |
@@ -2549,6 +2548,48 @@ for.
 
 Every verdict is read from Robinhood's own pages, quoted with its URL, in
 [../audits/2026-10-08_robinhood_order_interface/REPORT.md](../audits/2026-10-08_robinhood_order_interface/REPORT.md).
+
+### The equities route is a program gap, not a venue limit
+
+Robinhood publishes an equities order route and names its address. The route is
+the Trading MCP at `https://agent.robinhood.com/mcp/trading`, it speaks
+JSON-RPC over HTTP, and it publishes `place_equity_order`,
+`get_equity_positions`, `get_equity_quotes`, `get_equity_orders`,
+`get_equity_tradability`, `review_equity_order` and `cancel_equity_order`. The
+reason the program does not place an equity order on Robinhood is that no
+module here speaks that protocol and no account token exists to speak it with.
+
+| what the route takes | where it stands |
+| --- | --- |
+| a Robinhood MCP account | the operator opens it; nothing in software substitutes |
+| an OAuth bearer token for that account | granted in a browser, once per connection |
+| a JSON-RPC client over HTTP | no module in this tree provides one |
+| a `BrokerBase` subclass and a `BROKER_CONNECTORS` row | neither exists for this venue |
+
+The sign-in shape the token needs is already in the product and already
+approved. `src/trading/ata_spm_signin.py`, in `LoopbackReceiver`, binds
+`127.0.0.1` only and serves the one RFC 8252 redirect its venue's own
+documentation accepts, and `new_verifier` and `code_challenge` in the same
+module build the PKCE pair. Market Inspector reaches it through
+`src/gui/sign_in_view.py`, in `sign_in_session`. An equities sign-in is a new
+route on that mechanism, not a new mechanism.
+
+No waitlist and no programme gates the route. Robinhood's own onboarding page
+states the one condition: *"To trade with an external agent, you must open a
+Robinhood MCP account specifically for your external agent."* That account is a
+self-directed individual investing account, it holds only the funds moved into
+it, and an agent connected to it reaches no other Robinhood account.
+
+One venue default matters before any order is sized. Robinhood turns trade
+approvals **off** by default for an external agent, so an order this program
+sent would reach the market with no second pair of eyes. Its page states it:
+*"Trade approvals are turned on by default for Robinhood Agents (built-in
+agents), and are turned off by default for MCP accounts (external agents)."*
+A unit that builds the order path reads that setting back before it sizes
+anything.
+
+The sector rows this extends, each read from Robinhood's own pages, are in
+[../audits/2026-10-09_robinhood_reachable_sectors/REPORT.md](../audits/2026-10-09_robinhood_reachable_sectors/REPORT.md).
 
 ### Why it is a crypto connector and not a broker one
 

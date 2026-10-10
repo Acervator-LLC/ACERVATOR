@@ -442,8 +442,10 @@ def pair_rules(pair: Any) -> MarketRules:
 def pair_asset_class(pair: Any = None) -> str:
     """The sector one published trading-pair record belongs to.
 
-    Every pair ``record_pairs`` holds is a crypto pair, and Robinhood's equity
-    route is a Model Context Protocol server this connector does not reach.
+    Every pair ``record_pairs`` holds is a crypto pair. Robinhood's equity
+    route is the Trading MCP at ``agent.robinhood.com/mcp/trading``, which
+    takes an OAuth bearer token issued for a Robinhood MCP account, and no
+    module in this tree holds one.
     """
     del pair
     from ..trading.scrumming.sizing import CLASS_CRYPTO
