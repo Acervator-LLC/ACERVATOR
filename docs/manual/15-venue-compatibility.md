@@ -2791,3 +2791,185 @@ the bot's `exchange`, handed it to `BotManager.set_connector`, and scheduled
 symbols; with the reuse removed, the same reading gave two connectors carrying
 one symbol each. The ccxt press and the broker press each read the same seven
 lines before and after, and the Robinhood press was the one reading that moved.
+
+## 2026-10-10 - Robinhood's five reachable sectors, and the one that is not
+
+Robinhood reaches five of the six sectors, and four of those five share one
+route. The crypto sector has its own signed interface. The futures and
+perpetuals sector has no route at all.
+
+| sector | the instrument | the route | what is missing |
+| --- | --- | --- | --- |
+| crypto | the pair itself | the signed Crypto Trading API | the candles, and five reads the connector refuses |
+| stocks | the share | `place_equity_order` on the Trading MCP | a client for the protocol, and the operator's account |
+| commodities | a fund share | `place_equity_order` on the Trading MCP | the same two |
+| indices | an index fund share | `place_equity_order` on the Trading MCP | the same two |
+| forex | a currency fund share | `place_equity_order` on the Trading MCP | the same two |
+| futures and perpetuals | a contract | none published | the venue's own route |
+
+Every verdict is read from Robinhood's own pages, quoted with its URL, in
+[../audits/2026-10-10_robinhood_sector_translation/REPORT.md](../audits/2026-10-10_robinhood_sector_translation/REPORT.md).
+
+### Robinhood publishes a specification, and it carries six read paths
+
+The crypto documentation page serves a shell and hands the real document to
+`JSON.parse` inside its own script. That document is an OpenAPI description of
+fourteen paths, and six of them are reads the engine needs.
+
+```
+the market list        the trading-pairs path, both API versions
+the quote              the best-price path, both versions
+the execution estimate the estimated-price path, both versions
+the position           the holdings path, both versions
+the buying power       the accounts path, both versions
+the fill and status    the orders read, both versions, filtered by id or state
+the candles            no path, on either of this venue's two routes
+```
+
+OVERTAKEN, quoted whole:
+
+> "`place_order` is the only method that builds a request. Every read method
+> raises `RobinhoodPathUnpublished`, because Robinhood publishes the two order
+> paths and no read path, so a price, a book, a candle, a balance, an order
+> status and a cancel all answer the same refusal."
+
+True today: every read method still raises that refusal, and the reason given
+for it is wrong. Robinhood publishes a path for seven of the eight endpoints
+those methods name. The candle is the one exception, and that refusal is
+correct. The refusal text itself is the owed repair, named in the report above
+beside the five reads the connector should make instead.
+
+### The candles are the venue's limit, and the detour is already in this tree
+
+Robinhood publishes no crypto candle endpoint. The agent route publishes a
+history tool for equities, for options and for indexes, and none for crypto, so
+the absence is a reading rather than a gap in the search.
+
+A candle source separate from the order venue already runs here. The Simulator
+reads one, and the default indicator timeframe sits inside the table it serves.
+
+```python
+# src/trading/stone_tablets/ra_fetcher.py, in CoinbasePublicCandles
+    GRANULARITY_S: dict[str, int] = {"1d": 86_400, "1h": 3_600, "5m": 300}
+```
+
+The price history would come from one venue and the fill from another. The
+sizing price still comes from Robinhood, through its published best-price read,
+so the venue that executes keeps authority over the money.
+
+### A market order takes a unit count and nothing else
+
+Robinhood's market configuration publishes one size field. Its three other
+configurations publish two.
+
+```
+market_order_config, both versions   asset_quantity
+limit_order_config                   asset_quantity or quote_amount
+stop_loss_order_config               asset_quantity or quote_amount
+stop_limit_order_config              asset_quantity or quote_amount
+```
+
+OVERTAKEN, quoted whole:
+
+> "Robinhood permits `quote_amount` in place of `asset_quantity` on all four of
+> its order configurations."
+
+True today: three of the four. The market configuration names a unit count
+alone. No order changes, because `permitted_order_shape` answers the unit count
+and the cash-amount variant has no caller. It would matter the moment that
+variant is built.
+
+### The route the four equity-side sectors share
+
+One endpoint, and Robinhood's own metadata names the whole sign-in shape. The
+challenge method it requires is the one this tree already produces.
+
+```
+the endpoint                     https://agent.robinhood.com/mcp/trading
+authorization_endpoint           https://robinhood.com/oauth
+token_endpoint                   https://api.robinhood.com/oauth2/token/
+registration_endpoint            the agent host's own register path
+code_challenge_methods_supported S256
+token_endpoint_auth_methods      none, so the program holds no secret
+```
+
+```python
+# src/trading/ata_spm_signin.py, in code_challenge
+    digest = hashlib.sha256(str(verifier).encode("ascii")).digest()
+    return base64.urlsafe_b64encode(digest).decode("ascii").rstrip("=")
+```
+
+Two costs the operator does not pay on this route, in the venue's own words.
+Its token charges apply "only to agents hosted on Robinhood, not external
+agents". Its application subscriptions are "only accessible by agents hosted by
+Robinhood".
+
+### An index option places an order and accumulates nothing
+
+Every completed cycle ends holding more of the asset. A cash-settled contract
+holds no units, so at expiry it becomes cash and the position is gone.
+Robinhood's own page states both facts: index options "don't have underlying
+shares", and they are "settled in cash".
+
+OVERTAKEN, quoted whole:
+
+```
+| indices | `place_option_order` on the Trading MCP | no client for the protocol |
+```
+
+True today: that tool is published and it reaches an order. It reaches no
+accumulation. The accumulating route for this sector is an index fund share
+through `place_equity_order`, which is the commodities row's route.
+
+### Forex has no spot product, and a currency fund share is the door
+
+Robinhood sells currency exposure only as a futures contract and publishes no
+forex order route. A currency fund share is a fund share, and the venue's own
+page puts funds beside stocks on the equity route, so the sector reaches an
+order the same way commodities does.
+
+OVERTAKEN, quoted whole:
+
+```
+| forex | no published order route | no route to build |
+```
+
+True today: no spot forex route exists, and the fund-share route does. Robinhood
+publishes no list of its funds by category, so this sector's symbols are
+confirmed one at a time by `get_equity_tradability` rather than enumerated.
+
+One tool name is a trap. `get_currency_pairs` sits under the page's own Crypto
+heading and its published description reads "List Robinhood-supported crypto
+assets". A reading keyed to the name would offer this venue under forex, where
+it can place nothing.
+
+### Futures and perpetuals: no, today, and the venue says so
+
+The agent route names the three asset classes an agent may order, and futures is
+not among them. Robinhood's own launch announcement names futures among what is
+"coming soon", so the venue states both that the route is absent and that it
+intends to open it. No perpetual product is published anywhere that was read.
+
+The program already holds the variant an expiring market needs, in
+`VARIANT_ROLLING_POSITION`, and 74 of Coinbase's own futures rows select it.
+Nothing is missing here except the venue's route.
+
+### Three sectors of the mirror select a built variant
+
+A sector's variant is read off one market's own recorded rules, never off the
+sector. Over Coinbase's 2,148 recorded rows, 1,100 select a variant written for
+them.
+
+```
+crypto         none 896
+stocks         permitted-shape order 1000   none 25   rolling position 8
+futures_perps  none 94                      rolling position 74
+commodities    none 7                       rolling position 18
+forex          none 20
+indices        none 6
+```
+
+So no Robinhood sector needs a new variant. A fractional market selects the
+permitted-shape variant, a whole-share market selects the whole-unit variant,
+and an expiring market selects the rolling-position variant. All three sit
+inside `VARIANTS_BUILT`.
