@@ -4352,3 +4352,147 @@ Two limits, stated plainly. No reading used a real token, so nothing here proves
 either venue accepts a live order from this program. And the fill ledger stays
 unread on both brokers, so a broker bot's venue-side profit figures are blank
 until a fill path is built.
+
+
+## 2026-10-10 - Gate.io reaches all six of its sectors, and the venue refuses the account
+
+Gate.io is offered under six sectors. Before this unit two of the six held no
+market, one held twenty markets none of which was a currency, and two held
+3418 option contracts between them. The venue publishes the sector of each of
+its own assets on a public record, and the program now reads it.
+
+### The sentences this overtakes
+
+OVERTAKEN, quoted whole:
+
+> | gateio | crypto spot | no refusal recorded, 2026-08-28 | key and secret | `src/exchange/ccxt_connector.py, in SUPPORTED_EXCHANGES` |
+
+True today: the venue serves six sectors and its own user agreement refuses a
+United States person. Clause 2.10 states it does not intend to provide
+services to "U.S. persons" and "expressly prohibit the same from using any of
+our Services", and its restricted-locations page names the United States first.
+`src/exchange/ccxt_connector.py, at US_ACCOUNT_RESTRICTED_EXCHANGES` now holds
+the venue, so a connect press shows "US account restricted" beside it.
+
+### The six sectors, and what each costs
+
+| Sector | Verdict | The cost |
+| --- | --- | --- |
+| crypto | yes-if | the venue's terms refuse a U.S. person |
+| stocks | yes-if | the same account refusal |
+| commodities | yes-if | the same account refusal |
+| forex | yes-if | the same account refusal |
+| indices | yes-if | the same account refusal |
+| futures_perps | yes-if | the same account refusal, and one contract of 619 refuses on the cash-amount shape |
+
+Every sector has a market list, an order route, a published order body, a
+position and fill read, candles and a built variant. No sector reads no and no
+sector reads not established.
+
+### The venue publishes its own sectors, so the program stops guessing
+
+Gate.io's `/spot/currencies` record carries a `category` list per asset code.
+Its words are the platform's own: `stocks`, `indices`, `forex` and
+`commodities` are live class names, and `metals` already resolves onto
+commodities. `src/exchange/ccxt_connector.py, in _published_asset_sectors`
+reads that record through the library's own public method and answers one
+sector per asset code.
+
+```
+the method                   publicSpotGetCurrencies
+codes answered               5640
+codes carrying a sector        607    stocks 567, commodities 18,
+                                      indices 18, forex 4
+```
+
+`src/exchange/ccxt_connector.py, in market_asset_class` takes that sector ahead
+of the base and quote codes. An empty list is the venue's own answer, so for a
+venue publishing such a record the codes are not read at all.
+
+### Why the codes had to stop being read
+
+The classifier called a market forex when both legs resolved to a currency
+code. Gate.io lists tokens and equity contracts whose tickers are the same
+three letters, and the venue's own record names each one.
+
+| The code | What the program called it | What the venue names |
+| --- | --- | --- |
+| AMD | the Armenian dram | Advanced Micro Devices |
+| COP | the Colombian peso | ConocoPhillips |
+| NOK | the Norwegian krone | Nokia |
+| CAD | the Canadian dollar | Caduceus Protocol |
+| MNT | the Mongolian tugrik | Mantle |
+| SCR | the Seychellois rupee | Scroll |
+
+Three of those are share contracts, so the forex sector held equities while the
+stocks sector held nothing.
+
+### An option contract is refused, not sized as a perpetual
+
+3418 of the venue's 6677 markets are option contracts, and every one recorded
+under futures and perpetuals or under commodities.
+`src/trading/ata_spm.py, at CLASS_OPTIONS` names the sector an option records
+under, and `ASSET_CLASSES` omits it, so no screen offers it.
+`src/trading/scrumming/sizing.py, in sector_variant` then names
+"options Scrumming", which `VARIANTS_BUILT` lacks, and the market is refused.
+
+`src/gui/main_tabs/asset_class_surface.py, in symbol_class` answered crypto for
+any recorded label its resolver did not know, which would have put all 3418
+rows in the crypto list. Its own docstring says it answers crypto for a symbol
+the recording holds none for, so the code disagreed with the contract it
+states. It now answers crypto only where the recording holds no row.
+
+### What the six sectors hold
+
+| Sector | Markets before | Markets after | The variants its markets select |
+| --- | --- | --- | --- |
+| crypto | 2187 | 2031 | Crypto Scrumming |
+| stocks | 0 | 565 | Stock Scrumming, Whole Unit Scrumming |
+| commodities | 8 | 20 | Commodity Scrumming, Whole Unit Scrumming |
+| forex | 20 | 6 | Forex Scrumming |
+| indices | 0 | 18 | Index Scrumming, Whole Unit Scrumming |
+| futures_perps | 1044 | 619 | Futures Scrumming, Whole Unit Scrumming |
+
+612 markets moved sector. No variant was added.
+
+### The two order bodies the six sectors take
+
+Crypto, stocks and commodities reach a spot pair. Forex, indices and futures
+reach a contract. Each body below was built by the library's own request
+builder with the transport replaced, so nothing reached the venue.
+
+```
+POST /spot/orders
+  {"currency_pair": "AAPLX_USDT", "type": "limit", "account": "spot",
+   "side": "sell", "amount": "5", "price": "100"}
+
+POST /futures/usdt/orders
+  {"contract": "SPX500_USDT", "size": -5, "settle": "usdt",
+   "price": "7807.18"}
+```
+
+The spot `amount` reads as a cash amount on a market buy and a unit count on a
+market sell, which `src/trading/scrumming/sizing.py, at CITED_CASH_MARKET_BUY`
+already held for this venue. The futures body carries no cash field on either
+side, so that rule does not reach the three sectors served there.
+
+### What the Gate.io unit drove
+
+```
+reading                               what it reported
+6677 active markets, classified       612 moved sector; blinding the venue's
+                                      own record returns every one of them
+one order body per sector, twelve     six sectors, two endpoints, nothing sent
+the transport, replaced               fetch2, fetch and load_markets all raised
+                                      before any body was built
+the option rows                       3418 recorded, 0 reaching any sector list
+the step-five subtraction             six sectors offered, six with markets,
+                                      one market of 6659 refused
+the venue's own host                  a real path answered 200 and an invented
+                                      one answered 400, in the same run
+```
+
+Two limits, stated plainly. No reading used a credential, so nothing here
+proves the venue accepts a live order from this program. And the venue will not
+open an account to a United States person, so every yes above is an order path
+and not a trade the operator can place today.

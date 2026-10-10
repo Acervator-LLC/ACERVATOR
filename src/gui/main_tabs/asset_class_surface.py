@@ -594,7 +594,10 @@ def symbol_class(venue_id: Any, symbol: Any, recorded: Any = None) -> str:
     from src.trading.ata_spm import CLASS_CRYPTO
 
     held = recorded if isinstance(recorded, dict) else recorded_symbol_classes(venue_id)
-    return retired_onto(held.get(str(symbol or ""), "")) or CLASS_CRYPTO
+    named = str(held.get(str(symbol or ""), "") or "")
+    if not named:
+        return CLASS_CRYPTO
+    return retired_onto(named)
 
 
 def markets_of_class(rows: Any, venue_id: Any, name: Any, recorded: Any = None) -> list:
