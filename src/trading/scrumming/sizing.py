@@ -718,7 +718,7 @@ SECTOR_MARKET_FORMAT = "a market the venue serves in its {sector} sector"
 #: Why a market ``VARIANT_WHOLE_UNIT`` selects is still not traded: the variant
 #: sizes whole units and this market's own step is a fraction.
 WHOLE_UNIT_STEP_IS_A_FRACTION = (
-    "the whole-unit position variant sizes whole units and this market steps in "
+    "Whole Unit Scrumming sizes whole units and this market steps in "
     "fractions, so no built variant sizes an order costing this much"
 )
 
@@ -1191,7 +1191,7 @@ WHOLE_UNIT_POSITION_MINIMUM = 2
 
 #: Why a ``WHOLE_UNITS`` market refuses an order that would open a position,
 #: naming the units ``opening_position_minimum`` requires.
-BELOW_POSITION_MINIMUM_FORMAT = "a whole-unit position opens at {minimum} units"
+BELOW_POSITION_MINIMUM_FORMAT = "Whole Unit Scrumming opens at {minimum} units"
 
 #: ``BELOW_POSITION_MINIMUM_FORMAT`` at ``WHOLE_UNIT_POSITION_MINIMUM``, the
 #: refusal reason a caller naming no configured minimum carries.

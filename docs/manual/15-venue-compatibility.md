@@ -4133,3 +4133,33 @@ limit-only venue; that zero says nothing about the substitution working. The
 same holds for the removed `cash-amount order`, which nothing selected either
 way. Both are proved only by the planted-fault control above, which moved the
 readings that do fire.
+
+### Two refusal messages carried the retired name
+
+The refusal a market reads most often is
+`src/trading/scrumming/sizing.py, in untradeable_reason` answering
+`WHOLE_UNIT_STEP_IS_A_FRACTION`, and it fires on 286 of the 2,148 recorded
+markets at the reference price. It named the whole-unit position variant, which
+is the name the operator could not read. So did
+`BELOW_POSITION_MINIMUM_FORMAT`, which
+`src/trading/scrumming/sizing.py, in position_minimum_refusal` puts in front of
+an opening buy.
+
+Both now name `Whole Unit Scrumming`. These are the only two readings whose
+operator text moved in this unit, and no order's amount moved with them.
+
+OVERTAKEN, quoted whole: "the whole-unit position variant sizes whole units and
+this market steps in fractions, so no built variant sizes an order costing this
+much"
+
+True today: `WHOLE_UNIT_STEP_IS_A_FRACTION` reads "Whole Unit Scrumming sizes
+whole units and this market steps in fractions, so no built variant sizes an
+order costing this much".
+
+OVERTAKEN, quoted whole: "a whole-unit position opens at {minimum} units"
+
+True today: `BELOW_POSITION_MINIMUM_FORMAT` reads "Whole Unit Scrumming opens at
+{minimum} units".
+
+Every other passage on this page that quotes either message keeps the words it
+was written with, and those words name the variant as it was called then.
