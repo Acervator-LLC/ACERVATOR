@@ -61,6 +61,17 @@ FLEET_SEQUENCE_STATES = {"start": ("idle", "stopped")}
 #: host only, paper or live.
 BROKER_SESSION_PAPER = True
 
+#: Why ``_open_broker_session`` refused before reaching the venue.
+#: ``_connect_broker_for_bot`` matches on this to open the configuration window.
+NO_BROKER_CREDENTIAL = "no API credentials are stored"
+
+#: What the status log carries while the configuration window opens for a bot
+#: whose venue holds no stored connection yet.
+CONNECTION_WANTED_FORMAT = (
+    "{venue} has no stored connection for the {sector} sector. Opening the "
+    "configuration window."
+)
+
 #: The progress topic ``StartAllProgressDialog`` draws from.
 FLEET_SEQUENCE_TOPIC = "bot_manager.start_all_progress"
 
@@ -2744,12 +2755,17 @@ if _HAS_QT:
                 )
                 return 0, failure
 
-        def _broker_credential(self, eid: str) -> tuple[str, str]:
-            """The stored API key and secret for *eid*, decrypted, and ("", "")
-            where the venue has no stored entry or no stored secret.
+        def _broker_credential(self, eid: str, sector: str = "") -> tuple[str, str]:
+            """The stored credential pair for *eid* on *sector*, decrypted, and
+            ("", "") where the venue holds no entry or no second token.
 
-            ``_connect_broker_for_bot`` hands these to ``open_session``.
+            ``ata_spm_signin.credential_store_fields`` names the two fields, so a
+            venue signing in at a browser is read from its own pair and never
+            from the typed key its other sectors sign with.
             """
+            from ..trading.ata_spm_signin import credential_store_fields
+
+            first, second = credential_store_fields(eid, sector)
             exchanges = self._settings.list_exchanges() if self._settings else []
             stored = None
             for entry in exchanges:
@@ -2758,20 +2774,45 @@ if _HAS_QT:
                     break
             if not stored:
                 return "", ""
-            if not stored.get("api_key_enc") or not stored.get("api_secret_enc"):
+            if not stored.get(first) or not stored.get(second):
                 return "", ""
 
             from ..core.encryption import decrypt, vault_phrase
 
             master = vault_phrase(self._settings.get("username", ""))
             return (
-                decrypt(stored["api_key_enc"], master),
-                decrypt(stored["api_secret_enc"], master),
+                decrypt(stored[first], master),
+                decrypt(stored[second], master),
             )
 
-        def _open_broker_session(self, connector, eid: str) -> tuple[bool, str]:
-            """Open *connector*'s session with the stored credential for *eid*
-            and answer whether it opened with the refusal that stopped it.
+        def _ask_for_venue_connection(self, eid: str, sector: str) -> None:
+            """Open the configuration window on *sector* so the operator can
+            connect *eid* at the moment a bot's route wants it.
+
+            ``variant_surface.SETTINGS_DIALOG`` is the same window
+            ``_open_settings`` draws, and it opens on the bot's own sector so the
+            pressed venue asks for the credential that sector's route takes.
+            """
+            from .variant_surface import SETTINGS_DIALOG, surface_class
+
+            self._status_log.log(
+                CONNECTION_WANTED_FORMAT.format(
+                    venue=eid.capitalize(), sector=sector or "active"
+                ),
+                "warning",
+            )
+            dialog = surface_class(SETTINGS_DIALOG)(
+                self._settings, self._status_log, self, wing=sector
+            )
+            dialog.settings_changed.connect(self._on_settings_changed)
+            dialog.exec()
+
+        def _open_broker_session(
+            self, connector, eid: str, sector: str = ""
+        ) -> tuple[bool, str]:
+            """Open *connector*'s session with the stored credential for *eid* on
+            *sector* and answer whether it opened with the refusal that stopped
+            it.
 
             ``BrokerBase.open_session`` contacts the broker, so a venue with no
             stored credential is refused here and nothing is sent.
@@ -2779,11 +2820,11 @@ if _HAS_QT:
             if getattr(connector, "is_connected", False):
                 return True, ""
             try:
-                api_key, api_secret = self._broker_credential(eid)
+                api_key, api_secret = self._broker_credential(eid, sector)
             except Exception as exc:
                 return False, f"the stored credential would not decrypt: {exc}"
             if not api_key or not api_secret:
-                return False, "no API credentials are stored"
+                return False, NO_BROKER_CREDENTIAL
             try:
                 opened = bool(
                     self._await_async(
@@ -2895,7 +2936,12 @@ if _HAS_QT:
             )
 
             venue = eid.capitalize()
-            opened, refusal = self._open_broker_session(connector, eid)
+            sector = str(getattr(bot, "sector", "") or "")
+            opened, refusal = self._open_broker_session(connector, eid, sector)
+
+            if not opened and refusal == NO_BROKER_CREDENTIAL:
+                self._ask_for_venue_connection(eid, sector)
+                opened, refusal = self._open_broker_session(connector, eid, sector)
 
             if not opened:
                 msg = (
@@ -2998,6 +3044,13 @@ if _HAS_QT:
 
             api_key, signing_key, account_number = self._written_crypto_credential(eid)
             if not api_key or not signing_key:
+                self._ask_for_venue_connection(
+                    eid, str(getattr(bot, "sector", "") or "")
+                )
+                api_key, signing_key, account_number = self._written_crypto_credential(
+                    eid
+                )
+            if not api_key or not signing_key:
                 msg = (
                     f"No API credentials for {venue}. Add them in Settings. "
                     f"No connector was built."
@@ -3095,18 +3148,20 @@ if _HAS_QT:
         def _connect_exchange_for_bot(self, bot) -> tuple[bool, str]:
             """Reuse the exchange's connector, or build one; returns (ok, message).
 
-            A venue ``broker_connector_class`` names takes the broker path, a
+            ``BotContainer.sector`` picks the transport: a venue whose
+            ``broker_serves_sector`` holds that sector takes the broker path, a
             venue ``crypto_connector_class`` names takes the hand-written crypto
             one, and every other venue takes the ccxt one.
             """
             from ..exchange.api_logger import get_api_log
             from ..exchange.robinhood_connector import crypto_connector_class
-            from ..stocks.alpaca_connector import broker_connector_class
+            from ..stocks.alpaca_connector import broker_serves_sector
 
             _log = get_api_log()
             eid = bot.config.exchange_id
+            sector = str(getattr(bot, "sector", "") or "")
 
-            if broker_connector_class(eid) is not None:
+            if broker_serves_sector(eid, sector):
                 return self._connect_broker_for_bot(bot)
 
             if crypto_connector_class(eid) is not None:

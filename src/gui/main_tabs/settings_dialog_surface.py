@@ -1832,38 +1832,55 @@ def browser_waiting_words(venue_id: Any) -> str:
 def approval_level(state: Any) -> str:
     """The feedback level one trade-approval state draws.
 
-    ``APPROVAL_OFF`` draws ``WARNING_LEVEL``, since nothing at the venue holds
-    an order this program sends, and an unread state draws ``ERROR_LEVEL``.
+    The off state draws ``WARNING_LEVEL``, since nothing at the venue holds an
+    order this program sends, and an unread state draws ``ERROR_LEVEL``.
     """
-    from src.stocks.robinhood_broker import APPROVAL_OFF, APPROVAL_ON
+    from src.trading.ata_spm_signin import approval_states
 
+    approval_on, approval_off, _unread = approval_states()
     held = str(state)
-    if held == APPROVAL_ON:
+    if held == approval_on:
         return SUCCESS_LEVEL
-    if held == APPROVAL_OFF:
+    if held == approval_off:
         return WARNING_LEVEL
     return ERROR_LEVEL
 
 
-def credential_kind(venue_id: Any) -> str:
+def class_of_wing(wing: Any) -> str:
+    """The asset class word one wing word names, and "" for an empty ``wing``.
+
+    ``CLASS_WINGS`` maps a class onto a wing, and this reads the other way, so
+    both the wing word `stock` and the class word `stocks` answer `stocks`.
+    """
+    held = str(wing or "").strip().lower()
+    if not held:
+        return ""
+    for name, named in CLASS_WINGS.items():
+        if held == named:
+            return str(name)
+    return held
+
+
+def credential_kind(venue_id: Any, sector: Any = "") -> str:
     """``CREDENTIAL_BROWSER_AUTHORIZATION`` for a venue
-    ``ata_spm_signin.BROWSER_AUTHORIZATION_VENUES`` names, else
+    ``ata_spm_signin.BROWSER_AUTHORIZATION_SECTORS`` names on ``sector``, else
     ``CREDENTIAL_TYPED_KEY``.
 
-    Every reader of the Add form's shape takes the kind from here, so the rows
-    drawn and the credential stored cannot disagree.
+    ``credential_form`` takes the kind from here, so the rows drawn and the
+    credential stored cannot disagree. An empty ``sector`` asks after any sector
+    the venue serves.
     """
     from src.trading.ata_spm_signin import takes_browser_authorization
 
-    if takes_browser_authorization(venue_id):
+    if takes_browser_authorization(venue_id, class_of_wing(sector)):
         return CREDENTIAL_BROWSER_AUTHORIZATION
     return CREDENTIAL_TYPED_KEY
 
 
-def takes_browser_authorization(venue_id: Any) -> bool:
+def takes_browser_authorization(venue_id: Any, sector: Any = "") -> bool:
     """Whether ``credential_kind`` answers
-    ``CREDENTIAL_BROWSER_AUTHORIZATION`` for one venue id."""
-    return credential_kind(venue_id) == CREDENTIAL_BROWSER_AUTHORIZATION
+    ``CREDENTIAL_BROWSER_AUTHORIZATION`` for one venue id on ``sector``."""
+    return credential_kind(venue_id, sector) == CREDENTIAL_BROWSER_AUTHORIZATION
 
 
 def credential_form(venue_id: Any, wing: Any = "") -> dict:
@@ -1874,12 +1891,12 @@ def credential_form(venue_id: Any, wing: Any = "") -> dict:
     empty ``venue_id`` keeps the key-and-secret shape the form opens with, and
     ``STOCK_WING`` keeps ``STOCK_DISABLED_TIP`` on a venue taking a typed key.
     """
-    kind = credential_kind(venue_id)
-    browser = kind == CREDENTIAL_BROWSER_AUTHORIZATION
-    name = str(venue_id or "").capitalize()
     # CLASS_WINGS maps the asset class word "stocks" onto this module's own
     # wing word "stock", so either name resolves one wing.
     held = CLASS_WINGS.get(str(wing), str(wing))
+    kind = credential_kind(venue_id, wing)
+    browser = kind == CREDENTIAL_BROWSER_AUTHORIZATION
+    name = str(venue_id or "").capitalize()
     tip = ""
     if browser:
         tip = NO_KEY_TO_TEST
@@ -1906,17 +1923,12 @@ def venue_form_bound(venue_id: Any) -> str:
 def browser_credential_fields(venue_id: Any) -> tuple:
     """The client-id and bearer field names one venue's own sign-in answers.
 
-    A venue taking a typed key answers ("", ""), and no field name is written
-    twice.
+    ``ata_spm_signin.BROWSER_CREDENTIAL_FIELDS`` is the table read, and a venue
+    taking a typed key answers ("", "").
     """
-    from src.trading import ata_spm_signin
+    from src.trading.ata_spm_signin import browser_credential_fields as named
 
-    if str(venue_id or "").strip().lower() == ata_spm_signin.ROBINHOOD_MCP_VENUE:
-        return (
-            ata_spm_signin.ROBINHOOD_CLIENT_ID_FIELD,
-            ata_spm_signin.ROBINHOOD_BEARER_FIELD,
-        )
-    return ("", "")
+    return named(venue_id)
 
 
 def connect_browser_venue(
@@ -1928,32 +1940,23 @@ def connect_browser_venue(
     """Sign one browser-authorization venue in and answer what to store and say.
 
     ``connect_one`` is ``ata_spm_signin.build_connector``'s callable, a refusal
-    from it raises, and a trade-approval read that refuses answers
-    ``APPROVAL_UNREAD`` with its own ``refusal`` beside the credential.
+    from it raises, and ``ata_spm_signin.read_venue_approval`` answers the unread
+    state with its own ``refusal`` beside the credential.
     """
-    from src.stocks.robinhood_broker import (
-        APPROVAL_UNREAD,
-        RouteRefused,
-        read_trade_approval,
-    )
+    from src.trading.ata_spm_signin import read_venue_approval
 
-    reader = read_approval or read_trade_approval
     client_field, bearer_field = browser_credential_fields(venue_id)
     typed = {client_field: str(stored_client_id or "")} if client_field else {}
     issued = dict(connect_one(venue_id, typed))
     bearer = str(issued.get(bearer_field, "") or "")
-    refusal = ""
-    try:
-        approval = reader(bearer)
-    except (RouteRefused, OSError, ValueError) as exc:
-        refusal = str(exc)
-        approval = APPROVAL_UNREAD
+    read = read_venue_approval(venue_id, bearer, read_approval)
+    approval = read["approval"]
     return {
         "venue": str(venue_id or "").strip().lower(),
         "client_id": str(issued.get(client_field, "") or ""),
         "bearer": bearer,
         "approval": approval,
-        "refusal": refusal,
+        "refusal": read["refusal"],
         "level": approval_level(approval),
         "words": browser_connected_words(venue_id, approval),
     }
@@ -1963,13 +1966,13 @@ def browser_connected_words(venue_id: Any, approval: Any) -> str:
     """What the feedback row carries after a browser sign-in, carrying the
     venue's own trade-approval reading.
 
-    ``robinhood_broker.approval_words`` is the one source of that sentence, so
-    the page and the broker read one wording.
+    ``ata_spm_signin.approval_sentence`` is the one source of that sentence, so
+    the page and the route read one wording.
     """
-    from src.stocks.robinhood_broker import approval_words
+    from src.trading.ata_spm_signin import approval_sentence
 
     return BROWSER_CONNECTED_FORMAT.format(
-        name=str(venue_id or "").capitalize(), approval=approval_words(approval)
+        name=str(venue_id or "").capitalize(), approval=approval_sentence(approval)
     )
 
 

@@ -76,9 +76,13 @@ EQUITY_VENUES = frozenset(
         "fidelity",
         "etrade",
         "interactivebrokers",
-        # robinhood_broker.VENUE_ID. The crypto id "robinhood" is a separate
-        # venue and stays out of this set.
-        "robinhoodmcp",
+        # OVERTAKEN, quoted whole:
+        #   "robinhood_broker.VENUE_ID. The crypto id "robinhood" is a separate
+        #   venue and stays out of this set."
+        # True today: one id serves both. robinhood_broker.VENUE_ID and
+        # robinhood_connector.VENUE_ID are the same string, and
+        # broker_serves_sector picks the route from the bot's own sector.
+        "robinhood",
     }
 )
 
@@ -166,8 +170,10 @@ EXTRA_VENUE_CLASSES = {
     "tastytrade": ("crypto", "commodities", "indices", "futures_perps"),
     "webull": ("crypto", "commodities", "indices", "futures_perps"),
     # One equity route, four sectors: each of these trades as a fund share, and
-    # robinhood_broker.SECTORS_SERVED names the same four.
-    "robinhoodmcp": ("commodities", "indices", "forex"),
+    # robinhood_broker.SECTORS_SERVED names the same four. "stocks" arrives from
+    # EQUITY_VENUES and "crypto" from CRYPTO_CONNECTORS, so this one id reads
+    # under all five sectors.
+    "robinhood": ("commodities", "indices", "forex"),
 }
 
 #: The two articles a sentence takes before a sector name, and the first
