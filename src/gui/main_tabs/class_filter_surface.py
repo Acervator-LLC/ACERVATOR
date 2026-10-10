@@ -12,7 +12,13 @@ from __future__ import annotations
 
 from typing import Any, Iterable, Optional
 
-from .asset_class_surface import display_name, normalise, symbol_class, venue_classes
+from .asset_class_surface import (
+    display_name,
+    normalise,
+    symbol_class,
+    venue_classes,
+    venues_for_class,
+)
 
 DERIVATIVES = "derivatives"
 
@@ -41,12 +47,28 @@ UNFILTERED_TABS = ("Status", "Console")
 #: also the renderer module the React empty panel draws the note with.
 NOTE_METHOD = "class_note.model"
 
+#: The menu the window's own bar carries on every tab, which stays on screen
+#: while a note page covers the tab. ``MainWindow._setup_menu`` builds it and
+#: its one item adds a venue.
+ADD_VENUE_MENU = "Exchange"
+
 EMPTY_HEADING = "{name} — nothing to show"
 EMPTY_NOTE = "No {name} {subject} to show."
-EMPTY_HINT = (
-    "{name} is the active asset class. Press another class button in the "
-    "header strip to see that class."
+
+#: The second line an emptied tab draws. A sector one or more venues serve
+#: carries the count, that the operator can trade it, and where he adds a
+#: venue. A sector no venue serves carries that fact alone, because no
+#: control on screen can act on it.
+SERVED_HINT = (
+    "You can trade {name}. {count} {venues} {serve} {name}. "
+    "Add one from the {menu} menu."
 )
+UNSERVED_HINT = "No venue serves {name} yet."
+
+VENUE_NOUN_ONE = "venue"
+VENUE_NOUN_MANY = "venues"
+VENUE_VERB_ONE = "serves"
+VENUE_VERB_MANY = "serve"
 
 _active = ""
 
@@ -182,9 +204,25 @@ def note_model(tab: Any, name: Optional[Any] = None) -> dict:
 
 
 def empty_hint(name: Optional[Any] = None) -> str:
-    """The second line an emptied tab draws under ``empty_note``."""
+    """The second line an emptied tab draws under ``empty_note``.
+
+    A sector ``venues_for_class`` counts venues for takes ``SERVED_HINT`` and
+    one it counts none for takes ``UNSERVED_HINT``, the count read on every
+    call so no venue name is written into either.
+    """
     key = normalise(name) if name is not None else active()
-    return EMPTY_HINT.format(name=display_name(key))
+    shown = display_name(key)
+    count = len(venues_for_class(key))
+    if not count:
+        return UNSERVED_HINT.format(name=shown)
+    alone = count == 1
+    return SERVED_HINT.format(
+        name=shown,
+        count=count,
+        venues=VENUE_NOUN_ONE if alone else VENUE_NOUN_MANY,
+        serve=VENUE_VERB_ONE if alone else VENUE_VERB_MANY,
+        menu=ADD_VENUE_MENU,
+    )
 
 
 def tab_state(tab: Any, statuses: Any, name: Optional[Any] = None) -> dict:
