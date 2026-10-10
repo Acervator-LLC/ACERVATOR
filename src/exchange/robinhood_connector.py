@@ -1222,6 +1222,15 @@ class RobinhoodCryptoConnector(ExchangeInterface):
         if symbol:
             self._scan_symbols.add(str(symbol))
 
+    def remove_scan_symbol(self, symbol: str) -> None:
+        """Drop ``symbol`` from ``scan_symbols``, and leave the set alone where
+        it never held it.
+
+        ``BotManager.unregister`` calls this on the connector it holds when the
+        last bot naming a symbol goes.
+        """
+        self._scan_symbols.discard(str(symbol))
+
     def set_history_callback(self, callback: Any) -> None:
         """Hold ``callback`` for the trade history pane."""
         self._history_callback = callback

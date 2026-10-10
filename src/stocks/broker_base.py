@@ -168,6 +168,11 @@ class BrokerBase(ABC):
     #: opens a live session, because the paper one does not exist.
     HAS_PAPER_ROUTE: bool = True
 
+    #: The currency ``get_account``'s ``cash`` figure is denominated in, which
+    #: ``BrokerExchange.get_balance`` answers that currency's balance from. A
+    #: broker holding accounts in another currency names its own.
+    CASH_CURRENCY: str = "USD"
+
     def __init__(self, broker_id: str):
         self.broker_id = broker_id
         self._connected = False
@@ -232,6 +237,16 @@ class BrokerBase(ABC):
         thread, so nothing is started."""
         if symbol:
             self._scan_symbols.add(str(symbol))
+
+    def remove_scan_symbol(self, symbol: str) -> None:
+        """Drop ``symbol`` from ``scan_symbols``, and leave the set alone where
+        it never held it.
+
+        ``BotManager.unregister`` calls this on the connector it holds when the
+        last bot naming a symbol goes, so a deleted bot's symbol stops being
+        read.
+        """
+        self._scan_symbols.discard(str(symbol))
 
     def set_history_callback(self, callback: Any) -> None:
         """Hold ``callback`` for the trade history pane."""
@@ -381,13 +396,13 @@ class BrokerBase(ABC):
         del asset
         raise NotImplementedError
 
-    def record_markets(self, assets: Iterable[Any]) -> list[AssetInfo]:
-        """Every asset record of ``assets`` as an ``AssetInfo``, recorded under
-        ``broker_id`` so ``recorded_rules`` answers each market's rules.
+    def asset_infos(self, assets: Iterable[Any]) -> list[AssetInfo]:
+        """Every asset record of ``assets`` as an ``AssetInfo``, writing
+        nothing.
 
-        No broker is contacted, a record naming no symbol is skipped, an empty
-        ``assets`` keeps the rows already recorded, and a failed write raises
-        ``OSError``.
+        No broker is contacted, a record naming no symbol is skipped,
+        ``record_markets`` writes what this builds, and
+        ``BrokerExchange.get_markets`` answers it with the recording untouched.
         """
         built: list[AssetInfo] = []
         for asset in assets:
@@ -408,6 +423,17 @@ class BrokerBase(ABC):
                     taker_fee=0.0,
                 )
             )
+        return built
+
+    def record_markets(self, assets: Iterable[Any]) -> list[AssetInfo]:
+        """Every asset record of ``assets`` as an ``AssetInfo``, recorded under
+        ``broker_id`` so ``recorded_rules`` answers each market's rules.
+
+        No broker is contacted, a record naming no symbol is skipped, an empty
+        ``assets`` keeps the rows already recorded, and a failed write raises
+        ``OSError``.
+        """
+        built = self.asset_infos(assets)
         if built:
             record_venue(self.broker_id, built)
         return built

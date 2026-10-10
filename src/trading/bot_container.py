@@ -492,6 +492,9 @@ class BotContainer:
         # OVERTAKEN, the two sentences above: a broker is still unbuilt, and the
         # crypto connector lists the venue's other sectors, so the class comes
         # from ``_asset_class`` and the rule from ``market_unit_rule``.
+        # OVERTAKEN, "a broker is still unbuilt": a broker venue's bot holds a
+        # ``BrokerExchange``, which answers ``place_order`` below through
+        # ``BrokerBase.place_order``.
         _class = self._asset_class(symbol)
         # The market's own session overrides its step outside its normal hours,
         # so the moment is read here and not at a composing site.

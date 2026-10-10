@@ -240,6 +240,10 @@ if _HAS_QT:
             self._bus = get_event_bus()
             self._async_loop = None
             self._exchange_connectors: dict[str, object] = {}
+            # The BrokerExchange held for each broker venue, keyed by venue id.
+            # The broker itself stays in _exchange_connectors, which
+            # _held_broker, _live_connector and the two connector pumps read.
+            self._broker_exchanges: dict[str, object] = {}
 
             try:
                 from .buy_confirmation_dialog import get_broker as _get_bcd_broker
@@ -2708,6 +2712,23 @@ if _HAS_QT:
             held = self._exchange_connectors.get(eid)
             return held if isinstance(held, BrokerBase) else None
 
+        def _broker_exchange(self, eid: str, broker):
+            """The ``BrokerExchange`` holding *broker* for *eid*, built once and
+            reused.
+
+            A venue whose held exchange wraps a different broker object gets a
+            fresh one, so ``BotManager.set_connector`` registers one object per
+            broker and every bot on that venue trades through it.
+            """
+            from ..stocks.broker_exchange import BrokerExchange
+
+            held = self._broker_exchanges.get(eid)
+            if isinstance(held, BrokerExchange) and held.broker is broker:
+                return held
+            built = BrokerExchange(broker)
+            self._broker_exchanges[eid] = built
+            return built
+
         def _written_crypto_credential(self, eid: str) -> tuple[str, str, str]:
             """The stored API key, signing key and account number for *eid*,
             decrypted, and ("", "", "") where no entry holds the first two.
@@ -2866,10 +2887,12 @@ if _HAS_QT:
 
         def _connect_broker_for_bot(self, bot) -> tuple[bool, str]:
             """Build or reuse the broker's connector, open its session, record its
-            markets and hand it to *bot*; returns (ok, message).
+            markets and hand it to *bot* as a ``BrokerExchange``; returns
+            (ok, message).
 
-            ``ok`` stays False while ``BotContainer`` takes only a crypto
-            exchange, so no bot starts against the broker order contract.
+            ``ok`` is True once the session opened and the market rules recorded,
+            and ``BrokerExchange`` answers the ``ExchangeInterface`` members
+            ``BotContainer`` reads.
             """
             from ..exchange.api_logger import get_api_log
             from ..stocks.alpaca_connector import broker_connector_class
@@ -2907,10 +2930,11 @@ if _HAS_QT:
                 connector = connector_class()
                 self._exchange_connectors[eid] = connector
 
-            self._wire_connector_for_bot(connector, bot)
+            exchange = self._broker_exchange(eid, connector)
+            self._wire_connector_for_bot(exchange, bot)
 
             try:
-                bot.exchange = connector
+                bot.exchange = exchange
             except Exception as exc:
                 msg = f"Bot {bot.bot_id} would not accept the {eid} connector: {exc}"
                 _log.record(
@@ -2925,7 +2949,7 @@ if _HAS_QT:
 
             try:
                 if getattr(self, "_bot_manager", None):
-                    self._bot_manager.set_connector(connector)
+                    self._bot_manager.set_connector(exchange)
             except Exception as exc:
                 logger.warning("set_connector failed for %s: %s", eid, exc)
 
@@ -2999,18 +3023,18 @@ if _HAS_QT:
 
             msg = (
                 f"{venue} session is open {route} and {recorded} market rule "
-                f"row(s) recorded. The bot does not start yet: a bot takes a "
-                f"crypto exchange and not a broker."
+                f"row(s) recorded. The bot holds the {venue} broker as its "
+                f"exchange and trades the {sector or 'active'} sector through it."
             )
             _log.record(
                 exchange=eid,
                 action="BROKER_MARKETS_RECORDED",
                 reason=f"{recorded} market rule row(s) written for {eid}",
                 result=msg,
-                level="warning",
+                level="success",
                 data_usage="Recorded market rules size every later order",
             )
-            return False, msg
+            return True, msg
 
         def _connect_written_crypto_for_bot(self, bot) -> tuple[bool, str]:
             """Build or reuse the hand-written crypto connector for *bot*'s venue,
