@@ -1,6 +1,8 @@
-"""ata_spm_signin.py -- one sign-in route per ATA-SPM push target.
+"""ata_spm_signin.py -- one sign-in route per ATA-SPM push target and per
+browser-authorization trading venue.
 
-``SIGN_IN_ROUTES`` maps one push target name to the route that signs it in.
+``SIGN_IN_ROUTES`` maps one target or venue id to the route that signs it in,
+and ``BROWSER_AUTHORIZATION_VENUES`` names the venue ids among them.
 ``REDIRECT_POLICIES`` carries the redirect address each venue's own
 documentation accepts, and ``LoopbackReceiver`` opens only for a venue that
 takes an RFC 8252 address. ``build_connector`` wraps the map into the one
@@ -149,8 +151,9 @@ class SignInError(Exception):
 class SignInRequest:
     """One call a route makes, and the only shape ``SignInSession.transport`` takes.
 
-    ``params`` is the query string, ``data`` the form body, and ``basic_auth``
-    the user and password of an HTTP Basic header.
+    ``params`` is the query string, ``data`` the form body, ``json_body`` a JSON
+    body in place of ``data``, and ``basic_auth`` the user and password of an
+    HTTP Basic header.
     """
 
     method: str
@@ -159,6 +162,7 @@ class SignInRequest:
     data: dict = field(default_factory=dict)
     headers: dict = field(default_factory=dict)
     basic_auth: tuple = ()
+    json_body: dict = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -357,6 +361,8 @@ def urlopen_transport(request: SignInRequest) -> dict:
     if request.params:
         address = address + QUERY_MARK + urllib.parse.urlencode(request.params)
     body = urllib.parse.urlencode(request.data).encode() if request.data else None
+    if request.json_body:
+        body = json.dumps(dict(request.json_body)).encode()
     sent = SafeRequest(address, allowed_schemes=(HTTPS_SCHEME,))
     for name, value in request.headers.items():
         sent.add_header(str(name), str(value))
@@ -908,6 +914,120 @@ def sign_in_telegram(typed: dict, session: SignInSession) -> dict:
     return {}
 
 
+# ── Robinhood ────────────────────────────────────────────────────────
+# OVERTAKEN, quoted whole:
+#   "The venue id this venue's broker connector, its equity venue row and its
+#   sign-in row all carry."
+# True today: one firm, one venue id, across every sector it serves. The
+# transport is chosen below it, by the sector the bot trades.
+#: The venue id this firm's crypto connector, its broker connector, its equity
+#: venue row and its sign-in row all carry.
+ROBINHOOD_VENUE = "robinhood"
+
+#: The sectors Robinhood's Model Context Protocol route serves, every one traded
+#: as a fund share. ``robinhood_broker.SECTORS_SERVED`` is this tuple, and
+#: ``crypto`` is absent because that sector reaches the signed REST route in
+#: ``robinhood_connector`` instead.
+ROBINHOOD_MCP_SECTORS = ("stocks", "commodities", "indices", "forex")
+
+ROBINHOOD_AUTHORIZE_URL = "https://robinhood.com/oauth"
+ROBINHOOD_EXCHANGE_URL = "https://api.robinhood.com/oauth2/token/"
+ROBINHOOD_REGISTRATION_URL = "https://agent.robinhood.com/oauth/trading/register"
+
+#: The one scope this venue's protected-resource metadata publishes.
+ROBINHOOD_MCP_SCOPE = "internal"
+
+#: The client name the registration call sends, which names the program and no
+#: operator.
+ROBINHOOD_CLIENT_NAME = "Acervator"
+
+ROBINHOOD_CLIENT_ID_FIELD = "robinhood-mcp-client-id"
+ROBINHOOD_BEARER_FIELD = "robinhood-mcp-access-token"
+ROBINHOOD_REFRESH_FIELD = "robinhood-mcp-refresh-token"
+
+JSON_CONTENT_TYPE = "application/json"
+
+#: ``token_endpoint_auth_methods_supported`` at this venue, so no route holds a
+#: client secret and none is sent.
+AUTH_METHOD_NONE = "none"
+REFRESH_GRANT = "refresh_token"
+
+CLIENT_ID_FIELD_NAME = "client_id"
+BEARER_FIELD_NAME = "access_token"
+REFRESH_FIELD_NAME = "refresh_token"
+
+
+def register_robinhood_client(session: SignInSession, policy: RedirectPolicy) -> str:
+    """Earn one client id at ``ROBINHOOD_REGISTRATION_URL`` and answer it.
+
+    This writes a record at the venue, so it runs only where the operator holds
+    no client id yet, and the reply carrying no ``client_id`` raises
+    ``SignInError``.
+    """
+    answered = session.transport(
+        SignInRequest(
+            method=METHOD_POST,
+            url=ROBINHOOD_REGISTRATION_URL,
+            json_body={
+                "client_name": ROBINHOOD_CLIENT_NAME,
+                "redirect_uris": [policy.register_as],
+                "grant_types": [GRANT_AUTHORIZATION_CODE, REFRESH_GRANT],
+                "response_types": [RESPONSE_TYPE_CODE],
+                "token_endpoint_auth_method": AUTH_METHOD_NONE,
+            },
+            headers={
+                CONTENT_TYPE_HEADER: JSON_CONTENT_TYPE,
+                ACCEPT_HEADER: JSON_ACCEPT,
+            },
+        )
+    )
+    return read_field(answered, CLIENT_ID_FIELD_NAME)
+
+
+def sign_in_robinhood_mcp(typed: dict, session: SignInSession) -> dict:
+    """Robinhood's MCP authorization code flow, calling
+    ``register_robinhood_client`` where the operator holds no client id.
+
+    This venue publishes ``AUTH_METHOD_NONE``, so the route sends
+    ``code_verifier`` and no secret, and what it answers belongs to one operator.
+    """
+    policy = redirect_policy(ROBINHOOD_VENUE)
+    client_id = str(typed.get(ROBINHOOD_CLIENT_ID_FIELD, "") or "")
+    if not client_id:
+        client_id = register_robinhood_client(session, policy)
+    verifier = str(session.verifier_source())
+    code, redirect_uri = session.approve(
+        ROBINHOOD_AUTHORIZE_URL,
+        {
+            "response_type": RESPONSE_TYPE_CODE,
+            "client_id": client_id,
+            "scope": ROBINHOOD_MCP_SCOPE,
+            "code_challenge": code_challenge(verifier),
+            "code_challenge_method": CHALLENGE_METHOD_S256,
+        },
+        policy,
+    )
+    answered = session.transport(
+        SignInRequest(
+            method=METHOD_POST,
+            url=ROBINHOOD_EXCHANGE_URL,
+            data={
+                "grant_type": GRANT_AUTHORIZATION_CODE,
+                "code": code,
+                CLIENT_ID_FIELD_NAME: client_id,
+                REDIRECT_PARAM: redirect_uri,
+                "code_verifier": verifier,
+            },
+            headers={CONTENT_TYPE_HEADER: FORM_CONTENT_TYPE},
+        )
+    )
+    return {
+        ROBINHOOD_CLIENT_ID_FIELD: client_id,
+        ROBINHOOD_BEARER_FIELD: read_field(answered, BEARER_FIELD_NAME),
+        ROBINHOOD_REFRESH_FIELD: read_field(answered, REFRESH_FIELD_NAME),
+    }
+
+
 SIGN_IN_ROUTES = {
     ata_spm_push.TARGET_X: sign_in_x,
     ata_spm_push.TARGET_INSTAGRAM: sign_in_instagram,
@@ -918,7 +1038,145 @@ SIGN_IN_ROUTES = {
     ata_spm_push.TARGET_REDDIT: sign_in_reddit,
     ata_spm_push.TARGET_DISCORD: sign_in_discord,
     ata_spm_push.TARGET_TELEGRAM: sign_in_telegram,
+    ROBINHOOD_VENUE: sign_in_robinhood_mcp,
 }
+
+
+# OVERTAKEN, quoted whole:
+#   "Every trading venue id that connects through ``SIGN_IN_ROUTES`` instead of
+#   a typed API key and secret. ``settings_dialog_surface.credential_kind``
+#   reads this, so the Add form asks for what the pressed venue actually takes."
+# True today: a venue reaches the browser route on the sectors named beside it,
+# and the key-and-secret route on every other sector it serves.
+#: Every trading venue id that connects through ``SIGN_IN_ROUTES`` rather than a
+#: typed API key and secret, mapped to the sectors reaching that route. An empty
+#: tuple names every sector the venue serves, and
+#: ``settings_dialog_surface.credential_kind`` reads this for the pressed wing.
+BROWSER_AUTHORIZATION_SECTORS = {ROBINHOOD_VENUE: ROBINHOOD_MCP_SECTORS}
+
+#: Every trading venue id ``BROWSER_AUTHORIZATION_SECTORS`` names, on any sector.
+BROWSER_AUTHORIZATION_VENUES = frozenset(BROWSER_AUTHORIZATION_SECTORS)
+
+#: The client-id and bearer field names each browser venue's own sign-in answers.
+#: ``settings_dialog_surface.browser_credential_fields`` reads this, so no screen
+#: names a venue to learn what its sign-in issues.
+BROWSER_CREDENTIAL_FIELDS = {
+    ROBINHOOD_VENUE: (ROBINHOOD_CLIENT_ID_FIELD, ROBINHOOD_BEARER_FIELD),
+}
+
+#: Every venue whose own route publishes a trade-approval setting the credentials
+#: page reads back. ``approval_reader`` resolves the callable.
+APPROVAL_READ_VENUES = frozenset({ROBINHOOD_VENUE})
+
+#: The ``core.settings.ExchangeConfig`` field pair a typed key and secret sit
+#: under, which every venue taking one is stored in.
+TYPED_CREDENTIAL_STORE = ("api_key_enc", "api_secret_enc")
+
+#: The ``core.settings.ExchangeConfig`` field pair a browser sign-in's client id
+#: and bearer sit under. One venue holds this beside ``TYPED_CREDENTIAL_STORE``
+#: where its sectors reach two transports.
+BROWSER_CREDENTIAL_STORE = ("mcp_client_id_enc", "mcp_bearer_enc")
+
+
+def credential_store_fields(venue_id: Any, sector: Any = "") -> tuple:
+    """The two ``ExchangeConfig`` field names one venue's stored credential sits
+    under, on one ``sector``.
+
+    ``takes_browser_authorization`` picks ``BROWSER_CREDENTIAL_STORE``, and every
+    other venue and sector answers ``TYPED_CREDENTIAL_STORE``.
+    """
+    if takes_browser_authorization(venue_id, sector):
+        return BROWSER_CREDENTIAL_STORE
+    return TYPED_CREDENTIAL_STORE
+
+
+def browser_authorization_sectors(venue_id: Any) -> tuple:
+    """The sectors one venue signs in at a browser for, and () for a venue
+    ``BROWSER_AUTHORIZATION_SECTORS`` does not name.
+
+    A named venue carrying an empty tuple answers every sector, which
+    ``takes_browser_authorization`` reads as no narrowing.
+    """
+    asked = str(venue_id or "").strip().lower()
+    return tuple(BROWSER_AUTHORIZATION_SECTORS.get(asked, ()))
+
+
+def takes_browser_authorization(venue_id: Any, sector: Any = "") -> bool:
+    """Whether one venue id signs in at a browser, on one ``sector``.
+
+    An empty ``sector`` asks after any sector the venue serves, and a venue whose
+    ``browser_authorization_sectors`` omits ``sector`` answers False.
+    """
+    asked = str(venue_id or "").strip().lower()
+    if asked not in BROWSER_AUTHORIZATION_VENUES:
+        return False
+    named = browser_authorization_sectors(asked)
+    held = str(sector or "").strip().lower()
+    if not named or not held:
+        return True
+    return held in named
+
+
+def browser_credential_fields(venue_id: Any) -> tuple:
+    """The client-id and bearer field names one venue's own sign-in answers.
+
+    A venue ``BROWSER_CREDENTIAL_FIELDS`` does not name answers ("", "").
+    """
+    asked = str(venue_id or "").strip().lower()
+    return tuple(BROWSER_CREDENTIAL_FIELDS.get(asked, ("", "")))
+
+
+def approval_reader(venue_id: Any) -> Optional[Callable]:
+    """The callable reading one venue's own trade-approval setting, and None for
+    a venue ``APPROVAL_READ_VENUES`` does not name.
+
+    ``robinhood_broker.read_trade_approval`` is imported inside this function,
+    and that module reads ``ROBINHOOD_VENUE`` from this one.
+    """
+    if str(venue_id or "").strip().lower() not in APPROVAL_READ_VENUES:
+        return None
+    from ..stocks.robinhood_broker import read_trade_approval
+
+    return read_trade_approval
+
+
+def approval_states() -> tuple:
+    """The on, off and unread trade-approval states, in that order.
+
+    ``robinhood_broker`` owns the three strings, and this names them for a screen
+    that reads a level off a state.
+    """
+    from ..stocks.robinhood_broker import APPROVAL_OFF, APPROVAL_ON, APPROVAL_UNREAD
+
+    return (APPROVAL_ON, APPROVAL_OFF, APPROVAL_UNREAD)
+
+
+def approval_sentence(state: Any) -> str:
+    """The sentence an operator's screen carries for one trade-approval state.
+
+    ``robinhood_broker.approval_words`` is the one source of the wording.
+    """
+    from ..stocks.robinhood_broker import approval_words
+
+    return approval_words(state)
+
+
+def read_venue_approval(venue_id: Any, bearer: Any, reader: Any = None) -> dict:
+    """One venue's own trade-approval state and the refusal that stopped the
+    read, over its own ``approval_reader``.
+
+    A venue ``approval_reader`` answers None for reads its own unread state with
+    no call made, and ``reader`` stands in for that lookup.
+    """
+    from ..stocks.robinhood_broker import APPROVAL_UNREAD, RouteRefused
+
+    held = reader or approval_reader(venue_id)
+    if held is None:
+        return {"approval": APPROVAL_UNREAD, "refusal": ""}
+    try:
+        return {"approval": held(bearer), "refusal": ""}
+    except (RouteRefused, OSError, ValueError) as exc:
+        return {"approval": APPROVAL_UNREAD, "refusal": str(exc)}
 
 
 #: Where each push target sends the operator to approve. Level 1A prints this,
@@ -933,6 +1191,7 @@ AUTHORIZE_ADDRESSES = {
     ),
     ata_spm_push.TARGET_THREADS: THREADS_AUTHORIZE_URL,
     ata_spm_push.TARGET_REDDIT: REDDIT_AUTHORIZE_URL,
+    ROBINHOOD_VENUE: ROBINHOOD_AUTHORIZE_URL,
 }
 
 
@@ -982,6 +1241,15 @@ REDIRECT_POLICIES = {
         ),
     ),
     ata_spm_push.TARGET_REDDIT: RedirectPolicy(
+        loopback=True,
+        port=FIXED_CALLBACK_PORT,
+        register_as=LOOPBACK_ADDRESS_FORMAT.format(
+            port=FIXED_CALLBACK_PORT, path=CALLBACK_PATH
+        ),
+    ),
+    # register_robinhood_client sends register_as, so the operator types no
+    # address at this venue and FIXED_CALLBACK_PORT is what approve binds.
+    ROBINHOOD_VENUE: RedirectPolicy(
         loopback=True,
         port=FIXED_CALLBACK_PORT,
         register_as=LOOPBACK_ADDRESS_FORMAT.format(

@@ -101,7 +101,6 @@ DANGER_PROPERTY = "danger"
 
 from .. import design_system as ds  # noqa: E402
 from . import asset_class_surface as acs  # noqa: E402
-from .asset_class_surface import EQUITY_VENUES as EQUITY_EXCHANGE_IDS  # noqa: E402
 
 STRONG_OPEN = "<b>"
 STRONG_CLOSE = "</b>"
@@ -113,6 +112,8 @@ STOCK_BANNER_TAIL = (
     "queued — no live brokers are wired up yet. The "
     "list below shows the planned brokers; Add / Test "
     "are disabled until the broker connectors ship. "
+    "A broker the program signs in at a browser keeps its own "
+    "Connect with a Browser press. "
     "Use the Crypto Wing for active trading today."
 )
 STOCK_BANNER_PIECES = (STOCK_BANNER_LEAD, STOCK_BANNER_TAIL)
@@ -1778,6 +1779,211 @@ def stored_credential_phrase(entry: Any) -> str:
     return ADDED_WITHOUT_CREDENTIALS
 
 
+#: The two kinds of credential a venue takes. ``credential_kind`` answers one
+#: and the Add form asks for that one alone.
+CREDENTIAL_TYPED_KEY = "key and secret"
+CREDENTIAL_BROWSER_AUTHORIZATION = "browser authorization"
+
+#: What the Add button says for a venue signing in at a browser.
+BROWSER_ADD_BUTTON_TEXT = "Connect with a Browser"
+
+#: Why Test Connection is disabled for a venue holding no key to test.
+NO_KEY_TO_TEST = (
+    "This venue takes a browser authorization and no API key, so there is "
+    "nothing to test. Press Connect with a Browser."
+)
+
+#: The Add form's own prompt per credential kind, which ``venue_form_bound``
+#: writes into the feedback row when a venue button is pressed.
+KEY_FORM_PROMPT = "Enter the API key and secret for {name}."
+BROWSER_FORM_PROMPT = (
+    "{name} takes a browser authorization, not an API key and secret. "
+    "Press Connect with a Browser to sign in at the venue."
+)
+
+#: What the feedback row carries once a browser sign-in stored its credential.
+BROWSER_CONNECTED_FORMAT = "{name} connected. {approval}"
+
+#: What the feedback row carries while the browser sign-in is in flight, with
+#: the wait ``LoopbackReceiver`` serves one callback for.
+BROWSER_WAITING_FORMAT = (
+    "{name}: approve in the browser that just opened. This page waits up to "
+    "{seconds:.0f} seconds for the venue to answer."
+)
+
+#: Why one browser venue's stored client id could not be read back.
+CLIENT_ID_UNREADABLE_FORMAT = "{name}: the stored client id would not decrypt: {said}"
+
+
+def browser_waiting_words(venue_id: Any) -> str:
+    """What the feedback row says while one browser sign-in waits.
+
+    ``ata_spm_signin.CALLBACK_TIMEOUT_SECONDS`` is the wait, so the page names
+    no second figure.
+    """
+    from src.trading.ata_spm_signin import CALLBACK_TIMEOUT_SECONDS
+
+    return BROWSER_WAITING_FORMAT.format(
+        name=str(venue_id or "").capitalize(), seconds=CALLBACK_TIMEOUT_SECONDS
+    )
+
+
+def approval_level(state: Any) -> str:
+    """The feedback level one trade-approval state draws.
+
+    The off state draws ``WARNING_LEVEL``, since nothing at the venue holds an
+    order this program sends, and an unread state draws ``ERROR_LEVEL``.
+    """
+    from src.trading.ata_spm_signin import approval_states
+
+    approval_on, approval_off, _unread = approval_states()
+    held = str(state)
+    if held == approval_on:
+        return SUCCESS_LEVEL
+    if held == approval_off:
+        return WARNING_LEVEL
+    return ERROR_LEVEL
+
+
+def serves_wing(venue_id: Any, wing: Any) -> bool:
+    """Whether one venue serves the sector a wing stands for.
+
+    ``acs.serves`` is the read, and ``class_of_wing`` turns the
+    wing word into the sector name it asks under.
+    """
+    return bool(acs.serves(venue_id, class_of_wing(wing)))
+
+
+def class_of_wing(wing: Any) -> str:
+    """The asset class word one wing word names, and "" for an empty ``wing``.
+
+    ``CLASS_WINGS`` maps a class onto a wing, and this reads the other way, so
+    both the wing word `stock` and the class word `stocks` answer `stocks`.
+    """
+    held = str(wing or "").strip().lower()
+    if not held:
+        return ""
+    for name, named in CLASS_WINGS.items():
+        if held == named:
+            return str(name)
+    return held
+
+
+def credential_kind(venue_id: Any, sector: Any = "") -> str:
+    """``CREDENTIAL_BROWSER_AUTHORIZATION`` for a venue
+    ``ata_spm_signin.BROWSER_AUTHORIZATION_SECTORS`` names on ``sector``, else
+    ``CREDENTIAL_TYPED_KEY``.
+
+    ``credential_form`` takes the kind from here, so the rows drawn and the
+    credential stored cannot disagree. An empty ``sector`` asks after any sector
+    the venue serves.
+    """
+    from src.trading.ata_spm_signin import takes_browser_authorization
+
+    if takes_browser_authorization(venue_id, class_of_wing(sector)):
+        return CREDENTIAL_BROWSER_AUTHORIZATION
+    return CREDENTIAL_TYPED_KEY
+
+
+def takes_browser_authorization(venue_id: Any, sector: Any = "") -> bool:
+    """Whether ``credential_kind`` answers
+    ``CREDENTIAL_BROWSER_AUTHORIZATION`` for one venue id on ``sector``."""
+    return credential_kind(venue_id, sector) == CREDENTIAL_BROWSER_AUTHORIZATION
+
+
+def credential_form(venue_id: Any, wing: Any = "") -> dict:
+    """Every row and button word the Add form draws for one venue's own
+    credential kind, on one wing.
+
+    ``key_rows`` false hides the API Key, API Secret and passphrase rows, an
+    empty ``venue_id`` keeps the key-and-secret shape the form opens with, and
+    ``STOCK_WING`` keeps ``STOCK_DISABLED_TIP`` on a venue taking a typed key.
+    """
+    # CLASS_WINGS maps the asset class word "stocks" onto this module's own
+    # wing word "stock", so either name resolves one wing.
+    held = CLASS_WINGS.get(str(wing), str(wing))
+    kind = credential_kind(venue_id, wing)
+    browser = kind == CREDENTIAL_BROWSER_AUTHORIZATION
+    name = str(venue_id or "").capitalize()
+    tip = ""
+    if browser:
+        tip = NO_KEY_TO_TEST
+    elif held == STOCK_WING:
+        tip = STOCK_DISABLED_TIP
+    return {
+        "kind": kind,
+        "key_rows": not browser,
+        "add_text": BROWSER_ADD_BUTTON_TEXT if browser else ADD_BUTTON_TEXT,
+        "test_enabled": not browser,
+        "test_tip": tip,
+        "prompt": (BROWSER_FORM_PROMPT if browser else KEY_FORM_PROMPT).format(
+            name=name
+        ),
+    }
+
+
+def venue_form_bound(venue_id: Any) -> str:
+    """The feedback words one pressed venue button writes, naming the credential
+    its own ``credential_kind`` takes."""
+    return str(credential_form(venue_id)["prompt"])
+
+
+def browser_credential_fields(venue_id: Any) -> tuple:
+    """The client-id and bearer field names one venue's own sign-in answers.
+
+    ``ata_spm_signin.BROWSER_CREDENTIAL_FIELDS`` is the table read, and a venue
+    taking a typed key answers ("", "").
+    """
+    from src.trading.ata_spm_signin import browser_credential_fields as named
+
+    return named(venue_id)
+
+
+def connect_browser_venue(
+    venue_id: Any,
+    connect_one: Any,
+    stored_client_id: Any = "",
+    read_approval: Any = None,
+) -> dict:
+    """Sign one browser-authorization venue in and answer what to store and say.
+
+    ``connect_one`` is ``ata_spm_signin.build_connector``'s callable, a refusal
+    from it raises, and ``ata_spm_signin.read_venue_approval`` answers the unread
+    state with its own ``refusal`` beside the credential.
+    """
+    from src.trading.ata_spm_signin import read_venue_approval
+
+    client_field, bearer_field = browser_credential_fields(venue_id)
+    typed = {client_field: str(stored_client_id or "")} if client_field else {}
+    issued = dict(connect_one(venue_id, typed))
+    bearer = str(issued.get(bearer_field, "") or "")
+    read = read_venue_approval(venue_id, bearer, read_approval)
+    approval = read["approval"]
+    return {
+        "venue": str(venue_id or "").strip().lower(),
+        "client_id": str(issued.get(client_field, "") or ""),
+        "bearer": bearer,
+        "approval": approval,
+        "refusal": read["refusal"],
+        "level": approval_level(approval),
+        "words": browser_connected_words(venue_id, approval),
+    }
+
+
+def browser_connected_words(venue_id: Any, approval: Any) -> str:
+    """What the feedback row carries after a browser sign-in, carrying the
+    venue's own trade-approval reading.
+
+    ``ata_spm_signin.approval_sentence`` is the one source of that sentence, so
+    the page and the route read one wording.
+    """
+    from src.trading.ata_spm_signin import approval_sentence
+
+    return BROWSER_CONNECTED_FORMAT.format(
+        name=str(venue_id or "").capitalize(), approval=approval_sentence(approval)
+    )
+
+
 def banner_of(wing: str) -> dict:
     """The stock-wing banner, its words, its pieces and its colours."""
     return {
@@ -2441,12 +2647,14 @@ class SettingsDialogModel:
                     group + "." + key, show, read_mapping(stored, key, fallback)
                 )
 
+        # OVERTAKEN, quoted whole:
+        #   "is_equity = eid in EQUITY_EXCHANGE_IDS"
+        # True today: one venue id can serve both wings, so membership of the
+        # equity set no longer tells the two apart. asset_class_surface.serves
+        # answers whether the venue serves the wing's own sector.
         for entry in self.settings.list_exchanges():
             eid = (entry.get(EXCHANGE_ID_KEY, "") or "").lower()
-            is_equity = eid in EQUITY_EXCHANGE_IDS
-            if self.wing == STOCK_WING and not is_equity:
-                continue
-            if self.wing == CRYPTO_WING and is_equity:
+            if not serves_wing(eid, self.wing):
                 continue
             self.listed_exchanges.append(
                 CONFIGURED_ITEM_FORMAT.format(

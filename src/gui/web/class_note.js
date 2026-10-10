@@ -2,7 +2,8 @@
 // holds nothing, from the model `class_filter_surface.note_model` builds.
 // Every colour and size arrives as an `--empty-tab-` property from
 // `src/gui/main_tabs/empty_tabs.py`, which paints the Qt side from the same
-// numbers.
+// numbers. A model carrying `build_text` also draws the button that opens the
+// Bot Creation Wizard, and a press sends `build_bot` back with the sector.
 (function (global) {
   "use strict";
 
@@ -13,15 +14,24 @@
   var STATE_CLASS = "acervator-empty-tab-state";
   var ISSUE_CLASS = "acervator-empty-tab-issue";
 
+  var BUILD_CLASS = "acervator-empty-tab-build";
+
   var HEADING_PART = "class-note-heading";
   var STATE_PART = "class-note-state";
   var ISSUE_PART = "class-note-issue";
+  var BUILD_PART = "class-note-build";
   var ROOT_PART = "class-note";
   var PART_ATTR = "data-part";
+  var CLASS_ATTR = "data-class";
 
   var DIV_TAG = "div";
   var HEADING_TAG = "h1";
   var LINE_TAG = "p";
+  var BUTTON_TAG = "button";
+  var BUTTON_TYPE = "button";
+
+  // The request field `class_filter_tab` reads off a press on the button.
+  var BUILD_PARAM = "build_bot";
 
   var FIELDS = [
     { field: "heading", tag: HEADING_TAG, css: HEADING_CLASS, part: HEADING_PART },
@@ -46,7 +56,28 @@
     return element(props.tag, made, props.text);
   }
 
-  // ClassNote draws the three lines the model carries, and nothing else.
+  function press(sector) {
+    var params = {};
+    params[BUILD_PARAM] = sector;
+    global.acervator.call(METHOD, params);
+  }
+
+  // Build draws the button `build_text` names and sends its press back.
+  function Build(props) {
+    var made = {
+      className: BUILD_CLASS,
+      type: BUTTON_TYPE,
+      onClick: function () {
+        press(props.sector);
+      }
+    };
+    made[PART_ATTR] = BUILD_PART;
+    made[CLASS_ATTR] = props.sector;
+    return element(BUTTON_TAG, made, props.text);
+  }
+
+  // ClassNote draws the three lines the model carries, and the button it
+  // offers while `build_text` names one.
   function ClassNote(props) {
     var model = props.model || {};
     var made = [];
@@ -59,6 +90,16 @@
           css: one.css,
           part: one.part,
           text: text(model, one.field)
+        })
+      );
+    }
+    var offered = text(model, "build_text");
+    if (offered !== "") {
+      made.push(
+        element(Build, {
+          key: BUILD_PART,
+          text: offered,
+          sector: text(model, "build_class")
         })
       );
     }
@@ -115,8 +156,10 @@
 
   global.acervatorClassNote = {
     method: METHOD,
+    buildParam: BUILD_PARAM,
     ClassNote: ClassNote,
     Line: Line,
+    Build: Build,
     renderNote: renderNote,
     forget: forget
   };

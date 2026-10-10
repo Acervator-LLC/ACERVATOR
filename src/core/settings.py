@@ -79,6 +79,11 @@ class ExchangeConfig:
     api_secret_enc: str = ""
     # Set only for an exchange_id in ccxt_connector.PASSPHRASE_EXCHANGES.
     passphrase_enc: str = ""
+    # The Model Context Protocol leg's own pair, which one venue holds beside a
+    # typed key when its sectors reach two transports. Both end in _enc, so
+    # CREDENTIAL_FIELDS carries them and add_exchange keeps an unwritten one.
+    mcp_client_id_enc: str = ""
+    mcp_bearer_enc: str = ""
     enabled: bool = True
     hardware_mode: bool = False  # True = credentials read from USB, not the vault
     hw_volume_serial: str = ""  # USB volume serial that holds .acervator_auth

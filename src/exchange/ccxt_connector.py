@@ -1968,6 +1968,7 @@ class CCXTConnector(ExchangeInterface):
         )
 
         # Coinbase Advanced Trade is protobuf-strict: send only its own field name.
+        # ccxt maps clientOrderId onto Kraken's cl_ord_id; its userref takes digits only.
         extra_params: dict = {}
         if client_order_id:
             _eid = (self._exchange_id or "").lower()
@@ -1976,8 +1977,6 @@ class CCXTConnector(ExchangeInterface):
                 extra_params["client_order_id"] = client_order_id
             elif "binance" in _eid or "binanceus" in _eid:
                 extra_params["newClientOrderId"] = client_order_id
-            elif "kraken" in _eid:
-                extra_params["userref"] = client_order_id
             else:
                 # Default to ccxt canonical; CCXT translates per-exchange
                 extra_params["clientOrderId"] = client_order_id

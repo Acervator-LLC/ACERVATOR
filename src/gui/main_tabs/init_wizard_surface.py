@@ -2,10 +2,11 @@
 
 Describes the wizard the application opens on a first run and on a
 version upgrade. Page one asks for a display name and offers a button
-that skips the whole setup. Page two lists the fifteen venues the
-connector supports and marks the three that need a passphrase. Page
-three takes an API key, an API secret and a passphrase, hides them
-behind a show-credentials switch, and tests them against the venue.
+that skips the whole setup. Page two lists every venue
+``asset_class_surface``'s ``known_venues`` holds and marks the ones
+``PASSPHRASE_EXCHANGES`` names. Page three takes an API key, an API
+secret and a passphrase, hides them behind a show-credentials switch,
+and tests them against the venue.
 
 Eighteen widgets are named in ``WIDGET_NAMES``, and every piece of
 wording the wizard paints is held in a table keyed by that name:
@@ -31,9 +32,9 @@ the ``init_wizard.state`` method, which is how the Electron renderer
 reaches it. Every value below is written out here rather than read from
 ``src.gui.init_wizard`` or from ``src.gui.design_system``, and nothing
 compares the two copies. The venue list and the passphrase set are not
-written out and so cannot drift: ``exchange_ids`` and
-``passphrase_exchange_ids`` read ``src.exchange.ccxt_connector``. Nothing
-here imports Qt.
+written out and so cannot drift: ``exchange_ids`` reads
+``asset_class_surface`` and ``passphrase_exchange_ids`` reads
+``src.exchange.ccxt_connector``. Nothing here imports Qt.
 """
 
 from __future__ import annotations
@@ -197,6 +198,7 @@ NO_EXCHANGE_ID = None
 NO_EXCHANGE_LABEL = EMPTY_TEXT
 
 MISSING_CREDENTIALS_TEXT = "Enter API key and secret first."
+NO_EXCHANGE_TEXT = "Choose an exchange first."
 TESTING_FORMAT = "Testing connection to {exchange}..."
 TEST_FAILED_FORMAT = "Test failed: {error}"
 
@@ -385,14 +387,15 @@ NO_TEST_PATH = EMPTY_TEXT
 
 
 def exchange_ids() -> tuple:
-    """``SUPPORTED_EXCHANGES`` in id order, the venues page two lists.
+    """``known_venues`` in id order, the venues page two lists, the same answer
+    the Settings Exchanges tab narrows by sector.
 
-    ``SUPPORTED_EXCHANGES`` is imported when first asked, so importing this
-    file loads no exchange library and reads no settings.
+    ``asset_class_surface`` is imported when first asked, so importing this file
+    loads no exchange library.
     """
-    from ...exchange.ccxt_connector import SUPPORTED_EXCHANGES
+    from .asset_class_surface import known_venues
 
-    return tuple(sorted(SUPPORTED_EXCHANGES.keys()))
+    return tuple(sorted(known_venues()))
 
 
 def passphrase_exchange_ids() -> tuple:
@@ -775,6 +778,8 @@ class InitWizardModel:
 
         if exchange_id is NO_EXCHANGE_ID:
             self.test_path = TEST_PATH_NO_EXCHANGE
+            self._write_feedback(NO_EXCHANGE_TEXT, FEEDBACK_ERROR_COLOR)
+            return
         named = exchange_id.capitalize()
         self._write_feedback(TESTING_FORMAT.format(exchange=named), FEEDBACK_INFO_COLOR)
         self._enable_test_button(False)

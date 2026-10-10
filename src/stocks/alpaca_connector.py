@@ -13,6 +13,8 @@ import time
 from typing import Any, Optional
 
 from ..exchange.base import MarketRules
+from .robinhood_broker import VENUE_ID as ROBINHOOD_VENUE_ID
+from .robinhood_broker import RobinhoodMcpBroker
 from .broker_base import (
     BrokerBase,
     AccountInfo,
@@ -379,6 +381,7 @@ class AlpacaConnector(BrokerBase):
 #: ``tradingview_webhook`` publishes no order interface and holds no class.
 BROKER_CONNECTORS: dict[str, type[BrokerBase]] = {
     "alpaca": AlpacaConnector,
+    ROBINHOOD_VENUE_ID: RobinhoodMcpBroker,
 }
 
 
@@ -386,12 +389,40 @@ def broker_connector_class(venue_id: Any) -> Optional[type[BrokerBase]]:
     """The ``BrokerBase`` subclass ``BROKER_CONNECTORS`` holds for ``venue_id``,
     and None for a venue with no broker connector.
 
-    ``MainWindow._connect_exchange_for_bot`` reads this to tell a broker venue
-    from a crypto one, so a venue id answering None takes the crypto path.
+    ``MainWindow._connect_exchange_for_bot`` reads this through
+    ``broker_serves_sector``, and a venue id answering None takes a crypto path.
     """
     if not isinstance(venue_id, str):
         return None
     return BROKER_CONNECTORS.get(venue_id.strip().lower())
+
+
+def broker_sectors(venue_id: Any) -> tuple:
+    """The ``BrokerBase.SECTORS_SERVED`` one venue's broker class declares, and
+    () for a venue ``broker_connector_class`` answers None for.
+
+    An empty tuple from a venue that does hold a class narrows nothing, which
+    ``broker_serves_sector`` reads as every sector.
+    """
+    held = broker_connector_class(venue_id)
+    if held is None:
+        return ()
+    return tuple(getattr(held, "SECTORS_SERVED", ()) or ())
+
+
+def broker_serves_sector(venue_id: Any, sector: Any = "") -> bool:
+    """Whether one venue's broker route trades ``sector``.
+
+    A venue whose ``broker_sectors`` is empty serves every sector, and a venue
+    naming its own answers False outside them.
+    """
+    if broker_connector_class(venue_id) is None:
+        return False
+    named = broker_sectors(venue_id)
+    held = str(sector or "").strip().lower()
+    if not named or not held:
+        return True
+    return held in named
 
 
 __all__ = [
@@ -404,6 +435,8 @@ __all__ = [
     "AlpacaConnector",
     "asset_rules",
     "broker_connector_class",
+    "broker_sectors",
+    "broker_serves_sector",
     "rule_number",
     "size_increment",
 ]

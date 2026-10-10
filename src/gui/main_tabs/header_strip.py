@@ -21,6 +21,16 @@ from .asset_class_surface import BUTTON_TEXT_PAD as CLASS_BUTTON_TEXT_PAD
 from .asset_class_surface import GROUP_SPACING_PX as CLASS_GROUP_SPACING
 
 
+class SectorUnknown(RuntimeError):
+    """Raised when the window holds no active asset class to read.
+
+    ``asset_class_surface.normalise`` answers the first declared class for a
+    name it does not recognise, so a caller reading the sector through a
+    default takes ``crypto`` for an absent one. Callers catch this instead and
+    refuse, so no screen opens on a sector the operator is not on.
+    """
+
+
 class ClassGroupBar(QWidget):
     """The segmented asset class group, one square holding one segment per class.
 
@@ -216,6 +226,24 @@ class HeaderStripMixin:
         )
         self._class_group_widget = holder
         return holder
+
+    def active_sector(self) -> str:
+        """The asset class the operator has active, never a guessed default.
+
+        ``_build_class_group`` and ``select_asset_class`` are the only writers
+        of ``_asset_class``, so a window carrying none never reached either.
+        That is a fault, and it raises ``SectorUnknown`` rather than answering
+        the first declared class.
+        """
+        from .asset_class_surface import normalise
+
+        held = getattr(self, "_asset_class", None)
+        if not held:
+            raise SectorUnknown(
+                "the window holds no active asset class; "
+                "the header strip's class group never built"
+            )
+        return normalise(held)
 
     def _on_class_clicked(self, name: str) -> None:
         """Hand one segmented button's press to the window's class selector."""

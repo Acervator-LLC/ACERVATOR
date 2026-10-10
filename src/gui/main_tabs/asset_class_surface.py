@@ -76,6 +76,13 @@ EQUITY_VENUES = frozenset(
         "fidelity",
         "etrade",
         "interactivebrokers",
+        # OVERTAKEN, quoted whole:
+        #   "robinhood_broker.VENUE_ID. The crypto id "robinhood" is a separate
+        #   venue and stays out of this set."
+        # True today: one id serves both. robinhood_broker.VENUE_ID and
+        # robinhood_connector.VENUE_ID are the same string, and
+        # broker_serves_sector picks the route from the bot's own sector.
+        "robinhood",
     }
 )
 
@@ -150,7 +157,9 @@ EXTRA_VENUE_CLASSES = {
     "gateio": ("stocks", "commodities", "forex", "indices", "futures_perps"),
     "gemini": ("commodities", "forex", "futures_perps"),
     "huobi": ("stocks",),
-    "kraken": ("stocks", "commodities", "indices", "futures_perps"),
+    # Kraken quotes 12 spot pairs whose two legs are both a national currency
+    # it lists, among them ZEURZUSD, ZGBPZUSD and AUDUSD.
+    "kraken": ("stocks", "commodities", "forex", "indices", "futures_perps"),
     "kucoin": ("stocks", "commodities", "futures_perps"),
     "mexc": ("stocks", "futures_perps"),
     "okx": ("stocks", "commodities", "indices", "futures_perps"),
@@ -160,6 +169,11 @@ EXTRA_VENUE_CLASSES = {
     "schwab": ("crypto", "commodities", "indices", "futures_perps"),
     "tastytrade": ("crypto", "commodities", "indices", "futures_perps"),
     "webull": ("crypto", "commodities", "indices", "futures_perps"),
+    # One equity route, four sectors: each of these trades as a fund share, and
+    # robinhood_broker.SECTORS_SERVED names the same four. "stocks" arrives from
+    # EQUITY_VENUES and "crypto" from CRYPTO_CONNECTORS, so this one id reads
+    # under all five sectors.
+    "robinhood": ("commodities", "indices", "forex"),
 }
 
 #: The two articles a sentence takes before a sector name, and the first
@@ -599,6 +613,22 @@ def markets_of_class(rows: Any, venue_id: Any, name: Any, recorded: Any = None) 
     ]
 
 
+def known_venues(recorded: Any = None) -> frozenset:
+    """Every venue id the platform holds: ``crypto_venues``, ``EQUITY_VENUES``,
+    every venue ``EXTRA_VENUE_CLASSES`` adds a sector for, and every venue
+    ``recorded_venue_classes`` holds rows for, with ``recorded`` standing in for
+    that read.
+
+    ``venues_for_class`` narrows this by sector and ``init_wizard_surface``'s
+    ``exchange_ids`` offers it whole, so neither list can hold a venue the other
+    does not.
+    """
+    held = recorded if isinstance(recorded, dict) else recorded_venue_classes()
+    return frozenset(
+        set(crypto_venues()) | set(EQUITY_VENUES) | set(EXTRA_VENUE_CLASSES) | set(held)
+    )
+
+
 def venues_for_class(name: Any) -> frozenset:
     """Every venue id serving one asset class, a venue whose ``venue_classes``
     holds two classes answered for both.
@@ -608,13 +638,9 @@ def venues_for_class(name: Any) -> frozenset:
     """
     key = normalise(name)
     recorded = recorded_venue_classes()
-    known = (
-        set(crypto_venues())
-        | set(EQUITY_VENUES)
-        | set(EXTRA_VENUE_CLASSES)
-        | set(recorded)
+    return frozenset(
+        vid for vid in known_venues(recorded) if key in venue_classes(vid, recorded)
     )
-    return frozenset(vid for vid in known if key in venue_classes(vid, recorded))
 
 
 def serves(venue_id: Any, name: Any) -> bool:

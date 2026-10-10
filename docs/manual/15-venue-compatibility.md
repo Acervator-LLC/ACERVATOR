@@ -185,7 +185,7 @@ venue-and-sector readiness matrix in
 | Venue | Sectors `venue_classes` answers |
 | ----- | ------------------------------- |
 | coinbase | crypto, stocks, commodities, forex, indices, futures_perps |
-| kraken | crypto, stocks, commodities, indices, futures_perps |
+| kraken | crypto, stocks, commodities, forex, indices, futures_perps |
 | okx | crypto, stocks, commodities, indices, futures_perps |
 | bitget | crypto, stocks, commodities, indices, futures_perps |
 | bitfinex | crypto, commodities, indices, futures_perps |
@@ -962,19 +962,26 @@ Three differences the crypto path already absorbs per venue, and each is a line
 in one connector rather than a variant.
 
 ```
-src/exchange/ccxt_connector.py:1169   the client-order-id field name per venue
-                                      coinbase   client_order_id
-                                      binance    newClientOrderId
-                                      kraken     userref
-                                      every other  clientOrderId
+src/exchange/ccxt_connector.py, in place_order
+    the client-order-id field name per venue
+        coinbase     client_order_id
+        binance      newClientOrderId
+        every other  clientOrderId
 
-src/exchange/ccxt_connector.py:1183   no venue carries an immediate-or-cancel
-                                      type, so it is sent as a limit order
-                                      carrying timeInForce IOC
+    no venue carries an immediate-or-cancel type, so it is sent as a limit
+    order carrying timeInForce IOC
 
-src/exchange/ccxt_connector.py:1132   a spot market buy on Coinbase needs a
-                                      price, so a ticker is fetched first
+    a spot market buy on Coinbase needs a price, so a ticker is fetched first
 ```
+
+OVERTAKEN, and the block above is kept as written. Kraken carried a fourth row
+reading `userref`, which Kraken's own AddOrder page describes as a numeric
+identifier, and the program's own client order id reads `acrv-` followed by a
+hexadecimal digest. Kraken now takes the `clientOrderId` row, which the library
+maps onto Kraken's own alphanumeric `cl_ord_id` field. Driven with the transport
+replaced and no order sent, the body posted to `AddOrder` moved and the other
+fourteen venues' bodies are unchanged. The readings are in
+[../audits/2026-10-09_kraken_sector_order_formats/REPORT.md](../audits/2026-10-09_kraken_sector_order_formats/REPORT.md).
 
 ### The order types each crypto venue declares
 
@@ -2526,10 +2533,9 @@ class RobinhoodCryptoConnector(ExchangeInterface):
 
 ### Which of Robinhood's sectors the program reaches
 
-One of six. Robinhood sells a product in five sectors and publishes a
-programmatic order route for three of them, and two of those three are reachable
-only through a Model Context Protocol server this repository holds no client
-for.
+One of six. Robinhood sells a product in all six sectors and publishes a
+programmatic order route for four of them. Three of those four are reachable
+only through the Robinhood Trading MCP, and the program holds no client for it.
 
 | sector | Robinhood's own route | reached today |
 | --- | --- | --- |
@@ -2542,6 +2548,53 @@ for.
 
 Every verdict is read from Robinhood's own pages, quoted with its URL, in
 [../audits/2026-10-08_robinhood_order_interface/REPORT.md](../audits/2026-10-08_robinhood_order_interface/REPORT.md).
+
+### The equities route is a program gap, not a venue limit
+
+Robinhood publishes an equities order route and names its address. The route is
+the Trading MCP at `https://agent.robinhood.com/mcp/trading`, it speaks
+JSON-RPC over HTTP, and it publishes `place_equity_order`,
+`get_equity_positions`, `get_equity_quotes`, `get_equity_orders`,
+`get_equity_tradability`, `review_equity_order` and `cancel_equity_order`. The
+reason the program does not place an equity order on Robinhood is that no
+module here speaks that protocol and no account token exists to speak it with.
+
+The same route carries the price history a bot sizes against, so the sector
+needs no second data source. `get_equity_historicals` answers OHLCV bars over a
+time range, and the route publishes fourteen equity tools in all, the rest of
+them research reads.
+
+| what the route takes | where it stands |
+| --- | --- |
+| a Robinhood MCP account | the operator opens it; nothing in software substitutes |
+| an OAuth bearer token for that account | granted in a browser, once per connection |
+| a JSON-RPC client over HTTP | no module in this tree provides one |
+| a `BrokerBase` subclass and a `BROKER_CONNECTORS` row | neither exists for this venue |
+
+The sign-in shape the token needs is already in the product and already
+approved. `src/trading/ata_spm_signin.py`, in `LoopbackReceiver`, binds
+`127.0.0.1` only and serves the one RFC 8252 redirect its venue's own
+documentation accepts, and `new_verifier` and `code_challenge` in the same
+module build the PKCE pair. Market Inspector reaches it through
+`src/gui/sign_in_view.py`, in `sign_in_session`. An equities sign-in is a new
+route on that mechanism, not a new mechanism.
+
+No waitlist and no programme gates the route. Robinhood's own onboarding page
+states the one condition: *"To trade with an external agent, you must open a
+Robinhood MCP account specifically for your external agent."* That account is a
+self-directed individual investing account, it holds only the funds moved into
+it, and an agent connected to it reaches no other Robinhood account.
+
+One venue default matters before any order is sized. Robinhood turns trade
+approvals **off** by default for an external agent, so an order this program
+sent would reach the market with no second pair of eyes. Its page states it:
+*"Trade approvals are turned on by default for Robinhood Agents (built-in
+agents), and are turned off by default for MCP accounts (external agents)."*
+A unit that builds the order path reads that setting back before it sizes
+anything.
+
+The sector rows this extends, each read from Robinhood's own pages, are in
+[../audits/2026-10-09_robinhood_reachable_sectors/REPORT.md](../audits/2026-10-09_robinhood_reachable_sectors/REPORT.md).
 
 ### Why it is a crypto connector and not a broker one
 
@@ -2738,3 +2791,1564 @@ the bot's `exchange`, handed it to `BotManager.set_connector`, and scheduled
 symbols; with the reuse removed, the same reading gave two connectors carrying
 one symbol each. The ccxt press and the broker press each read the same seven
 lines before and after, and the Robinhood press was the one reading that moved.
+
+## 2026-10-10 - Robinhood's five reachable sectors, and the one that is not
+
+Robinhood reaches five of the six sectors, and four of those five share one
+route. The crypto sector has its own signed interface. The futures and
+perpetuals sector has no route at all.
+
+| sector | the instrument | the route | what is missing |
+| --- | --- | --- | --- |
+| crypto | the pair itself | the signed Crypto Trading API | the candles, and five reads the connector refuses |
+| stocks | the share | `place_equity_order` on the Trading MCP | a client for the protocol, and the operator's account |
+| commodities | a fund share | `place_equity_order` on the Trading MCP | the same two |
+| indices | an index fund share | `place_equity_order` on the Trading MCP | the same two |
+| forex | a currency fund share | `place_equity_order` on the Trading MCP | the same two |
+| futures and perpetuals | a contract | none published | the venue's own route |
+
+Every verdict is read from Robinhood's own pages, quoted with its URL, in
+[../audits/2026-10-10_robinhood_sector_translation/REPORT.md](../audits/2026-10-10_robinhood_sector_translation/REPORT.md).
+
+### Robinhood publishes a specification, and it carries six read paths
+
+The crypto documentation page serves a shell and hands the real document to
+`JSON.parse` inside its own script. That document is an OpenAPI description of
+fourteen paths, and six of them are reads the engine needs.
+
+```
+the market list        the trading-pairs path, both API versions
+the quote              the best-price path, both versions
+the execution estimate the estimated-price path, both versions
+the position           the holdings path, both versions
+the buying power       the accounts path, both versions
+the fill and status    the orders read, both versions, filtered by id or state
+the candles            no path, on either of this venue's two routes
+```
+
+OVERTAKEN, quoted whole:
+
+> "`place_order` is the only method that builds a request. Every read method
+> raises `RobinhoodPathUnpublished`, because Robinhood publishes the two order
+> paths and no read path, so a price, a book, a candle, a balance, an order
+> status and a cancel all answer the same refusal."
+
+True today: every read method still raises that refusal, and the reason given
+for it is wrong. Robinhood publishes a path for seven of the eight endpoints
+those methods name. The candle is the one exception, and that refusal is
+correct. The refusal text itself is the owed repair, named in the report above
+beside the five reads the connector should make instead.
+
+### The candles are the venue's limit, and the detour is already in this tree
+
+Robinhood publishes no crypto candle endpoint. The agent route publishes a
+history tool for equities, for options and for indexes, and none for crypto, so
+the absence is a reading rather than a gap in the search.
+
+A candle source separate from the order venue already runs here. The Simulator
+reads one, and the default indicator timeframe sits inside the table it serves.
+
+```python
+# src/trading/stone_tablets/ra_fetcher.py, in CoinbasePublicCandles
+    GRANULARITY_S: dict[str, int] = {"1d": 86_400, "1h": 3_600, "5m": 300}
+```
+
+The price history would come from one venue and the fill from another. The
+sizing price still comes from Robinhood, through its published best-price read,
+so the venue that executes keeps authority over the money.
+
+### A market order takes a unit count and nothing else
+
+Robinhood's market configuration publishes one size field. Its three other
+configurations publish two.
+
+```
+market_order_config, both versions   asset_quantity
+limit_order_config                   asset_quantity or quote_amount
+stop_loss_order_config               asset_quantity or quote_amount
+stop_limit_order_config              asset_quantity or quote_amount
+```
+
+OVERTAKEN, quoted whole:
+
+> "Robinhood permits `quote_amount` in place of `asset_quantity` on all four of
+> its order configurations."
+
+True today: three of the four. The market configuration names a unit count
+alone. No order changes, because `permitted_order_shape` answers the unit count
+and the cash-amount variant has no caller. It would matter the moment that
+variant is built.
+
+### The route the four equity-side sectors share
+
+One endpoint, and Robinhood's own metadata names the whole sign-in shape. The
+challenge method it requires is the one this tree already produces.
+
+```
+the endpoint                     https://agent.robinhood.com/mcp/trading
+authorization_endpoint           https://robinhood.com/oauth
+token_endpoint                   https://api.robinhood.com/oauth2/token/
+registration_endpoint            the agent host's own register path
+code_challenge_methods_supported S256
+token_endpoint_auth_methods      none, so the program holds no secret
+```
+
+```python
+# src/trading/ata_spm_signin.py, in code_challenge
+    digest = hashlib.sha256(str(verifier).encode("ascii")).digest()
+    return base64.urlsafe_b64encode(digest).decode("ascii").rstrip("=")
+```
+
+Two costs the operator does not pay on this route, in the venue's own words.
+Its token charges apply "only to agents hosted on Robinhood, not external
+agents". Its application subscriptions are "only accessible by agents hosted by
+Robinhood".
+
+### An index option places an order and accumulates nothing
+
+Every completed cycle ends holding more of the asset. A cash-settled contract
+holds no units, so at expiry it becomes cash and the position is gone.
+Robinhood's own page states both facts: index options "don't have underlying
+shares", and they are "settled in cash".
+
+OVERTAKEN, quoted whole:
+
+```
+| indices | `place_option_order` on the Trading MCP | no client for the protocol |
+```
+
+True today: that tool is published and it reaches an order. It reaches no
+accumulation. The accumulating route for this sector is an index fund share
+through `place_equity_order`, which is the commodities row's route.
+
+### Forex has no spot product, and a currency fund share is the door
+
+Robinhood sells currency exposure only as a futures contract and publishes no
+forex order route. A currency fund share is a fund share, and the venue's own
+page puts funds beside stocks on the equity route, so the sector reaches an
+order the same way commodities does.
+
+OVERTAKEN, quoted whole:
+
+```
+| forex | no published order route | no route to build |
+```
+
+True today: no spot forex route exists, and the fund-share route does. Robinhood
+publishes no list of its funds by category, so this sector's symbols are
+confirmed one at a time by `get_equity_tradability` rather than enumerated.
+
+One tool name is a trap. `get_currency_pairs` sits under the page's own Crypto
+heading and its published description reads "List Robinhood-supported crypto
+assets". A reading keyed to the name would offer this venue under forex, where
+it can place nothing.
+
+### Futures and perpetuals: no, today, and the venue says so
+
+The agent route names the three asset classes an agent may order, and futures is
+not among them. Robinhood's own launch announcement names futures among what is
+"coming soon", so the venue states both that the route is absent and that it
+intends to open it. No perpetual product is published anywhere that was read.
+
+The program already holds the variant an expiring market needs, in
+`VARIANT_ROLLING_POSITION`, and 74 of Coinbase's own futures rows select it.
+Nothing is missing here except the venue's route.
+
+### Three sectors of the mirror select a built variant
+
+A sector's variant is read off one market's own recorded rules, never off the
+sector. Over Coinbase's 2,148 recorded rows, 1,100 select a variant written for
+them.
+
+```
+crypto         none 896
+stocks         permitted-shape order 1000   none 25   rolling position 8
+futures_perps  none 94                      rolling position 74
+commodities    none 7                       rolling position 18
+forex          none 20
+indices        none 6
+```
+
+So no Robinhood sector needs a new variant. A fractional market selects the
+permitted-shape variant, a whole-share market selects the whole-unit variant,
+and an expiring market selects the rolling-position variant. All three sit
+inside `VARIANTS_BUILT`.
+## 2026-10-10 - Robinhood answers a market list from its published trading-pair path
+
+Robinhood publishes a trading-pair path on two API versions.
+`src/exchange/robinhood_connector.py`, at `TRADING_PAIRS_PATH` holds the first
+and `TRADING_PAIRS_PATH_FEE_TIERS` holds the second. `get_markets` reads one of
+them, follows every page, and answers one `AssetInfo` per market. A Robinhood
+bot now starts holding the markets the venue serves.
+
+### Where the paths were read
+
+The pages at `https://docs.robinhood.com/crypto/trading/` serve a 23,678-byte
+shell with no endpoint text in it. The real content is the OpenAPI document
+inside `https://docs.robinhood.com/_next/static/chunks/pages/crypto/trading-b3a861110e68c0f85423.js`,
+an 84,271-byte script. A reader that stops at the served markup records a false
+absence. The script names both paths, their parameters and their response
+schemas.
+
+### The market list sentences, overtaken
+
+OVERTAKEN, quoted whole:
+
+> "`get_markets` raises the same refusal until `record_pairs` holds a
+> trading-pair record."
+
+> "The venue's own trading-pair path is also unpublished, so
+> nothing fetches a market list."
+
+> "Robinhood publishes no market list path and no
+> balance path, so a Robinhood bot starts with no market rules recorded and no
+> balance checked, and `src/trading/bot_container.py`, in `guarded_place_order`
+> sizes against the rules `record_pairs` records."
+
+True today: Robinhood publishes the trading-pair path and `get_markets` reads
+it. It publishes a holdings path too, and `get_balances` reads that.
+`record_pairs` has a caller, and that caller is `get_markets`.
+
+OVERTAKEN, quoted whole:
+
+> "Every read method raises
+> `RobinhoodPathUnpublished`, because Robinhood publishes the two order paths and
+> no read path, so a price, a book, a candle, a balance, an order status and a
+> cancel all answer the same refusal."
+
+True today: Robinhood publishes a read path for a price, a book, a balance, an
+order status and a cancel, on both API versions. Each of those five now reads
+one. A candle is the single exception, and `get_ohlcv` reads
+`CoinbasePublicCandles` for it.
+
+### Which path one read takes
+
+`trading_pairs_path` picks the path, and it picks it the way `orders_path`
+picks the order path. An account number held makes both read the fee-tier
+version. No account number held makes both read the first version. The two
+stay on one version, so the record that sizes an order comes from the same
+version that takes it.
+
+```python
+# src/exchange/robinhood_connector.py, in trading_pairs_path
+    if not str(account_number or "").strip():
+        return TRADING_PAIRS_PATH
+    return TRADING_PAIRS_PATH_FEE_TIERS
+```
+
+### What the venue publishes for one read
+
+Robinhood's own document carries each figure below. The method is `get` on both
+paths, the server is `https://trading.robinhood.com/`, and the security is the
+three signed headers `signed_headers` already builds.
+
+| what | the published figure |
+| --- | --- |
+| summary | `Get Crypto Trading Pairs` on the first path, `Get Trading Pairs` on the second |
+| parameter `symbol` | optional, repeated, upper case; `?symbol=BTC-USD&symbol=ETH-USD` |
+| no `symbol` sent | "this endpoint will return all tradable currency pairs" |
+| parameter `limit` | optional page size; "Maximum value is determined by system configuration" |
+| parameter `cursor` | optional; the value taken from `next` or `previous` |
+| response `results` | "The list of response items for the current cursor" |
+| response `next` | "URI for the next page of results. Null if there are no more pages." |
+| rate limit | 100 requests a minute per account, 300 in bursts |
+
+`PAGE_RESULTS_KEY` and `PAGE_NEXT_KEY` hold the two response keys.
+`RATE_LIMIT_PER_MINUTE` and `RATE_LIMIT_BURST_PER_MINUTE` already held the two
+rate figures, and the published page confirms both.
+
+### What one record names
+
+The first path's schema is `TradingPair` and the second's is `V2TradingPair`.
+Every field of both is published as a string. Seven fields appear on both, and
+`PAIR_REQUIRED_KEYS` holds those seven.
+
+| the published key | what the venue calls it | where it lands |
+| --- | --- | --- |
+| `symbol` | "Symbol for this currency pair", example `BTC-USD` | `AssetInfo.symbol`, through `unified_symbol` |
+| `asset_code` | "Asset currency code", example `BTC` | `AssetInfo.base` |
+| `quote_code` | "Quote currency code", example `USD` | `AssetInfo.quote` |
+| `asset_increment` | "The precision of the order of the currency quantity increment" | `MarketRules.amount_increment` |
+| `quote_increment` | "The precision of the currency price increment" | `MarketRules.price_increment` and `MarketRules.quote_increment` |
+| `max_order_size` | "The largest quantity a user can place for the coin per order" | read and held, and `MarketRules` carries no maximum field |
+| `status` | "The status of the currency pair", enum `tradable`, `untradable`, `sellonly` | the order gate, through `status_order_refusal` |
+
+Two keys appear on one version only.
+
+| the published key | the version | what the venue calls it | where it lands |
+| --- | --- | --- | --- |
+| `min_order_size` | the first path | "The smallest quantity a user has to place for the coin per order" | `MarketRules.min_amount` |
+| `min_order_amount` | the fee-tier path | "The minimum order amount in quote currency (e.g., USD) required for fee tier orders" | `MarketRules.min_cost` |
+| `is_api_tradable` | the fee-tier path | "Indicates whether the trading pair is supported on API trading v2 endpoints" | `MarketRules.read`, and the pair is still charted |
+
+No record carries both minimums. A bot on the first path sizes against a
+base-currency minimum, and a bot on the fee-tier path sizes against a
+quote-currency minimum.
+
+### What the published status does to a market
+
+`record_pairs` lists a pair at `STATUS_TRADABLE` and at `STATUS_SELL_ONLY`. It
+skips any other status and names the symbol and the status in a warning. A
+skipped symbol holds no record, so `place_order` refuses it under
+`UNLISTED_MARKET_FORMAT`.
+
+| the published status | listed | an order |
+| --- | --- | --- |
+| `tradable` | yes | both sides pass the status gate |
+| `sellonly` | yes | a sell passes, a buy raises `RobinhoodOrderRefused` |
+| `untradable` | no | the symbol is unlisted, so `place_order` refuses it |
+| anything else | no | the symbol is unlisted, and nothing published says what it permits |
+
+`record_venue` records a row only for a market whose `MarketRules` `read` is
+True. `recorded_rules` answers `read=True` for every row it finds, so a row of
+empty rules would read back as a venue that published nothing. A pair reading
+`is_api_tradable` False is still answered and still charted, and it records no
+row.
+
+### Every refusal a market read can raise
+
+Each message names what the venue publishes and what the reply held.
+
+| the reply | the refusal |
+| --- | --- |
+| no credential stored | `RobinhoodReadRefused`, under `NO_CREDENTIAL_FOR_READ` |
+| not an object | `RobinhoodResponseUnexpected`, naming the type |
+| no `results` array | `RobinhoodResponseUnexpected`, naming the keys the page held |
+| a `results` member that is not an object | `RobinhoodResponseUnexpected`, naming the index |
+| a required key that is not a string | `RobinhoodResponseUnexpected`, under `MISSING_PAIR_KEY_FORMAT` |
+| an increment that is not a positive decimal | `RobinhoodResponseUnexpected`, under `UNPARSED_PAIR_NUMBER_FORMAT` |
+| a `next` naming a further page beside no record | `RobinhoodResponseUnexpected`, under `EMPTY_PROMISED_PAGE_FORMAT` |
+| a `next` on another host | `RobinhoodResponseUnexpected`, under `FOREIGN_NEXT_HOST_FORMAT` |
+| an unfiltered read serving no record | `RobinhoodResponseUnexpected`, under `NO_PAIR_SERVED_FORMAT` |
+| more pages than `MAX_PAIR_PAGES` | `RobinhoodResponseUnexpected`, under `PAGES_EXHAUSTED_FORMAT` |
+
+`MAX_PAIR_PAGES` is this reader's own loop guard. Robinhood publishes no
+maximum page size, so no venue figure stands behind it.
+
+### What the market read was driven against
+
+No request reached Robinhood. The runtime home was redirected to a scratch
+directory and `Path.home()` was read back from it. `_send` was replaced by a
+recorder that answers one published page per call and raises on any method
+other than `GET`.
+
+A two-page reply carrying three records answered two markets. The reader sent
+two `GET` requests, both to the trading-pair path, both with an empty body and
+all three signed headers, and the second carried the `cursor` the first page's
+`next` named. The third record read `untradable` and was skipped with its
+symbol and status named. One market read back `amount_increment` 1e-06,
+`price_increment` 0.01, `quote_increment` 0.01 and `min_amount` 1e-06, and the
+store recorded two rows under the crypto sector. A second call answered the
+same two markets and sent no further request.
+
+A one-page reply on the fee-tier path, read with an account number held,
+answered one market with `min_cost` 1.0 and `min_amount` None.
+
+Every refusal in the table above was driven and every one raised. The same two
+pages read through the version of the module at the previous commit raised
+`RobinhoodPathUnpublished` and sent nothing, so the reading separates the two
+versions.
+
+The positive control is an order. A sell on the `sellonly` market reached the
+recorder as a `POST`, which refused it, so the status gate is not refusing
+every order. A buy on that same market raised `RobinhoodOrderRefused` before
+the recorder saw anything.
+
+### What awaits the first real connect
+
+Every field above is read from Robinhood's own published document. No reply
+from Robinhood has been seen, because no account and no key exists here. Three
+things are therefore unproven: that the venue accepts the signed `GET`, that
+the fee-tier path answers on an account this platform holds, and the number of
+markets the venue serves. A reply that departs from the published shape raises
+one of the refusals above and names what it expected, so the first connect
+reports a wrong reading rather than sizing a bot against nothing.
+
+## 2026-10-10 - Robinhood's published document names 14 paths, and six reads now reach them
+
+Robinhood publishes an OpenAPI 3.0.1 document titled Robinhood Crypto Trading
+API. It names 14 paths, 16 operations and 25 schemas, over the one server
+`https://trading.robinhood.com/`. `src/exchange/robinhood_connector.py` refused
+a price, a book, a balance, an order status and a cancel on the claim that no
+read path exists. All five are published, on both API versions, and each one
+now reads its path.
+
+### Where the document was read
+
+The page at `https://docs.robinhood.com/crypto/trading/` serves a 23,678-byte
+shell. It hands the document to `JSON.parse` inside
+`https://docs.robinhood.com/_next/static/chunks/pages/crypto/trading-b3a861110e68c0f85423.js`,
+an 84,271-byte script. The literal is a JavaScript string whose value is the
+JSON, so its JavaScript escapes decode first and the JSON parses after.
+
+### The 14 published paths
+
+| method and path | published summary | what reads it |
+| --- | --- | --- |
+| `GET /api/v1/crypto/trading/accounts/` | Get Crypto Trading Account Details | nothing here |
+| `GET /api/v1/crypto/trading/trading_pairs/` | Get Crypto Trading Pairs | `get_markets` |
+| `GET /api/v1/crypto/trading/holdings/` | Get Crypto Holdings | `get_balances` and `get_balance` |
+| `GET /api/v1/crypto/trading/orders/` | Get Crypto Orders | `get_order` and `get_open_orders` |
+| `POST /api/v1/crypto/trading/orders/` | Place New Crypto Order | `place_order` |
+| `POST /api/v1/crypto/trading/orders/{id}/cancel/` | Cancel Open Crypto Order | `cancel_order` |
+| `GET /api/v1/crypto/marketdata/best_bid_ask/` | Get Best Price | `get_ticker` and `get_orderbook` |
+| `GET /api/v1/crypto/marketdata/estimated_price/` | Get Estimated Price | nothing here |
+| `GET /api/v2/crypto/trading/accounts/` | Get Accounts | nothing here |
+| `GET /api/v2/crypto/trading/trading_pairs/` | Get Trading Pairs | `get_markets` |
+| `GET /api/v2/crypto/trading/holdings/` | Get Holdings | `get_balances` and `get_balance` |
+| `GET /api/v2/crypto/trading/orders/` | Get Orders | `get_order` and `get_open_orders` |
+| `POST /api/v2/crypto/trading/orders/` | Place New Crypto Order | `place_order` |
+| `POST /api/v2/crypto/trading/orders/{id}/cancel/` | Cancel Open Crypto Order | `cancel_order` |
+| `GET /api/v2/crypto/marketdata/best_bid_ask/` | Get Best Price | `get_ticker` and `get_orderbook` |
+| `GET /api/v2/crypto/trading/estimated_price/` | Get Estimated Price | nothing here |
+
+Each read picks its version the way `orders_path` picks the order path: the
+fee-tier version where an account number is held, and the first version where
+none is. `best_price_path`, `holdings_path`, `order_list_path` and
+`cancel_path` each do that.
+
+### What the five reads answer
+
+| the method | the path it reads | what the venue publishes |
+| --- | --- | --- |
+| `get_ticker` | `best_price_path` | the first version answers `price` with `bid_inclusive_of_sell_spread` and `ask_inclusive_of_buy_spread`; the fee-tier version answers `bid` and `ask` |
+| `get_orderbook` | `best_price_path` | one level per side, and no depth |
+| `get_balances` | `holdings_path` | `asset_code`, `total_quantity`, `quantity_available_for_trading` |
+| `get_balance` | `holdings_path` with `asset_code` | the same record, filtered |
+| `get_order` | `order_list_path` with `id` | one `OrderResponse` record |
+| `get_open_orders` | `order_list_path` with `state=open` | every open record, paginated |
+| `cancel_order` | `cancel_path` | a string naming the order, so the `Order` comes from `get_order` after it |
+
+`price_bid_ask` reads whichever pair of price keys the version served.
+`holding_balance` reads the available quantity as `free` and the total less the
+available as `used`. `order_from_record` reads the amount out of the
+configuration object the record's own type names.
+
+### The query filters each order list publishes
+
+The two order-list paths publish different filter sets. `ORDERS_PATH` names
+`id` and `limit`; `ORDERS_PATH_FEE_TIERS` names neither, and requires
+`account_number`.
+
+| the filter | `ORDERS_PATH` | `ORDERS_PATH_FEE_TIERS` |
+| --- | --- | --- |
+| `account_number` | no | required |
+| `id` | yes | no |
+| `limit` | yes | no |
+| `cursor`, `symbol`, `side`, `state`, `type` | yes | yes |
+| the four created and updated time bounds | yes | yes |
+
+`ORDER_LIST_FILTERS` and `ORDER_LIST_FILTERS_FEE_TIERS` hold the two sets and
+`published_order_list_filters` answers the one a path publishes.
+`order_list_path` leaves a filter outside that set off the query. `get_order`
+matches the id on the records either path answers, so an order is found on the
+fee-tier path with no id filter sent.
+
+`Ticker.volume_24h` is zero. Neither published best-price schema names a
+volume, so the field carries zero and no figure is invented for it.
+
+### The order book Robinhood defines and does not serve
+
+The document defines a `QuoteBook` schema with `bids` and `asks` arrays of
+`QuoteBookItem`, each a price and a quantity. No path in the document answers
+it. `get_orderbook` therefore answers one level per side from the best-price
+record, and each level carries `BOOK_LEVEL_QUANTITY`, which is zero.
+
+The count that makes this a reading rather than a silence: the same scan over
+the document's paths counts `Holdings` four times, `OrderResponse` twice and
+`BidAskPrice` once, and `QuoteBook` zero times.
+
+### The one read with no published path
+
+No path in the document answers a candle, on either version.
+`src/trading/stone_tablets/ra_fetcher.py`, in `CoinbasePublicCandles` already
+serves public candles with no key, from
+`https://api.exchange.coinbase.com/products`, at `1d`, `1h` and `5m`.
+`get_ohlcv` reads that. A timeframe it does not serve raises
+`RobinhoodPathUnpublished` naming the three it does.
+
+`RA_TIMEFRAME` in that module is `1d`. The `get_ohlcv` contract's own default
+is `1h`, and `CoinbasePublicCandles` serves that too.
+
+### The time in force the first version does not publish
+
+`order_body` writes `time_in_force` into the limit configuration for every
+version. The published request schemas disagree by version.
+
+| the request schema | the path that takes it | its limit configuration |
+| --- | --- | --- |
+| `AddOrder` | `ORDERS_PATH` | `quote_amount`, `asset_quantity`, `limit_price` |
+| `AddOrderV2` | `ORDERS_PATH_FEE_TIERS` | the same three, and `time_in_force` |
+
+`orders_path` takes `ORDERS_PATH` where no account number is stored, so a limit
+order built there names a field `AddOrder` does not carry.
+`ADD_ORDER_CONFIG_FIELDS` and `ADD_ORDER_V2_CONFIG_FIELDS` hold the two field
+sets, `published_order_config_fields` answers the set for a path, and
+`order_body_refusal` names any field the set omits. `place_order` refuses on
+that message before anything is signed.
+
+The body `order_body` builds is unchanged. The repair that removes the field
+belongs to `order_body` and is not made here.
+
+### The cash amount the market configuration does not publish
+
+Both request schemas name `asset_quantity` alone in `market_order_config`, with
+no `quote_amount`. `pair_declared_order_types` answers market and limit for
+this venue, so units is the one shape every type it places publishes.
+`pair_size_shapes` answers that one shape.
+
+`SHAPE_PREFERENCE` puts fractional units first, so `permitted_order_shape`
+answered units before this change and answers units after it.
+
+### What the reads were driven against
+
+No request reached Robinhood. The runtime home was redirected to a scratch
+directory and `Path.home()` was read back from it. `_send` was replaced by a
+recorder answering one published page per call.
+
+`get_ticker` read `/api/v1/crypto/marketdata/best_bid_ask/?symbol=` and
+answered a bid of 100.0, an ask of 101.0 and a last of 100.5 off the first
+version's record; the same call with an account number read the fee-tier path
+and answered the same three off `bid` and `ask`. `get_orderbook` answered one
+bid level and one ask level, each at quantity zero. `get_balances` answered a
+holding of free 2.0, used 1.5 and total 3.5 out of a published total of 3.5 and
+an available 2.0. `get_balance` on a currency the reply omits answered `absent`
+True. `get_order` read `?id=` and answered an amount of 1.25 and a price of
+101.0 out of the limit configuration. `get_open_orders` read
+`?state=open&symbol=` and answered one order. `cancel_order` sent one `POST` to
+the cancel path and then one `GET` to the order list.
+
+Each of the six reads refused with no credential stored, under
+`RobinhoodReadRefused`. A price record naming neither pair of price keys and a
+reply naming another symbol each raised `RobinhoodResponseUnexpected` naming
+what was expected.
+
+The control is the module at the commit this change branched from. On it,
+`get_markets`, `get_ticker`, `get_orderbook`, `get_balances`, `get_order`,
+`get_open_orders`, `cancel_order` and `get_ohlcv` all raise
+`RobinhoodPathUnpublished`, and the recorder is never called.
+
+## 2026-10-10 - an operator connects their own Robinhood MCP account, and four sectors become tradable
+
+Nothing of this venue is hardwired. The operator opens his own Robinhood MCP
+account, presses the venue on the credentials page, and signs in at his own
+browser. The program earns its own client id at the venue on that first press
+and holds the bearer the venue issues, encrypted, in the operator's own runtime
+directory. Four sectors then offer this venue: stocks, commodities, indices and
+forex.
+
+### What the operator does, in order
+
+Five steps, and only the first happens away from this program.
+
+```
+1  open a Robinhood MCP account at the venue
+2  Settings, Exchanges tab, Stock Wing
+3  press the Robinhoodmcp button in the venue array
+4  press Connect with a Browser
+5  approve in the browser that opens, then read the trade-approval line
+```
+
+The press binds the form, and `src/gui/settings_dialog.py`, in
+`_open_credentials_for_row`, writes the prompt that names what this venue takes.
+
+```python
+# src/gui/settings_dialog.py, in _open_credentials_for_row
+            self._set_feedback(sds.venue_form_bound(venue), "info")
+```
+
+The page says it is waiting while step five is open, and it names the wait
+rather than leaving the operator guessing. `browser_waiting_words` in the
+settings surface reads the receiver's own timeout, so the figure has one source.
+
+```
+Robinhoodmcp: approve in the browser that just opened. This page waits up to
+180 seconds for the venue to answer.
+```
+
+A stored client id that will not decrypt stops the press before the browser
+opens, and the feedback row names that instead of the sign-in.
+
+### The credentials page asks for what the venue takes
+
+The Add form has two shapes and the pressed venue chooses one.
+`src/gui/main_tabs/settings_dialog_surface.py`, in `credential_kind`, answers
+which, and `credential_form` answers every row and button word that follows.
+A venue taking a browser authorization hides the API Key row, the API Secret row
+and the passphrase tick, renames the Add press, and disables Test Connection,
+because no key exists to test.
+
+```
+pressed venue   rows drawn                    Add press
+robinhoodmcp    none; no key is typed         Connect with a Browser
+coinbase        API Key, API Secret, phrase   Test and Add Exchange
+alpaca          API Key, API Secret, phrase   Test and Add Exchange
+```
+
+```python
+# src/gui/settings_dialog.py, in _sync_credential_kind
+            form = sds.credential_form(eid)
+            typed = bool(form["key_rows"])
+```
+
+Both readings were taken in one run. The venue id answers `key_rows` false, and
+the other two answer it true with their own button words unchanged.
+
+OVERTAKEN, quoted whole:
+
+```
+pressed venue   rows drawn                    Add press
+robinhoodmcp    none; no key is typed         Connect with a Browser
+```
+
+True today: the sector the page was opened from chooses the shape, and
+`robinhoodmcp` is no longer a venue the operator can press.
+`credential_kind` takes a sector beside the venue id, and
+`src/trading/ata_spm_signin.py`, at `BROWSER_AUTHORIZATION_SECTORS`, is the
+table it reads. One firm reaches a browser on the sectors named beside it and a
+typed key on every other sector it serves.
+
+```
+pressed venue   sector        rows drawn                    Add press
+robinhood       crypto        API Key, API Secret, phrase   Test and Add Exchange
+robinhood       stocks        none; no key is typed         Connect with a Browser
+robinhood       commodities   none; no key is typed         Connect with a Browser
+robinhood       forex         none; no key is typed         Connect with a Browser
+robinhood       indices       none; no key is typed         Connect with a Browser
+coinbase        crypto        API Key, API Secret, phrase   Test and Add Exchange
+coinbase        stocks        API Key, API Secret, phrase   Test and Add Exchange
+```
+
+Every row was read in one run. The control venue answers `key_rows` true on both
+sectors, so the sector narrows one firm and not the page.
+
+No file on the credentials page names this firm. `credential_kind`,
+`browser_credential_fields`, `approval_level` and `browser_connected_words` each
+read a table or an accessor in `src/trading/ata_spm_signin.py`, and a venue added
+to that table later reads the same way with no screen edit.
+
+### The configured list asks what a venue serves
+
+The Exchanges tab narrows the venues already configured to the wing it is on.
+It used to narrow them by membership of the equity venue set, which told the two
+wings apart only while no id sat in both. One id in both sets made that test
+answer equity for a crypto venue, and a configured Robinhood went missing from
+the crypto wing.
+
+`src/gui/main_tabs/settings_dialog_surface.py`, in `serves_wing`, is the test
+now. It reads `asset_class_surface.serves`, the same function the Add list reads
+through `venues_for_class`, so the venues offered and the venues listed cannot
+disagree.
+
+```
+wing          listed before the repair            listed after
+crypto        coinbase, kraken                    alpaca, coinbase, kraken, robinhood
+stocks        alpaca, robinhood                   alpaca, coinbase, kraken, robinhood
+```
+
+Both readings were taken in one run, over the same four configured venues.
+A venue now appears on every wing whose sector it serves, which widens the list
+and hides nothing. `src/gui/settings_dialog.py`, in `_remove_exchange`, reads the
+venue id out of the pressed row's own text, so a longer list cannot mis-target a
+removal.
+
+### Where the two credentials sit
+
+One venue row holds both legs, because one firm reaches two transports.
+`src/core/settings.py`, at `ExchangeConfig`, carries the typed pair under
+`api_key_enc` and `api_secret_enc` and the protocol leg under
+`mcp_client_id_enc` and `mcp_bearer_enc`. Both new names end in `_enc`, so
+`CREDENTIAL_FIELDS` carries them and `add_exchange` keeps whichever leg an add
+leaves blank.
+
+`src/trading/ata_spm_signin.py`, in `credential_store_fields`, names which pair a
+route reads, and `src/gui/main_window.py`, in `_broker_credential`, reads that
+pair.
+
+```
+venue       sector        fields read
+robinhood   crypto        api_key_enc, api_secret_enc
+robinhood   stocks        mcp_client_id_enc, mcp_bearer_enc
+robinhood   commodities   mcp_client_id_enc, mcp_bearer_enc
+robinhood   forex         mcp_client_id_enc, mcp_bearer_enc
+robinhood   indices       mcp_client_id_enc, mcp_bearer_enc
+coinbase    crypto        api_key_enc, api_secret_enc
+```
+
+A connection the operator has not made is asked for at the moment a bot's route
+wants it. `src/gui/main_window.py`, in `_ask_for_venue_connection`, opens the
+same configuration window `_open_settings` draws, on the bot's own sector, and
+`_connect_broker_for_bot` and `_connect_written_crypto_for_bot` each call it once
+and then read the stored credential again.
+
+### The sign-in is a row on the mechanism, not a second mechanism
+
+The sign-in already in this product gains one row in each of its three tables.
+`src/trading/ata_spm_signin.py`, in `sign_in_robinhood_mcp`, is the route;
+`REDIRECT_POLICIES` holds the loopback address this venue registers; and
+`AUTHORIZE_ADDRESSES` holds the page the system browser opens. No listener,
+receiver or redirect behaviour changed, and every push target already using the
+mechanism answers exactly what it answered before.
+
+```python
+# src/trading/ata_spm_signin.py, at SIGN_IN_ROUTES
+    ROBINHOOD_MCP_VENUE: sign_in_robinhood_mcp,
+```
+
+The venue publishes an empty client authentication method, so the route is a
+public client. It sends the PKCE verifier and holds no secret.
+`register_robinhood_client` earns the client id on a first connect, and it runs
+only where the operator holds none, because it writes a record at the venue.
+
+### Nothing of any one operator is in the repository
+
+The credential lives where every other venue credential already lives: one
+encrypted entry per venue inside the operator's own settings file, under his home
+directory and outside this repository. `src/core/settings.py`, in
+`ExchangeConfig`, is that entry, and `add_exchange` stores it.
+
+```python
+# src/gui/settings_dialog.py, in _connect_browser_venue
+            config.api_key_enc = encrypt(answered["client_id"], master)
+            config.api_secret_enc = encrypt(answered["bearer"], master)
+```
+
+The client id the venue issued goes in the first field and the bearer in the
+second. Both are encrypted with the operator's own vault phrase, so no account
+id, client id, bearer or key is in any tracked file.
+
+### The trade-approval setting is read before any order is sized
+
+Robinhood turns trade approvals off by default for an external agent, so an order
+this program sends can reach the market unseen. The program now reads that
+setting back from the venue and refuses an order while it cannot.
+`src/stocks/robinhood_broker.py`, in `read_trade_approval`, asks the route for
+its own tool listing, finds the tool whose name carries the venue's own two
+words, calls it, and answers on, off or unread.
+
+```python
+# src/stocks/robinhood_broker.py, in RobinhoodMcpBroker.place_order
+        if self._approval not in (APPROVAL_ON, APPROVAL_OFF):
+            raise RouteRefused(APPROVAL_NOT_READ)
+```
+
+A venue that cannot answer it does not get an order, at three separate points.
+The session refuses to open, the order refuses to be built, and the credentials
+page draws the reading in its own feedback row.
+
+```
+reading   what the operator's screen says                        level
+on        an order waits for the operator to approve it          success
+off       an order reaches the market with no second pair of eyes warning
+unread    the venue did not answer, so no order is sized         error
+```
+
+`approval_words` in the broker module is the only place those sentences exist,
+and `approval_level` in the settings surface is the only place their colours do,
+so the page and the broker cannot disagree.
+
+OVERTAKEN, quoted whole:
+
+```
+A unit that builds the order path reads that setting back before it sizes
+anything.
+```
+
+True today: that unit landed. `RobinhoodMcpBroker.connect` reads the setting and
+refuses the session where the reading is unread.
+
+### The order body is built from the route's own published schema
+
+Robinhood publishes a tool name and a one-line description for each equity tool
+and publishes no field list for any of them. So this connector holds no field
+names of its own. It reads the tool's input schema off the route and builds the
+body against that, and it refuses by name where the schema asks for something
+the order cannot fill.
+
+```python
+# src/stocks/robinhood_broker.py, in order_body
+    missing = [one for one in required if one not in built]
+    if missing:
+        raise RouteRefused(
+            NO_FIELD_FORMAT.format(tool=tool, field=", ".join(sorted(missing)))
+        )
+```
+
+Both refusals were driven and each names what it expected.
+
+```
+a required property no order fills   place_equity_order requires account_number
+                                     and this order carries no value for it
+a value of the wrong declared type   place_equity_order declares quantity as
+                                     string and this order carries float
+```
+
+### Where the venue sits, and which id is which
+
+Two Robinhood venues now exist and they are separate venues with separate ids.
+The crypto connector keeps the id `robinhood` and stays an `ExchangeInterface`;
+the equity broker takes the id `robinhoodmcp` and is a `BrokerBase`. No id sits
+in both registries, so a Start press on a crypto bot cannot reach the broker.
+
+```python
+# src/stocks/alpaca_connector.py, at BROKER_CONNECTORS
+    ROBINHOOD_MCP_VENUE_ID: RobinhoodMcpBroker,
+```
+
+```
+registry                              holds
+CRYPTO_CONNECTORS                     robinhood
+BROKER_CONNECTORS                     alpaca, robinhoodmcp
+the two sets intersected              empty
+```
+
+OVERTAKEN, quoted whole:
+
+```
+Two Robinhood venues now exist and they are separate venues with separate ids.
+The crypto connector keeps the id `robinhood` and stays an `ExchangeInterface`;
+the equity broker takes the id `robinhoodmcp` and is a `BrokerBase`. No id sits
+in both registries, so a Start press on a crypto bot cannot reach the broker.
+```
+
+OVERTAKEN, quoted whole:
+
+```
+registry                              holds
+BROKER_CONNECTORS                     alpaca, robinhoodmcp
+the two sets intersected              empty
+```
+
+OVERTAKEN, quoted whole: `ROBINHOOD_MCP_VENUE_ID`, the import alias the sample
+above names.
+
+True today: the alias is `ROBINHOOD_VENUE_ID`, and it reads
+`src/stocks/robinhood_broker.py`, at `VENUE_ID`, as it did before.
+`src/trading/ata_spm_signin.py`, at `ROBINHOOD_VENUE`, is the one definition of
+the string behind it. One firm, one venue id, and the id sits in both registries
+on purpose.
+
+```
+registry                              holds
+CRYPTO_CONNECTORS                     robinhood
+BROKER_CONNECTORS                     alpaca, robinhood
+the two sets intersected              robinhood
+```
+
+The transport is chosen below the venue, by the sector the bot trades.
+`src/stocks/broker_base.py`, at `BrokerBase.SECTORS_SERVED`, is where a broker
+declares which sectors it brokers, and an empty tuple narrows nothing.
+`src/stocks/alpaca_connector.py`, in `broker_serves_sector`, reads that
+declaration, and `src/gui/main_window.py`, in `_connect_exchange_for_bot`, asks
+it before it asks `crypto_connector_class`.
+
+`src/trading/bot_container.py`, at the `sector` property, is the sector a bot
+carries. It answers through `_asset_class`, so the venue's own recording decides
+first and the sector the bot declares decides where the recording is silent.
+
+```
+venue       bot.sector    route reached
+robinhood   crypto        signed REST -> RobinhoodCryptoConnector
+robinhood   stocks        broker -> RobinhoodMcpBroker
+robinhood   commodities   broker -> RobinhoodMcpBroker
+robinhood   forex         broker -> RobinhoodMcpBroker
+robinhood   indices       broker -> RobinhoodMcpBroker
+alpaca      crypto        broker -> AlpacaConnector
+alpaca      stocks        broker -> AlpacaConnector
+coinbase    crypto        ccxt
+```
+
+Every row was read in one run. A Start press on a crypto bot still cannot reach
+the broker, and what stops it is now the bot's own sector rather than a second
+venue id.
+
+### The flow mirrors Coinbase, step for step
+
+The operator walks one path for every venue, and Robinhood walks the same one.
+
+```
+step            Coinbase                        Robinhood
+Sector          asset_class_surface.venues_for_class
+                                                the same function
+Live tab        trading_tab.add_exchange_label  the same function
+Add Exchange    settings_dialog_surface         the same function, which now
+                .credential_form                reads the sector beside the id
+Add Bot         bot_container.BotContainer      the same class
+the route       main_window                     the same method, which reads
+                ._connect_exchange_for_bot      BotContainer.sector
+the credential  main_window._broker_credential  the same method, reading the
+                                                pair credential_store_fields
+                                                names
+```
+
+No step is Robinhood's own. The one function that reads differently is
+`credential_form`, and it reads differently for every venue whose sectors reach
+two transports.
+
+OVERTAKEN, quoted whole:
+
+```
+| a JSON-RPC client over HTTP | no module in this tree provides one |
+| a `BrokerBase` subclass and a `BROKER_CONNECTORS` row | neither exists for this venue |
+```
+
+True today: both exist. `src/stocks/robinhood_broker.py`, in
+`RobinhoodMcpBroker`, is the subclass, `mcp_request` is the envelope the route
+takes, and `read_result` reads the reply or refuses.
+
+OVERTAKEN, quoted whole:
+
+```
+The
+reason the program does not place an equity order on Robinhood is that no
+module here speaks that protocol and no account token exists to speak it with.
+```
+
+True today: a module speaks the protocol. What is still missing is one
+operator's own account and the bearer it grants, which no software supplies.
+
+### The four sectors this one route serves
+
+One route, four sectors, and every one of them trades as a fund share.
+`src/gui/main_tabs/asset_class_surface.py`, at `EQUITY_VENUES`, answers the first;
+`EXTRA_VENUE_CLASSES` answers the other three; and
+`src/stocks/robinhood_broker.py`, at `SECTORS_SERVED`, names the same four.
+
+```
+sector        offered   gate log bucket
+stocks        yes       trade/gate/robinhoodmcp/stocks/gate.log
+commodities   yes       trade/gate/robinhoodmcp/commodities/gate.log
+indices       yes       trade/gate/robinhoodmcp/indices/gate.log
+forex         yes       trade/gate/robinhoodmcp/forex/gate.log
+```
+
+OVERTAKEN, quoted whole:
+
+```
+sector        offered   gate log bucket
+stocks        yes       trade/gate/robinhoodmcp/stocks/gate.log
+commodities   yes       trade/gate/robinhoodmcp/commodities/gate.log
+indices       yes       trade/gate/robinhoodmcp/indices/gate.log
+forex         yes       trade/gate/robinhoodmcp/forex/gate.log
+```
+
+True today: the bucket carries the venue id, and the venue id is `robinhood`.
+A fifth sector joins the list, which the signed REST route serves instead.
+
+```
+sector        offered   route         gate log bucket
+crypto        yes       signed REST   trade/gate/robinhood/crypto/gate.log
+stocks        yes       protocol      trade/gate/robinhood/stocks/gate.log
+commodities   yes       protocol      trade/gate/robinhood/commodities/gate.log
+indices       yes       protocol      trade/gate/robinhood/indices/gate.log
+forex         yes       protocol      trade/gate/robinhood/forex/gate.log
+```
+
+`src/trading/ata_spm_signin.py`, at `ROBINHOOD_MCP_SECTORS`, is the one
+definition of the four the protocol route serves.
+`src/stocks/robinhood_broker.py`, at `SECTORS_SERVED`, reads it, and
+`BROWSER_AUTHORIZATION_SECTORS` reads it as well, so the sectors that sign in at
+a browser and the sectors the broker trades cannot drift apart.
+
+No new sizing variant is needed. A fund share sizes like a share, so a
+fractional market selects the permitted-shape variant and a whole-share market
+selects the whole-unit variant, both already inside `VARIANTS_BUILT`.
+
+OVERTAKEN, quoted whole:
+
+```
+| stocks | `place_equity_order` on the Trading MCP | no client for the protocol |
+| commodities | a fund share through `place_equity_order` | no client for the protocol |
+```
+
+True today: a client for the protocol exists in both rows. Each sector is
+offered on the credentials page and each has its own gate log bucket.
+
+OVERTAKEN, quoted whole:
+
+```
+Three of those four are reachable
+only through the Robinhood Trading MCP, and the program holds no client for it.
+```
+
+True today: the program holds a client for it.
+
+### What is not reachable yet
+
+A bot still does not trade this venue, for two reasons the operator can see.
+The Start press opens a broker session with paper true, and this venue publishes
+no paper route, so the session is refused with that reason in its own words.
+A bot container also still takes a crypto exchange and not a broker, which is the
+same ceiling the Alpaca broker sits under.
+
+```python
+# src/stocks/robinhood_broker.py, at NO_PAPER_ROUTE
+NO_PAPER_ROUTE = (
+    "Robinhood MCP publishes no paper route, so this venue opens no paper session"
+)
+```
+
+The market list is the one point where this venue differs from Coinbase. The
+route publishes no whole-catalogue tool, so `list_assets` confirms one symbol at
+a time through `get_equity_tradability` over the scan set it holds, and an empty
+scan set records no market.
+
+### What this unit drove, and what no reading here can prove
+
+Every reading ran with the home directory redirected to a scratch tree and with
+both send paths replaced by a refusal, so no socket could open. The run reported
+forty checks and no failures, nineteen envelopes seen by the stand-in, and an
+empty scratch home afterwards.
+
+```
+a market list, a quote, a position read, a candle   read back
+an order body                                        built, never sent
+the trade-approval setting                           read on, off and unread
+the failure side                                     missing field, wrong type,
+                                                     no bearer, expired bearer,
+                                                     401 at the HTTP layer
+the existing sign-in                                 nine push targets unchanged
+```
+
+Two limits, stated plainly. No reading here used a token, so nothing proves the
+venue accepts this program; that is the first operator's own connect. And
+Robinhood publishes no field list for any tool on this route, so every property
+name in the stand-in's schema stands in for whatever the route publishes rather
+than naming it; the body is built from the schema the route answers, which is why
+a wrong name refuses instead of sending.
+
+The whole translation, point by point, is in
+[../audits/2026-10-10_robinhood_sector_translation/REPORT.md](../audits/2026-10-10_robinhood_sector_translation/REPORT.md).
+
+## 2026-10-10 - A broker opens the session route it has, and the order body matches its path
+
+Two things stopped a Robinhood bot and both are closed. A broker declares which
+session route it publishes, and the crypto order body carries a field only where
+the submitting path's own schema names it.
+
+### A broker declares its own session route
+
+`src/stocks/broker_base.py`, at `HAS_PAPER_ROUTE`, is the declaration. Alpaca
+leaves it True and opens on the paper host. `src/stocks/robinhood_broker.py`, at
+`HAS_PAPER_ROUTE`, is False, because this route publishes no paper host.
+
+`src/gui/main_window.py`, in `_open_broker_session`, reads the declaration
+through `src/stocks/broker_base.py`, in `broker_paper_route`, and takes it with
+`BROKER_SESSION_PAPER`. A broker publishing a paper route still opens on paper.
+A broker publishing none opens live, so its session opens instead of being
+refused.
+
+OVERTAKEN, quoted whole:
+
+```
+A bot still does not trade this venue, for two reasons the operator can see.
+The Start press opens a broker session with paper true, and this venue publishes
+no paper route, so the session is refused with that reason in its own words.
+A bot container also still takes a crypto exchange and not a broker, which is the
+same ceiling the Alpaca broker sits under.
+```
+
+True today: the Start press opens the route the broker publishes, so the session
+opens and the market rules record. One of those two reasons remains, the second
+one. `src/trading/bot_container.py`, in `BotContainer`, takes a crypto exchange
+and not a broker, so a bot on one of the four protocol sectors still does not
+start.
+
+`src/stocks/robinhood_broker.py`, in `RobinhoodMcpBroker.connect`, still refuses
+a paper session in its own words. Nothing weakened that refusal. The window
+stopped asking for a route this venue does not serve.
+
+### The screen names the route before anything trades
+
+`src/stocks/broker_base.py`, at `SESSION_MODE_WORDS`, holds one sentence per
+route and `session_mode_words` answers it. `BrokerBase.session_mode` answers
+`paper` or `live` while a session is open and nothing while none is.
+`src/gui/main_window.py`, in `_connect_broker_for_bot`, puts that sentence in
+the status line the operator reads, on every open and on a market-rule failure.
+
+```
+Robinhood   Robinhood session is open on the venue's LIVE route, where a filled
+            order moves real money and 1 market rule row(s) recorded.
+Alpaca      Alpaca session is open on the venue's PAPER route, where no order
+            reaches a real market and 1 market rule row(s) recorded.
+```
+
+A broker that opens a session and names no route is closed again.
+`src/stocks/broker_base.py`, in `open_session`, holds `NO_SESSION_MODE` as the
+refusal and leaves the broker disconnected, so no order is sized over a route
+nobody can read.
+
+### The order body carries the field its path publishes
+
+Robinhood publishes two crypto order paths and one request schema for each.
+`src/exchange/robinhood_connector.py`, in `orders_path`, takes the first version
+where no account number is stored and the fee-tier version where one is.
+
+```
+no account number   /api/v1/crypto/trading/orders/   AddOrder
+an account number   /api/v2/crypto/trading/orders/   AddOrderV2
+```
+
+`AddOrder`'s limit configuration publishes no time in force and `AddOrderV2`'s
+publishes one. `src/exchange/robinhood_connector.py`, in `order_body`, takes the
+path and writes the field only where `published_order_config_fields` names it
+for that order type.
+
+```
+kind     path   field in the body   the schema publishes it
+market   v1     no                  no
+limit    v1     no                  no
+market   v2     no                  no
+limit    v2     yes                 yes
+```
+
+`place_order` names the path before it builds the body, so the two cannot
+disagree. `order_body_refusal` stays and reads empty on every row above. The
+same body submitted on the other version's path still refuses by name and sends
+nothing.
+
+`TIME_IN_FORCE_FIELD` is the one name for that field. Both schema maps and
+`order_body` read it, so the body and the schema cannot drift apart.
+
+### What a bot can do on each of Robinhood's five sectors
+
+```
+sector        route         a bot starts   what is still missing
+crypto        signed REST   yes            the operator's own Ed25519 API key
+stocks        protocol      no             a broker as a bot's exchange
+commodities   protocol      no             a broker as a bot's exchange
+indices       protocol      no             a broker as a bot's exchange
+forex         protocol      no             a broker as a bot's exchange
+```
+
+The four protocol sectors stop at one place, and it is the same place Alpaca
+stops at. `src/trading/bot_container.py`, in `BotContainer`, takes a crypto
+exchange, so `src/gui/main_window.py`, in `_connect_broker_for_bot`, opens the
+session, records the markets and then answers that the bot does not start.
+
+### What the session and order-field unit drove
+
+Seventy checks and no failures, with the home directory redirected to a scratch
+tree and every network method replaced, so no socket could open and no order was
+sent. Each reading carried a control reporting both a yes and a no in the same
+run.
+
+```
+the route each broker declares      Alpaca a paper route, Robinhood none
+the session and the screen line     both brokers, and the paper refusal that
+                                    the window no longer asks for
+a broker naming no route            refused, beside two brokers that name one
+the approval setting                on, off, and unread refusing the session
+the order body                      four rows, both versions, with and without
+                                    an account number stored
+place_order's own path and body     both versions, captured and never sent
+```
+
+Two limits, stated plainly. No reading used a real token, so nothing here proves
+the venue accepts this program; that is the first operator's own connect. And a
+bot on the four protocol sectors was not started, because nothing starts one
+until a bot container takes a broker.
+## 2026-10-10 - the sector names the variant, and the venue's order formatting is a property inside it
+
+A variant is a bot the operator adds. The sector he picks names it. What one
+venue does to an order is a second thing the variant reads while it sizes, not a
+variant of its own.
+
+Six names used to sit in `src/trading/scrumming/sizing.py`. Five of them named
+what a venue does to an order: `none`, `limit-only order`, `cash-amount order`,
+`rolling position` and `permitted-shape order`. None of them named a sector, so
+none of them told the operator which bot he was looking at.
+
+### What each of the six became, and why
+
+| old name | markets that chose it | what it became | the reading behind it |
+| --- | --- | --- | --- |
+| `whole-unit position` | 511 at $250.00 | **Whole Unit Scrumming** | the one name the operator approved, carried as he wrote it |
+| `rolling position` | 100 | a property, `MECHANIC_EXPIRY` | three sectors chose it, so it belongs to no sector |
+| `permitted-shape order` | 1000 | a property, `MECHANIC_PERMITTED_SHAPE` | one sector chose it, and 33 markets of that same sector did not |
+| `limit-only order` | 0 | a property, `MECHANIC_LIMIT_ONLY` | it names a venue's missing market order, which is order formatting |
+| `none` | 1048 | a property, `MECHANIC_NONE` | every sector chose it; it is the absence of a difference, not a bot |
+| `cash-amount order` | 0 | removed | nothing selected it and nothing built it |
+
+The counts are every market in the recorded copy of one venue's own rules, read
+through `src/exchange/market_rules_store.py, in recorded_rules`. The whole-unit
+count is read at a reference price of $250.00, where a market's smallest order
+can cost more than the excess; read with no price, no market chooses it.
+
+### The two axes, in the order he states them
+
+```mermaid
+flowchart TD
+    S["Sector<br/>crypto, stocks, commodities,<br/>forex, indices, futures"] --> V["SECTOR_VARIANTS<br/>names the variant"]
+    V --> W{"does the venue's smallest<br/>order cost more than<br/>the excess?"}
+    W -- yes --> WU["Whole Unit Scrumming"]
+    W -- no --> SV["Crypto Scrumming,<br/>Stock Scrumming,<br/>Commodity Scrumming,<br/>Forex Scrumming,<br/>Index Scrumming,<br/>Futures Scrumming"]
+    M["Venue order formatting<br/>MECHANIC_MARKETS"] --> MR["the variant reads it<br/>while it sizes"]
+    WU --> MR
+    SV --> MR
+```
+
+`src/trading/scrumming/sizing.py, in sector_variant` answers the first axis. It
+reads the sector and answers the variant. `Whole Unit Scrumming` answers ahead
+of the sector, because a market whose smallest order costs more than the excess
+is sized that way whatever sector it sits in.
+
+`src/trading/scrumming/sizing.py, in venue_variant` answers the second axis. It
+reads one market's own recorded rules and answers one `MECHANIC_MARKETS` name,
+the first of five tests that answers. Its five tests, and their order, are the
+five it always had, so no market's answer moved.
+
+Two readers sit on the mechanic and nothing else:
+`src/trading/scrumming/sizing.py, in market_permits_close` lets a sell out of an
+expiring market through where a buy into it is refused, and
+`src/trading/scrumming/sizing.py, in market_replaces_market_order` turns a
+market order into a limit order on a venue that declares no market order. Both
+read the market, not the variant name.
+
+### What the program is allowed to trade
+
+`VARIANTS_BUILT` is the set of variants the program holds. A market whose
+variant is outside it is read, charted, and refused an order.
+
+```
+before   none, limit-only order, permitted-shape order,
+         rolling position, whole-unit position
+
+after    Crypto Scrumming, Stock Scrumming, Commodity Scrumming,
+         Forex Scrumming, Index Scrumming, Futures Scrumming,
+         Whole Unit Scrumming, Scrumming
+```
+
+`Scrumming` is the variant a market read with no sector named trades under. The
+Market Inspector's ticker rows ask that way, through
+`src/trading/scrumming/sizing.py, in variant_trades_market`, so the name keeps
+those rows answering as they did.
+
+The set now refuses one thing it did not refuse before. A bot whose configured
+sector is not one of the six names a variant `VARIANTS_BUILT` lacks, through
+`src/trading/scrumming/sizing.py, in sector_variant`, and
+`src/trading/bot_container.py, in guarded_place_order` refuses its order. Before
+this change such a bot traded under whichever order-formatting name its market
+happened to carry. No market in the recording has such a sector, so no market
+moved; the old answer was wrong and this is the correction.
+
+### Every market's order came out the same
+
+Each of the 2,148 recorded markets was sized twice, once on the current code and
+once on the code before it, at a reference price of $250.00 with a reference
+scrum of $60.00 and a reference fold of $45.00.
+
+| reading | markets that moved |
+| --- | --- |
+| the unit rule that governs the order | 0 |
+| the scrum's amount, its rule source and its refusal | 0 |
+| the fold's amount, its rule source and its refusal | 0 |
+| whether the program holds the market | 0 |
+| whether a sale out of the market is refused | 0 |
+| whether the expiry close is permitted | 0 |
+| whether a market order becomes a limit order | 0 |
+| the refusal text the operator reads | 0 |
+
+The comparison was shown to work before that zero was trusted. One sector was
+pointed at a variant name `VARIANTS_BUILT` does not hold, in memory only, and
+the same comparison then reported 2,058 moved readings across all 1,033 markets
+of that sector. The planted fault was removed and the clean run reproduced
+byte for byte.
+
+One figure in that control is worth reading. Of the 1,033 stock markets,
+1,025 changed their answer on whether a sale is refused, and 8 did not. Those 8
+are the expiring ones, and `market_permits_close` let their sale through on the
+market's own expiry without consulting the variant at all. That is the expiry
+close proving it no longer depends on a variant name.
+
+### What the operator now reads on an order
+
+The two notices `src/trading/bot_container.py, in guarded_place_order` emits
+name both axes. The expiry notice and the limit-substitution notice each carry
+the variant first and the venue's order formatting second, in that order.
+
+### Sentences this section overtakes
+
+OVERTAKEN, quoted whole: "The true sentence is: six variant names exist,
+counting the bot as written, and the program holds five of them. The limit-only
+variant is built and Gemini is its one venue. The whole-unit variant is built.
+The rolling position is built, and `_tick_expiry_close` starts its close. The
+cash-amount variant is named and has no caller."
+
+True today: eight variant names exist, one per sector plus Whole Unit Scrumming
+plus the unnamed-sector name, and the program holds all eight. The limit-only,
+rolling-position and cash-amount names are not variants. `_tick_expiry_close`
+starts its close on the market's own expiry, through `market_permits_close`.
+
+OVERTAKEN, quoted whole: "| whole step, no date | 225 | `whole-unit position` |
+yes | 3.0 |"
+
+True today: that row's variant is `Whole Unit Scrumming`.
+
+OVERTAKEN, quoted whole: "| dated contract | 100 | `rolling position` | no |
+3.0 |"
+
+True today: that row's variant is the one its sector names, and its expiry is
+`MECHANIC_EXPIRY` beside it.
+
+OVERTAKEN, quoted whole: "PRE-FLIGHT REJECTED: BUY <market> 1.5700000000: the
+venue permits a cash amount alone on a buy of this product, and cash-amount
+order is not built: a market sized by a cash amount in the quote currency. The
+market is still read and still charted. API not called."
+
+True today: `CASH_SHAPE_ONLY_FORMAT` names no variant. It reads "the venue
+permits a cash amount alone on a buy of this product, and every built variant
+sizes a unit count rather than a cash amount in the quote currency".
+
+OVERTAKEN, quoted whole: "So no Robinhood sector needs a new variant. A
+fractional market selects the permitted-shape variant, a whole-share market
+selects the whole-unit variant, and an expiring market selects the
+rolling-position variant. All three sit inside `VARIANTS_BUILT`."
+
+True today: every Robinhood sector is one of the six `SECTOR_VARIANTS` names, so
+no Robinhood sector needs a new variant. A fractional market reads
+`MECHANIC_PERMITTED_SHAPE`, a whole-share market selects `Whole Unit Scrumming`,
+and an expiring market reads `MECHANIC_EXPIRY`.
+
+OVERTAKEN, quoted whole: "No new sizing variant is needed. A fund share sizes
+like a share, so a fractional market selects the permitted-shape variant and a
+whole-share market selects the whole-unit variant, both already inside
+`VARIANTS_BUILT`."
+
+True today: a fund share sizes like a share, so it trades under
+`Stock Scrumming`, and a whole-share market trades under `Whole Unit Scrumming`.
+`MECHANIC_PERMITTED_SHAPE` is the property the first reads.
+
+### What no reading here can prove
+
+No venue was contacted and no order was placed, priced, previewed or cancelled.
+Every reading ran with the home directory redirected to a scratch tree, and the
+recorded rules were read through the `path` argument
+`src/exchange/market_rules_store.py, in load_document` takes.
+
+Two readings here would read the same whether this works or not. The count of
+markets choosing `limit-only order` was zero before and the count reading
+`MECHANIC_LIMIT_ONLY` is zero after, because no recorded market declares a
+limit-only venue; that zero says nothing about the substitution working. The
+same holds for the removed `cash-amount order`, which nothing selected either
+way. Both are proved only by the planted-fault control above, which moved the
+readings that do fire.
+
+### Two refusal messages carried the retired name
+
+The refusal a market reads most often is
+`src/trading/scrumming/sizing.py, in untradeable_reason` answering
+`WHOLE_UNIT_STEP_IS_A_FRACTION`, and it fires on 286 of the 2,148 recorded
+markets at the reference price. It named the whole-unit position variant, which
+is the name the operator could not read. So did
+`BELOW_POSITION_MINIMUM_FORMAT`, which
+`src/trading/scrumming/sizing.py, in position_minimum_refusal` puts in front of
+an opening buy.
+
+Both now name `Whole Unit Scrumming`. These are the only two readings whose
+operator text moved in this unit, and no order's amount moved with them.
+
+OVERTAKEN, quoted whole: "the whole-unit position variant sizes whole units and
+this market steps in fractions, so no built variant sizes an order costing this
+much"
+
+True today: `WHOLE_UNIT_STEP_IS_A_FRACTION` reads "Whole Unit Scrumming sizes
+whole units and this market steps in fractions, so no built variant sizes an
+order costing this much".
+
+OVERTAKEN, quoted whole: "a whole-unit position opens at {minimum} units"
+
+True today: `BELOW_POSITION_MINIMUM_FORMAT` reads "Whole Unit Scrumming opens at
+{minimum} units".
+
+Every other passage on this page that quotes either message keeps the words it
+was written with, and those words name the variant as it was called then.
+
+## 2026-10-10 - A bot container takes a broker, and every broker sector trades
+
+### The sentence this overtakes
+
+OVERTAKEN, quoted whole:
+
+> "The four protocol sectors stop at one place, and it is the same place Alpaca
+> stops at. `src/trading/bot_container.py`, in `BotContainer`, takes a crypto
+> exchange, so `src/gui/main_window.py`, in `_connect_broker_for_bot`, opens the
+> session, records the markets and then answers that the bot does not start."
+
+True today: `src/stocks/broker_exchange.py`, in `BrokerExchange`, holds one
+broker and answers the exchange contract, so `_connect_broker_for_bot` hands
+that object to the bot and answers that the bot starts. The four protocol
+sectors and all four of Alpaca's now start.
+
+OVERTAKEN, quoted whole:
+
+> ```
+> sector        route         a bot starts   what is still missing
+> crypto        signed REST   yes            the operator's own Ed25519 API key
+> stocks        protocol      no             a broker as a bot's exchange
+> commodities   protocol      no             a broker as a bot's exchange
+> indices       protocol      no             a broker as a bot's exchange
+> forex         protocol      no             a broker as a bot's exchange
+> ```
+
+True today: every row reads yes.
+
+```
+sector        route         a bot starts   what is still missing
+crypto        signed REST   yes            the operator's own Ed25519 API key
+stocks        protocol      yes            the operator's own MCP bearer
+commodities   protocol      yes            the operator's own MCP bearer
+indices       protocol      yes            the operator's own MCP bearer
+forex         protocol      yes            the operator's own MCP bearer
+```
+
+### Why a holder, and not one class
+
+`src/stocks/broker_base.py`, in `BrokerBase`, and `src/exchange/base.py`, in
+`ExchangeInterface`, publish five members under one name with different
+contracts. One object cannot publish both of each pair, so the two are
+reconciled by a holder rather than by a merge.
+
+```
+member             BrokerBase takes                 ExchangeInterface takes
+connect            key, secret, paper               key, secret, passphrase
+place_order        quantity, limit, stop, tif       type, amount, price, coid
+get_order          order id                         order id and market
+get_open_orders    nothing                          a market
+cancel_order       order id, answers a boolean      order id and market, an Order
+```
+
+The two also carry separate `OrderSide` and `OrderType` enumerations.
+`src/stocks/broker_exchange.py`, in `BROKER_SIDES` and `BROKER_ORDER_TYPES`,
+maps between them by member and never by spelling.
+
+### What the window builds, and where each object sits
+
+```mermaid
+flowchart LR
+    A[Start press] --> B[_connect_exchange_for_bot]
+    B -->|broker_serves_sector| C[_connect_broker_for_bot]
+    C --> D[_held_broker or a fresh BrokerBase]
+    D --> E[_broker_exchange: one BrokerExchange per broker]
+    E --> F[bot.exchange]
+    D --> G[_open_broker_session]
+    G --> H[_read_broker_markets]
+```
+
+The broker itself stays in `_exchange_connectors`, which `_held_broker`,
+`_live_connector` and the connector pumps read. `_broker_exchanges` holds the
+`BrokerExchange`, one per broker object, so `BotManager.set_connector` registers
+one object per venue and every bot on that broker trades through it.
+
+### What a broker answers, member by member
+
+`src/trading/bot_container.py`, in `BotContainer` and `guarded_place_order`, and
+the mixins under `src/trading/scrumming/` read twenty-two members on
+`bot.exchange`. Seven were already on `BrokerBase`; the rest are answered by
+translation.
+
+```
+member                 what BrokerBase publishes        BrokerExchange answers from
+exchange_id            exchange_id                      the broker
+display_name           display_name                     the broker
+is_connected           is_connected                     the broker
+add_scan_symbol        add_scan_symbol                  the broker
+remove_scan_symbol     remove_scan_symbol               the broker
+set_history_callback   set_history_callback             the broker
+release                release                          the broker
+held_assets            held_assets                      the broker
+get_markets            asset_infos over held_assets     the held asset list
+get_ticker             get_quote                        a StockQuote
+get_ohlcv              get_bars                         bars, moments as epoch ms
+get_balance            get_account, get_position        cash, or a held quantity
+get_balances           get_account, get_positions       cash and every position
+place_order            place_order                      a StockOrder
+get_order              get_order                        a StockOrder
+get_open_orders        get_open_orders                  the book, narrowed here
+cancel_order           cancel_order                     a boolean
+await_bulk_read_slot   nothing                          the interface default
+get_spot_positions     no cost basis                    the interface default, None
+get_asset_logo_url     nothing                          an empty string
+get_orderbook          nothing                          NotImplementedError
+get_my_trades          nothing                          NotImplementedError
+```
+
+`asset_infos` is the build half of `record_markets`, split out so `get_markets`
+reads the markets the session already obtained and leaves the recording
+untouched.
+
+### The three points no broker answers, and what each costs
+
+**No depth.** Neither broker publishes an order book tool.
+`src/stocks/broker_exchange.py`, in `get_orderbook`, raises and names the venue.
+No caller in this tree reads depth, so no sector loses a trade.
+
+**No fill ledger.** Neither broker publishes a filled-trade history.
+`get_my_trades` raises, and
+`src/trading/scrumming/reconciliation.py`, in
+`refresh_exchange_position_health`, answers False for an exchange that cannot
+serve it. A broker bot's venue-side realised profit, fee total, cost basis and
+unrealised figure therefore have no reading. The order path is unaffected: the
+ladder sizes from the recorded market rules and the bot's own lots.
+
+**No locked figure.** A broker publishes no held-against-orders amount on a
+position or on an account, so `_position_balance` and `_cash_balance` answer
+`used` of 0.0 and carry the whole quantity as free. `Balance.used` is carried
+through `src/exchange/data_pool.py` and read for no decision.
+
+### The refusals that were added, and the ones that did not move
+
+`src/stocks/broker_exchange.py`, in `place_order`, refuses before the broker is
+reached: a size that is not a finite positive number, a limit order naming no
+finite positive price, an order type `BROKER_ORDER_TYPES` does not hold, and a
+side `BROKER_SIDES` does not hold. Each raises `ValueError` naming the venue and
+what it could not shape.
+
+Nothing in `guarded_place_order` moved. Its pre-flight refusals, its expiry
+close and the session hold are untouched, and a broker bot and a crypto bot
+refuse the same amount with the same sentence.
+
+### What a bot can do on each broker sector
+
+```
+venue       sector        route     a bot starts   the exchange it holds
+robinhood   crypto        REST      yes            RobinhoodCryptoConnector
+robinhood   stocks        protocol  yes            BrokerExchange
+robinhood   commodities   protocol  yes            BrokerExchange
+robinhood   indices       protocol  yes            BrokerExchange
+robinhood   forex         protocol  yes            BrokerExchange
+alpaca      stocks        REST      yes            BrokerExchange
+alpaca      commodities   REST      yes            BrokerExchange
+alpaca      indices       REST      yes            BrokerExchange
+alpaca      crypto        REST      yes            BrokerExchange
+```
+
+### What this unit drove
+
+Every reading ran with the home directory redirected to a scratch tree, every
+socket outside loopback refused, and each venue's own transport replaced by a
+stand-in shaped from that route's published reply. No credential was real and no
+order body left the machine.
+
+```
+reading                               what it reported
+twenty rows, venue by sector          four Robinhood and four Alpaca sectors
+                                      moved from no to yes; the crypto sectors
+                                      and Coinbase read the same on both trees
+twenty-two members                    ten absent and three mis-shaped on
+                                      BrokerBase; all twenty-two answered or
+                                      named their refusal on BrokerExchange
+the approval guard                    unread refused the order, read reached
+                                      the route
+the session-route guard               a broker naming no route refused, beside
+                                      one that names a route and opened
+an order refusal                      a non-finite size refused on a broker bot
+                                      and on a crypto bot with one sentence
+the adapter's own refusals            three shapes passed, seven refused
+one adapter per broker                two bots on one broker held one object
+```
+
+Two limits, stated plainly. No reading used a real token, so nothing here proves
+either venue accepts a live order from this program. And the fill ledger stays
+unread on both brokers, so a broker bot's venue-side profit figures are blank
+until a fill path is built.
