@@ -22,6 +22,8 @@ from .schwab_connector import VENUE_ID as SCHWAB_VENUE_ID
 from .schwab_connector import SchwabConnector
 from .tastytrade_connector import VENUE_ID as TASTYTRADE_VENUE_ID
 from .tastytrade_connector import TastytradeConnector
+from .webull_connector import VENUE_ID as WEBULL_VENUE_ID
+from .webull_connector import WebullConnector
 from .broker_base import (
     BrokerBase,
     AccountInfo,
@@ -616,6 +618,7 @@ BROKER_CONNECTORS: dict[str, type[BrokerBase]] = {
     ROBINHOOD_VENUE_ID: RobinhoodMcpBroker,
     SCHWAB_VENUE_ID: SchwabConnector,
     TASTYTRADE_VENUE_ID: TastytradeConnector,
+    WEBULL_VENUE_ID: WebullConnector,
 }
 
 
