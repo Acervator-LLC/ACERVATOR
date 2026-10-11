@@ -301,7 +301,7 @@ base code on this venue, and **no `code_leg` is named**.
 | 1 | registered | `bitstamp` in `SUPPORTED_EXCHANGES`: True | an invented id: False |
 | 2 | offered under every sector it serves | crypto, commodities, forex, indices, futures_perps | an invented id is offered under none |
 | 3 | credential form | `exchange_status_rows` draws its venues from `venues_for_class`, so the Add form's set equals row 2's by construction | a sector with no venue draws `class_state`'s note |
-| 4 | a Start press builds its connector | `MainWindow._connect_exchange_for_bot` reads `broker_connector_class` first and takes the crypto path for a `SUPPORTED_EXCHANGES` id | a broker id takes `_connect_broker_for_bot` |
+| 4 | a Start press builds its connector | `MainWindow._connect_exchange_for_bot` reads `broker_serves_sector` first and `crypto_connector_class` second; both answer nothing for bitstamp in all six sectors, so it takes the ccxt path and reads the stored credential. `bitstamp` is outside `PASSPHRASE_EXCHANGES`, so a key and a secret are the whole form | `alpaca` answers broker in all six sectors, and `robinhood` answers a written crypto class on crypto and broker on four others, so the picker discriminates |
 | 5 | market rules record on connect | `record_venue` writes `CLASS_FIELD` per symbol; 271 markets carry a sector | an empty market list writes nothing |
 | 6 | the order shape | `declared_order_types` reads "market and limit" off the venue's own capability map, where `createMarketOrder` is True | gemini reads limit-only off the same reader |
 | 7 | a built variant selects | `variant_holds_market` True for 271 of 271; `venue_variant` "no order-formatting difference" for all | — |
