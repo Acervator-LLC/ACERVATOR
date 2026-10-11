@@ -180,7 +180,29 @@ EXTRA_VENUE_CLASSES = {
     # Japan and some other countries."
     "bitstamp": ("commodities", "forex", "indices", "futures_perps"),
     "bybit": ("futures_perps",),
-    "cryptocom": ("stocks", "futures_perps"),
+    # cryptocom publishes a product_type on 983 of the 988 markets its own
+    # /public/get-instruments serves, and its reference page names the whole
+    # vocabulary: COMMODITIES, EQUITY_IND, CURRENCIES, DIGITAL_CURRENCIES,
+    # EVENTS, EQUITY, PRE_IPO. Six words sit on a live row — DIGITAL_CURRENCIES
+    # 812, EQUITY 131, EQUITY_IND 28, COMMODITIES 8, PRE_IPO 3, CURRENCIES 1 —
+    # so the venue names all five sectors here beside the crypto its registry
+    # gives it. Its own help page calls the families "Stocks, Commodities,
+    # Equity Index ETFs and Pre-IPO", which is why EQUITY_IND reaches indices
+    # and PRE_IPO reaches stocks. A US person holds an account: its own Spot
+    # Trading Geo-Restrictions list names 38 locations and not the United
+    # States, and its U.S. Exchange terms read "'Available Jurisdiction' means
+    # all eligible U.S. jurisdictions where the Exchange is available for your
+    # use, except New York." Every stocks, indices and futures_perps market and
+    # eight of the fourteen commodities markets are contracts, and the venue's
+    # own Derivatives Trading Geo-Restrictions list names "United States US /
+    # USA", so a US account reaches the 569 spot markets alone.
+    "cryptocom": (
+        "stocks",
+        "commodities",
+        "forex",
+        "indices",
+        "futures_perps",
+    ),
     "gateio": ("stocks", "commodities", "forex", "indices", "futures_perps"),
     # Gemini's own developer navigation names four product families — Spot
     # crypto, Perpetuals, Stocks and Prediction Markets — and no index family,

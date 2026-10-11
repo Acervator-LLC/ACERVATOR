@@ -6357,3 +6357,209 @@ an Imperva shell that answers a 205-byte body, and it answers 200 for a path
 that cannot exist, so no status code from that host was read as a reading. Every
 quotation above comes from `www.bitstamp.net/api/v2/...` or from
 `blog.bitstamp.net`, each of which serves a real body.
+
+## Crypto.com names a sector on every market, and a United States account reaches the spot ones
+
+OVERTAKEN, quoted whole:
+
+```
+| cryptocom | crypto, stocks, futures_perps |
+```
+
+True today: `asset_class_surface.venue_classes` answers all six — crypto,
+stocks, commodities, forex, indices and futures_perps. The venue publishes its
+own sector word on 983 of the 988 markets it lists, and three of those sectors
+were offered under nothing.
+
+OVERTAKEN, quoted whole:
+
+```
+| cryptocom | crypto spot | no refusal recorded, 2026-08-28 | key and secret | `src/exchange/ccxt_connector.py, in SUPPORTED_EXCHANGES` |
+```
+
+True today: the venue lists crypto spot, equity perpetuals, index perpetuals,
+commodity perpetuals, a currency pair and dated bitcoin and ether futures. A
+key and a secret are still the whole credential form, because cryptocom is
+outside `PASSPHRASE_EXCHANGES`. The refusal is recorded now, and it falls on the
+product: crypto.com's own Spot Trading Geo-Restrictions list names 38 locations
+and not the United States, while its own Derivatives Trading Geo-Restrictions
+list and its own Margin Trading Geo-Restrictions list each name "United States
+US / USA".
+
+### The venue publishes the sector, and publishes the vocabulary too
+
+`/public/get-instruments` on `api.crypto.com/exchange/v1` serves 988 rows and 18
+fields. One field is the sector, and the venue's own reference page lists every
+word it can hold:
+
+> product_type — Product type of the instrument. Possible values: COMMODITIES,
+> EQUITY_IND, CURRENCIES, DIGITAL_CURRENCIES, EVENTS, EQUITY, PRE_IPO. Only
+> returned if applicable.
+
+Six of the seven words sit on a live market:
+
+```
+DIGITAL_CURRENCIES  812     EQUITY  131     EQUITY_IND  28
+COMMODITIES           8     PRE_IPO   3     CURRENCIES   1
+EVENTS                0     no field  5
+```
+
+`EVENTS` names the venue's prediction markets, which the asset taxonomy does not
+draw, so it maps onto no family. The five rows carrying no field are the "only
+if applicable" clause: four dated futures and one spot pair.
+
+The venue's own help page names the same families in words:
+
+> New market tags, Stocks, Commodities, Equity Index ETFs and Pre-IPO are added
+> under the perpetual market
+
+So `EQUITY_IND` names an index and not a company, and `PRE_IPO` names a company:
+
+> Pre-IPO Perpetuals on Crypto.com Exchange let you take a position on a private
+> company's value before it goes public.
+
+### The record gains 169 markets and costs nothing
+
+`src/exchange/ccxt_connector.py, at VENUE_ASSET_SECTOR_RECORDS` gains a cryptocom
+row on its own instrument list, keyed on `base_ccy` with `product_type` as the
+sector. It names a sector for 171 of the venue's 587 base codes. Driven over all
+988 markets, 178 move.
+
+| the record gains | the record corrects |
+| ---------------- | ------------------- |
+| 129 equity perpetuals reach stocks | `AMD/USD:USD` leaves forex for stocks — AMD is Advanced Micro Devices, not the Armenian dram |
+| 3 pre-IPO perpetuals reach stocks | `NOK/USD:USD` leaves forex for stocks — NOK is Nokia, not the Norwegian krone |
+| 28 index perpetuals reach indices | `USD1/USD`, `USDS/USD` and `USDT/USD` leave forex for crypto, each a dollar token against the dollar |
+| 4 commodity perpetuals reach commodities | |
+
+A record switches off the metal and currency code-set reading for the whole
+venue, which costs nine markets. Three rows in
+`src/trading/scrumming/sizing.py, at CITED_VENUE_BASE_SECTORS` take all nine
+back: PAXG and XAUT each base four markets that redeem for gold, and EURC bases
+one that holds a euro token against the dollar.
+
+`src/trading/scrumming/sizing.py, at CITED_VENUE_MARKET_SECTORS` gains no row.
+Of the venue's 587 base codes, three carry two `product_type` words — BTC, ETH
+and SHIB — and both words resolve to the same empty family, so no base code on
+this venue names two sectors.
+
+### What the recording answers
+
+```
+                before   after
+crypto             558     561
+stocks               0     134
+futures_perps      411     247
+indices              0      28
+commodities         12      16
+forex                7       2
+                   ---     ---
+                   988     988
+```
+
+### A United States account reaches 569 of the 988 markets
+
+Every stocks market, every indices market, every futures_perps market and eight
+of the fourteen commodities markets are contracts. The venue's own derivatives
+list refuses a United States person, so a United States account reaches the 569
+spot markets alone: 561 crypto, 6 commodities and 2 forex. Those markets are
+still offered, read, charted and sized in all six sectors, and a United States
+account cannot trade the 419 contracts.
+
+Spot, in the venue's own words:
+
+> Please note that users from the following regions are restricted from
+> participating in Spot Trading: Afghanistan ... Venezuela, Yemen, Zimbabwe
+
+The United States is not a row on that list. Its own U.S. Exchange terms name
+the entity and the one state it leaves out:
+
+> The Crypto.com Exchange Services (described below) are provided to you by
+> Foris DAX, Inc., a Delaware corporation and registered money services
+> business.
+
+> "Available Jurisdiction" means all eligible U.S. jurisdictions where the
+> Exchange is available for your use, except New York.
+
+Derivatives, in the venue's own words:
+
+> The following locations are restricted from trading derivatives: ... United
+> Kingdom GB / GBR, United States US / USA, US Virgin Islands VI / VIR ...
+
+So cryptocom sits in neither `US_IP_BLOCKED_EXCHANGES` nor
+`US_ACCOUNT_RESTRICTED_EXCHANGES`, the same shape bitstamp and gemini hold,
+because the refusal falls on a product and not on the account. Unlike bitstamp,
+New York is a state the venue's own terms name as excluded.
+
+### The market buy sizes in units, and the cash field is the one the library does not send
+
+Crypto.com publishes both units on one order endpoint:
+
+| field | the venue's own words |
+| ----- | --------------------- |
+| `quantity` | "Order quantity. For MARKET BUY can use notional instead." |
+| `notional` | "Amount to spend; for MARKET BUY only (alternative to quantity)" |
+
+The trading library writes `quantity` on every order it composes and holds no
+branch that sets `notional`. Composed with no credential and nothing sent, a
+market buy reads `quantity` 0.001 and a market sell reads `quantity` 0.001, so
+cryptocom gains no membership in
+`src/trading/scrumming/sizing.py, at CITED_CASH_MARKET_BUY` and its size stays a
+unit count.
+
+### The order types, and the order shape
+
+`src/trading/scrumming/sizing.py, at order_types_for` answered nothing for all
+six sectors on this venue. It now answers "market and limit" in all six, which
+is what the library's own capability map declares and what the venue's own order
+page states in one line: "Order type: LIMIT or MARKET". One endpoint,
+`POST /private/create-order`, serves a spot pair, a perpetual and a dated future
+alike.
+
+```
+BTC/USD      market buy   {'instrument_name': 'BTC_USD', 'side': 'BUY',
+                           'quantity': '0.001', 'broker_id': 'CCXT',
+                           'spot_margin': 'SPOT', 'type': 'MARKET'}
+AAPL/USD:USD market buy   {'instrument_name': 'AAPLUSD-PERP', 'side': 'BUY',
+                           'quantity': '1', 'broker_id': 'CCXT',
+                           'type': 'MARKET'}
+```
+
+A contract carries no `spot_margin` field, and that is the whole difference
+between the two shapes.
+
+### The ten dated contracts
+
+Crypto.com lists ten dated futures beside its 409 perpetuals: five bitcoin and
+five ether, expiring 2026-10-30, 2026-11-27, 2026-12-25, 2027-03-26 and
+2027-06-25. `src/trading/scrumming/sizing.py, at venue_variant` reads "the venue
+expires this market on a date" on exactly those ten and "no order-formatting
+difference" on the other 978, and
+`src/trading/scrumming/sizing.py, at variant_holds_market` reads true for 988 of
+988.
+
+### Timeframes and the Market Inspector universe
+
+`src/exchange/timeframes.py, at available_timeframes` needed no change.
+Cryptocom publishes twelve granularities and the platform's own list draws ten of
+them, which is exactly the row it already carried. The two it leaves are `2w`
+and `1M`, and `2h` is the one the platform holds that cryptocom does not publish.
+
+`src/exchange/market_inspector_fetcher.py, at STABLECOIN_DENYLIST` gains nothing.
+Crypto.com publishes no public currency list with a name or a type field: its
+eleven public endpoints carry prices, books, trades, valuations, settlement
+prices, insurance and risk parameters, and the risk list names 638 base codes
+with haircuts and no names. The denylist already removes 7 of the venue's 537
+dollar-quoted spot markets, and the two codes left that name a dollar, `USD1`
+and `USDU`, carry no venue word that grounds either, so neither is added.
+
+### What the cryptocom reading cannot show
+
+No credential was used, so nothing above proves cryptocom accepts a live order
+from this program; the order bodies are what the library composes, not what
+cryptocom acknowledged. `crypto.com/exchange/...` serves a 5,373-byte application
+shell for any path, including one that cannot exist, so no reading came from that
+host. Every quotation above comes from `api.crypto.com/exchange/v1`, from
+`exchange-developer.crypto.com`, from `static2.crypto.com`, from
+`help.crypto.com` or from crypto.com's own product-news posts, and each of those
+hosts answers 403 or 404 for a path that cannot exist.

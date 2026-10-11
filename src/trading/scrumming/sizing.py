@@ -179,6 +179,21 @@ CITED_UNIT_RULES: dict[tuple[str, str], str] = {
 #: them. ``PAXG`` needs no base row because ``TOKEN_UNDERLYING_CODES`` redeems
 #: it onto ``XAU``; its perpetual needs a market row, because the venue files
 #: that one contract under ``CRYPTO``.
+#:
+#: The fourth venue is cryptocom, and its three rows are what a
+#: ``VENUE_ASSET_SECTOR_RECORDS`` row costs. That record names a sector for 171
+#: of the venue's 587 base codes off its own ``product_type`` field, which also
+#: switches off ``TOKEN_UNDERLYING_CODES``, ``PRECIOUS_METAL_CODES`` and
+#: ``FIAT_CURRENCY_CODES`` for the whole venue. ``PAXG`` and ``XAUT`` each base
+#: four markets the venue files under ``DIGITAL_CURRENCIES``, and each redeems
+#: for gold, so both rows restore the commodities every one of those eight read
+#: before the record. ``EURC`` bases one market, ``EURC/USD``, a euro token
+#: against the dollar, which holds two currencies. No cryptocom base code needs
+#: the market grain: of its 587 codes, three carry two ``product_type`` words —
+#: ``BTC``, ``ETH`` and ``SHIB``, each ``DIGITAL_CURRENCIES`` beside the empty
+#: field its dated futures carry — and both words resolve to the same empty
+#: family. ``MNT`` and ``SGD`` need no row either: neither bases a cryptocom
+#: market.
 CITED_VENUE_BASE_SECTORS: dict[tuple[str, str], str] = {
     ("bitfinex", "UKOIL"): CLASS_COMMODITIES,
     ("bitfinex", "AUSTRALIA200IX"): CLASS_INDICES,
@@ -204,6 +219,9 @@ CITED_VENUE_BASE_SECTORS: dict[tuple[str, str], str] = {
     ("bitstamp", "EWY"): CLASS_INDICES,
     ("bitstamp", "QQQ"): CLASS_INDICES,
     ("bitstamp", "MNT"): CLASS_CRYPTO,
+    ("cryptocom", "PAXG"): CLASS_COMMODITIES,
+    ("cryptocom", "XAUT"): CLASS_COMMODITIES,
+    ("cryptocom", "EURC"): CLASS_FOREX,
 }
 
 
@@ -454,6 +472,13 @@ ORDER_TYPES_DECLARED = (ORDER_TYPES_WITH_MARKET, ORDER_TYPES_LIMIT_ONLY)
 # ``POST /buy/market/{pair}`` and ``POST /buy/{pair}``, serves a spot pair and a
 # perpetual alike, so the declaration is the venue's and not the sector's.
 # stocks holds no row, because the venue records no market under it.
+#
+# cryptocom holds a row in all six sectors, because it records a market in every
+# one. ``declared_order_types`` reads "market and limit" off its own capability
+# map, where ``createMarketOrder`` is True, and its own Create Order page names
+# the pair in one line: "Order type: LIMIT or MARKET". One endpoint,
+# ``POST /private/create-order``, serves a spot pair, a perpetual and a dated
+# future alike, so the declaration is the venue's and not the sector's.
 CITED_VENUE_ORDER_TYPES: dict[tuple[str, str], str] = {
     (CLASS_CRYPTO, "coinbase"): ORDER_TYPES_WITH_MARKET,
     (CLASS_CRYPTO, "gemini"): ORDER_TYPES_LIMIT_ONLY,
@@ -470,6 +495,12 @@ CITED_VENUE_ORDER_TYPES: dict[tuple[str, str], str] = {
     (CLASS_FOREX, "bitstamp"): ORDER_TYPES_WITH_MARKET,
     (CLASS_INDICES, "bitstamp"): ORDER_TYPES_WITH_MARKET,
     (CLASS_FUTURES_PERPS, "bitstamp"): ORDER_TYPES_WITH_MARKET,
+    (CLASS_CRYPTO, "cryptocom"): ORDER_TYPES_WITH_MARKET,
+    (CLASS_STOCKS, "cryptocom"): ORDER_TYPES_WITH_MARKET,
+    (CLASS_COMMODITIES, "cryptocom"): ORDER_TYPES_WITH_MARKET,
+    (CLASS_FOREX, "cryptocom"): ORDER_TYPES_WITH_MARKET,
+    (CLASS_INDICES, "cryptocom"): ORDER_TYPES_WITH_MARKET,
+    (CLASS_FUTURES_PERPS, "cryptocom"): ORDER_TYPES_WITH_MARKET,
     # Robinhood publishes market, limit, stop_loss and stop_limit.
     (CLASS_CRYPTO, "robinhood"): ORDER_TYPES_WITH_MARKET,
 }
@@ -537,6 +568,16 @@ SETTLE_LEG = ":"
 # ``market`` sends ``privatePostBuyMarketPair`` with ``amount`` from
 # ``amount_to_precision``, and ``CCXTConnector.place_order`` composes no order
 # of the instant type, so the size this platform sends stays a unit count.
+# ``cryptocom`` is not a member, and it publishes the cash field beside the unit
+# field on one endpoint as kucoin does. Its own Create Order page describes
+# ``quantity`` as "Order quantity. For MARKET BUY can use notional instead." and
+# ``notional`` as "Amount to spend; for MARKET BUY only (alternative to
+# quantity)". ``ccxt.cryptocom.create_order_request`` writes ``quantity`` from
+# ``amount_to_precision`` on every order and holds no branch that sets
+# ``notional``; its capability map leaves ``createMarketBuyOrderWithCost`` and
+# ``createMarketOrderWithCost`` both False. Composed with no credential and
+# nothing sent, a market buy reads ``quantity`` 0.001 against a sell's
+# ``quantity`` 0.001, so the size stays a unit count on both sides.
 CITED_CASH_MARKET_BUY: frozenset[str] = frozenset(
     {"binance", "bitget", "coinbase", "gateio"}
 )
