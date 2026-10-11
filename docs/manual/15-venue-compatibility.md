@@ -9091,6 +9091,13 @@ and `history` each name **0** and `quote` names **90**. `get_bars` answers no ba
 and logs `NO_BAR_ROUTE`, the shape `src/stocks/tastytrade_connector.py, in get_bars`
 already takes.
 
+Every reply key is read in both casings the venue documents. Its property
+tables write `accounts`, `accountPortfolio`, `position` and `order` while its
+own worked examples write `Accounts`, `AccountPortfolio`, `Position` and
+`Order`, so `src/stocks/etrade_connector.py, in keyed` matches without regard to
+case and `reply_rows` descends through a list as well as an object. Driven in
+both casings, with a record naming neither as the control.
+
 `Look Up Product` is not the symbol route, and its own page says so: "This API is
 for searching on the company name, not a security symbol." The symbol route is
 `GET /v1/market/quote/{symbols}`, capped at 25 symbols and raised to 50 with
@@ -9158,8 +9165,8 @@ and that absence claims nothing.
 
 ### The eight connections, E*TRADE
 
-Driven with the home redirected, no venue contacted and no order placed: **159
-assertions, 159 passed, 0 failed**, each count carrying its own control.
+Driven with the home redirected, no venue contacted and no order placed: **177
+assertions, 177 passed, 0 failed**, each count carrying its own control.
 
 | # | the connection | before | after |
 | --- | --- | --- | --- |

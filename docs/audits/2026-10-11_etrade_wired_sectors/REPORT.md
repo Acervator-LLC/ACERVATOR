@@ -331,7 +331,7 @@ because `BROKER_CONNECTORS` held no `etrade` row.
 ## 8. The drives, and what controlled each one
 
 The drive ran with the home redirected to a temp directory, no venue contacted
-and no order placed: **159 assertions, 159 passed, 0 failed**, three times over
+and no order placed: **177 assertions, 177 passed, 0 failed**, three times over
 23 minutes, and once more after the tenth defect in section 12 was fixed.
 
 Every count carries its own control. The ones that matter most:
@@ -344,6 +344,7 @@ Every count carries its own control. The ones that matter most:
 | an option leg is refused | an `EQ` leg composes, with every published field |
 | a market order outside the session is raised to a limit | the same order in the regular session stays a market order |
 | the session does not move the size | the quantity reads `3` at both hours |
+| a capitalised reply parses | the same reply in the lowercase the property tables use parses to the same values, and one naming neither answers no row |
 | SPY at 22:30 ET names the overnight session | the same symbol at 10:40 ET names the regular one, and MSFT at 22:30 ET names no overnight session |
 | a short page saying more continues the walk | a full 50-row page saying no more stops it |
 | a zero fee is the venue's figure | a missing `brokerage` object answers None |
@@ -404,10 +405,10 @@ The census ran against
 UTF-8:
 
 ```
-before chars 438,906   after chars 464,460
+before chars 438,906   after chars 474,172
 old sentences counted  4,690
 old sentences absent from the new page  0
-git numstat                            495 added, 0 deleted
+git numstat                            502 added, 0 deleted
 ```
 
 **Control:** one word reworded *inside* an existing sentence, "as a fund share"
@@ -438,7 +439,7 @@ Each archetype was calibrated before any verdict was reported, by running its ow
 `known_good` and `known_bad` bodies and reading the exit codes directly rather
 than through a shell that had already run a command substitution.
 
-## 12. Ten defects this unit found in its own work, before opening
+## 12. Fourteen defects this unit found in its own work, before opening
 
 1. `ORDER_TYPES_WITH_MARKET` was defined locally as `"limit,market"`, which is no
    member of `sizing.ORDER_TYPES_DECLARED`, so every recorded etrade market would
@@ -468,6 +469,22 @@ than through a shell that had already run a command substitution.
     `src/stocks/market_hours.py, in session_at`: `REGULAR` at 10:40 ET,
     `EXTENDED` at 05:30 and 18:00, and `EXTO` after 20:00 for a symbol in the
     overnight list alone. Driven at all four hours with MSFT as the control.
+11. `reply_rows` walked a path of objects only, and the portfolio route nests its
+    rows under an `accountPortfolio` **array**, so the walk stopped there and
+    `get_positions` would have answered no position on a real reply. It now
+    descends through a list as well as an object.
+12. Every reply key was read in one casing. The venue documents each twice —
+    `accounts`, `accountPortfolio`, `position` and `order` in its property
+    tables, `Accounts`, `AccountPortfolio`, `Position` and `Order` in its own
+    worked examples — so `connect` would have found no account and
+    `get_positions`, `get_order`, `fee_total` and `asset_sector` would each have
+    read nothing. `keyed` now matches without regard to case, driven in both
+    casings with a record naming neither as the control.
+13. `CANCEL_ROUTE` carried a `.json` suffix the venue publishes on the order pair
+    alone. Dropped; the `Accept` header carries JSON on every other route.
+14. `is_fill` read `transactionType` at the top level only, and the transaction
+    *detail* nests it under `brokerage`. It now reads both, with a nested
+    dividend as the control.
 
 ## 13. What remains, named plainly
 

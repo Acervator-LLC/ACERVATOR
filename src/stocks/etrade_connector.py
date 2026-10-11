@@ -98,7 +98,7 @@ TRANSACTION_ITEM_ROUTE = "/v1/accounts/{account}/transactions/{transaction}"
 ORDERS_ROUTE = "/v1/accounts/{account}/orders"
 PREVIEW_ROUTE = "/v1/accounts/{account}/orders/preview.json"
 PLACE_ROUTE = "/v1/accounts/{account}/orders/place.json"
-CANCEL_ROUTE = "/v1/accounts/{account}/orders/cancel.json"
+CANCEL_ROUTE = "/v1/accounts/{account}/orders/cancel"
 QUOTE_ROUTE = "/v1/market/quote/{symbols}"
 
 #: The two ways the venue publishes JSON: an ``Accept`` header its transactions
@@ -549,27 +549,21 @@ def security_type(asset: Any) -> str:
     Every quote, portfolio and transaction record publishes it under the same
     ``Product`` object.
     """
-    if not isinstance(asset, dict):
-        return ""
-    product = asset.get("Product")
-    if isinstance(product, dict):
-        word = str(product.get("securityType") or "").strip().upper()
-        if word:
-            return word
-    return str(asset.get("securityType") or "").strip().upper()
+    product = keyed(asset, "Product")
+    word = str(keyed(product, "securityType") or "").strip().upper()
+    if word:
+        return word
+    return str(keyed(asset, "securityType") or "").strip().upper()
 
 
 def asset_symbol(asset: Any) -> str:
     """The symbol one of the venue's own quote records names, read off its own
     ``Product`` object first and the record itself second."""
-    if not isinstance(asset, dict):
-        return ""
-    product = asset.get("Product")
-    if isinstance(product, dict):
-        name = str(product.get("symbol") or "").strip().upper()
-        if name:
-            return name
-    return str(asset.get("symbol") or "").strip().upper()
+    product = keyed(asset, "Product")
+    name = str(keyed(product, "symbol") or "").strip().upper()
+    if name:
+        return name
+    return str(keyed(asset, "symbol") or "").strip().upper()
 
 
 def asset_sector(asset: Any) -> Optional[str]:
@@ -631,9 +625,10 @@ def contract_size(asset: Any) -> Optional[float]:
     """
     if not isinstance(asset, dict):
         return None
-    block = asset.get("All")
-    held = block.get("contractSize") if isinstance(block, dict) else None
-    number = rule_number(held if held is not None else asset.get("contractSize"))
+    held = keyed(keyed(asset, "All"), "contractSize")
+    if held is None:
+        held = keyed(asset, "contractSize")
+    number = rule_number(held)
     if number is None or number <= 0.0:
         return None
     return number
@@ -838,30 +833,52 @@ def place_body(preview: dict, ids: Iterable[Any]) -> dict:
     return {PLACE_REQUEST_KEY: held}
 
 
+def keyed(row: Any, key: Any) -> Any:
+    """The value ``row`` holds for ``key``, matched without regard to case, and
+    None where it holds none.
+
+    E*TRADE documents each reply field twice and in two casings: its property
+    tables write ``accounts``, ``accountPortfolio``, ``position`` and ``order``,
+    and its own worked examples write ``Accounts``, ``AccountPortfolio``,
+    ``Position`` and ``Order``.
+    """
+    if not isinstance(row, dict):
+        return None
+    name = str(key)
+    if name in row:
+        return row[name]
+    folded = name.lower()
+    for held, value in row.items():
+        if isinstance(held, str) and held.lower() == folded:
+            return value
+    return None
+
+
 def reply_rows(answered: Any, *keys: str) -> list:
     """Every row one reply carries at the nested path ``keys``, as a list.
 
-    E*TRADE wraps each reply in one named object and nests its rows one or two
-    objects deep, and a route with one row serves that object alone, so a bare
-    object answers a list of one.
+    Each step is read through ``keyed`` and descends through a list as well as
+    an object, since the venue nests its positions under an
+    ``accountPortfolio`` array and its orders under an ``order`` one.
     """
-    held: Any = answered if isinstance(answered, dict) else {}
+    held: list = [answered] if isinstance(answered, dict) else []
     for key in keys:
-        if not isinstance(held, dict):
-            return []
-        held = held.get(key)
-    if isinstance(held, list):
-        return [row for row in held if isinstance(row, dict)]
-    if isinstance(held, dict):
-        return [held]
-    return []
+        found: list = []
+        for one in held:
+            value = keyed(one, key)
+            if isinstance(value, list):
+                found.extend(row for row in value if isinstance(row, dict))
+            elif isinstance(value, dict):
+                found.append(value)
+        held = found
+    return held
 
 
 def preview_ids(answered: Any) -> list[str]:
     """Every ``PREVIEW_ID_FIELD`` one preview reply carries, as text."""
     found: list[str] = []
     for row in reply_rows(answered, "PreviewOrderResponse", PREVIEW_IDS_KEY):
-        held = row.get(PREVIEW_ID_FIELD)
+        held = keyed(row, PREVIEW_ID_FIELD)
         if held is not None and str(held):
             found.append(str(held))
     return found
@@ -874,24 +891,19 @@ def more_transactions(answered: Any) -> bool:
     A page length is never the end test here, since ``TRANSACTION_COUNT_MAX``
     caps a page and a full page can be the last.
     """
-    held = answered.get("TransactionListResponse") if isinstance(answered, dict) else {}
-    if not isinstance(held, dict):
-        return False
-    flag = held.get(MORE_TRANSACTIONS_FIELD)
+    held = keyed(answered, "TransactionListResponse")
+    flag = keyed(held, MORE_TRANSACTIONS_FIELD)
     if isinstance(flag, bool):
         return flag
     if isinstance(flag, str):
         return flag.strip().lower() == "true"
-    return bool(str(held.get(MARKER_FIELD) or ""))
+    return bool(str(keyed(held, MARKER_FIELD) or ""))
 
 
 def next_marker(answered: Any) -> str:
     """The ``MARKER_FIELD`` that continues a transactions walk, and "" at the
     end."""
-    held = answered.get("TransactionListResponse") if isinstance(answered, dict) else {}
-    if not isinstance(held, dict):
-        return ""
-    return str(held.get(MARKER_FIELD) or "")
+    return str(keyed(keyed(answered, "TransactionListResponse"), MARKER_FIELD) or "")
 
 
 def fee_total(detail: Any) -> Optional[float]:
@@ -901,19 +913,20 @@ def fee_total(detail: Any) -> Optional[float]:
     A commission of zero is the venue's own figure for an equity and is kept as
     zero.
     """
-    row = detail if isinstance(detail, dict) else {}
-    held = row.get(BROKERAGE_FIELD)
+    held = keyed(detail, BROKERAGE_FIELD)
     if not isinstance(held, dict):
         return None
-    return rule_number(held.get(FILL_FEE_FIELD))
+    return rule_number(keyed(held, FILL_FEE_FIELD))
 
 
 def is_fill(transaction: Any) -> bool:
     """Whether one ``transaction`` row carries ``TRANSACTION_TYPE_TRADE``, which
     is the one type naming a fill."""
-    row = transaction if isinstance(transaction, dict) else {}
-    word = str(row.get("transactionType") or "").strip().lower()
-    return word == TRANSACTION_TYPE_TRADE.lower()
+    word = str(keyed(transaction, "transactionType") or "").strip().lower()
+    if word:
+        return word == TRANSACTION_TYPE_TRADE.lower()
+    nested = keyed(keyed(transaction, BROKERAGE_FIELD), "transactionType")
+    return str(nested or "").strip().lower() == TRANSACTION_TYPE_TRADE.lower()
 
 
 def fill_record(transaction: Any) -> dict:
@@ -923,25 +936,23 @@ def fill_record(transaction: Any) -> dict:
     ``fee`` is None until ``EtradeConnector._attach_fees`` writes the venue's own
     figure, so a fill left unread never reads as a zero-fee fill.
     """
-    row = transaction if isinstance(transaction, dict) else {}
-    brokerage = row.get(BROKERAGE_FIELD)
-    held: dict = brokerage if isinstance(brokerage, dict) else {}
-    product = held.get("product")
-    nested: dict = product if isinstance(product, dict) else {}
-    quantity = rule_number(held.get("quantity"))
+    held = keyed(transaction, BROKERAGE_FIELD)
+    nested = keyed(held, "product")
+    quantity = rule_number(keyed(held, "quantity"))
     side = ""
     if quantity is not None:
         side = FILL_SIDES["BUY"] if quantity > 0 else FILL_SIDES["SELL"]
+    symbol = keyed(nested, "symbol") or keyed(held, "displaySymbol")
     return {
-        "transaction_id": str(row.get("transactionId") or ""),
-        "symbol": str(nested.get("symbol") or held.get("displaySymbol") or "").upper(),
+        "transaction_id": str(keyed(transaction, "transactionId") or ""),
+        "symbol": str(symbol or "").upper(),
         "side": side,
         "quantity": abs(quantity) if quantity is not None else None,
-        "price": rule_number(held.get("price")),
-        "amount": rule_number(row.get("amount")),
+        "price": rule_number(keyed(held, "price")),
+        "amount": rule_number(keyed(transaction, "amount")),
         "fee": None,
         "fee_currency": FEE_CURRENCY,
-        "filled_time_ms": rule_number(row.get("transactionDate")),
+        "filled_time_ms": rule_number(keyed(transaction, "transactionDate")),
     }
 
 
@@ -1104,11 +1115,11 @@ class EtradeConnector(BrokerBase):
             self._session_refusal = str(exc)
             return False
         named = [
-            str(row.get("accountIdKey") or "")
+            str(keyed(row, "accountIdKey") or "")
             for row in reply_rows(
-                answered, "AccountListResponse", "Accounts", "Account"
+                answered, "AccountListResponse", "accounts", "account"
             )
-            if str(row.get("accountIdKey") or "")
+            if str(keyed(row, "accountIdKey") or "")
         ]
         if not named:
             self._session_refusal = "the venue named no account on this access token"
@@ -1155,20 +1166,16 @@ class EtradeConnector(BrokerBase):
             BALANCE_ROUTE.format(account=self._account),
             query=(("instType", "BROKERAGE"), ("realTimeNAV", "true")),
         )
-        held = answered.get("BalanceResponse") if isinstance(answered, dict) else {}
-        row: dict = held if isinstance(held, dict) else {}
-        computed = row.get("Computed")
-        block: dict = computed if isinstance(computed, dict) else {}
-        values = block.get("RealTimeValues")
-        live: dict = values if isinstance(values, dict) else {}
-        equity = rule_number(live.get("totalAccountValue"))
+        block = keyed(keyed(answered, "BalanceResponse"), "Computed")
+        live = keyed(block, "RealTimeValues")
+        equity = rule_number(keyed(live, "totalAccountValue"))
         if equity is None:
-            equity = rule_number(block.get("accountBalance")) or 0.0
+            equity = rule_number(keyed(block, "accountBalance")) or 0.0
         return AccountInfo(
             account_id=self._account,
             equity=equity,
-            cash=rule_number(block.get("cashAvailableForInvestment")) or 0.0,
-            buying_power=rule_number(block.get("cashBuyingPower")) or 0.0,
+            cash=rule_number(keyed(block, "cashAvailableForInvestment")) or 0.0,
+            buying_power=rule_number(keyed(block, "cashBuyingPower")) or 0.0,
             portfolio_value=equity,
         )
 
@@ -1192,7 +1199,7 @@ class EtradeConnector(BrokerBase):
         )
         found: list[StockPosition] = []
         for row in reply_rows(
-            answered, "PortfolioResponse", "AccountPortfolio", "Position"
+            answered, "PortfolioResponse", "accountPortfolio", "position"
         ):
             built = self._position(row)
             if built is not None:
@@ -1281,7 +1288,7 @@ class EtradeConnector(BrokerBase):
             ORDERS_ROUTE.format(account=self._account),
             query=(("orderId", str(order_id)),),
         )
-        rows = reply_rows(answered, "OrdersResponse", "Order")
+        rows = reply_rows(answered, "OrdersResponse", "order")
         return self._status_order(rows[0] if rows else {}, order_id=str(order_id))
 
     async def get_open_orders(self) -> list[StockOrder]:
@@ -1299,7 +1306,7 @@ class EtradeConnector(BrokerBase):
         )
         return [
             self._status_order(row)
-            for row in reply_rows(answered, "OrdersResponse", "Order")
+            for row in reply_rows(answered, "OrdersResponse", "order")
         ]
 
     async def get_quote(self, symbol: str) -> StockQuote:
@@ -1310,17 +1317,16 @@ class EtradeConnector(BrokerBase):
         """
         rows = await self._quotes([str(symbol).upper()])
         row = rows[0] if rows else {}
-        block = row.get("All")
-        held: dict = block if isinstance(block, dict) else {}
+        held = keyed(row, "All")
         return StockQuote(
             symbol=str(symbol).upper(),
-            bid=rule_number(held.get("bid")) or 0.0,
-            ask=rule_number(held.get("ask")) or 0.0,
-            last=rule_number(held.get("lastTrade")) or 0.0,
-            volume=int(rule_number(held.get("totalVolume")) or 0.0),
+            bid=rule_number(keyed(held, "bid")) or 0.0,
+            ask=rule_number(keyed(held, "ask")) or 0.0,
+            last=rule_number(keyed(held, "lastTrade")) or 0.0,
+            volume=int(rule_number(keyed(held, "totalVolume")) or 0.0),
             timestamp=time.time(),
-            prev_close=rule_number(held.get("previousClose")) or 0.0,
-            change_pct=rule_number(held.get("changeClosePercentage")) or 0.0,
+            prev_close=rule_number(keyed(held, "previousClose")) or 0.0,
+            change_pct=rule_number(keyed(held, "changeClosePercentage")) or 0.0,
         )
 
     async def get_bars(
@@ -1404,7 +1410,7 @@ class EtradeConnector(BrokerBase):
             )
             pages += 1
             name = str(symbol or "").upper()
-            for row in reply_rows(answered, "TransactionListResponse", "Transaction"):
+            for row in reply_rows(answered, "TransactionListResponse", "transaction"):
                 if not is_fill(row):
                     continue
                 built = fill_record(row)
@@ -1472,7 +1478,7 @@ class EtradeConnector(BrokerBase):
                 )
                 continue
             read += 1
-            rows = reply_rows(answered, "TransactionDetailsResponse")
+            rows = reply_rows(answered, "transactionDetailsResponse")
             fee = fee_total(rows[0]) if rows else None
             if fee is None:
                 continue
@@ -1510,7 +1516,7 @@ class EtradeConnector(BrokerBase):
         except Exception as exc:
             logger.info("E*TRADE served no quote for %s: %s", ",".join(held), exc)
             return []
-        return reply_rows(answered, "QuoteResponse", "QuoteData")
+        return reply_rows(answered, "QuoteResponse", "quoteData")
 
     @staticmethod
     def _market_session(asset: Any, moment_s: Any = None) -> str:
@@ -1552,27 +1558,24 @@ class EtradeConnector(BrokerBase):
         realised figure is composed.
         """
         held = row if isinstance(row, dict) else {}
-        product = held.get("Product")
-        nested: dict = product if isinstance(product, dict) else {}
-        symbol = str(
-            nested.get("symbol") or held.get("symbolDescription") or ""
-        ).upper()
-        quantity = rule_number(held.get("quantity"))
+        nested = keyed(held, "Product")
+        name = keyed(nested, "symbol") or keyed(held, "symbolDescription")
+        symbol = str(name or "").upper()
+        quantity = rule_number(keyed(held, "quantity"))
         if not symbol or quantity is None or quantity == 0.0:
             return None
-        quick = held.get("Quick")
-        price_block: dict = quick if isinstance(quick, dict) else {}
-        last = rule_number(price_block.get("lastTrade")) or 0.0
-        paid = rule_number(held.get(POSITION_COST_FIELD)) or 0.0
-        value = rule_number(held.get("marketValue")) or last * quantity
+        price_block = keyed(held, "Quick")
+        last = rule_number(keyed(price_block, "lastTrade")) or 0.0
+        paid = rule_number(keyed(held, POSITION_COST_FIELD)) or 0.0
+        value = rule_number(keyed(held, "marketValue")) or last * quantity
         return StockPosition(
             symbol=symbol,
             quantity=quantity,
             avg_entry_price=paid,
             current_price=last,
             market_value=value,
-            unrealized_pnl=rule_number(held.get(POSITION_GAIN_FIELD)) or 0.0,
-            unrealized_pnl_pct=rule_number(held.get("totalGainPct")) or 0.0,
+            unrealized_pnl=rule_number(keyed(held, POSITION_GAIN_FIELD)) or 0.0,
+            unrealized_pnl_pct=rule_number(keyed(held, "totalGainPct")) or 0.0,
             side=PositionSide.LONG if quantity > 0 else PositionSide.SHORT,
         )
 
@@ -1584,16 +1587,15 @@ class EtradeConnector(BrokerBase):
         The reply carries ``OrderIds`` and ``placedTime`` and repeats none of the
         leg, so the size and the type come from ``body``.
         """
-        held = answered.get("PlaceOrderResponse") if isinstance(answered, dict) else {}
-        row: dict = held if isinstance(held, dict) else {}
-        ids = reply_rows(row, "OrderIds")
-        order_id = str(ids[0].get("orderId") or "") if ids else ""
+        row = keyed(answered, "PlaceOrderResponse")
+        ids = reply_rows(row, "orderIds")
+        order_id = str(keyed(ids[0], "orderId") or "") if ids else ""
         sent = dict(body.get(PREVIEW_REQUEST_KEY) or {})
         orders = sent.get("Order") or [{}]
         order: dict = orders[0] if isinstance(orders[0], dict) else {}
         legs = order.get("Instrument") or [{}]
         leg: dict = legs[0] if isinstance(legs[0], dict) else {}
-        placed = rule_number(row.get("placedTime"))
+        placed = rule_number(keyed(row, "placedTime"))
         return StockOrder(
             order_id=order_id or str(sent.get("clientOrderId") or ""),
             symbol=symbol.upper(),
@@ -1622,31 +1624,30 @@ class EtradeConnector(BrokerBase):
         the shape ``ORDERS_ROUTE`` publishes for every order read.
         """
         held = answered if isinstance(answered, dict) else {}
-        details = reply_rows(held, "OrderDetail")
+        details = reply_rows(held, "orderDetail")
         detail: dict = details[0] if details else {}
-        legs = reply_rows(detail, "Instrument")
+        legs = reply_rows(detail, "instrument")
         leg: dict = legs[0] if legs else {}
-        product = leg.get("Product")
-        nested: dict = product if isinstance(product, dict) else {}
+        nested = keyed(leg, "Product")
         return StockOrder(
-            order_id=str(held.get("orderId") or order_id),
-            symbol=str(nested.get("symbol") or "").upper(),
+            order_id=str(keyed(held, "orderId") or order_id),
+            symbol=str(keyed(nested, "symbol") or "").upper(),
             side=(
                 OrderSide.SELL
-                if str(leg.get("orderAction") or "") == VENUE_SIDES[OrderSide.SELL]
+                if str(keyed(leg, "orderAction") or "") == VENUE_SIDES[OrderSide.SELL]
                 else OrderSide.BUY
             ),
             order_type=(
                 OrderType.LIMIT
-                if str(detail.get("priceType") or "") == PRICE_TYPE_LIMIT
+                if str(keyed(detail, "priceType") or "") == PRICE_TYPE_LIMIT
                 else OrderType.MARKET
             ),
-            quantity=rule_number(leg.get("orderedQuantity")) or 0.0,
-            limit_price=rule_number(detail.get("limitPrice")) or 0.0,
-            stop_price=rule_number(detail.get("stopPrice")) or 0.0,
-            status=str(detail.get("status") or "").lower() or "new",
-            filled_qty=rule_number(leg.get("filledQuantity")) or 0.0,
-            avg_fill_price=rule_number(leg.get("averageExecutionPrice")) or 0.0,
+            quantity=rule_number(keyed(leg, "orderedQuantity")) or 0.0,
+            limit_price=rule_number(keyed(detail, "limitPrice")) or 0.0,
+            stop_price=rule_number(keyed(detail, "stopPrice")) or 0.0,
+            status=str(keyed(detail, "status") or "").lower() or "new",
+            filled_qty=rule_number(keyed(leg, "filledQuantity")) or 0.0,
+            avg_fill_price=rule_number(keyed(leg, "averageExecutionPrice")) or 0.0,
         )
 
     async def _oauth(
@@ -1789,6 +1790,7 @@ __all__ = [
     "fill_record",
     "fractional_refusal",
     "is_fill",
+    "keyed",
     "minimum_cost",
     "more_transactions",
     "next_marker",
