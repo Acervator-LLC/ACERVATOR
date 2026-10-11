@@ -7064,6 +7064,42 @@ activity, `FEE` "Fee denominated in USD" and `CFEE` "Crypto fee", and
 of trade you might not get results." No fee reaches a fill, so `Trade.fee` is
 0.0 however the ledger is paged.
 
+
+### The page cap, and the false "complete" it would have produced
+
+Alpaca caps one activity page at 100 records and `src/exchange/fill_history.py,
+in FILL_PAGE_LIMIT` asks for 500. `src/exchange/fill_history.py, in
+FillHistory.refresh` reads a page shorter than what it asked for as the end of
+the ledger and sets `complete` True. A single-page read of a 250-fill ledger
+would therefore have answered 100 records and been recorded as the whole
+history — a false completeness on the figures a broker bot reports.
+
+`src/stocks/alpaca_connector.py, in AlpacaConnector.list_fills` walks the
+venue's own `page_token` instead, until the caller's record count is held, until
+a page comes back short, or until `FILL_PAGES_MAX` pages. Driven over a served
+ledger with no request sent:
+
+```
+ledger size   records answered   pages walked   FillHistory complete
+          3                 3              1    True
+        100               100              2    True
+        250               250              3    True
+        600               500              5    False
+       5000               500              5    False
+```
+
+The 250 row is the repair: 250 of 250 and `complete` True, where one page
+answered 100 of 250 and `complete` True. The 600 and 5000 rows are the honest
+refusal: the caller asked for 500, got 500, and `complete` reads False because
+the ledger is longer.
+
+The route takes no symbol of its own, so one market's fills are found by reading
+the whole account's activity. Two controls on that: a 300-fill ledger holding
+only another market answers **0** records over 4 pages and still terminates, and
+an empty ledger answers **0** over 1 page. A walk that stops on
+`FILL_PAGES_MAX` logs the truncation by name rather than returning quietly.
+`fill_page_size(500, ceiling=None)` answers 500 and `fill_page_size(500)`
+answers 100, so the page cap and the record count are two separate numbers.
 ### Who may hold an account
 
 Alpaca is the first venue on this page whose own pages **require** a US person

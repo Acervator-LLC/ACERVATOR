@@ -107,6 +107,11 @@ FILL_ACTIVITY_TYPE = "FILL"
 #: its own reference gives as a maximum of 100 and a default of 100.
 FILL_PAGE_SIZE_MAX = 100
 
+#: Pages ``list_fills`` walks before it stops and logs a truncation. The route
+#: takes no symbol, so one market's fills are found by reading the whole
+#: account's activity, and this bounds that walk at 2000 records.
+FILL_PAGES_MAX = 20
+
 
 def rule_number(value: Any) -> Optional[float]:
     """``value`` as a positive finite float where the asset record published a
@@ -208,19 +213,19 @@ def activity_moment(moment_ms: Any) -> str:
     )
 
 
-def fill_page_size(limit: Any) -> int:
-    """``limit`` clamped into the page size Alpaca's activity route accepts.
+def fill_page_size(limit: Any, ceiling: Optional[int] = FILL_PAGE_SIZE_MAX) -> int:
+    """``limit`` clamped to at least 1 and to ``ceiling`` where one is named,
+    with ``FILL_PAGE_SIZE_MAX`` answering a ``limit`` that is no number.
 
-    Its own reference gives a minimum of 1 and a maximum of
-    ``FILL_PAGE_SIZE_MAX``, so a caller asking for more is served the maximum
-    and a caller naming none takes it too.
+    ``list_fills`` passes a ``ceiling`` of None, so the answer is the record
+    count a caller asked for across pages.
     """
     if type(limit) not in (int, float):
-        return FILL_PAGE_SIZE_MAX
+        return FILL_PAGE_SIZE_MAX if ceiling is None else ceiling
     held = int(limit)
     if held < 1:
         return 1
-    return min(held, FILL_PAGE_SIZE_MAX)
+    return held if ceiling is None else min(held, ceiling)
 
 
 def asset_rules(asset: Any) -> MarketRules:
@@ -496,29 +501,52 @@ class AlpacaConnector(BrokerBase):
         until_ms: Optional[float] = None,
         limit: Optional[int] = None,
     ) -> list[dict]:
-        """Every ``FILL`` activity Alpaca publishes, narrowed to ``symbol`` and
-        to the moments ``since_ms`` and ``until_ms`` bound.
+        """Every ``FILL`` activity Alpaca publishes for ``symbol``, newest first,
+        within the moments ``since_ms`` and ``until_ms`` bound and up to
+        ``limit`` records.
 
-        ``GET /v2/account/activities/FILL`` answers newest first and caps a page
-        at ``FILL_PAGE_SIZE_MAX``, so ``limit`` narrows the page and the caller
-        pages with ``until_ms``; a record naming another market is dropped here
-        because the route takes no symbol of its own.
+        ``GET /v2/account/activities/FILL`` caps a page at
+        ``FILL_PAGE_SIZE_MAX`` and takes no symbol, so this walks ``page_token``
+        over the whole account's fills until ``limit`` of them name ``symbol``,
+        until a page comes back short, or until ``FILL_PAGES_MAX`` pages have
+        been read. A caller reads a short answer as the end of the ledger, so a
+        walk that stops on the page ceiling is logged as a truncation.
         """
-        query = [f"page_size={fill_page_size(limit)}"]
+        query = [f"page_size={FILL_PAGE_SIZE_MAX}"]
         after = activity_moment(since_ms)
         if after:
             query.append(f"after={after}")
         until = activity_moment(until_ms)
         if until:
             query.append(f"until={until}")
-        path = f"/v2/account/activities/{FILL_ACTIVITY_TYPE}?" + "&".join(query)
-        answered = await self._request("GET", path)
-        rows: list[Any] = answered if isinstance(answered, list) else []
-        held = [row for row in rows if isinstance(row, dict)]
+        base = f"/v2/account/activities/{FILL_ACTIVITY_TYPE}?" + "&".join(query)
+        wanted = fill_page_size(limit, ceiling=None)
         name = str(symbol or "")
-        if not name:
-            return held
-        return [row for row in held if str(row.get("symbol") or "") == name]
+        found: list[dict] = []
+        next_page = ""
+        pages = 0
+        while pages < FILL_PAGES_MAX:
+            path = base + (f"&page_token={next_page}" if next_page else "")
+            answered = await self._request("GET", path)
+            rows: list[Any] = answered if isinstance(answered, list) else []
+            page = [row for row in rows if isinstance(row, dict)]
+            pages += 1
+            found.extend(
+                row for row in page if not name or str(row.get("symbol") or "") == name
+            )
+            if len(page) < FILL_PAGE_SIZE_MAX or len(found) >= wanted:
+                return found[:wanted]
+            next_page = str(page[-1].get("id") or "")
+            if not next_page:
+                return found[:wanted]
+        logger.warning(
+            "Alpaca fills for %s stopped at %d pages with %d record(s); the "
+            "ledger is longer than this walk read",
+            name or "every market",
+            pages,
+            len(found),
+        )
+        return found[:wanted]
 
     def market_rules(self, asset: Any) -> MarketRules:
         """The ``MarketRules`` one of this broker's own asset records publishes,
@@ -626,6 +654,7 @@ __all__ = [
     "CRYPTO_TIMES_IN_FORCE",
     "DATA_BASE",
     "FILL_ACTIVITY_TYPE",
+    "FILL_PAGES_MAX",
     "FILL_PAGE_SIZE_MAX",
     "LIVE_BASE",
     "PAPER_BASE",
