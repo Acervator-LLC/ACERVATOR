@@ -349,8 +349,81 @@ EXTRA_VENUE_CLASSES = {
     # "are available exclusively to residents of all 50 United States except New
     # York and Louisiana", with U.S. territories excluded as well.
     "schwab": ("crypto", "commodities", "forex", "indices", "futures_perps"),
-    "tastytrade": ("crypto", "commodities", "indices", "futures_perps"),
-    "webull": ("crypto", "commodities", "indices", "futures_perps"),
+    # tastytrade's own Available Futures Products page names nine futures
+    # families and 68 product codes, and every one of the 68 answers live on its
+    # own credential-free /symbols/search/ route as instrument-type "Future",
+    # where two invented codes answer nothing. Per sector the 68 are commodities
+    # 27 under Energy, Metals, Agriculture and Livestock, indices 14 under Equity
+    # Index and Volatility, forex 11 under Foreign Currency, crypto 5 under
+    # Cryptocurrency, and 11 under Interest Rate, a family naming no sector this
+    # screen draws, which leaves each of those 11 recording under futures_perps
+    # alone. 27 + 14 + 11 + 5 + 11 = 68. Crypto also holds 26 spot coins its own
+    # Available Cryptocurrencies page names, all 26 live. "stocks" arrives from
+    # EQUITY_VENUES, so this entry carries the other five.
+    # forex is added here, and it is the sector the screen was missing: beside
+    # the 11 Foreign Currency contracts the venue's own data names a
+    # "Currency Pair" instrument type, and SGD/JPY, EUR/USD, USD/JPY, GBP/USD,
+    # USD/NOK and EUR/GBP all read it. Spot forex is a different firm and takes
+    # no order here -- "Forex trading offered by tastyfx LLC... tastytrade and
+    # tastyfx are separate legal entities" -- and "Currency Pair" sits in the
+    # 14-word condition enum and in none of the 8 words the order route's own leg
+    # enum holds, while 0 of its 84 published paths names a currency pair. The
+    # sector's order is the currency future.
+    # Indices reaches an order the same way: "Index" is in the condition enum and
+    # not the leg enum, 0 of the 84 paths names an index, and its own
+    # Instruments & Symbology page lists five tradeable kinds -- "an equity,
+    # equity option, future, future option, or cryptocurrency" -- with neither
+    # among them. SPX, VIX, NDX, RUT, XSP and DJX all answer instrument-type
+    # "Index", and GLD answers "Equity" with etf true, so a fund share is an
+    # order leg and an index is not.
+    # No eligibility rule names a state. Quoted whole from its own International
+    # Accounts page: "International customers are welcome to open individual
+    # margin, individual cash, and joint accounts with tastytrade." Two
+    # permissions are per product: futures needs "The Works", and
+    # "Cryptocurrency trading is currently available exclusively for individual
+    # accounts".
+    "tastytrade": ("crypto", "commodities", "forex", "indices", "futures_perps"),
+    # Webull's own futures page names the ten product groups it sells: "Nano
+    # Futures Micro Futures Equity Index Futures FX Futures Metals Futures
+    # Energy Futures Interest Rates Futures Agricultural Futures CME Crypto
+    # Futures CDE Crypto Futures", and its own Trading API page names seven
+    # asset classes: "indices, interest rates, currencies, agriculture, metals,
+    # energies, and crypto". "stocks" arrives from EQUITY_VENUES, so this entry
+    # carries the other five.
+    # forex is added here, and it is the sector the screen was missing: five of
+    # the 22 contracts the venue's own futures table serves are currency
+    # futures, each with its multiplier and tick size -- M6E Micro EUR/USD
+    # 12500 at 0.0001, M6A Micro AUD/USD 10000 at 0.0001, MCD Micro CAD/USD
+    # 10000 at 0.0001, M6B Micro GBP/USD 6250 at 0.0001 and MSF Micro CHF/USD
+    # 12500 at 0.0001. Unlike tastytrade, the firm behind them is the one that
+    # clears every other contract: "Futures and cleared swaps trading is
+    # offered by Webull Futures LLC, a CFTC registered Futures Commission
+    # Merchant". There is no spot forex: 0 of the 223 entries its own
+    # documentation index lists names forex, FX or a currency pair, where 9
+    # name futures.
+    # Indices, commodities and crypto reach an order the same way, through the
+    # futures route: 4 of the 22 are equity index contracts, 5 are metals and
+    # energy, and 4 are crypto. The index itself and the index option take no
+    # order here -- "OPTION" is one of the two words of the venue's own
+    # instrument-type enum that names no sector this platform draws, and
+    # webull_connector.order_body refuses a leg naming either.
+    # A fund share records under stocks and not under what it tracks: the
+    # venue's own stock profile carries "sub_category" with "ETF" among its six
+    # words and publishes no field naming an ETF's underlying, and an ETF order
+    # carries instrument_type "EQUITY".
+    # No eligibility rule names a refused state. Quoted whole from its own
+    # Crypto Trading page: "Webull now offers live cryptocurrency trading
+    # through Webull Pay LLC. U.S. customers can buy, sell, and hold a wide
+    # range of digital assets." Three jurisdictions are named and none is
+    # closed: "For residents in New York, Guam and Northern Mariana Islands
+    # only: Webull Pay LLC has collaborated with Bakkt Crypto Solutions, LLC
+    # ("Bakkt") to provide you convenient access to cryptocurrency trading."
+    # What changes there is the provider and a $1.00 minimum order in place of
+    # $2.00, not the door.
+    # Two permissions are per product: crypto needs "A crypto account opened
+    # through the Webull App", and futures needs "A futures-enabled account
+    # (open via the Webull App if not already enabled)".
+    "webull": ("crypto", "commodities", "forex", "indices", "futures_perps"),
     # One equity route, four sectors: each of these trades as a fund share, and
     # robinhood_broker.SECTORS_SERVED names the same four. "stocks" arrives from
     # EQUITY_VENUES and "crypto" from CRYPTO_CONNECTORS, so this one id reads

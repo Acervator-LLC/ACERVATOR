@@ -169,6 +169,55 @@ CITED_UNIT_RULES: dict[tuple[str, str], str] = {
     (CLASS_FOREX, "ibkr"): FRACTIONAL_UNITS,
     (CLASS_INDICES, "ibkr"): WHOLE_UNITS,
     (CLASS_FUTURES_PERPS, "ibkr"): WHOLE_UNITS,
+    # tastytrade holds a row in all six sectors, and the row is a fallback here
+    # in a way no broker before it was: this venue publishes the answer per
+    # market. ``Equity.is-fractional-quantity-eligible`` is "Whether the equity
+    # can be traded in fractional share quantities", and
+    # ``/instruments/quantity-decimal-precisions`` publishes the step itself --
+    # "The value defines how many decimal places a quantity may use; for example
+    # BTC/USD has a precision of 8... A value of 0 means the instrument must
+    # trade in whole numbers." So ``recorded_unit_rule`` reads the venue's own
+    # answer per symbol and this row fires only where the recording holds none.
+    # crypto is fractional at the eight decimals that route publishes, and its
+    # own pricing table charges "1% per total purchase to open" with BTC and ETH
+    # at 0.75%. stocks is whole as the fallback, because a share is a whole share
+    # unless the venue's own flag says otherwise and the flag is the exception;
+    # its own pricing table does name "Fractional Shares" as a product line at
+    # $0 to open and $0 to close, and its own stocks page reads "full or
+    # fractional shares, it's your choice". commodities, forex, indices and
+    # futures_perps are whole contracts: the sector's market is one of the 68
+    # dated contracts its own Available Futures Products page names, each
+    # carrying its own ``contract-size`` and ``notional-multiplier``.
+    (CLASS_CRYPTO, "tastytrade"): FRACTIONAL_UNITS,
+    (CLASS_STOCKS, "tastytrade"): WHOLE_UNITS,
+    (CLASS_COMMODITIES, "tastytrade"): WHOLE_UNITS,
+    (CLASS_FOREX, "tastytrade"): WHOLE_UNITS,
+    (CLASS_INDICES, "tastytrade"): WHOLE_UNITS,
+    (CLASS_FUTURES_PERPS, "tastytrade"): WHOLE_UNITS,
+    # webull holds a row in all six sectors, and stocks is whole for a reason no
+    # broker before it gave. Its own Stock Trading page caps the fraction at one
+    # share on both of the two entry shapes it publishes: "Only ``MARKET``
+    # orders are supported for fractional trading. The quantity must be between
+    # 0 (exclusive) and 1 (inclusive), and the order value must be at least $5",
+    # and its own ``total_cash_amount`` field reads "Amount must be less than
+    # the price of 1 share". So a scrum of 1.57 shares cannot be sent as 1.57,
+    # and the step an order takes is one share. Its own instrument profile does
+    # carry ``fractionable`` per equity, which ``recorded_unit_rule`` reads, and
+    # the flag names the sub-one-share entry this engine's arithmetic never
+    # produces.
+    # crypto is fractional: its own order schema reads "Crypto trading supports
+    # quantities with up to 8 decimal places" and its own Crypto Trading page
+    # names the floor, "Smallest tradable amount 0.00000001".
+    # commodities, forex, indices and futures_perps are whole contracts: each
+    # sector's market is one of the 22 contracts its own futures table serves,
+    # every one carrying its own multiplier, and the order route states the
+    # shape itself -- "For futures, only quantity orders are supported."
+    (CLASS_CRYPTO, "webull"): FRACTIONAL_UNITS,
+    (CLASS_STOCKS, "webull"): WHOLE_UNITS,
+    (CLASS_COMMODITIES, "webull"): WHOLE_UNITS,
+    (CLASS_FOREX, "webull"): WHOLE_UNITS,
+    (CLASS_INDICES, "webull"): WHOLE_UNITS,
+    (CLASS_FUTURES_PERPS, "webull"): WHOLE_UNITS,
     (CLASS_FOREX, "coinbase"): FRACTIONAL_UNITS,
     (CLASS_STOCKS, "coinbase"): WHOLE_UNITS,
     (CLASS_COMMODITIES, "coinbase"): WHOLE_UNITS,
@@ -301,6 +350,32 @@ CITED_UNIT_RULES: dict[tuple[str, str], str] = {
 #: joined by a dot, so ``ibkr_connector.currency_pair_symbol`` separates the
 #: krone from Nokia and leaves a bare code as the equity; ``AMD`` and ``COP``
 #: name 0 of those 28 legs, so each keeps the equity its own ``STK`` word gives.
+#:
+#: tastytrade holds no row. Its own Available Cryptocurrencies page names 26
+#: coins and ``PAXG`` and ``XAUT`` name 0 of them, so no gold token records under
+#: crypto there, and the four codes ``USDC``, ``USDT``, ``PYUSD`` and ``RLUSD``
+#: are "stablecoin tokens" it accepts for funding and not markets -- each answers
+#: no record on its own ``/symbols/search/`` route, where all 26 coins do.
+#: ``NOK``, ``SGD``, ``AMD`` and ``COP`` need no row either: the venue writes a
+#: currency market as two codes joined by a slash, so
+#: ``tastytrade_connector.currency_pair_symbol`` separates the krone from Nokia
+#: and a bare code stays the equity its own ``Equity`` word gives.
+#:
+#: webull holds no row, and one half of that is established and the other is
+#: counted. The established half is the collision: every instrument record and
+#: every order carries an ``instrument_type``, so a bare code is read by its own
+#: product and not by its spelling, and a currency market is a dated contract
+#: whose symbol is the product code plus a month letter and a year digit --
+#: ``MCD`` is McDonald's as an equity symbol and Micro CAD/USD only as a futures
+#: ``code``, and ``MET``, ``SIL`` and ``MES`` read the same way. All 22 product
+#: codes its own futures table serves are three characters and 0 of them is the
+#: symbol an order carries.
+#: The counted half is the coin set: its own credential-free pages name 3 coins
+#: of the "70+ crypto assets" they claim -- "including Bitcoin (BTC), Ethereum
+#: (ETH), Solana (SOL), and more" -- and the full list sits behind
+#: ``/trading/instruments/crypto/profiles/list``, which takes a credential. None
+#: of the 3 needs a finer sector, and a row for a code no page names would be a
+#: belief and not a reading.
 CITED_VENUE_BASE_SECTORS: dict[tuple[str, str], str] = {
     ("bitfinex", "UKOIL"): CLASS_COMMODITIES,
     ("bitfinex", "AUSTRALIA200IX"): CLASS_INDICES,
@@ -411,6 +486,23 @@ def venue_base_sector(venue: Any, base: Any) -> Optional[str]:
 #: over all 3087 markets, it is the only such code: every other base code either
 #: host names a sector for either sits on one host alone or names the same asset
 #: on both, and no contract market takes its sector from the spot record.
+#:
+#: tastytrade holds no row. Its own ``instrument-type`` answers every market --
+#: ``Equity``, ``Future``, ``Cryptocurrency``, ``Index`` and ``Currency Pair``
+#: over 791 records on its own credential-free ``/symbols/search/`` route -- and
+#: its own symbology separates every colliding code: a bare code is an equity, a
+#: slashed pair is a currency pair or a crypto market, and a leading slash is a
+#: dated contract. So no tastytrade market needs the finer grain.
+#:
+#: webull holds no row. Its own ``product_class_name`` answers every contract's
+#: sector and its own ``instrument_type`` answers every other market's, so
+#: ``webull_connector.asset_sector`` reads one field per record and no symbol
+#: needs a finer grain. Four of the 22 contracts its own futures table serves
+#: name a class this platform draws no sector for -- 10Y, 30Y, 2YY and 5YY, the
+#: Micro Yield contracts of its own Interest Rates Futures group -- and all four
+#: take ``webull_connector.FUTURES_DEFAULT_SECTOR``, which is the contract form
+#: and a sector this platform does draw. That is the reading
+#: ``ibkr_connector.FUTURES_FAMILY_SECTORS`` already takes for the same family.
 CITED_VENUE_MARKET_SECTORS: dict[tuple[str, str], str] = {
     ("kucoin", "BNC/USDT"): CLASS_CRYPTO,
     ("kucoin", "USDC/EUR"): CLASS_FOREX,
@@ -601,6 +693,57 @@ CITED_VENUE_SESSIONS: dict[tuple[str, str], str] = {
     (CLASS_INDICES, "alpaca"): SESSION_US_EQUITY,
     (CLASS_STOCKS, "schwab"): SESSION_US_EQUITY,
     (CLASS_STOCKS, "ibkr"): SESSION_US_EQUITY,
+    # tastytrade holds two rows, and both are the venue's own published hours.
+    # Its own /market-time/equities/sessions/current route answers without a
+    # credential and gives the equity collection a start-at at 12:15 UTC, an
+    # open-at at 13:30, a close-at at 20:00 and a close-at-ext at 00:00, which is
+    # 08:15, 09:30, 16:00 and 20:00 Eastern -- a US equity session with a
+    # pre-market and an after-hours window. Its crypto page states the other:
+    # "Since cryptocurrencies trade 24/7/365 and do not take a break like stock,
+    # options, and futures".
+    # The extended window is reached by a time in force and not by an order
+    # type. The order route's own tif enum holds "Ext", "Ext Overnight",
+    # "GTC Ext" and "GTC Ext Overnight" beside "Day" and "GTC", and
+    # ``broker_exchange.BROKER_ORDER_TYPES`` sends "Day" on a market order and
+    # "GTC" on a limit order, neither of which is an Ext word. So an order this
+    # platform composes works inside the regular session alone, which is what
+    # this row holds it to. Nothing on the venue's own pages restricts an order
+    # type outside hours; its /learn/ extended-hours page says "Most brokerage
+    # firms accept only limit orders during extended hours", a statement about
+    # firms and not about tastytrade, so that restriction is not established and
+    # is not claimed here.
+    # The four futures sectors hold no row. Its own futures sessions open at
+    # 22:00 UTC and close at 21:00, which is neither word
+    # ``SESSIONS_DECLARED`` holds, and citing either would claim hours the venue
+    # does not publish.
+    (CLASS_STOCKS, "tastytrade"): SESSION_US_EQUITY,
+    (CLASS_CRYPTO, "tastytrade"): SESSION_CONTINUOUS,
+    # webull holds six rows and every one is the venue's own published hours.
+    # An equity order carries a required ``support_trading_session`` whose own
+    # enum holds three words -- "NIGHT: Only supports night trading. ALL:
+    # Include extended trading hours. CORE: Only support regular trading hours"
+    # -- and ``CORE`` is "Regular market hours only (9:30 AM - 4:00 PM ET)",
+    # which is what ``SESSION_US_EQUITY`` names.
+    # The night session is the one that changes the size rather than the type.
+    # Quoted whole from the venue's own Overnight Trading page: "You can now
+    # trade Select Stocks (whole shares only) and ETFs anytime with Overnight
+    # Trading." Its own instrument profile carries
+    # ``overnight_trading_supported`` per symbol, so the session reaches only
+    # the stocks it marks, and ``session_unit_rule`` already answers whole
+    # shares outside regular hours for every US equity session.
+    # crypto is continuous: "Crypto trading is available 24 hours a day, 7 days
+    # a week." The four futures sectors are continuous too, and here the venue
+    # states it in words that fit: "Futures markets are open virtually 24 hours
+    # a day, 6 days a week", and its own served table reads 18:00 to 17:00 ET on
+    # all 22 contracts. One stop interrupts crypto and it is a maintenance
+    # window and not a session: "A daily maintenance window occurs from 4:55 PM
+    # to 5:10 PM ET".
+    (CLASS_STOCKS, "webull"): SESSION_US_EQUITY,
+    (CLASS_CRYPTO, "webull"): SESSION_CONTINUOUS,
+    (CLASS_COMMODITIES, "webull"): SESSION_CONTINUOUS,
+    (CLASS_FOREX, "webull"): SESSION_CONTINUOUS,
+    (CLASS_INDICES, "webull"): SESSION_CONTINUOUS,
+    (CLASS_FUTURES_PERPS, "webull"): SESSION_CONTINUOUS,
 }
 
 #: The reason a held order carries, never one of ``sized_order``'s refusals.
@@ -766,6 +909,48 @@ CITED_VENUE_ORDER_TYPES: dict[tuple[str, str], str] = {
     (CLASS_FOREX, "ibkr"): ORDER_TYPES_WITH_MARKET,
     (CLASS_INDICES, "ibkr"): ORDER_TYPES_WITH_MARKET,
     (CLASS_FUTURES_PERPS, "ibkr"): ORDER_TYPES_WITH_MARKET,
+    # tastytrade holds a row in all six sectors and every one takes a market
+    # order. Its order route's own ``order-type`` enum holds six words --
+    # "Limit", "Market", "Marketable Limit", "Notional Market", "Stop" and
+    # "Stop Limit" -- at nine sites in its own document, and it is one enum for
+    # every instrument type, with no per-type or per-sector list narrowing it.
+    # That is the difference from ibkr, whose Market Order and Limit Order pages
+    # publish two different product lists, and from gemini, whose own page
+    # declines a market order outright.
+    # The restriction this venue does publish is per instrument type and not per
+    # order type: its ``legs[].instrument-type`` enum holds eight words where its
+    # condition enum holds fourteen, so an "Index" or a "Currency Pair" market
+    # takes no order of any type. ``tastytrade_connector.asset_order_types``
+    # answers None for such a market and ``order_body`` raises on it, so this
+    # row cannot claim a market order for a market that takes none.
+    (CLASS_CRYPTO, "tastytrade"): ORDER_TYPES_WITH_MARKET,
+    (CLASS_STOCKS, "tastytrade"): ORDER_TYPES_WITH_MARKET,
+    (CLASS_COMMODITIES, "tastytrade"): ORDER_TYPES_WITH_MARKET,
+    (CLASS_FOREX, "tastytrade"): ORDER_TYPES_WITH_MARKET,
+    (CLASS_INDICES, "tastytrade"): ORDER_TYPES_WITH_MARKET,
+    (CLASS_FUTURES_PERPS, "tastytrade"): ORDER_TYPES_WITH_MARKET,
+    # webull holds a row in all six sectors and every one takes a market order.
+    # Its own Trading API FAQ answers it per asset class in one table: "Stocks |
+    # MARKET, LIMIT, STOP_LOSS, STOP_LOSS_LIMIT, TRAILING_STOP_LOSS", "Futures |
+    # MARKET, LIMIT, STOP_LOSS, STOP_LOSS_LIMIT, TRAILING_STOP_LOSS", "Crypto |
+    # MARKET, LIMIT, STOP_LOSS_LIMIT". Crypto takes the shortest list of the
+    # three and a market order is still on it, which is why no sector reads
+    # ``ORDER_TYPES_LIMIT_ONLY``.
+    # The crypto market order carries one condition and it is a time in force
+    # and not a type: "When the order type is MARKET: time_in_force only
+    # supports IOC", which ``webull_connector.published_time_in_force`` writes.
+    # Three further types -- MARKET_ON_OPEN, MARKET_ON_CLOSE and LIMIT_ON_OPEN
+    # -- are named and not cited: "The following order types are supported only
+    # for institutional stock orders."
+    # ``session_order_types`` still narrows a US equity order outside regular
+    # hours, which is the one restriction the venue's own extended-hours example
+    # shows, and it reads the recorded session rather than this row.
+    (CLASS_CRYPTO, "webull"): ORDER_TYPES_WITH_MARKET,
+    (CLASS_STOCKS, "webull"): ORDER_TYPES_WITH_MARKET,
+    (CLASS_COMMODITIES, "webull"): ORDER_TYPES_WITH_MARKET,
+    (CLASS_FOREX, "webull"): ORDER_TYPES_WITH_MARKET,
+    (CLASS_INDICES, "webull"): ORDER_TYPES_WITH_MARKET,
+    (CLASS_FUTURES_PERPS, "webull"): ORDER_TYPES_WITH_MARKET,
 }
 
 
@@ -882,6 +1067,24 @@ SETTLE_LEG = ":"
 # market grain instead, by the ``ORDER_TYPES_LIMIT_ONLY`` row above and by
 # ``ibkr_connector.asset_order_types``, so a crypto buy is raised to a limit
 # order naming a unit count and never sent as a market order the venue refuses.
+# ``tastytrade`` is not a member, and this one publishes a cash amount as an
+# order type of its own rather than as a rule. Its order route's own
+# ``order-type`` enum holds "Notional Market" beside "Market", with ``value``
+# and ``value-effect`` carrying the amount, and its ``legs[].quantity`` is
+# "Required for all orders but notional market". So the cash amount is the
+# alternative and the unit count is the default on every one of the six types,
+# and a row here would make this program send a cash amount where it sizes a
+# count.
+# ``webull`` is not a member, and this one caps the cash amount below one share.
+# Its own order schema names the two entry shapes -- "QTY: Order specified by
+# quantity of shares or units" and "AMOUNT: Order specified by total cash amount.
+# Supported for U.S. stock trading and Event Contract trading" -- and its own
+# ``total_cash_amount`` field closes the second one: "Amount must be less than
+# the price of 1 share." Its own Stock Trading page says the same of the
+# entrust type, "AMOUNT (by cash amount, for buying less than 1 share)". So the
+# cash amount buys a fraction and never a position, a row here would claim a
+# cash market buy this engine's sizes cannot use, and
+# ``webull_connector.order_body`` writes ``ENTRUST_QTY`` on every order.
 CITED_CASH_MARKET_BUY: frozenset[str] = frozenset(
     {"binance", "bitget", "coinbase", "gateio", "mexc"}
 )
@@ -974,10 +1177,31 @@ def session_for(recorded: Any, asset_class: str, venue: str) -> Optional[str]:
 # typically in T+2 (trade date plus two days)." Its four other sectors hold no
 # row: no ibkr page read names a settlement day count for a futures contract, a
 # spot-gold trade or a crypto trade, and an absent row claims nothing.
+#
+# tastytrade publishes three figures for one sector and this row carries the
+# longest. Quoted whole from its own crypto page: "Trades closed before anytime
+# on Sunday and those closed before 12am CT Monday thru Wednesday will settle
+# T+2. Trades placed before 12am CT Thursday and Friday will settle T+4. Trades
+# closed on Saturday (at any time) will settle T+3." This table holds one float
+# per pair, and a shorter figure would let a Thursday sale fund a buy the venue
+# has not funded; the longest is never early on any day. Its five other sectors
+# hold no row: nothing on the 20 tastytrade.com pages read names a settlement day
+# count for an equity or a futures contract, and an absent row claims nothing.
+#
+# webull holds no row in any of its six sectors, and the absence is a count. Of
+# the 34 pages of its own documentation read, the words naming settlement number
+# four and all four are field names on one route -- ``settled_cash``,
+# ``unsettled_cash``, "Settled Cash" and "Unsettled Cash" on
+# ``/trading/assets/balances/get`` -- while an invented settlement phrase names
+# zero. A field is the figure and not the delay, so no day count is established
+# and an absent row claims nothing.
+# The venue publishing ``unsettled_cash`` itself is the better reading of row 9
+# than any cited delay, and nothing reads that field yet.
 CITED_VENUE_SETTLEMENT: dict[tuple[str, str], float] = {
     (CLASS_CRYPTO, "coinbase"): 0.0,
     (CLASS_STOCKS, "ibkr"): 1.0,
     (CLASS_FOREX, "ibkr"): 2.0,
+    (CLASS_CRYPTO, "tastytrade"): 4.0,
 }
 
 #: What a fold carries when ``unsettled_usd`` leaves it nothing to spend.
