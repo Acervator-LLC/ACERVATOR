@@ -874,6 +874,24 @@ def reply_rows(answered: Any, *keys: str) -> list:
     return held
 
 
+def placed_order_id(placed: Any) -> str:
+    """The venue's own order id one place reply names, and "" where it names
+    none.
+
+    ``PlaceOrderResponse`` publishes it twice: as a scalar ``orderId`` in its own
+    property table and as an ``OrderIds`` array of ``orderId`` in its own worked
+    example, so the scalar is read first and the array second.
+    """
+    held = keyed(placed, "orderId")
+    if held is not None and str(held):
+        return str(held)
+    for row in reply_rows(placed, "orderIds"):
+        nested = keyed(row, "orderId")
+        if nested is not None and str(nested):
+            return str(nested)
+    return ""
+
+
 def preview_ids(answered: Any) -> list[str]:
     """Every ``PREVIEW_ID_FIELD`` one preview reply carries, as text."""
     found: list[str] = []
@@ -1588,8 +1606,7 @@ class EtradeConnector(BrokerBase):
         leg, so the size and the type come from ``body``.
         """
         row = keyed(answered, "PlaceOrderResponse")
-        ids = reply_rows(row, "orderIds")
-        order_id = str(keyed(ids[0], "orderId") or "") if ids else ""
+        order_id = placed_order_id(row)
         sent = dict(body.get(PREVIEW_REQUEST_KEY) or {})
         orders = sent.get("Order") or [{}]
         order: dict = orders[0] if isinstance(orders[0], dict) else {}
@@ -1796,6 +1813,7 @@ __all__ = [
     "next_marker",
     "order_body",
     "place_body",
+    "placed_order_id",
     "preview_ids",
     "reply_rows",
     "request_signature",
