@@ -116,10 +116,10 @@ if _HAS_QT:
                 exchanges that belong to that wing:
                   * crypto: the CCXT-supported list (binance, coinbase,
                     kraken, etc.) — current behaviour
-                  * stock:  the planned equity-broker list (alpaca,
-                    ibkr, schwab, ...) with a "broker integration
-                    queued; not yet live" banner and the Add/Test
-                    buttons disabled
+                  * stock:  the broker list (alpaca, etrade, fidelity,
+                    ibkr, robinhood, schwab, tastytrade, webull) with
+                    its own banner, and every control settled per
+                    venue by `credential_form`
                 The "Configured Exchanges" list at the top of the tab
                 is also filtered to match — stock-wing operators no
                 longer see their crypto exchanges in the Stock
@@ -329,22 +329,6 @@ if _HAS_QT:
             self._api_feedback.setWordWrap(True)
             add_form.addRow(self._api_feedback)
 
-            if self._wing == "stocks":
-                _disabled_tip = sds.STOCK_DISABLED_TIP
-                # setEnabled and setToolTip refuse only a deleted C++ object,
-                # and _create_exchange_tab builds every widget named here.
-                for _w in (
-                    self._test_btn,
-                    self._add_btn,
-                    self._new_api_key,
-                    self._new_api_secret,
-                    self._new_passphrase,
-                    self._pp_check,
-                    self._new_verification_code,
-                ):
-                    _w.setEnabled(False)
-                    _w.setToolTip(_disabled_tip)
-
             layout.addWidget(add_group)
 
             rm_btn = QPushButton("Remove Selected")
@@ -534,10 +518,13 @@ if _HAS_QT:
             asks for.
 
             A browser-authorization venue hides the key, secret and passphrase
-            rows and keeps its own Add press enabled on the stock wing, and every
-            key-and-secret venue keeps all three rows and its own button words.
-            A venue granting its token only on a code the operator pastes back
-            also draws the verification-code row.
+            rows and keeps its own Add press, a key-and-secret venue keeps all
+            three rows, and a venue granting its token only on a code the
+            operator pastes back also draws the verification-code row.
+
+            The two presses read ``credential_form``: Test Connection takes a
+            press only where ``credential_route_held`` answers a route, and Add
+            takes one only where ``connector_held`` answers a connector.
             """
             form = sds.credential_form(eid, self._wing)
             typed = bool(form["key_rows"])
@@ -559,13 +546,8 @@ if _HAS_QT:
                 self._new_verification_code.clear()
             self._add_btn.setText(str(form["add_text"]))
             self._test_btn.setToolTip(str(form["test_tip"]))
-            if self._wing == "stocks":
-                # The wing disables both presses at build; a venue the program
-                # signs in at a browser earns back its own Add press alone.
-                self._add_btn.setEnabled(not typed)
-                self._test_btn.setEnabled(False)
-            else:
-                self._test_btn.setEnabled(typed)
+            self._add_btn.setEnabled(bool(form["add_enabled"]))
+            self._test_btn.setEnabled(bool(form["test_enabled"]))
 
         def _sync_passphrase_row(self) -> None:
             """Draw ``_new_passphrase`` while ``_pp_check`` is ticked.
@@ -641,9 +623,8 @@ if _HAS_QT:
                 self._last_validation = None
                 return None
             finally:
-                self._test_btn.setEnabled(True)
-                self._add_btn.setEnabled(True)
                 self._refresh_exchange_status()
+                self._sync_credential_kind(self._bound_venue())
 
         def _set_feedback(self, message: str, level: str = "info") -> None:
             colors = {
@@ -669,6 +650,9 @@ if _HAS_QT:
                 if sds.takes_browser_authorization(eid, self._wing):
                     self._connect_browser_venue(eid)
                     return
+                if not sds.connector_held(eid):
+                    self._set_feedback(sds.venue_form_bound(eid), "error")
+                    return
                 key = self._new_api_key.text().strip()
                 secret = self._typed_secret()
                 pp = (
@@ -685,7 +669,7 @@ if _HAS_QT:
                         return
                     if not self._connect_verification_code_venue(eid, key, secret):
                         return
-                elif key and secret:
+                elif key and secret and sds.credential_route_held(eid):
                     result = self._test_api_connection()
                     if result is None or not result.success:
                         return
@@ -729,8 +713,6 @@ if _HAS_QT:
                 )
                 self.accept()
             finally:
-                self._add_btn.setEnabled(True)
-                self._test_btn.setEnabled(True)
                 self._sync_credential_kind(self._bound_venue())
 
         def _connect_verification_code_venue(
