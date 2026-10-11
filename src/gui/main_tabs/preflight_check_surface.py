@@ -25,7 +25,12 @@ import logging
 import time
 from typing import Any, Optional
 
-from ...exchange.ccxt_connector import CCXT_DECIMAL_PLACES, precision_to_decimals
+from ...exchange.ccxt_connector import (
+    CCXT_DECIMAL_PLACES,
+    LISTED_MARKET_KEY,
+    is_listed_market,
+    precision_to_decimals,
+)
 
 logger = logging.getLogger("acervator.preflight")
 
@@ -79,7 +84,6 @@ MIN_COST_HEADROOM = 3
 PRECISION_FALLBACK_DECIMALS = 0
 MISSING_LIMIT = 0.0
 MISSING_LAST_PRICE = 0.0
-MARKET_ACTIVE_DEFAULT = True
 
 SEPARATOR_SLASH = "/"
 SEPARATOR_DASH = "-"
@@ -613,8 +617,8 @@ class PreflightModel:
         if symbol not in markets:
             return self._unlisted(start, exchange_id, symbol, markets)
         market = markets[symbol]
-        active_reported = "active" in market
-        active = bool(market.get("active", MARKET_ACTIVE_DEFAULT))
+        active_reported = market.get(LISTED_MARKET_KEY) is not None
+        active = is_listed_market(market)
         limits = market.get("limits", {}) or {}
         amount_limits = limits.get("amount", {}) or {}
         cost_limits = limits.get("cost", {}) or {}

@@ -212,6 +212,7 @@ if _HAS_QT:
                     CCXTConnector,
                     EXCHANGE_OPTIONS,
                     DISABLE_FETCH_CURRENCIES,
+                    is_listed_market,
                 )
 
                 conn = CCXTConnector(exchange_id)
@@ -226,10 +227,7 @@ if _HAS_QT:
                 exch.load_markets()
                 markets = []
                 for sym, info in exch.markets.items():
-                    if (
-                        not info.get("active", True)
-                        or info.get("type", "spot") != "spot"
-                    ):
+                    if not is_listed_market(info) or info.get("type", "spot") != "spot":
                         continue
                     b, q = info.get("base", ""), info.get("quote", "")
                     if b and q:
@@ -565,6 +563,7 @@ if _HAS_QT:
                     CCXTConnector,
                     EXCHANGE_OPTIONS,
                     DISABLE_FETCH_CURRENCIES,
+                    is_listed_market,
                 )
 
                 conn = CCXTConnector(exchange_id)
@@ -579,7 +578,7 @@ if _HAS_QT:
                 exch.load_markets()
                 markets = []
                 for sym, info in exch.markets.items():
-                    if not info.get("active", True):
+                    if not is_listed_market(info):
                         continue
                     if info.get("type", "spot") != "spot":
                         continue

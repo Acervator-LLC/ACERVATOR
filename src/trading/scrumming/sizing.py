@@ -116,7 +116,8 @@ CITED_UNIT_RULES: dict[tuple[str, str], str] = {
 #: recording and ahead of its own code-set reading, so it governs a venue that
 #: publishes no asset-category field on any credential-free endpoint.
 #:
-#: Every row is bitfinex, whose configuration reference documents fifteen keys
+#: Two venues hold rows. The first is bitfinex, whose configuration reference
+#: documents fifteen keys
 #: and no category among them. The venue names each product in its own
 #: announcement feed at ``api.bitfinex.com/v2/posts/hist`` instead, and its
 #: Derivatives page lists the families as "crypto, commodities, FX, equities and
@@ -139,6 +140,18 @@ CITED_UNIT_RULES: dict[tuple[str, str], str] = {
 #: and sterling markets need none because ``FIAT_CURRENCY_CODES`` already
 #: answers forex, which the venue's own labels "Euro" and "Pound Sterling"
 #: confirm.
+#:
+#: The second venue is gemini, whose own ``/v1/symbols/details/all`` serves
+#: eleven keys per row and no asset category among them: ``product_type`` takes
+#: ``spot`` and ``swap`` and ``contract_type`` takes ``vanilla`` and ``linear``,
+#: both naming the product form ``is_contract_market`` already reads. Its three
+#: rows undo the same collision, and gemini's own ``/v1/pricefeed`` settles each
+#: one: ``USD1USD`` 0.99935, ``USDCUSD`` 0.99983 and ``USDTUSD`` 0.999 are
+#: dollar tokens quoted against the dollar, while ``AUDUSD`` 0.70147668 and
+#: ``EURUSD`` 1.15087 are the cross rates ``FIAT_CURRENCY_CODES`` already
+#: answers forex for. Pax Gold and Tether Gold need no row because
+#: ``TOKEN_UNDERLYING_CODES`` redeems both onto ``XAU``, which the same feed
+#: prices at 4201.22 and 4175.2197 a unit.
 CITED_VENUE_BASE_SECTORS: dict[tuple[str, str], str] = {
     ("bitfinex", "UKOIL"): CLASS_COMMODITIES,
     ("bitfinex", "AUSTRALIA200IX"): CLASS_INDICES,
@@ -154,6 +167,9 @@ CITED_VENUE_BASE_SECTORS: dict[tuple[str, str], str] = {
     ("bitfinex", "MNT"): CLASS_CRYPTO,
     ("bitfinex", "USDC"): CLASS_CRYPTO,
     ("bitfinex", "USDT"): CLASS_CRYPTO,
+    ("gemini", "USD1"): CLASS_CRYPTO,
+    ("gemini", "USDC"): CLASS_CRYPTO,
+    ("gemini", "USDT"): CLASS_CRYPTO,
 }
 
 
@@ -309,9 +325,21 @@ ORDER_TYPES_DECLARED = (ORDER_TYPES_WITH_MARKET, ORDER_TYPES_LIMIT_ONLY)
 #: The order types each ``(asset class, venue)`` declares, keyed as
 #: ``CITED_UNIT_RULES`` is keyed. A pair absent here declares nothing, which
 #: ``venue_variant`` never reads as declining a type.
+#
+# Gemini holds a row in every sector it serves. Its own Create New Order page
+# states "The API doesn't directly support market orders because they provide
+# you with no price protection" and names the substitute, "use the
+# 'immediate-or-cancel' order execution option, coupled with an aggressive limit
+# price", which is what ``OrderType.IOC_LIMIT`` sends. One endpoint,
+# ``POST /v1/order/new``, serves every sector and composes ``exchange limit`` on
+# a spot pair and on a perpetual alike, so the declaration is the venue's and
+# not the sector's.
 CITED_VENUE_ORDER_TYPES: dict[tuple[str, str], str] = {
     (CLASS_CRYPTO, "coinbase"): ORDER_TYPES_WITH_MARKET,
     (CLASS_CRYPTO, "gemini"): ORDER_TYPES_LIMIT_ONLY,
+    (CLASS_COMMODITIES, "gemini"): ORDER_TYPES_LIMIT_ONLY,
+    (CLASS_FOREX, "gemini"): ORDER_TYPES_LIMIT_ONLY,
+    (CLASS_FUTURES_PERPS, "gemini"): ORDER_TYPES_LIMIT_ONLY,
     # Robinhood publishes market, limit, stop_loss and stop_limit.
     (CLASS_CRYPTO, "robinhood"): ORDER_TYPES_WITH_MARKET,
 }

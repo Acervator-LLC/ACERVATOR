@@ -13,7 +13,12 @@ import time
 from dataclasses import dataclass, field
 from typing import Optional
 
-from ..exchange.ccxt_connector import CCXT_DECIMAL_PLACES, precision_to_decimals
+from ..exchange.ccxt_connector import (
+    CCXT_DECIMAL_PLACES,
+    LISTED_MARKET_KEY,
+    is_listed_market,
+    precision_to_decimals,
+)
 
 logger = logging.getLogger("acervator.preflight")
 
@@ -138,8 +143,8 @@ def check_symbol(
         market = markets[symbol]
 
         # Step 2: extract constraints
-        active_reported = "active" in market
-        active = bool(market.get("active", True))
+        active_reported = market.get(LISTED_MARKET_KEY) is not None
+        active = is_listed_market(market)
         limits = market.get("limits", {}) or {}
         amt_limits = limits.get("amount", {}) or {}
         cost_limits = limits.get("cost", {}) or {}
