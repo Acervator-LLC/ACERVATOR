@@ -445,6 +445,22 @@ class PagePress:
         """Take presses or refuse them, and redraw."""
         self._owner.set_enabled(self._name, bool(on))
 
+    def setText(self, words: Any) -> None:
+        """Show ``words`` on the button and redraw.
+
+        ``DialogButton`` reads the texts bag before the words its layout node
+        carries, so the Add press draws the words ``credential_form`` named.
+        """
+        self._owner.set_text(self._name, "" if words is None else str(words))
+
+    def setToolTip(self, words: Any) -> None:
+        """Hang ``words`` off the button and redraw.
+
+        ``DialogButton`` draws the tooltips bag as the button's title, which is
+        where ``_sync_credential_kind`` puts a refused press's reason.
+        """
+        self._owner.set_tooltip(self._name, "" if words is None else str(words))
+
 
 #: The holder class each control kind is drawn by.
 HOLDER_BY_KIND = {
@@ -590,6 +606,11 @@ if _HAS_QT and _HAS_WEBENGINE:
         def set_visible(self, name: str, shown: bool) -> None:
             """Draw the part named ``name``, or leave it out."""
             self._model.visible[name] = shown
+            self.redraw()
+
+        def set_tooltip(self, name: str, words: str) -> None:
+            """Hang ``words`` off the part named ``name``."""
+            self._model.tooltips[name] = words
             self.redraw()
 
         # -- what the render path pushes through -------------------------

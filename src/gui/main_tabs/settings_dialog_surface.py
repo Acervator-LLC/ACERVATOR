@@ -108,13 +108,13 @@ STRONG_WEIGHT = "bold"
 
 STOCK_BANNER_LEAD = "Stock Wing:"
 STOCK_BANNER_TAIL = (
-    " equity-broker integration is "
-    "queued — no live brokers are wired up yet. The "
-    "list below shows the planned brokers; Add / Test "
-    "are disabled until the broker connectors ship. "
+    " eight brokers hold a connector this program builds: "
+    "alpaca, etrade, fidelity, ibkr, robinhood, schwab, tastytrade and webull. "
+    "The form below takes each one's key and secret. "
     "A broker the program signs in at a browser keeps its own "
     "Connect with a Browser press. "
-    "Use the Crypto Wing for active trading today."
+    "Test Connection answers where a credential can be checked without a "
+    "session; elsewhere the Start press checks it."
 )
 STOCK_BANNER_PIECES = (STOCK_BANNER_LEAD, STOCK_BANNER_TAIL)
 STOCK_BANNER_TEXT = STRONG_OPEN + STOCK_BANNER_LEAD + STRONG_CLOSE + STOCK_BANNER_TAIL
@@ -159,19 +159,20 @@ STOCK_BANNER_STYLE = STOCK_BANNER_STYLE_FORMAT.format(
     padding=BANNER_PADDING_PX,
     radius=BANNER_RADIUS_PX,
 )
-STOCK_DISABLED_TIP = (
-    "Stock broker connector integration is queued; "
-    "no live brokers ship yet. Use the Crypto Wing "
-    "for active trading."
+#: Why Test Connection refuses one venue. ``credential_route_held`` is the
+#: reading, and ``api_validator.validate_credentials`` is the route it asks
+#: after.
+NO_CREDENTIAL_TEST_TIP = (
+    "Nothing here checks this venue's credential without opening a session. "
+    "The Add press stores the key and secret, and the Start press opens the "
+    "session and reports what the venue answered."
 )
-STOCK_DISABLED_CONTROLS = (
-    "test_btn",
-    "add_btn",
-    "new_api_key",
-    "new_api_secret",
-    "new_passphrase",
-    "pp_check",
-    "new_verification_code",
+
+#: What the feedback row carries for a venue id no registry holds a connector
+#: for. ``connector_held`` is the reading.
+NO_CONNECTOR_PROMPT = (
+    "{name} has no connector registered, so a credential stored for it would "
+    "be read by nothing."
 )
 
 #: The verification-code row and its words. One venue grants an access token
@@ -1973,30 +1974,70 @@ def takes_verification_code(venue_id: Any) -> bool:
     return asked in verification_code_venue_ids()
 
 
+def credential_route_held(venue_id: Any) -> bool:
+    """Whether ``api_validator.validate_credentials`` holds a route to check one
+    venue's credential without opening a session.
+
+    ``crypto_connector_class`` answers for a hand-written venue and
+    ``ccxt_connector.SUPPORTED_EXCHANGES`` for a library one, and
+    ``credential_form`` reads this for ``test_enabled``.
+    """
+    from ...exchange.ccxt_connector import SUPPORTED_EXCHANGES
+    from ...exchange.robinhood_connector import crypto_connector_class
+
+    asked = str(venue_id or "").strip().lower()
+    if not asked:
+        return False
+    if crypto_connector_class(asked) is not None:
+        return True
+    return asked in SUPPORTED_EXCHANGES
+
+
+def connector_held(venue_id: Any) -> bool:
+    """Whether ``alpaca_connector.BROKER_CONNECTORS`` or
+    ``credential_route_held`` holds a connector this program constructs for one
+    venue.
+
+    ``credential_form`` reads this for ``add_enabled``, so a venue id nothing
+    builds for is not offered a form that stores a credential.
+    """
+    from ...stocks.alpaca_connector import broker_connector_class
+
+    asked = str(venue_id or "").strip().lower()
+    if not asked:
+        return False
+    if broker_connector_class(asked) is not None:
+        return True
+    return credential_route_held(asked)
+
+
 def credential_form(venue_id: Any, wing: Any = "") -> dict:
-    """Every row and button word the Add form draws for one venue's own
+    """Every row, press and button word the Add form draws for one venue's own
     credential kind, on one wing.
 
     ``key_rows`` false hides the API Key, API Secret and passphrase rows,
     ``code_row`` true adds the verification-code row for a venue
-    ``takes_verification_code`` names, an empty ``venue_id`` keeps the
-    key-and-secret shape the form opens with, and ``STOCK_WING`` keeps
-    ``STOCK_DISABLED_TIP`` on a venue taking a typed key.
+    ``takes_verification_code`` names, ``test_enabled`` follows
+    ``credential_route_held``, ``add_enabled`` follows ``connector_held``, and
+    an empty ``venue_id`` keeps the shape the form opens with, both presses
+    included.
     """
-    # CLASS_WINGS maps the asset class word "stocks" onto this module's own
-    # wing word "stock", so either name resolves one wing.
-    held = CLASS_WINGS.get(str(wing), str(wing))
     kind = credential_kind(venue_id, wing)
     browser = kind == CREDENTIAL_BROWSER_AUTHORIZATION
     coded = not browser and takes_verification_code(venue_id)
     name = str(venue_id or "").capitalize()
+    bound = bool(str(venue_id or "").strip())
+    route = credential_route_held(venue_id) if bound else True
+    built = connector_held(venue_id) if bound else True
     tip = ""
     if browser:
         tip = NO_KEY_TO_TEST
-    elif held == STOCK_WING:
-        tip = STOCK_DISABLED_TIP
+    elif not route:
+        tip = NO_CREDENTIAL_TEST_TIP
     if browser:
         prompt = BROWSER_FORM_PROMPT
+    elif not built:
+        prompt = NO_CONNECTOR_PROMPT
     elif coded:
         prompt = CODE_FORM_PROMPT
     else:
@@ -2006,7 +2047,8 @@ def credential_form(venue_id: Any, wing: Any = "") -> dict:
         "key_rows": not browser,
         "code_row": coded,
         "add_text": BROWSER_ADD_BUTTON_TEXT if browser else ADD_BUTTON_TEXT,
-        "test_enabled": not browser,
+        "add_enabled": built,
+        "test_enabled": not browser and route,
         "test_tip": tip,
         "prompt": prompt.format(name=name),
     }
@@ -2605,10 +2647,6 @@ class SettingsDialogModel:
         self.texts["add_group"] = add_group_title(self.asset_class)
         self.texts["banner"] = STOCK_BANNER_TEXT if self.wing == STOCK_WING else ""
         self.styles["banner"] = STOCK_BANNER_STYLE if self.wing == STOCK_WING else ""
-        if self.wing == STOCK_WING:
-            for name in STOCK_DISABLED_CONTROLS:
-                self.enabled[name] = False
-                self.tooltips[name] = STOCK_DISABLED_TIP
         self.on_exchange_changed()
 
     def _seed(self, spec: dict) -> Any:
@@ -2813,34 +2851,49 @@ class SettingsDialogModel:
     def bind_venue_row(self, at: Any) -> None:
         """Bind the Add form to the venue the array's row ``at`` names.
 
-        A row naming no venue leaves ``venue_row`` where it was, exactly as
-        ``SettingsDialog._open_credentials_for_row`` does.
+        A row naming no venue leaves ``venue_row`` where it was, and
+        ``venue_form_bound`` writes the sentence
+        ``SettingsDialog._open_credentials_for_row`` writes.
         """
         self._record("bind_venue_row", at)
         if not row_venue_id(self.asset_class, at):
             return
         self.venue_row = int(at)
         self.on_exchange_changed()
-        self.set_feedback(
-            VENUE_FORM_BOUND.format(name=self.current_exchange_id().capitalize()),
-            INFO_LEVEL,
-        )
+        self.set_feedback(venue_form_bound(self.current_exchange_id()), INFO_LEVEL)
 
     def on_exchange_changed(self) -> None:
         """Tick the passphrase box for an exchange that needs one and draw the
         verification-code row for a venue that asks for one.
 
         ``show_passphrase`` draws ``new_passphrase`` for that venue alone, and
-        ``show_verification_code`` reads ``credential_form`` so the row set here
-        and the row set the Qt dialog draws come from one answer.
+        the row set, the two presses and the Add button's words all read one
+        ``credential_form`` answer, the one the Qt dialog reads.
         """
         eid = self.current_exchange_id()
+        form = credential_form(eid, self.wing)
         self.texts["chosen_venue"] = chosen_venue_text(self.asset_class, self.venue_row)
         self.values["pp_check"] = eid in passphrase_exchange_ids()
         self.texts["api_feedback"] = ""
         self._record("on_exchange_changed", eid)
-        self.show_passphrase(self.values["pp_check"])
-        self.show_verification_code(credential_form(eid, self.wing)["code_row"])
+        typed = bool(form["key_rows"])
+        self.show_key_rows(typed)
+        self.show_passphrase(typed and self.values["pp_check"])
+        self.show_verification_code(typed and form["code_row"])
+        self.texts["add_btn"] = str(form["add_text"])
+        self.enabled["add_btn"] = bool(form["add_enabled"])
+        self.enabled["test_btn"] = bool(form["test_enabled"])
+        self.tooltips["test_btn"] = str(form["test_tip"])
+
+    def show_key_rows(self, on: Any) -> None:
+        """Show or hide the API Key, API Secret and passphrase-box rows.
+
+        ``credential_form``'s ``key_rows`` is the reading, the one
+        ``SettingsDialog._sync_credential_kind`` draws the Qt rows from.
+        """
+        for name in ("new_api_key", "new_api_secret", "pp_check"):
+            self.visible[name] = bool(on)
+        self._record("show_key_rows", bool(on))
 
     def show_passphrase(self, on: Any) -> None:
         """Show or hide the passphrase field."""
@@ -3283,7 +3336,10 @@ class _Walker:
             self.emit(LABEL, item[1])
             return
         if role == BUTTON:
-            self.emit(BUTTON, item[1])
+            # A press whose words the dialog rewrote carries them in the texts
+            # bag, which is what the React page draws.
+            named = BUTTON_NAMES_BY_TEXT.get(item[1], "")
+            self.emit(BUTTON, self.model.texts.get(named) or item[1])
             return
         if role == TEXT:
             named = item[1]
