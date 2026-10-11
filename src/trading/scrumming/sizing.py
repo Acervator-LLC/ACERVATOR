@@ -1077,7 +1077,7 @@ def session_for(recorded: Any, asset_class: str, venue: str) -> Optional[str]:
 # closed on Saturday (at any time) will settle T+3." This table holds one float
 # per pair, and a shorter figure would let a Thursday sale fund a buy the venue
 # has not funded; the longest is never early on any day. Its five other sectors
-# hold no row: nothing on the 21 tastytrade pages read names a settlement day
+# hold no row: nothing on the 20 tastytrade.com pages read names a settlement day
 # count for an equity or a futures contract, and an absent row claims nothing.
 CITED_VENUE_SETTLEMENT: dict[tuple[str, str], float] = {
     (CLASS_CRYPTO, "coinbase"): 0.0,

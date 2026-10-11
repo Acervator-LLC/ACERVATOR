@@ -943,8 +943,9 @@ class TastytradeConnector(BrokerBase):
     #: commodities from 27 contracts over its Energy, Metals, Agriculture and
     #: Livestock families, forex from its 11 Foreign Currency contracts, indices
     #: from its 12 Equity Index and 2 Volatility contracts, and futures_perps
-    #: from all 68 contracts. No perpetual: the word names 0 of the 30 pages
-    #: read, where "futures" names 754 and "crypto" 335.
+    #: from all 68 contracts. No perpetual: the word names 0 of the 29 venue
+    #: files read, where "futures" names 725, "currency" 327 and "crypto" 325,
+    #: and an invented word names 0.
     SECTORS_SERVED: tuple = (
         "crypto",
         "stocks",
