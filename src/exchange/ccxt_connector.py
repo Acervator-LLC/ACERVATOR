@@ -536,6 +536,28 @@ NO_PUBLISHED_FAMILY = ""
 #: ``XAUT`` take the ``METAL`` row over the empty spot grouping. KuCoin
 #: publishes ``baseCurrency`` on every row of both hosts, so neither record
 #: names a ``code_leg``.
+#:
+#: bitstamp publishes a category and still has no row, which is the one case
+#: where a record costs more than it names. Its ``publicGetMarkets`` carries an
+#: ``asset_class`` on the 20 ``PERPETUAL`` rows and on none of the 251 ``SPOT``
+#: rows — ``CRYPTO`` 13, ``COMMODITIES`` 4, ``ETF`` 2, ``FX`` 1 — so a record on
+#: that endpoint names a sector for 7 of the venue's 123 base codes. Driven over
+#: all 271 markets, it gains six and costs four: BRENT, GOLD, SILVER and WTI
+#: reach commodities and QQQ and EWY reach indices, while ``GBP/USD`` and
+#: ``SGD/USD`` fall from forex to crypto and ``PAXG/USD`` and ``PAXG/EUR`` fall
+#: from commodities to crypto, because ``market_asset_class`` reads
+#: ``PRECIOUS_METAL_CODES`` and ``FIAT_CURRENCY_CODES`` only while ``published``
+#: is None and no spot row carries a category to replace them.
+#: ``CITED_VENUE_BASE_SECTORS`` and ``CITED_VENUE_MARKET_SECTORS`` carry the six
+#: gains at the grain the venue publishes them on and cost nothing. Its second
+#: list, ``publicGetCurrencies``, serves 170 rows whose ``type`` holds two words
+#: — ``crypto`` 166 and ``fiat`` 4 — which names the leg and not the family, so
+#: a record there would read every bitcoin pair quoted in euro as a currency
+#: pair. Its ``name`` field is what those two tables cite instead. bitstamp
+#: publishes ``base_currency`` on all 271 market rows and ``currency`` on all
+#: 170 currency rows, each a bare code, and its ``market_symbol`` concatenates
+#: the legs as ``eurusd`` and ``btcusd-perp``, so no ``code_leg`` reading
+#: reaches a base code on this venue.
 VENUE_ASSET_SECTOR_RECORDS: dict[str, tuple[AssetSectorRecord, ...]] = {
     "gateio": (AssetSectorRecord(method="publicSpotGetCurrencies"),),
     "kucoin": (
