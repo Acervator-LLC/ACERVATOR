@@ -4706,3 +4706,268 @@ Two limits, stated plainly. No reading used a credential, so nothing here
 proves the venue accepts a live order from this program. And the venue will not
 open an account to a United States person, so every yes above is an order path
 and not a trade the operator can place today.
+
+---
+
+## 2026-10-10 - OKX publishes a numbered asset category, and a United States customer trades a different company
+
+OKX is offered under five sectors. Before this unit the stocks sector held no
+market while the venue listed 400 of them, the forex sector held twenty-seven
+markets none of which was a currency, and the indices sector held none and the
+venue publishes none. OKX publishes the asset category of every instrument it
+lists on a public record, and the program now reads it.
+
+### The OKX sentence this overtakes
+
+OVERTAKEN, quoted whole:
+
+> | okx | yes | yes | — |
+
+True today: the bot's shape fits, and an order reaching the venue from a United
+States account reaches a different company from the one this program registers.
+OKX's own
+[US Licenses page](https://www.okx.com/en-us/help/us-licenses) states "The OKX
+digital asset trading platform for United States customers is provided by OKX
+INC." and "OKX INC. does not provide services to residents of the following
+states and territories at this time: New York, American Samoa, Guam, Northern
+Mariana Islands, and the U.S. Virgin Islands." Its
+[Terms of Service](https://www.okx.com/help/360021813691) clause 3.1 names that
+company as "OKX INC., a Delaware corporation ("OKX US"), which operates under
+the OKX brand, for Users who are residents of one of OKX US's approved
+operating locations within the United States and its territories."
+
+The venue id this program registers is the global company on `www.okx.com`.
+`src/exchange/ccxt_connector.py, at SUPPORTED_EXCHANGES` holds `okx` and holds
+no id for the United States company, whose host is `us.okx.com` and whose
+library id is `okxus`. So the second column is a yes for the order shape and
+the transport, and a no for the account a resident of an approved United States
+location would hold. That is a venue id of its own, with its own credential
+form and its own gate log, and this unit records it rather than building it.
+
+### OKX is the first venue in this run that does not refuse the account itself
+
+Gate.io's user agreement refuses "U.S. persons" as a class and Bitget's Terms
+of Use name "the United States" in its Prohibited Countries. OKX names neither.
+Its
+[Risk & Compliance Disclosure](https://www.okx.com/en-us/help/risk-compliance-disclosure),
+Section 3, lists among its restricted locations only "certain jurisdictions
+within the United States of America including all U.S. territories such as
+Puerto Rico, American Samoa, Guam, Northern Mariana Island, and the U.S. Virgin
+Islands (St. Croix, St. John and St. Thomas)".
+
+So neither refusal set gains this venue.
+`src/exchange/ccxt_connector.py, at US_ACCOUNT_RESTRICTED_EXCHANGES` and
+`src/exchange/ccxt_connector.py, at US_IP_BLOCKED_EXCHANGES` both read without
+it, and both already read that way. The venue's public endpoints answer this
+address: four instrument routes answered 200 and an invented route on the same
+host answered 404, in the same run.
+
+### OKX, the five sectors and what each costs
+
+| Sector | Verdict | The cost |
+| --- | --- | --- |
+| crypto | yes | nothing |
+| stocks | yes-if | the venue's own category must reach the recording, or all 400 markets record under the wrong sector |
+| commodities | yes-if | the same record; 7 of the 21 are energy, copper or dated gold and no list of precious metals carries them |
+| futures_perps | yes | the sector is correct for 483, and 269 of the 751 belong elsewhere until the record lands |
+| indices | no | the venue's own category vocabulary holds no index number, and its nine index-fund tickers all publish Stocks |
+
+Forex is the sixth sector and the screen does not offer OKX under it. The
+venue's own vocabulary names a Forex number and the venue publishes that number
+on none of its 2191 instrument rows. That is the strongest proven absence in
+this run: the door exists in the venue's own list and the venue puts nothing
+behind it.
+
+### OKX publishes its own asset categories as numbers
+
+`GET /api/v5/public/instruments` carries an `instCategory` per instrument and
+needs no key. The venue's own API documentation states the field and its whole
+vocabulary.
+
+> The asset category of the instrument's base asset (the first segment of the
+> instrument ID). For example, for BTC-USDT-SWAP, the instCategory represents
+> the asset category of BTC. 1: Crypto 3: Stocks 4: Commodities 5: Forex
+> 6: Bonds "": Not available
+
+The record is read four times, once per instrument type, because the venue
+refuses a call that names none.
+
+```
+with no instType parameter   50014 "Parameter instType can not be empty."
+instType=SPOT                1160 rows   1: 1013, 3: 135, 4: 4, "": 8
+instType=MARGIN               266 rows   1:  172, 3:  92, 4: 2
+instType=SWAP                 500 rows   1:  301, 3: 190, 4: 9
+instType=FUTURES              265 rows   1:  182, 3:  75, 4: 8
+                             ----
+                             2191 rows, 687 distinct base codes
+```
+
+`src/exchange/ccxt_connector.py, at VENUE_ASSET_SECTOR_RECORDS` holds the
+method, the four requests, the field naming the instrument id, the separator
+the base code ends at, the field naming the category, and the venue's own five
+numbers.
+
+```
+3 -> stocks        4 -> commodities      5 -> forex
+1 -> NO_PUBLISHED_FAMILY                 6 -> NO_PUBLISHED_FAMILY
+```
+
+`1` maps onto nothing for the reason the Bitget section above records: the venue
+is stating the asset belongs to no family outside crypto, and
+`src/exchange/ccxt_connector.py, in is_contract_market` still decides whether
+the market is a spot pair or a perpetual. `6` maps onto nothing because
+`src/trading/ata_spm.py, at ASSET_CLASSES` draws no bonds sector, and the venue
+publishes that number on no instrument either way.
+
+OKX is the first venue to name its base code only inside a composite id. Its
+own documentation calls `instCategory` the category of "the first segment of the
+instrument ID", so `src/exchange/ccxt_connector.py, at ASSET_CODE_LEG` names the
+separator and `src/exchange/ccxt_connector.py, in _read_asset_sector_rows` reads
+the code off the text before it. Gate.io and Bitget each publish a base-code
+field and their rows take the default, which is no separator and the field read
+whole. Both readings are unchanged after the change.
+
+The venue also publishes when it moves an instrument between categories. Its own
+change log entry for 2026-04-22, headed "Reclassification of instCategory for
+commodity instruments" and marked a breaking change:
+
+> The following instruments now return instCategory = 4 (Commodities) instead
+> of 1 (Crypto): XAU-USDT-SWAP XAG-USDT-SWAP XPD-USDT-SWAP XPT-USDT-SWAP
+> XCU-USDT-SWAP NG-USDT-SWAP CL-USDT-SWAP BZ-USDT-SWAP
+
+### Why the tickers had to stop being read on OKX
+
+Twenty-seven markets read as forex and every one was a ticker collision.
+
+```
+RON/EUR RON/USDC RON/USDT      Ronin, read as the Romanian leu
+SCR/EUR SCR/USDC SCR/USDT      Scroll, read as the Seychellois rupee
+AMD/USDT:USDT                  Advanced Micro Devices, read as the Armenian dram
+AMD/USD:USD-310711             the same company, dated
+NOK/USDT:USDT                  Nokia, read as the Norwegian krone
+eighteen more                  a dollar or euro stablecoin against a currency
+                               or against another stablecoin
+```
+
+Two of the twenty-seven have two national-currency legs by the program's own
+fiat list, `RON/EUR` and `SCR/EUR`, and the venue publishes both bases as
+Crypto. The control for that reading is 437 spot pairs whose quote alone is a
+national currency, so the search could have found a currency pair if one
+existed.
+
+### What OKX’s five sectors hold
+
+Measured over all 4559 active markets the library loads, with the home
+redirected and no order placed.
+
+| Sector | Markets before | Markets after |
+| --- | --- | --- |
+| crypto | 1125 | 1013 |
+| stocks | 0 | 400 |
+| commodities | 14 | 21 |
+| futures_perps | 751 | 483 |
+| indices | 0 | 0 |
+| forex | 27 | 0 |
+
+431 markets moved, and every move is named by where it came from.
+
+| From | To | Markets |
+| --- | --- | --- |
+| futures_perps | stocks | 262 |
+| crypto | stocks | 135 |
+| forex | crypto | 23 |
+| futures_perps | commodities | 7 |
+| forex | stocks | 3 |
+| forex | futures_perps | 1 |
+
+The 135 are tokenised equity spot pairs, named with an `X` prefix — `XAAPL-USDT`
+is Apple and `XAMZN-USDT` is Amazon — and the 262 are equity contracts, so the
+stocks sector gains its markets from two product lines at once. The seven that
+reach commodities are the energy contracts, copper and the dated gold
+contracts, which no list of precious metals can carry.
+
+Blinding the venue's own record leaves 41 markets moving, which are exactly the
+27 forex and 14 commodities rows the ticker heuristic had guessed. So the 431 is
+a reading of OKX's record and not of the instrument.
+
+Eight spot rows publish `instCategory ""`, the venue's own "Not available", and
+all eight carry its own `state: preopen`: `XFLY-USDT`, `XAMC-USDT`, `XBB-USDT`,
+`XQNT-USDT`, `XCGNX-USDT`, `XFWDI-USDT`, `XIONQ-USDT` and `XINFQ-USDT`. They
+record as crypto, which is what the venue answers for them today.
+
+A further 2642 contracts are options. `src/exchange/ccxt_connector.py, in
+market_asset_class` answers `options` for every one,
+`src/trading/ata_spm.py, at ASSET_CLASSES` omits that class, and
+`src/trading/scrumming/sizing.py, in sector_variant` names a variant
+`src/trading/scrumming/sizing.py, at VARIANTS_BUILT` lacks, so each refuses
+before the connector.
+
+### The indices sector lists no OKX market, and the exposure is still reachable
+
+No index number exists in the venue's own vocabulary, against a control of 492
+rows publishing Stocks. Nine index-fund tickers are listed and the venue
+publishes each one as a stock.
+
+```
+SPY  QQQ  IWM  EWY  EWZ  SMH  SOXL  TQQQ  XLE
+all nine, published instCategory   3
+```
+
+So the operator reaches the identical product under stocks. The indices row
+stays on the screen and its empty market list is recorded here, because
+removing a sector from a venue is the operator's decision.
+
+### The order bodies OKX’s sectors take
+
+Crypto, stocks and commodities reach a spot pair. Futures and perpetuals reach
+a contract. OKX's own order page makes the size unit a setting rather than a
+fixed rule.
+
+> Order quantity unit setting for sz. base_ccy: Base currency, quote_ccy: Quote
+> currency. Only applicable to SPOT Market Orders. Default is quote_ccy for buy,
+> base_ccy for sell
+
+The venue's own default for a spot market buy is therefore a cash amount, and
+that default never reaches an order this program places. The library sets the
+field on every spot order and its own default for the field is the base
+currency, so `tgtCcy` goes out as `base_ccy` and `sz` stays a unit count.
+`src/exchange/ccxt_connector.py, at EXCHANGE_OPTIONS` sets nothing for this
+venue, so nothing in this tree changes that.
+
+```
+the request built for a market buy of 0.001 at 50000
+okx       sz 0.001       tgtCcy base_ccy       a unit count
+bitget    size 50                              a cash amount
+```
+
+`src/trading/scrumming/sizing.py, at CITED_CASH_MARKET_BUY` therefore keeps its
+four venues and does not gain this one, and
+`src/trading/scrumming/sizing.py, in whole_unit_buy_needs_limit` answers False
+for every OKX market. The reading sits in the comment beside the set so the
+next venue does not derive it again.
+
+### What the OKX unit drove
+
+```
+reading                               what it reported
+4559 active markets, classified       431 moved sector; blinding the venue's
+                                      own record leaves 41 moving, which are
+                                      the 41 the ticker heuristic had guessed
+_published_asset_sectors end to end   687 base codes, 311 naming a family, read
+                                      through the real connector method with no
+                                      credential and the home redirected
+Gate.io's and Bitget's own readings   both unchanged after the separator was
+                                      added, because neither names one
+the step-five subtraction             five sectors offered, three with markets
+                                      of their own, and forex offered to none
+the venue's own host                  four real routes answered 200 and an
+                                      invented one answered 404, in the same run
+the venue's own refusal sets          neither set gains the venue, with the
+                                      two control venues reading as before
+```
+
+Two limits, stated plainly. No reading used a credential, so nothing here
+proves the venue accepts a live order from this program. And a resident of an
+approved United States location holds an account with OKX INC. on `us.okx.com`,
+which no venue id in this tree reaches, so every yes above is an order path on
+the global company and not a trade that account can place today.

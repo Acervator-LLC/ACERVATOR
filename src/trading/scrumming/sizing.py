@@ -279,6 +279,11 @@ SETTLE_LEG = ":"
 # ``bitget`` is a fourth: its own Place Order page states "Spot/Margin market
 # buy orders: the unit is quote coin" and "Limit and market sell orders: the
 # unit is base coin", and its ``size`` field carries both.
+# ``okx`` is not a member. Its own Place Order page makes the unit a setting —
+# "Order quantity unit setting for sz ... Default is quote_ccy for buy,
+# base_ccy for sell" — and ccxt sends that setting on every spot order with its
+# own default of ``base_ccy``, so the venue's cash default never reaches an
+# order this platform places and ``sz`` stays a unit count.
 CITED_CASH_MARKET_BUY: frozenset[str] = frozenset(
     {"binance", "bitget", "coinbase", "gateio"}
 )
