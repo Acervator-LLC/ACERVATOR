@@ -114,6 +114,24 @@ STABLECOIN_DENYLIST = {
     "CAD",
     "AUD",
     "CHF",
+    # Eight codes bitstamp's own /api/v2/currencies/ names as a currency or as
+    # the token of one, each of which bases a market the scan would otherwise
+    # pick as a crypto: SGD "Singapore dollar" carries type fiat, and XSGD
+    # "StraitsX Singapore Dollar", EURCV "EUR CoinVertible", RLUSD "Ripple
+    # USD", USDG "Global Dollar", VEUR "VNX Euro", VCHF "VNX Swiss Franc" and
+    # UST "TerraUSD" each name their currency in the venue's own words.
+    # Measured over the dollar-quoted spot markets of ten venues: 8 markets
+    # leave bitstamp's universe, 6 kraken's, 3 gemini's, 2 each on gateio,
+    # bitget, okx and okxus, 1 each on coinbase and kucoin, and none bitfinex's.
+    # GYEN and ZUSD stay out: bitstamp names each only by its own ticker.
+    "SGD",
+    "XSGD",
+    "EURCV",
+    "RLUSD",
+    "USDG",
+    "VEUR",
+    "VCHF",
+    "UST",
 }
 DEFAULT_QUOTES = ("USD", "USDC", "USDT")  # accept these as USD-equivalent
 

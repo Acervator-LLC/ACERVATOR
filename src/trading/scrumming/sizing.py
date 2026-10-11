@@ -152,6 +152,33 @@ CITED_UNIT_RULES: dict[tuple[str, str], str] = {
 #: answers forex for. Pax Gold and Tether Gold need no row because
 #: ``TOKEN_UNDERLYING_CODES`` redeems both onto ``XAU``, which the same feed
 #: prices at 4201.22 and 4175.2197 a unit.
+#:
+#: The third venue is bitstamp, and its seven rows are the one venue publishing
+#: a sector it gains nothing from recording. Its ``/api/v2/markets/`` carries an
+#: ``asset_class`` on the 20 ``PERPETUAL`` rows and on none of the 251 ``SPOT``
+#: rows — ``CRYPTO`` 13, ``COMMODITIES`` 4, ``ETF`` 2, ``FX`` 1 — and its own
+#: launch page names the same four in words: "FX: EUR/USD", "Equity indices:
+#: QQQ, EWY", "Commodities: Gold, Silver, WTI, Brent". A
+#: ``VENUE_ASSET_SECTOR_RECORDS`` row on that endpoint names a sector for 7 of
+#: 123 base codes and costs four real markets to gain six, because
+#: ``market_asset_class`` reads ``PRECIOUS_METAL_CODES`` and
+#: ``FIAT_CURRENCY_CODES`` only while ``published`` is None: ``GBP/USD`` and
+#: ``SGD/USD`` fall from forex to crypto and ``PAXG/USD`` and ``PAXG/EUR`` fall
+#: from commodities to crypto. These rows take the six gains and cost nothing.
+#: ``ETF`` records under indices because the venue's own word for both markets
+#: is "Equity indices" and 0 of its 271 markets name a single company.
+#:
+#: ``MNT`` undoes the same collision bitfinex's row undoes: bitstamp's own
+#: ``/api/v2/currencies/`` names it "Mantle" with ``type`` ``crypto``, so
+#: neither of its two markets holds the Mongolian tugrik. That list serves 170
+#: rows and names ``type`` ``fiat`` on four codes alone — ``EUR`` "Euro",
+#: ``GBP`` "British Pound", ``SGD`` "Singapore dollar" and ``USD`` "U.S.
+#: dollar" — which ``FIAT_CURRENCY_CODES`` already answers forex for, and
+#: ``crypto`` on the rest, ``XSGD`` "StraitsX Singapore Dollar", ``EURCV`` "EUR
+#: CoinVertible", ``RLUSD`` "Ripple USD" and ``USDG`` "Global Dollar" among
+#: them. ``PAXG`` needs no base row because ``TOKEN_UNDERLYING_CODES`` redeems
+#: it onto ``XAU``; its perpetual needs a market row, because the venue files
+#: that one contract under ``CRYPTO``.
 CITED_VENUE_BASE_SECTORS: dict[tuple[str, str], str] = {
     ("bitfinex", "UKOIL"): CLASS_COMMODITIES,
     ("bitfinex", "AUSTRALIA200IX"): CLASS_INDICES,
@@ -170,6 +197,13 @@ CITED_VENUE_BASE_SECTORS: dict[tuple[str, str], str] = {
     ("gemini", "USD1"): CLASS_CRYPTO,
     ("gemini", "USDC"): CLASS_CRYPTO,
     ("gemini", "USDT"): CLASS_CRYPTO,
+    ("bitstamp", "BRENT"): CLASS_COMMODITIES,
+    ("bitstamp", "GOLD"): CLASS_COMMODITIES,
+    ("bitstamp", "SILVER"): CLASS_COMMODITIES,
+    ("bitstamp", "WTI"): CLASS_COMMODITIES,
+    ("bitstamp", "EWY"): CLASS_INDICES,
+    ("bitstamp", "QQQ"): CLASS_INDICES,
+    ("bitstamp", "MNT"): CLASS_CRYPTO,
 }
 
 
@@ -190,7 +224,7 @@ def venue_base_sector(venue: Any, base: Any) -> Optional[str]:
 #: base code is the wrong grain for these three markets and no base-keyed row
 #: can separate them.
 #:
-#: Every row is kucoin, and every row is the venue's own word.
+#: Every kucoin row and every bitstamp row is the venue's own word.
 #:
 #: ``BNC`` is two assets. Its spot market is the token kucoin's own
 #: ``/api/v3/currencies`` calls "Bifrost"; its perpetual, ``BNCUSDTM``, carries
@@ -207,10 +241,38 @@ def venue_base_sector(venue: Any, base: Any) -> Optional[str]:
 #: as forex, swapped. The base code cannot carry them, because ``USDC`` also
 #: bases ``USDC/USDT`` and ``USDT`` also bases ``USDT/USDC``, and a dollar token
 #: quoted against a dollar token holds no second currency.
+#:
+#: The bitstamp rows separate six markets no base code can. ``PAXG`` bases three
+#: markets: its two spot pairs redeem for gold, which ``TOKEN_UNDERLYING_CODES``
+#: and ``PRECIOUS_METAL_CODES`` already answer commodities for, while its
+#: perpetual carries ``asset_class`` ``CRYPTO`` on the venue's own
+#: ``/api/v2/markets/`` and sits in the crypto list of its own launch page
+#: beside BTC and ETH, so the contract records under crypto and the spot pairs
+#: are left alone.
+#:
+#: The other five undo a currency reading on a market holding one currency or
+#: none. ``USDC/USD``, ``USDT/USD`` and ``EURC/EUR`` each quote a token against
+#: the currency it redeems for, and ``USDC/USDT`` quotes two dollar tokens, so
+#: no row holds two currencies — the reading bitfinex's and gemini's base rows
+#: already take for the same codes. Each needs the market grain here and not a
+#: base row, because ``USDC`` also bases ``USDC/EUR``, ``USDT`` also bases
+#: ``USDT/EUR`` and ``EURC`` also bases ``EURC/USDC``, and those three do hold
+#: two currencies. ``EURCV/USDC`` and ``EURCV/USDT`` hold a euro token against a
+#: dollar token and read crypto without a row, because ``EURCV`` is in no
+#: redemption map; bitstamp's own currency list names it "EUR CoinVertible",
+#: and its third market, ``EURCV/EUR``, holds one currency and keeps the crypto
+#: it already reads.
 CITED_VENUE_MARKET_SECTORS: dict[tuple[str, str], str] = {
     ("kucoin", "BNC/USDT"): CLASS_CRYPTO,
     ("kucoin", "USDC/EUR"): CLASS_FOREX,
     ("kucoin", "USDT/EUR"): CLASS_FOREX,
+    ("bitstamp", "PAXG/USD:USD"): CLASS_CRYPTO,
+    ("bitstamp", "USDC/USD"): CLASS_CRYPTO,
+    ("bitstamp", "USDC/USDT"): CLASS_CRYPTO,
+    ("bitstamp", "USDT/USD"): CLASS_CRYPTO,
+    ("bitstamp", "EURC/EUR"): CLASS_CRYPTO,
+    ("bitstamp", "EURCV/USDC"): CLASS_FOREX,
+    ("bitstamp", "EURCV/USDT"): CLASS_FOREX,
 }
 
 
@@ -383,6 +445,15 @@ ORDER_TYPES_DECLARED = (ORDER_TYPES_WITH_MARKET, ORDER_TYPES_LIMIT_ONLY)
 # same ``"type":"market"`` field: ``POST /api/v1/orders`` on ``api.kucoin.com``
 # for a spot pair and the same path on ``api-futures.kucoin.com`` for a
 # contract. Indices holds no row, because the venue records no market under it.
+#
+# Bitstamp holds a row in each of the five sectors it records a market in.
+# ``declared_order_types`` reads "market and limit" off its own capability map,
+# where ``createMarketOrder`` is True, and its own order page names the market
+# route's subtypes as "MARKET" "STOP_LOSS" "TAKE_PROFIT" "TRAILING_STOP_LOSS"
+# "TRAILING_TAKE_PROFIT" beside a limit route. One pair of endpoints,
+# ``POST /buy/market/{pair}`` and ``POST /buy/{pair}``, serves a spot pair and a
+# perpetual alike, so the declaration is the venue's and not the sector's.
+# stocks holds no row, because the venue records no market under it.
 CITED_VENUE_ORDER_TYPES: dict[tuple[str, str], str] = {
     (CLASS_CRYPTO, "coinbase"): ORDER_TYPES_WITH_MARKET,
     (CLASS_CRYPTO, "gemini"): ORDER_TYPES_LIMIT_ONLY,
@@ -394,6 +465,11 @@ CITED_VENUE_ORDER_TYPES: dict[tuple[str, str], str] = {
     (CLASS_COMMODITIES, "kucoin"): ORDER_TYPES_WITH_MARKET,
     (CLASS_FOREX, "kucoin"): ORDER_TYPES_WITH_MARKET,
     (CLASS_FUTURES_PERPS, "kucoin"): ORDER_TYPES_WITH_MARKET,
+    (CLASS_CRYPTO, "bitstamp"): ORDER_TYPES_WITH_MARKET,
+    (CLASS_COMMODITIES, "bitstamp"): ORDER_TYPES_WITH_MARKET,
+    (CLASS_FOREX, "bitstamp"): ORDER_TYPES_WITH_MARKET,
+    (CLASS_INDICES, "bitstamp"): ORDER_TYPES_WITH_MARKET,
+    (CLASS_FUTURES_PERPS, "bitstamp"): ORDER_TYPES_WITH_MARKET,
     # Robinhood publishes market, limit, stop_loss and stop_limit.
     (CLASS_CRYPTO, "robinhood"): ORDER_TYPES_WITH_MARKET,
 }
@@ -451,6 +527,16 @@ SETTLE_LEG = ":"
 # ``createMarketBuyOrderWithCost`` reads True on its capability map, which names
 # the separate ``create_market_buy_order_with_cost`` method, and no caller in
 # this tree reaches it.
+# ``bitstamp`` is not a member, and it is the first venue to publish the cash
+# amount on a route of its own rather than a field of its own. Its order pages
+# give each route one unit: the Market Buy Order takes "Amount in base currency
+# (Example: For BTC/USD pair, amount is quoted in BTC)" and the Instant Buy
+# Order takes "Amount in counter currency (Example: For BTC/USD pair, amount is
+# quoted in USD)". ``ccxt.bitstamp.create_order`` reaches the instant route only
+# where ``type`` reads ``instant``, which sends ``privatePostBuyInstantPair``;
+# ``market`` sends ``privatePostBuyMarketPair`` with ``amount`` from
+# ``amount_to_precision``, and ``CCXTConnector.place_order`` composes no order
+# of the instant type, so the size this platform sends stays a unit count.
 CITED_CASH_MARKET_BUY: frozenset[str] = frozenset(
     {"binance", "bitget", "coinbase", "gateio"}
 )
