@@ -6563,3 +6563,331 @@ host. Every quotation above comes from `api.crypto.com/exchange/v1`, from
 `exchange-developer.crypto.com`, from `static2.crypto.com`, from
 `help.crypto.com` or from crypto.com's own product-news posts, and each of those
 hosts answers 403 or 404 for a path that cannot exist.
+
+## MEXC names its own trade zones, and all six sectors hold a market
+
+OVERTAKEN, quoted whole:
+
+```
+| mexc | crypto, stocks, futures_perps |
+```
+
+True today: `asset_class_surface.venue_classes` answers all six — crypto,
+stocks, commodities, forex, indices and futures_perps. The venue groups every
+market it lists into its own named trade zones, and those zones name commodities,
+forex and indices as well as the three the screen already offered.
+
+OVERTAKEN, quoted whole:
+
+```
+| mexc | crypto spot | no refusal recorded, 2026-08-28 | key and secret | `src/exchange/ccxt_connector.py, in SUPPORTED_EXCHANGES` |
+```
+
+True today: the venue lists crypto spot, tokenised equities and equity funds on
+spot, gold and silver tokens on spot, three national currencies on spot, and
+equity, index, commodity and currency perpetuals on its contract host. A key and
+a secret are still the whole credential form, because mexc is outside
+`PASSPHRASE_EXCHANGES`. The refusal line is unchanged and still reads "no refusal
+recorded", and the reason is now measured rather than assumed: mexc's own Help
+Center serves a JavaScript shell on both of its hosts and carries no refusal
+clause either way, while every one of its public endpoints answered a United
+States address.
+
+### The venue publishes the sector on both of its hosts
+
+Two credential-free lists carry it. Neither needs a key.
+
+| host and path | rows | the sector field | rows carrying it |
+| ------------- | ---- | ---------------- | ---------------- |
+| `api.mexc.com/api/v3/exchangeInfo` | 1890 | `conceptPlates` | 1890 |
+| `api.mexc.com/api/v1/contract/detail` | 1197 | `conceptPlate` | 1028 |
+
+The spot list names its rows under `symbols` and not under `data`, which every
+earlier venue used, so `AssetSectorRecord` gained a `rows_key` naming the key one
+venue carries its rows under. The contract list names its rows under `data` as
+before. mexc's own contract reference documents `conceptPlate` on the instrument
+record and prints two of its words in the response example,
+`mc-trade-zone-grey` and `mc-trade-zone-pow`; it publishes no list of the whole
+vocabulary, so every word below was read off a live row.
+
+The spot zones, as the venue spells them:
+
+```
+Tokenized Stocks      165 markets      Precious Metals     10
+Robinhood Ecosystem    62              Defense & Energy    10
+Stock Meme Tokens      51              Prediction Market    7
+                                       Pre-IPO              2
+                                       Metals               1
+                                       Crude Oil            1
+```
+
+Thirty-three further words name a crypto theme — `Innovation` on 1384 markets,
+`Main` on 273, `MEME` on 215, `AI` on 129 and so on.
+
+The contract zones:
+
+```
+mc-trade-zone-Stock           469      mc-trade-zone-metals          13
+mc-trade-zone-stockindex       66      mc-trade-zone-Forex            8
+mc-trade-zone-ETF              61      mc-trade-zone-preipo           6
+mc-trade-zone-Commodities      19      mc-trade-zone-OIL              4
+mc-trade-zone-metalsfutures    17      mc-trade-zone-japanstock      10
+```
+
+Forty-five further words name a crypto theme, and `mc-trade-zone-tradfi` on 500
+markets names no one family: its rows span stocks, commodities, forex and
+indices, so it is recorded as naming nothing.
+
+### A word is not a sector just because it sounds like one
+
+Four of the venue's own words read as a sector and are not. Each one is recorded
+as naming nothing, and the venue's own market names settle each one.
+
+| the word | its markets | what they are |
+| -------- | ----------- | ------------- |
+| `Stock Meme Tokens` | 51 | "Boner Coin", "Send Nudes", "Stonks" — meme tokens |
+| `mc-trade-zone-stockmeme` | 4 | the same four codes on the contract host |
+| `mc-trade-zone-robinhood` | 5 | "PONS", "MEMEROBINHOOD", "DELTA" — meme tokens |
+| `mc-trade-zone-Chinese` | 4 | Chinese-language meme tokens |
+
+Two more name a real family and are recorded under it. `mc-trade-zone-japanstock`
+holds Toyota, Sony, SoftBank, Murata, Advantest and five more, so it records
+under stocks. `mc-trade-zone-preipo` holds OpenAI, Anthropic, Polymarket, Oura,
+Moonshot and YMTC — private companies — so it records under stocks as well,
+which is the reading crypto.com's own `PRE_IPO` word took.
+
+### The venue writes the general zone before the specific one
+
+`mc-trade-zone-Stock` sits ahead of `mc-trade-zone-stockindex` and
+`mc-trade-zone-ETF` in the same row's own list, on every one of the 66 rows that
+carries either. `_read_asset_sector_rows` takes the first word that names a
+family, so one record would call all 66 index funds equities and never reach the
+venue's own index word.
+
+mexc therefore holds three records instead of one, and the records read in order:
+
+```
+1  the spot list        names the spot zones
+2  the contract list    names the specific families; the stock zone names nothing
+3  the contract list    names the stock zone alone
+```
+
+A code the second record already named keeps its sector, so SPY, QQQ, the S&P 500
+and the Nasdaq-100 perpetuals record under indices while the other 392 stock-zone
+codes record under stocks. This is the one place a venue in this issue publishes
+both a general and a specific word on one market, and it is why
+`VENUE_ASSET_SECTOR_RECORDS` holds a tuple per venue.
+
+### What the record gains, and what it costs
+
+Driven over all 3087 markets `ccxt.mexc.load_markets` serves, with no credential
+and no order placed:
+
+```
+                 before   after
+crypto             1869    1705
+stocks                0     562
+futures_perps      1175     697
+indices               0      71
+commodities           9      36
+forex                34      16
+```
+
+679 markets move. 661 reach a sector no reading gave them before. The 18 that
+leave forex are 18 corrections, not 18 losses, and the venue's own name field and
+its own price feed settle every one:
+
+| base code | the venue's own name | mexc price against USDT | the currency's rate |
+| --------- | -------------------- | ----------------------- | ------------------- |
+| `MNT` | "Mantle" | 0.5613 | a tugrik near 0.00028 |
+| `SCR` | "Scroll" | 0.02577 | a rupee near 0.068 |
+| `TOP` | "TOP Network" | 0.0000695 | a pa'anga near 0.42 |
+| `RON` | "RONIN" | — | a leu near 0.23 |
+| `BOB` | in the venue's `BTC Ecosystem` zone | 0.004636 | a boliviano near 0.145 |
+| `COP` | in the venue's `DeFi` zone | 0.0003055 | — |
+| `USD`, `USD1`, `USDC`, `USDS` | dollar tokens quoted in dollar tokens | 1.001 and near | — |
+| `ALL` | priced off `BINANCE_FUTURE` alone | — | — |
+
+Three codes the same reading drops are the real cost, and three
+`CITED_VENUE_BASE_SECTORS` rows take them back:
+
+| base code | the venue's own evidence |
+| --------- | ----------------------- |
+| `PLN` | `fullName` reads "Polish Zloty" and `PLNUSDT` reads 0.2546 |
+| `ARS` | `ARSUSDT` reads 0.0006163, the Argentine peso, in the `Stablecoins` zone |
+| `MXN` | `MXNUSDT` reads 0.0564, the Mexican peso, in the same zone |
+
+Two `CITED_VENUE_MARKET_SECTORS` rows take two more, at the grain the venue
+publishes them on. `USDC` bases four spot markets and one perpetual, and only
+`USDC/EUR` at 0.893 and `USDC/BRL` at 5.025 hold a national currency, so the base
+code cannot carry them — the reading KuCoin's own `USDC/EUR` row already took.
+
+A third market row is the one base code mexc's two hosts give to two different
+assets. Spot `EWT` is "Energy Web", a crypto token; contract `EWT_USDT` is the
+iShares MSCI Taiwan fund and carries `mc-trade-zone-stockindex`. Driven over all
+3087 markets it is the only such code, and no contract market takes its sector
+from the spot record.
+
+With all six rows in place the record costs nothing: every market that leaves a
+sector leaves one the venue's own data refutes.
+
+### The six points, per sector
+
+| sector | market list | order route | order shape | position and fill | candles | variant |
+| ------ | ----------- | ----------- | ----------- | ----------------- | ------- | ------- |
+| crypto | 1705 spot markets | `POST /api/v3/order` | `symbol`, `side`, `type`, `quantity` or `quoteOrderQty` | `fetch_balance`, `fetch_my_trades` | 1m to 1w, eight granularities | Crypto Scrumming |
+| stocks | 164 spot, 398 contract | spot route; contract route under maintenance | same | same | same | Stock Scrumming |
+| commodities | 13 spot, 23 contract | spot route; contract route under maintenance | same | same | same | Commodity Scrumming |
+| forex | 8 spot, 8 contract | spot route; contract route under maintenance | same | same | same | Forex Scrumming |
+| indices | 71 contract | contract route under maintenance | `symbol`, `vol`, `type`, `openType`, `side` | `fetch_positions` | same | Index Scrumming |
+| futures_perps | 697 contract | contract route under maintenance | same | same | same | Futures Scrumming |
+
+### The spot market buy carries a cash amount, and the sell carries a count
+
+mexc's own New Order page names both units as alternatives on one order:
+
+> base on different type, some params are mandatory:
+> LIMIT — quantity, price. MARKET — quantity or quoteOrderQty
+
+Which one the venue receives is decided by this program, not by the venue.
+`ccxt.mexc.create_spot_order_request` writes `quantity` on a market order priced
+None and `quoteOrderQty` of `amount` times `price` on a market order carrying a
+price, and `src/exchange/ccxt_connector.py, in place_order` fetches a ticker and
+supplies that price on a MARKET BUY alone. Composed with no credential reaching
+the venue:
+
+```
+BTC/EUR buy  market  price None     quantity=0.001
+BTC/EUR buy  market  price 50000    quoteOrderQty=50
+BTC/EUR sell market  price None     quantity=0.001
+BTC/EUR buy  limit   price 50000    quantity=0.001  price=50000
+```
+
+So mexc joins `CITED_CASH_MARKET_BUY`, the fifth member, and it is the first
+venue there whose unit is set by the price this program supplies rather than by
+the venue's own default. Its contract route takes no cash field at all: the same
+composition on `BTC/USDT:USDT` read
+`{"symbol":"BTC_USDT","vol":1.0,"type":6,"openType":2,"side":1}` on both sides.
+
+### The contract order route is under maintenance, in the venue's own words
+
+mexc's own contract reference marks six of its own order endpoints:
+
+```
+Order (Under maintenance)
+Bulk order (Under maintenance)
+Cancel the order (Under maintenance)
+Cancel the order according to the external order ID (Under maintenance)
+Cancel all orders under a contract (Under maintenance)
+Trigger order (Under maintenance)
+```
+
+The documented path is `POST api/v1/private/order/submit`. The path `ccxt`
+composes is `POST /api/v1/private/order/create`, which that reference does not
+document at all. Both are on `api.mexc.com`, and the contract list itself carries
+`apiAllowed` — true on 1168 of its 1197 markets and false on 29.
+
+This is a venue-side state on the contract host, not a missing door, and the
+spot host carries no such notice. Every sector except indices and futures_perps
+holds spot markets that reach the live spot route, so the contract notice costs
+indices its whole market list and futures_perps its whole market list, and costs
+the other four nothing.
+
+### The eight connections
+
+| # | the connection | mexc |
+| - | -------------- | ---- |
+| 1 | a connector exists and is registered | `SUPPORTED_EXCHANGES` holds `mexc`; an invented id does not |
+| 2 | offered under every sector it serves | `venues_for_class` answers mexc on all six; an invented venue on none |
+| 3 | the operator can enter its credentials | the Exchanges tab draws a mexc button on all six and the Add form names "Mexc (mexc)" on each |
+| 4 | a Start press builds its connector | `CCXTConnector("mexc")` builds; an invented id raises `ValueError` |
+| 5 | its market rules record on connect | `record_venue` wrote 3087 rows and `recorded_classes` read all six sectors back |
+| 6 | its orders carry the shape the venue publishes | `declared_order_types` reads "market and limit"; `order_types_for` answers it on all six |
+| 7 | a built variant selects for it | `variant_holds_market` reads true on all 3087 markets; 10 inverse perpetuals still refuse on `size_shape_refusal` |
+| 8 | its gate decisions log under it | `gate_log_path` composes `trade/gate/mexc/<sector>/gate.log` for all six |
+
+Connection 5 needed a repair. `ccxt.mexc.fetch_currencies` calls
+`spotPrivateGetCapitalConfigGetall`, a signed endpoint, and carries ccxt's own
+comment that "this endpoint requires authentication while fetchCurrencies is a
+public API method by design ... and fallback to generating the currencies from
+the markets". Driven against a credential mexc refuses that endpoint for,
+`load_markets` raised `BadRequest: {"code":10072,"msg":"Api key info invalid"}`
+and recorded no market at all. `mexc` now sits in `DISABLE_FETCH_CURRENCIES`
+beside `coinbase`, so a key without the wallet scope still loads 3087 markets.
+
+### Ten coin-margined perpetuals still refuse
+
+`ccxt.mexc` sets its own `fetchMarkets` option to spot and linear swap, and ten
+inverse perpetuals load anyway: `BTC/USD:BTC`, `ETH/USD:ETH`, `XRP/USD:XRP`,
+`SOL/USD:SOL`, `DOGE/USD:DOGE`, `SUI/USD:SUI`, `ADA/USD:ADA`, `LINK/USD:LINK`,
+`AVAX/USD:AVAX` and `LTC/USD:LTC`. Each is margined in the coin it tracks, so
+`src/trading/scrumming/sizing.py, in permits_size_shapes` reads true and the only
+shape the record leaves is a cash amount in the quote currency, on the buy and on
+the sell alike. `size_shape_refusal` answers for all ten:
+
+> the venue permits a cash amount alone on a buy of this product, and every built
+> variant sizes a unit count rather than a cash amount in the quote currency
+
+That is this issue's row 6, and mexc is the second venue after binance to select
+it. The ten read and chart and refuse an order; the other 3077 size.
+
+### The arithmetic
+
+```
+sector          offered  mexc markets  actionable  offered - actionable
+crypto               22          1705          22                     0
+stocks               21           562          21                     0
+commodities          20            36          20                     0
+forex                12            16          12                     0
+indices              19            71          19                     0
+futures_perps        17           697          17                     0
+```
+
+The offered set and the Add form's set are read from one superset,
+`src/gui/main_tabs/asset_class_surface.py, in known_venues`, narrowed by
+`src/gui/main_tabs/settings_dialog_surface.py, in exchange_status_rows`, so
+offered minus connectable is zero on every sector by construction.
+
+The eleven venues this unit's shared paths also serve — coinbase, kraken, gateio,
+bitget, okx, okxus, bitfinex, gemini, kucoin, bitstamp and cryptocom — were
+driven before and after, twice each and minutes apart. Not one sector count
+moved on any of them, in either pair. A tampered copy of the same reading is the
+control, and the comparison reports it as a difference.
+
+### The verdict, three words only
+
+```
+crypto           yes
+stocks           yes
+commodities      yes
+forex            yes
+indices          yes-if
+futures_perps    yes-if
+```
+
+Each yes-if names the same first cost: mexc's own contract reference marks its
+order endpoints under maintenance, and every market in those two sectors is a
+contract. futures_perps names a second cost of its own: 10 of its 697 markets
+are coin-margined inverse perpetuals whose only permitted shape is a cash
+amount, which this issue's row 6 has not built, so those ten read and chart and
+refuse an order. The other 687 size, and so do all 71 index markets. What waits
+is the venue lifting its own notice, and row 6 landing. Neither sector is a "no",
+because the door exists.
+
+The full readings are in
+[../audits/2026-10-11_mexc_wired_sectors/REPORT.md](../audits/2026-10-11_mexc_wired_sectors/REPORT.md).
+
+### What the mexc reading cannot show
+
+No credential was used, so nothing above proves mexc accepts a live order from
+this program; the order bodies are what the library composes, not what mexc
+acknowledged. mexc's own Help Center cannot be read as text: a support article on
+`www.mexc.com` serves 93,327 bytes of markup yielding 104 characters, and an
+invented article id on the same host serves 93,329 bytes yielding the same 104,
+so no refusal clause and no absence of one can be read there. The same reader
+pulls 363,926 characters and 37 mentions of "United States" off Coinbase's own
+United States user agreement, which is the positive control, and 6,126 characters
+off `blog.mexc.com` against 1,925 for that host's own 404, which is the negative
+one. Every quotation above comes from `api.mexc.com` or from
+`mexcdevelop.github.io/apidocs/`, and each of those answers 403 or 404 for a path
+that cannot exist.

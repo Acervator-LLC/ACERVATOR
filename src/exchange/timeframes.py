@@ -105,6 +105,13 @@ _AVAILABILITY: dict[str, frozenset[str]] = {
     "gateio": frozenset({"1m", "5m", "15m", "30m", "1h", "2h", "4h", "1d", "1w"}),
     "gemini": frozenset({"1m", "5m", "15m", "30m", "1h", "6h", "1d"}),
     "huobi": frozenset({"1m", "5m", "15m", "30m", "1h", "4h", "1d", "1w"}),
+    # Read from ccxt 4.5.85 ``options['timeframes']``, which mexc keys by market
+    # kind. Its spot map publishes nine granularities and its swap map ten, the
+    # swap's extra one being 8h. ALL_TIMEFRAMES draws eight of the nine both
+    # maps share, which is this row, so one row serves a spot pair and a
+    # perpetual alike. The one both publish and ALL_TIMEFRAMES leaves is 1M, and
+    # 2h, 6h and 12h are the three ALL_TIMEFRAMES holds that mexc publishes on
+    # neither map.
     "mexc": frozenset({"1m", "5m", "15m", "30m", "1h", "4h", "1d", "1w"}),
     "poloniex": frozenset(
         {"1m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "12h", "1d", "1w"}
