@@ -540,9 +540,10 @@ def product_code(asset: Any) -> str:
     if not symbol.startswith(FUTURES_SYMBOL_PREFIX):
         return ""
     held = symbol[len(FUTURES_SYMBOL_PREFIX) :]
-    while held and held[-1].isdigit():
-        held = held[:-1]
-    return held[:-1] if held and not held[-1].isdigit() else held
+    stripped = held.rstrip("0123456789")
+    if stripped == held or not stripped:
+        return held
+    return stripped[:-1] or stripped
 
 
 def currency_pair_symbol(symbol: Any) -> bool:
