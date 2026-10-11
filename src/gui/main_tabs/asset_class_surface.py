@@ -231,7 +231,19 @@ EXTRA_VENUE_CLASSES = {
     # EWZ and KORU — publishes assetClass STOCK, the reading bitget and OKX took
     # on their own index-fund tokens.
     "kucoin": ("stocks", "commodities", "forex", "indices", "futures_perps"),
-    "mexc": ("stocks", "futures_perps"),
+    # mexc publishes its own trade zones on both of its hosts, and the zones
+    # name all six sectors. Its spot exchangeInfo carries conceptPlates on all
+    # 1890 rows — Tokenized Stocks 165 markets, Precious Metals 10, Pre-IPO 2,
+    # Metals 1, Crude Oil 1 — and its contract detail carries conceptPlate on
+    # 1028 of 1197 — Stock 469, stockindex 66, ETF 61, Commodities 19,
+    # metalsfutures 17, metals 13, Forex 8, preipo 6, OIL 4. The recording
+    # answers stocks 562, indices 72, commodities 36 and forex 16 beside crypto
+    # 1704 and futures_perps 697, so every one of the five extra sectors holds a
+    # market and commodities and forex each hold spot markets a US account can
+    # reach. The venue is not IP-blocked: every one of its public endpoints
+    # answered a United States address, and its own Help Center is a JavaScript
+    # shell that serves no refusal clause either way.
+    "mexc": ("stocks", "commodities", "forex", "indices", "futures_perps"),
     # OKX's own instrument record numbers five asset categories — 1 Crypto,
     # 3 Stocks, 4 Commodities, 5 Forex, 6 Bonds — and no index number exists in
     # that vocabulary. Nine index-fund tickers are listed, SPY and QQQ among
