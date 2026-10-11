@@ -854,6 +854,20 @@ def total_pages(answered: Any) -> int:
     return int(named) if type(named) is int and named > 0 else 0
 
 
+def walked_pages(page: int, rows: int) -> int:
+    """The page count ``list_fills`` walks to where the reply published no
+    ``PAGINATION_FIELD`` block.
+
+    The venue's own pagination guide gives the fallback: "if a response has no
+    pagination block, stop when `items` comes back with fewer than `per-page`
+    entries (or empty)", so a full page asks for one more and a short page ends
+    the walk.
+    """
+    if rows >= TRANSACTION_PAGE_SIZE:
+        return page + 2
+    return page + 1 if rows else page
+
+
 def reply_items(answered: Any) -> list:
     """Every row one reply carries under its own ``data.items``, and [] where it
     carries none.
@@ -1296,7 +1310,7 @@ class TastytradeConnector(BrokerBase):
                 "GET", f"{TRANSACTIONS_ROUTE.format(account=self._account)}{query}"
             )
             rows = reply_items(answered)
-            pages = total_pages(answered) or (page + 1 if rows else page)
+            pages = total_pages(answered) or walked_pages(page, len(rows))
             for row in rows:
                 if not is_fill(row):
                     continue
@@ -1699,5 +1713,6 @@ __all__ = [
     "rule_number",
     "size_increment",
     "total_pages",
+    "walked_pages",
     "tradable_market",
 ]
