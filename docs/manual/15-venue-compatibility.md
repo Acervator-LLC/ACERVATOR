@@ -9165,8 +9165,8 @@ and that absence claims nothing.
 
 ### The eight connections, E*TRADE
 
-Driven with the home redirected, no venue contacted and no order placed: **177
-assertions, 177 passed, 0 failed**, each count carrying its own control.
+Driven with the home redirected, no venue contacted and no order placed: **184
+assertions, 184 passed, 0 failed**, each count carrying its own control.
 
 | # | the connection | before | after |
 | --- | --- | --- | --- |

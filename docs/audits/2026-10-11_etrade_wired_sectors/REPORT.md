@@ -331,7 +331,7 @@ because `BROKER_CONNECTORS` held no `etrade` row.
 ## 8. The drives, and what controlled each one
 
 The drive ran with the home redirected to a temp directory, no venue contacted
-and no order placed: **177 assertions, 177 passed, 0 failed**, three times over
+and no order placed: **184 assertions, 184 passed, 0 failed**, three times over
 23 minutes, and once more after the tenth defect in section 12 was fixed.
 
 Every count carries its own control. The ones that matter most:
@@ -440,7 +440,7 @@ Each archetype was calibrated before any verdict was reported, by running its ow
 `known_good` and `known_bad` bodies and reading the exit codes directly rather
 than through a shell that had already run a command substitution.
 
-## 12. Fourteen defects this unit found in its own work, before opening
+## 12. Fifteen defects this unit found in its own work, before opening
 
 1. `ORDER_TYPES_WITH_MARKET` was defined locally as `"limit,market"`, which is no
    member of `sizing.ORDER_TYPES_DECLARED`, so every recorded etrade market would
@@ -486,6 +486,15 @@ than through a shell that had already run a command substitution.
 14. `is_fill` read `transactionType` at the top level only, and the transaction
     *detail* nests it under `brokerage`. It now reads both, with a nested
     dividend as the control.
+15. `_parse_order` read the venue's order id out of an `OrderIds` array
+    alone, and `PlaceOrderResponse` publishes it twice: as a scalar
+    `orderId` in its own property table and as that array in its own worked
+    example. A reply carrying the scalar would have left the `StockOrder`
+    holding the client order id, and `cancel_order` would then have sent
+    that to `CancelOrderRequest.orderId`, which the venue defines as the
+    order confirmation id for the order placed. `placed_order_id` now reads
+    the scalar first and the array second, driven on all three shapes with a
+    reply naming none as the control.
 
 ## 13. What remains, named plainly
 
