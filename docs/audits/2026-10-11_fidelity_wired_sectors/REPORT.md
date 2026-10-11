@@ -53,6 +53,21 @@ The middle answer is the trap this unit was warned about. `/trading/api`,
 there names nothing on its own, and every absence below is grounded on a census
 or a quoted sentence rather than on a status code.
 
+**The user agent is a second trap, and it explains the manual sentence this unit
+overtook.** The same home page, three probes in one minute:
+
+| user agent | answer |
+| --- | --- |
+| a full browser string | **200 at 473,350 bytes** |
+| none at all | **200 at 473,350 bytes** |
+| the short string `Mozilla/5.0` | **403 at 370 bytes** |
+
+So `www.fidelity.com` refuses a truncated user agent and nothing else. A reader
+probing with one sees 403 on every path and concludes the host refused every
+request, which is exactly what this page said before today. Every fetch in the
+pinned corpus above carried a full browser string, and the three-way reading was
+repeated at the end of the unit with the same byte counts.
+
 ## 3. There is no order route, and here is the proof
 
 ### 3.1 No API host exists
@@ -536,7 +551,7 @@ because `BROKER_CONNECTORS` held no `fidelity` row.
   tampered copy of the sizing module, one unit-rule row flipped, moves exactly
   **1** cell, and the comparison names it.
 - **The manual page is add-only:** 6,929 base sentences counted against
-  `origin/current`, decoded as UTF-8, **0 absent**, **559 lines added and 0
+  `origin/current`, decoded as UTF-8, **0 absent**, **563 lines added and 0
   deleted**. Two-sided control: one word reworded *inside* an existing sentence
   breaks exactly **1** and the census names it, and the base compared against
   itself reports **0**.
@@ -585,7 +600,15 @@ because `BROKER_CONNECTORS` held no `fidelity` row.
    `crypto_symbol` first, so only a coin takes the ticket's window and a fund
    share takes the equity session. Driven both ways at 00:30 Eastern: the fund
    share passes and the coin is refused.
-5. **Three published figures still have no reader, and that is named rather than
+5. **An overtaken sentence this unit corrected too widely.** The manual's "its
+   host refused every request, the control included" was replaced with "the host
+   refuses nothing", which is wrong: `www.fidelity.com` answers 403 at 370 bytes
+   to the short user-agent string `Mozilla/5.0`, and 200 at 473,350 both to a
+   full browser string and to no user agent at all. The correction now names the
+   mechanism and the three byte counts, which is also the likely cause of the
+   2026-09-24 reading. Found on a third re-reading of this unit's own host
+   calibration, after the gate had gone green and with auto-merge disarmed first.
+6. **Three published figures still have no reader, and that is named rather than
    hidden.** `CRYPTO_FILL_FEE` at 1%, `CRYPTO_CASH_SHARE_MAX` at 95% and
    `PRODUCT_HOSTS` are the venue's own mechanics recorded at the symbol a future
    order or fill route would read. No such route exists, so nothing reads them

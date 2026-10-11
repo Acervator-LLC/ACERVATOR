@@ -9289,11 +9289,15 @@ OVERTAKEN, quoted whole:
 > Fidelity holds stocks alone because its host refused every request, the control
 > included.
 
-True today: the host refuses nothing. `www.fidelity.com` answers **200 at 473,350
-bytes** on its home page and 200 on all 50 pages read, and its own sitemap lists
-3,203 URLs. What is true is the narrower sentence that follows: Fidelity
-publishes no trading API, and that is the venue's own absence rather than its
-host's.
+True today: the host refuses one thing, and it is the probe rather than the
+request. `www.fidelity.com` answers **200 at 473,350 bytes** on its home page
+with a full browser user agent and **200 at 473,350** with no user agent at all,
+and 200 on all 50 pages read; its own sitemap lists 3,203 URLs. It answers **403
+at 370 bytes** to the short string `Mozilla/5.0`, so a reader probing with a
+truncated user agent sees a refusal on every path and would reach exactly the
+overtaken sentence above. That is this venue's own calibration trap, measured
+three ways in one minute. What is true is the narrower claim: Fidelity publishes
+no trading API, and that is the venue's own absence rather than its host's.
 
 OVERTAKEN, quoted whole:
 
