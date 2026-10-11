@@ -7916,3 +7916,87 @@ and Metals with the "United States" box checked. The positive control for every
 census above is that the same reading finds the doors that do exist: 179 paths,
 one order route, nine required and optional order fields, 20 crypto tokens, 28
 currency legs and eleven futures families, where an invented word finds 0.
+
+### Overtaken sentences the Interactive Brokers reading replaces
+
+OVERTAKEN, quoted whole:
+
+> "| Interactive Brokers | **no** | **no** | a quantity order rounds down to
+> whole shares, and no connector exists |"
+
+True today: a connector exists. `src/stocks/ibkr_connector.py, in IbkrConnector`
+answers `BrokerBase` and `BROKER_CONNECTORS` holds the `ibkr` id, so a Start
+press on any of its six sectors builds it through `BrokerExchange`. The
+whole-shares half of the sentence is right and the venue's own API page now says
+so in words: "Interacive Brokers APIs do not support fractional or cash quantity
+trading with exception to Cryptocurrencies and Forex trading."
+
+OVERTAKEN, quoted whole:
+
+> "| Interactive Brokers | yes | no | a quantity order rounds down to whole
+> shares, and a fraction is reached only by naming a cash amount. Interactive
+> Brokers TWS API documentation, read 2026-09-24 |"
+
+True today: a fraction is reached by naming a cash amount on a crypto or a
+currency market and on nothing else. The same sentence of its own API page
+refuses both the fraction and the cash amount everywhere else, and its own
+Fractional Trading page lists the six platforms a fraction is reached from —
+Trader Workstation, IBKR Mobile on four devices, and Client Portal — with the
+API among none of them.
+
+OVERTAKEN, quoted whole:
+
+> "| Interactive Brokers, Schwab, tastytrade, E\*TRADE, Webull, TD Ameritrade,
+> Fidelity | stocks | no | no module names any of the seven |"
+
+True today: a module names two of the seven. `src/stocks/ibkr_connector.py` and
+`src/stocks/schwab_connector.py` each hold a `BrokerBase` subclass, and
+`BROKER_CONNECTORS` keys `alpaca`, `ibkr`, `robinhood` and `schwab`. The other
+five are unchanged.
+
+OVERTAKEN, quoted whole:
+
+> "| Interactive Brokers | equities, funds, futures and 100 or more currency
+> pairs | yes, US broker | a TWS session, shape not stated by the pages read |
+> `src/gui/main_tabs/asset_class_surface.py:33`; Interactive Brokers TWS API
+> documentation, read 2026-09-24 |"
+
+True today: the shape is stated, and it is a REST order and not a TWS session.
+The venue's own OpenAPI document publishes `POST
+/v1/api/iserver/account/{accountId}/orders` with the five fields its schema
+marks required — `conid`, `orderType`, `quantity`, `side`, `tif` — on a
+credential-free route of 939,918 bytes.
+
+OVERTAKEN, quoted whole:
+
+> "| Interactive Brokers | a share or contract quantity | not stated by the
+> pages read; a minimum price increment is published per contract | not stated
+> by the pages read; an oversized order is refused with error 201 | Interactive
+> Brokers TWS API order limitations and minimum increment pages, read 2026-09-24
+> |"
+
+True today: the minimum order size is stated, and it is none. Quoted whole from
+its own minimum-order FAQ: "Nearly every product offered by IBKR has NO minimum
+order size. You can place trades with an order size as low as 1 share, 1
+contract, 1 unit of currency." Three exceptions follow in the same answer, and
+one of them is forex: "Forex order quantity is by default defined in terms of
+units of the first currency of the pair. The concept of Forex lots does not
+apply at IBKR." The price increment half is unchanged, and the venue's own
+contract record publishes it as `incrementRules`.
+
+### A count this unit stated without counting
+
+OVERTAKEN, quoted whole:
+
+> "| crypto | 103 eligible countries, opening with "United States" and holding
+> Puerto Rico, Guam, American Samoa, Northern Mariana Islands and United States
+> Virgin Islands |"
+
+True today: the list holds **106** rows, not 103. The six names above are each
+on it, and the figure 103 was written from an estimate rather than from a count
+of the answer `POST /tws.proxy/faq/content` returns for `question_id` 182858938.
+Counted since, by splitting that answer at its own sentence "Even if a client
+resides in one of the above listed countries" and counting the bullet rows above
+it: 106. Every other reading on this page about that clause stands — the United
+States is the first row, five US territories are on it, eight disqualifiers
+follow it, and no state is excluded.
