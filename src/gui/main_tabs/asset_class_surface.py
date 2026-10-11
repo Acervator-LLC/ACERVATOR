@@ -359,6 +359,90 @@ EXTRA_VENUE_CLASSES = {
     # needs the futures upgrade its own page calls "Add futures to an existing
     # account", and crypto needs the linked zerohash account.
     "etrade": ("crypto", "commodities", "forex", "indices", "futures_perps"),
+    # Fidelity's own Investment Accounts & Products page enumerates the products
+    # it sells in words: "Mutual funds, Stocks, ETFs, Fixed income bonds & CDs,
+    # Options, Crypto, Alternative investments, Margin trading, Precious metals,
+    # International". Its own site navigation names the same set on every one of
+    # the 50 www.fidelity.com pages read -- "Stocks, ETFs, Crypto | Mutual Funds
+    # | Fixed Income, Bonds & CDs | Options | IPOs | Annuities" -- its Trading
+    # section's Investment Choices sub-navigation links five pages, stock
+    # trading, options trading, gold-silver-platinum, international investments
+    # and investment research, and its commissions table has five product rows,
+    # Stocks, Options, ETFs, Bonds and CDs, Mutual Funds. Four enumerations, and
+    # not one names a futures market or a currency market. "stocks" arrives from
+    # EQUITY_VENUES, so this entry carries the other three.
+    # crypto is added here and it is new: "Buy, sell, and transfer crypto like
+    # bitcoin, ethereum, and solana", five assets by name -- Bitcoin (BTC),
+    # Ethereum (ETH), Litecoin (LTC), Solana (SOL) and Fidelity Digital Dollar
+    # (FIDD) -- with "trade sizes as low as $1", maximums of $5,000,000 on BTC,
+    # ETH and FIDD, $2,000,000 on SOL and $1,000,000 on LTC, a published 1% fee
+    # "on buy and sell transactions as 1% of the market value of executed
+    # orders", market and limit orders, and hours of its own: "Trading in
+    # Fidelity Crypto accounts is available 23 hours a day, from 1 a.m. ET until
+    # midnight". Crypto also reaches the equity route as a fund share: "Spot
+    # crypto ETPs (exchange-traded products) are offered by Fidelity Brokerage
+    # Services", FBTC, FETH and FSOL by name.
+    # commodities is added here and it is a physical market with its own
+    # published mechanics: gold, silver, platinum and palladium as coins and
+    # bullion bars, "Order quantity Whole ounces, or whole numbers of coins",
+    # "Order hours 8:00 a.m.-3:00 p.m. ET", "Minimum initial investment $2,500",
+    # and a fee table of 2.90% down to 0.99% buying and 2.00% down to 0.75%
+    # selling. The order route is a telephone: "Call us at 800-544-6666 to buy
+    # precious metals or to learn more."
+    # indices is added here and reaches an order as a fund share, the reading
+    # the etrade unit landed: its own ETF page offers "actively managed and index
+    # ETFs" and its zero-fee index funds are named by symbol, FNILX, FZROX,
+    # FZILX, FZIPX and FXAIX. A mutual fund takes a cash amount and is excluded
+    # from the equity shape by the venue's own words, "Fund shares are priced
+    # daily after the close of the market" and "We do not accept limit orders for
+    # mutual funds".
+    # forex and futures_perps are absent because the venue lists no product in
+    # either. Over the 53 pages its four live hosts serve, 888,215 characters,
+    # "forex" names 3 and all three sit on capitalmarkets.fidelity.com, while
+    # "FX", "currency pair" and "spot forex" each name 0 and "perpetual" names 0,
+    # against "ETFs" 321 and "stocks" 278. "futures" names 26 and not one is a
+    # product: the hits are a learning article titled "Using futures as an
+    # indicator", the SIPC notice that "commodity futures contracts and precious
+    # metals" are not SIPC-eligible, and index-futures prose inside that article.
+    # Over the 3203 URLs its own retail sitemap lists, "forex" names 0 and
+    # "futures" names 1, that same article.
+    # The three forex hits are an institutional division, quoted whole:
+    # "Fidelity Capital Markets (FCM) provides innovative trading and technology
+    # solutions, and execution services across multiple asset classes for
+    # institutional investors. Our offerings include a suite of electronic
+    # brokerage products for equities, options, prime brokerage, securities
+    # lending, fixed income, FOREX, and underwriting for municipal bonds and bank
+    # issued brokered CDs", and "Fidelity Capital Markets is a division of
+    # National Financial Services LLC, Member NYSE, SIPC". FCM names its own
+    # customers -- "asset managers, hedge funds, family offices, endowments" --
+    # and publishes no route: every path on that host answers 404 at the same
+    # 25,655 bytes, real-sounding and invented alike. The one currency surface a
+    # retail customer reaches is a wire and not a market: "The amount of currency
+    # you request is transferred in-kind (e.g., euros to euros) between financial
+    # institutions. Transfers are processed as a wire via the Society for
+    # Worldwide Interbank Financial Telecommunications (SWIFT)", over 15
+    # currencies, with "You'll need to contact a Fidelity International Trader at
+    # 800-544-2976 to complete the transaction."
+    # Four legal entities carry these four sectors and none publishes an order
+    # route. Securities are Fidelity Brokerage Services LLC with custody at
+    # National Financial Services LLC; crypto is "Fidelity Digital Asset
+    # Services, LLC, which is chartered as a limited purpose trust company by the
+    # New York State Department of Financial Services to engage in virtual
+    # currency business (NMLS ID 1773897)"; and metal orders "are handled by
+    # National Financial Services LLC (NFS)... NFS processes precious metal
+    # orders through FideliTrade which is not affiliated with either FBS or NFS."
+    # No eligibility rule names a refused state. The footer of 50 of the 53 pages
+    # reads "This is for persons in the US only." The crypto page is a per-state
+    # table and all 50 states carry a paragraph reading that "Fidelity Digital
+    # Assets provides custody and trading of cryptocurrencies in Fidelity Crypto
+    # accounts"; New York is not refused, unlike Schwab and cryptocom. The only
+    # exceptions are quoted whole: "Fidelity Crypto for IRAs currently isn't
+    # available in California or Oregon, and customers in Oregon can't buy, sell,
+    # or deposit solana (SOL). Fidelity Crypto and Fidelity Crypto for IRAs
+    # currently aren't available in Guam, Puerto Rico, U.S. Virgin Islands, or
+    # outside the U.S." California and Oregon close the IRA and not the account.
+    # One eligibility rule is a dollar and not a place: metals need $2,500.
+    "fidelity": ("crypto", "commodities", "indices"),
     # Interactive Brokers' own OpenAPI document and contract pages name a
     # security type per sector, and all six are already offered here: crypto
     # from CRYPTO on Paxos and zerohash, stocks from STK and FUND, commodities
