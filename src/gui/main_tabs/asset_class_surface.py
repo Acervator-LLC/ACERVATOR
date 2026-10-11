@@ -149,7 +149,18 @@ EXTRA_VENUE_CLASSES = {
         "futures_perps",
     ),
     "binance": ("stocks", "commodities", "forex", "indices", "futures_perps"),
-    "bitfinex": ("commodities", "indices", "futures_perps"),
+    # Bitfinex names every non-crypto perpetual in its own announcement feed:
+    # "UK Oil", "Silver", "Palladium" and "Platinum" for commodities; "GERMANY
+    # 40", "SPAIN 35", "EUROPE 50", "FRANCE 40", "UK 100", "AUSTRALIA 200",
+    # "HONG KONG 50", "JAPAN 225" and the two implied-volatility indices for
+    # indices; and "euro/tether" with "pound/tether" for forex, whose labels
+    # read "Euro" and "Pound Sterling" on the venue's own currency map. Its
+    # recording answers 9 commodities, 10 indices, 4 forex and 76 futures.
+    # stocks is absent: 0 of 288 markets name a single company, and the 28
+    # pairs ``pub:list:pair:securities`` holds are notes and funds its own
+    # pages place on the Bitfinex Securities platform, "not the Bitfinex
+    # exchange".
+    "bitfinex": ("commodities", "forex", "indices", "futures_perps"),
     # Bitget's own instrument record publishes four sector words — stock,
     # crypto, metal and commodity — and no index word on any of its 4603 rows.
     # Its eight index-fund tokens, RSPYUSDT and RQQQUSDT among them, each
