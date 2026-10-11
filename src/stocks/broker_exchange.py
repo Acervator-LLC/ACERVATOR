@@ -114,6 +114,14 @@ SESSION_REFUSED = "{venue} session did not open: {refusal}"
 #: ``broker_trade`` reads through ``bar_epoch_ms`` as an ISO 8601 moment.
 FILL_MOMENT_FIELD = "transaction_time"
 
+#: The fields one broker fill record names its own fee under. Interactive
+#: Brokers publishes a ``commission`` on every one of the 28 fields its own
+#: execution record carries, "Commissions incurred by the execution", and
+#: ``ibkr_connector.fill_record`` maps it onto these two names. A broker naming
+#: neither keeps the zero fee Alpaca's and Robinhood's own records leave.
+FILL_FEE_FIELD = "fee"
+FILL_FEE_CURRENCY_FIELD = "fee_currency"
+
 
 def finite_number(value: Any) -> float:
     """``value`` as a float when it is a finite int or float, else 0.0.
@@ -271,26 +279,35 @@ def exchange_order(placed: Any, symbol: str = "") -> Order:
     )
 
 
+# OVERTAKEN, quoted whole from this function's own docstring:
+#   "A broker publishes its size, price and moment as decimal strings and names
+#   no fee on a fill, so ``fee`` is 0.0 and ``fee_currency`` is empty"
+# True today: Interactive Brokers names a ``commission`` on every execution its
+# own trade route serves, so the fee is read off the record and a broker naming
+# none still answers 0.0.
 def broker_trade(fill: Any, symbol: str = "") -> Trade:
     """One broker fill record as a ``Trade``, with ``symbol`` naming the market
     where the record named none.
 
-    A broker publishes its size, price and moment as decimal strings and names
-    no fee on a fill, so ``fee`` is 0.0 and ``fee_currency`` is empty and the
-    record's own fields ride in ``raw``. A moment ``bar_epoch_ms`` cannot read
-    gives 0.0, which ``FillHistory`` orders oldest first.
+    A broker publishes its size, price and moment as decimal strings, ``fee``
+    and ``fee_currency`` come off ``FILL_FEE_FIELD`` and
+    ``FILL_FEE_CURRENCY_FIELD``, the record's own fields ride in ``raw``, and a
+    moment ``bar_epoch_ms`` cannot read gives 0.0.
     """
     held = fill if isinstance(fill, dict) else {}
     side_word = str(held.get("side") or "").strip().lower()
     moment = bar_epoch_ms(held.get(FILL_MOMENT_FIELD))
+    fee = decimal_number(held.get(FILL_FEE_FIELD))
     return Trade(
         id=str(held.get("id") or ""),
         symbol=str(held.get("symbol") or symbol),
         side=OrderSide.SELL if side_word == OrderSide.SELL.value else OrderSide.BUY,
         amount=decimal_number(held.get("qty")),
         price=decimal_number(held.get("price")),
-        fee=0.0,
-        fee_currency="",
+        fee=fee,
+        fee_currency=(
+            str(held.get(FILL_FEE_CURRENCY_FIELD) or "") if fee > 0.0 else ""
+        ),
         timestamp=0.0 if moment is None else moment / 1000.0,
         raw=dict(held),
     )
@@ -621,6 +638,8 @@ __all__ = [
     "BROKER_ORDER_TYPES",
     "BROKER_SIDES",
     "EXCHANGE_ORDER_TYPES",
+    "FILL_FEE_CURRENCY_FIELD",
+    "FILL_FEE_FIELD",
     "FILL_MOMENT_FIELD",
     "NO_FILL_HISTORY",
     "NO_LIMIT_PRICE",

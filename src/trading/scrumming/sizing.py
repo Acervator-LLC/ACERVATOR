@@ -143,6 +143,32 @@ CITED_UNIT_RULES: dict[tuple[str, str], str] = {
     (CLASS_FOREX, "schwab"): WHOLE_UNITS,
     (CLASS_INDICES, "schwab"): WHOLE_UNITS,
     (CLASS_FUTURES_PERPS, "schwab"): WHOLE_UNITS,
+    # Interactive Brokers holds a row in all six sectors, and two of the six are
+    # fractional because the venue's own API page excepts exactly two. Quoted
+    # whole from its order-type Notes & Limitations page: "Interacive Brokers
+    # APIs do not support fractional or cash quantity trading with exception to
+    # Cryptocurrencies and Forex trading." Its own minimum-order FAQ gives the
+    # whole-unit figure for everything else: "Nearly every product offered by
+    # IBKR has NO minimum order size. You can place trades with an order size as
+    # low as 1 share, 1 contract, 1 unit of currency." crypto is fractional at
+    # the grain its own FAQ publishes, "The minimum order size is .00000001",
+    # and forex is fractional because its own FX Pairs page sizes an order in
+    # units of the first currency with no step named.
+    # stocks is the row that inverts alpaca and schwab, and the inversion is the
+    # venue's own. Its Fractional Trading page offers a fraction of a share --
+    # "Invest as little as USD 1" -- and names the six platforms reaching one:
+    # Trader Workstation, IBKR Mobile on four devices, and Client Portal. The
+    # API is not among them, and the page that names the API refuses the
+    # fraction, so an order this program composes names whole shares.
+    # commodities, indices and futures_perps are whole contracts: US Spot Gold
+    # prices "in Quantities as Small as 1 Ounce", and every index and futures
+    # market the venue lists is a dated contract carrying its own multiplier.
+    (CLASS_CRYPTO, "ibkr"): FRACTIONAL_UNITS,
+    (CLASS_STOCKS, "ibkr"): WHOLE_UNITS,
+    (CLASS_COMMODITIES, "ibkr"): WHOLE_UNITS,
+    (CLASS_FOREX, "ibkr"): FRACTIONAL_UNITS,
+    (CLASS_INDICES, "ibkr"): WHOLE_UNITS,
+    (CLASS_FUTURES_PERPS, "ibkr"): WHOLE_UNITS,
     (CLASS_FOREX, "coinbase"): FRACTIONAL_UNITS,
     (CLASS_STOCKS, "coinbase"): WHOLE_UNITS,
     (CLASS_COMMODITIES, "coinbase"): WHOLE_UNITS,
@@ -263,6 +289,18 @@ CITED_UNIT_RULES: dict[tuple[str, str], str] = {
 #: ``NOK``, ``AMD``, ``COP`` and ``SGD`` need no alpaca row: each is a listed US
 #: equity on this venue, none bases one of its 73 crypto pairs, and the equity
 #: reading is the one its own ``us_equity`` class word gives.
+#:
+#: The one ibkr row is the alpaca reading on the same token. ``PAXG`` is on
+#: Interactive Brokers' own crypto table, which lists 20 tokens and marks "PAXG
+#: (Pax Gold)" on both Paxos and zerohash, so its record carries the venue's own
+#: ``CRYPTO`` security type and would read crypto. The token redeems for gold,
+#: which ``PRECIOUS_METAL_CODES`` and the alpaca and cryptocom rows above
+#: already answer commodities for. ``NOK``, ``SGD``, ``AMD`` and ``COP`` need no
+#: ibkr row: ``NOK`` and ``SGD`` are two of the 28 currency legs its own Spot
+#: Currencies page names and the venue writes a currency market as two codes
+#: joined by a dot, so ``ibkr_connector.currency_pair_symbol`` separates the
+#: krone from Nokia and leaves a bare code as the equity; ``AMD`` and ``COP``
+#: name 0 of those 28 legs, so each keeps the equity its own ``STK`` word gives.
 CITED_VENUE_BASE_SECTORS: dict[tuple[str, str], str] = {
     ("bitfinex", "UKOIL"): CLASS_COMMODITIES,
     ("bitfinex", "AUSTRALIA200IX"): CLASS_INDICES,
@@ -295,6 +333,7 @@ CITED_VENUE_BASE_SECTORS: dict[tuple[str, str], str] = {
     ("mexc", "ARS"): CLASS_FOREX,
     ("mexc", "MXN"): CLASS_FOREX,
     ("mexc", "PLN"): CLASS_FOREX,
+    ("ibkr", "PAXG"): CLASS_COMMODITIES,
 }
 
 
@@ -543,6 +582,17 @@ SESSIONS_DECLARED = (SESSION_CONTINUOUS, SESSION_US_EQUITY)
 # continuous and none is a US equity session, so citing either word would claim
 # hours the venue does not publish. An absent row claims nothing and leaves the
 # recorded step governing, which is the right answer for a whole-unit contract.
+#
+# Interactive Brokers holds one row for the same reason schwab does, and the
+# venue answers both halves itself on its own Trading Outside Regular Trading
+# Hours page: "Futures are available outside RTH. US stocks are not." So stocks
+# is ``SESSION_US_EQUITY`` and the five other sectors hold no row. Its own staff
+# answer on that page is what ``session_order_types`` then narrows: "It is not
+# possible to submit market orders outside of RTH, including a stop loss", and
+# "Only Day Limit orders are allowed in the US overnight trading session."
+# ``ibkr_connector.asset_session`` writes the same word per market off the
+# record's own ``isUS`` field, so a market listed outside the US publishes no
+# session and this row cannot claim US hours for it.
 CITED_VENUE_SESSIONS: dict[tuple[str, str], str] = {
     (CLASS_CRYPTO, "coinbase"): SESSION_CONTINUOUS,
     (CLASS_STOCKS, "alpaca"): SESSION_US_EQUITY,
@@ -550,6 +600,7 @@ CITED_VENUE_SESSIONS: dict[tuple[str, str], str] = {
     (CLASS_COMMODITIES, "alpaca"): SESSION_CONTINUOUS,
     (CLASS_INDICES, "alpaca"): SESSION_US_EQUITY,
     (CLASS_STOCKS, "schwab"): SESSION_US_EQUITY,
+    (CLASS_STOCKS, "ibkr"): SESSION_US_EQUITY,
 }
 
 #: The reason a held order carries, never one of ``sized_order``'s refusals.
@@ -652,6 +703,27 @@ ORDER_TYPES_DECLARED = (ORDER_TYPES_WITH_MARKET, ORDER_TYPES_LIMIT_ONLY)
 # of 18 trader paths that takes an order; ``/trader/v1/futures/orders`` and
 # ``/trader/v1/forex/orders`` each answer 404 where a real trader route answers
 # 401.
+#
+# Interactive Brokers holds a row in all six sectors, and it is the first venue
+# whose own pages name the order types per security type rather than per sector.
+# Its own Market Order page lists the products a market order reaches -- "BOND,
+# CFD, EFP, CASH, FUND, FUT, FOP, OPT, STK, WAR" -- and its own Limit Order page
+# lists "BOND, CASH, CFD, CMDTY, FUT, FOP, OPT, STK, WAR", so ``CASH``, ``FUT``,
+# ``FOP``, ``STK`` and ``FUND`` take both and ``CMDTY`` takes a limit order and
+# no market order. crypto has a page of its own, and that page bans the unit
+# count this platform sends on a market buy: "MKT Orders using 'cashQty' value."
+# for a BUY against "LMT Order Using 'quantity' or 'totalQuantity' values", with
+# "Please be aware that no other order types are available for Crypto orders."
+# A unit-count buy into a crypto market can therefore only be a limit order, so
+# crypto reads ``ORDER_TYPES_LIMIT_ONLY`` and ``market_replaces_market_order``
+# raises every crypto market order onto the record's own tick.
+# commodities reads ``ORDER_TYPES_WITH_MARKET`` because its futures half takes a
+# market order, and ``ibkr_connector.asset_order_types`` writes
+# ``ORDER_TYPES_LIMIT_ONLY`` on the ``CMDTY`` spot-gold record itself, which
+# ``order_types_for`` reads ahead of this row. One order route serves the whole
+# venue, ``POST /iserver/account/{accountId}/orders``, whose own
+# ``singleOrderSubmissionRequest`` schema marks five fields required: ``conid``,
+# ``orderType``, ``quantity``, ``side`` and ``tif``.
 CITED_VENUE_ORDER_TYPES: dict[tuple[str, str], str] = {
     (CLASS_CRYPTO, "coinbase"): ORDER_TYPES_WITH_MARKET,
     (CLASS_CRYPTO, "gemini"): ORDER_TYPES_LIMIT_ONLY,
@@ -688,6 +760,12 @@ CITED_VENUE_ORDER_TYPES: dict[tuple[str, str], str] = {
     (CLASS_INDICES, "alpaca"): ORDER_TYPES_WITH_MARKET,
     (CLASS_CRYPTO, "schwab"): ORDER_TYPES_WITH_MARKET,
     (CLASS_STOCKS, "schwab"): ORDER_TYPES_WITH_MARKET,
+    (CLASS_CRYPTO, "ibkr"): ORDER_TYPES_LIMIT_ONLY,
+    (CLASS_STOCKS, "ibkr"): ORDER_TYPES_WITH_MARKET,
+    (CLASS_COMMODITIES, "ibkr"): ORDER_TYPES_WITH_MARKET,
+    (CLASS_FOREX, "ibkr"): ORDER_TYPES_WITH_MARKET,
+    (CLASS_INDICES, "ibkr"): ORDER_TYPES_WITH_MARKET,
+    (CLASS_FUTURES_PERPS, "ibkr"): ORDER_TYPES_WITH_MARKET,
 }
 
 
@@ -791,6 +869,19 @@ SETTLE_LEG = ":"
 # "Place trades in dollar or share amounts", and this program composes the share
 # count, so ``market_buy_names_cash`` answering False is right for every schwab
 # market.
+# ``ibkr`` is not a member, and it is the first venue whose cash-amount rule is
+# true of one sector and false of the rest, which is a grain this venue-keyed
+# set cannot hold. Its own Cryptocurrency Trading page gives a crypto market buy
+# the cash unit and a crypto market sell the count: "MKT Orders using 'cashQty'
+# value." for a BUY against "MKT orders using 'quantity' or 'totalQuantity'
+# values." for a SELL. Its own order-type Notes & Limitations page refuses the
+# same unit everywhere else: "Interacive Brokers APIs do not support fractional
+# or cash quantity trading with exception to Cryptocurrencies and Forex
+# trading." A row here would therefore claim a cash market buy of its 10,000
+# equities, which that sentence refutes. The crypto rule is carried at the
+# market grain instead, by the ``ORDER_TYPES_LIMIT_ONLY`` row above and by
+# ``ibkr_connector.asset_order_types``, so a crypto buy is raised to a limit
+# order naming a unit count and never sent as a market order the venue refuses.
 CITED_CASH_MARKET_BUY: frozenset[str] = frozenset(
     {"binance", "bitget", "coinbase", "gateio", "mexc"}
 )
@@ -874,8 +965,19 @@ def session_for(recorded: Any, asset_class: str, venue: str) -> Optional[str]:
 #: The settlement delay each ``(asset class, venue)`` publishes, in days, keyed
 #: as ``CITED_UNIT_RULES`` is keyed. A pair absent here publishes none, and a
 #: cited zero is a venue returning the cash of a sale at once.
+#
+# Interactive Brokers is the first venue to publish a delay of more than zero,
+# and it publishes two. Its own Trading Outside Regular Trading Hours page
+# states the equity figure: "all US equities settle on a T+1 basis since May
+# 2024." Its own Spot Currencies page states the currency figure twice:
+# "Settlement typically occurs within two business days" and "Fast settlement,
+# typically in T+2 (trade date plus two days)." Its four other sectors hold no
+# row: no ibkr page read names a settlement day count for a futures contract, a
+# spot-gold trade or a crypto trade, and an absent row claims nothing.
 CITED_VENUE_SETTLEMENT: dict[tuple[str, str], float] = {
     (CLASS_CRYPTO, "coinbase"): 0.0,
+    (CLASS_STOCKS, "ibkr"): 1.0,
+    (CLASS_FOREX, "ibkr"): 2.0,
 }
 
 #: What a fold carries when ``unsettled_usd`` leaves it nothing to spend.
@@ -1339,6 +1441,16 @@ def mechanic_market(mechanic: Any) -> str:
     return MECHANIC_MARKETS.get(str(mechanic), "")
 
 
+# OVERTAKEN, quoted whole from this function's own docstring:
+#   "or while ``venue_variant`` reads ``MECHANIC_LIMIT_ONLY`` for the market
+#   itself"
+# True today: the record's own declaration is read here directly, because
+# ``venue_variant`` answers one mechanic per market and four tests win ahead of
+# ``MECHANIC_LIMIT_ONLY``. Interactive Brokers' spot gold is the market that
+# found it: its own Limit Order page lists ``CMDTY`` and its Market Order page
+# does not, so the record declares ``ORDER_TYPES_LIMIT_ONLY``, and at $4,100 an
+# ounce ``MECHANIC_SMALLEST_ORDER_OVER_EXCESS`` won first and a market order
+# would have gone to a venue publishing no market order for it.
 def market_replaces_market_order(
     rules: Any,
     price: Optional[float] = None,
@@ -1346,16 +1458,19 @@ def market_replaces_market_order(
     moment_s: Any = None,
 ) -> bool:
     """True while ``session_order_types`` reads ``ORDER_TYPES_LIMIT_ONLY`` for
-    the market's own session at ``moment_s``, or while ``venue_variant`` reads
-    ``MECHANIC_LIMIT_ONLY`` for the market itself.
+    the market's own session at ``moment_s``, while the record itself declares
+    ``ORDER_TYPES_LIMIT_ONLY``, or while ``venue_variant`` reads
+    ``MECHANIC_LIMIT_ONLY``.
 
-    An omitted ``moment_s`` leaves the session out and answers off
-    ``venue_variant`` alone.
+    An omitted ``moment_s`` leaves the session out and answers off the record
+    and ``venue_variant`` alone.
     """
     if (
         session_order_types(getattr(rules, "session", None), moment_s)
         == ORDER_TYPES_LIMIT_ONLY
     ):
+        return True
+    if getattr(rules, "order_types", None) == ORDER_TYPES_LIMIT_ONLY:
         return True
     return venue_variant(rules, price, excess_usd) == MECHANIC_LIMIT_ONLY
 

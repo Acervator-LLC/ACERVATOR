@@ -14,6 +14,8 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 
 from ..exchange.base import MarketRules
+from .ibkr_connector import VENUE_ID as IBKR_VENUE_ID
+from .ibkr_connector import IbkrConnector
 from .robinhood_broker import VENUE_ID as ROBINHOOD_VENUE_ID
 from .robinhood_broker import RobinhoodMcpBroker
 from .schwab_connector import VENUE_ID as SCHWAB_VENUE_ID
@@ -602,8 +604,13 @@ class AlpacaConnector(BrokerBase):
 
 #: Each venue id in ``SUPPORTED_BROKERS`` that has a ``BrokerBase`` subclass.
 #: ``tradingview_webhook`` publishes no order interface and holds no class.
+# ``interactivebrokers`` holds no row and is the same firm as ``IBKR_VENUE_ID``:
+# ``www.ibkr.com`` redirects to ``www.interactivebrokers.com`` and serves the
+# same 240,678 bytes. Removing the second id reshapes the Exchanges tab, which
+# is its own row, so this registry names the one the rest of the tree reads.
 BROKER_CONNECTORS: dict[str, type[BrokerBase]] = {
     VENUE_ID: AlpacaConnector,
+    IBKR_VENUE_ID: IbkrConnector,
     ROBINHOOD_VENUE_ID: RobinhoodMcpBroker,
     SCHWAB_VENUE_ID: SchwabConnector,
 }
