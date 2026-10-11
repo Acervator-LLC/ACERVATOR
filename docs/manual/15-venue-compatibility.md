@@ -5869,3 +5869,300 @@ second open decision and belongs to the operator. And ccxt's own gemini parser
 still reads a library-held pair table rather than the venue's own symbol details,
 so a published amount step or minimum that the library has not refreshed is a
 reading this program cannot correct from here.
+
+## KuCoin, read on 2026-10-11
+
+KuCoin is the fifth venue to publish its own asset categories, and the first to
+publish them on two hosts under two field names. One ccxt id loads both:
+`src/exchange/ccxt_connector.py, in SUPPORTED_EXCHANGES` holds `kucoin`, and
+`load_markets` returns 1659 markets — 968 spot, 690 perpetual and 1 dated. All
+1659 publish `active` True, so `is_listed_market` skips none.
+
+OVERTAKEN, quoted whole:
+
+```
+| kucoin | crypto, stocks, commodities, futures_perps |
+```
+
+True today: six sectors. `src/gui/main_tabs/asset_class_surface.py, at
+EXTRA_VENUE_CLASSES` gains forex and indices for kucoin, so
+`venue_classes` answers crypto, stocks, commodities, forex, indices and
+futures_perps.
+
+OVERTAKEN, quoted whole:
+
+```
+| kucoin | crypto spot | no refusal recorded, 2026-08-28 | key, secret and passphrase | `src/exchange/ccxt_connector.py, in PASSPHRASE_EXCHANGES` |
+```
+
+True today: the terms refuse a United States account, and the credential shape
+is unchanged. `src/exchange/ccxt_connector.py, in US_ACCOUNT_RESTRICTED_EXCHANGES`
+gains the id, which makes it six venues. KuCoin's own Terms of Use article 17(5)
+requires that the user "is not a resident of or registered in, any of the
+Restricted Locations", and defines those to "include the United States
+(including its territories such as Puerto Rico, Guam, the Northern Mariana
+Islands, American Samoa, etc)". Its article 102 adds "The Platform does not
+offer its services outside the Turks and Caicos Islands."
+`src/exchange/ccxt_connector.py, in US_IP_BLOCKED_EXCHANGES` does not gain it:
+all eight kucoin public endpoints answered HTTP 200 from a United States
+address, so the refusal sits on the account and not on the address.
+
+### Where the sector comes from
+
+`src/exchange/ccxt_connector.py, at VENUE_ASSET_SECTOR_RECORDS` now holds a
+tuple of records per venue rather than one record, because kucoin needs two.
+
+| host | path | rows | the code field | the sector field | its words |
+| ---- | ---- | ---- | -------------- | ---------------- | --------- |
+| `api.kucoin.com` | `/api/v2/symbols` | 968 | `baseCurrency` | `market` | USDS 867, BTC 50, ALTS 20, DeFi 16, Stocks 5, KCS 4, FIAT 4, Meme 2 |
+| `api-futures.kucoin.com` | `/api/v1/contracts/active` | 691 | `baseCurrency` | `assetClass` | CRYPTO 527, STOCK 155, METAL 6, COMMODITY 3 |
+
+The futures host names the exchange behind each equity contract as well:
+`marketType` reads NASDAQ on all 155 and `subMarketType` reads US.STOCK on 134,
+HK.STOCK on 15, KR.STOCK on 5 and JP.STOCK on 1.
+
+Of the eight spot words, one names a family: `Stocks` holds the five xStock
+pairs. `FIAT` names the quote and not the base — its four rows are BTC-EUR,
+ETH-EUR, USDC-EUR and USDT-EUR — so it maps onto `NO_PUBLISHED_FAMILY`, because
+reading it as forex off the base code would make every bitcoin pair a currency
+pair. `CRYPTO` and `Stocks` each resolve through
+`src/trading/ata_spm.py, in asset_class_named` on their own, so every word of
+both vocabularies is named in the record and none resolves by accident.
+
+The spot record reads first and the futures record second.
+`src/exchange/ccxt_connector.py, in _read_asset_sector_rows` leaves only a code
+that already holds a non-empty sector untouched, so PAXG and XAUT take the METAL
+row over the empty spot grouping. KuCoin publishes `baseCurrency` on every row
+of both hosts, so neither record needs a `code_leg`, which is where OKX's record
+differs.
+
+`src/exchange/ccxt_connector.py, in _published_asset_sectors` answers 1047 asset
+codes for kucoin and names a family on 169 of them: 160 stocks and 9
+commodities.
+
+### What the record moves
+
+| Sector | Markets before | After |
+| ------ | -------------- | ----- |
+| crypto | 956 | 958 |
+| stocks | 0 | 160 |
+| commodities | 8 | 12 |
+| forex | 14 | 2 |
+| futures and perpetuals | 681 | 527 |
+| indices | 0 | 0 |
+
+Stocks is the gain: 155 equity perpetuals and the 5 spot xStock pairs.
+Commodities gains copper, Brent crude, WTI crude and natural gas, which no code
+set in this program recognises and the venue's own METAL and COMMODITY words
+do. Futures and perpetuals falls because 154 of its contracts were a stock or a
+commodity reading as a plain perpetual.
+
+Forex falls from 14 to 2, and 12 of the 14 were wrong. The cost is named: once a
+venue publishes any sector map, `src/exchange/ccxt_connector.py, in
+market_asset_class` stops reading `PRECIOUS_METAL_CODES` and
+`FIAT_CURRENCY_CODES`, which is the same arithmetic that kept bitfinex and
+gemini from taking a record at all. Here the record wins 164 markets and loses
+2, and the 2 are recovered by a citation at the grain of the market.
+
+### A base code is the wrong grain for three of its markets
+
+`src/trading/scrumming/sizing.py, at CITED_VENUE_MARKET_SECTORS` is new, keyed
+by venue and unified symbol, and `in venue_market_sector` answers it.
+`market_asset_class` reads it ahead of `venue_base_sector`. Three rows, all
+kucoin, each the venue's own word.
+
+| market | its sector | why no base code can carry it |
+| ------ | ---------- | ----------------------------- |
+| BNC/USDT | crypto | BNC is two assets. The spot token is the one kucoin's own `/api/v3/currencies` calls "Bifrost". The perpetual BNCUSDTM carries `assetClass` STOCK, `marketType` NASDAQ and `subMarketType` US.STOCK, and prices off `binance_index`, `binance_futures` and `finnhub`, an equity vendor |
+| USDC/EUR | forex | USDC also bases USDC/USDT, a dollar token against a dollar token, which holds no second currency |
+| USDT/EUR | forex | USDT also bases USDT/USDC, the same case |
+
+KuCoin names the three legs "USD Coin", "Tether" and "Euro" on its own currency
+list, and groups both euro pairs under its own spot word FIAT. They are the legs
+of the bitfinex EUR/USDT row this program already reads as forex, swapped.
+
+Of the 169 codes the record names, 8 are also a spot base. BNC is the one where
+the two assets differ. The other 7 agree with the record: "Apple xStock",
+"Circle xStock", "Robinhood xStock", "MicroStrategy xStock", "Tesla xStock",
+"PAX Gold" and "Tether Gold".
+
+### The ticker collision, settled from the venue's own pages
+
+Eleven kucoin bases carry a code `FIAT_CURRENCY_CODES` holds for a national
+currency, and nine of them are not a currency market.
+
+| base | its only markets | kucoin's own words | read before | true |
+| ---- | ---------------- | ------------------ | ----------- | ---- |
+| AMD | AMD/USDT:USDT | `assetClass` STOCK, `marketType` NASDAQ, no currency row | forex | stocks |
+| NOK | NOK/USDT:USDT | `assetClass` STOCK, `marketType` NASDAQ, `subMarketType` US.STOCK | forex | stocks |
+| RON | RON/USDT:USDT | `assetClass` CRYPTO, priced off okex, binance, gateio and mexc | forex | futures_perps |
+| SCR | SCR/USDT, SCR/USDT:USDT | `fullName` "Scroll" | forex | crypto |
+| BOB | BOB/USDT | `fullName` "bob" | forex | crypto |
+| MNT | MNT/USDT | `fullName` "Mantle Network" | forex | crypto |
+| USD1 | USD1/USDT | `fullName` "World Liberty Financial USD" | forex | crypto |
+| USDS | USDS/USDT | `fullName` "USDS Stablecoin" | forex | crypto |
+| USDC | USDC/USDT, USDC/USDT:USDT | `fullName` "USD Coin" | forex | crypto |
+| USDT | USDT/USDC | `fullName` "Tether" | forex | crypto |
+| USDC, USDT | USDC/EUR, USDT/EUR | "USD Coin" and "Tether" against "Euro" | forex | forex |
+
+NOK is the sharpest. KuCoin's currency list calls NOK "Norwegian Krone", because
+NOK is a deposit currency there. Its only market is the perpetual NOKUSDTM,
+whose own record reads STOCK and NASDAQ. That contract is Nokia, not the krone.
+AMD has no currency row at all and the same contract shape.
+
+### The order shape
+
+Two order paths, one per host, read with `ex.fetch` replaced so nothing left the
+machine. No credential was used and no order was placed or previewed.
+
+| sector | endpoint | the size field | what it counts |
+| ------ | -------- | -------------- | -------------- |
+| crypto, stocks (spot), commodities (spot), forex | `POST api.kucoin.com/api/v1/orders` | `size` | a unit count in the base currency |
+| futures and perpetuals, stocks (perp), commodities (perp) | `POST api-futures.kucoin.com/api/v1/orders` | `size` | a lot count, with `leverage` 1 |
+
+`size` carries the same unit on the buy and on the sell, in every sector.
+`src/trading/scrumming/sizing.py, at CITED_CASH_MARKET_BUY` keeps its four
+members and kucoin is not one, which is the reading the brief asked for: the
+venue publishes a cash field beside the unit field on the same endpoint. Its own
+Add Order page describes `size` as "Specify quantity for currency" and offers
+both on a market order as "(Select one out of two: size or funds)", with the
+funds field named as cash in the Hold section: "For market price buy/sell orders
+that require specific funds, we will hold the required funds in from your
+account." ccxt sends `funds` only when the caller passes a `cost` parameter, and
+`src/exchange/ccxt_connector.py, in place_order` builds its `extra_params` from
+the client order id and the time-in-force alone, so no order this program places
+can carry it. A market buy was read on the wire as `size` 0.001 against a
+sell's `size` 0.001.
+
+A third route exists for a Unified Trading Account, and it states the unit in a
+field of its own. `POST api.kucoin.com/api/ua/v1/unified/order/place` carries
+`sizeUnit`, and the venue's own page says "UTA | SPOT | `size` required. Unit
+controlled by `sizeUnit`. Market Order: `BASECCY` (default) or `QUOTECCY`.
+Limit Order: `BASECCY` only". The composed body carries `BASECCY` on a spot
+order and `UNIT` on a futures order. ccxt asks kucoin which account mode is in
+force before every order, so the route follows the operator's own account, and
+both routes send a count.
+
+`src/exchange/ccxt_connector.py, in declared_order_types` reads "market and
+limit" off kucoin's own capability map, where `createMarketOrder` is True, and
+stamps it on all 1659 recorded markets.
+`src/trading/scrumming/sizing.py, at CITED_VENUE_ORDER_TYPES` gains a row for
+each of the five sectors kucoin records a market in, as the fallback for a
+market whose record was never read. Indices gains no row, because no market
+selects it. `in order_types_for` answered "market and limit" for all 1659.
+
+KuCoin is the first venue in this program whose capability map holds no False.
+All seventeen read True, `fetchPositions`, `fetchPosition`, `fetchClosedOrders`
+and `setLeverage` among them, so every read path each sector needs is declared.
+
+### The contract carries its own size
+
+All 691 kucoin contracts publish an amount step of 1 and a minimum of 1, so
+`src/trading/scrumming/sizing.py, in recorded_unit_rule` reads every one as
+`WHOLE_UNITS`. Each also publishes a `multiplier`, which ccxt carries as
+`contractSize` and `src/exchange/base.py, at MarketRules` records as
+`contract_size`: 0.01 for the Apple perpetual, 0.001 for the bitcoin perpetual,
+0.01 for the WTI perpetual. 686 of the 1659 recorded rules carry one, which is
+the first venue reading to fill that field from a live venue.
+
+The venue's own futures page names three size fields and explains the lot:
+`qty` is "Specified in **base currency** and must be an integer multiple of the
+multiplier", `valueQty` is "Specified in **quote currency**", and `size` is the
+lot. ccxt sends `size`, so a kucoin contract order counts lots.
+
+`in market_unit_rule`, driven over all 1659 markets: futures and perpetuals 527
+whole; stocks 155 whole and 5 fractional, the 5 being the spot xStock pairs;
+commodities 9 whole and 3 fractional; forex 2 fractional; crypto 760 fractional
+and 198 whole.
+
+### The variant
+
+`src/trading/scrumming/sizing.py, in sector_variant` names a built variant for
+every one of the 1659 markets, and `in variant_built` answers True for all 1659.
+At a reference price of $100 and a scrum excess of $500: Futures Scrumming 527,
+Stock Scrumming 160, Crypto Scrumming 513, Commodity Scrumming 12, Forex
+Scrumming 2, and Whole Unit Scrumming 445, the last being the markets whose
+smallest order costs more than the excess.
+
+### Indices is offered and records nothing
+
+0 of kucoin's 1659 markets reads as an index, and 0 of the twelve words its two
+hosts publish names one. The venue lists thirteen index-fund and sector-fund
+contracts — SPY, QQQ, IWM, TQQQ, SQQQ, SOXL, SOXS, UVXY, XLE, EWJ, EWY, EWZ and
+KORU — and publishes `assetClass` STOCK on every one. This is the third venue to
+do that: bitget publishes `symbolType` stock on RSPYUSDT and RQQQUSDT, and OKX
+publishes `instCategory` 3 on SPY and QQQ. The sector offers the venue and the
+recording answers nothing under it, exactly as those two read.
+
+The control for that count: the same search over the same 691 futures rows found
+the 6 METAL contracts and the 3 COMMODITY contracts it reports, and found 155
+STOCK rows. Seven invented paths on the same host answered 404 while
+`/api/v3/currencies` answered 200 with 2261 rows, so the search could find a
+page that exists.
+
+### The step-five subtraction for kucoin
+
+| Sector | Venues offered, before | After | Markets kucoin can act on, before | After |
+| --- | --- | --- | --- | --- |
+| crypto | 22 | 22 | 956 | 958 |
+| stocks | 21 | 21 | 0 | 160 |
+| commodities | 18 | 18 | 8 | 12 |
+| forex | 9 | 10 | 14, 12 of them wrong | 2 |
+| indices | 15 | 16 | 0 | 0 |
+| futures and perpetuals | 16 | 16 | 681 | 527 |
+
+Two offered counts move, because forex and indices gained the id. The Add form's
+set equals the screen's set in all six sectors, measured both ways with nothing
+on either side, because `src/gui/main_tabs/settings_dialog_surface.py, in
+exchange_status_rows` draws `venues_for_class` itself.
+`src/gui/main_tabs/asset_class_surface.py, in known_venues` holds 26 ids and an
+invented id is in none of them.
+
+`src/core/log_paths.py, in gate_log_path` composes
+`trade/gate/kucoin/<sector>/gate.log` for each of the six sectors. Six real
+decisions were written through `LogManager.log_gate_decision` with the home
+redirected: six distinct writer pairs opened, each file holds one line, each row
+names its own sector in its own `asset_class` field, and `gate_log_files` lists
+all six, so a reader follows the writer. A sector nothing was written for has no
+file, which is the control.
+
+`src/exchange/market_inspector_fetcher.py` needed no change. `trading_products`
+already reads kucoin: 814 bases, 814 trading, none not trading. A connector with
+no market table answers 0 bases, which is the control. `src/exchange/timeframes.py`
+needed no change either — ccxt publishes fourteen granularities for kucoin and
+`ALL_TIMEFRAMES` draws eleven, which is exactly the row — and only its comment
+changed, because it stated a belief where a measurement belongs.
+
+The full readings are in
+[../audits/2026-10-11_kucoin_wired_sectors/REPORT.md](../audits/2026-10-11_kucoin_wired_sectors/REPORT.md).
+
+### Five markets refuse, and the refusal is the built one
+
+KuCoin lists 5 coin-margined contracts: the bitcoin, ether, solana and ripple
+perpetuals settled in their own base, and one dated bitcoin future expiring
+2026-12-25. `src/exchange/ccxt_connector.py, in quote_contract_size_shapes`
+answers a cash amount on both sides of each, so
+`src/trading/scrumming/sizing.py, in size_shape_refusal` names the cause on the
+buy and on the sell: "the venue permits a cash amount alone on a buy of this
+product, and every built variant sizes a unit count rather than a cash amount in
+the quote currency". The 686 USDT-margined contracts return an empty refusal,
+which is the control. KuCoin is the second venue whose own records select the
+cash-amount variant this issue's row 6 leaves unbuilt, and the market is still
+read and still charted.
+
+The dated contract is the other half. `MarketRules.expires` reads True for it
+alone, so `in venue_variant` answers the expiry mechanic and the close path this
+issue's row 5 built applies to one kucoin market.
+
+This issue's second open decision does not bite here. KuCoin lists no token for
+a national currency other than the dollar: of the ten codes in
+`src/exchange/ccxt_connector.py, at TOKEN_UNDERLYING_CODES`, only PAXG, XAUT,
+USD1, USDC, USDS and USDT base a kucoin market, and no euro, sterling, Australian
+dollar or Singapore dollar token is listed.
+
+Two limits remain, stated plainly. No reading used a credential, so nothing here
+proves the venue accepts a live order from this program; the order bodies are
+what the library composes, not what kucoin acknowledged. And the venue will not
+give a United States resident an account, in its own words, in every one of its
+sectors; the program warns on connect and still starts a bot, and whether such
+an id stays offered at all is the operator's call.

@@ -311,10 +311,19 @@ US_IP_BLOCKED_EXCHANGES: set[str] = {
 # Securities arm refuses the same person separately: the Prohibited Person List
 # opens with "Any U.S. Person". Every public bitfinex endpoint answered 200 from
 # a United States address, so the refusal is on the account and not the address.
+# KuCoin's own Terms of Use article 17(5) requires that "the User (whether as an
+# individual or legal entity) is not a resident of or registered in, any of the
+# Restricted Locations", and defines "'Restricted Locations' shall include the
+# United States (including its territories such as Puerto Rico, Guam, the
+# Northern Mariana Islands, American Samoa, etc)". Its article 102 adds "The
+# Platform does not offer its services outside the Turks and Caicos Islands."
+# All eight kucoin public endpoints answered 200 from a United States address,
+# so this refusal sits on the account as well.
 US_ACCOUNT_RESTRICTED_EXCHANGES: set[str] = {
     "bitfinex",
     "bitget",
     "gateio",
+    "kucoin",
     "poloniex",
     "huobi",
 }
@@ -508,62 +517,119 @@ NO_PUBLISHED_FAMILY = ""
 #: Bitfinex Securities platform and not the Bitfinex exchange."
 #: ``CITED_VENUE_BASE_SECTORS`` carries the sectors that venue publishes as
 #: product names instead.
-VENUE_ASSET_SECTOR_RECORDS: dict[str, AssetSectorRecord] = {
-    "gateio": AssetSectorRecord(method="publicSpotGetCurrencies"),
-    "okx": AssetSectorRecord(
-        method="publicGetPublicInstruments",
-        requests=(
-            {"instType": "SPOT"},
-            {"instType": "MARGIN"},
-            {"instType": "SWAP"},
-            {"instType": "FUTURES"},
+#:
+#: Each venue holds a tuple, because kucoin publishes its categories on two
+#: hosts under two field names and one record carries one ``sector_key``. Its
+#: futures host serves ``assetClass`` on all 691 contract rows — ``CRYPTO`` 527,
+#: ``STOCK`` 155, ``METAL`` 6, ``COMMODITY`` 3 — beside a ``marketType`` of
+#: ``NASDAQ`` on the 155 and a ``subMarketType`` of ``US.STOCK``, ``HK.STOCK``,
+#: ``KR.STOCK`` or ``JP.STOCK``. Its spot host serves ``market`` on all 968
+#: rows, a trading-area grouping whose eight words name one family: ``Stocks``
+#: holds the five xStock pairs. ``FIAT`` names the quote and not the base, so it
+#: maps onto ``NO_PUBLISHED_FAMILY`` — its four rows are ``BTC-EUR``,
+#: ``ETH-EUR``, ``USDC-EUR`` and ``USDT-EUR``, and a base-keyed forex reading
+#: would make every bitcoin pair a currency pair. ``CRYPTO`` and ``Stocks`` both
+#: resolve through ``asset_class_named`` on their own, so every word of both
+#: vocabularies is named here and none resolves by accident. The spot record
+#: runs first and the futures record second: ``_read_asset_sector_rows`` leaves
+#: only a code already holding a non-empty sector untouched, so ``PAXG`` and
+#: ``XAUT`` take the ``METAL`` row over the empty spot grouping. KuCoin
+#: publishes ``baseCurrency`` on every row of both hosts, so neither record
+#: names a ``code_leg``.
+VENUE_ASSET_SECTOR_RECORDS: dict[str, tuple[AssetSectorRecord, ...]] = {
+    "gateio": (AssetSectorRecord(method="publicSpotGetCurrencies"),),
+    "kucoin": (
+        AssetSectorRecord(
+            method="publicGetSymbols",
+            code_key="baseCurrency",
+            sector_key="market",
+            words=MappingProxyType(
+                {
+                    "ALTS": NO_PUBLISHED_FAMILY,
+                    "BTC": NO_PUBLISHED_FAMILY,
+                    "DeFi": NO_PUBLISHED_FAMILY,
+                    "FIAT": NO_PUBLISHED_FAMILY,
+                    "KCS": NO_PUBLISHED_FAMILY,
+                    "Meme": NO_PUBLISHED_FAMILY,
+                    "Stocks": "stocks",
+                    "USDS": NO_PUBLISHED_FAMILY,
+                }
+            ),
         ),
-        code_key="instId",
-        code_leg=ASSET_CODE_LEG,
-        sector_key="instCategory",
-        words=MappingProxyType(
-            {
-                "1": NO_PUBLISHED_FAMILY,
-                "3": "stocks",
-                "4": "commodities",
-                "5": "forex",
-                "6": NO_PUBLISHED_FAMILY,
-            }
+        AssetSectorRecord(
+            method="futuresPublicGetContractsActive",
+            code_key="baseCurrency",
+            sector_key="assetClass",
+            words=MappingProxyType(
+                {
+                    "COMMODITY": "commodities",
+                    "CRYPTO": NO_PUBLISHED_FAMILY,
+                    "METAL": "metals",
+                    "STOCK": "stocks",
+                }
+            ),
         ),
     ),
-    "okxus": AssetSectorRecord(
-        method="publicGetPublicInstruments",
-        requests=({"instType": "SPOT"},),
-        code_key="baseCcy",
-        sector_key="instCategory",
-        words=MappingProxyType(
-            {
-                "1": NO_PUBLISHED_FAMILY,
-                "3": "stocks",
-                "4": "commodities",
-                "5": "forex",
-                "6": NO_PUBLISHED_FAMILY,
-            }
+    "okx": (
+        AssetSectorRecord(
+            method="publicGetPublicInstruments",
+            requests=(
+                {"instType": "SPOT"},
+                {"instType": "MARGIN"},
+                {"instType": "SWAP"},
+                {"instType": "FUTURES"},
+            ),
+            code_key="instId",
+            code_leg=ASSET_CODE_LEG,
+            sector_key="instCategory",
+            words=MappingProxyType(
+                {
+                    "1": NO_PUBLISHED_FAMILY,
+                    "3": "stocks",
+                    "4": "commodities",
+                    "5": "forex",
+                    "6": NO_PUBLISHED_FAMILY,
+                }
+            ),
         ),
     ),
-    "bitget": AssetSectorRecord(
-        method="publicUtaGetV3MarketInstruments",
-        requests=(
-            {"category": "SPOT"},
-            {"category": "USDT-FUTURES"},
-            {"category": "COIN-FUTURES"},
-            {"category": "USDC-FUTURES"},
-            {"category": "MARGIN"},
+    "okxus": (
+        AssetSectorRecord(
+            method="publicGetPublicInstruments",
+            requests=({"instType": "SPOT"},),
+            code_key="baseCcy",
+            sector_key="instCategory",
+            words=MappingProxyType(
+                {
+                    "1": NO_PUBLISHED_FAMILY,
+                    "3": "stocks",
+                    "4": "commodities",
+                    "5": "forex",
+                    "6": NO_PUBLISHED_FAMILY,
+                }
+            ),
         ),
-        code_key="baseCoin",
-        sector_key="symbolType",
-        words=MappingProxyType(
-            {
-                "stock": "stocks",
-                "metal": "metals",
-                "commodity": "commodities",
-                "crypto": NO_PUBLISHED_FAMILY,
-            }
+    ),
+    "bitget": (
+        AssetSectorRecord(
+            method="publicUtaGetV3MarketInstruments",
+            requests=(
+                {"category": "SPOT"},
+                {"category": "USDT-FUTURES"},
+                {"category": "COIN-FUTURES"},
+                {"category": "USDC-FUTURES"},
+                {"category": "MARGIN"},
+            ),
+            code_key="baseCoin",
+            sector_key="symbolType",
+            words=MappingProxyType(
+                {
+                    "stock": "stocks",
+                    "metal": "metals",
+                    "commodity": "commodities",
+                    "crypto": NO_PUBLISHED_FAMILY,
+                }
+            ),
         ),
     ),
 }
@@ -1135,14 +1201,14 @@ def _published_sector(published: Any, market: Any) -> Any:
 
 def market_asset_class(market: Any, published: Any = None, venue: Any = "") -> str:
     """The asset class one loaded market record belongs to, read off
-    ``futures_asset_types`` first, off ``venue_base_sector`` second, off
-    ``published`` third, and off ``base`` and ``quote`` only where ``published``
-    is None.
+    ``futures_asset_types`` first, off ``venue_market_sector`` then
+    ``venue_base_sector`` second, off ``published`` third, and off ``base`` and
+    ``quote`` only where ``published`` is None.
 
     ``record_venue`` writes this beside the market's rules,
     ``_published_asset_sectors`` supplies ``published`` as the sector the
     venue's own asset record names, and ``venue`` names the venue
-    ``CITED_VENUE_BASE_SECTORS`` keys its rows by.
+    ``CITED_VENUE_MARKET_SECTORS`` and ``CITED_VENUE_BASE_SECTORS`` key by.
     """
     from ..trading.ata_spm import (
         CLASS_COMMODITIES,
@@ -1153,7 +1219,7 @@ def market_asset_class(market: Any, published: Any = None, venue: Any = "") -> s
         CLASS_OPTIONS,
         CLASS_STOCKS,
     )
-    from ..trading.scrumming.sizing import venue_base_sector
+    from ..trading.scrumming.sizing import venue_base_sector, venue_market_sector
 
     labels = futures_asset_types(market)
     if labels & COMMODITY_FUTURES_ASSET_TYPES:
@@ -1168,6 +1234,9 @@ def market_asset_class(market: Any, published: Any = None, venue: Any = "") -> s
         return CLASS_STOCKS
     if is_option_market(market):
         return CLASS_OPTIONS
+    named = venue_market_sector(venue, (market or {}).get("symbol"))
+    if named:
+        return str(named)
     cited = venue_base_sector(venue, (market or {}).get("base"))
     if cited:
         return str(cited)
@@ -2520,22 +2589,27 @@ class CCXTConnector(ExchangeInterface):
         """Every asset code this venue publishes a sector for, mapped onto the
         platform's own class name, and None where the venue publishes none.
 
-        ``VENUE_ASSET_SECTOR_RECORDS`` names the public, credential-free method
-        and the requests it takes, and ``asset_class_named`` resolves each
-        published category once the record's own ``words`` have translated it.
+        ``VENUE_ASSET_SECTOR_RECORDS`` names one record per endpoint the venue
+        publishes a category on, each with its own method, requests and field
+        names, and ``asset_class_named`` resolves each published category once
+        the record's own ``words`` have translated it. The records read in the
+        order given, so an earlier one's non-empty sector for a code stands.
         """
-        record = VENUE_ASSET_SECTOR_RECORDS.get(self._exchange_id)
-        method = getattr(self._ex, record.method, None) if record else None
-        if record is None or not callable(method):
+        records = VENUE_ASSET_SECTOR_RECORDS.get(self._exchange_id) or ()
+        if not records:
             return None
         found: dict[str, str] = {}
         served = 0
-        for request in record.requests or ({},):
-            rows = self._asset_sector_rows(method, request)
-            if rows is None:
+        for record in records:
+            method = getattr(self._ex, record.method, None)
+            if not callable(method):
                 return None
-            served += len(rows)
-            self._read_asset_sector_rows(rows, record, found)
+            for request in record.requests or ({},):
+                rows = self._asset_sector_rows(method, request)
+                if rows is None:
+                    return None
+                served += len(rows)
+                self._read_asset_sector_rows(rows, record, found)
         logger.info(
             "%s published a sector for %d of its %d asset codes, over %d rows",
             self._exchange_id,

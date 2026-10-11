@@ -60,7 +60,10 @@ _AVAILABILITY: dict[str, frozenset[str]] = {
     ),
     # Kraken — supports 1m, 5m, 15m, 30m, 1h, 4h, 1d, 1w (no 2h/6h/12h).
     "kraken": frozenset({"1m", "5m", "15m", "30m", "1h", "4h", "1d", "1w"}),
-    # Kucoin — supports a similar superset to Binance.
+    # Read from ccxt 4.5.85 `exchange.timeframes` after a public
+    # `load_markets()`: kucoin publishes fourteen granularities and
+    # ALL_TIMEFRAMES draws eleven of them, which is this row. The three it
+    # leaves are 3m, 8h and 1M.
     "kucoin": frozenset(
         {"1m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "12h", "1d", "1w"}
     ),
