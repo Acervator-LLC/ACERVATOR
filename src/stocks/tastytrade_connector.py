@@ -448,6 +448,15 @@ NO_ORDER_LEG_TYPE = (
     "route's own enum holds {published}"
 )
 
+#: What ``order_body`` refuses a symbol it holds no record for with. Every leg
+#: the order route takes names an ``instrument-type``, and there is no safe
+#: default: an equity word on a futures symbol would name a contract as a share,
+#: so no order is sent for a market this connector did not read.
+NO_INSTRUMENT_TYPE = (
+    "tastytrade named no instrument type for {symbol!r}, so no order is sent; "
+    "its own record carries the type each order leg requires"
+)
+
 #: What ``list_assets`` logs for each held symbol ``tradable_market`` refuses, so
 #: the operator reads which market was dropped and which type dropped it. An
 #: ``Index`` and a ``Currency Pair`` are each in the venue's own condition enum
@@ -906,7 +915,9 @@ def order_body(
     """
     held = asset if isinstance(asset, dict) else {}
     word = instrument_word(held)
-    if word and word not in ORDER_LEG_INSTRUMENT_TYPES:
+    if not word:
+        raise ValueError(NO_INSTRUMENT_TYPE.format(symbol=symbol))
+    if word not in ORDER_LEG_INSTRUMENT_TYPES:
         raise ValueError(
             NO_ORDER_LEG_TYPE.format(
                 word=word, published=tuple(sorted(ORDER_LEG_INSTRUMENT_TYPES))
@@ -1665,6 +1676,7 @@ __all__ = [
     "MARKET_DATA_ROUTE",
     "MARKET_SECTOR_SECTORS",
     "NO_BAR_ROUTE",
+    "NO_INSTRUMENT_TYPE",
     "NO_ORDER_LEG_TYPE",
     "NO_TRADABLE_MARKET",
     "ORDERS_LIVE_ROUTE",
