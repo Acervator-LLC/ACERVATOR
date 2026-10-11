@@ -7591,4 +7591,101 @@ binance and is now alpaca.
 | the bot wizard's picker | `src/gui/main_tabs/bot_wizard_surface.py`, in `exchange_items` | it lists the configured exchanges, not a registry |
 | the visualizer's picker | `src/gui/main_tabs/bot_visualizer_surface.py`, in `exchange_items` | it lists the fleet's own exchanges, not a registry |
 
+## 2026-10-11 - The Verification Code row and the venue that needs one
+
+One venue hands out no session until the operator approves this program on the
+venue's own web page, and that page answers with a short code. The page
+redirects nowhere, so nothing in this program can collect the code for him. He
+reads it off the page and pastes it into a row the Add form now draws.
+
+`src/gui/main_tabs/settings_dialog_surface.py`, in `credential_form`, answers
+`code_row` for that venue, and both builds read that one answer.
+`src/stocks/etrade_connector.py`, in `VERIFICATION_CODE_VENUES`, is the set it
+reads, so the row drawn and the leg the connector walks cannot disagree.
+
+### What the operator does
+
+Four steps, in this order, on the Exchanges tab.
+
+1. Press the venue's button. The form draws an extra row, **Verification Code**,
+   and the line under the form says what to do with it.
+2. Type the API key and secret and press Add. The venue answers with a web
+   address, which the line under the form prints.
+3. Open that address, sign in at the venue, and approve this program. The venue
+   then shows a short code.
+4. Paste the code into **Verification Code** and press Add again.
+
+```mermaid
+flowchart LR
+    A[Press the venue button] --> B[credential_form answers code_row]
+    B --> C[Verification Code row drawn]
+    D[Add, code row empty] --> E[begin_authorization, leg one]
+    E --> F[the address the line prints]
+    F --> G[Operator approves at the venue]
+    G --> H[Add, code pasted]
+    H --> I[complete_authorization, leg three]
+    I --> J[the venue grants a session]
+```
+
+`src/gui/settings_dialog.py`, in `_connect_verification_code_venue`, holds one
+connector per venue while this runs, because the token leg one takes must
+outlive the press that walked it. `src/gui/main_tabs/settings_dialog_surface.py`,
+in `connect_verification_code_venue`, decides which of the two legs a press
+walks: an empty row walks leg one, a filled row walks leg three.
+
+### What is stored and what is not
+
+The code is read, sent and dropped. Nothing writes it to disk, to a log, or
+into the answer the form reads back.
+
+| Value | Where it lives | How long |
+| ----- | -------------- | -------- |
+| API key and secret | the credential vault, under `api_key_enc` and `api_secret_enc` | until removed |
+| the request token | the held connector, in memory | five minutes |
+| the verification code | nowhere | the one press that sends it |
+| the access token | the held connector, in memory | to the end of the US Eastern day |
+
+`src/core/settings.py`, in `ExchangeConfig`, gains no field for this row.
+`src/trading/ata_spm_signin.py`, in `credential_store_fields`, still answers two
+field names for every venue the Exchanges tab offers.
+
+### Why the approved browser sign-in does not serve
+
+`src/trading/ata_spm_signin.py` carries this program's three-legged browser
+sign-in, and it does not fit this venue. It is an OAuth 2.0 flow that waits on a
+redirect; this venue is an OAuth 1.0a flow that redirects nowhere.
+
+| What the browser sign-in assumes | What this venue does |
+| -------------------------------- | -------------------- |
+| `LoopbackReceiver` waits for the venue to redirect a browser back | `src/stocks/etrade_connector.py`, in `OAUTH_CALLBACK`, is `oob`, so the venue shows a code instead of redirecting |
+| `code_challenge` and `new_verifier` build a proof the venue checks | the venue signs each leg instead, at `src/stocks/etrade_connector.py`, in `request_signature` |
+| `SignInSession.approve` sends a response type, a state and a redirect address | `src/stocks/etrade_connector.py`, in `authorize_url`, takes a key and a token and nothing else |
+| `GRANT_AUTHORIZATION_CODE` names the grant posted | `src/stocks/etrade_connector.py`, in `ACCESS_GRANT_ROUTE`, takes a verifier |
+
+### The code row read on each venue
+
+Driven on the real Qt dialog with the Exchanges tab built and the crypto wing
+open, pressing each venue's own button.
+
+| Venue | Needs a code | Code row drawn | Key and secret rows |
+| ----- | ------------ | -------------- | ------------------- |
+| etrade | yes | yes | drawn |
+| coinbase | no | no | drawn |
+| no venue pressed | no | no | drawn |
+
+Measured over every venue `src/gui/main_tabs/asset_class_surface.py`, in
+`known_venues`, offers: 1 of 26 draws the row and 25 do not. An invented venue
+id draws no row.
+
+### A sentence this page carries that the screen now reads differently
+
+OVERTAKEN, quoted whole:
+
+> `PASSPHRASE_EXCHANGES` still names bitget, kucoin and okx, and only those three
+> draw the passphrase row and the `(requires passphrase)` note.
+
+True today: `src/exchange/ccxt_connector.py`, in `PASSPHRASE_EXCHANGES`, names
+four venue ids — bitget, kucoin, okx and okxus — so four of the 26 venues draw
+the passphrase row and 22 do not.
+
 Back to [the subsystem index](README.md).
