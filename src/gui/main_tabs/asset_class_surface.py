@@ -383,7 +383,47 @@ EXTRA_VENUE_CLASSES = {
     # "Cryptocurrency trading is currently available exclusively for individual
     # accounts".
     "tastytrade": ("crypto", "commodities", "forex", "indices", "futures_perps"),
-    "webull": ("crypto", "commodities", "indices", "futures_perps"),
+    # Webull's own futures page names the ten product groups it sells: "Nano
+    # Futures Micro Futures Equity Index Futures FX Futures Metals Futures
+    # Energy Futures Interest Rates Futures Agricultural Futures CME Crypto
+    # Futures CDE Crypto Futures", and its own Trading API page names seven
+    # asset classes: "indices, interest rates, currencies, agriculture, metals,
+    # energies, and crypto". "stocks" arrives from EQUITY_VENUES, so this entry
+    # carries the other five.
+    # forex is added here, and it is the sector the screen was missing: five of
+    # the 22 contracts the venue's own futures table serves are currency
+    # futures, each with its multiplier and tick size -- M6E Micro EUR/USD
+    # 12500 at 0.0001, M6A Micro AUD/USD 10000 at 0.0001, MCD Micro CAD/USD
+    # 10000 at 0.0001, M6B Micro GBP/USD 6250 at 0.0001 and MSF Micro CHF/USD
+    # 12500 at 0.0001. Unlike tastytrade, the firm behind them is the one that
+    # clears every other contract: "Futures and cleared swaps trading is
+    # offered by Webull Futures LLC, a CFTC registered Futures Commission
+    # Merchant". There is no spot forex: 0 of the 223 entries its own
+    # documentation index lists names forex, FX or a currency pair, where 9
+    # name futures.
+    # Indices, commodities and crypto reach an order the same way, through the
+    # futures route: 4 of the 22 are equity index contracts, 5 are metals and
+    # energy, and 4 are crypto. The index itself and the index option take no
+    # order here -- "OPTION" is one of the two words of the venue's own
+    # instrument-type enum that names no sector this platform draws, and
+    # webull_connector.order_body refuses a leg naming either.
+    # A fund share records under stocks and not under what it tracks: the
+    # venue's own stock profile carries "sub_category" with "ETF" among its six
+    # words and publishes no field naming an ETF's underlying, and an ETF order
+    # carries instrument_type "EQUITY".
+    # No eligibility rule names a refused state. Quoted whole from its own
+    # Crypto Trading page: "Webull now offers live cryptocurrency trading
+    # through Webull Pay LLC. U.S. customers can buy, sell, and hold a wide
+    # range of digital assets." Three jurisdictions are named and none is
+    # closed: "For residents in New York, Guam and Northern Mariana Islands
+    # only: Webull Pay LLC has collaborated with Bakkt Crypto Solutions, LLC
+    # ("Bakkt") to provide you convenient access to cryptocurrency trading."
+    # What changes there is the provider and a $1.00 minimum order in place of
+    # $2.00, not the door.
+    # Two permissions are per product: crypto needs "A crypto account opened
+    # through the Webull App", and futures needs "A futures-enabled account
+    # (open via the Webull App if not already enabled)".
+    "webull": ("crypto", "commodities", "forex", "indices", "futures_perps"),
     # One equity route, four sectors: each of these trades as a fund share, and
     # robinhood_broker.SECTORS_SERVED names the same four. "stocks" arrives from
     # EQUITY_VENUES and "crypto" from CRYPTO_CONNECTORS, so this one id reads

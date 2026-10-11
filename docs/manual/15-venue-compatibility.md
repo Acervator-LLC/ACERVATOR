@@ -8420,3 +8420,347 @@ commodities 20 and 20, forex 14 and 14, indices 19 and 19, futures_perps 17 and
 `venues_for_class` itself, so the form cannot differ from the offer.
 `broker_serves_sector("tastytrade", …)` answers True on all six, and before this
 unit it answered False on all six and forex was not offered at all.
+
+## Webull, read from its own hosts on 2026-10-11
+
+Webull is the fifth broker wired sector by sector and the first whose fractional
+rule has a ceiling. All six sectors reach an order through one route, and forex
+is the sector the screen did not offer.
+
+### What this page said before, and what is true now
+
+OVERTAKEN, quoted whole:
+
+> | Webull | equities | yes, US broker | not stated by the pages read | `src/gui/main_tabs/asset_class_surface.py:33`; the fractional-support table TradersPost publishes for the brokers it connects, read 2026-09-24 |
+
+True today: Webull publishes its own OpenAPI documentation at
+`developer.webull.com/apis/`, credential-free, and
+`developer.webull.com/apis/llms.txt` indexes **223** entries each with a `.md`
+twin. The credential is an App Key and an App Secret, applied for as an
+individual, with an optional second factor verified in the Webull app. The
+products are five, in the venue's own words: "We support stocks, options,
+futures, crypto, and event contracts."
+
+OVERTAKEN, quoted whole:
+
+> | webull | crypto, stocks, commodities, indices, futures_perps |
+
+True today: **crypto, stocks, commodities, forex, indices, futures_perps** —
+all six. `EXTRA_VENUE_CLASSES` gains `forex`, and the sector is named on the
+venue's own futures page, in its own product navigation: "Nano Futures Micro
+Futures Equity Index Futures **FX Futures** Metals Futures Energy Futures
+Interest Rates Futures Agricultural Futures CME Crypto Futures CDE Crypto
+Futures". Its own Trading API page names seven asset classes: "indices, interest
+rates, currencies, agriculture, metals, energies, and crypto."
+
+OVERTAKEN, quoted whole:
+
+> | Webull | a share quantity | two decimal places of a share | not stated by the pages read | the fractional-support table TradersPost publishes for the brokers it connects, read 2026-09-24 |
+
+True today: a share quantity, **one whole share**, and the fraction exists only
+below one share. Quoted whole from the venue's own Stock Trading page: "Only
+`MARKET` orders are supported for fractional trading. The quantity must be
+between 0 (exclusive) and 1 (inclusive), and the order value must be at least
+$5." Its own `total_cash_amount` field closes the other entry shape: "Amount
+must be less than the price of 1 share." Its own instrument profile carries
+`fractionable` per equity, so the eligibility is per security and the ceiling is
+venue-wide.
+
+OVERTAKEN, quoted whole:
+
+> | Webull | yes | yes | two decimal places on a share quantity, which is finer than one dollar on any share this fleet holds. The fractional-support table TradersPost publishes, read 2026-09-24 |
+
+True today: an excess under one share cannot be sold, because a scrum of 1.57
+shares cannot be sent as 1.57. `CITED_UNIT_RULES` carries
+`(stocks, webull): WHOLE_UNITS`, and the recorded step is one share.
+
+OVERTAKEN, quoted whole:
+
+> | Webull | yes | **no** | nothing constructs a connector for it, and none exists |
+
+True today: `src/stocks/webull_connector.py, in WebullConnector` is the
+connector, `src/stocks/alpaca_connector.py, in BROKER_CONNECTORS` registers it
+under `webull`, and `src/gui/main_window.py, in _connect_broker_for_bot` builds
+it on a Start press.
+
+OVERTAKEN, quoted whole:
+
+> | Interactive Brokers, Schwab, tastytrade, E\*TRADE, Webull, TD Ameritrade, Fidelity | stocks | no | no module names any of the seven |
+
+True today: four of the seven now have a module — Interactive Brokers, Schwab,
+tastytrade and Webull. E\*TRADE, TD Ameritrade and Fidelity still have none.
+
+### The fractional rule, which has now inverted five times
+
+| broker | the grain | the answer |
+| --- | --- | --- |
+| Alpaca | venue-wide | fractional, nine decimal places |
+| Schwab | venue-wide | fractional in the app, and the Trader API places none |
+| Interactive Brokers | venue-wide, with two exceptions | the APIs place none except crypto and forex |
+| tastytrade | per equity | a millionth of a share on Apple, one share on Nokia |
+| Webull | per equity, with a ceiling | eligible per symbol, **capped at one share**, `MARKET` only, $5 minimum |
+
+Carrying any of the first four onto Webull would have cost a refused order on
+every scrum above one share.
+
+### The eight connections, Webull
+
+| # | the connection | the symbol |
+| --- | --- | --- |
+| 1 | registered | `src/stocks/alpaca_connector.py, in BROKER_CONNECTORS` |
+| 2 | offered per sector | `src/gui/main_tabs/asset_class_surface.py, in EXTRA_VENUE_CLASSES` |
+| 3 | credential form | `src/gui/settings_dialog.py, in _create_exchange_tab`, narrowing `known_venues` |
+| 4 | Start builds a bot | `src/gui/main_window.py, in _connect_broker_for_bot` |
+| 5 | market rules recorded | `src/stocks/broker_base.py, in record_markets` |
+| 6 | order shape | `src/stocks/webull_connector.py, in order_body` |
+| 7 | a built variant selects | `src/trading/scrumming/sizing.py, in VARIANTS_BUILT` |
+| 8 | gate decisions log | `src/core/log_paths.py, in gate_log_path` |
+
+Driven with the home redirected and no venue contacted: `BROKER_CONNECTORS`
+holds six ids and `broker_connector_class("webull")` answers the class while an
+invented id answers None; `venues_for_class` offers the venue in **6 of 6**
+sectors and an invented id in **0**; `known_venues` holds it and the wizard
+offers **26** venues; `broker_serves_sector` answers True on all six sectors and
+False on an invented one; `record_markets` wrote **7** rule rows and read back
+six sectors, and an empty asset list wrote **0** rows rather than erasing them;
+a built variant holds every one of the six; and
+`trade/gate/webull/<sector>/gate.log` exists for all six with `gate_log_files`
+listing **6**, while a sector never written is listed **0** times.
+
+### The order body, one route for every sector
+
+`POST /trading/orders/place` on `api.webull.com`, sandbox
+`api.sandbox.webull.com`. Its own schema marks nine fields required in each item
+of `new_orders`: `client_order_id`, `combo_type`, `entrust_type`,
+`instrument_type`, `market`, `order_type`, `side`, `symbol` and
+`time_in_force`. `instrument_type` is the only field that changes between a
+share order and a contract order.
+
+| field | stocks | crypto | the four futures sectors |
+| --- | --- | --- | --- |
+| `instrument_type` | `EQUITY` | `CRYPTO` | `FUTURES` |
+| `entrust_type` | `QTY` | `QTY` | `QTY`, the only one published |
+| `support_trading_session` | `ALL` | not sent | not sent |
+| `time_in_force` on a market order | `DAY` | `IOC`, the only one published | `DAY` |
+| order types | 5 published | 3 published | 5 published |
+
+Quoted whole on the futures shape: "For futures, only quantity orders are
+supported." Quoted whole on the crypto market order: "When the order type is
+MARKET: time_in_force only supports IOC."
+
+### The signature, and the venue's own proof of it
+
+Every route takes an HMAC-SHA1 digest over a string the venue spells out: the
+path, then every query parameter and six signing headers sorted by name and
+joined as `name=value`, then the uppercase MD5 of the body, URL-encoded, keyed
+by the App Secret with `&` appended. Quoted whole: "`x-signature` and
+`x-version` do **not** participate in signing."
+
+The venue publishes a worked example and its answer: "If your output matches
+`kvlS6opdZDhEBo5jq40nHYXaLvM=`, your implementation is correct."
+`src/stocks/webull_connector.py, in signature_self_proof` reproduces it, and
+`connect` runs that proof before it sends anything, so a signature defect is
+named rather than read as a bad credential. Driven: the digest matches, one
+wrong key byte gives a different digest, and dropping the body gives a third.
+
+### The fee, which this venue publishes
+
+`GET /trading/orders/get` carries `commission.actual_commission` and every
+`fees[].actual_value`. `GET /trading/orders/historical-orders/list` carries
+neither, so `list_fills` reads the detail per fill and the walk is bounded at
+**50** reads, that route's own rate limit being 2 requests in 2 seconds. A fill
+left unread keeps no fee rather than a zero, and the count is logged.
+
+Its own fee schedule publishes the components: "Webull does not charge
+commissions for trading stocks, ETFs and options listed on U.S. exchanges", "SEC
+Fee $0.0000206 \* Total Trade Volume Sells Only", "Consolidated Audit Trail Fee
+$0.000003 \* Total Trade Volume Buys & Sells", and "Equity algo order types
+$0.0050 per share".
+
+### The four blank figures
+
+| figure | the answer |
+| --- | --- |
+| cost basis | `cost_price` on `GET /trading/assets/positions/list` |
+| the unrealised figure | `unrealized_profit_loss`, and `total_unrealized_profit_loss` on the balance |
+| fee total | `commission.actual_commission` plus `fees[].actual_value` on the order detail |
+| realised profit | **not published** |
+
+The fourth is a count. Across the **26** pages of the venue's own documentation
+this unit read, a field named `realized…` appears **0** times, and the control,
+`unrealized…`, appears **6**. The balance route does publish
+`total_day_profit_loss`, which is a day figure and not a realised one.
+
+### The paged ledger, which cannot report itself complete here
+
+| what | the answer |
+| --- | --- |
+| page size parameter | none published on any orders route |
+| continuation | `pagination_key`, a cursor |
+| end condition | "If absent, indicates this is the last page." |
+| earliest `start_time` | 2018-05-21 |
+
+There is no cap to mis-state and no short page to misread, which is the defect
+Alpaca and tastytrade both carried in different shapes. The route states why a
+page length is never the end test: "If orders are group orders, they will be
+returned together, and the number of orders returned on one page may exceed the
+page_size." `ORDER_PAGES_MAX` bounds the walk at 100 pages and the count is
+logged, so a bounded walk is never read as a whole history.
+
+### The session, which changes the size and not the type
+
+| session | what it is | what it allows |
+| --- | --- | --- |
+| `CORE` | "Regular market hours only (9:30 AM – 4:00 PM ET)" | every published order type |
+| `ALL` | "Extended hours including pre-market and after-hours" | the session every order this platform composes names |
+| `NIGHT` | "Night trading session only" | **whole shares only**, on the symbols `overnight_trading_supported` marks |
+
+Quoted whole from the venue's own Overnight Trading page: "You can now trade
+Select Stocks (whole shares only) and ETFs anytime with Overnight Trading."
+Schwab's own page restricted the order **type** outside the session; this one
+restricts the **size**. `src/trading/scrumming/sizing.py, in session_unit_rule`
+already reads a session before a step, so the rule lands where the earlier
+reading built the seam.
+
+### What is refused rather than sized
+
+```
+instrument_type words published        5   EQUITY OPTION FUTURES CRYPTO EVENT
+mapped to a sector                     3   EQUITY CRYPTO FUTURES
+refused by order_body                  2   OPTION EVENT
+served futures products               22
+with no finer sector than the form     4   10Y 30Y 2YY 5YY, the Micro Yield contracts
+```
+
+`OPTION` names options and `EVENT` names Webull's own prediction market, and
+neither is a sector this platform draws, so
+`src/stocks/webull_connector.py, in order_body` raises on both. The four Micro
+Yield contracts take `FUTURES_DEFAULT_SECTOR`, which is the contract form and a
+sector this platform does draw — the reading
+`src/stocks/ibkr_connector.py, in FUTURES_FAMILY_SECTORS` already takes for the
+same family.
+
+### The ticker collision
+
+```
+served futures product codes          22
+shaped like a US equity ticker        22   every one is three characters
+carried as an order symbol             0
+```
+
+A futures order's `symbol` is never the bare product code. Quoted whole from the
+contract record's own schema: "Futures contract symbol used in trading and market
+data, e.g. front-month or continuous contract code such as ESZ5, ESmain, etc."
+So `MCD` is McDonald's as an equity symbol and Micro CAD/USD only as a futures
+`code`; the order carries `MCDZ6` or `MCDmain`. `MET`, `SIL` and `MES` read the
+same way. The second decider is `instrument_type`, required on every order and
+on every instrument record, so a symbol never has to carry its sector.
+
+A webull crypto symbol is one token with no separator, `BTCUSD`, and
+`STABLECOIN_DENYLIST` in `src/exchange/market_inspector_fetcher.py` is read on a
+`base/quote` split that such a symbol never takes.
+
+### US-person eligibility, and the first broker that refuses no state
+
+| product | the legal entity | the states named |
+| --- | --- | --- |
+| equities | Webull Financial LLC, SEC-registered broker dealer | none |
+| futures | Webull Futures LLC, a CFTC-registered Futures Commission Merchant | none |
+| crypto | Webull Pay LLC, with Bakkt in three jurisdictions | three, and none refused |
+
+Quoted whole: "Webull now offers live cryptocurrency trading through Webull Pay
+LLC. U.S. customers can buy, sell, and hold a wide range of digital assets."
+And: "For residents in New York, Guam and Northern Mariana Islands only: Webull
+Pay LLC has collaborated with Bakkt Crypto Solutions, LLC ("Bakkt") to provide
+you convenient access to cryptocurrency trading." And: "Customers outside of New
+York, Guam, or the Northern Mariana Islands: Your crypto assets are held and
+safeguarded by Coinbase… Customers in New York, Guam, or the Northern Mariana
+Islands: Your crypto assets are managed by Bakkt Crypto Solutions, LLC."
+
+What changes in those three is the provider, the maintenance window and the
+floor — $1.00 minimum order in place of $2.00 — not the door. This is the
+opposite of Schwab, where forex is closed to Ohio and Arizona and crypto to New
+York and Louisiana. Reading it as a refusal would have closed three
+jurisdictions that are open.
+
+Futures carry one further clause, quoted whole: "Futures accounts are not
+protected by the Securities Investor Protection Corporation (SIPC)."
+
+### What the sizing tables gain
+
+- **`CITED_UNIT_RULES`** gains **6** rows: crypto fractional at the eight decimal
+  places the order schema publishes, and stocks, commodities, forex, indices and
+  futures_perps whole.
+- **`CITED_VENUE_SESSIONS`** gains **6** rows: stocks `us_equity`, and the other
+  five `continuous`.
+- **`CITED_VENUE_ORDER_TYPES`** gains **6** rows, all `market and limit`. Crypto
+  takes the shortest published list of the three products and a market order is
+  still on it.
+- **`CITED_CASH_MARKET_BUY`** gains **0** rows. The cash amount is published and
+  capped below one share: "AMOUNT (by cash amount, for buying less than 1
+  share)."
+- **`CITED_VENUE_SETTLEMENT`** gains **0** rows. Across the 26 pages read, the
+  words naming settlement number **3** and all three are field names on one
+  route — `settled_cash`, `unsettled_cash` and "Settled Cash" — while an
+  invented settlement phrase names **0**. A field is the figure and not the
+  delay.
+- **`CITED_VENUE_BASE_SECTORS`** and **`CITED_VENUE_MARKET_SECTORS`** gain **0**
+  rows each. The collision is settled by the venue's own `instrument_type` and
+  its own contract symbology, and the full coin set sits behind a credential:
+  its own credential-free pages name **3** coins of the "70+ crypto assets" they
+  claim.
+
+### What is named and not built
+
+- **a market clock** — the Trading API publishes none. Of the 223 indexed
+  entries, the one naming a trading calendar sits under the Broker API behind a
+  separate credential, so `get_market_status` answers closed and names the
+  absence. The session that reaches an order is the one `asset_session` records
+  per market.
+- **futures market data** — the venue states its own gate: "Access to futures
+  market data via OpenAPI requires a paid subscription." Crypto market data is
+  free: "no additional subscription is required."
+- **options, event contracts and interest-rate yield** — options and event
+  contracts map to no sector this platform draws, and the connector records
+  neither. The Micro Yield contracts record under the contract form.
+- **the roll** — the venue refuses delivery itself: "Physical delivery is **not
+  permitted** through Webull — you must close or roll your position before
+  expiration." `asset_expiry_ms` reads `last_trading_date`, so
+  `expiry_close_decision` closes the position; the roll is still row 5's
+  unbuildable half.
+- **the second factor** — the venue states what an idle token costs: "`INVALID`
+  | No API calls made for 15 consecutive days, or Token does not exist."
+  `x-access-token` is written when one is held and the creation flow is not
+  driven here.
+
+### The paper route on Webull, and what it is
+
+`HAS_PAPER_ROUTE` is True and the route is `api.sandbox.webull.com`. Its own
+Token page states what that environment spares: "Tokens created in the test
+environment are valid by default — no 2FA verification is needed." The host
+joins the signature, so a signature computed for one host does not work on the
+other.
+
+### The Webull verdict, per sector
+
+| sector | verdict | the cost |
+| --- | --- | --- |
+| stocks | yes | an individual OpenAPI application, approved in 1–2 business days |
+| crypto | yes-if | "A crypto account opened through the Webull App", with Webull Pay LLC |
+| commodities | yes-if | "A futures-enabled account (open via the Webull App if not already enabled)" |
+| forex | yes-if | the same futures permission; the currency future, not spot |
+| indices | yes-if | the same futures permission; the index future, not the index |
+| futures_perps | yes-if | the same futures permission, with "Sufficient margin in your account" |
+
+Six of six. No sector is a no, and none reads "not established". The fullest
+tier is what the code is built against: one individual OpenAPI application on a
+margin account with both the futures and the crypto permission enabled, which
+the operator requests once and which opens all six sectors through one order
+route.
+
+The arithmetic, offered against actionable, driven with the home redirected and
+no venue contacted: the screen offered **5** sectors and the platform draws
+**6**, a difference of **1**, and that one was forex. After this unit the offered
+set is 6, `broker_serves_sector("webull", …)` answers True on all six, and the
+difference in both directions is **0**. Before this unit it answered False on all
+six, because `BROKER_CONNECTORS` held no `webull` row at all.
