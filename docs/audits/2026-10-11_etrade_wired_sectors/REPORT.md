@@ -331,8 +331,8 @@ because `BROKER_CONNECTORS` held no `etrade` row.
 ## 8. The drives, and what controlled each one
 
 The drive ran with the home redirected to a temp directory, no venue contacted
-and no order placed: **150 assertions, 150 passed, 0 failed**, three times over
-23 minutes, all three identical.
+and no order placed: **159 assertions, 159 passed, 0 failed**, three times over
+23 minutes, and once more after the tenth defect in section 12 was fixed.
 
 Every count carries its own control. The ones that matter most:
 
@@ -344,6 +344,7 @@ Every count carries its own control. The ones that matter most:
 | an option leg is refused | an `EQ` leg composes, with every published field |
 | a market order outside the session is raised to a limit | the same order in the regular session stays a market order |
 | the session does not move the size | the quantity reads `3` at both hours |
+| SPY at 22:30 ET names the overnight session | the same symbol at 10:40 ET names the regular one, and MSFT at 22:30 ET names no overnight session |
 | a short page saying more continues the walk | a full 50-row page saying no more stops it |
 | a zero fee is the venue's figure | a missing `brokerage` object answers None |
 | the signature is correct | `signature_base` reproduces RFC 5849's own worked example, and a tampered method changes it |
@@ -403,10 +404,10 @@ The census ran against
 UTF-8:
 
 ```
-before chars 438,906   after chars 464,227
+before chars 438,906   after chars 464,460
 old sentences counted  4,690
 old sentences absent from the new page  0
-git numstat                            492 added, 0 deleted
+git numstat                            495 added, 0 deleted
 ```
 
 **Control:** one word reworded *inside* an existing sentence, "as a fund share"
@@ -437,7 +438,7 @@ Each archetype was calibrated before any verdict was reported, by running its ow
 `known_good` and `known_bad` bodies and reading the exit codes directly rather
 than through a shell that had already run a command substitution.
 
-## 12. Nine defects this unit found in its own work, before opening
+## 12. Ten defects this unit found in its own work, before opening
 
 1. `ORDER_TYPES_WITH_MARKET` was defined locally as `"limit,market"`, which is no
    member of `sizing.ORDER_TYPES_DECLARED`, so every recorded etrade market would
@@ -460,6 +461,13 @@ than through a shell that had already run a command substitution.
    a sector that has no variant row, which does fire.
 9. One settlement figure was written from recall as 1 and the census said 27.
    Counted and corrected before it was stated.
+10. `_market_session` named `EXTO` for the 22 overnight symbols at every hour,
+    so an order on SPY at 10:40 ET would have carried the overnight window and
+    `session_price_type` would have raised every one of them to a limit inside
+    the regular session. It now reads the moment through
+    `src/stocks/market_hours.py, in session_at`: `REGULAR` at 10:40 ET,
+    `EXTENDED` at 05:30 and 18:00, and `EXTO` after 20:00 for a symbol in the
+    overnight list alone. Driven at all four hours with MSFT as the control.
 
 ## 13. What remains, named plainly
 

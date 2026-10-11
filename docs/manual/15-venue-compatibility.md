@@ -8908,7 +8908,10 @@ round-lot minimum is reported as not established and
 `src/trading/scrumming/sizing.py, in session_unit_rule` takes no etrade row.
 `session_order_types` carries the type, and
 `src/stocks/etrade_connector.py, in session_price_type` raises a market order to
-a limit at the body.
+a limit at the body. Which window the order names is read off the moment:
+`src/stocks/etrade_connector.py, in _market_session` answers `REGULAR` at 10:40
+ET, `EXTENDED` at 05:30 and 18:00, and `EXTO` after 20:00 for a symbol in the
+overnight list alone.
 
 ### Twenty-two fund shares, named by the venue, and the sector each tracks
 
@@ -9155,8 +9158,8 @@ and that absence claims nothing.
 
 ### The eight connections, E*TRADE
 
-Driven with the home redirected, no venue contacted and no order placed: **150
-assertions, 150 passed, 0 failed**, each count carrying its own control.
+Driven with the home redirected, no venue contacted and no order placed: **159
+assertions, 159 passed, 0 failed**, each count carrying its own control.
 
 | # | the connection | before | after |
 | --- | --- | --- | --- |

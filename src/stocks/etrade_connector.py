@@ -27,6 +27,7 @@ from ..trading.scrumming.sizing import (
     SESSION_CONTINUOUS,
     SESSION_US_EQUITY,
 )
+from .market_hours import MarketSession, session_at
 from .broker_base import (
     AccountInfo,
     BrokerBase,
@@ -1511,13 +1512,25 @@ class EtradeConnector(BrokerBase):
             return []
         return reply_rows(answered, "QuoteResponse", "QuoteData")
 
-    def _market_session(self, asset: Any) -> str:
-        """The ``marketSession`` word one order carries for ``asset``.
+    @staticmethod
+    def _market_session(asset: Any, moment_s: Any = None) -> str:
+        """The ``marketSession`` word one order carries for ``asset`` at
+        ``moment_s``, which defaults to now.
 
-        A symbol in ``OVERNIGHT_SYMBOLS`` takes ``MARKET_SESSION_EXTO`` and
-        every other equity takes ``MARKET_SESSION_REGULAR``.
+        ``MarketSession.REGULAR`` takes ``MARKET_SESSION_REGULAR``, the
+        pre-market and after-hours windows take ``MARKET_SESSION_EXTENDED``, and
+        the overnight window takes ``MARKET_SESSION_EXTO`` for a symbol in
+        ``OVERNIGHT_SYMBOLS`` alone.
         """
-        if asset_symbol(asset) in OVERNIGHT_SYMBOLS:
+        when = time.time() if moment_s is None else rule_number(moment_s)
+        if when is None:
+            return MARKET_SESSION_REGULAR
+        held = session_at(float(when))
+        if held is MarketSession.REGULAR:
+            return MARKET_SESSION_REGULAR
+        if held in (MarketSession.PRE_MARKET, MarketSession.AFTER_HOURS):
+            return MARKET_SESSION_EXTENDED
+        if held is MarketSession.CLOSED and asset_symbol(asset) in OVERNIGHT_SYMBOLS:
             return MARKET_SESSION_EXTO
         return MARKET_SESSION_REGULAR
 
