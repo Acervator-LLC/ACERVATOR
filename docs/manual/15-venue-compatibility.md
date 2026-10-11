@@ -9177,7 +9177,7 @@ assertions, 177 passed, 0 failed**, each count carrying its own control.
 | 5 | its market rules record on connect | absent | 9 records written, 4 carrying a sector and 5 carrying none; an empty list writes nothing and leaves the 9 rows alone |
 | 6 | its orders carry the shape the venue publishes | absent | the preview body carries the published fields; an option, an index, a fund, a money fund, a bond and a fractional sale each raise |
 | 7 | a built variant selects | built | all six sectors name a variant `VARIANTS_BUILT` holds and hold the market; a sector with no row holds none |
-| 8 | its gate decisions log under it | built | `trade/gate/etrade/<sector>/gate.log` for all six, and a different venue and a different sector each compose a different path |
+| 8 | its gate decisions log under it | built | six real decisions written through `src/core/logging_engine.py, in log_gate_decision` and read back off disk, one file per sector, each row naming its own venue and sector |
 
 `src/stocks/broker_base.py` and `src/stocks/broker_exchange.py` take no change.
 E*TRADE's preview-then-place pair lives inside `place_order`, and

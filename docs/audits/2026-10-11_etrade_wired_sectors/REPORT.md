@@ -351,6 +351,7 @@ Every count carries its own control. The ones that matter most:
 | the signature is correct | `signature_base` reproduces RFC 5849's own worked example, and a tampered method changes it |
 | no session opens without authorization | `connect` answers False, names the page, and contacts no host |
 | the gate path carries the sector | a different venue and a different sector each compose a different path |
+| a gate decision lands in the sector's own file | six real decisions written through `LogManager.log_gate_decision` and read back off disk, each row naming its own venue and sector; a seventh sector that was never written has no file, and neither does another venue |
 
 One control could not fire and is reported as unreachable rather than as passing.
 The venue publishes no digest of its own for a signed request, unlike Webull's
