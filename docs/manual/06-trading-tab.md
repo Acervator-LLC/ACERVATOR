@@ -6196,27 +6196,63 @@ if DERIVATIVES in served and is_derivative(symbol):
     return DERIVATIVES
 ```
 
-**A tab with nothing for the class says so.** It draws a heading, the thing it has
-none of, and the way back. Both builds draw that note from the one model `note_model`
-writes, the Qt build in `EmptyTabQtPanel` and the React build with
-`src/gui/web/class_note.js`, so neither side holds a word of its own.
+**A sector never replaces a tab.** Every filtered tab holds its own page under
+every sector. A sector with no bot draws the same tab, with its lists empty.
+`src/gui/main_tabs/class_filter_tab.py, in _refilter_class_tabs` narrows the Live
+sub-tabs and the rows the History, the Sim and the Paper tab hold. It replaces no
+page, hides no page and disables no page.
 
-`src/gui/main_tabs/class_filter_surface.py` — the sentences
+Read on the running window, with one bot standing in for a fleet on Crypto and
+none on the other five sectors. Each cell counts the controls on the page that
+tab holds, every one of them enabled and none of them hidden.
 
-```python
-EMPTY_HEADING = "{name} — nothing to show"
-EMPTY_NOTE = "No {name} {subject} to show."
-EMPTY_HINT = (
-    "{name} is the active asset class. Press another class button in the "
-    "header strip to see that class."
-)
-```
+| sector | Live | Sim | Paper | Charts | Inspector | Swarm | History |
+|---|---|---|---|---|---|---|---|
+| Crypto | 216 | 21 | 20 | 3 | 33 | 13 | 10 |
+| Stock | 216 | 21 | 20 | 2 | 33 | 13 | 10 |
+| Commodities | 216 | 21 | 20 | 2 | 33 | 13 | 10 |
+| Forex | 216 | 21 | 20 | 2 | 33 | 13 | 10 |
+| Indices | 216 | 21 | 20 | 2 | 33 | 13 | 10 |
+| Futures / Perps | 216 | 21 | 20 | 2 | 33 | 13 | 10 |
 
-**Two tabs keep a card of their own instead of the note.** The Live tab draws
-`No Stock Exchanges Configured` with its Add button on screen while no venue serves
-the class, and the Paper tab draws its own card the same way, with its Add Exchange
-button naming the class. The note replaces a tab only when a venue does serve the
-class and no bot trades it.
+Six of the seven columns do not move. The Charts column moves by one, which is
+the one chart panel the one Crypto bot earns. That is the rows inside a list
+being filtered, which is the only thing a sector changes.
+
+OVERTAKEN, quoted whole:
+
+> **A tab with nothing for the class says so.** It draws a heading, the thing it has
+> none of, and the way back. Both builds draw that note from the one model `note_model`
+> writes, the Qt build in `EmptyTabQtPanel` and the React build with
+> `src/gui/web/class_note.js`, so neither side holds a word of its own.
+>
+> `src/gui/main_tabs/class_filter_surface.py` — the sentences
+>
+> ```python
+> EMPTY_HEADING = "{name} — nothing to show"
+> EMPTY_NOTE = "No {name} {subject} to show."
+> EMPTY_HINT = (
+>     "{name} is the active asset class. Press another class button in the "
+>     "header strip to see that class."
+> )
+> ```
+>
+> **Two tabs keep a card of their own instead of the note.** The Live tab draws
+> `No Stock Exchanges Configured` with its Add button on screen while no venue serves
+> the class, and the Paper tab draws its own card the same way, with its Add Exchange
+> button naming the class. The note replaces a tab only when a venue does serve the
+> class and no bot trades it.
+
+True today: no tab draws a class note. `note_model`, `EMPTY_HEADING`,
+`empty_hint`, `build_label` and `tab_state` are gone from
+`src/gui/main_tabs/class_filter_surface.py`, and `EMPTY_HINT` named no symbol in
+that file even while the quoted passage stood. `empty_note` and `EMPTY_NOTE`
+remain for one caller only, `tools/capture_screen_figure.py, in class_note`,
+which looks for a label no tab draws any more and refuses the capture when it
+finds none. The Live tab still draws its own `No Stock Exchanges Configured`
+card with its Add button on it while no venue serves the sector, and the Paper
+tab still draws its own card the same way. Both are pages those tabs own, and
+neither is a note that replaces a tab.
 
 **A filter hides rows and changes nothing else.** No bot is stopped, no position is
 closed and no state is written by a press, and the class survives a restart: a fresh

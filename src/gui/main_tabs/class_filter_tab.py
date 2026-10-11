@@ -1,16 +1,12 @@
 # Copyright (c) 2025 Anthony L. Brown (Ekthelius the Accumulator). All rights reserved.
 """``ClassFilterTabMixin`` makes every tab but Status and Console follow the class.
 
-``_wrap_tabs_for_class`` puts each filtered tab page and its note page in one
-``QStackedWidget``, ``select_asset_class`` extends the header strip's chooser,
-and ``_apply_asset_class`` narrows the Live sub-tabs, the fleet the Swarm, the
+``select_asset_class`` extends the header strip's chooser, and
+``_apply_asset_class`` narrows the Live sub-tabs, the fleet the Swarm, the
 Charts and the Inspector are fed, and the rows the History, the Sim and the
-Paper tab hold. ``class_filter_surface`` decides which class a market belongs
-to and writes the sentence an emptied tab draws, and ``_tab_keeps_card`` leaves
-a tab its own card while it holds no venue of the class, so an Add Exchange
-button on that card stays reachable. ``_note_panel`` offers the build on a
-sector ``_wizard_venues`` holds a venue for, and ``_on_build_bot_clicked``
-opens the Bot Creation Wizard on it.
+Paper tab hold. ``_refilter_class_tabs`` replaces no tab's page: a sector
+holding no bot draws the same tab with empty lists.
+``class_filter_surface`` decides which class a market belongs to.
 """
 
 from __future__ import annotations
@@ -18,22 +14,13 @@ from __future__ import annotations
 import logging
 from typing import Any, Callable
 
-from PySide6.QtWidgets import QStackedWidget
-
 from . import class_filter_surface as cfs
 
 logger = logging.getLogger("acervator.gui")
 
-CONTENT_PAGE = 0
-NOTE_PAGE = 1
-
-#: The window attribute holding each filtered tab, for the tabs that offer
-#: ``set_asset_class`` and count their own class-bearing rows.
-SELF_COUNTING_TABS = {
-    "History": "_history_tab",
-    "Sim": "_simulator_tab",
-    "Paper": "_paper_trader_tab",
-}
+#: The window attribute holding each tab that offers ``set_asset_class`` and
+#: counts its own class-bearing rows.
+SELF_COUNTING_TABS = ("_history_tab", "_simulator_tab", "_paper_trader_tab")
 
 
 class ClassFilterTabMixin:
@@ -44,7 +31,6 @@ class ClassFilterTabMixin:
     """
 
     # MainWindow supplies these; the bare annotations create no attribute.
-    _main_tabs: Any
     _bot_manager: Any
     _exchange_tabs: dict
     _crypto_exchange_tabs: dict
@@ -54,90 +40,7 @@ class ClassFilterTabMixin:
     _class_layers: dict
     _tab_widget: Any
     _trading_stack: Any
-    _settings: Any
     _push_live_tab: Callable[..., Any]
-    _create_bot: Callable[..., Any]
-
-    # `_wrap_tabs_for_class` assigns this.
-    _class_stacks: dict
-
-    def _wrap_tabs_for_class(self) -> dict:
-        """Put every ``cfs.filters`` tab page and its note page in one stack.
-
-        Answers the stacks by tab title.
-        """
-        self._class_stacks = {}
-        for index in range(self._main_tabs.count()):
-            title = self._main_tabs.tabText(index)
-            if not cfs.filters(title):
-                continue
-            page = self._main_tabs.widget(index)
-            if page is None:
-                continue
-            self._main_tabs.removeTab(index)
-            stack = QStackedWidget()
-            stack.setAccessibleName(f"{title} class filter stack")
-            stack.addWidget(page)
-            stack.addWidget(self._note_panel(title))
-            self._main_tabs.insertTab(index, stack, title)
-            self._class_stacks[title] = stack
-        return self._class_stacks
-
-    def _wizard_venues(self) -> list:
-        """Every venue the operator configured that serves the active class.
-
-        This is the venue set ``MainWindow._matching_exchanges`` hands the Bot
-        Creation Wizard, so the note offers the build exactly when the wizard
-        would open with a venue in it.
-        """
-        store = getattr(self, "_settings", None)
-        held = store.list_exchanges() if store is not None else []
-        return cfs.venues_of_class(
-            [str(one.get("exchange_id", "")) for one in held or []], cfs.active()
-        )
-
-    def _note_panel(self, title: str) -> Any:
-        """One tab's note page, wired so its build button opens the wizard."""
-        from .empty_tabs import _empty_tab_class
-
-        panel = _empty_tab_class()(cfs.note_model(title, None, self._wizard_venues()))
-        asked = getattr(panel, "buildRequested", None)
-        if asked is not None:
-            asked.connect(self._on_build_bot_clicked)
-        return panel
-
-    def _on_build_bot_clicked(self, name: Any) -> None:
-        """Open the Bot Creation Wizard on the sector the pressed note names.
-
-        ``MainWindow._create_bot`` takes its sector from ``_asset_class``, so a
-        press naming any other sector is dropped rather than built on the wrong
-        one, and the venue handed over is the first configured one serving it.
-        """
-        if str(name) != cfs.active():
-            logger.debug("a %s note was pressed while %s is active", name, cfs.active())
-            return
-        venues = self._wizard_venues()
-        if not venues:
-            logger.debug("the %s note offered a build with no venue", name)
-            return
-        self._create_bot(venues[0])
-
-    def _redraw_class_note(self, title: str, stack: Any) -> None:
-        """Rebuild one stack's note page for the active asset class."""
-        old = stack.widget(NOTE_PAGE)
-        stack.addWidget(self._note_panel(title))
-        if old is not None:
-            stack.removeWidget(old)
-            old.deleteLater()
-
-    def _show_class_note(self, title: str, empty: bool) -> None:
-        """Show one tab's note page while it holds nothing for the class."""
-        stack = (getattr(self, "_class_stacks", None) or {}).get(title)
-        if stack is None:
-            return
-        if empty:
-            self._redraw_class_note(title, stack)
-        stack.setCurrentIndex(NOTE_PAGE if empty else CONTENT_PAGE)
 
     def select_asset_class(self, name: Any) -> None:
         """Make one asset class active, then refilter every tab that follows it.
@@ -217,49 +120,22 @@ class ClassFilterTabMixin:
         held: set = set()
         for layer in (getattr(self, "_class_layers", None) or {}).values():
             held |= set(layer["exchange_tabs"])
-        configured = sorted(held)
-        venues = cfs.venues_of_class(configured, key)
+        venues = cfs.venues_of_class(sorted(held), key)
         self._live_layer_for(key, venues)
-        shown = self._filter_live_sub_tabs(key)
-        fleet = self._class_fleet()
-        self._feed_class_tabs(fleet)
-        self._refresh_class_notes(fleet, shown)
+        self._refilter_class_tabs()
+        self._feed_class_tabs(self._class_fleet())
         self._push_live_tab({"asset_class": key, "class_venues": venues})
 
-    def _refresh_class_notes(self, fleet: Any, shown: Any = None) -> None:
-        """Show or hide every filtered tab's note for the active class.
+    def _refilter_class_tabs(self) -> None:
+        """Narrow the Live sub-tabs and every self-counting tab to the class.
 
-        A tab draws the note while the class holds no bot anywhere, or while
-        the tab holds rows and none of them belong to the class.
+        ``MainWindow._refresh_dashboard`` calls this on its own timer, so
+        ``_ask_tab_for_class`` reaches the rows with no sector pressed.
         """
         key = cfs.active()
-        bare = not fleet
-        visible = self._filter_live_sub_tabs(key) if shown is None else shown
-        self._show_class_note("Live", bare and bool(visible))
-        for title in ("Swarm", "Charts", "Inspector"):
-            self._show_class_note(title, bare)
-        for title, attr in SELF_COUNTING_TABS.items():
-            kept, held = self._ask_tab_for_class(attr, key)
-            empty = bare or (held > 0 and kept == 0)
-            self._show_class_note(title, empty and not self._tab_keeps_card(attr, key))
-
-    def _tab_keeps_card(self, attr: str, key: str) -> bool:
-        """Whether one tab keeps its own card in place of the class note.
-
-        A tab answering ``class_venues`` keeps its card while it holds no venue
-        of ``key``, so the Add Exchange button on that card stays reachable —
-        the rule the Live tab already follows through ``visible``. A tab
-        offering no ``class_venues`` never keeps its card.
-        """
-        tab = getattr(self, attr, None)
-        ask = getattr(tab, "class_venues", None)
-        if not callable(ask):
-            return False
-        try:
-            return not ask(key)
-        except Exception as exc:  # noqa: BLE001 - a silent tab is worse
-            logger.debug("%s refused the class venue ask: %s", attr, exc)
-            return False
+        self._filter_live_sub_tabs(key)
+        for attr in SELF_COUNTING_TABS:
+            self._ask_tab_for_class(attr, key)
 
     def _ask_tab_for_class(self, attr: str, key: str) -> tuple:
         """The rows one tab keeps for ``key`` and the rows it holds in all.

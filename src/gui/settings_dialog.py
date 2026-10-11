@@ -116,10 +116,10 @@ if _HAS_QT:
                 exchanges that belong to that wing:
                   * crypto: the CCXT-supported list (binance, coinbase,
                     kraken, etc.) — current behaviour
-                  * stock:  the planned equity-broker list (alpaca,
-                    ibkr, schwab, ...) with a "broker integration
-                    queued; not yet live" banner and the Add/Test
-                    buttons disabled
+                  * stock:  the broker list (alpaca, etrade, fidelity,
+                    ibkr, robinhood, schwab, tastytrade, webull) with
+                    its own banner, and every control settled per
+                    venue by `credential_form`
                 The "Configured Exchanges" list at the top of the tab
                 is also filtered to match — stock-wing operators no
                 longer see their crypto exchanges in the Stock
@@ -135,6 +135,17 @@ if _HAS_QT:
             self._sm = settings_manager
             self._status_log = status_log
             self._last_validation = None
+            # One connector per venue mid-authorization, holding the request
+            # token between the press that opens the page and the press that
+            # sends the code back.
+            self._authorizing: dict = {}
+            # _sync_credential_kind hides each row's label beside its row, and
+            # only _create_exchange_tab holds one. The React build draws no Qt
+            # form and reaches that method through the Add press, so the three
+            # names are declared here and answer None on that build.
+            self._api_key_label = None
+            self._api_secret_label = None
+            self._verification_code_label = None
             # normalise resolves the legacy wing word "stock" onto "stocks".
             self._wing = acs.normalise(wing)
             self._setup_ui()
@@ -282,10 +293,26 @@ if _HAS_QT:
             add_form.addRow(self._pp_check)
             add_form.addRow("", self._new_passphrase)
 
+            # The venue shows this code on a page the operator opens himself, so
+            # it is typed rather than collected, and it is never stored.
+            self._new_verification_code = QLineEdit()
+            self._new_verification_code.setEchoMode(QLineEdit.Password)
+            self._new_verification_code.setPlaceholderText(
+                sds.VERIFICATION_CODE_PLACEHOLDER
+            )
+            self._new_verification_code.setToolTip(sds.VERIFICATION_CODE_TOOLTIP)
+            self._new_verification_code.setVisible(False)
+            add_form.addRow(sds.VERIFICATION_CODE_LABEL, self._new_verification_code)
+
             # _sync_credential_kind hides a row and its label together, and
             # labelForField answers the label addRow built from each string.
             self._api_key_label = add_form.labelForField(self._new_api_key)
             self._api_secret_label = add_form.labelForField(self._new_api_secret)
+            self._verification_code_label = add_form.labelForField(
+                self._new_verification_code
+            )
+            if self._verification_code_label is not None:
+                self._verification_code_label.setVisible(False)
 
             btn_row = QHBoxLayout()
             self._test_btn = QPushButton("Test Connection")
@@ -301,21 +328,6 @@ if _HAS_QT:
             self._api_feedback = QLabel("")
             self._api_feedback.setWordWrap(True)
             add_form.addRow(self._api_feedback)
-
-            if self._wing == "stocks":
-                _disabled_tip = sds.STOCK_DISABLED_TIP
-                # setEnabled and setToolTip refuse only a deleted C++ object,
-                # and _create_exchange_tab builds every widget named here.
-                for _w in (
-                    self._test_btn,
-                    self._add_btn,
-                    self._new_api_key,
-                    self._new_api_secret,
-                    self._new_passphrase,
-                    self._pp_check,
-                ):
-                    _w.setEnabled(False)
-                    _w.setToolTip(_disabled_tip)
 
             layout.addWidget(add_group)
 
@@ -506,11 +518,17 @@ if _HAS_QT:
             asks for.
 
             A browser-authorization venue hides the key, secret and passphrase
-            rows and keeps its own Add press enabled on the stock wing, and every
-            key-and-secret venue keeps all three rows and its own button words.
+            rows and keeps its own Add press, a key-and-secret venue keeps all
+            three rows, and a venue granting its token only on a code the
+            operator pastes back also draws the verification-code row.
+
+            The two presses read ``credential_form``: Test Connection takes a
+            press only where ``credential_route_held`` answers a route, and Add
+            takes one only where ``connector_held`` answers a connector.
             """
             form = sds.credential_form(eid, self._wing)
             typed = bool(form["key_rows"])
+            coded = typed and bool(form["code_row"])
             for row, label in (
                 (self._new_api_key, self._api_key_label),
                 (self._new_api_secret, self._api_secret_label),
@@ -521,15 +539,15 @@ if _HAS_QT:
             self._pp_check.setVisible(typed)
             if not typed:
                 self._new_passphrase.setVisible(False)
+            self._new_verification_code.setVisible(coded)
+            if self._verification_code_label is not None:
+                self._verification_code_label.setVisible(coded)
+            if not coded:
+                self._new_verification_code.clear()
             self._add_btn.setText(str(form["add_text"]))
             self._test_btn.setToolTip(str(form["test_tip"]))
-            if self._wing == "stocks":
-                # The wing disables both presses at build; a venue the program
-                # signs in at a browser earns back its own Add press alone.
-                self._add_btn.setEnabled(not typed)
-                self._test_btn.setEnabled(False)
-            else:
-                self._test_btn.setEnabled(typed)
+            self._add_btn.setEnabled(bool(form["add_enabled"]))
+            self._test_btn.setEnabled(bool(form["test_enabled"]))
 
         def _sync_passphrase_row(self) -> None:
             """Draw ``_new_passphrase`` while ``_pp_check`` is ticked.
@@ -605,9 +623,8 @@ if _HAS_QT:
                 self._last_validation = None
                 return None
             finally:
-                self._test_btn.setEnabled(True)
-                self._add_btn.setEnabled(True)
                 self._refresh_exchange_status()
+                self._sync_credential_kind(self._bound_venue())
 
         def _set_feedback(self, message: str, level: str = "info") -> None:
             colors = {
@@ -633,6 +650,9 @@ if _HAS_QT:
                 if sds.takes_browser_authorization(eid, self._wing):
                     self._connect_browser_venue(eid)
                     return
+                if not sds.connector_held(eid):
+                    self._set_feedback(sds.venue_form_bound(eid), "error")
+                    return
                 key = self._new_api_key.text().strip()
                 secret = self._typed_secret()
                 pp = (
@@ -641,7 +661,15 @@ if _HAS_QT:
                     else ""
                 )
 
-                if key and secret:
+                if sds.takes_verification_code(eid):
+                    # The code leg is this venue's own credential test, so the
+                    # key and secret are not tested a second time.
+                    if not (key and secret):
+                        self._set_feedback(sds.MISSING_CREDENTIALS_FEEDBACK, "error")
+                        return
+                    if not self._connect_verification_code_venue(eid, key, secret):
+                        return
+                elif key and secret and sds.credential_route_held(eid):
                     result = self._test_api_connection()
                     if result is None or not result.success:
                         return
@@ -665,6 +693,7 @@ if _HAS_QT:
                 self._new_api_key.clear()
                 self._new_api_secret.clear()
                 self._new_passphrase.clear()
+                self._new_verification_code.clear()
 
                 from .main_tabs.settings_dialog_surface import (
                     stored_credential_phrase,
@@ -684,9 +713,45 @@ if _HAS_QT:
                 )
                 self.accept()
             finally:
-                self._add_btn.setEnabled(True)
-                self._test_btn.setEnabled(True)
                 self._sync_credential_kind(self._bound_venue())
+
+        def _connect_verification_code_venue(
+            self, eid: str, key: str, secret: str
+        ) -> bool:
+            """Walk one leg of this venue's verification-code sign-in and answer
+            whether it granted a session.
+
+            The connector is held per venue, because the request token leg one
+            takes must outlive the press that walked it — the operator opens the
+            venue's page and pastes the code back on a second press. The code is
+            read, sent and dropped; no branch here stores or logs it, and the
+            page address carries a live token, so it reaches the screen only.
+            """
+            import asyncio
+
+            from src.stocks.alpaca_connector import broker_connector_class
+
+            built = broker_connector_class(eid)
+            if built is None:
+                self._set_feedback(sds.NO_VENUE_FEEDBACK, "error")
+                return False
+            held = self._authorizing.get(eid)
+            if held is None:
+                held = built()
+                self._authorizing[eid] = held
+            try:
+                answered = sds.connect_verification_code_venue(
+                    eid,
+                    self._new_verification_code.text(),
+                    lambda: asyncio.run(held.begin_authorization(key, secret)),
+                    lambda given: asyncio.run(held.complete_authorization(given)),
+                )
+            except (OSError, ValueError, KeyError) as exc:
+                self._set_feedback(f"{eid.capitalize()} not authorized: {exc}", "error")
+                return False
+            self._new_verification_code.clear()
+            self._set_feedback(str(answered["words"]), str(answered["level"]))
+            return bool(answered["granted"])
 
         def _connect_browser_venue(self, eid: str) -> None:
             """Sign one browser-authorization venue in, store what it issued and

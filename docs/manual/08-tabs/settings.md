@@ -7591,4 +7591,331 @@ binance and is now alpaca.
 | the bot wizard's picker | `src/gui/main_tabs/bot_wizard_surface.py`, in `exchange_items` | it lists the configured exchanges, not a registry |
 | the visualizer's picker | `src/gui/main_tabs/bot_visualizer_surface.py`, in `exchange_items` | it lists the fleet's own exchanges, not a registry |
 
+## 2026-10-11 - The Verification Code row and the venue that needs one
+
+One venue hands out no session until the operator approves this program on the
+venue's own web page, and that page answers with a short code. The page
+redirects nowhere, so nothing in this program can collect the code for him. He
+reads it off the page and pastes it into a row the Add form now draws.
+
+`src/gui/main_tabs/settings_dialog_surface.py`, in `credential_form`, answers
+`code_row` for that venue, and both builds read that one answer.
+`src/stocks/etrade_connector.py`, in `VERIFICATION_CODE_VENUES`, is the set it
+reads, so the row drawn and the leg the connector walks cannot disagree.
+
+### What the operator does
+
+Four steps, in this order, on the Exchanges tab.
+
+1. Press the venue's button. The form draws an extra row, **Verification Code**,
+   and the line under the form says what to do with it.
+2. Type the API key and secret and press Add. The venue answers with a web
+   address, which the line under the form prints.
+3. Open that address, sign in at the venue, and approve this program. The venue
+   then shows a short code.
+4. Paste the code into **Verification Code** and press Add again.
+
+```mermaid
+flowchart LR
+    A[Press the venue button] --> B[credential_form answers code_row]
+    B --> C[Verification Code row drawn]
+    D[Add, code row empty] --> E[begin_authorization, leg one]
+    E --> F[the address the line prints]
+    F --> G[Operator approves at the venue]
+    G --> H[Add, code pasted]
+    H --> I[complete_authorization, leg three]
+    I --> J[the venue grants a session]
+```
+
+`src/gui/settings_dialog.py`, in `_connect_verification_code_venue`, holds one
+connector per venue while this runs, because the token leg one takes must
+outlive the press that walked it. `src/gui/main_tabs/settings_dialog_surface.py`,
+in `connect_verification_code_venue`, decides which of the two legs a press
+walks: an empty row walks leg one, a filled row walks leg three.
+
+### What is stored and what is not
+
+The code is read, sent and dropped. Nothing writes it to disk, to a log, or
+into the answer the form reads back.
+
+| Value | Where it lives | How long |
+| ----- | -------------- | -------- |
+| API key and secret | the credential vault, under `api_key_enc` and `api_secret_enc` | until removed |
+| the request token | the held connector, in memory | five minutes |
+| the verification code | nowhere | the one press that sends it |
+| the access token | the held connector, in memory | to the end of the US Eastern day |
+
+`src/core/settings.py`, in `ExchangeConfig`, gains no field for this row.
+`src/trading/ata_spm_signin.py`, in `credential_store_fields`, still answers two
+field names for every venue the Exchanges tab offers.
+
+### Why the approved browser sign-in does not serve
+
+`src/trading/ata_spm_signin.py` carries this program's three-legged browser
+sign-in, and it does not fit this venue. It is an OAuth 2.0 flow that waits on a
+redirect; this venue is an OAuth 1.0a flow that redirects nowhere.
+
+| What the browser sign-in assumes | What this venue does |
+| -------------------------------- | -------------------- |
+| `LoopbackReceiver` waits for the venue to redirect a browser back | `src/stocks/etrade_connector.py`, in `OAUTH_CALLBACK`, is `oob`, so the venue shows a code instead of redirecting |
+| `code_challenge` and `new_verifier` build a proof the venue checks | the venue signs each leg instead, at `src/stocks/etrade_connector.py`, in `request_signature` |
+| `SignInSession.approve` sends a response type, a state and a redirect address | `src/stocks/etrade_connector.py`, in `authorize_url`, takes a key and a token and nothing else |
+| `GRANT_AUTHORIZATION_CODE` names the grant posted | `src/stocks/etrade_connector.py`, in `ACCESS_GRANT_ROUTE`, takes a verifier |
+
+### The code row read on each venue
+
+Driven on the real Qt dialog with the Exchanges tab built and the crypto wing
+open, pressing each venue's own button.
+
+| Venue | Needs a code | Code row drawn | Key and secret rows |
+| ----- | ------------ | -------------- | ------------------- |
+| etrade | yes | yes | drawn |
+| coinbase | no | no | drawn |
+| no venue pressed | no | no | drawn |
+
+Measured over every venue `src/gui/main_tabs/asset_class_surface.py`, in
+`known_venues`, offers: 1 of 26 draws the row and 25 do not. An invented venue
+id draws no row.
+
+### A sentence this page carries that the screen now reads differently
+
+OVERTAKEN, quoted whole:
+
+> `PASSPHRASE_EXCHANGES` still names bitget, kucoin and okx, and only those three
+> draw the passphrase row and the `(requires passphrase)` note.
+
+True today: `src/exchange/ccxt_connector.py`, in `PASSPHRASE_EXCHANGES`, names
+four venue ids — bitget, kucoin, okx and okxus — so four of the 26 venues draw
+the passphrase row and 22 do not.
+
+## 2026-10-11 - The stock wing takes a credential
+
+The Exchanges page on the stock wing drew its form and then switched every
+control off. `src/stocks/alpaca_connector.py`, in `BROKER_CONNECTORS`, names
+eight brokers and `broker_connector_class` builds one for each, so the form now
+settles each control against the venue the operator pressed.
+
+### Which wing a sector lands on
+
+`src/gui/main_tabs/settings_dialog_surface.py`, in `wing_or_default`, collapses
+six sectors onto two wings. `CLASS_WINGS` names one mapping, stocks onto the
+stock wing; every other sector falls to `DEFAULT_WING`, and an unknown word
+answers crypto.
+
+| Sector | Wing | Venues offered | Brokers among them |
+| ------ | ---- | -------------: | -----------------: |
+| Crypto | crypto | 24 | 8 |
+| Stocks | stock | 21 | 8 |
+| Commodities | crypto | 21 | 8 |
+| Forex | crypto | 16 | 6 |
+| Indices | crypto | 20 | 8 |
+| Futures / Perps | crypto | 18 | 5 |
+
+21 venues sit on the stock wing and 99 venue-and-sector cells on the crypto
+wing. Every one of the eight brokers serves the stocks sector and at least one
+sector that lands on the crypto wing, so each one reached an enabled form on one
+sector and a dead form on stocks.
+
+### The seven controls, settled one at a time
+
+`src/gui/settings_dialog.py`, in `_create_exchange_tab`, switched off seven
+widgets and hung one sentence on all seven. Each one now answers for itself.
+
+| Control | State | What decides it |
+| ------- | ----- | --------------- |
+| API Key | enabled | 19 of the 21 stocks venues hold a connector; each broker's own `connect` takes this row |
+| API Secret | enabled | `src/stocks/broker_base.py`, in `open_session`, refuses an empty secret |
+| passphrase box | enabled | 4 of the 21 stocks venues are in `src/exchange/ccxt_connector.py`, in `PASSPHRASE_EXCHANGES` |
+| passphrase row | enabled | drawn for those 4, by `src/gui/settings_dialog.py`, in `_sync_passphrase_row` |
+| Verification Code | enabled | `src/stocks/etrade_connector.py`, in `VERIFICATION_CODE_VENUES`, names etrade |
+| Test and Add | enabled for 19, refused for 2 | `src/gui/main_tabs/settings_dialog_surface.py`, in `connector_held` |
+| Test Connection | enabled for 12, refused for 9 | `src/gui/main_tabs/settings_dialog_surface.py`, in `credential_route_held` |
+
+`credential_route_held` asks whether `src/exchange/api_validator.py`, in
+`validate_credentials`, holds a route that reaches no session: a hand-written
+connector's own `credential_refusal`, or a venue id
+`src/exchange/ccxt_connector.py`, in `SUPPORTED_EXCHANGES`, names. Nine of the
+21 stocks venues hold neither — alpaca, etrade, fidelity, ibkr,
+interactivebrokers, schwab, tastytrade, tdameritrade, webull — and their Test
+Connection carries `NO_CREDENTIAL_TEST_TIP` in place of a press that cannot
+answer.
+
+`connector_held` asks whether any registry builds a connector at all.
+`interactivebrokers` and `tdameritrade` are the two venue ids that answer no, so
+their Add press is refused and the feedback row carries `NO_CONNECTOR_PROMPT`.
+
+### What each broker's form fills
+
+| Broker | API Key row | API Secret row |
+| ------ | ----------- | -------------- |
+| alpaca | the key id, `src/stocks/alpaca_connector.py`, in `connect` | the secret key |
+| etrade | the consumer key, `src/stocks/etrade_connector.py`, in `connect` | the consumer signing key |
+| fidelity | dropped — `src/stocks/fidelity_connector.py`, in `connect`, answers False with `ORDER_ROUTE_UNPUBLISHED` | dropped |
+| ibkr | the bearer token, `src/stocks/ibkr_connector.py`, in `connect` | unused |
+| robinhood | no typed row; `src/trading/ata_spm_signin.py`, in `BROWSER_AUTHORIZATION_SECTORS`, sends it to the browser press | no typed row |
+| schwab | the bearer token, `src/stocks/schwab_connector.py`, in `connect` | unused |
+| tastytrade | the grant's refresh token, `src/stocks/tastytrade_connector.py`, in `connect` | the client secret |
+| webull | the app key, `src/stocks/webull_connector.py`, in `connect` | the app signing key |
+
+No broker needs a row the form did not already draw, so the row set gained
+nothing: 0 rows added, 0 removed.
+
+### Where the Add press stores and where it tests
+
+```mermaid
+flowchart TD
+  PRESS[Add press] --> BROWSER{browser authorization?}
+  BROWSER -->|yes| SIGNIN[connect_browser_venue]
+  BROWSER -->|no| BUILT{connector_held?}
+  BUILT -->|no| REFUSE[NO_CONNECTOR_PROMPT, nothing stored]
+  BUILT -->|yes| CODE{takes_verification_code?}
+  CODE -->|yes| LEG[connect_verification_code_venue]
+  CODE -->|no| ROUTE{credential_route_held?}
+  ROUTE -->|yes| TEST[validate_credentials, then store]
+  ROUTE -->|no| STORE[store the key and secret]
+  STORE --> START[the Start press opens the session]
+```
+
+`src/gui/settings_dialog.py`, in `_add_exchange`, ran the credential test before
+it stored, for every venue. A venue with no route failed that test, so no broker
+credential could be stored on either wing. The test now runs only where
+`credential_route_held` answers a route.
+
+### Driven on the real screen
+
+The Qt Exchanges tab built on the stocks sector, each broker's own button
+pressed, with the home redirected and no venue contacted. `isHidden` is the row
+reading: an offscreen dialog answers `isVisible` false for every row, drawn or
+not.
+
+| Venue | Key and Secret rows | Code row | Test Connection | Add press |
+| ----- | ------------------- | -------- | --------------- | --------- |
+| alpaca | drawn | absent | refused | takes a press |
+| etrade | drawn | drawn | refused | takes a press |
+| fidelity | drawn | absent | refused | takes a press |
+| ibkr | drawn | absent | refused | takes a press |
+| robinhood | absent | absent | refused | Connect with a Browser |
+| schwab | drawn | absent | refused | takes a press |
+| tastytrade | drawn | absent | refused | takes a press |
+| webull | drawn | absent | refused | takes a press |
+| coinbase | drawn | absent | takes a press | takes a press |
+| okx | drawn, passphrase drawn | absent | takes a press | takes a press |
+| interactivebrokers | drawn | absent | refused | refused |
+| tdameritrade | drawn | absent | refused | refused |
+
+A value typed into every drawn row reads back at the consumer that uses it: the
+key at `_new_api_key`, the secret at `src/gui/settings_dialog.py`, in
+`_typed_secret`, the passphrase at `_new_passphrase` once the box is ticked, and
+the code at `_new_verification_code` for etrade alone. Blinding the reading
+flips it: disabling the key row reads disabled, and hiding the code row reads
+absent.
+
+The Add press driven on webull stored the key and the secret, and both read back
+out of `src/core/settings.py`, in `SettingsManager.get_exchange`, decrypted with
+`src/core/encryption.py`, in `vault_phrase`. `validate_credentials` was called 0
+times on that press and 1 time on the same press for coinbase, so the route
+reading is not blind. The same press on tdameritrade is refused, writes the
+no-connector sentence and stores nothing.
+
+### The React store draws the same form
+
+`src/gui/main_tabs/settings_dialog_surface.py`, in
+`SettingsDialogModel._setup`, switched the same seven controls off over
+`STOCK_DISABLED_CONTROLS`. `on_exchange_changed` now reads one `credential_form`
+answer for the row set, both presses and the Add button's words, which is the
+answer `_sync_credential_kind` reads.
+
+Three readings moved with it:
+
+- `show_key_rows` hides the API Key, API Secret and passphrase box for a
+  browser-authorization venue, which the Qt build already did and the store did
+  not.
+- `bind_venue_row` writes `venue_form_bound`'s sentence, the one
+  `src/gui/settings_dialog.py`, in `_open_credentials_for_row`, writes.
+- `src/gui/react_settings_dialog.py`, in `PagePress`, takes `setText` and
+  `setToolTip`. `_sync_credential_kind` already called both, and the holder
+  carried neither, so a venue press raised on the React build before it drew
+  anything. `src/gui/web/settings_dialog.js`, in `DialogButton`, reads the texts
+  bag before its layout node's words, so the Add button draws the words the
+  store holds.
+
+### Sentences this page carries that the screen now reads differently
+
+OVERTAKEN, quoted whole:
+
+> The same page in the stock wing shows a banner and disables Add and Test.
+
+True today: the stock wing shows a banner and settles each control against the
+pressed venue. Add takes a press on 19 of the 21 stocks venues and Test
+Connection on 12.
+
+OVERTAKEN, quoted whole:
+
+> `EQUITY_EXCHANGE_IDS` fills the list with the planned brokers, each labelled as
+> planned. Crypto is the wing that trades today.
+
+True today: `src/gui/main_tabs/asset_class_surface.py`, in `venues_for_class`,
+fills the list, and `BROKER_CONNECTORS` holds a built connector for all eight
+brokers on it. No venue is labelled planned.
+
+OVERTAKEN, quoted whole:
+
+> The same page in the stock wing shows a banner and disables Add and Test,
+> because no broker connector ships yet.
+
+True today: eight broker connectors ship, and the page refuses only the two
+presses a venue cannot answer.
+
+OVERTAKEN, quoted whole:
+
+> The stock wing lists the equity ids instead and disables both buttons.
+
+True today: the stock wing lists the 21 venues the stocks sector serves, and
+both buttons are refused only on the venue ids that hold no connector.
+
+OVERTAKEN, quoted whole:
+
+> The passphrase checkbox appears for the three venues above.
+
+True today: `PASSPHRASE_EXCHANGES` names four venue ids — bitget, kucoin, okx
+and okxus — so the box is ticked for four venues.
+
+OVERTAKEN, quoted whole:
+
+> A press sets that box for the three venues that need one and
+> clears it for the rest.
+
+True today: a press sets the box for those same four venues and clears it for
+the rest.
+
+OVERTAKEN, quoted whole:
+
+> ```python
+> _banner = QLabel(
+>     "<b>Stock Wing:</b> equity-broker integration is "
+>     "queued — no live brokers are wired up yet. The "
+>     "list below shows the planned brokers; Add / Test "
+>     "are disabled until the broker connectors ship. "
+>     "Use the Crypto Wing for active trading today."
+> )
+> ```
+
+True today: the banner reads from `STOCK_BANNER_TEXT`, which names the eight
+brokers, says the form takes each one's key and secret, and says Test Connection
+answers where a credential can be checked without a session. The page carries
+that block twice and both are overtaken by this one sentence.
+
+OVERTAKEN, quoted whole:
+
+> ```python
+> self._set_feedback(
+>     sds.VENUE_FORM_BOUND.format(name=venue.capitalize()), "info"
+> )
+> ```
+
+True today: `_open_credentials_for_row` writes `sds.venue_form_bound(venue)`,
+which reads `credential_form` and so names the credential the pressed venue
+takes. `VENUE_FORM_BOUND` is still the constant this page cites and no caller
+formats it.
+
 Back to [the subsystem index](README.md).

@@ -1403,6 +1403,13 @@
     return found === undefined ? true : found === true;
   }
 
+  // buttonWords answers the texts bag entry a press was given, and the words
+  // its own layout node carries while the bag holds none.
+  function buttonWords(name, words) {
+    var found = textNamed(name);
+    return found === undefined || found === "" ? words : found;
+  }
+
   function DialogButton(props) {
     var sheet = sheetForButton(props.words);
     var one = partProps(BUTTON_PART, paintedStyle(sheet));
@@ -1413,7 +1420,7 @@
     if (tooltipOf(props.name) !== undefined) {
       one[TITLE_ATTR] = text(tooltipOf(props.name));
     }
-    return element(BUTTON_TAG, one, text(props.words));
+    return element(BUTTON_TAG, one, text(buttonWords(props.name, props.words)));
   }
 
   function controlTag(kind) {
