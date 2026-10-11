@@ -70,6 +70,13 @@ EQUITY_VENUES = frozenset(
         "alpaca",
         "ibkr",
         "schwab",
+        # tdameritrade names no venue that still exists, read 2026-10-11 from
+        # Schwab's own and TD's own hosts: developer.tdameritrade.com has no DNS
+        # record at all, www.tdameritrade.com answers only Schwab's own
+        # authorization wall, and "tdameritrade" and "ameritrade" each name 0 of
+        # the 1637 pages Schwab's own sitemap lists, where "futures" names 88 and
+        # an invented word names 0. The id stays in this set until the row that
+        # reshapes the Exchanges tab removes it.
         "tdameritrade",
         "webull",
         "tastytrade",
@@ -280,7 +287,29 @@ EXTRA_VENUE_CLASSES = {
     "alpaca": ("crypto", "commodities", "indices"),
     "etrade": ("commodities", "indices"),
     "ibkr": ("crypto", "commodities", "forex", "indices", "futures_perps"),
-    "schwab": ("crypto", "commodities", "indices", "futures_perps"),
+    # Schwab's own futures-markets table names ten product families and gives
+    # every product a symbol, a multiplier, a tick size, a settlement word and
+    # its trading hours: 163 rows over 139 unique contracts, because each of the
+    # 24 Micros rows repeats a row in another family. Per sector the 139 are
+    # stocks 55 under Single Stock, commodities 47 under Metals, Energy,
+    # Agriculture and Softs, indices 14 under Stock Indices, crypto 8 under
+    # Crypto and forex 8 under Currency, with 7 under Interest Rates, a sector
+    # this screen does not draw. 55 + 47 + 14 + 8 + 8 + 7 = 139. "stocks"
+    # arrives from EQUITY_VENUES, so this entry carries the other five.
+    # forex is added here, and it is the sector the screen was missing: beside
+    # the 8 Currency contracts the venue's own table "Currency pairs available
+    # at Schwab" lists 70 spot pairs over 19 currency legs, its forex page reads
+    # "Access to over 65 currency pairs", and its Forex Client Agreement names
+    # the firm providing them, "Charles Schwab Futures and Forex LLC", as a
+    # "Forex Dealer Member" of the NFA. Nothing on this screen offered any of
+    # those 78 markets.
+    # Three firms carry these sectors and three eligibility rules follow. The
+    # site states "This site is designed for U.S. residents"; the forex page
+    # states "Forex accounts are not available to residents of Ohio or
+    # Arizona"; and the Cryptocurrency Account Agreement states crypto accounts
+    # "are available exclusively to residents of all 50 United States except New
+    # York and Louisiana", with U.S. territories excluded as well.
+    "schwab": ("crypto", "commodities", "forex", "indices", "futures_perps"),
     "tastytrade": ("crypto", "commodities", "indices", "futures_perps"),
     "webull": ("crypto", "commodities", "indices", "futures_perps"),
     # One equity route, four sectors: each of these trades as a fund share, and

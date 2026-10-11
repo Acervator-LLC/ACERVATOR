@@ -16,6 +16,8 @@ from typing import Any, Optional
 from ..exchange.base import MarketRules
 from .robinhood_broker import VENUE_ID as ROBINHOOD_VENUE_ID
 from .robinhood_broker import RobinhoodMcpBroker
+from .schwab_connector import VENUE_ID as SCHWAB_VENUE_ID
+from .schwab_connector import SchwabConnector
 from .broker_base import (
     BrokerBase,
     AccountInfo,
@@ -603,6 +605,7 @@ class AlpacaConnector(BrokerBase):
 BROKER_CONNECTORS: dict[str, type[BrokerBase]] = {
     VENUE_ID: AlpacaConnector,
     ROBINHOOD_VENUE_ID: RobinhoodMcpBroker,
+    SCHWAB_VENUE_ID: SchwabConnector,
 }
 
 
