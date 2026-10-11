@@ -485,6 +485,39 @@ actionable minus offered            0
 Before this unit `broker_serves_sector("webull", …)` answered False on all six
 sectors, because `BROKER_CONNECTORS` held no `webull` row at all.
 
+## Every recorded market, before and after
+
+The live recording was copied into a redirected home and read there; the real
+tree was never written. It holds one venue and **2,148** markets, and
+`market_unit_rule`, `order_types_for` and `session_for` were asked for each
+market in each of the six sectors: **15,036** answers a run.
+
+| run | tree | answers | moved against its pair |
+| --- | --- | --- | --- |
+| BEFORE run 1 | `origin/current` | 15,036 | — |
+| BEFORE run 2 | `origin/current` | 15,036 | **0** |
+| AFTER run 1 | this branch | 15,036 | — |
+| AFTER run 2 | this branch | 15,036 | **0** |
+
+```
+BEFORE against AFTER, over all 2,148 recorded markets:   0 answers moved
+```
+
+That zero is the right answer and not an absent instrument: every row this unit
+added is keyed on `webull`, the live recording holds one venue and it is
+`coinbase`, so no existing market's answer may move.
+
+**The control proves a difference would be seen.** One cell of the copied
+recording was changed — `coinbase` `00/USD` `amount_increment` from 0.01 to 99.0
+— and the same drive moved **6** answers, one market across its six sectors,
+each from `fractional` to `whole`. The copy was then restored and both runs
+repeated, which is where the two zeros above come from.
+
+```
+CONTROL  a tampered recording            6 answers moved
+         each one fractional -> whole    the control fires
+```
+
 The manual edit is add-only, proved against `git show origin/current:` on
 `docs/manual/15-venue-compatibility.md`, decoded as UTF-8:
 
