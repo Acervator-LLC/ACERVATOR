@@ -14,6 +14,8 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 
 from ..exchange.base import MarketRules
+from .etrade_connector import VENUE_ID as ETRADE_VENUE_ID
+from .etrade_connector import EtradeConnector
 from .ibkr_connector import VENUE_ID as IBKR_VENUE_ID
 from .ibkr_connector import IbkrConnector
 from .robinhood_broker import VENUE_ID as ROBINHOOD_VENUE_ID
@@ -614,6 +616,7 @@ class AlpacaConnector(BrokerBase):
 # is its own row, so this registry names the one the rest of the tree reads.
 BROKER_CONNECTORS: dict[str, type[BrokerBase]] = {
     VENUE_ID: AlpacaConnector,
+    ETRADE_VENUE_ID: EtradeConnector,
     IBKR_VENUE_ID: IbkrConnector,
     ROBINHOOD_VENUE_ID: RobinhoodMcpBroker,
     SCHWAB_VENUE_ID: SchwabConnector,

@@ -297,7 +297,68 @@ EXTRA_VENUE_CLASSES = {
     # require a US person: "Have a legal U.S. residential address within the 50
     # states or Puerto Rico".
     "alpaca": ("crypto", "commodities", "indices"),
-    "etrade": ("commodities", "indices"),
+    # E*TRADE's own navigation names seven products — "Stocks Options Mutual
+    # Funds ETFs Futures Bonds Crypto" — and its own futures product table gives
+    # every contract a symbol and a tick size: 91 unique codes over nine product
+    # groups, with the tenth group, Micros, repeating 28 of them and adding none.
+    # Per sector the 91 are commodities 43 under Energy, Metals, Grains, Softs
+    # and Livestock, forex 15 under FX (currency) once /USD is dropped as a
+    # fragment of the pair name "Micro EUR/USD", indices 13 under Equity Index,
+    # crypto 8 under Cryptocurrencies, and 11 under Interest rates, a family
+    # naming no sector this screen draws, which leaves each of those 11
+    # recording under futures_perps alone. 43 + 15 + 13 + 8 + 11 = 90, and the
+    # 91st is /USD. "stocks" arrives from EQUITY_VENUES, so this entry carries
+    # the other five.
+    # forex is added here, and it is the sector the screen was missing, seven
+    # venues running: /6A /6B /6C /6E /6J /6M /6N /6S /DX and the six micros
+    # /M6A /M6B /M6E /MCD /MJY /MSF, eleven of them ticking at 0.0001 and /MJY
+    # at 0.000001. There is no spot forex and no currency fund: over the 32
+    # us.etrade.com pages read, 998,389 characters, "forex", "spot forex",
+    # "currency pair" and "currency ETF" each name 0 where "FX (currency)"
+    # names 1 and "jurisdiction" names 41.
+    # crypto is added here too, and it is new: its own Crypto account page reads
+    # "Buy and sell BTC, ETH, and SOL with the same best-in-class trading
+    # experience you enjoy today", priced on its own table at "Crypto 0.50% On
+    # the dollar value of each trade".
+    # commodities, indices and crypto reach an order as a fund share, which is
+    # securityType EQ. The venue's own ETF page names the families — "Basket of
+    # equities, fixed income, or commodities" — states "We offer every ETF sold",
+    # and names 22 funds by symbol for its overnight session: "Available for
+    # SPY, QQQ, DIA, GLD, USO, TLT, SLV, UNG, IWM, SH, AGG, DOG, EFA, EWA, EWJ,
+    # IJH, PSQ, RWM, VTI, XLE, XLF, and XLK". Its crypto page sells the same
+    # shape: "Gain exposure to popular cryptocurrencies via securities and
+    # futures."
+    # forex and futures_perps reach no order. The Order API's own request
+    # securityType enum is closed at EQ, OPTN, INDX, MF and MMF, and over the
+    # 186,658 characters of that reference "FUTURES" and "FOREX" each name 0
+    # where "EQ" names 36; the 275-page API PDF on content.etrade.com answers
+    # the same, "crypto" 0, "forex" 0 and "currency pair" 0 against
+    # "securityType" 18. No futures or crypto documentation directory exists on
+    # the doc host: both answer 400 at 58 bytes, the identical answer an
+    # invented path gives. etrade_connector.order_body refuses a leg naming any
+    # word outside EQ.
+    # Three legal entities carry these products and the API is published under
+    # one. Quoted whole from every page's own footer: "Securities products and
+    # investment advisory services offered by Morgan Stanley Smith Barney LLC,
+    # Member SIPC and a Registered Investment Adviser. Commodity futures and
+    # options on futures products and services offered by E*TRADE Futures LLC,
+    # Member NFA." Spot crypto is a third: "digital assets at Zero Hash LLC
+    # (together with its affiliate Zero Hash Liquidity Services, LLC,
+    # 'zerohash')", on "a separate, non-brokerage linked zerohash crypto
+    # account" reachable on "E*TRADE web and the E*TRADE app".
+    # No eligibility rule names a refused state and none requires a US person
+    # for securities. Over those 32 pages Ohio, Arizona, Louisiana, Hawaii and
+    # Nevada each name 0 and "50 states" names 0, where "New York" names 24,
+    # every one an address or the governing-law clause. Guam and Puerto Rico
+    # name 1 each and the clause is about mortgages: "Residential mortgage
+    # loans/ home equity lines of credit may not be available in all states; not
+    # available in Guam, Puerto Rico and the U.S. Virgin Islands." The one
+    # non-US clause is the sign-up promotion, "This offer excludes non-U.S.
+    # residents", and crypto asks only for "Any US-based client". Two
+    # permissions are per product and the operator requests each once: futures
+    # needs the futures upgrade its own page calls "Add futures to an existing
+    # account", and crypto needs the linked zerohash account.
+    "etrade": ("crypto", "commodities", "forex", "indices", "futures_perps"),
     # Interactive Brokers' own OpenAPI document and contract pages name a
     # security type per sector, and all six are already offered here: crypto
     # from CRYPTO on Paxos and zerohash, stocks from STK and FUND, commodities
