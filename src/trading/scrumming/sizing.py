@@ -194,6 +194,24 @@ CITED_UNIT_RULES: dict[tuple[str, str], str] = {
 #: field its dated futures carry — and both words resolve to the same empty
 #: family. ``MNT`` and ``SGD`` need no row either: neither bases a cryptocom
 #: market.
+#:
+#: The fifth venue is mexc, and its three rows are three national currencies its
+#: own ``conceptPlates`` groups under ``Stablecoins`` and ``Innovation`` rather
+#: than under a currency word, so its ``VENUE_ASSET_SECTOR_RECORDS`` rows name
+#: them nothing and each falls from forex to crypto. mexc's own
+#: ``/api/v3/ticker/price`` settles all three: ``PLNUSDT`` 0.2546 is the zloty,
+#: which its own ``fullName`` also spells "Polish Zloty"; ``ARSUSDT`` 0.0006163
+#: is the Argentine peso and ``MXNUSDT`` 0.0564 the Mexican peso, and the venue
+#: groups both beside its euro and real tokens under ``Stablecoins``. Each bases
+#: one or two markets and every one is quoted in a dollar token, so the base
+#: code carries them. Six codes the same reading drops need no row, because the
+#: venue's own name or plate refutes the currency: ``MNT`` is "Mantle" at 0.5613
+#: against a tugrik near 0.00028, ``SCR`` is "Scroll" at 0.02577 against a
+#: Seychellois rupee near 0.068, ``TOP`` is "TOP Network" at 0.0000695 against a
+#: Tongan pa'anga near 0.42, ``RON`` is "RONIN", ``BOB`` sits in the venue's own
+#: ``BTC Ecosystem`` plate and ``COP`` in its ``DeFi`` plate. ``NOK``, ``AMD``
+#: and ``SGD`` need no row either: none of the three bases a single mexc market,
+#: spot or contract.
 CITED_VENUE_BASE_SECTORS: dict[tuple[str, str], str] = {
     ("bitfinex", "UKOIL"): CLASS_COMMODITIES,
     ("bitfinex", "AUSTRALIA200IX"): CLASS_INDICES,
@@ -222,6 +240,9 @@ CITED_VENUE_BASE_SECTORS: dict[tuple[str, str], str] = {
     ("cryptocom", "PAXG"): CLASS_COMMODITIES,
     ("cryptocom", "XAUT"): CLASS_COMMODITIES,
     ("cryptocom", "EURC"): CLASS_FOREX,
+    ("mexc", "ARS"): CLASS_FOREX,
+    ("mexc", "MXN"): CLASS_FOREX,
+    ("mexc", "PLN"): CLASS_FOREX,
 }
 
 
@@ -280,6 +301,25 @@ def venue_base_sector(venue: Any, base: Any) -> Optional[str]:
 #: redemption map; bitstamp's own currency list names it "EUR CoinVertible",
 #: and its third market, ``EURCV/EUR``, holds one currency and keeps the crypto
 #: it already reads.
+#:
+#: The two mexc rows are the kucoin reading on mexc's own pairs. ``USDC`` bases
+#: four mexc spot markets — ``USDC/USDF``, ``USDC/USDT``, ``USDC/EUR`` and
+#: ``USDC/BRL`` — and a fifth perpetual, and only the last two hold a national
+#: currency, so the base code cannot carry them. mexc's own
+#: ``/api/v3/ticker/price`` reads ``USDCEUR`` 0.893 and ``USDCBRL`` 5.025, the
+#: inverses of its own ``EURUSDT`` 1.1207 and ``BRLUSDT`` 0.1992, so each pair
+#: is a dollar token against one national currency. mexc's three contract
+#: ``mc-trade-zone-Forex`` codes that also base a spot market, ``EUR`` and
+#: ``BRL``, need no row: every market under either holds a currency against a
+#: dollar token.
+#:
+#: ``EWT`` is the third mexc row and the one base code its two hosts give to two
+#: different assets. Its spot ``fullName`` is "Energy Web", a crypto token, and
+#: its contract ``EWT_USDT`` carries ``mc-trade-zone-stockindex`` for the iShares
+#: MSCI Taiwan fund, so the base-keyed record names the token an index. Driven
+#: over all 3087 markets, it is the only such code: every other base code either
+#: host names a sector for either sits on one host alone or names the same asset
+#: on both, and no contract market takes its sector from the spot record.
 CITED_VENUE_MARKET_SECTORS: dict[tuple[str, str], str] = {
     ("kucoin", "BNC/USDT"): CLASS_CRYPTO,
     ("kucoin", "USDC/EUR"): CLASS_FOREX,
@@ -291,6 +331,9 @@ CITED_VENUE_MARKET_SECTORS: dict[tuple[str, str], str] = {
     ("bitstamp", "EURC/EUR"): CLASS_CRYPTO,
     ("bitstamp", "EURCV/USDC"): CLASS_FOREX,
     ("bitstamp", "EURCV/USDT"): CLASS_FOREX,
+    ("mexc", "EWT/USDT"): CLASS_CRYPTO,
+    ("mexc", "USDC/BRL"): CLASS_FOREX,
+    ("mexc", "USDC/EUR"): CLASS_FOREX,
 }
 
 
@@ -479,6 +522,15 @@ ORDER_TYPES_DECLARED = (ORDER_TYPES_WITH_MARKET, ORDER_TYPES_LIMIT_ONLY)
 # the pair in one line: "Order type: LIMIT or MARKET". One endpoint,
 # ``POST /private/create-order``, serves a spot pair, a perpetual and a dated
 # future alike, so the declaration is the venue's and not the sector's.
+#
+# mexc holds a row in all six sectors, because it records a market in every one.
+# ``declared_order_types`` reads "market and limit" off its own capability map,
+# where ``createMarketOrder`` is True, and both of its order routes compose the
+# pair: its spot ``POST /api/v3/order`` publishes ``orderTypes`` per market,
+# reading ["LIMIT","MARKET","LIMIT_MAKER"] on 1855 of its 1890 spot rows and
+# ["LIMIT","LIMIT_MAKER"] on the other 35, and its contract
+# ``POST /api/v1/private/order/create`` takes a numbered ``type`` whose composed
+# body reads 6 for a market order and 1 for a limit order.
 CITED_VENUE_ORDER_TYPES: dict[tuple[str, str], str] = {
     (CLASS_CRYPTO, "coinbase"): ORDER_TYPES_WITH_MARKET,
     (CLASS_CRYPTO, "gemini"): ORDER_TYPES_LIMIT_ONLY,
@@ -501,6 +553,12 @@ CITED_VENUE_ORDER_TYPES: dict[tuple[str, str], str] = {
     (CLASS_FOREX, "cryptocom"): ORDER_TYPES_WITH_MARKET,
     (CLASS_INDICES, "cryptocom"): ORDER_TYPES_WITH_MARKET,
     (CLASS_FUTURES_PERPS, "cryptocom"): ORDER_TYPES_WITH_MARKET,
+    (CLASS_CRYPTO, "mexc"): ORDER_TYPES_WITH_MARKET,
+    (CLASS_STOCKS, "mexc"): ORDER_TYPES_WITH_MARKET,
+    (CLASS_COMMODITIES, "mexc"): ORDER_TYPES_WITH_MARKET,
+    (CLASS_FOREX, "mexc"): ORDER_TYPES_WITH_MARKET,
+    (CLASS_INDICES, "mexc"): ORDER_TYPES_WITH_MARKET,
+    (CLASS_FUTURES_PERPS, "mexc"): ORDER_TYPES_WITH_MARKET,
     # Robinhood publishes market, limit, stop_loss and stop_limit.
     (CLASS_CRYPTO, "robinhood"): ORDER_TYPES_WITH_MARKET,
 }
@@ -578,8 +636,24 @@ SETTLE_LEG = ":"
 # ``createMarketOrderWithCost`` both False. Composed with no credential and
 # nothing sent, a market buy reads ``quantity`` 0.001 against a sell's
 # ``quantity`` 0.001, so the size stays a unit count on both sides.
+# ``mexc`` is a fifth, and it is the first venue whose unit is decided by the
+# price this platform itself supplies rather than by the venue's own default.
+# Its own New Order page gives one field per unit and names both as alternatives
+# on a market order: "base on different type, some params are mandatory ...
+# MARKET | quantity or quoteOrderQty".
+# ``ccxt.mexc.create_spot_order_request`` writes ``quantity`` on a market order
+# priced None and ``quoteOrderQty`` from ``amount`` times ``price`` on a market
+# order carrying a price, and ``CCXTConnector.place_order`` fetches a ticker and
+# supplies that price on a MARKET BUY alone. Composed with no credential
+# reaching the venue, a market buy on ``BTC/EUR`` priced 50000 read
+# ``quoteOrderQty`` 50 where the same buy priced None read ``quantity`` 0.001,
+# and a market sell read ``quantity`` 0.001, so the buy carries the cash and the
+# sell carries the count. Its contract route takes no cash field at all: the
+# same composition on ``BTC/USDT:USDT`` read ``{"symbol":"BTC_USDT","vol":1.0,
+# "type":6,"openType":2,"side":1}`` on both sides, and ``SETTLE_LEG`` already
+# leaves every contract out of this set.
 CITED_CASH_MARKET_BUY: frozenset[str] = frozenset(
-    {"binance", "bitget", "coinbase", "gateio"}
+    {"binance", "bitget", "coinbase", "gateio", "mexc"}
 )
 
 #: Why a ``WHOLE_UNITS`` market buy names a limit order.

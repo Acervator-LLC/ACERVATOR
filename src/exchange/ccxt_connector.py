@@ -419,8 +419,19 @@ EXCHANGE_OPTIONS: dict[str, dict] = {
 }
 
 # Exchanges where fetchCurrencies must be disabled (deprecated v2 endpoints)
+#
+# mexc's entry is a private endpoint rather than a deprecated one. ccxt's own
+# ``mexc.fetch_currencies`` calls ``spotPrivateGetCapitalConfigGetall`` and
+# carries the comment "this endpoint requires authentication while
+# fetchCurrencies is a public API method by design ... and fallback to
+# generating the currencies from the markets", so ``load_markets`` asks the
+# wallet scope for a list the connector reads nothing out of. Driven against a
+# credential mexc refuses that endpoint for, ``load_markets`` raised
+# ``BadRequest: {"code":10072,"msg":"Api key info invalid"}`` and recorded no
+# market at all; with the flag off it loads 3087.
 DISABLE_FETCH_CURRENCIES: set[str] = {
     "coinbase",  # v2/currencies deprecated for CDP keys
+    "mexc",  # capital/config/getall is signed and needs the wallet scope
 }
 
 #: The products method each venue answers an extra asset class's products on,
@@ -466,7 +477,8 @@ class AssetSectorRecord:
     """How one venue publishes its own asset sectors.
 
     ``_published_asset_sectors`` calls ``method`` once per entry in
-    ``requests``, reads each row's ``code_key`` as the asset code and its
+    ``requests``, takes the rows out from under ``rows_key`` where the response
+    is a mapping, reads each row's ``code_key`` as the asset code and its
     ``sector_key`` as the sector, narrowed by ``code_leg``, and translates that
     sector through ``words`` before ``asset_class_named`` resolves it.
     """
@@ -476,6 +488,7 @@ class AssetSectorRecord:
     code_key: str = ASSET_CODE_KEY
     code_leg: str = ""
     sector_key: str = ASSET_CATEGORY_KEY
+    rows_key: str = ASSET_SECTOR_ROWS_KEY
     words: Mapping[str, str] = MappingProxyType({})
 
 
@@ -592,6 +605,38 @@ NO_PUBLISHED_FAMILY = ""
 #: list with a name or a type field, so the record names no ``code_leg``: its
 #: ``symbol`` concatenates the legs as ``1INCH_USD``, ``1INCHUSD-PERP`` and
 #: ``BTCUSD-261127``, and a split on either separator reads the wrong code.
+#:
+#: mexc publishes its own trade-zone list on both of its hosts and holds three
+#: records, because the venue writes the generic zone ahead of the specific one
+#: inside a single row's list and ``_read_asset_sector_rows`` takes the first
+#: word that resolves. Its spot ``spotPublicGetExchangeInfo`` serves 1890 rows
+#: under ``symbols``, which ``rows_key`` names, and carries ``conceptPlates`` on
+#: every one — ``Tokenized Stocks`` 165 markets, ``Stock Meme Tokens`` 51,
+#: ``Robinhood Ecosystem`` 62, ``Precious Metals`` 10, ``Defense & Energy`` 10,
+#: ``Prediction Market`` 7, ``Pre-IPO`` 2, ``Metals`` 1, ``Crude Oil`` 1 beside
+#: 33 crypto-theme words. Its contract ``contractPublicGetDetail`` serves 1197
+#: rows under ``data`` and carries ``conceptPlate`` on 1028 — ``Stock`` 469,
+#: ``stockindex`` 66, ``ETF`` 61, ``Commodities`` 19, ``metalsfutures`` 17,
+#: ``metals`` 13, ``Forex`` 8, ``preipo`` 6, ``OIL`` 4 beside 46 more — and the
+#: venue's own contract reference documents the field on the instrument record.
+#: ``mc-trade-zone-Stock`` precedes ``mc-trade-zone-stockindex`` and
+#: ``mc-trade-zone-ETF`` on every one of the 66 rows carrying either, so the
+#: second record maps the stock zone onto ``NO_PUBLISHED_FAMILY`` and names the
+#: specific families, and the third names the stock zone alone; a code the
+#: second already named is left untouched. ``Stock Meme Tokens``,
+#: ``mc-trade-zone-stockmeme``, ``mc-trade-zone-robinhood`` and
+#: ``mc-trade-zone-Chinese`` read as no family because their markets are meme
+#: tokens — "Boner Coin", "Send Nudes", "哈基米" — and not equities, and
+#: ``mc-trade-zone-tradfi`` reads as none because its 500 rows span four
+#: sectors. ``mc-trade-zone-japanstock`` records under stocks on the venue's own
+#: names, Toyota, Sony and SoftBank among them, and ``mc-trade-zone-preipo``
+#: under stocks on OpenAI, Anthropic and Polymarket, the reading cryptocom's
+#: ``PRE_IPO`` took. ``Metals`` is the one word of the 97 that
+#: ``asset_class_named`` resolves with no row, through ``RETIRED_CLASSES``, and
+#: it is named here so no word of either vocabulary resolves by accident. mexc
+#: publishes ``baseAsset`` on all 1890 spot rows and ``baseCoin`` on all 1197
+#: contract rows, so neither record names a ``code_leg``, and the two code sets
+#: share no code either record names.
 VENUE_ASSET_SECTOR_RECORDS: dict[str, tuple[AssetSectorRecord, ...]] = {
     "cryptocom": (
         AssetSectorRecord(
@@ -612,6 +657,57 @@ VENUE_ASSET_SECTOR_RECORDS: dict[str, tuple[AssetSectorRecord, ...]] = {
         ),
     ),
     "gateio": (AssetSectorRecord(method="publicSpotGetCurrencies"),),
+    "mexc": (
+        AssetSectorRecord(
+            method="spotPublicGetExchangeInfo",
+            code_key="baseAsset",
+            sector_key="conceptPlates",
+            rows_key="symbols",
+            words=MappingProxyType(
+                {
+                    "Crude Oil": "commodities",
+                    "Defense & Energy": NO_PUBLISHED_FAMILY,
+                    "Metals": "metals",
+                    "Pre-IPO": "stocks",
+                    "Precious Metals": "commodities",
+                    "Prediction Market": NO_PUBLISHED_FAMILY,
+                    "Robinhood Ecosystem": NO_PUBLISHED_FAMILY,
+                    "Stock Meme Tokens": NO_PUBLISHED_FAMILY,
+                    "Tokenized Stocks": "stocks",
+                }
+            ),
+        ),
+        AssetSectorRecord(
+            method="contractPublicGetDetail",
+            code_key="baseCoin",
+            sector_key="conceptPlate",
+            words=MappingProxyType(
+                {
+                    "mc-trade-zone-Chinese": NO_PUBLISHED_FAMILY,
+                    "mc-trade-zone-Commodities": "commodities",
+                    "mc-trade-zone-ETF": "indices",
+                    "mc-trade-zone-Forex": "forex",
+                    "mc-trade-zone-OIL": "commodities",
+                    "mc-trade-zone-Prediction": NO_PUBLISHED_FAMILY,
+                    "mc-trade-zone-Stock": NO_PUBLISHED_FAMILY,
+                    "mc-trade-zone-japanstock": "stocks",
+                    "mc-trade-zone-metals": "metals",
+                    "mc-trade-zone-metalsfutures": "commodities",
+                    "mc-trade-zone-preipo": "stocks",
+                    "mc-trade-zone-robinhood": NO_PUBLISHED_FAMILY,
+                    "mc-trade-zone-stockindex": "indices",
+                    "mc-trade-zone-stockmeme": NO_PUBLISHED_FAMILY,
+                    "mc-trade-zone-tradfi": NO_PUBLISHED_FAMILY,
+                }
+            ),
+        ),
+        AssetSectorRecord(
+            method="contractPublicGetDetail",
+            code_key="baseCoin",
+            sector_key="conceptPlate",
+            words=MappingProxyType({"mc-trade-zone-Stock": "stocks"}),
+        ),
+    ),
     "kucoin": (
         AssetSectorRecord(
             method="publicGetSymbols",
@@ -2679,7 +2775,7 @@ class CCXTConnector(ExchangeInterface):
             if not callable(method):
                 return None
             for request in record.requests or ({},):
-                rows = self._asset_sector_rows(method, request)
+                rows = self._asset_sector_rows(method, request, record.rows_key)
                 if rows is None:
                     return None
                 served += len(rows)
@@ -2693,11 +2789,12 @@ class CCXTConnector(ExchangeInterface):
         )
         return found
 
-    def _asset_sector_rows(self, method: Any, request: Any) -> Optional[list]:
+    def _asset_sector_rows(
+        self, method: Any, request: Any, rows_key: str = ASSET_SECTOR_ROWS_KEY
+    ) -> Optional[list]:
         """The rows one asset-sector call serves, taking the response itself
-        where it is a list, ``ASSET_SECTOR_ROWS_KEY`` where it is a mapping, and
-        that key under ``ASSET_SECTOR_PAYLOAD_KEY`` where the mapping wraps its
-        payload.
+        where it is a list, ``rows_key`` where it is a mapping, and that key
+        under ``ASSET_SECTOR_PAYLOAD_KEY`` where the mapping wraps its payload.
 
         None where the call raised or served none of the three shapes, which
         ``_published_asset_sectors`` reads as the venue publishing no record.
@@ -2713,12 +2810,12 @@ class CCXTConnector(ExchangeInterface):
             )
             return None
         if isinstance(served, dict):
-            held = served.get(ASSET_SECTOR_ROWS_KEY)
+            held = served.get(rows_key)
             if held is None:
                 held = served.get(ASSET_SECTOR_PAYLOAD_KEY)
             served = held
         if isinstance(served, dict):
-            served = served.get(ASSET_SECTOR_ROWS_KEY)
+            served = served.get(rows_key)
         if not isinstance(served, list):
             logger.warning(
                 "%s served an asset sector list of %s, so no sector is read",
