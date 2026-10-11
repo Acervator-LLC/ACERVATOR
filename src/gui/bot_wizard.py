@@ -291,6 +291,7 @@ if _HAS_QT:
                 market_reason,
                 market_unit_rule,
                 recorded_venue_rows,
+                session_takes_whole_units,
             )
 
             eid = self._exchange.currentData()
@@ -301,6 +302,7 @@ if _HAS_QT:
             self._target_unit_rules = []
             self._target_prices = []
             self._target_expiries = []
+            self._target_session_wholes = []
             filtered = [
                 m
                 for m in markets
@@ -339,6 +341,9 @@ if _HAS_QT:
                 )
                 self._target_prices.append(as_finite_float(m.get("price")))
                 self._target_expiries.append(market_expires(recorded, m))
+                self._target_session_wholes.append(
+                    session_takes_whole_units(recorded, m, self._sector, eid)
+                )
                 # The cached icon only, since a download here blocks the GUI thread.
                 icon = _get_coin_icon(named)
                 if icon:
@@ -351,6 +356,7 @@ if _HAS_QT:
                 self._target_unit_rules.append("")
                 self._target_prices.append(None)
                 self._target_expiries.append(False)
+                self._target_session_wholes.append(False)
             refused = sum(1 for one in self._target_reasons if one)
             self._status.setText(
                 f"{len(filtered)} {base} pairs"
@@ -399,6 +405,13 @@ if _HAS_QT:
             held = getattr(self, "_target_expiries", [])
             return bool(held[at]) if 0 <= at < len(held) else False
 
+        def target_session_whole(self) -> bool:
+            """True while the session governing the pair the target combo shows
+            takes a whole unit alone outside regular hours."""
+            at = self._target.currentIndex()
+            held = getattr(self, "_target_session_wholes", [])
+            return bool(held[at]) if 0 <= at < len(held) else False
+
         def _update_info(self):
             sym = self._target.currentData()
             desc = self._descriptions_cache.get(sym, "")
@@ -430,13 +443,33 @@ if _HAS_QT:
             }
 
     class ModeSelectionPage(QWizardPage):
-        def __init__(self, parent=None):
+        def __init__(self, parent=None, sector: str = ""):
+            """The wizard's first page, offering the engines ``sector`` serves.
+
+            The Scrumming row carries the sector's own variant name, read from
+            ``bot_wizard_surface.mode_offer``, and the Extractor row shows on
+            the sectors that surface names. A row the sector does not offer is
+            hidden with its description, and a sector whose variant is unbuilt
+            draws ``mode_refusal`` and completes no page.
+            """
             super().__init__(parent)
+            from .main_tabs.bot_wizard_surface import (
+                EXTRACTOR_MODE,
+                SCRUMMING_MODE,
+                mode_offer,
+                mode_refusal,
+                normalise_sector,
+            )
+
             self.setTitle("Trading Mode")
             self.setSubTitle("Select the trading engine for this bot.")
+            self._sector = normalise_sector(sector)
+            self._offer = mode_offer(self._sector)
+            scrum_text = self._offer[SCRUMMING_MODE]
+            ext_text = self._offer[EXTRACTOR_MODE]
             layout = QVBoxLayout(self)
-            self._scrumming = QRadioButton("Accumulation Trading (Scrumming)")
-            self._scrumming.setChecked(True)
+            self._scrumming = QRadioButton(scrum_text)
+            self._scrumming.setChecked(bool(scrum_text))
             sd = QLabel(
                 "The core trading engine. Uses 12-indicator TA voting to optimize "
                 "scrum-fold cycles relative to a Target Balance. Supports multi-timeframe "
@@ -447,8 +480,10 @@ if _HAS_QT:
             sd.setProperty("muted", True)
             layout.addWidget(self._scrumming)
             layout.addWidget(sd)
+            self._scrumming.setVisible(bool(scrum_text))
+            sd.setVisible(bool(scrum_text))
 
-            self._extractor = QRadioButton("Base Currency Extractor (Multi-Target)")
+            self._extractor = QRadioButton(ext_text)
             self._extractor.setToolTip(
                 "Grows a base-currency pool by harvesting volatility across "
                 "top-N */<base> alt pairs. No spawn cascades, no phantoms; "
@@ -467,10 +502,36 @@ if _HAS_QT:
             ed.setProperty("muted", True)
             layout.addWidget(self._extractor)
             layout.addWidget(ed)
+            self._extractor.setVisible(bool(ext_text))
+            ed.setVisible(bool(ext_text))
+            self._extractor.setChecked(bool(ext_text) and not scrum_text)
+
+            self._refusal = QLabel(mode_refusal(self._sector))
+            self._refusal.setWordWrap(True)
+            self._refusal.setObjectName("mode_refusal")
+            layout.addWidget(self._refusal)
+            self._refusal.setVisible(bool(self._refusal.text()))
             layout.addStretch()
 
         def is_grid(self):
             return False  # Grid Bot deprecated
+
+        def variant(self) -> str:
+            """The Scrumming variant this page offers, empty where it offers
+            none. ``sizing.sector_variant`` names the same variant for the
+            sector the built bot carries."""
+            from .main_tabs.bot_wizard_surface import SCRUMMING_MODE
+
+            return self._offer[SCRUMMING_MODE]
+
+        def offers_an_engine(self) -> bool:
+            """True while the page offers at least one engine for its sector."""
+            return any(self._offer.values())
+
+        def isComplete(self) -> bool:
+            """False while the page offers no engine, so Next refuses a page
+            carrying a refusal and no choice."""
+            return self.offers_an_engine()
 
         def is_extractor(self) -> bool:
             """Return True when the operator selected the Extractor
@@ -1433,14 +1494,19 @@ if _HAS_QT:
             price=None,
             picked: bool = True,
             expires: bool = False,
+            session_whole: bool = False,
         ) -> None:
-            """Hold the picked market's unit rule, unit price and expiry, then
-            rewrite the unit lines and re-gate the two market groups.
+            """Hold the picked market's unit rule, unit price, expiry and
+            session, then rewrite the unit lines and re-gate the two market
+            groups.
 
-            ``Whole-Unit Market`` shows for a market sizing in whole units and
-            ``Contract Expiry`` for one the venue expires on a date. Personal
-            Hold takes whole units wherever the first shows, because such a
-            market places no fraction of a unit.
+            ``Whole-Unit Market`` shows for a market the engine ever sizes in
+            whole units: one whose own step is a whole unit, and one whose
+            session takes a whole unit alone outside regular hours, which
+            ``session_whole`` carries. ``Contract Expiry`` shows for a market
+            the venue expires on a date. Personal Hold takes whole units for the
+            market's own step alone, because a market dividing in regular hours
+            still holds a fraction.
             """
             from .main_tabs.bot_wizard_surface import (
                 WHOLE_UNIT_HOLD_FIELD,
@@ -1451,11 +1517,12 @@ if _HAS_QT:
             self._unit_price = price
             self._unit_market_picked = bool(picked)
             self._market_expires = bool(expires) and bool(picked)
-            whole = bool(picked) and sizes_in_whole_units(self._unit_rule)
+            step_whole = bool(picked) and sizes_in_whole_units(self._unit_rule)
+            whole = step_whole or (bool(picked) and bool(session_whole))
             self._market_whole_unit = whole
             self._whole_unit_group.setVisible(whole)
             self._expiry_group.setVisible(self._market_expires)
-            if whole:
+            if step_whole:
                 self._personal_hold_qty.setDecimals(
                     int(WHOLE_UNIT_HOLD_FIELD["decimals"])
                 )
@@ -1831,7 +1898,7 @@ if _HAS_QT:
             self.setMinimumSize(700, 550)
             self.resize(1100, 750)
             self._asset_page = AssetSelectionPage(exchanges, sector=self._sector)
-            self._mode_page = ModeSelectionPage()
+            self._mode_page = ModeSelectionPage(sector=self._sector)
             self._extractor_pool_page = ExtractorPoolPage(exchanges)
             self._params_page = TradingParamsPage(defaults)
             self._phantom_page = PhantomConfigPage(defaults)
@@ -1863,6 +1930,7 @@ if _HAS_QT:
                         self._asset_page.target_price(),
                         picked=bool(self._asset_page._target.currentData()),
                         expires=self._asset_page.target_expires(),
+                        session_whole=self._asset_page.target_session_whole(),
                     )
             elif page_id == PAGE_PHANTOM:
                 try:

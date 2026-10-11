@@ -1820,8 +1820,44 @@ the Extractor Pool page instead of the asset page. One question decides that
 branch, and the rest of the wizard asks the same question whenever it needs to
 know which kind of bot it is building.
 
+OVERTAKEN, quoted whole:
+
+> **Functional.** This is the wizard's first page, and the wizard opens on it.
+> Two radio buttons, one description under each. Accumulation Trading is already
+> selected when the page opens, and its description promises 12-indicator voting,
+> which is what the engine builds.
+
+True today: the page offers the engines the pressed sector serves. The
+accumulation row carries that sector's own variant name — Crypto Scrumming,
+Stock Scrumming, Commodity Scrumming, Forex Scrumming, Index Scrumming or
+Futures Scrumming — and it is selected when the page opens. The Extractor row
+shows on the crypto layer alone, so five of the six layers draw one row and
+crypto draws two. `src/gui/main_tabs/bot_wizard_surface.py`, in `mode_offer`,
+names the rows a sector offers, and `EXTRACTOR_SECTORS` names the one sector the
+Extractor reaches.
+
 A third mode, Grid, is retired. Its test returns False without looking at a
 widget, and the branch that reads it is marked unreachable in the source.
+
+| Layer | Row the page draws | Second row |
+|---|---|---|
+| Crypto | Crypto Scrumming | Base Currency Extractor (Multi-Target) |
+| Stock | Stock Scrumming | none |
+| Commodities | Commodity Scrumming | none |
+| Forex | Forex Scrumming | none |
+| Indices | Index Scrumming | none |
+| Futures / Perps | Futures Scrumming | none |
+
+`src/gui/bot_wizard.py` — `ModeSelectionPage.variant` answers the name the page
+offers, and `src/trading/scrumming/sizing.py`, in `sector_variant`, names the
+same variant for the sector the built bot carries, so the page and the engine
+cannot drift.
+
+A layer whose variant the program does not hold draws no row at all. It draws
+why instead, worded as a refused market is worded, and the page offers no Next.
+`bot_wizard_surface.py`, in `mode_refusal`, writes that line through
+`sizing.UNTRADEABLE_REASON_FORMAT`. All six layers name a built variant today,
+so the count of layers drawing that line is zero.
 
 `src/gui/bot_wizard.py` — `BotCreationWizard.nextId`
 
@@ -2105,6 +2141,31 @@ given.
 
 Raising the Target Balance to $5,000 drops the fourth line. 20 units at $250 is
 $5,000, which is the size at which one unit and one interval are the same move.
+
+### When the Whole-Unit Market group shows
+
+The group holds one box, Open Position At, and it shows for a market the engine
+ever sizes in whole units. Two kinds of market qualify.
+
+The first is a market whose own published step is a whole unit. The second is a
+market on a venue that publishes a US equity session: such a venue takes a whole
+unit alone outside regular hours, so the same market divides at 10am and does
+not at 5pm. `src/trading/scrumming/sizing.py`, in `session_unit_rule`, is where
+the hour decides it, and `BotContainer.guarded_place_order` asks that question at
+the moment of every order.
+
+`CITED_VENUE_SESSIONS` publishes twelve such rows, each read from the venue's own
+hours page: stock on Alpaca, E*TRADE, Fidelity, Interactive Brokers, Schwab,
+tastytrade and Webull; indices on Alpaca, E*TRADE and Fidelity; crypto and
+commodities on E*TRADE.
+
+`src/gui/main_tabs/bot_wizard_surface.py`, in `session_takes_whole_units`, is
+where the wizard reads it, so Open Position At is offered wherever the engine
+applies it.
+
+Personal Hold still follows the market's own step alone. A share that divides
+during the trading day can be held in fractions, so that box keeps its decimal
+places even where Open Position At shows.
 
 Both builds draw the same four lines. The React page reads them from the same
 payload the Qt page reads, so neither can carry a word the other does not.
@@ -4157,6 +4218,22 @@ The second type of bot offered within Acervator is the Extractor. These operate 
 From here the wizard goes to the Extractor Pool page instead of the asset page.
 Phantom bots and profit folding are both switched off for this bot as it is
 built, and an Extractor never sees the Phantom page at all.
+
+OVERTAKEN, quoted whole:
+
+> **Functional.** The same first page as before, with the other radio chosen.
+
+True today: that radio is on the crypto layer alone. Five readings settle it, and
+every one is in the shipped code. `src/gui/bot_wizard.py`, in
+`ExtractorPoolPage`, offers five pool currencies and each is a crypto asset.
+`src/gui/main_tabs/bot_wizard_surface.py`, in `pool_config`, writes the venue,
+the pool currency and the pool sigil, and writes no sector at all.
+`src/trading/bot_container.py`, in `_asset_class`, answers crypto for a bot
+naming no sector. `src/trading/extractor_bot.py`, in `_pair_filter_matches`,
+keeps a market whose quote side is the pool currency. The same file, in
+`_hand_base_currency_to_parent`, needs a parent accumulation bot holding that
+same crypto currency. So the Extractor row draws on the crypto layer and on no
+other, and `EXTRACTOR_SECTORS` in the surface is where that one sector is named.
 
 `src/gui/bot_wizard.py` — `BotCreationWizard.get_bot_config`
 

@@ -18,11 +18,25 @@ places, its step, its prefix or suffix and the value it opens on. The
 row label each field sits against is in ``ROW_LABELS`` and the hover
 text in ``TOOL_TIPS``.
 
-``BotWizardModel`` holds every page. ``select_mode`` picks accumulation
-or extractor and re-lays the parameter page around the choice.
+OVERTAKEN, the sentence above reading "where the operator picks accumulation
+trading or the base-currency extractor": the mode page offers the sector's own
+Scrumming variant, named by ``sizing.SECTOR_VARIANTS`` through ``mode_offer``,
+and it offers the Extractor on ``EXTRACTOR_SECTORS`` alone. ``mode_offered``
+names every engine one sector offers and ``mode_refusal`` says why a sector
+whose variant ``sizing.VARIANTS_BUILT`` lacks offers none, worded as
+``sizing.UNTRADEABLE_REASON_FORMAT`` words a market's refusal.
+
+``BotWizardModel`` holds every page. ``select_mode`` picks the sector's
+variant or the extractor and re-lays the parameter page around the choice,
+and it refuses a mode the sector does not offer.
 ``set_market_groups`` shows ``whole_unit_group`` for a market sizing in
 whole units and ``expiry_group`` for one the venue expires on a date, and
 ``offered_rows`` answers every row the parameter page offers.
+``session_takes_whole_units`` adds the second whole-unit market to that
+group: ``sizing.session_for`` reads a US equity session, which takes a whole
+unit alone outside regular hours, so the opening-units setting
+``BotContainer.guarded_place_order`` reads is offered wherever the engine
+applies it.
 ``set_number``, ``set_check``, ``set_combo_index`` and ``set_text`` take
 what the operator types. ``go_next``, ``go_back``, ``cancel`` and
 ``finish`` walk the pages. ``validate_page`` is the one refusal the
@@ -114,6 +128,15 @@ EXTRACTOR_ROUTE = {
 NEXT_PAGE = {SCRUMMING_MODE: SCRUMMING_ROUTE, EXTRACTOR_MODE: EXTRACTOR_ROUTE}
 FINAL_PAGES = {SCRUMMING_MODE: (PHANTOM,), EXTRACTOR_MODE: (PARAMS,)}
 GRID_IS_SELECTABLE = False
+
+#: The one sector the Base Currency Extractor serves, spelled as
+#: ``ata_spm.ASSET_CLASSES`` spells it. ``ExtractorPoolPage._POOL_BASES`` names
+#: five crypto pool currencies, ``pool_config`` writes no sector key, and
+#: ``BotContainer._asset_class`` answers crypto for a config naming none.
+EXTRACTOR_SECTOR = "crypto"
+
+#: Every sector the mode page offers the Extractor on.
+EXTRACTOR_SECTORS: tuple = (EXTRACTOR_SECTOR,)
 
 PAGE_TITLES = {
     ASSET: "Select Asset Pair",
@@ -733,6 +756,7 @@ WORD_WRAPPED_LABELS = (
     "pool_status",
     "scrumming_description",
     "extractor_description",
+    "mode_refusal",
 )
 
 TOOL_TIPS = {
@@ -1252,6 +1276,7 @@ REFUSAL_NO_HISTORY = "no_previous_page"
 REFUSAL_PHANTOM_NOT_HIGHER = "phantom_not_higher"
 REFUSAL_PHANTOM_NOT_OFFERED = "phantom_not_offered"
 REFUSAL_UNTRADEABLE = "market_untradeable"
+REFUSAL_NO_VARIANT = "sector_variant_unbuilt"
 REFUSAL_TYPES = (
     REFUSAL_NONE,
     REFUSAL_API_LOAD,
@@ -1261,6 +1286,7 @@ REFUSAL_TYPES = (
     REFUSAL_PHANTOM_NOT_HIGHER,
     REFUSAL_PHANTOM_NOT_OFFERED,
     REFUSAL_UNTRADEABLE,
+    REFUSAL_NO_VARIANT,
 )
 
 WIZARD_SET_WINDOW_TITLE = "wizard.setWindowTitle"
@@ -1281,6 +1307,8 @@ GROUP_SET_VISIBLE = "group.setVisible"
 NUMBER_SET_VALUE = "number.setValue"
 CHECK_SET_CHECKED = "check.setChecked"
 RADIO_SET_CHECKED = "radio.setChecked"
+RADIO_SET_TEXT = "radio.setText"
+RADIO_SET_VISIBLE = "radio.setVisible"
 COMBO_SET_CURRENT_INDEX = "combo.setCurrentIndex"
 COMBO_CLEAR = "combo.clear"
 COMBO_ADD_ITEM = "combo.addItem"
@@ -1316,6 +1344,8 @@ CALL_NAMES = (
     NUMBER_SET_VALUE,
     CHECK_SET_CHECKED,
     RADIO_SET_CHECKED,
+    RADIO_SET_TEXT,
+    RADIO_SET_VISIBLE,
     COMBO_SET_CURRENT_INDEX,
     COMBO_CLEAR,
     COMBO_ADD_ITEM,
@@ -1618,6 +1648,100 @@ def market_unit_rule(rows: Any, market: Any, sector: Any = "", venue: Any = "") 
     return str(held or EMPTY_TEXT)
 
 
+def sector_variant_name(sector: Any) -> str:
+    """The Scrumming variant one sector names, through ``sizing.sector_variant``.
+
+    ``sector`` is read as given, so a sector ``sizing.SECTOR_VARIANTS`` holds no
+    row for answers the unbuilt name ``variant_offered`` then refuses.
+    """
+    from ...trading.scrumming.sizing import sector_variant
+
+    return str(sector_variant(str(sector or "")))
+
+
+def variant_offered(sector: Any) -> bool:
+    """True while the program holds the Scrumming variant ``sector`` names."""
+    from ...trading.scrumming.sizing import variant_built
+
+    return bool(variant_built(sector_variant_name(sector)))
+
+
+def extractor_offered(sector: Any) -> bool:
+    """True while ``EXTRACTOR_SECTORS`` holds ``sector``."""
+    return str(sector or "") in EXTRACTOR_SECTORS
+
+
+def mode_offer(sector: Any) -> dict:
+    """The text each engine row carries on the mode page for one sector, and
+    ``EMPTY_TEXT`` for a row that sector does not offer.
+
+    The Scrumming row carries the sector's own variant name, so each sector
+    names the variant ``BotContainer.guarded_place_order`` sizes its orders
+    under. The Extractor row keeps its own wording and reaches
+    ``EXTRACTOR_SECTORS`` alone.
+    """
+    return {
+        SCRUMMING_MODE: (
+            sector_variant_name(sector) if variant_offered(sector) else EMPTY_TEXT
+        ),
+        EXTRACTOR_MODE: (
+            RADIO_TEXTS[EXTRACTOR_MODE] if extractor_offered(sector) else EMPTY_TEXT
+        ),
+    }
+
+
+def mode_offered(sector: Any) -> list:
+    """Every engine name the mode page offers for one sector, in page order."""
+    offer = mode_offer(sector)
+    return [name for name in MODES if offer[name]]
+
+
+def mode_refusal(sector: Any) -> str:
+    """Why the mode page offers no Scrumming variant for one sector, worded as
+    ``sizing.UNTRADEABLE_REASON_FORMAT`` words a market's refusal.
+
+    Empty while the variant is built, so a sector naming a built variant draws
+    no refusal line.
+    """
+    if variant_offered(sector):
+        return EMPTY_TEXT
+    from ...trading.scrumming.sizing import (
+        SECTOR_MARKET_FORMAT,
+        UNTRADEABLE_REASON_FORMAT,
+    )
+
+    return UNTRADEABLE_REASON_FORMAT.format(
+        variant=sector_variant_name(sector),
+        market=SECTOR_MARKET_FORMAT.format(sector=str(sector or "")),
+    )
+
+
+def session_takes_whole_units(
+    rows: Any, market: Any, sector: Any = "", venue: Any = ""
+) -> bool:
+    """True while the session governing one market takes a whole unit alone
+    outside regular hours, read through ``sizing.session_for``.
+
+    ``BotContainer.guarded_place_order`` asks ``sizing.market_unit_rule`` at the
+    moment of the order, so such a market sizes in whole units after hours
+    although its recorded step is a fraction. The Whole-Unit group follows this
+    as well as the step, so the opening-units setting the engine reads is
+    offered wherever the engine applies it.
+    """
+    from ...trading.scrumming.sizing import SESSION_US_EQUITY, session_for
+
+    symbol = bag_text(market, MARKET_SYMBOL_KEY)
+    if not symbol:
+        return False
+    rules = rules_from_row(readable_bag(rows).get(symbol))
+    held = session_for(
+        rules,
+        normalise_sector(sector),
+        str(venue or SECTOR_RULE_VENUE),
+    )
+    return held == SESSION_US_EQUITY
+
+
 def market_expires(rows: Any, market: Any) -> bool:
     """True while the recording holds an expiry epoch for one market, read
     through ``MarketRules.expires``.
@@ -1908,13 +2032,19 @@ class BotWizardModel:
             if (offered := readable_list(found)) is not None
         }
         self.descriptions: dict[str, str] = {}
-        self.mode = SCRUMMING_MODE
+        self.mode_texts = mode_offer(self.sector)
+        self.offered_modes = mode_offered(self.sector)
+        self.mode_refusal = mode_refusal(self.sector)
+        self.mode = self.offered_modes[0] if self.offered_modes else SCRUMMING_MODE
         self.params_is_extractor = False
         self.closed_page = False
         self.numbers = {name: spec["value"] for name, spec in NUMBER_FIELDS.items()}
         self.number_specs = {name: dict(spec) for name, spec in NUMBER_FIELDS.items()}
         self.checks = dict(CHECK_FIELDS)
-        self.radios = dict(RADIO_FIELDS)
+        self.radios = {
+            name: name == self.mode and name in self.offered_modes
+            for name in RADIO_FIELDS
+        }
         self.combo_indexes = dict(COMBO_DEFAULT_INDEX)
         self.texts = dict(TEXT_FIELDS)
         self.phantom_checks: dict[str, bool] = dict.fromkeys(
@@ -1935,6 +2065,7 @@ class BotWizardModel:
         self.target_unit_rules: list[str] = []
         self.target_prices: list[Optional[float]] = []
         self.target_expiries: list[bool] = []
+        self.target_session_wholes: list[bool] = []
         self.target_index = -1
         self.alt_items: list[list] = []
         self.asset_status = EMPTY_TEXT
@@ -1968,8 +2099,12 @@ class BotWizardModel:
         for name in PAGES:
             self.calls.append([PAGE_SET_TITLE, name, PAGE_TITLES[name]])
             self.calls.append([PAGE_SET_SUB_TITLE, name, PAGE_SUBTITLES[name]])
-        for name, checked in RADIO_FIELDS.items():
-            self.calls.append([RADIO_SET_CHECKED, name, checked])
+        for name in RADIO_FIELDS:
+            text = self.mode_texts.get(name, EMPTY_TEXT)
+            self.calls.append([RADIO_SET_TEXT, name, text])
+            self.calls.append([RADIO_SET_VISIBLE, name, bool(text)])
+            self.calls.append([RADIO_SET_CHECKED, name, self.radios[name]])
+        self.calls.append([LABEL_SET_TEXT, "mode_refusal", self.mode_refusal])
         for name, checked in CHECK_FIELDS.items():
             self.calls.append([CHECK_SET_CHECKED, name, checked])
         for name, spec in NUMBER_FIELDS.items():
@@ -2148,13 +2283,19 @@ class BotWizardModel:
         return EMPTY_TEXT
 
     def select_mode(self, is_extractor: Any) -> None:
-        """Pick accumulation trading or the extractor on the mode page."""
-        wanted = bool(is_extractor)
-        self.radios["extractor"] = wanted
-        self.radios["scrumming"] = not wanted
-        self.calls.append([RADIO_SET_CHECKED, "extractor", wanted])
-        self.calls.append([RADIO_SET_CHECKED, "scrumming", not wanted])
-        self.mode = EXTRACTOR_MODE if wanted else SCRUMMING_MODE
+        """Pick the sector's Scrumming variant or the Extractor on the mode page.
+
+        A mode ``offered_modes`` does not hold leaves the page as it stands, so
+        a sector drawing no Extractor row cannot be put into Extractor mode by a
+        replayed step.
+        """
+        wanted = EXTRACTOR_MODE if bool(is_extractor) else SCRUMMING_MODE
+        if wanted not in self.offered_modes:
+            return
+        for name in MODES:
+            self.radios[name] = name == wanted
+            self.calls.append([RADIO_SET_CHECKED, name, name == wanted])
+        self.mode = wanted
 
     def is_extractor(self) -> bool:
         """Say whether the operator picked the extractor."""
@@ -2224,6 +2365,7 @@ class BotWizardModel:
         self.target_unit_rules = []
         self.target_prices = []
         self.target_expiries = []
+        self.target_session_wholes = []
         recorded = recorded_venue_rows(found)
         for row in kept:
             label = pair_label(row)
@@ -2239,6 +2381,9 @@ class BotWizardModel:
             )
             self.target_prices.append(bag_number(row, MARKET_PRICE_KEY))
             self.target_expiries.append(market_expires(recorded, row))
+            self.target_session_wholes.append(
+                session_takes_whole_units(recorded, row, self.sector, found)
+            )
             self.calls.append([COMBO_ADD_ITEM, "asset_target", label, named])
         if not kept:
             self.target_items.append([NO_PAIRS_TEXT, NO_PAIRS_DATA])
@@ -2246,6 +2391,7 @@ class BotWizardModel:
             self.target_unit_rules.append(EMPTY_TEXT)
             self.target_prices.append(None)
             self.target_expiries.append(False)
+            self.target_session_wholes.append(False)
             self.calls.append(
                 [COMBO_ADD_ITEM, "asset_target", NO_PAIRS_TEXT, NO_PAIRS_DATA]
             )
@@ -2297,22 +2443,36 @@ class BotWizardModel:
             return self.target_expiries[self.target_index]
         return False
 
+    def target_session_whole(self) -> bool:
+        """True while the session governing the picked pair takes a whole unit
+        alone outside regular hours."""
+        if 0 <= self.target_index < len(self.target_session_wholes):
+            return self.target_session_wholes[self.target_index]
+        return False
+
     def set_market_groups(self) -> None:
-        """Show ``whole_unit_group`` for a pair sizing in whole units and
-        ``expiry_group`` for a pair the venue expires, and hide each otherwise.
+        """Show ``whole_unit_group`` for a pair the engine ever sizes in whole
+        units and ``expiry_group`` for a pair the venue expires, and hide each
+        otherwise.
 
         An Extractor trades a pool of pairs rather than one market, so neither
-        group reaches it. ``personal_hold_qty`` takes
-        ``WHOLE_UNIT_HOLD_FIELD`` wherever the whole-unit group shows, so no
-        fraction of a unit is typeable into a market that places none.
+        group reaches it. The whole-unit group follows the pair's own step and
+        ``target_session_whole``, because a US equity session takes a whole unit
+        alone outside regular hours, so the opening-units setting
+        ``BotContainer.guarded_place_order`` reads is offered wherever the engine
+        applies it. ``personal_hold_qty`` follows the pair's own step alone: a
+        market dividing in regular hours still holds a fraction.
         """
         picked = bool(self.target_data()) and not self.is_extractor()
-        whole = picked and self.is_whole_unit()
+        step_whole = picked and self.is_whole_unit()
+        whole = step_whole or (picked and self.target_session_whole())
         dated = picked and self.target_expires()
         for name, shown in (("whole_unit_group", whole), ("expiry_group", dated)):
             self.group_visible[name] = shown
             self.calls.append([GROUP_SET_VISIBLE, name, shown])
-        spec = WHOLE_UNIT_HOLD_FIELD if whole else NUMBER_FIELDS["personal_hold_qty"]
+        spec = (
+            WHOLE_UNIT_HOLD_FIELD if step_whole else NUMBER_FIELDS["personal_hold_qty"]
+        )
         self.number_specs["personal_hold_qty"] = dict(spec)
         self.numbers["personal_hold_qty"] = number_value(
             self.numbers["personal_hold_qty"], spec
@@ -2359,6 +2519,8 @@ class BotWizardModel:
         draws by its own name."""
         if self.refusal == REFUSAL_UNTRADEABLE:
             return UNTRADEABLE_REFUSAL_FORMAT.format(reason=self.target_reason())
+        if self.refusal == REFUSAL_NO_VARIANT:
+            return self.mode_refusal
         return EMPTY_TEXT
 
     def set_target_index(self, value: Any) -> None:
@@ -2770,6 +2932,10 @@ class BotWizardModel:
     def go_next(self, answer: Any = None, keep_going: Any = False) -> bool:
         """Leave the page forwards, unless the page refuses."""
         self.refusal = REFUSAL_NONE
+        if self.current_page == MODE and not self.offered_modes:
+            self.refusal = REFUSAL_NO_VARIANT
+            self.refusals.append(REFUSAL_NO_VARIANT)
+            return False
         if not self.validate_page(answer, keep_going):
             self.refusal = REFUSAL_API_LOAD
             self.refusals.append(REFUSAL_API_LOAD)
@@ -3037,6 +3203,7 @@ def refusal_catalogue() -> dict:
         "no_route": REFUSAL_NO_ROUTE,
         "no_history": REFUSAL_NO_HISTORY,
         "untradeable": REFUSAL_UNTRADEABLE,
+        "no_variant": REFUSAL_NO_VARIANT,
     }
 
 
@@ -3080,9 +3247,13 @@ def page_state(model: BotWizardModel) -> dict:
 
 
 def mode_state(model: BotWizardModel) -> dict:
-    """Which engine is picked, and the route each engine takes."""
+    """Which engine is picked, which the sector offers, and the route each takes."""
     return {
         "names": list(MODES),
+        "offered": list(model.offered_modes),
+        "texts": dict(model.mode_texts),
+        "refusal": model.mode_refusal,
+        "extractor_sectors": list(EXTRACTOR_SECTORS),
         "selected": model.mode,
         "is_extractor": model.is_extractor(),
         "params_is_extractor": model.params_is_extractor,
@@ -3124,8 +3295,10 @@ def unit_page_state(model: BotWizardModel) -> dict:
     unit line the parameter page draws."""
     return {
         "sector": model.sector,
+        "variant": sector_variant_name(model.sector),
         "rule": model.target_unit_rule(),
         "whole": model.is_whole_unit(),
+        "session_whole": model.target_session_whole(),
         "expires": model.target_expires(),
         "price": model.target_price(),
         "notes": model.unit_notes(),
@@ -3204,7 +3377,10 @@ def build_view_model(
         },
         "pages": page_state(model),
         "modes": mode_state(model),
-        "fields": field_catalogue(),
+        # ``radio_texts`` carries the sector's own variant name here, and an
+        # empty text for an engine the sector does not offer, which is the row
+        # ``bot_wizard.js`` then draws no radio for.
+        "fields": {**field_catalogue(), "radio_texts": dict(model.mode_texts)},
         "values": {
             "numbers": dict(model.numbers),
             "number_specs": {
