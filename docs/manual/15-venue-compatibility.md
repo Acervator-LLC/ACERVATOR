@@ -8000,3 +8000,423 @@ resides in one of the above listed countries" and counting the bullet rows above
 it: 106. Every other reading on this page about that clause stands — the United
 States is the first row, five US territories are on it, eight disqualifiers
 follow it, and no state is excluded.
+
+## tastytrade, read from its own hosts on 2026-10-11
+
+The fourth broker, and the second whose order body this program composes. Every
+reading below is from tastytrade's own hosts, its own 16 OpenAPI documents, its
+own agent-docs corpus and its own product pages. No credential was sent, no
+order was placed, previewed, priced, dry-run, amended or cancelled, and no
+developer account or OAuth application was registered.
+
+### The spec is published, in sixteen pieces
+
+`developer.tastytrade.com/openapi/<area>.json` serves **16 OpenAPI 3.1.0
+documents, 1,372,922 bytes over 84 paths**, every one on a credential-free
+route, and an invented area name answers 404 at 558 bytes. Beside them sit
+`llms-full.txt` at 1,046,135 bytes and a Postman collection at 89,904 bytes.
+Schwab serves its order spec to a signed-in developer alone and
+`SchwabConnector.place_order` raises; tastytrade publishes every field, so
+`src/stocks/tastytrade_connector.py, in order_body` composes a real ticket.
+
+Two of its hosts carry no path information and both have a replacement.
+`api.tastyworks.com/instruments/…` answers the same 401 at the same 83 bytes for
+`cryptocurrencies` and for `invented-zzzqqq`, so no route census is possible
+there and the OpenAPI documents name the routes instead. `support.tastytrade.com`
+serves one JavaScript shell of 739,255 bytes, byte-identical for a real article
+id and an invented one, with only the status differing; the detours searched and
+shut are `/support/solutions/articles/…` at 401, `/api/v2/solutions/articles/…`
+at 401, `tastyworks.freshdesk.com` at 404, `/s/article/<name>` at 404,
+`/webruntime/api/…` at 401, and the Aura endpoint answering a 1,452-byte
+redirect page.
+
+Two of its routes answer live data with no credential at all.
+`GET /symbols/search/{symbol}` returns real instrument records carrying
+`instrument-type`, `price-increments`, `trading-hours` and a futures product's
+dated `contract-codes`, and an invented symbol returns an empty `items` array.
+`GET /market-time/equities/sessions/current` and its futures siblings return the
+venue's own session hours, and an invented path under `/market-time/` answers
+404 at 13 bytes.
+
+### The order route, and the six fields it requires
+
+One route serves every sector: `POST /accounts/{account_number}/orders`,
+`operationId` `postAccountsAccountNumberOrders`, summary "Submit Order". Three
+fields are required on the order and three on each leg.
+
+| field | where | the schema's own words |
+| --- | --- | --- |
+| `order-type` | order, required | `Limit`, `Market`, `Marketable Limit`, `Notional Market`, `Stop`, `Stop Limit` |
+| `time-in-force` | order, required | `Day`, `Ext`, `Ext Overnight`, `GTC`, `GTC Ext`, `GTC Ext Overnight`, `GTD`, `IOC` |
+| `legs` | order, required | an array of leg objects |
+| `action` | leg, required | `Buy`, `Sell`, `Buy to Open`, `Sell to Close`, and three more |
+| `instrument-type` | leg, required | eight words, listed below |
+| `symbol` | leg, required | the venue's own symbology |
+| `quantity` | leg | "Required for all orders but notional market" |
+| `price` with `price-effect` | order | a magnitude and a direction, `Credit` or `Debit` |
+| `automated-source` | order | "If the order was placed from an automated source" |
+
+**Every figure is a decimal string, not a number.** The schema says so on each
+one: "Decimal value serialized as a JSON string (e.g. \"150.25\")". Interactive
+Brokers declares its `quantity` as `type: number`; this one declares
+`type: string, format: decimal`, so `src/stocks/tastytrade_connector.py, in
+decimal_text` writes a plain decimal and a crypto step of 1e-08 reaches the
+venue as `0.00000001` and never in exponent form.
+
+**`automated-source` is `manualIndicator` read the other way round.** Interactive
+Brokers' flag reads False to mean an automated order and tastytrade's reads True,
+and this platform transmits with no human intervention, so
+`src/stocks/tastytrade_connector.py, in AUTOMATED_SOURCE` is True on every order.
+
+**`price-effect` is a field no venue in this manual has had before.** A price on
+this venue is a magnitude and its direction is a separate enum word, so a buy
+limit carries `Debit` and a sell limit carries `Credit`.
+
+### Two instrument vocabularies, and the difference is a sector
+
+`instrument-type` appears twice in the same document with two different widths.
+
+| the enum | words | sites |
+| --- | --- | --- |
+| an order leg | 8: `Cryptocurrency`, `Equity`, `Equity Option`, `Event Contract`, `Fixed Income Security`, `Future`, `Future Option`, `Liquidity Pool` | 7 |
+| an order condition | 14: the eight above plus `Bond`, `Currency Pair`, `Equity Offering`, `Index`, `Unknown`, `Warrant` | 16 |
+
+The six in the wide list and not the narrow one can trigger a condition and
+cannot be an order leg. The venue says the same in prose on its own Instruments
+& Symbology page: "An **instrument** is any single tradeable security at
+tastytrade: an equity, equity option, future, future option, or
+cryptocurrency." And its route census says it a third time: over all 84 paths,
+the names holding `currency-pair` number **0** and `index` **0**, where
+`instrument` names 22, `order` 12 and `quote` 3.
+
+Its own live data names five types, read over 52 prefix queries and 791 records:
+Equity 494, Future 296, Cryptocurrency 1, and `Index` and `Currency Pair` on an
+exact symbol — `SPX`, `VIX`, `NDX`, `RUT`, `XSP` and `DJX` all read `Index`, and
+`EUR/USD`, `USD/JPY`, `GBP/USD`, `SGD/JPY`, `USD/NOK` and `EUR/GBP` all read
+`Currency Pair`. So those two types are real markets that take no order, and
+`src/stocks/tastytrade_connector.py, in tradable_market` keeps them out of the
+recording while `in order_body` raises on a leg naming one.
+
+### The nine futures families, and the 68 product codes
+
+tastytrade's own Available Futures Products page names nine families and 68
+product codes, and **68 of 68 answer live** on its own credential-free
+`/symbols/search/` route as `instrument-type` `Future`, each with its own
+`price-increments` and a list of dated `contract-codes`. Two invented codes
+answer nothing.
+
+| the venue's own family | contracts | sector |
+| --- | --- | --- |
+| Equity Index | 12 | indices |
+| Volatility | 2 | indices |
+| Foreign Currency | 11 | forex |
+| Energy | 9 | commodities |
+| Metals | 10 | commodities |
+| Agriculture | 6 | commodities |
+| Livestock | 2 | commodities |
+| Cryptocurrency | 5 | crypto |
+| Interest Rate | 11 | no family sector; each records under futures_perps |
+
+12 + 2 + 11 + 9 + 10 + 6 + 2 + 5 + 11 = **68**. Per sector: commodities 27,
+indices 14, forex 11, crypto 5, and 11 whose family names no sector this
+platform draws. `src/stocks/tastytrade_connector.py, in FUTURES_PRODUCT_SECTORS`
+holds the 57 codes whose family names one, and
+`in MARKET_SECTOR_SECTORS` reads the record's own `market-sector` field ahead of
+them.
+
+**No perpetual.** The word names **0** of the 30 tastytrade pages read, where
+"futures" names 754, "currency" 336, "crypto" 335 and "fractional" 56, and an
+invented word names 0. The baseline control is the venue's own 404 page, which
+carries "futures" 11 from its site navigation alone.
+
+### The fractional rule is per market, and the venue publishes it
+
+OVERTAKEN, quoted whole:
+
+> "tastytrade does not carry a fractional quantity for automated trading."
+
+True today: tastytrade publishes the answer **per equity**, not per venue.
+`Equity.is-fractional-quantity-eligible` is "Whether the equity can be traded in
+fractional share quantities", and `GET /instruments/quantity-decimal-precisions`
+publishes the step itself: "The `value` defines how many decimal places a
+quantity may use; for example BTC/USD has a precision of 8, so `0.12345678` is
+valid but `0.123456789` is not. **A value of 0 means the instrument must trade
+in whole numbers.**" Its own pricing table names "Fractional Shares" as a
+product line at $0 to open and $0 to close, and its own stocks page reads "full
+or fractional shares, it's your choice". So `recorded_unit_rule` reads the
+venue's own answer per symbol, and
+`src/trading/scrumming/sizing.py, in CITED_UNIT_RULES` holds `WHOLE_UNITS` for
+stocks as the fallback a market the recording carries no step for falls to.
+
+OVERTAKEN, quoted whole:
+
+> "| tastytrade | **no** | **no** | no fractional quantity for automated trading, and no connector exists |"
+
+True today: a connector exists.
+`src/stocks/tastytrade_connector.py, in TastytradeConnector` answers `BrokerBase`
+and `src/stocks/alpaca_connector.py, in BROKER_CONNECTORS` holds its id, so
+`broker_connector_class` answers it and a Start press builds it through
+`BrokerExchange`. The fractional half is overtaken above.
+
+OVERTAKEN, quoted whole:
+
+> "Schwab, tastytrade and E\*TRADE take the whole-share order that shape
+> produces."
+
+True today: a whole-share order is what tastytrade takes for an equity whose own
+`is-fractional-quantity-eligible` reads False, and a fractional order is what it
+takes for one that reads True. The cash amount that sentence describes is a
+separate order type on this venue — `Notional Market`, with `value` and
+`value-effect` — and it is the alternative rather than the only route to a
+fraction.
+
+### The sectors, and the one the screen was missing
+
+OVERTAKEN, quoted whole:
+
+> "| tastytrade | crypto, stocks, commodities, indices, futures_perps |"
+
+True today: six sectors, with **forex** added.
+`src/gui/main_tabs/asset_class_surface.py, in EXTRA_VENUE_CLASSES` carries five
+of them and stocks arrives from `EQUITY_VENUES`. Forex is the sector the screen
+missed: beside the 11 Foreign Currency contracts the venue's own data names a
+`Currency Pair` instrument type and six of six probed pairs answer it.
+
+Spot forex is a different firm and takes no order here. Quoted whole from its own
+forex pages: "Forex trading offered by **tastyfx LLC** ("tastyfx"), an affiliate
+company of tastytrade, Inc. ("tastytrade"). Both companies are under common
+control through IG US Holdings, Inc. **tastytrade and tastyfx are separate legal
+entities, have separate businesses and are not responsible for each other's
+products, services, or policies.**" And tastytrade's own role on that page: it
+"is engaged in the business of **introducing** customer foreign exchange
+("Forex," or "FX") accounts to tastyfx, LLC ("tastyfx"), a CFTC-registered
+retail foreign exchange dealer". So the sector's order is the currency future,
+and the 11 contracts take the one order route every other futures market takes.
+
+Indices reaches an order the same way, through the index future. Its own
+`/learn/trading-products/other-products/indices/` page is titled "Indices
+Trading: Trade Index Options & Futures", and the index itself is an `Index`
+record, which no order leg holds. The control is the same route on `GLD`, the
+SPDR Gold Shares ETF, which answers `Equity` with `etf` true: a fund share is an
+order leg and an index is not.
+
+### The crypto sector, read whole
+
+Its own Available Cryptocurrencies page names **26 coins** — AAVE, ADA, ALGO,
+APT, ARB, AVAX, BAT, BCH, BTC, COMP, DOGE, DOT, ETC, ETH, HBAR, LINK, LTC, PEPE,
+POL, SHIB, SOL, SUI, UNI, XLM, XRP and XTZ, each as `<CODE>/USD` and traded
+"through Zero Hash". **26 of 26 answer live** as `Cryptocurrency`, and two
+invented coins answer nothing.
+
+The four tokens it names for funding are not markets. Quoted whole: it accepts
+"USDC", "USDT", "PYUSD" and "RLUSD" "when funding an individual crypto-enabled
+account", and **0 of the 4** answer as a `<CODE>/USD` market. So
+`src/trading/scrumming/sizing.py, in CITED_VENUE_BASE_SECTORS` gains no row for
+them, and `PAXG` and `XAUT` name 0 of the 26, so no gold-token row either.
+
+The session and the settlement are both on its own crypto page. "Since
+cryptocurrencies trade **24/7/365** and do not take a break like stock, options,
+and futures, settlement times will vary depending on the day that a position is
+closed. Trades closed before anytime on Sunday and those closed before 12am CT
+Monday thru Wednesday will settle **T+2**. Trades placed before 12am CT Thursday
+and Friday will settle **T+4**. Trades closed on Saturday (at any time) will
+settle **T+3**." `CITED_VENUE_SETTLEMENT` holds one float per pair, so the row is
+the longest of the three, 4.0: a shorter figure would let a Thursday sale fund a
+buy the venue has not funded.
+
+The fee is a rate. Its own pricing table: "Cryptocurrency (BTC/ETH) **0.75%** per
+total purchase to open / to close" and "All other cryptocurrencies **1%**".
+
+### The session, and the door a time in force opens
+
+`GET /market-time/equities/sessions/current` answers without a credential and
+publishes the equity hours.
+
+| the venue's own field | UTC | Eastern |
+| --- | --- | --- |
+| `start-at` | 12:15 | 08:15, the pre-market open |
+| `open-at` | 13:30 | 09:30, the regular open |
+| `close-at` | 20:00 | 16:00, the regular close |
+| `close-at-ext` | 00:00 next day | 20:00, the extended close |
+
+That is `SESSION_US_EQUITY` exactly, and
+`src/trading/scrumming/sizing.py, in CITED_VENUE_SESSIONS` carries the row.
+**The extended window is reached by a time in force, not by an order type.** The
+`tif` enum holds `Ext`, `Ext Overnight`, `GTC Ext` and `GTC Ext Overnight` beside
+`Day` and `GTC`, and `Equity.overnight-trading-permitted` flags the overnight
+door per equity. `src/stocks/broker_exchange.py, in BROKER_ORDER_TYPES` sends
+`Day` on a market order and `GTC` on a limit order, and neither is an `Ext` word,
+so an order this platform composes works inside the regular session alone.
+
+Its own stocks page does publish the wider door — "**24/5 TRADING. $0
+COMMISSIONS.** Get around-the-clock access to hedge and speculate" — and naming
+that as this platform's session would claim hours its own order cannot use.
+
+**Nothing on the venue's own pages restricts an order type outside hours.** Its
+`/learn/markets/industry/extended-hours-trading/` page says "**Most** brokerage
+firms accept only limit orders during extended hours", a statement about firms
+and not about tastytrade, so that restriction is **not established** and this
+manual claims none. Schwab publishes its own restriction in prose and Interactive
+Brokers in a staff answer; this venue publishes a field instead.
+
+The futures sessions name neither declared word: `open-at` 22:00 UTC and
+`close-at` 21:00 UTC, so the four futures sectors hold no session row and the
+recorded step governs.
+
+### The four blank figures, and the fourth refused in writing
+
+| the figure | tastytrade's own field | the route |
+| --- | --- | --- |
+| realised profit | `realized-today`, `realized-day-gain` | `GET /accounts/{account_number}/positions` |
+| cost basis | `average-open-price` | the same positions route |
+| the fee total | a route of its own | `GET /accounts/{account_number}/transactions/total-fees` |
+| the unrealised figure | **none** | — |
+
+Quoted whole from its own Positions & Balances page: "**The API does not return a
+live profit/loss figure.** You compute it using **mark** (current value of one
+unit) against a cost basis". `src/stocks/tastytrade_connector.py, in
+TastytradeConnector._position` computes it from the venue's own `mark` against
+its own `average-open-price`, the arithmetic that page gives.
+
+**The fee is six fields, not one.** `Transaction` publishes `commission`,
+`clearing-fees`, `regulatory-fees`, `proprietary-index-option-fees`,
+`currency-conversion-fees` and `other-charge`, each paired with its own `-effect`
+enum of `Credit`, `Debit` or `None`, plus `is-estimated-fee`, "Whether the fees
+on this transaction are estimated rather than final".
+`src/stocks/tastytrade_connector.py, in fee_total` sums them with each effect
+applied, and `in fill_record` writes the sum onto the one name
+`src/stocks/broker_exchange.py, in broker_trade` reads.
+
+And it publishes an unsettled figure directly:
+`AccountBalance.unsettled-cryptocurrency-fiat-amount` with its own `-effect`,
+beside `total-settle-balance`, `cash-settle-balance` and `margin-settle-balance`.
+
+### The paged ledger, with the total published
+
+| the route | `per-page` default | `per-page` maximum |
+| --- | --- | --- |
+| `/accounts/{n}/transactions` | 250 | 2000 |
+| `/accounts/{n}/balance-snapshots` | 250 | 2000 |
+| `/accounts/{n}/orders` | **10** | 200 |
+| `/accounts/{n}/orders/live` | 100 | 200 |
+| `/customers/{id}/orders` | **10** | 200 |
+| `/instruments/equities` | 1000 | 1000 |
+| `/instruments/equities/active` | 1000 | 5000 |
+| `/instruments/futures` | 1000 | 1000 |
+| `/instruments/future-products` | 1000 | 1000 |
+| `/accounts/{n}/positions` | no page parameter | one answer |
+| `/instruments/cryptocurrencies` | no page parameter | one answer |
+| `/instruments/quantity-decimal-precisions` | no parameter at all | one answer |
+
+**A short page cannot lie here, because the venue publishes `total-pages`.** Its
+own pagination guide states the stop condition word for word: "you are on the
+last page when `page-offset + 1 >= pagination.total-pages`". It also states the
+rate discipline — "**Keep `per-page` modest and page steadily rather than
+hammering the endpoint** — a burst of rapid requests can earn an HTTP 429" — and
+its own example asks `per-page=250`, so
+`src/stocks/tastytrade_connector.py, in TastytradeConnector.list_fills` asks the
+venue's own default and stops on the venue's own total.
+
+**The open-orders default is 10**, which is the alpaca page defect in a new
+shape: a reader taking the default reads ten orders and reads a fleet's book as
+ten rows. `src/stocks/tastytrade_connector.py, in ORDER_PAGE_SIZE` asks the
+published maximum of 200 instead.
+
+### Eligibility, with no state named anywhere
+
+OVERTAKEN, quoted whole:
+
+> "| tastytrade | equities, options, futures and crypto, through one API | yes, US broker | not stated by the pages read | `src/gui/main_tabs/asset_class_surface.py:33`; tastytrade API documentation, read 2026-09-24 |"
+
+True today: the credential is a two-field OAuth pair and the venue requires no US
+person. Quoted whole from its own International Accounts page: "**International
+customers are welcome to open individual margin, individual cash, and joint
+accounts with tastytrade.** We do not support international entity accounts at
+this time." Alpaca requires a US address in the 50 states or Puerto Rico, Schwab
+serves US residents only and refuses four states by product, Interactive Brokers
+refuses no US person and names four states for US Gold, and tastytrade requires
+neither and names none.
+
+The credential is the OAuth2 pair its own authentication page names: a grant's
+**refresh token**, which "do not expire", and the application's **client
+secret**, exchanged at `POST /oauth/token` for an access token "valid for 15
+minutes". Every request must carry a `User-Agent` in `product/version` form or
+the venue answers 401 with an HTML body even on a valid token.
+
+The state census ran over the whole of each of 30 pages and not a window.
+"New York" names 21 of them and every one of its 24 hits is the Zero Hash
+licensing disclosure in the shared footer — "licensed to engage in Virtual
+Currency Business Activity by the New York State Department of Financial
+Services" — which appears on the venue's own 404 page too. "Louisiana", "Ohio",
+"Arizona", "Montana", "New Hampshire", "Rhode Island", "Puerto Rico", "50
+states" and "not available to residents" each name **0** of the 30, and so does
+an invented state name. Positive control: the same instrument over the same
+whole-page window on Charles Schwab's own forex page finds "Ohio" 1, "Arizona" 1
+and "not available to residents" 1, and the invented state name 0.
+
+Two permissions are per product and each is a permission rather than a refusal.
+Quoted whole from its own Trading Permissions page: "To trade futures on
+tastytrade, you must have "**The Works**"", its most comprehensive margin
+approval; and "Cryptocurrency trading is **currently available exclusively for
+individual accounts**. To start trading cryptocurrencies, simply log in to your
+account and enable cryptocurrency trading."
+
+### The ticker collision, settled by the venue's own symbology
+
+| code | the equity reading | the currency reading | which wins, and why |
+| --- | --- | --- | --- |
+| `NOK` | "Nokia Corporation Sponsored American Depositary Shares", XNYS, `Equity` | the Norwegian krone, a leg of `USD/NOK` and `NOK/SEK` | both, and the symbol says which |
+| `SGD` | none — the exact code answers no record | the Singapore dollar, a leg of `SGD/JPY`, "SGD/JPY Spot Forex Pair" | the currency, and only as a leg |
+| `AMD` | "Advanced Micro Devices, Inc. - Common Stock", XNAS, `Equity` | the Armenian dram | the equity; `AMD` legs 0 of its own pairs |
+| `COP` | "ConocoPhillips Common Stock", XNYS, `Equity` | the Colombian peso | the equity; `COP` legs 0 of its own pairs |
+
+tastytrade writes a currency market as two codes joined by a slash, a crypto
+market the same way with a `/USD` quote, a futures contract with a leading slash,
+and an equity as a bare code. So
+`src/trading/scrumming/sizing.py, in CITED_VENUE_MARKET_SECTORS` needs **0**
+tastytrade rows, and `src/exchange/market_inspector_fetcher.py, in
+STABLECOIN_DENYLIST` touches nothing here: its 30 codes name 0 of the venue's 26
+crypto codes and 0 of its 57 sector-bearing futures product codes, where the
+control `SGD` is in the set.
+
+### Where the answer is nothing
+
+- **`CITED_CASH_MARKET_BUY`** gains **0** rows. The venue does publish a cash amount, as an order type of its own rather than as a rule: `Notional Market` with `value` and `value-effect`, and `legs[].quantity` "Required for all orders but notional market". The unit count is the default on all six types.
+- **`CITED_VENUE_MARKET_SECTORS`** and **`CITED_VENUE_BASE_SECTORS`** gain **0** rows each, for the symbology reason above.
+- **a stocks settlement row** gains **0**. Nothing on the 21 tastytrade pages read names an equity settlement period.
+- **a candle route** — **0** of the 84 published paths holds `candle`, `bar` or `ohlc`. The 3 holding `histor` are `/accounts/{n}/net-liq/history` and two `/market-metrics/historic-corporate-events/` routes, and none is a bar route; the control is `quote`, which names 3. The venue's candles are Candle events on its DXLink streamer — "you supply a period and type in the symbol (for example `AAPL{=5m}`) plus a `fromTime` Unix-epoch timestamp" — behind `GET /api-quote-tokens` and capped at **100** Candle subscriptions a session, which is a WebSocket this connector does not open.
+- **a REST quote without a funded account** — `/market-data/by-type` states its own gate: "The combined number of symbols across all type parameters is capped at **100** per request… **Available to funded account holders only; no delayed quotes are served over REST.**"
+- **options, bonds, prediction markets, warrants and liquidity pools** map to no sector this platform draws. tastytrade is an options-first firm — its own pages list 5 futures-option families and 6 option-chain routes — and this connector records neither option type.
+- **an idempotency key** — the venue states its own absence: "tastytrade has **no idempotency-key header and does NOT deduplicate retried submissions**". `external-identifier` is the correlation handle, and `src/stocks/broker_exchange.py, in BrokerExchange.place_order` drops the `client_order_id` it is handed, so a retry has nothing to correlate on. Named here, not fixed.
+
+### The paper route, and what it is
+
+`HAS_PAPER_ROUTE` is True and the route is `api.cert.tastyworks.com`, "a full
+copy of the tastytrade API backed by simulated money" where "Orders placed in the
+sandbox **never reach a real market**". Its own page states the cost: "**Fill
+behaviour is derived from the order type and price**, and nothing else" — a
+market order "Always fills, at a price of **$1**", a limit under $3 fills, a
+limit at $3 or above "Goes `Live` and never fills" — and "**Market data is not
+served.** `/market-data` and `/market-metrics` return HTTP 502 on every route".
+That host answered 502 on this unit's own probe. A client registered in one
+environment does not work in the other.
+
+### The verdict, per sector
+
+| sector | verdict | the cost |
+| --- | --- | --- |
+| crypto | yes-if | cryptocurrency trading enabled, individual accounts only |
+| stocks | yes | — |
+| commodities | yes-if | futures needs "The Works" |
+| forex | yes-if | futures needs "The Works"; the spot door is a different firm |
+| indices | yes | the index future, not the index |
+| futures_perps | yes-if | futures needs "The Works" |
+
+The arithmetic, offered against actionable, driven with the home redirected and
+no venue contacted: crypto 22 offered and 22 on the Add form, stocks 21 and 21,
+commodities 20 and 20, forex 14 and 14, indices 19 and 19, futures_perps 17 and
+17, a difference of **0** in all six.
+`src/gui/main_tabs/settings_dialog_surface.py, in exchange_status_rows` iterates
+`venues_for_class` itself, so the form cannot differ from the offer.
+`broker_serves_sector("tastytrade", …)` answers True on all six, and before this
+unit it answered False on all six and forex was not offered at all.
