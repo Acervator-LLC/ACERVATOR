@@ -68,6 +68,10 @@ CELL_KEYS = (
 EQUITY_VENUES = frozenset(
     {
         "alpaca",
+        # ibkr is the id Interactive Brokers' own hosts and the rest of this
+        # tree read: api.ibkr.com serves its OpenAPI document, EXTRA_VENUE_CLASSES
+        # carries its other five sectors, and ibkr_connector.VENUE_ID keys every
+        # sizing row and every gate log for the firm.
         "ibkr",
         "schwab",
         # tdameritrade names no venue that still exists, read 2026-10-11 from
@@ -82,6 +86,14 @@ EQUITY_VENUES = frozenset(
         "tastytrade",
         "fidelity",
         "etrade",
+        # interactivebrokers names the same firm as "ibkr", read 2026-10-11 from
+        # the firm's own hosts: www.ibkr.com redirects to
+        # www.interactivebrokers.com and serves the same 240,678 bytes, and an
+        # invented host answers 000 with no DNS record. This id is read on one
+        # line of src/ and reaches one sector; "ibkr" is read in two files and
+        # reaches six, holds the EXTRA_VENUE_CLASSES row and keys every sizing
+        # row. The id stays in this set until the row that reshapes the Exchanges
+        # tab removes it, as tdameritrade above does.
         "interactivebrokers",
         # OVERTAKEN, quoted whole:
         #   "robinhood_broker.VENUE_ID. The crypto id "robinhood" is a separate
@@ -286,6 +298,33 @@ EXTRA_VENUE_CLASSES = {
     # states or Puerto Rico".
     "alpaca": ("crypto", "commodities", "indices"),
     "etrade": ("commodities", "indices"),
+    # Interactive Brokers' own OpenAPI document and contract pages name a
+    # security type per sector, and all six are already offered here: crypto
+    # from CRYPTO on Paxos and zerohash, stocks from STK and FUND, commodities
+    # from CMDTY, forex from CASH, indices from IND and futures_perps from FUT.
+    # "stocks" arrives from EQUITY_VENUES, so this entry carries the other five
+    # and no sector is added or removed.
+    # The product counts are the venue's own: 20 crypto tokens on its own FAQ
+    # table, "over 10,000 US-listed stocks and ETFs" across "170+ markets
+    # worldwide", one spot metal named USGOLD beside its Metals, Agriculture,
+    # Energy and Softs futures families, "100+ Currency Pairs On 28 Currencies",
+    # and its own Equity Indices and Volatility Indices futures families. No
+    # perpetual: the word names 0 of the 13 ibkr pages read, where "futures"
+    # names 265.
+    # One eligibility rule names states and it belongs to commodities. Quoted
+    # whole from its own US Spot Gold page: "US Gold is only available to legal
+    # residents of the United States. US Gold is not available to legal
+    # residents of Arizona, Montana, New Hampshire, and Rhode Island." The
+    # account itself refuses no US person and requires none -- "IBKR accepts
+    # applications from citizens or residents of most countries except those of
+    # countries prohibited by the U.S. Office of Foreign Assets Control (OFAC)"
+    # -- and its crypto FAQ names 103 eligible countries including the United
+    # States, Puerto Rico, Guam, American Samoa, the Northern Mariana Islands
+    # and the United States Virgin Islands, with no state excluded.
+    # Indices reaches an order as the index future and not as a CFD:
+    # products-cfds.php answers 200 with the title "Home | Interactive Brokers
+    # LLC" and names "CFD" 0 times, where its six other product pages each
+    # answer their own title.
     "ibkr": ("crypto", "commodities", "forex", "indices", "futures_perps"),
     # Schwab's own futures-markets table names ten product families and gives
     # every product a symbol, a multiplier, a tick size, a settlement word and
