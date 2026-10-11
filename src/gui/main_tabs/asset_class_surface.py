@@ -262,6 +262,21 @@ EXTRA_VENUE_CLASSES = {
     # state the holder "is not located in, incorporated in, or current
     # resident of the United States".
     "okxus": ("stocks", "commodities", "indices"),
+    # Alpaca's own AssetClass enum names ten words and four of them reach a
+    # sector this screen draws: crypto, us_equity, us_index and crypto_perp.
+    # "stocks" arrives from EQUITY_VENUES, so this entry carries the rest.
+    # commodities is its one gold token, PAXG/USD, which priced at 4185.0 on
+    # the venue's own credential-free bar route; indices is us_index, whose
+    # order route is an index option over the four underliers its own Index
+    # Options page names, SPX, XSP, VIX and DJX. forex is absent because none
+    # of the ten words names a currency and the venue's only forex surface is
+    # two Market Data rate readings, latestrates-1 and rates-1, among the 259
+    # endpoints of its own reference. futures_perps is absent because
+    # crypto_perp sits in the enum and in none of the 696 pages of its own
+    # documentation, which is an absence this unit reported as not established
+    # rather than as a refusal. Alpaca is the first venue here whose own pages
+    # require a US person: "Have a legal U.S. residential address within the 50
+    # states or Puerto Rico".
     "alpaca": ("crypto", "commodities", "indices"),
     "etrade": ("commodities", "indices"),
     "ibkr": ("crypto", "commodities", "forex", "indices", "futures_perps"),

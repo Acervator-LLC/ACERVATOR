@@ -6891,3 +6891,286 @@ off `blog.mexc.com` against 1,925 for that host's own 404, which is the negative
 one. Every quotation above comes from `api.mexc.com` or from
 `mexcdevelop.github.io/apidocs/`, and each of those answers 403 or 404 for a path
 that cannot exist.
+
+## Alpaca, the first broker wired sector by sector
+
+Read 2026-10-11 from Alpaca's own documented API host, its own support articles
+and its own credential-free crypto market-data route. No credential was sent and
+no order was placed, previewed, priced, amended or cancelled.
+
+A broker is not a library venue. `ccxt.alpaca.fetch_markets` calls a private
+route, so the library cannot list this venue's markets without a key and
+`src/stocks/alpaca_connector.py, in AlpacaConnector` is the path instead.
+
+### The two vocabularies the venue publishes per asset
+
+Alpaca names a class and an exchange on every asset record, and its own
+`/v2/assets` reference carries both lists.
+
+| vocabulary | the words | how many reach a sector |
+| ---------- | --------- | ----------------------- |
+| `AssetClass` | us_equity, us_option, crypto, crypto_perp, treasury, corporate, global_equity, us_index, us_equity_chain, ipo | 6 of 10 |
+| `Exchange` | AMEX, ARCA, BATS, NYSE, NASDAQ, NYSEARCA, OTC, CRYPTO | every one an equity venue, or crypto |
+
+`src/stocks/alpaca_connector.py, in ASSET_CLASS_SECTORS` maps the six that
+reach one. `us_option` names a product the platform draws no sector for,
+`treasury` and `corporate` are bonds, and `us_equity_chain` names an option
+chain rather than a market, so each records no sector at all.
+
+### What the sector record gained and cost
+
+Before this unit, `src/stocks/broker_base.py, in record_markets` called
+`record_venue` with no `classes`, so every broker market recorded under no
+sector and `src/gui/main_tabs/asset_class_surface.py, in markets_of_class` read
+each one as crypto.
+
+```
+74 published asset records written
+before  0 of 74 carry a sector
+after  74 of 74 carry a sector
+        crypto 72, commodities 1, stocks 1
+```
+
+The one commodity is `PAXG/USD`, Pax Gold, and
+`src/trading/scrumming/sizing.py, in CITED_VENUE_BASE_SECTORS` carries it,
+beside the cryptocom row for the same token. The record costs nothing: of the 73
+coin pairs Alpaca's own table marks, 72 keep crypto and the gold token moves to
+the sector its redemption names. A control broker naming no sector writes its
+row and carries no class, so the field is the reader's answer and not a default.
+
+### The sector a broker is offered under, narrowed to what it serves
+
+`src/stocks/alpaca_connector.py, in broker_serves_sector` answered True for all
+six sectors, because `BrokerBase.SECTORS_SERVED` was empty and an empty tuple
+narrows nothing. `AlpacaConnector.SECTORS_SERVED` now names the venue's own
+four, so forex and futures take no broker route.
+
+| sector | offered | unit rule | session | order types | markets |
+| ------ | ------- | --------- | ------- | ----------- | ------- |
+| crypto | yes | fractional | continuous | market and limit | 73 |
+| stocks | yes | fractional | us_equity | market and limit | the venue's own, 401 without a key |
+| commodities | yes | fractional | continuous | market and limit | 1 |
+| indices | yes | whole | us_equity | market and limit | 0 recorded, 4 underliers published |
+| forex | no | none | none | none | 0 |
+| futures_perps | no | none | none | none | 0 |
+
+Every row of the first four was None before this unit except the stocks unit
+rule and the stocks session. `src/trading/scrumming/sizing.py, in order_types_for`
+answered nothing in all six sectors, which is the sixth venue in a row where
+that held.
+
+### The order shape, and which of the two routes this program composes
+
+Alpaca publishes two size fields on one endpoint and takes one or the other.
+Quoted from its own order spec:
+
+> `notional` — "dollar amount to trade. Cannot work with `qty`. Can only work
+> for market order types and day for time in force."
+>
+> `qty` — "number of shares to trade. Can be fractionable for only market and
+> day order types."
+
+`src/stocks/alpaca_connector.py, in AlpacaConnector.place_order` composes `qty`
+and nothing in `src/` writes `notional`, so the size is a unit count on both
+sides and every built variant already sizes one. Alpaca therefore takes no row
+in `src/trading/scrumming/sizing.py, in CITED_CASH_MARKET_BUY`.
+
+The whole-share floor is the record's own. `size_increment` reads
+`min_trade_increment` first and `WHOLE_SHARE_INCREMENT` where the record reads
+`fractionable` False, which `recorded_unit_rule` answers whole units for, which
+`VARIANT_WHOLE_UNIT` holds. Driven on the venue's own two published records: a
+record with `fractionable` False reads whole and `BTC/USD` with
+`min_trade_increment` 0.0001 reads fractional. The cash floor is published too,
+in its own words: "we enforce a minimum 1 USD notional amount for Buy entry
+orders."
+
+### A time in force three of Alpaca's own pages refuse
+
+`src/stocks/broker_exchange.py, in BROKER_ORDER_TYPES` maps a market order onto
+`TimeInForce.DAY`. Alpaca does not accept `day` on a crypto market:
+
+> its order spec — "Crypto trading: gtc, ioc"
+>
+> its Crypto Spot Trading page — "the supported `time_in_force` values are
+> `gtc`, and `ioc`"
+>
+> its support article dated October 2025 — "Market, Limit, and Stop Limit orders
+> are supported while the supported time_in_force values are gtc and ioc"
+
+`src/stocks/alpaca_connector.py, in published_time_in_force` answers the value
+the venue takes for the market. Driven on both symbol shapes with no request
+sent:
+
+```
+BTC/USD  day -> gtc    AAPL  day -> day
+BTC/USD  gtc -> gtc    AAPL  gtc -> gtc
+BTC/USD  ioc -> ioc    AAPL  ioc -> ioc
+```
+
+An equity order is unchanged, which is the control: the substitution fires only
+where the venue publishes a refusal.
+
+### The broker fill ledger
+
+OVERTAKEN, quoted whole:
+
+> **No fill ledger.** Neither broker publishes a filled-trade history.
+> `get_my_trades` raises, and
+> `src/trading/scrumming/reconciliation.py`, in
+> `refresh_exchange_position_health`, answers False for an exchange that cannot
+> serve it. A broker bot's venue-side realised profit, fee total, cost basis and
+> unrealised figure therefore have no reading. The order path is unaffected: the
+> ladder sizes from the recorded market rules and the bot's own lots.
+
+True today: that is Robinhood's absence and not Alpaca's. Alpaca publishes
+`GET /v2/account/activities/{activity_type}`, and `FILL` is the first of the 42
+words its own `ActivityType` enum holds. The record carries every field
+`src/exchange/base.py, in Trade` declares except the fee.
+
+| `Trade` field | Alpaca's own field, in its own words |
+| ------------- | ------------------------------------ |
+| `id` | `id`, "always in \"::\" format" |
+| `symbol` | `symbol`, "The symbol of the security being traded" |
+| `side` | `side`, "buy or sell" |
+| `amount` | `qty`, "The number of shares involved in the trade execution" |
+| `price` | `price`, "The per-share price that the trade was executed at" |
+| `timestamp` | `transaction_time`, "The time at which the execution occurred" |
+| `fee` | no field on a fill |
+
+`src/stocks/broker_base.py, in BrokerBase.list_fills` is the route every broker
+answers and `PUBLISHES_FILL_HISTORY` is the declaration that decides whether it
+is read. `src/stocks/alpaca_connector.py, in AlpacaConnector.list_fills`
+composes the venue's own query — `page_size`, `after`, `until` — and
+`src/stocks/broker_exchange.py, in broker_trade` reads one record into a
+`Trade`. Driven on the record Alpaca's own reference publishes as its example:
+
+```
+id 20220202135509981::2d7be4ff-...  symbol AAPL  side buy
+amount 2.0  price 174.78  fee 0.0  timestamp 1643828109.981482
+```
+
+Three two-sided controls. A blank record reads amount 0.0, price 0.0 and
+timestamp 0.0, so a string field is read and a missing one is not invented. A
+record whose side reads `sell` answers sell. And a broker declaring
+`PUBLISHES_FILL_HISTORY` False still raises its own sentence, "Nosector
+publishes no filled-trade history", while the publishing broker answers one
+trade, and the same call narrowed to another market answers none.
+
+So three of the four blank figures now have a reading — realised profit, cost
+basis and the unrealised figure — and the fee total does not. That last one is
+Alpaca's own absence, named in its own words: the fee is posted as its own
+activity, `FEE` "Fee denominated in USD" and `CFEE` "Crypto fee", and
+"Fees are currently calculated and posted end of day. If you query on same day
+of trade you might not get results." No fee reaches a fill, so `Trade.fee` is
+0.0 however the ledger is paged.
+
+### Who may hold an account
+
+Alpaca is the first venue on this page whose own pages **require** a US person
+rather than refusing one. Quoted whole from its own support article:
+
+> "For U.S. Residents — If you are a U.S. resident, you will need to meet the
+> following requirements to open an Alpaca account: Be at least 18 years old,
+> Have a valid Social Security Number (not a Taxpayer Identification Number),
+> Have a legal U.S. residential address within the 50 states or Puerto Rico: Be
+> a U.S. citizen, U.S. permanent resident, or hold a valid U.S. visa."
+
+Its own Domestic (USA) Accounts page lists 54 state codes for a US tax resident
+— all 50 states, the District of Columbia and three Armed Forces codes — and
+excludes none. Its Account Application, Margin Agreement and Customer Agreement,
+33 pages and 103,748 characters, carries no refusal of a US person: "United
+States" appears 6 times and each one defines a US person or waives a foreign
+venue. `alpaca` therefore stays out of both refusal sets in
+`src/exchange/ccxt_connector.py`.
+
+One condition is unread, and it is named rather than reported absent. Alpaca's
+own Crypto Spot Trading page states "cryptocurrency trading is open to select
+international jurisdictions and some U.S. jurisdictions" and links to a region
+list at `alpaca.markets/support/what-regions-support-cryptocurrency-trading`,
+which answers 404. No article in the venue's own 24-category support index
+publishes that list. The state condition on the crypto sector is **not
+established**.
+
+### What the forex "no" rests on
+
+The door does not exist, and three readings say so. None of the ten `AssetClass`
+words names a currency. Alpaca's own documentation index holds 696 pages across
+its four projects and 259 reference endpoints in the US project, of which
+"forex" names two and both are rate readings on the Market Data host. And Local
+Currency Trading, its one product that touches a currency, trades something
+else in its own words: "Local Currency Trading allows customers to trade US
+equities in over 15+ local currencies, with FX conversion done on-the-fly."
+
+The control that makes the census honest: the same reading over the same index
+finds eight order routes, among them "Create an Order" at `POST /v2/orders`. A
+census that finds an order door where one exists, and none here, is naming the
+venue rather than its own reach.
+
+### Why futures reads "not established" and not "no"
+
+`crypto_perp` is one of the ten `AssetClass` words. Against it: no perpetual is
+named in any of the 696 documentation pages or 259 endpoints, and no
+credential-free route prices one. Two readings that looked like evidence turned
+out to be the reading method and not the venue. A 401 on
+`data.alpaca.markets/v1beta1/crypto-perps/...` answers the same 401 at the same
+172 bytes for an invented family on the same prefix, so it is the host's auth
+gate and names no path. And the crypto bar route's own symbol pattern
+`^[A-Z]+x?/[A-Z]+$` admits a lowercase `x`, the tokenised-equity convention, but
+`AAPLx/USD` and the invented `ZZZZ/USD` both answer `{"bars":{}}` at 11 bytes
+while `PAXG/USD` answers 121 bytes with a price of 4185.0. An empty answer
+carries nothing; a priced one does.
+
+### The arithmetic, offered minus connectable on Alpaca
+
+```
+sector          offered  alpaca markets  actionable  offered - actionable
+crypto               22              73          22                     0
+stocks               21   the venue's own         21                     0
+commodities          20               1          20                     0
+forex                12               0          12                     0
+indices              19               0          19                     0
+futures_perps        17               0          17                     0
+```
+
+The stocks count is the venue's and not this page's: `/v2/assets` answers 401
+with no credential and no public route enumerates Alpaca's equities, so the
+figure is left unnamed rather than invented.
+
+### The Alpaca verdict, three words only
+
+```
+crypto           yes
+stocks           yes
+commodities      yes
+forex            no
+indices          yes-if
+futures_perps    not established
+```
+
+`forex` is a proven no and the first on this page. `indices` names its cost:
+an index reaches an order as an index option, the contract list is
+`/v2/options/contracts` and `AlpacaConnector.list_assets` reads `/v2/assets`, so
+no index symbol records today. What the operator must do is the venue's own
+sentence: "Contact your Customer Success Manager for pricing and the steps to
+enable index options. Enablement is at the correspondent and the end account."
+The index-fund share is reachable now and records under stocks, which is where
+Alpaca's own class word puts it.
+
+The full readings are in
+[../audits/2026-10-11_alpaca_wired_sectors/REPORT.md](../audits/2026-10-11_alpaca_wired_sectors/REPORT.md).
+
+### What the Alpaca reading cannot show
+
+No credential was used, so nothing above proves Alpaca accepts a live order from
+this program; the order bodies are what this tree composes, not what Alpaca
+acknowledged. The equity market list was never read: `/v2/assets` answers 401
+without a key, so the stocks sector's count is the venue's own. The 73 coin pairs
+come from the venue's own support table dated March 2026 and not from its order
+API. Every quotation above comes from `docs.alpaca.markets`,
+`alpaca.markets/support` or `files.alpaca.markets`, and on the first of those an
+invented slug answers 404 at 340,348 bytes against 487,170 to 824,486 for a real
+page. On the marketing root an invented path answers 200 at 81,029 bytes under
+the title "Alpaca - 404 not found", so nothing is quoted from that host on status
+alone. The negative control for the refusal reading is Coinbase's own United
+States user agreement, which answers 363,665 characters with 37 mentions of
+"United States" and no refusal.

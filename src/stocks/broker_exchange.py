@@ -27,6 +27,7 @@ from ..exchange.base import (
     OrderStatus,
     OrderType,
     Ticker,
+    Trade,
 )
 from .broker_base import (
     BrokerBase,
@@ -109,6 +110,10 @@ NO_FILL_HISTORY = "{venue} publishes no filled-trade history"
 #: Why a session did not open, carrying the broker's own refusal word for word.
 SESSION_REFUSED = "{venue} session did not open: {refusal}"
 
+#: The field one broker fill record names its execution moment under, which
+#: ``broker_trade`` reads through ``bar_epoch_ms`` as an ISO 8601 moment.
+FILL_MOMENT_FIELD = "transaction_time"
+
 
 def finite_number(value: Any) -> float:
     """``value`` as a float when it is a finite int or float, else 0.0.
@@ -120,6 +125,22 @@ def finite_number(value: Any) -> float:
         return 0.0
     held = float(value)
     return held if math.isfinite(held) else 0.0
+
+
+def decimal_number(value: Any) -> float:
+    """``value`` as a float when it is a finite number or a decimal string, else
+    0.0.
+
+    A broker writes a fill's size and price as decimal strings, so a string is a
+    published figure and ``finite_number`` alone would read every one as zero.
+    """
+    if type(value) is str:
+        try:
+            held = float(value)
+        except ValueError:
+            return 0.0
+        return held if math.isfinite(held) else 0.0
+    return finite_number(value)
 
 
 def order_size(value: Any) -> Optional[float]:
@@ -247,6 +268,31 @@ def exchange_order(placed: Any, symbol: str = "") -> Order:
             "stop_price": finite_number(getattr(placed, "stop_price", 0.0)),
             "filled_at": finite_number(getattr(placed, "filled_at", 0.0)),
         },
+    )
+
+
+def broker_trade(fill: Any, symbol: str = "") -> Trade:
+    """One broker fill record as a ``Trade``, with ``symbol`` naming the market
+    where the record named none.
+
+    A broker publishes its size, price and moment as decimal strings and names
+    no fee on a fill, so ``fee`` is 0.0 and ``fee_currency`` is empty and the
+    record's own fields ride in ``raw``. A moment ``bar_epoch_ms`` cannot read
+    gives 0.0, which ``FillHistory`` orders oldest first.
+    """
+    held = fill if isinstance(fill, dict) else {}
+    side_word = str(held.get("side") or "").strip().lower()
+    moment = bar_epoch_ms(held.get(FILL_MOMENT_FIELD))
+    return Trade(
+        id=str(held.get("id") or ""),
+        symbol=str(held.get("symbol") or symbol),
+        side=OrderSide.SELL if side_word == OrderSide.SELL.value else OrderSide.BUY,
+        amount=decimal_number(held.get("qty")),
+        price=decimal_number(held.get("price")),
+        fee=0.0,
+        fee_currency="",
+        timestamp=0.0 if moment is None else moment / 1000.0,
+        raw=dict(held),
     )
 
 
@@ -531,12 +577,30 @@ class BrokerExchange(ExchangeInterface):
         return [one for one in held if one.symbol == name]
 
     async def get_my_trades(
-        self, symbol: str, since: Optional[float] = None, limit: Optional[int] = None
+        self,
+        symbol: str,
+        since: Optional[float] = None,
+        limit: Optional[int] = None,
+        params: Optional[dict] = None,
     ) -> list:
-        """Raises ``NotImplementedError``: a broker publishes no filled-trade
-        history, so ``FillHistory`` has no page to read."""
-        del symbol, since, limit
-        raise NotImplementedError(NO_FILL_HISTORY.format(venue=self.display_name))
+        """Every fill the broker publishes for ``symbol`` as a ``Trade``, read
+        through ``BrokerBase.list_fills``.
+
+        A broker whose ``PUBLISHES_FILL_HISTORY`` is False raises
+        ``NotImplementedError`` carrying ``NO_FILL_HISTORY``, which is that
+        venue's own absence; ``since`` is a unix-seconds floor and ``params``
+        carries ``FillHistory``'s own ``until`` in epoch milliseconds.
+        """
+        if not bool(getattr(self._broker, "PUBLISHES_FILL_HISTORY", False)):
+            raise NotImplementedError(NO_FILL_HISTORY.format(venue=self.display_name))
+        held = params if isinstance(params, dict) else {}
+        fills = await self._broker.list_fills(
+            symbol=str(symbol),
+            since_ms=None if since is None else finite_number(since) * 1000.0,
+            until_ms=held.get("until"),
+            limit=limit,
+        )
+        return [broker_trade(one, symbol=str(symbol)) for one in fills or []]
 
     async def get_markets(self) -> list[AssetInfo]:
         """Every market the broker's held asset list publishes, as
@@ -557,6 +621,7 @@ __all__ = [
     "BROKER_ORDER_TYPES",
     "BROKER_SIDES",
     "EXCHANGE_ORDER_TYPES",
+    "FILL_MOMENT_FIELD",
     "NO_FILL_HISTORY",
     "NO_LIMIT_PRICE",
     "NO_ORDERBOOK",
@@ -567,7 +632,9 @@ __all__ = [
     "SESSION_REFUSED",
     "BrokerExchange",
     "bar_epoch_ms",
+    "broker_trade",
     "candle_rows",
+    "decimal_number",
     "exchange_order",
     "exchange_order_status",
     "exchange_order_type",
