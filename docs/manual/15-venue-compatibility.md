@@ -5488,3 +5488,384 @@ the venue accepts a live order from this program. And the venue refuses a United
 States person an account on every one of its sectors, so every yes above is an
 order path the program can form and not a trade this operator's account can
 place.
+
+## 2026-10-10 - Gemini records four sectors, and the venue serves every state
+
+Gemini connected and recorded nothing. Every one of its 345 markets was skipped
+by one comparison. The comparison is fixed, the venue now records 347 markets
+across four sectors, and its own User Agreement serves a resident of all fifty
+states.
+
+### The one comparison that hid four connections
+
+`src/exchange/ccxt_connector.py, in get_markets` skipped a market whose own
+record answered anything falsy under `active`. The default `True` in that read
+fires only when the key is **absent**. ccxt sets the key for gemini and sets it
+to `None`, and `not None` is True, so all 345 markets were skipped,
+`src/exchange/market_rules_store.py, in record_venue` wrote no row, and the four
+sectors `venue_classes` offers read zero markets each.
+
+`src/exchange/ccxt_connector.py, in is_listed_market` is the one reader now.
+It refuses a market only where the venue's own field reads `False`, so a venue
+that published no answer keeps every market it lists.
+
+```
+ccxt market['active'], per venue, read 2026-10-10
+coinbase   1156 markets   True 1148, False 8
+kraken     1460 markets   True 1365, False 95
+gateio     6679 markets   True 6677, False 2
+bitget     4265 markets   True 4258, False 7
+okx        4569 markets   True 4561, False 8
+okxus      1152 markets   True 1152
+bitfinex    288 markets   True 288
+gemini      345 markets   None 345
+```
+
+Six readers shared the old comparison and all six read the predicate now:
+`in get_markets`, `in asset_info` and `in _sector_products` in the connector,
+`src/exchange/market_inspector_fetcher.py, in trading_products`, both market
+scans in `src/gui/bot_wizard.py, in _fetch_markets`, and
+`src/gui/preflight_check.py, in check` with its view model in
+`src/gui/main_tabs/preflight_check_surface.py, in run`. The two pre-flight
+readers also told a published `False` from a published nothing for the first
+time: `active_reported` now reads the field's value rather than the key's
+presence, so a gemini market reads "not reported" instead of "No".
+
+```
+the predicate, one record of each shape
+  no key               True
+  active True          True
+  active None          True
+  active False         False
+  active 0             True
+  active empty string  True
+```
+
+**The filter is venue-generic, so every recorded venue was driven before and
+after.** Not one row moved anywhere but gemini.
+
+```
+            markets before   after    sector counts
+coinbase              2148    2148    identical
+kraken                1365    1365    identical, 95 delisted rows still skipped
+gateio                6677    6677    identical
+bitget                4258    4258    identical
+okx                   4561    4561    identical
+okxus                 1152    1152    identical
+bitfinex               288     288    identical
+gemini                   0     347    four sectors, from none
+```
+
+The Market Inspector moved with it.
+
+```
+                     bases before   trading before   bases after   trading after
+gemini                        158                0            82             82
+kraken                        677              633           677            633
+coinbase                      411              407           411            407
+```
+
+Gemini's before-count of 158 bases held 77 codes the venue publishes on no row,
+which the next section explains. All 158 read not trading, because
+`src/exchange/market_inspector_fetcher.py, in _product_trades` read `bool(None)`.
+
+### The cause sits one level deeper, and it cost two more readings
+
+ccxt's gemini parser never asks gemini for its own symbol details.
+`options['fetchMarketsFromAPI']['fetchDetailsForAllSymbols']` is False by
+default, so the parser reads a market id string against a library-held quote
+list. That branch never sets a status, which is where `active` comes from, and
+the quote list omits `RLUSD`.
+
+Gemini publishes `RLUSD` as the quote currency on 77 of the 348 rows its own
+`GET /v1/symbols/details/all` serves. `2ZRLUSD` ends in `USD`, so the parser read
+the base as `2ZRL`, a code gemini publishes on no row. The market id stayed
+`2zrlusd`, so an order still routed, and two commodity rows were lost:
+`PAXGRLUSD` read base `PAXGRL`, which no metal table answers. ccxt's own broken-
+pair list also dropped `eurusd` and `eurusdc`, and gemini serves both as
+`"status":"open"` today.
+
+`src/exchange/ccxt_connector.py, at GEMINI_QUOTE_CURRENCIES` is ccxt's own list
+with `RLUSD` ahead of `USD`, so the longer quote matches first.
+`src/exchange/ccxt_connector.py, at GEMINI_BROKEN_PAIRS` is ccxt's own list
+without those two euro pairs; the entries kept are the ones a renamed currency
+code would duplicate a symbol for, `MATIC` reading as `POL` and `EFIL` as `FIL`.
+Both reach the venue through
+`src/exchange/ccxt_connector.py, at EXCHANGE_OPTIONS`, which is keyed by venue
+id, so no other venue can read them.
+
+```
+                markets  commodities  crypto  forex  futures_perps  duplicate ids
+ccxt's own list      345            6     320      6             13            none
+the venue's own      347            8     318      8             13            none
+```
+
+77 symbols moved onto the legs gemini publishes, 2 markets were gained, 0 were
+lost, and no market id changed.
+
+### The venue serves a resident of every state
+
+OVERTAKEN, quoted whole:
+
+> | gemini | crypto spot | no refusal recorded, 2026-08-28 | key and secret | `src/exchange/ccxt_connector.py, in SUPPORTED_EXCHANGES` |
+
+True today: four sectors, not crypto spot alone, and the absence of a refusal is
+now a positive reading. Gemini's own
+[User Agreement](https://www.gemini.com/legal/user-agreement) landing page
+states "Your use of the Gemini platform is governed by the user agreement that
+corresponds to your state of residence: Residents of ID, LA, NY, OH, TX are
+subject to the terms of the Gemini Trust Company, LLC User Agreement. Residents
+of AL, AK, AZ, AR, CA, CO, CT, DE, FL, GA, HI, IL, IN, IA, KS, KY, ME, MD, MA,
+MI, MN, MS, MO, MT, NE, NV, NH, NJ, NM, NC, ND, OK, OR, PA, PR, RI, SC, SD, TN,
+UT, VT, VA, WA, DC, WV, WI, WY are subject to the Gemini Moonbase, LLC User
+Agreement." Five states in the first group and forty-five in the second: all
+fifty, plus the District of Columbia and Puerto Rico. **No state is excluded.**
+
+Both agreements were read whole, 185,392 and 206,930 characters, and neither
+refuses a United States person. The only refusal names sanctioned countries:
+"you may not buy Digital Assets on the Gemini Platform or use any of our
+services that we provide if: (i) you are in, under the control of, or a national
+or resident of any country or region subject to sanctions or embargoes issued by
+OFAC, the U.S. Department of State, the United Nations, the UK's HM Treasury's
+financial sanctions regime, or any other applicable government authority".
+
+So gemini stays out of both
+`src/exchange/ccxt_connector.py, at US_ACCOUNT_RESTRICTED_EXCHANGES` and
+`src/exchange/ccxt_connector.py, at US_IP_BLOCKED_EXCHANGES`. It is the first
+venue in this exchange-by-exchange run whose own terms welcome this operator.
+
+The credential shape has one detail the table does not carry. The key must be an
+account key: a master key is refused before any request leaves, with
+"gemini sign() requires an account-key, master-keys are not-supported".
+
+### The bot's shape fits this venue
+
+OVERTAKEN, quoted whole:
+
+> | gemini | **no** | yes | the venue declares no market order, and the bot names a market order at nine of the thirteen places it names an order type |
+
+True today: the shape fits. `src/trading/bot_container.py, in guarded_place_order`
+reads `src/trading/scrumming/sizing.py, in market_replaces_market_order` on every
+order and replaces a market order with a limit order priced on the market's own
+tick. Driven over all 347 recorded gemini markets at the venue's own last price
+from `GET /v1/pricefeed`, every one answers the limit-only mechanic and the
+replacement fires on every one.
+
+```
+the mechanic venue_variant answers, over 347 gemini markets
+at the venue's own last price   the venue declares no market order   347
+at $100 a unit                  the venue declares no market order   249
+                                smallest order costs more than the excess   98
+```
+
+The second row is the control. A price the market does not have moves 98 markets
+onto an earlier mechanic, which is why the reading is taken at the venue's own
+price and not at a reference one.
+
+### The venue publishes no market order, in its own words
+
+The order-shape table's gemini row reads **no** for a market order and
+`not declared` for both cash columns, and the venue's own page now gives the
+reason. Gemini's
+[Create New Order](https://docs.gemini.com/trading/rest-api/orders/create-new-order)
+page states "What about market orders? The API doesn't directly support market
+orders because they provide you with no price protection" and names the
+substitute: "Instead, use the 'immediate-or-cancel' order execution option,
+coupled with an aggressive limit price (i.e. very high for a buy order or very
+low for a sell order), to achieve the same result."
+
+The program already composes exactly that. `OrderType.IOC_LIMIT` is sent as a
+limit order with `timeInForce` IOC, and ccxt turns that into the venue's own
+option array. Read with the transport replaced, so no request left the machine:
+
+```
+BTC/USD        buy  limit  {"symbol":"btcusd","amount":"0.001","price":"50000","side":"buy","type":"exchange limit"}
+BTC/USD        sell limit  {"symbol":"btcusd","amount":"0.001","price":"200000","side":"sell","type":"exchange limit"}
+BTC/USD        buy  IOC    {"symbol":"btcusd","amount":"0.001","price":"999999","side":"buy","type":"exchange limit","options":["immediate-or-cancel"]}
+PAXG/USD       buy  limit  {"symbol":"paxgusd","amount":"0.0001","price":"9000","side":"buy","type":"exchange limit"}
+AUD/USD        buy  limit  {"symbol":"audusd","amount":"1","price":"1","side":"buy","type":"exchange limit"}
+BTC/USDC:USDC  buy  limit  {"symbol":"btcusdcperp","amount":"0.0001","price":"200000","side":"buy","type":"exchange limit"}
+BTC/USD        buy  market REFUSED  gemini createOrder() allows limit orders only
+```
+
+`amount` carries a **unit count in the base currency** on both sides and in
+every sector, the spot pair and the perpetual alike, and `type` is always
+`exchange limit`. `src/trading/scrumming/sizing.py, at CITED_CASH_MARKET_BUY`
+keeps its four members and gemini is not one: the page publishes no quote-
+currency size field at all.
+
+### The order-type table carries every sector the venue serves
+
+OVERTAKEN, quoted whole:
+
+> The limit-only variant is built. It sends a limit order where the bot sends a
+> market order, and it changes one field. Gemini is its one venue. The order-type
+> table cites two pairs, Gemini is the only one of the two declaring no market
+> order, and a pair absent from that table declares nothing and is never read as
+> declining a type.
+
+True today: the table cites six pairs, four of them gemini. Gemini has one order
+endpoint, `POST /v1/order/new`, and one capability map, so the declaration
+belongs to the venue and not to one of its sectors. The crypto row alone left
+`order_types_for` answering nothing for a gemini commodity, currency or
+perpetual market whose record had not been read yet.
+
+```
+order_types_for with no record read
+sector           gemini        coinbase
+crypto           limit only    market and limit
+commodities      limit only    None
+forex            limit only    None
+futures_perps    limit only    None
+stocks           None          None
+indices          None          None
+```
+
+### The venue publishes no asset category, so no record was added
+
+`src/exchange/ccxt_connector.py, at VENUE_ASSET_SECTOR_RECORDS` keeps its four
+rows. Gemini's one bulk product endpoint serves 348 rows and eleven keys, every
+key on every row, and none of them is an asset category.
+
+```
+base_currency  contract_price_currency  contract_type  min_order_size
+product_type   quote_currency           quote_increment  status
+symbol         tick_size                wrap_enabled
+```
+
+Two of the eleven look like a category and neither is one. `product_type` takes
+`spot` on 335 rows and `swap` on 13; `contract_type` takes `vanilla` on 335 and
+`linear` on 13. Both name the product form that
+`src/exchange/ccxt_connector.py, in is_contract_market` already reads off the
+ccxt record. There is no `category`, no `instCategory` and no `symbolType`.
+
+A record would also cost the venue both of its non-crypto sectors.
+`src/exchange/ccxt_connector.py, in market_asset_class` reads
+`PRECIOUS_METAL_CODES` and `FIAT_CURRENCY_CODES` only while the published sector
+is None, so handing it any mapping switches that reading off — the same
+arithmetic the bitfinex row records.
+
+Control for the absence: `/v1/instruments`, `/v1/assets`, `/v1/currencies`,
+`/v1/categories`, `/v1/products` and `/v1/symbols/categories` each answered HTTP
+404, while `/v1/symbols/details/all` and `/v1/network/btc` each answered 200 with
+rows. The probe could find a page that exists.
+
+`src/exchange/ccxt_connector.py, at AssetSectorRecord` carries `code_leg`
+because OKX publishes no base code on a contract type. Gemini publishes
+`base_currency`, `quote_currency` and `contract_price_currency` as their own
+fields on 348 of 348 rows, the 13 perpetuals included, so there is no code to
+split and no record to read it.
+
+### A ticker named a sector, and the venue's own price feed refused it
+
+Eight pairs read forex off gemini's own base and quote codes. Four are not
+currency markets. `GET /v1/pricefeed` is gemini's own credential-free feed:
+
+| market | the venue's own price | what it is | sector recorded |
+| --- | --- | --- | --- |
+| AUDUSD | 0.70147668 | the Australian dollar | forex |
+| EURUSD | 1.15087 | the euro | forex |
+| USD1USD | 0.99935 | a dollar token at par | crypto |
+| USDCUSD | 0.99983 | a dollar token at par | crypto |
+| USDTUSD | 0.999 | a dollar token at par | crypto |
+| PAXGUSD | 4201.22 | a troy ounce of gold | commodities |
+| XAUTUSD | 4175.2197 | a troy ounce of gold | commodities |
+
+`USD1`, `USDC` and `USDT` all redeem onto `USD` in
+`src/exchange/ccxt_connector.py, at TOKEN_UNDERLYING_CODES`, and all three are
+quoted against the dollar, so no pair holds two currencies.
+`src/trading/scrumming/sizing.py, at CITED_VENUE_BASE_SECTORS` gains three
+gemini rows, beside the three bitfinex rows that undo the same collision. `AUD`
+and `EUR` need no row: the venue prices both at the cross rate, which is what
+`FIAT_CURRENCY_CODES` already answers. Pax Gold and Tether Gold need none
+either, because `TOKEN_UNDERLYING_CODES` redeems both onto `XAU`.
+
+Control, run through the production reader: `market_asset_class` with the venue
+named answers crypto for all three dollar tokens and forex with it unnamed,
+while `venue_base_sector` answers nothing for `("gemini", "AUD")`, for
+`("gemini", "BTC")`, for `("bitfinex", "USD1")` and for `("", "USDT")`.
+
+### The sectors gemini does not reach, and the venue's own reason
+
+Gemini's own developer navigation names four product families — Spot crypto,
+Perpetuals, Stocks and Prediction Markets — and no index family.
+
+**Stocks is a no, and the venue says why.** 0 of its own 348 published rows
+names a company share. Gemini sells stocks and publishes no order interface for
+them. Its own [Stocks](https://docs.gemini.com/products/stocks) page states
+"Stocks on Gemini — Trade stocks in the Gemini UI today. API trading and
+developer documentation are coming soon." and "API availability: Stocks are
+currently available in the Gemini UI. API trading and developer documentation
+are coming soon." Its own legal index carries a "Gemini Galactic Markets User
+Agreement" under a "Gemini Stocks" group, so the product is real and the door
+this program walks through is not built.
+
+**Indices is a no.** 0 of 348 rows names an index, and no index family is
+published. Prediction Markets carries a taxonomy with Crypto, Sports,
+Commodities and Weather, and a prediction contract pays $1.00 or $0.00 on an
+event, so it is not a market in any sector `ASSET_CLASSES` draws.
+
+`src/gui/main_tabs/asset_class_surface.py, at EXTRA_VENUE_CLASSES` offers gemini
+under neither sector, and both counts are now grounded in the venue's own pages.
+
+### What each sector records
+
+| Sector | Markets | What they are | Variant |
+| --- | --- | --- | --- |
+| crypto | 322 | spot pairs against USD, GUSD, RLUSD, USDC, USDT, EUR, GBP, SGD, BTC, ETH and SOL | Crypto Scrumming, built |
+| commodities | 8 | Pax Gold and Tether Gold, each on four quotes | Commodity Scrumming, built |
+| forex | 4 | the Australian dollar and the euro, each against the dollar and against USDC | Forex Scrumming, built |
+| futures and perpetuals | 13 | linear perpetuals on AVAX, BTC, ETH, HYPE, SOL, TRUMP and XRP | Futures Scrumming, built |
+
+`src/trading/scrumming/sizing.py, in sector_variant` names a built variant for
+every one of the 347 markets and `variant_built` refuses none.
+`src/trading/scrumming/sizing.py, in recorded_unit_rule` reads 345 of them as
+fractional and 2 as whole: `XRP/GUSD:GUSD` and `XRP/USDC:USDC`, whose published
+amount step is 1.0. `src/exchange/timeframes.py` offers the venue seven
+timeframes and that row is exact — the recorded set equals ccxt's published set,
+nothing either way.
+
+The read paths each sector needs are declared on the venue's own capability map:
+`fetchBalance`, `fetchMyTrades`, `fetchOpenOrders`, `fetchOHLCV`, `fetchTickers`,
+`fetchOrder` and `cancelOrder` all True. Two read False and both belong to one
+sector: `fetchPositions` and `fetchClosedOrders`. A perpetual position is read
+through the balance and the trade list, not through a position list.
+
+### The step-five subtraction for gemini
+
+| Sector | Venues offered, before | After | Markets gemini can act on, before | After |
+| --- | --- | --- | --- | --- |
+| crypto | 22 | 22 | 0 | 322 |
+| stocks | 21 | 21 | 0 | 0 |
+| commodities | 18 | 18 | 0 | 8 |
+| forex | 9 | 9 | 0 | 4 |
+| indices | 15 | 15 | 0 | 0 |
+| futures and perpetuals | 16 | 16 | 0 | 13 |
+
+Every before-count of markets is zero for the one comparison this section opens
+on. No offered count moved, because
+`src/gui/main_tabs/asset_class_surface.py, at EXTRA_VENUE_CLASSES` already held
+gemini's four sectors. `src/gui/main_tabs/asset_class_surface.py, in known_venues`
+holds 26 ids and `src/gui/main_tabs/init_wizard_surface.py, in exchange_ids`
+holds the same 26, so the Exchanges tab and the first-run wizard offer the same
+set, and the Add form's set equals the screen's set in all six sectors.
+
+`src/core/log_paths.py, in gate_log_path` composes
+`trade/gate/gemini/<sector>/gate.log` for each of the four sectors with markets.
+Four real decisions were written through `LogManager.log_gate_decision` with the
+home redirected: `gate_writer_keys` opened four distinct pairs, each file holds
+one line, each row names its own sector in its own `asset_class` field, and
+`gate_log_files` lists all four, so a reader follows the writer.
+
+The full readings are in
+[../audits/2026-10-10_gemini_wired_sectors/REPORT.md](../audits/2026-10-10_gemini_wired_sectors/REPORT.md).
+
+Three limits, stated plainly. No reading used a credential, so nothing here
+proves the venue accepts a live order from this program; the order bodies are
+what the library composes, not what gemini acknowledged. Gemini's 85 markets
+quoted in its own GUSD and 77 quoted in RLUSD read crypto, because whether a
+national currency against a dollar stablecoin is a forex market is this issue's
+second open decision and belongs to the operator. And ccxt's own gemini parser
+still reads a library-held pair table rather than the venue's own symbol details,
+so a published amount step or minimum that the library has not refreshed is a
+reading this program cannot correct from here.

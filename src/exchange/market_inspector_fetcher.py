@@ -32,6 +32,7 @@ from ..trading.stone_tablets.ra_fetcher import (
 )
 from ..trading.stone_tablets.registry import _rollup
 from .api_logger import get_api_log
+from .ccxt_connector import is_listed_market
 from .market_pairs_scout import row_quote_volume_24h
 
 logger = logging.getLogger("acervator.market_inspector_fetcher")
@@ -338,7 +339,7 @@ def trading_products(
     accepted_quotes, True while _product_trades answers so on any such pair.
 
     A market whose ``info`` is not a mapping carries neither field, so it reads
-    the ccxt ``active`` flag alone. An empty answer says no connector holds a
+    ``is_listed_market`` alone. An empty answer says no connector holds a
     table; no venue is asked.
     """
     quotes = tuple(accepted_quotes)
@@ -357,7 +358,7 @@ def trading_products(
             trades = _product_trades(
                 info.get("status"),
                 info.get("trading_disabled"),
-                market.get("active", True),
+                is_listed_market(market),
             )
             base_u = base.upper()
             found[base_u] = found.get(base_u, False) or trades

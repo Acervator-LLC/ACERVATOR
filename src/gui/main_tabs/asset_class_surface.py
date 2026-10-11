@@ -171,6 +171,14 @@ EXTRA_VENUE_CLASSES = {
     "bybit": ("futures_perps",),
     "cryptocom": ("stocks", "futures_perps"),
     "gateio": ("stocks", "commodities", "forex", "indices", "futures_perps"),
+    # Gemini's own developer navigation names four product families — Spot
+    # crypto, Perpetuals, Stocks and Prediction Markets — and no index family,
+    # so the indices row stays absent. Stocks stays absent because its own
+    # Stocks page publishes no order interface: "Stocks are currently available
+    # in the Gemini UI. API trading and developer documentation are coming
+    # soon." Its own /v1/symbols/details/all serves 348 rows, 13 of them
+    # product_type swap, with Pax Gold and Tether Gold on four pairs each and
+    # the Australian dollar and the euro against the dollar and USDC.
     "gemini": ("commodities", "forex", "futures_perps"),
     "huobi": ("stocks",),
     # Kraken quotes 12 spot pairs whose two legs are both a national currency
