@@ -16,6 +16,8 @@ from typing import Any, Optional
 from ..exchange.base import MarketRules
 from .etrade_connector import VENUE_ID as ETRADE_VENUE_ID
 from .etrade_connector import EtradeConnector
+from .fidelity_connector import VENUE_ID as FIDELITY_VENUE_ID
+from .fidelity_connector import FidelityConnector
 from .ibkr_connector import VENUE_ID as IBKR_VENUE_ID
 from .ibkr_connector import IbkrConnector
 from .robinhood_broker import VENUE_ID as ROBINHOOD_VENUE_ID
@@ -617,6 +619,11 @@ class AlpacaConnector(BrokerBase):
 BROKER_CONNECTORS: dict[str, type[BrokerBase]] = {
     VENUE_ID: AlpacaConnector,
     ETRADE_VENUE_ID: EtradeConnector,
+    # Fidelity publishes no order route on any host, so this class answers
+    # ``broker_connector_class`` with a named refusal in place of the silent
+    # nothing a venue with no row gets: ``_connect_exchange_for_bot`` would
+    # otherwise take the crypto path, where ccxt 4.5.85 carries no ``fidelity``.
+    FIDELITY_VENUE_ID: FidelityConnector,
     IBKR_VENUE_ID: IbkrConnector,
     ROBINHOOD_VENUE_ID: RobinhoodMcpBroker,
     SCHWAB_VENUE_ID: SchwabConnector,

@@ -249,6 +249,30 @@ CITED_UNIT_RULES: dict[tuple[str, str], str] = {
     (CLASS_FOREX, "etrade"): WHOLE_UNITS,
     (CLASS_INDICES, "etrade"): WHOLE_UNITS,
     (CLASS_FUTURES_PERPS, "etrade"): WHOLE_UNITS,
+    # Fidelity holds a row in the four sectors its own pages list a product in,
+    # and it is the seventh different fractional answer among the brokers: the
+    # fraction reaches both sides at a three-decimal grain, then the session
+    # takes it away. Quoted whole: "Fractional share quantities can be entered
+    # out to 3 decimal places (.001) as long as the value of the order is at
+    # least $1.00. Executions will be rounded down to the nearest .001 shares",
+    # and on the sale, "any future sell orders will need to include the whole and
+    # fractional share amounts that you want to trade". stocks and indices are
+    # the same object, a listed NMS share -- "With fractional shares or
+    # dollar-based orders, you can trade National Market System (NMS)
+    # exchange-listed stocks" -- so both read FRACTIONAL_UNITS, and
+    # ``session_unit_rule`` raises both to WHOLE_UNITS outside 9:30-16:00 ET on
+    # the venue's own sentence, "Both dollar-based and fractional share orders
+    # are only eligible for execution during normal market hours". crypto is
+    # fractional on its own ticket, which takes a coin amount with "trade sizes
+    # as low as $1". commodities is the one whole row, because the physical metal
+    # is sold by its own table in "Whole ounces, or whole numbers of coins"; its
+    # fund-share route is the equity's and ``recorded_unit_rule`` reads the
+    # recorded step ahead of this row for a market on either route. forex and
+    # futures_perps take no row because the venue lists no product in either.
+    (CLASS_CRYPTO, "fidelity"): FRACTIONAL_UNITS,
+    (CLASS_STOCKS, "fidelity"): FRACTIONAL_UNITS,
+    (CLASS_INDICES, "fidelity"): FRACTIONAL_UNITS,
+    (CLASS_COMMODITIES, "fidelity"): WHOLE_UNITS,
     (CLASS_FOREX, "coinbase"): FRACTIONAL_UNITS,
     (CLASS_STOCKS, "coinbase"): WHOLE_UNITS,
     (CLASS_COMMODITIES, "coinbase"): WHOLE_UNITS,
@@ -452,6 +476,12 @@ CITED_VENUE_BASE_SECTORS: dict[tuple[str, str], str] = {
     ("mexc", "MXN"): CLASS_FOREX,
     ("mexc", "PLN"): CLASS_FOREX,
     ("ibkr", "PAXG"): CLASS_COMMODITIES,
+    # FIDD is Fidelity's own dollar token and records under crypto, never under
+    # forex. Quoted whole: "The Fidelity Digital Dollar (FIDD) is a stablecoin
+    # pegged 1:1 to the US dollar and issued by Fidelity Digital Assets as an
+    # ERC-20 token on the Ethereum network." That is the reading this table
+    # already takes for gemini's USD1 and bitfinex's USDC and USDT.
+    ("fidelity", "FIDD"): CLASS_CRYPTO,
 }
 
 
@@ -557,6 +587,14 @@ def venue_base_sector(venue: Any, base: Any) -> Optional[str]:
 #: ``etrade_connector.SECURITY_TYPE_SECTORS`` rather than under a sector that
 #: does not exist. Every other etrade market takes its sector from
 #: ``securityType`` alone, so no symbol needs a row here.
+#:
+#: fidelity holds no row. ``fidelity_connector.PRODUCT_SECTORS`` answers every
+#: record's sector off its own ``product`` word, and no two fidelity products
+#: share a symbol across sectors: the twelve records
+#: ``fidelity_connector.PUBLISHED_PRODUCTS`` holds are five coins, three crypto
+#: fund shares and four metals, each one unambiguous. ``FIDD`` is the one symbol
+#: that needs a reading and it takes it on the base, through
+#: ``CITED_VENUE_BASE_SECTORS``.
 CITED_VENUE_MARKET_SECTORS: dict[tuple[str, str], str] = {
     ("kucoin", "BNC/USDT"): CLASS_CRYPTO,
     ("kucoin", "USDC/EUR"): CLASS_FOREX,
@@ -831,6 +869,31 @@ CITED_VENUE_SESSIONS: dict[tuple[str, str], str] = {
     (CLASS_INDICES, "etrade"): SESSION_US_EQUITY,
     (CLASS_FOREX, "etrade"): SESSION_CONTINUOUS,
     (CLASS_FUTURES_PERPS, "etrade"): SESSION_CONTINUOUS,
+    # Fidelity publishes three different sets of hours and only one of them
+    # matches a word ``SESSIONS_DECLARED`` holds, so it holds two rows and two
+    # sectors hold none. stocks and indices are ``SESSION_US_EQUITY`` and both
+    # halves of this row's effect are the venue's own words: the size, "Both
+    # dollar-based and fractional share orders are only eligible for execution
+    # during normal market hours", and the type, "Fidelity will accept limit
+    # orders in the extended-hours trading sessions; all other order types are
+    # ineligible for trading during extended-hours. Good 'til canceled (GTC)
+    # orders are not available for extended-hours trading sessions." Fidelity is
+    # the first venue here whose session moves both. Its regular window is the
+    # one ``market_hours`` draws, 9:30 to 16:00 Eastern, and its own extended
+    # windows are narrower than the shared ones -- "Orders for the premarket
+    # session can be placed from 7:00 a.m. to 9:28 a.m. ET. Orders in the
+    # after-hours session can be placed from 4:00 p.m. to 8:00 p.m. ET" --
+    # which ``fidelity_connector.equity_session`` reads off its own boundaries.
+    # crypto and commodities take no row, and neither absence is a guess. Crypto
+    # publishes "Trading in Fidelity Crypto accounts is available 23 hours a
+    # day, from 1 a.m. ET until midnight", which is not continuous and not a US
+    # equity session. The metal desk publishes "Order hours 8:00 a.m.-3:00 p.m.
+    # ET (limited due to volatility in the precious metals market)", which is
+    # neither either. Citing one of the two words for either would claim hours
+    # the venue does not publish, and an absent row claims nothing and leaves
+    # the recorded step governing.
+    (CLASS_STOCKS, "fidelity"): SESSION_US_EQUITY,
+    (CLASS_INDICES, "fidelity"): SESSION_US_EQUITY,
 }
 
 #: The reason a held order carries, never one of ``sized_order``'s refusals.
@@ -1076,6 +1139,22 @@ CITED_VENUE_ORDER_TYPES: dict[tuple[str, str], str] = {
     (CLASS_STOCKS, "etrade"): ORDER_TYPES_WITH_MARKET,
     (CLASS_COMMODITIES, "etrade"): ORDER_TYPES_WITH_MARKET,
     (CLASS_INDICES, "etrade"): ORDER_TYPES_WITH_MARKET,
+    # Fidelity holds a row in all four sectors it lists a product in, and every
+    # one takes a market order on the venue's own words. Its Order Types FAQ
+    # publishes it for the securities -- "A market order instructs Fidelity to
+    # buy or sell securities for your account at the next available price" --
+    # beside limit, stop loss, stop limit, trailing stop loss, trailing stop
+    # limit and the conditional, contingent, OCO and OTOCO shapes. Its crypto
+    # ticket publishes the same pair, "The Fidelity Crypto account supports
+    # market and limit orders", with "limit orders are good for the day and
+    # expire at midnight (12 a.m. ET)". The metal desk takes the order by
+    # telephone and names no type at all, so it reads the same as the fund share
+    # it sits beside. The extended-hours limit rule narrows this per moment and
+    # is not a venue-wide declaration, which ``session_order_types`` applies.
+    (CLASS_CRYPTO, "fidelity"): ORDER_TYPES_WITH_MARKET,
+    (CLASS_STOCKS, "fidelity"): ORDER_TYPES_WITH_MARKET,
+    (CLASS_COMMODITIES, "fidelity"): ORDER_TYPES_WITH_MARKET,
+    (CLASS_INDICES, "fidelity"): ORDER_TYPES_WITH_MARKET,
 }
 
 
@@ -1222,6 +1301,15 @@ SETTLE_LEG = ":"
 # market buy on a sector whose orders are unit counts, and the mutual fund that
 # does take a cash amount selects ``VARIANT_CASH_AMOUNT``, which
 # ``VARIANTS_BUILT`` does not hold.
+# ``fidelity`` is not a member, and the cash amount here is a second entry shape
+# the operator chooses rather than what a market buy becomes. Its own fractional
+# page names both: "Fractional share quantities can be entered out to 3 decimal
+# places (.001)" and "Dollar-based trades can be entered out to 2 decimal places
+# (e.g. $250.00)", and its crypto ticket names both as well, a coin amount or a
+# dollar amount with a 95% cap on each. A market buy on either route still takes
+# the quantity the operator names, so a row here would claim a cash market buy
+# this engine's sizes cannot use, and ``fidelity_connector.asset_rules`` publishes
+# ``amount_increment`` on the share and leaves the dollar shape unnamed.
 CITED_CASH_MARKET_BUY: frozenset[str] = frozenset(
     {"binance", "bitget", "coinbase", "gateio", "mexc"}
 )
@@ -1347,11 +1435,25 @@ def session_for(recorded: Any, asset_class: str, venue: str) -> Optional[str]:
 # delay is established and an absent row claims nothing. The other nearby figure
 # is funding and not settlement: "we must receive such funds at least one
 # Business Day before the Settlement Date".
+# Fidelity publishes the day count in words and holds two rows for it. Quoted
+# whole from its own cash-account page: "According to industry standards, most
+# securities have a settlement date that occurs on trade date plus 1 business
+# days (T+1). That means that if you buy a stock on a Monday, settlement date
+# would be Tuesday." Its own page also names the three violations the delay
+# causes -- a good faith violation, a freeriding violation and a cash
+# liquidation violation -- with the worked example "when the ABC purchase
+# settles on Tuesday, Marty's cash account will not have sufficient settled cash
+# to pay for the purchase because the sale of the XYZ stock will not settle until
+# Wednesday". stocks and indices take the row because both are that security.
+# crypto and commodities take none: neither Fidelity Digital Assets nor the
+# metal desk publishes a day count, and an absent row claims nothing.
 CITED_VENUE_SETTLEMENT: dict[tuple[str, str], float] = {
     (CLASS_CRYPTO, "coinbase"): 0.0,
     (CLASS_STOCKS, "ibkr"): 1.0,
     (CLASS_FOREX, "ibkr"): 2.0,
     (CLASS_CRYPTO, "tastytrade"): 4.0,
+    (CLASS_STOCKS, "fidelity"): 1.0,
+    (CLASS_INDICES, "fidelity"): 1.0,
 }
 
 #: What a fold carries when ``unsettled_usd`` leaves it nothing to spend.
