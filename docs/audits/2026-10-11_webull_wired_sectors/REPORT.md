@@ -305,7 +305,7 @@ no venue contacted.
 | --- | --- | --- | --- |
 | 1 | `BROKER_CONNECTORS` | 6 ids; `broker_connector_class("webull")` answers `WebullConnector` | an invented id answers None |
 | 2 | `venues_for_class` | the venue is offered in **6 of 6** sectors | an invented id is offered in **0** |
-| 3 | the credential form | `known_venues` holds it; the wizard offers **26** | an invented id is not in `known_venues` |
+| 3 | the credential form | `known_venues` holds it; the wizard offers **26**; `exchange_status_rows` draws it in all six sectors | an invented id is not in `known_venues` and appears on no sector's form |
 | 4 | a Start press | `broker_serves_sector` answers True on all six | False on an invented sector and on an invented venue |
 | 5 | market rules recorded | **7** rule rows written, six sectors read back | an empty asset list writes **0** rows and erases none; an invented venue reads back `{}` |
 | 6 | the order shape | a body composed for all six sectors | an `OPTION` and an `EVENT` record each raise |
@@ -357,6 +357,32 @@ CONTROL the body dropped        L1d4zL2x6UmLQ5ja7jnTOjFYjEk=   differs
 
 `connect` runs that proof before it sends anything, so a signature defect is
 named instead of being read as a bad credential.
+
+### The Add form, per sector, and one control that cannot fire
+
+`src/gui/main_tabs/settings_dialog_surface.py, in exchange_status_rows` iterates
+`venues_for_class` itself, so the form cannot hold a venue the offer does not.
+Driven with the home redirected:
+
+```
+crypto          22 venues   webull on the form
+stocks          21 venues   webull on the form
+commodities     20 venues   webull on the form
+forex           15 venues   webull on the form      14 before this unit
+indices         19 venues   webull on the form
+futures_perps   17 venues   webull on the form
+```
+
+The invented-venue control fires: an invented id appears on **0** of the six
+forms and `venues_for_class` offers it in **0** sectors.
+
+**The invented-sector control does not fire, and is reported as such rather than
+as a pass.** `venues_for_class("zzznosector")` answers the same 22 venues as
+`venues_for_class("crypto")`, because a venue with no recorded class reads
+crypto and an unknown sector word falls through to that list. It is unreachable
+rather than live: `LAYERED_CLASSES` holds exactly the six sectors and the
+invented word is not among them, so no operator action produces one. Named here,
+not fixed, and not counted as a control that passed.
 
 ## The six sectors
 
