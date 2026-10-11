@@ -2281,15 +2281,27 @@ pushes a button off the right edge.
 own. The window keeps the active class, the settings file stores it for the next
 launch, and the window tells the Paper tab which class that is.
 
-`src/gui/main_tabs/class_filter_tab.py` — the table that reaches Paper
+`src/gui/main_tabs/class_filter_tab.py` — the list that reaches Paper
 
 ```python
-SELF_COUNTING_TABS = {
-    "History": "_history_tab",
-    "Sim": "_simulator_tab",
-    "Paper": "_paper_trader_tab",
-}
+SELF_COUNTING_TABS = ("_history_tab", "_simulator_tab", "_paper_trader_tab")
 ```
+
+OVERTAKEN, quoted whole:
+
+> `src/gui/main_tabs/class_filter_tab.py` — the table that reaches Paper
+>
+> ```python
+> SELF_COUNTING_TABS = {
+>     "History": "_history_tab",
+>     "Sim": "_simulator_tab",
+>     "Paper": "_paper_trader_tab",
+> }
+> ```
+
+True today: the tab titles were keys only the removed note needed, so the table
+is a plain list of the three window attributes. `_refilter_class_tabs` reads it
+and hands the sector to each tab's own `set_asset_class`.
 
 ### Paper's Add Exchange button follows the active class
 
@@ -2365,35 +2377,63 @@ before and after.
 
 ### The Paper tab keeps its own card while no venue serves the class
 
-**Functional.** The class filter replaces a tab with a note when the tab holds
-nothing for the class. The Paper tab is left its own card instead while it holds
-no venue of that class, so the Add Exchange button on that card stays on screen
-and names the state. That is the rule the Live tab already follows.
+**Functional.** The Paper tab keeps its own page under every sector, served or
+not. No sector replaces it, hides it or disables it.
+`src/gui/main_tabs/class_filter_tab.py, in _refilter_class_tabs` hands the sector
+to the tab's own `set_asset_class`, which narrows the rows the tab lists and
+nothing else. A sector Paper holds no venue for draws the same page with its Get
+Started card on it, and the Add Exchange button on that card names the sector.
 
-`src/gui/main_tabs/class_filter_tab.py` — the gate
+Read on the running window, one bot standing in for a fleet on Crypto and none on
+the other five sectors. The cell counts the controls on the page the Paper tab
+holds, every one enabled and none hidden:
 
-```python
-tab = getattr(self, attr, None)
-ask = getattr(tab, "class_venues", None)
-if not callable(ask):
-    return False
-return not ask(key)
-```
+| sector | controls on the Paper page |
+|---|---|
+| Crypto | 20 |
+| Stock | 20 |
+| Commodities | 20 |
+| Forex | 20 |
+| Indices | 20 |
+| Futures / Perps | 20 |
 
-Read on the running window, before and after one Coinbase venue is seated:
+OVERTAKEN, quoted whole:
 
-| class | venues Paper holds, none seated | keeps its card | after Coinbase | keeps its card |
-|---|---|---|---|---|
-| Crypto | none | yes | Coinbase | no |
-| Stock | none | yes | none | yes |
-| Commodities | none | yes | none | yes |
-| Forex | none | yes | none | yes |
+> **Functional.** The class filter replaces a tab with a note when the tab holds
+> nothing for the class. The Paper tab is left its own card instead while it holds
+> no venue of that class, so the Add Exchange button on that card stays on screen
+> and names the state. That is the rule the Live tab already follows.
+>
+> `src/gui/main_tabs/class_filter_tab.py` — the gate
+>
+> ```python
+> tab = getattr(self, attr, None)
+> ask = getattr(tab, "class_venues", None)
+> if not callable(ask):
+>     return False
+> return not ask(key)
+> ```
+>
+> Read on the running window, before and after one Coinbase venue is seated:
+>
+> | class | venues Paper holds, none seated | keeps its card | after Coinbase | keeps its card |
+> |---|---|---|---|---|
+> | Crypto | none | yes | Coinbase | no |
+> | Stock | none | yes | none | yes |
+> | Commodities | none | yes | none | yes |
+> | Forex | none | yes | none | yes |
+>
+> Once the class has a venue on Paper, the note takes over again. A tab that does
+> not answer which venues it holds is untouched by this: the History tab and the
+> Simulator tab draw their notes exactly as before, read on the running window at
+> all three widths under all four classes, 134 values compared and none of them
+> moved but Paper's own.
 
-Once the class has a venue on Paper, the note takes over again. A tab that does
-not answer which venues it holds is untouched by this: the History tab and the
-Simulator tab draw their notes exactly as before, read on the running window at
-all three widths under all four classes, 134 values compared and none of them
-moved but Paper's own.
+True today: the gate is gone. `_tab_keeps_card` is removed from
+`src/gui/main_tabs/class_filter_tab.py`, and no tab needs an exemption, because
+no tab is ever replaced. Paper is no longer the one tab that keeps its page — the
+History tab and the Simulator tab keep theirs on the same rule, and so does every
+other filtered tab.
 
 ### One venue list, read by every consumer
 
