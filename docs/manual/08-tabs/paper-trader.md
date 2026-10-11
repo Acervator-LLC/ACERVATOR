@@ -2281,15 +2281,27 @@ pushes a button off the right edge.
 own. The window keeps the active class, the settings file stores it for the next
 launch, and the window tells the Paper tab which class that is.
 
-`src/gui/main_tabs/class_filter_tab.py` — the table that reaches Paper
+`src/gui/main_tabs/class_filter_tab.py` — the list that reaches Paper
 
 ```python
-SELF_COUNTING_TABS = {
-    "History": "_history_tab",
-    "Sim": "_simulator_tab",
-    "Paper": "_paper_trader_tab",
-}
+SELF_COUNTING_TABS = ("_history_tab", "_simulator_tab", "_paper_trader_tab")
 ```
+
+OVERTAKEN, quoted whole:
+
+> `src/gui/main_tabs/class_filter_tab.py` — the table that reaches Paper
+>
+> ```python
+> SELF_COUNTING_TABS = {
+>     "History": "_history_tab",
+>     "Sim": "_simulator_tab",
+>     "Paper": "_paper_trader_tab",
+> }
+> ```
+
+True today: the tab titles were keys only the removed note needed, so the table
+is a plain list of the three window attributes. `_refilter_class_tabs` reads it
+and hands the sector to each tab's own `set_asset_class`.
 
 ### Paper's Add Exchange button follows the active class
 
