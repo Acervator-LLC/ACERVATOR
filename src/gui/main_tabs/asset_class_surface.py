@@ -626,7 +626,10 @@ def markets_of_class(rows: Any, venue_id: Any, name: Any, recorded: Any = None) 
     """Every market row of ``rows`` whose ``symbol_class`` on ``venue_id`` is
     one asset class, in the order given.
 
-    An empty ``name`` narrows nothing.
+    OVERTAKEN, quoted whole: "An empty ``name`` narrows nothing." True today:
+    ``normalise`` answers the first declared class for a name it does not
+    recognise and never answers an empty string, so an empty ``name`` narrows
+    to crypto and the guard below is unreachable.
     """
     key = normalise(name)
     listed = [one for one in (rows or []) if isinstance(one, dict)]

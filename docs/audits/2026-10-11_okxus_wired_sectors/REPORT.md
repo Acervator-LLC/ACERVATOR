@@ -596,6 +596,68 @@ four offered counts and `known_venues`, which are this unit's own arithmetic.
 
 ---
 
+## The narrowed product list reaches the recorded sector
+
+`src/gui/main_tabs/asset_class_surface.py, in markets_of_class` was driven over
+the 1152 recorded rows, so the list the operator picks a market from is the one
+the recording holds.
+
+```
+markets_of_class crypto        1013
+markets_of_class stocks         135
+markets_of_class commodities      4
+markets_of_class indices          0
+markets_of_class forex            0
+markets_of_class futures_perps    0
+symbol_class XAAPL/USDT -> stocks       BTC/USDT -> crypto
+symbol_class PAXG/USDT  -> commodities  NOT/AREAL -> crypto
+```
+
+The six counts sum to 1152, so no recorded row falls outside the sectors the
+surface offers.
+
+### A false sentence found in that function, and corrected
+
+`markets_of_class` stated "An empty `name` narrows nothing." It is not true.
+`src/gui/main_tabs/asset_class_surface.py, in normalise` answers the first
+declared class for a name it does not recognise, and never answers an empty
+string, so the guard that would return every row is unreachable.
+
+```
+normalise('')          -> 'crypto'
+normalise(None)        -> 'crypto'
+normalise('   ')       -> 'crypto'
+normalise('notaclass') -> 'crypto'
+an empty answer from normalise is reachable: False
+CONTROL normalise('stock') -> 'stocks'   normalise('stocks') -> 'stocks'
+
+markets_of_class(name='')       kept 1 of 3   BTC/USDT
+markets_of_class(name=None)     kept 1 of 3   BTC/USDT
+CONTROL name='stocks'           kept 1 of 3   XAAPL/USDT
+CONTROL name='crypto'           kept 1 of 3   BTC/USDT
+```
+
+An empty name narrows to crypto. The sentence stays verbatim under the
+OVERTAKEN convention with a True today line beneath it, and the guard stays,
+because removing it would be a change this unit did not measure the need for.
+
+---
+
+## The private route exists on the company's own host
+
+Incidental, and recorded because it bears on row four. `load_markets` on this
+id calls `fetch_currencies`, which is a private route, once an `apiKey` is set —
+the same shape the parent id has. A placeholder key reached
+`us.okx.com/api/v5/asset/currencies` and the host answered
+`{"msg":"Invalid OK-ACCESS-KEY","code":"50111"}` with HTTP 401.
+
+So the private route exists on OKX INC's own host and rejects a key it does not
+know. Nothing authenticated, and every reading on this page was taken from the
+credential-free route, which is why the markets were loaded before any
+placeholder was assigned.
+
+---
+
 ## What was read
 
 Every reading was taken in a process whose home directory was redirected to a
