@@ -139,6 +139,13 @@ if _HAS_QT:
             # token between the press that opens the page and the press that
             # sends the code back.
             self._authorizing: dict = {}
+            # _sync_credential_kind hides each row's label beside its row, and
+            # only _create_exchange_tab holds one. The React build draws no Qt
+            # form and reaches that method through the Add press, so the three
+            # names are declared here and answer None on that build.
+            self._api_key_label = None
+            self._api_secret_label = None
+            self._verification_code_label = None
             # normalise resolves the legacy wing word "stock" onto "stocks".
             self._wing = acs.normalise(wing)
             self._setup_ui()
