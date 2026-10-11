@@ -575,8 +575,15 @@ ORDER_TYPES_DECLARED = (ORDER_TYPES_WITH_MARKET, ORDER_TYPES_LIMIT_ONLY)
 # trading: market, limit, stop_limit". One endpoint, ``POST /v2/orders``, serves
 # an equity, a crypto pair and an index option alike, and its own Index Options
 # page confirms it: "Index options use the same contracts, orders, positions,
-# and activities surfaces you already use for equity options". forex and
-# futures_perps hold no row, because the venue records no market under either.
+# and activities surfaces you already use for equity options". The indices row
+# governs no recorded market yet, because the index-option contract list is
+# ``/v2/options/contracts`` and ``AlpacaConnector.list_assets`` reads
+# ``/v2/assets``; the row is the venue's own published answer for the sector and
+# fires the moment that second list reaches the connector. forex and
+# futures_perps hold no row for a different reason, which is that the venue
+# publishes no order route for either: no currency word sits in its own ten-word
+# ``AssetClass`` enum, and ``crypto_perp`` sits there with no endpoint and no
+# page behind it.
 CITED_VENUE_ORDER_TYPES: dict[tuple[str, str], str] = {
     (CLASS_CRYPTO, "coinbase"): ORDER_TYPES_WITH_MARKET,
     (CLASS_CRYPTO, "gemini"): ORDER_TYPES_LIMIT_ONLY,
