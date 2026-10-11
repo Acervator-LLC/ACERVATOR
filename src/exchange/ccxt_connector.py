@@ -379,6 +379,12 @@ ASSET_CATEGORY_KEY = "category"
 #: is a mapping rather than the row list itself.
 ASSET_SECTOR_ROWS_KEY = "data"
 
+#: The separator an instrument id puts between its base asset and the rest of
+#: the id. A record naming it as its ``code_leg`` has ``_read_asset_sector_rows``
+#: take the asset code off the text before the first one, which is the only
+#: place a venue publishing no base-code field names the code.
+ASSET_CODE_LEG = "-"
+
 
 @dataclass(frozen=True)
 class AssetSectorRecord:
@@ -386,13 +392,14 @@ class AssetSectorRecord:
 
     ``_published_asset_sectors`` calls ``method`` once per entry in
     ``requests``, reads each row's ``code_key`` as the asset code and its
-    ``sector_key`` as the sector, and translates that sector through ``words``
-    before ``asset_class_named`` resolves it.
+    ``sector_key`` as the sector, narrowed by ``code_leg``, and translates that
+    sector through ``words`` before ``asset_class_named`` resolves it.
     """
 
     method: str
     requests: tuple[dict[str, str], ...] = ()
     code_key: str = ASSET_CODE_KEY
+    code_leg: str = ""
     sector_key: str = ASSET_CATEGORY_KEY
     words: Mapping[str, str] = MappingProxyType({})
 
@@ -414,9 +421,38 @@ NO_PUBLISHED_FAMILY = ""
 #: ``category``, and publishes no currency and no index family. Its ``crypto``
 #: word names what Gate.io's empty list names, so it maps onto
 #: ``NO_PUBLISHED_FAMILY`` and a crypto-underlying perpetual keeps the sector
-#: ``is_contract_market`` gives it.
+#: ``is_contract_market`` gives it. OKX's ``/public/instruments`` carries an
+#: ``instCategory`` per instrument, which its own documentation calls "the asset
+#: category of the instrument's base asset (the first segment of the instrument
+#: ID)" and numbers "1: Crypto 3: Stocks 4: Commodities 5: Forex 6: Bonds"
+#: against "": Not available. It refuses a call with no ``instType``, publishes
+#: no index value in the vocabulary at all, and publishes ``5`` on none of its
+#: instruments. ``1`` names what Gate.io's empty list names, and ``6`` names a
+#: sector ``ASSET_CLASSES`` does not draw, so both map onto
+#: ``NO_PUBLISHED_FAMILY``.
 VENUE_ASSET_SECTOR_RECORDS: dict[str, AssetSectorRecord] = {
     "gateio": AssetSectorRecord(method="publicSpotGetCurrencies"),
+    "okx": AssetSectorRecord(
+        method="publicGetPublicInstruments",
+        requests=(
+            {"instType": "SPOT"},
+            {"instType": "MARGIN"},
+            {"instType": "SWAP"},
+            {"instType": "FUTURES"},
+        ),
+        code_key="instId",
+        code_leg=ASSET_CODE_LEG,
+        sector_key="instCategory",
+        words=MappingProxyType(
+            {
+                "1": NO_PUBLISHED_FAMILY,
+                "3": "stocks",
+                "4": "commodities",
+                "5": "forex",
+                "6": NO_PUBLISHED_FAMILY,
+            }
+        ),
+    ),
     "bitget": AssetSectorRecord(
         method="publicUtaGetV3MarketInstruments",
         requests=(
@@ -2428,7 +2464,10 @@ class CCXTConnector(ExchangeInterface):
         for row in rows:
             if not isinstance(row, dict):
                 continue
-            code = str(row.get(record.code_key) or "").strip().upper()
+            published_code = str(row.get(record.code_key) or "")
+            if record.code_leg:
+                published_code = published_code.split(record.code_leg)[0]
+            code = published_code.strip().upper()
             if not code or found.get(code):
                 continue
             named = row.get(record.sector_key)

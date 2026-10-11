@@ -167,6 +167,12 @@ EXTRA_VENUE_CLASSES = {
     "kraken": ("stocks", "commodities", "forex", "indices", "futures_perps"),
     "kucoin": ("stocks", "commodities", "futures_perps"),
     "mexc": ("stocks", "futures_perps"),
+    # OKX's own instrument record numbers five asset categories — 1 Crypto,
+    # 3 Stocks, 4 Commodities, 5 Forex, 6 Bonds — and no index number exists in
+    # that vocabulary. Nine index-fund tickers are listed, SPY and QQQ among
+    # them, and each publishes 3, so the indices row offers the venue and its
+    # recording answers no market under that sector. The venue publishes 5 on
+    # none of its 2191 instruments, so forex is absent from this row.
     "okx": ("stocks", "commodities", "indices", "futures_perps"),
     "alpaca": ("crypto", "commodities", "indices"),
     "etrade": ("commodities", "indices"),
