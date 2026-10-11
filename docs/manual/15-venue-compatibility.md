@@ -9266,3 +9266,562 @@ True on all six, and the difference in both directions is **0**. Before this uni
 it answered False on all six, because `BROKER_CONNECTORS` held no `etrade` row at
 all. Of the six offered, **4** reach the published order route and **2** are
 refused at `order_body` with the venue's own enum as the reason.
+
+## Fidelity, read from its own hosts on 2026-10-11
+
+Eighth and last broker in the exchange-by-exchange rhythm, and the only one with
+no order route at all. Everything below was read from Fidelity's own hosts with
+no credential sent, no developer account registered, and no order previewed,
+placed, amended or cancelled.
+
+One corpus was pinned before anything was counted: 53 pages across four live
+`fidelity.com` hosts, 14,105,230 bytes flattened to 888,215 characters of text —
+`www.fidelity.com` 50 pages, `institutional.fidelity.com` 1,
+`clearingcustody.fidelity.com` 1 and `capitalmarkets.fidelity.com` 1 — plus two
+pages on `www.fidelitydigitalassets.com` at 10,560 characters and two sitemaps
+listing 3,203 and 9,670 unique URLs. Four pages on `developer.fil.com` were read
+as a detour and belong to a different firm.
+
+### What this page said about Fidelity, and what is true now
+
+OVERTAKEN, quoted whole:
+
+> Fidelity holds stocks alone because its host refused every request, the control
+> included.
+
+True today: the host refuses nothing. `www.fidelity.com` answers **200 at 473,350
+bytes** on its home page and 200 on all 50 pages read, and its own sitemap lists
+3,203 URLs. What is true is the narrower sentence that follows: Fidelity
+publishes no trading API, and that is the venue's own absence rather than its
+host's.
+
+OVERTAKEN, quoted whole:
+
+> | fidelity | stocks |
+
+True today: Fidelity serves **four** sectors and the screen offered one. Its own
+Investment Accounts & Products page enumerates what it sells — "Mutual funds,
+Stocks, ETFs, Fixed income bonds & CDs, Options, Crypto, Alternative investments,
+Margin trading, Precious metals, International" — and four of those words reach a
+sector this platform draws. `venue_classes("fidelity")` now answers crypto,
+stocks, commodities and indices.
+
+OVERTAKEN, quoted whole:
+
+> | Fidelity | none reachable | no retail trading API is published | none |
+
+True today: the API half is correct and the products half is not. Fidelity sells
+US-listed equities and ETFs, five crypto assets, three spot crypto ETPs and
+physical gold, silver, platinum and palladium. None of them reaches a program
+route.
+
+OVERTAKEN, quoted whole:
+
+> | Fidelity | no | no | it publishes no trading API. Fidelity, read 2026-09-24 |
+
+True today: the first column is wrong. **Fidelity sells fractional shares on both
+sides at a three-decimal grain**, which its own Fractional Shares page has
+published for years: "Fractional share quantities can be entered out to 3 decimal
+places (.001) as long as the value of the order is at least $1.00." The second
+column stands — no API means no automated order of any size.
+
+OVERTAKEN, quoted whole:
+
+> | Fidelity | **no** | **no** | no retail trading API is published |
+
+True today: the same correction. The fractional column reads yes and the API
+column reads no.
+
+OVERTAKEN, quoted whole:
+
+> | Interactive Brokers, Schwab, tastytrade, E\*TRADE, Webull, TD Ameritrade, Fidelity | stocks | no | no module names any of the seven |
+
+True today: six of the seven now hold a connector the program constructs, and
+Fidelity is the sixth. `src/stocks/alpaca_connector.py, at BROKER_CONNECTORS`
+holds eight venue ids. TD Ameritrade is the one row still naming no module, and
+its developer host still has no DNS record.
+
+OVERTAKEN, quoted whole:
+
+> Fidelity          the retail product pages, which publish no trading API
+
+True today: the line is correct and now carries its measurement. Over the 53
+pages, 888,215 characters, the word "API" names **0**.
+
+**Whose words each row carried.** Every Fidelity row on this page before today
+cited "Fidelity, read 2026-09-24" — the venue's own pages, not a third party, so
+none of them repeats the webull problem where the old rows came from TradersPost.
+What went wrong instead is narrower: the 2026-09-24 reading found the API absence
+and then wrote the fractional column from it, and Fidelity's own fractional page
+was never opened.
+
+### Why there is no connection to make, and how that was proven
+
+Fidelity has **no API host**. `api.fidelity.com`, `developer.fidelity.com`,
+`developers.fidelity.com` and `apis.fidelity.com` each have **no DNS record**,
+where `www.fidelity.com` and `institutional.fidelity.com` both resolve through
+Akamai.
+
+The census over the 53 pages, matching on word boundaries:
+
+| word | count | | word | count |
+|---|---|---|---|---|
+| `API` | **0** | | `swagger` | **0** |
+| `APIs` | **0** | | `OpenAPI` | **0** |
+| `OAuth` | **0** | | `webhook` | **0** |
+| `SDK` | **0** | | `FIX` | **0** |
+| `endpoint` | **0** | | `programmatic` | **0** |
+| `automated trading` | **0** | | `application programming` | **0** |
+| `algorithmic trading` | **0** | | `REST` | 1, and it is "the rest" |
+
+Positive controls on the same corpus: `Fidelity` **3,381**, `trading` **1,159**,
+`ETFs` **321**, `stocks` **278**, `fractional` **118**, `limit order` **33**.
+A reword control fires too: three `fractional` reworded inside their own
+sentences take the count from 118 to 115 and the invented word from 0 to 3.
+
+The two-sided control runs on the same firm's own name. The identical instrument
+over Fidelity International's `developer.fil.com`, 4 pages and 6,348 characters,
+answers `API` **28**, `APIs` **12** and `OAuth` **1** — so the counter finds the
+word where it exists. That portal then shuts itself, quoted whole from its own
+API Catalog page:
+
+> "No API documentation is currently available."
+
+The page carries a Swagger UI module, which is the control proving it would have
+rendered a spec had one been published. Its footer reads "© FIL Limited 2026", a
+different firm from the US broker this venue id names.
+
+What Fidelity offers in place of a route, quoted whole from the one page in the
+whole corpus with the word "developer" on it:
+
+> "Custody & Trading with Fidelity Digital Assets® Institutional clients can log
+> in below to access the Fidelity Digital Assets® Custody and Trading Platform."
+> "Trade with Fidelity Crypto® U.S. individual investors can log in and trade
+> through their Fidelity Crypto® accounts."
+
+Two doors, and both are a log-in. The "developer resources" on that page are a
+token contract and nothing else — "Name of Token: Fidelity Digital Dollar / Token
+Symbol: FIDD / Available chain(s): Ethereum / Smart Contract Standard: ERC-20" —
+plus a GitHub repository and an OpenZeppelin audit.
+
+**An unofficial route exists and this platform refuses it.** A third-party project
+publishes a reverse-engineered client for the Fidelity Trader+ desktop
+application, built by reading that application's network traffic. It is not a
+venue API, Fidelity does not publish it, and no line of this tree touches it.
+
+### Host calibration, three-way
+
+The absences on this venue have to be read against three different answers, and
+the middle one is the trap.
+
+| probe | answer | what it proves |
+| --- | --- | --- |
+| a real page on `www.fidelity.com` | 200 at 218,000–582,000 bytes with its own `<title>` | the page exists |
+| an invented top-level path | 403 at 243–263 bytes | the path does not exist |
+| an invented leaf under a real directory | **400 at 31,888 bytes** | the leaf does not exist, and nothing else |
+| `/api` | 404 at 85 bytes | a fourth answer again |
+
+`/trading/api`, `/trading/futures`, `/trading/extended-hours-trading`,
+`/go/developer`, `/about-fidelity/technology` and `/trading/trader-plus` each
+answer 400 at **31,888 bytes, byte-identical to `/trading/ZZZ-NO-SUCH-LEAF-CONTROL`**.
+A 400 there names nothing on its own. `capitalmarkets.fidelity.com` answers
+**404 at 25,655 bytes for every path**, real-sounding and invented alike.
+`institutional.fidelity.com` answers 404 at 20,665 for both.
+
+The negative control, on hosts that do publish an order route: the same
+credential-free probe answers 200 for every other broker in this rhythm —
+E\*TRADE's order reference at 686,928 bytes, Alpaca's at 824,486, Schwab's
+product page at 55,033, Webull's place-order page at 24,771. Fidelity has no such
+host to probe.
+
+### The four firms behind the four sectors
+
+| product | legal entity, in its own words | publishes a program route |
+| --- | --- | --- |
+| equities, ETFs, mutual funds, options | Fidelity Brokerage Services LLC, custody by National Financial Services LLC | no |
+| spot crypto and FIDD | "Fidelity Digital Asset Services, LLC, which is chartered as a limited purpose trust company by the New York State Department of Financial Services to engage in virtual currency business (NMLS ID 1773897)" | no |
+| physical metals | orders "are handled by National Financial Services LLC (NFS)… NFS processes precious metal orders through FideliTrade which is not affiliated with either FBS or NFS" | no |
+| institutional equities, options, fixed income and FOREX | "Fidelity Capital Markets is a division of National Financial Services LLC" | no, and not for a retail account |
+
+### stocks and indices — one object, one set of rules
+
+The market is a US-listed NMS share or ETF, "more than 7,000 US Stocks and ETFs"
+by the venue's own count. Its own words on which: "With fractional shares or
+dollar-based orders, you can trade National Market System (NMS) exchange-listed
+stocks. This includes stocks listed on the NYSE or Nasdaq."
+
+`CITED_UNIT_RULES` takes `FRACTIONAL_UNITS` for both sectors, at a three-decimal
+grain with a one-dollar floor, rounded down: "Executions will be rounded down to
+the nearest .001 shares." The fraction reaches **both sides**, which separates
+Fidelity from E\*TRADE — "any future sell orders will need to include the whole
+and fractional share amounts that you want to trade".
+
+**Fidelity is the seventh different fractional answer among eight brokers, and the
+first to grant the fraction on both sides and then withdraw it by the hour.**
+
+| broker | the rule |
+| --- | --- |
+| Alpaca | fractional venue-wide |
+| Schwab | fractional venue-wide, four decimal places |
+| Interactive Brokers | the API is whole venue-wide, though its apps are not |
+| tastytrade | published per equity |
+| Webull | capped at one share on both entry shapes |
+| E\*TRADE | a fractional buy, and a fractional sale refused |
+| Fidelity | both sides at .001, and **regular session only** |
+
+### The session moves both the type and the size, and Fidelity is the first
+
+Every broker before this one moved one or the other. Schwab and E\*TRADE move the
+order **type**; Webull moves the **size**. Fidelity publishes both, in its own
+words.
+
+The type:
+
+> "Fidelity will accept limit orders in the extended-hours trading sessions; all
+> other order types are ineligible for trading during extended-hours. Good 'til
+> canceled (GTC) orders are not available for extended-hours trading sessions."
+
+The size:
+
+> "Both dollar-based and fractional share orders are only eligible for execution
+> during normal market hours."
+
+`CITED_VENUE_SESSIONS` takes `SESSION_US_EQUITY` for stocks and indices, and that
+one word drives both: `src/trading/scrumming/sizing.py, in session_unit_rule`
+raises the rule to whole shares outside 9:30–16:00 ET, and
+`src/trading/scrumming/sizing.py, in session_order_types` raises the type to
+limit-only in the same window.
+
+Fidelity's own extended windows are narrower than the shared ones — "Orders for
+the premarket session can be placed from 7:00 a.m. to 9:28 a.m. ET. Orders in the
+after-hours session can be placed from 4:00 p.m. to 8:00 p.m. ET" — so
+`src/stocks/fidelity_connector.py, in equity_session` reads the venue's own
+boundaries. Driven at six hours on one weekday:
+
+| moment, Eastern | the window | a market order | a fraction |
+| --- | --- | --- | --- |
+| 05:30 | closed | no | no |
+| 07:30 | premarket | no | no |
+| 09:29 | closed | no | no |
+| 10:40 | regular | **yes** | **yes** |
+| 18:00 | after hours | no | no |
+| 22:30 | closed | no | no |
+
+09:29 reads closed because Fidelity's premarket ends at 9:28 and its regular
+session starts at 9:30, a one-minute gap the venue publishes itself.
+
+Two further order desks publish their own hours and neither is a session word, so
+`src/stocks/fidelity_connector.py, in order_window` holds both and
+`src/stocks/fidelity_connector.py, in order_refusal` reads them. An order outside
+a desk's own window is refused by name.
+
+| desk | the published window | driven |
+| --- | --- | --- |
+| the crypto ticket | 1:00–24:00 Eastern | 00:30 refused, 01:30 taken, 23:30 taken |
+| the metals desk | 8:00–15:00 Eastern | 07:30 refused, 09:00 taken, 14:59 taken, 15:30 refused |
+
+A crypto **fund share** takes the equity session and not the ticket's hours, so
+`order_window` reads `src/stocks/fidelity_connector.py, in crypto_symbol` before
+the product word. Driven at 00:30 Eastern: FBTC passes and BTC/USD is refused.
+
+Control: an equity record carries no window refusal at any of those hours, and a
+record given no moment carries none either.
+
+There is a second entry shape on the same ticket and it is a cash amount:
+"Dollar-based trades can be entered out to 2 decimal places (e.g. $250.00)." That
+shape is `VARIANT_CASH_AMOUNT`, which `VARIANTS_BUILT` does not hold, so this
+connector names the share quantity and never the dollar amount.
+`CITED_CASH_MARKET_BUY` takes no fidelity row for the same reason.
+
+**No round-lot rule.** Over the 888,215 characters, `odd lot` names **0** where
+`round lot` names 4, every one of the four about how a multi-lot limit order
+fills.
+
+**Settlement is published.** `CITED_VENUE_SETTLEMENT` takes both equity-route
+sectors at 1.0 on the venue's own sentence: "most securities have a settlement
+date that occurs on trade date plus 1 business days (T+1)."
+
+### crypto — five assets, a 1% fee and a 23-hour day
+
+Fidelity Crypto lists five assets, each named on its own pages: bitcoin (BTC),
+ethereum (ETH), litecoin (LTC), solana (SOL) and the Fidelity Digital Dollar
+(FIDD). Crypto also reaches the equity route as a fund share: "Spot crypto ETPs
+(exchange-traded products) are offered by Fidelity Brokerage Services" — FBTC,
+FETH and FSOL by name.
+
+| figure | the venue's own words |
+| --- | --- |
+| order types | "The Fidelity Crypto® account supports market and limit orders" |
+| time in force | "limit orders are good for the day and expire at midnight (12 a.m. ET)" |
+| minimum | "Fidelity Crypto® supports trade sizes as low as $1" |
+| maximum | "$5,000,000 for bitcoin (BTC), ethereum (ETH), and Fidelity Digital Dollar (FIDD) / $2,000,000 for solana (SOL) / $1,000,000 for litecoin (LTC)" |
+| fee | "the trading fee on buy and sell transactions as 1% of the market value of executed orders" |
+| hours | "Trading in Fidelity Crypto® accounts is available 23 hours a day, from 1 a.m. ET until midnight" |
+| cash cap | "you can buy crypto with up to 95% of your available cash when placing buy orders in coin amounts" |
+
+The fee is a field now and was a spread before, which is what `FILL_FEE_FIELD`
+exists to read: "Transaction records for trades executed before December 4, 2025,
+won't show a separate fee because the 1% fee was previously included in the price
+as a spread."
+
+`CITED_VENUE_SESSIONS` takes **no** crypto row, and the absence is not a guess.
+Twenty-three hours from 1 a.m. ET is neither `SESSION_CONTINUOUS` nor
+`SESSION_US_EQUITY`, and citing either would claim hours the venue does not
+publish. That is the reading the Schwab unit established.
+
+**FIDD is a stablecoin and it records as crypto.** Quoted whole: "The Fidelity
+Digital Dollar (FIDD) is a stablecoin pegged 1:1 to the US dollar and issued by
+Fidelity Digital Assets as an ERC-20 token on the Ethereum network."
+`CITED_VENUE_BASE_SECTORS` takes `("fidelity", "FIDD")` as crypto, the reading it
+already takes for gemini's `USD1` and bitfinex's `USDC`. No fidelity symbol needs
+`STABLECOIN_DENYLIST` in `src/exchange/market_inspector_fetcher.py`, which denies
+a quote leg and not a base.
+
+### commodities — a physical market with its own published mechanics
+
+This is the only physical market in the tree. Fidelity sells gold, silver,
+platinum and palladium as coins and bullion bars, and its own table publishes
+every mechanic:
+
+| mechanic | the venue's own words |
+| --- | --- |
+| step | "Order quantity Whole ounces, or whole numbers of coins" |
+| hours | "Order hours 8:00 a.m.–3:00 p.m. ET (limited due to volatility in the precious metals market)" |
+| minimum | "Minimum initial investment $2,500" |
+| route | "Call us at 800-544-6666 to buy precious metals or to learn more" |
+
+The published fee table, both sides:
+
+```
+Buying   $0–$9,999  2.90%   $10,000–$49,999  2.50%   $50,000–$99,999 1.98%   $100,000+ 0.99%
+Selling  $0–$49,999 2.00%   $50,000–$249,999 1.00%   $250,000+       0.75%
+```
+
+Sixteen products are named by fine content, from a 1⁄10 oz Gold American Eagle to
+a 1,000 oz Silver Bullion Bar. `CITED_UNIT_RULES` takes `WHOLE_UNITS`, and
+`src/trading/scrumming/sizing.py, in sector_variant` selects
+`VARIANT_WHOLE_UNIT`, which `VARIANTS_BUILT` holds.
+`CITED_VENUE_SESSIONS` takes no commodities row for the same reason crypto takes
+none: an 8:00–15:00 window is neither declared word.
+
+The $2,500 minimum sits far above `WHOLE_UNIT_POSITION_MINIMUM` of two units at a
+gold price, so the venue's own dollar minimum is the binding floor rather than the
+platform's unit minimum.
+
+Commodities also reaches the equity route as a fund share, which is the reading
+the E\*TRADE unit landed, so the sector holds two kinds of market on one venue.
+
+### forex — no, and it is the first "no" in eight venues
+
+Fidelity lists no currency market for a retail customer. Over the 53 pages,
+888,215 characters: `forex` names **3** and all three sit on
+`capitalmarkets.fidelity.com`; `FX` **0**; `currency pair` **0**; `spot forex`
+**0**. Over the 3,203 URLs on its own retail sitemap, `forex` names **0**.
+Positive controls on the same corpus: `ETFs` 321, `stocks` 278.
+
+The three hits are an institutional division, quoted whole:
+
+> "Fidelity Capital Markets® (FCM) provides innovative trading and technology
+> solutions, and execution services across multiple asset classes for
+> institutional investors. Our offerings include a suite of electronic brokerage
+> products for equities, options, prime brokerage, securities lending, fixed
+> income, FOREX, and underwriting for municipal bonds and bank issued brokered
+> CDs."
+
+> "Fidelity Capital Markets is a division of National Financial Services LLC,
+> Member NYSE, SIPC"
+
+FCM names its own customers — "asset managers, hedge funds, family offices,
+endowments" — and publishes no spec, no onboarding and no route: every path on
+that host answers 404 at the same 25,655 bytes.
+
+The one currency surface a retail customer reaches is a wire, not a market:
+
+> "The amount of currency you request is transferred in-kind (e.g., euros to
+> euros) between financial institutions. Transfers are processed as a wire via
+> the Society for Worldwide Interbank Financial Telecommunications (SWIFT)."
+
+Fifteen currencies are listed and the page's own instruction is "You'll need to
+contact a Fidelity International Trader at 800-544-2976 to complete the
+transaction." No price, no pair, no quote, no order. The second surface is
+settlement on an international stock: "Trade in 25 countries and exchange between
+16 currencies", where the market is the foreign share.
+
+`EXTRA_VENUE_CLASSES` offers fidelity under no forex row, and it should not.
+
+### futures_perps — no
+
+Fidelity sells no futures. `futures` names 26 of the 888,215 characters and not
+one is a product: the hits are a learning article titled "Using futures as an
+indicator", the SIPC notice that "commodity futures contracts and precious metals"
+are not SIPC-eligible, and index-futures prose inside that article. `perpetual`
+names **0**.
+
+Four enumerations of Fidelity's own products were read and not one names a
+futures market or a currency market: the Investment Accounts & Products page, the
+site navigation on all 50 pages ("Stocks, ETFs, Crypto | Mutual Funds | Fixed
+Income, Bonds & CDs | Options | IPOs | Annuities"), the Trading section's
+Investment Choices sub-navigation (five links: stock trading, options trading,
+gold-silver-platinum, international investments, investment research), and the
+commissions table (five product rows: Stocks, Options, ETFs, Bonds and CDs,
+Mutual Funds).
+
+Over the 3,203 URLs on its own retail sitemap `futures` names 1 and it is that
+article. Over Fidelity Institutional's own 9,670 URLs it names 1 and that is a
+managed-futures strategy paper. Every other broker in this rhythm published a
+futures product table with symbols and tick sizes — E\*TRADE 91 codes, Schwab
+139, tastytrade 68, Webull 22. Fidelity publishes none.
+
+### The fee per fill, per sector
+
+| sector | the venue's own figure |
+| --- | --- |
+| stocks, indices | "$0 commissions for online US stock, ETF, and option trades", plus on every sale "an additional assessment fee that ranges from $0.01 to $0.03 per $1,000 of principal" |
+| crypto | "1% of the market value of executed orders", buy and sell |
+| commodities | the percentage table above, 2.90% down to 0.99% buying and 2.00% down to 0.75% selling |
+
+A professional tier is published too: "$0.001 per share rounded up to the nearest
+$0.01 on a per order basis" for a "Professional Equity Trader".
+
+### The four figures, and all four are not established
+
+Realised profit, the fee total, the cost basis and the unrealised figure each sit
+behind the log-in. There is no published record schema to read any of them from,
+so this unit reports all four as **not established**, never as absent. Robinhood
+publishes none, Alpaca settles three, Interactive Brokers publishes all four,
+Webull three, Schwab is unestablished — Fidelity is the second unestablished, and
+for a different reason: Schwab has a route it will not document, Fidelity has no
+route.
+
+### The paged ledger, and the walk this unit did not write
+
+Fidelity publishes no ledger route, no page size and no continuation token.
+`PUBLISHES_FILL_HISTORY` reads False and **no walk is written at all**, which is
+the reading the Schwab unit established: a walk with no published cap reads a
+short page as the end of the history, and that defect cost Alpaca 150 fills and
+tastytrade 261 rows.
+
+### US-person eligibility, read from the venue's own per-state table
+
+The footer of **50 of the 53 pages** reads "This is for persons in the US only."
+No state is refused for any product.
+
+The crypto page is a per-state table and the table was read rather than a window:
+**50 of 50 states** carry their own paragraph, and every one of the 50 reads that
+"Fidelity Digital Assets® provides custody and trading of cryptocurrencies in
+Fidelity Crypto® accounts". New York is **not** refused, unlike Schwab and
+Crypto.com. Hawaii, Ohio, Arizona, Louisiana and Nevada are not refused. The
+control is an invented state name, which the same instrument answers False for,
+so a missing paragraph would have been seen.
+
+The only exceptions are the summary clause, quoted whole:
+
+> "Fidelity Crypto® for IRAs currently isn't available in California or Oregon,
+> and customers in Oregon can't buy, sell, or deposit solana (SOL). Fidelity
+> Crypto® and Fidelity Crypto® for IRAs currently aren't available in Guam,
+> Puerto Rico, U.S. Virgin Islands, or outside the U.S."
+
+California and Oregon close the **IRA** and not the account, and Oregon drops one
+of the five coins. The positive control is a page that does refuse a state: the
+same instrument finds "Forex accounts are not available to residents of Ohio or
+Arizona" on Schwab's own forex page, 200 at 451,404 bytes, where the same phrase
+names **0** of Fidelity's 53 pages.
+
+One eligibility rule is a dollar and not a place: the metals desk needs $2,500.
+
+### The ticker collision on Fidelity
+
+Every Fidelity symbol outside the crypto ticket is a security, so `NOK` is
+Nokia, `AMD` is Advanced Micro Devices and `COP` is ConocoPhillips. No currency
+leg exists in any route because no route exists: `currency pair` names **0** of
+888,215 characters. The five crypto symbols are BTC, ETH, LTC, SOL and FIDD, and
+FIDD is the one that needs a reading, which it takes on its base.
+
+### Products placed once, neither over- nor under-refused
+
+Six words in Fidelity's own enumeration name no sector this platform draws:
+Options, Mutual funds, Fixed income bonds & CDs, Annuities, IPOs and Alternative
+investments. `src/stocks/fidelity_connector.py, in order_refusal` refuses a
+record naming any of the six by name.
+
+This unit does not over-refuse. A commodity ETP and an index ETF are equity
+shares and belong in commodities and indices, which is the E\*TRADE reading. The
+physical metals belong in commodities even though they are not securities,
+because the sector is the product and not the wrapper. A mutual fund is excluded
+from the equity shape by the venue's own words — "Fund shares are priced daily
+after the close of the market" and "We do not accept limit orders for mutual
+funds" — and its ticket takes a cash amount, which is `VARIANT_CASH_AMOUNT`.
+
+### A sentence on this page about another venue, and whose words it is
+
+Fidelity's own Compare Online Brokers table states "E\*TRADE does not offer
+fractional share trading". That is Fidelity's claim about a competitor, and
+E\*TRADE's own Fractional Shares FAQ contradicts it: "Yes, E\*TRADE now offers
+fractional shares in listed Reg-NMS securities." The venue's own words govern its
+own venue, so the E\*TRADE row on this page stands as the E\*TRADE unit read it
+and this sentence is recorded and not acted on.
+
+### The eight connections, after
+
+```
+1  a connector exists and is registered   src/stocks/fidelity_connector.py, in FidelityConnector; BROKER_CONNECTORS now holds 8 ids
+2  offered under every sector it serves    4 of 4, up from 1
+3  the operator can enter its credentials  known_venues holds the id; the Add form offers it under all four
+4  a Start press builds its connector      broker_connector_class answers the class, and the session refuses by name
+5  its market rules record on connect      12 records composed, all 12 carrying a sector; the Start press does not reach them, because no session can open
+6  its orders carry the venue's shape      the published absence; place_order raises it and six product words are refused by name
+7  a built variant selects                 all four sectors name a variant VARIANTS_BUILT holds
+8  its gate decisions log under it         trade/gate/fidelity/<sector>/gate.log for all six
+```
+
+`src/stocks/broker_base.py` and `src/stocks/broker_exchange.py` take **no
+change**, as with Webull and E\*TRADE. `BrokerBase.SECTORS_SERVED` is left empty
+on purpose: a narrowed set would route a bot on a sector outside it down the
+crypto path, and ccxt 4.5.85 carries no `fidelity`, so the bot would fail with no
+sentence. `asset_class_surface.EXTRA_VENUE_CLASSES` is what narrows the screen.
+
+Row 5 is the one row that reads built in the data and unreachable on the screen,
+and the reason is named: `MainWindow._connect_broker_for_bot` returns before
+`_read_broker_markets` when the session does not open, and Fidelity's session can
+never open. The 12 records are driven directly instead, and they write a rule row
+and a sector per market with no host contacted.
+
+### The paper route on Fidelity, and what it is
+
+`HAS_PAPER_ROUTE` is False. Fidelity publishes no API host at all, so it
+publishes no sandbox one either, and `MainWindow._open_broker_session` opens a
+live session that then refuses by name.
+
+### The Fidelity verdict, per sector
+
+| sector | verdict | the cost |
+| --- | --- | --- |
+| stocks | yes-if | an order route Fidelity publishes nowhere; the product and its rules are fully published |
+| crypto | yes-if | the same absent route; a Fidelity Crypto account, which any US customer outside three territories can open |
+| commodities | yes-if | the same absent route; the metals desk takes the order by telephone and needs $2,500 |
+| indices | yes-if | the same absent route; the sector's order is an index fund share |
+| forex | **no** | the venue lists no currency market for a retail customer |
+| futures_perps | **no** | the venue lists no futures market at all |
+
+Four yes-if and two no, and **not one yes** — the only venue in the eight with
+none. Each yes-if is a yes-if and not a no because the door exists: the operator
+can trade all four sectors at Fidelity today, by hand, inside its own
+applications. What is missing is a route a program may call, and only Fidelity
+can publish it. No field name is guessed for any of them.
+
+The fullest tier is what the code is built against, and on this venue the fullest
+tier is still a log-in: a brokerage account with fractional trading enrolled, a
+Fidelity Crypto account, and the metals desk, each of which the operator opens
+once. None of the three opens a program route.
+
+The arithmetic, offered against actionable, driven with the home redirected and
+no venue contacted: the screen offered **1** sector and the venue serves **4**, a
+difference of **3** — crypto, commodities and indices. Fidelity was the narrowest
+row in the tree and this unit widens it by three. The screen over-offers nothing:
+forex and futures_perps stay absent because the venue lists no product. After
+this unit the offered set is 4, `broker_serves_sector("fidelity", …)` answers True
+on all six so every sector takes the broker route and reads the named refusal, and
+of the four offered, **0** reach an order route and **4** are refused with the
+venue's own absence as the reason. Before this unit
+`broker_serves_sector("fidelity", …)` answered False on all six, because
+`BROKER_CONNECTORS` held no `fidelity` row at all.
