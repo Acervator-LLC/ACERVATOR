@@ -403,7 +403,6 @@ if _HAS_QT:
                 self._build_proof_of_accumulation_tab()
 
             self._reorder_main_tabs(list(BAR_TAB_ORDER))
-            self._wrap_tabs_for_class()
 
             self._main_tabs.currentChanged.connect(self._on_main_tab_changed)
 
@@ -1275,7 +1274,7 @@ if _HAS_QT:
                     if s.get("bot_id") not in seen_ids:
                         all_statuses.append(s)
 
-                self._refresh_class_notes(all_statuses)
+                self._refilter_class_tabs()
 
                 # Unconditional: `update_bots([])` drops every widget when all bots go.
                 try:
