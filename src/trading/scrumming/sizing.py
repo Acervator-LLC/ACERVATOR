@@ -177,11 +177,53 @@ def venue_base_sector(venue: Any, base: Any) -> Optional[str]:
     """The sector ``CITED_VENUE_BASE_SECTORS`` cites for one base code on one
     venue, or None when the table cites none for the pair.
 
-    ``market_asset_class`` reads this first, so a venue publishing no
+    ``market_asset_class`` reads this second, so a venue publishing no
     asset-category field still records the sector its own product name gives.
     """
     key = (str(venue or "").strip().lower(), str(base or "").strip().upper())
     return CITED_VENUE_BASE_SECTORS.get(key)
+
+
+#: The sector one unified symbol belongs to on one venue, where that venue's own
+#: product names place two of its markets in different sectors under a single
+#: base code. ``market_asset_class`` reads this ahead of everything, because a
+#: base code is the wrong grain for these three markets and no base-keyed row
+#: can separate them.
+#:
+#: Every row is kucoin, and every row is the venue's own word.
+#:
+#: ``BNC`` is two assets. Its spot market is the token kucoin's own
+#: ``/api/v3/currencies`` calls "Bifrost"; its perpetual, ``BNCUSDTM``, carries
+#: ``assetClass`` ``STOCK``, ``marketType`` ``NASDAQ`` and ``subMarketType``
+#: ``US.STOCK``, and prices off ``binance_index``, ``binance_futures`` and
+#: ``finnhub``, an equity vendor. The venue's own asset record therefore names
+#: stocks for the code, which is right for the contract and wrong for the token.
+#:
+#: ``USDC/EUR`` and ``USDT/EUR`` hold a dollar token against a national
+#: currency, which ``TOKEN_UNDERLYING_CODES`` and ``FIAT_CURRENCY_CODES``
+#: already read as forex. KuCoin names the legs "USD Coin", "Tether" and
+#: "Euro", and groups both pairs under its own spot ``market`` word ``FIAT``.
+#: They are the legs of the bitfinex ``EUR/USDT`` row this table already keeps
+#: as forex, swapped. The base code cannot carry them, because ``USDC`` also
+#: bases ``USDC/USDT`` and ``USDT`` also bases ``USDT/USDC``, and a dollar token
+#: quoted against a dollar token holds no second currency.
+CITED_VENUE_MARKET_SECTORS: dict[tuple[str, str], str] = {
+    ("kucoin", "BNC/USDT"): CLASS_CRYPTO,
+    ("kucoin", "USDC/EUR"): CLASS_FOREX,
+    ("kucoin", "USDT/EUR"): CLASS_FOREX,
+}
+
+
+def venue_market_sector(venue: Any, symbol: Any) -> Optional[str]:
+    """The sector ``CITED_VENUE_MARKET_SECTORS`` cites for one unified symbol on
+    one venue, or None when the table cites none for the pair.
+
+    ``market_asset_class`` reads this first, so a venue whose own asset record
+    names one sector for a base code still records the sector its own product
+    name gives each market under that code.
+    """
+    key = (str(venue or "").strip().lower(), str(symbol or "").strip().upper())
+    return CITED_VENUE_MARKET_SECTORS.get(key)
 
 
 #: ``position_ceiling`` clamps ``position_ceiling_multiple`` to this range.
@@ -334,12 +376,24 @@ ORDER_TYPES_DECLARED = (ORDER_TYPES_WITH_MARKET, ORDER_TYPES_LIMIT_ONLY)
 # ``POST /v1/order/new``, serves every sector and composes ``exchange limit`` on
 # a spot pair and on a perpetual alike, so the declaration is the venue's and
 # not the sector's.
+#
+# KuCoin holds a row in each of the five sectors it records a market in.
+# ``declared_order_types`` reads "market and limit" off its own capability map,
+# where ``createMarketOrder`` is True, and its two order endpoints compose the
+# same ``"type":"market"`` field: ``POST /api/v1/orders`` on ``api.kucoin.com``
+# for a spot pair and the same path on ``api-futures.kucoin.com`` for a
+# contract. Indices holds no row, because the venue records no market under it.
 CITED_VENUE_ORDER_TYPES: dict[tuple[str, str], str] = {
     (CLASS_CRYPTO, "coinbase"): ORDER_TYPES_WITH_MARKET,
     (CLASS_CRYPTO, "gemini"): ORDER_TYPES_LIMIT_ONLY,
     (CLASS_COMMODITIES, "gemini"): ORDER_TYPES_LIMIT_ONLY,
     (CLASS_FOREX, "gemini"): ORDER_TYPES_LIMIT_ONLY,
     (CLASS_FUTURES_PERPS, "gemini"): ORDER_TYPES_LIMIT_ONLY,
+    (CLASS_CRYPTO, "kucoin"): ORDER_TYPES_WITH_MARKET,
+    (CLASS_STOCKS, "kucoin"): ORDER_TYPES_WITH_MARKET,
+    (CLASS_COMMODITIES, "kucoin"): ORDER_TYPES_WITH_MARKET,
+    (CLASS_FOREX, "kucoin"): ORDER_TYPES_WITH_MARKET,
+    (CLASS_FUTURES_PERPS, "kucoin"): ORDER_TYPES_WITH_MARKET,
     # Robinhood publishes market, limit, stop_loss and stop_limit.
     (CLASS_CRYPTO, "robinhood"): ORDER_TYPES_WITH_MARKET,
 }
@@ -380,6 +434,23 @@ SETTLE_LEG = ":"
 # and a market buy was read on the wire as ``amount`` 0.001 against a sell's
 # ``amount`` -0.001, so the sign carries the side and the size stays a unit
 # count.
+# ``kucoin`` is not a member, and it is the first venue to publish a cash field
+# beside a unit field on one spot endpoint. Its own Add Order page describes
+# ``size`` as "Specify quantity for currency" and offers both on a market order
+# as "(Select one out of two: size or funds)", with the funds field named as
+# cash in its Hold section: "For market price buy/sell orders that require
+# specific funds, we will hold the required funds in from your account." ccxt
+# sends ``funds`` only when the caller passes a ``cost`` parameter, and
+# ``CCXTConnector.place_order`` builds its ``extra_params`` from
+# ``client_order_id`` and ``timeInForce`` alone, so no order this platform
+# places can carry it. A market buy was read on the wire as ``size`` 0.001
+# against a sell's ``size`` 0.001. The venue's own unified endpoint states the
+# unit in a field of its own and ccxt sets it: "UTA | SPOT | `size` required.
+# Unit controlled by `sizeUnit`. Market Order: `BASECCY` (default) or
+# `QUOTECCY`", and the composed body carries ``BASECCY``.
+# ``createMarketBuyOrderWithCost`` reads True on its capability map, which names
+# the separate ``create_market_buy_order_with_cost`` method, and no caller in
+# this tree reaches it.
 CITED_CASH_MARKET_BUY: frozenset[str] = frozenset(
     {"binance", "bitget", "coinbase", "gateio"}
 )
@@ -1659,6 +1730,7 @@ __all__ = [
     "CITED_UNIT_RULES",
     "CITED_VENUE_ORDER_TYPES",
     "CITED_VENUE_BASE_SECTORS",
+    "CITED_VENUE_MARKET_SECTORS",
     "CITED_VENUE_SESSIONS",
     "CITED_VENUE_SETTLEMENT",
     "CLASS_COMMODITIES",
@@ -1787,6 +1859,7 @@ __all__ = [
     "variant_refuses_sale",
     "variant_trades_market",
     "venue_base_sector",
+    "venue_market_sector",
     "venue_order_types",
     "venue_session",
     "venue_settlement_days",

@@ -184,7 +184,20 @@ EXTRA_VENUE_CLASSES = {
     # Kraken quotes 12 spot pairs whose two legs are both a national currency
     # it lists, among them ZEURZUSD, ZGBPZUSD and AUDUSD.
     "kraken": ("stocks", "commodities", "forex", "indices", "futures_perps"),
-    "kucoin": ("stocks", "commodities", "futures_perps"),
+    # KuCoin publishes its own asset categories on two hosts. Its futures host
+    # serves assetClass on all 691 contracts — CRYPTO 527, STOCK 155, METAL 6,
+    # COMMODITY 3 — with marketType NASDAQ on the 155 and subMarketType naming
+    # the exchange: US.STOCK 134, HK.STOCK 15, KR.STOCK 5, JP.STOCK 1. Its spot
+    # host serves market on all 968 symbols, and its Stocks group holds the five
+    # xStock pairs. The recording answers 160 stocks, 12 commodities and 527
+    # futures. forex is added for two markets, USDC-EUR and USDT-EUR, which the
+    # venue groups under its own FIAT word and names "USD Coin", "Tether" and
+    # "Euro". indices is added with no market: the venue publishes no index word
+    # in either vocabulary, and each of its thirteen index-fund and sector-fund
+    # contracts — SPY, QQQ, IWM, TQQQ, SQQQ, SOXL, SOXS, UVXY, XLE, EWJ, EWY,
+    # EWZ and KORU — publishes assetClass STOCK, the reading bitget and OKX took
+    # on their own index-fund tokens.
+    "kucoin": ("stocks", "commodities", "forex", "indices", "futures_perps"),
     "mexc": ("stocks", "futures_perps"),
     # OKX's own instrument record numbers five asset categories — 1 Crypto,
     # 3 Stocks, 4 Commodities, 5 Forex, 6 Bonds — and no index number exists in
