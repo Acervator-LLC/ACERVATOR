@@ -41,19 +41,6 @@ VENUE_ID = "schwab"
 API_BASE = "https://api.schwabapi.com"
 ORDER_ROUTE = "/trader/v1/accounts/{account}/orders"
 
-#: The route listing one account's own executed trades, which answers 401 with
-#: no credential. ``/trader/v1/accounts/{n}/activities`` answers 404, so the
-#: transaction list is the only fill ledger this venue publishes.
-TRANSACTIONS_ROUTE = "/trader/v1/accounts/{account}/transactions"
-
-#: Why ``list_fills`` answers no fill. Schwab publishes ``TRANSACTIONS_ROUTE``
-#: and publishes its record's fields nowhere a credential-free reader reaches, so
-#: a reader of this ledger would name fields it never read.
-FILL_RECORD_UNPUBLISHED = (
-    "Schwab publishes the transactions route and not its record's fields, so no "
-    "fill is read"
-)
-
 #: Why ``place_order`` composes nothing. Schwab's developer portal serves one
 #: JavaScript shell of 55,033 bytes for a real product page and an invented slug
 #: alike, and the content behind it answers 401 at the same 83 bytes for both, so
@@ -246,9 +233,12 @@ class SchwabConnector(BrokerBase):
     #: ``MainWindow._open_broker_session`` opens a live session.
     HAS_PAPER_ROUTE: bool = False
 
-    #: Schwab publishes ``TRANSACTIONS_ROUTE`` and not its record's fields, so
-    #: ``BrokerExchange.get_my_trades`` raises its own sentence and never reaches
-    #: ``list_fills``.
+    #: Schwab publishes `/trader/v1/accounts/{n}/transactions`, which answers
+    #: 401 with no credential, and `/trader/v1/accounts/{n}/activities`, which
+    #: answers 404, so the transaction list is its only fill ledger. That
+    #: record's fields are published nowhere a credential-free reader reaches,
+    #: so ``BrokerExchange.get_my_trades`` raises its own sentence and never
+    #: reaches ``list_fills``.
     PUBLISHES_FILL_HISTORY: bool = False
 
     def __init__(self):
@@ -372,12 +362,10 @@ __all__ = [
     "BARE_SYMBOL_SECTOR",
     "CURRENCY_LEGS",
     "CURRENCY_SYMBOL_SEPARATOR",
-    "FILL_RECORD_UNPUBLISHED",
     "FUTURES_FAMILY_SECTORS",
     "FUTURES_SYMBOL_PREFIX",
     "ORDER_BODY_UNPUBLISHED",
     "ORDER_ROUTE",
-    "TRANSACTIONS_ROUTE",
     "VENUE_ID",
     "SchwabConnector",
     "asset_rules",
