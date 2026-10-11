@@ -228,8 +228,9 @@ kucoin, each the venue's own word.
 
 `USDC/EUR` holds a dollar token against a national currency, which
 `TOKEN_UNDERLYING_CODES` and `FIAT_CURRENCY_CODES` already read as forex. They
-are the legs of the bitfinex `EUR/USDT` row this program already keeps as forex,
-swapped. KuCoin names the three legs "USD Coin", "Tether" and "Euro" on its own
+carry the legs of bitfinex's `EUR/USDT`, which the same two code sets read as
+forex with no citation, swapped.
+KuCoin names the three legs "USD Coin", "Tether" and "Euro" on its own
 currency list and groups both euro pairs under its own spot word FIAT.
 
 **The citation's two-sided control runs through the production function.**

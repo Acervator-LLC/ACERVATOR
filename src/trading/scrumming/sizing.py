@@ -203,8 +203,9 @@ def venue_base_sector(venue: Any, base: Any) -> Optional[str]:
 #: currency, which ``TOKEN_UNDERLYING_CODES`` and ``FIAT_CURRENCY_CODES``
 #: already read as forex. KuCoin names the legs "USD Coin", "Tether" and
 #: "Euro", and groups both pairs under its own spot ``market`` word ``FIAT``.
-#: They are the legs of the bitfinex ``EUR/USDT`` row this table already keeps
-#: as forex, swapped. The base code cannot carry them, because ``USDC`` also
+#: They carry the legs of bitfinex's ``EUR/USDT``, which the same two code sets
+#: read as forex with no citation, swapped. The base code cannot carry them,
+#: because ``USDC`` also
 #: bases ``USDC/USDT`` and ``USDT`` also bases ``USDT/USDC``, and a dollar token
 #: quoted against a dollar token holds no second currency.
 CITED_VENUE_MARKET_SECTORS: dict[tuple[str, str], str] = {

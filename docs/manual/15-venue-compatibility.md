@@ -5978,8 +5978,9 @@ kucoin, each the venue's own word.
 | USDT/EUR | forex | USDT also bases USDT/USDC, the same case |
 
 KuCoin names the three legs "USD Coin", "Tether" and "Euro" on its own currency
-list, and groups both euro pairs under its own spot word FIAT. They are the legs
-of the bitfinex EUR/USDT row this program already reads as forex, swapped.
+list, and groups both euro pairs under its own spot word FIAT. They carry the
+legs of bitfinex's EUR/USDT, which the same two code sets read as forex with no
+citation, swapped.
 
 Of the 169 codes the record names, 8 are also a spot base. BNC is the one where
 the two assets differ. The other 7 agree with the record: "Apple xStock",
