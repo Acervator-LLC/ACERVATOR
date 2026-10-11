@@ -349,7 +349,40 @@ EXTRA_VENUE_CLASSES = {
     # "are available exclusively to residents of all 50 United States except New
     # York and Louisiana", with U.S. territories excluded as well.
     "schwab": ("crypto", "commodities", "forex", "indices", "futures_perps"),
-    "tastytrade": ("crypto", "commodities", "indices", "futures_perps"),
+    # tastytrade's own Available Futures Products page names nine futures
+    # families and 68 product codes, and every one of the 68 answers live on its
+    # own credential-free /symbols/search/ route as instrument-type "Future",
+    # where two invented codes answer nothing. Per sector the 68 are commodities
+    # 27 under Energy, Metals, Agriculture and Livestock, indices 14 under Equity
+    # Index and Volatility, forex 11 under Foreign Currency, crypto 5 under
+    # Cryptocurrency, and 11 under Interest Rate, a family naming no sector this
+    # screen draws, which leaves each of those 11 recording under futures_perps
+    # alone. 27 + 14 + 11 + 5 + 11 = 68. Crypto also holds 26 spot coins its own
+    # Available Cryptocurrencies page names, all 26 live. "stocks" arrives from
+    # EQUITY_VENUES, so this entry carries the other five.
+    # forex is added here, and it is the sector the screen was missing: beside
+    # the 11 Foreign Currency contracts the venue's own data names a
+    # "Currency Pair" instrument type, and SGD/JPY, EUR/USD, USD/JPY, GBP/USD,
+    # USD/NOK and EUR/GBP all read it. Spot forex is a different firm and takes
+    # no order here -- "Forex trading offered by tastyfx LLC... tastytrade and
+    # tastyfx are separate legal entities" -- and "Currency Pair" sits in the
+    # 14-word condition enum and in none of the 8 words the order route's own leg
+    # enum holds, while 0 of its 84 published paths names a currency pair. The
+    # sector's order is the currency future.
+    # Indices reaches an order the same way: "Index" is in the condition enum and
+    # not the leg enum, 0 of the 84 paths names an index, and its own
+    # Instruments & Symbology page lists five tradeable kinds -- "an equity,
+    # equity option, future, future option, or cryptocurrency" -- with neither
+    # among them. SPX, VIX, NDX, RUT, XSP and DJX all answer instrument-type
+    # "Index", and GLD answers "Equity" with etf true, so a fund share is an
+    # order leg and an index is not.
+    # No eligibility rule names a state. Quoted whole from its own International
+    # Accounts page: "International customers are welcome to open individual
+    # margin, individual cash, and joint accounts with tastytrade." Two
+    # permissions are per product: futures needs "The Works", and
+    # "Cryptocurrency trading is currently available exclusively for individual
+    # accounts".
+    "tastytrade": ("crypto", "commodities", "forex", "indices", "futures_perps"),
     "webull": ("crypto", "commodities", "indices", "futures_perps"),
     # One equity route, four sectors: each of these trades as a fund share, and
     # robinhood_broker.SECTORS_SERVED names the same four. "stocks" arrives from
