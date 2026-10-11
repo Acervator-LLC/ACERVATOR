@@ -267,14 +267,18 @@ coding_archetype known_good.py             exit 0
 coding_archetype known_bad.py              exit 1
 gui_archetype    known_good_widget.py      exit 0
 gui_archetype    known_bad_widget.py       exit 1
+gui_archetype    known_good_screen.js      exit 0
+gui_archetype    known_bad_screen.js       exit 1
 docs_archetype   known_good.md             exit 0
 docs_archetype   known_bad.md              exit 1
 docs_archetype   citation_good.md          exit 0
 docs_archetype   citation_bad.md           exit 0
 ```
 
-The citation fixture pair does not discriminate on the exit code, because the
-citation rule fires below the verdict threshold. Every path this report and the
+The GUI archetype's JavaScript fixture pair discriminates, which is the pair
+that covers `src/gui/web/settings_dialog.js`. The citation fixture pair does not
+discriminate on the exit code, because the citation rule fires below the verdict
+threshold. Every path this report and the
 manual section cite was checked on disk instead: 18 resolve, and the control
 path `src/trading/profit_fold.py` does not, which the manual page already cites
 and this unit did not add.
