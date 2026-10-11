@@ -63,14 +63,14 @@ credential-free `/symbols/search/` route:
 `/CL` alone answers **108** dated `contract-codes`. Controls: `/ZZQ` and `/QQZ`
 each answer nothing.
 
-The word census over the 30 tastytrade pages read:
+The word census over the 29 venue files read:
 
-| word | hits | pages of 30 |
+| word | hits | files of 29 |
 | --- | --- | --- |
-| futures | 754 | 25 |
-| currency | 336 | 25 |
-| crypto | 335 | 25 |
-| fractional | 56 | 5 |
+| futures | 725 | 24 |
+| currency | 327 | 24 |
+| crypto | 325 | 24 |
+| fractional | 55 | 4 |
 | **perpetual** | **0** | **0** |
 | control, an invented word | 0 | 0 |
 
@@ -353,7 +353,7 @@ speculate." That door is `Ext Overnight` on an equity whose own record permits
 it, and this platform's time in force does not reach it. Naming the overnight
 session as this platform's session would claim hours its own order cannot use.
 
-**No settlement figure.** Nothing on the 21 tastytrade pages read states an
+**No settlement figure.** Nothing on the 20 tastytrade.com pages read states an
 equity settlement period. `CITED_VENUE_SETTLEMENT` gains no stocks row, and that
 is an absence, not a zero.
 
@@ -447,7 +447,7 @@ platform is the dated contract.
 ### futures_perps — 68 contracts, and 0 perpetuals
 
 - **who** — the same three symbols
-- **what** — all **68** contracts, every one dated. `Future.expiration-date`, `Future.expires-at` and `Future.last-trade-date` are published per contract, and `contract-codes` lists them per product. **No perpetual.** The word "perpetual" names **0** of the 30 pages read; the controls on the same 30 pages are "futures" 754, "currency" 336, "crypto" 335 and "fractional" 56, and an invented word names 0. The baseline control is the venue's own 404 page, which carries "futures" 11 from the site navigation alone
+- **what** — all **68** contracts, every one dated. `Future.expiration-date`, `Future.expires-at` and `Future.last-trade-date` are published per contract, and `contract-codes` lists them per product. **No perpetual.** The word "perpetual" names **0** of the 29 venue files read; the controls on the same 29 files are "futures" 725, "currency" 327, "crypto" 325 and "fractional" 55, and an invented word names 0. The baseline control is the venue's own 404 page, which carries "futures" 11 from the site navigation alone
 - **where** — the same one order route, with `automated-source` True on every order
 - **when** — the same two moments
 - **why** — `src/trading/scrumming/sizing.py, in VARIANT_ROLLING_POSITION` is built and `expiry_close_decision` is the action, reading `MarketRules.expiry_ms` which this connector fills from the venue's own `expiration-date`
@@ -563,7 +563,7 @@ unit's refusal sat 302 lines below its sector word and cryptocom's sat in a tabl
 240 rows from its header:
 
 ```
-state or clause                  pages naming it, of 30
+state or clause                  files naming it, of 29
 New York                                             21
 Louisiana                                             0
 Ohio                                                  0
@@ -586,7 +586,7 @@ too. The 404 page is the baseline control.
 **Positive control, on a page that does refuse.** The same instrument, the same
 whole-page window, run over Charles Schwab's own forex page: "Ohio" **1**,
 "Arizona" **1**, "not available to residents" **1**, and the invented state name
-**0**. So the zero on all 30 tastytrade pages is a reading of the venue and not
+**0**. So the zero on all 29 venue files is a reading of the venue and not
 of the instrument.
 
 **Two per-product permissions, and both are a permission and not a refusal.**
@@ -622,7 +622,7 @@ the set, so the instrument would have reported a hit.
 
 - **a cash market buy this program can compose** — `CITED_CASH_MARKET_BUY` gains **0** tastytrade rows. The venue does publish a cash-amount order: `order-type` `Notional Market` with `value` and `value-effect`, and `leg.quantity` "Required for all orders but notional market". It is an **alternative**, not a requirement — every order type beside it takes a unit count — so this platform's unit count composes on the route it already uses and `VARIANT_CASH_AMOUNT` is not forced. Row 6 of this issue stays as it stands.
 - **a market-keyed sector row** — `CITED_VENUE_MARKET_SECTORS` gains **0** tastytrade rows. The venue's own `instrument-type` answers every market and its own symbology separates every colliding code.
-- **a stocks settlement row** — `CITED_VENUE_SETTLEMENT` gains **0** stocks rows. Nothing on the 21 tastytrade pages read states an equity settlement period, and an absence is not a zero.
+- **a stocks settlement row** — `CITED_VENUE_SETTLEMENT` gains **0** stocks rows. Nothing on the 20 tastytrade.com pages read states an equity settlement period, and an absence is not a zero.
 - **a base-sector row** — `CITED_VENUE_BASE_SECTORS` gains **0** tastytrade rows. No gold token and no index token: `PAXG` and `XAUT` name 0 of its 26 coins.
 - **options** — `src/trading/ata_spm.py` draws six sectors and options is not one, so `Equity Option` and `Future Option` map to no sector. **tastytrade is an options-first firm** — its own pages list 5 futures-option families and 6 option-chain routes — and this connector records neither type. Its own `/futures-option-chains/{symbol}` and `/option-chains/{symbol}` routes are read by nothing in this tree.
 - **bonds and prediction markets** — `Bond` and `Fixed Income Security` name a bond and `Event Contract` names its own Prediction Markets product, and bonds, options and event contracts are **0** of this platform's six sectors. Its Interest Rate futures family, 11 contracts, records under no sector for the same reason.

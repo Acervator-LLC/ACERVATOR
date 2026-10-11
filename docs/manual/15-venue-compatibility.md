@@ -8124,8 +8124,8 @@ holds the 57 codes whose family names one, and
 `in MARKET_SECTOR_SECTORS` reads the record's own `market-sector` field ahead of
 them.
 
-**No perpetual.** The word names **0** of the 30 tastytrade pages read, where
-"futures" names 754, "currency" 336, "crypto" 335 and "fractional" 56, and an
+**No perpetual.** The word names **0** of the 29 venue files read, where
+"futures" names 725, "currency" 327, "crypto" 325 and "fractional" 55, and an
 invented word names 0. The baseline control is the venue's own 404 page, which
 carries "futures" 11 from its site navigation alone.
 
@@ -8343,13 +8343,13 @@ secret**, exchanged at `POST /oauth/token` for an access token "valid for 15
 minutes". Every request must carry a `User-Agent` in `product/version` form or
 the venue answers 401 with an HTML body even on a valid token.
 
-The state census ran over the whole of each of 30 pages and not a window.
+The state census ran over the whole of each of the 29 venue files and not a window.
 "New York" names 21 of them and every one of its 24 hits is the Zero Hash
 licensing disclosure in the shared footer — "licensed to engage in Virtual
 Currency Business Activity by the New York State Department of Financial
 Services" — which appears on the venue's own 404 page too. "Louisiana", "Ohio",
 "Arizona", "Montana", "New Hampshire", "Rhode Island", "Puerto Rico", "50
-states" and "not available to residents" each name **0** of the 30, and so does
+states" and "not available to residents" each name **0** of the 29, and so does
 an invented state name. Positive control: the same instrument over the same
 whole-page window on Charles Schwab's own forex page finds "Ohio" 1, "Arizona" 1
 and "not available to residents" 1, and the invented state name 0.
@@ -8383,7 +8383,7 @@ control `SGD` is in the set.
 
 - **`CITED_CASH_MARKET_BUY`** gains **0** rows. The venue does publish a cash amount, as an order type of its own rather than as a rule: `Notional Market` with `value` and `value-effect`, and `legs[].quantity` "Required for all orders but notional market". The unit count is the default on all six types.
 - **`CITED_VENUE_MARKET_SECTORS`** and **`CITED_VENUE_BASE_SECTORS`** gain **0** rows each, for the symbology reason above.
-- **a stocks settlement row** gains **0**. Nothing on the 21 tastytrade pages read names an equity settlement period.
+- **a stocks settlement row** gains **0**. Nothing on the 20 tastytrade.com pages read names an equity settlement period.
 - **a candle route** — **0** of the 84 published paths holds `candle`, `bar` or `ohlc`. The 3 holding `histor` are `/accounts/{n}/net-liq/history` and two `/market-metrics/historic-corporate-events/` routes, and none is a bar route; the control is `quote`, which names 3. The venue's candles are Candle events on its DXLink streamer — "you supply a period and type in the symbol (for example `AAPL{=5m}`) plus a `fromTime` Unix-epoch timestamp" — behind `GET /api-quote-tokens` and capped at **100** Candle subscriptions a session, which is a WebSocket this connector does not open.
 - **a REST quote without a funded account** — `/market-data/by-type` states its own gate: "The combined number of symbols across all type parameters is capped at **100** per request… **Available to funded account holders only; no delayed quotes are served over REST.**"
 - **options, bonds, prediction markets, warrants and liquidity pools** map to no sector this platform draws. tastytrade is an options-first firm — its own pages list 5 futures-option families and 6 option-chain routes — and this connector records neither option type.

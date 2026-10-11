@@ -448,6 +448,15 @@ NO_ORDER_LEG_TYPE = (
     "route's own enum holds {published}"
 )
 
+#: What ``order_body`` refuses a symbol it holds no record for with. Every leg
+#: the order route takes names an ``instrument-type``, and there is no safe
+#: default: an equity word on a futures symbol would name a contract as a share,
+#: so no order is sent for a market this connector did not read.
+NO_INSTRUMENT_TYPE = (
+    "tastytrade named no instrument type for {symbol!r}, so no order is sent; "
+    "its own record carries the type each order leg requires"
+)
+
 #: What ``list_assets`` logs for each held symbol ``tradable_market`` refuses, so
 #: the operator reads which market was dropped and which type dropped it. An
 #: ``Index`` and a ``Currency Pair`` are each in the venue's own condition enum
@@ -540,9 +549,10 @@ def product_code(asset: Any) -> str:
     if not symbol.startswith(FUTURES_SYMBOL_PREFIX):
         return ""
     held = symbol[len(FUTURES_SYMBOL_PREFIX) :]
-    while held and held[-1].isdigit():
-        held = held[:-1]
-    return held[:-1] if held and not held[-1].isdigit() else held
+    stripped = held.rstrip("0123456789")
+    if stripped == held or not stripped:
+        return held
+    return stripped[:-1] or stripped
 
 
 def currency_pair_symbol(symbol: Any) -> bool:
@@ -853,6 +863,20 @@ def total_pages(answered: Any) -> int:
     return int(named) if type(named) is int and named > 0 else 0
 
 
+def walked_pages(page: int, rows: int) -> int:
+    """The page count ``list_fills`` walks to where the reply published no
+    ``PAGINATION_FIELD`` block.
+
+    The venue's own pagination guide gives the fallback: "if a response has no
+    pagination block, stop when `items` comes back with fewer than `per-page`
+    entries (or empty)", so a full page asks for one more and a short page ends
+    the walk.
+    """
+    if rows >= TRANSACTION_PAGE_SIZE:
+        return page + 2
+    return page + 1 if rows else page
+
+
 def reply_items(answered: Any) -> list:
     """Every row one reply carries under its own ``data.items``, and [] where it
     carries none.
@@ -891,7 +915,9 @@ def order_body(
     """
     held = asset if isinstance(asset, dict) else {}
     word = instrument_word(held)
-    if word and word not in ORDER_LEG_INSTRUMENT_TYPES:
+    if not word:
+        raise ValueError(NO_INSTRUMENT_TYPE.format(symbol=symbol))
+    if word not in ORDER_LEG_INSTRUMENT_TYPES:
         raise ValueError(
             NO_ORDER_LEG_TYPE.format(
                 word=word, published=tuple(sorted(ORDER_LEG_INSTRUMENT_TYPES))
@@ -943,8 +969,9 @@ class TastytradeConnector(BrokerBase):
     #: commodities from 27 contracts over its Energy, Metals, Agriculture and
     #: Livestock families, forex from its 11 Foreign Currency contracts, indices
     #: from its 12 Equity Index and 2 Volatility contracts, and futures_perps
-    #: from all 68 contracts. No perpetual: the word names 0 of the 30 pages
-    #: read, where "futures" names 754 and "crypto" 335.
+    #: from all 68 contracts. No perpetual: the word names 0 of the 29 venue
+    #: files read, where "futures" names 725, "currency" 327 and "crypto" 325,
+    #: and an invented word names 0.
     SECTORS_SERVED: tuple = (
         "crypto",
         "stocks",
@@ -1192,7 +1219,7 @@ class TastytradeConnector(BrokerBase):
         word = instrument_word(asset)
         parameter = QUOTE_TYPE_PARAMETERS.get(word, DEFAULT_QUOTE_TYPE_PARAMETER)
         answered = await self._request(
-            "GET", f"{MARKET_DATA_ROUTE}?{parameter}={str(symbol)}"
+            "GET", f"{MARKET_DATA_ROUTE}?{parameter}={self._quoted(str(symbol))}"
         )
         rows = reply_items(answered)
         row = rows[0] if rows else {}
@@ -1289,12 +1316,12 @@ class TastytradeConnector(BrokerBase):
                 f"&sort=Asc&types[]=Trade"
             )
             if symbol:
-                query += f"&symbol={str(symbol)}"
+                query += f"&symbol={self._quoted(str(symbol))}"
             answered = await self._request(
                 "GET", f"{TRANSACTIONS_ROUTE.format(account=self._account)}{query}"
             )
             rows = reply_items(answered)
-            pages = total_pages(answered) or (page + 1 if rows else page)
+            pages = total_pages(answered) or walked_pages(page, len(rows))
             for row in rows:
                 if not is_fill(row):
                     continue
@@ -1649,6 +1676,7 @@ __all__ = [
     "MARKET_DATA_ROUTE",
     "MARKET_SECTOR_SECTORS",
     "NO_BAR_ROUTE",
+    "NO_INSTRUMENT_TYPE",
     "NO_ORDER_LEG_TYPE",
     "NO_TRADABLE_MARKET",
     "ORDERS_LIVE_ROUTE",
@@ -1697,5 +1725,6 @@ __all__ = [
     "rule_number",
     "size_increment",
     "total_pages",
+    "walked_pages",
     "tradable_market",
 ]
