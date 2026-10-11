@@ -104,6 +104,17 @@ CITED_UNIT_RULES: dict[tuple[str, str], str] = {
     # Robinhood publishes asset_increment to 18 decimal places.
     (CLASS_CRYPTO, "robinhood"): FRACTIONAL_UNITS,
     (CLASS_STOCKS, "alpaca"): FRACTIONAL_UNITS,
+    # Alpaca holds a row in each of the four sectors its own AssetClass words
+    # reach. Crypto and commodities are fractional on the venue's own sentence,
+    # "All cryptocurrency assets are fractionable but the supported decimal
+    # points vary depending on the cryptocurrency", and its one commodity market
+    # is the gold token PAXG/USD on that same route. Indices is whole, because
+    # an index reaches an order as an option and its own Index Options page
+    # lists under "Not supported: IOC/FOK, trailing stop, notional, fractional
+    # contracts, extended hours, calendar/diagonal spreads".
+    (CLASS_CRYPTO, "alpaca"): FRACTIONAL_UNITS,
+    (CLASS_COMMODITIES, "alpaca"): FRACTIONAL_UNITS,
+    (CLASS_INDICES, "alpaca"): WHOLE_UNITS,
     (CLASS_FOREX, "coinbase"): FRACTIONAL_UNITS,
     (CLASS_STOCKS, "coinbase"): WHOLE_UNITS,
     (CLASS_COMMODITIES, "coinbase"): WHOLE_UNITS,
@@ -212,6 +223,18 @@ CITED_UNIT_RULES: dict[tuple[str, str], str] = {
 #: ``BTC Ecosystem`` plate and ``COP`` in its ``DeFi`` plate. ``NOK``, ``AMD``
 #: and ``SGD`` need no row either: none of the three bases a single mexc market,
 #: spot or contract.
+#:
+#: The one alpaca row is the first broker row, and ``alpaca_connector.
+#: asset_sector`` reads this table ahead of the venue's own class word. Alpaca's
+#: ``AssetClass`` enum holds ten words and none of them names a commodity, so
+#: ``PAXG`` would record as crypto under its own word; the token redeems for
+#: gold, which ``PRECIOUS_METAL_CODES`` and the cryptocom row above already
+#: answer commodities for. ``PAXG`` bases exactly one alpaca market,
+#: ``PAXG/USD``, which priced at 4185.0 on the venue's own credential-free bar
+#: route, so the base code is the right grain and the record costs no market.
+#: ``NOK``, ``AMD``, ``COP`` and ``SGD`` need no alpaca row: each is a listed US
+#: equity on this venue, none bases one of its 73 crypto pairs, and the equity
+#: reading is the one its own ``us_equity`` class word gives.
 CITED_VENUE_BASE_SECTORS: dict[tuple[str, str], str] = {
     ("bitfinex", "UKOIL"): CLASS_COMMODITIES,
     ("bitfinex", "AUSTRALIA200IX"): CLASS_INDICES,
@@ -237,6 +260,7 @@ CITED_VENUE_BASE_SECTORS: dict[tuple[str, str], str] = {
     ("bitstamp", "EWY"): CLASS_INDICES,
     ("bitstamp", "QQQ"): CLASS_INDICES,
     ("bitstamp", "MNT"): CLASS_CRYPTO,
+    ("alpaca", "PAXG"): CLASS_COMMODITIES,
     ("cryptocom", "PAXG"): CLASS_COMMODITIES,
     ("cryptocom", "XAUT"): CLASS_COMMODITIES,
     ("cryptocom", "EURC"): CLASS_FOREX,
@@ -470,9 +494,20 @@ SESSIONS_DECLARED = (SESSION_CONTINUOUS, SESSION_US_EQUITY)
 
 #: The session each ``(asset class, venue)`` publishes, keyed as
 #: ``CITED_UNIT_RULES`` is keyed. A pair absent here publishes no session.
+#
+# Alpaca holds a row in each of the four sectors it reaches. Its own Crypto
+# Spot Trading page states "Crypto trading is offered for 24 hours everyday and
+# your orders will be executed throughout the day", so crypto is continuous and
+# commodities takes the same reading because its one market, PAXG/USD, is on
+# that route. Indices is a US equity session: an index reaches an order as an
+# option, and its own Index Options page lists "extended hours" under "Not
+# supported".
 CITED_VENUE_SESSIONS: dict[tuple[str, str], str] = {
     (CLASS_CRYPTO, "coinbase"): SESSION_CONTINUOUS,
     (CLASS_STOCKS, "alpaca"): SESSION_US_EQUITY,
+    (CLASS_CRYPTO, "alpaca"): SESSION_CONTINUOUS,
+    (CLASS_COMMODITIES, "alpaca"): SESSION_CONTINUOUS,
+    (CLASS_INDICES, "alpaca"): SESSION_US_EQUITY,
 }
 
 #: The reason a held order carries, never one of ``sized_order``'s refusals.
@@ -531,6 +566,24 @@ ORDER_TYPES_DECLARED = (ORDER_TYPES_WITH_MARKET, ORDER_TYPES_LIMIT_ONLY)
 # ["LIMIT","LIMIT_MAKER"] on the other 35, and its contract
 # ``POST /api/v1/private/order/create`` takes a numbered ``type`` whose composed
 # body reads 6 for a market order and 1 for a limit order.
+#
+# Alpaca holds a row in each of the four sectors it reaches, and it is the first
+# broker to hold one at all. ``declared_order_types`` reads a ccxt capability
+# map and a broker publishes none, so the table is this venue's only source. Its
+# own order spec names market first for every security type it serves:
+# "Equity trading: market, limit, stop, stop_limit, trailing_stop" and "Crypto
+# trading: market, limit, stop_limit". One endpoint, ``POST /v2/orders``, serves
+# an equity, a crypto pair and an index option alike, and its own Index Options
+# page confirms it: "Index options use the same contracts, orders, positions,
+# and activities surfaces you already use for equity options". The indices row
+# governs no recorded market yet, because the index-option contract list is
+# ``/v2/options/contracts`` and ``AlpacaConnector.list_assets`` reads
+# ``/v2/assets``; the row is the venue's own published answer for the sector and
+# fires the moment that second list reaches the connector. forex and
+# futures_perps hold no row for a different reason, which is that the venue
+# publishes no order route for either: no currency word sits in its own ten-word
+# ``AssetClass`` enum, and ``crypto_perp`` sits there with no endpoint and no
+# page behind it.
 CITED_VENUE_ORDER_TYPES: dict[tuple[str, str], str] = {
     (CLASS_CRYPTO, "coinbase"): ORDER_TYPES_WITH_MARKET,
     (CLASS_CRYPTO, "gemini"): ORDER_TYPES_LIMIT_ONLY,
@@ -561,6 +614,10 @@ CITED_VENUE_ORDER_TYPES: dict[tuple[str, str], str] = {
     (CLASS_FUTURES_PERPS, "mexc"): ORDER_TYPES_WITH_MARKET,
     # Robinhood publishes market, limit, stop_loss and stop_limit.
     (CLASS_CRYPTO, "robinhood"): ORDER_TYPES_WITH_MARKET,
+    (CLASS_CRYPTO, "alpaca"): ORDER_TYPES_WITH_MARKET,
+    (CLASS_STOCKS, "alpaca"): ORDER_TYPES_WITH_MARKET,
+    (CLASS_COMMODITIES, "alpaca"): ORDER_TYPES_WITH_MARKET,
+    (CLASS_INDICES, "alpaca"): ORDER_TYPES_WITH_MARKET,
 }
 
 

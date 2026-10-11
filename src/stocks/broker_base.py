@@ -173,6 +173,12 @@ class BrokerBase(ABC):
     #: broker holding accounts in another currency names its own.
     CASH_CURRENCY: str = "USD"
 
+    #: Whether this broker publishes a route listing its own filled trades, read
+    #: by ``BrokerExchange.get_my_trades`` with no instance built. A broker
+    #: declaring False raises ``NO_FILL_HISTORY`` and never reaches
+    #: ``list_fills``.
+    PUBLISHES_FILL_HISTORY: bool = False
+
     def __init__(self, broker_id: str):
         self.broker_id = broker_id
         self._connected = False
@@ -313,6 +319,23 @@ class BrokerBase(ABC):
         del status
         raise NotImplementedError
 
+    async def list_fills(
+        self,
+        symbol: str = "",
+        since_ms: Optional[float] = None,
+        until_ms: Optional[float] = None,
+        limit: Optional[int] = None,
+    ) -> list[dict]:
+        """Every filled-trade record this broker publishes, narrowed to
+        ``symbol`` and to the moments ``since_ms`` and ``until_ms`` bound.
+
+        This body answers no fill, which is a broker whose
+        ``PUBLISHES_FILL_HISTORY`` is False; ``BrokerExchange.get_my_trades``
+        builds a ``Trade`` from each record a broker declaring True answers.
+        """
+        del symbol, since_ms, until_ms, limit
+        return []
+
     @abstractmethod
     async def disconnect(self):
         """Disconnect from broker."""
@@ -396,6 +419,18 @@ class BrokerBase(ABC):
         del asset
         raise NotImplementedError
 
+    def asset_sector(self, asset: Any) -> Optional[str]:
+        """The sector one of this broker's own asset records names, and None
+        where the record names none.
+
+        ``record_markets`` writes this as the recording's ``CLASS_FIELD``, so
+        ``recorded_classes`` answers a broker market's sector the way it answers
+        a ccxt venue's. This body names nothing, which keeps a broker publishing
+        no asset category recording as it did.
+        """
+        del asset
+        return None
+
     def asset_infos(self, assets: Iterable[Any]) -> list[AssetInfo]:
         """Every asset record of ``assets`` as an ``AssetInfo``, writing
         nothing.
@@ -425,15 +460,36 @@ class BrokerBase(ABC):
             )
         return built
 
+    def asset_sectors(self, assets: Iterable[Any]) -> dict[str, str]:
+        """Each asset record's symbol mapped to the sector ``asset_sector``
+        names for it, leaving out every record that names none.
+
+        ``record_markets`` hands this to ``record_venue`` as its ``classes``, so
+        a broker market records under its own sector instead of under none.
+        """
+        found: dict[str, str] = {}
+        for asset in assets:
+            if not isinstance(asset, dict):
+                continue
+            symbol = str(asset.get("symbol") or "")
+            if not symbol:
+                continue
+            sector = self.asset_sector(asset)
+            if sector:
+                found[symbol] = str(sector)
+        return found
+
     def record_markets(self, assets: Iterable[Any]) -> list[AssetInfo]:
         """Every asset record of ``assets`` as an ``AssetInfo``, recorded under
-        ``broker_id`` so ``recorded_rules`` answers each market's rules.
+        ``broker_id`` so ``recorded_rules`` answers each market's rules and
+        ``recorded_classes`` answers each market's sector.
 
         No broker is contacted, a record naming no symbol is skipped, an empty
         ``assets`` keeps the rows already recorded, and a failed write raises
         ``OSError``.
         """
-        built = self.asset_infos(assets)
+        held = list(assets)
+        built = self.asset_infos(held)
         if built:
-            record_venue(self.broker_id, built)
+            record_venue(self.broker_id, built, classes=self.asset_sectors(held))
         return built
