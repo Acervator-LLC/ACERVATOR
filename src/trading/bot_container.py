@@ -349,6 +349,9 @@ class BotContainer:
     # OVERTAKEN, the ``sized_order`` sentence above: ``contracts_for_units``
     # divides the unit count by ``MarketRules.contract_size`` first, so the step
     # floors a contract count and ``place_order`` receives one.
+    # ``market_replaces_market_order`` also reads ``session_order_types`` at the
+    # moment of the order, so a market order outside a US equity session becomes
+    # a limit order where the venue takes nothing else.
     async def guarded_place_order(
         self,
         symbol: str,
@@ -684,7 +687,7 @@ class BotContainer:
             )
 
         if (
-            market_replaces_market_order(_rules, _ref_px or None)
+            market_replaces_market_order(_rules, _ref_px or None, moment_s=_now)
             and order_type == OrderType.MARKET
         ):
             _limit_px = _rules.price_on_tick(_ref_px) if _ref_px else None

@@ -115,6 +115,34 @@ CITED_UNIT_RULES: dict[tuple[str, str], str] = {
     (CLASS_CRYPTO, "alpaca"): FRACTIONAL_UNITS,
     (CLASS_COMMODITIES, "alpaca"): FRACTIONAL_UNITS,
     (CLASS_INDICES, "alpaca"): WHOLE_UNITS,
+    # Schwab holds a row in all six sectors, and five of the six are whole
+    # because the market the sector reaches is a dated contract. Its own
+    # futures-markets table lists 139 unique contracts under ten families it
+    # names itself, and publishes a Multiplier, a Minimum Tick Size and a
+    # Settlement word on every one: stocks 55, commodities 47, indices 14,
+    # crypto 8, forex 8 and 7 under Interest Rates, a sector this platform does
+    # not draw. stocks is the one fractional row, because the equity itself is
+    # fractional on the venue's own sentence "Own fractional shares of most
+    # U.S.-listed stocks and ETFs for as little as $1", and its own brokerage
+    # agreement sets the grain: "Schwab calculates the quantity, unit price, and
+    # market price out to four decimal places if necessary". Its 55 single-stock
+    # futures still read whole, because ``recorded_unit_rule`` reads the
+    # recorded step ahead of this row. crypto is whole for the same reason: the
+    # eight CME contracts over bitcoin, ether, solana and XRP are what the
+    # sector reaches, and the Schwab Crypto spot account, which rounds down to
+    # its own "Supported Decimal Place", is not open — "you cannot currently buy
+    # and sell individual cryptocurrencies through a Schwab brokerage account".
+    # forex is whole on both of its markets: the 8 Currency contracts are whole
+    # contracts, and the 70 spot pairs trade in lots the venue's own page sizes
+    # at "100,000 units", "10,000 units" and "1,000-unit increments", each a
+    # whole number of units. That answers issue row 11 without a third member of
+    # ``UNIT_RULES``: a lot is a whole unit count, so ``WHOLE_UNITS`` holds it.
+    (CLASS_CRYPTO, "schwab"): WHOLE_UNITS,
+    (CLASS_STOCKS, "schwab"): FRACTIONAL_UNITS,
+    (CLASS_COMMODITIES, "schwab"): WHOLE_UNITS,
+    (CLASS_FOREX, "schwab"): WHOLE_UNITS,
+    (CLASS_INDICES, "schwab"): WHOLE_UNITS,
+    (CLASS_FUTURES_PERPS, "schwab"): WHOLE_UNITS,
     (CLASS_FOREX, "coinbase"): FRACTIONAL_UNITS,
     (CLASS_STOCKS, "coinbase"): WHOLE_UNITS,
     (CLASS_COMMODITIES, "coinbase"): WHOLE_UNITS,
@@ -502,12 +530,26 @@ SESSIONS_DECLARED = (SESSION_CONTINUOUS, SESSION_US_EQUITY)
 # that route. Indices is a US equity session: an index reaches an order as an
 # option, and its own Index Options page lists "extended hours" under "Not
 # supported".
+#
+# Schwab publishes four sets of hours and only one of them matches a word
+# ``SESSIONS_DECLARED`` holds, so it holds one row and five sectors hold none.
+# The equity is ``SESSION_US_EQUITY``: its own Extended Hours Trading page names
+# a regular session, an "After-hours session: 4:05 p.m. to 8:00 p.m.", a 13-hour
+# window and a 24-hour one. The five absent rows are named and not guessed. Its
+# futures-markets table gives most contracts "6 p.m. ET Sunday to 5 p.m.
+# Friday", its eight crypto contracts "5:02 p.m. ET on Friday to 5 p.m. Friday"
+# with "a two-hour halt between 3 a.m. and 5 a.m. ET every Saturday", and its
+# forex desk "23 hours per day, 5 days per week". None of those three is
+# continuous and none is a US equity session, so citing either word would claim
+# hours the venue does not publish. An absent row claims nothing and leaves the
+# recorded step governing, which is the right answer for a whole-unit contract.
 CITED_VENUE_SESSIONS: dict[tuple[str, str], str] = {
     (CLASS_CRYPTO, "coinbase"): SESSION_CONTINUOUS,
     (CLASS_STOCKS, "alpaca"): SESSION_US_EQUITY,
     (CLASS_CRYPTO, "alpaca"): SESSION_CONTINUOUS,
     (CLASS_COMMODITIES, "alpaca"): SESSION_CONTINUOUS,
     (CLASS_INDICES, "alpaca"): SESSION_US_EQUITY,
+    (CLASS_STOCKS, "schwab"): SESSION_US_EQUITY,
 }
 
 #: The reason a held order carries, never one of ``sized_order``'s refusals.
@@ -584,6 +626,32 @@ ORDER_TYPES_DECLARED = (ORDER_TYPES_WITH_MARKET, ORDER_TYPES_LIMIT_ONLY)
 # publishes no order route for either: no currency word sits in its own ten-word
 # ``AssetClass`` enum, and ``crypto_perp`` sits there with no endpoint and no
 # page behind it.
+#
+# Schwab holds a row in two of the six sectors it serves, and the other four are
+# the first rows this issue has had to leave absent for a venue that does list
+# the market. Its order spec is published on no credential-free route:
+# ``developer.schwab.com`` serves one JavaScript shell of 55,033 bytes for every
+# path, a real product page and an invented slug byte-identical, and the content
+# behind it answers 401 at the same 83 bytes for a real route and an invented one
+# alike. What the venue does publish in words is per session and per sector. Its
+# own Extended Hours Trading page names the regular session's types — "Many order
+# types and conditions are accepted, including: market, limit, stop-limit,
+# all-or-none, etc." — which is the stocks row, and ``session_order_types``
+# narrows the same session's extended windows to the sentence beside it, "Only
+# limit orders are accepted". Its own Cryptocurrency Account Agreement publishes
+# both types for the crypto sector in section 5.7: "If you place a market
+# order, you agree to pay or receive the prevailing market price at execution"
+# and "If you submit a limit order, you agree to pre-fund the amount of such
+# limit order". commodities, forex, indices and futures_perps hold no row
+# because no schwab page read names an order type for a futures or a forex
+# market: of the 1637 pages its own sitemap lists, 88 name futures and 59 name
+# forex, and the phrase "market order" appears on 0 of the futures and forex
+# pages read, which is an absence reported as not established rather than as a
+# refusal. One order route serves the whole venue,
+# ``POST /trader/v1/accounts/{accountNumber}/orders``, censused as the only one
+# of 18 trader paths that takes an order; ``/trader/v1/futures/orders`` and
+# ``/trader/v1/forex/orders`` each answer 404 where a real trader route answers
+# 401.
 CITED_VENUE_ORDER_TYPES: dict[tuple[str, str], str] = {
     (CLASS_CRYPTO, "coinbase"): ORDER_TYPES_WITH_MARKET,
     (CLASS_CRYPTO, "gemini"): ORDER_TYPES_LIMIT_ONLY,
@@ -618,6 +686,8 @@ CITED_VENUE_ORDER_TYPES: dict[tuple[str, str], str] = {
     (CLASS_STOCKS, "alpaca"): ORDER_TYPES_WITH_MARKET,
     (CLASS_COMMODITIES, "alpaca"): ORDER_TYPES_WITH_MARKET,
     (CLASS_INDICES, "alpaca"): ORDER_TYPES_WITH_MARKET,
+    (CLASS_CRYPTO, "schwab"): ORDER_TYPES_WITH_MARKET,
+    (CLASS_STOCKS, "schwab"): ORDER_TYPES_WITH_MARKET,
 }
 
 
@@ -709,6 +779,18 @@ SETTLE_LEG = ":"
 # same composition on ``BTC/USDT:USDT`` read ``{"symbol":"BTC_USDT","vol":1.0,
 # "type":6,"openType":2,"side":1}`` on both sides, and ``SETTLE_LEG`` already
 # leaves every contract out of this set.
+# ``schwab`` is not a member, and it is the first venue to publish a cash amount
+# on a route this program cannot reach. Its Cryptocurrency Account Agreement
+# gives a spot buy the cash unit and a spot sell the count, in section 5.3:
+# "When a Trade Order is entered, the notional U.S. dollar value of the purchase
+# or the quantity of Cryptocurrencies for the sale, plus applicable fees, will be
+# deducted from your Account's available balance." That account has no order
+# route at all — the phrase "application programming" appears 0 times in the
+# agreement's 118,303 characters, and ``/crypto/v1/orders`` answers 404 — so no
+# order this platform places can carry it. Its equity order offers both units,
+# "Place trades in dollar or share amounts", and this program composes the share
+# count, so ``market_buy_names_cash`` answering False is right for every schwab
+# market.
 CITED_CASH_MARKET_BUY: frozenset[str] = frozenset(
     {"binance", "bitget", "coinbase", "gateio", "mexc"}
 )
@@ -885,6 +967,20 @@ def session_unit_rule(session: Optional[str], moment_s: Any) -> Optional[str]:
     except (OSError, OverflowError, ValueError):
         return None
     return None if regular else WHOLE_UNITS
+
+
+# ``market_replaces_market_order`` reads this at the order site and not off the
+# cached record, which carries one answer for the whole day.
+def session_order_types(session: Optional[str], moment_s: Any) -> Optional[str]:
+    """``ORDER_TYPES_LIMIT_ONLY`` while ``session`` takes a limit order alone at
+    ``moment_s``, epoch seconds, and None at every other moment.
+
+    ``SESSION_US_EQUITY`` takes a market order inside ``MarketSession.REGULAR``
+    and a limit order alone in every window outside it.
+    """
+    if session_unit_rule(session, moment_s) != WHOLE_UNITS:
+        return None
+    return ORDER_TYPES_LIMIT_ONLY
 
 
 #: The three shapes a venue's size field takes: a count of whole units, a count
@@ -1247,9 +1343,20 @@ def market_replaces_market_order(
     rules: Any,
     price: Optional[float] = None,
     excess_usd: float = REFERENCE_SCRUM_EXCESS_USD,
+    moment_s: Any = None,
 ) -> bool:
-    """True only while ``venue_variant`` reads ``MECHANIC_LIMIT_ONLY`` for one
-    market, which names a limit order where the bot names a market order."""
+    """True while ``session_order_types`` reads ``ORDER_TYPES_LIMIT_ONLY`` for
+    the market's own session at ``moment_s``, or while ``venue_variant`` reads
+    ``MECHANIC_LIMIT_ONLY`` for the market itself.
+
+    An omitted ``moment_s`` leaves the session out and answers off
+    ``venue_variant`` alone.
+    """
+    if (
+        session_order_types(getattr(rules, "session", None), moment_s)
+        == ORDER_TYPES_LIMIT_ONLY
+    ):
+        return True
     return venue_variant(rules, price, excess_usd) == MECHANIC_LIMIT_ONLY
 
 
@@ -2095,6 +2202,7 @@ __all__ = [
     "scrumming_interval_usd",
     "session_for",
     "session_size_shapes",
+    "session_order_types",
     "session_unit_rule",
     "settle_fold_plan",
     "shape_unit_rule",
