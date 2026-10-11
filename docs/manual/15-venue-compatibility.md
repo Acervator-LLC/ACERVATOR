@@ -7210,3 +7210,286 @@ the title "Alpaca - 404 not found", so nothing is quoted from that host on statu
 alone. The negative control for the refusal reading is Coinbase's own United
 States user agreement, which answers 363,665 characters with 37 mentions of
 "United States" and no refusal.
+
+## Schwab, read from its own pages on 2026-10-11
+
+Schwab is one venue id over three firms, and each firm carries its own sectors
+and its own eligibility rule. Every figure below comes from a Schwab host with
+no credential sent and no order placed, previewed, priced, amended or cancelled.
+
+| the firm Schwab's own pages name | the sectors it carries |
+| --- | --- |
+| Charles Schwab & Co., Inc. | stocks |
+| Charles Schwab Futures and Forex LLC | commodities, indices, futures, forex, crypto futures |
+| Charles Schwab Premier Bank, SSB | crypto spot |
+
+### Which host answers, and which answer carries no information
+
+| host | a real path | an invented path | does the status name a path |
+| --- | --- | --- | --- |
+| `www.schwab.com` | 200, 339,131 to 675,191 bytes | 404, 360,187 bytes | yes |
+| `api.schwabapi.com/trader/v1/` | 401, 161 bytes | 404, 172 bytes | yes |
+| `api.schwabapi.com/marketdata/v1/` | 401, 22 bytes | 404, 22 bytes | yes |
+| `disclosures.schwab.com` | 200, 244,557 to 637,505 bytes | 403, 111 bytes | yes |
+| `contentdelivery.schwab.com` | 200, 150,309 bytes | 404, 0 bytes | yes |
+| `developer.schwab.com` | 200, 55,033 bytes | 200, the same bytes | no |
+| the developer portal's content API | 401, 83 bytes | 401, 83 bytes | no |
+
+A plain request is refused on every Schwab host. With a browser user agent the
+retail pages and the documents answer, and the two bottom rows still do not: the
+developer portal serves one JavaScript shell for a real product page and an
+invented slug alike, and the content behind it answers the same 401 at the same
+byte count for both. **Schwab publishes its order spec on no credential-free
+route.** What the portal does publish is its own sitemap, naming 33 pages and 6
+API products: account and client data, advisor services, data aggregation, tax
+data, Trader API commercial and Trader API individual. There is no futures
+product, no forex product and no crypto product among the six.
+
+### The order route, censused on the host whose status discriminates
+
+Eighteen paths were tried under `/trader/v1/` and ten under `/marketdata/v1/`.
+
+| what exists | what does not |
+| --- | --- |
+| `/trader/v1/accounts` | `/trader/v1/accounts/{n}/previewOrder` |
+| `/trader/v1/accounts/accountNumbers` | `/trader/v1/accounts/{n}/positions` |
+| `/trader/v1/accounts/{n}/orders` | `/trader/v1/accounts/{n}/balances` |
+| `/trader/v1/orders` | `/trader/v1/accounts/{n}/activities` |
+| `/trader/v1/accounts/{n}/orders/{id}` | `/trader/v1/futures/orders` |
+| `/trader/v1/accounts/{n}/transactions` | `/trader/v1/forex/orders` |
+| `/trader/v1/accounts/{n}/transactions/{id}` | `/futures/v1/orders` |
+| `/trader/v1/userPreference` | `/forex/v1/orders` |
+| the ten `/marketdata/v1/` readings | `/crypto/v1/orders` |
+
+**One order route serves the whole venue**,
+`POST /trader/v1/accounts/{accountNumber}/orders`. There is no futures order
+route and no forex order route.
+
+One reading on this host was the measurement and not the venue.
+`/marketdata/v1/futures/quotes` and `/marketdata/v1/forex/quotes` each answer
+401, which reads like two gated data families. An invented word answers the same
+401 at the same 22 bytes on the same shape, because that path is the
+single-symbol quote route and its symbol matches any word. Neither answer names
+a futures or a forex family, and the two that do name one are
+`/marketdata/v1/forex/pricehistory` and `/marketdata/v1/futures/chains`, both
+404.
+
+### The products, from Schwab's own two tables
+
+Its futures-markets page names ten product families itself and gives every
+product a symbol, a multiplier, a minimum tick size, a settlement word and its
+trading hours. The table holds 163 rows over **139 unique contracts**: each of
+the 24 rows under Micros repeats a row in another family, and no symbol sits
+under Micros alone.
+
+| Schwab's own family | contracts | the sector it reaches |
+| --- | --- | --- |
+| Single Stock | 55 | stocks |
+| Agriculture | 22 | commodities |
+| Stock Indices | 14 | indices |
+| Metals | 11 | commodities |
+| Energy | 9 | commodities |
+| Crypto | 8 | crypto |
+| Currency | 8 | forex |
+| Interest Rates | 7 | none this platform draws |
+| Softs | 5 | commodities |
+| Micros | 24 | each repeats another family's row |
+
+Per sector that is stocks 55, commodities 47, indices 14, crypto 8, forex 8 and
+7 under Interest Rates, and 55 + 47 + 14 + 8 + 8 + 7 = 139.
+
+Its currency table, headed "Currency pairs available at Schwab", lists **70
+spot pairs over 19 currency legs**. The table renders 11 of the 12 rows it
+declares, and the page's own headline reads "Access to over 65 currency pairs".
+
+### The sector each market reaches
+
+- **crypto** — 8 dated contracts over four underliers: `/BTC` and `/MBT` on bitcoin, `/ETH` and `/MET` on ether, `/SOL` and `/MSL` on solana, `/XRP` and `/MXP` on XRP. Spot crypto is a separate account at Charles Schwab Premier Bank, and its own FAQ reads "you cannot currently buy and sell individual cryptocurrencies through a Schwab brokerage account".
+- **stocks** — "most U.S.-listed stocks and ETFs", beside the 55 single-stock futures.
+- **commodities** — 47 contracts, `/GC` gold, `/SI` silver, `/HG` copper, `/CL` crude, `/NG` natural gas, `/ZC` corn, `/ZW` wheat, `/ZS` soybean, `/LE` live cattle and `/HE` lean hog among them.
+- **indices** — 14 contracts: `/ES` and `/MES` on the S&P 500, `/NQ` and `/MNQ` on the Nasdaq-100, `/RTY` and `/M2K` on the Russell 2000, `/YM` and `/MYM` on the Dow, `/VX` and `/VXM` on the VIX, `/NKD` and `/MNK` on the Nikkei 225, `/EMD` on the S&P Mid-Cap 400, `/MME` on MSCI Emerging Markets.
+- **forex** — 70 spot pairs beside 8 contracts: `/E7`, `/J7`, `/M6E`, `/M6A`, `/MCD`, `/M6B`, `/MSF` and `/DX`.
+- **futures and perpetuals** — all 139 contracts, every one dated. Schwab lists no perpetual: the word names none of the 139 rows.
+
+### The size unit, and the two the venue offers
+
+Schwab publishes two size units on its equity order and names both: "Place
+trades in dollar or share amounts". Its own fractional-shares page sets the
+floor, "Own fractional shares of most U.S.-listed stocks and ETFs for as little
+as $1", and its brokerage account agreement sets the grain, "Schwab calculates
+the quantity, unit price, and market price out to four decimal places if
+necessary". **This program composes the share count**, so a Schwab equity order
+carries a unit count and `market_buy_names_cash` answers False for it.
+
+Its spot crypto account is the one Schwab market whose buy is a cash amount,
+quoted whole from section 5.3 of the Cryptocurrency Account Agreement: "When a
+Trade Order is entered, the notional U.S. dollar value of the purchase or the
+quantity of Cryptocurrencies for the sale, plus applicable fees, will be
+deducted from your Account's available balance." That account has no order route
+at all, so no order this program places can carry that unit, and Schwab stays out
+of `CITED_CASH_MARKET_BUY`.
+
+Its 70 spot currency pairs trade in lots, which its own page sizes: "Standard
+lots represent 100,000 units and mini lots represent 10,000 units", with
+"1,000-unit increments, also known as 'micro lots'". **Each lot is a whole number
+of units**, so `WHOLE_UNITS` holds a currency lot and `UNIT_RULES` needs no third
+member.
+
+### The order types, which Schwab states per session
+
+Its own Extended Hours Trading page names the regular session's types and the
+extended session's in two sentences:
+
+- regular session — "Many order types and conditions are accepted, including: market, limit, stop-limit, all-or-none, etc."
+- extended session — "Only limit orders are accepted."
+
+`session_order_types` in `src/trading/scrumming/sizing.py` answers the second,
+and `market_replaces_market_order` reads it at the moment of the order, so a
+market order into a US equity session outside normal hours becomes a limit order
+before it is sent. The record `BotContainer._get_market_rules` caches carries one
+answer for the whole day, so the session is read at the order site and not off
+that record.
+
+Its Cryptocurrency Account Agreement publishes both types for the crypto sector
+in section 5.7: "If you place a market order, you agree to pay or receive the
+prevailing market price at execution" and "If you submit a limit order, you agree
+to pre-fund the amount of such limit order". Commodities, forex, indices and
+futures hold no order-type row, because no Schwab page read names an order type
+for a futures or a forex market: of the 1637 pages its own sitemap lists, 88 name
+futures and 59 name forex, and the phrase "market order" appears on none of those
+read. That is an absence recorded as not established, never as a refusal.
+
+### The sessions, four of them, and only one matching a declared word
+
+| sector | Schwab's own hours | the declared word |
+| --- | --- | --- |
+| stocks | a regular session, an "After-hours session: 4:05 p.m. to 8:00 p.m.", a 13-hour window, a 24-hour window | `us_equity` |
+| commodities, indices, futures | "6 p.m. ET Sunday to 5 p.m. Friday" | neither |
+| crypto | "5:02 p.m. ET on Friday to 5 p.m. Friday", with "a two-hour halt between 3 a.m. and 5 a.m. ET every Saturday" | neither |
+| forex | "23 hours per day, 5 days per week", "6:00 p.m. ET on Sunday through 5:00 p.m. ET on Friday" | neither |
+
+`CITED_VENUE_SESSIONS` holds one Schwab row and five sectors hold none. Citing
+either declared word for the other four would claim hours Schwab does not
+publish; an absent row claims nothing and leaves the recorded step governing.
+
+### Who may hold the account
+
+Three firms, three rules, and two of them name a state.
+
+The site, on every page: "This site is designed for U.S. residents. Non-U.S.
+residents are subject to country-specific restrictions."
+
+The forex page: "Forex accounts are not available to residents of Ohio or
+Arizona."
+
+The Cryptocurrency Account Agreement, section 1.9, quoted whole:
+
+> "Available Only to U.S. Residents — Accounts are available exclusively to
+> residents of all 50 United States except New York and Louisiana. New York and
+> Louisiana State residents (as defined under applicable state law) are not
+> currently eligible to open an Account. Customers residing in U.S. territories
+> or foreign countries are also not eligible to open an Account."
+
+The same agreement repeats it in section 10.1 as a warranty the holder gives:
+"You are a U.S. resident who is eighteen years of age or older and not a resident
+of New York or Louisiana, as defined y relevant state law, or any U.S.
+territory." The Futures Client Agreement names no state and no residency
+refusal.
+
+**This inverts the Alpaca reading twice.** Alpaca requires a US address "within
+the 50 states or Puerto Rico" and excludes no state. Schwab requires a US
+resident, refuses four states across two sectors, and refuses every U.S.
+territory, Puerto Rico among them.
+
+### The ticker collision on an equities venue
+
+| code | the equity | the currency | which reading wins, and how the venue says so |
+| --- | --- | --- | --- |
+| `NOK` | Nokia, a listed ADR | the Norwegian krone, a base currency on `NOK/SEK` and `NOK/JPY` and a quote leg on 7 more pairs | both, and the symbol says which: a bare code is an equity and a slashed pair is a currency market |
+| `AMD` | Advanced Micro Devices, and `/SAMD0` under Single Stock | the Armenian dram | the equity; `AMD` names none of the 70 pairs |
+| `COP` | ConocoPhillips, and `/SCOP0` under Single Stock | the Colombian peso | the equity; `COP` names none of the 70 pairs |
+| `SGD` | none | the Singapore dollar, a leg on 4 pairs | the currency; `SGD` bases no Schwab equity |
+
+`NOK` is the first code in this issue that is genuinely both on one venue.
+Schwab's own symbology settles it with no cited row:
+`currency_pair_symbol` in `src/stocks/schwab_connector.py` reads a currency
+market only where a member of `CURRENCY_LEGS` sits on both sides of the
+separator, and `futures_symbol` reads a contract only where the leading slash
+sits, so a bare code can only be the equity. `STABLECOIN_DENYLIST` in
+`src/exchange/market_inspector_fetcher.py` is read over a venue's own tickers,
+and a broker publishes none through that path, so none of its codes touches a
+Schwab symbol.
+
+### The fill ledger, and the four figures
+
+`/trader/v1/accounts/{n}/transactions` exists and
+`/trader/v1/accounts/{n}/activities` does not, so the transaction list is the
+only fill ledger Schwab publishes. Its record's fields are published nowhere a
+credential-free reader reaches, so `SchwabConnector.PUBLISHES_FILL_HISTORY` is
+False and `BrokerExchange.get_my_trades` raises its own sentence. A reader
+written against field names this program never read would name fields it never
+saw, and none of the four figures — realised profit, cost basis, the unrealised
+figure, the fee total — is read for Schwab today. The paging shape is **not
+established** for the same reason.
+
+### TD Ameritrade, measured again
+
+| the reading | the answer |
+| --- | --- |
+| DNS for `developer.tdameritrade.com` | no record at all |
+| `www.tdameritrade.com` | Schwab's own authorization wall |
+| "tdameritrade" in Schwab's own sitemap | 0 of 1637 pages |
+| "ameritrade" in Schwab's own sitemap | 0 of 1637 pages |
+| control, an invented word | 0 of 1637 |
+| control, "futures" | 88 of 1637 |
+
+`tdameritrade` names no venue that exists. The id stays in `EQUITY_VENUES` until
+the row that reshapes the Exchanges tab removes it, and the reading sits beside
+it in `src/gui/main_tabs/asset_class_surface.py`.
+
+### Overtaken sentences on this page
+
+OVERTAKEN, quoted whole:
+
+> "| schwab | crypto, stocks, commodities, indices, futures_perps |"
+
+True today: schwab is offered under all six sectors. `venues_for_class("forex")`
+holds it, because its own tables list 70 spot currency pairs and 8 Currency
+contracts and the screen offered none of those 78 markets.
+
+OVERTAKEN, quoted whole:
+
+> "| Schwab | **no** | **no** | the Trader API places no fractional order, and no connector exists |"
+
+True today: a connector exists. `src/stocks/schwab_connector.py, in
+SchwabConnector` answers `BrokerBase` and `BROKER_CONNECTORS` holds the
+`schwab` id. Whether the Trader API places a fractional order is **not
+established**: Schwab's own equity pages state "Place trades in dollar or share
+amounts" with a $1 floor, and its order body's fields are served only to a
+signed-in developer, so neither this page's "no" nor its opposite can be read
+from a credential-free host.
+
+OVERTAKEN, quoted whole:
+
+> "| Schwab | yes | no | the Trader API places no fractional order at all. Schwab Trader API developer portal, read 2026-09-24 |"
+
+True today: the developer portal cannot be read without signing in. It answers
+200 at 55,033 bytes for a real product page and for an invented slug alike, and
+the content behind it answers 401 at 83 bytes for both, so no sentence can be
+quoted from it. The fractional order is **not established**, and the fractional
+equity is published: "Own fractional shares of most U.S.-listed stocks and ETFs
+for as little as $1".
+
+### What the Schwab reading cannot show
+
+No credential was used and no developer account was registered, so nothing above
+proves Schwab accepts an order from this program. **The order body's fields were
+never read**, which is why `SchwabConnector.place_order` raises instead of
+composing one. No market list was read either: `/trader/v1/accounts` and every
+`/marketdata/v1/` route answer 401 without a token, so the 139 contracts and the
+70 pairs come from Schwab's own retail tables and not from its API. One act
+settles all six sectors at once — registering for the Trader API Individual
+product on `developer.schwab.com` and reading the order spec it serves there.
+The positive control for every census above is that the same reading finds the
+doors that do exist: 8 trader routes, 10 market-data routes, 88 futures pages and
+59 forex pages, where an invented word finds 0.
