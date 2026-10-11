@@ -5205,3 +5205,286 @@ proves the venue accepts a live order from this program. And the instrument
 endpoint does not narrow to the United States company, so the market counts
 above are the exchange's catalogue read on the company's host, and the company's
 own pages are the only statement of what the account may trade.
+
+## 2026-10-10 - Bitfinex records five sectors, and the venue refuses the account
+
+Bitfinex connected and recorded nothing, because the connect threw. The throw is
+fixed, the venue now records 288 markets across five sectors, and its own help
+centre refuses a United States person an account on any of them.
+
+### The one defect that hid the other seven connections
+
+`src/exchange/ccxt_connector.py, in futures_asset_types` reads a market's
+`info` and calls `.get` on it. Bitfinex serves its market metadata as arrays, so
+all 288 of its market records carry `info` as a list and that call raised
+`AttributeError: 'list' object has no attribute 'get'`. The throw happens inside
+`src/exchange/ccxt_connector.py, in get_markets`, before
+`src/exchange/market_rules_store.py, in record_venue` is ever called.
+
+```
+on the previous build          after the guard
+futures_asset_type     raised on 288 of 288      answers on 288 of 288
+futures_asset_types    raised on 288 of 288      answers on 288 of 288
+record_price           raised on 288 of 288      answers on 288 of 288
+trading_products       AttributeError            82 bases
+trading_rules          AttributeError            82 bases
+get_markets            AttributeError            288 markets, 288 rows recorded
+```
+
+Seven of the nine `info` readers in that module already carried the shape guard
+and three did not. `src/exchange/market_inspector_fetcher.py, in trading_products`
+and `in trading_rules` raised for the same reason, so a bitfinex connector in
+the fleet also emptied the Market Inspector. Gemini is the second venue with
+list-shaped market metadata, 345 of 345 markets, and the same guard covers it.
+Kraken is the control: 1460 markets, every one a mapping, and no reader's answer
+moved.
+
+### The venue refuses a United States person, and the table did not say so
+
+OVERTAKEN, quoted whole:
+
+> | bitfinex | crypto spot | no refusal recorded, 2026-08-28 | key and secret | `src/exchange/ccxt_connector.py, in SUPPORTED_EXCHANGES` |
+
+True today: the refusal is recorded. Bitfinex's own
+[U.S. Person FAQ](https://support.bitfinex.com/hc/en-us/articles/115003461254-U-S-Person-Frequently-Asked-Questions-FAQ)
+states "According to the Bitfinex Terms of Service, if you are a United States
+Citizen or United States Resident, you will not be able to use the Bitfinex
+platform" and "No U.S. Person may directly or indirectly use any of the Services
+or the Site. If you are a U.S. Person, you are strictly prohibited from opening
+an account on Bitfinex." The same page adds "This includes if you are a U.S.
+permanent resident or if you are an individual that holds a U.S. passport."
+
+`src/exchange/ccxt_connector.py, at US_ACCOUNT_RESTRICTED_EXCHANGES` now holds
+the id, beside Gate.io, Bitget, Poloniex and Huobi.
+`src/exchange/ccxt_connector.py, at US_IP_BLOCKED_EXCHANGES` does not: every
+public bitfinex endpoint answered from this machine, so the refusal is on the
+account and not on the address. The credential shape in the row is right — key
+and secret, no passphrase, which `src/exchange/ccxt_connector.py, at
+PASSPHRASE_EXCHANGES` confirms by omission.
+
+### Forex joins the sector row
+
+OVERTAKEN, quoted whole:
+
+> | bitfinex | crypto, commodities, indices, futures_perps |
+
+True today: `src/gui/main_tabs/asset_class_surface.py, at EXTRA_VENUE_CLASSES`
+reads `commodities`, `forex`, `indices`, `futures_perps`, and
+`asset_class_surface.venue_classes` answers those four with `crypto`, five in
+all. Bitfinex announced the forex products itself on 2020-09-01: "Additional
+Products (euro/tether (EUR/USDt), pound/tether (GBP/USDt) and yen/tether
+(JPY/USDt))", with "The pound, euro and yen products track the respective change
+in price of pound, euro and yen relative to the price of tether (USDt)." Its own
+currency map labels `EUR` "Euro" and `GBP` "Pound Sterling", and both are margin
+collateral. The yen product is no longer listed, and the Turkish lira perpetual
+went to reduce-only on 2026-03-02 by the venue's own delisting notice.
+
+### Bitfinex publishes no asset category, so no sector record is added
+
+`src/exchange/ccxt_connector.py, at VENUE_ASSET_SECTOR_RECORDS` keeps its four
+rows. Bitfinex's own
+[configuration reference](https://docs.bitfinex.com/reference/rest-public-conf)
+documents fifteen keys and not one carries an asset category: eight maps (`sym`,
+`label`, `unit`, `undl`, `pool`, `explorer`, `tx:fee`, `tx:method`), five lists
+and two info keys. Five invented keys were asked for and answered nothing, which
+is the control that the reader can tell a key that exists from one that does
+not.
+
+```
+pub:list:currency           255 rows      pub:map:currency:cat        0 rows
+pub:list:pair:exchange      194 rows      pub:map:currency:type       0 rows
+pub:list:pair:futures        94 rows      pub:list:currency:index     0 rows
+pub:list:pair:securities     28 rows      pub:list:pair:index         0 rows
+pub:map:currency:undl        95 rows      pub:info:pair:securities    0 rows
+```
+
+**A record would cost the venue two sectors.**
+`src/exchange/ccxt_connector.py, in market_asset_class` reads
+`PRECIOUS_METAL_CODES` and `FIAT_CURRENCY_CODES` only while its `published`
+argument is None, so handing it any mapping switches that reading off.
+
+```
+XAUT/USD   published None -> commodities      published {} -> crypto
+EUR/USDT   published None -> forex            published {} -> crypto
+```
+
+That is the whole of bitfinex's commodities and forex, so an `AssetSectorRecord`
+for this venue would be worse than none.
+
+### The venue names its sectors in its own announcements instead
+
+`https://api.bitfinex.com/v2/posts/hist` is bitfinex's own credential-free
+announcement feed. 800 posts were read, covering 2019-04-10 to 2026-10-09, and
+every non-crypto perpetual is named there by the venue.
+
+| The venue's own words | Date | The code |
+| --- | --- | --- |
+| "Additional Product Silver (XAGF0:USTF0)" | 2020-10-26 | XAGF0 |
+| "Additional Products (euro/tether (EUR/USDt), pound/tether (GBP/USDt) ...)" | 2020-09-01 | EURF0, GBPF0 |
+| "Additional Product Tether Gold/bitcoin (XAUTF0:BTCF0)" | 2021-04-09 | XAUTF0 |
+| "Additional Products, UK Oil (UKOILF0:USTF0), Palladium (XPDF0:USTF0), Platinum (XPTF0:USTF0)" | 2023-03-15 | UKOILF0, XPDF0, XPTF0 |
+| "Additional Products, GERMANY 40 (GERMANY40IXF0:USTF0), SPAIN 35 (SPAIN35IXF0:USTF0), EUROPE 50 (EUROPE50IXF0:USTF0), FRANCE 40 (FRANCE40IXF0:USTF0), UK 100 (UK100IXF0:USTF0)" | 2023-03-29 | five index codes |
+| "Additional Products, AUSTRALIA 200 (AUSTRALIA200IXF0:USTF0), HONG KONG 50 (HONGKONG50IXF0:USTF0), JAPAN 225 (JAPAN225IXF0:USTF0)" | 2023-04-05 | three index codes |
+| "Additional Products Bitcoin Implied Volatility Index (BVIVF0:USTF0) and Ethereum Implied Volatility Index (EVIVF0:USTF0)" | 2024-04-03 | BVIVF0, EVIVF0 |
+
+Its own Derivatives page carries the family list in the served markup: "Trade
+from a range of crypto, commodities, FX, equities and volatility perpetual swaps
+on Bitfinex Derivatives with up to 100x leverage and intra-day funding."
+
+`src/trading/scrumming/sizing.py, at CITED_VENUE_BASE_SECTORS` holds those
+names, fourteen rows, every one keyed by venue and base code.
+`src/trading/scrumming/sizing.py, in venue_base_sector` answers them and
+`market_asset_class` reads it ahead of the recording. An index perpetual records
+under its index because the sector belongs to the underlying and the contract
+form rides on the listing, which is the reading
+`src/exchange/ccxt_connector.py, at INDEX_FUTURES_ASSET_TYPES` already takes off
+Coinbase's own product label.
+
+### The ticker collision, and the venue's own refutation of it
+
+Five of the nine markets the generic reading called forex are not currency
+markets at all. `MNT` is the ISO 4217 code for the Mongolian tugrik and sits in
+`src/exchange/ccxt_connector.py, at FIAT_CURRENCY_CODES` for that reason. On
+bitfinex it is Mantle.
+
+| Market | Base | The venue's own label | Recorded now |
+| --- | --- | --- | --- |
+| MNT/USD, MNT/USDT | MNT | "Mantle", network ETH | crypto |
+| USDC/USD, USDC/USDT | USDC | "USDc", network ETH | crypto |
+| USDT/USD | USDT | "Tether USDt" | crypto |
+| EUR/USDT, EUR/USDT:USDT | EUR | "Euro" | forex |
+| GBP/USDT, GBP/USDT:USDT | GBP | "Pound Sterling" | forex |
+
+Two euro stablecoins, `EURQ` ("Quantoz EURQ") and `EURR` ("StablR Euro"), and
+one peso token, `MXNT` ("Tether MXNt"), stay under crypto. Whether a national
+currency's token against a dollar stablecoin is a forex market is the open
+decision on issue #1192, and nothing here settles it.
+
+### The order shape, one endpoint for every sector
+
+Read with the transport replaced, so nothing left the machine and no credential
+was used.
+
+```
+BTC/USD        buy  market   {"symbol":"tBTCUSD","amount":"0.001","type":"EXCHANGE MARKET"}
+BTC/USD        sell market   {"symbol":"tBTCUSD","amount":"-0.001","type":"EXCHANGE MARKET"}
+BTC/USD        buy  limit    {"symbol":"tBTCUSD","amount":"0.001","price":"50000","type":"EXCHANGE LIMIT"}
+XAUT/USD       buy  market   {"symbol":"tXAUT:USD","amount":"0.01","type":"EXCHANGE MARKET"}
+EUR/USDT       buy  market   {"symbol":"tEURUST","amount":"10","type":"EXCHANGE MARKET"}
+BTC/USDT:USDT  buy  market   {"symbol":"tBTCF0:USTF0","amount":"1","type":"MARKET"}
+```
+
+One path, `POST /v2/auth/w/order/submit`, for spot and for derivatives. `amount`
+is a unit count in the base currency on both sides and its sign carries the
+side, so there is no `side` field. A spot order takes the `EXCHANGE ` prefix and
+a derivative order takes the bare type.
+`src/exchange/ccxt_connector.py, in declared_order_types` reads "market and
+limit" off the venue's own capability map.
+
+**Bitfinex is not a cash-market-buy venue.**
+`src/trading/scrumming/sizing.py, at CITED_CASH_MARKET_BUY` keeps its four. The
+venue's own
+[Submit Order page](https://docs.bitfinex.com/reference/rest-auth-submit-order)
+gives `amount` one description, "Amount of order (positive for buy, negative for
+sell)", and publishes no quote-currency size field. Its capability map leaves
+`createMarketBuyOrderWithCost` unset while `createMarketOrder` reads True.
+
+### `code_leg` is not needed, and the same reading holds
+
+The separator exists because OKX publishes no base code on a contract type.
+Bitfinex publishes the mapping itself, under `pub:map:currency:undl`, which its
+own reference calls "Maps derivatives symbols to their underlying currency": 95
+rows, `EURF0` to `EUR`, `GBPF0` to `GBP`, `XAUTF0` to `XAUT`. It is missing for
+exactly the product types the venue names no underlying currency for: 23 of the
+94 derivative bases carry no row, among them all eight equity-index codes, both
+volatility-index codes, `UKOILF0`, `XAGF0`, `XPDF0` and `XPTF0`. ccxt strips the
+`F0` suffix itself, so the connector reads the base without a separator and
+`src/exchange/ccxt_connector.py, at AssetSectorRecord` needs none here.
+
+### Stocks is a no, and the count that shows it
+
+Not one of the 288 markets names a single company's share. Bitfinex publishes
+one product-type list, `pub:list:pair:securities`, holding 28 pairs over 14
+asset codes: ALKN, ALT11M2507, ALT2612, BMN, BMN2, CALCPB, CH100, CMSTR, CMTPL,
+STRCST, TITAN1, TITAN2, TITAN4 and USTBL. The venue's own article for each one
+names what it is - a note, a securitisation fund, equity in a protected cell
+company holding subordinated debt, a mining note, a treasury-bill wrapper - and
+none is a listed share.
+
+Four of those articles carry the same sentence:
+
+> "Important: This token is only available on the Bitfinex Securities platform
+> and not the Bitfinex exchange."
+
+and the venue's own
+[primary-listing article](https://support.bitfinex.com/hc/en-us/articles/26351974497305-Understanding-Primary-Listing-and-Secondary-Trading-on-Bitfinex-Securities)
+places secondary trading on "the Bitfinex Securities markets", with a wallet
+balance of 100,000 USD required of an individual member in each offering.
+
+That platform refuses the operator separately. Its own
+[restrictions article](https://support.bitfinex.com/hc/en-us/articles/4405999041945-Bitfinex-Securities-Restrictions-Prohibited-Persons-and-Prohibited-Jurisdictions)
+opens the Prohibited Person List with "Any U.S. Person" and states such a person
+"will not be able ... to trade securities at Bitfinex Securities."
+
+### Bitfinex, the five sectors with markets and the one without
+
+| Sector | Verdict | The cost |
+| --- | --- | --- |
+| crypto | yes | nothing. 189 markets |
+| commodities | yes | nothing. 9 markets: Tether Gold on four pairs, and the silver, palladium, platinum and UK Oil perpetuals |
+| forex | yes | nothing. 4 markets: euro and sterling, spot and perpetual, against USDt |
+| indices | yes | nothing. 10 markets: eight equity-index perpetuals and two implied-volatility-index perpetuals |
+| futures and perpetuals | yes | nothing. 76 markets, every one a crypto underlying |
+| stocks | no | the 28 securities pairs trade on the Bitfinex Securities platform, "not the Bitfinex exchange", and that platform's Prohibited Person List opens with "Any U.S. Person" |
+
+Every market in every sector holds a built variant.
+`src/trading/scrumming/sizing.py, in sector_variant` names Crypto, Commodity,
+Forex, Index and Futures Scrumming, and
+`src/trading/scrumming/sizing.py, in variant_holds_market` held 288 of 288.
+
+Bitfinex publishes no amount step: its precision mode is significant digits, so
+`src/trading/scrumming/sizing.py, in recorded_unit_rule` answers None on all 288
+rows and `src/trading/scrumming/sizing.py, at CITED_UNIT_RULES` holds no
+bitfinex row, which leaves every market fractional. The minimum is published and
+is recorded - 0.00004 BTC, 0.002 XAUT, 2 EUR, 0.0004 UK 100 - so
+`src/trading/scrumming/sizing.py, in tradeable_answer` has the figure it reads.
+
+`src/exchange/timeframes.py, at _AVAILABILITY` needed no change. Its bitfinex
+row is exactly the venue's own published set intersected with `ALL_TIMEFRAMES`:
+ten of ccxt's thirteen, with `1M`, `2w` and `3h` outside the drawn list and
+nothing recorded that the venue does not publish.
+
+### The step-five subtraction
+
+| Sector | Venues offered, before | After | Markets bitfinex can act on, before | After |
+| --- | --- | --- | --- | --- |
+| crypto | 22 | 22 | 0 | 189 |
+| stocks | 21 | 21 | 0 | 0 |
+| commodities | 18 | 18 | 0 | 9 |
+| forex | 8 | 9 | 0 | 4 |
+| indices | 15 | 15 | 0 | 10 |
+| futures and perpetuals | 16 | 16 | 0 | 76 |
+
+Every before-count of markets is zero because the connect threw.
+`src/gui/main_tabs/asset_class_surface.py, in known_venues` holds 26 ids and
+`src/gui/main_tabs/init_wizard_surface.py, in exchange_ids` holds the same 26,
+so the Exchanges tab and the first-run wizard offer the same set. The Add form's
+set and the screen's set are identical in all six sectors, because both narrow
+that one list. `src/core/log_paths.py, in gate_log_path` composes
+`trade/gate/bitfinex/<sector>/gate.log` for each of the five sectors with
+markets.
+
+Three readings that did not move, driven in the same run: Gate.io 5640 base
+codes with 607 naming a family, Bitget 3789 with 3151, OKX 687 with 311 and OKX
+US 413 with 111, every sector count identical to the figures those units
+recorded. `CITED_VENUE_BASE_SECTORS` holds 14 rows and all 14 name bitfinex, so
+no other venue can read it.
+
+The full readings are in
+[../audits/2026-10-10_bitfinex_wired_sectors/REPORT.md](../audits/2026-10-10_bitfinex_wired_sectors/REPORT.md).
+
+Two limits, stated plainly. No reading used a credential, so nothing here proves
+the venue accepts a live order from this program. And the venue refuses a United
+States person an account on every one of its sectors, so every yes above is an
+order path the program can form and not a trade this operator's account can
+place.

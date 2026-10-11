@@ -303,7 +303,16 @@ US_IP_BLOCKED_EXCHANGES: set[str] = {
 # section 11.1(xvii) forbids anyone to "access, use, or attempt to access or
 # use, Services directly or indirectly with (1) jurisdictions Bitget has deemed
 # high risk, including but not limited to, the Prohibited Countries".
+# Bitfinex's own U.S. Person FAQ states "According to the Bitfinex Terms of
+# Service, if you are a United States Citizen or United States Resident, you
+# will not be able to use the Bitfinex platform" and "No U.S. Person may
+# directly or indirectly use any of the Services or the Site. If you are a U.S.
+# Person, you are strictly prohibited from opening an account on Bitfinex." Its
+# Securities arm refuses the same person separately: the Prohibited Person List
+# opens with "Any U.S. Person". Every public bitfinex endpoint answered 200 from
+# a United States address, so the refusal is on the account and not the address.
 US_ACCOUNT_RESTRICTED_EXCHANGES: set[str] = {
+    "bitfinex",
     "bitget",
     "gateio",
     "poloniex",
@@ -442,7 +451,19 @@ NO_PUBLISHED_FAMILY = ""
 #: and declares ``swap``, ``future`` and ``option`` all False, so the record
 #: asks for ``SPOT`` alone, which is every product type the connector loads.
 #: Its spot rows publish ``baseCcy`` on all 1152 and its contract rows on none,
-#: so the US record reads that field and names no ``code_leg``.
+#: so the US record reads that field and names no ``code_leg``. bitfinex has no
+#: row and gains none: its own configuration reference documents fifteen keys
+#: and no asset category among them, ``pub:map:currency:cat``,
+#: ``pub:map:currency:type``, ``pub:list:currency:index``,
+#: ``pub:list:pair:index`` and ``pub:info:pair:securities`` each answered zero
+#: rows, and a record would cost the venue two sectors, because
+#: ``market_asset_class`` reads ``PRECIOUS_METAL_CODES`` and
+#: ``FIAT_CURRENCY_CODES`` only while ``published`` is None. Its one
+#: product-type list, ``pub:list:pair:securities``, holds 28 pairs its own
+#: pages place on a separate platform: "This token is only available on the
+#: Bitfinex Securities platform and not the Bitfinex exchange."
+#: ``CITED_VENUE_BASE_SECTORS`` carries the sectors that venue publishes as
+#: product names instead.
 VENUE_ASSET_SECTOR_RECORDS: dict[str, AssetSectorRecord] = {
     "gateio": AssetSectorRecord(method="publicSpotGetCurrencies"),
     "okx": AssetSectorRecord(
@@ -975,9 +996,12 @@ def futures_asset_type(market: Any) -> str:
     """The venue's own ``futures_asset_type`` label off one loaded market record.
 
     Empty for a record carrying no ``future_product_details``, which every spot
-    and equity product is.
+    and equity product is, and for a record whose ``info`` is not a mapping,
+    which bitfinex and gemini both serve.
     """
     raw = (market or {}).get("info") or {}
+    if not isinstance(raw, dict):
+        return ""
     detail = raw.get(FUTURES_DETAILS_KEY) or {}
     if not isinstance(detail, dict):
         return ""
@@ -988,9 +1012,12 @@ def futures_asset_types(market: Any) -> frozenset:
     """Every ``futures_asset_type`` label one loaded market record carries.
 
     ``FUTURES_ASSET_TYPES_KEY`` is read before ``FUTURES_ASSET_TYPE_KEY``, and
-    a record carrying no ``FUTURES_DETAILS_KEY`` answers an empty frozenset.
+    a record carrying no ``FUTURES_DETAILS_KEY`` answers an empty frozenset, as
+    does one whose ``info`` is not a mapping.
     """
     raw = (market or {}).get("info") or {}
+    if not isinstance(raw, dict):
+        return frozenset()
     detail = raw.get(FUTURES_DETAILS_KEY) or {}
     if not isinstance(detail, dict):
         return frozenset()
@@ -1047,14 +1074,16 @@ def _published_sector(published: Any, market: Any) -> Any:
     return published.get(str((market or {}).get("base") or "").strip().upper(), "")
 
 
-def market_asset_class(market: Any, published: Any = None) -> str:
+def market_asset_class(market: Any, published: Any = None, venue: Any = "") -> str:
     """The asset class one loaded market record belongs to, read off
-    ``futures_asset_types`` first, off ``published`` second, and off ``base``
-    and ``quote`` only where ``published`` is None.
+    ``futures_asset_types`` first, off ``venue_base_sector`` second, off
+    ``published`` third, and off ``base`` and ``quote`` only where ``published``
+    is None.
 
-    ``record_venue`` writes this beside the market's rules, and
+    ``record_venue`` writes this beside the market's rules,
     ``_published_asset_sectors`` supplies ``published`` as the sector the
-    venue's own asset record names, empty where that record names none.
+    venue's own asset record names, and ``venue`` names the venue
+    ``CITED_VENUE_BASE_SECTORS`` keys its rows by.
     """
     from ..trading.ata_spm import (
         CLASS_COMMODITIES,
@@ -1065,6 +1094,7 @@ def market_asset_class(market: Any, published: Any = None) -> str:
         CLASS_OPTIONS,
         CLASS_STOCKS,
     )
+    from ..trading.scrumming.sizing import venue_base_sector
 
     labels = futures_asset_types(market)
     if labels & COMMODITY_FUTURES_ASSET_TYPES:
@@ -1079,6 +1109,9 @@ def market_asset_class(market: Any, published: Any = None) -> str:
         return CLASS_STOCKS
     if is_option_market(market):
         return CLASS_OPTIONS
+    cited = venue_base_sector(venue, (market or {}).get("base"))
+    if cited:
+        return str(cited)
     if published is None:
         base = underlying_code((market or {}).get("base"))
         if base in PRECIOUS_METAL_CODES:
@@ -1117,8 +1150,11 @@ def asset_info(
 
 def record_price(market: Any) -> Optional[float]:
     """The last price the venue's own product record carries under ``info``,
-    None where the record carries none; no venue is asked."""
+    None where the record carries none or its ``info`` is not a mapping; no
+    venue is asked."""
     raw = (market or {}).get("info") or {}
+    if not isinstance(raw, dict):
+        return None
     parsed = limit_to_float(raw.get("price"))
     if parsed is None or parsed <= 0.0:
         return None
@@ -2527,7 +2563,7 @@ class CCXTConnector(ExchangeInterface):
 
             markets.append(asset_info(sym, info, precision_mode, declared))
             classes[str(sym)] = market_asset_class(
-                info, _published_sector(published, info)
+                info, _published_sector(published, info), self._exchange_id
             )
 
         # A symbol load_markets already answered is kept, so no crypto market is
@@ -2536,7 +2572,9 @@ class CCXTConnector(ExchangeInterface):
             if sym in classes:
                 continue
             markets.append(asset_info(sym, info, precision_mode, declared))
-            classes[sym] = market_asset_class(info, _published_sector(published, info))
+            classes[sym] = market_asset_class(
+                info, _published_sector(published, info), self._exchange_id
+            )
 
         self._markets_cache = markets
         if not markets:

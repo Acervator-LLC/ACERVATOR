@@ -111,6 +111,63 @@ CITED_UNIT_RULES: dict[tuple[str, str], str] = {
     (CLASS_FUTURES_PERPS, "coinbase"): WHOLE_UNITS,
 }
 
+#: The sector one base code belongs to on one venue, read from that venue's own
+#: published product name. ``market_asset_class`` answers this ahead of the
+#: recording and ahead of its own code-set reading, so it governs a venue that
+#: publishes no asset-category field on any credential-free endpoint.
+#:
+#: Every row is bitfinex, whose configuration reference documents fifteen keys
+#: and no category among them. The venue names each product in its own
+#: announcement feed at ``api.bitfinex.com/v2/posts/hist`` instead, and its
+#: Derivatives page lists the families as "crypto, commodities, FX, equities and
+#: volatility perpetual swaps". The announcement names, read 2026-10-10:
+#: "UK Oil (UKOILF0:USTF0)"; "GERMANY 40", "SPAIN 35", "EUROPE 50", "FRANCE 40",
+#: "UK 100", "AUSTRALIA 200", "HONG KONG 50", "JAPAN 225"; and "Bitcoin Implied
+#: Volatility Index (BVIVF0:USTF0)" with "Ethereum Implied Volatility Index
+#: (EVIVF0:USTF0)". An index perpetual records under its index because the
+#: sector belongs to the underlying and the contract form rides on the listing,
+#: the same reading ``INDEX_FUTURES_ASSET_TYPES`` takes off Coinbase's own
+#: label.
+#:
+#: The three crypto rows undo a ticker collision the venue refutes itself.
+#: ``MNT`` is the ISO code for the Mongolian tugrik and bitfinex's own
+#: ``pub:map:currency:label`` reads "Mantle", with ``pub:map:currency:pool``
+#: naming the ETH network; ``USDC`` and ``USDT`` are dollar tokens quoted
+#: against the dollar, so neither pair holds two currencies. Silver, palladium,
+#: platinum and Tether Gold need no row because ``PRECIOUS_METAL_CODES`` and
+#: ``TOKEN_UNDERLYING_CODES`` already answer commodities for them, and the euro
+#: and sterling markets need none because ``FIAT_CURRENCY_CODES`` already
+#: answers forex, which the venue's own labels "Euro" and "Pound Sterling"
+#: confirm.
+CITED_VENUE_BASE_SECTORS: dict[tuple[str, str], str] = {
+    ("bitfinex", "UKOIL"): CLASS_COMMODITIES,
+    ("bitfinex", "AUSTRALIA200IX"): CLASS_INDICES,
+    ("bitfinex", "EUROPE50IX"): CLASS_INDICES,
+    ("bitfinex", "FRANCE40IX"): CLASS_INDICES,
+    ("bitfinex", "GERMANY40IX"): CLASS_INDICES,
+    ("bitfinex", "HONGKONG50IX"): CLASS_INDICES,
+    ("bitfinex", "JAPAN225IX"): CLASS_INDICES,
+    ("bitfinex", "SPAIN35IX"): CLASS_INDICES,
+    ("bitfinex", "UK100IX"): CLASS_INDICES,
+    ("bitfinex", "BVIV"): CLASS_INDICES,
+    ("bitfinex", "EVIV"): CLASS_INDICES,
+    ("bitfinex", "MNT"): CLASS_CRYPTO,
+    ("bitfinex", "USDC"): CLASS_CRYPTO,
+    ("bitfinex", "USDT"): CLASS_CRYPTO,
+}
+
+
+def venue_base_sector(venue: Any, base: Any) -> Optional[str]:
+    """The sector ``CITED_VENUE_BASE_SECTORS`` cites for one base code on one
+    venue, or None when the table cites none for the pair.
+
+    ``market_asset_class`` reads this first, so a venue publishing no
+    asset-category field still records the sector its own product name gives.
+    """
+    key = (str(venue or "").strip().lower(), str(base or "").strip().upper())
+    return CITED_VENUE_BASE_SECTORS.get(key)
+
+
 #: ``position_ceiling`` clamps ``position_ceiling_multiple`` to this range.
 CEILING_MULTIPLE_MIN = 1.0
 CEILING_MULTIPLE_MAX = 10.0
@@ -288,6 +345,13 @@ SETTLE_LEG = ":"
 # order builder, and a market buy on ``us.okx.com`` was read as ``sz`` 0.001
 # with ``tgtCcy`` ``base_ccy`` where the same call on ``bitget`` read ``size``
 # 50, the cash.
+# ``bitfinex`` is not a member. Its own Submit Order page gives ``amount`` one
+# description, "Amount of order (positive for buy, negative for sell)", and
+# publishes no quote-currency size field; its capability map leaves
+# ``createMarketBuyOrderWithCost`` unset while ``createMarketOrder`` reads True,
+# and a market buy was read on the wire as ``amount`` 0.001 against a sell's
+# ``amount`` -0.001, so the sign carries the side and the size stays a unit
+# count.
 CITED_CASH_MARKET_BUY: frozenset[str] = frozenset(
     {"binance", "bitget", "coinbase", "gateio"}
 )
@@ -1566,6 +1630,7 @@ __all__ = [
     "CITED_CASH_MARKET_BUY",
     "CITED_UNIT_RULES",
     "CITED_VENUE_ORDER_TYPES",
+    "CITED_VENUE_BASE_SECTORS",
     "CITED_VENUE_SESSIONS",
     "CITED_VENUE_SETTLEMENT",
     "CLASS_COMMODITIES",
@@ -1693,6 +1758,7 @@ __all__ = [
     "variant_holds_market",
     "variant_refuses_sale",
     "variant_trades_market",
+    "venue_base_sector",
     "venue_order_types",
     "venue_session",
     "venue_settlement_days",
