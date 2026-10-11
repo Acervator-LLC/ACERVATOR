@@ -354,6 +354,43 @@ PREFLIGHT_URLS: dict[str, str] = {
 }
 
 # Exchange-specific CCXT options applied during sync_connect
+#
+# ccxt's gemini parser splits a market id against its own quote list rather than
+# reading the venue's ``quote_currency`` field, and that list omits ``RLUSD``.
+# Gemini publishes ``RLUSD`` as the quote on 77 of the 348 rows its own
+# ``/v1/symbols/details/all`` serves, so ``2ZRLUSD`` read as base ``2ZRL`` and
+# ``PAXGRLUSD`` as base ``PAXGRL``, codes the venue publishes on no row. The
+# quote list below is ccxt's own with ``RLUSD`` ahead of ``USD``, so the longer
+# quote matches first. ``brokenPairs`` is ccxt's own list without ``eurusd`` and
+# ``eurusdc``, which gemini serves as ``"status":"open"``; the entries kept are
+# the ones a renamed currency code would duplicate a symbol for, ``MATIC``
+# reading as ``POL`` and ``EFIL`` as ``FIL``.
+GEMINI_QUOTE_CURRENCIES: tuple[str, ...] = (
+    "RLUSD",
+    "USDT",
+    "GUSD",
+    "USD",
+    "DAI",
+    "EUR",
+    "GBP",
+    "SGD",
+    "BTC",
+    "ETH",
+    "LTC",
+    "BCH",
+    "SOL",
+    "USDC",
+)
+
+GEMINI_BROKEN_PAIRS: tuple[str, ...] = (
+    "efilusd",
+    "efilfil",
+    "maticusd",
+    "maticusdc",
+    "maticgusd",
+    "maticrlusd",
+)
+
 EXCHANGE_OPTIONS: dict[str, dict] = {
     "coinbase": {
         "advanced": True,
@@ -362,6 +399,13 @@ EXCHANGE_OPTIONS: dict[str, dict] = {
         "fetchTickers": "fetchTickersV3",
         "fetchAccounts": "fetchAccountsV3",
         "fetchBalance": "v3PrivateGetBrokerageAccounts",
+    },
+    "gemini": {
+        "fetchMarketsFromAPI": {
+            "fetchDetailsForAllSymbols": False,
+            "quoteCurrencies": list(GEMINI_QUOTE_CURRENCIES),
+        },
+        "brokenPairs": list(GEMINI_BROKEN_PAIRS),
     },
 }
 
@@ -647,6 +691,9 @@ OPTION_MARKET_KEY = "option"
 
 #: The ccxt market field set True on every contract record.
 CONTRACT_MARKET_KEY = "contract"
+
+#: The ccxt market field carrying the venue's own listing answer.
+LISTED_MARKET_KEY = "active"
 
 #: The codes Coinbase's own public currency list answers for a currency, held
 #: here so the classifier reads a label and calls no venue.
@@ -1040,6 +1087,18 @@ def is_contract_market(market: Any) -> bool:
     return str(held.get("type") or "").lower() in CONTRACT_MARKET_TYPES
 
 
+def is_listed_market(market: Any) -> bool:
+    """Whether the venue still lists one loaded market record, False only where
+    its own ``LISTED_MARKET_KEY`` reads False.
+
+    ``get_markets`` skips a market this refuses, so a venue naming a delisted
+    market keeps it out while a venue publishing no answer — no key, or the
+    None ccxt writes where its market parser reads no status — keeps every
+    market it lists.
+    """
+    return (market or {}).get(LISTED_MARKET_KEY, True) is not False
+
+
 def underlying_code(code: Any) -> str:
     """The ``FIAT_CURRENCY_CODES`` or ``PRECIOUS_METAL_CODES`` code one asset
     code stands for, upper case.
@@ -1144,7 +1203,7 @@ def asset_info(
         rules=market_rules(held, precision_mode, order_types),
         maker_fee=float(held.get("maker", 0.001) or 0.001),
         taker_fee=float(held.get("taker", 0.001) or 0.001),
-        active=held.get("active", True),
+        active=is_listed_market(held),
     )
 
 
@@ -2444,7 +2503,7 @@ class CCXTConnector(ExchangeInterface):
             for row in rows:
                 record = parse(row, {})
                 symbol = str((record or {}).get("symbol") or "")
-                if not symbol or not (record or {}).get("active", True):
+                if not symbol or not is_listed_market(record):
                     continue
                 found[symbol] = record
                 admitted += 1
@@ -2558,7 +2617,7 @@ class CCXTConnector(ExchangeInterface):
         # it is read once here and stamped onto every market of this venue.
         declared = declared_order_types(self._ex)
         for sym, info in self._ex.markets.items():
-            if not info.get("active", True):
+            if not is_listed_market(info):
                 continue
 
             markets.append(asset_info(sym, info, precision_mode, declared))
