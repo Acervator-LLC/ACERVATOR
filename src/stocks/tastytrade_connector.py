@@ -1208,7 +1208,7 @@ class TastytradeConnector(BrokerBase):
         word = instrument_word(asset)
         parameter = QUOTE_TYPE_PARAMETERS.get(word, DEFAULT_QUOTE_TYPE_PARAMETER)
         answered = await self._request(
-            "GET", f"{MARKET_DATA_ROUTE}?{parameter}={str(symbol)}"
+            "GET", f"{MARKET_DATA_ROUTE}?{parameter}={self._quoted(str(symbol))}"
         )
         rows = reply_items(answered)
         row = rows[0] if rows else {}
@@ -1305,7 +1305,7 @@ class TastytradeConnector(BrokerBase):
                 f"&sort=Asc&types[]=Trade"
             )
             if symbol:
-                query += f"&symbol={str(symbol)}"
+                query += f"&symbol={self._quoted(str(symbol))}"
             answered = await self._request(
                 "GET", f"{TRANSACTIONS_ROUTE.format(account=self._account)}{query}"
             )
