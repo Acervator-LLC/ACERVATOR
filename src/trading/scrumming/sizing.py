@@ -1189,11 +1189,12 @@ def session_for(recorded: Any, asset_class: str, venue: str) -> Optional[str]:
 # count for an equity or a futures contract, and an absent row claims nothing.
 #
 # webull holds no row in any of its six sectors, and the absence is a count. Of
-# the 26 pages of its own documentation read, the words naming settlement number
-# three and all three are field names on one route -- ``settled_cash``,
-# ``unsettled_cash`` and "Settled Cash" on ``/trading/assets/balances/get`` --
-# while an invented settlement phrase names zero. A field is the figure and not
-# the delay, so no day count is established and an absent row claims nothing.
+# the 34 pages of its own documentation read, the words naming settlement number
+# four and all four are field names on one route -- ``settled_cash``,
+# ``unsettled_cash``, "Settled Cash" and "Unsettled Cash" on
+# ``/trading/assets/balances/get`` -- while an invented settlement phrase names
+# zero. A field is the figure and not the delay, so no day count is established
+# and an absent row claims nothing.
 # The venue publishing ``unsettled_cash`` itself is the better reading of row 9
 # than any cited delay, and nothing reads that field yet.
 CITED_VENUE_SETTLEMENT: dict[tuple[str, str], float] = {

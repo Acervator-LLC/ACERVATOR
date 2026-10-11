@@ -8586,7 +8586,7 @@ $0.0050 per share".
 | fee total | `commission.actual_commission` plus `fees[].actual_value` on the order detail |
 | realised profit | **not published** |
 
-The fourth is a count. Across the **26** pages of the venue's own documentation
+The fourth is a count. Across the **34** pages of the venue's own documentation
 this unit read, a field named `realized…` appears **0** times, and the control,
 `unrealized…`, appears **6**. The balance route does publish
 `total_day_profit_loss`, which is a day figure and not a realised one.
@@ -8699,11 +8699,11 @@ protected by the Securities Investor Protection Corporation (SIPC)."
 - **`CITED_CASH_MARKET_BUY`** gains **0** rows. The cash amount is published and
   capped below one share: "AMOUNT (by cash amount, for buying less than 1
   share)."
-- **`CITED_VENUE_SETTLEMENT`** gains **0** rows. Across the 26 pages read, the
-  words naming settlement number **3** and all three are field names on one
-  route — `settled_cash`, `unsettled_cash` and "Settled Cash" — while an
-  invented settlement phrase names **0**. A field is the figure and not the
-  delay.
+- **`CITED_VENUE_SETTLEMENT`** gains **0** rows. Across the 34 pages read, the
+  words naming settlement number **4** and all four are field names on one
+  route — `settled_cash`, `unsettled_cash`, "Settled Cash" and "Unsettled Cash"
+  — while an invented settlement phrase names **0**. A field is the figure and
+  not the delay.
 - **`CITED_VENUE_BASE_SECTORS`** and **`CITED_VENUE_MARKET_SECTORS`** gain **0**
   rows each. The collision is settled by the venue's own `instrument_type` and
   its own contract symbology, and the full coin set sits behind a credential:

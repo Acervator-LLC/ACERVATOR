@@ -22,9 +22,15 @@ and `src/stocks/alpaca_connector.py, in BROKER_CONNECTORS` keys it.
 
 ## The corpus, pinned
 
-Thirty-five pages of Webull's own documentation, each fetched with no
-credential, printed before any count was taken. The 26 under `/apis/docs/` are
-the corpus every count below is taken over.
+Thirty-four pages of Webull's own documentation under `/apis/docs/`, each
+fetched with no credential, plus its own `apis/llms.txt` index, printed before
+any count was taken. Those 34 pages are the corpus every count below is taken
+over, 558,591 bytes in all.
+
+Two files were excluded and both are named. `reference/bars.md` is a 404 body of
+**9** bytes and is not a page. Six further files in the same working directory
+were written by this unit and are not the venue's — a census that globbed its
+own directory would have counted them and inflated every figure below.
 
 | page | bytes |
 | --- | --- |
@@ -199,7 +205,7 @@ a bare list answers `''`.
 | fee total | `commission.actual_commission` plus `fees[].actual_value` |
 | realised profit | **not published** |
 
-The fourth is a count, not a belief. Across the pinned 26-page corpus a field
+The fourth is a count, not a belief. Across the pinned 34-page corpus a field
 named `realized…` appears **0** times; the positive control, `unrealized…`,
 appears **6**. `total_day_profit_loss` is a day figure and not a realised one.
 
@@ -286,7 +292,7 @@ such a symbol never takes.
 | `CITED_VENUE_SESSIONS` | **6** | stocks `us_equity`, the other five `continuous` |
 | `CITED_VENUE_ORDER_TYPES` | **6** | every product's own list carries a market order |
 | `CITED_CASH_MARKET_BUY` | **0** | the cash amount is capped below one share |
-| `CITED_VENUE_SETTLEMENT` | **0** | **3** settlement words in the corpus, all three field names on one route; an invented settlement phrase names **0** |
+| `CITED_VENUE_SETTLEMENT` | **0** | **4** settlement words in the corpus, all four field names on one route; an invented settlement phrase names **0** |
 | `CITED_VENUE_BASE_SECTORS` | **0** | the collision is settled by `instrument_type`; the coin set is behind a credential, with **3** of "70+" named publicly |
 | `CITED_VENUE_MARKET_SECTORS` | **0** | `product_class_name` answers every contract and `instrument_type` every other market |
 
@@ -484,7 +490,7 @@ The manual edit is add-only, proved against `git show origin/current:` on
 
 ```
 before    420,912 bytes   7,922 sentences
-after     439,213 bytes   8,241 sentences
+after     439,230 bytes   8,241 sentences
 added                       319 sentences
 MISSING                       0 sentences
 CONTROL A   a reword inside one sentence      MISSING 1   caught
