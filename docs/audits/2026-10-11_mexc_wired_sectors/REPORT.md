@@ -620,7 +620,7 @@ decoded as UTF-8:
 ```
 committed sentences                                  1740
 committed sentences missing from the working page        0
-distinct sentences added                                22
+distinct sentences added                                28
 ```
 
 The control is two-sided. One phrase reworded inside one committed sentence makes
