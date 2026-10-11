@@ -337,7 +337,9 @@ def trading_products(
     """Each base the connectors' loaded _ex.markets tables list against one of
     accepted_quotes, True while _product_trades answers so on any such pair.
 
-    An empty answer says no connector holds a table; no venue is asked.
+    A market whose ``info`` is not a mapping carries neither field, so it reads
+    the ccxt ``active`` flag alone. An empty answer says no connector holds a
+    table; no venue is asked.
     """
     quotes = tuple(accepted_quotes)
     found: dict[str, bool] = {}
@@ -350,6 +352,8 @@ def trading_products(
             if quote.upper() not in quotes:
                 continue
             info = market.get("info") or {}
+            if not isinstance(info, dict):
+                info = {}
             trades = _product_trades(
                 info.get("status"),
                 info.get("trading_disabled"),
