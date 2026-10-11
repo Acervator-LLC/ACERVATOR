@@ -171,6 +171,19 @@ STOCK_DISABLED_CONTROLS = (
     "new_api_secret",
     "new_passphrase",
     "pp_check",
+    "new_verification_code",
+)
+
+#: The verification-code row and its words. One venue grants an access token
+#: only after the operator approves this application on the venue's own page,
+#: which then shows him a short code. That page redirects nowhere, so no
+#: listener can collect the code and he pastes it into this row instead.
+VERIFICATION_CODE_LABEL = "Verification Code:"
+VERIFICATION_CODE_PLACEHOLDER = "Code the venue showed you after you approved"
+VERIFICATION_CODE_TOOLTIP = (
+    "Open the venue's authorization page, sign in, and approve this "
+    "application. The venue then shows you a short code. Paste that code "
+    "here. The code is used once and is never saved."
 )
 
 CRYPTO_LIST_LABEL = "Configured Crypto Exchanges:"
@@ -388,7 +401,12 @@ EXCHANGE_CONFIG_FIELDS = (
     "hardware_mode",
     "hw_volume_serial",
 )
-TYPED_CREDENTIAL_CONTROLS = ("new_api_key", "new_api_secret", "new_passphrase")
+TYPED_CREDENTIAL_CONTROLS = (
+    "new_api_key",
+    "new_api_secret",
+    "new_passphrase",
+    "new_verification_code",
+)
 EMPTY_TEXT = ""
 EXCHANGE_CONFIG_DEFAULTS = (
     EMPTY_TEXT,
@@ -616,6 +634,17 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "echo": "password",
         "visible": False,
         "placeholder": "Passphrase set when creating API key",
+    },
+    {
+        "tab": EXCHANGE_TAB,
+        "group": CRYPTO_ADD_GROUP,
+        "label": VERIFICATION_CODE_LABEL,
+        "name": "new_verification_code",
+        "kind": LINE,
+        "echo": "password",
+        "visible": False,
+        "placeholder": VERIFICATION_CODE_PLACEHOLDER,
+        "tooltip": VERIFICATION_CODE_TOOLTIP,
     },
     {
         "tab": TRADING_TAB,
@@ -1268,6 +1297,7 @@ LAYOUT = {
                         (CONTROL, "new_api_secret"),
                         (CONTROL, "pp_check"),
                         (CONTROL, "new_passphrase"),
+                        (CONTROL, "new_verification_code"),
                         (
                             ROW,
                             (
@@ -1800,6 +1830,12 @@ BROWSER_FORM_PROMPT = (
     "{name} takes a browser authorization, not an API key and secret. "
     "Press Connect with a Browser to sign in at the venue."
 )
+CODE_FORM_PROMPT = (
+    "Enter the API key and secret for {name}, then press Add. {name} answers "
+    "with a web address. Open it yourself, sign in, and approve this "
+    "application. {name} then shows you a short code. Paste that code into "
+    "Verification Code and press Add again."
+)
 
 #: What the feedback row carries once a browser sign-in stored its credential.
 BROWSER_CONNECTED_FORMAT = "{name} connected. {approval}"
@@ -1813,6 +1849,29 @@ BROWSER_WAITING_FORMAT = (
 
 #: Why one browser venue's stored client id could not be read back.
 CLIENT_ID_UNREADABLE_FORMAT = "{name}: the stored client id would not decrypt: {said}"
+
+#: What the feedback row carries at each step of a verification-code sign-in.
+#: The address carries a token that lives five minutes, so it is drawn on the
+#: screen and never written to a log.
+VERIFICATION_PAGE_FORMAT = (
+    "{name} answered with a page. Open this address yourself, sign in, and "
+    "approve this application: {page} . Then paste the code {name} shows you "
+    "into Verification Code and press Add again."
+)
+VERIFICATION_NO_PAGE_FORMAT = (
+    "{name} named no page to approve. Check the API key and secret, then press "
+    "Add again."
+)
+#: Which leg ``connect_verification_code_venue`` just walked. The page stage
+#: hands the operator an address; the grant stage hands the venue his code.
+VERIFICATION_STAGE_PAGE = "page"
+VERIFICATION_STAGE_GRANT = "grant"
+
+VERIFICATION_GRANTED_FORMAT = "{name} accepted that code and granted a session."
+VERIFICATION_REFUSED_FORMAT = (
+    "{name} did not accept that code. Press Add with the code row empty to get "
+    "a fresh page, then paste the new code it shows you."
+)
 
 
 def browser_waiting_words(venue_id: Any) -> str:
@@ -1891,34 +1950,65 @@ def takes_browser_authorization(venue_id: Any, sector: Any = "") -> bool:
     return credential_kind(venue_id, sector) == CREDENTIAL_BROWSER_AUTHORIZATION
 
 
+def verification_code_venue_ids() -> frozenset:
+    """``etrade_connector.VERIFICATION_CODE_VENUES``, the venues whose Add form
+    draws the verification-code row.
+
+    The set is imported when first asked, so importing this file loads no
+    broker connector and reaches no venue.
+    """
+    from ...stocks.etrade_connector import VERIFICATION_CODE_VENUES
+
+    return frozenset(VERIFICATION_CODE_VENUES)
+
+
+def takes_verification_code(venue_id: Any) -> bool:
+    """Whether one venue grants its access token only after the operator pastes
+    back a code the venue showed him.
+
+    ``credential_form`` reads this for ``code_row``, so the row drawn and the
+    leg the connector walks cannot disagree.
+    """
+    asked = str(venue_id or "").strip().lower()
+    return asked in verification_code_venue_ids()
+
+
 def credential_form(venue_id: Any, wing: Any = "") -> dict:
     """Every row and button word the Add form draws for one venue's own
     credential kind, on one wing.
 
-    ``key_rows`` false hides the API Key, API Secret and passphrase rows, an
-    empty ``venue_id`` keeps the key-and-secret shape the form opens with, and
-    ``STOCK_WING`` keeps ``STOCK_DISABLED_TIP`` on a venue taking a typed key.
+    ``key_rows`` false hides the API Key, API Secret and passphrase rows,
+    ``code_row`` true adds the verification-code row for a venue
+    ``takes_verification_code`` names, an empty ``venue_id`` keeps the
+    key-and-secret shape the form opens with, and ``STOCK_WING`` keeps
+    ``STOCK_DISABLED_TIP`` on a venue taking a typed key.
     """
     # CLASS_WINGS maps the asset class word "stocks" onto this module's own
     # wing word "stock", so either name resolves one wing.
     held = CLASS_WINGS.get(str(wing), str(wing))
     kind = credential_kind(venue_id, wing)
     browser = kind == CREDENTIAL_BROWSER_AUTHORIZATION
+    coded = not browser and takes_verification_code(venue_id)
     name = str(venue_id or "").capitalize()
     tip = ""
     if browser:
         tip = NO_KEY_TO_TEST
     elif held == STOCK_WING:
         tip = STOCK_DISABLED_TIP
+    if browser:
+        prompt = BROWSER_FORM_PROMPT
+    elif coded:
+        prompt = CODE_FORM_PROMPT
+    else:
+        prompt = KEY_FORM_PROMPT
     return {
         "kind": kind,
         "key_rows": not browser,
+        "code_row": coded,
         "add_text": BROWSER_ADD_BUTTON_TEXT if browser else ADD_BUTTON_TEXT,
         "test_enabled": not browser,
         "test_tip": tip,
-        "prompt": (BROWSER_FORM_PROMPT if browser else KEY_FORM_PROMPT).format(
-            name=name
-        ),
+        "prompt": prompt.format(name=name),
     }
 
 
@@ -1967,6 +2057,52 @@ def connect_browser_venue(
         "refusal": read["refusal"],
         "level": approval_level(approval),
         "words": browser_connected_words(venue_id, approval),
+    }
+
+
+def connect_verification_code_venue(
+    venue_id: Any,
+    typed_code: Any,
+    begin_page: Any,
+    complete_grant: Any,
+) -> dict:
+    """Walk one leg of a verification-code sign-in and answer what to say.
+
+    An empty ``typed_code`` calls ``begin_page``, which answers the address the
+    operator opens himself. A typed code calls ``complete_grant`` with it, which
+    answers whether the venue granted a session. Neither callable is built here,
+    so this answers the words with no event loop and reaches no venue itself.
+
+    ``code`` is never part of the answer, so no caller can log it.
+    """
+    name = str(venue_id or "").capitalize()
+    code = str(typed_code or "").strip()
+    if not code:
+        page = str(begin_page() or "")
+        if not page:
+            return {
+                "stage": VERIFICATION_STAGE_PAGE,
+                "granted": False,
+                "page": "",
+                "level": ERROR_LEVEL,
+                "words": VERIFICATION_NO_PAGE_FORMAT.format(name=name),
+            }
+        return {
+            "stage": VERIFICATION_STAGE_PAGE,
+            "granted": False,
+            "page": page,
+            "level": INFO_LEVEL,
+            "words": VERIFICATION_PAGE_FORMAT.format(name=name, page=page),
+        }
+    granted = bool(complete_grant(code))
+    return {
+        "stage": VERIFICATION_STAGE_GRANT,
+        "granted": granted,
+        "page": "",
+        "level": SUCCESS_LEVEL if granted else ERROR_LEVEL,
+        "words": (
+            VERIFICATION_GRANTED_FORMAT if granted else VERIFICATION_REFUSED_FORMAT
+        ).format(name=name),
     }
 
 
@@ -2691,9 +2827,12 @@ class SettingsDialogModel:
         )
 
     def on_exchange_changed(self) -> None:
-        """Tick the passphrase box for an exchange that needs one.
+        """Tick the passphrase box for an exchange that needs one and draw the
+        verification-code row for a venue that asks for one.
 
-        ``show_passphrase`` then draws ``new_passphrase`` for that venue alone.
+        ``show_passphrase`` draws ``new_passphrase`` for that venue alone, and
+        ``show_verification_code`` reads ``credential_form`` so the row set here
+        and the row set the Qt dialog draws come from one answer.
         """
         eid = self.current_exchange_id()
         self.texts["chosen_venue"] = chosen_venue_text(self.asset_class, self.venue_row)
@@ -2701,11 +2840,17 @@ class SettingsDialogModel:
         self.texts["api_feedback"] = ""
         self._record("on_exchange_changed", eid)
         self.show_passphrase(self.values["pp_check"])
+        self.show_verification_code(credential_form(eid, self.wing)["code_row"])
 
     def show_passphrase(self, on: Any) -> None:
         """Show or hide the passphrase field."""
         self.visible["new_passphrase"] = on
         self._record("show_passphrase", on)
+
+    def show_verification_code(self, on: Any) -> None:
+        """Show or hide the verification-code field."""
+        self.visible["new_verification_code"] = bool(on)
+        self._record("show_verification_code", bool(on))
 
     def set_feedback(self, message: Any, level: Any = INFO_LEVEL) -> None:
         """Print one line under the Add-exchange form, coloured by level."""
@@ -2722,6 +2867,16 @@ class SettingsDialogModel:
             self.values["new_passphrase"].strip() if self.values["pp_check"] else ""
         )
         return key, secret, phrase
+
+    def typed_verification_code(self) -> str:
+        """The verification-code row, and "" while that row is not drawn.
+
+        A venue whose form carries no such row answers "" whatever the row
+        holds, so a value left behind by another venue cannot be sent.
+        """
+        if not self.visible.get("new_verification_code"):
+            return ""
+        return str(self.values.get("new_verification_code", "") or "").strip()
 
     def _process_events(self) -> None:
         self.processed_events.append(PROCESS_EVENTS_REASON)
@@ -3255,6 +3410,7 @@ def build_view_model(model: SettingsDialogModel) -> dict:
                 "load_skipped",
                 "on_exchange_changed",
                 "show_passphrase",
+                "show_verification_code",
                 "set_feedback",
                 "test_api_connection",
                 "add_exchange",

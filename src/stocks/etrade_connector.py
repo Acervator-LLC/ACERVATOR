@@ -79,6 +79,13 @@ OAUTH_SIGNATURE_METHOD = "HMAC-SHA1"
 OAUTH_CALLBACK = "oob"
 OAUTH_REALM = ""
 
+#: Every venue id granting an access token only after the operator reads a
+#: verification code off the venue's own authorization page. An ``oob``
+#: callback is what makes that code hand-read rather than redirected, so no
+#: listener can collect it and the credentials form asks for it as a row.
+#: ``settings_dialog_surface.verification_code_venue_ids`` reads this.
+VERIFICATION_CODE_VENUES: frozenset[str] = frozenset({VENUE_ID})
+
 #: What the access token costs to keep. Quoted whole: "By default, the access
 #: token expires at the end of the current calendar day, US Eastern time." and
 #: "During the current day, if the application does not make any requests for
@@ -1046,13 +1053,25 @@ class EtradeConnector(BrokerBase):
         )
         return f"{AUTHORIZE_URL}?{query}"
 
-    async def begin_authorization(self) -> str:
+    async def begin_authorization(
+        self, api_key: str = "", api_secret: str = "", paper: bool = True
+    ) -> str:
         """Walk leg one on ``REQUEST_GRANT_ROUTE`` and answer ``authorize_url``.
+
+        ``api_key`` and ``api_secret`` are held as the consumer pair when given,
+        so the credentials screen walks this leg before any session exists, and
+        ``paper`` picks the host the granted token belongs to, the same choice
+        ``connect`` makes.
 
         The request token this holds expires in five minutes, and
         ``complete_authorization`` walks leg three with the verifier that page
         shows.
         """
+        if api_key:
+            self._consumer_key = str(api_key)
+        if api_secret:
+            self._consumer_signing_key = str(api_secret)
+        self._base_url = SANDBOX_BASE if paper else API_BASE
         if not self._consumer_key or not self._consumer_signing_key:
             self._session_refusal = "no consumer key and secret are stored"
             return ""
@@ -1795,6 +1814,7 @@ __all__ = [
     "TRANSACTIONS_ROUTE",
     "TRANSACTION_COUNT_MAX",
     "VENUE_ID",
+    "VERIFICATION_CODE_VENUES",
     "WHOLE_UNIT_INCREMENT",
     "EtradeConnector",
     "asset_rules",
