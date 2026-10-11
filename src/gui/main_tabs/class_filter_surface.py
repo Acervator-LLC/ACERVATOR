@@ -13,6 +13,7 @@ from __future__ import annotations
 from typing import Any, Iterable, Optional
 
 from .asset_class_surface import (
+    display_name,
     normalise,
     symbol_class,
     venue_classes,
@@ -25,6 +26,20 @@ DERIVATIVES = "derivatives"
 #: source note names dated futures on the CDE venue and perpetuals on
 #: ``-PERP-INTX`` (``src/trading/ata_asset_maps.py``, ``MAP_SOURCES``).
 DERIVATIVE_SUFFIXES = ("-CDE", "-PERP-INTX")
+
+#: What each tab holds one of, for ``empty_note``. No tab draws that sentence:
+#: ``tools/capture_screen_figure.py``, in ``class_note``, is its one caller.
+TAB_SUBJECTS = {
+    "Live": "bot",
+    "Charts": "chart",
+    "Inspector": "scanned market",
+    "Swarm": "bot",
+    "History": "trade",
+    "Sim": "simulated bot",
+    "Paper": "paper bot",
+}
+
+EMPTY_NOTE = "No {name} {subject} to show."
 
 _active = ""
 
@@ -124,3 +139,17 @@ def trades_of_class(rows: Any, name: Optional[Any] = None) -> list:
         if market_class(venue, held.get("symbol", "")) == key:
             kept.append(row)
     return kept
+
+
+def empty_note(tab: Any, name: Optional[Any] = None) -> str:
+    """The sentence naming what one tab holds none of for an asset class.
+
+    No tab draws this: ``tools/capture_screen_figure.py``, in ``class_note``,
+    is the one caller, and a tab outside ``TAB_SUBJECTS`` answers an empty
+    string.
+    """
+    key = normalise(name) if name is not None else active()
+    subject = TAB_SUBJECTS.get(str(tab))
+    if not subject:
+        return ""
+    return EMPTY_NOTE.format(subject=subject, name=display_name(key))

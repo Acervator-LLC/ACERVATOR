@@ -1192,42 +1192,48 @@ def show_tab(app, state: dict, tab: str):
     return window, book, book.currentWidget()
 
 
-def own_page_controls(page) -> list:
-    """Every control on *page* that is neither explicitly hidden nor disabled."""
-    from PySide6.QtWidgets import QPushButton, QTableWidget, QTabWidget
+def bar_band(window, book, bottom: int) -> tuple:
+    """The rows from the tab bar down to *bottom*, clear of the money strip."""
+    bar = book.tabBar()
+    top = bar.mapTo(window, bar.rect().topLeft()).y()
+    return top, min(window.height(), bottom) - top
 
-    found = []
-    for kind in (QPushButton, QTableWidget, QTabWidget):
-        found += [
-            one
-            for one in page.findChildren(kind)
-            if not one.isHidden() and one.isEnabled()
-        ]
-    return found
+
+def class_note(page, tab: str):
+    """The label drawing the asset-class note on an emptied *tab*."""
+    from PySide6.QtWidgets import QLabel
+
+    from src.gui.main_tabs import class_filter_surface
+
+    wanted = class_filter_surface.empty_note(tab)
+    found = [
+        one
+        for one in page.findChildren(QLabel)
+        if one.isVisible() and one.text().strip() == wanted
+    ]
+    if len(found) != 1:
+        raise CaptureRefused(
+            f"the {tab} page draws {len(found)} copies of {wanted!r}, not one"
+        )
+    return found[0], wanted
 
 
 def empty_tab_figure(app, state: dict, tab: str, name: str, caption: str) -> dict:
-    """The *tab* selected, drawing its own page with no fleet in the store."""
+    """The *tab* selected, with the note it draws while the class holds nothing."""
     window, book, page = show_tab(app, state, tab)
-    held = own_page_controls(page)
-    if not held:
-        raise CaptureRefused(
-            f"the {tab} page draws no control of its own, so something has "
-            f"replaced it"
-        )
+    label, sentence = class_note(page, tab)
     seat = tab_rect(window, book, tab)
-    bar = book.tabBar()
-    top = bar.mapTo(window, bar.rect().topLeft()).y()
+    note = control_rect(window, label)
     print(f"driven      {tab!r} selected; the bar reads {tab_names(book)}")
-    print(f"observed    {tab} draws its own page, {len(held)} controls on it")
+    print(f"observed    {tab} draws {sentence!r} from a store with no fleet")
     return {
         "name": name,
         "widget": window,
-        "band": (top, bar.height() + BAND_ROOM),
+        "band": bar_band(window, book, note[1] + note[3] + BAND_ROOM),
         "target": (tab, seat),
-        "named": [(tab, seat)],
+        "named": [(tab, seat), (sentence, note)],
         "caption": caption,
-        "labels": [tab],
+        "labels": [tab, sentence],
     }
 
 

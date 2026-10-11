@@ -6243,13 +6243,16 @@ OVERTAKEN, quoted whole:
 > button naming the class. The note replaces a tab only when a venue does serve the
 > class and no bot trades it.
 
-True today: no tab draws a class note. `note_model`, `EMPTY_HEADING`, `EMPTY_NOTE`,
+True today: no tab draws a class note. `note_model`, `EMPTY_HEADING`,
 `empty_hint`, `build_label` and `tab_state` are gone from
 `src/gui/main_tabs/class_filter_surface.py`, and `EMPTY_HINT` named no symbol in
-that file even while the quoted passage stood. The Live tab still draws its own
-`No Stock Exchanges Configured` card with its Add button on it while no venue
-serves the sector, and the Paper tab still draws its own card the same way. Both
-are pages those tabs own, and neither is a note that replaces a tab.
+that file even while the quoted passage stood. `empty_note` and `EMPTY_NOTE`
+remain for one caller only, `tools/capture_screen_figure.py, in class_note`,
+which looks for a label no tab draws any more and refuses the capture when it
+finds none. The Live tab still draws its own `No Stock Exchanges Configured`
+card with its Add button on it while no venue serves the sector, and the Paper
+tab still draws its own card the same way. Both are pages those tabs own, and
+neither is a note that replaces a tab.
 
 **A filter hides rows and changes nothing else.** No bot is stopped, no position is
 closed and no state is written by a press, and the class survives a restart: a fresh
