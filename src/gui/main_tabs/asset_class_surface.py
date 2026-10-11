@@ -167,7 +167,18 @@ EXTRA_VENUE_CLASSES = {
     # publish symbolType stock, so the indices row offers the venue and its
     # recording answers no market under that sector.
     "bitget": ("stocks", "commodities", "indices", "futures_perps"),
-    "bitstamp": ("commodities", "forex"),
+    # Bitstamp publishes asset_class on the 20 PERPETUAL rows of its own
+    # /markets/ endpoint and on none of its 251 SPOT rows: CRYPTO 13,
+    # COMMODITIES 4, ETF 2, FX 1. Its own launch page names the same four
+    # families in words — "FX: EUR/USD", "Equity indices: QQQ, EWY",
+    # "Commodities: Gold, Silver, WTI, Brent" and a crypto list holding PAXG —
+    # so ETF names an index and not a company, and the indices row carries the
+    # two ETF markets. stocks stays absent: 0 of 271 markets name a single
+    # company and no row publishes a stock word. A US person reaches the 251
+    # spot markets through Bitstamp USA, Inc. and none of the 20 perpetuals:
+    # "Derivatives trading is not available to customers in the US, Canada,
+    # Japan and some other countries."
+    "bitstamp": ("commodities", "forex", "indices", "futures_perps"),
     "bybit": ("futures_perps",),
     "cryptocom": ("stocks", "futures_perps"),
     "gateio": ("stocks", "commodities", "forex", "indices", "futures_perps"),

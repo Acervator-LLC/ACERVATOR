@@ -6166,3 +6166,194 @@ what the library composes, not what kucoin acknowledged. And the venue will not
 give a United States resident an account, in its own words, in every one of its
 sectors; the program warns on connect and still starts a bot, and whether such
 an id stays offered at all is the operator's call.
+
+## Bitstamp reaches five sectors, and a United States account reaches three
+
+OVERTAKEN, quoted whole:
+
+```
+| bitstamp | crypto, commodities, forex |
+```
+
+True today: `asset_class_surface.venue_classes` answers crypto, commodities,
+forex, indices and futures_perps. The venue publishes its own sector word on
+each of its twenty perpetual markets, and two of those words name sectors the
+screen did not offer.
+
+Bitstamp is the one venue that publishes an asset category and gains no
+`VENUE_ASSET_SECTOR_RECORDS` row. Its own `/api/v2/markets/` carries an
+`asset_class` on the 20 `PERPETUAL` rows and on none of the 251 `SPOT` rows:
+
+```
+asset_class   CRYPTO 13   COMMODITIES 4   ETF 2   FX 1   none 251
+market_type   SPOT 251    PERPETUAL 20
+```
+
+Its own launch page names the same four families in words — "FX: EUR/USD",
+"Equity indices: QQQ, EWY", "Commodities: Gold, Silver, WTI, Brent" and a crypto
+list carrying PAXG. So `ETF` names an index and not a company, and the two
+markets record under indices.
+
+A record on that endpoint names a sector for 7 of the venue's 123 base codes,
+and a record switches off the metal and currency code-set reading for the whole
+venue. Driven over all 271 markets, it gains six and costs four.
+
+| the record gains | the record costs |
+| ---------------- | ---------------- |
+| BRENT, GOLD, SILVER, WTI reach commodities | `GBP/USD` and `SGD/USD` fall from forex to crypto |
+| QQQ and EWY reach indices | `PAXG/USD` and `PAXG/EUR` fall from commodities to crypto |
+
+`src/trading/scrumming/sizing.py, at CITED_VENUE_BASE_SECTORS` and
+`src/trading/scrumming/sizing.py, at CITED_VENUE_MARKET_SECTORS` take the six
+gains at the grain the venue publishes them on and cost nothing.
+
+### What the recording answers, before and after
+
+```
+                 before   after
+crypto              235     240
+forex                15      11
+commodities           3       6
+futures_perps        18      12
+indices               0       2
+```
+
+Six of the fifteen markets read as forex before were not currency markets, and
+two currency markets were missed. Bitstamp's own `/api/v2/currencies/` settles
+each base: it serves 170 rows and names `type` `fiat` on four codes alone —
+`EUR` "Euro", `GBP` "British Pound", `SGD` "Singapore dollar" and `USD` "U.S.
+dollar" — and `crypto` on every other.
+
+| market | was | is | the venue's own words |
+| ------ | --- | -- | --------------------- |
+| `MNT/USD`, `MNT/EUR` | forex | crypto | `MNT` is "Mantle", not the Mongolian tugrik |
+| `EURC/EUR` | forex | crypto | a euro token against the euro, one currency |
+| `USDC/USD`, `USDT/USD` | forex | crypto | "USDC" and "Tether" against the dollar |
+| `USDC/USDT` | forex | crypto | two dollar tokens, no currency |
+| `EURCV/USDC`, `EURCV/USDT` | crypto | forex | "EUR CoinVertible" against a dollar token |
+| `PAXG/USD:USD` | commodities | crypto | the venue files this contract under `CRYPTO` |
+
+The nine remaining currency markets are `EUR/USD`, its perpetual, `GBP/USD`,
+`SGD/USD`, `USDC/EUR`, `USDT/EUR`, `EURC/USDC`, `XSGD/USD` and `XSGD/USDT`.
+
+### A United States account reaches the spot markets and none of the perpetuals
+
+Spot, in the venue's own words:
+
+> Virtual currency services to US residents are provided by Bitstamp USA, Inc.,
+> which is licensed to engage in virtual currency business activity by the New
+> York State Department of Financial Services.
+
+Its own market list confirms it per entity. `/api/v2/markets/?entity=US_INC`
+answers 251 markets, every one spot. The filter is two-sided: the venue's
+`BitstampEntityEnum` accepts `US_INC`, `UK_LTD`, `EUROPE_SA` and `UK`, and
+refuses twenty other names with "cannot be deserialized to
+BitstampEntityEnum". `EUROPE_SA` answers 217 and withholds 34 that `US_INC`
+serves, `PAXG/USD` and `PAXG/EUR` among them.
+
+Derivatives, in the venue's own words:
+
+> Derivatives trading is not available to customers in the US, Canada, Japan
+> and some other countries.
+
+> Investment services with regards to trading in derivatives are provided by
+> Bitstamp Financial Services Ltd., Dalmatinova ulica 2, 1000 Ljubljana,
+> Slovenia (BFS). BFS is authorized and supervised by the Slovenian Securities
+> Market Agency (ATVP) as a MiFiD investment firm.
+
+So bitstamp sits in neither `US_IP_BLOCKED_EXCHANGES` nor
+`US_ACCOUNT_RESTRICTED_EXCHANGES`, the same shape gemini holds, because the
+refusal falls on a product and not on the account. The twenty perpetual markets
+are offered, read and charted, and a United States account cannot trade them.
+
+No page read names a state excluded from trading. Bitstamp's own Earn pages name
+seven for a product this program does not use — "Not available to residents of
+Alabama, Hawaii, Idaho, Louisiana, New Jersey, New York and Nevada" — and its
+own New York post reads "Quick buy & sell option has landed in New York!". A
+state excluded from spot trading is not established, which is not the same as
+absent.
+
+### The market buy sizes in units, and the cash route is the one the library does not send
+
+Bitstamp publishes two buy routes, each with its own unit:
+
+| route | the venue's own words |
+| ----- | --------------------- |
+| Market Buy Order | "Amount in base currency (Example: For BTC/USD pair, amount is quoted in BTC)" |
+| Instant Buy Order | "Amount in counter currency (Example: For BTC/USD pair, amount is quoted in USD)" |
+
+`ccxt.bitstamp.create_order` sends `privatePostBuyMarketPair` for a market order
+and reaches `privatePostBuyInstantPair` only where the caller names the
+`instant` type, which `CCXTConnector.place_order` never composes. So
+`src/trading/scrumming/sizing.py, in market_buy_names_cash` answers False for
+bitstamp, and `coinbase` answering True on the same call is the control.
+Bitstamp is the first venue to publish the cash amount on a route of its own
+rather than a field of its own.
+
+### Every sector sizes an order, and none is short a point
+
+Driven over all 271 markets with no credential and no order placed:
+
+```
+market_unit_rule        answers for 271 of 271
+variant_holds_market    True for 271 of 271
+order_types_for         "market and limit" for 271 of 271
+venue_variant           "no order-formatting difference" for 271 of 271
+```
+
+`src/exchange/ccxt_connector.py, in declared_order_types` reads "market and
+limit" off the venue's own capability map, and
+`src/trading/scrumming/sizing.py, at CITED_VENUE_ORDER_TYPES` carries a row in
+each of the five sectors bitstamp records a market in, so a sector answers
+before any market is recorded. Stocks holds no row and the venue records no
+market under it: 0 of 271 markets name a single company, and no row publishes a
+stock word. That is the one proven no on this venue.
+
+`src/exchange/timeframes.py` needed no change — ccxt publishes twelve
+granularities for bitstamp and `ALL_TIMEFRAMES` draws eleven, which is exactly
+the row — and only its comment changed, because the row carried no reading.
+
+`src/exchange/market_inspector_fetcher.py` gained eight codes. Bitstamp's own
+currency list names each one as a currency or as the token of one, and each
+bases a market the scan would otherwise pick as a crypto to scrum: `SGD`
+"Singapore dollar", `XSGD` "StraitsX Singapore Dollar", `EURCV` "EUR
+CoinVertible", `RLUSD` "Ripple USD", `USDG` "Global Dollar", `VEUR` "VNX Euro",
+`VCHF` "VNX Swiss Franc" and `UST` "TerraUSD". Measured over the dollar-quoted
+spot markets of ten venues, 8 markets leave bitstamp's universe, 6 kraken's, 3
+gemini's, 2 each on gateio, bitget, okx and okxus, 1 each on coinbase and
+kucoin, and none bitfinex's. `GYEN` and `ZUSD` stay out, because bitstamp names
+each only by its own ticker.
+
+### The arithmetic, per sector
+
+The Add form draws its venues from `venues_for_class` through
+`src/gui/main_tabs/settings_dialog_surface.py, in exchange_status_rows`, so
+offered minus connectable is zero on every sector by construction.
+
+```
+sector          offered  venue lists  actionable  offered - actionable
+crypto              yes          240         240                    0
+commodities         yes            6           6                    0
+forex               yes           11          11                    0
+indices             yes            2           2                    0
+futures_perps       yes          12           12                    0
+stocks               no            0           0                    0
+```
+
+The nine venues this unit's shared paths also serve — coinbase, kraken, gateio,
+bitget, okx, okxus, bitfinex, gemini and kucoin — were driven before and after.
+Not one sector count moved on any of them. A tampered copy of the same reading
+is the control, and the comparison reports it as a difference.
+
+The full readings are in
+[../audits/2026-10-11_bitstamp_wired_sectors/REPORT.md](../audits/2026-10-11_bitstamp_wired_sectors/REPORT.md).
+
+### What the reading cannot show
+
+No reading used a credential, so nothing here proves the venue accepts a live
+order from this program; the order bodies are what the library composes, not
+what bitstamp acknowledged. `www.bitstamp.net` serves every non-API path behind
+an Imperva shell that answers a 205-byte body, and it answers 200 for a path
+that cannot exist, so no status code from that host was read as a reading. Every
+quotation above comes from `www.bitstamp.net/api/v2/...` or from
+`blog.bitstamp.net`, each of which serves a real body.

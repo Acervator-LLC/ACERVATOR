@@ -87,6 +87,10 @@ _AVAILABILITY: dict[str, frozenset[str]] = {
     "bitget": frozenset(
         {"1m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "12h", "1d", "1w"}
     ),
+    # Read from ccxt 4.5.85 `exchange.timeframes` after a public
+    # `load_markets()`: bitstamp publishes twelve granularities and
+    # ALL_TIMEFRAMES draws eleven of them, which is this row. The one it leaves
+    # is 3m.
     "bitstamp": frozenset(
         {"1m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "12h", "1d", "1w"}
     ),
