@@ -8764,3 +8764,495 @@ no venue contacted: the screen offered **5** sectors and the platform draws
 set is 6, `broker_serves_sector("webull", …)` answers True on all six, and the
 difference in both directions is **0**. Before this unit it answered False on all
 six, because `BROKER_CONNECTORS` held no `webull` row at all.
+
+## E*TRADE, read from its own hosts on 2026-10-11
+
+Seventh broker in the exchange-by-exchange rhythm. Everything below was read
+from `apisb.etrade.com` and `us.etrade.com` with no credential sent, no developer
+account registered, and no order previewed, placed, amended or cancelled.
+
+Two corpora were pinned before anything was counted: nine API reference pages on
+`apisb.etrade.com/docs/api/`, flattened to 286,604 characters of text, and 32
+product, agreement and disclosure pages on `us.etrade.com`, 998,389 characters.
+A third was read as a detour, the 275-page `API_Technical_Documentation.pdf` on
+`content.etrade.com`, 407,931 characters.
+
+### What this page said about E*TRADE, and what is true now
+
+OVERTAKEN, quoted whole:
+
+> | etrade | stocks, commodities, indices |
+
+True today: E*TRADE serves **all six** sectors and the screen offered three.
+Its own navigation names seven products — "Stocks Options Mutual Funds ETFs
+Futures Bonds Crypto" — and its own futures product table gives every contract a
+symbol and a tick size. `venue_classes("etrade")` now answers crypto, stocks,
+commodities, forex, indices and futures_perps.
+
+OVERTAKEN, quoted whole:
+
+> E*TRADE           developer documentation
+
+True today: the line is still correct and now carries a name. The documentation
+is at `apisb.etrade.com/docs/api/`, it is served credential-free, and its Order
+API reference alone is 686,928 bytes. That is why this connector composes real
+order bodies rather than refusing like Schwab's.
+
+### The order route, and why one order is two calls
+
+E*TRADE is the first venue in this tree whose order is a **pair** of calls.
+Quoted whole:
+
+> "The Place Order API is used to submit an order after it has been successfully
+> previewed."
+
+and on the place body's own `previewIds`:
+
+> "This parameter is required and must specify the numeric preview ID from the
+> preview and the other parameters of this request must match the parameters of
+> the preview."
+
+So `src/stocks/etrade_connector.py, in place_order` composes one body, sends it to
+`POST /v1/accounts/{accountIdKey}/orders/preview.json`, reads the id the venue
+answers, and sends the same body to `POST /v1/accounts/{accountIdKey}/orders/place.json`
+with `PreviewIds` added and nothing else changed. A preview that names no id
+raises and no place goes out.
+
+JSON is published two ways and both are used: an `Accept` header its transactions
+routes name in their own enum, and the `.json` path suffix its order routes carry
+on their own worked examples.
+
+### The one order door, and the enum that closes it
+
+The order request's own `Product.securityType` enum holds five words — EQ, OPTN,
+INDX, MF, MMF — and `EQ` is the only one naming a sector this platform draws.
+Everything E*TRADE can be told to trade through its API is a listed share or a
+listed fund share.
+
+| census over the 186,658-character Order API reference | occurrences |
+| --- | --- |
+| `EQ` | 36 |
+| `securityType` | 60 |
+| `previewId` | 51 |
+| `quantityType` | 39 |
+| `CRYPTO` | 1, in the order *response* `typeCode` |
+| `FUTURES` | **0** |
+| `FOREX` | **0** |
+
+`CURRENCY` names 4 and none of them is a pair: the field is the order's own
+settlement currency, "The currency used for the order request USD, EUR, GBP, HKD,
+JPY, CAD". Reading that as forex would have been the mistake.
+
+### The fractional rule, which has now inverted six times
+
+E*TRADE grants a fraction, and it grants it to one **side**. Quoted whole from
+its own Fractional Shares FAQ:
+
+> "Yes, E*TRADE now offers fractional shares in listed Reg-NMS securities,
+> excluding any listed Reg-NMS securities that may be restricted for regulatory
+> or other reasons. For eligible listed Reg-NMS securities, you may place a buy
+> or buy to cover order for any decimal quantity up to 3 decimals, with a
+> minimum notional amount of $5.00."
+
+Its own Order API error 8301 gives the same ceiling from the other direction:
+
+> "Orders with fractional quantities exceeding three decimal places cannot be
+> accepted. Please edit your quantity and try placing your order again."
+
+This engine's scrum is a **sale**. A sale carrying a fraction has no permitted
+entry shape here, so `src/stocks/etrade_connector.py, in fractional_refusal`
+names it and `order_body` raises on it, and the step every equity order takes is
+one whole share.
+
+| venue | the fractional rule |
+| --- | --- |
+| Alpaca | fractional venue-wide |
+| Schwab | fractional venue-wide |
+| Interactive Brokers | whole venue-wide on the API, fractional in its apps |
+| tastytrade | per equity, down to a millionth |
+| Webull | capped at one share on both entry shapes |
+| E*TRADE | **per side: the buy may be fractional, the sale may not** |
+
+Which symbols are eligible is published nowhere:
+
+> "Fractional share trading will be introduced for a pilot group of securities
+> beginning with the S&P 100 and expanding with additional subsequent waves...
+> Additional securities may also be restricted, and eligibility can change at any
+> time."
+
+### The session, which changes the type and not the size
+
+This venue is Schwab's shape and the mirror of Webull's. Quoted whole from its
+own Extended Trading Hours Agreement:
+
+> "Limit Orders Only. For Extended Hours Trading, we accept only limit orders
+> (i.e., each order you enter must identify the price, or better, at which you
+> seek to trade a particular security). Market orders will not be accepted."
+
+> "Day Orders Only. For an Extended Hours Trading session, we accept only orders
+> for execution on the current trading day (i.e., Good-Till-Canceled Orders will
+> not be accepted in the Extended Hours Trading Session)."
+
+Its own Disclosure Library names the three windows:
+
+> "the Pre-Market Session (Monday through Friday 4:00 a.m. to 9:30 a.m. ET), the
+> After-Market Session (Monday through Friday 4:00 p.m. to 8:00 p.m. ET), and the
+> Extended Hours Overnight Session (Sunday through Thursday 8:00 p.m. to 4:00
+> a.m.)"
+
+**No size rule is established.** Over the 15,818 characters of that agreement
+`odd lot`, `round lot` and `100 shares` each name 0, where `limit order` names 4.
+The Order API's own legacy error 1054 reads "Extended-hours orders cannot be
+placed in odd lots" and the venue's current agreement does not carry it, so a
+round-lot minimum is reported as not established and
+`src/trading/scrumming/sizing.py, in session_unit_rule` takes no etrade row.
+`session_order_types` carries the type, and
+`src/stocks/etrade_connector.py, in session_price_type` raises a market order to
+a limit at the body.
+
+### Twenty-two fund shares, named by the venue, and the sector each tracks
+
+One page of E*TRADE's own names a fund by symbol, and it is the overnight list:
+
+> "Trade from Sunday 8 p.m. to Friday 8 p.m. ET (excluding market holidays)
+> Available for SPY, QQQ, DIA, GLD, USO, TLT, SLV, UNG, IWM, SH, AGG, DOG, EFA,
+> EWA, EWJ, IJH, PSQ, RWM, VTI, XLE, XLF, and XLK"
+
+`src/stocks/etrade_connector.py, in FUND_SECTOR_SYMBOLS` carries 20 of the 22:
+GLD, SLV, UNG and USO track a commodity, and sixteen track an index or an index
+sector. TLT and AGG track bonds, which is no sector this platform draws, so both
+record under stocks.
+
+The same page states the breadth that opens the rest:
+
+> "We offer every ETF sold—along with tools and guidance that make it easy to find
+> the right ones for your portfolio."
+
+and names the families:
+
+> "Basket of equities, fixed income, or commodities"
+
+Its crypto page sells the same shape: "Gain exposure to popular cryptocurrencies
+via securities and futures."
+
+### The futures table, 91 contracts and the two sectors it opens
+
+E*TRADE's own futures page serves a product table in ten tabs, with a symbol, a
+tick size and a tick value on every row. Nine tabs are product groups and the
+tenth, Micros, repeats 28 of their rows and adds none.
+
+| group | sector | contracts |
+| --- | --- | --- |
+| Energy, Metals, Grains, Softs, Livestock | commodities | 43 |
+| FX (currency) | forex | 15 |
+| Equity Index | indices | 13 |
+| Interest rates | futures_perps | 11 |
+| Cryptocurrencies | crypto | 8 |
+
+43 + 15 + 13 + 11 + 8 = 90, and the 91st code the pattern matched is `/USD`,
+which is a fragment of the pair name "Micro EUR/USD" and not a contract.
+
+**Forex is the sector the screen was missing, seven venues running.** The fifteen
+are `/6A` Australian Dollar, `/6B` British Pound, `/6C` Canadian Dollar, `/6E`
+Euro, `/6J` Japanese Yen, `/6M` Mexican Peso, `/6N` New Zealand Dollar, `/6S`
+Swiss Franc, `/DX`, and the six micros `/M6A`, `/M6B`, `/M6E`, `/MCD`, `/MJY` and
+`/MSF`. Eleven tick at 0.0001 and `/MJY` at 0.000001.
+
+There is no spot forex and no currency fund. Over the 32 `us.etrade.com` pages,
+998,389 characters: `forex` **0**, `spot forex` **0**, `currency pair` **0**,
+`currency ETF` **0**, against `FX (currency)` **1** and `jurisdiction` **41**.
+
+### Crypto, which is new on this screen and real at the venue
+
+Quoted whole from E*TRADE's own crypto account page and its FAQ:
+
+> "Buy and sell BTC, ETH, and SOL with the same best-in-class trading experience
+> you enjoy today."
+
+> "Any US-based client or prospective client can login to E*TRADE, open an
+> individual brokerage account and a separate, non-brokerage linked zerohash
+> crypto account to begin trading crypto."
+
+> "A commission of 0.50% (50 basis points) will be charged on the notional trade
+> value. There is no additional spread fee and no markup. Commission is charged by
+> zerohash, of which E*TRADE receives a portion."
+
+> "Which platform is crypto trading powered by zerohash available on? E*TRADE web
+> and the E*TRADE app. Coming soon to Power E*TRADE platforms."
+
+Two platforms are named and neither is an API. The crypto account is
+non-brokerage and at another firm, and the portfolio route's own `securityType`
+enum cannot name a coin. So spot crypto exists, is priced, and takes no order
+here; the sector's order is the crypto ETP, which is `securityType EQ`.
+
+### Three legal entities, and the API is published under one
+
+Quoted whole from the footer of every page read:
+
+> "Securities products and investment advisory services offered by Morgan Stanley
+> Smith Barney LLC, Member SIPC and a Registered Investment Adviser. Commodity
+> futures and options on futures products and services offered by E*TRADE Futures
+> LLC, Member NFA. ... All entities are separate but affiliated subsidiaries of
+> Morgan Stanley."
+
+and from its own Digital Assets Supplement:
+
+> "your ability to purchase, sell, or transfer digital assets at Zero Hash LLC
+> (together with its affiliate Zero Hash Liquidity Services, LLC, 'zerohash')
+> through MSSB's E*TRADE from Morgan Stanley online trading platforms"
+
+| product | legal entity | reaches the published API |
+| --- | --- | --- |
+| equities, ETFs, mutual funds, options | Morgan Stanley Smith Barney LLC | yes |
+| futures and options on futures | E*TRADE Futures LLC, Member NFA | no |
+| spot crypto | Zero Hash LLC and Zero Hash Liquidity Services, LLC | no |
+
+### The authorization, which is three legs and needs the operator once a day
+
+E*TRADE signs with OAuth 1.0a and publishes every leg. Quoted whole:
+
+> "The signature method used by the consumer to sign the request. The only
+> supported value is HMAC-SHA1."
+
+> "The request token must accompany the user to the authorization page, where the
+> user will grant your application limited access to the account. The token
+> expires after five minutes."
+
+> "By default, the access token expires at the end of the current calendar day,
+> US Eastern time."
+
+> "During the current day, if the application does not make any requests for two
+> hours, the access token is inactivated. In this inactive state, the access token
+> is not valid for authorizing requests. It must be reactivated using the Renew
+> Access Token API."
+
+`src/stocks/etrade_connector.py, in begin_authorization` walks leg one and names
+the page the operator opens; `complete_authorization` walks leg three with the
+five-character verifier that page shows; `renew_authorization` reactivates a
+grant gone idle. With only a consumer key and secret stored, `connect` answers
+False, names the page, and **contacts no host at all** — the refusal is composed
+before any request.
+
+The signature is verified against a published worked example rather than against
+belief: `signature_base` reproduces RFC 5849's own base string character for
+character, and a tampered method changes it.
+
+The authorization page's own sandbox cell renders empty, as
+`https:///request_token`. A probe settles the host instead:
+`/oauth/request_token` answers **401 at 718 bytes** on both
+`api.etrade.com` and `apisb.etrade.com`, while `/oauth/ZZZ_NO_SUCH_LEG` answers
+**404 at 808 bytes**. The differing answer is what names the route.
+
+### The paged ledger, which publishes its own cap
+
+`GET /v1/accounts/{accountIdKey}/transactions` is the fill ledger, and it states
+the page size itself:
+
+> "To page through a large number of items, use the count property to specify how
+> many items to return in a group (the default is 50), and the marker property to
+> specify the starting point."
+
+Its own `count` reads "defaults to 50" and "should be between 1 and 50", and
+"History is available for two years". `src/stocks/etrade_connector.py, in list_fills`
+asks exactly 50 and stops on the venue's own `moreTransactions` and on an absent
+`marker`, never on a page length. Driven both ways: a 50-row page saying more
+continues, a 50-row page saying no more stops, and a one-row page saying more
+continues. That last case is the defect that lost Alpaca 150 fills and tastytrade
+261 rows.
+
+### The fee, and the four figures
+
+Three of the four are published and one is absent.
+
+| figure | the venue's own field |
+| --- | --- |
+| fee total | `commissions` and `otherFees` on the portfolio, `brokerage.fee` on a transaction detail |
+| cost basis | `pricePaid`, `costPerShare`, `totalCost` |
+| unrealised | `totalGain`, `totalGainPct`, `daysGain` |
+| realised profit | **absent** |
+
+`realized` names **0** of the nine-page API reference, against `commission` 55,
+`fee` 50, `totalGain` 15 and `pricePaid` 12. The transactions *list* publishes no
+fee either, so `list_fills` reads the detail per fill and
+`FILL_FEE_UNREAD_NOTE` records every fill left without one. A commission of zero
+is kept as zero, because zero is the venue's own figure for an equity: its own
+pricing table reads "Stocks, options, mutual funds, and ETFs $0", against
+"Futures contracts $1.50" and "Crypto 0.50% On the dollar value of each trade".
+
+### Candles, which this venue does not publish
+
+E*TRADE's Market API publishes four APIs — Get Quotes, Look Up Product, Get
+Option Chains, Get Option Expire Dates — and no price series. Over the 44,571
+characters of its two market reference pages the words `bar`, `candle`, `ohlc`
+and `history` each name **0** and `quote` names **90**. `get_bars` answers no bar
+and logs `NO_BAR_ROUTE`, the shape `src/stocks/tastytrade_connector.py, in get_bars`
+already takes.
+
+`Look Up Product` is not the symbol route, and its own page says so: "This API is
+for searching on the company name, not a security symbol." The symbol route is
+`GET /v1/market/quote/{symbols}`, capped at 25 symbols and raised to 50 with
+`overrideSymbolCount`, which this connector asks for.
+
+### What E*TRADE refuses rather than sizes
+
+Four words in the venue's own request vocabulary name no sector this platform
+draws, and `order_body` raises on each: `OPTN` is an option, `INDX` the index
+itself, `MF` a mutual fund and `MMF` a money market fund. `BOND` appears in the
+read vocabulary and in no order enum.
+
+The mutual fund carries a second reading. Its own `MFQuantity` object is `cash`,
+"The value of the cash quantity in the mutual fund", and `quantityType DOLLAR`
+sizes it — which is `VARIANT_CASH_AMOUNT`, the variant `VARIANTS_BUILT` does not
+hold. A mutual-fund order is refused by its own security type here and would be
+refused by the variant even if it were not.
+
+The eleven interest-rate contracts are **not** over-refused. A dated contract
+belongs in the futures sector this platform already draws, which is the reading
+`src/stocks/ibkr_connector.py, in FUTURES_FAMILY_SECTORS` and
+`src/stocks/webull_connector.py, in FUTURES_CLASS_SECTORS` already take.
+
+### The ticker collision, which does not arise here
+
+Every E*TRADE symbol carries a `securityType` off one enum, so a bare code is
+read by the type the venue gives it and never by its spelling. `NOK` is Nokia,
+`AMD` is Advanced Micro Devices and `COP` is ConocoPhillips. No currency leg
+exists in any route, so no etrade symbol needs
+`src/exchange/market_inspector_fetcher.py, in STABLECOIN_DENYLIST`.
+
+### Eligibility, with no state refused anywhere
+
+Over the 32 `us.etrade.com` pages, 998,389 characters: `Ohio` **0**, `Arizona`
+**0**, `Louisiana` **0**, `Hawaii` **0**, `Nevada` **0**, `50 states` **0**.
+The positive controls on the same corpus are `New York` at **24** — every one an
+address or the governing-law clause — and `jurisdiction` at **41**.
+
+`Guam` and `Puerto Rico` name 1 each, and the clause is about mortgages:
+
+> "Residential mortgage loans/ home equity lines of credit may not be available
+> in all states; not available in Guam, Puerto Rico and the U.S. Virgin Islands."
+
+Reading that as a trading refusal would have shut three open sectors. The one
+non-US clause is the sign-up promotion, "This offer excludes non-U.S. residents",
+and the futures entity publishes a notice *to* foreign traders under CFTC
+Regulation 15.05.
+
+Two permissions are per product and the operator requests each once: futures
+needs the upgrade its own page calls "Add futures to an existing account", and
+crypto needs the linked zerohash account.
+
+### Settlement, which is defined and never numbered
+
+The Client Agreement defines the moment:
+
+> "'Settlement Date' shall mean the date that a purchase or sale in your
+> Self-Directed Account is scheduled to be paid for or delivered."
+
+It gives no day count. `T+1` names **0** of the 32 pages and `good faith
+violation` names **0**, while `settlement date` names **27**. The one "business
+day after" is a cash transfer and not a trade. So
+`src/trading/scrumming/sizing.py, in CITED_VENUE_SETTLEMENT` takes no etrade row,
+and that absence claims nothing.
+
+### The eight connections, E*TRADE
+
+Driven with the home redirected, no venue contacted and no order placed: **150
+assertions, 150 passed, 0 failed**, each count carrying its own control.
+
+| # | the connection | before | after |
+| --- | --- | --- | --- |
+| 1 | a connector exists and is registered | absent | `BROKER_CONNECTORS` holds 7 ids and `broker_connector_class("etrade")` names `EtradeConnector`; an invented id names None |
+| 2 | offered under every sector it serves | 3 of 6 | 6 of 6; an invented id is offered under none |
+| 3 | the operator can enter its credentials | built | `known_venues` holds the id and the wizard's own list is a subset of it |
+| 4 | a Start press builds its connector | absent | `broker_serves_sector("etrade", …)` answers True on all six; an invented id answers False on all six |
+| 5 | its market rules record on connect | absent | 9 records written, 4 carrying a sector and 5 carrying none; an empty list writes nothing and leaves the 9 rows alone |
+| 6 | its orders carry the shape the venue publishes | absent | the preview body carries the published fields; an option, an index, a fund, a money fund, a bond and a fractional sale each raise |
+| 7 | a built variant selects | built | all six sectors name a variant `VARIANTS_BUILT` holds and hold the market; a sector with no row holds none |
+| 8 | its gate decisions log under it | built | `trade/gate/etrade/<sector>/gate.log` for all six, and a different venue and a different sector each compose a different path |
+
+`src/stocks/broker_base.py` and `src/stocks/broker_exchange.py` take no change.
+E*TRADE's preview-then-place pair lives inside `place_order`, and
+`BrokerBase.SECTORS_SERVED` is left empty on purpose: `broker_serves_sector`
+routes a bot off it, and a narrowed set would send a forex or a futures bot down
+the crypto path and then the ccxt one, which carries no etrade.
+
+### Every other venue, read before and after
+
+Measured over 26 venue ids, six sectors and four readings — 624 cells — with the
+home redirected: **16 cells moved and all 16 are etrade**. No other venue moved a
+single reading. Control: a tampered copy of the sizing module, with one Webull
+row flipped to fractional, moves exactly **1** cell, so a difference would have
+been seen.
+
+### What the sizing tables gain from E*TRADE
+
+| table | etrade rows | why |
+| --- | --- | --- |
+| `CITED_UNIT_RULES` | 6 | every sector whole, and the equity reason is a side and not a size |
+| `CITED_VENUE_SESSIONS` | 6 | four equity sectors on the US equity session, forex and futures_perps continuous on the venue's own 24/6 table |
+| `CITED_VENUE_ORDER_TYPES` | 4 | the four sectors `securityType EQ` reaches; forex and futures_perps hold no row |
+| `CITED_CASH_MARKET_BUY` | 0 | the DOLLAR shape belongs to the mutual fund, and an equity order carries QUANTITY |
+| `CITED_VENUE_SETTLEMENT` | 0 | the agreement defines the moment and names no day count |
+| `CITED_VENUE_BASE_SECTORS` | 0 | `securityType` resolves every bare code, so no symbol is ambiguous |
+| `CITED_VENUE_MARKET_SECTORS` | 0 | `FUND_SECTOR_SYMBOLS` carries the per-symbol grain on the connector, where the venue's own list sits |
+
+### Where the E*TRADE answer is nothing
+
+| the question | the count that shows it |
+| --- | --- |
+| a futures order route | `FUTURES` 0 of 186,658 characters, against `EQ` 36 |
+| a forex order route | `FOREX` 0 of the same, and `currency pair` 0 of 998,389 |
+| a crypto order route | `CRYPTO` 1, and it is a response field, not a request one |
+| a price-series route | `bar`, `candle`, `ohlc`, `history` 0 each of 44,571, against `quote` 90 |
+| a realised-profit figure | `realized` 0 of the API corpus, against `commission` 55 |
+| a refused state | Ohio, Arizona, Louisiana, Hawaii, Nevada 0 each, against `jurisdiction` 41 |
+| a settlement day count | `T+1` 0, against `settlement date` 27 |
+| a round-lot session rule | `odd lot`, `round lot`, `100 shares` 0 each, against `limit order` 4 |
+
+The detours searched, and the reading that shut each one:
+
+| detour | the reading |
+| --- | --- |
+| a `futures/` or `crypto/` documentation directory | both answer 400 at 58 bytes, byte-identical to an invented path; a real directory with a wrong leaf answers 404 at 0 |
+| an `api-order-v2.html` | 404 at 0 bytes, the real-directory answer |
+| a Swagger or OpenAPI JSON | 400 at 58 bytes, the invented-path answer |
+| the 275-page PDF on `content.etrade.com` | `crypto` 0, `forex` 0, `currency pair` 0, against `securityType` 18 and `OPTN` 54 |
+| `developer.etrade.com` | 403 to every request; its reference content is served from `apisb.etrade.com`, which answered 200 on all nine pages |
+| a currency or crypto ETP named by E*TRADE | its ETF page names three families and no currency among them, and names no fund by symbol outside the 22 of the overnight list |
+
+### The paper route on E*TRADE, and what it is
+
+`HAS_PAPER_ROUTE` is True. Every account, market and order route is published on
+`apisb.etrade.com` alongside its live twin, and the order reference names the
+sandbox path on each one. The sandbox is the venue's own environment, not a
+simulation this platform runs.
+
+### The E*TRADE verdict, per sector
+
+| sector | verdict | the cost |
+| --- | --- | --- |
+| stocks | yes | a developer consumer key, and the operator's own daily authorization |
+| commodities | yes | the same, and the sector's order is a commodity fund share |
+| indices | yes | the same, and the sector's order is an index fund share |
+| crypto | yes | the same, and the sector's order is a crypto ETP; the spot coins at zerohash take no API order |
+| forex | yes-if | a futures order route E*TRADE publishes nowhere; its one forex product is the currency future |
+| futures_perps | yes-if | the same absent route; the futures permission itself is one the operator can request |
+
+Four yes and two yes-if. Neither yes-if is a "no", because the door exists: the
+venue sells 26 FX and interest-rate contracts under E*TRADE Futures LLC at $1.50
+a contract, and what is missing is the published order spec rather than the
+product. **What the operator can do is request the futures permission once; what
+only E*TRADE can do is publish the route.** No field name is guessed for it.
+
+The fullest tier is what the code is built against: one developer consumer key on
+a brokerage account with the futures upgrade and the linked zerohash crypto
+account, which the operator requests once.
+
+The arithmetic, offered against actionable, driven with the home redirected and
+no venue contacted: the screen offered **3** sectors and the platform draws
+**6**, a difference of **3** — crypto, forex and futures_perps — and crypto was
+the one that reaches a real order today and was simply absent from the screen.
+After this unit the offered set is 6, `broker_serves_sector("etrade", …)` answers
+True on all six, and the difference in both directions is **0**. Before this unit
+it answered False on all six, because `BROKER_CONNECTORS` held no `etrade` row at
+all. Of the six offered, **4** reach the published order route and **2** are
+refused at `order_body` with the venue's own enum as the reason.
