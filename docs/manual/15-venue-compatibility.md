@@ -8938,7 +8938,7 @@ and names the families:
 Its crypto page sells the same shape: "Gain exposure to popular cryptocurrencies
 via securities and futures."
 
-### The futures table, 91 contracts and the two sectors it opens
+### The futures table, 90 contracts and the two sectors it opens
 
 E*TRADE's own futures page serves a product table in ten tabs, with a symbol, a
 tick size and a tick value on every row. Nine tabs are product groups and the
