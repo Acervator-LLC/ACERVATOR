@@ -4971,3 +4971,237 @@ proves the venue accepts a live order from this program. And a resident of an
 approved United States location holds an account with OKX INC. on `us.okx.com`,
 which no venue id in this tree reaches, so every yes above is an order path on
 the global company and not a trade that account can place today.
+
+## 2026-10-11 - OKX US becomes a venue of its own, and its spot sectors trade
+
+A United States resident does not trade on the OKX this program registered. He
+trades with OKX INC., a Delaware corporation, on `us.okx.com`, and until this
+unit no venue id in this tree reached that host. The id is now registered, the
+venue reads its own asset categories, and four of its six sectors are offered.
+
+### The OKX sentences this overtakes
+
+OVERTAKEN, quoted whole:
+
+> That is a venue id of its own, with its own credential form and its own gate
+> log, and this unit records it rather than building it.
+
+True today: it is built. `src/exchange/ccxt_connector.py, at
+SUPPORTED_EXCHANGES` holds `okxus`, `src/exchange/ccxt_connector.py, at
+PASSPHRASE_EXCHANGES` asks for its passphrase, and
+`src/core/log_paths.py, in gate_log_path` composes
+`trade/gate/okxus/<sector>/gate.log` for each of its four sectors.
+
+OVERTAKEN, quoted whole:
+
+> And a resident of an approved United States location holds an account with
+> OKX INC. on `us.okx.com`, which no venue id in this tree reaches, so every
+> yes above is an order path on the global company and not a trade that account
+> can place today.
+
+True today: the account has a venue id. `CCXTConnector("okxus")` builds, where
+before this unit it raised `Unsupported exchange 'okxus'`, and the Exchanges tab
+and the first-run wizard both offer it because both narrow one list.
+
+### What the US company publishes, and what it does not
+
+OKX INC's own
+[U.S. Terms of Service](https://www.okx.com/en-us/help/terms-of-service-us),
+section 1.1, Trading Services, states "we provide online digital asset trading
+account services and a platform for spot trading digital assets" and that it
+"may facilitate margin lending". The document names no future, no perpetual and
+no option anywhere.
+
+Its
+[U.S. Licenses page](https://www.okx.com/en-us/help/us-licenses) states "OKX
+INC. does not provide services to residents of the following states and
+territories at this time: New York, American Samoa, Guam, Northern Mariana
+Islands, and the U.S. Virgin Islands." That is an exclusion of named states and
+territories, not a refusal of a United States person, so neither
+`src/exchange/ccxt_connector.py, at US_ACCOUNT_RESTRICTED_EXCHANGES` nor
+`src/exchange/ccxt_connector.py, at US_IP_BLOCKED_EXCHANGES` gains this venue.
+
+### The instrument endpoint does not narrow to the company
+
+This is the reading every count on this page depends on. OKX's instrument
+endpoint answers the same catalogue on every one of the company's hosts.
+
+```
+GET /api/v5/public/instruments   us.okx.com   eea.okx.com   www.okx.com
+                      SPOT            1152          1152          1160
+                      MARGIN           266           266           266
+                      SWAP             500           500           500
+                      FUTURES          265           265           265
+```
+
+The United States host and the European host answer an identical instrument
+list on all four product types. The eight rows the global host holds beyond
+them are the eight the OKX unit named as uncategorised and pre-open, and that
+eight-row difference is the control: the comparison can see a difference when
+one exists, so the identical lists are a reading and not a failed fetch.
+
+So the row count names the exchange's catalogue and not the company's offering.
+What a United States account may trade is read from OKX INC's own pages, quoted
+above, and never from the count.
+
+### OKX US, the four offered sectors and what each costs
+
+| Sector | Verdict | The cost |
+| --- | --- | --- |
+| crypto | yes | nothing. 1013 markets, 946 stepping in fractions and 67 in whole units |
+| stocks | yes-if | all 135 markets are Unified Tokenized Stocks and the product's own terms refuse a United States resident. The sector records correctly and the operator decides whether to open a bot in it |
+| commodities | yes | nothing. Four markets, all stepping in fractions |
+| indices | no | the venue's own category vocabulary holds no index number, and its eight index-fund tickers all publish Stocks |
+
+Futures and perpetuals, and forex, are the two sectors the screen does not offer
+this venue. The library's own `okxus` asks for spot alone, so none of the 1152
+markets it loads is a contract, and OKX INC's Terms name a spot platform. The
+venue's own vocabulary names a Forex number and the venue publishes that number
+on none of its 2183 instrument rows.
+
+### The tokenised stock refuses the account that holds the venue
+
+Every one of the 109 stock base codes OKX US lists carries an `X` prefix, which
+is the venue's own naming for its Unified Tokenized Stock product: its
+[listing page](https://www.okx.com/en-us/help/okx-to-list-unified-tokenized-stocks-for-spot-trading)
+states each asset is "named by an uppercase 'X' prefixed to the stock ticker
+(e.g., XAAPL, XTSLA)". The prefix alone does not identify the product — six
+crypto codes also carry it, `XRP` and `XLM` among them — and the venue's own
+category number does.
+
+OKX's
+[Unified Tokenized Stock Trading Terms and Conditions](https://www.okx.com/en-us/help/unified-tokenized-stock-trading-terms-and-conditions),
+effective 15 July 2026, require that the holder "is not a U.S. Person as
+defined under Reg S" and "is not located in, incorporated in, or current
+resident of the United States", and state "Resale or transfer of UTS to U.S.
+Persons or within the United States is prohibited."
+
+An OKX INC account holder is a United States resident by the Licenses page's own
+definition of the company. So the 135 markets the stocks sector holds on this
+venue are products the venue's own terms forbid that account to hold. The
+recording still names them stocks, because that is the sector they are in, and
+nothing in this program refuses a sector. **Whether a bot opens in that sector
+is the operator's call, and this unit builds no mechanism either way.**
+
+### OKX US publishes the same numbered categories as OKX
+
+`GET /api/v5/public/instruments` on `us.okx.com` carries an `instCategory` per
+instrument and needs no key, and the company's own
+[API reference](https://app.okx.com/docs-v5/en/) — which states
+`REST: https://us.okx.com` for production — carries the same vocabulary as the
+global reference: "1: Crypto 3: Stocks 4: Commodities 5: Forex 6: Bonds "": Not
+available".
+
+So the field and the words are shared, and the requests are not.
+`src/exchange/ccxt_connector.py, at VENUE_ASSET_SECTOR_RECORDS` gives this venue
+its own record asking for `SPOT` alone, because the library's own `okxus` sets
+`fetchMarkets` to spot and declares swap, future and option all absent. Asking
+for a product type the connector never loads would add asset codes no market
+reads.
+
+| What the venue publishes on its spot rows | Count |
+| --- | --- |
+| 1, Crypto | 1013 |
+| 3, Stocks | 135 |
+| 4, Commodities | 4 |
+| 5, Forex | 0 |
+| 6, Bonds | 0 |
+| no category at all | 0 |
+
+The record reads the `baseCcy` field, which the venue publishes on all 1152 spot
+rows and on none of its 500 perpetual or 265 dated rows. That is why
+`src/exchange/ccxt_connector.py, at ASSET_CODE_LEG` exists for the global record
+and this one does not need it. Driven both ways through
+`src/exchange/ccxt_connector.py, in CCXTConnector._read_asset_sector_rows`, the
+`baseCcy` reading and the instrument-id reading produced the same 413 codes and
+an identical map, and no spot row disagreed with the other.
+
+### What the four sectors hold
+
+| Sector | Markets | What they are |
+| --- | --- | --- |
+| crypto | 1013 | spot pairs, 946 stepping in fractions and 67 in whole units |
+| stocks | 135 | tokenised shares and funds under 109 codes, all stepping in fractions |
+| commodities | 4 | `PAXG-USDT`, `PAXG-TRY`, `XAUT-USDT` and `XAUT-TRY`, tokenised gold |
+| indices | 0 | the venue publishes no index category |
+
+Before this unit no market on this venue reached any sector, because the venue
+had no id. Read against the global company's reading of the same tickers, the
+venue's own record moves 158 of the 1152: 135 that the ticker read as crypto are
+stocks, and 23 that the ticker read as forex are crypto. Blinding the record
+leaves 27 moving, which are the 27 the ticker heuristic had guessed, so the 158
+is a reading of the venue's record and not of the ticker.
+
+The two commodity codes are the one place the ticker and the record agree
+exactly: both name the same four markets. The seven energy and copper rows the
+global company's reading missed are perpetual contracts, which this venue's
+connector does not load.
+
+### The indices sector lists no OKX US market, and the exposure is still reachable
+
+`src/gui/main_tabs/asset_class_surface.py, at EXTRA_VENUE_CLASSES` offers this
+venue under indices and its recording answers no market there, the same shape
+Bitget and OKX carry. Eight index-fund tickers are listed — `XSPY`, `XQQQ`,
+`XIWM`, `XEWY`, `XSMH`, `XSOXL`, `XTQQQ` and `XXLE` — and every one publishes
+Stocks, so the exposure is reachable under stocks, subject to the tokenised
+stock terms above.
+
+### The order body OKX US takes
+
+A spot market buy carries a unit count, not a cash amount. The library writes
+the venue's own size-unit field on every spot order with its own default of the
+base currency, and
+`src/exchange/ccxt_connector.py, at EXCHANGE_OPTIONS` sets nothing against it
+for this venue.
+
+```
+okxus  market buy   sz 0.001   tgtCcy base_ccy
+okxus  market sell  sz 0.001   tgtCcy base_ccy
+bitget market buy   size 50
+```
+
+All three calls asked for 0.001 units at a price of 50000.
+`src/trading/scrumming/sizing.py, at CITED_CASH_MARKET_BUY` therefore keeps its
+four venues and does not gain this one, and
+`src/trading/scrumming/sizing.py, in whole_unit_buy_needs_limit` answers False
+for every OKX US market. `src/exchange/ccxt_connector.py, in
+declared_order_types` answers market and limit for the venue, off its own
+capability map.
+
+### What the OKX US unit drove
+
+```
+reading                               what it reported
+the id, before and after              CCXTConnector("okxus") raised
+                                      "Unsupported exchange" before and builds
+                                      after, with okx building in both runs
+1152 active markets, classified       158 moved sector against the ticker
+                                      reading; blinding the venue's own record
+                                      leaves 27 moving, the 27 the ticker had
+                                      guessed
+_published_asset_sectors end to end   413 base codes, 111 naming a family, read
+                                      through the real connector method with no
+                                      credential and the home redirected
+record_venue end to end               1152 rows written to a scratch store and
+                                      read back as 1013 crypto, 135 stocks and
+                                      4 commodities
+the four sectors on the screen         crypto 22 venues, stocks 21, commodities
+                                      18 and indices 15, each one more than
+                                      before, and the Add form offering the same
+                                      count in every sector
+Gate.io's, Bitget's and OKX's own     all three unchanged, code for code and
+readings                              market for market, in both trees
+the three hosts of one company        the United States and European hosts
+                                      answered an identical instrument list on
+                                      all four product types
+the step-five subtraction             four sectors offered, three with markets
+                                      of their own, and 135 of those markets
+                                      refused to the account by the venue's own
+                                      product terms
+```
+
+Two limits, stated plainly. No reading used a credential, so nothing here
+proves the venue accepts a live order from this program. And the instrument
+endpoint does not narrow to the United States company, so the market counts
+above are the exchange's catalogue read on the company's host, and the company's
+own pages are the only statement of what the account may trade.

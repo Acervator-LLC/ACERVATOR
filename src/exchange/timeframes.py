@@ -71,6 +71,11 @@ _AVAILABILITY: dict[str, frozenset[str]] = {
     "okx": frozenset(
         {"1m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "12h", "1d", "1w"}
     ),
+    # OKX US subclasses OKX in ccxt and publishes the same fourteen
+    # granularities, eleven of which ALL_TIMEFRAMES draws.
+    "okxus": frozenset(
+        {"1m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "12h", "1d", "1w"}
+    ),
     # Read from ccxt 4.5.76 `exchange.timeframes` after a public
     # `load_markets()`.
     "bitfinex": frozenset(

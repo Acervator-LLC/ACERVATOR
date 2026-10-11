@@ -287,6 +287,9 @@ PROBE_HOSTS = {
     "kucoin": "api.kucoin.com",
     "bybit": "api.bybit.com",
     "okx": "www.okx.com",
+    # api.okxus.com resolves in DNS and answers nothing on 443, so the default
+    # format would report OKX US unreachable while us.okx.com answers 200.
+    "okxus": "us.okx.com",
 }
 DEFAULT_HOST_FORMAT = "api.{exchange_id}.com"
 PROBE_PORT = 443

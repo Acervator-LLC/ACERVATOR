@@ -283,7 +283,11 @@ SETTLE_LEG = ":"
 # "Order quantity unit setting for sz ... Default is quote_ccy for buy,
 # base_ccy for sell" — and ccxt sends that setting on every spot order with its
 # own default of ``base_ccy``, so the venue's cash default never reaches an
-# order this platform places and ``sz`` stays a unit count.
+# order this platform places and ``sz`` stays a unit count. ``okxus`` is not a
+# member for the same reason: it subclasses ``okx`` in ccxt and inherits that
+# order builder, and a market buy on ``us.okx.com`` was read as ``sz`` 0.001
+# with ``tgtCcy`` ``base_ccy`` where the same call on ``bitget`` read ``size``
+# 50, the cash.
 CITED_CASH_MARKET_BUY: frozenset[str] = frozenset(
     {"binance", "bitget", "coinbase", "gateio"}
 )

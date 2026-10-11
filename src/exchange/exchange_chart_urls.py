@@ -36,6 +36,9 @@ _URL_BUILDERS: dict[str, Callable[[str, str], str]] = {
     ),
     "kucoin": lambda b, q: (f"https://www.kucoin.com/trade/{b}-{q}"),
     "okx": lambda b, q: (f"https://www.okx.com/trade-spot/{b.lower()}-{q.lower()}"),
+    # us.okx.com answers 302 to the same path on www.okx.com, so this lands on
+    # the chart of the same market.
+    "okxus": lambda b, q: (f"https://us.okx.com/trade-spot/{b.lower()}-{q.lower()}"),
     "bybit": lambda b, q: (f"https://www.bybit.com/en/trade/spot/{b}/{q}"),
     "bitfinex": lambda b, q: (f"https://trading.bitfinex.com/t/{b}:{q}"),
     "gate": lambda b, q: (f"https://www.gate.io/trade/{b}_{q}"),
