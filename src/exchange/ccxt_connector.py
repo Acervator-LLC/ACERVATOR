@@ -447,6 +447,13 @@ ASSET_CATEGORY_KEY = "category"
 #: is a mapping rather than the row list itself.
 ASSET_SECTOR_ROWS_KEY = "data"
 
+#: The key an asset-sector response carries its payload under where that payload
+#: holds ``ASSET_SECTOR_ROWS_KEY`` rather than the rows themselves. cryptocom
+#: wraps every response as ``{"id", "method", "code", "result"}`` and puts the
+#: rows one level deeper, so ``_asset_sector_rows`` descends through this key
+#: once before reading the rows key.
+ASSET_SECTOR_PAYLOAD_KEY = "result"
+
 #: The separator an instrument id puts between its base asset and the rest of
 #: the id. A record naming it as its ``code_leg`` has ``_read_asset_sector_rows``
 #: take the asset code off the text before the first one, which is the only
@@ -558,7 +565,52 @@ NO_PUBLISHED_FAMILY = ""
 #: 170 currency rows, each a bare code, and its ``market_symbol`` concatenates
 #: the legs as ``eurusd`` and ``btcusd-perp``, so no ``code_leg`` reading
 #: reaches a base code on this venue.
+#:
+#: cryptocom is the first venue to name a sector on every market it lists and to
+#: pay nothing for the record. Its ``publicGetPublicGetInstruments`` serves 988
+#: rows and its own reference page publishes the whole vocabulary: "product_type
+#: — Product type of the instrument. Possible values: COMMODITIES, EQUITY_IND,
+#: CURRENCIES, DIGITAL_CURRENCIES, EVENTS, EQUITY, PRE_IPO. Only returned if
+#: applicable." Six of the seven words sit on a live row — ``DIGITAL_CURRENCIES``
+#: 812, ``EQUITY`` 131, ``EQUITY_IND`` 28, ``COMMODITIES`` 8, ``PRE_IPO`` 3,
+#: ``CURRENCIES`` 1 — and ``EVENTS``, the venue's prediction markets, sits on
+#: none; five rows carry no field at all, which is the "only if applicable"
+#: clause. ``EVENTS`` names a sector ``ASSET_CLASSES`` does not draw and
+#: ``DIGITAL_CURRENCIES`` names what Gate.io's empty list names, so both map onto
+#: ``NO_PUBLISHED_FAMILY``. ``EQUITY_IND`` records under indices because the
+#: venue's own help page calls the family "Equity Index ETFs" and every one of
+#: the 28 tracks an index or a sector fund. ``PRE_IPO`` records under stocks
+#: because the same page states "Pre-IPO Perpetuals on Crypto.com Exchange let
+#: you take a position on a private company's value before it goes public".
+#: Driven over all 988 markets the record moves 178: 164 reach a sector no
+#: reading gave them, five correct a wrong one — ``AMD/USD:USD`` and
+#: ``NOK/USD:USD`` leave forex for stocks, because the venue's own word makes AMD
+#: Advanced Micro Devices and NOK Nokia rather than two national currencies, and
+#: ``USD1/USD``, ``USDS/USD`` and ``USDT/USD`` leave forex for crypto — and nine
+#: fall off a true sector, which three ``CITED_VENUE_BASE_SECTORS`` rows take
+#: back. cryptocom publishes ``base_ccy`` on all 988 rows and no public currency
+#: list with a name or a type field, so the record names no ``code_leg``: its
+#: ``symbol`` concatenates the legs as ``1INCH_USD``, ``1INCHUSD-PERP`` and
+#: ``BTCUSD-261127``, and a split on either separator reads the wrong code.
 VENUE_ASSET_SECTOR_RECORDS: dict[str, tuple[AssetSectorRecord, ...]] = {
+    "cryptocom": (
+        AssetSectorRecord(
+            method="v1PublicGetPublicGetInstruments",
+            code_key="base_ccy",
+            sector_key="product_type",
+            words=MappingProxyType(
+                {
+                    "COMMODITIES": "commodities",
+                    "CURRENCIES": "forex",
+                    "DIGITAL_CURRENCIES": NO_PUBLISHED_FAMILY,
+                    "EQUITY": "stocks",
+                    "EQUITY_IND": "indices",
+                    "EVENTS": NO_PUBLISHED_FAMILY,
+                    "PRE_IPO": "stocks",
+                }
+            ),
+        ),
+    ),
     "gateio": (AssetSectorRecord(method="publicSpotGetCurrencies"),),
     "kucoin": (
         AssetSectorRecord(
@@ -2643,9 +2695,11 @@ class CCXTConnector(ExchangeInterface):
 
     def _asset_sector_rows(self, method: Any, request: Any) -> Optional[list]:
         """The rows one asset-sector call serves, taking the response itself
-        where it is a list and ``ASSET_SECTOR_ROWS_KEY`` where it is a mapping.
+        where it is a list, ``ASSET_SECTOR_ROWS_KEY`` where it is a mapping, and
+        that key under ``ASSET_SECTOR_PAYLOAD_KEY`` where the mapping wraps its
+        payload.
 
-        None where the call raised or served neither shape, which
+        None where the call raised or served none of the three shapes, which
         ``_published_asset_sectors`` reads as the venue publishing no record.
         """
         try:
@@ -2658,6 +2712,11 @@ class CCXTConnector(ExchangeInterface):
                 exc,
             )
             return None
+        if isinstance(served, dict):
+            held = served.get(ASSET_SECTOR_ROWS_KEY)
+            if held is None:
+                held = served.get(ASSET_SECTOR_PAYLOAD_KEY)
+            served = held
         if isinstance(served, dict):
             served = served.get(ASSET_SECTOR_ROWS_KEY)
         if not isinstance(served, list):

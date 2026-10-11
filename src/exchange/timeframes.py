@@ -94,6 +94,11 @@ _AVAILABILITY: dict[str, frozenset[str]] = {
     "bitstamp": frozenset(
         {"1m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "12h", "1d", "1w"}
     ),
+    # Read from ccxt 4.5.85 `exchange.timeframes` after a public
+    # `load_markets()`: cryptocom publishes twelve granularities and
+    # ALL_TIMEFRAMES draws ten of them, which is this row. The two it leaves are
+    # 2w and 1M, and 2h is the one ALL_TIMEFRAMES holds that cryptocom does not
+    # publish.
     "cryptocom": frozenset(
         {"1m", "5m", "15m", "30m", "1h", "4h", "6h", "12h", "1d", "1w"}
     ),
