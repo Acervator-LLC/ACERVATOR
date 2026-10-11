@@ -218,6 +218,37 @@ CITED_UNIT_RULES: dict[tuple[str, str], str] = {
     (CLASS_FOREX, "webull"): WHOLE_UNITS,
     (CLASS_INDICES, "webull"): WHOLE_UNITS,
     (CLASS_FUTURES_PERPS, "webull"): WHOLE_UNITS,
+    # etrade holds a row in all six sectors and every one is whole, and the
+    # reason on the four equity sectors is a side and not a size. Quoted whole
+    # from its own Fractional Shares FAQ: "For eligible listed Reg-NMS
+    # securities, you may place a buy or buy to cover order for any decimal
+    # quantity up to 3 decimals, with a minimum notional amount of $5.00." The
+    # grant is to the buy side alone and this engine's scrum is a sale, so a
+    # scrum of 1.57 shares has no permitted entry shape and the step an order
+    # takes is one share. Its own Order API error 8301 gives the same ceiling
+    # from the other direction: "Orders with fractional quantities exceeding
+    # three decimal places cannot be accepted."
+    # That is a sixth distinct answer. Alpaca and Schwab are fractional
+    # venue-wide, Interactive Brokers' API is whole venue-wide, tastytrade
+    # publishes it per equity and Webull caps the fraction at one share; this
+    # venue grants it per side.
+    # No route and no field names which symbols are eligible, so no record can
+    # carry a finer step: "Fractional share trading will be introduced for a
+    # pilot group of securities beginning with the S&P 100... Additional
+    # securities may also be restricted, and eligibility can change at any
+    # time." ``etrade_connector.size_increment`` writes one whole share on every
+    # recorded market and ``recorded_unit_rule`` reads it as ``WHOLE_UNITS``.
+    # commodities, indices and crypto are whole for the same reason: each
+    # reaches an order as a fund share, which is the same listed Reg-NMS
+    # security. forex and futures_perps are whole contracts, each one of the 26
+    # contracts on its own futures product table, every one carrying its own
+    # tick size.
+    (CLASS_CRYPTO, "etrade"): WHOLE_UNITS,
+    (CLASS_STOCKS, "etrade"): WHOLE_UNITS,
+    (CLASS_COMMODITIES, "etrade"): WHOLE_UNITS,
+    (CLASS_FOREX, "etrade"): WHOLE_UNITS,
+    (CLASS_INDICES, "etrade"): WHOLE_UNITS,
+    (CLASS_FUTURES_PERPS, "etrade"): WHOLE_UNITS,
     (CLASS_FOREX, "coinbase"): FRACTIONAL_UNITS,
     (CLASS_STOCKS, "coinbase"): WHOLE_UNITS,
     (CLASS_COMMODITIES, "coinbase"): WHOLE_UNITS,
@@ -376,6 +407,18 @@ CITED_UNIT_RULES: dict[tuple[str, str], str] = {
 #: ``/trading/instruments/crypto/profiles/list``, which takes a credential. None
 #: of the 3 needs a finer sector, and a row for a code no page names would be a
 #: belief and not a reading.
+#:
+#: etrade holds no row, and the reason is that no E*TRADE base code is ambiguous
+#: on the route this platform reaches. Every quote, portfolio and transaction
+#: record carries ``Product.securityType`` off one enum — ``BOND, EQ, INDX, MF,
+#: MMF, OPTN, INVALID`` — so a bare code is read by the type the venue gives it
+#: and never by its spelling, and ``etrade_connector.asset_sector`` reads that
+#: one field. ``NOK`` is Nokia, ``AMD`` is Advanced Micro Devices and ``COP`` is
+#: ConocoPhillips here, because no currency leg exists in any route: the order
+#: request's own ``currency`` field is the order's settlement currency and its
+#: enum is ``USD, EUR, GBP, HKD, JPY, CAD`` with no pair, and over the 32
+#: us.etrade.com pages read "currency pair" names 0. No etrade symbol needs
+#: ``market_inspector_fetcher.STABLECOIN_DENYLIST`` either.
 CITED_VENUE_BASE_SECTORS: dict[tuple[str, str], str] = {
     ("bitfinex", "UKOIL"): CLASS_COMMODITIES,
     ("bitfinex", "AUSTRALIA200IX"): CLASS_INDICES,
@@ -503,6 +546,17 @@ def venue_base_sector(venue: Any, base: Any) -> Optional[str]:
 #: take ``webull_connector.FUTURES_DEFAULT_SECTOR``, which is the contract form
 #: and a sector this platform does draw. That is the reading
 #: ``ibkr_connector.FUTURES_FAMILY_SECTORS`` already takes for the same family.
+#:
+#: etrade holds no row. ``etrade_connector.FUND_SECTOR_SYMBOLS`` already carries
+#: the per-symbol grain this table would, and it carries it on the connector
+#: because the venue names those 22 funds by symbol on one page of its own:
+#: "Available for SPY, QQQ, DIA, GLD, USO, TLT, SLV, UNG, IWM, SH, AGG, DOG,
+#: EFA, EWA, EWJ, IJH, PSQ, RWM, VTI, XLE, XLF, and XLK". Four of the 22 track a
+#: commodity and sixteen track an index; TLT and AGG track bonds, a sector this
+#: platform does not draw, so both record under stocks through
+#: ``etrade_connector.SECURITY_TYPE_SECTORS`` rather than under a sector that
+#: does not exist. Every other etrade market takes its sector from
+#: ``securityType`` alone, so no symbol needs a row here.
 CITED_VENUE_MARKET_SECTORS: dict[tuple[str, str], str] = {
     ("kucoin", "BNC/USDT"): CLASS_CRYPTO,
     ("kucoin", "USDC/EUR"): CLASS_FOREX,
@@ -744,6 +798,39 @@ CITED_VENUE_SESSIONS: dict[tuple[str, str], str] = {
     (CLASS_FOREX, "webull"): SESSION_CONTINUOUS,
     (CLASS_INDICES, "webull"): SESSION_CONTINUOUS,
     (CLASS_FUTURES_PERPS, "webull"): SESSION_CONTINUOUS,
+    # etrade holds six rows and every one is the venue's own published hours.
+    # Four sectors reach an order as a listed security and carry the US equity
+    # session, whose extended windows its own Disclosure Library names: "the
+    # Pre-Market Session (Monday through Friday 4:00 a.m. to 9:30 a.m. ET), the
+    # After-Market Session (Monday through Friday 4:00 p.m. to 8:00 p.m. ET),
+    # and the Extended Hours Overnight Session (Sunday through Thursday 8:00
+    # p.m. to 4:00 a.m.)".
+    # This venue is Schwab's shape and not Webull's: the restriction outside
+    # regular hours is on the order TYPE and not on the size. Quoted whole from
+    # its own Extended Trading Hours Agreement: "Limit Orders Only. For Extended
+    # Hours Trading, we accept only limit orders (i.e., each order you enter
+    # must identify the price, or better, at which you seek to trade a
+    # particular security). Market orders will not be accepted." Its own Order
+    # API error 1052 states the same, and ``session_order_types`` already
+    # answers a limit order outside regular hours for every US equity session.
+    # No size rule is established: "odd lot", "round lot" and "100 shares" each
+    # name 0 of the 15,818 characters of that agreement, where "limit order"
+    # names 4, so ``session_unit_rule`` takes no etrade row and the venue's own
+    # legacy error 1054 is reported as not established rather than as a refusal.
+    # Twenty-two fund shares do trade a continuous session and
+    # ``etrade_connector.OVERNIGHT_SYMBOLS`` holds them, which the recording
+    # carries per market ahead of this row.
+    # forex and futures_perps are continuous: both sectors' products are
+    # contracts on its own futures table, and that page states the hours itself
+    # -- "all other futures markets are available through the E*TRADE platform
+    # nearly 24 hours a day, six days a week (Sunday 5 p.m. CT to Friday 4 p.m.
+    # CT)" -- with its own CME Equity Index contracts named as trading 24/6.
+    (CLASS_STOCKS, "etrade"): SESSION_US_EQUITY,
+    (CLASS_CRYPTO, "etrade"): SESSION_US_EQUITY,
+    (CLASS_COMMODITIES, "etrade"): SESSION_US_EQUITY,
+    (CLASS_INDICES, "etrade"): SESSION_US_EQUITY,
+    (CLASS_FOREX, "etrade"): SESSION_CONTINUOUS,
+    (CLASS_FUTURES_PERPS, "etrade"): SESSION_CONTINUOUS,
 }
 
 #: The reason a held order carries, never one of ``sized_order``'s refusals.
@@ -951,6 +1038,44 @@ CITED_VENUE_ORDER_TYPES: dict[tuple[str, str], str] = {
     (CLASS_FOREX, "webull"): ORDER_TYPES_WITH_MARKET,
     (CLASS_INDICES, "webull"): ORDER_TYPES_WITH_MARKET,
     (CLASS_FUTURES_PERPS, "webull"): ORDER_TYPES_WITH_MARKET,
+    # etrade holds a row in four of the six sectors it serves, and its order
+    # spec is published credential-free. One order is two calls: "The Place
+    # Order API is used to submit an order after it has been successfully
+    # previewed", and the place body's own ``previewIds`` reads "This parameter
+    # is required and must specify the numeric preview ID from the preview and
+    # the other parameters of this request must match the parameters of the
+    # preview." ``POST /v1/accounts/{accountIdKey}/orders/preview.json`` then
+    # ``POST /v1/accounts/{accountIdKey}/orders/place.json``, and
+    # ``etrade_connector.place_order`` sends one body to both.
+    # The request's own ``priceType`` enum holds 19 words and opens with MARKET
+    # and LIMIT, so every sector reaching that route takes a market order in the
+    # regular session; ``session_order_types`` raises it to a limit outside
+    # regular hours, which the venue states itself: "Market orders will not be
+    # accepted."
+    # The four rows are the four sectors the route reaches. Its request
+    # ``Product.securityType`` enum is closed at EQ, OPTN, INDX, MF and MMF, and
+    # EQ is the one word naming a sector this platform draws: stocks is the
+    # listed equity and commodities, indices and crypto each reach an order as a
+    # fund share, which the venue's own ETF page sells as such -- "Basket of
+    # equities, fixed income, or commodities", "We offer every ETF sold" -- and
+    # its own crypto page as "exposure to popular cryptocurrencies via
+    # securities and futures".
+    # forex and futures_perps hold no row, and the absence is proven rather than
+    # assumed. Over the 186,658 characters of the published Order API reference
+    # "FUTURES" and "FOREX" each name 0 where "EQ" names 36 and "securityType"
+    # names 60; the 275-page API PDF on content.etrade.com answers "forex" 0 and
+    # "currency pair" 0 against "securityType" 18 and "OPTN" 54; and the doc
+    # host has no futures and no crypto directory at all, both answering 400 at
+    # 58 bytes, the identical answer an invented path gives, where a real
+    # directory with a wrong leaf answers 404 at 0 bytes. Both sectors' products
+    # are the 26 FX and interest-rate contracts on its own futures table, served
+    # by a different legal entity -- "Commodity futures and options on futures
+    # products and services offered by E*TRADE Futures LLC, Member NFA" -- and
+    # the API is published under the securities entity.
+    (CLASS_CRYPTO, "etrade"): ORDER_TYPES_WITH_MARKET,
+    (CLASS_STOCKS, "etrade"): ORDER_TYPES_WITH_MARKET,
+    (CLASS_COMMODITIES, "etrade"): ORDER_TYPES_WITH_MARKET,
+    (CLASS_INDICES, "etrade"): ORDER_TYPES_WITH_MARKET,
 }
 
 
@@ -1085,6 +1210,18 @@ SETTLE_LEG = ":"
 # cash amount buys a fraction and never a position, a row here would claim a
 # cash market buy this engine's sizes cannot use, and
 # ``webull_connector.order_body`` writes ``ENTRUST_QTY`` on every order.
+# ``etrade`` is not a member, and the cash amount here belongs to a product this
+# platform draws no sector for. Its order request's own ``quantityType`` enum
+# holds QUANTITY, DOLLAR and ALL_I_OWN, and the DOLLAR shape is the mutual-fund
+# order: the reply's own ``MFQuantity`` object is ``cash``, "The value of the
+# cash quantity in the mutual fund", beside ``margin`` and ``cusip``. An equity
+# order carries QUANTITY, which is what ``etrade_connector.order_body`` writes
+# on every order, and the venue states it has no dollar-based equity ticket --
+# "you may place a buy or buy to cover order for any decimal quantity up to 3
+# decimals" names a quantity and not an amount. So a row here would claim a cash
+# market buy on a sector whose orders are unit counts, and the mutual fund that
+# does take a cash amount selects ``VARIANT_CASH_AMOUNT``, which
+# ``VARIANTS_BUILT`` does not hold.
 CITED_CASH_MARKET_BUY: frozenset[str] = frozenset(
     {"binance", "bitget", "coinbase", "gateio", "mexc"}
 )
@@ -1197,6 +1334,19 @@ def session_for(recorded: Any, asset_class: str, venue: str) -> Optional[str]:
 # and an absent row claims nothing.
 # The venue publishing ``unsettled_cash`` itself is the better reading of row 9
 # than any cited delay, and nothing reads that field yet.
+#
+# etrade holds no row in any of its six sectors, and the absence is a count. Its
+# own Client Agreement defines the moment and never the delay: "'Settlement
+# Date' shall mean the date that a purchase or sale in your Self-Directed
+# Account is scheduled to be paid for or delivered." Over the 32 us.etrade.com
+# pages read, 998,389 characters, "T+1" names 0 and "good faith violation"
+# names 0, while "settlement date" names 27 and "business day after" names 1.
+# A definition is the moment and not the day count, and the one "business day
+# after" is about a cash transfer -- "available for investment or withdrawal on
+# the third business day after the date of deposit" -- so no trade settlement
+# delay is established and an absent row claims nothing. The other nearby figure
+# is funding and not settlement: "we must receive such funds at least one
+# Business Day before the Settlement Date".
 CITED_VENUE_SETTLEMENT: dict[tuple[str, str], float] = {
     (CLASS_CRYPTO, "coinbase"): 0.0,
     (CLASS_STOCKS, "ibkr"): 1.0,
