@@ -103,6 +103,10 @@ SUPPORTED_EXCHANGES: dict[str, str] = {
     "kucoin": "kucoin",
     "bybit": "bybit",
     "okx": "okx",
+    # OKX INC., a Delaware corporation, trading at us.okx.com. Clause 3.1 of
+    # OKX's Terms routes a United States resident to it, and its own Terms 1.1
+    # define the Services as "a platform for spot trading digital assets".
+    "okxus": "okxus",
     "gateio": "gateio",
     "bitget": "bitget",
     "huobi": "huobi",  # Renamed to 'htx' in newer CCXT — see CCXT_CLASS_ALIASES
@@ -273,6 +277,7 @@ def resolve_ccxt_class(ccxt_module: Any, ccxt_id: str) -> Any:
 PASSPHRASE_EXCHANGES: set[str] = {
     "kucoin",
     "okx",
+    "okxus",
     "bitget",
 }
 
@@ -327,6 +332,7 @@ PREFLIGHT_URLS: dict[str, str] = {
     "kucoin": "https://api.kucoin.com/api/v1/timestamp",
     "bybit": "https://api.bybit.com/v5/market/time",
     "okx": "https://www.okx.com/api/v5/public/time",
+    "okxus": "https://us.okx.com/api/v5/public/time",
     "gateio": "https://api.gateio.ws/api/v4/spot/currencies",
     "bitget": "https://api.bitget.com/api/v2/public/time",
     "huobi": "https://api.huobi.pro/v1/common/timestamp",
@@ -429,7 +435,14 @@ NO_PUBLISHED_FAMILY = ""
 #: no index value in the vocabulary at all, and publishes ``5`` on none of its
 #: instruments. ``1`` names what Gate.io's empty list names, and ``6`` names a
 #: sector ``ASSET_CLASSES`` does not draw, so both map onto
-#: ``NO_PUBLISHED_FAMILY``.
+#: ``NO_PUBLISHED_FAMILY``. OKX US publishes the same ``instCategory`` field
+#: with the same five numbers, on its own ``us.okx.com`` host and in its own
+#: ``app.okx.com`` reference, so the vocabulary is shared and the requests are
+#: not: ccxt's ``okxus`` sets ``options['fetchMarkets']['types'] = ['spot']``
+#: and declares ``swap``, ``future`` and ``option`` all False, so the record
+#: asks for ``SPOT`` alone, which is every product type the connector loads.
+#: Its spot rows publish ``baseCcy`` on all 1152 and its contract rows on none,
+#: so the US record reads that field and names no ``code_leg``.
 VENUE_ASSET_SECTOR_RECORDS: dict[str, AssetSectorRecord] = {
     "gateio": AssetSectorRecord(method="publicSpotGetCurrencies"),
     "okx": AssetSectorRecord(
@@ -442,6 +455,21 @@ VENUE_ASSET_SECTOR_RECORDS: dict[str, AssetSectorRecord] = {
         ),
         code_key="instId",
         code_leg=ASSET_CODE_LEG,
+        sector_key="instCategory",
+        words=MappingProxyType(
+            {
+                "1": NO_PUBLISHED_FAMILY,
+                "3": "stocks",
+                "4": "commodities",
+                "5": "forex",
+                "6": NO_PUBLISHED_FAMILY,
+            }
+        ),
+    ),
+    "okxus": AssetSectorRecord(
+        method="publicGetPublicInstruments",
+        requests=({"instType": "SPOT"},),
+        code_key="baseCcy",
         sector_key="instCategory",
         words=MappingProxyType(
             {

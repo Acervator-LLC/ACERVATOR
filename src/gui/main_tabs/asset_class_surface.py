@@ -174,6 +174,17 @@ EXTRA_VENUE_CLASSES = {
     # recording answers no market under that sector. The venue publishes 5 on
     # none of its 2191 instruments, so forex is absent from this row.
     "okx": ("stocks", "commodities", "indices", "futures_perps"),
+    # OKX US publishes the same five asset categories on its own host and
+    # applies them to 1152 spot rows: 1013 Crypto, 135 Stocks, 4 Commodities,
+    # none Forex and no index number in the vocabulary. Eight index-fund
+    # tickers are listed, XSPY and XQQQ among them, and each publishes Stocks,
+    # so the indices row offers the venue and its recording answers no market
+    # under that sector. futures_perps is absent because ccxt's okxus loads
+    # spot alone and OKX INC's own Terms 1.1 define a spot platform. Every one
+    # of the 135 stock markets is a Unified Tokenized Stock, whose own terms
+    # state the holder "is not located in, incorporated in, or current
+    # resident of the United States".
+    "okxus": ("stocks", "commodities", "indices"),
     "alpaca": ("crypto", "commodities", "indices"),
     "etrade": ("commodities", "indices"),
     "ibkr": ("crypto", "commodities", "forex", "indices", "futures_perps"),
@@ -615,7 +626,10 @@ def markets_of_class(rows: Any, venue_id: Any, name: Any, recorded: Any = None) 
     """Every market row of ``rows`` whose ``symbol_class`` on ``venue_id`` is
     one asset class, in the order given.
 
-    An empty ``name`` narrows nothing.
+    OVERTAKEN, quoted whole: "An empty ``name`` narrows nothing." True today:
+    ``normalise`` answers the first declared class for a name it does not
+    recognise and never answers an empty string, so an empty ``name`` narrows
+    to crypto and the guard below is unreachable.
     """
     key = normalise(name)
     listed = [one for one in (rows or []) if isinstance(one, dict)]

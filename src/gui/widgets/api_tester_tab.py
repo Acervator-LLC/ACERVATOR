@@ -572,6 +572,7 @@ if _HAS_QT:
                 "kucoin": "api.kucoin.com",
                 "bybit": "api.bybit.com",
                 "okx": "www.okx.com",
+                "okxus": "us.okx.com",
             }
             host = host_map.get(eid, f"api.{eid}.com")
 
