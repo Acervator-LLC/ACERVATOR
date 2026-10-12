@@ -732,12 +732,17 @@ NO_SELECTION_CAUSE = "no_selection"
 NOT_RUNNING_CAUSE = "not_running"
 BOT_ERROR_CAUSE = "bot_error"
 COLD_START_CAUSE = "cold_start"
+TOO_FEW_CANDLES_CAUSE = "too_few_candles"
 
 
 def ivp_feed(bot: Any) -> dict:
     """The voting panel's feed for ``bot`` with no feed read: ``no_selection``
     with no bot, ``not_running`` in ``NOT_RUNNING_STATES``, ``bot_error`` in
-    ``ERROR_STATE``, else ``cold_start``, the causes Live's panel names."""
+    ``ERROR_STATE``, else the cause ``paper_read_price`` measures.
+
+    ``COLD_START_CAUSE`` is named only where ``paper_read_price`` answers zero,
+    and a running bot with a price is given ``TOO_FEW_CANDLES_CAUSE``.
+    """
     if bot is None:
         return {"cause": NO_SELECTION_CAUSE, "detail": {}, "reason": "", "symbol": ""}
     detail = {
@@ -752,5 +757,22 @@ def ivp_feed(bot: Any) -> dict:
     elif bot.state in NOT_RUNNING_STATES or not bot.state:
         cause = NOT_RUNNING_CAUSE
     else:
-        cause = COLD_START_CAUSE
+        price = paper_read_price(bot)
+        detail["price"] = price
+        if price > 0:
+            detail["candles"] = 0
+            cause = TOO_FEW_CANDLES_CAUSE
+        else:
+            cause = COLD_START_CAUSE
     return {"cause": cause, "detail": detail, "reason": "", "symbol": bot.symbol}
+
+
+def paper_read_price(bot: Any) -> float:
+    """``PaperBot.current_price`` as a non-negative float, 0.0 when unreadable.
+
+    ``ivp_feed`` reads it before it may name ``COLD_START_CAUSE``.
+    """
+    try:
+        return max(0.0, float(getattr(bot, "current_price", 0.0) or 0.0))
+    except (TypeError, ValueError):
+        return 0.0
