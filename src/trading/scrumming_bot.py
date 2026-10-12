@@ -1969,16 +1969,16 @@ class ScrummingBot(
         return await self.exchange.get_ohlcv(symbol, timeframe, limit=limit)
 
     async def _refresh_market_reading(self, symbol: str) -> bool:
-        """Write ``_last_summary`` and ``_last_bb`` from the pooled candles for
-        ``symbol``, and answer whether a summary was written.
+        """Write ``_last_summary`` from the pooled candles for ``symbol``, and
+        answer whether a summary was written.
 
         ``tick`` calls this above every early return, so a bot parked at
         target, firing a cartridge or answering a manual fire still holds a
         current reading for the Indicator Voting Panel to draw. The shared
         ``MarketDataPool`` slot lives one timeframe, so a tick that finds the
-        slot fresh makes no venue call. A read that raises, or a venue that
-        supplies fewer than ``MIN_CANDLES_FOR_TA`` rows, leaves the previous
-        reading standing.
+        slot fresh makes no venue call. ``_last_summary`` has no reader in the
+        trading engine and ``_last_bb`` does, so this writes only the first and
+        leaves every firing decision to ``_tick_main``.
         """
         ta_tf = self.config.ta_timeframe or "1h"
         try:
@@ -1997,12 +1997,6 @@ class ScrummingBot(
         try:
             self._last_summary = self._voting_engine.compute_all(
                 candles, ta_tf, symbol=self.config.symbol
-            )
-            self._last_bb = detect_bb_proximity(
-                candles,
-                tolerance_pct=self.config.bb_tolerance_pct,
-                consolidation_threshold=3.0,
-                min_pattern_candles=self.config.bb_landing_strip_candles,
             )
         except Exception as exc:
             logger.warning(
