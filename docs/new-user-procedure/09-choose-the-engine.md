@@ -30,3 +30,28 @@ showing the shadow-bot page.
 
 Every bot in the live fleet runs Accumulation Trading, all 38 of them. That is
 what this how-to follows from here on.
+
+## What the page says now
+
+OVERTAKEN, quoted whole:
+
+> **Press Accumulation Trading (Scrumming), then Next.**
+
+True today: press the row the page shows. It is named after the layer New Bot was
+pressed on. On the Crypto layer it reads Crypto Scrumming. On the other five it
+reads Stock Scrumming, Commodity Scrumming, Forex Scrumming, Index Scrumming or
+Futures Scrumming. It is the same engine under every one of those names, and the
+name says which sector's published rules it sizes orders under.
+
+OVERTAKEN, quoted whole:
+
+> The page offers two engines and the bot keeps the one picked here.
+
+True today: the page offers two engines on the Crypto layer and one on each of
+the other five. Base Currency Extractor grows a pool of a crypto currency, so it
+shows on Crypto and nowhere else. The bot still keeps the engine picked here, and
+the wizard still asks once.
+
+`src/gui/main_tabs/bot_wizard_surface.py`, in `mode_offer`, decides the rows one
+layer draws. `EXTRACTOR_SECTORS` in the same file names the one layer the
+Extractor reaches.
