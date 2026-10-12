@@ -278,6 +278,25 @@ CITED_UNIT_RULES: dict[tuple[str, str], str] = {
     (CLASS_COMMODITIES, "coinbase"): WHOLE_UNITS,
     (CLASS_INDICES, "coinbase"): WHOLE_UNITS,
     (CLASS_FUTURES_PERPS, "coinbase"): WHOLE_UNITS,
+    # The seven venues listing a tokenised stock hold no stocks row, because
+    # every one of the 4562 markets their own stocks categories list publishes a
+    # size step, which ``recorded_unit_rule`` reads ahead of this table. Read
+    # 2026-10-11: okxus and okx publish ``lotSz`` 0.000001 to 0.001 on the 143
+    # tokenised spot markets both hosts list, and 1 on 16 of okx's 265 equity
+    # contracts; bitget publishes ``quantityPrecision`` 0, which is the whole
+    # unit, on 66 of its 2809 spot stock markets, and 1 to 5 on the other 2743
+    # and on all 332 of its equity perpetuals;
+    # kucoin publishes ``baseIncrement`` 0.001 or 0.01 on its 5 spot xStock
+    # pairs and ``lotSize`` 1 on all 155 equity perpetuals; mexc publishes
+    # ``baseAssetPrecision`` 2 to 4 on the 167 markets of its Tokenized Stocks
+    # and Pre-IPO plates and ``volUnit`` 1 on all 409 of its stock contracts;
+    # cryptocom publishes ``qty_tick_size`` 1 on 4 of its 134 equity and
+    # pre-IPO perpetuals and 0.001 to 0.1 on the other 130. 3912 of the 4562
+    # step in fractions, 650 in whole units and 0 leave the step unpublished, so
+    # a row for any of the seven would never fire while a record is read.
+    # gemini lists no stock market at all, which is unestablished and not whole:
+    # its own stocks page reads "Stocks are currently available in the Gemini
+    # UI. API trading and developer documentation are coming soon."
 }
 
 #: The sector one base code belongs to on one venue, read from that venue's own

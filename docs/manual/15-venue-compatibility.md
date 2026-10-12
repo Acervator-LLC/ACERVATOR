@@ -9829,3 +9829,244 @@ of the four offered, **0** reach an order route and **4** are refused with the
 venue's own absence as the reason. Before this unit
 `broker_serves_sector("fidelity", …)` answered False on all six, because
 `BROKER_CONNECTORS` held no `fidelity` row at all.
+
+## 2026-10-11 — a tokenised stock trades in a fraction of a share, and the venue publishes the step
+
+`Whole Unit Scrumming` is the variant for a market that cannot be bought or sold
+in a fraction of a unit. A tokenised stock takes a fraction on 3912 of the 4562
+markets the seven tokenised-stock venues list, and every one of those venues
+publishes a size step per market.
+
+The 650 that take a whole unit are mostly contracts: 409 MEXC stock contracts,
+155 KuCoin equity perpetuals, 16 OKX equity contracts and 4 Crypto.com equity
+perpetuals, which is 584, plus 66 bitget spot markets. 584 + 66 = 650. Every spot
+market on the other six venues takes a fraction.
+
+Read on 2026-10-11 from each venue's own credential-free instrument route and its
+own published pages, with the home directory redirected. No credential was sent.
+No order was placed, priced, amended, previewed or cancelled.
+
+### The step each venue publishes
+
+| venue | the field | markets listed | step a fraction | step a whole unit | step not published |
+| --- | --- | ---: | ---: | ---: | ---: |
+| okxus | `lotSz` | 143 | 143 | 0 | 0 |
+| okx | `lotSz` | 408 | 392 | 16 | 0 |
+| bitget | `quantityPrecision` | 3141 | 3075 | 66 | 0 |
+| kucoin spot | `baseIncrement` | 5 | 5 | 0 | 0 |
+| kucoin perpetual | `lotSize` | 155 | 0 | 155 | 0 |
+| gemini | nothing | 0 | 0 | 0 | 0 |
+| mexc spot | `baseAssetPrecision` | 167 | 167 | 0 | 0 |
+| mexc contract | `volUnit` | 409 | 0 | 409 | 0 |
+| cryptocom | `qty_tick_size` | 134 | 130 | 4 | 0 |
+| **total** | | **4562** | **3912** | **650** | **0** |
+
+4562 = 3912 + 650 + 0. MEXC's `Tokenized Stocks` plate and its `Pre-IPO` plate
+share 0 markets, so no market is counted twice. The corpus moves while it is
+being read: OKX's stocks category served 408 markets at this count and 409 at a
+later read the same day.
+
+Each count is pinned to the corpus its route served that day: okx 4527 markets,
+okxus 1160, bitget 4603 instrument rows across five categories, kucoin 1660 spot
+markets and 691 contracts, gemini 347 markets, mexc 1881 spot markets and 1197
+contracts, cryptocom 988 markets.
+
+### The route that reads it
+
+```mermaid
+flowchart TD
+    A[the venue's instrument route] --> B[MarketRules.amount_increment]
+    B --> C{recorded_unit_rule}
+    C -->|step below one unit| D[FRACTIONAL_UNITS]
+    C -->|step one unit or more| E[WHOLE_UNITS]
+    C -->|no step published| F[None]
+    F --> G[CITED_UNIT_RULES, through unit_rule]
+    D --> H[market_unit_rule]
+    E --> H
+    G --> H
+    H --> I[sized_order sizes the amount]
+    H --> J[sector_variant names the variant]
+```
+
+`src/trading/scrumming/sizing.py, in recorded_unit_rule` reads the recorded step
+and `src/trading/scrumming/sizing.py, in market_unit_rule` answers it ahead of
+the `CITED_UNIT_RULES` row, so the venue's own step governs every market it is
+published for.
+
+### The variant each market selects
+
+Driven at a reference price of 100, against one real market per venue:
+
+| venue | market | `market_unit_rule` | `sector_variant` | `variant_holds_market` |
+| --- | --- | --- | --- | --- |
+| okx | `XAAOI/USDT` | fractional | Stock Scrumming | True |
+| okxus | `XAAPL/USDT` | fractional | Stock Scrumming | True |
+| bitget | `RLBTYB/USDT` | whole | Whole Unit Scrumming | True |
+| kucoin | `AAPLX/USDT` | fractional | Stock Scrumming | True |
+| kucoin | `AAOI/USDT:USDT` | whole | Whole Unit Scrumming | True |
+| mexc | `AALON/USDT` | fractional | Stock Scrumming | True |
+| mexc | `AALSTOCK/USDT:USDT` | whole | Whole Unit Scrumming | True |
+| cryptocom | `AAOI/USD:USD` | fractional | Stock Scrumming | True |
+
+Driven over all 4562 markets at the same reference price, against
+`src/trading/scrumming/sizing.py, at REFERENCE_SCRUM_EXCESS_USD` of 17.50:
+
+| venue | markets | Stock Scrumming | Whole Unit Scrumming | held | refused |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| okx | 408 | 391 | 17 | 405 | 3 |
+| okxus | 143 | 140 | 3 | 140 | 3 |
+| bitget | 3141 | 2554 | 587 | 2588 | 553 |
+| kucoin spot | 5 | 5 | 0 | 5 | 0 |
+| kucoin perpetual | 155 | 0 | 155 | 155 | 0 |
+| mexc spot | 167 | 167 | 0 | 167 | 0 |
+| mexc contract | 409 | 0 | 409 | 409 | 0 |
+| cryptocom | 134 | 130 | 4 | 134 | 0 |
+| **total** | **4562** | **3387** | **1175** | **4003** | **559** |
+
+3387 + 1175 = 4562, and 4003 + 559 = 4562. Every market selects a variant
+`src/trading/scrumming/sizing.py, at VARIANTS_BUILT` holds, and 559 of them are
+still refused for a second reason:
+`src/trading/scrumming/sizing.py, in untradeable_reason` names
+`WHOLE_UNIT_STEP_IS_A_FRACTION` on all 559 and on no other market. The market's
+smallest order costs more than the excess, so `Whole Unit Scrumming` selects, and
+the market's step is a fraction, so that variant cannot size it.
+
+The refusal is a minimum measured against the excess and not a tokenised-stock
+rule. 553 of the 559 are bitget markets: 552 publish a `minOrderAmount` of 20
+USDT and one publishes 28, against a reference excess of 17.50.
+`src/trading/scrumming/sizing.py, in smallest_order_usd` takes the venue's
+minimum cost where it is the larger figure, so those 553 refuse at every price.
+
+The other 6 are an artefact of the uniform reference price. They are the three
+OKX and three OKX US spot markets publishing `minSz` `1` with a fractional
+`lotSz`, and at the prices OKX serves for them they are held: `XGPRO/USDT` quotes
+1.19 and `XXIAOMI/USDT` quotes 3.16, so the smallest order is under the excess and
+`tradeable_answer` reads `can size a scrum`. `XAMC/USDT` answers
+`No market data available`, the venue's own `preopen` state. Driven again at each
+market's own served price, the refusal count is 553 and every one is a bitget
+market.
+
+The excess does not vary per bot. `src/trading/scrumming/sizing.py, at
+REFERENCE_SCRUM_EXCESS_USD` fixes it at 17.50 from the largest fleet target of
+350 at a 5% interval, and `src/trading/bot_container.py, in guarded_place_order`
+passes the market price and no excess of its own, so the default holds. The
+constant's own note states what that means: "The largest excess any bot in the
+saved fleet submits ... so `TRADEABLE_NO` means no bot at any target this fleet
+carries could size a scrum there."
+
+A second reading at each market's own served price cannot replace the one above,
+because `fetch_tickers` served no price for 1178 of the 4562 markets — 409 mexc
+contracts, 332 bitget perpetuals, 274 okx contracts, 155 kucoin perpetuals and 8
+okx US spot rows — and `tradeable_answer` answers `size rules not read` with no
+price, which is neither verdict. The uniform reference price is the instrument
+that reads every market the same way.
+
+### What each venue's own words add
+
+OKX's own documentation defines the field: "lotSz String Lot size ... If it is
+SPOT / MARGIN, the value is the quantity in base currency." Its Unified Tokenized
+Stock Trading Terms and Conditions name the other one: "Instruments are priced
+per share (Scaled Quantity), aligned to a tick size of USD 0.01; Minimum order
+size (minSz) is determined by OKX and may be updated from time to time." The word
+"fractional" appears 0 times on that page, so the published `lotSz` is the whole
+of the venue's answer.
+
+Bitget's own page defines its field as "Quantity precision, the number of decimal
+places allowed for the quantity". A `0` is no decimal place, which is the whole
+unit on its 66 spot stock markets. The same page states that its spot minimum
+quantity is published elsewhere: "minOrderQty String Minimum order quantity, in
+terms of the base coin. Only for futures; for spot/margin see Trading Rules."
+
+Gemini publishes no step because it publishes no stock market. Its own stocks
+page reads: "Stocks are currently available in the Gemini UI. API trading and
+developer documentation are coming soon." That is unestablished rather than
+whole, and the count that shows it is 0 markets.
+
+MEXC's `baseSizePrecision` reads `0` on all 165 markets of its `Tokenized Stocks`
+plate. A published zero is not a step, and
+`src/trading/scrumming/sizing.py, in recorded_unit_rule` answers None on a step
+of zero or less, so the decimal count carries the answer.
+
+### A whole contract over a fractional share
+
+MEXC's 409 stock contracts and KuCoin's 155 equity perpetuals take a whole number
+of contracts, and each contract stands for a fraction of a share. MEXC publishes
+`contractSize` `0.01` on 226 of the 409, `0.001` on 102, `0.1` on 55, `0.0001` on
+15, `1` on 7 and `0.00001` on 4; KuCoin publishes `multiplier` `0.01` on all 155.
+`src/trading/scrumming/sizing.py, in contracts_for_units` turns a share count
+into that contract count, so a whole-contract step still buys a fraction of a
+share.
+
+### What this reading changes in the code
+
+Nothing. `src/trading/scrumming/sizing.py, at CITED_UNIT_RULES` answers only
+where a market's own record published no step, and 0 of the 4562 markets
+published no step, so a row for any of these seven venues would never fire while
+a record is read. The table holds the same 45 pairs with the same 45 values
+before and after.
+
+### The controls
+
+- A real OKX spot market's rules, copied with the step set to `1.0`, read `whole`
+  and selected `Whole Unit Scrumming`. The same copy with the step, the minimum
+  amount and the minimum cost removed read None, and
+  `src/trading/scrumming/sizing.py, in sized_order` answered zero units with the
+  refusal "no size rule for the pair".
+- A real KuCoin equity perpetual's rules, copied with the step set to `0.001`,
+  read `fractional` and selected `Stock Scrumming`. A real MEXC stock contract's
+  rules, copied with the step set to `0.01`, read the same pair.
+- Gemini's zero is not a blind instrument: the same reading over all 347 Gemini
+  markets reported 345 fractional and 2 whole, the two being `XRP/GUSD:GUSD` and
+  `XRP/USDC:USDC`.
+- Bitget's 66 is not a rounding: its 3141 stock rows were joined to a ccxt market
+  record by venue symbol id with 0 unmatched, and the recorded step read back
+  `1.0` on exactly the 66 rows whose `quantityPrecision` is `0`.
+- 0 of the 469 MEXC Stock-zone contracts publishes a `volUnit` other than `1`.
+
+### The reach, recorded and not acted on
+
+OKX INC's own terms require the holder to warrant that "you are not located in,
+incorporated in, or current resident of the United States". The sector stays
+offered, because a holder with access may use it. Nothing is blocked, hidden or
+refused.
+
+### Sentences on this page this entry overtakes
+
+OVERTAKEN, quoted whole:
+
+> So the 135 markets the stocks sector holds on this
+> venue are products the venue's own terms forbid that account to hold.
+
+True today: OKX US lists 143 tokenised stocks, not 135. The terms clause and the
+sector reading are unchanged.
+
+OVERTAKEN, quoted whole:
+
+> | stocks | 135 | tokenised shares and funds under 109 codes, all stepping in fractions |
+
+True today: 143 markets, and "all stepping in fractions" is confirmed — 143 of
+143 publish a `lotSz` below one unit.
+
+OVERTAKEN, quoted whole:
+
+> | stocks | 0 | 400 |
+
+True today: OKX lists 408 markets in its stocks category, 143 spot, 190 swap and
+75 dated.
+
+OVERTAKEN, quoted whole:
+
+> The 135 are tokenised equity spot pairs, named with an `X` prefix — `XAAPL-USDT`
+> is Apple and `XAMZN-USDT` is Amazon — and the 262 are equity contracts, so the
+> stocks sector gains its markets from two product lines at once.
+
+True today: 143 are tokenised equity spot pairs and 265 are equity contracts. The
+`X` prefix and the two product lines are unchanged.
+
+OVERTAKEN, quoted whole:
+
+> | stocks | 164 spot, 398 contract | spot route; contract route under maintenance | same | same | same | Stock Scrumming |
+
+True today: 167 spot and 409 contract. The 167 spot markets select Stock
+Scrumming and the 409 contracts select Whole Unit Scrumming, because the venue
+publishes `volUnit` `1` on every one.
