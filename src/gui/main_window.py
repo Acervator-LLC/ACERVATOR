@@ -1902,7 +1902,7 @@ if _HAS_QT:
                 return VotingEngine().compute_all(
                     candles, timeframe, symbol=getattr(bot.config, "symbol", "")
                 )
-            except (AttributeError, ImportError, TypeError, ValueError) as exc:
+            except Exception as exc:
                 logger.debug("IVP: pool-side voting compute unavailable: %s", exc)
                 return None
 
