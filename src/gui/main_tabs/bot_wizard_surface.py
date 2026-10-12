@@ -2034,7 +2034,7 @@ class BotWizardModel:
         self.descriptions: dict[str, str] = {}
         self.mode_texts = mode_offer(self.sector)
         self.offered_modes = mode_offered(self.sector)
-        self.mode_refusal = mode_refusal(self.sector)
+        self.variant_refusal = mode_refusal(self.sector)
         self.mode = self.offered_modes[0] if self.offered_modes else SCRUMMING_MODE
         self.params_is_extractor = False
         self.closed_page = False
@@ -2104,7 +2104,7 @@ class BotWizardModel:
             self.calls.append([RADIO_SET_TEXT, name, text])
             self.calls.append([RADIO_SET_VISIBLE, name, bool(text)])
             self.calls.append([RADIO_SET_CHECKED, name, self.radios[name]])
-        self.calls.append([LABEL_SET_TEXT, "mode_refusal", self.mode_refusal])
+        self.calls.append([LABEL_SET_TEXT, "mode_refusal", self.variant_refusal])
         for name, checked in CHECK_FIELDS.items():
             self.calls.append([CHECK_SET_CHECKED, name, checked])
         for name, spec in NUMBER_FIELDS.items():
@@ -2520,7 +2520,7 @@ class BotWizardModel:
         if self.refusal == REFUSAL_UNTRADEABLE:
             return UNTRADEABLE_REFUSAL_FORMAT.format(reason=self.target_reason())
         if self.refusal == REFUSAL_NO_VARIANT:
-            return self.mode_refusal
+            return self.variant_refusal
         return EMPTY_TEXT
 
     def set_target_index(self, value: Any) -> None:
@@ -3252,7 +3252,7 @@ def mode_state(model: BotWizardModel) -> dict:
         "names": list(MODES),
         "offered": list(model.offered_modes),
         "texts": dict(model.mode_texts),
-        "refusal": model.mode_refusal,
+        "refusal": model.variant_refusal,
         "extractor_sectors": list(EXTRACTOR_SECTORS),
         "selected": model.mode,
         "is_extractor": model.is_extractor(),
