@@ -9833,10 +9833,14 @@ venue's own absence as the reason. Before this unit
 ## 2026-10-11 — a tokenised stock trades in a fraction of a share, and the venue publishes the step
 
 `Whole Unit Scrumming` is the variant for a market that cannot be bought or sold
-in a fraction of a unit. A tokenised stock is not such a market on any spot
-market the seven tokenised-stock venues list. Every one of those venues publishes
-a size step per market, and the step is a fraction on every spot market except 66
-of bitget's.
+in a fraction of a unit. A tokenised stock takes a fraction on 3912 of the 4562
+markets the seven tokenised-stock venues list, and every one of those venues
+publishes a size step per market.
+
+The 650 that take a whole unit are mostly contracts: 409 MEXC stock contracts,
+155 KuCoin equity perpetuals, 16 OKX equity contracts and 4 Crypto.com equity
+perpetuals, which is 584, plus 66 bitget spot markets. 584 + 66 = 650. Every spot
+market on the other six venues takes a fraction.
 
 Read on 2026-10-11 from each venue's own credential-free instrument route and its
 own published pages, with the home directory redirected. No credential was sent.
