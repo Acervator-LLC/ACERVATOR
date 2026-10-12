@@ -5538,6 +5538,71 @@ is a wrong number.
 MIN_CANDLES_FOR_TA = 30
 ```
 
+**Every running bot reads its market on every tick.** A bot writes its voter
+reading above every early exit its tick can take, so a bot parked at its target,
+a bot firing a cartridge and a bot answering a manual fire each hold a current
+reading for the panel to draw. The shared price pool keeps one candle slot per
+market and timeframe and that slot lives one timeframe, so a tick that finds the
+slot fresh makes no venue call. A tick that sees the same newest candle as the
+last one skips the vote count entirely, so a bot parked at its target counts its
+votes once per candle rather than once per tick. The voter reading is drawn and
+recorded and nothing in the trading engine reads it, so no gate and no trade
+changes.
+
+`src/trading/scrumming_bot.py` — `ScrummingBot._refresh_market_reading`, called
+from `ScrummingBot.tick` above its early exits
+
+```python
+        ticker = await self._get_ticker(symbol)
+        self.stats.current_price = ticker.last
+        await self._refresh_market_reading(symbol)
+```
+
+**The panel can compute from the pool.** Where a bot holds no reading of its own,
+the panel asks the shared pool for that bot's candles and computes the votes
+itself. No venue call is made and no reading is invented, because the candles are
+the ones the platform already holds. A bot that is stopped, idle or stopped on an
+error is refused, because a bot that is not running reads no market and its own
+sentence says so.
+
+`src/gui/main_window.py` — `MainWindow._ivp_summary_from_pool`, read by the
+dashboard refresh
+
+```python
+                            summary = getattr(bot, "_last_summary", None)
+                            if bot is not None and summary is None:
+                                summary = self._ivp_summary_from_pool(bot)
+```
+
+**Cold start measures its claim.** The cold start sentence says the bot has read
+no market since the platform started. The last price the bot read is what decides
+it: a price above zero means the bot reached the market, and cold start is refused.
+A running bot that has read a price is given the candle count the panel measured
+instead.
+
+`src/gui/main_window.py` — `MainWindow._ivp_last_read_price`, read by
+`MainWindow._ivp_empty_state_cause`
+
+```python
+            price = self._ivp_last_read_price(bot)
+            detail["price"] = price
+            if price <= 0:
+                return "cold_start", detail
+```
+
+**One sentence this page carried is overtaken.** It is quoted whole, and the
+sentence under it is true today.
+
+OVERTAKEN, quoted whole:
+
+> "A market well over the floor can still read cold start, so a full panel is not
+> the only healthy reading."
+
+True today: a market over the floor draws its twelve voters, because the panel
+computes from the pool's own candles when the bot holds no reading. A reading over
+the floor and a blank panel together are a fault, and the panel names it
+`ta_compute_failed`.
+
 **A stored reading draws with its age.** When a bot has a reading saved from an
 earlier evaluation, the panel draws that reading rather than emptying, with the time
 it was taken, how old it is, and the cause sentence after it. The window build and

@@ -379,6 +379,8 @@ class ScrummingBot(
         self._ta_weights = ta_weights
         self._voting_engine = VotingEngine(weights=ta_weights)
         self._last_summary: Optional[VotingSummary] = None
+        # Newest candle the last _refresh_market_reading compute saw.
+        self._reading_candle_stamp: float = 0.0
         self._last_bb: Optional[BBProximityResult] = None
         self._last_gate_state: dict = {
             "scrum_armed": False,
@@ -1968,6 +1970,58 @@ class ScrummingBot(
                 raise
         return await self.exchange.get_ohlcv(symbol, timeframe, limit=limit)
 
+    async def _refresh_market_reading(self, symbol: str) -> bool:
+        """Write ``_last_summary`` from the pooled candles for ``symbol``, and
+        answer whether a summary was written.
+
+        ``tick`` calls this above every early return, so a bot parked at
+        target, firing a cartridge or answering a manual fire still holds a
+        current reading for the Indicator Voting Panel to draw. The shared
+        ``MarketDataPool`` slot lives one timeframe, so a tick that finds the
+        slot fresh makes no venue call. ``_last_summary`` has no reader in the
+        trading engine and ``_last_bb`` does, so this writes only the first and
+        leaves every firing decision to ``_tick_main``.
+
+        ``_reading_candle_stamp`` holds the newest candle the last compute saw.
+        Candles with that stamp again give the same summary, so the compute is
+        skipped and the reading already on the panel stands.
+        """
+        ta_tf = self.config.ta_timeframe or "1h"
+        try:
+            raw = await self._get_ohlcv(symbol, timeframe=ta_tf, limit=100)
+            candles = candles_from_raw(raw)
+        except Exception as exc:
+            logger.debug(
+                "Bot %s market reading unavailable (%s): %s",
+                self.bot_id,
+                type(exc).__name__,
+                exc,
+            )
+            return False
+        if len(candles) < MIN_CANDLES_FOR_TA:
+            return False
+        stamp = float(getattr(candles[-1], "timestamp", 0) or 0)
+        if (
+            self._last_summary is not None
+            and stamp > 0
+            and stamp == getattr(self, "_reading_candle_stamp", 0.0)
+        ):
+            return True
+        self._reading_candle_stamp = stamp
+        try:
+            self._last_summary = self._voting_engine.compute_all(
+                candles, ta_tf, symbol=self.config.symbol
+            )
+        except Exception as exc:
+            logger.warning(
+                "Bot %s voting compute raised %s: %s",
+                self.bot_id,
+                type(exc).__name__,
+                exc,
+            )
+            return False
+        return True
+
     async def _get_balance(self, currency: str):
         """Fetch a balance through ``_data_pool``, else a direct exchange call."""
         if self._data_pool is not None:
@@ -2784,6 +2838,7 @@ class ScrummingBot(
 
         ticker = await self._get_ticker(symbol)
         self.stats.current_price = ticker.last
+        await self._refresh_market_reading(symbol)
         try:
             await self._refresh_quote_to_usd()
         except Exception as _sup:
