@@ -284,7 +284,8 @@ CITED_UNIT_RULES: dict[tuple[str, str], str] = {
     # 2026-10-11: okxus and okx publish ``lotSz`` 0.000001 to 0.001 on the 143
     # tokenised spot markets both hosts list, and 1 on 16 of okx's 265 equity
     # contracts; bitget publishes ``quantityPrecision`` 0, which is the whole
-    # unit, on 66 of its 2809 spot stock markets and 1 to 5 on the other 3075;
+    # unit, on 66 of its 2809 spot stock markets, and 1 to 5 on the other 2743
+    # and on all 332 of its equity perpetuals;
     # kucoin publishes ``baseIncrement`` 0.001 or 0.01 on its 5 spot xStock
     # pairs and ``lotSize`` 1 on all 155 equity perpetuals; mexc publishes
     # ``baseAssetPrecision`` 2 to 4 on the 167 markets of its Tokenized Stocks
