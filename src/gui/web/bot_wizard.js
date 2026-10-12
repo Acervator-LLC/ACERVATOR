@@ -237,6 +237,11 @@
   // NULLABLE_FIELDS names the values a healthy payload may carry as null.
   var NULLABLE_FIELDS = [INFO_BOX, WARNING_BOX, TARGET_DATA];
 
+  // The engines the mode page's sector offers, and the line a sector with no
+  // built variant draws instead.
+  var OFFERED = "offered";
+  var MODE_REFUSAL_NAME = "mode_refusal";
+
   // The five page names the payload keys its titles, rows and groups by.
   var ASSET_PAGE_NAME = "asset";
   var MODE_PAGE_NAME = "mode";
@@ -1553,9 +1558,15 @@
     var handlers = copyOf(wired);
     handlers.page = name === POOL_PAGE_NAME ? POOL_PAGE : ASSET_PAGE;
     handlers.venueTip = name === POOL_PAGE_NAME ? POOL_EXCHANGE_TIP : EXCHANGE_ROW;
-    var rows = pageRows(name).map(function (one) {
-      return rowFor(one, handlers);
-    });
+    // The mode page draws a radio only for an engine its sector offers, which
+    // is the row the surface filled a radio text for.
+    var rows = pageRows(name)
+      .filter(function (one) {
+        return name !== MODE_PAGE_NAME || label(radioText(one)) !== undefined;
+      })
+      .map(function (one) {
+        return rowFor(one, handlers);
+      });
     var groups = pageGroups(name).map(function (one) {
       return element(FieldGroup, {
         key: one,
@@ -1617,7 +1628,7 @@
       return rows.concat(groups).concat(unitNotes());
     }
     if (name === MODE_PAGE_NAME) {
-      listField(bag(MODES), NAMES).forEach(function (one) {
+      listField(bag(MODES), OFFERED).forEach(function (one) {
         rows.push(
           element(Note, {
             key: one + DESCRIPTION_SUFFIX,
@@ -1630,6 +1641,20 @@
           })
         );
       });
+      // A sector whose variant the program does not hold draws why, and the
+      // page above it drew no radio to press.
+      if (label(bag(MODES)[REFUSAL]) !== undefined) {
+        rows.push(
+          element(Note, {
+            key: MODE_REFUSAL_NAME,
+            part: MODE_NOTE_PART,
+            name: MODE_REFUSAL_NAME,
+            value: bag(MODES)[REFUSAL],
+            muted: false,
+            wrapped: true
+          })
+        );
+      }
       return rows;
     }
     return rows.concat(groups);
