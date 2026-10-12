@@ -274,6 +274,7 @@ CAUSE_BOT_ERROR = "bot_error"
 CAUSE_PARKED_AT_TARGET = "parked_at_target"
 CAUSE_TOO_FEW_CANDLES = "too_few_candles"
 CAUSE_COLD_START = "cold_start"
+CAUSE_TA_COMPUTE_FAILED = "ta_compute_failed"
 CAUSE_NO_SELECTION = "no_selection"
 NOT_RUNNING_STATES = ("idle", "stopped")
 ERROR_STATE = "error"
@@ -485,6 +486,8 @@ WIRED_PATHS = (
     "_global_bot_cmd",
     "_init_live_monitor",
     "_ivp_cached_candle_count",
+    "_ivp_last_read_price",
+    "_ivp_summary_from_pool",
     "_on_ai_feedback",
     "_on_bot_clicked",
     "_on_bot_error_for_log",
@@ -861,19 +864,41 @@ def ivp_empty_state_cause(bot: Any, bot_id: Any = "") -> tuple:
         return CAUSE_PARKED_AT_TARGET, detail
 
     cached = cached_candle_count(bot)
-    if cached is not None and cached < CANDLES_REQUIRED:
-        detail.update(
-            {
-                "candles": cached,
-                "symbol": getattr(bot.config, "symbol", "") or "",
-                "timeframe": (
-                    getattr(bot.config, "ta_timeframe", "") or DEFAULT_TIMEFRAME
-                ),
-            }
-        )
-        return CAUSE_TOO_FEW_CANDLES, detail
+    price = last_read_price(bot)
+    detail["price"] = price
+    if price <= 0:
+        return CAUSE_COLD_START, detail
 
-    return CAUSE_COLD_START, detail
+    detail.update(
+        {
+            "candles": 0 if cached is None else cached,
+            "symbol": getattr(bot.config, "symbol", "") or "",
+            "timeframe": (getattr(bot.config, "ta_timeframe", "") or DEFAULT_TIMEFRAME),
+        }
+    )
+    if cached is not None and cached >= CANDLES_REQUIRED:
+        return CAUSE_TA_COMPUTE_FAILED, detail
+    return CAUSE_TOO_FEW_CANDLES, detail
+
+
+def last_read_price(bot: Any) -> float:
+    """The last price ``bot`` read from its venue, 0.0 when it has read none.
+
+    ``ScrummingBot.tick`` writes ``stats.current_price`` from the ticker it
+    just fetched, so a figure above zero measures that the bot reached the
+    market. ``ivp_empty_state_cause`` reads it before it may name
+    ``CAUSE_COLD_START``.
+    """
+    try:
+        price = float(getattr(getattr(bot, "stats", None), "current_price", 0.0) or 0.0)
+    except (TypeError, ValueError):
+        return 0.0
+    if price > 0:
+        return price
+    try:
+        return max(0.0, float(getattr(bot, "_last_price", 0.0) or 0.0))
+    except (TypeError, ValueError):
+        return 0.0
 
 
 def cached_candle_count(bot: Any) -> Optional[int]:

@@ -1345,8 +1345,10 @@ if _HAS_QT:
                         sel_bid = self._indicator_panel.selected_bot_id
                         if sel_bid:
                             bot = self._bot_manager.get_bot(sel_bid)
-                            if bot and getattr(bot, "_last_summary", None):
-                                summary = bot._last_summary
+                            summary = getattr(bot, "_last_summary", None)
+                            if bot is not None and summary is None:
+                                summary = self._ivp_summary_from_pool(bot)
+                            if bot and summary:
                                 tf = (
                                     getattr(bot.config, "ta_timeframe", None)
                                     or getattr(summary, "timeframe", None)
@@ -1849,6 +1851,61 @@ if _HAS_QT:
                 logger.debug("IVP: candle count unavailable: %s", exc)
                 return None
 
+        def _ivp_last_read_price(self, bot) -> float:
+            """The last price this bot read from its venue, 0.0 when it has read none.
+
+            ``ScrummingBot.tick`` writes ``stats.current_price`` from the
+            ticker it just fetched, so a figure above zero is a measurement
+            that the bot has reached the market. ``_ivp_empty_state_cause``
+            reads it before it may name ``cold_start``.
+            """
+            try:
+                price = float(
+                    getattr(getattr(bot, "stats", None), "current_price", 0.0) or 0.0
+                )
+            except (TypeError, ValueError):
+                return 0.0
+            if price > 0:
+                return price
+            try:
+                return max(0.0, float(getattr(bot, "_last_price", 0.0) or 0.0))
+            except (TypeError, ValueError):
+                return 0.0
+
+        def _ivp_summary_from_pool(self, bot):
+            """A voting summary for ``bot`` computed from the shared pool's own
+            candles, or None when the pool holds too few.
+
+            The dashboard calls this when the bot holds no reading of its own,
+            so the panel draws votes from the candles the platform already has
+            instead of naming an absence. No venue call is made.
+            """
+            from ..trading.ta_engine import (
+                MIN_CANDLES_FOR_TA,
+                VotingEngine,
+                candles_from_raw,
+            )
+
+            try:
+                pool = _ammo_price_pool()
+                if pool is None:
+                    return None
+                timeframe = getattr(bot.config, "ta_timeframe", "1h") or "1h"
+                raw = pool.get_candles(
+                    getattr(bot.config, "exchange_id", ""),
+                    getattr(bot.config, "symbol", ""),
+                    timeframe,
+                )
+                candles = candles_from_raw(raw or [])
+                if len(candles) < MIN_CANDLES_FOR_TA:
+                    return None
+                return VotingEngine().compute_all(
+                    candles, timeframe, symbol=getattr(bot.config, "symbol", "")
+                )
+            except (AttributeError, ImportError, TypeError, ValueError) as exc:
+                logger.debug("IVP: pool-side voting compute unavailable: %s", exc)
+                return None
+
         def _ivp_empty_state_cause(self, bot, bot_id: str = "") -> tuple:
             """Return one (cause_token, detail) pair saying why this bot shows no TA."""
             if bot is None:
@@ -1892,17 +1949,21 @@ if _HAS_QT:
             from ..trading.ta_engine import MIN_CANDLES_FOR_TA
 
             cached = self._ivp_cached_candle_count(bot)
-            if cached is not None and cached < MIN_CANDLES_FOR_TA:
-                detail.update(
-                    {
-                        "candles": cached,
-                        "symbol": getattr(bot.config, "symbol", "") or "",
-                        "timeframe": (getattr(bot.config, "ta_timeframe", "") or "1h"),
-                    }
-                )
-                return "too_few_candles", detail
+            price = self._ivp_last_read_price(bot)
+            detail["price"] = price
+            if price <= 0:
+                return "cold_start", detail
 
-            return "cold_start", detail
+            detail.update(
+                {
+                    "candles": 0 if cached is None else cached,
+                    "symbol": getattr(bot.config, "symbol", "") or "",
+                    "timeframe": (getattr(bot.config, "ta_timeframe", "") or "1h"),
+                }
+            )
+            if cached is not None and cached >= MIN_CANDLES_FOR_TA:
+                return "ta_compute_failed", detail
+            return "too_few_candles", detail
 
         def _report_adopt_orphans(self, created_ids: list) -> None:
             """Log the bot ids an aborted adopt created and left unwired."""

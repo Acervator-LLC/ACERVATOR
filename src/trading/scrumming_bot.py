@@ -1968,6 +1968,52 @@ class ScrummingBot(
                 raise
         return await self.exchange.get_ohlcv(symbol, timeframe, limit=limit)
 
+    async def _refresh_market_reading(self, symbol: str) -> bool:
+        """Write ``_last_summary`` and ``_last_bb`` from the pooled candles for
+        ``symbol``, and answer whether a summary was written.
+
+        ``tick`` calls this above every early return, so a bot parked at
+        target, firing a cartridge or answering a manual fire still holds a
+        current reading for the Indicator Voting Panel to draw. The shared
+        ``MarketDataPool`` slot lives one timeframe, so a tick that finds the
+        slot fresh makes no venue call. A read that raises, or a venue that
+        supplies fewer than ``MIN_CANDLES_FOR_TA`` rows, leaves the previous
+        reading standing.
+        """
+        ta_tf = self.config.ta_timeframe or "1h"
+        try:
+            raw = await self._get_ohlcv(symbol, timeframe=ta_tf, limit=100)
+            candles = candles_from_raw(raw)
+        except Exception as exc:
+            logger.debug(
+                "Bot %s market reading unavailable (%s): %s",
+                self.bot_id,
+                type(exc).__name__,
+                exc,
+            )
+            return False
+        if len(candles) < MIN_CANDLES_FOR_TA:
+            return False
+        try:
+            self._last_summary = self._voting_engine.compute_all(
+                candles, ta_tf, symbol=self.config.symbol
+            )
+            self._last_bb = detect_bb_proximity(
+                candles,
+                tolerance_pct=self.config.bb_tolerance_pct,
+                consolidation_threshold=3.0,
+                min_pattern_candles=self.config.bb_landing_strip_candles,
+            )
+        except Exception as exc:
+            logger.warning(
+                "Bot %s voting compute raised %s: %s",
+                self.bot_id,
+                type(exc).__name__,
+                exc,
+            )
+            return False
+        return True
+
     async def _get_balance(self, currency: str):
         """Fetch a balance through ``_data_pool``, else a direct exchange call."""
         if self._data_pool is not None:
@@ -2784,6 +2830,7 @@ class ScrummingBot(
 
         ticker = await self._get_ticker(symbol)
         self.stats.current_price = ticker.last
+        await self._refresh_market_reading(symbol)
         try:
             await self._refresh_quote_to_usd()
         except Exception as _sup:
