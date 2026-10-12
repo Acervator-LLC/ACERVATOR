@@ -9858,7 +9858,9 @@ No order was placed, priced, amended, previewed or cancelled.
 | **total** | | **4562** | **3912** | **650** | **0** |
 
 4562 = 3912 + 650 + 0. MEXC's `Tokenized Stocks` plate and its `Pre-IPO` plate
-share 0 markets, so no market is counted twice.
+share 0 markets, so no market is counted twice. The corpus moves while it is
+being read: OKX's stocks category served 408 markets at this count and 409 at a
+later read the same day.
 
 Each count is pinned to the corpus its route served that day: okx 4527 markets,
 okxus 1160, bitget 4603 instrument rows across five categories, kucoin 1660 spot
@@ -9925,13 +9927,35 @@ still refused for a second reason:
 smallest order costs more than the excess, so `Whole Unit Scrumming` selects, and
 the market's step is a fraction, so that variant cannot size it.
 
-The refusal is a minimum against the excess and not a tokenised-stock rule. 552
-of the 559 are bitget markets whose own `minOrderAmount` is 20 USDT and one whose
-`minOrderAmount` is 28, against a reference excess of 17.50; the other 6 are the
-three OKX and three OKX US spot markets publishing `minSz` `1` with a fractional
-`lotSz`. A bot with a larger target balance raises the excess and the refusal
-lifts, because `src/trading/scrumming/sizing.py, in tradeable_answer` measures
-the venue's smallest order against the excess the bot actually scrums.
+The refusal is a minimum measured against the excess and not a tokenised-stock
+rule. 553 of the 559 are bitget markets: 552 publish a `minOrderAmount` of 20
+USDT and one publishes 28, against a reference excess of 17.50.
+`src/trading/scrumming/sizing.py, in smallest_order_usd` takes the venue's
+minimum cost where it is the larger figure, so those 553 refuse at every price.
+
+The other 6 are an artefact of the uniform reference price. They are the three
+OKX and three OKX US spot markets publishing `minSz` `1` with a fractional
+`lotSz`, and at the prices OKX serves for them they are held: `XGPRO/USDT` quotes
+1.19 and `XXIAOMI/USDT` quotes 3.16, so the smallest order is under the excess and
+`tradeable_answer` reads `can size a scrum`. `XAMC/USDT` answers
+`No market data available`, the venue's own `preopen` state. Driven again at each
+market's own served price, the refusal count is 553 and every one is a bitget
+market.
+
+The excess does not vary per bot. `src/trading/scrumming/sizing.py, at
+REFERENCE_SCRUM_EXCESS_USD` fixes it at 17.50 from the largest fleet target of
+350 at a 5% interval, and `src/trading/bot_container.py, in guarded_place_order`
+passes the market price and no excess of its own, so the default holds. The
+constant's own note states what that means: "The largest excess any bot in the
+saved fleet submits ... so `TRADEABLE_NO` means no bot at any target this fleet
+carries could size a scrum there."
+
+A second reading at each market's own served price cannot replace the one above,
+because `fetch_tickers` served no price for 1178 of the 4562 markets — 409 mexc
+contracts, 332 bitget perpetuals, 274 okx contracts, 155 kucoin perpetuals and 8
+okx US spot rows — and `tradeable_answer` answers `size rules not read` with no
+price, which is neither verdict. The uniform reference price is the instrument
+that reads every market the same way.
 
 ### What each venue's own words add
 
