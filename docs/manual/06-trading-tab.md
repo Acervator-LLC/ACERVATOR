@@ -5558,7 +5558,9 @@ from `ScrummingBot.tick` above its early exits
 **The panel can compute from the pool.** Where a bot holds no reading of its own,
 the panel asks the shared pool for that bot's candles and computes the votes
 itself. No venue call is made and no reading is invented, because the candles are
-the ones the platform already holds.
+the ones the platform already holds. A bot that is stopped, idle or stopped on an
+error is refused, because a bot that is not running reads no market and its own
+sentence says so.
 
 `src/gui/main_window.py` — `MainWindow._ivp_summary_from_pool`, read by the
 dashboard refresh

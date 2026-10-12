@@ -1877,16 +1877,25 @@ if _HAS_QT:
             candles, or None when the pool holds too few.
 
             The dashboard calls this when the bot holds no reading of its own,
-            so the panel draws votes from the candles the platform already has
-            instead of naming an absence. No venue call is made.
+            so the panel draws votes from the candles the platform already has.
+            A bot that is not running is refused, because the states
+            ``_ivp_empty_state_cause`` names ``not_running`` and ``bot_error``
+            read no market. No venue call is made.
             """
             from ..trading.ta_engine import (
                 MIN_CANDLES_FOR_TA,
                 VotingEngine,
                 candles_from_raw,
             )
+            from .main_tabs.main_window_surface import (
+                ERROR_STATE,
+                NOT_RUNNING_STATES,
+            )
 
             try:
+                state = str(getattr(getattr(bot, "state", None), "value", "")).lower()
+                if state in NOT_RUNNING_STATES or state == ERROR_STATE:
+                    return None
                 pool = _ammo_price_pool()
                 if pool is None:
                     return None
