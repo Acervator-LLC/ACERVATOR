@@ -379,6 +379,8 @@ class ScrummingBot(
         self._ta_weights = ta_weights
         self._voting_engine = VotingEngine(weights=ta_weights)
         self._last_summary: Optional[VotingSummary] = None
+        # Newest candle the last _refresh_market_reading compute saw.
+        self._reading_candle_stamp: float = 0.0
         self._last_bb: Optional[BBProximityResult] = None
         self._last_gate_state: dict = {
             "scrum_armed": False,
@@ -1979,6 +1981,10 @@ class ScrummingBot(
         slot fresh makes no venue call. ``_last_summary`` has no reader in the
         trading engine and ``_last_bb`` does, so this writes only the first and
         leaves every firing decision to ``_tick_main``.
+
+        ``_reading_candle_stamp`` holds the newest candle the last compute saw.
+        Candles with that stamp again give the same summary, so the compute is
+        skipped and the reading already on the panel stands.
         """
         ta_tf = self.config.ta_timeframe or "1h"
         try:
@@ -1994,6 +2000,14 @@ class ScrummingBot(
             return False
         if len(candles) < MIN_CANDLES_FOR_TA:
             return False
+        stamp = float(getattr(candles[-1], "timestamp", 0) or 0)
+        if (
+            self._last_summary is not None
+            and stamp > 0
+            and stamp == getattr(self, "_reading_candle_stamp", 0.0)
+        ):
+            return True
+        self._reading_candle_stamp = stamp
         try:
             self._last_summary = self._voting_engine.compute_all(
                 candles, ta_tf, symbol=self.config.symbol

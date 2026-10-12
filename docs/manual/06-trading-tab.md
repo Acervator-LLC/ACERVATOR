@@ -5543,8 +5543,11 @@ reading above every early exit its tick can take, so a bot parked at its target,
 a bot firing a cartridge and a bot answering a manual fire each hold a current
 reading for the panel to draw. The shared price pool keeps one candle slot per
 market and timeframe and that slot lives one timeframe, so a tick that finds the
-slot fresh makes no venue call. The voter reading is drawn and recorded and
-nothing in the trading engine reads it, so no gate and no trade changes.
+slot fresh makes no venue call. A tick that sees the same newest candle as the
+last one skips the vote count entirely, so a bot parked at its target counts its
+votes once per candle rather than once per tick. The voter reading is drawn and
+recorded and nothing in the trading engine reads it, so no gate and no trade
+changes.
 
 `src/trading/scrumming_bot.py` — `ScrummingBot._refresh_market_reading`, called
 from `ScrummingBot.tick` above its early exits
