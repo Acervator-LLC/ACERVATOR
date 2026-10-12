@@ -1689,17 +1689,77 @@ TRADEABLE_YES = "can size a scrum"
 TRADEABLE_NO = "cannot size a scrum"
 TRADEABLE_UNKNOWN = "size rules not read"
 
-#: The highest Target Balance in the saved fleet and the interval every one of
-#: its bots carries, read from ``bot_state.json`` on 2026-09-24.
-LARGEST_FLEET_TARGET_USD = 350.0
-FLEET_SCRUMMING_INTERVAL_PCT = 5.0
+#: The Target Balance and interval a caller holding no bot assumes. Neither
+#: reads the saved fleet: of the 39 records saved on 2026-10-11, 0 carry this
+#: pair, 38 produce a smaller excess and 1 a larger one.
+# OVERTAKEN, the comment that read "The highest Target Balance in the saved
+# fleet and the interval every one of its bots carries, read from
+# bot_state.json on 2026-09-24": the fleet moved off that one-day snapshot.
+ASSUMED_TARGET_BALANCE_USD = 350.0
+ASSUMED_SCRUMMING_INTERVAL_PCT = 5.0
 
-#: The largest excess any bot in the saved fleet submits. ``tradeable_answer``
-#: measures a market's smallest order against it, so ``TRADEABLE_NO`` means no
-#: bot at any target this fleet carries could size a scrum there.
+#: The excess ``tradeable_answer`` assumes for a caller holding no bot, so a
+#: ``TRADEABLE_NO`` from this figure speaks for the assumed target alone.
+#: ``bot_scrum_excess_usd`` answers one bot's own excess.
+# OVERTAKEN, the comment that read "The largest excess any bot in the saved
+# fleet submits ... so TRADEABLE_NO means no bot at any target this fleet
+# carries could size a scrum there": one saved record's own excess is above it.
 REFERENCE_SCRUM_EXCESS_USD = scrumming_interval_usd(
-    LARGEST_FLEET_TARGET_USD, FLEET_SCRUMMING_INTERVAL_PCT
+    ASSUMED_TARGET_BALANCE_USD, ASSUMED_SCRUMMING_INTERVAL_PCT
 )
+
+#: What a screen measuring against ``REFERENCE_SCRUM_EXCESS_USD`` says it
+#: measured against, so the assumption reaches the screen.
+ASSUMED_EXCESS_NOTE_FORMAT = (
+    "against an assumed scrum excess of ${excess:,.2f}, from a ${target:,.2f} "
+    "Target Balance at a {interval:g}% interval"
+)
+
+#: What a screen measuring against the saved fleet's own largest excess says.
+FLEET_EXCESS_NOTE_FORMAT = (
+    "against ${excess:,.2f}, the largest scrum excess the {held} saved bot(s) "
+    "produce"
+)
+
+
+def assumed_excess_note() -> str:
+    """``ASSUMED_EXCESS_NOTE_FORMAT`` over the assumed pair, the sentence a
+    screen draws where no bot and no saved fleet give an excess."""
+    return ASSUMED_EXCESS_NOTE_FORMAT.format(
+        excess=REFERENCE_SCRUM_EXCESS_USD,
+        target=ASSUMED_TARGET_BALANCE_USD,
+        interval=ASSUMED_SCRUMMING_INTERVAL_PCT,
+    )
+
+
+def fleet_excess_note(excess_usd: Any, held: Any) -> str:
+    """``FLEET_EXCESS_NOTE_FORMAT`` over ``excess_usd`` and the ``held`` count,
+    the sentence a screen draws for a figure read from the saved fleet."""
+    return FLEET_EXCESS_NOTE_FORMAT.format(excess=float(excess_usd), held=int(held))
+
+
+def bot_scrum_excess_usd(target_balance: Any, scrumming_interval_pct: Any) -> float:
+    """One bot's own scrum excess, the figure ``tradeable_answer`` measures that
+    bot's market against.
+
+    ``scrumming_interval_usd`` over the bot's own two figures, and
+    ``REFERENCE_SCRUM_EXCESS_USD`` where ``target_balance`` or
+    ``scrumming_interval_pct`` is unreadable or not positive.
+    """
+    if type(target_balance) not in (int, float):
+        return REFERENCE_SCRUM_EXCESS_USD
+    if type(scrumming_interval_pct) not in (int, float):
+        return REFERENCE_SCRUM_EXCESS_USD
+    target = float(target_balance)
+    interval = float(scrumming_interval_pct)
+    if not math.isfinite(target) or target <= 0.0:
+        return REFERENCE_SCRUM_EXCESS_USD
+    if not math.isfinite(interval) or interval <= 0.0:
+        return REFERENCE_SCRUM_EXCESS_USD
+    held = scrumming_interval_usd(target, interval)
+    if not math.isfinite(held) or held <= 0.0:
+        return REFERENCE_SCRUM_EXCESS_USD
+    return held
 
 
 def smallest_order_usd(rules: Any, price: Optional[float]) -> Optional[float]:
@@ -2696,6 +2756,9 @@ def cartridge_threshold_usd(target_balance: float, cartridge_pct: float) -> floa
 
 
 __all__ = [
+    "ASSUMED_EXCESS_NOTE_FORMAT",
+    "ASSUMED_SCRUMMING_INTERVAL_PCT",
+    "ASSUMED_TARGET_BALANCE_USD",
     "BELOW_POSITION_MINIMUM",
     "BELOW_POSITION_MINIMUM_FORMAT",
     "CASH_SHAPE_ONLY_FORMAT",
@@ -2716,7 +2779,7 @@ __all__ = [
     "CLASS_STOCKS",
     "CONTRACT_COUNT_FORMAT",
     "DRAWDOWN_STATE",
-    "FLEET_SCRUMMING_INTERVAL_PCT",
+    "FLEET_EXCESS_NOTE_FORMAT",
     "FRACTIONAL_UNITS",
     "GROWTH_CYCLE_LOWER_BB",
     "GROWTH_CYCLE_UPPER_BB",
@@ -2724,7 +2787,6 @@ __all__ = [
     "GROWTH_SIDE_UPPER",
     "HELD_OUTSIDE_SESSION",
     "HELD_UNSETTLED_CASH",
-    "LARGEST_FLEET_TARGET_USD",
     "MARKET_BUY_NAMES_CASH",
     "NO_PERMITTED_SHAPE_FORMAT",
     "ORDER_SIDES",
@@ -2769,6 +2831,8 @@ __all__ = [
     "WHOLE_UNIT_GRAIN",
     "WHOLE_UNIT_POSITION_MINIMUM",
     "WHOLE_UNIT_STEP_IS_A_FRACTION",
+    "assumed_excess_note",
+    "bot_scrum_excess_usd",
     "cartridge_threshold_usd",
     "contract_count_note",
     "contract_size_divides",
@@ -2777,6 +2841,7 @@ __all__ = [
     "delta_below_interval",
     "eligible_fold_tranches",
     "estimated_fee_usd",
+    "fleet_excess_note",
     "fold_cap_remaining_usd",
     "fold_rate_taper",
     "fold_spend_usd",

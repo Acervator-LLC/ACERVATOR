@@ -82,6 +82,7 @@ from ..trading.scrumming.sizing import (
     fold_surplus_usd,
     market_unit_rule,
     plan_fold_consumption,
+    bot_scrum_excess_usd,
     order_types_for,
     outside_session,
     plan_source_price,
@@ -240,6 +241,18 @@ def tick_skip(scrum_read_rate_min: int, scrum_target_mode: Optional[str]) -> int
 def taker_fee_pct(bot: PaperBot) -> float:
     """``bot.trading_fee_pct`` when set, else ``TAKER_FEE_PCT``."""
     return float(bot.trading_fee_pct or TAKER_FEE_PCT)
+
+
+def paper_scrum_excess_usd(bot: PaperBot, balance: FakeBalance) -> float:
+    """``bot_scrum_excess_usd`` over the bot's own grown target and
+    ``scrumming_interval_pct``, the excess ``variant_refuses_sale`` and
+    ``variant_holds_market`` measure this bot's market against.
+
+    ``balance.target_usd`` is the grown target ``paper_tape_context`` reads,
+    with ``bot.target_usd`` answering where it carries none.
+    """
+    target = float(getattr(balance, "target_usd", 0.0) or bot.target_usd or 0.0)
+    return bot_scrum_excess_usd(target, bot.scrumming_interval_pct)
 
 
 def fold_taper(bot: PaperBot, balance: FakeBalance) -> float:
@@ -435,10 +448,11 @@ def apply_scrum(
         return None
     # A sale out of a market the venue expires still fills, because a position
     # that cannot be sold cannot close before its expiry.
+    _excess = paper_scrum_excess_usd(bot, balance)
     if variant_refuses_sale(
-        rules, CLASS_CRYPTO, str(bot.exchange_id or ""), float(price)
+        rules, CLASS_CRYPTO, str(bot.exchange_id or ""), float(price), _excess
     ):
-        held = untradeable_reason(rules, float(price))
+        held = untradeable_reason(rules, float(price), _excess)
         logger.info(
             "%s: a scrum of $%.2f is read and not traded: %s",
             bot.bot_id,
@@ -564,10 +578,11 @@ def apply_fold(
         if on_refusal is not None:
             on_refusal(HELD_OUTSIDE_SESSION)
         return None
+    _excess = paper_scrum_excess_usd(bot, balance)
     if not variant_holds_market(
-        rules, CLASS_CRYPTO, str(bot.exchange_id or ""), float(ticker_last)
+        rules, CLASS_CRYPTO, str(bot.exchange_id or ""), float(ticker_last), _excess
     ):
-        held = untradeable_reason(rules, float(ticker_last))
+        held = untradeable_reason(rules, float(ticker_last), _excess)
         logger.info(
             "%s: a fold is read and not traded: %s; the tranches stay queued",
             bot.bot_id,
@@ -1232,6 +1247,7 @@ __all__ = [
     "fold_taper",
     "land_wire_credits",
     "opening_balance",
+    "paper_scrum_excess_usd",
     "record",
     "refusal_for",
     "route_fold_growth",

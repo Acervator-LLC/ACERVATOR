@@ -559,6 +559,51 @@ there. Read off a copy of the saved fleet: 38 bots, one interval value, targets
 from 25 to 350 dollars, and an excess from 1 dollar 25 to 17 dollars 50. A
 caller that knows one bot's own interval passes it instead.
 
+OVERTAKEN, quoted whole:
+
+> The excess figure is the largest one the saved fleet produces. Every bot in it
+> carries the same 5 per cent scrumming interval and the highest Target Balance
+> is 350 dollars.
+
+> The largest is the right end of the fleet, not the smallest. `cannot size a
+> scrum` has to mean no bot at any target this fleet carries could size one
+> there.
+
+True today: the figure is an assumption for a caller that holds no bot, and it
+is not a reading of the fleet. Driven over the saved records, 0 produce an
+excess equal to it, 38 produce a smaller one and 1 produces a larger one, so
+`cannot size a scrum` from that figure alone does not speak for every bot.
+`src/trading/scrumming/sizing.py, at ASSUMED_TARGET_BALANCE_USD` and
+`src/trading/scrumming/sizing.py, at ASSUMED_SCRUMMING_INTERVAL_PCT` name the
+assumed pair, and
+`src/trading/scrumming/sizing.py, in bot_scrum_excess_usd` answers one bot's
+own excess from its own Target Balance and interval.
+
+`src/trading/scrumming/sizing.py` — the assumed pair and the bot's own excess
+
+```python
+ASSUMED_TARGET_BALANCE_USD = 350.0
+ASSUMED_SCRUMMING_INTERVAL_PCT = 5.0
+
+REFERENCE_SCRUM_EXCESS_USD = scrumming_interval_usd(
+    ASSUMED_TARGET_BALANCE_USD, ASSUMED_SCRUMMING_INTERVAL_PCT
+)
+
+
+def bot_scrum_excess_usd(target_balance: Any, scrumming_interval_pct: Any) -> float:
+```
+
+Four readers pass the asking bot's own excess now.
+`src/trading/bot_container.py, in guarded_place_order` reads it off
+`self._target_balance` and the bot's own `scrumming_interval_pct`;
+`src/paper/paper_run.py, in paper_scrum_excess_usd` and
+`src/simulator/back_test.py, in sim_scrum_excess_usd` read it off their own
+bot's grown target. `src/gui/main_tabs/market_inspector_surface.py, in
+fleet_scrum_excess` labels a row before a bot exists, so it reads the largest
+excess the saved fleet produces and
+`src/gui/main_tabs/market_inspector_surface.py, in excess_note` names the
+figure on the screen.
+
 ### Which venues this reaches today
 
 Only the crypto connector loads a market table, so only its markets answer yes
@@ -9953,6 +9998,55 @@ passes the market price and no excess of its own, so the default holds. The
 constant's own note states what that means: "The largest excess any bot in the
 saved fleet submits ... so `TRADEABLE_NO` means no bot at any target this fleet
 carries could size a scrum there."
+
+OVERTAKEN, quoted whole:
+
+> `src/trading/scrumming/sizing.py, in smallest_order_usd` takes the venue's
+> minimum cost where it is the larger figure, so those 553 refuse at every price.
+
+> The excess does not vary per bot. `src/trading/scrumming/sizing.py, at
+> REFERENCE_SCRUM_EXCESS_USD` fixes it at 17.50 from the largest fleet target of
+> 350 at a 5% interval, and `src/trading/bot_container.py, in guarded_place_order`
+> passes the market price and no excess of its own, so the default holds.
+
+True today: the excess varies per bot.
+`src/trading/bot_container.py, in guarded_place_order` passes the asking bot's
+own excess, which `src/trading/scrumming/sizing.py, in bot_scrum_excess_usd`
+answers from that bot's Target Balance and interval.
+
+And the 553 refuse below a 28 dollar excess, not at every price. Driven again
+over the same bitget market list at each market's own served price, counting
+what `src/trading/scrumming/sizing.py, in tradeable_answer` answers:
+
+| Excess driven | bitget markets answering `cannot size a scrum` |
+| ---: | ---: |
+| 2.00 | 2807 |
+| 10.00 | 588 |
+| 17.50 | 587 |
+| 20.00 | 1 |
+| 28.00 | 0 |
+
+An excess of 20.00 is a 400 dollar Target Balance at a 5% interval, and 28.00 is
+560 dollars at the same interval. The one market still refused at 20.00 is the
+one publishing a 28 USDT minimum.
+
+A published minimum order value is also not a fractional-unit rule. Every venue
+publishes one, including the crypto venues this platform already trades.
+Counted over each venue's own public market list:
+
+| Venue | Markets | Minimum order value published | Published above 17.50 |
+| --- | ---: | ---: | ---: |
+| coinbase | 1156 | 1156 | 0 |
+| kraken | 1460 | 1460 | 10, all at 50.00 |
+| bitget | 4265 | 4139 | 587 |
+
+Driven through `src/trading/scrumming/sizing.py, in tradeable_answer` at each
+market's own served price against the 17.50 figure, 37 coinbase markets and 15
+kraken markets answer `cannot size a scrum`. The kraken set is 10 markets
+quoted in yen at a 50.00 minimum and 5 whose own minimum amount costs more at
+the served price. 52 crypto markets on the two venues this platform already
+trades fail the same test, so the test is about the excess figure and not about
+tokenised stocks.
 
 A second reading at each market's own served price cannot replace the one above,
 because `fetch_tickers` served no price for 1178 of the 4562 markets — 409 mexc
