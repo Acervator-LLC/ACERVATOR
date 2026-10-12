@@ -9902,8 +9902,36 @@ Driven at a reference price of 100, against one real market per venue:
 | mexc | `AALSTOCK/USDT:USDT` | whole | Whole Unit Scrumming | True |
 | cryptocom | `AAOI/USD:USD` | fractional | Stock Scrumming | True |
 
-Every one of the 4562 markets selects a variant
-`src/trading/scrumming/sizing.py, at VARIANTS_BUILT` holds. None is refused.
+Driven over all 4562 markets at the same reference price, against
+`src/trading/scrumming/sizing.py, at REFERENCE_SCRUM_EXCESS_USD` of 17.50:
+
+| venue | markets | Stock Scrumming | Whole Unit Scrumming | held | refused |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| okx | 408 | 391 | 17 | 405 | 3 |
+| okxus | 143 | 140 | 3 | 140 | 3 |
+| bitget | 3141 | 2554 | 587 | 2588 | 553 |
+| kucoin spot | 5 | 5 | 0 | 5 | 0 |
+| kucoin perpetual | 155 | 0 | 155 | 155 | 0 |
+| mexc spot | 167 | 167 | 0 | 167 | 0 |
+| mexc contract | 409 | 0 | 409 | 409 | 0 |
+| cryptocom | 134 | 130 | 4 | 134 | 0 |
+| **total** | **4562** | **3387** | **1175** | **4003** | **559** |
+
+3387 + 1175 = 4562, and 4003 + 559 = 4562. Every market selects a variant
+`src/trading/scrumming/sizing.py, at VARIANTS_BUILT` holds, and 559 of them are
+still refused for a second reason:
+`src/trading/scrumming/sizing.py, in untradeable_reason` names
+`WHOLE_UNIT_STEP_IS_A_FRACTION` on all 559 and on no other market. The market's
+smallest order costs more than the excess, so `Whole Unit Scrumming` selects, and
+the market's step is a fraction, so that variant cannot size it.
+
+The refusal is a minimum against the excess and not a tokenised-stock rule. 552
+of the 559 are bitget markets whose own `minOrderAmount` is 20 USDT and one whose
+`minOrderAmount` is 28, against a reference excess of 17.50; the other 6 are the
+three OKX and three OKX US spot markets publishing `minSz` `1` with a fractional
+`lotSz`. A bot with a larger target balance raises the excess and the refusal
+lifts, because `src/trading/scrumming/sizing.py, in tradeable_answer` measures
+the venue's smallest order against the excess the bot actually scrums.
 
 ### What each venue's own words add
 
