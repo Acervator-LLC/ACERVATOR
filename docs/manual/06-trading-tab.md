@@ -519,6 +519,9 @@ register holds twenty-one fields; the button's own tooltip still says eighteen.
 Under the header is a
 data pool line: how many slots are held by kind, the age of the freshest and
 the oldest, how many have run past their time to live, and the cache hit ratio.
+The line keeps that seat on a venue holding no bots. Both bot tables hide
+themselves while their lists are empty, which leaves the line's own box as tall
+as the panel, and its words draw at the top of that box on every sector.
 At the right of the sub-tab row sits the button that adds another venue.
 
 `src/gui/widgets/exchange_tab.py` — `ExchangeTab.__init__`

@@ -102,6 +102,9 @@ if _HAS_QT:
             self._pull_rate_lbl.setStyleSheet(
                 f"color:{ds.MAIN_BADGE_TEXT}; font-size:11px; padding:2px 6px;"
             )
+            # The hidden bot tables leave this box taller than its one line, and
+            # a QLabel with no vertical flag paints its words at the box's top.
+            self._pull_rate_lbl.setAlignment(Qt.AlignLeft)
             self._pull_rate_lbl.setToolTip(
                 "MarketDataPool freshness diagnostic. Slots = number "
                 "of distinct (exchange, symbol[, TF]) cache entries. "
