@@ -2463,6 +2463,7 @@ __all__ = [
     "seconds_per_thousand",
     "short_tablet_line",
     "signal_detail",
+    "sim_scrum_excess_usd",
     "stats_snapshot",
     "ta_direction",
     "tablet_key_of",
