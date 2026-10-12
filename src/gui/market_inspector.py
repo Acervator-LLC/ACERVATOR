@@ -1287,6 +1287,7 @@ if _HAS_QT:
                 self._ata_board.note,
                 self._ticker_edit.text(),
                 offered.dropped,
+                offered.excess_note,
             )
             self._ticker_note.setText(note)
             self._ticker_note.setVisible(bool(note))

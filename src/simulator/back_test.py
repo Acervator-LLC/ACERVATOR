@@ -67,6 +67,8 @@ from ..trading.scrumming.sizing import (
     growth_cycle_side,
     market_unit_rule,
     plan_fold_consumption,
+    REFERENCE_SCRUM_EXCESS_USD,
+    bot_scrum_excess_usd,
     plan_source_price,
     position_ceiling,
     position_minimum_refusal,
@@ -713,6 +715,20 @@ def rule_source_line(
     )
 
 
+def sim_scrum_excess_usd(bot: Any, position: Any = None) -> float:
+    """``bot_scrum_excess_usd`` over the bot's own target and
+    ``scrumming_interval_pct``, the excess ``variant_refuses_sale`` and
+    ``variant_holds_market`` measure this bot's market against.
+
+    ``position.target_usd`` is the grown target ``tape_context`` reads, with
+    ``bot.target_usd`` answering where the position carries none.
+    """
+    grown = getattr(position, "target_usd", 0.0) or getattr(bot, "target_usd", 0.0)
+    return bot_scrum_excess_usd(
+        float(grown or 0.0), getattr(bot, "scrumming_interval_pct", None)
+    )
+
+
 def variant_line(
     bot_id: str,
     symbol: str,
@@ -720,19 +736,24 @@ def variant_line(
     price: Any,
     asset_class: str = "",
     venue: str = "",
+    excess_usd: float = REFERENCE_SCRUM_EXCESS_USD,
 ) -> str:
     """The Activity Log line naming the variant ``symbol``'s own rules select at
     ``price``, and naming ``untradeable_reason`` for a variant the program does
-    not hold for ``asset_class`` on ``venue``."""
+    not hold for ``asset_class`` on ``venue``.
+
+    ``excess_usd`` is the asking bot's own scrum excess, which
+    ``sim_scrum_excess_usd`` answers.
+    """
     reference: Optional[float] = float(price) if type(price) in (int, float) else None
     if reference is not None and not math.isfinite(reference):
         reference = None
-    variant = venue_variant(rules, reference)
-    if variant_holds_market(rules, asset_class, venue, reference):
+    variant = venue_variant(rules, reference, excess_usd)
+    if variant_holds_market(rules, asset_class, venue, reference, excess_usd):
         return f"{bot_id}: {symbol} trades under bot variant {variant}."
     return (
         f"{bot_id}: {symbol} is read and not traded: "
-        f"{untradeable_reason(rules, reference)}."
+        f"{untradeable_reason(rules, reference, excess_usd)}."
     )
 
 
@@ -1206,8 +1227,9 @@ def apply_scrum(
     # A sale out of a market the venue expires still fills, because a position
     # that cannot be sold cannot close before its expiry.
     class_name, venue, _cited = cited_rule_for(bot.asset, bot.exchange_id)
-    if variant_refuses_sale(rules, class_name, venue, float(price)):
-        held = untradeable_reason(rules, float(price))
+    _excess = sim_scrum_excess_usd(bot, position)
+    if variant_refuses_sale(rules, class_name, venue, float(price), _excess):
+        held = untradeable_reason(rules, float(price), _excess)
         logger.info(
             "%s: a scrum of $%.2f is read and not traded: %s",
             bot.bot_id,
@@ -1357,8 +1379,9 @@ def apply_fold(
             on_refusal(HELD_OUTSIDE_SESSION)
         return None
     class_name, venue, _cited = cited_rule_for(bot.asset, bot.exchange_id)
-    if not variant_holds_market(rules, class_name, venue, float(price)):
-        held = untradeable_reason(rules, float(price))
+    _excess = sim_scrum_excess_usd(bot, position)
+    if not variant_holds_market(rules, class_name, venue, float(price), _excess):
+        held = untradeable_reason(rules, float(price), _excess)
         logger.info(
             "%s: a fold is read and not traded: %s; the tranches stay queued",
             bot.bot_id,
@@ -2294,6 +2317,7 @@ def _walk_fleet(
             raw[-1][4] if raw else None,
             class_name,
             venue,
+            sim_scrum_excess_usd(bot),
         )
         if emitter is not None:
             emitter.bot_line(bot.bot_id, line)

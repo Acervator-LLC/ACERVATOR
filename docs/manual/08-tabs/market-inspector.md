@@ -525,6 +525,54 @@ REFERENCE_SCRUM_EXCESS_USD = scrumming_interval_usd(
 )
 ```
 
+OVERTAKEN, quoted whole:
+
+> The excess the answer measures against is the largest one the saved fleet can
+> produce. The highest Target Balance in the fleet is 350 dollars and every bot
+> carries the same 5 per cent scrumming interval, so the largest excess is 17
+> dollars 50.
+
+True today: the screen reads the fleet each time it labels a row, and it says
+on the screen which figure it used. The two constants were renamed, because
+neither one reads the fleet.
+
+`src/gui/main_tabs/market_inspector_surface.py, in fleet_scrum_excess` reads
+`bot_state.json` read-only and answers the largest excess the saved records
+produce, with a count of how many gave one. It never writes that file.
+`src/gui/main_tabs/market_inspector_surface.py, in excess_note` then names the
+figure: the fleet sentence where the count is one or more, and the assumed
+sentence where the count is zero.
+
+`src/gui/main_tabs/market_inspector_surface.py` — the two sentences the note carries
+
+```python
+TICKER_UNTRADEABLE_MEASURED_FORMAT = (
+    "{count} market(s) left off, the smallest order costs more than a scrum's "
+    "excess, measured {note}: {names}"
+)
+```
+
+A saved fleet reads, for example, `against $20.00, the largest scrum excess the
+2 saved bot(s) produce`. No saved fleet reads `against an assumed scrum excess
+of $17.50, from a $350.00 Target Balance at a 5% interval`, which names the
+assumption as an assumption.
+
+`src/trading/scrumming/sizing.py` — the assumed pair, which reads no fleet
+
+```python
+ASSUMED_TARGET_BALANCE_USD = 350.0
+ASSUMED_SCRUMMING_INTERVAL_PCT = 5.0
+REFERENCE_SCRUM_EXCESS_USD = scrumming_interval_usd(
+    ASSUMED_TARGET_BALANCE_USD, ASSUMED_SCRUMMING_INTERVAL_PCT
+)
+```
+
+A row the ticker field labels is labelled before any bot exists, so the fleet's
+largest excess is the widest figure the screen can honestly use. A bot about to
+place an order is a different case:
+`src/trading/bot_container.py, in guarded_place_order` passes that bot's own
+excess, through `src/trading/scrumming/sizing.py, in bot_scrum_excess_usd`.
+
 The venue's published minimum is ceiled onto its own increment, valued at the
 venue's own last price, and never falls under the venue's minimum order cost.
 

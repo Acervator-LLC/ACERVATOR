@@ -481,6 +481,7 @@ class BotContainer:
             size_shape_refusal,
             sized_order,
             units_for_contracts,
+            bot_scrum_excess_usd,
             market_permits_close,
             market_replaces_market_order,
             sector_variant,
@@ -626,8 +627,14 @@ class BotContainer:
             _ref_px = float(getattr(self.stats, "current_price", 0.0) or 0.0)
         if not math.isfinite(_ref_px) or _ref_px <= 0.0:
             _ref_px = 0.0
-        _mechanic = venue_variant(_rules, _ref_px or None)
-        _variant = sector_variant(_class, _rules, _ref_px or None)
+        # The bot asking is the one whose excess a scrum submits, so its own
+        # Target Balance and interval answer the size question here.
+        _excess = bot_scrum_excess_usd(
+            getattr(self, "_target_balance", None),
+            getattr(self.config, "scrumming_interval_pct", None),
+        )
+        _mechanic = venue_variant(_rules, _ref_px or None, _excess)
+        _variant = sector_variant(_class, _rules, _ref_px or None, _excess)
 
         # A position already open in an expiring market must still be able to
         # close, so a SELL passes where a BUY refuses and only that one variant
@@ -636,17 +643,18 @@ class BotContainer:
         # the exception": the expiry is a mechanic and ``market_permits_close``
         # reads it off the market, so the sector variant is not consulted here.
         _closing = (
-            market_permits_close(_rules, _ref_px or None) and side == OrderSide.SELL
+            market_permits_close(_rules, _ref_px or None, _excess)
+            and side == OrderSide.SELL
         )
 
         _held = variant_holds_market(
-            _rules, _class, self.config.exchange_id, _ref_px or None
+            _rules, _class, self.config.exchange_id, _ref_px or None, _excess
         )
         if not _held and not _closing:
             self._refuse_order(
                 f"PRE-FLIGHT REJECTED: {_side_str} {symbol} needs a bot "
                 f"variant the program does not hold. "
-                f"{untradeable_reason(_rules, _ref_px or None, asset_class=_class, venue=self.config.exchange_id)}. "
+                f"{untradeable_reason(_rules, _ref_px or None, _excess, asset_class=_class, venue=self.config.exchange_id)}. "
                 f"The market is still read and still charted. "
                 f"API not called."
             )
@@ -687,7 +695,9 @@ class BotContainer:
             )
 
         if (
-            market_replaces_market_order(_rules, _ref_px or None, moment_s=_now)
+            market_replaces_market_order(
+                _rules, _ref_px or None, _excess, moment_s=_now
+            )
             and order_type == OrderType.MARKET
         ):
             _limit_px = _rules.price_on_tick(_ref_px) if _ref_px else None
