@@ -26,7 +26,9 @@ alone is reported. Nothing here imports Qt.
 from __future__ import annotations
 
 import base64
+import json
 import logging
+import math
 import struct
 from dataclasses import dataclass, field
 from functools import lru_cache
@@ -168,7 +170,26 @@ TICKER_UNTRADEABLE_FORMAT = (
     "{count} market(s) left off, the smallest order costs more than a scrum's "
     "excess: {names}"
 )
+#: The same sentence with the excess the drop was measured against named, so
+#: the figure behind the drop is on the screen.
+TICKER_UNTRADEABLE_MEASURED_FORMAT = (
+    "{count} market(s) left off, the smallest order costs more than a scrum's "
+    "excess, measured {note}: {names}"
+)
 UNTRADEABLE_JOIN = ", "
+
+#: Where ``fleet_scrum_excess`` reads the saved fleet's own figures, and the
+#: four keys it reads per record. Nothing here writes that file.
+FLEET_STATE_DIR = ".acervator"
+FLEET_STATE_NAME = "bot_state.json"
+FLEET_BOTS_KEY = "bots"
+FLEET_CONFIG_KEY = "config"
+FLEET_TARGET_KEY = "target_balance"
+FLEET_INTERVAL_KEY = "scrumming_interval_pct"
+FLEET_STATE_UNREADABLE_LOG = "market_inspector: the saved fleet is unreadable: %s"
+#: How many ``bot_state.json`` stamps ``fleet_excess_at`` holds an answer for.
+#: The ticker field asks on every keystroke and the file is half a megabyte.
+FLEET_EXCESS_CACHE = 4
 #: The characters a typed ticker may carry between its base and its quote.
 TICKER_SEPARATORS = ("-", "_", " ")
 TICKER_JOIN = "/"
@@ -3384,24 +3405,102 @@ def market_rules_map(connectors: Any = None) -> dict:
         return {}
 
 
-def ticker_tradeable(symbol: Any, rules_map: Any = None) -> str:
+def fleet_state_path() -> Path:
+    """The ``bot_state.json`` ``fleet_scrum_excess`` reads, under the runtime
+    directory ``FLEET_STATE_DIR`` names."""
+    return Path.home() / FLEET_STATE_DIR / FLEET_STATE_NAME
+
+
+def fleet_scrum_excess(path: Any = None) -> tuple:
+    """The largest scrum excess the saved fleet produces, and how many records
+    gave one, read-only off ``bot_state.json``.
+
+    ``fleet_excess_at`` holds the answer against the file's own stamp, so the
+    ticker field re-reads it only once the live process has saved again.
+    """
+    held = Path(path) if path is not None else fleet_state_path()
+    try:
+        stamp = held.stat()
+    except OSError as exc:
+        logger.debug(FLEET_STATE_UNREADABLE_LOG, exc)
+        return (sizing.REFERENCE_SCRUM_EXCESS_USD, 0)
+    return fleet_excess_at(str(held), (stamp.st_mtime_ns, stamp.st_size))
+
+
+@lru_cache(maxsize=FLEET_EXCESS_CACHE)
+def fleet_excess_at(path_text: str, stamp: tuple) -> tuple:
+    """The ``fleet_scrum_excess`` answer for one ``bot_state.json`` at one
+    ``stamp``, which is that file's own modified time and size.
+
+    ``sizing.REFERENCE_SCRUM_EXCESS_USD`` and a count of 0 where the file is
+    unreadable or names no record carrying both figures.
+    """
+    del stamp
+    try:
+        state = json.loads(Path(path_text).read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        logger.debug(FLEET_STATE_UNREADABLE_LOG, exc)
+        return (sizing.REFERENCE_SCRUM_EXCESS_USD, 0)
+    records = (state or {}).get(FLEET_BOTS_KEY)
+    if not isinstance(records, dict):
+        return (sizing.REFERENCE_SCRUM_EXCESS_USD, 0)
+    figures: list = []
+    for record in records.values():
+        config = (record or {}).get(FLEET_CONFIG_KEY)
+        if not isinstance(config, dict):
+            continue
+        target = config.get(FLEET_TARGET_KEY)
+        interval = config.get(FLEET_INTERVAL_KEY)
+        if type(target) not in (int, float) or type(interval) not in (int, float):
+            continue
+        one = sizing.scrumming_interval_usd(float(target), float(interval))
+        if math.isfinite(one) and one > 0.0:
+            figures.append(one)
+    if not figures:
+        return (sizing.REFERENCE_SCRUM_EXCESS_USD, 0)
+    return (max(figures), len(figures))
+
+
+def excess_note(excess_usd: Any, held: Any) -> str:
+    """The sentence naming the excess ``ticker_tradeable`` measured against.
+
+    ``sizing.fleet_excess_note`` for a figure ``fleet_scrum_excess`` read off
+    the saved fleet, and ``sizing.assumed_excess_note`` for a ``held`` of 0.
+    """
+    if int(held or 0) <= 0:
+        return sizing.assumed_excess_note()
+    return sizing.fleet_excess_note(excess_usd, held)
+
+
+def ticker_tradeable(
+    symbol: Any,
+    rules_map: Any = None,
+    excess_usd: float = sizing.REFERENCE_SCRUM_EXCESS_USD,
+) -> str:
     """What ``sizing.tradeable_answer`` says about one symbol's market.
 
-    A symbol ``rules_map`` does not name takes ``MarketRules(read=False)``.
+    A symbol ``rules_map`` does not name takes ``MarketRules(read=False)``, and
+    ``excess_usd`` is the figure ``fleet_scrum_excess`` read off the saved
+    fleet.
     """
     held = (rules_map or {}).get(str(symbol).upper())
     if held is None:
-        return sizing.tradeable_answer(MarketRules(read=False))
+        return sizing.tradeable_answer(MarketRules(read=False), None, excess_usd)
     rules, price = held
-    return sizing.tradeable_answer(rules, price)
+    return sizing.tradeable_answer(rules, price, excess_usd)
 
 
-def ticker_offer(symbol: Any, asset_class: Any, rules_map: Any = None) -> list:
+def ticker_offer(
+    symbol: Any,
+    asset_class: Any,
+    rules_map: Any = None,
+    excess_usd: float = sizing.REFERENCE_SCRUM_EXCESS_USD,
+) -> list:
     """One completer row: the symbol, its class and ``TICKER_OFFER_FORMAT``.
 
     The row carries the listing's contract form, the word
     ``ata_asset_maps.deployability_badge`` answers and the word
-    ``ticker_tradeable`` answers.
+    ``ticker_tradeable`` answers for ``excess_usd``.
     """
     listing = class_listing(symbol, asset_class)
     return [
@@ -3412,7 +3511,7 @@ def ticker_offer(symbol: Any, asset_class: Any, rules_map: Any = None) -> list:
             asset_class=asset_class,
             form=listing.form_label,
             deploy=ata_asset_maps.deployability_badge(listing, asset_class),
-            tradeable=ticker_tradeable(symbol, rules_map),
+            tradeable=ticker_tradeable(symbol, rules_map, excess_usd),
         ),
     ]
 
@@ -3422,11 +3521,13 @@ class TickerOffers:
     """The ``ticker_offer`` rows the field lists and the names kept off them.
 
     ``dropped`` names every market ``ticker_tradeable`` read as
-    ``sizing.TRADEABLE_NO``.
+    ``sizing.TRADEABLE_NO``, and ``excess_note`` names the excess each answer
+    was measured against.
     """
 
     rows: list = field(default_factory=list)
     dropped: list = field(default_factory=list)
+    excess_note: str = ""
 
 
 def ticker_offers(typed: Any, asset_class: Any, connectors: Any = None) -> TickerOffers:
@@ -3434,7 +3535,11 @@ def ticker_offers(typed: Any, asset_class: Any, connectors: Any = None) -> Ticke
     matches first and the chosen class first inside each, capped at
     ``TICKER_MATCH_LIMIT``, with a ``sizing.TRADEABLE_NO`` market on
     ``dropped`` instead. A typed pair offers the crypto base while its quote
-    part starts one of ``DEFAULT_QUOTES``; no venue is asked."""
+    part starts one of ``DEFAULT_QUOTES``; no venue is asked.
+
+    ``fleet_scrum_excess`` reads the excess every answer is measured against,
+    and ``excess_note`` carries the sentence naming it.
+    """
     asked = fold_ticker(typed)
     if not asked:
         return TickerOffers()
@@ -3443,6 +3548,8 @@ def ticker_offers(typed: Any, asset_class: Any, connectors: Any = None) -> Ticke
         one.startswith(quote_part) for one in DEFAULT_QUOTES
     )
     rules_map = market_rules_map(connectors)
+    excess, held = fleet_scrum_excess()
+    note = excess_note(excess, held)
     starts: list = []
     holds: list = []
     dropped: list = []
@@ -3452,11 +3559,17 @@ def ticker_offers(typed: Any, asset_class: Any, connectors: Any = None) -> Ticke
             starting = folded.startswith(asked) or (pair_typed and folded == base)
             if not starting and asked not in folded:
                 continue
-            if ticker_tradeable(symbol, rules_map) == sizing.TRADEABLE_NO:
+            if ticker_tradeable(symbol, rules_map, excess) == sizing.TRADEABLE_NO:
                 dropped.append(str(symbol))
                 continue
-            (starts if starting else holds).append(ticker_offer(symbol, one, rules_map))
-    return TickerOffers(rows=(starts + holds)[:TICKER_MATCH_LIMIT], dropped=dropped)
+            (starts if starting else holds).append(
+                ticker_offer(symbol, one, rules_map, excess)
+            )
+    return TickerOffers(
+        rows=(starts + holds)[:TICKER_MATCH_LIMIT],
+        dropped=dropped,
+        excess_note=note,
+    )
 
 
 def empty_sector_line(asset_class: Any) -> str:
@@ -3474,19 +3587,30 @@ def empty_sector_line(asset_class: Any) -> str:
     )
 
 
-def untradeable_line(dropped: Any = ()) -> str:
+def untradeable_line(dropped: Any = (), excess_note: Any = "") -> str:
     """``TICKER_UNTRADEABLE_FORMAT`` over the names ``ticker_offers`` dropped,
-    empty while ``dropped`` names none."""
+    empty while ``dropped`` names none.
+
+    ``TICKER_UNTRADEABLE_MEASURED_FORMAT`` answers where ``excess_note`` names
+    the excess the drop was measured against.
+    """
     names = [str(one) for one in dropped or ()]
     if not names:
         return ""
-    return TICKER_UNTRADEABLE_FORMAT.format(
-        count=len(names), names=UNTRADEABLE_JOIN.join(names)
+    joined = UNTRADEABLE_JOIN.join(names)
+    if not str(excess_note or ""):
+        return TICKER_UNTRADEABLE_FORMAT.format(count=len(names), names=joined)
+    return TICKER_UNTRADEABLE_MEASURED_FORMAT.format(
+        count=len(names), note=str(excess_note), names=joined
     )
 
 
 def ticker_note(
-    asset_class: Any, note: Any = "", typed: Any = "", dropped: Any = ()
+    asset_class: Any,
+    note: Any = "",
+    typed: Any = "",
+    dropped: Any = (),
+    excess_note: Any = "",
 ) -> str:
     """The line under the ticker field, from the last press or from the sector.
 
@@ -3497,7 +3621,8 @@ def ticker_note(
     tickers carries ``empty_sector_line``; a sector ``class_tickers`` lists
     nothing for carries ``TICKER_PRESS_LIST_FORMAT`` while
     ``CLASS_PRESS_SOURCES`` names its venue, else ``TICKER_NO_LIST_FORMAT``.
-    ``untradeable_line`` ends the note while ``dropped`` names a market.
+    ``untradeable_line`` ends the note while ``dropped`` names a market, and
+    carries ``excess_note`` where one is given.
     """
     unlisted = ata_asset_maps.unlisted_sectors(asset_class)
     if unlisted and ata_asset_maps.sector_named(typed, asset_class) in unlisted:
@@ -3513,7 +3638,7 @@ def ticker_note(
             if source
             else TICKER_NO_LIST_FORMAT.format(sector=asset_class)
         )
-    tail = untradeable_line(dropped)
+    tail = untradeable_line(dropped, excess_note)
     if not tail:
         return held
     return f"{held} {tail}" if held else tail
@@ -3749,6 +3874,7 @@ def ata_spm_skin(model: Any) -> dict:
             model.board.note,
             row["sector_text"],
             offered.dropped,
+            offered.excess_note,
         ),
         "ticker_note_part": TICKER_NOTE_PART,
         "ticker_note_colour": TICKER_NOTE_COLOUR,
