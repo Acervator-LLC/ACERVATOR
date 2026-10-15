@@ -239,6 +239,8 @@ class MarketDataPool:
         self._balance_fetch_locks: dict[str, asyncio.Lock] = {}
         self._balance_fetches = 0
         self._balance_cache_hits = 0
+        self._balance_batch_fills = 0
+        self._balance_batch_slots = 0
 
     def register(self, exchange_id: str, symbol: str, timeframe: str):
         """Register a bot's data need. Same combo = shared cache slot."""
@@ -599,15 +601,112 @@ class MarketDataPool:
                 entry = BalanceEntry(exchange_id=exchange_id, currency=currency)
                 self._balances[bkey] = entry
 
-            balance = await connector.get_balance(currency)
-            entry.free = float(getattr(balance, "free", 0) or 0)
-            entry.used = float(getattr(balance, "used", 0) or 0)
-            entry.total = float(getattr(balance, "total", 0) or 0)
-            entry.absent = bool(getattr(balance, "absent", False))
-            entry.currency = str(getattr(balance, "currency", currency) or currency)
-            entry.fetch_time = time.time()
+            reported = await self._read_account(connector, exchange_id)
+            if reported is None:
+                balance = await connector.get_balance(currency)
+                self._write_balance_entry(entry, currency, balance)
+                self._balance_fetches += 1
+                return balance
+
+            self._fill_balance_entries(exchange_id, reported)
             self._balance_fetches += 1
-            return balance
+            held = reported.get(currency)
+            if held is not None:
+                return held
+            absent = Balance(
+                currency=currency, free=0.0, used=0.0, total=0.0, absent=True
+            )
+            self._write_balance_entry(entry, currency, absent)
+            return absent
+
+    async def _read_account(self, connector, exchange_id: str):
+        """One account read naming every currency, None when ``connector`` has none.
+
+        ``CCXTConnector.get_account_balances`` answers every currency in one
+        venue call, so one read fills every slot instead of one slot per call.
+        """
+        reader = getattr(connector, "get_account_balances", None)
+        if reader is None:
+            return None
+        try:
+            reported = await reader()
+        except Exception:
+            # The per-currency path is the fallback and raises for its own caller.
+            logger.debug(
+                "DataPool: account read unavailable for %s; falling back to "
+                "one call per currency.",
+                exchange_id,
+                exc_info=True,
+            )
+            return None
+        return reported if isinstance(reported, dict) else None
+
+    def _fill_balance_entries(self, exchange_id: str, reported: dict) -> int:
+        """Write every ``_balances`` slot this exchange holds from one account read.
+
+        Returns how many slots the read filled. A currency the read names gets a
+        slot it did not have, so the next reader of any currency the venue holds
+        answers from cache instead of making its own account read.
+        """
+        from .base import Balance
+
+        now = time.time()
+        for currency in reported:
+            bkey = _balance_key(exchange_id, currency)
+            if bkey not in self._balances:
+                self._balances[bkey] = BalanceEntry(
+                    exchange_id=exchange_id, currency=currency
+                )
+        filled = 0
+        for slot in self._balances.values():
+            if slot.exchange_id != exchange_id:
+                continue
+            held = reported.get(slot.currency)
+            if held is None:
+                held = Balance(
+                    currency=slot.currency,
+                    free=0.0,
+                    used=0.0,
+                    total=0.0,
+                    absent=True,
+                )
+            self._write_balance_entry(slot, slot.currency, held, at=now)
+            filled += 1
+        self._balance_batch_fills += 1
+        self._balance_batch_slots += filled
+        logger.debug(
+            "DataPool: one account read filled %d/%d balance slots for %s.",
+            filled,
+            sum(1 for s in self._balances.values() if s.exchange_id == exchange_id),
+            exchange_id,
+        )
+        return filled
+
+    @staticmethod
+    def _write_balance_entry(
+        entry: "BalanceEntry",
+        currency: str,
+        balance,
+        at: Optional[float] = None,
+    ) -> None:
+        """Copy one ``Balance`` into a ``BalanceEntry`` and stamp its fetch time."""
+        entry.free = float(getattr(balance, "free", 0) or 0)
+        entry.used = float(getattr(balance, "used", 0) or 0)
+        entry.total = float(getattr(balance, "total", 0) or 0)
+        entry.absent = bool(getattr(balance, "absent", False))
+        entry.currency = str(getattr(balance, "currency", currency) or currency)
+        entry.fetch_time = time.time() if at is None else at
+
+    async def refresh_all_balances(self, connector, exchange_id: str) -> int:
+        """Refill every ``_balances`` slot for ``exchange_id`` from one account read.
+
+        Returns the number of slots filled, and zero when the connector serves
+        no account read or the read raised.
+        """
+        reported = await self._read_account(connector, exchange_id)
+        if reported is None:
+            return 0
+        return self._fill_balance_entries(exchange_id, reported)
 
     def invalidate_balance(
         self,

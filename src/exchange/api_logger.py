@@ -152,11 +152,12 @@ class APIInteractionLog:
         elapsed_ms: float = 0.0,
         level: str = "info",
         data_usage: str = "",
+        queued_ms: float = 0.0,
     ) -> dict:
         """Append one interaction entry and return it.
 
-        ``params`` passes through ``_redact`` before storage, and the ``logger``
-        line carries ``action``, ``reason``, ``result`` and ``elapsed_ms`` only.
+        ``elapsed_ms`` is the venue's own answer and ``queued_ms`` is the wait
+        for a connector worker, carried beside it rather than folded into it.
         """
         reason = _scrub_text(reason)
         result = _scrub_text(result)
@@ -170,6 +171,7 @@ class APIInteractionLog:
             "params": _redact(params or {}),
             "result": result,
             "elapsed_ms": round(elapsed_ms, 1),
+            "queued_ms": round(queued_ms, 1),
             "level": level,
             "data_usage": data_usage,
         }
@@ -192,8 +194,10 @@ class APIInteractionLog:
 
         log_line = (
             f"[{exchange.upper()}] {action} | {reason} | "
-            f"{result} | {elapsed_ms:.0f}ms"
+            f"{result} | {elapsed_ms:.0f}ms venue"
         )
+        if queued_ms > 0:
+            log_line += f" + {queued_ms:.0f}ms queued"
         if data_usage:
             log_line += f" | Usage: {data_usage}"
         logger.info(log_line)
@@ -238,7 +242,9 @@ class APIInteractionLog:
         if entry["result"]:
             lines.append(f"  Result: {entry['result']}")
         if entry["elapsed_ms"] > 0:
-            lines.append(f"  Response time: {entry['elapsed_ms']}ms")
+            lines.append(f"  Venue answer: {entry['elapsed_ms']}ms")
+        if float(entry.get("queued_ms", 0) or 0) > 0:
+            lines.append(f"  Waited for a worker: {entry['queued_ms']}ms")
         if entry["data_usage"]:
             lines.append(f"  Data usage: {entry['data_usage']}")
         return "\n".join(lines)
