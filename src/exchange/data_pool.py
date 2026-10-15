@@ -401,14 +401,27 @@ class MarketDataPool:
             self._ticker_fetches += 1
             return ticker
 
+    def _slots_held(self, slots: dict, exchange_id: str) -> int:
+        """How many of ``slots`` belong to ``exchange_id``.
+
+        A refresh with no slot to refill makes no venue call, so an idle fleet
+        costs nothing. The refresh is not skipped on a slot's age: the loop's
+        period already sits inside the slot lifetime, and skipping a cycle let
+        a slot expire while a slow read was still in flight.
+        """
+        return sum(1 for slot in slots.values() if slot.exchange_id == exchange_id)
+
     async def refresh_all_tickers(self, connector, exchange_id: str) -> int:
         """Refill every ``_tickers`` entry for ``exchange_id`` from one
         ``get_all_tickers`` call.
 
         Symbols absent from ``_tickers`` are skipped, an entry written after
         ``batch_start`` is left alone, and every exception is logged and
-        swallowed. Returns the number of entries updated.
+        swallowed. Returns the number of entries updated, and zero without a
+        venue call when this exchange holds no ticker slot.
         """
+        if not self._slots_held(self._tickers, exchange_id):
+            return 0
         batch_start = time.time()
         try:
             raw = await connector.get_all_tickers()
@@ -703,9 +716,12 @@ class MarketDataPool:
     async def refresh_all_balances(self, connector, exchange_id: str) -> int:
         """Refill every ``_balances`` slot for ``exchange_id`` from one account read.
 
-        Returns the number of slots filled, and zero when the connector serves
-        no account read or the read raised.
+        Returns the number of slots filled, and zero without a venue call when
+        this exchange holds no balance slot, the connector serves no account
+        read, or the read raised.
         """
+        if not self._slots_held(self._balances, exchange_id):
+            return 0
         reported = await self._read_account(connector, exchange_id)
         if reported is None:
             return 0
