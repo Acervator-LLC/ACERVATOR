@@ -261,7 +261,8 @@ API_EVENT_HEAD_FORMAT = "[{stamp}] {exchange} {action}"
 API_EVENT_REASON_FORMAT = "  Reason: {reason}"
 API_EVENT_ENDPOINT_FORMAT = "  Endpoint: {endpoint}"
 API_EVENT_RESULT_FORMAT = "  Result: {result}"
-API_EVENT_RESPONSE_FORMAT = "  Response: {elapsed_ms}ms"
+API_EVENT_RESPONSE_FORMAT = "  Venue answer: {elapsed_ms}ms"
+API_EVENT_QUEUED_FORMAT = "  Waited for a worker: {queued_ms}ms"
 API_EVENT_DATA_USAGE_FORMAT = "  Data usage: {data_usage}"
 API_EVENT_WRONG_THREAD = "wrong_thread"
 API_EVENT_BUFFERED = "buffered"
@@ -828,6 +829,8 @@ def api_event_block(entry: Any, stamp: Any) -> str:
         lines.append(API_EVENT_RESULT_FORMAT.format(result=entry["result"]))
     if entry.get("elapsed_ms", 0) > 0:
         lines.append(API_EVENT_RESPONSE_FORMAT.format(elapsed_ms=entry["elapsed_ms"]))
+    if float(entry.get("queued_ms", 0) or 0) > 0:
+        lines.append(API_EVENT_QUEUED_FORMAT.format(queued_ms=entry["queued_ms"]))
     if entry.get("data_usage"):
         lines.append(API_EVENT_DATA_USAGE_FORMAT.format(data_usage=entry["data_usage"]))
     return "\n".join(lines)

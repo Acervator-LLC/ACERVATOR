@@ -1075,21 +1075,9 @@ if _HAS_QT:
 
             ts = _time.strftime("%H:%M:%S", _time.localtime(entry["timestamp"]))
 
-            exchange_tag = entry["exchange"].upper()
-            plain_lines = [
-                f"[{ts}] {exchange_tag} {entry['action']}",
-                f"  Reason: {entry['reason']}",
-            ]
-            if entry.get("endpoint"):
-                plain_lines.append(f"  Endpoint: {entry['endpoint']}")
-            if entry.get("result"):
-                plain_lines.append(f"  Result: {entry['result']}")
-            if entry.get("elapsed_ms", 0) > 0:
-                plain_lines.append(f"  Response: {entry['elapsed_ms']}ms")
-            if entry.get("data_usage"):
-                plain_lines.append(f"  Data usage: {entry['data_usage']}")
+            from .main_tabs.main_window_surface import api_event_block
 
-            block_text = "\n".join(plain_lines)
+            block_text = api_event_block(entry, ts)
             self._push_live_tab({"api_lines": [block_text]})
             if getattr(self, "_api_log_paused", False):
                 buf = self._api_log_pause_buffer
