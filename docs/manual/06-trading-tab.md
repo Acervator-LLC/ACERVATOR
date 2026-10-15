@@ -7310,3 +7310,40 @@ a later cycle, same 44 currencies            49       1
 one cycle, 39 symbols on one timeframe       39      39
 a later cycle inside the slot's lifetime      0       0
 ```
+
+**A refresh with no slot to refill makes no venue call.** The refresher runs on
+its own period whether or not any bot is registered, so a fleet with nothing
+running still paid for a bulk read. Both refreshes now answer zero without a
+call when the exchange holds no slot. The skip reads the slot count and never a
+slot's age: a cycle skipped as not yet due let a slot expire while a slow read
+was still in flight, which put thirty-nine stale reads back on the measurement.
+
+`src/exchange/data_pool.py` — `MarketDataPool._slots_held`
+
+```python
+    def _slots_held(self, slots: dict, exchange_id: str) -> int:
+        """How many of ``slots`` belong to ``exchange_id``.
+
+        A refresh with no slot to refill makes no venue call, so an idle fleet
+        costs nothing. The refresh is not skipped on a slot's age: the loop's
+        period already sits inside the slot lifetime, and skipping a cycle let
+        a slot expire while a slow read was still in flight.
+        """
+```
+
+Driven with thirty-nine symbols and thirty-nine bots ticking every five seconds,
+over a twenty-second window:
+
+```
+                                     before    after
+single-currency balance reads            78        0
+single-symbol ticker reads               39        0
+bulk ticker reads                         3        8
+account reads                             0        8
+total venue calls             120 (360/min)   16 (48/min)
+the same window with nothing running      3        0
+```
+
+One worker answers 330 calls a minute at the 182 milliseconds the venue was
+measured at. The fleet asked for 360 and now asks for 48, and every running bot
+still reads its market every tick.
