@@ -644,14 +644,17 @@ class MarketDataPool:
     def _fill_balance_entries(self, exchange_id: str, reported: dict) -> int:
         """Write every ``_balances`` slot this exchange holds from one account read.
 
-        Returns how many slots the read filled. A currency the read names gets a
-        slot it did not have, so the next reader of any currency the venue holds
-        answers from cache instead of making its own account read.
+        Returns how many slots the read filled. A currency the read reports a
+        holding in gets a slot it did not have, so the next reader of anything
+        the venue holds answers from cache rather than making its own account
+        read.
         """
         from .base import Balance
 
         now = time.time()
-        for currency in reported:
+        for currency, held in reported.items():
+            if float(getattr(held, "total", 0) or 0) <= 0:
+                continue
             bkey = _balance_key(exchange_id, currency)
             if bkey not in self._balances:
                 self._balances[bkey] = BalanceEntry(
