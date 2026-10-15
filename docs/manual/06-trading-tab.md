@@ -7160,3 +7160,190 @@ bots holding another venue's connector       0
 bot registrations performed on a connector  10
 retired connectors still scanning            0
 ```
+
+### One worker serves a connector, so one answer must fill every slot
+
+**HIS.**
+
+> "CoinBase API is responding very slow and I am seeing the entire fleet go
+> stale. Want to make sure this is an exchange-side issue and not a bug that has
+> shown up all of a sudden."
+
+> "No bot should be skipping it. All bots should have current data in order to
+> properly execute trades."
+
+A connector runs every venue call on one worker thread. The queue in front of
+that worker holds eight calls, and a ninth caller is refused rather than made to
+wait. Eight is therefore the size of a waiting room and not how many calls run
+at once, and the calls a connector can serve in a minute is set by how long the
+venue takes to answer, not by the request floor the rate meter's ceiling is
+derived from.
+
+`src/exchange/ccxt_connector.py` — one worker, and the queue in front of it
+
+```python
+SYNC_QUEUE_CAP: int = 8
+
+SYNC_CALL_CONCURRENCY: int = 1
+```
+
+**One account read names every currency.** A venue answers one balance request
+with the whole account. A cache that stores one currency in a slot and fills one
+slot per request therefore asks for the same answer once per currency, so a
+fleet of thirty-nine assets made thirty-nine identical requests for one page of
+data. The read now writes every slot the exchange holds, and gives a slot to
+each currency the answer names, so the next reader of any currency the venue
+holds answers from cache.
+
+`src/exchange/data_pool.py` — one read, every slot
+
+```python
+    def _fill_balance_entries(self, exchange_id: str, reported: dict) -> int:
+        """Write every ``_balances`` slot this exchange holds from one account read.
+
+        Returns how many slots the read filled. A currency the read names gets a
+        slot it did not have, so the next reader of any currency the venue holds
+        answers from cache instead of making its own account read.
+        """
+```
+
+**A currency the venue reports as empty costs one read, not two.** The funded
+map drops every total at or below zero, so asking it alone cannot tell "the
+venue said zero" from "the venue did not list it". The account read answers
+every currency the venue lists, zeros included, and the funded map is now
+derived from it rather than read separately.
+
+`src/exchange/ccxt_connector.py` — `CCXTConnector.get_account_balances`
+
+```python
+        for currency, info in (raw.get("total") or {}).items():
+            result[currency] = Balance(
+                currency=currency,
+                free=float((raw.get("free") or {}).get(currency, 0) or 0),
+                used=float((raw.get("used") or {}).get(currency, 0) or 0),
+                total=float(info or 0),
+                absent=False,
+            )
+```
+
+**The refresher lands before the slot it fills expires.** A ticker slot lives
+five seconds and a bot ticks every five seconds, so a slot refilled on a
+five-second sleep was always expired when a bot asked, and each bot then made
+its own call. The refresher's period is now half the shortest cache lifetime it
+fills, and a cycle sleeps the remainder of that period rather than the whole of
+it, so a slow read does not push the period past the lifetime.
+
+`src/trading/bot_container.py` — the period, derived from the lifetimes
+
+```python
+TICKER_REFRESH_INTERVAL_S = min(TICKER_TTL_SECONDS, BALANCE_TTL_SECONDS) / 2.0
+```
+
+Driven against a stub venue holding each bulk read for 1.6 seconds, with the
+same thirty-nine symbols a saved fleet carries:
+
+```
+                                    before   after
+refresher period, observed           7.02s   2.35s
+ticker slot reads                     1092    1482
+slot reads that came back stale        234       0
+worst slot age                       6.40s   2.41s
+```
+
+**A reported call time is the venue's answer, and the wait is reported beside
+it.** The clock used to start before a call entered the queue, so a call that
+waited behind seven others reported their time as its own. Driven against a stub
+answering every call in 150 milliseconds, eight callers at once reported 151,
+300, 451, 602, 752, 902, 1052 and 1203 milliseconds — a staircase in which each
+call carried every call ahead of it. The worker now times the venue's answer
+alone, and the wait for the worker is carried in its own field.
+
+`src/exchange/ccxt_connector.py` — `SyncCallTiming.resolve`
+
+```python
+    def resolve(self, submitted_at: float) -> None:
+        """Set ``queued_ms`` and ``served_ms`` from the worker's own timestamps."""
+        if self.started_at <= 0.0:
+            return
+        self.queued_ms = max(0.0, (self.started_at - submitted_at) * 1000.0)
+        if self.finished_at > 0.0:
+            self.served_ms = max(0.0, (self.finished_at - self.started_at) * 1000.0)
+```
+
+**A refused call is counted where it can be read.** A refused call reaches no
+API log, so a count of logged calls falls when the queue is at its worst and the
+rate meter read that fall as idleness. The status-line pill now names the call
+rate, the share of the window a worker was busy, and the calls the queue
+refused, and its colour follows the worse of the two loads.
+
+`src/gui/main_tabs/main_window_surface.py` — what the pill says
+
+```python
+API_PILL_TEXT_FORMAT = (
+    "API {exchange}: {calls_per_minute:.0f} CPM, worker {worker_busy_pct:.0f} %"
+)
+API_PILL_REFUSED_FORMAT = ", {queue_refusals} refused"
+```
+
+**What the stale marker measures.** A price cell is marked stale when the shared
+ticker slot behind it is more than twenty seconds old. It is a per-bot age on a
+shared slot, so the whole fleet reads stale together whenever the one read that
+refills every slot is itself refused.
+
+`src/gui/main_tabs/table_cells_surface.py` — the threshold and the marker
+
+```python
+STALE_MARKER = "(stale)"
+
+PRICE_STALE_AFTER_S = 20.0
+```
+
+Driven serially against a counting stub, so the queue refused nothing and the
+count measures what the fleet asks for:
+
+```
+                                         before   after
+one cycle, 39 currencies                     39       1
+a later cycle, same 39 currencies            39       1
+one cycle, 5 of 44 currencies unlisted       49       6
+a later cycle, same 44 currencies            49       1
+one cycle, 39 symbols on one timeframe       39      39
+a later cycle inside the slot's lifetime      0       0
+```
+
+**A refresh with no slot to refill makes no venue call.** The refresher runs on
+its own period whether or not any bot is registered, so a fleet with nothing
+running still paid for a bulk read. Both refreshes now answer zero without a
+call when the exchange holds no slot. The skip reads the slot count and never a
+slot's age: a cycle skipped as not yet due let a slot expire while a slow read
+was still in flight, which put thirty-nine stale reads back on the measurement.
+
+`src/exchange/data_pool.py` — `MarketDataPool._slots_held`
+
+```python
+    def _slots_held(self, slots: dict, exchange_id: str) -> int:
+        """How many of ``slots`` belong to ``exchange_id``.
+
+        A refresh with no slot to refill makes no venue call, so an idle fleet
+        costs nothing. The refresh is not skipped on a slot's age: the loop's
+        period already sits inside the slot lifetime, and skipping a cycle let
+        a slot expire while a slow read was still in flight.
+        """
+```
+
+Driven with thirty-nine symbols and thirty-nine bots ticking every five seconds,
+over a twenty-second window:
+
+```
+                                     before    after
+single-currency balance reads            78        0
+single-symbol ticker reads               39        0
+bulk ticker reads                         3        8
+account reads                             0        8
+total venue calls             120 (360/min)   16 (48/min)
+the same window with nothing running      3        0
+```
+
+One worker answers 330 calls a minute at the 182 milliseconds the venue was
+measured at. The fleet asked for 360 and now asks for 48, and every running bot
+still reads its market every tick.

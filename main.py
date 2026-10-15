@@ -1390,12 +1390,13 @@ def main() -> int:
             f"bootstrap pattern (cross-loop Lock risk)."
         )
 
-    TICKER_REFRESH_SECONDS = 5.0
     try:
-        if bot_manager.start_ticker_refresher(TICKER_REFRESH_SECONDS):
+        from src.trading.bot_container import TICKER_REFRESH_INTERVAL_S
+
+        if bot_manager.start_ticker_refresher():
             log_manager.info(
-                f"Bulk ticker refresher started "
-                f"(every {TICKER_REFRESH_SECONDS:.1f}s)."
+                f"Bulk market refresher started "
+                f"(every {TICKER_REFRESH_INTERVAL_S:.1f}s)."
             )
     except Exception as _tr_exc:
         log_manager.warning(
