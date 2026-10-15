@@ -1,10 +1,11 @@
 """Per-exchange API load telemetry, read from the APIInteractionLog.
 
-``load_score`` derives calls-per-minute over a trailing window, P95 latency
-and a score in [0, 1] against the connector's rate ceiling.
-``should_allow_new_phantom_set`` refuses a new phantom set whose projected
-CPM would breach that ceiling. Neither call mutates the log or throttles the
-connector.
+``sample`` derives calls-per-minute over a trailing window, the P95 of the
+venue's own answer and of the wait for a connector worker, the share of the
+window that worker was busy, and the calls its queue refused.
+``should_allow_new_phantom_set`` refuses a new phantom set whose projected CPM
+would breach ``DEFAULT_CEILING_CPM``, and no call here mutates the log or
+throttles the connector.
 """
 
 from __future__ import annotations
@@ -21,9 +22,22 @@ DEFAULT_CEILING_CPM = 600.0  # 10 rps × 60 s (matches connector 100 ms floor)
 DEFAULT_SAFETY_PCT = 0.75  # refuse new phantoms above this
 DEFAULT_WINDOW_SECONDS = 60.0
 
+# One worker serves every sync call on a connector, so the calls a connector can
+# serve in a window is bounded by how long the venue takes, not by the request
+# floor DEFAULT_CEILING_CPM is derived from.
+SERIAL_WORKERS_PER_CONNECTOR = 1
+
 # One phantom costs about one `fetch_ohlcv` per candle on its own
 # timeframe, which is fewer calls per minute above 1m.
 PHANTOM_CPM_ESTIMATE_PER_TF = 1.0
+
+
+def _percentile(entries: list, field: str, share: float) -> float:
+    """The ``share`` percentile of ``field`` across ``entries``, 0.0 when empty."""
+    values = sorted(float(e.get(field, 0) or 0) for e in entries)
+    if not values:
+        return 0.0
+    return values[max(0, min(len(values) - 1, int(len(values) * share)))]
 
 
 @dataclass
@@ -37,6 +51,9 @@ class LoadReading:
     p95_latency_ms: float
     load_score: float  # in [0, 1] against ceiling
     ceiling_cpm: float
+    p95_queued_ms: float = 0.0
+    worker_busy_pct: float = 0.0
+    queue_refusals: int = 0
 
 
 class APILoadMonitor:
@@ -76,23 +93,30 @@ class APILoadMonitor:
             return []
         return [e for e in all_entries if float(e.get("timestamp", 0) or 0) >= cutoff]
 
-    def sample(self, exchange: str) -> LoadReading:
-        """Compute a snapshot reading for one exchange."""
+    def sample(self, exchange: str, connector=None) -> LoadReading:
+        """Compute a snapshot reading for one exchange.
+
+        ``worker_busy_pct`` is the share of the window the venue's own answers
+        held a connector worker, and ``load_score`` is the worse of it and the
+        calls-per-minute score, because a refused call reaches no log and so
+        reads as idleness in the count alone.
+        """
         entries = self._window_entries(exchange)
         n = len(entries)
         # calls per minute — scale to a 60 s equivalent regardless of window
         cpm = (n * 60.0 / self._window_s) if self._window_s > 0 else 0.0
-        # P95 latency on the entries we have
-        p95 = 0.0
-        if entries:
-            lat = sorted(float(e.get("elapsed_ms", 0) or 0) for e in entries)
-            idx = max(0, min(len(lat) - 1, int(len(lat) * 0.95)))
-            p95 = lat[idx]
-        score = (
+        p95 = _percentile(entries, "elapsed_ms", 0.95)
+        p95_queued = _percentile(entries, "queued_ms", 0.95)
+        served_s = sum(float(e.get("elapsed_ms", 0) or 0) for e in entries) / 1000.0
+        load = self._queue_load(connector)
+        workers = max(1, int(load.get("workers", SERIAL_WORKERS_PER_CONNECTOR)))
+        busy = (served_s / (self._window_s * workers)) if self._window_s > 0 else 0.0
+        cpm_score = (
             min(1.0, max(0.0, cpm / self._ceiling_cpm))
             if self._ceiling_cpm > 0
             else 0.0
         )
+        score = max(cpm_score, min(1.0, max(0.0, busy)))
         return LoadReading(
             exchange=exchange,
             window_seconds=self._window_s,
@@ -101,7 +125,23 @@ class APILoadMonitor:
             p95_latency_ms=round(p95, 1),
             load_score=round(score, 3),
             ceiling_cpm=self._ceiling_cpm,
+            p95_queued_ms=round(p95_queued, 1),
+            worker_busy_pct=round(100.0 * busy, 1),
+            queue_refusals=int(load.get("refusals", 0) or 0),
         )
+
+    @staticmethod
+    def _queue_load(connector) -> dict:
+        """``connector.sync_queue_load()``, or an empty reading without one."""
+        reader = getattr(connector, "sync_queue_load", None)
+        if reader is None:
+            return {}
+        try:
+            load = reader()
+        except Exception as exc:  # noqa: BLE001 - telemetry best-effort
+            logger.debug("sync_queue_load failed: %s", exc)
+            return {}
+        return load if isinstance(load, dict) else {}
 
     def load_score(self, exchange: str) -> float:
         """Convenience: just the [0, 1] score."""
