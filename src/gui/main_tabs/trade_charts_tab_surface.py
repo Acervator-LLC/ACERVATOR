@@ -139,6 +139,9 @@ PRICE_REFUSED_FORMAT = "{symbol}  •  {note}  •  {state}"
 
 #: What `header_label` prints in place of a price it cannot read.
 PRICE_REFUSED_NOTE = "price unreadable"
+
+#: What `header_label` prints for the zero a bot carries before its first fetch.
+PRICE_NOT_YET_NOTE = "no price yet"
 NUCLEAR_LABEL_FORMAT = "{symbol}  •  ${price:.4f}  •  ⚡{scenario}"
 AWAITING_FORMAT = "{symbol}: awaiting candles"
 EMPTY_SOURCE = ""
@@ -374,17 +377,22 @@ def as_finite_float(value: Any) -> Optional[float]:
 
 
 def header_label(symbol: Any, price: Any, state: Any) -> Optional[str]:
-    """The chart header for a saved price, or None while no price is saved yet.
+    """The chart header for a saved price, or None when no price is saved at all.
 
-    A price `as_finite_float` refuses names `PRICE_REFUSED_NOTE`; a price it
-    admits reads through `price_label`, zero and negative among them.
+    A price `as_finite_float` refuses, and a negative one, name
+    `PRICE_REFUSED_NOTE`; the zero a bot carries before its first fetch names
+    `PRICE_NOT_YET_NOTE`, so neither is ever printed as a dollar figure.
     """
     if price is None:
         return None
     reading = as_finite_float(price)
-    if reading is None:
+    if reading is None or reading < 0:
         return PRICE_REFUSED_FORMAT.format(
             symbol=symbol, note=PRICE_REFUSED_NOTE, state=str(state).upper()
+        )
+    if reading == 0:
+        return PRICE_REFUSED_FORMAT.format(
+            symbol=symbol, note=PRICE_NOT_YET_NOTE, state=str(state).upper()
         )
     return price_label(symbol, reading, str(state))
 

@@ -2498,3 +2498,31 @@ one it cannot, and `candle_rows` keeps those it could.
 "Store the grid levels. Nothing paints them." - still true. The grid level list
 is written and read zero times, and `GridLine` is constructed zero times, in both
 builds. Layer 2 of #230 is unbuilt.
+
+### The zero a bot carries before its first fetch
+
+`src/trading/container/config.py` declares `current_price: float = 0.0`, so a bot
+that has not fetched a price yet reports zero rather than nothing. Printing that
+as a dollar figure would hand the operator a price he would believe.
+
+`header_label` answers four different things, and the two builds answer the same.
+
+| the saved price | the header |
+| --- | --- |
+| no price saved at all | the symbol alone |
+| a zero | `{symbol}  •  no price yet  •  {state}` |
+| anything `as_finite_float` refuses, or a negative | `{symbol}  •  price unreadable  •  {state}` |
+| a readable price above zero | `{symbol}  •  ${price:.8f}  •  {state}` |
+
+A negative reads as unreadable rather than as a price, because a market price
+below zero is not a price the chart can place.
+
+### Two sentences the four header answers overtake
+
+They were not reworded. They are quoted here.
+
+"A saved zero is a number, so it draws as `$0.00000000`." - a saved zero names
+`PRICE_NOT_YET_NOTE`, because the zero a bot carries before its first fetch is
+not a price it measured.
+
+"| a readable zero | `$0.00000000` |" - a readable zero reads `no price yet`.
