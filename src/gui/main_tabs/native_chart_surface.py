@@ -1083,6 +1083,13 @@ def as_finite_float(value: Any) -> Optional[float]:
     return admitted(value)
 
 
+#: Every field a candle carries, in the order `Candle` declares them.
+CANDLE_FIELDS = ("time", "open", "high", "low", "close", "volume")
+
+#: The four fields of a candle `candle_prices` admits before anything is drawn.
+CANDLE_PRICE_FIELDS = ("open", "high", "low", "close")
+
+
 def candle_prices(candle: Any) -> Optional[tuple]:
     """The four prices of ``candle`` when `as_finite_float` admits every one.
 
@@ -1090,8 +1097,7 @@ def candle_prices(candle: Any) -> Optional[tuple]:
     a missing value or a number that is not finite.
     """
     read = [
-        as_finite_float(getattr(candle, field, None))
-        for field in ("open", "high", "low", "close")
+        as_finite_float(getattr(candle, field, None)) for field in CANDLE_PRICE_FIELDS
     ]
     if any(one is None for one in read):
         return None
@@ -1116,6 +1122,32 @@ def row_prices(row: Any) -> Optional[tuple]:
         return None
     volume = as_finite_float(given[5]) if len(given) > 5 else 0.0
     return (int(stamp), read[0], read[1], read[2], read[3], volume or 0.0)
+
+
+def synthetic_candle(given: Any) -> Optional[tuple]:
+    """A candle built without a fetch as time, four prices and volume.
+
+    Reads ``given`` by attribute or by key, and answers None when
+    `as_finite_float` refuses any of its six fields.
+    """
+    if hasattr(given, "open"):
+        read = [getattr(given, field, None) for field in CANDLE_FIELDS]
+    else:
+        try:
+            read = [given.get(field) for field in CANDLE_FIELDS]
+        except AttributeError:
+            return None
+    admitted = [as_finite_float(one) for one in read]
+    if any(one is None for one in admitted[:5]):
+        return None
+    return (
+        int(admitted[0]),
+        admitted[1],
+        admitted[2],
+        admitted[3],
+        admitted[4],
+        admitted[5] or 0.0,
+    )
 
 
 def admit_candles(candles: Sequence[Any]) -> tuple:
@@ -1876,9 +1908,17 @@ class ChartModel:
         self.error_text = message
 
     def set_positions(self, positions: Sequence) -> None:
-        """Replace the open positions drawn on the price axis."""
+        """Replace the open positions whose price `as_finite_float` admits.
+
+        A position carrying a price the axis could not map is left out, so one
+        refused position costs its own marker alone.
+        """
         self._record("set_positions")
-        self.positions = list(positions)
+        self.positions = [
+            one
+            for one in positions or []
+            if as_finite_float(getattr(one, "price", None)) is not None
+        ]
 
     def set_grid_lines(self, lines: Sequence) -> None:
         """Store the grid levels. Nothing paints them."""
@@ -1895,8 +1935,8 @@ class ChartModel:
     ) -> None:
         """Place the Target Balance anchor and ceiling on the price axis."""
         self._record("set_target_balance_lines")
-        self.tb_anchor_price = anchor_price
-        self.tb_ceiling_price = ceiling_price
+        self.tb_anchor_price = as_finite_float(anchor_price)
+        self.tb_ceiling_price = as_finite_float(ceiling_price)
 
     def set_fire_armed_state(
         self,
@@ -1926,8 +1966,8 @@ class ChartModel:
         for trade in trades:
             try:
                 stamp = int(trade.get("ts", trade.get("time", 0)) or 0)
-                price = float(trade.get("price", 0) or 0)
-                if stamp <= 0 or price <= 0:
+                price = as_finite_float(trade.get("price"))
+                if stamp <= 0 or price is None or price <= 0:
                     continue
                 self.markers.append(
                     TradeMarker(
