@@ -802,30 +802,22 @@ if _HAS_QT:
                         "font-family: Consolas;"
                     )
                     return
+                from .main_tabs.main_window_surface import (
+                    API_PILL_TOOLTIP,
+                    api_pill,
+                )
+
                 worst = None
-                for eid in connectors.keys():
-                    r = mon.sample(eid)
+                for eid, conn in connectors.items():
+                    r = mon.sample(eid, connector=conn)
                     if worst is None or r.load_score > worst.load_score:
                         worst = r
                 if worst is None:
                     return
-                pct = int(worst.load_score * 100)
-                text = (
-                    f"API {worst.exchange}: "
-                    f"{worst.calls_per_minute:.0f}/"
-                    f"{worst.ceiling_cpm:.0f} CPM ({pct} %)"
-                )
-                if worst.load_score > mon.safety_pct:
-                    colour = ds.ERROR
-                elif worst.load_score > 0.5:
-                    colour = ds.FOLD_RATIO_AMBER
-                else:
-                    colour = ds.SUCCESS
-                self._api_load_label.setText(text)
-                self._api_load_label.setStyleSheet(
-                    f"color: {colour}; font-size: 10px; padding: 0 8px; "
-                    f"font-family: Consolas;"
-                )
+                pill = api_pill(worst, mon.safety_pct)
+                self._api_load_label.setText(pill["text"])
+                self._api_load_label.setStyleSheet(pill["style"])
+                self._api_load_label.setToolTip(API_PILL_TOOLTIP)
             except Exception as _pill_exc:  # noqa: BLE001
                 # Logged at debug: the 2 s dashboard tick would flood a warning stream.
                 logger.debug(
@@ -1083,21 +1075,9 @@ if _HAS_QT:
 
             ts = _time.strftime("%H:%M:%S", _time.localtime(entry["timestamp"]))
 
-            exchange_tag = entry["exchange"].upper()
-            plain_lines = [
-                f"[{ts}] {exchange_tag} {entry['action']}",
-                f"  Reason: {entry['reason']}",
-            ]
-            if entry.get("endpoint"):
-                plain_lines.append(f"  Endpoint: {entry['endpoint']}")
-            if entry.get("result"):
-                plain_lines.append(f"  Result: {entry['result']}")
-            if entry.get("elapsed_ms", 0) > 0:
-                plain_lines.append(f"  Response: {entry['elapsed_ms']}ms")
-            if entry.get("data_usage"):
-                plain_lines.append(f"  Data usage: {entry['data_usage']}")
+            from .main_tabs.main_window_surface import api_event_block
 
-            block_text = "\n".join(plain_lines)
+            block_text = api_event_block(entry, ts)
             self._push_live_tab({"api_lines": [block_text]})
             if getattr(self, "_api_log_paused", False):
                 buf = self._api_log_pause_buffer
