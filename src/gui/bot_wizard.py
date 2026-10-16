@@ -55,6 +55,39 @@ def _market_text(value) -> str:
     return value if type(value) is str else ""
 
 
+def _show_stored_target(box, stored, page) -> bool:
+    """Put the stored default target into ``box``, or draw the dash instead.
+
+    ``as_box_figure`` is the admission, and a figure it refuses leaves ``box``
+    at the bottom of its span showing ``REFUSED_FIGURE_TEXT``, names the key in
+    the log, and clears the dash on the first move so ``page.isComplete`` turns
+    true; the answer is whether the stored default was refused.
+    """
+    from src.gui.main_tabs.bot_wizard_surface import (
+        REFUSED_FIGURE_LOG,
+        REFUSED_FIGURE_TEXT,
+    )
+    from src.trading.container.config import as_box_figure
+
+    read = as_box_figure(stored, box.minimum(), box.maximum())
+    if read is not None:
+        box.setValue(read)
+        return False
+    box.setSpecialValueText(REFUSED_FIGURE_TEXT)
+    box.setValue(box.minimum())
+    logger.warning(
+        REFUSED_FIGURE_LOG, "default_target_balance", stored, REFUSED_FIGURE_TEXT
+    )
+    box.valueChanged.connect(lambda _v: _target_entered(box, page))
+    return True
+
+
+def _target_entered(box, page) -> None:
+    """Take the dash off ``box`` and tell ``page`` its Finish button may light."""
+    box.setSpecialValueText("")
+    page.completeChanged.emit()
+
+
 def _base_labels(markets) -> list:
     """Every entry the Base Currency drop-down offers over ``markets``, through
     ``bot_wizard_surface.base_items_for``.
@@ -362,8 +395,11 @@ if _HAS_QT:
                         )
                     )
                 parts = [f"Vol: {vol_s}"] if vol_s else []
-                if m.get("volatility", 0) > 0:
-                    parts.append(f"Volat: {m['volatility']:.1f}%")
+                # Admitted before it is compared, so one market's unreadable
+                # swing draws no volatility and costs no other market its row.
+                swing = as_finite_float(m.get("volatility"))
+                if swing is not None and swing > 0:
+                    parts.append(f"Volat: {swing:.1f}%")
                 named = _market_text(m.get("base"))
                 label = market_name(m) + (f"  ({', '.join(parts)})" if parts else "")
                 reason = market_reason(recorded, m, self._sector, eid)
@@ -957,16 +993,11 @@ if _HAS_QT:
             self._target_balance.setDecimals(2)
             self._target_balance.setPrefix("$ ")
             self._target_balance.setValue(200.0)
-            # setValue refuses a non-number, the way findData refuses an
-            # unknown visibility name above.
-            try:
-                self._target_balance.setValue(
-                    defaults.get("default_target_balance", 200.0)
-                )
-            except TypeError as _tb_exc:
-                logger.warning(
-                    "Wizard kept 200.0 for default_target_balance: %s", _tb_exc
-                )
+            self._target_refused = _show_stored_target(
+                self._target_balance,
+                defaults.get("default_target_balance", 200.0),
+                self,
+            )
             self._target_balance.setToolTip(
                 "The balance this bot trades relative to. HARD-CAPPED: "
                 "position can never exceed Target × (1 + Max Target "
@@ -1636,6 +1667,17 @@ if _HAS_QT:
                 self.setSubTitle(
                     "Configure target balance, scrumming interval, " "and compounding."
                 )
+
+        def isComplete(self) -> bool:
+            """False while Target Balance still draws its refusal dash.
+
+            ``_show_stored_target`` draws that dash for a stored default
+            ``as_box_figure`` refused, so Finish refuses a bot whose target
+            nobody entered.
+            """
+            if not getattr(self, "_target_refused", False):
+                return True
+            return bool(self._target_balance.specialValueText() == "")
 
         def get_config(self):
             """Return one key per widget this page draws, and no other key."""
