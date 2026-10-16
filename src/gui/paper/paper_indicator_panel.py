@@ -65,21 +65,6 @@ PILLAR_GLOW_ALPHA = 30
 _PILLAR_FILL = 1.0
 
 
-def _sign_direction(value) -> str:
-    """The vote direction one signed score reads as; ``None`` reads NEUTRAL."""
-    if value is None:
-        return "NEUTRAL"
-    try:
-        number = float(value)
-    except (TypeError, ValueError):
-        return "NEUTRAL"
-    if number > 0.0:
-        return "BULLISH"
-    if number < 0.0:
-        return "BEARISH"
-    return "NEUTRAL"
-
-
 #: The ``CurrencyRates`` fields ``update_currency_rates`` paints from.
 RATE_FIELDS = (
     "btc_usd",
@@ -1244,56 +1229,20 @@ if _HAS_QT:
             self._staleness_label.hide()
             self._symbol = str(symbol)
 
-            timeframes = sorted(
-                multi_tf_summary.keys(),
-                key=lambda tf: (
-                    [
-                        "1m",
-                        "5m",
-                        "15m",
-                        "30m",
-                        "1h",
-                        "2h",
-                        "4h",
-                        "6h",
-                        "12h",
-                        "1d",
-                        "1w",
-                    ].index(tf)
-                    if tf
-                    in [
-                        "1m",
-                        "5m",
-                        "15m",
-                        "30m",
-                        "1h",
-                        "2h",
-                        "4h",
-                        "6h",
-                        "12h",
-                        "1d",
-                        "1w",
-                    ]
-                    else 99
-                ),
-            )
+            rows = ivp.timeframe_rows(multi_tf_summary)
+            self._vote_totals = ivp.vote_totals(multi_tf_summary)
+            locks_line = ivp.locks_text(ivp.collected_locks(multi_tf_summary))
 
             # Populates both mini-panel tables with the same TF rows
-            # but a different indicator subset.
-            self._table_a.setRowCount(len(timeframes))
-            self._table_b.setRowCount(len(timeframes))
+            # but a different indicator subset. Every row is settled
+            # before the first cell is written.
+            self._table_a.setRowCount(len(rows))
+            self._table_b.setRowCount(len(rows))
 
-            total_bull = 0
-            total_bear = 0
-            total_neutral = 0
-            all_locks = []
-
-            for row, tf in enumerate(timeframes):
-                tf_data = multi_tf_summary[tf]
-                total_bull += tf_data.get("bullish", 0)
-                total_bear += tf_data.get("bearish", 0)
-                total_neutral += tf_data.get("neutral", 0)
-                signals = {s["indicator"]: s for s in tf_data.get("signals", [])}
+            for row, built in enumerate(rows):
+                tf = built["timeframe"]
+                tf_data = built["reading"]
+                signals = built["signals"]
 
                 # TF column in both tables.
                 for _tbl in (self._table_a, self._table_b):
@@ -1333,24 +1282,11 @@ if _HAS_QT:
                         signals.get(ind_key),
                     )
 
-                all_locks.extend(tf_data.get("locks", []))
-
-            self._vote_totals = (total_bull, total_bear, total_neutral)
-
-            if all_locks:
-                lock_texts = []
-                for lk in all_locks:
-                    lock_texts.append(
-                        f"{lk['source_tf']} → {lk['locked_direction']} lock "
-                        f"({lk['candles_remaining']} candles remaining)"
-                    )
-                self._locks_label.setText("Active locks: " + " | ".join(lock_texts))
-            else:
-                self._locks_label.setText("No active timeframe locks")
+            self._locks_label.setText(locks_line)
 
             # Feeds both mini-panel bar widgets; column alignment is
             # implicit since both use the same indicator subset.
-            if not timeframes:
+            if not rows:
                 # Both bar widgets must be cleared too, or the previous
                 # bot's bars stay painted above two empty tables.
                 try:
@@ -1362,10 +1298,9 @@ if _HAS_QT:
                         "INDICATOR PANEL: bar reset on empty render " "failed: %s",
                         _cb_exc,
                     )
-            if timeframes:
-                primary_tf = timeframes[0]
-                tf_data = multi_tf_summary[primary_tf]
-                signals = {s["indicator"]: s for s in tf_data.get("signals", [])}
+            if rows:
+                tf_data = rows[0]["reading"]
+                signals = rows[0]["signals"]
 
                 def _bars_for(subset):
                     return [
@@ -1419,8 +1354,8 @@ if _HAS_QT:
             the direction, and one pillar spans both mini-panels.
             """
             ways = [
-                _sign_direction(tf_data.get("net_score", 0)),
-                _sign_direction(tf_data.get("composite_net")),
+                ivp.sign_direction(tf_data.get("net_score")),
+                ivp.sign_direction(tf_data.get("composite_net")),
                 tf_data.get("direction", "NEUTRAL"),
             ]
             return [
@@ -1428,49 +1363,30 @@ if _HAS_QT:
                 for title, way in zip(_AGGREGATE_TITLES, ways)
             ]
 
-        def _populate_net_cell(self, table, row, col, tf_data) -> None:
-            net = tf_data.get("net_score", 0)
-            item = QTableWidgetItem(f"{net:+.2f}")
+        def _place_aggregate_cell(self, table, row, col, cell) -> QTableWidgetItem:
+            """Put one built aggregate cell on the grid and hand it back.
+
+            ``cell`` is what ``net_cell``, ``comp_cell`` or ``conf_cell``
+            returns, so this host and the page draw one definition.
+            """
+            item = QTableWidgetItem(cell["text"])
             item.setTextAlignment(Qt.AlignCenter)
-            if net > 0:
-                item.setForeground(QBrush(QColor("#00ff88")))
-            elif net < 0:
-                item.setForeground(QBrush(QColor("#ff3366")))
+            if cell.get("text_color"):
+                item.setForeground(QBrush(QColor(cell["text_color"])))
+            if cell.get("tooltip"):
+                item.setToolTip(cell["tooltip"])
             table.setItem(row, col, item)
+            return item
+
+        def _populate_net_cell(self, table, row, col, tf_data) -> None:
+            self._place_aggregate_cell(table, row, col, ivp.net_cell(tf_data))
 
         def _populate_comp_net_cell(self, table, row, col, tf_data) -> None:
-            comp = tf_data.get("composite_net")
-            if comp is None:
-                item = QTableWidgetItem("—")
-                item.setForeground(QBrush(QColor("#666666")))
-            else:
-                comp_val = float(comp)
-                item = QTableWidgetItem(f"{comp_val:+.2f}")
-                if comp_val > 0:
-                    item.setForeground(QBrush(QColor("#00ff88")))
-                elif comp_val < 0:
-                    item.setForeground(QBrush(QColor("#ff3366")))
-            item.setTextAlignment(Qt.AlignCenter)
-            from ..main_tabs.indicator_panel_surface import (
-                comp_skipped_tooltip,
-            )
-
-            item.setToolTip(comp_skipped_tooltip(tf_data))
-            table.setItem(row, col, item)
+            self._place_aggregate_cell(table, row, col, ivp.comp_cell(tf_data))
 
         def _populate_conf_cell(self, table, row, col, tf_data) -> None:
-            conf = tf_data.get("confidence", 0)
-            conf_bar = "█" * int(conf * 10) + "░" * (10 - int(conf * 10))
-            item = QTableWidgetItem(f"{conf_bar} {conf:.0%}")
-            item.setTextAlignment(Qt.AlignCenter)
+            item = self._place_aggregate_cell(table, row, col, ivp.conf_cell(tf_data))
             item.setFont(QFont("Consolas", 8))
-            if conf >= 0.6:
-                item.setForeground(QBrush(QColor("#00ff88")))
-            elif conf >= 0.3:
-                item.setForeground(QBrush(QColor("#ffaa00")))
-            else:
-                item.setForeground(QBrush(QColor("#666666")))
-            table.setItem(row, col, item)
 
         def _sync_bar_columns(self):
             """Sync both mini-panels' bar widgets to their own table's

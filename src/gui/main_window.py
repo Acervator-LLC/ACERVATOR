@@ -1194,20 +1194,35 @@ if _HAS_QT:
 
             The cards are walked from ``COUNTER_CARDS``, so the window pushes
             into exactly the cards ``_build_header_strip`` drew and no value
-            goes to a card that is not there.
+            goes to a card that is not there. Each card is read inside
+            ``_strip_cell_text``, so one unreadable figure costs one cell.
             """
             for model in header_strip_surface.COUNTER_CARDS:
-                raw = agg.get(model["source_key"], 0)
-                if model["format"] == header_strip_surface.COUNT_FORMAT:
-                    text = header_strip_surface.count_text(raw)
-                else:
-                    text = header_strip_surface.money_text(float(raw or 0.0))
-                self._stat_cards[model["key"]].set_value(text)
+                self._stat_cards[model["key"]].set_value(
+                    self._strip_cell_text(model, agg.get(model["source_key"], 0))
+                )
             # One builder for both hosts: the React strip reads the same
             # `profits_payload` over the bridge.
             self._spendable_widget.update_profits(
                 header_strip_surface.profits_payload(agg, exchanges)
             )
+
+        def _strip_cell_text(self, model: dict, raw) -> str:
+            """One counter card's text from ``raw``, or the strip's empty marker.
+
+            ``header_strip_surface.card_text`` admits ``raw``, and a refusal
+            it does not admit is logged and costs this one card.
+            """
+            try:
+                return header_strip_surface.card_text(model, raw)
+            except Exception as cell_exc:  # noqa: BLE001
+                logger.exception(
+                    "Header strip: the %s card refused to draw (%s); it "
+                    "carries the empty marker and every other cell still draws",
+                    model["label"],
+                    type(cell_exc).__name__,
+                )
+                return header_strip_surface.EMPTY_TEXT
 
         def _refresh_header_strip(self, live_stats: Optional[dict] = None) -> None:
             """Repaint the strip from the Simulator's fleet with Sim in front, from the paper ledger with Paper in front, else from the live fleet."""
@@ -1229,10 +1244,10 @@ if _HAS_QT:
 
         @Slot()
         def _refresh_dashboard(self) -> None:
-            if not self._bot_manager:
-                self._refresh_header_strip()
-                return
             try:
+                if not self._bot_manager:
+                    self._refresh_header_strip()
+                    return
                 agg = self._bot_manager.get_aggregate_stats()
                 self._refresh_header_strip(agg)
 

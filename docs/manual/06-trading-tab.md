@@ -407,6 +407,50 @@ if field_id not in ALL_FIELD_IDS or text == ABSENT_TEXT:
     return text
 ```
 
+**What one unreadable figure costs.** One cell, and only that cell. The row holds
+twelve: the six counter cards declared in `COUNTER_CARDS` and the six columns
+declared in `KPI_COLUMNS`. Every figure is admitted on its own before it is
+written, so a stored value the platform cannot read as a number draws the dash in
+its own cell and the eleven beside it still carry their figures.
+
+`src/gui/main_tabs/header_strip_surface.py` — the admission every money cell shares
+
+```python
+def money_amount(value: Any) -> Any:
+    return as_finite_float(value)
+```
+
+`as_finite_float` is the bot container's own money rule, so the strip and the money
+path refuse the same values: a stored flag, a not-a-number, an endless number, a
+text number, and an integer too large to be a dollar amount. `whole_count` holds
+the same line for the three cards that draw a count, so Trades, Bots and Errors
+draw a whole number or the dash and nothing else.
+
+`src/gui/main_tabs/header_strip_surface.py` — `card_text`, the one renderer both
+hosts call for a counter card
+
+```python
+if card["format"] == COUNT_FORMAT:
+    return count_text(raw)
+return money_text(raw)
+```
+
+A read that refuses anyway is caught in `src/gui/main_window.py, in
+_strip_cell_text`, which logs the refusal with its traceback and gives that one
+card the dash. The Bot Settings window guards a tab the same way, in
+`src/gui/bot_live_settings.py, in _add_guarded_tab`.
+
+**The refresh re-reads, it does not cache.** `_refresh_dashboard` fetches the
+aggregate afresh on every tick, so an unreadable stored value is read again every
+two seconds for as long as it is there, and it costs the same one cell on every
+one of those reads. The no-fleet path runs inside the tick's own catch, so a
+Simulator or paper aggregate that cannot be read does not escape the timer slot.
+
+Both builds draw from one writer. `_write_header_strip` fills the Qt cards and the
+React cards alike, and `build_view_model` renders the bridge's copy of the counter
+cards through the same `card_text`, so neither host admits a figure the other
+refuses.
+
 **The row's width budget.** Every part of the row declares a floor, and the sum
 of the floors is the narrowest the window opens at. Without them a part's minimum
 is the width of its own text, and a six-figure amount widens the whole window past
