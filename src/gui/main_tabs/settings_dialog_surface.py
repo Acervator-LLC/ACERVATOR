@@ -2281,6 +2281,10 @@ REFUSED_MARK_SUFFIX = ".refused"
 #: treats such a row as touched and writes it.
 REFUSED_NO_READING = object()
 
+#: What a control reader raises when it cannot answer. `_reading` catches
+#: exactly these, and `settings_dialog.py` names the same set.
+READER_FAULTS = (LookupError, TypeError, ValueError, ArithmeticError, AttributeError)
+
 #: What a numeric control draws in place of a stored figure `as_box_figure`
 #: refuses. The dash the indicator panel's absent cells draw, so one
 #: unreadable figure says so the one way the platform has always said it.
@@ -2763,7 +2767,7 @@ class SettingsDialogModel:
             return REFUSED_NO_READING
         try:
             return read()
-        except Exception:  # noqa: BLE001
+        except READER_FAULTS:
             return REFUSED_NO_READING
 
     def _mark_refused(self, key: str, name: str) -> None:
