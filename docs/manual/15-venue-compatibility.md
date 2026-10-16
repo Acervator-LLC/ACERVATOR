@@ -10164,3 +10164,127 @@ OVERTAKEN, quoted whole:
 True today: 167 spot and 409 contract. The 167 spot markets select Stock
 Scrumming and the 409 contracts select Whole Unit Scrumming, because the venue
 publishes `volUnit` `1` on every one.
+
+## 2026-10-16 — a recorded market carries the venue that clears it
+
+A market's clearing venue is the house that settles the trade. It decides
+whether an order can fill at all, before any size, price or order type matters.
+Two of the sixteen wired venues publish it, and a recorded market now carries
+the word the venue published.
+
+### What each venue publishes
+
+Read on each venue's own credential-free public endpoint.
+
+| venue | the key it publishes | rows carrying it |
+| --- | --- | --- |
+| coinbase | `product_venue` | 1156 of 1156 |
+| kraken | `execution_venue` | 1461 of 1461 |
+| bitfinex, bitget, bitstamp, cryptocom, gateio, gemini, huobi, kucoin, mexc, okx, okxus, poloniex | none | 0 |
+| binance | none, read on its public data host | 0 of 3729 |
+| bybit | not read; three hosts answered HTTP 403 | — |
+
+`src/exchange/ccxt_connector.py, in CLEARING_VENUE_KEYS` holds the two key
+names. Neither name appears on any other venue, so one tuple reads both without
+a venue id in hand.
+
+Four fields on other venues name a nearby thing and are not a clearing venue.
+`settleCcy`, `settleCoin`, `settleCurrency` and `settlement_date` name the
+currency or the day a contract settles in. `tradable` and `tradableStartTime`
+name whether and when a product trades. kucoin's `sourceExchanges` names the
+exchanges its index price is drawn from.
+
+### The words coinbase publishes
+
+| `product_venue` | `future_product_details.venue` | rows | what it is | `trading_disabled` |
+| --- | --- | --- | --- | --- |
+| CBE | none | 925 | Coinbase Exchange, spot | false 917, true 8 |
+| FCM | `cde` | 100 | Coinbase Financial Markets, US dated contracts | false 100 |
+| INTX | `neptune` | 131 | Coinbase International Exchange, perpetuals | true 131 |
+
+The venue's own tradability flag separates the three. Of the 1025 CBE and FCM
+rows, 1017 read `trading_disabled` false; all 131 INTX rows read it true. No row
+outside CBE and FCM is tradable. The 8 are individual spot pairs the venue
+halted, which is a per-product state and not a venue.
+
+kraken publishes one word, `international`, on every one of its 1461 rows, so it
+names its clearing house and separates no row.
+
+### Where the field lives
+
+`src/exchange/base.py, in MarketRules` carries `clearing_venue` beside the
+venue's other published mechanics. `None` is a venue that published nothing.
+
+`src/exchange/ccxt_connector.py, in market_clearing_venue` reads it off one
+loaded market record, and `src/exchange/ccxt_connector.py, in market_rules`
+places it in the rule set. `src/exchange/ccxt_connector.py, in
+CCXTConnector.get_markets` records it on connect through `record_venue`, so the
+Simulator and the Paper Trader read it with no venue call.
+
+`src/exchange/market_rules_store.py, in TEXT_RULE_FIELDS` names it as a recorded
+text rule, and `src/exchange/market_rules_store.py, in recorded_rules` reads it
+back. A row recorded before the field holds no such key and answers `None`.
+
+### What the order path does with it
+
+`src/trading/scrumming/sizing.py, in CITED_VENUE_CLEARING_REACH` holds the
+clearing venues each venue's own order path reaches: `CBE` and `FCM` on
+coinbase, `international` on kraken. A venue with no row there publishes no
+clearing venue, so nothing is compared and nothing is refused.
+
+`src/trading/scrumming/sizing.py, in clearing_refusal` answers the sentence, and
+`src/trading/bot_container.py, in guarded_place_order` raises it before the size
+shape is read, before the step, and before a client order id is derived. The
+refusal names the clearing venue.
+
+```mermaid
+flowchart TD
+    A["coinbase product_venue<br/>kraken execution_venue"] --> B["market_clearing_venue"]
+    B --> C["market_rules"]
+    C --> D["MarketRules.clearing_venue"]
+    D --> E["record_venue, into market_rules.json"]
+    E --> F["recorded_rules"]
+    F --> G["clearing_refusal"]
+    G --> H["guarded_place_order refuses"]
+    G --> I["market_reason, on the wizard page"]
+```
+
+### What the operator sees
+
+`src/gui/main_tabs/bot_wizard_surface.py, in market_reason` answers the clearing
+refusal first, so the market keeps its place in the list and carries the reason
+beside it. `src/gui/bot_wizard.py, in accept` shows it when Finish is pressed
+and keeps the wizard open.
+
+`src/gui/main_tabs/bot_wizard_surface.py, in UNTRADEABLE_TITLE` reads "No bot
+can be created on this market". One refusal now carries two grounds — a variant
+the program does not hold, and a clearing venue its order path does not reach —
+so neither line claims the other's cause.
+
+### Driven
+
+Driven against a copy of the live recording, read and not written, with the home
+directory redirected.
+
+| the drive | the reading |
+| --- | --- |
+| the copy, before | 2147 coinbase rows, 0 carrying a clearing venue |
+| coinbase, after | 2147 rows, CBE 917, CCM 999, FCM 100, INTX 131, 0 absent |
+| kraken, after | 1365 rows, `international` on 1365, 0 absent |
+| gemini, after | 347 rows, absent on 347 |
+| bitstamp, after | 274 rows, absent on 274 |
+
+The order path, driven on the real records:
+
+| the market | `clearing_venue` | the order path | venue calls |
+| --- | --- | --- | --- |
+| an INTX perpetual | `INTX` | refused, naming INTX | 0 |
+| a CBE spot pair | `CBE` | passed | 1 |
+| the same CBE pair, word rewritten `DRB` | `DRB` | refused, naming DRB | 0 |
+| the same INTX perpetual, word blanked | none | passed | 1 |
+
+The wizard page, read off the same recording, answers the refusal for the INTX
+row and nothing for the CBE row, and the two swap on the tampered copy. A
+bitstamp row forged with a word the venue never published keeps no refusal,
+since `CITED_VENUE_CLEARING_REACH` holds no bitstamp row. The same forged row
+read as coinbase is refused.

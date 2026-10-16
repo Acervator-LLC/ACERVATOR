@@ -2153,6 +2153,83 @@ def size_shape_refusal(recorded: Any, side: Any, moment_s: Any = None) -> str:
     return CASH_SHAPE_ONLY_FORMAT.format(shape=shape, side=side)
 
 
+#: The clearing venues each venue's own order path reaches, keyed by venue id and
+#: spelled as the venue publishes the word. A venue with no row here publishes no
+#: clearing venue, so nothing is compared and nothing is refused.
+#:
+#: coinbase publishes ``product_venue`` on all 1156 of its market records and it
+#: holds three words: ``CBE`` on 925 spot rows, ``FCM`` on 100 dated contracts
+#: and ``INTX`` on 131 perpetuals. The venue's own ``trading_disabled`` flag
+#: separates them: 1017 of the 1025 CBE and FCM rows read False, and all 131 INTX
+#: rows read True, with no tradable row outside the two. The two words below are
+#: that set. The INTX rows are Coinbase International Exchange, which serves
+#: orders on its own service and not on the ``POST /orders`` endpoint
+#: ``place_order`` calls.
+#:
+#: kraken publishes ``execution_venue`` on all 1461 of its market records and it
+#: holds one word, ``international``, so the venue names its clearing house and
+#: separates no row.
+CITED_VENUE_CLEARING_REACH: dict[str, frozenset] = {
+    "coinbase": frozenset({"CBE", "FCM"}),
+    "kraken": frozenset({"international"}),
+}
+
+#: Why the clearing venue a product publishes refuses an order: the venue clears
+#: it somewhere this platform's order path does not reach, so the order cannot
+#: fill however it is sized.
+CLEARING_REFUSED_FORMAT = (
+    "the venue clears this product on {clearing}, and this platform's order "
+    "path reaches {reached} alone on {venue}, so an order on it cannot fill"
+)
+
+
+def venue_clearing_reach(venue: Any) -> Optional[frozenset]:
+    """The clearing venues ``CITED_VENUE_CLEARING_REACH`` cites for ``venue``, or
+    None where it cites none."""
+    return CITED_VENUE_CLEARING_REACH.get(str(venue or ""))
+
+
+def clearing_reach_named(reach: Any) -> str:
+    """``reach`` as one phrase in alphabetical order, empty for a set naming
+    nothing."""
+    held = reach or frozenset()
+    return ", ".join(sorted(str(one) for one in held))
+
+
+def clearing_venue_reached(recorded: Any, venue: Any) -> bool:
+    """Whether ``venue``'s order path reaches the clearing venue ``recorded``
+    publishes, folding case on the comparison.
+
+    True where ``recorded`` publishes no clearing venue and True where
+    ``venue_clearing_reach`` cites none for ``venue``.
+    """
+    clearing = getattr(recorded, "clearing_venue", None)
+    if type(clearing) is not str or not clearing.strip():
+        return True
+    reach = venue_clearing_reach(venue)
+    if not reach:
+        return True
+    return clearing.strip().casefold() in {str(one).casefold() for one in reach}
+
+
+def clearing_refusal(recorded: Any, venue: Any) -> str:
+    """Why the clearing venue ``recorded`` publishes refuses an order on
+    ``venue``, through ``CLEARING_REFUSED_FORMAT`` and empty where
+    ``clearing_venue_reached`` answers True.
+
+    ``BotContainer.guarded_place_order`` raises it before an order is composed
+    and ``bot_wizard_surface.market_reason`` draws it on the page that offers
+    the market.
+    """
+    if clearing_venue_reached(recorded, venue):
+        return ""
+    return CLEARING_REFUSED_FORMAT.format(
+        clearing=str(getattr(recorded, "clearing_venue", "")).strip(),
+        reached=clearing_reach_named(venue_clearing_reach(venue)),
+        venue=str(venue or ""),
+    )
+
+
 def sized_units(units: float, rule: str) -> float:
     """``units`` under ``rule``: unchanged when fractional, floored to a whole
     number when whole, with a count within ``WHOLE_UNIT_GRAIN`` of a whole
@@ -2769,8 +2846,10 @@ __all__ = [
     "CITED_VENUE_ORDER_TYPES",
     "CITED_VENUE_BASE_SECTORS",
     "CITED_VENUE_MARKET_SECTORS",
+    "CITED_VENUE_CLEARING_REACH",
     "CITED_VENUE_SESSIONS",
     "CITED_VENUE_SETTLEMENT",
+    "CLEARING_REFUSED_FORMAT",
     "CLASS_COMMODITIES",
     "CLASS_CRYPTO",
     "CLASS_FOREX",
@@ -2834,6 +2913,9 @@ __all__ = [
     "assumed_excess_note",
     "bot_scrum_excess_usd",
     "cartridge_threshold_usd",
+    "clearing_reach_named",
+    "clearing_refusal",
+    "clearing_venue_reached",
     "contract_count_note",
     "contract_size_divides",
     "contracts_for_units",
@@ -2900,6 +2982,7 @@ __all__ = [
     "variant_refuses_sale",
     "variant_trades_market",
     "venue_base_sector",
+    "venue_clearing_reach",
     "venue_market_sector",
     "venue_order_types",
     "venue_session",
