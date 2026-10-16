@@ -132,6 +132,12 @@ NUCLEAR_EXCHANGE_ID = "NUCLEAR"
 STRETCH_SLOTS = 1
 
 PRICE_LABEL_FORMAT = "{symbol}  •  ${price:.8f}  •  {state}"
+
+#: The chart header while `as_finite_float` refuses the saved price.
+PRICE_REFUSED_FORMAT = "{symbol}  •  {note}  •  {state}"
+
+#: What `header_label` prints in place of a price it cannot read.
+PRICE_REFUSED_NOTE = "price unreadable"
 NUCLEAR_LABEL_FORMAT = "{symbol}  •  ${price:.4f}  •  ⚡{scenario}"
 AWAITING_FORMAT = "{symbol}: awaiting candles"
 EMPTY_SOURCE = ""
@@ -354,6 +360,32 @@ ModelCall = list
 def price_label(symbol: Any, price: Any, state: Any) -> str:
     """The chart header while a price is known: pair, price, state in capitals."""
     return PRICE_LABEL_FORMAT.format(symbol=symbol, price=price, state=state.upper())
+
+
+def as_finite_float(value: Any) -> Optional[float]:
+    """`value` as a float when it is EXACTLY int or float AND finite.
+
+    Imports `as_finite_float` from `src.trading.container.config` inside the call.
+    """
+    from ...trading.container.config import as_finite_float as admitted
+
+    return admitted(value)
+
+
+def header_label(symbol: Any, price: Any, state: Any) -> Optional[str]:
+    """The chart header for a saved price, or None while no price is saved yet.
+
+    A price `as_finite_float` refuses names `PRICE_REFUSED_NOTE`; a price it
+    admits reads through `price_label`, zero and negative among them.
+    """
+    if price is None:
+        return None
+    reading = as_finite_float(price)
+    if reading is None:
+        return PRICE_REFUSED_FORMAT.format(
+            symbol=symbol, note=PRICE_REFUSED_NOTE, state=str(state).upper()
+        )
+    return price_label(symbol, reading, str(state))
 
 
 def nuclear_label(symbol: Any, price: Any, scenario: Any) -> str:
@@ -1307,7 +1339,7 @@ class TradeChartsTabModel:
                 record[LAST_FETCH_KEY] = NEVER_FETCHED
             record[EXCHANGE_ID_KEY] = status.get(EXCHANGE_KEY, DEFAULT_EXCHANGE_ID)
             stats = status.get(STATS_KEY, {})
-            record[PRICE_KEY] = stats.get(PRICE_KEY, DEFAULT_PRICE)
+            record[PRICE_KEY] = stats.get(PRICE_KEY)
             record[STATE_KEY] = status.get(STATE_KEY, DEFAULT_STATE)
 
         for bot_id in list(self.assets):
@@ -1323,9 +1355,9 @@ class TradeChartsTabModel:
         self._rebuild_ata()
         self.calls.append([UPDATE_SELECTOR, len(self.list_order()), self.list_shown()])
         self._follow_shown()
-        self._label_shown()
         self.feed_history()
         self._feed_shown()
+        self._label_shown()
         self.panel.repaint_chart()
         self.calls.append([UPDATE_CHART_REPAINTED, self.shown_id()])
 
@@ -1428,21 +1460,23 @@ class TradeChartsTabModel:
         )
 
     def _label_shown(self) -> None:
-        """Write the shown asset's price and state into the chart header."""
+        """Write the shown asset's price and state into the chart header.
+
+        `header_label` answers None only while no price is saved, which leaves
+        the header as it stands and records `UPDATE_LABEL_SKIPPED`.
+        """
         record = self.current()
         bot_id = self.shown_id()
-        price = record.get(PRICE_KEY, DEFAULT_PRICE)
-        if price > 0:
-            self.panel.set_label(
-                price_label(
-                    record.get(SYMBOL_KEY, DEFAULT_SYMBOL),
-                    price,
-                    record.get(STATE_KEY, DEFAULT_STATE),
-                )
-            )
-            self.calls.append([UPDATE_LABEL_SET, bot_id, self.panel.label])
-        else:
+        text = header_label(
+            record.get(SYMBOL_KEY, DEFAULT_SYMBOL),
+            record.get(PRICE_KEY),
+            record.get(STATE_KEY, DEFAULT_STATE),
+        )
+        if text is None:
             self.calls.append([UPDATE_LABEL_SKIPPED, bot_id])
+            return
+        self.panel.set_label(text)
+        self.calls.append([UPDATE_LABEL_SET, bot_id, self.panel.label])
 
     def set_history(self, rows: Any, fetched_ts: Any) -> None:
         """Take the History tab's venue rows and its last fetch stamp, as ``history_state`` read them."""

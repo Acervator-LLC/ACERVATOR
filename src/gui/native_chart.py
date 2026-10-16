@@ -25,6 +25,7 @@ from src.gui.main_tabs.native_chart_surface import (
     CHART_SCROLL_NAME,
     CONTROL_HEIGHT_PX,
     CROSSHAIR_TIME_FORMAT,
+    DEFAULT_STATUS_TEXT,
     FILL_TAG_FORMAT,
     FMT_GROUPED_DECIMALS,
     FOLD_SIDE,
@@ -50,9 +51,13 @@ from src.gui.main_tabs.native_chart_surface import (
     TAG_HEIGHT_PX,
     TIMEFRAME_COMBO_MAX_WIDTH_PX,
     TIMEFRAME_LABEL,
+    ALL_CANDLES_REFUSED_TEXT,
+    NO_PRICE_RANGE_TEXT,
     TOGGLE_BOX_PX,
     Y_ZOOM_DEFAULT,
+    admit_candles,
     candle_at_x,
+    candle_count_text,
     clamp_y_zoom,
     device_pen_width,
     fill_label,
@@ -61,6 +66,7 @@ from src.gui.main_tabs.native_chart_surface import (
     fmt_price,
     gmt_label,
     pan_start,
+    price_range,
     readout_lines,
     sub_pane_height,
     zoom_factor,
@@ -886,6 +892,7 @@ if _HAS_QT:
             self._landing_strip: Optional[dict] = None
             self._symbol = symbol
             self._candles: list[Candle] = []
+            self._refused_candles = 0
             self._markers: list[TradeMarker] = []
             self._positions: list[PositionMarker] = []
             self._grid_lines: list[GridLine] = []
@@ -962,18 +969,24 @@ if _HAS_QT:
             self._symbol = value
             self._repaint()
 
-        def set_candles(self, candles: list[Candle]) -> None:
-            """Take the candles, recompute every series and write ``DRAWN_PIN``.
+        def set_candles(self, candles: list[Candle], refused: int = 0) -> None:
+            """Take the candles `admit_candles` keeps, and write ``DRAWN_PIN``.
 
-            The pin's ``actual`` is the switched-on entries of
-            ``legend_entries`` holding a value on the last candle, and
-            ``expected`` is every switched-on entry.
+            ``refused`` is what a caller already dropped before calling, which
+            `candle_count_text` adds to the candles `admit_candles` refuses here.
             """
-            self._candles = candles
+            self._candles, dropped_here = admit_candles(candles)
+            self._refused_candles = int(refused) + dropped_here
             self._error_text = ""
-            if candles:
-                self._status_text = f"{len(candles)} candles"
+            if self._candles:
+                self._status_text = candle_count_text(
+                    len(self._candles), self._refused_candles
+                )
                 self._compute_indicators()
+            elif self._refused_candles:
+                self._status_text = ALL_CANDLES_REFUSED_TEXT
+            else:
+                self._status_text = DEFAULT_STATUS_TEXT
                 shown = [one for one in self.legend_entries() if one["on"]]
                 _pin_emit(
                     DRAWN_PIN,
@@ -1708,6 +1721,17 @@ if _HAS_QT:
             held["pin_every_ms"] = int(CROSSHAIR_PIN_EVERY_S * 1000)
             return held
 
+        def _paint_no_range(self, p: QPainter, w: int, h: int) -> None:
+            """Say the price scale could not be fitted, where the candles would be.
+
+            ``paint_to`` comes here when `price_range` admitted no candle, so the
+            widget carries `NO_PRICE_RANGE_TEXT` instead of painting nothing.
+            """
+            p.setPen(QPen(self.TEXT_DIM))
+            p.setFont(design_font(ds.FONT_FAMILY_UI, ds.TYPE_BODY))
+            p.drawText(QRectF(0, 0, w, h), Qt.AlignCenter, NO_PRICE_RANGE_TEXT)
+            self._draw_header(p, w, header_font(), caption_font())
+
         def paint_to(self, p: QPainter, w: int, h: int) -> None:
             """Draw the whole chart onto ``p`` over a ``w`` by ``h`` area.
 
@@ -1819,16 +1843,14 @@ if _HAS_QT:
             gap = max(1, cw * 0.18)
             bw = max(1, cw - gap)
 
-            # hi and lo come from visible_candles, never the full list.
-            hi = max(c.high for c in visible_candles)
-            lo = min(c.low for c in visible_candles)
-            pr = hi - lo
-            if pr == 0:
-                pr = hi * 0.01 or 1.0
-            pad = pr * 0.04 * self._y_zoom_pct
-            hi += pad
-            lo -= pad
-            pr = hi - lo
+            # price_range admits every candle it reads, so one bad price cannot refuse here.
+            axis = price_range(visible_candles, self._y_zoom_pct)
+            if axis is None:
+                self._paint_no_range(p, w, h)
+                return
+            hi = axis["high"]
+            lo = axis["low"]
+            pr = axis["span"]
 
             def p2y(price: float) -> float:
                 return price_top + price_h * (1.0 - (price - lo) / pr)
@@ -3431,13 +3453,13 @@ if _HAS_QT:
             """Schedule the widget's own repaint."""
             self.update()
 
-        def set_candles(self, candles: list[Candle]) -> None:
+        def set_candles(self, candles: list[Candle], refused: int = 0) -> None:
             """Take the candles, then give the sub-panes they filled their height.
 
             The first candles decide which sub-panes hold a series, so the
             height the chart needs is only known once they have arrived.
             """
-            super().set_candles(candles)
+            super().set_candles(candles, refused)
             try:
                 self._apply_height_for_panes()
             except Exception as exc:
