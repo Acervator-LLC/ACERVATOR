@@ -25,6 +25,7 @@ if TYPE_CHECKING:
     )
 
 from ..core.event_bus import get_event_bus
+from ..exchange.data_pool import BALANCE_TTL_SECONDS, TICKER_TTL_SECONDS
 from ..exchange.timeframes import ALL_TIMEFRAMES
 from .container import (
     BotRegistryMixin,
@@ -67,6 +68,14 @@ from .container.config import (
 )
 
 logger = logging.getLogger("acervator.bot")
+
+#: Period of ``_ticker_refresh_loop``. Half of the shortest cache lifetime it
+#: fills, so a slot is refilled before it expires and a bot's own tick reads it
+#: rather than making its own venue call.
+TICKER_REFRESH_INTERVAL_S = min(TICKER_TTL_SECONDS, BALANCE_TTL_SECONDS) / 2.0
+
+#: Shortest sleep ``_ticker_refresh_loop`` takes when a cycle overran its period.
+REFRESH_MIN_SLEEP_S = 0.1
 
 __all__ = [
     "DESPAWN_MAX_DAYS",
@@ -352,6 +361,9 @@ class BotContainer:
     # ``market_replaces_market_order`` also reads ``session_order_types`` at the
     # moment of the order, so a market order outside a US equity session becomes
     # a limit order where the venue takes nothing else.
+    # ``clearing_refusal`` runs before all of them and refuses a product the
+    # venue clears somewhere this platform's order path does not reach, naming
+    # the clearing venue.
     async def guarded_place_order(
         self,
         symbol: str,
@@ -471,6 +483,7 @@ class BotContainer:
             MARKET_BUY_NAMES_CASH,
             SIDE_BUY,
             SIDE_SELL,
+            clearing_refusal,
             contract_count_note,
             contracts_for_units,
             market_unit_rule,
@@ -508,6 +521,17 @@ class BotContainer:
         _rule = market_unit_rule(
             _rules, _class, self.config.exchange_id, _now, _side_name
         )
+
+        # The clearing venue is read before the size shape and before the step,
+        # at the one point every live order passes.
+        _clearing_refusal = clearing_refusal(_rules, self.config.exchange_id)
+        if _clearing_refusal:
+            self._refuse_order(
+                f"PRE-FLIGHT REJECTED: {_side_str} {symbol} {_amt:.10f}: "
+                f"{_clearing_refusal}. The market is still read and still "
+                f"charted. "
+                f"API not called."
+            )
 
         # The product's own permission set names which size shapes each side may
         # take, so a shape it refuses is refused here and never at the step.
@@ -1328,29 +1352,58 @@ class BotManager(StateRestoreMixin, BotRegistryMixin, FleetAggregationMixin):
                 logger.warning("Bulk ticker refresh raised for %s: %s", exch_id, exc)
         return total
 
+    async def refresh_all_balances_once(self) -> int:
+        """One account read per exchange, filling every balance slot it holds."""
+        pool = getattr(self, "_data_pool", None)
+        if pool is None or not hasattr(pool, "refresh_all_balances"):
+            return 0
+        total = 0
+        for exch_id, conn in self._connectors_by_exchange().items():
+            try:
+                total += await pool.refresh_all_balances(conn, exch_id)
+            except Exception as exc:
+                logger.warning("Account read raised for %s: %s", exch_id, exc)
+        return total
+
     async def _ticker_refresh_loop(self, interval: float) -> None:
-        """Refresh the shared ticker cache every ``interval`` seconds
-        until ``_ticker_refresh_stop``."""
-        logger.info("Bulk ticker refresher started (every %.1fs)", interval)
+        """Refill the shared ticker and balance caches every ``interval`` seconds.
+
+        Each cycle sleeps the remainder of ``interval`` rather than the whole of
+        it, so a slow refresh does not push the period past the cache lifetime
+        the refresh exists to stay inside.
+        """
+        logger.info("Bulk market refresher started (every %.1fs)", interval)
         while not self._ticker_refresh_stop:
             try:
-                await asyncio.sleep(interval)
-                if self._ticker_refresh_stop:
-                    break
+                started = time.monotonic()
                 await self.refresh_all_tickers_once()
+                await self.refresh_all_balances_once()
+                spent = time.monotonic() - started
+                remaining = max(REFRESH_MIN_SLEEP_S, interval - spent)
+                if spent > interval:
+                    logger.warning(
+                        "Bulk market refresh took %.1fs against a %.1fs period; "
+                        "cache slots expire before the refresh lands.",
+                        spent,
+                        interval,
+                    )
+                await asyncio.sleep(remaining)
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
-                logger.warning("Ticker refresh cycle failed: %s", exc)
-        logger.info("Bulk ticker refresher stopped.")
+                logger.warning("Market refresh cycle failed: %s", exc)
+                await asyncio.sleep(interval)
+        logger.info("Bulk market refresher stopped.")
 
-    def start_ticker_refresher(self, interval: float = 5.0) -> bool:
+    def start_ticker_refresher(
+        self, interval: float = TICKER_REFRESH_INTERVAL_S
+    ) -> bool:
         """Launch the refresher on the manager's loop; idempotent."""
         if getattr(self, "_ticker_refresh_task", None) is not None:
             return False
         loop = getattr(self, "_async_loop", None)
         if loop is None:
-            logger.warning("Bulk ticker refresher not started: no async loop attached.")
+            logger.warning("Bulk market refresher not started: no async loop attached.")
             return False
         self._ticker_refresh_stop = False
         self._ticker_refresh_task = asyncio.run_coroutine_threadsafe(

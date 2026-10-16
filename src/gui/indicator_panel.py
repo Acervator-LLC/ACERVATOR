@@ -1760,56 +1760,20 @@ if _HAS_QT:
             self._staleness_label.hide()
             self._symbol = str(symbol)
 
-            timeframes = sorted(
-                multi_tf_summary.keys(),
-                key=lambda tf: (
-                    [
-                        "1m",
-                        "5m",
-                        "15m",
-                        "30m",
-                        "1h",
-                        "2h",
-                        "4h",
-                        "6h",
-                        "12h",
-                        "1d",
-                        "1w",
-                    ].index(tf)
-                    if tf
-                    in [
-                        "1m",
-                        "5m",
-                        "15m",
-                        "30m",
-                        "1h",
-                        "2h",
-                        "4h",
-                        "6h",
-                        "12h",
-                        "1d",
-                        "1w",
-                    ]
-                    else 99
-                ),
-            )
+            rows = ivp.timeframe_rows(multi_tf_summary)
+            self._vote_totals = ivp.vote_totals(multi_tf_summary)
+            locks_line = ivp.locks_text(ivp.collected_locks(multi_tf_summary))
 
             # Populates both mini-panel tables with the same TF rows
-            # but a different indicator subset.
-            self._table_a.setRowCount(len(timeframes))
-            self._table_b.setRowCount(len(timeframes))
+            # but a different indicator subset. Every row is settled
+            # before the first cell is written.
+            self._table_a.setRowCount(len(rows))
+            self._table_b.setRowCount(len(rows))
 
-            total_bull = 0
-            total_bear = 0
-            total_neutral = 0
-            all_locks = []
-
-            for row, tf in enumerate(timeframes):
-                tf_data = multi_tf_summary[tf]
-                total_bull += tf_data.get("bullish", 0)
-                total_bear += tf_data.get("bearish", 0)
-                total_neutral += tf_data.get("neutral", 0)
-                signals = {s["indicator"]: s for s in tf_data.get("signals", [])}
+            for row, built in enumerate(rows):
+                tf = built["timeframe"]
+                tf_data = built["reading"]
+                signals = built["signals"]
 
                 # TF column in both tables.
                 for _tbl in (self._table_a, self._table_b):
@@ -1849,24 +1813,11 @@ if _HAS_QT:
                         signals.get(ind_key),
                     )
 
-                all_locks.extend(tf_data.get("locks", []))
-
-            self._vote_totals = (total_bull, total_bear, total_neutral)
-
-            if all_locks:
-                lock_texts = []
-                for lk in all_locks:
-                    lock_texts.append(
-                        f"{lk['source_tf']} → {lk['locked_direction']} lock "
-                        f"({lk['candles_remaining']} candles remaining)"
-                    )
-                self._locks_label.setText("Active locks: " + " | ".join(lock_texts))
-            else:
-                self._locks_label.setText("No active timeframe locks")
+            self._locks_label.setText(locks_line)
 
             # Feeds both mini-panel bar widgets; column alignment is
             # implicit since both use the same indicator subset.
-            if not timeframes:
+            if not rows:
                 # Both bar widgets must be cleared too, or the previous
                 # bot's bars stay painted above two empty tables.
                 try:
@@ -1878,10 +1829,9 @@ if _HAS_QT:
                         "INDICATOR PANEL: bar reset on empty render " "failed: %s",
                         _cb_exc,
                     )
-            if timeframes:
-                primary_tf = timeframes[0]
-                tf_data = multi_tf_summary[primary_tf]
-                signals = {s["indicator"]: s for s in tf_data.get("signals", [])}
+            if rows:
+                tf_data = rows[0]["reading"]
+                signals = rows[0]["signals"]
 
                 def _bars_for(subset):
                     return [

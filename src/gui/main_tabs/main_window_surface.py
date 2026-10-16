@@ -197,13 +197,15 @@ PILL_STYLE_FORMAT = (
 API_PILL_IDLE_TEXT = "API: —"
 API_PILL_IDLE_COLOUR = ds.CARD_METRIC_LABEL
 API_PILL_TOOLTIP = (
-    "Trailing 60 s calls-per-minute on the busiest "
-    "connected exchange. Green ≤ 50 %, amber ≤ 75 %, "
-    "red above the 75 % phantom-creation safety threshold."
+    "Trailing 60 s calls-per-minute on the busiest connected exchange, the "
+    "share of that window its one connector worker was busy, and the calls "
+    "its queue refused. The percentage is the worse of the two loads, because "
+    "a refused call reaches no log and reads as idleness in the count alone."
 )
 API_PILL_TEXT_FORMAT = (
-    "API {exchange}: {calls_per_minute:.0f}/{ceiling_cpm:.0f} CPM ({percent} %)"
+    "API {exchange}: {calls_per_minute:.0f} CPM, worker {worker_busy_pct:.0f} %"
 )
+API_PILL_REFUSED_FORMAT = ", {queue_refusals} refused"
 API_PILL_AMBER_ABOVE = 0.5
 API_PILL_RED_COLOUR = ds.ERROR
 API_PILL_AMBER_COLOUR = ds.FOLD_RATIO_AMBER
@@ -259,7 +261,8 @@ API_EVENT_HEAD_FORMAT = "[{stamp}] {exchange} {action}"
 API_EVENT_REASON_FORMAT = "  Reason: {reason}"
 API_EVENT_ENDPOINT_FORMAT = "  Endpoint: {endpoint}"
 API_EVENT_RESULT_FORMAT = "  Result: {result}"
-API_EVENT_RESPONSE_FORMAT = "  Response: {elapsed_ms}ms"
+API_EVENT_RESPONSE_FORMAT = "  Venue answer: {elapsed_ms}ms"
+API_EVENT_QUEUED_FORMAT = "  Waited for a worker: {queued_ms}ms"
 API_EVENT_DATA_USAGE_FORMAT = "  Data usage: {data_usage}"
 API_EVENT_WRONG_THREAD = "wrong_thread"
 API_EVENT_BUFFERED = "buffered"
@@ -711,23 +714,27 @@ def history_refresh_due(last_fetched_ts: Any, in_flight: Any, now: Any) -> bool:
 
 
 def api_pill(sample: Any, safety_pct: Any) -> dict:
-    """The status-line pill for the busiest connected exchange."""
-    percent = int(sample.load_score * 100)
+    """The status-line pill for the busiest connected exchange.
+
+    The text names the call rate and the share of the window a connector worker
+    was busy, and appends the refused count when ``queue_refusals`` is above
+    zero.
+    """
     if sample.load_score > safety_pct:
         colour = API_PILL_RED_COLOUR
     elif sample.load_score > API_PILL_AMBER_ABOVE:
         colour = API_PILL_AMBER_COLOUR
     else:
         colour = API_PILL_GREEN_COLOUR
-    return {
-        "text": API_PILL_TEXT_FORMAT.format(
-            exchange=sample.exchange,
-            calls_per_minute=sample.calls_per_minute,
-            ceiling_cpm=sample.ceiling_cpm,
-            percent=percent,
-        ),
-        "style": PILL_STYLE_FORMAT.format(colour=colour),
-    }
+    text = API_PILL_TEXT_FORMAT.format(
+        exchange=sample.exchange,
+        calls_per_minute=sample.calls_per_minute,
+        worker_busy_pct=getattr(sample, "worker_busy_pct", 0.0),
+    )
+    refusals = int(getattr(sample, "queue_refusals", 0) or 0)
+    if refusals > 0:
+        text += API_PILL_REFUSED_FORMAT.format(queue_refusals=refusals)
+    return {"text": text, "style": PILL_STYLE_FORMAT.format(colour=colour)}
 
 
 def api_pill_idle() -> dict:
@@ -822,6 +829,8 @@ def api_event_block(entry: Any, stamp: Any) -> str:
         lines.append(API_EVENT_RESULT_FORMAT.format(result=entry["result"]))
     if entry.get("elapsed_ms", 0) > 0:
         lines.append(API_EVENT_RESPONSE_FORMAT.format(elapsed_ms=entry["elapsed_ms"]))
+    if float(entry.get("queued_ms", 0) or 0) > 0:
+        lines.append(API_EVENT_QUEUED_FORMAT.format(queued_ms=entry["queued_ms"]))
     if entry.get("data_usage"):
         lines.append(API_EVENT_DATA_USAGE_FORMAT.format(data_usage=entry["data_usage"]))
     return "\n".join(lines)
