@@ -361,6 +361,9 @@ class BotContainer:
     # ``market_replaces_market_order`` also reads ``session_order_types`` at the
     # moment of the order, so a market order outside a US equity session becomes
     # a limit order where the venue takes nothing else.
+    # ``clearing_refusal`` runs before all of them and refuses a product the
+    # venue clears somewhere this platform's order path does not reach, naming
+    # the clearing venue.
     async def guarded_place_order(
         self,
         symbol: str,
@@ -480,6 +483,7 @@ class BotContainer:
             MARKET_BUY_NAMES_CASH,
             SIDE_BUY,
             SIDE_SELL,
+            clearing_refusal,
             contract_count_note,
             contracts_for_units,
             market_unit_rule,
@@ -517,6 +521,17 @@ class BotContainer:
         _rule = market_unit_rule(
             _rules, _class, self.config.exchange_id, _now, _side_name
         )
+
+        # The clearing venue is read before the size shape and before the step,
+        # at the one point every live order passes.
+        _clearing_refusal = clearing_refusal(_rules, self.config.exchange_id)
+        if _clearing_refusal:
+            self._refuse_order(
+                f"PRE-FLIGHT REJECTED: {_side_str} {symbol} {_amt:.10f}: "
+                f"{_clearing_refusal}. The market is still read and still "
+                f"charted. "
+                f"API not called."
+            )
 
         # The product's own permission set names which size shapes each side may
         # take, so a shape it refuses is refused here and never at the step.

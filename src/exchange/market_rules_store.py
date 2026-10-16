@@ -43,9 +43,11 @@ RULE_FIELDS = (
 # holds the five NUMERIC rules, and ``order_types`` is a string.
 # OVERTAKEN, the sentence above reading "the five NUMERIC rules": ``RULE_FIELDS``
 # holds seven, and ``session`` is a second string.
+# OVERTAKEN, the ``session`` sentence above: ``clearing_venue`` is a third
+# string, the venue the product clears on.
 #: The text rules ``MarketRules`` carries, each recorded under its own name. A row
 #: recorded before one holds no such key and answers None.
-TEXT_RULE_FIELDS = ("order_types", "session")
+TEXT_RULE_FIELDS = ("order_types", "session", "clearing_venue")
 
 #: The permission rules ``MarketRules`` carries, each recorded as a sorted list
 #: of size-shape names. A row recorded before one holds no such key, which
@@ -58,10 +60,41 @@ SHAPE_RULE_FIELDS = ("buy_size_shapes", "sell_size_shapes")
 CLASS_FIELD = "asset_class"
 
 
+#: What divides the base from the quote in a recorded market symbol.
+SYMBOL_SEPARATOR = "/"
+
+#: What divides the quote currency from the settle leg a contract symbol carries.
+SETTLE_SEPARATOR = ":"
+
+#: What divides the settle leg from the expiry date a dated contract carries.
+EXPIRY_SEPARATOR = "-"
+
+
 def store_path() -> Path:
     """``STORE_NAME`` under the runtime home, resolved on every call and never
     held at import."""
     return Path.home() / ".acervator" / STORE_NAME
+
+
+def quote_currency(symbol: Any) -> str:
+    """The money leg of a recorded market symbol, with the ``SETTLE_SEPARATOR``
+    leg and the ``EXPIRY_SEPARATOR`` date stripped, and empty for a symbol
+    carrying no ``SYMBOL_SEPARATOR``.
+
+    A spot pair is recorded as ``BASE/QUOTE``, a perpetual as
+    ``BASE/QUOTE:SETTLE`` and a dated contract as ``BASE/QUOTE:SETTLE-YYMMDD``,
+    and ``quote_currency`` answers the same name for all three.
+    """
+    rest = str(symbol or "").partition(SYMBOL_SEPARATOR)[2]
+    held = rest.partition(SETTLE_SEPARATOR)[0]
+    return held.partition(EXPIRY_SEPARATOR)[0]
+
+
+def is_contract(symbol: Any) -> bool:
+    """True while a recorded market symbol carries a ``SETTLE_SEPARATOR`` leg,
+    which a perpetual and a dated contract both do and a spot pair does not."""
+    rest = str(symbol or "").partition(SYMBOL_SEPARATOR)[2]
+    return SETTLE_SEPARATOR in rest
 
 
 def rule_value(value: Any) -> Optional[float]:
@@ -199,6 +232,7 @@ def recorded_rules(venue: str, symbol: str, path: Optional[Path] = None) -> Mark
         expiry_ms=rule_value(row.get("expiry_ms")),
         order_types=rule_text(row.get("order_types")),
         session=rule_text(row.get("session")),
+        clearing_venue=rule_text(row.get("clearing_venue")),
         buy_size_shapes=recorded_shapes(row.get("buy_size_shapes")),
         sell_size_shapes=recorded_shapes(row.get("sell_size_shapes")),
         read=True,
@@ -223,11 +257,16 @@ def recorded_classes(venue: str, path: Optional[Path] = None) -> dict[str, str]:
 
 __all__ = [
     "CLASS_FIELD",
+    "EXPIRY_SEPARATOR",
     "RULE_FIELDS",
+    "SETTLE_SEPARATOR",
     "SHAPE_RULE_FIELDS",
     "STORE_NAME",
+    "SYMBOL_SEPARATOR",
     "TEXT_RULE_FIELDS",
+    "is_contract",
     "load_document",
+    "quote_currency",
     "record_venue",
     "recorded_classes",
     "recorded_rules",
