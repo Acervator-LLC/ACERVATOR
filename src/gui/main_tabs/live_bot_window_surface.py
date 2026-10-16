@@ -12,10 +12,10 @@ pane. ``PaneModel`` drops the oldest block exactly where the shipped
 pane drops it, so a window driven with the same lines holds the same
 text on both sides.
 
-``controls_reach_the_window`` is False. The shipped window builds the
-configuration grid inside a group box it then drops, so the pickers,
-the target-dollar box and the two credential fields never reach the
-screen and every value they carry is recorded here instead.
+``controls_reach_the_window`` is True. The shipped window builds one
+configuration group box, keeps the grid on it and returns it, so the
+pickers, the target-dollar box and the two credential fields reach the
+screen and hold what the operator types into them.
 
 Every step is appended to ``calls`` rather than sent, so nothing here
 writes to a log file or to a disk.
@@ -42,8 +42,7 @@ WINDOW_WIDTH = 1400
 WINDOW_HEIGHT = 700
 
 CONFIG_GROUP_TITLE = "Bot Configuration"
-CONFIG_GROUPS_BUILT = 2
-DROPPED_GROUP_INDEX = 0
+CONFIG_GROUPS_BUILT = 1
 
 EXCHANGE_LABEL = "Exchange:"
 BASE_LABEL = "Base (quote):"
@@ -76,6 +75,8 @@ TARGET_STEP = 10.0
 ECHO_MODE = "Password"
 NO_CREDENTIAL = ""
 
+CONTROL_GRID_COLUMNS = 8
+
 GRID_CELLS = (
     ("exchange_label", 0, 0, 1, 1),
     ("exchange_picker", 0, 1, 1, 1),
@@ -89,6 +90,7 @@ GRID_CELLS = (
     ("api_key_field", 1, 1, 1, 3),
     ("secret_label", 1, 4, 1, 1),
     ("secret_field", 1, 5, 1, 3),
+    ("button_row", 2, 0, 1, CONTROL_GRID_COLUMNS),
 )
 
 START_LABEL = "START"
@@ -188,14 +190,6 @@ ACTIONS = {
 }
 
 LIVE_ITEM_NAMES = (
-    "start_button",
-    "stop_button",
-    "status_label",
-    "console_pane",
-    "api_pane",
-    "activity_pane",
-)
-DROPPED_ITEM_NAMES = (
     "exchange_label",
     "exchange_picker",
     "base_label",
@@ -208,8 +202,14 @@ DROPPED_ITEM_NAMES = (
     "api_key_field",
     "secret_label",
     "secret_field",
+    "start_button",
+    "stop_button",
+    "status_label",
+    "console_pane",
+    "api_pane",
+    "activity_pane",
 )
-CONTROLS_REACH_THE_WINDOW = False
+CONTROLS_REACH_THE_WINDOW = True
 
 WINDOW_BUILT = "window.built"
 PANES_BUILT = "panes.built"
@@ -738,10 +738,9 @@ def build_view_model(model: LiveBotWindowModel) -> dict:
         "window_height": model.window_height,
         "config_group_title": CONFIG_GROUP_TITLE,
         "config_groups_built": CONFIG_GROUPS_BUILT,
-        "dropped_group_index": DROPPED_GROUP_INDEX,
         "controls_reach_the_window": model.controls_reach_the_window,
         "live_item_names": list(LIVE_ITEM_NAMES),
-        "dropped_item_names": list(DROPPED_ITEM_NAMES),
+        "control_grid_columns": CONTROL_GRID_COLUMNS,
         "grid_cells": [list(cell) for cell in GRID_CELLS],
         "exchange_label": EXCHANGE_LABEL,
         "base_label": BASE_LABEL,
