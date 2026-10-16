@@ -1876,9 +1876,17 @@ class ChartModel:
         self.error_text = message
 
     def set_positions(self, positions: Sequence) -> None:
-        """Replace the open positions drawn on the price axis."""
+        """Replace the open positions whose price `as_finite_float` admits.
+
+        A position carrying a price the axis could not map is left out, so one
+        refused position costs its own marker alone.
+        """
         self._record("set_positions")
-        self.positions = list(positions)
+        self.positions = [
+            one
+            for one in positions or []
+            if as_finite_float(getattr(one, "price", None)) is not None
+        ]
 
     def set_grid_lines(self, lines: Sequence) -> None:
         """Store the grid levels. Nothing paints them."""
@@ -1895,8 +1903,8 @@ class ChartModel:
     ) -> None:
         """Place the Target Balance anchor and ceiling on the price axis."""
         self._record("set_target_balance_lines")
-        self.tb_anchor_price = anchor_price
-        self.tb_ceiling_price = ceiling_price
+        self.tb_anchor_price = as_finite_float(anchor_price)
+        self.tb_ceiling_price = as_finite_float(ceiling_price)
 
     def set_fire_armed_state(
         self,
@@ -1926,8 +1934,8 @@ class ChartModel:
         for trade in trades:
             try:
                 stamp = int(trade.get("ts", trade.get("time", 0)) or 0)
-                price = float(trade.get("price", 0) or 0)
-                if stamp <= 0 or price <= 0:
+                price = as_finite_float(trade.get("price"))
+                if stamp <= 0 or price is None or price <= 0:
                     continue
                 self.markers.append(
                     TradeMarker(
