@@ -542,18 +542,10 @@ if _HAS_WEBENGINE:
             painter.set_timeframe(str(panel.chart_timeframe or panel.timeframe))
             if panel.candles is not self._fed_candles:
                 self._fed_candles = panel.candles
+                read = [native_chart_surface.row_prices(row) for row in panel.candles]
                 painter.set_candles(
-                    [
-                        Candle(
-                            int(row[0]),
-                            float(row[1]),
-                            float(row[2]),
-                            float(row[3]),
-                            float(row[4]),
-                            float(row[5]) if len(row) > 5 else 0.0,
-                        )
-                        for row in panel.candles
-                    ]
+                    [Candle(*one) for one in read if one is not None],
+                    refused=sum(1 for one in read if one is None),
                 )
             if panel.error_text:
                 painter.set_error(str(panel.error_text))

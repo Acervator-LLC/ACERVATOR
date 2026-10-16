@@ -20,6 +20,7 @@ from ..main_tabs.trade_charts_tab_surface import (
     FETCH_LIMIT,
     bot_timeframe,
     fill_record,
+    header_label,
     history_fills,
     history_never_fetched,
     history_of,
@@ -87,7 +88,6 @@ FETCH_THROTTLE_S = 30
 STALE_AFTER_S = 90.0
 AGE_DECIMALS = 3
 
-PRICE_LABEL_FORMAT = "{symbol}  •  ${price:.8f}  •  {state}"
 NUCLEAR_LABEL_FORMAT = "{symbol}  •  ${price:.4f}  •  ⚡{scenario}"
 AWAITING_FORMAT = "{symbol}: awaiting candles"
 ERROR_TEXT_LIMIT = 60
@@ -581,7 +581,7 @@ if _HAS_QT:
                 entry["symbol"] = symbol
                 entry["exchange_id"] = status.get("exchange", "")
                 entry["state"] = status.get("state", "idle")
-                entry["price"] = (status.get("stats", {}) or {}).get("current_price", 0)
+                entry["price"] = (status.get("stats", {}) or {}).get("current_price")
                 rebuilt.append(entry)
 
             self._entries = rebuilt
@@ -593,9 +593,9 @@ if _HAS_QT:
             self._rebuild_ata()
             self._refresh_selector()
             self._follow_current()
-            self._label_current()
             self._draw_history()
             self._decorate_current(bot_manager)
+            self._label_current()
             self._panel.chart.update()
 
             drift = sum(
@@ -694,16 +694,20 @@ if _HAS_QT:
                 return None
 
         def _label_current(self) -> None:
-            """Write the shown asset's price and state into the chart header."""
+            """Write the shown asset's price and state into the chart header.
+
+            `header_label` answers None only while no price is saved, which
+            leaves the header as it stands.
+            """
             entry = self.current_entry()
-            price = float(entry.get("price", 0) or 0)
-            if price <= 0:
-                return
-            self._panel.chart._symbol = PRICE_LABEL_FORMAT.format(
-                symbol=entry.get("symbol", ""),
-                price=price,
-                state=str(entry.get("state", "idle")).upper(),
+            text = header_label(
+                entry.get("symbol", ""),
+                entry.get("price"),
+                entry.get("state", "idle"),
             )
+            if text is None:
+                return
+            self._panel.chart._symbol = text
 
         def _decorate_current(self, bot_manager) -> None:
             """Draw the shown bot's strip, position, target lines and glow."""
