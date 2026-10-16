@@ -9,7 +9,11 @@ from ...core.privacy_mask_registry import (
     get_privacy_mask_registry,
     mask_or,
 )
-from ...trading.container.config import as_finite_float
+from ...trading.container.config import (
+    UNREADABLE_TOTALS_KEY,
+    as_finite_float,
+    as_whole_count,
+)
 from ...trading.target_bands import (
     TERRITORY_AT_TARGET,
     TERRITORY_FOLD,
@@ -571,12 +575,23 @@ def money_amount(value: Any) -> Any:
 def whole_count(value: Any) -> Optional[int]:
     """The whole number a count carries, or ``None`` for an unreadable one.
 
-    Only an exact integer inside ``as_finite_float``'s range counts, and a
-    stored flag, a text number and a not-a-number each answer ``None``.
+    ``as_whole_count`` is the admission, the one the fleet aggregate's counters
+    read, and a stored flag, a text number and a not-a-number each answer ``None``.
     """
-    if type(value) is int and as_finite_float(value) is not None:
-        return value
-    return None
+    return as_whole_count(value)
+
+
+def aggregate_amount(stats: Optional[dict], key: str, absent: Any = None) -> Any:
+    """One figure the fleet aggregate published for ``key``, or ``None``.
+
+    ``get_aggregate_stats`` names under ``UNREADABLE_TOTALS_KEY`` every total a
+    bot's unreadable figure left out, and a named total answers ``None`` so its
+    cell draws the dash.
+    """
+    data = stats if isinstance(stats, dict) else {}
+    if key in set(data.get(UNREADABLE_TOTALS_KEY) or ()):
+        return None
+    return data.get(key, absent)
 
 
 def money_text(value: Any) -> str:
@@ -770,7 +785,8 @@ def counter_cells(stats: Optional[dict]) -> dict:
     data = stats if isinstance(stats, dict) else {}
     return {
         card["key"]: mask_or(
-            card_text(card, data.get(card["source_key"], 0)), card["field_id"]
+            card_text(card, aggregate_amount(data, card["source_key"], 0)),
+            card["field_id"],
         )
         for card in COUNTER_CARDS
     }
@@ -784,10 +800,10 @@ def exchange_amount(stats: Optional[dict], key: str) -> Any:
     ``total_mature_exchange``.
     """
     data = stats if isinstance(stats, dict) else {}
-    answered = as_finite_float(data.get(EXCHANGE_FRESHNESS_KEY, 0))
+    answered = as_finite_float(aggregate_amount(data, EXCHANGE_FRESHNESS_KEY, 0))
     if answered is None or answered <= 0:
         return None
-    return money_amount(data.get(key))
+    return money_amount(aggregate_amount(data, key))
 
 
 def unrealised_amount(stats: Optional[dict]) -> Any:
@@ -806,18 +822,21 @@ def profits_payload(stats: Optional[dict], exchange_count: Any = 0) -> dict:
     unreadable ``wallet_cash_usd`` reaches ``spendable_cell`` alone.
     """
     data = stats if isinstance(stats, dict) else {}
-    wallet_cash = money_amount(data.get("wallet_cash_usd"))
-    position_value = money_amount(data.get("crypto_position_value_usd"))
+    cash_published = aggregate_amount(data, "wallet_cash_usd")
+    locked_published = aggregate_amount(data, "crypto_position_value_usd")
+    wallet_cash = money_amount(cash_published)
+    position_value = money_amount(locked_published)
     known = (wallet_cash or 0.0) > 0 or (position_value or 0.0) > 0
     return {
-        "spendable": data.get("wallet_cash_usd") if known else None,
-        "locked": data.get("crypto_position_value_usd") if known else None,
+        "spendable": cash_published if known else None,
+        "locked": locked_published if known else None,
         "unrealised": unrealised_amount(data),
         "mature": exchange_amount(data, "total_mature_exchange"),
         "exchange_count": whole_count(exchange_count),
-        "total_ammo": money_amount(data.get("total_target_delta_usd")),
+        "total_ammo": money_amount(aggregate_amount(data, "total_target_delta_usd")),
         "ammo_lean": ammo_lean(
-            data.get("bots_scrum_territory"), data.get("bots_fold_territory")
+            aggregate_amount(data, "bots_scrum_territory"),
+            aggregate_amount(data, "bots_fold_territory"),
         ),
     }
 

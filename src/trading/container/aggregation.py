@@ -12,29 +12,163 @@ from typing import Any, Optional
 
 from ..smart_wire import is_mature, mature_profit_usd
 from ..target_bands import fleet_ammo
-from .config import DOLLAR_PEGGED_CURRENCIES, BotState
+from .config import (
+    DOLLAR_PEGGED_CURRENCIES,
+    UNREADABLE_TOTALS_KEY,
+    BotState,
+    as_finite_float,
+    as_whole_count,
+)
 
 logger = logging.getLogger("acervator.bot")
 
+#: The published total every bot's ``accrued_growth_usd`` feeds.
+ACCRUED_TOTAL = "total_accrued_usd"
 
-def accrued_growth_usd(target_balance: Any, anchor_target_balance: Any) -> float:
-    """One bot's compounded growth: its live target less its anchor target."""
-    return float(target_balance or 0.0) - float(anchor_target_balance or 0.0)
+#: The three Scrummed totals. The published pair falls back from the
+#: year-to-date sum to the lifetime one, so either refusal marks all three.
+SCRUMMED_TOTALS = (
+    "total_scrummed_usd",
+    "total_scrummed_usd_ytd",
+    "total_scrummed_usd_lifetime",
+)
+
+#: The three Folded totals, read the same way as SCRUMMED_TOTALS.
+FOLDED_TOTALS = (
+    "total_folded_usd",
+    "total_folded_usd_ytd",
+    "total_folded_usd_lifetime",
+)
+
+#: The totals one bot's cash balance feeds.
+CASH_TOTALS = ("wallet_cash_usd", "total_account_value_usd")
+
+#: The totals one bot's maturity reading feeds.
+MATURE_TOTALS = ("total_mature_exchange", "mature_positions")
+
+#: The totals one bot's Ammo reading feeds.
+AMMO_TOTALS = (
+    "total_target_delta_usd",
+    "bots_scrum_territory",
+    "bots_fold_territory",
+)
+
+#: The totals one bot's position value feeds: the Locked column, the account
+#: value, the maturity reading taken against it and the Ammo distance.
+POSITION_TOTALS = (
+    (
+        "crypto_position_value_usd",
+        "total_account_value_usd",
+    )
+    + MATURE_TOTALS
+    + AMMO_TOTALS
+)
+
+#: The totals one bot's exchange-freshness stamp gates.
+FRESHNESS_TOTALS = (
+    "bots_with_fresh_exchange_data",
+    "realised_history_complete",
+) + MATURE_TOTALS
+
+#: The counts one bot's run state feeds.
+STATE_TOTALS = ("running", "errored")
+
+#: Every total one bot's ``stats`` feeds, marked together when ``stats``
+#: itself cannot be reached.
+STATS_TOTALS = tuple(
+    dict.fromkeys(
+        SCRUMMED_TOTALS
+        + FOLDED_TOTALS
+        + CASH_TOTALS
+        + POSITION_TOTALS
+        + FRESHNESS_TOTALS
+        + (
+            "total_realised_pnl",
+            "total_trades",
+            "total_errors_lifetime",
+            "total_realized_exchange",
+            "total_unrealized_exchange",
+            "total_fees_exchange",
+        )
+    )
+)
 
 
-def fleet_accrued_usd(bots: Any) -> float:
+def accrued_growth_usd(
+    target_balance: Any, anchor_target_balance: Any
+) -> Optional[float]:
+    """One bot's compounded growth: its live target less its anchor target.
+
+    ``as_finite_float`` admits both figures, and a refused figure answers ``None``.
+    """
+    target = as_finite_float(target_balance)
+    anchor = as_finite_float(anchor_target_balance)
+    if target is None or anchor is None:
+        return None
+    return target - anchor
+
+
+def fleet_accrued_usd(bots: Any, unreadable: set) -> float:
     """Every bot's ``accrued_growth_usd`` added together, to the cent.
 
-    A bot carrying no ``_anchor_target_balance`` reads its own
-    ``_target_balance`` as the anchor, so it contributes nothing.
+    A bot whose ``_target_balance`` or ``_anchor_target_balance`` cannot be read
+    adds nothing and names ``ACCRUED_TOTAL`` in ``unreadable``.
     """
     total = 0.0
     for bot in bots:
-        target = getattr(bot, "_target_balance", 0.0)
-        total += accrued_growth_usd(
-            target, getattr(bot, "_anchor_target_balance", target)
-        )
+        try:
+            target = getattr(bot, "_target_balance", 0.0)
+            growth = accrued_growth_usd(
+                target, getattr(bot, "_anchor_target_balance", target)
+            )
+        except Exception as _read_exc:
+            unreadable.add(ACCRUED_TOTAL)
+            logger.warning(
+                "Accumulated total: bot %s's target balance could not be "
+                "read (%s). The total is marked unreadable and the "
+                "ACCUMULATED card draws a dash.",
+                getattr(bot, "bot_id", "?"),
+                _read_exc,
+            )
+            continue
+        if growth is None:
+            unreadable.add(ACCRUED_TOTAL)
+            continue
+        total += growth
     return round(total, 4)
+
+
+class FleetTotals:
+    """The admissions one aggregate pass reads by, and the totals it marked.
+
+    ``money``, ``count`` and ``flag`` each name every published total a refused
+    figure feeds, which ``get_aggregate_stats`` publishes under
+    ``UNREADABLE_TOTALS_KEY``.
+    """
+
+    def __init__(self) -> None:
+        self.unreadable: set[str] = set()
+
+    def money(self, value: Any, *totals: str) -> Optional[float]:
+        """One stored dollar figure, or ``None`` after marking ``totals``."""
+        amount = as_finite_float(value)
+        if amount is None:
+            self.unreadable.update(totals)
+        return amount
+
+    def count(self, value: Any, *totals: str) -> Optional[int]:
+        """One stored whole count, or ``None`` after marking ``totals``."""
+        counted = as_whole_count(value)
+        if counted is None:
+            self.unreadable.update(totals)
+        return counted
+
+    def flag(self, value: Any, *totals: str) -> bool:
+        """One stored true or false; any other kind marks ``totals`` and is False."""
+        if type(value) is bool:
+            return value
+        self.unreadable.update(totals)
+        return False
 
 
 class FleetAggregationMixin:
@@ -46,6 +180,31 @@ class FleetAggregationMixin:
     # Annotation only, supplied by BotManager at runtime: no attribute is
     # created and the runtime base stays `object`.
     _bots: dict
+
+    #: The marked totals the last pass logged. The dashboard asks every two
+    #: seconds, and an unchanged list is not logged again.
+    _last_unreadable_totals: Optional[list] = None
+
+    def _log_unreadable_totals(self, unreadable_totals: list) -> None:
+        """Log the totals one pass could not sum whole, once per change.
+
+        ``_last_unreadable_totals`` holds the last logged list, and an
+        unchanged one is not logged again.
+        """
+        if unreadable_totals == self._last_unreadable_totals:
+            return
+        self._last_unreadable_totals = list(unreadable_totals)
+        if not unreadable_totals:
+            logger.info("Fleet totals: every dashboard total sums whole again.")
+            return
+        logger.warning(
+            "Fleet totals: %d of the dashboard's totals could not be summed "
+            "whole: %s. A bot's stored figure for each of them was not a "
+            "number. The header strip draws a dash for each and every other "
+            "cell still carries its figure.",
+            len(unreadable_totals),
+            ", ".join(unreadable_totals),
+        )
 
     def has_sibling_target_bots(self, bot_id: str, target_asset: str) -> bool:
         """Return True if any OTHER registered bot has the same target
@@ -299,98 +458,206 @@ class FleetAggregationMixin:
             return None
         return total
 
+    def _bot_position_usd(self, bot: Any, stats: Any, totals: FleetTotals) -> float:
+        """One bot's position value in dollars, from its holdings and price.
+
+        ``stats.position_value`` stands where ``_current_holdings`` or
+        ``stats.current_price`` is not above zero, and every figure is admitted
+        through ``totals``.
+        """
+        cached = totals.money(getattr(stats, "position_value", 0.0), *POSITION_TOTALS)
+        holdings = totals.money(
+            getattr(bot, "_current_holdings", 0.0), *POSITION_TOTALS
+        )
+        price = totals.money(getattr(stats, "current_price", 0.0), *POSITION_TOTALS)
+        rate = totals.money(getattr(bot, "_quote_to_usd", 1.0), *POSITION_TOTALS)
+        if holdings is not None and price is not None and rate is not None:
+            if holdings > 0 and price > 0:
+                return holdings * price * (rate or 1.0)
+        return cached if cached is not None else 0.0
+
+    def _read_one_bot(self, bot: Any, totals: FleetTotals, carry: dict) -> None:
+        """Add one bot's admitted figures into ``carry``.
+
+        A figure ``totals`` refuses adds nothing and marks every total it feeds,
+        and an unreachable ``stats`` marks ``STATS_TOTALS``.
+        """
+        try:
+            stats = bot.stats
+        except Exception as _stats_exc:  # noqa: BLE001 - one bot, not the fleet
+            totals.unreadable.update(STATS_TOTALS)
+            logger.warning(
+                "Fleet totals: bot %s's own figures could not be read (%s). "
+                "Every total it feeds is marked unreadable and the header "
+                "strip draws a dash for each.",
+                getattr(bot, "bot_id", "?"),
+                _stats_exc,
+            )
+            stats = None
+        if stats is not None:
+            self._add_bot_stats(bot, stats, totals, carry)
+        try:
+            state = bot.state
+        except Exception as _state_exc:  # noqa: BLE001 - one bot, not the fleet
+            totals.unreadable.update(STATE_TOTALS)
+            logger.warning(
+                "Fleet totals: bot %s's run state could not be read (%s). "
+                "The running and errored counts are marked unreadable.",
+                getattr(bot, "bot_id", "?"),
+                _state_exc,
+            )
+            return
+        if state == BotState.RUNNING:
+            carry["running"] += 1
+        if state == BotState.ERROR:
+            carry["errored"] += 1
+
+    def _add_bot_stats(
+        self, bot: Any, stats: Any, totals: FleetTotals, carry: dict
+    ) -> None:
+        """Add one bot's ``stats`` figures into ``carry``, each admitted first.
+
+        The money sums, the two counts, the cash maximum, the position value,
+        the maturity reading and the Ammo reading all come from here.
+        """
+        for field, name, keys in (
+            ("realised_pnl", "pnl", ("total_realised_pnl",)),
+            ("total_scrummed_usd", "scrummed", SCRUMMED_TOTALS),
+            ("total_folded_usd", "folded", FOLDED_TOTALS),
+            ("ytd_scrummed_usd", "scrummed_ytd", SCRUMMED_TOTALS),
+            ("ytd_folded_usd", "folded_ytd", FOLDED_TOTALS),
+            (
+                "realized_pnl_exchange",
+                "realized_exchange",
+                ("total_realized_exchange",),
+            ),
+            ("unrealised_pnl", "unrealized_exchange", ("total_unrealized_exchange",)),
+            ("fees_paid_exchange", "fees_exchange", ("total_fees_exchange",)),
+        ):
+            amount = totals.money(getattr(stats, field, 0.0), *keys)
+            if amount is not None:
+                carry[name] += amount
+        trades = totals.count(getattr(stats, "total_trades", 0), "total_trades")
+        if trades is not None:
+            carry["trades"] += trades
+        errors = totals.count(
+            getattr(stats, "total_errors", 0), "total_errors_lifetime"
+        )
+        if errors is not None:
+            carry["errors_lifetime"] += errors
+        # Freshest non-zero cash balance wins.
+        cash = totals.money(getattr(stats, "cash_balance_usd", 0.0), *CASH_TOTALS)
+        if cash is not None and cash > carry["wallet_cash"]:
+            carry["wallet_cash"] = cash
+        position_usd = self._bot_position_usd(bot, stats, totals)
+        carry["position_value"] += position_usd
+        self._add_ammo_reading(bot, position_usd, totals, carry)
+        fresh_ts = totals.money(
+            getattr(stats, "exchange_data_fresh_ts", 0.0), *FRESHNESS_TOTALS
+        )
+        # The cost basis is exchange-pulled, so a bot the venue has not
+        # answered for contributes no maturity reading either way.
+        if fresh_ts is None or fresh_ts <= 0:
+            return
+        carry["fresh_bots"] += 1
+        if totals.flag(
+            getattr(stats, "fill_history_complete", False),
+            "realised_history_complete",
+        ):
+            carry["complete_history_bots"] += 1
+        basis = totals.money(
+            getattr(stats, "cost_basis_total_exchange", 0.0), *MATURE_TOTALS
+        )
+        if basis is not None and is_mature(basis, position_usd):
+            carry["mature_usd"] += mature_profit_usd(basis, position_usd)
+            carry["mature_positions"] += 1
+
+    def _add_ammo_reading(
+        self, bot: Any, position_usd: float, totals: FleetTotals, carry: dict
+    ) -> None:
+        """Append one bot's Ammo reading to ``carry["ammo_readings"]``.
+
+        ``fleet_ammo`` reads the grown ``_target_balance`` first and
+        ``config.target_balance`` as the fallback, and a refused target appends
+        no reading.
+        """
+        live_target = totals.money(getattr(bot, "_target_balance", 0.0), *AMMO_TOTALS)
+        try:
+            configured = totals.money(
+                getattr(bot.config, "target_balance", 0.0), *AMMO_TOTALS
+            )
+        except Exception as _cfg_exc:  # noqa: BLE001 - one bot, not the fleet
+            totals.unreadable.update(AMMO_TOTALS)
+            logger.warning(
+                "Fleet Ammo total: bot %s's target balance setting could not "
+                "be read (%s). The AMMO column is marked unreadable.",
+                getattr(bot, "bot_id", "?"),
+                _cfg_exc,
+            )
+            return
+        if live_target is None or configured is None:
+            return
+        carry["ammo_readings"].append((position_usd, live_target, configured))
+
     def get_aggregate_stats(self) -> dict:
-        """Compute totals across all bots for the main dashboard."""
-        total_pnl = 0.0
-        total_trades = 0
-        running = 0
-        errored = 0
-        total_scrummed = 0.0
-        total_folded = 0.0
-        # YTD sums come from exchange fills via ScrummingBot.sync_ytd_trade_count.
-        total_scrummed_ytd = 0.0
-        total_folded_ytd = 0.0
-        total_errors_lifetime = 0  # cumulative across all bots
-        # Exchange-pulled, not the synthetic stats.realised_pnl accumulator.
-        total_realized_exchange = 0.0
-        total_unrealized_exchange = 0.0
-        total_fees_exchange = 0.0
-        bots_with_fresh_exchange_data = 0
-        bots_with_complete_fill_history = 0
-        wallet_cash_usd = 0.0  # max across bots (shared wallet)
-        crypto_position_value_usd = 0.0  # sum of per-bot position values
-        total_mature_exchange = 0.0
-        mature_positions = 0
-        ammo_readings: list = []
+        """Compute totals across all bots for the main dashboard.
+
+        Every stored figure is admitted through ``FleetTotals`` before it is
+        summed, and each total one bot's refused figure left out is named under
+        ``UNREADABLE_TOTALS_KEY``.
+        """
+        totals = FleetTotals()
+        carry: dict = {
+            "pnl": 0.0,
+            "trades": 0,
+            "running": 0,
+            "errored": 0,
+            "scrummed": 0.0,
+            "folded": 0.0,
+            # YTD sums come from exchange fills via ScrummingBot.sync_ytd_trade_count.
+            "scrummed_ytd": 0.0,
+            "folded_ytd": 0.0,
+            "errors_lifetime": 0,
+            # Exchange-pulled, not the synthetic stats.realised_pnl accumulator.
+            "realized_exchange": 0.0,
+            "unrealized_exchange": 0.0,
+            "fees_exchange": 0.0,
+            "fresh_bots": 0,
+            "complete_history_bots": 0,
+            # Max across bots: one shared wallet.
+            "wallet_cash": 0.0,
+            "position_value": 0.0,
+            "mature_usd": 0.0,
+            "mature_positions": 0,
+            "ammo_readings": [],
+        }
 
         for bot in self._bots.values():
-            total_pnl += bot.stats.realised_pnl
-            total_trades += bot.stats.total_trades
-            total_scrummed += float(
-                getattr(bot.stats, "total_scrummed_usd", 0.0) or 0.0
-            )
-            total_folded += float(getattr(bot.stats, "total_folded_usd", 0.0) or 0.0)
-            total_scrummed_ytd += float(
-                getattr(bot.stats, "ytd_scrummed_usd", 0.0) or 0.0
-            )
-            total_folded_ytd += float(getattr(bot.stats, "ytd_folded_usd", 0.0) or 0.0)
-            total_errors_lifetime += int(getattr(bot.stats, "total_errors", 0) or 0)
-            _re = float(getattr(bot.stats, "realized_pnl_exchange", 0.0) or 0.0)
-            _ue = float(getattr(bot.stats, "unrealised_pnl", 0.0) or 0.0)
-            _fe = float(getattr(bot.stats, "fees_paid_exchange", 0.0) or 0.0)
-            _fresh_ts = float(getattr(bot.stats, "exchange_data_fresh_ts", 0.0) or 0.0)
-            total_realized_exchange += _re
-            total_unrealized_exchange += _ue
-            total_fees_exchange += _fe
-            if _fresh_ts > 0:
-                bots_with_fresh_exchange_data += 1
-                if bool(getattr(bot.stats, "fill_history_complete", False)):
-                    bots_with_complete_fill_history += 1
-            # Freshest non-zero cash balance wins.
-            _bot_cash = float(getattr(bot.stats, "cash_balance_usd", 0.0) or 0.0)
-            if _bot_cash > wallet_cash_usd:
-                wallet_cash_usd = _bot_cash
-            # stats.position_value and stats.current_price are written at different moments.
-            _bot_pos_val = float(getattr(bot.stats, "position_value", 0.0) or 0.0)
-            try:
-                _h = float(getattr(bot, "_current_holdings", 0.0) or 0.0)
-                _p = float(getattr(bot.stats, "current_price", 0.0) or 0.0)
-                _q = float(getattr(bot, "_quote_to_usd", 1.0) or 1.0)
-                # A missing holding or price keeps the cached value rather
-                # than reporting $0 against a real position.
-                if _h > 0 and _p > 0:
-                    _bot_pos_val = _h * _p * _q
-            except Exception as _pv_exc:  # noqa: BLE001 - aggregate must not raise
-                logger.debug(
-                    "aggregate: position recompute failed for %s (%s); "
-                    "using the cached value",
-                    getattr(bot, "bot_id", "?"),
-                    _pv_exc,
-                )
-            crypto_position_value_usd += _bot_pos_val
-            # The Ammo cells read the grown target, so the total reads it too.
-            ammo_readings.append(
-                (
-                    _bot_pos_val,
-                    getattr(bot, "_target_balance", 0.0),
-                    getattr(bot.config, "target_balance", 0.0),
-                )
-            )
-            # The cost basis is exchange-pulled, so a bot the venue has not
-            # answered for contributes no maturity reading either way.
-            if _fresh_ts > 0:
-                _basis = float(
-                    getattr(bot.stats, "cost_basis_total_exchange", 0.0) or 0.0
-                )
-                if is_mature(_basis, _bot_pos_val):
-                    total_mature_exchange += mature_profit_usd(_basis, _bot_pos_val)
-                    mature_positions += 1
-            if bot.state == BotState.RUNNING:
-                running += 1
-            if bot.state == BotState.ERROR:
-                errored += 1
+            self._read_one_bot(bot, totals, carry)
 
-        ammo = fleet_ammo(ammo_readings)
+        total_pnl = carry["pnl"]
+        total_trades = carry["trades"]
+        running = carry["running"]
+        errored = carry["errored"]
+        total_scrummed = carry["scrummed"]
+        total_folded = carry["folded"]
+        total_scrummed_ytd = carry["scrummed_ytd"]
+        total_folded_ytd = carry["folded_ytd"]
+        total_errors_lifetime = carry["errors_lifetime"]
+        total_realized_exchange = carry["realized_exchange"]
+        total_unrealized_exchange = carry["unrealized_exchange"]
+        total_fees_exchange = carry["fees_exchange"]
+        bots_with_fresh_exchange_data = carry["fresh_bots"]
+        bots_with_complete_fill_history = carry["complete_history_bots"]
+        wallet_cash_usd = carry["wallet_cash"]
+        crypto_position_value_usd = carry["position_value"]
+        total_mature_exchange = carry["mature_usd"]
+        mature_positions = carry["mature_positions"]
+
+        ammo = fleet_ammo(carry["ammo_readings"])
+        total_accrued_usd = fleet_accrued_usd(self._bots.values(), totals.unreadable)
+        unreadable_totals = sorted(totals.unreadable)
+        self._log_unreadable_totals(unreadable_totals)
         return {
             "total_bots": len(self._bots),
             "running": running,
@@ -422,7 +689,7 @@ class FleetAggregationMixin:
             # bot above target cannot cancel one below.
             "total_target_delta_usd": ammo["total_target_delta_usd"],
             # The header strip's ACCUMULATED column draws this sum.
-            "total_accrued_usd": fleet_accrued_usd(self._bots.values()),
+            "total_accrued_usd": total_accrued_usd,
             "bots_scrum_territory": ammo["bots_scrum_territory"],
             "bots_fold_territory": ammo["bots_fold_territory"],
             "total_trades": total_trades,
@@ -438,4 +705,7 @@ class FleetAggregationMixin:
             "total_folded_usd_ytd": round(total_folded_ytd, 4),
             "total_scrummed_usd_lifetime": round(total_scrummed, 4),
             "total_folded_usd_lifetime": round(total_folded, 4),
+            # Every total above that a bot's unreadable figure left out. The
+            # header strip draws a dash for each one it names.
+            UNREADABLE_TOTALS_KEY: unreadable_totals,
         }

@@ -451,6 +451,45 @@ React cards alike, and `build_view_model` renders the bridge's copy of the count
 cards through the same `card_text`, so neither host admits a figure the other
 refuses.
 
+**The total one bot cannot be read into.** The twelve cells are drawn from one
+aggregate, and the aggregate is summed from every bot's stored figures.
+`src/trading/container/aggregation.py, in get_aggregate_stats` admits each of
+those figures through `FleetTotals.money`, `FleetTotals.count` and
+`FleetTotals.flag`. Those three read by `as_finite_float` and `as_whole_count`,
+the same two rules the cells draw by. A figure one of them refuses adds nothing
+to its total, and the total is named in the aggregate's `unreadable_totals` list.
+
+`src/trading/container/aggregation.py` — the admission, and the mark it leaves
+
+```python
+def money(self, value: Any, *totals: str) -> Optional[float]:
+    amount = as_finite_float(value)
+    if amount is None:
+        self.unreadable.update(totals)
+    return amount
+```
+
+`src/gui/main_tabs/header_strip_surface.py, in aggregate_amount` reads that list,
+and a total it names answers nothing, which draws the dash. Both hosts read it:
+`_write_header_strip` passes every counter card through it, and `profits_payload`
+passes SPENDABLE, P/L, LOCKED, MATURE and AMMO. A marked total draws neither a
+sum one bot is missing from nor a zero.
+
+**One bot's figures reach some totals and not others.** The named groups in
+`src/trading/container/aggregation.py` say which: `SCRUMMED_TOTALS`,
+`FOLDED_TOTALS`, `CASH_TOTALS`, `POSITION_TOTALS`, `MATURE_TOTALS`,
+`AMMO_TOTALS`, `FRESHNESS_TOTALS` and `STATE_TOTALS`. A bot's position value
+feeds three of the cells, so a price the platform cannot read marks LOCKED,
+MATURE and AMMO together while SPENDABLE, P/L and the six cards keep their
+figures.
+
+**The aggregate itself no longer refuses.** A bot whose `stats` cannot be
+reached marks `STATS_TOTALS` and the pass moves to the next bot, and a bot whose
+run state cannot be read marks `STATE_TOTALS`. No reading in the pass raises, so
+`_refresh_dashboard` is never left holding an earlier tick's figures.
+`FleetAggregationMixin._log_unreadable_totals` writes one warning naming the
+marked totals, and writes again only when that list changes.
+
 **The row's width budget.** Every part of the row declares a floor, and the sum
 of the floors is the narrowest the window opens at. Without them a part's minimum
 is the width of its own text, and a six-figure amount widens the whole window past
