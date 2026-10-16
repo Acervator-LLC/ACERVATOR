@@ -585,12 +585,18 @@ if _HAS_QT:
                 return 0
 
         def _refusal_page(self, name: str, exc: BaseException) -> QWidget:
-            """A tab page carrying the refusal `name`'s builder raised."""
+            """A tab page carrying the refusal `name`'s builder raised.
+
+            The message is escaped: `QLabel` reads rich text, so a stored value
+            holding an angle bracket would otherwise be swallowed as a tag.
+            """
+            import html
+
             page = QWidget()
             box = QVBoxLayout(page)
             msg = QLabel(
-                f"<b>{name} could not be drawn.</b><br><br>"
-                f"{type(exc).__name__}: {exc}<br><br>"
+                f"<b>{html.escape(name)} could not be drawn.</b><br><br>"
+                f"{html.escape(type(exc).__name__)}: {html.escape(str(exc))}<br><br>"
                 "The other tabs are unaffected. A stored value this tab "
                 "reads is not of a kind it can draw; the console log "
                 "carries the full traceback."
