@@ -12,6 +12,42 @@ logger = logging.getLogger("acervator.gui")
 #: treats such a row as touched and writes it.
 _NO_READING = object()
 
+#: What a control reader raises when it cannot answer. `_show_stored` and
+#: `_untouched_since_refusal` catch exactly these.
+READER_FAULTS = (LookupError, TypeError, ValueError, ArithmeticError, AttributeError)
+
+
+class _StoredWriter:
+    """Puts one stored figure into a numeric control, admitting it first.
+
+    ``as_box_figure`` is the admission, read against the control's own span
+    divided by ``scale``; a refused figure raises ``ValueError`` for
+    ``SettingsDialog._show_stored``, which reads ``box`` off this writer to mark
+    the control.
+    """
+
+    def __init__(self, box: object, scale: float = 1.0) -> None:
+        self.box = box
+        self.scale = scale
+
+    def __call__(self, value: object) -> None:
+        from src.trading.container.config import as_box_figure
+
+        from .main_tabs.settings_dialog_surface import REFUSED_SPAN
+
+        box = self.box
+        low = box.minimum() / self.scale
+        high = box.maximum() / self.scale
+        read = as_box_figure(value, low, high)
+        if read is None:
+            raise ValueError(REFUSED_SPAN.format(found=value, low=low, high=high))
+        decimals = getattr(box, "decimals", None)
+        if callable(decimals):
+            box.setValue(round(read * self.scale, decimals()))
+        else:
+            box.setValue(int(round(read * self.scale)))
+
+
 try:
     from PySide6.QtWidgets import (
         QDialog,
@@ -1695,26 +1731,7 @@ if _HAS_QT:
             ``_show_stored`` to catch, and the returned writer carries ``box``
             so ``_show_stored`` can mark the control it left behind.
             """
-            from src.trading.container.config import as_box_figure
-
-            from .main_tabs.settings_dialog_surface import REFUSED_SPAN
-
-            def put(value: object) -> None:
-                low = box.minimum() / scale
-                high = box.maximum() / scale
-                read = as_box_figure(value, low, high)
-                if read is None:
-                    raise ValueError(
-                        REFUSED_SPAN.format(found=value, low=low, high=high)
-                    )
-                decimals = getattr(box, "decimals", None)
-                if callable(decimals):
-                    box.setValue(round(read * scale, decimals()))
-                else:
-                    box.setValue(int(round(read * scale)))
-
-            put.box = box  # type: ignore[attr-defined]
-            return put
+            return _StoredWriter(box, scale)
 
         def _show_stored(
             self,
@@ -1734,7 +1751,7 @@ if _HAS_QT:
             try:
                 show(value)
                 self._refused.pop(key, None)
-            except Exception as exc:  # noqa: BLE001
+            except READER_FAULTS as exc:
                 logger.warning("Settings kept the default for %s: %s", key, exc)
                 # Marked first: the mark moves a spin box to where its dash
                 # draws, and the reading recorded has to be the one the
@@ -1786,7 +1803,7 @@ if _HAS_QT:
                 return False
             try:
                 holding = read()
-            except Exception:  # noqa: BLE001
+            except READER_FAULTS:
                 return True
             left = self._refused[key]
             if left is _NO_READING:
