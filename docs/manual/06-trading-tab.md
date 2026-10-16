@@ -372,6 +372,46 @@ second pass over the fleet is made for it.
 total_target_delta_usd += target_delta(_bot_pos_val, _target_usd)
 ```
 
+**AMMO reads the sector in front.** "Every bot" names the bots of the pressed
+sector, not the whole fleet. The bot list beside the strip already shows one
+sector's rows, and the total is summed over exactly those rows, so the cell and
+the column beneath it cannot report different fleets.
+
+`src/gui/main_tabs/header_strip_surface.py` — `sector_ammo`, the sector's own sum
+
+```python
+readings = [
+    ammo_reading(row)
+    for row in class_filter_surface.bots_of_class(statuses, sector)
+]
+if not any(ammo_target(live, held) > 0 for _position, live, held in readings):
+    return None
+return fleet_ammo(readings)
+```
+
+`bots_of_class` is the one filter the rows are narrowed with, and `ammo_reading`
+reads a row the way that row's own Ammo cell reads it, in
+`src/gui/main_tabs/bot_status_table_surface.py`. One sum serves all six sectors:
+`src/trading/target_bands.py`, in `fleet_ammo`.
+
+A sector holding no bot, and a sector whose bots carry no Target Balance above
+zero, each have nothing to sum. The cell draws the em dash in the muted skin
+there, the same marker every other unreadable amount on the strip draws, and
+never a zero. A sector whose bots sit exactly on their targets does have a
+reading, and that reading is `$0`.
+
+The cell follows a sector press at once rather than waiting for the two-second
+dashboard tick: `src/gui/main_tabs/class_filter_tab.py`, in
+`_repaint_header_strip`, redraws the strip as the last step of
+`_apply_asset_class`.
+
+Ammo means one quantity on all six sectors, because one `target_balance` on one
+`BotConfig` is what every variant trades around. `src/trading/scrumming/sizing.py`,
+in `SECTOR_VARIANTS`, names six Scrumming variants, one per sector. What differs
+between markets is the order grain, and `UNIT_RULES` keys that by sector **and**
+venue, so five of the six sectors hold both a fractional and a whole-unit row. A
+whole-unit market cannot always close the gap it reads. The gap is still the gap.
+
 **Where a column stays empty.** The venue's portfolio breakdown answers a cost
 basis, an average entry price and an unrealised profit per open position, and each
 bot reads those three from it. Where the exchange has answered for no bot, the
