@@ -7918,4 +7918,39 @@ which reads `credential_form` and so names the credential the pressed venue
 takes. `VENUE_FORM_BOUND` is still the constant this page cites and no caller
 formats it.
 
+## 2026-10-16 - The lite bot runner keeps its pickers
+
+The lite bot runner built its configuration grid on a group box the builder then
+dropped. The toolkit freed that box together with the six fields it owned, while
+the window was still being built, and printed one line about it. The grid now
+stays on the one group box that is returned, and the START and STOP row sits in
+that grid as its third row. `src/gui/live_bot_window.py`, in `_build_controls`,
+returns that box.
+
+Driven on the real window, shown and read back: the venue picker, the base
+picker, the target-asset picker, the target-dollar box and the two credential
+fields all answer after construction, and they answer again after the window is
+closed and reopened. A value typed into each reaches
+`src/trading/container/config.py`, in `make_bot_config`, and the two credentials
+reach `src/exchange/ccxt_connector.py`, in `CCXTConnector.connect`. The
+toolkit's refusal line is gone from the build.
+
+`src/gui/main_tabs/live_bot_window_surface.py`, in `build_view_model`, publishes
+the same reading to the React side: one configuration group, thirteen grid cells
+in the window's own order, and `controls_reach_the_window` True. Both builds were
+driven with the same six values and handed their worker the same seven
+arguments.
+
+Nothing builds this window. `LiteLiveBotWindow` is constructed only by
+`src/gui/live_bot_window.py`, in `main`, which is the module's own standalone
+entry point, and nothing asks the bridge for `live_bot_window.state`. The repair
+gives the six fields back. It does not give the operator a way in.
+
+OVERTAKEN, quoted whole:
+
+> | the lite bot runner's picker | `src/gui/main_tabs/live_bot_window_surface.py`, in `offered_exchange_ids` | the window drops the group box holding its pickers, and nothing builds `LiveBotWindow` |
+
+True today: the window keeps the group box holding its pickers. Nothing builds
+the window, and that half alone is why the venue list did not reach this picker.
+
 Back to [the subsystem index](README.md).
