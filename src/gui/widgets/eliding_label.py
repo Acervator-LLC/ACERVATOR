@@ -23,6 +23,9 @@ if _HAS_QT:
 
         def __init__(self, text: str = "", parent=None):
             super().__init__(parent)
+            # A card's amount is a stored figure, so the label draws the
+            # characters it is given and never reads them as markup.
+            self.setTextFormat(Qt.PlainText)
             self._full = str(text)
             self._draw()
 

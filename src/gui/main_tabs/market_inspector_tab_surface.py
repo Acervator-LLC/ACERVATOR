@@ -36,13 +36,18 @@ LOGGER_NAME = "acervator.gui"
 WARNING_FORMAT = "Market Inspector per-bot view unavailable: %s"
 
 FALLBACK_HEADLINE = "<b>Market Inspector unavailable.</b><br><br>"
-FALLBACK_TEXT_FORMAT = (
-    "<b>Market Inspector unavailable.</b><br><br>{error_type}: {error_text}"
-)
 FALLBACK_HEADLINE_TEXT = "Market Inspector unavailable."
 FALLBACK_HEADLINE_WEIGHT = "bold"
 FALLBACK_HEADLINE_BREAKS = 2
 FALLBACK_DETAIL_FORMAT = "{error_type}: {error_text}"
+FALLBACK_BREAK = "\n"
+# The error string is text the application did not write, so the fixed half
+# carries no tag that would make Qt read the whole line as markup.
+FALLBACK_TEXT_FORMAT = (
+    FALLBACK_HEADLINE_TEXT
+    + FALLBACK_BREAK * FALLBACK_HEADLINE_BREAKS
+    + FALLBACK_DETAIL_FORMAT
+)
 FALLBACK_STYLE_FORMAT = "color: {color_hex}; padding: {padding_px}px;"
 FALLBACK_COLOR = ds.FOLD_RATIO_AMBER
 FALLBACK_PADDING_PX = 12
