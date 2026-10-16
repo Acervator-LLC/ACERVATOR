@@ -115,7 +115,11 @@ class ClassFilterTabMixin:
         self._exchange_tabs = store
 
     def _apply_asset_class(self) -> None:
-        """Refilter every tab that follows the active asset class."""
+        """Refilter every tab that follows the active asset class.
+
+        ``_repaint_header_strip`` runs last, so the strip's AMMO total reads the
+        sector just pressed rather than waiting for the dashboard tick.
+        """
         key = cfs.set_active(getattr(self, "_asset_class", None))
         held: set = set()
         for layer in (getattr(self, "_class_layers", None) or {}).values():
@@ -125,6 +129,21 @@ class ClassFilterTabMixin:
         self._refilter_class_tabs()
         self._feed_class_tabs(self._class_fleet())
         self._push_live_tab({"asset_class": key, "class_venues": venues})
+        self._repaint_header_strip()
+
+    def _repaint_header_strip(self) -> None:
+        """Redraw the header strip for the active asset class.
+
+        A window whose strip is not built yet offers no
+        ``_refresh_header_strip``, and nothing is redrawn.
+        """
+        repaint = getattr(self, "_refresh_header_strip", None)
+        if not callable(repaint):
+            return
+        try:
+            repaint()
+        except Exception as exc:  # noqa: BLE001 - a silent tab is worse
+            logger.debug("header strip refused the asset class: %s", exc)
 
     def _refilter_class_tabs(self) -> None:
         """Narrow the Live sub-tabs and every self-counting tab to the class.
