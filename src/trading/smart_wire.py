@@ -22,6 +22,34 @@ MATURE_GROWTH_PCT: float = 200.0
 """A position is mature once its value exceeds its cost basis by this percent."""
 
 
+def routable_pct(value) -> Optional[float]:
+    """One stored wire percent as a float, or None when no reading admits it.
+
+    The rule the Bot Swarm tab draws its Wire % cell by, so a saved percent the
+    screen prints as an em dash can never route a share. Delegates to
+    `as_finite_float`, imported inside the call so this module drags no bot
+    configuration in at import time.
+    """
+    from .container.config import as_finite_float
+
+    return as_finite_float(value)
+
+
+def pct_kind_refusal(pct) -> Optional[str]:
+    """Why a wire percent's kind is unusable, or None when the kind is usable.
+
+    A bool is the one kind `float()` turns into a figure nobody stored:
+    `float(True)` answers 1.0, which would stand as a one percent wire.
+    """
+    if type(pct) is bool:
+        return (
+            f"pct must be a number, not a {type(pct).__name__}; "
+            f"float({pct!r}) answers {float(pct)} and nothing stored "
+            f"that figure"
+        )
+    return None
+
+
 def mature_threshold_usd(cost_basis_usd: float) -> float:
     """Return the value one position must reach to be mature.
 
@@ -251,6 +279,9 @@ class SmartWireManager:
         """
         if source_id == target_id:
             return {"applied": False, "reason": "source and target must differ"}
+        kind_refusal = pct_kind_refusal(pct)
+        if kind_refusal:
+            return {"applied": False, "reason": kind_refusal}
         # float() raises OverflowError, not only TypeError or ValueError,
         # on an int too large for a double.
         try:
@@ -318,16 +349,30 @@ class SmartWireManager:
     def export_wires(self) -> list[dict]:
         """Return _wires as a list of {source_id, target_id, pct} dicts.
 
-        BotManager.save_all_state passes the result to save_state.
+        BotManager.save_all_state passes the result to save_state. A row whose
+        percent no reading admits is dropped and logged rather than raising,
+        because a raise here loses the whole topology from the save.
         """
         out: list[dict] = []
         for src, targets in self._wires.items():
             for tgt, pct in targets.items():
+                admitted_pct = routable_pct(pct)
+                if admitted_pct is None:
+                    logger.warning(
+                        "SmartWire: export DROPPED %s -> %s - stored pct "
+                        "%r is not a number this reading admits. That "
+                        "route is absent from the save and will not come "
+                        "back on the next start",
+                        src,
+                        tgt,
+                        pct,
+                    )
+                    continue
                 out.append(
                     {
                         "source_id": str(src),
                         "target_id": str(tgt),
-                        "pct": float(pct),
+                        "pct": admitted_pct,
                     }
                 )
         return out
@@ -518,6 +563,24 @@ class SmartWireManager:
                 continue
             src = w.get("source_id")
             tgt = w.get("target_id")
+            kind_refusal = pct_kind_refusal(w.get("pct", 0))
+            if kind_refusal:
+                unreadable += 1
+                logger.warning(
+                    "SmartWire: import DROPPED wire row %d of %d, "
+                    "%s -> %s - %s. No writer here produces that, so "
+                    "the save is corrupt; fold profit from %s will "
+                    "never reach %s this session, and no route is "
+                    "created at the figure that kind converts to",
+                    offered,
+                    len(wires),
+                    src,
+                    tgt,
+                    kind_refusal,
+                    src,
+                    tgt,
+                )
+                continue
             # float() raises OverflowError, not only TypeError or ValueError,
             # on an int too large for a double.
             try:
@@ -672,7 +735,28 @@ class SmartWireManager:
                 _swos_exc,
             )
         for target_id, raw_pct in outgoing.items():
-            pct = min(float(raw_pct), _per_wire_safe_pct)
+            admitted_pct = routable_pct(raw_pct)
+            if admitted_pct is None:
+                logger.warning(
+                    "SmartWire: %s -> %s carries pct %r, which the Bot "
+                    "Swarm tab draws as an em dash. No share is routed "
+                    "rather than one computed from the figure that kind "
+                    "converts to",
+                    _src_short_skip,
+                    target_id,
+                    raw_pct,
+                )
+                results.append(
+                    {
+                        "target_id": target_id,
+                        "pct": None,
+                        "share": 0.0,
+                        "applied": False,
+                        "reason": "stored pct is not a number this reading admits",
+                    }
+                )
+                continue
+            pct = min(admitted_pct, _per_wire_safe_pct)
             share = profit_usd * float(pct) / 100.0
             _tgt_short_skip = (
                 str(target_id)[:8] + "\u2026"

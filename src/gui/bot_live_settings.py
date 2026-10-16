@@ -407,46 +407,45 @@ if _HAS_QT:
             self._tabs = tabs
 
             # --- Tab 1: Status ---
-            tabs.addTab(self._wrap_scrollable(self._create_status_tab()), "Status")
+            self._add_guarded_tab(tabs, "Status", self._create_status_tab)
 
             # --- Tab 2: Settings ---
-            tabs.addTab(self._wrap_scrollable(self._create_settings_tab()), "Settings")
+            self._add_guarded_tab(tabs, "Settings", self._create_settings_tab)
 
             # --- Tab 3: Fold Tranches (Scrumming only) ---
             if cfg.mode.value == "scrumming":
-                self._install_fold_tranches_tab(tabs)
+                self._install_guarded_tab(
+                    tabs, "Fold Tranches", self._install_fold_tranches_tab
+                )
 
             # --- Tab 3.5: Stack Tranches (Scrumming only) ---
             if cfg.mode.value == "scrumming":
-                self._install_stack_tranches_tab(tabs)
+                self._install_guarded_tab(
+                    tabs, "Stack Tranches", self._install_stack_tranches_tab
+                )
 
             # --- Tab 4: Bot Swarm (Scrumming only) ---
             if cfg.mode.value == "scrumming":
-                tabs.addTab(
-                    self._wrap_scrollable(self._create_bot_swarm_tab()), "Bot Swarm"
-                )
+                self._add_guarded_tab(tabs, "Bot Swarm", self._create_bot_swarm_tab)
 
             # --- Tab 5: Market Inspector (Scrumming only) ---
             # The top-level Market Inspector tab owns the fetch cycle; this reads its scan.
             if cfg.mode.value == "scrumming":
-                tabs.addTab(
-                    self._wrap_scrollable(self._create_market_inspector_tab()),
-                    "Market Inspector",
+                self._add_guarded_tab(
+                    tabs, "Market Inspector", self._create_market_inspector_tab
                 )
 
             # --- Tab 6: Phantom Bots (Scrumming only) ---
             if cfg.mode.value == "scrumming":
-                tabs.addTab(
-                    self._wrap_scrollable(self._create_phantom_bots_tab()),
-                    "Phantom Bots",
+                self._add_guarded_tab(
+                    tabs, "Phantom Bots", self._create_phantom_bots_tab
                 )
 
             # --- Positions Held (Extractor only) ---
             # Each open position has its own Fire button; there is no global fire.
             if cfg.mode.value == "extractor":
-                tabs.addTab(
-                    self._wrap_scrollable(self._create_positions_held_tab()),
-                    "Positions Held",
+                self._add_guarded_tab(
+                    tabs, "Positions Held", self._create_positions_held_tab
                 )
 
             layout.addWidget(tabs)
@@ -584,6 +583,58 @@ if _HAS_QT:
                 return int(self._tabs.currentIndex())
             except Exception:
                 return 0
+
+        def _refusal_page(self, name: str, exc: BaseException) -> QWidget:
+            """A tab page carrying the refusal `name`'s builder raised.
+
+            The message is escaped: `QLabel` reads rich text, so a stored value
+            holding an angle bracket would otherwise be swallowed as a tag.
+            """
+            import html
+
+            page = QWidget()
+            box = QVBoxLayout(page)
+            msg = QLabel(
+                f"<b>{html.escape(name)} could not be drawn.</b><br><br>"
+                f"{html.escape(type(exc).__name__)}: {html.escape(str(exc))}<br><br>"
+                "The other tabs are unaffected. A stored value this tab "
+                "reads is not of a kind it can draw; the console log "
+                "carries the full traceback."
+            )
+            msg.setStyleSheet(f"color: {ds.ERROR}; padding: 12px;")
+            msg.setWordWrap(True)
+            box.addWidget(msg)
+            box.addStretch()
+            return page
+
+        def _add_guarded_tab(self, tabs, name: str, build) -> None:
+            """Add `name`'s tab, built by `build`, so a refusal costs one tab.
+
+            Every tab was built bare before, so one unreadable stored value
+            ended the whole window and the operator's click opened nothing.
+            """
+            try:
+                page = self._wrap_scrollable(build())
+            except Exception as tab_exc:  # noqa: BLE001
+                logger.exception(
+                    "Bot Settings: the %s tab refused to draw; it carries "
+                    "the refusal and the other tabs still open",
+                    name,
+                )
+                page = self._refusal_page(name, tab_exc)
+            tabs.addTab(page, name)
+
+        def _install_guarded_tab(self, tabs, name: str, install) -> None:
+            """Run `install`, which adds `name`'s own tab, so a refusal costs one tab."""
+            try:
+                install(tabs)
+            except Exception as tab_exc:  # noqa: BLE001
+                logger.exception(
+                    "Bot Settings: the %s tab refused to draw; it carries "
+                    "the refusal and the other tabs still open",
+                    name,
+                )
+                tabs.addTab(self._refusal_page(name, tab_exc), name)
 
         def _wrap_scrollable(self, content: QWidget) -> QScrollArea:
             """Wrap a tab's ``content`` widget in a ``QScrollArea``.
