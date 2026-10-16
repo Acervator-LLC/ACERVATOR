@@ -111,8 +111,10 @@ def accrued_growth_usd(
 def fleet_accrued_usd(bots: Any, unreadable: set) -> float:
     """Every bot's ``accrued_growth_usd`` added together, to the cent.
 
-    A bot whose ``_target_balance`` or ``_anchor_target_balance`` cannot be read
-    adds nothing and names ``ACCRUED_TOTAL`` in ``unreadable``.
+    A bot carrying no ``_anchor_target_balance`` reads its own
+    ``_target_balance`` as the anchor and contributes nothing; a bot whose
+    target or anchor cannot be read contributes nothing and names
+    ``ACCRUED_TOTAL`` in ``unreadable``.
     """
     total = 0.0
     for bot in bots:
