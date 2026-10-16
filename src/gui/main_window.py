@@ -802,30 +802,22 @@ if _HAS_QT:
                         "font-family: Consolas;"
                     )
                     return
+                from .main_tabs.main_window_surface import (
+                    API_PILL_TOOLTIP,
+                    api_pill,
+                )
+
                 worst = None
-                for eid in connectors.keys():
-                    r = mon.sample(eid)
+                for eid, conn in connectors.items():
+                    r = mon.sample(eid, connector=conn)
                     if worst is None or r.load_score > worst.load_score:
                         worst = r
                 if worst is None:
                     return
-                pct = int(worst.load_score * 100)
-                text = (
-                    f"API {worst.exchange}: "
-                    f"{worst.calls_per_minute:.0f}/"
-                    f"{worst.ceiling_cpm:.0f} CPM ({pct} %)"
-                )
-                if worst.load_score > mon.safety_pct:
-                    colour = ds.ERROR
-                elif worst.load_score > 0.5:
-                    colour = ds.FOLD_RATIO_AMBER
-                else:
-                    colour = ds.SUCCESS
-                self._api_load_label.setText(text)
-                self._api_load_label.setStyleSheet(
-                    f"color: {colour}; font-size: 10px; padding: 0 8px; "
-                    f"font-family: Consolas;"
-                )
+                pill = api_pill(worst, mon.safety_pct)
+                self._api_load_label.setText(pill["text"])
+                self._api_load_label.setStyleSheet(pill["style"])
+                self._api_load_label.setToolTip(API_PILL_TOOLTIP)
             except Exception as _pill_exc:  # noqa: BLE001
                 # Logged at debug: the 2 s dashboard tick would flood a warning stream.
                 logger.debug(
@@ -1083,21 +1075,9 @@ if _HAS_QT:
 
             ts = _time.strftime("%H:%M:%S", _time.localtime(entry["timestamp"]))
 
-            exchange_tag = entry["exchange"].upper()
-            plain_lines = [
-                f"[{ts}] {exchange_tag} {entry['action']}",
-                f"  Reason: {entry['reason']}",
-            ]
-            if entry.get("endpoint"):
-                plain_lines.append(f"  Endpoint: {entry['endpoint']}")
-            if entry.get("result"):
-                plain_lines.append(f"  Result: {entry['result']}")
-            if entry.get("elapsed_ms", 0) > 0:
-                plain_lines.append(f"  Response: {entry['elapsed_ms']}ms")
-            if entry.get("data_usage"):
-                plain_lines.append(f"  Data usage: {entry['data_usage']}")
+            from .main_tabs.main_window_surface import api_event_block
 
-            block_text = "\n".join(plain_lines)
+            block_text = api_event_block(entry, ts)
             self._push_live_tab({"api_lines": [block_text]})
             if getattr(self, "_api_log_paused", False):
                 buf = self._api_log_pause_buffer
@@ -1214,20 +1194,42 @@ if _HAS_QT:
 
             The cards are walked from ``COUNTER_CARDS``, so the window pushes
             into exactly the cards ``_build_header_strip`` drew and no value
-            goes to a card that is not there.
+            goes to a card that is not there. Each card is read inside
+            ``_strip_cell_text`` through ``aggregate_amount``, so one
+            unreadable figure costs one cell and a total the fleet could not
+            sum whole draws the dash.
             """
             for model in header_strip_surface.COUNTER_CARDS:
-                raw = agg.get(model["source_key"], 0)
-                if model["format"] == header_strip_surface.COUNT_FORMAT:
-                    text = header_strip_surface.count_text(raw)
-                else:
-                    text = header_strip_surface.money_text(float(raw or 0.0))
-                self._stat_cards[model["key"]].set_value(text)
+                self._stat_cards[model["key"]].set_value(
+                    self._strip_cell_text(
+                        model,
+                        header_strip_surface.aggregate_amount(
+                            agg, model["source_key"], 0
+                        ),
+                    )
+                )
             # One builder for both hosts: the React strip reads the same
             # `profits_payload` over the bridge.
             self._spendable_widget.update_profits(
                 header_strip_surface.profits_payload(agg, exchanges)
             )
+
+        def _strip_cell_text(self, model: dict, raw) -> str:
+            """One counter card's text from ``raw``, or the strip's empty marker.
+
+            ``header_strip_surface.card_text`` admits ``raw``, and a refusal
+            it does not admit is logged and costs this one card.
+            """
+            try:
+                return header_strip_surface.card_text(model, raw)
+            except Exception as cell_exc:  # noqa: BLE001
+                logger.exception(
+                    "Header strip: the %s card refused to draw (%s); it "
+                    "carries the empty marker and every other cell still draws",
+                    model["label"],
+                    type(cell_exc).__name__,
+                )
+                return header_strip_surface.EMPTY_TEXT
 
         def _refresh_header_strip(self, live_stats: Optional[dict] = None) -> None:
             """Repaint the strip from the Simulator's fleet with Sim in front, from the paper ledger with Paper in front, else from the live fleet."""
@@ -1249,10 +1251,10 @@ if _HAS_QT:
 
         @Slot()
         def _refresh_dashboard(self) -> None:
-            if not self._bot_manager:
-                self._refresh_header_strip()
-                return
             try:
+                if not self._bot_manager:
+                    self._refresh_header_strip()
+                    return
                 agg = self._bot_manager.get_aggregate_stats()
                 self._refresh_header_strip(agg)
 
@@ -4359,7 +4361,8 @@ if _HAS_QT:
                 _log.record(
                     exchange=config.get("exchange_id", exchange_id),
                     action="BOT_CREATE",
-                    reason=f"Creating {config.get('mode','').upper()} bot for {config.get('target_asset','')}/{config.get('base_currency','')}",
+                    reason=f"Creating {config.get('mode','').upper()} bot for "
+                    f"{config.get('symbol') or config.get('target_asset','') + '/' + config.get('base_currency','')}",
                     result=_created,
                     level="info",
                     data_usage="Bot will be registered with BotManager in IDLE state. Must be started manually.",
@@ -4387,7 +4390,9 @@ if _HAS_QT:
                             _pf = None
                             _pf_text = ""
                         else:
-                            _pf_symbol = (
+                            # The wizard's own recorded symbol first: a contract
+                            # cannot be rebuilt from its two legs.
+                            _pf_symbol = str(config.get("symbol") or "") or (
                                 config.get("target_asset", "BTC")
                                 + "/"
                                 + config.get("base_currency", "USDT")

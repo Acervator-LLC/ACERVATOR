@@ -16,6 +16,7 @@ import logging
 import math
 import threading
 import time
+from collections import Counter
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from types import MappingProxyType
@@ -33,6 +34,10 @@ HistoryCallback = Callable[[str, HistoryAnalysis], object]
 
 # Submissions past this depth are refused rather than queued.
 SYNC_QUEUE_CAP: int = 8
+
+# Calls one connector runs at once. One worker serves them all, so
+# SYNC_QUEUE_CAP bounds the queue in front of that worker and not concurrency.
+SYNC_CALL_CONCURRENCY: int = 1
 
 # Slots of SYNC_QUEUE_CAP a bulk read leaves free: one for its own call and one
 # for the next reader, so its submission is never the one that fills the queue.
@@ -75,6 +80,33 @@ SPOT_POSITIONS_CACHE_SEC: float = 60.0
 
 class CCXTQueueFullError(RuntimeError):
     """Raised by ``_call_sync`` when the connector's queue is at capacity."""
+
+
+@dataclass
+class SyncCallTiming:
+    """How long one sync call waited for the worker, and how long the venue took.
+
+    ``_call_sync_timed`` fills it, and every caller writing an API log entry
+    reports ``served_ms`` as the venue's answer with ``queued_ms`` beside it.
+    """
+
+    started_at: float = 0.0
+    finished_at: float = 0.0
+    queued_ms: float = 0.0
+    served_ms: float = 0.0
+
+    def resolve(self, submitted_at: float) -> None:
+        """Set ``queued_ms`` and ``served_ms`` from the worker's own timestamps."""
+        if self.started_at <= 0.0:
+            return
+        self.queued_ms = max(0.0, (self.started_at - submitted_at) * 1000.0)
+        if self.finished_at > 0.0:
+            self.served_ms = max(0.0, (self.finished_at - self.started_at) * 1000.0)
+
+    @property
+    def total_ms(self) -> float:
+        """``queued_ms`` plus ``served_ms``."""
+        return self.queued_ms + self.served_ms
 
 
 from .base import (
@@ -833,6 +865,16 @@ QUOTE_INCREMENT_KEY = "quote_increment"
 #: nothing on a spot pair and a perpetual.
 SESSION_DETAILS_KEY = "fcm_trading_session_details"
 
+#: The keys a market record publishes its clearing venue under, one name per
+#: venue that publishes one. Read over every market record of the fourteen wired
+#: venues that answered a credential-free call at ``VENUE_MEASUREMENT_DATE``:
+#: coinbase serves ``product_venue`` on all 1156 of its rows, kraken serves
+#: ``execution_venue`` on all 1461 of its rows, and neither name appears on any
+#: other venue, so one tuple reads both without a venue id in hand. The other
+#: twelve publish no clearing venue; their nearest fields name a settlement
+#: currency, a settlement day, a tradability flag or an index-price source.
+CLEARING_VENUE_KEYS: tuple[str, ...] = ("product_venue", "execution_venue")
+
 #: The record an equity product carries its own trading permissions under. ccxt's
 #: ``parse_spot_market`` reads nothing out of it and keeps the whole raw product
 #: row under ``info``, so the record survives the parse.
@@ -1139,6 +1181,24 @@ def market_session(market: Any) -> Optional[str]:
     return SESSION_CONTINUOUS
 
 
+def market_clearing_venue(market: Any) -> Optional[str]:
+    """The venue one loaded market record publishes as clearing the product,
+    reading ``CLEARING_VENUE_KEYS`` in order for the first non-empty string.
+
+    None for a record publishing no clearing venue, which twelve of the fourteen
+    wired venues read serve, and None for a record whose ``info`` is not a
+    mapping, which bitfinex and gemini both serve.
+    """
+    raw = (market or {}).get("info") or {}
+    if not isinstance(raw, dict):
+        return None
+    for name in CLEARING_VENUE_KEYS:
+        held = raw.get(name)
+        if type(held) is str and held.strip():
+            return held.strip()
+    return None
+
+
 def equity_size_shapes(market: Any) -> tuple:
     """The size shapes one loaded market record permits on a buy and on a sell,
     off ``EQUITY_FLAGS_KEY`` under ``EQUITY_DETAILS_KEY``.
@@ -1267,6 +1327,7 @@ def market_rules(
         quote_increment=quote_step(market),
         contract_size=contract_units(market),
         session=market_session(market),
+        clearing_venue=market_clearing_venue(market),
         buy_size_shapes=buy_shapes,
         sell_size_shapes=sell_shapes,
         # CCXT parses Coinbase's future_product_details.contract_expiry here; a
@@ -1519,6 +1580,10 @@ class CCXTConnector(ExchangeInterface):
         )
         # In-flight plus queued calls; touched only on the asyncio loop thread.
         self._sync_queue_depth: int = 0
+        # Deepest the queue has been, and every call the cap has refused.
+        self._sync_queue_depth_peak: int = 0
+        self._sync_queue_refusals: int = 0
+        self._sync_queue_refusals_by_call: Counter[str] = Counter()
         # The one task await_bulk_read_slot admitted, until its call finishes.
         self._bulk_read_admitted: Optional[asyncio.Task] = None
         # Set once this connector has recorded the venue as validated, so a
@@ -1849,6 +1914,21 @@ class CCXTConnector(ExchangeInterface):
             self._bulk_read_admitted = asking
         return time.monotonic() - start
 
+    def sync_queue_load(self) -> dict:
+        """This connector's queue depth, its peak, and every call the cap refused.
+
+        ``APILoadMonitor.sample`` reads it so a refused call is counted where a
+        refusal never reaches the API log and so reads as idleness.
+        """
+        return {
+            "workers": SYNC_CALL_CONCURRENCY,
+            "cap": SYNC_QUEUE_CAP,
+            "depth": self._sync_queue_depth,
+            "depth_peak": self._sync_queue_depth_peak,
+            "refusals": self._sync_queue_refusals,
+            "refusals_by_call": dict(self._sync_queue_refusals_by_call),
+        }
+
     def _release_bulk_read_slot(self) -> None:
         """Clear ``_bulk_read_admitted`` when this task is the one holding it."""
         held = self._bulk_read_admitted
@@ -1856,7 +1936,21 @@ class CCXTConnector(ExchangeInterface):
             self._bulk_read_admitted = None
 
     async def _call_sync(self, fn, *args, **kwargs):
-        """Run one sync CCXT call on the single worker, with a queue cap and a timeout.
+        """Run one sync CCXT call on the single worker and answer its result.
+
+        ``_call_sync_timed`` carries the same contract and also answers how long
+        the call waited for the worker.
+        """
+        result, _timing = await self._call_sync_timed(fn, *args, **kwargs)
+        return result
+
+    async def _call_sync_timed(self, fn, *args, **kwargs):
+        """Run one sync CCXT call and answer ``(result, SyncCallTiming)``.
+
+        ``SyncCallTiming.served_ms`` is the venue's own answer, timed on the
+        worker thread around ``fn`` alone. ``queued_ms`` is the wait for that
+        worker, which every caller used to fold into one figure and report as
+        venue latency.
 
         Raises:
             CCXTQueueFullError: queue depth is at ``SYNC_QUEUE_CAP``.
@@ -1867,10 +1961,13 @@ class CCXTConnector(ExchangeInterface):
         # Read and written only on the asyncio loop thread, so no lock.
         if self._sync_queue_depth >= SYNC_QUEUE_CAP:
             self._release_bulk_read_slot()
+            self._sync_queue_refusals += 1
+            self._sync_queue_refusals_by_call[getattr(fn, "__name__", repr(fn))] += 1
             raise CCXTQueueFullError(
                 f"CCXT call queue at capacity ({self._sync_queue_depth}/"
                 f"{SYNC_QUEUE_CAP}) for {self._exchange_id}; "
-                f"exchange is likely rate-limited or network is degraded. "
+                f"{SYNC_CALL_CONCURRENCY} worker serves this connector, so the "
+                f"queue is the platform's own backlog and not a venue refusal. "
                 f"Call: {getattr(fn, '__name__', repr(fn))}"
             )
 
@@ -1885,7 +1982,20 @@ class CCXTConnector(ExchangeInterface):
                     f"cannot submit new sync calls."
                 )
 
+        submitted_at = time.monotonic()
+        timing = SyncCallTiming()
+
+        def _timed_call(*call_args, **call_kwargs):
+            timing.started_at = time.monotonic()
+            try:
+                return fn(*call_args, **call_kwargs)
+            finally:
+                timing.finished_at = time.monotonic()
+
         self._sync_queue_depth += 1
+        self._sync_queue_depth_peak = max(
+            self._sync_queue_depth_peak, self._sync_queue_depth
+        )
         try:
             loop = asyncio.get_event_loop()
             # Submit to single-worker executor → serialized by construction
@@ -1894,14 +2004,15 @@ class CCXTConnector(ExchangeInterface):
                 import functools
 
                 fut = loop.run_in_executor(
-                    executor, functools.partial(fn, *args, **kwargs)
+                    executor, functools.partial(_timed_call, *args, **kwargs)
                 )
             else:
-                fut = loop.run_in_executor(executor, fn, *args)
+                fut = loop.run_in_executor(executor, _timed_call, *args)
 
             try:
                 result = await asyncio.wait_for(fut, timeout=SYNC_CALL_TIMEOUT_SEC)
-                return result
+                timing.resolve(submitted_at)
+                return result, timing
             except asyncio.TimeoutError as timed_out:
                 # The worker thread runs on until CCXT returns; log the leak.
                 logger.warning(
@@ -2241,9 +2352,7 @@ class CCXTConnector(ExchangeInterface):
         self._ensure_connected()
         await self._rate_limit()
         _log = get_api_log()
-        start = time.monotonic()
-        raw = await self._call_sync(self._ex.fetch_ticker, symbol)
-        elapsed = (time.monotonic() - start) * 1000
+        raw, timing = await self._call_sync_timed(self._ex.fetch_ticker, symbol)
         ticker = Ticker(
             symbol=symbol,
             bid=float(raw.get("bid", 0) or 0),
@@ -2259,7 +2368,8 @@ class CCXTConnector(ExchangeInterface):
             endpoint="fetch_ticker",
             params={"symbol": symbol},
             result=f"last={fmt_price_coerced(ticker.last)} bid={fmt_price_coerced(ticker.bid)} ask={fmt_price_coerced(ticker.ask)} vol24h={ticker.volume_24h:.0f}",
-            elapsed_ms=elapsed,
+            elapsed_ms=timing.served_ms,
+            queued_ms=timing.queued_ms,
             level="success",
             data_usage="Used by bots for delta calculation, grid level checks, and P/L computation",
         )
@@ -2306,15 +2416,13 @@ class CCXTConnector(ExchangeInterface):
         self._ensure_connected()
         await self._rate_limit()
         _log = get_api_log()
-        start = time.monotonic()
-        data = await self._call_sync(
+        data, timing = await self._call_sync_timed(
             self._ex.fetch_ohlcv,
             symbol,
             timeframe,
             None if since is None else int(since),
             int(limit),
         )
-        elapsed = (time.monotonic() - start) * 1000
         _log.record(
             exchange=self._exchange_id,
             action="FETCH_OHLCV",
@@ -2326,7 +2434,8 @@ class CCXTConnector(ExchangeInterface):
                 if data
                 else "No data"
             ),
-            elapsed_ms=elapsed,
+            elapsed_ms=timing.served_ms,
+            queued_ms=timing.queued_ms,
             level="success",
             data_usage=ohlcv_data_usage(),
         )
@@ -2334,28 +2443,29 @@ class CCXTConnector(ExchangeInterface):
 
     # -- Account --------------------------------------------------------
     @_with_retry()
-    async def get_balances(self) -> dict[str, Balance]:
+    async def get_account_balances(self) -> dict[str, Balance]:
+        """Every currency one ``fetch_balance`` reports, zero totals included.
+
+        A zero total carries ``absent=False``, so a caller can tell "the venue
+        said zero" from "the venue did not list it" without a second read.
+        """
         self._ensure_connected()
         await self._rate_limit()
         _log = get_api_log()
-        start = time.monotonic()
-        raw = await self._call_sync(self._ex.fetch_balance)
+        raw, timing = await self._call_sync_timed(self._ex.fetch_balance)
         self._note_venue_answer()
-        elapsed = (time.monotonic() - start) * 1000
         result: dict[str, Balance] = {}
-        for currency, info in raw.get("total", {}).items():
-            total = float(info or 0)
-            if total > 0:
-                free = float(raw.get("free", {}).get(currency, 0) or 0)
-                used = float(raw.get("used", {}).get(currency, 0) or 0)
-                result[currency] = Balance(
-                    currency=currency,
-                    free=free,
-                    used=used,
-                    total=total,
-                )
+        for currency, info in (raw.get("total") or {}).items():
+            result[currency] = Balance(
+                currency=currency,
+                free=float((raw.get("free") or {}).get(currency, 0) or 0),
+                used=float((raw.get("used") or {}).get(currency, 0) or 0),
+                total=float(info or 0),
+                absent=False,
+            )
+        funded = {c: b for c, b in result.items() if b.total > 0}
         bal_summary = ", ".join(
-            f"{c}: {b.total:.6g}" for c, b in list(result.items())[:8]
+            f"{c}: {b.total:.6g}" for c, b in list(funded.items())[:8]
         )
         _log.record(
             exchange=self._exchange_id,
@@ -2363,30 +2473,36 @@ class CCXTConnector(ExchangeInterface):
             reason="Retrieve account balances to verify funds and calculate position values",
             endpoint="fetch_balance",
             params={},
-            result=f"{len(result)} assets with balance. {bal_summary}",
-            elapsed_ms=elapsed,
+            result=(
+                f"{len(funded)} assets with balance of {len(result)} reported. "
+                f"{bal_summary}"
+            ),
+            elapsed_ms=timing.served_ms,
+            queued_ms=timing.queued_ms,
             level="success",
             data_usage="Compared against bot target balances to determine available resources and P/L",
         )
         return result
 
-    @_with_retry()
-    async def get_balance(self, currency: str) -> Balance:
-        # Tell "exchange said zero" apart from "exchange omitted this currency".
-        balances = await self.get_balances()
-        if currency in balances:
-            return balances[currency]
+    async def get_balances(self) -> dict[str, Balance]:
+        """The funded currencies only, from one ``get_account_balances`` read."""
+        return {
+            currency: balance
+            for currency, balance in (await self.get_account_balances()).items()
+            if balance.total > 0
+        }
 
-        # get_balances drops totals <= 0, so re-read raw to tell the two apart.
-        self._ensure_connected()
-        await self._rate_limit()
-        raw = await self._call_sync(self._ex.fetch_balance)
-        total_map = raw.get("total", {}) or {}
-        if currency in total_map:
-            # The exchange reported it as zero.
-            return Balance(
-                currency=currency, free=0.0, used=0.0, total=0.0, absent=False
-            )
+    async def get_balance(self, currency: str) -> Balance:
+        """One currency's balance from a single account read.
+
+        ``get_account_balances`` reports every currency the venue lists, zeros
+        included, so a zero and an unlisted currency are told apart without the
+        second ``fetch_balance`` this path used to make.
+        """
+        reported = await self.get_account_balances()
+        held = reported.get(currency)
+        if held is not None:
+            return held
 
         # The exchange did not report this currency at all.
         return Balance(currency=currency, free=0.0, used=0.0, total=0.0, absent=True)
