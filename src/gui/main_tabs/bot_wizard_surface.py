@@ -1203,12 +1203,6 @@ MARKET_PRICE_KEY = "price"
 #: What divides the base from the quote in a recorded market symbol.
 MARKET_SYMBOL_SEPARATOR = "/"
 
-#: What divides the quote currency from the settle leg a contract symbol carries.
-MARKET_SETTLE_SEPARATOR = ":"
-
-#: What divides the settle leg from the expiry date a dated contract carries.
-MARKET_EXPIRY_SEPARATOR = "-"
-
 #: The sector a wizard opened with no sector holds, which keeps the crypto
 #: product list every bot built before the sectors was offered.
 SECTOR_DEFAULT = "crypto"
@@ -1599,24 +1593,24 @@ def rules_from_row(row: Any) -> Any:
 
 
 def quote_currency(symbol: Any) -> str:
-    """The money leg of a recorded market symbol, with the settle leg and the
-    expiry date stripped, and empty for a symbol carrying no quote.
+    """``market_rules_store.quote_currency`` read for one recorded symbol: the
+    money leg, with the settle leg and the expiry date stripped.
 
-    A spot pair is recorded as ``BASE/QUOTE``, a perpetual as
-    ``BASE/QUOTE:SETTLE`` and a dated contract as ``BASE/QUOTE:SETTLE-YYMMDD``.
-    The money a bot funds its position in and folds its proceeds back into is
-    the same name in all three, so the base drop-down matches all three.
+    The store owns the reading, so the base drop-down here and
+    ``execution._venue_quote_currency`` on the order path cannot name one market
+    two different currencies.
     """
-    _base, _found, rest = str(symbol or "").partition(MARKET_SYMBOL_SEPARATOR)
-    held = rest.partition(MARKET_SETTLE_SEPARATOR)[0]
-    return held.partition(MARKET_EXPIRY_SEPARATOR)[0]
+    from ...exchange.market_rules_store import quote_currency as money_leg
+
+    return money_leg(symbol)
 
 
 def market_is_contract(symbol: Any) -> bool:
-    """True while a recorded market symbol carries a settle leg, which a
-    perpetual and a dated contract both do and a spot pair does not."""
-    _base, _found, rest = str(symbol or "").partition(MARKET_SYMBOL_SEPARATOR)
-    return MARKET_SETTLE_SEPARATOR in rest
+    """``market_rules_store.is_contract`` read for one recorded symbol, True for
+    a perpetual and a dated contract and False for a spot pair."""
+    from ...exchange.market_rules_store import is_contract
+
+    return is_contract(symbol)
 
 
 def recorded_market_rows(venue: Any, asset_class: Any = "") -> list:

@@ -2048,13 +2048,20 @@ alone. A perpetual joins the leg it settles on. A dated contract joins that leg
 and its expiry date. The money is the same name in all three, so one reading
 takes all three.
 
-`src/gui/main_tabs/bot_wizard_surface.py, in quote_currency` — the money leg
+`src/exchange/market_rules_store.py, in quote_currency` — the money leg
 
 ```python
-_base, _found, rest = str(symbol or "").partition(MARKET_SYMBOL_SEPARATOR)
-held = rest.partition(MARKET_SETTLE_SEPARATOR)[0]
-return held.partition(MARKET_EXPIRY_SEPARATOR)[0]
+rest = str(symbol or "").partition(SYMBOL_SEPARATOR)[2]
+held = rest.partition(SETTLE_SEPARATOR)[0]
+return held.partition(EXPIRY_SEPARATOR)[0]
 ```
+
+The store owns that reading, and two places read it: this row, through
+`src/gui/main_tabs/bot_wizard_surface.py, in quote_currency`, and the sale's fee
+check, through `src/trading/scrumming/execution.py, in
+_venue_quote_currency`. The venue reports its fee in the currency alone, so the
+check compares the same name the venue used and a contract's sale is not refused
+its fee.
 
 Every sector now offers every market its recording holds. Driving both builds
 over the live recording reads 2147 markets offered against 2147 recorded, where
