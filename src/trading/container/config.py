@@ -445,6 +445,38 @@ def as_finite_float(value) -> Optional[float]:
     return None
 
 
+def as_box_figure(value, low, high) -> Optional[float]:
+    """Return `value` as the figure a bounded control may hold, or None.
+
+    `as_finite_float` is the admission, so a stored flag, a text number, a
+    not-a-number, an endless number and an integer too large for a float each
+    answer None. A finite figure outside `low`..`high` answers None as well: a
+    bounded control holds such a figure to its own bound and then prints that
+    bound as though the operator had set it. The Live Bot Settings dollar
+    boxes, the Settings window's numeric controls and the creation wizard's
+    Target Balance box all read this one rule, so a figure one screen draws as
+    a dash is never a figure another screen draws as money.
+
+    Args:
+      value: anything, including a value read from a JSON-decoded state file.
+      low: the lowest figure the control holds.
+      high: the highest figure the control holds.
+
+    Returns:
+      The figure the control may hold, or None when it may hold none.
+    """
+    read = as_finite_float(value)
+    if read is None:
+        return None
+    bottom = as_finite_float(low)
+    top = as_finite_float(high)
+    if bottom is None or top is None:
+        return None
+    if not bottom <= read <= top:
+        return None
+    return read
+
+
 def as_whole_count(value) -> Optional[int]:
     """Return `value` as an int when its exact type is int and `as_finite_float`
     admits it.

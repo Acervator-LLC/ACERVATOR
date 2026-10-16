@@ -7,6 +7,11 @@ from typing import Callable
 
 logger = logging.getLogger("acervator.gui")
 
+#: What `_refused` records for a control `_show_stored` could not read back.
+#: A reading equal to nothing never matches a control's own value, so `_save`
+#: treats such a row as touched and writes it.
+_NO_READING = object()
+
 try:
     from PySide6.QtWidgets import (
         QDialog,
@@ -37,6 +42,7 @@ try:
     _HAS_QT = True
 except ImportError:
     _HAS_QT = False
+from src.gui.main_tabs.settings_dialog_surface import REFUSED_ITEM
 from src.gui.qt_safe_events import safe_process_events
 
 if _HAS_QT:
@@ -146,6 +152,11 @@ if _HAS_QT:
             self._api_key_label = None
             self._api_secret_label = None
             self._verification_code_label = None
+            # One entry per stored key whose control refused the stored value,
+            # carrying what that control held once the refusal was drawn.
+            # `_save` writes a named key only once its control no longer holds
+            # that figure, so Save never stores a figure the operator never set.
+            self._refused: dict = {}
             # normalise resolves the legacy wing word "stock" onto "stocks".
             self._wing = acs.normalise(wing)
             self._setup_ui()
@@ -1384,19 +1395,28 @@ if _HAS_QT:
         def _show_text(self, combo: QComboBox, value: object) -> None:
             """Shows ``value`` in a drop-down, by its row or as typed text.
 
-            A fixed list that does not offer ``value`` keeps the row it is on.
+            A fixed list that does not offer ``value`` raises ``LookupError``
+            for ``_show_stored`` to catch, so the row the build chose is named
+            in the log and ``_save`` leaves the stored name alone.
             """
             at = combo.findText(str(value))
             if at >= 0:
                 combo.setCurrentIndex(at)
             elif combo.isEditable():
                 combo.setCurrentText(str(value))
+            else:
+                raise LookupError(REFUSED_ITEM.format(found=value))
 
         def _show_data(self, combo: QComboBox, value: object) -> None:
-            """Shows the drop-down row carrying ``value``, or keeps the row it is on."""
+            """Shows the drop-down row carrying ``value``.
+
+            A list that holds no row for ``value`` raises ``LookupError`` the
+            way ``_show_text`` raises it.
+            """
             at = combo.findData(value)
-            if at >= 0:
-                combo.setCurrentIndex(at)
+            if at < 0:
+                raise LookupError(REFUSED_ITEM.format(found=value))
+            combo.setCurrentIndex(at)
 
         def _stored_rows(self) -> tuple:
             """Every setting this dialog persists at the top level of the store.
@@ -1422,7 +1442,7 @@ if _HAS_QT:
                 (
                     "default_target_balance",
                     self._default_balance.value,
-                    self._default_balance.setValue,
+                    self._put_stored(self._default_balance),
                     200.0,
                 ),
                 (
@@ -1452,7 +1472,7 @@ if _HAS_QT:
                 (
                     "default_lock_candle_count",
                     self._lock_candles.value,
-                    lambda value: self._lock_candles.setValue(int(value)),
+                    self._put_stored(self._lock_candles),
                     LOCK_CANDLE_DEFAULT,
                 ),
                 (
@@ -1489,7 +1509,7 @@ if _HAS_QT:
                         (
                             "interval_hours",
                             self._ai_interval.value,
-                            self._ai_interval.setValue,
+                            self._put_stored(self._ai_interval),
                             4.0,
                         ),
                         (
@@ -1597,16 +1617,11 @@ if _HAS_QT:
                 if kind == COMBO_TEXT:
                     return (key, box.currentText, pick_text(box), fallback)
                 if kind == DOUBLE_SPIN:
-                    return (
-                        key,
-                        box.value,
-                        lambda value: box.setValue(float(value)),
-                        fallback,
-                    )
+                    return (key, box.value, self._put_stored(box), fallback)
                 return (
                     key,
                     box.value,
-                    lambda value: box.setValue(int(value)),
+                    self._put_stored(box),
                     fallback,
                 )
 
@@ -1642,9 +1657,7 @@ if _HAS_QT:
                 (
                     "volume",
                     lambda: self._sound_volume.value() / VOLUME_SCALE,
-                    lambda value: self._sound_volume.setValue(
-                        int(round(float(value) * VOLUME_SCALE))
-                    ),
+                    self._put_stored(self._sound_volume, VOLUME_SCALE),
                     built.volume,
                 ),
             )
@@ -1661,39 +1674,139 @@ if _HAS_QT:
             def read(name: str) -> Callable[[], float]:
                 return lambda: (self._ta_weight_sliders[name].value() / TA_SLIDER_SCALE)
 
-            def show(name: str) -> Callable[[object], None]:
-                return lambda value: self._ta_weight_sliders[name].setValue(
-                    int(round(float(value) * TA_SLIDER_SCALE))
-                )
-
             return tuple(
-                (name, read(name), show(name), figure)
+                (
+                    name,
+                    read(name),
+                    self._put_stored(self._ta_weight_sliders[name], TA_SLIDER_SCALE),
+                    figure,
+                )
                 for name, figure in DEFAULT_WEIGHTS.items()
             )
 
+        def _put_stored(
+            self, box: object, scale: float = 1.0
+        ) -> Callable[[object], None]:
+            """A writer that puts one stored figure into ``box``, admitted first.
+
+            ``as_box_figure`` is the admission, read against ``box``'s own span
+            divided by ``scale``, so a slider holding whole percent admits the
+            fraction the engine stores. A refused figure raises for
+            ``_show_stored`` to catch, and the returned writer carries ``box``
+            so ``_show_stored`` can mark the control it left behind.
+            """
+            from src.trading.container.config import as_box_figure
+
+            from .main_tabs.settings_dialog_surface import REFUSED_SPAN
+
+            def put(value: object) -> None:
+                low = box.minimum() / scale
+                high = box.maximum() / scale
+                read = as_box_figure(value, low, high)
+                if read is None:
+                    raise ValueError(
+                        REFUSED_SPAN.format(found=value, low=low, high=high)
+                    )
+                decimals = getattr(box, "decimals", None)
+                if callable(decimals):
+                    box.setValue(round(read * scale, decimals()))
+                else:
+                    box.setValue(int(round(read * scale)))
+
+            put.box = box  # type: ignore[attr-defined]
+            return put
+
         def _show_stored(
-            self, key: str, show: Callable[[object], None], value: object
+            self,
+            key: str,
+            show: Callable[[object], None],
+            value: object,
+            read: Callable[[], object] | None = None,
         ) -> None:
             """Puts one stored value into its control.
 
-            A value the control refuses leaves that control on its build figure
-            and names ``key`` in the log, so one unreadable entry in the
-            settings file cannot stop the dialog opening.
+            A value the control refuses leaves that control on its build figure,
+            names ``key`` in the log, marks the control with the dash the
+            platform draws for a figure it cannot read, and records what the
+            control holds so ``_save`` can tell an untouched control from one the
+            operator moved.
             """
             try:
                 show(value)
+                self._refused.pop(key, None)
             except Exception as exc:  # noqa: BLE001
                 logger.warning("Settings kept the default for %s: %s", key, exc)
+                # Marked first: the mark moves a spin box to where its dash
+                # draws, and the reading recorded has to be the one the
+                # control is left holding.
+                self._mark_refused(key, show)
+                self._refused[key] = read() if read is not None else _NO_READING
+
+        def _mark_refused(self, key: str, show: object) -> None:
+            """Draw the platform's dash on the control ``show`` writes into.
+
+            A control that holds no number of its own carries the refusal in its
+            tooltip instead, and a spin box prints the dash in place of a figure
+            until the operator moves it.
+            """
+            from .main_tabs.settings_dialog_surface import (
+                REFUSED_FIGURE_COLOR,
+                REFUSED_FIGURE_TEXT,
+                refused_tooltip,
+            )
+
+            box = getattr(show, "box", None) or getattr(show, "__self__", None)
+            if box is None:
+                return
+            if callable(getattr(box, "setSpecialValueText", None)):
+                box.setSpecialValueText(REFUSED_FIGURE_TEXT)
+                box.setValue(box.minimum())
+                box.valueChanged.connect(lambda _v, _b=box: self._clear_refused(_b))
+            if callable(getattr(box, "setStyleSheet", None)):
+                box.setStyleSheet(f"color: {REFUSED_FIGURE_COLOR};")
+            if callable(getattr(box, "setToolTip", None)):
+                box.setToolTip(refused_tooltip(key, box.toolTip()))
+
+        @staticmethod
+        def _clear_refused(box: object) -> None:
+            """Take the dash off ``box`` so a figure the operator set draws as one."""
+            box.setSpecialValueText("")
+            box.setStyleSheet("")
+
+        def _untouched_since_refusal(
+            self, key: str, read: Callable[[], object]
+        ) -> bool:
+            """Whether ``key``'s control still holds what the refusal left in it.
+
+            True keeps ``_save`` off that row, so the stored value the control
+            could not read stays as it is rather than being overwritten with a
+            build figure the operator never set.
+            """
+            if key not in self._refused:
+                return False
+            try:
+                holding = read()
+            except Exception:  # noqa: BLE001
+                return True
+            left = self._refused[key]
+            if left is _NO_READING:
+                return False
+            kept = holding == left
+            if kept:
+                logger.warning("Settings left %s as it was stored", key)
+            return bool(kept)
 
         def _load_current(self) -> None:
             if not self._sm:
                 return
-            for key, _read, show, fallback in self._stored_rows():
-                self._show_stored(key, show, self._sm.get(key, fallback))
+            for key, read, show, fallback in self._stored_rows():
+                self._show_stored(key, show, self._sm.get(key, fallback), read)
             for group, rows in self._stored_groups():
                 stored = self._sm.get(group, {})
-                for key, _read, show, fallback in rows:
-                    self._show_stored(f"{group}.{key}", show, stored.get(key, fallback))
+                for key, read, show, fallback in rows:
+                    self._show_stored(
+                        f"{group}.{key}", show, stored.get(key, fallback), read
+                    )
             for exch in self._sm.list_exchanges():
                 _eid = (exch.get("exchange_id", "") or "").lower()
                 if not acs.serves(_eid, self._wing):
@@ -1721,6 +1834,8 @@ if _HAS_QT:
             saved = 0
             failed: list[str] = []
             for key, getter in pairs.items():
+                if self._untouched_since_refusal(key, getter):
+                    continue
                 try:
                     self._sm.set(key, getter())
                     saved += 1
@@ -1729,11 +1844,15 @@ if _HAS_QT:
                     print(f"[SETTINGS ERROR] {key}: {e}", file=sys.stderr, flush=True)
 
             for group, rows in self._stored_groups():
+                kept = {
+                    key: read()
+                    for key, read, _show, _fallback in rows
+                    if not self._untouched_since_refusal(f"{group}.{key}", read)
+                }
+                if not kept:
+                    continue
                 try:
-                    self._sm.set(
-                        group,
-                        {key: read() for key, read, _show, _fallback in rows},
-                    )
+                    self._sm.set(group, {**(self._sm.get(group, {}) or {}), **kept})
                     saved += 1
                 except Exception as e:
                     failed.append(f"{group} ({e})")

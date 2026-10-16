@@ -71,6 +71,17 @@ from decimal import ROUND_HALF_UP, Decimal
 from typing import Any, Optional
 
 from ...exchange.timeframes import ALL_TIMEFRAMES
+from .indicator_panel_surface import ABSENT_CELL_TEXT
+
+#: The spec key the React field reads for the words it draws in place of a
+#: number, and the one Qt's own `setSpecialValueText` draws.
+SPECIAL_VALUE_KEY = "special_value_text"
+
+#: What a wizard field draws in place of a stored figure `as_box_figure`
+#: refuses. The dash the indicator panel's absent cells draw.
+REFUSED_FIGURE_TEXT: str = ABSENT_CELL_TEXT
+
+REFUSED_FIGURE_LOG = "Wizard refused the stored %s (%r); the field shows %s"
 
 METHOD = "bot_wizard.state"
 
@@ -1459,6 +1470,19 @@ def _held_in_range(number: float, spec: dict) -> float:
     )
 
 
+def stored_number(value: Any, spec: dict) -> Optional[float]:
+    """The stored figure one wizard field may hold, or None for one it may not.
+
+    `as_box_figure` is the admission, the rule the bot's own money path reads,
+    so a stored flag, a text number, a not-a-number, an endless number, an
+    integer too large for a float and a figure outside the field's own span
+    each answer None.
+    """
+    from ...trading.container.config import as_box_figure
+
+    return as_box_figure(value, spec["minimum"], spec["maximum"])
+
+
 def number_value(value: Any, spec: dict) -> float:
     """Give back the number a Qt spin box keeps for `value`.
 
@@ -1556,9 +1580,14 @@ def bag_text(bag: Any, key: str) -> str:
 
 
 def bag_number(bag: Any, key: str) -> Optional[float]:
-    """The number one bag carries at ``key``, nothing where it carries none."""
-    found = readable_bag(bag).get(key)
-    return float(found) if type(found) in (int, float) else None
+    """The number one bag carries at ``key``, nothing where it carries none.
+
+    ``as_finite_float`` is the admission, so a stored flag, a not-a-number, an
+    endless number and an integer too large for a float each answer nothing.
+    """
+    from ...trading.container.config import as_finite_float
+
+    return as_finite_float(readable_bag(bag).get(key))
 
 
 def recorded_venue_rows(venue: Any) -> dict:
@@ -2022,8 +2051,9 @@ def pair_label(market: dict) -> str:
     volume and volatility."""
     text = volume_text(bag_number(market, MARKET_VOLUME_KEY))
     parts = [VOLUME_PART_FORMAT.format(text=text)] if text else []
-    if market.get(MARKET_VOLATILITY_KEY, 0) > 0:
-        parts.append(VOLATILITY_PART_FORMAT.format(value=market[MARKET_VOLATILITY_KEY]))
+    swing = bag_number(market, MARKET_VOLATILITY_KEY)
+    if swing is not None and swing > 0:
+        parts.append(VOLATILITY_PART_FORMAT.format(value=swing))
     named = market_name(market)
     if not parts:
         return named
@@ -2111,6 +2141,10 @@ class BotWizardModel:
         self.closed_page = False
         self.numbers = {name: spec["value"] for name, spec in NUMBER_FIELDS.items()}
         self.number_specs = {name: dict(spec) for name, spec in NUMBER_FIELDS.items()}
+        #: One entry per field whose stored default `as_box_figure` refused,
+        #: carrying what was stored. A named field draws `REFUSED_FIGURE_TEXT`
+        #: and `get_config` carries no figure for it.
+        self.refused: dict = {}
         self.checks = dict(CHECK_FIELDS)
         self.radios = {
             name: name == self.mode and name in self.offered_modes
@@ -2208,16 +2242,23 @@ class BotWizardModel:
     def _apply_stored_target_balance(self) -> None:
         """Put the stored target balance into the field, as the wizard does.
 
-        A value ``number_value`` refuses leaves the field on its own
-        ``NUMBER_FIELDS`` figure, the way an unknown visibility name leaves
-        that drop-down on its first entry.
+        A figure ``stored_number`` refuses leaves the field at the bottom of
+        its span showing ``REFUSED_FIGURE_TEXT`` and names itself under
+        ``refused``, so Finish carries no figure the operator never chose.
         """
         spec = NUMBER_FIELDS["target_balance"]
         stored = self.defaults.get(DEFAULT_TARGET_BALANCE_KEY, spec["value"])
-        try:
-            self.numbers["target_balance"] = number_value(stored, spec)
-        except (TypeError, OverflowError):
-            self.numbers["target_balance"] = spec["value"]
+        read = stored_number(stored, spec)
+        if read is None:
+            self.refused["target_balance"] = stored
+            self.numbers["target_balance"] = float(spec["minimum"])
+            self.number_specs["target_balance"] = {
+                **self.number_specs["target_balance"],
+                SPECIAL_VALUE_KEY: REFUSED_FIGURE_TEXT,
+            }
+        else:
+            self.refused.pop("target_balance", None)
+            self.numbers["target_balance"] = read
         self.calls.append(
             [NUMBER_SET_VALUE, "target_balance", self.numbers["target_balance"]]
         )
@@ -3517,6 +3558,8 @@ def build_view_model(
             "number_specs": {
                 name: dict(spec) for name, spec in model.number_specs.items()
             },
+            "refused": {str(name): True for name in model.refused},
+            "refused_text": REFUSED_FIGURE_TEXT,
             "checks": dict(model.checks),
             "radios": dict(model.radios),
             "combo_indexes": dict(model.combo_indexes),

@@ -776,10 +776,22 @@ if _HAS_QT:
             )
             self._change_lbl.setStyleSheet(f"color: {ds.SUCCESS}; font-size: 11px;")
 
-            self.settings_changed.emit(
-                self._bot.bot_id,
-                {f: getattr(cfg, f, None) for f in [a.split("=")[0] for a in applied]},
-            )
+            # A stored figure too large for the signal's own data slot must
+            # not undo an Apply that already reached the bot.
+            try:
+                self.settings_changed.emit(
+                    self._bot.bot_id,
+                    {
+                        f: getattr(cfg, f, None)
+                        for f in [a.split("=")[0] for a in applied]
+                    },
+                )
+            except OverflowError as _emit_exc:
+                logger.warning(
+                    "Bot %s: live settings applied but not announced (%s)",
+                    self._bot.bot_id[:8],
+                    _emit_exc,
+                )
 
         def _bot_manager_for_save(self) -> object | None:
             """Return the object that owns `save_all_state`, or None.
