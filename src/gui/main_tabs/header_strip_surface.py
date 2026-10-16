@@ -18,11 +18,19 @@ from ...trading.target_bands import (
     TERRITORY_AT_TARGET,
     TERRITORY_FOLD,
     TERRITORY_SCRUM,
+    ammo_target,
+    fleet_ammo,
 )
 
 from .. import design_system as ds
 from ..color_alpha import css_colours
-from . import asset_class_surface, main_window_surface, privacy_dot_surface
+from . import (
+    asset_class_surface,
+    class_filter_surface,
+    main_window_surface,
+    privacy_dot_surface,
+)
+from .bot_status_table_surface import ammo_reading
 
 METHOD = "header.strip"
 
@@ -456,6 +464,10 @@ STATS_PARAM = "stats"
 #: The request field carrying how many exchanges the program is configured for.
 EXCHANGE_COUNT_PARAM = "exchange_count"
 
+#: The request field carrying ``BotManager.list_bots``, which ``sector_ammo``
+#: narrows to the active sector.
+STATUSES_PARAM = "statuses"
+
 MODE_BUTTON = {
     "horizontal_policy": "Preferred",
     "vertical_policy": "Expanding",
@@ -815,11 +827,57 @@ def unrealised_amount(stats: Optional[dict]) -> Any:
     return exchange_amount(stats, "total_unrealized_exchange")
 
 
-def profits_payload(stats: Optional[dict], exchange_count: Any = 0) -> dict:
+def sector_ammo(statuses: Any, sector: Any = None) -> Optional[dict]:
+    """``fleet_ammo`` over the rows ``bots_of_class`` keeps for one sector, or
+    ``None`` where no kept row carries a target above zero.
+
+    ``ammo_reading`` is the reader those rows' own Ammo cells use and
+    ``bots_of_class`` is the filter the bot list beside the strip narrows with,
+    so the total and its column sum one fleet.
+    """
+    readings = [
+        ammo_reading(row)
+        for row in class_filter_surface.bots_of_class(statuses, sector)
+    ]
+    if not any(ammo_target(live, held) > 0 for _position, live, held in readings):
+        return None
+    return fleet_ammo(readings)
+
+
+def ammo_figures(stats: Optional[dict], statuses: Any = None) -> tuple:
+    """The AMMO column's total and its lean as one pair, scoped to the active
+    sector by ``sector_ammo`` wherever ``statuses`` names the fleet's rows.
+
+    A caller naming no rows reads the fleet-wide figures through
+    ``aggregate_amount``, and a sector refused by ``sector_ammo`` carries
+    ``None`` as its total so ``ammo_cell`` draws the dash.
+    """
+    if statuses is not None:
+        scoped = sector_ammo(statuses)
+        if scoped is None:
+            return (None, TERRITORY_AT_TARGET)
+        return (
+            scoped["total_target_delta_usd"],
+            ammo_lean(scoped["bots_scrum_territory"], scoped["bots_fold_territory"]),
+        )
+    data = stats if isinstance(stats, dict) else {}
+    return (
+        money_amount(aggregate_amount(data, "total_target_delta_usd")),
+        ammo_lean(
+            aggregate_amount(data, "bots_scrum_territory"),
+            aggregate_amount(data, "bots_fold_territory"),
+        ),
+    )
+
+
+def profits_payload(
+    stats: Optional[dict], exchange_count: Any = 0, statuses: Any = None
+) -> dict:
     """The payload the spendable panel receives for one snapshot.
 
     ``money_amount`` and ``whole_count`` admit each figure on its own, so an
-    unreadable ``wallet_cash_usd`` reaches ``spendable_cell`` alone.
+    unreadable ``wallet_cash_usd`` reaches ``spendable_cell`` alone and
+    ``ammo_figures`` reads the AMMO column's pair.
     """
     data = stats if isinstance(stats, dict) else {}
     cash_published = aggregate_amount(data, "wallet_cash_usd")
@@ -827,17 +885,15 @@ def profits_payload(stats: Optional[dict], exchange_count: Any = 0) -> dict:
     wallet_cash = money_amount(cash_published)
     position_value = money_amount(locked_published)
     known = (wallet_cash or 0.0) > 0 or (position_value or 0.0) > 0
+    total_ammo, lean = ammo_figures(data, statuses)
     return {
         "spendable": cash_published if known else None,
         "locked": locked_published if known else None,
         "unrealised": unrealised_amount(data),
         "mature": exchange_amount(data, "total_mature_exchange"),
         "exchange_count": whole_count(exchange_count),
-        "total_ammo": money_amount(aggregate_amount(data, "total_target_delta_usd")),
-        "ammo_lean": ammo_lean(
-            aggregate_amount(data, "bots_scrum_territory"),
-            aggregate_amount(data, "bots_fold_territory"),
-        ),
+        "total_ammo": total_ammo,
+        "ammo_lean": lean,
     }
 
 
@@ -892,6 +948,7 @@ def build_view_model(
     mode: Any = DEFAULT_MODE,
     tab_name: Any = None,
     profits: Optional[dict] = None,
+    statuses: Any = None,
 ) -> dict:
     """Return the whole strip state as one serialisable dict.
 
@@ -900,7 +957,9 @@ def build_view_model(
     `src.gui.color_alpha.css_colours`, so the renderer receives the share
     a browser reads and no style sheet is written out twice.
     """
-    payload = profits_payload(stats, exchange_count) if profits is None else profits
+    payload = (
+        profits_payload(stats, exchange_count, statuses) if profits is None else profits
+    )
     cells = kpi_cells(payload)
     values = counter_cells(stats)
     strip = {
@@ -951,6 +1010,7 @@ def view_model(params: dict) -> dict:
         mode=params.get(MODE_PARAM, DEFAULT_MODE),
         tab_name=params.get("tab_name"),
         profits=params.get("profits"),
+        statuses=params.get(STATUSES_PARAM),
     )
 
 
@@ -962,6 +1022,20 @@ def fleet_aggregate(live: Any) -> Optional[dict]:
         return None
     found = reader()
     return found if isinstance(found, dict) else None
+
+
+def fleet_statuses(live: Any) -> Optional[list]:
+    """``BotManager.list_bots`` from ``live``, or None with no fleet.
+
+    ``sector_ammo`` narrows these rows to the active sector, so the shell's
+    AMMO column reads the sector the Qt strip reads.
+    """
+    manager = getattr(live, "bot_manager", None)
+    reader = getattr(manager, "list_bots", None)
+    if not callable(reader):
+        return None
+    found = reader()
+    return list(found) if isinstance(found, list) else None
 
 
 def configured_exchange_count(live: Any) -> Optional[int]:
@@ -992,6 +1066,10 @@ def live_view_model(params: dict, live: Any) -> dict:
         counted = configured_exchange_count(live)
         if counted is not None:
             asked[EXCHANGE_COUNT_PARAM] = counted
+    if asked.get(STATUSES_PARAM) is None:
+        rows = fleet_statuses(live)
+        if rows is not None:
+            asked[STATUSES_PARAM] = rows
     return view_model(asked)
 
 

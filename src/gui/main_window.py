@@ -1189,7 +1189,25 @@ if _HAS_QT:
                 return False
             return header_strip_reads_paper(tabs.tabText(tabs.currentIndex()))
 
-        def _write_header_strip(self, agg: dict, exchanges: int) -> None:
+        def _fleet_rows(self, tab) -> list:
+            """Every bot row one mode's fleet source holds.
+
+            A source that answers no rows answers an empty list, which
+            ``sector_ammo`` reads as a sector with nothing to sum.
+            """
+            source = getattr(tab, "fleet_source", None)
+            reader = getattr(source, "statuses", None)
+            if not callable(reader):
+                return []
+            try:
+                return list(reader())
+            except Exception as _rows_exc:  # noqa: BLE001 - one cell, not the strip
+                logger.debug("header strip read no fleet rows: %s", _rows_exc)
+                return []
+
+        def _write_header_strip(
+            self, agg: dict, exchanges: int, statuses: Optional[list] = None
+        ) -> None:
             """Write every counter card and every strip column from one aggregate.
 
             The cards are walked from ``COUNTER_CARDS``, so the window pushes
@@ -1197,7 +1215,8 @@ if _HAS_QT:
             goes to a card that is not there. Each card is read inside
             ``_strip_cell_text`` through ``aggregate_amount``, so one
             unreadable figure costs one cell and a total the fleet could not
-            sum whole draws the dash.
+            sum whole draws the dash. ``statuses`` names the fleet's rows and
+            scopes the AMMO column to the sector in front.
             """
             for model in header_strip_surface.COUNTER_CARDS:
                 self._stat_cards[model["key"]].set_value(
@@ -1211,7 +1230,7 @@ if _HAS_QT:
             # One builder for both hosts: the React strip reads the same
             # `profits_payload` over the bridge.
             self._spendable_widget.update_profits(
-                header_strip_surface.profits_payload(agg, exchanges)
+                header_strip_surface.profits_payload(agg, exchanges, statuses)
             )
 
         def _strip_cell_text(self, model: dict, raw) -> str:
@@ -1235,19 +1254,27 @@ if _HAS_QT:
             """Repaint the strip from the Simulator's fleet with Sim in front, from the paper ledger with Paper in front, else from the live fleet."""
             if self._header_strip_reads_sim():
                 sim_tab = self._simulator_tab
-                self._write_header_strip(sim_tab.aggregate(), sim_tab.exchange_count())
+                self._write_header_strip(
+                    sim_tab.aggregate(),
+                    sim_tab.exchange_count(),
+                    self._fleet_rows(sim_tab),
+                )
                 return
             if self._header_strip_reads_paper():
                 paper_tab = self._paper_trader_tab
                 self._write_header_strip(
-                    paper_tab.aggregate(), paper_tab.exchange_count()
+                    paper_tab.aggregate(),
+                    paper_tab.exchange_count(),
+                    self._fleet_rows(paper_tab),
                 )
                 return
             if live_stats is None:
                 if not self._bot_manager:
                     return
                 live_stats = self._bot_manager.get_aggregate_stats()
-            self._write_header_strip(live_stats, len(self._exchange_tabs))
+            self._write_header_strip(
+                live_stats, len(self._exchange_tabs), self._live_fleet()
+            )
 
         @Slot()
         def _refresh_dashboard(self) -> None:
