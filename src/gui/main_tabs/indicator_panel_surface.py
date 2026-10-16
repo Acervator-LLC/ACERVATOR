@@ -474,7 +474,8 @@ def shine_min_fraction() -> float:
     return _bar_fraction(BARS_SHINE_MIN_HEIGHT_PX)
 
 
-#: What a cell, bar, pillar or tint draws when as_finite_float refuses its reading.
+#: What an indicator cell, bar, pillar or tint draws when as_finite_float
+#: refuses its reading. The three aggregate cells draw ABSENT_CELL_TEXT.
 REFUSED_READING: float = 0.0
 
 #: Frames one animation step runs when as_finite_float refuses params frames.
