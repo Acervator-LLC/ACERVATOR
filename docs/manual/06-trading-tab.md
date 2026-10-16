@@ -537,6 +537,18 @@ pad = hint.width() - metrics.horizontalAdvance(super().text())
 return QSize(metrics.horizontalAdvance(self._full) + max(pad, 0), hint.height())
 ```
 
+**An amount draws as characters.** An amount is a stored figure, so an
+`ElidingLabel` is fixed to plain text. A figure that arrives carrying angle
+brackets shows those brackets, and the label builds nothing from them. Every user
+of the class draws the same way, including the `FittedLabel` the header stat cards
+use for their amounts.
+
+`src/gui/widgets/eliding_label.py` — `ElidingLabel.__init__`
+
+```python
+self.setTextFormat(Qt.PlainText)
+```
+
 At a 900-pixel window the row is wider than the window and the Scrummed and Folded
 amounts are cut short, because the cards reach their declared floor. Seven columns
 is more width than 900 pixels holds before a single card or the square, so no
@@ -741,6 +753,18 @@ instead of going blank.
 
 ```python
 self._label.setText("(no crypto news feeds reachable)")
+```
+
+**A headline draws as characters.** A headline is words one of the ten feeds sent,
+so the strip's label is fixed to plain text. A title carrying `<b>` or an image
+address shows those characters on the strip, and the label resolves no address.
+The React build draws the same characters, because `crypto_news_ticker.js` passes
+the headline as an element's child.
+
+`src/gui/crypto_news_ticker.py` — `CryptoNewsTicker.__init__`
+
+```python
+self._label.setTextFormat(Qt.PlainText)
 ```
 
 **Functional.** In the React build the strip is drawn by

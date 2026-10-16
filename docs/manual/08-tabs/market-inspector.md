@@ -1262,6 +1262,22 @@ def per_bot_view(bot: Any) -> dict:
     analyzer's most recent scan.
 ```
 
+**The failure line draws as characters.** Where the per-bot view cannot be built,
+the tab draws one amber line naming the failure. That line carries the caught
+error, which the application did not write, so the label is fixed to plain text
+and `FALLBACK_TEXT_FORMAT` carries no tag. An error holding `<b>` or an image
+address shows those characters, and the tab builds nothing from them. The Paper
+and Simulator forks draw the same line the same way, in
+`src/gui/paper/paper_market_inspector_tab.py` and
+`src/gui/simulator/sim_market_inspector_tab.py`.
+
+`src/gui/live_settings/market_inspector_tab.py` —
+`MarketInspectorTabMixin._create_market_inspector_tab`
+
+```python
+msg.setTextFormat(Qt.PlainText)
+```
+
 ## Fetching
 
 `set_exchange_source` binds a connectors getter and the application scheduler, so
