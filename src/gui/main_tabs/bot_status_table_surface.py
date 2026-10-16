@@ -832,6 +832,30 @@ def holdings_of(status: Any) -> float:
     return float(status.get("current_holdings", NO_HOLDINGS) or NO_HOLDINGS)
 
 
+def ammo_reading(status: Any) -> tuple:
+    """One row's position value and its two targets, the triple ``fleet_ammo``
+    sums.
+
+    The position is recomputed from ``current_holdings`` and ``current_price``
+    wherever both are above zero and falls back to the stored
+    ``position_value``, which is what this row's own Ammo cell does, so the
+    header strip's AMMO total sums the figures the rows beside it draw.
+    """
+    stats = status.get("stats") or {}
+    holdings = holdings_of(status)
+    price = float(stats.get("current_price", NO_PRICE) or NO_PRICE)
+    stored = float(stats.get("position_value", NO_TARGET_VALUE) or NO_TARGET_VALUE)
+    fresh = holdings > NO_HOLDINGS and price > NO_PRICE
+    position = (
+        priced_position(holdings, price, quote_rate_of(status)) if fresh else stored
+    )
+    return (
+        position,
+        status.get("live_target_balance", NO_TARGET_VALUE),
+        status.get("target_balance", NO_TARGET_VALUE),
+    )
+
+
 class SortLookups:
     """The two live readings ``sort_value`` needs, one pair per build variant.
 
