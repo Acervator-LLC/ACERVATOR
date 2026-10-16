@@ -2239,10 +2239,10 @@ the twelve, so none of them crosses a pillar.
 
 **When a cell cannot read its figure.** `net_cell`, `comp_cell` and `conf_cell`
 admit a reading through `as_finite_float` before printing it. A reading that is
-not a finite number, an integer too large to hold as one among them, draws
-`ABSENT_CELL_TEXT` in `ABSENT_TEXT_COLOR`: the em dash the Comp column has
-always drawn where there is no composite. No cell prints a figure it did not
-read, and no cell carries a notice in place of one.
+not a finite number draws `ABSENT_CELL_TEXT` in `ABSENT_TEXT_COLOR`: the em dash
+the Comp column has always drawn where there is no composite. An integer too
+large to hold as a float is one such reading, and so is a NaN. No cell prints a
+figure it did not read, and no cell carries a notice in place of one.
 
 `src/gui/main_tabs/indicator_panel_surface.py` — `absent_cell`
 
