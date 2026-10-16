@@ -451,6 +451,9 @@ if _HAS_QT:
             hb.setSpacing(6)
 
             self._label = QLabel("Fetching crypto news…")
+            # A headline is words from one of the ten NEWS_SOURCES, so the
+            # label draws them as characters and resolves no address.
+            self._label.setTextFormat(Qt.PlainText)
             self._label.setToolTip(
                 "Cycling crypto + fintech headlines from 10 free RSS "
                 "feeds. Click to open story in default browser. "

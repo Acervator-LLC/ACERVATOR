@@ -6,6 +6,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QGroupBox,
     QLabel,
@@ -78,6 +79,9 @@ class PaperMarketInspectorTabMixin:
             lay.setContentsMargins(margin, margin, margin, margin)
             lay.setSpacing(mi_surface.FALLBACK_SPACING_PX)
             msg = QLabel(mi_surface.fallback_text(type(exc).__name__, exc))
+            # The line carries the caught error, which the application did
+            # not write, so the label draws characters and loads nothing.
+            msg.setTextFormat(Qt.PlainText)
             msg.setStyleSheet(
                 mi_surface.fallback_style(
                     ds.FOLD_RATIO_AMBER, mi_surface.FALLBACK_PADDING_PX
