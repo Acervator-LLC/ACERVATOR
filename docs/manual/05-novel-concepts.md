@@ -735,6 +735,10 @@ The engine already records the consequence at
 caller. A sale is therefore admitted against the process-wide table rather than
 an injected one.
 
+The first anchor in the block above names a line that has moved. The bot it
+means is built in `src/gui/live_bot_window.py`, in `_run_bot`, and that is the
+anchor to follow.
+
 ## 12 - Technical Analysis Indicator Confidence Tiers
 
 Most TA systems stack indicators additively. The Tier-4 suite organizes signals into four confidence tiers with cumulative weighting: Tier-1 (structural, highest weight), Tier-2 (confirmation, medium weight), Tier-3 (momentum), Tier-4 (context). Entries require Tier-1 + Tier-2 alignment; Tier-3/4 scale confidence but cannot override. This tier system arose out of queries with Claude Code while it was roleplaying as a TA Archetype and is only one such example where most of the other such contributions deal with bug fixes.

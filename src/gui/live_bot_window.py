@@ -75,6 +75,9 @@ DEFAULT_PAIRS = {
     "EUR": ["BTC", "ETH"],
 }
 
+# The two field rows of the configuration grid occupy columns 0 through 7.
+CONTROL_GRID_COLUMNS = 8
+
 
 class LiteLiveBotWindow(QMainWindow):
     """Single-window live bot runner — console + API + trading activity."""
@@ -163,15 +166,9 @@ class LiteLiveBotWindow(QMainWindow):
         btn_row.addStretch()
         self.lbl_status = QLabel("Status: idle")
         btn_row.addWidget(self.lbl_status)
+        g.addLayout(btn_row, 2, 0, 1, CONTROL_GRID_COLUMNS)
 
-        container = QWidget()
-        cv = QVBoxLayout(container)
-        cv.addLayout(g)
-        cv.addLayout(btn_row)
-        wrapper = QGroupBox("Bot Configuration")
-        wl = QVBoxLayout(wrapper)
-        wl.addWidget(container)
-        return wrapper
+        return box
 
     def _build_panes(self) -> QWidget:
         """Three side-by-side monospace text panes."""
