@@ -56,6 +56,7 @@ from src.gui.main_tabs.native_chart_surface import (
     TOGGLE_BOX_PX,
     Y_ZOOM_DEFAULT,
     admit_candles,
+    as_finite_float,
     candle_at_x,
     candle_count_text,
     clamp_y_zoom,
@@ -1361,8 +1362,8 @@ if _HAS_QT:
             for t in trades:
                 try:
                     ts = int(t.get("ts", t.get("time", 0)) or 0)
-                    price = float(t.get("price", 0) or 0)
-                    if ts <= 0 or price <= 0:
+                    price = as_finite_float(t.get("price"))
+                    if ts <= 0 or price is None or price <= 0:
                         continue
                     m = TradeMarker(
                         time=ts,
@@ -1376,7 +1377,16 @@ if _HAS_QT:
             self._repaint()
 
         def set_positions(self, positions: list[PositionMarker]) -> None:
-            self._positions = positions
+            """Replace ``_positions`` with those whose price `as_finite_float` admits.
+
+            A position carrying a price the paint could not map is left out, so
+            one refused position costs its own marker and not the chart.
+            """
+            self._positions = [
+                one
+                for one in positions or []
+                if as_finite_float(getattr(one, "price", None)) is not None
+            ]
             self._repaint()
 
         def set_landing_strip(self, strip: Optional[dict]) -> None:
@@ -1403,8 +1413,8 @@ if _HAS_QT:
             ceiling by holdings and the quote rate; ``None`` hides that
             line.
             """
-            self._tb_anchor_price = anchor_price
-            self._tb_ceiling_price = ceiling_price
+            self._tb_anchor_price = as_finite_float(anchor_price)
+            self._tb_ceiling_price = as_finite_float(ceiling_price)
             self._repaint()
 
         def set_fire_armed_state(

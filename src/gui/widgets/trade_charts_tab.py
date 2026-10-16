@@ -15,6 +15,7 @@ from ..main_tabs.native_chart_surface import (
     CONTROL_FONT_FAMILY,
     CONTROL_FONT_PX,
     CONTROL_HEIGHT_PX,
+    synthetic_candle,
 )
 from ..main_tabs.trade_charts_tab_surface import (
     FETCH_LIMIT,
@@ -976,30 +977,14 @@ if _HAS_QT:
             self._panel.chart.set_timeframe(NUCLEAR_TIMEFRAME)
 
             drawn = []
+            refused = 0
             for one in candles:
-                if hasattr(one, "open"):
-                    drawn.append(
-                        NativeCandle(
-                            time=int(getattr(one, "time", 0)),
-                            open=float(one.open),
-                            high=float(one.high),
-                            low=float(one.low),
-                            close=float(one.close),
-                            volume=float(getattr(one, "volume", 0)),
-                        )
-                    )
-                else:
-                    drawn.append(
-                        NativeCandle(
-                            time=int(one.get("time", 0)),
-                            open=float(one["open"]),
-                            high=float(one["high"]),
-                            low=float(one["low"]),
-                            close=float(one["close"]),
-                            volume=float(one.get("volume", 0)),
-                        )
-                    )
-            self._panel.chart.set_candles(drawn)
+                read = synthetic_candle(one)
+                if read is None:
+                    refused += 1
+                    continue
+                drawn.append(NativeCandle(*read))
+            self._panel.chart.set_candles(drawn, refused)
             label_price = last_price or (drawn[-1].close if drawn else 0.0)
             self._panel.chart._symbol = NUCLEAR_LABEL_FORMAT.format(
                 symbol=symbol, price=label_price, scenario=scenario
