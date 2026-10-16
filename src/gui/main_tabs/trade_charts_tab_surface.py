@@ -134,8 +134,8 @@ STRETCH_SLOTS = 1
 
 PRICE_LABEL_FORMAT = "{symbol}  •  ${price:.8f}  •  {state}"
 
-#: The chart header while `as_finite_float` refuses the saved price.
-PRICE_REFUSED_FORMAT = "{symbol}  •  {note}  •  {state}"
+#: The chart header carrying a note in place of a price: symbol, note, state.
+PRICE_NOTE_FORMAT = "{symbol}  •  {note}  •  {state}"
 
 #: What `header_label` prints in place of a price it cannot read.
 PRICE_REFUSED_NOTE = "price unreadable"
@@ -387,11 +387,11 @@ def header_label(symbol: Any, price: Any, state: Any) -> Optional[str]:
         return None
     reading = as_finite_float(price)
     if reading is None or reading < 0:
-        return PRICE_REFUSED_FORMAT.format(
+        return PRICE_NOTE_FORMAT.format(
             symbol=symbol, note=PRICE_REFUSED_NOTE, state=str(state).upper()
         )
     if reading == 0:
-        return PRICE_REFUSED_FORMAT.format(
+        return PRICE_NOTE_FORMAT.format(
             symbol=symbol, note=PRICE_NOT_YET_NOTE, state=str(state).upper()
         )
     return price_label(symbol, reading, str(state))
