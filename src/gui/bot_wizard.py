@@ -55,6 +55,18 @@ def _market_text(value) -> str:
     return value if type(value) is str else ""
 
 
+def _base_labels(markets) -> list:
+    """Every entry the Base Currency drop-down offers over ``markets``, through
+    ``bot_wizard_surface.base_items_for``.
+
+    One list serves this page and the surface the React page reads, so neither
+    can offer a money leg the other does not.
+    """
+    from .main_tabs.bot_wizard_surface import base_items_for
+
+    return [label for label, _value in base_items_for(markets)]
+
+
 #: One reader over the logo library; ``resolve`` is never called, so a wizard row
 #: draws the kept file or the lettered disc and never waits on a network read.
 KEPT_LOGOS = LogoCache()
@@ -134,7 +146,7 @@ if _HAS_QT:
             form.addRow("Exchange:", self._exchange)
 
             self._base = QComboBox()
-            self._base.addItems(["USDT", "USDC", "BTC", "ETH", "BNB", "EUR", "USD"])
+            self._base.addItems(_base_labels([]))
             self._base.currentIndexChanged.connect(self._filter_assets)
             form.addRow("Base Currency:", self._base)
 
@@ -159,6 +171,7 @@ if _HAS_QT:
             self._status.setWordWrap(True)
             form.addRow(self._status)
             self._markets_cache: dict = {}
+            self._target_symbols: list = []
             self._target_reasons: list = []
             self._descriptions_cache: dict = {}
             try:
@@ -193,7 +206,26 @@ if _HAS_QT:
                 except Exception as exc:
                     self._status.setText(f"Failed to load markets: {str(exc)[:50]}")
                     self._markets_cache[eid] = []
+            self._refill_base(eid)
             self._filter_assets()
+
+        def _refill_base(self, exchange_id):
+            """Refill the Base Currency drop-down from the venue's market rows,
+            through ``_base_labels``, keeping the entry it shows.
+
+            The signal is blocked across the refill, so ``_filter_assets`` runs
+            once from ``_on_exchange_changed`` rather than once per entry.
+            """
+            wanted = self._base.currentText()
+            labels = _base_labels(self._markets_cache.get(exchange_id, []))
+            if labels == [self._base.itemText(at) for at in range(self._base.count())]:
+                return
+            self._base.blockSignals(True)
+            self._base.clear()
+            self._base.addItems(labels)
+            at = self._base.findText(wanted)
+            self._base.setCurrentIndex(at if at >= 0 else 0)
+            self._base.blockSignals(False)
 
         def _fetch_markets(self, exchange_id):
             from .main_tabs.asset_class_surface import markets_of_class
@@ -288,6 +320,7 @@ if _HAS_QT:
                 UNTRADEABLE_COUNT_FORMAT,
                 UNTRADEABLE_LABEL_FORMAT,
                 market_expires,
+                market_name,
                 market_reason,
                 market_unit_rule,
                 recorded_venue_rows,
@@ -298,6 +331,7 @@ if _HAS_QT:
             base = self._base.currentText().strip().upper()
             markets = self._markets_cache.get(eid, [])
             self._target.clear()
+            self._target_symbols = []
             self._target_reasons = []
             self._target_unit_rules = []
             self._target_prices = []
@@ -331,10 +365,11 @@ if _HAS_QT:
                 if m.get("volatility", 0) > 0:
                     parts.append(f"Volat: {m['volatility']:.1f}%")
                 named = _market_text(m.get("base"))
-                label = named + (f"  ({', '.join(parts)})" if parts else "")
+                label = market_name(m) + (f"  ({', '.join(parts)})" if parts else "")
                 reason = market_reason(recorded, m, self._sector, eid)
                 if reason:
                     label = UNTRADEABLE_LABEL_FORMAT.format(label=label, reason=reason)
+                self._target_symbols.append(_market_text(m.get("symbol")))
                 self._target_reasons.append(reason)
                 self._target_unit_rules.append(
                     market_unit_rule(recorded, m, self._sector, eid)
@@ -352,6 +387,7 @@ if _HAS_QT:
                     self._target.addItem(label, named)
             if not filtered:
                 self._target.addItem("No pairs found", "")
+                self._target_symbols.append("")
                 self._target_reasons.append("")
                 self._target_unit_rules.append("")
                 self._target_prices.append(None)
@@ -376,6 +412,17 @@ if _HAS_QT:
                 )
             )
             self._update_info()
+
+        def target_symbol(self) -> str:
+            """The recorded symbol of the market the target combo shows, empty
+            while no market is picked.
+
+            ``get_config`` carries it so ``BotConfig`` keeps the market the
+            operator picked rather than rebuilding one from the two legs.
+            """
+            at = self._target.currentIndex()
+            held = getattr(self, "_target_symbols", [])
+            return held[at] if 0 <= at < len(held) else ""
 
         def target_reason(self) -> str:
             """Why no built bot variant trades the pair the target combo shows,
@@ -438,6 +485,7 @@ if _HAS_QT:
                 "exchange_id": self._exchange.currentData(),
                 "base_currency": self._base.currentText().strip().upper(),
                 "target_asset": self._target.currentData() or "",
+                "symbol": self.target_symbol(),
                 "asset_class": self._sector,
                 "sizing_mode": self.target_unit_rule(),
             }

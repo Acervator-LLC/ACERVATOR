@@ -4339,7 +4339,8 @@ if _HAS_QT:
                 _log.record(
                     exchange=config.get("exchange_id", exchange_id),
                     action="BOT_CREATE",
-                    reason=f"Creating {config.get('mode','').upper()} bot for {config.get('target_asset','')}/{config.get('base_currency','')}",
+                    reason=f"Creating {config.get('mode','').upper()} bot for "
+                    f"{config.get('symbol') or config.get('target_asset','') + '/' + config.get('base_currency','')}",
                     result=_created,
                     level="info",
                     data_usage="Bot will be registered with BotManager in IDLE state. Must be started manually.",
@@ -4367,7 +4368,9 @@ if _HAS_QT:
                             _pf = None
                             _pf_text = ""
                         else:
-                            _pf_symbol = (
+                            # The wizard's own recorded symbol first: a contract
+                            # cannot be rebuilt from its two legs.
+                            _pf_symbol = str(config.get("symbol") or "") or (
                                 config.get("target_asset", "BTC")
                                 + "/"
                                 + config.get("base_currency", "USDT")

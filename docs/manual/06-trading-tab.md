@@ -2033,6 +2033,67 @@ def normalise_sector(name: Any) -> str:
     return held or SECTOR_DEFAULT
 ```
 
+OVERTAKEN, and the sentences and the two blocks above are kept as written. The
+Base Currency row is not a fixed list of seven. The picked venue's own market
+rows refill it: the seven keep their declared order and every further money leg
+the rows hold follows, in name order. On the live Coinbase recording that draws
+seven entries on four sectors, nine on Crypto and thirteen on Forex.
+
+`src/gui/main_tabs/bot_wizard_surface.py, in base_items_for` — the entries the
+row offers
+
+The row names the money a bot funds its position in and folds its proceeds back
+into. A venue records three symbol shapes for that money. A spot pair records it
+alone. A perpetual joins the leg it settles on. A dated contract joins that leg
+and its expiry date. The money is the same name in all three, so one reading
+takes all three.
+
+`src/gui/main_tabs/bot_wizard_surface.py, in quote_currency` — the money leg
+
+```python
+_base, _found, rest = str(symbol or "").partition(MARKET_SYMBOL_SEPARATOR)
+held = rest.partition(MARKET_SETTLE_SEPARATOR)[0]
+return held.partition(MARKET_EXPIRY_SEPARATOR)[0]
+```
+
+Every sector now offers every market its recording holds. Driving both builds
+over the live recording reads 2147 markets offered against 2147 recorded, where
+the same drive read 1885 before: 896 of 896 on Crypto, 1032 of 1032 on Stocks,
+25 of 25 on Commodities, 20 of 20 on Forex, 6 of 6 on Indices and 168 of 168 on
+Futures / Perps.
+
+One base asset carries several contracts, so the Target Asset row names a
+contract by the symbol the venue recorded rather than by the asset alone. A spot
+pair is still named by its asset. The row that reads `A05` for the spot pair
+reads `A05/USD:USD-261030` for the December contract on the same asset, and the
+three contracts on one asset are three rows that read apart.
+
+`src/gui/main_tabs/bot_wizard_surface.py, in market_name` — what a row is called
+
+A market the account cannot clear on keeps its place in the list and carries the
+reason beside it, naming the clearing venue the venue published and the clearing
+reach this platform has. Finish refuses that market. The live recording carries
+no clearing venue on any of its 2147 rows yet, so no row draws that reason
+today.
+
+`src/trading/scrumming/sizing.py, in clearing_refusal` — the refusal the row
+carries
+
+The picked market travels to the bot as the symbol the venue recorded.
+
+`src/gui/main_tabs/bot_wizard_surface.py, in asset_config` — what the asset page
+hands on
+
+```python
+"base_currency": self.combo_text(BASE_COMBO_NAME).strip().upper(),
+"target_asset": self.target_data() or EMPTY_TEXT,
+"symbol": self.target_symbol(),
+```
+
+`src/trading/container/config.py, in BotConfig.__post_init__` joins the two legs
+only where that symbol is empty, so a contract reaches the engine as the market
+the operator picked and not as the spot pair of the same name.
+
 The sector also decides the smallest order the bot may place. The venue publishes
 a size step for each market, and that step answers first; the sector answers only
 where the venue published none. Coinbase lists a tokenised metal and a dated
