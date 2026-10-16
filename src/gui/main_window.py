@@ -1195,11 +1195,18 @@ if _HAS_QT:
             The cards are walked from ``COUNTER_CARDS``, so the window pushes
             into exactly the cards ``_build_header_strip`` drew and no value
             goes to a card that is not there. Each card is read inside
-            ``_strip_cell_text``, so one unreadable figure costs one cell.
+            ``_strip_cell_text`` through ``aggregate_amount``, so one
+            unreadable figure costs one cell and a total the fleet could not
+            sum whole draws the dash.
             """
             for model in header_strip_surface.COUNTER_CARDS:
                 self._stat_cards[model["key"]].set_value(
-                    self._strip_cell_text(model, agg.get(model["source_key"], 0))
+                    self._strip_cell_text(
+                        model,
+                        header_strip_surface.aggregate_amount(
+                            agg, model["source_key"], 0
+                        ),
+                    )
                 )
             # One builder for both hosts: the React strip reads the same
             # `profits_payload` over the bridge.
