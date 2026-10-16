@@ -445,6 +445,32 @@ def as_finite_float(value) -> Optional[float]:
     return None
 
 
+def as_whole_count(value) -> Optional[int]:
+    """Return `value` as an int when its exact type is int and `as_finite_float`
+    admits it.
+
+    A bool, a float, a text number and a not-a-number each answer None. The
+    header strip's count cells and `FleetAggregationMixin.get_aggregate_stats`
+    read this one rule, so a count the screen draws as a dash is never summed
+    into a fleet total.
+
+    Args:
+      value: anything, including a value read from a JSON-decoded state file.
+
+    Returns:
+      The whole count, or None when `value` is not a usable count.
+    """
+    if type(value) is int and as_finite_float(value) is not None:
+        return value
+    return None
+
+
+#: The aggregate key naming every fleet total one bot's unreadable figure left
+#: out. `get_aggregate_stats` writes it and the header strip draws a dash for
+#: each total it names.
+UNREADABLE_TOTALS_KEY: str = "unreadable_totals"
+
+
 def despawn_threshold_days(config) -> int:
     """Return the tranche despawn threshold in whole days; 0 means OFF.
 

@@ -270,10 +270,16 @@ class ExecutionEngineMixin:
         return est_amt, est_px, False
 
     def _venue_quote_currency(self) -> str:
-        """The currency a sale is credited in, taken from the symbol."""
+        """The currency a sale is credited in, read off the symbol through
+        ``market_rules_store.quote_currency``.
+
+        A contract symbol joins the leg it settles on and its expiry date to
+        that currency, and the venue reports its fee in the currency alone.
+        """
+        from ...exchange.market_rules_store import quote_currency
+
         _sym = str(getattr(self.config, "symbol", "") or "")
-        _, _, _quote = _sym.partition("/")
-        return _quote.strip().upper()
+        return quote_currency(_sym).strip().upper()
 
     def _record_venue_fee(self, order, units: float, price: float) -> None:
         """Store the fee the venue reported for a just-settled fill.

@@ -306,15 +306,18 @@ def tab_payload(module_name: str, bot: Any, now_ts: float, tab: str = "") -> dic
     """One tab's payload, built from ``bot`` by that tab's own surface.
 
     A surface that raises answers a payload carrying ``FAULT_KEY`` and
-    ``FAULT_TEXT``.
+    ``FAULT_TEXT``. The import and the model lookup are inside the guard too,
+    because ``redraw`` fills every tab in one loop: a surface that cannot be
+    imported, or that names no model, would otherwise leave the page with no
+    tab drawn at all.
     """
     import importlib
     import inspect
 
-    module = importlib.import_module("src.gui.main_tabs." + module_name)
-    model_class = getattr(module, MODEL_BY_SURFACE[module_name])
-    builder = module.build_view_model
     try:
+        module = importlib.import_module("src.gui.main_tabs." + module_name)
+        model_class = getattr(module, MODEL_BY_SURFACE[module_name])
+        builder = module.build_view_model
         model = model_class(bot)
         if "build_now" in inspect.signature(builder).parameters:
             return builder(model, build_now=True)

@@ -407,6 +407,89 @@ if field_id not in ALL_FIELD_IDS or text == ABSENT_TEXT:
     return text
 ```
 
+**What one unreadable figure costs.** One cell, and only that cell. The row holds
+twelve: the six counter cards declared in `COUNTER_CARDS` and the six columns
+declared in `KPI_COLUMNS`. Every figure is admitted on its own before it is
+written, so a stored value the platform cannot read as a number draws the dash in
+its own cell and the eleven beside it still carry their figures.
+
+`src/gui/main_tabs/header_strip_surface.py` — the admission every money cell shares
+
+```python
+def money_amount(value: Any) -> Any:
+    return as_finite_float(value)
+```
+
+`as_finite_float` is the bot container's own money rule, so the strip and the money
+path refuse the same values: a stored flag, a not-a-number, an endless number, a
+text number, and an integer too large to be a dollar amount. `whole_count` holds
+the same line for the three cards that draw a count, so Trades, Bots and Errors
+draw a whole number or the dash and nothing else.
+
+`src/gui/main_tabs/header_strip_surface.py` — `card_text`, the one renderer both
+hosts call for a counter card
+
+```python
+if card["format"] == COUNT_FORMAT:
+    return count_text(raw)
+return money_text(raw)
+```
+
+A read that refuses anyway is caught in `src/gui/main_window.py, in
+_strip_cell_text`, which logs the refusal with its traceback and gives that one
+card the dash. The Bot Settings window guards a tab the same way, in
+`src/gui/bot_live_settings.py, in _add_guarded_tab`.
+
+**The refresh re-reads, it does not cache.** `_refresh_dashboard` fetches the
+aggregate afresh on every tick, so an unreadable stored value is read again every
+two seconds for as long as it is there, and it costs the same one cell on every
+one of those reads. The no-fleet path runs inside the tick's own catch, so a
+Simulator or paper aggregate that cannot be read does not escape the timer slot.
+
+Both builds draw from one writer. `_write_header_strip` fills the Qt cards and the
+React cards alike, and `build_view_model` renders the bridge's copy of the counter
+cards through the same `card_text`, so neither host admits a figure the other
+refuses.
+
+**The total one bot cannot be read into.** The twelve cells are drawn from one
+aggregate, and the aggregate is summed from every bot's stored figures.
+`src/trading/container/aggregation.py, in get_aggregate_stats` admits each of
+those figures through `FleetTotals.money`, `FleetTotals.count` and
+`FleetTotals.flag`. Those three read by `as_finite_float` and `as_whole_count`,
+the same two rules the cells draw by. A figure one of them refuses adds nothing
+to its total, and the total is named in the aggregate's `unreadable_totals` list.
+
+`src/trading/container/aggregation.py` — the admission, and the mark it leaves
+
+```python
+def money(self, value: Any, *totals: str) -> Optional[float]:
+    amount = as_finite_float(value)
+    if amount is None:
+        self.unreadable.update(totals)
+    return amount
+```
+
+`src/gui/main_tabs/header_strip_surface.py, in aggregate_amount` reads that list,
+and a total it names answers nothing, which draws the dash. Both hosts read it:
+`_write_header_strip` passes every counter card through it, and `profits_payload`
+passes SPENDABLE, P/L, LOCKED, MATURE and AMMO. A marked total draws neither a
+sum one bot is missing from nor a zero.
+
+**One bot's figures reach some totals and not others.** The named groups in
+`src/trading/container/aggregation.py` say which: `SCRUMMED_TOTALS`,
+`FOLDED_TOTALS`, `CASH_TOTALS`, `POSITION_TOTALS`, `MATURE_TOTALS`,
+`AMMO_TOTALS`, `FRESHNESS_TOTALS` and `STATE_TOTALS`. A bot's position value
+feeds three of the cells, so a price the platform cannot read marks LOCKED,
+MATURE and AMMO together while SPENDABLE, P/L and the six cards keep their
+figures.
+
+**The aggregate itself no longer refuses.** A bot whose `stats` cannot be
+reached marks `STATS_TOTALS` and the pass moves to the next bot, and a bot whose
+run state cannot be read marks `STATE_TOTALS`. No reading in the pass raises, so
+`_refresh_dashboard` is never left holding an earlier tick's figures.
+`FleetAggregationMixin._log_unreadable_totals` writes one warning naming the
+marked totals, and writes again only when that list changes.
+
 **The row's width budget.** Every part of the row declares a floor, and the sum
 of the floors is the narrowest the window opens at. Without them a part's minimum
 is the width of its own text, and a six-figure amount widens the whole window past
@@ -2032,6 +2115,74 @@ def normalise_sector(name: Any) -> str:
     held = normalise(name)
     return held or SECTOR_DEFAULT
 ```
+
+OVERTAKEN, and the sentences and the two blocks above are kept as written. The
+Base Currency row is not a fixed list of seven. The picked venue's own market
+rows refill it: the seven keep their declared order and every further money leg
+the rows hold follows, in name order. On the live Coinbase recording that draws
+seven entries on four sectors, nine on Crypto and thirteen on Forex.
+
+`src/gui/main_tabs/bot_wizard_surface.py, in base_items_for` — the entries the
+row offers
+
+The row names the money a bot funds its position in and folds its proceeds back
+into. A venue records three symbol shapes for that money. A spot pair records it
+alone. A perpetual joins the leg it settles on. A dated contract joins that leg
+and its expiry date. The money is the same name in all three, so one reading
+takes all three.
+
+`src/exchange/market_rules_store.py, in quote_currency` — the money leg
+
+```python
+rest = str(symbol or "").partition(SYMBOL_SEPARATOR)[2]
+held = rest.partition(SETTLE_SEPARATOR)[0]
+return held.partition(EXPIRY_SEPARATOR)[0]
+```
+
+The store owns that reading, and two places read it: this row, through
+`src/gui/main_tabs/bot_wizard_surface.py, in quote_currency`, and the sale's fee
+check, through `src/trading/scrumming/execution.py, in
+_venue_quote_currency`. The venue reports its fee in the currency alone, so the
+check compares the same name the venue used and a contract's sale is not refused
+its fee.
+
+Every sector now offers every market its recording holds. Driving both builds
+over the live recording reads 2147 markets offered against 2147 recorded, where
+the same drive read 1885 before: 896 of 896 on Crypto, 1032 of 1032 on Stocks,
+25 of 25 on Commodities, 20 of 20 on Forex, 6 of 6 on Indices and 168 of 168 on
+Futures / Perps.
+
+One base asset carries several contracts, so the Target Asset row names a
+contract by the symbol the venue recorded rather than by the asset alone. A spot
+pair is still named by its asset. The row that reads `A05` for the spot pair
+reads `A05/USD:USD-261030` for the December contract on the same asset, and the
+three contracts on one asset are three rows that read apart.
+
+`src/gui/main_tabs/bot_wizard_surface.py, in market_name` — what a row is called
+
+A market the account cannot clear on keeps its place in the list and carries the
+reason beside it, naming the clearing venue the venue published and the clearing
+reach this platform has. Finish refuses that market. The live recording carries
+no clearing venue on any of its 2147 rows yet, so no row draws that reason
+today.
+
+`src/trading/scrumming/sizing.py, in clearing_refusal` — the refusal the row
+carries
+
+The picked market travels to the bot as the symbol the venue recorded.
+
+`src/gui/main_tabs/bot_wizard_surface.py, in asset_config` — what the asset page
+hands on
+
+```python
+"base_currency": self.combo_text(BASE_COMBO_NAME).strip().upper(),
+"target_asset": self.target_data() or EMPTY_TEXT,
+"symbol": self.target_symbol(),
+```
+
+`src/trading/container/config.py, in BotConfig.__post_init__` joins the two legs
+only where that symbol is empty, so a contract reaches the engine as the market
+the operator picked and not as the spot pair of the same name.
 
 The sector also decides the smallest order the bot may place. The venue publishes
 a size step for each market, and that step answers first; the sector answers only
