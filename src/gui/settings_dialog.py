@@ -1852,7 +1852,11 @@ if _HAS_QT:
                 if not kept:
                     continue
                 try:
-                    self._sm.set(group, {**(self._sm.get(group, {}) or {}), **kept})
+                    # A group the store holds as something other than a mapping
+                    # cannot be merged into, so only the kept rows are written.
+                    held = self._sm.get(group, {})
+                    under = dict(held) if isinstance(held, dict) else {}
+                    self._sm.set(group, {**under, **kept})
                     saved += 1
                 except Exception as e:
                     failed.append(f"{group} ({e})")

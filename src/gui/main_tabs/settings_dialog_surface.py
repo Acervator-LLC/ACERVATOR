@@ -3267,7 +3267,11 @@ class SettingsDialogModel:
             if not kept:
                 continue
             try:
-                self.settings.set(key, {**(self.settings.get(key, {}) or {}), **kept})
+                # A group the store holds as something other than a mapping
+                # cannot be merged into, so only the kept rows are written.
+                held = self.settings.get(key, {})
+                under = dict(held) if isinstance(held, dict) else {}
+                self.settings.set(key, {**under, **kept})
                 saved += 1
             except Exception as exc:
                 failed.append(FAILED_ENTRY_FORMAT.format(key=key, error=exc))
