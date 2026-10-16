@@ -1131,12 +1131,14 @@ UNTRADEABLE_LABEL_FORMAT = "{label} — no bot yet: {reason}"
 UNTRADEABLE_COUNT_FORMAT = " ({count} cannot carry a bot)"
 NO_CREATABLE_PAIR_TEXT = "No pair on this venue can carry a bot yet."
 
-#: What the wizard says when Finish is pressed on such a market.
-UNTRADEABLE_TITLE = "No bot variant trades this market"
+#: What the wizard says when Finish is pressed on such a market. One refusal
+#: carries two grounds: a variant the program does not hold, and a clearing
+#: venue its order path does not reach.
+UNTRADEABLE_TITLE = "No bot can be created on this market"
 UNTRADEABLE_FORMAT = (
     "This market is scanned and charted, and no bot can be created on it: "
-    "{reason}.\n\nPick another market, or create the bot once that variant is "
-    "built."
+    "{reason}.\n\nPick another market. Where the reason names a variant, the "
+    "bot can be created once that variant is built."
 )
 UNTRADEABLE_REFUSAL_FORMAT = "No bot can be created on this market: {reason}."
 
@@ -1916,18 +1918,25 @@ def unit_notes(
 
 
 def market_reason(rows: Any, market: Any, sector: Any = "", venue: Any = "") -> str:
-    """Why no built bot variant trades one market, empty while one does.
+    """Why no bot can be created on one market, empty while one can.
 
-    ``sizing.variant_holds_market`` reads ``rows``, ``sector`` and ``venue``,
-    so a whole-unit market the program holds a variant for keeps no refusal.
+    ``clearing_refusal`` answers first and names the clearing venue, and
+    ``variant_holds_market`` then reads ``rows``, ``sector`` and ``venue``.
     """
-    from ...trading.scrumming.sizing import untradeable_reason, variant_holds_market
+    from ...trading.scrumming.sizing import (
+        clearing_refusal,
+        untradeable_reason,
+        variant_holds_market,
+    )
 
     symbol = bag_text(market, MARKET_SYMBOL_KEY)
     if not symbol:
         return EMPTY_TEXT
     rules = rules_from_row(readable_bag(rows).get(symbol))
     price = bag_number(market, MARKET_PRICE_KEY)
+    held = clearing_refusal(rules, str(venue or SECTOR_RULE_VENUE))
+    if held:
+        return held
     if variant_holds_market(
         rules, normalise_sector(sector), str(venue or SECTOR_RULE_VENUE), price
     ):

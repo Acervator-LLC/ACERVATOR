@@ -43,9 +43,11 @@ RULE_FIELDS = (
 # holds the five NUMERIC rules, and ``order_types`` is a string.
 # OVERTAKEN, the sentence above reading "the five NUMERIC rules": ``RULE_FIELDS``
 # holds seven, and ``session`` is a second string.
+# OVERTAKEN, the ``session`` sentence above: ``clearing_venue`` is a third
+# string, the venue the product clears on.
 #: The text rules ``MarketRules`` carries, each recorded under its own name. A row
 #: recorded before one holds no such key and answers None.
-TEXT_RULE_FIELDS = ("order_types", "session")
+TEXT_RULE_FIELDS = ("order_types", "session", "clearing_venue")
 
 #: The permission rules ``MarketRules`` carries, each recorded as a sorted list
 #: of size-shape names. A row recorded before one holds no such key, which
@@ -199,6 +201,7 @@ def recorded_rules(venue: str, symbol: str, path: Optional[Path] = None) -> Mark
         expiry_ms=rule_value(row.get("expiry_ms")),
         order_types=rule_text(row.get("order_types")),
         session=rule_text(row.get("session")),
+        clearing_venue=rule_text(row.get("clearing_venue")),
         buy_size_shapes=recorded_shapes(row.get("buy_size_shapes")),
         sell_size_shapes=recorded_shapes(row.get("sell_size_shapes")),
         read=True,

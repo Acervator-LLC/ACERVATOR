@@ -865,6 +865,16 @@ QUOTE_INCREMENT_KEY = "quote_increment"
 #: nothing on a spot pair and a perpetual.
 SESSION_DETAILS_KEY = "fcm_trading_session_details"
 
+#: The keys a market record publishes its clearing venue under, one name per
+#: venue that publishes one. Read over every market record of the fourteen wired
+#: venues that answered a credential-free call at ``VENUE_MEASUREMENT_DATE``:
+#: coinbase serves ``product_venue`` on all 1156 of its rows, kraken serves
+#: ``execution_venue`` on all 1461 of its rows, and neither name appears on any
+#: other venue, so one tuple reads both without a venue id in hand. The other
+#: twelve publish no clearing venue; their nearest fields name a settlement
+#: currency, a settlement day, a tradability flag or an index-price source.
+CLEARING_VENUE_KEYS: tuple[str, ...] = ("product_venue", "execution_venue")
+
 #: The record an equity product carries its own trading permissions under. ccxt's
 #: ``parse_spot_market`` reads nothing out of it and keeps the whole raw product
 #: row under ``info``, so the record survives the parse.
@@ -1171,6 +1181,24 @@ def market_session(market: Any) -> Optional[str]:
     return SESSION_CONTINUOUS
 
 
+def market_clearing_venue(market: Any) -> Optional[str]:
+    """The venue one loaded market record publishes as clearing the product,
+    reading ``CLEARING_VENUE_KEYS`` in order for the first non-empty string.
+
+    None for a record publishing no clearing venue, which twelve of the fourteen
+    wired venues read serve, and None for a record whose ``info`` is not a
+    mapping, which bitfinex and gemini both serve.
+    """
+    raw = (market or {}).get("info") or {}
+    if not isinstance(raw, dict):
+        return None
+    for name in CLEARING_VENUE_KEYS:
+        held = raw.get(name)
+        if type(held) is str and held.strip():
+            return held.strip()
+    return None
+
+
 def equity_size_shapes(market: Any) -> tuple:
     """The size shapes one loaded market record permits on a buy and on a sell,
     off ``EQUITY_FLAGS_KEY`` under ``EQUITY_DETAILS_KEY``.
@@ -1299,6 +1327,7 @@ def market_rules(
         quote_increment=quote_step(market),
         contract_size=contract_units(market),
         session=market_session(market),
+        clearing_venue=market_clearing_venue(market),
         buy_size_shapes=buy_shapes,
         sell_size_shapes=sell_shapes,
         # CCXT parses Coinbase's future_product_details.contract_expiry here; a
