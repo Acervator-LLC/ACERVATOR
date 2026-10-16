@@ -38,6 +38,7 @@ from typing import Any, Optional
 from .native_chart_surface import ARROW_GLYPH_FAMILY, ARROW_GLYPH_PX, CAPTION_PX
 from .native_chart_surface import CONTROL_FONT_FAMILY, CONTROL_FONT_PX
 from .native_chart_surface import CONTROL_HEIGHT_PX, TOGGLE_BOX_PX
+from .native_chart_surface import row_prices, synthetic_candle
 from .native_chart_surface import INDICATOR_DEFAULTS as PANEL_INDICATOR_DEFAULTS
 from .native_chart_surface import INDICATOR_TOGGLES as PANEL_INDICATOR_TOGGLES
 from .native_chart_surface import INDICATOR_ROW_SPACING_PX as PANEL_TOGGLE_GAP_PX
@@ -610,27 +611,23 @@ def target_balance_lines(readings: dict) -> list:
     ]
 
 
-def candle_row(candle: Any) -> list:
-    """One candle as six numbers, from an ``OHLCVCandle``, a dict or a six-number row."""
-    if hasattr(candle, CANDLE_OPEN_KEY):
-        return [
-            int(getattr(candle, CANDLE_TIME_KEY, DEFAULT_CANDLE_TIME)),
-            float(candle.open),
-            float(candle.high),
-            float(candle.low),
-            float(candle.close),
-            float(getattr(candle, CANDLE_VOLUME_KEY, DEFAULT_CANDLE_VOLUME)),
-        ]
-    if not isinstance(candle, dict):
-        return list(candle)
-    return [
-        int(candle.get(CANDLE_TIME_KEY, DEFAULT_CANDLE_TIME)),
-        float(candle[CANDLE_OPEN_KEY]),
-        float(candle[CANDLE_HIGH_KEY]),
-        float(candle[CANDLE_LOW_KEY]),
-        float(candle[CANDLE_CLOSE_KEY]),
-        float(candle.get(CANDLE_VOLUME_KEY, DEFAULT_CANDLE_VOLUME)),
-    ]
+def candle_row(candle: Any) -> Optional[list]:
+    """One candle as six numbers, from an ``OHLCVCandle``, a dict or a six-number row.
+
+    Answers None when `synthetic_candle` refuses a field, so `candle_rows`
+    drops that candle and the ones beside it still reach the chart.
+    """
+    if hasattr(candle, CANDLE_OPEN_KEY) or isinstance(candle, dict):
+        read = synthetic_candle(candle)
+    else:
+        read = row_prices(candle)
+    return None if read is None else list(read)
+
+
+def candle_rows(candles: Any) -> list:
+    """Every candle `candle_row` admits, as the six-number rows the panel holds."""
+    read = [candle_row(one) for one in candles or []]
+    return [one for one in read if one is not None]
 
 
 class SignalRecord:
@@ -1238,7 +1235,7 @@ class TradeChartsTabModel:
         self.panel.set_timeframe(str(call.timeframe))
         self.panel.set_chart_timeframe(str(call.timeframe))
         self.panel.set_overlays(list(call.overlays))
-        self.panel.set_candles([candle_row(one) for one in call.candles])
+        self.panel.set_candles(candle_rows(call.candles))
         self.panel.set_call(call.direction, call.readings)
         self.panel.set_caption(call.caption)
         record[LAST_FETCH_KEY] = self._now()
@@ -1656,7 +1653,7 @@ class TradeChartsTabModel:
             returned = len(rows or [])
             source = str(answered)
             if rows:
-                self.panel.set_candles([candle_row(one) for one in rows])
+                self.panel.set_candles(candle_rows(rows))
                 self.panel.set_source(answered)
                 outcome = OUTCOME_CANDLES
                 self.calls.append([FETCH_CANDLES, bot_id, returned, source])
@@ -1773,7 +1770,7 @@ class TradeChartsTabModel:
         self._follow_shown()
         self.panel.set_chart_timeframe(NUCLEAR_TIMEFRAME)
 
-        rows = [candle_row(one) for one in candles]
+        rows = candle_rows(candles)
         self.panel.set_candles(rows)
         label_price = last_price or (
             rows[-1][CANDLE_CLOSE_INDEX] if rows else NO_LAST_PRICE

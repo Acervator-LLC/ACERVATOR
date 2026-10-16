@@ -2425,3 +2425,76 @@ panel and one shown market, stepped between two lists by the arrows.
 
 "One method rebuilds that panel set from the current roster." - `update_charts`
 rebuilds the two market lists and redraws the one panel.
+
+## 2026-10-16 - #230 #223 - the other five stored prices admit before the chart draws them
+
+### What the candle admission did not reach
+
+The candle series and the header price were admitted first. Five more stored
+prices still reached the paint, or the row builder, with a bare conversion. Each
+is read off the running program below.
+
+| the stored price | before | after |
+| --- | --- | --- |
+| a position price that is a word, a missing value, a huge integer or a not-a-number | 232 px of 42638 drawn | 42638, chart intact |
+| a target anchor or ceiling that is a word or a huge integer | 7397 px of 42638 drawn | 42638, chart intact |
+| a marker price that is a text number, a not-a-number or an infinity | a marker drawn at a nonsense price | dropped |
+| a fed candle whose field is a word, a missing value or a huge integer | **0 of 30** rows reached the chart | **29 of 30** |
+| a synthetic candle with the same | the whole push refused | 29 of 30, `29 candles, 1 unreadable` |
+
+A text number, a flag and a not-a-number in a fed candle built thirty rows
+before, carrying the wrong value into the picture.
+
+### Where each admission sits
+
+`src/gui/native_chart.py`, in `set_positions`, keeps the positions whose price
+`as_finite_float` admits, so one refused position costs its own marker.
+`ChartModel.set_positions` in `src/gui/main_tabs/native_chart_surface.py` does
+the same for the React page.
+
+`set_target_balance_lines` reads both prices through `as_finite_float` in both
+builds. A refused price becomes None, which is what None has always meant for
+that line: the line is hidden.
+
+`set_trade_history_markers` in the widget and `set_markers` in the model read the
+marker price through `as_finite_float`. A marker without a readable price is
+dropped, as a marker without a positive price already was.
+
+`src/gui/main_tabs/trade_charts_tab_surface.py`, in `candle_row`, answers None
+for a candle it cannot read, and `candle_rows` drops it and keeps the rest. The
+three feeds that built rows one by one call `candle_rows` now: the ATA-SMP call,
+the history feed and the synthetic push.
+
+`src/gui/main_tabs/native_chart_surface.py`, in `synthetic_candle`, reads a
+candle by attribute or by key, so a candle built without a fetch is admitted the
+same way a fetched one is. `push_synthetic_candles` in
+`src/gui/widgets/trade_charts_tab.py` counts what it dropped and hands that count
+to `set_candles`, so the count line names it.
+
+`CANDLE_FIELDS` and `CANDLE_PRICE_FIELDS` name the six fields and the four prices
+once, so the two builds cannot disagree on which fields are read.
+
+### The readings
+
+One chart built inside a shown parent, fed thirty candles, painted over a fixed
+900 by 700 area. A clean chart draws 42638 pixels; the reading's control reports
+0 for a planted empty chart.
+
+A clean series still draws identically: **0 pixels differ** across all 630000 of
+them against the tree before this work began, and every published reading is
+unchanged.
+
+No venue was contacted, no bot was started, and no order was placed, priced,
+previewed or cancelled. The runtime tree was read with a redirected home.
+
+### Sentences the five admissions overtake
+
+They were not reworded. They are quoted here.
+
+"One candle as six numbers, from an ``OHLCVCandle``, a dict or a six-number
+row." - `candle_row` answers six numbers for a candle it can read, and None for
+one it cannot, and `candle_rows` keeps those it could.
+
+"Store the grid levels. Nothing paints them." - still true. The grid level list
+is written and read zero times, and `GridLine` is constructed zero times, in both
+builds. Layer 2 of #230 is unbuilt.
