@@ -19,7 +19,12 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
-from ..trading.smart_wire import compute_safe_outflow_pct, mature_profit_usd
+from ..trading.smart_wire import (
+    compute_safe_outflow_pct,
+    mature_profit_usd,
+    pct_kind_refusal,
+    routable_pct,
+)
 
 logger = logging.getLogger("acervator.simulator.wire")
 
@@ -236,6 +241,9 @@ class SimWireManager:
         """
         if str(source_id) == str(target_id):
             return {"applied": False, "reason": "source and target must differ"}
+        kind_refusal = pct_kind_refusal(pct)
+        if kind_refusal:
+            return {"applied": False, "reason": kind_refusal}
         try:
             wanted_pct = float(pct)
         except Exception as exc:  # noqa: BLE001 - float() also raises OverflowError
@@ -316,11 +324,22 @@ class SimWireManager:
         rows: list[dict] = []
         for source, targets in self._wires.items():
             for target, pct in targets.items():
+                admitted_pct = routable_pct(pct)
+                if admitted_pct is None:
+                    logger.warning(
+                        "sim wire: export DROPPED %s -> %s - stored pct %r is "
+                        "not a number this reading admits; that route is "
+                        "absent from the save",
+                        source,
+                        target,
+                        pct,
+                    )
+                    continue
                 rows.append(
                     {
                         "source_id": str(source),
                         "target_id": str(target),
-                        "pct": float(pct),
+                        "pct": admitted_pct,
                     }
                 )
         return rows
@@ -393,6 +412,20 @@ class SimWireManager:
                 continue
             source = row.get("source_id")
             target = row.get("target_id")
+            kind_refusal = pct_kind_refusal(row.get("pct", 0))
+            if kind_refusal:
+                lost += 1
+                logger.warning(
+                    "sim wire: import DROPPED wire row %d of %d, %s -> %s - "
+                    "%s; no route is created at the figure that kind "
+                    "converts to",
+                    offered,
+                    len(wires),
+                    source,
+                    target,
+                    kind_refusal,
+                )
+                continue
             try:
                 pct = float(row.get("pct", 0))
             except Exception as exc:  # noqa: BLE001 - float() also raises OverflowError
@@ -621,7 +654,27 @@ class SimWireManager:
         safe_pct = self._safe_outflow_pct(source_id, profit)
         per_wire_safe_pct = safe_pct / max(1, len(outgoing))
         for target_id, raw_pct in outgoing.items():
-            pct = min(float(raw_pct), per_wire_safe_pct)
+            admitted_pct = routable_pct(raw_pct)
+            if admitted_pct is None:
+                logger.warning(
+                    "sim wire: %s -> %s carries pct %r, which the Bot Swarm "
+                    "tab draws as an em dash; no share is routed rather "
+                    "than one computed from the figure that kind converts to",
+                    source_id,
+                    target_id,
+                    raw_pct,
+                )
+                results.append(
+                    {
+                        "target_id": target_id,
+                        "pct": None,
+                        "share": 0.0,
+                        "applied": False,
+                        "reason": "stored pct is not a number this reading admits",
+                    }
+                )
+                continue
+            pct = min(admitted_pct, per_wire_safe_pct)
             share = profit * pct / 100.0
             if share < self._min_wire:
                 results.append(
