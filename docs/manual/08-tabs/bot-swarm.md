@@ -194,6 +194,27 @@ ledger per bot.
 | `export_wires`, `import_wires` | Carry the topology through a save and a restart |
 | `export_ledgers`, `import_ledgers` | Carry the provenance through the same |
 
+### The percent a wire is allowed to carry
+
+One rule decides whether a stored percent is a number, and every reader of the
+topology reads it through that rule, so a percent the Bot Swarm tab draws as an
+em dash can never route a share.
+
+`src/trading/smart_wire.py` — `routable_pct` and `pct_kind_refusal`
+
+```python
+def routable_pct(value) -> Optional[float]:
+    """One stored wire percent as a float, or None when no reading admits it."""
+```
+
+A bool is refused by name. `float(True)` answers 1.0, so a saved `true` would
+otherwise stand as a one percent wire nobody configured. `register_wire` and
+`import_wires` refuse that kind before they store anything,
+`distribute_fold_profit` routes no share from a percent it cannot admit, and
+`export_wires` drops such a row from the save and logs which route is gone.
+`PaperWireManager` and `SimWireManager` read the same two functions, so the
+three engines admit and refuse the same values.
+
 Three readings on the per-bot ledger answer where a bot's capital came from and
 how much of it has aged enough to move on.
 
@@ -762,6 +783,22 @@ the bot draws the reason in that space rather than nothing.
     "acervatorLiveSettingsTab",
     "live_settings_tab_surface",
 ),
+```
+
+A refusing tab costs one tab, never the window. On the Qt side
+`_add_guarded_tab` and `_install_guarded_tab` build each tab and, on a refusal,
+add a page naming the kind that refused and the value, so the other six tabs
+still open and the operator's click still reaches a window. On the React side
+`tab_payload` answers a fault payload for that one space, with its import and
+its model lookup inside the same guard, because `redraw` fills every space in
+one loop.
+
+`src/gui/bot_live_settings.py` — `_add_guarded_tab`
+
+```python
+try:
+    page = self._wrap_scrollable(build())
+except Exception as tab_exc:
 ```
 
 ## 2026-09-09 22:12 - #128 - one view, growth stages, and wires that hang
