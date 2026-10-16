@@ -2237,6 +2237,41 @@ and `AGGREGATE_TITLES` names the pillar once, at its base. `RULED_COLUMNS`
 keeps the row partition, the plot baseline and the dotted increments on TF and
 the twelve, so none of them crosses a pillar.
 
+**When a cell cannot read its figure.** `net_cell`, `comp_cell` and `conf_cell`
+admit a reading through `as_finite_float` before printing it. A reading that is
+not a finite number, an integer too large to hold as one among them, draws
+`ABSENT_CELL_TEXT` in `ABSENT_TEXT_COLOR`: the em dash the Comp column has
+always drawn where there is no composite. No cell prints a figure it did not
+read, and no cell carries a notice in place of one.
+
+`src/gui/main_tabs/indicator_panel_surface.py` — `absent_cell`
+
+```python
+return {
+    "text": ABSENT_CELL_TEXT,
+    "text_color": ABSENT_TEXT_COLOR,
+    "tooltip": tooltip,
+}
+```
+
+**The grid holds one reading.** `timeframe_rows` settles every row — its
+timeframe, its reading and the signals keyed by indicator — before the row
+count is cut. The grid therefore holds the timeframes the fed reading holds and
+no others. A value a row cannot read draws the em dash in that row's own cell,
+so a refusal never leaves a row carrying the previous reading's numbers.
+`vote_totals` sums the three vote counts through the same admission step, and
+`lock_line` draws the em dash for a lock field it cannot read. The Paper and
+Simulator panels draw their rows and their aggregate cells through the same
+functions.
+
+`src/gui/indicator_panel.py` — `IndicatorVotingPanel.update_data`
+
+```python
+rows = ivp.timeframe_rows(multi_tf_summary)
+self._vote_totals = ivp.vote_totals(multi_tf_summary)
+self._table_a.setRowCount(len(rows))
+```
+
 ![The restyled panel](../audits/2026-09-07_units/indicator_panel_restyled_react.png)
 
 `src/trading/ta_engine.py` — and the divisor beneath it

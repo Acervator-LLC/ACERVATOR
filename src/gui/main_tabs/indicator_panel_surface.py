@@ -197,7 +197,8 @@ CONFIDENCE_FORMAT = "{symbol} {value:.0%}"
 
 NET_FORMAT = "{value:+.2f}"
 COMP_FORMAT = "{value:+.2f}"
-COMP_ABSENT_TEXT = "—"
+#: What an aggregate cell prints in place of a figure it cannot read.
+ABSENT_CELL_TEXT = "—"
 COMP_SKIPPED_FORMAT = (
     "Left out of Comp, at or below this bot's TA Timeframe: {timeframes}"
 )
@@ -661,18 +662,33 @@ def indicator_cell_colors(signal: Optional[dict]) -> dict:
     }
 
 
+def absent_cell(tooltip: str) -> dict:
+    """The cell an aggregate column draws when it has no reading to print.
+
+    One definition for all three aggregates, so a cell that cannot read its
+    figure says so the one way the Comp column has always said it.
+    """
+    return {
+        "text": ABSENT_CELL_TEXT,
+        "text_color": ABSENT_TEXT_COLOR,
+        "tooltip": tooltip,
+    }
+
+
 def net_cell(tf_data: dict) -> dict:
     """The Net column's cell: the weighted bull-minus-bear tally.
 
     Carries ``HEADER_TOOLTIPS`` so the reading answers a hover as well as the
     heading above it does, and ``signed_text_color`` so it agrees with its
-    pillar.
+    pillar. A score ``as_finite_float`` refuses draws the absent mark rather
+    than a zero it did not read.
     """
     read = as_finite_float((tf_data or {}).get("net_score"))
-    net = REFUSED_READING if read is None else read
+    if read is None:
+        return absent_cell(HEADER_TOOLTIPS["Net"])
     return {
-        "text": NET_FORMAT.format(value=net),
-        "text_color": signed_text_color(net),
+        "text": NET_FORMAT.format(value=read),
+        "text_color": signed_text_color(read),
         "tooltip": HEADER_TOOLTIPS["Net"],
     }
 
@@ -698,18 +714,12 @@ def comp_cell(tf_data: dict) -> dict:
     tooltip = HEADER_TOOLTIPS["Comp"]
     if skipped:
         tooltip = tooltip + "\n\n" + skipped
-    comp = (tf_data or {}).get("composite_net")
-    if comp is None:
-        return {
-            "text": COMP_ABSENT_TEXT,
-            "text_color": ABSENT_TEXT_COLOR,
-            "tooltip": tooltip,
-        }
-    read = as_finite_float(comp)
-    value = REFUSED_READING if read is None else read
+    read = as_finite_float((tf_data or {}).get("composite_net"))
+    if read is None:
+        return absent_cell(tooltip)
     return {
-        "text": COMP_FORMAT.format(value=value),
-        "text_color": signed_text_color(value),
+        "text": COMP_FORMAT.format(value=read),
+        "text_color": signed_text_color(read),
         "tooltip": tooltip,
     }
 
@@ -721,7 +731,9 @@ def conf_cell(tf_data: dict) -> dict:
     so the cell and the pillar under it never disagree.
     """
     read = as_finite_float((tf_data or {}).get("confidence"))
-    conf = _clamped(REFUSED_READING if read is None else read)
+    if read is None:
+        return absent_cell(HEADER_TOOLTIPS["Conf"])
+    conf = _clamped(read)
     color = CONF_BAND_COLORS[conf_band(conf)]
     return {
         "text": CONF_FORMAT.format(bar=confidence_bar(conf), value=conf),
@@ -742,22 +754,71 @@ def ordered_timeframes(multi_tf_summary: dict) -> list:
     return sorted(names, key=rank)
 
 
+def timeframe_rows(multi_tf_summary: dict) -> list:
+    """Every timeframe the summary holds, each with its reading and its signals.
+
+    Built in ``ordered_timeframes`` order before a host draws anything, so the
+    whole table is settled or none of it is. An entry that is not a reading
+    becomes an empty one, which draws the absent mark in place of a figure
+    instead of ending the refresh.
+    """
+    summary = multi_tf_summary if isinstance(multi_tf_summary, dict) else {}
+    built: list = []
+    for timeframe in ordered_timeframes(summary):
+        reading = summary.get(timeframe)
+        reading = reading if isinstance(reading, dict) else {}
+        built.append(
+            {
+                "timeframe": str(timeframe),
+                "reading": reading,
+                "signals": signals_by_indicator(reading),
+            }
+        )
+    return built
+
+
+def vote_totals(multi_tf_summary: dict) -> tuple:
+    """The bull, bear and neutral vote counts, summed over every timeframe.
+
+    A count ``as_finite_float`` refuses adds nothing, so one malformed reading
+    cannot end a refresh the other timeframes would have survived.
+    """
+    sums = dict.fromkeys(("bullish", "bearish", "neutral"), REFUSED_READING)
+    for row in timeframe_rows(multi_tf_summary):
+        for field in sums:
+            read = as_finite_float(row["reading"].get(field))
+            sums[field] += REFUSED_READING if read is None else read
+    return (int(sums["bullish"]), int(sums["bearish"]), int(sums["neutral"]))
+
+
 def signals_by_indicator(tf_data: dict) -> dict:
     """One timeframe's signal list keyed by its indicator name."""
     found: dict = {}
-    for signal in (tf_data or {}).get("signals") or []:
+    reading = tf_data if isinstance(tf_data, dict) else {}
+    for signal in reading.get("signals") or []:
         if isinstance(signal, dict) and "indicator" in signal:
             found[signal["indicator"]] = signal
     return found
 
 
+def _lock_field(value: Any) -> str:
+    """One lock field as text, or the absent mark when the lock lacks it."""
+    named = str(EMPTY_TEXT if value is None else value).strip()
+    return named or ABSENT_CELL_TEXT
+
+
 def lock_line(lock: dict) -> str:
-    """One active lock as the single line the locks label prints."""
+    """One active lock as the single line the locks label prints.
+
+    A field the lock does not carry draws the absent mark, so the line never
+    names a timeframe, a direction or a candle count it did not read.
+    """
     entry = lock if isinstance(lock, dict) else {}
+    read = as_finite_float(entry.get("candles_remaining"))
     return LOCK_ENTRY_FORMAT.format(
-        source_tf=entry.get("source_tf", EMPTY_TEXT),
-        locked_direction=entry.get("locked_direction", EMPTY_TEXT),
-        candles_remaining=entry.get("candles_remaining", EMPTY_TEXT),
+        source_tf=_lock_field(entry.get("source_tf")),
+        locked_direction=_lock_field(entry.get("locked_direction")),
+        candles_remaining=ABSENT_CELL_TEXT if read is None else f"{int(read)}",
     )
 
 
@@ -985,18 +1046,17 @@ class IndicatorTableModel:
 
     def set_summary(self, multi_tf_summary: dict) -> list:
         """Rebuild every row from one multi-timeframe summary."""
-        summary = multi_tf_summary if isinstance(multi_tf_summary, dict) else {}
-        self.rows = []
-        for timeframe in ordered_timeframes(summary):
-            tf_data = summary.get(timeframe)
-            tf_data = tf_data if isinstance(tf_data, dict) else {}
-            cells = [{"kind": "timeframe", "text": str(timeframe), "bold": True}]
-            cells.extend(self._indicator_cells(signals_by_indicator(tf_data)))
+        built = []
+        for row in timeframe_rows(multi_tf_summary):
+            timeframe = row["timeframe"]
+            cells = [{"kind": "timeframe", "text": timeframe, "bold": True}]
+            cells.extend(self._indicator_cells(row["signals"]))
             if self.include_aggregates:
-                cells.extend(self._aggregate_cells(tf_data))
+                cells.extend(self._aggregate_cells(row["reading"]))
             while len(cells) < PANEL_COLUMN_COUNT:
                 cells.append({"kind": "pad", "text": EMPTY_TITLE})
-            self.rows.append({"timeframe": str(timeframe), "cells": cells})
+            built.append({"timeframe": timeframe, "cells": cells})
+        self.rows = built
         return self.rows
 
     def payload(self) -> dict:
@@ -1242,11 +1302,10 @@ def no_data_text(multi_tf_summary: dict, message: str) -> str:
 
 def collected_locks(multi_tf_summary: dict) -> list:
     """Every active lock the summary carries, in timeframe order."""
-    summary = multi_tf_summary if isinstance(multi_tf_summary, dict) else {}
     found: list = []
-    for timeframe in ordered_timeframes(summary):
-        tf_data = summary.get(timeframe)
-        found.extend((tf_data or {}).get("locks") or [])
+    for row in timeframe_rows(multi_tf_summary):
+        locks = row["reading"].get("locks") or []
+        found.extend(one for one in locks if isinstance(one, dict))
     return found
 
 
