@@ -183,6 +183,9 @@
 
   var EXCHANGE_INDEX = "exchange_index";
   var EXCHANGE_ITEMS = "exchange_items";
+  // The money-leg drop-down, refilled off the picked venue's own market rows.
+  var BASE_COMBO = "base_combo";
+  var BASE_ITEMS = "base_items";
   var TARGET_ITEMS = "target_items";
   var TARGET_INDEX = "target_index";
   var TARGET_HUES = "target_hues";
@@ -579,12 +582,18 @@
     return objectField(objectField(bag(FIELDS), NUMBERS), name);
   }
 
-  // The venue's own list refills the one drop-down the payload names.
+  // The venue's own list refills the drop-downs the payload names.
   function comboItems(name) {
     if (name === bag(TIMEFRAMES)[TA_COMBO]) {
       var served = listField(bag(TIMEFRAMES), TA_ITEMS);
       if (served.length) {
         return served;
+      }
+    }
+    if (name === bag(ASSET_PAGE)[BASE_COMBO]) {
+      var bases = listField(bag(ASSET_PAGE), BASE_ITEMS);
+      if (bases.length) {
+        return bases;
       }
     }
     return listField(objectField(bag(FIELDS), COMBOS), name);

@@ -515,6 +515,10 @@ TA_TIMEFRAMES = tuple(value for _label, value in COMBO_FIELDS["ta_timeframe"])
 TA_TIMEFRAME_DEFAULT = "1h"
 TA_COMBO_NAME = "ta_timeframe"
 
+#: The drop-down naming the money a bot funds its position in, which
+#: ``base_items_for`` refills off the picked venue's own market rows.
+BASE_COMBO_NAME = "base"
+
 TEXT_FIELDS: dict[str, str] = {}
 PLACEHOLDERS: dict[str, str] = {}
 
@@ -1588,12 +1592,35 @@ def rules_from_row(row: Any) -> Any:
     )
 
 
+def quote_currency(symbol: Any) -> str:
+    """``market_rules_store.quote_currency`` read for one recorded symbol: the
+    money leg, with the settle leg and the expiry date stripped.
+
+    The store owns the reading, so the base drop-down here and
+    ``execution._venue_quote_currency`` on the order path cannot name one market
+    two different currencies.
+    """
+    from ...exchange.market_rules_store import quote_currency as money_leg
+
+    return money_leg(symbol)
+
+
+def market_is_contract(symbol: Any) -> bool:
+    """``market_rules_store.is_contract`` read for one recorded symbol, True for
+    a perpetual and a dated contract and False for a spot pair."""
+    from ...exchange.market_rules_store import is_contract
+
+    return is_contract(symbol)
+
+
 def recorded_market_rows(venue: Any, asset_class: Any = "") -> list:
     """One market row per pair the recording holds for ``venue``, in symbol
     order, each carrying its symbol, base and quote and no traded figure.
 
     The asset page lists these where no live market fetch answered, and
-    ``asset_class`` keeps only the rows recorded under that class.
+    ``asset_class`` keeps only the rows recorded under that class. The quote is
+    the money leg ``quote_currency`` reads, so a contract row carries the
+    currency it settles in rather than the settle leg joined to it.
     """
     asked = str(asset_class or "").strip().lower()
     rows = recorded_venue_rows(venue)
@@ -1605,7 +1632,8 @@ def recorded_market_rows(venue: Any, asset_class: Any = "") -> list:
             held = rows.get(symbol) or {}
             if str(held.get(CLASS_FIELD, "") or "").lower() != asked:
                 continue
-        base, _, quote = str(symbol).partition(MARKET_SYMBOL_SEPARATOR)
+        base = str(symbol).partition(MARKET_SYMBOL_SEPARATOR)[0]
+        quote = quote_currency(symbol)
         if not base or not quote:
             continue
         found.append(
@@ -1618,6 +1646,24 @@ def recorded_market_rows(venue: Any, asset_class: Any = "") -> list:
             }
         )
     return found
+
+
+def base_items_for(rows: Any) -> list:
+    """Every entry the base drop-down offers over one venue's market rows:
+    ``COMBO_FIELDS["base"]`` in its declared order, then every further
+    ``MARKET_QUOTE_KEY`` the rows hold, in name order.
+
+    A market whose money leg no entry names cannot be reached through
+    ``filter_assets``, so the rows decide the entries beyond the declared ones.
+    """
+    declared = list(COMBO_FIELDS["base"])
+    named = {label for label, _value in declared}
+    held = {
+        quote
+        for row in readable_list(rows) or []
+        if (quote := bag_text(row, MARKET_QUOTE_KEY))
+    }
+    return declared + [[quote, None] for quote in sorted(held - named)]
 
 
 def normalise_sector(name: Any) -> str:
@@ -1957,25 +2003,41 @@ def volume_text(volume: Any) -> str:
     return NO_VOLUME_TEXT
 
 
+def market_name(market: dict) -> str:
+    """What one market's entry is called on the asset page: its
+    ``MARKET_BASE_KEY`` for a spot pair and its ``MARKET_SYMBOL_KEY`` for a
+    market ``market_is_contract`` holds.
+
+    One ``MARKET_BASE_KEY`` carries several contracts, so it names none of them
+    on its own.
+    """
+    symbol = bag_text(market, MARKET_SYMBOL_KEY)
+    if symbol and market_is_contract(symbol):
+        return symbol
+    return bag_text(market, MARKET_BASE_KEY)
+
+
 def pair_label(market: dict) -> str:
-    """One pair's entry on the asset page, with volume and volatility."""
+    """One pair's entry on the asset page, named by ``market_name``, with
+    volume and volatility."""
     text = volume_text(bag_number(market, MARKET_VOLUME_KEY))
     parts = [VOLUME_PART_FORMAT.format(text=text)] if text else []
     if market.get(MARKET_VOLATILITY_KEY, 0) > 0:
         parts.append(VOLATILITY_PART_FORMAT.format(value=market[MARKET_VOLATILITY_KEY]))
-    base = bag_text(market, MARKET_BASE_KEY)
+    named = market_name(market)
     if not parts:
-        return base
-    return LABEL_WITH_PARTS_FORMAT.format(base=base, parts=PART_SEPARATOR.join(parts))
+        return named
+    return LABEL_WITH_PARTS_FORMAT.format(base=named, parts=PART_SEPARATOR.join(parts))
 
 
 def alt_label(market: dict) -> str:
-    """One alt's entry on the pool page, with its volume."""
+    """One alt's entry on the pool page, named by ``market_name``, with its
+    volume."""
     text = volume_text(bag_number(market, MARKET_VOLUME_KEY))
-    base = bag_text(market, MARKET_BASE_KEY)
+    named = market_name(market)
     if not text:
-        return base
-    return ALT_LABEL_WITH_VOLUME_FORMAT.format(base=base, text=text)
+        return named
+    return ALT_LABEL_WITH_VOLUME_FORMAT.format(base=named, text=text)
 
 
 def icon_hue(symbol: str) -> int:
@@ -2066,8 +2128,10 @@ class BotWizardModel:
             PHANTOM_TIMEFRAMES, EMPTY_TEXT
         )
         self.ta_timeframe_items = list(COMBO_FIELDS["ta_timeframe"])
+        self.base_items = list(COMBO_FIELDS["base"])
         self.exchange_index = 0 if self.exchanges else -1
         self.pool_exchange_index = 0 if self.exchanges else -1
+        self.target_symbols: list[str] = []
         self.target_items: list[list] = []
         self.target_hues: list[int] = []
         self.target_reasons: list[str] = []
@@ -2246,14 +2310,14 @@ class BotWizardModel:
 
     def set_combo_index(self, name: str, value: Any) -> None:
         """Pick one entry in a drop-down by its position."""
-        items = self.ta_timeframe_items if name == "ta_timeframe" else None
+        items = self._served_items(name)
         if items is None:
             if name not in COMBO_FIELDS:
                 raise KeyError(REFUSAL_UNKNOWN_FIELD.format(name=name))
             items = list(COMBO_FIELDS[name])
         self.combo_indexes[name] = list_position(value, len(items))
         self.calls.append([COMBO_SET_CURRENT_INDEX, name, self.combo_indexes[name]])
-        if name == "base":
+        if name == BASE_COMBO_NAME:
             self.filter_assets()
         elif name == "pool_base":
             self.refresh_alt_list()
@@ -2265,10 +2329,20 @@ class BotWizardModel:
         self.texts[name] = text_value(value)
         self.calls.append([TEXT_SET_TEXT, name, self.texts[name]])
 
+    def _served_items(self, name: str) -> Optional[list]:
+        """The entries the venue's own list put into one drop-down, and nothing
+        for a drop-down ``COMBO_FIELDS`` alone fills."""
+        if name == TA_COMBO_NAME:
+            return self.ta_timeframe_items
+        if name == BASE_COMBO_NAME:
+            return self.base_items
+        return None
+
     def _combo_items(self, name: str) -> list:
         """The entries one drop-down currently holds."""
-        if name == "ta_timeframe":
-            return self.ta_timeframe_items
+        served = self._served_items(name)
+        if served is not None:
+            return served
         return [list(one) for one in COMBO_FIELDS[name]]
 
     def combo_data(self, name: str) -> Any:
@@ -2352,12 +2426,30 @@ class BotWizardModel:
             self.calls.append([MARKET_FETCH, found])
             self.fetched.append(found)
             self.markets[found] = recorded_market_rows(found, self.sector)
+        self.refill_base_items()
         self.filter_assets()
+
+    def refill_base_items(self) -> None:
+        """Refill the base drop-down from the picked venue's market rows,
+        through ``base_items_for``.
+
+        The declared entries keep their positions, so a stored
+        ``COMBO_DEFAULT_INDEX`` still names the entry it always named.
+        """
+        found = self.exchange_id_at(self.exchange_index)
+        self.base_items = base_items_for(self.markets.get(found, []))
+        self.calls.append([COMBO_CLEAR, "base"])
+        for label, data in self.base_items:
+            self.calls.append([COMBO_ADD_ITEM, "base", label, data])
+        self.combo_indexes["base"] = list_position(
+            self.combo_indexes["base"], len(self.base_items)
+        )
+        self.calls.append([COMBO_SET_CURRENT_INDEX, "base", self.combo_indexes["base"]])
 
     def filter_assets(self) -> None:
         """Refill the pair list with the markets quoted in the picked base."""
         found = self.exchange_id_at(self.exchange_index)
-        base = self.combo_text("base").strip().upper()
+        base = self.combo_text(BASE_COMBO_NAME).strip().upper()
         rows = self.markets.get(found, [])
         self.calls.append([COMBO_CLEAR, "asset_target"])
         kept = [
@@ -2369,6 +2461,7 @@ class BotWizardModel:
             key=lambda row: bag_number(row, MARKET_VOLUME_KEY) or 0.0, reverse=True
         )
         self.target_items = []
+        self.target_symbols = []
         self.target_hues = []
         self.target_reasons = []
         self.target_unit_rules = []
@@ -2383,6 +2476,7 @@ class BotWizardModel:
             if reason:
                 label = UNTRADEABLE_LABEL_FORMAT.format(label=label, reason=reason)
             self.target_items.append([label, named])
+            self.target_symbols.append(bag_text(row, MARKET_SYMBOL_KEY))
             self.target_hues.append(icon_hue(named))
             self.target_reasons.append(reason)
             self.target_unit_rules.append(
@@ -2396,6 +2490,7 @@ class BotWizardModel:
             self.calls.append([COMBO_ADD_ITEM, "asset_target", label, named])
         if not kept:
             self.target_items.append([NO_PAIRS_TEXT, NO_PAIRS_DATA])
+            self.target_symbols.append(EMPTY_TEXT)
             self.target_reasons.append(EMPTY_TEXT)
             self.target_unit_rules.append(EMPTY_TEXT)
             self.target_prices.append(None)
@@ -2545,6 +2640,17 @@ class BotWizardModel:
             return self.target_items[self.target_index][1]
         return None
 
+    def target_symbol(self) -> str:
+        """The recorded symbol of the market the target list shows, empty while
+        no market is picked.
+
+        ``asset_config`` carries it so ``BotConfig`` keeps the market the
+        operator picked rather than rebuilding one from the two legs.
+        """
+        if 0 <= self.target_index < len(self.target_symbols):
+            return self.target_symbols[self.target_index]
+        return EMPTY_TEXT
+
     def update_info(self) -> None:
         """Put the picked asset's description on the info button."""
         symbol = self.target_data()
@@ -2564,12 +2670,17 @@ class BotWizardModel:
         self.calls.append([MESSAGE_BOX_INFORMATION, *self.info_box])
 
     def asset_config(self) -> dict:
-        """The venue, base, target, sector and unit rule the asset page
-        collected, so the bot is created under the rule its market demands."""
+        """The venue, base, target, symbol, sector and unit rule the asset page
+        collected, so the bot is created under the rule its market demands.
+
+        ``symbol`` is the recorded symbol ``target_symbol`` answers, which
+        ``BotConfig.__post_init__`` keeps instead of joining the two legs.
+        """
         return {
             "exchange_id": self.exchange_id_at(self.exchange_index),
-            "base_currency": self.combo_text("base").strip().upper(),
+            "base_currency": self.combo_text(BASE_COMBO_NAME).strip().upper(),
             "target_asset": self.target_data() or EMPTY_TEXT,
+            "symbol": self.target_symbol(),
             "asset_class": self.sector,
             "sizing_mode": self.target_unit_rule(),
         }
@@ -3061,6 +3172,7 @@ CONFIG_FIELDS = (
     "exchange_id",
     "base_currency",
     "target_asset",
+    "symbol",
     "asset_class",
     "sizing_mode",
     "visibility",
@@ -3277,11 +3389,21 @@ def mode_state(model: BotWizardModel) -> dict:
 
 
 def asset_page_state(model: BotWizardModel) -> dict:
-    """The venue, the pair list and the info button on the asset page."""
+    """The venue, the base drop-down, the pair list and the info button on the
+    asset page.
+
+    ``base_items`` is what ``refill_base_items`` put into the drop-down the
+    ``base_combo`` name points at, which ``comboItems`` draws ahead of
+    ``COMBO_FIELDS``.
+    """
     return {
         "exchange_index": model.exchange_index,
         "exchange_items": model.exchange_items(),
+        "base_combo": BASE_COMBO_NAME,
+        "base_items": [list(one) for one in model.base_items],
         "target_items": [list(one) for one in model.target_items],
+        "target_symbols": list(model.target_symbols),
+        "target_symbol": model.target_symbol(),
         "target_hues": list(model.target_hues),
         "target_reasons": list(model.target_reasons),
         "target_unit_rules": list(model.target_unit_rules),
