@@ -2157,20 +2157,24 @@ def size_shape_refusal(recorded: Any, side: Any, moment_s: Any = None) -> str:
 #: spelled as the venue publishes the word. A venue with no row here publishes no
 #: clearing venue, so nothing is compared and nothing is refused.
 #:
-#: coinbase publishes ``product_venue`` on all 1156 of its market records and it
-#: holds three words: ``CBE`` on 925 spot rows, ``FCM`` on 100 dated contracts
-#: and ``INTX`` on 131 perpetuals. The venue's own ``trading_disabled`` flag
-#: separates them: 1017 of the 1025 CBE and FCM rows read False, and all 131 INTX
-#: rows read True, with no tradable row outside the two. The two words below are
-#: that set. The INTX rows are Coinbase International Exchange, which serves
-#: orders on its own service and not on the ``POST /orders`` endpoint
-#: ``place_order`` calls.
+#: coinbase publishes ``product_venue`` on every market record it serves and it
+#: holds four words. The venue's own ``trading_disabled`` flag separates them:
+#:
+#: ``CBE``  925 spot rows, 917 tradable, 8 the venue halted
+#: ``CCM``  1000 equity rows, 1000 tradable, 972 of them buy-enabled
+#: ``FCM``  100 dated contracts, 100 tradable, 46 of them ``view_only``
+#: ``INTX`` 131 perpetuals, 0 tradable
+#:
+#: The three words below are the ones carrying a tradable row. INTX is Coinbase
+#: International Exchange, which serves orders on its own service and not on the
+#: ``POST /orders`` endpoint ``place_order`` calls. The 8 halted CBE rows are a
+#: per-product state, which ``is_listed_market`` already drops.
 #:
 #: kraken publishes ``execution_venue`` on all 1461 of its market records and it
 #: holds one word, ``international``, so the venue names its clearing house and
 #: separates no row.
 CITED_VENUE_CLEARING_REACH: dict[str, frozenset] = {
-    "coinbase": frozenset({"CBE", "FCM"}),
+    "coinbase": frozenset({"CBE", "CCM", "FCM"}),
     "kraken": frozenset({"international"}),
 }
 

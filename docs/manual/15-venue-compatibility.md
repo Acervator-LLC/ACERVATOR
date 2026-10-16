@@ -10199,13 +10199,21 @@ exchanges its index price is drawn from.
 | `product_venue` | `future_product_details.venue` | rows | what it is | `trading_disabled` |
 | --- | --- | --- | --- | --- |
 | CBE | none | 925 | Coinbase Exchange, spot | false 917, true 8 |
+| CCM | none | 1000 | Coinbase Capital Markets, equities | false 1000 |
 | FCM | `cde` | 100 | Coinbase Financial Markets, US dated contracts | false 100 |
 | INTX | `neptune` | 131 | Coinbase International Exchange, perpetuals | true 131 |
 
-The venue's own tradability flag separates the three. Of the 1025 CBE and FCM
-rows, 1017 read `trading_disabled` false; all 131 INTX rows read it true. No row
-outside CBE and FCM is tradable. The 8 are individual spot pairs the venue
-halted, which is a per-product state and not a venue.
+The venue's own tradability flag separates the four. CBE carries 917 tradable
+rows and 8 the venue halted, CCM carries 1000 tradable rows and none halted, and
+FCM carries 100 tradable rows and none halted. All 131 INTX rows read
+`trading_disabled` true, and INTX is the one word with no tradable row. The 8
+are individual spot pairs the venue halted, which is a per-product state and not
+a venue; `src/exchange/ccxt_connector.py, in is_listed_market` already drops
+them.
+
+Every one of the 1000 CCM rows reads `view_only` false, 972 read `buy_enabled`
+true and all 1000 read `sell_enabled` true, so the equity sector clears on a
+venue this platform's order path reaches.
 
 kraken publishes one word, `international`, on every one of its 1461 rows, so it
 names its clearing house and separates no row.
@@ -10228,7 +10236,7 @@ back. A row recorded before the field holds no such key and answers `None`.
 ### What the order path does with it
 
 `src/trading/scrumming/sizing.py, in CITED_VENUE_CLEARING_REACH` holds the
-clearing venues each venue's own order path reaches: `CBE` and `FCM` on
+clearing venues each venue's own order path reaches: `CBE`, `CCM` and `FCM` on
 coinbase, `international` on kraken. A venue with no row there publishes no
 clearing venue, so nothing is compared and nothing is refused.
 
@@ -10274,17 +10282,31 @@ directory redirected.
 | gemini, after | 347 rows, absent on 347 |
 | bitstamp, after | 274 rows, absent on 274 |
 
-The order path, driven on the real records:
+`clearing_refusal` run over every one of the 2147 recorded coinbase rows, and
+the wizard page run on one market of each word:
+
+| `clearing_venue` | rows | rows refused | `market_reason` |
+| --- | --- | --- | --- |
+| CBE | 917 | 0 | empty |
+| CCM | 999 | 0 | empty |
+| FCM | 100 | 0 | empty |
+| INTX | 131 | 131 | the refusal, naming INTX |
+
+The order path, driven on the real record of one market of each word, and again
+on a tampered copy of each:
 
 | the market | `clearing_venue` | the order path | venue calls |
 | --- | --- | --- | --- |
-| an INTX perpetual | `INTX` | refused, naming INTX | 0 |
 | a CBE spot pair | `CBE` | passed | 1 |
-| the same CBE pair, word rewritten `DRB` | `DRB` | refused, naming DRB | 0 |
-| the same INTX perpetual, word blanked | none | passed | 1 |
+| a CCM equity | `CCM` | passed the clearing gate; the two-unit minimum refused it | 0 |
+| an FCM contract | `FCM` | passed the clearing gate; `min_amount` refused it | 0 |
+| an INTX perpetual | `INTX` | refused, naming INTX | 0 |
+| each of the four, word rewritten `DRB` | `DRB` | refused, naming DRB | 0 |
+| the INTX perpetual, word blanked | none | passed | 1 |
 
-The wizard page, read off the same recording, answers the refusal for the INTX
-row and nothing for the CBE row, and the two swap on the tampered copy. A
-bitstamp row forged with a word the venue never published keeps no refusal,
+The CCM and FCM rows pass the clearing gate and are then stopped by their own
+published mechanics, so the clearing refusal swallows neither sector.
+
+A bitstamp row forged with a word the venue never published keeps no refusal,
 since `CITED_VENUE_CLEARING_REACH` holds no bitstamp row. The same forged row
 read as coinbase is refused.
