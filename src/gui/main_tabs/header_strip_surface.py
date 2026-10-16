@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import math
 from typing import Any, Optional
 
 from ...core.privacy_mask_registry import (
@@ -10,6 +9,7 @@ from ...core.privacy_mask_registry import (
     get_privacy_mask_registry,
     mask_or,
 )
+from ...trading.container.config import as_finite_float
 from ...trading.target_bands import (
     TERRITORY_AT_TARGET,
     TERRITORY_FOLD,
@@ -559,10 +559,22 @@ def width_budget() -> dict:
 
 
 def money_amount(value: Any) -> Any:
-    """The finite number a payload value carries, unconverted, or ``None``."""
-    if type(value) is int:
-        return value
-    if type(value) is float and math.isfinite(value):
+    """The finite number a payload value carries, or ``None``.
+
+    ``as_finite_float`` is the admission, so a money cell of the strip and
+    the bot container's money path refuse the same values: a stored flag, a
+    not-a-number, an endless number, and an integer too large for a float.
+    """
+    return as_finite_float(value)
+
+
+def whole_count(value: Any) -> Optional[int]:
+    """The whole number a count carries, or ``None`` for an unreadable one.
+
+    Only an exact integer inside ``as_finite_float``'s range counts, and a
+    stored flag, a text number and a not-a-number each answer ``None``.
+    """
+    if type(value) is int and as_finite_float(value) is not None:
         return value
     return None
 
@@ -576,15 +588,27 @@ def money_text(value: Any) -> str:
 
 
 def count_text(value: Any) -> str:
-    """Render one counter card as the strip's plain string."""
-    return str(value)
+    """Render one whole count, or the strip's empty marker."""
+    counted = whole_count(value)
+    if counted is None:
+        return EMPTY_TEXT
+    return str(counted)
 
 
 def exchange_count_text(value: Any) -> str:
     """Render a whole exchange count, or the strip's empty marker."""
-    if type(value) is not int:
-        return EMPTY_TEXT
-    return str(value)
+    return count_text(value)
+
+
+def card_text(card: dict, raw: Any) -> str:
+    """Render one ``COUNTER_CARDS`` entry's value by the format it declares.
+
+    Both renderers of the counter cards call this, so the Qt window and the
+    React page cannot read one card by two rules.
+    """
+    if card["format"] == COUNT_FORMAT:
+        return count_text(raw)
+    return money_text(raw)
 
 
 def pnl_text(value: Any) -> str:
@@ -738,20 +762,17 @@ def kpi_cells(profits: Optional[dict]) -> dict:
 
 
 def counter_cells(stats: Optional[dict]) -> dict:
-    """Every counter card's rendered value for one aggregate snapshot."""
+    """Every counter card's rendered value for one aggregate snapshot.
+
+    Each ``COUNTER_CARDS`` entry is read and rendered on its own pass
+    through ``card_text``, so one unreadable figure costs its own card.
+    """
     data = stats if isinstance(stats, dict) else {}
-    scrummed = float(data.get("total_scrummed_usd", 0.0) or 0.0)
-    accrued = float(data.get("total_accrued_usd", 0.0) or 0.0)
-    folded = float(data.get("total_folded_usd", 0.0) or 0.0)
     return {
-        "scrummed": mask_or(money_text(scrummed), "counter.scrummed"),
-        "accumulated": mask_or(money_text(accrued), "counter.accumulated"),
-        "folded": mask_or(money_text(folded), "counter.folded"),
-        "trades": mask_or(count_text(data.get("total_trades", 0)), "counter.trades"),
-        "bots": mask_or(count_text(data.get("running", 0)), "counter.bots"),
-        "errors": mask_or(
-            count_text(data.get("total_errors_lifetime", 0)), "counter.errors"
-        ),
+        card["key"]: mask_or(
+            card_text(card, data.get(card["source_key"], 0)), card["field_id"]
+        )
+        for card in COUNTER_CARDS
     }
 
 
@@ -763,13 +784,10 @@ def exchange_amount(stats: Optional[dict], key: str) -> Any:
     ``total_mature_exchange``.
     """
     data = stats if isinstance(stats, dict) else {}
-    try:
-        answered = int(data.get(EXCHANGE_FRESHNESS_KEY, 0) or 0)
-    except (TypeError, ValueError):
+    answered = as_finite_float(data.get(EXCHANGE_FRESHNESS_KEY, 0))
+    if answered is None or answered <= 0:
         return None
-    if answered <= 0:
-        return None
-    return money_amount(float(data.get(key, 0.0) or 0.0))
+    return money_amount(data.get(key))
 
 
 def unrealised_amount(stats: Optional[dict]) -> Any:
@@ -781,18 +799,22 @@ def unrealised_amount(stats: Optional[dict]) -> Any:
     return exchange_amount(stats, "total_unrealized_exchange")
 
 
-def profits_payload(stats: Optional[dict], exchange_count: int = 0) -> dict:
-    """The payload the spendable panel receives for one snapshot."""
+def profits_payload(stats: Optional[dict], exchange_count: Any = 0) -> dict:
+    """The payload the spendable panel receives for one snapshot.
+
+    ``money_amount`` and ``whole_count`` admit each figure on its own, so an
+    unreadable ``wallet_cash_usd`` reaches ``spendable_cell`` alone.
+    """
     data = stats if isinstance(stats, dict) else {}
-    wallet_cash = float(data.get("wallet_cash_usd", 0.0) or 0.0)
-    position_value = float(data.get("crypto_position_value_usd", 0.0) or 0.0)
-    known = wallet_cash > 0 or position_value > 0
+    wallet_cash = money_amount(data.get("wallet_cash_usd"))
+    position_value = money_amount(data.get("crypto_position_value_usd"))
+    known = (wallet_cash or 0.0) > 0 or (position_value or 0.0) > 0
     return {
-        "spendable": wallet_cash if known else None,
-        "locked": position_value if known else None,
+        "spendable": data.get("wallet_cash_usd") if known else None,
+        "locked": data.get("crypto_position_value_usd") if known else None,
         "unrealised": unrealised_amount(data),
         "mature": exchange_amount(data, "total_mature_exchange"),
-        "exchange_count": int(exchange_count),
+        "exchange_count": whole_count(exchange_count),
         "total_ammo": money_amount(data.get("total_target_delta_usd")),
         "ammo_lean": ammo_lean(
             data.get("bots_scrum_territory"), data.get("bots_fold_territory")

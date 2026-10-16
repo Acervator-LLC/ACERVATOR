@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import math
 from typing import Any, Optional
 
 from ...core.privacy_mask_registry import (
@@ -22,8 +21,10 @@ METHOD = "spendable_profits.state"
 PROFITS_PARAM = "profits"
 
 EMPTY_TEXT = _ABSENT_TEXT
-MONEY_PREFIX = "$"
-MONEY_FORMAT = ",.2f"
+
+#: ``header.money_text`` writes the prefix and the format every amount carries.
+MONEY_PREFIX = header.MONEY_PREFIX
+MONEY_FORMAT = header.MONEY_FORMAT
 
 #: Qt writes an rgba alpha over this scale, which a page needs to paint one.
 ALPHA_SCALE = 255
@@ -224,27 +225,18 @@ CALL_NAMES = (
 
 
 def money_amount(value: Any) -> Any:
-    """The finite number a payload value carries, unconverted, or ``None``."""
-    if type(value) is int:
-        return value
-    if type(value) is float and math.isfinite(value):
-        return value
-    return None
+    """``header.money_amount``, so every strip cell shares one admission."""
+    return header.money_amount(value)
 
 
 def money_text(value: Any) -> str:
     """Render one amount as money text, or as the strip's empty marker."""
-    amount = money_amount(value)
-    if amount is None:
-        return EMPTY_TEXT
-    return f"{MONEY_PREFIX}{amount:{MONEY_FORMAT}}"
+    return header.money_text(value)
 
 
 def count_text(value: Any) -> str:
     """Render a whole exchange count, or the strip's empty marker."""
-    if type(value) is not int:
-        return EMPTY_TEXT
-    return str(value)
+    return header.count_text(value)
 
 
 def is_masked(field_id: Any) -> bool:
