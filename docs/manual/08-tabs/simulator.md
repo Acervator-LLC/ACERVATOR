@@ -9938,3 +9938,46 @@ size.
 A fold refused under the venue's minimum settles no plan and spends no cash, so
 its tranches stay queued. They accumulate until a later fold buys a legal size.
 On the reading above, 19 of 730 latched folds filled and the rest waited.
+
+## A stored figure no box can hold draws a dash
+
+The Simulator's Bot Settings tab and its creation wizard read every stored
+dollar figure through one admission before the control sees it.
+`src/trading/container/config.py, in as_box_figure` is that admission. It
+refuses six kinds: a stored flag, a text number, a not-a-number, an endless
+number, an integer too large for a decimal, and a finite figure outside the
+control's own span.
+
+A refused figure leaves the box at the bottom of its span drawing the dash the
+indicator panel draws for a cell it cannot read. The log names the field. The
+dash clears the first time the operator moves the box. Never a zero.
+
+`src/gui/simulator/sim_settings_tab.py, in SimSettingsTabMixin` takes
+`_show_admitted_figure` and `_clear_refused_dash` from Live's own
+`src/gui/live_settings/settings_tab.py, in SettingsTabMixin`, so Target Balance
+and Hedge Balance draw what the Live boxes draw. Three of the six kinds used to
+stop the whole tab from building; all six now build it.
+
+`src/gui/simulator/sim_settings_tab.py, in _refresh_target_denom_rows` reads the
+same admission, so a target the box draws as a dash reaches neither the
+Target-BTC row nor the Target-ETH row as money.
+
+`src/gui/simulator/sim_bot_wizard.py, in SimTradingParamsPage` calls
+`src/gui/bot_wizard.py, in _show_stored_target` for the stored default target,
+and its `isComplete` answers False while that dash is drawn. Finish stays dark
+until the operator enters a figure, so no sim bot is built on a target nobody
+chose.
+
+`src/gui/simulator/sim_bot_wizard.py, in SimAssetSelectionPage` admits each
+market's volatility before it compares it, so one market's unreadable swing
+costs that row its volatility and no other market its place in the pair list.
+
+Apply writes nothing. `src/simulator/sim_bot_view.py, in SimBotView` declares no
+`set_config_field`, so every field the window sends is refused and the pending
+line reads the refused count.
+
+The React build draws the same dash. `src/gui/web/sim_live_settings_tab.js, in
+NumberControl` and `src/gui/web/sim_bot_wizard.js, in NumberField` print the
+words inside the box rather than beside it, as Qt prints them, and
+`src/gui/web/sim_bot_wizard.js, in numberSpec` prefers the spec the payload
+carries under `values.number_specs` so the field sees the dash at all.

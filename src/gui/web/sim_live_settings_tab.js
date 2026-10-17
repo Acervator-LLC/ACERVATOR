@@ -927,22 +927,31 @@
   }
 
   // A spin at its own lowest value prints the words Qt prints in its place.
-  function trailingText(spec, name) {
+  function specialText(spec, name) {
     var span = Array.isArray(spec[RANGE_FIELD]) ? spec[RANGE_FIELD] : [];
     if (owns(spec, SPECIAL_VALUE_FIELD) && valueOf(name) === first(span)) {
       return spec[SPECIAL_VALUE_FIELD];
     }
-    return spec[SUFFIX_FIELD];
+    return undefined;
+  }
+
+  function trailingText(spec, name) {
+    return specialText(spec, name) === undefined
+      ? spec[SUFFIX_FIELD]
+      : undefined;
   }
 
   function NumberControl(props) {
     var spec = props.spec;
     var span = Array.isArray(spec[RANGE_FIELD]) ? spec[RANGE_FIELD] : [];
+    // Qt prints the words INSIDE the box, not beside it, so a box at its
+    // lowest value draws the words and carries no number at all.
+    var instead = specialText(spec, props.name);
     var boxProps = {
       key: CONTROL_PART,
       className: TAB_CLASS,
-      type: NUMBER_TYPE,
-      value: text(valueOf(props.name)),
+      type: instead === undefined ? NUMBER_TYPE : TEXT_TYPE,
+      value: instead === undefined ? text(valueOf(props.name)) : text(instead),
       min: text(first(span)),
       max: text(second(span)),
       step: text(spec[STEP_FIELD]),

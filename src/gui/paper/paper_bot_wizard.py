@@ -13,7 +13,7 @@ from typing import Optional
 
 from ...trading.container.config import as_finite_float
 from .. import design_system as ds
-from ..bot_wizard import _get_coin_icon, _market_text
+from ..bot_wizard import _get_coin_icon, _market_text, _show_stored_target
 from .paper_bot_wizard_surface import PAIRS_FORMAT, POOL_PAIRS_FORMAT, price_label
 
 logger = logging.getLogger("acervator.gui")
@@ -547,16 +547,11 @@ if _HAS_QT:
             self._target_balance.setDecimals(2)
             self._target_balance.setPrefix("$ ")
             self._target_balance.setValue(200.0)
-            # setValue refuses a non-number, the way findData refuses an
-            # unknown visibility name above.
-            try:
-                self._target_balance.setValue(
-                    defaults.get("default_target_balance", 200.0)
-                )
-            except TypeError as _tb_exc:
-                logger.warning(
-                    "Wizard kept 200.0 for default_target_balance: %s", _tb_exc
-                )
+            self._target_refused = _show_stored_target(
+                self._target_balance,
+                defaults.get("default_target_balance", 200.0),
+                self,
+            )
             self._target_balance.setToolTip(
                 "The balance this bot trades relative to. HARD-CAPPED: "
                 "position can never exceed Target × (1 + Max Target "
@@ -1068,6 +1063,17 @@ if _HAS_QT:
                 self.setSubTitle(
                     "Configure target balance, scrumming interval, " "and compounding."
                 )
+
+        def isComplete(self) -> bool:
+            """False while Target Balance still draws its refusal dash.
+
+            ``_show_stored_target`` draws that dash for a stored default
+            ``as_box_figure`` refused, so Finish refuses a bot whose target
+            nobody entered.
+            """
+            if not getattr(self, "_target_refused", False):
+                return True
+            return bool(self._target_balance.specialValueText() == "")
 
         def get_config(self):
             """Return one key per widget this page draws, and no other key."""
