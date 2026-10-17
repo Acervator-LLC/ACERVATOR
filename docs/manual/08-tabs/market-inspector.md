@@ -4165,6 +4165,62 @@ market_inspector_topologies.pane_view    the pane as values
 registry._rollup                        the one calendar-bucket rollup
 ```
 
+### Which model answers, by host
+
+Two hosts draw this screen, and each reads a model of its own.
+
+| host | the model it reads | wired by |
+| ---- | ------------------ | -------- |
+| the Qt window | the tab's own model | `set_exchange_source` |
+| the Electron shell | `market_inspector_surface.pane_model`, the one the bridge keeps between calls | nothing |
+
+`src/gui/main_tabs/market_inspector_tab.py`, in `MarketInspectorTabMixin._build_market_inspector_tab`,
+is the only caller of `set_exchange_source`. `MarketInspectorReactTab` subclasses
+`MarketInspectorTab` without overriding that method, so the one call wires both Qt
+variants.
+
+The React variant reaches no bridge method. `src/gui/react_market_inspector_tab.py`, in
+`HOST_SCRIPT`, replaces the page's own `acervatorMarketInspectorAction` with a console
+line carrying `SCREEN_PREFIX`, `MarketInspectorPage.javaScriptConsoleMessage` reads that
+line, and `run_action` calls the inherited `_start_fetch` on the tab's own getter and
+scheduler.
+
+```mermaid
+flowchart LR
+    press["Refresh on the page"] --> host["HOST_SCRIPT console line"]
+    host --> read["javaScriptConsoleMessage"]
+    read --> act["run_action"]
+    act --> fetch["_start_fetch, the wired getter"]
+    fetch --> rows["_fill_signal_rows, _fill_pair_rows"]
+    rows --> push["push, screen_push_script"]
+    push --> page["setTab on the page"]
+```
+
+The scan's rows come back as a push and never as a response. `_fill_signal_rows` and
+`_fill_pair_rows` write the tab's own model, and `push` sends `build_view_model` of that
+model through `screen_push_script`.
+
+`src/gui/react_market_inspector_tab.py` — the three pushes the page is drawn by
+
+```python
+def screen_push_script(model: dict) -> str:
+def tile_push_script(rows: list) -> str:
+def topology_push_script(model: dict, preview_at: Optional[int]) -> str:
+```
+
+Topology Proposals is a payload of its own. `TopologiesPaneHost.view_model` builds it
+from the pane's own `TopologiesPaneModel` and `topology_push_script` sends it, so that
+pane draws from neither model in the table above.
+
+`market_inspector.state` is reached by `loadScreen` and by the page's own
+`acervatorMarketInspectorAction`, both of which need a host supplying
+`global.acervator`. The Electron shell supplies one and the Qt web view does not.
+
+That function routes `scan-now`, `scan-all`, the zone steps, the ticker field, the class
+and timeframe boxes, the push parts, the credential fields and the settings. It carries
+no branch for `REFRESH_PART`, so a Refresh press on a host reading `global.acervator`
+answers null and asks the bridge for nothing.
+
 ### What a Refresh publishes about the connectors
 
 A Refresh hands the live `{exchange_id: connector}` dictionary to the scheduler, and
