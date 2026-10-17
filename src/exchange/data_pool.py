@@ -875,10 +875,12 @@ class MarketDataPool:
         slot counts, cache hits and fetch counts.
 
         ``next_pull_s`` carries ``seconds_until_next_pull``, which no scheduler
-        drives.
+        drives. ``wedged_locks_cleared`` is what the Exchange sub-tab's data
+        pool line draws beside the red stopped line.
         """
         ages = self.slot_ages()
         return {
+            "wedged_locks_cleared": self.wedged_locks_cleared,
             "next_pull_s": self.seconds_until_next_pull(),
             "freshest_age_s": ages["freshest_age_s"],
             "oldest_age_s": ages["oldest_age_s"],
