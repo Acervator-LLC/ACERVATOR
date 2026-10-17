@@ -12,11 +12,33 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from ..bot_container import BotState, as_finite_float
+from ..container.config import as_whole_count
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
 logger = logging.getLogger("acervator.scrumming")
+
+
+def admitted_counter(stored: Any, field: str, bot_id: Any) -> int:
+    """Return one stored lifetime counter as a whole count, or zero.
+
+    ``as_whole_count`` is the one admission every lifetime counter in
+    ``export_scrumming_state`` and ``import_scrumming_state`` reads: a stored
+    flag, a text number, a not-a-number, an endless number and a whole number
+    too large for a float each answer zero, raise nothing, and name ``field``
+    and ``bot_id`` in the log.
+    """
+    counted = as_whole_count(stored)
+    if counted is None:
+        logger.warning(
+            "Bot %s stored an unusable %s (%s); it reads as 0",
+            bot_id,
+            field,
+            type(stored).__name__,
+        )
+        return 0
+    return counted
 
 
 class StateSerializerMixin:
@@ -88,14 +110,18 @@ class StateSerializerMixin:
             ),
             "cb_hard_trip_pct": float(getattr(self, "_cb_hard_trip_pct", 0.0) or 0.0),
             "cb_soft_active_side": getattr(self, "_cb_soft_active_side", None),
-            "cb_soft_cooldown_remaining": int(
-                getattr(self, "_cb_soft_cooldown_remaining", 0) or 0
+            "cb_soft_cooldown_remaining": admitted_counter(
+                getattr(self, "_cb_soft_cooldown_remaining", 0),
+                "_cb_soft_cooldown_remaining",
+                self.bot_id,
             ),
             "cb_soft_trip_pct": float(getattr(self, "_cb_soft_trip_pct", 0.0) or 0.0),
             "fold_queue_usd": float(self._fold_queue_usd),
             "dist_accumulator": float(self._dist_accumulator),
             "hedge_bal": float(self._hedge_bal),
-            "hedge_trades": int(self._hedge_trades),
+            "hedge_trades": admitted_counter(
+                self._hedge_trades, "_hedge_trades", self.bot_id
+            ),
             "scrum_target_mode": str(self._scrum_target_mode),
             "scrum_target_side": self._scrum_target_side,
             "main_lots": [dict(lot) for lot in self._main_lots],
@@ -110,15 +136,25 @@ class StateSerializerMixin:
             "hyst_ref_scrum_side": float(
                 getattr(self, "_hyst_ref_scrum_side", 0.0) or 0.0
             ),
-            "tranches_created_lifetime": int(
-                getattr(self, "_tranches_created_lifetime", 0) or 0
+            "tranches_created_lifetime": admitted_counter(
+                getattr(self, "_tranches_created_lifetime", 0),
+                "_tranches_created_lifetime",
+                self.bot_id,
             ),
-            "tranches_closed_lifetime": int(
-                getattr(self, "_tranches_closed_lifetime", 0) or 0
+            "tranches_closed_lifetime": admitted_counter(
+                getattr(self, "_tranches_closed_lifetime", 0),
+                "_tranches_closed_lifetime",
+                self.bot_id,
             ),
-            "scrum_sells_lifetime": int(getattr(self, "_scrum_sells_lifetime", 0) or 0),
-            "tranches_discarded_lifetime": int(
-                getattr(self, "_tranches_discarded_lifetime", 0) or 0
+            "scrum_sells_lifetime": admitted_counter(
+                getattr(self, "_scrum_sells_lifetime", 0),
+                "_scrum_sells_lifetime",
+                self.bot_id,
+            ),
+            "tranches_discarded_lifetime": admitted_counter(
+                getattr(self, "_tranches_discarded_lifetime", 0),
+                "_tranches_discarded_lifetime",
+                self.bot_id,
             ),
             "wire_credits_discarded_lifetime": float(
                 getattr(self, "_wire_credits_discarded_lifetime", 0.0) or 0.0
@@ -129,8 +165,10 @@ class StateSerializerMixin:
                 if isinstance(_e, dict)
             ],
             "fold_accumulator": float(getattr(self, "_fold_accumulator", 0.0) or 0.0),
-            "tranches_malformed_dropped": int(
-                getattr(self, "_tranches_malformed_dropped", 0) or 0
+            "tranches_malformed_dropped": admitted_counter(
+                getattr(self, "_tranches_malformed_dropped", 0),
+                "_tranches_malformed_dropped",
+                self.bot_id,
             ),
             "tranches_counters_reset_ts": float(
                 getattr(self, "_tranches_counters_reset_ts", 0.0) or 0.0
@@ -140,10 +178,15 @@ class StateSerializerMixin:
                 for _t in (getattr(self, "_stack_tranches", []) or [])
                 if isinstance(_t, dict)
             ],
-            "stack_created": int(getattr(self, "_stack_created", 0) or 0),
-            # as_finite_float: JSON NaN/Infinity would crash a bare int().
-            "stack_discarded": int(
-                as_finite_float(getattr(self, "_stack_discarded", 0)) or 0.0
+            "stack_created": admitted_counter(
+                getattr(self, "_stack_created", 0),
+                "_stack_created",
+                self.bot_id,
+            ),
+            "stack_discarded": admitted_counter(
+                getattr(self, "_stack_discarded", 0),
+                "_stack_discarded",
+                self.bot_id,
             ),
             "stack_counters_reset_ts": float(
                 as_finite_float(getattr(self, "_stack_counters_reset_ts", 0.0)) or 0.0
@@ -301,8 +344,10 @@ class StateSerializerMixin:
         _cb_side = data.get("cb_soft_active_side", None)
         self._cb_soft_active_side = _cb_side if _cb_side in ("scrum", "fold") else None
         try:
-            self._cb_soft_cooldown_remaining = int(
-                data.get("cb_soft_cooldown_remaining", 0) or 0
+            self._cb_soft_cooldown_remaining = admitted_counter(
+                data.get("cb_soft_cooldown_remaining", 0),
+                "cb_soft_cooldown_remaining",
+                self.bot_id,
             )
             self._cb_soft_trip_pct = float(data.get("cb_soft_trip_pct", 0.0) or 0.0)
         except (TypeError, ValueError) as _sup:
@@ -327,7 +372,9 @@ class StateSerializerMixin:
             data.get("dist_accumulator", self._dist_accumulator)
         )
         self._hedge_bal = float(data.get("hedge_bal", self._hedge_bal))
-        self._hedge_trades = int(data.get("hedge_trades", self._hedge_trades))
+        self._hedge_trades = admitted_counter(
+            data.get("hedge_trades", self._hedge_trades), "hedge_trades", self.bot_id
+        )
         self._scrum_target_mode = str(data.get("scrum_target_mode", "search"))
         _side = data.get("scrum_target_side", None)
         self._scrum_target_side = _side if _side in ("upper", "lower", None) else None
@@ -353,10 +400,20 @@ class StateSerializerMixin:
                     _rolled,
                 )
 
-        _created = int(data.get("tranches_created_lifetime", 0) or 0)
-        _closed = int(data.get("tranches_closed_lifetime", 0) or 0)
-        self._tranches_discarded_lifetime = int(
-            data.get("tranches_discarded_lifetime", 0) or 0
+        _created = admitted_counter(
+            data.get("tranches_created_lifetime", 0),
+            "tranches_created_lifetime",
+            self.bot_id,
+        )
+        _closed = admitted_counter(
+            data.get("tranches_closed_lifetime", 0),
+            "tranches_closed_lifetime",
+            self.bot_id,
+        )
+        self._tranches_discarded_lifetime = admitted_counter(
+            data.get("tranches_discarded_lifetime", 0),
+            "tranches_discarded_lifetime",
+            self.bot_id,
         )
         self._wire_credits_discarded_lifetime = float(
             data.get("wire_credits_discarded_lifetime", 0.0) or 0.0
@@ -367,8 +424,10 @@ class StateSerializerMixin:
             if isinstance(_e, dict)
         ]
         self._fold_accumulator = float(data.get("fold_accumulator", 0.0) or 0.0)
-        self._tranches_malformed_dropped = int(
-            data.get("tranches_malformed_dropped", 0) or 0
+        self._tranches_malformed_dropped = admitted_counter(
+            data.get("tranches_malformed_dropped", 0),
+            "tranches_malformed_dropped",
+            self.bot_id,
         )
         # as_finite_float: the reset timestamp comes straight off JSON, where
         # NaN and Infinity are both representable.
@@ -392,10 +451,11 @@ class StateSerializerMixin:
             for _t in (data.get("stack_tranches", []) or [])
             if isinstance(_t, dict)
         ]
-        self._stack_created = int(data.get("stack_created", 0) or 0)
-        # as_finite_float: JSON NaN/Infinity would crash a bare int().
-        self._stack_discarded = int(
-            as_finite_float(data.get("stack_discarded", 0)) or 0.0
+        self._stack_created = admitted_counter(
+            data.get("stack_created", 0), "stack_created", self.bot_id
+        )
+        self._stack_discarded = admitted_counter(
+            data.get("stack_discarded", 0), "stack_discarded", self.bot_id
         )
         self._stack_counters_reset_ts = float(
             as_finite_float(data.get("stack_counters_reset_ts", 0.0)) or 0.0
@@ -427,7 +487,9 @@ class StateSerializerMixin:
         self._tranches_closed_lifetime = _closed
         # Defaults to 0 on a save written before the key existed; never
         # back-filled from _created.
-        self._scrum_sells_lifetime = int(data.get("scrum_sells_lifetime", 0) or 0)
+        self._scrum_sells_lifetime = admitted_counter(
+            data.get("scrum_sells_lifetime", 0), "scrum_sells_lifetime", self.bot_id
+        )
 
         try:
             _saved_side = data.get("target_grow_last_side", None)

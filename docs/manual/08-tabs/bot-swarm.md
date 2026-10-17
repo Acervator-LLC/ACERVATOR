@@ -419,6 +419,37 @@ def clear_stack_tranches(self, reason: str = "operator") -> dict:
 nothing. Holdings, the main lots, the target balance and the parked wire
 credits all survive it, and the report warns when parked credits remain.
 
+### One admission rule for every lifetime counter
+
+The invariant above holds only while every term of it is read the same way.
+One rule reads them all: `as_whole_count`, in
+`src/trading/container/config.py`. It admits a whole number and nothing else.
+A stored flag, a text number, a not-a-number, an endless number, a fraction
+and a whole number too large for a float each answer "no usable count", and
+none of them raises.
+
+Seven counters read it: the four fold counters, the scrum-sells counter and
+the two stack counters.
+
+| Reader | What a refused counter does there |
+| ------ | --------------------------------- |
+| `src/trading/scrumming/state_io.py`, in `admitted_counter` | Lands zero and names the bot, the field and the stored type in the log |
+| `src/gui/live_settings/fold_tokens.py`, in `fold_lifetime_counter` | Returns no count and logs the same three facts |
+| `src/gui/live_settings/stack_tranches_tab.py`, in `_stack_lifetime_counter` | The same, for the two stack counters |
+| `src/gui/main_tabs/fold_tranches_tab_surface.py`, in `guarded_count` | The same reading, for the second build |
+| `src/gui/main_tabs/stack_tranches_tab_surface.py`, in `lifetime_counter` | The same reading, for the second build |
+
+`admitted_counter` sits on both halves of the save path, so a counter the
+panel will not print is also a counter the file will not store. A stored flag
+used to be written back as the count one, which made the fault permanent;
+it is now written back as zero, with the field named in the log.
+
+On screen a refused counter draws an em dash and never a number. The Cycle
+close ratio row and the Fill ratio row each say a counter is unreadable rather
+than work out a share from the terms they can still read. The Clear Lifetime
+Counters button stays live and its confirmation prints the dash, so an
+unreadable count is never the reason an operator cannot zero the ledger.
+
 ## Where the fleet comes from
 
 One file is the only source of the bots, and of their wires, ledgers and
