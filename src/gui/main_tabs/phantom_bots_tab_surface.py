@@ -34,6 +34,7 @@ from typing import Any, Optional
 
 from ...exchange.timeframes import ALL_TIMEFRAMES
 from .. import design_system as ds
+from .indicator_panel_surface import ABSENT_CELL_TEXT
 
 METHOD = "phantom_bots_tab.state"
 
@@ -147,6 +148,8 @@ MISSING_TEXT = "?"
 TARGET_FORMAT = "${target_balance:,.2f}"
 TRADES_FORMAT = "{total_trades}"
 PNL_FORMAT = "${pnl:+,.4f}"
+PNL_ABSENT_TEXT: str = ABSENT_CELL_TEXT
+NO_PNL: Optional[float] = None
 VOTES_FORMAT = "{bullish}/{bearish}"
 CONFIDENCE_FORMAT = "{confidence:.2%}"
 CANDLES_FORMAT = "{candles_remaining}"
@@ -201,7 +204,7 @@ TIMEFRAME_KEY = "timeframe"
 STATE_KEY = "state"
 TARGET_KEY = "target_balance"
 TRADES_KEY = "total_trades"
-PNL_KEY = "realized_pnl_exchange"
+PNL_KEY = "realised_pnl"
 SUMMARY_KEY = "last_summary"
 BULLISH_KEY = "bullish"
 BEARISH_KEY = "bearish"
@@ -514,7 +517,9 @@ def below_parent_timeframes(timeframes: Any, parent: Any) -> list:
 
 
 def pnl_color(pnl: Any) -> str:
-    """Green above break-even, red below it, grey exactly at it."""
+    """Green above break-even, red below it, grey at it and grey for no reading."""
+    if pnl is NO_PNL:
+        return OFF_COLOR
     if pnl > PNL_GAIN_ABOVE:
         return ON_COLOR
     if pnl < PNL_LOSS_BELOW:
@@ -545,9 +550,47 @@ def phantom_summary(status: Any) -> Any:
     return status.get(SUMMARY_KEY, {}) or {}
 
 
-def phantom_pnl(status: Any) -> float:
-    """The profit one phantom row shows, coerced the way the tab coerces it."""
-    return float(status.get(PNL_KEY, DEFAULT_MONEY) or DEFAULT_MONEY)
+def as_finite_float(value: Any) -> Optional[float]:
+    """`value` as a float when it is EXACTLY int or float AND finite.
+
+    Imports `as_finite_float` from `src.trading.container.config` inside the call.
+    """
+    from ...trading.container.config import as_finite_float as admitted
+
+    return admitted(value)
+
+
+def phantom_status(phantom: Any) -> dict:
+    """The status dict one phantom answers with, empty when it answers nothing.
+
+    A `get_status` that raises, or that hands back ``None``, reaches the table as
+    an empty reading.
+    """
+    try:
+        answered = phantom.get_status()
+    except Exception:
+        return {}
+    return answered if isinstance(answered, dict) else {}
+
+
+def phantom_pnl(status: Any) -> Optional[float]:
+    """The profit figure one phantom reports, or ``None`` when it reports none.
+
+    `as_finite_float` is the admission, and a zero the phantom did report
+    answers zero.
+    """
+    return as_finite_float(status.get(PNL_KEY, NO_PNL))
+
+
+def phantom_pnl_text(status: Any) -> str:
+    """The P&L text one phantom row draws: its money figure, or `PNL_ABSENT_TEXT`.
+
+    `phantom_row` and the Qt table both read this one function.
+    """
+    read = phantom_pnl(status)
+    if read is NO_PNL:
+        return PNL_ABSENT_TEXT
+    return PNL_FORMAT.format(pnl=read)
 
 
 def phantom_confidence(summary: Any) -> float:
@@ -565,7 +608,7 @@ def phantom_row(status: Any) -> list:
             target_balance=float(status.get(TARGET_KEY, DEFAULT_MONEY) or DEFAULT_MONEY)
         ),
         TRADES_FORMAT.format(total_trades=status.get(TRADES_KEY, DEFAULT_COUNT)),
-        PNL_FORMAT.format(pnl=phantom_pnl(status)),
+        phantom_pnl_text(status),
         VOTES_FORMAT.format(
             bullish=summary.get(BULLISH_KEY, DEFAULT_VOTES),
             bearish=summary.get(BEARISH_KEY, DEFAULT_VOTES),
@@ -951,10 +994,8 @@ class PhantomBotsTabModel:
             self.phantom_count = len(phantoms)
             self.calls.append([BUILD_PHANTOM_TABLE, len(phantoms)])
             for index, phantom in enumerate(phantoms):
-                try:
-                    status = phantom.get_status()
-                except Exception:
-                    status = {}
+                status = phantom_status(phantom)
+                if not status:
                     self.calls.append([BUILD_PHANTOM_STATUS_FAILED, index])
                 self.phantom_rows.append(phantom_row(status))
                 self.phantom_colors.append(phantom_row_colors(status))

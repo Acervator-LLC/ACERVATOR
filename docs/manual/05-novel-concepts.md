@@ -293,6 +293,40 @@ neither line.
 | the one announcement | `src/gui/main_tabs/phantom_bots_tab_surface.py` | `PhantomBotsTabModel.note_steps` |
 | the drawn line | `src/gui/web/phantom_bots_tab.js` | `step-refusal` |
 
+**The P&L column draws a dash.** A phantom is a read-only observer. It runs no
+order on any path, it holds no position and it counts no cost, so it computes no
+profit and there is no figure for the column to print. Its answer to the tab
+carries no profit key, and the cell draws the dash the Comp column draws for a
+reading it cannot make. Both builds draw that one dash. The column printed
+`$+0.0000` on every row before, which an operator could not tell from a profit
+of nothing.
+
+A figure the phantom does report is still printed. A profit of exactly zero
+prints `$+0.0000`, so the dash stands for an absent reading alone and never
+hides a real one. A figure of a kind the money admission refuses — a stored flag,
+a text number, a not-a-number, an endless number — draws the dash as well.
+
+| reading | module | symbol |
+| ------- | ------ | ------ |
+| the phantom's answer | `src/trading/phantom_balance.py` | `PhantomBot.get_status` |
+| the profit figure | `src/gui/main_tabs/phantom_bots_tab_surface.py` | `phantom_pnl` |
+| the drawn cell | `src/gui/main_tabs/phantom_bots_tab_surface.py` | `phantom_pnl_text` |
+| the money admission | `src/trading/container/config.py` | `as_finite_float` |
+| the one dash | `src/gui/main_tabs/indicator_panel_surface.py` | `ABSENT_CELL_TEXT` |
+| the Qt cell | `src/gui/live_settings/phantom_bots_tab.py` | `PhantomBotsTabMixin._create_phantom_bots_tab` |
+| the React cell | `src/gui/main_tabs/phantom_bots_tab_surface.py` | `phantom_row` |
+
+**A phantom answering nothing still draws its row.** The per-phantom table reads
+each phantom through one guarded call. A phantom that raises, and a phantom that
+hands back nothing at all, both reach the table as an empty reading, and the row
+draws its absent marks. The table ended the whole tab build on either one before.
+
+| reading | module | symbol |
+| ------- | ------ | ------ |
+| the guarded read | `src/gui/main_tabs/phantom_bots_tab_surface.py` | `phantom_status` |
+| the Qt loop | `src/gui/live_settings/phantom_bots_tab.py` | `PhantomBotsTabMixin._create_phantom_bots_tab` |
+| the React loop | `src/gui/main_tabs/phantom_bots_tab_surface.py` | `PhantomBotsTabModel.build` |
+
 ## 3 - The Landing Strip
 
 Perhaps the earliest assumption that hit me the most and really presented the catalyzing challenge to creating all of my alternate trading methods, is that you cannot predict what the market will do and after only a short while of actively trading I asked the questions: “But what if I don’t have to?” “What if I decide that I do not have to speculate at all?” I do not remember exactly when I first used the term but I think it was when I was trading A34 and A27 some years ago while participating in a Telegram group with some psytrance friends and associations called the Better Bitcoin Bureau. The name changed a few times but this is the one I recall.
