@@ -363,6 +363,11 @@ The application uses 21 packages that are not part of Python itself. Eighteen of
 them are declared as requirements. Three are named by code that guards its own
 absence, and the dependency list records why none of the three is owed.
 
+The import set holds 20 of those packages now, and 17 of the 20 are declared.
+`scipy` left it when `pearson_correlation` in `src/trading/pair_selection.py`
+took over the correlation test, and no module under `src/` names `scipy` any
+more.
+
 A build does not install every declared package. It installs the core set plus
 two named groups, so a package declared in any other group never reaches the
 bundle. Two further names are installed and then deliberately left out.
@@ -399,6 +404,11 @@ the application imports it in nine places, and it has no folder.
 | httpx | monitor group | no | no |
 | luma, RPLCD, smbus2 | display group | no | no, Raspberry Pi only |
 | ST7789, waveshare_epd, tomli | recorded, not required | no | no |
+
+The `scipy` and `statsmodels` rows describe the bundle they were read from.
+`statsmodels` is the `cointegration` group now, which a build does not install,
+and it is the only requirement either package is installed from, so the next
+bundle carries neither. The pair holds 166.2 MiB of files on the build host.
 
 Two rows read as a package the application wants and the bundle does not hold.
 

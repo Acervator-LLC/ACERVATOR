@@ -26,7 +26,12 @@ import time as _time
 from dataclasses import dataclass, field
 from typing import Optional
 
-from .pair_selection import MethodResult, cointegration_test
+from .pair_selection import (
+    MethodResult,
+    cointegration_test,
+    daily_returns,
+    pearson_correlation,
+)
 
 logger = logging.getLogger("acervator.market_inspector")
 
@@ -279,28 +284,17 @@ class MarketInspector:
 
     @staticmethod
     def _pearson(xs: list, ys: list) -> float:
-        n = len(xs)
-        if n < 3 or len(ys) != n:
-            return 0.0
-        mx = sum(xs) / n
-        my = sum(ys) / n
-        cov = sum((xs[i] - mx) * (ys[i] - my) for i in range(n))
-        var_x = sum((xs[i] - mx) ** 2 for i in range(n))
-        var_y = sum((ys[i] - my) ** 2 for i in range(n))
-        denom = math.sqrt(var_x * var_y)
-        if denom < 1e-12:
-            return 0.0
-        return cov / denom
+        """The coefficient ``pearson_correlation`` answers, without its p-value.
+
+        A sample the coefficient is not defined on answers nan, which sits
+        outside the configured window either way.
+        """
+        return pearson_correlation(xs, ys)[0]
 
     @staticmethod
     def _returns(closes: list) -> list:
-        """Simple returns [r1, r2, ...] where r_i = (c_i - c_{i-1}) / c_{i-1}."""
-        out = []
-        for i in range(1, len(closes)):
-            prev = closes[i - 1]
-            if prev > 0:
-                out.append((closes[i] - prev) / prev)
-        return out
+        """Simple returns, from ``pair_selection.daily_returns``."""
+        return daily_returns(closes)
 
     def _find_opposing_pairs(self, signals: list, closes_by_symbol: dict) -> list:
         """Enumerate long × short candidates; keep the cointegrated ones.

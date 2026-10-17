@@ -24,9 +24,9 @@ REQUIREMENTS_DIR = REPO_ROOT / "requirements"
 # `os` targets a Raspberry Pi running from source, so it never gets pyinstaller.
 CONSUMER_EXTRAS: dict[str, tuple[str, ...]] = {
     "build": ("build", "report", "monitor"),
-    "os": ("report",),
+    "os": ("report", "cointegration"),
     "display": ("display",),
-    "dev": ("dev",),
+    "dev": ("dev", "cointegration"),
     "contracts": ("contracts",),
     "ci": ("test", "lint"),
     "all": (
@@ -34,6 +34,7 @@ CONSUMER_EXTRAS: dict[str, tuple[str, ...]] = {
         "test",
         "lint",
         "charts",
+        "cointegration",
         "monitor",
         "display",
         "build",

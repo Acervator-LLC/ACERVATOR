@@ -1178,17 +1178,61 @@ FLAT_SERIES_DETAIL = "series holds one repeated price"
 def is_flat(series: Any) -> bool:
 ```
 
+The correlation test imports no package at all. `pearson_correlation` computes
+the coefficient, and from the Student t distribution its two-sided p-value, over
+numpy alone. The reading was swept against scipy 1.18.1 over 2,090 samples —
+sizes from three to four thousand, coefficients from minus one to plus one, and
+p-values inside a decade of the 0.05 the panes gate on — and both readings answer
+the same verdict in every one of them.
+
+`src/trading/pair_selection.py` — the coefficient and its p-value
+
+```python
+def pearson_correlation(left: Any, right: Any) -> tuple[float, float]:
+    """Pearson's r over two samples, and its two-sided t-test p-value."""
+```
+
+`MarketInspector._pearson` reads that one function, so the thirty-day
+correlation that raises a candidate and the coefficient a card prints can never
+be two different formulae.
+
 Both packages are imported inside the three functions that call them, and nowhere
 else, so the application starts before either is loaded. Both are declared, and
 the bundle carries both, so the test runs in the built application and in a
 source run alike. A missing package is re-raised as itself rather than recorded
 as a refused pair.
 
+One package is named now, and the built application does not carry it. `scipy` is
+named by no module of the tree: the import set holds 20 outside packages where it
+held 21, and 17 of them are declared. `statsmodels` is the `cointegration`
+extra, which a build does not install, so in the shipped application the
+cointegration test cannot run and the correlation test always can. The scan's own
+status line names the package in that case, rather than the import error.
+
+`src/gui/main_tabs/market_inspector_surface.py` — the line a stopped scan carries
+
+```python
+ANALYZER_ERROR_FORMAT = "Analyzer error: {error}"
+ANALYZER_MISSING_PACKAGE_FORMAT = (
+    "Opposing Pairs needs {package}, which this build left out"
+)
+```
+
+`analyzer_error_text` reads the second format only for an `ImportError` that
+names a package. Every other failure keeps the first.
+
 `pyproject.toml` — the two packages the tests need
 
 ```toml
 "scipy>=1.18.1",
 "statsmodels>=0.15.0",
+```
+
+`pyproject.toml` — the package the cointegration test needs
+
+```toml
+[project.optional-dependencies]
+cointegration = ["statsmodels>=0.15.0"]
 ```
 
 `tools/spec_common.py` — the packages the bundle still leaves out
@@ -1200,6 +1244,15 @@ EXCLUDES: tuple[str, ...] = ("tkinter", "matplotlib", "PIL", ...)
 A name in that list must not also sit in `dependencies`. The two statistics
 packages sit in `dependencies` and not in the list, which is what lets the
 Opposing Pairs table and the Bot Swarm Topologies zone draw rows.
+
+Both statistics packages sit in that list now, and in no `dependencies` entry, so
+the rule above still holds. The Bot Swarm Topologies zone draws rows without
+either of them, because three of its four detectors read the correlation test
+alone. Every name in the list was read against the imports of the 498 modules
+under `src/` plus `main.py`. Eight of the eleven are imported nowhere, `scipy`
+among them; `matplotlib` and `PIL` are imported only where the built application
+never reaches; and `statsmodels` is imported inside the two functions whose
+absence both screens name.
 
 The zone's own line names the whole funnel: markets read, markets with a
 direction, pairs tested, and whether any held equilibrium.
@@ -1761,6 +1814,34 @@ Four detectors feed it.
 Three of the four read the closes a finished Inspector scan writes. The fourth
 reads the bot roster alone and pairs a scrum-deep bot with a fold-deep bot on the
 same asset.
+
+Each detector runs in an arm of its own. `detect_mean_reversion_pair` is the only
+one that reads the cointegration test, so in a build without `statsmodels` it
+answers nothing and the other three still answer. Every proposal returned carries
+one sentence naming the contribution that did not run.
+
+`src/trading/topology_proposals.py` — the sentence a proposal carries
+
+```python
+UNAVAILABLE_KEY: str = "unavailable_tests"
+UNAVAILABLE_FORMAT: str = "{detector} needs {package}, which this build left out"
+```
+
+The pane prints that sentence after its count, so a reading the application
+cannot take is named beside Refresh and not in the log alone. `unavailable_tests`
+reads the proposals on display and keeps the first of each repeated sentence,
+since one detector run stamps them all.
+
+`src/gui/main_tabs/market_inspector_topologies_surface.py` — the count and what follows it
+
+```python
+STATUS_COUNT_FORMAT = "{proposals} proposal(s); {dismissed} dismissed"
+STATUS_UNAVAILABLE_FORMAT = "{count}  ·  {sentences}"
+```
+
+With `statsmodels` absent the line reads "2 proposal(s); 0 dismissed  ·
+Mean-reversion pair needs statsmodels, which this build left out". With every
+package present it reads the count alone.
 
 Two helpers read from disk under `src/trading/`. `suggested_target_usd` sizes each
 proposed bot from the asset target defaults, and the sector map names each asset's

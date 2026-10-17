@@ -1,17 +1,18 @@
 """The published tests the Market Inspector gates every proposal with.
 
 ``cointegration_test`` runs the Engle-Granger two-step and the Johansen trace
-test from statsmodels; ``correlation_test`` runs the Pearson coefficient and
-its two-sided t test from scipy. Both answer a ``MethodResult`` naming the
-method, the window it ran on and the statistic, which is what the Opposing
-Pairs table and the topology cards print beside every proposal.
-``engle_granger_p_value``, ``johansen_trace`` and ``correlation_test`` import
-statsmodels and scipy when they are called, never when this module is.
+test from statsmodels; ``correlation_test`` runs ``pearson_correlation``, which
+computes the coefficient and its two-sided t test over numpy alone. Both answer
+a ``MethodResult`` naming the method, the window it ran on and the statistic,
+which is what the Opposing Pairs table and the topology cards print beside every
+proposal. ``engle_granger_p_value`` and ``johansen_trace`` import statsmodels
+when they are called, never when this module is.
 """
 
 from __future__ import annotations
 
 import logging
+import math
 import warnings
 from dataclasses import dataclass
 from typing import Any, Optional, Sequence
@@ -45,6 +46,13 @@ JOHANSEN_TRACE_ROW = 0
 JOHANSEN_CV_95_COLUMN = 1
 
 FLAT_SERIES_TOLERANCE = 1e-12
+
+COINTEGRATION_PACKAGE = "statsmodels"
+
+BETA_FRACTION_STEPS = 300
+BETA_FRACTION_EPSILON = 3.0e-16
+BETA_FRACTION_FLOOR = 1.0e-300
+MINIMUM_SAMPLE = 2
 
 LIVE_STATE_WINDOW_TEXT = "live"
 SHORT_SERIES_DETAIL = "series shorter than {minimum} bars"
@@ -200,6 +208,115 @@ def _aligned(
     return left[-length:], right[-length:]
 
 
+def _beta_fraction(a: float, b: float, x: float) -> float:
+    """The incomplete beta continued fraction, by Lentz's method.
+
+    Runs to at most ``BETA_FRACTION_STEPS`` and stops once a step moves the
+    estimate by less than ``BETA_FRACTION_EPSILON``.
+    """
+    qab = a + b
+    qap = a + 1.0
+    qam = a - 1.0
+    c = 1.0
+    d = 1.0 - qab * x / qap
+    if abs(d) < BETA_FRACTION_FLOOR:
+        d = BETA_FRACTION_FLOOR
+    d = 1.0 / d
+    h = d
+    for step in range(1, BETA_FRACTION_STEPS + 1):
+        m = float(step)
+        m2 = 2.0 * m
+        even = m * (b - m) * x / ((qam + m2) * (a + m2))
+        d = 1.0 + even * d
+        if abs(d) < BETA_FRACTION_FLOOR:
+            d = BETA_FRACTION_FLOOR
+        c = 1.0 + even / c
+        if abs(c) < BETA_FRACTION_FLOOR:
+            c = BETA_FRACTION_FLOOR
+        d = 1.0 / d
+        h *= d * c
+        odd = -(a + m) * (qab + m) * x / ((a + m2) * (qap + m2))
+        d = 1.0 + odd * d
+        if abs(d) < BETA_FRACTION_FLOOR:
+            d = BETA_FRACTION_FLOOR
+        c = 1.0 + odd / c
+        if abs(c) < BETA_FRACTION_FLOOR:
+            c = BETA_FRACTION_FLOOR
+        d = 1.0 / d
+        moved = d * c
+        h *= moved
+        if abs(moved - 1.0) < BETA_FRACTION_EPSILON:
+            break
+    return h
+
+
+def _incomplete_beta(a: float, b: float, x: float) -> float:
+    """The regularized incomplete beta function, from ``_beta_fraction``.
+
+    Takes the fraction's symmetric reflection above its own convergence point,
+    which is where Lentz's method converges fastest.
+    """
+    if not math.isfinite(x) or x <= 0.0:
+        return 0.0
+    if x >= 1.0:
+        return 1.0
+    front = math.exp(
+        math.lgamma(a + b)
+        - math.lgamma(a)
+        - math.lgamma(b)
+        + a * math.log(x)
+        + b * math.log1p(-x)
+    )
+    if x < (a + 1.0) / (a + b + 2.0):
+        return front * _beta_fraction(a, b, x) / a
+    return 1.0 - front * _beta_fraction(b, a, 1.0 - x) / b
+
+
+def _two_sided_t_p_value(t_statistic: float, degrees_of_freedom: float) -> float:
+    """The two-sided p-value of ``t_statistic`` under Student's t.
+
+    Reads the published identity of the regularized incomplete beta at
+    ``degrees_of_freedom / (degrees_of_freedom + t_statistic ** 2)``.
+    """
+    if degrees_of_freedom <= 0.0:
+        return 1.0
+    if math.isnan(t_statistic):
+        return float("nan")
+    if math.isinf(t_statistic):
+        return 0.0
+    df = float(degrees_of_freedom)
+    return _incomplete_beta(df / 2.0, 0.5, df / (df + t_statistic * t_statistic))
+
+
+def pearson_correlation(
+    left: Sequence[float], right: Sequence[float]
+) -> tuple[float, float]:
+    """Pearson's r over two samples, and its two-sided t-test p-value.
+
+    A sample under ``MINIMUM_SAMPLE`` observations, one of unequal length, or
+    one whose spread is zero answers a nan coefficient, which the ``is_flat``
+    and finite arms of ``correlation_test`` refuse.
+    """
+    a = np.asarray(left, dtype=float)
+    b = np.asarray(right, dtype=float)
+    if a.size != b.size or a.size < MINIMUM_SAMPLE:
+        return float("nan"), 1.0
+    a_centred = a - a.mean()
+    b_centred = b - b.mean()
+    spread = math.sqrt(float(a_centred @ a_centred) * float(b_centred @ b_centred))
+    if not math.isfinite(spread) or spread <= 0.0:
+        return float("nan"), float("nan")
+    correlation = max(-1.0, min(1.0, float(a_centred @ b_centred) / spread))
+    degrees_of_freedom = float(a.size - MINIMUM_SAMPLE)
+    if degrees_of_freedom <= 0.0:
+        return correlation, 1.0
+    remainder = 1.0 - correlation * correlation
+    if remainder <= 0.0:
+        return correlation, 0.0
+    t_statistic = correlation * math.sqrt(degrees_of_freedom / remainder)
+    return correlation, _two_sided_t_p_value(t_statistic, degrees_of_freedom)
+
+
 def engle_granger_p_value(left: Sequence[float], right: Sequence[float]) -> float:
     """The Engle-Granger two-step p-value from ``statsmodels.tsa.stattools.coint``."""
     from statsmodels.tsa.stattools import coint  # type: ignore[import-untyped]
@@ -300,13 +417,9 @@ def correlation_test(
     returns_right = returns_right[-length:]
     if is_flat(returns_left) or is_flat(returns_right):
         return _refused(METHOD_CORRELATION, len(left), FLAT_SERIES_DETAIL)
-    from scipy.stats import pearsonr  # type: ignore[import-untyped]
-
     try:
-        measured = pearsonr(returns_left, returns_right)
-        correlation = float(measured.statistic)
-        p_value = float(measured.pvalue)
-    except Exception as exc:  # noqa: BLE001 - scipy refuses degenerate input
+        correlation, p_value = pearson_correlation(returns_left, returns_right)
+    except Exception as exc:  # noqa: BLE001 - a sample numpy cannot read
         logger.debug("correlation test refused: %s", exc)
         return _refused(
             METHOD_CORRELATION,
@@ -359,10 +472,12 @@ __all__ = [
     "WINDOW_BARS",
     "MIN_OBSERVATIONS",
     "SIGNIFICANCE",
+    "COINTEGRATION_PACKAGE",
     "MethodResult",
     "window_of",
     "is_flat",
     "daily_returns",
+    "pearson_correlation",
     "engle_granger_p_value",
     "johansen_trace",
     "cointegration_test",

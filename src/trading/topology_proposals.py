@@ -49,6 +49,16 @@ DISTANCE_WIRE_PCT: float = 30.0
 DEFAULT_TARGET_USD_FALLBACK: float = 25.0
 PROPOSAL_CAP: int = 20
 
+MOMENTUM_DETECTOR_NAME: str = "Momentum funnel"
+MEAN_REVERSION_DETECTOR_NAME: str = "Mean-reversion pair"
+SECTOR_DETECTOR_NAME: str = "Sector cluster"
+DISTANCE_DETECTOR_NAME: str = "Distance handoff"
+
+#: The key every proposal carries the run's unrun contributions under.
+UNAVAILABLE_KEY: str = "unavailable_tests"
+UNAVAILABLE_FORMAT: str = "{detector} needs {package}, which this build left out"
+UNAVAILABLE_LOG_FORMAT: str = "topology_proposals: %s did not run (%s)"
+
 REPO_ROOT: Path = Path(__file__).resolve().parent.parent.parent
 SECTOR_MAP_PATH: Path = Path(__file__).resolve().parent / "sector_map.json"
 TARGET_DEFAULTS_PATH: Path = (
@@ -157,6 +167,7 @@ def make_proposal(
         "wires": list(wires),
         "adopt_notes": list(adopt_notes or []),
         "method": method.as_dict(),
+        UNAVAILABLE_KEY: [],
     }
 
 
@@ -628,9 +639,11 @@ def detect_all_topologies(
 ) -> list[dict[str, Any]]:
     """Union every detector's proposals, dedupe them and cap at ``cap``.
 
-    Every ``context`` key is optional, and ``sector_map``,
-    ``target_defaults`` and ``target_fallback`` are read from disk when
-    absent.
+    Each detector runs in an arm of its own, so one whose statistics package the
+    build left out answers nothing and the other three still return proposals;
+    every returned proposal carries that absence under ``UNAVAILABLE_KEY``.
+    Every ``context`` key is optional, and ``sector_map``, ``target_defaults``
+    and ``target_fallback`` are read from disk when absent.
 
         tickers_by_asset:   dict[str, dict]
         closes_by_asset:    dict[str, list[float]]
@@ -661,37 +674,57 @@ def detect_all_topologies(
             target_fallback = _f
     now = context.get("now")
 
+    detectors: list[tuple[str, Any]] = [
+        (
+            MOMENTUM_DETECTOR_NAME,
+            lambda: detect_momentum_funnel(
+                tickers,
+                closes_by_asset,
+                target_defaults=target_defaults,
+                target_fallback=target_fallback,
+                now=now,
+            ),
+        ),
+        (
+            MEAN_REVERSION_DETECTOR_NAME,
+            lambda: detect_mean_reversion_pair(
+                opposing,
+                tickers,
+                closes_by_asset,
+                target_defaults=target_defaults,
+                target_fallback=target_fallback,
+                now=now,
+            ),
+        ),
+        (
+            SECTOR_DETECTOR_NAME,
+            lambda: detect_sector_cluster(
+                tickers,
+                sector_map,
+                closes_by_asset,
+                target_defaults=target_defaults,
+                target_fallback=target_fallback,
+                now=now,
+            ),
+        ),
+        (
+            DISTANCE_DETECTOR_NAME,
+            lambda: detect_distance_to_band(bots_snapshot, now=now),
+        ),
+    ]
+
     proposals: list[dict[str, Any]] = []
-    proposals.extend(
-        detect_momentum_funnel(
-            tickers,
-            closes_by_asset,
-            target_defaults=target_defaults,
-            target_fallback=target_fallback,
-            now=now,
-        )
-    )
-    proposals.extend(
-        detect_mean_reversion_pair(
-            opposing,
-            tickers,
-            closes_by_asset,
-            target_defaults=target_defaults,
-            target_fallback=target_fallback,
-            now=now,
-        )
-    )
-    proposals.extend(
-        detect_sector_cluster(
-            tickers,
-            sector_map,
-            closes_by_asset,
-            target_defaults=target_defaults,
-            target_fallback=target_fallback,
-            now=now,
-        )
-    )
-    proposals.extend(detect_distance_to_band(bots_snapshot, now=now))
+    unavailable: list[str] = []
+    for name, run in detectors:
+        try:
+            proposals.extend(run())
+        except ImportError as exc:
+            logger.warning(UNAVAILABLE_LOG_FORMAT, name, exc)
+            unavailable.append(
+                UNAVAILABLE_FORMAT.format(
+                    detector=name, package=getattr(exc, "name", "") or exc
+                )
+            )
 
     # _ARCHETYPE_RANK keys are the archetype values make_proposal writes.
     _ARCHETYPE_RANK = {
@@ -729,10 +762,15 @@ def detect_all_topologies(
             kept.append(p)
         if len(kept) >= cap:
             break
-    return kept[:cap]
+    shown = kept[:cap]
+    for p in shown:
+        p[UNAVAILABLE_KEY] = list(unavailable)
+    return shown
 
 
 __all__ = [
+    "UNAVAILABLE_KEY",
+    "UNAVAILABLE_FORMAT",
     "MOMENTUM_MIN_CORR",
     "MOMENTUM_MIN_CLUSTER_SIZE",
     "MOMENTUM_WIRE_PCT",

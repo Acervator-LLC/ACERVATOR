@@ -182,11 +182,33 @@ def hiddenimports_for(platform: str) -> list[str]:
 
 
 # Passed to PyInstaller by both spec files. A name here must not appear in
-# pyproject.toml `dependencies`; `pair_selection.py` imports scipy, so it does not.
+# pyproject.toml `dependencies`, and every name here was read against the import
+# set of the 498 modules under src/ plus main.py, by AST walk over both
+# module-level and function-level imports. Control: a name that does not exist
+# reads 0 importing files, PySide6 reads 74 and numpy 4.
+#
+#   tkinter, IPython, jupyter, notebook, pytest, sphinx, setuptools
+#            0 importing files each.
+#   matplotlib  src/design_system.py, at module load. Its only importer is
+#            tools/build_product_manual.py, which no spec collects, so the
+#            frozen application never reaches the import.
+#   PIL      src/core/mini_display.py in `render`, which no module imports, and
+#            seven functions of src/gui/main_tabs/splash_screen_painter.py that
+#            only `compose_still` calls, which nothing calls. main.py reaches
+#            `mark_ops` in that module, and `mark_ops` is Qt alone.
+#   scipy    0 importing files. `pearson_correlation` in
+#            src/trading/pair_selection.py replaced the one import there was.
+#   statsmodels  `engle_granger_p_value` and `johansen_trace` in
+#            src/trading/pair_selection.py, inside the function each. It is the
+#            `cointegration` extra, which `CONSUMER_EXTRAS["build"]` does not
+#            install, and both screens name the absence rather than logging it
+#            alone.
 EXCLUDES: tuple[str, ...] = (
     "tkinter",
     "matplotlib",
     "PIL",
+    "scipy",
+    "statsmodels",
     "IPython",
     "jupyter",
     "notebook",
