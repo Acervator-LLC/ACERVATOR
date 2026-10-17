@@ -3998,6 +3998,10 @@ candles; a position worth exactly two hundred dollars was refused before any
 fetch. A bot with Detonation on and the ceiling left off can therefore harvest at
 any value above its starting target, well below any multiple.
 
+The bar reads the larger of the count attributed to the bot and
+`_audited_venue_units`, the last balance an audit recorded, so a venue figure
+above the attributed count clears the bar on its own.
+
 `src/trading/scrumming_bot.py` — the bar `_check_detonation_trigger` actually uses
 
 ```python
@@ -4015,8 +4019,13 @@ the manual rebalance, the reconciler and the Simulator's position.
 `src/trading/scrumming_bot.py` — the bar as it reads now
 
 ```python
+audited_units = (
+    as_finite_float(getattr(self, "_audited_venue_units", 0.0)) or 0.0
+)
 current_value = priced_usd(
-    self._current_holdings, price, float(self._quote_to_usd or 1.0)
+    max(self._current_holdings, max(0.0, audited_units)),
+    price,
+    float(self._quote_to_usd or 1.0),
 )
 if current_value <= self._anchor_target_balance:
     return False
