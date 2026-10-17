@@ -49,6 +49,7 @@ from .fold_tokens import (
     FOLD_TRANCHE_BG_HEX,
     FOLD_TRANCHE_FG_HEX,
     FOLD_UNITS_MARKED_TOOLTIP,
+    FOLD_UNREADABLE_FIGURE,
     FOLD_WIRE_DISCARDED_TOOLTIP,
     TRANCHE_FIRE_BTN_INSET_PX,
     _arbiter_label,
@@ -61,6 +62,7 @@ from .fold_tokens import (
     compose_units_marked_row,
     configure_tranche_row_numbers,
     fold_display_order,
+    fold_queue_figure_total,
     fold_table_chrome_px,
     fold_table_max_height_px,
     fold_table_natural_width_px,
@@ -120,16 +122,18 @@ class FoldTranchesTabMixin:
             return
 
         n = len(tranches)
-        usd = sum(float(t.get("usd", 0) or 0) for t in tranches)
-        units = sum(float(t.get("units", 0) or 0) for t in tranches)
+        usd = fold_queue_figure_total(tranches, "usd")
+        units = fold_queue_figure_total(tranches, "units")
+        usd_text = FOLD_UNREADABLE_FIGURE if usd is None else f"${usd:,.4f}"
+        units_text = FOLD_UNREADABLE_FIGURE if units is None else f"{units:.8f}"
         parked = float(getattr(bot, "_pending_wire_credits", 0.0) or 0.0)
 
         body = [
             f"Discard {n} queued fold tranche(s) for "
             f"{getattr(bot.config, 'symbol', '')}?",
             "",
-            f"    queued USD   ${usd:,.4f}",
-            f"    units        {units:.8f}",
+            f"    queued USD   {usd_text}",
+            f"    units        {units_text}",
             "",
             "This places NO order. Holdings, cost basis and target "
             "balance are unchanged — only the queued intent to buy "

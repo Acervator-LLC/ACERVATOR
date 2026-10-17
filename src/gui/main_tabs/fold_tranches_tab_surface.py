@@ -521,8 +521,10 @@ CLEAR_FAILED_FORMAT = "Nothing was cleared — the call failed:\n\n{error}"
 CLEAR_COUNTERS_FAILED_FORMAT = "Nothing was cleared - the call failed:\n\n{error}"
 
 CLEAR_FOLD_BODY_HEAD_FORMAT = "Discard {count} queued fold tranche(s) for {symbol}?"
-CLEAR_FOLD_BODY_USD_FORMAT = "    queued USD   ${usd:,.4f}"
-CLEAR_FOLD_BODY_UNITS_FORMAT = "    units        {units:.8f}"
+CLEAR_FOLD_BODY_USD_FORMAT = "    queued USD   {usd}"
+CLEAR_FOLD_BODY_UNITS_FORMAT = "    units        {units}"
+CLEAR_FOLD_USD_FIGURE_FORMAT = "${figure:,.4f}"
+CLEAR_FOLD_UNITS_FIGURE_FORMAT = "{figure:.8f}"
 CLEAR_FOLD_BODY_NOTE = (
     "This places NO order. Holdings, cost basis and target "
     "balance are unchanged — only the queued intent to buy "
@@ -1471,15 +1473,46 @@ def note_box(icon: str, title: str, text: str) -> dict:
     return message_box(icon, title, text, OK_BUTTON_VALUE, NO_DEFAULT_BUTTON_VALUE)
 
 
+def queue_figure_total(tranches: Any, key: Any) -> Optional[float]:
+    """The sum of one stored `key` across the fold queue, or
+    `NOT_A_NUMBER` where `finite_number` refuses any row.
+
+    Reads each row exactly as `fold_row_cells` reads it, so `clear_fold`
+    cannot total a row the table draws `NO_VALUE_TEXT` for.
+    """
+    total = 0.0
+    for one in tranches or []:
+        read = finite_number(one.get(key, 0)) if isinstance(one, dict) else NOT_A_NUMBER
+        if read is None:
+            return NOT_A_NUMBER
+        total += read
+    return total
+
+
+def clear_fold_figure(value: Optional[float], figure_format: Any) -> str:
+    """One figure in the Clear confirmation, or the em dash when refused."""
+    if value is None:
+        return NO_VALUE_TEXT
+    return figure_format.format(figure=value)
+
+
 def clear_fold_body(
-    count: int, symbol: Any, usd: float, units: float, parked: float
+    count: int,
+    symbol: Any,
+    usd: Optional[float],
+    units: Optional[float],
+    parked: float,
 ) -> str:
     """The question asked before a bot's whole fold queue is discarded."""
     body = [
         CLEAR_FOLD_BODY_HEAD_FORMAT.format(count=count, symbol=symbol),
         BLANK_LINE,
-        CLEAR_FOLD_BODY_USD_FORMAT.format(usd=usd),
-        CLEAR_FOLD_BODY_UNITS_FORMAT.format(units=units),
+        CLEAR_FOLD_BODY_USD_FORMAT.format(
+            usd=clear_fold_figure(usd, CLEAR_FOLD_USD_FIGURE_FORMAT)
+        ),
+        CLEAR_FOLD_BODY_UNITS_FORMAT.format(
+            units=clear_fold_figure(units, CLEAR_FOLD_UNITS_FIGURE_FORMAT)
+        ),
         BLANK_LINE,
         CLEAR_FOLD_BODY_NOTE,
         BLANK_LINE,
@@ -2178,8 +2211,8 @@ class FoldTranchesTabModel:
             self.calls.append([CLEAR_NOT_SUPPORTED, CLEAR_FOLD_TITLE])
             return self.outcome
 
-        usd = sum(float(one.get(USD_KEY, 0) or 0) for one in tranches)
-        units = sum(float(one.get(UNITS_KEY, 0) or 0) for one in tranches)
+        usd = queue_figure_total(tranches, USD_KEY)
+        units = queue_figure_total(tranches, UNITS_KEY)
         self.boxes.append(
             message_box(
                 WARNING_ICON,

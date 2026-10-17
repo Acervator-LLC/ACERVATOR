@@ -216,6 +216,28 @@ def fold_display_order(tranches: list, order: str) -> list[tuple[int, dict]]:
     return [(index, tranche) for index, tranche, _ in readable] + refused
 
 
+def fold_queue_figure_total(tranches: list, field: str) -> float | None:
+    """The sum of one stored `field` across a fold queue, or None where
+    `as_finite_float` refuses any queued row.
+
+    `_on_clear_fold_tranches` reads it for the queued USD and the queued
+    units it states before discarding.
+    """
+    from ...trading.bot_container import as_finite_float
+
+    total = 0.0
+    for tranche in list(tranches or []):
+        value = (
+            as_finite_float(tranche.get(field, 0))
+            if isinstance(tranche, dict)
+            else None
+        )
+        if value is None:
+            return None
+        total += value
+    return total
+
+
 def fold_row_matches_filter(cell_texts: list, needle: str) -> bool:
     """Return True when a rendered cell of the row holds `needle`.
 
