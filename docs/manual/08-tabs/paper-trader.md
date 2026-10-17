@@ -2982,4 +2982,45 @@ The Paper Trader still has no mode a candidate could land under, and a push
 targets it anyway: the candidate's bots are spawned on Paper's own venue rather
 than held under a mode.
 
+## A stored figure no box can hold draws a dash
+
+The Paper Trader's Bot Settings tab and its creation wizard read every stored
+dollar figure through one admission before the control sees it.
+`src/trading/container/config.py, in as_box_figure` is that admission. It
+refuses six kinds: a stored flag, a text number, a not-a-number, an endless
+number, an integer too large for a decimal, and a finite figure outside the
+control's own span.
+
+A refused figure leaves the box at the bottom of its span drawing the dash the
+indicator panel draws for a cell it cannot read. The log names the field. The
+dash clears the first time the operator moves the box. Never a zero.
+
+`src/gui/paper/paper_settings_tab.py, in PaperSettingsTabMixin` takes
+`_show_admitted_figure` and `_clear_refused_dash` from Live's own
+`src/gui/live_settings/settings_tab.py, in SettingsTabMixin`, so Target Balance
+and Hedge Balance draw what the Live boxes draw. Three of the six kinds used to
+stop the whole tab from building; all six now build it.
+
+`src/gui/paper/paper_settings_tab.py, in _refresh_target_denom_rows` reads the
+same admission, so a target the box draws as a dash reaches neither the
+Target-BTC row nor the Target-ETH row as money.
+
+`src/gui/paper/paper_bot_wizard.py, in PaperTradingParamsPage` calls
+`src/gui/bot_wizard.py, in _show_stored_target` for the stored default target,
+and its `isComplete` answers False while that dash is drawn. Finish stays dark
+until the operator enters a figure, so no paper bot is built on a target nobody
+chose.
+
+Apply writes nothing for a refused box. `src/paper/paper_bot_view.py, in
+set_config_field` is the only write path, and it is reached only by a control
+the operator moved.
+
+The React build reads the same figures. `src/gui/paper/paper_react_bot_wizard.py`
+loads Live's own `src/gui/web/bot_wizard.js` and
+`src/gui/paper/paper_react_bot_detail.py` loads Live's own
+`src/gui/web/live_settings_tab.js`, and
+`src/gui/paper/paper_live_settings_tab_surface.py, in
+PaperLiveSettingsTabModel` is Live's model, so the page draws the dash inside
+the box as Qt draws it.
+
 Back to [the subsystem index](README.md).

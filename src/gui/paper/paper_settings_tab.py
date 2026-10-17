@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
 
 from ...paper.fleet_source import SendRefused
 from .. import design_system as ds
+from ..live_settings.settings_tab import SettingsTabMixin
 from .paper_bot_status_table_surface import paper_target_denom_cell
 
 logger = logging.getLogger("acervator.gui")
@@ -31,8 +32,13 @@ logger = logging.getLogger("acervator.gui")
 BUDGET_UNREADABLE_TEXT = "— (unreadable)"
 
 
-class PaperSettingsTabMixin:
-    """Editable bot configuration, written on Apply."""
+class PaperSettingsTabMixin(SettingsTabMixin):
+    """Editable bot configuration, written on Apply.
+
+    Live's ``SettingsTabMixin`` is the base for ``_show_admitted_figure`` and
+    ``_clear_refused_dash``, so the dollar boxes read the one ``as_box_figure``
+    admission Live reads; every other method here is this fork's own.
+    """
 
     # Annotations only; PaperBotDetailDialog supplies these at runtime.
     _bot: Any
@@ -58,8 +64,15 @@ class PaperSettingsTabMixin:
             _cfg = getattr(_bot, "config", None)
             if _cfg is None:
                 return
+            from ...trading.container.config import as_finite_float
+
             _asset = str(getattr(_cfg, "target_asset", "") or "").upper()
-            _target_usd = float(getattr(_cfg, "target_balance", 0.0) or 0.0)
+            # The same admission the dollar box reads, so a stored figure the
+            # box draws as a dash never reaches these two rows as money.
+            _read_target = as_finite_float(getattr(_cfg, "target_balance", None))
+            if _read_target is None:
+                return
+            _target_usd = _read_target
             _rates = dict(getattr(self, "_denom_rates", None) or {})
             for _quote, _row, _lbl in (
                 ("BTC", _btc_row, _btc_lbl),
@@ -347,11 +360,11 @@ class PaperSettingsTabMixin:
             self._target_bal.setRange(1.0, 1000000.0)
             self._target_bal.setDecimals(2)
             self._target_bal.setPrefix("$ ")
-            self._target_bal.setValue(cfg.target_balance)
             self._target_bal.setToolTip(
                 "The balance this bot trades relative to. HARD-CAPPED: "
                 "position can never exceed Target × (1 + Max Target Growth %/100)."
             )
+            self._show_admitted_figure(self._target_bal, cfg, "target_bal")
             self._target_bal.valueChanged.connect(
                 lambda v: self._mark_changed("target_balance", v)
             )
@@ -719,7 +732,6 @@ class PaperSettingsTabMixin:
         self._hedge_balance.setRange(0.0, 999999999.0)
         self._hedge_balance.setDecimals(2)
         self._hedge_balance.setPrefix("$ ")
-        self._hedge_balance.setValue(float(cfg.hedge_balance))
         self._hedge_balance.setToolTip(
             "USD reserve amount for hedge rebalancing (separate from "
             "Target Balance).\n\n"
@@ -729,6 +741,7 @@ class PaperSettingsTabMixin:
             "it drains.\n"
             "Untick Hedge Rebalance Active to turn the hedge off."
         )
+        self._show_admitted_figure(self._hedge_balance, cfg, "hedge_balance")
         self._hedge_balance.valueChanged.connect(
             lambda v: self._mark_changed("hedge_balance", v)
         )
