@@ -7,10 +7,12 @@ from its target and which way the engine will move it. The
 Target-denom cell restates the same target in BTC and in ETH and says
 how far that pair has drifted from the same asset priced in dollars.
 
-Six things leave this surface. ``price_pool`` finds the shared price
+Seven things leave this surface. ``price_pool`` finds the shared price
 cache. ``fresh_price`` picks the price the cells are drawn from and
-says how old it is. ``priced_position`` is the one multiplication both
-priced cells read. ``position_value_cell`` composes the Current
+says how old it is. ``ammo_units_note`` writes the tooltip sentence
+naming which unit count ``target_bands.ammo_units`` picked for the Ammo
+cell. ``priced_position`` is the one
+multiplication both priced cells read. ``position_value_cell`` composes the Current
 Position Value cell on each of its five paths, four of which are
 blank. ``ammo_cell`` composes the Ammo cell on each of its three
 paths. ``target_denom_cell`` composes one Target-denom cell on each of
@@ -35,6 +37,7 @@ from ...trading.target_bands import (
     TERRITORY_AT_TARGET,
     TERRITORY_FOLD,
     TERRITORY_SCRUM,
+    ammo_units,
     manual_fire_dust_band,
     manual_fire_will_noop,
     target_delta,
@@ -105,6 +108,16 @@ AGED_PRICE_TIP_FORMAT = (
     "from a price that has not refreshed recently, so the "
     "true delta may differ. Manual Fire will act on the "
     "CURRENT price, not this one."
+)
+
+VENUE_UNITS_NOTE_FORMAT = (
+    " Measured on the exchange's count of {units:.6f} units; the bot "
+    "attributes {holdings:.6f}."
+)
+ATTRIBUTED_UNITS_NOTE_FORMAT = (
+    " NO EXCHANGE COUNT HELD — measured on the bot's attributed "
+    "{holdings:.6f} units, which can sit below the exchange and invert the "
+    "direction this cell draws."
 )
 
 AMMO_FIELDS = (
@@ -275,6 +288,7 @@ POSITION_BLANK = "position.blank"
 POSITION_PRICED = "position.priced"
 POSITION_RETURN = "position.return"
 AMMO_START = "ammo.start"
+AMMO_UNITS = "ammo.units"
 AMMO_FRESH = "ammo.fresh"
 AMMO_CACHED = "ammo.cached"
 AMMO_EMPTY = "ammo.empty"
@@ -302,6 +316,13 @@ ModelCall = list[object]
 def magnitude(value: float) -> str:
     """One dollar figure without its sign, as both cells write it."""
     return MAGNITUDE_FORMAT.format(magnitude=abs(value))
+
+
+def ammo_units_note(units: float, holdings: float, from_venue: bool) -> str:
+    """The tooltip sentence naming which unit count the Ammo cell measured."""
+    if from_venue:
+        return VENUE_UNITS_NOTE_FORMAT.format(units=units, holdings=holdings)
+    return ATTRIBUTED_UNITS_NOTE_FORMAT.format(holdings=holdings)
 
 
 def priced_position(holdings: float, price: float, quote_rate: float) -> float:
@@ -503,27 +524,35 @@ class TableCellsModel:
         qrate: float,
         target_val: float,
         price_age_s: Optional[float] = MISSING_PRICE_AGE_S,
+        venue_units: Any = None,
     ) -> dict:
         """The Ammo cell: distance from target, and the signal it carries.
 
-        Recomputes the position from holdings and price whenever both
-        are present. Falls back to the last known value and marks it
-        stale when they are not.
+        ``ammo_units`` picks the count the distance is measured from,
+        preferring ``venue_units`` over the attributed ``holdings``, and
+        the tooltip names which one it used. Recomputes the position from
+        that count and the price whenever both are present. Falls back to
+        the last known value and marks it stale when they are not.
         """
         self.calls.append([AMMO_START, stats_pv, holdings, cur_price, qrate])
-        fresh_ok = holdings > 0 and cur_price > 0
-        fresh_pv = priced_position(holdings, cur_price, qrate) if fresh_ok else 0.0
+        units, from_venue = ammo_units(holdings, venue_units)
+        self.calls.append([AMMO_UNITS, units, from_venue])
+        note = ammo_units_note(units, holdings, from_venue)
+        fresh_ok = units > 0 and cur_price > 0
+        fresh_pv = priced_position(units, cur_price, qrate) if fresh_ok else 0.0
         if fresh_ok:
             position_val, stale = fresh_pv, False
             self.calls.append([AMMO_FRESH, position_val])
         else:
             position_val, stale = stats_pv, stats_pv > 0
             self.calls.append([AMMO_CACHED, position_val, stale])
-        if position_val <= 0 and holdings <= 0:
+        if position_val <= 0 and units <= 0:
             return self._empty_cell(position_val, target_val)
-        if position_val <= 0 and holdings > 0:
-            return self._pending_cell(position_val, holdings)
-        return self._signal_cell(stats_pv, position_val, target_val, stale, price_age_s)
+        if position_val <= 0 and units > 0:
+            return self._pending_cell(position_val, units)
+        return self._signal_cell(
+            stats_pv, position_val, target_val, stale, price_age_s, note
+        )
 
     def _empty_cell(self, position_val: float, target_val: float) -> dict:
         """Never held and never traded. Ammo is the whole target, to buy."""
@@ -563,8 +592,13 @@ class TableCellsModel:
         target_val: float,
         stale: bool,
         price_age_s: Optional[float],
+        note: str = "",
     ) -> dict:
-        """A live position: its distance from target and the engine's band."""
+        """A live position: its distance from target and the engine's band.
+
+        ``note`` names the unit count the distance was measured from and is
+        appended after the stale and aged writers, so no branch drops it.
+        """
         delta = target_delta(position_val, target_val)
         territory = target_territory(position_val, target_val)
         color = TERRITORY_COLORS[territory]
@@ -587,6 +621,7 @@ class TableCellsModel:
             tip = AGED_PRICE_TIP_FORMAT.format(price_age_s=price_age_s)
             old_price = True
             self.calls.append([AMMO_AGED, price_age_s])
+        tip = f"{tip}{note}"
         if manual_fire_noop:
             tip = MANUAL_FIRE_NOOP_TIP_FORMAT.format(
                 tip=tip, magnitude=abs(delta), dust_band=dust_band
@@ -737,6 +772,7 @@ def build_view_model(
             ammo.get("qrate", 1.0),
             ammo.get("target_val", 0.0),
             ammo.get("price_age_s", MISSING_PRICE_AGE_S),
+            venue_units=ammo.get("venue_units"),
         )
     if denom is not None:
         model.target_denom_cell(
