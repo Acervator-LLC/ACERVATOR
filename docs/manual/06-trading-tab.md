@@ -564,9 +564,11 @@ What the card's amount gained is the room inside the floor, which
 `CARD_SIDE_MARGIN_PX` widened.
 
 OVERTAKEN, and the block and the paragraph above are kept as written.
-`COUNTER_NATURAL_W` is not 118. It is `COUNTER_TEXT_W` plus `COUNTER_TEXT_PAD`, and
-`COUNTER_TEXT_W` is `KPI_COLUMN_W`, so a card asks for the room a money column asks
-for. It answers 116 px.
+`COUNTER_NATURAL_W` is not 118. It is 144 px, the width the row draws a counter
+card at when it can afford it, and `COUNTER_TEXT_W` is that width less
+`COUNTER_TEXT_PAD`. The React card reads `COUNTER_NATURAL_W` for its own sizeHint,
+so the width is held and the room inside it is what `CARD_SIDE_MARGIN_PX` widened —
+110 px of room before, 118 px now.
 
 OVERTAKEN, and the block and the paragraph above are kept as written.
 `TOP_ROW_STRETCH` is not `[3, 1, 1, 1, 1, 1, 0]` and is not written out. It is
@@ -582,7 +584,8 @@ are unchanged; only where they come from is.
 ```python
 MONEY_CELL_MIN_W = 64
 COUNTER_MIN_W = 88
-COUNTER_NATURAL_W = COUNTER_TEXT_W + COUNTER_TEXT_PAD
+COUNTER_NATURAL_W = 144
+COUNTER_TEXT_W = COUNTER_NATURAL_W - COUNTER_TEXT_PAD
 TOP_ROW_STRETCH = [
     len(KPI_COLUMNS),
     *([COUNTER_STRETCH] * len(COUNTER_SLOTS)),
@@ -621,15 +624,19 @@ measures it once at the smallest type a money cell shrinks to.
 WIDEST_AMOUNT = "$-999,999.99"
 MONEY_CELL_MIN_W = 64
 KPI_COLUMN_W = money_cell_w(VALUE_FONT_PX)
-COUNTER_TEXT_W = KPI_COLUMN_W
 ```
 
 `money_cell_w` scales that reading to any type size, because a font's advance
 scales with its pixel size. `spendable_natural_w` is the strip at
 `VALUE_FONT_PX` and `spendable_min_w` is the strip at `VALUE_FONT_MIN_PX`, so
-one number answers both. `COUNTER_MIN_W` stays the width the row already drew; a
-counter card reaches `MONEY_CELL_MIN_W` of room through `CARD_SIDE_MARGIN_PX` and
-not by widening its slot.
+one number answers both.
+
+**Every width the row is sized from is held where it was.** `COUNTER_MIN_W` and
+`COUNTER_NATURAL_W` are the widths the row already drew a counter slot at, and
+`slot_floor_w`, `slot_natural_w` and `slot_stretch` answer the same number for
+every `TOP_ROW_ORDER` slot as before. A counter card reaches
+`MONEY_CELL_MIN_W` of room through `CARD_SIDE_MARGIN_PX`, which is room inside the
+panel and not a wider panel, so no slot's drawn size moves.
 
 **A card's margin is its frame's inset and nothing more.** The theme's
 `QFrame[frameShape="6"]` rule already holds a panel's text 12 px off its border

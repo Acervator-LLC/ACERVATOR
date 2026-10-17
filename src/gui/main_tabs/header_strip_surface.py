@@ -309,13 +309,15 @@ CARD_SIDE_MARGIN_PX = 0
 #: What a card's own frame and margins take off the room its text has.
 COUNTER_TEXT_PAD = 2 * (CARD_SIDE_MARGIN_PX + PANEL_FRAME_INSET_PX)
 
-#: The room one counter card gives its own amount, which is the room a strip
-#: column gives its own. One rule over both, so the same amount cannot draw
-#: whole in one and cut in the other.
-COUNTER_TEXT_W = KPI_COLUMN_W
+#: The width one counter card asks for, held at the width the row draws it at.
+#: ``CARD_SIDE_MARGIN_PX`` released 8 px either side and the amount took it, so
+#: the card asks for the same width and gives its amount more of it. The React
+#: card reads this for its own sizeHint, so moving it moves the drawn slot.
+COUNTER_NATURAL_W = 144
 
-#: The room one counter needs for a whole money amount at its own size.
-COUNTER_NATURAL_W = COUNTER_TEXT_W + COUNTER_TEXT_PAD
+#: The room one counter card gives its own amount at ``VALUE_FONT_PX``: its own
+#: width less what its frame and margins take.
+COUNTER_TEXT_W = COUNTER_NATURAL_W - COUNTER_TEXT_PAD
 
 #: The narrowest one counter card draws at, held at the width the row draws it
 #: at. ``MONEY_CELL_MIN_W`` plus ``COUNTER_TEXT_PAD`` reads 2 px wider, and
