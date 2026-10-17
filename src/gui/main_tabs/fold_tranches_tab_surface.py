@@ -294,6 +294,7 @@ SCRUM_SELLS_FORMAT = "{standing} standing / {sells} sell(s) opened them"
 SCRUM_SELLS_NO_RECORD_FORMAT = "{standing} standing / {dash} sells recorded"
 
 RATIO_NOTHING_LEFT = f"{UNREADABLE_FIGURE}  (nothing left to fold back)"
+RATIO_COUNTER_UNREADABLE = f"{UNREADABLE_FIGURE}  (a counter is unreadable)"
 RATIO_UNREADABLE_FORMAT = "{dash}  (closed {closed} over {denominator} openable)"
 RATIO_TEXT_FORMAT = "{ratio:.2%}  ({closed}/{denominator})"
 RATIO_QUIET_DENOMINATOR = 5
@@ -914,26 +915,35 @@ def finite_number(value: Any) -> Optional[float]:
     return NOT_A_NUMBER
 
 
-def whole_count(value: Any) -> int:
-    """One lifetime counter as the shipped tab reads it, bare.
-
-    Mirrors `int(value or 0)`, which prices a stored `True` at one and
-    raises on `nan`, on either infinity and on text that is not a number.
-    """
-    return int(value or 0)
-
-
 def guarded_count(value: Any) -> Optional[int]:
-    """One lifetime counter under the admission rule the money rows use.
+    """One lifetime counter under `as_whole_count`, the one admission rule
+    every counter in this tab and in the Qt build reads.
 
-    None where the stored value is not a usable whole number. Not wired
-    into `build`: it states what the guarded reading would be, beside the
-    bare one the tab ships.
+    None where `value` is not a usable whole count: a stored flag, a text
+    number, a not-a-number, an endless number and a whole number too large
+    for a float each answer None, and every caller draws `UNREADABLE_FIGURE`.
     """
-    read = finite_number(value)
-    if read is None:
-        return None
-    return int(read)
+    from ...trading.container.config import as_whole_count
+
+    return as_whole_count(value)
+
+
+def counter_text(counted: Optional[int]) -> str:
+    """One lifetime counter as a count, or `UNREADABLE_FIGURE` where
+    `guarded_count` refused it."""
+    if counted is None:
+        return UNREADABLE_FIGURE
+    return str(counted)
+
+
+def counters_stand(counts: dict) -> bool:
+    """True where any lifetime counter in `counts` is non-zero or was refused.
+
+    Keeps the Clear Lifetime Counters button live on a counter
+    `guarded_count` refused, so an unreadable count never costs the operator
+    the control that would zero it.
+    """
+    return any(value is None or value for value in counts.values())
 
 
 def record_age_s(record: Any, field: str, now: float) -> Optional[float]:
@@ -1037,8 +1047,17 @@ def units_marked_row(tranches: Any, holdings: Any) -> list:
     return [full, NO_CELL_COLOR]
 
 
-def cycle_close_ratio(created: int, closed: int, discarded: int) -> list:
-    """The share of opened tranches that folded back, discards excluded."""
+def cycle_close_ratio(
+    created: Optional[int], closed: Optional[int], discarded: Optional[int]
+) -> list:
+    """The share of opened tranches that folded back, discards excluded.
+
+    A `created`, `closed` or `discarded` that `guarded_count` refused is None
+    here and draws `RATIO_COUNTER_UNREADABLE`, since a share worked out from
+    two of three terms is not a share.
+    """
+    if created is None or closed is None or discarded is None:
+        return [RATIO_COUNTER_UNREADABLE, NO_CELL_COLOR]
     denominator = int(created) - int(discarded)
     if denominator <= 0:
         return [RATIO_NOTHING_LEFT, NO_CELL_COLOR]
@@ -1064,15 +1083,23 @@ def cycle_close_ratio(created: int, closed: int, discarded: int) -> list:
     return [text, FOLD_RATIO_GREEN_FG_HEX]
 
 
-def scrum_sells_row(standing: Any, sells: Any) -> list:
+def scrum_sells_row(standing: Any, sells: Optional[int]) -> list:
     """The standing tranches against the sells that opened them.
 
     `standing` counts the rows in `_fold_tranches` and `sells` counts
-    `_scrum_sells_lifetime`, and a `standing` above `sells` draws
-    `FOLD_OVER_ALLOTMENT_FG_HEX`.
+    `_scrum_sells_lifetime`; a `standing` above `sells` draws
+    `FOLD_OVER_ALLOTMENT_FG_HEX`, and a `sells` that `guarded_count` refused
+    draws `SCRUM_SELLS_NO_RECORD_FORMAT` with no breach called.
     """
-    standing_rows = whole_count(standing)
-    opening_sells = whole_count(sells)
+    standing_rows = int(standing or 0)
+    if sells is None:
+        return [
+            SCRUM_SELLS_NO_RECORD_FORMAT.format(
+                standing=standing_rows, dash=UNREADABLE_FIGURE
+            ),
+            NO_CELL_COLOR,
+        ]
+    opening_sells = int(sells)
     # A save written before the field existed restores zero sells, which
     # is not readable as a breach.
     if opening_sells <= 0 and standing_rows > 0:
@@ -1561,10 +1588,14 @@ def clear_counters_body(symbol: Any, counts: dict, open_now: int) -> str:
     body = [
         CLEAR_COUNTERS_BODY_HEAD_FORMAT.format(symbol=symbol),
         BLANK_LINE,
-        CLEAR_COUNTERS_BODY_OPENED_FORMAT.format(opened=counts["opened"]),
-        CLEAR_COUNTERS_BODY_CLOSED_FORMAT.format(closed=counts["closed"]),
-        CLEAR_COUNTERS_BODY_DISCARDED_FORMAT.format(discarded=counts["discarded"]),
-        CLEAR_COUNTERS_BODY_MALFORMED_FORMAT.format(malformed=counts["malformed"]),
+        CLEAR_COUNTERS_BODY_OPENED_FORMAT.format(opened=counter_text(counts["opened"])),
+        CLEAR_COUNTERS_BODY_CLOSED_FORMAT.format(closed=counter_text(counts["closed"])),
+        CLEAR_COUNTERS_BODY_DISCARDED_FORMAT.format(
+            discarded=counter_text(counts["discarded"])
+        ),
+        CLEAR_COUNTERS_BODY_MALFORMED_FORMAT.format(
+            malformed=counter_text(counts["malformed"])
+        ),
         BLANK_LINE,
         CLEAR_COUNTERS_BODY_NOTE,
         BLANK_LINE,
@@ -1912,13 +1943,13 @@ class FoldTranchesTabModel:
 
     def counter_values(self) -> dict:
         return {
-            "opened": whole_count(getattr(self.bot, CREATED_LIFETIME_ATTRIBUTE, 0)),
-            "closed": whole_count(getattr(self.bot, CLOSED_LIFETIME_ATTRIBUTE, 0)),
-            "discarded": whole_count(
+            "opened": guarded_count(getattr(self.bot, CREATED_LIFETIME_ATTRIBUTE, 0)),
+            "closed": guarded_count(getattr(self.bot, CLOSED_LIFETIME_ATTRIBUTE, 0)),
+            "discarded": guarded_count(
                 getattr(self.bot, DISCARDED_LIFETIME_ATTRIBUTE, 0)
             ),
-            "malformed": whole_count(getattr(self.bot, MALFORMED_ATTRIBUTE, 0)),
-            "sells": whole_count(getattr(self.bot, SCRUM_SELLS_ATTRIBUTE, 0)),
+            "malformed": guarded_count(getattr(self.bot, MALFORMED_ATTRIBUTE, 0)),
+            "sells": guarded_count(getattr(self.bot, SCRUM_SELLS_ATTRIBUTE, 0)),
         }
 
     def extractor_rows(self) -> list:
@@ -2001,11 +2032,14 @@ class FoldTranchesTabModel:
             NO_CELL_COLOR,
         )
 
-        self.add_health_row(OPENED_ROW, str(counts["opened"]), NO_CELL_COLOR)
-        self.add_health_row(CLOSED_ROW, str(counts["closed"]), NO_CELL_COLOR)
+        self.add_health_row(OPENED_ROW, counter_text(counts["opened"]), NO_CELL_COLOR)
+        self.add_health_row(CLOSED_ROW, counter_text(counts["closed"]), NO_CELL_COLOR)
         self.add_health_row(RATIO_ROW, ratio_text, ratio_colour)
-        if counts["discarded"]:
-            self.add_health_row(DISCARDED_ROW, str(counts["discarded"]), NO_CELL_COLOR)
+        # A refused counter shows the row with the dash; a zero still hides it.
+        if counts["discarded"] is None or counts["discarded"]:
+            self.add_health_row(
+                DISCARDED_ROW, counter_text(counts["discarded"]), NO_CELL_COLOR
+            )
         wire_discarded = finite_number(getattr(self.bot, WIRE_DISCARDED_ATTRIBUTE, 0.0))
         if wire_discarded is not None and wire_discarded > WIRE_CREDIT_FLOOR_USD:
             self.add_health_row(
@@ -2015,7 +2049,7 @@ class FoldTranchesTabModel:
             )
         self.add_health_row(
             MALFORMED_ROW,
-            str(counts["malformed"]),
+            counter_text(counts["malformed"]),
             FOLD_OVER_ALLOTMENT_FG_HEX if counts["malformed"] else NO_CELL_COLOR,
         )
         reset_ts = finite_number(getattr(self.bot, COUNTERS_RESET_ATTRIBUTE, 0.0))
@@ -2031,7 +2065,9 @@ class FoldTranchesTabModel:
         )
 
         parked = self.parked()
-        counter_total = sum(counts[key] for key in CLEARED_COUNTER_KEYS)
+        counters_live = counters_stand(
+            {key: counts[key] for key in CLEARED_COUNTER_KEYS}
+        )
         for text, enabled in (
             [
                 (
@@ -2052,10 +2088,10 @@ class FoldTranchesTabModel:
             [
                 (
                     CLEAR_COUNTERS_TEXT_FORMAT.format(opened=counts["opened"])
-                    if counter_total
+                    if counters_live and counts["opened"] is not None
                     else CLEAR_COUNTERS_IDLE_TEXT
                 ),
-                bool(counter_total),
+                counters_live,
             ],
         ):
             self.buttons.append([text, bool(enabled)])
@@ -2368,7 +2404,7 @@ class FoldTranchesTabModel:
         """Zero the four lifetime counters, after the operator confirms."""
         self.calls.append([CLEAR_START, CLEAR_COUNTERS_TITLE])
         counts = self.counter_values()
-        if not sum(counts[key] for key in CLEARED_COUNTER_KEYS):
+        if not counters_stand({key: counts[key] for key in CLEARED_COUNTER_KEYS}):
             self.boxes.append(
                 note_box(
                     INFORMATION_ICON,
