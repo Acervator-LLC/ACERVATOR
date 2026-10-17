@@ -191,6 +191,7 @@ ledger per bot.
 | `register_wire` | Adds an edge carrying its own percentage |
 | `unregister_wire` | Drops one edge |
 | `distribute_fold_profit` | Moves that percentage of realised profit to each wired target |
+| `book_transfer` | Books one transfer onto both ledgers — the two wire totals and the target's provenance line for the funder |
 | `export_wires`, `import_wires` | Carry the topology through a save and a restart |
 | `export_ledgers`, `import_ledgers` | Carry the provenance through the same |
 
@@ -251,6 +252,45 @@ return mature_profit_usd(
     self.starting_balance, self.starting_balance + self.total_profit
 )
 ```
+
+### What the provenance breakdown counts
+
+The breakdown is one line per funder, biggest amount first. A line is the
+running total that funder has supplied to this bot: the seed the bot was created
+with, plus every wire transfer that funder has sent it since. The seed sits
+under the key `SEED` when no bot funded the creation, and under the funding
+bot's own id when one did.
+
+One method writes the map. Every live transfer books through
+`src/trading/smart_wire.py`, in `book_transfer`, which moves three figures
+together — the source ledger's outgoing total, the target ledger's incoming
+total, and the target's breakdown line for the source. Both live transfer paths
+call it: `src/trading/smart_wire.py`, in `distribute_fold_profit` on a
+compounded fold, and `src/trading/scrumming/wire_routing.py`, in
+`_route_scrum_proceeds_via_wires` on a scrum, a manual scrum and a detonation.
+A transfer cannot reach the totals without reaching the breakdown.
+
+`src/trading/smart_wire.py` — `book_transfer`
+
+```python
+def book_transfer(self, source_id: str, target_id: str, usd: float) -> bool:
+    """Book one wire transfer onto the two ledgers it moves money between."""
+```
+
+An amount no reading admits books nothing and answers `False`, so the totals and
+the breakdown a ledger already holds stay readable. A breakdown line already
+unreadable keeps the figure it has, because adding to it would turn a line the
+tab draws as an em dash into one it draws as money.
+
+The predominant funder row reads the same map through
+`src/trading/smart_wire.py`, in `BotLedger.predominant_source`, which answers
+the largest line other than `SEED`. A bot no wire has funded has no such line,
+so the row reads `— (SEED-funded only)`.
+
+Paper and the Simulator book the same three figures in their own managers,
+`src/paper/paper_wire.py`, in `PaperWireManager._book`, and
+`src/simulator/sim_wire.py`, in `SimWireManager._book`. The same wiring reads
+the same breakdown on all three screens.
 
 ### What the group draws now
 
@@ -418,6 +458,59 @@ def clear_stack_tranches(self, reason: str = "operator") -> dict:
 **Clear.** `clear_fold_tranches` discards every queued tranche and trades
 nothing. Holdings, the main lots, the target balance and the parked wire
 credits all survive it, and the report warns when parked credits remain.
+
+### One admission rule for every lifetime counter
+
+The invariant above holds only while every term of it is read the same way.
+One rule reads them all: `as_whole_count`, in
+`src/trading/container/config.py`. It admits a whole number and nothing else.
+A stored flag, a text number, a not-a-number, an endless number, a fraction
+and a whole number too large for a float each answer "no usable count", and
+none of them raises.
+
+Seven counters read it: the four fold counters, the scrum-sells counter and
+the two stack counters.
+
+| Reader | What a refused counter does there |
+| ------ | --------------------------------- |
+| `src/trading/scrumming/state_io.py`, in `admitted_counter` | Lands zero and names the bot, the field and the stored type in the log |
+| `src/gui/live_settings/fold_tokens.py`, in `fold_lifetime_counter` | Returns no count and logs the same three facts |
+| `src/gui/live_settings/stack_tranches_tab.py`, in `_stack_lifetime_counter` | The same, for the two stack counters |
+| `src/gui/main_tabs/fold_tranches_tab_surface.py`, in `guarded_count` | The same reading, for the second build |
+| `src/gui/main_tabs/stack_tranches_tab_surface.py`, in `lifetime_counter` | The same reading, for the second build |
+
+The Paper and Simulator panels are forks of the Live ones and read the same
+rule. Both fold forks call `fold_lifetime_counter` in
+`src/gui/live_settings/fold_tokens.py`, the one module all three fold panels
+share. Each stack fork carries `_stack_lifetime_counter`, matching the Live
+panel's own, so no screen reaches across from the Simulator into Live to read
+a count.
+
+| Panel | Reader |
+| ----- | ------ |
+| `src/gui/paper/paper_fold_tranches_tab.py` | `fold_lifetime_counter` |
+| `src/gui/simulator/sim_fold_tranches_tab.py` | `fold_lifetime_counter` |
+| `src/gui/paper/paper_stack_tranches_tab.py` | `_stack_lifetime_counter` |
+| `src/gui/simulator/sim_stack_tranches_tab.py` | `_stack_lifetime_counter` |
+
+`src/gui/main_tabs/fold_tokens_surface.py` holds a third copy of
+`compose_cycle_close_ratio`, and no counter reaches it. That module reads no
+bot and no stored field: `src/core/desktop_bridge.py` registers its
+`view_model` as the handler for the `fold_tokens.state` method, and
+`src/gui/web/fold_tokens.js` draws that payload's colours, sort orders, column
+tooltips, row heights and step names. Its ratio copy answers only a request
+that names the step and carries its own three numbers.
+
+`admitted_counter` sits on both halves of the save path, so a counter the
+panel will not print is also a counter the file will not store. A stored flag
+used to be written back as the count one, which made the fault permanent;
+it is now written back as zero, with the field named in the log.
+
+On screen a refused counter draws an em dash and never a number. The Cycle
+close ratio row and the Fill ratio row each say a counter is unreadable rather
+than work out a share from the terms they can still read. The Clear Lifetime
+Counters button stays live and its confirmation prints the dash, so an
+unreadable count is never the reason an operator cannot zero the ledger.
 
 ## Where the fleet comes from
 
