@@ -109,6 +109,10 @@ EDIT_TRIGGERS = "NoEditTriggers"
 ALTERNATING_ROW_COLORS = True
 SHOW_GRID = False
 
+# The `#` column is the row's only number. A second header column would
+# draw the display position, which disagrees under every non-queue order.
+TABLE_ROW_NUMBERS_HIDDEN = True
+
 COLUMN_TOOLTIPS = (
     "Position of this tranche in the fold queue.",
     "Time since the scrum created this tranche.",
@@ -227,6 +231,7 @@ ARBITER_TOOLTIP_FORMAT = (
 
 # ── The health rows ──────────────────────────────────────────────────
 OPEN_COUNT_ROW = "Open tranches:"
+SCRUM_SELLS_ROW = "Standing vs scrums that opened them:"
 PARKED_USD_ROW = "Parked USD (in fold queue):"
 OLDEST_AGE_ROW = "Oldest tranche age:"
 UNITS_MARKED_ROW = "Units marked (queue vs held):"
@@ -242,6 +247,13 @@ COUNTERS_RESET_ROW = "Lifetime counters last cleared:"
 CYCLE_CAP_ROW = "Fold budget this cycle:"
 
 OPEN_COUNT_TOOLTIP = "Fold tranches this bot holds in its queue now."
+SCRUM_SELLS_TOOLTIP = (
+    "Standing tranches against the sells that opened them.\n\n"
+    "The queue may never hold more tranches than the sells that "
+    "opened them, outside a strong trend. A strong trend lifts the "
+    "bound and lets one sell keep its per-lot rows, so standing "
+    "above sells is only expected then."
+)
 PARKED_USD_TOOLTIP = "Total cash parked by every open fold tranche."
 OLDEST_AGE_TOOLTIP = "Age of the oldest tranche in this queue."
 UNITS_MARKED_TOOLTIP = "Asset units the queue claims, against units held."
@@ -250,7 +262,12 @@ MALFORMED_TOOLTIP = "Stored tranches this bot could not read, lifetime total."
 CYCLE_CAP_TOOLTIP = "Growth cash one fold cycle may spend, and spent."
 OPENED_TOOLTIP = "Fold tranches this bot ever opened, less merged ones."
 CLOSED_TOOLTIP = "Fold tranches that folded back and bought the asset."
-CLOSE_RATIO_TOOLTIP = "Share of opened tranches that folded back, discards excluded."
+CLOSE_RATIO_TOOLTIP = (
+    "Share of opened tranches that folded back, discards excluded.\n\n"
+    "A dash means the three counters leave no share to work out: more "
+    "tranches closed than the opened count still admits, because a "
+    "merge lowers the opened count while the discarded count holds."
+)
 DISCARDED_TOOLTIP = "Fold tranches removed without folding back, lifetime total."
 COUNTERS_RESET_TOOLTIP = "When an operator last set these four counters to zero."
 
@@ -271,7 +288,13 @@ UNITS_NO_RATIO_FORMAT = "{text} / {held:,.6f} held"
 UNITS_RATIO_FORMAT = "{text} / {held:,.6f} held  ({ratio:,.2f}x)"
 UNITS_OVER_ALLOTMENT = 1.0
 
+# The same dash `indicator_panel_surface.absent_cell` draws.
+UNREADABLE_FIGURE = "—"
+SCRUM_SELLS_FORMAT = "{standing} standing / {sells} sell(s) opened them"
+SCRUM_SELLS_NO_RECORD_FORMAT = "{standing} standing / {dash} sells recorded"
+
 RATIO_NOTHING_LEFT = "—  (nothing left to fold back)"
+RATIO_UNREADABLE_FORMAT = "{dash}  (closed {closed} over {denominator} openable)"
 RATIO_TEXT_FORMAT = "{ratio:.2%}  ({closed}/{denominator})"
 RATIO_QUIET_DENOMINATOR = 5
 RATIO_RED_BELOW = 0.5
@@ -285,6 +308,11 @@ DESPAWN_CONTROL_PLACE = "Settings tab > Advanced > Tranche Despawn Timer"
 DESPAWN_OFF_FORMAT = "Off  -  {where}"
 DESPAWN_ARMED_FORMAT = "{days} day(s)  -  {where}"
 DESPAWN_NOTHING_TO_REMOVE = "nothing to remove"
+
+# The longest value on the health form at four despawn windows.
+# Unwrapped it holds the form's field column at 1,236px and carries the
+# whole tab past a 1920 display.
+DESPAWN_PREVIEW_WORD_WRAP = True
 DESPAWN_MENU_PREFIX = "if armed at  "
 DESPAWN_JOIN = "  -  "
 DESPAWN_WINDOW_FORMAT = "{days}d: {removed} (${usd:,.4f})"
@@ -407,6 +435,11 @@ WIRE_LEDGER_ATTRIBUTE = "_pending_wire_ledger"
 CREATED_LIFETIME_ATTRIBUTE = "_tranches_created_lifetime"
 CLOSED_LIFETIME_ATTRIBUTE = "_tranches_closed_lifetime"
 DISCARDED_LIFETIME_ATTRIBUTE = "_tranches_discarded_lifetime"
+SCRUM_SELLS_ATTRIBUTE = "_scrum_sells_lifetime"
+
+# The four `clear_lifetime_tranche_counters` zeroes. `counter_values`
+# also carries `sells`, which no Clear control touches.
+CLEARED_COUNTER_KEYS = ("opened", "closed", "discarded", "malformed")
 MALFORMED_ATTRIBUTE = "_tranches_malformed_dropped"
 WIRE_DISCARDED_ATTRIBUTE = "_wire_credits_discarded_lifetime"
 COUNTERS_RESET_ATTRIBUTE = "_tranches_counters_reset_ts"
@@ -1007,6 +1040,15 @@ def cycle_close_ratio(created: int, closed: int, discarded: int) -> list:
     denominator = int(created) - int(discarded)
     if denominator <= 0:
         return [RATIO_NOTHING_LEFT, NO_CELL_COLOR]
+    # A merge lowers `created` while `discarded` holds, so the top of
+    # this sum can pass its bottom. No share exists there.
+    if int(closed) > denominator:
+        return [
+            RATIO_UNREADABLE_FORMAT.format(
+                dash=UNREADABLE_FIGURE, closed=int(closed), denominator=denominator
+            ),
+            FOLD_RATIO_RED_FG_HEX,
+        ]
     ratio = int(closed) / denominator
     text = RATIO_TEXT_FORMAT.format(
         ratio=ratio, closed=int(closed), denominator=denominator
@@ -1018,6 +1060,30 @@ def cycle_close_ratio(created: int, closed: int, discarded: int) -> list:
     if ratio < RATIO_AMBER_BELOW:
         return [text, FOLD_RATIO_AMBER_FG_HEX]
     return [text, FOLD_RATIO_GREEN_FG_HEX]
+
+
+def scrum_sells_row(standing: Any, sells: Any) -> list:
+    """The standing tranches against the sells that opened them.
+
+    `standing` counts the rows in `_fold_tranches` and `sells` counts
+    `_scrum_sells_lifetime`, and a `standing` above `sells` draws
+    `FOLD_OVER_ALLOTMENT_FG_HEX`.
+    """
+    standing_rows = whole_count(standing)
+    opening_sells = whole_count(sells)
+    # A save written before the field existed restores zero sells, which
+    # is not readable as a breach.
+    if opening_sells <= 0 and standing_rows > 0:
+        return [
+            SCRUM_SELLS_NO_RECORD_FORMAT.format(
+                standing=standing_rows, dash=UNREADABLE_FIGURE
+            ),
+            NO_CELL_COLOR,
+        ]
+    text = SCRUM_SELLS_FORMAT.format(standing=standing_rows, sells=opening_sells)
+    if standing_rows > opening_sells:
+        return [text, FOLD_OVER_ALLOTMENT_FG_HEX]
+    return [text, NO_CELL_COLOR]
 
 
 def cap_text(budget: Any, spent: Any) -> str:
@@ -1636,6 +1702,7 @@ class BotSource:
         closed: Any = 0,
         discarded: Any = 0,
         malformed: Any = 0,
+        sells: Any = 0,
         wire_discarded: Any = 0.0,
         counters_reset_ts: Any = 0.0,
         cap_budget: Any = 0.0,
@@ -1663,6 +1730,7 @@ class BotSource:
         setattr(self, CLOSED_LIFETIME_ATTRIBUTE, closed)
         setattr(self, DISCARDED_LIFETIME_ATTRIBUTE, discarded)
         setattr(self, MALFORMED_ATTRIBUTE, malformed)
+        setattr(self, SCRUM_SELLS_ATTRIBUTE, sells)
         setattr(self, WIRE_DISCARDED_ATTRIBUTE, wire_discarded)
         setattr(self, COUNTERS_RESET_ATTRIBUTE, counters_reset_ts)
         setattr(self, CAP_BUDGET_ATTRIBUTE, cap_budget)
@@ -1802,6 +1870,7 @@ class FoldTranchesTabModel:
                 getattr(self.bot, DISCARDED_LIFETIME_ATTRIBUTE, 0)
             ),
             "malformed": whole_count(getattr(self.bot, MALFORMED_ATTRIBUTE, 0)),
+            "sells": whole_count(getattr(self.bot, SCRUM_SELLS_ATTRIBUTE, 0)),
         }
 
     def extractor_rows(self) -> list:
@@ -1851,6 +1920,8 @@ class FoldTranchesTabModel:
         )
 
         self.add_health_row(OPEN_COUNT_ROW, str(len(tranches)), NO_CELL_COLOR)
+        sells_text, sells_colour = scrum_sells_row(len(tranches), counts["sells"])
+        self.add_health_row(SCRUM_SELLS_ROW, sells_text, sells_colour)
         self.add_health_row(
             PARKED_USD_ROW,
             parked_usd_text(tranches),
@@ -1912,12 +1983,7 @@ class FoldTranchesTabModel:
         )
 
         parked = self.parked()
-        counter_total = (
-            counts["opened"]
-            + counts["closed"]
-            + counts["discarded"]
-            + counts["malformed"]
-        )
+        counter_total = sum(counts[key] for key in CLEARED_COUNTER_KEYS)
         for text, enabled in (
             [
                 (
@@ -2023,6 +2089,7 @@ class FoldTranchesTabModel:
             "despawn_timer_text": self.health_value(DESPAWN_TIMER_ROW),
             "despawn_preview_text": self.health_value(DESPAWN_PREVIEW_ROW),
             "units_marked_text": self.health_value(UNITS_MARKED_ROW),
+            "scrum_sells_text": self.health_value(SCRUM_SELLS_ROW),
             "row_order": self.sort_key if self.table_shown else None,
             "row_filter": self.row_filter if self.table_shown else None,
             "lifetime_opened_text": opened,
@@ -2249,7 +2316,7 @@ class FoldTranchesTabModel:
         """Zero the four lifetime counters, after the operator confirms."""
         self.calls.append([CLEAR_START, CLEAR_COUNTERS_TITLE])
         counts = self.counter_values()
-        if not sum(counts.values()):
+        if not sum(counts[key] for key in CLEARED_COUNTER_KEYS):
             self.boxes.append(
                 note_box(
                     INFORMATION_ICON,
@@ -2674,6 +2741,7 @@ def build_view_model(
         "health_colors": list(model.health_colors),
         "health_labels": [
             OPEN_COUNT_ROW,
+            SCRUM_SELLS_ROW,
             PARKED_USD_ROW,
             OLDEST_AGE_ROW,
             UNITS_MARKED_ROW,
@@ -2690,6 +2758,7 @@ def build_view_model(
         ],
         "health_tooltips": [
             OPEN_COUNT_TOOLTIP,
+            SCRUM_SELLS_TOOLTIP,
             PARKED_USD_TOOLTIP,
             OLDEST_AGE_TOOLTIP,
             UNITS_MARKED_TOOLTIP,
@@ -2718,6 +2787,7 @@ def build_view_model(
             "alternating_row_colors": ALTERNATING_ROW_COLORS,
             "show_grid": SHOW_GRID,
             "row_height_px": TRANCHE_ROW_HEIGHT_PX,
+            "row_numbers_hidden": TABLE_ROW_NUMBERS_HIDDEN,
             "visible_rows": TRANCHE_TABLE_VISIBLE_ROWS,
             "frame_px": TRANCHE_TABLE_FRAME_PX,
             "header_px": TRANCHE_TABLE_HEADER_PX,
@@ -2824,6 +2894,7 @@ def build_view_model(
             "tooltip": DESPAWN_ROW_TOOLTIP,
             "seconds_per_day": SECONDS_PER_DAY,
             "nothing_to_remove": DESPAWN_NOTHING_TO_REMOVE,
+            "preview_word_wrap": DESPAWN_PREVIEW_WORD_WRAP,
         },
         "sort_keys": {name: list(spec) for name, spec in SORT_KEYS.items()},
         "titles": {
@@ -3076,6 +3147,7 @@ def build_bot(spec: dict) -> BotSource:
         closed=spec.get("closed", 0),
         discarded=spec.get("discarded", 0),
         malformed=spec.get("malformed", 0),
+        sells=spec.get("sells", 0),
         wire_discarded=spec.get("wire_discarded", 0.0),
         counters_reset_ts=spec.get("counters_reset_ts", 0.0),
         cap_budget=spec.get("cap_budget", 0.0),

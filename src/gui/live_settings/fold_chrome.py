@@ -266,6 +266,10 @@ def install_despawn_rows(
     install_health_row(form, "Tranche despawn timer:", timer_lbl, DESPAWN_ROW_TOOLTIP)
 
     preview_lbl = QLabel(despawn_preview_text(_days, armed, windows))
+    # The longest value on this form at four despawn windows. Unwrapped
+    # it holds the form's field column at 1,236px and carries the whole
+    # tab past a 1920 display; wrapped the tab fits inside it.
+    preview_lbl.setWordWrap(True)
     dialog._fold_despawn_preview_lbl = preview_lbl
     install_health_row(form, "Despawn would remove:", preview_lbl, DESPAWN_ROW_TOOLTIP)
 
