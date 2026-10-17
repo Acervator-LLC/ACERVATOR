@@ -52,13 +52,8 @@ class ThemeTokens:
     # Accents
     accent_primary: str = "#00ffcc"
     accent_secondary: str = "#ff00aa"
-    accent_success: str = "#00ff88"
     accent_danger: str = (
         "#ff5577"  # was "#ff3366" — WCAG C2: tightened contrast margin (SC 1.4.3)
-    )
-    accent_warning: str = "#ffaa00"
-    accent_info: str = (
-        "#4fc3ff"  # was "#00aaff" — WCAG C2: widened contrast margin (SC 1.4.3)
     )
 
     # WCAG SC 1.4.11 wants at least 3:1 against the adjacent colour.
@@ -67,22 +62,18 @@ class ThemeTokens:
     border_accent: str = rgba("#00ffcc", 68)
 
     # Special
-    glow_color: str = rgba("#00ffcc", 51)
     scrollbar_bg: str = "#0a0a14"
     scrollbar_handle: str = "#2a2a44"
 
     # Font
     font_family: str = "'Rajdhani', 'Orbitron', 'Segoe UI', sans-serif"
-    font_mono: str = "'JetBrains Mono', 'Fira Code', 'Consolas', monospace"
     font_size: str = "13px"
     font_size_small: str = "11px"
-    font_size_large: str = "16px"
     font_size_title: str = "20px"
 
     # Border radius
     radius_sm: str = "4px"
     radius_md: str = "8px"
-    radius_lg: str = "12px"
 
     # Locust growth stages on the Swarm grid. Body is the fill, trim the
     # outline and the growth text. Each trim clears 4.5:1 on the swarm ground.
@@ -143,14 +134,10 @@ NEON_LIGHT = ThemeTokens(
     text_accent="#6600cc",
     accent_primary="#6600cc",
     accent_secondary="#cc0066",
-    accent_success="#00aa44",
     accent_danger="#cc0033",
-    accent_warning="#cc8800",
-    accent_info="#0066cc",
     border_primary="#ccccdd",
     border_secondary="#ddddee",
     border_accent=rgba("#6600cc", 68),
-    glow_color=rgba("#6600cc", 34),
     scrollbar_bg="#e0e0ea",
     scrollbar_handle="#bbbbcc",
     locust_hopper_body="#5a5a66",
@@ -201,14 +188,10 @@ CLASSIC_TERMINAL = ThemeTokens(
     text_accent="#00ff00",
     accent_primary="#00ff00",
     accent_secondary="#00cc00",
-    accent_success="#00ff44",
     accent_danger="#ff0000",
-    accent_warning="#ffff00",
-    accent_info="#00ffff",
     border_primary="#003300",
     border_secondary="#002200",
     border_accent=rgba("#00ff00", 68),
-    glow_color=rgba("#00ff00", 34),
     scrollbar_bg="#0a0a0a",
     scrollbar_handle="#003300",
     font_family="'JetBrains Mono', 'Fira Code', 'Consolas', monospace",
@@ -260,14 +243,10 @@ MINIMAL_MODERN = ThemeTokens(
     text_accent="#2563eb",
     accent_primary="#2563eb",
     accent_secondary="#7c3aed",
-    accent_success="#059669",
     accent_danger="#dc2626",
-    accent_warning="#d97706",
-    accent_info="#2563eb",
     border_primary="#e0e0e0",
     border_secondary="#eeeeee",
     border_accent=rgba("#2563eb", 51),
-    glow_color="transparent",
     scrollbar_bg="#f0f0f0",
     scrollbar_handle="#cccccc",
     font_family="'SF Pro Display', 'Inter', 'Segoe UI', sans-serif",
@@ -319,14 +298,10 @@ GLASS_METAL = ThemeTokens(
     text_accent="#88ccff",
     accent_primary="#88ccff",
     accent_secondary="#cc88ff",
-    accent_success="#88ffaa",
     accent_danger="#ff6688",
-    accent_warning="#ffcc66",
-    accent_info="#88ccff",
     border_primary="#3a3a50",
     border_secondary="#2e2e42",
     border_accent=rgba("#88ccff", 68),
-    glow_color=rgba("#88ccff", 34),
     scrollbar_bg="#1c1c24",
     scrollbar_handle="#3a3a50",
     font_family="'Exo 2', 'Rajdhani', 'Segoe UI', sans-serif",
@@ -453,6 +428,10 @@ TOOLTIP_MAX_WIDTH_PX = 560
 #: The text size and inner spacing every ``QToolTip`` box draws at.
 TOOLTIP_FONT_SIZE_PX = 12
 TOOLTIP_PADDING_PX = 8
+
+#: The alpha a pressed ``QSplitter`` handle paints its accent under: 0.85 of
+#: full opacity written as the byte Qt reads, because Qt has no ``opacity``.
+SPLITTER_PRESSED_ALPHA = 217
 
 _HEX_CHANNELS = re.compile(r"\A#([0-9a-fA-F]{2})([0-9a-fA-F]{2})([0-9a-fA-F]{2})\Z")
 _QSS_COMMENT = re.compile(r"/\*.*?\*/", re.S)
@@ -847,15 +826,15 @@ QSplitter::handle {{
 QSplitter::handle:horizontal {{
     width: 5px;
     background-color: {t.border_primary};
-    border-left:  1px solid rgba(0,255,238,0.10);
-    border-right: 1px solid rgba(0,255,238,0.10);
+    border-left:  1px solid {t.border_accent};
+    border-right: 1px solid {t.border_accent};
 }}
 
 QSplitter::handle:vertical {{
     height: 5px;
     background-color: {t.border_primary};
-    border-top:    1px solid rgba(0,255,238,0.10);
-    border-bottom: 1px solid rgba(0,255,238,0.10);
+    border-top:    1px solid {t.border_accent};
+    border-bottom: 1px solid {t.border_accent};
 }}
 
 QSplitter::handle:hover {{
@@ -863,8 +842,7 @@ QSplitter::handle:hover {{
 }}
 
 QSplitter::handle:pressed {{
-    background-color: {t.accent_primary};
-    opacity: 0.85;
+    background-color: {rgba(t.accent_primary, SPLITTER_PRESSED_ALPHA)};
 }}
 
 /* --- Check / Radio --- */
