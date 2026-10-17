@@ -549,6 +549,45 @@ that card wants for a whole money amount of `$12,345.67`. The money strip takes 
 shares of the spare width and each counter card takes one. The asset class square
 takes none, because its side is a declared number.
 
+OVERTAKEN, and the block and the paragraph above are kept as written.
+`SPENDABLE_MIN_W` is not a constant and is not 180. `spendable_min_w` answers the
+money strip's narrowest width, as `spendable_w` at `MONEY_CELL_MIN_W`: every
+`KPI_COLUMNS` column's room at the smallest type an amount draws at, each rule's
+own width and the gap either side of it, and `SPENDABLE_TEXT_PAD` for the frame.
+Six columns answer 512 px.
+
+OVERTAKEN, and the block and the paragraph above are kept as written.
+`COUNTER_MIN_W` is not 48 and is not a typed figure. It is `MONEY_CELL_MIN_W` plus
+`COUNTER_TEXT_PAD`, which is the room `WIDEST_AMOUNT` needs at `VALUE_FONT_MIN_PX`
+plus what the card's own frame and margins take, and it answers 90 px. A card's
+floor is its amount's room and no longer its longest caption's.
+
+OVERTAKEN, and the block and the paragraph above are kept as written.
+`COUNTER_NATURAL_W` is not 118. It is `COUNTER_TEXT_W` plus `COUNTER_TEXT_PAD`, and
+`COUNTER_TEXT_W` is `KPI_COLUMN_W`, so a card asks for the room a money column asks
+for. It answers 116 px.
+
+OVERTAKEN, and the block and the paragraph above are kept as written.
+`TOP_ROW_STRETCH` is not `[3, 1, 1, 1, 1, 1, 0]` and is not written out. It is
+built from `KPI_COLUMNS` and `COUNTER_CARDS`: the money strip takes one share per
+column it holds, each card takes `COUNTER_STRETCH`, and the class square takes
+`CLASS_GROUP_STRETCH`. Six columns and six cards answer
+`[6, 1, 1, 1, 1, 1, 1, 0]`, and it holds one share per `TOP_ROW_ORDER` slot by
+construction.
+
+`src/gui/main_tabs/header_strip_surface.py` — the floors and the shares today
+
+```python
+MONEY_CELL_MIN_W = 64
+COUNTER_MIN_W = MONEY_CELL_MIN_W + COUNTER_TEXT_PAD
+COUNTER_NATURAL_W = COUNTER_TEXT_W + COUNTER_TEXT_PAD
+TOP_ROW_STRETCH = [
+    len(KPI_COLUMNS),
+    *([COUNTER_STRETCH] * len(COUNTER_SLOTS)),
+    CLASS_GROUP_STRETCH,
+]
+```
+
 **The margins the two newest columns are drawn from.** A column leaves 3 px either
 side of the rule between it and its neighbour, the rule itself is 12 px, the panel's
 own side margin is 6 px, and a counter card's side margin is 4 px.
@@ -561,6 +600,13 @@ SPENDABLE_COLUMN_GAP_PX = 3
 SPENDABLE_RULE_W_PX = 12
 CARD_SIDE_MARGIN_PX = 4
 ```
+
+OVERTAKEN, and the block and the paragraph above are kept as written.
+`CARD_SIDE_MARGIN_PX` is not 4 and a counter card leaves no side margin of its own.
+`PANEL_FRAME_INSET_PX` names what the card's frame already insets — 12 px of
+padding and a 1 px border on each side — so a margin on top of it was a second
+inset, and it cost the amount the digits `MONEY_CELL_MIN_W` reserves room for. The
+three money strip figures above are unchanged.
 
 **One money cell, one width rule.** The row draws money in two kinds of panel —
 a column of the money strip and a counter card — and both reserve the same room
