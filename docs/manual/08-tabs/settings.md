@@ -1502,6 +1502,20 @@ monospace face and four sizes.
     font_size_title: str = "20px"
 ```
 
+The monospace face and the large size are gone from the palette. No rule in the
+style-sheet text named either one, so neither is a value a palette declares, and
+a palette now carries a typeface and three sizes.
+
+`src/gui/theme_engine.py` — the typography tokens a theme declares today
+
+```python
+    # Font
+    font_family: str = "'Rajdhani', 'Orbitron', 'Segoe UI', sans-serif"
+    font_size: str = "13px"
+    font_size_small: str = "11px"
+    font_size_title: str = "20px"
+```
+
 Three of the five palettes name a typeface of their own. Classic Terminal takes a
 monospace family, Minimal Modern and Glass & Metal each name their own, and the
 other two keep the declared default above.
@@ -1550,6 +1564,10 @@ The dialog payload carries 68 controls where it carried 72, the rendered page
 draws 55 where it drew 59, and Save writes nine top-level keys where it wrote
 thirteen. The five generated stylesheets are unchanged byte for byte, because the
 removal touched no palette.
+
+Dropping the monospace face and the large size did touch the palette, so each of
+the five style sheets is shorter than that. [08-tabs.md](../08-tabs.md) holds the
+character count each one writes today.
 
 A settings file written before the removal still loads. The load copies only the
 fields the record declares, so a font key in such a file is read past and every

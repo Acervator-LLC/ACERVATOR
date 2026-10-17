@@ -1,13 +1,13 @@
 """theme_engine_surface.py -- the five visual themes and the style sheet each one makes.
 
 Describes the theme table the whole window draws from. Five themes
-carry 55 named values each: two names, 44 colours, two font stacks,
-four text sizes and three corner roundings. A theme that does not name
+carry 48 named values each: two names, 40 colours, one font stack,
+three text sizes and two corner roundings. A theme that does not name
 a value takes the default written in ``DEFAULT_TOKENS``.
 
 ``generate_qss`` turns one theme into the style-sheet text the window
 applies. The template is written out here in full, so the two sides
-build the same 7419 characters from their own copies of the values.
+build the same 7404 characters from their own copies of the values.
 
 ``ThemeManagerModel`` holds the selected theme. ``list_themes``
 returns the name and display name of each. ``get_theme`` returns one
@@ -28,11 +28,15 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from ..color_alpha import css_colours
+from ..color_alpha import css_colours, rgba
 
 METHOD = "theme_engine.state"
 
 REQUIRED_FIELD_NAMES = ("name", "display_name")
+
+#: The alpha a pressed splitter handle paints its accent under: 0.85 of full
+#: opacity written as the byte Qt reads, because Qt has no ``opacity``.
+SPLITTER_PRESSED_ALPHA = 217
 
 DEFAULT_TOKENS: dict[str, str] = {
     "bg_primary": "#0a0a0f",
@@ -48,25 +52,18 @@ DEFAULT_TOKENS: dict[str, str] = {
     "text_accent": "#00ffcc",
     "accent_primary": "#00ffcc",
     "accent_secondary": "#ff00aa",
-    "accent_success": "#00ff88",
     "accent_danger": "#ff5577",
-    "accent_warning": "#ffaa00",
-    "accent_info": "#4fc3ff",
     "border_primary": "#7a7a9c",
     "border_secondary": "#5e5e80",
     "border_accent": "rgba(0,255,204,68)",
-    "glow_color": "rgba(0,255,204,51)",
     "scrollbar_bg": "#0a0a14",
     "scrollbar_handle": "#2a2a44",
     "font_family": "'Rajdhani', 'Orbitron', 'Segoe UI', sans-serif",
-    "font_mono": "'JetBrains Mono', 'Fira Code', 'Consolas', monospace",
     "font_size": "13px",
     "font_size_small": "11px",
-    "font_size_large": "16px",
     "font_size_title": "20px",
     "radius_sm": "4px",
     "radius_md": "8px",
-    "radius_lg": "12px",
     "chart_bg_top": "#08080e",
     "chart_bg_bottom": "#0c0c16",
     "chart_grid": "#1c1c30",
@@ -94,7 +91,7 @@ FIELD_NAMES = REQUIRED_FIELD_NAMES + tuple(DEFAULT_TOKENS)
 
 
 def build_theme(name: str, display_name: str, **named: str) -> dict[str, str]:
-    """One theme's 61 values: its two names, then a default for each it does not name.
+    """One theme's 48 values: its two names, then a default for each it does not name.
 
     Field order follows the dataclass the surface replaces, so the two
     sides hand the frontend their values in one order.
@@ -123,14 +120,10 @@ NEON_LIGHT: dict[str, str] = build_theme(
     text_accent="#6600cc",
     accent_primary="#6600cc",
     accent_secondary="#cc0066",
-    accent_success="#00aa44",
     accent_danger="#cc0033",
-    accent_warning="#cc8800",
-    accent_info="#0066cc",
     border_primary="#ccccdd",
     border_secondary="#ddddee",
     border_accent="rgba(102,0,204,68)",
-    glow_color="rgba(102,0,204,34)",
     scrollbar_bg="#e0e0ea",
     scrollbar_handle="#bbbbcc",
     chart_bg_top="#ffffff",
@@ -172,14 +165,10 @@ CLASSIC_TERMINAL: dict[str, str] = build_theme(
     text_accent="#00ff00",
     accent_primary="#00ff00",
     accent_secondary="#00cc00",
-    accent_success="#00ff44",
     accent_danger="#ff0000",
-    accent_warning="#ffff00",
-    accent_info="#00ffff",
     border_primary="#003300",
     border_secondary="#002200",
     border_accent="rgba(0,255,0,68)",
-    glow_color="rgba(0,255,0,34)",
     scrollbar_bg="#0a0a0a",
     scrollbar_handle="#003300",
     font_family="'JetBrains Mono', 'Fira Code', 'Consolas', monospace",
@@ -222,14 +211,10 @@ MINIMAL_MODERN: dict[str, str] = build_theme(
     text_accent="#2563eb",
     accent_primary="#2563eb",
     accent_secondary="#7c3aed",
-    accent_success="#059669",
     accent_danger="#dc2626",
-    accent_warning="#d97706",
-    accent_info="#2563eb",
     border_primary="#e0e0e0",
     border_secondary="#eeeeee",
     border_accent="rgba(37,99,235,51)",
-    glow_color="transparent",
     scrollbar_bg="#f0f0f0",
     scrollbar_handle="#cccccc",
     font_family="'SF Pro Display', 'Inter', 'Segoe UI', sans-serif",
@@ -272,14 +257,10 @@ GLASS_METAL: dict[str, str] = build_theme(
     text_accent="#88ccff",
     accent_primary="#88ccff",
     accent_secondary="#cc88ff",
-    accent_success="#88ffaa",
     accent_danger="#ff6688",
-    accent_warning="#ffcc66",
-    accent_info="#88ccff",
     border_primary="#3a3a50",
     border_secondary="#2e2e42",
     border_accent="rgba(136,204,255,68)",
-    glow_color="rgba(136,204,255,34)",
     scrollbar_bg="#1c1c24",
     scrollbar_handle="#3a3a50",
     font_family="'Exo 2', 'Rajdhani', 'Segoe UI', sans-serif",
@@ -649,15 +630,15 @@ QSplitter::handle {{
 QSplitter::handle:horizontal {{
     width: 5px;
     background-color: {border_primary};
-    border-left:  1px solid rgba(0,255,238,0.10);
-    border-right: 1px solid rgba(0,255,238,0.10);
+    border-left:  1px solid {border_accent};
+    border-right: 1px solid {border_accent};
 }}
 
 QSplitter::handle:vertical {{
     height: 5px;
     background-color: {border_primary};
-    border-top:    1px solid rgba(0,255,238,0.10);
-    border-bottom: 1px solid rgba(0,255,238,0.10);
+    border-top:    1px solid {border_accent};
+    border-bottom: 1px solid {border_accent};
 }}
 
 QSplitter::handle:hover {{
@@ -665,8 +646,7 @@ QSplitter::handle:hover {{
 }}
 
 QSplitter::handle:pressed {{
-    background-color: {accent_primary};
-    opacity: 0.85;
+    background-color: {splitter_pressed};
 }}
 
 /* --- Check / Radio --- */
@@ -690,8 +670,14 @@ QRadioButton::indicator {{
 
 
 def generate_qss(tokens: dict) -> str:
-    """The complete style-sheet text one theme's values produce."""
-    return QSS_TEMPLATE.format(**tokens)
+    """The complete style-sheet text one theme's values produce.
+
+    The template holds one name the token table does not: the pressed
+    splitter handle, which is this theme's own accent under
+    ``SPLITTER_PRESSED_ALPHA``.
+    """
+    pressed = rgba(tokens["accent_primary"], SPLITTER_PRESSED_ALPHA)
+    return QSS_TEMPLATE.format(splitter_pressed=pressed, **tokens)
 
 
 STYLE_SHEETS: dict[str, str] = {
@@ -721,7 +707,7 @@ def unknown_theme_message(name: Any) -> str:
 
 
 def theme_tokens(name: str) -> dict:
-    """One theme's 34 values, or an empty table for any other name."""
+    """One theme's 48 values, or an empty table for any other name."""
     return dict(THEMES.get(name, NO_TOKENS))
 
 

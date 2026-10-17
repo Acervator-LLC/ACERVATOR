@@ -59,7 +59,7 @@ CARD_STOCK_LABEL = "#6688aa"
 CARD_STOCK_VALUE = "#e0e8f0"
 CARD_METRIC_SURFACE = "#12121f"  # Analytics tab card background
 CARD_METRIC_BORDER = "#2a2a3f"
-CARD_METRIC_LABEL = "#888"
+CARD_METRIC_LABEL = "#888888"
 
 # ---- Widget colours ---------------------------------------------------------
 
@@ -238,7 +238,6 @@ RADIUS_CARD = 6  # Analytics metric cards
 RADIUS_SM = 8  # Default — buttons, inputs, cards
 RADIUS_MD = 12  # Elevated cards, dialogs
 RADIUS_LG = 16  # Large surfaces, bottom sheets (rare in desktop)
-RADIUS_FULL = 9999  # Pills, fully round
 
 # ---- Animation durations in milliseconds -----------------------------------
 
@@ -469,7 +468,6 @@ __all__ = [
     "RADIUS_SM",
     "RADIUS_MD",
     "RADIUS_LG",
-    "RADIUS_FULL",
     # Motion
     "MOTION_INSTANT",
     "MOTION_SHORT",
