@@ -126,6 +126,10 @@ class ExecutionEngineMixin:
     _last_sell_venue_fee: Optional["SettledFillFee"] = None
     _last_fill_venue_fee: Optional["SettledFillFee"] = None
 
+    # The units the venue reported sold on the last _execute_sell, for the
+    # callers that take those units off _main_lots.
+    _last_sell_filled_units: float = 0.0
+
     # One get_order per fill whose placed order reported no fee, and none otherwise.
     _VENUE_FEE_REREADS = 1
     _VENUE_FEE_REREAD_DELAY_S = 0.2
@@ -1465,14 +1469,21 @@ class ExecutionEngineMixin:
         price: float,
         summary: VotingSummary,
         bypass_stack: bool = False,
+        label: str = "SCRUM",
     ) -> Optional[float]:
         """Place a market sell and return the fill price, or None when refused.
 
-        Both venue-fee records are cleared on entry and written by
-        ``_record_venue_fee`` once the venue reports a settled order.
+        ``_settled_fill`` supplies the units the venue reported sold, under
+        ``label``, and those units are what leaves ``_current_holdings``;
+        ``amount`` is only what was asked for, so a partial fill no longer
+        takes units off the ledger the venue never sold. The figure is left on
+        ``_last_sell_filled_units`` for the callers that take the same units
+        off ``_main_lots``. Both venue-fee records are cleared on entry and
+        written by ``_settled_fill`` off whichever order object settled.
         """
         self._last_sell_venue_fee = None
         self._last_fill_venue_fee = None
+        self._last_sell_filled_units = 0.0
 
         if (
             not bypass_stack
@@ -1748,26 +1759,26 @@ class ExecutionEngineMixin:
                     )
                 return None
 
-            self._current_holdings -= amount
+            # The only point on the SCRUM, DIST and STACK paths holding the
+            # settled order; _settled_fill records the venue fee off it.
+            filled_units, actual_fill, _ = await self._settled_fill(
+                order, self.config.symbol, amount, price, label=label
+            )
+            self._last_sell_filled_units = filled_units
+            self._current_holdings = max(0.0, self._current_holdings - filled_units)
             self.stats.total_sells += 1
             self.stats.total_trades += 1
 
-            actual_fill = getattr(order, "average", None) or getattr(
-                order, "price", None
-            )
             if not actual_fill or actual_fill <= 0:
                 actual_fill = price
-            # The only point on the SCRUM and DIST paths holding the settled order.
-            self._record_venue_fee(order, amount, actual_fill)
-            await self._settle_venue_fee(order, amount, actual_fill)
             slippage_pct = ((actual_fill - price) / price * 100.0) if price > 0 else 0.0
 
-            self.stats.trade_volume += amount * actual_fill
+            self.stats.trade_volume += filled_units * actual_fill
             self.stats.last_trade_time = time.time()
 
             try:
                 _qrate = float(getattr(self, "_quote_to_usd", 1.0) or 1.0)
-                _fill_usd = float(amount) * float(actual_fill) * _qrate
+                _fill_usd = float(filled_units) * float(actual_fill) * _qrate
                 self.stats.ytd_scrummed_usd = (
                     float(getattr(self.stats, "ytd_scrummed_usd", 0.0) or 0.0)
                     + _fill_usd
@@ -1785,24 +1796,25 @@ class ExecutionEngineMixin:
                     timestamp=time.time(),
                     side="sell",
                     price=actual_fill,
-                    amount=amount,
+                    amount=filled_units,
                     voting_summary=summary,
                 )
             )
             self._bus.emit(
                 "bot.log",
                 bot_id=self.bot_id,
-                message=f"SELL FILLED: {amount:.6f} {self.config.target_asset} "
+                message=f"SELL FILLED: {filled_units:.6f} "
+                f"{self.config.target_asset} of {amount:.6f} asked "
                 f"@ ${actual_fill:.8f} "
                 f"(intended ${price:.8f}, slip {slippage_pct:+.3f}%)",
             )
             self._emit_trade_notification(
-                "SCRUM", "FILLED", f"{amount:.6f} @ ${actual_fill:.8f}"
+                "SCRUM", "FILLED", f"{filled_units:.6f} @ ${actual_fill:.8f}"
             )
             logger.info(
                 "Bot %s sold %.6f at %.4f (intended %.4f, slip %+.3f%%, confidence=%.2f)",
                 self.bot_id,
-                amount,
+                filled_units,
                 actual_fill,
                 price,
                 slippage_pct,

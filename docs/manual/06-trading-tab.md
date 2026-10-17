@@ -1280,6 +1280,17 @@ def priced_position(holdings: float, price: float, quote_rate: float) -> float:
     return holdings * price * quote_rate
 ```
 
+OVERTAKEN, quoted whole:
+
+> `src/gui/main_tabs/table_cells_surface.py` — the one multiplication both priced
+> cells read, so the Position Value cell and the Ammo cell can never disagree
+
+True today: both cells still read that one multiplication, and they hand it
+different unit counts. The Position Value cell prices the units the bot
+attributes to itself. The Ammo cell prices the units the exchange reports,
+wherever the platform holds a reading of them, so the two cells differ exactly
+when the bot's own count has drifted from the exchange.
+
 `src/gui/main_tabs/table_cells_surface.py` — the four blank paths and the one
 priced path
 
@@ -1298,6 +1309,45 @@ inside the dust band.
 frozen number typed into the wizard, so the reading follows the grown balance the
 engine re-zeroes to. The header strip's AMMO total takes the same target from the
 same function, so the row and the list cannot disagree.
+
+**Which unit count the distance is measured from.** The exchange is the
+authority on what is held, so the cell prices the exchange's own count of units
+and falls back to the bot's attributed count only when the platform holds no
+exchange reading. The reading is already in memory. Three paths store it, net of
+the personal hold and of the sibling bots on the same asset: the startup read,
+the periodic audit, and the balance read a detonation sizes its sale from. The
+cell takes the stored figure off the bot's status, so nothing is fetched while
+the table paints, and a bot none of the three has run for yet draws the marked
+attributed count.
+
+The tooltip always names the count it measured. On the exchange's count it
+gives both figures, so a drift between them is visible in the cell that is
+affected by it. With no exchange reading held it opens `NO EXCHANGE COUNT HELD`
+and says the direction can read the wrong way, because an attributed count below
+the exchange turns a surplus into an apparent deficit and paints buy pressure on
+a position that is already above target.
+
+`src/gui/main_tabs/table_cells_surface.py`, in `ammo_units` — the one rule all
+three Ammo readers share
+
+```python
+def ammo_units(holdings: float, venue_units: Any) -> tuple:
+    try:
+        reading = float(venue_units)
+    except (TypeError, ValueError):
+        return holdings, False
+    if not math.isfinite(reading) or reading <= 0:
+        return holdings, False
+    return reading, True
+```
+
+`src/trading/scrumming/reconciliation.py`, in `_record_audited_venue_units` —
+where the reading comes from, and `src/trading/bot_container.py`, in
+`get_status` — the `audited_venue_units` field that carries it to the screen.
+
+The row's cell, the header strip's AMMO total and the Ammo column's sort order
+all take the count from `src/gui/main_tabs/bot_status_table_surface.py`, in
+`measured_units_of`, so no two of them can measure different units.
 
 `src/trading/target_bands.py` — the target every Ammo reading measures against
 
@@ -2038,6 +2088,11 @@ delta = position_val - target_val
 territory = target_territory(position_val, target_val)
 ```
 
+The position value in that subtraction is the exchange's own unit count at the
+exchange's own price, and the bot's attributed count only where no exchange
+reading is held. The Ammo column section above names the rule and where the
+reading is stored.
+
 Scrum - To sell an amount from an investment position that allows it to return to its initial price level. This never closes the position. This is the first half of the infinitely divisible circle that can persist for such positions in a healthy market.
 
 One shared helper decides which half of the cycle a position sits in. It
@@ -2055,6 +2110,20 @@ if delta < -band:
     return "fold"
 return "at_target"
 ```
+
+**What a sale takes off the position.** A scrum asks the exchange for an amount
+and the exchange decides how much of it trades. The units that leave the
+position are the units the exchange reports sold, never the units asked for, so
+a part-filled order no longer takes holdings the exchange still holds. The sale
+log prints both figures, the sold count and the asked count, and the proceeds,
+the fold tranches and the Growth Rate Cap are all sized to the sold count.
+
+`src/trading/scrumming/execution.py`, in `_execute_sell` — the units the
+exchange reported, read through `_settled_fill`, which re-reads the order until
+the exchange answers and warns on the log when it never does. The same figure
+reaches the fold tranches through `_last_sell_filled_units`, which
+`src/trading/scrumming/tick_phases.py` reads on both the scrum path and the
+distribute path.
 
 Fold - To buy an amount for an investment position that allows it to return to its initial price level. This also drives Compounding Growth based on Local Volatility and is restricted by the Maximum Growth Per Cycle setting which has been set to a conservative 1% globally for Acervator’s live test and development run.
 
