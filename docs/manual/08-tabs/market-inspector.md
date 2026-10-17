@@ -1342,6 +1342,11 @@ timeframe. Where no table is found, the public route's own granularity set answe
 instead. A market must sit at the same Bollinger extreme on two of those timeframes
 to carry a direction, so the Refresh scan's two series decide it.
 
+No code reads that tuple. `src/trading/market_inspector.py`, in
+`MarketInspector.scan_universe`, walks whatever timeframe keys the fetch put in the
+map, and `src/exchange/market_inspector_fetcher.py`, in `_fetch_one_symbol`, puts
+`1d` in and `1w` beside it. The tuple's `1M` entry names no rung the scan builds.
+
 `src/trading/stone_tablets/ra_fetcher.py` — the granularities the public route serves
 
 ```python
@@ -4159,6 +4164,115 @@ ata_spm._vote_one                       one market's vote on one timeframe
 market_inspector_topologies.pane_view    the pane as values
 registry._rollup                        the one calendar-bucket rollup
 ```
+
+### Which model answers, by host
+
+Two hosts draw this screen, and each reads a model of its own.
+
+| host | the model it reads | wired by |
+| ---- | ------------------ | -------- |
+| the Qt window | the tab's own model | `set_exchange_source` |
+| the Electron shell | `market_inspector_surface.pane_model`, the one the bridge keeps between calls | nothing |
+
+`src/gui/main_tabs/market_inspector_tab.py`, in `MarketInspectorTabMixin._build_market_inspector_tab`,
+is the only caller of `set_exchange_source`. `MarketInspectorReactTab` subclasses
+`MarketInspectorTab` without overriding that method, so the one call wires both Qt
+variants.
+
+The React variant reaches no bridge method. `src/gui/react_market_inspector_tab.py`, in
+`HOST_SCRIPT`, replaces the page's own `acervatorMarketInspectorAction` with a console
+line carrying `SCREEN_PREFIX`, `MarketInspectorPage.javaScriptConsoleMessage` reads that
+line, and `run_action` calls the inherited `_start_fetch` on the tab's own getter and
+scheduler.
+
+```mermaid
+flowchart LR
+    press["Refresh on the page"] --> host["HOST_SCRIPT console line"]
+    host --> read["javaScriptConsoleMessage"]
+    read --> act["run_action"]
+    act --> fetch["_start_fetch, the wired getter"]
+    fetch --> rows["_fill_signal_rows, _fill_pair_rows"]
+    rows --> push["push, screen_push_script"]
+    push --> page["setTab on the page"]
+```
+
+The scan's rows come back as a push and never as a response. `_fill_signal_rows` and
+`_fill_pair_rows` write the tab's own model, and `push` sends `build_view_model` of that
+model through `screen_push_script`.
+
+`src/gui/react_market_inspector_tab.py` — the three pushes the page is drawn by
+
+```python
+def screen_push_script(model: dict) -> str:
+def tile_push_script(rows: list) -> str:
+def topology_push_script(model: dict, preview_at: Optional[int]) -> str:
+```
+
+Topology Proposals is a payload of its own. `TopologiesPaneHost.view_model` builds it
+from the pane's own `TopologiesPaneModel` and `topology_push_script` sends it, so that
+pane draws from neither model in the table above.
+
+`market_inspector.state` is reached by `loadScreen` and by the page's own
+`acervatorMarketInspectorAction`, both of which need a host supplying
+`global.acervator`. The Electron shell supplies one and the Qt web view does not.
+
+That function routes `scan-now`, `scan-all`, the zone steps, the ticker field, the class
+and timeframe boxes, the push parts, the credential fields and the settings. It carries
+no branch for `REFRESH_PART`, so a Refresh press on a host reading `global.acervator`
+answers null and asks the bridge for nothing.
+
+### What a Refresh publishes about the connectors
+
+A Refresh hands the live `{exchange_id: connector}` dictionary to the scheduler, and
+`src/gui/main_tabs/market_inspector_surface.py`, in `MarketInspectorScreenModel.fetch_call`,
+holds that same dictionary on `scheduled`. The published payload carries values in its
+place.
+
+`src/gui/main_tabs/market_inspector_surface.py` — what `scheduled` publishes
+
+```python
+def connector_states(connectors: Any) -> list:
+def scheduled_fetch(found: Any) -> list:
+```
+
+Each connector publishes one `[name, connected]` pair, sorted by name. The name is the
+connector's own `exchange_id`, or the key the main window filed it under where the
+connector answers no id, and `connected` is its `is_connected`. One scheduled fetch
+publishes as that pair list followed by its force flag, so a wired source draws as
+`[[["binance", true]], false]`.
+
+| the screen reads | from |
+| ---------------- | ---- |
+| the venue name | `exchange_id`, declared abstract on `ExchangeInterface` |
+| whether it is signed in | `is_connected`, True after `connect` and False after `disconnect` |
+
+No live object reaches the payload. `src/gui/web/market_inspector.js`, in `checkShapes`,
+needs `scheduled` to be a list and reads no entry inside it.
+
+### A payload the bridge cannot write
+
+`src/core/desktop_bridge.py`, in `encode_frame`, writes one response as one line. A
+value JSON has no spelling for is reported in place rather than taken out on the whole
+frame.
+
+`src/core/desktop_bridge.py` — the three the encoder handles
+
+```python
+def json_writable(payload: Any) -> Any:
+def unwritable_text(response: Any, exc: BaseException) -> str:
+def encode_frame(response: dict) -> bytes:
+```
+
+| the frame holds | what is written |
+| --------------- | --------------- |
+| `nan`, `inf` or `-inf` | `null` in that field |
+| a value whose type has no encoder | `<unwritable TypeName>` in that field |
+| a circular reference | an error frame carrying the request's own id |
+
+`encode_frame` catches the `TypeError`, the `ValueError` and the `RecursionError` that
+`json.dumps` raises, logs the type and the message under `acervator.core.desktop_bridge`,
+and returns a line for each of the three. The frontend's parser has a frame to read for
+every one of them, and the screen answers in place of going silent.
 
 The narrative for the whole screen is on [the tabs page](../08-tabs.md). The tab
 index is on [the subsystem README](README.md).

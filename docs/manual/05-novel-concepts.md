@@ -773,6 +773,67 @@ The first anchor in the block above names a line that has moved. The bot it
 means is built in `src/gui/live_bot_window.py`, in `_run_bot`, and that is the
 anchor to follow.
 
+**The issue #133 clause above is overtaken.** It is not edited and not removed.
+It read:
+
+> the list is not visible and lifetime counters reset (issue #133)
+
+The list is visible. A reading over a fleet shaped like the saved one drew every
+row. A queue of one tranche draws one row and a queue of twenty-three draws
+twenty-three, each row thirty pixels tall, each carrying its own Fire button,
+none hidden. `src/gui/live_settings/fold_tranches_tab.py`, in
+`_create_fold_tranches_tab`, sets the row count from the fold rows plus the
+Extractor rows and fills each one.
+
+No code resets the lifetime counters. The only writer of the reset stamp is
+`src/trading/scrumming/fold_tranches.py`, in `clear_lifetime_tranche_counters`,
+and its only callers are the Clear Lifetime Counters control on each Fold
+Tranches tab. One lifetime figure does fall without a control:
+`src/trading/scrumming/fold_tranches.py`, in `_bound_new_fold_tranches`, lowers
+the opened count each time one sell's per-lot records merge into one record,
+which the Lifetime tranches opened tooltip states.
+
+### What the panel draws for a count it cannot work out
+
+The cycle close ratio is the closed count over the opened count less the
+discarded count. A merge lowers the opened count while the discarded count
+holds, so the top of that sum can pass its bottom.
+`src/gui/live_settings/fold_tokens.py`, in `compose_cycle_close_ratio`, draws
+the dash for that pair and names the two counts beside it, never a share above
+one hundred percent. `src/gui/main_tabs/fold_tranches_tab_surface.py`, in
+`cycle_close_ratio`, draws the same thing for the React page.
+
+### Standing tranches against the sells that opened them
+
+The queue may never hold more tranches than the sells that opened them, outside
+a strong trend. `src/trading/scrumming/fold_tranches.py`, in
+`_bound_new_fold_tranches`, counts each such sell, and
+`src/gui/live_settings/fold_tokens.py`, in `compose_scrum_sells_row`, is the row
+on the panel that reports the pair. A standing count above the sells draws red.
+A bot whose save predates the sell counter draws the dash in place of a sell
+count.
+
+### One row number, not two
+
+The `#` column is the tranche's place in the queue, and the Fire button quotes
+that number back in its confirmation.
+`src/gui/live_settings/fold_tokens.py`, in `configure_tranche_row_numbers`,
+hides the table's own row header, which drew the display position instead. The
+two disagreed on four of five rows under Oldest first and under Largest USD
+first. The React page draws only the declared columns, so it never held a
+second row number.
+
+### What sets the Details window's opening width
+
+The Fold Tranches tab is the widest tab, and the Fold-Tranche Cycle Health box
+is the widest thing on it. The despawn preview value is the longest line in that
+box. `src/gui/live_settings/fold_chrome.py`, in `install_despawn_rows`, lets
+that line wrap, which drops the tab's demand from 1938 to 1548 pixels. At a 1920
+by 1080 display `src/gui/bot_live_settings.py`, in `open_at_content_size`, then
+opens the window at its full content width with a whole tranche row inside it.
+The screen clamp in `dialog_open_size_px` stays, because the operator cannot
+drag back a window wider than the display.
+
 ## 12 - Technical Analysis Indicator Confidence Tiers
 
 Most TA systems stack indicators additively. The Tier-4 suite organizes signals into four confidence tiers with cumulative weighting: Tier-1 (structural, highest weight), Tier-2 (confirmation, medium weight), Tier-3 (momentum), Tier-4 (context). Entries require Tier-1 + Tier-2 alignment; Tier-3/4 scale confidence but cannot override. This tier system arose out of queries with Claude Code while it was roleplaying as a TA Archetype and is only one such example where most of the other such contributions deal with bug fixes.
