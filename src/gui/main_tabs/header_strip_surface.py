@@ -317,10 +317,13 @@ COUNTER_TEXT_W = KPI_COLUMN_W
 #: The room one counter needs for a whole money amount at its own size.
 COUNTER_NATURAL_W = COUNTER_TEXT_W + COUNTER_TEXT_PAD
 
-#: The narrowest one counter card draws at: the room ``WIDEST_AMOUNT`` needs at
-#: ``VALUE_FONT_MIN_PX``, plus the card's own frame and margins. The caption
-#: shrinks into the same room, and it is the shorter of the two.
-COUNTER_MIN_W = MONEY_CELL_MIN_W + COUNTER_TEXT_PAD
+#: The narrowest one counter card draws at, held at the width the row draws it
+#: at. ``MONEY_CELL_MIN_W`` plus ``COUNTER_TEXT_PAD`` reads 2 px wider, and
+#: raising this floor moves every counter slot, so the floor stays and the room
+#: inside it is what ``CARD_SIDE_MARGIN_PX`` widened. The window opens no
+#: narrower than ``main_window`` sets it, and at that width every amount has its
+#: ``MONEY_CELL_MIN_W`` of room.
+COUNTER_MIN_W = 88
 
 CARD_LAYOUT = {
     "margins_px": [CARD_SIDE_MARGIN_PX, 4, CARD_SIDE_MARGIN_PX, 4],

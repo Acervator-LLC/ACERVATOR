@@ -557,10 +557,11 @@ own width and the gap either side of it, and `SPENDABLE_TEXT_PAD` for the frame.
 Six columns answer 512 px.
 
 OVERTAKEN, and the block and the paragraph above are kept as written.
-`COUNTER_MIN_W` is not 48 and is not a typed figure. It is `MONEY_CELL_MIN_W` plus
-`COUNTER_TEXT_PAD`, which is the room `WIDEST_AMOUNT` needs at `VALUE_FONT_MIN_PX`
-plus what the card's own frame and margins take, and it answers 90 px. A card's
-floor is its amount's room and no longer its longest caption's.
+`COUNTER_MIN_W` is not 48. It is 88 px, the width the row draws a counter slot at,
+and it is a typed figure on purpose: `MONEY_CELL_MIN_W` plus `COUNTER_TEXT_PAD`
+reads 2 px wider, and raising the floor to that would move every counter slot.
+What the card's amount gained is the room inside the floor, which
+`CARD_SIDE_MARGIN_PX` widened.
 
 OVERTAKEN, and the block and the paragraph above are kept as written.
 `COUNTER_NATURAL_W` is not 118. It is `COUNTER_TEXT_W` plus `COUNTER_TEXT_PAD`, and
@@ -572,14 +573,15 @@ OVERTAKEN, and the block and the paragraph above are kept as written.
 built from `KPI_COLUMNS` and `COUNTER_CARDS`: the money strip takes one share per
 column it holds, each card takes `COUNTER_STRETCH`, and the class square takes
 `CLASS_GROUP_STRETCH`. Six columns and six cards answer
-`[6, 1, 1, 1, 1, 1, 1, 0]`, and it holds one share per `TOP_ROW_ORDER` slot by
-construction.
+`[6, 1, 1, 1, 1, 1, 1, 0]`, which is the share list the row already drew, and it
+holds one share per `TOP_ROW_ORDER` slot by construction. The shares themselves
+are unchanged; only where they come from is.
 
 `src/gui/main_tabs/header_strip_surface.py` — the floors and the shares today
 
 ```python
 MONEY_CELL_MIN_W = 64
-COUNTER_MIN_W = MONEY_CELL_MIN_W + COUNTER_TEXT_PAD
+COUNTER_MIN_W = 88
 COUNTER_NATURAL_W = COUNTER_TEXT_W + COUNTER_TEXT_PAD
 TOP_ROW_STRETCH = [
     len(KPI_COLUMNS),
@@ -610,9 +612,8 @@ three money strip figures above are unchanged.
 
 **One money cell, one width rule.** The row draws money in two kinds of panel —
 a column of the money strip and a counter card — and both reserve the same room
-for it. `header_strip_surface.py` names the widest amount the row draws, measures
-it once at the smallest type a money cell shrinks to, and every floor is read off
-that one reading.
+for it. `header_strip_surface.py` names the widest amount the row draws and
+measures it once at the smallest type a money cell shrinks to.
 
 `src/gui/main_tabs/header_strip_surface.py` — the one declaration
 
@@ -620,13 +621,15 @@ that one reading.
 WIDEST_AMOUNT = "$-999,999.99"
 MONEY_CELL_MIN_W = 64
 KPI_COLUMN_W = money_cell_w(VALUE_FONT_PX)
-COUNTER_MIN_W = MONEY_CELL_MIN_W + COUNTER_TEXT_PAD
+COUNTER_TEXT_W = KPI_COLUMN_W
 ```
 
 `money_cell_w` scales that reading to any type size, because a font's advance
 scales with its pixel size. `spendable_natural_w` is the strip at
 `VALUE_FONT_PX` and `spendable_min_w` is the strip at `VALUE_FONT_MIN_PX`, so
-one number answers both.
+one number answers both. `COUNTER_MIN_W` stays the width the row already drew; a
+counter card reaches `MONEY_CELL_MIN_W` of room through `CARD_SIDE_MARGIN_PX` and
+not by widening its slot.
 
 **A card's margin is its frame's inset and nothing more.** The theme's
 `QFrame[frameShape="6"]` rule already holds a panel's text 12 px off its border
