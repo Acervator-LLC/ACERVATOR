@@ -866,6 +866,49 @@ the headline as an element's child.
 self._label.setTextFormat(Qt.PlainText)
 ```
 
+**The hover box draws as characters as well.** The box that appears over the
+headline names the feed and the address a click would open. That address is a
+feed's own words too, so every character of it is escaped and the box is given an
+`<html>` envelope around them. A feed that sends `<img src="…">` inside its
+address gets those characters drawn back, and the box builds no image. Read back
+off a live strip, the only tags in the box's text are the envelope's own.
+
+`src/gui/crypto_news_ticker.py` — `hover_text`
+
+```python
+body = html.escape(HOVER_FORMAT.format(source=source_name, tail=tail))
+return "<html>" + body.replace("\n", "<br>") + "</html>"
+```
+
+**A click opens an http or https address, and nothing else.** The address a
+click hands the system browser comes from the feed, so it is admitted first:
+`openable_url` refuses a scheme outside http and https, and the strip then
+refuses an address that names no host. A refused address opens nothing, the log
+names the feed and the reason, and the hover box says the headline opens nothing.
+On Windows a scheme-less string is run by the shell rather than the browser, so a
+bare drive path is one of the addresses this turns away.
+
+`src/gui/crypto_news_ticker.py` — `opening_address`
+
+```python
+address, refused = openable_url(url)
+if not address:
+    return "", refused
+```
+
+**Three routes close the screen and all three halt the strip.** An exchange
+removed in Settings takes its tab off the bar, the tab itself can be closed, and
+the application can quit. Each route reaches `stop_feeds`, which stops the
+headline timer, the hourly refresh and the fetch in flight. A tab already gone
+when the application quits halts nothing and raises nothing.
+
+`src/gui/widgets/exchange_tab.py` — `ExchangeTab.closeEvent`
+
+```python
+self.stop_feeds()
+super().closeEvent(event)
+```
+
 **Functional.** In the React build the strip is drawn by
 `crypto_news_ticker.js` into the header space the exchange screen keeps between
 the Privacy Mode button and + New Bot. The exchange screen names that space
