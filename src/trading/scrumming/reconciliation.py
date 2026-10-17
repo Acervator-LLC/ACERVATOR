@@ -52,6 +52,10 @@ class ReconciliationEngineMixin:
     _ytd_settled_segments: list[dict]
     _ytd_full_walk_ts: float
 
+    # Class-level default; every write lands on the instance. Holds the last
+    # audited venue reading as claimable units, for readers off the tick path.
+    _audited_venue_units: float = 0.0
+
     EXCHANGE_HEALTH_REFRESH_COOLDOWN_SEC = 300.0
 
     async def fetch_fill_history(self) -> Optional[list]:
@@ -701,6 +705,7 @@ class ReconciliationEngineMixin:
             _tracked_units_bootstrap = sum(
                 float(lot.get("units", 0) or 0) for lot in self._main_lots
             )
+            self._record_audited_venue_units(_units)
             if _units >= 0:
                 self._current_holdings = (
                     min(max(0.0, _units), _tracked_units_bootstrap)
@@ -846,6 +851,25 @@ class ReconciliationEngineMixin:
                 _sib_units = float("inf")
         return (exchange_units - _personal - _sib_units, _personal, _sib_units)
 
+    def _record_audited_venue_units(self, exchange_units: float) -> float:
+        """Store one venue reading as claimable units in ``_audited_venue_units``.
+
+        Called by every path that already holds a balance reading, so a reader
+        off the tick path — ``ScrummingBot._check_detonation_trigger`` — has a
+        venue figure to compare without fetching one. A reading that is not
+        finite leaves the stored figure untouched. ``_claimable_exchange_units``
+        reads the fleet in memory and asks no venue for anything.
+        """
+        try:
+            _reading = float(exchange_units)
+        except (TypeError, ValueError):
+            return self._audited_venue_units
+        if not math.isfinite(_reading) or _reading < 0.0:
+            return self._audited_venue_units
+        _claimable = self._claimable_exchange_units(_reading)[0]
+        self._audited_venue_units = max(0.0, min(_reading, _claimable))
+        return self._audited_venue_units
+
     async def _venue_claimable_units(self) -> tuple[float | None, str | None]:
         """This bot's sellable units of ``config.target_asset`` at the venue, or a reason.
 
@@ -879,6 +903,7 @@ class ReconciliationEngineMixin:
         if _units is None:
             return None, _why
         _claimable, _personal, _sib = self._claimable_exchange_units(_units)
+        self._record_audited_venue_units(_units)
         if _claimable <= 0.0:
             return None, (
                 f"the exchange holds {_units:.8f} {_asset} and none of it is "
@@ -1036,6 +1061,7 @@ class ReconciliationEngineMixin:
             )
             return False
         exchange_units, _scalar_units, _lot_units = _readings
+        self._record_audited_venue_units(exchange_units)
         internal_units = _lot_units if _lot_units > _scalar_units else _scalar_units
 
         drift_units = exchange_units - internal_units
