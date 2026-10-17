@@ -244,10 +244,7 @@ class PhantomBotsTabMixin:
             tbl.setEditTriggers(QTableWidget.NoEditTriggers)
 
             for row, ph in enumerate(phantoms):
-                try:
-                    st = ph.get_status()
-                except Exception:  # noqa: BLE001 - defensive probe
-                    st = {}
+                st = surface.phantom_status(ph)
 
                 tbl.setItem(row, 0, QTableWidgetItem(str(st.get("timeframe", "?"))))
                 tbl.setItem(row, 1, QTableWidgetItem(str(st.get("state", "?"))))
@@ -260,16 +257,9 @@ class PhantomBotsTabMixin:
                 )
                 tbl.setItem(row, 3, QTableWidgetItem(str(st.get("total_trades", 0))))
 
-                pnl = float(st.get("realized_pnl_exchange", 0) or 0)
-                pi = QTableWidgetItem(f"${pnl:+,.4f}")
-                pi.setForeground(
-                    QColor(
-                        ds.SUCCESS
-                        if pnl > 0
-                        else ds.ERROR if pnl < 0 else ds.TEXT_INACTIVE
-                    )
-                )
-                tbl.setItem(row, 4, pi)
+                pi = QTableWidgetItem(surface.phantom_pnl_text(st))
+                pi.setForeground(QColor(surface.pnl_color(surface.phantom_pnl(st))))
+                tbl.setItem(row, surface.PNL_COLUMN, pi)
 
                 summary_d = st.get("last_summary", {}) or {}
                 bullish = summary_d.get("bullish", 0)
