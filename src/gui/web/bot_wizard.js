@@ -177,6 +177,7 @@
   var MAXIMUM = "maximum";
   var DECIMALS = "decimals";
   var STEP_KEY = "step";
+  var SPECIAL_VALUE_KEY = "special_value_text";
   var PREFIX = "prefix";
   var SUFFIX = "suffix";
   var VALUE = "value";
@@ -1078,11 +1079,26 @@
     return element(DIV_TAG, body, text(props.value));
   }
 
+  // Qt prints the words INSIDE the box, not beside it, so a field at its
+  // lowest value draws the words and carries no number at all.
+  function insteadOfNumber(spec, value) {
+    if (!owns(spec, SPECIAL_VALUE_KEY) || value !== spec[MINIMUM]) {
+      return undefined;
+    }
+    return spec[SPECIAL_VALUE_KEY];
+  }
+
   function NumberField(props) {
     var spec = props.spec;
+    var instead = insteadOfNumber(spec, props.value);
     var body = {
-      type: NUMBER_TYPE,
-      value: props.value === undefined ? EMPTY : String(props.value),
+      type: instead === undefined ? NUMBER_TYPE : TEXT_TYPE,
+      value:
+        instead === undefined
+          ? props.value === undefined
+            ? EMPTY
+            : String(props.value)
+          : String(instead),
       onChange: function (event) {
         if (props.onNumber) {
           props.onNumber(props.name, Number(event.target.value));

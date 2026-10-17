@@ -79,6 +79,50 @@ class SettingsTabMixin:
     _configure_form: Callable[..., Any]
     _mark_changed: Callable[..., Any]
 
+    def _show_admitted_figure(self, box: Any, config: Any, name: str) -> bool:
+        """Put one stored dollar figure into `box`, or draw the dash instead.
+
+        `as_box_figure` is the admission, so a stored flag, a text number, a
+        not-a-number, an endless number, an integer too large for a float and
+        a finite figure outside the box's own span are each refused. A refused
+        figure leaves the box at the bottom of its span showing
+        `REFUSED_FIGURE_TEXT` in the muted colour, names the field in the log,
+        and clears the dash the first time the operator moves the box. Returns
+        whether the stored figure was admitted.
+        """
+        from ..main_tabs.live_settings_tab_surface import (
+            REFUSED_FIGURE_COLOR,
+            REFUSED_FIGURE_LOG,
+            REFUSED_FIGURE_TEXT,
+            admitted_figure,
+            refused_figure_tooltip,
+            spec_for,
+        )
+
+        spec = spec_for(name)
+        read = admitted_figure(config, spec)
+        if read is not None:
+            box.setValue(read)
+            return True
+        box.setSpecialValueText(REFUSED_FIGURE_TEXT)
+        box.setValue(box.minimum())
+        box.setStyleSheet(f"color: {REFUSED_FIGURE_COLOR};")
+        box.setToolTip(refused_figure_tooltip(spec, box.toolTip()))
+        logger.warning(
+            REFUSED_FIGURE_LOG,
+            str(getattr(getattr(self, "_bot", None), "bot_id", ""))[:8],
+            str(spec["field"]),
+            getattr(config, str(spec["field"]), None),
+        )
+        box.valueChanged.connect(lambda _v: self._clear_refused_dash(box))
+        return False
+
+    @staticmethod
+    def _clear_refused_dash(box: Any) -> None:
+        """Take the dash off `box` so a figure the operator typed draws as one."""
+        box.setSpecialValueText("")
+        box.setStyleSheet("")
+
     def _refresh_target_denom_rows(self) -> None:
         """Repaint the Target-BTC and Target-ETH rows.
 
@@ -98,9 +142,16 @@ class SettingsTabMixin:
             _cfg = getattr(_bot, "config", None)
             if _cfg is None:
                 return
+            from ...trading.container.config import as_finite_float
+
             _asset = str(getattr(_cfg, "target_asset", "") or "").upper()
             _eid = str(getattr(_cfg, "exchange_id", "") or "")
-            _target_usd = float(getattr(_cfg, "target_balance", 0.0) or 0.0)
+            # The same admission the dollar box reads, so a stored figure the
+            # box draws as a dash never reaches these two rows as money.
+            _read_target = as_finite_float(getattr(_cfg, "target_balance", None))
+            if _read_target is None:
+                return
+            _target_usd = _read_target
             # Import here to keep top-level GUI imports cheap.
             from ...exchange.currency_rate_monitor import get_currency_monitor
             from ...exchange.market_pairs_scout import get_scout
@@ -439,11 +490,11 @@ class SettingsTabMixin:
             self._target_bal.setRange(1.0, 1000000.0)
             self._target_bal.setDecimals(2)
             self._target_bal.setPrefix("$ ")
-            self._target_bal.setValue(cfg.target_balance)
             self._target_bal.setToolTip(
                 "The balance this bot trades relative to. HARD-CAPPED: "
                 "position can never exceed Target × (1 + Max Target Growth %/100)."
             )
+            self._show_admitted_figure(self._target_bal, cfg, "target_bal")
             self._target_bal.valueChanged.connect(
                 lambda v: self._mark_changed("target_balance", v)
             )
@@ -817,7 +868,6 @@ class SettingsTabMixin:
         self._hedge_balance.setRange(0.0, 999999999.0)
         self._hedge_balance.setDecimals(2)
         self._hedge_balance.setPrefix("$ ")
-        self._hedge_balance.setValue(float(cfg.hedge_balance))
         self._hedge_balance.setToolTip(
             "USD reserve amount for hedge rebalancing (separate from "
             "Target Balance).\n\n"
@@ -827,6 +877,7 @@ class SettingsTabMixin:
             "it drains.\n"
             "Untick Hedge Rebalance Active to turn the hedge off."
         )
+        self._show_admitted_figure(self._hedge_balance, cfg, "hedge_balance")
         self._hedge_balance.valueChanged.connect(
             lambda v: self._mark_changed("hedge_balance", v)
         )

@@ -2284,3 +2284,245 @@ with the counts drawn against the counts fed that fall inside the pane, and the 
 the fills off the window in its context." - the context now carries the fills fed, the fills off
 the window, and that figure split into the fills older than the window, the fills newer than it
 and the fills at a price off the drawn scale.
+
+## 2026-10-16 - #230 #223 - one unreadable price costs one candle, and a stored flag never prints a price
+
+### The admission rule
+
+Every price the chart reads goes through one admission step before anything is
+drawn with it. `as_finite_float` admits a value only when its exact type is int
+or float and the number is finite, so a flag, a word, a missing value, a
+not-a-number, an infinity and an integer too large to hold are all refused.
+A refused candle is left out of the series and counted. A refused price in the
+header is named rather than printed. Nothing refused is ever turned into a zero.
+
+### Where the admission sits
+
+`src/gui/main_tabs/native_chart_surface.py`, in `admit_candles`
+
+```python
+def admit_candles(candles: Sequence[Any]) -> tuple:
+    kept = [one for one in candles if candle_prices(one) is not None]
+    return kept, len(candles) - len(kept)
+```
+
+`candle_prices` reads a candle's open, high, low and close through
+`as_finite_float` and answers None when any one of them is refused. Both builds
+take their series through `admit_candles`: the Qt widget in
+`src/gui/native_chart.py`, in `ChartPainter.set_candles`, and the React page
+through `src/gui/main_tabs/native_chart_surface.py`, in
+`ChartModel.set_candles`. `price_range` admits again before it fits the axis, so
+a caller that reaches it directly cannot hand it a price it would refuse.
+
+`price_range` answers None when no candle carries a readable high and low. The
+Qt widget then draws `NO_PRICE_RANGE_TEXT` through `_paint_no_range`, and
+`build_view_model` publishes the same phrase as the chart's empty message.
+
+`row_prices` admits one venue row for the React page's feed in
+`src/gui/react_charts_tab.py`, in `_feed_painter`, so one unreadable row costs
+that row alone. A row too short to carry the four prices is refused with the
+rest. `_feed_painter` counts the rows it dropped and hands that count to
+`set_candles` as `refused`, which adds it to the candles `admit_candles` refuses
+again, so the count line names every candle missing from the picture. A series
+that arrives empty rewrites the count line rather than leaving the last one
+standing.
+
+### What the chart says about a candle it could not read
+
+`candle_count_text` writes the count line. A series taken whole reads exactly as
+it always has.
+
+`src/gui/main_tabs/native_chart_surface.py` - the three phrases
+
+```python
+HEADER_COUNT_FORMAT = "{count} candles"
+REFUSED_COUNT_FORMAT = "{count} candles, {refused} unreadable"
+ALL_CANDLES_REFUSED_TEXT = "No candle carried a readable price"
+```
+
+`build_view_model` publishes the same figure as `refused_candles`, beside
+`candle_count`.
+
+### What the header says about a price it could not read
+
+`src/gui/main_tabs/trade_charts_tab_surface.py`, in `header_label`, is the one
+header step both builds call: the Qt tab from
+`src/gui/widgets/trade_charts_tab.py`, in `_label_current`, and the React page
+from `_label_shown` in the surface. It answers three different things.
+
+| the saved price | the header |
+| --- | --- |
+| no price saved yet | the symbol alone, as it stands |
+| a number `as_finite_float` admits | `{symbol}  •  ${price:.8f}  •  {state}` |
+| anything `as_finite_float` refuses | `{symbol}  •  price unreadable  •  {state}` |
+
+A saved zero is a number, so it draws as `$0.00000000`. A price that was never
+saved draws the symbol alone. The two are no longer the same picture.
+
+`PRICE_LABEL_FORMAT` was declared twice, once in the surface and once in
+`src/gui/widgets/trade_charts_tab.py`. The tab's copy is gone and both builds
+read the surface's.
+
+### The header step runs after the draw
+
+`update_charts` places the header step below the candle draw in both builds:
+after `_draw_history` and `_decorate_current` in the Qt tab, and after
+`feed_history` and `_feed_shown` in the surface. A header the tab cannot write
+costs the operator nothing he can see.
+
+### The readings, off the running program, both builds
+
+One chart built inside a shown parent, fed 30 candles, painted over a fixed 900
+by 700 area. No venue was contacted, no bot was started, and no order was
+placed, priced, previewed or cancelled. The runtime tree was read with a
+redirected home.
+
+A clean series: 42638 drawn pixels, `30 candles`, price axis 98.34 to 116.16.
+Before and after differ by **0 pixels** across all 630000 of them, and every
+published reading is unchanged.
+
+One candle of thirty carrying an unreadable high:
+
+| the value in one candle's high | candles drawn before | candles drawn after | the chart before | the chart after |
+| --- | --- | --- | --- | --- |
+| a text number | 0 | **29** | 113 px of 42638 | `29 candles, 1 unreadable` |
+| a word | 0 | **29** | 113 px of 42638 | `29 candles, 1 unreadable` |
+| a stored flag | 30 at $1.00 | **29** | a wrong scale, drawn | `29 candles, 1 unreadable` |
+| a missing price | 0 | **29** | 113 px of 42638 | `29 candles, 1 unreadable` |
+| an integer too large to hold | 0 | **29** | 113 px of 42638 | `29 candles, 1 unreadable` |
+| a not-a-number | 0 | **29** | 895 px of 42638 | `29 candles, 1 unreadable` |
+| an infinity | 0 | **29** | 113 px of 42638 | `29 candles, 1 unreadable` |
+| a zero | 30 | 30 | drawn | drawn, a readable zero |
+| a negative | 30 | 30 | drawn | drawn, a readable negative |
+
+Three of thirty refused reads `27 candles, 3 unreadable`, and thirty of thirty
+reads `No candle carried a readable price`. The two builds answer the same kept
+series candle for candle at every count.
+
+The saved price in the header, read in both builds:
+
+| the saved price | the header before | the header after |
+| --- | --- | --- |
+| a text number | `$123.45000000` in Qt, the draw lost in React | `price unreadable` |
+| a word | the draw lost in both | `price unreadable` |
+| **a stored flag** | **`$1.00000000`** in both | `price unreadable` |
+| a missing price | the symbol alone | the symbol alone |
+| an integer too large to hold | the draw lost in both | `price unreadable` |
+| a not-a-number | `$nan` in Qt, the symbol alone in React | `price unreadable` |
+| an infinity | `$inf` in both | `price unreadable` |
+| a zero | the symbol alone | `$0.00000000` |
+| a readable price | `$101.25000000` | `$101.25000000` |
+
+The two builds disagreed on three of those kinds before this entry and agree on
+all of them after.
+
+### Sentences the admission rule overtakes
+
+They were not reworded. They are quoted here.
+
+"The tab is a scroll area holding one panel per active bot." - the tab holds one
+panel and one shown market, stepped between two lists by the arrows.
+
+"One method rebuilds that panel set from the current roster." - `update_charts`
+rebuilds the two market lists and redraws the one panel.
+
+## 2026-10-16 - #230 #223 - the other five stored prices admit before the chart draws them
+
+### What the candle admission did not reach
+
+The candle series and the header price were admitted first. Five more stored
+prices still reached the paint, or the row builder, with a bare conversion. Each
+is read off the running program below.
+
+| the stored price | before | after |
+| --- | --- | --- |
+| a position price that is a word, a missing value, a huge integer or a not-a-number | 232 px of 42638 drawn | 42638, chart intact |
+| a target anchor or ceiling that is a word or a huge integer | 7397 px of 42638 drawn | 42638, chart intact |
+| a marker price that is a text number, a not-a-number or an infinity | a marker drawn at a nonsense price | dropped |
+| a fed candle whose field is a word, a missing value or a huge integer | **0 of 30** rows reached the chart | **29 of 30** |
+| a synthetic candle with the same | the whole push refused | 29 of 30, `29 candles, 1 unreadable` |
+
+A text number, a flag and a not-a-number in a fed candle built thirty rows
+before, carrying the wrong value into the picture.
+
+### Where each admission sits
+
+`src/gui/native_chart.py`, in `set_positions`, keeps the positions whose price
+`as_finite_float` admits, so one refused position costs its own marker.
+`ChartModel.set_positions` in `src/gui/main_tabs/native_chart_surface.py` does
+the same for the React page.
+
+`set_target_balance_lines` reads both prices through `as_finite_float` in both
+builds. A refused price becomes None, which is what None has always meant for
+that line: the line is hidden.
+
+`set_trade_history_markers` in the widget and `set_markers` in the model read the
+marker price through `as_finite_float`. A marker without a readable price is
+dropped, as a marker without a positive price already was.
+
+`src/gui/main_tabs/trade_charts_tab_surface.py`, in `candle_row`, answers None
+for a candle it cannot read, and `candle_rows` drops it and keeps the rest. The
+three feeds that built rows one by one call `candle_rows` now: the ATA-SMP call,
+the history feed and the synthetic push.
+
+`src/gui/main_tabs/native_chart_surface.py`, in `synthetic_candle`, reads a
+candle by attribute or by key, so a candle built without a fetch is admitted the
+same way a fetched one is. `push_synthetic_candles` in
+`src/gui/widgets/trade_charts_tab.py` counts what it dropped and hands that count
+to `set_candles`, so the count line names it.
+
+`CANDLE_FIELDS` and `CANDLE_PRICE_FIELDS` name the six fields and the four prices
+once, so the two builds cannot disagree on which fields are read.
+
+### The readings
+
+One chart built inside a shown parent, fed thirty candles, painted over a fixed
+900 by 700 area. A clean chart draws 42638 pixels; the reading's control reports
+0 for a planted empty chart.
+
+A clean series still draws identically: **0 pixels differ** across all 630000 of
+them against the tree before this work began, and every published reading is
+unchanged.
+
+No venue was contacted, no bot was started, and no order was placed, priced,
+previewed or cancelled. The runtime tree was read with a redirected home.
+
+### Sentences the five admissions overtake
+
+They were not reworded. They are quoted here.
+
+"One candle as six numbers, from an ``OHLCVCandle``, a dict or a six-number
+row." - `candle_row` answers six numbers for a candle it can read, and None for
+one it cannot, and `candle_rows` keeps those it could.
+
+"Store the grid levels. Nothing paints them." - still true. The grid level list
+is written and read zero times, and `GridLine` is constructed zero times, in both
+builds. Layer 2 of #230 is unbuilt.
+
+### The zero a bot carries before its first fetch
+
+`src/trading/container/config.py` declares `current_price: float = 0.0`, so a bot
+that has not fetched a price yet reports zero rather than nothing. Printing that
+as a dollar figure would hand the operator a price he would believe.
+
+`header_label` answers four different things, and the two builds answer the same.
+
+| the saved price | the header |
+| --- | --- |
+| no price saved at all | the symbol alone |
+| a zero | `{symbol}  •  no price yet  •  {state}` |
+| anything `as_finite_float` refuses, or a negative | `{symbol}  •  price unreadable  •  {state}` |
+| a readable price above zero | `{symbol}  •  ${price:.8f}  •  {state}` |
+
+A negative reads as unreadable rather than as a price, because a market price
+below zero is not a price the chart can place.
+
+### Two sentences the four header answers overtake
+
+They were not reworded. They are quoted here.
+
+"A saved zero is a number, so it draws as `$0.00000000`." - a saved zero names
+`PRICE_NOT_YET_NOTE`, because the zero a bot carries before its first fetch is
+not a price it measured.
+
+"| a readable zero | `$0.00000000` |" - a readable zero reads `no price yet`.

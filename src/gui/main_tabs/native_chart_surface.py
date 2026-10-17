@@ -29,7 +29,7 @@ from __future__ import annotations
 
 import math
 import time
-from typing import Protocol, Sequence
+from typing import Any, Optional, Protocol, Sequence
 
 from .. import design_system as ds
 
@@ -345,6 +345,15 @@ HEADER_ERROR_DROP_PX = 14
 HEADER_ERROR_COLOR = (255, 85, 119, 255)
 HEADER_SEPARATOR = "  •  "
 HEADER_COUNT_FORMAT = "{count} candles"
+
+#: The count line while `admit_candles` refused at least one candle.
+REFUSED_COUNT_FORMAT = "{count} candles, {refused} unreadable"
+
+#: What the chart says in place of candles when `admit_candles` kept none.
+ALL_CANDLES_REFUSED_TEXT = "No candle carried a readable price"
+
+#: What the price axis says when `price_range` could not be fitted.
+NO_PRICE_RANGE_TEXT = "Price scale could not be fitted"
 HEADER_INVISIBLE_FORMAT = "{count} invisible"
 HEADER_ON_BOOK_FORMAT = "{count} on book"
 HEADER_POSITION_JOIN = " | "
@@ -743,6 +752,9 @@ METRICS = {
     "header_error_drop_px": HEADER_ERROR_DROP_PX,
     "header_separator": HEADER_SEPARATOR,
     "header_count_format": HEADER_COUNT_FORMAT,
+    "refused_count_format": REFUSED_COUNT_FORMAT,
+    "all_candles_refused_text": ALL_CANDLES_REFUSED_TEXT,
+    "no_price_range_text": NO_PRICE_RANGE_TEXT,
     "header_invisible_format": HEADER_INVISIBLE_FORMAT,
     "header_on_book_format": HEADER_ON_BOOK_FORMAT,
     "header_position_join": HEADER_POSITION_JOIN,
@@ -1061,16 +1073,117 @@ def candle_geometry(chart_width_px: float, candle_count: int) -> dict:
     }
 
 
+def as_finite_float(value: Any) -> Optional[float]:
+    """`value` as a float when it is EXACTLY int or float AND finite.
+
+    Imports `as_finite_float` from `src.trading.container.config` inside the call.
+    """
+    from ...trading.container.config import as_finite_float as admitted
+
+    return admitted(value)
+
+
+#: Every field a candle carries, in the order `Candle` declares them.
+CANDLE_FIELDS = ("time", "open", "high", "low", "close", "volume")
+
+#: The four fields of a candle `candle_prices` admits before anything is drawn.
+CANDLE_PRICE_FIELDS = ("open", "high", "low", "close")
+
+
+def candle_prices(candle: Any) -> Optional[tuple]:
+    """The four prices of ``candle`` when `as_finite_float` admits every one.
+
+    Answers None for a candle whose open, high, low or close is a flag, a word,
+    a missing value or a number that is not finite.
+    """
+    read = [
+        as_finite_float(getattr(candle, field, None)) for field in CANDLE_PRICE_FIELDS
+    ]
+    if any(one is None for one in read):
+        return None
+    return tuple(read)
+
+
+def row_prices(row: Any) -> Optional[tuple]:
+    """A venue row as time, four prices and volume, when `as_finite_float` admits each.
+
+    Answers None for a row too short to carry the four prices, or holding one
+    `as_finite_float` refuses.
+    """
+    try:
+        given = list(row)
+    except TypeError:
+        return None
+    if len(given) < 5:
+        return None
+    stamp = as_finite_float(given[0])
+    read = [as_finite_float(one) for one in given[1:5]]
+    if stamp is None or any(one is None for one in read):
+        return None
+    volume = as_finite_float(given[5]) if len(given) > 5 else 0.0
+    return (int(stamp), read[0], read[1], read[2], read[3], volume or 0.0)
+
+
+def synthetic_candle(given: Any) -> Optional[tuple]:
+    """A candle built without a fetch as time, four prices and volume.
+
+    Reads ``given`` by attribute or by key, and answers None when
+    `as_finite_float` refuses any of its six fields.
+    """
+    if hasattr(given, "open"):
+        read = [getattr(given, field, None) for field in CANDLE_FIELDS]
+    else:
+        try:
+            read = [given.get(field) for field in CANDLE_FIELDS]
+        except AttributeError:
+            return None
+    admitted = [as_finite_float(one) for one in read]
+    if any(one is None for one in admitted[:5]):
+        return None
+    return (
+        int(admitted[0]),
+        admitted[1],
+        admitted[2],
+        admitted[3],
+        admitted[4],
+        admitted[5] or 0.0,
+    )
+
+
+def admit_candles(candles: Sequence[Any]) -> tuple:
+    """The candles `candle_prices` admits, and how many it refused.
+
+    Both builds take the series through `admit_candles`, so `price_range`, the
+    indicator series and the paint never meet a price they cannot read.
+    """
+    kept = [one for one in candles if candle_prices(one) is not None]
+    return kept, len(candles) - len(kept)
+
+
+def candle_count_text(kept: int, refused: int) -> str:
+    """The chart's count line, naming the candles `admit_candles` refused.
+
+    A series `admit_candles` took whole reads exactly as `HEADER_COUNT_FORMAT`
+    has always written it.
+    """
+    if refused:
+        return REFUSED_COUNT_FORMAT.format(count=kept, refused=refused)
+    return HEADER_COUNT_FORMAT.format(count=kept)
+
+
 def price_range(
     candles: Sequence[CandleLike], y_zoom_pct: float = Y_ZOOM_DEFAULT
-) -> dict:
-    """Low, high and span of the price axis over the visible candles.
+) -> Optional[dict]:
+    """Low, high and span of the price axis over the candles `admit_candles` keeps.
 
-    A flat series pads from one percent of the high, so the final span is
-    twice that padding rather than the one percent itself.
+    Answers None when no candle carries a readable high and low, which tells a
+    caller to say the axis could not be fitted.
     """
-    high = max(one.high for one in candles)
-    low = min(one.low for one in candles)
+    readable, _refused = admit_candles(candles)
+    if not readable:
+        return None
+    high = max(one.high for one in readable)
+    low = min(one.low for one in readable)
     span = high - low
     if span == 0:
         span = high * FLAT_RANGE_RATIO or FLAT_RANGE_FALLBACK
@@ -1681,6 +1794,7 @@ class ChartModel:
         self.symbol = symbol
         self.accessible_name = ACCESSIBLE_NAME
         self.candles: list = []
+        self.refused_candles = 0
         self.markers: list = []
         self.positions: list = []
         self.grid_lines: list = []
@@ -1713,14 +1827,25 @@ class ChartModel:
     def _record(self, name: str) -> None:
         self.steps.append([len(self.steps), name])
 
-    def set_candles(self, candles: Sequence[CandleLike]) -> None:
-        """Replace the series, refresh the status line and read the indicators."""
+    def set_candles(self, candles: Sequence[CandleLike], refused: int = 0) -> None:
+        """Replace the series with the candles `admit_candles` keeps, and say what it refused.
+
+        ``refused`` is what a caller already dropped, and ``refused_candles``
+        adds the candles `admit_candles` refuses here to it.
+        """
         self._record("set_candles")
-        self.candles = list(candles)
+        self.candles, dropped_here = admit_candles(list(candles))
+        self.refused_candles = int(refused) + dropped_here
         self.error_text = ""
         if self.candles:
-            self.status_text = HEADER_COUNT_FORMAT.format(count=len(self.candles))
+            self.status_text = candle_count_text(
+                len(self.candles), self.refused_candles
+            )
             self.read_indicator_series()
+        elif self.refused_candles:
+            self.status_text = ALL_CANDLES_REFUSED_TEXT
+        else:
+            self.status_text = DEFAULT_STATUS_TEXT
 
     def read_indicator_series(self) -> None:
         """Take the five overlay series from the indicators that publish them.
@@ -1783,9 +1908,17 @@ class ChartModel:
         self.error_text = message
 
     def set_positions(self, positions: Sequence) -> None:
-        """Replace the open positions drawn on the price axis."""
+        """Replace the open positions whose price `as_finite_float` admits.
+
+        A position carrying a price the axis could not map is left out, so one
+        refused position costs its own marker alone.
+        """
         self._record("set_positions")
-        self.positions = list(positions)
+        self.positions = [
+            one
+            for one in positions or []
+            if as_finite_float(getattr(one, "price", None)) is not None
+        ]
 
     def set_grid_lines(self, lines: Sequence) -> None:
         """Store the grid levels. Nothing paints them."""
@@ -1802,8 +1935,8 @@ class ChartModel:
     ) -> None:
         """Place the Target Balance anchor and ceiling on the price axis."""
         self._record("set_target_balance_lines")
-        self.tb_anchor_price = anchor_price
-        self.tb_ceiling_price = ceiling_price
+        self.tb_anchor_price = as_finite_float(anchor_price)
+        self.tb_ceiling_price = as_finite_float(ceiling_price)
 
     def set_fire_armed_state(
         self,
@@ -1833,8 +1966,8 @@ class ChartModel:
         for trade in trades:
             try:
                 stamp = int(trade.get("ts", trade.get("time", 0)) or 0)
-                price = float(trade.get("price", 0) or 0)
-                if stamp <= 0 or price <= 0:
+                price = as_finite_float(trade.get("price"))
+                if stamp <= 0 or price is None or price <= 0:
                     continue
                 self.markers.append(
                     TradeMarker(
@@ -2588,6 +2721,7 @@ def build_view_model(model: ChartModel, width: int = 0, height: int = 0) -> dict
         "source_label": model.source_label,
         "error_text": model.error_text,
         "candle_count": len(model.candles),
+        "refused_candles": model.refused_candles,
         "flags": dict(model.flags),
         "sub_panes": list(model.sub_panes()),
         "natural_height_px": natural_height(
@@ -2695,6 +2829,14 @@ def build_view_model(model: ChartModel, width: int = 0, height: int = 0) -> dict
         return payload
     window = model.visible_candles()
     axis = price_range(window, model.y_zoom_pct)
+    if axis is None:
+        payload["empty"] = {
+            "message": NO_PRICE_RANGE_TEXT,
+            "color": TEXT_DIM,
+            "color_css": css_color(TEXT_DIM),
+            "centered": True,
+        }
+        return payload
     geometry = candle_geometry(panes["chart_width_px"], len(window))
     grid = price_grid(axis["low"], axis["high"])
     grid["ticks"] = grid_rows(grid["ticks"], panes, axis)

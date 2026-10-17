@@ -7562,3 +7562,76 @@ the same window with nothing running      3        0
 One worker answers 330 calls a minute at the 182 milliseconds the venue was
 measured at. The fleet asked for 360 and now asks for 48, and every running bot
 still reads its market every tick.
+
+## A dollar box draws a dash rather than its own bound
+
+Target Balance and Hedge Balance on the Live Bot Settings window, and Target
+Balance in the creation wizard, each read their stored figure through
+`src/trading/container/config.py, in as_box_figure` before the box sees it. That
+admission refuses a stored flag, a text number, a not-a-number, an endless
+number, an integer too large for a decimal, and a finite figure outside the
+box's own span.
+
+A refused figure leaves the box at the bottom of its span drawing the dash the
+indicator panel draws for a cell it cannot read, names the field in the log, and
+adds one sentence to the box's hover text. The dash clears the first time the
+operator moves the box, and from then on the box draws the figure he set.
+
+### Live Bot Settings, both boxes, drawn and driven
+
+The window was built under a shown parent against a bot carrying each stored
+kind in turn, and both boxes were read back off the real control.
+
+| Stored value | Target Balance draws | Hedge Balance draws |
+| ------------ | -------------------- | ------------------- |
+| `250.0` | `$ 250.00` | `$ 250.00` |
+| `"250"` | the dash | the dash |
+| `"abc"` | the dash | the dash |
+| `True` | the dash | the dash |
+| an integer of 400 digits | the dash | the dash |
+| a not-a-number | the dash | the dash |
+| an endless number | the dash | the dash |
+
+Three of those kinds used to cost the whole Settings tab: a stored text number,
+a stored word and a stored huge integer each raised out of the tab's build. The
+tab now builds on all nine kinds, and the React page draws the same figure for
+every one.
+
+### Apply writes nothing the operator did not enter
+
+The window was opened on each bad kind, nothing was touched, and Apply was
+pressed. The bot's stored figure was unchanged on every kind, including the
+text number, the word, the flag, the not-a-number and the endless number.
+Stepping the box once and pressing Apply writes the figure the step landed on,
+which is the control that proves the unchanged readings could have moved.
+
+Two rows on the same screen read the same field and are admitted with it. The
+Target-BTC and Target-ETH rows draw nothing for a figure the box draws as a
+dash, and the Apply announcement no longer raises on a stored integer too large
+for its own data slot.
+
+### The creation wizard refuses rather than choosing a figure
+
+`src/gui/bot_wizard.py, in TradingParamsPage.isComplete` answers False while the
+Target Balance box still draws its dash, so Finish refuses a bot whose target
+nobody entered. Typing a figure clears the dash, `isComplete` answers True, and
+the figure typed is what the bot is built on. The wizard was driven on all nine
+kinds: Finish was refused on the six refused kinds and allowed on the three
+admitted ones.
+
+The pair list beside it admits each market's volatility the same way. A market
+whose swing cannot be read draws no volatility and keeps its row, and the three
+kinds that used to abort the list part way now leave every other market in
+place.
+
+### Where each piece sits
+
+| What | Where |
+| ---- | ----- |
+| the admission | `src/trading/container/config.py, in as_box_figure` |
+| the two dollar boxes | `src/gui/live_settings/settings_tab.py, in _show_admitted_figure` |
+| the dash cleared on the first move | `src/gui/live_settings/settings_tab.py, in _clear_refused_dash` |
+| the same reading for the React page | `src/gui/main_tabs/live_settings_tab_surface.py, in admitted_figure` |
+| the wizard's stored default | `src/gui/bot_wizard.py, in _show_stored_target` |
+| the Finish refusal | `src/gui/bot_wizard.py, in TradingParamsPage.isComplete` |
+| the pair list's volatility | `src/gui/main_tabs/bot_wizard_surface.py, in bag_number` |

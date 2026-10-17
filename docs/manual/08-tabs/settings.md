@@ -7953,4 +7953,61 @@ OVERTAKEN, quoted whole:
 True today: the window keeps the group box holding its pickers. Nothing builds
 the window, and that half alone is why the venue list did not reach this picker.
 
+## A stored figure no control can hold draws a dash
+
+Every numeric control on this window reads its stored figure through one
+admission before the control sees it. `src/trading/container/config.py, in
+as_box_figure` is that admission, and it refuses six kinds: a stored flag, a
+text number, a not-a-number, an endless number, an integer too large for a
+decimal, and a finite figure outside the control's own span.
+
+A refused figure leaves the control at the bottom of its span drawing the dash
+the indicator panel draws for a cell it cannot read. The log names the key.
+Save then **leaves the stored figure alone** until the operator sets one, so a
+figure nobody entered is never written.
+
+### The three rows, drawn and driven, in both builds
+
+The window was built against a settings file under a throwaway home. Each kind
+went in, every control was read back, Save was pressed with nothing touched, and
+the file was read back.
+
+| Stored value | Target balance draws | Save writes |
+| ------------ | -------------------- | ----------- |
+| `250.0` | `$250.00` | `250.0`, unchanged |
+| `250` | `$250.00` | `250.0` |
+| `"250"` | the dash | nothing; `"250"` stays |
+| `"abc"` | the dash | nothing; `"abc"` stays |
+| `True` | the dash | nothing; `True` stays |
+| an integer of 400 digits | the dash | nothing; it stays |
+| a not-a-number | the dash | nothing; it stays |
+| an endless number | the dash | nothing; it stays |
+
+Lock candle count answers the same way, and a stored `250` on that control now
+draws the dash rather than the top of its span. An unknown theme name leaves the
+build's theme selected, names itself in the log, and Save keeps the stored name.
+
+Twenty-seven rows were driven across the three settings and both builds. Save
+changed nothing on all twenty-seven, and the two builds agreed on every row.
+
+### The control that proves the reading
+
+Moving a control and then pressing Save writes the figure the operator set:
+target balance `2.0`, lock candle count `2`, theme `glass_metal`. So the
+twenty-seven unchanged rows are a reading that could have reported the other
+answer.
+
+### Where each piece sits
+
+| What | Where |
+| ---- | ----- |
+| the admission | `src/trading/container/config.py, in as_box_figure` |
+| the figure a decimal control may hold | `src/gui/main_tabs/settings_dialog_surface.py, in seed_decimal` |
+| the figure a whole-number control may hold | `src/gui/main_tabs/settings_dialog_surface.py, in seed_whole` |
+| the writer that admits before it writes | `src/gui/settings_dialog.py, in _put_stored` |
+| the refusal, logged and marked | `src/gui/settings_dialog.py, in _show_stored` |
+| the dash drawn on the control | `src/gui/settings_dialog.py, in _mark_refused` |
+| the row Save leaves alone | `src/gui/settings_dialog.py, in _untouched_since_refusal` |
+| the same reading for the React page | `src/gui/main_tabs/settings_dialog_surface.py, in _load_stored` |
+
 Back to [the subsystem index](README.md).

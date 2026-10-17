@@ -51,6 +51,7 @@ from ...core.sms_engine import (
 )
 from ...trading.ta_engine import DEFAULT_WEIGHTS
 from ..color_alpha import ALPHA_HIGHEST, rgba
+from .indicator_panel_surface import ABSENT_CELL_TEXT
 
 METHOD = "settings_dialog.state"
 
@@ -2268,6 +2269,40 @@ REFUSED_TYPE = "this control takes a number, not {found}"
 REFUSED_SIZE = "{found} is outside the range this control can hold"
 REFUSED_TEXT = "this control takes text, not {found}"
 REFUSED_FLAG = "this control takes a true or false value, not {found}"
+REFUSED_SPAN = "{found} is outside the span this control holds, {low} to {high}"
+REFUSED_ITEM = "this list holds no row for {found}"
+
+#: Suffix on the `texts` and `styles` key carrying one refused control's mark,
+#: so the page draws the dash beside the control it belongs to.
+REFUSED_MARK_SUFFIX = ".refused"
+
+#: What `refused` records for a control whose reading could not be taken. A
+#: reading equal to nothing never matches a control's own value, so `save`
+#: treats such a row as touched and writes it.
+REFUSED_NO_READING = object()
+
+#: What a control reader raises when it cannot answer. `_reading` catches
+#: exactly these, and `settings_dialog.py` names the same set.
+READER_FAULTS = (LookupError, TypeError, ValueError, ArithmeticError, AttributeError)
+
+#: What a numeric control draws in place of a stored figure `as_box_figure`
+#: refuses. The dash the indicator panel's absent cells draw, so one
+#: unreadable figure says so the one way the platform has always said it.
+REFUSED_FIGURE_TEXT: str = ABSENT_CELL_TEXT
+
+#: The colour a refused control draws its dash in.
+REFUSED_FIGURE_COLOR: str = ds.TEXT_MUTED
+
+REFUSED_TOOLTIP = (
+    "\n\nThe stored {key} is not a figure this control can hold, so the "
+    "control shows {dash} rather than a number. Set a figure to store one; "
+    "Save leaves {key} as it was until you do."
+)
+
+
+def refused_tooltip(key: str, carried: str = "") -> str:
+    """`carried` with the sentence a refused control adds under it."""
+    return str(carried) + REFUSED_TOOLTIP.format(key=str(key), dash=REFUSED_FIGURE_TEXT)
 
 
 def _named(value: Any) -> str:
@@ -2277,47 +2312,39 @@ def _named(value: Any) -> str:
 def seed_whole(raw: Any, low: int, high: int) -> int:
     """The figure a whole-number control shows once it is given `raw`.
 
-    Reproduces what the shipped control does, refusal for refusal. Text
-    is refused. A value that is not a whole number is cut towards zero.
-    A figure outside the platform's whole-number range is refused rather
-    than wrapped. Anything left is held to the control's own range.
+    `as_box_figure` is the admission: a stored flag, a text number, a
+    not-a-number, an endless number, an integer too large for a float and a
+    finite figure outside `low`..`high` each raise for the load step to catch.
     """
-    if type(raw) is bool:
-        number = int(raw)
-    elif type(raw) is float:
-        if not math.isfinite(raw):
-            raise OverflowError(REFUSED_SIZE.format(found=raw))
-        number = int(raw)
-    elif type(raw) is int:
-        number = raw
-    else:
+    from ...trading.container.config import as_box_figure
+
+    if type(raw) is not int and type(raw) is not float:
         raise TypeError(REFUSED_TYPE.format(found=_named(raw)))
+    read = as_box_figure(raw, float(low), float(high))
+    if read is None:
+        raise OverflowError(REFUSED_SPAN.format(found=raw, low=low, high=high))
+    number = int(read)
     if not INT32_MIN <= number <= INT32_MAX:
         raise OverflowError(REFUSED_SIZE.format(found=number))
-    return min(high, max(low, number))
+    return number
 
 
 def seed_decimal(raw: Any, low: float, high: float, decimals: int) -> float:
     """The figure a decimal control shows once it is given `raw`.
 
-    Text is refused, and a whole number too large to become a decimal is
-    refused. Not-a-number and plus-infinity both print the top of the
-    range; minus-infinity prints the bottom. What is left is held to the
-    range and then cut to the control's decimal places.
+    `as_box_figure` is the admission `seed_whole` reads, and what it admits is
+    cut to `decimals`.
     """
-    if type(raw) is bool:
-        number = float(raw)
-    elif type(raw) is int:
-        if not -FLOAT_LIMIT < raw < FLOAT_LIMIT:
-            raise OverflowError(REFUSED_SIZE.format(found=_named(raw)))
-        number = float(raw)
-    elif type(raw) is float:
-        number = raw
-    else:
+    from ...trading.container.config import as_box_figure
+
+    if type(raw) is not int and type(raw) is not float:
         raise TypeError(REFUSED_TYPE.format(found=_named(raw)))
-    if math.isnan(number):
-        return float(high)
-    return float(round(min(high, max(low, number)), decimals))
+    if type(raw) is int and not -FLOAT_LIMIT < raw < FLOAT_LIMIT:
+        raise OverflowError(REFUSED_SIZE.format(found=_named(raw)))
+    read = as_box_figure(raw, low, high)
+    if read is None:
+        raise OverflowError(REFUSED_SPAN.format(found=raw, low=low, high=high))
+    return float(round(read, decimals))
 
 
 def seed_flag(raw: Any) -> bool:
@@ -2598,6 +2625,11 @@ class SettingsDialogModel:
         self.values: dict = {}
         self.texts: dict = {}
         self.styles: dict = {}
+        #: One entry per stored key whose control refused the stored value,
+        #: carrying what that control holds once the refusal was drawn. `save`
+        #: writes a named key only once its control no longer holds that
+        #: figure, so Save never stores a figure the operator never set.
+        self.refused: dict = {}
         self.enabled: dict = {}
         self.visible: dict = {}
         self.tooltips: dict = {}
@@ -2696,7 +2728,7 @@ class SettingsDialogModel:
         """One stored value put into one control, as that control admits it.
 
         A drop-down holds a row number, so a value its list does not offer
-        leaves the row the build chose.
+        raises `LookupError` the way the shipped drop-down raises it.
         """
         spec = spec_for(name)
         kind = spec["kind"]
@@ -2707,15 +2739,63 @@ class SettingsDialogModel:
         else:
             self.values[name] = self._seed_control(name, raw)
             return
-        if found >= FIRST_INDEX:
-            self.values[name] = found
+        if found < FIRST_INDEX:
+            raise LookupError(REFUSED_ITEM.format(found=raw))
+        self.values[name] = found
 
-    def _load_stored(self, key: str, show: Any, raw: Any) -> None:
-        """Puts one stored value into its control, recording a value it refuses."""
+    def _load_stored(self, key: str, show: Any, raw: Any, read: Any = None) -> None:
+        """Puts one stored value into its control, recording a value it refuses.
+
+        A refused value names `key` under `refused` carrying the reading `read`
+        gives once the mark is drawn, which is how `save` tells an untouched
+        control from one the operator moved.
+        """
         try:
             show(raw)
+            self.refused.pop(key, None)
         except Exception as exc:  # noqa: BLE001
             self._record("load_refused", key, str(exc))
+            name = show.args[0] if getattr(show, "args", None) else None
+            if name:
+                self._mark_refused(key, str(name))
+            self.refused[key] = self._reading(read)
+
+    @staticmethod
+    def _reading(read: Any) -> Any:
+        """What `read` answers now, or `REFUSED_NO_READING` when it answers nothing."""
+        if read is None:
+            return REFUSED_NO_READING
+        try:
+            return read()
+        except READER_FAULTS:
+            return REFUSED_NO_READING
+
+    def _mark_refused(self, key: str, name: str) -> None:
+        """Draw the platform's dash on the control named `name`.
+
+        A numeric control is moved to the bottom of its own span, which is
+        where the Qt box prints its dash, so the page and the box draw the one
+        mark for the one refusal.
+        """
+        spec = spec_for(name)
+        if spec["kind"] in (SPIN, SLIDER, DOUBLE_SPIN):
+            self.values[name] = spec["range"][0]
+        self.texts[name + REFUSED_MARK_SUFFIX] = REFUSED_FIGURE_TEXT
+        self.styles[name + REFUSED_MARK_SUFFIX] = REFUSED_FIGURE_COLOR
+        self.tooltips[name] = refused_tooltip(key, self.tooltips.get(name, EMPTY_TEXT))
+
+    def _untouched_since_refusal(self, key: str, read: Any) -> bool:
+        """Whether `key`'s control still holds what the refusal left in it.
+
+        True keeps `save` off that row, so the stored value the control could
+        not read stays as it is.
+        """
+        if key not in self.refused:
+            return False
+        left = self.refused[key]
+        if left is REFUSED_NO_READING:
+            return False
+        return bool(self._reading(read) == left)
 
     def _ai_rows(self) -> tuple:
         """Every ``ai_monitor`` key, from the one list naming its controls."""
@@ -2812,13 +2892,17 @@ class SettingsDialogModel:
                 key,
                 partial(self._show_stored, name),
                 self.settings.get(key, fallback),
+                partial(self._pair_value, name),
             )
 
         for group, rows in self._stored_groups():
             stored = self.settings.get(group, {})
-            for key, _read, show, fallback in rows:
+            for key, read, show, fallback in rows:
                 self._load_stored(
-                    group + "." + key, show, read_mapping(stored, key, fallback)
+                    group + "." + key,
+                    show,
+                    read_mapping(stored, key, fallback),
+                    read,
                 )
 
         # OVERTAKEN, quoted whole:
@@ -3169,6 +3253,8 @@ class SettingsDialogModel:
         saved = 0
         failed: list = []
         for key, name in SAVE_PAIRS:
+            if self._untouched_since_refusal(key, partial(self._pair_value, name)):
+                continue
             try:
                 self.settings.set(key, self._pair_value(name))
                 saved += 1
@@ -3177,10 +3263,19 @@ class SettingsDialogModel:
                 self.prints.append(SAVE_ERROR_PRINT_FORMAT.format(key=key, error=exc))
 
         for key, rows in self._stored_groups():
+            kept = {
+                name: read()
+                for name, read, _show, _fallback in rows
+                if not self._untouched_since_refusal(key + "." + name, read)
+            }
+            if not kept:
+                continue
             try:
-                self.settings.set(
-                    key, {name: read() for name, read, _show, _fallback in rows}
-                )
+                # A group the store holds as something other than a mapping
+                # cannot be merged into, so only the kept rows are written.
+                held = self.settings.get(key, {})
+                under = dict(held) if isinstance(held, dict) else {}
+                self.settings.set(key, {**under, **kept})
                 saved += 1
             except Exception as exc:
                 failed.append(FAILED_ENTRY_FORMAT.format(key=key, error=exc))
@@ -3403,6 +3498,9 @@ def build_view_model(model: SettingsDialogModel) -> dict:
         "enabled": dict(model.enabled),
         "visible": dict(model.visible),
         "tooltips": dict(model.tooltips),
+        "refused": {str(key): True for key in model.refused},
+        "refused_text": REFUSED_FIGURE_TEXT,
+        "refused_color": REFUSED_FIGURE_COLOR,
         "control_specs": [_plain(dict(one)) for one in CONTROL_SPECS],
         "exchange_status": {
             "label": exchange_status_label(),

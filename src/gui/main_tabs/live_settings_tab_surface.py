@@ -36,6 +36,7 @@ import math
 from typing import Any, Optional
 
 from .. import design_system as ds
+from .indicator_panel_surface import ABSENT_CELL_TEXT
 
 METHOD = "live_settings_tab.state"
 
@@ -494,6 +495,62 @@ FLOAT_READING = "float"
 FLOAT_OR_ZERO_READING = "float_or_zero"
 FLOAT_OR_DEFAULT_READING = "float_or_default"
 DESPAWN_READING = "despawn_days"
+ADMITTED_READING = "admitted"
+
+#: What a dollar box draws in place of a stored figure `as_box_figure`
+#: refuses. The dash the indicator panel's absent cells draw, so one
+#: unreadable figure says so the one way the platform has always said it.
+REFUSED_FIGURE_TEXT: str = ABSENT_CELL_TEXT
+
+#: The colour a refused dollar box prints its dash in.
+REFUSED_FIGURE_COLOR: str = ds.TEXT_MUTED
+
+REFUSED_FIGURE_TOOLTIP = (
+    "\n\nThis bot's stored {label} is not a figure this box can hold, so the "
+    "box shows {dash} rather than a number. Type a figure to set one; Apply "
+    "writes nothing for this field until you do."
+)
+
+REFUSED_FIGURE_LOG = "Bot %s: stored %s is not a figure the box can hold (%r)"
+
+
+SPECIAL_VALUE_KEY = "special_value_text"
+
+
+def refused_spec(spec: dict, refused: Any) -> dict:
+    """`spec` as the page receives it, carrying the dash when it was refused.
+
+    A control named in `refused` is at the bottom of its own span, which is
+    where `special_value_text` draws, so the React page prints the dash the Qt
+    box prints and neither draws a figure nobody stored.
+    """
+    copied = dict(spec)
+    if str(spec.get("name")) in (refused or {}):
+        copied[SPECIAL_VALUE_KEY] = REFUSED_FIGURE_TEXT
+    return copied
+
+
+def refused_figure_tooltip(spec: dict, carried: str = "") -> str:
+    """`carried` with the sentence a refused dollar box adds under it."""
+    label = str(spec.get("row_label") or spec.get("field") or "").rstrip(":")
+    return str(carried) + REFUSED_FIGURE_TOOLTIP.format(
+        label=label, dash=REFUSED_FIGURE_TEXT
+    )
+
+
+def admitted_figure(config: Any, spec: dict) -> Optional[float]:
+    """The stored figure one bounded control may hold, or None for one it may not.
+
+    Reads `spec`'s field off `config` through `as_box_figure`, the one
+    admission the bot's own money path uses, so the figure the Qt box holds
+    and the figure the React page draws are decided by the same rule.
+    """
+    from ...trading.container.config import as_box_figure
+
+    field = str(spec["field"])
+    raw = getattr(config, field, None)
+    low, high = spec["range"]
+    return as_box_figure(raw, low, high)
 
 
 def read_number(
@@ -694,7 +751,7 @@ CONTROL_SPECS = (
         "scrumming_only": True,
         "row_label": "Target Balance:",
         "field": "target_balance",
-        "reading": BARE_READING,
+        "reading": ADMITTED_READING,
         "default": None,
         "no_default": True,
         "range": (1.0, 1000000.0),
@@ -884,7 +941,7 @@ CONTROL_SPECS = (
         "group": HEDGE_GROUP,
         "row_label": "Hedge Balance:",
         "field": "hedge_balance",
-        "reading": FLOAT_READING,
+        "reading": ADMITTED_READING,
         "default": None,
         "no_default": True,
         "range": (0.0, 999999999.0),
@@ -1481,6 +1538,11 @@ class LiveSettingsTabModel:
         self.values: dict = {}
         self.combo_index: dict = {}
         self.tooltips_applied: dict = {}
+        #: One entry per control whose stored figure `as_box_figure` refused,
+        #: keyed by control name and carrying what was stored. A named control
+        #: draws `REFUSED_FIGURE_TEXT` and `mark_changed` is the only thing
+        #: that can put a figure of its own back into it.
+        self.refused: dict = {}
         self.forms_expected = FORM_COUNT_BASE
         self.timeframe_items: list = []
         self.compound_row: list = []
@@ -1514,6 +1576,21 @@ class LiveSettingsTabModel:
             return False
         return True
 
+    def _read_admitted(self, config: Any, spec: dict) -> Any:
+        """The figure one dollar box holds, or the box bottom beside a refusal.
+
+        A stored figure `as_box_figure` refuses is recorded in `refused` and
+        the box is left at the bottom of its own span, which is where the dash
+        draws. Never a zero substituted for a figure nobody stored.
+        """
+        name = str(spec["name"])
+        read = admitted_figure(config, spec)
+        if read is None:
+            self.refused[name] = getattr(config, str(spec["field"]), None)
+            return float(spec["range"][0])
+        self.refused.pop(name, None)
+        return read
+
     def _read_control(self, config: Any, spec: dict) -> Any:
         """The value one control is seeded with, coerced as the tab does."""
         kind = spec["kind"]
@@ -1521,6 +1598,8 @@ class LiveSettingsTabModel:
         field = str(spec["field"])
         default = spec["default"]
         no_default = spec.get("no_default", False)
+        if reading == ADMITTED_READING:
+            return self._read_admitted(config, spec)
         if kind in (DOUBLE_SPIN, SPIN):
             return read_number(config, field, default, reading, no_default)
         raw = getattr(config, field) if no_default else getattr(config, field, default)
@@ -1568,6 +1647,10 @@ class LiveSettingsTabModel:
             self.combo_index[name] = at if at >= FIRST_INDEX else FIRST_INDEX
         if name in TOOLTIPS:
             self.tooltips_applied[name] = TOOLTIPS[name]
+        if name in self.refused:
+            self.tooltips_applied[name] = refused_figure_tooltip(
+                spec, self.tooltips_applied.get(name, "")
+            )
         self.calls.append([BUILD_CONTROL, name, value])
         self._add_row(spec["group"], spec["row_label"], name)
 
@@ -1905,7 +1988,10 @@ def build_view_model(
         "rows": [list(one) for one in model.rows],
         "row_count": len(model.rows),
         "control_names": list(CONTROL_NAMES),
-        "control_specs": [dict(spec) for spec in CONTROL_SPECS],
+        "control_specs": [refused_spec(spec, model.refused) for spec in CONTROL_SPECS],
+        "refused": dict(model.refused),
+        "refused_text": REFUSED_FIGURE_TEXT,
+        "refused_color": REFUSED_FIGURE_COLOR,
         "values": dict(model.values),
         "combo_index": dict(model.combo_index),
         "timeframe_items": list(model.timeframe_items),

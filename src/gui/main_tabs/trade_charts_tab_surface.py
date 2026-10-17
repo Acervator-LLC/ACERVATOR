@@ -38,6 +38,7 @@ from typing import Any, Optional
 from .native_chart_surface import ARROW_GLYPH_FAMILY, ARROW_GLYPH_PX, CAPTION_PX
 from .native_chart_surface import CONTROL_FONT_FAMILY, CONTROL_FONT_PX
 from .native_chart_surface import CONTROL_HEIGHT_PX, TOGGLE_BOX_PX
+from .native_chart_surface import row_prices, synthetic_candle
 from .native_chart_surface import INDICATOR_DEFAULTS as PANEL_INDICATOR_DEFAULTS
 from .native_chart_surface import INDICATOR_TOGGLES as PANEL_INDICATOR_TOGGLES
 from .native_chart_surface import INDICATOR_ROW_SPACING_PX as PANEL_TOGGLE_GAP_PX
@@ -132,6 +133,15 @@ NUCLEAR_EXCHANGE_ID = "NUCLEAR"
 STRETCH_SLOTS = 1
 
 PRICE_LABEL_FORMAT = "{symbol}  •  ${price:.8f}  •  {state}"
+
+#: The chart header carrying a note in place of a price: symbol, note, state.
+PRICE_NOTE_FORMAT = "{symbol}  •  {note}  •  {state}"
+
+#: What `header_label` prints in place of a price it cannot read.
+PRICE_REFUSED_NOTE = "price unreadable"
+
+#: What `header_label` prints for the zero a bot carries before its first fetch.
+PRICE_NOT_YET_NOTE = "no price yet"
 NUCLEAR_LABEL_FORMAT = "{symbol}  •  ${price:.4f}  •  ⚡{scenario}"
 AWAITING_FORMAT = "{symbol}: awaiting candles"
 EMPTY_SOURCE = ""
@@ -356,6 +366,37 @@ def price_label(symbol: Any, price: Any, state: Any) -> str:
     return PRICE_LABEL_FORMAT.format(symbol=symbol, price=price, state=state.upper())
 
 
+def as_finite_float(value: Any) -> Optional[float]:
+    """`value` as a float when it is EXACTLY int or float AND finite.
+
+    Imports `as_finite_float` from `src.trading.container.config` inside the call.
+    """
+    from ...trading.container.config import as_finite_float as admitted
+
+    return admitted(value)
+
+
+def header_label(symbol: Any, price: Any, state: Any) -> Optional[str]:
+    """The chart header for a saved price, or None when no price is saved at all.
+
+    A price `as_finite_float` refuses, and a negative one, name
+    `PRICE_REFUSED_NOTE`; the zero a bot carries before its first fetch names
+    `PRICE_NOT_YET_NOTE`, so neither is ever printed as a dollar figure.
+    """
+    if price is None:
+        return None
+    reading = as_finite_float(price)
+    if reading is None or reading < 0:
+        return PRICE_NOTE_FORMAT.format(
+            symbol=symbol, note=PRICE_REFUSED_NOTE, state=str(state).upper()
+        )
+    if reading == 0:
+        return PRICE_NOTE_FORMAT.format(
+            symbol=symbol, note=PRICE_NOT_YET_NOTE, state=str(state).upper()
+        )
+    return price_label(symbol, reading, str(state))
+
+
 def nuclear_label(symbol: Any, price: Any, scenario: Any) -> str:
     """The chart header a Nuclear Mode scenario writes."""
     return NUCLEAR_LABEL_FORMAT.format(symbol=symbol, price=price, scenario=scenario)
@@ -578,27 +619,23 @@ def target_balance_lines(readings: dict) -> list:
     ]
 
 
-def candle_row(candle: Any) -> list:
-    """One candle as six numbers, from an ``OHLCVCandle``, a dict or a six-number row."""
-    if hasattr(candle, CANDLE_OPEN_KEY):
-        return [
-            int(getattr(candle, CANDLE_TIME_KEY, DEFAULT_CANDLE_TIME)),
-            float(candle.open),
-            float(candle.high),
-            float(candle.low),
-            float(candle.close),
-            float(getattr(candle, CANDLE_VOLUME_KEY, DEFAULT_CANDLE_VOLUME)),
-        ]
-    if not isinstance(candle, dict):
-        return list(candle)
-    return [
-        int(candle.get(CANDLE_TIME_KEY, DEFAULT_CANDLE_TIME)),
-        float(candle[CANDLE_OPEN_KEY]),
-        float(candle[CANDLE_HIGH_KEY]),
-        float(candle[CANDLE_LOW_KEY]),
-        float(candle[CANDLE_CLOSE_KEY]),
-        float(candle.get(CANDLE_VOLUME_KEY, DEFAULT_CANDLE_VOLUME)),
-    ]
+def candle_row(candle: Any) -> Optional[list]:
+    """One candle as six numbers, from an ``OHLCVCandle``, a dict or a six-number row.
+
+    Answers None when `synthetic_candle` refuses a field, so `candle_rows`
+    drops that candle and the ones beside it still reach the chart.
+    """
+    if hasattr(candle, CANDLE_OPEN_KEY) or isinstance(candle, dict):
+        read = synthetic_candle(candle)
+    else:
+        read = row_prices(candle)
+    return None if read is None else list(read)
+
+
+def candle_rows(candles: Any) -> list:
+    """Every candle `candle_row` admits, as the six-number rows the panel holds."""
+    read = [candle_row(one) for one in candles or []]
+    return [one for one in read if one is not None]
 
 
 class SignalRecord:
@@ -1206,7 +1243,7 @@ class TradeChartsTabModel:
         self.panel.set_timeframe(str(call.timeframe))
         self.panel.set_chart_timeframe(str(call.timeframe))
         self.panel.set_overlays(list(call.overlays))
-        self.panel.set_candles([candle_row(one) for one in call.candles])
+        self.panel.set_candles(candle_rows(call.candles))
         self.panel.set_call(call.direction, call.readings)
         self.panel.set_caption(call.caption)
         record[LAST_FETCH_KEY] = self._now()
@@ -1307,7 +1344,7 @@ class TradeChartsTabModel:
                 record[LAST_FETCH_KEY] = NEVER_FETCHED
             record[EXCHANGE_ID_KEY] = status.get(EXCHANGE_KEY, DEFAULT_EXCHANGE_ID)
             stats = status.get(STATS_KEY, {})
-            record[PRICE_KEY] = stats.get(PRICE_KEY, DEFAULT_PRICE)
+            record[PRICE_KEY] = stats.get(PRICE_KEY)
             record[STATE_KEY] = status.get(STATE_KEY, DEFAULT_STATE)
 
         for bot_id in list(self.assets):
@@ -1323,9 +1360,9 @@ class TradeChartsTabModel:
         self._rebuild_ata()
         self.calls.append([UPDATE_SELECTOR, len(self.list_order()), self.list_shown()])
         self._follow_shown()
-        self._label_shown()
         self.feed_history()
         self._feed_shown()
+        self._label_shown()
         self.panel.repaint_chart()
         self.calls.append([UPDATE_CHART_REPAINTED, self.shown_id()])
 
@@ -1428,21 +1465,23 @@ class TradeChartsTabModel:
         )
 
     def _label_shown(self) -> None:
-        """Write the shown asset's price and state into the chart header."""
+        """Write the shown asset's price and state into the chart header.
+
+        `header_label` answers None only while no price is saved, which leaves
+        the header as it stands and records `UPDATE_LABEL_SKIPPED`.
+        """
         record = self.current()
         bot_id = self.shown_id()
-        price = record.get(PRICE_KEY, DEFAULT_PRICE)
-        if price > 0:
-            self.panel.set_label(
-                price_label(
-                    record.get(SYMBOL_KEY, DEFAULT_SYMBOL),
-                    price,
-                    record.get(STATE_KEY, DEFAULT_STATE),
-                )
-            )
-            self.calls.append([UPDATE_LABEL_SET, bot_id, self.panel.label])
-        else:
+        text = header_label(
+            record.get(SYMBOL_KEY, DEFAULT_SYMBOL),
+            record.get(PRICE_KEY),
+            record.get(STATE_KEY, DEFAULT_STATE),
+        )
+        if text is None:
             self.calls.append([UPDATE_LABEL_SKIPPED, bot_id])
+            return
+        self.panel.set_label(text)
+        self.calls.append([UPDATE_LABEL_SET, bot_id, self.panel.label])
 
     def set_history(self, rows: Any, fetched_ts: Any) -> None:
         """Take the History tab's venue rows and its last fetch stamp, as ``history_state`` read them."""
@@ -1622,7 +1661,7 @@ class TradeChartsTabModel:
             returned = len(rows or [])
             source = str(answered)
             if rows:
-                self.panel.set_candles([candle_row(one) for one in rows])
+                self.panel.set_candles(candle_rows(rows))
                 self.panel.set_source(answered)
                 outcome = OUTCOME_CANDLES
                 self.calls.append([FETCH_CANDLES, bot_id, returned, source])
@@ -1739,7 +1778,7 @@ class TradeChartsTabModel:
         self._follow_shown()
         self.panel.set_chart_timeframe(NUCLEAR_TIMEFRAME)
 
-        rows = [candle_row(one) for one in candles]
+        rows = candle_rows(candles)
         self.panel.set_candles(rows)
         label_price = last_price or (
             rows[-1][CANDLE_CLOSE_INDEX] if rows else NO_LAST_PRICE
