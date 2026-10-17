@@ -49,6 +49,7 @@ class TickPhaseMixin:
     _cartridge_last_smart_pct: float
     _check_detonation_trigger: Callable[..., Any]
     _current_holdings: float
+    _detonation_last_signal_bullish: bool
     _dist_accumulator: float
     _drop_malformed_fold_tranches: Callable[..., int]
     _emit_gate_decision_at_fire: Callable[..., None]
@@ -631,13 +632,22 @@ class TickPhaseMixin:
             logger.exception("Max cartridge rebalance failed")
 
     async def _tick_detonation(self, ticker: Any) -> bool:
-        """Return True when a detonation fired and the tick must stop."""
+        """Return True when a detonation fired and the tick must stop.
+
+        ``_check_detonation_trigger`` spends the bullish edge as it reads it,
+        so an executor that refused — most often because the venue balance it
+        sizes the sale from could not be read — re-arms
+        ``_detonation_last_signal_bullish``, leaving the next check free to
+        fire the same bull run. An executor that raised does not re-arm,
+        because an order may already be at the venue.
+        """
         if getattr(self.config, "detonation_enabled", False):
             try:
                 fired = await self._check_detonation_trigger(ticker)
                 if fired:
-                    await self._execute_detonation(ticker)
-                    return True
+                    if await self._execute_detonation(ticker):
+                        return True
+                    self._detonation_last_signal_bullish = False
             except Exception as exc:
                 self._bus.emit(
                     "bot.log",

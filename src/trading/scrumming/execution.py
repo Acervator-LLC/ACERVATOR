@@ -113,6 +113,7 @@ class ExecutionEngineMixin:
     _tranches_closed_lifetime: int
     _tranches_created_lifetime: int
     _tranches_discarded_lifetime: Any
+    _venue_claimable_units: Callable[..., Any]
     bot_id: Any
     config: Any
     exchange: Any
@@ -1239,12 +1240,16 @@ class ExecutionEngineMixin:
                 )
             self._last_trade_price = fill_price
 
-    async def _execute_detonation(self, ticker) -> None:
+    async def _execute_detonation(self, ticker) -> bool:
         """Sell everything above ``_anchor_target_balance`` and reset to it.
 
-        Clears ``_fold_tranches`` and ``_standing_surplus_usd``, reseeds
-        ``_main_lots`` at the fill price, and emits ``trade.filled`` carrying
-        ``auto_detonated``.
+        Sizes the sale from ``_venue_claimable_units``, so the amount comes
+        from the exchange balance rather than from the attributed
+        ``_current_holdings``. Clears ``_fold_tranches`` and
+        ``_standing_surplus_usd``, reseeds ``_main_lots`` at the fill price,
+        and emits ``trade.filled`` carrying ``auto_detonated``. Returns True
+        once the venue figure decided the harvest, and False on every refusal,
+        which ``_tick_detonation`` reads as no fire.
         """
         price = getattr(ticker, "last", None)
         if not price or price <= 0:
@@ -1253,28 +1258,50 @@ class ExecutionEngineMixin:
                 bot_id=self.bot_id,
                 message="DETONATION: no valid price; aborting.",
             )
-            return
+            return False
+
+        venue_units, refusal = await self._venue_claimable_units()
+        if venue_units is None:
+            self._bus.emit(
+                "bot.log",
+                bot_id=self.bot_id,
+                message=(
+                    f"DETONATION REFUSED: {refusal}. The sale is sized from "
+                    f"the exchange balance, not from the "
+                    f"{self._current_holdings:.8f} units attributed to this "
+                    f"bot, so nothing was sold."
+                ),
+            )
+            logger.warning(
+                "Bot %s detonation refused — %s (attributed %.8f units)",
+                self.bot_id,
+                refusal,
+                self._current_holdings,
+            )
+            return False
 
         _qrate = float(self._quote_to_usd or 1.0)
-        current_value = priced_usd(self._current_holdings, price, _qrate)
+        current_value = priced_usd(venue_units, price, _qrate)
         excess_usd = target_delta_usd(current_value, self._anchor_target_balance)
         if excess_usd <= 0:
-            return
+            return True
 
         sell_amount = (
             scrum_units(excess_usd, price * _qrate, FRACTIONAL_UNITS)
             if (price * _qrate) > 0
             else 0.0
         )
-        sell_amount = min(sell_amount, self._current_holdings)
+        sell_amount = min(sell_amount, venue_units)
         if sell_amount <= 0:
-            return
+            return True
 
         self._bus.emit(
             "bot.log",
             bot_id=self.bot_id,
             message=(
-                f"DETONATION HARVEST: value=${current_value:.2f}, "
+                f"DETONATION HARVEST: exchange holds {venue_units:.8f} "
+                f"{self.config.symbol.split('/')[0]} for this bot "
+                f"(value=${current_value:.2f}), "
                 f"anchor=${self._anchor_target_balance:.2f}, "
                 f"selling {sell_amount:.6f} "
                 f"{self.config.symbol.split('/')[0]} @ MARKET "
@@ -1297,7 +1324,7 @@ class ExecutionEngineMixin:
                 bot_id=self.bot_id,
                 message="DETONATION: exchange returned no order.",
             )
-            return
+            return False
 
         _filled_raw = (
             getattr(order, "filled", None)
@@ -1315,10 +1342,11 @@ class ExecutionEngineMixin:
                 message=(
                     "DETONATION: order placed but no filled "
                     "amount reported. Check exchange for actual "
-                    "state."
+                    "state. The bullish edge stays spent, because a sale the "
+                    "venue has not reported must not be sent twice."
                 ),
             )
-            return
+            return True
 
         fill_price = (
             getattr(order, "average_price", None)
@@ -1333,7 +1361,7 @@ class ExecutionEngineMixin:
 
         fill_usd = fill_price * fill_amount
 
-        self._current_holdings = max(0.0, self._current_holdings - fill_amount)
+        self._current_holdings = max(0.0, venue_units - fill_amount)
 
         _detonation_routed_total = self._route_scrum_proceeds_via_wires(
             scrum_usd=fill_usd, sell_fill=fill_price, label="detonation"
@@ -1404,6 +1432,8 @@ class ExecutionEngineMixin:
                 f"${self._anchor_target_balance:.2f} (anchor). "
                 f"Fold queue cleared. Standing surplus "
                 f"${_discharged_surplus:.4f} discharged. "
+                f"{self._current_holdings:.8f} units remain of the "
+                f"{venue_units:.8f} the exchange held for this bot. "
                 f"Bot will re-accumulate from scratch on next dip."
             ),
         )
@@ -1427,6 +1457,7 @@ class ExecutionEngineMixin:
             side="SELL", trade_action="AUTO_DETONATION"
         )
         self._emit_gate_decision_at_fire(side="SELL", trade_action="AUTO_DETONATION")
+        return True
 
     async def _execute_sell(
         self,

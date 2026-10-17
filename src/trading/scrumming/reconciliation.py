@@ -846,6 +846,47 @@ class ReconciliationEngineMixin:
                 _sib_units = float("inf")
         return (exchange_units - _personal - _sib_units, _personal, _sib_units)
 
+    async def _venue_claimable_units(self) -> tuple[float | None, str | None]:
+        """This bot's sellable units of ``config.target_asset`` at the venue, or a reason.
+
+        Reads the balance through ``_get_balance`` and prefers ``total`` over
+        ``free``, the route ``_reconcile_holdings`` takes, then subtracts the
+        personal hold and the sibling bots through
+        ``_claimable_exchange_units``. Returns ``(None, reason)`` when the fetch
+        raises, when ``Balance.absent`` marks the currency missing from the
+        response, when ``_reconcilable_units`` refuses the reading, or when
+        nothing on the asset is this bot's to sell. ``_execute_detonation``
+        sizes its sale from the returned figure.
+        """
+        _asset = self.config.target_asset
+        try:
+            _balance = await self._get_balance(_asset)
+            _absent = bool(getattr(_balance, "absent", False))
+            _raw = getattr(_balance, "total", 0) or _balance.free or 0.0
+        except Exception as _exc:  # noqa: BLE001
+            return None, (
+                f"the {_asset} balance could not be read from the exchange "
+                f"({type(_exc).__name__}: {_exc})"
+            )
+        if _absent:
+            return None, (
+                f"the exchange OMITTED {_asset} from its balance response, so "
+                f"the venue holding is UNKNOWN, not zero"
+            )
+        _units, _why = self._reconcilable_units(
+            _raw, f"exchange balance ({_asset} total)"
+        )
+        if _units is None:
+            return None, _why
+        _claimable, _personal, _sib = self._claimable_exchange_units(_units)
+        if _claimable <= 0.0:
+            return None, (
+                f"the exchange holds {_units:.8f} {_asset} and none of it is "
+                f"this bot's to sell (personal hold {_personal:.8f}, "
+                f"siblings {_sib:.8f})"
+            )
+        return min(_units, _claimable), None
+
     def _bootstrap_adopt_from_exchange(
         self, exchange_units: float, book_units: float, price: float, asset: str
     ) -> float | None:
