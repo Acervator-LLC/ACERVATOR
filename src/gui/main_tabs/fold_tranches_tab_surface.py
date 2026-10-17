@@ -293,7 +293,7 @@ UNREADABLE_FIGURE = "—"
 SCRUM_SELLS_FORMAT = "{standing} standing / {sells} sell(s) opened them"
 SCRUM_SELLS_NO_RECORD_FORMAT = "{standing} standing / {dash} sells recorded"
 
-RATIO_NOTHING_LEFT = "—  (nothing left to fold back)"
+RATIO_NOTHING_LEFT = f"{UNREADABLE_FIGURE}  (nothing left to fold back)"
 RATIO_UNREADABLE_FORMAT = "{dash}  (closed {closed} over {denominator} openable)"
 RATIO_TEXT_FORMAT = "{ratio:.2%}  ({closed}/{denominator})"
 RATIO_QUIET_DENOMINATOR = 5

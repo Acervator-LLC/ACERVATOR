@@ -370,7 +370,7 @@ def compose_cycle_close_ratio(
     """
     denominator = int(created) - int(discarded)
     if denominator <= 0:
-        return ("—  (nothing left to fold back)", None)
+        return (f"{FOLD_UNREADABLE_FIGURE}  (nothing left to fold back)", None)
     # A merge lowers `created` while `discarded` holds, so the top of
     # this sum can pass its bottom. No share exists there.
     if int(closed) > denominator:
