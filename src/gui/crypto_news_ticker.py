@@ -6,14 +6,18 @@
 reading the ten ``NEWS_SOURCES`` through ``safe_urlopen`` under
 ``MAX_FEED_BYTES``. ``parse_rss`` builds ``NewsHeadline`` objects with
 ``defusedxml``, which refuses an entity declaration or an external reference.
+``opening_address`` admits a headline's address before a browser is asked, and
+``hover_text`` escapes what the hover box is handed.
 """
 
 from __future__ import annotations
 
 import atexit
+import html
 import logging
 import threading
 import time
+import urllib.parse
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor
 from concurrent.futures import wait as futures_wait
 from dataclasses import dataclass
@@ -23,7 +27,7 @@ from typing import Callable, Optional
 from defusedxml import DefusedXmlException
 from defusedxml.ElementTree import ParseError, fromstring
 
-from ..core.safe_url import SafeRequest, safe_urlopen
+from ..core.safe_url import SafeRequest, openable_url, safe_urlopen
 
 try:
     from PySide6.QtCore import QCoreApplication, QObject, QThread, QTimer, Qt, Signal
@@ -74,6 +78,43 @@ class NewsHeadline:
     def display_text(self) -> str:
         """Composed 'Source · Title' string, trimmed for the strip."""
         return f"{self.source.name} · {self.title}"
+
+
+#: What ``opening_address`` answers for an address holding no host.
+NO_HOST_REASON = "the address names no host"
+
+HOVER_FORMAT = "{source} — click to open in default browser.\n{tail}"
+NO_ADDRESS_TAIL = "this headline opens nothing: {reason}"
+
+
+def opening_address(url: object) -> tuple[str, str]:
+    """``url`` when a browser may open it, and the reason it may not when empty.
+
+    ``CryptoNewsTicker.eventFilter`` reads a headline's address through this
+    before ``webbrowser.open`` is called, so a feed's own string reaches the
+    system browser only as an http or https address carrying a host.
+    """
+    address, refused = openable_url(url)
+    if not address:
+        return "", refused
+    try:
+        host = urllib.parse.urlsplit(address).hostname
+    except ValueError as _malformed:
+        return "", str(_malformed)
+    if not host:
+        return "", NO_HOST_REASON
+    return address, ""
+
+
+def hover_text(source_name: str, address: str, refused: str) -> str:
+    """The hover box's words for one headline, every character of them escaped.
+
+    ``CryptoNewsTicker._render_current`` sets this, so a tag a feed sent in its
+    own address draws as characters whatever text format the box chooses.
+    """
+    tail = address or NO_ADDRESS_TAIL.format(reason=refused)
+    body = html.escape(HOVER_FORMAT.format(source=source_name, tail=tail))
+    return "<html>" + body.replace("\n", "<br>") + "</html>"
 
 
 # defusedxml keeps forbid_dtd off, so a feed with a bare doctype still parses.
@@ -433,7 +474,7 @@ if _HAS_QT:
         ``start`` begins the fetch and the cycling, ``stop`` halts both timers
         and the worker, ``force_refresh`` fetches at once, and
         ``current_headlines`` reads the cached queue. ``eventFilter`` pauses
-        on hover and opens the current headline with ``webbrowser.open``.
+        on hover and opens the address ``opening_address`` admits.
         """
 
         def __init__(self, parent=None):
@@ -536,9 +577,8 @@ if _HAS_QT:
             h = self._headlines[self._index]
             _prefix = f"[{self._index + 1}/{len(self._headlines)}] "
             self._label.setText(_prefix + h.display_text())
-            self._label.setToolTip(
-                f"{h.source.name} — click to open in default browser.\n" f"{h.url}"
-            )
+            address, refused = opening_address(h.url)
+            self._label.setToolTip(hover_text(h.source.name, address, refused))
 
         def _teardown_worker(self) -> None:
             """Clear ``_worker_thread`` and ``_worker`` after ``finished``.
@@ -602,13 +642,21 @@ if _HAS_QT:
                     return False
                 if et == 3 and self._headlines:
                     h = self._headlines[self._index]
+                    address, refused = opening_address(h.url)
+                    if not address:
+                        logger.warning(
+                            "News ticker: %s headline not opened, %s",
+                            h.source.name,
+                            refused,
+                        )
+                        return True
                     try:
                         import webbrowser
 
-                        webbrowser.open(h.url, new=2)
+                        webbrowser.open(address, new=2)
                     except Exception as _wb_exc:  # noqa: BLE001
                         logger.warning(
-                            "News ticker: open failed for %r: %s", h.url, _wb_exc
+                            "News ticker: open failed for %r: %s", address, _wb_exc
                         )
                     return True
             return super().eventFilter(watched, event)

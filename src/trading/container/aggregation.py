@@ -11,7 +11,7 @@ import math
 from typing import Any, Optional
 
 from ..smart_wire import is_mature, mature_profit_usd
-from ..target_bands import fleet_ammo
+from ..target_bands import ammo_units, fleet_ammo
 from .config import (
     DOLLAR_PEGGED_CURRENCIES,
     UNREADABLE_TOTALS_KEY,
@@ -478,6 +478,28 @@ class FleetAggregationMixin:
                 return holdings * price * (rate or 1.0)
         return cached if cached is not None else 0.0
 
+    def _bot_ammo_position_usd(
+        self, bot: Any, stats: Any, totals: FleetTotals
+    ) -> float:
+        """One bot's position value for the AMMO total, priced on the venue count.
+
+        ``ammo_units`` prefers ``_audited_venue_units`` over
+        ``_current_holdings``, which is the count the row's own Ammo cell
+        measures, so the header strip's AMMO total and the rows beneath it
+        cannot disagree. ``_bot_position_usd`` stands where the price or the
+        rate is refused.
+        """
+        holdings = totals.money(
+            getattr(bot, "_current_holdings", 0.0), *POSITION_TOTALS
+        )
+        price = totals.money(getattr(stats, "current_price", 0.0), *POSITION_TOTALS)
+        rate = totals.money(getattr(bot, "_quote_to_usd", 1.0), *POSITION_TOTALS)
+        if holdings is not None and price is not None and rate is not None:
+            units = ammo_units(holdings, getattr(bot, "_audited_venue_units", None))[0]
+            if units > 0 and price > 0:
+                return units * price * (rate or 1.0)
+        return self._bot_position_usd(bot, stats, totals)
+
     def _read_one_bot(self, bot: Any, totals: FleetTotals, carry: dict) -> None:
         """Add one bot's admitted figures into ``carry``.
 
@@ -553,7 +575,9 @@ class FleetAggregationMixin:
             carry["wallet_cash"] = cash
         position_usd = self._bot_position_usd(bot, stats, totals)
         carry["position_value"] += position_usd
-        self._add_ammo_reading(bot, position_usd, totals, carry)
+        self._add_ammo_reading(
+            bot, self._bot_ammo_position_usd(bot, stats, totals), totals, carry
+        )
         fresh_ts = totals.money(
             getattr(stats, "exchange_data_fresh_ts", 0.0), *FRESHNESS_TOTALS
         )

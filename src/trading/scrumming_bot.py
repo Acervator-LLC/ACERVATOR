@@ -5004,6 +5004,7 @@ class ScrummingBot(
                     price=float(current_price),
                     summary=_vote,
                     bypass_stack=True,
+                    label="STACK",
                 )
             except Exception as exc:
                 logger.warning(

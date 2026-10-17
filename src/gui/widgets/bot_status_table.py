@@ -706,6 +706,7 @@ if _HAS_QT:
                 qrate,
                 target_val,
                 price_age_s=_price_age,
+                venue_units=status.get("audited_venue_units"),
             )
             ammo_color = QColor(_ammo["color"])
             ammo_tip = _ammo["tip"]

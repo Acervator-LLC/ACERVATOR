@@ -225,6 +225,7 @@ if _HAS_QT:
                 self._cmd_buttons[cmd] = btn
             layout.addLayout(cmd_bar)
             QApplication.instance().installEventFilter(self)
+            QApplication.instance().aboutToQuit.connect(self.stop_feeds)
 
         def highlight_bot(self, bot_id: str) -> str:
             """Put the Scrumming table's highlight on the Voting Panel's bot.
@@ -246,6 +247,16 @@ if _HAS_QT:
             timer = getattr(self, "_pull_rate_timer", None)
             if timer is not None:
                 timer.stop()
+
+        def closeEvent(self, event) -> None:  # noqa: N802 - Qt name
+            """Reach ``stop_feeds`` when the tab itself is closed.
+
+            ``_drop_unlisted_exchange_tabs`` covers an exchange leaving
+            Settings and ``aboutToQuit`` covers the application quitting, so
+            this route is the third of three.
+            """
+            self.stop_feeds()
+            super().closeEvent(event)
 
         def _update_pull_rate_label(self) -> None:
             """Update the data-pull countdown under +New Bot.
