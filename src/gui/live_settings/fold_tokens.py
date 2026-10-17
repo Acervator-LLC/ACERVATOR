@@ -216,6 +216,62 @@ def fold_display_order(tranches: list, order: str) -> list[tuple[int, dict]]:
     return [(index, tranche) for index, tranche, _ in readable] + refused
 
 
+def fold_queue_figure_total(tranches: list, field: str) -> float | None:
+    """The sum of one stored `field` across a fold queue, or None where
+    `as_finite_float` refuses any queued row.
+
+    `_on_clear_fold_tranches` reads it for the queued USD and the queued
+    units it states before discarding.
+    """
+    from ...trading.bot_container import as_finite_float
+
+    total = 0.0
+    for tranche in list(tranches or []):
+        value = (
+            as_finite_float(tranche.get(field, 0))
+            if isinstance(tranche, dict)
+            else None
+        )
+        if value is None:
+            return None
+        total += value
+    return total
+
+
+FOLD_WIRE_CREDIT_FLOOR_USD = 1e-9
+
+
+def fold_parked_credit(bot: object) -> float | None:
+    """A bot's parked wire credit, or None where `as_finite_float` refuses
+    the stored value.
+
+    Every Fold Tranches control that prints or gates on the credit reads it
+    here, so a refused figure cannot price one control and vanish from
+    another.
+    """
+    from ...trading.bot_container import as_finite_float
+
+    return as_finite_float(getattr(bot, "_pending_wire_credits", 0.0))
+
+
+def fold_parked_credit_stands(credit: float | None) -> bool:
+    """True where a parked credit stands, a credit `fold_parked_credit`
+    refused included.
+
+    Keeps the Clear Wire control live and the absorb-window warning drawn on
+    a refused figure, so an unreadable credit never removes either.
+    """
+    return credit is None or credit > FOLD_WIRE_CREDIT_FLOOR_USD
+
+
+def fold_parked_credit_text(credit: float | None) -> str:
+    """One parked credit as cash, or `FOLD_UNREADABLE_FIGURE` where
+    `fold_parked_credit` refused it."""
+    if credit is None:
+        return FOLD_UNREADABLE_FIGURE
+    return f"${credit:,.4f}"
+
+
 def fold_row_matches_filter(cell_texts: list, needle: str) -> bool:
     """Return True when a rendered cell of the row holds `needle`.
 
@@ -257,11 +313,26 @@ FOLD_WIRE_DISCARDED_TOOLTIP = "Parked wire credit cleared by this bot, lifetime 
 FOLD_MALFORMED_TOOLTIP = "Stored tranches this bot could not read, lifetime total."
 FOLD_CYCLE_CAP_TOOLTIP = "Growth cash one fold cycle may spend, and spent."
 
+# The same dash `indicator_panel_surface.absent_cell` draws, so a figure
+# one screen cannot read is never a number another screen prints.
+FOLD_UNREADABLE_FIGURE = "—"
+
+FOLD_SCRUM_SELLS_TOOLTIP = (
+    "Standing tranches against the sells that opened them.\n\n"
+    "The queue may never hold more tranches than the sells that "
+    "opened them, outside a strong trend. A strong trend lifts the "
+    "bound and lets one sell keep its per-lot rows, so standing "
+    "above sells is only expected then."
+)
+
 # ── The counter rows ───────────────────────────────────────────────────
 FOLD_OPENED_TOOLTIP = "Fold tranches this bot ever opened, less merged ones."
 FOLD_CLOSED_TOOLTIP = "Fold tranches that folded back and bought the asset."
 FOLD_CLOSE_RATIO_TOOLTIP = (
-    "Share of opened tranches that folded back, discards excluded."
+    "Share of opened tranches that folded back, discards excluded.\n\n"
+    "A dash means the three counters leave no share to work out: more "
+    "tranches closed than the opened count still admits, because a "
+    "merge lowers the opened count while the discarded count holds."
 )
 FOLD_DISCARDED_TOOLTIP = "Fold tranches removed without folding back, lifetime total."
 FOLD_COUNTERS_RESET_TOOLTIP = "When an operator last set these four counters to zero."
@@ -355,7 +426,15 @@ def compose_cycle_close_ratio(
     """
     denominator = int(created) - int(discarded)
     if denominator <= 0:
-        return ("—  (nothing left to fold back)", None)
+        return (f"{FOLD_UNREADABLE_FIGURE}  (nothing left to fold back)", None)
+    # A merge lowers `created` while `discarded` holds, so the top of
+    # this sum can pass its bottom. No share exists there.
+    if int(closed) > denominator:
+        return (
+            f"{FOLD_UNREADABLE_FIGURE}  (closed {int(closed)} over "
+            f"{denominator} openable)",
+            FOLD_RATIO_RED_FG_HEX,
+        )
     ratio = int(closed) / denominator
     text = f"{ratio:.2%}  ({int(closed)}/{denominator})"
     if denominator < 5:
@@ -365,6 +444,41 @@ def compose_cycle_close_ratio(
     if ratio < 0.8:
         return (text, FOLD_RATIO_AMBER_FG_HEX)
     return (text, FOLD_RATIO_GREEN_FG_HEX)
+
+
+def compose_scrum_sells_row(standing: int, sells: int) -> tuple[str, str | None]:
+    """Return `(text, colour_hex_or_None)` for the standing-against-sells row.
+
+    `standing` counts the rows in `_fold_tranches` and `sells` counts
+    `_scrum_sells_lifetime`, and a `standing` above `sells` draws
+    `FOLD_OVER_ALLOTMENT_FG_HEX`.
+    """
+    standing_rows = int(standing)
+    opening_sells = int(sells)
+    # A save written before the field existed restores zero sells, which
+    # is not readable as a breach.
+    if opening_sells <= 0 and standing_rows > 0:
+        return (
+            f"{standing_rows} standing / {FOLD_UNREADABLE_FIGURE} sells recorded",
+            None,
+        )
+    text = f"{standing_rows} standing / {opening_sells} sell(s) opened them"
+    if standing_rows > opening_sells:
+        return (text, FOLD_OVER_ALLOTMENT_FG_HEX)
+    return (text, None)
+
+
+def configure_tranche_row_numbers(table: QTableWidget) -> None:
+    """Size the table's rows and leave the `#` column as the only row number.
+
+    `TRANCHE_ROW_HEIGHT_PX` stays on the hidden row header, which
+    governs section size whether or not the header is drawn.
+    """
+    header = table.verticalHeader()
+    header.setDefaultSectionSize(TRANCHE_ROW_HEIGHT_PX)
+    # The header draws the display position and the `#` column draws the
+    # queue position; the two disagree under every order but queue order.
+    header.hide()
 
 
 def _fold_tranche_source_label(tranche: dict) -> str:

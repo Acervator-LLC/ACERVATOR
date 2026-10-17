@@ -113,7 +113,10 @@ if _HAS_QT:
                 "fetched slot. Stale = slots past their TTL "
                 "(ticker 5s, balance 10s, OHLCV = timeframe). "
                 "Cache-hit = coalesced-hits / (hits + fetches). "
-                "Coalescing covers OHLCV and balances."
+                "Coalescing covers OHLCV and balances. "
+                "Blocked fetches cleared = fetches the pool found blocked and "
+                "released itself, rather than waiting for a restart. It "
+                "appears only once it is above zero."
             )
             layout.addWidget(self._pull_rate_lbl)
 
@@ -222,6 +225,7 @@ if _HAS_QT:
                 self._cmd_buttons[cmd] = btn
             layout.addLayout(cmd_bar)
             QApplication.instance().installEventFilter(self)
+            QApplication.instance().aboutToQuit.connect(self.stop_feeds)
 
         def highlight_bot(self, bot_id: str) -> str:
             """Put the Scrumming table's highlight on the Voting Panel's bot.
@@ -243,6 +247,16 @@ if _HAS_QT:
             timer = getattr(self, "_pull_rate_timer", None)
             if timer is not None:
                 timer.stop()
+
+        def closeEvent(self, event) -> None:  # noqa: N802 - Qt name
+            """Reach ``stop_feeds`` when the tab itself is closed.
+
+            ``_drop_unlisted_exchange_tabs`` covers an exchange leaving
+            Settings and ``aboutToQuit`` covers the application quitting, so
+            this route is the third of three.
+            """
+            self.stop_feeds()
+            super().closeEvent(event)
 
         def _update_pull_rate_label(self) -> None:
             """Update the data-pull countdown under +New Bot.
@@ -280,10 +294,11 @@ if _HAS_QT:
             fresh = summary.get("freshest_age_s")
             old = summary.get("oldest_age_s")
             stale = summary.get("stale_slots", 0)
+            cleared = self._cleared_words(summary.get("wedged_locks_cleared", 0))
             if fresh is None:
                 self._pull_rate_lbl.setText(
                     f"Data pool: {slots} slots · awaiting first "
-                    f"fetch  ·  cache-hit {hit_rate:.0f}%"
+                    f"fetch  ·  cache-hit {hit_rate:.0f}%{cleared}"
                 )
                 return
             self._pull_rate_lbl.setText(
@@ -291,8 +306,25 @@ if _HAS_QT:
                 f"(tick {tick_s}/ohlcv {ohlc_s}/bal {bal_s})  ·  "
                 f"freshest {fresh:>4.0f}s  ·  "
                 f"oldest {old:>4.0f}s  ·  "
-                f"{stale} stale  ·  cache-hit {hit_rate:.0f}%"
+                f"{stale} stale  ·  cache-hit {hit_rate:.0f}%{cleared}"
             )
+
+        @staticmethod
+        def _cleared_words(wedged_locks_cleared) -> str:
+            """The data pool line's tail naming blocked fetches the pool cleared.
+
+            Empty at a count of zero, which is every run that never stopped, so
+            the line carries the figure only once the platform has recovered a
+            stop of its own accord.
+            """
+            try:
+                count = int(wedged_locks_cleared or 0)
+            except (TypeError, ValueError):
+                return ""
+            if count <= 0:
+                return ""
+            noun = "blocked fetch" if count == 1 else "blocked fetches"
+            return f"  ·  {count} {noun} cleared"
 
         def _draw_pool_stopped(self, freshest_age_s) -> None:
             """Show one line while the data pool has stopped refreshing, and
@@ -321,7 +353,8 @@ if _HAS_QT:
                 "DATA POOL STOPPED REFRESHING — nothing has come back from "
                 f"{self._exchange_name} for {span_words(stopped_for)}. Every "
                 "price, balance and ammo figure below is at least that old. "
-                "Restart the platform to recover it."
+                "The platform clears a block of its own on the next fetch; "
+                "restart only if this line stays."
             )
             self._pool_stopped_lbl.setVisible(True)
 

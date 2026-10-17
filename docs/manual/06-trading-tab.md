@@ -782,13 +782,28 @@ how long the screen has been showing old figures, and tells you to restart the
 platform. It is hidden at every other time. It clears itself the moment a
 reading lands.
 
+The line no longer sends you to a restart. It says the platform is clearing the
+block itself on the next fetch, and to restart only if the line stays.
+
 `src/gui/widgets/exchange_tab.py` — `ExchangeTab._draw_pool_stopped`
 
 ```python
 "DATA POOL STOPPED REFRESHING — nothing has come back from "
 f"{self._exchange_name} for {span_words(stopped_for)}. Every "
 "price, balance and ammo figure below is at least that old. "
-"Restart the platform to recover it."
+"The platform clears a block of its own on the next fetch; "
+"restart only if this line stays."
+```
+
+**Functional.** The data pool line directly above it ends with a count of
+blocked fetches the platform cleared, and it carries that count only while the
+count is above zero. A run that never stopped draws nothing there.
+
+`src/gui/widgets/exchange_tab.py` — `ExchangeTab._cleared_words`
+
+```python
+noun = "blocked fetch" if count == 1 else "blocked fetches"
+return f"  ·  {count} {noun} cleared"
 ```
 
 **Design intention.** Single slots passing their time to live is ordinary. A
@@ -815,6 +830,22 @@ BALANCE_LIFETIMES_PER_THRESHOLD = STALL_THRESHOLD_SECONDS / BALANCE_TTL_SECONDS
 **What to do when it appears.** Restart the platform. Nothing else brings the
 fetching back. The Console carries the same reading as a log line, so a run that
 is already closed can still be read there.
+
+**What to do when it appears now.** Wait one fetch. The data pool replaces a
+fetch lock whose holder never finished, and the connector replaces its one
+worker thread when a call is abandoned while that thread is still inside it.
+Both report one Console line when they do. Restart only if the line is still
+there after that.
+
+`src/exchange/ccxt_connector.py` — `CCXTConnector._sync_executor_for_submit`
+
+```python
+fresh = ThreadPoolExecutor(
+    max_workers=SYNC_CALL_CONCURRENCY,
+    thread_name_prefix=f"ccxt-{self._exchange_id}",
+)
+self._sync_executor = fresh
+```
 
 #### What comes back on its own
 
@@ -854,6 +885,34 @@ mechanism, so the red line above still means a restart. Measured across the
 source tree: three of thirty-eight venue fetches sit behind it and thirty-five
 do not. A bot is also handed the scout once, when it is registered, so a
 rebuilt scout reaches the screen and not the bots.
+
+**Functional.** Two more mechanisms come back on their own, so the red line
+above no longer means a restart. The data pool replaces a fetch lock whose
+holder never finished, which covers its own six fetches. One worker thread
+serves every call a venue's connector makes, and the connector replaces that
+thread when the outer wait abandons a call the thread is still inside, which
+covers the eleven calls the worker serves: the ticker, all tickers, the order
+book, the candles, the balances, the spot positions, placing an order,
+cancelling one, reading one back, the open orders and the trade list. Opening
+the connection runs on that same worker.
+
+`src/exchange/ccxt_connector.py` — the worker a call leaves behind
+
+```python
+@property
+def worker_held(self) -> bool:
+    """True while the worker thread has entered the venue call and not left it.
+```
+
+**Design intention.** The replacement is built on the next call and not at the
+moment the wait expires, so a worker that comes back inside the hand-off gap is
+never replaced. The abandoned call is never sent again, so nothing reaches the
+venue twice. The call queue in front of the worker is not widened: it still
+holds eight and still refuses the ninth caller.
+
+**Functional.** A venue fetch that reaches no connector call still needs a
+restart. The post-connect trade history scan is one: it drives the synchronous
+exchange handle on its own thread and does not pass the worker.
 
 `src/exchange/market_pairs_scout.py` — the scout rebuilds only when every venue
 it polled has stopped
@@ -901,6 +960,49 @@ the headline as an element's child.
 
 ```python
 self._label.setTextFormat(Qt.PlainText)
+```
+
+**The hover box draws as characters as well.** The box that appears over the
+headline names the feed and the address a click would open. That address is a
+feed's own words too, so every character of it is escaped and the box is given an
+`<html>` envelope around them. A feed that sends `<img src="…">` inside its
+address gets those characters drawn back, and the box builds no image. Read back
+off a live strip, the only tags in the box's text are the envelope's own.
+
+`src/gui/crypto_news_ticker.py` — `hover_text`
+
+```python
+body = html.escape(HOVER_FORMAT.format(source=source_name, tail=tail))
+return "<html>" + body.replace("\n", "<br>") + "</html>"
+```
+
+**A click opens an http or https address, and nothing else.** The address a
+click hands the system browser comes from the feed, so it is admitted first:
+`openable_url` refuses a scheme outside http and https, and the strip then
+refuses an address that names no host. A refused address opens nothing, the log
+names the feed and the reason, and the hover box says the headline opens nothing.
+On Windows a scheme-less string is run by the shell rather than the browser, so a
+bare drive path is one of the addresses this turns away.
+
+`src/gui/crypto_news_ticker.py` — `opening_address`
+
+```python
+address, refused = openable_url(url)
+if not address:
+    return "", refused
+```
+
+**Three routes close the screen and all three halt the strip.** An exchange
+removed in Settings takes its tab off the bar, the tab itself can be closed, and
+the application can quit. Each route reaches `stop_feeds`, which stops the
+headline timer, the hourly refresh and the fetch in flight. A tab already gone
+when the application quits halts nothing and raises nothing.
+
+`src/gui/widgets/exchange_tab.py` — `ExchangeTab.closeEvent`
+
+```python
+self.stop_feeds()
+super().closeEvent(event)
 ```
 
 **Functional.** In the React build the strip is drawn by
@@ -1274,6 +1376,17 @@ def priced_position(holdings: float, price: float, quote_rate: float) -> float:
     return holdings * price * quote_rate
 ```
 
+OVERTAKEN, quoted whole:
+
+> `src/gui/main_tabs/table_cells_surface.py` — the one multiplication both priced
+> cells read, so the Position Value cell and the Ammo cell can never disagree
+
+True today: both cells still read that one multiplication, and they hand it
+different unit counts. The Position Value cell prices the units the bot
+attributes to itself. The Ammo cell prices the units the exchange reports,
+wherever the platform holds a reading of them, so the two cells differ exactly
+when the bot's own count has drifted from the exchange.
+
 `src/gui/main_tabs/table_cells_surface.py` — the four blank paths and the one
 priced path
 
@@ -1292,6 +1405,45 @@ inside the dust band.
 frozen number typed into the wizard, so the reading follows the grown balance the
 engine re-zeroes to. The header strip's AMMO total takes the same target from the
 same function, so the row and the list cannot disagree.
+
+**Which unit count the distance is measured from.** The exchange is the
+authority on what is held, so the cell prices the exchange's own count of units
+and falls back to the bot's attributed count only when the platform holds no
+exchange reading. The reading is already in memory. Three paths store it, net of
+the personal hold and of the sibling bots on the same asset: the startup read,
+the periodic audit, and the balance read a detonation sizes its sale from. The
+cell takes the stored figure off the bot's status, so nothing is fetched while
+the table paints, and a bot none of the three has run for yet draws the marked
+attributed count.
+
+The tooltip always names the count it measured. On the exchange's count it
+gives both figures, so a drift between them is visible in the cell that is
+affected by it. With no exchange reading held it opens `NO EXCHANGE COUNT HELD`
+and says the direction can read the wrong way, because an attributed count below
+the exchange turns a surplus into an apparent deficit and paints buy pressure on
+a position that is already above target.
+
+`src/gui/main_tabs/table_cells_surface.py`, in `ammo_units` — the one rule all
+three Ammo readers share
+
+```python
+def ammo_units(holdings: float, venue_units: Any) -> tuple:
+    try:
+        reading = float(venue_units)
+    except (TypeError, ValueError):
+        return holdings, False
+    if not math.isfinite(reading) or reading <= 0:
+        return holdings, False
+    return reading, True
+```
+
+`src/trading/scrumming/reconciliation.py`, in `_record_audited_venue_units` —
+where the reading comes from, and `src/trading/bot_container.py`, in
+`get_status` — the `audited_venue_units` field that carries it to the screen.
+
+The row's cell, the header strip's AMMO total and the Ammo column's sort order
+all take the count from `src/gui/main_tabs/bot_status_table_surface.py`, in
+`measured_units_of`, so no two of them can measure different units.
 
 `src/trading/target_bands.py` — the target every Ammo reading measures against
 
@@ -2032,6 +2184,11 @@ delta = position_val - target_val
 territory = target_territory(position_val, target_val)
 ```
 
+The position value in that subtraction is the exchange's own unit count at the
+exchange's own price, and the bot's attributed count only where no exchange
+reading is held. The Ammo column section above names the rule and where the
+reading is stored.
+
 Scrum - To sell an amount from an investment position that allows it to return to its initial price level. This never closes the position. This is the first half of the infinitely divisible circle that can persist for such positions in a healthy market.
 
 One shared helper decides which half of the cycle a position sits in. It
@@ -2049,6 +2206,20 @@ if delta < -band:
     return "fold"
 return "at_target"
 ```
+
+**What a sale takes off the position.** A scrum asks the exchange for an amount
+and the exchange decides how much of it trades. The units that leave the
+position are the units the exchange reports sold, never the units asked for, so
+a part-filled order no longer takes holdings the exchange still holds. The sale
+log prints both figures, the sold count and the asked count, and the proceeds,
+the fold tranches and the Growth Rate Cap are all sized to the sold count.
+
+`src/trading/scrumming/execution.py`, in `_execute_sell` — the units the
+exchange reported, read through `_settled_fill`, which re-reads the order until
+the exchange answers and warns on the log when it never does. The same figure
+reaches the fold tranches through `_last_sell_filled_units`, which
+`src/trading/scrumming/tick_phases.py` reads on both the scrum path and the
+distribute path.
 
 Fold - To buy an amount for an investment position that allows it to return to its initial price level. This also drives Compounding Growth based on Local Volatility and is restricted by the Maximum Growth Per Cycle setting which has been set to a conservative 1% globally for Acervator’s live test and development run.
 
@@ -4094,6 +4265,10 @@ candles; a position worth exactly two hundred dollars was refused before any
 fetch. A bot with Detonation on and the ceiling left off can therefore harvest at
 any value above its starting target, well below any multiple.
 
+The bar reads the larger of the count attributed to the bot and
+`_audited_venue_units`, the last balance an audit recorded, so a venue figure
+above the attributed count clears the bar on its own.
+
 `src/trading/scrumming_bot.py` — the bar `_check_detonation_trigger` actually uses
 
 ```python
@@ -4111,8 +4286,13 @@ the manual rebalance, the reconciler and the Simulator's position.
 `src/trading/scrumming_bot.py` — the bar as it reads now
 
 ```python
+audited_units = (
+    as_finite_float(getattr(self, "_audited_venue_units", 0.0)) or 0.0
+)
 current_value = priced_usd(
-    self._current_holdings, price, float(self._quote_to_usd or 1.0)
+    max(self._current_holdings, max(0.0, audited_units)),
+    price,
+    float(self._quote_to_usd or 1.0),
 )
 if current_value <= self._anchor_target_balance:
     return False

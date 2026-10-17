@@ -241,6 +241,7 @@
   var BOX_DEFAULT = "default_button_value";
   var BOX_FIELDS = [BOX_ICON, BOX_TITLE, BOX_TEXT, BOX_BUTTONS, BOX_DEFAULT];
   var DESPAWN_TOOLTIP = "tooltip";
+  var DESPAWN_PREVIEW_WRAP = "preview_word_wrap";
 
   var MISSING_FAULT = "missing";
   var NULL_FAULT = "null";
@@ -578,6 +579,11 @@
 
   function despawnTooltip() {
     return objectField(model(), DESPAWN)[DESPAWN_TOOLTIP];
+  }
+
+  // The preview row holds the longest value on the form.
+  function despawnPreviewWraps() {
+    return objectField(model(), DESPAWN)[DESPAWN_PREVIEW_WRAP] === true;
   }
 
   // The two rows the despawn tooltip covers, found where that tooltip sits.
@@ -956,9 +962,13 @@
     var labelProps = { className: TAB_CLASS, title: label(tip) };
     labelProps[PART_ATTR] = HEALTH_LABEL_PART;
     labelProps[KEY_ATTR] = text(name);
+    var valueStyle = paintedStyle(sheet);
+    if (name === despawnLabelPair()[STEP]) {
+      valueStyle.whiteSpace = despawnPreviewWraps() ? NORMAL : NOWRAP;
+    }
     var valueProps = {
       className: TAB_CLASS,
-      style: paintedStyle(sheet),
+      style: valueStyle,
       title: label(tip)
     };
     valueProps[PART_ATTR] = HEALTH_VALUE_PART;

@@ -2608,6 +2608,9 @@ class SettingsDialogModel:
         self.settings = settings
         self.status_log = status_log
         self.wing = wing_or_default(wing)
+        # OVERTAKEN, the sentence below reading "Only the Exchange Status panel
+        # reads it": the Configured-exchanges filter in `_load_current` reads it
+        # too, so a venue is listed under the sectors it serves.
         #: The sector the dialog was opened from, before `wing_or_default`
         #: collapses it onto one of two wings. Only the Exchange Status
         #: panel reads it.
@@ -2910,9 +2913,12 @@ class SettingsDialogModel:
         # True today: one venue id can serve both wings, so membership of the
         # equity set no longer tells the two apart. asset_class_surface.serves
         # answers whether the venue serves the wing's own sector.
+        # OVERTAKEN, the sentence above reading "the wing's own sector": four of
+        # the six sectors collapse onto the crypto wing, so the wing names the
+        # wrong sector for them. `asset_class` is the sector itself.
         for entry in self.settings.list_exchanges():
             eid = (entry.get(EXCHANGE_ID_KEY, "") or "").lower()
-            if not serves_wing(eid, self.wing):
+            if not serves_wing(eid, self.asset_class):
                 continue
             self.listed_exchanges.append(
                 CONFIGURED_ITEM_FORMAT.format(
@@ -2955,7 +2961,7 @@ class SettingsDialogModel:
         ``credential_form`` answer, the one the Qt dialog reads.
         """
         eid = self.current_exchange_id()
-        form = credential_form(eid, self.wing)
+        form = credential_form(eid, self.asset_class)
         self.texts["chosen_venue"] = chosen_venue_text(self.asset_class, self.venue_row)
         self.values["pp_check"] = eid in passphrase_exchange_ids()
         self.texts["api_feedback"] = ""

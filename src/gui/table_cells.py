@@ -18,12 +18,14 @@ from .main_tabs.table_cells_surface import (
     MANUAL_FIRE_NOOP_OLD_PRICE_SUFFIX,
     MANUAL_FIRE_NOOP_TIP_FORMAT,
     STALE_TIP_FORMAT,
+    ammo_units_note,
     units_text,
 )
 
 # The Ammo cell reads the engine's thresholds rather than restating them.
 from ..trading.target_bands import (
     MANUAL_FIRE_PCT,
+    ammo_units,
     manual_fire_dust_band,
     manual_fire_will_noop,
     target_territory,
@@ -175,20 +177,26 @@ def _compose_ammo_cell(
     qrate: float,
     target_val: float,
     price_age_s: float | None = None,
+    venue_units: float | None = None,
 ) -> dict:
     """Compute the Ammo cell: distance from target, and its signal.
 
-    Recomputes ``position_val`` from ``holdings * cur_price * qrate`` whenever
-    both are present and falls back to ``stats_pv`` marked stale otherwise.
-    Qt-free: returns ``{text, color, tip, delta, stale, position_val}`` with a
-    colour name the caller turns into a QColor.
+    ``ammo_units`` picks the count the distance is measured from, preferring
+    the audited ``venue_units`` reading over the attributed ``holdings``, and
+    the tooltip names which one it used. Recomputes ``position_val`` from that
+    count times ``cur_price`` times ``qrate`` whenever both are present and
+    falls back to ``stats_pv`` marked stale otherwise. Qt-free: returns
+    ``{text, color, tip, delta, stale, position_val}`` with a colour name the
+    caller turns into a QColor.
     """
 
     def _mag(v: float) -> str:
         return f"${abs(v):,.4f}"
 
-    fresh_ok = holdings > 0 and cur_price > 0
-    fresh_pv = _priced_position(holdings, cur_price, qrate) if fresh_ok else 0.0
+    units, from_venue = ammo_units(holdings, venue_units)
+    units_note = ammo_units_note(units, holdings, from_venue)
+    fresh_ok = units > 0 and cur_price > 0
+    fresh_pv = _priced_position(units, cur_price, qrate) if fresh_ok else 0.0
     # Freshness-SELECTED, not max(): recompute whenever the inputs are
     # present, else fall back to the last known value and mark it.
     if fresh_ok:
@@ -196,7 +204,7 @@ def _compose_ammo_cell(
     else:
         position_val, stale = stats_pv, stats_pv > 0
 
-    if position_val <= 0 and holdings <= 0:
+    if position_val <= 0 and units <= 0:
         # An empty position reads as a full-target Fold, never as $0.
         delta = 0.0 - target_val
         return {
@@ -211,7 +219,7 @@ def _compose_ammo_cell(
             ),
         }
 
-    if position_val <= 0 and holdings > 0:
+    if position_val <= 0 and units > 0:
         # Holdings exist, no price and no cached value. Honest pending
         # marker — do NOT render $0.
         return {
@@ -221,7 +229,7 @@ def _compose_ammo_cell(
             "stale": False,
             "position_val": position_val,
             "tip": (
-                f"Holdings present ({holdings:.6f}) but price not "
+                f"Holdings present ({units:.6f}) but price not "
                 f"yet fetched. Ammo will update on first tick."
             ),
         }
@@ -257,6 +265,7 @@ def _compose_ammo_cell(
         text = f"{text} {_STALE_MARKER}"
         tip = AGED_PRICE_TIP_FORMAT.format(price_age_s=price_age_s)
         old_price = True
+    tip = f"{tip}{units_note}"
     # Appended after all three tip writers, so no branch can drop it.
     if manual_fire_noop:
         tip = MANUAL_FIRE_NOOP_TIP_FORMAT.format(
