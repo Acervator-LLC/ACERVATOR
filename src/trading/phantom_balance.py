@@ -188,9 +188,10 @@ class TradeLock:
 class PhantomBot:
     """A read-only TA observer registered on one ``TimeframeCoordinator``.
 
-    ``_tick`` refreshes ``last_summary`` for ``timeframe``; ``target_balance``,
-    ``total_trades`` and ``realised_pnl`` are reported by ``get_status`` and
-    changed by nothing here.
+    ``_tick`` refreshes ``last_summary`` for ``timeframe``. The observer runs no
+    order and holds no position, so it computes no profit and ``get_status``
+    carries no profit figure. ``target_balance`` and ``total_trades`` are
+    reported by ``get_status`` and changed by nothing here.
     """
 
     def __init__(
@@ -219,7 +220,6 @@ class PhantomBot:
         self.last_summary: Optional[VotingSummary] = None
         self.last_action_time: float = 0.0
         self.total_trades: int = 0
-        self.realised_pnl: float = 0.0
         self._current_holdings: float = 0.0
         self._task: Optional[asyncio.Task] = None
         self._stop_event = asyncio.Event()
@@ -300,6 +300,12 @@ class PhantomBot:
         )
 
     def get_status(self) -> dict:
+        """The readings one phantom answers the Phantom Bots tab with.
+
+        No profit figure is carried: the observer runs no order and holds no
+        position, so the tab's P&L cell has nothing to read and draws its dash
+        rather than a zero.
+        """
         return {
             "phantom_id": self.phantom_id,
             "parent_bot_id": self.parent_bot_id,
@@ -307,7 +313,6 @@ class PhantomBot:
             "state": self.state.value,
             "target_balance": self.target_balance,
             "total_trades": self.total_trades,
-            "realised_pnl": round(self.realised_pnl, 4),
             "last_summary": {
                 "bullish": self.last_summary.bullish_count if self.last_summary else 0,
                 "bearish": self.last_summary.bearish_count if self.last_summary else 0,
