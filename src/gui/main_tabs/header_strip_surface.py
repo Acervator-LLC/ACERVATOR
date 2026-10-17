@@ -300,11 +300,18 @@ KPI_COLUMNS = (
     },
 )
 
-#: What a card leaves either side of its caption and its amount, on top of the
+#: What the Qt card leaves either side of its caption and its amount, inside the
 #: ``PANEL_FRAME_INSET_PX`` its own frame already holds them off the border by.
 #: Zero: the frame's inset is the card's margin, and a second one either side
 #: costs the amount the digits ``MONEY_CELL_MIN_W`` reserves room for.
 CARD_SIDE_MARGIN_PX = 0
+
+#: What the page's card leaves either side of the same text. The page writes
+#: ``CARD_LAYOUT`` as the card's own padding, which replaces
+#: ``PANEL_FRAME_INSET_PX`` rather than sitting inside it, and the page's slot
+#: width follows that padding where no Qt slot width follows its margin. Held at
+#: the figure the row already drew, so no slot on either host moves.
+CARD_PAGE_SIDE_MARGIN_PX = 4
 
 #: What a card's own frame and margins take off the room its text has.
 COUNTER_TEXT_PAD = 2 * (CARD_SIDE_MARGIN_PX + PANEL_FRAME_INSET_PX)
@@ -328,7 +335,12 @@ COUNTER_TEXT_W = COUNTER_NATURAL_W - COUNTER_TEXT_PAD
 COUNTER_MIN_W = 88
 
 CARD_LAYOUT = {
-    "margins_px": [CARD_SIDE_MARGIN_PX, 4, CARD_SIDE_MARGIN_PX, 4],
+    "margins_px": [
+        CARD_PAGE_SIDE_MARGIN_PX,
+        4,
+        CARD_PAGE_SIDE_MARGIN_PX,
+        4,
+    ],
     "spacing_px": 2,
     "frame_shape": "StyledPanel",
     "label_align": "hcenter|bottom",

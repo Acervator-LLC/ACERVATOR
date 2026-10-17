@@ -607,11 +607,19 @@ CARD_SIDE_MARGIN_PX = 4
 ```
 
 OVERTAKEN, and the block and the paragraph above are kept as written.
-`CARD_SIDE_MARGIN_PX` is not 4 and a counter card leaves no side margin of its own.
-`PANEL_FRAME_INSET_PX` names what the card's frame already insets — 12 px of
-padding and a 1 px border on each side — so a margin on top of it was a second
+`CARD_SIDE_MARGIN_PX` is not 4 and the Qt counter card leaves no side margin of
+its own. `PANEL_FRAME_INSET_PX` names what the card's frame already insets — 12 px
+of padding and a 1 px border on each side — so a margin on top of it was a second
 inset, and it cost the amount the digits `MONEY_CELL_MIN_W` reserves room for. The
 three money strip figures above are unchanged.
+
+OVERTAKEN, and the block and the paragraph above are kept as written. The card's
+side margin is declared twice, once per host, because the two hosts apply it
+differently. `CARD_SIDE_MARGIN_PX` is the margin the Qt card holds inside the
+frame inset it already has. `CARD_PAGE_SIDE_MARGIN_PX` is the padding
+`CARD_LAYOUT` carries to the page, where it replaces the frame's inset instead of
+sitting inside it, and where the slot's own drawn width follows it. It is held at
+4, the figure the row already drew, so no slot moves on either host.
 
 **One money cell, one width rule.** The row draws money in two kinds of panel —
 a column of the money strip and a counter card — and both reserve the same room
@@ -634,9 +642,17 @@ one number answers both.
 **Every width the row is sized from is held where it was.** `COUNTER_MIN_W` and
 `COUNTER_NATURAL_W` are the widths the row already drew a counter slot at, and
 `slot_floor_w`, `slot_natural_w` and `slot_stretch` answer the same number for
-every `TOP_ROW_ORDER` slot as before. A counter card reaches
-`MONEY_CELL_MIN_W` of room through `CARD_SIDE_MARGIN_PX`, which is room inside the
-panel and not a wider panel, so no slot's drawn size moves.
+every `TOP_ROW_ORDER` slot as before. The Qt card reaches `MONEY_CELL_MIN_W` of
+room through `CARD_SIDE_MARGIN_PX`, which is room inside the panel and not a wider
+panel, and the page's card has that room already through
+`CARD_PAGE_SIDE_MARGIN_PX`, so no slot's drawn size moves on either host.
+
+**The page's slot width follows its card's padding and no Qt slot follows its
+margin.** Measured at four window widths in both builds: moving
+`CARD_SIDE_MARGIN_PX` alone moves no Qt slot at any width, while the same figure
+carried to `CARD_LAYOUT` moves every page counter slot wherever the row has width
+above its floors. That is why the two are declared apart, and it is the reason
+the page and the Qt row draw a counter slot at different widths at all.
 
 **A card's margin is its frame's inset and nothing more.** The theme's
 `QFrame[frameShape="6"]` rule already holds a panel's text 12 px off its border
