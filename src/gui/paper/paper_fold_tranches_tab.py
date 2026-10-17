@@ -63,7 +63,10 @@ from ..live_settings.fold_tokens import (
     compose_scrum_sells_row,
     compose_units_marked_row,
     configure_tranche_row_numbers,
+    fold_counter_text,
+    fold_counters_stand,
     fold_display_order,
+    fold_lifetime_counter,
     fold_table_chrome_px,
     fold_table_max_height_px,
     fold_table_natural_width_px,
@@ -286,12 +289,13 @@ class PaperFoldTranchesTabMixin:
 
         bot = self._bot
         _counts = {
-            "opened": int(getattr(bot, "_tranches_created_lifetime", 0) or 0),
-            "closed": int(getattr(bot, "_tranches_closed_lifetime", 0) or 0),
-            "discarded": int(getattr(bot, "_tranches_discarded_lifetime", 0) or 0),
-            "malformed": int(getattr(bot, "_tranches_malformed_dropped", 0) or 0),
+            "opened": fold_lifetime_counter(bot, "_tranches_created_lifetime"),
+            "closed": fold_lifetime_counter(bot, "_tranches_closed_lifetime"),
+            "discarded": fold_lifetime_counter(bot, "_tranches_discarded_lifetime"),
+            "malformed": fold_lifetime_counter(bot, "_tranches_malformed_dropped"),
         }
-        if not sum(_counts.values()):
+        _shown = {_k: fold_counter_text(_v) for _k, _v in _counts.items()}
+        if not fold_counters_stand(_counts):
             QMessageBox.information(
                 self,
                 "Clear lifetime counters",
@@ -311,10 +315,10 @@ class PaperFoldTranchesTabMixin:
             f"Set the four lifetime tranche counters for "
             f"{getattr(bot.config, 'symbol', '')} to zero?",
             "",
-            f"    opened               {_counts['opened']}",
-            f"    closed               {_counts['closed']}",
-            f"    discarded            {_counts['discarded']}",
-            f"    dropped as malformed {_counts['malformed']}",
+            f"    opened               {_shown['opened']}",
+            f"    closed               {_shown['closed']}",
+            f"    discarded            {_shown['discarded']}",
+            f"    dropped as malformed {_shown['malformed']}",
             "",
             "This places NO order and removes NO tranche. Open "
             "tranches, parked wire credits, holdings, cost basis and "
@@ -708,8 +712,10 @@ class PaperFoldTranchesTabMixin:
             )
             ext_rows = []
         now_ts = _time.time()
-        created_lifetime = int(getattr(self._bot, "_tranches_created_lifetime", 0) or 0)
-        closed_lifetime = int(getattr(self._bot, "_tranches_closed_lifetime", 0) or 0)
+        created_lifetime = fold_lifetime_counter(
+            self._bot, "_tranches_created_lifetime"
+        )
+        closed_lifetime = fold_lifetime_counter(self._bot, "_tranches_closed_lifetime")
 
         # --- Summary section ---
         summary = QGroupBox("Fold-Tranche Cycle Health")
@@ -742,8 +748,8 @@ class PaperFoldTranchesTabMixin:
 
         # The arithmetic, the empty-queue case and the colour band
         # all live in `compose_cycle_close_ratio`.
-        discarded_lifetime = int(
-            getattr(self._bot, "_tranches_discarded_lifetime", 0) or 0
+        discarded_lifetime = fold_lifetime_counter(
+            self._bot, "_tranches_discarded_lifetime"
         )
         ratio_str, ratio_colour = compose_cycle_close_ratio(
             created_lifetime, closed_lifetime, discarded_lifetime
@@ -760,7 +766,8 @@ class PaperFoldTranchesTabMixin:
         # The rule this row reports lives in `_bound_new_fold_tranches`:
         # one sell opens one tranche unless the trend is strong.
         _sells_text, _sells_colour = compose_scrum_sells_row(
-            open_count, int(getattr(self._bot, "_scrum_sells_lifetime", 0) or 0)
+            open_count,
+            fold_lifetime_counter(self._bot, "_scrum_sells_lifetime"),
         )
         _sells_lbl = QLabel(_sells_text)
         if _sells_colour:
@@ -809,14 +816,14 @@ class PaperFoldTranchesTabMixin:
 
         # Held on `self` so `_fold_panel_shows` reads the rebuilt
         # label rather than re-deriving it from the bot.
-        self._fold_opened_lbl = QLabel(str(created_lifetime))
+        self._fold_opened_lbl = QLabel(fold_counter_text(created_lifetime))
         install_health_row(
             sf,
             "Lifetime tranches opened:",
             self._fold_opened_lbl,
             FOLD_OPENED_TOOLTIP,
         )
-        self._fold_closed_lbl = QLabel(str(closed_lifetime))
+        self._fold_closed_lbl = QLabel(fold_counter_text(closed_lifetime))
         install_health_row(
             sf,
             "Lifetime tranches closed (fold-back fired):",
@@ -837,8 +844,9 @@ class PaperFoldTranchesTabMixin:
             FOLD_CLOSE_RATIO_TOOLTIP,
         )
 
-        if discarded_lifetime:
-            self._fold_discarded_lbl = QLabel(str(discarded_lifetime))
+        # A refused counter shows the row with the dash; a zero still hides it.
+        if discarded_lifetime is None or discarded_lifetime:
+            self._fold_discarded_lbl = QLabel(fold_counter_text(discarded_lifetime))
             install_health_row(
                 sf,
                 "Lifetime tranches discarded (not folded back):",
@@ -861,8 +869,8 @@ class PaperFoldTranchesTabMixin:
 
         # `_tranches_malformed_dropped` is always shown; zero is a
         # positive statement that no stored tranche was unreadable.
-        _malformed = int(getattr(self._bot, "_tranches_malformed_dropped", 0) or 0)
-        _malformed_lbl = QLabel(str(_malformed))
+        _malformed = fold_lifetime_counter(self._bot, "_tranches_malformed_dropped")
+        _malformed_lbl = QLabel(fold_counter_text(_malformed))
         if _malformed:
             # A dropped tranche is a data fault, not a trading
             # outcome; same red as the close-ratio verdict.
@@ -956,15 +964,20 @@ class PaperFoldTranchesTabMixin:
 
         # Separate button: the other two discard inventory; this
         # discards the lifetime record, resettable alone.
-        _counter_total = (
-            created_lifetime + closed_lifetime + discarded_lifetime + _malformed
+        _counters_stand = fold_counters_stand(
+            {
+                "opened": created_lifetime,
+                "closed": closed_lifetime,
+                "discarded": discarded_lifetime,
+                "malformed": _malformed,
+            }
         )
         counters_btn = QPushButton(
             f"Clear Lifetime Counters ({created_lifetime} opened)"
-            if _counter_total
+            if _counters_stand and created_lifetime is not None
             else "Clear Lifetime Counters"
         )
-        counters_btn.setEnabled(bool(_counter_total))
+        counters_btn.setEnabled(_counters_stand)
         counters_btn.setToolTip(
             "Set this bot's four fold-tranche lifetime counters to "
             "zero.\n\n"
