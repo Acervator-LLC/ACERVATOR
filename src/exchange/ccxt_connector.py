@@ -108,6 +108,16 @@ class SyncCallTiming:
         """``queued_ms`` plus ``served_ms``."""
         return self.queued_ms + self.served_ms
 
+    @property
+    def worker_held(self) -> bool:
+        """True while the worker thread has entered the venue call and not left it.
+
+        Both timestamps are written on the worker thread itself, so an
+        abandoned call reads True exactly while its thread is unavailable to
+        the next caller.
+        """
+        return self.started_at > 0.0 and self.finished_at <= 0.0
+
 
 from .base import (
     AssetInfo,
@@ -122,6 +132,7 @@ from .base import (
     Ticker,
 )
 from .api_logger import get_api_log
+from .lazy_singleton import ThrottledFault
 from .market_pairs_scout import row_quote_volume_24h
 from .market_rules_store import record_venue
 
@@ -1575,8 +1586,16 @@ class CCXTConnector(ExchangeInterface):
 
         # One worker serialises every sync CCXT call on this connector.
         self._sync_executor: Optional[ThreadPoolExecutor] = ThreadPoolExecutor(
-            max_workers=1,
+            max_workers=SYNC_CALL_CONCURRENCY,
             thread_name_prefix=f"ccxt-{exchange_id}",
+        )
+        # The abandoned call whose worker thread never came back, if any.
+        self._leaked_call: Optional[tuple[str, SyncCallTiming]] = None
+        self._leaked_worker_fault = ThrottledFault(
+            f"the {exchange_id} call path and its one worker thread",
+            f"Every price, balance and candle from {exchange_id} had stopped "
+            f"updating. A fresh worker is in place and the abandoned call is "
+            f"not sent again.",
         )
         # In-flight plus queued calls; touched only on the asyncio loop thread.
         self._sync_queue_depth: int = 0
@@ -1618,15 +1637,7 @@ class CCXTConnector(ExchangeInterface):
         not use :meth:`_call_sync`, whose 25 s budget is shorter than a
         legitimate connect, and does not count against ``_sync_queue_depth``.
         """
-        # Under the lock so disconnect() cannot close the executor before the
-        # submit.
-        with self._sync_executor_lock:
-            executor = self._sync_executor
-            if executor is None:
-                raise RuntimeError(
-                    f"CCXTConnector({self._exchange_id}) has been "
-                    f"disconnected; cannot open a new connection."
-                )
+        executor = self._sync_executor_for_submit()
 
         import functools
 
@@ -1935,6 +1946,73 @@ class CCXTConnector(ExchangeInterface):
         if held is not None and held is asyncio.current_task():
             self._bulk_read_admitted = None
 
+    def _note_leaked_worker(self, timing: SyncCallTiming, call_name: str) -> bool:
+        """Record an abandoned call that still holds the worker, and say whether it does.
+
+        A call the outer wait or a cancellation gave up on while it was still
+        queued was removed from the queue and leaks nothing.
+        """
+        if not timing.worker_held:
+            return False
+        self._leaked_call = (call_name, timing)
+        return True
+
+    @staticmethod
+    def _awaiter_asked_to_cancel() -> bool:
+        """True when this task's own cancellation interrupted the await.
+
+        A queued call dropped by ``_sync_executor_for_submit`` cancels the
+        future its awaiter is still inside, and that awaiter asked for nothing.
+        """
+        task = asyncio.current_task()
+        return task is not None and task.cancelling() > 0
+
+    def _sync_executor_for_submit(self) -> ThreadPoolExecutor:
+        """The executor to submit on, rebuilt first when its one worker is leaked.
+
+        ``_call_sync_timed`` abandons a call whose outer wait expires while the
+        worker thread runs on, and no Python call can stop that thread.
+        ``SYNC_CALL_CONCURRENCY`` worker serves every sync call on a connector,
+        so without this the next caller queues behind the leaked thread for the
+        life of the process and only closing the platform clears it. The old
+        executor is shut down without waiting and its queued calls are dropped,
+        because a worker that does come back would otherwise run that whole
+        backlog against the venue minutes late, orders included. The abandoned
+        call is never re-submitted, so nothing reaches the venue twice.
+        ``connect`` and ``_call_sync_timed`` both read the executor through
+        here.
+
+        Raises:
+            RuntimeError: ``disconnect`` or ``release`` has closed the connector.
+        """
+        with self._sync_executor_lock:
+            wedged = self._sync_executor
+            if wedged is None:
+                raise RuntimeError(
+                    f"CCXTConnector({self._exchange_id}) has been disconnected; "
+                    f"cannot submit new sync calls."
+                )
+            leak = self._leaked_call
+            if leak is None or not leak[1].worker_held:
+                self._leaked_call = None
+                return wedged
+            call_name, timing = leak
+            self._leaked_call = None
+            fresh = ThreadPoolExecutor(
+                max_workers=SYNC_CALL_CONCURRENCY,
+                thread_name_prefix=f"ccxt-{self._exchange_id}",
+            )
+            self._sync_executor = fresh
+        try:
+            wedged.shutdown(wait=False, cancel_futures=True)
+        except Exception as exc:  # noqa: BLE001 - a fresh worker is already in place
+            logger.warning("wedged sync executor shutdown failed: %s", exc)
+        self._leaked_worker_fault.note_cleared(
+            f"{call_name} on {self._exchange_id}",
+            max(0.0, time.monotonic() - timing.started_at),
+        )
+        return fresh
+
     async def _call_sync(self, fn, *args, **kwargs):
         """Run one sync CCXT call on the single worker and answer its result.
 
@@ -1954,33 +2032,32 @@ class CCXTConnector(ExchangeInterface):
 
         Raises:
             CCXTQueueFullError: queue depth is at ``SYNC_QUEUE_CAP``.
-            TimeoutError: the call exceeded ``SYNC_CALL_TIMEOUT_SEC``.
-            asyncio.CancelledError: the awaiter was cancelled; the worker runs on.
+            TimeoutError: the call exceeded ``SYNC_CALL_TIMEOUT_SEC``, or it was
+                still queued on a wedged worker whose executor was replaced.
+            asyncio.CancelledError: this awaiter itself was cancelled; a worker
+                already inside the call runs on and the next submission
+                replaces it.
             Any CCXT exception: propagated unchanged.
         """
+        call_name = getattr(fn, "__name__", repr(fn))
         # Read and written only on the asyncio loop thread, so no lock.
         if self._sync_queue_depth >= SYNC_QUEUE_CAP:
             self._release_bulk_read_slot()
             self._sync_queue_refusals += 1
-            self._sync_queue_refusals_by_call[getattr(fn, "__name__", repr(fn))] += 1
+            self._sync_queue_refusals_by_call[call_name] += 1
             raise CCXTQueueFullError(
                 f"CCXT call queue at capacity ({self._sync_queue_depth}/"
                 f"{SYNC_QUEUE_CAP}) for {self._exchange_id}; "
                 f"{SYNC_CALL_CONCURRENCY} worker serves this connector, so the "
                 f"queue is the platform's own backlog and not a venue refusal. "
-                f"Call: {getattr(fn, '__name__', repr(fn))}"
+                f"Call: {call_name}"
             )
 
-        # Under the lock so disconnect() cannot close the executor before the
-        # submit.
-        with self._sync_executor_lock:
-            executor = self._sync_executor
-            if executor is None:
-                self._release_bulk_read_slot()
-                raise RuntimeError(
-                    f"CCXTConnector({self._exchange_id}) has been disconnected; "
-                    f"cannot submit new sync calls."
-                )
+        try:
+            executor = self._sync_executor_for_submit()
+        except RuntimeError:
+            self._release_bulk_read_slot()
+            raise
 
         submitted_at = time.monotonic()
         timing = SyncCallTiming()
@@ -2014,21 +2091,35 @@ class CCXTConnector(ExchangeInterface):
                 timing.resolve(submitted_at)
                 return result, timing
             except asyncio.TimeoutError as timed_out:
-                # The worker thread runs on until CCXT returns; log the leak.
-                logger.warning(
-                    "sync CCXT call exceeded the outer wait (%ss) for %s on %s; "
-                    "ccxt's own %sms timeout did not return, so the worker "
-                    "thread is leaked",
-                    SYNC_CALL_TIMEOUT_SEC,
-                    getattr(fn, "__name__", repr(fn)),
-                    self._exchange_id,
-                    CCXT_REQUEST_TIMEOUT_MS,
-                )
+                if self._note_leaked_worker(timing, call_name):
+                    logger.warning(
+                        "sync CCXT call exceeded the outer wait (%ss) for %s on "
+                        "%s; ccxt's own %sms timeout did not return, so the "
+                        "worker thread is leaked and the next call rebuilds it",
+                        SYNC_CALL_TIMEOUT_SEC,
+                        call_name,
+                        self._exchange_id,
+                        CCXT_REQUEST_TIMEOUT_MS,
+                    )
+                else:
+                    logger.warning(
+                        "sync CCXT call exceeded the outer wait (%ss) for %s on "
+                        "%s while still queued behind another call; it never "
+                        "reached the venue",
+                        SYNC_CALL_TIMEOUT_SEC,
+                        call_name,
+                        self._exchange_id,
+                    )
                 self._note_venue_refusal(timed_out)
                 raise
             except asyncio.CancelledError:
-                # The worker keeps running until CCXT returns.
-                raise
+                self._note_leaked_worker(timing, call_name)
+                if self._awaiter_asked_to_cancel():
+                    raise
+                raise asyncio.TimeoutError(
+                    f"{call_name} on {self._exchange_id} was dropped with the "
+                    f"queue of a wedged worker; it never reached the venue"
+                ) from None
             except Exception as refused:
                 self._note_venue_refusal(refused)
                 raise
@@ -2258,13 +2349,17 @@ class CCXTConnector(ExchangeInterface):
         self._connected = False
         self._markets_cache = None
 
-        # Shut the executor down under the lock; in-flight calls run to completion.
+        # Shut the executor down under the lock; in-flight calls run to
+        # completion, except a leaked worker thread, which never finishes and
+        # would hold this await for the life of the process.
         with self._sync_executor_lock:
             executor = self._sync_executor
             self._sync_executor = None
+            leak = self._leaked_call
         if executor is not None:
+            await_worker = leak is None or not leak[1].worker_held
             try:
-                executor.shutdown(wait=True)
+                executor.shutdown(wait=await_worker)
             except Exception as exc:
                 logger.warning("sync executor shutdown failed: %s", exc)
         logger.info("Disconnected from %s", self.display_name)
