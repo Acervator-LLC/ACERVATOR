@@ -89,15 +89,21 @@ if _HAS_QT:
             )
             return font
 
+        def _metrics_at(self, size_px) -> "QFontMetrics":
+            """This label's metrics at ``size_px``, through ``_sized_font``.
+
+            ``_draw`` reads them rather than ``fontMetrics``, which answers the
+            size the style sheet last applied and not the size being drawn.
+            """
+            return QFontMetrics(self._sized_font(size_px))
+
         def _declared_height(self) -> int:
             """The line height ``_declared_px`` draws at in this font."""
-            return QFontMetrics(self._sized_font(self._declared_px)).height()
+            return self._metrics_at(self._declared_px).height()
 
         def _advance_at(self, size_px) -> int:
             """The width the whole text draws at ``size_px`` in this font."""
-            return QFontMetrics(self._sized_font(size_px)).horizontalAdvance(
-                self.fullText()
-            )
+            return self._metrics_at(size_px).horizontalAdvance(self.fullText())
 
         def _fitted_for(self, room: int) -> int:
             """The largest size from ``_declared_px`` down that fits ``room``."""
@@ -107,7 +113,12 @@ if _HAS_QT:
             return self._floor_px
 
         def _draw(self) -> None:
-            """Apply the size that fits, then shorten whatever still overflows."""
+            """Apply the size that fits, then shorten whatever still overflows.
+
+            The shortening is measured at ``_fitted_px`` through
+            ``_metrics_at``, the size ``_fitted_for`` just chose, so one rule
+            picks the size and measures the characters it keeps.
+            """
             if self._drawing:
                 return
             self._drawing = True
@@ -121,7 +132,9 @@ if _HAS_QT:
                 if self._skin and self.styleSheet() != wanted:
                     self.setStyleSheet(wanted)
                 super(ElidingLabel, self).setText(
-                    self.fontMetrics().elidedText(self.fullText(), Qt.ElideRight, room)
+                    self._metrics_at(self._fitted_px).elidedText(
+                        self.fullText(), Qt.ElideRight, room
+                    )
                 )
                 self.setAccessibleName(self.fullText())
             finally:
