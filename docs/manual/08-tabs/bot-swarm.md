@@ -191,6 +191,7 @@ ledger per bot.
 | `register_wire` | Adds an edge carrying its own percentage |
 | `unregister_wire` | Drops one edge |
 | `distribute_fold_profit` | Moves that percentage of realised profit to each wired target |
+| `book_transfer` | Books one transfer onto both ledgers — the two wire totals and the target's provenance line for the funder |
 | `export_wires`, `import_wires` | Carry the topology through a save and a restart |
 | `export_ledgers`, `import_ledgers` | Carry the provenance through the same |
 
@@ -251,6 +252,45 @@ return mature_profit_usd(
     self.starting_balance, self.starting_balance + self.total_profit
 )
 ```
+
+### What the provenance breakdown counts
+
+The breakdown is one line per funder, biggest amount first. A line is the
+running total that funder has supplied to this bot: the seed the bot was created
+with, plus every wire transfer that funder has sent it since. The seed sits
+under the key `SEED` when no bot funded the creation, and under the funding
+bot's own id when one did.
+
+One method writes the map. Every live transfer books through
+`src/trading/smart_wire.py`, in `book_transfer`, which moves three figures
+together — the source ledger's outgoing total, the target ledger's incoming
+total, and the target's breakdown line for the source. Both live transfer paths
+call it: `src/trading/smart_wire.py`, in `distribute_fold_profit` on a
+compounded fold, and `src/trading/scrumming/wire_routing.py`, in
+`_route_scrum_proceeds_via_wires` on a scrum, a manual scrum and a detonation.
+A transfer cannot reach the totals without reaching the breakdown.
+
+`src/trading/smart_wire.py` — `book_transfer`
+
+```python
+def book_transfer(self, source_id: str, target_id: str, usd: float) -> bool:
+    """Book one wire transfer onto the two ledgers it moves money between."""
+```
+
+An amount no reading admits books nothing and answers `False`, so the totals and
+the breakdown a ledger already holds stay readable. A breakdown line already
+unreadable keeps the figure it has, because adding to it would turn a line the
+tab draws as an em dash into one it draws as money.
+
+The predominant funder row reads the same map through
+`src/trading/smart_wire.py`, in `BotLedger.predominant_source`, which answers
+the largest line other than `SEED`. A bot no wire has funded has no such line,
+so the row reads `— (SEED-funded only)`.
+
+Paper and the Simulator book the same three figures in their own managers,
+`src/paper/paper_wire.py`, in `PaperWireManager._book`, and
+`src/simulator/sim_wire.py`, in `SimWireManager._book`. The same wiring reads
+the same breakdown on all three screens.
 
 ### What the group draws now
 
