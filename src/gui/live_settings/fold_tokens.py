@@ -238,6 +238,40 @@ def fold_queue_figure_total(tranches: list, field: str) -> float | None:
     return total
 
 
+FOLD_WIRE_CREDIT_FLOOR_USD = 1e-9
+
+
+def fold_parked_credit(bot: object) -> float | None:
+    """A bot's parked wire credit, or None where `as_finite_float` refuses
+    the stored value.
+
+    Every Fold Tranches control that prints or gates on the credit reads it
+    here, so a refused figure cannot price one control and vanish from
+    another.
+    """
+    from ...trading.bot_container import as_finite_float
+
+    return as_finite_float(getattr(bot, "_pending_wire_credits", 0.0))
+
+
+def fold_parked_credit_stands(credit: float | None) -> bool:
+    """True where a parked credit stands, a credit `fold_parked_credit`
+    refused included.
+
+    Keeps the Clear Wire control live and the absorb-window warning drawn on
+    a refused figure, so an unreadable credit never removes either.
+    """
+    return credit is None or credit > FOLD_WIRE_CREDIT_FLOOR_USD
+
+
+def fold_parked_credit_text(credit: float | None) -> str:
+    """One parked credit as cash, or `FOLD_UNREADABLE_FIGURE` where
+    `fold_parked_credit` refused it."""
+    if credit is None:
+        return FOLD_UNREADABLE_FIGURE
+    return f"${credit:,.4f}"
+
+
 def fold_row_matches_filter(cell_texts: list, needle: str) -> bool:
     """Return True when a rendered cell of the row holds `needle`.
 

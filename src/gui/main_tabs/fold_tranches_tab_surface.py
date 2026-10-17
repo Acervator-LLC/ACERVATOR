@@ -533,7 +533,7 @@ CLEAR_FOLD_BODY_NOTE = (
 )
 CANNOT_BE_UNDONE = "This cannot be undone."
 CLEAR_FOLD_PARKED_WARNING_FORMAT = (
-    "WARNING — this bot also holds ${parked:,.4f} in "
+    "WARNING — this bot also holds {parked} in "
     "pending wire credits. Clearing opens the absorb "
     "window, and the next SCRUM will move that entire "
     "amount into a SINGLE tranche. If it exceeds the "
@@ -548,7 +548,7 @@ CLEAR_FOLD_NO_ORDER = (
 )
 
 CLEAR_WIRE_BODY_HEAD_FORMAT = (
-    "Discard ${parked:,.4f} of parked Smart Wire credit for {symbol}?"
+    "Discard {parked} of parked Smart Wire credit for {symbol}?"
 )
 CLEAR_WIRE_BODY_LEDGER_FORMAT = "    ledger entries   {entries}"
 CLEAR_WIRE_BODY_NOTE = (
@@ -558,7 +558,7 @@ CLEAR_WIRE_BODY_NOTE = (
     "instead of being reserved for a future fold tranche."
 )
 CLEAR_WIRE_RESULT_FORMAT = "Cleared ${usd:,.4f} of parked Smart Wire credit."
-CLEAR_WIRE_NOW_PARKED_FORMAT = "This bot now has ${parked:,.4f} parked."
+CLEAR_WIRE_NOW_PARKED_FORMAT = "This bot now has {parked} parked."
 CLEAR_WIRE_NO_FUNDS = (
     "No funds moved. This released an EARMARK only, so "
     "the cash returns to ordinary spendable balance."
@@ -1496,12 +1496,22 @@ def clear_fold_figure(value: Optional[float], figure_format: Any) -> str:
     return figure_format.format(figure=value)
 
 
+def parked_credit_stands(credit: Optional[float]) -> bool:
+    """True where a parked credit stands, a credit `finite_number` refused
+    included.
+
+    Keeps the Clear Wire control live and the absorb-window warning drawn on
+    a refused figure, so an unreadable credit never removes either.
+    """
+    return credit is None or credit > WIRE_CREDIT_FLOOR_USD
+
+
 def clear_fold_body(
     count: int,
     symbol: Any,
     usd: Optional[float],
     units: Optional[float],
-    parked: float,
+    parked: Optional[float],
 ) -> str:
     """The question asked before a bot's whole fold queue is discarded."""
     body = [
@@ -1518,19 +1528,24 @@ def clear_fold_body(
         BLANK_LINE,
         CANNOT_BE_UNDONE,
     ]
-    if parked > WIRE_CREDIT_FLOOR_USD:
+    if parked_credit_stands(parked):
         body += [
             BLANK_LINE,
-            CLEAR_FOLD_PARKED_WARNING_FORMAT.format(parked=parked),
+            CLEAR_FOLD_PARKED_WARNING_FORMAT.format(
+                parked=clear_fold_figure(parked, CLEAR_FOLD_USD_FIGURE_FORMAT)
+            ),
         ]
     return BODY_JOIN.join(body)
 
 
-def clear_wire_body(parked: float, symbol: Any, entries: int) -> str:
+def clear_wire_body(parked: Optional[float], symbol: Any, entries: int) -> str:
     """The question asked before parked wire credit is released."""
     return BODY_JOIN.join(
         [
-            CLEAR_WIRE_BODY_HEAD_FORMAT.format(parked=parked, symbol=symbol),
+            CLEAR_WIRE_BODY_HEAD_FORMAT.format(
+                parked=clear_fold_figure(parked, CLEAR_FOLD_USD_FIGURE_FORMAT),
+                symbol=symbol,
+            ),
             BLANK_LINE,
             CLEAR_WIRE_BODY_LEDGER_FORMAT.format(entries=entries),
             BLANK_LINE,
@@ -1892,8 +1907,8 @@ class FoldTranchesTabModel:
     def tranches(self) -> list:
         return list(getattr(self.bot, FOLD_TRANCHES_ATTRIBUTE, []) or [])
 
-    def parked(self) -> float:
-        return float(getattr(self.bot, WIRE_CREDITS_ATTRIBUTE, 0.0) or 0.0)
+    def parked(self) -> Optional[float]:
+        return finite_number(getattr(self.bot, WIRE_CREDITS_ATTRIBUTE, 0.0))
 
     def counter_values(self) -> dict:
         return {
@@ -2029,10 +2044,10 @@ class FoldTranchesTabModel:
             [
                 (
                     CLEAR_WIRE_TEXT_FORMAT.format(parked=parked)
-                    if parked > WIRE_CREDIT_FLOOR_USD
+                    if parked is not None and parked > WIRE_CREDIT_FLOOR_USD
                     else CLEAR_WIRE_IDLE_TEXT
                 ),
-                parked > WIRE_CREDIT_FLOOR_USD,
+                parked_credit_stands(parked),
             ],
             [
                 (
@@ -2182,7 +2197,7 @@ class FoldTranchesTabModel:
                     "fold_rows": open_now,
                     "open_tranches_label": str(open_now),
                     "clear_button_enabled": bool(open_now),
-                    "wire_button_enabled": parked > WIRE_CREDIT_FLOOR_USD,
+                    "wire_button_enabled": parked_credit_stands(parked),
                     "saved": True,
                 },
             ]
@@ -2277,7 +2292,7 @@ class FoldTranchesTabModel:
         self.calls.append([CLEAR_START, CLEAR_WIRE_TITLE])
         parked = self.parked()
         entries = len(getattr(self.bot, WIRE_LEDGER_ATTRIBUTE, []) or [])
-        if parked <= WIRE_CREDIT_FLOOR_USD and not entries:
+        if not parked_credit_stands(parked) and not entries:
             self.boxes.append(
                 note_box(INFORMATION_ICON, CLEAR_WIRE_TITLE, NO_WIRE_CREDITS_TEXT)
             )
@@ -2334,7 +2349,11 @@ class FoldTranchesTabModel:
                         CLEAR_WIRE_RESULT_FORMAT.format(
                             usd=float(report.get(USD_KEY, 0))
                         ),
-                        CLEAR_WIRE_NOW_PARKED_FORMAT.format(parked=self.parked()),
+                        CLEAR_WIRE_NOW_PARKED_FORMAT.format(
+                            parked=clear_fold_figure(
+                                self.parked(), CLEAR_FOLD_USD_FIGURE_FORMAT
+                            )
+                        ),
                         BODY_JOIN.join(lines),
                         CLEAR_WIRE_NO_FUNDS,
                     ]

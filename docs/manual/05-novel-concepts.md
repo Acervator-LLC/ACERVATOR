@@ -819,6 +819,15 @@ total is reported only when every queued row is readable; otherwise the figure
 draws an em dash rather than a partial sum offered as the whole queue. A missing
 key counts as nothing, which is how the table's own cells read it.
 
+The same confirmation warns him when the bot also holds parked Smart Wire
+credit, because clearing the queue opens the absorb window. That figure reads
+through the same rule in `src/gui/live_settings/fold_tokens.py`, in
+`fold_parked_credit`, and in `src/gui/main_tabs/fold_tranches_tab_surface.py`,
+in `FoldTranchesTabModel.parked`. A credit that cannot be read counts as a
+credit that stands: `fold_parked_credit_stands` and `parked_credit_stands` keep
+the warning drawn and the Clear Wire control live, and the amount alone draws an
+em dash. A credit of nothing draws no warning and leaves that control off.
+
 ### What the panel draws for a count it cannot work out
 
 The cycle close ratio is the closed count over the opened count less the
