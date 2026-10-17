@@ -686,13 +686,28 @@ how long the screen has been showing old figures, and tells you to restart the
 platform. It is hidden at every other time. It clears itself the moment a
 reading lands.
 
+The line no longer sends you to a restart. It says the platform is clearing the
+block itself on the next fetch, and to restart only if the line stays.
+
 `src/gui/widgets/exchange_tab.py` — `ExchangeTab._draw_pool_stopped`
 
 ```python
 "DATA POOL STOPPED REFRESHING — nothing has come back from "
 f"{self._exchange_name} for {span_words(stopped_for)}. Every "
 "price, balance and ammo figure below is at least that old. "
-"Restart the platform to recover it."
+"The platform clears a block of its own on the next fetch; "
+"restart only if this line stays."
+```
+
+**Functional.** The data pool line directly above it ends with a count of
+blocked fetches the platform cleared, and it carries that count only while the
+count is above zero. A run that never stopped draws nothing there.
+
+`src/gui/widgets/exchange_tab.py` — `ExchangeTab._cleared_words`
+
+```python
+noun = "blocked fetch" if count == 1 else "blocked fetches"
+return f"  ·  {count} {noun} cleared"
 ```
 
 **Design intention.** Single slots passing their time to live is ordinary. A
@@ -719,6 +734,22 @@ BALANCE_LIFETIMES_PER_THRESHOLD = STALL_THRESHOLD_SECONDS / BALANCE_TTL_SECONDS
 **What to do when it appears.** Restart the platform. Nothing else brings the
 fetching back. The Console carries the same reading as a log line, so a run that
 is already closed can still be read there.
+
+**What to do when it appears now.** Wait one fetch. The data pool replaces a
+fetch lock whose holder never finished, and the connector replaces its one
+worker thread when a call is abandoned while that thread is still inside it.
+Both report one Console line when they do. Restart only if the line is still
+there after that.
+
+`src/exchange/ccxt_connector.py` — `CCXTConnector._sync_executor_for_submit`
+
+```python
+fresh = ThreadPoolExecutor(
+    max_workers=SYNC_CALL_CONCURRENCY,
+    thread_name_prefix=f"ccxt-{self._exchange_id}",
+)
+self._sync_executor = fresh
+```
 
 #### What comes back on its own
 
@@ -758,6 +789,34 @@ mechanism, so the red line above still means a restart. Measured across the
 source tree: three of thirty-eight venue fetches sit behind it and thirty-five
 do not. A bot is also handed the scout once, when it is registered, so a
 rebuilt scout reaches the screen and not the bots.
+
+**Functional.** Two more mechanisms come back on their own, so the red line
+above no longer means a restart. The data pool replaces a fetch lock whose
+holder never finished, which covers its own six fetches. One worker thread
+serves every call a venue's connector makes, and the connector replaces that
+thread when the outer wait abandons a call the thread is still inside, which
+covers the eleven calls the worker serves: the ticker, all tickers, the order
+book, the candles, the balances, the spot positions, placing an order,
+cancelling one, reading one back, the open orders and the trade list. Opening
+the connection runs on that same worker.
+
+`src/exchange/ccxt_connector.py` — the worker a call leaves behind
+
+```python
+@property
+def worker_held(self) -> bool:
+    """True while the worker thread has entered the venue call and not left it.
+```
+
+**Design intention.** The replacement is built on the next call and not at the
+moment the wait expires, so a worker that comes back inside the hand-off gap is
+never replaced. The abandoned call is never sent again, so nothing reaches the
+venue twice. The call queue in front of the worker is not widened: it still
+holds eight and still refuses the ninth caller.
+
+**Functional.** A venue fetch that reaches no connector call still needs a
+restart. The post-connect trade history scan is one: it drives the synchronous
+exchange handle on its own thread and does not pass the worker.
 
 `src/exchange/market_pairs_scout.py` — the scout rebuilds only when every venue
 it polled has stopped
