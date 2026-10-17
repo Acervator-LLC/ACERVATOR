@@ -379,6 +379,8 @@ class MarketInspector:
             symbol: dict(held)
             for symbol, held in (candles_by_symbol_by_tf or {}).items()
         }
+        self._last_pairs = []
+        self._last_scan_ts = 0.0
         self._last_pairs = self._find_opposing_pairs(signals, closes_by_symbol)
         self._last_scan_ts = _time.time()
 

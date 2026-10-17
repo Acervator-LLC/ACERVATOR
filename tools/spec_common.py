@@ -196,19 +196,17 @@ def hiddenimports_for(platform: str) -> list[str]:
 #            seven functions of src/gui/main_tabs/splash_screen_painter.py that
 #            only `compose_still` calls, which nothing calls. main.py reaches
 #            `mark_ops` in that module, and `mark_ops` is Qt alone.
-#   scipy    0 importing files. `pearson_correlation` in
-#            src/trading/pair_selection.py replaced the one import there was.
-#   statsmodels  `engle_granger_p_value` and `johansen_trace` in
-#            src/trading/pair_selection.py, inside the function each. It is the
-#            `cointegration` extra, which `CONSUMER_EXTRAS["build"]` does not
-#            install, and both screens name the absence rather than logging it
-#            alone.
+# `scipy` and `statsmodels` are deliberately NOT in the list. The Opposing Pairs
+# table is a screen the operator opens, and its test is the only reading either
+# package serves, so the bundle carries both: `CONSUMER_EXTRAS["build"]` installs
+# the `cointegration` extra. Measured on the build host, neither
+# `statsmodels.tsa.stattools` nor `statsmodels.tsa.vector_ar.vecm` imports with
+# scipy refused, so excluding scipy alone would strip the test as surely as
+# excluding statsmodels.
 EXCLUDES: tuple[str, ...] = (
     "tkinter",
     "matplotlib",
     "PIL",
-    "scipy",
-    "statsmodels",
     "IPython",
     "jupyter",
     "notebook",

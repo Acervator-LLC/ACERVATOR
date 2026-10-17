@@ -405,10 +405,11 @@ the application imports it in nine places, and it has no folder.
 | luma, RPLCD, smbus2 | display group | no | no, Raspberry Pi only |
 | ST7789, waveshare_epd, tomli | recorded, not required | no | no |
 
-The `scipy` and `statsmodels` rows describe the bundle they were read from.
-`statsmodels` is the `cointegration` group now, which a build does not install,
-and it is the only requirement either package is installed from, so the next
-bundle carries neither. The pair holds 166.2 MiB of files on the build host.
+The `scipy` and `statsmodels` rows still read as they do here. `statsmodels` is
+the `cointegration` group now, which `CONSUMER_EXTRAS["build"]` installs, and it
+is the only requirement either package is installed from: `scipy` is declared
+nowhere and arrives because statsmodels requires it. The build requirement set
+is 17 lines where it was 18, and the bundle carries the same two packages.
 
 Two rows read as a package the application wants and the bundle does not hold.
 

@@ -68,6 +68,24 @@ DETAIL_RESULT_NAME = "Result"
 DETAIL_REASON_NAME = "Why it is here"
 ```
 
+None of the four ever draws a name with nothing beside it. "Why it is here"
+reads `MethodResult.gate_text`, which names the threshold a verdict cleared, or,
+for one that ran and did not clear it, the one `failed_reason` names: the p-value
+above the significance, the trace statistic short of its critical value, or both.
+"Result" reads `statistic_text`. A test that did not run states no statistic and
+no reason to state, and both cells draw the dash this tab draws for every figure
+it cannot state.
+
+`src/trading/pair_selection.py` — what a verdict that did not pass reads
+
+```python
+GATE_P_ABOVE_FORMAT = "p {p_value:.4f} is above the {significance} required."
+GATE_TRACE_SHORT_FORMAT = (
+    "The trace statistic {trace:.1f} did not clear the {critical:.1f} required."
+)
+GATE_NO_REASON_TEXT = "—"
+```
+
 A zone holding nothing keeps its waiting sentence as the headline and reports a
 position of "0 of 0". An empty zone reads as a state rather than as a zone that
 failed to draw.
@@ -1007,6 +1025,20 @@ def empty_table_text(scan_state: Any, noun: Any) -> str:
 `scan_state` reports the same three states to both renderers, so the React side
 draws the note the way the window does.
 
+A scan that stops part way reports no scan at all. `MarketInspector.scan_universe`
+clears the pairs and the scan second before it runs the pair test, and sets the
+second only once that test answers, so a scan the analyzer stopped leaves no
+timestamp and no pairs from the scan before it. `inspector_scan_age` reads a
+cleared second as `NO_SCAN_AGE`, which no freshness window accepts, so the sector
+charts refetch rather than draw from a scan nobody finished.
+
+`src/gui/main_tabs/market_inspector_surface.py` — the age a cleared second reads
+
+```python
+def inspector_scan_age(inspector: Any) -> float:
+    """The seconds since the Market Inspector's last universe scan."""
+```
+
 A scan ends with one note on the Activity Log. The note names the markets no venue
 lists, the timeframes no venue serves, the markets that answered no candle, and
 each market no built bot variant trades with that market's own reason.
@@ -1202,12 +1234,14 @@ the bundle carries both, so the test runs in the built application and in a
 source run alike. A missing package is re-raised as itself rather than recorded
 as a refused pair.
 
-One package is named now, and the built application does not carry it. `scipy` is
-named by no module of the tree: the import set holds 20 outside packages where it
-held 21, and 17 of them are declared. `statsmodels` is the `cointegration`
-extra, which a build does not install, so in the shipped application the
-cointegration test cannot run and the correlation test always can. The scan's own
-status line names the package in that case, rather than the import error.
+One package is named now, and the built application carries it. `scipy` is named
+by no module of the tree: the import set holds 20 outside packages where it held
+21, and 17 of them are declared. `statsmodels` is the `cointegration` extra, and
+`CONSUMER_EXTRAS["build"]` in `tools/deps.py` installs that extra, so the shipped
+bundle carries the package and the Opposing Pairs table answers rows. The guard
+is what makes it an extra rather than a core requirement: an install from a
+consumer that does not name the extra runs without the cointegration test, and
+the scan's own status line names the package rather than the import error.
 
 `src/gui/main_tabs/market_inspector_surface.py` — the line a stopped scan carries
 
@@ -1245,14 +1279,16 @@ A name in that list must not also sit in `dependencies`. The two statistics
 packages sit in `dependencies` and not in the list, which is what lets the
 Opposing Pairs table and the Bot Swarm Topologies zone draw rows.
 
-Both statistics packages sit in that list now, and in no `dependencies` entry, so
-the rule above still holds. The Bot Swarm Topologies zone draws rows without
-either of them, because three of its four detectors read the correlation test
-alone. Every name in the list was read against the imports of the 498 modules
-under `src/` plus `main.py`. Eight of the eleven are imported nowhere, `scipy`
-among them; `matplotlib` and `PIL` are imported only where the built application
-never reaches; and `statsmodels` is imported inside the two functions whose
-absence both screens name.
+Neither statistics package sits in that list, and the rule above still holds
+because neither sits in `dependencies` either. The list leaves them out so the
+bundle carries the cointegration test: measured with scipy refused, neither
+`statsmodels.tsa.stattools` nor `statsmodels.tsa.vector_ar.vecm` imports, so
+excluding scipy alone would strip that test as surely as excluding statsmodels.
+Every name the list does hold was read against the imports of the 498 modules
+under `src/` plus `main.py`. Seven of the nine are imported nowhere, and
+`matplotlib` and `PIL` are imported only where the built application never
+reaches. The Bot Swarm Topologies zone draws rows either way, because three of
+its four detectors read the correlation test alone.
 
 The zone's own line names the whole funnel: markets read, markets with a
 direction, pairs tested, and whether any held equilibrium.

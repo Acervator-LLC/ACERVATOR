@@ -83,18 +83,26 @@ dependencies = [
 #            `cointegration_test` lets the ImportError out rather than
 #            answering a verdict it did not measure. Both screens that run
 #            that test name the absence: the Opposing Pairs status line
-#            through `status_error` in
+#            through `analyzer_error_text` in
 #            src/gui/main_tabs/market_inspector_surface.py, and the proposals
 #            pane through `status_count` in
 #            src/gui/main_tabs/market_inspector_topologies_surface.py, which
 #            reads the sentence `detect_all_topologies` stamps on every
 #            proposal it returns. The other three detectors need no package
 #            and still answer, so the pane draws cards rather than nothing.
+#            That guard is what makes this an extra rather than a core
+#            requirement, and `CONSUMER_EXTRAS["build"]` in tools/deps.py
+#            installs it, so the shipped bundle carries the package and the
+#            Opposing Pairs table answers rows. An install from a consumer that
+#            does not name this extra runs without the cointegration test, and
+#            both screens say so.
 #            statsmodels declares scipy!=1.9.2,>=1.8 itself, so this extra is
-#            the only place either package is installed from. Measured on the
-#            build host: the pair holds 174,297,122 bytes across 5,020 files,
-#            166.2 MiB, and `tools/deps.py` does not install this extra for a
-#            build. The lower bound is the version measured on 2026-10-03.
+#            the only requirement either package is installed from, and
+#            measured on the build host neither `statsmodels.tsa.stattools`
+#            nor `statsmodels.tsa.vector_ar.vecm` imports with scipy refused.
+#            `EXCLUDES` in tools/spec_common.py therefore names neither, and
+#            the pair holds 174,297,122 bytes across 5,020 files, 166.2 MiB.
+#            The lower bound is the version measured on 2026-10-03.
 #   monitor  `LiveMonitor._call` in src/trading/live_monitor.py imports
 #            httpx with no guard, so the call raises without it. The
 #            `build` consumer in tools/deps.py installs this extra, so

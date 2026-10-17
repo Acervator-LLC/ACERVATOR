@@ -51,7 +51,7 @@ COINTEGRATION_PACKAGE = "statsmodels"
 
 BETA_FRACTION_STEPS = 300
 BETA_FRACTION_EPSILON = 3.0e-16
-BETA_FRACTION_FLOOR = 1.0e-300
+BETA_FRACTION_UNDERFLOW = 1.0e-300
 MINIMUM_SAMPLE = 2
 
 LIVE_STATE_WINDOW_TEXT = "live"
@@ -62,6 +62,17 @@ TEST_FAILED_DETAIL = "{name}: {message}"
 GATE_P_VALUE_FORMAT = "p {p_value:.4f} is at or below the {significance} required."
 GATE_LIVE_STATE_TEXT = "Read from the live bot balances, so no p-value applies."
 GATE_REFUSED_FORMAT = "Refused: {detail}"
+GATE_P_ABOVE_FORMAT = "p {p_value:.4f} is above the {significance} required."
+GATE_TRACE_SHORT_FORMAT = (
+    "The trace statistic {trace:.1f} did not clear the {critical:.1f} required."
+)
+GATE_BAND_SHORT_FORMAT = (
+    "A side sits inside {deep:.1f}% of its target balance, at {scrum:+.1f}% / "
+    "{fold:+.1f}%."
+)
+GATE_REASON_JOIN = " "
+#: A verdict with no statable reason draws the dash the screens draw elsewhere.
+GATE_NO_REASON_TEXT = "—"
 
 COINTEGRATION_STATISTIC_FORMAT = "p={p_value:.4f} · trace {trace:.1f}>{critical:.1f}"
 CORRELATION_STATISTIC_FORMAT = "r={correlation:+.3f} · p={p_value:.4f}"
@@ -108,10 +119,11 @@ class MethodResult:
         """The statistic line, formatted from the numbers the test returned.
 
         Reads the same ``p_value`` ``gate_text`` reads, so the two lines of
-        one expansion can never state different numbers for one statistic.
+        one expansion can never state different numbers for one statistic, and
+        a test that did not run answers ``GATE_NO_REASON_TEXT``.
         """
         if self.detail:
-            return ""
+            return GATE_NO_REASON_TEXT
         if self.method == METHOD_COINTEGRATION:
             return COINTEGRATION_STATISTIC_FORMAT.format(
                 p_value=self.p_value, trace=self.trace, critical=self.critical
@@ -123,7 +135,7 @@ class MethodResult:
                 deep=self.deep_pct,
             )
         if self.method != METHOD_CORRELATION:
-            return ""
+            return GATE_NO_REASON_TEXT
         if self.pair_count:
             return CLUSTER_STATISTIC_FORMAT.format(
                 correlation=self.statistic,
@@ -135,9 +147,48 @@ class MethodResult:
         )
 
     @property
+    def failed_reason(self) -> str:
+        """Why a test that ran answered ``passed`` False, in its own terms.
+
+        Names whichever threshold the verdict missed, and answers
+        ``GATE_NO_REASON_TEXT`` for a method that states none.
+        """
+        reasons = []
+        if self.method in (METHOD_COINTEGRATION, METHOD_CORRELATION):
+            if self.p_value > SIGNIFICANCE:
+                reasons.append(
+                    GATE_P_ABOVE_FORMAT.format(
+                        p_value=self.p_value, significance=SIGNIFICANCE
+                    )
+                )
+            if self.method == METHOD_COINTEGRATION and self.trace <= self.critical:
+                reasons.append(
+                    GATE_TRACE_SHORT_FORMAT.format(
+                        trace=self.trace, critical=self.critical
+                    )
+                )
+        elif self.method == METHOD_BAND_DISTANCE:
+            reasons.append(
+                GATE_BAND_SHORT_FORMAT.format(
+                    deep=self.deep_pct,
+                    scrum=self.scrum_distance_pct,
+                    fold=self.fold_distance_pct,
+                )
+            )
+        if not reasons:
+            return GATE_NO_REASON_TEXT
+        return GATE_REASON_JOIN.join(reasons)
+
+    @property
     def gate_text(self) -> str:
-        """Why the verdict is what it is, in the terms the test uses."""
+        """Why the verdict is what it is, in the terms the test uses.
+
+        A verdict with no ``detail`` reads ``failed_reason``, so the line never
+        carries a label with nothing behind it.
+        """
         if not self.passed:
+            if not self.detail:
+                return self.failed_reason
             return GATE_REFUSED_FORMAT.format(detail=self.detail)
         if self.method == METHOD_BAND_DISTANCE:
             return GATE_LIVE_STATE_TEXT
@@ -208,6 +259,17 @@ def _aligned(
     return left[-length:], right[-length:]
 
 
+def _off_zero(term: float) -> float:
+    """``term`` held off zero at ``BETA_FRACTION_UNDERFLOW``.
+
+    Lentz's method divides by every term it carries, so a term that rounds to
+    zero is replaced before ``_beta_fraction`` inverts it.
+    """
+    if abs(term) < BETA_FRACTION_UNDERFLOW:
+        return BETA_FRACTION_UNDERFLOW
+    return term
+
+
 def _beta_fraction(a: float, b: float, x: float) -> float:
     """The incomplete beta continued fraction, by Lentz's method.
 
@@ -218,31 +280,18 @@ def _beta_fraction(a: float, b: float, x: float) -> float:
     qap = a + 1.0
     qam = a - 1.0
     c = 1.0
-    d = 1.0 - qab * x / qap
-    if abs(d) < BETA_FRACTION_FLOOR:
-        d = BETA_FRACTION_FLOOR
-    d = 1.0 / d
+    d = 1.0 / _off_zero(1.0 - qab * x / qap)
     h = d
     for step in range(1, BETA_FRACTION_STEPS + 1):
         m = float(step)
         m2 = 2.0 * m
         even = m * (b - m) * x / ((qam + m2) * (a + m2))
-        d = 1.0 + even * d
-        if abs(d) < BETA_FRACTION_FLOOR:
-            d = BETA_FRACTION_FLOOR
-        c = 1.0 + even / c
-        if abs(c) < BETA_FRACTION_FLOOR:
-            c = BETA_FRACTION_FLOOR
-        d = 1.0 / d
+        c = _off_zero(1.0 + even / c)
+        d = 1.0 / _off_zero(1.0 + even * d)
         h *= d * c
         odd = -(a + m) * (qab + m) * x / ((a + m2) * (qap + m2))
-        d = 1.0 + odd * d
-        if abs(d) < BETA_FRACTION_FLOOR:
-            d = BETA_FRACTION_FLOOR
-        c = 1.0 + odd / c
-        if abs(c) < BETA_FRACTION_FLOOR:
-            c = BETA_FRACTION_FLOOR
-        d = 1.0 / d
+        c = _off_zero(1.0 + odd / c)
+        d = 1.0 / _off_zero(1.0 + odd * d)
         moved = d * c
         h *= moved
         if abs(moved - 1.0) < BETA_FRACTION_EPSILON:
