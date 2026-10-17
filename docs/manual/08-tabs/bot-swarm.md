@@ -439,6 +439,28 @@ the two stack counters.
 | `src/gui/main_tabs/fold_tranches_tab_surface.py`, in `guarded_count` | The same reading, for the second build |
 | `src/gui/main_tabs/stack_tranches_tab_surface.py`, in `lifetime_counter` | The same reading, for the second build |
 
+The Paper and Simulator panels are forks of the Live ones and read the same
+rule. Both fold forks call `fold_lifetime_counter` in
+`src/gui/live_settings/fold_tokens.py`, the one module all three fold panels
+share. Each stack fork carries `_stack_lifetime_counter`, matching the Live
+panel's own, so no screen reaches across from the Simulator into Live to read
+a count.
+
+| Panel | Reader |
+| ----- | ------ |
+| `src/gui/paper/paper_fold_tranches_tab.py` | `fold_lifetime_counter` |
+| `src/gui/simulator/sim_fold_tranches_tab.py` | `fold_lifetime_counter` |
+| `src/gui/paper/paper_stack_tranches_tab.py` | `_stack_lifetime_counter` |
+| `src/gui/simulator/sim_stack_tranches_tab.py` | `_stack_lifetime_counter` |
+
+`src/gui/main_tabs/fold_tokens_surface.py` holds a third copy of
+`compose_cycle_close_ratio`, and no counter reaches it. That module reads no
+bot and no stored field: `src/core/desktop_bridge.py` registers its
+`view_model` as the handler for the `fold_tokens.state` method, and
+`src/gui/web/fold_tokens.js` draws that payload's colours, sort orders, column
+tooltips, row heights and step names. Its ratio copy answers only a request
+that names the step and carries its own three numbers.
+
 `admitted_counter` sits on both halves of the save path, so a counter the
 panel will not print is also a counter the file will not store. A stored flag
 used to be written back as the count one, which made the fault permanent;
