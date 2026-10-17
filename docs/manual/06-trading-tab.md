@@ -562,6 +562,53 @@ SPENDABLE_RULE_W_PX = 12
 CARD_SIDE_MARGIN_PX = 4
 ```
 
+**One money cell, one width rule.** The row draws money in two kinds of panel —
+a column of the money strip and a counter card — and both reserve the same room
+for it. `header_strip_surface.py` names the widest amount the row draws, measures
+it once at the smallest type a money cell shrinks to, and every floor is read off
+that one reading.
+
+`src/gui/main_tabs/header_strip_surface.py` — the one declaration
+
+```python
+WIDEST_AMOUNT = "$-999,999.99"
+MONEY_CELL_MIN_W = 64
+KPI_COLUMN_W = money_cell_w(VALUE_FONT_PX)
+COUNTER_MIN_W = MONEY_CELL_MIN_W + COUNTER_TEXT_PAD
+```
+
+`money_cell_w` scales that reading to any type size, because a font's advance
+scales with its pixel size. `spendable_natural_w` is the strip at
+`VALUE_FONT_PX` and `spendable_min_w` is the strip at `VALUE_FONT_MIN_PX`, so
+one number answers both.
+
+**A card's margin is its frame's inset and nothing more.** The theme's
+`QFrame[frameShape="6"]` rule already holds a panel's text 12 px off its border
+and draws a 1 px border, which `PANEL_FRAME_INSET_PX` names. A counter card adds
+no side margin of its own on top of it, so the amount keeps the digits
+`MONEY_CELL_MIN_W` reserves room for at the narrowest window.
+
+**The slot order and the slot shares are read off the cards.**
+`header_strip_surface.py, in COUNTER_SLOTS` is built from `COUNTER_CARDS`,
+`TOP_ROW_ORDER` is the money strip's slot, those cards and the class square, and
+`TOP_ROW_STRETCH` gives the strip one share per `KPI_COLUMNS` column, each card
+one share and the class square none. Adding or removing a card changes that card's
+own slot and no other panel's width.
+
+**A card whose figure the fleet never published draws the dash.**
+`header_strip_surface.py, in counter_amount` reads each `COUNTER_CARDS` entry's
+`source_key` with no default, so a fleet that publishes no such key answers
+nothing and the card draws `EMPTY_TEXT`. The live fleet publishes
+`total_accrued_usd` and the paper ledger and the simulator do not, so ACCUMULATED
+draws a figure behind Live and the dash behind Paper and Sim.
+
+**A shortened amount is measured at the size it is drawn at.**
+`src/gui/widgets/fitted_label.py, in _draw` picks the largest size that fits
+through `_fitted_for`, then shortens the text through `_metrics_at` at that same
+size. `fontMetrics` answers the size the style sheet last applied, which is the
+size before the shrink, so a reading taken from it shortens an amount that had
+already been made to fit.
+
 **A shortened amount ends in an ellipsis.** Every caption and every amount in the
 columns and the counters is an `ElidingLabel`. It keeps the whole text and draws
 what the width holds, so `$128,456.78` in a narrow row reads `$128,45…` and never

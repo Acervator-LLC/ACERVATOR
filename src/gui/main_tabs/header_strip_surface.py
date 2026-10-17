@@ -39,6 +39,14 @@ MONEY_PREFIX = "$"
 MONEY_FORMAT = ",.2f"
 COUNT_FORMAT = "str"
 
+#: How one ``KPI_COLUMNS`` cell is rendered, named per column so no cell is
+#: drawn from its position in the declaration.
+RENDER_SPENDABLE = "spendable"
+RENDER_MONEY = "money"
+RENDER_COUNT = "count"
+RENDER_AMMO = "ammo"
+RENDER_PNL = "pnl"
+
 #: What the central layout leaves either side of the top row.
 CENTRAL_SIDE_MARGIN_PX = 6
 
@@ -51,47 +59,18 @@ CENTRAL_LAYOUT = {
     "child_stretch": [0],
 }
 
-#: The stretch each ``TOP_ROW_ORDER`` slot takes. The strip takes six shares to
-#: the cards' one each, so spare width goes to the money columns rather than to
-#: the cards drawing a count; the class group's slot takes zero, so it shrinks
-#: to the square and the square sits against the row's right edge.
-TOP_ROW_STRETCH = [6, 1, 1, 1, 1, 1, 1, 0]
+#: The slot the money strip takes, first in the row.
+SPENDABLE_SLOT = "spendable"
 
-TOP_ROW = {
-    "margins_px": [0, 0, 0, 0],
-    "spacing_px": TOP_ROW_SPACING_PX,
-    "child_stretch": TOP_ROW_STRETCH,
-}
+#: The slot the asset class square takes, last in the row.
+CLASS_GROUP_SLOT = "mode_button"
 
-TOP_ROW_ORDER = [
-    "spendable",
-    "scrummed",
-    "accumulated",
-    "folded",
-    "trades",
-    "bots",
-    "errors",
-    "mode_button",
-]
+#: The share the class group's slot takes of the spare width: none, so it
+#: shrinks to the square and the square sits against the row's right edge.
+CLASS_GROUP_STRETCH = 0
 
-#: The narrowest the spendable strip draws at. Its widest column, SPENDABLE,
-#: keeps its caption and an elided amount at this width.
-SPENDABLE_MIN_W = 180
-
-#: The room one KPI column needs for a whole money amount at its own size.
-#: Ninety holds the widest signed amount the strip draws, 87 px in the
-#: application font at ``VALUE_FONT_PX``.
-KPI_COLUMN_W = 90
-
-#: The narrowest one counter card draws at: the longest ``COUNTER_CARDS``
-#: caption at ``LABEL_FONT_MIN_PX``, which is 54 px in the application font,
-#: plus ``COUNTER_TEXT_PAD``. Caption and amount both shrink into that room.
-COUNTER_MIN_W = 88
-
-#: The slot names the top row gives a declared floor, in row order. The
-#: class group is not here; ``asset_class_surface.group_side_px`` answers it,
-#: because the group's floor grows with the class count.
-COUNTER_SLOTS = ("scrummed", "accumulated", "folded", "trades", "bots", "errors")
+#: The share one counter card takes of the spare width.
+COUNTER_STRETCH = 1
 
 #: The window's own tuple, so a tab renamed there renames here too.
 ISOLATED_TABS = main_window_surface.ISOLATED_TABS
@@ -160,6 +139,30 @@ VALUE_FONT_PX = 14
 VALUE_FONT_MIN_PX = LABEL_FONT_PX
 
 VALUE_FONT = f"font-size: {VALUE_FONT_PX}px; font-weight: bold;"
+
+#: The widest amount any money cell of the row draws: six figures to the cent,
+#: carrying the sign ``PNL_FORMAT`` writes. Twelve characters.
+WIDEST_AMOUNT = "$-999,999.99"
+
+#: The room ``WIDEST_AMOUNT`` needs at ``VALUE_FONT_MIN_PX``, which is the
+#: smallest type a money cell draws at. Measured in the application font: 64 px
+#: at 10 px and 86 px at 14 px. Every money cell of the row — a strip column and
+#: a counter card alike — floors at this room, so the cell that must shrink
+#: still holds every digit.
+MONEY_CELL_MIN_W = 64
+
+
+def money_cell_w(size_px: Any) -> int:
+    """The room ``WIDEST_AMOUNT`` needs at ``size_px``.
+
+    A font's advance scales with its pixel size, so one measured reading at
+    ``VALUE_FONT_MIN_PX`` answers every size the cell draws at.
+    """
+    return round(MONEY_CELL_MIN_W * int(size_px) / VALUE_FONT_MIN_PX)
+
+
+#: The room one money cell needs for ``WIDEST_AMOUNT`` at its declared size.
+KPI_COLUMN_W = money_cell_w(VALUE_FONT_PX)
 
 
 def value_font(size_px: Any) -> str:
@@ -237,6 +240,8 @@ KPI_COLUMNS = (
         "field_id": "kpi.spendable",
         "initial_text": EMPTY_TEXT,
         "initial_style": VALUE_STYLE_MUTED,
+        "source_key": "spendable",
+        "render": RENDER_SPENDABLE,
     },
     {
         "key": "pnl",
@@ -246,6 +251,8 @@ KPI_COLUMNS = (
         "field_id": "kpi.pnl",
         "initial_text": EMPTY_TEXT,
         "initial_style": VALUE_STYLE_DEFAULT,
+        "source_key": "unrealised",
+        "render": RENDER_PNL,
     },
     {
         "key": "locked",
@@ -255,6 +262,8 @@ KPI_COLUMNS = (
         "field_id": "kpi.locked",
         "initial_text": EMPTY_TEXT,
         "initial_style": VALUE_STYLE_DEFAULT,
+        "source_key": "locked",
+        "render": RENDER_MONEY,
     },
     {
         "key": "mature",
@@ -264,6 +273,8 @@ KPI_COLUMNS = (
         "field_id": "kpi.mature",
         "initial_text": EMPTY_TEXT,
         "initial_style": VALUE_STYLE_DEFAULT,
+        "source_key": "mature",
+        "render": RENDER_MONEY,
     },
     {
         "key": "exchanges",
@@ -273,6 +284,8 @@ KPI_COLUMNS = (
         "field_id": "kpi.exch",
         "initial_text": EMPTY_TEXT,
         "initial_style": VALUE_STYLE_DEFAULT,
+        "source_key": "exchange_count",
+        "render": RENDER_COUNT,
     },
     {
         "key": "total_ammo",
@@ -282,22 +295,32 @@ KPI_COLUMNS = (
         "field_id": "kpi.ammo",
         "initial_text": EMPTY_TEXT,
         "initial_style": VALUE_STYLE_MUTED,
+        "source_key": "total_ammo",
+        "render": RENDER_AMMO,
     },
 )
 
-#: What a card leaves either side of its caption and its amount.
-CARD_SIDE_MARGIN_PX = 4
+#: What a card leaves either side of its caption and its amount, on top of the
+#: ``PANEL_FRAME_INSET_PX`` its own frame already holds them off the border by.
+#: Zero: the frame's inset is the card's margin, and a second one either side
+#: costs the amount the digits ``MONEY_CELL_MIN_W`` reserves room for.
+CARD_SIDE_MARGIN_PX = 0
 
 #: What a card's own frame and margins take off the room its text has.
 COUNTER_TEXT_PAD = 2 * (CARD_SIDE_MARGIN_PX + PANEL_FRAME_INSET_PX)
 
-#: The room one counter card gives its own amount. Declared here and not
-#: read off ``KPI_COLUMN_W``: a card holds one amount where the strip now
-#: divides its width eight ways.
-COUNTER_TEXT_W = 110
+#: The room one counter card gives its own amount, which is the room a strip
+#: column gives its own. One rule over both, so the same amount cannot draw
+#: whole in one and cut in the other.
+COUNTER_TEXT_W = KPI_COLUMN_W
 
 #: The room one counter needs for a whole money amount at its own size.
 COUNTER_NATURAL_W = COUNTER_TEXT_W + COUNTER_TEXT_PAD
+
+#: The narrowest one counter card draws at: the room ``WIDEST_AMOUNT`` needs at
+#: ``VALUE_FONT_MIN_PX``, plus the card's own frame and margins. The caption
+#: shrinks into the same room, and it is the shorter of the two.
+COUNTER_MIN_W = MONEY_CELL_MIN_W + COUNTER_TEXT_PAD
 
 CARD_LAYOUT = {
     "margins_px": [CARD_SIDE_MARGIN_PX, 4, CARD_SIDE_MARGIN_PX, 4],
@@ -423,6 +446,31 @@ COUNTER_CARDS = (
     },
 )
 
+#: The slot names the top row gives a declared floor, in row order, read off
+#: ``COUNTER_CARDS``. The class group is not here;
+#: ``asset_class_surface.group_side_px`` answers it, because the group's floor
+#: grows with the class count.
+COUNTER_SLOTS = tuple(card["key"] for card in COUNTER_CARDS)
+
+#: Every slot of the top row, in the order the row adds them.
+TOP_ROW_ORDER = [SPENDABLE_SLOT, *COUNTER_SLOTS, CLASS_GROUP_SLOT]
+
+#: The share of the spare width each ``TOP_ROW_ORDER`` slot takes. The strip
+#: takes one share per column it holds and a card takes one, so every money
+#: cell of the row grows at one pitch and a column or a card added to its own
+#: declaration changes no other slot's share.
+TOP_ROW_STRETCH = [
+    len(KPI_COLUMNS),
+    *([COUNTER_STRETCH] * len(COUNTER_SLOTS)),
+    CLASS_GROUP_STRETCH,
+]
+
+TOP_ROW = {
+    "margins_px": [0, 0, 0, 0],
+    "spacing_px": TOP_ROW_SPACING_PX,
+    "child_stretch": TOP_ROW_STRETCH,
+}
+
 PROFITS_SOURCE_KEYS = (
     "wallet_cash_usd",
     "crypto_position_value_usd",
@@ -481,15 +529,38 @@ ACTIONS = {
 }
 
 
-def spendable_natural_w() -> int:
-    """The room the whole strip needs for every ``KPI_COLUMNS`` amount.
+def spendable_rules_w() -> int:
+    """The room every rule between two ``KPI_COLUMNS`` takes.
 
-    ``KPI_COLUMN_W`` per column, each rule's own ``SPENDABLE_RULE_W_PX`` and
-    the gap either side of it, and ``SPENDABLE_TEXT_PAD`` for the frame.
+    Each rule's own ``SPENDABLE_RULE_W_PX`` and the gap either side of it.
     """
-    held = len(KPI_COLUMNS)
-    rules = max(held - 1, 0) * (SPENDABLE_RULE_W_PX + 2 * SPENDABLE_COLUMN_GAP_PX)
-    return held * KPI_COLUMN_W + rules + SPENDABLE_TEXT_PAD
+    return max(len(KPI_COLUMNS) - 1, 0) * (
+        SPENDABLE_RULE_W_PX + 2 * SPENDABLE_COLUMN_GAP_PX
+    )
+
+
+def spendable_w(column_w: Any) -> int:
+    """The room the whole strip needs to give every ``KPI_COLUMNS`` column ``column_w``.
+
+    ``spendable_rules_w`` for the rules and ``SPENDABLE_TEXT_PAD`` for the frame.
+    """
+    return len(KPI_COLUMNS) * int(column_w) + spendable_rules_w() + SPENDABLE_TEXT_PAD
+
+
+def spendable_natural_w() -> int:
+    """``spendable_w`` at ``KPI_COLUMN_W``, the room every amount needs at
+    ``VALUE_FONT_PX``."""
+    return spendable_w(KPI_COLUMN_W)
+
+
+def spendable_min_w() -> int:
+    """``spendable_w`` at ``MONEY_CELL_MIN_W``, the room every amount needs at
+    ``VALUE_FONT_MIN_PX``.
+
+    A column shrinks its type to ``VALUE_FONT_MIN_PX`` before it shortens
+    ``WIDEST_AMOUNT``, so this room holds every digit.
+    """
+    return spendable_w(MONEY_CELL_MIN_W)
 
 
 def slot_natural_w(slot: Any) -> int:
@@ -499,7 +570,7 @@ def slot_natural_w(slot: Any) -> int:
     ``COUNTER_NATURAL_W`` and ``spendable_natural_w`` for their own sizeHint.
     """
     name = str(slot or "")
-    if name == "spendable":
+    if name == SPENDABLE_SLOT:
         return spendable_natural_w()
     if name in COUNTER_SLOTS:
         return COUNTER_NATURAL_W
@@ -521,9 +592,9 @@ def slot_min_w(slot: Any) -> int:
     of the text a slot happens to hold.
     """
     name = str(slot or "")
-    if name == "spendable":
-        return SPENDABLE_MIN_W
-    if name == "mode_button":
+    if name == SPENDABLE_SLOT:
+        return spendable_min_w()
+    if name == CLASS_GROUP_SLOT:
         return asset_class_surface.group_side_px()
     if name in COUNTER_SLOTS:
         return COUNTER_MIN_W
@@ -533,12 +604,13 @@ def slot_min_w(slot: Any) -> int:
 def slot_floor_w(slot: Any) -> int:
     """The width both hosts floor one ``TOP_ROW_ORDER`` slot at.
 
-    The spendable strip floors at ``slot_natural_w``, because its columns hold
-    whole money amounts; every other slot floors at ``slot_min_w``, so the row
-    never grows past the window and pushes the class square off its right edge.
+    The spendable strip floors at ``slot_natural_w`` and every other slot at
+    ``slot_min_w``: the page gives a stretching slot no basis but its floor, so
+    a strip floored at ``spendable_min_w`` draws narrower there than the Qt row
+    draws it.
     """
     name = str(slot or "")
-    if name == "spendable":
+    if name == SPENDABLE_SLOT:
         return slot_natural_w(name)
     return slot_min_w(name)
 
@@ -757,47 +829,62 @@ def spendable_cell(value: Any) -> dict:
     }
 
 
-def kpi_cells(profits: Optional[dict]) -> dict:
-    """Every KPI cell the spendable panel shows for one payload."""
+def kpi_cell(column: dict, profits: Optional[dict]) -> dict:
+    """One ``KPI_COLUMNS`` cell's text, skin and tooltip, by its own ``render``.
+
+    ``RENDER_AMMO`` reads ``ammo_lean`` out of the payload for its colour, and
+    every other renderer reads the column's own ``source_key`` alone.
+    """
     data = profits if isinstance(profits, dict) else {}
+    raw = data.get(column["source_key"])
+    kind = column["render"]
+    field_id = column["field_id"]
+    if kind == RENDER_SPENDABLE:
+        return spendable_cell(raw)
+    if kind == RENDER_AMMO:
+        return ammo_cell(raw, data.get("ammo_lean"))
+    if kind == RENDER_PNL:
+        return {
+            "text": mask_or(pnl_text(raw), field_id),
+            "style_sheet": VALUE_STYLE_DEFAULT,
+            "tooltip": "",
+        }
+    text = exchange_count_text(raw) if kind == RENDER_COUNT else money_text(raw)
     return {
-        "spendable": spendable_cell(data.get("spendable")),
-        "pnl": {
-            "text": mask_or(pnl_text(data.get("unrealised")), "kpi.pnl"),
-            "style_sheet": VALUE_STYLE_DEFAULT,
-            "tooltip": "",
-        },
-        "locked": {
-            "text": mask_or(money_text(data.get("locked")), "kpi.locked"),
-            "style_sheet": VALUE_STYLE_DEFAULT,
-            "tooltip": "",
-        },
-        "mature": {
-            "text": mask_or(money_text(data.get("mature")), "kpi.mature"),
-            "style_sheet": VALUE_STYLE_DEFAULT,
-            "tooltip": "",
-        },
-        "exchanges": {
-            "text": mask_or(
-                exchange_count_text(data.get("exchange_count")), "kpi.exch"
-            ),
-            "style_sheet": VALUE_STYLE_DEFAULT,
-            "tooltip": "",
-        },
-        "total_ammo": ammo_cell(data.get("total_ammo"), data.get("ammo_lean")),
+        "text": mask_or(text, field_id),
+        "style_sheet": VALUE_STYLE_DEFAULT,
+        "tooltip": "",
     }
+
+
+def kpi_cells(profits: Optional[dict]) -> dict:
+    """Every KPI cell the spendable panel shows for one payload.
+
+    Walked from ``KPI_COLUMNS``, so ``kpi_cell`` builds nothing for a column
+    the strip does not draw and every column it draws carries a cell.
+    """
+    return {column["key"]: kpi_cell(column, profits) for column in KPI_COLUMNS}
+
+
+def counter_amount(stats: Optional[dict], card: dict) -> Any:
+    """The figure one ``COUNTER_CARDS`` entry reads, or ``None``.
+
+    ``aggregate_amount`` is given no default, so a fleet publishing no
+    ``source_key`` of its own answers ``None`` and the card draws ``EMPTY_TEXT``.
+    """
+    return aggregate_amount(stats, card["source_key"])
 
 
 def counter_cells(stats: Optional[dict]) -> dict:
     """Every counter card's rendered value for one aggregate snapshot.
 
-    Each ``COUNTER_CARDS`` entry is read and rendered on its own pass
-    through ``card_text``, so one unreadable figure costs its own card.
+    Each ``COUNTER_CARDS`` entry is read through ``counter_amount`` and
+    rendered on its own pass through ``card_text``, so one unreadable figure
+    costs its own card.
     """
-    data = stats if isinstance(stats, dict) else {}
     return {
         card["key"]: mask_or(
-            card_text(card, aggregate_amount(data, card["source_key"], 0)),
+            card_text(card, counter_amount(stats, card)),
             card["field_id"],
         )
         for card in COUNTER_CARDS
