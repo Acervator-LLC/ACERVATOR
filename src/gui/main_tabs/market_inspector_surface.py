@@ -5089,6 +5089,40 @@ def empty_per_bot_view() -> dict:
     return per_bot_view(PerBotViewModel())
 
 
+def connector_states(connectors: Any) -> list:
+    """One ``[name, connected]`` pair per connector in ``connectors``.
+
+    The name is the connector's own ``exchange_id`` where it answers one
+    and the key it is filed under otherwise, and the state is its
+    ``is_connected``.
+    """
+    found = []
+    for key, connector in dict(connectors or {}).items():
+        try:
+            named = str(getattr(connector, "exchange_id", "") or key)
+        except Exception:
+            named = str(key)
+        try:
+            connected = bool(getattr(connector, "is_connected", False))
+        except Exception:
+            connected = False
+        found.append([named, connected])
+    found.sort()
+    return found
+
+
+def scheduled_fetch(found: Any) -> list:
+    """One entry of ``MarketInspectorScreenModel.scheduled`` as published values.
+
+    ``connector_states`` stands in for the live connector dictionary
+    ``fetch_call`` holds, and every flag beside it publishes as a bool.
+    """
+    entry = list(found or [])
+    if not entry:
+        return []
+    return [connector_states(entry[0])] + [bool(one) for one in entry[1:]]
+
+
 def build_view_model(
     model: MarketInspectorScreenModel, per_bot: Optional[dict] = None
 ) -> dict:
@@ -5145,7 +5179,7 @@ def build_view_model(
         "last_meta": dict(model.last_meta),
         "pending_refresh": model.pending_refresh,
         "exchange_source_wired": bool(model.connectors_getter and model.scheduler),
-        "scheduled": [list(found) for found in model.scheduled],
+        "scheduled": [scheduled_fetch(found) for found in model.scheduled],
         "colors": {
             "entry_long_high": COLOR_ENTRY_LONG_HIGH,
             "entry_long": COLOR_ENTRY_LONG,
