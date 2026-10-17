@@ -1010,6 +1010,11 @@ class BotContainer:
             **_over_cap_summary,
             "ta_timeframe": getattr(self.config, "ta_timeframe", "1h") or "1h",
             "current_holdings": float(getattr(self, "_current_holdings", 0.0)),
+            # The last venue reading an audit recorded, net of the personal
+            # hold and of sibling bots. Zero until an audit has run.
+            "audited_venue_units": float(
+                getattr(self, "_audited_venue_units", 0.0) or 0.0
+            ),
             # 1.0 for USD-quoted pairs.
             "quote_to_usd": float(getattr(self, "_quote_to_usd", 1.0) or 1.0),
             "stats": {
