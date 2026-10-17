@@ -52,6 +52,7 @@ from .main_tabs.market_inspector_topologies_surface import (
     status_count,
     status_error,
     status_save_failed,
+    unavailable_tests,
 )
 
 logger = logging.getLogger("acervator.topology_proposals_gui")
@@ -402,10 +403,18 @@ if _HAS_QT:
             self._status_lbl.setText(self._status_line())
 
         def _status_line(self) -> str:
-            """The count beside Refresh, or the unsaved-dismissal line over it."""
+            """The count beside Refresh, or the unsaved-dismissal line over it.
+
+            The count names every contribution ``unavailable_tests`` finds on
+            the proposals on display.
+            """
             if self._save_error:
                 return status_save_failed(self._save_error)
-            return status_count(len(self._proposals), len(self._dismissed))
+            return status_count(
+                len(self._proposals),
+                len(self._dismissed),
+                unavailable_tests(self._proposals),
+            )
 
         def current_proposals(self) -> list:
             """The non-dismissed proposals currently on display.

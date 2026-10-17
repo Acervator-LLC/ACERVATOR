@@ -33,6 +33,7 @@ from .main_tabs.market_inspector_surface import (
 )
 from .main_tabs.market_inspector_surface import (
     APPROVE_PART,
+    analyzer_error_text,
     ASSET_CATEGORY_PART,
     ASSET_CATEGORY_WIDTH_PX,
     ATA_SETTINGS_TITLE,
@@ -3099,7 +3100,7 @@ if _HAS_QT:
                 )
             except Exception as exc:  # noqa: BLE001 - analyzer surface
                 logger.exception("market inspector scan failed: %s", exc)
-                self._set_status(f"Analyzer error: {exc}")
+                self._set_status(analyzer_error_text(exc))
                 self._pending_refresh = False
                 self._scan_state = SCAN_FINISHED
                 self._set_refresh_enabled(True)
