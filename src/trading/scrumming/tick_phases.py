@@ -26,6 +26,7 @@ from .sizing import (
     priced_usd,
     scrum_units,
     target_delta_usd,
+    units_at_scrum,
 )
 from .snapshots import yes_no as _yes_no
 
@@ -1856,7 +1857,7 @@ class TickPhaseMixin:
                 )
 
             buy_asset = fold_units(buy_cost, ticker.last, FRACTIONAL_UNITS)
-            asset_at_scrum = sum(t["usd"] / t["ref"] for t in _eligible)
+            asset_at_scrum = sum(units_at_scrum(t) for t in _eligible)
             extra_asset = buy_asset - asset_at_scrum
             min_ref = min(t["ref"] for t in _eligible)
             pct_cheaper = (1 - ticker.last / min_ref) * 100
@@ -1897,7 +1898,7 @@ class TickPhaseMixin:
                 return True
 
             buy_asset = fold_units(buy_cost, buy_fill, FRACTIONAL_UNITS)
-            asset_at_scrum = sum(t["usd"] / t["ref"] for t in _eligible)
+            asset_at_scrum = sum(units_at_scrum(t) for t in _eligible)
             extra_asset = buy_asset - asset_at_scrum
             pct_cheaper = (1 - buy_fill / _intended_min_ref) * 100
             accum_profit = priced_usd(extra_asset, buy_fill)
