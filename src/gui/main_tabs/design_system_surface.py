@@ -1,8 +1,8 @@
 """design_system_surface.py -- the colour, type, spacing and motion tokens.
 
 Describes the one table of style values the whole interface draws
-from. One hundred and ninety-six names carry a value each: 146
-colours, two font families, 40 whole numbers, three line heights and
+from. One hundred and ninety-five names carry a value each: 146
+colours, two font families, 39 whole numbers, three line heights and
 five shadow settings. Six of the 146 colours are second names for a
 colour already in the table, and ``ALIAS_TARGETS`` says which name
 each one copies.
@@ -80,7 +80,7 @@ CARD_STOCK_LABEL = "#6688aa"
 CARD_STOCK_VALUE = "#e0e8f0"
 CARD_METRIC_SURFACE = "#12121f"
 CARD_METRIC_BORDER = "#2a2a3f"
-CARD_METRIC_LABEL = "#888"
+CARD_METRIC_LABEL = "#888888"
 
 # ---- Widget colours ----------------------------------------------------
 ERROR = "#ff3366"
@@ -256,7 +256,6 @@ RADIUS_CARD = 6
 RADIUS_SM = 8
 RADIUS_MD = 12
 RADIUS_LG = 16
-RADIUS_FULL = 9999
 
 # ---- Motion, in milliseconds -------------------------------------------
 MOTION_INSTANT = 0
@@ -487,7 +486,6 @@ RADIUS_NAMES = (
     "RADIUS_SM",
     "RADIUS_MD",
     "RADIUS_LG",
-    "RADIUS_FULL",
 )
 
 MOTION_NAMES = (
@@ -704,7 +702,6 @@ TOKEN_NAMES = (
     "RADIUS_SM",
     "RADIUS_MD",
     "RADIUS_LG",
-    "RADIUS_FULL",
     "MOTION_INSTANT",
     "MOTION_SHORT",
     "MOTION_MEDIUM",
