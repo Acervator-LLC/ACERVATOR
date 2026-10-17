@@ -49,6 +49,8 @@ from .fold_tokens import (
     FOLD_TRANCHE_BG_HEX,
     FOLD_TRANCHE_FG_HEX,
     FOLD_UNITS_MARKED_TOOLTIP,
+    FOLD_UNREADABLE_FIGURE,
+    FOLD_WIRE_CREDIT_FLOOR_USD,
     FOLD_WIRE_DISCARDED_TOOLTIP,
     TRANCHE_FIRE_BTN_INSET_PX,
     _arbiter_label,
@@ -61,6 +63,10 @@ from .fold_tokens import (
     compose_units_marked_row,
     configure_tranche_row_numbers,
     fold_display_order,
+    fold_parked_credit,
+    fold_parked_credit_stands,
+    fold_parked_credit_text,
+    fold_queue_figure_total,
     fold_table_chrome_px,
     fold_table_max_height_px,
     fold_table_natural_width_px,
@@ -120,16 +126,18 @@ class FoldTranchesTabMixin:
             return
 
         n = len(tranches)
-        usd = sum(float(t.get("usd", 0) or 0) for t in tranches)
-        units = sum(float(t.get("units", 0) or 0) for t in tranches)
-        parked = float(getattr(bot, "_pending_wire_credits", 0.0) or 0.0)
+        usd = fold_queue_figure_total(tranches, "usd")
+        units = fold_queue_figure_total(tranches, "units")
+        usd_text = FOLD_UNREADABLE_FIGURE if usd is None else f"${usd:,.4f}"
+        units_text = FOLD_UNREADABLE_FIGURE if units is None else f"{units:.8f}"
+        parked = fold_parked_credit(bot)
 
         body = [
             f"Discard {n} queued fold tranche(s) for "
             f"{getattr(bot.config, 'symbol', '')}?",
             "",
-            f"    queued USD   ${usd:,.4f}",
-            f"    units        {units:.8f}",
+            f"    queued USD   {usd_text}",
+            f"    units        {units_text}",
             "",
             "This places NO order. Holdings, cost basis and target "
             "balance are unchanged — only the queued intent to buy "
@@ -138,10 +146,11 @@ class FoldTranchesTabMixin:
             "",
             "This cannot be undone.",
         ]
-        if parked > 1e-9:
+        if fold_parked_credit_stands(parked):
             body += [
                 "",
-                f"WARNING — this bot also holds ${parked:,.4f} in "
+                f"WARNING — this bot also holds "
+                f"{fold_parked_credit_text(parked)} in "
                 f"pending wire credits. Clearing opens the absorb "
                 f"window, and the next SCRUM will move that entire "
                 f"amount into a SINGLE tranche. If it exceeds the "
@@ -200,9 +209,9 @@ class FoldTranchesTabMixin:
         from PySide6.QtWidgets import QMessageBox
 
         bot = self._bot
-        parked = float(getattr(bot, "_pending_wire_credits", 0.0) or 0.0)
+        parked = fold_parked_credit(bot)
         entries = len(getattr(bot, "_pending_wire_ledger", []) or [])
-        if parked <= 1e-9 and not entries:
+        if not fold_parked_credit_stands(parked) and not entries:
             QMessageBox.information(
                 self, "Clear wire credits", "This bot has no parked wire credits."
             )
@@ -221,7 +230,8 @@ class FoldTranchesTabMixin:
         box.setText(
             "\n".join(
                 [
-                    f"Discard ${parked:,.4f} of parked Smart Wire credit for "
+                    f"Discard {fold_parked_credit_text(parked)} of parked "
+                    f"Smart Wire credit for "
                     f"{getattr(bot.config, 'symbol', '')}?",
                     "",
                     f"    ledger entries   {entries}",
@@ -254,7 +264,7 @@ class FoldTranchesTabMixin:
         # Same three steps as `_on_clear_fold_tranches`, then
         # `_settle_after_clear` reports the outcome.
         _settled = self._settle_after_clear("Clear wire credits")
-        _now_parked = float(getattr(bot, "_pending_wire_credits", 0.0) or 0.0)
+        _now_parked = fold_parked_credit(bot)
         QMessageBox.information(
             self,
             "Clear wire credits",
@@ -262,7 +272,8 @@ class FoldTranchesTabMixin:
                 [
                     f"Cleared ${float(report.get('usd', 0)):,.4f} of "
                     f"parked Smart Wire credit.",
-                    f"This bot now has ${_now_parked:,.4f} parked.",
+                    f"This bot now has {fold_parked_credit_text(_now_parked)} "
+                    f"parked.",
                     "\n".join(_settled),
                     "No funds moved. This released an EARMARK only, so "
                     "the cash returns to ordinary spendable balance.",
@@ -601,7 +612,7 @@ class FoldTranchesTabMixin:
 
         shows = self._fold_panel_shows()
         _open = len(getattr(self._bot, "_fold_tranches", []) or [])
-        _parked = float(getattr(self._bot, "_pending_wire_credits", 0.0) or 0.0)
+        _parked = fold_parked_credit(self._bot)
         with contextlib.suppress(Exception):
             from src.core.signal_contract import emit as _fold_emit
 
@@ -618,7 +629,7 @@ class FoldTranchesTabMixin:
                     "fold_rows": _open,
                     "open_tranches_label": str(_open),
                     "clear_button_enabled": bool(_open),
-                    "wire_button_enabled": _parked > 1e-9,
+                    "wire_button_enabled": fold_parked_credit_stands(_parked),
                     "saved": True,
                 },
                 duration=_elapsed,
@@ -929,13 +940,13 @@ class FoldTranchesTabMixin:
 
         # Parked credit is a percent of gross proceeds, not profit,
         # cleared by its own button, not the tranche clear.
-        parked = float(getattr(self._bot, "_pending_wire_credits", 0.0) or 0.0)
+        parked = fold_parked_credit(self._bot)
         wire_btn = QPushButton(
             f"Clear ${parked:,.2f} Wire Credits"
-            if parked > 1e-9
+            if parked is not None and parked > FOLD_WIRE_CREDIT_FLOOR_USD
             else "Clear Wire Credits"
         )
-        wire_btn.setEnabled(parked > 1e-9)
+        wire_btn.setEnabled(fold_parked_credit_stands(parked))
         wire_btn.setToolTip(
             "Discard this bot's parked Smart Wire credits.\n\n"
             "Releases an EARMARK only. No order is placed and no "

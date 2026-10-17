@@ -793,6 +793,41 @@ Tranches tab. One lifetime figure does fall without a control:
 the opened count each time one sell's per-lot records merge into one record,
 which the Lifetime tranches opened tooltip states.
 
+**The issue #201 clause above is overtaken.** It is not edited and not removed.
+It read:
+
+> the Units column prints a quantity that does not exist (issue #201)
+
+Every figure the Fold Tranches table draws from a saved row passes one admission
+rule first. The rule takes a value only when it is exactly a whole number or a
+decimal number and finite, so it refuses a stored true-or-false value, a
+not-a-number, an endless value, text, and a whole number too large to hold. A
+refused figure draws an em dash, never a quantity, a price or an age.
+
+The Extractor row's Age, Units and marked value read through that rule in
+`src/gui/live_settings/fold_tokens.py`, in `_compose_extractor_tranche_cells`,
+and its tooltip reads the leased amount and the alt holding the same way in
+`_compose_extractor_tranche_tooltip`. The other build draws the same row from
+`src/gui/main_tabs/fold_tranches_tab_surface.py`, in `extractor_row_cells` and
+in `guarded_extractor_units`.
+
+The Clear fold tranches confirmation states the queued cash and the queued units
+before the queue is discarded. Both figures are totalled by
+`src/gui/live_settings/fold_tokens.py`, in `fold_queue_figure_total`, and by
+`src/gui/main_tabs/fold_tranches_tab_surface.py`, in `queue_figure_total`. A
+total is reported only when every queued row is readable; otherwise the figure
+draws an em dash rather than a partial sum offered as the whole queue. A missing
+key counts as nothing, which is how the table's own cells read it.
+
+The same confirmation warns him when the bot also holds parked Smart Wire
+credit, because clearing the queue opens the absorb window. That figure reads
+through the same rule in `src/gui/live_settings/fold_tokens.py`, in
+`fold_parked_credit`, and in `src/gui/main_tabs/fold_tranches_tab_surface.py`,
+in `FoldTranchesTabModel.parked`. A credit that cannot be read counts as a
+credit that stands: `fold_parked_credit_stands` and `parked_credit_stands` keep
+the warning drawn and the Clear Wire control live, and the amount alone draws an
+em dash. A credit of nothing draws no warning and leaves that control off.
+
 ### What the panel draws for a count it cannot work out
 
 The cycle close ratio is the closed count over the opened count less the
