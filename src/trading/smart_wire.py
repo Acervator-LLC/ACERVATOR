@@ -934,6 +934,7 @@ class SmartWireManager:
                         reason=f"fold_profit pct={pct}% ref={ref}",
                     )
                 )
+                self.book_transfer(source_id, target_id, share)
                 _placement = ""
                 try:
                     if isinstance(r, dict):
@@ -1078,6 +1079,62 @@ class SmartWireManager:
                 ", ".join(sorted(set(_notice_emit_fails))),
             )
         return results
+
+    def book_transfer(self, source_id: str, target_id: str, usd: float) -> bool:
+        """Book one wire transfer onto the two ledgers it moves money between.
+
+        ``usd`` is added to the source ledger's wired_out, to the target
+        ledger's wired_in, and to the target ledger's provenance entry for
+        ``source_id`` - the per-funder breakdown the Bot Swarm tab draws. Both
+        live transfer paths book here, distribute_fold_profit on a compounded
+        fold and WireRoutingMixin._route_scrum_proceeds_via_wires on a scrum, so
+        one transfer cannot reach the totals without reaching the breakdown.
+
+        A usd no reading admits as an amount books nothing and answers False. A
+        funder entry already unreadable keeps the entry it has, because adding
+        to it would turn a figure the tab draws as an em dash into one it draws
+        as money. A ledger this manager does not hold is skipped, and no failure
+        raises into the caller.
+        """
+        try:
+            amount = float(usd)
+        except (TypeError, ValueError):
+            amount = math.nan
+        if not math.isfinite(amount):
+            logger.warning(
+                "SmartWire: transfer %s -> %s carries %r, which no reading "
+                "admits as an amount. Neither ledger moves, so the totals and "
+                "the provenance breakdown already stored stay readable",
+                source_id,
+                target_id,
+                usd,
+            )
+            return False
+        funder = str(source_id)
+        target_ledger = self._ledgers.get(str(target_id))
+        if target_ledger is not None:
+            target_ledger.wired_in += amount
+            try:
+                held = float(target_ledger.provenance.get(funder, 0.0))
+            except (TypeError, ValueError):
+                held = math.nan
+            if math.isfinite(held):
+                target_ledger.provenance[funder] = held + amount
+            else:
+                logger.warning(
+                    "SmartWire: %s holds %r for funder %s, which no reading "
+                    "admits, so the $%.4f this transfer adds has nothing to "
+                    "add to. The breakdown entry stays as it is and the Bot "
+                    "Swarm tab keeps drawing an em dash for it",
+                    target_id,
+                    target_ledger.provenance.get(funder),
+                    funder,
+                    amount,
+                )
+        source_ledger = self._ledgers.get(funder)
+        if source_ledger is not None:
+            source_ledger.wired_out += amount
+        return True
 
     def register_bot(
         self,
