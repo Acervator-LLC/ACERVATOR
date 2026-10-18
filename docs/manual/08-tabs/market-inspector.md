@@ -1934,6 +1934,39 @@ PUSH_WIRE_SELF_FORMAT = (
 )
 ```
 
+A Target Balance is refused the same way, and on both destinations by the same
+rule. Each candidate row names one market and one dollar target, and both
+pushes read that target through one admission: an endless figure, a figure that
+is not a number, a stored flag, a negative figure and text no dollar can be
+read from are each refused, the Activity Log names every market refused,
+nothing is held and the run mode does not move. A row naming no target, or
+naming zero, takes the configured default instead, which is the
+`target_balance` field default `BotConfig` itself declares, so a push and the
+Bot Wizard cannot name two different dollars.
+
+`src/trading/container/config.py, in pushed_target_usd` — the one admission
+both destinations read
+
+```python
+PUSHED_TARGET_DEFAULT: float = float(
+    next(one.default for one in fields(BotConfig) if one.name == "target_balance")
+)
+```
+
+A repeated name is refused too. One pair holds one rate, so a topology naming
+the same source and target twice refuses the whole push, and a candidate naming
+the same market twice holds one bot for it rather than two.
+
+`src/gui/simulator/sim_trading_tab_surface.py` — the target and repeated-pair
+refusals
+
+```python
+PUSH_TARGET_FORMAT = "{asset}: {target} is not a Target Balance a bot can trade"
+PUSH_WIRE_TWICE_FORMAT = (
+    "{source} to {target} is named twice, and one pair holds one rate"
+)
+```
+
 A pushed bot is a simulated record, never a live bot and never an order. It
 reaches the Simulator's own fleet file and its own bus, and the live engine and
 the live logs see nothing of it. A pushed wire is the same: it is registered on

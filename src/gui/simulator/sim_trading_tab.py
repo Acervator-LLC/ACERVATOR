@@ -1008,14 +1008,22 @@ class SimTradingTab(QWidget):
         wires between them, and leave Back Test the run mode.
 
         ``candidate`` is the Market Inspector's ``{"bots", "wires"}`` payload.
-        Every market must be named by a Stone Tablet and every wire must reach
-        two different held bots; either gap refuses the whole push through
-        ``push_refused_line`` or ``push_wire_refused_line``, holds nothing,
-        registers nothing and leaves the run mode as it stands. Answers
+        Every market must name a Target Balance ``pushed_target_usd`` admits
+        and must be named by a Stone Tablet, and every wire must reach two
+        different held bots and name its pair once; any gap refuses the whole
+        push through ``push_target_refused_line``, ``push_refused_line`` or
+        ``push_wire_refused_line``, holds nothing, registers nothing and leaves
+        the run mode as it stands. Answers
         ``{"mode", "held", "wires", "refused"}``.
         """
         bots, wires = tab_surface.push_payload(candidate)
-        configs, missing = tab_surface.push_configs(bots, self._tablet_source.entries())
+        configs, missing, refused_targets = tab_surface.push_configs(
+            bots, self._tablet_source.entries()
+        )
+        if refused_targets:
+            refusal = tab_surface.push_target_refused_line(refused_targets)
+            self._status_log.log(refusal, "warning")
+            return {"mode": self._mode, "held": 0, "wires": 0, "refused": refusal}
         if missing or not configs:
             refusal = tab_surface.push_refused_line(missing)
             self._status_log.log(refusal, "warning")
