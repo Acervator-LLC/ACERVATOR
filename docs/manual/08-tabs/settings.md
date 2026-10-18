@@ -8100,4 +8100,127 @@ The earlier text stays where it is.
 | ---------------- | ---------------------- |
 | "the startup credential report \| Gemini stored and unverified, Kraken with none" | The report names what each venue's last authenticated call answered, or that no answer is on record. A venue holding no credential still reports none. |
 
+## 2026-10-18 - A format check records a format check
+
+A green on the Exchange Status panel means a venue answered an authenticated
+call. Nothing else writes a green.
+
+A venue with its own written connector carries no ccxt entry, so pressing Test
+Connection for it fetches no market and reads no balance. The check that runs
+instead reads the key and loads the secret as a signing seed, and it contacts
+nothing.
+
+`src/exchange/api_validator.py, in hand_written_result` — the check that asks no
+venue
+
+```python
+refusal = connector.credential_refusal(api_key, api_secret, passphrase)
+```
+
+That check used to call the recorder whose contract is "one venue answered an
+authenticated call", so the venue drew green on the shape of the credential
+alone. Its own message says what it did: no venue was contacted, no market count
+and no balance were read.
+
+### The record carries a third state
+
+`record_format_checked` holds what a format check learns. It refuses where the
+record already holds a state only a venue's own answer writes, so a shape check
+can neither replace a green nor clear a red.
+
+`src/exchange/credential_state.py, in record_format_checked`
+
+```python
+if recorded_state(exchange_id, path) in VENUE_ANSWERS:
+    return False
+return _record(exchange_id, FORMAT_CHECKED, when, path)
+```
+
+`VENUE_ANSWERS` holds the two states a venue writes. `RECORDED_STATES` is those
+two and the format check.
+
+### What the panel draws
+
+The third state draws the resting colour, never green. A reading the platform
+could not take is drawn as an absence, and the words carry what happened. The
+panel still paints three colours.
+
+| The credential | The record | The row | The words |
+| -------------- | ---------- | ------- | --------- |
+| its shape passes and no venue was asked | `format_checked` | the resting colour | credential format checked, no venue asked |
+| a venue accepted it | `validated` | green | credentials validated |
+| a venue refused it | nothing | the resting colour | no valid credentials: never asked, or the venue refused one |
+| none is stored | nothing | the resting colour | no valid credentials: never asked, or the venue refused one |
+
+`src/gui/main_tabs/settings_dialog_surface.py` — the words each state draws
+
+```python
+VENUE_STATE_WORDS = {
+    VENUE_STATE_VALIDATED: "credentials validated",
+    VENUE_STATE_LOST: "API connection lost",
+    VENUE_STATE_FORMAT_CHECKED: "credential format checked, no venue asked",
+    VENUE_STATE_UNSET: "no valid credentials: never asked, or the venue refused one",
+}
+```
+
+The last two rows read alike on purpose. `src/exchange/ccxt_connector.py, in
+note_venue_refusal` drops the record when a venue rejects a credential, so a
+rejected key and a venue nobody has called hold the same record. The words name
+both causes rather than letting one colour stand for both.
+
+### Driven on the real path
+
+Seven credentials through `src/exchange/api_validator.py, in
+validate_credentials`, with the home redirected and the venue replaced by a
+double that answers or refuses in process. No venue was contacted.
+
+| The credential | The row drew before | The row draws now |
+| -------------- | ------------------- | ----------------- |
+| its shape passes, no venue asked | green, credentials validated | the resting colour, credential format checked, no venue asked |
+| a venue accepted it | green, credentials validated | green, credentials validated |
+| a venue refused it | the resting colour | the resting colour, with both causes named |
+| none is stored | the resting colour | the resting colour, with both causes named |
+| a green on record, then a format check | green | green |
+| a red on record, then a format check | green | red |
+| a shape the check refuses | the resting colour | the resting colour |
+
+Row two is the control. A credential a venue accepted still draws green.
+
+Row six was a second false reading. The format check called the recorder that
+clears a red and sends the restored-connection alert, so a shape check turned a
+venue's own refusal green and reported the connection restored. The red now
+stands until a venue answers.
+
+### The startup line reads the same record
+
+`src/gui/main_window.py, in _report_stored_credentials_on_startup` writes one
+Activity Log line for each configured exchange from this record. A format check
+leaves no venue answer, so that line reports an absence.
+
+Driven on the real method with the window's log, spool and settings replaced by
+doubles, and the home redirected:
+
+| The record | The line | Level |
+| ---------- | -------- | ----- |
+| `validated` | credentials stored, accepted at a date and time | info |
+| `lost` | credentials stored, the venue did not answer at a date and time | warning |
+| `format_checked` | credentials stored, no answer on record | info |
+| nothing | credentials stored, no answer on record | info |
+
+The detail beside the accepted line used to say that a venue with its own
+connector records a green on the credential alone. That is what this change
+stopped, so the detail now says only a venue answering an authenticated call
+records it. The detail beside the third and fourth rows names all three of their
+causes.
+
+### Two sentences the third state replaces
+
+Each sentence below stands in an earlier section and no longer describes the
+code. The earlier text stays where it is.
+
+| Earlier sentence | What the code does now |
+| ---------------- | ---------------------- |
+| "Grey is the resting colour. It says nobody has checked, not that something failed." | Grey is still the resting colour and still says nothing failed. It now covers a venue nobody has asked and a credential whose format was checked, and the row's words tell the two apart. |
+| "grey \| nothing has been recorded for this venue" | Grey covers a venue with nothing on record and a venue holding a format check. Neither is a venue answer, so both draw the resting colour. |
+
 Back to [the subsystem index](README.md).

@@ -198,23 +198,28 @@ EXCHANGE_STATUS_LABEL = "Exchange Status"
 
 VENUE_STATE_VALIDATED = "validated"
 VENUE_STATE_LOST = "lost"
+VENUE_STATE_FORMAT_CHECKED = "format_checked"
 VENUE_STATE_UNSET = "unset"
 
-#: The ``design_system`` token each venue state paints with.
+#: The ``design_system`` token each venue state paints with. Only a venue's own
+#: answer reaches ``SUCCESS``; a format check draws the resting colour.
 VENUE_STATE_TOKENS = {
     VENUE_STATE_VALIDATED: "SUCCESS",
     VENUE_STATE_LOST: "ERROR",
+    VENUE_STATE_FORMAT_CHECKED: "STATUS_NEUTRAL",
     VENUE_STATE_UNSET: "STATUS_NEUTRAL",
 }
 VENUE_STATE_COLOURS = {
     VENUE_STATE_VALIDATED: ds.SUCCESS,
     VENUE_STATE_LOST: ds.ERROR,
+    VENUE_STATE_FORMAT_CHECKED: ds.STATUS_NEUTRAL,
     VENUE_STATE_UNSET: ds.STATUS_NEUTRAL,
 }
 VENUE_STATE_WORDS = {
     VENUE_STATE_VALIDATED: "credentials validated",
     VENUE_STATE_LOST: "API connection lost",
-    VENUE_STATE_UNSET: "no valid credentials",
+    VENUE_STATE_FORMAT_CHECKED: "credential format checked, no venue asked",
+    VENUE_STATE_UNSET: "no valid credentials: never asked, or the venue refused one",
 }
 VENUE_ROW_FORMAT = "{name} ({venue})"
 VENUE_ROW_STYLE = (
