@@ -49,22 +49,21 @@ def hand_written_result(
 
     ``connector`` is what ``crypto_connector_class`` answered, and its
     ``credential_refusal`` names what it cannot sign with, reaching no venue.
+    Neither branch records a venue answer: a pass reaches
+    ``record_format_checked`` and a refusal records nothing.
     """
     refusal = connector.credential_refusal(api_key, api_secret, passphrase)
     elapsed = (time.monotonic() - start) * 1000
     if refusal:
-        from .ccxt_connector import note_venue_refusal
-
-        note_venue_refusal(exchange_id, RuntimeError(refusal))
         return ValidationResult(
             success=False,
             exchange_id=exchange_id,
             message=refusal,
             elapsed_ms=elapsed,
         )
-    from .ccxt_connector import note_venue_answered
+    from .credential_state import record_format_checked
 
-    note_venue_answered(exchange_id)
+    record_format_checked(exchange_id)
     return ValidationResult(
         success=True,
         exchange_id=exchange_id,

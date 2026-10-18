@@ -79,6 +79,12 @@ DEFAULT_STALL_SECONDS = 60  # must match or exceed Acervator's longest sync call
 HEARTBEAT_POLL_INTERVAL = 2.0
 CAPTURE_TAIL_LINES = 200
 
+# The child writes its output, the pipe is read and the console log is opened
+# in this one encoding. Unnamed, each end falls back to the machine's locale,
+# which on Windows cannot carry the arrow and dash glyphs the platform logs.
+CHILD_IO_ENCODING = "utf-8"
+CHILD_IO_ERRORS = "replace"
+
 # A handler inside a per-line or per-file loop can fire thousands of times
 # in one run. Each site writes at most this many lines; the rest are
 # counted only, so a repeating failure cannot regrow the log directory.
@@ -197,6 +203,22 @@ def _ensure_log_dir() -> None:
         _record("_ensure_log_dir: could not create the log directory", exc)
 
 
+def _set_relay_encoding() -> None:
+    """Set this process's stdout and stderr to ``CHILD_IO_ENCODING``.
+
+    ``ChildRunner._reader_loop`` relays every child line to ``sys.stdout``, and
+    a frozen build with no console has no stream to set.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is None:
+            continue
+        try:
+            reconfigure(encoding=CHILD_IO_ENCODING, errors=CHILD_IO_ERRORS)
+        except (OSError, ValueError) as exc:
+            _record("_set_relay_encoding: could not set a relay stream", exc)
+
+
 # ─────────────────────────────────────────────────────────────────
 # Process launch + stdout/stderr tail capture
 # ─────────────────────────────────────────────────────────────────
@@ -257,11 +279,27 @@ class ChildRunner:
             return [sys.executable, "--child"]
         return [sys.executable, "main.py", "--child"]
 
+    def child_env(self, env: dict[str, str] | None) -> dict[str, str]:
+        """Return ``env``, or this process's own, with the child's output encoding set.
+
+        ``PYTHONIOENCODING`` makes the child write its stdout and stderr in
+        ``CHILD_IO_ENCODING``, which is the encoding the pipe is read with and
+        the console log is opened with. Both launch branches build their
+        environment here, so the two ends cannot drift apart.
+        """
+        carried = dict(env) if env is not None else os.environ.copy()
+        carried["PYTHONIOENCODING"] = f"{CHILD_IO_ENCODING}:{CHILD_IO_ERRORS}"
+        return carried
+
     def _start_internal(self, env: dict[str, str] | None) -> None:
         _ensure_log_dir()
         # Open log file in line-buffered text mode
         self._log_fh = open(
-            self.log_path, "w", buffering=1, encoding="utf-8", errors="replace"
+            self.log_path,
+            "w",
+            buffering=1,
+            encoding=CHILD_IO_ENCODING,
+            errors=CHILD_IO_ERRORS,
         )
         self._log_fh.write(
             f"=== Acervator launched {_isoformat_now()} cmd={self.command()} ===\n"
@@ -271,7 +309,8 @@ class ChildRunner:
         # main.py resolves against cwd, which is this file's directory, so
         # the source-tree form names the same file the frozen form re-enters.
         # stderr merges into stdout so both are read on one stream.
-        # env=None inherits this process's environment.
+        # env=None carries this process's environment plus the child encoding.
+        launched = self.child_env(env)
         if self.frozen:
             self.proc = subprocess.Popen(
                 [sys.executable, "--child"],
@@ -279,8 +318,10 @@ class ChildRunner:
                 stderr=subprocess.STDOUT,
                 bufsize=1,
                 universal_newlines=True,
+                encoding=CHILD_IO_ENCODING,
+                errors=CHILD_IO_ERRORS,
                 cwd=str(SCRIPT_DIR),
-                env=env,
+                env=launched,
             )
         else:
             self.proc = subprocess.Popen(
@@ -289,8 +330,10 @@ class ChildRunner:
                 stderr=subprocess.STDOUT,
                 bufsize=1,
                 universal_newlines=True,
+                encoding=CHILD_IO_ENCODING,
+                errors=CHILD_IO_ERRORS,
                 cwd=str(SCRIPT_DIR),
-                env=env,
+                env=launched,
             )
 
         self._reader_thread = threading.Thread(
@@ -350,7 +393,11 @@ class ChildRunner:
                 )
             # Open fresh active log.
             self._log_fh = open(
-                self.log_path, "w", buffering=1, encoding="utf-8", errors="replace"
+                self.log_path,
+                "w",
+                buffering=1,
+                encoding=CHILD_IO_ENCODING,
+                errors=CHILD_IO_ERRORS,
             )
             self._log_fh.write(
                 f"=== Acervator log continued {_isoformat_now()} "
@@ -369,7 +416,11 @@ class ChildRunner:
             # in append mode so we don't lose the rest of the stream.
             try:
                 self._log_fh = open(
-                    self.log_path, "a", buffering=1, encoding="utf-8", errors="replace"
+                    self.log_path,
+                    "a",
+                    buffering=1,
+                    encoding=CHILD_IO_ENCODING,
+                    errors=CHILD_IO_ERRORS,
                 )
             except Exception as reopen_exc:
                 _record(
@@ -863,6 +914,7 @@ def _run_watchdog(
     """Core watchdog loop, factored out so both `main()` CLI invocation
     and `run_self_watchdog()` (from main.py) share the same pipeline."""
     _ensure_log_dir()
+    _set_relay_encoding()
 
     # Prune old post-mortem bundles on startup, then report the log dir
     # footprint, so unbounded accumulation cannot fill the disk again.
