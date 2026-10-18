@@ -213,6 +213,14 @@ PHANTOM_FAILED_LOG = "Bot %s: phantom config update failed: %s"
 ROUTE_REFUSED_LOG = "Bot %s: %s live-update refused: %s"
 ROUTE_RAISED_LOG = "Bot %s: %s live-update raised: %s"
 APPLIED_LOG = "Bot %s: live settings changed: %s"
+ROSTER_FAILED_LOG = (
+    "Bot Settings: the fleet roster could not be read (%s: %s); Prev and Next "
+    "are hidden and the operator cannot walk the swarm from this window"
+)
+TAB_READ_FAILED_LOG = (
+    "Bot Settings: the open tab could not be read (%s: %s); the next bot's "
+    "window opens on the first tab"
+)
 SAVE_FAILED_LOG = (
     "%s: cleared in memory but NOT saved (%s: %s); a "
     "restart before the next rolling save will restore "
@@ -718,11 +726,15 @@ class BotLiveSettingsModel:
             return list(self.bot_manager.ordered_bot_ids())
         except AttributeError:
             pass
-        except Exception:
+        except Exception as exc:
+            entry = [ROSTER_FAILED_LOG, type(exc).__name__, str(exc), "warning"]
+            self.logged.append(entry)
             return list(NO_SIBLINGS)
         try:
             return list(getattr(self.bot_manager, HELD_BOTS_ATTR).keys())
-        except Exception:
+        except Exception as exc:
+            entry = [ROSTER_FAILED_LOG, type(exc).__name__, str(exc), "warning"]
+            self.logged.append(entry)
             return list(NO_SIBLINGS)
 
     def navigate_to_sibling(self, direction: Any) -> None:
@@ -758,10 +770,16 @@ class BotLiveSettingsModel:
         return None
 
     def active_tab_index(self) -> int:
-        """Which tab the operator is looking at, or the first one."""
+        """Which tab the operator is looking at, or the first one.
+
+        A read that fails is recorded here, because answering the first tab
+        in silence hides the fault from the caller's own guard.
+        """
         try:
             return int(self.current_tab)
-        except Exception:
+        except (TypeError, ValueError) as exc:
+            entry = [TAB_READ_FAILED_LOG, type(exc).__name__, str(exc), "warning"]
+            self.logged.append(entry)
             return FIRST_TAB_INDEX
 
     def original_value(self, field: Any) -> Any:
@@ -1112,6 +1130,8 @@ def build_view_model(model: BotLiveSettingsModel) -> dict:
         "route_refused_log": ROUTE_REFUSED_LOG,
         "route_raised_log": ROUTE_RAISED_LOG,
         "applied_log": APPLIED_LOG,
+        "roster_failed_log": ROSTER_FAILED_LOG,
+        "tab_read_failed_log": TAB_READ_FAILED_LOG,
         "save_failed_log": SAVE_FAILED_LOG,
         "save_method": SAVE_METHOD,
         "bot_manager_attribute": BOT_MANAGER_ATTRIBUTE,

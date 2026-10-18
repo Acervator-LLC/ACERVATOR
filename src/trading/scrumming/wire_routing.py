@@ -92,8 +92,10 @@ class WireRoutingMixin(_Host):
         self, scrum_usd: float, sell_fill: float, label: str = "scrum"
     ) -> float:
         """Route pct% of `scrum_usd` to each outgoing wire's target via
-        `apply_wire_income`. Updates Smart Wire ledger for both
-        source-side wired_out and target-side wired_in.
+        `apply_wire_income`. Each routed share is booked by
+        `SmartWireManager.book_transfer`, which moves the source-side
+        wired_out, the target-side wired_in and the target's provenance
+        entry for this bot together.
 
         Args:
           scrum_usd:  full proceeds available for routing (USD).
@@ -130,7 +132,6 @@ class WireRoutingMixin(_Host):
                     ),
                 )
             _bot_refs = getattr(_wire_mgr, "_bot_refs", {}) or {}
-            _ledgers = getattr(_wire_mgr, "_ledgers", {}) or {}
             # SWOS safety math: compute once per scrum event, divide by N
             # outbound wires, cap each wire at min(operator_pct, per_wire_safe).
             _n_wires = max(1, len(_wires))
@@ -229,26 +230,19 @@ class WireRoutingMixin(_Host):
                                 type(_sup).__name__,
                                 _sup,
                             )
-                    if _tgt_id in _ledgers:
-                        try:
-                            _ledgers[_tgt_id].wired_in += float(_routed)
-                        except Exception as _sup:  # noqa: BLE001 - ledger probe
-                            logger.debug(
-                                "suppressed in %s: %s: %s",
-                                "_route_scrum_proceeds_via_wires",
-                                type(_sup).__name__,
-                                _sup,
-                            )
-                    if self.bot_id in _ledgers:
-                        try:
-                            _ledgers[self.bot_id].wired_out += float(_routed)
-                        except Exception as _sup:  # noqa: BLE001 - ledger probe
-                            logger.debug(
-                                "suppressed in %s: %s: %s",
-                                "_route_scrum_proceeds_via_wires",
-                                type(_sup).__name__,
-                                _sup,
-                            )
+                    _booker = getattr(_wire_mgr, "book_transfer", None)
+                    if _booker is None:
+                        logger.warning(
+                            "Bot %s routed $%.4f to %s through a wire "
+                            "manager with no book_transfer, so neither the "
+                            "wire totals nor the provenance breakdown the "
+                            "Bot Swarm tab draws records this transfer",
+                            self.bot_id,
+                            _routed,
+                            _tgt_id,
+                        )
+                    else:
+                        _booker(self.bot_id, _tgt_id, _routed)
                 except Exception as _wone_exc:
                     logger.warning(
                         "Bot %s wire route to %s failed (label=%s): %s",

@@ -549,6 +549,50 @@ that card wants for a whole money amount of `$12,345.67`. The money strip takes 
 shares of the spare width and each counter card takes one. The asset class square
 takes none, because its side is a declared number.
 
+OVERTAKEN, and the block and the paragraph above are kept as written.
+`SPENDABLE_MIN_W` is not a constant and is not 180. `spendable_min_w` answers the
+money strip's narrowest width, as `spendable_w` at `MONEY_CELL_MIN_W`: every
+`KPI_COLUMNS` column's room at the smallest type an amount draws at, each rule's
+own width and the gap either side of it, and `SPENDABLE_TEXT_PAD` for the frame.
+Six columns answer 512 px.
+
+OVERTAKEN, and the block and the paragraph above are kept as written.
+`COUNTER_MIN_W` is not 48. It is 88 px, the width the row draws a counter slot at,
+and it is a typed figure on purpose: `MONEY_CELL_MIN_W` plus `COUNTER_TEXT_PAD`
+reads 2 px wider, and raising the floor to that would move every counter slot.
+What the card's amount gained is the room inside the floor, which
+`CARD_SIDE_MARGIN_PX` widened.
+
+OVERTAKEN, and the block and the paragraph above are kept as written.
+`COUNTER_NATURAL_W` is not 118. It is 144 px, the width the row draws a counter
+card at when it can afford it, and `COUNTER_TEXT_W` is that width less
+`COUNTER_TEXT_PAD`. The React card reads `COUNTER_NATURAL_W` for its own sizeHint,
+so the width is held and the room inside it is what `CARD_SIDE_MARGIN_PX` widened —
+110 px of room before, 118 px now.
+
+OVERTAKEN, and the block and the paragraph above are kept as written.
+`TOP_ROW_STRETCH` is not `[3, 1, 1, 1, 1, 1, 0]` and is not written out. It is
+built from `KPI_COLUMNS` and `COUNTER_CARDS`: the money strip takes one share per
+column it holds, each card takes `COUNTER_STRETCH`, and the class square takes
+`CLASS_GROUP_STRETCH`. Six columns and six cards answer
+`[6, 1, 1, 1, 1, 1, 1, 0]`, which is the share list the row already drew, and it
+holds one share per `TOP_ROW_ORDER` slot by construction. The shares themselves
+are unchanged; only where they come from is.
+
+`src/gui/main_tabs/header_strip_surface.py` — the floors and the shares today
+
+```python
+MONEY_CELL_MIN_W = 64
+COUNTER_MIN_W = 88
+COUNTER_NATURAL_W = 144
+COUNTER_TEXT_W = COUNTER_NATURAL_W - COUNTER_TEXT_PAD
+TOP_ROW_STRETCH = [
+    len(KPI_COLUMNS),
+    *([COUNTER_STRETCH] * len(COUNTER_SLOTS)),
+    CLASS_GROUP_STRETCH,
+]
+```
+
 **The margins the two newest columns are drawn from.** A column leaves 3 px either
 side of the rule between it and its neighbour, the rule itself is 12 px, the panel's
 own side margin is 6 px, and a counter card's side margin is 4 px.
@@ -561,6 +605,81 @@ SPENDABLE_COLUMN_GAP_PX = 3
 SPENDABLE_RULE_W_PX = 12
 CARD_SIDE_MARGIN_PX = 4
 ```
+
+OVERTAKEN, and the block and the paragraph above are kept as written.
+`CARD_SIDE_MARGIN_PX` is not 4 and the Qt counter card leaves no side margin of
+its own. `PANEL_FRAME_INSET_PX` names what the card's frame already insets — 12 px
+of padding and a 1 px border on each side — so a margin on top of it was a second
+inset, and it cost the amount the digits `MONEY_CELL_MIN_W` reserves room for. The
+three money strip figures above are unchanged.
+
+OVERTAKEN, and the block and the paragraph above are kept as written. The card's
+side margin is declared twice, once per host, because the two hosts apply it
+differently. `CARD_SIDE_MARGIN_PX` is the margin the Qt card holds inside the
+frame inset it already has. `CARD_PAGE_SIDE_MARGIN_PX` is the padding
+`CARD_LAYOUT` carries to the page, where it replaces the frame's inset instead of
+sitting inside it, and where the slot's own drawn width follows it. It is held at
+4, the figure the row already drew, so no slot moves on either host.
+
+**One money cell, one width rule.** The row draws money in two kinds of panel —
+a column of the money strip and a counter card — and both reserve the same room
+for it. `header_strip_surface.py` names the widest amount the row draws and
+measures it once at the smallest type a money cell shrinks to.
+
+`src/gui/main_tabs/header_strip_surface.py` — the one declaration
+
+```python
+WIDEST_AMOUNT = "$-999,999.99"
+MONEY_CELL_MIN_W = 64
+KPI_COLUMN_W = money_cell_w(VALUE_FONT_PX)
+```
+
+`money_cell_w` scales that reading to any type size, because a font's advance
+scales with its pixel size. `spendable_natural_w` is the strip at
+`VALUE_FONT_PX` and `spendable_min_w` is the strip at `VALUE_FONT_MIN_PX`, so
+one number answers both.
+
+**Every width the row is sized from is held where it was.** `COUNTER_MIN_W` and
+`COUNTER_NATURAL_W` are the widths the row already drew a counter slot at, and
+`slot_floor_w`, `slot_natural_w` and `slot_stretch` answer the same number for
+every `TOP_ROW_ORDER` slot as before. The Qt card reaches `MONEY_CELL_MIN_W` of
+room through `CARD_SIDE_MARGIN_PX`, which is room inside the panel and not a wider
+panel, and the page's card has that room already through
+`CARD_PAGE_SIDE_MARGIN_PX`, so no slot's drawn size moves on either host.
+
+**The page's slot width follows its card's padding and no Qt slot follows its
+margin.** Measured at four window widths in both builds: moving
+`CARD_SIDE_MARGIN_PX` alone moves no Qt slot at any width, while the same figure
+carried to `CARD_LAYOUT` moves every page counter slot wherever the row has width
+above its floors. That is why the two are declared apart, and it is the reason
+the page and the Qt row draw a counter slot at different widths at all.
+
+**A card's margin is its frame's inset and nothing more.** The theme's
+`QFrame[frameShape="6"]` rule already holds a panel's text 12 px off its border
+and draws a 1 px border, which `PANEL_FRAME_INSET_PX` names. A counter card adds
+no side margin of its own on top of it, so the amount keeps the digits
+`MONEY_CELL_MIN_W` reserves room for at the narrowest window.
+
+**The slot order and the slot shares are read off the cards.**
+`header_strip_surface.py, in COUNTER_SLOTS` is built from `COUNTER_CARDS`,
+`TOP_ROW_ORDER` is the money strip's slot, those cards and the class square, and
+`TOP_ROW_STRETCH` gives the strip one share per `KPI_COLUMNS` column, each card
+one share and the class square none. Adding or removing a card changes that card's
+own slot and no other panel's width.
+
+**A card whose figure the fleet never published draws the dash.**
+`header_strip_surface.py, in counter_amount` reads each `COUNTER_CARDS` entry's
+`source_key` with no default, so a fleet that publishes no such key answers
+nothing and the card draws `EMPTY_TEXT`. The live fleet publishes
+`total_accrued_usd` and the paper ledger and the simulator do not, so ACCUMULATED
+draws a figure behind Live and the dash behind Paper and Sim.
+
+**A shortened amount is measured at the size it is drawn at.**
+`src/gui/widgets/fitted_label.py, in _draw` picks the largest size that fits
+through `_fitted_for`, then shortens the text through `_metrics_at` at that same
+size. `fontMetrics` answers the size the style sheet last applied, which is the
+size before the shrink, so a reading taken from it shortens an amount that had
+already been made to fit.
 
 **A shortened amount ends in an ellipsis.** Every caption and every amount in the
 columns and the counters is an `ElidingLabel`. It keeps the whole text and draws
@@ -5835,6 +5954,12 @@ from .native_chart_surface import (
 readable and an empty circle when it is masked, and the control sizes to its own
 glyph rather than to a fixed square. The Charts tab's own dot takes its colour from
 the same token.
+
+A register read that raises draws neither circle. The dot takes the register's own
+absent mark, the em dash, and its tooltip reads `STATE UNREADABLE`.
+`src/gui/main_tabs/privacy_dot_surface.py, in glyph` answers all three marks and both
+builds read it, and `src/gui/widgets/privacy_dot.py, in refresh` writes the failed
+read to the log.
 
 `src/gui/design_system.py` — the token the dot paints in
 

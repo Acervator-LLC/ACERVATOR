@@ -983,3 +983,155 @@ driven at 9,000 such objects every five seconds, the peak held 126,004 objects
 above a quiet heap against 26,998 before. Objects not in a reference cycle are
 freed the instant nothing points at them, and that is untouched. What to watch
 for: a resident set that climbs through a minute and does not fall back.
+
+### 2026-10-17 - #62 - the ladder weighs rarity, and a topic's silence has a reading
+
+The signal ladder evicted by position alone, so the newest routine reading
+pushed out the oldest rare one. Three bounds now sit beside the size bound, and
+a bus topic's silence has a declared reading.
+
+#### The loudest writer declares a window
+
+`src/trading/ta_engine.py`, in `compute_all`, holds the two loudest emitters on
+the ladder. The first fires once per call. The second fires once per indicator
+per call. Both now pass a window and a market key.
+
+`src/trading/ta_engine.py` — the window
+
+```python
+TA_EMIT_EVERY = DIGEST_MIN_INTERVAL
+```
+
+The window is the digest ladder's own admission window, imported rather than
+copied, so one figure cannot become two. `instance` keys the window per market
+and timeframe, so one market's reading never suppresses another's. A suppressed
+observation is folded into the next admitted record's `count`, and `emit` never
+suppresses a failing check.
+
+Driven on a 260-candle tape with a sink under a temporary home: one compute
+admitted 13 records, the same market computed again admitted 0, a second market
+admitted 13 of its own, and 13 returned after `reset_throttle`.
+
+#### An age bound beside the size bound
+
+`src/core/signal_contract.py`, in `SignalSink._retire_aged`, unlinks a rotated
+backup whose last write is older than the bound.
+
+```python
+MAX_FILE_AGE_SECONDS = 14.0 * 24.0 * 3600.0
+```
+
+Fourteen days. The sweep runs on every `_roll` call, so a ladder below its size
+bound still retires its tail instead of holding it for ever. It reaches backups
+only. The live file is never unlinked, renamed or truncated, so no handle the
+sink holds is disturbed, and a backup that cannot be unlinked is left alone and
+not counted.
+
+This bound does not widen the ladder's time window. It bounds the footprint in
+time. The window is widened by the rate limit and the share bound.
+
+Driven with five planted backups, three of them past the bound: the three went
+and `age_retired` read 3. With every backup inside the bound, none went and the
+counter read 0. With the bound set to `0.0`, the same three aged backups stayed
+and the counter read 0.
+
+#### A per-emitter share of one file
+
+`src/core/signal_contract.py`, in `SignalSink._admitted_lines`, charges each
+record's bytes to its identity and refuses a passing record from an identity
+already at its share.
+
+```python
+MAX_IDENTITY_SHARE = 0.10
+```
+
+Ten distinct identities are needed to fill one file at this share, so no single
+writer can crowd a file alone. The charge resets when the file rotates. Two
+records are never refused: one whose check failed, which is the reading worth
+finding, and one from a new identity past `max_identities`. A refused record's
+identity stands on the digest ladder, where its next admitted line carries the
+`folded` count of what was suppressed.
+
+Driven on a 20,000-byte file, which gives one identity 2,000 bytes: a loud
+identity emitting 300 passing records put 6 of them on the live file and had
+294 refused, the one rare identity's record was on the live file, and the loud
+identity's failing record was on the live file after its share was spent. With
+the share set to `0.0`, all 300 were on the live file and nothing was refused.
+
+#### A reading for silence on a topic
+
+A file of written records cannot report silence, because a record is only ever
+written when something happened. `src/core/emit_contracts.py`, in
+`EmitObserver.silence`, reads each declared topic against the budget its
+contract declares.
+
+| reading | what it means |
+|---|---|
+| `unbounded` | the topic declares no budget, so silence from it is not evidence |
+| `never` | a budget is declared and the topic has not emitted at all; its producer is absent, which is not the same as stopped |
+| `within` | the last emission is inside the budget |
+| `overdue` | the topic emitted and then stopped past its budget |
+
+`EmitContract` carries the budget as a declared field, `silence_budget`. Two
+topics declare one: `bot.gate_decision` and `ta.voting`, the two a bot's own
+evaluation loop drives. `trade.filled`, `pnl.event`,
+`market_inspector.scan_started` and `market_inspector.scan_finished` declare
+none, because a fill, a P&L movement and a scan each need a discrete trigger
+and silence from them says nothing. Those four read `unbounded` for ever.
+
+```python
+LOOP_DRIVEN_SILENCE_BUDGET = STALE_AFTER
+```
+
+`STALE_AFTER` is the age at which the network already reads a pin stale,
+imported rather than copied, so the bus reading and the pin reading cannot
+drift to two ages. `silence` takes its clock from the caller and falls back to
+`time.monotonic()`, so a reader replaying compressed time supplies its own.
+
+Driven on a fresh observer: the two budgeted topics read `never` before any
+emission and the four unbudgeted read `unbounded`. One `ta.voting` emission
+later, that topic read `within` a second on and `overdue` a second past its
+budget. `trade.filled` read `unbounded` a million seconds on.
+
+#### Where the readings land
+
+No new reader was built. Six readings joined `SignalSink.health()`, which
+`src/gui/main_tabs/system_status_tab_surface.py` already reads, and one key
+joined `EmitObserver.to_dict()`, which `src/simulator/sim_bus.py` already reads
+at a run's close.
+
+| reading | what it carries |
+|---|---|
+| `age_retired` | backups the age bound unlinked from the main ladder |
+| `digest_age_retired` | the same for the digest ladder |
+| `max_file_age` | the age bound in force |
+| `share_refused` | passing records the share bound kept off the live file |
+| `share_budget` | bytes one identity may fill between rotations |
+| `share_identities` | identities holding a charge since the last rotation |
+
+`format_observer_lines` prints one tally line for the silence readings, then one
+line per topic reading `never` or `overdue`. A topic reading `unbounded` is
+counted and not listed, because a list of such topics would read as a list of
+faults.
+
+#### Overtaken by the two new ladder bounds
+
+Each sentence below stands as written above. The sentence under it is the
+current reading.
+
+> Three constants bound what the sink holds: how many rows buffer before a
+> write, how many stay in memory, and the size at which the file rotates.
+
+Five. `MAX_FILE_AGE_SECONDS` bounds the age of a rotated backup, and
+`MAX_IDENTITY_SHARE` bounds the share of one live file a single identity may
+fill with passing records.
+
+#### What the new bounds do not prove
+
+Every figure above was read from a drive under a temporary home, with `HOME`,
+`USERPROFILE`, `LOCALAPPDATA` and `APPDATA` redirected before the first import
+and `Path.home()` printed to prove it. None of it was read from a running
+platform. What the window and the share bound do to a real session's megabytes
+per hour is unmeasured until a launch writes a real `signals/session.jsonl`.
+What to watch for: `share_refused` climbing while `digest_folded` climbs with
+it, and `age_retired` holding at 0 until a ladder's tail is fourteen days old.

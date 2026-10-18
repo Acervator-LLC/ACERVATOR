@@ -73,6 +73,7 @@ NO_PENDING_TEXT = "no pending tranches"
 FILL_RATIO_FORMAT = "{ratio:.1%}  ({filled}/{created})"
 FILL_RATIO_CLEARED_TEXT = "—  (counters cleared)"
 FILL_RATIO_NEVER_OPENED_TEXT = "—  (no stacks opened yet)"
+FILL_RATIO_UNREADABLE_TEXT = "—  (opened count unreadable)"
 
 RATIO_STYLE_FORMAT = "color: {colour};"
 RATIO_NO_STYLE = ""
@@ -288,6 +289,7 @@ STEP_COUNTERS_ZERO = "counters_zero"
 STEP_NO_COUNTER_SUPPORT = "no_counter_support"
 STEP_COUNTERS_CLEARED = "counters_cleared"
 STEP_SETTLED = "settled"
+STEP_COUNTER_REFUSED = "counter_refused"
 
 CALL_NAMES = (
     STEP_READ_BOT,
@@ -305,6 +307,7 @@ CALL_NAMES = (
     STEP_NO_COUNTER_SUPPORT,
     STEP_COUNTERS_CLEARED,
     STEP_SETTLED,
+    STEP_COUNTER_REFUSED,
 )
 
 OUTCOME_NOTHING_TO_DISCARD = STEP_NOTHING_TO_DISCARD
@@ -335,6 +338,40 @@ def as_finite_float(value) -> Optional[float]:
     from ...trading.bot_container import as_finite_float as admitted
 
     return admitted(value)
+
+
+def lifetime_counter(bot, field: str) -> Optional[int]:
+    """One stored lifetime stack counter as a whole count, or None where
+    ``as_whole_count`` refuses it.
+
+    ``as_whole_count`` is the one admission both counters read, the same rule
+    ``StackTranchesTabMixin`` reads in the Qt build: a stored flag, a text
+    number, a not-a-number, an endless number and a whole number too large
+    for a float each answer None, and every caller draws ``NO_VALUE``.
+    """
+    from ...trading.container.config import as_whole_count
+
+    return as_whole_count(getattr(bot, field, 0))
+
+
+def counter_text(counted: Optional[int]) -> str:
+    """One lifetime counter as a count, or ``NO_VALUE`` where
+    ``lifetime_counter`` refused it."""
+    if counted is None:
+        return NO_VALUE
+    return COUNT_FORMAT.format(count=counted)
+
+
+def counters_stand_on(created: Optional[int], discarded: Optional[int]) -> bool:
+    """True where either lifetime counter is non-zero or was refused.
+
+    Keeps the Clear Lifetime Counters button live on a counter
+    ``lifetime_counter`` refused, so an unreadable count never costs the
+    operator the control that would zero it.
+    """
+    if created is None or discarded is None:
+        return True
+    return bool(created + discarded)
 
 
 def format_age(seconds: float) -> str:
@@ -564,10 +601,10 @@ class StackTranchesTabModel:
         self.state = TabState()
         self._record(STEP_READ_BOT)
         tranches = self._tranches()
-        self.state.created_lifetime = int(getattr(self.bot, CREATED_ATTRIBUTE, 0) or 0)
-        self.state.discarded_lifetime = int(
-            as_finite_float(getattr(self.bot, DISCARDED_ATTRIBUTE, 0)) or 0.0
-        )
+        self.state.created_lifetime = lifetime_counter(self.bot, CREATED_ATTRIBUTE)
+        self.state.discarded_lifetime = lifetime_counter(self.bot, DISCARDED_ATTRIBUTE)
+        if self.state.created_lifetime is None or self.state.discarded_lifetime is None:
+            self._record(STEP_COUNTER_REFUSED)
         self.state.reset_ts = (
             as_finite_float(getattr(self.bot, RESET_TS_ATTRIBUTE, 0.0)) or 0.0
         )
@@ -612,18 +649,17 @@ class StackTranchesTabModel:
             oldest = NO_PENDING_TEXT
         self._add_row(OLDEST_AGE_ROW_LABEL, oldest)
 
-        self._add_row(
-            OPENED_ROW_LABEL, COUNT_FORMAT.format(count=self.state.created_lifetime)
-        )
+        self._add_row(OPENED_ROW_LABEL, counter_text(self.state.created_lifetime))
         self._add_row(
             FILL_RATIO_ROW_LABEL,
             self._ratio_text(len(filled)),
             self._ratio_style(len(filled), len(pending)),
         )
-        if self.state.discarded_lifetime:
+        # A refused counter shows the row with NO_VALUE; a zero still hides it.
+        if self.state.discarded_lifetime is None or self.state.discarded_lifetime:
             self._add_row(
                 DISCARDED_ROW_LABEL,
-                COUNT_FORMAT.format(count=self.state.discarded_lifetime),
+                counter_text(self.state.discarded_lifetime),
             )
 
         self._record(STEP_BUTTONS)
@@ -640,13 +676,15 @@ class StackTranchesTabModel:
             else CLEAR_BUTTON_PLAIN_TEXT
         )
         self.state.clear_button_enabled = bool(self.state.droppable)
-        counter_total = self.state.created_lifetime + self.state.discarded_lifetime
+        counters_stand = counters_stand_on(
+            self.state.created_lifetime, self.state.discarded_lifetime
+        )
         self.state.counters_button_text = (
             COUNTERS_BUTTON_COUNTED_FORMAT.format(created=self.state.created_lifetime)
-            if counter_total
+            if counters_stand and self.state.created_lifetime is not None
             else COUNTERS_BUTTON_PLAIN_TEXT
         )
-        self.state.counters_button_enabled = bool(counter_total)
+        self.state.counters_button_enabled = counters_stand
 
         if not tranches:
             self._record(STEP_EMPTY)
@@ -666,6 +704,8 @@ class StackTranchesTabModel:
         self.state.summary_styles.append(style)
 
     def _ratio_text(self, filled: int) -> str:
+        if self.state.created_lifetime is None:
+            return FILL_RATIO_UNREADABLE_TEXT
         if self.state.created_lifetime > 0:
             return FILL_RATIO_FORMAT.format(
                 ratio=filled / self.state.created_lifetime,
@@ -677,6 +717,8 @@ class StackTranchesTabModel:
         return FILL_RATIO_NEVER_OPENED_TEXT
 
     def _ratio_style(self, filled: int, pending: int) -> str:
+        if self.state.created_lifetime is None:
+            return RATIO_NO_STYLE
         if self.state.created_lifetime < RATIO_MIN_OPENED or pending <= 0:
             return RATIO_NO_STYLE
         ratio = filled / self.state.created_lifetime
@@ -859,9 +901,11 @@ class StackTranchesTabModel:
 
     def clear_lifetime_counters(self, answer: str = NO_ANSWER) -> str:
         """Run the Clear Lifetime Counters path and report where it stopped."""
-        opened = int(getattr(self.bot, CREATED_ATTRIBUTE, 0) or 0)
-        discarded = int(getattr(self.bot, DISCARDED_ATTRIBUTE, 0) or 0)
-        if not opened + discarded:
+        opened = lifetime_counter(self.bot, CREATED_ATTRIBUTE)
+        discarded = lifetime_counter(self.bot, DISCARDED_ATTRIBUTE)
+        if opened is None or discarded is None:
+            self._record(STEP_COUNTER_REFUSED)
+        if not counters_stand_on(opened, discarded):
             self._record(STEP_COUNTERS_ZERO)
             self._box(
                 INFORMATION_ICON, CLEAR_COUNTERS_TITLE, COUNTERS_ALREADY_ZERO_TEXT
@@ -879,8 +923,8 @@ class StackTranchesTabModel:
         body = [
             CONFIRM_COUNTERS_FORMAT.format(symbol=self._symbol()),
             BLANK_LINE,
-            CONFIRM_OPENED_LINE_FORMAT.format(opened=opened),
-            CONFIRM_DISCARDED_LINE_FORMAT.format(discarded=discarded),
+            CONFIRM_OPENED_LINE_FORMAT.format(opened=counter_text(opened)),
+            CONFIRM_DISCARDED_LINE_FORMAT.format(discarded=counter_text(discarded)),
             BLANK_LINE,
             CONFIRM_COUNTERS_NO_ORDER_TEXT,
             BLANK_LINE,

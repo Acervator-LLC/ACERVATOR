@@ -1212,19 +1212,18 @@ if _HAS_QT:
 
             The cards are walked from ``COUNTER_CARDS``, so the window pushes
             into exactly the cards ``_build_header_strip`` drew and no value
-            goes to a card that is not there. Each card is read inside
-            ``_strip_cell_text`` through ``aggregate_amount``, so one
-            unreadable figure costs one cell and a total the fleet could not
-            sum whole draws the dash. ``statuses`` names the fleet's rows and
-            scopes the AMMO column to the sector in front.
+            goes to a card that is not there. Each card's figure comes from
+            ``counter_amount`` and is rendered by ``_strip_cell_text``, so one
+            unreadable figure costs one cell, and a total the fleet could not
+            sum whole and a key the fleet never published both draw the dash.
+            ``statuses`` names the fleet's rows and scopes the AMMO column to
+            the sector in front.
             """
             for model in header_strip_surface.COUNTER_CARDS:
                 self._stat_cards[model["key"]].set_value(
                     self._strip_cell_text(
                         model,
-                        header_strip_surface.aggregate_amount(
-                            agg, model["source_key"], 0
-                        ),
+                        header_strip_surface.counter_amount(agg, model),
                     )
                 )
             # One builder for both hosts: the React strip reads the same
