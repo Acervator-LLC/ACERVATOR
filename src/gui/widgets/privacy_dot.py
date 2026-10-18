@@ -7,6 +7,7 @@ import logging
 from ...core.privacy_mask_registry import get_privacy_mask_registry
 
 from .. import design_system as ds
+from ..main_tabs import privacy_dot_surface as surface
 
 logger = logging.getLogger("acervator.gui.privacy_dot")
 
@@ -58,20 +59,23 @@ if _HAS_QT:
         def refresh(self) -> None:
             """Repaint the dot and its tooltip from current registry state.
 
-            The glyph is ● when revealed and ○ when masked, in
-            ``ds.PRIMARY_BRIGHT`` on a transparent flat button.
+            ``surface.glyph`` and ``surface.tooltip`` answer all three
+            states, and a read that raises passes None to both.
             """
+            masked: bool | None
             try:
-                masked = get_privacy_mask_registry().is_masked(self._field_id)
-            except Exception:
-                masked = False
-            if masked:
-                glyph = "○"
-                tip = f"{self._field_id}: MASKED. " "Click to reveal."
-            else:
-                glyph = "●"
-                tip = f"{self._field_id}: REVEALED. " "Click to mask."
-            self.setText(glyph)
+                masked = bool(get_privacy_mask_registry().is_masked(self._field_id))
+            except Exception as read_exc:
+                logger.warning(
+                    "privacy dot: the mask state for %s could not be read "
+                    "(%s: %s); the dot draws the absent mark rather than a "
+                    "state it never took",
+                    self._field_id,
+                    type(read_exc).__name__,
+                    read_exc,
+                )
+                masked = None
+            self.setText(surface.glyph(masked))
             self.setStyleSheet(
                 "PrivacyDot { "
                 f"  color: {ds.PRIMARY_BRIGHT}; "
@@ -82,4 +86,4 @@ if _HAS_QT:
                 "} "
                 f"PrivacyDot:hover {{ color: {ds.TEXT_MAX}; }}"
             )
-            self.setToolTip(tip)
+            self.setToolTip(surface.tooltip(self._field_id, masked))
