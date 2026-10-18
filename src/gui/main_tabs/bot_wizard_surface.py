@@ -1136,8 +1136,13 @@ POOL_PAIR_COUNT_FORMAT = (
     "(sorted by 24h volume). Leave all unchecked for "
     "auto-scan (top-N by volume)."
 )
-NO_PAIRS_TEXT = "No pairs found"
 NO_PAIRS_DATA = EMPTY_TEXT
+
+#: What the Target Asset row draws in place of a market, one ground each. The
+#: first names the money leg the Base Currency row is on, the second names the
+#: venue that recorded no market in the sector at all.
+NO_PAIRS_IN_BASE_FORMAT = "No {sector} market quoted in {base}"
+NO_SECTOR_MARKET_FORMAT = "No {sector} market recorded for {exchange}"
 POOL_SIGIL = "*"
 
 #: What a market no built bot variant trades carries beside its own entry. The
@@ -1687,12 +1692,63 @@ def base_items_for(rows: Any) -> list:
     """
     declared = list(COMBO_FIELDS["base"])
     named = {label for label, _value in declared}
-    held = {
-        quote
+    held = money_legs_held(rows)
+    return declared + [[quote, None] for quote in sorted(held - named)]
+
+
+def money_legs_held(rows: Any) -> set:
+    """Every money leg one venue's market rows quote a market in, upper-cased.
+
+    ``base_items_for`` offers these entries and ``opening_base_index`` picks the
+    one the Base Currency row opens on, so one reading decides both.
+    """
+    return {
+        quote.strip().upper()
         for row in readable_list(rows) or []
         if (quote := bag_text(row, MARKET_QUOTE_KEY))
     }
-    return declared + [[quote, None] for quote in sorted(held - named)]
+
+
+def opening_base_index(labels: Any, rows: Any, picked: Any = "") -> int:
+    """The position in ``labels`` of the money leg the Base Currency row opens
+    on: ``picked`` where ``rows`` quote a market in it, else the first label they
+    quote a market in, else 0.
+
+    ``base_items_for`` keeps the declared legs in their declared order, so a
+    sector quoting a market in the first declared leg still opens on it, and a
+    sector quoting a market in none of them opens on a leg it does quote rather
+    than on an empty Target Asset row. One reading serves the Qt page and the
+    surface the React page reads, so neither opens on a leg the other does not.
+    """
+    offered = [str(one or "").strip().upper() for one in (readable_list(labels) or [])]
+    held = money_legs_held(rows)
+    asked = str(picked or "").strip().upper()
+    if asked in held and asked in offered:
+        return offered.index(asked)
+    for at, one in enumerate(offered):
+        if one in held:
+            return at
+    return 0
+
+
+def no_pairs_reason(rows: Any, base: Any, sector: Any, venue: Any) -> str:
+    """Why the Target Asset row draws no market, worded for the screen.
+
+    ``NO_SECTOR_MARKET_FORMAT`` where the venue recorded no market in the sector
+    at all, and ``NO_PAIRS_IN_BASE_FORMAT`` where it recorded one the picked
+    money leg does not quote. The row states one of the two rather than drawing
+    an empty list with no ground.
+    """
+    from .asset_class_surface import display_name
+
+    named = display_name(normalise_sector(sector))
+    if not readable_list(rows):
+        return NO_SECTOR_MARKET_FORMAT.format(
+            sector=named, exchange=str(venue or "").capitalize()
+        )
+    return NO_PAIRS_IN_BASE_FORMAT.format(
+        sector=named, base=str(base or "").strip().upper()
+    )
 
 
 def normalise_sector(name: Any) -> str:
@@ -2472,18 +2528,22 @@ class BotWizardModel:
 
     def refill_base_items(self) -> None:
         """Refill the base drop-down from the picked venue's market rows,
-        through ``base_items_for``.
+        through ``base_items_for``, and open it on a leg those rows quote.
 
-        The declared entries keep their positions, so a stored
-        ``COMBO_DEFAULT_INDEX`` still names the entry it always named.
+        The declared entries keep their positions, and ``opening_base_index``
+        keeps the entry already shown while the rows quote a market in it, so a
+        sector quoting none of the declared legs draws a list rather than an
+        empty Target Asset row.
         """
         found = self.exchange_id_at(self.exchange_index)
-        self.base_items = base_items_for(self.markets.get(found, []))
+        rows = self.markets.get(found, [])
+        picked = self.combo_text(BASE_COMBO_NAME)
+        self.base_items = base_items_for(rows)
         self.calls.append([COMBO_CLEAR, "base"])
         for label, data in self.base_items:
             self.calls.append([COMBO_ADD_ITEM, "base", label, data])
-        self.combo_indexes["base"] = list_position(
-            self.combo_indexes["base"], len(self.base_items)
+        self.combo_indexes["base"] = opening_base_index(
+            [label for label, _data in self.base_items], rows, picked
         )
         self.calls.append([COMBO_SET_CURRENT_INDEX, "base", self.combo_indexes["base"]])
 
@@ -2530,16 +2590,15 @@ class BotWizardModel:
             )
             self.calls.append([COMBO_ADD_ITEM, "asset_target", label, named])
         if not kept:
-            self.target_items.append([NO_PAIRS_TEXT, NO_PAIRS_DATA])
+            absence = no_pairs_reason(rows, base, self.sector, found)
+            self.target_items.append([absence, NO_PAIRS_DATA])
             self.target_symbols.append(EMPTY_TEXT)
             self.target_reasons.append(EMPTY_TEXT)
             self.target_unit_rules.append(EMPTY_TEXT)
             self.target_prices.append(None)
             self.target_expiries.append(False)
             self.target_session_wholes.append(False)
-            self.calls.append(
-                [COMBO_ADD_ITEM, "asset_target", NO_PAIRS_TEXT, NO_PAIRS_DATA]
-            )
+            self.calls.append([COMBO_ADD_ITEM, "asset_target", absence, NO_PAIRS_DATA])
         self.target_index = 0 if self.target_items else -1
         sorted_note = (
             SORTED_BY_VOLUME_SUFFIX
@@ -3340,7 +3399,8 @@ def threshold_catalogue() -> dict:
         "fetch_error_limit": FETCH_ERROR_LIMIT,
         "part_separator": PART_SEPARATOR,
         "no_volume_text": NO_VOLUME_TEXT,
-        "no_pairs_text": NO_PAIRS_TEXT,
+        "no_pairs_in_base_format": NO_PAIRS_IN_BASE_FORMAT,
+        "no_sector_market_format": NO_SECTOR_MARKET_FORMAT,
         "no_pairs_data": NO_PAIRS_DATA,
         "sorted_by_volume_suffix": SORTED_BY_VOLUME_SUFFIX,
         "phantom_supported_text": PHANTOM_SUPPORTED_TEXT,
