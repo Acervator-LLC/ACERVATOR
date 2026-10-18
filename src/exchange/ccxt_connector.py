@@ -251,7 +251,8 @@ def _alert_venue(event_name: str, title: str, message: str) -> None:
 def note_venue_refusal(exchange_id: str, exc: BaseException) -> str:
     """Record one venue refusal where it changes the venue's state, and name its class.
 
-    Called from the connector paths that already catch a venue refusing a call.
+    Called from the paths that already catch a venue refusing a call, in this
+    module and in the window's bot-connect path.
     A lost connection writes the record the Exchange Status panel draws red and
     sends the lost-connection alert. A rejected credential drops the record, so
     the panel draws the venue unchecked, which is the colour the manual labels
@@ -1649,10 +1650,12 @@ class CCXTConnector(ExchangeInterface):
     ) -> None:
         """Run ``sync_connect`` on the single-worker executor, off the caller's thread.
 
-        ``sync_connect`` blocks for up to about 111 s: a 15 s pre-flight plus
-        three 30 s ``load_markets`` attempts spaced 2 s and 4 s apart. It does
-        not use :meth:`_call_sync`, whose 25 s budget is shorter than a
-        legitimate connect, and does not count against ``_sync_queue_depth``.
+        ``sync_connect`` blocks for the 15 s pre-flight plus
+        ``CONNECT_ATTEMPTS`` ``load_markets`` tries, each bounded by
+        ``CCXT_REQUEST_TIMEOUT_MS`` and spaced by ``CONNECT_BACKOFF_STEP_S``
+        steps. It does not use :meth:`_call_sync`, whose
+        ``SYNC_CALL_TIMEOUT_SEC`` budget is shorter than a legitimate connect,
+        and does not count against ``_sync_queue_depth``.
         """
         executor = self._sync_executor_for_submit()
 
