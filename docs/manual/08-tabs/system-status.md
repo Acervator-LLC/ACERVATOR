@@ -1135,3 +1135,92 @@ platform. What the window and the share bound do to a real session's megabytes
 per hour is unmeasured until a launch writes a real `signals/session.jsonl`.
 What to watch for: `share_refused` climbing while `digest_folded` climbs with
 it, and `age_retired` holding at 0 until a ladder's tail is fourteen days old.
+
+### 2026-10-18 - #143 - the Watchdog names one encoding for the child, the pipe and the log
+
+The Watchdog launches the platform, reads back everything it prints, and writes
+that into `console_<timestamp>.log`. Three ends carry the same text: what the
+child writes, what the pipe hands back, and what the file holds. A text stream
+that names no encoding falls back to the machine's locale, so each end picked
+its own and the operator's machine decided which.
+
+**The rule: one encoding, named at every end.** `acervator_watchdog.py` holds
+it as two values.
+
+`acervator_watchdog.py` — the one encoding and its error policy
+
+```python
+CHILD_IO_ENCODING = "utf-8"
+CHILD_IO_ERRORS = "replace"
+```
+
+Four sites read them. `ChildRunner.child_env` sets `PYTHONIOENCODING` for the
+child, so the child writes UTF-8. `ChildRunner._start_internal` names the same
+encoding on the pipe it reads and on the console log it opens.
+`ChildRunner._rotate_if_needed` names it again on the two files it reopens.
+`_set_relay_encoding` sets this process's own `sys.stdout`, which
+`ChildRunner._reader_loop` relays each child line to.
+
+Both launch branches, frozen and source tree, build their environment in
+`ChildRunner.child_env`, so the two ends cannot drift apart.
+
+#### What a failure cost before this
+
+Driven on a Windows host whose locale reads `cp1252`, with a child made to
+print an arrow, an em dash and a zero-width joiner:
+
+| what the ends named | what happened |
+|---|---|
+| neither end, the shape before this | **the child died**, return code 1, and the log held its traceback instead of the line |
+| the pipe only | the reader thread raised and the whole stream was lost |
+| the child only | the reader thread raised and the whole stream was lost |
+| both ends | return code 0, all three glyphs on disk and in the tail |
+
+Only the last row works. Naming the encoding at one end alone makes it worse,
+not better.
+
+#### Why the error policy is not strict
+
+`CHILD_IO_ERRORS` is `replace` at both ends, and each half earns its place.
+
+| where | strict instead | `replace` |
+|---|---|---|
+| the child's own output | a lone surrogate, which a Windows filename can carry, kills the child | the child survives and the glyph is substituted |
+| the pipe the parent reads | a byte that is not UTF-8 loses the whole stream, 0 characters read | 47 characters read, nothing lost |
+
+#### The machine identity read at launch
+
+`src/core/instance_guard.py` decides whether another copy already holds the
+lock. It reads the machine identity before the window opens.
+`_machine_id_darwin` runs `ioreg` and `_machine_id_linux` reads
+`/etc/machine-id`. Both now name the encoding and both use `replace`, because a
+`UnicodeDecodeError` is not one of the faults either handler catches, and an
+uncaught one there ends the launch.
+
+#### Measured on the one encoding
+
+Two instruments ran over `git ls-files '*.py'`, 615 files, each proved on a
+planted fixture pair first.
+
+```
+shape                       before      after     the control
+file read and file write    3 sites     3 sites   250 calls name the encoding
+the pipe read              14 sites    11 sites    20 -> 23 calls name it
+```
+
+The three sites that moved are the two Watchdog launches and the `ioreg` call.
+The count is conserved: three left the target column and three entered the
+control column. Of the 3 file sites, two are not file objects at all, and the
+third is in the paused USB key reader.
+
+The remaining 11 pipe sites sit outside the launch path: the paused USB key
+reader holds 3, the build and gate tooling holds 4, and the review harness
+holds 4.
+
+The drive ran on a scratch home with `HOME`, `USERPROFILE`, `LOCALAPPDATA` and
+`APPDATA` redirected before the first import and `Path.home()` printed to prove
+it. It wrote one file, under that scratch home. What a real launch does to a
+real console log is unmeasured until one runs. What to watch for: a
+`console_<timestamp>.log` that holds an arrow or an em dash where it used to
+hold a `UnicodeEncodeError` traceback, and a `watchdog_errors.log` with no
+`_reader_loop: could not relay` line.
