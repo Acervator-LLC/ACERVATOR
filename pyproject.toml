@@ -170,6 +170,14 @@ dev = [
     "acervator[test]",
     # The CI lint job runs black+flake8; the full lane shells out to the rest.
     "acervator[lint]",
+    # mypy reads the statsmodels imports in src/trading/pair_selection.py, and
+    # what it reports depends on whether the module is installed: `import-untyped`
+    # when it is, `import-not-found` when it is not. The archetypes lane installs
+    # THIS extra and nothing else, so without this line mypy answered
+    # `import-not-found`, the `type: ignore[import-untyped]` comments were both
+    # wrong and unused, and the lane failed on four high findings while this
+    # machine stayed green. The analyzer environment declares what it reads.
+    "acervator[cointegration]",
     # coding_archetype.py shells out to SIX analyzers on a Python target -
     # ruff, mypy, pyright, bandit, vulture, semgrep - and to shellcheck or
     # yamllint on a shell or YAML target. pyright is a bare-executable

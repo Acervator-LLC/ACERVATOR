@@ -26,6 +26,11 @@ CONSUMER_EXTRAS: dict[str, tuple[str, ...]] = {
     "build": ("build", "report", "monitor", "cointegration"),
     "os": ("report", "cointegration"),
     "display": ("display",),
+    # `dev` names cointegration as well as the `dev` extra: the extra's own
+    # `acervator[cointegration]` line is dropped by the dedupe in
+    # `requirements_for`, which keys on the distribution name and so keeps only
+    # the first `acervator[...]` self-reference. Naming the group here makes the
+    # analyzers' statsmodels reach this route too, not only `pip install -e .[dev]`.
     "dev": ("dev", "cointegration"),
     "contracts": ("contracts",),
     "ci": ("test", "lint"),

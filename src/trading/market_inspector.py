@@ -38,7 +38,7 @@ logger = logging.getLogger("acervator.market_inspector")
 try:
     from .ta_engine import detect_landing_strip_v2
 except ImportError:
-    detect_landing_strip_v2 = None  # type: ignore
+    detect_landing_strip_v2 = None  # type: ignore[assignment]
 
 
 HTF_TIMEFRAMES = ("1d", "1w", "1M")
