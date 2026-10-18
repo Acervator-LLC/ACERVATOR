@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 from ...core.privacy_mask_registry import ABSENT_TEXT as _ABSENT_TEXT
 from ...trading.target_bands import TERRITORY_FOLD, TERRITORY_SCRUM
 
@@ -14,6 +16,8 @@ from ..main_tabs.spendable_profits_surface import (
     column_cell,
     money_amount,
 )
+
+logger = logging.getLogger("acervator.gui")
 
 try:
     from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QVBoxLayout
@@ -235,9 +239,15 @@ if _HAS_QT:
         def refresh_privacy_dots(self) -> None:
             """Repaint every dot, then re-draw the kept payload."""
             for d in self._privacy_dots:
-                try:  # noqa: SIM105
+                try:
                     d.refresh()
-                except Exception:  # noqa: S110
-                    pass
+                except RuntimeError as dot_exc:
+                    logger.debug(
+                        "money strip: the %s dot could not repaint (%s); it "
+                        "keeps the glyph it already shows, which may name the "
+                        "wrong mask state",
+                        d.field_id(),
+                        dot_exc,
+                    )
             if self._last_data:
                 self.update_profits(self._last_data)

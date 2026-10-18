@@ -5955,6 +5955,12 @@ readable and an empty circle when it is masked, and the control sizes to its own
 glyph rather than to a fixed square. The Charts tab's own dot takes its colour from
 the same token.
 
+A register read that raises draws neither circle. The dot takes the register's own
+absent mark, the em dash, and its tooltip reads `STATE UNREADABLE`.
+`src/gui/main_tabs/privacy_dot_surface.py, in glyph` answers all three marks and both
+builds read it, and `src/gui/widgets/privacy_dot.py, in refresh` writes the failed
+read to the log.
+
 `src/gui/design_system.py` — the token the dot paints in
 
 ```python
