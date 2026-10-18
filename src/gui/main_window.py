@@ -1173,10 +1173,10 @@ if _HAS_QT:
                         level = "info"
                         result = f"The last credential check was accepted{when}."
                         usage = (
-                            "Read from the stored record, not from the venue. A "
-                            "ccxt venue records this when it answers an "
-                            "authenticated call; a venue with its own connector "
-                            "records it on the credential alone."
+                            "Read from the stored record, not from the venue. "
+                            "Only a venue answering an authenticated call "
+                            "records this. A check of the credential's format "
+                            "alone does not."
                         )
                     elif state == CONNECTION_LOST:
                         line = f"credentials stored, the venue did not answer{when}"
@@ -1189,11 +1189,12 @@ if _HAS_QT:
                     else:
                         line = "credentials stored, no answer on record"
                         level = "info"
-                        result = "No credential check is on record for this venue."
+                        result = "No venue answer is on record for this venue."
                         usage = (
-                            "Either no authenticated call has run or the last "
-                            "one was rejected. A rejected credential drops the "
-                            "record, so the two read the same here."
+                            "Either no authenticated call has run, or the last "
+                            "one was rejected, or only the credential's format "
+                            "was checked. A rejected credential drops the "
+                            "record, so this one line covers all three."
                         )
                     self._status_log.log(f"  {eid.capitalize()}: {line}", level)
                     self._spool.notify(f"{eid.capitalize()}: {line}", level)
