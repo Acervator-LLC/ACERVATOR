@@ -168,7 +168,7 @@ def _machine_id_linux() -> Optional[str]:
     """
     for path in (Path("/etc/machine-id"), Path("/var/lib/dbus/machine-id")):
         try:
-            text = path.read_text(encoding="utf-8").strip()
+            text = path.read_text(encoding="utf-8", errors="replace").strip()
         except OSError:
             continue
         if text:
@@ -180,13 +180,17 @@ def _machine_id_darwin() -> Optional[str]:
     """Return ``IOPlatformUUID`` from ``/usr/sbin/ioreg``, or None.
 
     ``subprocess.run`` names the absolute path with a fixed argument list and
-    ``shell=False``.
+    ``shell=False``. It names the output encoding too: unnamed, the decode
+    follows the machine's locale and a byte that locale cannot carry raises a
+    ``UnicodeDecodeError``, which is not one of the faults caught here.
     """
     try:
         completed = subprocess.run(
             ["/usr/sbin/ioreg", "-rd1", "-c", "IOPlatformExpertDevice"],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=5.0,
             check=False,
             shell=False,
