@@ -3221,3 +3221,95 @@ qt was  Live, Charts, Inspector, Console, Swarm, Accumulation, Status, History
 each read a panel key their own surface no longer publishes, so each builder
 raises and the window logs the tab as unavailable. That belongs to the Simulator
 rebuild and to the Paper screen, not to the bar.
+
+### 2026-10-16 - #158 - the splitter edges take the theme and seven theme values go
+
+**All four handle edges were one cyan.** A horizontal handle draws a left and a
+right edge, a vertical handle a top and a bottom. All four named the same fixed
+cyan at a tenth of full opacity, so both light themes drew that cyan over a pale
+ground. The four edges now read `border_accent`, which every palette already
+declared and no rule read.
+
+`src/gui/theme_engine.py` — `_theme_qss`, the horizontal handle
+
+```python
+QSplitter::handle:horizontal {{
+    width: 5px;
+    background-color: {t.border_primary};
+    border-left:  1px solid {t.border_accent};
+    border-right: 1px solid {t.border_accent};
+}}
+```
+
+**A pressed handle asked for an opacity Qt does not have.** The rule set
+`opacity: 0.85` beside the accent. Qt drops a property it does not know, so a
+pressed handle drew the full accent a hovered one already drew. The rule now
+paints the accent under the alpha byte Qt does read, at the same 0.85 share. The
+colour comes from the palette's own accent, so an accent the operator sets
+reaches the pressed handle too.
+
+`src/gui/theme_engine.py` — `SPLITTER_PRESSED_ALPHA` and the pressed handle
+
+```python
+SPLITTER_PRESSED_ALPHA = 217
+
+QSplitter::handle:pressed {{
+    background-color: {rgba(t.accent_primary, SPLITTER_PRESSED_ALPHA)};
+}}
+```
+
+**Read off the rendered handle, five themes, before and after.** The reading is
+the left edge at the handle's mid-height, and the handle's middle while the
+pointer holds it. Every edge now carries its own palette's accent hue, and every
+pressed handle now sits between that accent and the ground it stands on.
+
+```
+theme             edge before   edge after    pressed before  pressed after
+cyberpunk_dark    47,72,84      38,106,104    0,255,204       1,218,176
+neon_light        207,232,239   196,169,229   102,0,204       124,37,211
+classic_terminal  5,48,28       4,86,4        0,255,0         1,218,1
+minimal_modern    216,241,239   199,212,239   37,99,235       68,121,237
+glass_metal       35,60,70      65,83,106     136,204,255     120,178,222
+```
+
+**Seven palette values are gone.** Each of the five palettes set
+`accent_success`, `accent_warning`, `accent_info` and `glow_color`, and the
+declared default held `font_mono`, `font_size_large` and `radius_lg`. No rule in
+the style-sheet text named one of the seven. A Qt style sheet has no glow
+property at all, and no widget marks itself as a success, a warning, an info, a
+monospace or a large thing for a rule to match. A palette carries 48 named values
+where it carried 55. `glow_color` also names a local colour inside three
+indicator panels, which is a different thing under the same name and stays.
+
+**One corner radius and one grey are repaired in the widget table.**
+`RADIUS_FULL` held 9999 for a pill. Nothing imported it, and the drawing engine
+refuses a corner roundness above half the shape, so the value could draw no pill.
+The widget table holds 195 names where it held 196. `CARD_METRIC_LABEL` held a
+three-digit grey, the only one in the table, which is why a helper widens it
+before any comparison. It holds the same grey in six digits now, and the pixel
+does not change.
+
+`src/gui/design_system.py` — the corner radii today
+
+```python
+RADIUS_NONE = 0
+RADIUS_XS = 4  # Chips, tight inputs
+RADIUS_CARD = 6  # Analytics metric cards
+RADIUS_SM = 8  # Default — buttons, inputs, cards
+RADIUS_MD = 12  # Elevated cards, dialogs
+RADIUS_LG = 16  # Large surfaces, bottom sheets (rare in desktop)
+```
+
+**Both builds still write the same style sheet.** The second build keeps its own
+copy of the palette table and of the template, in
+`src/gui/main_tabs/theme_engine_surface.py`. Each build's five style sheets match
+the other's byte for byte.
+
+```
+theme             characters before  characters after
+cyberpunk_dark    7419               7404
+neon_light        7415               7400
+classic_terminal  7427               7402
+minimal_modern    7422               7407
+glass_metal       7415               7410
+```

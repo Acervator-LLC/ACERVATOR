@@ -431,7 +431,12 @@ if _HAS_QT:
             """Hide the header strip on the isolated tabs; refresh History if stale."""
             try:
                 tab_name = self._main_tabs.tabText(index)
-            except Exception:
+            except (AttributeError, RuntimeError) as tab_name_exc:
+                logger.debug(
+                    "main tab name unreadable, the header strip is left as "
+                    "it was: %s",
+                    tab_name_exc,
+                )
                 return
             isolated_tabs = set(ISOLATED_TABS)
             container = getattr(self, "_header_strip_container", None)
@@ -513,7 +518,7 @@ if _HAS_QT:
                     )
                     # Incremented after the append, so a raise leaves the count true.
                     self._signal_rendered += 1
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 logger.debug("signal drain failed: %s", exc)
 
         def _toggle_console_pause(self) -> None:
@@ -540,7 +545,12 @@ if _HAS_QT:
                         if _console.document().isEmpty()
                         else int(_console.blockCount())
                     )
-            except Exception:  # noqa: BLE001
+            except (AttributeError, RuntimeError, TypeError, ValueError) as pause_exc:
+                logger.debug(
+                    "console pause counts not read, the read-back reports "
+                    "nothing: %s",
+                    pause_exc,
+                )
                 _console = None
             _t0 = _pause_clock.monotonic()
             handler.set_paused(paused)
@@ -673,7 +683,7 @@ if _HAS_QT:
                             ),
                         },
                     )
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 logger.debug("console health emit failed: %s", exc)
 
         def _setup_status_bar(self) -> None:
@@ -745,7 +755,7 @@ if _HAS_QT:
                     self._indicator_panel.update_currency_rates(mon.snapshot())
                     self._publish_votes()
                 self._currency_pump_fault.note_success()
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 self._currency_pump_fault.note_failure(exc)
 
         def _pump_market_pairs_scout(self) -> None:
@@ -763,7 +773,7 @@ if _HAS_QT:
                         scout.refresh_from_connectors(connectors),
                     )
                 self._scout_pump_fault.note_success()
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 self._scout_pump_fault.note_failure(exc)
 
         def _report_fetch_stall(self) -> None:
@@ -818,7 +828,7 @@ if _HAS_QT:
                 self._api_load_label.setText(pill["text"])
                 self._api_load_label.setStyleSheet(pill["style"])
                 self._api_load_label.setToolTip(API_PILL_TOOLTIP)
-            except Exception as _pill_exc:  # noqa: BLE001
+            except Exception as _pill_exc:
                 # Logged at debug: the 2 s dashboard tick would flood a warning stream.
                 logger.debug(
                     "API-load pill refresh skipped: %s: %s",
@@ -890,7 +900,12 @@ if _HAS_QT:
                     effect.setBlurRadius(glow_blur)
                 except RuntimeError:
                     dead.append(effect)
-                except Exception:
+                except Exception as glow_blur_exc:
+                    logger.debug(
+                        "glow blur refused by an unexpected failure, the "
+                        "effect is dropped: %s",
+                        glow_blur_exc,
+                    )
                     dead.append(effect)
             if dead:
                 self._fire_glow_effects = [
@@ -1201,7 +1216,7 @@ if _HAS_QT:
                 return []
             try:
                 return list(reader())
-            except Exception as _rows_exc:  # noqa: BLE001 - one cell, not the strip
+            except Exception as _rows_exc:
                 logger.debug("header strip read no fleet rows: %s", _rows_exc)
                 return []
 
@@ -1212,19 +1227,18 @@ if _HAS_QT:
 
             The cards are walked from ``COUNTER_CARDS``, so the window pushes
             into exactly the cards ``_build_header_strip`` drew and no value
-            goes to a card that is not there. Each card is read inside
-            ``_strip_cell_text`` through ``aggregate_amount``, so one
-            unreadable figure costs one cell and a total the fleet could not
-            sum whole draws the dash. ``statuses`` names the fleet's rows and
-            scopes the AMMO column to the sector in front.
+            goes to a card that is not there. Each card's figure comes from
+            ``counter_amount`` and is rendered by ``_strip_cell_text``, so one
+            unreadable figure costs one cell, and a total the fleet could not
+            sum whole and a key the fleet never published both draw the dash.
+            ``statuses`` names the fleet's rows and scopes the AMMO column to
+            the sector in front.
             """
             for model in header_strip_surface.COUNTER_CARDS:
                 self._stat_cards[model["key"]].set_value(
                     self._strip_cell_text(
                         model,
-                        header_strip_surface.aggregate_amount(
-                            agg, model["source_key"], 0
-                        ),
+                        header_strip_surface.counter_amount(agg, model),
                     )
                 )
             # One builder for both hosts: the React strip reads the same
@@ -1241,7 +1255,7 @@ if _HAS_QT:
             """
             try:
                 return header_strip_surface.card_text(model, raw)
-            except Exception as cell_exc:  # noqa: BLE001
+            except (KeyError, TypeError, ValueError) as cell_exc:
                 logger.exception(
                     "Header strip: the %s card refused to draw (%s); it "
                     "carries the empty marker and every other cell still draws",
@@ -1739,7 +1753,7 @@ if _HAS_QT:
             """Return `self._bot_manager.smart_wire_manager`, or None if unreachable."""
             try:
                 mgr = getattr(self._bot_manager, "smart_wire_manager", None)
-            except Exception as exc:  # noqa: BLE001
+            except AttributeError as exc:
                 logger.warning("C06c: wire manager unreachable: %s", exc)
                 return None
             return mgr
@@ -1789,7 +1803,7 @@ if _HAS_QT:
                             "proposed_pct": float(w.get("pct", 0.0)),
                         }
                     )
-                except Exception as exc:  # noqa: BLE001
+                except (AttributeError, KeyError, TypeError, ValueError) as exc:
                     logger.warning("C06c: collision pre-flight skipped a wire: %s", exc)
             return out
 
@@ -1803,7 +1817,7 @@ if _HAS_QT:
                 return None
             try:
                 wires = mgr.export_wires()
-            except Exception as exc:  # noqa: BLE001
+            except (AttributeError, RuntimeError) as exc:
                 logger.warning("C06c: export_wires failed: %s", exc)
                 return None
             try:
@@ -1827,7 +1841,7 @@ if _HAS_QT:
                 for old in sorted(root.glob("wires_before_adopt.*.json"))[:-20]:
                     old.unlink(missing_ok=True)
                 return dest
-            except Exception as exc:  # noqa: BLE001
+            except (AttributeError, OSError, TypeError, ValueError) as exc:
                 logger.error(
                     "C06c: wire snapshot FAILED (%s) — the adopt will "
                     "proceed with no restore point",
@@ -2165,7 +2179,7 @@ if _HAS_QT:
                         exchange_id="",
                         defaults_override={"default_target_balance": target_usd},
                     )
-                except Exception as _cb_exc:  # noqa: BLE001
+                except Exception as _cb_exc:
                     logger.exception("Topology adopt: _create_bot raised: %s", _cb_exc)
                     self._status_log.log(
                         f"Topology adopt aborted: bot creation raised "
@@ -2252,7 +2266,7 @@ if _HAS_QT:
                     self._bus.emit(
                         "wire.created", source_id=src_id, target_id=tgt_id, pct=pct
                     )
-                except Exception as _emit_exc:  # noqa: BLE001
+                except Exception as _emit_exc:
                     logger.exception("Topology adopt: wire emit raised: %s", _emit_exc)
                     continue
                 # Counted from the engine read-back: the emit above reports no refusal.
@@ -2281,7 +2295,7 @@ if _HAS_QT:
                     f"{wires_drawn} wire(s){tail}",
                     "success",
                 )
-            except Exception as _spool_exc:  # noqa: BLE001
+            except (AttributeError, RuntimeError, TypeError) as _spool_exc:
                 logger.warning("Topology adopt: spool notify failed: %s", _spool_exc)
 
         def _build_topology_proposals(self) -> list[dict]:
@@ -2290,7 +2304,7 @@ if _HAS_QT:
                 from ..trading.topology_proposals import detect_all_topologies
                 from ..trading.market_inspector import get_shared_inspector
                 from ..exchange.market_pairs_scout import get_scout
-            except Exception as _imp_exc:  # noqa: BLE001
+            except ImportError as _imp_exc:
                 logger.debug("topology proposals unavailable: %s", _imp_exc)
                 return []
 
@@ -2316,7 +2330,7 @@ if _HAS_QT:
                                 "last": float(getattr(snap, "last", 0.0) or 0.0),
                                 "existing_bot_id": "",
                             }
-            except Exception as _scout_exc:  # noqa: BLE001
+            except Exception as _scout_exc:
                 logger.debug("topology: scout snapshot unavailable: %s", _scout_exc)
 
             bots_snapshot: list[dict] = []
@@ -2346,7 +2360,7 @@ if _HAS_QT:
                                 ),
                             }
                         )
-            except Exception as _bot_exc:  # noqa: BLE001
+            except Exception as _bot_exc:
                 logger.debug("topology: bot snapshot unavailable: %s", _bot_exc)
 
             opposing: list[dict] = []
@@ -2371,7 +2385,7 @@ if _HAS_QT:
                             "method": op.method,
                         }
                     )
-            except Exception as _op_exc:  # noqa: BLE001
+            except Exception as _op_exc:
                 logger.debug("topology: opposing-pairs unavailable: %s", _op_exc)
 
             ctx = {
@@ -2382,7 +2396,7 @@ if _HAS_QT:
             }
             try:
                 return detect_all_topologies(ctx)
-            except Exception as _det_exc:  # noqa: BLE001
+            except Exception as _det_exc:
                 logger.exception("topology: detect_all_topologies raised: %s", _det_exc)
                 return []
 
@@ -2409,7 +2423,13 @@ if _HAS_QT:
             try:
                 agg = self._bot_manager.get_aggregate_stats()
                 _life = int(agg.get("total_errors_lifetime", 0) or 0)
-            except Exception:
+            except Exception as agg_exc:
+                logger.warning(
+                    "Error Log: the lifetime error aggregate would not read "
+                    "(%s: %s); the header draws 0 and under-reports",
+                    type(agg_exc).__name__,
+                    agg_exc,
+                )
                 _life = 0
             hdr = QLabel(
                 f"<b>Errors:</b> {_life} &nbsp;·&nbsp; "
@@ -2450,7 +2470,13 @@ if _HAS_QT:
             snap.setEditTriggers(QAbstractItemView.NoEditTriggers)
             try:
                 _bots = list(self._bot_manager._bots.values())
-            except Exception:
+            except (AttributeError, RuntimeError) as roster_exc:
+                logger.warning(
+                    "Error Log: the bot roster would not read (%s: %s); the "
+                    "per-bot tab draws no rows",
+                    type(roster_exc).__name__,
+                    roster_exc,
+                )
                 _bots = []
             snap.setRowCount(len(_bots))
             for row, bot in enumerate(_bots):
@@ -2460,7 +2486,11 @@ if _HAS_QT:
                     _tot = int(getattr(bot.stats, "total_errors", 0) or 0)
                     _con = int(getattr(bot.stats, "consecutive_errors", 0) or 0)
                     _last = str(getattr(bot.stats, "last_error", "") or "—")
-                except Exception:
+                except (AttributeError, TypeError, ValueError) as row_exc:
+                    logger.debug(
+                        "Error Log: one bot row drew placeholders: %s",
+                        row_exc,
+                    )
                     _bid, _asset, _tot, _con, _last = "?", "?", 0, 0, "?"
                 snap.setItem(row, 0, QTableWidgetItem(_bid))
                 snap.setItem(row, 1, QTableWidgetItem(_asset))
@@ -2486,18 +2516,18 @@ if _HAS_QT:
                             _bot.stats.total_errors = 0
                             _bot.stats.consecutive_errors = 0
                             _bot.stats.last_error = ""
-                        except Exception as _bot_reset_exc:  # noqa: BLE001
+                        except (AttributeError, TypeError, ValueError) as _stat_exc:
                             logger.warning(
                                 "Reset all errors: one bot's counters "
                                 "were NOT cleared (%s: %s); the error "
                                 "card still counts it.",
-                                type(_bot_reset_exc).__name__,
-                                _bot_reset_exc,
+                                type(_stat_exc).__name__,
+                                _stat_exc,
                             )
                             continue
                     try:
                         self._bot_manager.save_all_state()
-                    except Exception as _save_exc:  # noqa: BLE001
+                    except Exception as _save_exc:
                         logger.warning(
                             "Reset all errors: state was cleared in "
                             "memory but NOT saved (%s: %s); a restart "
@@ -2505,7 +2535,7 @@ if _HAS_QT:
                             type(_save_exc).__name__,
                             _save_exc,
                         )
-                except Exception as _reset_exc:  # noqa: BLE001
+                except (AttributeError, RuntimeError, TypeError) as _reset_exc:
                     logger.warning(
                         "Reset all errors: the bot roster could not be "
                         "walked (%s: %s); per-bot counters were left "
@@ -2546,7 +2576,12 @@ if _HAS_QT:
                         prefix = (
                             f"[{bot_id[-8:]}] " if len(bot_id) >= 8 else f"[{bot_id}] "
                         )
-                except Exception:
+                except (AttributeError, IndexError, TypeError) as prefix_exc:
+                    logger.debug(
+                        "status log: bot ticker not read, the line carries a "
+                        "short prefix: %s",
+                        prefix_exc,
+                    )
                     prefix = f"[{bot_id[-8:]}] " if len(bot_id) >= 8 else ""
             # The writer names the kind on its own emit; a writer naming none
             # sends None and the line draws plain.
@@ -2695,11 +2730,21 @@ if _HAS_QT:
                 dlg.exec()
                 try:
                     saved_geometry = dlg.geometry()
-                except Exception:
+                except (AttributeError, RuntimeError) as geometry_read_exc:
+                    logger.debug(
+                        "bot settings geometry not captured, the next "
+                        "dialog opens at its default position: %s",
+                        geometry_read_exc,
+                    )
                     saved_geometry = None
                 try:
                     saved_tab_index = dlg.active_tab_index()
-                except Exception:
+                except (AttributeError, RuntimeError) as tab_read_exc:
+                    logger.debug(
+                        "bot settings tab not captured, the next dialog "
+                        "opens on its default tab: %s",
+                        tab_read_exc,
+                    )
                     saved_tab_index = None
                 target_id = getattr(dlg, "_pending_navigate_to", None)
                 if not target_id:
@@ -2760,7 +2805,7 @@ if _HAS_QT:
             try:
                 if not fut.done():
                     fut.cancel()
-            except Exception as _cancel_exc:  # noqa: BLE001 - cancel best-effort
+            except (AttributeError, RuntimeError) as _cancel_exc:
                 logger.debug(
                     "Pending future not cancelled: %s: %s",
                     type(_cancel_exc).__name__,

@@ -15,6 +15,10 @@ and then stopped updating. ``get`` rebuilds such an instance once per
 window and keeps serving the cached one until the factory answers, so a
 singleton that has answered once never reverts to None.
 
+``note_cleared`` carries the same window over a blocked fetch path, which
+no singleton owns: ``MarketDataPool._clear_wedged_lock`` calls it when it
+replaces a fetch lock whose holder never finished.
+
 ``_describe`` guards ``str(exc)``. An exception whose ``__str__`` raises
 propagates out of the logging call and into the caller. Measured.
 """
@@ -182,6 +186,29 @@ class ThrottledFault:
             self._window = min(self._cap, self._window * BACKOFF_FACTOR)
             self._reset_counts()
 
+    def note_cleared(self, detail: str, held_s: float) -> bool:
+        """Report one blocked path cleared, at most one line per window.
+
+        ``detail`` names what was blocked and ``held_s`` how long for. Every
+        call counts; the return says whether a line was emitted, and a
+        suppressed one is carried into the next line's tally.
+        """
+        with self._lock:
+            now = self._clock()
+            self._failures += 1
+            self._failures_total += 1
+            self._last_detail = detail
+            if self._quiet(now):
+                self._suppressed += 1
+                self._suppressed_total += 1
+                return False
+            line = self._cleared_line(held_s)
+            self._next_report_at = now + self._window
+            self._emit(logging.ERROR, line)
+            self._window = min(self._cap, self._window * BACKOFF_FACTOR)
+            self._reset_counts()
+            return True
+
     def reset(self) -> None:
         """Clear the window and every counter. Test-only."""
         with self._lock:
@@ -238,6 +265,16 @@ class ThrottledFault:
             f"been built again. Its last readings are gone and new ones start "
             f"at the next refresh. No further rebuild for "
             f"{self._window:.0f} s."
+        )
+
+    def _cleared_line(self, held_s: float) -> str:
+        return (
+            f"FETCH PATH CLEARED - {self._feature} was blocked for "
+            f"{held_s:.0f} s and has been cleared, so fetching starts again "
+            f"without a restart. {self._impact} Since the last report: "
+            f"{self._failures} path(s) blocked and {self._suppressed} "
+            f"clearance(s) were not reported. No further report for "
+            f"{self._window:.0f} s. Blocked: {self._last_detail}"
         )
 
 

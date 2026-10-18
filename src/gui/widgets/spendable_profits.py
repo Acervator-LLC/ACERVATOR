@@ -2,24 +2,22 @@
 
 from __future__ import annotations
 
-from ...core.privacy_mask_registry import ABSENT_TEXT as _ABSENT_TEXT, mask_or
+import logging
+
+from ...core.privacy_mask_registry import ABSENT_TEXT as _ABSENT_TEXT
 from ...trading.target_bands import TERRITORY_FOLD, TERRITORY_SCRUM
 
 from .. import design_system as ds
-from ..main_tabs.header_strip_surface import (
-    VALUE_FONT_MIN_PX,
-    VALUE_FONT_PX,
-    ammo_total_text,
-    pnl_text,
-)
+from ..main_tabs.header_strip_surface import VALUE_FONT_MIN_PX, VALUE_FONT_PX
 from ..main_tabs.spendable_profits_surface import (
     COLUMNS,
     FIELD_ID_BY_KEY,
     MONEY_KEYS,
-    count_text,
+    column_cell,
     money_amount,
-    money_text,
 )
+
+logger = logging.getLogger("acervator.gui")
 
 try:
     from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QVBoxLayout
@@ -194,10 +192,6 @@ if _HAS_QT:
         # Every cell renders through the surface, so a format changed there
         # reaches this screen and the page in one edit.
         _amount_of = staticmethod(money_amount)
-        _money_text = staticmethod(money_text)
-        _count_text = staticmethod(count_text)
-        _pnl_text = staticmethod(pnl_text)
-        _ammo_text = staticmethod(ammo_total_text)
 
         def _ammo_skin(self, value, lean) -> str:
             """The skin the Ammo total draws in for one total and one lean."""
@@ -208,9 +202,14 @@ if _HAS_QT:
             )
 
         def update_profits(self, data: dict) -> None:
-            """Draw every column from one payload, then keep that payload."""
+            """Draw every column from one payload, then keep that payload.
+
+            The cells are walked from ``COLUMNS``, the declaration
+            ``_setup_ui`` built the columns from, so no text is rendered for a
+            column this strip does not draw.
+            """
             kept = dict(data) if isinstance(data, dict) else {}
-            sp = data.get("spendable")
+            sp = kept.get("spendable")
             amount = self._amount_of(sp)
             if sp is None:
                 skin, tip = self._VALUE_SKIN_MUTED, self._SPENDABLE_ABSENT_TIP
@@ -220,23 +219,16 @@ if _HAS_QT:
                 skin, tip = self._VALUE_SKIN_HIGHLIGHT, ""
             else:
                 skin, tip = self._VALUE_SKIN_NEGATIVE, ""
-            ammo = data.get("total_ammo")
-            drawn = {
-                "spendable": self._money_text(sp),
-                "pnl": self._pnl_text(data.get("unrealised")),
-                "locked": self._money_text(data.get("locked")),
-                "mature": self._money_text(data.get("mature")),
-                "exchanges": self._count_text(data.get("exchange_count")),
-                "total_ammo": self._ammo_text(ammo),
-            }
+            ammo = kept.get("total_ammo")
+            cells = {column["key"]: column_cell(column, kept) for column in COLUMNS}
             self._stats["total_ammo"].set_skin(
-                self._ammo_skin(ammo, data.get("ammo_lean"))
+                self._ammo_skin(ammo, kept.get("ammo_lean"))
             )
             self._amount.set_skin(skin)
             self._amount.setToolTip(tip)
-            self._amount.setText(mask_or(drawn["spendable"], "kpi.spendable"))
+            self._amount.setText(cells[COLUMNS[0]["key"]]["text"])
             for key, label in self._stats.items():
-                label.setText(mask_or(drawn[key], FIELD_ID_BY_KEY[key]))
+                label.setText(cells[key]["text"])
             self._last_data = kept
 
         def _on_privacy_toggle(self) -> None:
@@ -247,9 +239,15 @@ if _HAS_QT:
         def refresh_privacy_dots(self) -> None:
             """Repaint every dot, then re-draw the kept payload."""
             for d in self._privacy_dots:
-                try:  # noqa: SIM105
+                try:
                     d.refresh()
-                except Exception:  # noqa: S110
-                    pass
+                except RuntimeError as dot_exc:
+                    logger.debug(
+                        "money strip: the %s dot could not repaint (%s); it "
+                        "keeps the glyph it already shows, which may name the "
+                        "wrong mask state",
+                        d.field_id(),
+                        dot_exc,
+                    )
             if self._last_data:
                 self.update_profits(self._last_data)

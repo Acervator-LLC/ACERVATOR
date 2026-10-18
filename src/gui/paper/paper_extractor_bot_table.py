@@ -6,8 +6,12 @@ the Paper Trader's name.
 
 from __future__ import annotations
 
+import logging
+
 from .. import design_system as ds
 from ..main_tabs.bot_status_table_surface import BUTTON_HEIGHT_PX, ROW_HEIGHT_PX
+
+logger = logging.getLogger("acervator.gui")
 
 try:
     from PySide6.QtWidgets import QPushButton, QTableWidgetItem
@@ -178,8 +182,15 @@ if _HAS_QT:
                             icon = _get_coin_icon(text, ds.COIN_ICON_SIZE_PX)
                             if icon:
                                 item.setIcon(icon)
-                        except Exception:  # noqa: S110
-                            pass
+                        except Exception as icon_exc:
+                            logger.debug(
+                                "Extractor row %d: the coin mark could not be "
+                                "drawn (%s: %s); the Symbol cell draws its "
+                                "text without a mark",
+                                row,
+                                type(icon_exc).__name__,
+                                icon_exc,
+                            )
                     if col == 2:  # Mode cell
                         color = self.STATE_COLORS.get(state, QColor(ds.TEXT_HIGH))
                         item.setForeground(color)

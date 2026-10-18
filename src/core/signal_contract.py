@@ -46,6 +46,19 @@ MAX_FILE_BYTES = 50 * 1024 * 1024
 FILE_BACKUP_COUNT = 5
 """Backup files kept when the sink's file rotates."""
 
+MAX_FILE_AGE_SECONDS = 14.0 * 24.0 * 3600.0
+"""Age at which a rotated backup is retired instead of shifted one place further down
+the ladder, in seconds. Fourteen days, so a reading stays findable through the week
+after the week it was written. The live file is never subject to it; `0.0` disables the
+bound.
+"""
+
+MAX_IDENTITY_SHARE = 0.10
+"""Fraction of one live file's `max_bytes` a single identity may fill with passing
+records. Ten distinct identities are needed to fill one file at this share, so no one
+writer can crowd a file alone. A failing record is never counted against it.
+"""
+
 
 DIGEST_MIN_INTERVAL = 10.0
 """Seconds an identity must wait before its next digest-log line is admitted."""
@@ -982,6 +995,9 @@ class SignalSink:
     Holds a bounded in-memory window of records plus a bounded
     last-seen map by identity, flushes to a rotating JSONL file, and
     answers timing and cadence queries about pins that stopped emitting.
+    The file ladder is bounded three ways: by file size, by the age of a
+    rotated backup, and by the share of one live file any single
+    identity may fill with passing records.
     """
 
     def __init__(
@@ -993,6 +1009,8 @@ class SignalSink:
         backup_count: int = FILE_BACKUP_COUNT,
         retain_rows: int = RETAIN_ROWS,
         max_identities: int = MAX_IDENTITIES,
+        max_file_age: float = MAX_FILE_AGE_SECONDS,
+        identity_share: float = MAX_IDENTITY_SHARE,
         digest_interval: float = DIGEST_MIN_INTERVAL,
         digest_max_bytes: int = DIGEST_FILE_BYTES,
         digest_backup_count: int = DIGEST_BACKUP_COUNT,
@@ -1024,6 +1042,16 @@ class SignalSink:
         self._dropped = 0
         self._evicted = 0
         self._rotate_failures = 0
+        # `max_file_age <= 0` disables the age bound; it reaches backups only.
+        self._max_file_age = max(0.0, float(max_file_age))
+        self._age_retired = 0
+        # `identity_share` is a fraction of `max_bytes`, clamped to [0.0, 1.0]; `0.0`
+        # disables the share bound.
+        self._identity_share = min(1.0, max(0.0, float(identity_share)))
+        # `_share_bytes` maps identity to bytes it has put in the live file since the
+        # last rotation.
+        self._share_bytes: dict = {}
+        self._share_refused = 0
         # Counts a `duration` `emit` refused; see `_as_measured_duration`.
         self._duration_rejected = 0
         # `digest_interval <= 0` disables the digest ladder entirely.
@@ -1041,6 +1069,7 @@ class SignalSink:
         self._digest_dropped = 0
         self._digest_rotate_failures = 0
         self._digest_identity_overflow = 0
+        self._digest_age_retired = 0
 
     def _declared_for(self, name: str) -> tuple:
         """Return `(cadence, tab)` for `name`, from `cadence_of` and `tab_of`.
@@ -1168,32 +1197,77 @@ class SignalSink:
             return None
 
     def _rotate_if_needed(self) -> None:
-        """Roll the sink's file to `<name>.1` once it reaches `max_bytes`.
+        """Roll the sink's file to `<name>.1` once it reaches `max_bytes`, and
+        retire any backup past `max_file_age`.
 
         Called with `_io_lock` held, so a rename cannot interleave with
-        another thread's append.
+        another thread's append. A rotation clears the per-identity
+        share, so each new live file starts every identity at zero.
         """
-        self._roll(self.path, self._max_bytes, self._backup_count)
+        rotated, retired = self._roll(
+            self.path, self._max_bytes, self._backup_count, self._max_file_age
+        )
+        self._age_retired += retired
+        if rotated:
+            self._share_bytes.clear()
 
     @staticmethod
-    def _roll(path: Optional[Path], max_bytes: int, backup_count: int) -> None:
-        """Shift one file ladder by one place if it has reached `max_bytes`.
+    def _retire_aged(path: Path, backup_count: int, max_age: float) -> int:
+        """Unlink each `<name>.1` to `<name>.<backup_count>` backup last written
+        more than `max_age` seconds ago, and return how many went.
+
+        The age bound beside the size bound: a ladder whose writer went
+        quiet retires its tail instead of holding it for ever. Reaches
+        backups only, never the live file, so no handle the sink holds
+        is disturbed. `max_age <= 0` disables it, and a backup that
+        cannot be unlinked is left alone and not counted.
+        """
+        if max_age <= 0.0:
+            return 0
+        # Wall clock, because `st_mtime` is one; a backward step retires fewer, never
+        # more.
+        cutoff = time.time() - max_age
+        gone = 0
+        for i in range(1, backup_count + 1):
+            one = path.parent / f"{path.name}.{i}"
+            try:
+                if one.is_file() and one.stat().st_mtime < cutoff:
+                    one.unlink()
+                    gone += 1
+            except OSError:
+                continue
+        return gone
+
+    @staticmethod
+    def _roll(
+        path: Optional[Path],
+        max_bytes: int,
+        backup_count: int,
+        max_age: float = 0.0,
+    ) -> tuple:
+        """Retire this ladder's aged backups, then shift it one place if the live
+        file has reached `max_bytes`. Returns `(rotated, retired)`.
 
         Uses `Path.replace`, which succeeds on Windows even when the
-        destination already exists.
+        destination already exists. The age sweep runs on every call, so
+        a ladder below `max_bytes` still retires its tail.
         """
-        if path is None or max_bytes <= 0:
-            return
+        if path is None:
+            return (False, 0)
+        retired = SignalSink._retire_aged(path, backup_count, max_age)
+        if max_bytes <= 0:
+            return (False, retired)
         if not path.is_file():
-            return
+            return (False, retired)
         if path.stat().st_size < max_bytes:
-            return
+            return (False, retired)
         for i in range(backup_count - 1, 0, -1):
             src = path.parent / f"{path.name}.{i}"
             dst = path.parent / f"{path.name}.{i + 1}"
             if src.exists():
                 src.replace(dst)
         path.replace(path.parent / f"{path.name}.1")
+        return (True, retired)
 
     @property
     def digest_path(self) -> Optional[Path]:
@@ -1253,7 +1327,13 @@ class SignalSink:
         if target is None:
             return
         try:
-            self._roll(target, self._digest_max_bytes, self._digest_backup_count)
+            _, retired = self._roll(
+                target,
+                self._digest_max_bytes,
+                self._digest_backup_count,
+                self._max_file_age,
+            )
+            self._digest_age_retired += retired
         except OSError:
             self._digest_rotate_failures += 1
         try:
@@ -1263,6 +1343,50 @@ class SignalSink:
                     fh.write(r.to_json({"folded": folded}) + "\n")
         except OSError:
             self._digest_dropped += len(admitted)
+
+    def _share_budget(self) -> int:
+        """Bytes one identity may fill in the live file between rotations.
+
+        `0` when either `max_bytes` or `identity_share` is zero, which
+        leaves the share bound off and every record admitted.
+        """
+        return int(self._max_bytes * self._identity_share)
+
+    def _admitted_lines(self, rows: Iterable[Signal]) -> list:
+        """Return the JSON lines the live file takes from `rows`.
+
+        The per-emitter share of one file: once an identity has filled
+        `_share_budget` bytes since the last rotation, its further
+        passing records are refused here and the identity stands on the
+        digest ladder instead, where its next admitted line carries the
+        `folded` count of what was suppressed. A record whose check
+        failed is always admitted and never charged, so a rare failing
+        reading cannot be crowded out by a loud writer's routine ones.
+        Past `max_identities` a new identity is admitted without a
+        share entry, as the digest does.
+        """
+        budget = self._share_budget()
+        if budget <= 0:
+            return [r.to_json() + "\n" for r in rows]
+        out = []
+        for r in rows:
+            line = r.to_json() + "\n"
+            if r.ok is False:
+                out.append(line)
+                continue
+            key = (r.name, r.site)
+            used = self._share_bytes.get(key)
+            if used is None:
+                if len(self._share_bytes) >= self._max_identities:
+                    out.append(line)
+                    continue
+                used = 0
+            if used >= budget:
+                self._share_refused += 1
+                continue
+            self._share_bytes[key] = used + len(line.encode("utf-8"))
+            out.append(line)
+        return out
 
     def flush(self) -> None:
         """Append the buffered records to disk; append-only, never rewrites.
@@ -1282,14 +1406,16 @@ class SignalSink:
             except OSError:
                 # `rotate_failures` surfaces a rotation that could not run.
                 self._rotate_failures += 1
+            lines = self._admitted_lines(rows)
             try:
                 self.path.parent.mkdir(parents=True, exist_ok=True)
                 with self.path.open("a", encoding="utf-8", errors="replace") as fh:
-                    for r in rows:
-                        fh.write(r.to_json() + "\n")
+                    for line in lines:
+                        fh.write(line)
             except OSError:
-                # `_dropped` counts records that could not be written.
-                self._dropped += len(rows)
+                # `_dropped` counts records that could not be written; a record the
+                # share bound left to the digest is not one of them.
+                self._dropped += len(lines)
             # The digest is written after the main file, inside the same `_io_lock`.
             self._write_digest(rows)
 
@@ -1453,6 +1579,15 @@ class SignalSink:
             "dropped": self._dropped,
             # `rotate_failures`: a rotation that could not run; nothing was lost.
             "rotate_failures": self._rotate_failures,
+            # `age_retired`: backups the age bound unlinked, main ladder then digest.
+            "age_retired": self._age_retired,
+            "digest_age_retired": self._digest_age_retired,
+            "max_file_age": self._max_file_age,
+            # `share_refused` counts passing records the share bound kept off the live
+            # file; their identity stands on the digest with a `folded` count.
+            "share_refused": self._share_refused,
+            "share_budget": self._share_budget(),
+            "share_identities": len(self._share_bytes),
             # `duration_rejected`: a `duration` `emit` refused; the record itself was
             # kept.
             "duration_rejected": self._duration_rejected,

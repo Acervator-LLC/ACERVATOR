@@ -27,6 +27,7 @@ from __future__ import annotations
 
 from typing import Any, Callable, Optional
 
+from ...trading.topology_proposals import UNAVAILABLE_KEY
 from .market_inspector_surface import (
     METHOD_LINE_FORMAT,
     PUSH_TO_PAPER_LABEL,
@@ -195,6 +196,10 @@ HEADER_WORD_WRAP = True
 STATUS_UNWIRED = "No proposal source wired yet."
 STATUS_READY = "Ready — press Refresh."
 STATUS_COUNT_FORMAT = "{proposals} proposal(s); {dismissed} dismissed"
+#: Appended to the count so a contribution that did not run is named on the pane
+#: and not in the log alone.
+STATUS_UNAVAILABLE_FORMAT = "{count}  ·  {sentences}"
+STATUS_UNAVAILABLE_JOIN = "; "
 STATUS_ERROR_FORMAT = "Detector error: {error_text}"
 STATUS_SAVE_FAILED_FORMAT = (
     "Dismissal NOT saved: {error_text} — this card returns on the next launch."
@@ -509,9 +514,36 @@ def summary_line(new_bots: Any, budget: Any) -> str:
     return SUMMARY_FORMAT.format(new_bots=new_bots, budget=grouped(budget))
 
 
-def status_count(proposals: Any, dismissed: Any) -> str:
-    """The line the pane shows after a refresh that answered."""
-    return STATUS_COUNT_FORMAT.format(proposals=proposals, dismissed=dismissed)
+def unavailable_tests(proposals: Any) -> list:
+    """Every unrun-contribution sentence the proposals of one refresh carry.
+
+    Reads the key ``detect_all_topologies`` stamps on each proposal and keeps
+    the first of each repeated sentence, since the whole run shares them.
+    """
+    out: list = []
+    for one in proposals or []:
+        if not isinstance(one, dict):
+            continue
+        for sentence in one.get(UNAVAILABLE_KEY) or []:
+            text = str(sentence)
+            if text and text not in out:
+                out.append(text)
+    return out
+
+
+def status_count(proposals: Any, dismissed: Any, unavailable: Any = ()) -> str:
+    """The line the pane shows after a refresh that answered.
+
+    A non-empty ``unavailable`` names each contribution that did not run after
+    the count, under ``STATUS_UNAVAILABLE_FORMAT``.
+    """
+    count = STATUS_COUNT_FORMAT.format(proposals=proposals, dismissed=dismissed)
+    sentences = [str(one) for one in unavailable or [] if str(one)]
+    if not sentences:
+        return count
+    return STATUS_UNAVAILABLE_FORMAT.format(
+        count=count, sentences=STATUS_UNAVAILABLE_JOIN.join(sentences)
+    )
 
 
 def status_error(error_text: Any) -> str:
@@ -895,10 +927,18 @@ class TopologiesPaneModel:
         self.calls.append([REFRESH_COUNTED])
 
     def status_line(self) -> str:
-        """The count beside Refresh, or the unsaved-dismissal line over it."""
+        """The count beside Refresh, or the unsaved-dismissal line over it.
+
+        The count names every contribution ``unavailable_tests`` finds on the
+        proposals on display.
+        """
         if self.save_error:
             return status_save_failed(self.save_error)
-        return status_count(len(self.proposals), len(self.dismissed))
+        return status_count(
+            len(self.proposals),
+            len(self.dismissed),
+            unavailable_tests(self.proposals),
+        )
 
     def current_proposals(self) -> list:
         """The non-dismissed proposals currently on display."""
@@ -1233,6 +1273,8 @@ def build_view_model(model: TopologiesPaneModel) -> dict:
             "status_unwired": STATUS_UNWIRED,
             "status_ready": STATUS_READY,
             "status_count_format": STATUS_COUNT_FORMAT,
+            "status_unavailable_format": STATUS_UNAVAILABLE_FORMAT,
+            "status_unavailable_join": STATUS_UNAVAILABLE_JOIN,
             "status_error_format": STATUS_ERROR_FORMAT,
             "status_save_failed_format": STATUS_SAVE_FAILED_FORMAT,
             "status_style": STATUS_STYLE,
