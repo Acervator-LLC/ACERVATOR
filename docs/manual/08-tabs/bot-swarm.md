@@ -296,6 +296,44 @@ basis of each bot's holdings. Only the three rows on the tab came off.
 | Simulator | `src/gui/simulator/sim_bot_swarm_tab.py` |
 | The shared model the panel reads | `src/gui/main_tabs/bot_swarm_tab_surface.py` |
 
+**The sentences this overtakes**, from the start of this section and from the
+block above:
+
+> The Provenance & Mature-Profit Spawn State group draws three rows: the starting
+> balance, the predominant funder and the provenance breakdown.
+
+> A single ampersand in a box title is read as a keyboard shortcut mark, so the
+> doubled form is what the three boxes are given and one ampersand is what each
+> screen draws.
+
+> `PROVENANCE_GROUP_TITLE = "Provenance & Mature-Profit Spawn State"`
+
+**The true sentences.** The heading is `Provenance`. It names the three rows the
+group holds and names nothing else, because the clause that named mature-profit
+spawn state named three readings that came off the box.
+
+`src/gui/main_tabs/bot_swarm_tab_surface.py` — the heading and the three rows
+
+```python
+PROVENANCE_GROUP_TITLE = "Provenance"
+PROVENANCE_GROUP_TITLE_QT = PROVENANCE_GROUP_TITLE.replace("&", "&&")
+
+STARTING_ROW_LABEL = "Starting balance (seed):"
+PREDOMINANT_ROW_LABEL = "Predominant funder (PPS):"
+PROVENANCE_ROW_LABEL = "Provenance breakdown:"
+```
+
+The heading carries no ampersand, so the doubled form and the plain form are the
+same word and every screen that shows the group draws `Provenance`. The three Qt
+screens read `PROVENANCE_GROUP_TITLE_QT` and the two panel scripts read the title
+out of the payload, so none of them spells the words and the three builds cannot
+disagree about them.
+
+The three rows are unchanged. Each keeps the label above, the breakdown row keeps
+`PROVENANCE_STYLE` and its word wrap, the funder row draws
+`— (SEED-funded only)` for a bot that only ever held its seed, and an em dash for
+a ledger that refuses to name a funder.
+
 One function bounds what a bot may send away. It reads the target balance, the
 band edges, the ammunition the next fold needs and the cash on hand, and returns
 the exportable share as a percentage. A bot never exports the capital it is

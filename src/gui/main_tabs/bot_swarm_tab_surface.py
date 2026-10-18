@@ -121,7 +121,7 @@ EMPTY_STYLE = f"color: {ds.CARD_METRIC_LABEL}; font-style: italic; padding: 10px
 EMPTY_WORD_WRAP = True
 
 SUMMARY_GROUP_TITLE = "Swarm Connections & Capital Flow"
-PROVENANCE_GROUP_TITLE = "Provenance & Mature-Profit Spawn State"
+PROVENANCE_GROUP_TITLE = "Provenance"
 # A QGroupBox title reads a single ampersand as a mnemonic mark, so Qt takes two.
 PROVENANCE_GROUP_TITLE_QT = PROVENANCE_GROUP_TITLE.replace("&", "&&")
 FORM_CONFIGURED_BY_HOST = True
