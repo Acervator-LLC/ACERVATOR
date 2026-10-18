@@ -18,6 +18,7 @@ from . import design_system as ds
 from .main_tabs.main_window_surface import (
     ABOUT_TITLE,
     ACCUMULATION_TAB,
+    API_PILL_TOOLTIP,
     BAR_TAB_ORDER,
     HISTORY_TAB,
     ISOLATED_TABS,
@@ -696,11 +697,7 @@ if _HAS_QT:
                 f"color: {ds.CARD_METRIC_LABEL}; font-size: 10px; padding: 0 8px; "
                 "font-family: Consolas;"
             )
-            self._api_load_label.setToolTip(
-                "Trailing 60 s calls-per-minute on the busiest "
-                "connected exchange. Green ≤ 50 %, amber ≤ 75 %, "
-                "red above the 75 % phantom-creation safety threshold."
-            )
+            self._api_load_label.setToolTip(API_PILL_TOOLTIP)
             status.addPermanentWidget(self._api_load_label)
 
             self._ai_monitor_label = QLabel("AI: OFF")
@@ -1107,16 +1104,22 @@ if _HAS_QT:
                 sb.setValue(sb.maximum())
 
         def _report_stored_credentials_on_startup(self) -> None:
-            """Report which configured exchanges hold a stored credential.
+            """Report each configured exchange's credential and its last answer.
 
-            Reads the settings entries at launch and writes one line per
-            exchange to the Activity Log, the notification spool and the
-            API panel. No exchange is contacted, so a stored credential
-            is unverified here: a revoked, expired, wrong or malformed
-            key is indistinguishable from a working one until the first
-            authenticated call.
+            Reads the settings entries and the record
+            ``src.exchange.credential_state`` keeps, then writes one line per
+            exchange to the Activity Log, the notification spool and the API
+            panel. No exchange is contacted: the record carries what the last
+            authenticated call answered, which the fleet start placed about
+            nine seconds into the previous launch.
             """
             from ..exchange.api_logger import get_api_log
+            from ..exchange.credential_state import (
+                CONNECTION_LOST,
+                VALIDATED,
+                recorded_at,
+                recorded_state,
+            )
 
             _log = get_api_log()
 
@@ -1140,9 +1143,15 @@ if _HAS_QT:
                 exchange="app",
                 action="STARTUP_CHECK",
                 reason=f"Application launched, reading {len(exchanges)} exchange(s)",
-                result="Reading settings. No exchange is contacted.",
+                result=(
+                    "Reading settings and the stored credential record. "
+                    "No exchange is contacted."
+                ),
                 level="info",
-                data_usage="Each exchange is read for a stored API credential",
+                data_usage=(
+                    "Each exchange is read for a stored API credential and "
+                    "for what its last authenticated call answered"
+                ),
             )
 
             self._status_log.log(
@@ -1152,26 +1161,52 @@ if _HAS_QT:
                 eid = exch.get("exchange_id", "")
                 has_key = bool(exch.get("api_key_enc", ""))
                 if has_key:
-                    self._status_log.log(
-                        f"  {eid.capitalize()}: credentials stored, unverified", "info"
+                    state = recorded_state(eid)
+                    stamp = recorded_at(eid)
+                    when = (
+                        f" at {time.strftime('%Y-%m-%d %H:%M', time.localtime(stamp))}"
+                        if stamp
+                        else ""
                     )
-                    self._spool.notify(
-                        f"{eid.capitalize()}: credentials stored, unverified",
-                        "info",
-                    )
+                    if state == VALIDATED:
+                        line = f"credentials stored, accepted{when}"
+                        level = "info"
+                        result = f"The last credential check was accepted{when}."
+                        usage = (
+                            "Read from the stored record, not from the venue. A "
+                            "ccxt venue records this when it answers an "
+                            "authenticated call; a venue with its own connector "
+                            "records it on the credential alone."
+                        )
+                    elif state == CONNECTION_LOST:
+                        line = f"credentials stored, the venue did not answer{when}"
+                        level = "warning"
+                        result = f"The last call to this venue got no answer{when}."
+                        usage = (
+                            "Read from the stored record, not from the venue. "
+                            "No call has succeeded since that one."
+                        )
+                    else:
+                        line = "credentials stored, no answer on record"
+                        level = "info"
+                        result = "No credential check is on record for this venue."
+                        usage = (
+                            "Either no authenticated call has run or the last "
+                            "one was rejected. A rejected credential drops the "
+                            "record, so the two read the same here."
+                        )
+                    self._status_log.log(f"  {eid.capitalize()}: {line}", level)
+                    self._spool.notify(f"{eid.capitalize()}: {line}", level)
                     _log.record(
                         exchange=eid,
                         action="CREDENTIAL_CHECK",
-                        reason=f"Checking if {eid.capitalize()} has stored API credentials",
-                        result=(
-                            "Encrypted credentials found in settings. "
-                            "Not verified against the exchange."
+                        reason=(
+                            f"Reading {eid.capitalize()}'s stored credential "
+                            f"and its recorded state"
                         ),
-                        level="info",
-                        data_usage=(
-                            "A revoked, expired or malformed key reads the "
-                            "same as a working one here."
-                        ),
+                        result=result,
+                        level=level,
+                        data_usage=usage,
                     )
                 else:
                     self._status_log.log(
@@ -3438,11 +3473,12 @@ if _HAS_QT:
                         data_usage="Bot now has a live exchange connection for trading",
                     )
 
-                balances_raw = (
-                    connector._ccxt_sync.fetch_balance()
-                    if hasattr(connector, "_ccxt_sync")
-                    else {}
-                )
+                from ..exchange.ccxt_connector import note_venue_answered
+
+                balances_raw = {}
+                if hasattr(connector, "_ccxt_sync"):
+                    balances_raw = connector._ccxt_sync.fetch_balance()
+                    note_venue_answered(eid)
 
                 base = bot.config.base_currency
 
@@ -3573,8 +3609,9 @@ if _HAS_QT:
                 return True, f"Connected. {bal_summary}"
 
             except Exception as exc:
-                from ..exchange.ccxt_connector import CCXTConnector
+                from ..exchange.ccxt_connector import CCXTConnector, note_venue_refusal
 
+                note_venue_refusal(eid, exc)
                 detail = CCXTConnector._format_exchange_error(exc)
                 msg = f"Connection failed: {detail}"
                 _log.record(
@@ -3634,7 +3671,12 @@ if _HAS_QT:
                 logger.debug("trade fill sound playback failed: %s", trade_sfx_exc)
 
         def _dispatch_tracking_beep(self, statuses: list) -> None:
-            """Beep every 200 ms when a scrumming bot is in FIRE, 800 ms in TRACK."""
+            """Beep for the hottest scrumming bot, no sooner than its floor.
+
+            The floor is 0.2 s in FIRE and 0.8 s in TRACK. Only
+            ``_refresh_dashboard`` calls this, on the two-second timer, so the
+            tick sets the rate the operator hears and neither floor binds.
+            """
             import time
 
             hottest = None
