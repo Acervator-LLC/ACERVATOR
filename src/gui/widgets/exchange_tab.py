@@ -88,7 +88,7 @@ if _HAS_QT:
                 self._news_ticker = CryptoNewsTicker()
                 header.addWidget(self._news_ticker, stretch=1)
                 self._news_ticker.start()
-            except Exception as _news_exc:  # noqa: BLE001 - ticker best-effort
+            except Exception as _news_exc:
                 logger.debug("news ticker failed to initialise: %s", _news_exc)
                 header.addStretch()
             self._add_bot_btn = QPushButton("+ New Bot")
@@ -270,7 +270,14 @@ if _HAS_QT:
 
                 pool = get_data_pool()
                 summary = pool.pull_rate_summary()
-            except Exception:  # noqa: BLE001,S110 - countdown best-effort
+            except Exception as summary_exc:
+                logger.debug(
+                    "data pool countdown could not be read (%s: %s); the line "
+                    "keeps the text it already shows and the pool-stopped "
+                    "warning is not re-tested this tick",
+                    type(summary_exc).__name__,
+                    summary_exc,
+                )
                 return
             self._draw_pool_stopped(summary.get("freshest_age_s"))
             tick_s = summary["ticker_slots"]
@@ -342,7 +349,7 @@ if _HAS_QT:
 
                 rate = get_load_monitor().sample(self.exchange_id)
                 stopped_for = stall_seconds(freshest_age_s, rate.calls_per_minute)
-            except Exception as exc:  # noqa: BLE001 - never hide a live stop
+            except Exception as exc:
                 logger.debug("pool-stopped line could not be read: %s", exc)
                 return
             if stopped_for is None:
@@ -428,9 +435,7 @@ if _HAS_QT:
                     if bot_id == _scrum_sel
                     else "extractor" if bot_id == _ext_sel else "neither"
                 )
-            import contextlib
-
-            with contextlib.suppress(Exception):
+            try:
                 from src.core.signal_contract import emit as _ex_emit
 
                 _ex_emit(
@@ -444,6 +449,14 @@ if _HAS_QT:
                         "extractor_selected": bool(_ext_sel),
                         "fell_back": _from != _chosen,
                     },
+                )
+            except Exception as pin_exc:
+                logger.debug(
+                    "the command_routed_to_chosen_table pin did not emit "
+                    "(%s: %s); the command is still sent and the pin reports "
+                    "nothing for it",
+                    type(pin_exc).__name__,
+                    pin_exc,
                 )
             if self._on_bot_cmd:
                 self._on_bot_cmd(bot_id, command)
@@ -485,9 +498,7 @@ if _HAS_QT:
             ]
             # Called per exchange tab on the 2000 ms _refresh_dashboard
             # tick. instance= gives each exchange its own throttle window.
-            import contextlib
-
-            with contextlib.suppress(Exception):
+            try:
                 from src.core.signal_contract import emit as _ex_emit
 
                 _ex_emit(
@@ -504,7 +515,15 @@ if _HAS_QT:
                         "routed_extractor": len(extractor_statuses),
                     },
                 )
-            with contextlib.suppress(Exception):
+            except Exception as pin_exc:
+                logger.debug(
+                    "the every_bot_reaches_a_table pin did not emit (%s: %s); "
+                    "both tables are drawn and the pin reports nothing for "
+                    "this refresh",
+                    type(pin_exc).__name__,
+                    pin_exc,
+                )
+            try:
                 from src.core.signal_contract import emit as _ex_emit
 
                 _ex_emit(
@@ -524,6 +543,14 @@ if _HAS_QT:
                         "extractor_rows": _ext_drawn,
                     },
                 )
+            except Exception as pin_exc:
+                logger.debug(
+                    "the selection_survives_refresh pin did not emit (%s: "
+                    "%s); the highlight is wherever the refresh left it and "
+                    "the pin reports nothing for this refresh",
+                    type(pin_exc).__name__,
+                    pin_exc,
+                )
 
         def _on_global_privacy_clicked(self) -> None:
             """Flip every registered privacy mask in one shot.
@@ -541,13 +568,18 @@ if _HAS_QT:
                     not snapshot.get(fid, False) for fid in reg.known_field_ids()
                 )
                 reg.set_all(any_revealed)
-            except Exception:
+            except Exception as flip_exc:
+                logger.warning(
+                    "Privacy Mode click did nothing: the mask register could "
+                    "not be read or written (%s: %s); every field keeps the "
+                    "state it already had",
+                    type(flip_exc).__name__,
+                    flip_exc,
+                )
                 return
             # set_all swallows its persist errors, so a half-applied flip
             # raises nothing. The tooltip says 18 fields; there are 19.
-            import contextlib
-
-            with contextlib.suppress(Exception):
+            try:
                 from src.core.signal_contract import emit as _ex_emit
 
                 _reg = get_privacy_mask_registry()
@@ -569,10 +601,18 @@ if _HAS_QT:
                         "fields_left_behind": len(_ids) - _applied,
                     },
                 )
+            except Exception as pin_exc:
+                logger.debug(
+                    "the privacy_applied_to_every_field pin did not emit (%s: "
+                    "%s); the flip is written and the pin reports nothing for "
+                    "it",
+                    type(pin_exc).__name__,
+                    pin_exc,
+                )
             self._refresh_privacy_mode_btn_style()
             # expected reads to_dict(), not is_masked(): a pin on is_masked
             # goes silent on the exact fault that mislabels the button.
-            with contextlib.suppress(Exception):
+            try:
                 from src.core.signal_contract import emit as _ex_emit
 
                 _reg = get_privacy_mask_registry()
@@ -590,12 +630,26 @@ if _HAS_QT:
                         "fields_declared": len(_ids),
                     },
                 )
+            except Exception as pin_exc:
+                logger.debug(
+                    "the privacy_button_matches_registry pin did not emit "
+                    "(%s: %s); the button carries whatever word the style "
+                    "refresh gave it and the pin reports nothing for it",
+                    type(pin_exc).__name__,
+                    pin_exc,
+                )
             try:
                 root = self.window()
                 if hasattr(root, "refresh_all_privacy_widgets"):
                     root.refresh_all_privacy_widgets()
-            except Exception:  # Other widgets stay unrefreshed.  # noqa: S110
-                pass
+            except Exception as repaint_exc:
+                logger.warning(
+                    "the mask flip was written but the window-wide repaint "
+                    "failed (%s: %s); dots and figures on the other tabs draw "
+                    "the state from before the flip until the next refresh",
+                    type(repaint_exc).__name__,
+                    repaint_exc,
+                )
 
         def _refresh_privacy_mode_btn_style(self) -> None:
             """ON (all fields masked) = green; OFF = muted.
@@ -611,7 +665,14 @@ if _HAS_QT:
             try:
                 reg = get_privacy_mask_registry()
                 all_masked = all(reg.is_masked(fid) for fid in reg.known_field_ids())
-            except Exception:
+            except Exception as read_exc:
+                logger.warning(
+                    "the mask register could not be read (%s: %s); the button "
+                    "draws Privacy Mode: OFF, which is the declared reading "
+                    "for an unreachable register and not a measured state",
+                    type(read_exc).__name__,
+                    read_exc,
+                )
                 all_masked = False
             if all_masked:
                 self._privacy_mode_btn.setText("Privacy Mode: ON")
