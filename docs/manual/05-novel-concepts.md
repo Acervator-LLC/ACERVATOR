@@ -975,6 +975,30 @@ return [
 ]
 ```
 
+A tranche can take money from more than one sale. When a sell's money moves
+into an older part-spent row instead of opening a new one, the row keeps the
+price its own scrum sold at, so the distance is still measured from a price a
+sale happened at. The dollars-per-unit rate across every sale that fed the row
+is held apart from that price as the row's blend rate, and only the units
+arithmetic reads it.
+
+`src/trading/scrumming/sizing.py` — `tranche_sale_rate`
+
+```python
+blended = float(record.get("blend_rate", 0) or 0)
+if blended > 0:
+    return blended
+return float(record.get("ref", 0) or 0)
+```
+
+A row fed at one price alone carries no blend rate, and its rate is its scrum
+price. `src/trading/scrumming/fold_tranches.py`, in
+`_top_up_remnant_fold_tranches`, moves the money and writes a blend rate only
+where the two rates differ. `src/trading/scrumming/sizing.py`, in
+`units_at_scrum`, is the one place that turns a row's dollars back into the
+units it sold; the fold executor and `fold_surplus_usd` both read it, so the
+units a fold is measured against and the surplus it books cannot disagree.
+
 **Design intention.** The same distance is held in three places so the rule
 cannot be true for the bot and false for a row. The bot-wide hysteresis gate
 holds it, the per-tranche filter above holds it, and each new ladder rung is

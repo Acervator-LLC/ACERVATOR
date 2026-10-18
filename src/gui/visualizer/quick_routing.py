@@ -208,15 +208,28 @@ if _HAS_QT:
                     )
                     if sym:
                         return str(sym)
-            except Exception:  # noqa: S110
-                pass
+            except AttributeError as widget_exc:
+                logger.debug(
+                    "quick-routing: the swarm card for %s holds no readable "
+                    "symbol (%s); the state file is read instead",
+                    bot_id[:8],
+                    widget_exc,
+                )
             try:
                 from ...core.state_manager import StateManager
 
                 st = StateManager().load_state()
                 cfg = (st.get("bots", {}) or {}).get(bot_id, {}).get("config", {}) or {}
                 return str(cfg.get("symbol", "") or "?")
-            except Exception:
+            except Exception as state_exc:
+                logger.warning(
+                    "quick-routing: no symbol could be read for %s from the "
+                    "swarm card or the state file (%s: %s); the row draws a "
+                    "question mark",
+                    bot_id[:8],
+                    type(state_exc).__name__,
+                    state_exc,
+                )
                 return "?"
 
         def _selected_sources(self) -> list[str]:
@@ -245,7 +258,7 @@ if _HAS_QT:
             """Show why in a QMessageBox, and log it when the box cannot open."""
             try:
                 QMessageBox.warning(self, "Quick Routing", why)
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 logger.warning("quick-routing rejection unshowable: %s", exc)
 
         def _confirm_mass(self, verb: str, n: int, detail: str) -> bool:
@@ -271,7 +284,7 @@ if _HAS_QT:
                     QMessageBox.No,
                 )
                 return reply == QMessageBox.Yes
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 logger.error(
                     "quick-routing confirmation unshowable (%s); refusing", exc
                 )
@@ -326,7 +339,7 @@ if _HAS_QT:
                 return
             try:
                 self._viz._apply_routes_to_state(add=wires_created, remove=[])
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 # A raise here means _apply_routes_to_state saved nothing.
                 logger.error(
                     "quick-routing connect: persisting %d wire(s) FAILED "
@@ -346,7 +359,7 @@ if _HAS_QT:
                 bus = get_event_bus()
                 for src, dst, p in wires_created:
                     bus.emit("wire.created", source_id=src, target_id=dst, pct=p)
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 logger.error(
                     "quick-routing connect: %d wire(s) were saved but "
                     "the redraw events FAILED (%s) — the canvas is stale, "
@@ -383,7 +396,7 @@ if _HAS_QT:
                 return
             try:
                 self._viz._apply_routes_to_state(add=[], remove=pairs)
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 # A raise here means _apply_routes_to_state removed nothing.
                 logger.error(
                     "quick-routing disconnect: persisting %d removal(s) "
@@ -402,7 +415,7 @@ if _HAS_QT:
                 bus = get_event_bus()
                 for src, dst in pairs:
                     bus.emit("wire.removed", source_id=src, target_id=dst)
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 logger.error(
                     "quick-routing disconnect: %d removal(s) were saved "
                     "but the redraw events FAILED (%s) — the canvas is "
