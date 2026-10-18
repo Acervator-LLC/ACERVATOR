@@ -123,6 +123,7 @@ EMPTY_WORD_WRAP = True
 SUMMARY_GROUP_TITLE = "Swarm Connections & Capital Flow"
 PROVENANCE_GROUP_TITLE = "Provenance"
 # A QGroupBox title reads a single ampersand as a mnemonic mark, so Qt takes two.
+SUMMARY_GROUP_TITLE_QT = SUMMARY_GROUP_TITLE.replace("&", "&&")
 PROVENANCE_GROUP_TITLE_QT = PROVENANCE_GROUP_TITLE.replace("&", "&&")
 FORM_CONFIGURED_BY_HOST = True
 

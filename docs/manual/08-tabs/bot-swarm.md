@@ -334,6 +334,29 @@ The three rows are unchanged. Each keeps the label above, the breakdown row keep
 `— (SEED-funded only)` for a bot that only ever held its seed, and an em dash for
 a ledger that refuses to name a funder.
 
+The summary box at the top of the tab is headed `Swarm Connections & Capital
+Flow`, and its words are declared in the same place as the provenance heading.
+
+`src/gui/main_tabs/bot_swarm_tab_surface.py` — the two headings and the forms Qt
+is given
+
+```python
+SUMMARY_GROUP_TITLE = "Swarm Connections & Capital Flow"
+PROVENANCE_GROUP_TITLE = "Provenance"
+# A QGroupBox title reads a single ampersand as a mnemonic mark, so Qt takes two.
+SUMMARY_GROUP_TITLE_QT = SUMMARY_GROUP_TITLE.replace("&", "&&")
+PROVENANCE_GROUP_TITLE_QT = PROVENANCE_GROUP_TITLE.replace("&", "&&")
+```
+
+The three Qt screens read `SUMMARY_GROUP_TITLE_QT`, and each panel script reads
+its title out of the payload, so no drawing surface spells either heading. The
+derived form is `Swarm Connections && Capital Flow`, so each box draws the same
+words it has always drawn.
+
+**The sentence this overtakes.** The page carried no sentence naming where the
+summary heading is spelled. Changing either heading is one edit in one file, and
+the doubled form stays correct for whatever wording the declaration holds.
+
 One function bounds what a bot may send away. It reads the target balance, the
 band edges, the ammunition the next fold needs and the cash on hand, and returns
 the exportable share as a percentage. A bot never exports the capital it is
