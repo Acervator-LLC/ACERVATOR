@@ -13,8 +13,8 @@ Structure:
   Nodes:   SHA-256(left_child || right_child)
   Root:    top node hash — the commitment
 
-R28: All append operations validate the incoming record before accepting it.
-R33: The log is append-only.  No record may be modified or removed.
+All append operations validate the incoming record before accepting it.
+The log is append-only.  No record may be modified or removed.
 """
 
 from __future__ import annotations

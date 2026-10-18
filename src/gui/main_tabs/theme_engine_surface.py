@@ -436,7 +436,7 @@ QLineEdit, QSpinBox, QDoubleSpinBox {{
    GLOBAL FOCUS INDICATOR — WCAG 2.2 SC 2.4.7
    ======================================================================
    Applies to every focusable widget. Visible across dark surfaces.
-   Grounded in R65 GDG; source WCAG 2.2 §2.4.7 Focus Visible, SC level AA.
+   Source WCAG 2.2 §2.4.7 Focus Visible, SC level AA.
    Token values: FOCUS_RING_WIDTH=2px, FOCUS_RING_COLOR=OUTLINE_STRONG
    (7.79:1 on SURFACE_0 — well above the 3:1 floor).
    QSS note: Qt accepts `:focus` on all widgets; `outline` is supported
