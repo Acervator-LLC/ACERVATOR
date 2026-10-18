@@ -134,7 +134,7 @@ from .base import (
 from .api_logger import get_api_log
 from .lazy_singleton import ThrottledFault
 from .market_pairs_scout import row_quote_volume_24h
-from .market_rules_store import record_venue
+from .market_rules_store import base_currency, quote_currency, record_venue
 
 logger = logging.getLogger("acervator.exchange")
 
@@ -572,9 +572,8 @@ NO_PUBLISHED_FAMILY = ""
 #: and no asset category among them, ``pub:map:currency:cat``,
 #: ``pub:map:currency:type``, ``pub:list:currency:index``,
 #: ``pub:list:pair:index`` and ``pub:info:pair:securities`` each answered zero
-#: rows, and a record would cost the venue two sectors, because
-#: ``market_asset_class`` reads ``PRECIOUS_METAL_CODES`` and
-#: ``FIAT_CURRENCY_CODES`` only while ``published`` is None. Its one
+#: rows, and a record costs the venue no sector, because ``market_asset_class``
+#: reads ``redemption_sector`` wherever ``published`` names none. Its one
 #: product-type list, ``pub:list:pair:securities``, holds 28 pairs its own
 #: pages place on a separate platform: "This token is only available on the
 #: Bitfinex Securities platform and not the Bitfinex exchange."
@@ -600,17 +599,16 @@ NO_PUBLISHED_FAMILY = ""
 #: publishes ``baseCurrency`` on every row of both hosts, so neither record
 #: names a ``code_leg``.
 #:
-#: bitstamp publishes a category and still has no row, which is the one case
-#: where a record costs more than it names. Its ``publicGetMarkets`` carries an
-#: ``asset_class`` on the 20 ``PERPETUAL`` rows and on none of the 251 ``SPOT``
-#: rows — ``CRYPTO`` 13, ``COMMODITIES`` 4, ``ETF`` 2, ``FX`` 1 — so a record on
-#: that endpoint names a sector for 7 of the venue's 123 base codes. Driven over
-#: all 271 markets, it gains six and costs four: BRENT, GOLD, SILVER and WTI
-#: reach commodities and QQQ and EWY reach indices, while ``GBP/USD`` and
-#: ``SGD/USD`` fall from forex to crypto and ``PAXG/USD`` and ``PAXG/EUR`` fall
-#: from commodities to crypto, because ``market_asset_class`` reads
-#: ``PRECIOUS_METAL_CODES`` and ``FIAT_CURRENCY_CODES`` only while ``published``
-#: is None and no spot row carries a category to replace them.
+#: bitstamp publishes a category and still has no row. Its ``publicGetMarkets``
+#: carries an ``asset_class`` on the 20 ``PERPETUAL`` rows and on none of the
+#: 251 ``SPOT`` rows — ``CRYPTO`` 13, ``COMMODITIES`` 4, ``ETF`` 2, ``FX`` 1 —
+#: so a record on that endpoint names a sector for 7 of the venue's 123 base
+#: codes. Driven over all 271 markets, it gained six and cost four: BRENT, GOLD,
+#: SILVER and WTI reach commodities and QQQ and EWY reach indices, while
+#: ``GBP/USD`` and ``SGD/USD`` fell from forex to crypto and ``PAXG/USD`` and
+#: ``PAXG/EUR`` fell from commodities to crypto. The four cost nothing now,
+#: because ``market_asset_class`` reads ``redemption_sector`` wherever
+#: ``published`` names no sector and no bitstamp spot row carries a category.
 #: ``CITED_VENUE_BASE_SECTORS`` and ``CITED_VENUE_MARKET_SECTORS`` carry the six
 #: gains at the grain the venue publishes them on and cost nothing. Its second
 #: list, ``publicGetCurrencies``, serves 170 rows whose ``type`` holds two words
@@ -639,12 +637,15 @@ NO_PUBLISHED_FAMILY = ""
 #: because the same page states "Pre-IPO Perpetuals on Crypto.com Exchange let
 #: you take a position on a private company's value before it goes public".
 #: Driven over all 988 markets the record moves 178: 164 reach a sector no
-#: reading gave them, five correct a wrong one — ``AMD/USD:USD`` and
+#: reading gave them, two correct a wrong one — ``AMD/USD:USD`` and
 #: ``NOK/USD:USD`` leave forex for stocks, because the venue's own word makes AMD
-#: Advanced Micro Devices and NOK Nokia rather than two national currencies, and
-#: ``USD1/USD``, ``USDS/USD`` and ``USDT/USD`` leave forex for crypto — and nine
-#: fall off a true sector, which three ``CITED_VENUE_BASE_SECTORS`` rows take
-#: back. cryptocom publishes ``base_ccy`` on all 988 rows and no public currency
+#: Advanced Micro Devices and NOK Nokia rather than two national currencies —
+#: and nine fell off a true sector, which three ``CITED_VENUE_BASE_SECTORS``
+#: rows take back. ``USD1/USD``, ``USDS/USD`` and ``USDT/USD`` keep forex, since
+#: ``DIGITAL_CURRENCIES`` maps onto ``NO_PUBLISHED_FAMILY`` and
+#: ``market_asset_class`` then reads ``redemption_sector``, which is the sector
+#: coinbase's own copy of each pair records.
+#: cryptocom publishes ``base_ccy`` on all 988 rows and no public currency
 #: list with a name or a type field, so the record names no ``code_leg``: its
 #: ``symbol`` concatenates the legs as ``1INCH_USD``, ``1INCHUSD-PERP`` and
 #: ``BTCUSD-261127``, and a split on either separator reads the wrong code.
@@ -1420,6 +1421,26 @@ def underlying_code(code: Any) -> str:
     return TOKEN_UNDERLYING_CODES.get(held, "")
 
 
+def redemption_sector(symbol: Any) -> str:
+    """Commodities where the symbol's asset leg redeems for a
+    ``PRECIOUS_METAL_CODES`` metal by the troy ounce, forex where its asset leg
+    and its money leg both redeem for a ``FIAT_CURRENCY_CODES`` currency, and
+    empty where neither leg redeems.
+
+    ``underlying_code`` answers each leg's redemption and ``base_currency`` and
+    ``quote_currency`` take the legs off the symbol, so ``market_asset_class``
+    and a reader holding one recorded row apply this rule to the same symbol.
+    """
+    from ..trading.ata_spm import CLASS_COMMODITIES, CLASS_FOREX
+
+    base_redemption = underlying_code(base_currency(symbol))
+    if base_redemption in PRECIOUS_METAL_CODES:
+        return CLASS_COMMODITIES
+    if base_redemption and underlying_code(quote_currency(symbol)):
+        return CLASS_FOREX
+    return ""
+
+
 def is_option_market(market: Any) -> bool:
     """Whether one loaded market record sets ``OPTION_MARKET_KEY`` or carries
     ``OPTION_MARKET_TYPE``."""
@@ -1444,8 +1465,8 @@ def _published_sector(published: Any, market: Any) -> Any:
 def market_asset_class(market: Any, published: Any = None, venue: Any = "") -> str:
     """The asset class one loaded market record belongs to, read off
     ``futures_asset_types`` first, off ``venue_market_sector`` then
-    ``venue_base_sector`` second, off ``published`` third, and off ``base`` and
-    ``quote`` only where ``published`` is None.
+    ``venue_base_sector`` second, off ``published`` third, and off
+    ``redemption_sector`` wherever ``published`` names no sector.
 
     ``record_venue`` writes this beside the market's rules,
     ``_published_asset_sectors`` supplies ``published`` as the sector the
@@ -1455,7 +1476,6 @@ def market_asset_class(market: Any, published: Any = None, venue: Any = "") -> s
     from ..trading.ata_spm import (
         CLASS_COMMODITIES,
         CLASS_CRYPTO,
-        CLASS_FOREX,
         CLASS_FUTURES_PERPS,
         CLASS_INDICES,
         CLASS_OPTIONS,
@@ -1482,14 +1502,11 @@ def market_asset_class(market: Any, published: Any = None, venue: Any = "") -> s
     cited = venue_base_sector(venue, (market or {}).get("base"))
     if cited:
         return str(cited)
-    if published is None:
-        base = underlying_code((market or {}).get("base"))
-        if base in PRECIOUS_METAL_CODES:
-            return CLASS_COMMODITIES
-        if base and underlying_code((market or {}).get("quote")):
-            return CLASS_FOREX
-    elif str(published or ""):
+    if str(published or ""):
         return str(published)
+    redeemed = redemption_sector((market or {}).get("symbol"))
+    if redeemed:
+        return redeemed
     if is_contract_market(market):
         return CLASS_FUTURES_PERPS
     return CLASS_CRYPTO
