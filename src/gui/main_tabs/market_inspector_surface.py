@@ -978,6 +978,10 @@ NO_CONNECTORS_TEXT = (
 FETCHING_TEXT = "Fetching…"
 SCHEDULER_ERROR_FORMAT = "Scheduler error: {error}"
 ANALYZER_ERROR_FORMAT = "Analyzer error: {error}"
+#: A scan that stopped on an absent package names the package, not the traceback.
+ANALYZER_MISSING_PACKAGE_FORMAT = (
+    "Opposing Pairs needs {package}, which this build left out"
+)
 ANALYZER_UNAVAILABLE_TEXT = "Analyzer unavailable."
 
 FETCH_FAILED_LOG = "market inspector fetch failed: %s"
@@ -2631,6 +2635,18 @@ def bucket_skin(board: Any, asset_class: Any = "") -> dict:
         "states": list(ata_spm_push.STATE_WORDS),
         "settings": settings_page(board, asset_class),
     }
+
+
+def analyzer_error_text(error: Any) -> str:
+    """The status line a scan that did not finish carries.
+
+    An ``ImportError`` answers ``ANALYZER_MISSING_PACKAGE_FORMAT`` with the
+    package it names; every other failure answers ``ANALYZER_ERROR_FORMAT``.
+    """
+    package = getattr(error, "name", "") if isinstance(error, ImportError) else ""
+    if package:
+        return ANALYZER_MISSING_PACKAGE_FORMAT.format(package=package)
+    return ANALYZER_ERROR_FORMAT.format(error=error)
 
 
 def scan_counts(signals: Any, tested: Any) -> dict:
@@ -4776,7 +4792,7 @@ class MarketInspectorScreenModel:
             self.calls.append([SCAN_DONE])
         except Exception as exc:
             logger.exception(SCAN_FAILED_LOG, exc)
-            self.set_status(ANALYZER_ERROR_FORMAT.format(error=exc))
+            self.set_status(analyzer_error_text(exc))
             self.calls.append([SCAN_FAILED, type(exc).__name__])
         self.pending_refresh = False
         self.scan_phase = SCAN_FINISHED
@@ -5251,6 +5267,7 @@ def build_view_model(
             "fetching": FETCHING_TEXT,
             "scheduler_error": SCHEDULER_ERROR_FORMAT,
             "analyzer_error": ANALYZER_ERROR_FORMAT,
+            "analyzer_missing_package": ANALYZER_MISSING_PACKAGE_FORMAT,
             "analyzer_unavailable": ANALYZER_UNAVAILABLE_TEXT,
         },
         "logs": {

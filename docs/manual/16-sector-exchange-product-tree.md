@@ -490,6 +490,61 @@ so it answers Stocks and never Forex.
     return CLASS_CRYPTO
 ```
 
+OVERTAKEN, and the block above is kept as written. Steps 5 and 6 are now one
+named rule, `src/exchange/ccxt_connector.py, in redemption_sector`, and
+`src/exchange/ccxt_connector.py, in market_asset_class` reads it off the
+market's symbol rather than off two separate record fields. The order of the
+eight steps is unchanged.
+
+OVERTAKEN, the same block: the rule ran only where the venue published no
+asset-sector list of its own. It now runs wherever that list names no sector
+for the market, and the venue's own word still wins wherever it names one.
+
+### The two spot rules, checkable against a recorded row
+
+A tokenised fiat pair and a tokenised metal arrive as ordinary spot products.
+The venue's product type cannot separate them from crypto, so the classifier
+decides, and these are the two rules:
+
+```
+Forex          both legs of the symbol redeem for a currency
+Commodities    the asset leg of the symbol redeems for a precious metal
+               by the troy ounce
+```
+
+A leg's redemption is what the issuer publishes the token is redeemable for.
+`src/exchange/ccxt_connector.py, in underlying_code` answers it, and a leg that
+is already a currency code or a metal code redeems for itself.
+
+Both rules read the market's symbol and nothing else, so a reader holding one
+recorded row can apply them to that row's own key.
+`src/exchange/market_rules_store.py, in base_currency` takes the asset leg and
+`src/exchange/market_rules_store.py, in quote_currency` takes the money leg,
+each answering the same name for a spot pair, a perpetual and a dated contract.
+
+| the recorded key | asset leg | money leg | the rule answers |
+| --- | --- | --- | --- |
+| `EURC/USDC` | `EURC` | `USDC` | Forex |
+| `PAXG/USD` | `PAXG` | `USD` | Commodities |
+| `BTC/USD:USD` | `BTC` | `USD` | neither |
+| `ETH/USD:USD-891230` | `ETH` | `USD` | neither |
+| `EURCUSDC` | none | none | neither |
+
+Driven over every one of the 2,147 recorded Coinbase rows, read and not written:
+
+| the reading | rows |
+| --- | --- |
+| recorded Forex, and the rule names Forex | 20 of 20 |
+| recorded Commodities, and the rule names Commodities | 4 of 25 |
+| recorded Commodities on a contract label instead | 21 |
+| the rule names a sector the recorded row disputes | 1 |
+
+The 21 are dated and perpetual commodity contracts, which step 1 names off the
+venue's own futures label before either rule is reached. The one dispute is
+`AMD/USDC:USDC`: the rule reads AMD as the Armenian dram and answers Forex,
+step 3 reads the venue's equity label and answers Stocks, and step 3 runs first.
+That is the precedence this page already states, measured on a real row.
+
 ### Where each sector's answer is read from
 
 The venue labels a contract and labels nothing else. Measured over all 2,152
@@ -547,6 +602,15 @@ TOKEN_UNDERLYING_CODES: dict[str, str] = {
     "XSGD": "SGD",
 }
 ```
+
+OVERTAKEN, the sentence above reading "nine entries name the redemption each
+token's issuer publishes": the map holds ten. `XAUT` was added for a Gate.io
+spot listing and names a redemption no Coinbase market carries.
+
+A tokenised asset is the one place the classifier reads a name, and the two
+rules above are what a reader checks a recorded row against. Where a venue
+publishes its own sector for the asset, that word is read instead and the map is
+never reached.
 
 ### What the classifier answers per sector
 

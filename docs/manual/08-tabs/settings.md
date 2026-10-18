@@ -8028,4 +8028,76 @@ answer.
 | the row Save leaves alone | `src/gui/settings_dialog.py, in _untouched_since_refusal` |
 | the same reading for the React page | `src/gui/main_tabs/settings_dialog_surface.py, in _load_stored` |
 
+## 2026-10-18 - The launch line reports what the last call answered
+
+Launch writes one Activity Log line for each configured exchange. The line used
+to say a credential was stored and unverified. It now says what the venue's last
+authenticated call answered, and it still contacts nothing.
+
+`src/gui/main_window.py, in _report_stored_credentials_on_startup` reads the
+settings entry for the stored blob and the record
+`src/exchange/credential_state.py` keeps. Reading that record places no venue
+call.
+
+| What the record holds | The line reads | Level |
+| --------------------- | -------------- | ----- |
+| the venue answered | credentials stored, accepted at a date and time | info |
+| the venue did not answer | credentials stored, the venue did not answer at a date and time | warning |
+| nothing | credentials stored, no answer on record | info |
+
+The third row covers two cases and the line says so rather than claiming the
+venue was never asked. `src/exchange/ccxt_connector.py, in note_venue_refusal`
+drops the record when a venue rejects a credential, so a rejected key and a
+venue nobody has called read the same.
+
+### The authenticated call launch already places
+
+Nothing is pressed for it.
+
+| Step | Where |
+| ---- | ----- |
+| the saved bots are restored | `main.py, in main` |
+| the splash is handed the fleet-start callback | `main.py, in main` |
+| the consent dialog is skipped where this machine already owns the fleet | `src/core/instance_guard.py, in authorise_auto_start` |
+| every restored bot is started, one at a time | `src/gui/main_window.py, in run_fleet_sequence` |
+| the venue's client is built with the decrypted key, and markets load | `src/exchange/ccxt_connector.py, in sync_connect` |
+| the account balance is read on that client | `src/gui/main_window.py, in _connect_exchange_for_bot` |
+| the account's own trade history is read, on its own thread | `src/exchange/ccxt_connector.py, in _scan_trade_history` |
+
+The splash runs 8.5 s of phases and then waits 750 ms, so the fleet start fires
+about nine seconds after launch. `main.py` holds a 9500 ms fallback timer for
+the same callback.
+
+```mermaid
+flowchart LR
+  LAUNCH["launch"]
+  LINE["the startup line"]
+  STORE["credential_state<br/>exchange_credential_state.json"]
+  FLEET["run_fleet_sequence<br/>about nine seconds later"]
+  BAL["_connect_exchange_for_bot<br/>balance read"]
+  LAUNCH --> LINE
+  STORE -->|read, no venue call| LINE
+  LAUNCH --> FLEET
+  FLEET --> BAL
+  BAL -->|answered or refused| STORE
+```
+
+### The launch balance read now reaches the record
+
+That read does not pass through `src/exchange/ccxt_connector.py, in _call_sync`,
+so neither recorder saw it and its answer was written nowhere. It now records an
+answer on the way out, and a refusal in the handler that already catches one. No
+venue call is added: the call was already being placed.
+
+A key revoked between two sessions is refused by that read. The record kept the
+green its last good session left.
+
+### The sentence this section replaces
+
+The earlier text stays where it is.
+
+| Earlier sentence | What the code does now |
+| ---------------- | ---------------------- |
+| "the startup credential report \| Gemini stored and unverified, Kraken with none" | The report names what each venue's last authenticated call answered, or that no answer is on record. A venue holding no credential still reports none. |
+
 Back to [the subsystem index](README.md).

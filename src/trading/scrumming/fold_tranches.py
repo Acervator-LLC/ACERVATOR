@@ -12,7 +12,12 @@ import time
 from typing import Any, Optional
 
 from ..bot_container import as_finite_float, despawn_threshold_days
-from .sizing import eligible_fold_tranches, plan_fold_consumption, settle_fold_plan
+from .sizing import (
+    eligible_fold_tranches,
+    plan_fold_consumption,
+    settle_fold_plan,
+    tranche_sale_rate,
+)
 
 logger = logging.getLogger("acervator.scrumming")
 
@@ -136,11 +141,11 @@ class FoldTrancheAccountingMixin:
     def _drop_malformed_fold_tranches(self) -> int:
         """Remove every queued tranche whose ``ref`` is not above zero.
 
-        ``ref`` is the price the scrum sold at and every fold divides by
-        it, so a record whose ``ref`` is missing, zero, negative or
-        ``nan`` would raise out of ``sum(t["usd"] / t["ref"])`` and end
-        the cycle. ``nan`` fails ``t.get("ref", 0) > 0`` because every
-        comparison against ``nan`` is False.
+        ``ref`` is the price the scrum sold at and the fold distance is
+        measured from it, so a record whose ``ref`` is missing, zero,
+        negative or ``nan`` is never eligible to fold back. ``nan``
+        fails ``t.get("ref", 0) > 0`` because every comparison against
+        ``nan`` is False.
 
         Each removal raises ``_tranches_discarded_lifetime``, which is a
         term of the reconciliation the Fold-Tranche panel prints,
@@ -215,10 +220,11 @@ class FoldTrancheAccountingMixin:
 
         A candidate must match on ``initial_buy_price`` and sit inside
         this tick's Bollinger band; ``ref`` is a fill price, so requiring
-        a ``ref`` match too would make this dead code. The survivor takes
-        the blended ``ref`` that preserves ``usd / ref``, the
-        units-at-sale quantity the surplus step reads as
-        ``asset_at_scrum``.
+        a ``ref`` match too would make this dead code. The survivor keeps
+        the ``ref`` its own scrum sold at, the one price its fold
+        distance is measured from, and takes a ``blend_rate`` holding the
+        usd-weighted rate across both sales for ``units_at_scrum``; a
+        top-up at the survivor's own rate sets no ``blend_rate``.
 
         Args:
           first_new_index: index in ``_fold_tranches`` where this
@@ -265,11 +271,15 @@ class FoldTrancheAccountingMixin:
             if _best is None:
                 continue
             _b_usd = float(_best.get("usd", 0) or 0)
-            _b_ref = float(_best.get("ref", 0) or 0)
-            _units_at_sale = (_b_usd / _b_ref) + (_new_usd / _new_ref)
+            _b_rate = tranche_sale_rate(_best)
+            _new_rate = tranche_sale_rate(_new_t)
             _best["usd"] = _b_usd + _new_usd
             _best["units"] = float(_best.get("units", 0) or 0) + _new_units
-            _best["ref"] = _best["usd"] / _units_at_sale
+            if _new_rate != _b_rate:
+                # Re-deriving an unchanged rate lands an ULP away and moves
+                # the `ticker.last <= ref x factor` comparison at its bound.
+                _units_at_sale = (_b_usd / _b_rate) + (_new_usd / _new_rate)
+                _best["blend_rate"] = _best["usd"] / _units_at_sale
             _merged_away.add(id(_new_t))
             _merged_n += 1
             _merged_usd += _new_usd

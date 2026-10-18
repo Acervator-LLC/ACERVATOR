@@ -1688,7 +1688,7 @@ class ExecutionEngineMixin:
                     self._bus.emit(
                         "bot.log",
                         bot_id=self.bot_id,
-                        message=f"SELL CANCELED (R55 VH): slippage would "
+                        message=f"SELL CANCELED (VH): slippage would "
                         f"exceed {self.config.target_asset} class "
                         f"tolerance @ ${price:.8f}",
                     )
@@ -2126,7 +2126,7 @@ class ExecutionEngineMixin:
                     self._bus.emit(
                         "bot.log",
                         bot_id=self.bot_id,
-                        message=f"BUY CANCELED (R55 VH): slippage would "
+                        message=f"BUY CANCELED (VH): slippage would "
                         f"exceed {self.config.target_asset} class "
                         f"tolerance @ ${price:.8f}",
                     )
