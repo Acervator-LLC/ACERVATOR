@@ -7749,127 +7749,16 @@ it is a placeholder.
 
 ## Nuclear Mode
 
-`NuclearModePanel` drove the controller. The controller looped the same
-state-file fleet over the tablet window until stopped, recording each cycle so a
-late failure traced back to the cycle that produced it. Start needed the
-window's async loop; without it the panel said so and no soak began.
-The operator cancelled Nuclear Mode and the rebuild deleted its code, so none of
-the files this section names is in the tree.
+The operator cancelled Nuclear Mode. The rebuild deleted its panel, its two
+fleet controllers and its candle source, so no file this section once walked
+through is in the tree and no Nuclear run starts. The three modes the Sim tab
+carries today — Validation, Back Test and Portfolio Battery — stand in
+its place, and the record of what Nuclear did stands below, under what the
+closed issues landed.
 
-`NuclearFleetController`, in the Simulator package the rebuild deleted
-
-```python
-class NuclearFleetController:
-    """Loops the bot_state fleet over Stone Tablet history until stopped.
-
-    GUI-agnostic: all operator-visible output goes through the callbacks,
-    so this is testable without Qt.
-    """
-```
-
-The market structure varied per loop, and nothing on disk was touched.
-
-`noised_series`, in the candle source the rebuild deleted
-
-```python
-def noised_series(
-    rows: list,
-    seed: int,
-) -> tuple[list, float]:
-    """Return ``(noised_rows, noise_pct)`` for one pass over *rows*.
-
-    A ``_Tape`` seeded from *seed* perturbs a copy through ``_at``; *rows* is
-    left as it was and nothing here touches disk.
-    """
-```
-
-A second oscillator supplied the load pulse, and it was capped while its cooling
-regime held, because the pulse shared a machine with the live trading engine.
-That module is still in the tree and nothing constructs it.
-
-`src/core/system_load_oscillator.py` — `SystemLoadOscillator`
-
-```python
-class SystemLoadOscillator:
-    """Dual oscillator for Nuclear Mode tick rate and per-tick workload.
-
-    ``start`` takes the monotonic reference and spawns the COOLING
-    daemon; ``stop`` joins it and is idempotent. ``current_multiplier``
-    returns ``BASE_MULTIPLIER`` before ``start``.
-    """
-```
-
-`set_swarm_hooks` connected the controller to three methods on the Swarm tab,
-which is how a nuclear run drew its rows in the sim layer of that swarm.
-`set_topologies` replayed a Market Inspector proposal shape across the sim bots.
-Neither name is in the tree now.
-
-| Hook | Fires when |
-| ---- | ---------- |
-| `register_sim_run` | A run starts |
-| `update_sim_run` | A cycle reports |
-| `stop_sim_run` | The run ends |
-
-The panel's own visuals stayed empty for a whole run. It fed the shared price
-chart and the shared voting readout from four fields — the symbol, the last
-price, the last volume and the voting summary — and the controller's snapshot
-carried none of them.
-
-`NuclearFleetController.snapshot`, in the controller the rebuild deleted
-
-```python
-    def snapshot(self) -> dict:
-        """Return the GUI panel's polled view of this soak."""
-        s = self.state
-        return {
-            "running": s.running,
-            "uptime_seconds": s.uptime_s,
-            "fleet_size": s.fleet_size,
-            "symbols": s.symbols,
-            "cycles_completed": s.cycles_completed,
-            "current_cycle": s.current_cycle,
-            "noise_pct": s.noise_pct,
-            "wires_loaded": len(self._smart_wires),
-            "total_candles": s.total_candles,
-            "total_trades": s.total_trades,
-            "total_exceptions": s.total_exceptions,
-            "load_multiplier": s.load_multiplier,
-            "cooling": s.cooling,
-            "load_sensed": self._sensed,
-            "last_error": s.last_error,
-            "failed_cycles": sum(1 for c in s.cycles if not c.ok),
-        }
-```
-
-Nuclear was not a validator. It was to run after trade-logic alignment was
-earned, its noised tape was deliberately not history, and its criteria were
-coverage and survival. The operator cancelled it before that point was reached.
-
-`NuclearModePanel`, in the panel the rebuild deleted — what it was for
-
-```python
-NOT A VALIDATOR. Nuclear runs AFTER trade-logic alignment is proven on
-the real tablets, and its noised tape is deliberately not history, so
-nothing here compares its output to YTD or live. Its criteria are
-coverage and survival.
-```
-
-`NuclearController` was the earlier
-single-tape prototype: one scout bot walking one tape. Nothing under the source
-tree constructed it, and it stayed because both controllers shared the noise
-source.
-
-`NuclearModePanel`, in the panel the rebuild deleted — why the prototype stayed
-
-```python
-`nuclear_controller.py` and `nuclear_candle_source.py` are deliberately
-NOT deleted: the latter owns `noised_series`, which v2 depends on for
-exactly the market-structure noise above.
-```
-
-That comment recorded the state before the cancellation. Every file named in
-this section was deleted with the rest of the old Simulator, and no Nuclear Mode
-runs.
+One module outlived it. `src/core/system_load_oscillator.py` holds
+`SystemLoadOscillator`, which supplied the load pulse that paced a run, and
+nothing in the tree constructs it.
 
 ## Bridge
 
