@@ -4391,5 +4391,14 @@ def encode_frame(response: dict) -> bytes:
 and returns a line for each of the three. The frontend's parser has a frame to read for
 every one of them, and the screen answers in place of going silent.
 
+### The sentence the declared derivation cost replaces
+
+The sentence below stands in an earlier section and no longer describes the
+code. The earlier text stays where it is.
+
+| Earlier sentence | What the code does now |
+| ---------------- | ---------------------- |
+| "`src/core/encryption.py` — the derivation cost", and the `_KDF_ITERATIONS` line under it | The cost is declared as `KDF_ITERATIONS`, a public name carrying the OWASP figure in its own docstring. The figure is unchanged at 600,000 rounds, and a search for `_KDF_ITERATIONS` finds nothing. |
+
 The narrative for the whole screen is on [the tabs page](../08-tabs.md). The tab
 index is on [the subsystem README](README.md).

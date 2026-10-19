@@ -8334,5 +8334,15 @@ code. The earlier text stays where it is.
 | "Three sites write that phrase out as a literal, one to encrypt and two to decrypt, and a fourth declares the format none of them reads." | One declaration, `MASTER_FORMAT`, is filled by one function, `vault_phrase`. Eight sites call that function: one seals, one seals and opens, five open, and one is the Qt-free model's own phrase builder. No site writes the format out. |
 | "`src/gui/main_tabs/settings_dialog_surface.py` — the declaration" | The declaration is in `src/core/encryption.py`, beside `UNNAMED_OPERATOR` and `vault_phrase`. The surface reads that function and declares no format of its own. |
 
+### The sentences the declared derivation cost replaces
+
+Each sentence below stands in an earlier section and no longer describes the
+code. The earlier text stays where it is.
+
+| Earlier sentence | What the code does now |
+| ---------------- | ---------------------- |
+| "`src/core/encryption.py` — `derive_key`", and the signature under it, in both of the two sections that carry it | `derive_key` takes a third argument, a keyword-only `iterations`, and runs the declared `KDF_ITERATIONS` where it is left out. A seal that recorded an earlier cost hands back the cost it recorded. |
+| "`src/core/encryption.py` - the declaration and the fallback", and the `vault_phrase` body under it that returns `MASTER_FORMAT` alone | `vault_phrase` reads `held_master_key` first and answers `master_key_phrase` of the held key where one is held. Where none is held it returns `MASTER_FORMAT` on the stored name exactly as the block shows, which is every install no password has been set on. |
+
 
 Back to [the subsystem index](README.md).
