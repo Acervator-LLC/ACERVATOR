@@ -132,8 +132,11 @@ dependencies = [
 #            the operator, off the committed figures under
 #            `docs/manual/figures/`, and the running application never calls
 #            it. The lower bound is the version measured on 2026-10-19.
-#            `CONSUMER_EXTRAS["all"]` in tools/deps.py names this extra and no
-#            other consumer does, which is where `charts` sits too.
+#            `CONSUMER_EXTRAS["all"]` in tools/deps.py names this extra, and so
+#            does `CONSUMER_EXTRAS["dev"]`, because the archetypes lane installs
+#            `.[dev]` and mypy and pyright read the builder's pptx imports. No
+#            shipping consumer names it: `build` and `os` both run with the
+#            package absent, and nothing in the product imports it.
 #   contracts  `contracts/deploy.py` is a standalone CLI that deploys
 #            ACRV.sol, CompetitionRegistry.sol and AcervatorTrophy.sol
 #            to Base Sepolia or Base Mainnet. It imports web3 and
@@ -206,6 +209,12 @@ dev = [
     # wrong and unused, and the lane failed on four high findings while this
     # machine stayed green. The analyzer environment declares what it reads.
     "acervator[cointegration]",
+    # The same reason, for the same lane. mypy and pyright read the six pptx
+    # imports in tools/build_vwap_deck.py. Without this line the runner answered
+    # `import-not-found` and `reportMissingImports` on all six and the lane
+    # failed on twelve high findings while this machine, which carries the
+    # package, stayed green.
+    "acervator[slides]",
     # coding_archetype.py shells out to SIX analyzers on a Python target -
     # ruff, mypy, pyright, bandit, vulture, semgrep - and to shellcheck or
     # yamllint on a shell or YAML target. pyright is a bare-executable
