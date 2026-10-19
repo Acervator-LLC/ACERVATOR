@@ -244,20 +244,26 @@ if _HAS_QT:
 
         def _refill_base(self, exchange_id):
             """Refill the Base Currency drop-down from the venue's market rows,
-            through ``_base_labels``, keeping the entry it shows.
+            through ``_base_labels``, and open it on a leg those rows quote.
+
+            ``bot_wizard_surface.opening_base_index`` keeps the entry already
+            shown while the rows quote a market in it, so the entry survives a
+            venue change and a sector quoting none of the declared legs draws a
+            list rather than an empty Target Asset row.
 
             The signal is blocked across the refill, so ``_filter_assets`` runs
             once from ``_on_exchange_changed`` rather than once per entry.
             """
+            from .main_tabs.bot_wizard_surface import opening_base_index
+
+            rows = self._markets_cache.get(exchange_id, [])
             wanted = self._base.currentText()
-            labels = _base_labels(self._markets_cache.get(exchange_id, []))
-            if labels == [self._base.itemText(at) for at in range(self._base.count())]:
-                return
+            labels = _base_labels(rows)
             self._base.blockSignals(True)
-            self._base.clear()
-            self._base.addItems(labels)
-            at = self._base.findText(wanted)
-            self._base.setCurrentIndex(at if at >= 0 else 0)
+            if labels != [self._base.itemText(at) for at in range(self._base.count())]:
+                self._base.clear()
+                self._base.addItems(labels)
+            self._base.setCurrentIndex(opening_base_index(labels, rows, wanted))
             self._base.blockSignals(False)
 
         def _fetch_markets(self, exchange_id):
@@ -356,6 +362,7 @@ if _HAS_QT:
                 market_name,
                 market_reason,
                 market_unit_rule,
+                no_pairs_reason,
                 recorded_venue_rows,
                 session_takes_whole_units,
             )
@@ -422,7 +429,9 @@ if _HAS_QT:
                 else:
                     self._target.addItem(label, named)
             if not filtered:
-                self._target.addItem("No pairs found", "")
+                self._target.addItem(
+                    no_pairs_reason(markets, base, self._sector, eid), ""
+                )
                 self._target_symbols.append("")
                 self._target_reasons.append("")
                 self._target_unit_rules.append("")

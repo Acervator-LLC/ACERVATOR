@@ -7,6 +7,7 @@ Acervator(TM) is a trademark of Anthony L. Brown.
 """
 
 from __future__ import annotations
+import importlib.util
 import json, hashlib, logging, math, time, platform
 from datetime import datetime, timezone
 from dataclasses import dataclass, asdict
@@ -14,6 +15,32 @@ from pathlib import Path
 
 logger = logging.getLogger("acervator.live_monitor")
 REPORT_SCHEMA = "1.0.0"
+
+MONITOR_PACKAGE = "httpx"
+#: An install that left the client out names the package, not the traceback.
+MONITOR_MISSING_PACKAGE_FORMAT = (
+    "The AI Monitor needs {package}, which this install left out"
+)
+MONITOR_MISSING_LABEL = "AI: NO PACKAGE"
+
+
+def missing_package_text(package: object = MONITOR_PACKAGE) -> str:
+    """The sentence ``MONITOR_MISSING_PACKAGE_FORMAT`` builds for one package."""
+    name = str(package or "") or MONITOR_PACKAGE
+    return MONITOR_MISSING_PACKAGE_FORMAT.format(package=name)
+
+
+def monitor_package_absence(package: str = MONITOR_PACKAGE) -> str:
+    """``missing_package_text`` when ``find_spec`` finds no ``package``, else "".
+
+    ``find_spec`` is the reading, so ``LiveMonitor._call`` keeps its own import
+    and start-up loads no HTTP client.
+    """
+    try:
+        found = importlib.util.find_spec(package) is not None
+    except (ImportError, ValueError):
+        found = False
+    return "" if found else missing_package_text(package)
 
 
 @dataclass
@@ -336,7 +363,12 @@ class LiveMonitor:
         )
 
     async def _call(self, msg):
-        import httpx
+        try:
+            import httpx
+        except ImportError as exc:
+            raise RuntimeError(
+                missing_package_text(getattr(exc, "name", "") or MONITOR_PACKAGE)
+            ) from exc
 
         async with httpx.AsyncClient() as c:
             r = await c.post(

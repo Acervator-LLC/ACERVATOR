@@ -2051,6 +2051,39 @@ PUSH_WIRE_SELF_FORMAT = (
 )
 ```
 
+A Target Balance is refused the same way, and on both destinations by the same
+rule. Each candidate row names one market and one dollar target, and both
+pushes read that target through one admission: an endless figure, a figure that
+is not a number, a stored flag, a negative figure and text no dollar can be
+read from are each refused, the Activity Log names every market refused,
+nothing is held and the run mode does not move. A row naming no target, or
+naming zero, takes the configured default instead, which is the
+`target_balance` field default `BotConfig` itself declares, so a push and the
+Bot Wizard cannot name two different dollars.
+
+`src/trading/container/config.py, in pushed_target_usd` — the one admission
+both destinations read
+
+```python
+PUSHED_TARGET_DEFAULT: float = float(
+    next(one.default for one in fields(BotConfig) if one.name == "target_balance")
+)
+```
+
+A repeated name is refused too. One pair holds one rate, so a topology naming
+the same source and target twice refuses the whole push, and a candidate naming
+the same market twice holds one bot for it rather than two.
+
+`src/gui/simulator/sim_trading_tab_surface.py` — the target and repeated-pair
+refusals
+
+```python
+PUSH_TARGET_FORMAT = "{asset}: {target} is not a Target Balance a bot can trade"
+PUSH_WIRE_TWICE_FORMAT = (
+    "{source} to {target} is named twice, and one pair holds one rate"
+)
+```
+
 A pushed bot is a simulated record, never a live bot and never an order. It
 reaches the Simulator's own fleet file and its own bus, and the live engine and
 the live logs see nothing of it. A pushed wire is the same: it is registered on
@@ -4390,6 +4423,15 @@ def encode_frame(response: dict) -> bytes:
 `json.dumps` raises, logs the type and the message under `acervator.core.desktop_bridge`,
 and returns a line for each of the three. The frontend's parser has a frame to read for
 every one of them, and the screen answers in place of going silent.
+
+### The sentence the declared derivation cost replaces
+
+The sentence below stands in an earlier section and no longer describes the
+code. The earlier text stays where it is.
+
+| Earlier sentence | What the code does now |
+| ---------------- | ---------------------- |
+| "`src/core/encryption.py` — the derivation cost", and the `_KDF_ITERATIONS` line under it | The cost is declared as `KDF_ITERATIONS`, a public name carrying the OWASP figure in its own docstring. The figure is unchanged at 600,000 rounds, and a search for `_KDF_ITERATIONS` finds nothing. |
 
 The narrative for the whole screen is on [the tabs page](../08-tabs.md). The tab
 index is on [the subsystem README](README.md).

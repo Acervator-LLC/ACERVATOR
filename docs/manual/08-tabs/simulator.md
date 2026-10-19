@@ -1057,6 +1057,23 @@ pushed bot walks the tape the Simulator already holds for it. A market with no
 tablet refuses the whole push and moves no mode, which
 [the Market Inspector page](market-inspector.md) describes at the button.
 
+A Target Balance the Simulator cannot trade against refuses the push the same
+way. Each row's dollar target is read through the one admission Push to Paper
+reads, so an endless figure, a figure that is not a number, a stored flag, a
+negative figure and text no dollar can be read from are refused on both
+destinations alike; the Activity Log names every market refused, nothing is
+held and the run mode is unchanged. A row naming no target, or naming zero,
+takes the `target_balance` default `BotConfig` declares. A market named twice
+in one candidate holds one bot, never two.
+
+`src/gui/simulator/sim_trading_tab_surface.py, in push_configs` — the three
+lists a push reads
+
+```python
+def push_configs(candidates: Any, entries: Any) -> tuple:
+    """``(configs, missing, refused)`` for one pushed candidate's symbols."""
+```
+
 A swarm topology also names the wires between its bots, and those travel with
 them. Each pushed bot gets its own `SimWireLedger`, each wire is registered
 between two of those bots at the rate the proposal names, and the sim fleet file
@@ -1066,6 +1083,9 @@ share to the pushed target, which is the routing
 describes and
 [Start Run carries the fleet's wires, and the run's end saves them](#start-run-carries-the-fleets-wires-and-the-runs-end-saves-them)
 drives.
+
+One pair holds one rate, so a topology naming the same source and target twice
+refuses the whole push, names the pair and holds nothing.
 
 The Activity Log reports both halves:
 

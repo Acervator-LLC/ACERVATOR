@@ -1556,7 +1556,9 @@ def ohlcv_data_usage() -> str:
     return f"Fed into {len(DEFAULT_WEIGHTS)}-indicator TA engine ({voters}) for voting"
 
 
-_LOGO_CDN = "https://assets.coingecko.com/coins/images/{id}/small/{symbol}.png"
+#: The one icon address this connector answers, keyed on the ticker alone. A
+#: CoinGecko address needs a per-coin image id, which no connector holds, so
+#: none is built here.
 _LOGO_FALLBACK = "https://www.cryptocompare.com/media/img/cc_icons/{symbol}.png"
 
 

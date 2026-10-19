@@ -112,9 +112,7 @@ CHECKED = 2
 UNCHECKED = 0
 EXPANDING = "Expanding"
 
-# Where the saved fleet load lives, and the fields LiveRoutingTab reads in it.
-STATE_DIR_NAME = ".acervator"
-STATE_FILE_NAME = "bot_state.json"
+# The fields LiveRoutingTab reads in the saved fleet load.
 BOTS_FIELD = "bots"
 CONFIG_FIELD = "config"
 SYMBOL_FIELD = "symbol"
@@ -147,6 +145,10 @@ SELF_WIRE_DISCONNECT_TEXT = (
     "Every selected pair is the same bot — nothing to disconnect."
 )
 SAVE_FAILED_FORMAT = "Nothing was changed — saving the routing table failed:\n\n{why}"
+SAVE_REFUSED_BODY = (
+    "Nothing was changed — the saved fleet could not be read, so writing the "
+    "routing table now would replace it with a file holding no bots."
+)
 CLEAR_FAILED_FORMAT = (
     "Nothing was changed — clearing the routing table failed:\n\n{why}"
 )
@@ -492,23 +494,29 @@ class LiveRoutingTab:
         self.asked = 0
 
     def load(self) -> dict:
-        """The saved fleet load, or an empty one when it cannot be read."""
+        """The saved fleet load, or an empty one when it cannot be read.
+
+        A sealed fleet comes back carrying its latch and no ``BOTS_FIELD``, so
+        ``save`` refuses it and no press writes wires beside a fleet this
+        session cannot read.
+        """
         from src.core.state_manager import StateManager
 
         return StateManager().load_state() or {}
 
     def save(self, state: dict) -> None:
-        """Write ``state`` back over the saved fleet file."""
-        from pathlib import Path
+        """Write ``state`` back over the saved fleet file, or refuse and say why.
 
-        from src.core.io_utils import atomic_write_json
+        ``StateManager.write_state`` seals the fleet fields where a master key is
+        held, and a ``state`` carrying no ``BOTS_FIELD`` is refused here before
+        it can replace a stored fleet with none.
+        """
+        from src.core.state_manager import StateManager
 
-        atomic_write_json(
-            Path.home() / STATE_DIR_NAME / STATE_FILE_NAME,
-            state,
-            indent=2,
-            default=str,
-        )
+        if not isinstance(state, dict) or BOTS_FIELD not in state:
+            self.warn(REFUSAL_TITLE, SAVE_REFUSED_BODY)
+            return
+        StateManager().write_state(state)
 
     def record(self, *call: Any) -> None:
         """Keep one question the matrix asked, in the order it was asked."""

@@ -8223,4 +8223,126 @@ code. The earlier text stays where it is.
 | "Grey is the resting colour. It says nobody has checked, not that something failed." | Grey is still the resting colour and still says nothing failed. It now covers a venue nobody has asked and a credential whose format was checked, and the row's words tell the two apart. |
 | "grey \| nothing has been recorded for this venue" | Grey covers a venue with nothing on record and a venue holding a format check. Neither is a venue answer, so both draw the resting colour. |
 
+## 2026-10-18 - A Username change asks before it reseals the stored secrets
+
+The name in the Username row is the passphrase every stored venue secret is
+sealed under. A Save that changes that name over a stored credential now puts
+the consequence on screen and waits for an answer. Nothing reseals without the
+press, and an answer of No leaves both the name and the stored secrets exactly
+as they were.
+
+### One reading, read by both save paths
+
+`src/gui/main_tabs/settings_dialog_surface.py`, in
+`username_rename_consequence`, answers whether a Save would orphan anything. It
+calls the case dangerous only where the name changed **and** a venue holds a
+sealed token, which is the one case that leaves a secret under a phrase nothing
+rebuilds. `credential_bearing_venues` names those venues, reading the same
+`CREDENTIAL_FIELDS` per entry that `stored_credential_phrase` reads. No token is
+opened to answer, and no value is read.
+
+`src/gui/settings_dialog.py`, in `_settle_username_rename`, reads that answer and
+puts the question. It runs before `_save` walks its write loop, so the loop
+writes whichever name the answer left in the row.
+
+`src/gui/main_tabs/settings_dialog_surface.py`, in
+`SettingsDialogModel._hold_username_over_credentials`, reads the same answer. The
+Qt-free model carries no press, so it refuses that one case: the stored name goes
+back into the row and the question is recorded as a box.
+
+### What each answer does
+
+| The answer | The stored name | The stored secrets |
+| ---------- | --------------- | ------------------ |
+| Yes | the new name is written | every sealed token is resealed under the new phrase |
+| No | the stored name goes back in the row | untouched |
+| the reseal could not finish | the stored name goes back in the row | untouched |
+| the question could not be put | the row is skipped for that Save | untouched |
+
+### The reseal covers both stores a phrase keys
+
+`src/core/encryption.py`, in `rekey_credential_stores`, is the one caller-facing
+function. It covers the `_enc` tokens the settings store holds per venue and the
+`FileVault` the ATA-SPM pages push through. `rekeyed_token` opens one token under
+the old phrase and seals it again under the new one.
+
+Each venue is opened and resealed whole before anything is written, and the
+settings store takes one write, so a venue the old phrase cannot open keeps the
+tokens it had and is named on the Activity Log. A vault holding no entry writes
+no file, so an install that never pushed through the ATA-SPM pages gains no file
+from a rename.
+
+```mermaid
+flowchart TD
+  SAVE[Press Save on the User page] --> ASK{username_rename_consequence}
+  ASK -->|the name is the same| WRITE[Write the row]
+  ASK -->|no venue holds a token| WRITE
+  ASK -->|a venue holds a token| BOX[Put the question on screen]
+  BOX -->|No| KEEP[Put the stored name back]
+  BOX -->|Yes| RESEAL[rekey_credential_stores]
+  RESEAL --> STORE[The settings store, one write]
+  RESEAL --> VAULT[The FileVault, written only where one entry moved]
+  RESEAL --> WRITE
+```
+
+### Driven on the real method
+
+The press is the one outward edge replaced, and the replacement counts its calls,
+so a run that never put the question cannot read as a run that did. Everything
+else is real: the surface reading, `rekey_credential_stores`, and a
+`SettingsManager` in a temporary directory holding one venue with three sealed
+tokens. The home was redirected before the first import and `Path.home()` was
+printed from inside the run. No stored setting of the running install was read,
+no credential file was opened and no venue was contacted.
+
+| # | Reading | Result |
+| - | ------- | ------ |
+| 1 | a secret sealed under one name, opened under another | refused |
+| 2 | **control** — a secret sealed and opened under the same name | opens |
+| 3 | every stored token before the rename | opens |
+| 4 | the question was put | once |
+| 5 | the row after an answer of Yes | carries the new name |
+| 6 | every stored token after an answer of Yes | opens |
+| 7 | the row after an answer of No | carries the stored name |
+| 8 | every stored token after an answer of No | opens |
+| 9 | **control** — the question on an unchanged row | not put |
+| 10 | **control** — the question on a store holding no credential | not put |
+| 11 | the vault file after a rename over an empty vault | not written |
+| 12 | the Qt-free model over a stored credential | the row put back, one box recorded |
+
+Rows 9 and 10 are the controls for the question. They prove the box appears on
+the one case that needs it and on no other, so rows 4 to 8 are the question
+working and not a box on every Save.
+
+### The empty row
+
+`src/core/encryption.py`, in `vault_phrase`, substitutes `UNNAMED_OPERATOR` for
+an empty name, so an install whose row was never filled seals under that one
+phrase. `main.py` reads the stored name on a launch and writes nothing when it is
+empty, so that install is reachable from a fresh one. Filling the row later is a
+rename like any other, and the question is put the same way.
+
+### Four sentences this change and the one declaration replace
+
+Each sentence below stands in an earlier section and no longer describes the
+code. The earlier text stays where it is.
+
+| Earlier sentence | What the code does now |
+| ---------------- | ---------------------- |
+| "The declared default is an empty string, and the settings object always declares the field, so the fallback written into the phrase never fires. An install where the row was never filled encrypts under a phrase with an empty middle." | The fallback fires. `vault_phrase` reads the declared empty string and substitutes `UNNAMED_OPERATOR`, so an install whose row was never filled seals under that one phrase, not under a phrase with an empty middle. |
+| "Change the name on a machine that already holds credentials and the stored secrets stop opening, because the connect path rebuilds the same phrase from the new name." | A Save that changes the name over a stored credential puts the consequence on screen first. On Yes every sealed token is resealed under the new phrase; on No the stored name goes back in the row. The stored secrets open either way. |
+| "Three sites write that phrase out as a literal, one to encrypt and two to decrypt, and a fourth declares the format none of them reads." | One declaration, `MASTER_FORMAT`, is filled by one function, `vault_phrase`. Eight sites call that function: one seals, one seals and opens, five open, and one is the Qt-free model's own phrase builder. No site writes the format out. |
+| "`src/gui/main_tabs/settings_dialog_surface.py` — the declaration" | The declaration is in `src/core/encryption.py`, beside `UNNAMED_OPERATOR` and `vault_phrase`. The surface reads that function and declares no format of its own. |
+
+### The sentences the declared derivation cost replaces
+
+Each sentence below stands in an earlier section and no longer describes the
+code. The earlier text stays where it is.
+
+| Earlier sentence | What the code does now |
+| ---------------- | ---------------------- |
+| "`src/core/encryption.py` — `derive_key`", and the signature under it, in both of the two sections that carry it | `derive_key` takes a third argument, a keyword-only `iterations`, and runs the declared `KDF_ITERATIONS` where it is left out. A seal that recorded an earlier cost hands back the cost it recorded. |
+| "`src/core/encryption.py` - the declaration and the fallback", and the `vault_phrase` body under it that returns `MASTER_FORMAT` alone | `vault_phrase` reads `held_master_key` first and answers `master_key_phrase` of the held key where one is held. Where none is held it returns `MASTER_FORMAT` on the stored name exactly as the block shows, which is every install no password has been set on. |
+
+
 Back to [the subsystem index](README.md).
