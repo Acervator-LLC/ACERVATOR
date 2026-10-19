@@ -420,7 +420,7 @@ def table(slide: Slide, header: list[str], rows: list[list[str]], box: Box) -> N
             run.font.color.rgb = INK
 
 
-def slide_title(prs: Presentation, title: str, window: str, drawn_from: str) -> None:
+def slide_title(prs: Presentation, title: str, window: str, newest_export: str) -> None:
     """Open the deck with the title the operator set, and the window."""
     slide = blank(prs)
     text_box(
@@ -438,7 +438,7 @@ def slide_title(prs: Presentation, title: str, window: str, drawn_from: str) -> 
         "A year of live fills, the average price drawn from them, and the market"
         " they ran in."
         "\nEvery asset is labelled A01 to A38 and named nowhere."
-        f"\n\n{window}\n{drawn_from}",
+        f"\n\n{window}\n{newest_export}",
         size=14,
         color=MUTE,
         align=PP_ALIGN.CENTER,
@@ -863,7 +863,7 @@ def slide_provenance(
     prs: Presentation,
     ledger: Ledger,
     window: str,
-    drawn_from: str,
+    newest_export: str,
 ) -> None:
     """State where every figure came from, and the command that rebuilds it."""
     slide = blank(prs)
@@ -880,7 +880,7 @@ def slide_provenance(
                 ", ".join(ledger.stated_absent) or "none",
             ],
             ["The window the page measures", window],
-            ["The export the figures were drawn from", drawn_from],
+            ["The newest venue export present", newest_export],
             ["The one command", "python -m tools.build_vwap_deck"],
         ],
         Box(MARGIN, Inches(1.6), BODY_W, Inches(3.7)),
@@ -918,8 +918,8 @@ def compose(title: str) -> tuple[Presentation, Ledger]:
         f" to {record['Last fill']['Later export']}"
     )
     newest = newest_export_row()
-    drawn_from = (
-        f"the export whose newest row reads {newest}"
+    newest_export = (
+        f"newest venue export row {newest}"
         if newest
         else "no venue export under artifacts/evidence-input/transactions"
     )
@@ -928,7 +928,7 @@ def compose(title: str) -> tuple[Presentation, Ledger]:
     prs.slide_width = SLIDE_W
     prs.slide_height = SLIDE_H
 
-    slide_title(prs, title, window, drawn_from)
+    slide_title(prs, title, window, newest_export)
     slide_record(prs, text)
     slide_method(prs)
     slide_combined(prs, text, ledger)
@@ -946,7 +946,7 @@ def compose(title: str) -> tuple[Presentation, Ledger]:
         slide_cards(prs, ALL_BASES[start : start + CARD_SIZE], ledger)
     slide_grading(prs, text)
     slide_limits(prs)
-    slide_provenance(prs, ledger, window, drawn_from)
+    slide_provenance(prs, ledger, window, newest_export)
     return prs, ledger
 
 
