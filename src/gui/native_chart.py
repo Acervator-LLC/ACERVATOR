@@ -42,6 +42,7 @@ from src.gui.main_tabs.native_chart_surface import (
     MARK_HEIGHT_FRACTION,
     MARK_WIDTH_RATIO,
     PANEL_SOURCE_FIELD,
+    POSITION_INVISIBLE_KEY,
     PRICE_FORMAT_BANDS,
     PRICE_PANE_LAYOUT_FLOOR_PX,
     PRICE_PANE_PAINT_FLOOR_PX,
@@ -3190,7 +3191,7 @@ if _HAS_QT:
                     continue
 
                 is_buy = pos.side == "buy"
-                is_invisible = pos.visibility == "internal"
+                is_invisible = pos.visibility == POSITION_INVISIBLE_KEY
                 line_color = self.BUY_POS_COLOR if is_buy else self.SELL_POS_COLOR
 
                 pen = QPen(
@@ -3417,7 +3418,7 @@ if _HAS_QT:
             p.setPen(QPen(self.TEXT_DIM))
             offset = QFontMetrics(font_hdr).horizontalAdvance(self._symbol) + 16
             invisible = sum(
-                1 for one in self._positions if one.visibility == "internal"
+                1 for one in self._positions if one.visibility == POSITION_INVISIBLE_KEY
             )
             info_parts = header_parts(
                 self._current_tf,
