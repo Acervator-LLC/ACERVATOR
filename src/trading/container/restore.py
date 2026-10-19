@@ -116,10 +116,20 @@ class StateRestoreMixin:
         return n
 
     def get_saved_state(self) -> dict:
-        """Load saved state without restoring."""
+        """Load saved state without restoring.
+
+        A sealed fleet comes back carrying its latch and no ``bots`` key, under
+        ``FLEET_SEALED_NOTE``, so ``restore_bots_from_state`` builds no bot and
+        no caller reads the seal as a fleet of none.
+        """
+        from ...core.state_manager import FLEET_SEALED_NOTE, fleet_sealed
+
         if not self._state_manager:
             return {}
-        return self._state_manager.load_state()
+        state = self._state_manager.load_state()
+        if fleet_sealed(state):
+            logger.warning("Fleet restore: %s", FLEET_SEALED_NOTE)
+        return state
 
     def _ledger_skip(self, bid: str, reason: str) -> None:
         """Record that a bot was OBSERVED failing to load.
