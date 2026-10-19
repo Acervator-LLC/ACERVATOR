@@ -800,3 +800,85 @@ the same thing named twice                ->  the miss is already mine
 
 And the tell to watch for in a report is the heading "things I did not fix". It
 reads as diligence. It is a queue nobody owns.
+## C95 — a saved file read as a reading of the code
+
+A field was reported absent from the platform because his saved market
+recording carried it on zero of 2,147 rows. The field was not absent. It had
+landed in the code **44 minutes after that recording was written**, so the zero
+was the age of his file.
+
+```
+his recording, written     2026-10-16 06:00
+the field landed           2026-10-16 06:44
+```
+
+A saved file is a photograph of the code at the moment it was written. Reading
+one tells you what the code did then, never what it does now. The error is
+easy to miss because the count is real, the file is his, and the reading feels
+like the strongest kind of evidence there is.
+
+The rule: **before a count taken from stored data becomes a claim about the
+code, date the file against the code.** `git log -1 --format=%cI -- <the file
+that writes it>` beside the recording's own modification time answers it in one
+command.
+
+The tell is a sentence of the form "his data holds zero of these, so the
+platform does not do it". Stored data can only ever falsify the past.
+
+## C96 — an issue body quoted to him as a current reading
+
+Four issues in one session had rows already built when a unit re-measured them:
+one had two of three rows done, one had both of its faults gone, one had all
+three of its named sites already fixed, and one had two of three. In the worst
+of the four, the defect was reported to the operator as live, in his own terms,
+before any unit had read the code.
+
+An issue body is a claim with a date on it. The code is the reading. Between the
+two sits every merge since the body was written, and in a sweep that is dozens.
+
+The rule: **a defect does not reach him until a unit has reproduced it on
+`current`.** A brief says "treat the figures as a claim and re-measure first",
+and the reply to him waits for that measurement rather than paraphrasing the
+body.
+
+This one is the referee's, not the unit's. Every one of those four units caught
+it and said so plainly. The miss was quoting the body in the meantime.
+
+## C97 — a size priced by the name instead of the closure
+
+A decision was put to him as costing 56 MB. The real figure was **166 MB**,
+because the package he was being asked about requires a second one, and that
+second package is the larger of the two. He answered the question as asked, and
+the answer happened to survive the correction — but the number he answered with
+was wrong, and he had no way to know.
+
+```
+the package named        56.5 MB
+what it requires        109.7 MB
+what shipping it costs  166.2 MB
+```
+
+The rule: **a question about size prices the whole closure, never the name.**
+`pip install --dry-run` resolves what actually arrives; a package's own
+directory size answers only for that package.
+
+The tell is a question to him carrying one figure for something that installs by
+name. One name almost never means one package.
+
+## C98 — a unit's prose read as its measurement
+
+A unit's report narrated a width budget "from seven entries leading with 3 to
+eight leading with 6". That sentence became a correction sent to him naming a
+reshape of every panel in a row. The unit then measured both trees directly:
+the values were **byte-identical before and after**, and the seven-entry form
+existed nowhere in the code — only in two manual pages it had already overtaken.
+
+A report has two kinds of sentence in it. One carries a reading, with the
+command and the control beside it. The other carries the unit's account of what
+it did. They look alike in the same paragraph and only the first is evidence.
+
+The rule: **before a figure out of a report reaches him, find the reading it
+came from.** Where the report shows a before-and-after table, that is the
+reading. Where it shows a sentence describing the change, ask for the table.
+
+The tell is a figure appearing in a report's prose and in none of its tables.

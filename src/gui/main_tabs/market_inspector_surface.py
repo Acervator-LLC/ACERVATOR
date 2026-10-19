@@ -26,7 +26,6 @@ alone is reported. Nothing here imports Qt.
 from __future__ import annotations
 
 import base64
-import json
 import logging
 import math
 import struct
@@ -187,6 +186,9 @@ FLEET_CONFIG_KEY = "config"
 FLEET_TARGET_KEY = "target_balance"
 FLEET_INTERVAL_KEY = "scrumming_interval_pct"
 FLEET_STATE_UNREADABLE_LOG = "market_inspector: the saved fleet is unreadable: %s"
+
+#: Why ``fleet_excess_at`` answers the assumed excess rather than a measured one.
+FLEET_STATE_SEALED_LOG = "market_inspector: %s"
 #: How many ``bot_state.json`` stamps ``fleet_excess_at`` holds an answer for.
 #: The ticker field asks on every keystroke and the file is half a megabyte.
 FLEET_EXCESS_CACHE = 4
@@ -978,6 +980,10 @@ NO_CONNECTORS_TEXT = (
 FETCHING_TEXT = "Fetching…"
 SCHEDULER_ERROR_FORMAT = "Scheduler error: {error}"
 ANALYZER_ERROR_FORMAT = "Analyzer error: {error}"
+#: A scan that stopped on an absent package names the package, not the traceback.
+ANALYZER_MISSING_PACKAGE_FORMAT = (
+    "Opposing Pairs needs {package}, which this build left out"
+)
 ANALYZER_UNAVAILABLE_TEXT = "Analyzer unavailable."
 
 FETCH_FAILED_LOG = "market inspector fetch failed: %s"
@@ -2633,6 +2639,18 @@ def bucket_skin(board: Any, asset_class: Any = "") -> dict:
     }
 
 
+def analyzer_error_text(error: Any) -> str:
+    """The status line a scan that did not finish carries.
+
+    An ``ImportError`` answers ``ANALYZER_MISSING_PACKAGE_FORMAT`` with the
+    package it names; every other failure answers ``ANALYZER_ERROR_FORMAT``.
+    """
+    package = getattr(error, "name", "") if isinstance(error, ImportError) else ""
+    if package:
+        return ANALYZER_MISSING_PACKAGE_FORMAT.format(package=package)
+    return ANALYZER_ERROR_FORMAT.format(error=error)
+
+
 def scan_counts(signals: Any, tested: Any) -> dict:
     """The three counts the Opposing Trades funnel line names.
 
@@ -3433,13 +3451,19 @@ def fleet_excess_at(path_text: str, stamp: tuple) -> tuple:
     ``stamp``, which is that file's own modified time and size.
 
     ``sizing.REFERENCE_SCRUM_EXCESS_USD`` and a count of 0 where the file is
-    unreadable or names no record carrying both figures.
+    unreadable, where its fleet payload is sealed, or where it names no record
+    carrying both figures.
     """
+    from ...core.state_manager import FLEET_SEALED_NOTE, fleet_sealed, load_state_file
+
     del stamp
     try:
-        state = json.loads(Path(path_text).read_text(encoding="utf-8"))
+        state = load_state_file(path_text)
     except (OSError, ValueError) as exc:
         logger.debug(FLEET_STATE_UNREADABLE_LOG, exc)
+        return (sizing.REFERENCE_SCRUM_EXCESS_USD, 0)
+    if fleet_sealed(state):
+        logger.warning(FLEET_STATE_SEALED_LOG, FLEET_SEALED_NOTE)
         return (sizing.REFERENCE_SCRUM_EXCESS_USD, 0)
     records = (state or {}).get(FLEET_BOTS_KEY)
     if not isinstance(records, dict):
@@ -4776,7 +4800,7 @@ class MarketInspectorScreenModel:
             self.calls.append([SCAN_DONE])
         except Exception as exc:
             logger.exception(SCAN_FAILED_LOG, exc)
-            self.set_status(ANALYZER_ERROR_FORMAT.format(error=exc))
+            self.set_status(analyzer_error_text(exc))
             self.calls.append([SCAN_FAILED, type(exc).__name__])
         self.pending_refresh = False
         self.scan_phase = SCAN_FINISHED
@@ -5251,6 +5275,7 @@ def build_view_model(
             "fetching": FETCHING_TEXT,
             "scheduler_error": SCHEDULER_ERROR_FORMAT,
             "analyzer_error": ANALYZER_ERROR_FORMAT,
+            "analyzer_missing_package": ANALYZER_MISSING_PACKAGE_FORMAT,
             "analyzer_unavailable": ANALYZER_UNAVAILABLE_TEXT,
         },
         "logs": {

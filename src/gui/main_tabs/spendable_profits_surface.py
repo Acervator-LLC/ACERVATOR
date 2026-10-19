@@ -7,7 +7,6 @@ from typing import Any, Optional
 from ...core.privacy_mask_registry import (
     ABSENT_TEXT as _ABSENT_TEXT,
     get_privacy_mask_registry,
-    mask_or,
 )
 
 from . import header_strip_surface as header
@@ -107,12 +106,13 @@ _DOT_FIELDS = (
 EXCHANGE_COUNT_DEFAULT = None
 
 #: How ``update_profits`` renders one column, named per column so no cell is
-#: drawn from its position in ``COLUMNS``.
-RENDER_SPENDABLE = "spendable"
-RENDER_MONEY = "money"
-RENDER_COUNT = "count"
-RENDER_AMMO = "ammo"
-RENDER_PNL = "pnl"
+#: drawn from its position in ``COLUMNS``. ``header.kpi_cell`` reads the same
+#: names, so one renderer serves the strip's two declarations.
+RENDER_SPENDABLE = header.RENDER_SPENDABLE
+RENDER_MONEY = header.RENDER_MONEY
+RENDER_COUNT = header.RENDER_COUNT
+RENDER_AMMO = header.RENDER_AMMO
+RENDER_PNL = header.RENDER_PNL
 
 COLUMNS = (
     {
@@ -257,52 +257,22 @@ def privacy_dot(field_id: str, masked: Optional[bool] = None) -> dict:
 
 
 def spendable_cell(value: Any) -> dict:
-    """The SPENDABLE cell's text, skin and tooltip for one amount."""
-    if value is None:
-        return {
-            "text": mask_or(EMPTY_TEXT, "kpi.spendable"),
-            "style_sheet": VALUE_STYLE_MUTED,
-            "tooltip": SPENDABLE_UNKNOWN_TOOLTIP,
-        }
-    amount = money_amount(value)
-    if amount is None:
-        return {
-            "text": mask_or(EMPTY_TEXT, "kpi.spendable"),
-            "style_sheet": VALUE_STYLE_MUTED,
-            "tooltip": UNREADABLE_TOOLTIP,
-        }
-    style = VALUE_STYLE_HIGHLIGHT if amount >= 0 else VALUE_STYLE_NEGATIVE
-    return {
-        "text": mask_or(money_text(amount), "kpi.spendable"),
-        "style_sheet": style,
-        "tooltip": "",
-    }
+    """``header.spendable_cell``, so the SPENDABLE cell has one renderer.
 
-
-def column_cell(column: dict, raw: Any, payload: dict) -> dict:
-    """One column's text, skin and tooltip, chosen by its own ``render``.
-
-    ``RENDER_AMMO`` reads ``ammo_lean`` out of ``payload`` for its colour;
-    every other renderer reads only ``raw``.
+    ``VALUE_STYLE_HIGHLIGHT``, ``VALUE_STYLE_NEGATIVE``,
+    ``SPENDABLE_UNKNOWN_TOOLTIP`` and ``UNREADABLE_TOOLTIP`` are the skins and
+    tooltips it answers with, written here the way a page reads them.
     """
-    kind = column.get("render")
-    field_id = column["field_id"]
-    if kind == RENDER_SPENDABLE:
-        return spendable_cell(raw)
-    if kind == RENDER_AMMO:
-        return header.ammo_cell(raw, payload.get("ammo_lean"))
-    if kind == RENDER_PNL:
-        return {
-            "text": mask_or(header.pnl_text(raw), field_id),
-            "style_sheet": VALUE_STYLE_DEFAULT,
-            "tooltip": "",
-        }
-    text = count_text(raw) if kind == RENDER_COUNT else money_text(raw)
-    return {
-        "text": mask_or(text, field_id),
-        "style_sheet": VALUE_STYLE_DEFAULT,
-        "tooltip": "",
-    }
+    return header.spendable_cell(value)
+
+
+def column_cell(column: dict, payload: dict) -> dict:
+    """``header.kpi_cell`` for one ``COLUMNS`` entry and one payload.
+
+    One renderer over the strip's two column declarations, so a format or a
+    colour changed there reaches this screen and the page in one edit.
+    """
+    return header.kpi_cell(column, payload)
 
 
 def spendable_branch(value: Any) -> str:
@@ -342,10 +312,7 @@ class SpendableProfitsModel:
         """Render every cell from one payload, then keep that payload."""
         kept = dict(data) if isinstance(data, dict) else {}
         amount = data.get(COLUMNS[0]["source_key"], COLUMNS[0]["default"])
-        rendered = {}
-        for column in COLUMNS:
-            raw = data.get(column["source_key"], column["default"])
-            rendered[column["key"]] = column_cell(column, raw, data)
+        rendered = {column["key"]: column_cell(column, data) for column in COLUMNS}
         self.cells.update(rendered)
         self.last_data = kept
         self.calls.append(UPDATE)

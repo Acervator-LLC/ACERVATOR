@@ -76,6 +76,22 @@ def store_path() -> Path:
     return Path.home() / ".acervator" / STORE_NAME
 
 
+def base_currency(symbol: Any) -> str:
+    """The asset leg of a recorded market symbol, and empty for a symbol
+    carrying no ``SYMBOL_SEPARATOR``.
+
+    A spot pair is recorded as ``BASE/QUOTE``, a perpetual as
+    ``BASE/QUOTE:SETTLE`` and a dated contract as ``BASE/QUOTE:SETTLE-YYMMDD``,
+    and ``base_currency`` answers the same name for all three.
+    ``ccxt_connector.redemption_sector`` reads this leg and ``quote_currency``
+    together, so a recorded row's sector can be checked from its symbol alone.
+    """
+    held = str(symbol or "")
+    if SYMBOL_SEPARATOR not in held:
+        return ""
+    return held.partition(SYMBOL_SEPARATOR)[0]
+
+
 def quote_currency(symbol: Any) -> str:
     """The money leg of a recorded market symbol, with the ``SETTLE_SEPARATOR``
     leg and the ``EXPIRY_SEPARATOR`` date stripped, and empty for a symbol
@@ -264,6 +280,7 @@ __all__ = [
     "STORE_NAME",
     "SYMBOL_SEPARATOR",
     "TEXT_RULE_FIELDS",
+    "base_currency",
     "is_contract",
     "load_document",
     "quote_currency",

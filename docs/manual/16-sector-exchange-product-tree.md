@@ -335,6 +335,63 @@ for Alpaca, while `venue_classes` answers Crypto and Stocks. A fresh install has
 recorded nothing, and a venue the operator has never configured is recorded
 nowhere, so a derived-only answer would empty every sector on both.
 
+### The Configured list reads the sector, not the wing
+
+The Exchanges page holds two venue lists. The Exchange Status array lists every
+venue the sector **could** serve, and the Configured list under it names the
+venues the operator has already stored a credential for. The array has always
+read the sector. The Configured list read the wing.
+
+Settings opens on a wing, and there are two wings for six sectors.
+`settings_dialog_surface.wing_or_default` collapses Commodities, Forex, Indices
+and Futures / Perps onto the crypto wing, so a sector word reaches the filter as
+the word `crypto`.
+
+`src/gui/main_tabs/settings_dialog_surface.py`, in `SettingsDialogModel.__init__`
+— the two names and what each one holds
+
+| name | what it holds on the Commodities sector |
+| ---- | --------------------------------------- |
+| `wing` | `crypto`, the wing the sector collapses onto |
+| `asset_class` | `commodities`, the sector itself |
+
+`SettingsDialogModel._load_current` now filters the Configured list on
+`asset_class`, which is the reading `SettingsDialog._load_current` already took
+on the Qt build. Driven through `settings_dialog_surface.view_model` over all
+six sectors, with two venues configured: one serving all six and one serving
+Crypto and Futures / Perps alone.
+
+| Sector | Before | After | What `venue_classes` says |
+| ------ | ------ | ----- | ------------------------- |
+| Crypto | both | both | both |
+| Stocks | the six-sector venue | the six-sector venue | the six-sector venue |
+| Commodities | both | the six-sector venue | the six-sector venue |
+| Forex | both | the six-sector venue | the six-sector venue |
+| Indices | both | the six-sector venue | the six-sector venue |
+| Futures / Perps | both | both | both |
+
+Three sectors listed a venue serving none of their products. The six-sector
+venue was listed under all six sectors before the change and after it, so the
+reading moves the wrong rows and leaves the right ones.
+
+The Add form beside the list took the same wing. One venue grants a token only
+through a browser approval, and on four of its sectors it issues no key at all.
+`on_exchange_changed` now reads `credential_kind` on the sector, so the button
+and the rows drawn match what the venue's own sign-in takes.
+
+| Sector | Before | After |
+| ------ | ------ | ----- |
+| Crypto | key and secret | key and secret |
+| Stocks | browser authorization | browser authorization |
+| Commodities | key and secret | browser authorization |
+| Forex | key and secret | browser authorization |
+| Indices | key and secret | browser authorization |
+
+`settings_dialog_surface.list_label_for` answers a heading naming a wing and
+has no caller, count 0 over Python and JavaScript. The heading the page draws
+comes from `exchange_status_label` and reads "Exchange Status", so the wing
+word in that function reaches no screen.
+
 ## Product
 
 ### What the venue accepts as a product type
@@ -433,6 +490,61 @@ so it answers Stocks and never Forex.
     return CLASS_CRYPTO
 ```
 
+OVERTAKEN, and the block above is kept as written. Steps 5 and 6 are now one
+named rule, `src/exchange/ccxt_connector.py, in redemption_sector`, and
+`src/exchange/ccxt_connector.py, in market_asset_class` reads it off the
+market's symbol rather than off two separate record fields. The order of the
+eight steps is unchanged.
+
+OVERTAKEN, the same block: the rule ran only where the venue published no
+asset-sector list of its own. It now runs wherever that list names no sector
+for the market, and the venue's own word still wins wherever it names one.
+
+### The two spot rules, checkable against a recorded row
+
+A tokenised fiat pair and a tokenised metal arrive as ordinary spot products.
+The venue's product type cannot separate them from crypto, so the classifier
+decides, and these are the two rules:
+
+```
+Forex          both legs of the symbol redeem for a currency
+Commodities    the asset leg of the symbol redeems for a precious metal
+               by the troy ounce
+```
+
+A leg's redemption is what the issuer publishes the token is redeemable for.
+`src/exchange/ccxt_connector.py, in underlying_code` answers it, and a leg that
+is already a currency code or a metal code redeems for itself.
+
+Both rules read the market's symbol and nothing else, so a reader holding one
+recorded row can apply them to that row's own key.
+`src/exchange/market_rules_store.py, in base_currency` takes the asset leg and
+`src/exchange/market_rules_store.py, in quote_currency` takes the money leg,
+each answering the same name for a spot pair, a perpetual and a dated contract.
+
+| the recorded key | asset leg | money leg | the rule answers |
+| --- | --- | --- | --- |
+| `EURC/USDC` | `EURC` | `USDC` | Forex |
+| `PAXG/USD` | `PAXG` | `USD` | Commodities |
+| `BTC/USD:USD` | `BTC` | `USD` | neither |
+| `ETH/USD:USD-891230` | `ETH` | `USD` | neither |
+| `EURCUSDC` | none | none | neither |
+
+Driven over every one of the 2,147 recorded Coinbase rows, read and not written:
+
+| the reading | rows |
+| --- | --- |
+| recorded Forex, and the rule names Forex | 20 of 20 |
+| recorded Commodities, and the rule names Commodities | 4 of 25 |
+| recorded Commodities on a contract label instead | 21 |
+| the rule names a sector the recorded row disputes | 1 |
+
+The 21 are dated and perpetual commodity contracts, which step 1 names off the
+venue's own futures label before either rule is reached. The one dispute is
+`AMD/USDC:USDC`: the rule reads AMD as the Armenian dram and answers Forex,
+step 3 reads the venue's equity label and answers Stocks, and step 3 runs first.
+That is the precedence this page already states, measured on a real row.
+
 ### Where each sector's answer is read from
 
 The venue labels a contract and labels nothing else. Measured over all 2,152
@@ -490,6 +602,15 @@ TOKEN_UNDERLYING_CODES: dict[str, str] = {
     "XSGD": "SGD",
 }
 ```
+
+OVERTAKEN, the sentence above reading "nine entries name the redemption each
+token's issuer publishes": the map holds ten. `XAUT` was added for a Gate.io
+spot listing and names a redemption no Coinbase market carries.
+
+A tokenised asset is the one place the classifier reads a name, and the two
+rules above are what a reader checks a recorded row against. Where a venue
+publishes its own sector for the asset, that word is read instead and the map is
+never reached.
 
 ### What the classifier answers per sector
 
@@ -618,6 +739,63 @@ were read through does not.
 The 1,000 equity products are not in it either. `AAPL/USDC:USDC`,
 `TSLA/USDC:USDC` and `SPY/USDC:USDC` are each one perpetual contract row, and no
 row carries an equity product id.
+
+### Where the connector reads a sector's markets
+
+`ccxt_connector.CCXTConnector.get_markets` walks two sources and records both
+under the one venue id.
+
+| Source | What it answers |
+| ------ | --------------- |
+| the library's own market map | every market the library's market load returned |
+| `_sector_products` | one call per product type named in `VENUE_CLASS_PRODUCT_TYPES`, parsed by the exchange's own spot parser |
+
+```
+VENUE_PRODUCTS_METHOD       v3PublicGetBrokerageMarketProducts
+VENUE_CLASS_PRODUCT_TYPES   stocks -> EQUITY
+```
+
+A symbol the market map already answered is kept, so a product reached through
+the second source never replaces a market reached through the first.
+
+The connector's `defaultType` option is pinned to spot and **does not bound the
+listing.** It decides which market a symbol resolves to when an order is
+placed. The recording is the proof: 1,032 equity rows and 168 contract rows
+were written by a path running under that pin.
+
+### What the recording holds per sector, read back through the reader
+
+Read on 2026-10-16 with the home redirected, the file copied out and not
+written. One `market_rules_store.recorded_rules` call per recorded symbol, and
+all 2,147 answered a row.
+
+| Sector | Rows | The five numeric rules | Order types | Session | Contract size | Expiry |
+| ------ | ---- | ---------------------- | ----------- | ------- | ------------- | ------ |
+| Stocks | 1,032 | 1,032 | 1,032 | 999 | 33 | 8 |
+| Crypto | 896 | 896 | 896 | 896 | none, count 0 | none, count 0 |
+| Futures / Perps | 168 | 168 | 168 | none, count 0 | 168 | 74 |
+| Commodities | 25 | 25 | 25 | 2 | 23 | 18 |
+| Forex | 20 | 20 | 20 | 19 | 1 | none, count 0 |
+| Indices | 6 | 6 | 6 | none, count 0 | 6 | none, count 0 |
+
+The five numeric rules are the minimum amount, the minimum cost, the amount
+increment, the price increment and the quote increment. Every row of every
+sector carries all five and its order types, so the increment, the minimum and
+the tick are recorded for all six sectors.
+
+Two controls. A symbol nobody recorded answers a row marked unread, and a venue
+nobody recorded answers no rows at all, so the six counts are readings of the
+recording and not of a lookup that answers anything.
+
+`contract_size` is on 231 rows and `expiry_ms` on 100. `clearing_venue` is on
+none of the 2,147, so the clearing gate stays dormant.
+
+`session` is absent on every contract row and every index row.
+`ccxt_connector.market_session` answers nothing where the venue publishes a
+daily trading window, because neither session name the sizing path knows — the
+United States equity session and the continuous session — describes a daily
+window. The field is blank by that rule rather than by a miss, and no third
+session name exists because nothing would read it.
 
 ### The clearing venue decides tradability, not the sector
 

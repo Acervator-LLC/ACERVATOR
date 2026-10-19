@@ -49,6 +49,8 @@ import math
 import time
 from typing import Optional
 
+from ..core.signal_contract import DIGEST_MIN_INTERVAL
+
 # Re-exported rather than moved, so the split into one module each changed no caller.
 from .indicators.adx import ADXIndicator
 from .indicators.atr import ATRIndicator
@@ -244,6 +246,18 @@ class _TAInstrumentationOff(Exception):
 # when this copy drifts from the emitter.
 TA_RAW_PREFIX = "ta.07.004.postcondition.raw."
 
+TA_EMIT_EVERY = DIGEST_MIN_INTERVAL
+"""Seconds between admitted records from one emitter name on one market.
+
+This engine's two emitters are the loudest writers on the signal ladder: the
+first fires once per `compute_all`, the second once per indicator per
+`compute_all`. The window is the digest ladder's own admission window,
+imported rather than copied, so both ladders thin this writer at one rhythm
+and `always_on_stale_after` reads the throttled pin against it. A suppressed
+observation is folded into the next admitted record's `count`, and `emit`
+never suppresses a failing check.
+"""
+
 
 class VotingEngine:
     """Aggregates signals from all indicators into a consensus vote.
@@ -319,12 +333,17 @@ class VotingEngine:
             if _ta_sink() is None:
                 # This runs on every candle of every live bot.
                 raise _TAInstrumentationOff
+            # `instance` keys the throttle per market and timeframe, so one market's
+            # reading never suppresses another's.
+            _window_key = f"{symbol or ''}|{timeframe}"
             _ta_emit(
                 "ta.07.003.postcondition.computed",
                 actual=len(signals),
                 expected=len(self._indicators),
                 duration=_dur_elapsed,
                 context={"timeframe": timeframe, "window": len(candles)},
+                every=TA_EMIT_EVERY,
+                instance=_window_key,
             )
 
             # `Signal.details` carries each indicator's own internals,
@@ -361,6 +380,8 @@ class VotingEngine:
                         "confidence": round(float(_sig.confidence), 6),
                         "weight": float(_sig.weight),
                     },
+                    every=TA_EMIT_EVERY,
+                    instance=_window_key,
                 )
         except _TAInstrumentationOff:
             pass

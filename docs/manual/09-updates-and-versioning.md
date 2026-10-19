@@ -363,6 +363,11 @@ The application uses 21 packages that are not part of Python itself. Eighteen of
 them are declared as requirements. Three are named by code that guards its own
 absence, and the dependency list records why none of the three is owed.
 
+The import set holds 20 of those packages now, and 17 of the 20 are declared.
+`scipy` left it when `pearson_correlation` in `src/trading/pair_selection.py`
+took over the correlation test, and no module under `src/` names `scipy` any
+more.
+
 A build does not install every declared package. It installs the core set plus
 two named groups, so a package declared in any other group never reaches the
 bundle. Two further names are installed and then deliberately left out.
@@ -400,6 +405,12 @@ the application imports it in nine places, and it has no folder.
 | luma, RPLCD, smbus2 | display group | no | no, Raspberry Pi only |
 | ST7789, waveshare_epd, tomli | recorded, not required | no | no |
 
+The `scipy` and `statsmodels` rows still read as they do here. `statsmodels` is
+the `cointegration` group now, which `CONSUMER_EXTRAS["build"]` installs, and it
+is the only requirement either package is installed from: `scipy` is declared
+nowhere and arrives because statsmodels requires it. The build requirement set
+is 17 lines where it was 18, and the bundle carries the same two packages.
+
 Two rows read as a package the application wants and the bundle does not hold.
 
 The matplotlib row costs the running application nothing. One module imports
@@ -426,6 +437,80 @@ async def _call(self, msg):          # src/trading/live_monitor.py, in _call
 `src/gui/design_system.py` is a separate module with 110 importers and no
 matplotlib import. Every screen reads that one. The two files have the same name
 and are not the same thing.
+
+### The httpx rows, overtaken
+
+OVERTAKEN, quoted whole:
+
+> "A build does not install every declared package. It installs the core set plus
+> two named groups, so a package declared in any other group never reaches the
+> bundle."
+
+> "The httpx row is different, and it is live. The AI feedback loop calls out over
+> the network, and the call imports httpx with nothing to catch a failure. The
+> monitor group holds that package and a build installs the build and report groups
+> only, so the shipped application reaches that line with nothing to import."
+
+The table cell those sentences describe, quoted whole:
+
+| package | declared | the build installs it | in the bundle |
+| --- | --- | --- | --- |
+| httpx | monitor group | no | no |
+
+True today: a build installs the core set plus four named groups, and the bundle
+carries httpx.
+
+```python
+CONSUMER_EXTRAS["build"] = ("build", "report", "monitor", "cointegration")
+#                                                     tools/deps.py
+```
+
+| package | declared | the build installs it | in the bundle |
+| --- | --- | --- | --- |
+| httpx | monitor group | yes | yes, 23 modules, no folder |
+
+Read off the archive table of contents of the Windows build: 23 httpx modules,
+with 31 for httpcore, 35 for anyio and 11 for h11. The same file reads 0 for
+matplotlib, PIL and tkinter, which is the exclusion list working, and 163 for
+statsmodels. h11 is the control for the warning above: 11 modules inside the
+archive and no folder on disk.
+
+The call also no longer reaches that import with nothing to catch it. `_call`
+holds the import in a `try:`, and the `except ImportError` carries a sentence
+that names the package.
+
+```python
+MONITOR_MISSING_PACKAGE_FORMAT       # src/trading/live_monitor.py
+    "The AI Monitor needs {package}, which this install left out"
+```
+
+### Which installs run without the AI monitor
+
+The download carries the package. Two other installs do not, and both of those
+say so rather than reporting the feature ready.
+
+| install | names the monitor group | the AI monitor runs |
+| --- | --- | --- |
+| the downloaded build | yes | yes |
+| the Raspberry Pi, from source | no | no |
+| `pip install -e .` | no | no |
+| `pip install -e ".[dev]"` | no, one analyzer requires it | yes, by accident |
+
+Two surfaces draw the absence. The status strip's AI pill reads `AI: NO PACKAGE`
+in the caution colour where it would read `AI: READY`, and the Console writes the
+sentence as a warning when the monitor is switched on and when the operator saves
+Settings.
+
+```python
+def monitor_package_absence(package: str = MONITOR_PACKAGE) -> str: ...
+#                                        src/trading/live_monitor.py
+def _draw_ai_monitor_pill(self, enabled: bool) -> None: ...
+def _log_ai_monitor_absence(self) -> None: ...
+#                                        src/gui/main_window.py
+```
+
+`monitor_package_absence` reads the package with `find_spec` and imports nothing,
+so start-up loads no HTTP client and the import inside `_call` stays the only one.
 
 ## A version that moves while the suite runs
 

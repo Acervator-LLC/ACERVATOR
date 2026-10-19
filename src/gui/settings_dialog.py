@@ -16,6 +16,10 @@ _NO_READING = object()
 #: `_untouched_since_refusal` catch exactly these.
 READER_FAULTS = (LookupError, TypeError, ValueError, ArithmeticError, AttributeError)
 
+#: What putting the Username question can raise. `_save` skips the Username row
+#: on one of these, so a question it could not put cannot orphan a stored secret.
+RENAME_FAULTS = (RuntimeError, TypeError, AttributeError, ValueError, KeyError, OSError)
+
 
 class _StoredWriter:
     """Puts one stored figure into a numeric control, admitting it first.
@@ -1831,6 +1835,75 @@ if _HAS_QT:
                 self._list_exchange_once(_eid)
             self._push_sound_config()
 
+        def _settle_username_rename(self) -> bool:
+            """Put the Username question to the operator before any setting is written.
+
+            The name in that row is the passphrase every stored venue secret is
+            sealed under, so a Save that changes it over a stored credential
+            either reseals every secret under the new phrase or puts the stored
+            name back in the row. ``_save`` calls this before its own write loop
+            and writes whichever name the answer left in the row, so no secret is
+            left under a phrase nothing rebuilds.
+
+            Nothing reseals without the press. A reseal that cannot finish leaves
+            both the name and the stored secrets as they were.
+            """
+            stored = str(self._sm.get(sds.USERNAME_KEY, "") or "")
+            typed = self._username.text().strip()
+            answer = sds.username_rename_consequence(
+                stored, typed, self._sm.list_exchanges()
+            )
+            if not answer["asks"]:
+                return True
+
+            reply = QMessageBox.question(
+                self,
+                sds.RENAME_BOX_TITLE,
+                answer["words"],
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                self._username.setText(stored)
+                if self._status_log:
+                    self._status_log.log(sds.RENAME_KEPT_LOG, "warning")
+                return True
+
+            from src.core.encryption import rekey_credential_stores, vault_phrase
+
+            try:
+                moved = rekey_credential_stores(
+                    self._sm, vault_phrase(stored), vault_phrase(typed)
+                )
+            except (OSError, ValueError, KeyError) as exc:
+                self._username.setText(stored)
+                logger.warning("username rename abandoned: %s", exc)
+                if self._status_log:
+                    self._status_log.log(
+                        sds.RENAME_FAILED_LOG_FORMAT.format(error=exc), "error"
+                    )
+                return True
+
+            if self._status_log:
+                resealed = moved["resealed"]
+                self._status_log.log(
+                    sds.RENAME_RESEALED_LOG_FORMAT.format(
+                        count=len(resealed),
+                        names=sds.RENAME_NAMES_JOIN.join(resealed),
+                    ),
+                    "success",
+                )
+                refused = moved["refused"]
+                if refused:
+                    self._status_log.log(
+                        sds.RENAME_REFUSED_LOG_FORMAT.format(
+                            count=len(refused),
+                            names=sds.RENAME_NAMES_JOIN.join(refused),
+                        ),
+                        "error",
+                    )
+            return True
+
         def _save(self) -> None:
             """Save all settings and close. ALWAYS closes the dialog."""
             import sys
@@ -1846,11 +1919,21 @@ if _HAS_QT:
                 self.accept()
                 return
 
+            try:
+                write_username = self._settle_username_rename()
+            except RENAME_FAULTS as _rn_exc:
+                write_username = False
+                logger.warning(
+                    "Username question not put; the stored name is kept: %s", _rn_exc
+                )
+
             # A setting that fails to save never blocks the close.
             pairs = {key: read for key, read, _show, _fallback in self._stored_rows()}
             saved = 0
             failed: list[str] = []
             for key, getter in pairs.items():
+                if key == sds.USERNAME_KEY and not write_username:
+                    continue
                 if self._untouched_since_refusal(key, getter):
                     continue
                 try:

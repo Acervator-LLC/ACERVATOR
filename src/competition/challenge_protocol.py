@@ -87,7 +87,7 @@ class BotRating:
 class RatingRegistry:
     """
     Persistent Elo rating registry for all bots.
-    R33: Match history is append-only.
+    Match history is append-only.
     """
 
     REGISTRY_FILE = "elo_registry.json"
