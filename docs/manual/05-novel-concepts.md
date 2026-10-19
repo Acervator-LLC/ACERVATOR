@@ -823,6 +823,11 @@ two disagreed on four of five rows under Oldest first and under Largest USD
 first. The React page draws only the declared columns, so it never held a
 second row number.
 
+The Paper and Simulator Fold Tranches tabs call that same function on their own
+tables, so a tranche carries one number on all three screens. Both forks also
+draw the standing-against-sells row from `compose_scrum_sells_row`, the function
+named in the section above, rather than composing a row of their own.
+
 ### What sets the Details window's opening width
 
 The Fold Tranches tab is the widest tab, and the Fold-Tranche Cycle Health box

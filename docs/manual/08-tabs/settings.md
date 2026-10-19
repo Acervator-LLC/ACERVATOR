@@ -8010,4 +8010,26 @@ answer.
 | the row Save leaves alone | `src/gui/settings_dialog.py, in _untouched_since_refusal` |
 | the same reading for the React page | `src/gui/main_tabs/settings_dialog_surface.py, in _load_stored` |
 
+## 2026-10-16 - The faults a control reader may raise
+
+A reader that cannot answer a control raises, and the load and save path catches
+a named set rather than every exception. The dialog names that set once and the
+page surface names the same five faults again, so the two builds pass over the
+same refusals and neither swallows a fault of another kind.
+
+`src/gui/settings_dialog.py` - `READER_FAULTS`
+
+```python
+READER_FAULTS = (LookupError, TypeError, ValueError, ArithmeticError, AttributeError)
+```
+
+Three readers catch that set. The refusal mark and the row Save leaves alone
+catch it in the dialog, and the page surface catches it in its own reading. Each
+one marks the one control it read and leaves the rest of the window drawn.
+
+The writer that admits a figure before it writes is a class rather than a
+closure, so the control it marks is a plain attribute on the writer and reaching
+that control needs no override, in `src/gui/settings_dialog.py`, in
+`_StoredWriter`.
+
 Back to [the subsystem index](README.md).
