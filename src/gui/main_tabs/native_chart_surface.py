@@ -1460,8 +1460,8 @@ def header_parts(
 ) -> list[str]:
     """The pieces of the header's information line, in order.
 
-    `candle_count_text` writes the count piece, so a series `admit_candles`
-    dropped a candle from names the refusal on the header both builds draw.
+    `candle_count_text` writes the count piece. Both builds draw this line from
+    `header_parts`, so a candle `admit_candles` refused is named the same in each.
     """
     parts = [timeframe]
     if source_label:
