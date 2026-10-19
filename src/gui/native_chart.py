@@ -1,11 +1,12 @@
 # Copyright (c) 2025 Anthony L. Brown (Ekthelius the Accumulator). All rights reserved.
 """QPainter candlestick chart widgets.
 
-``CandlestickChart`` paints candles, a volume strip, price grid lines,
+``CandlestickChart`` paints candles, a volume strip, the price axis grid,
 position markers and a crosshair without a WebEngine dependency.
 ``ChartPanel`` wraps it with a timeframe selector and one checkbox per
-indicator overlay. ``Candle``, ``TradeMarker``, ``PositionMarker`` and
-``GridLine`` are the records it draws from.
+indicator overlay. ``Candle``, ``TradeMarker`` and ``PositionMarker`` are the
+records it draws from; ``GridLine`` is a record ``set_grid_lines`` stores and
+no paint reads.
 """
 
 from __future__ import annotations
@@ -48,6 +49,7 @@ from src.gui.main_tabs.native_chart_surface import (
     SUB_PANE_FOLD_PX,
     SUB_PANE_LABEL_PX,
     SUB_PANE_READABLE_PX,
+    HEADER_SEPARATOR,
     TAG_HEIGHT_PX,
     TIMEFRAME_COMBO_MAX_WIDTH_PX,
     TIMEFRAME_LABEL,
@@ -66,6 +68,7 @@ from src.gui.main_tabs.native_chart_surface import (
     effective_visible_start,
     fmt_price,
     gmt_label,
+    header_parts,
     pan_start,
     price_range,
     readout_lines,
@@ -922,7 +925,6 @@ if _HAS_QT:
             self._zscore_data: list = []  # [ZScoreBar | None, ...]
             self._ker_data: list = []  # [ratio | None, ...]
             self._rsi_data: list = []  # [rsi | None, ...]
-            self._bbullseye_data: list = []
             # The (vmin, vmax) each sub-pane last drew on, by overlay key.
             self._sub_scale: dict[str, tuple] = {}
 
@@ -1400,6 +1402,7 @@ if _HAS_QT:
             self._repaint()
 
         def set_grid_lines(self, lines: list[GridLine]) -> None:
+            """Store the grid levels in ``_grid_lines``. Nothing paints them."""
             self._grid_lines = lines
             self._repaint()
 
@@ -3413,22 +3416,19 @@ if _HAS_QT:
             p.setFont(font_sm)
             p.setPen(QPen(self.TEXT_DIM))
             offset = QFontMetrics(font_hdr).horizontalAdvance(self._symbol) + 16
-            info_parts = [self._current_tf]
-            if self._source_label:
-                info_parts.append(self._source_label)
-            if self._candles:
-                info_parts.append(f"{len(self._candles)} candles")
-            if self._positions:
-                n_inv = sum(1 for pm in self._positions if pm.visibility == "internal")
-                n_vis = len(self._positions) - n_inv
-                parts = []
-                if n_inv:
-                    parts.append(f"{n_inv} invisible")
-                if n_vis:
-                    parts.append(f"{n_vis} on book")
-                info_parts.append(" | ".join(parts))
+            invisible = sum(
+                1 for one in self._positions if one.visibility == "internal"
+            )
+            info_parts = header_parts(
+                self._current_tf,
+                self._source_label,
+                len(self._candles),
+                invisible,
+                len(self._positions) - invisible,
+                self._refused_candles,
+            )
             info_parts.extend(self._refused_fill_texts())
-            p.drawText(int(offset), 18, "  \u2022  ".join(info_parts))
+            p.drawText(int(offset), 18, HEADER_SEPARATOR.join(info_parts))
 
             if self._error_text:
                 p.setPen(QPen(self.ERROR_TEXT))
