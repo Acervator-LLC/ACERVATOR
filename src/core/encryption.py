@@ -20,7 +20,7 @@ import json
 import secrets
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 logger = logging.getLogger("acervator.encryption")
 
@@ -50,6 +50,16 @@ def vault_phrase(username: str) -> str:
     Every encrypt and decrypt site for a stored credential builds its passphrase here.
     """
     return MASTER_FORMAT.format(username=str(username) or UNNAMED_OPERATOR)
+
+
+def rekeyed_token(token: str, old_phrase: str, new_phrase: str) -> str:
+    """Open *token* under *old_phrase* and seal it again under *new_phrase*.
+
+    ``rekey_credential_stores`` calls this once per stored token when the
+    operator renames himself, so a secret sealed under the earlier phrase opens
+    under the one every site now builds.
+    """
+    return encrypt(decrypt(token, old_phrase), new_phrase)
 
 
 def derive_key(passphrase: str, salt: bytes) -> bytes:
@@ -307,6 +317,15 @@ class EncryptedCredential:
         )
 
 
+#: Why one vault entry stayed sealed under the earlier phrase. ``rekey`` writes
+#: this and keeps the entry, because such an entry was unreadable before it ran.
+VAULT_REKEY_REFUSED_LOG = "Vault entry for %s would not open, left as it was: %s"
+
+#: Why one venue's stored tokens stayed sealed under the earlier phrase.
+#: ``rekey_credential_stores`` writes this and keeps every token of that venue.
+STORE_REKEY_REFUSED_LOG = "Stored tokens for %s would not open, left as they were: %s"
+
+
 class CredentialVault:
     """Holds one EncryptedCredential per exchange under a single passphrase.
 
@@ -355,6 +374,33 @@ class CredentialVault:
         read whether a value is held without decrypting one.
         """
         self._credentials.pop(exchange, None)
+
+    def rekey(self, new_phrase: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
+        """Reseal every held entry under *new_phrase* and hold that as the passphrase.
+
+        Every entry is opened and resealed before one is replaced, so an entry
+        the held passphrase cannot open leaves the whole set as it was. Answers
+        the exchange names resealed and the ones that would not open; the second
+        group was already unreadable and is left untouched.
+        """
+        moved: dict[str, EncryptedCredential] = {}
+        refused: list[str] = []
+        for name in list(self._credentials):
+            try:
+                api_key, api_secret, phrase = self.retrieve(name)
+            except (ValueError, KeyError) as exc:
+                logger.warning(VAULT_REKEY_REFUSED_LOG, name, exc)
+                refused.append(name)
+                continue
+            moved[name] = EncryptedCredential(
+                exchange=name,
+                api_key_enc=encrypt(api_key, new_phrase),
+                api_secret_enc=encrypt(api_secret, new_phrase),
+                passphrase_enc=encrypt(phrase, new_phrase) if phrase else "",
+            )
+        self._passphrase = new_phrase
+        self._credentials.update(moved)
+        return tuple(moved), tuple(refused)
 
     def has_exchange(self, exchange: str) -> bool:
         return exchange in self._credentials
@@ -423,6 +469,17 @@ class FileVault(CredentialVault):
         super().delete(exchange)
         self.save()
 
+    def rekey(self, new_phrase: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
+        """Reseal as ``CredentialVault`` does, then write the file where one moved.
+
+        A vault holding no entry writes nothing, so an install that never pushed
+        through the ATA-SPM pages gains no file from a rename.
+        """
+        moved, refused = super().rekey(new_phrase)
+        if moved:
+            self.save()
+        return moved, refused
+
 
 def default_vault() -> FileVault:
     """The credential vault the ATA-SPM Level 1A pages hold their tokens in.
@@ -433,3 +490,54 @@ def default_vault() -> FileVault:
     from .settings import SettingsManager
 
     return FileVault(vault_phrase(str(SettingsManager().get("username", "") or "")))
+
+
+def rekey_credential_stores(settings: Any, old_phrase: str, new_phrase: str) -> dict:
+    """Reseal every credential this install stores from *old_phrase* to *new_phrase*.
+
+    Both stores a ``vault_phrase`` keys are covered: the ``_enc`` tokens
+    *settings* holds per venue, and the ``FileVault`` the ATA-SPM pages push
+    through. Each venue is opened and resealed whole before anything is written,
+    so a venue the old phrase cannot open keeps the tokens it had. The settings
+    store takes one write, which is what lets the rename either land or not land
+    at all.
+
+    Answers the venue names resealed under ``resealed`` and the ones whose tokens
+    would not open under ``refused``. ``src/gui/settings_dialog.py``, in
+    ``_settle_username_rename``, is the only caller, and it runs on the
+    operator's own press.
+    """
+    from .settings import CREDENTIAL_FIELDS
+
+    resealed: list[str] = []
+    refused: list[str] = []
+    entries: list[dict] = []
+    for entry in settings.list_exchanges():
+        held = dict(entry)
+        name = str(held.get("exchange_id", ""))
+        sealed = {one: held[one] for one in CREDENTIAL_FIELDS if held.get(one)}
+        if not sealed:
+            entries.append(held)
+            continue
+        try:
+            moved = {
+                one: rekeyed_token(token, old_phrase, new_phrase)
+                for one, token in sealed.items()
+            }
+        except ValueError as exc:
+            logger.warning(STORE_REKEY_REFUSED_LOG, name, exc)
+            refused.append(name)
+            entries.append(held)
+            continue
+        held.update(moved)
+        entries.append(held)
+        resealed.append(name)
+
+    if resealed:
+        settings.set("exchanges", entries)
+
+    vault_moved, vault_refused = FileVault(old_phrase).rekey(new_phrase)
+    return {
+        "resealed": tuple(resealed) + vault_moved,
+        "refused": tuple(refused) + vault_refused,
+    }

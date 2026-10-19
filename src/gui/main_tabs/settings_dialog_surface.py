@@ -387,6 +387,32 @@ TEST_FAILED_FEEDBACK_FORMAT = "Test failed: {error}"
 
 ADDED_WITH_CREDENTIALS = "with stored credentials"
 ADDED_WITHOUT_CREDENTIALS = "without credentials"
+
+#: The words a Save puts on screen when the Username row carries a different
+#: name over a stored credential. ``username_rename_consequence`` fills the
+#: question and both save paths read that one answer, so the Qt build and the
+#: drawn build cannot ask differently.
+USERNAME_KEY = "username"
+RENAME_BOX_TITLE = "The Username row keys your stored credentials"
+RENAME_QUESTION_FORMAT = (
+    "Every venue secret on this install is encrypted under the name in the "
+    "Username row.\n\n"
+    "{count} venue(s) hold a stored secret: {names}.\n\n"
+    "Saving the new name re-encrypts those secrets under it. Nothing is sent "
+    "anywhere and no venue is contacted.\n\n"
+    "Rename and re-encrypt the stored secrets? Answer No to keep the name you "
+    "had."
+)
+RENAME_NAMES_JOIN = ", "
+RENAME_RESEALED_LOG_FORMAT = "Username changed; {count} venue(s) re-encrypted: {names}"
+RENAME_REFUSED_LOG_FORMAT = (
+    "{count} venue(s) would not open under the old name and were left as they "
+    "were: {names}"
+)
+RENAME_KEPT_LOG = "Username left as it was; no stored secret was re-encrypted"
+RENAME_FAILED_LOG_FORMAT = (
+    "Username left as it was; the re-encryption could not finish: {error}"
+)
 ADDED_FEEDBACK_FORMAT = "{name} added {how}."
 ADDED_LOG_FORMAT = "Exchange added: {name} ({how})"
 ADDED_BOX_TITLE = "Exchange Added"
@@ -1814,6 +1840,49 @@ def stored_credential_phrase(entry: Any) -> str:
     if any(holder.get(name) for name in CREDENTIAL_FIELDS):
         return ADDED_WITH_CREDENTIALS
     return ADDED_WITHOUT_CREDENTIALS
+
+
+def credential_bearing_venues(exchanges: Any) -> tuple:
+    """Every venue id among *exchanges* holding at least one sealed token.
+
+    ``stored_credential_phrase`` reads the same ``CREDENTIAL_FIELDS`` per entry,
+    so a venue the Exchanges page reports as holding credentials is a venue this
+    names. No token is opened and no value is read.
+    """
+    found = []
+    for entry in exchanges or ():
+        holder = entry if isinstance(entry, dict) else {}
+        if any(holder.get(name) for name in CREDENTIAL_FIELDS):
+            found.append(str(holder.get(EXCHANGE_ID_KEY, "")))
+    return tuple(found)
+
+
+def username_rename_consequence(stored: Any, typed: Any, exchanges: Any) -> dict:
+    """What a Save does to the stored secrets when the Username row changed.
+
+    ``asks`` is True only where the name changed and a venue holds a sealed
+    token, which is the one case a Save would leave a secret under a phrase
+    nothing rebuilds. ``words`` is the question that case puts on screen.
+    ``SettingsDialog._settle_username_rename`` and ``SettingsDialogModel.save``
+    read this one answer.
+    """
+    was = str(stored or "")
+    now = str(typed or "")
+    venues = credential_bearing_venues(exchanges)
+    changed = now != was
+    asks = changed and bool(venues)
+    return {
+        "changed": changed,
+        "venues": venues,
+        "asks": asks,
+        "words": (
+            RENAME_QUESTION_FORMAT.format(
+                count=len(venues), names=RENAME_NAMES_JOIN.join(venues)
+            )
+            if asks
+            else EMPTY_TEXT
+        ),
+    }
 
 
 #: The two kinds of credential a venue takes. ``credential_kind`` answers one
@@ -3248,6 +3317,27 @@ class SettingsDialogModel:
             return value.strip()
         return value
 
+    def _hold_username_over_credentials(self) -> None:
+        """Keep the stored name in the Username row where a Save would orphan a secret.
+
+        This model carries no press, so it refuses the one case
+        ``username_rename_consequence`` calls dangerous: the stored name goes
+        back into the row and the question is recorded as a box.
+        ``SettingsDialog._settle_username_rename`` is where the press is read and
+        the stored secrets are resealed.
+        """
+        answer = username_rename_consequence(
+            self.settings.get(USERNAME_KEY, EMPTY_TEXT),
+            self._pair_value(USERNAME_KEY),
+            self.settings.list_exchanges(),
+        )
+        if not answer["asks"]:
+            return
+        self.values[USERNAME_KEY] = str(self.settings.get(USERNAME_KEY, EMPTY_TEXT))
+        self.message_boxes.append([WARNING_ICON, RENAME_BOX_TITLE, answer["words"]])
+        if self.status_log:
+            self.status_log.log(RENAME_KEPT_LOG, WARNING_LEVEL)
+
     def save(self) -> dict:
         """Write every setting, report what failed, and close the dialog.
 
@@ -3260,6 +3350,8 @@ class SettingsDialogModel:
             self.prints.append(NO_MANAGER_PRINT)
             self.accepted = True
             return {"saved": 0, "failed": [], "closed": True}
+
+        self._hold_username_over_credentials()
 
         saved = 0
         failed: list = []
