@@ -1069,7 +1069,12 @@ def main() -> int:
         log_manager.info(f"Version updated {stored_version} -> {current_version}")
 
     from src.gui.main_window import MainWindow
-    from src.core.state_manager import StateManager
+    from src.core.state_manager import (
+        FLEET_SEALED_NOTE,
+        PROBE_HAS_BOTS,
+        PROBE_SEALED,
+        StateManager,
+    )
     from src.trading.risk_manager import RiskManager
     from src.trading.analytics_engine import AnalyticsEngine
     from src.core.notifications import get_notification_manager
@@ -1158,7 +1163,10 @@ def main() -> int:
             )
     # Read unconditionally below; assigned only inside the restore branch.
     _autostart_bot_count = 0
-    if state_mgr.has_saved_state():
+    _fleet_probe = state_mgr.probe()
+    if _fleet_probe == PROBE_SEALED:
+        log_manager.warning(FLEET_SEALED_NOTE)
+    if _fleet_probe == PROBE_HAS_BOTS:
         saved = state_mgr.load_state()
         bot_count = len(saved.get("bots", {}))
         if bot_count > 0:

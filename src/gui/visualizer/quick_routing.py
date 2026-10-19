@@ -216,9 +216,20 @@ if _HAS_QT:
                     widget_exc,
                 )
             try:
-                from ...core.state_manager import StateManager
+                from ...core.state_manager import (
+                    FLEET_SEALED_NOTE,
+                    StateManager,
+                    fleet_sealed,
+                )
 
                 st = StateManager().load_state()
+                if fleet_sealed(st):
+                    logger.warning(
+                        "quick-routing: no symbol can be read for %s. %s",
+                        bot_id[:8],
+                        FLEET_SEALED_NOTE,
+                    )
+                    return "?"
                 cfg = (st.get("bots", {}) or {}).get(bot_id, {}).get("config", {}) or {}
                 return str(cfg.get("symbol", "") or "?")
             except Exception as state_exc:

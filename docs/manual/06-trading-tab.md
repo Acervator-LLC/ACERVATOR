@@ -2434,6 +2434,65 @@ a reading rule of the wizard's own, and a refused volume sorts as
 therefore costs that one pair its volume figure instead of losing the whole pair
 list.
 
+**The coin icon on a row.** The icon is the file the logo library already keeps for
+that asset. The wizard reads the kept directory and fetches nothing, so picking an
+asset never waits on a network read. A row with no kept file draws a lettered disc
+in the asset's own colour, so the row still names what the bot would accumulate.
+The bot tables draw their marks from the same library, and
+[Where a mark comes from](#the-bot-tables) covers the library itself.
+
+`src/gui/bot_wizard.py` — `_get_coin_icon` reads the kept file
+
+```python
+path = KEPT_LOGOS.kept_path(symbol)
+if path and path.exists():
+    px = QPixmap(str(path))
+```
+
+**The address a crypto mark is filled from.** A coin picture on the coin data
+source is addressed by that coin's own image id, and the id follows allocation
+order, so no id is derived from a ticker or from a slug. The crypto catalogue
+carries a confirmed id for ten assets. Every other entry sets no primary address
+and carries the ticker fallback alone, which is the icon address keyed on the
+ticker and needs no id.
+
+```
+assets in the crypto catalogue          48
+carrying a confirmed coin image id      10
+carrying the ticker fallback only       38
+```
+
+`src/exchange/crypto_assets.py` — `AssetManager.logo_candidates`, best address first
+
+```python
+addresses = [indexed] if indexed else []
+addresses += [asset.logo_url, asset.logo_fallback_url] if asset else []
+addresses.append(SYMBOL_ICON_URL.format(symbol=name))
+```
+
+An unconfirmed id would still build an address, and the picture that address
+answered would be another coin's. An entry with no confirmed id therefore carries
+no primary address at all, and the reader falls through to the fallback.
+
+```mermaid
+flowchart LR
+  A["library fill asks one asset"] --> B{"coin index holds an address"}
+  B -- yes --> C["read that address"]
+  B -- no --> D{"entry carries a confirmed id"}
+  D -- yes --> E["read the coin picture address"]
+  D -- no --> F["read the ticker fallback"]
+  C --> G{"the body is an image"}
+  E --> G
+  F --> G
+  G -- yes --> H["keep the file"]
+  G -- no --> I["record the asset unresolved by name"]
+```
+
+A body that is not an image is never kept, and the asset is written down by name
+with the reason, so the wizard draws the lettered disc rather than a broken
+picture. [The asset logo library](08-tabs/market-inspector.md#the-asset-logo-library)
+covers the fill and its read budget.
+
 **What the fleet runs.** The three rows on this page decide more than the pair. The
 venue picked here rebuilds the TA Timeframe list two pages on, so a venue that does
 not carry a timeframe removes it from the choice, and the Trading Fee row exists

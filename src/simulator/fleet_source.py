@@ -1038,13 +1038,22 @@ class FleetSource:
         return self._sim_dir / SIM_FLEET_NAME
 
     def _state(self) -> dict:
+        from ..core.state_manager import (
+            FLEET_SEALED_NOTE,
+            fleet_sealed,
+            load_state_file,
+        )
+
         path = self.path()
         if not path.exists():
             return {}
         try:
-            loaded = json.loads(path.read_text(encoding="utf-8"))
+            loaded = load_state_file(path)
         except (OSError, json.JSONDecodeError) as exc:
             logger.warning("fleet_source: %s unreadable: %s", path.name, exc)
+            return {}
+        if fleet_sealed(loaded):
+            logger.warning("fleet_source: %s", FLEET_SEALED_NOTE)
             return {}
         return loaded if isinstance(loaded, dict) else {}
 

@@ -3,7 +3,8 @@
 ``StateManager`` reads and writes ``bot_state.json`` under ``_DEFAULT_DIR``
 through ``atomic_write_json``. ``save_state`` carries forward every record
 already on disk, and ``delete_bot`` is the only path that removes one.
-``load_state`` falls back to ``_try_backup`` when the primary will not parse.
+``load_state`` falls back to ``_try_backup`` when the primary will not parse,
+and ``_unseal`` opens the payload a ``SEALED_LATCH_FIELD`` file holds.
 """
 
 from __future__ import annotations
@@ -12,13 +13,138 @@ import json
 import logging
 import time
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 from .io_utils import atomic_write_json
 
 logger = logging.getLogger("acervator.state")
 
 _DEFAULT_DIR = Path.home() / ".acervator"
+
+BOTS_FIELD = "bots"
+
+SEALED_LATCH_FIELD = "fleet_sealed"
+"""The plain-text field saying a password exists, and nothing else about it."""
+
+SEALED_PAYLOAD_FIELD = "sealed_fleet"
+"""The field holding ``SEALED_FIELDS`` as one token ``seal_payload`` produced."""
+
+SEALED_FIELDS = (BOTS_FIELD, "bot_count", "smart_wires", "smart_wire_ledgers")
+"""The fields that move inside the sealed payload, and are absent beside it."""
+
+PROBE_NO_FILE = "no_file"
+PROBE_SEALED = "sealed"
+PROBE_EMPTY = "empty"
+PROBE_HAS_BOTS = "has_bots"
+PROBE_UNREADABLE = "unreadable"
+
+FLEET_SEALED_NOTE = (
+    "The saved fleet is sealed and this session holds no key for it. No bot is "
+    "loaded and none starts. This is NOT the same as having no saved bots, and "
+    "nothing may overwrite the sealed file."
+)
+"""What a reader reports for a sealed fleet, so none of them draws an empty one."""
+
+SEALED_NO_KEY_LOG = (
+    "%s carries the fleet latch and this session holds no master key, so its "
+    "fleet payload stays sealed. No reader is given an empty fleet, and no "
+    "write may replace the payload."
+)
+
+SEALED_REFUSED_LOG = (
+    "%s carries a fleet payload that would NOT open with the master key this "
+    "session holds (%s). The fleet stays sealed; do NOT let a save overwrite it."
+)
+
+SAVE_REFUSED_SEALED_LOG = (
+    "REFUSING to write %s: its fleet payload is sealed and unopened, so this "
+    "write would replace a fleet this session cannot read. The file is left as "
+    "it is."
+)
+
+DELETE_REFUSED_SEALED_LOG = (
+    "state: delete_bot(%s) REFUSED — the fleet payload in %s is sealed and "
+    "unopened, so no record can be read or removed"
+)
+
+WRITE_FAILED_LOG = "Failed to write %s (%s: %s)"
+
+LATCH_READ_FAILED_LOG = "The fleet latch in %s could not be read (%s)"
+
+STATE_FILE_UNREADABLE_LOG = (
+    "The state file %s could NOT be read (%s: %s), so the reader asking is "
+    "given no fleet. This is NOT the same as having no saved bots."
+)
+
+UNLOCK_NO_KEY_LOG = "Fleet unlock refused: this install holds no sealed master key"
+
+UNLOCK_REFUSED_LOG = "Fleet unlock refused: %s"
+
+
+class FleetSealed(RuntimeError):
+    """The state file holds a fleet payload no key in this session opens.
+
+    ``_read_bot_records`` raises it, and ``save_state`` catches it to refuse a
+    write that would replace records it cannot read.
+    """
+
+
+def fleet_sealed(state: object) -> bool:
+    """True where *state* carries ``SEALED_LATCH_FIELD`` and no ``BOTS_FIELD``.
+
+    ``load_state`` puts the opened payload's fields back, so this answers False
+    once the payload is open and False for the empty dict an absent file gives.
+    """
+    if not isinstance(state, dict):
+        return False
+    return bool(state.get(SEALED_LATCH_FIELD)) and BOTS_FIELD not in state
+
+
+def unseal(state: dict, name: str) -> dict:
+    """*state* with its ``SEALED_PAYLOAD_FIELD`` opened, or *state* as it is.
+
+    A *state* carrying no ``SEALED_LATCH_FIELD`` comes back untouched, and one
+    whose payload will not open comes back carrying the latch and no
+    ``BOTS_FIELD``, which is what ``fleet_sealed`` answers True for.
+    """
+    if not isinstance(state, dict) or not state.get(SEALED_LATCH_FIELD):
+        return state
+    from .encryption import held_master_key, open_payload
+
+    key = held_master_key()
+    if key is None:
+        logger.warning(SEALED_NO_KEY_LOG, name)
+        return state
+    token = str(state.get(SEALED_PAYLOAD_FIELD) or "")
+    try:
+        opened = json.loads(open_payload(key, token))
+    except (ValueError, json.JSONDecodeError) as exc:
+        logger.error(SEALED_REFUSED_LOG, name, exc)
+        return state
+    if not isinstance(opened, dict):
+        logger.error(SEALED_REFUSED_LOG, name, "the payload is not an object")
+        return state
+    out = {one: value for one, value in state.items() if one != SEALED_PAYLOAD_FIELD}
+    out.update(opened)
+    return out
+
+
+def load_state_file(path) -> dict:
+    """The state dict at *path*, with ``unseal`` run over whatever it holds.
+
+    Every reader that builds its own path to the state file reads it here, so
+    one held master key opens the payload for all of them and ``fleet_sealed``
+    answers True only while none of them can read the fleet.
+    """
+    target = Path(path)
+    if not target.exists():
+        return {}
+    try:
+        with open(target, "r", encoding="utf-8") as f:
+            return unseal(json.load(f), target.name)
+    except Exception as exc:  # noqa: BLE001 - a bad file must not stop a launch
+        logger.error(STATE_FILE_UNREADABLE_LOG, target, type(exc).__name__, exc)
+        return {}
 
 
 class StateManager:
@@ -85,6 +211,9 @@ class StateManager:
                     len(carried),
                     ", ".join(carried[:8]),
                 )
+        except FleetSealed:
+            logger.error(SAVE_REFUSED_SEALED_LOG, self._path.name)
+            return
         except Exception as exc:  # noqa: BLE001 - never block a save
             logger.error(
                 "state: carry-forward failed (%s) — this save reverts to "
@@ -125,17 +254,97 @@ class StateManager:
                     self._path.name,
                 )
 
+        if self.write_state(state, before_replace=_refresh_backup):
+            logger.info("Bot state saved: %d bots", len(bots))
+
+    def _sealed_for_disk(self, state: dict) -> Optional[dict]:
+        """*state* with ``SEALED_FIELDS`` moved into one ``SEALED_PAYLOAD_FIELD``.
+
+        Answers *state* itself where ``held_master_key`` holds nothing, which is
+        every install no password was set on, and None where ``fleet_sealed`` is
+        already True for *state*.
+        """
+        if fleet_sealed(state):
+            return None
+        from .encryption import held_master_key, seal_payload
+
+        key = held_master_key()
+        if key is None:
+            return state
+        payload = {one: state[one] for one in SEALED_FIELDS if one in state}
+        out = {one: value for one, value in state.items() if one not in SEALED_FIELDS}
+        out[SEALED_LATCH_FIELD] = True
+        out[SEALED_PAYLOAD_FIELD] = seal_payload(key, json.dumps(payload, default=str))
+        return out
+
+    def write_state(
+        self, state: dict, *, before_replace: Optional[Callable[[], None]] = None
+    ) -> bool:
+        """Write a whole *state* over ``_path``, sealed where a master key is held.
+
+        ``_sealed_for_disk`` decides what reaches the file, and this answers
+        False where ``probe`` reads ``PROBE_SEALED`` off the file on disk, where
+        *state* itself is sealed, or where the write raised.
+        """
+        if self.probe() == PROBE_SEALED:
+            logger.error(SAVE_REFUSED_SEALED_LOG, self._path.name)
+            return False
+        for_disk = self._sealed_for_disk(state)
+        if for_disk is None:
+            logger.error(SAVE_REFUSED_SEALED_LOG, self._path.name)
+            return False
         try:
             atomic_write_json(
                 self._path,
-                state,
+                for_disk,
                 indent=2,
                 default=str,
-                before_replace=_refresh_backup,
+                before_replace=before_replace,
             )
-            logger.info("Bot state saved: %d bots", len(bots))
-        except Exception as exc:
-            logger.error("Failed to save bot state: %s", exc)
+            return True
+        except Exception as exc:  # noqa: BLE001 - never break a save
+            logger.error(WRITE_FAILED_LOG, self._path.name, type(exc).__name__, exc)
+            return False
+
+    def latch_on(self) -> bool:
+        """True where ``_path`` carries ``SEALED_LATCH_FIELD`` set.
+
+        Opens no payload and needs no password, so a launch learns one exists
+        before it holds it; an absent or unreadable file answers False.
+        """
+        try:
+            if not self._path.exists():
+                return False
+            with open(self._path, "r", encoding="utf-8") as f:
+                return bool(json.load(f).get(SEALED_LATCH_FIELD))
+        except Exception as exc:  # noqa: BLE001 - must never stop a launch
+            logger.warning(LATCH_READ_FAILED_LOG, self._path.name, exc)
+            return False
+
+    def unlock(self, password: str) -> bool:
+        """Hold the master key *password* opens, so ``load_state`` opens the payload.
+
+        ``open_master_key`` refuses a wrong *password* by failing the sealed
+        key's own authentication tag, and this then holds nothing, answers False
+        and leaves every reader the sealed state it already had.
+        """
+        from .encryption import hold_master_key, open_master_key, read_master_key
+
+        sealed = read_master_key()
+        if sealed is None:
+            logger.warning(UNLOCK_NO_KEY_LOG)
+            return False
+        try:
+            opened = open_master_key(sealed, str(password))
+        except ValueError as exc:
+            logger.warning(UNLOCK_REFUSED_LOG, exc)
+            return False
+        hold_master_key(opened)
+        return True
+
+    def _unseal(self, state: dict, name: str) -> dict:
+        """``unseal`` over *state*, named *name* in whatever it logs."""
+        return unseal(state, name)
 
     def delete_bot(self, bot_id: str) -> bool:
         """Remove one ``bot_id`` record from disk, the only removal path.
@@ -148,9 +357,12 @@ class StateManager:
             if not self._path.exists():
                 return False
             with open(self._path, "r", encoding="utf-8") as f:
-                state = json.load(f)
+                state = self._unseal(json.load(f), self._path.name)
+            if fleet_sealed(state):
+                logger.error(DELETE_REFUSED_SEALED_LOG, bot_id, self._path.name)
+                return False
 
-            bots = state.get("bots") or {}
+            bots = state.get(BOTS_FIELD) or {}
             if bot_id not in bots:
                 logger.info(
                     "state: delete_bot(%s) — no record on disk, nothing " "to remove",
@@ -187,13 +399,8 @@ class StateManager:
                 except OSError as exc:
                     logger.warning("delete_bot: backup refresh failed: %s", exc)
 
-            atomic_write_json(
-                self._path,
-                state,
-                indent=2,
-                default=str,
-                before_replace=_refresh_backup,
-            )
+            if not self.write_state(state, before_replace=_refresh_backup):
+                return False
 
             # ERROR level marks an irreversible removal, not a failure.
             logger.error(
@@ -217,16 +424,20 @@ class StateManager:
             return False
 
     def _read_bot_records(self, path=None) -> dict:
-        """The ``bots`` map from a state file, or {} when the file is absent.
+        """The ``BOTS_FIELD`` map from a state file, or {} when the file is absent.
 
-        A decode error propagates to the caller, and ``save_state`` and
-        ``_read_bot_ids`` each catch it.
+        A decode error propagates to the caller, and ``FleetSealed`` is raised
+        where the file's payload is sealed and unopened, so neither case ever
+        answers an empty fleet.
         """
         target = self._path if path is None else path
         if not target.exists():
             return {}
         with open(target, "r", encoding="utf-8") as f:
-            return dict(json.load(f).get("bots") or {})
+            state = self._unseal(json.load(f), target.name)
+        if fleet_sealed(state):
+            raise FleetSealed(target.name)
+        return dict(state.get(BOTS_FIELD) or {})
 
     def _read_bot_ids(self, path) -> "Optional[set]":
         """Bot ids in a state file, or None when ``_read_bot_records`` raises.
@@ -372,14 +583,18 @@ class StateManager:
     def load_state(self) -> dict:
         """Return the whole state dict from ``_path``, or {} when it is absent.
 
-        A ``json.JSONDecodeError`` routes to ``_try_backup``.
+        A ``json.JSONDecodeError`` routes to ``_try_backup``, and a state whose
+        payload ``_unseal`` could not open comes back carrying the latch and no
+        ``BOTS_FIELD``, which ``fleet_sealed`` answers True for.
         """
         if not self._path.exists():
             return {}
         try:
             with open(self._path, "r", encoding="utf-8") as f:
-                state = json.load(f)
-            bot_count = len(state.get("bots", {}))
+                state = self._unseal(json.load(f), self._path.name)
+            if fleet_sealed(state):
+                return state
+            bot_count = len(state.get(BOTS_FIELD, {}))
             saved_at = state.get("saved_at_human", "unknown")
             logger.info("Bot state loaded: %d bots (saved %s)", bot_count, saved_at)
             return state
@@ -406,8 +621,10 @@ class StateManager:
             return {}
         try:
             with open(self._backup_path, "r", encoding="utf-8") as f:
-                state = json.load(f)
-            logger.info("Loaded from backup: %d bots", len(state.get("bots", {})))
+                state = self._unseal(json.load(f), self._backup_path.name)
+            if fleet_sealed(state):
+                return state
+            logger.info("Loaded from backup: %d bots", len(state.get(BOTS_FIELD, {})))
             return state
         except Exception as exc:
             logger.error(
@@ -448,17 +665,21 @@ class StateManager:
             logger.info("Bot state cleared")
 
     def probe(self) -> str:
-        """Classify ``_path``: ``no_file``, ``empty``, ``has_bots``, ``unreadable``.
+        """Classify ``_path`` as one of the five ``PROBE_`` answers.
 
-        ``has_saved_state`` is built on it, and an unreadable file logs at
-        ERROR and never reports as ``empty``.
+        ``has_saved_state`` is built on it, and neither a sealed payload nor an
+        unreadable file ever reports as ``PROBE_EMPTY``.
         """
         try:
             if not self._path.exists():
-                return "no_file"
+                return PROBE_NO_FILE
             with open(self._path, "r", encoding="utf-8") as f:
-                state = json.load(f)
-            return "has_bots" if len(state.get("bots", {})) > 0 else "empty"
+                state = self._unseal(json.load(f), self._path.name)
+            if fleet_sealed(state):
+                return PROBE_SEALED
+            if len(state.get(BOTS_FIELD, {})) > 0:
+                return PROBE_HAS_BOTS
+            return PROBE_EMPTY
         except Exception as exc:  # noqa: BLE001 - classify, never crash boot
             logger.error(
                 "Bot state file %s is UNREADABLE (%s: %s). This is NOT the "
@@ -470,11 +691,12 @@ class StateManager:
                 self._backup_path.name,
                 self._backup_path.exists(),
             )
-            return "unreadable"
+            return PROBE_UNREADABLE
 
     def has_saved_state(self) -> bool:
-        """Report whether ``probe`` returns ``has_bots``.
+        """Report whether ``probe`` returns ``PROBE_HAS_BOTS``.
 
-        ``no_file``, ``empty`` and ``unreadable`` all return False.
+        ``PROBE_NO_FILE``, ``PROBE_SEALED``, ``PROBE_EMPTY`` and
+        ``PROBE_UNREADABLE`` all return False.
         """
-        return self.probe() == "has_bots"
+        return self.probe() == PROBE_HAS_BOTS
