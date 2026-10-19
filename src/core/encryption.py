@@ -303,6 +303,26 @@ def seal_master_key(
     )
 
 
+def _open_either_aead(key: bytes, nonce: bytes, ct: bytes, refusal: str) -> bytes:
+    """Open *ct* with ``open_under_key``, then with ``_fallback_decrypt``.
+
+    Raises ``ValueError(refusal)`` where neither opener answers, which is what
+    makes ``open_master_key`` and ``open_payload`` refuse a wrong *key* with
+    nothing on disk compared against.
+    """
+    # The second opener reads a seal written while `cryptography` was absent;
+    # the key is the same on both paths and only the AEAD differs.
+    try:
+        return open_under_key(key, nonce, ct)
+    except Exception as exc:
+        if not _HAS_CRYPTOGRAPHY:
+            raise ValueError(refusal) from exc
+    try:
+        return _fallback_decrypt(key, nonce, ct)
+    except Exception as exc:
+        raise ValueError(refusal) from exc
+
+
 def open_master_key(sealed: SealedMasterKey, password: str) -> bytes:
     """Return the master key *sealed* holds, or raise ValueError ``MASTER_KEY_REFUSED``.
 
@@ -317,18 +337,37 @@ def open_master_key(sealed: SealedMasterKey, password: str) -> bytes:
     except Exception as exc:
         raise ValueError(MASTER_KEY_REFUSED) from exc
 
-    # The second opener reads a seal written while `cryptography` was absent;
-    # `derive_key` answers the same key on both paths, only the AEAD differs.
     nonce, ct = blob[:_NONCE_LEN], blob[_NONCE_LEN:]
+    return _open_either_aead(sealing_key, nonce, ct, MASTER_KEY_REFUSED)
+
+
+PAYLOAD_REFUSED = "Sealed payload would not open — wrong key or damaged file"
+
+
+def seal_payload(master_key: bytes, plaintext: str) -> str:
+    """Seal *plaintext* under *master_key* as one Base64 token carrying its nonce.
+
+    ``seal_under_key`` takes *master_key* as it is, already holding the
+    ``_KEY_LEN`` bytes the AEAD needs, and no ``derive_key`` call is paid per seal.
+    """
+    nonce = secrets.token_bytes(_NONCE_LEN)
+    blob = nonce + seal_under_key(master_key, nonce, plaintext.encode("utf-8"))
+    return base64.urlsafe_b64encode(blob).decode("ascii")
+
+
+def open_payload(master_key: bytes, token: str) -> str:
+    """Return the text ``seal_payload`` sealed, or raise ValueError ``PAYLOAD_REFUSED``.
+
+    A *master_key* other than the sealing one fails the authentication tag, so
+    the refusal is the payload failing to open and never a stored value compared
+    against.
+    """
     try:
-        return open_under_key(sealing_key, nonce, ct)
+        blob = base64.urlsafe_b64decode(str(token).encode("ascii"))
     except Exception as exc:
-        if not _HAS_CRYPTOGRAPHY:
-            raise ValueError(MASTER_KEY_REFUSED) from exc
-    try:
-        return _fallback_decrypt(sealing_key, nonce, ct)
-    except Exception as exc:
-        raise ValueError(MASTER_KEY_REFUSED) from exc
+        raise ValueError(PAYLOAD_REFUSED) from exc
+    nonce, ct = blob[:_NONCE_LEN], blob[_NONCE_LEN:]
+    return _open_either_aead(master_key, nonce, ct, PAYLOAD_REFUSED).decode("utf-8")
 
 
 def write_master_key(sealed: SealedMasterKey, path: Optional[Path] = None) -> Path:

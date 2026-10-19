@@ -340,14 +340,20 @@ def _parse_bot_state_targets(
 ) -> list[tuple[str, str]]:
     """Return sorted ``(asset, exchange_id)`` pairs from the bots in ``path``.
 
-    An absent or unreadable ``path`` yields an empty list.
+    An absent ``path``, an unreadable one and one whose fleet payload is sealed
+    each yield an empty list, and the last two say so.
     """
+    from ...core.state_manager import FLEET_SEALED_NOTE, fleet_sealed, load_state_file
+
     if not path.exists():
         return []
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
+        data = load_state_file(path)
     except (OSError, json.JSONDecodeError) as exc:
         logger.warning("target discovery: bot_state.json unreadable: %s", exc)
+        return []
+    if fleet_sealed(data):
+        logger.warning("target discovery: %s", FLEET_SEALED_NOTE)
         return []
     bots = data.get("bots") or {}
     seen: set[tuple[str, str]] = set()

@@ -1495,4 +1495,21 @@ has a height of 0, a routing button sits at y = 1754, and `wire-canvas` is `disp
 The captured page shows the tab bar and the header strip and nothing under them. The locust
 grid, the wires and the routing panel are in the document and are not on the screen.
 
+### Where the wire list sits once a password is set
+
+**The sentence this overtakes**, from the section on what Disconnect All clears:
+
+> A wire is stored once, at the top level of the fleet file, under `smart_wires`.
+
+**The true sentence.** That is where the wire list sits on an install carrying no
+password. With a password set, `smart_wires` moves inside one sealed field and
+the top level carries a plain-text latch in its place.
+`src/core/state_manager.py, in _sealed_for_disk` moves `bots`, `bot_count`,
+`smart_wires` and `smart_wire_ledgers` into that field on every save, and
+`in unseal` puts all four back for a session holding the key. Read on a state
+file saved with a password: the top level holds five fields — `fleet_sealed`,
+`sealed_fleet`, `saved_at`, `saved_at_human` and `version` — and not one of the
+four fleet fields. Read on the same material saved with no password: the same
+seven fields the page describes, and no latch.
+
 Back to [the subsystem index](README.md).

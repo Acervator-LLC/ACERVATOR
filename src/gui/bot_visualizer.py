@@ -1594,12 +1594,22 @@ if _HAS_QT:
 
             ``_save_bot_state_dict`` refuses a write built on an empty dict,
             so a failure recorded here is the first and only account of why a
-            wire change did not reach disk and why the canvas paints none.
+            wire change did not reach disk and why the canvas paints none. A
+            sealed fleet answers its latch and no ``bots`` key under
+            ``FLEET_SEALED_NOTE``, which the same refusal covers and which no
+            caller can read as a fleet of none.
             """
             try:
-                from ..core.state_manager import StateManager
+                from ..core.state_manager import (
+                    FLEET_SEALED_NOTE,
+                    StateManager,
+                    fleet_sealed,
+                )
 
-                return StateManager().load_state() or {}
+                loaded = StateManager().load_state() or {}
+                if fleet_sealed(loaded):
+                    logger.warning("Bot Swarm: %s", FLEET_SEALED_NOTE)
+                return loaded
             except Exception:
                 logger.exception(
                     "Bot Swarm: bot_state.json could not be read; the canvas"
@@ -1610,11 +1620,12 @@ if _HAS_QT:
                 return {}
 
         def _save_bot_state_dict(self, state: dict) -> None:
-            """Write bot_state.json through ``atomic_write_json``.
+            """Write bot_state.json through ``StateManager.write_state``.
 
             A ``state`` carrying no ``bots`` key is refused, because
             ``_load_bot_state_dict`` answers an empty dict when the read
-            fails.
+            fails. ``write_state`` seals the fleet fields where a master key is
+            held, so this path cannot put them on disk in plain text.
             """
             from .main_tabs import bot_visualizer_surface as surface
 
@@ -1626,12 +1637,9 @@ if _HAS_QT:
                 )
                 return
             try:
-                from pathlib import Path
+                from ..core.state_manager import StateManager
 
-                from ..core.io_utils import atomic_write_json
-
-                p = Path.home() / ".acervator" / "bot_state.json"
-                atomic_write_json(p, state, indent=2, default=str)
+                StateManager().write_state(state)
             except Exception as exc:
                 logger.error(
                     "bot_visualizer: direct write to bot_state.json "

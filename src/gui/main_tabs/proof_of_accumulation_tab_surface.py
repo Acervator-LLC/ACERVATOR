@@ -1667,15 +1667,21 @@ def fleet_records(chain: str) -> dict:
 
     ``src.core.state_manager.StateManager`` writes that file; this read never
     creates it. The fleet is not chain state, so every chain reads the one file
-    and a demo run lists the same participants as a live one.
+    and a demo run lists the same participants as a live one. A sealed fleet
+    payload answers {} under ``FLEET_SEALED_NOTE`` and never a fleet of none.
     """
+    from ...core.state_manager import FLEET_SEALED_NOTE, fleet_sealed, load_state_file
+
     del chain
     path = LEDGER_DIR / FLEET_NAME
     if not path.is_file():
         return {}
     try:
-        loaded = json.loads(path.read_text(encoding="utf-8"))
+        loaded = load_state_file(path)
     except (OSError, ValueError):
+        return {}
+    if fleet_sealed(loaded):
+        logger.warning("proof_of_accumulation: %s", FLEET_SEALED_NOTE)
         return {}
     bots = loaded.get("bots") if isinstance(loaded, dict) else None
     return bots if isinstance(bots, dict) else {}
