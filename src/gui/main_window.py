@@ -709,12 +709,9 @@ if _HAS_QT:
 
             if self._settings:
                 ai_cfg = self._settings.get("ai_monitor", {})
-                if ai_cfg.get("enabled") and ai_cfg.get("api_key"):
-                    self._ai_monitor_label.setText("AI: READY")
-                    self._ai_monitor_label.setStyleSheet(
-                        f"color: {ds.STATUS_AUTHENTICATED}; font-size: 10px; padding: 0 "
-                        "8px; font-family: Consolas;"
-                    )
+                self._draw_ai_monitor_pill(
+                    bool(ai_cfg.get("enabled") and ai_cfg.get("api_key"))
+                )
 
             self.setStatusBar(status)
 
@@ -2668,6 +2665,40 @@ if _HAS_QT:
                     "info",
                 )
 
+        def _draw_ai_monitor_pill(self, enabled: bool) -> None:
+            """The status strip's AI pill for ``enabled`` and the package reading.
+
+            ``monitor_package_absence`` answers ``MONITOR_MISSING_LABEL`` and an
+            installed client answers READY.
+            """
+            from ..trading.live_monitor import (
+                MONITOR_MISSING_LABEL,
+                monitor_package_absence,
+            )
+
+            if not enabled:
+                text, colour = "AI: OFF", ds.TEXT_PLACEHOLDER
+            elif monitor_package_absence():
+                text, colour = MONITOR_MISSING_LABEL, ds.WARNING
+            else:
+                text, colour = "AI: READY", ds.STATUS_AUTHENTICATED
+            self._ai_monitor_label.setText(text)
+            self._ai_monitor_label.setStyleSheet(
+                f"color: {colour}; font-size: 10px; padding: 0 8px; "
+                "font-family: Consolas;"
+            )
+
+        def _log_ai_monitor_absence(self) -> None:
+            """Write ``monitor_package_absence`` to the Console when it answers one.
+
+            ``_init_live_monitor`` and ``_on_live_settings_changed`` both call it.
+            """
+            from ..trading.live_monitor import monitor_package_absence
+
+            absence = monitor_package_absence()
+            if absence:
+                self._status_log.log(absence, "warning")
+
         def _init_live_monitor(self) -> None:
             """Initialize LiveMonitor from saved settings."""
             if not self._settings or not self._bot_manager:
@@ -2681,6 +2712,7 @@ if _HAS_QT:
                     f"interval: {ai_cfg.get('interval_hours', 4)}h)",
                     "info",
                 )
+                self._log_ai_monitor_absence()
             else:
                 self._status_log.log(
                     "AI Monitor: disabled (configure in Settings → AI Monitor)",
@@ -4059,22 +4091,14 @@ if _HAS_QT:
             ai_cfg = self._settings.get("ai_monitor", {})
             if self._bot_manager:
                 self._bot_manager.configure_live_monitor(ai_cfg)
-                if ai_cfg.get("enabled") and ai_cfg.get("api_key"):
-                    self._ai_monitor_label.setText("AI: READY")
-                    self._ai_monitor_label.setStyleSheet(
-                        f"color: {ds.STATUS_AUTHENTICATED}; font-size: 10px; padding: 0 "
-                        "8px; font-family: Consolas;"
-                    )
+                monitor_on = bool(ai_cfg.get("enabled") and ai_cfg.get("api_key"))
+                self._draw_ai_monitor_pill(monitor_on)
+                if monitor_on:
                     self._status_log.log(
                         f"AI Monitor reconfigured (phrase: '{ai_cfg.get('connect_phrase', '')[:20]}...')",
                         "info",
                     )
-                else:
-                    self._ai_monitor_label.setText("AI: OFF")
-                    self._ai_monitor_label.setStyleSheet(
-                        f"color: {ds.TEXT_PLACEHOLDER}; font-size: 10px; padding: 0 "
-                        "8px; font-family: Consolas;"
-                    )
+                    self._log_ai_monitor_absence()
 
             self._status_log.log("Settings saved.", "success")
 
