@@ -549,6 +549,50 @@ that card wants for a whole money amount of `$12,345.67`. The money strip takes 
 shares of the spare width and each counter card takes one. The asset class square
 takes none, because its side is a declared number.
 
+OVERTAKEN, and the block and the paragraph above are kept as written.
+`SPENDABLE_MIN_W` is not a constant and is not 180. `spendable_min_w` answers the
+money strip's narrowest width, as `spendable_w` at `MONEY_CELL_MIN_W`: every
+`KPI_COLUMNS` column's room at the smallest type an amount draws at, each rule's
+own width and the gap either side of it, and `SPENDABLE_TEXT_PAD` for the frame.
+Six columns answer 512 px.
+
+OVERTAKEN, and the block and the paragraph above are kept as written.
+`COUNTER_MIN_W` is not 48. It is 88 px, the width the row draws a counter slot at,
+and it is a typed figure on purpose: `MONEY_CELL_MIN_W` plus `COUNTER_TEXT_PAD`
+reads 2 px wider, and raising the floor to that would move every counter slot.
+What the card's amount gained is the room inside the floor, which
+`CARD_SIDE_MARGIN_PX` widened.
+
+OVERTAKEN, and the block and the paragraph above are kept as written.
+`COUNTER_NATURAL_W` is not 118. It is 144 px, the width the row draws a counter
+card at when it can afford it, and `COUNTER_TEXT_W` is that width less
+`COUNTER_TEXT_PAD`. The React card reads `COUNTER_NATURAL_W` for its own sizeHint,
+so the width is held and the room inside it is what `CARD_SIDE_MARGIN_PX` widened —
+110 px of room before, 118 px now.
+
+OVERTAKEN, and the block and the paragraph above are kept as written.
+`TOP_ROW_STRETCH` is not `[3, 1, 1, 1, 1, 1, 0]` and is not written out. It is
+built from `KPI_COLUMNS` and `COUNTER_CARDS`: the money strip takes one share per
+column it holds, each card takes `COUNTER_STRETCH`, and the class square takes
+`CLASS_GROUP_STRETCH`. Six columns and six cards answer
+`[6, 1, 1, 1, 1, 1, 1, 0]`, which is the share list the row already drew, and it
+holds one share per `TOP_ROW_ORDER` slot by construction. The shares themselves
+are unchanged; only where they come from is.
+
+`src/gui/main_tabs/header_strip_surface.py` — the floors and the shares today
+
+```python
+MONEY_CELL_MIN_W = 64
+COUNTER_MIN_W = 88
+COUNTER_NATURAL_W = 144
+COUNTER_TEXT_W = COUNTER_NATURAL_W - COUNTER_TEXT_PAD
+TOP_ROW_STRETCH = [
+    len(KPI_COLUMNS),
+    *([COUNTER_STRETCH] * len(COUNTER_SLOTS)),
+    CLASS_GROUP_STRETCH,
+]
+```
+
 **The margins the two newest columns are drawn from.** A column leaves 3 px either
 side of the rule between it and its neighbour, the rule itself is 12 px, the panel's
 own side margin is 6 px, and a counter card's side margin is 4 px.
@@ -561,6 +605,81 @@ SPENDABLE_COLUMN_GAP_PX = 3
 SPENDABLE_RULE_W_PX = 12
 CARD_SIDE_MARGIN_PX = 4
 ```
+
+OVERTAKEN, and the block and the paragraph above are kept as written.
+`CARD_SIDE_MARGIN_PX` is not 4 and the Qt counter card leaves no side margin of
+its own. `PANEL_FRAME_INSET_PX` names what the card's frame already insets — 12 px
+of padding and a 1 px border on each side — so a margin on top of it was a second
+inset, and it cost the amount the digits `MONEY_CELL_MIN_W` reserves room for. The
+three money strip figures above are unchanged.
+
+OVERTAKEN, and the block and the paragraph above are kept as written. The card's
+side margin is declared twice, once per host, because the two hosts apply it
+differently. `CARD_SIDE_MARGIN_PX` is the margin the Qt card holds inside the
+frame inset it already has. `CARD_PAGE_SIDE_MARGIN_PX` is the padding
+`CARD_LAYOUT` carries to the page, where it replaces the frame's inset instead of
+sitting inside it, and where the slot's own drawn width follows it. It is held at
+4, the figure the row already drew, so no slot moves on either host.
+
+**One money cell, one width rule.** The row draws money in two kinds of panel —
+a column of the money strip and a counter card — and both reserve the same room
+for it. `header_strip_surface.py` names the widest amount the row draws and
+measures it once at the smallest type a money cell shrinks to.
+
+`src/gui/main_tabs/header_strip_surface.py` — the one declaration
+
+```python
+WIDEST_AMOUNT = "$-999,999.99"
+MONEY_CELL_MIN_W = 64
+KPI_COLUMN_W = money_cell_w(VALUE_FONT_PX)
+```
+
+`money_cell_w` scales that reading to any type size, because a font's advance
+scales with its pixel size. `spendable_natural_w` is the strip at
+`VALUE_FONT_PX` and `spendable_min_w` is the strip at `VALUE_FONT_MIN_PX`, so
+one number answers both.
+
+**Every width the row is sized from is held where it was.** `COUNTER_MIN_W` and
+`COUNTER_NATURAL_W` are the widths the row already drew a counter slot at, and
+`slot_floor_w`, `slot_natural_w` and `slot_stretch` answer the same number for
+every `TOP_ROW_ORDER` slot as before. The Qt card reaches `MONEY_CELL_MIN_W` of
+room through `CARD_SIDE_MARGIN_PX`, which is room inside the panel and not a wider
+panel, and the page's card has that room already through
+`CARD_PAGE_SIDE_MARGIN_PX`, so no slot's drawn size moves on either host.
+
+**The page's slot width follows its card's padding and no Qt slot follows its
+margin.** Measured at four window widths in both builds: moving
+`CARD_SIDE_MARGIN_PX` alone moves no Qt slot at any width, while the same figure
+carried to `CARD_LAYOUT` moves every page counter slot wherever the row has width
+above its floors. That is why the two are declared apart, and it is the reason
+the page and the Qt row draw a counter slot at different widths at all.
+
+**A card's margin is its frame's inset and nothing more.** The theme's
+`QFrame[frameShape="6"]` rule already holds a panel's text 12 px off its border
+and draws a 1 px border, which `PANEL_FRAME_INSET_PX` names. A counter card adds
+no side margin of its own on top of it, so the amount keeps the digits
+`MONEY_CELL_MIN_W` reserves room for at the narrowest window.
+
+**The slot order and the slot shares are read off the cards.**
+`header_strip_surface.py, in COUNTER_SLOTS` is built from `COUNTER_CARDS`,
+`TOP_ROW_ORDER` is the money strip's slot, those cards and the class square, and
+`TOP_ROW_STRETCH` gives the strip one share per `KPI_COLUMNS` column, each card
+one share and the class square none. Adding or removing a card changes that card's
+own slot and no other panel's width.
+
+**A card whose figure the fleet never published draws the dash.**
+`header_strip_surface.py, in counter_amount` reads each `COUNTER_CARDS` entry's
+`source_key` with no default, so a fleet that publishes no such key answers
+nothing and the card draws `EMPTY_TEXT`. The live fleet publishes
+`total_accrued_usd` and the paper ledger and the simulator do not, so ACCUMULATED
+draws a figure behind Live and the dash behind Paper and Sim.
+
+**A shortened amount is measured at the size it is drawn at.**
+`src/gui/widgets/fitted_label.py, in _draw` picks the largest size that fits
+through `_fitted_for`, then shortens the text through `_metrics_at` at that same
+size. `fontMetrics` answers the size the style sheet last applied, which is the
+size before the shrink, so a reading taken from it shortens an amount that had
+already been made to fit.
 
 **A shortened amount ends in an ellipsis.** Every caption and every amount in the
 columns and the counters is an `ElidingLabel`. It keeps the whole text and draws
@@ -686,13 +805,28 @@ how long the screen has been showing old figures, and tells you to restart the
 platform. It is hidden at every other time. It clears itself the moment a
 reading lands.
 
+The line no longer sends you to a restart. It says the platform is clearing the
+block itself on the next fetch, and to restart only if the line stays.
+
 `src/gui/widgets/exchange_tab.py` — `ExchangeTab._draw_pool_stopped`
 
 ```python
 "DATA POOL STOPPED REFRESHING — nothing has come back from "
 f"{self._exchange_name} for {span_words(stopped_for)}. Every "
 "price, balance and ammo figure below is at least that old. "
-"Restart the platform to recover it."
+"The platform clears a block of its own on the next fetch; "
+"restart only if this line stays."
+```
+
+**Functional.** The data pool line directly above it ends with a count of
+blocked fetches the platform cleared, and it carries that count only while the
+count is above zero. A run that never stopped draws nothing there.
+
+`src/gui/widgets/exchange_tab.py` — `ExchangeTab._cleared_words`
+
+```python
+noun = "blocked fetch" if count == 1 else "blocked fetches"
+return f"  ·  {count} {noun} cleared"
 ```
 
 **Design intention.** Single slots passing their time to live is ordinary. A
@@ -719,6 +853,22 @@ BALANCE_LIFETIMES_PER_THRESHOLD = STALL_THRESHOLD_SECONDS / BALANCE_TTL_SECONDS
 **What to do when it appears.** Restart the platform. Nothing else brings the
 fetching back. The Console carries the same reading as a log line, so a run that
 is already closed can still be read there.
+
+**What to do when it appears now.** Wait one fetch. The data pool replaces a
+fetch lock whose holder never finished, and the connector replaces its one
+worker thread when a call is abandoned while that thread is still inside it.
+Both report one Console line when they do. Restart only if the line is still
+there after that.
+
+`src/exchange/ccxt_connector.py` — `CCXTConnector._sync_executor_for_submit`
+
+```python
+fresh = ThreadPoolExecutor(
+    max_workers=SYNC_CALL_CONCURRENCY,
+    thread_name_prefix=f"ccxt-{self._exchange_id}",
+)
+self._sync_executor = fresh
+```
 
 #### What comes back on its own
 
@@ -758,6 +908,34 @@ mechanism, so the red line above still means a restart. Measured across the
 source tree: three of thirty-eight venue fetches sit behind it and thirty-five
 do not. A bot is also handed the scout once, when it is registered, so a
 rebuilt scout reaches the screen and not the bots.
+
+**Functional.** Two more mechanisms come back on their own, so the red line
+above no longer means a restart. The data pool replaces a fetch lock whose
+holder never finished, which covers its own six fetches. One worker thread
+serves every call a venue's connector makes, and the connector replaces that
+thread when the outer wait abandons a call the thread is still inside, which
+covers the eleven calls the worker serves: the ticker, all tickers, the order
+book, the candles, the balances, the spot positions, placing an order,
+cancelling one, reading one back, the open orders and the trade list. Opening
+the connection runs on that same worker.
+
+`src/exchange/ccxt_connector.py` — the worker a call leaves behind
+
+```python
+@property
+def worker_held(self) -> bool:
+    """True while the worker thread has entered the venue call and not left it.
+```
+
+**Design intention.** The replacement is built on the next call and not at the
+moment the wait expires, so a worker that comes back inside the hand-off gap is
+never replaced. The abandoned call is never sent again, so nothing reaches the
+venue twice. The call queue in front of the worker is not widened: it still
+holds eight and still refuses the ninth caller.
+
+**Functional.** A venue fetch that reaches no connector call still needs a
+restart. The post-connect trade history scan is one: it drives the synchronous
+exchange handle on its own thread and does not pass the worker.
 
 `src/exchange/market_pairs_scout.py` — the scout rebuilds only when every venue
 it polled has stopped
@@ -805,6 +983,49 @@ the headline as an element's child.
 
 ```python
 self._label.setTextFormat(Qt.PlainText)
+```
+
+**The hover box draws as characters as well.** The box that appears over the
+headline names the feed and the address a click would open. That address is a
+feed's own words too, so every character of it is escaped and the box is given an
+`<html>` envelope around them. A feed that sends `<img src="…">` inside its
+address gets those characters drawn back, and the box builds no image. Read back
+off a live strip, the only tags in the box's text are the envelope's own.
+
+`src/gui/crypto_news_ticker.py` — `hover_text`
+
+```python
+body = html.escape(HOVER_FORMAT.format(source=source_name, tail=tail))
+return "<html>" + body.replace("\n", "<br>") + "</html>"
+```
+
+**A click opens an http or https address, and nothing else.** The address a
+click hands the system browser comes from the feed, so it is admitted first:
+`openable_url` refuses a scheme outside http and https, and the strip then
+refuses an address that names no host. A refused address opens nothing, the log
+names the feed and the reason, and the hover box says the headline opens nothing.
+On Windows a scheme-less string is run by the shell rather than the browser, so a
+bare drive path is one of the addresses this turns away.
+
+`src/gui/crypto_news_ticker.py` — `opening_address`
+
+```python
+address, refused = openable_url(url)
+if not address:
+    return "", refused
+```
+
+**Three routes close the screen and all three halt the strip.** An exchange
+removed in Settings takes its tab off the bar, the tab itself can be closed, and
+the application can quit. Each route reaches `stop_feeds`, which stops the
+headline timer, the hourly refresh and the fetch in flight. A tab already gone
+when the application quits halts nothing and raises nothing.
+
+`src/gui/widgets/exchange_tab.py` — `ExchangeTab.closeEvent`
+
+```python
+self.stop_feeds()
+super().closeEvent(event)
 ```
 
 **Functional.** In the React build the strip is drawn by
@@ -1178,6 +1399,17 @@ def priced_position(holdings: float, price: float, quote_rate: float) -> float:
     return holdings * price * quote_rate
 ```
 
+OVERTAKEN, quoted whole:
+
+> `src/gui/main_tabs/table_cells_surface.py` — the one multiplication both priced
+> cells read, so the Position Value cell and the Ammo cell can never disagree
+
+True today: both cells still read that one multiplication, and they hand it
+different unit counts. The Position Value cell prices the units the bot
+attributes to itself. The Ammo cell prices the units the exchange reports,
+wherever the platform holds a reading of them, so the two cells differ exactly
+when the bot's own count has drifted from the exchange.
+
 `src/gui/main_tabs/table_cells_surface.py` — the four blank paths and the one
 priced path
 
@@ -1196,6 +1428,45 @@ inside the dust band.
 frozen number typed into the wizard, so the reading follows the grown balance the
 engine re-zeroes to. The header strip's AMMO total takes the same target from the
 same function, so the row and the list cannot disagree.
+
+**Which unit count the distance is measured from.** The exchange is the
+authority on what is held, so the cell prices the exchange's own count of units
+and falls back to the bot's attributed count only when the platform holds no
+exchange reading. The reading is already in memory. Three paths store it, net of
+the personal hold and of the sibling bots on the same asset: the startup read,
+the periodic audit, and the balance read a detonation sizes its sale from. The
+cell takes the stored figure off the bot's status, so nothing is fetched while
+the table paints, and a bot none of the three has run for yet draws the marked
+attributed count.
+
+The tooltip always names the count it measured. On the exchange's count it
+gives both figures, so a drift between them is visible in the cell that is
+affected by it. With no exchange reading held it opens `NO EXCHANGE COUNT HELD`
+and says the direction can read the wrong way, because an attributed count below
+the exchange turns a surplus into an apparent deficit and paints buy pressure on
+a position that is already above target.
+
+`src/gui/main_tabs/table_cells_surface.py`, in `ammo_units` — the one rule all
+three Ammo readers share
+
+```python
+def ammo_units(holdings: float, venue_units: Any) -> tuple:
+    try:
+        reading = float(venue_units)
+    except (TypeError, ValueError):
+        return holdings, False
+    if not math.isfinite(reading) or reading <= 0:
+        return holdings, False
+    return reading, True
+```
+
+`src/trading/scrumming/reconciliation.py`, in `_record_audited_venue_units` —
+where the reading comes from, and `src/trading/bot_container.py`, in
+`get_status` — the `audited_venue_units` field that carries it to the screen.
+
+The row's cell, the header strip's AMMO total and the Ammo column's sort order
+all take the count from `src/gui/main_tabs/bot_status_table_surface.py`, in
+`measured_units_of`, so no two of them can measure different units.
 
 `src/trading/target_bands.py` — the target every Ammo reading measures against
 
@@ -1936,6 +2207,11 @@ delta = position_val - target_val
 territory = target_territory(position_val, target_val)
 ```
 
+The position value in that subtraction is the exchange's own unit count at the
+exchange's own price, and the bot's attributed count only where no exchange
+reading is held. The Ammo column section above names the rule and where the
+reading is stored.
+
 Scrum - To sell an amount from an investment position that allows it to return to its initial price level. This never closes the position. This is the first half of the infinitely divisible circle that can persist for such positions in a healthy market.
 
 One shared helper decides which half of the cycle a position sits in. It
@@ -1953,6 +2229,20 @@ if delta < -band:
     return "fold"
 return "at_target"
 ```
+
+**What a sale takes off the position.** A scrum asks the exchange for an amount
+and the exchange decides how much of it trades. The units that leave the
+position are the units the exchange reports sold, never the units asked for, so
+a part-filled order no longer takes holdings the exchange still holds. The sale
+log prints both figures, the sold count and the asked count, and the proceeds,
+the fold tranches and the Growth Rate Cap are all sized to the sold count.
+
+`src/trading/scrumming/execution.py`, in `_execute_sell` — the units the
+exchange reported, read through `_settled_fill`, which re-reads the order until
+the exchange answers and warns on the log when it never does. The same figure
+reaches the fold tranches through `_last_sell_filled_units`, which
+`src/trading/scrumming/tick_phases.py` reads on both the scrum path and the
+distribute path.
 
 Fold - To buy an amount for an investment position that allows it to return to its initial price level. This also drives Compounding Growth based on Local Volatility and is restricted by the Maximum Growth Per Cycle setting which has been set to a conservative 1% globally for Acervator’s live test and development run.
 
@@ -2143,6 +2433,65 @@ a reading rule of the wizard's own, and a refused volume sorts as
 `VOLUME_REFUSED_USD` and labels as nothing. A saved number too large to be a float
 therefore costs that one pair its volume figure instead of losing the whole pair
 list.
+
+**The coin icon on a row.** The icon is the file the logo library already keeps for
+that asset. The wizard reads the kept directory and fetches nothing, so picking an
+asset never waits on a network read. A row with no kept file draws a lettered disc
+in the asset's own colour, so the row still names what the bot would accumulate.
+The bot tables draw their marks from the same library, and
+[Where a mark comes from](#the-bot-tables) covers the library itself.
+
+`src/gui/bot_wizard.py` — `_get_coin_icon` reads the kept file
+
+```python
+path = KEPT_LOGOS.kept_path(symbol)
+if path and path.exists():
+    px = QPixmap(str(path))
+```
+
+**The address a crypto mark is filled from.** A coin picture on the coin data
+source is addressed by that coin's own image id, and the id follows allocation
+order, so no id is derived from a ticker or from a slug. The crypto catalogue
+carries a confirmed id for ten assets. Every other entry sets no primary address
+and carries the ticker fallback alone, which is the icon address keyed on the
+ticker and needs no id.
+
+```
+assets in the crypto catalogue          48
+carrying a confirmed coin image id      10
+carrying the ticker fallback only       38
+```
+
+`src/exchange/crypto_assets.py` — `AssetManager.logo_candidates`, best address first
+
+```python
+addresses = [indexed] if indexed else []
+addresses += [asset.logo_url, asset.logo_fallback_url] if asset else []
+addresses.append(SYMBOL_ICON_URL.format(symbol=name))
+```
+
+An unconfirmed id would still build an address, and the picture that address
+answered would be another coin's. An entry with no confirmed id therefore carries
+no primary address at all, and the reader falls through to the fallback.
+
+```mermaid
+flowchart LR
+  A["library fill asks one asset"] --> B{"coin index holds an address"}
+  B -- yes --> C["read that address"]
+  B -- no --> D{"entry carries a confirmed id"}
+  D -- yes --> E["read the coin picture address"]
+  D -- no --> F["read the ticker fallback"]
+  C --> G{"the body is an image"}
+  E --> G
+  F --> G
+  G -- yes --> H["keep the file"]
+  G -- no --> I["record the asset unresolved by name"]
+```
+
+A body that is not an image is never kept, and the asset is written down by name
+with the reason, so the wizard draws the lettered disc rather than a broken
+picture. [The asset logo library](08-tabs/market-inspector.md#the-asset-logo-library)
+covers the fill and its read budget.
 
 **What the fleet runs.** The three rows on this page decide more than the pair. The
 venue picked here rebuilds the TA Timeframe list two pages on, so a venue that does
@@ -3998,6 +4347,10 @@ candles; a position worth exactly two hundred dollars was refused before any
 fetch. A bot with Detonation on and the ceiling left off can therefore harvest at
 any value above its starting target, well below any multiple.
 
+The bar reads the larger of the count attributed to the bot and
+`_audited_venue_units`, the last balance an audit recorded, so a venue figure
+above the attributed count clears the bar on its own.
+
 `src/trading/scrumming_bot.py` — the bar `_check_detonation_trigger` actually uses
 
 ```python
@@ -4015,8 +4368,13 @@ the manual rebalance, the reconciler and the Simulator's position.
 `src/trading/scrumming_bot.py` — the bar as it reads now
 
 ```python
+audited_units = (
+    as_finite_float(getattr(self, "_audited_venue_units", 0.0)) or 0.0
+)
 current_value = priced_usd(
-    self._current_holdings, price, float(self._quote_to_usd or 1.0)
+    max(self._current_holdings, max(0.0, audited_units)),
+    price,
+    float(self._quote_to_usd or 1.0),
 )
 if current_value <= self._anchor_target_balance:
     return False
@@ -5655,6 +6013,12 @@ from .native_chart_surface import (
 readable and an empty circle when it is masked, and the control sizes to its own
 glyph rather than to a fixed square. The Charts tab's own dot takes its colour from
 the same token.
+
+A register read that raises draws neither circle. The dot takes the register's own
+absent mark, the em dash, and its tooltip reads `STATE UNREADABLE`.
+`src/gui/main_tabs/privacy_dot_surface.py, in glyph` answers all three marks and both
+builds read it, and `src/gui/widgets/privacy_dot.py, in refresh` writes the failed
+read to the log.
 
 `src/gui/design_system.py` — the token the dot paints in
 

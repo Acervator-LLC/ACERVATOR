@@ -32,8 +32,8 @@ def _load_coingecko_ids() -> None:
         for sym, asset in ASSETS.items():
             if asset.coingecko_id:
                 _COINGECKO_IDS[sym] = asset.coingecko_id
-    except Exception:  # R28-OK: best-effort cache fetch; degrades to fresh fetch
-        pass
+    except Exception as exc:
+        logger.warning("CoinGecko id table unavailable: %s", exc)
 
     # Add common ones that might be missing
     defaults = {

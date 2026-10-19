@@ -68,6 +68,24 @@ DETAIL_RESULT_NAME = "Result"
 DETAIL_REASON_NAME = "Why it is here"
 ```
 
+None of the four ever draws a name with nothing beside it. "Why it is here"
+reads `MethodResult.gate_text`, which names the threshold a verdict cleared, or,
+for one that ran and did not clear it, the one `failed_reason` names: the p-value
+above the significance, the trace statistic short of its critical value, or both.
+"Result" reads `statistic_text`. A test that did not run states no statistic and
+no reason to state, and both cells draw the dash this tab draws for every figure
+it cannot state.
+
+`src/trading/pair_selection.py` — what a verdict that did not pass reads
+
+```python
+GATE_P_ABOVE_FORMAT = "p {p_value:.4f} is above the {significance} required."
+GATE_TRACE_SHORT_FORMAT = (
+    "The trace statistic {trace:.1f} did not clear the {critical:.1f} required."
+)
+GATE_NO_REASON_TEXT = "—"
+```
+
 A zone holding nothing keeps its waiting sentence as the headline and reports a
 position of "0 of 0". An empty zone reads as a state rather than as a zone that
 failed to draw.
@@ -1007,6 +1025,20 @@ def empty_table_text(scan_state: Any, noun: Any) -> str:
 `scan_state` reports the same three states to both renderers, so the React side
 draws the note the way the window does.
 
+A scan that stops part way reports no scan at all. `MarketInspector.scan_universe`
+clears the pairs and the scan second before it runs the pair test, and sets the
+second only once that test answers, so a scan the analyzer stopped leaves no
+timestamp and no pairs from the scan before it. `inspector_scan_age` reads a
+cleared second as `NO_SCAN_AGE`, which no freshness window accepts, so the sector
+charts refetch rather than draw from a scan nobody finished.
+
+`src/gui/main_tabs/market_inspector_surface.py` — the age a cleared second reads
+
+```python
+def inspector_scan_age(inspector: Any) -> float:
+    """The seconds since the Market Inspector's last universe scan."""
+```
+
 A scan ends with one note on the Activity Log. The note names the markets no venue
 lists, the timeframes no venue serves, the markets that answered no candle, and
 each market no built bot variant trades with that market's own reason.
@@ -1178,17 +1210,63 @@ FLAT_SERIES_DETAIL = "series holds one repeated price"
 def is_flat(series: Any) -> bool:
 ```
 
+The correlation test imports no package at all. `pearson_correlation` computes
+the coefficient, and from the Student t distribution its two-sided p-value, over
+numpy alone. The reading was swept against scipy 1.18.1 over 2,090 samples —
+sizes from three to four thousand, coefficients from minus one to plus one, and
+p-values inside a decade of the 0.05 the panes gate on — and both readings answer
+the same verdict in every one of them.
+
+`src/trading/pair_selection.py` — the coefficient and its p-value
+
+```python
+def pearson_correlation(left: Any, right: Any) -> tuple[float, float]:
+    """Pearson's r over two samples, and its two-sided t-test p-value."""
+```
+
+`MarketInspector._pearson` reads that one function, so the thirty-day
+correlation that raises a candidate and the coefficient a card prints can never
+be two different formulae.
+
 Both packages are imported inside the three functions that call them, and nowhere
 else, so the application starts before either is loaded. Both are declared, and
 the bundle carries both, so the test runs in the built application and in a
 source run alike. A missing package is re-raised as itself rather than recorded
 as a refused pair.
 
+One package is named now, and the built application carries it. `scipy` is named
+by no module of the tree: the import set holds 20 outside packages where it held
+21, and 17 of them are declared. `statsmodels` is the `cointegration` extra, and
+`CONSUMER_EXTRAS["build"]` in `tools/deps.py` installs that extra, so the shipped
+bundle carries the package and the Opposing Pairs table answers rows. The guard
+is what makes it an extra rather than a core requirement: an install from a
+consumer that does not name the extra runs without the cointegration test, and
+the scan's own status line names the package rather than the import error.
+
+`src/gui/main_tabs/market_inspector_surface.py` — the line a stopped scan carries
+
+```python
+ANALYZER_ERROR_FORMAT = "Analyzer error: {error}"
+ANALYZER_MISSING_PACKAGE_FORMAT = (
+    "Opposing Pairs needs {package}, which this build left out"
+)
+```
+
+`analyzer_error_text` reads the second format only for an `ImportError` that
+names a package. Every other failure keeps the first.
+
 `pyproject.toml` — the two packages the tests need
 
 ```toml
 "scipy>=1.18.1",
 "statsmodels>=0.15.0",
+```
+
+`pyproject.toml` — the package the cointegration test needs
+
+```toml
+[project.optional-dependencies]
+cointegration = ["statsmodels>=0.15.0"]
 ```
 
 `tools/spec_common.py` — the packages the bundle still leaves out
@@ -1200,6 +1278,17 @@ EXCLUDES: tuple[str, ...] = ("tkinter", "matplotlib", "PIL", ...)
 A name in that list must not also sit in `dependencies`. The two statistics
 packages sit in `dependencies` and not in the list, which is what lets the
 Opposing Pairs table and the Bot Swarm Topologies zone draw rows.
+
+Neither statistics package sits in that list, and the rule above still holds
+because neither sits in `dependencies` either. The list leaves them out so the
+bundle carries the cointegration test: measured with scipy refused, neither
+`statsmodels.tsa.stattools` nor `statsmodels.tsa.vector_ar.vecm` imports, so
+excluding scipy alone would strip that test as surely as excluding statsmodels.
+Every name the list does hold was read against the imports of the 498 modules
+under `src/` plus `main.py`. Seven of the nine are imported nowhere, and
+`matplotlib` and `PIL` are imported only where the built application never
+reaches. The Bot Swarm Topologies zone draws rows either way, because three of
+its four detectors read the correlation test alone.
 
 The zone's own line names the whole funnel: markets read, markets with a
 direction, pairs tested, and whether any held equilibrium.
@@ -1762,6 +1851,34 @@ Three of the four read the closes a finished Inspector scan writes. The fourth
 reads the bot roster alone and pairs a scrum-deep bot with a fold-deep bot on the
 same asset.
 
+Each detector runs in an arm of its own. `detect_mean_reversion_pair` is the only
+one that reads the cointegration test, so in a build without `statsmodels` it
+answers nothing and the other three still answer. Every proposal returned carries
+one sentence naming the contribution that did not run.
+
+`src/trading/topology_proposals.py` — the sentence a proposal carries
+
+```python
+UNAVAILABLE_KEY: str = "unavailable_tests"
+UNAVAILABLE_FORMAT: str = "{detector} needs {package}, which this build left out"
+```
+
+The pane prints that sentence after its count, so a reading the application
+cannot take is named beside Refresh and not in the log alone. `unavailable_tests`
+reads the proposals on display and keeps the first of each repeated sentence,
+since one detector run stamps them all.
+
+`src/gui/main_tabs/market_inspector_topologies_surface.py` — the count and what follows it
+
+```python
+STATUS_COUNT_FORMAT = "{proposals} proposal(s); {dismissed} dismissed"
+STATUS_UNAVAILABLE_FORMAT = "{count}  ·  {sentences}"
+```
+
+With `statsmodels` absent the line reads "2 proposal(s); 0 dismissed  ·
+Mean-reversion pair needs statsmodels, which this build left out". With every
+package present it reads the count alone.
+
 Two helpers read from disk under `src/trading/`. `suggested_target_usd` sizes each
 proposed bot from the asset target defaults, and the sector map names each asset's
 sector.
@@ -1931,6 +2048,39 @@ names the wire and says why.
 PUSH_WIRE_UNHELD_FORMAT = "{source} to {target}: nothing was pushed for {asset}"
 PUSH_WIRE_SELF_FORMAT = (
     "{source} to {target}: both ends are the one bot pushed for {source}"
+)
+```
+
+A Target Balance is refused the same way, and on both destinations by the same
+rule. Each candidate row names one market and one dollar target, and both
+pushes read that target through one admission: an endless figure, a figure that
+is not a number, a stored flag, a negative figure and text no dollar can be
+read from are each refused, the Activity Log names every market refused,
+nothing is held and the run mode does not move. A row naming no target, or
+naming zero, takes the configured default instead, which is the
+`target_balance` field default `BotConfig` itself declares, so a push and the
+Bot Wizard cannot name two different dollars.
+
+`src/trading/container/config.py, in pushed_target_usd` — the one admission
+both destinations read
+
+```python
+PUSHED_TARGET_DEFAULT: float = float(
+    next(one.default for one in fields(BotConfig) if one.name == "target_balance")
+)
+```
+
+A repeated name is refused too. One pair holds one rate, so a topology naming
+the same source and target twice refuses the whole push, and a candidate naming
+the same market twice holds one bot for it rather than two.
+
+`src/gui/simulator/sim_trading_tab_surface.py` — the target and repeated-pair
+refusals
+
+```python
+PUSH_TARGET_FORMAT = "{asset}: {target} is not a Target Balance a bot can trade"
+PUSH_WIRE_TWICE_FORMAT = (
+    "{source} to {target} is named twice, and one pair holds one rate"
 )
 ```
 
@@ -4273,6 +4423,15 @@ def encode_frame(response: dict) -> bytes:
 `json.dumps` raises, logs the type and the message under `acervator.core.desktop_bridge`,
 and returns a line for each of the three. The frontend's parser has a frame to read for
 every one of them, and the screen answers in place of going silent.
+
+### The sentence the declared derivation cost replaces
+
+The sentence below stands in an earlier section and no longer describes the
+code. The earlier text stays where it is.
+
+| Earlier sentence | What the code does now |
+| ---------------- | ---------------------- |
+| "`src/core/encryption.py` — the derivation cost", and the `_KDF_ITERATIONS` line under it | The cost is declared as `KDF_ITERATIONS`, a public name carrying the OWASP figure in its own docstring. The figure is unchanged at 600,000 rounds, and a search for `_KDF_ITERATIONS` finds nothing. |
 
 The narrative for the whole screen is on [the tabs page](../08-tabs.md). The tab
 index is on [the subsystem README](README.md).

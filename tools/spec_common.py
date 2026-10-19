@@ -182,7 +182,27 @@ def hiddenimports_for(platform: str) -> list[str]:
 
 
 # Passed to PyInstaller by both spec files. A name here must not appear in
-# pyproject.toml `dependencies`; `pair_selection.py` imports scipy, so it does not.
+# pyproject.toml `dependencies`, and every name here was read against the import
+# set of the 498 modules under src/ plus main.py, by AST walk over both
+# module-level and function-level imports. Control: a name that does not exist
+# reads 0 importing files, PySide6 reads 74 and numpy 4.
+#
+#   tkinter, IPython, jupyter, notebook, pytest, sphinx, setuptools
+#            0 importing files each.
+#   matplotlib  src/design_system.py, at module load. Its only importer is
+#            tools/build_product_manual.py, which no spec collects, so the
+#            frozen application never reaches the import.
+#   PIL      src/core/mini_display.py in `render`, which no module imports, and
+#            seven functions of src/gui/main_tabs/splash_screen_painter.py that
+#            only `compose_still` calls, which nothing calls. main.py reaches
+#            `mark_ops` in that module, and `mark_ops` is Qt alone.
+# `scipy` and `statsmodels` are deliberately NOT in the list. The Opposing Pairs
+# table is a screen the operator opens, and its test is the only reading either
+# package serves, so the bundle carries both: `CONSUMER_EXTRAS["build"]` installs
+# the `cointegration` extra. Measured on the build host, neither
+# `statsmodels.tsa.stattools` nor `statsmodels.tsa.vector_ar.vecm` imports with
+# scipy refused, so excluding scipy alone would strip the test as surely as
+# excluding statsmodels.
 EXCLUDES: tuple[str, ...] = (
     "tkinter",
     "matplotlib",

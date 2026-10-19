@@ -26,6 +26,7 @@ from .sizing import (
     priced_usd,
     scrum_units,
     target_delta_usd,
+    units_at_scrum,
 )
 from .snapshots import yes_no as _yes_no
 
@@ -49,6 +50,7 @@ class TickPhaseMixin:
     _cartridge_last_smart_pct: float
     _check_detonation_trigger: Callable[..., Any]
     _current_holdings: float
+    _detonation_last_signal_bullish: bool
     _dist_accumulator: float
     _drop_malformed_fold_tranches: Callable[..., int]
     _emit_gate_decision_at_fire: Callable[..., None]
@@ -631,13 +633,22 @@ class TickPhaseMixin:
             logger.exception("Max cartridge rebalance failed")
 
     async def _tick_detonation(self, ticker: Any) -> bool:
-        """Return True when a detonation fired and the tick must stop."""
+        """Return True when a detonation fired and the tick must stop.
+
+        ``_check_detonation_trigger`` spends the bullish edge as it reads it,
+        so an executor that refused — most often because the venue balance it
+        sizes the sale from could not be read — re-arms
+        ``_detonation_last_signal_bullish``, leaving the next check free to
+        fire the same bull run. An executor that raised does not re-arm,
+        because an order may already be at the venue.
+        """
         if getattr(self.config, "detonation_enabled", False):
             try:
                 fired = await self._check_detonation_trigger(ticker)
                 if fired:
-                    await self._execute_detonation(ticker)
-                    return True
+                    if await self._execute_detonation(ticker):
+                        return True
+                    self._detonation_last_signal_bullish = False
             except Exception as exc:
                 self._bus.emit(
                     "bot.log",
@@ -1374,7 +1385,9 @@ class TickPhaseMixin:
         if _scrum_skipped_below_min:
             sell_fill = None
         else:
-            sell_fill = await self._execute_sell(scrum_asset, ticker.last, summary)
+            sell_fill = await self._execute_sell(
+                scrum_asset, ticker.last, summary, label="SCRUM"
+            )
         if sell_fill is None or sell_fill <= 0:
             if not _scrum_skipped_below_min and self._refusal_is_new(
                 "scrum_sell_refused", ticker.last
@@ -1390,10 +1403,13 @@ class TickPhaseMixin:
                     ),
                 )
         else:
+            # _execute_sell leaves the venue's own count here; scrum_asset is
+            # only what was asked for, and a partial fill sold less.
+            _sold_units = float(self._last_sell_filled_units or 0.0)
             # _settled_sale_proceeds nets the venue's reported fee out
-            # of the gross scrum_asset * sell_fill.
+            # of the gross _sold_units * sell_fill.
             scrum_usd = self._settled_sale_proceeds(
-                scrum_asset, sell_fill, label="SCRUM"
+                _sold_units, sell_fill, label="SCRUM"
             )
 
             if self._fold_cycle_cap_consumed > 1e-9:
@@ -1420,7 +1436,7 @@ class TickPhaseMixin:
 
             self._main_lots.sort(key=lambda l: l["initial_buy_price"], reverse=True)
             _tranche_count_before = len(self._fold_tranches)
-            _units_remaining = scrum_asset
+            _units_remaining = _sold_units
             _first_new_tranche = None
             for _lot in list(self._main_lots):
                 if _units_remaining <= 1e-12:
@@ -1428,7 +1444,7 @@ class TickPhaseMixin:
                 _take = min(_lot["units"], _units_remaining)
                 if _take <= 1e-12:
                     continue
-                _t_usd = (_take / scrum_asset) * scrum_usd
+                _t_usd = (_take / _sold_units) * scrum_usd
                 _new_tr = {
                     "usd": _t_usd,
                     "units": _take,
@@ -1457,7 +1473,7 @@ class TickPhaseMixin:
             ):
                 self._absorb_pending_wire_credits_into(_first_new_tranche)
 
-            self._apply_scrum_fold_pct(_tranche_count_before, scrum_usd, scrum_asset)
+            self._apply_scrum_fold_pct(_tranche_count_before, scrum_usd, _sold_units)
 
             self._top_up_remnant_fold_tranches(
                 _tranche_count_before,
@@ -1477,7 +1493,8 @@ class TickPhaseMixin:
                 bot_id=self.bot_id,
                 message=f"SCRUM: Target=${self._target_balance:.2f}, "
                 f"Value=${current_value:.2f} (+{delta_pct:.1f}%), "
-                f"sold {scrum_asset:.6f} (${scrum_usd:.4f}) on "
+                f"sold {_sold_units:.6f} of {scrum_asset:.6f} asked "
+                f"(${scrum_usd:.4f}) on "
                 f"{eff_direction.name} (conf={eff_confidence:.2f}"
                 f"≥floor {_eff_conf_floor:.2f}, "
                 f"pos_skew={position_boost:+.2f}, bb={bb_pos:.0%}). "
@@ -1489,7 +1506,7 @@ class TickPhaseMixin:
                 side="sell",
                 type="SCRUM",
                 price=sell_fill,
-                amount=scrum_asset,
+                amount=_sold_units,
                 size=scrum_usd,
                 profit=0,
                 **self._fill_fee_fields(sell_fill),
@@ -1521,7 +1538,7 @@ class TickPhaseMixin:
                         "kind": "SCRUM",
                         "asset": self.config.target_asset,
                         "symbol": self.config.symbol,
-                        "units": float(scrum_asset),
+                        "units": float(_sold_units),
                         "fill_price": float(sell_fill),
                         "usd_captured": float(scrum_usd)
                         * float(self._quote_to_usd or 1.0),
@@ -1840,7 +1857,7 @@ class TickPhaseMixin:
                 )
 
             buy_asset = fold_units(buy_cost, ticker.last, FRACTIONAL_UNITS)
-            asset_at_scrum = sum(t["usd"] / t["ref"] for t in _eligible)
+            asset_at_scrum = sum(units_at_scrum(t) for t in _eligible)
             extra_asset = buy_asset - asset_at_scrum
             min_ref = min(t["ref"] for t in _eligible)
             pct_cheaper = (1 - ticker.last / min_ref) * 100
@@ -1881,7 +1898,7 @@ class TickPhaseMixin:
                 return True
 
             buy_asset = fold_units(buy_cost, buy_fill, FRACTIONAL_UNITS)
-            asset_at_scrum = sum(t["usd"] / t["ref"] for t in _eligible)
+            asset_at_scrum = sum(units_at_scrum(t) for t in _eligible)
             extra_asset = buy_asset - asset_at_scrum
             pct_cheaper = (1 - buy_fill / _intended_min_ref) * 100
             accum_profit = priced_usd(extra_asset, buy_fill)
@@ -2128,7 +2145,9 @@ class TickPhaseMixin:
                     "suppressed in %s: %s: %s", "tick", type(_sup).__name__, _sup
                 )
             if dist_asset > 0:
-                dist_fill = await self._execute_sell(dist_asset, ticker.last, summary)
+                dist_fill = await self._execute_sell(
+                    dist_asset, ticker.last, summary, label="DIST"
+                )
                 if dist_fill is None or dist_fill <= 0:
                     if self._refusal_is_new("dist_sell_refused", ticker.last):
                         self._bus.emit(
@@ -2142,17 +2161,21 @@ class TickPhaseMixin:
                             ),
                         )
                 else:
+                    # _execute_sell leaves the venue's own count here;
+                    # dist_asset is only what was asked for.
+                    _sold_units = float(self._last_sell_filled_units or 0.0)
                     # _settled_sale_proceeds nets the venue's reported
-                    # fee out of dist_asset * dist_fill.
+                    # fee out of _sold_units * dist_fill.
                     dist_usd = self._settled_sale_proceeds(
-                        dist_asset, dist_fill, label="DIST"
+                        _sold_units, dist_fill, label="DIST"
                     )
                     self.stats.trade_volume += dist_usd
 
                     self._bus.emit(
                         "bot.log",
                         bot_id=self.bot_id,
-                        message=f"DIST: Sold {dist_asset:.6f} excess @ ${dist_fill:.8f} "
+                        message=f"DIST: Sold {_sold_units:.6f} of "
+                        f"{dist_asset:.6f} asked @ ${dist_fill:.8f} "
                         f"(intended ${ticker.last:.8f}) = ${dist_usd:.4f}",
                     )
                     self._bus.emit(
@@ -2161,7 +2184,7 @@ class TickPhaseMixin:
                         side="sell",
                         type="DIST",
                         price=dist_fill,
-                        amount=dist_asset,
+                        amount=_sold_units,
                         size=dist_usd,
                         profit=dist_usd * 0.02,
                         **self._fill_fee_fields(dist_fill),
@@ -2179,14 +2202,14 @@ class TickPhaseMixin:
                             key=lambda l: l["initial_buy_price"], reverse=True
                         )
                         _dist_tranche_count_before = len(self._fold_tranches)
-                        _units_remaining = dist_asset
+                        _units_remaining = _sold_units
                         for _lot in list(self._main_lots):
                             if _units_remaining <= 1e-12:
                                 break
                             _take = min(_lot["units"], _units_remaining)
                             if _take <= 1e-12:
                                 continue
-                            _t_usd = (_take / dist_asset) * dist_usd
+                            _t_usd = (_take / _sold_units) * dist_usd
                             self._fold_tranches.append(
                                 {
                                     "usd": _t_usd,
@@ -2204,7 +2227,7 @@ class TickPhaseMixin:
                         self._bound_new_fold_tranches(_dist_tranche_count_before)
                         # scrum_fold_pct governs DIST proceeds as it governs a SCRUM.
                         self._apply_scrum_fold_pct(
-                            _dist_tranche_count_before, dist_usd, dist_asset
+                            _dist_tranche_count_before, dist_usd, _sold_units
                         )
                         self._top_up_remnant_fold_tranches(
                             _dist_tranche_count_before,

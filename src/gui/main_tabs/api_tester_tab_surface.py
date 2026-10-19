@@ -56,7 +56,7 @@ STATUS_CONNECTED_FORMAT = "Connected: {exchange} ({markets} markets)"
 STATUS_FAILED_TEXT = "Failed"
 STATUS_DISCONNECTED_TEXT = "Disconnected"
 
-# ds.CARD_METRIC_LABEL is "#888": three equal channels, so a swap of any
+# ds.CARD_METRIC_LABEL is "#888888": three equal channels, so a swap of any
 # two reads the same. Every check on it compares the exact text.
 STATUS_IDLE_COLOR = ds.CARD_METRIC_LABEL
 STATUS_CONNECTING_COLOR = ds.STATUS_INFO

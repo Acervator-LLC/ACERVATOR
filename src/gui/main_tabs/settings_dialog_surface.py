@@ -198,23 +198,28 @@ EXCHANGE_STATUS_LABEL = "Exchange Status"
 
 VENUE_STATE_VALIDATED = "validated"
 VENUE_STATE_LOST = "lost"
+VENUE_STATE_FORMAT_CHECKED = "format_checked"
 VENUE_STATE_UNSET = "unset"
 
-#: The ``design_system`` token each venue state paints with.
+#: The ``design_system`` token each venue state paints with. Only a venue's own
+#: answer reaches ``SUCCESS``; a format check draws the resting colour.
 VENUE_STATE_TOKENS = {
     VENUE_STATE_VALIDATED: "SUCCESS",
     VENUE_STATE_LOST: "ERROR",
+    VENUE_STATE_FORMAT_CHECKED: "STATUS_NEUTRAL",
     VENUE_STATE_UNSET: "STATUS_NEUTRAL",
 }
 VENUE_STATE_COLOURS = {
     VENUE_STATE_VALIDATED: ds.SUCCESS,
     VENUE_STATE_LOST: ds.ERROR,
+    VENUE_STATE_FORMAT_CHECKED: ds.STATUS_NEUTRAL,
     VENUE_STATE_UNSET: ds.STATUS_NEUTRAL,
 }
 VENUE_STATE_WORDS = {
     VENUE_STATE_VALIDATED: "credentials validated",
     VENUE_STATE_LOST: "API connection lost",
-    VENUE_STATE_UNSET: "no valid credentials",
+    VENUE_STATE_FORMAT_CHECKED: "credential format checked, no venue asked",
+    VENUE_STATE_UNSET: "no valid credentials: never asked, or the venue refused one",
 }
 VENUE_ROW_FORMAT = "{name} ({venue})"
 VENUE_ROW_STYLE = (
@@ -382,6 +387,32 @@ TEST_FAILED_FEEDBACK_FORMAT = "Test failed: {error}"
 
 ADDED_WITH_CREDENTIALS = "with stored credentials"
 ADDED_WITHOUT_CREDENTIALS = "without credentials"
+
+#: The words a Save puts on screen when the Username row carries a different
+#: name over a stored credential. ``username_rename_consequence`` fills the
+#: question and both save paths read that one answer, so the Qt build and the
+#: drawn build cannot ask differently.
+USERNAME_KEY = "username"
+RENAME_BOX_TITLE = "The Username row keys your stored credentials"
+RENAME_QUESTION_FORMAT = (
+    "Every venue secret on this install is encrypted under the name in the "
+    "Username row.\n\n"
+    "{count} venue(s) hold a stored secret: {names}.\n\n"
+    "Saving the new name re-encrypts those secrets under it. Nothing is sent "
+    "anywhere and no venue is contacted.\n\n"
+    "Rename and re-encrypt the stored secrets? Answer No to keep the name you "
+    "had."
+)
+RENAME_NAMES_JOIN = ", "
+RENAME_RESEALED_LOG_FORMAT = "Username changed; {count} venue(s) re-encrypted: {names}"
+RENAME_REFUSED_LOG_FORMAT = (
+    "{count} venue(s) would not open under the old name and were left as they "
+    "were: {names}"
+)
+RENAME_KEPT_LOG = "Username left as it was; no stored secret was re-encrypted"
+RENAME_FAILED_LOG_FORMAT = (
+    "Username left as it was; the re-encryption could not finish: {error}"
+)
 ADDED_FEEDBACK_FORMAT = "{name} added {how}."
 ADDED_LOG_FORMAT = "Exchange added: {name} ({how})"
 ADDED_BOX_TITLE = "Exchange Added"
@@ -1811,6 +1842,49 @@ def stored_credential_phrase(entry: Any) -> str:
     return ADDED_WITHOUT_CREDENTIALS
 
 
+def credential_bearing_venues(exchanges: Any) -> tuple:
+    """Every venue id among *exchanges* holding at least one sealed token.
+
+    ``stored_credential_phrase`` reads the same ``CREDENTIAL_FIELDS`` per entry,
+    so a venue the Exchanges page reports as holding credentials is a venue this
+    names. No token is opened and no value is read.
+    """
+    found = []
+    for entry in exchanges or ():
+        holder = entry if isinstance(entry, dict) else {}
+        if any(holder.get(name) for name in CREDENTIAL_FIELDS):
+            found.append(str(holder.get(EXCHANGE_ID_KEY, "")))
+    return tuple(found)
+
+
+def username_rename_consequence(stored: Any, typed: Any, exchanges: Any) -> dict:
+    """What a Save does to the stored secrets when the Username row changed.
+
+    ``asks`` is True only where the name changed and a venue holds a sealed
+    token, which is the one case a Save would leave a secret under a phrase
+    nothing rebuilds. ``words`` is the question that case puts on screen.
+    ``SettingsDialog._settle_username_rename`` and ``SettingsDialogModel.save``
+    read this one answer.
+    """
+    was = str(stored or "")
+    now = str(typed or "")
+    venues = credential_bearing_venues(exchanges)
+    changed = now != was
+    asks = changed and bool(venues)
+    return {
+        "changed": changed,
+        "venues": venues,
+        "asks": asks,
+        "words": (
+            RENAME_QUESTION_FORMAT.format(
+                count=len(venues), names=RENAME_NAMES_JOIN.join(venues)
+            )
+            if asks
+            else EMPTY_TEXT
+        ),
+    }
+
+
 #: The two kinds of credential a venue takes. ``credential_kind`` answers one
 #: and the Add form asks for that one alone.
 CREDENTIAL_TYPED_KEY = "key and secret"
@@ -2608,6 +2682,9 @@ class SettingsDialogModel:
         self.settings = settings
         self.status_log = status_log
         self.wing = wing_or_default(wing)
+        # OVERTAKEN, the sentence below reading "Only the Exchange Status panel
+        # reads it": the Configured-exchanges filter in `_load_current` reads it
+        # too, so a venue is listed under the sectors it serves.
         #: The sector the dialog was opened from, before `wing_or_default`
         #: collapses it onto one of two wings. Only the Exchange Status
         #: panel reads it.
@@ -2910,9 +2987,12 @@ class SettingsDialogModel:
         # True today: one venue id can serve both wings, so membership of the
         # equity set no longer tells the two apart. asset_class_surface.serves
         # answers whether the venue serves the wing's own sector.
+        # OVERTAKEN, the sentence above reading "the wing's own sector": four of
+        # the six sectors collapse onto the crypto wing, so the wing names the
+        # wrong sector for them. `asset_class` is the sector itself.
         for entry in self.settings.list_exchanges():
             eid = (entry.get(EXCHANGE_ID_KEY, "") or "").lower()
-            if not serves_wing(eid, self.wing):
+            if not serves_wing(eid, self.asset_class):
                 continue
             self.listed_exchanges.append(
                 CONFIGURED_ITEM_FORMAT.format(
@@ -2955,7 +3035,7 @@ class SettingsDialogModel:
         ``credential_form`` answer, the one the Qt dialog reads.
         """
         eid = self.current_exchange_id()
-        form = credential_form(eid, self.wing)
+        form = credential_form(eid, self.asset_class)
         self.texts["chosen_venue"] = chosen_venue_text(self.asset_class, self.venue_row)
         self.values["pp_check"] = eid in passphrase_exchange_ids()
         self.texts["api_feedback"] = ""
@@ -3237,6 +3317,27 @@ class SettingsDialogModel:
             return value.strip()
         return value
 
+    def _hold_username_over_credentials(self) -> None:
+        """Keep the stored name in the Username row where a Save would orphan a secret.
+
+        This model carries no press, so it refuses the one case
+        ``username_rename_consequence`` calls dangerous: the stored name goes
+        back into the row and the question is recorded as a box.
+        ``SettingsDialog._settle_username_rename`` is where the press is read and
+        the stored secrets are resealed.
+        """
+        answer = username_rename_consequence(
+            self.settings.get(USERNAME_KEY, EMPTY_TEXT),
+            self._pair_value(USERNAME_KEY),
+            self.settings.list_exchanges(),
+        )
+        if not answer["asks"]:
+            return
+        self.values[USERNAME_KEY] = str(self.settings.get(USERNAME_KEY, EMPTY_TEXT))
+        self.message_boxes.append([WARNING_ICON, RENAME_BOX_TITLE, answer["words"]])
+        if self.status_log:
+            self.status_log.log(RENAME_KEPT_LOG, WARNING_LEVEL)
+
     def save(self) -> dict:
         """Write every setting, report what failed, and close the dialog.
 
@@ -3249,6 +3350,8 @@ class SettingsDialogModel:
             self.prints.append(NO_MANAGER_PRINT)
             self.accepted = True
             return {"saved": 0, "failed": [], "closed": True}
+
+        self._hold_username_over_credentials()
 
         saved = 0
         failed: list = []

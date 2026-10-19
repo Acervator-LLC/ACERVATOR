@@ -46,7 +46,7 @@ from ...simulator.sim_api_log import TABLET_ACTION, YTD_ACTION
 from ...simulator.sim_bus import fill_line
 from ...simulator.validation import iso_stamp
 from ...simulator.ytd_trade_source import ROOT_EMPTY, ROOT_MISSING, ROOT_NO_MANIFEST
-from ...trading.container.config import BotState
+from ...trading.container.config import BotState, pushed_target_usd
 from ..main_tabs import indicator_panel_surface as panel
 from ..main_tabs import simulator_tab_surface as sim
 from ..main_tabs import trading_tab_surface as live
@@ -326,12 +326,24 @@ PUSH_IN_FLIGHT_TEXT = (
     "Back Test. Nothing was pushed."
 )
 
+#: Why one market of a pushed candidate names no Target Balance a bot can
+#: trade, and the refusal the whole push answers with. Both carry the wording
+#: the Paper half of the same press writes.
+PUSH_TARGET_FORMAT = "{asset}: {target} is not a Target Balance a bot can trade"
+PUSH_TARGET_REFUSED_FORMAT = (
+    "Push to Sim refused: {count} market(s) name no usable Target Balance: "
+    "{reasons}. Nothing was pushed and the run mode is unchanged."
+)
+
 #: Why one wire of a pushed topology cannot be delivered, and the refusal the
 #: whole push answers with. Each mirrors a check ``register_wire`` makes.
 PUSH_WIRE_UNNAMED_TEXT = "a wire naming no source or no target"
 PUSH_WIRE_UNHELD_FORMAT = "{source} to {target}: nothing was pushed for {asset}"
 PUSH_WIRE_SELF_FORMAT = (
     "{source} to {target}: both ends are the one bot pushed for {source}"
+)
+PUSH_WIRE_TWICE_FORMAT = (
+    "{source} to {target} is named twice, and one pair holds one rate"
 )
 PUSH_WIRE_RATE_FORMAT = "{source} to {target}: {pct} is not a rate in (0, 100]"
 PUSH_WIRE_REFUSED_FORMAT = (
@@ -368,42 +380,61 @@ def push_payload(candidate: Any) -> tuple:
     """``(bots, wires)`` of one pushed candidate.
 
     Both producers answer ``{"bots", "wires"}``, and anything else reads as no
-    bot and no wire, which ``push_configs`` refuses as naming no asset.
+    bot and no wire, which ``push_configs`` refuses as naming no asset; a
+    mapping under either key reads as no row through ``_row_list``, never as a
+    list of its own keys.
     """
     held = candidate if isinstance(candidate, dict) else {}
-    return list(held.get("bots") or []), list(held.get("wires") or [])
+    return _row_list(held.get("bots")), _row_list(held.get("wires"))
+
+
+def _row_list(held: Any) -> list:
+    """``held`` as a list of payload rows; a mapping, a string and anything
+    outside a list or a tuple all read as no row."""
+    return list(held) if isinstance(held, (list, tuple)) else []
+
+
+def _row(held: Any) -> dict:
+    """``held`` as one payload row; a row that is not a dict reads as an empty
+    one, which names no asset and no wire end."""
+    return held if isinstance(held, dict) else {}
 
 
 def push_configs(candidates: Any, entries: Any) -> tuple:
-    """``(configs, missing)`` for one pushed candidate's symbols.
+    """``(configs, missing, refused)`` for one pushed candidate's symbols.
 
     Each candidate is ``{"symbol", "target_usd"}``; a symbol whose ``base_of``
     asset ``tablet_venues`` names becomes a ``pushed_config`` on that tablet's
-    venue and timeframe, and every other asset is returned in ``missing`` so
-    the push is refused whole.
+    venue and timeframe at its ``pushed_target_usd`` figure, an asset named a
+    second time is passed over, an asset whose Target Balance
+    ``pushed_target_usd`` refuses is returned in ``refused``, and every asset
+    no tablet names is returned in ``missing``, each list refusing the push
+    whole.
     """
     venues = tablet_venues(entries)
     configs: list[dict] = []
     missing: list[str] = []
+    refused: list[str] = []
+    seen: set[str] = set()
     for candidate in candidates or []:
-        asset = base_of((candidate or {}).get("symbol"))
-        if not asset:
+        row = _row(candidate)
+        asset = base_of(row.get("symbol"))
+        if not asset or asset in seen:
+            continue
+        seen.add(asset)
+        target_usd = pushed_target_usd(row.get("target_usd"))
+        if target_usd is None:
+            refused.append(
+                PUSH_TARGET_FORMAT.format(asset=asset, target=row.get("target_usd"))
+            )
             continue
         held = venues.get(asset)
         if held is None:
-            if asset not in missing:
-                missing.append(asset)
+            missing.append(asset)
             continue
         exchange_id, timeframe = held
-        configs.append(
-            pushed_config(
-                asset,
-                exchange_id,
-                timeframe,
-                float((candidate or {}).get("target_usd") or 0.0),
-            )
-        )
-    return configs, missing
+        configs.append(pushed_config(asset, exchange_id, timeframe, target_usd))
+    return configs, missing, refused
 
 
 def push_refused_line(missing: Any) -> str:
@@ -412,6 +443,13 @@ def push_refused_line(missing: Any) -> str:
     if not named:
         return PUSH_NO_CANDIDATE_TEXT
     return PUSH_NO_TABLET_FORMAT.format(assets=", ".join(sorted(named)))
+
+
+def push_target_refused_line(reasons: Any) -> str:
+    """The Activity Log line for a push whose markets ``push_configs`` refused
+    a Target Balance for, listing each reason."""
+    named = [str(one) for one in (reasons or []) if str(one)]
+    return PUSH_TARGET_REFUSED_FORMAT.format(count=len(named), reasons="; ".join(named))
 
 
 def push_held_line(configs: Any) -> str:
@@ -426,23 +464,27 @@ def undeliverable_wires(wires: Any, configs: Any) -> list:
     ``configs``, and an empty list when every wire travels.
 
     A wire is undeliverable when ``push_configs`` built no config for one of
-    its assets, when both its ends name the one asset, or when its ``pct`` is
-    outside the ``0 < pct <= 100`` range ``SimWireManager.register_wire``
-    takes.
+    its assets, when both its ends name the one asset, when ``wires`` names one
+    pair twice, or when its ``pct`` is outside the ``0 < pct <= 100`` range
+    ``SimWireManager.register_wire`` takes.
     """
-    held = {
-        str((one or {}).get("target_asset") or "").upper() for one in (configs or [])
-    }
+    held = {str(_row(one).get("target_asset") or "").upper() for one in (configs or [])}
     out: list = []
-    for one in wires or []:
-        source = str((one or {}).get("source_asset") or "").upper()
-        target = str((one or {}).get("target_asset") or "").upper()
+    named: set = set()
+    for wire in wires or []:
+        row = _row(wire)
+        source = str(row.get("source_asset") or "").upper()
+        target = str(row.get("target_asset") or "").upper()
         if not source or not target:
             out.append(PUSH_WIRE_UNNAMED_TEXT)
             continue
         if source == target:
             out.append(PUSH_WIRE_SELF_FORMAT.format(source=source, target=target))
             continue
+        if (source, target) in named:
+            out.append(PUSH_WIRE_TWICE_FORMAT.format(source=source, target=target))
+            continue
+        named.add((source, target))
         absent = [one for one in (source, target) if one not in held]
         if absent:
             out.append(
@@ -451,7 +493,7 @@ def undeliverable_wires(wires: Any, configs: Any) -> list:
                 )
             )
             continue
-        pct = (one or {}).get("pct")
+        pct = row.get("pct")
         if not _is_wire_rate(pct):
             out.append(
                 PUSH_WIRE_RATE_FORMAT.format(source=source, target=target, pct=pct)
@@ -461,10 +503,17 @@ def undeliverable_wires(wires: Any, configs: Any) -> list:
 
 def _is_wire_rate(pct: Any) -> bool:
     """Whether ``pct`` reads as a real number in ``0 < pct <= 100``, the range
-    ``SimWireManager.register_wire`` accepts."""
+    ``SimWireManager.register_wire`` accepts.
+
+    A bool and any value outside ``int``, ``float`` and ``str`` read as no
+    rate, so no ``__float__`` of a pushed wire's own is ever called by
+    ``undeliverable_wires``.
+    """
+    if isinstance(pct, bool) or not isinstance(pct, (int, float, str)):
+        return False
     try:
         rate = float(pct)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         return False
     return math.isfinite(rate) and 0.0 < rate <= 100.0
 
@@ -500,14 +549,15 @@ def register_pushed_wires(manager: Any, wires: Any, bot_ids: Any) -> list:
     """
     ids = {str(key).upper(): str(value) for key, value in (bot_ids or {}).items()}
     out: list = []
-    for one in wires or []:
-        source_asset = str((one or {}).get("source_asset") or "").upper()
-        target_asset = str((one or {}).get("target_asset") or "").upper()
+    for wire in wires or []:
+        row = _row(wire)
+        source_asset = str(row.get("source_asset") or "").upper()
+        target_asset = str(row.get("target_asset") or "").upper()
         source_id = ids.get(source_asset, "")
         target_id = ids.get(target_asset, "")
         if not source_id or not target_id:
             continue
-        pct = float((one or {}).get("pct") or 0.0)
+        pct = float(row.get("pct") or 0.0)
         answer = manager.register_wire(source_id, target_id, pct)
         if not answer.get("applied"):
             logger.warning(

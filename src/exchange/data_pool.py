@@ -7,6 +7,11 @@ per exchange, symbol and timeframe. ``get_or_fetch_ticker``,
 ``get_or_fetch_ohlcv`` and ``get_or_fetch_balance`` return a fresh entry from
 cache and coalesce concurrent misses behind one ``asyncio.Lock``.
 ``get_data_pool`` returns the process-wide singleton.
+
+``_acquire_fetch_lock`` bounds the wait for one of those locks, so a holder that
+never finishes cannot stop every other reader of that slot for the life of the
+process. The pool is a module singleton and nothing rebuilds its locks, so
+without the bound closing the platform is the only thing that clears one.
 """
 
 from __future__ import annotations
@@ -16,9 +21,11 @@ import logging
 import math
 import time
 from dataclasses import dataclass, field
-from typing import Optional, cast
+from typing import Optional
 
 from ..trading.ta_engine import MIN_CANDLES_FOR_TA
+from .api_load_monitor import DEFAULT_WINDOW_SECONDS
+from .lazy_singleton import ThrottledFault
 from .market_pairs_scout import row_quote_volume_24h
 
 logger = logging.getLogger("acervator.data_pool")
@@ -31,6 +38,17 @@ REACH_BACK_PERIODS = MIN_CANDLES_FOR_TA * MIN_CANDLES_FOR_TA
 TICKER_TTL_SECONDS = 5.0
 #: Lifetime of a balance slot, seconds. `BalanceEntry.is_stale` is the contract.
 BALANCE_TTL_SECONDS = 10.0
+
+#: How long a fetch waits on a slot's lock before it asks whether the pool has
+#: taken any reading at all. ``APILoadMonitor``'s rate window, which is the span
+#: ``fetch_stall.STALL_THRESHOLD_SECONDS`` reports a stop over.
+LOCK_WAIT_BUDGET_SECONDS = DEFAULT_WINDOW_SECONDS
+
+#: Budgets a waiter gives a holder that is slow while other slots still refresh.
+#: Three budgets is 180 s, above the 157 s one balance fetch can legitimately
+#: hold: two account reads, each three ``CCXTConnector`` attempts of
+#: ``SYNC_CALL_TIMEOUT_SEC`` with the retry backoff between them.
+LOCK_WAIT_BUDGETS_BEFORE_CLEAR = 3
 
 TF_SECONDS = {
     "1m": 60,
@@ -241,6 +259,96 @@ class MarketDataPool:
         self._balance_cache_hits = 0
         self._balance_batch_fills = 0
         self._balance_batch_slots = 0
+        self._wedged_locks_cleared = 0
+        self._fetch_lock_fault = ThrottledFault(
+            "exchange fetching through the shared market data pool",
+            "Prices, balances and candles stop updating.",
+        )
+
+    @property
+    def wedged_locks_cleared(self) -> int:
+        """Fetch locks replaced because their holder never finished."""
+        return self._wedged_locks_cleared
+
+    def _live_lock(
+        self, locks: dict[str, asyncio.Lock], key: str, label: str
+    ) -> asyncio.Lock:
+        """The fetch lock for ``key``, replacing one bound to a dead loop.
+
+        ``asyncio.Lock`` records its loop in the private ``_loop`` on first
+        acquire, and acquiring it from another loop raises rather than waits.
+        """
+        lock = locks.get(key)
+        if lock is None:
+            lock = asyncio.Lock()
+            locks[key] = lock
+            return lock
+        try:
+            running = asyncio.get_running_loop()
+        except RuntimeError:
+            return lock
+        bound = getattr(lock, "_loop", None)
+        if bound is not None and bound is not running:
+            logger.warning(
+                "DataPool: cross-loop fetch lock for %s (bound=%s running=%s); "
+                "replacing.",
+                label,
+                id(bound),
+                id(running),
+            )
+            lock = asyncio.Lock()
+            locks[key] = lock
+        return lock
+
+    def _no_reading_landed(self) -> bool:
+        """True when the freshest slot in the pool is past the wait budget.
+
+        A reading landing on any slot means the venue is answering and a waiter
+        on one lock is merely queued behind another fetch.
+        """
+        freshest = self.slot_ages()["freshest_age_s"]
+        return freshest is None or float(freshest) > LOCK_WAIT_BUDGET_SECONDS
+
+    async def _clear_wedged_lock(
+        self, locks: dict[str, asyncio.Lock], key: str, label: str, waited_s: float
+    ) -> asyncio.Lock:
+        """Replace ``key``'s lock with a fresh one this caller holds.
+
+        The holder of the old lock keeps it and is abandoned. Reporting carries
+        ``ThrottledFault``'s window, so a venue that stays blocked costs one
+        Console line per widening window rather than one per slot per wait.
+        """
+        self._wedged_locks_cleared += 1
+        self._fetch_lock_fault.note_cleared(label, waited_s)
+        fresh = asyncio.Lock()
+        locks[key] = fresh
+        await fresh.acquire()
+        return fresh
+
+    async def _acquire_fetch_lock(
+        self, locks: dict[str, asyncio.Lock], key: str, label: str
+    ) -> asyncio.Lock:
+        """Return the held fetch lock for ``key``. Never waits without a bound.
+
+        Concurrent misses on one ``key`` still queue on one lock. A waiter that
+        reaches ``LOCK_WAIT_BUDGET_SECONDS`` while no slot in the pool took a
+        reading treats the holder as blocked and clears the lock, so a stop
+        recovers on the next fetch instead of on a restart. One that reaches it
+        while the pool is still refreshing waits again, up to
+        ``LOCK_WAIT_BUDGETS_BEFORE_CLEAR`` budgets, so a slow read that still
+        returns keeps its lock.
+        """
+        ceiling_s = LOCK_WAIT_BUDGET_SECONDS * LOCK_WAIT_BUDGETS_BEFORE_CLEAR
+        waited_s = 0.0
+        while True:
+            lock = self._live_lock(locks, key, label)
+            try:
+                await asyncio.wait_for(lock.acquire(), LOCK_WAIT_BUDGET_SECONDS)
+                return lock
+            except asyncio.TimeoutError:
+                waited_s += LOCK_WAIT_BUDGET_SECONDS
+            if waited_s >= ceiling_s or self._no_reading_landed():
+                return await self._clear_wedged_lock(locks, key, label, waited_s)
 
     def register(self, exchange_id: str, symbol: str, timeframe: str):
         """Register a bot's data need. Same combo = shared cache slot."""
@@ -325,34 +433,10 @@ class MarketDataPool:
                 timestamp=entry.timestamp,
             )
 
-        # A Lock bound to a dead loop is replaced, not awaited.
-        lock = self._ticker_fetch_locks.get(tkey)
-        _need_new_lock = False
-        if lock is None:
-            _need_new_lock = True
-        else:
-            # asyncio.Lock records its loop in the private ``_loop`` on
-            # first acquire.
-            try:
-                _bound_loop = getattr(lock, "_loop", None)
-                _running_loop = asyncio.get_running_loop()
-                if _bound_loop is not None and _bound_loop is not _running_loop:
-                    logger.warning(
-                        "DataPool: detected cross-loop Lock for %s/%s "
-                        "(bound=%s running=%s); replacing.",
-                        exchange_id,
-                        symbol,
-                        id(_bound_loop),
-                        id(_running_loop),
-                    )
-                    _need_new_lock = True
-            except RuntimeError:
-                pass
-        if _need_new_lock:
-            lock = asyncio.Lock()
-            self._ticker_fetch_locks[tkey] = lock
-
-        async with cast(asyncio.Lock, lock):
+        lock = await self._acquire_fetch_lock(
+            self._ticker_fetch_locks, tkey, f"the price for {symbol} on {exchange_id}"
+        )
+        try:
             entry = self._tickers.get(tkey)
             if entry is not None and not entry.is_stale and entry.has_data:
                 self._ticker_cache_hits += 1
@@ -400,6 +484,8 @@ class MarketDataPool:
             entry.fetch_time = time.time()
             self._ticker_fetches += 1
             return ticker
+        finally:
+            lock.release()
 
     def _slots_held(self, slots: dict, exchange_id: str) -> int:
         """How many of ``slots`` belong to ``exchange_id``.
@@ -499,30 +585,12 @@ class MarketDataPool:
             self._ohlcv_cache_hits += 1
             return list(entry.candles[-limit:])
 
-        lock = self._ohlcv_fetch_locks.get(key)
-        _need_new_lock = False
-        if lock is None:
-            _need_new_lock = True
-        else:
-            try:
-                _bound = getattr(lock, "_loop", None)
-                _running = asyncio.get_running_loop()
-                if _bound is not None and _bound is not _running:
-                    logger.warning(
-                        "DataPool: cross-loop OHLCV lock for %s "
-                        "(bound=%s running=%s); replacing.",
-                        key,
-                        id(_bound),
-                        id(_running),
-                    )
-                    _need_new_lock = True
-            except RuntimeError:
-                pass
-        if _need_new_lock:
-            lock = asyncio.Lock()
-            self._ohlcv_fetch_locks[key] = lock
-
-        async with cast(asyncio.Lock, lock):
+        lock = await self._acquire_fetch_lock(
+            self._ohlcv_fetch_locks,
+            key,
+            f"the {timeframe} candles for {symbol} on {exchange_id}",
+        )
+        try:
             entry = self._candles.get(key)
             if entry is not None and entry.can_serve(limit):
                 self._ohlcv_cache_hits += 1
@@ -547,6 +615,8 @@ class MarketDataPool:
             entry.fetch_count += 1
             self._ohlcv_fetches += 1
             return list(entry.candles[-limit:])
+        finally:
+            lock.release()
 
     async def get_or_fetch_balance(
         self,
@@ -575,30 +645,12 @@ class MarketDataPool:
                 absent=entry.absent,
             )
 
-        lock = self._balance_fetch_locks.get(bkey)
-        _need_new_lock = False
-        if lock is None:
-            _need_new_lock = True
-        else:
-            try:
-                _bound = getattr(lock, "_loop", None)
-                _running = asyncio.get_running_loop()
-                if _bound is not None and _bound is not _running:
-                    logger.warning(
-                        "DataPool: cross-loop balance lock for %s "
-                        "(bound=%s running=%s); replacing.",
-                        bkey,
-                        id(_bound),
-                        id(_running),
-                    )
-                    _need_new_lock = True
-            except RuntimeError:
-                pass
-        if _need_new_lock:
-            lock = asyncio.Lock()
-            self._balance_fetch_locks[bkey] = lock
-
-        async with cast(asyncio.Lock, lock):
+        lock = await self._acquire_fetch_lock(
+            self._balance_fetch_locks,
+            bkey,
+            f"the {currency} balance on {exchange_id}",
+        )
+        try:
             entry = self._balances.get(bkey)
             if entry is not None and not entry.is_stale and entry.has_data:
                 self._balance_cache_hits += 1
@@ -631,6 +683,8 @@ class MarketDataPool:
             )
             self._write_balance_entry(entry, currency, absent)
             return absent
+        finally:
+            lock.release()
 
     async def _read_account(self, connector, exchange_id: str):
         """One account read naming every currency, None when ``connector`` has none.
@@ -821,10 +875,12 @@ class MarketDataPool:
         slot counts, cache hits and fetch counts.
 
         ``next_pull_s`` carries ``seconds_until_next_pull``, which no scheduler
-        drives.
+        drives. ``wedged_locks_cleared`` is what the Exchange sub-tab's data
+        pool line draws beside the red stopped line.
         """
         ages = self.slot_ages()
         return {
+            "wedged_locks_cleared": self.wedged_locks_cleared,
             "next_pull_s": self.seconds_until_next_pull(),
             "freshest_age_s": ages["freshest_age_s"],
             "oldest_age_s": ages["oldest_age_s"],
