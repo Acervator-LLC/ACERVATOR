@@ -41,7 +41,7 @@ from ...core.safe_url import openable_url
 from ...exchange.crypto_assets import AssetManager
 from ...exchange.exchange_chart_urls import chart_url
 from ...trading.ata_asset_maps import organisation_page
-from ...trading.target_bands import ammo_target
+from ...trading.target_bands import ammo_target, ammo_units
 from .. import design_system as ds
 from .table_cells_surface import (
     NO_TARGET_TEXT,
@@ -456,6 +456,7 @@ NO_TARGET_VALUE = 0.0
 NO_PRICE = 0.0
 NO_HOLDINGS = 0.0
 NO_TRADES = 0
+VENUE_UNITS_FIELD = "audited_venue_units"
 SYMBOL_SEPARATOR = "/"
 QUOTE_BTC = "BTC"
 QUOTE_ETH = "ETH"
@@ -832,23 +833,35 @@ def holdings_of(status: Any) -> float:
     return float(status.get("current_holdings", NO_HOLDINGS) or NO_HOLDINGS)
 
 
+def venue_units_of(status: Any) -> Any:
+    """The ``VENUE_UNITS_FIELD`` reading this bot reports, uncoerced for ``ammo_units``."""
+    return status.get(VENUE_UNITS_FIELD)
+
+
+def measured_units_of(status: Any) -> float:
+    """The ``ammo_units`` count over ``holdings_of`` and ``venue_units_of``.
+
+    ``ammo_reading``, ``ammo_sort_value`` and ``BotStatusTableModel._ammo_cell``
+    all measure this one count.
+    """
+    return ammo_units(holdings_of(status), venue_units_of(status))[0]
+
+
 def ammo_reading(status: Any) -> tuple:
     """One row's position value and its two targets, the triple ``fleet_ammo``
     sums.
 
-    The position is recomputed from ``current_holdings`` and ``current_price``
+    The position is recomputed from ``measured_units_of`` and ``current_price``
     wherever both are above zero and falls back to the stored
     ``position_value``, which is what this row's own Ammo cell does, so the
     header strip's AMMO total sums the figures the rows beside it draw.
     """
     stats = status.get("stats") or {}
-    holdings = holdings_of(status)
+    units = measured_units_of(status)
     price = float(stats.get("current_price", NO_PRICE) or NO_PRICE)
     stored = float(stats.get("position_value", NO_TARGET_VALUE) or NO_TARGET_VALUE)
-    fresh = holdings > NO_HOLDINGS and price > NO_PRICE
-    position = (
-        priced_position(holdings, price, quote_rate_of(status)) if fresh else stored
-    )
+    fresh = units > NO_HOLDINGS and price > NO_PRICE
+    position = priced_position(units, price, quote_rate_of(status)) if fresh else stored
     return (
         position,
         status.get("live_target_balance", NO_TARGET_VALUE),
@@ -915,16 +928,16 @@ def ammo_sort_value(status: Any, lookups: SortLookups):
     ``ammo_sort_value`` answers it without its sign too.
     """
     stats = status.get("stats") or {}
-    holdings = holdings_of(status)
+    units = measured_units_of(status)
     price, _age_s = lookups.price(status)
     price = float(price or NO_PRICE)
     stats_pv = float(stats.get("position_value", NO_TARGET_VALUE) or NO_TARGET_VALUE)
-    fresh = holdings > NO_HOLDINGS and price > NO_PRICE
+    fresh = units > NO_HOLDINGS and price > NO_PRICE
     position = (
-        priced_position(holdings, price, quote_rate_of(status)) if fresh else stats_pv
+        priced_position(units, price, quote_rate_of(status)) if fresh else stats_pv
     )
     target = target_value(status)
-    if position <= NO_TARGET_VALUE and holdings > NO_HOLDINGS:
+    if position <= NO_TARGET_VALUE and units > NO_HOLDINGS:
         return None
     if target <= NO_TARGET_VALUE:
         return None
@@ -1297,7 +1310,13 @@ class BotStatusTableModel:
             holdings, price, quote_rate, price_age_s
         )
         ammo = self._ammo_cell(
-            stats, target_val, holdings, price, quote_rate, price_age_s
+            stats,
+            target_val,
+            holdings,
+            price,
+            quote_rate,
+            price_age_s,
+            venue_units_of(status),
         )
         symbol = status.get("symbol", EMPTY_TEXT) or EMPTY_TEXT
         base_asset = base_asset_of(symbol)
@@ -1365,12 +1384,23 @@ class BotStatusTableModel:
         return price, price_age_s, quote_rate
 
     def _ammo_cell(
-        self, stats, target_val, holdings, price, quote_rate, price_age_s
+        self, stats, target_val, holdings, price, quote_rate, price_age_s, venue_units
     ) -> dict:
-        """The Ammo cell, computed from a fresh price wherever one exists."""
+        """The Ammo cell, computed from a fresh price wherever one exists.
+
+        ``venue_units`` reaches ``TableCellsModel.ammo_cell``, which measures
+        the distance from it rather than from ``holdings`` wherever it holds a
+        reading.
+        """
         stats_pv = float(stats.get("position_value", NO_TARGET_VALUE))
         return self.cells.ammo_cell(
-            stats_pv, holdings, price, quote_rate, target_val, price_age_s=price_age_s
+            stats_pv,
+            holdings,
+            price,
+            quote_rate,
+            target_val,
+            price_age_s=price_age_s,
+            venue_units=venue_units,
         )
 
     def _logo_cell(self, symbol, shown) -> dict:
@@ -1891,6 +1921,7 @@ def build_view_model(model: BotStatusTableModel) -> dict:
         "no_target_value": NO_TARGET_VALUE,
         "no_price": NO_PRICE,
         "no_holdings": NO_HOLDINGS,
+        "venue_units_field": VENUE_UNITS_FIELD,
         "no_trades": NO_TRADES,
         "sorting_enabled": SORTING_ENABLED,
         "sortable_columns": list(SORTABLE_COLUMNS),

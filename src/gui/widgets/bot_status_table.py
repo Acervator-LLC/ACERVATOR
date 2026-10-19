@@ -706,6 +706,7 @@ if _HAS_QT:
                 qrate,
                 target_val,
                 price_age_s=_price_age,
+                venue_units=status.get("audited_venue_units"),
             )
             ammo_color = QColor(_ammo["color"])
             ammo_tip = _ammo["tip"]
@@ -827,10 +828,23 @@ if _HAS_QT:
                             _root = self.window()
                             if hasattr(_root, "_register_fire_glow"):
                                 _root._register_fire_glow(glow)
-                        except Exception:  # noqa: S110
-                            pass
-                    except Exception:  # noqa: S110
-                        pass
+                        except Exception as _glow_reg_exc:
+                            logger.debug(
+                                "Fire glow for bot %r was applied but not "
+                                "registered (%s: %s); it draws and never "
+                                "pulses",
+                                bid[:8] if bid else "?",
+                                type(_glow_reg_exc).__name__,
+                                _glow_reg_exc,
+                            )
+                    except Exception as _glow_exc:
+                        logger.debug(
+                            "Fire glow for bot %r could not be applied "
+                            "(%s: %s); the button draws flat",
+                            bid[:8] if bid else "?",
+                            type(_glow_exc).__name__,
+                            _glow_exc,
+                        )
 
                 def _risk_suffix() -> str:
                     parts = []
@@ -1054,7 +1068,7 @@ if _HAS_QT:
                 import webbrowser
 
                 webbrowser.open(url, new=BROWSER_NEW_WINDOW)
-            except Exception as _wb_exc:  # noqa: BLE001 - best-effort
+            except Exception as _wb_exc:
                 logger.warning("Cell address open failed for %r: %s", url, _wb_exc)
 
         def _on_fire(self, bot_id: str) -> None:

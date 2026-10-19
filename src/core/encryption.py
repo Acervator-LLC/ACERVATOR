@@ -20,7 +20,7 @@ import json
 import secrets
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 logger = logging.getLogger("acervator.encryption")
 
@@ -37,29 +37,82 @@ except ImportError:
 _SALT_LEN = 16  # bytes; 128-bit salt
 _NONCE_LEN = 12  # bytes; 96-bit nonce, the AES-GCM size NIST SP 800-38D names
 _KEY_LEN = 32  # bytes; 256-bit key
-_KDF_ITERATIONS = 600_000  # OWASP PBKDF2-HMAC-SHA256 guidance
 _KEYRING_SERVICE = "acervator"
+
+KDF_ITERATIONS = 600_000
+"""The declared cost of one ``derive_key`` call, in PBKDF2-HMAC-SHA256 rounds.
+
+The figure is the OWASP PBKDF2-HMAC-SHA256 guidance for 2023 and later.
+``seal_master_key`` records it on every seal it writes, so ``open_master_key``
+derives at the cost its own seal names and not at whatever ``KDF_ITERATIONS``
+later holds.
+"""
 
 MASTER_FORMAT = "qat_{username}_vault"
 UNNAMED_OPERATOR = "user"
 
 
-def vault_phrase(username: str) -> str:
-    """Return MASTER_FORMAT filled with *username*, or with UNNAMED_OPERATOR if empty.
+_held_master_key: Optional[bytes] = None
 
-    Every encrypt and decrypt site for a stored credential builds its passphrase here.
+
+def hold_master_key(master_key: Optional[bytes]) -> None:
+    """Hold *master_key* for this process, or release a held one with None.
+
+    ``vault_phrase`` answers from the held key, so one call reaches every site
+    that seals or opens a stored credential.
     """
+    global _held_master_key
+    _held_master_key = bytes(master_key) if master_key is not None else None
+
+
+def held_master_key() -> Optional[bytes]:
+    """The key ``hold_master_key`` holds, or None where no master key was given."""
+    return _held_master_key
+
+
+def master_key_phrase(master_key: bytes) -> str:
+    """*master_key* as the Base64 passphrase ``encrypt`` and ``decrypt`` take."""
+    return base64.urlsafe_b64encode(master_key).decode("ascii")
+
+
+def vault_phrase(username: str) -> str:
+    """Return ``master_key_phrase`` of the held key, else MASTER_FORMAT on *username*.
+
+    Where ``held_master_key`` answers None it returns what MASTER_FORMAT and
+    UNNAMED_OPERATOR returned before any master key existed, and every encrypt
+    and decrypt site for a stored credential builds its passphrase here.
+    """
+    held = held_master_key()
+    if held is not None:
+        return master_key_phrase(held)
     return MASTER_FORMAT.format(username=str(username) or UNNAMED_OPERATOR)
 
 
-def derive_key(passphrase: str, salt: bytes) -> bytes:
-    """Derive a 256-bit AES key from *passphrase* + *salt* via PBKDF2."""
+def rekeyed_token(token: str, old_phrase: str, new_phrase: str) -> str:
+    """Open *token* under *old_phrase* and seal it again under *new_phrase*.
+
+    ``rekey_credential_stores`` calls this once per stored token when the
+    operator renames himself, so a secret sealed under the earlier phrase opens
+    under the one every site now builds.
+    """
+    return encrypt(decrypt(token, old_phrase), new_phrase)
+
+
+def derive_key(
+    passphrase: str, salt: bytes, *, iterations: Optional[int] = None
+) -> bytes:
+    """Derive a 256-bit AES key from *passphrase* + *salt* via PBKDF2.
+
+    ``iterations`` of None runs the declared ``KDF_ITERATIONS``, and a seal
+    written under an earlier cost passes the cost it recorded.
+    """
+    rounds = KDF_ITERATIONS if iterations is None else int(iterations)
     if _HAS_CRYPTOGRAPHY:
         kdf = PBKDF2HMAC(
             algorithm=hashes.SHA256(),
             length=_KEY_LEN,
             salt=salt,
-            iterations=_KDF_ITERATIONS,
+            iterations=rounds,
         )
         return kdf.derive(passphrase.encode("utf-8"))
     else:
@@ -67,7 +120,7 @@ def derive_key(passphrase: str, salt: bytes) -> bytes:
             "sha256",
             passphrase.encode("utf-8"),
             salt,
-            _KDF_ITERATIONS,
+            rounds,
             dklen=_KEY_LEN,
         )
 
@@ -81,13 +134,7 @@ def encrypt(plaintext: str, passphrase: str) -> str:
     salt = secrets.token_bytes(_SALT_LEN)
     nonce = secrets.token_bytes(_NONCE_LEN)
     key = derive_key(passphrase, salt)
-
-    if _HAS_CRYPTOGRAPHY:
-        aes = AESGCM(key)
-        ct = aes.encrypt(nonce, plaintext.encode("utf-8"), None)
-    else:
-        ct = _fallback_encrypt(key, nonce, plaintext.encode("utf-8"))
-
+    ct = seal_under_key(key, nonce, plaintext.encode("utf-8"))
     blob = salt + nonce + ct
     return base64.urlsafe_b64encode(blob).decode("ascii")
 
@@ -104,17 +151,36 @@ def decrypt(token: str, passphrase: str) -> str:
     key = derive_key(passphrase, salt)
 
     try:
-        if _HAS_CRYPTOGRAPHY:
-            aes = AESGCM(key)
-            plaintext = aes.decrypt(nonce, ct, None)
-        else:
-            plaintext = _fallback_decrypt(key, nonce, ct)
+        plaintext = open_under_key(key, nonce, ct)
     except Exception as exc:
         raise ValueError(
             "Decryption failed — wrong passphrase or corrupted data"
         ) from exc
 
     return plaintext.decode("utf-8")
+
+
+def seal_under_key(key: bytes, nonce: bytes, data: bytes) -> bytes:
+    """Seal *data* under a 32-byte *key* and *nonce*, returning ciphertext and tag.
+
+    ``encrypt`` reaches it with a key ``derive_key`` built from a passphrase and
+    ``seal_master_key`` with one built from a password, so both paths run one
+    AES-256-GCM, or ``_fallback_encrypt`` where ``_HAS_CRYPTOGRAPHY`` is False.
+    """
+    if _HAS_CRYPTOGRAPHY:
+        return AESGCM(key).encrypt(nonce, data, None)
+    return _fallback_encrypt(key, nonce, data)
+
+
+def open_under_key(key: bytes, nonce: bytes, ct: bytes) -> bytes:
+    """Open what ``seal_under_key`` sealed under the same *key* and *nonce*.
+
+    A wrong *key* fails the authentication tag and raises, which is what makes
+    ``decrypt`` and ``open_master_key`` refuse without comparing anything stored.
+    """
+    if _HAS_CRYPTOGRAPHY:
+        return AESGCM(key).decrypt(nonce, ct, None)
+    return _fallback_decrypt(key, nonce, ct)
 
 
 def _fallback_encrypt(key: bytes, nonce: bytes, data: bytes) -> bytes:
@@ -160,6 +226,145 @@ def _kdf_stream(key: bytes, nonce: bytes, length: int) -> bytes:
         needed -= len(block)
         counter += 1
     return b"".join(blocks)[:length]
+
+
+MASTER_KEY_FILE_NAME = "master_key.json"
+"""The file ``master_key_path`` names, holding nothing but one sealed key."""
+
+MASTER_KEY_SALT_FIELD = "salt"
+MASTER_KEY_SEALED_FIELD = "sealed_key"
+MASTER_KEY_COST_FIELD = "kdf_iterations"
+
+MASTER_KEY_REFUSED = "Master key would not open — wrong password or damaged file"
+
+MASTER_KEY_READ_FAILED_LOG = "Master key file at %s could not be read: %s"
+
+
+def master_key_path() -> Path:
+    """``MASTER_KEY_FILE_NAME`` under ``resolve_state_root``, beside the state file.
+
+    The sealed key keeps its own file, and ``src/core/state_manager.py`` never
+    writes or reads ``MASTER_KEY_FILE_NAME``.
+    """
+    from .log_paths import resolve_state_root
+
+    return resolve_state_root() / MASTER_KEY_FILE_NAME
+
+
+@dataclass(frozen=True)
+class SealedMasterKey:
+    """One master key sealed under a password, with what ``derive_key`` needs.
+
+    ``salt`` and ``kdf_iterations`` rebuild the sealing key from the password and
+    neither is secret; ``sealed_key`` carries the nonce and the master key that
+    ``seal_under_key`` sealed, and a reader of the three learns that a password
+    exists and nothing else about it.
+    """
+
+    salt: bytes
+    sealed_key: str
+    kdf_iterations: int
+
+    def to_dict(self) -> dict:
+        return {
+            MASTER_KEY_SALT_FIELD: base64.urlsafe_b64encode(self.salt).decode("ascii"),
+            MASTER_KEY_SEALED_FIELD: self.sealed_key,
+            MASTER_KEY_COST_FIELD: self.kdf_iterations,
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "SealedMasterKey":
+        return cls(
+            salt=base64.urlsafe_b64decode(
+                str(d[MASTER_KEY_SALT_FIELD]).encode("ascii")
+            ),
+            sealed_key=str(d[MASTER_KEY_SEALED_FIELD]),
+            kdf_iterations=int(d[MASTER_KEY_COST_FIELD]),
+        )
+
+
+def seal_master_key(
+    password: str, master_key: Optional[bytes] = None
+) -> SealedMasterKey:
+    """Seal *master_key* under ``derive_key(password, salt)`` with a fresh salt.
+
+    ``master_key`` of None seals ``_KEY_LEN`` fresh random bytes, and the result
+    records ``KDF_ITERATIONS`` as the cost ``open_master_key`` must pay.
+    """
+    key_bytes = master_key if master_key is not None else secrets.token_bytes(_KEY_LEN)
+    salt = secrets.token_bytes(_SALT_LEN)
+    nonce = secrets.token_bytes(_NONCE_LEN)
+    sealing_key = derive_key(password, salt, iterations=KDF_ITERATIONS)
+    blob = nonce + seal_under_key(sealing_key, nonce, key_bytes)
+    return SealedMasterKey(
+        salt=salt,
+        sealed_key=base64.urlsafe_b64encode(blob).decode("ascii"),
+        kdf_iterations=KDF_ITERATIONS,
+    )
+
+
+def open_master_key(sealed: SealedMasterKey, password: str) -> bytes:
+    """Return the master key *sealed* holds, or raise ValueError ``MASTER_KEY_REFUSED``.
+
+    ``derive_key`` runs at the ``kdf_iterations`` *sealed* records, and a wrong
+    *password* fails every opener with nothing on disk compared against.
+    """
+    try:
+        blob = base64.urlsafe_b64decode(sealed.sealed_key.encode("ascii"))
+        sealing_key = derive_key(
+            password, sealed.salt, iterations=sealed.kdf_iterations
+        )
+    except Exception as exc:
+        raise ValueError(MASTER_KEY_REFUSED) from exc
+
+    # The second opener reads a seal written while `cryptography` was absent;
+    # `derive_key` answers the same key on both paths, only the AEAD differs.
+    nonce, ct = blob[:_NONCE_LEN], blob[_NONCE_LEN:]
+    try:
+        return open_under_key(sealing_key, nonce, ct)
+    except Exception as exc:
+        if not _HAS_CRYPTOGRAPHY:
+            raise ValueError(MASTER_KEY_REFUSED) from exc
+    try:
+        return _fallback_decrypt(sealing_key, nonce, ct)
+    except Exception as exc:
+        raise ValueError(MASTER_KEY_REFUSED) from exc
+
+
+def write_master_key(sealed: SealedMasterKey, path: Optional[Path] = None) -> Path:
+    """Write *sealed* to *path*, or to ``master_key_path()``, and return where.
+
+    ``atomic_write_json`` carries the write, and only the three
+    ``SealedMasterKey.to_dict`` fields reach the file.
+    """
+    from .io_utils import atomic_write_json
+
+    where = Path(path) if path is not None else master_key_path()
+    where.parent.mkdir(parents=True, exist_ok=True)
+    atomic_write_json(where, sealed.to_dict())
+    return where
+
+
+def read_master_key(path: Optional[Path] = None) -> Optional[SealedMasterKey]:
+    """The ``SealedMasterKey`` at *path*, or None where no readable one is there.
+
+    An absent file answers None, which is the install no password was ever set
+    on, and an unreadable one answers None through ``MASTER_KEY_READ_FAILED_LOG``.
+    """
+    where = Path(path) if path is not None else master_key_path()
+    if not where.exists():
+        return None
+    try:
+        with open(where, "r", encoding="utf-8") as f:
+            return SealedMasterKey.from_dict(json.load(f))
+    except Exception as exc:  # noqa: BLE001 - a bad file must not stop a launch
+        logger.warning(MASTER_KEY_READ_FAILED_LOG, where, exc)
+        return None
+
+
+def has_master_key(path: Optional[Path] = None) -> bool:
+    """True where ``read_master_key`` answers a ``SealedMasterKey`` for *path*."""
+    return read_master_key(path) is not None
 
 
 PEM_ARMOUR = ("-----BEGIN ", "-----END ")
@@ -307,6 +512,15 @@ class EncryptedCredential:
         )
 
 
+#: Why one vault entry stayed sealed under the earlier phrase. ``rekey`` writes
+#: this and keeps the entry, because such an entry was unreadable before it ran.
+VAULT_REKEY_REFUSED_LOG = "Vault entry for %s would not open, left as it was: %s"
+
+#: Why one venue's stored tokens stayed sealed under the earlier phrase.
+#: ``rekey_credential_stores`` writes this and keeps every token of that venue.
+STORE_REKEY_REFUSED_LOG = "Stored tokens for %s would not open, left as they were: %s"
+
+
 class CredentialVault:
     """Holds one EncryptedCredential per exchange under a single passphrase.
 
@@ -355,6 +569,33 @@ class CredentialVault:
         read whether a value is held without decrypting one.
         """
         self._credentials.pop(exchange, None)
+
+    def rekey(self, new_phrase: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
+        """Reseal every held entry under *new_phrase* and hold that as the passphrase.
+
+        Every entry is opened and resealed before one is replaced, so an entry
+        the held passphrase cannot open leaves the whole set as it was. Answers
+        the exchange names resealed and the ones that would not open; the second
+        group was already unreadable and is left untouched.
+        """
+        moved: dict[str, EncryptedCredential] = {}
+        refused: list[str] = []
+        for name in list(self._credentials):
+            try:
+                api_key, api_secret, phrase = self.retrieve(name)
+            except (ValueError, KeyError) as exc:
+                logger.warning(VAULT_REKEY_REFUSED_LOG, name, exc)
+                refused.append(name)
+                continue
+            moved[name] = EncryptedCredential(
+                exchange=name,
+                api_key_enc=encrypt(api_key, new_phrase),
+                api_secret_enc=encrypt(api_secret, new_phrase),
+                passphrase_enc=encrypt(phrase, new_phrase) if phrase else "",
+            )
+        self._passphrase = new_phrase
+        self._credentials.update(moved)
+        return tuple(moved), tuple(refused)
 
     def has_exchange(self, exchange: str) -> bool:
         return exchange in self._credentials
@@ -423,6 +664,17 @@ class FileVault(CredentialVault):
         super().delete(exchange)
         self.save()
 
+    def rekey(self, new_phrase: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
+        """Reseal as ``CredentialVault`` does, then write the file where one moved.
+
+        A vault holding no entry writes nothing, so an install that never pushed
+        through the ATA-SPM pages gains no file from a rename.
+        """
+        moved, refused = super().rekey(new_phrase)
+        if moved:
+            self.save()
+        return moved, refused
+
 
 def default_vault() -> FileVault:
     """The credential vault the ATA-SPM Level 1A pages hold their tokens in.
@@ -433,3 +685,54 @@ def default_vault() -> FileVault:
     from .settings import SettingsManager
 
     return FileVault(vault_phrase(str(SettingsManager().get("username", "") or "")))
+
+
+def rekey_credential_stores(settings: Any, old_phrase: str, new_phrase: str) -> dict:
+    """Reseal every credential this install stores from *old_phrase* to *new_phrase*.
+
+    Both stores a ``vault_phrase`` keys are covered: the ``_enc`` tokens
+    *settings* holds per venue, and the ``FileVault`` the ATA-SPM pages push
+    through. Each venue is opened and resealed whole before anything is written,
+    so a venue the old phrase cannot open keeps the tokens it had. The settings
+    store takes one write, which is what lets the rename either land or not land
+    at all.
+
+    Answers the venue names resealed under ``resealed`` and the ones whose tokens
+    would not open under ``refused``. ``src/gui/settings_dialog.py``, in
+    ``_settle_username_rename``, is the only caller, and it runs on the
+    operator's own press.
+    """
+    from .settings import CREDENTIAL_FIELDS
+
+    resealed: list[str] = []
+    refused: list[str] = []
+    entries: list[dict] = []
+    for entry in settings.list_exchanges():
+        held = dict(entry)
+        name = str(held.get("exchange_id", ""))
+        sealed = {one: held[one] for one in CREDENTIAL_FIELDS if held.get(one)}
+        if not sealed:
+            entries.append(held)
+            continue
+        try:
+            moved = {
+                one: rekeyed_token(token, old_phrase, new_phrase)
+                for one, token in sealed.items()
+            }
+        except ValueError as exc:
+            logger.warning(STORE_REKEY_REFUSED_LOG, name, exc)
+            refused.append(name)
+            entries.append(held)
+            continue
+        held.update(moved)
+        entries.append(held)
+        resealed.append(name)
+
+    if resealed:
+        settings.set("exchanges", entries)
+
+    vault_moved, vault_refused = FileVault(old_phrase).rekey(new_phrase)
+    return {
+        "resealed": tuple(resealed) + vault_moved,
+        "refused": tuple(refused) + vault_refused,
+    }

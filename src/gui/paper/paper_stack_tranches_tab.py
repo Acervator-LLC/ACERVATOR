@@ -43,6 +43,46 @@ class PaperStackTranchesTabMixin:
 
     STACK_TRANCHES_TAB_LABEL = "Stack Tranches"
 
+    NO_VALUE = "—"
+
+    def _stack_lifetime_counter(self, field: str) -> int | None:
+        """Return the bot's ``field`` lifetime counter, or None when refused.
+
+        ``as_whole_count`` is the one admission rule every lifetime counter
+        in this product reads, the save and restore paths included; a refusal
+        is logged against the bot and the field, and every caller renders
+        ``NO_VALUE`` instead of a count.
+        """
+        from ...trading.container.config import as_whole_count
+
+        stored = getattr(self._bot, field, 0)
+        counted = as_whole_count(stored)
+        if counted is None:
+            logger.warning(
+                "Bot %s stored an unusable %s (%s); the Stack Tranches "
+                "panel shows no count for it",
+                getattr(self._bot, "bot_id", "unknown"),
+                field,
+                type(stored).__name__,
+            )
+            return None
+        return counted
+
+    def _stack_counter_text(self, counted: int | None) -> str:
+        """One lifetime counter as a count, or ``NO_VALUE`` where
+        ``_stack_lifetime_counter`` refused it."""
+        if counted is None:
+            return self.NO_VALUE
+        return str(counted)
+
+    def _stack_counters_stand(self, counts: dict) -> bool:
+        """True where either lifetime counter is non-zero or was refused.
+
+        Keeps the Clear Lifetime Counters button live on a counter
+        ``_stack_lifetime_counter`` refused.
+        """
+        return any(value is None or value for value in counts.values())
+
     def _install_stack_tranches_tab(self, tabs: QTabWidget) -> QWidget:
         """Build the Stack Tranches tab and add it to ``tabs``.
 
@@ -236,10 +276,11 @@ class PaperStackTranchesTabMixin:
 
         bot = self._bot
         _counts = {
-            "opened": int(getattr(bot, "_stack_created", 0) or 0),
-            "discarded": int(getattr(bot, "_stack_discarded", 0) or 0),
+            "opened": self._stack_lifetime_counter("_stack_created"),
+            "discarded": self._stack_lifetime_counter("_stack_discarded"),
         }
-        if not sum(_counts.values()):
+        _shown = {_k: self._stack_counter_text(_v) for _k, _v in _counts.items()}
+        if not self._stack_counters_stand(_counts):
             QMessageBox.information(
                 self,
                 "Clear stack lifetime counters",
@@ -259,8 +300,8 @@ class PaperStackTranchesTabMixin:
             f"Set the two lifetime stack counters for "
             f"{getattr(bot.config, 'symbol', '')} to zero?",
             "",
-            f"    opened    {_counts['opened']}",
-            f"    discarded {_counts['discarded']}",
+            f"    opened    {_shown['opened']}",
+            f"    discarded {_shown['discarded']}",
             "",
             "This places NO order and removes NO tranche. Standing "
             "stack tranches, holdings, cost basis and target balance "
@@ -333,10 +374,8 @@ class PaperStackTranchesTabMixin:
 
         tranches = list(getattr(self._bot, "_stack_tranches", []) or [])
         now_ts = _time.time()
-        created_lifetime = int(getattr(self._bot, "_stack_created", 0) or 0)
-        discarded_lifetime = int(
-            _as_finite_float(getattr(self._bot, "_stack_discarded", 0)) or 0.0
-        )
+        created_lifetime = self._stack_lifetime_counter("_stack_created")
+        discarded_lifetime = self._stack_lifetime_counter("_stack_discarded")
         reset_ts = (
             _as_finite_float(getattr(self._bot, "_stack_counters_reset_ts", 0.0)) or 0.0
         )
@@ -359,14 +398,17 @@ class PaperStackTranchesTabMixin:
                 pending_size_unreadable += 1
             else:
                 pending_size_total += _pending_size
-        filled_ratio_str = (
-            f"{len(filled) / created_lifetime:.1%}  "
-            f"({len(filled)}/{created_lifetime})"
-            if created_lifetime > 0
-            else (
-                "—  (counters cleared)" if reset_ts > 0 else "—  (no stacks opened yet)"
+        if created_lifetime is None:
+            filled_ratio_str = f"{self.NO_VALUE}  (opened count unreadable)"
+        elif created_lifetime > 0:
+            filled_ratio_str = (
+                f"{len(filled) / created_lifetime:.1%}  "
+                f"({len(filled)}/{created_lifetime})"
             )
-        )
+        elif reset_ts > 0:
+            filled_ratio_str = f"{self.NO_VALUE}  (counters cleared)"
+        else:
+            filled_ratio_str = f"{self.NO_VALUE}  (no stacks opened yet)"
 
         sf.addRow("Pending tranches:", QLabel(str(len(pending))))
         sf.addRow("Filled tranches:", QLabel(str(len(filled))))
@@ -394,10 +436,13 @@ class PaperStackTranchesTabMixin:
             oldest_str = "no pending tranches"
         sf.addRow("Oldest pending age:", QLabel(oldest_str))
 
-        sf.addRow("Lifetime tranches opened:", QLabel(str(created_lifetime)))
+        sf.addRow(
+            "Lifetime tranches opened:",
+            QLabel(self._stack_counter_text(created_lifetime)),
+        )
 
         ratio_lbl = QLabel(filled_ratio_str)
-        if created_lifetime >= 3 and len(pending) > 0:
+        if created_lifetime is not None and created_lifetime >= 3 and len(pending) > 0:
             _ratio = len(filled) / created_lifetime
             if _ratio < 0.3:
                 ratio_lbl.setStyleSheet(f"color: {ds.ERROR};")
@@ -408,11 +453,12 @@ class PaperStackTranchesTabMixin:
         sf.addRow("Fill ratio (filled/opened):", ratio_lbl)
 
         # `discarded_lifetime` accounts for a fill ratio that a
-        # despawn sweep pushed down.
-        if discarded_lifetime:
+        # despawn sweep pushed down. A refused value shows the row
+        # with `NO_VALUE`; a zero still hides it.
+        if discarded_lifetime is None or discarded_lifetime:
             sf.addRow(
                 "Lifetime tranches discarded (removed, not filled):",
-                QLabel(str(discarded_lifetime)),
+                QLabel(self._stack_counter_text(discarded_lifetime)),
             )
 
         layout.addWidget(summary)
@@ -449,13 +495,18 @@ class PaperStackTranchesTabMixin:
         stack_clear_btn.clicked.connect(self._on_clear_stack_tranches)
         self._stack_clear_btn = stack_clear_btn
 
-        _stack_counter_total = created_lifetime + discarded_lifetime
+        _stack_counters_stand = self._stack_counters_stand(
+            {
+                "opened": created_lifetime,
+                "discarded": discarded_lifetime,
+            }
+        )
         stack_counters_btn = QPushButton(
             f"Clear Lifetime Counters ({created_lifetime} opened)"
-            if _stack_counter_total
+            if _stack_counters_stand and created_lifetime is not None
             else "Clear Lifetime Counters"
         )
-        stack_counters_btn.setEnabled(bool(_stack_counter_total))
+        stack_counters_btn.setEnabled(_stack_counters_stand)
         stack_counters_btn.setToolTip(
             "Set this bot's two stack lifetime counters to "
             "zero.\n\n"

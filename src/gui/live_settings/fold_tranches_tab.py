@@ -49,6 +49,8 @@ from .fold_tokens import (
     FOLD_TRANCHE_BG_HEX,
     FOLD_TRANCHE_FG_HEX,
     FOLD_UNITS_MARKED_TOOLTIP,
+    FOLD_UNREADABLE_FIGURE,
+    FOLD_WIRE_CREDIT_FLOOR_USD,
     FOLD_WIRE_DISCARDED_TOOLTIP,
     TRANCHE_FIRE_BTN_INSET_PX,
     _arbiter_label,
@@ -60,7 +62,14 @@ from .fold_tokens import (
     compose_scrum_sells_row,
     compose_units_marked_row,
     configure_tranche_row_numbers,
+    fold_counter_text,
+    fold_counters_stand,
     fold_display_order,
+    fold_lifetime_counter,
+    fold_parked_credit,
+    fold_parked_credit_stands,
+    fold_parked_credit_text,
+    fold_queue_figure_total,
     fold_table_chrome_px,
     fold_table_max_height_px,
     fold_table_natural_width_px,
@@ -120,16 +129,18 @@ class FoldTranchesTabMixin:
             return
 
         n = len(tranches)
-        usd = sum(float(t.get("usd", 0) or 0) for t in tranches)
-        units = sum(float(t.get("units", 0) or 0) for t in tranches)
-        parked = float(getattr(bot, "_pending_wire_credits", 0.0) or 0.0)
+        usd = fold_queue_figure_total(tranches, "usd")
+        units = fold_queue_figure_total(tranches, "units")
+        usd_text = FOLD_UNREADABLE_FIGURE if usd is None else f"${usd:,.4f}"
+        units_text = FOLD_UNREADABLE_FIGURE if units is None else f"{units:.8f}"
+        parked = fold_parked_credit(bot)
 
         body = [
             f"Discard {n} queued fold tranche(s) for "
             f"{getattr(bot.config, 'symbol', '')}?",
             "",
-            f"    queued USD   ${usd:,.4f}",
-            f"    units        {units:.8f}",
+            f"    queued USD   {usd_text}",
+            f"    units        {units_text}",
             "",
             "This places NO order. Holdings, cost basis and target "
             "balance are unchanged — only the queued intent to buy "
@@ -138,10 +149,11 @@ class FoldTranchesTabMixin:
             "",
             "This cannot be undone.",
         ]
-        if parked > 1e-9:
+        if fold_parked_credit_stands(parked):
             body += [
                 "",
-                f"WARNING — this bot also holds ${parked:,.4f} in "
+                f"WARNING — this bot also holds "
+                f"{fold_parked_credit_text(parked)} in "
                 f"pending wire credits. Clearing opens the absorb "
                 f"window, and the next SCRUM will move that entire "
                 f"amount into a SINGLE tranche. If it exceeds the "
@@ -200,9 +212,9 @@ class FoldTranchesTabMixin:
         from PySide6.QtWidgets import QMessageBox
 
         bot = self._bot
-        parked = float(getattr(bot, "_pending_wire_credits", 0.0) or 0.0)
+        parked = fold_parked_credit(bot)
         entries = len(getattr(bot, "_pending_wire_ledger", []) or [])
-        if parked <= 1e-9 and not entries:
+        if not fold_parked_credit_stands(parked) and not entries:
             QMessageBox.information(
                 self, "Clear wire credits", "This bot has no parked wire credits."
             )
@@ -221,7 +233,8 @@ class FoldTranchesTabMixin:
         box.setText(
             "\n".join(
                 [
-                    f"Discard ${parked:,.4f} of parked Smart Wire credit for "
+                    f"Discard {fold_parked_credit_text(parked)} of parked "
+                    f"Smart Wire credit for "
                     f"{getattr(bot.config, 'symbol', '')}?",
                     "",
                     f"    ledger entries   {entries}",
@@ -254,7 +267,7 @@ class FoldTranchesTabMixin:
         # Same three steps as `_on_clear_fold_tranches`, then
         # `_settle_after_clear` reports the outcome.
         _settled = self._settle_after_clear("Clear wire credits")
-        _now_parked = float(getattr(bot, "_pending_wire_credits", 0.0) or 0.0)
+        _now_parked = fold_parked_credit(bot)
         QMessageBox.information(
             self,
             "Clear wire credits",
@@ -262,7 +275,8 @@ class FoldTranchesTabMixin:
                 [
                     f"Cleared ${float(report.get('usd', 0)):,.4f} of "
                     f"parked Smart Wire credit.",
-                    f"This bot now has ${_now_parked:,.4f} parked.",
+                    f"This bot now has {fold_parked_credit_text(_now_parked)} "
+                    f"parked.",
                     "\n".join(_settled),
                     "No funds moved. This released an EARMARK only, so "
                     "the cash returns to ordinary spendable balance.",
@@ -283,12 +297,13 @@ class FoldTranchesTabMixin:
 
         bot = self._bot
         _counts = {
-            "opened": int(getattr(bot, "_tranches_created_lifetime", 0) or 0),
-            "closed": int(getattr(bot, "_tranches_closed_lifetime", 0) or 0),
-            "discarded": int(getattr(bot, "_tranches_discarded_lifetime", 0) or 0),
-            "malformed": int(getattr(bot, "_tranches_malformed_dropped", 0) or 0),
+            "opened": fold_lifetime_counter(bot, "_tranches_created_lifetime"),
+            "closed": fold_lifetime_counter(bot, "_tranches_closed_lifetime"),
+            "discarded": fold_lifetime_counter(bot, "_tranches_discarded_lifetime"),
+            "malformed": fold_lifetime_counter(bot, "_tranches_malformed_dropped"),
         }
-        if not sum(_counts.values()):
+        _shown = {_k: fold_counter_text(_v) for _k, _v in _counts.items()}
+        if not fold_counters_stand(_counts):
             QMessageBox.information(
                 self,
                 "Clear lifetime counters",
@@ -308,10 +323,10 @@ class FoldTranchesTabMixin:
             f"Set the four lifetime tranche counters for "
             f"{getattr(bot.config, 'symbol', '')} to zero?",
             "",
-            f"    opened               {_counts['opened']}",
-            f"    closed               {_counts['closed']}",
-            f"    discarded            {_counts['discarded']}",
-            f"    dropped as malformed {_counts['malformed']}",
+            f"    opened               {_shown['opened']}",
+            f"    closed               {_shown['closed']}",
+            f"    discarded            {_shown['discarded']}",
+            f"    dropped as malformed {_shown['malformed']}",
             "",
             "This places NO order and removes NO tranche. Open "
             "tranches, parked wire credits, holdings, cost basis and "
@@ -601,7 +616,7 @@ class FoldTranchesTabMixin:
 
         shows = self._fold_panel_shows()
         _open = len(getattr(self._bot, "_fold_tranches", []) or [])
-        _parked = float(getattr(self._bot, "_pending_wire_credits", 0.0) or 0.0)
+        _parked = fold_parked_credit(self._bot)
         with contextlib.suppress(Exception):
             from src.core.signal_contract import emit as _fold_emit
 
@@ -618,7 +633,7 @@ class FoldTranchesTabMixin:
                     "fold_rows": _open,
                     "open_tranches_label": str(_open),
                     "clear_button_enabled": bool(_open),
-                    "wire_button_enabled": _parked > 1e-9,
+                    "wire_button_enabled": fold_parked_credit_stands(_parked),
                     "saved": True,
                 },
                 duration=_elapsed,
@@ -705,8 +720,10 @@ class FoldTranchesTabMixin:
             )
             ext_rows = []
         now_ts = _time.time()
-        created_lifetime = int(getattr(self._bot, "_tranches_created_lifetime", 0) or 0)
-        closed_lifetime = int(getattr(self._bot, "_tranches_closed_lifetime", 0) or 0)
+        created_lifetime = fold_lifetime_counter(
+            self._bot, "_tranches_created_lifetime"
+        )
+        closed_lifetime = fold_lifetime_counter(self._bot, "_tranches_closed_lifetime")
 
         # --- Summary section ---
         summary = QGroupBox("Fold-Tranche Cycle Health")
@@ -739,8 +756,8 @@ class FoldTranchesTabMixin:
 
         # The arithmetic, the empty-queue case and the colour band
         # all live in `compose_cycle_close_ratio`.
-        discarded_lifetime = int(
-            getattr(self._bot, "_tranches_discarded_lifetime", 0) or 0
+        discarded_lifetime = fold_lifetime_counter(
+            self._bot, "_tranches_discarded_lifetime"
         )
         ratio_str, ratio_colour = compose_cycle_close_ratio(
             created_lifetime, closed_lifetime, discarded_lifetime
@@ -757,7 +774,7 @@ class FoldTranchesTabMixin:
         # The rule this row reports lives in `_bound_new_fold_tranches`:
         # one sell opens one tranche unless the trend is strong.
         _sells_text, _sells_colour = compose_scrum_sells_row(
-            open_count, int(getattr(self._bot, "_scrum_sells_lifetime", 0) or 0)
+            open_count, fold_lifetime_counter(self._bot, "_scrum_sells_lifetime")
         )
         _sells_lbl = QLabel(_sells_text)
         if _sells_colour:
@@ -806,14 +823,14 @@ class FoldTranchesTabMixin:
 
         # Held on `self` so `_fold_panel_shows` reads the rebuilt
         # label rather than re-deriving it from the bot.
-        self._fold_opened_lbl = QLabel(str(created_lifetime))
+        self._fold_opened_lbl = QLabel(fold_counter_text(created_lifetime))
         install_health_row(
             sf,
             "Lifetime tranches opened:",
             self._fold_opened_lbl,
             FOLD_OPENED_TOOLTIP,
         )
-        self._fold_closed_lbl = QLabel(str(closed_lifetime))
+        self._fold_closed_lbl = QLabel(fold_counter_text(closed_lifetime))
         install_health_row(
             sf,
             "Lifetime tranches closed (fold-back fired):",
@@ -834,8 +851,9 @@ class FoldTranchesTabMixin:
             FOLD_CLOSE_RATIO_TOOLTIP,
         )
 
-        if discarded_lifetime:
-            self._fold_discarded_lbl = QLabel(str(discarded_lifetime))
+        # A refused counter shows the row with the dash; a zero still hides it.
+        if discarded_lifetime is None or discarded_lifetime:
+            self._fold_discarded_lbl = QLabel(fold_counter_text(discarded_lifetime))
             install_health_row(
                 sf,
                 "Lifetime tranches discarded (not folded back):",
@@ -858,8 +876,8 @@ class FoldTranchesTabMixin:
 
         # `_tranches_malformed_dropped` is always shown; zero is a
         # positive statement that no stored tranche was unreadable.
-        _malformed = int(getattr(self._bot, "_tranches_malformed_dropped", 0) or 0)
-        _malformed_lbl = QLabel(str(_malformed))
+        _malformed = fold_lifetime_counter(self._bot, "_tranches_malformed_dropped")
+        _malformed_lbl = QLabel(fold_counter_text(_malformed))
         if _malformed:
             # A dropped tranche is a data fault, not a trading
             # outcome; same red as the close-ratio verdict.
@@ -929,13 +947,13 @@ class FoldTranchesTabMixin:
 
         # Parked credit is a percent of gross proceeds, not profit,
         # cleared by its own button, not the tranche clear.
-        parked = float(getattr(self._bot, "_pending_wire_credits", 0.0) or 0.0)
+        parked = fold_parked_credit(self._bot)
         wire_btn = QPushButton(
             f"Clear ${parked:,.2f} Wire Credits"
-            if parked > 1e-9
+            if parked is not None and parked > FOLD_WIRE_CREDIT_FLOOR_USD
             else "Clear Wire Credits"
         )
-        wire_btn.setEnabled(parked > 1e-9)
+        wire_btn.setEnabled(fold_parked_credit_stands(parked))
         wire_btn.setToolTip(
             "Discard this bot's parked Smart Wire credits.\n\n"
             "Releases an EARMARK only. No order is placed and no "
@@ -953,15 +971,20 @@ class FoldTranchesTabMixin:
 
         # Separate button: the other two discard inventory; this
         # discards the lifetime record, resettable alone.
-        _counter_total = (
-            created_lifetime + closed_lifetime + discarded_lifetime + _malformed
+        _counters_stand = fold_counters_stand(
+            {
+                "opened": created_lifetime,
+                "closed": closed_lifetime,
+                "discarded": discarded_lifetime,
+                "malformed": _malformed,
+            }
         )
         counters_btn = QPushButton(
             f"Clear Lifetime Counters ({created_lifetime} opened)"
-            if _counter_total
+            if _counters_stand and created_lifetime is not None
             else "Clear Lifetime Counters"
         )
-        counters_btn.setEnabled(bool(_counter_total))
+        counters_btn.setEnabled(_counters_stand)
         counters_btn.setToolTip(
             "Set this bot's four fold-tranche lifetime counters to "
             "zero.\n\n"
