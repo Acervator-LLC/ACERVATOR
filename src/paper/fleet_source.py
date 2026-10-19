@@ -37,12 +37,14 @@ from typing import Any, Optional, Sequence
 
 from ..core.io_utils import atomic_write_json
 from ..trading.container.config import (
+    PUSHED_TARGET_DEFAULT,
     BotConfig,
     BotMode,
     BotState,
     as_finite_float,
     bot_config_kwargs,
     make_bot_config,
+    pushed_target_usd,
 )
 from ..trading.scrumming.sizing import DRAWDOWN_STATE, priced_usd
 from ..trading.smart_wire import mature_profit_usd
@@ -108,16 +110,6 @@ CONFIG_FIELD_NAMES = frozenset(one.name for one in dataclass_fields(BotConfig))
 PUSHED_TIMEFRAME_DEFAULT = str(
     next(
         one.default for one in dataclass_fields(BotConfig) if one.name == "ta_timeframe"
-    )
-)
-
-#: ``target_balance`` a pushed market takes when its candidate names no dollar
-#: figure, read off ``BotConfig``'s own field default for the same reason.
-PUSHED_TARGET_DEFAULT = float(
-    next(
-        one.default
-        for one in dataclass_fields(BotConfig)
-        if one.name == "target_balance"
     )
 )
 
@@ -553,31 +545,6 @@ def _row(held: Any) -> dict:
     """``held`` as one payload row; a row that is not a dict reads as an empty
     one, which names no market and no wire end."""
     return held if isinstance(held, dict) else {}
-
-
-def pushed_target_usd(value: Any) -> Optional[float]:
-    """The Target Balance one pushed market takes, or None for a figure no bot
-    can trade against.
-
-    A candidate naming no figure, or naming zero, takes
-    ``PUSHED_TARGET_DEFAULT``; a bool, a non-finite number, a negative number
-    and a value ``float`` cannot read are each refused, keeping any Target
-    Balance ``as_finite_float`` would turn into ``REFUSED_FIGURE`` off a held
-    record.
-    """
-    if isinstance(value, bool):
-        return None
-    if value is None:
-        return PUSHED_TARGET_DEFAULT
-    if not isinstance(value, (int, float, str)):
-        return None
-    try:
-        wanted = float(value)
-    except (TypeError, ValueError, OverflowError):
-        return None
-    if not math.isfinite(wanted) or wanted < 0.0:
-        return None
-    return PUSHED_TARGET_DEFAULT if wanted == 0.0 else wanted
 
 
 def push_configs(candidates: Any, exchange_id: str, ta_timeframe: str) -> tuple:
@@ -1125,18 +1092,32 @@ class PaperFleetSource:
         return self._paper_dir / PAPER_FLEET_NAME
 
     def _state(self) -> dict:
-        path = self.path()
-        if not path.exists():
-            return {}
-        try:
-            loaded = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as exc:
-            logger.warning("paper fleet: %s unreadable: %s", path.name, exc)
-            return {}
+        """The state file's dict, with its sealed fleet payload opened.
+
+        ``load_state_file`` opens the payload, so the master key this session
+        holds reaches this reader at the same moment it reaches every other
+        reader of that file. A payload no key opens answers the latch and no
+        ``bots`` key, which ``fleet_sealed`` is True for and an absent file is
+        not, so a caller tells a sealed fleet from no fleet and from an empty
+        one. An absent or unreadable file answers an empty dict.
+        """
+        from ..core.state_manager import (
+            FLEET_SEALED_NOTE,
+            fleet_sealed,
+            load_state_file,
+        )
+
+        loaded = load_state_file(self.path())
+        if fleet_sealed(loaded):
+            logger.warning("paper fleet: %s", FLEET_SEALED_NOTE)
         return loaded if isinstance(loaded, dict) else {}
 
     def saved_at(self) -> str:
-        """The ``saved_at_human`` stamp the live process last wrote."""
+        """The ``saved_at_human`` stamp the live process last wrote.
+
+        A sealed file carries the stamp in plain text beside its latch, so this
+        answers it whether the payload opens or not.
+        """
         return str(self._state().get("saved_at_human") or "")
 
     def bots(self) -> list[PaperBot]:
@@ -1152,7 +1133,11 @@ class PaperFleetSource:
 
     def stored_records(self) -> dict[str, dict]:
         """The ``bots`` map of ``bot_state.json`` as it lies on disk, by
-        ``bot_id``, each a copy; the one read of that file with a caller."""
+        ``bot_id``, each a copy; the one read of that file with a caller.
+
+        A sealed fleet no key opens holds no ``bots`` key, so this answers an
+        empty map under ``FLEET_SEALED_NOTE``, which ``_state`` logs.
+        """
         stored = self._state().get("bots")
         if not isinstance(stored, dict):
             return {}

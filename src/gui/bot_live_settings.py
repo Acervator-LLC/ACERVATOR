@@ -544,7 +544,14 @@ if _HAS_QT:
                 return []
             try:
                 return list(self._bm._bots.keys())
-            except Exception:
+            except Exception as roster_exc:
+                logger.warning(
+                    "Bot Settings: the fleet roster could not be read (%s: "
+                    "%s); Prev and Next are hidden and the operator cannot "
+                    "walk the swarm from this window",
+                    type(roster_exc).__name__,
+                    roster_exc,
+                )
                 return []
 
         def _navigate_to_sibling(self, direction: int) -> None:
@@ -577,11 +584,19 @@ if _HAS_QT:
             """The index of the tab the operator is viewing.
 
             ``main_window`` reads it so the next bot's dialog opens on the
-            same tab.
+            same tab. A read that fails is recorded here, because answering
+            the first tab in silence hides the fault from the caller's own
+            guard.
             """
             try:
                 return int(self._tabs.currentIndex())
-            except Exception:
+            except (AttributeError, RuntimeError) as tab_exc:
+                logger.warning(
+                    "Bot Settings: the open tab could not be read (%s: %s); "
+                    "the next bot's window opens on the first tab",
+                    type(tab_exc).__name__,
+                    tab_exc,
+                )
                 return 0
 
         def _refusal_page(self, name: str, exc: BaseException) -> QWidget:
@@ -615,7 +630,7 @@ if _HAS_QT:
             """
             try:
                 page = self._wrap_scrollable(build())
-            except Exception as tab_exc:  # noqa: BLE001
+            except Exception as tab_exc:
                 logger.exception(
                     "Bot Settings: the %s tab refused to draw; it carries "
                     "the refusal and the other tabs still open",
@@ -628,7 +643,7 @@ if _HAS_QT:
             """Run `install`, which adds `name`'s own tab, so a refusal costs one tab."""
             try:
                 install(tabs)
-            except Exception as tab_exc:  # noqa: BLE001
+            except Exception as tab_exc:
                 logger.exception(
                     "Bot Settings: the %s tab refused to draw; it carries "
                     "the refusal and the other tabs still open",
@@ -825,7 +840,7 @@ if _HAS_QT:
                 return (False, "no bot manager is attached to this panel")
             try:
                 saver()
-            except Exception as exc:  # noqa: BLE001 - operator surface
+            except Exception as exc:
                 logger.warning(
                     "%s: cleared in memory but NOT saved (%s: %s); a "
                     "restart before the next rolling save will restore "

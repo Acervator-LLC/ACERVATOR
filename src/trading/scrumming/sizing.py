@@ -2609,6 +2609,34 @@ def estimated_fee_usd(notional_usd: float, fee_pct: float) -> float:
     return abs(notional_usd) * fee_pct / 100.0
 
 
+def tranche_sale_rate(record: dict) -> float:
+    """The dollars-per-unit rate a tranche's ``usd`` sold at.
+
+    ``ref`` is the price of the scrum that spawned ``record`` and the only
+    price its fold distance is measured from, while a record topped up from a
+    later sale also carries ``blend_rate``, the usd-weighted rate across every
+    sale that fed it, and ``blend_rate`` is what turns those dollars back into
+    units; 0.0 answers a ``record`` carrying neither.
+    """
+    blended = float(record.get("blend_rate", 0) or 0)
+    if blended > 0:
+        return blended
+    return float(record.get("ref", 0) or 0)
+
+
+def units_at_scrum(record: dict) -> float:
+    """The units a tranche's ``usd`` sold, its dollars over
+    ``tranche_sale_rate``.
+
+    The fold executor in ``tick_phases`` and ``fold_surplus_usd`` both read
+    this one definition, and a ``record`` with no readable rate answers 0.0.
+    """
+    rate = tranche_sale_rate(record)
+    if rate <= 0:
+        return 0.0
+    return float(record.get("usd", 0) or 0) / rate
+
+
 def eligible_fold_tranches(
     tranches: list, ticker_last: float, otd_factor: float
 ) -> list:
@@ -2662,6 +2690,7 @@ def plan_fold_consumption(
                 "usd": take_usd,
                 "units": take_units,
                 "ref": float(_t.get("ref", 0) or 0),
+                "blend_rate": float(_t.get("blend_rate", 0) or 0),
                 "initial_buy_price": _t["initial_buy_price"],
                 "created_ts": _t.get("created_ts", 0.0),
             }
@@ -2733,13 +2762,9 @@ def fold_spend_usd(eligible_usd: float, taper: float) -> float:
 
 def fold_surplus_usd(units_bought: float, slices: list, fill_price: float) -> float:
     """The surplus one fold realised, as ``_tick_execute_fold`` books it:
-    the units bought less the units the consumed ``slices`` sold at their
-    ``ref``, priced at ``fill_price``; never below zero."""
-    asset_at_scrum = sum(
-        float(one.get("usd", 0) or 0) / float(one.get("ref", 0) or 0)
-        for one in slices
-        if float(one.get("ref", 0) or 0) > 0
-    )
+    the units bought less the ``units_at_scrum`` of the consumed ``slices``,
+    priced at ``fill_price``; never below zero."""
+    asset_at_scrum = sum(units_at_scrum(one) for one in slices)
     return max(0.0, priced_usd(float(units_bought) - asset_at_scrum, float(fill_price)))
 
 
@@ -2976,8 +3001,10 @@ __all__ = [
     "target_delta_usd",
     "target_growth_applied",
     "tradeable_answer",
+    "tranche_sale_rate",
     "trim_fold_plan",
     "unit_rule",
+    "units_at_scrum",
     "units_for_contracts",
     "unsettled_usd",
     "untradeable_reason",

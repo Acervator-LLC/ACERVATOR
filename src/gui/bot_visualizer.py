@@ -21,7 +21,14 @@ try:
     from ..core.privacy_mask_registry import (
         get_privacy_mask_registry as _get_privacy_mask_registry,
     )
-except Exception:  # a missing registry leaves the dot reading unmasked
+except Exception as registry_import_exc:
+    logger.warning(
+        "Bot Swarm: the privacy mask register could not be imported (%s: %s); "
+        "every identifier on this tab draws plain and the Privacy Mode button "
+        "and dot are inert",
+        type(registry_import_exc).__name__,
+        registry_import_exc,
+    )
     _get_privacy_mask_registry = None  # type: ignore[assignment]
 
 
@@ -86,8 +93,12 @@ if _HAS_QT:
                 _bus = get_event_bus()
                 _bus.subscribe("wire.created", self._on_external_wire_created)
                 _bus.subscribe("wire.removed", self._on_external_wire_removed)
-            except Exception:  # noqa: S110
-                pass
+            except Exception:
+                logger.exception(
+                    "Bot Swarm: the wire event subscription failed; no wire"
+                    " created or removed anywhere else will be drawn or"
+                    " erased on this canvas for the rest of the run",
+                )
 
             layout = QVBoxLayout(self)
             layout.setContentsMargins(4, 4, 4, 4)
@@ -244,9 +255,7 @@ if _HAS_QT:
                     " fewer wires than bot_state.json holds"
                 )
             else:
-                logger.info(
-                    "wire hydration: %d wire.created event(s) " "emitted", painted
-                )
+                logger.info("wire hydration: %d wire(s) painted", painted)
 
             sim_tab = QWidget()
             sim_lay = QVBoxLayout(sim_tab)
@@ -999,8 +1008,14 @@ if _HAS_QT:
                         "rows_in_layer": len(self._live_sim_rows),
                     },
                 )
-            except Exception:  # noqa: BLE001,S110 - advisory
-                pass
+            except Exception as pin_exc:
+                logger.debug(
+                    "Bot Swarm: the sim_run_registered pin did not emit (%s: "
+                    "%s); the row is registered and the pin reports nothing "
+                    "for it",
+                    type(pin_exc).__name__,
+                    pin_exc,
+                )
             self._update_sim_summary()
             return handle
 
@@ -1078,8 +1093,14 @@ if _HAS_QT:
                         "rows_in_layer": len(self._live_paper_rows),
                     },
                 )
-            except Exception:  # noqa: BLE001,S110 - advisory
-                pass
+            except Exception as pin_exc:
+                logger.debug(
+                    "Bot Swarm: the paper_run_registered pin did not emit (%s: "
+                    "%s); the row is registered and the pin reports nothing "
+                    "for it",
+                    type(pin_exc).__name__,
+                    pin_exc,
+                )
             self._update_paper_summary()
             return handle
 
@@ -1295,7 +1316,14 @@ if _HAS_QT:
                     return
                 reg = _get_privacy_mask_registry()
                 masked = reg.is_masked("bot_swarm.identifiers")
-            except Exception:  # a registry failure must not abort the paint
+            except Exception as mask_read_exc:
+                logger.warning(
+                    "Bot Swarm: the identifier mask could not be read (%s: "
+                    "%s); the dot draws filled, which is the declared reading "
+                    "for an unreachable register and not a measured state",
+                    type(mask_read_exc).__name__,
+                    mask_read_exc,
+                )
                 masked = False
             glyph = "○" if masked else "●"
             self._bot_swarm_privacy_dot.setText(glyph)
@@ -1358,7 +1386,15 @@ if _HAS_QT:
                 reg = _get_privacy_mask_registry()
                 snap = reg.to_dict()
                 any_on = any(bool(v) for v in snap.values())
-            except Exception:
+            except Exception as snapshot_exc:
+                logger.warning(
+                    "Bot Swarm: the mask register could not be read (%s: %s); "
+                    "the button draws Privacy Mode: OFF, which is the "
+                    "declared reading for an unreachable register and not a "
+                    "measured state",
+                    type(snapshot_exc).__name__,
+                    snapshot_exc,
+                )
                 any_on = False
             if any_on:
                 self._privacy_mode_btn.setText("Privacy Mode: ON")
@@ -1455,7 +1491,13 @@ if _HAS_QT:
             sel = ""
             try:
                 sel = str(self._exchange_combo.currentData() or "")
-            except Exception:
+            except (AttributeError, RuntimeError) as combo_exc:
+                logger.debug(
+                    "Bot Swarm: the Exchange selector could not be read (%s); "
+                    "Quick Routing offers every bot in the swarm rather than "
+                    "the selected venue's",
+                    combo_exc,
+                )
                 sel = ""
             ids = list(self._bot_widgets.keys())
             if not sel:
@@ -1474,7 +1516,12 @@ if _HAS_QT:
             current = ""
             try:
                 current = str(combo.currentData() or "")
-            except Exception:
+            except (AttributeError, RuntimeError) as combo_exc:
+                logger.debug(
+                    "Bot Swarm: the Exchange selection could not be read "
+                    "before the refill (%s); the selector comes back on All",
+                    combo_exc,
+                )
                 current = ""
             distinct = set()
             for bid in self._bot_widgets.keys():
@@ -1501,7 +1548,13 @@ if _HAS_QT:
             sel = ""
             try:
                 sel = str(self._exchange_combo.currentData() or "")
-            except Exception:
+            except (AttributeError, RuntimeError) as combo_exc:
+                logger.debug(
+                    "Bot Swarm: the Exchange selector could not be read (%s); "
+                    "every bot card is shown rather than the selected "
+                    "venue's",
+                    combo_exc,
+                )
                 sel = ""
             for bid, w in self._bot_widgets.items():
                 if not sel:
@@ -1513,10 +1566,16 @@ if _HAS_QT:
             """Re-sync ``_quick_routing_matrix`` to the filtered bot set."""
             mx = getattr(self, "_quick_routing_matrix", None)
             if mx is not None and hasattr(mx, "rebuild_scope"):
-                try:  # noqa: SIM105
+                try:
                     mx.rebuild_scope(self._all_bot_ids_in_scope())
-                except Exception:  # noqa: S110
-                    pass
+                except Exception as scope_exc:
+                    logger.debug(
+                        "Bot Swarm: the Quick Routing bot lists could not be "
+                        "rebuilt (%s: %s); they keep the bots they already "
+                        "list, which may name a bot the swarm has dropped",
+                        type(scope_exc).__name__,
+                        scope_exc,
+                    )
 
         def _on_exchange_filter_changed(self, *_a) -> None:
             self._refresh_visible_bots()
@@ -1531,19 +1590,42 @@ if _HAS_QT:
 
         # A wire is stored once, at the top level, under smart_wires.
         def _load_bot_state_dict(self) -> dict:
-            try:
-                from ..core.state_manager import StateManager
+            """Read bot_state.json, or answer an empty dict and say so.
 
-                return StateManager().load_state() or {}
+            ``_save_bot_state_dict`` refuses a write built on an empty dict,
+            so a failure recorded here is the first and only account of why a
+            wire change did not reach disk and why the canvas paints none. A
+            sealed fleet answers its latch and no ``bots`` key under
+            ``FLEET_SEALED_NOTE``, which the same refusal covers and which no
+            caller can read as a fleet of none.
+            """
+            try:
+                from ..core.state_manager import (
+                    FLEET_SEALED_NOTE,
+                    StateManager,
+                    fleet_sealed,
+                )
+
+                loaded = StateManager().load_state() or {}
+                if fleet_sealed(loaded):
+                    logger.warning("Bot Swarm: %s", FLEET_SEALED_NOTE)
+                return loaded
             except Exception:
+                logger.exception(
+                    "Bot Swarm: bot_state.json could not be read; the canvas"
+                    " paints no wire, the wire count reads zero for that"
+                    " reason and not because the file holds none, and a wire"
+                    " change made now is refused rather than written",
+                )
                 return {}
 
         def _save_bot_state_dict(self, state: dict) -> None:
-            """Write bot_state.json through ``atomic_write_json``.
+            """Write bot_state.json through ``StateManager.write_state``.
 
             A ``state`` carrying no ``bots`` key is refused, because
             ``_load_bot_state_dict`` answers an empty dict when the read
-            fails.
+            fails. ``write_state`` seals the fleet fields where a master key is
+            held, so this path cannot put them on disk in plain text.
             """
             from .main_tabs import bot_visualizer_surface as surface
 
@@ -1555,13 +1637,10 @@ if _HAS_QT:
                 )
                 return
             try:
-                from pathlib import Path
+                from ..core.state_manager import StateManager
 
-                from ..core.io_utils import atomic_write_json
-
-                p = Path.home() / ".acervator" / "bot_state.json"
-                atomic_write_json(p, state, indent=2, default=str)
-            except Exception as exc:  # noqa: BLE001 - GUI must not die
+                StateManager().write_state(state)
+            except Exception as exc:
                 logger.error(
                     "bot_visualizer: direct write to bot_state.json "
                     "FAILED (%s: %s). Wire routing changes made in the "
@@ -1639,8 +1718,11 @@ if _HAS_QT:
         def _hydrate_wires_from_disk(self) -> int:
             """Emit one ``wire.created`` per stored wire and return the count.
 
-            ``_on_external_wire_created`` receives them, and any wire
-            that does not reach ``_wires`` is recorded first.
+            The count is read back out of ``_wires``, never from the number
+            of events sent. ``EventBus.emit`` catches whatever a subscriber
+            raises, so an emit that returns says nothing about whether the
+            canvas took the wire, and any wire missing from ``_wires`` is
+            recorded before the shortfall line.
             """
             from .main_tabs import bot_visualizer_surface as surface
 
@@ -1662,7 +1744,6 @@ if _HAS_QT:
                     bus.emit(
                         "wire.created", source_id=source, target_id=target, pct=pct
                     )
-                    n += 1
                 except Exception:
                     rejected += 1
                     logger.warning(
@@ -1673,6 +1754,21 @@ if _HAS_QT:
                         target,
                         pct,
                         exc_info=True,
+                    )
+                    continue
+                if any(
+                    held.get("source_id") == source and held.get("target_id") == target
+                    for held in self._wires
+                ):
+                    n += 1
+                else:
+                    logger.warning(
+                        "wire hydration: the canvas did not take wire"
+                        " %s -> %s (%s%%), so that wire is not"
+                        " painted",
+                        source,
+                        target,
+                        pct,
                     )
             self._report_wire_hydration_shortfall(n, plan["seen"], rejected)
             return n
@@ -1723,8 +1819,14 @@ if _HAS_QT:
                     expected=surface.NO_LATE_FRAMES,
                     context=context,
                 )
-            except Exception:  # noqa: BLE001,S110 - advisory
-                pass
+            except Exception as pin_exc:
+                logger.debug(
+                    "Bot Swarm: the %s pin did not emit (%s: %s); this "
+                    "window's frame gaps are measured and reported nowhere",
+                    surface.FRAME_CADENCE_SIGNAL,
+                    type(pin_exc).__name__,
+                    pin_exc,
+                )
 
         def _get_bot_center(self, bot_id: str) -> Optional[QPointF]:
             """Return a ``BotNodeWidget`` centre in ``_wire_canvas`` coordinates."""
@@ -1791,7 +1893,7 @@ if _HAS_QT:
                     QMessageBox.No,
                 )
                 return reply == QMessageBox.Yes
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 # A dialog that cannot be shown refuses the removal.
                 logger.error(
                     "wire-removal confirmation could not be shown (%s); "
@@ -1980,8 +2082,11 @@ if _HAS_QT:
                 )
                 if hasattr(self, "_wire_canvas") and self._wire_canvas:
                     self._wire_canvas.update()
-            except Exception:  # noqa: S110
-                pass
+            except Exception:
+                logger.exception(
+                    "Bot Swarm: a wire.created event was refused by the"
+                    " canvas; that wire exists and is not painted",
+                )
 
         def _on_external_wire_removed(self, event) -> None:
             """Drop from ``_wires`` every pair the ``wire.removed`` event names."""
@@ -1998,8 +2103,12 @@ if _HAS_QT:
                 ]
                 if hasattr(self, "_wire_canvas") and self._wire_canvas:
                     self._wire_canvas.update()
-            except Exception:  # noqa: S110
-                pass
+            except Exception:
+                logger.exception(
+                    "Bot Swarm: a wire.removed event was refused by the"
+                    " canvas; the canvas keeps drawing a wire that routes"
+                    " nothing",
+                )
 
         def remove_wire(self, source_id: str, target_id: str):
             """Drop one wire from ``_wires`` and from the stored wire list.

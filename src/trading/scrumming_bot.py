@@ -4416,6 +4416,13 @@ class ScrummingBot(
             BULLISH at or above ``detonation_confidence_min``. The latch and
             the rate limit are persisted state that survives a restart.
 
+            The value is taken from the larger of ``_current_holdings`` and
+            ``_audited_venue_units``, the last reading an audit recorded, so a
+            position the venue holds above the anchor reaches
+            ``_execute_detonation`` even while the attributed count sits below
+            it. The audited figure is already in memory; this check asks no
+            venue for a balance.
+
         Returns:
             True if the trigger fired this call, False otherwise.
 
@@ -4426,8 +4433,13 @@ class ScrummingBot(
         price = getattr(ticker, "last", None) or 0.0
         if price <= 0:
             return False
+        audited_units = (
+            as_finite_float(getattr(self, "_audited_venue_units", 0.0)) or 0.0
+        )
         current_value = priced_usd(
-            self._current_holdings, price, float(self._quote_to_usd or 1.0)
+            max(self._current_holdings, max(0.0, audited_units)),
+            price,
+            float(self._quote_to_usd or 1.0),
         )
         if current_value <= self._anchor_target_balance:
             return False
@@ -4992,6 +5004,7 @@ class ScrummingBot(
                     price=float(current_price),
                     summary=_vote,
                     bypass_stack=True,
+                    label="STACK",
                 )
             except Exception as exc:
                 logger.warning(

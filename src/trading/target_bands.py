@@ -8,6 +8,7 @@ questions from a position value, which is what the dashboard holds.
 
 from __future__ import annotations
 
+import math
 from typing import Any, Iterable, Sequence
 
 #: The tick's park band as a fraction of target; ScrummingBot.tick exits inside it.
@@ -56,6 +57,26 @@ def ammo_target(live_target_balance: Any, configured_target_balance: Any) -> flo
     if live:
         return live
     return float(configured_target_balance or 0.0)
+
+
+def ammo_units(holdings: float, venue_units: Any) -> tuple:
+    """The units an Ammo reading measures from, and whether the venue gave them.
+
+    Prefers ``venue_units`` — the audited venue reading, already net of the
+    personal hold and of the sibling bots on the asset — over the bot's own
+    attributed ``holdings``. The exchange is the authority on what is held, and
+    an attributed count below the venue inverts the sign ``target_delta`` and
+    ``target_territory`` answer. Returns ``(holdings, False)`` when the reading
+    is absent, not finite or not above zero, which the Ammo cell marks in its
+    tooltip. Reads no venue: the figure is already in memory.
+    """
+    try:
+        reading = float(venue_units)
+    except (TypeError, ValueError):
+        return holdings, False
+    if not math.isfinite(reading) or reading <= 0:
+        return holdings, False
+    return reading, True
 
 
 def target_territory(position_value: float, target_balance: float) -> str:

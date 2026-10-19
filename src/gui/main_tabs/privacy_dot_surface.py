@@ -8,8 +8,9 @@ rather than a second palette.
 
 It also holds the behaviour the dot owns rather than describes: the mask it
 flips in the process privacy registry on a click, the repaint that follows,
-the callback it runs afterwards, and the two failures it swallows -- a
-registry that cannot answer, and a callback that raises.
+the callback it runs afterwards, and the two failures it marks -- a registry
+that cannot answer, which ``refresh`` reports as ``unreadable``, and a
+callback that raises, which ``clicked`` marks ``CALLBACK_FAILED``.
 
 ``src.core.desktop_bridge`` registers ``view_model`` as the handler for the
 ``privacy_dot.state`` method, which is how the Electron renderer reaches it.
@@ -20,7 +21,7 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from ...core.privacy_mask_registry import get_privacy_mask_registry
+from ...core.privacy_mask_registry import ABSENT_TEXT, get_privacy_mask_registry
 
 from .. import design_system as ds
 
@@ -30,8 +31,11 @@ DEFAULT_FIELD_ID = "kpi.spendable"
 
 REVEALED_GLYPH = "●"
 MASKED_GLYPH = "○"
+#: The register's own absent mark, drawn when the mask state cannot be read.
+UNREADABLE_GLYPH = ABSENT_TEXT
 REVEALED_STATE = "REVEALED. Click to mask."
 MASKED_STATE = "MASKED. Click to reveal."
+UNREADABLE_STATE = "STATE UNREADABLE. Click to try a flip."
 TOOLTIP_SEPARATOR = ": "
 
 DOT_STYLE = (
@@ -75,31 +79,41 @@ CALL_NAMES = (
 )
 
 
-def glyph(masked: bool) -> str:
-    """The character the dot paints for one mask state."""
+def glyph(masked: bool | None) -> str:
+    """The character the dot paints for one mask state.
+
+    ``None`` draws ``UNREADABLE_GLYPH``.
+    """
+    if masked is None:
+        return UNREADABLE_GLYPH
     return MASKED_GLYPH if masked else REVEALED_GLYPH
 
 
-def state_text(masked: bool) -> str:
-    """The words the tooltip carries for one mask state."""
+def state_text(masked: bool | None) -> str:
+    """The words the tooltip carries for one mask state.
+
+    ``None`` answers ``UNREADABLE_STATE``.
+    """
+    if masked is None:
+        return UNREADABLE_STATE
     return MASKED_STATE if masked else REVEALED_STATE
 
 
-def tooltip(field_id: Any, masked: bool) -> str:
+def tooltip(field_id: Any, masked: bool | None) -> str:
     """The whole tooltip one field's dot carries."""
     return f"{field_id}{TOOLTIP_SEPARATOR}{state_text(masked)}"
 
 
-def read_mask(field_id: Any) -> bool:
+def read_mask(field_id: Any) -> bool | None:
     """Whether the privacy registry currently hides one field.
 
-    A registry that cannot answer reads as revealed, so a repaint never
-    fails on a field id the registry refuses.
+    ``None`` is a read that raised, which ``dot_view`` carries as
+    ``unreadable``.
     """
     try:
         return bool(get_privacy_mask_registry().is_masked(field_id))
     except Exception:
-        return False
+        return None
 
 
 def dot_view(field_id: Any, masked: Optional[bool] = None) -> dict:
@@ -111,7 +125,8 @@ def dot_view(field_id: Any, masked: Optional[bool] = None) -> dict:
     hidden = read_mask(field_id) if masked is None else bool(masked)
     return {
         "field_id": field_id,
-        "masked": hidden,
+        "masked": bool(hidden),
+        "unreadable": hidden is None,
         "text": glyph(hidden),
         "tooltip": tooltip(field_id, hidden),
         "style_sheet": DOT_STYLE,
@@ -134,6 +149,7 @@ class PrivacyDotModel:
         self._on_toggle = on_toggle
         self.calls: list = [BUILT]
         self.masked = False
+        self.unreadable = False
         self.text = ""
         self.tooltip = ""
         self.style_sheet = DOT_STYLE
@@ -169,16 +185,23 @@ class PrivacyDotModel:
             self.calls.append(CALLBACK_SKIPPED)
 
     def refresh(self) -> None:
-        """Repaint the glyph, tooltip and skin from the registry."""
+        """Repaint the glyph, tooltip and skin from the registry.
+
+        A read that raises leaves ``unreadable`` set, ``text`` on
+        ``UNREADABLE_GLYPH`` and ``masked`` on False, which the renderer
+        reads together.
+        """
         self.calls.append(REFRESHED)
+        hidden: bool | None
         try:
             hidden = bool(get_privacy_mask_registry().is_masked(self._field_id))
         except Exception:
             self.calls.append(REGISTRY_UNREADABLE)
-            hidden = False
+            hidden = None
         painted = glyph(hidden)
         tip = tooltip(self._field_id, hidden)
-        self.masked = hidden
+        self.unreadable = hidden is None
+        self.masked = bool(hidden)
         self.text = painted
         self.style_sheet = DOT_STYLE
         self.tooltip = tip
@@ -190,14 +213,23 @@ def build_view_model(model: Optional[PrivacyDotModel] = None) -> dict:
     return {
         "field_id": state.field_id(),
         "masked": state.masked,
+        "unreadable": state.unreadable,
         "text": state.text,
         "tooltip": state.tooltip,
         "style_sheet": state.style_sheet,
         "flat": state.flat,
         "focus_policy": state.focus_policy,
         "cursor_shape": state.cursor_shape,
-        "glyphs": {"revealed": REVEALED_GLYPH, "masked": MASKED_GLYPH},
-        "states": {"revealed": REVEALED_STATE, "masked": MASKED_STATE},
+        "glyphs": {
+            "revealed": REVEALED_GLYPH,
+            "masked": MASKED_GLYPH,
+            "unreadable": UNREADABLE_GLYPH,
+        },
+        "states": {
+            "revealed": REVEALED_STATE,
+            "masked": MASKED_STATE,
+            "unreadable": UNREADABLE_STATE,
+        },
         "actions": dict(ACTIONS),
         "timers": dict(TIMERS),
         "timer_delays_ms": list(TIMER_DELAYS_MS),

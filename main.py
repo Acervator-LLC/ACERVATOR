@@ -711,13 +711,26 @@ ASYNC_PUMP_INTERVAL_MS = 50
 def _make_async_pump_timer(
     loop: asyncio.AbstractEventLoop, interval_ms: int = ASYNC_PUMP_INTERVAL_MS
 ) -> QTimer:
-    """Return a PreciseTimer QTimer calling tick_driver.pump_once(loop) every interval_ms."""
+    """Return a PreciseTimer QTimer calling tick_driver.pump_once(loop) every interval_ms.
+
+    A raising ``pump_once`` reaches ``loop.call_exception_handler``, which
+    ``_install_asyncio_handler`` points at the crash log, and does not escape
+    the slot.
+    """
     from PySide6.QtCore import Qt, QTimer
 
     from src.core.tick_driver import pump_once
 
     def pump_async():
-        pump_once(loop)
+        try:
+            pump_once(loop)
+        except Exception as exc:
+            loop.call_exception_handler(
+                {
+                    "message": "asyncio pump raised; the loop was not advanced",
+                    "exception": exc,
+                }
+            )
 
     timer = QTimer()
     timer.setTimerType(Qt.TimerType.PreciseTimer)
@@ -1056,7 +1069,12 @@ def main() -> int:
         log_manager.info(f"Version updated {stored_version} -> {current_version}")
 
     from src.gui.main_window import MainWindow
-    from src.core.state_manager import StateManager
+    from src.core.state_manager import (
+        FLEET_SEALED_NOTE,
+        PROBE_HAS_BOTS,
+        PROBE_SEALED,
+        StateManager,
+    )
     from src.trading.risk_manager import RiskManager
     from src.trading.analytics_engine import AnalyticsEngine
     from src.core.notifications import get_notification_manager
@@ -1145,7 +1163,10 @@ def main() -> int:
             )
     # Read unconditionally below; assigned only inside the restore branch.
     _autostart_bot_count = 0
-    if state_mgr.has_saved_state():
+    _fleet_probe = state_mgr.probe()
+    if _fleet_probe == PROBE_SEALED:
+        log_manager.warning(FLEET_SEALED_NOTE)
+    if _fleet_probe == PROBE_HAS_BOTS:
         saved = state_mgr.load_state()
         bot_count = len(saved.get("bots", {}))
         if bot_count > 0:

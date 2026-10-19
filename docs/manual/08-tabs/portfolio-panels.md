@@ -29,6 +29,16 @@ against the row's right edge. No background is left anywhere in the row.
 TOP_ROW_STRETCH = [3, 1, 1, 1, 1, 1, 0]
 ```
 
+Overtaken, quoted whole: "TOP_ROW_STRETCH = [3, 1, 1, 1, 1, 1, 0]".
+
+True today: `TOP_ROW_STRETCH` holds eight shares, `[6, 1, 1, 1, 1, 1, 1, 0]`, and
+is not written out. `header_strip_surface.py` builds it from `KPI_COLUMNS` and
+`COUNTER_CARDS` — one share per money column the strip holds, `COUNTER_STRETCH`
+for each card, and `CLASS_GROUP_STRETCH` for the class square. Six columns and
+six cards answer the six, the six ones and the nought, so the list carries one
+share per `TOP_ROW_ORDER` slot by construction. The ACCUMULATED card is the
+sixth, added after this page was written.
+
 Each of the six also carries a floor, the width its own whole amounts need, so
 a long figure is never cut.
 

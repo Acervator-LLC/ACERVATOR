@@ -19,14 +19,6 @@ from .asset_class_surface import (
     venue_classes,
 )
 
-DERIVATIVES = "derivatives"
-
-#: The suffixes a Coinbase derivatives product id carries. Source: the venue's
-#: public product list, read by ``ata_asset_maps.futures_listings``, whose own
-#: source note names dated futures on the CDE venue and perpetuals on
-#: ``-PERP-INTX`` (``src/trading/ata_asset_maps.py``, ``MAP_SOURCES``).
-DERIVATIVE_SUFFIXES = ("-CDE", "-PERP-INTX")
-
 #: What each tab holds one of, for ``empty_note``. No tab draws that sentence:
 #: ``tools/capture_screen_figure.py``, in ``class_note``, is its one caller.
 TAB_SUBJECTS = {
@@ -56,28 +48,6 @@ def set_active(name: Any) -> str:
     return _active
 
 
-def is_derivative(symbol: Any) -> bool:
-    """Whether one market symbol names a derivatives product.
-
-    The venue's own product read answers first, and ``DERIVATIVE_SUFFIXES``
-    answers while that read holds nothing.
-    """
-    asked = str(symbol or "").strip().upper()
-    if not asked:
-        return False
-    try:
-        from src.trading import ata_asset_maps
-    except Exception:  # noqa: BLE001 - the asset maps are optional at import time
-        listed: set = set()
-    else:
-        listed = set(ata_asset_maps.futures_tickers()) | set(
-            ata_asset_maps.futures_silent()
-        )
-    if asked in listed:
-        return True
-    return any(asked.endswith(one) for one in DERIVATIVE_SUFFIXES)
-
-
 def market_class(venue_id: Any, symbol: Any = "") -> str:
     """The asset class one market belongs to, or an empty string for none.
 
@@ -89,8 +59,6 @@ def market_class(venue_id: Any, symbol: Any = "") -> str:
         return ""
     if len(served) == 1:
         return next(iter(served))
-    if DERIVATIVES in served and is_derivative(symbol):
-        return DERIVATIVES
     return symbol_class(venue_id, symbol)
 
 
@@ -115,11 +83,17 @@ def bots_of_class(statuses: Any, name: Optional[Any] = None) -> list:
     return [one for one in (statuses or []) if bot_class(one) == key]
 
 
+# OVERTAKEN, quoted whole:
+#   "``venue_classes`` answers crypto and derivatives for Coinbase, and this
+#   answers that venue under both."
+# True today: ``venue_classes`` intersects its answer with ``asset_classes``,
+# which holds no ``derivatives``, and a venue serving several declared sectors
+# is answered under each of them.
 def venues_of_class(venue_ids: Iterable, name: Optional[Any] = None) -> list:
     """Every venue id in ``venue_ids`` that serves one asset class, sorted.
 
-    ``venue_classes`` answers crypto and derivatives for Coinbase, and this
-    answers that venue under both.
+    ``venue_classes`` answers every sector one venue could serve, and a venue
+    serving several is answered under each of them.
     """
     key = normalise(name) if name is not None else active()
     return sorted(one for one in (venue_ids or ()) if key in venue_classes(one))

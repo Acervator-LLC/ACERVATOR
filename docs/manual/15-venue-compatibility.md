@@ -10310,3 +10310,89 @@ published mechanics, so the clearing refusal swallows neither sector.
 A bitstamp row forged with a word the venue never published keeps no refusal,
 since `CITED_VENUE_CLEARING_REACH` holds no bitstamp row. The same forged row
 read as coinbase is refused.
+
+## 2026-10-17 — the Base Currency row opens on a money leg the sector quotes
+
+The Create Auto Trader wizard's Base Currency row offers every money leg the
+picked venue's own market rows quote, described in
+[06-trading-tab.md](06-trading-tab.md). The row opened on the first of its seven
+declared entries, `USDT`, whichever sector the operator pressed. Five of the six
+sectors quote no market in `USDT`, so the Target Asset row drew one entry reading
+"No pairs found" and the operator had to work out that the row above it was the
+cause.
+
+The row now opens on a leg the sector's own rows quote. The declared order stays
+the preference, so a sector quoting a market in the first declared leg keeps
+opening on it, and an entry the operator picked himself survives a venue change
+while the rows still quote a market in it.
+
+`src/gui/main_tabs/bot_wizard_surface.py, in opening_base_index` — the leg the
+row opens on
+
+### What the wizard draws when it opens
+
+Driven over the recorded market list with the home directory redirected. Nothing
+was written and no venue was contacted. One drive per sector, counting the
+markets the Target Asset row holds before the operator touches anything.
+
+| sector | recorded | drawn before | drawn now | opens on |
+| --- | --- | --- | --- | --- |
+| Crypto | 896 | 20 | 20 | USDT |
+| Stocks | 1032 | 0 | 364 | USDC |
+| Commodities | 25 | 0 | 6 | USDC |
+| Forex | 20 | 0 | 8 | USDC |
+| Indices | 6 | 0 | 6 | USDC |
+| Futures / Perps | 168 | 0 | 94 | USDC |
+
+Crypto is the control. It quotes 20 markets in `USDT`, so it opened on a list
+already and its count does not move.
+
+### No market was admitted that was refused
+
+Every entry of the row was tried on the same recording, before and after. The
+count of markets a sector reaches across the whole row is unchanged, so the
+change picks a different opening entry and widens nothing.
+
+| sector | reachable before | reachable now | entries the row offers |
+| --- | --- | --- | --- |
+| Crypto | 896 | 896 | 9 |
+| Stocks | 1032 | 1032 | 7 |
+| Commodities | 25 | 25 | 7 |
+| Forex | 20 | 20 | 13 |
+| Indices | 6 | 6 | 7 |
+| Futures / Perps | 168 | 168 | 7 |
+
+### An empty row states its ground
+
+The Target Asset row drew the fixed words "No pairs found" for both grounds. It
+names one of two.
+
+| what is true | what the row draws |
+| --- | --- |
+| the venue recorded no market in the sector | No Indices market recorded for Coinbase |
+| it recorded one the picked leg does not quote | No Indices market quoted in BNB |
+
+`src/gui/main_tabs/bot_wizard_surface.py, in no_pairs_reason` — the ground the
+row states
+
+```mermaid
+flowchart TD
+    press[a sector button, then + New Bot] --> rows[the venue's recorded rows]
+    rows --> legs[base_items_for, every money leg the rows quote]
+    legs --> open[opening_base_index, the leg the row opens on]
+    open --> list[filter_assets, the markets quoted in that leg]
+    list -->|markets| draw[the Target Asset row]
+    list -->|none| ground[no_pairs_reason, the sector or the leg]
+```
+
+Both the Qt page and the surface the React page reads call the two readings, so
+the two builds cannot open on different legs or word the same absence two ways.
+
+### The two wizards that still open on USDT
+
+The Paper Trader's wizard and the Simulator's wizard each hold their own copy of
+the seven declared entries and refill neither, so both still open on `USDT` and
+neither offers a contract market. Their market sources are not this recording.
+
+`src/gui/paper/paper_bot_wizard.py` and `src/gui/simulator/sim_bot_wizard.py` —
+the two rows this entry did not change
