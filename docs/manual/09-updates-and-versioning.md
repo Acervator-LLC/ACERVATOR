@@ -989,8 +989,8 @@ log_manager.info("Application ready — main window displayed")   # main.py
 
 ### Which inputs start a platform build
 
-Each platform has a build workflow of its own, and each one watches the same nine
-files. Six of them decide how a build is made. Three of them decide what a build
+Each platform has a build workflow of its own, and each one watches nine files.
+Six of them decide how a build is made. Three of them decide what a build
 installs.
 
 | what the file decides | macOS | Windows |
