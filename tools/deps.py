@@ -31,7 +31,7 @@ CONSUMER_EXTRAS: dict[str, tuple[str, ...]] = {
     # `requirements_for`, which keys on the distribution name and so keeps only
     # the first `acervator[...]` self-reference. Naming the group here makes the
     # analyzers' statsmodels reach this route too, not only `pip install -e .[dev]`.
-    "dev": ("dev", "cointegration"),
+    "dev": ("dev", "cointegration", "slides"),
     "contracts": ("contracts",),
     "ci": ("test", "lint"),
     "all": (
@@ -39,6 +39,7 @@ CONSUMER_EXTRAS: dict[str, tuple[str, ...]] = {
         "test",
         "lint",
         "charts",
+        "slides",
         "cointegration",
         "monitor",
         "display",
