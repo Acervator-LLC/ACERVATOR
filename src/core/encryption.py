@@ -307,14 +307,26 @@ def open_master_key(sealed: SealedMasterKey, password: str) -> bytes:
     """Return the master key *sealed* holds, or raise ValueError ``MASTER_KEY_REFUSED``.
 
     ``derive_key`` runs at the ``kdf_iterations`` *sealed* records, and a wrong
-    *password* fails ``open_under_key`` with nothing on disk compared against.
+    *password* fails every opener with nothing on disk compared against.
     """
     try:
         blob = base64.urlsafe_b64decode(sealed.sealed_key.encode("ascii"))
         sealing_key = derive_key(
             password, sealed.salt, iterations=sealed.kdf_iterations
         )
-        return open_under_key(sealing_key, blob[:_NONCE_LEN], blob[_NONCE_LEN:])
+    except Exception as exc:
+        raise ValueError(MASTER_KEY_REFUSED) from exc
+
+    # The second opener reads a seal written while `cryptography` was absent;
+    # `derive_key` answers the same key on both paths, only the AEAD differs.
+    nonce, ct = blob[:_NONCE_LEN], blob[_NONCE_LEN:]
+    try:
+        return open_under_key(sealing_key, nonce, ct)
+    except Exception as exc:
+        if not _HAS_CRYPTOGRAPHY:
+            raise ValueError(MASTER_KEY_REFUSED) from exc
+    try:
+        return _fallback_decrypt(sealing_key, nonce, ct)
     except Exception as exc:
         raise ValueError(MASTER_KEY_REFUSED) from exc
 
