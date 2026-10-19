@@ -497,6 +497,38 @@ def as_whole_count(value) -> Optional[int]:
     return None
 
 
+#: The Target Balance a pushed market takes when its candidate names no dollar
+#: figure, read off `BotConfig`'s own `target_balance` field default.
+PUSHED_TARGET_DEFAULT: float = float(
+    next(one.default for one in fields(BotConfig) if one.name == "target_balance")
+)
+
+
+def pushed_target_usd(value) -> Optional[float]:
+    """Return the Target Balance one pushed market takes, or None when no bot
+    can trade against it.
+
+    `PUSHED_TARGET_DEFAULT` stands in for a `value` naming no figure and for
+    one naming zero, while a stored flag, a not-a-number, an endless number, a
+    negative number and a value `float` cannot read each answer None; text is
+    read, which `as_finite_float` refuses, and Push to Paper and Push to Sim
+    both read this one rule.
+    """
+    if isinstance(value, bool):
+        return None
+    if value is None:
+        return PUSHED_TARGET_DEFAULT
+    if not isinstance(value, (int, float, str)):
+        return None
+    try:
+        wanted = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    if not math.isfinite(wanted) or wanted < 0.0:
+        return None
+    return PUSHED_TARGET_DEFAULT if wanted == 0.0 else wanted
+
+
 #: The aggregate key naming every fleet total one bot's unreadable figure left
 #: out. `get_aggregate_stats` writes it and the header strip draws a dash for
 #: each total it names.
