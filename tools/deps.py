@@ -39,6 +39,7 @@ CONSUMER_EXTRAS: dict[str, tuple[str, ...]] = {
         "test",
         "lint",
         "charts",
+        "slides",
         "cointegration",
         "monitor",
         "display",
