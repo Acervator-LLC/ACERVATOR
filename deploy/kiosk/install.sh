@@ -288,16 +288,13 @@ info "Copying source from ${SOURCE_DIR}..."
 # subsystem that has never existed in this repository.
 acervator_sync_source "$SOURCE_DIR" "${INSTALL_DIR}/src"
 
-# Initialise rule registry if not present. `RULE_REGISTRY.json` is in
-# the exclude set, so no later update deletes what this step writes.
-if [[ ! -f "${INSTALL_DIR}/src/RULE_REGISTRY.json" ]]; then
-    if acervator_dry_run; then
-        info "[dry-run] would generate ${INSTALL_DIR}/src/RULE_REGISTRY.json"
-    else
-        "$PYTHON" "${INSTALL_DIR}/src/src/core/rule_registry.py" \
-            >"${INSTALL_DIR}/src/RULE_REGISTRY.json" 2>/dev/null || true
-    fi
-fi
+# No step generates `RULE_REGISTRY.json`. The step that used to run
+# `rule_registry.py` here wrote a 0-byte file on every install: the module
+# saves to `sadp/RULE_REGISTRY.json`, a directory no commit has ever added, so
+# it raised FileNotFoundError before printing anything and `2>/dev/null || true`
+# discarded both the error and the exit code. Nothing read the file either --
+# `systemd/acervator-preflight.sh` assigns its path and never reads the
+# variable. The module now lives under `unreached/core/`.
 
 acervator_run chown -R "${ACERVATOR_USER}:${ACERVATOR_USER}" "${INSTALL_DIR}/src"
 ok "Acervator source installed to ${INSTALL_DIR}/src"

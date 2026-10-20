@@ -127,6 +127,16 @@ src/core/rule_registry.py     every rule locked by default
 src/core/version_sweep.py     built for the protocol, imported by nothing
 ```
 
+**Overtaken.** That block stays whole above. Both files left `src/` on the
+operator's ruling, and both are now under `unreached/core/`. They were not
+deleted, so a revert puts each one back.
+
+```
+unreached/core/rule_registry.py     0 importers
+unreached/core/version_sweep.py     0 importers
+src/core/log_paths.py              15 importers   <- control, same scan
+```
+
 ## 2026-04-19 — the version went backwards and nobody wrote it down
 
 In twelve hours the engine version reads 3.14.0, then 3.19.0, 3.21.0, 3.24.0 and
