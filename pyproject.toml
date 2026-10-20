@@ -123,6 +123,20 @@ dependencies = [
 #            source, does not name this extra, and a plain `pip install -e .`
 #            does not either. Both run with the monitor unavailable, and both
 #            surfaces say so.
+#   slides   `tools/build_vwap_deck.py` imports pptx at module level with NO
+#            guard. It is an extra for the same reason `charts` is: no code in
+#            the product reaches it. One tracked module imports pptx, that
+#            builder, and `EXCLUDES` in tools/spec_common.py is never asked
+#            about it because neither .spec file collects `tools/`. The builder
+#            composes the VWAP part of the product manual into a slide deck for
+#            the operator, off the committed figures under
+#            `docs/manual/figures/`, and the running application never calls
+#            it. The lower bound is the version measured on 2026-10-19.
+#            `CONSUMER_EXTRAS["all"]` in tools/deps.py names this extra, and so
+#            does `CONSUMER_EXTRAS["dev"]`, because the archetypes lane installs
+#            `.[dev]` and mypy and pyright read the builder's pptx imports. No
+#            shipping consumer names it: `build` and `os` both run with the
+#            package absent, and nothing in the product imports it.
 #   contracts  `contracts/deploy.py` is a standalone CLI that deploys
 #            ACRV.sol, CompetitionRegistry.sol and AcervatorTrophy.sol
 #            to Base Sepolia or Base Mainnet. It imports web3 and
@@ -171,6 +185,7 @@ test = [
 ]
 report = ["reportlab>=4.0.0"]
 charts = ["matplotlib>=3.8.0"]
+slides = ["python-pptx>=1.0.2"]
 cointegration = ["statsmodels>=0.15.0"]
 monitor = ["httpx>=0.27.0"]
 contracts = ["web3", "eth-account"]
@@ -194,6 +209,12 @@ dev = [
     # wrong and unused, and the lane failed on four high findings while this
     # machine stayed green. The analyzer environment declares what it reads.
     "acervator[cointegration]",
+    # The same reason, for the same lane. mypy and pyright read the six pptx
+    # imports in tools/build_vwap_deck.py. Without this line the runner answered
+    # `import-not-found` and `reportMissingImports` on all six and the lane
+    # failed on twelve high findings while this machine, which carries the
+    # package, stayed green.
+    "acervator[slides]",
     # coding_archetype.py shells out to SIX analyzers on a Python target -
     # ruff, mypy, pyright, bandit, vulture, semgrep - and to shellcheck or
     # yamllint on a shell or YAML target. pyright is a bare-executable

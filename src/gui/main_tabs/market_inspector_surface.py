@@ -26,7 +26,6 @@ alone is reported. Nothing here imports Qt.
 from __future__ import annotations
 
 import base64
-import json
 import logging
 import math
 import struct
@@ -187,6 +186,9 @@ FLEET_CONFIG_KEY = "config"
 FLEET_TARGET_KEY = "target_balance"
 FLEET_INTERVAL_KEY = "scrumming_interval_pct"
 FLEET_STATE_UNREADABLE_LOG = "market_inspector: the saved fleet is unreadable: %s"
+
+#: Why ``fleet_excess_at`` answers the assumed excess rather than a measured one.
+FLEET_STATE_SEALED_LOG = "market_inspector: %s"
 #: How many ``bot_state.json`` stamps ``fleet_excess_at`` holds an answer for.
 #: The ticker field asks on every keystroke and the file is half a megabyte.
 FLEET_EXCESS_CACHE = 4
@@ -3449,13 +3451,19 @@ def fleet_excess_at(path_text: str, stamp: tuple) -> tuple:
     ``stamp``, which is that file's own modified time and size.
 
     ``sizing.REFERENCE_SCRUM_EXCESS_USD`` and a count of 0 where the file is
-    unreadable or names no record carrying both figures.
+    unreadable, where its fleet payload is sealed, or where it names no record
+    carrying both figures.
     """
+    from ...core.state_manager import FLEET_SEALED_NOTE, fleet_sealed, load_state_file
+
     del stamp
     try:
-        state = json.loads(Path(path_text).read_text(encoding="utf-8"))
+        state = load_state_file(path_text)
     except (OSError, ValueError) as exc:
         logger.debug(FLEET_STATE_UNREADABLE_LOG, exc)
+        return (sizing.REFERENCE_SCRUM_EXCESS_USD, 0)
+    if fleet_sealed(state):
+        logger.warning(FLEET_STATE_SEALED_LOG, FLEET_SEALED_NOTE)
         return (sizing.REFERENCE_SCRUM_EXCESS_USD, 0)
     records = (state or {}).get(FLEET_BOTS_KEY)
     if not isinstance(records, dict):

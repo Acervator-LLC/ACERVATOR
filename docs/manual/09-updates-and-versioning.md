@@ -987,6 +987,81 @@ line the program writes to its own log once the main window is on screen.
 log_manager.info("Application ready — main window displayed")   # main.py
 ```
 
+### Which inputs start a platform build
+
+Each platform has a build workflow of its own, and each one watches nine files.
+Six of them decide how a build is made. Three of them decide what a build
+installs.
+
+| what the file decides | macOS | Windows |
+| --- | --- | --- |
+| the build script | `build_mac.sh` | `build_windows.ps1` |
+| the packaging recipe | `Acervator_mac.spec` | `Acervator_win.spec` |
+| which script runs | `tools/build_launcher.py` | `tools/build_launcher.py` |
+| which variants build | `tools/build_variants.py` | `tools/build_variants.py` |
+| what the recipe collects | `tools/spec_common.py` | `tools/spec_common.py` |
+| which groups get installed | `tools/deps.py` | `tools/deps.py` |
+| what each group holds | `pyproject.toml` | `pyproject.toml` |
+| which interpreter | `.python-version` | `.python-version` |
+| the workflow itself | `macos-build.yml` | `windows-build.yml` |
+
+A push that changes one of a platform's nine files builds that platform, on the
+branch the push went to, before any merge. A push that changes anything else
+builds neither platform.
+
+The release names each platform as a call rather than as a job of its own, so one
+file holds each platform's build and the release holds neither. A call carries no
+watch list, so a release builds both platforms whatever those lists say.
+
+```yaml
+# .github/workflows/release.yml
+jobs:
+  windows:
+    uses: ./.github/workflows/windows-build.yml
+  macos:
+    uses: ./.github/workflows/macos-build.yml
+```
+
+The lock file under `requirements/` is not one of the nine. No build reads it, so
+a change to it builds nothing and ships nothing.
+
+### The macOS watch list, overtaken
+
+OVERTAKEN, quoted whole:
+
+```yaml
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - build_mac.sh
+      - Acervator_mac.spec
+      - tools/build_launcher.py
+      - tools/build_variants.py
+      - tools/spec_common.py
+      - .github/workflows/macos-build.yml
+```
+
+True today: nine paths, not six. The three added are the files that decide what a
+build installs, and the list lost no path.
+
+```yaml
+      - tools/deps.py
+      - pyproject.toml
+      - .python-version
+```
+
+The same reading on Windows went the other way. Windows had no watch list,
+because it had no workflow of its own: its build was a job inside the release,
+and the release starts on `main` alone. A change to what a build installs got no
+Windows build until after it had merged.
+
+```
+                             before            today
+Windows watch list           none              9 paths
+Windows builds on a branch   no                yes
+```
+
 ### What happens when the disk image step fails
 
 The disk image step can fail on a resource that is busy rather than on anything

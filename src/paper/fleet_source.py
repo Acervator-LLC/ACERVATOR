@@ -1092,18 +1092,32 @@ class PaperFleetSource:
         return self._paper_dir / PAPER_FLEET_NAME
 
     def _state(self) -> dict:
-        path = self.path()
-        if not path.exists():
-            return {}
-        try:
-            loaded = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as exc:
-            logger.warning("paper fleet: %s unreadable: %s", path.name, exc)
-            return {}
+        """The state file's dict, with its sealed fleet payload opened.
+
+        ``load_state_file`` opens the payload, so the master key this session
+        holds reaches this reader at the same moment it reaches every other
+        reader of that file. A payload no key opens answers the latch and no
+        ``bots`` key, which ``fleet_sealed`` is True for and an absent file is
+        not, so a caller tells a sealed fleet from no fleet and from an empty
+        one. An absent or unreadable file answers an empty dict.
+        """
+        from ..core.state_manager import (
+            FLEET_SEALED_NOTE,
+            fleet_sealed,
+            load_state_file,
+        )
+
+        loaded = load_state_file(self.path())
+        if fleet_sealed(loaded):
+            logger.warning("paper fleet: %s", FLEET_SEALED_NOTE)
         return loaded if isinstance(loaded, dict) else {}
 
     def saved_at(self) -> str:
-        """The ``saved_at_human`` stamp the live process last wrote."""
+        """The ``saved_at_human`` stamp the live process last wrote.
+
+        A sealed file carries the stamp in plain text beside its latch, so this
+        answers it whether the payload opens or not.
+        """
         return str(self._state().get("saved_at_human") or "")
 
     def bots(self) -> list[PaperBot]:
@@ -1119,7 +1133,11 @@ class PaperFleetSource:
 
     def stored_records(self) -> dict[str, dict]:
         """The ``bots`` map of ``bot_state.json`` as it lies on disk, by
-        ``bot_id``, each a copy; the one read of that file with a caller."""
+        ``bot_id``, each a copy; the one read of that file with a caller.
+
+        A sealed fleet no key opens holds no ``bots`` key, so this answers an
+        empty map under ``FLEET_SEALED_NOTE``, which ``_state`` logs.
+        """
         stored = self._state().get("bots")
         if not isinstance(stored, dict):
             return {}
