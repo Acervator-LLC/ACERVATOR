@@ -475,6 +475,211 @@ export identical to the digit, and the one that differs is A20, published
 rounded to 0.069776 against a computed 0.0697757. A different price column or a
 different weighting would have moved all 38.
 
+## The October export, and the base that makes 39
+
+A third export covers the same account to 19 October. The two readings above
+stand, and this one sits beside them. Every figure in this section is the
+output of `tools/build_product_manual.py`, in `measurement_lines`, which reads
+the exports `export_files` finds under `artifacts/evidence-input/transactions/`.
+That directory is excluded from the repository, so the record stays out of it
+and the figures drawn from it ship.
+
+The following sentence is overtaken:
+
+> 40 distinct assets appear in the record. USD and USDC are quote currencies,
+> which leaves 38 charted bases, one for each bot in the fleet, and each of the
+> 38 has fills of its own.
+
+41 distinct assets appear in the October export. USD and USDC are still the
+quote currencies, which leaves 39 charted bases, and each of the 39 has fills
+of its own. The 39th base opened on 4 October.
+
+The following sentence is overtaken:
+
+> The later export holds 7,049 physical rows and 7,045 body rows, and 6,997 of
+> the body rows are fills on a charted base.
+
+The October export holds 8,365 physical rows and 8,361 body rows, and 8,310 of
+the body rows are fills on a charted base.
+
+The following sentence is overtaken:
+
+> Of the 38 charted bases, 35 have enough fills on both sides for the figure to
+> mean anything. 23 of those finish above 1.000 and 12 below, and none lands
+> exactly on it. A29 is the highest at 1.351 and A20 the lowest at 0.879.
+
+All 39 charted bases now carry fills on both sides. 32 finish above 1.000 and 7
+below, and none lands exactly on it. A29 is the highest at 1.228 and A20 the
+lowest at 0.911.
+
+The following sentence is overtaken:
+
+> Of the eight assets with the most fills, six trend down to between 0.4 and
+> 0.6. A05 and A04 trend up.
+
+The eight assets with the most fills are no longer the same eight. A11 has more
+fills than A07 and takes its place. Five of the eight trend down, A03 as far as
+0.137, and A04, A05 and A11 trend up, to 1.100, 1.639 and 2.403.
+
+Three readings side by side:
+
+| Reading | Earlier export | Later export | October export |
+| --- | ---: | ---: | ---: |
+| Physical rows | 5,709 | 7,049 | 8,365 |
+| Body rows | 5,705 | 7,045 | 8,361 |
+| Fills on a charted base | 5,661 | 6,997 | 8,310 |
+| Charted bases | 38 | 38 | 39 |
+| First fill | 12 Apr | 12 Apr | 12 Apr |
+| Last fill | 3 Sep | 27 Sep | 19 Oct |
+| Rows carrying no fill | 44 | 48 | 51 |
+
+The October export adds 1,313 fills and 22 days over the later one. Its three
+extra rows carrying no fill are all reward payments.
+
+One check separates a longer record from a different calculation. The producer
+rebuilt the later export's table from that same export, and every cell it
+shares with the published one came back identical:
+
+```
+python -m tools.build_product_manual --measure
+    rows compared                        38
+    cells compared                      266
+    cells differing                       0
+control, the same table against the earlier export's
+    cells differing                     229 of 266
+```
+
+The 38 first buy VWAP values the table above publishes are unchanged across the
+October export, every one of them. A first buy VWAP is the first buy's price,
+and no later fill can move it.
+
+### Every base, measured on the October export
+
+One row per charted base, most fills first. The columns are the ones the export
+alone fixes.
+
+| Asset | Fills | Buy | Sell | First buy VWAP | Final buy VWAP | Index | Window |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| A01 | 950 | 567 | 383 | 1.5915 | 0.632117 | 0.397 | 21 Apr to 18 Oct |
+| A02 | 657 | 351 | 306 | 0.10842 | 0.0452924 | 0.418 | 22 Apr to 19 Oct |
+| A03 | 609 | 366 | 243 | 0.11868 | 0.0162426 | 0.137 | 9 May to 18 Oct |
+| A04 | 404 | 190 | 214 | 0.2478 | 0.272606 | 1.100 | 29 May to 18 Oct |
+| A05 | 371 | 204 | 167 | 359.67 | 589.423 | 1.639 | 24 Apr to 19 Oct |
+| A11 | 336 | 151 | 185 | 0.01722 | 0.0413817 | 2.403 | 13 Jul to 19 Oct |
+| A06 | 327 | 186 | 141 | 0.01581 | 0.00589118 | 0.373 | 24 Apr to 19 Oct |
+| A08 | 313 | 190 | 123 | 0.0508 | 0.0223261 | 0.439 | 23 Apr to 18 Oct |
+| A07 | 300 | 197 | 103 | 0.05537 | 0.0313047 | 0.565 | 3 May to 18 Oct |
+| A10 | 269 | 142 | 127 | 5.71e-06 | 5.75974e-06 | 1.009 | 12 Apr to 18 Oct |
+| A09 | 263 | 143 | 120 | 1.4622 | 1.43666 | 0.983 | 27 Apr to 18 Oct |
+| A13 | 248 | 119 | 129 | 15.7253 | 17.411 | 1.107 | 9 May to 19 Oct |
+| A12 | 242 | 139 | 103 | 0.009814 | 0.00790726 | 0.806 | 27 Apr to 19 Oct |
+| A19 | 226 | 148 | 78 | 0.00395 | 0.0023844 | 0.604 | 9 Aug to 15 Oct |
+| A17 | 191 | 104 | 87 | 0.35136 | 0.384832 | 1.095 | 7 May to 18 Oct |
+| A14 | 190 | 121 | 69 | 2308.68 | 2075.55 | 0.899 | 23 Apr to 18 Oct |
+| A16 | 186 | 97 | 89 | 273.4 | 248.764 | 0.910 | 2 May to 19 Oct |
+| A15 | 181 | 123 | 58 | 77782.1 | 71198.7 | 0.915 | 23 Apr to 18 Oct |
+| A18 | 172 | 114 | 58 | 1.4278 | 1.39522 | 0.977 | 23 Apr to 18 Oct |
+| A25 | 160 | 81 | 79 | 1.0673 | 0.890555 | 0.834 | 9 May to 19 Oct |
+| A29 | 155 | 74 | 81 | 0.001603 | 0.00293077 | 1.828 | 7 Jul to 19 Oct |
+| A20 | 146 | 65 | 81 | 0.0697757 | 0.0281437 | 0.403 | 9 Aug to 19 Oct |
+| A30 | 141 | 63 | 78 | 2.411 | 2.59862 | 1.078 | 29 May to 18 Oct |
+| A24 | 140 | 85 | 55 | 0.02809 | 0.00931148 | 0.331 | 8 Jul to 17 Oct |
+| A33 | 138 | 72 | 66 | 0.14222 | 0.171733 | 1.208 | 22 Aug to 18 Oct |
+| A21 | 137 | 73 | 64 | 9.296 | 9.88602 | 1.063 | 24 Apr to 18 Oct |
+| A22 | 132 | 70 | 62 | 0.09814 | 0.0881565 | 0.898 | 25 Apr to 18 Oct |
+| A23 | 115 | 62 | 53 | 85.32 | 85.572 | 1.003 | 23 Apr to 17 Oct |
+| A27 | 113 | 69 | 44 | 0.205737 | 0.198163 | 0.963 | 29 May to 18 Oct |
+| A26 | 108 | 61 | 47 | 0.5153 | 0.466622 | 0.906 | 13 Jul to 18 Oct |
+| A28 | 95 | 44 | 51 | 64.42 | 65.9488 | 1.024 | 29 May to 18 Oct |
+| A32 | 69 | 26 | 43 | 0.42307 | 0.520594 | 1.231 | 23 Jul to 18 Oct |
+| A31 | 62 | 33 | 29 | 0.09457 | 0.0856605 | 0.906 | 29 May to 18 Oct |
+| A35 | 49 | 25 | 24 | 0.1695 | 0.171694 | 1.013 | 13 Jul to 18 Oct |
+| A34 | 45 | 21 | 24 | 0.1696 | 0.187527 | 1.106 | 23 Jul to 18 Oct |
+| A36 | 25 | 11 | 14 | 46.33 | 50.3828 | 1.087 | 23 Jul to 14 Oct |
+| A37 | 18 | 9 | 9 | 0.05997 | 0.0572927 | 0.955 | 23 Jul to 19 Oct |
+| A38 | 17 | 8 | 9 | 2148.63 | 2294.25 | 1.068 | 23 Jul to 14 Oct |
+| A39 | 10 | 7 | 3 | 2.0423 | 1.96971 | 0.964 | 4 Oct to 18 Oct |
+
+### The buy and sell ratio on the October export
+
+The sell VWAP over the buy VWAP, across every fill in the October export.
+
+| Asset | Buys | Sells | Buy VWAP | Sell VWAP | Ratio |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| A01 | 567 | 383 | 0.632117 | 0.587099 | 0.929 |
+| A02 | 351 | 306 | 0.0452924 | 0.0463992 | 1.024 |
+| A03 | 366 | 243 | 0.0162426 | 0.0198769 | 1.224 |
+| A04 | 190 | 214 | 0.272606 | 0.300622 | 1.103 |
+| A05 | 204 | 167 | 589.423 | 660.061 | 1.120 |
+| A11 | 151 | 185 | 0.0413817 | 0.0490044 | 1.184 |
+| A06 | 186 | 141 | 0.00589118 | 0.00576189 | 0.978 |
+| A08 | 190 | 123 | 0.0223261 | 0.0216727 | 0.971 |
+| A07 | 197 | 103 | 0.0313047 | 0.031177 | 0.996 |
+| A10 | 142 | 127 | 5.75974e-06 | 5.89461e-06 | 1.023 |
+| A09 | 143 | 120 | 1.43666 | 1.42274 | 0.990 |
+| A13 | 119 | 129 | 17.411 | 18.9641 | 1.089 |
+| A12 | 139 | 103 | 0.00790726 | 0.00806262 | 1.020 |
+| A19 | 148 | 78 | 0.0023844 | 0.00254737 | 1.068 |
+| A17 | 104 | 87 | 0.384832 | 0.412881 | 1.073 |
+| A14 | 121 | 69 | 2075.55 | 2155.22 | 1.038 |
+| A16 | 97 | 89 | 248.764 | 252.5 | 1.015 |
+| A15 | 123 | 58 | 71198.7 | 73581.2 | 1.033 |
+| A18 | 114 | 58 | 1.39522 | 1.40659 | 1.008 |
+| A25 | 81 | 79 | 0.890555 | 0.910984 | 1.023 |
+| A29 | 74 | 81 | 0.00293077 | 0.00359865 | 1.228 |
+| A20 | 65 | 81 | 0.0281437 | 0.0256386 | 0.911 |
+| A30 | 63 | 78 | 2.59862 | 3.01716 | 1.161 |
+| A24 | 85 | 55 | 0.00931148 | 0.00962266 | 1.033 |
+| A33 | 72 | 66 | 0.171733 | 0.194725 | 1.134 |
+| A21 | 73 | 64 | 9.88602 | 10.4953 | 1.062 |
+| A22 | 70 | 62 | 0.0881565 | 0.0901305 | 1.022 |
+| A23 | 62 | 53 | 85.572 | 87.5001 | 1.023 |
+| A27 | 69 | 44 | 0.198163 | 0.21289 | 1.074 |
+| A26 | 61 | 47 | 0.466622 | 0.49167 | 1.054 |
+| A28 | 44 | 51 | 65.9488 | 72.1458 | 1.094 |
+| A32 | 26 | 43 | 0.520594 | 0.629924 | 1.210 |
+| A31 | 33 | 29 | 0.0856605 | 0.0897963 | 1.048 |
+| A35 | 25 | 24 | 0.171694 | 0.188452 | 1.098 |
+| A34 | 21 | 24 | 0.187527 | 0.218207 | 1.164 |
+| A36 | 11 | 14 | 50.3828 | 60.2623 | 1.196 |
+| A37 | 9 | 9 | 0.0572927 | 0.0574807 | 1.003 |
+| A38 | 8 | 9 | 2294.25 | 2724.79 | 1.188 |
+| A39 | 7 | 3 | 1.96971 | 1.89008 | 0.960 |
+
+### Three columns are not carried forward
+
+The band table above counts fills against the band of the bar holding them, and
+those bars are built from the fills rather than from candles. No committed file
+builds them. The closest reconstruction returns 3,797 bands against the 3,792
+that table counts, and 653 fills at or above the upper band against its 605. A
+figure that cannot be reproduced is not republished here, so this section
+carries the columns the export alone fixes and leaves the three band columns to
+the reading above.
+
+The combined chart near the top of this part draws the eight assets with the
+most fills of the earlier export. Those are no longer the eight with the most
+fills, and nothing in this repository redraws that chart.
+
+### A39, the base the October export adds
+
+A39 has 10 fills, seven buys and three sells, between 4 October and 18 October.
+Net units rise from 12.128 to 14.895. The buy line runs from 2.0423 down to
+1.96971 and the sell line ends at 1.89008, which puts the ratio at 0.960.
+
+![A39 weekly chart, 18 weekly candles built from 18,525 five-minute rows.](figures/weekly_a39.png)
+
+![A39 price trace, 18,525 five-minute closes across the recorded window.](figures/trace_a39.png)
+
+A39 has no position card. The venue's card set covers 37 of the 39 bases, and
+A33 is the other base without one.
+
+A39 has no VWAP chart. The 39 charts above arrived with the record, and no
+committed file draws a fortieth, so the weekly chart and the price trace carry
+this base. `tools/build_product_manual.py`, in `labels_across`, numbers a base
+that arrives late after the labels already published, so A01 through A38 keep
+the bases they have carried throughout and a new base takes the next number.
+
+
 ## What this repository holds for these charts
 
 The rows behind the charts take the shape `fetch_all_history_chunked` in
