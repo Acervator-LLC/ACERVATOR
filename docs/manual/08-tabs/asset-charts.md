@@ -48,12 +48,14 @@ QPainter. No browser and no WebEngine dependency.
 
 Four record types carry everything drawn over the candles.
 
+Three do now. `GridLine` is gone, and no painter in either build ever
+drew from it.
+
 | Record | Draws |
 | ------ | ----- |
 | `Candle` | One open, high, low, close and volume bar |
 | `TradeMarker` | An executed buy or sell |
 | `PositionMarker` | A holding, with a distinct icon for invisible and visible |
-| `GridLine` | A buy or sell level |
 
 The position record is the one that carries the visibility mode, which is what
 tells an invisible holding from one resting on the book.
@@ -81,7 +83,6 @@ The setters name what they place.
 | `add_marker` | One executed fill |
 | `set_trade_history_markers` | The fills already on record |
 | `set_positions` | The holdings, invisible and on book |
-| `set_grid_lines` | The buy and sell levels |
 | `set_tranche_floors` | The standing fold-tranche floors |
 | `set_target_balance_lines` | The dollar target |
 | `set_fire_armed_state` | An armed manual fire |
@@ -2499,6 +2500,9 @@ one it cannot, and `candle_rows` keeps those it could.
 is written and read zero times, and `GridLine` is constructed zero times, in both
 builds. Layer 2 of #230 is unbuilt.
 
+Layer 2 is built now, and the setter that sentence described is gone. The
+section below quotes what went with it.
+
 ### The zero a bot carries before its first fetch
 
 `src/trading/container/config.py` declares `current_price: float = 0.0`, so a bot
@@ -2526,3 +2530,22 @@ They were not reworded. They are quoted here.
 not a price it measured.
 
 "| a readable zero | `$0.00000000` |" - a readable zero reads `no price yet`.
+
+### What the grid level list leaves behind
+
+The grid level list, its setter and its record type are gone from both
+builds, and `grid_lines_held` is gone from the served frame and from the
+page's declared fields. Nothing read any of them.
+
+Two rows were not reworded. They are quoted here.
+
+"| `GridLine` | A buy or sell level |" - the buy and sell levels the chart
+draws are `PositionMarker` records, placed by `set_positions`.
+
+"| `set_grid_lines` | The buy and sell levels |" - `set_grid_lines` had no
+caller in either build.
+
+The dotted price ruling across the chart is not that list and is untouched.
+`native_chart.py, in paint_to` steps it from the fitted price range, and
+`native_chart_surface.py, in price_grid` answers the same steps for the page,
+which draws them in `native_chart.js, in GridLines`.

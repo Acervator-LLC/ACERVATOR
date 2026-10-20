@@ -4,8 +4,8 @@
 ``CandlestickChart`` paints candles, a volume strip, price grid lines,
 position markers and a crosshair without a WebEngine dependency.
 ``ChartPanel`` wraps it with a timeframe selector and one checkbox per
-indicator overlay. ``Candle``, ``TradeMarker``, ``PositionMarker`` and
-``GridLine`` are the records it draws from.
+indicator overlay. ``Candle``, ``TradeMarker`` and ``PositionMarker``
+are the records it draws from.
 """
 
 from __future__ import annotations
@@ -260,13 +260,6 @@ class PositionMarker:
     level: int = 0
     filled: bool = False
     asset_held: float = 0.0
-
-
-@dataclass
-class GridLine:
-    price: float
-    side: str
-    label: str = ""
 
 
 PRICE_PANE = "price"
@@ -896,7 +889,6 @@ if _HAS_QT:
             self._refused_candles = 0
             self._markers: list[TradeMarker] = []
             self._positions: list[PositionMarker] = []
-            self._grid_lines: list[GridLine] = []
             self._current_tf = "1h"
             self._mouse_x: Optional[int] = None
             self._mouse_y: Optional[int] = None
@@ -1397,10 +1389,6 @@ if _HAS_QT:
             paints the band between the side's band and its tolerance edge.
             """
             self._landing_strip = None if strip is None else dict(strip)
-            self._repaint()
-
-        def set_grid_lines(self, lines: list[GridLine]) -> None:
-            self._grid_lines = lines
             self._repaint()
 
         def set_target_balance_lines(
