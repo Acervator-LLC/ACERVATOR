@@ -2689,7 +2689,7 @@ The dotted price ruling is not this list. `src/gui/native_chart.py`, in
 steps for the page, which draws them in `src/gui/web/native_chart.js`, in
 `GridLines`. The page reads seven ticks at a step of five before and after.
 
-### Readings this entry declares
+### Readings this removal declares
 
 `STEP_NAMES` in `src/gui/main_tabs/native_chart_surface.py` is read zero times.
 Only the one entry naming the deleted setter went with it.
