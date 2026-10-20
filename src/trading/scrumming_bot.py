@@ -3935,7 +3935,8 @@ class ScrummingBot(
                     "bot.log",
                     bot_id=self.bot_id,
                     message=(
-                            f"{self._cb_soft_trip_pct:.2f}% "
+                        f"SCRUM BLOCKED by SOFT CIRCUIT BREAKER: trip @ "
+                        f"{self._cb_soft_trip_pct:.2f}% "
                         f"(threshold "
                         f"{self.config.circuit_breaker_soft_pct:.2f}%); "
                         f"{self._cb_soft_cooldown_remaining} candle(s) of "
