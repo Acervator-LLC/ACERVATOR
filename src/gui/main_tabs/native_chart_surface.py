@@ -1455,13 +1455,18 @@ def header_parts(
     candle_count: int,
     invisible_count: int,
     on_book_count: int,
+    refused_count: int = 0,
 ) -> list[str]:
-    """The pieces of the header's information line, in order."""
+    """The pieces of the header's information line, in order.
+
+    `candle_count_text` writes the count piece. Both builds draw this line from
+    `header_parts`, so a candle `admit_candles` refused is named the same in each.
+    """
     parts = [timeframe]
     if source_label:
         parts.append(source_label)
     if candle_count:
-        parts.append(HEADER_COUNT_FORMAT.format(count=candle_count))
+        parts.append(candle_count_text(candle_count, refused_count))
     if invisible_count or on_book_count:
         held = []
         if invisible_count:
@@ -2694,6 +2699,7 @@ def build_view_model(model: ChartModel, width: int = 0, height: int = 0) -> dict
         len(model.candles),
         invisible,
         len(model.positions) - invisible,
+        model.refused_candles,
     )
     payload = {
         "accessible_name": model.accessible_name,

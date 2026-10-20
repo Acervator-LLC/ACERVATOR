@@ -2531,21 +2531,192 @@ not a price it measured.
 
 "| a readable zero | `$0.00000000` |" - a readable zero reads `no price yet`.
 
-### What the grid level list leaves behind
+## 2026-10-19 - #230 - the header names the candle it left out, and the dead bullseye list goes
 
-The grid level list, its setter and its record type are gone from both
-builds, and `grid_lines_held` is gone from the served frame and from the
-page's declared fields. Nothing read any of them.
+### What the count line reached, and what the operator saw
 
-Two rows were not reworded. They are quoted here.
+`candle_count_text` wrote the refusal into the chart's status text, and the
+status text is only drawn when the chart holds no candles at all. A series with
+twenty-nine readable candles and one unreadable one therefore drew the plain
+count and said nothing about the candle missing from the picture. The refusal
+was counted, published and never painted.
 
-"| `GridLine` | A buy or sell level |" - the buy and sell levels the chart
-draws are `PositionMarker` records, placed by `set_positions`.
+`header_parts` is now the one step that writes the count piece, and it writes it
+through `candle_count_text`.
 
-"| `set_grid_lines` | The buy and sell levels |" - `set_grid_lines` had no
-caller in either build.
+`src/gui/main_tabs/native_chart_surface.py`, in `header_parts`
 
-The dotted price ruling across the chart is not that list and is untouched.
-`native_chart.py, in paint_to` steps it from the fitted price range, and
-`native_chart_surface.py, in price_grid` answers the same steps for the page,
-which draws them in `native_chart.js, in GridLines`.
+```python
+if candle_count:
+    parts.append(candle_count_text(candle_count, refused_count))
+```
+
+`build_view_model` hands it `model.refused_candles`, and
+`src/gui/native_chart.py`, in `ChartPainter._draw_header`, calls `header_parts`
+instead of building the same list from its own format strings. The Qt header and
+the React page's `header_text` cannot drift apart on the count, because one
+function writes it for both.
+
+### What the widget says, read off the pixels
+
+One chart rendered through its own `paintEvent` at 1000 by 630, offscreen, with
+the home directory redirected. Each figure below is the count of pixels that
+differ from the background gradient `paint_to` fills first. The drawn string is
+read by matching a candidate's own render against the header band's pixels, so
+the reading comes from the picture and not from the source.
+
+| the reading | before | after |
+| --- | --- | --- |
+| a clean series of thirty readable candles | 801085 px, `30 candles` | 801085 px, `30 candles` |
+| one candle's high is a text value | 801904 px, `29 candles` | 802148 px, **`29 candles, 1 unreadable`** |
+| one candle's high is a missing value | 801904 px, `29 candles` | 802148 px, **`29 candles, 1 unreadable`** |
+| one candle's high is a stored flag | 801904 px, `29 candles` | 802148 px, **`29 candles, 1 unreadable`** |
+| one candle's high is a not-a-number | 801904 px, `29 candles` | 802148 px, **`29 candles, 1 unreadable`** |
+| one candle's high is an endless value | 801904 px, `29 candles` | 802148 px, **`29 candles, 1 unreadable`** |
+| one candle's high is a huge integer | 801904 px, `29 candles` | 802148 px, **`29 candles, 1 unreadable`** |
+| every candle's high is a stored flag | 1544 px, `No candle carried a readable price` | 1544 px, the same |
+
+The match scores name the reading. `29 candles, 1 unreadable` scores 0.526
+against the header before the change and **0.993** after it. A string the chart
+never drew scores 0.531, and a near miss of one digit scores 0.959, so a match
+above 0.98 is the string and nothing else is.
+
+### The positive control
+
+The clean series draws **0 differing pixels** between the two trees, across all
+630000 of them. A chart with nothing refused is the same picture it was.
+
+The counter itself reports **0 px** for the background gradient read against
+itself and **1112 px** for a chart holding no candles, so it can report both a
+zero and a figure.
+
+### The bullseye list
+
+`_bbullseye_data` was set to an empty list in `ChartPainter.__init__`, written
+nowhere else and read nowhere. `_draw_bullseye` draws the four BB Bullseye
+envelopes from `_bb_data`, the live Bollinger series, which is written in
+`_compute_indicators` and read in three places. The empty list is gone. The
+overlay, its key, its toggle and its four envelopes are untouched.
+
+### The grid line list stays, and here is why
+
+`_grid_lines` is written by `set_grid_lines` and read zero times, and `GridLine`
+is constructed zero times. The React page's `GridLines` component draws
+`price_axis.grid.ticks`, the price axis ruling, not this list.
+
+Removing it does not stop at the widget. `set_grid_lines` is named in
+`STEP_NAMES`, `grid_lines_held` is published by `build_view_model`, and
+`src/gui/web/native_chart.js` names `grid_lines_held` in `DECLARED_FIELDS`.
+Taking the list out takes a field out of the payload the Electron renderer is
+handed, which is a published contract rather than a price admission. That row
+stays open.
+
+### Readings this entry declares
+
+The run named the host's own Consolas and Segoe UI font files to the Qt font
+database. The offscreen platform ships no font family at all, so without them
+every glyph renders as a box and the pixels carry a string's length rather than
+its letters. `pip install -e ".[dev]"` installs neither.
+
+The match reading holds only where the band it reads is sparse. On a full chart
+the header band carries 820 ink pixels and a candidate either fits or does not.
+On a band crowded with candles every candidate fits, so the body message is read
+on a chart that drew no candles at all.
+
+No venue was contacted, no bot was started, and no order was placed, priced,
+previewed or cancelled. The runtime tree was read with a redirected home.
+
+### A sentence this entry overtakes
+
+It was not reworded. It is quoted here.
+
+"Layer 2 of #230 is unbuilt." - the bullseye list is removed and the grid line
+list stays, named above with the published fields that hold it.
+
+## 2026-10-20 - #230 - the grid line list, its setter and its published field go
+
+### What went, and what read it first
+
+Nothing read the list. `_grid_lines` carried two writes and no reads.
+`grid_lines` on the page's model carried two writes and one read, and that read
+took the list's own length for `grid_lines_held`. `set_grid_lines` had no caller
+in either build, and `GridLine` was constructed nowhere.
+
+The list, the setter, the record type and the published field are gone from both
+builds. `native_chart.js` no longer names `grid_lines_held` among its declared
+fields.
+
+### Why both sides had to change in one step
+
+`native_chart.js`, in `checkFields`, walks every declared field and raises a
+missing-field fault on one the frame does not carry. Driven in node against the
+real served frame, the page before this change reports no fault on the frame as
+served and **one** fault, `grid_lines_held: missing`, on a frame with the field
+stripped. The page after this change reports no fault either way. Removing the
+field from the surface alone would have faulted on every frame.
+
+### What the operator sees, read off the pixels
+
+One chart rendered through its own `paintEvent` at 1000 by 630, offscreen, with
+the home directory redirected. A clean series of thirty readable candles draws
+**0 differing pixels** across all 630000 of them, with 298608 ink pixels before
+and after.
+
+| the control | pixels differing |
+| --- | --- |
+| the same series rendered twice | 0 |
+| a chart holding no candles | 583542 |
+| twenty candles instead of thirty | 77705 |
+| a different symbol in the header | 1181 |
+
+The offscreen platform reports no font family, so the run names six of the host's
+own font files to the Qt font database and the database then reports five
+families. The different-symbol row is what proves the comparison reads letters
+and not boxes.
+
+### What the frame carries
+
+One real request answered by `serve`, over the real registry, written by
+`encode_frame`. The frame still says ok and still ends in one newline. It
+carried 47 fields and now carries 46. `grid_lines_held` is the only field gone,
+no field arrived, and no other field's value moved.
+
+### The ruling stays
+
+The dotted price ruling is not this list. `src/gui/native_chart.py`, in
+`paint_to`, steps it from the fitted price range, and
+`src/gui/main_tabs/native_chart_surface.py`, in `price_grid`, answers the same
+steps for the page, which draws them in `src/gui/web/native_chart.js`, in
+`GridLines`. The page reads seven ticks at a step of five before and after.
+
+### Readings this entry declares
+
+`STEP_NAMES` in `src/gui/main_tabs/native_chart_surface.py` is read zero times.
+Only the one entry naming the deleted setter went with it.
+
+`refused_candles` is in the frame and is not in the page's declared fields, so
+`checkFields` does not guard it.
+
+The docs archetype's hallucination rule checks a cited path, never a cited
+symbol. A page citing four symbols absent from disk reports no hallucination
+finding while its paths resolve.
+
+No venue was contacted, no bot was started, and no order was placed, priced,
+previewed, amended or cancelled.
+
+### Two rows and two sentences this entry overtakes
+
+They were not reworded. They are quoted here.
+
+"| `GridLine` | A buy or sell level |" - the buy and sell levels the chart draws
+are `PositionMarker` records, placed by `set_positions`.
+
+"| `set_grid_lines` | The buy and sell levels |" - `set_grid_lines` had no caller
+in either build.
+
+"That row stays open." - the operator authorised the removal, and the list, its
+setter and the published field went together.
+
+"the bullseye list is removed and the grid line list stays, named above with the
+published fields that hold it." - the grid line list is removed too, and
+`grid_lines_held` is gone from the frame and from the declared fields.
