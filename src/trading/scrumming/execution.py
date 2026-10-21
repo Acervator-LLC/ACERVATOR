@@ -150,12 +150,14 @@ class ExecutionEngineMixin:
     def _refusal_is_new(self, reason: str, price: float) -> bool:
         """Record a refusal under ``reason`` and say whether it is a new decision.
 
-        Every refusal site in the trade path calls this to decide whether to
-        announce itself. The refusal itself always stands; only the announcement
-        is held. A refusal is new on the first call for ``reason``, on a different
-        candle from ``_cb_last_candle_ts``, when no candle is known, or once
-        ``price`` has moved ``REFUSAL_HOLD_MOVE_FRACTION`` from the price the held
-        refusal was taken at.
+        Every refusal site in the trade path and in ``tick``'s verdict chain
+        calls this to decide whether to announce itself. The refusal itself
+        always stands and only the announcement is held. A refusal is new on
+        the first call for ``reason``, on a different candle from
+        ``_cb_last_candle_ts``, when no candle is known, and once ``price``
+        differs by ``REFUSAL_HOLD_MOVE_FRACTION`` from the price the previous
+        call for ``reason`` carried. ``_refusal_holds`` takes the new
+        ``price`` on every call, whichever answer it gives.
         """
         try:
             px = float(price)
@@ -1539,7 +1541,7 @@ class ExecutionEngineMixin:
                     )
                     self._emit_trade_notification(
                         "SCRUM",
-                        "CANCELLED",
+                        "REFUSED",
                         f"hysteresis (need ≥ {_eff_pct:.2f}% rise)",
                     )
                 return None
@@ -1586,7 +1588,7 @@ class ExecutionEngineMixin:
                     self._bus.emit("bot.log", bot_id=self.bot_id, message=_crr_msg)
                     self._emit_trade_notification(
                         "SCRUM",
-                        "CANCELLED",
+                        "REFUSED",
                         f"capital reservation (avail {_crr_effective:.6f})",
                     )
                     logger.info(
@@ -1627,7 +1629,7 @@ class ExecutionEngineMixin:
                     ),
                 )
                 self._emit_trade_notification(
-                    "SCRUM", "CANCELLED", "capital reservation unreadable"
+                    "SCRUM", "REFUSED", "capital reservation unreadable"
                 )
             return None
 
@@ -1938,7 +1940,7 @@ class ExecutionEngineMixin:
                     )
                     self._emit_trade_notification(
                         "FOLD",
-                        "CANCELLED",
+                        "REFUSED",
                         f"hysteresis (need ≥ {_eff_pct:.2f}% drop)",
                     )
                 return None
