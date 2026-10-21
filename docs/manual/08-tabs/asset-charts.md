@@ -797,24 +797,27 @@ reads one digest in both.
 
 They were not reworded. They are quoted here.
 
-`docs/manual/08-tabs/asset-charts.md:97` - "The chart calls the engine rather
-than computing anything of its own. Five series arrive that way, and an entry
-with no value is skipped when the panel paints." Fourteen series arrive that
-way now.
+`docs/manual/08-tabs/asset-charts.md, under 'Indicators on the chart'` - "The
+chart calls the engine rather than computing anything of its own. Five series
+arrive that way, and an entry with no value is skipped when the panel paints."
+Fourteen series arrive that way now.
 
-`docs/manual/08-tabs/asset-charts.md:112` - "The toolbar under each panel
-holds the timeframe picker and eight toggles." Fourteen toggles.
+`docs/manual/08-tabs/asset-charts.md, under 'Indicators on the chart'` - "The
+toolbar under each panel holds the timeframe picker and eight toggles."
+Fourteen toggles.
 
-`docs/manual/08-tabs/asset-charts.md:128` - "Volume starts on and the other
-seven start off." Eleven start on and three start off.
+`docs/manual/08-tabs/asset-charts.md, under 'Indicators on the chart'` -
+"Volume starts on and the other seven start off." Eleven start on and three
+start off.
 
-`docs/manual/08-tabs/asset-charts.md:146` - "Sling and BBull paint a
-placeholder shape rather than the indicator, and each says as much in its own
-tooltip." Both paint the indicator, and neither tooltip says placeholder.
+`docs/manual/08-tabs/asset-charts.md, under 'Indicators on the chart'` -
+"Sling and BBull paint a placeholder shape rather than the indicator, and each
+says as much in its own tooltip." Both paint the indicator, and neither
+tooltip says placeholder.
 
-`docs/manual/08-tabs/asset-charts.md:552` - "The starting states are six on
-and two off: BB, Vortex, MACD, SRsi, Ichi and Vol on; Sling and BBull off."
-Eleven on and three off.
+`docs/manual/08-tabs/asset-charts.md, under 'The eight toggles reach the
+painter'` - "The starting states are six on and two off: BB, Vortex, MACD,
+SRsi, Ichi and Vol on; Sling and BBull off." Eleven on and three off.
 
 **Figures.** `artifacts/u55/C2/` holds the Qt window and the React page at
 1400 by 900 and at 1960 by 1200, the painter's image, and one venue PNG,
@@ -1091,13 +1094,13 @@ tablet by the registry's own rollup:
 
 They were not reworded. They are quoted here.
 
-`docs/manual/08-tabs/asset-charts.md:76` - "The setters name what they
-place." The table under it lacks `set_landing_strip`, which places the
-landing strip band.
+`docs/manual/08-tabs/asset-charts.md, under 'The chart widget'` - "The setters
+name what they place." The table under it lacks `set_landing_strip`, which
+places the landing strip band.
 
-`docs/manual/08-tabs/simulator.md:8634` - "One definition, `MARK_GLYPHS`,
-names both marks, and both hosts read it". The definition now lives in the
-chart's surface, and the Charts painter is a third reader.
+`docs/manual/08-tabs/simulator.md, under 'The two glyphs'` - "One definition,
+`MARK_GLYPHS`, names both marks, and both hosts read it". The definition now
+lives in the chart's surface, and the Charts painter is a third reader.
 
 **Figures.** `artifacts/u55/C3/` holds the Qt window and the React page at
 1400 by 900 and at 1960 by 1200, the painter's image at ratio 1.0 and 2.0
@@ -1259,10 +1262,10 @@ list, the widget's size, the direction, the candle count and the variant.
 
 It was not reworded. It is quoted here.
 
-`docs/manual/08-tabs/asset-charts.md:266` - "An ATA-SMP market has no bot
-behind it, so the chart draws its candles without the trade markers, the
-target lines, the tranche floors and the fire glow that a traded asset
-carries." The sentence holds, and holds on screen now: on `5819ced6` the last
+`docs/manual/08-tabs/asset-charts.md, under 'a Live / ATA-SMP toggle over the
+arrows'` - "An ATA-SMP market has no bot behind it, so the chart draws its
+candles without the trade markers, the target lines, the tranche floors and
+the fire glow that a traded asset carries." The sentence holds, and holds on screen now: on `5819ced6` the last
 bot's 55 floors, its target line and its glow stayed drawn when the list moved
 to a called market, and the candles were fetched. A called market's candles
 are the call's own, and its picture carries the call's overlays, badge, strip

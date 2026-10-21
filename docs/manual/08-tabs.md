@@ -3026,9 +3026,9 @@ class, and `charts_tab.py` asks it for the Charts class. `SystemStatusTabMixin`
 builds the Status panel with no seam, because no Qt widget ever drew that tab.
 
 ```
-main_window.py:1361            page_class = surface_class(EXCHANGE)
-main_tabs/charts_tab.py:29     built = surface_class(CHARTS)()
-main_tabs/system_status_tab.py SystemStatusReactPanel()
+main_window.py, in add_exchange_tab            page_class = surface_class(EXCHANGE)
+main_tabs/charts_tab.py, in _build_charts_tab  built = surface_class(CHARTS)()
+main_tabs/system_status_tab.py                 SystemStatusReactPanel()
 ```
 
 **Each page names itself off the live object.** A run built each screen, drove
