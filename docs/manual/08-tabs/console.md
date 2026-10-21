@@ -682,4 +682,110 @@ view.appendHtml(
 The seven counters do not change either. They count drain ticks, records read
 and records rendered, and no counter reads a field of the record.
 
+## 2026-10-20 - #1392 - a gate refusal reads REFUSED, once a candle
+
+### The stage word
+
+A trade notification carries a stage. `_emit_trade_notification` in
+`src/trading/scrumming/snapshots.py` writes it after the pair, and
+`stage_color` in `src/gui/main_tabs/status_log_surface.py` paints the line by
+reading it back out.
+
+Three stages are passed anywhere in the tree.
+
+| Stage | What the bot did |
+|---|---|
+| `SENT` | an order is about to reach the venue |
+| `FILLED` | the venue reported the fill |
+| `REFUSED` | a gate stopped the trade and no order was sent |
+
+Ten sites used to pass `CANCELLED`. Every one of them is reached before
+`guarded_place_order`, so no order existed at any of them and nothing was
+pulled. `grep -rn '"CANCELLED"' src/trading/` now returns nothing.
+
+`STAGE_COLORS` in `src/gui/main_tabs/status_log_surface.py` names `REFUSED`, so
+the pane paints it from the table rather than from
+`STAGE_DEFAULT_COLOR`. The colour is the same colour `CANCELLED` drew.
+
+Two sentences and two readings above are overtaken. Quoted whole:
+
+> "The operator sees a cancelled scrum with its reason in the upper pane, where
+> a completed sale used to appear."
+
+```
+after    SELL REFUSED (capital reservation unreadable)
+         SCRUM CANCELLED, venue order calls 0
+```
+
+True today: the operator sees a refused scrum with its reason in the upper
+pane, and the second line of both readings is
+`SCRUM REFUSED, venue order calls 0`. The code block one screen above, quoted
+whole:
+
+```python
+self._emit_trade_notification(
+    "SCRUM", "CANCELLED", "capital reservation unreadable"
+)
+```
+
+True today, the same call:
+
+```python
+self._emit_trade_notification(
+    "SCRUM", "REFUSED", "capital reservation unreadable"
+)
+```
+
+### One line per reason per candle
+
+`tick` evaluates every gate on every pass, and a pass happens every few
+seconds. On a five-minute timeframe the band position cannot move between most
+of those passes, so a refusal used to be announced again with identical
+numbers each time.
+
+`_refusal_is_new` in `src/trading/scrumming/execution.py` decides whether an
+evaluation is news. It answers yes on the first call for a reason, on a candle
+different from the one the last call saw, when no candle is known, and when the
+price differs by `REFUSAL_HOLD_MOVE_FRACTION` from the price the previous call
+carried. Every verdict in `tick`'s scrum and fold chain now asks it before it
+writes anything.
+
+The refusal itself is untouched. The gate refuses on the same inputs at the
+same threshold, and only the announcement is held.
+
+Driven on the real `tick`, a bot built from invented configuration, 20 passes
+with the candle tape held still.
+
+```
+                                     before   after
+refusal lines in bot.log                 20       1
+trade notifications                      20       1
+venue order calls                         0       0
+```
+
+The bot sitting in a refusal stays visible. Each new candle carries one line,
+and a price move inside a candle re-opens the announcement on the next pass.
+
+```
+20 passes, nothing moving               before 20 lines    after 1 line
+the candle rolls, nothing else moving   before 1 line      after 1 line
+the band moves inside one candle        before 1 line      after 1 line
+the band crosses the detect line        before 0 lines     after 0 lines, the trade fires
+```
+
+The gate's own reading was taken on a fresh bot at each of 30 band positions
+from 0.39 to 0.92, before and after: `_last_bb.bb_position`,
+`_bb_detect_thresholds` in `src/trading/scrumming/circuit_breakers.py`,
+whether the position is at or above the upper threshold, and the count of venue
+order calls. All 30 rows read the same both times. The gate closes from 0.390
+through 0.873 with no order call, and opens from 0.889 through 0.920.
+
+### What is not held back
+
+Four lines a pass are written with no guard: `DELTA`, `TA VOTE`,
+`BB PRIORITY SKEW` and `BULLSEYE UPPER`. They report the tick's state rather
+than a verdict. `FOLD HOLD (Position Ceiling)` is bounded by a counter of its
+own, one line per sixty passes, and `SCRUM SERVED BY STACK` and
+`HEDGE REBALANCE` each follow an action that happened once.
+
 Back to [the subsystem index](README.md).

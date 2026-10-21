@@ -108,7 +108,7 @@ class CircuitBreakerMixin(_Host):
             try:
                 self._emit_trade_notification(
                     "ALL",
-                    "CANCELLED",
+                    "REFUSED",
                     f"HARD breaker @ {move_pct:.2f}% (≥ {hard_pct:.2f}%)",
                 )
             except Exception as _sup:
@@ -175,7 +175,7 @@ class CircuitBreakerMixin(_Host):
             try:
                 self._emit_trade_notification(
                     side.upper(),
-                    "CANCELLED",
+                    "REFUSED",
                     f"SOFT breaker @ {move_pct:.2f}% on {side.upper()} side",
                 )
             except Exception as _sup:
