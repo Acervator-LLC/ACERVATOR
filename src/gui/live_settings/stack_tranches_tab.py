@@ -47,17 +47,18 @@ class StackTranchesTabMixin:
     def _stack_lifetime_counter(self, field: str) -> int | None:
         """Return the bot's ``field`` lifetime counter, or None when refused.
 
-        ``as_finite_float`` is the one admission rule both stack counters
-        read through: it refuses a bool, a non-number, a non-finite value and
-        an int too large for a float. A refusal is logged against the bot and
-        the field, and every caller renders ``NO_VALUE`` instead of a count,
-        so one unusable counter never ends the tab's build.
+        ``as_whole_count`` is the one admission rule every lifetime counter
+        in this product reads, the save and restore paths included: it
+        refuses a bool, a non-number, a non-finite value, a float and an int
+        too large for a float. A refusal is logged against the bot and the
+        field, and every caller renders ``NO_VALUE`` instead of a count, so
+        one unusable counter never ends the tab's build.
         """
-        from ...trading.bot_container import as_finite_float
+        from ...trading.container.config import as_whole_count
 
         stored = getattr(self._bot, field, 0)
-        admitted = as_finite_float(stored)
-        if admitted is None:
+        counted = as_whole_count(stored)
+        if counted is None:
             logger.warning(
                 "Bot %s stored an unusable %s (%s); the Stack Tranches "
                 "panel shows no count for it",
@@ -66,7 +67,7 @@ class StackTranchesTabMixin:
                 type(stored).__name__,
             )
             return None
-        return int(admitted)
+        return counted
 
     def _install_stack_tranches_tab(self, tabs: QTabWidget) -> QWidget:
         """Build the Stack Tranches tab and add it to ``tabs``.

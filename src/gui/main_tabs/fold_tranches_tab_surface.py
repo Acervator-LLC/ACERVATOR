@@ -109,6 +109,10 @@ EDIT_TRIGGERS = "NoEditTriggers"
 ALTERNATING_ROW_COLORS = True
 SHOW_GRID = False
 
+# The `#` column is the row's only number. A second header column would
+# draw the display position, which disagrees under every non-queue order.
+TABLE_ROW_NUMBERS_HIDDEN = True
+
 COLUMN_TOOLTIPS = (
     "Position of this tranche in the fold queue.",
     "Time since the scrum created this tranche.",
@@ -227,6 +231,7 @@ ARBITER_TOOLTIP_FORMAT = (
 
 # ── The health rows ──────────────────────────────────────────────────
 OPEN_COUNT_ROW = "Open tranches:"
+SCRUM_SELLS_ROW = "Standing vs scrums that opened them:"
 PARKED_USD_ROW = "Parked USD (in fold queue):"
 OLDEST_AGE_ROW = "Oldest tranche age:"
 UNITS_MARKED_ROW = "Units marked (queue vs held):"
@@ -242,6 +247,13 @@ COUNTERS_RESET_ROW = "Lifetime counters last cleared:"
 CYCLE_CAP_ROW = "Fold budget this cycle:"
 
 OPEN_COUNT_TOOLTIP = "Fold tranches this bot holds in its queue now."
+SCRUM_SELLS_TOOLTIP = (
+    "Standing tranches against the sells that opened them.\n\n"
+    "The queue may never hold more tranches than the sells that "
+    "opened them, outside a strong trend. A strong trend lifts the "
+    "bound and lets one sell keep its per-lot rows, so standing "
+    "above sells is only expected then."
+)
 PARKED_USD_TOOLTIP = "Total cash parked by every open fold tranche."
 OLDEST_AGE_TOOLTIP = "Age of the oldest tranche in this queue."
 UNITS_MARKED_TOOLTIP = "Asset units the queue claims, against units held."
@@ -250,7 +262,12 @@ MALFORMED_TOOLTIP = "Stored tranches this bot could not read, lifetime total."
 CYCLE_CAP_TOOLTIP = "Growth cash one fold cycle may spend, and spent."
 OPENED_TOOLTIP = "Fold tranches this bot ever opened, less merged ones."
 CLOSED_TOOLTIP = "Fold tranches that folded back and bought the asset."
-CLOSE_RATIO_TOOLTIP = "Share of opened tranches that folded back, discards excluded."
+CLOSE_RATIO_TOOLTIP = (
+    "Share of opened tranches that folded back, discards excluded.\n\n"
+    "A dash means the three counters leave no share to work out: more "
+    "tranches closed than the opened count still admits, because a "
+    "merge lowers the opened count while the discarded count holds."
+)
 DISCARDED_TOOLTIP = "Fold tranches removed without folding back, lifetime total."
 COUNTERS_RESET_TOOLTIP = "When an operator last set these four counters to zero."
 
@@ -271,7 +288,14 @@ UNITS_NO_RATIO_FORMAT = "{text} / {held:,.6f} held"
 UNITS_RATIO_FORMAT = "{text} / {held:,.6f} held  ({ratio:,.2f}x)"
 UNITS_OVER_ALLOTMENT = 1.0
 
-RATIO_NOTHING_LEFT = "—  (nothing left to fold back)"
+# The same dash `indicator_panel_surface.absent_cell` draws.
+UNREADABLE_FIGURE = "—"
+SCRUM_SELLS_FORMAT = "{standing} standing / {sells} sell(s) opened them"
+SCRUM_SELLS_NO_RECORD_FORMAT = "{standing} standing / {dash} sells recorded"
+
+RATIO_NOTHING_LEFT = f"{UNREADABLE_FIGURE}  (nothing left to fold back)"
+RATIO_COUNTER_UNREADABLE = f"{UNREADABLE_FIGURE}  (a counter is unreadable)"
+RATIO_UNREADABLE_FORMAT = "{dash}  (closed {closed} over {denominator} openable)"
 RATIO_TEXT_FORMAT = "{ratio:.2%}  ({closed}/{denominator})"
 RATIO_QUIET_DENOMINATOR = 5
 RATIO_RED_BELOW = 0.5
@@ -285,6 +309,11 @@ DESPAWN_CONTROL_PLACE = "Settings tab > Advanced > Tranche Despawn Timer"
 DESPAWN_OFF_FORMAT = "Off  -  {where}"
 DESPAWN_ARMED_FORMAT = "{days} day(s)  -  {where}"
 DESPAWN_NOTHING_TO_REMOVE = "nothing to remove"
+
+# The longest value on the health form at four despawn windows.
+# Unwrapped it holds the form's field column at 1,236px and carries the
+# whole tab past a 1920 display.
+DESPAWN_PREVIEW_WORD_WRAP = True
 DESPAWN_MENU_PREFIX = "if armed at  "
 DESPAWN_JOIN = "  -  "
 DESPAWN_WINDOW_FORMAT = "{days}d: {removed} (${usd:,.4f})"
@@ -407,6 +436,11 @@ WIRE_LEDGER_ATTRIBUTE = "_pending_wire_ledger"
 CREATED_LIFETIME_ATTRIBUTE = "_tranches_created_lifetime"
 CLOSED_LIFETIME_ATTRIBUTE = "_tranches_closed_lifetime"
 DISCARDED_LIFETIME_ATTRIBUTE = "_tranches_discarded_lifetime"
+SCRUM_SELLS_ATTRIBUTE = "_scrum_sells_lifetime"
+
+# The four `clear_lifetime_tranche_counters` zeroes. `counter_values`
+# also carries `sells`, which no Clear control touches.
+CLEARED_COUNTER_KEYS = ("opened", "closed", "discarded", "malformed")
 MALFORMED_ATTRIBUTE = "_tranches_malformed_dropped"
 WIRE_DISCARDED_ATTRIBUTE = "_wire_credits_discarded_lifetime"
 COUNTERS_RESET_ATTRIBUTE = "_tranches_counters_reset_ts"
@@ -488,8 +522,10 @@ CLEAR_FAILED_FORMAT = "Nothing was cleared — the call failed:\n\n{error}"
 CLEAR_COUNTERS_FAILED_FORMAT = "Nothing was cleared - the call failed:\n\n{error}"
 
 CLEAR_FOLD_BODY_HEAD_FORMAT = "Discard {count} queued fold tranche(s) for {symbol}?"
-CLEAR_FOLD_BODY_USD_FORMAT = "    queued USD   ${usd:,.4f}"
-CLEAR_FOLD_BODY_UNITS_FORMAT = "    units        {units:.8f}"
+CLEAR_FOLD_BODY_USD_FORMAT = "    queued USD   {usd}"
+CLEAR_FOLD_BODY_UNITS_FORMAT = "    units        {units}"
+CLEAR_FOLD_USD_FIGURE_FORMAT = "${figure:,.4f}"
+CLEAR_FOLD_UNITS_FIGURE_FORMAT = "{figure:.8f}"
 CLEAR_FOLD_BODY_NOTE = (
     "This places NO order. Holdings, cost basis and target "
     "balance are unchanged — only the queued intent to buy "
@@ -498,7 +534,7 @@ CLEAR_FOLD_BODY_NOTE = (
 )
 CANNOT_BE_UNDONE = "This cannot be undone."
 CLEAR_FOLD_PARKED_WARNING_FORMAT = (
-    "WARNING — this bot also holds ${parked:,.4f} in "
+    "WARNING — this bot also holds {parked} in "
     "pending wire credits. Clearing opens the absorb "
     "window, and the next SCRUM will move that entire "
     "amount into a SINGLE tranche. If it exceeds the "
@@ -513,7 +549,7 @@ CLEAR_FOLD_NO_ORDER = (
 )
 
 CLEAR_WIRE_BODY_HEAD_FORMAT = (
-    "Discard ${parked:,.4f} of parked Smart Wire credit for {symbol}?"
+    "Discard {parked} of parked Smart Wire credit for {symbol}?"
 )
 CLEAR_WIRE_BODY_LEDGER_FORMAT = "    ledger entries   {entries}"
 CLEAR_WIRE_BODY_NOTE = (
@@ -523,7 +559,7 @@ CLEAR_WIRE_BODY_NOTE = (
     "instead of being reserved for a future fold tranche."
 )
 CLEAR_WIRE_RESULT_FORMAT = "Cleared ${usd:,.4f} of parked Smart Wire credit."
-CLEAR_WIRE_NOW_PARKED_FORMAT = "This bot now has ${parked:,.4f} parked."
+CLEAR_WIRE_NOW_PARKED_FORMAT = "This bot now has {parked} parked."
 CLEAR_WIRE_NO_FUNDS = (
     "No funds moved. This released an EARMARK only, so "
     "the cash returns to ordinary spendable balance."
@@ -879,26 +915,35 @@ def finite_number(value: Any) -> Optional[float]:
     return NOT_A_NUMBER
 
 
-def whole_count(value: Any) -> int:
-    """One lifetime counter as the shipped tab reads it, bare.
-
-    Mirrors `int(value or 0)`, which prices a stored `True` at one and
-    raises on `nan`, on either infinity and on text that is not a number.
-    """
-    return int(value or 0)
-
-
 def guarded_count(value: Any) -> Optional[int]:
-    """One lifetime counter under the admission rule the money rows use.
+    """One lifetime counter under `as_whole_count`, the one admission rule
+    every counter in this tab and in the Qt build reads.
 
-    None where the stored value is not a usable whole number. Not wired
-    into `build`: it states what the guarded reading would be, beside the
-    bare one the tab ships.
+    None where `value` is not a usable whole count: a stored flag, a text
+    number, a not-a-number, an endless number and a whole number too large
+    for a float each answer None, and every caller draws `UNREADABLE_FIGURE`.
     """
-    read = finite_number(value)
-    if read is None:
-        return None
-    return int(read)
+    from ...trading.container.config import as_whole_count
+
+    return as_whole_count(value)
+
+
+def counter_text(counted: Optional[int]) -> str:
+    """One lifetime counter as a count, or `UNREADABLE_FIGURE` where
+    `guarded_count` refused it."""
+    if counted is None:
+        return UNREADABLE_FIGURE
+    return str(counted)
+
+
+def counters_stand(counts: dict) -> bool:
+    """True where any lifetime counter in `counts` is non-zero or was refused.
+
+    Keeps the Clear Lifetime Counters button live on a counter
+    `guarded_count` refused, so an unreadable count never costs the operator
+    the control that would zero it.
+    """
+    return any(value is None or value for value in counts.values())
 
 
 def record_age_s(record: Any, field: str, now: float) -> Optional[float]:
@@ -1002,11 +1047,29 @@ def units_marked_row(tranches: Any, holdings: Any) -> list:
     return [full, NO_CELL_COLOR]
 
 
-def cycle_close_ratio(created: int, closed: int, discarded: int) -> list:
-    """The share of opened tranches that folded back, discards excluded."""
+def cycle_close_ratio(
+    created: Optional[int], closed: Optional[int], discarded: Optional[int]
+) -> list:
+    """The share of opened tranches that folded back, discards excluded.
+
+    A `created`, `closed` or `discarded` that `guarded_count` refused is None
+    here and draws `RATIO_COUNTER_UNREADABLE`, since a share worked out from
+    two of three terms is not a share.
+    """
+    if created is None or closed is None or discarded is None:
+        return [RATIO_COUNTER_UNREADABLE, NO_CELL_COLOR]
     denominator = int(created) - int(discarded)
     if denominator <= 0:
         return [RATIO_NOTHING_LEFT, NO_CELL_COLOR]
+    # A merge lowers `created` while `discarded` holds, so the top of
+    # this sum can pass its bottom. No share exists there.
+    if int(closed) > denominator:
+        return [
+            RATIO_UNREADABLE_FORMAT.format(
+                dash=UNREADABLE_FIGURE, closed=int(closed), denominator=denominator
+            ),
+            FOLD_RATIO_RED_FG_HEX,
+        ]
     ratio = int(closed) / denominator
     text = RATIO_TEXT_FORMAT.format(
         ratio=ratio, closed=int(closed), denominator=denominator
@@ -1018,6 +1081,38 @@ def cycle_close_ratio(created: int, closed: int, discarded: int) -> list:
     if ratio < RATIO_AMBER_BELOW:
         return [text, FOLD_RATIO_AMBER_FG_HEX]
     return [text, FOLD_RATIO_GREEN_FG_HEX]
+
+
+def scrum_sells_row(standing: Any, sells: Optional[int]) -> list:
+    """The standing tranches against the sells that opened them.
+
+    `standing` counts the rows in `_fold_tranches` and `sells` counts
+    `_scrum_sells_lifetime`; a `standing` above `sells` draws
+    `FOLD_OVER_ALLOTMENT_FG_HEX`, and a `sells` that `guarded_count` refused
+    draws `SCRUM_SELLS_NO_RECORD_FORMAT` with no breach called.
+    """
+    standing_rows = int(standing or 0)
+    if sells is None:
+        return [
+            SCRUM_SELLS_NO_RECORD_FORMAT.format(
+                standing=standing_rows, dash=UNREADABLE_FIGURE
+            ),
+            NO_CELL_COLOR,
+        ]
+    opening_sells = int(sells)
+    # A save written before the field existed restores zero sells, which
+    # is not readable as a breach.
+    if opening_sells <= 0 and standing_rows > 0:
+        return [
+            SCRUM_SELLS_NO_RECORD_FORMAT.format(
+                standing=standing_rows, dash=UNREADABLE_FIGURE
+            ),
+            NO_CELL_COLOR,
+        ]
+    text = SCRUM_SELLS_FORMAT.format(standing=standing_rows, sells=opening_sells)
+    if standing_rows > opening_sells:
+        return [text, FOLD_OVER_ALLOTMENT_FG_HEX]
+    return [text, NO_CELL_COLOR]
 
 
 def cap_text(budget: Any, spent: Any) -> str:
@@ -1405,33 +1500,79 @@ def note_box(icon: str, title: str, text: str) -> dict:
     return message_box(icon, title, text, OK_BUTTON_VALUE, NO_DEFAULT_BUTTON_VALUE)
 
 
+def queue_figure_total(tranches: Any, key: Any) -> Optional[float]:
+    """The sum of one stored `key` across the fold queue, or
+    `NOT_A_NUMBER` where `finite_number` refuses any row.
+
+    Reads each row exactly as `fold_row_cells` reads it, so `clear_fold`
+    cannot total a row the table draws `NO_VALUE_TEXT` for.
+    """
+    total = 0.0
+    for one in tranches or []:
+        read = finite_number(one.get(key, 0)) if isinstance(one, dict) else NOT_A_NUMBER
+        if read is None:
+            return NOT_A_NUMBER
+        total += read
+    return total
+
+
+def clear_fold_figure(value: Optional[float], figure_format: Any) -> str:
+    """One figure in the Clear confirmation, or the em dash when refused."""
+    if value is None:
+        return NO_VALUE_TEXT
+    return figure_format.format(figure=value)
+
+
+def parked_credit_stands(credit: Optional[float]) -> bool:
+    """True where a parked credit stands, a credit `finite_number` refused
+    included.
+
+    Keeps the Clear Wire control live and the absorb-window warning drawn on
+    a refused figure, so an unreadable credit never removes either.
+    """
+    return credit is None or credit > WIRE_CREDIT_FLOOR_USD
+
+
 def clear_fold_body(
-    count: int, symbol: Any, usd: float, units: float, parked: float
+    count: int,
+    symbol: Any,
+    usd: Optional[float],
+    units: Optional[float],
+    parked: Optional[float],
 ) -> str:
     """The question asked before a bot's whole fold queue is discarded."""
     body = [
         CLEAR_FOLD_BODY_HEAD_FORMAT.format(count=count, symbol=symbol),
         BLANK_LINE,
-        CLEAR_FOLD_BODY_USD_FORMAT.format(usd=usd),
-        CLEAR_FOLD_BODY_UNITS_FORMAT.format(units=units),
+        CLEAR_FOLD_BODY_USD_FORMAT.format(
+            usd=clear_fold_figure(usd, CLEAR_FOLD_USD_FIGURE_FORMAT)
+        ),
+        CLEAR_FOLD_BODY_UNITS_FORMAT.format(
+            units=clear_fold_figure(units, CLEAR_FOLD_UNITS_FIGURE_FORMAT)
+        ),
         BLANK_LINE,
         CLEAR_FOLD_BODY_NOTE,
         BLANK_LINE,
         CANNOT_BE_UNDONE,
     ]
-    if parked > WIRE_CREDIT_FLOOR_USD:
+    if parked_credit_stands(parked):
         body += [
             BLANK_LINE,
-            CLEAR_FOLD_PARKED_WARNING_FORMAT.format(parked=parked),
+            CLEAR_FOLD_PARKED_WARNING_FORMAT.format(
+                parked=clear_fold_figure(parked, CLEAR_FOLD_USD_FIGURE_FORMAT)
+            ),
         ]
     return BODY_JOIN.join(body)
 
 
-def clear_wire_body(parked: float, symbol: Any, entries: int) -> str:
+def clear_wire_body(parked: Optional[float], symbol: Any, entries: int) -> str:
     """The question asked before parked wire credit is released."""
     return BODY_JOIN.join(
         [
-            CLEAR_WIRE_BODY_HEAD_FORMAT.format(parked=parked, symbol=symbol),
+            CLEAR_WIRE_BODY_HEAD_FORMAT.format(
+                parked=clear_fold_figure(parked, CLEAR_FOLD_USD_FIGURE_FORMAT),
+                symbol=symbol,
+            ),
             BLANK_LINE,
             CLEAR_WIRE_BODY_LEDGER_FORMAT.format(entries=entries),
             BLANK_LINE,
@@ -1447,10 +1588,14 @@ def clear_counters_body(symbol: Any, counts: dict, open_now: int) -> str:
     body = [
         CLEAR_COUNTERS_BODY_HEAD_FORMAT.format(symbol=symbol),
         BLANK_LINE,
-        CLEAR_COUNTERS_BODY_OPENED_FORMAT.format(opened=counts["opened"]),
-        CLEAR_COUNTERS_BODY_CLOSED_FORMAT.format(closed=counts["closed"]),
-        CLEAR_COUNTERS_BODY_DISCARDED_FORMAT.format(discarded=counts["discarded"]),
-        CLEAR_COUNTERS_BODY_MALFORMED_FORMAT.format(malformed=counts["malformed"]),
+        CLEAR_COUNTERS_BODY_OPENED_FORMAT.format(opened=counter_text(counts["opened"])),
+        CLEAR_COUNTERS_BODY_CLOSED_FORMAT.format(closed=counter_text(counts["closed"])),
+        CLEAR_COUNTERS_BODY_DISCARDED_FORMAT.format(
+            discarded=counter_text(counts["discarded"])
+        ),
+        CLEAR_COUNTERS_BODY_MALFORMED_FORMAT.format(
+            malformed=counter_text(counts["malformed"])
+        ),
         BLANK_LINE,
         CLEAR_COUNTERS_BODY_NOTE,
         BLANK_LINE,
@@ -1636,6 +1781,7 @@ class BotSource:
         closed: Any = 0,
         discarded: Any = 0,
         malformed: Any = 0,
+        sells: Any = 0,
         wire_discarded: Any = 0.0,
         counters_reset_ts: Any = 0.0,
         cap_budget: Any = 0.0,
@@ -1663,6 +1809,7 @@ class BotSource:
         setattr(self, CLOSED_LIFETIME_ATTRIBUTE, closed)
         setattr(self, DISCARDED_LIFETIME_ATTRIBUTE, discarded)
         setattr(self, MALFORMED_ATTRIBUTE, malformed)
+        setattr(self, SCRUM_SELLS_ATTRIBUTE, sells)
         setattr(self, WIRE_DISCARDED_ATTRIBUTE, wire_discarded)
         setattr(self, COUNTERS_RESET_ATTRIBUTE, counters_reset_ts)
         setattr(self, CAP_BUDGET_ATTRIBUTE, cap_budget)
@@ -1791,17 +1938,18 @@ class FoldTranchesTabModel:
     def tranches(self) -> list:
         return list(getattr(self.bot, FOLD_TRANCHES_ATTRIBUTE, []) or [])
 
-    def parked(self) -> float:
-        return float(getattr(self.bot, WIRE_CREDITS_ATTRIBUTE, 0.0) or 0.0)
+    def parked(self) -> Optional[float]:
+        return finite_number(getattr(self.bot, WIRE_CREDITS_ATTRIBUTE, 0.0))
 
     def counter_values(self) -> dict:
         return {
-            "opened": whole_count(getattr(self.bot, CREATED_LIFETIME_ATTRIBUTE, 0)),
-            "closed": whole_count(getattr(self.bot, CLOSED_LIFETIME_ATTRIBUTE, 0)),
-            "discarded": whole_count(
+            "opened": guarded_count(getattr(self.bot, CREATED_LIFETIME_ATTRIBUTE, 0)),
+            "closed": guarded_count(getattr(self.bot, CLOSED_LIFETIME_ATTRIBUTE, 0)),
+            "discarded": guarded_count(
                 getattr(self.bot, DISCARDED_LIFETIME_ATTRIBUTE, 0)
             ),
-            "malformed": whole_count(getattr(self.bot, MALFORMED_ATTRIBUTE, 0)),
+            "malformed": guarded_count(getattr(self.bot, MALFORMED_ATTRIBUTE, 0)),
+            "sells": guarded_count(getattr(self.bot, SCRUM_SELLS_ATTRIBUTE, 0)),
         }
 
     def extractor_rows(self) -> list:
@@ -1851,6 +1999,8 @@ class FoldTranchesTabModel:
         )
 
         self.add_health_row(OPEN_COUNT_ROW, str(len(tranches)), NO_CELL_COLOR)
+        sells_text, sells_colour = scrum_sells_row(len(tranches), counts["sells"])
+        self.add_health_row(SCRUM_SELLS_ROW, sells_text, sells_colour)
         self.add_health_row(
             PARKED_USD_ROW,
             parked_usd_text(tranches),
@@ -1882,11 +2032,14 @@ class FoldTranchesTabModel:
             NO_CELL_COLOR,
         )
 
-        self.add_health_row(OPENED_ROW, str(counts["opened"]), NO_CELL_COLOR)
-        self.add_health_row(CLOSED_ROW, str(counts["closed"]), NO_CELL_COLOR)
+        self.add_health_row(OPENED_ROW, counter_text(counts["opened"]), NO_CELL_COLOR)
+        self.add_health_row(CLOSED_ROW, counter_text(counts["closed"]), NO_CELL_COLOR)
         self.add_health_row(RATIO_ROW, ratio_text, ratio_colour)
-        if counts["discarded"]:
-            self.add_health_row(DISCARDED_ROW, str(counts["discarded"]), NO_CELL_COLOR)
+        # A refused counter shows the row with the dash; a zero still hides it.
+        if counts["discarded"] is None or counts["discarded"]:
+            self.add_health_row(
+                DISCARDED_ROW, counter_text(counts["discarded"]), NO_CELL_COLOR
+            )
         wire_discarded = finite_number(getattr(self.bot, WIRE_DISCARDED_ATTRIBUTE, 0.0))
         if wire_discarded is not None and wire_discarded > WIRE_CREDIT_FLOOR_USD:
             self.add_health_row(
@@ -1896,7 +2049,7 @@ class FoldTranchesTabModel:
             )
         self.add_health_row(
             MALFORMED_ROW,
-            str(counts["malformed"]),
+            counter_text(counts["malformed"]),
             FOLD_OVER_ALLOTMENT_FG_HEX if counts["malformed"] else NO_CELL_COLOR,
         )
         reset_ts = finite_number(getattr(self.bot, COUNTERS_RESET_ATTRIBUTE, 0.0))
@@ -1912,11 +2065,8 @@ class FoldTranchesTabModel:
         )
 
         parked = self.parked()
-        counter_total = (
-            counts["opened"]
-            + counts["closed"]
-            + counts["discarded"]
-            + counts["malformed"]
+        counters_live = counters_stand(
+            {key: counts[key] for key in CLEARED_COUNTER_KEYS}
         )
         for text, enabled in (
             [
@@ -1930,18 +2080,18 @@ class FoldTranchesTabModel:
             [
                 (
                     CLEAR_WIRE_TEXT_FORMAT.format(parked=parked)
-                    if parked > WIRE_CREDIT_FLOOR_USD
+                    if parked is not None and parked > WIRE_CREDIT_FLOOR_USD
                     else CLEAR_WIRE_IDLE_TEXT
                 ),
-                parked > WIRE_CREDIT_FLOOR_USD,
+                parked_credit_stands(parked),
             ],
             [
                 (
                     CLEAR_COUNTERS_TEXT_FORMAT.format(opened=counts["opened"])
-                    if counter_total
+                    if counters_live and counts["opened"] is not None
                     else CLEAR_COUNTERS_IDLE_TEXT
                 ),
-                bool(counter_total),
+                counters_live,
             ],
         ):
             self.buttons.append([text, bool(enabled)])
@@ -2023,6 +2173,7 @@ class FoldTranchesTabModel:
             "despawn_timer_text": self.health_value(DESPAWN_TIMER_ROW),
             "despawn_preview_text": self.health_value(DESPAWN_PREVIEW_ROW),
             "units_marked_text": self.health_value(UNITS_MARKED_ROW),
+            "scrum_sells_text": self.health_value(SCRUM_SELLS_ROW),
             "row_order": self.sort_key if self.table_shown else None,
             "row_filter": self.row_filter if self.table_shown else None,
             "lifetime_opened_text": opened,
@@ -2082,7 +2233,7 @@ class FoldTranchesTabModel:
                     "fold_rows": open_now,
                     "open_tranches_label": str(open_now),
                     "clear_button_enabled": bool(open_now),
-                    "wire_button_enabled": parked > WIRE_CREDIT_FLOOR_USD,
+                    "wire_button_enabled": parked_credit_stands(parked),
                     "saved": True,
                 },
             ]
@@ -2111,8 +2262,8 @@ class FoldTranchesTabModel:
             self.calls.append([CLEAR_NOT_SUPPORTED, CLEAR_FOLD_TITLE])
             return self.outcome
 
-        usd = sum(float(one.get(USD_KEY, 0) or 0) for one in tranches)
-        units = sum(float(one.get(UNITS_KEY, 0) or 0) for one in tranches)
+        usd = queue_figure_total(tranches, USD_KEY)
+        units = queue_figure_total(tranches, UNITS_KEY)
         self.boxes.append(
             message_box(
                 WARNING_ICON,
@@ -2177,7 +2328,7 @@ class FoldTranchesTabModel:
         self.calls.append([CLEAR_START, CLEAR_WIRE_TITLE])
         parked = self.parked()
         entries = len(getattr(self.bot, WIRE_LEDGER_ATTRIBUTE, []) or [])
-        if parked <= WIRE_CREDIT_FLOOR_USD and not entries:
+        if not parked_credit_stands(parked) and not entries:
             self.boxes.append(
                 note_box(INFORMATION_ICON, CLEAR_WIRE_TITLE, NO_WIRE_CREDITS_TEXT)
             )
@@ -2234,7 +2385,11 @@ class FoldTranchesTabModel:
                         CLEAR_WIRE_RESULT_FORMAT.format(
                             usd=float(report.get(USD_KEY, 0))
                         ),
-                        CLEAR_WIRE_NOW_PARKED_FORMAT.format(parked=self.parked()),
+                        CLEAR_WIRE_NOW_PARKED_FORMAT.format(
+                            parked=clear_fold_figure(
+                                self.parked(), CLEAR_FOLD_USD_FIGURE_FORMAT
+                            )
+                        ),
                         BODY_JOIN.join(lines),
                         CLEAR_WIRE_NO_FUNDS,
                     ]
@@ -2249,7 +2404,7 @@ class FoldTranchesTabModel:
         """Zero the four lifetime counters, after the operator confirms."""
         self.calls.append([CLEAR_START, CLEAR_COUNTERS_TITLE])
         counts = self.counter_values()
-        if not sum(counts.values()):
+        if not counters_stand({key: counts[key] for key in CLEARED_COUNTER_KEYS}):
             self.boxes.append(
                 note_box(
                     INFORMATION_ICON,
@@ -2674,6 +2829,7 @@ def build_view_model(
         "health_colors": list(model.health_colors),
         "health_labels": [
             OPEN_COUNT_ROW,
+            SCRUM_SELLS_ROW,
             PARKED_USD_ROW,
             OLDEST_AGE_ROW,
             UNITS_MARKED_ROW,
@@ -2690,6 +2846,7 @@ def build_view_model(
         ],
         "health_tooltips": [
             OPEN_COUNT_TOOLTIP,
+            SCRUM_SELLS_TOOLTIP,
             PARKED_USD_TOOLTIP,
             OLDEST_AGE_TOOLTIP,
             UNITS_MARKED_TOOLTIP,
@@ -2718,6 +2875,7 @@ def build_view_model(
             "alternating_row_colors": ALTERNATING_ROW_COLORS,
             "show_grid": SHOW_GRID,
             "row_height_px": TRANCHE_ROW_HEIGHT_PX,
+            "row_numbers_hidden": TABLE_ROW_NUMBERS_HIDDEN,
             "visible_rows": TRANCHE_TABLE_VISIBLE_ROWS,
             "frame_px": TRANCHE_TABLE_FRAME_PX,
             "header_px": TRANCHE_TABLE_HEADER_PX,
@@ -2824,6 +2982,7 @@ def build_view_model(
             "tooltip": DESPAWN_ROW_TOOLTIP,
             "seconds_per_day": SECONDS_PER_DAY,
             "nothing_to_remove": DESPAWN_NOTHING_TO_REMOVE,
+            "preview_word_wrap": DESPAWN_PREVIEW_WORD_WRAP,
         },
         "sort_keys": {name: list(spec) for name, spec in SORT_KEYS.items()},
         "titles": {
@@ -3076,6 +3235,7 @@ def build_bot(spec: dict) -> BotSource:
         closed=spec.get("closed", 0),
         discarded=spec.get("discarded", 0),
         malformed=spec.get("malformed", 0),
+        sells=spec.get("sells", 0),
         wire_discarded=spec.get("wire_discarded", 0.0),
         counters_reset_ts=spec.get("counters_reset_ts", 0.0),
         cap_budget=spec.get("cap_budget", 0.0),

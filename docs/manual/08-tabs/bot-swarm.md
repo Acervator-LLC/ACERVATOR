@@ -191,6 +191,7 @@ ledger per bot.
 | `register_wire` | Adds an edge carrying its own percentage |
 | `unregister_wire` | Drops one edge |
 | `distribute_fold_profit` | Moves that percentage of realised profit to each wired target |
+| `book_transfer` | Books one transfer onto both ledgers — the two wire totals and the target's provenance line for the funder |
 | `export_wires`, `import_wires` | Carry the topology through a save and a restart |
 | `export_ledgers`, `import_ledgers` | Carry the provenance through the same |
 
@@ -252,6 +253,45 @@ return mature_profit_usd(
 )
 ```
 
+### What the provenance breakdown counts
+
+The breakdown is one line per funder, biggest amount first. A line is the
+running total that funder has supplied to this bot: the seed the bot was created
+with, plus every wire transfer that funder has sent it since. The seed sits
+under the key `SEED` when no bot funded the creation, and under the funding
+bot's own id when one did.
+
+One method writes the map. Every live transfer books through
+`src/trading/smart_wire.py`, in `book_transfer`, which moves three figures
+together — the source ledger's outgoing total, the target ledger's incoming
+total, and the target's breakdown line for the source. Both live transfer paths
+call it: `src/trading/smart_wire.py`, in `distribute_fold_profit` on a
+compounded fold, and `src/trading/scrumming/wire_routing.py`, in
+`_route_scrum_proceeds_via_wires` on a scrum, a manual scrum and a detonation.
+A transfer cannot reach the totals without reaching the breakdown.
+
+`src/trading/smart_wire.py` — `book_transfer`
+
+```python
+def book_transfer(self, source_id: str, target_id: str, usd: float) -> bool:
+    """Book one wire transfer onto the two ledgers it moves money between."""
+```
+
+An amount no reading admits books nothing and answers `False`, so the totals and
+the breakdown a ledger already holds stay readable. A breakdown line already
+unreadable keeps the figure it has, because adding to it would turn a line the
+tab draws as an em dash into one it draws as money.
+
+The predominant funder row reads the same map through
+`src/trading/smart_wire.py`, in `BotLedger.predominant_source`, which answers
+the largest line other than `SEED`. A bot no wire has funded has no such line,
+so the row reads `— (SEED-funded only)`.
+
+Paper and the Simulator book the same three figures in their own managers,
+`src/paper/paper_wire.py`, in `PaperWireManager._book`, and
+`src/simulator/sim_wire.py`, in `SimWireManager._book`. The same wiring reads
+the same breakdown on all three screens.
+
 ### What the group draws now
 
 The Provenance & Mature-Profit Spawn State group draws three rows: the starting
@@ -295,6 +335,67 @@ basis of each bot's holdings. Only the three rows on the tab came off.
 | Paper | `src/gui/paper/paper_bot_swarm_tab.py` |
 | Simulator | `src/gui/simulator/sim_bot_swarm_tab.py` |
 | The shared model the panel reads | `src/gui/main_tabs/bot_swarm_tab_surface.py` |
+
+**The sentences this overtakes**, from the start of this section and from the
+block above:
+
+> The Provenance & Mature-Profit Spawn State group draws three rows: the starting
+> balance, the predominant funder and the provenance breakdown.
+
+> A single ampersand in a box title is read as a keyboard shortcut mark, so the
+> doubled form is what the three boxes are given and one ampersand is what each
+> screen draws.
+
+> `PROVENANCE_GROUP_TITLE = "Provenance & Mature-Profit Spawn State"`
+
+**The true sentences.** The heading is `Provenance`. It names the three rows the
+group holds and names nothing else, because the clause that named mature-profit
+spawn state named three readings that came off the box.
+
+`src/gui/main_tabs/bot_swarm_tab_surface.py` — the heading and the three rows
+
+```python
+PROVENANCE_GROUP_TITLE = "Provenance"
+PROVENANCE_GROUP_TITLE_QT = PROVENANCE_GROUP_TITLE.replace("&", "&&")
+
+STARTING_ROW_LABEL = "Starting balance (seed):"
+PREDOMINANT_ROW_LABEL = "Predominant funder (PPS):"
+PROVENANCE_ROW_LABEL = "Provenance breakdown:"
+```
+
+The heading carries no ampersand, so the doubled form and the plain form are the
+same word and every screen that shows the group draws `Provenance`. The three Qt
+screens read `PROVENANCE_GROUP_TITLE_QT` and the two panel scripts read the title
+out of the payload, so none of them spells the words and the three builds cannot
+disagree about them.
+
+The three rows are unchanged. Each keeps the label above, the breakdown row keeps
+`PROVENANCE_STYLE` and its word wrap, the funder row draws
+`— (SEED-funded only)` for a bot that only ever held its seed, and an em dash for
+a ledger that refuses to name a funder.
+
+The summary box at the top of the tab is headed `Swarm Connections & Capital
+Flow`, and its words are declared in the same place as the provenance heading.
+
+`src/gui/main_tabs/bot_swarm_tab_surface.py` — the two headings and the forms Qt
+is given
+
+```python
+SUMMARY_GROUP_TITLE = "Swarm Connections & Capital Flow"
+PROVENANCE_GROUP_TITLE = "Provenance"
+# A QGroupBox title reads a single ampersand as a mnemonic mark, so Qt takes two.
+SUMMARY_GROUP_TITLE_QT = SUMMARY_GROUP_TITLE.replace("&", "&&")
+PROVENANCE_GROUP_TITLE_QT = PROVENANCE_GROUP_TITLE.replace("&", "&&")
+```
+
+The three Qt screens read `SUMMARY_GROUP_TITLE_QT`, and each panel script reads
+its title out of the payload, so no drawing surface spells either heading. The
+derived form is `Swarm Connections && Capital Flow`, so each box draws the same
+words it has always drawn.
+
+**The sentence this overtakes.** The page carried no sentence naming where the
+summary heading is spelled. Changing either heading is one edit in one file, and
+the doubled form stays correct for whatever wording the declaration holds.
 
 One function bounds what a bot may send away. It reads the target balance, the
 band edges, the ammunition the next fold needs and the cash on hand, and returns
@@ -418,6 +519,59 @@ def clear_stack_tranches(self, reason: str = "operator") -> dict:
 **Clear.** `clear_fold_tranches` discards every queued tranche and trades
 nothing. Holdings, the main lots, the target balance and the parked wire
 credits all survive it, and the report warns when parked credits remain.
+
+### One admission rule for every lifetime counter
+
+The invariant above holds only while every term of it is read the same way.
+One rule reads them all: `as_whole_count`, in
+`src/trading/container/config.py`. It admits a whole number and nothing else.
+A stored flag, a text number, a not-a-number, an endless number, a fraction
+and a whole number too large for a float each answer "no usable count", and
+none of them raises.
+
+Seven counters read it: the four fold counters, the scrum-sells counter and
+the two stack counters.
+
+| Reader | What a refused counter does there |
+| ------ | --------------------------------- |
+| `src/trading/scrumming/state_io.py`, in `admitted_counter` | Lands zero and names the bot, the field and the stored type in the log |
+| `src/gui/live_settings/fold_tokens.py`, in `fold_lifetime_counter` | Returns no count and logs the same three facts |
+| `src/gui/live_settings/stack_tranches_tab.py`, in `_stack_lifetime_counter` | The same, for the two stack counters |
+| `src/gui/main_tabs/fold_tranches_tab_surface.py`, in `guarded_count` | The same reading, for the second build |
+| `src/gui/main_tabs/stack_tranches_tab_surface.py`, in `lifetime_counter` | The same reading, for the second build |
+
+The Paper and Simulator panels are forks of the Live ones and read the same
+rule. Both fold forks call `fold_lifetime_counter` in
+`src/gui/live_settings/fold_tokens.py`, the one module all three fold panels
+share. Each stack fork carries `_stack_lifetime_counter`, matching the Live
+panel's own, so no screen reaches across from the Simulator into Live to read
+a count.
+
+| Panel | Reader |
+| ----- | ------ |
+| `src/gui/paper/paper_fold_tranches_tab.py` | `fold_lifetime_counter` |
+| `src/gui/simulator/sim_fold_tranches_tab.py` | `fold_lifetime_counter` |
+| `src/gui/paper/paper_stack_tranches_tab.py` | `_stack_lifetime_counter` |
+| `src/gui/simulator/sim_stack_tranches_tab.py` | `_stack_lifetime_counter` |
+
+`src/gui/main_tabs/fold_tokens_surface.py` holds a third copy of
+`compose_cycle_close_ratio`, and no counter reaches it. That module reads no
+bot and no stored field: `src/core/desktop_bridge.py` registers its
+`view_model` as the handler for the `fold_tokens.state` method, and
+`src/gui/web/fold_tokens.js` draws that payload's colours, sort orders, column
+tooltips, row heights and step names. Its ratio copy answers only a request
+that names the step and carries its own three numbers.
+
+`admitted_counter` sits on both halves of the save path, so a counter the
+panel will not print is also a counter the file will not store. A stored flag
+used to be written back as the count one, which made the fault permanent;
+it is now written back as zero, with the field named in the log.
+
+On screen a refused counter draws an em dash and never a number. The Cycle
+close ratio row and the Fill ratio row each say a counter is unreadable rather
+than work out a share from the terms they can still read. The Clear Lifetime
+Counters button stays live and its confirmation prints the dash, so an
+unreadable count is never the reason an operator cannot zero the ledger.
 
 ## Where the fleet comes from
 
@@ -1340,5 +1494,22 @@ children of 17 to 24 px, so `inner-row` starts at y = 931 with a height of 0, `q
 has a height of 0, a routing button sits at y = 1754, and `wire-canvas` is `display: none`.
 The captured page shows the tab bar and the header strip and nothing under them. The locust
 grid, the wires and the routing panel are in the document and are not on the screen.
+
+### Where the wire list sits once a password is set
+
+**The sentence this overtakes**, from the section on what Disconnect All clears:
+
+> A wire is stored once, at the top level of the fleet file, under `smart_wires`.
+
+**The true sentence.** That is where the wire list sits on an install carrying no
+password. With a password set, `smart_wires` moves inside one sealed field and
+the top level carries a plain-text latch in its place.
+`src/core/state_manager.py, in _sealed_for_disk` moves `bots`, `bot_count`,
+`smart_wires` and `smart_wire_ledgers` into that field on every save, and
+`in unseal` puts all four back for a session holding the key. Read on a state
+file saved with a password: the top level holds five fields — `fleet_sealed`,
+`sealed_fleet`, `saved_at`, `saved_at_human` and `version` — and not one of the
+four fleet fields. Read on the same material saved with no password: the same
+seven fields the page describes, and no latch.
 
 Back to [the subsystem index](README.md).

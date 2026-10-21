@@ -275,22 +275,42 @@ if _HAS_QT:
                     not snapshot.get(fid, False) for fid in reg.known_field_ids()
                 )
                 reg.set_all(any_revealed)
-            except Exception:  # noqa: BLE001 - the registry's own persist fault
+            except Exception as flip_exc:
+                logger.warning(
+                    "Privacy Mode click did nothing: the mask register could "
+                    "not be read or written (%s: %s); every field keeps the "
+                    "state it already had",
+                    type(flip_exc).__name__,
+                    flip_exc,
+                )
                 return
             self._refresh_privacy_mode_btn_style()
             try:
                 root = self.window()
                 if hasattr(root, "refresh_all_privacy_widgets"):
                     root.refresh_all_privacy_widgets()
-            except Exception:  # noqa: BLE001,S110 - best-effort propagation
-                pass
+            except Exception as repaint_exc:
+                logger.warning(
+                    "the mask flip was written but the window-wide repaint "
+                    "failed (%s: %s); dots and figures on the other tabs draw "
+                    "the state from before the flip until the next refresh",
+                    type(repaint_exc).__name__,
+                    repaint_exc,
+                )
 
         def _refresh_privacy_mode_btn_style(self) -> None:
             """ON (all fields masked) = green; OFF = muted."""
             try:
                 reg = get_privacy_mask_registry()
                 all_masked = all(reg.is_masked(fid) for fid in reg.known_field_ids())
-            except Exception:  # noqa: BLE001 - the registry's own read fault
+            except Exception as read_exc:
+                logger.warning(
+                    "the mask register could not be read (%s: %s); the button "
+                    "draws Privacy Mode: OFF, which is the declared reading "
+                    "for an unreachable register and not a measured state",
+                    type(read_exc).__name__,
+                    read_exc,
+                )
                 all_masked = False
             if all_masked:
                 self._privacy_mode_btn.setText("Privacy Mode: ON")

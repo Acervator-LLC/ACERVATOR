@@ -12,6 +12,7 @@ from ...core.privacy_mask_registry import mask_or
 
 from .. import design_system as ds
 from ..main_tabs.header_strip_surface import (
+    CARD_SIDE_MARGIN_PX,
     LABEL_FONT_MIN_PX,
     LABEL_FONT_PX,
     VALUE_FONT_MIN_PX,
@@ -38,8 +39,9 @@ if _HAS_QT:
         clicked = Signal()
 
         #: What the card leaves either side of its caption and its amount,
-        #: matching ``header_strip_surface.CARD_SIDE_MARGIN_PX``.
-        _SIDE_MARGIN_PX = 4
+        #: read from ``header_strip_surface.CARD_SIDE_MARGIN_PX`` so the card
+        #: and the width budget hold one number.
+        _SIDE_MARGIN_PX = CARD_SIDE_MARGIN_PX
 
         def __init__(self, label: str, value: str = "---", parent=None):
             super().__init__(parent)

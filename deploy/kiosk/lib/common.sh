@@ -143,10 +143,9 @@ acervator_deps() {
 # that the TARGET owns. `rsync --delete` is what makes the second class
 # matter: a path that is not excluded is deleted at the destination.
 #
-#   RULE_REGISTRY.json  `deploy/kiosk/install.sh` GENERATES this at the
-#                       destination after the copy. It is untracked in
-#                       this repository, so without the exclude every
-#                       update deleted the installed copy.
+#   RULE_REGISTRY.json  no step generates this any more. The exclude stays so
+#                       an update does not delete the 0-byte file the retired
+#                       install step left on a kiosk that already ran it.
 #   logs/, _logs/       runtime state, untracked, owned by the target.
 ACERVATOR_SYNC_EXCLUDES=(
     '__pycache__'

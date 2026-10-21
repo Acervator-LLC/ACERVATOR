@@ -1057,6 +1057,23 @@ pushed bot walks the tape the Simulator already holds for it. A market with no
 tablet refuses the whole push and moves no mode, which
 [the Market Inspector page](market-inspector.md) describes at the button.
 
+A Target Balance the Simulator cannot trade against refuses the push the same
+way. Each row's dollar target is read through the one admission Push to Paper
+reads, so an endless figure, a figure that is not a number, a stored flag, a
+negative figure and text no dollar can be read from are refused on both
+destinations alike; the Activity Log names every market refused, nothing is
+held and the run mode is unchanged. A row naming no target, or naming zero,
+takes the `target_balance` default `BotConfig` declares. A market named twice
+in one candidate holds one bot, never two.
+
+`src/gui/simulator/sim_trading_tab_surface.py, in push_configs` — the three
+lists a push reads
+
+```python
+def push_configs(candidates: Any, entries: Any) -> tuple:
+    """``(configs, missing, refused)`` for one pushed candidate's symbols."""
+```
+
 A swarm topology also names the wires between its bots, and those travel with
 them. Each pushed bot gets its own `SimWireLedger`, each wire is registered
 between two of those bots at the rate the proposal names, and the sim fleet file
@@ -1066,6 +1083,9 @@ share to the pushed target, which is the routing
 describes and
 [Start Run carries the fleet's wires, and the run's end saves them](#start-run-carries-the-fleets-wires-and-the-runs-end-saves-them)
 drives.
+
+One pair holds one rate, so a topology naming the same source and target twice
+refuses the whole push, names the pair and holds nothing.
 
 The Activity Log reports both halves:
 
@@ -1077,6 +1097,30 @@ PUSH_WIRED_FORMAT = "Wired {count} of them: {wires}."
 A wire the push cannot deliver refuses the whole push, exactly as a missing
 tablet does: no bot is held, no wire is registered and the run mode does not
 move.
+
+#### The push's mode choice reaches the file
+
+The bots, the wires and the mode land in one write: `push_to_back_test` holds
+each bot, registers each wire, then fires `fleet_changed`, which runs
+`FleetSource.save`, so the sim fleet file carries all three at once. The
+mode it carries is the one
+[The mode choice is wired and the way-ins follow it](#the-mode-choice-is-wired-and-the-way-ins-follow-it)
+reads back, so a push sets the mode for the next launch and not only for the
+rest of the session.
+
+Driven on the real pane over a real Stone Tablet manifest, on a topology naming
+two markets and one wire between them:
+
+```
+answered        mode back_test, held 2, wires 1, refused none
+mode on disk    back_test
+wires on disk   1
+Activity Log    Pushed 2 bot(s) to the Simulator; its run mode is back_test.
+```
+
+A refused push writes nothing. With one market no tablet names, the file read
+back byte-identical before and after the press, the mode in force did not
+change, and the fleet held the same two bots an earlier push had landed.
 
 ### One clock
 
@@ -2582,6 +2626,11 @@ above wrote for the one fleet, so a mode's entry is a file of the old shape.
 Every fleet change writes all three, so an import under Validation, a bot
 created under Back Test and a Battery run's generated fleet land in one file
 and survive a restart under their own modes.
+
+Since the mode memory landed, the top carries one key more: `mode`, named by
+`MODE_KEY`, holding the mode in force at the write. That is the key
+`FleetSource.__init__` reads back, so the write that saves a fleet also saves
+which mode the tab opens in.
 
 `src/simulator/fleet_source.py` — the write, one entry per mode
 
@@ -7749,127 +7798,16 @@ it is a placeholder.
 
 ## Nuclear Mode
 
-`NuclearModePanel` drove the controller. The controller looped the same
-state-file fleet over the tablet window until stopped, recording each cycle so a
-late failure traced back to the cycle that produced it. Start needed the
-window's async loop; without it the panel said so and no soak began.
-The operator cancelled Nuclear Mode and the rebuild deleted its code, so none of
-the files this section names is in the tree.
+The operator cancelled Nuclear Mode. The rebuild deleted its panel, its two
+fleet controllers and its candle source, so no file this section once walked
+through is in the tree and no Nuclear run starts. The three modes the Sim tab
+carries today — Validation, Back Test and Portfolio Battery — stand in
+its place, and the record of what Nuclear did stands below, under what the
+closed issues landed.
 
-`NuclearFleetController`, in the Simulator package the rebuild deleted
-
-```python
-class NuclearFleetController:
-    """Loops the bot_state fleet over Stone Tablet history until stopped.
-
-    GUI-agnostic: all operator-visible output goes through the callbacks,
-    so this is testable without Qt.
-    """
-```
-
-The market structure varied per loop, and nothing on disk was touched.
-
-`noised_series`, in the candle source the rebuild deleted
-
-```python
-def noised_series(
-    rows: list,
-    seed: int,
-) -> tuple[list, float]:
-    """Return ``(noised_rows, noise_pct)`` for one pass over *rows*.
-
-    A ``_Tape`` seeded from *seed* perturbs a copy through ``_at``; *rows* is
-    left as it was and nothing here touches disk.
-    """
-```
-
-A second oscillator supplied the load pulse, and it was capped while its cooling
-regime held, because the pulse shared a machine with the live trading engine.
-That module is still in the tree and nothing constructs it.
-
-`src/core/system_load_oscillator.py` — `SystemLoadOscillator`
-
-```python
-class SystemLoadOscillator:
-    """Dual oscillator for Nuclear Mode tick rate and per-tick workload.
-
-    ``start`` takes the monotonic reference and spawns the COOLING
-    daemon; ``stop`` joins it and is idempotent. ``current_multiplier``
-    returns ``BASE_MULTIPLIER`` before ``start``.
-    """
-```
-
-`set_swarm_hooks` connected the controller to three methods on the Swarm tab,
-which is how a nuclear run drew its rows in the sim layer of that swarm.
-`set_topologies` replayed a Market Inspector proposal shape across the sim bots.
-Neither name is in the tree now.
-
-| Hook | Fires when |
-| ---- | ---------- |
-| `register_sim_run` | A run starts |
-| `update_sim_run` | A cycle reports |
-| `stop_sim_run` | The run ends |
-
-The panel's own visuals stayed empty for a whole run. It fed the shared price
-chart and the shared voting readout from four fields — the symbol, the last
-price, the last volume and the voting summary — and the controller's snapshot
-carried none of them.
-
-`NuclearFleetController.snapshot`, in the controller the rebuild deleted
-
-```python
-    def snapshot(self) -> dict:
-        """Return the GUI panel's polled view of this soak."""
-        s = self.state
-        return {
-            "running": s.running,
-            "uptime_seconds": s.uptime_s,
-            "fleet_size": s.fleet_size,
-            "symbols": s.symbols,
-            "cycles_completed": s.cycles_completed,
-            "current_cycle": s.current_cycle,
-            "noise_pct": s.noise_pct,
-            "wires_loaded": len(self._smart_wires),
-            "total_candles": s.total_candles,
-            "total_trades": s.total_trades,
-            "total_exceptions": s.total_exceptions,
-            "load_multiplier": s.load_multiplier,
-            "cooling": s.cooling,
-            "load_sensed": self._sensed,
-            "last_error": s.last_error,
-            "failed_cycles": sum(1 for c in s.cycles if not c.ok),
-        }
-```
-
-Nuclear was not a validator. It was to run after trade-logic alignment was
-earned, its noised tape was deliberately not history, and its criteria were
-coverage and survival. The operator cancelled it before that point was reached.
-
-`NuclearModePanel`, in the panel the rebuild deleted — what it was for
-
-```python
-NOT A VALIDATOR. Nuclear runs AFTER trade-logic alignment is proven on
-the real tablets, and its noised tape is deliberately not history, so
-nothing here compares its output to YTD or live. Its criteria are
-coverage and survival.
-```
-
-`NuclearController` was the earlier
-single-tape prototype: one scout bot walking one tape. Nothing under the source
-tree constructed it, and it stayed because both controllers shared the noise
-source.
-
-`NuclearModePanel`, in the panel the rebuild deleted — why the prototype stayed
-
-```python
-`nuclear_controller.py` and `nuclear_candle_source.py` are deliberately
-NOT deleted: the latter owns `noised_series`, which v2 depends on for
-exactly the market-structure noise above.
-```
-
-That comment recorded the state before the cancellation. Every file named in
-this section was deleted with the rest of the old Simulator, and no Nuclear Mode
-runs.
+One module outlived it. `src/core/system_load_oscillator.py` holds
+`SystemLoadOscillator`, which supplied the load pulse that paced a run, and
+nothing in the tree constructs it.
 
 ## Bridge
 
@@ -9981,3 +9919,94 @@ NumberControl` and `src/gui/web/sim_bot_wizard.js, in NumberField` print the
 words inside the box rather than beside it, as Qt prints them, and
 `src/gui/web/sim_bot_wizard.js, in numberSpec` prefers the spec the payload
 carries under `values.number_specs` so the field sees the dash at all.
+
+## 2026-10-20 - #937 - the Scrumming table's state sits on the Symbol cell
+
+The Simulator's Scrumming Bots table is a subclass of the window's own bot list,
+so it draws that list's ten columns. The first column is Asset. It draws the
+target asset's own mark, and the asset's ticker where no mark is kept. It carries
+no bot id, no state colour and no state tooltip. The state colour and the
+mode-and-state tooltip sit on the Symbol cell.
+
+The Extractor Bots table keeps its own Bot ID column, so every sentence on this
+page about the Extractor's Bot ID column stays true.
+
+Read off the drawn table, four invented bots, the viewport grabbed at 1600 by 420:
+
+```
+column 0, "Asset"     a 32 by 32 mark, or the ticker where none is kept
+column 1, "Symbol"    the pair in the state colour, the mode and state in its tooltip
+row height            36 pixels
+running  #00ff88      paused  #ffaa00      error  #ff3366
+```
+
+### Eight sentences above are overtaken
+
+Each is quoted whole, with the true sentence under it.
+
+Overtaken: *"It hides until a row arrives, then draws one row per held scrumming
+bot with Live's ten columns, the Bot ID cell coloured by the bot's state."*
+
+True now: it hides until a row arrives, then draws one row per held scrumming bot
+with Live's ten columns, the Symbol cell coloured by the bot's state.
+
+Overtaken: *"The saved state gives the state the Bot ID cell is coloured by."*
+
+True now: the saved state gives the state the Symbol cell is coloured by.
+
+Overtaken: *"Its state is idle, so its Bot ID cell is grey."*
+
+True now: its state is idle, so its Symbol cell is grey.
+
+Overtaken: *"`FleetSource.save` writes the sim fleet file with the moved state, or
+without the deleted record, and `refresh_bots` hands each venue its rows again, so
+the Bot ID cell's colour and tooltip in the Scrumming Bots table, and the Mode
+cell's in the Extractor Bots table, read the new state."*
+
+True now: the same save and the same hand-back happen, and the colour and tooltip
+that read the new state are the Symbol cell's in the Scrumming Bots table and the
+Mode cell's in the Extractor Bots table.
+
+Overtaken: *"Start on an imported idle bot writes Live's `✓ Bot <id> RUNNING.` line
+and colours its Bot ID cell."*
+
+True now: Start on an imported idle bot writes that same line and colours its
+Symbol cell.
+
+Overtaken: *"Start on a generated idle bot writes Live's `✓ Bot <id> RUNNING.` line
+and colours its Bot ID cell."*
+
+True now: Start on a generated idle bot writes that same line and colours its
+Symbol cell.
+
+Overtaken: *"`_start_run` moves each of those bots to `running` through
+`SimBotManager.start`, the same rule Start applies to one bot, and fires
+`fleet_changed`, so the sim fleet file is saved and every venue page draws its rows
+again before the walk begins: the Bot ID cell reads `State: RUNNING` in its running
+colour."*
+
+True now: the same move, the same save and the same redraw happen, and the cell
+that reads `State: RUNNING` in its running colour is the Symbol cell.
+
+Overtaken: *"Column 2 is now Current Position Value, priced from the exchange, and
+the state colour it used to carry sits on the Bot ID cell."*
+
+True now: column 2 is Current Position Value, priced from the exchange, and the
+state colour it used to carry sits on the Symbol cell.
+
+### Two blocks above read the first column by its old name
+
+Neither is a sentence, so both stay exactly where they stand.
+
+The cell table under the saved-record passage holds the row
+`| Bot ID, its colour | the record's id and its saved state |`. The first column
+reads the target asset's kept mark, and the colour that row names is the Symbol
+cell's.
+
+The reading block under the imported-row walk holds
+`the row: Bot ID, Symbol, Trades, Target`. The first of those four is the Asset
+column, and the figure beneath it is the asset's mark or its ticker.
+
+The code block listing the ten column labels names `"Bot ID"` first.
+`src/gui/main_tabs/bot_status_table_surface.py, in COLUMN_LABELS` names `"Asset"`
+first today.

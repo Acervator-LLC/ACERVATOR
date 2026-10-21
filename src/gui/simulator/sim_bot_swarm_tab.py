@@ -19,7 +19,10 @@ from PySide6.QtWidgets import (
 from PySide6.QtGui import QColor
 
 from .. import design_system as ds
-from ..main_tabs.bot_swarm_tab_surface import PROVENANCE_GROUP_TITLE_QT
+from ..main_tabs.bot_swarm_tab_surface import (
+    PROVENANCE_GROUP_TITLE_QT,
+    SUMMARY_GROUP_TITLE_QT,
+)
 
 logger = logging.getLogger("acervator.gui")
 
@@ -88,7 +91,7 @@ class SimBotSwarmTabMixin:
 
         ledger = ledgers.get(bot_id)
 
-        summary = QGroupBox("Swarm Connections && Capital Flow")
+        summary = QGroupBox(SUMMARY_GROUP_TITLE_QT)
         sf = QFormLayout(summary)
         self._configure_form(sf)
 

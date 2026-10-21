@@ -3023,4 +3023,135 @@ loads Live's own `src/gui/web/bot_wizard.js` and
 PaperLiveSettingsTabModel` is Live's model, so the page draws the dash inside
 the box as Qt draws it.
 
+## 2026-10-18 - #1203 - one resolver answers a market's sector
+
+**Functional.** Every tab that follows the asset class reads one chain, and the
+venue's own recording is the last word in it. A sector whose fleet holds a bot
+draws that bot. A sector whose fleet holds none draws the same tab with empty
+lists, and no tab replaces itself with a note.
+
+```mermaid
+flowchart LR
+    A[the class group press] --> B[set_active]
+    B --> C[bots_of_class]
+    C --> D[bot_class]
+    D --> E[market_class]
+    E --> F[symbol_class]
+    F --> G[the venue recording's asset_class]
+```
+
+`src/gui/main_tabs/class_filter_tab.py, in _apply_asset_class` starts the chain.
+`src/gui/main_tabs/class_filter_surface.py, in bots_of_class` narrows the fleet,
+and `src/gui/main_tabs/asset_class_surface.py, in symbol_class` answers the
+sector the recording holds for the symbol. A symbol the recording holds no
+sector for answers crypto. An unknown venue answers an empty string.
+
+### The sector each market answers
+
+Driven on one venue serving all six sectors, with a recording holding one market
+per sector:
+
+| the recording's sector | `market_class` answers |
+|---|---|
+| crypto | crypto |
+| stocks | stocks |
+| commodities | commodities |
+| forex | forex |
+| indices | indices |
+| futures_perps | futures_perps |
+| no sector recorded | crypto |
+
+`bots_of_class` keeps 1 of 6 under each of the six sectors, both when the bot
+status declares its own `asset_class` and when the sector is resolved from the
+venue and the symbol.
+
+### What each tab draws under each sector
+
+Driven through the real `src/gui/main_tabs/class_filter_tab.py, in
+_apply_asset_class`, with a fleet of six bots, one per sector:
+
+| tab | Crypto | Stock | Commodities | Forex | Indices | Futures / Perps |
+|-----|--------|-------|-------------|-------|---------|-----------------|
+| Sim | content | content | content | content | content | content |
+| Paper | content | content | content | content | content | content |
+| Live | content | content | content | content | content | content |
+| Charts | content | content | content | content | content | content |
+| Inspector | content | content | content | content | content | content |
+| Swarm | content | content | content | content | content | content |
+| History | content | content | content | content | content | content |
+| Status | unfiltered | unfiltered | unfiltered | unfiltered | unfiltered | unfiltered |
+| Console | unfiltered | unfiltered | unfiltered | unfiltered | unfiltered | unfiltered |
+
+The same six runs against an empty fleet draw nothing in every sector, so a
+`content` cell is a read and not a fixed answer.
+
+### The second resolver is gone
+
+`src/gui/main_tabs/class_filter_surface.py, in market_class` carried a branch
+for a derivatives sector beside the recording. That branch could not run:
+`src/gui/main_tabs/asset_class_surface.py, in venue_classes` intersects its
+answer with the declared sectors, and
+`src/gui/main_tabs/asset_class_surface.py, in retired_onto` resolves
+`derivatives` onto crypto, so the name entered neither set. The branch, the
+`is_derivative` test behind it and its suffix list are removed, and
+`symbol_class` is the one resolver left.
+
+A contract market still answers its own sector. The recording carries
+`futures_perps` on a perpetual row, which is the sector the taxonomy declares
+and the sector the Futures / Perps button filters on.
+
+### The Sim and the Paper tab build their pages per sector
+
+`src/gui/paper/paper_trading_tab_surface.py, in build_view_model` and
+`src/gui/simulator/sim_trading_tab_surface.py, in build_view_model` each read
+`src/gui/main_tabs/trading_tab_surface.py, in layer_order` for their stack
+pages. Asked for all six sectors, both answer six pages, with the page on show
+running 0 through 5 as the sector moves. Both tabs are seated in both builds:
+the React build answers `SimTradingTabReact` and `PaperTradingTabReact`, and the
+Qt build answers `SimTradingTab` and `PaperTradingTab`. The bar holds nine tabs.
+
+### What a failed tab build still does
+
+A tab whose build raises writes one warning line and leaves its window
+attribute unset. `src/gui/main_tabs/simulator_tab.py, in _build_simulator_tab`
+and `src/gui/main_tabs/paper_trader_tab.py, in _build_paper_trader_tab` each
+catch the refusal. Driven against a tab book that refuses the insert, beside the
+same book accepting as the control:
+
+| the tab book | warnings logged | tabs seated |
+|---|---|---|
+| refuses the insert | 2 | 0 |
+| accepts the insert | 0 | 2 |
+
+Nothing reaches the screen for a refused build. The bar comes up short with no
+mark on it.
+
+## 2026-10-20 - #937 - a Paper row's state sits on its Symbol cell
+
+The Paper Trader's Scrumming Bots table is a subclass of the window's own bot
+list, so its first column is Asset. It draws the target asset's own mark, and the
+asset's ticker where no mark is kept. It carries no bot id, no state colour and no
+state tooltip. The state colour and the mode-and-state tooltip sit on the Symbol
+cell. The Paper Extractor table keeps its own Bot ID column.
+
+### One sentence this page carried is overtaken
+
+It is quoted whole, and the sentence under it is true today.
+
+OVERTAKEN, quoted whole:
+
+> "A row's state is the Bot ID cell's colour and its tooltip's `State:` line;
+> Live's ten columns hold no State column."
+
+True today: a row's state is the Symbol cell's colour and that cell's tooltip's
+`State:` line. Live's ten columns still hold no State column.
+
+### One reading above names the first column by its old name
+
+The Import Live Fleet reading table holds the row
+`Import Live Fleet: Bot ID cell colour`, with `#888888` under Qt and
+`rgb(136, 136, 136)` under React. It is a recorded reading, not a sentence, so it
+stays exactly where it stands. The cell that carries that grey today is the Symbol
+cell.
+
 Back to [the subsystem index](README.md).

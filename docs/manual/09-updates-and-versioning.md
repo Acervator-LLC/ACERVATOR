@@ -237,6 +237,16 @@ src/gui/main_tabs/stock_main_window_surface.py  tools/build_release_zip.py
 tools/capture_live_baseline.py                  tools/spec_common.py
 ```
 
+**Overtaken again.** Both lines above that name the sweep stay whole:
+
+> `src/core/version_sweep.py` takes it as the canonical value and reports any
+> literal that shadows it.
+
+The sweep now lives at `unreached/core/version_sweep.py`. Eleven of the twelve
+readers are reached by the running program. The sweep is the twelfth and has no
+importer and no caller, so a literal shadowing the version is reported to nobody
+unless a person runs `python -m unreached.core.version_sweep` by hand.
+
 ### What the About box tells the operator
 
 Help holds About on the crypto window and on the stock window. The box names
@@ -363,6 +373,11 @@ The application uses 21 packages that are not part of Python itself. Eighteen of
 them are declared as requirements. Three are named by code that guards its own
 absence, and the dependency list records why none of the three is owed.
 
+The import set holds 20 of those packages now, and 17 of the 20 are declared.
+`scipy` left it when `pearson_correlation` in `src/trading/pair_selection.py`
+took over the correlation test, and no module under `src/` names `scipy` any
+more.
+
 A build does not install every declared package. It installs the core set plus
 two named groups, so a package declared in any other group never reaches the
 bundle. Two further names are installed and then deliberately left out.
@@ -400,6 +415,12 @@ the application imports it in nine places, and it has no folder.
 | luma, RPLCD, smbus2 | display group | no | no, Raspberry Pi only |
 | ST7789, waveshare_epd, tomli | recorded, not required | no | no |
 
+The `scipy` and `statsmodels` rows still read as they do here. `statsmodels` is
+the `cointegration` group now, which `CONSUMER_EXTRAS["build"]` installs, and it
+is the only requirement either package is installed from: `scipy` is declared
+nowhere and arrives because statsmodels requires it. The build requirement set
+is 17 lines where it was 18, and the bundle carries the same two packages.
+
 Two rows read as a package the application wants and the bundle does not hold.
 
 The matplotlib row costs the running application nothing. One module imports
@@ -426,6 +447,80 @@ async def _call(self, msg):          # src/trading/live_monitor.py, in _call
 `src/gui/design_system.py` is a separate module with 110 importers and no
 matplotlib import. Every screen reads that one. The two files have the same name
 and are not the same thing.
+
+### The httpx rows, overtaken
+
+OVERTAKEN, quoted whole:
+
+> "A build does not install every declared package. It installs the core set plus
+> two named groups, so a package declared in any other group never reaches the
+> bundle."
+
+> "The httpx row is different, and it is live. The AI feedback loop calls out over
+> the network, and the call imports httpx with nothing to catch a failure. The
+> monitor group holds that package and a build installs the build and report groups
+> only, so the shipped application reaches that line with nothing to import."
+
+The table cell those sentences describe, quoted whole:
+
+| package | declared | the build installs it | in the bundle |
+| --- | --- | --- | --- |
+| httpx | monitor group | no | no |
+
+True today: a build installs the core set plus four named groups, and the bundle
+carries httpx.
+
+```python
+CONSUMER_EXTRAS["build"] = ("build", "report", "monitor", "cointegration")
+#                                                     tools/deps.py
+```
+
+| package | declared | the build installs it | in the bundle |
+| --- | --- | --- | --- |
+| httpx | monitor group | yes | yes, 23 modules, no folder |
+
+Read off the archive table of contents of the Windows build: 23 httpx modules,
+with 31 for httpcore, 35 for anyio and 11 for h11. The same file reads 0 for
+matplotlib, PIL and tkinter, which is the exclusion list working, and 163 for
+statsmodels. h11 is the control for the warning above: 11 modules inside the
+archive and no folder on disk.
+
+The call also no longer reaches that import with nothing to catch it. `_call`
+holds the import in a `try:`, and the `except ImportError` carries a sentence
+that names the package.
+
+```python
+MONITOR_MISSING_PACKAGE_FORMAT       # src/trading/live_monitor.py
+    "The AI Monitor needs {package}, which this install left out"
+```
+
+### Which installs run without the AI monitor
+
+The download carries the package. Two other installs do not, and both of those
+say so rather than reporting the feature ready.
+
+| install | names the monitor group | the AI monitor runs |
+| --- | --- | --- |
+| the downloaded build | yes | yes |
+| the Raspberry Pi, from source | no | no |
+| `pip install -e .` | no | no |
+| `pip install -e ".[dev]"` | no, one analyzer requires it | yes, by accident |
+
+Two surfaces draw the absence. The status strip's AI pill reads `AI: NO PACKAGE`
+in the caution colour where it would read `AI: READY`, and the Console writes the
+sentence as a warning when the monitor is switched on and when the operator saves
+Settings.
+
+```python
+def monitor_package_absence(package: str = MONITOR_PACKAGE) -> str: ...
+#                                        src/trading/live_monitor.py
+def _draw_ai_monitor_pill(self, enabled: bool) -> None: ...
+def _log_ai_monitor_absence(self) -> None: ...
+#                                        src/gui/main_window.py
+```
+
+`monitor_package_absence` reads the package with `find_spec` and imports nothing,
+so start-up loads no HTTP client and the import inside `_call` stays the only one.
 
 ## A version that moves while the suite runs
 
@@ -683,6 +778,28 @@ Each ecosystem also sets `open-pull-requests-limit` to 1, which makes five the
 hard ceiling for routine pull requests across the repository. Security updates
 are exempt from that limit, so a security fix is never held back by it.
 
+**Overtaken.** The pip entry for `/requirements` is gone, and so is the lock file
+it watched. Four ecosystems are declared, not five, and the ceiling on routine
+pull requests is four, not five.
+
+```
+.github/dependabot.yml
+
+pip             /              pyproject.toml
+npm             /              package.json and package-lock.json
+npm             /desktop       desktop/package.json and its lock file
+github-actions  /              the action versions in .github/workflows/
+```
+
+The remaining pip entry opens nothing in practice. It watches `pyproject.toml`,
+which declares 50 requirements and pins or caps none of them, so a newer release
+already satisfies every line and the entry has nothing to raise against. The
+service has made 33 commits in this repository: 17 to the lock, 7 to the npm
+files, 7 to the action versions, 2 that changed no file, and 0 to
+`pyproject.toml`. Retiring the lock therefore ends routine pip pull requests
+altogether. A security advisory against a declared package still reaches the
+remaining entry.
+
 ### What clears the queue
 
 One scheduled workflow clears the queue. It runs at 13 and 43 minutes past every
@@ -900,6 +1017,94 @@ line the program writes to its own log once the main window is on screen.
 
 ```python
 log_manager.info("Application ready — main window displayed")   # main.py
+```
+
+### Which inputs start a platform build
+
+Each platform has a build workflow of its own, and each one watches nine files.
+Six of them decide how a build is made. Three of them decide what a build
+installs.
+
+| what the file decides | macOS | Windows |
+| --- | --- | --- |
+| the build script | `build_mac.sh` | `build_windows.ps1` |
+| the packaging recipe | `Acervator_mac.spec` | `Acervator_win.spec` |
+| which script runs | `tools/build_launcher.py` | `tools/build_launcher.py` |
+| which variants build | `tools/build_variants.py` | `tools/build_variants.py` |
+| what the recipe collects | `tools/spec_common.py` | `tools/spec_common.py` |
+| which groups get installed | `tools/deps.py` | `tools/deps.py` |
+| what each group holds | `pyproject.toml` | `pyproject.toml` |
+| which interpreter | `.python-version` | `.python-version` |
+| the workflow itself | `macos-build.yml` | `windows-build.yml` |
+
+A push that changes one of a platform's nine files builds that platform, on the
+branch the push went to, before any merge. A push that changes anything else
+builds neither platform.
+
+The release names each platform as a call rather than as a job of its own, so one
+file holds each platform's build and the release holds neither. A call carries no
+watch list, so a release builds both platforms whatever those lists say.
+
+```yaml
+# .github/workflows/release.yml
+jobs:
+  windows:
+    uses: ./.github/workflows/windows-build.yml
+  macos:
+    uses: ./.github/workflows/macos-build.yml
+```
+
+The lock file under `requirements/` is not one of the nine. No build reads it, so
+a change to it builds nothing and ships nothing.
+
+**Overtaken.** The lock file is gone and `requirements/` holds nothing. Each build
+resolves its own install set: `build_windows.ps1` and `build_mac.sh` both call
+`python -m tools.deps requirements build`, which reads `pyproject.toml`, and both
+hand the answer straight to pip. Neither ever installed from the lock. The
+generator stays, as `python -m tools.deps lock`, and `.gitignore` keeps its output
+out of the tree.
+
+```
+python -m tools.deps requirements build     17 requirement lines
+pip resolves those to                       62 packages
+the retired lock pinned                     48 packages
+```
+
+### The macOS watch list, overtaken
+
+OVERTAKEN, quoted whole:
+
+```yaml
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - build_mac.sh
+      - Acervator_mac.spec
+      - tools/build_launcher.py
+      - tools/build_variants.py
+      - tools/spec_common.py
+      - .github/workflows/macos-build.yml
+```
+
+True today: nine paths, not six. The three added are the files that decide what a
+build installs, and the list lost no path.
+
+```yaml
+      - tools/deps.py
+      - pyproject.toml
+      - .python-version
+```
+
+The same reading on Windows went the other way. Windows had no watch list,
+because it had no workflow of its own: its build was a job inside the release,
+and the release starts on `main` alone. A change to what a build installs got no
+Windows build until after it had merged.
+
+```
+                             before            today
+Windows watch list           none              9 paths
+Windows builds on a branch   no                yes
 ```
 
 ### What happens when the disk image step fails

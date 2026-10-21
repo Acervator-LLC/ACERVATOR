@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import math
 import re
 import sys
 from bisect import bisect_right
@@ -1707,6 +1708,37 @@ class HodlRow:
     final_price: float
 
 
+@dataclass(frozen=True)
+class BaseRow:
+    """One base's fill counts and the two ends of its buy VWAP trajectory."""
+
+    label: str
+    fills: int
+    buys: int
+    sells: int
+    first_buy_vwap: float
+    final_buy_vwap: float
+    sell_vwap: float
+    opened: datetime
+    closed: datetime
+
+
+@dataclass(frozen=True)
+class ExportReading:
+    """One export's row counts, its charted bases and the window its fills span.
+
+    It carries no file name, because a venue export is named for the account that
+    produced it."""
+
+    physical_rows: int
+    body_rows: int
+    fills: int
+    bases: int
+    drops: Counter[str]
+    opened: datetime
+    closed: datetime
+
+
 def parse_money(text: str) -> float:
     """Return the number a money cell holds, reading a parenthesised value as negative."""
     cell = (text or "").strip().replace("$", "").replace(",", "")
@@ -1811,10 +1843,40 @@ def newest_export(indexed: Mapping[Path, list[Fill]]) -> Path:
 
 
 def label_export(indexed: Mapping[Path, list[Fill]]) -> Path:
-    """Return the oldest export carrying every base the newest export carries."""
-    bases = {fill.asset for fill in indexed[newest_export(indexed)]}
-    whole = [p for p, fills in indexed.items() if {f.asset for f in fills} == bases]
-    return min(whole, key=lambda p: max(f.when for f in indexed[p]))
+    """Return the oldest export carrying every base ``newest_export`` carries.
+
+    When ``newest_export`` carries a base no earlier export does, ``label_export``
+    returns the oldest earlier export carrying the most bases."""
+    newest = newest_export(indexed)
+    earlier = {p: fills for p, fills in indexed.items() if p != newest}
+    if not earlier:
+        return newest
+    bases = {fill.asset for fill in indexed[newest]}
+    whole = [p for p, fills in earlier.items() if {f.asset for f in fills} == bases]
+    if whole:
+        return min(whole, key=lambda p: max(f.when for f in earlier[p]))
+    widest = max(len({f.asset for f in fills}) for fills in earlier.values())
+    return min(
+        (p for p, fills in earlier.items() if len({f.asset for f in fills}) == widest),
+        key=lambda p: max(f.when for f in earlier[p]),
+    )
+
+
+def labels_across(indexed: Mapping[Path, list[Fill]]) -> dict[str, str]:
+    """Return every base's A-label, ``label_export`` fixing the ones it ranks.
+
+    A base ``label_export`` does not carry takes the next number after them, most
+    fills first, so a label already published never moves to another base."""
+    pinned = base_labels(indexed[label_export(indexed)])
+    arrived = Counter(
+        fill.asset
+        for fill in indexed[newest_export(indexed)]
+        if fill.asset not in pinned
+    )
+    out = dict(pinned)
+    for n, (asset, _) in enumerate(arrived.most_common(), len(pinned) + 1):
+        out[asset] = f"A{n:02d}"
+    return out
 
 
 def tablet_candles(asset: str) -> list[list[float]]:
@@ -2342,7 +2404,7 @@ def write_evidence_figures(figures_dir: Path) -> list[tuple[str, str]]:
             for name in names
         ]
     indexed = {path: load_fills(path)[0] for path in paths}
-    labels = base_labels(indexed[label_export(indexed)])
+    labels = labels_across(indexed)
     fills = indexed[newest_export(indexed)]
     candles = {asset: tablet_candles(asset) for asset in labels}
     out = _write_asset_weekly(figures_dir, labels, candles)
@@ -2352,6 +2414,117 @@ def write_evidence_figures(figures_dir: Path) -> list[tuple[str, str]]:
     out.append(_write_hodl_units(figures_dir, rows))
     out.append(_write_hodl_dollars(figures_dir, rows))
     out.append(_write_market(figures_dir, labels, candles))
+    return out
+
+
+def day_label(when: datetime) -> str:
+    """Return ``when`` as the manual writes a window bound, with no leading zero."""
+    return f"{when:%d %b}".lstrip("0")
+
+
+def base_rows(fills: Sequence[Fill], labels: Mapping[str, str]) -> list[BaseRow]:
+    """Return one ``BaseRow`` per labelled base, most fills first.
+
+    ``trajectory`` supplies both running averages, so a row and a chart line read the
+    same two pairs of sums."""
+    grouped: dict[str, list[Fill]] = {}
+    for fill in fills:
+        if fill.asset in labels:
+            grouped.setdefault(fill.asset, []).append(fill)
+    out: list[BaseRow] = []
+    for asset, held in grouped.items():
+        times, buy_v, sell_v, _ = trajectory(held)
+        drawn_buys = [v for v in buy_v if not math.isnan(v)]
+        drawn_sells = [v for v in sell_v if not math.isnan(v)]
+        out.append(
+            BaseRow(
+                label=labels[asset],
+                fills=len(held),
+                buys=sum(1 for f in held if f.side == "buy"),
+                sells=sum(1 for f in held if f.side == "sell"),
+                first_buy_vwap=drawn_buys[0] if drawn_buys else 0.0,
+                final_buy_vwap=drawn_buys[-1] if drawn_buys else 0.0,
+                sell_vwap=drawn_sells[-1] if drawn_sells else 0.0,
+                opened=min(times),
+                closed=max(times),
+            )
+        )
+    out.sort(key=lambda row: (-row.fills, row.label))
+    return out
+
+
+def export_reading(src: Path) -> ExportReading:
+    """Return ``src``'s ``ExportReading`` over its physical, body and fill rows.
+
+    ``load_fills`` supplies the drop causes, so every body row carrying no fill is
+    counted under the cause that dropped it."""
+    physical = src.read_text(encoding="utf-8-sig").splitlines()
+    fills, drops = load_fills(src)
+    return ExportReading(
+        physical_rows=len(physical),
+        body_rows=len(export_rows(src)),
+        fills=len(fills),
+        bases=len({fill.asset for fill in fills}),
+        drops=drops,
+        opened=min(fill.when for fill in fills),
+        closed=max(fill.when for fill in fills),
+    )
+
+
+def _reading_lines(reading: ExportReading) -> list[str]:
+    """Return the ``ExportReading`` rows as the manual's side-by-side table writes
+    them."""
+    causes = "; ".join(
+        f"{cause} {count}" for cause, count in sorted(reading.drops.items())
+    )
+    return [
+        f"Physical rows | {reading.physical_rows:,}",
+        f"Body rows | {reading.body_rows:,}",
+        f"Fills on a charted base | {reading.fills:,}",
+        f"Charted bases | {reading.bases}",
+        f"First fill | {day_label(reading.opened)}",
+        f"Last fill | {day_label(reading.closed)}",
+        f"Rows carrying no fill | {sum(reading.drops.values())}",
+        f"Drops by cause | {causes}",
+    ]
+
+
+def measurement_lines(paths: Sequence[Path]) -> list[str]:
+    """Return the reading and the two tables the manual's VWAP part publishes.
+
+    ``labels_across`` names every base, so no line carries a ticker, an account or an
+    export file name."""
+    if not paths:
+        return [f"absent - no venue export under {TRANSACTIONS_DIR}"]
+    indexed = {path: load_fills(path)[0] for path in paths}
+    labels = labels_across(indexed)
+    rows = base_rows(indexed[newest_export(indexed)], labels)
+    out = [f"exports read: {len(paths)}", ""]
+    out += _reading_lines(export_reading(newest_export(indexed)))
+    out += [
+        "",
+        "| Asset | Fills | Buy | Sell | First buy VWAP | Final buy VWAP "
+        "| Index | Window |",
+        "| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |",
+    ]
+    for row in rows:
+        index = row.final_buy_vwap / row.first_buy_vwap if row.first_buy_vwap else 0.0
+        out.append(
+            f"| {row.label} | {row.fills} | {row.buys} | {row.sells} "
+            f"| {row.first_buy_vwap:g} | {row.final_buy_vwap:g} | {index:.3f} "
+            f"| {day_label(row.opened)} to {day_label(row.closed)} |"
+        )
+    out += [
+        "",
+        "| Asset | Buys | Sells | Buy VWAP | Sell VWAP | Ratio |",
+        "| --- | ---: | ---: | ---: | ---: | ---: |",
+    ]
+    for row in rows:
+        ratio = row.sell_vwap / row.final_buy_vwap if row.final_buy_vwap else 0.0
+        out.append(
+            f"| {row.label} | {row.buys} | {row.sells} | {row.final_buy_vwap:g} "
+            f"| {row.sell_vwap:g} | {ratio:.3f} |"
+        )
     return out
 
 
@@ -2385,7 +2558,17 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--docs-dir", type=Path, default=DEFAULT_DOCS_DIR)
     parser.add_argument("--figures-dir", type=Path, default=DEFAULT_FIGURES_DIR)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
+    parser.add_argument(
+        "--measure",
+        action="store_true",
+        help="print the venue exports' reading and tables, and build no PDF",
+    )
     args = parser.parse_args(argv)
+
+    if args.measure:
+        for line in measurement_lines(export_files()):
+            print(console_safe(line))
+        return 0
 
     for figure, outcome in write_evidence_figures(args.figures_dir):
         print(console_safe(f"figure {figure}: {outcome}"))

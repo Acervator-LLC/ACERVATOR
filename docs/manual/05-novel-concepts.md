@@ -773,6 +773,107 @@ The first anchor in the block above names a line that has moved. The bot it
 means is built in `src/gui/live_bot_window.py`, in `_run_bot`, and that is the
 anchor to follow.
 
+**The issue #133 clause above is overtaken.** It is not edited and not removed.
+It read:
+
+> the list is not visible and lifetime counters reset (issue #133)
+
+The list is visible. A reading over a fleet shaped like the saved one drew every
+row. A queue of one tranche draws one row and a queue of twenty-three draws
+twenty-three, each row thirty pixels tall, each carrying its own Fire button,
+none hidden. `src/gui/live_settings/fold_tranches_tab.py`, in
+`_create_fold_tranches_tab`, sets the row count from the fold rows plus the
+Extractor rows and fills each one.
+
+No code resets the lifetime counters. The only writer of the reset stamp is
+`src/trading/scrumming/fold_tranches.py`, in `clear_lifetime_tranche_counters`,
+and its only callers are the Clear Lifetime Counters control on each Fold
+Tranches tab. One lifetime figure does fall without a control:
+`src/trading/scrumming/fold_tranches.py`, in `_bound_new_fold_tranches`, lowers
+the opened count each time one sell's per-lot records merge into one record,
+which the Lifetime tranches opened tooltip states.
+
+**The issue #201 clause above is overtaken.** It is not edited and not removed.
+It read:
+
+> the Units column prints a quantity that does not exist (issue #201)
+
+Every figure the Fold Tranches table draws from a saved row passes one admission
+rule first. The rule takes a value only when it is exactly a whole number or a
+decimal number and finite, so it refuses a stored true-or-false value, a
+not-a-number, an endless value, text, and a whole number too large to hold. A
+refused figure draws an em dash, never a quantity, a price or an age.
+
+The Extractor row's Age, Units and marked value read through that rule in
+`src/gui/live_settings/fold_tokens.py`, in `_compose_extractor_tranche_cells`,
+and its tooltip reads the leased amount and the alt holding the same way in
+`_compose_extractor_tranche_tooltip`. The other build draws the same row from
+`src/gui/main_tabs/fold_tranches_tab_surface.py`, in `extractor_row_cells` and
+in `guarded_extractor_units`.
+
+The Clear fold tranches confirmation states the queued cash and the queued units
+before the queue is discarded. Both figures are totalled by
+`src/gui/live_settings/fold_tokens.py`, in `fold_queue_figure_total`, and by
+`src/gui/main_tabs/fold_tranches_tab_surface.py`, in `queue_figure_total`. A
+total is reported only when every queued row is readable; otherwise the figure
+draws an em dash rather than a partial sum offered as the whole queue. A missing
+key counts as nothing, which is how the table's own cells read it.
+
+The same confirmation warns him when the bot also holds parked Smart Wire
+credit, because clearing the queue opens the absorb window. That figure reads
+through the same rule in `src/gui/live_settings/fold_tokens.py`, in
+`fold_parked_credit`, and in `src/gui/main_tabs/fold_tranches_tab_surface.py`,
+in `FoldTranchesTabModel.parked`. A credit that cannot be read counts as a
+credit that stands: `fold_parked_credit_stands` and `parked_credit_stands` keep
+the warning drawn and the Clear Wire control live, and the amount alone draws an
+em dash. A credit of nothing draws no warning and leaves that control off.
+
+### What the panel draws for a count it cannot work out
+
+The cycle close ratio is the closed count over the opened count less the
+discarded count. A merge lowers the opened count while the discarded count
+holds, so the top of that sum can pass its bottom.
+`src/gui/live_settings/fold_tokens.py`, in `compose_cycle_close_ratio`, draws
+the dash for that pair and names the two counts beside it, never a share above
+one hundred percent. `src/gui/main_tabs/fold_tranches_tab_surface.py`, in
+`cycle_close_ratio`, draws the same thing for the React page.
+
+### Standing tranches against the sells that opened them
+
+The queue may never hold more tranches than the sells that opened them, outside
+a strong trend. `src/trading/scrumming/fold_tranches.py`, in
+`_bound_new_fold_tranches`, counts each such sell, and
+`src/gui/live_settings/fold_tokens.py`, in `compose_scrum_sells_row`, is the row
+on the panel that reports the pair. A standing count above the sells draws red.
+A bot whose save predates the sell counter draws the dash in place of a sell
+count.
+
+### One row number, not two
+
+The `#` column is the tranche's place in the queue, and the Fire button quotes
+that number back in its confirmation.
+`src/gui/live_settings/fold_tokens.py`, in `configure_tranche_row_numbers`,
+hides the table's own row header, which drew the display position instead. The
+two disagreed on four of five rows under Oldest first and under Largest USD
+first. The React page draws only the declared columns, so it never held a
+second row number.
+
+The Paper and Simulator Fold Tranches tabs call that same function on their own
+tables, so a tranche carries one number on all three screens. Both forks also
+draw the standing-against-sells row from `compose_scrum_sells_row`, the function
+named in the section above, rather than composing a row of their own.
+
+### What sets the Details window's opening width
+
+The Fold Tranches tab is the widest tab, and the Fold-Tranche Cycle Health box
+is the widest thing on it. The despawn preview value is the longest line in that
+box. `src/gui/live_settings/fold_chrome.py`, in `install_despawn_rows`, lets
+that line wrap, which drops the tab's demand from 1938 to 1548 pixels. At a 1920
+by 1080 display `src/gui/bot_live_settings.py`, in `open_at_content_size`, then
+opens the window at its full content width with a whole tranche row inside it.
+The screen clamp in `dialog_open_size_px` stays, because the operator cannot
+drag back a window wider than the display.
+
 ## 12 - Technical Analysis Indicator Confidence Tiers
 
 Most TA systems stack indicators additively. The Tier-4 suite organizes signals into four confidence tiers with cumulative weighting: Tier-1 (structural, highest weight), Tier-2 (confirmation, medium weight), Tier-3 (momentum), Tier-4 (context). Entries require Tier-1 + Tier-2 alignment; Tier-3/4 scale confidence but cannot override. This tier system arose out of queries with Claude Code while it was roleplaying as a TA Archetype and is only one such example where most of the other such contributions deal with bug fixes.
@@ -878,6 +979,30 @@ return [
     if ticker_last <= float(t.get("ref", 0)) * otd_factor
 ]
 ```
+
+A tranche can take money from more than one sale. When a sell's money moves
+into an older part-spent row instead of opening a new one, the row keeps the
+price its own scrum sold at, so the distance is still measured from a price a
+sale happened at. The dollars-per-unit rate across every sale that fed the row
+is held apart from that price as the row's blend rate, and only the units
+arithmetic reads it.
+
+`src/trading/scrumming/sizing.py` — `tranche_sale_rate`
+
+```python
+blended = float(record.get("blend_rate", 0) or 0)
+if blended > 0:
+    return blended
+return float(record.get("ref", 0) or 0)
+```
+
+A row fed at one price alone carries no blend rate, and its rate is its scrum
+price. `src/trading/scrumming/fold_tranches.py`, in
+`_top_up_remnant_fold_tranches`, moves the money and writes a blend rate only
+where the two rates differ. `src/trading/scrumming/sizing.py`, in
+`units_at_scrum`, is the one place that turns a row's dollars back into the
+units it sold; the fold executor and `fold_surplus_usd` both read it, so the
+units a fold is measured against and the surplus it books cannot disagree.
 
 **Design intention.** The same distance is held in three places so the rule
 cannot be true for the bot and false for a row. The bot-wide hysteresis gate

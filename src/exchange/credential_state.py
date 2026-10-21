@@ -1,9 +1,9 @@
 # Copyright (c) 2025 Anthony L. Brown (Ekthelius the Accumulator). All rights reserved.
 """What a venue's last credential check reported, kept so a panel can colour it.
 
-``validate_credentials`` is the only writer and it records only an answer a
-venue gave. The Settings dialog's Exchange Status panel is the only reader, and
-reading places no venue call, so a redraw never authenticates.
+``record_validated`` and ``record_connection_lost`` hold only what a venue
+answered, and ``record_format_checked`` holds a check that asked no venue.
+``recorded_states`` places no venue call, so a redraw never authenticates.
 """
 
 from __future__ import annotations
@@ -20,9 +20,13 @@ DEFAULT_STATE_PATH = Path.home() / ".acervator" / "exchange_credential_state.jso
 
 VALIDATED = "validated"
 CONNECTION_LOST = "lost"
+FORMAT_CHECKED = "format_checked"
 UNSET = "unset"
 
-RECORDED_STATES = (VALIDATED, CONNECTION_LOST)
+#: The states only a venue's own answer writes.
+VENUE_ANSWERS = (VALIDATED, CONNECTION_LOST)
+
+RECORDED_STATES = VENUE_ANSWERS + (FORMAT_CHECKED,)
 
 STATE_FIELD = "state"
 CHECKED_AT_FIELD = "checked_at"
@@ -112,6 +116,17 @@ def record_connection_lost(
 ) -> bool:
     """Record that one venue refused or failed an authenticated call."""
     return _record(exchange_id, CONNECTION_LOST, when, path)
+
+
+def record_format_checked(exchange_id: Any, when: Any = None, path: Any = None) -> bool:
+    """Record that one credential's format passed and no venue was asked.
+
+    Refuses where the record already holds a ``VENUE_ANSWERS`` state, so a
+    format check never replaces or clears what a venue itself answered.
+    """
+    if recorded_state(exchange_id, path) in VENUE_ANSWERS:
+        return False
+    return _record(exchange_id, FORMAT_CHECKED, when, path)
 
 
 def forget(exchange_id: Any, path: Any = None) -> bool:

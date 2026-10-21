@@ -46,6 +46,12 @@ PUSH_THREAD_NAME = "acervator-bridge-push"
 
 PUSH_BACKLOG = 64
 
+UNWRITABLE_FORMAT = "<unwritable {kind}>"
+
+UNWRITABLE_FRAME_LOG = "bridge frame held a payload JSON cannot write: %s: %s"
+
+WRITABLE_TYPES = (str, int, float, bool, type(None))
+
 
 class UnknownMethod(LookupError):
     """The request named a method no surface is registered for."""
@@ -445,12 +451,11 @@ def handle_line(line: str, registry: Dict[str, Handler]) -> dict:
 
 
 def json_writable(payload: Any) -> Any:
-    """Return ``payload`` with every number JSON cannot write set to null.
+    """Return ``payload`` with every value ``json.dumps`` cannot write replaced.
 
-    ``nan``, ``inf`` and ``-inf`` have no JSON spelling, so a frame
-    carrying one is refused whole by the frontend's parser. Names are
-    replaced as well as values, because a non-finite key is refused the
-    same way.
+    ``nan``, ``inf`` and ``-inf`` answer null, a value whose type has no
+    encoder answers ``UNWRITABLE_FORMAT`` over that type's own name, and
+    a dict key is replaced on the same terms as a value.
     """
     if isinstance(payload, dict):
         return {json_writable(k): json_writable(v) for k, v in payload.items()}
@@ -458,7 +463,24 @@ def json_writable(payload: Any) -> Any:
         return [json_writable(one) for one in payload]
     if isinstance(payload, float) and not math.isfinite(payload):
         return None
-    return payload
+    if isinstance(payload, WRITABLE_TYPES):
+        return payload
+    return UNWRITABLE_FORMAT.format(kind=type(payload).__name__)
+
+
+def unwritable_text(response: Any, exc: BaseException) -> str:
+    """The JSON text for a ``response`` ``json.dumps`` refused whole.
+
+    ``json_writable`` is walked first, and a response it cannot rescue
+    answers ``error_frame`` over ``exc`` under the response's own id.
+    """
+    try:
+        return json.dumps(json_writable(response), ensure_ascii=True, allow_nan=False)
+    except (TypeError, ValueError, RecursionError):
+        held = response.get("id") if isinstance(response, dict) else None
+        return json.dumps(
+            json_writable(error_frame(held, exc)), ensure_ascii=True, allow_nan=False
+        )
 
 
 def encode_frame(response: dict) -> bytes:
@@ -476,8 +498,9 @@ def encode_frame(response: dict) -> bytes:
     """
     try:
         text = json.dumps(response, ensure_ascii=True, allow_nan=False)
-    except ValueError:
-        text = json.dumps(json_writable(response), ensure_ascii=True, allow_nan=False)
+    except (TypeError, ValueError, RecursionError) as exc:
+        logger.warning(UNWRITABLE_FRAME_LOG, type(exc).__name__, exc)
+        text = unwritable_text(response, exc)
     return text.encode("utf-8") + b"\n"
 
 

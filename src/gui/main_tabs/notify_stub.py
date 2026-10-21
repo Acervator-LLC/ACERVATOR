@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger("acervator.gui")
+
 
 class _NotifyStub:
     def __init__(self, status_log):
@@ -34,5 +38,10 @@ class _NotifyStub:
                             "revision": _doc.revision(),
                         },
                     )
-        except Exception:  # noqa: S110
-            pass
+        except Exception as relay_exc:
+            logger.warning(
+                "notification not relayed to the Activity Log (%s: %s); the "
+                "operator is told nothing about it",
+                type(relay_exc).__name__,
+                relay_exc,
+            )

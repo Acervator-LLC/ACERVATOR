@@ -2,17 +2,53 @@
 
 ``CONTRACTS`` declares each topic's required fields and ``TRADE_TYPES`` its
 accepted trade vocabulary, both taken from the emit sites. ``EmitObserver``
-collects one ``Violation`` per breach and never raises into the producer.
-``format_observer_lines`` renders what it collected.
+collects one ``Violation`` per breach and never raises into the producer, and
+``EmitObserver.silence`` reads each topic against the silence budget its
+contract declares. ``format_observer_lines`` renders what it collected.
 """
 
 from __future__ import annotations
 
 import logging
+import time
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
+from .signal_contract import STALE_AFTER
+
 logger = logging.getLogger("acervator.emit_contracts")
+
+
+SILENCE_UNBOUNDED = "unbounded"
+"""The topic declares no silence budget, so silence from it is not evidence."""
+
+SILENCE_NEVER = "never"
+"""A budget is declared and the topic has not emitted at all; its producer is
+absent, which is not the same as stopped.
+"""
+
+SILENCE_WITHIN = "within"
+"""The topic's last emission is inside its declared budget."""
+
+SILENCE_OVERDUE = "overdue"
+"""The topic emitted and then stopped for longer than its declared budget. This is
+the reading a file of written records cannot give, because a record is only ever
+written when something happened.
+"""
+
+SILENCE_READINGS = (
+    SILENCE_UNBOUNDED,
+    SILENCE_NEVER,
+    SILENCE_WITHIN,
+    SILENCE_OVERDUE,
+)
+"""The closed vocabulary. A topic declaring no budget returns only the first."""
+
+LOOP_DRIVEN_SILENCE_BUDGET = STALE_AFTER
+"""Seconds of silence after which a topic a bot's own evaluation loop drives reads
+overdue. `STALE_AFTER` imported rather than copied, so the bus reading and the pin
+reading cannot drift to two ages.
+"""
 
 
 @dataclass
@@ -31,6 +67,11 @@ class EmitContract:
     vocab: dict = field(default_factory=dict)
     nested_key: Optional[str] = "data"
     description: str = ""
+    silence_budget: Optional[float] = None
+    """Seconds of silence after which this topic reads overdue. ``None`` for a topic
+    a discrete trigger drives, where silence says nothing and the reading is
+    ``SILENCE_UNBOUNDED`` rather than a fault.
+    """
 
     def extract(self, event_data: dict) -> dict:
         if not isinstance(event_data, dict):
@@ -101,6 +142,7 @@ CONTRACTS: tuple[EmitContract, ...] = (
         description="Gate evaluation snapshot at fire time. `asset_class` is "
         "the market's sector, and it picks the gate log the decision is "
         "written to beside the venue named in `exchange`.",
+        silence_budget=LOOP_DRIVEN_SILENCE_BUDGET,
     ),
     EmitContract(
         topic="pnl.event",
@@ -113,6 +155,7 @@ CONTRACTS: tuple[EmitContract, ...] = (
         required=(),
         optional=("panel", "timeframe"),
         description="Voting-engine snapshot.",
+        silence_budget=LOOP_DRIVEN_SILENCE_BUDGET,
     ),
     EmitContract(
         topic="market_inspector.scan_started",
@@ -148,6 +191,9 @@ class EmitObserver:
         self.seen: dict = {t: 0 for t in self._contracts}
         self._violations: dict = {}
         self.field_presence: dict = {t: {} for t in self._contracts}
+        # `last_emission` maps topic to the monotonic reading of its last `observe`;
+        # a topic absent from it has not emitted.
+        self.last_emission: dict = {}
 
     def attach(self, bus: Any) -> bool:
         if bus is None or not hasattr(bus, "subscribe"):
@@ -171,6 +217,7 @@ class EmitObserver:
         if contract is None:
             return
         self.seen[topic] = self.seen.get(topic, 0) + 1
+        self.last_emission[topic] = time.monotonic()
         payload = contract.extract(event_data)
 
         presence = self.field_presence.setdefault(topic, {})
@@ -225,6 +272,35 @@ class EmitObserver:
                     )
                 )
 
+    def silence(self, now: Optional[float] = None) -> dict:
+        """Return each declared topic's silence reading.
+
+        `{topic: {"reading", "budget", "age"}}`, where `reading` is one
+        of `SILENCE_READINGS`, `budget` is the contract's declared
+        budget in seconds or None, and `age` is seconds since the
+        topic's last emission or None when it never emitted. A topic
+        with no budget reads `SILENCE_UNBOUNDED`, which states that its
+        silence is not evidence rather than implying health. `now`
+        defaults to `time.monotonic()`, so a caller replaying
+        compressed time supplies its own clock.
+        """
+        at = time.monotonic() if now is None else float(now)
+        out: dict = {}
+        for topic, contract in self._contracts.items():
+            budget = contract.silence_budget
+            last = self.last_emission.get(topic)
+            age = None if last is None else max(0.0, at - last)
+            if budget is None or float(budget) <= 0.0:
+                reading = SILENCE_UNBOUNDED
+            elif age is None:
+                reading = SILENCE_NEVER
+            elif age > float(budget):
+                reading = SILENCE_OVERDUE
+            else:
+                reading = SILENCE_WITHIN
+            out[topic] = {"reading": reading, "budget": budget, "age": age}
+        return out
+
     @property
     def violations(self) -> list:
         return sorted(
@@ -236,6 +312,7 @@ class EmitObserver:
             "topics_declared": len(self._contracts),
             "topics_seen": sum(1 for n in self.seen.values() if n > 0),
             "emissions": dict(sorted(self.seen.items())),
+            "silence": dict(sorted(self.silence().items())),
             "violations": [
                 {"topic": v.topic, "kind": v.kind, "detail": v.detail, "count": v.count}
                 for v in self.violations
@@ -245,6 +322,34 @@ class EmitObserver:
                 for t, f in sorted(self.field_presence.items())
             },
         }
+
+
+def _silence_lines(silence: dict) -> list:
+    """Render the silence readings: one tally line, then one line per topic that
+    stopped or never started.
+
+    A topic reading `SILENCE_UNBOUNDED` is counted and not listed, because
+    silence from it is not evidence and a list of such topics would read as a
+    list of faults.
+    """
+    if not silence:
+        return []
+    tally = {one: 0 for one in SILENCE_READINGS}
+    named = []
+    for topic, row in sorted(silence.items()):
+        reading = str(row.get("reading") or SILENCE_UNBOUNDED)
+        tally[reading] = tally.get(reading, 0) + 1
+        if reading in (SILENCE_NEVER, SILENCE_OVERDUE):
+            named.append((topic, reading, row.get("age"), row.get("budget")))
+    out = [
+        "  silence: "
+        + ", ".join(f"{tally.get(one, 0)} {one}" for one in SILENCE_READINGS)
+        + "  (unbounded means silence from that topic is not evidence)"
+    ]
+    for topic, reading, age, budget in named:
+        shown = "no emission" if age is None else f"last {float(age):.1f}s ago"
+        out.append(f"    [{reading}] {topic}: {shown}, budget {budget}s")
+    return out
 
 
 def format_observer_lines(obs: EmitObserver) -> list:
@@ -265,6 +370,7 @@ def format_observer_lines(obs: EmitObserver) -> list:
         out.append(
             f"  {topic:24} {n:>6} emission(s)" + (f"  [{shown}]" if shown else "")
         )
+    out.extend(_silence_lines(d.get("silence") or {}))
     viols = d["violations"]
     if not viols:
         out.append("  no contract violations")

@@ -1502,6 +1502,20 @@ monospace face and four sizes.
     font_size_title: str = "20px"
 ```
 
+The monospace face and the large size are gone from the palette. No rule in the
+style-sheet text named either one, so neither is a value a palette declares, and
+a palette now carries a typeface and three sizes.
+
+`src/gui/theme_engine.py` — the typography tokens a theme declares today
+
+```python
+    # Font
+    font_family: str = "'Rajdhani', 'Orbitron', 'Segoe UI', sans-serif"
+    font_size: str = "13px"
+    font_size_small: str = "11px"
+    font_size_title: str = "20px"
+```
+
 Three of the five palettes name a typeface of their own. Classic Terminal takes a
 monospace family, Minimal Modern and Glass & Metal each name their own, and the
 other two keep the declared default above.
@@ -1550,6 +1564,10 @@ The dialog payload carries 68 controls where it carried 72, the rendered page
 draws 55 where it drew 59, and Save writes nine top-level keys where it wrote
 thirteen. The five generated stylesheets are unchanged byte for byte, because the
 removal touched no palette.
+
+Dropping the monospace face and the large size did touch the palette, so each of
+the five style sheets is shorter than that. [08-tabs.md](../08-tabs.md) holds the
+character count each one writes today.
 
 A settings file written before the removal still loads. The load copies only the
 fields the record declares, so a font key in such a file is read past and every
@@ -8009,5 +8027,343 @@ answer.
 | the dash drawn on the control | `src/gui/settings_dialog.py, in _mark_refused` |
 | the row Save leaves alone | `src/gui/settings_dialog.py, in _untouched_since_refusal` |
 | the same reading for the React page | `src/gui/main_tabs/settings_dialog_surface.py, in _load_stored` |
+
+## 2026-10-16 - The faults a control reader may raise
+
+A reader that cannot answer a control raises, and the load and save path catches
+a named set rather than every exception. The dialog names that set once and the
+page surface names the same five faults again, so the two builds pass over the
+same refusals and neither swallows a fault of another kind.
+
+`src/gui/settings_dialog.py` - `READER_FAULTS`
+
+```python
+READER_FAULTS = (LookupError, TypeError, ValueError, ArithmeticError, AttributeError)
+```
+
+Three readers catch that set. The refusal mark and the row Save leaves alone
+catch it in the dialog, and the page surface catches it in its own reading. Each
+one marks the one control it read and leaves the rest of the window drawn.
+
+The writer that admits a figure before it writes is a class rather than a
+closure, so the control it marks is a plain attribute on the writer and reaching
+that control needs no override, in `src/gui/settings_dialog.py`, in
+`_StoredWriter`.
+
+## 2026-10-18 - The launch line reports what the last call answered
+
+Launch writes one Activity Log line for each configured exchange. The line used
+to say a credential was stored and unverified. It now says what the venue's last
+authenticated call answered, and it still contacts nothing.
+
+`src/gui/main_window.py, in _report_stored_credentials_on_startup` reads the
+settings entry for the stored blob and the record
+`src/exchange/credential_state.py` keeps. Reading that record places no venue
+call.
+
+| What the record holds | The line reads | Level |
+| --------------------- | -------------- | ----- |
+| the venue answered | credentials stored, accepted at a date and time | info |
+| the venue did not answer | credentials stored, the venue did not answer at a date and time | warning |
+| nothing | credentials stored, no answer on record | info |
+
+The third row covers two cases and the line says so rather than claiming the
+venue was never asked. `src/exchange/ccxt_connector.py, in note_venue_refusal`
+drops the record when a venue rejects a credential, so a rejected key and a
+venue nobody has called read the same.
+
+### The authenticated call launch already places
+
+Nothing is pressed for it.
+
+| Step | Where |
+| ---- | ----- |
+| the saved bots are restored | `main.py, in main` |
+| the splash is handed the fleet-start callback | `main.py, in main` |
+| the consent dialog is skipped where this machine already owns the fleet | `src/core/instance_guard.py, in authorise_auto_start` |
+| every restored bot is started, one at a time | `src/gui/main_window.py, in run_fleet_sequence` |
+| the venue's client is built with the decrypted key, and markets load | `src/exchange/ccxt_connector.py, in sync_connect` |
+| the account balance is read on that client | `src/gui/main_window.py, in _connect_exchange_for_bot` |
+| the account's own trade history is read, on its own thread | `src/exchange/ccxt_connector.py, in _scan_trade_history` |
+
+The splash runs 8.5 s of phases and then waits 750 ms, so the fleet start fires
+about nine seconds after launch. `main.py` holds a 9500 ms fallback timer for
+the same callback.
+
+```mermaid
+flowchart LR
+  LAUNCH["launch"]
+  LINE["the startup line"]
+  STORE["credential_state<br/>exchange_credential_state.json"]
+  FLEET["run_fleet_sequence<br/>about nine seconds later"]
+  BAL["_connect_exchange_for_bot<br/>balance read"]
+  LAUNCH --> LINE
+  STORE -->|read, no venue call| LINE
+  LAUNCH --> FLEET
+  FLEET --> BAL
+  BAL -->|answered or refused| STORE
+```
+
+### The launch balance read now reaches the record
+
+That read does not pass through `src/exchange/ccxt_connector.py, in _call_sync`,
+so neither recorder saw it and its answer was written nowhere. It now records an
+answer on the way out, and a refusal in the handler that already catches one. No
+venue call is added: the call was already being placed.
+
+A key revoked between two sessions is refused by that read. The record kept the
+green its last good session left.
+
+### The sentence this section replaces
+
+The earlier text stays where it is.
+
+| Earlier sentence | What the code does now |
+| ---------------- | ---------------------- |
+| "the startup credential report \| Gemini stored and unverified, Kraken with none" | The report names what each venue's last authenticated call answered, or that no answer is on record. A venue holding no credential still reports none. |
+
+## 2026-10-18 - A format check records a format check
+
+A green on the Exchange Status panel means a venue answered an authenticated
+call. Nothing else writes a green.
+
+A venue with its own written connector carries no ccxt entry, so pressing Test
+Connection for it fetches no market and reads no balance. The check that runs
+instead reads the key and loads the secret as a signing seed, and it contacts
+nothing.
+
+`src/exchange/api_validator.py, in hand_written_result` — the check that asks no
+venue
+
+```python
+refusal = connector.credential_refusal(api_key, api_secret, passphrase)
+```
+
+That check used to call the recorder whose contract is "one venue answered an
+authenticated call", so the venue drew green on the shape of the credential
+alone. Its own message says what it did: no venue was contacted, no market count
+and no balance were read.
+
+### The record carries a third state
+
+`record_format_checked` holds what a format check learns. It refuses where the
+record already holds a state only a venue's own answer writes, so a shape check
+can neither replace a green nor clear a red.
+
+`src/exchange/credential_state.py, in record_format_checked`
+
+```python
+if recorded_state(exchange_id, path) in VENUE_ANSWERS:
+    return False
+return _record(exchange_id, FORMAT_CHECKED, when, path)
+```
+
+`VENUE_ANSWERS` holds the two states a venue writes. `RECORDED_STATES` is those
+two and the format check.
+
+### What the panel draws
+
+The third state draws the resting colour, never green. A reading the platform
+could not take is drawn as an absence, and the words carry what happened. The
+panel still paints three colours.
+
+| The credential | The record | The row | The words |
+| -------------- | ---------- | ------- | --------- |
+| its shape passes and no venue was asked | `format_checked` | the resting colour | credential format checked, no venue asked |
+| a venue accepted it | `validated` | green | credentials validated |
+| a venue refused it | nothing | the resting colour | no valid credentials: never asked, or the venue refused one |
+| none is stored | nothing | the resting colour | no valid credentials: never asked, or the venue refused one |
+
+`src/gui/main_tabs/settings_dialog_surface.py` — the words each state draws
+
+```python
+VENUE_STATE_WORDS = {
+    VENUE_STATE_VALIDATED: "credentials validated",
+    VENUE_STATE_LOST: "API connection lost",
+    VENUE_STATE_FORMAT_CHECKED: "credential format checked, no venue asked",
+    VENUE_STATE_UNSET: "no valid credentials: never asked, or the venue refused one",
+}
+```
+
+The last two rows read alike on purpose. `src/exchange/ccxt_connector.py, in
+note_venue_refusal` drops the record when a venue rejects a credential, so a
+rejected key and a venue nobody has called hold the same record. The words name
+both causes rather than letting one colour stand for both.
+
+### Driven on the real path
+
+Seven credentials through `src/exchange/api_validator.py, in
+validate_credentials`, with the home redirected and the venue replaced by a
+double that answers or refuses in process. No venue was contacted.
+
+| The credential | The row drew before | The row draws now |
+| -------------- | ------------------- | ----------------- |
+| its shape passes, no venue asked | green, credentials validated | the resting colour, credential format checked, no venue asked |
+| a venue accepted it | green, credentials validated | green, credentials validated |
+| a venue refused it | the resting colour | the resting colour, with both causes named |
+| none is stored | the resting colour | the resting colour, with both causes named |
+| a green on record, then a format check | green | green |
+| a red on record, then a format check | green | red |
+| a shape the check refuses | the resting colour | the resting colour |
+
+Row two is the control. A credential a venue accepted still draws green.
+
+Row six was a second false reading. The format check called the recorder that
+clears a red and sends the restored-connection alert, so a shape check turned a
+venue's own refusal green and reported the connection restored. The red now
+stands until a venue answers.
+
+### The startup line reads the same record
+
+`src/gui/main_window.py, in _report_stored_credentials_on_startup` writes one
+Activity Log line for each configured exchange from this record. A format check
+leaves no venue answer, so that line reports an absence.
+
+Driven on the real method with the window's log, spool and settings replaced by
+doubles, and the home redirected:
+
+| The record | The line | Level |
+| ---------- | -------- | ----- |
+| `validated` | credentials stored, accepted at a date and time | info |
+| `lost` | credentials stored, the venue did not answer at a date and time | warning |
+| `format_checked` | credentials stored, no answer on record | info |
+| nothing | credentials stored, no answer on record | info |
+
+The detail beside the accepted line used to say that a venue with its own
+connector records a green on the credential alone. That is what this change
+stopped, so the detail now says only a venue answering an authenticated call
+records it. The detail beside the third and fourth rows names all three of their
+causes.
+
+### Two sentences the third state replaces
+
+Each sentence below stands in an earlier section and no longer describes the
+code. The earlier text stays where it is.
+
+| Earlier sentence | What the code does now |
+| ---------------- | ---------------------- |
+| "Grey is the resting colour. It says nobody has checked, not that something failed." | Grey is still the resting colour and still says nothing failed. It now covers a venue nobody has asked and a credential whose format was checked, and the row's words tell the two apart. |
+| "grey \| nothing has been recorded for this venue" | Grey covers a venue with nothing on record and a venue holding a format check. Neither is a venue answer, so both draw the resting colour. |
+
+## 2026-10-18 - A Username change asks before it reseals the stored secrets
+
+The name in the Username row is the passphrase every stored venue secret is
+sealed under. A Save that changes that name over a stored credential now puts
+the consequence on screen and waits for an answer. Nothing reseals without the
+press, and an answer of No leaves both the name and the stored secrets exactly
+as they were.
+
+### One reading, read by both save paths
+
+`src/gui/main_tabs/settings_dialog_surface.py`, in
+`username_rename_consequence`, answers whether a Save would orphan anything. It
+calls the case dangerous only where the name changed **and** a venue holds a
+sealed token, which is the one case that leaves a secret under a phrase nothing
+rebuilds. `credential_bearing_venues` names those venues, reading the same
+`CREDENTIAL_FIELDS` per entry that `stored_credential_phrase` reads. No token is
+opened to answer, and no value is read.
+
+`src/gui/settings_dialog.py`, in `_settle_username_rename`, reads that answer and
+puts the question. It runs before `_save` walks its write loop, so the loop
+writes whichever name the answer left in the row.
+
+`src/gui/main_tabs/settings_dialog_surface.py`, in
+`SettingsDialogModel._hold_username_over_credentials`, reads the same answer. The
+Qt-free model carries no press, so it refuses that one case: the stored name goes
+back into the row and the question is recorded as a box.
+
+### What each answer does
+
+| The answer | The stored name | The stored secrets |
+| ---------- | --------------- | ------------------ |
+| Yes | the new name is written | every sealed token is resealed under the new phrase |
+| No | the stored name goes back in the row | untouched |
+| the reseal could not finish | the stored name goes back in the row | untouched |
+| the question could not be put | the row is skipped for that Save | untouched |
+
+### The reseal covers both stores a phrase keys
+
+`src/core/encryption.py`, in `rekey_credential_stores`, is the one caller-facing
+function. It covers the `_enc` tokens the settings store holds per venue and the
+`FileVault` the ATA-SPM pages push through. `rekeyed_token` opens one token under
+the old phrase and seals it again under the new one.
+
+Each venue is opened and resealed whole before anything is written, and the
+settings store takes one write, so a venue the old phrase cannot open keeps the
+tokens it had and is named on the Activity Log. A vault holding no entry writes
+no file, so an install that never pushed through the ATA-SPM pages gains no file
+from a rename.
+
+```mermaid
+flowchart TD
+  SAVE[Press Save on the User page] --> ASK{username_rename_consequence}
+  ASK -->|the name is the same| WRITE[Write the row]
+  ASK -->|no venue holds a token| WRITE
+  ASK -->|a venue holds a token| BOX[Put the question on screen]
+  BOX -->|No| KEEP[Put the stored name back]
+  BOX -->|Yes| RESEAL[rekey_credential_stores]
+  RESEAL --> STORE[The settings store, one write]
+  RESEAL --> VAULT[The FileVault, written only where one entry moved]
+  RESEAL --> WRITE
+```
+
+### Driven on the real method
+
+The press is the one outward edge replaced, and the replacement counts its calls,
+so a run that never put the question cannot read as a run that did. Everything
+else is real: the surface reading, `rekey_credential_stores`, and a
+`SettingsManager` in a temporary directory holding one venue with three sealed
+tokens. The home was redirected before the first import and `Path.home()` was
+printed from inside the run. No stored setting of the running install was read,
+no credential file was opened and no venue was contacted.
+
+| # | Reading | Result |
+| - | ------- | ------ |
+| 1 | a secret sealed under one name, opened under another | refused |
+| 2 | **control** — a secret sealed and opened under the same name | opens |
+| 3 | every stored token before the rename | opens |
+| 4 | the question was put | once |
+| 5 | the row after an answer of Yes | carries the new name |
+| 6 | every stored token after an answer of Yes | opens |
+| 7 | the row after an answer of No | carries the stored name |
+| 8 | every stored token after an answer of No | opens |
+| 9 | **control** — the question on an unchanged row | not put |
+| 10 | **control** — the question on a store holding no credential | not put |
+| 11 | the vault file after a rename over an empty vault | not written |
+| 12 | the Qt-free model over a stored credential | the row put back, one box recorded |
+
+Rows 9 and 10 are the controls for the question. They prove the box appears on
+the one case that needs it and on no other, so rows 4 to 8 are the question
+working and not a box on every Save.
+
+### The empty row
+
+`src/core/encryption.py`, in `vault_phrase`, substitutes `UNNAMED_OPERATOR` for
+an empty name, so an install whose row was never filled seals under that one
+phrase. `main.py` reads the stored name on a launch and writes nothing when it is
+empty, so that install is reachable from a fresh one. Filling the row later is a
+rename like any other, and the question is put the same way.
+
+### Four sentences this change and the one declaration replace
+
+Each sentence below stands in an earlier section and no longer describes the
+code. The earlier text stays where it is.
+
+| Earlier sentence | What the code does now |
+| ---------------- | ---------------------- |
+| "The declared default is an empty string, and the settings object always declares the field, so the fallback written into the phrase never fires. An install where the row was never filled encrypts under a phrase with an empty middle." | The fallback fires. `vault_phrase` reads the declared empty string and substitutes `UNNAMED_OPERATOR`, so an install whose row was never filled seals under that one phrase, not under a phrase with an empty middle. |
+| "Change the name on a machine that already holds credentials and the stored secrets stop opening, because the connect path rebuilds the same phrase from the new name." | A Save that changes the name over a stored credential puts the consequence on screen first. On Yes every sealed token is resealed under the new phrase; on No the stored name goes back in the row. The stored secrets open either way. |
+| "Three sites write that phrase out as a literal, one to encrypt and two to decrypt, and a fourth declares the format none of them reads." | One declaration, `MASTER_FORMAT`, is filled by one function, `vault_phrase`. Eight sites call that function: one seals, one seals and opens, five open, and one is the Qt-free model's own phrase builder. No site writes the format out. |
+| "`src/gui/main_tabs/settings_dialog_surface.py` — the declaration" | The declaration is in `src/core/encryption.py`, beside `UNNAMED_OPERATOR` and `vault_phrase`. The surface reads that function and declares no format of its own. |
+
+### The sentences the declared derivation cost replaces
+
+Each sentence below stands in an earlier section and no longer describes the
+code. The earlier text stays where it is.
+
+| Earlier sentence | What the code does now |
+| ---------------- | ---------------------- |
+| "`src/core/encryption.py` — `derive_key`", and the signature under it, in both of the two sections that carry it | `derive_key` takes a third argument, a keyword-only `iterations`, and runs the declared `KDF_ITERATIONS` where it is left out. A seal that recorded an earlier cost hands back the cost it recorded. |
+| "`src/core/encryption.py` - the declaration and the fallback", and the `vault_phrase` body under it that returns `MASTER_FORMAT` alone | `vault_phrase` reads `held_master_key` first and answers `master_key_phrase` of the held key where one is held. Where none is held it returns `MASTER_FORMAT` on the stored name exactly as the block shows, which is every install no password has been set on. |
 
 Back to [the subsystem index](README.md).

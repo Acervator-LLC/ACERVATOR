@@ -682,4 +682,192 @@ view.appendHtml(
 The seven counters do not change either. They count drain ticks, records read
 and records rendered, and no counter reads a field of the record.
 
+## 2026-10-20 - #1392 - a gate refusal reads REFUSED, once a candle
+
+### The stage word
+
+A trade notification carries a stage. `_emit_trade_notification` in
+`src/trading/scrumming/snapshots.py` writes it after the pair, and
+`stage_color` in `src/gui/main_tabs/status_log_surface.py` paints the line by
+reading it back out.
+
+Three stages are passed anywhere in the tree.
+
+| Stage | What the bot did |
+|---|---|
+| `SENT` | an order is about to reach the venue |
+| `FILLED` | the venue reported the fill |
+| `REFUSED` | a gate stopped the trade and no order was sent |
+
+Ten sites used to pass `CANCELLED`. Every one of them is reached before
+`guarded_place_order`, so no order existed at any of them and nothing was
+pulled. `grep -rn '"CANCELLED"' src/trading/` now returns nothing.
+
+`STAGE_COLORS` in `src/gui/main_tabs/status_log_surface.py` names `REFUSED`, so
+the pane paints it from the table rather than from
+`STAGE_DEFAULT_COLOR`. The colour is the same colour `CANCELLED` drew.
+
+Two sentences and two readings above are overtaken. Quoted whole:
+
+> "The operator sees a cancelled scrum with its reason in the upper pane, where
+> a completed sale used to appear."
+
+```
+after    SELL REFUSED (capital reservation unreadable)
+         SCRUM CANCELLED, venue order calls 0
+```
+
+True today: the operator sees a refused scrum with its reason in the upper
+pane, and the second line of both readings is
+`SCRUM REFUSED, venue order calls 0`. The code block one screen above, quoted
+whole:
+
+```python
+self._emit_trade_notification(
+    "SCRUM", "CANCELLED", "capital reservation unreadable"
+)
+```
+
+True today, the same call:
+
+```python
+self._emit_trade_notification(
+    "SCRUM", "REFUSED", "capital reservation unreadable"
+)
+```
+
+### One line per reason per candle
+
+`tick` evaluates every gate on every pass, and a pass happens every few
+seconds. On a five-minute timeframe the band position cannot move between most
+of those passes, so a refusal used to be announced again with identical
+numbers each time.
+
+`_refusal_is_new` in `src/trading/scrumming/execution.py` decides whether an
+evaluation is news. It answers yes on the first call for a reason, on a candle
+different from the one the last call saw, when no candle is known, and when the
+price differs by `REFUSAL_HOLD_MOVE_FRACTION` from the price the previous call
+carried. Every verdict in `tick`'s scrum and fold chain now asks it before it
+writes anything.
+
+The refusal itself is untouched. The gate refuses on the same inputs at the
+same threshold, and only the announcement is held.
+
+Driven on the real `tick`, a bot built from invented configuration, 20 passes
+with the candle tape held still.
+
+```
+                                     before   after
+refusal lines in bot.log                 20       1
+trade notifications                      20       1
+venue order calls                         0       0
+```
+
+The bot sitting in a refusal stays visible. Each new candle carries one line,
+and a price move inside a candle re-opens the announcement on the next pass.
+
+```
+20 passes, nothing moving               before 20 lines    after 1 line
+the candle rolls, nothing else moving   before 1 line      after 1 line
+the band moves inside one candle        before 1 line      after 1 line
+the band crosses the detect line        before 0 lines     after 0 lines, the trade fires
+```
+
+The gate's own reading was taken on a fresh bot at each of 30 band positions
+from 0.39 to 0.92, before and after: `_last_bb.bb_position`,
+`_bb_detect_thresholds` in `src/trading/scrumming/circuit_breakers.py`,
+whether the position is at or above the upper threshold, and the count of venue
+order calls. All 30 rows read the same both times. The gate closes from 0.390
+through 0.873 with no order call, and opens from 0.889 through 0.920.
+
+### What is not held back
+
+Four lines a pass are written with no guard: `DELTA`, `TA VOTE`,
+`BB PRIORITY SKEW` and `BULLSEYE UPPER`. They report the tick's state rather
+than a verdict. `FOLD HOLD (Position Ceiling)` is bounded by a counter of its
+own, one line per sixty passes, and `SCRUM SERVED BY STACK` and
+`HEDGE REBALANCE` each follow an action that happened once.
+
+## 2026-10-21 - #1392 - the state lines take the same guard
+
+One sentence above is overtaken. Quoted whole:
+
+> "Four lines a pass are written with no guard: `DELTA`, `TA VOTE`,
+> `BB PRIORITY SKEW` and `BULLSEYE UPPER`."
+
+True today: those four lines ask `_refusal_is_new` before they write, as the
+verdicts do. Two more lines of the same kind went in with them. `READ` is the
+same report on the other side of the scrumming interval, written by the same
+branch of `tick`. `BULLSEYE LOWER` is the same line on the other band, written
+by `_tick_bullseye_notices` beside its upper twin. The rest of that sentence's
+paragraph stands: `FOLD HOLD (Position Ceiling)` is bounded by a counter of its
+own, and `SCRUM SERVED BY STACK` and `HEDGE REBALANCE` each follow an action
+that happened once.
+
+### What each line keys on
+
+A refusal has one reason. A state line reports a reading that moves on every
+pass, so a key carrying the reading would be a new key each pass, the guard
+would answer new every time, and nothing would change. No key here carries a
+price, a confidence, a delta or a band position.
+
+Each key is a fixed prefix plus the categorical state the line's own words
+already name, so a flip of that state re-announces at once.
+
+| Line | Key | Values it can take |
+|---|---|---|
+| `DELTA` | `state_delta_<pos\|neg>` | 2 |
+| `READ` | `state_read` | 1 |
+| `TA VOTE` | `state_ta_vote_<direction>` | 3 |
+| `BB PRIORITY SKEW` | `state_bb_skew_<scrum\|fold>` | 2 |
+| `BULLSEYE UPPER` | `state_bullseye_upper_<wick\|close>` | 2 |
+| `BULLSEYE LOWER` | `state_bullseye_lower_<wick\|close>` | 2 |
+
+Twelve keys, every one from a bounded set. A key space that cannot grow with
+the reading cannot fall back to announcing every pass.
+
+### What it reads like now
+
+Driven on the real `tick`, a bot built from invented configuration, with the
+candle tape held still.
+
+```
+                          20 passes      8 passes       8 passes
+                          upper band     under interval lower band
+                          before after   before after   before after
+DELTA                        20     1
+TA VOTE                      20     1
+BB PRIORITY SKEW             20     1
+BULLSEYE UPPER               20     1
+READ                                        8     1
+BULLSEYE LOWER                                             8     1
+records per pass        [7,4,4,…] [7,0,0,…]
+ta.voting events          1 each    1 each
+venue order calls             0     0        0     0        0     0
+```
+
+A parked bot writes its state once and then writes nothing until something
+moves. The `ta.voting` event is untouched: it is a structured event the
+Indicator Voting Panel reads, it carries a silence budget in
+`src/core/emit_contracts.py`, and the run above reads it at one per pass both
+before and after. `bot.log` has no entry in that file and so no silence budget,
+which is why a quiet pass raises no fault.
+
+### The state still reaches him
+
+```
+                          before  after
+the candle rolls             1       1      every line, every new candle
+the next pass, same candle   1       0      the quiet one
+the price moves              1       1      every line, at once
+```
+
+The gate did not move. The gate's own reading was taken on a fresh bot at each
+of 30 band positions, before and after: all 30 rows read the same both times,
+the gate closed from 0.390 through 0.873 with no venue order call and open from
+0.889 through 0.920. The 35 message templates in `tick` and the 2 in
+`_tick_bullseye_notices` are unchanged, none lost and none gained. The skew
+itself still applies on every pass, because `_skewed_confidence_floor` is read
+above the line that announces it.
+
 Back to [the subsystem index](README.md).

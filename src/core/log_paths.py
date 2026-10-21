@@ -1,4 +1,7 @@
-"""src/core/log_paths.py — Single-source-of-truth for log bucket roots.
+"""src/core/log_paths.py — Single-source-of-truth for the two runtime roots.
+
+``resolve_state_root`` names the operational state tree and the bucket
+functions name the log tree, so no caller composes either directory name.
 
 Centralizes all log paths under ``~/.acervator_logs/`` per operator
 directive 2026-06-09:
@@ -52,6 +55,19 @@ def resolve_log_root() -> Path:
     """
     override = os.environ.get(LOG_ROOT_ENV)
     return Path(override) if override else Path.home() / ".acervator_logs"
+
+
+STATE_DIR_NAME = ".acervator"
+"""The home-relative directory name ``resolve_state_root`` returns."""
+
+
+def resolve_state_root() -> Path:
+    """Return ``STATE_DIR_NAME`` under the home directory, creating nothing.
+
+    ``src/core/encryption.py, in master_key_path`` resolves the sealed master
+    key file through ``resolve_state_root``.
+    """
+    return Path.home() / STATE_DIR_NAME
 
 
 def get_log_root() -> Path:
@@ -320,10 +336,13 @@ def get_meta_dir() -> Path:
 def get_reports_dir() -> Path:
     """``reports/`` bucket — machine-readable output of operator-run tools.
 
-    Destination for ``src/core/version_sweep.py``'s JSON and PDF sweep
-    reports. Generated output may not land in a tracked tree, so the
-    sweep resolves its default through here instead of composing a path
-    under the repo root.
+    ``src.simulator.parity_report`` is the only reached caller, and it
+    writes into the ``simulator`` subdirectory rather than the top level.
+    ``unreached/core/version_sweep.py`` was the only writer of the top
+    level itself; it has no importer and no caller, so nothing writes
+    there now. Generated output may not land in a tracked tree, which is
+    why a writer resolves its default through here instead of composing a
+    path under the repo root.
     """
     p = resolve_log_root() / "reports"
     p.mkdir(parents=True, exist_ok=True)

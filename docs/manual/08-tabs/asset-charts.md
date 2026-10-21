@@ -2526,3 +2526,105 @@ They were not reworded. They are quoted here.
 not a price it measured.
 
 "| a readable zero | `$0.00000000` |" - a readable zero reads `no price yet`.
+
+## 2026-10-19 - #230 - the header names the candle it left out, and the dead bullseye list goes
+
+### What the count line reached, and what the operator saw
+
+`candle_count_text` wrote the refusal into the chart's status text, and the
+status text is only drawn when the chart holds no candles at all. A series with
+twenty-nine readable candles and one unreadable one therefore drew the plain
+count and said nothing about the candle missing from the picture. The refusal
+was counted, published and never painted.
+
+`header_parts` is now the one step that writes the count piece, and it writes it
+through `candle_count_text`.
+
+`src/gui/main_tabs/native_chart_surface.py`, in `header_parts`
+
+```python
+if candle_count:
+    parts.append(candle_count_text(candle_count, refused_count))
+```
+
+`build_view_model` hands it `model.refused_candles`, and
+`src/gui/native_chart.py`, in `ChartPainter._draw_header`, calls `header_parts`
+instead of building the same list from its own format strings. The Qt header and
+the React page's `header_text` cannot drift apart on the count, because one
+function writes it for both.
+
+### What the widget says, read off the pixels
+
+One chart rendered through its own `paintEvent` at 1000 by 630, offscreen, with
+the home directory redirected. Each figure below is the count of pixels that
+differ from the background gradient `paint_to` fills first. The drawn string is
+read by matching a candidate's own render against the header band's pixels, so
+the reading comes from the picture and not from the source.
+
+| the reading | before | after |
+| --- | --- | --- |
+| a clean series of thirty readable candles | 801085 px, `30 candles` | 801085 px, `30 candles` |
+| one candle's high is a text value | 801904 px, `29 candles` | 802148 px, **`29 candles, 1 unreadable`** |
+| one candle's high is a missing value | 801904 px, `29 candles` | 802148 px, **`29 candles, 1 unreadable`** |
+| one candle's high is a stored flag | 801904 px, `29 candles` | 802148 px, **`29 candles, 1 unreadable`** |
+| one candle's high is a not-a-number | 801904 px, `29 candles` | 802148 px, **`29 candles, 1 unreadable`** |
+| one candle's high is an endless value | 801904 px, `29 candles` | 802148 px, **`29 candles, 1 unreadable`** |
+| one candle's high is a huge integer | 801904 px, `29 candles` | 802148 px, **`29 candles, 1 unreadable`** |
+| every candle's high is a stored flag | 1544 px, `No candle carried a readable price` | 1544 px, the same |
+
+The match scores name the reading. `29 candles, 1 unreadable` scores 0.526
+against the header before the change and **0.993** after it. A string the chart
+never drew scores 0.531, and a near miss of one digit scores 0.959, so a match
+above 0.98 is the string and nothing else is.
+
+### The positive control
+
+The clean series draws **0 differing pixels** between the two trees, across all
+630000 of them. A chart with nothing refused is the same picture it was.
+
+The counter itself reports **0 px** for the background gradient read against
+itself and **1112 px** for a chart holding no candles, so it can report both a
+zero and a figure.
+
+### The bullseye list
+
+`_bbullseye_data` was set to an empty list in `ChartPainter.__init__`, written
+nowhere else and read nowhere. `_draw_bullseye` draws the four BB Bullseye
+envelopes from `_bb_data`, the live Bollinger series, which is written in
+`_compute_indicators` and read in three places. The empty list is gone. The
+overlay, its key, its toggle and its four envelopes are untouched.
+
+### The grid line list stays, and here is why
+
+`_grid_lines` is written by `set_grid_lines` and read zero times, and `GridLine`
+is constructed zero times. The React page's `GridLines` component draws
+`price_axis.grid.ticks`, the price axis ruling, not this list.
+
+Removing it does not stop at the widget. `set_grid_lines` is named in
+`STEP_NAMES`, `grid_lines_held` is published by `build_view_model`, and
+`src/gui/web/native_chart.js` names `grid_lines_held` in `DECLARED_FIELDS`.
+Taking the list out takes a field out of the payload the Electron renderer is
+handed, which is a published contract rather than a price admission. That row
+stays open.
+
+### Readings this entry declares
+
+The run named the host's own Consolas and Segoe UI font files to the Qt font
+database. The offscreen platform ships no font family at all, so without them
+every glyph renders as a box and the pixels carry a string's length rather than
+its letters. `pip install -e ".[dev]"` installs neither.
+
+The match reading holds only where the band it reads is sparse. On a full chart
+the header band carries 820 ink pixels and a candidate either fits or does not.
+On a band crowded with candles every candidate fits, so the body message is read
+on a chart that drew no candles at all.
+
+No venue was contacted, no bot was started, and no order was placed, priced,
+previewed or cancelled. The runtime tree was read with a redirected home.
+
+### A sentence this entry overtakes
+
+It was not reworded. It is quoted here.
+
+"Layer 2 of #230 is unbuilt." - the bullseye list is removed and the grid line
+list stays, named above with the published fields that hold it.

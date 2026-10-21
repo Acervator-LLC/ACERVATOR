@@ -359,12 +359,15 @@ class HeaderStripMixin:
         top_row.setSpacing(surface.TOP_ROW_SPACING_PX)
         top_row.setContentsMargins(0, 0, 0, 0)
 
-        # Each slot's floor is the width its own whole amounts need, so the row
-        # divides only the width left above those floors.
+        # Each slot's floor is the room its widest amount needs at the smallest
+        # type it draws, so the row divides only the width left above those floors.
         self._spendable_widget = _spendable_profits_class()()
-        self._spendable_widget.setMinimumWidth(surface.slot_floor_w("spendable"))
+        self._spendable_widget.setMinimumWidth(
+            surface.slot_floor_w(surface.SPENDABLE_SLOT)
+        )
         top_row.addWidget(
-            self._spendable_widget, stretch=surface.slot_stretch("spendable")
+            self._spendable_widget,
+            stretch=surface.slot_stretch(surface.SPENDABLE_SLOT),
         )
 
         # One card per COUNTER_CARDS entry, in that order, so a caption or a

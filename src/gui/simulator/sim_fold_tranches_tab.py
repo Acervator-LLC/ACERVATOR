@@ -45,6 +45,7 @@ from ..live_settings.fold_tokens import (
     FOLD_OPEN_COUNT_TOOLTIP,
     FOLD_OVER_ALLOTMENT_FG_HEX,
     FOLD_PARKED_USD_TOOLTIP,
+    FOLD_SCRUM_SELLS_TOOLTIP,
     FOLD_SOURCE_MANUAL_FG_HEX,
     FOLD_SOURCE_MANUAL_SCRUM,
     FOLD_SOURCE_TOOLTIPS,
@@ -53,15 +54,19 @@ from ..live_settings.fold_tokens import (
     FOLD_UNITS_MARKED_TOOLTIP,
     FOLD_WIRE_DISCARDED_TOOLTIP,
     TRANCHE_FIRE_BTN_INSET_PX,
-    TRANCHE_ROW_HEIGHT_PX,
     _arbiter_label,
     _compose_arbiter_tooltip,
     _compose_extractor_tranche_cells,
     _compose_extractor_tranche_tooltip,
     _fold_tranche_source_label,
     compose_cycle_close_ratio,
+    compose_scrum_sells_row,
     compose_units_marked_row,
+    configure_tranche_row_numbers,
+    fold_counter_text,
+    fold_counters_stand,
     fold_display_order,
+    fold_lifetime_counter,
     fold_table_chrome_px,
     fold_table_max_height_px,
     fold_table_natural_width_px,
@@ -284,12 +289,13 @@ class SimFoldTranchesTabMixin:
 
         bot = self._bot
         _counts = {
-            "opened": int(getattr(bot, "_tranches_created_lifetime", 0) or 0),
-            "closed": int(getattr(bot, "_tranches_closed_lifetime", 0) or 0),
-            "discarded": int(getattr(bot, "_tranches_discarded_lifetime", 0) or 0),
-            "malformed": int(getattr(bot, "_tranches_malformed_dropped", 0) or 0),
+            "opened": fold_lifetime_counter(bot, "_tranches_created_lifetime"),
+            "closed": fold_lifetime_counter(bot, "_tranches_closed_lifetime"),
+            "discarded": fold_lifetime_counter(bot, "_tranches_discarded_lifetime"),
+            "malformed": fold_lifetime_counter(bot, "_tranches_malformed_dropped"),
         }
-        if not sum(_counts.values()):
+        _shown = {_k: fold_counter_text(_v) for _k, _v in _counts.items()}
+        if not fold_counters_stand(_counts):
             QMessageBox.information(
                 self,
                 "Clear lifetime counters",
@@ -309,10 +315,10 @@ class SimFoldTranchesTabMixin:
             f"Set the four lifetime tranche counters for "
             f"{getattr(bot.config, 'symbol', '')} to zero?",
             "",
-            f"    opened               {_counts['opened']}",
-            f"    closed               {_counts['closed']}",
-            f"    discarded            {_counts['discarded']}",
-            f"    dropped as malformed {_counts['malformed']}",
+            f"    opened               {_shown['opened']}",
+            f"    closed               {_shown['closed']}",
+            f"    discarded            {_shown['discarded']}",
+            f"    dropped as malformed {_shown['malformed']}",
             "",
             "This places NO order and removes NO tranche. Open "
             "tranches, parked wire credits, holdings, cost basis and "
@@ -532,6 +538,7 @@ class SimFoldTranchesTabMixin:
         preview = getattr(self, "_fold_despawn_preview_lbl", None)
         units = getattr(self, "_fold_units_marked_lbl", None)
         sort_box = getattr(self, "_fold_sort_combo", None)
+        sells = getattr(self, "_fold_scrum_sells_lbl", None)
         filter_box = getattr(self, "_fold_filter_edit", None)
         # `discarded` and `reset` are None, not "0", when the panel
         # renders no such row (hidden until non-zero / until cleared).
@@ -567,6 +574,7 @@ class SimFoldTranchesTabMixin:
             "despawn_timer_text": (timer.text() if timer is not None else None),
             "despawn_preview_text": (preview.text() if preview is not None else None),
             "units_marked_text": (units.text() if units is not None else None),
+            "scrum_sells_text": (sells.text() if sells is not None else None),
             "row_order": (sort_box.currentText() if sort_box is not None else None),
             "row_filter": (filter_box.text() if filter_box is not None else None),
             "lifetime_opened_text": (opened.text() if opened is not None else None),
@@ -673,6 +681,7 @@ class SimFoldTranchesTabMixin:
         self._fold_despawn_timer_lbl = None
         self._fold_despawn_preview_lbl = None
         self._fold_units_marked_lbl: QLabel | None = None
+        self._fold_scrum_sells_lbl: QLabel | None = None
         self._fold_sort_combo: QComboBox | None = None
         self._fold_filter_edit: QLineEdit | None = None
         self._fold_row_texts: list[list[str]] = []
@@ -703,8 +712,10 @@ class SimFoldTranchesTabMixin:
             )
             ext_rows = []
         now_ts = _time.time()
-        created_lifetime = int(getattr(self._bot, "_tranches_created_lifetime", 0) or 0)
-        closed_lifetime = int(getattr(self._bot, "_tranches_closed_lifetime", 0) or 0)
+        created_lifetime = fold_lifetime_counter(
+            self._bot, "_tranches_created_lifetime"
+        )
+        closed_lifetime = fold_lifetime_counter(self._bot, "_tranches_closed_lifetime")
 
         # --- Summary section ---
         summary = QGroupBox("Fold-Tranche Cycle Health")
@@ -737,8 +748,8 @@ class SimFoldTranchesTabMixin:
 
         # The arithmetic, the empty-queue case and the colour band
         # all live in `compose_cycle_close_ratio`.
-        discarded_lifetime = int(
-            getattr(self._bot, "_tranches_discarded_lifetime", 0) or 0
+        discarded_lifetime = fold_lifetime_counter(
+            self._bot, "_tranches_discarded_lifetime"
         )
         ratio_str, ratio_colour = compose_cycle_close_ratio(
             created_lifetime, closed_lifetime, discarded_lifetime
@@ -750,6 +761,23 @@ class SimFoldTranchesTabMixin:
         self._fold_open_count_lbl = open_count_lbl
         install_health_row(
             sf, "Open tranches:", open_count_lbl, FOLD_OPEN_COUNT_TOOLTIP
+        )
+
+        # The rule this row reports lives in `_bound_new_fold_tranches`:
+        # one sell opens one tranche unless the trend is strong.
+        _sells_text, _sells_colour = compose_scrum_sells_row(
+            open_count,
+            fold_lifetime_counter(self._bot, "_scrum_sells_lifetime"),
+        )
+        _sells_lbl = QLabel(_sells_text)
+        if _sells_colour:
+            _sells_lbl.setStyleSheet(f"color: {_sells_colour};")
+        self._fold_scrum_sells_lbl = _sells_lbl
+        install_health_row(
+            sf,
+            "Standing vs scrums that opened them:",
+            _sells_lbl,
+            FOLD_SCRUM_SELLS_TOOLTIP,
         )
 
         parked_str = f"${parked_usd:,.4f}"
@@ -788,14 +816,14 @@ class SimFoldTranchesTabMixin:
 
         # Held on `self` so `_fold_panel_shows` reads the rebuilt
         # label rather than re-deriving it from the bot.
-        self._fold_opened_lbl = QLabel(str(created_lifetime))
+        self._fold_opened_lbl = QLabel(fold_counter_text(created_lifetime))
         install_health_row(
             sf,
             "Lifetime tranches opened:",
             self._fold_opened_lbl,
             FOLD_OPENED_TOOLTIP,
         )
-        self._fold_closed_lbl = QLabel(str(closed_lifetime))
+        self._fold_closed_lbl = QLabel(fold_counter_text(closed_lifetime))
         install_health_row(
             sf,
             "Lifetime tranches closed (fold-back fired):",
@@ -816,8 +844,9 @@ class SimFoldTranchesTabMixin:
             FOLD_CLOSE_RATIO_TOOLTIP,
         )
 
-        if discarded_lifetime:
-            self._fold_discarded_lbl = QLabel(str(discarded_lifetime))
+        # A refused counter shows the row with the dash; a zero still hides it.
+        if discarded_lifetime is None or discarded_lifetime:
+            self._fold_discarded_lbl = QLabel(fold_counter_text(discarded_lifetime))
             install_health_row(
                 sf,
                 "Lifetime tranches discarded (not folded back):",
@@ -840,8 +869,8 @@ class SimFoldTranchesTabMixin:
 
         # `_tranches_malformed_dropped` is always shown; zero is a
         # positive statement that no stored tranche was unreadable.
-        _malformed = int(getattr(self._bot, "_tranches_malformed_dropped", 0) or 0)
-        _malformed_lbl = QLabel(str(_malformed))
+        _malformed = fold_lifetime_counter(self._bot, "_tranches_malformed_dropped")
+        _malformed_lbl = QLabel(fold_counter_text(_malformed))
         if _malformed:
             # A dropped tranche is a data fault, not a trading
             # outcome; same red as the close-ratio verdict.
@@ -935,15 +964,20 @@ class SimFoldTranchesTabMixin:
 
         # Separate button: the other two discard inventory; this
         # discards the lifetime record, resettable alone.
-        _counter_total = (
-            created_lifetime + closed_lifetime + discarded_lifetime + _malformed
+        _counters_stand = fold_counters_stand(
+            {
+                "opened": created_lifetime,
+                "closed": closed_lifetime,
+                "discarded": discarded_lifetime,
+                "malformed": _malformed,
+            }
         )
         counters_btn = QPushButton(
             f"Clear Lifetime Counters ({created_lifetime} opened)"
-            if _counter_total
+            if _counters_stand and created_lifetime is not None
             else "Clear Lifetime Counters"
         )
-        counters_btn.setEnabled(bool(_counter_total))
+        counters_btn.setEnabled(_counters_stand)
         counters_btn.setToolTip(
             "Set this bot's four fold-tranche lifetime counters to "
             "zero.\n\n"
@@ -1048,8 +1082,9 @@ class SimFoldTranchesTabMixin:
             # background always beats it, so painted rows hide it.
 
             # Vertical mass — a fill only reads as a container when
-            # the band has height.
-            table.verticalHeader().setDefaultSectionSize(TRANCHE_ROW_HEIGHT_PX)
+            # the band has height. The same call leaves the `#` column
+            # as the row's only number.
+            configure_tranche_row_numbers(table)
 
             # _TrancheRowBorderDelegate draws the row edges the grid would.
             table.setShowGrid(False)
