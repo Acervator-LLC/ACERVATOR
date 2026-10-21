@@ -165,15 +165,15 @@ of those five read `sadp/RULE_REGISTRY.json`.
 | check | path it reads | what it prints |
 |---|---|---|
 | `check_r6_two_paths` | `src/gui/simulator.py` | NOT INSPECTED, naming the absent file |
-| `check_snapshot_consistency` | `src/gui/simulator.py` | the pass mark |
+| `check_snapshot_consistency` | `src/gui/simulator.py` | NOT INSPECTED, naming the absent file |
 | `check_rule_registry` | `sadp/RULE_REGISTRY.json` | one informational finding |
 | `check_sadp_annotations` | `sadp/RULE_REGISTRY.json` | five high findings |
 | `check_sadp_dependency_graph` | `sadp/RULE_REGISTRY.json` | NOT INSPECTED, naming the absent file |
 
-Two of them report their own blindness through `_no_subject`, which `run` turns
-into NOT INSPECTED in place of the pass mark. `check_snapshot_consistency`
-returns without calling it, so `run` counts no new finding and prints the pass
-mark for a check that opened no file.
+Three of them report their own blindness through `_no_subject`, which `run`
+turns into NOT INSPECTED in place of the pass mark. `check_snapshot_consistency`
+calls it with the absent path, so a run of the sweep now prints three
+NOT INSPECTED lines and no pass mark for a check that opened no file.
 
 `check_sadp_annotations` reads an absent registry as an empty mapping and does
 not return early. No `# sadp:` annotation remains in the tree, so it raises
