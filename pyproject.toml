@@ -289,7 +289,6 @@ line-length = 88
 # The syntax black may EMIT, not the interpreter pin. py314 rewrites 62 files
 # to PEP 758 unparenthesised `except`, which no earlier Python parses.
 target-version = ["py313"]
-extend-exclude = "tests/obsolete"
 
 [tool.setuptools.dynamic]
 # src/__init__.py derives __version__ from src/_version.py, so the static
