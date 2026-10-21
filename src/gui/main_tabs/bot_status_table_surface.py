@@ -233,9 +233,6 @@ SKIP_BOT_ID_MISSING = "?"
 
 ROW_REFUSED_LOG = "Bot table row %d refused for bot %r: %s: %s"
 
-ICON_ASSET_SIZE_PX = ds.COIN_ICON_SIZE_PX
-ICON_DOWNLOAD = False
-
 #: The size the first column draws a kept logo at, and the row that fits it.
 LOGO_SIZE_PX = 32
 #: The room a row keeps above and below its content, ``PM_FocusFrameVMargin``.
@@ -1100,10 +1097,6 @@ def cell(
         "tooltip": tooltip,
         "alignment": ALIGNMENT,
         "alignment_value": ALIGNMENT_VALUE,
-        "icon_asset": EMPTY_TEXT,
-        "icon_size": ICON_ASSET_SIZE_PX,
-        "icon_color": EMPTY_TEXT,
-        "icon_letter": EMPTY_TEXT,
         "logo_path": EMPTY_TEXT,
         "logo_image": EMPTY_TEXT,
         "logo_size": LOGO_SIZE_PX,
@@ -1846,8 +1839,6 @@ def build_view_model(model: BotStatusTableModel) -> dict:
         "glow_blur_radius": GLOW_BLUR_RADIUS,
         "glow_offset": list(GLOW_OFFSET),
         "glows": [dict(found) for found in model.glows],
-        "icon_size": ICON_ASSET_SIZE_PX,
-        "icon_download": ICON_DOWNLOAD,
         "logo_size": LOGO_SIZE_PX,
         "row_height": ROW_HEIGHT_PX,
         "link_color": LINK_COLOR,

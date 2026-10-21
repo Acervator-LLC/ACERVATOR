@@ -10001,3 +10001,94 @@ NumberControl` and `src/gui/web/sim_bot_wizard.js, in NumberField` print the
 words inside the box rather than beside it, as Qt prints them, and
 `src/gui/web/sim_bot_wizard.js, in numberSpec` prefers the spec the payload
 carries under `values.number_specs` so the field sees the dash at all.
+
+## 2026-10-20 - #937 - the Scrumming table's state sits on the Symbol cell
+
+The Simulator's Scrumming Bots table is a subclass of the window's own bot list,
+so it draws that list's ten columns. The first column is Asset. It draws the
+target asset's own mark, and the asset's ticker where no mark is kept. It carries
+no bot id, no state colour and no state tooltip. The state colour and the
+mode-and-state tooltip sit on the Symbol cell.
+
+The Extractor Bots table keeps its own Bot ID column, so every sentence on this
+page about the Extractor's Bot ID column stays true.
+
+Read off the drawn table, four invented bots, the viewport grabbed at 1600 by 420:
+
+```
+column 0, "Asset"     a 32 by 32 mark, or the ticker where none is kept
+column 1, "Symbol"    the pair in the state colour, the mode and state in its tooltip
+row height            36 pixels
+running  #00ff88      paused  #ffaa00      error  #ff3366
+```
+
+### Eight sentences above are overtaken
+
+Each is quoted whole, with the true sentence under it.
+
+Overtaken: *"It hides until a row arrives, then draws one row per held scrumming
+bot with Live's ten columns, the Bot ID cell coloured by the bot's state."*
+
+True now: it hides until a row arrives, then draws one row per held scrumming bot
+with Live's ten columns, the Symbol cell coloured by the bot's state.
+
+Overtaken: *"The saved state gives the state the Bot ID cell is coloured by."*
+
+True now: the saved state gives the state the Symbol cell is coloured by.
+
+Overtaken: *"Its state is idle, so its Bot ID cell is grey."*
+
+True now: its state is idle, so its Symbol cell is grey.
+
+Overtaken: *"`FleetSource.save` writes the sim fleet file with the moved state, or
+without the deleted record, and `refresh_bots` hands each venue its rows again, so
+the Bot ID cell's colour and tooltip in the Scrumming Bots table, and the Mode
+cell's in the Extractor Bots table, read the new state."*
+
+True now: the same save and the same hand-back happen, and the colour and tooltip
+that read the new state are the Symbol cell's in the Scrumming Bots table and the
+Mode cell's in the Extractor Bots table.
+
+Overtaken: *"Start on an imported idle bot writes Live's `✓ Bot <id> RUNNING.` line
+and colours its Bot ID cell."*
+
+True now: Start on an imported idle bot writes that same line and colours its
+Symbol cell.
+
+Overtaken: *"Start on a generated idle bot writes Live's `✓ Bot <id> RUNNING.` line
+and colours its Bot ID cell."*
+
+True now: Start on a generated idle bot writes that same line and colours its
+Symbol cell.
+
+Overtaken: *"`_start_run` moves each of those bots to `running` through
+`SimBotManager.start`, the same rule Start applies to one bot, and fires
+`fleet_changed`, so the sim fleet file is saved and every venue page draws its rows
+again before the walk begins: the Bot ID cell reads `State: RUNNING` in its running
+colour."*
+
+True now: the same move, the same save and the same redraw happen, and the cell
+that reads `State: RUNNING` in its running colour is the Symbol cell.
+
+Overtaken: *"Column 2 is now Current Position Value, priced from the exchange, and
+the state colour it used to carry sits on the Bot ID cell."*
+
+True now: column 2 is Current Position Value, priced from the exchange, and the
+state colour it used to carry sits on the Symbol cell.
+
+### Two blocks above read the first column by its old name
+
+Neither is a sentence, so both stay exactly where they stand.
+
+The cell table under the saved-record passage holds the row
+`| Bot ID, its colour | the record's id and its saved state |`. The first column
+reads the target asset's kept mark, and the colour that row names is the Symbol
+cell's.
+
+The reading block under the imported-row walk holds
+`the row: Bot ID, Symbol, Trades, Target`. The first of those four is the Asset
+column, and the figure beneath it is the asset's mark or its ticker.
+
+The code block listing the ten column labels names `"Bot ID"` first.
+`src/gui/main_tabs/bot_status_table_surface.py, in COLUMN_LABELS` names `"Asset"`
+first today.
