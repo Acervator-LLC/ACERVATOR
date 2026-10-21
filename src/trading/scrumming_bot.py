@@ -3363,22 +3363,6 @@ class ScrummingBot(
             ],
         )
 
-        self._phantom_locked = False
-        self._phantom_lock_timeframe = ""
-        for _lock_tf in ("4h", "1h"):
-            if self._coordinator.is_locked(_lock_tf, SignalDirection.BULLISH):
-                self._phantom_locked = True
-                self._phantom_lock_timeframe = _lock_tf
-                self._bus.emit(
-                    "bot.log",
-                    bot_id=self.bot_id,
-                    message=f"PHANTOM LOCK ACTIVE ({_lock_tf} bullish): "
-                    f"scrum suppressed for this tick. "
-                    f"Folds/hedge/dist remain active per "
-                    f"downside-protection invariant.",
-                )
-                break  # Highest active TF wins.
-
         if bb_override_direction and eff_direction == SignalDirection.NEUTRAL:
             eff_direction = bb_override_direction
 

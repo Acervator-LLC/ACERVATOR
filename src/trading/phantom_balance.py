@@ -167,9 +167,9 @@ def weigh_higher_tf_bias(
 class TradeLock:
     """One entry in ``TimeframeCoordinator._locks``.
 
-    ``is_locked`` matches it against every timeframe below
-    ``source_timeframe``, and ``tick_candle`` decrements
-    ``candles_remaining``.
+    ``get_active_locks`` reports each unexpired entry to the Phantom Bots tab.
+    No code on the coordinator appends one, so ``_locks`` stays empty and
+    ``get_active_locks`` answers an empty list.
     """
 
     source_timeframe: str
@@ -177,8 +177,6 @@ class TradeLock:
     direction: SignalDirection  # The direction locked OUT, not the one allowed.
     candles_remaining: int
     created_at: float = field(default_factory=time.time)
-    # Read by nothing; is_locked always covers every lower timeframe.
-    lock_all_lower: bool = True
 
     @property
     def is_expired(self) -> bool:
@@ -328,7 +326,8 @@ class TimeframeCoordinator:
     """Registry of ``PhantomBot`` instances and their ``TradeLock`` list.
 
     ``get_higher_tf_bias`` and ``get_multi_tf_summary`` read the registered
-    phantoms; ``create_lock``, ``is_locked`` and ``tick_candle`` own the locks.
+    phantoms. ``get_active_locks`` reports the ``TradeLock`` list, which no
+    method here appends to.
     """
 
     def __init__(self, lock_candle_count: int = 2, bus=None) -> None:
@@ -356,59 +355,6 @@ class TimeframeCoordinator:
                 return p
         return None
 
-    def create_lock(
-        self,
-        source_timeframe: str,
-        source_bot_id: str,
-        locked_direction: SignalDirection,
-        candle_count: Optional[int] = None,
-    ) -> TradeLock:
-        """Append a ``TradeLock`` on ``locked_direction`` sourced at
-        ``source_timeframe``.
-
-        ``candle_count`` defaults to ``lock_candle_count`` and is counted down
-        by ``tick_candle``.
-        """
-        count = candle_count or self.lock_candle_count
-        lock = TradeLock(
-            source_timeframe=source_timeframe,
-            source_bot_id=source_bot_id,
-            direction=locked_direction,
-            candles_remaining=count,
-        )
-        self._locks.append(lock)
-
-        self._bus.emit(
-            "timeframe.lock_created",
-            source_tf=source_timeframe,
-            locked_direction=locked_direction.name,
-            candles=count,
-        )
-        logger.info(
-            "Trade lock: %s locked %s direction for %d candles (from %s)",
-            source_timeframe,
-            locked_direction.name,
-            count,
-            source_bot_id,
-        )
-        return lock
-
-    def is_locked(self, timeframe: str, direction: SignalDirection) -> bool:
-        """Report whether any ``TradeLock`` above ``timeframe`` names
-        ``direction``.
-
-        Runs ``_cleanup_expired`` first, and returns False while ``_locks`` is
-        empty.
-        """
-        self._cleanup_expired()
-        target_rank = tf_rank(timeframe)
-
-        for lock in self._locks:
-            lock_rank = tf_rank(lock.source_timeframe)
-            if lock_rank > target_rank and lock.direction == direction:
-                return True
-        return False
-
     def get_active_locks(self) -> list[dict]:
         """Return each unexpired ``TradeLock`` as a dict."""
         self._cleanup_expired()
@@ -421,16 +367,6 @@ class TimeframeCoordinator:
             }
             for lk in self._locks
         ]
-
-    def tick_candle(self, timeframe: str) -> None:
-        """Decrement ``candles_remaining`` on every ``TradeLock`` sourced at
-        ``timeframe``, then run ``_cleanup_expired``.
-        """
-        for lock in self._locks:
-            if lock.source_timeframe == timeframe:
-                lock.candles_remaining -= 1
-
-        self._cleanup_expired()
 
     def _cleanup_expired(self) -> None:
         before = len(self._locks)

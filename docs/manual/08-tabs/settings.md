@@ -1044,23 +1044,25 @@ wizard boxes   Qt 7   React 7   with no store at all 2
 old file       loads, theme carried, box opens at 2
 ```
 
-The figure stops at the bot's phantom coordinator and holds no lock yet. Nothing
-in the application calls the method that appends a lock, so the countdown never
-starts and the lock test answers False on every tick.
+The figure stops at the bot's phantom coordinator and no code reads it. The lock
+guard that read it has been retired, so the coordinator keeps the number, holds
+no lock, and has no method that makes one.
 
-`src/trading/phantom_balance.py` — `create_lock`, which has no caller
+`src/trading/phantom_balance.py` — the coordinator keeps the figure
 
 ```python
-count = candle_count or self.lock_candle_count
+def __init__(self, lock_candle_count: int = 2, bus=None) -> None:
+    self.lock_candle_count = lock_candle_count
+    self._locks: list[TradeLock] = []
 ```
 
-Driven: a fresh coordinator holds no locks and reports none on an hourly chart.
-Called by hand at 7 it appends a lock of seven candles and the same test then
-answers True, so the figure sizes a real lock the moment something creates one.
+Driven on two coordinators, one at the default and one at seven. Each carries
+the figure it was built with and each reports an empty lock list.
 
 ```
-fresh coordinator      locks 0     is_locked("1h", BULLISH) False
-create_lock by hand    candles 7   is_locked("1h", BULLISH) True
+coordinator at 2   lock_candle_count 2   active locks []
+coordinator at 7   lock_candle_count 7   active locks []
+lock members left on the coordinator   _locks   get_active_locks   lock_candle_count
 ```
 
 The wizard's own key still stops before the bot. The bot configuration declares
