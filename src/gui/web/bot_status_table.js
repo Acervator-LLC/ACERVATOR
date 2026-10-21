@@ -150,8 +150,6 @@
     HEADER_SORT_MARK_STYLE,
     "header_state_tip_format",
     HEADERS,
-    "icon_download",
-    "icon_size",
     "logo_size",
     ROW_HEIGHT,
     "link_color",
@@ -235,10 +233,6 @@
   var TEXT = "text";
   var COLOR = "color";
   var TOOLTIP = "tooltip";
-  var ICON_ASSET = "icon_asset";
-  var ICON_SIZE = "icon_size";
-  var ICON_COLOR = "icon_color";
-  var ICON_LETTER = "icon_letter";
   var LOGO_PATH = "logo_path";
   var LOGO_IMAGE = "logo_image";
   var LOGO_SIZE = "logo_size";
@@ -266,8 +260,6 @@
     TOOLTIP,
     ALIGNMENT,
     ALIGNMENT_VALUE,
-    ICON_ASSET,
-    ICON_SIZE,
     LOGO_PATH,
     LOGO_IMAGE,
     LOGO_SIZE,
@@ -347,7 +339,6 @@
   var CELL_TAG = "td";
   var BUTTON_TAG = "button";
   var BUTTON_TYPE = "button";
-  var DISC_TAG = "span";
   var IMG_TAG = "img";
   var LABEL_TAG = "span";
   var DOT_TAG = "span";
@@ -391,7 +382,6 @@
   var CELL_PART = "cell";
   var FIRE_PART = "fire-button";
   var DETAIL_PART = "detail-button";
-  var DISC_PART = "coin-icon";
   var LOGO_PART = "asset-logo";
 
   var ROW_ATTR = "data-row";
@@ -409,8 +399,6 @@
   var SORTABLE_ATTR = "data-sortable";
   var LINK_URL_ATTR = "data-link-url";
   var CHART_URL_ATTR = "data-chart-url";
-  var ICON_ATTR = "data-icon";
-  var ICON_SIZE_ATTR = "data-icon-size";
   var LOGO_PATH_ATTR = "data-logo-path";
   var LOGO_SIZE_ATTR = "data-logo-size";
   var ALIGNMENT_ATTR = "data-alignment";
@@ -434,8 +422,6 @@
   var PX = "px";
   // The CSS spelling of no padding and no line box, for the logo's own cell.
   var NO_PAD = "0";
-  // QFont point size in _get_coin_icon: int(size * 0.45).
-  var DISC_LETTER_SHARE = 0.45;
 
   // ALIGNMENT_STYLE maps each published alignment word to CSS.
   var ALIGNMENT_STYLE = { AlignCenter: { textAlign: "center" } };
@@ -786,25 +772,6 @@
     return element(BUTTON_TAG, buttonProps, text(button[TEXT]));
   }
 
-  // The disc _get_coin_icon paints: icon_color fills it, icon_letter names it
-  // and icon_size sizes it.
-  function CoinDisc(props) {
-    var found = props.cell;
-    var size = Number(found[ICON_SIZE]);
-    var style = { background: colour(found[ICON_COLOR]) };
-    if (size > 0) {
-      style.width = size + PX;
-      style.height = size + PX;
-      style.lineHeight = size + PX;
-      style.fontSize = Math.round(size * DISC_LETTER_SHARE) + PX;
-    }
-    var discProps = { className: TABLE_CLASS, style: style };
-    discProps[PART_ATTR] = DISC_PART;
-    discProps[ICON_ATTR] = text(found[ICON_ASSET]);
-    discProps[ICON_SIZE_ATTR] = text(found[ICON_SIZE]);
-    return element(DISC_TAG, discProps, text(found[ICON_LETTER]));
-  }
-
   // The mark the first column draws: logo_image carries the bytes the page's
   // own img-src rule allows, and logo_size bounds it as the window's icon does.
   // Bounding both sides rather than setting them keeps a mark that is not
@@ -872,8 +839,6 @@
     cellProps.title = label(found[TOOLTIP]);
     cellProps[ALIGNMENT_ATTR] = text(found[ALIGNMENT]);
     cellProps[ALIGNMENT_VALUE_ATTR] = text(found[ALIGNMENT_VALUE]);
-    cellProps[ICON_ATTR] = text(found[ICON_ASSET]);
-    cellProps[ICON_SIZE_ATTR] = text(found[ICON_SIZE]);
     cellProps[LOGO_PATH_ATTR] = text(found[LOGO_PATH]);
     cellProps[LINK_URL_ATTR] = text(found[LINK_URL]);
     cellProps[CHART_URL_ATTR] = text(found[CHART_URL]);
@@ -898,14 +863,6 @@
         CELL_TAG,
         cellProps,
         element(AssetLogo, { key: LOGO_PART, cell: found })
-      );
-    }
-    if (isFilledText(found[ICON_COLOR])) {
-      return element(
-        CELL_TAG,
-        cellProps,
-        element(CoinDisc, { key: DISC_PART, cell: found }),
-        text(found[TEXT])
       );
     }
     return element(CELL_TAG, cellProps, text(found[TEXT]));
