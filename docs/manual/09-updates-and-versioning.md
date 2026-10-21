@@ -218,7 +218,7 @@ Six modules read the resolved version, and none of them restates it.
 - `tools/spec_common.py` bakes it into a build.
 - `tools/build_release_zip.py` reads it for the release archive.
 - `tools/capture_live_baseline.py` stamps a captured baseline with it.
-- `src/core/version_sweep.py` takes it as the canonical value and reports any
+- `unreached/core/version_sweep.py` takes it as the canonical value and reports any
   literal that shadows it.
 
 **Overtaken.** That first sentence stays whole here:
@@ -230,7 +230,7 @@ twelfth.
 
 ```
 main.py                                         src/__init__.py
-src/core/version_sweep.py                       src/gui/main_window.py
+unreached/core/version_sweep.py                       src/gui/main_window.py
 src/gui/main_tabs/main_window_surface.py        src/simulator/parity_report.py
 src/gui/main_tabs/splash_screen_surface.py      src/trading/live_monitor.py
 src/gui/main_tabs/stock_main_window_surface.py  tools/build_release_zip.py
@@ -239,7 +239,7 @@ tools/capture_live_baseline.py                  tools/spec_common.py
 
 **Overtaken again.** Both lines above that name the sweep stay whole:
 
-> `src/core/version_sweep.py` takes it as the canonical value and reports any
+> `unreached/core/version_sweep.py` takes it as the canonical value and reports any
 > literal that shadows it.
 
 The sweep now lives at `unreached/core/version_sweep.py`. Eleven of the twelve

@@ -59,7 +59,14 @@ from .ata_gate_scan import (
     TIGHTENING_TOLERANCE_PCT,
 )
 from .gate_chain import (
+    OVERRIDE_APPLIED_FORMAT,
+    DeepFoldOverride,
     GateContext,
+    MidlineGate,
+    RipeHarvestScrumOverride,
+    TADirectionGate,
+    TargetFiresGate,
+    TrendHoldGate,
     build_scrumming_scrum_chain,
     build_scrumming_fold_chain,
 )
@@ -94,6 +101,21 @@ from .scrumming.sizing import (
 )
 
 logger = logging.getLogger("acervator.scrumming")
+
+#: The gate log key carrying each refusal an override replaced on one side.
+OVERRIDES_APPLIED_KEY = "overrides_applied"
+
+#: The override names and the covered gate names, read off the gate classes so
+#: a replaced refusal reads the same in the gate log as in
+#: ``ChainResult.overrides_applied``.
+_RIPE_OVERRIDE = RipeHarvestScrumOverride.name
+_DEEP_FOLD_OVERRIDE = DeepFoldOverride.name
+_GATE_TA_SCRUM = TADirectionGate(side="scrum").name
+_GATE_TA_FOLD = TADirectionGate(side="fold").name
+_GATE_MIDLINE_SCRUM = MidlineGate(side="scrum").name
+_GATE_MIDLINE_FOLD = MidlineGate(side="fold").name
+_GATE_TREND_HOLD = TrendHoldGate.name
+_GATE_TARGET_FIRES = TargetFiresGate.name
 
 #: Seconds between detonation trigger checks.
 _DETONATION_CHECK_INTERVAL_S: float = 3600.0
@@ -3363,22 +3385,6 @@ class ScrummingBot(
             ],
         )
 
-        self._phantom_locked = False
-        self._phantom_lock_timeframe = ""
-        for _lock_tf in ("4h", "1h"):
-            if self._coordinator.is_locked(_lock_tf, SignalDirection.BULLISH):
-                self._phantom_locked = True
-                self._phantom_lock_timeframe = _lock_tf
-                self._bus.emit(
-                    "bot.log",
-                    bot_id=self.bot_id,
-                    message=f"PHANTOM LOCK ACTIVE ({_lock_tf} bullish): "
-                    f"scrum suppressed for this tick. "
-                    f"Folds/hedge/dist remain active per "
-                    f"downside-protection invariant.",
-                )
-                break  # Highest active TF wins.
-
         if bb_override_direction and eff_direction == SignalDirection.NEUTRAL:
             eff_direction = bb_override_direction
 
@@ -3683,25 +3689,49 @@ class ScrummingBot(
         _eff_htf_blocks = _htf_blocks_scrum if _flag_defer_to_htf else False
 
         _scrum_blockers: list[str] = []
+        _scrum_replaced: list[str] = []
+
+        def _note_scrum_refusal(gate_name: str, refusal: str) -> None:
+            """File one scrum refusal as standing, or as replaced when ripe.
+
+            A ripe row is the ``RipeHarvestScrumOverride`` condition, so the
+            refusal it covers is recorded against that override's name rather
+            than dropped.
+            """
+            if _ripe_scrum:
+                _scrum_replaced.append(
+                    OVERRIDE_APPLIED_FORMAT.format(
+                        gate=gate_name, override=_RIPE_OVERRIDE, refusal=refusal
+                    )
+                )
+            else:
+                _scrum_blockers.append(refusal)
+
         if delta <= 0:
             _scrum_blockers.append("delta≤0")
         if below_interval:
             _scrum_blockers.append(
                 f"below_interval(Δ%<{self.config.scrumming_interval_pct})"
             )
-        if not _eff_is_bullish and not _ripe_scrum:
-            _scrum_blockers.append(
-                f"TA-conf-below-floor(dir={eff_direction.name},"
-                f"conf={eff_confidence:.4f}<{_eff_conf_floor:.4f})"
-                if eff_direction in (SignalDirection.BULLISH, SignalDirection.NEUTRAL)
-                else f"TA-not-bullish(dir={eff_direction.name})"
+        if not _eff_is_bullish:
+            _note_scrum_refusal(
+                _GATE_TA_SCRUM,
+                (
+                    f"TA-conf-below-floor(dir={eff_direction.name},"
+                    f"conf={eff_confidence:.4f}<{_eff_conf_floor:.4f})"
+                    if eff_direction
+                    in (SignalDirection.BULLISH, SignalDirection.NEUTRAL)
+                    else f"TA-not-bullish(dir={eff_direction.name})"
+                ),
             )
-        if _eff_trend_hold and not _ripe_scrum:
-            _scrum_blockers.append(f"trend_hold({trend_strength:.0%})")
-        if not scrum_ok and not _ripe_scrum:
-            _scrum_blockers.append(f"scrum_ok=False(bb_pos={bb_pos:.2f})")
-        if not target_fires and not _ripe_scrum:
-            _scrum_blockers.append("target_fires=False(detect/fire)")
+        if _eff_trend_hold:
+            _note_scrum_refusal(_GATE_TREND_HOLD, f"trend_hold({trend_strength:.0%})")
+        if not scrum_ok:
+            _note_scrum_refusal(
+                _GATE_MIDLINE_SCRUM, f"scrum_ok=False(bb_pos={bb_pos:.2f})"
+            )
+        if not target_fires:
+            _note_scrum_refusal(_GATE_TARGET_FIRES, "target_fires=False(detect/fire)")
         if not _bb_above_upper_dt:
             _scrum_blockers.append(
                 f"BB-below-upper-detect(bb_pos={bb_pos:.2f}<{_bb_upper_dt:.2f})"
@@ -3731,6 +3761,7 @@ class ScrummingBot(
                 self._last_gate_state.get("evaluated_at_tick", 0) + 1
             )
             self._last_gate_state["scrum_fixture"] = {
+                OVERRIDES_APPLIED_KEY: list(_scrum_replaced),
                 "delta": float(delta),
                 "below_interval": bool(below_interval),
                 "ticker_last": float(ticker.last),
@@ -4045,17 +4076,40 @@ class ScrummingBot(
         _eff_htf_blocks_fold = _htf_blocks_fold if _flag_fold_defer_to_htf else False
 
         _fold_blockers: list[str] = []
+        _fold_replaced: list[str] = []
+
+        def _note_fold_refusal(gate_name: str, refusal: str) -> None:
+            """File one fold refusal as standing, or as replaced when deep.
+
+            A deep row is the ``DeepFoldOverride`` condition, so the refusal it
+            covers is recorded against that override's name rather than dropped.
+            """
+            if _deep_fold:
+                _fold_replaced.append(
+                    OVERRIDE_APPLIED_FORMAT.format(
+                        gate=gate_name, override=_DEEP_FOLD_OVERRIDE, refusal=refusal
+                    )
+                )
+            else:
+                _fold_blockers.append(refusal)
+
         if not self._fold_tranches:
             _fold_blockers.append("no-tranches-queued")
-        if not _eff_is_bearish and not _deep_fold:
-            _fold_blockers.append(
-                f"TA-conf-below-floor(dir={eff_direction.name},"
-                f"conf={eff_confidence:.4f}<{_eff_conf_floor:.4f})"
-                if eff_direction in (SignalDirection.BEARISH, SignalDirection.NEUTRAL)
-                else f"TA-not-bearish(dir={eff_direction.name})"
+        if not _eff_is_bearish:
+            _note_fold_refusal(
+                _GATE_TA_FOLD,
+                (
+                    f"TA-conf-below-floor(dir={eff_direction.name},"
+                    f"conf={eff_confidence:.4f}<{_eff_conf_floor:.4f})"
+                    if eff_direction
+                    in (SignalDirection.BEARISH, SignalDirection.NEUTRAL)
+                    else f"TA-not-bearish(dir={eff_direction.name})"
+                ),
             )
-        if not fold_ok_midline and not _deep_fold:
-            _fold_blockers.append(f"fold_ok_midline=False(bb_pos={bb_pos:.2f})")
+        if not fold_ok_midline:
+            _note_fold_refusal(
+                _GATE_MIDLINE_FOLD, f"fold_ok_midline=False(bb_pos={bb_pos:.2f})"
+            )
         if _mem253_at_ceiling:
             _fold_blockers.append("position-ceiling")
         if not _bb_below_lower_dt:
@@ -4084,6 +4138,7 @@ class ScrummingBot(
             self._last_gate_state["fold_armed"] = len(_fold_blockers) == 0
             self._last_gate_state["fold_blockers"] = list(_fold_blockers)
             self._last_gate_state["fold_fixture"] = {
+                OVERRIDES_APPLIED_KEY: list(_fold_replaced),
                 "has_fold_tranches": bool(self._fold_tranches),
                 "n_fold_tranches": len(self._fold_tranches or []),
                 "landing_strip": bool(bb_result.landing_strip if bb_result else False),

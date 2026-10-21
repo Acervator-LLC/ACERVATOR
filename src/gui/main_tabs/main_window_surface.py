@@ -42,6 +42,11 @@ from typing import Any, Optional
 
 from ...trading.ta_engine import DEFAULT_WEIGHTS
 from .. import design_system as ds
+from ..theme_engine import (
+    TOOLTIP_FONT_SIZE_PX,
+    TOOLTIP_MAX_WIDTH_PX,
+    TOOLTIP_PADDING_PX,
+)
 from . import asset_class_surface
 from . import bot_visualizer_surface
 from . import console_tab_surface
@@ -639,7 +644,8 @@ ABBREVIATION_TOOLTIPS = (
 )
 
 TOOLTIP_STYLE = (
-    "\nQToolTip { font-size: 12px; padding: 8px; "
+    f"\nQToolTip {{ max-width: {TOOLTIP_MAX_WIDTH_PX}px; "
+    f"font-size: {TOOLTIP_FONT_SIZE_PX}px; padding: {TOOLTIP_PADDING_PX}px; "
     f"background: {ds.SURFACE_CONTROL}; color: {ds.TEXT_HIGH}; border: "
     f"1px solid {ds.MAIN_TOOLTIP_BORDER}; }}"
 )

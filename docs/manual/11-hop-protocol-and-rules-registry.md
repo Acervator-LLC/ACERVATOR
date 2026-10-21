@@ -93,7 +93,7 @@ SUSPENDED and DEPRECATED — and a parser turns a `RULE` line into a call on the
 registry. Five ids are marked CORE: R1, R5, R10, R11 and R12.
 
 ```python
-RULE_META = {...}       # src/core/rule_registry.py, 35 ids, R1 through R35
+RULE_META = {...}       # unreached/core/rule_registry.py, 35 ids, R1 through R35
 CORE_RULES = {r for r, m in RULE_META.items() if m["protection"] == "CORE"}
 VALID_STATES = {"LOCKED", "UNLOCKED", "SUSPENDED", "DEPRECATED"}
 
@@ -104,7 +104,7 @@ def parse_rule_command(...): ...
 
 ### The module moved, and the path citations are overtaken
 
-OVERTAKEN. Every `src/core/rule_registry.py` and `src/core/version_sweep.py`
+OVERTAKEN. Every `unreached/core/rule_registry.py` and `unreached/core/version_sweep.py`
 citation on this page stays whole, in prose and in the code blocks both.
 
 The registry module is now `unreached/core/rule_registry.py` and the version
@@ -126,7 +126,7 @@ temporary directory, R1 draws a refusal and stays LOCKED while R2 moves to
 SUSPENDED. The refusal is a real one rather than a declared one.
 
 ```python
-def suspend(self, rule: str, reason: str, expires: str = "") -> str: ...     # src/core/rule_registry.py
+def suspend(self, rule: str, reason: str, expires: str = "") -> str: ...     # unreached/core/rule_registry.py
 ```
 
 Nothing in the product reads any of it. The registry path resolves into a
@@ -145,11 +145,11 @@ OVERTAKEN, quoted whole:
 True today: the module has no importer at all. The one importer named above is
 not in the tree, so no file imports the registry and no file calls any symbol in
 it. One module names it in printed text rather than in an import:
-`src/core/version_sweep.py`, in `check_rule_registry`, prints a command a reader
+`unreached/core/version_sweep.py`, in `check_rule_registry`, prints a command a reader
 is told to run.
 
 ```python
-REGISTRY_PATH = ROOT / "sadp" / "RULE_REGISTRY.json"        # src/core/rule_registry.py
+REGISTRY_PATH = ROOT / "sadp" / "RULE_REGISTRY.json"        # unreached/core/rule_registry.py
 # sadp/ is not in the tree, so REGISTRY_PATH resolves to nothing
 ```
 
@@ -158,22 +158,22 @@ program consults, and they carry no authority.
 
 ### What the version sweep's registry checks answer
 
-`src/core/version_sweep.py` registers seventeen checks and prints one line for
+`unreached/core/version_sweep.py` registers seventeen checks and prints one line for
 each. Five of them read a path that has never been in this repository, and three
 of those five read `sadp/RULE_REGISTRY.json`.
 
 | check | path it reads | what it prints |
 |---|---|---|
 | `check_r6_two_paths` | `src/gui/simulator.py` | NOT INSPECTED, naming the absent file |
-| `check_snapshot_consistency` | `src/gui/simulator.py` | the pass mark |
+| `check_snapshot_consistency` | `src/gui/simulator.py` | NOT INSPECTED, naming the absent file |
 | `check_rule_registry` | `sadp/RULE_REGISTRY.json` | one informational finding |
 | `check_sadp_annotations` | `sadp/RULE_REGISTRY.json` | five high findings |
 | `check_sadp_dependency_graph` | `sadp/RULE_REGISTRY.json` | NOT INSPECTED, naming the absent file |
 
-Two of them report their own blindness through `_no_subject`, which `run` turns
-into NOT INSPECTED in place of the pass mark. `check_snapshot_consistency`
-returns without calling it, so `run` counts no new finding and prints the pass
-mark for a check that opened no file.
+Three of them report their own blindness through `_no_subject`, which `run`
+turns into NOT INSPECTED in place of the pass mark. `check_snapshot_consistency`
+calls it with the absent path, so a run of the sweep now prints three
+NOT INSPECTED lines and no pass mark for a check that opened no file.
 
 `check_sadp_annotations` reads an absent registry as an empty mapping and does
 not return early. No `# sadp:` annotation remains in the tree, so it raises

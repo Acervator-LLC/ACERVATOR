@@ -195,14 +195,14 @@ Iterate step.
 | **C88** **a brief rule that competes with an environment default** | auto-mode's Bash guidance recommends heredocs for file edits; the brief forbids them. 4 agents broke it in one day and 3 hung `python -` processes had to be found and killed. Restating the rule in the brief did not stop it. **Ask: does the brief give the compliant command verbatim?** Write `Write the file, then run python <path>` and `git commit -F <path>`, and name the guidance being overridden. See C91 |
 | **C89** **a similarity where a structural fact was available** | picking which tests exercise a module by grepping its symbol names matched 435 files, because `count` and `emit` appear everywhere. The fix offered was to keep only names that look distinctive — one guess swapped for another, tuned until the number felt right. **The import closure is a fact and gives the same answer twice.** Three sweeps had already selected tests this way. Ask what relation is actually being measured; if it can be resolved, resolving it beats matching it |
 | **C90** **a turn ended with a report while an agent seat was free** | measured: 7 turns in one session ended in a summary with `ListAgents` reporting 0 running agents. **Ask: does `ListAgents` return fewer running agents than seats?** If yes, dispatch into every free seat first, then write the report. Read the seat count from `ListAgents` in this turn, never from the last dispatch you remember |
-| **C91** **a ban enforced only by a refusal, against guidance that arrives every turn** | measured: `block_heredoc.py` refuses 17 of 17 heredoc forms and refused this session again after shipping, because auto-mode's Bash guidance recommends heredocs for file edits on every turn while the hook fires only after the command is typed. **Ask: is the banned form named by guidance that arrives every turn?** If yes, add it to `_ENVIRONMENT_CONFLICTS` in `.claude/hooks/prompt_router.py`, which prints the ban and its replacement before the turn starts. Proved on 6 prompts sharing no keyword, plus an empty-prompt control |
+| **C91** **a ban enforced only by a refusal, against guidance that arrives every turn** | measured: `block_heredoc.py` refuses 17 of 17 heredoc forms and refused this session again after shipping, because auto-mode's Bash guidance recommends heredocs for file edits on every turn while the hook fires only after the command is typed. **Ask: is the banned form named by guidance that arrives every turn?** If yes, add it to `_ENVIRONMENT_CONFLICTS` in `dev_harness/hooks/prompt_router.py`, which prints the ban and its replacement before the turn starts. Proved on 6 prompts sharing no keyword, plus an empty-prompt control |
 | **C92** **a present-tense command answering a question about the past** | `git ls-files .githooks` returned nothing, and that became "the hook was never committed" in a shipped guide. `git log --diff-filter=D -- .githooks/` returns `8b7097b remove the pre-push gate hook; CI replaces it` — a deliberate removal, not a gap, and the guide then argued for undoing it. **Ask: does this command read the working tree, or the history?** For "was this ever here", run `git log --diff-filter=D -- <path>` and read the commit message before naming an absence a defect |
 
 | **C93** **a brief rule competing with a permanent rule in a loaded skill** | 7 agents in one session ran `python -m tools.gate` after a brief forbade it, each citing harness-law's FIFTH PERMANENT RULE — "Code does not leave the branch or get merged until all gates are passing", marked NO EXEMPTIONS. Obeying it was correct; the brief was written without reading it, and each run cost 500-700 seconds on the machine running the live app. **Ask: does a loaded skill already rule on what this brief is about to forbid?** Read it first. When it rules and is stale, edit that skill and quote the later commit that superseded it — `8b7097b` here — rather than writing a brief that competes with it. See C88, C91 |
 
 | **C94** **the same brief retyped into every dispatch** | 332 agent dispatches averaging 7.8 KB, 2.58 MB, 9.9% of a 26 MB session that ended on "prompt is too long"; assistant-generated blocks were ~70% of that total. The standing sweep brief — worktree rule, prohibitions, comment standard, identity-proof method — was retyped verbatim into each one. **Ask: is this text already a file the agent can read?** Put the standing brief on disk and pass its path; a dispatch carries the target, its measured counts, and the facts specific to it. Measure with `measure_context.py` before blaming input |
 | **C95** **a pasted export instead of a path** | one attached CSV measured 1,113,493 bytes, ~309,000 tokens — larger than the whole context window, and attachments cannot be compacted away. Eleven copies of that export were already on disk. **Ask: does this data exist as a file?** Read it with `grep`, `sed -n` or pandas and quote the rows that matter. The same applies to screenshots: 25 images measured 1.81 MB, 6.9% |
-| **C96** **an exit code read through a pipe** | the pipe reports the LAST command's status, not the tool's. Twice in one session: an archetype run through `grep` reported 255 while the archetype itself exited 0, and a fixture control read `$?` after `tail`, so `known_good` and `known_bad` BOTH looked like exit 0 — the control was dead and its green meant nothing. **Ask: whose exit code is this?** Capture it on the same line as the tool (`$out = cmd; $code = $LASTEXITCODE`), then filter the captured text. This matters most on a positive control, where a swallowed code turns a two-sided check into no check at all. **Stdin through a pipe is the same family and worse**: `$payload \| python hook.py` does not deliver stdin here — the script reads EOF, its `json.load` fails, and it exits 0, which reads as ALLOWED while nothing ran. Measured twice, both times a hook under test reporting a pass without ever seeing a payload. Drive it with `subprocess.run([sys.executable, HOOK], input=payload, ...)` from a probe file. **ENFORCED IN PYTHON** — `~/.claude/hooks/block_heredoc.py` denies the pipe. See C84, C85 |
+| **C96** **an exit code read through a pipe** | the pipe reports the LAST command's status, not the tool's. Twice in one session: an archetype run through `grep` reported 255 while the archetype itself exited 0, and a fixture control read `$?` after `tail`, so `known_good` and `known_bad` BOTH looked like exit 0 — the control was dead and its green meant nothing. **Ask: whose exit code is this?** Capture it on the same line as the tool (`$out = cmd; $code = $LASTEXITCODE`), then filter the captured text. This matters most on a positive control, where a swallowed code turns a two-sided check into no check at all. **Stdin through a pipe is the same family and worse**: `$payload \| python hook.py` does not deliver stdin here — the script reads EOF, its `json.load` fails, and it exits 0, which reads as ALLOWED while nothing ran. Measured twice, both times a hook under test reporting a pass without ever seeing a payload. Drive it with `subprocess.run([sys.executable, HOOK], input=payload, ...)` from a probe file. **ENFORCED IN PYTHON** — `~/dev_harness/hooks/block_heredoc.py` denies the pipe. See C84, C85 |
 | **C97** **a file added to a directory that keeps a register** | three guards went red in one session from the same act, each found by a unit tripping over it rather than by the author. Restoring the handoffs broke `test_repo_root_inventory` (six undeclared root files) and `test_no_live_file_still_points_at_the_old_path`; committing two new tools broke `test_every_tool_on_disk_is_declared` — "tools/ holds undeclared scripts: ['conversion_state', 'hop_check']". Each register exists precisely so a new file must argue for its location. **Ask: what enumerates this directory?** Before committing a new file, grep `tests/` for a listing that names its neighbours — `test_repo_root_inventory.py` for the root, `test_tools_are_reachable.py` for `tools/`, `test_harness_is_reachable.py` for harness callers. Declare it with the MECHANISM that requires the location, never "tidier here". A register also guards against an allowance outliving its file, so a stale entry fails too |
 | **C99** **an AST call scan blind to an aliased import** | walking `ast.Call` and matching the called name is the right instrument for "does this have a caller" — grep cannot tell a docstring example from a call — but it misses `from m import f as g`, because the call site says `g`. Measured: a scan reported `main.py` as a non-caller of `get_registry`; `main.py:478` imports it as `_get_st_reg` and calls it two lines later, so a true claim would have been called false. A recheck found **six** aliased bindings of that one name. **Ask: could this name be bound under another?** Confirm a zero with a second instrument — every occurrence of the name outside docstrings and comments — and report aliased imports separately. Two zero-caller findings were re-verified this way and stood: `create_lock` and `_invalidate_balance` each have exactly one occurrence, their own `def`. See C13, C30, C56 |
 | **C100** **RUF100 read as proof a suppression is inert** | `--select RUF100` switches every other rule off, so every directive looks unused — that is the known half. The unknown half: **the archetype's ruff and the repo's ruff enable different rules.** Measured — RUF100 reported two `# noqa: S311` as non-enabled; removing one turned S311 into a **high** finding and the archetype `passed=False`. Following the guidance would have stripped a load-bearing suppression and turned the gate red. The same guidance sat in every unit brief for a day. **Ask: whose rule set answered this?** The only proof of inertness is REMOVAL — delete the directive, re-run the archetype, compare rule ids against the baseline; a rule id that appears was suppressed by it. `# noqa: E402` is the one confirmed-inert case, because `.flake8` ignores E402 globally (#402). See C96, C99 |
@@ -227,7 +227,7 @@ Iterate step.
 | **C121** **a name that resolves for a reason nothing declared** | A package's own entry file held **zero** import lines for two of its modules, and `hasattr` on the imported package answered **True** for both anyway. A sibling module imported from them — `conversion_rates.py:25` and `:33` — and importing a submodule binds it onto the parent package as a side effect. **A static read of the declaring file counted 10 modules absent; a runtime read counted 8.** The runtime figure looks authoritative and is the fragile one: deleting one unrelated import line unbinds a module the entry file never mentioned, with nothing reporting it. **Ask: does this name resolve because something DECLARED it, or because something else happened to touch it?** Read the declaring file for what is intended and the runtime for what is true, and when they disagree treat the declaration as the contract. A reachability result that a sibling's import can revoke is not reachability |
 | **C120** **a universal claimed after looking at part of the evidence** | Two in one turn, both written into briefs a unit then built against. **"Nothing in the tree has a turn budget"**, after searching the package for the operator's new phrase `turn point`: the pool exists as `IMPETUS_AT_FIRST_LEVEL = 4` and `IMPETUS_LEVELS_PER_STEP = 20` with a grant function in `poa_modes.py`, and a loot tier field named `impetus_relief` had already been read and quoted. **"The package file re-exports every module"**, after reading the head of that file: **8 of 24 modules are absent from it**, measured by enumerating both sets. One search used a vocabulary the design does not use; one read a prefix and spoke about the whole. **Ask: did I see ALL of it, and did I search the names the DESIGN uses rather than the names I chose?** For a universal over a file, enumerate both sets and diff them; for an absence, search the design's own term before concluding a mechanism is missing. A brief carrying either becomes a unit's premise. See C30, C56, C87, C26 |
 | **C119** **a figure that was measured honestly, carried forward after the thing it measured changed** | A record's size was measured at **1,015 bytes**, and a compact form at **399**, and both went into two later briefs as the cost of one action. A unit re-measured the same records: **1,305 and 478**. Nothing was wrong when taken — two units had since landed, one adding a position to every id and one adding an append log that writes each record with a content id, and an event emitter added 422 bytes of its own. **A measurement names a tree, and the tree moved.** This differs from a figure written from recall (C48, C86): the number was real, the date was not carried with it. **Ask: what landed between this measurement and now, and did any of it touch what I measured?** Quote the commit or the unit a figure was taken against, and re-measure rather than re-quote once anything has merged into that path. The conclusion here strengthened — per-turn writing costs 81.5% of the budget rather than 63.4% — but a figure that moved the other way would have been a false green. See C48, C67, C86, C22 |
-| **C98** **a per-run cap mistaken for a total budget** | `-n 4` caps ONE pytest run. Nobody capped the NUMBER of concurrent runs. Measured: a background full lane at `-n 4` plus several dispatched units each running their own `-n 4` with Chromium reached **10 python processes, 5.6 GB, 76.4% RAM** on the machine running two live trading instances. Each decision was locally reasonable and the total was never computed. Stopping the lane and one unit: 6 processes, 1.0 GB, 61.5%. **Ask: how many heavy consumers will exist AT ONCE, not how parallel is each one?** Measure RAM by family BEFORE adding load, never after a complaint. Throughput on a box the operator trades from is not free, and a resource ceiling is the operator's to feel first only if the instrument never looked. **ENFORCED IN PYTHON** — `~/.claude/hooks/block_heavy_run.py` denies the call; see *Rows enforced in Python* below. See C11, C27, C50, C65 |
+| **C98** **a per-run cap mistaken for a total budget** | `-n 4` caps ONE pytest run. Nobody capped the NUMBER of concurrent runs. Measured: a background full lane at `-n 4` plus several dispatched units each running their own `-n 4` with Chromium reached **10 python processes, 5.6 GB, 76.4% RAM** on the machine running two live trading instances. Each decision was locally reasonable and the total was never computed. Stopping the lane and one unit: 6 processes, 1.0 GB, 61.5%. **Ask: how many heavy consumers will exist AT ONCE, not how parallel is each one?** Measure RAM by family BEFORE adding load, never after a complaint. Throughput on a box the operator trades from is not free, and a resource ceiling is the operator's to feel first only if the instrument never looked. **ENFORCED IN PYTHON** — `~/dev_harness/hooks/block_heavy_run.py` denies the call; see *Rows enforced in Python* below. See C11, C27, C50, C65 |
 | **C122** **a name-set comparison across a Windows shell boundary, where no line can equal its partner** | A unit compared two name lists for collisions before adding exports to `src/competition/__init__.py`. `python -c` printed one side, a shell pipeline filtered the other, and the comparison reported **zero** collisions. Re-measured on this host: the printed name writes 16 bytes and ends in a carriage return and a newline, the same name taken from the source file with `grep -o` writes 15 bytes and ends in a newline only, and `comm -12` over the two sorted lines reports **0** matches for a name that is in both files. Strip the carriage returns off the printed side and the same comparison reports **1**. The true figure was **four** collisions, recorded in commit `fbd7421d`: ABSENT_READERS, ABSENT_READER_NOTES and FIGURE_ABSENT from world_turn, ABSENT_MECHANISMS from dungeon_entry. **Three of the four hold a different value in each module** — only FIGURE_ABSENT is None on both sides — so the zero would have replaced three working exports with three different values. **Ask: does either side of this comparison cross a Python-print to shell-filter boundary on Windows?** Strip carriage returns on both sides before comparing, and feed the comparison a name known to be in both files to prove it can report. C76 is the sibling and the inverse: there the pipe ADDS the line endings it counts, here the endings make two identical names compare unequal. See C76, C15, C31, C111 |
 | **C123** **a document's subheading namespace is the whole page, not the new section** | The documentation archetype refused a write on `docs/manual/08-tabs/proof-of-accumulation.md` with one **high** finding, rule DOC005, because a new dated section reused a subheading an earlier dated section on the same page already carried. Measured with that rule's own pattern: the page holds **613** heading texts across **67** dated sections, and **12** of those headings name what is still owed, so the obvious heading for a new entry is already taken. The rule matches every heading level, folds case, and does not skip fenced blocks — **5** of the 613 are comment lines inside code fences, and the rule refuses two of those that match each other just the same. Two earlier commits on the same page carry the same repair: `585fa591` renamed a clock heading so no two headings shared text, and `edccee9a` changed a heading after the archetype reported one high finding. The page holds **0** repeated heading texts today, so every refusal held. **Ask: is this subheading already used anywhere on the page, not just in my own section?** Search the whole file for the heading text before writing it, and expect the refusal when two sections share one. See C97, C25, C56, C33 |
 | **C124** **an archetype invocation given several files reports on the first and exits 0** | Measured on this host: `python -m dev_harness.harness.coding_archetype harness_fixtures/coding_archetype/known_good.py harness_fixtures/coding_archetype/known_bad.py` exits **0**, answers `passed=True`, `scanned=True` and **7** findings, and its `target` field names `known_good.py` alone. The same `known_bad.py` passed on its own exits **1**, so the second file was never opened and nothing in the JSON says so — `target` is one path, not a list. A seven-file call therefore reads as seven passes with six files unscanned, and it was reported by a unit that had just made one. **Ask: does this JSON's `target` name the file I am about to claim a verdict for?** One file per call, one JSON per file, and read `target` before quoting `passed`. See C57, C38, C30 |
@@ -270,10 +270,10 @@ hook; a row needing judgement about the code stays prose.
 
 | row | hook | what it refuses |
 |---|---|---|
-| **C98** per-run cap read as a budget | `~/.claude/hooks/block_heavy_run.py` | a heavy run above the RAM ceiling, a heavy run while another is resident, and `-n auto` outright |
-| **C96** stdin through a pipe | `~/.claude/hooks/block_heredoc.py` | `\| python <script>.py`, which exits 0 without ever reading a payload |
-| heredocs and `python -` | `~/.claude/hooks/block_heredoc.py` | the call, before it hangs on stdin |
-| unanchored docstrings | `~/.claude/hooks/block_unanchored_docstring.py` | a NEW docstring with a justification clause, a banner heading, over the sentence cap, or a sentence naming no identifier from the file |
+| **C98** per-run cap read as a budget | `~/dev_harness/hooks/block_heavy_run.py` | a heavy run above the RAM ceiling, a heavy run while another is resident, and `-n auto` outright |
+| **C96** stdin through a pipe | `~/dev_harness/hooks/block_heredoc.py` | `\| python <script>.py`, which exits 0 without ever reading a payload |
+| heredocs and `python -` | `~/dev_harness/hooks/block_heredoc.py` | the call, before it hangs on stdin |
+| unanchored docstrings | `~/dev_harness/hooks/block_unanchored_docstring.py` | a NEW docstring with a justification clause, a banner heading, over the sentence cap, or a sentence naming no identifier from the file |
 
 `block_heavy_run.py` denies with exit 2 and a reason on stderr, the same shape
 `block_heredoc.py` uses:
@@ -882,3 +882,120 @@ came from.** Where the report shows a before-and-after table, that is the
 reading. Where it shows a sentence describing the change, ask for the table.
 
 The tell is a figure appearing in a report's prose and in none of its tables.
+
+## C99 — an alert read as naming the exposure
+
+Ten advisories arrived, every one of them naming the same file. That file was a
+lock nobody installed from: a prior reading found zero readers for it, and no
+commit in the repository's life installed from it. Retiring it closes all ten
+alerts and changes nothing about what a build installs.
+
+The exposure was one level away, in the declared lower bounds, and no alert
+reads a lower bound.
+
+```
+alerts raised                              10
+manifest they name       a lock with zero readers
+floors covered by the same advisory         4
+alerts naming a floor                       0
+```
+
+Deleting the named file would have closed every alert and left the project
+declaring that it accepts the versions the advisories name. The report would
+have read clean.
+
+The rule: **an alert names where a version was found, never where it was
+accepted.** Read the declaration the resolver reads, and check the advisory
+range against that.
+
+The tell is an alert naming a file that nothing imports, nothing installs from,
+or that a branch is already removing. The relief of a closing alert is the
+feeling to distrust.
+
+## C100 — an installed version read as a declared one
+
+The same ten advisories were checked by asking what this machine has installed.
+One package answered with the published fix, which read as safe. The other
+answered with the version immediately below the fix, which read as exposed.
+
+Both readings answered a question nobody had asked. What a resolver may install
+is set by the floor, and the floor accepted versions four years older than
+either answer.
+
+```
+declared floor      certifi>=2024.2.2     pillow>=10.0.0
+installed here      2026.10.18            13.0.0
+advisory covers     < 2026.10.19          < 13.0.0
+the floor is        inside the range      inside the range
+```
+
+Reading the second column makes one package look resolved. Reading the first
+shows both are open, and shows it for every machine rather than this one.
+
+The rule: **a dependency question is answered from the declaration, not from the
+environment.** This machine resolved its versions on some past day under some
+past index state, and that is one sample of what the declaration permits.
+
+The tell is a version figure that came from an import or from `pip list` rather
+than from the file that declares the dependency.
+
+## C101 — a frozen build read by listing its folder
+
+Two issues each claimed a package is missing from the downloaded application. A
+folder listing of the build agreed with both, and it was about to agree with a
+third that nobody had claimed.
+
+```
+                 folder listing   archive table of contents
+ccxt                          0                         427
+httpx                         0                          23
+scipy                         2                         500
+statsmodels                   1                         163
+```
+
+`ccxt` is the exchange library, declared in the core dependency list and named
+as a hidden import by the build definition. The folder listing reads zero for
+it, because the freezer puts pure Python into an archive embedded in the
+executable and only compiled extensions land in a folder. The listing answers
+the same zero for a package that ships and one that does not.
+
+The near-miss is the point. A reported absence of `ccxt` from the shipped
+application would have been a critical claim about the order path, resting on a
+command that cannot see any pure-Python package at all.
+
+The rule: **read a frozen build through the freezer's own archive viewer.** One
+command lists every entry, and a count taken in that list is a reading of what
+ships.
+
+```
+python -m PyInstaller.utils.cliutils.archive_viewer --list --recursive <exe>
+```
+
+The tell is a zero taken from a directory walk of a packaged application. The
+control that caught it was a package known to be declared and known to be
+needed; it read zero, and that is what voided the other two readings rather than
+confirming them.
+
+## C102 — a draft gated from outside the repository
+
+Every draft this session was written to a scratch directory and gated there. One
+of them cited a real file and the rule reported it absent.
+
+```
+gated from the scratch directory    hallucination 1   (the path exists)
+gated from a directory in the repo  hallucination 0
+```
+
+The rule finds the project root by walking up for a marker file. A scratch
+directory has none, so every path in the page resolves against nothing. A real
+citation reports as dead, and the finding reads exactly like a true one.
+
+The inverse is the dangerous half: in that condition the rule cannot confirm any
+path, so a page full of invented citations gates the same as a correct one.
+
+The rule: **gate a draft from a gitignored directory inside the repository**,
+which is what the authoring discipline already says. The existing catalogue row
+on this shape recorded 76 false dead paths read the same way, and this session
+re-ran it anyway.
+
+The tell is a hallucination finding naming a path that `ls` can see.

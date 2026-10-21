@@ -48,12 +48,14 @@ QPainter. No browser and no WebEngine dependency.
 
 Four record types carry everything drawn over the candles.
 
+Three do now. `GridLine` is gone, and no painter in either build ever
+drew from it.
+
 | Record | Draws |
 | ------ | ----- |
 | `Candle` | One open, high, low, close and volume bar |
 | `TradeMarker` | An executed buy or sell |
 | `PositionMarker` | A holding, with a distinct icon for invisible and visible |
-| `GridLine` | A buy or sell level |
 
 The position record is the one that carries the visibility mode, which is what
 tells an invisible holding from one resting on the book.
@@ -81,7 +83,6 @@ The setters name what they place.
 | `add_marker` | One executed fill |
 | `set_trade_history_markers` | The fills already on record |
 | `set_positions` | The holdings, invisible and on book |
-| `set_grid_lines` | The buy and sell levels |
 | `set_tranche_floors` | The standing fold-tranche floors |
 | `set_target_balance_lines` | The dollar target |
 | `set_fire_armed_state` | An armed manual fire |
@@ -796,24 +797,27 @@ reads one digest in both.
 
 They were not reworded. They are quoted here.
 
-`docs/manual/08-tabs/asset-charts.md:97` - "The chart calls the engine rather
-than computing anything of its own. Five series arrive that way, and an entry
-with no value is skipped when the panel paints." Fourteen series arrive that
-way now.
+`docs/manual/08-tabs/asset-charts.md, under 'Indicators on the chart'` - "The
+chart calls the engine rather than computing anything of its own. Five series
+arrive that way, and an entry with no value is skipped when the panel paints."
+Fourteen series arrive that way now.
 
-`docs/manual/08-tabs/asset-charts.md:112` - "The toolbar under each panel
-holds the timeframe picker and eight toggles." Fourteen toggles.
+`docs/manual/08-tabs/asset-charts.md, under 'Indicators on the chart'` - "The
+toolbar under each panel holds the timeframe picker and eight toggles."
+Fourteen toggles.
 
-`docs/manual/08-tabs/asset-charts.md:128` - "Volume starts on and the other
-seven start off." Eleven start on and three start off.
+`docs/manual/08-tabs/asset-charts.md, under 'Indicators on the chart'` -
+"Volume starts on and the other seven start off." Eleven start on and three
+start off.
 
-`docs/manual/08-tabs/asset-charts.md:146` - "Sling and BBull paint a
-placeholder shape rather than the indicator, and each says as much in its own
-tooltip." Both paint the indicator, and neither tooltip says placeholder.
+`docs/manual/08-tabs/asset-charts.md, under 'Indicators on the chart'` -
+"Sling and BBull paint a placeholder shape rather than the indicator, and each
+says as much in its own tooltip." Both paint the indicator, and neither
+tooltip says placeholder.
 
-`docs/manual/08-tabs/asset-charts.md:552` - "The starting states are six on
-and two off: BB, Vortex, MACD, SRsi, Ichi and Vol on; Sling and BBull off."
-Eleven on and three off.
+`docs/manual/08-tabs/asset-charts.md, under 'The eight toggles reach the
+painter'` - "The starting states are six on and two off: BB, Vortex, MACD,
+SRsi, Ichi and Vol on; Sling and BBull off." Eleven on and three off.
 
 **Figures.** `artifacts/u55/C2/` holds the Qt window and the React page at
 1400 by 900 and at 1960 by 1200, the painter's image, and one venue PNG,
@@ -1090,13 +1094,13 @@ tablet by the registry's own rollup:
 
 They were not reworded. They are quoted here.
 
-`docs/manual/08-tabs/asset-charts.md:76` - "The setters name what they
-place." The table under it lacks `set_landing_strip`, which places the
-landing strip band.
+`docs/manual/08-tabs/asset-charts.md, under 'The chart widget'` - "The setters
+name what they place." The table under it lacks `set_landing_strip`, which
+places the landing strip band.
 
-`docs/manual/08-tabs/simulator.md:8634` - "One definition, `MARK_GLYPHS`,
-names both marks, and both hosts read it". The definition now lives in the
-chart's surface, and the Charts painter is a third reader.
+`docs/manual/08-tabs/simulator.md, under 'The two glyphs'` - "One definition,
+`MARK_GLYPHS`, names both marks, and both hosts read it". The definition now
+lives in the chart's surface, and the Charts painter is a third reader.
 
 **Figures.** `artifacts/u55/C3/` holds the Qt window and the React page at
 1400 by 900 and at 1960 by 1200, the painter's image at ratio 1.0 and 2.0
@@ -1258,10 +1262,10 @@ list, the widget's size, the direction, the candle count and the variant.
 
 It was not reworded. It is quoted here.
 
-`docs/manual/08-tabs/asset-charts.md:266` - "An ATA-SMP market has no bot
-behind it, so the chart draws its candles without the trade markers, the
-target lines, the tranche floors and the fire glow that a traded asset
-carries." The sentence holds, and holds on screen now: on `5819ced6` the last
+`docs/manual/08-tabs/asset-charts.md, under 'a Live / ATA-SMP toggle over the
+arrows'` - "An ATA-SMP market has no bot behind it, so the chart draws its
+candles without the trade markers, the target lines, the tranche floors and
+the fire glow that a traded asset carries." The sentence holds, and holds on screen now: on `5819ced6` the last
 bot's 55 floors, its target line and its glow stayed drawn when the list moved
 to a called market, and the candles were fetched. A called market's candles
 are the call's own, and its picture carries the call's overlays, badge, strip
@@ -2499,6 +2503,9 @@ one it cannot, and `candle_rows` keeps those it could.
 is written and read zero times, and `GridLine` is constructed zero times, in both
 builds. Layer 2 of #230 is unbuilt.
 
+Layer 2 is built now, and the setter that sentence described is gone. The
+section below quotes what went with it.
+
 ### The zero a bot carries before its first fetch
 
 `src/trading/container/config.py` declares `current_price: float = 0.0`, so a bot
@@ -2628,3 +2635,91 @@ It was not reworded. It is quoted here.
 
 "Layer 2 of #230 is unbuilt." - the bullseye list is removed and the grid line
 list stays, named above with the published fields that hold it.
+
+## 2026-10-20 - #230 - the grid line list, its setter and its published field go
+
+### What went, and what read it first
+
+Nothing read the list. `_grid_lines` carried two writes and no reads.
+`grid_lines` on the page's model carried two writes and one read, and that read
+took the list's own length for `grid_lines_held`. `set_grid_lines` had no caller
+in either build, and `GridLine` was constructed nowhere.
+
+The list, the setter, the record type and the published field are gone from both
+builds. `native_chart.js` no longer names `grid_lines_held` among its declared
+fields.
+
+### Why both sides had to change in one step
+
+`native_chart.js`, in `checkFields`, walks every declared field and raises a
+missing-field fault on one the frame does not carry. Driven in node against the
+real served frame, the page before this change reports no fault on the frame as
+served and **one** fault, `grid_lines_held: missing`, on a frame with the field
+stripped. The page after this change reports no fault either way. Removing the
+field from the surface alone would have faulted on every frame.
+
+### What the operator sees, read off the pixels
+
+One chart rendered through its own `paintEvent` at 1000 by 630, offscreen, with
+the home directory redirected. A clean series of thirty readable candles draws
+**0 differing pixels** across all 630000 of them, with 298608 ink pixels before
+and after.
+
+| the control | pixels differing |
+| --- | --- |
+| the same series rendered twice | 0 |
+| a chart holding no candles | 583542 |
+| twenty candles instead of thirty | 77705 |
+| a different symbol in the header | 1181 |
+
+The offscreen platform reports no font family, so the run names six of the host's
+own font files to the Qt font database and the database then reports five
+families. The different-symbol row is what proves the comparison reads letters
+and not boxes.
+
+### What the frame carries
+
+One real request answered by `serve`, over the real registry, written by
+`encode_frame`. The frame still says ok and still ends in one newline. It
+carried 47 fields and now carries 46. `grid_lines_held` is the only field gone,
+no field arrived, and no other field's value moved.
+
+### The ruling stays
+
+The dotted price ruling is not this list. `src/gui/native_chart.py`, in
+`paint_to`, steps it from the fitted price range, and
+`src/gui/main_tabs/native_chart_surface.py`, in `price_grid`, answers the same
+steps for the page, which draws them in `src/gui/web/native_chart.js`, in
+`GridLines`. The page reads seven ticks at a step of five before and after.
+
+### Readings this removal declares
+
+`STEP_NAMES` in `src/gui/main_tabs/native_chart_surface.py` is read zero times.
+Only the one entry naming the deleted setter went with it.
+
+`refused_candles` is in the frame and is not in the page's declared fields, so
+`checkFields` does not guard it.
+
+The docs archetype's hallucination rule checks a cited path, never a cited
+symbol. A page citing four symbols absent from disk reports no hallucination
+finding while its paths resolve.
+
+No venue was contacted, no bot was started, and no order was placed, priced,
+previewed, amended or cancelled.
+
+### Two rows and two sentences this entry overtakes
+
+They were not reworded. They are quoted here.
+
+"| `GridLine` | A buy or sell level |" - the buy and sell levels the chart draws
+are `PositionMarker` records, placed by `set_positions`.
+
+"| `set_grid_lines` | The buy and sell levels |" - `set_grid_lines` had no caller
+in either build.
+
+"That row stays open." - the operator authorised the removal, and the list, its
+setter and the published field went together.
+
+"the bullseye list is removed and the grid line list stays, named above with the
+published fields that hold it." - the grid line list is removed too, and
+`grid_lines_held` is gone from the frame and from the declared fields.

@@ -14,7 +14,6 @@
   var ERROR_TEXT = "error_text";
   var FIRE_ARMED_STATE = "fire_armed_state";
   var FLAGS = "flags";
-  var GRID_LINES_HELD = "grid_lines_held";
   var HEADER_PARTS = "header_parts";
   var HEADER_TEXT = "header_text";
   var MARKERS = "markers";
@@ -62,7 +61,6 @@
     ERROR_TEXT,
     FIRE_ARMED_STATE,
     FLAGS,
-    GRID_LINES_HELD,
     HEADER_PARTS,
     HEADER_TEXT,
     MARKERS,

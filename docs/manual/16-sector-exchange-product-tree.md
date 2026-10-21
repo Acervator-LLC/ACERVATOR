@@ -33,14 +33,14 @@ graph TD
 What declares each level:
 
 ```
-src/trading/ata_spm.py:59                        ASSET_CLASSES, the six sectors
-src/gui/main_tabs/asset_class_surface.py:83      LAYERED_CLASSES, the same six
-src/exchange/ccxt_connector.py:82                SUPPORTED_EXCHANGES, 15 ids
-src/gui/main_tabs/asset_class_surface.py:64      EQUITY_VENUES, 9 ids
-src/gui/main_tabs/asset_class_surface.py:121     EXTRA_VENUE_CLASSES
-src/exchange/market_rules_store.py:94            record_venue, the product writer
-src/exchange/market_rules_store.py:46            CLASS_FIELD, a row's sector
-src/gui/main_tabs/bot_wizard_surface.py:1394     recorded_market_rows, the reader
+src/trading/ata_spm.py, in ASSET_CLASSES                              the six sectors
+src/gui/main_tabs/asset_class_surface.py, in LAYERED_CLASSES          the same six
+src/exchange/ccxt_connector.py, in SUPPORTED_EXCHANGES                15 ids
+src/gui/main_tabs/asset_class_surface.py, in EQUITY_VENUES            9 ids
+src/gui/main_tabs/asset_class_surface.py, in EXTRA_VENUE_CLASSES
+src/exchange/market_rules_store.py, in record_venue                   the product writer
+src/exchange/market_rules_store.py, in CLASS_FIELD                    a row's sector
+src/gui/main_tabs/bot_wizard_surface.py, in recorded_market_rows      the reader
 ```
 
 Each level is populated at a different moment. The sector list is a module
@@ -48,17 +48,17 @@ constant, so it exists at import. The venue list is read on every call, so a
 venue added to either registry is answered at once. A product row is written
 only when a venue read answers.
 
-`src/exchange/ccxt_connector.py:1643` — where a product row is written
+`src/exchange/ccxt_connector.py, in get_markets` — where a product row is written
 
 ```python
 record_venue(self._exchange_id, markets, classes=classes)
 ```
 
-OVERTAKEN, and the citation above is kept as written. That call now stands at
-`src/exchange/ccxt_connector.py:1756`, moved by the sector rules added above it.
-The line it writes is unchanged.
+OVERTAKEN, and the citation above is kept as written. That call now stands in
+`src/exchange/ccxt_connector.py, in get_markets`, moved by the sector rules
+added above it. The line it writes is unchanged.
 
-The broker path writes its own rows at `src/stocks/broker_base.py:238`.
+The broker path writes its own rows at `src/stocks/broker_base.py, in record_markets`.
 
 OVERTAKEN, and the citation above is kept as written. That write stands at
 `src/stocks/broker_base.py`, in `record_markets`, and it runs once the broker's
@@ -74,7 +74,7 @@ added.
 > product categories...its my invention or renaming) which are Indices and
 > Futures / Perps."
 
-`src/trading/ata_spm.py:59` — the declaration
+`src/trading/ata_spm.py, in ASSET_CLASSES` — the declaration
 
 ```python
 ASSET_CLASSES = (
@@ -91,7 +91,7 @@ Every one of the six stands behind its own trading layer, so the stack holds six
 layers. Three retired names resolve onto a live sector rather than standing as
 sectors of their own.
 
-`src/trading/ata_spm.py:83` — the retired names
+`src/trading/ata_spm.py, in RETIRED_CLASSES` — the retired names
 
 ```python
 RETIRED_CLASSES = {
@@ -226,7 +226,7 @@ repository has read.
 Coinbase alone, through the same extra-sector entry. Its commodity rows are
 classed off the venue's own label for what a contract is written on.
 
-`src/exchange/ccxt_connector.py:214` — the labels that answer Commodities
+`src/exchange/ccxt_connector.py, in COMMODITY_FUTURES_ASSET_TYPES` — the labels that answer Commodities
 
 ```python
 COMMODITY_FUTURES_ASSET_TYPES: frozenset = frozenset(
@@ -239,9 +239,10 @@ COMMODITY_FUTURES_ASSET_TYPES: frozenset = frozenset(
 ```
 
 OVERTAKEN, and the citation above is kept as written, here and in the source
-table at the foot of this page. That set now stands at
-`src/exchange/ccxt_connector.py:218`, moved by the index and equity label sets
-declared beside it. Its three members are unchanged.
+table at the foot of this page. That set now stands under
+`src/exchange/ccxt_connector.py, in COMMODITY_FUTURES_ASSET_TYPES`, moved by
+the index and equity label sets declared beside it. Its three members are
+unchanged.
 
 ### Forex, Indices and Futures / Perps, no venue each
 
@@ -284,7 +285,7 @@ so he can add credentials for a venue nothing has reached. **Nothing asks the
 second question yet.** A reader that must know a product exists before it offers
 a market is the reader that will.
 
-`src/gui/main_tabs/asset_class_surface.py:128` — the registry half
+`src/gui/main_tabs/asset_class_surface.py, in EXTRA_VENUE_CLASSES` — the registry half
 
 ```python
 EXTRA_VENUE_CLASSES = {
@@ -468,7 +469,7 @@ The venue's label beats any asset code, and one perpetual needs it.
 which is also the currency code for the Armenian dram. Its label names equities,
 so it answers Stocks and never Forex.
 
-`src/exchange/ccxt_connector.py:456` — the order above
+`src/exchange/ccxt_connector.py, in market_asset_class` — the order above
 
 ```python
     labels = futures_asset_types(market)
@@ -564,7 +565,7 @@ Commodities, spot                               the base is a metal code
 The richer label is the plural one. Five perpetuals read an unknown value under
 the single label and name two families under the list, so the list is read first.
 
-`src/exchange/ccxt_connector.py:214` — the two keys, the list read first
+`src/exchange/ccxt_connector.py, in FUTURES_ASSET_TYPES_KEY` — the two keys, the list read first
 
 ```python
 FUTURES_ASSET_TYPES_KEY = "futures_asset_types"
@@ -575,7 +576,7 @@ from its public currency endpoint and held in the repository so the classifier
 reaches no venue. Four of the 174 name a precious metal by the troy ounce rather
 than a currency, and those four answer Commodities.
 
-`src/exchange/ccxt_connector.py:262` — the four metal codes
+`src/exchange/ccxt_connector.py, in PRECIOUS_METAL_CODES` — the four metal codes
 
 ```python
 PRECIOUS_METAL_CODES: frozenset = frozenset({"XAG", "XAU", "XPD", "XPT"})
@@ -587,7 +588,7 @@ whether a token redeems for a currency or a metal, so nine entries name the
 redemption each token's issuer publishes. A token outside those nine answers
 Crypto, which is what every token answered before.
 
-`src/exchange/ccxt_connector.py:266` — the nine
+`src/exchange/ccxt_connector.py, in TOKEN_UNDERLYING_CODES` — the nine
 
 ```python
 TOKEN_UNDERLYING_CODES: dict[str, str] = {
@@ -670,7 +671,7 @@ answers anything.
 **No recorded row carries a sector label, so the product level answers nothing
 per sector today.** The field is declared and nothing has written it:
 
-`src/exchange/market_rules_store.py:46` — the field a row records its sector under
+`src/exchange/market_rules_store.py, in CLASS_FIELD` — the field a row records its sector under
 
 ```python
 CLASS_FIELD = "asset_class"
@@ -729,10 +730,11 @@ written. The venue read that rewrote it has happened.
 
 OVERTAKEN, and the two blocks and the sentences above are kept as written. No
 function named `recorded_market_rows` is in the tree, count 0. The reader that
-answers a venue's recorded sectors is `recorded_classes` at
-`src/exchange/market_rules_store.py:152`, which answers symbol to sector for one
-venue, and `recorded_venue_classes` at
-`src/gui/main_tabs/asset_class_surface.py:373` folds that into the set of
+answers a venue's recorded sectors is
+`src/exchange/market_rules_store.py, in recorded_classes`, which answers symbol
+to sector for one venue, and
+`src/gui/main_tabs/asset_class_surface.py, in recorded_venue_classes` folds
+that into the set of
 sectors one venue's rows carry. The seven row counts above stand; the name they
 were read through does not.
 
@@ -852,7 +854,7 @@ commodities     whole             futures_perps    whole
 ```
 
 The seven rows behind those answers are declared at
-`src/trading/scrumming/sizing.py:80`, and the dated entry in
+`src/trading/scrumming/sizing.py, in CITED_UNIT_RULES`, and the dated entry in
 [15-venue-compatibility.md](15-venue-compatibility.md) describes the order of
 resolution and what the whole-unit variant does with it.
 
@@ -957,12 +959,12 @@ claim that the list moves is confirmed; the figure 209 is not.
 
 | Figure | Source |
 | ------ | ------ |
-| the six sectors | `src/trading/ata_spm.py:59` |
-| the three retired names | `src/trading/ata_spm.py:83` |
-| 15 crypto venues | `src/exchange/ccxt_connector.py:82`, read through `crypto_venues` |
-| 9 equity venues | `src/gui/main_tabs/asset_class_surface.py:64` |
+| the six sectors | `src/trading/ata_spm.py, in ASSET_CLASSES` |
+| the three retired names | `src/trading/ata_spm.py, in RETIRED_CLASSES` |
+| 15 crypto venues | `src/exchange/ccxt_connector.py, in SUPPORTED_EXCHANGES`, read through `crypto_venues` |
+| 9 equity venues | `src/gui/main_tabs/asset_class_surface.py, in EQUITY_VENUES` |
 | the per-sector venue counts | `venues_for_class`, one running process |
-| the commodity labels | `src/exchange/ccxt_connector.py:214` |
+| the commodity labels | `src/exchange/ccxt_connector.py, in COMMODITY_FUTURES_ASSET_TYPES` |
 | 1,144 rows and every census over them | the recording, read and never written |
 | the per-sector row counts | `recorded_market_rows`, one running process |
 | every `product_type` count | the public products endpoint, one call each |
@@ -976,7 +978,7 @@ claim that the list moves is confirmed; the figure 209 is not.
 | the equity order rules | the venue's create-order reference, not called |
 | the Deribit service details | the issue, carried over unconfirmed |
 | the six venue counts on this branch | `venues_for_class`, one running process |
-| Coinbase's six registered sectors | `src/gui/main_tabs/asset_class_surface.py:128` |
-| the recorded half of a venue's sectors | `src/gui/main_tabs/asset_class_surface.py:373` |
-| what a venue does serve | `src/gui/main_tabs/asset_class_surface.py:421` |
+| Coinbase's six registered sectors | `src/gui/main_tabs/asset_class_surface.py, in EXTRA_VENUE_CLASSES` |
+| the recorded half of a venue's sectors | `src/gui/main_tabs/asset_class_surface.py, in recorded_venue_classes` |
+| what a venue does serve | `src/gui/main_tabs/asset_class_surface.py, in venue_served_classes` |
 | the drawn Forex panel and its 0-pixel pairs | the Settings dialog, one running process |

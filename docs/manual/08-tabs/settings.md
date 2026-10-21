@@ -1044,23 +1044,25 @@ wizard boxes   Qt 7   React 7   with no store at all 2
 old file       loads, theme carried, box opens at 2
 ```
 
-The figure stops at the bot's phantom coordinator and holds no lock yet. Nothing
-in the application calls the method that appends a lock, so the countdown never
-starts and the lock test answers False on every tick.
+The figure stops at the bot's phantom coordinator and no code reads it. The lock
+guard that read it has been retired, so the coordinator keeps the number, holds
+no lock, and has no method that makes one.
 
-`src/trading/phantom_balance.py` — `create_lock`, which has no caller
+`src/trading/phantom_balance.py` — the coordinator keeps the figure
 
 ```python
-count = candle_count or self.lock_candle_count
+def __init__(self, lock_candle_count: int = 2, bus=None) -> None:
+    self.lock_candle_count = lock_candle_count
+    self._locks: list[TradeLock] = []
 ```
 
-Driven: a fresh coordinator holds no locks and reports none on an hourly chart.
-Called by hand at 7 it appends a lock of seven candles and the same test then
-answers True, so the figure sizes a real lock the moment something creates one.
+Driven on two coordinators, one at the default and one at seven. Each carries
+the figure it was built with and each reports an empty lock list.
 
 ```
-fresh coordinator      locks 0     is_locked("1h", BULLISH) False
-create_lock by hand    candles 7   is_locked("1h", BULLISH) True
+coordinator at 2   lock_candle_count 2   active locks []
+coordinator at 7   lock_candle_count 7   active locks []
+lock members left on the coordinator   _locks   get_active_locks   lock_candle_count
 ```
 
 The wizard's own key still stops before the bot. The bot configuration declares
@@ -3471,9 +3473,9 @@ so the strip list is unchanged.
 
 `increment_style` names a field on two objects that never meet. `AppSettings`
 held the page's word. `BotConfig` declares its own at
-`src/trading/container/config.py:59`, `_BOT_CONFIG_SCRUMMING_ONLY_FIELDS` names
+`src/trading/container/config.py, in _BOT_CONFIG_SCRUMMING_ONLY_FIELDS`, `_BOT_CONFIG_SCRUMMING_ONLY_FIELDS` names
 it at `:307` so an Extractor is refused it, and
-`src/trading/container/restore.py:220` copies it out of a saved bot. All three
+`src/trading/container/restore.py, in restore_bots_from_state` copies it out of a saved bot. All three
 stay. The page never wrote any of them, and a bot built through the real
 creation path holds the same `linear` it held before.
 
@@ -3504,7 +3506,7 @@ grid legacy. This one stayed on `BotConfig` instead, unread.
 
 One place still carries the word `logarithmic` for a spacing, and it carries it
 only to replace it. `_sanitize_deprecated_kwargs` at
-`src/trading/container/config.py:577` promotes
+`src/trading/container/config.py, in _sanitize_deprecated_kwargs` promotes
 `stack_spacing_mode="logarithmic"` to `"quadratic"`.
 
 ### A store carrying the key after the removal
@@ -3566,17 +3568,17 @@ its stated job rather than a fault.
 ### The bot-side spelling stays on the strip list
 
 `position_count` is the name a bot-side kwarg would carry, and
-`_DEPRECATED_KWARGS` in `src/trading/container/config.py:384` holds it beside
-unit 9's `position_distance_pct` at `:385`. Both stay on the list, so a
+`src/trading/container/config.py, in _DEPRECATED_KWARGS` holds it beside
+`position_distance_pct`. Both stay on the list, so a
 `bot_state.json` still carrying either key restores without a `TypeError`.
 `_sanitize_deprecated_kwargs` drops `position_count` before
 `BotConfig.__init__`, and `BotConfig` declares no field of that name and no
 field of this row's name.
 
 The word belongs to the retired Grid Bot. The module docstring of
-`src/gui/bot_wizard.py:6-7` names the mode and its rows: "Grid Bot: Investment
+The module docstring of `src/gui/bot_wizard.py` names the mode and its rows: "Grid Bot: Investment
 Amount, Position Count/Distance/Increment". `BotMode` at
-`src/trading/container/config.py:39-41` declares `SCRUMMING` and `EXTRACTOR`
+`src/trading/container/config.py, in BotMode` declares `SCRUMMING` and `EXTRACTOR`
 alone. With this row gone, all three of that group are off the page.
 
 ### No wizard control counts the positions a bot opens with
@@ -3597,7 +3599,7 @@ The meaning, the range and the default all differ, so the row had no wizard
 field to open at its figure.
 
 One site in the repository counts positions, and it counts ones already open.
-`open_position_count` at `src/gui/main_tabs/stock_main_window_surface.py:545`
+`src/gui/main_tabs/stock_main_window_surface.py, in open_position_count`
 reads a live status list and reports how many positions stand now, on the stock
 window. That is a runtime count rather than an opening count, and it never
 touches this row's name.
@@ -3672,17 +3674,17 @@ Seven sites name the key. One of them reads it outside the Settings dialog.
 
 | Site | What it does with the figure |
 | ---- | ---------------------------- |
-| `src/core/settings.py:157` | declares `default_target_balance: float = 200.0` |
-| `src/gui/main_tabs/settings_dialog_surface.py:467` | the React model's save and load row |
-| `src/gui/settings_dialog.py:1162-1165` | `_stored_rows`, the read on Save and the write on load |
-| `src/gui/bot_wizard.py:810` | the wizard's Target Balance field opens here |
-| `src/gui/main_window.py:1735` | writes an override for one wizard opening |
-| `src/gui/main_tabs/bot_wizard_surface.py:1224` and `:1702-1716` | the React wizard module's own read |
-| `src/gui/main_tabs/bot_wizard_surface.py:2768` | names the key in the payload catalogue |
+| `src/core/settings.py, in AppSettings` | declares `default_target_balance: float = 200.0` |
+| `src/gui/main_tabs/settings_dialog_surface.py, in PERSISTED_ROWS` | the React model's save and load row |
+| `src/gui/settings_dialog.py, in _stored_rows` | `_stored_rows`, the read on Save and the write on load |
+| `src/gui/bot_wizard.py, in TradingParamsPage.__init__` | the wizard's Target Balance field opens here |
+| `src/gui/main_window.py, in _adopt_topology_proposal` | writes an override for one wizard opening |
+| `src/gui/main_tabs/bot_wizard_surface.py, in DEFAULT_TARGET_BALANCE_KEY` and `_apply_stored_target_balance` | the React wizard module's own read |
+| `src/gui/main_tabs/bot_wizard_surface.py, in DEFAULT_TARGET_BALANCE_KEY` | names the key in the payload catalogue |
 
 [The tab conversion table](../08-tabs.md) gives the wizard's seam row: both
 builds open `BotCreationWizard`. **+ New Bot** reaches
-`src/gui/bot_wizard.py:810`, and the React wizard module is a second reader that
+`src/gui/bot_wizard.py, in TradingParamsPage.__init__`, and the React wizard module is a second reader that
 the button does not reach.
 
 Nothing under `desktop/` names the row. The control specs travel from Python into
@@ -3695,13 +3697,13 @@ data.
 flowchart LR
   A["Settings row<br/>default_target_balance"] --> B["SettingsManager<br/>settings.toml"]
   B --> C["main_window._create_bot<br/>get_all()"]
-  C --> D["bot_wizard.py:810<br/>Target Balance field"]
+  C --> D["bot_wizard.py, in TradingParamsPage.__init__<br/>Target Balance field"]
   D --> E["TradingParamsPage.get_config<br/>target_balance"]
   E --> F["bot_config_kwargs"]
   F --> G["BotConfig.target_balance"]
 ```
 
-`TradingParamsPage.get_config` at `src/gui/bot_wizard.py:1533` renames the figure
+`src/gui/bot_wizard.py, in TradingParamsPage.get_config` renames the figure
 `target_balance`. From that step on the figure is the bot's own setting.
 
 Driven with $4,321.55 stored:
@@ -3749,8 +3751,8 @@ figure.
 
 `get_all()` is `asdict` of a dataclass that declares the field, so the dict the
 wizard takes always carries the key. `_apply_dict` keeps the declared default for
-a field the file omits. The wizard's own fallback at `src/gui/bot_wizard.py:810`
-fires only where `main_window.py:3185` hands `{}`, which is a run with no
+a field the file omits. The wizard's own fallback at `src/gui/bot_wizard.py, in TradingParamsPage.__init__`
+fires only where `main_window.py, in _create_bot` hands `{}`, which is a run with no
 settings manager, and the fallback gives the same $200.00.
 
 The page's build figure for this control is $1.00, because the spec carries a
@@ -3766,7 +3768,7 @@ Two gaps stand outside this row and sit here as measured facts.
 
 | Gap | What was measured |
 | --- | ----------------- |
-| a text figure in the settings file | `src/gui/settings_dialog.py:1284-1296` catches it, logs "Settings kept the default for default_target_balance", and draws $1.00. `src/gui/bot_wizard.py:810` carries no guard, so `QDoubleSpinBox.setValue(str)` raises `TypeError` and `BotCreationWizard` cannot open. Only an edited file puts a text figure in the store |
+| a text figure in the settings file | `src/gui/settings_dialog.py, in _show_stored` catches it, logs "Settings kept the default for default_target_balance", and draws $1.00. `src/gui/bot_wizard.py, in TradingParamsPage.__init__` carries no guard, so `QDoubleSpinBox.setValue(str)` raises `TypeError` and `BotCreationWizard` cannot open. Only an edited file puts a text figure in the store |
 | a write to a control the page already drew | The React page draws every control with `defaultValue`, which seeds the DOM once. A write from Python after the page is up moved the store and not the drawn figure: the node held 321 while the holder answered 654.0. This row stands clear of it, because `_load_current` runs before the page mounts and nothing writes the row afterwards |
 
 ## 2026-09-12 - Bot Visibility opens the wizard's Order Visibility control
@@ -3781,7 +3783,7 @@ for it.
 
 | | The Settings row | The wizard control |
 | --- | --- | --- |
-| Where | `src/gui/main_tabs/settings_dialog_surface.py:606-613` | `src/gui/bot_wizard.py:674-686` |
+| Where | `src/gui/main_tabs/settings_dialog_surface.py, in CONTROL_SPECS` | `src/gui/bot_wizard.py, in TradingParamsPage.__init__` |
 | Label | `Bot Visibility:` | `Order Visibility:` |
 | Choices | `orderbook`, `internal` | `orderbook`, `internal` |
 | Opens at | `orderbook` | the stored name, `orderbook` when the store holds none |
@@ -3796,10 +3798,10 @@ Four sites name the key. One of them reads it outside the Settings dialog.
 
 | Site | What it does with the name |
 | ---- | ------------------------- |
-| `src/core/settings.py:163` | declares `bot_visibility: str = BotVisibility.ORDERBOOK.value` |
-| `src/gui/settings_dialog.py:1166-1169` | `_stored_rows`, the read on Save and the write on load |
-| `src/gui/main_tabs/settings_dialog_surface.py:468` | the same row on the Qt-free surface |
-| `src/gui/bot_wizard.py:677-683` | the wizard's Order Visibility control opens here |
+| `src/core/settings.py, in AppSettings` | declares `bot_visibility: str = BotVisibility.ORDERBOOK.value` |
+| `src/gui/settings_dialog.py, in _stored_rows` | `_stored_rows`, the read on Save and the write on load |
+| `src/gui/main_tabs/settings_dialog_surface.py, in PERSISTED_ROWS` | the same row on the Qt-free surface |
+| `src/gui/bot_wizard.py, in TradingParamsPage.__init__` | the wizard's Order Visibility control opens here |
 
 Before this section there was no reader outside the dialog. The bare name was
 searched in all 1081 files `git ls-files` reports, and the search was proved
@@ -3813,15 +3815,15 @@ reading sites, so the zero was a measurement.
 flowchart LR
   A["Settings row<br/>bot_visibility"] --> B["SettingsManager<br/>settings.toml"]
   B --> C["main_window._create_bot<br/>get_all()"]
-  C --> D["bot_wizard.py:679<br/>Order Visibility control"]
+  C --> D["bot_wizard.py, in TradingParamsPage.__init__<br/>Order Visibility control"]
   D --> E["TradingParamsPage.get_config<br/>visibility"]
   E --> F["BotConfig.visibility"]
-  F --> G["scrumming_bot.py:338<br/>_invisible"]
+  F --> G["scrumming_bot.py, in ScrummingBot.__init__<br/>_invisible"]
 ```
 
-`BotConfig.visibility` at `src/trading/container/config.py:139` is where the name
+`BotConfig.visibility` at `src/trading/container/config.py, in BotConfig` is where the name
 stops being this setting. From there the bot owns it, and
-`src/trading/scrumming_bot.py:974` changes it live on one bot without touching the
+`src/trading/scrumming_bot.py, in set_visibility_live` changes it live on one bot without touching the
 store.
 
 ### The round trip, with a Save that changed nothing
@@ -3851,7 +3853,7 @@ specs, and the figure is the same before and after.
 | app setting `orderbook`, a saved bot holding `internal` | the restored config holds `internal` |
 
 A restored bot reads `cfg.get("visibility", "orderbook")` from its own saved
-config at `src/trading/container/restore.py:203` and reads no application setting.
+config at `src/trading/container/restore.py, in restore_bots_from_state` and reads no application setting.
 Every `SettingsManager.get` call of the run was recorded with its calling file:
 the wizard and the restore paths read the key no times, and the Settings dialog
 read it once. The recorder saw the read it was meant to see, so the two zeros are
@@ -3877,8 +3879,8 @@ Two absences stand outside this row and sit here as measured facts.
 
 | Absence | What was measured |
 | ------- | ----------------- |
-| the shell's wizard request carries no stored defaults | `src/gui/web/bot_wizard.js:1775` calls `bot_wizard.state` with the step values alone. `src/gui/main_tabs/bot_wizard_surface.py:2796` reads `defaults` from the request, so the Qt-free wizard surface receives an empty bag on every call and `_apply_stored_target_balance` falls back to its built-in figure |
-| the Qt-free wizard surface has no visibility lookup | `src/gui/main_tabs/bot_wizard_surface.py:1702` applies the stored target balance and nothing applies a stored visibility. Its `visibility` combo at `:472-474` carries the same two entries as the Qt one and opens at index 0 |
+| the shell's wizard request carries no stored defaults | `src/gui/web/bot_wizard.js, in press` calls `bot_wizard.state` with the step values alone. `src/gui/main_tabs/bot_wizard_surface.py, in view_model` reads `defaults` from the request, so the Qt-free wizard surface receives an empty bag on every call and `_apply_stored_target_balance` falls back to its built-in figure |
+| the Qt-free wizard surface has no visibility lookup | `src/gui/main_tabs/bot_wizard_surface.py, in _apply_stored_target_balance` applies the stored target balance and nothing applies a stored visibility. Its `visibility` combo at `:472-474` carries the same two entries as the Qt one and opens at index 0 |
 
 ## 2026-09-12 - Enable aggressive trading mode opens the wizard's own box
 
@@ -3891,7 +3893,7 @@ behaviour it names runs on the bot, and the wizard carries a checkbox for it.
 
 | | The Settings row | The wizard box |
 | --- | --- | --- |
-| Where | `src/gui/main_tabs/settings_dialog_surface.py:614-622` | `src/gui/bot_wizard.py:688-699` |
+| Where | `src/gui/main_tabs/settings_dialog_surface.py, in CONTROL_SPECS` | `src/gui/bot_wizard.py, in TradingParamsPage.__init__` |
 | Text | `Enable aggressive trading mode` | `Aggressive Trading (force IOC-limit takers)` |
 | Choices | on, off | on, off |
 | Opens at | off | the stored flag, off when the store holds none |
@@ -3921,10 +3923,10 @@ dialog.
 
 | Site | What it does with the flag |
 | ---- | ------------------------- |
-| `src/core/settings.py:164` | declares `aggressive_trading: bool = False` |
-| `src/gui/settings_dialog.py:1170-1173` | `_stored_rows`, the read on Save and the write on load |
-| `src/gui/main_tabs/settings_dialog_surface.py:469` | the same row on the Qt-free surface |
-| `src/gui/bot_wizard.py:689-691` | the wizard's Aggressive Trading box opens here |
+| `src/core/settings.py, in AppSettings` | declares `aggressive_trading: bool = False` |
+| `src/gui/settings_dialog.py, in _stored_rows` | `_stored_rows`, the read on Save and the write on load |
+| `src/gui/main_tabs/settings_dialog_surface.py, in PERSISTED_ROWS` | the same row on the Qt-free surface |
+| `src/gui/bot_wizard.py, in TradingParamsPage.__init__` | the wizard's Aggressive Trading box opens here |
 
 Before this section there was no reader outside the dialog. The bare name was
 searched in every tracked file, and the search was proved against
@@ -3938,16 +3940,16 @@ reading sites, so the zero was a measurement.
 flowchart LR
   A["Settings row<br/>aggressive_trading"] --> B["SettingsManager<br/>settings.toml"]
   B --> C["main_window._create_bot<br/>get_all()"]
-  C --> D["bot_wizard.py:691<br/>Aggressive Trading box"]
+  C --> D["bot_wizard.py, in TradingParamsPage.__init__<br/>Aggressive Trading box"]
   D --> E["TradingParamsPage.get_config<br/>aggressive_trading"]
   E --> F["BotConfig.aggressive_trading"]
-  F --> G["scrumming_bot.py:339<br/>_aggressive"]
-  G --> H["scrumming_bot.py:4551<br/>OrderType.IOC_LIMIT"]
+  F --> G["scrumming_bot.py, in ScrummingBot.__init__<br/>_aggressive"]
+  G --> H["scrumming_bot.py, in _open_stack_from_scrum<br/>OrderType.IOC_LIMIT"]
 ```
 
-`BotConfig.aggressive_trading` at `src/trading/container/config.py:142` is where
+`BotConfig.aggressive_trading` at `src/trading/container/config.py, in BotConfig` is where
 the flag stops being this setting. From there the bot owns it, and
-`src/trading/scrumming_bot.py:1015` changes it live on one bot without touching
+`src/trading/scrumming_bot.py, in set_aggressive_live` changes it live on one bot without touching
 the store.
 
 ### The round trip on both choices
@@ -3980,7 +3982,7 @@ specs and the page draws 68, the same two figures before and after.
 | the setting off, a saved bot holding on | the restored bot holds on |
 
 A restored bot reads `cfg.get("aggressive_trading", False)` from its own saved
-config at `src/trading/container/restore.py:204` and reads no application
+config at `src/trading/container/restore.py, in restore_bots_from_state` and reads no application
 setting. Every `SettingsManager.get` and `get_all` call of the run was recorded
 with its calling file. The wizard and the restore paths read the key no times,
 and the driver read it once. The recorder saw the read it was meant to see, so
@@ -4009,7 +4011,7 @@ wizard surface opens its box at the build figure whatever the store holds.
 
 | Absence | What was measured |
 | ------- | ----------------- |
-| the shell's wizard request carries no stored defaults | `src/gui/web/bot_wizard.js` never names `defaults`, and `src/gui/main_tabs/bot_wizard_surface.py:2806` reads `defaults` out of the request. A request with no bag left `target_balance` at its built-in 200.0 |
+| the shell's wizard request carries no stored defaults | `src/gui/web/bot_wizard.js` never names `defaults`, and `src/gui/main_tabs/bot_wizard_surface.py, in view_model` reads `defaults` out of the request. A request with no bag left `target_balance` at its built-in 200.0 |
 | the Qt-free wizard surface has no aggressive lookup | `bot_wizard_surface.view_model` with a bag holding the flag on still answered off. `CHECK_FIELDS` at `:425` seeds the box at `False` and nothing reads the store |
 | a hand-edited word in the store reads as on | The store declares a boolean. A word put there by hand ticks the box on the Settings page and in the wizard alike, because both admit the value as `bool(value)` |
 
@@ -4057,7 +4059,8 @@ application setting, and all eight are the dialog or the declaration behind it.
 
 The other 33 name a bot's own field `profit_folding_active`, which is a different
 name and a different thing. That field is read seven times inside the trading
-engine and gates the fold at `src/trading/scrumming_bot.py:781` and `:927`.
+engine and gates the fold in `src/trading/scrumming_bot.py, in _apply_fold_target_growth`
+and in `_preview_fold_growth`.
 
 The nested getter and setter on `SettingsManager` still have no callers. The bare
 names `get_nested` and `set_nested` return two hits each, and both are the
@@ -4101,7 +4104,7 @@ flowchart LR
 ```
 
 No page answers the folding page. The only branch that would is guarded behind
-`is_grid()` at `src/gui/bot_wizard.py:1851`, and `is_grid()` returns `False`
+`src/gui/bot_wizard.py, in is_grid`, and `is_grid()` returns `False`
 always. The Qt-free wizard surface states the same in a named constant,
 `UNREACHABLE_PAGES` at `src/gui/main_tabs/bot_wizard_surface.py:110`, and its
 view model reports the folding page unreachable.
@@ -4124,7 +4127,7 @@ calls the folding page's `get_config`. A Scrumming bot collects 52 keys and
 The carriage from the wizard to the bot is already built, so the field arrives
 the moment the folding page is reached and collected. An existing bot is
 untouched either way: it takes the flag from its own saved config at
-`src/trading/container/restore.py:222`, which reads no application setting.
+`src/trading/container/restore.py, in restore_bots_from_state`, which reads no application setting.
 
 ### The sentence this section leaves standing
 
@@ -4177,7 +4180,7 @@ row's two buttons was named `FOLD_MODE_BUTTONS` while the row it fed wrote `mode
 | the key it wrote | `profit_folding.mode` | the bot config key `fold_mode` |
 
 `fold_mode` stays in `_DEPRECATED_KWARGS` at
-`src/trading/container/config.py:386`, so a `bot_state.json` still carrying it
+`src/trading/container/config.py, in _BOT_CONFIG_EXTRACTOR_ONLY_FIELDS`, so a `bot_state.json` still carrying it
 restores without a `TypeError`. `_sanitize_deprecated_kwargs` drops it before
 `BotConfig.__init__`, and `BotConfig` declares no field of that name. The
 wizard's group is the only control left that writes it, and it sits on the
@@ -4195,14 +4198,14 @@ parameter and none takes one.
 
 | Where | What it does |
 | ----- | ------------ |
-| `src/trading/scrumming_bot.py:767` `_apply_fold_target_growth` | drains fold surplus into one target balance; no positions, no spread |
-| `src/trading/smart_wire.py:589` `distribute_fold_profit` | splits realised fold profit across wires to other bots by per-wire percent |
-| `src/trading/scrumming/wire_routing.py:487` `_spread_wire_usd_over_fold_queue` | adds wire income evenly to every standing fold tranche; the even split is fixed and has no alternative |
+| `src/trading/scrumming_bot.py, in _apply_fold_target_growth` | drains fold surplus into one target balance; no positions, no spread |
+| `src/trading/smart_wire.py, in distribute_fold_profit` | splits realised fold profit across wires to other bots by per-wire percent |
+| `src/trading/scrumming/wire_routing.py, in _spread_wire_usd_over_fold_queue` | adds wire income evenly to every standing fold tranche; the even split is fixed and has no alternative |
 | `src/trading/stack_math.py:304` `fold_ladder_prices` | places fold prices from `stack_spacing_mode` and decides no size |
 | `src/trading/profit_fold.py:14` `apply_profit_fold` | grows one target balance; its own docstring records that no module imports it |
 
 The one mode-like selector near folding refuses this row's value.
-`SPACING_MODES` in `src/trading/stack_math.py:25` holds `quadratic`,
+`src/trading/stack_math.py, in SPACING_MODES` holds `quadratic`,
 `fibonacci`, `linear` and `exponential`. `level_multipliers("logarithmic", 3)`
 raises `ValueError`, while `level_multipliers("quadratic", 3)` returns
 `[1.0, 4.0, 9.0]`.
@@ -4210,7 +4213,7 @@ raises `ValueError`, while `level_multipliers("quadratic", 3)` returns
 The two choices belong to the retired Grid Bot. The earliest tracked copy of the
 strip list names the block in its own words, as grid-legacy fields kept so a
 stored bot does not crash on load, and
-`src/trading/container/restore.py:183-184` records that the grid mode was
+`src/trading/container/restore.py, in restore_bots_from_state` records that the grid mode was
 removed.
 
 ### A six-key group opening with five rows
@@ -4296,7 +4299,7 @@ search. `FoldTarget` in `src/core/settings.py` has two sites, both its own
 declaration.
 
 `fold_target` stays in `_DEPRECATED_KWARGS` at
-`src/trading/container/config.py:387`, so a `bot_state.json` still carrying it
+`src/trading/container/config.py, in _BOT_CONFIG_EXTRACTOR_ONLY_FIELDS`, so a `bot_state.json` still carrying it
 restores without a `TypeError`. `BotConfig` declares no field of that name, and
 `_sanitize_deprecated_kwargs` drops the key before `BotConfig.__init__`. This is
 where the row differs from [Profit Folding
@@ -4313,11 +4316,11 @@ positions or a count of them.
 | Where | What it does |
 | ----- | ------------ |
 | `src/trading/profit_fold.py:14` `apply_profit_fold` | grows one dollar target balance; its `target` parameter is annotated `float`, and its own docstring records that no module imports it |
-| `src/trading/scrumming_bot.py:767` `_apply_fold_target_growth` | drains fold surplus into one target balance; no positions, no set |
-| `src/trading/smart_wire.py:589` `distribute_fold_profit` | splits realised fold profit across wires to other bots by per-wire percent |
-| `src/trading/scrumming/wire_routing.py:487` `_spread_wire_usd_over_fold_queue` | adds wire income evenly to every standing fold tranche; the share is fixed at the dollars divided by the tranche count |
-| `src/trading/scrumming/fold_tranches.py:51` `_fold_eligible_tranches` | picks the tranches a fold may reach by price alone |
-| `src/trading/scrumming/fold_tranches.py:515` `_fold_discharge_order` | orders those tranches by `ref`, highest first |
+| `src/trading/scrumming_bot.py, in _apply_fold_target_growth` | drains fold surplus into one target balance; no positions, no set |
+| `src/trading/smart_wire.py, in distribute_fold_profit` | splits realised fold profit across wires to other bots by per-wire percent |
+| `src/trading/scrumming/wire_routing.py, in _spread_wire_usd_over_fold_queue` | adds wire income evenly to every standing fold tranche; the share is fixed at the dollars divided by the tranche count |
+| `src/trading/scrumming/fold_tranches.py, in _fold_eligible_tranches` | picks the tranches a fold may reach by price alone |
+| `src/trading/scrumming/fold_tranches.py, in _fold_discharge_order` | orders those tranches by `ref`, highest first |
 | `src/trading/stack_math.py:304` `fold_ladder_prices` | places fold prices and decides no size; its `levels` counts prices on a ladder |
 
 The two paths that do decide which tranches a fold reaches were driven over
@@ -4465,17 +4468,17 @@ The same six shapes, spelled for the sibling key `profit_folding_active`, return
 blind search.
 
 `fold_target` and `fold_target_count` both stay in `_DEPRECATED_KWARGS` at
-`src/trading/container/config.py:387-388`, so a `bot_state.json` still carrying
+`src/trading/container/config.py, in _BOT_CONFIG_EXTRACTOR_ONLY_FIELDS`, so a `bot_state.json` still carrying
 either restores without a `TypeError`. `BotConfig` declares neither name as a
 field, and `_sanitize_deprecated_kwargs` drops both before `BotConfig.__init__`.
 
 ### One dollar cap bounds a fold, and no count does
 
-`src/trading/scrumming/tick_phases.py:1494-1534` is the live fold-back route. It
+`src/trading/scrumming/tick_phases.py, in _tick_execute_fold` is the live fold-back route. It
 asks `_fold_eligible_tranches` which queued tranches the market price reaches,
 sorts them by `initial_buy_price`, then hands the sorted list and one dollar
 figure to `_plan_fold_consumption` at
-`src/trading/scrumming/fold_tranches.py:123`. That dollar figure is
+`src/trading/scrumming/fold_tranches.py, in _plan_fold_consumption`. That dollar figure is
 `cycle_growth_cap_usd` less what the cycle has already consumed.
 
 Driven over five queued tranches at refs 150 down to 110, on a bot config
@@ -4632,7 +4635,7 @@ search. A planted file spelling all six shapes for `distribute_target` grew ever
 of the six counts.
 
 `distribute_target` and `distribute_target_count` both stay in `_DEPRECATED_KWARGS` at
-`src/trading/container/config.py:390-391`, so a `bot_state.json` still carrying either
+`src/trading/container/config.py, in _BOT_CONFIG_EXTRACTOR_ONLY_FIELDS`, so a `bot_state.json` still carrying either
 restores without a `TypeError`. `BotConfig` declares neither name as a field, and
 `_sanitize_deprecated_kwargs` drops both before `BotConfig.__init__`. A
 `make_bot_config` call asking for all four of `distribute_target`,
@@ -4641,8 +4644,8 @@ two and built a config carrying neither removed name.
 
 ### One accumulator bounds a distribution, and no count does
 
-`src/trading/scrumming/tick_phases.py:1919` `_tick_distribute` is the live route, and
-`src/trading/scrumming_bot.py:4222` calls it. It sells `_dist_accumulator` units of the
+`src/trading/scrumming/tick_phases.py, in _tick_distribute` is the live route, and
+`src/trading/scrumming_bot.py, in tick` calls it. It sells `_dist_accumulator` units of the
 asset, takes the lesser of that figure and the venue balance, then walks `_main_lots`
 sorted by `initial_buy_price` and opens one fold tranche per lot it consumes.
 
@@ -4791,8 +4794,8 @@ read and no venue was contacted.
 
 | | The Settings row | The wizard box |
 | --- | --- | --- |
-| Where, Qt | `src/gui/settings_dialog.py:521-525` | `src/gui/bot_wizard.py:1671-1674` |
-| Where, React | `src/gui/main_tabs/settings_dialog_surface.py:625-633` | `src/gui/main_tabs/bot_wizard_surface.py:1721-1735` |
+| Where, Qt | `src/gui/settings_dialog.py, in _create_phantom_tab` | `src/gui/bot_wizard.py, in PhantomConfigPage.__init__` |
+| Where, React | `src/gui/main_tabs/settings_dialog_surface.py, in CONTROL_SPECS` | `src/gui/main_tabs/bot_wizard_surface.py, in _apply_stored_phantom_enable` |
 | Text | Enable Phantom Bots for Scrumming | Enable Phantom Bots |
 | Choices | on, off | on, off |
 | Opens at | on | the stored default, off when no bag arrives |
@@ -4830,11 +4833,11 @@ dialog.
 
 | Site | What it does with the default |
 | ---- | ---------------------------- |
-| `src/core/settings.py:163` | declares `default_enable_phantoms: bool = True` |
-| `src/gui/settings_dialog.py:1111-1114` | the Qt row, read on Save and written on load |
-| `src/gui/main_tabs/settings_dialog_surface.py:476` | the same row on the Qt-free surface |
-| `src/gui/bot_wizard.py:1672-1674` | the Qt wizard's phantom box opens here |
-| `src/gui/main_tabs/bot_wizard_surface.py:1721-1735` | the Qt-free wizard's box opens here |
+| `src/core/settings.py, in AppSettings` | declares `default_enable_phantoms: bool = True` |
+| `src/gui/settings_dialog.py, in _stored_rows` | the Qt row, read on Save and written on load |
+| `src/gui/main_tabs/settings_dialog_surface.py, in PERSISTED_ROWS` | the same row on the Qt-free surface |
+| `src/gui/bot_wizard.py, in PhantomConfigPage.__init__` | the Qt wizard's phantom box opens here |
+| `src/gui/main_tabs/bot_wizard_surface.py, in _apply_stored_phantom_enable` | the Qt-free wizard's box opens here |
 
 Before this section there was no reader at all, and no store key to read. The
 dialog saved 14 groups and none of them carried the box; it saves 15 now.
@@ -4845,18 +4848,18 @@ dialog saved 14 groups and none of them carried the box; it saves 15 now.
 flowchart LR
   A["Settings row<br/>default_enable_phantoms"] --> B["SettingsManager<br/>settings.toml"]
   B --> C["main_window._create_bot<br/>get_all()"]
-  C --> D["bot_wizard.py:1673<br/>Enable Phantom Bots"]
+  C --> D["bot_wizard.py, in PhantomConfigPage.__init__<br/>Enable Phantom Bots"]
   D --> E["PhantomConfigPage.get_config<br/>enable_phantoms"]
-  E --> F["main_window.py:3369<br/>ScrummingBot(enable_phantoms=)"]
-  F --> G["scrumming_bot.py:402<br/>_phantoms_enabled"]
-  G --> H["tick_phases.py:390<br/>create_phantom_set"]
-  H --> I["main_window.py:1178<br/>the Comp field"]
+  E --> F["main_window.py, in _create_bot<br/>ScrummingBot(enable_phantoms=)"]
+  F --> G["scrumming_bot.py, in ScrummingBot.__init__<br/>_phantoms_enabled"]
+  G --> H["tick_phases.py, in _tick_initialise<br/>create_phantom_set"]
+  H --> I["main_window.py, in _refresh_dashboard<br/>the Comp field"]
 ```
 
-The constructor argument at `src/trading/scrumming_bot.py:402` is where the flag
+The constructor argument at `src/trading/scrumming_bot.py, in ScrummingBot.__init__` is where the flag
 stops being this setting. From there the bot owns it, and the Comp field on the
 TA Indicator Voter Panel is the last reader. That field already refuses a phantom
-timeframe at or below the parent's own rank, at `src/gui/main_window.py:1196`, so
+timeframe at or below the parent's own rank, at `src/gui/main_window.py, in _refresh_dashboard`, so
 the higher-timeframe rule is not new here.
 
 ### The round trip on both phantom choices
@@ -4881,7 +4884,7 @@ Driven through the real restore path with the application default set on.
 | no flag at all | on, which is the constructor's own default |
 
 A restored bot reads its own saved record at
-`src/trading/container/restore.py:361` and reads no application setting. A record
+`src/trading/container/restore.py, in restore_bots_from_state` and reads no application setting. A record
 holding off stayed off while the store held on, so the application default cannot
 reach a bot already on disk.
 
@@ -4900,8 +4903,8 @@ wizard opens its box at the build figure whatever the store holds.
 
 | Absence | What was measured |
 | ------- | ----------------- |
-| the shell's wizard request carries no stored defaults | `src/gui/web/bot_wizard.js` names `defaults` no times, and `src/gui/main_tabs/bot_wizard_surface.py:2823` reads it out of the request. The lookup added here fires on any call that carries a bag, and the shipped call carries none |
-| the bridge hands the request through unchanged | `src/core/desktop_bridge.py:284` maps the wizard method straight to the surface, so nothing on the way in adds the stored settings |
+| the shell's wizard request carries no stored defaults | `src/gui/web/bot_wizard.js` names `defaults` no times, and `src/gui/main_tabs/bot_wizard_surface.py, in view_model` reads it out of the request. The lookup added here fires on any call that carries a bag, and the shipped call carries none |
+| the bridge hands the request through unchanged | `src/core/desktop_bridge.py, in build_registry` maps the wizard method straight to the surface, so nothing on the way in adds the stored settings |
 
 This absence is shared with every other stored default the wizard opens on, so it
 belongs to the wizard request rather than to this row.
@@ -5002,16 +5005,16 @@ default_phantom_timeframe: str = "1d"
 ```mermaid
 graph LR
   A["Settings row<br/>default_phantom_timeframe"] --> B["SettingsManager<br/>settings.toml"]
-  B --> C["main_window.py:3201<br/>settings.get_all"]
+  B --> C["main_window.py, in _create_bot<br/>settings.get_all"]
   C --> D["bot_wizard.py<br/>set_parent_timeframe"]
   D --> E["PhantomConfigPage.get_config<br/>phantom_timeframes"]
-  E --> F["main_window.py:3370<br/>ScrummingBot(phantom_timeframes=)"]
-  F --> G["tick_phases.py:390<br/>create_phantom_set"]
-  G --> H["main_window.py:1178<br/>the Comp field"]
+  E --> F["main_window.py, in _create_bot<br/>ScrummingBot(phantom_timeframes=)"]
+  F --> G["tick_phases.py, in _tick_initialise<br/>create_phantom_set"]
+  G --> H["main_window.py, in _refresh_dashboard<br/>the Comp field"]
 ```
 
 The Comp field rank-weights the parent's Net with every phantom summary above
-the parent's own rank, and skips the rest at `src/gui/main_window.py:1198`. One
+the parent's own rank, and skips the rest at `src/gui/main_window.py, in _refresh_dashboard`. One
 selection above the parent means one phantom reaches that field and none is
 skipped.
 
@@ -5038,9 +5041,9 @@ A running bot's phantom set never came from this page and still does not.
 
 | Read | What it answers |
 | --- | --- |
-| `src/trading/bot_container.py:601` | writes the enable flag into the bot's record and writes no timeframe list |
-| `src/trading/container/restore.py:363-366` | builds the bot without a timeframe argument |
-| `src/trading/scrumming_bot.py:377` | the bot therefore takes its class default |
+| `src/trading/bot_container.py, in get_full_state` | writes the enable flag into the bot's record and writes no timeframe list |
+| `src/trading/container/restore.py, in restore_bots_from_state` | builds the bot without a timeframe argument |
+| `src/trading/scrumming_bot.py, in ScrummingBot.__init__` | the bot therefore takes its class default |
 
 Driven on a bot built the restore way, before and after this change, against a
 parent on the hourly chart.
@@ -5071,9 +5074,9 @@ owns a bot's own phantom selection.
 
 | Absence | What was measured |
 | ------- | ----------------- |
-| the wizard still draws eleven boxes | `src/gui/bot_wizard.py:1679-1699` builds eleven tick boxes, so the operator can still tick several. One selection is seeded and not enforced there; the wizard's own control belongs to the bot's phantom rows |
+| the wizard still draws eleven boxes | `src/gui/bot_wizard.py, in PhantomConfigPage.__init__` builds eleven tick boxes, so the operator can still tick several. One selection is seeded and not enforced there; the wizard's own control belongs to the bot's phantom rows |
 | the figure on this page shows the old grid | `p39-i0.png` was captured from the eleven boxes and has not been retaken |
-| the rank order is written twice | `src/trading/phantom_balance.py:29-41` and `src/gui/main_tabs/bot_wizard_surface.py:521-533` hold the same eleven names in the same order, and the Qt-free surface takes no import, so nothing reconciles them. Measured identical today |
+| the rank order is written twice | `src/trading/phantom_balance.py, in TIMEFRAME_ORDER` and `src/gui/main_tabs/bot_wizard_surface.py, in PHANTOM_TIMEFRAMES` hold the same eleven names in the same order, and the Qt-free surface takes no import, so nothing reconciles them. Measured identical today |
 
 ## 2026-09-12 - Every retired setting name says what it is
 
@@ -5127,7 +5130,7 @@ Dropping the eleven one at a time raises that error naming each key in turn,
 eleven times out of eleven, so every entry is load-bearing on that route. The
 launch restore names each kwarg it wants one at a time rather than passing the
 stored config whole, so the restore arm does not move. A retired key that did
-reach the factory is caught at `src/trading/container/restore.py:322`, which
+reach the factory is caught at `src/trading/container/restore.py, in restore_bots_from_state`, which
 skips the bot and leaves its record on disk.
 
 ### What the declaration says now

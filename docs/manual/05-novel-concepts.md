@@ -168,8 +168,8 @@ label = "HTF-bullish" if self.side == "scrum" else "HTF-bearish"
 return GateResult(passed=False, blocker_message=label)
 ```
 
-Three parts of the feature do not work. The phantom lock guard is dead, so a
-lock never holds anything (issue #398). Every profit and loss figure on the
+Three parts of the feature do not work. The phantom lock guard is gone, and no
+lock was ever created (issue #398). Every profit and loss figure on the
 Phantom Bots tab prints as zero, because the key the tab reads is never written
 (issue #197). The tab draws a refused change as a success and can drop a
 timeframe (issue #313). Issue #155 tracks the remaining build-out. Replacing
@@ -758,20 +758,20 @@ accepts one and every caller leaves it unset, so each bot resolves the
 process-wide registry instead.
 
 ```
-src/gui/live_bot_window.py:352      builds a bot, passes no registry
-src/gui/main_window.py:3723         builds a bot, passes no registry
-src/trading/container/restore.py:259  builds a bot, passes no registry
-src/trading/scrumming_bot.py:344    capital_registry defaults to None
+src/gui/live_bot_window.py, in _run_bot                    builds a bot, passes no registry
+src/gui/main_window.py, in _create_bot                     builds a bot, passes no registry
+src/trading/container/restore.py, in restore_bots_from_state  builds a bot, passes no registry
+src/trading/scrumming_bot.py, in ScrummingBot.__init__     capital_registry defaults to None
 ```
 
 The engine already records the consequence at
-`src/trading/container/registry.py:42`, which states that the setter has no
-caller. A sale is therefore admitted against the process-wide table rather than
-an injected one.
+`src/trading/container/registry.py, in register`, which states that the setter
+has no caller. A sale is therefore admitted against the process-wide table
+rather than an injected one.
 
-The first anchor in the block above names a line that has moved. The bot it
+The first anchor in the block above named a line that had moved. The bot it
 means is built in `src/gui/live_bot_window.py`, in `_run_bot`, and that is the
-anchor to follow.
+anchor the block now carries.
 
 **The issue #133 clause above is overtaken.** It is not edited and not removed.
 It read:

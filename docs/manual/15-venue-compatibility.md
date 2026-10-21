@@ -39,15 +39,15 @@ result again. The flooring runs through `sized_order`, the one function the
 Simulator and the Paper Trader size with.
 
 ```python
-# src/trading/bot_container.py:260
+# src/trading/bot_container.py, in guarded_place_order, at the sized_order call
         _sized = sized_order(
             _amt, unit_rule(CLASS_CRYPTO, self.config.exchange_id), _rules
         )
 
-# src/trading/bot_container.py:283
+# src/trading/bot_container.py, in guarded_place_order, at the floored-size test
         if 0.0 < _sized.units < _amt:
 
-# src/exchange/ccxt_connector.py:1128
+# src/exchange/ccxt_connector.py, in place_order
         amount = self._ex.amount_to_precision(symbol, amount)
 ```
 
@@ -58,13 +58,13 @@ Two citations in the block below quote lines
 file holds today.
 
 ```python
-# src/trading/scrumming/execution.py:1581
+# src/trading/scrumming/execution.py, in _execute_sell
                 amount=amount,
 
-# src/trading/bot_container.py:226
+# src/trading/bot_container.py, in guarded_place_order, at the minimum refusal
         if _min_amount > 0 and _below_min:
 
-# src/exchange/ccxt_connector.py:1061
+# src/exchange/ccxt_connector.py, in place_order, at the same rounding call
         amount = self._ex.amount_to_precision(symbol, amount)
 ```
 
@@ -73,7 +73,7 @@ reads, held per symbol. A lookup that fails gives no minimum and eight decimal
 places, so the refusal stands down.
 
 ```python
-# src/trading/bot_container.py:116
+# src/trading/bot_container.py, in _get_market_rules
         """Return ``(min_amount, min_cost, amount_precision)`` for
         ``symbol``, cached; ``(0.0, 0.0, 8)`` on any lookup failure."""
 ```
@@ -82,14 +82,14 @@ The broker path carries neither step. It names the size `quantity` and sends it
 unchanged.
 
 ```python
-# src/stocks/broker_base.py:145
+# src/stocks/broker_base.py, in place_order
     async def place_order(
         self,
         symbol: str,
         side: OrderSide,
         quantity: float,
 
-# src/stocks/alpaca_connector.py:176
+# src/stocks/alpaca_connector.py, in place_order
             "qty": str(quantity),
 ```
 
@@ -97,7 +97,7 @@ Nothing in the running program builds that path. Outside its own module and the
 stock window's own files, the broker connector is named once, in a docstring.
 
 ```python
-# src/simulator/portfolios.py:26
+# src/simulator/portfolios.py, in STOCKS_VENUE
 """The ``SUPPORTED_BROKERS`` key of the one broker connector, ``AlpacaConnector``."""
 ```
 
@@ -123,14 +123,14 @@ holds nine ids for eight firms, and two of those firms have no API to reach.
 | bybit | crypto spot | no, public endpoints refused a US address, 2026-08-28 | key and secret | `src/exchange/ccxt_connector.py, in US_IP_BLOCKED_EXCHANGES` |
 | poloniex | crypto spot | no, the terms refuse a US account, 2026-08-28 | key and secret | `src/exchange/ccxt_connector.py, in US_ACCOUNT_RESTRICTED_EXCHANGES` |
 | huobi | crypto spot | no, the terms refuse a US account, 2026-08-28 | key and secret | `src/exchange/ccxt_connector.py, in US_ACCOUNT_RESTRICTED_EXCHANGES` |
-| Alpaca | equities and exchange-traded funds, which is every commodity row this tree carries | yes, US broker | key and secret | `src/gui/main_tabs/asset_class_surface.py:33`; Alpaca fractional trading documentation, read 2026-09-24 |
-| Interactive Brokers | equities, funds, futures and 100 or more currency pairs | yes, US broker | a TWS session, shape not stated by the pages read | `src/gui/main_tabs/asset_class_surface.py:33`; Interactive Brokers TWS API documentation, read 2026-09-24 |
-| Schwab | equities and options, individual accounts | yes, US broker | issued on the Schwab developer portal, shape not stated by the pages read | `src/gui/main_tabs/asset_class_surface.py:33`; Schwab Trader API developer portal, read 2026-09-24 |
-| tastytrade | equities, options, futures and crypto, through one API | yes, US broker | not stated by the pages read | `src/gui/main_tabs/asset_class_surface.py:33`; tastytrade API documentation, read 2026-09-24 |
-| E\*TRADE | equities | yes, US broker | not stated by the pages read | `src/gui/main_tabs/asset_class_surface.py:33`; E\*TRADE developer documentation, read 2026-09-24 |
-| Webull | equities | yes, US broker | not stated by the pages read | `src/gui/main_tabs/asset_class_surface.py:33`; the fractional-support table TradersPost publishes for the brokers it connects, read 2026-09-24 |
-| TD Ameritrade | none reachable | no, the API was discontinued on 10 May 2024 and registrations did not carry over | none | `src/gui/main_tabs/asset_class_surface.py:33`; Charles Schwab notice of the discontinuation, read 2026-09-24 |
-| Fidelity | none reachable | no retail trading API is published | none | `src/gui/main_tabs/asset_class_surface.py:33`; Fidelity, read 2026-09-24 |
+| Alpaca | equities and exchange-traded funds, which is every commodity row this tree carries | yes, US broker | key and secret | `src/gui/main_tabs/asset_class_surface.py, in EQUITY_VENUES`; Alpaca fractional trading documentation, read 2026-09-24 |
+| Interactive Brokers | equities, funds, futures and 100 or more currency pairs | yes, US broker | a TWS session, shape not stated by the pages read | `src/gui/main_tabs/asset_class_surface.py, in EQUITY_VENUES`; Interactive Brokers TWS API documentation, read 2026-09-24 |
+| Schwab | equities and options, individual accounts | yes, US broker | issued on the Schwab developer portal, shape not stated by the pages read | `src/gui/main_tabs/asset_class_surface.py, in EQUITY_VENUES`; Schwab Trader API developer portal, read 2026-09-24 |
+| tastytrade | equities, options, futures and crypto, through one API | yes, US broker | not stated by the pages read | `src/gui/main_tabs/asset_class_surface.py, in EQUITY_VENUES`; tastytrade API documentation, read 2026-09-24 |
+| E\*TRADE | equities | yes, US broker | not stated by the pages read | `src/gui/main_tabs/asset_class_surface.py, in EQUITY_VENUES`; E\*TRADE developer documentation, read 2026-09-24 |
+| Webull | equities | yes, US broker | not stated by the pages read | `src/gui/main_tabs/asset_class_surface.py, in EQUITY_VENUES`; the fractional-support table TradersPost publishes for the brokers it connects, read 2026-09-24 |
+| TD Ameritrade | none reachable | no, the API was discontinued on 10 May 2024 and registrations did not carry over | none | `src/gui/main_tabs/asset_class_surface.py, in EQUITY_VENUES`; Charles Schwab notice of the discontinuation, read 2026-09-24 |
+| Fidelity | none reachable | no retail trading API is published | none | `src/gui/main_tabs/asset_class_surface.py, in EQUITY_VENUES`; Fidelity, read 2026-09-24 |
 | OANDA | forex | yes, CFTC-registered and NFA-regulated | a v20 REST token, shape not stated by the pages read | OANDA v20 REST API documentation, read 2026-09-24 |
 | FOREX.com | forex | yes, CFTC-registered and NFA-regulated | not stated by the pages read | FOREX.com, a StoneX brand, read 2026-09-24 |
 | tastyfx | forex | yes, CFTC-registered and NFA-regulated | not stated by the pages read | tastyfx, the US brand of IG, read 2026-09-24 |
@@ -141,7 +141,7 @@ Two things in the table come from the tree rather than from a venue. The nine
 equity ids name eight firms, because one firm carries two.
 
 ```python
-# src/gui/main_tabs/asset_class_surface.py:33
+# src/gui/main_tabs/asset_class_surface.py, in EQUITY_VENUES
 EQUITY_VENUES = frozenset(
     {
         "alpaca",
@@ -162,13 +162,13 @@ broker serves that class. The four spot metal rows name no venue at all, and
 the fund rows name a price source rather than a place to send an order.
 
 ```python
-# src/trading/ata_asset_maps.py:437
+# src/trading/ata_asset_maps.py, in METALS_SPOT
 METALS_SPOT: tuple[AssetListing, ...] = tuple(
     AssetListing(symbol=one, quote=USD, form=FORM_SPOT)
     for one in ("XAU/USD", "XAG/USD", "XPT/USD", "XPD/USD")
 )
 
-# src/trading/ata_asset_maps.py:444
+# src/trading/ata_asset_maps.py, in METALS_PHYSICAL
 METALS_PHYSICAL: tuple[AssetListing, ...] = tuple(
     AssetListing(symbol=one, quote=USD, venue=VENUE_YAHOO, ticker=one, form=FORM_ETF)
     for one in ("GLD", "SLV", "PPLT", "PALL")
@@ -338,12 +338,12 @@ table TradersPost publishes for the brokers it connects.
 
 | Venue | Orders over an API | Does the excess survive | Why, and where the reading came from |
 | ----- | ----------------- | ----------------------- | ------------------------------------ |
-| coinbase, spot | yes | yes | nine decimal places, and the size is truncated to the product's decimal places and refused under the product's minimum before the API is called, at `src/trading/bot_container.py:264`. Coinbase developer documentation, read 2026-09-24 |
+| coinbase, spot | yes | yes | nine decimal places, and the size is truncated to the product's decimal places and refused under the product's minimum before the API is called, at `src/trading/bot_container.py, in guarded_place_order`. Coinbase developer documentation, read 2026-09-24 |
 | coinbase, US futures | yes | no | a futures contract is whole, so an excess under one contract cannot be sold. Coinbase developer documentation, Advanced Trade US derivatives, read 2026-09-24 |
 | kraken, kucoin, okx, gateio, bitget, mexc, bitfinex, gemini, bitstamp, cryptocom | yes | yes | nine decimal places. Each venue's own documentation, read 2026-09-24 |
 | binance, bybit | yes, and the address is refused from the United States | yes | nine decimal places. Each venue's own documentation, read 2026-09-24. The refusal is a tree reading dated 2026-08-28, at `src/exchange/ccxt_connector.py, in US_IP_BLOCKED_EXCHANGES` |
 | poloniex, huobi | yes, and a United States account is restricted | yes | nine decimal places. Each venue's own documentation, read 2026-09-24. The restriction is a tree reading dated 2026-08-28, at `src/exchange/ccxt_connector.py, in US_ACCOUNT_RESTRICTED_EXCHANGES` |
-| Alpaca | yes | yes | nine decimal places on a share quantity. The 1.00 USD floor is published for a buy, and the tree sends a share quantity and never a dollar amount, at `src/stocks/alpaca_connector.py:176`. Alpaca fractional trading documentation, read 2026-09-24 |
+| Alpaca | yes | yes | nine decimal places on a share quantity. The 1.00 USD floor is published for a buy, and the tree sends a share quantity and never a dollar amount, at `src/stocks/alpaca_connector.py, in place_order`. Alpaca fractional trading documentation, read 2026-09-24 |
 | Webull | yes | yes | two decimal places on a share quantity, which is finer than one dollar on any share this fleet holds. The fractional-support table TradersPost publishes, read 2026-09-24 |
 | Interactive Brokers | yes | no | a quantity order rounds down to whole shares, and a fraction is reached only by naming a cash amount. Interactive Brokers TWS API documentation, read 2026-09-24 |
 | Schwab | yes | no | the Trader API places no fractional order at all. Schwab Trader API developer portal, read 2026-09-24 |
@@ -360,7 +360,7 @@ unsized. And a market lookup that fails leaves the bot with no minimum and
 eight assumed decimal places, which stands the refusal down for that symbol.
 
 ```python
-# src/trading/bot_container.py:130
+# src/trading/bot_container.py, in _get_market_rules, at the fallback cache write
             fallback = (0.0, 0.0, 8)
             self._market_limits_cache[symbol] = fallback
 ```
@@ -532,7 +532,7 @@ was obtained at all, so a venue that publishes nothing and a venue nobody
 reached are told apart.
 
 ```python
-# src/exchange/base.py:122
+# src/exchange/base.py, in MarketRules, at the docstring
     ``None`` is a rule the venue did not publish, never a rule of zero, and
     ``read`` is False when no market record was obtained at all.
 ```
@@ -634,7 +634,7 @@ Coinbase names that third one `quote_increment` on its own product record, and
 the record a bot reads now carries it.
 
 ```python
-# src/exchange/base.py:131
+# src/exchange/base.py, in MarketRules, at price_increment
     min_amount: Optional[float] = None  # base units
     min_cost: Optional[float] = None  # quote units
     amount_increment: Optional[float] = None  # base units a size steps by
@@ -654,7 +654,7 @@ times the stepped price. The minimum order cost is now compared against that
 number.
 
 ```python
-# src/trading/bot_container.py:294
+# src/trading/bot_container.py, in guarded_place_order, at the min_cost comparison
                 # The venue books a price on its own tick, so min_cost is
                 # compared against the notional at that price.
                 _booked_px = _rules.price_on_tick(_px)
@@ -682,7 +682,7 @@ a whole unit or larger takes whole units only; a market whose step the venue
 never published answers neither.
 
 ```python
-# src/exchange/base.py:133
+# src/exchange/base.py, in MarketRules, at amount_increment
     amount_increment: Optional[float] = None  # base units a size steps by
 ```
 
@@ -709,7 +709,7 @@ order of zero dollars. Zero is not a floor the venue gave; it is the figure left
 over when no floor was read.
 
 ```python
-# src/trading/scrumming/sizing.py:149
+# src/trading/scrumming/sizing.py, in smallest_order_usd
     if amount is None:
         return floor_usd if cost_published else None
 ```
@@ -810,7 +810,7 @@ The crypto venue set, the passphrase set and the two refusal sets are readings
 this repository holds, dated in the file that carries them.
 
 ```python
-# src/exchange/ccxt_connector.py:109
+# src/exchange/ccxt_connector.py, in VENUE_MEASUREMENT_DATE
 # Date the venue facts below were last measured.
 VENUE_MEASUREMENT_DATE: str = "2026-08-28"
 ```
@@ -827,7 +827,7 @@ read, once per read, into a recording under the runtime home, and the Simulator
 and the Paper Trader read the recording.
 
 ```python
-# src/exchange/market_rules_store.py:28
+# src/exchange/market_rules_store.py, in store_path
 def store_path() -> Path:
     return Path.home() / ".acervator" / STORE_NAME
 ```
@@ -840,7 +840,7 @@ the cited table still answers, and the run says which of the two sized each
 order.
 
 ```python
-# src/trading/scrumming/sizing.py:272
+# src/trading/scrumming/sizing.py, in sized_order
 def sized_order(units: float, rule: Optional[str], rules: Any = None) -> SizedOrder:
 ```
 
@@ -875,14 +875,14 @@ accumulate and a later fold fills at a legal size.
 
 The minimum order cost is recorded and is not yet measured against a
 back-tested order's notional. The live order guard already compares it, at
-`src/trading/bot_container.py:305`. The live path also still sizes on the cited
+`src/trading/bot_container.py, in guarded_place_order`. The live path also still sizes on the cited
 fractional rule and does not floor onto the step.
 
 OVERTAKEN, and the sentence above is kept as written. The live path floors onto
-the venue's published step. `src/trading/bot_container.py:260` calls
-`sized_order` at the one site every live order passes, so a recorded
-`amount_increment` floors the amount, a recorded `min_amount` refuses it at
-`:264`, and an amount that floors to nothing refuses at `:273`. The sized amount
+the venue's published step. `src/trading/bot_container.py, in guarded_place_order` calls `sized_order` at
+the one site every live order passes, so a recorded `amount_increment` floors
+the amount. That same method refuses a size stepping under a recorded
+`min_amount`, and refuses an amount that floors to nothing. The sized amount
 reaches `exchange.place_order`, and `min_cost` is measured on it.
 
 Driven on a bare host with the home redirected, every socket but loopback
@@ -914,20 +914,20 @@ the bot that exists today, with no variant.
 
 ```
 1  a connector the running program constructs
-   src/exchange/ccxt_connector.py:284   CCXTConnector, 30 importing sites
-   src/stocks/broker_base.py:108        BrokerBase, no caller
+   src/exchange/ccxt_connector.py, in CCXTConnector   30 importing sites
+   src/stocks/broker_base.py, in BrokerBase           no caller
 
 2  an order whose size is a count of base units
-   src/exchange/base.py:299   place_order(symbol, side, order_type, amount, price, ...)
+   src/exchange/base.py, in place_order   place_order(symbol, side, order_type, amount, price, ...)
 
 3  a market order, a limit order, and a limit order carried immediate-or-cancel
-   src/exchange/base.py:30    OrderType MARKET, LIMIT, IOC_LIMIT
+   src/exchange/base.py, in OrderType   MARKET, LIMIT, IOC_LIMIT
 
 4  a size rule the record can hold, and a smallest order under the excess
-   src/trading/scrumming/sizing.py:272   sized_order
+   src/trading/scrumming/sizing.py, in sized_order
 
 5  a market record the connector can read
-   src/exchange/ccxt_connector.py:245    market_rules
+   src/exchange/ccxt_connector.py, in market_rules
 ```
 
 OVERTAKEN for requirement 1, and the block above is kept as written. The broker
@@ -959,10 +959,10 @@ for the first.
 
 ```
 git grep -n alpaca_connector -- src/ main.py tools/
-  -> src/stocks/alpaca_connector.py:2, its own docstring, and nothing else
+  -> src/stocks/alpaca_connector.py, its own module docstring, and nothing else
 
 git grep -n broker_base -- src/ main.py tools/
-  -> src/stocks/alpaca_connector.py:14, and the module's own docstring
+  -> src/stocks/alpaca_connector.py, its own import of broker_base, and the module's own docstring
 
 control, the same command on the crypto connector
 git grep -n ccxt_connector -- src/ main.py tools/
@@ -1001,7 +1001,7 @@ and posts it as JSON.
 | Price named as | a float moved to the venue's own tick | a string, only on a limit or stop order | a per-contract minimum increment | not stated by the pages read | the product's own tick |
 | Order types the tree sends | market, limit, limit with immediate-or-cancel | market, limit, stop, stop limit, trailing stop are declared; nothing sends one | none, no connector exists | none, no connector exists | none, no connector exists |
 | How it is submitted | the library's own create-order call | a POST to the broker's orders endpoint | not reached | not reached | not reached |
-| Where it is read | `src/exchange/base.py:299` | `src/stocks/alpaca_connector.py:180` | this page's venue table | this page's venue table | this page's venue table |
+| Where it is read | `src/exchange/base.py, in place_order` | `src/stocks/alpaca_connector.py, in place_order` | this page's venue table | this page's venue table | this page's venue table |
 
 Three differences the crypto path already absorbs per venue, and each is a line
 in one connector rather than a variant.
@@ -1253,13 +1253,14 @@ whose smallest order costs more than the excess is served by neither, and waits
 on the issue's first open decision.
 
 One citation on this page has moved and the cells that carry it are kept as
-written. The venue table names the equity venue list at line 33 of its module,
-in nine of its source cells. That constant now sits at line 46, and line 33
-holds a comment about button spacing.
+written. The venue table named the equity venue list at line 33 of its module,
+in nine of its source cells. That constant sat at line 46 next, and line 33
+holds a comment about button spacing. Every one of those cells now names
+`EQUITY_VENUES` instead, which no later move can stale.
 
 ```
-src/gui/main_tabs/asset_class_surface.py:46   EQUITY_VENUES, nine ids
-src/gui/main_tabs/asset_class_surface.py:65   LAYERED_CLASSES, crypto and stocks
+src/gui/main_tabs/asset_class_surface.py, in EQUITY_VENUES     nine ids
+src/gui/main_tabs/asset_class_surface.py, in LAYERED_CLASSES   crypto and stocks
 ```
 
 OVERTAKEN, and the block above is kept as written. The layered class set now holds
@@ -1301,7 +1302,7 @@ a variant name, and the order path acts on that name at the single site every
 live order passes. A record nothing has read selects the bot as written.
 
 ```python
-# src/trading/scrumming/sizing.py:280
+# src/trading/scrumming/sizing.py, in venue_variant
 def venue_variant(
     rules: Any,
     price: Optional[float] = None,
@@ -1323,7 +1324,7 @@ market shape it absorbs. The program holds two of the four, and one function
 answers per market whether the variant that market selects is one of the two.
 
 ```python
-# src/trading/scrumming/sizing.py:264
+# src/trading/scrumming/sizing.py, in MECHANIC_MARKETS
 VARIANT_MARKETS: dict[str, str] = {
     VARIANT_NONE: "a market naming a unit count on a venue taking a market order",
     VARIANT_LIMIT_ONLY: "a market on a venue declaring no market order",
@@ -1351,7 +1352,7 @@ order, and a pair absent from that table declares nothing and is never read as
 declining a type.
 
 ```python
-# src/trading/scrumming/sizing.py:147
+# src/trading/scrumming/sizing.py, in CITED_VENUE_ORDER_TYPES
 CITED_VENUE_ORDER_TYPES: dict[tuple[str, str], str] = {
     (CLASS_CRYPTO, "coinbase"): ORDER_TYPES_WITH_MARKET,
     (CLASS_CRYPTO, "gemini"): ORDER_TYPES_LIMIT_ONLY,
@@ -1366,7 +1367,7 @@ calls it, and no file outside its own imports the one broker connector that
 exists.
 
 ```
-src/stocks/broker_base.py:145      place_order, declared, called by nothing
+src/stocks/broker_base.py, in place_order      declared, called by nothing
 src/stocks/alpaca_connector.py     imported by no file in src/, main.py or tools/
 ```
 
@@ -1395,7 +1396,7 @@ reason, and the reason names the variant the market needs beside the shape that
 variant absorbs.
 
 ```python
-# src/trading/ata_spm.py:965
+# src/trading/ata_spm.py, in SectorScan
     #: The symbols this scan read that no built bot variant trades, kept in
     #: ``assets`` so each one still charts and still reports.
     untradeable: tuple = ()
@@ -1493,7 +1494,7 @@ now, beside the size and price rules already on this page. A venue that
 publishes neither leaves both absent, and absent changes nothing.
 
 ```python
-# src/exchange/base.py:141
+# src/exchange/base.py, in MarketRules, at expiry_ms and settlement_days
     expiry_ms: Optional[float] = None  # epoch ms the venue closes the contract on
     settlement_days: Optional[float] = None  # days the venue takes to settle a sale
 ```
@@ -1525,12 +1526,12 @@ question and before the order-type question, so a market with a date on it never
 reaches either of them.
 
 ```python
-# src/trading/scrumming/sizing.py:331
+# src/trading/scrumming/sizing.py, in MECHANIC_EXPIRY
 VARIANT_ROLLING_POSITION = "rolling position"
 
 VARIANT_MARKETS[VARIANT_ROLLING_POSITION] = "a market the venue expires on a date"
 
-# src/trading/scrumming/sizing.py:375
+# src/trading/scrumming/sizing.py, in venue_variant, at the expiry test
     if getattr(rules, "expires", False):
         return VARIANT_ROLLING_POSITION
 ```
@@ -1541,10 +1542,10 @@ asset list and names it in a field of its own, exactly as it does for any other
 market no built variant trades.
 
 ```
-src/trading/bot_container.py:370     the live order path
-src/paper/paper_run.py:507           the Paper Trader's fold
-src/simulator/back_test.py:1297      the back test's fold
-src/trading/ata_spm.py:1323          the scan naming the market
+src/trading/bot_container.py, in guarded_place_order     the live order path
+src/paper/paper_run.py, in apply_fold           the Paper Trader's fold
+src/simulator/back_test.py, in apply_fold      the back test's fold
+src/trading/ata_spm.py, in untradeable_markets          the scan naming the market
 ```
 
 ### Why the two sides differ
@@ -1602,7 +1603,7 @@ wallet less that figure. With nothing to spend, the fold fills nothing, names th
 reason, and leaves its tranches queued for the next round.
 
 ```python
-# src/trading/scrumming/sizing.py:169
+# src/trading/scrumming/sizing.py, in CITED_VENUE_SETTLEMENT
 CITED_VENUE_SETTLEMENT: dict[tuple[str, str], float] = {
     (CLASS_CRYPTO, "coinbase"): 0.0,
 }
@@ -1624,9 +1625,9 @@ the live autonomous fold, does not read it. Live's manual rebalance does read it
 and names the held amount on the Console.
 
 ```
-src/paper/paper_run.py:542           the Paper Trader's fold reads the delay
-src/simulator/back_test.py:1333      the back test's fold reads the delay
-src/trading/scrumming/execution.py:953   live's manual rebalance reads the delay
+src/paper/paper_run.py, in apply_fold           the Paper Trader's fold reads the delay
+src/simulator/back_test.py, in apply_fold      the back test's fold reads the delay
+src/trading/scrumming/execution.py, in _execute_manual_rebalance   live's manual rebalance reads the delay
 the live autonomous fold             does not read the delay
 ```
 
@@ -1693,7 +1694,7 @@ that flag: the four it already lists, then the trading session, the order types,
 the expiry and the settlement delay.
 
 ```python
-# src/exchange/base.py:135
+# src/exchange/base.py, in MarketRules, at the eight fields
     min_amount: Optional[float] = None  # base units
     min_cost: Optional[float] = None  # quote units
     amount_increment: Optional[float] = None  # base units a size steps by
@@ -1769,7 +1770,7 @@ two failures occurred, writes one record at error level, counts one failure
 against that market's breaker, and sends nothing.
 
 ```python
-# src/exchange/ccxt_connector.py:1180
+# src/exchange/ccxt_connector.py, in place_order, at the no-price refusal
             if exec_price is None:
                 from ccxt.base.errors import InvalidOrder
 
@@ -1802,7 +1803,7 @@ and no ticker fetched.
 
 The page already carries the fetch, and that sentence stands as written.
 
-> src/exchange/ccxt_connector.py:1132   a spot market buy on Coinbase needs a
+> src/exchange/ccxt_connector.py, in place_order   a spot market buy on Coinbase needs a
 > price, so a ticker is fetched first
 
 The sentence beneath it: when that ticker serves no price the connector refuses
@@ -1840,7 +1841,7 @@ Before this entry the table held two rows, so five of the six sectors Coinbase
 serves had no rule at all. Each one now has a Coinbase row.
 
 ```python
-# src/trading/scrumming/sizing.py:80
+# src/trading/scrumming/sizing.py, in CITED_UNIT_RULES
 CITED_UNIT_RULES: dict[tuple[str, str], str] = {
     (CLASS_CRYPTO, "coinbase"): FRACTIONAL_UNITS,
     (CLASS_STOCKS, "alpaca"): FRACTIONAL_UNITS,
@@ -1959,10 +1960,10 @@ The refusal only reaches an order that would open the position. A bot already
 holding units buys one at a time, which is what a cycle moves by default.
 
 ```python
-# src/trading/scrumming/sizing.py:673
+# src/trading/scrumming/sizing.py, in WHOLE_UNIT_POSITION_MINIMUM
 WHOLE_UNIT_POSITION_MINIMUM = 2
 
-# src/trading/scrumming/sizing.py:727
+# src/trading/scrumming/sizing.py, in position_minimum_refusal
 def position_minimum_refusal(
     symbol: Any, units: Any, price: Any, rule: Any, position_usd: Any
 ) -> str:
@@ -1978,7 +1979,7 @@ number with no remainder above the module's grain, and the same sweep under the
 fractional rule carries a fraction in 45 of the 51.
 
 ```python
-# src/trading/scrumming/sizing.py:560
+# src/trading/scrumming/sizing.py, in sized_units
 def sized_units(units: float, rule: str) -> float:
 ```
 
@@ -1989,7 +1990,7 @@ rule reads whole, and a market that can be held in fractions keeps the refusal
 it had.
 
 ```python
-# src/trading/scrumming/sizing.py:508
+# src/trading/scrumming/sizing.py, in variant_holds_market
 def variant_holds_market(
     rules: Any,
     asset_class: str = "",
@@ -5570,7 +5571,7 @@ Six readers shared the old comparison and all six read the predicate now:
 `in get_markets`, `in asset_info` and `in _sector_products` in the connector,
 `src/exchange/market_inspector_fetcher.py, in trading_products`, both market
 scans in `src/gui/bot_wizard.py, in _fetch_markets`, and
-`src/gui/preflight_check.py, in check` with its view model in
+`src/gui/preflight_check.py, in check_symbol` with its view model in
 `src/gui/main_tabs/preflight_check_surface.py, in run`. The two pre-flight
 readers also told a published `False` from a published nothing for the first
 time: `active_reported` now reads the field's value rather than the key's
@@ -8003,7 +8004,7 @@ OVERTAKEN, quoted whole:
 
 > "| Interactive Brokers | equities, funds, futures and 100 or more currency
 > pairs | yes, US broker | a TWS session, shape not stated by the pages read |
-> `src/gui/main_tabs/asset_class_surface.py:33`; Interactive Brokers TWS API
+> `src/gui/main_tabs/asset_class_surface.py, in EQUITY_VENUES`; Interactive Brokers TWS API
 > documentation, read 2026-09-24 |"
 
 True today: the shape is stated, and it is a REST order and not a TWS session.
@@ -8371,7 +8372,7 @@ published maximum of 200 instead.
 
 OVERTAKEN, quoted whole:
 
-> "| tastytrade | equities, options, futures and crypto, through one API | yes, US broker | not stated by the pages read | `src/gui/main_tabs/asset_class_surface.py:33`; tastytrade API documentation, read 2026-09-24 |"
+> "| tastytrade | equities, options, futures and crypto, through one API | yes, US broker | not stated by the pages read | `src/gui/main_tabs/asset_class_surface.py, in EQUITY_VENUES`; tastytrade API documentation, read 2026-09-24 |"
 
 True today: the credential is a two-field OAuth pair and the venue requires no US
 person. Quoted whole from its own International Accounts page: "**International
@@ -8476,7 +8477,7 @@ is the sector the screen did not offer.
 
 OVERTAKEN, quoted whole:
 
-> | Webull | equities | yes, US broker | not stated by the pages read | `src/gui/main_tabs/asset_class_surface.py:33`; the fractional-support table TradersPost publishes for the brokers it connects, read 2026-09-24 |
+> | Webull | equities | yes, US broker | not stated by the pages read | `src/gui/main_tabs/asset_class_surface.py, in EQUITY_VENUES`; the fractional-support table TradersPost publishes for the brokers it connects, read 2026-09-24 |
 
 True today: Webull publishes its own OpenAPI documentation at
 `developer.webull.com/apis/`, credential-free, and

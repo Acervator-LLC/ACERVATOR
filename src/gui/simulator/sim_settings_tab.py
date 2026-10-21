@@ -310,6 +310,13 @@ class SimSettingsTabMixin(SettingsTabMixin):
             self._landing = QSpinBox()
             self._landing.setRange(2, 10)
             self._landing.setValue(cfg.bb_landing_strip_candles)
+            self._landing.setToolTip(
+                "The bot confirms a Landing Strip when this many of the "
+                "newest Heikin Ashi candles have small bodies and price "
+                "sits near a Bollinger Band. This count reaches the "
+                "band-proximity check only. The separate shrinking-body "
+                "check keeps its own fixed count."
+            )
             self._landing.valueChanged.connect(
                 lambda v: self._mark_changed("bb_landing_strip_candles", v)
             )

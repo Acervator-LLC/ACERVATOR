@@ -3007,11 +3007,16 @@ The other three carry the value to those two, or draw the row the operator types
 into.
 
 ```
-src/trading/container/restore.py:254                    stored key into the kwarg
-src/trading/scrumming/capital_reservation_mixin.py:67   the size of the claim
-src/trading/scrumming/capital_reservation_mixin.py:134  the text of the claim
-src/trading/scrumming/reconciliation.py:412             the adoption ceiling
-src/gui/live_settings/settings_tab.py:304               seeds the live row
+src/trading/container/restore.py, in restore_bots_from_state
+    stored key into the kwarg
+src/trading/scrumming/capital_reservation_mixin.py, in _compute_reservation_qty
+    the size of the claim
+src/trading/scrumming/capital_reservation_mixin.py, in _ensure_capital_reservation
+    the text of the claim
+src/trading/scrumming/reconciliation.py, in _claimable_exchange_units
+    the adoption ceiling
+src/gui/live_settings/settings_tab.py, in _create_settings_tab
+    seeds the live row
 ```
 
 Both deciding readers are reached on every run. The claim is sized at the top of
@@ -3019,9 +3024,9 @@ every tick. The adoption ceiling is read once when a bot starts, and again every
 reconcile interval after that.
 
 ```
-src/trading/scrumming_bot.py:2571   the claim, once per tick
-src/trading/bot_container.py:891    the ceiling, on bot start
-src/trading/scrumming_bot.py:2643   the ceiling, every reconcile interval
+src/trading/scrumming_bot.py, in tick                     the claim, once per tick
+src/trading/bot_container.py, in _dispatch_bootstrap      the ceiling, on bot start
+src/trading/scrumming_bot.py, in tick                     the ceiling, every reconcile interval
 ```
 
 The adoption ceiling is the reader that bears on a sale. A bot whose venue
@@ -3030,7 +3035,7 @@ subtracted before that adoption, so the held units never enter the book the sell
 pre-check is measured against.
 
 ```
-src/trading/scrumming/execution.py:1408 — the sell pre-check reads the book
+src/trading/scrumming/execution.py, in _execute_detonation — the sell pre-check reads the book
 ```
 
 Driven on a restored record carrying a five-unit hold, with twenty units in the
@@ -3048,7 +3053,7 @@ siblings moves the same way, 16.0 units down to 11.0, which raises a co-tenant
 bot's own permitted sale from 14.0 units to 19.0.
 
 ```
-src/trading/capital_reservation.py:443 — effective_available, the co-tenant's cap
+src/trading/capital_reservation.py, in effective_available — the co-tenant's cap
 ```
 
 The removal is not taken. Stored state does load without the value — three
@@ -3162,9 +3167,9 @@ band position 0.976123, one tape, one tick
 
 Landing Strip Candles - Determines the strictness of Landing Strip detection. Minimum is three candles. Longer Landing Strips are historically more likely to indicate an impending market reversal than shorter ones assuming the taper remains intact or grows tighter.
 
-A whole number of candles from 2 to 10, at 3 to start. The box accepts 2, one
-below the minimum of three the description names: its declared floor is 2, asked
-for 0 or 1 it answers 2, and 2 is the one figure under three it keeps.
+A whole number of candles from 2 to 10, at 3 to start. The three the description
+names is the opening value and not the floor: the box's own floor is 2, asked
+for 0 or 1 it answers 2, and asked for 11 it answers 10.
 
 `src/gui/bot_wizard.py` — the Landing Strip Candles row
 
@@ -4738,9 +4743,8 @@ note naming the entry it dropped.
 is no field on `BotConfig` and no argument of that constructor: the phantom
 coordinator holds an attribute of that name, and Bot Settings writes it there on
 a running bot, which opens on the coordinator's own default of two. The attribute
-changes nothing yet either way. `TimeframeCoordinator.create_lock` is the only
-code that reads it, nothing calls `create_lock`, and so the lock list stays
-empty and `is_locked` answers no on every pass.
+changes nothing either way. The lock guard that read it has been retired, so the
+coordinator keeps the figure and no method on it reads it.
 
 **What the page delivers to a new bot.** All three figures on this page reach
 the bot that is built. One helper selects them and the constructor call carries
@@ -4771,8 +4775,8 @@ lock_candle_count     7      7
 A config carrying no count leaves the argument out, so the coordinator keeps its
 own figure of two. An Extractor holds no coordinator and takes no count.
 
-The count still creates no lock, because `create_lock` still has no caller. What
-it reaches is the attribute the state file saves, the restore path writes back
+The count creates no lock, because the coordinator has no method that makes one.
+What it reaches is the attribute the state file saves, the restore path writes back
 and the Bot Settings phantom page shows, so each of those reads the figure the
 page was set to rather than two.
 
@@ -7498,7 +7502,7 @@ fleet around it comes back.
 
 | setting | why |
 |---|---|
-| Lock duration (candles) | `lock_candle_count` is no field on `BotConfig` and no argument of `ScrummingBot.__init__`. The phantom coordinator holds an attribute of that name, and Bot Settings writes it there on a running bot. Nothing calls `TimeframeCoordinator.create_lock`, the one reader of that attribute, so the figure changes no decision on a running bot either. |
+| Lock duration (candles) | `lock_candle_count` is no field on `BotConfig` and no argument of `ScrummingBot.__init__`. The phantom coordinator holds an attribute of that name, and Bot Settings writes it there on a running bot. The coordinator has no method that reads that attribute, so the figure changes no decision on a running bot either. |
 | Profit Folding, on an Extractor | `BotCreationWizard.get_bot_config` writes the flag False for an Extractor. The field is Scrumming-only, so the factory refuses it on an Extractor config, and no control types it. |
 
 **The lock row reaches a new bot as well.** `lock_candle_count` is a keyword
