@@ -976,10 +976,11 @@ class VersionSweep:
     def check_snapshot_consistency(self):
         """Compare the snapshot keys read in ``sim_path`` against those it sets.
 
-        Returns without a finding when ``sim_path`` is absent.
+        Reports through ``_no_subject`` when ``sim_path`` is absent.
         """
         sim_path = self.root / "src" / "gui" / "simulator.py"
         if not sim_path.exists():
+            self._no_subject(f"{self._rel(sim_path)} absent")
             return
 
         import re
