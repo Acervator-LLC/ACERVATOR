@@ -14,6 +14,7 @@ from typing import Any, Optional
 
 from .container.config import BotConfig
 from .gate_chain import (
+    OVERRIDE_APPLIED_FORMAT,
     GateContext,
     build_scrumming_fold_chain,
     build_scrumming_scrum_chain,
@@ -38,6 +39,14 @@ STATE_LATCHED = "latched"
 STATE_BLOCKED = "blocked"
 STATE_NOT_RUN = "did not run"
 STATE_HYPOTHETICAL = "hypothetical"
+STATE_OVERRIDDEN = "overridden"
+
+#: The two states a chain fires through: a gate that latched, and a gate whose
+#: refusal an override replaced. ``GateChain.evaluate`` fires on both.
+FIRING_STATES = (STATE_LATCHED, STATE_OVERRIDDEN)
+
+#: Every state in which a gate decided, whichever way it went.
+DECIDED_STATES = (STATE_LATCHED, STATE_BLOCKED, STATE_OVERRIDDEN)
 
 SIDE_SCRUM = "scrum"
 SIDE_FOLD = "fold"
@@ -157,8 +166,8 @@ class GateReading:
 
     @property
     def ran(self) -> bool:
-        """True while ``state`` is ``STATE_LATCHED`` or ``STATE_BLOCKED``."""
-        return self.state in (STATE_LATCHED, STATE_BLOCKED)
+        """True while ``state`` is one of ``DECIDED_STATES``."""
+        return self.state in DECIDED_STATES
 
 
 @dataclass
@@ -175,13 +184,24 @@ class GateScan:
 
     @property
     def latched(self) -> list:
-        """The gates whose ``state`` is ``STATE_LATCHED``."""
-        return self.named(STATE_LATCHED)
+        """The gates the chain passed, in chain order.
+
+        A gate whose refusal an override replaced is one of them, because the
+        chain moved it into ``ChainResult.passed``. ``overridden`` names that
+        subset, so a count of these plus ``blocked`` plus ``not_run`` still
+        covers every reading.
+        """
+        return [one.name for one in self.readings if one.state in FIRING_STATES]
 
     @property
     def blocked(self) -> list:
         """The gates whose ``state`` is ``STATE_BLOCKED``."""
         return self.named(STATE_BLOCKED)
+
+    @property
+    def overridden(self) -> list:
+        """The gates whose refusal an override replaced."""
+        return self.named(STATE_OVERRIDDEN)
 
     @property
     def not_run(self) -> list:
@@ -198,13 +218,15 @@ class GateScan:
         return [one for one in self.readings if one.side == str(side)]
 
     def side_fires(self, side: Any) -> bool:
-        """True while one chain ran at least one gate and every one latched.
+        """True while one chain ran at least one gate and every one is in a
+        ``FIRING_STATES`` state.
 
         The states are the ones ``ChainResult`` answered, so no gate is
-        re-tested here.
+        re-tested here. A gate whose refusal an override replaced fires, which
+        is the verdict the chain itself reached.
         """
         decided = [one for one in self.side_readings(side) if one.ran]
-        return bool(decided) and all(one.state == STATE_LATCHED for one in decided)
+        return bool(decided) and all(one.state in FIRING_STATES for one in decided)
 
     @property
     def firing_side(self) -> str:
@@ -695,14 +717,41 @@ def hypothetical_reading(context: GateContext, side: Any) -> str:
     )
 
 
+def replaced_refusals(chain: Any, result: Any) -> dict:
+    """Each gate an override replaced, mapped to the chain's own entry for it.
+
+    ``GateChain.evaluate`` writes one ``OVERRIDE_APPLIED_FORMAT`` entry per
+    replaced refusal and moves that gate into ``ChainResult.passed``. This
+    reads the entries back against each gate's covering overrides, so a
+    reading can name the override that acted instead of calling the gate
+    latched.
+    """
+    entries = [str(one) for one in (getattr(result, "overrides_applied", None) or [])]
+    found: dict = {}
+    if not entries:
+        return found
+    for name in chain.gate_names():
+        for override in chain.covering_overrides(name):
+            prefix = OVERRIDE_APPLIED_FORMAT.format(
+                gate=name, override=override, refusal=""
+            )
+            for entry in entries:
+                if entry.startswith(prefix):
+                    found[name] = entry
+    return found
+
+
 def read_chain(chain: Any, context: GateContext) -> list:
     """One chain's gates as ``GateReading`` rows.
 
     The verdicts come off the ``ChainResult`` the shipped chain answered,
-    and every ``POSITION_BOUND_GATES`` name is stood down.
+    and every ``POSITION_BOUND_GATES`` name is stood down. A refusal an
+    override replaced reads ``STATE_OVERRIDDEN`` and carries the override's
+    name; a refusal that stood reads ``STATE_BLOCKED``.
     """
     result = chain.evaluate(context)
     blocked = dict(result.blocked)
+    replaced = replaced_refusals(chain, result)
     found: list = []
     for name in chain.gate_names():
         if name in NOT_APPLICABLE_GATES:
@@ -722,6 +771,10 @@ def read_chain(chain: Any, context: GateContext) -> list:
                     STATE_HYPOTHETICAL,
                     hypothetical_reading(context, chain.side),
                 )
+            )
+        elif name in replaced:
+            found.append(
+                GateReading(name, chain.side, STATE_OVERRIDDEN, replaced[name])
             )
         elif name in blocked:
             found.append(GateReading(name, chain.side, STATE_BLOCKED, blocked[name]))
