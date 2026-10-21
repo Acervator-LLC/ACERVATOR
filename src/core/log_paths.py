@@ -336,10 +336,13 @@ def get_meta_dir() -> Path:
 def get_reports_dir() -> Path:
     """``reports/`` bucket — machine-readable output of operator-run tools.
 
-    Destination for ``src/core/version_sweep.py``'s JSON and PDF sweep
-    reports. Generated output may not land in a tracked tree, so the
-    sweep resolves its default through here instead of composing a path
-    under the repo root.
+    ``src.simulator.parity_report`` is the only reached caller, and it
+    writes into the ``simulator`` subdirectory rather than the top level.
+    ``unreached/core/version_sweep.py`` was the only writer of the top
+    level itself; it has no importer and no caller, so nothing writes
+    there now. Generated output may not land in a tracked tree, which is
+    why a writer resolves its default through here instead of composing a
+    path under the repo root.
     """
     p = resolve_log_root() / "reports"
     p.mkdir(parents=True, exist_ok=True)

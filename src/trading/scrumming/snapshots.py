@@ -192,18 +192,19 @@ class SnapshotEmitterMixin(_Host):
     #   "The StatusLog widget detects the prefix and colors by stage (SENT /
     #   PLACED / FILLED / CANCELLED)."
     # The emit names ``LINE_KIND_TRADE``, and ``stage_color`` reads the stage.
+    # ``STAGE_COLORS`` names SENT, PLACED, FILLED and REFUSED; no caller in the
+    # tree passes CANCELLED or PLACED.
     def _emit_trade_notification(self, role: str, stage: str, extra: str = "") -> None:
-        """Emit a uniformly-formatted trade lifecycle notification.
+        """Emit a uniformly-formatted trade notification.
 
         Format: ``TRADE NOTIFICATION: <ROLE>: <SYMBOL>: <STAGE>[ — <extra>]``.
-        The StatusLog widget detects the prefix and colors by stage (SENT /
-        PLACED / FILLED / CANCELLED). ``role`` is the trade role
-        (SCRUM/FOLD/INITIAL, MANUAL_*, WIRE_STACK_*, CARTRIDGE_*, HEDGE,
-        DIST, …); ``stage`` is one of SENT/PLACED/FILLED/CANCELLED.
+        ``role`` is the trade role (SCRUM/FOLD/INITIAL, MANUAL_*,
+        WIRE_STACK_*, CARTRIDGE_*, HEDGE, DIST, …). ``stage`` is SENT before
+        ``guarded_place_order``, FILLED after the venue reports the fill, and
+        REFUSED when a gate stopped the trade with no order sent.
 
-        No sim-mode guard here: sim isolation comes from a sim bot holding a
-        private bus, so emitting is safe and preserves the CANCELLED-reason
-        trace that a replay needs.
+        A sim bot holds a private bus, which is where sim isolation comes
+        from, and the emit keeps the REFUSED reason a replay reads.
         """
         try:
             sym = self.config.symbol or self.config.target_asset

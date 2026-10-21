@@ -21,23 +21,6 @@ updates:
         patterns:
           - "*"
 
-  # requirements/build-win32-py3.14.txt
-  - package-ecosystem: "pip"
-    directory: "/requirements"
-    target-branch: "current"
-    schedule:
-      interval: "weekly"
-    open-pull-requests-limit: 1
-    groups:
-      routine-versions:
-        applies-to: version-updates
-        patterns:
-          - "*"
-      security-fixes:
-        applies-to: security-updates
-        patterns:
-          - "*"
-
   # package.json and package-lock.json
   - package-ecosystem: "npm"
     directory: "/"

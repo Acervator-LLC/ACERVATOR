@@ -237,6 +237,16 @@ src/gui/main_tabs/stock_main_window_surface.py  tools/build_release_zip.py
 tools/capture_live_baseline.py                  tools/spec_common.py
 ```
 
+**Overtaken again.** Both lines above that name the sweep stay whole:
+
+> `src/core/version_sweep.py` takes it as the canonical value and reports any
+> literal that shadows it.
+
+The sweep now lives at `unreached/core/version_sweep.py`. Eleven of the twelve
+readers are reached by the running program. The sweep is the twelfth and has no
+importer and no caller, so a literal shadowing the version is reported to nobody
+unless a person runs `python -m unreached.core.version_sweep` by hand.
+
 ### What the About box tells the operator
 
 Help holds About on the crypto window and on the stock window. The box names
@@ -768,6 +778,28 @@ Each ecosystem also sets `open-pull-requests-limit` to 1, which makes five the
 hard ceiling for routine pull requests across the repository. Security updates
 are exempt from that limit, so a security fix is never held back by it.
 
+**Overtaken.** The pip entry for `/requirements` is gone, and so is the lock file
+it watched. Four ecosystems are declared, not five, and the ceiling on routine
+pull requests is four, not five.
+
+```
+.github/dependabot.yml
+
+pip             /              pyproject.toml
+npm             /              package.json and package-lock.json
+npm             /desktop       desktop/package.json and its lock file
+github-actions  /              the action versions in .github/workflows/
+```
+
+The remaining pip entry opens nothing in practice. It watches `pyproject.toml`,
+which declares 50 requirements and pins or caps none of them, so a newer release
+already satisfies every line and the entry has nothing to raise against. The
+service has made 33 commits in this repository: 17 to the lock, 7 to the npm
+files, 7 to the action versions, 2 that changed no file, and 0 to
+`pyproject.toml`. Retiring the lock therefore ends routine pip pull requests
+altogether. A security advisory against a declared package still reaches the
+remaining entry.
+
 ### What clears the queue
 
 One scheduled workflow clears the queue. It runs at 13 and 43 minutes past every
@@ -1024,6 +1056,19 @@ jobs:
 
 The lock file under `requirements/` is not one of the nine. No build reads it, so
 a change to it builds nothing and ships nothing.
+
+**Overtaken.** The lock file is gone and `requirements/` holds nothing. Each build
+resolves its own install set: `build_windows.ps1` and `build_mac.sh` both call
+`python -m tools.deps requirements build`, which reads `pyproject.toml`, and both
+hand the answer straight to pip. Neither ever installed from the lock. The
+generator stays, as `python -m tools.deps lock`, and `.gitignore` keeps its output
+out of the tree.
+
+```
+python -m tools.deps requirements build     17 requirement lines
+pip resolves those to                       62 packages
+the retired lock pinned                     48 packages
+```
 
 ### The macOS watch list, overtaken
 

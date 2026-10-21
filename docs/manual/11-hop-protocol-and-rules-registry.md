@@ -102,6 +102,25 @@ class RuleRegistry: ...
 def parse_rule_command(...): ...
 ```
 
+### The module moved, and the path citations are overtaken
+
+OVERTAKEN. Every `src/core/rule_registry.py` and `src/core/version_sweep.py`
+citation on this page stays whole, in prose and in the code blocks both.
+
+The registry module is now `unreached/core/rule_registry.py` and the version
+sweep is now `unreached/core/version_sweep.py`. Both were moved out of `src/`
+because nothing in the tree reaches either one. An import scan over all 616
+tracked Python files, reading import nodes rather than matching text, finds no
+importer of either, and fifteen importers of `src/core/log_paths.py` in the same
+pass, which is the control saying the count reports an importer where one
+exists. `unreached/README.md` records what each file was for.
+
+One shell step used to run the registry module. `deploy/kiosk/install.sh`
+captured its output into a file on the kiosk. The step never produced anything:
+the module saves to `sadp/`, so it raised `FileNotFoundError` before printing a
+line, and `2>/dev/null || true` discarded the error and the exit code. It wrote
+a 0-byte file on every install. Nothing read that file. The step is gone.
+
 The suspend call refuses a CORE id. Driven both ways against a registry file in a
 temporary directory, R1 draws a refusal and stays LOCKED while R2 moves to
 SUSPENDED. The refusal is a real one rather than a declared one.
@@ -136,6 +155,36 @@ REGISTRY_PATH = ROOT / "sadp" / "RULE_REGISTRY.json"        # src/core/rule_regi
 
 The module's own docstring says as much. The ids name nothing the running
 program consults, and they carry no authority.
+
+### What the version sweep's registry checks answer
+
+`src/core/version_sweep.py` registers seventeen checks and prints one line for
+each. Five of them read a path that has never been in this repository, and three
+of those five read `sadp/RULE_REGISTRY.json`.
+
+| check | path it reads | what it prints |
+|---|---|---|
+| `check_r6_two_paths` | `src/gui/simulator.py` | NOT INSPECTED, naming the absent file |
+| `check_snapshot_consistency` | `src/gui/simulator.py` | the pass mark |
+| `check_rule_registry` | `sadp/RULE_REGISTRY.json` | one informational finding |
+| `check_sadp_annotations` | `sadp/RULE_REGISTRY.json` | five high findings |
+| `check_sadp_dependency_graph` | `sadp/RULE_REGISTRY.json` | NOT INSPECTED, naming the absent file |
+
+Two of them report their own blindness through `_no_subject`, which `run` turns
+into NOT INSPECTED in place of the pass mark. `check_snapshot_consistency`
+returns without calling it, so `run` counts no new finding and prints the pass
+mark for a check that opened no file.
+
+`check_sadp_annotations` reads an absent registry as an empty mapping and does
+not return early. No `# sadp:` annotation remains in the tree, so it raises
+nothing against an annotation, and five high findings against its own mandatory
+list. One entry on that list names `simulator.py`.
+
+Nothing in the tree runs any of it. An import scan over the 498 Python files
+under `src/` and `main.py`, parsing each file and reading its import nodes,
+finds no importer of the module, and finds fourteen importers of
+`src/core/log_paths.py` in the same pass. No workflow, script or build step
+names it. A reader reaches the per-check column only by typing the module name.
 
 ## Version one of the protocol
 

@@ -61,9 +61,13 @@ dependencies = [
 # Issue #94 - EXTRAS. Each one names its consumer and the guard that
 # proves the code survives its absence. Nothing goes here on taste.
 #
-#   report   `VersionSweep.save_pdf_report` in src/core/version_sweep.py
+#   report   `VersionSweep.save_pdf_report` in unreached/core/version_sweep.py
 #            imports reportlab inside `try:` and answers None on
 #            ImportError. The sweep still runs and writes its JSON report.
+#            That module has no importer and no caller, so it is not what
+#            keeps this extra. Two reached files import reportlab:
+#            tools/build_product_manual.py and
+#            deploy/kiosk/splash/generate_splash.py.
 #   charts   src/design_system.py imports matplotlib at module level with
 #            NO guard. It is an extra and not a core dependency for a
 #            different reason: one tracked module imports
@@ -155,8 +159,7 @@ dependencies = [
 #            NO LOWER BOUND IS STATED, and that is deliberate. A bound
 #            would be a guess: neither has been resolved, installed or
 #            run anywhere this project has measured.
-#            `python -m tools.deps lock contracts` pins them the first
-#            time one is.
+#            A bound gets stated here the first time one is.
 #            `src/competition/` needs NONE of these. An AST walk over its
 #            modules finds one third-party import, `cryptography` in
 #            src/competition/bot_identity.py, and that is already a core
@@ -258,8 +261,8 @@ dev = [
     # distribution, so it belongs with the type checker and never in
     # `dependencies`.
     "types-defusedxml>=0.7.0.20260504",
-    # Issue #94 - the lockfile generator. `requirements/` holds what it
-    # produced; `python -m tools.deps lock` regenerates it.
+    # The lockfile generator behind `python -m tools.deps lock`. No build
+    # installs from a lock, and `.gitignore` keeps the output untracked.
     "pip-tools>=7.6.1",
     # tools/build_product_manual.py and tools/extract_product_manual.py
     # import pypdf at module level. No src/ module imports either

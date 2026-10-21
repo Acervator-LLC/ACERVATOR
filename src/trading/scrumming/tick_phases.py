@@ -1272,25 +1272,33 @@ class TickPhaseMixin:
                 bullseye_lower_wick = _last_low <= bb_result.lower * (1.0 + _wick_tol)
 
         if bullseye_upper or bullseye_upper_wick:
-            _ramp = self._scrum_target_mode.upper()
-            _fire_gate = "passes" if _ramp == "FIRE" else "holds"
-            self._bus.emit(
-                "bot.log",
-                bot_id=self.bot_id,
-                message=f"BULLSEYE UPPER ({'wick' if bullseye_upper_wick else 'close'}): "
-                f"price ${ticker.last:.8f} at BB upper ${bb_result.upper:.8f}. "
-                f"Ramp at {_ramp}, so the FIRE gate {_fire_gate}.",
-            )
+            _upper_touch = "wick" if bullseye_upper_wick else "close"
+            if self._refusal_is_new(
+                f"state_bullseye_upper_{_upper_touch}", ticker.last
+            ):
+                _ramp = self._scrum_target_mode.upper()
+                _fire_gate = "passes" if _ramp == "FIRE" else "holds"
+                self._bus.emit(
+                    "bot.log",
+                    bot_id=self.bot_id,
+                    message=f"BULLSEYE UPPER ({_upper_touch}): "
+                    f"price ${ticker.last:.8f} at BB upper ${bb_result.upper:.8f}. "
+                    f"Ramp at {_ramp}, so the FIRE gate {_fire_gate}.",
+                )
         if bullseye_lower or bullseye_lower_wick:
-            _queued = len(self._fold_tranches or [])
-            self._bus.emit(
-                "bot.log",
-                bot_id=self.bot_id,
-                message=f"BULLSEYE LOWER ({'wick' if bullseye_lower_wick else 'close'}): "
-                f"price ${ticker.last:.8f} at BB lower ${bb_result.lower:.8f}. "
-                f"{_queued} tranche(s) queued; a fold needs one whose "
-                f"reference price the market has fallen past.",
-            )
+            _lower_touch = "wick" if bullseye_lower_wick else "close"
+            if self._refusal_is_new(
+                f"state_bullseye_lower_{_lower_touch}", ticker.last
+            ):
+                _queued = len(self._fold_tranches or [])
+                self._bus.emit(
+                    "bot.log",
+                    bot_id=self.bot_id,
+                    message=f"BULLSEYE LOWER ({_lower_touch}): "
+                    f"price ${ticker.last:.8f} at BB lower ${bb_result.lower:.8f}. "
+                    f"{_queued} tranche(s) queued; a fold needs one whose "
+                    f"reference price the market has fallen past.",
+                )
 
     async def _tick_execute_scrum(
         self,

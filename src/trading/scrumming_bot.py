@@ -3072,27 +3072,31 @@ class ScrummingBot(
         below_interval = delta_below_interval(delta, _interval_usd)
 
         if below_interval and self._fold_queue_usd == 0 and self._dist_accumulator == 0:
-            ta_dir = summary.consensus_direction.name if summary else "N/A"
-            ta_conf = f"{summary.consensus_confidence:.0%}" if summary else "—"
-            self._bus.emit(
-                "bot.log",
-                bot_id=self.bot_id,
-                message=f"READ: ${ticker.last:.8f} | delta ${delta:+.4f} "
-                f"({delta_pct:.1f}% of target, under the "
-                f"{self.config.scrumming_interval_pct}% interval) | "
-                f"TA={ta_dir} ({ta_conf}) | holding",
-            )
+            if self._refusal_is_new("state_read", ticker.last):
+                ta_dir = summary.consensus_direction.name if summary else "N/A"
+                ta_conf = f"{summary.consensus_confidence:.0%}" if summary else "—"
+                self._bus.emit(
+                    "bot.log",
+                    bot_id=self.bot_id,
+                    message=f"READ: ${ticker.last:.8f} | delta ${delta:+.4f} "
+                    f"({delta_pct:.1f}% of target, under the "
+                    f"{self.config.scrumming_interval_pct}% interval) | "
+                    f"TA={ta_dir} ({ta_conf}) | holding",
+                )
             self._last_price = ticker.last
             return
 
-        self._bus.emit(
-            "bot.log",
-            bot_id=self.bot_id,
-            message=f"DELTA: ${delta:+.4f} ({delta_pct:.1f}% of target) | "
-            f"holdings ${current_value:.4f} vs target "
-            f"${self._target_balance:.4f}"
-            f"{' | under the interval, checking the queues' if below_interval else ''}",
-        )
+        if self._refusal_is_new(
+            f"state_delta_{'pos' if delta >= 0 else 'neg'}", ticker.last
+        ):
+            self._bus.emit(
+                "bot.log",
+                bot_id=self.bot_id,
+                message=f"DELTA: ${delta:+.4f} ({delta_pct:.1f}% of target) | "
+                f"holdings ${current_value:.4f} vs target "
+                f"${self._target_balance:.4f}"
+                f"{' | under the interval, checking the queues' if below_interval else ''}",
+            )
 
         if not summary:
             self._bus.emit(
@@ -3317,22 +3321,25 @@ class ScrummingBot(
                 bb_near = ", near the lower band"
 
         # Both favours skew the floor, so the confidence prints alone.
-        _skew_note = ""
-        if position_boost or bb_confidence_boost:
-            _skew_note = f", floor skew {position_boost:+.2f} position" + (
-                "" if not bb_confidence_boost else f" {bb_confidence_boost:+.2f} BB"
+        if self._refusal_is_new(
+            f"state_ta_vote_{summary.consensus_direction.name}", ticker.last
+        ):
+            _skew_note = ""
+            if position_boost or bb_confidence_boost:
+                _skew_note = f", floor skew {position_boost:+.2f} position" + (
+                    "" if not bb_confidence_boost else f" {bb_confidence_boost:+.2f} BB"
+                )
+            self._bus.emit(
+                "bot.log",
+                bot_id=self.bot_id,
+                message=f"TA VOTE: {summary.consensus_direction.name} at "
+                f"confidence {summary.consensus_confidence:.2f}"
+                f"{_skew_note} | "
+                f"{summary.bullish_count} bullish, "
+                f"{summary.neutral_count} neutral, "
+                f"{summary.bearish_count} bearish | "
+                f"BB position {bb_pos:.1%}{bb_near}",
             )
-        self._bus.emit(
-            "bot.log",
-            bot_id=self.bot_id,
-            message=f"TA VOTE: {summary.consensus_direction.name} at "
-            f"confidence {summary.consensus_confidence:.2f}"
-            f"{_skew_note} | "
-            f"{summary.bullish_count} bullish, "
-            f"{summary.neutral_count} neutral, "
-            f"{summary.bearish_count} bearish | "
-            f"BB position {bb_pos:.1%}{bb_near}",
-        )
 
         self._bus.emit(
             "ta.voting",
@@ -3452,7 +3459,10 @@ class ScrummingBot(
         if _bb_priority_arm:
             _ta_conf_skew += _BB_PRIORITY_SKEW
         _eff_conf_floor = _skewed_confidence_floor(_ta_conf_skew)
-        if _bb_priority_arm:
+        _bb_skew_side = "scrum" if _bb_priority_scrum_skew else "fold"
+        if _bb_priority_arm and self._refusal_is_new(
+            f"state_bb_skew_{_bb_skew_side}", ticker.last
+        ):
             try:
                 self._bus.emit(
                     "bot.log",
@@ -3865,30 +3875,32 @@ class ScrummingBot(
             )
 
         elif delta > 0 and not below_interval and trend_hold:
-            self._bus.emit(
-                "bot.log",
-                bot_id=self.bot_id,
-                message=f"HOLD SCRUM: delta +${abs(delta):.4f} — trend hold "
-                f"is active at {trend_strength:.0%} bullish",
-            )
+            if self._refusal_is_new("scrum_trend_hold", ticker.last):
+                self._bus.emit(
+                    "bot.log",
+                    bot_id=self.bot_id,
+                    message=f"HOLD SCRUM: delta +${abs(delta):.4f} — trend hold "
+                    f"is active at {trend_strength:.0%} bullish",
+                )
 
         elif delta > 0 and not below_interval and not is_bullish:
             # is_bullish is a conjunction, so exactly one half failed here.
-            if eff_direction not in (
-                SignalDirection.BULLISH,
-                SignalDirection.NEUTRAL,
-            ):
-                _scrum_why = f"TA={eff_direction.name} is not BULLISH or NEUTRAL"
-            else:
-                _scrum_why = (
-                    f"TA={eff_direction.name} but confidence "
-                    f"{eff_confidence:.4f} < {_eff_conf_floor:.4f} floor"
+            if self._refusal_is_new("scrum_ta_hold", ticker.last):
+                if eff_direction not in (
+                    SignalDirection.BULLISH,
+                    SignalDirection.NEUTRAL,
+                ):
+                    _scrum_why = f"TA={eff_direction.name} is not BULLISH or NEUTRAL"
+                else:
+                    _scrum_why = (
+                        f"TA={eff_direction.name} but confidence "
+                        f"{eff_confidence:.4f} < {_eff_conf_floor:.4f} floor"
+                    )
+                self._bus.emit(
+                    "bot.log",
+                    bot_id=self.bot_id,
+                    message=f"HOLD SCRUM: delta +${abs(delta):.4f} — {_scrum_why}",
                 )
-            self._bus.emit(
-                "bot.log",
-                bot_id=self.bot_id,
-                message=f"HOLD SCRUM: delta +${abs(delta):.4f} — {_scrum_why}",
-            )
 
         elif (
             delta > 0
@@ -3900,22 +3912,23 @@ class ScrummingBot(
             and not _bb_above_upper_dt
             and not _cb_blocks_scrum
         ):
-            self._bus.emit(
-                "bot.log",
-                bot_id=self.bot_id,
-                message=(
-                    f"SCRUM REFUSED (Upper BB Detection Threshold): "
-                    f"bb_pos={bb_pos:.3f} < upper_detect={_bb_upper_dt:.3f} "
-                    f"(scrum_detect_pct={self.config.scrum_detect_pct}%). "
-                    f"Operator rule: SCRUM cannot occur below the Upper "
-                    f"BB Detection Threshold. All other gates passed."
-                ),
-            )
-            self._emit_trade_notification(
-                "SCRUM",
-                "CANCELLED",
-                f"bb_pos {bb_pos:.3f} < upper detect {_bb_upper_dt:.3f}",
-            )
+            if self._refusal_is_new("scrum_bb_upper_detect", ticker.last):
+                self._bus.emit(
+                    "bot.log",
+                    bot_id=self.bot_id,
+                    message=(
+                        f"SCRUM REFUSED (Upper BB Detection Threshold): "
+                        f"bb_pos={bb_pos:.3f} < upper_detect={_bb_upper_dt:.3f} "
+                        f"(scrum_detect_pct={self.config.scrum_detect_pct}%). "
+                        f"Operator rule: SCRUM cannot occur below the Upper "
+                        f"BB Detection Threshold. All other gates passed."
+                    ),
+                )
+                self._emit_trade_notification(
+                    "SCRUM",
+                    "REFUSED",
+                    f"bb_pos {bb_pos:.3f} < upper detect {_bb_upper_dt:.3f}",
+                )
 
         elif (
             delta > 0
@@ -3927,17 +3940,19 @@ class ScrummingBot(
             and _bb_above_upper_dt
             and _cb_blocks_scrum
         ):
-            self._bus.emit(
-                "bot.log",
-                bot_id=self.bot_id,
-                message=(
-                    f"SCRUM BLOCKED by SOFT CIRCUIT BREAKER: trip @ "
-                    f"{self._cb_soft_trip_pct:.2f}% "
-                    f"(threshold {self.config.circuit_breaker_soft_pct:.2f}%); "
-                    f"{self._cb_soft_cooldown_remaining} candle(s) of cooldown "
-                    f"remaining before SCRUM side re-opens."
-                ),
-            )
+            if self._refusal_is_new("scrum_soft_breaker", ticker.last):
+                self._bus.emit(
+                    "bot.log",
+                    bot_id=self.bot_id,
+                    message=(
+                        f"SCRUM BLOCKED by SOFT CIRCUIT BREAKER: trip @ "
+                        f"{self._cb_soft_trip_pct:.2f}% "
+                        f"(threshold "
+                        f"{self.config.circuit_breaker_soft_pct:.2f}%); "
+                        f"{self._cb_soft_cooldown_remaining} candle(s) of "
+                        f"cooldown remaining before SCRUM side re-opens."
+                    ),
+                )
 
         elif (
             delta > 0
@@ -3950,34 +3965,35 @@ class ScrummingBot(
             and not _cb_blocks_scrum
             and _htf_blocks_scrum
         ):
-            _bull_w = _htf_bias_detail.get("bull_weight", 0.0)
-            _bear_w = _htf_bias_detail.get("bear_weight", 0.0)
-            _contribs = _htf_bias_detail.get("contributors", [])
-            _summary = (
-                ", ".join(
-                    f"{c.get('tf', '?')}={c.get('direction', '?')}"
-                    f"@{c.get('conf', 0):.2f}"
-                    for c in _contribs
-                    if not c.get("skipped")
+            if self._refusal_is_new("scrum_htf_bias", ticker.last):
+                _bull_w = _htf_bias_detail.get("bull_weight", 0.0)
+                _bear_w = _htf_bias_detail.get("bear_weight", 0.0)
+                _contribs = _htf_bias_detail.get("contributors", [])
+                _summary = (
+                    ", ".join(
+                        f"{c.get('tf', '?')}={c.get('direction', '?')}"
+                        f"@{c.get('conf', 0):.2f}"
+                        for c in _contribs
+                        if not c.get("skipped")
+                    )
+                    or "no usable phantoms"
                 )
-                or "no usable phantoms"
-            )
-            self._bus.emit(
-                "bot.log",
-                bot_id=self.bot_id,
-                message=(
-                    f"SCRUM REFUSED (Higher-TF Bias gate): higher-TF "
-                    f"phantom consensus is BULLISH "
-                    f"(bull weight {_bull_w:.2f} > bear {_bear_w:.2f}). "
-                    f"Selling here would fight the higher-TF trend. "
-                    f"Contributors: {_summary}."
-                ),
-            )
-            self._emit_trade_notification(
-                "SCRUM",
-                "CANCELLED",
-                f"higher-TF BULLISH bias ({_bull_w:.2f} vs {_bear_w:.2f})",
-            )
+                self._bus.emit(
+                    "bot.log",
+                    bot_id=self.bot_id,
+                    message=(
+                        f"SCRUM REFUSED (Higher-TF Bias gate): higher-TF "
+                        f"phantom consensus is BULLISH "
+                        f"(bull weight {_bull_w:.2f} > bear {_bear_w:.2f}). "
+                        f"Selling here would fight the higher-TF trend. "
+                        f"Contributors: {_summary}."
+                    ),
+                )
+                self._emit_trade_notification(
+                    "SCRUM",
+                    "REFUSED",
+                    f"higher-TF BULLISH bias ({_bull_w:.2f} vs {_bear_w:.2f})",
+                )
 
         _anchor = float(getattr(self, "_anchor_target_balance", self._target_balance))
         _mem253_current_pos = float(self._current_holdings) * float(ticker.last)
@@ -4204,40 +4220,42 @@ class ScrummingBot(
                 return
 
         elif self._fold_tranches and not is_bearish:
-            _dir_ok = eff_direction in (
-                SignalDirection.BEARISH,
-                SignalDirection.NEUTRAL,
-            )
-            if not _dir_ok:
-                _why = f"TA={eff_direction.name} is not BEARISH or " f"NEUTRAL"
-            elif eff_confidence < _eff_conf_floor:
-                _why = (
-                    f"TA={eff_direction.name} but confidence "
-                    f"{eff_confidence:.4f} < {_eff_conf_floor:.4f} "
-                    f"floor"
+            if self._refusal_is_new("fold_ta_hold", ticker.last):
+                _dir_ok = eff_direction in (
+                    SignalDirection.BEARISH,
+                    SignalDirection.NEUTRAL,
                 )
-            else:
-                _why = (
-                    f"TA={eff_direction.name}, confidence "
-                    f"{eff_confidence:.2f} — blocked by an override, "
-                    f"not by direction or confidence"
+                if not _dir_ok:
+                    _why = f"TA={eff_direction.name} is not BEARISH or " f"NEUTRAL"
+                elif eff_confidence < _eff_conf_floor:
+                    _why = (
+                        f"TA={eff_direction.name} but confidence "
+                        f"{eff_confidence:.4f} < {_eff_conf_floor:.4f} "
+                        f"floor"
+                    )
+                else:
+                    _why = (
+                        f"TA={eff_direction.name}, confidence "
+                        f"{eff_confidence:.2f} — blocked by an override, "
+                        f"not by direction or confidence"
+                    )
+                self._bus.emit(
+                    "bot.log",
+                    bot_id=self.bot_id,
+                    message=f"HOLD FOLD: {len(self._fold_tranches)} tranche(s) "
+                    f"(${self._fold_queue_usd:.4f}) queued — {_why}",
                 )
-            self._bus.emit(
-                "bot.log",
-                bot_id=self.bot_id,
-                message=f"HOLD FOLD: {len(self._fold_tranches)} tranche(s) "
-                f"(${self._fold_queue_usd:.4f}) queued — {_why}",
-            )
 
         elif self._fold_tranches and is_bearish and not fold_ok_midline:
-            self._bus.emit(
-                "bot.log",
-                bot_id=self.bot_id,
-                message=f"HOLD FOLD: BEARISH and {len(self._fold_tranches)} "
-                f"tranche(s) queued but BB position {bb_pos:.0%} > 50% "
-                f"(bb_midline_gate blocking fold — wait for price "
-                f"to drop below midline)",
-            )
+            if self._refusal_is_new("fold_bb_midline", ticker.last):
+                self._bus.emit(
+                    "bot.log",
+                    bot_id=self.bot_id,
+                    message=f"HOLD FOLD: BEARISH and {len(self._fold_tranches)} "
+                    f"tranche(s) queued but BB position {bb_pos:.0%} > 50% "
+                    f"(bb_midline_gate blocking fold — wait for price "
+                    f"to drop below midline)",
+                )
 
         elif (
             self._fold_tranches
@@ -4261,7 +4279,7 @@ class ScrummingBot(
                 )
                 self._emit_trade_notification(
                     "FOLD",
-                    "CANCELLED",
+                    "REFUSED",
                     f"bb_pos {bb_pos:.3f} > lower detect {_bb_lower_dt:.3f}",
                 )
 
@@ -4273,17 +4291,19 @@ class ScrummingBot(
             and _bb_below_lower_dt
             and _cb_blocks_fold
         ):
-            self._bus.emit(
-                "bot.log",
-                bot_id=self.bot_id,
-                message=(
-                    f"FOLD BLOCKED by SOFT CIRCUIT BREAKER: trip @ "
-                    f"{self._cb_soft_trip_pct:.2f}% "
-                    f"(threshold {self.config.circuit_breaker_soft_pct:.2f}%); "
-                    f"{self._cb_soft_cooldown_remaining} candle(s) of cooldown "
-                    f"remaining before FOLD side re-opens."
-                ),
-            )
+            if self._refusal_is_new("fold_soft_breaker", ticker.last):
+                self._bus.emit(
+                    "bot.log",
+                    bot_id=self.bot_id,
+                    message=(
+                        f"FOLD BLOCKED by SOFT CIRCUIT BREAKER: trip @ "
+                        f"{self._cb_soft_trip_pct:.2f}% "
+                        f"(threshold "
+                        f"{self.config.circuit_breaker_soft_pct:.2f}%); "
+                        f"{self._cb_soft_cooldown_remaining} candle(s) of "
+                        f"cooldown remaining before FOLD side re-opens."
+                    ),
+                )
 
         elif (
             self._fold_tranches
@@ -4294,34 +4314,35 @@ class ScrummingBot(
             and not _cb_blocks_fold
             and _htf_blocks_fold
         ):
-            _bull_w = _htf_bias_detail.get("bull_weight", 0.0)
-            _bear_w = _htf_bias_detail.get("bear_weight", 0.0)
-            _contribs = _htf_bias_detail.get("contributors", [])
-            _summary = (
-                ", ".join(
-                    f"{c.get('tf', '?')}={c.get('direction', '?')}"
-                    f"@{c.get('conf', 0):.2f}"
-                    for c in _contribs
-                    if not c.get("skipped")
+            if self._refusal_is_new("fold_htf_bias", ticker.last):
+                _bull_w = _htf_bias_detail.get("bull_weight", 0.0)
+                _bear_w = _htf_bias_detail.get("bear_weight", 0.0)
+                _contribs = _htf_bias_detail.get("contributors", [])
+                _summary = (
+                    ", ".join(
+                        f"{c.get('tf', '?')}={c.get('direction', '?')}"
+                        f"@{c.get('conf', 0):.2f}"
+                        for c in _contribs
+                        if not c.get("skipped")
+                    )
+                    or "no usable phantoms"
                 )
-                or "no usable phantoms"
-            )
-            self._bus.emit(
-                "bot.log",
-                bot_id=self.bot_id,
-                message=(
-                    f"FOLD REFUSED (Higher-TF Bias gate): higher-TF "
-                    f"phantom consensus is BEARISH "
-                    f"(bear weight {_bear_w:.2f} > bull {_bull_w:.2f}). "
-                    f"Buying here would catch a falling knife. "
-                    f"Contributors: {_summary}."
-                ),
-            )
-            self._emit_trade_notification(
-                "FOLD",
-                "CANCELLED",
-                f"higher-TF BEARISH bias ({_bear_w:.2f} vs {_bull_w:.2f})",
-            )
+                self._bus.emit(
+                    "bot.log",
+                    bot_id=self.bot_id,
+                    message=(
+                        f"FOLD REFUSED (Higher-TF Bias gate): higher-TF "
+                        f"phantom consensus is BEARISH "
+                        f"(bear weight {_bear_w:.2f} > bull {_bull_w:.2f}). "
+                        f"Buying here would catch a falling knife. "
+                        f"Contributors: {_summary}."
+                    ),
+                )
+                self._emit_trade_notification(
+                    "FOLD",
+                    "REFUSED",
+                    f"higher-TF BEARISH bias ({_bear_w:.2f} vs {_bull_w:.2f})",
+                )
 
         # Re-read after the fold above moved ``_current_holdings`` and the target.
         _hedge_gap_usd = self._target_balance - (
