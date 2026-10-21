@@ -824,7 +824,6 @@ STEP_NAMES = (
     "set_source_label",
     "set_error",
     "set_positions",
-    "set_grid_lines",
     "set_tranche_floors",
     "set_target_balance_lines",
     "set_fire_armed_state",
@@ -1777,16 +1776,6 @@ class PositionMarker:
         self.asset_held = asset_held
 
 
-class GridLine:
-    """One stored grid level. The chart keeps these and paints none."""
-
-    def __init__(self, price: float, side: str, label: str = "") -> None:
-        """Hold one grid level's price, side and label."""
-        self.price = price
-        self.side = side
-        self.label = label
-
-
 class Refused(Exception):
     """A step the chart could not take."""
 
@@ -1802,7 +1791,6 @@ class ChartModel:
         self.refused_candles = 0
         self.markers: list = []
         self.positions: list = []
-        self.grid_lines: list = []
         self.tranche_floors: list = []
         self.timeframe = DEFAULT_TIMEFRAME
         self.status_text = DEFAULT_STATUS_TEXT
@@ -1924,11 +1912,6 @@ class ChartModel:
             for one in positions or []
             if as_finite_float(getattr(one, "price", None)) is not None
         ]
-
-    def set_grid_lines(self, lines: Sequence) -> None:
-        """Store the grid levels. Nothing paints them."""
-        self._record("set_grid_lines")
-        self.grid_lines = list(lines)
 
     def set_tranche_floors(self, floors: Sequence) -> None:
         """Replace the tranche minimum-target lines."""
@@ -2785,7 +2768,6 @@ def build_view_model(model: ChartModel, width: int = 0, height: int = 0) -> dict
             for one in model.markers
         ],
         "tranche_floors": [list(one) for one in model.tranche_floors],
-        "grid_lines_held": len(model.grid_lines),
         "target_balance": {
             "anchor_price": model.tb_anchor_price,
             "ceiling_price": model.tb_ceiling_price,
