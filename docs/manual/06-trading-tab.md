@@ -3167,9 +3167,9 @@ band position 0.976123, one tape, one tick
 
 Landing Strip Candles - Determines the strictness of Landing Strip detection. Minimum is three candles. Longer Landing Strips are historically more likely to indicate an impending market reversal than shorter ones assuming the taper remains intact or grows tighter.
 
-A whole number of candles from 2 to 10, at 3 to start. The box accepts 2, one
-below the minimum of three the description names: its declared floor is 2, asked
-for 0 or 1 it answers 2, and 2 is the one figure under three it keeps.
+A whole number of candles from 2 to 10, at 3 to start. The three the description
+names is the opening value and not the floor: the box's own floor is 2, asked
+for 0 or 1 it answers 2, and asked for 11 it answers 10.
 
 `src/gui/bot_wizard.py` — the Landing Strip Candles row
 
