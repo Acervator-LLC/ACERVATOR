@@ -1095,7 +1095,7 @@ class VersionSweep:
                 registry_path,
                 0,
                 "sadp/RULE_REGISTRY.json not found — will be created on first RULE command",
-                "Run: python src/core/rule_registry.py",
+                "Run: python unreached/core/rule_registry.py",
             )
             return
 
@@ -1110,7 +1110,7 @@ class VersionSweep:
                 registry_path,
                 0,
                 f"sadp/RULE_REGISTRY.json could not be parsed: {e}",
-                "Delete sadp/RULE_REGISTRY.json and re-run: python src/core/rule_registry.py",
+                "Delete sadp/RULE_REGISTRY.json and re-run: python unreached/core/rule_registry.py",
             )
             return
 

@@ -237,6 +237,16 @@ src/gui/main_tabs/stock_main_window_surface.py  tools/build_release_zip.py
 tools/capture_live_baseline.py                  tools/spec_common.py
 ```
 
+**Overtaken again.** Both lines above that name the sweep stay whole:
+
+> `src/core/version_sweep.py` takes it as the canonical value and reports any
+> literal that shadows it.
+
+The sweep now lives at `unreached/core/version_sweep.py`. Eleven of the twelve
+readers are reached by the running program. The sweep is the twelfth and has no
+importer and no caller, so a literal shadowing the version is reported to nobody
+unless a person runs `python -m unreached.core.version_sweep` by hand.
+
 ### What the About box tells the operator
 
 Help holds About on the crypto window and on the stock window. The box names
