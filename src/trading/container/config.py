@@ -123,7 +123,7 @@ class BotConfig:
 
     bb_tolerance_pct: float = 1.0  # 0.25% to 5% tolerance for BB proximity
     bb_landing_strip_candles: int = (
-        3  # Min consecutive tight HA candles for landing strip
+        3  # Newest small-body HA candles the band-proximity check needs
     )
     ta_timeframe: str = "1h"  # Timeframe for TA indicator calculations
 

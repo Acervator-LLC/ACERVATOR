@@ -571,8 +571,11 @@ if _HAS_QT:
             self._ls_candles.setValue(3)
             self._ls_candles.setSuffix(" candles")
             self._ls_candles.setToolTip(
-                "Min consecutive tight Heikin Ashi candles near a "
-                "Bollinger Band to confirm a Landing Strip pattern."
+                "The bot confirms a Landing Strip when this many of the "
+                "newest Heikin Ashi candles have small bodies and price "
+                "sits near a Bollinger Band. This count reaches the "
+                "band-proximity check only. The separate shrinking-body "
+                "check keeps its own fixed count."
             )
             sf.addRow("Landing Strip Candles:", self._ls_candles)
 
