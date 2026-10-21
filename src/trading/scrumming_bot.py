@@ -3072,27 +3072,31 @@ class ScrummingBot(
         below_interval = delta_below_interval(delta, _interval_usd)
 
         if below_interval and self._fold_queue_usd == 0 and self._dist_accumulator == 0:
-            ta_dir = summary.consensus_direction.name if summary else "N/A"
-            ta_conf = f"{summary.consensus_confidence:.0%}" if summary else "—"
-            self._bus.emit(
-                "bot.log",
-                bot_id=self.bot_id,
-                message=f"READ: ${ticker.last:.8f} | delta ${delta:+.4f} "
-                f"({delta_pct:.1f}% of target, under the "
-                f"{self.config.scrumming_interval_pct}% interval) | "
-                f"TA={ta_dir} ({ta_conf}) | holding",
-            )
+            if self._refusal_is_new("state_read", ticker.last):
+                ta_dir = summary.consensus_direction.name if summary else "N/A"
+                ta_conf = f"{summary.consensus_confidence:.0%}" if summary else "—"
+                self._bus.emit(
+                    "bot.log",
+                    bot_id=self.bot_id,
+                    message=f"READ: ${ticker.last:.8f} | delta ${delta:+.4f} "
+                    f"({delta_pct:.1f}% of target, under the "
+                    f"{self.config.scrumming_interval_pct}% interval) | "
+                    f"TA={ta_dir} ({ta_conf}) | holding",
+                )
             self._last_price = ticker.last
             return
 
-        self._bus.emit(
-            "bot.log",
-            bot_id=self.bot_id,
-            message=f"DELTA: ${delta:+.4f} ({delta_pct:.1f}% of target) | "
-            f"holdings ${current_value:.4f} vs target "
-            f"${self._target_balance:.4f}"
-            f"{' | under the interval, checking the queues' if below_interval else ''}",
-        )
+        if self._refusal_is_new(
+            f"state_delta_{'pos' if delta >= 0 else 'neg'}", ticker.last
+        ):
+            self._bus.emit(
+                "bot.log",
+                bot_id=self.bot_id,
+                message=f"DELTA: ${delta:+.4f} ({delta_pct:.1f}% of target) | "
+                f"holdings ${current_value:.4f} vs target "
+                f"${self._target_balance:.4f}"
+                f"{' | under the interval, checking the queues' if below_interval else ''}",
+            )
 
         if not summary:
             self._bus.emit(
@@ -3317,22 +3321,25 @@ class ScrummingBot(
                 bb_near = ", near the lower band"
 
         # Both favours skew the floor, so the confidence prints alone.
-        _skew_note = ""
-        if position_boost or bb_confidence_boost:
-            _skew_note = f", floor skew {position_boost:+.2f} position" + (
-                "" if not bb_confidence_boost else f" {bb_confidence_boost:+.2f} BB"
+        if self._refusal_is_new(
+            f"state_ta_vote_{summary.consensus_direction.name}", ticker.last
+        ):
+            _skew_note = ""
+            if position_boost or bb_confidence_boost:
+                _skew_note = f", floor skew {position_boost:+.2f} position" + (
+                    "" if not bb_confidence_boost else f" {bb_confidence_boost:+.2f} BB"
+                )
+            self._bus.emit(
+                "bot.log",
+                bot_id=self.bot_id,
+                message=f"TA VOTE: {summary.consensus_direction.name} at "
+                f"confidence {summary.consensus_confidence:.2f}"
+                f"{_skew_note} | "
+                f"{summary.bullish_count} bullish, "
+                f"{summary.neutral_count} neutral, "
+                f"{summary.bearish_count} bearish | "
+                f"BB position {bb_pos:.1%}{bb_near}",
             )
-        self._bus.emit(
-            "bot.log",
-            bot_id=self.bot_id,
-            message=f"TA VOTE: {summary.consensus_direction.name} at "
-            f"confidence {summary.consensus_confidence:.2f}"
-            f"{_skew_note} | "
-            f"{summary.bullish_count} bullish, "
-            f"{summary.neutral_count} neutral, "
-            f"{summary.bearish_count} bearish | "
-            f"BB position {bb_pos:.1%}{bb_near}",
-        )
 
         self._bus.emit(
             "ta.voting",
@@ -3452,7 +3459,10 @@ class ScrummingBot(
         if _bb_priority_arm:
             _ta_conf_skew += _BB_PRIORITY_SKEW
         _eff_conf_floor = _skewed_confidence_floor(_ta_conf_skew)
-        if _bb_priority_arm:
+        _bb_skew_side = "scrum" if _bb_priority_scrum_skew else "fold"
+        if _bb_priority_arm and self._refusal_is_new(
+            f"state_bb_skew_{_bb_skew_side}", ticker.last
+        ):
             try:
                 self._bus.emit(
                     "bot.log",
