@@ -4738,9 +4738,8 @@ note naming the entry it dropped.
 is no field on `BotConfig` and no argument of that constructor: the phantom
 coordinator holds an attribute of that name, and Bot Settings writes it there on
 a running bot, which opens on the coordinator's own default of two. The attribute
-changes nothing yet either way. `TimeframeCoordinator.create_lock` is the only
-code that reads it, nothing calls `create_lock`, and so the lock list stays
-empty and `is_locked` answers no on every pass.
+changes nothing either way. The lock guard that read it has been retired, so the
+coordinator keeps the figure and no method on it reads it.
 
 **What the page delivers to a new bot.** All three figures on this page reach
 the bot that is built. One helper selects them and the constructor call carries
@@ -4771,8 +4770,8 @@ lock_candle_count     7      7
 A config carrying no count leaves the argument out, so the coordinator keeps its
 own figure of two. An Extractor holds no coordinator and takes no count.
 
-The count still creates no lock, because `create_lock` still has no caller. What
-it reaches is the attribute the state file saves, the restore path writes back
+The count creates no lock, because the coordinator has no method that makes one.
+What it reaches is the attribute the state file saves, the restore path writes back
 and the Bot Settings phantom page shows, so each of those reads the figure the
 page was set to rather than two.
 
@@ -7498,7 +7497,7 @@ fleet around it comes back.
 
 | setting | why |
 |---|---|
-| Lock duration (candles) | `lock_candle_count` is no field on `BotConfig` and no argument of `ScrummingBot.__init__`. The phantom coordinator holds an attribute of that name, and Bot Settings writes it there on a running bot. Nothing calls `TimeframeCoordinator.create_lock`, the one reader of that attribute, so the figure changes no decision on a running bot either. |
+| Lock duration (candles) | `lock_candle_count` is no field on `BotConfig` and no argument of `ScrummingBot.__init__`. The phantom coordinator holds an attribute of that name, and Bot Settings writes it there on a running bot. The coordinator has no method that reads that attribute, so the figure changes no decision on a running bot either. |
 | Profit Folding, on an Extractor | `BotCreationWizard.get_bot_config` writes the flag False for an Extractor. The field is Scrumming-only, so the factory refuses it on an Extractor config, and no control types it. |
 
 **The lock row reaches a new bot as well.** `lock_candle_count` is a keyword
