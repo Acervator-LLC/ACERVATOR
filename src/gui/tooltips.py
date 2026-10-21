@@ -17,7 +17,7 @@ __all__ = ["TOOLTIP_DELAY_MS", "WakeDelayStyle", "install", "set_description"]
 
 #: Milliseconds the pointer must rest UNMOVED before Qt draws a description;
 #: Qt restarts this wait on every pointer move, however small.
-TOOLTIP_DELAY_MS = 1000
+TOOLTIP_DELAY_MS = 3000
 
 
 def set_description(widget: QWidget, text: str) -> None:
