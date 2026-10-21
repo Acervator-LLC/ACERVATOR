@@ -3126,4 +3126,32 @@ same book accepting as the control:
 Nothing reaches the screen for a refused build. The bar comes up short with no
 mark on it.
 
+## 2026-10-20 - #937 - a Paper row's state sits on its Symbol cell
+
+The Paper Trader's Scrumming Bots table is a subclass of the window's own bot
+list, so its first column is Asset. It draws the target asset's own mark, and the
+asset's ticker where no mark is kept. It carries no bot id, no state colour and no
+state tooltip. The state colour and the mode-and-state tooltip sit on the Symbol
+cell. The Paper Extractor table keeps its own Bot ID column.
+
+### One sentence this page carried is overtaken
+
+It is quoted whole, and the sentence under it is true today.
+
+OVERTAKEN, quoted whole:
+
+> "A row's state is the Bot ID cell's colour and its tooltip's `State:` line;
+> Live's ten columns hold no State column."
+
+True today: a row's state is the Symbol cell's colour and that cell's tooltip's
+`State:` line. Live's ten columns still hold no State column.
+
+### One reading above names the first column by its old name
+
+The Import Live Fleet reading table holds the row
+`Import Live Fleet: Bot ID cell colour`, with `#888888` under Qt and
+`rgb(136, 136, 136)` under React. It is a recorded reading, not a sentence, so it
+stays exactly where it stands. The cell that carries that grey today is the Symbol
+cell.
+
 Back to [the subsystem index](README.md).
