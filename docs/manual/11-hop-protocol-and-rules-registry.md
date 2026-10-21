@@ -137,6 +137,36 @@ REGISTRY_PATH = ROOT / "sadp" / "RULE_REGISTRY.json"        # src/core/rule_regi
 The module's own docstring says as much. The ids name nothing the running
 program consults, and they carry no authority.
 
+### What the version sweep's registry checks answer
+
+`src/core/version_sweep.py` registers seventeen checks and prints one line for
+each. Five of them read a path that has never been in this repository, and three
+of those five read `sadp/RULE_REGISTRY.json`.
+
+| check | path it reads | what it prints |
+|---|---|---|
+| `check_r6_two_paths` | `src/gui/simulator.py` | NOT INSPECTED, naming the absent file |
+| `check_snapshot_consistency` | `src/gui/simulator.py` | the pass mark |
+| `check_rule_registry` | `sadp/RULE_REGISTRY.json` | one informational finding |
+| `check_sadp_annotations` | `sadp/RULE_REGISTRY.json` | five high findings |
+| `check_sadp_dependency_graph` | `sadp/RULE_REGISTRY.json` | NOT INSPECTED, naming the absent file |
+
+Two of them report their own blindness through `_no_subject`, which `run` turns
+into NOT INSPECTED in place of the pass mark. `check_snapshot_consistency`
+returns without calling it, so `run` counts no new finding and prints the pass
+mark for a check that opened no file.
+
+`check_sadp_annotations` reads an absent registry as an empty mapping and does
+not return early. No `# sadp:` annotation remains in the tree, so it raises
+nothing against an annotation, and five high findings against its own mandatory
+list. One entry on that list names `simulator.py`.
+
+Nothing in the tree runs any of it. An import scan over the 498 Python files
+under `src/` and `main.py`, parsing each file and reading its import nodes,
+finds no importer of the module, and finds fourteen importers of
+`src/core/log_paths.py` in the same pass. No workflow, script or build step
+names it. A reader reaches the per-check column only by typing the module name.
+
 ## Version one of the protocol
 
 Version one was never built here. It named a directory, and the history holds no

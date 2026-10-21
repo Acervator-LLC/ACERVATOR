@@ -1098,6 +1098,30 @@ A wire the push cannot deliver refuses the whole push, exactly as a missing
 tablet does: no bot is held, no wire is registered and the run mode does not
 move.
 
+#### The push's mode choice reaches the file
+
+The bots, the wires and the mode land in one write: `push_to_back_test` holds
+each bot, registers each wire, then fires `fleet_changed`, which runs
+`FleetSource.save`, so the sim fleet file carries all three at once. The
+mode it carries is the one
+[The mode choice is wired and the way-ins follow it](#the-mode-choice-is-wired-and-the-way-ins-follow-it)
+reads back, so a push sets the mode for the next launch and not only for the
+rest of the session.
+
+Driven on the real pane over a real Stone Tablet manifest, on a topology naming
+two markets and one wire between them:
+
+```
+answered        mode back_test, held 2, wires 1, refused none
+mode on disk    back_test
+wires on disk   1
+Activity Log    Pushed 2 bot(s) to the Simulator; its run mode is back_test.
+```
+
+A refused push writes nothing. With one market no tablet names, the file read
+back byte-identical before and after the press, the mode in force did not
+change, and the fleet held the same two bots an earlier push had landed.
+
 ### One clock
 
 Every bot ticks on one cadence. The step is sized once from the longest tape in
@@ -2602,6 +2626,11 @@ above wrote for the one fleet, so a mode's entry is a file of the old shape.
 Every fleet change writes all three, so an import under Validation, a bot
 created under Back Test and a Battery run's generated fleet land in one file
 and survive a restart under their own modes.
+
+Since the mode memory landed, the top carries one key more: `mode`, named by
+`MODE_KEY`, holding the mode in force at the write. That is the key
+`FleetSource.__init__` reads back, so the write that saves a fleet also saves
+which mode the tab opens in.
 
 `src/simulator/fleet_source.py` — the write, one entry per mode
 
