@@ -938,3 +938,64 @@ past index state, and that is one sample of what the declaration permits.
 
 The tell is a version figure that came from an import or from `pip list` rather
 than from the file that declares the dependency.
+
+## C101 — a frozen build read by listing its folder
+
+Two issues each claimed a package is missing from the downloaded application. A
+folder listing of the build agreed with both, and it was about to agree with a
+third that nobody had claimed.
+
+```
+                 folder listing   archive table of contents
+ccxt                          0                         427
+httpx                         0                          23
+scipy                         2                         500
+statsmodels                   1                         163
+```
+
+`ccxt` is the exchange library, declared in the core dependency list and named
+as a hidden import by the build definition. The folder listing reads zero for
+it, because the freezer puts pure Python into an archive embedded in the
+executable and only compiled extensions land in a folder. The listing answers
+the same zero for a package that ships and one that does not.
+
+The near-miss is the point. A reported absence of `ccxt` from the shipped
+application would have been a critical claim about the order path, resting on a
+command that cannot see any pure-Python package at all.
+
+The rule: **read a frozen build through the freezer's own archive viewer.** One
+command lists every entry, and a count taken in that list is a reading of what
+ships.
+
+```
+python -m PyInstaller.utils.cliutils.archive_viewer --list --recursive <exe>
+```
+
+The tell is a zero taken from a directory walk of a packaged application. The
+control that caught it was a package known to be declared and known to be
+needed; it read zero, and that is what voided the other two readings rather than
+confirming them.
+
+## C102 — a draft gated from outside the repository
+
+Every draft this session was written to a scratch directory and gated there. One
+of them cited a real file and the rule reported it absent.
+
+```
+gated from the scratch directory    hallucination 1   (the path exists)
+gated from a directory in the repo  hallucination 0
+```
+
+The rule finds the project root by walking up for a marker file. A scratch
+directory has none, so every path in the page resolves against nothing. A real
+citation reports as dead, and the finding reads exactly like a true one.
+
+The inverse is the dangerous half: in that condition the rule cannot confirm any
+path, so a page full of invented citations gates the same as a correct one.
+
+The rule: **gate a draft from a gitignored directory inside the repository**,
+which is what the authoring discipline already says. The existing catalogue row
+on this shape recorded 76 false dead paths read the same way, and this session
+re-ran it anyway.
+
+The tell is a hallucination finding naming a path that `ls` can see.
