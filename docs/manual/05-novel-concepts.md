@@ -168,8 +168,8 @@ label = "HTF-bullish" if self.side == "scrum" else "HTF-bearish"
 return GateResult(passed=False, blocker_message=label)
 ```
 
-Three parts of the feature do not work. The phantom lock guard is dead, so a
-lock never holds anything (issue #398). Every profit and loss figure on the
+Three parts of the feature do not work. The phantom lock guard is gone, and no
+lock was ever created (issue #398). Every profit and loss figure on the
 Phantom Bots tab prints as zero, because the key the tab reads is never written
 (issue #197). The tab draws a refused change as a success and can drop a
 timeframe (issue #313). Issue #155 tracks the remaining build-out. Replacing
