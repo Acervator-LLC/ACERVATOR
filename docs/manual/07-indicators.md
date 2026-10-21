@@ -2442,21 +2442,21 @@ def evaluate(self, ctx: GateContext) -> GateResult:
     return GateResult(passed=False, blocker_message="delta≤0")
 ```
 
-| Gate | Passes when | Reads |
-| ---- | ----------- | ----- |
-| `delta_positive` | the holdings sit above target | the target delta |
-| `interval` | the delta clears the scrumming interval | the delta |
-| `ta_bullish` | `is_bullish` | Net, Conf and the floor |
-| `trend_hold` | no sustained uptrend | more than 13 of the last 20 candles closing above their open |
-| `midline_scrum` | `bb_pos` above 0.50 and no phantom lock | `bb_position` |
-| `target_fires` | the detect and fire ramp is in FIRE | the target ramp |
-| `bb_proximity_scrum` | `bb_pos >= upper_detect` | `bb_position` |
-| `circuit_breaker_scrum` | no soft trip on the scrum side | the breaker state |
-| `htf_defer_scrum` | the higher timeframe is not bullish | the coordinator |
-| `hysteresis_scrum` | the price cleared the last pivot plus fees | the pivot |
-| `adx_trend_suppression` | ADX under 30.0 | the `adx` signal detail |
-| `efficiency_ratio_regime` | ER between 0.05 and 0.70 | the `er` signal detail |
-| `zscore_extremity` | Z above -2.0 | the `z` signal detail |
+| Gate | Passes when | Reads | Overridden by |
+| ---- | ----------- | ----- | ------------- |
+| `delta_positive` | the holdings sit above target | the target delta | none |
+| `interval` | the delta clears the scrumming interval | the delta | none |
+| `ta_bullish` | `is_bullish` | Net, Conf and the floor | `ripe_harvest_override` |
+| `trend_hold` | no sustained uptrend | more than 13 of the last 20 candles closing above their open | `ripe_harvest_override` |
+| `midline_scrum` | `bb_pos` above 0.50 and no phantom lock | `bb_position` | `ripe_harvest_override` |
+| `target_fires` | the detect and fire ramp is in FIRE | the target ramp | `ripe_harvest_override` |
+| `bb_proximity_scrum` | `bb_pos >= upper_detect` | `bb_position` | none |
+| `circuit_breaker_scrum` | no soft trip on the scrum side | the breaker state | none |
+| `htf_defer_scrum` | the higher timeframe is not bullish | the coordinator | none |
+| `hysteresis_scrum` | the price cleared the last pivot plus fees | the pivot | none |
+| `adx_trend_suppression` | ADX under 30.0 | the `adx` signal detail | none |
+| `efficiency_ratio_regime` | ER between 0.05 and 0.70 | the `er` signal detail | none |
+| `zscore_extremity` | Z above -2.0 | the `z` signal detail | none |
 
 **Functional.** Three of those gates skip the collated vote and read one
 indicator's own number: ADX, the Efficiency Ratio and the Z-Score. The bot
@@ -2539,17 +2539,17 @@ twenty candles all closing above their open, the sell side reported
 The other four absences carry no stated reason in the code at all. That is
 worth knowing before anyone assumes the asymmetry is deliberate.
 
-| Gate | Passes when |
-| ---- | ----------- |
-| `tranches_queued` | at least one fold tranche is waiting |
-| `ta_bearish` | `is_bearish` |
-| `midline_fold` | `bb_pos` below 0.50 |
-| `smart_ceiling` | the position sits under the smart ceiling |
-| `bb_proximity_fold` | `bb_pos <= lower_detect` |
-| `circuit_breaker_fold` | no soft trip on the fold side |
-| `htf_defer_fold` | the higher timeframe is not bearish |
-| `hysteresis_fold` | the price cleared the last pivot plus fees |
-| `zscore_extremity` | Z below +2.0 |
+| Gate | Passes when | Overridden by |
+| ---- | ----------- | ------------- |
+| `tranches_queued` | at least one fold tranche is waiting | none |
+| `ta_bearish` | `is_bearish` | `deep_fold_override` |
+| `midline_fold` | `bb_pos` below 0.50 | `deep_fold_override` |
+| `smart_ceiling` | the position sits under the smart ceiling | none |
+| `bb_proximity_fold` | `bb_pos <= lower_detect` | none |
+| `circuit_breaker_fold` | no soft trip on the fold side | none |
+| `htf_defer_fold` | the higher timeframe is not bearish | none |
+| `hysteresis_fold` | the price cleared the last pivot plus fees | none |
+| `zscore_extremity` | Z below +2.0 | none |
 
 ### The two overrides
 
@@ -2572,7 +2572,25 @@ for gate in self._override_gates:
             idx = blocked_index.pop(target_name)
             _name, _msg = blocked[idx]
             blocked[idx] = (_name, f"OVERRIDDEN_BY:{gate.name}({_msg})")
-            overrides_applied.append(target_name)
+            overrides_applied.append(
+                OVERRIDE_APPLIED_FORMAT.format(
+                    gate=target_name, override=gate.name, refusal=_msg
+                )
+            )
+```
+
+**Functional.** The record separates a refusal that stood from one an override
+replaced, and it names the override in both cases. A replaced refusal is one
+line naming the gate, the override that replaced it and the refusal text it
+replaced. A refusal that stood from a gate an override covers says which
+override did not apply, and a refusal from a gate no override covers names
+none.
+
+`src/trading/gate_chain.py` — the two forms a reader reads
+
+```python
+OVERRIDE_APPLIED_FORMAT = "{gate} overridden by {override}: {refusal}"
+OVERRIDE_NOT_APPLIED_FORMAT = "{message} [override not applied: {overrides}]"
 ```
 
 | Override | Arms on | Force-passes |

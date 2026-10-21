@@ -15,6 +15,12 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Literal, Optional
 
+OVERRIDE_APPLIED_FORMAT = "{gate} overridden by {override}: {refusal}"
+"""One ``ChainResult.overrides_applied`` entry, naming the override."""
+
+OVERRIDE_NOT_APPLIED_FORMAT = "{message} [override not applied: {overrides}]"
+"""One ``ChainResult.blocked`` message from a gate an override covers."""
+
 
 @dataclass
 class GateContext:
@@ -109,7 +115,10 @@ class ChainResult:
     """Verdict from evaluating a GateChain on one GateContext.
 
     ``should_fire`` is True when ``blocked`` is empty after overrides are
-    applied.
+    applied. A refusal that stood is a ``blocked`` entry carrying
+    ``OVERRIDE_NOT_APPLIED_FORMAT`` when an override covers that gate, and a
+    refusal an override replaced is an ``overrides_applied`` entry in
+    ``OVERRIDE_APPLIED_FORMAT``.
     """
 
     should_fire: bool
@@ -541,6 +550,15 @@ class GateChain:
         self._gates_by_name = {g.name: g for g in self._gates}
         self._override_gates = [g for g in self._gates if g.overrides]
         self._regular_gates = [g for g in self._gates if not g.overrides]
+        covered: dict[str, list[str]] = {}
+        for gate in self._override_gates:
+            for target_name in gate.overrides:
+                covered.setdefault(target_name, []).append(gate.name)
+        self._covered_by = {name: tuple(names) for name, names in covered.items()}
+
+    def covering_overrides(self, gate_name: str) -> tuple[str, ...]:
+        """Return the override gates whose ``overrides`` names ``gate_name``."""
+        return self._covered_by.get(gate_name, ())
 
     def evaluate(self, ctx: GateContext) -> ChainResult:
         passed: list[str] = []
@@ -565,14 +583,23 @@ class GateChain:
                     idx = blocked_index.pop(target_name)
                     _name, _msg = blocked[idx]
                     blocked[idx] = (_name, f"OVERRIDDEN_BY:{gate.name}({_msg})")
-                    overrides_applied.append(target_name)
+                    overrides_applied.append(
+                        OVERRIDE_APPLIED_FORMAT.format(
+                            gate=target_name, override=gate.name, refusal=_msg
+                        )
+                    )
 
         final_blocked: list[tuple[str, str]] = []
         for name, msg in blocked:
             if msg.startswith("OVERRIDDEN_BY:"):
                 passed.append(name)
-            else:
-                final_blocked.append((name, msg))
+                continue
+            covering = self.covering_overrides(name)
+            if covering:
+                msg = OVERRIDE_NOT_APPLIED_FORMAT.format(
+                    message=msg, overrides=", ".join(covering)
+                )
+            final_blocked.append((name, msg))
 
         return ChainResult(
             should_fire=(not final_blocked),
