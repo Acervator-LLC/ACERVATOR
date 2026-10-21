@@ -123,8 +123,8 @@ protocol built around those rules was valid or working. Two modules totalling
 2,586 lines had been built to serve it. Nothing imports either one today.
 
 ```
-src/core/rule_registry.py     every rule locked by default
-src/core/version_sweep.py     built for the protocol, imported by nothing
+unreached/core/rule_registry.py     every rule locked by default
+unreached/core/version_sweep.py     built for the protocol, imported by nothing
 ```
 
 **Overtaken.** That block stays whole above. Both files left `src/` on the

@@ -9718,7 +9718,7 @@ scrum on the Charts tab has the corners the playback gives a scrum.
 
 ### One sentence this entry overtakes
 
-Not reworded, quoted here. `docs/manual/08-tabs/simulator.md:8634` - "One
+Not reworded, quoted here. `docs/manual/08-tabs/simulator.md, under 'The two glyphs'` - "One
 definition, `MARK_GLYPHS`, names both marks, and both hosts read it: the Qt
 view in Python, the page off the playback payload." Three readers now, the
 Charts painter the third, and the definition sits in
@@ -9853,7 +9853,7 @@ The bar source and the execution venue are two different things. A tablet names
 both, and the rules are read against the venue that would execute the order.
 
 ```python
-# src/simulator/back_test.py:673
+# src/simulator/back_test.py, in venue_rules_for
 def venue_rules_for(asset: str, exchange_id: str, symbol: str) -> MarketRules:
 ```
 
