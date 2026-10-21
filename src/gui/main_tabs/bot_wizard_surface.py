@@ -872,8 +872,11 @@ TOOL_TIPS = {
     "scrumming_interval": "Minimum market move before the bot takes action.",
     "bb_tolerance": "Bollinger Band proximity tolerance for Landing Strip.",
     "ls_candles": (
-        "Min consecutive tight Heikin Ashi candles near a "
-        "Bollinger Band to confirm a Landing Strip pattern."
+        "The bot confirms a Landing Strip when this many of the newest "
+        "Heikin Ashi candles have small bodies and price sits near a "
+        "Bollinger Band. This count reaches the band-proximity check "
+        "only. The separate shrinking-body check keeps its own fixed "
+        "count."
     ),
     "ta_timeframe": (
         "Timeframe for TA indicator calculations. Filtered "
