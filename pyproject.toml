@@ -61,9 +61,13 @@ dependencies = [
 # Issue #94 - EXTRAS. Each one names its consumer and the guard that
 # proves the code survives its absence. Nothing goes here on taste.
 #
-#   report   `VersionSweep.save_pdf_report` in src/core/version_sweep.py
+#   report   `VersionSweep.save_pdf_report` in unreached/core/version_sweep.py
 #            imports reportlab inside `try:` and answers None on
 #            ImportError. The sweep still runs and writes its JSON report.
+#            That module has no importer and no caller, so it is not what
+#            keeps this extra. Two reached files import reportlab:
+#            tools/build_product_manual.py and
+#            deploy/kiosk/splash/generate_splash.py.
 #   charts   src/design_system.py imports matplotlib at module level with
 #            NO guard. It is an extra and not a core dependency for a
 #            different reason: one tracked module imports

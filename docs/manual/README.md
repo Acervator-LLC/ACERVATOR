@@ -271,3 +271,11 @@ git log --all --diff-filter=ADR --name-only -- generate_essay_ja.py    # three c
 | `save_pdf_report` in `src/core/version_sweep.py` | A version-sweep report, written to the reports directory outside the repository |
 | `write_report` in `src/simulator/parity_report.py` | One trade parity report per Simulator run, a Markdown file and a JSON sidecar, written to the `simulator` directory of the reports directory outside the repository |
 | `generate_splash.py` under `deploy/kiosk/splash/` | The AcervatorOS boot splash image |
+
+**Overtaken.** The `save_pdf_report` row stays whole above. That producer is now
+`save_pdf_report` in `unreached/core/version_sweep.py`, and it has no importer
+and no caller, so it produces a report only when a person runs
+`python -m unreached.core.version_sweep --report` by hand. `write_report` in
+`src/simulator/parity_report.py` is the only reached writer under the reports
+directory, and it writes into the `simulator` subdirectory, so the top level of
+that directory has no writer.

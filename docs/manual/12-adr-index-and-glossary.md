@@ -189,6 +189,8 @@ The Simulator rebuild removed the fleet-replay files this glossary once named.
 - **Handoff** — `ACERVATOR_HOP8.md`, measured for drift by `tools/hop_check.py`.
 - **Rule id** — an RN name in `RULE_META`, in `src/core/rule_registry.py`. The
   registry has no production importer and the ids bind nothing.
+  `RULE_META` now lives at `unreached/core/rule_registry.py`, moved out of
+  `src/` because no file in the tree imports it.
 
 [11-hop-protocol-and-rules-registry.md](11-hop-protocol-and-rules-registry.md)
 describes all three.
