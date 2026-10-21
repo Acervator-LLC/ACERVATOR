@@ -95,6 +95,7 @@ STAGE_COLORS = (
     ("FILLED", ds.SUCCESS),
     ("PLACED", ds.WARNING),
     ("SENT", ds.PRIMARY),
+    ("REFUSED", ds.ERROR),
 )
 STAGE_DEFAULT_COLOR = ds.ERROR
 
@@ -164,8 +165,8 @@ def stage_color(message: str) -> str:
     """The colour a trade notification takes, read from its stage word.
 
     The first stage named anywhere in the message wins, in the order
-    FILLED, PLACED, SENT. A message naming none paints the error colour,
-    which is what a cancellation gets.
+    `STAGE_COLORS` lists. A message naming none paints
+    `STAGE_DEFAULT_COLOR`.
     """
     for stage, token in STAGE_COLORS:
         if stage in message:

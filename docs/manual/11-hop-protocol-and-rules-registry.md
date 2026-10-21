@@ -102,6 +102,25 @@ class RuleRegistry: ...
 def parse_rule_command(...): ...
 ```
 
+### The module moved, and the path citations are overtaken
+
+OVERTAKEN. Every `src/core/rule_registry.py` and `src/core/version_sweep.py`
+citation on this page stays whole, in prose and in the code blocks both.
+
+The registry module is now `unreached/core/rule_registry.py` and the version
+sweep is now `unreached/core/version_sweep.py`. Both were moved out of `src/`
+because nothing in the tree reaches either one. An import scan over all 616
+tracked Python files, reading import nodes rather than matching text, finds no
+importer of either, and fifteen importers of `src/core/log_paths.py` in the same
+pass, which is the control saying the count reports an importer where one
+exists. `unreached/README.md` records what each file was for.
+
+One shell step used to run the registry module. `deploy/kiosk/install.sh`
+captured its output into a file on the kiosk. The step never produced anything:
+the module saves to `sadp/`, so it raised `FileNotFoundError` before printing a
+line, and `2>/dev/null || true` discarded the error and the exit code. It wrote
+a 0-byte file on every install. Nothing read that file. The step is gone.
+
 The suspend call refuses a CORE id. Driven both ways against a registry file in a
 temporary directory, R1 draws a refusal and stays LOCKED while R2 moves to
 SUSPENDED. The refusal is a real one rather than a declared one.
