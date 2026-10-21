@@ -135,3 +135,7 @@ desktop/node_modules/
 # never committed; unresolved.json beside them names each asset that resolved
 # nothing.
 resources/logos/
+
+# `python -m tools.deps lock` writes a resolved lock here. No build installs
+# from one, so the output is generated and never tracked.
+/requirements/

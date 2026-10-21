@@ -1505,12 +1505,11 @@ deleted, so no module under `src/` imports psutil today.
 Every build and deployment script asks one tool for the list rather than
 carrying a copy of it, so a package added to `pyproject.toml` reaches the
 Windows and Mac builds, the launcher and the kiosk install and update scripts
-at once. The resolved transitive set it produced is under `requirements/`, one
-file per platform and interpreter.
+at once. No build installs from a lock file, and the tree carries none.
 
 ```
 python -m tools.deps requirements <consumer>     what to install
-python -m tools.deps lock                        writes requirements/
+python -m tools.deps lock                        writes an untracked lock
 ```
 
 **Nothing the platform runs is written into this repository.** State lives

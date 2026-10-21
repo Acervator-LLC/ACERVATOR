@@ -1362,6 +1362,10 @@ bot is doing, and its tooltip names the mode and the state. Where the pair has a
 chart, the chart's line follows underneath the cell, and the underline is what
 marks the cell as the chart's link. The coloured disc carrying the asset's first
 letter no longer draws in this cell.
+Neither build carries the disc any more: the payload declares no icon field on a
+cell, and the window build, the Paper build and the Simulator build of this page
+hold no disc element. The lettered disc is still the Extractor table's own, and
+the wizard's.
 
 `src/gui/main_tabs/bot_status_table_surface.py` — `BotStatusTableModel._symbol_cell`
 
@@ -1503,6 +1507,22 @@ LOGO_SIZE_PX = 32
 ROW_LOGO_MARGIN_PX = 2
 ROW_HEIGHT_PX = LOGO_SIZE_PX + 2 * ROW_LOGO_MARGIN_PX
 ```
+
+**One sentence this page carried is overtaken.** It is quoted whole, and the
+sentence under it is true today.
+
+OVERTAKEN, quoted whole:
+
+> "No other cell and no rule in the sheet changes, so the Extractor table beneath
+> is untouched."
+
+True today: no other cell and no rule in the sheet changes, and the Extractor
+table beneath takes this same row height. Read off the real widget, its row went
+from 30 pixels to 36 and both its buttons from 22 to 36, so every bot table in the
+window stands on one declared height — `src/gui/widgets/extractor_bot_table.py`,
+`src/gui/paper/paper_extractor_bot_table.py` and
+`src/gui/simulator/sim_extractor_bot_table.py` each read `ROW_HEIGHT_PX` from this
+same declaration. The three Positions Held tables read it too.
 
 **A cell widget's pinned size reads the row height.** GUI011 in the GUI archetype
 refuses a widget placed into a table cell whose size is pinned to a bare number,
