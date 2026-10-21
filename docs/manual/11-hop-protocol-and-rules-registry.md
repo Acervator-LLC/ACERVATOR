@@ -93,7 +93,7 @@ SUSPENDED and DEPRECATED — and a parser turns a `RULE` line into a call on the
 registry. Five ids are marked CORE: R1, R5, R10, R11 and R12.
 
 ```python
-RULE_META = {...}       # src/core/rule_registry.py, 35 ids, R1 through R35
+RULE_META = {...}       # unreached/core/rule_registry.py, 35 ids, R1 through R35
 CORE_RULES = {r for r, m in RULE_META.items() if m["protection"] == "CORE"}
 VALID_STATES = {"LOCKED", "UNLOCKED", "SUSPENDED", "DEPRECATED"}
 
@@ -104,7 +104,7 @@ def parse_rule_command(...): ...
 
 ### The module moved, and the path citations are overtaken
 
-OVERTAKEN. Every `src/core/rule_registry.py` and `src/core/version_sweep.py`
+OVERTAKEN. Every `unreached/core/rule_registry.py` and `unreached/core/version_sweep.py`
 citation on this page stays whole, in prose and in the code blocks both.
 
 The registry module is now `unreached/core/rule_registry.py` and the version
@@ -126,7 +126,7 @@ temporary directory, R1 draws a refusal and stays LOCKED while R2 moves to
 SUSPENDED. The refusal is a real one rather than a declared one.
 
 ```python
-def suspend(self, rule: str, reason: str, expires: str = "") -> str: ...     # src/core/rule_registry.py
+def suspend(self, rule: str, reason: str, expires: str = "") -> str: ...     # unreached/core/rule_registry.py
 ```
 
 Nothing in the product reads any of it. The registry path resolves into a
@@ -145,11 +145,11 @@ OVERTAKEN, quoted whole:
 True today: the module has no importer at all. The one importer named above is
 not in the tree, so no file imports the registry and no file calls any symbol in
 it. One module names it in printed text rather than in an import:
-`src/core/version_sweep.py`, in `check_rule_registry`, prints a command a reader
+`unreached/core/version_sweep.py`, in `check_rule_registry`, prints a command a reader
 is told to run.
 
 ```python
-REGISTRY_PATH = ROOT / "sadp" / "RULE_REGISTRY.json"        # src/core/rule_registry.py
+REGISTRY_PATH = ROOT / "sadp" / "RULE_REGISTRY.json"        # unreached/core/rule_registry.py
 # sadp/ is not in the tree, so REGISTRY_PATH resolves to nothing
 ```
 
@@ -158,7 +158,7 @@ program consults, and they carry no authority.
 
 ### What the version sweep's registry checks answer
 
-`src/core/version_sweep.py` registers seventeen checks and prints one line for
+`unreached/core/version_sweep.py` registers seventeen checks and prints one line for
 each. Five of them read a path that has never been in this repository, and three
 of those five read `sadp/RULE_REGISTRY.json`.
 

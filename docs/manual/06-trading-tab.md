@@ -3007,11 +3007,16 @@ The other three carry the value to those two, or draw the row the operator types
 into.
 
 ```
-src/trading/container/restore.py:254                    stored key into the kwarg
-src/trading/scrumming/capital_reservation_mixin.py:67   the size of the claim
-src/trading/scrumming/capital_reservation_mixin.py:134  the text of the claim
-src/trading/scrumming/reconciliation.py:412             the adoption ceiling
-src/gui/live_settings/settings_tab.py:304               seeds the live row
+src/trading/container/restore.py, in restore_bots_from_state
+    stored key into the kwarg
+src/trading/scrumming/capital_reservation_mixin.py, in _compute_reservation_qty
+    the size of the claim
+src/trading/scrumming/capital_reservation_mixin.py, in _ensure_capital_reservation
+    the text of the claim
+src/trading/scrumming/reconciliation.py, in _claimable_exchange_units
+    the adoption ceiling
+src/gui/live_settings/settings_tab.py, in _create_settings_tab
+    seeds the live row
 ```
 
 Both deciding readers are reached on every run. The claim is sized at the top of
@@ -3019,9 +3024,9 @@ every tick. The adoption ceiling is read once when a bot starts, and again every
 reconcile interval after that.
 
 ```
-src/trading/scrumming_bot.py:2571   the claim, once per tick
-src/trading/bot_container.py:891    the ceiling, on bot start
-src/trading/scrumming_bot.py:2643   the ceiling, every reconcile interval
+src/trading/scrumming_bot.py, in tick                     the claim, once per tick
+src/trading/bot_container.py, in _dispatch_bootstrap      the ceiling, on bot start
+src/trading/scrumming_bot.py, in tick                     the ceiling, every reconcile interval
 ```
 
 The adoption ceiling is the reader that bears on a sale. A bot whose venue
@@ -3030,7 +3035,7 @@ subtracted before that adoption, so the held units never enter the book the sell
 pre-check is measured against.
 
 ```
-src/trading/scrumming/execution.py:1408 — the sell pre-check reads the book
+src/trading/scrumming/execution.py, in _execute_detonation — the sell pre-check reads the book
 ```
 
 Driven on a restored record carrying a five-unit hold, with twenty units in the
@@ -3048,7 +3053,7 @@ siblings moves the same way, 16.0 units down to 11.0, which raises a co-tenant
 bot's own permitted sale from 14.0 units to 19.0.
 
 ```
-src/trading/capital_reservation.py:443 — effective_available, the co-tenant's cap
+src/trading/capital_reservation.py, in effective_available — the co-tenant's cap
 ```
 
 The removal is not taken. Stored state does load without the value — three
