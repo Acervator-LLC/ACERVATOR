@@ -88,6 +88,14 @@ SPENDABLE_STYLE = (
 #: widget, and neither pad below can be read off the margins alone.
 PANEL_FRAME_INSET_PX = 13
 
+#: The border of that same rule, which a panel's padding sits inside and which
+#: ``PANEL_FRAME_INSET_PX`` counts with the padding.
+PANEL_FRAME_BORDER_PX = 1
+
+#: The padding of that same rule, which a panel holding its own sheet declares
+#: again for itself.
+PANEL_FRAME_PAD_PX = PANEL_FRAME_INSET_PX - PANEL_FRAME_BORDER_PX
+
 #: What the strip leaves either side of its own columns.
 SPENDABLE_SIDE_MARGIN_PX = 6
 
@@ -313,8 +321,23 @@ CARD_SIDE_MARGIN_PX = 0
 #: the figure the row already drew, so no slot on either host moves.
 CARD_PAGE_SIDE_MARGIN_PX = 4
 
+#: What the Qt card's own frame insets either side of its amount, in place of
+#: the ``PANEL_FRAME_PAD_PX`` the theme paints on every StyledPanel. Zero: a
+#: card draws ``COUNTER_MIN_W`` wide at its floor, ``KPI_COLUMN_W`` of that is
+#: what ``WIDEST_AMOUNT`` needs at ``VALUE_FONT_PX``, and the floor is already
+#: narrower than that figure. So the whole room inside the border is the
+#: amount's, and the theme's 12 px either side is room the amount needs.
+CARD_FRAME_SIDE_PX = 0
+
+#: The Qt card's own frame, over the theme's ``QFrame[frameShape="6"]`` rule.
+#: A sheet on the card itself wins for the card alone, so the strip and every
+#: other StyledPanel keep the theme's padding and no slot's width moves.
+CARD_STYLE = f"StatCard {{ padding: {PANEL_FRAME_PAD_PX}px {CARD_FRAME_SIDE_PX}px; }}"
+
 #: What a card's own frame and margins take off the room its text has.
-COUNTER_TEXT_PAD = 2 * (CARD_SIDE_MARGIN_PX + PANEL_FRAME_INSET_PX)
+COUNTER_TEXT_PAD = 2 * (
+    CARD_SIDE_MARGIN_PX + CARD_FRAME_SIDE_PX + PANEL_FRAME_BORDER_PX
+)
 
 #: The width one counter card asks for, held at the width the row draws it at.
 #: ``CARD_SIDE_MARGIN_PX`` released 8 px either side and the amount took it, so
@@ -327,11 +350,10 @@ COUNTER_NATURAL_W = 144
 COUNTER_TEXT_W = COUNTER_NATURAL_W - COUNTER_TEXT_PAD
 
 #: The narrowest one counter card draws at, held at the width the row draws it
-#: at. ``MONEY_CELL_MIN_W`` plus ``COUNTER_TEXT_PAD`` reads 2 px wider, and
-#: raising this floor moves every counter slot, so the floor stays and the room
-#: inside it is what ``CARD_SIDE_MARGIN_PX`` widened. The window opens no
-#: narrower than ``main_window`` sets it, and at that width every amount has its
-#: ``MONEY_CELL_MIN_W`` of room.
+#: at: raising this floor moves every counter slot. ``MONEY_CELL_MIN_W`` plus
+#: ``COUNTER_TEXT_PAD`` reads 22 px narrower, so a card at this floor holds
+#: ``WIDEST_AMOUNT`` whole, and ``CARD_FRAME_SIDE_PX`` is what gives it that
+#: room rather than a wider floor.
 COUNTER_MIN_W = 88
 
 CARD_LAYOUT = {

@@ -13,6 +13,7 @@ from ...core.privacy_mask_registry import mask_or
 from .. import design_system as ds
 from ..main_tabs.header_strip_surface import (
     CARD_SIDE_MARGIN_PX,
+    CARD_STYLE,
     LABEL_FONT_MIN_PX,
     LABEL_FONT_PX,
     VALUE_FONT_MIN_PX,
@@ -50,6 +51,9 @@ if _HAS_QT:
         def _setup_ui(self, label: str, value: str) -> None:
             """Build the caption, the amount and the dot slot under them."""
             self.setFrameShape(QFrame.StyledPanel)
+            # The theme pads every StyledPanel 12 px either side. On a card
+            # that is the room its amount needs, so the card declares its own.
+            self.setStyleSheet(CARD_STYLE)
             layout = QVBoxLayout(self)
             layout.setContentsMargins(self._SIDE_MARGIN_PX, 4, self._SIDE_MARGIN_PX, 4)
             layout.setSpacing(2)
