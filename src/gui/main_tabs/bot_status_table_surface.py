@@ -41,7 +41,12 @@ from ...core.safe_url import openable_url
 from ...exchange.crypto_assets import AssetManager
 from ...exchange.exchange_chart_urls import chart_url
 from ...trading.ata_asset_maps import organisation_page
-from ...trading.target_bands import ammo_target, ammo_units
+from ...trading.target_bands import (
+    ammo_target,
+    ammo_units,
+    at_target_dust_band,
+    manual_fire_dust_band,
+)
 from .. import design_system as ds
 from .table_cells_surface import (
     NO_TARGET_TEXT,
@@ -315,6 +320,11 @@ FIRE_STYLE_PHASE_FIRE = (
 )
 FIRE_STYLE_PHASE_TRACK = FIRE_STYLE_HEAD + f"color: {ds.WARNING}; font-weight: bold;"
 FIRE_STYLE_PHASE_SEARCH = FIRE_STYLE_HEAD + f"color: {ds.ERROR}; font-weight: bold;"
+FIRE_STYLE_MANUAL_NOOP = (
+    FIRE_STYLE_HEAD + f"color: {ds.TEXT_NEUTRAL}; font-weight: bold; "
+    "background-color: transparent; "
+    f"border: 1px dotted {ds.TEXT_PLACEHOLDER};"
+)
 FIRE_STYLE_DISABLED = (
     "font-size: 10px; padding: 1px 6px; color: " f"{ds.TEXT_PLACEHOLDER};"
 )
@@ -328,6 +338,7 @@ FIRE_PATH_FOLD_OUTLINE = "fold_override"
 FIRE_PATH_PHASE_FIRE = "phase_fire"
 FIRE_PATH_PHASE_TRACK = "phase_track"
 FIRE_PATH_PHASE_SEARCH = "phase_search"
+FIRE_PATH_MANUAL_NOOP = "manual_noop"
 FIRE_PATH_NOT_SCRUMMING = "not_scrumming"
 FIRE_PATH_INACTIVE = "inactive"
 
@@ -340,6 +351,7 @@ FIRE_PATHS = (
     FIRE_PATH_PHASE_FIRE,
     FIRE_PATH_PHASE_TRACK,
     FIRE_PATH_PHASE_SEARCH,
+    FIRE_PATH_MANUAL_NOOP,
     FIRE_PATH_NOT_SCRUMMING,
     FIRE_PATH_INACTIVE,
 )
@@ -353,6 +365,7 @@ FIRE_STYLES = {
     FIRE_PATH_PHASE_FIRE: FIRE_STYLE_PHASE_FIRE,
     FIRE_PATH_PHASE_TRACK: FIRE_STYLE_PHASE_TRACK,
     FIRE_PATH_PHASE_SEARCH: FIRE_STYLE_PHASE_SEARCH,
+    FIRE_PATH_MANUAL_NOOP: FIRE_STYLE_MANUAL_NOOP,
     FIRE_PATH_NOT_SCRUMMING: FIRE_STYLE_DISABLED,
     FIRE_PATH_INACTIVE: FIRE_STYLE_DISABLED,
 }
@@ -367,6 +380,7 @@ FIRE_GLOWS = {
     FIRE_PATH_PHASE_FIRE: ds.STATE_PENDING,
     FIRE_PATH_PHASE_TRACK: NO_GLOW,
     FIRE_PATH_PHASE_SEARCH: NO_GLOW,
+    FIRE_PATH_MANUAL_NOOP: NO_GLOW,
     FIRE_PATH_NOT_SCRUMMING: NO_GLOW,
     FIRE_PATH_INACTIVE: NO_GLOW,
 }
@@ -417,6 +431,13 @@ FIRE_TIP_PHASE_TRACK = (
 FIRE_TIP_PHASE_SEARCH = (
     "Bot within dust band of target. " "Manual Fire would be a no-op."
 )
+FIRE_TIP_MANUAL_NOOP_FORMAT = (
+    "MANUAL FIRE WILL NOT ACT — |delta| ${magnitude:,.4f} is inside Manual "
+    "Fire's own dust band of ${dust_band:,.2f}. Pressing logs a no-op and "
+    "moves no figure on this row. The autonomous engine still works this "
+    "range, which starts at ${tick_band:,.2f}, so the next tick may act "
+    "where the button will not."
+)
 FIRE_TIP_NOT_SCRUMMING = "Manual Fire is scrumming-only."
 FIRE_TIP_INACTIVE_FORMAT = "Bot is {state}; start or resume to enable Fire."
 DETAIL_TIP = "View full bot status, configuration, and error details"
@@ -452,7 +473,13 @@ DEFAULT_QUOTE_TO_USD = 1.0
 NO_TARGET_VALUE = 0.0
 NO_PRICE = 0.0
 NO_HOLDINGS = 0.0
+NO_DELTA = 0.0
 NO_TRADES = 0
+
+#: The three answers ``manual_fire_verdict`` returns, named once for its readers.
+MANUAL_FIRE_ACTS = "acts"
+MANUAL_FIRE_REFUSES = "refuses"
+MANUAL_FIRE_PARKED = "parked"
 VENUE_UNITS_FIELD = "audited_venue_units"
 SYMBOL_SEPARATOR = "/"
 QUOTE_BTC = "BTC"
@@ -863,6 +890,39 @@ def ammo_reading(status: Any) -> tuple:
         position,
         status.get("live_target_balance", NO_TARGET_VALUE),
         status.get("target_balance", NO_TARGET_VALUE),
+    )
+
+
+def manual_fire_verdict(ammo: Any, target_balance: float) -> str:
+    """What a Fire press would do, read from the figures this row just drew.
+
+    ``MANUAL_FIRE_REFUSES`` where the position sits inside Manual Fire's own
+    band and outside the tick's, so the engine still works the range and the
+    button alone declines. ``MANUAL_FIRE_PARKED`` where both bands hold it and
+    nothing acts. ``MANUAL_FIRE_ACTS`` otherwise. The Qt table and this model
+    both read this one answer off the Ammo cell's own ``manual_fire_noop``, so
+    a row's cell and its button cannot disagree about the same press.
+    """
+    reading = ammo if isinstance(ammo, dict) else {}
+    if not reading.get("manual_fire_noop", False):
+        return MANUAL_FIRE_ACTS
+    magnitude = abs(float(reading.get("delta", NO_DELTA) or NO_DELTA))
+    if magnitude > at_target_dust_band(target_balance):
+        return MANUAL_FIRE_REFUSES
+    return MANUAL_FIRE_PARKED
+
+
+def manual_fire_noop_tooltip(ammo: Any, target_balance: float) -> str:
+    """The Fire tooltip for a press ``manual_fire_verdict`` calls refused.
+
+    Names the distance, Manual Fire's band and where the tick's band starts,
+    so the operator reads why the press declined without opening the bot log.
+    """
+    reading = ammo if isinstance(ammo, dict) else {}
+    return FIRE_TIP_MANUAL_NOOP_FORMAT.format(
+        magnitude=abs(float(reading.get("delta", NO_DELTA) or NO_DELTA)),
+        dust_band=manual_fire_dust_band(target_balance),
+        tick_band=at_target_dust_band(target_balance),
     )
 
 
@@ -1350,7 +1410,9 @@ class BotStatusTableModel:
             else:
                 found = cell(text)
             self.set_cell(row, column, found)
-        self.rows[row]["fire"] = self._fire_button(status, state, mode)
+        self.rows[row]["fire"] = self._fire_button(
+            status, state, mode, ammo, target_val
+        )
         self.rows[row]["detail"] = self._detail_button()
 
     def _target_value(self, status) -> float:
@@ -1426,13 +1488,17 @@ class BotStatusTableModel:
             self.calls.append([ROW_SYMBOL_LINK, url])
         return found
 
-    def _fire_button(self, status, state, mode) -> dict:
-        """The Manual Fire button: its look, its tooltip and its glow."""
+    def _fire_button(self, status, state, mode, ammo, target_val) -> dict:
+        """The Manual Fire button: its look, its tooltip and its glow.
+
+        ``ammo`` is this row's own Ammo cell, already built, so the button
+        reads the same distance the cell beside it drew.
+        """
         is_scrumming = mode == MODE_SCRUMMING
         is_active = state in ACTIVE_STATES
         enabled = is_scrumming and is_active
         if enabled:
-            path, tip = self._armed_fire(status)
+            path, tip = self._armed_fire(status, ammo, target_val)
         elif not is_scrumming:
             path, tip = FIRE_PATH_NOT_SCRUMMING, FIRE_TIP_NOT_SCRUMMING
         else:
@@ -1462,8 +1528,14 @@ class BotStatusTableModel:
             "glow_offset": list(GLOW_OFFSET),
         }
 
-    def _armed_fire(self, status) -> tuple:
-        """The path and the tooltip an enabled Fire button carries."""
+    def _armed_fire(self, status, ammo, target_val) -> tuple:
+        """The path and the tooltip an enabled Fire button carries.
+
+        A press ``manual_fire_verdict`` calls refused takes
+        ``FIRE_PATH_MANUAL_NOOP`` and says so, and a press it calls parked
+        skips the armed paths, which promise a market order, for the phase
+        paths, which already say the press does nothing.
+        """
         scrum_phase = status.get("scrum_target_mode")
         armed_action = status.get("armed_action")
         ceiling_enabled = status.get("position_ceiling_enabled", False)
@@ -1486,8 +1558,15 @@ class BotStatusTableModel:
             detonation_enabled,
             detonation_tf,
         )
+        verdict = manual_fire_verdict(ammo, target_val)
+        if verdict == MANUAL_FIRE_REFUSES:
+            return (
+                FIRE_PATH_MANUAL_NOOP,
+                manual_fire_noop_tooltip(ammo, target_val) + risk,
+            )
+        acts = verdict == MANUAL_FIRE_ACTS
         auto_fire = status.get("auto_fire", {}) or {}
-        if armed_action == "scrum":
+        if armed_action == "scrum" and acts:
             if bool(auto_fire.get("scrum_armed", False)):
                 return FIRE_PATH_SCRUM_SOLID, FIRE_TIP_SCRUM_SOLID + risk
             blockers = list(auto_fire.get("scrum_blockers", []) or [])
@@ -1495,7 +1574,7 @@ class BotStatusTableModel:
                 FIRE_PATH_SCRUM_OUTLINE,
                 FIRE_TIP_SCRUM_OUTLINE + blockers_text(blockers) + risk,
             )
-        if armed_action == "fold":
+        if armed_action == "fold" and acts:
             blockers = list(auto_fire.get("fold_blockers", []) or [])
             if fold_blocked:
                 return FIRE_PATH_FOLD_CEILING, FIRE_TIP_FOLD_CEILING + risk
@@ -1875,6 +1954,7 @@ def build_view_model(model: BotStatusTableModel) -> dict:
             FIRE_PATH_NOT_SCRUMMING: FIRE_TIP_NOT_SCRUMMING,
         },
         "fire_inactive_tooltip_format": FIRE_TIP_INACTIVE_FORMAT,
+        "fire_manual_noop_tooltip_format": FIRE_TIP_MANUAL_NOOP_FORMAT,
         "header_state_tip_format": HEADER_STATE_TIP_FORMAT,
         "header_dot_tip_format": HEADER_DOT_TIP_FORMAT,
         "header_dot_action_mask": HEADER_DOT_ACTION_MASK,
