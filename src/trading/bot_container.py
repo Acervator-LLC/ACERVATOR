@@ -1262,6 +1262,37 @@ class BotManager(StateRestoreMixin, BotRegistryMixin, FleetAggregationMixin):
         """Attach a StateManager for persistence."""
         self._state_manager = sm
 
+    def restore_bots_from_state(self, state: dict) -> list[str]:
+        """Restore the saved fleet and log the seconds and the record sizes behind them.
+
+        The line names the records read, the bots restored, the bots
+        ``_restore_ledger`` skipped and the lots and tranches carried, so a slow
+        restore segment states its own size.
+        """
+        records = state.get("bots", {}) if isinstance(state, dict) else {}
+        lots = 0
+        tranches = 0
+        for record in records.values():
+            saved = record.get("scrumming_state") or {}
+            lots += len(saved.get("main_lots") or ())
+            tranches += len(saved.get("fold_tranches") or ())
+        restored: list[str] = []
+        started = time.perf_counter()
+        try:
+            restored = super().restore_bots_from_state(state)
+        finally:
+            logger.info(
+                "Restore took %.3fs: %d record(s) read, %d bot(s) restored, "
+                "%d skipped, %d lot(s) and %d tranche(s) carried",
+                time.perf_counter() - started,
+                len(records),
+                len(restored),
+                len(self._restore_ledger),
+                lots,
+                tranches,
+            )
+        return restored
+
     def set_ta_weights(self, weights) -> None:
         """Hold the indicator weights every bot built from here votes with.
 
