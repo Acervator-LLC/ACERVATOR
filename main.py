@@ -11,13 +11,45 @@ from __future__ import annotations
 
 from typing import Optional, TYPE_CHECKING
 
-# Drops every __pycache__ under the repo root on import.
+# Drops every __pycache__ inside the program's own code on import.
 import os, shutil
 
-for _root, _dirs, _ in os.walk(os.path.dirname(os.path.abspath(__file__))):
-    for _d in _dirs:
-        if _d == "__pycache__":
-            shutil.rmtree(os.path.join(_root, _d), ignore_errors=True)
+PROGRAM_ROOT = os.path.dirname(os.path.abspath(__file__))
+
+#: The package directories the entry point imports its code from. The sweep
+#: walks these and never PROGRAM_ROOT itself, so a build folder, a node package
+#: tree or a log tree sitting beside the entry point is never walked.
+PROGRAM_CODE_DIRS = ("src",)
+
+
+def _sweep_pycache(root, code_dirs):
+    """Delete every ``__pycache__`` inside ``code_dirs`` and at ``root`` itself.
+
+    Returns the directories walked, the folders deleted and the seconds taken,
+    which ``main`` logs once the log manager exists.
+    """
+    import time as _t
+
+    started = _t.perf_counter()
+    walked = 0
+    dropped = 0
+    for parent in [os.path.join(root, name) for name in code_dirs]:
+        for here, children, _ in os.walk(parent):
+            walked += 1
+            for child in [name for name in children if name == "__pycache__"]:
+                shutil.rmtree(os.path.join(here, child), ignore_errors=True)
+                children.remove(child)
+                dropped += 1
+    top_level = os.path.join(root, "__pycache__")
+    if os.path.isdir(top_level):
+        shutil.rmtree(top_level, ignore_errors=True)
+        dropped += 1
+    return walked, dropped, _t.perf_counter() - started
+
+
+PYCACHE_SWEEP_DIRS, PYCACHE_SWEEP_DROPPED, PYCACHE_SWEEP_S = _sweep_pycache(
+    PROGRAM_ROOT, PROGRAM_CODE_DIRS
+)
 
 # Imported for the QTimer annotation only; PySide6 is imported lazily at run time.
 if TYPE_CHECKING:
@@ -981,6 +1013,12 @@ def main() -> int:
         log_manager.set_symbol_resolver(_resolve_bot_symbol)
 
     log_manager.info(f"Acervator v{_acervator_version} starting")
+    log_manager.info(
+        f"Startup cleanup: {PYCACHE_SWEEP_DROPPED} bytecode folder(s) "
+        f"deleted from {', '.join(PROGRAM_CODE_DIRS)} across "
+        f"{PYCACHE_SWEEP_DIRS} directory(s) in {PYCACHE_SWEEP_S:.3f}s. "
+        f"Nothing outside the program's own code is walked."
+    )
 
     try:
         from src.core.signal_contract import install_process_sink
