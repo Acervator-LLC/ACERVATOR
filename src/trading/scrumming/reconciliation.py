@@ -851,6 +851,31 @@ class ReconciliationEngineMixin:
                 _sib_units = float("inf")
         return (exchange_units - _personal - _sib_units, _personal, _sib_units)
 
+    def _store_audited_venue_units(self, claimable_units: float) -> float:
+        """Assign ``_audited_venue_units`` from one claimable figure and return it.
+
+        ``_record_audited_venue_units`` reaches it with a venue reading and
+        ``_record_venue_units_after_fill`` with the units a fill settled.
+        """
+        self._audited_venue_units = max(0.0, claimable_units)
+        return self._audited_venue_units
+
+    def _record_venue_units_after_fill(self, units_delta: float) -> float:
+        """Move ``_audited_venue_units`` by the units one fill settled, positive
+        for a buy and negative for a sale, and return it.
+
+        A fill leaves the personal hold and the sibling totals
+        ``_claimable_exchange_units`` subtracts untouched, so a delta that is
+        not finite is refused and no venue is read.
+        """
+        try:
+            _delta = float(units_delta)
+        except (TypeError, ValueError):
+            return self._audited_venue_units
+        if not math.isfinite(_delta):
+            return self._audited_venue_units
+        return self._store_audited_venue_units(self._audited_venue_units + _delta)
+
     def _record_audited_venue_units(self, exchange_units: float) -> float:
         """Store one venue reading as claimable units in ``_audited_venue_units``.
 
@@ -867,8 +892,7 @@ class ReconciliationEngineMixin:
         if not math.isfinite(_reading) or _reading < 0.0:
             return self._audited_venue_units
         _claimable = self._claimable_exchange_units(_reading)[0]
-        self._audited_venue_units = max(0.0, min(_reading, _claimable))
-        return self._audited_venue_units
+        return self._store_audited_venue_units(min(_reading, _claimable))
 
     async def _venue_claimable_units(self) -> tuple[float | None, str | None]:
         """This bot's sellable units of ``config.target_asset`` at the venue, or a reason.

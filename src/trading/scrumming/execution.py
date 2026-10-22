@@ -103,6 +103,8 @@ class ExecutionEngineMixin:
     _preview_fold_growth: Callable[..., Any]
     _quote_to_usd: float
     _reconcile_holdings: Callable[..., Any]
+    _record_audited_venue_units: Callable[..., float]
+    _record_venue_units_after_fill: Callable[..., float]
     _refresh_quote_to_usd: Callable[..., Any]
     _reset_opposing_hysteresis_after_fill: Callable[..., None]
     _route_scrum_proceeds_via_wires: Callable[..., Any]
@@ -519,6 +521,10 @@ class ExecutionEngineMixin:
         delta_usd = target_delta_usd(current_value, self._target_balance)
         dust = manual_fire_dust_band(self._target_balance)
 
+        # The pre-fill venue reading this path takes on the autonomous intents,
+        # and None on manual_button, which reads no target_asset balance.
+        _venue_units: Optional[float] = None
+
         if caller_intent != "manual_button":
             try:
                 _xbal = await self._get_balance(self.config.target_asset)
@@ -551,6 +557,7 @@ class ExecutionEngineMixin:
                         ),
                     )
                 return
+            _venue_units = _xunits
             _xvalue = _xunits * price * _qrate
             if abs(_xvalue - current_value) > dust:
                 if self._refusal_is_new("manual_position_mismatch", price):
@@ -684,6 +691,8 @@ class ExecutionEngineMixin:
                 fill_amount, fill_price, label=_scrum_label
             )
             self._current_holdings = max(0.0, self._current_holdings - fill_amount)
+            if _venue_units is not None:
+                self._record_audited_venue_units(_venue_units - fill_amount)
 
             _manual_routed_total = self._route_scrum_proceeds_via_wires(
                 scrum_usd=fill_usd, sell_fill=fill_price, label="manual_scrum"
@@ -1180,6 +1189,8 @@ class ExecutionEngineMixin:
                 )
 
             self._current_holdings += fill_amount
+            if _venue_units is not None:
+                self._record_audited_venue_units(_venue_units + fill_amount)
             self.stats.total_trades += 1
 
             _growth_applied = self._apply_fold_target_growth(
@@ -1368,6 +1379,7 @@ class ExecutionEngineMixin:
         fill_usd = fill_price * fill_amount
 
         self._current_holdings = max(0.0, venue_units - fill_amount)
+        self._record_venue_units_after_fill(-fill_amount)
 
         _detonation_routed_total = self._route_scrum_proceeds_via_wires(
             scrum_usd=fill_usd, sell_fill=fill_price, label="detonation"
@@ -2203,6 +2215,9 @@ class ExecutionEngineMixin:
                 return None
 
             self._current_holdings += amount
+            # _fresh_units is the pre-fill venue reading _verify_buy_safe_or_refuse
+            # already took, so the row's venue figure moves with no second fetch.
+            self._record_audited_venue_units(_fresh_units + amount)
             self.stats.total_buys += 1
             self.stats.total_trades += 1
 
