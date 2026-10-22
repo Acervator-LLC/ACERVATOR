@@ -1691,7 +1691,8 @@ if _HAS_QT:
             """What the last ``paint_to`` laid out, for a page drawing its own
             crosshair: the pane rect, the price scale, the candle column, the
             window, each visible candle's time label and ``readout_lines`` with
-            the theme's colours, and the price bands."""
+            the theme's colours, the price bands, and the bottom bar's own
+            height so a page can answer the pointer over it."""
             held = dict(self._geometry)
             if not held:
                 return held
@@ -1719,6 +1720,7 @@ if _HAS_QT:
             held["font_family"] = ds.FONT_FAMILY_MONO
             held["font_px"] = CAPTION_FONT_PX
             held["pin_every_ms"] = int(CROSSHAIR_PIN_EVERY_S * 1000)
+            held["resize_grip_px"] = int(self._resize_grip_h)
             return held
 
         def _paint_no_range(self, p: QPainter, w: int, h: int) -> None:
@@ -2574,16 +2576,30 @@ if _HAS_QT:
             return None
 
         def _right_tag(
-            self, p: QPainter, w: int, y: float, text: str, colour: QColor, font: QFont
+            self,
+            p: QPainter,
+            w: int,
+            y: float,
+            text: str,
+            colour: QColor,
+            font: QFont,
+            right_edge_px: Optional[float] = None,
         ) -> QRectF:
             """Draw ``text`` on a badge filled with ``colour`` at the right edge, centred on ``y``.
 
             The badge starts in the price scale and grows leftwards over the
             pane when the text is wider than the scale; the text is ``TAG_TEXT``.
+            A caller naming ``right_edge_px`` ends the badge there instead,
+            which keeps it off the price scale's own label.
             """
             metrics = QFontMetrics(font)
             width = metrics.horizontalAdvance(text) + TAG_PAD_PX * 2
-            x = min(w - CHART_RIGHT_MARGIN_PX + TAG_INSET_PX, w - width - TAG_INSET_PX)
+            if right_edge_px is None:
+                x = min(
+                    w - CHART_RIGHT_MARGIN_PX + TAG_INSET_PX, w - width - TAG_INSET_PX
+                )
+            else:
+                x = right_edge_px - width - TAG_INSET_PX
             rect = QRectF(x, y - TAG_H_PX / 2, width, TAG_H_PX)
             p.setBrush(QBrush(colour))
             p.setPen(Qt.NoPen)
@@ -3162,7 +3178,9 @@ if _HAS_QT:
         ):
             """Draw one line, one icon and one label per entry in ``_positions``.
 
-            A position whose price maps outside the price pane is skipped.
+            A position whose price maps outside the price pane is skipped. The
+            label's badge ends at the pane's right edge, where the price scale
+            begins, so the scale's own label stays readable under it.
             """
             if not self._positions:
                 return
@@ -3235,6 +3253,7 @@ if _HAS_QT:
                     POSITION_TAG_FORMAT.format(price=self._fmt_price(pos.price)),
                     color,
                     font,
+                    w - right_margin_px,
                 )
 
         def _draw_call(self, ctx, h: int) -> None:
