@@ -252,8 +252,8 @@ if _HAS_QT:
             """Reach ``stop_feeds`` when the tab itself is closed.
 
             ``_drop_unlisted_exchange_tabs`` covers an exchange leaving
-            Settings and ``aboutToQuit`` covers the application quitting, so
-            this route is the third of three.
+            Settings, ``aboutToQuit`` covers the application quitting, and
+            ``eventFilter`` covers the window holding the tab closing.
             """
             self.stop_feeds()
             super().closeEvent(event)
@@ -366,10 +366,12 @@ if _HAS_QT:
             self._pool_stopped_lbl.setVisible(True)
 
         def eventFilter(self, watched, event) -> bool:  # noqa: N802 - Qt name
-            """Redraw the command bar's labels whenever the Shift key moves.
+            """Redraw the command bar on a Shift key move, and halt the feeds
+            when the window holding the tab closes.
 
-            The filter sits on the application, so the key reaches the bar
-            while the focus is on a bot table.
+            The filter sits on the application, so the key reaches the bar while
+            the focus is on a bot table, and the window's own close reaches
+            ``stop_feeds`` where Qt sends the tab no close of its own.
             """
             kind = event.type()
             if kind in (QEvent.KeyPress, QEvent.KeyRelease):
@@ -382,6 +384,8 @@ if _HAS_QT:
                 )
             elif kind == QEvent.WindowDeactivate:
                 self._draw_cmd_labels(False)
+            elif kind == QEvent.Close and watched is self.window():
+                self.stop_feeds()
             return super().eventFilter(watched, event)
 
         def _draw_cmd_labels(self, fleet: bool) -> None:
