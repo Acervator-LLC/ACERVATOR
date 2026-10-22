@@ -15,6 +15,11 @@ and then stopped updating. ``get`` rebuilds such an instance once per
 window and keeps serving the cached one until the factory answers, so a
 singleton that has answered once never reverts to None.
 
+``carry_reading`` moves the stopped instance's reading onto its
+replacement, so a replacement never starts empty and the screens drawing
+that reading keep their last figures while the feed recovers. Each owner
+supplies its own, naming what its reading is.
+
 ``note_cleared`` carries the same window over a blocked fetch path, which
 no singleton owns: ``MarketDataPool._clear_wedged_lock`` calls it when it
 replaces a fetch lock whose holder never finished.
@@ -178,11 +183,15 @@ class ThrottledFault:
             self._emit(logging.WARNING, line)
             self._reset_counts()
 
-    def note_rebuild(self) -> None:
-        """Report one rebuilt instance and start the next window."""
+    def note_rebuild(self, *, reading_carried: bool = False) -> None:
+        """Report one rebuilt instance and start the next window.
+
+        ``reading_carried`` says whether the replacement took the stopped
+        instance's reading, so the line names what the screens now draw.
+        """
         with self._lock:
             self._next_report_at = self._clock() + self._window
-            self._emit(logging.WARNING, self._rebuilt_line())
+            self._emit(logging.WARNING, self._rebuilt_line(reading_carried))
             self._window = min(self._cap, self._window * BACKOFF_FACTOR)
             self._reset_counts()
 
@@ -259,11 +268,19 @@ class ThrottledFault:
             f"and {self._suppressed} call(s) were suppressed."
         )
 
-    def _rebuilt_line(self) -> str:
+    def _rebuilt_line(self, reading_carried: bool = False) -> str:
+        if reading_carried:
+            readings = (
+                "Its last readings are held and marked until the next "
+                "refresh lands new ones."
+            )
+        else:
+            readings = (
+                "Its last readings are gone and new ones start at the next refresh."
+            )
         return (
             f"FEATURE REBUILT - {self._feature} had stopped updating and has "
-            f"been built again. Its last readings are gone and new ones start "
-            f"at the next refresh. No further rebuild for "
+            f"been built again. {readings} No further rebuild for "
             f"{self._window:.0f} s."
         )
 
@@ -288,6 +305,7 @@ class LazySingleton(Generic[T]):
         impact: str,
         *,
         has_stopped: Callable[[T], bool] | None = None,
+        carry_reading: Callable[[T, T], None] | None = None,
         base_cooloff_s: float = DEFAULT_BASE_COOLOFF_S,
         max_cooloff_s: float = DEFAULT_MAX_COOLOFF_S,
         clock: Callable[[], float] = time.monotonic,
@@ -297,9 +315,12 @@ class LazySingleton(Generic[T]):
 
         ``has_stopped`` answers whether a cached instance has stopped
         updating, and ``get`` builds a replacement for one that has.
+        ``carry_reading`` is handed the stopped instance and its
+        replacement, and moves the reading from the first to the second.
         """
         self._factory = factory
         self._has_stopped = has_stopped
+        self._carry_reading = carry_reading
         self._instance: T | None = None
         self._lock = threading.RLock()
         self._constructions = 0
@@ -335,10 +356,13 @@ class LazySingleton(Generic[T]):
         None means skip the feature this tick. The failure is already
         reported and the next attempt is already scheduled. A cached
         instance ``has_stopped`` reports stopped is replaced, and the
-        cached one is served until the factory answers.
+        cached one is served until the factory answers. ``carry_reading``
+        moves the stopped instance's reading onto the replacement before
+        it is cached, so no reader is ever handed an empty replacement.
         """
         with self._lock:
             cached = self._instance
+            reading_carried = False
             try:
                 if cached is not None and not self._stopped(cached):
                     return cached
@@ -347,6 +371,9 @@ class LazySingleton(Generic[T]):
                     return cached
                 self._constructions += 1
                 instance = self._factory()
+                if cached is not None and self._carry_reading is not None:
+                    self._carry_reading(cached, instance)
+                    reading_carried = True
             except Exception as exc:  # noqa: BLE001 - a pump must not raise
                 self._fault.note_failure(exc)
                 return cached
@@ -354,7 +381,7 @@ class LazySingleton(Generic[T]):
             if cached is None:
                 self._fault.note_success()
             else:
-                self._fault.note_rebuild()
+                self._fault.note_rebuild(reading_carried=reading_carried)
             return instance
 
     def _stopped(self, instance: T) -> bool:
