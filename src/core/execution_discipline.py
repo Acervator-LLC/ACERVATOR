@@ -1,10 +1,11 @@
-"""Live-path fill simulation and slippage tolerance.
+"""Fill modelling and slippage tolerance; no live order is priced here.
 
 ``fill_price`` moves a price against the trader by a half-normal draw scaled
-by ``LIVE_SPREAD_PCT``. ``verify_hit`` samples it up to ``VERIFY_MAX_SAMPLES``
-times and cancels once the drift between samples exceeds ``VERIFY_DRIFT_PCT``.
-``classify_symbol`` and ``verify_min_profit`` read the per-class tolerance out
-of ``VERIFY_MIN_PROFIT_BY_CLASS``.
+by ``LIVE_SPREAD_PCT``, and no live order carries its answer as a limit price.
+``verify_hit`` samples it up to ``VERIFY_MAX_SAMPLES`` times and cancels once
+the drift between samples exceeds ``VERIFY_DRIFT_PCT``. ``classify_symbol``
+and ``verify_min_profit`` read the per-class tolerance out of
+``VERIFY_MIN_PROFIT_BY_CLASS``.
 """
 
 from __future__ import annotations
@@ -114,7 +115,8 @@ def fill_price(
 
     A ``side`` of "sell" fills below ``intended_price`` and every other side
     above it, with mean displacement ``spread`` * sqrt(2/pi); a non-positive
-    ``intended_price`` is returned untouched.
+    ``intended_price`` is returned untouched, and no live order carries the
+    returned figure as its limit price.
     """
     if intended_price <= 0:
         return intended_price
@@ -161,10 +163,10 @@ def verify_hit(
             return sample, ("clean" if i == 0 else "adjusted"), i + 1
         if prev is not None:
             if side == "sell":
-                drift = (prev - sample) / max(intended_price, 1e-9)
+                drift_price = prev - sample
             else:
-                drift = (sample - prev) / max(intended_price, 1e-9)
-            if drift > VERIFY_DRIFT_PCT:
+                drift_price = sample - prev
+            if drift_price > intended_price * VERIFY_DRIFT_PCT:
                 return None, "canceled", i + 1
         prev = sample
     return None, "canceled", VERIFY_MAX_SAMPLES
