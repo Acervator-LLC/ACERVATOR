@@ -19,6 +19,7 @@ from .main_tabs.table_cells_surface import (
     MANUAL_FIRE_NOOP_TIP_FORMAT,
     STALE_TIP_FORMAT,
     ammo_units_note,
+    held_figure_text,
     units_text,
 )
 
@@ -341,6 +342,7 @@ def _compose_table_target_denom_cell(
         else:
             _color = ds.ERROR
             _sign = ""
-        return (f"{units_text(_units)} ({_sign}{_delta:.1f}%)", _color)
+        _figure = f"{units_text(_units)} ({_sign}{_delta:.1f}%)"
+        return (held_figure_text(_figure, _rates.source), _color)
     except Exception:  # noqa: BLE001 - table paint best-effort
         return ("", _neutral)
