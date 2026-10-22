@@ -542,8 +542,10 @@ class SnapshotEmitterMixin(_Host):
         until a trade fires or ``GATE_ROW_TICK_CAP`` ticks pass with nothing
         new. A refusal the stretch already recorded writes nothing, so a gate
         that flips on and off between two states costs two rows rather than one
-        a tick. ``quiet_ticks`` counts the ticks since this bot's last row, so
-        an unchanged refusal reads differently from a bot that stopped ticking.
+        a tick. ``quiet_ticks`` counts the ticks that reached a quiet exit since
+        this bot's last row, so an unchanged refusal reads differently from a
+        bot that stopped ticking. A tick the read-rate throttle skipped is not
+        counted, because it evaluated nothing.
         """
         self._ticks_since_gate_row = int(self._ticks_since_gate_row) + 1
         at_gate_chain = str(tick_exit) == GATE_CHAIN_EXIT
