@@ -1723,7 +1723,9 @@ class ExecutionEngineMixin:
                 exec_price = None
             else:
                 ot = OrderType.LIMIT
-                exec_price = vh_fp
+                # The limit price is the figure this bot decided. verify_hit's
+                # draw models a fill and never prices a live order.
+                exec_price = float(price)
 
             self._bus.emit(
                 "bot.log",
