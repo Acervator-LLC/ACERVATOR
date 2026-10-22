@@ -6,13 +6,18 @@ first connector answering both pairs, and ``snapshot`` returns the cached
 ``main_window`` (which feeds ``IndicatorVotingPanel.update_currency_rates``),
 ``table_cells``, ``table_cells_surface`` and the Live Settings tab.
 ``CurrencyRates`` is held in memory only and starts empty in a new process.
+
+A replacement built for a stopped feed takes the previous reading through
+``_carry_rates``, so the strip and the Target-denom cells keep their last
+figures. ``held_source`` marks that reading's ``source``, which is the label
+the strip already draws, so a held figure is never drawn as a live one.
 """
 
 from __future__ import annotations
 
 import logging
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Optional
 
 from .lazy_singleton import LazySingleton
@@ -23,6 +28,20 @@ DEFAULT_REFRESH_SECONDS = 60.0
 SATOSHI_PER_BTC = 100_000_000
 WEI_PER_ETH = 10**18
 WEI_PER_GWEI = 10**9
+HELD_SOURCE_SUFFIX = " (held)"
+NO_SOURCE = "none"
+
+
+def held_source(source: str) -> str:
+    """``source`` with ``HELD_SOURCE_SUFFIX`` on it, added once.
+
+    ``_carry_rates`` calls it so the rate strip's trailing label names a
+    carried reading as held; ``NO_SOURCE`` and an empty name are left alone.
+    """
+    name = str(source or "")
+    if not name or name == NO_SOURCE or name.endswith(HELD_SOURCE_SUFFIX):
+        return name
+    return name + HELD_SOURCE_SUFFIX
 
 
 @dataclass
@@ -38,7 +57,7 @@ class CurrencyRates:
     gwei_per_dollar: float = 0.0
     gwei_per_cent: float = 0.0
     last_updated: float = 0.0  # epoch seconds
-    source: str = "none"  # exchange id, "manual", or "none"
+    source: str = NO_SOURCE  # exchange id, "manual", or NO_SOURCE
     error: Optional[str] = None
 
     def age_seconds(self, now: Optional[float] = None) -> float:
@@ -71,6 +90,15 @@ class CurrencyRateMonitor:
         return self._refresh_s
 
     def snapshot(self) -> CurrencyRates:
+        return self._snapshot
+
+    def hold_reading(self, reading: CurrencyRates) -> CurrencyRates:
+        """Adopt ``reading`` as this monitor's snapshot, with no poll.
+
+        ``_carry_rates`` calls it so a replacement monitor starts from the
+        stopped one's ``CurrencyRates`` instead of zeros.
+        """
+        self._snapshot = reading
         return self._snapshot
 
     def is_stale(self, now: Optional[float] = None) -> bool:
@@ -168,12 +196,27 @@ def _monitor_has_stopped(monitor: CurrencyRateMonitor) -> bool:
     return monitor.snapshot().last_updated > 0 and monitor.is_stale()
 
 
+def _carry_rates(
+    previous: CurrencyRateMonitor, replacement: CurrencyRateMonitor
+) -> None:
+    """Move ``previous``'s ``CurrencyRates`` onto ``replacement``, marked held.
+
+    ``_MONITOR`` passes this as ``carry_reading``; a monitor whose
+    ``last_updated`` is still zero carries nothing.
+    """
+    reading = previous.snapshot()
+    if reading.last_updated <= 0:
+        return
+    replacement.hold_reading(replace(reading, source=held_source(reading.source)))
+
+
 _MONITOR: LazySingleton[CurrencyRateMonitor] = LazySingleton(
     CurrencyRateMonitor,
     "the currency rate feed",
     "BTC/USD and ETH/USD, and the satoshi and wei denominated prices "
     "derived from them, will hold their last value and stop updating.",
     has_stopped=_monitor_has_stopped,
+    carry_reading=_carry_rates,
 )
 
 
