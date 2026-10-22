@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any
 
 from ..bot_container import BotState, as_finite_float
 from ..container.config import as_whole_count
+from .target_ramp import RAMP_MODES, RAMP_SEARCH
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -375,7 +376,16 @@ class StateSerializerMixin:
         self._hedge_trades = admitted_counter(
             data.get("hedge_trades", self._hedge_trades), "hedge_trades", self.bot_id
         )
-        self._scrum_target_mode = str(data.get("scrum_target_mode", "search"))
+        _mode = str(data.get("scrum_target_mode", RAMP_SEARCH))
+        if _mode not in RAMP_MODES:
+            logger.warning(
+                "Bot %s stored an unusable scrum_target_mode (%r); it reads as %s",
+                self.bot_id,
+                _mode,
+                RAMP_SEARCH,
+            )
+            _mode = RAMP_SEARCH
+        self._scrum_target_mode = _mode
         _side = data.get("scrum_target_side", None)
         self._scrum_target_side = _side if _side in ("upper", "lower", None) else None
 
