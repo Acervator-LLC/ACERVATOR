@@ -141,6 +141,7 @@ _PY_RULE_MODULES: tuple[tuple[str, str], ...] = (
     ("slop", "dev_harness.harness.rules.slop"),
     ("numeric_guard", "dev_harness.harness.rules.numeric_guard"),
     ("delegated_canon", "dev_harness.harness.rules.delegated_canon"),
+    ("restore_set", "dev_harness.harness.rules.restore_set"),
 )
 
 # scaffolding and hallucination read the file as text, so they serve every
