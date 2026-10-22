@@ -2157,16 +2157,15 @@ class ExecutionEngineMixin:
                 self.stats.verify_clean += 1
             else:
                 self.stats.verify_adjusted += 1
-                amount = fold_units(cost, vh_fp, FRACTIONAL_UNITS)
-                if _qrate_buy > 0 and abs(_qrate_buy - 1.0) > 1e-9:
-                    amount = amount / _qrate_buy
 
             if self._invisible:
                 ot = OrderType.MARKET
                 exec_price = None
             else:
                 ot = OrderType.LIMIT
-                exec_price = vh_fp
+                # The limit price is the figure this bot decided. verify_hit's
+                # draw models a fill and never prices or sizes a live order.
+                exec_price = float(price)
 
             self._bus.emit(
                 "bot.log",
