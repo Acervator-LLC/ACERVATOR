@@ -1212,8 +1212,9 @@ definition yet and nothing here to attach it to, so nothing is proposed. Issue
 
 In development.
 
-One standing defect touches the panel: eight
-indicator implementations depart from their published formulae (issue #414).
+No standing defect touches the panel. The eight
+indicator implementations that departed from their published formulae are all
+repaired, one indicator per unit, and issue #414 is closed.
 The API Interaction Log and the Stocks window's New Accumulation Bot box both
 name the twelve voters the engine builds.
 
