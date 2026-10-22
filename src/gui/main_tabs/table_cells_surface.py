@@ -7,14 +7,16 @@ from its target and which way the engine will move it. The
 Target-denom cell restates the same target in BTC and in ETH and says
 how far that pair has drifted from the same asset priced in dollars.
 
-Nine things leave this surface. ``position_path`` names which of its
+Ten things leave this surface. ``position_path`` names which of its
 five paths one Position Value reading takes, and ``two_reads`` answers
 whether the row's Balance figure and its Ammo figure rest on two
 different counts. ``price_pool`` finds the shared price
 cache. ``fresh_price`` picks the price the cells are drawn from and
 says how old it is. ``ammo_units_note`` writes the tooltip sentence
 naming which unit count ``target_bands.ammo_units`` picked for the Ammo
-cell. ``priced_position`` is the one
+cell, and ``balance_units_note`` writes the Position Value tooltip's
+clause naming the exchange's own count beside the bot's.
+``priced_position`` is the one
 multiplication both priced cells read. ``position_value_cell`` composes the Current
 Position Value cell on each of its five paths, four of which are
 blank. ``ammo_cell`` composes the Ammo cell on each of its three
@@ -172,9 +174,19 @@ AGED_POSITION_TIP_FORMAT = (
     "limit. Blank rather than a figure priced off it."
 )
 PRICED_POSITION_TIP_FORMAT = (
-    "Current position value from the exchange: {holdings:.6f} units at "
-    "${price:,.4f}, priced {price_age_s:,.0f}s ago."
+    "Current position value on the bot's own count of {holdings:.6f} units, at "
+    "the exchange's price of ${price:,.4f}, priced {price_age_s:,.0f}s ago."
 )
+BALANCE_VENUE_AGREES_NOTE_FORMAT = (
+    " The exchange's own count agrees at {units:.6f} units, so this figure and "
+    "the Ammo figure beside it rest on one reading."
+)
+BALANCE_VENUE_DIFFERS_NOTE_FORMAT = (
+    " TWO READS, NOT ONE MOMENT: the exchange's own count is {units:.6f} units, "
+    "which the Ammo figure beside this one is priced from, so the two dollar "
+    "figures on this row rest on two separate readings of what is held."
+)
+BALANCE_NO_VENUE_NOTE = ""
 
 POSITION_PATH_PRICED = "priced"
 POSITION_PATH_NO_HOLDINGS = "holdings_absent"
@@ -391,6 +403,30 @@ def two_reads(
     return round(balance_usd, DRAWN_DECIMALS) != round(ammo_usd, DRAWN_DECIMALS)
 
 
+def balance_units_note(
+    holdings: float,
+    venue_units: Any,
+    cur_price: float,
+    quote_rate: float,
+    price_age_s: Optional[float],
+) -> str:
+    """The Current Position Value tooltip's clause naming the exchange's own
+    count beside the bot's.
+
+    Reads ``ammo_units`` for the pick and ``two_reads`` for the comparison, the
+    same two answers the Ammo cell reads, so the two cells on one row cannot
+    disagree about whether the row drew two counts. ``BALANCE_NO_VENUE_NOTE``
+    is empty because an absent exchange count changes nothing about a figure
+    priced from the bot's own, and the Ammo cell already names the absence.
+    """
+    units, from_venue = ammo_units(holdings, venue_units)
+    if not from_venue:
+        return BALANCE_NO_VENUE_NOTE
+    if two_reads(holdings, units, from_venue, cur_price, quote_rate, price_age_s):
+        return BALANCE_VENUE_DIFFERS_NOTE_FORMAT.format(units=units)
+    return BALANCE_VENUE_AGREES_NOTE_FORMAT.format(units=units)
+
+
 def ammo_text(delta: float, target_val: float) -> str:
     """The Ammo figure, or the no-target dashes when there is no target."""
     return magnitude(delta) if target_val > 0 else NO_TARGET_TEXT
@@ -528,12 +564,15 @@ class TableCellsModel:
         cur_price: float,
         qrate: float,
         price_age_s: Optional[float] = MISSING_PRICE_AGE_S,
+        venue_units: Any = None,
     ) -> dict:
         """The Current Position Value cell, filled only from a fresh exchange price.
 
         ``price_age_s`` is None whenever ``fresh_price`` fell back to the
         bot's own reading, and every path but ``POSITION_PATH_PRICED``
-        returns ``POSITION_BLANK_TEXT`` with the reason in its tooltip.
+        returns ``POSITION_BLANK_TEXT`` with the reason in its tooltip. The
+        figure is priced from the bot's attributed ``holdings``, and the priced
+        tooltip says so and adds ``balance_units_note`` over ``venue_units``.
         """
         self.calls.append([POSITION_START, holdings, cur_price, qrate, price_age_s])
         path = position_path(holdings, cur_price, price_age_s)
@@ -561,6 +600,9 @@ class TableCellsModel:
                 "color": NO_CELL_COLOR,
                 "tip": PRICED_POSITION_TIP_FORMAT.format(
                     holdings=holdings, price=cur_price, price_age_s=price_age_s
+                )
+                + balance_units_note(
+                    holdings, venue_units, cur_price, qrate, price_age_s
                 ),
                 "position_val": position_val,
                 "priced": True,

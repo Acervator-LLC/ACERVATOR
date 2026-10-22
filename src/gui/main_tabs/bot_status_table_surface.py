@@ -1360,7 +1360,7 @@ class BotStatusTableModel:
         price, price_age_s, quote_rate = self._price_reading(status, stats)
         holdings = float(status.get("current_holdings", NO_HOLDINGS))
         position = self.cells.position_value_cell(
-            holdings, price, quote_rate, price_age_s
+            holdings, price, quote_rate, price_age_s, venue_units_of(status)
         )
         ammo = self._ammo_cell(
             stats,
