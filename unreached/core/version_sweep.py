@@ -741,10 +741,8 @@ class VersionSweep:
                 continue
 
             rel = self._rel(path)
-            # _visual_files use random.random for animation and white noise.
+            # _visual_files use random.random for white noise.
             _visual_files = {
-                "splash_screen.py",
-                "render_trailer.py",
                 "sound_engine.py",  # audio white-noise generator
             }
             if path.name in _visual_files:
