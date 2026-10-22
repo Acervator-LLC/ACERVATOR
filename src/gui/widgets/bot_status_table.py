@@ -42,10 +42,10 @@ from ..main_tabs.bot_status_table_surface import (
     NO_LOGO_TIP_FORMAT,
     NO_SELECTION_BOT_ID,
     NO_SELECTION_ROW,
-    NO_SORT_COLUMN,
-    ROW_HEIGHT_PX,
     MANUAL_FIRE_ACTS,
     MANUAL_FIRE_REFUSES,
+    NO_SORT_COLUMN,
+    ROW_HEIGHT_PX,
     SORTABLE_COLUMNS,
     TOOLTIP_LINE_GAP,
     SortLookups,
@@ -913,8 +913,8 @@ if _HAS_QT:
                     _auto_armed_scrum = bool(_af.get("scrum_armed", False))
                     _scrum_blockers = list(_af.get("scrum_blockers", []) or [])
                     if _auto_armed_scrum:
-                        fire_path = FIRE_PATH_SCRUM_SOLID
                         # Solid red fill — auto-fire would fire NOW.
+                        fire_path = FIRE_PATH_SCRUM_SOLID
                         fire_btn.setStyleSheet(
                             "font-size: 10px; padding: 1px 6px; "
                             f"color: {ds.TEXT_MAX}; font-weight: bold; "
