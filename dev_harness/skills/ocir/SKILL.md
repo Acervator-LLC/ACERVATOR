@@ -999,3 +999,68 @@ on this shape recorded 76 false dead paths read the same way, and this session
 re-ran it anyway.
 
 The tell is a hallucination finding naming a path that `ls` can see.
+
+## C103 — a mechanism read from the source and published as a finding
+
+The operator reported three figures disagreeing on a row and a strip
+disappearing. Both were diagnosed by reading the code, written into issue
+bodies, and told to him as fact. **Three of those claims were wrong, in one
+session, and each was corrected only when something drove the code.**
+
+```
+claim                                            what driving it showed
+the ledger is short of the venue                 two refresh schedules, no shortfall
+the venue field is written once, at start-up     three callers, one listing truncated
+a stopped feed is never refreshed                the guard does not fire; the refresh ran
+```
+
+Each claim was defensible from the text. The first read two cells taking
+different inputs and named the gap a divergence. The second read a caller list
+cut off at eight lines. The third read an early return above a refresh call and
+concluded the refresh was unreachable.
+
+The third is the clearest: the guard returns on `None`, and the factory it
+guards cannot fail, so the branch is reachable in principle and never taken in
+the condition the finding described. Reading tells you a branch exists. Only
+running tells you it is taken.
+
+The rule: **a mechanism claim is a hypothesis until the code has been driven to
+produce it.** Before an issue body or a reply states why something happens, run
+the path and read what it did. Where that is not possible, the sentence says the
+claim is unverified and names what would settle it.
+
+The tell is a body that explains a cause entirely in terms of what the source
+says, with no command, no output and no before-and-after beside it. A correct
+citation is not a correct claim — the paths in all three of these resolved.
+
+This is the skill's own residual arriving in the referee's work rather than a
+unit's: the two-sided-control discipline already says a predicted failure
+mechanism tests the prediction, and these three predictions were never put to
+the code at all.
+
+## C104 — a count read off a truncated listing
+
+The second row above has its own cause, separable from the first. A caller count
+was taken from a listing ending in `head -8`, which held more than eight lines.
+
+```
+listing shown        8 lines, head -8
+lines available     15
+callers reported     1
+callers present      3
+```
+
+The figure went into an issue body as the root cause, with a second figure built
+on top of it, and reached the operator as fact.
+
+Earlier the same session, the same shape in reverse: a caller search used
+patterns that could not match the import form in use and read zero importers
+where there was one.
+
+The rule: **a count never comes from a listing that was truncated or filtered
+for reading.** Count with the counting command — `grep -c`, `wc -l`, a summed
+count — and show the listing separately. A `head` is for looking; it is not a
+measurement.
+
+The tell is a number quoted in the same breath as a listing that ends exactly at
+a round limit.
