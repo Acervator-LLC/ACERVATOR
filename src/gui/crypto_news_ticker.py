@@ -83,18 +83,33 @@ class NewsHeadline:
 #: What ``opening_address`` answers for an address holding no host.
 NO_HOST_REASON = "the address names no host"
 
+#: What ``opening_address`` answers for an address the checks cannot read whole.
+UNREAD_CHARACTER_REASON = "the address carries a character the checks do not read"
+
+# URL parsing deletes these anywhere in an address before it reads the scheme.
+DELETED_BY_URL_PARSING = "\t\r\n"
+
+# URL parsing strips these off both ends: every C0 control character and space.
+STRIPPED_BY_URL_PARSING = "".join(chr(point) for point in range(0x21))
+
 HOVER_FORMAT = "{source} — click to open in default browser.\n{tail}"
 NO_ADDRESS_TAIL = "this headline opens nothing: {reason}"
 
 
 def opening_address(url: object) -> tuple[str, str]:
-    """``url`` when a browser may open it, and the reason it may not when empty.
+    """``url`` when a browser may open it, and why it may not when empty.
 
     ``CryptoNewsTicker.eventFilter`` reads a headline's address through this
     before ``webbrowser.open`` is called, so a feed's own string reaches the
-    system browser only as an http or https address carrying a host.
+    system browser only as an http or https address carrying a host, and only
+    when the scheme and host checks read every character of it.
     """
-    address, refused = openable_url(url)
+    text = str(url)
+    if any(one in text for one in DELETED_BY_URL_PARSING):
+        return "", UNREAD_CHARACTER_REASON
+    if text != text.strip(STRIPPED_BY_URL_PARSING):
+        return "", UNREAD_CHARACTER_REASON
+    address, refused = openable_url(text)
     if not address:
         return "", refused
     try:
