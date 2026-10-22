@@ -83,8 +83,10 @@ LOCK_MIN = 1
 LOCK_MAX = 10
 LOCK_DEFAULT = 2
 LOCK_TOOLTIP = (
-    "When a higher-TF phantom locks a lower-TF phantom, "
-    "how many candles does the lock persist?"
+    "How many candles a higher-TF lock persists. The coordinator "
+    "keeps the figure and saves it with the bot. Nothing creates a "
+    "lock today, so Active Locks stays empty and SCRUM lock state "
+    "stays UNLOCKED."
 )
 
 SUMMARY_GROUP_TITLE = "Coordinator Status"
