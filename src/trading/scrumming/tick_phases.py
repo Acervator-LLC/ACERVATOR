@@ -1232,7 +1232,7 @@ class TickPhaseMixin:
                         message=f"TARGET: FIRE→TRACK ({_side}) — off band, "
                         f"still in detect zone (dist {_dist_to_band:.0%})",
                     )
-                elif _dist_abs < detect_pct_frac * 0.5 * _band_span:
+                elif not _near_band and _dist_abs < detect_pct_frac * 0.5 * _band_span:
                     _mode = "search"
                     self._bus.emit(
                         "bot.log",
