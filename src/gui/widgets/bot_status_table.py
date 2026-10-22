@@ -13,6 +13,18 @@ from ..main_tabs.bot_status_table_surface import (
     BUTTON_HEIGHT_PX,
     COLUMN_LABELS,
     COLUMN_TOOLTIPS,
+    FIRE_PATH_FOLD_CEILING,
+    FIRE_PATH_FOLD_OUTLINE,
+    FIRE_PATH_FOLD_SOLID,
+    FIRE_PATH_INACTIVE,
+    FIRE_PATH_MANUAL_NOOP,
+    FIRE_PATH_NOT_SCRUMMING,
+    FIRE_PATH_PHASE_FIRE,
+    FIRE_PATH_PHASE_SEARCH,
+    FIRE_PATH_PHASE_TRACK,
+    FIRE_PATH_SCRUM_OUTLINE,
+    FIRE_PATH_SCRUM_SOLID,
+    FIRE_STYLE_MANUAL_NOOP,
     FIXED_WIDTHS,
     HEADER_CELL_GAP_PX,
     HEADER_CELL_PAD_PX,
@@ -32,11 +44,15 @@ from ..main_tabs.bot_status_table_surface import (
     NO_SELECTION_ROW,
     NO_SORT_COLUMN,
     ROW_HEIGHT_PX,
+    MANUAL_FIRE_ACTS,
+    MANUAL_FIRE_REFUSES,
     SORTABLE_COLUMNS,
     TOOLTIP_LINE_GAP,
     SortLookups,
     icon_asset_of,
     kept_logo_path,
+    manual_fire_noop_tooltip,
+    manual_fire_verdict,
     mode_tooltip,
     opening_address,
     organisation_address,
@@ -58,6 +74,10 @@ from ..table_cells import (
 )
 
 logger = logging.getLogger("acervator.gui")
+
+#: Qt dynamic property carrying the Fire button's ``FIRE_PATHS`` entry, so the
+#: path this row chose is readable off the button the operator presses.
+FIRE_PATH_PROPERTY = "fire_path"
 
 
 def _qt_lookups() -> SortLookups:
@@ -711,6 +731,9 @@ if _HAS_QT:
             ammo_color = QColor(_ammo["color"])
             ammo_tip = _ammo["tip"]
             ammo_text = _ammo["text"]
+            # The button reads the distance this row's own Ammo cell drew.
+            fire_verdict = manual_fire_verdict(_ammo, target_val)
+            fire_acts = fire_verdict == MANUAL_FIRE_ACTS
 
             # Colour encodes direction, so the magnitudes print unsigned.
             def _mag(v: float) -> str:
@@ -876,12 +899,21 @@ if _HAS_QT:
                         )
                     return "".join(parts)
 
-                if armed_action == "scrum":
+                if fire_verdict == MANUAL_FIRE_REFUSES:
+                    # Inside Manual Fire's band and outside the tick's: the
+                    # engine still works this range and the button does not.
+                    fire_path = FIRE_PATH_MANUAL_NOOP
+                    fire_btn.setStyleSheet(FIRE_STYLE_MANUAL_NOOP)
+                    fire_btn.setToolTip(
+                        manual_fire_noop_tooltip(_ammo, target_val) + _risk_suffix()
+                    )
+                elif armed_action == "scrum" and fire_acts:
                     # Solid means auto would fire now; outline means only manual remains.
                     _af = status.get("auto_fire", {}) or {}
                     _auto_armed_scrum = bool(_af.get("scrum_armed", False))
                     _scrum_blockers = list(_af.get("scrum_blockers", []) or [])
                     if _auto_armed_scrum:
+                        fire_path = FIRE_PATH_SCRUM_SOLID
                         # Solid red fill — auto-fire would fire NOW.
                         fire_btn.setStyleSheet(
                             "font-size: 10px; padding: 1px 6px; "
@@ -899,6 +931,7 @@ if _HAS_QT:
                     else:
                         # Outline only — manual override available
                         # but auto-fire is blocked by ≥1 gate.
+                        fire_path = FIRE_PATH_SCRUM_OUTLINE
                         fire_btn.setStyleSheet(
                             "font-size: 10px; padding: 1px 6px; "
                             f"color: {ds.ERROR}; font-weight: bold; "
@@ -919,7 +952,7 @@ if _HAS_QT:
                             "rebalance back to target (bypasses "
                             "auto's TA/BB/HTF gates)." + _blockers_text + _risk_suffix()
                         )
-                elif armed_action == "fold":
+                elif armed_action == "fold" and fire_acts:
                     # Mirrors the SCRUM branch above.
                     _af = status.get("auto_fire", {}) or {}
                     _auto_armed_fold = bool(_af.get("fold_armed", False))
@@ -927,6 +960,7 @@ if _HAS_QT:
                     if fold_blocked_by_ceiling:
                         # Ceiling already gives this its own visual.
                         # Keep the existing muted-green dashed style.
+                        fire_path = FIRE_PATH_FOLD_CEILING
                         fire_btn.setStyleSheet(
                             "font-size: 10px; padding: 1px 6px; "
                             f"color: {ds.TEXT_NEUTRAL}; font-weight: bold; "
@@ -943,6 +977,7 @@ if _HAS_QT:
                         )
                     elif _auto_armed_fold:
                         # Solid green — auto-fire FOLD would fire NOW.
+                        fire_path = FIRE_PATH_FOLD_SOLID
                         fire_btn.setStyleSheet(
                             "font-size: 10px; padding: 1px 6px; "
                             f"color: {ds.TEXT_MAX}; font-weight: bold; "
@@ -959,6 +994,7 @@ if _HAS_QT:
                     else:
                         # Outline only — manual override available
                         # but auto-fire is blocked.
+                        fire_path = FIRE_PATH_FOLD_OUTLINE
                         fire_btn.setStyleSheet(
                             "font-size: 10px; padding: 1px 6px; "
                             f"color: {ds.STATE_ARMED}; font-weight: bold; "
@@ -981,6 +1017,7 @@ if _HAS_QT:
                         )
                 elif scrum_phase == "fire":
                     # Inside the dust band, so amber: no rebalance is needed.
+                    fire_path = FIRE_PATH_PHASE_FIRE
                     fire_btn.setStyleSheet(
                         "font-size: 10px; padding: 1px 6px; "
                         f"color: {ds.TEXT_ON_LIGHT}; font-weight: bold; "
@@ -994,6 +1031,7 @@ if _HAS_QT:
                         "Clicking has no effect." + _risk_suffix()
                     )
                 elif scrum_phase == "track":
+                    fire_path = FIRE_PATH_PHASE_TRACK
                     fire_btn.setStyleSheet(
                         "font-size: 10px; padding: 1px 6px; "
                         f"color: {ds.WARNING}; font-weight: bold;"
@@ -1005,6 +1043,7 @@ if _HAS_QT:
                     )
                 else:
                     # SEARCH / idle — subdued red
+                    fire_path = FIRE_PATH_PHASE_SEARCH
                     fire_btn.setStyleSheet(
                         "font-size: 10px; padding: 1px 6px; "
                         f"color: {ds.ERROR}; font-weight: bold;"
@@ -1019,11 +1058,15 @@ if _HAS_QT:
                     f"{ds.TEXT_PLACEHOLDER};"
                 )
                 if not is_scrumming:
+                    fire_path = FIRE_PATH_NOT_SCRUMMING
                     fire_btn.setToolTip("Manual Fire is scrumming-only.")
                 else:
+                    fire_path = FIRE_PATH_INACTIVE
                     fire_btn.setToolTip(
                         f"Bot is {state}; start or resume to enable Fire."
                     )
+            # The path the row chose, readable off the button itself.
+            fire_btn.setProperty(FIRE_PATH_PROPERTY, fire_path)
             fire_btn.clicked.connect(lambda _checked, b=bid: self._on_fire(b))
             self.setCellWidget(row, 8, fire_btn)
 
