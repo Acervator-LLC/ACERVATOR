@@ -52,6 +52,7 @@ _BLOCKER_PREFIXES: tuple[tuple[str, str], ...] = (
     ("below_interval", "INT"),
     ("BB-below-upper", "BB"),
     ("scrum_ok=False", "BB"),
+    ("TA-conf-below-floor", "TA"),
     ("TA-not-bullish", "TA"),
     ("trend_hold", "TRND"),
     ("HTF-bullish", "HTF"),
@@ -75,9 +76,12 @@ _BLOCKER_PREFIXES: tuple[tuple[str, str], ...] = (
     ("hysteresis_fold", "OTD"),
 )
 
-# The five light states and the colour each one paints.
+# The six light states and the colour each one paints. "override" is the LS
+# light alone; "overridden" is a gate whose refusal an override replaced, and
+# both paint the landing strip's cyan.
 LIGHT_COLORS: dict[str, str] = {
     "override": "#22d3ee",
+    "overridden": "#22d3ee",
     "not_evaluated": "#333340",
     "blocked": "#ff3366",
     "passed": "#00cc55",
@@ -107,11 +111,15 @@ def gate_for_blocker(blocker: str) -> str:
     return ""
 
 
-def _blocked_labels(blockers: list) -> set[str]:
-    """The set of gate labels the given blocker phrases name."""
+def _labels_for(phrases: list) -> set[str]:
+    """The set of gate labels the given refusal phrases name.
+
+    ``gate_light_row`` reads it for a blocker list and for the refusals an
+    override replaced.
+    """
     hits: set[str] = set()
-    for b in blockers or []:
-        gate = gate_for_blocker(b)
+    for one in phrases or []:
+        gate = gate_for_blocker(one)
         if gate:
             hits.add(gate)
     return hits
@@ -128,12 +136,12 @@ def gate_light_state(
     armed: bool,
     blocked: set,
     ls_active: bool,
+    overridden: Optional[set] = None,
 ) -> str:
-    """The state one light is in. A key of ``LIGHT_COLORS``.
+    """The state one light is in, a key of ``LIGHT_COLORS``.
 
-    Order is load-bearing: the override is decided before the evaluated
-    check, so an active landing strip reads as an override rather than
-    as an unevaluated gate.
+    ``_GATE_OVERRIDE`` is decided ahead of ``evaluated``, and ``blocked``
+    ahead of ``overridden``.
     """
     if label == _GATE_OVERRIDE:
         return "override" if ls_active else "not_evaluated"
@@ -141,6 +149,8 @@ def gate_light_state(
         return "not_evaluated"
     if label in blocked:
         return "blocked"
+    if label in (overridden or ()):
+        return "overridden"
     if armed:
         return "passed"
     return "not_the_blocker"
@@ -152,9 +162,12 @@ def gate_light_color(
     armed: bool,
     blocked: set,
     ls_active: bool,
+    overridden: Optional[set] = None,
 ) -> str:
     """The "#rrggbb" one light paints."""
-    return LIGHT_COLORS[gate_light_state(label, evaluated, armed, blocked, ls_active)]
+    return LIGHT_COLORS[
+        gate_light_state(label, evaluated, armed, blocked, ls_active, overridden)
+    ]
 
 
 def gate_light_row(
@@ -164,22 +177,42 @@ def gate_light_row(
     fold_blockers: Optional[list] = None,
     landing_strip_side: str = "",
     evaluated: bool = True,
+    scrum_overridden: Optional[list] = None,
+    fold_overridden: Optional[list] = None,
 ) -> list[dict]:
     """The nineteen lights, in draw order: the scrum bank then the fold.
 
-    Each entry carries ``bank`` ("S" or "F"), ``label``, ``state`` and
-    ``color``. Serialisable: no Qt type crosses this boundary.
+    ``scrum_overridden`` and ``fold_overridden`` carry each refusal an
+    override replaced on that side, and every entry is serialisable.
     """
-    scrum_blocked = _blocked_labels(scrum_blockers or [])
-    fold_blocked = _blocked_labels(fold_blockers or [])
+    scrum_blocked = _labels_for(scrum_blockers or [])
+    fold_blocked = _labels_for(fold_blockers or [])
+    scrum_replaced = _labels_for(scrum_overridden or [])
+    fold_replaced = _labels_for(fold_overridden or [])
     side = str(landing_strip_side or "").lower()
     out: list[dict] = []
-    for bank, gates, armed, blocked, ls_active in (
-        ("S", _GATE_ORDER_SCRUM, bool(scrum_armed), scrum_blocked, side == "upper"),
-        ("F", _GATE_ORDER_FOLD, bool(fold_armed), fold_blocked, side == "lower"),
+    for bank, gates, armed, blocked, ls_active, replaced in (
+        (
+            "S",
+            _GATE_ORDER_SCRUM,
+            bool(scrum_armed),
+            scrum_blocked,
+            side == "upper",
+            scrum_replaced,
+        ),
+        (
+            "F",
+            _GATE_ORDER_FOLD,
+            bool(fold_armed),
+            fold_blocked,
+            side == "lower",
+            fold_replaced,
+        ),
     ):
         for label in gates:
-            state = gate_light_state(label, evaluated, armed, blocked, ls_active)
+            state = gate_light_state(
+                label, evaluated, armed, blocked, ls_active, replaced
+            )
             out.append(
                 {
                     "bank": bank,
