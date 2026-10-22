@@ -20,8 +20,16 @@ from .main_tabs.main_window_surface import (
     ACCUMULATION_TAB,
     API_PILL_TOOLTIP,
     BAR_TAB_ORDER,
+    CHARTS_TAB,
+    CONSOLE_TAB,
     HISTORY_TAB,
+    INSPECTOR_TAB,
     ISOLATED_TABS,
+    LIVE_TAB,
+    PAPER_TAB,
+    SIM_TAB,
+    STATUS_TAB,
+    SWARM_TAB,
     UNBUILT_TABS,
     about_text,
     header_strip_reads_paper,
@@ -371,37 +379,70 @@ if _HAS_QT:
             help_menu = menu_bar.addMenu("&Help")
             help_menu.addAction("&About", self._show_about)
 
-        def _setup_ui(self) -> None:
-            main_layout = self._build_header_strip()
+        def _timed_build_step(self, name: str, step):
+            """Run ``step``, log the seconds it took, and return what ``step`` returned.
 
+            ``_setup_ui`` calls it for every tab, so each tab names its own
+            share of the window's construction.
+            """
+            started = time.perf_counter()
             try:
-                from .shared_testnet import SharedTestnetBridge
-
-                SharedTestnetBridge.install_on(self)
-            except Exception as _e:
-                import traceback as _tb
-
-                logging.getLogger("acervator").warning(
-                    f"SharedTestnetBridge install failed: {_e}\n" f"{_tb.format_exc()}"
+                return step()
+            finally:
+                logger.info(
+                    "Startup build: %s took %.3fs",
+                    name,
+                    time.perf_counter() - started,
                 )
-                self._local_testnet = None
-                self._testnet_bridge = None
+
+        def _setup_ui(self) -> None:
+            construction_started = time.perf_counter()
+            main_layout = self._timed_build_step(
+                "header strip", self._build_header_strip
+            )
+
+            def _install_testnet_bridge() -> None:
+                """Install ``SharedTestnetBridge`` on this window, clearing both handles on failure."""
+                try:
+                    from .shared_testnet import SharedTestnetBridge
+
+                    SharedTestnetBridge.install_on(self)
+                except Exception as _e:
+                    import traceback as _tb
+
+                    logging.getLogger("acervator").warning(
+                        f"SharedTestnetBridge install failed: {_e}\n"
+                        f"{_tb.format_exc()}"
+                    )
+                    self._local_testnet = None
+                    self._testnet_bridge = None
+
+            self._timed_build_step("testnet bridge", _install_testnet_bridge)
 
             self._main_tabs = _main_tab_book_class()()
             self._main_tabs.setMovable(True)
 
-            self._build_trading_tab()
-            self._build_charts_tab()
-            self._build_bot_swarm_tab()
-            self._build_market_inspector_tab()
-            self._build_simulator_tab()
-            self._install_retired_tab_sentinels()
-            self._build_history_tab()
-            self._build_console_tab()
-            self._build_paper_trader_tab()
-            self._build_system_status_tab()
+            self._timed_build_step(LIVE_TAB, self._build_trading_tab)
+            self._timed_build_step(CHARTS_TAB, self._build_charts_tab)
+            self._timed_build_step(SWARM_TAB, self._build_bot_swarm_tab)
+            self._timed_build_step(INSPECTOR_TAB, self._build_market_inspector_tab)
+            self._timed_build_step(SIM_TAB, self._build_simulator_tab)
+            self._timed_build_step(
+                "retired tab sentinels", self._install_retired_tab_sentinels
+            )
+            self._timed_build_step(HISTORY_TAB, self._build_history_tab)
+            self._timed_build_step(CONSOLE_TAB, self._build_console_tab)
+            self._timed_build_step(PAPER_TAB, self._build_paper_trader_tab)
+            self._timed_build_step(STATUS_TAB, self._build_system_status_tab)
             if ACCUMULATION_TAB not in UNBUILT_TABS:
-                self._build_proof_of_accumulation_tab()
+                self._timed_build_step(
+                    ACCUMULATION_TAB, self._build_proof_of_accumulation_tab
+                )
+
+            logger.info(
+                "Startup build: every tab took %.3fs in all",
+                time.perf_counter() - construction_started,
+            )
 
             self._reorder_main_tabs(list(BAR_TAB_ORDER))
 
