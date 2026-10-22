@@ -341,7 +341,7 @@ def ramp_step(mode: Any, price: Any, band: dict, settings: Any) -> str:
         return RAMP_SEARCH if travel_frac < retreat_frac else RAMP_TRACK
     if not near_band and travel_frac >= detect_frac:
         return RAMP_TRACK
-    return RAMP_SEARCH if travel_frac < retreat_frac else RAMP_FIRE
+    return RAMP_SEARCH if not near_band and travel_frac < retreat_frac else RAMP_FIRE
 
 
 def ramp_mode(candles: Any, settings: Any) -> str:
