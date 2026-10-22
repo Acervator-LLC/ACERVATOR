@@ -182,8 +182,8 @@ def _gate_row_key(
     """One tuple naming where a tick ended and which gates refused it.
 
     Two ticks refused by the same gates at the same exit answer the same key.
-    ``_emit_gate_decision_at_quiet_tick`` compares it against the last row this
-    bot wrote, so an answer the record already holds is not written again.
+    ``_emit_gate_decision_at_quiet_tick`` looks it up in the refusals this quiet
+    stretch has already written, so an answer the record holds is not repeated.
     """
     return (
         str(tick_exit),
