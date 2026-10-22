@@ -140,6 +140,9 @@ class BotContainer:
         self._data_pool = None  # set by BotManager.set_data_pool
         self._market_rules_cache: dict[str, "MarketRules"] = {}
         self._asset_class_cache: dict[str, str] = {}
+        # Declared so get_full_state always finds the key. ScrummingBot and
+        # ExtractorBot each assign the operator's value after this runs, so
+        # this False reaches no saved record.
         self._phantoms_enabled: bool = False
         # Wall-clock second start() stamped, which the fraction lead mode
         # measures a contract's remaining life at. 0 until the bot starts.

@@ -89,7 +89,8 @@ eff_pct = ctx.scrumming_interval_pct + ctx.trading_fee_pct
 **Functional.** A sell is not allowed below the Bollinger midline and a buy is
 not allowed above it. The tick sets one flag for each side off the band
 position, and a gate refuses the wrong side of the band. The scrum flag also
-carries the phantom lock, so a locked bot cannot sell whatever the band says.
+carries the phantom lock. Nothing sets that lock today, and on a ripe row the
+ripe-harvest override force-passes the gate that reads it.
 
 `src/trading/scrumming_bot.py` — `ScrummingBot.tick`
 
@@ -140,12 +141,16 @@ While the Harvest-Fold method housed with the Scrumming Bot addresses several pe
 
 **Functional.** A phantom is a copy of the position read on a slower chart. It
 computes technical analysis on its own timeframe, stores the result, and
-constructs no order. Six timeframes are the default set.
+constructs no order. One timeframe is the default set, and a saved record names
+its own.
 
-`src/trading/scrumming_bot.py` — `ScrummingBot.DEFAULT_PHANTOM_TIMEFRAMES`
+`src/trading/scrumming_bot.py` — `ScrummingBot.__init__`
 
 ```python
-DEFAULT_PHANTOM_TIMEFRAMES = ["5m", "15m", "30m", "1h", "4h", "1d"]
+self._phantom_timeframes = list(
+    phantom_timeframes
+    or default_phantom_timeframes(config.ta_timeframe, _offered)
+)
 ```
 
 **Design intention.** The inhibition the entry describes runs today. A bullish
@@ -168,30 +173,39 @@ label = "HTF-bullish" if self.side == "scrum" else "HTF-bearish"
 return GateResult(passed=False, blocker_message=label)
 ```
 
-Three parts of the feature do not work. The phantom lock guard is gone, and no
-lock was ever created (issue #398). Every profit and loss figure on the
-Phantom Bots tab prints as zero, because the key the tab reads is never written
-(issue #197). The tab draws a refused change as a success and can drop a
-timeframe (issue #313). Issue #155 tracks the remaining build-out. Replacing
-multi-screen monitoring is an intention, not current behaviour.
+One part of the feature does not work, and it is the phantom lock. No method on
+the coordinator creates a lock, so the flag stays clear and the lock list stays
+empty. The term in the scrum flag does read the flag, and a ripe row
+force-passes the gate it sits in. Whether a higher timeframe should hold a trade
+at all is the open decision on issue #1359. Replacing multi-screen monitoring is
+an intention, not current behaviour.
 
-**The saved record carries the timeframe.** The bot writes the key
-`phantom_timeframes` when it holds exactly one name. The fleet load reads that
-key and gives the list to the bot it builds. The key, the change field and the
-bot attribute now use one spelling.
+```
+six ticks, three phantoms registered, one bot
+
+the flag after every tick                        False
+the coordinator's active locks                   []
+the flag set by hand, band position 0.70         the midline gate refuses
+the flag set by hand, band position 0.91         the ripe row force-passes it
+```
+
+**The saved record carries the timeframe.** The bot writes every name it holds
+under the key `phantom_timeframes`. The fleet load reads that key and gives the
+list to the bot it builds. The key, the change field and the bot attribute now
+use one spelling.
 
 | step | module | symbol |
 | ---- | ------ | ------ |
 | write the key | `src/trading/bot_container.py` | `BotContainer.get_full_state` |
 | read the key | `src/trading/container/restore.py` | `StateRestoreMixin.restore_bots_from_state` |
-| hold the list | `src/trading/scrumming_bot.py` | `ScrummingBot.DEFAULT_PHANTOM_TIMEFRAMES` |
+| hold the list | `src/trading/scrumming_bot.py` | `ScrummingBot.__init__` |
 | build the set | `src/trading/scrumming/tick_phases.py` | `TickPhaseMixin._tick_initialise` |
 | run one timeframe | `src/trading/phantom_balance.py` | `PhantomBalanceManager.create_phantom_set` |
 
 A record written before the key took the plural spelling still restores. The
 fleet load reads the older singular key `phantom_timeframe` when the plural key
-is absent. A bot that holds more than one name writes no key, and the engine
-default takes charge on the next start.
+is absent. A bot holding three names writes all three and reads all three back,
+so a set of several survives a restart.
 
 **The venue decides which names survive.** The bot drops any stored timeframe
 its exchange does not serve. A record naming one timeframe the exchange refuses
