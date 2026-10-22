@@ -25,6 +25,11 @@ Consumers (planned):
 
 Not persisted — a fresh process starts with an empty snapshot and
 populates on the first successful poll.
+
+A replacement built for a stopped scout takes the previous scout's books
+through ``_carry_pairs``, so ``get_pair`` keeps answering from the last poll
+while the scout recovers. Each ``PairSnapshot`` keeps its own
+``last_updated``, so ``age_seconds`` still reports the true age.
 """
 
 from __future__ import annotations
@@ -182,6 +187,23 @@ class MarketPairsScout:
         """Every pair the last poll of ``exchange_id`` recorded, symbol ascending."""
         book = self._snapshots.get(exchange_id, {})
         return sorted(book.values(), key=lambda s: s.symbol)
+
+    def hold_books(self, other: MarketPairsScout) -> int:
+        """Adopt every book ``other`` polled, with its refresh time and error.
+
+        ``_carry_pairs`` calls it so a replacement scout answers ``pairs_for``
+        from the stopped scout's poll; the pair count adopted is returned.
+        """
+        carried = 0
+        for eid in other.polled_exchanges():
+            book = {snap.symbol: snap for snap in other.pairs_on(eid)}
+            if not book:
+                continue
+            self._snapshots[eid] = book
+            self._last_refresh[eid] = other.last_refresh(eid)
+            self._last_error[eid] = other.last_error(eid)
+            carried += len(book)
+        return carried
 
     def quote_currencies_for(
         self,
@@ -348,12 +370,22 @@ def _scout_has_stopped(scout: MarketPairsScout) -> bool:
     return bool(polled) and all(scout.is_stale(eid) for eid in polled)
 
 
+def _carry_pairs(previous: MarketPairsScout, replacement: MarketPairsScout) -> None:
+    """Move ``previous``'s pair books onto ``replacement``.
+
+    ``_SCOUT`` passes this as ``carry_reading``; a scout whose
+    ``polled_exchanges`` is empty carries nothing.
+    """
+    replacement.hold_books(previous)
+
+
 _SCOUT: LazySingleton[MarketPairsScout] = LazySingleton(
     MarketPairsScout,
     "the market pairs scout",
     "The Target BTC and Target ETH rows, and every other cross-pair "
     "reading, will hold their last value and stop updating.",
     has_stopped=_scout_has_stopped,
+    carry_reading=_carry_pairs,
 )
 
 
