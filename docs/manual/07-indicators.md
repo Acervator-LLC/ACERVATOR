@@ -589,14 +589,21 @@ minus_series[i] = sum_vm / sum_tr_window
 ```
 
 **Design intention.** The operator uses the Vortex to catch a reversal early,
-and watches for the signal to saturate at one polarity or the other. Acervator
-adds one reading of its own on top of the published lines: the vote is
-overwritten to bullish whenever the downward line reaches 1.30, after the
-crossover has already decided. That overwrite is not part of the indicator, and
-[Departures](#departures-from-the-published-maths) records it.
+and watches for the signal to saturate at one polarity or the other. The vote
+follows the two published lines, and nothing overwrites it once the crossover
+has decided. A saturated upward line caps the vote's confidence at 0.45 and
+leaves the direction alone. The saturated downward line is published in the
+reading's own detail, where nothing reads it, so Acervator adds no reading of
+its own on top of the published lines here, and
+[Departures](#departures-from-the-published-maths) no longer carries one.
 
-In development. The overwrite belongs to issue #414, which owns every indicator
-departure, and no replacement reading has been chosen.
+`src/trading/indicators/vortex.py` — `VortexIndicator.compute`, the one cap the
+vote carries
+
+```python
+if vip_at_ceiling:
+    confidence = max(0.0, min(confidence, 0.45))
+```
 
 ### MACD
 
@@ -910,7 +917,8 @@ if ctx.adx < self.adx_threshold:
     return GateResult(passed=True)
 ```
 
-Issue #414 owns the abstain threshold and no correction is proposed here.
+Issue #414 owned the abstain threshold, the correction landed, and the issue is
+closed.
 
 ### Supertrend
 
@@ -1138,22 +1146,11 @@ else:
 the Stochastic RSI on purpose. Its weight is 0.8, which stops the same evidence
 being counted twice at full strength.
 
-One number is read two ways here. The value is rounded to two decimals before
-the vote tests it, while the overbought and oversold flags in the same
-dictionary test the unrounded number. An RSI of 70.003 therefore sets
-overbought and still votes neutral.
+One number is read one way here. The vote tests it, the overbought and oversold
+flags in the same dictionary test it, and nothing cuts it before either of them,
+so an RSI of 70.003 sets overbought and votes bearish on the same bar.
 
-`src/trading/indicators/rsi.py` — the rounding today
-
-```python
-return {
-    "rsi": round(rsi, 2),
-    "rs_indeterminate": rs_indeterminate,
-    "overbought": rsi > 70,
-    "oversold": rsi < 30,
-```
-
-*Proposed, not present:*
+`src/trading/indicators/rsi.py` — the one index the dictionary carries
 
 ```python
 return {
@@ -1163,24 +1160,25 @@ return {
     "oversold": rsi < 30,
 ```
 
-The rounding belongs to display, not to a comparison. Issue #414 carries this.
+Rounding belongs to display, not to a comparison, and it is done where a figure
+is drawn. Issue #414 carried this and is closed.
 
 ## Departures from the published maths
 
-**Functional.** Two departures remain, and neither is a matter of scale. Every
+**Functional.** No departure from the published maths remains. Every
 voter now reads the same on an asset worth four figures and on one worth a few
 millionths of a dollar, because no division and no threshold in the twelve
 carries an absolute constant against a quantity measured in the asset's own
 price units. Where a denominator can genuinely reach zero the indicator
 abstains on that bar rather than adding a constant to it.
 
-- The Vortex overwrites its own direction to BULLISH whenever the downward line
-  reaches 1.30, after the crossover has already decided. The two lines
-  themselves match Botes and Siepman exactly. The overwrite is a reading
-  Acervator adds on top of them.
-- The RSI is rounded to two decimals before the vote tests it against 70 and
-  30, while the overbought and oversold flags beside it test the unrounded
-  number. An RSI of 70.003 sets overbought and still votes NEUTRAL.
+- The Vortex direction follows the upward line against the downward one, and
+  nothing overwrites it after the crossover has decided. The two lines
+  themselves match Botes and Siepman exactly, and no reading of Acervator's own
+  is laid on top of them.
+- The RSI vote and the overbought and oversold flags beside it read one number.
+  The index is not cut before any of them tests it, so the label and the vote
+  cannot disagree about the same bar.
 
 Supertrend is the one place an abstention stands in for a division. Its lower
 band is derived from the average true range rather than read off the tape, so
@@ -1210,11 +1208,18 @@ conftest. The runs recorded in the entries further down this page hold the
 property instead, each naming the scales it drove and the readings it compared.
 The bounds the readings must stay inside are in `src/trading/ta_invariants.py`.
 
-Issue #414 owns the two readings above. Both are deliberate choices in
-Acervator's own reading of a published indicator, not arithmetic errors, and
-neither has a replacement chosen yet.
+Issue #414 owned the two readings above and is closed. Each one now reports the
+published maths with nothing added, so neither needs a replacement chosen for
+it. The entries dated below record what each repair changed and what it was
+measured on.
 
-In development.
+`src/trading/indicators/vortex.py` — `VortexIndicator.compute`, the crossover the
+direction follows
+
+```python
+bullish_cross = prev_sep <= 0 and separation > 0
+bearish_cross = prev_sep >= 0 and separation < 0
+```
 
 ## 2026-09-08 15:12 - #414 - the ratio the gate reads
 
@@ -1816,7 +1821,7 @@ return {
 ```
 
 One number now leaves the indicator, and the label, the vote, the strength and
-the published reading all read it. The block marked *Proposed, not present* in
+the published reading all read it. The code block in
 the [RSI](#rsi) section above is the code in this tree. The rounding has gone
 back to the two places that display a number: the confirming sentence prints two
 decimals and the panel's hover cell prints three.

@@ -558,17 +558,19 @@ Six columns answer 512 px.
 
 OVERTAKEN, and the block and the paragraph above are kept as written.
 `COUNTER_MIN_W` is not 48. It is 88 px, the width the row draws a counter slot at,
-and it is a typed figure on purpose: `MONEY_CELL_MIN_W` plus `COUNTER_TEXT_PAD`
-reads 2 px wider, and raising the floor to that would move every counter slot.
-What the card's amount gained is the room inside the floor, which
-`CARD_SIDE_MARGIN_PX` widened.
+and it is a typed figure on purpose: raising it would move every counter slot.
+`MONEY_CELL_MIN_W` plus `COUNTER_TEXT_PAD` now reads 66 px, which is 22 px under
+that floor, so a card at its floor holds the widest amount whole and no floor had
+to move to give it that. What the card's amount gained is the room inside the
+floor, which the card's own frame padding widened.
 
 OVERTAKEN, and the block and the paragraph above are kept as written.
 `COUNTER_NATURAL_W` is not 118. It is 144 px, the width the row draws a counter
 card at when it can afford it, and `COUNTER_TEXT_W` is that width less
 `COUNTER_TEXT_PAD`. The React card reads `COUNTER_NATURAL_W` for its own sizeHint,
-so the width is held and the room inside it is what `CARD_SIDE_MARGIN_PX` widened —
-110 px of room before, 118 px now.
+so the width is held and the room inside it is what the card's margin and then
+the card's own frame padding widened — 110 px of room at first, then 118 px, and
+142 px now.
 
 OVERTAKEN, and the block and the paragraph above are kept as written.
 `TOP_ROW_STRETCH` is not `[3, 1, 1, 1, 1, 1, 0]` and is not written out. It is
@@ -608,7 +610,7 @@ CARD_SIDE_MARGIN_PX = 4
 
 OVERTAKEN, and the block and the paragraph above are kept as written.
 `CARD_SIDE_MARGIN_PX` is not 4 and the Qt counter card leaves no side margin of
-its own. `PANEL_FRAME_INSET_PX` names what the card's frame already insets — 12 px
+its own. `PANEL_FRAME_INSET_PX` names what the theme's frame rule insets — 12 px
 of padding and a 1 px border on each side — so a margin on top of it was a second
 inset, and it cost the amount the digits `MONEY_CELL_MIN_W` reserves room for. The
 three money strip figures above are unchanged.
@@ -620,6 +622,24 @@ frame inset it already has. `CARD_PAGE_SIDE_MARGIN_PX` is the padding
 `CARD_LAYOUT` carries to the page, where it replaces the frame's inset instead of
 sitting inside it, and where the slot's own drawn width follows it. It is held at
 4, the figure the row already drew, so no slot moves on either host.
+
+OVERTAKEN, and the block and the paragraph above are kept as written. The Qt card
+no longer wears the theme's side padding at all. `CARD_STYLE` is the card's own
+frame, 12 px of padding above and below and none either side, and a sheet on the
+card itself wins for that card alone, so the strip and every other panel keep the
+theme's padding and no slot's width moves. What a card's frame and margins take
+off its text is now the 1 px border on each side, so a card drawing 144 px wide
+gives its amount 142 px of room, against the 90 px the widest amount asks for.
+
+`src/gui/main_tabs/header_strip_surface.py` — the card's own frame
+
+```python
+CARD_FRAME_SIDE_PX = 0
+CARD_STYLE = f"StatCard {{ padding: {PANEL_FRAME_PAD_PX}px {CARD_FRAME_SIDE_PX}px; }}"
+COUNTER_TEXT_PAD = 2 * (
+    CARD_SIDE_MARGIN_PX + CARD_FRAME_SIDE_PX + PANEL_FRAME_BORDER_PX
+)
+```
 
 **One money cell, one width rule.** The row draws money in two kinds of panel —
 a column of the money strip and a counter card — and both reserve the same room
@@ -643,7 +663,7 @@ one number answers both.
 `COUNTER_NATURAL_W` are the widths the row already drew a counter slot at, and
 `slot_floor_w`, `slot_natural_w` and `slot_stretch` answer the same number for
 every `TOP_ROW_ORDER` slot as before. The Qt card reaches `MONEY_CELL_MIN_W` of
-room through `CARD_SIDE_MARGIN_PX`, which is room inside the panel and not a wider
+room through `CARD_FRAME_SIDE_PX`, which is room inside the panel and not a wider
 panel, and the page's card has that room already through
 `CARD_PAGE_SIDE_MARGIN_PX`, so no slot's drawn size moves on either host.
 
@@ -875,9 +895,13 @@ self._sync_executor = fresh
 **Functional.** Two readings rebuild themselves and need no restart. The BTC/USD
 and ETH/USD strip comes back once its last reading is two minutes old. The
 cross-pair rows come back once every venue the scout polled is twenty seconds
-past its reading. Each one drops the figures it was holding, so the strip reads
-`BTC —` and a cross-pair cell reads `pending` until the next refresh lands. The
-Console carries one line for each rebuild.
+past its reading. Each one hands its last reading to its replacement and marks
+it held, so the strip keeps both prices and ends `coinbase (held)`, and a
+cross-pair cell keeps its figure and ends `(held)`. The mark leaves on its own
+when a fresh reading lands. A reader that has never answered holds nothing to
+hand on, so the strip still draws a dash for each price and the cell still reads
+pending. The Console carries one line for each rebuild, and that line says
+whether the readings were held or lost.
 
 `src/exchange/lazy_singleton.py` — the cached reader is replaced in place
 
@@ -886,7 +910,7 @@ Console carries one line for each rebuild.
             if cached is None:
                 self._fault.note_success()
             else:
-                self._fault.note_rebuild()
+                self._fault.note_rebuild(reading_carried=reading_carried)
 ```
 
 **Design intention.** The old reader is served until its replacement is built,
@@ -1467,6 +1491,32 @@ def ammo_units(holdings: float, venue_units: Any) -> tuple:
 `src/trading/scrumming/reconciliation.py`, in `_record_audited_venue_units` —
 where the reading comes from, and `src/trading/bot_container.py`, in
 `get_status` — the `audited_venue_units` field that carries it to the screen.
+
+**A fill moves the stored figure as well.** Those three paths are not the only
+writers. Every fill path that is already holding a venue balance reading records
+that reading with the filled units applied, so the row no longer draws a position
+taken before the fill beside one taken after it. No path fetches anything new.
+The sell path holds no reading of its own and still waits for the periodic audit.
+Two routes reach one assignment: one stores a venue reading and nets it against
+the personal hold and the sibling bots, and the other moves the stored figure by
+the units a fill settled and asks no venue for anything.
+
+```
+src/trading/scrumming/reconciliation.py, in _store_audited_venue_units
+    the one assignment both routes land on
+src/trading/scrumming/reconciliation.py, in _record_audited_venue_units
+    a venue reading, netted against the hold and the siblings
+src/trading/scrumming/reconciliation.py, in _record_venue_units_after_fill
+    the stored figure moved by the units one fill settled
+src/trading/scrumming/execution.py, in _execute_buy
+    its own pre-fill reading plus the units bought
+src/trading/scrumming/execution.py, in _execute_manual_rebalance
+    its own pre-fill reading, on the two autonomous intents
+src/trading/scrumming/execution.py, in _execute_detonation
+    the second route, by the units it sold
+src/trading/scrumming/execution.py, in _execute_sell
+    holds no reading; waits for the periodic audit
+```
 
 The row's cell, the header strip's AMMO total and the Ammo column's sort order
 all take the count from `src/gui/main_tabs/bot_status_table_surface.py`, in
@@ -3027,6 +3077,24 @@ reconcile interval after that.
 src/trading/scrumming_bot.py, in tick                     the claim, once per tick
 src/trading/bot_container.py, in _dispatch_bootstrap      the ceiling, on bot start
 src/trading/scrumming_bot.py, in tick                     the ceiling, every reconcile interval
+```
+
+**The ceiling is read on two more occasions, and one of them is not new.** Sizing
+a sale reads it, which was true before any fill recorded anything, so the figure
+a detonation sells against is already net of the hold. Each fill on a path that
+is already holding a balance reading reads it as well, because the recorder that
+stores the reading nets it. The detonation's own fill is the exception: it moves
+the stored figure by the units it sold and reads no ceiling.
+
+```
+src/trading/scrumming/reconciliation.py, in _venue_claimable_units
+    the ceiling, when a sale is sized
+src/trading/scrumming/reconciliation.py, in _record_audited_venue_units
+    the ceiling, on every reading it stores
+src/trading/scrumming/execution.py, in _execute_buy
+    a fill that reaches that recorder
+src/trading/scrumming/execution.py, in _execute_manual_rebalance
+    a fill that reaches that recorder, on the two autonomous intents
 ```
 
 The adoption ceiling is the reader that bears on a sale. A bot whose venue

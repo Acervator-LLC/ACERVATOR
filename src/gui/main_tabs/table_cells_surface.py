@@ -7,7 +7,10 @@ from its target and which way the engine will move it. The
 Target-denom cell restates the same target in BTC and in ETH and says
 how far that pair has drifted from the same asset priced in dollars.
 
-Seven things leave this surface. ``price_pool`` finds the shared price
+Nine things leave this surface. ``position_path`` names which of its
+five paths one Position Value reading takes, and ``two_reads`` answers
+whether the row's Balance figure and its Ammo figure rest on two
+different counts. ``price_pool`` finds the shared price
 cache. ``fresh_price`` picks the price the cells are drawn from and
 says how old it is. ``ammo_units_note`` writes the tooltip sentence
 naming which unit count ``target_bands.ammo_units`` picked for the Ammo
@@ -52,6 +55,11 @@ LOGGER_NAME = "acervator.gui"
 
 STALE_MARKER = "(stale)"
 
+TWO_READS_MARKER = "(two reads)"
+
+#: Decimal places both priced cells draw, so a difference below them is unseen.
+DRAWN_DECIMALS = 4
+
 AMMO_SCRUM_COLOR = ds.SUCCESS
 AMMO_FOLD_COLOR = ds.ERROR
 AMMO_NEUTRAL_COLOR = ds.TEXT_MED
@@ -62,7 +70,7 @@ MANUAL_FIRE_DUST_PCT = MANUAL_FIRE_PCT
 MAGNITUDE_FORMAT = "${magnitude:,.4f}"
 NO_TARGET_TEXT = "---"
 PENDING_PRICE_TEXT = "pending…"
-STALE_TEXT_FORMAT = "{text} {marker}"
+MARKED_FIGURE_FORMAT = "{text} {marker}"
 
 TERRITORIES = (TERRITORY_SCRUM, TERRITORY_FOLD, TERRITORY_AT_TARGET)
 
@@ -98,6 +106,13 @@ MANUAL_FIRE_NOOP_OLD_PRICE_SUFFIX = (
     " The delta above rests on the old price named here, so the no-op is "
     "likely rather than certain."
 )
+TWO_READS_TIP = (
+    " TWO READS, NOT ONE MOMENT: this figure is priced from the exchange's "
+    "count and the Current Balance beside it is priced from the bot's own, so "
+    "the two dollar figures on this row rest on two separate readings of what "
+    "is held. No time is kept for either reading, so neither can be named the "
+    "older one."
+)
 STALE_TIP_FORMAT = (
     "STALE — price unavailable this tick, so this is the last "
     "known position value (${stats_pv:,.4f}), not a current "
@@ -129,6 +144,7 @@ AMMO_FIELDS = (
     "position_val",
     "manual_fire_noop",
     "price_age_s",
+    "two_reads",
 )
 AMMO_EARLY_FIELDS = ("text", "color", "delta", "stale", "position_val", "tip")
 
@@ -295,6 +311,7 @@ AMMO_EMPTY = "ammo.empty"
 AMMO_PENDING = "ammo.pending"
 AMMO_TERRITORY = "ammo.territory"
 AMMO_NOOP = "ammo.noop"
+AMMO_TWO_READS = "ammo.two_reads"
 AMMO_AGED = "ammo.aged"
 AMMO_RETURN = "ammo.return"
 DENOM_START = "denom.start"
@@ -302,6 +319,7 @@ DENOM_BLANK = "denom.blank"
 DENOM_SELF = "denom.self"
 DENOM_NO_TARGET = "denom.no_target"
 DENOM_RATES = "denom.rates"
+DENOM_HELD = "denom.held"
 DENOM_PENDING = "denom.pending"
 DENOM_PAIR = "denom.pair"
 DENOM_UNLISTED = "denom.unlisted"
@@ -331,6 +349,48 @@ def priced_position(holdings: float, price: float, quote_rate: float) -> float:
     return holdings * price * quote_rate
 
 
+def position_path(
+    holdings: float, cur_price: float, price_age_s: Optional[float]
+) -> str:
+    """Which of ``POSITION_PATHS`` one reading takes.
+
+    ``position_value_cell`` branches on this and ``two_reads`` reads it, so
+    neither can disagree about a blank Current Position Value cell.
+    """
+    if holdings <= 0:
+        return POSITION_PATH_NO_HOLDINGS
+    if cur_price <= 0:
+        return POSITION_PATH_NO_PRICE
+    if price_age_s is None:
+        return POSITION_PATH_OFF_EXCHANGE
+    if price_age_s > PRICE_STALE_AFTER_S:
+        return POSITION_PATH_AGED
+    return POSITION_PATH_PRICED
+
+
+def two_reads(
+    holdings: float,
+    units: float,
+    from_venue: bool,
+    cur_price: float,
+    quote_rate: float,
+    price_age_s: Optional[float],
+) -> bool:
+    """True where ``priced_position`` turns ``holdings`` and ``units`` into two
+    different figures at ``DRAWN_DECIMALS``.
+
+    False wherever ``position_path`` reports anything but
+    ``POSITION_PATH_PRICED``, and false where ``from_venue`` is False.
+    """
+    if not from_venue or units <= 0:
+        return False
+    if position_path(holdings, cur_price, price_age_s) != POSITION_PATH_PRICED:
+        return False
+    balance_usd = priced_position(holdings, cur_price, quote_rate)
+    ammo_usd = priced_position(units, cur_price, quote_rate)
+    return round(balance_usd, DRAWN_DECIMALS) != round(ammo_usd, DRAWN_DECIMALS)
+
+
 def ammo_text(delta: float, target_val: float) -> str:
     """The Ammo figure, or the no-target dashes when there is no target."""
     return magnitude(delta) if target_val > 0 else NO_TARGET_TEXT
@@ -352,6 +412,20 @@ def units_text(units: float) -> str:
     return UNITS_UNDERFLOW_FORMAT.format(
         floor=10.0**-UNITS_MAX_DECIMALS, decimals=UNITS_MAX_DECIMALS
     )
+
+
+def held_figure_text(text: str, source: str) -> str:
+    """``text`` with ``HELD_SOURCE_SUFFIX`` on it when ``source`` ends in it.
+
+    ``target_denom_cell`` and ``_compose_table_target_denom_cell`` both call
+    it, so a carried rate figure wears the mark the rate strip's own source
+    label wears.
+    """
+    from src.exchange.currency_rate_monitor import HELD_SOURCE_SUFFIX
+
+    if not text or not str(source or "").endswith(HELD_SOURCE_SUFFIX):
+        return text
+    return text + HELD_SOURCE_SUFFIX
 
 
 def divergence_colour(delta: float) -> tuple[str, str]:
@@ -462,13 +536,10 @@ class TableCellsModel:
         returns ``POSITION_BLANK_TEXT`` with the reason in its tooltip.
         """
         self.calls.append([POSITION_START, holdings, cur_price, qrate, price_age_s])
-        if holdings <= 0:
-            return self._blank_position(POSITION_PATH_NO_HOLDINGS)
-        if cur_price <= 0:
-            return self._blank_position(POSITION_PATH_NO_PRICE)
-        if price_age_s is None:
-            return self._blank_position(POSITION_PATH_OFF_EXCHANGE)
-        if price_age_s > PRICE_STALE_AFTER_S:
+        path = position_path(holdings, cur_price, price_age_s)
+        if path in POSITION_BLANK_TIPS:
+            return self._blank_position(path)
+        if path == POSITION_PATH_AGED:
             return self._finish_position(
                 POSITION_PATH_AGED,
                 {
@@ -550,8 +621,17 @@ class TableCellsModel:
             return self._empty_cell(position_val, target_val)
         if position_val <= 0 and units > 0:
             return self._pending_cell(position_val, units)
+        from_two_reads = two_reads(
+            holdings, units, from_venue, cur_price, qrate, price_age_s
+        )
         return self._signal_cell(
-            stats_pv, position_val, target_val, stale, price_age_s, note
+            stats_pv,
+            position_val,
+            target_val,
+            stale,
+            price_age_s,
+            note,
+            from_two_reads,
         )
 
     def _empty_cell(self, position_val: float, target_val: float) -> dict:
@@ -593,11 +673,13 @@ class TableCellsModel:
         stale: bool,
         price_age_s: Optional[float],
         note: str = "",
+        from_two_reads: bool = False,
     ) -> dict:
         """A live position: its distance from target and the engine's band.
 
-        ``note`` names the unit count the distance was measured from and is
-        appended after the stale and aged writers, so no branch drops it.
+        ``note`` and ``TWO_READS_TIP`` are appended after the stale and aged
+        writers, so no branch drops either, and ``from_two_reads`` also puts
+        ``TWO_READS_MARKER`` beside the figure.
         """
         delta = target_delta(position_val, target_val)
         territory = target_territory(position_val, target_val)
@@ -612,16 +694,20 @@ class TableCellsModel:
         old_price = False
         if stale:
             color = AMMO_NEUTRAL_COLOR
-            text = STALE_TEXT_FORMAT.format(text=text, marker=STALE_MARKER)
+            text = MARKED_FIGURE_FORMAT.format(text=text, marker=STALE_MARKER)
             tip = STALE_TIP_FORMAT.format(stats_pv=stats_pv)
             old_price = True
         elif price_age_s is not None and price_age_s > PRICE_STALE_AFTER_S:
             color = AMMO_NEUTRAL_COLOR
-            text = STALE_TEXT_FORMAT.format(text=text, marker=STALE_MARKER)
+            text = MARKED_FIGURE_FORMAT.format(text=text, marker=STALE_MARKER)
             tip = AGED_PRICE_TIP_FORMAT.format(price_age_s=price_age_s)
             old_price = True
             self.calls.append([AMMO_AGED, price_age_s])
         tip = f"{tip}{note}"
+        if from_two_reads:
+            text = MARKED_FIGURE_FORMAT.format(text=text, marker=TWO_READS_MARKER)
+            tip = f"{tip}{TWO_READS_TIP}"
+            self.calls.append([AMMO_TWO_READS, TWO_READS_MARKER])
         if manual_fire_noop:
             tip = MANUAL_FIRE_NOOP_TIP_FORMAT.format(
                 tip=tip, magnitude=abs(delta), dust_band=dust_band
@@ -640,6 +726,7 @@ class TableCellsModel:
                 "position_val": position_val,
                 "manual_fire_noop": manual_fire_noop,
                 "price_age_s": price_age_s,
+                "two_reads": from_two_reads,
             },
         )
 
@@ -716,15 +803,13 @@ class TableCellsModel:
         delta = float(pair.pct_24h) - usd_pct
         color, sign = divergence_colour(delta)
         self.calls.append([DENOM_DELTA, delta, sign])
-        return self._denom_finish(
-            DENOM_PATH_PRICED,
-            color,
-            DENOM_TEXT_FORMAT.format(
-                units_text=units_text(units), sign=sign, delta=delta
-            ),
-            units,
-            delta,
+        figure = DENOM_TEXT_FORMAT.format(
+            units_text=units_text(units), sign=sign, delta=delta
         )
+        drawn = held_figure_text(figure, rates.source)
+        if drawn != figure:
+            self.calls.append([DENOM_HELD, rates.source])
+        return self._denom_finish(DENOM_PATH_PRICED, color, drawn, units, delta)
 
     def _denom_finish(
         self,

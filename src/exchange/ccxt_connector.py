@@ -888,6 +888,12 @@ SESSION_DETAILS_KEY = "fcm_trading_session_details"
 #: currency, a settlement day, a tradability flag or an index-price source.
 CLEARING_VENUE_KEYS: tuple[str, ...] = ("product_venue", "execution_venue")
 
+#: The key a market record publishes the venue's own view-only mark under. It is
+#: a separate fact from ``CLEARING_VENUE_KEYS``: coinbase serves it as False on
+#: all 1000 of its equity rows and as True on 46 of its 100 dated contracts, and
+#: all 46 of those clear on ``FCM``, a word the order path reaches.
+VIEW_ONLY_KEY = "view_only"
+
 #: The record an equity product carries its own trading permissions under. ccxt's
 #: ``parse_spot_market`` reads nothing out of it and keeps the whole raw product
 #: row under ``info``, so the record survives the parse.
@@ -1212,6 +1218,22 @@ def market_clearing_venue(market: Any) -> Optional[str]:
     return None
 
 
+def market_view_only(market: Any) -> Optional[bool]:
+    """The venue's own view-only mark off one loaded market record, read at
+    ``VIEW_ONLY_KEY``.
+
+    True and False are the venue's own answers. None is the venue publishing no
+    mark, which is what a record carrying no such key and a record whose
+    ``info`` is not a mapping both answer, and no sizing path reads it as a
+    refusal.
+    """
+    raw = (market or {}).get("info") or {}
+    if not isinstance(raw, dict):
+        return None
+    held = raw.get(VIEW_ONLY_KEY)
+    return held if type(held) is bool else None
+
+
 def equity_size_shapes(market: Any) -> tuple:
     """The size shapes one loaded market record permits on a buy and on a sell,
     off ``EQUITY_FLAGS_KEY`` under ``EQUITY_DETAILS_KEY``.
@@ -1341,6 +1363,7 @@ def market_rules(
         contract_size=contract_units(market),
         session=market_session(market),
         clearing_venue=market_clearing_venue(market),
+        view_only=market_view_only(market),
         buy_size_shapes=buy_shapes,
         sell_size_shapes=sell_shapes,
         # CCXT parses Coinbase's future_product_details.contract_expiry here; a

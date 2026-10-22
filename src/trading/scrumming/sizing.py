@@ -2186,6 +2186,15 @@ CLEARING_REFUSED_FORMAT = (
     "path reaches {reached} alone on {venue}, so an order on it cannot fill"
 )
 
+#: Why the venue's own view-only mark refuses an order: the venue publishes the
+#: product for reading alone, so no order on it can fill however it is sized.
+#: The clearing venue is a separate fact and 46 of coinbase's 100 dated
+#: contracts carry this mark while clearing on a word the order path reaches.
+VIEW_ONLY_REFUSED_FORMAT = (
+    "the venue marks this product view only on {venue}, so it publishes it for "
+    "reading alone and an order on it cannot fill"
+)
+
 
 def venue_clearing_reach(venue: Any) -> Optional[frozenset]:
     """The clearing venues ``CITED_VENUE_CLEARING_REACH`` cites for ``venue``, or
@@ -2216,22 +2225,42 @@ def clearing_venue_reached(recorded: Any, venue: Any) -> bool:
     return clearing.strip().casefold() in {str(one).casefold() for one in reach}
 
 
+def view_only_marked(recorded: Any) -> bool:
+    """Whether ``recorded`` carries the venue's own view-only mark, True only
+    for the venue's own True.
+
+    A ``recorded`` publishing no mark carries None, which ``view_only_marked``
+    reads False.
+    """
+    return getattr(recorded, "view_only", None) is True
+
+
+def view_only_refusal(recorded: Any, venue: Any) -> str:
+    """Why the view-only mark ``recorded`` carries refuses an order on
+    ``venue``, through ``VIEW_ONLY_REFUSED_FORMAT`` and empty where
+    ``view_only_marked`` answers False."""
+    if not view_only_marked(recorded):
+        return ""
+    return VIEW_ONLY_REFUSED_FORMAT.format(venue=str(venue or ""))
+
+
 def clearing_refusal(recorded: Any, venue: Any) -> str:
-    """Why the clearing venue ``recorded`` publishes refuses an order on
-    ``venue``, through ``CLEARING_REFUSED_FORMAT`` and empty where
-    ``clearing_venue_reached`` answers True.
+    """Why the venue's own product record refuses an order on ``venue``, with
+    ``CLEARING_REFUSED_FORMAT`` answering first wherever
+    ``clearing_venue_reached`` answers False and ``view_only_refusal``
+    answering second.
 
     ``BotContainer.guarded_place_order`` raises it before an order is composed
     and ``bot_wizard_surface.market_reason`` draws it on the page that offers
     the market.
     """
-    if clearing_venue_reached(recorded, venue):
-        return ""
-    return CLEARING_REFUSED_FORMAT.format(
-        clearing=str(getattr(recorded, "clearing_venue", "")).strip(),
-        reached=clearing_reach_named(venue_clearing_reach(venue)),
-        venue=str(venue or ""),
-    )
+    if not clearing_venue_reached(recorded, venue):
+        return CLEARING_REFUSED_FORMAT.format(
+            clearing=str(getattr(recorded, "clearing_venue", "")).strip(),
+            reached=clearing_reach_named(venue_clearing_reach(venue)),
+            venue=str(venue or ""),
+        )
+    return view_only_refusal(recorded, venue)
 
 
 def sized_units(units: float, rule: str) -> float:
@@ -2935,6 +2964,7 @@ __all__ = [
     "VARIANTS_BUILT",
     "VARIANT_SECTOR_UNNAMED",
     "VARIANT_WHOLE_UNIT",
+    "VIEW_ONLY_REFUSED_FORMAT",
     "WHOLE_UNITS",
     "WHOLE_UNIT_GRAIN",
     "WHOLE_UNIT_POSITION_MINIMUM",
@@ -3019,6 +3049,8 @@ __all__ = [
     "venue_session",
     "venue_settlement_days",
     "venue_variant",
+    "view_only_marked",
+    "view_only_refusal",
     "wallet_capped_spend_usd",
     "whole_unit_buy_needs_limit",
     "whole_unit_over_fractional_step",

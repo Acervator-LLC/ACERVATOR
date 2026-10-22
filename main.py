@@ -11,13 +11,103 @@ from __future__ import annotations
 
 from typing import Optional, TYPE_CHECKING
 
-# Drops every __pycache__ under the repo root on import.
-import os, shutil
+# Binds every cached bytecode file inside the program's own code to its source
+# hash, which the interpreter rechecks on every import. A cache recording only
+# the source's whole-second time cannot separate two writes inside one second.
+import importlib.util
+import os
+import py_compile
 
-for _root, _dirs, _ in os.walk(os.path.dirname(os.path.abspath(__file__))):
-    for _d in _dirs:
-        if _d == "__pycache__":
-            shutil.rmtree(os.path.join(_root, _d), ignore_errors=True)
+PROGRAM_ROOT = os.path.dirname(os.path.abspath(__file__))
+
+#: The package directories the entry point imports its code from. The sweep
+#: walks these and never PROGRAM_ROOT itself, so a build folder, a node package
+#: tree or a log tree sitting beside the entry point is never walked.
+PROGRAM_CODE_DIRS = ("src",)
+
+
+def _cache_records_its_source(cache_path):
+    """Return True when the cache file carries this interpreter's magic and a source hash."""
+    try:
+        with open(cache_path, "rb") as handle:
+            head = handle.read(8)
+    except OSError:
+        return False
+    if len(head) < 8 or head[:4] != importlib.util.MAGIC_NUMBER:
+        return False
+    return int.from_bytes(head[4:8], "little") & 0b11 == 0b11
+
+
+def _cache_dirs(root, code_dirs):
+    """Yield every ``__pycache__`` directory inside ``code_dirs``, and ``root``'s own."""
+    for parent in [os.path.join(root, name) for name in code_dirs]:
+        for here, children, _ in os.walk(parent):
+            if "__pycache__" in children:
+                children.remove("__pycache__")
+                yield os.path.join(here, "__pycache__")
+    top_level = os.path.join(root, "__pycache__")
+    if os.path.isdir(top_level):
+        yield top_level
+
+
+def _sweep_pycache(root, code_dirs):
+    """Keep each cached bytecode file under ``code_dirs`` that records its source hash.
+
+    Returns the files kept, rebuilt, deleted and failed and the seconds taken,
+    which ``main`` logs once the log manager exists.
+    """
+    import time as _t
+
+    started = _t.perf_counter()
+    kept = 0
+    rebuilt = 0
+    deleted = 0
+    failed = 0
+    for cache_dir in _cache_dirs(root, code_dirs):
+        try:
+            names = os.listdir(cache_dir)
+        except OSError:
+            failed += 1
+            continue
+        for cache_path in [
+            os.path.join(cache_dir, n) for n in names if n.endswith(".pyc")
+        ]:
+            try:
+                source = importlib.util.source_from_cache(cache_path)
+            except (ValueError, NotImplementedError):
+                source = ""
+            if source and os.path.isfile(source):
+                if _cache_records_its_source(cache_path):
+                    kept += 1
+                    continue
+                try:
+                    py_compile.compile(
+                        source,
+                        doraise=False,
+                        quiet=2,
+                        invalidation_mode=py_compile.PycInvalidationMode.CHECKED_HASH,
+                    )
+                except OSError:
+                    failed += 1
+                else:
+                    rebuilt += 1
+                    continue
+            try:
+                os.remove(cache_path)
+            except OSError:
+                failed += 1
+            else:
+                deleted += 1
+    return kept, rebuilt, deleted, failed, _t.perf_counter() - started
+
+
+(
+    PYCACHE_SWEEP_KEPT,
+    PYCACHE_SWEEP_REBUILT,
+    PYCACHE_SWEEP_DELETED,
+    PYCACHE_SWEEP_FAILED,
+    PYCACHE_SWEEP_S,
+) = _sweep_pycache(PROGRAM_ROOT, PROGRAM_CODE_DIRS)
 
 # Imported for the QTimer annotation only; PySide6 is imported lazily at run time.
 if TYPE_CHECKING:
@@ -981,6 +1071,13 @@ def main() -> int:
         log_manager.set_symbol_resolver(_resolve_bot_symbol)
 
     log_manager.info(f"Acervator v{_acervator_version} starting")
+    log_manager.info(
+        f"Startup cleanup: {PYCACHE_SWEEP_KEPT} compiled file(s) kept, "
+        f"{PYCACHE_SWEEP_REBUILT} rebuilt, {PYCACHE_SWEEP_DELETED} deleted, "
+        f"{PYCACHE_SWEEP_FAILED} failed in {PYCACHE_SWEEP_S:.3f}s across "
+        f"{', '.join(PROGRAM_CODE_DIRS)}. A kept file carries its source's hash, "
+        f"which the interpreter rechecks on every import."
+    )
 
     try:
         from src.core.signal_contract import install_process_sink
