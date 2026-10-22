@@ -302,6 +302,7 @@ DENOM_BLANK = "denom.blank"
 DENOM_SELF = "denom.self"
 DENOM_NO_TARGET = "denom.no_target"
 DENOM_RATES = "denom.rates"
+DENOM_HELD = "denom.held"
 DENOM_PENDING = "denom.pending"
 DENOM_PAIR = "denom.pair"
 DENOM_UNLISTED = "denom.unlisted"
@@ -352,6 +353,20 @@ def units_text(units: float) -> str:
     return UNITS_UNDERFLOW_FORMAT.format(
         floor=10.0**-UNITS_MAX_DECIMALS, decimals=UNITS_MAX_DECIMALS
     )
+
+
+def held_figure_text(text: str, source: str) -> str:
+    """``text`` with ``HELD_SOURCE_SUFFIX`` on it when ``source`` ends in it.
+
+    ``target_denom_cell`` and ``_compose_table_target_denom_cell`` both call
+    it, so a carried rate figure wears the mark the rate strip's own source
+    label wears.
+    """
+    from src.exchange.currency_rate_monitor import HELD_SOURCE_SUFFIX
+
+    if not text or not str(source or "").endswith(HELD_SOURCE_SUFFIX):
+        return text
+    return text + HELD_SOURCE_SUFFIX
 
 
 def divergence_colour(delta: float) -> tuple[str, str]:
@@ -716,15 +731,13 @@ class TableCellsModel:
         delta = float(pair.pct_24h) - usd_pct
         color, sign = divergence_colour(delta)
         self.calls.append([DENOM_DELTA, delta, sign])
-        return self._denom_finish(
-            DENOM_PATH_PRICED,
-            color,
-            DENOM_TEXT_FORMAT.format(
-                units_text=units_text(units), sign=sign, delta=delta
-            ),
-            units,
-            delta,
+        figure = DENOM_TEXT_FORMAT.format(
+            units_text=units_text(units), sign=sign, delta=delta
         )
+        drawn = held_figure_text(figure, rates.source)
+        if drawn != figure:
+            self.calls.append([DENOM_HELD, rates.source])
+        return self._denom_finish(DENOM_PATH_PRICED, color, drawn, units, delta)
 
     def _denom_finish(
         self,
