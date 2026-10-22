@@ -275,9 +275,22 @@ class StateRestoreMixin:
                     )
                     _restored_lock_candles = bot_data.get("lock_candle_count")
                     if _restored_lock_candles is not None and bot._coordinator:
-                        bot._coordinator.lock_candle_count = max(
-                            1, int(_restored_lock_candles)
-                        )
+                        # A figure that will not parse keeps the coordinator's
+                        # own count; it must not cost the bot its place in the
+                        # fleet, because no lock reads the figure.
+                        try:
+                            bot._coordinator.lock_candle_count = max(
+                                1, int(_restored_lock_candles)
+                            )
+                        except (TypeError, ValueError):
+                            logger.warning(
+                                "Bot %s saved lock_candle_count %r is not a "
+                                "number. The coordinator keeps its own count "
+                                "of %s and the bot is still loaded.",
+                                bid[:8],
+                                _restored_lock_candles,
+                                bot._coordinator.lock_candle_count,
+                            )
                     logger.info(
                         "P0g-DIAG | bot=%s saved_phantoms_enabled=%s "
                         "constructed_with_enable_phantoms=%s "
