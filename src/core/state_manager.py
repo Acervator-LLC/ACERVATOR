@@ -76,6 +76,18 @@ STATE_FILE_UNREADABLE_LOG = (
     "given no fleet. This is NOT the same as having no saved bots."
 )
 
+BOT_IDS_UNREADABLE_LOG = (
+    "The bot ids in %s could NOT be read (%s: %s), so every detector asking "
+    "for them is answered unknown rather than an empty file."
+)
+"""What ``_read_bot_ids`` logs for a read it swallows, naming the cause."""
+
+DIFF_UNREADABLE_LOG = (
+    "C01 primary/backup diff: %s would not read, so this launch cannot tell "
+    "whether %s holds bots that %s has lost. Treat neither copy as checked."
+)
+"""What ``diff_primary_vs_backup`` logs when it answers an empty list unread."""
+
 UNLOCK_NO_KEY_LOG = "Fleet unlock refused: this install holds no sealed master key"
 
 UNLOCK_REFUSED_LOG = "Fleet unlock refused: %s"
@@ -443,11 +455,18 @@ class StateManager:
         """Bot ids in a state file, or None when ``_read_bot_records`` raises.
 
         ``detect_prune`` and ``diff_primary_vs_backup`` read None as unknown
-        and never as an empty file.
+        and never as an empty file. This is the only place the cause of a
+        swallowed read is named, so the failure reaches the log here.
         """
         try:
             return set(self._read_bot_records(path).keys())
-        except Exception:  # noqa: BLE001 - a detector must never raise
+        except Exception as exc:  # noqa: BLE001 - a detector must never raise
+            logger.error(
+                BOT_IDS_UNREADABLE_LOG,
+                Path(path).name,
+                type(exc).__name__,
+                exc,
+            )
             return None
 
     def detect_prune(self, incoming_ids: set) -> list:
@@ -483,12 +502,24 @@ class StateManager:
         """Bot ids present in ``_backup_path`` but missing from ``_path``.
 
         ``_read_bot_ids`` returning None for either file yields an empty
-        list; this logs at ERROR and never raises.
+        list, which is reported as unread rather than as a clean pair; this
+        logs at ERROR and never raises.
         """
         try:
             primary = self._read_bot_ids(self._path)
             backup = self._read_bot_ids(self._backup_path)
             if primary is None or backup is None:
+                unread = [
+                    p.name
+                    for p, ids in ((self._path, primary), (self._backup_path, backup))
+                    if ids is None
+                ]
+                logger.warning(
+                    DIFF_UNREADABLE_LOG,
+                    " and ".join(unread),
+                    self._backup_path.name,
+                    self._path.name,
+                )
                 return []
             missing = sorted(backup - primary)
             if missing:
