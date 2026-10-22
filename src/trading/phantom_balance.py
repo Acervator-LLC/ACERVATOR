@@ -327,7 +327,8 @@ class TimeframeCoordinator:
 
     ``get_higher_tf_bias`` and ``get_multi_tf_summary`` read the registered
     phantoms. ``get_active_locks`` reports the ``TradeLock`` list, which no
-    method here appends to.
+    method here appends to, and ``lock_candle_count`` is held for the Phantom
+    Bots tab and the saved record with no reader on this class.
     """
 
     def __init__(self, lock_candle_count: int = 2, bus=None) -> None:

@@ -141,8 +141,10 @@ class PhantomBotsTabMixin:
         current_lock = int(getattr(coord, "lock_candle_count", 2) if coord else 2)
         self._phantom_lock.setValue(current_lock)
         self._phantom_lock.setToolTip(
-            "When a higher-TF phantom locks a lower-TF phantom, "
-            "how many candles does the lock persist?"
+            "How many candles a higher-TF lock persists. The coordinator "
+            "keeps the figure and saves it with the bot. Nothing creates a "
+            "lock today, so Active Locks stays empty and SCRUM lock state "
+            "stays UNLOCKED."
         )
         self._phantom_lock.valueChanged.connect(
             lambda v: self._mark_changed("lock_candle_count", int(v))
