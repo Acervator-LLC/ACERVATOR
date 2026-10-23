@@ -82,6 +82,7 @@ from .scrumming import (
     WireRoutingMixin,
 )
 from .scrumming.execution import MemorisedTrade, SettledFillFee
+from .scrumming.snapshots import GATE_CHAIN_EXIT
 from .scrumming.snapshots import yes_no as _yes_no
 from .scrumming.fold_tranches import (
     _STRONG_TREND_CANDLES,
@@ -412,6 +413,10 @@ class ScrummingBot(
             "evaluated_at_tick": 0,
         }
         self._last_gate_light_key: str = ""
+        # The refusals this quiet stretch has already written, and the ticks
+        # since the last gate row.
+        self._gate_row_keys_seen: set = set()
+        self._ticks_since_gate_row: int = 0
 
         self._scrum_chain = build_scrumming_scrum_chain()
         self._fold_chain = build_scrumming_fold_chain()
@@ -2932,6 +2937,9 @@ class ScrummingBot(
                 logger.debug(
                     "suppressed in %s: %s: %s", "tick", type(_sup).__name__, _sup
                 )
+            self._emit_gate_decision_at_quiet_tick(
+                f"at-target-dust-band(+/-${_dust_band_usd:.4f})"
+            )
             return
         self._at_target_counter = 0
 
@@ -3073,6 +3081,7 @@ class ScrummingBot(
                 _cb_exc,
             )
         if self._cb_hard_tripped:
+            self._emit_gate_decision_at_quiet_tick("cb-hard-tripped")
             return
 
         summary = None
@@ -3105,6 +3114,10 @@ class ScrummingBot(
                     f"{self.config.scrumming_interval_pct}% interval) | "
                     f"TA={ta_dir} ({ta_conf}) | holding",
                 )
+            self._emit_gate_decision_at_quiet_tick(
+                f"below-interval({delta_pct:.1f}% of target < "
+                f"{self.config.scrumming_interval_pct}%)"
+            )
             self._last_price = ticker.last
             return
 
@@ -3125,6 +3138,9 @@ class ScrummingBot(
                 "bot.log",
                 bot_id=self.bot_id,
                 message="Insufficient candle data for TA (need 30+)",
+            )
+            self._emit_gate_decision_at_quiet_tick(
+                f"no-ta-summary(candles<{MIN_CANDLES_FOR_TA})"
             )
             self._last_price = ticker.last
             return
@@ -4268,6 +4284,8 @@ class ScrummingBot(
         self._emit_gate_light_line(
             _scrum_chain_result, _fold_chain_result, summary, float(ticker.last)
         )
+        if not _scrum_chain_result.should_fire and not _fold_chain_result.should_fire:
+            self._emit_gate_decision_at_quiet_tick(GATE_CHAIN_EXIT)
         if _fold_chain_result.should_fire:
             if await self._tick_execute_fold(
                 ticker, summary, delta, _otd_factor, _fold_chain_result

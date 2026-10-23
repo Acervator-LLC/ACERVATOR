@@ -226,6 +226,12 @@
   var GEOMETRY_FONT_FAMILY = "font_family";
   var GEOMETRY_FONT_PX = "font_px";
   var GEOMETRY_PIN_EVERY_MS = "pin_every_ms";
+  var GEOMETRY_HEIGHT = "height";
+  var GEOMETRY_RESIZE_GRIP = "resize_grip_px";
+
+  // The pointer over the bottom bar, as `CandlestickChart.mouseMoveEvent`
+  // shows it on the Qt widget.
+  var GRIP_CURSOR = "ns-resize";
 
   // The crosshair's pixel rules, as `paint_to` draws them.
   var CROSSHAIR_DASH = [1, 2];
@@ -1847,6 +1853,22 @@
     return { x: event.clientX - rect.left, y: event.clientY - rect.top };
   }
 
+  // The cursor the host wears while the pointer is at ``y``: the vertical
+  // resize arrows inside the painted bottom bar, which drags both pane
+  // heights, and the host's own cursor everywhere else.
+  function gripCursor(into, y) {
+    var geometry = into.acervatorGeometry;
+    if (!isPlainObject(geometry)) {
+      return EMPTY;
+    }
+    var paintedHeight = Number(geometry[GEOMETRY_HEIGHT]);
+    var gripPx = Number(geometry[GEOMETRY_RESIZE_GRIP]);
+    if (!(paintedHeight > ZERO) || !(gripPx > ZERO)) {
+      return EMPTY;
+    }
+    return y >= paintedHeight - gripPx ? GRIP_CURSOR : EMPTY;
+  }
+
   // One pointer input to the tab; a moved window comes back with its image.
   function sendView(mount, into, action, point, extra) {
     if (!global.acervator || typeof global.acervator.call !== "function") {
@@ -1925,6 +1947,7 @@
     into.addEventListener("pointermove", function (event) {
       var point = hostPoint(into, event);
       into.acervatorPointer = point;
+      into.style.cursor = gripCursor(into, point.y);
       var index = drawCrosshair(into, point.x, point.y);
       if (into.acervatorDragging) {
         sendDrag(mount, into, point);
@@ -1962,6 +1985,7 @@
     );
     into.addEventListener("pointerleave", function (event) {
       into.acervatorPointer = null;
+      into.style.cursor = EMPTY;
       clearCrosshair(into);
       if (into.acervatorDragging) {
         into.acervatorDragging = false;

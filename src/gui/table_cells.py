@@ -17,9 +17,15 @@ from .main_tabs.table_cells_surface import (
     AGED_PRICE_TIP_FORMAT,
     MANUAL_FIRE_NOOP_OLD_PRICE_SUFFIX,
     MANUAL_FIRE_NOOP_TIP_FORMAT,
+    PRICE_STALE_AFTER_S,
+    PRICED_POSITION_TIP_FORMAT,
     STALE_TIP_FORMAT,
+    TWO_READS_MARKER,
+    TWO_READS_TIP,
     ammo_units_note,
+    balance_units_note,
     held_figure_text,
+    two_reads,
     units_text,
 )
 
@@ -42,7 +48,7 @@ _AMMO_FOLD = ds.ERROR
 _AMMO_NEUTRAL = ds.TEXT_MED
 
 # The age past which a displayed price is called old; the refresher rewarms every 5s.
-_PRICE_STALE_AFTER_S = 20.0
+_PRICE_STALE_AFTER_S = PRICE_STALE_AFTER_S
 
 # Manual Fire's no-op band is ten times the dashboard's actionable band.
 _MANUAL_FIRE_DUST_PCT = MANUAL_FIRE_PCT
@@ -100,12 +106,15 @@ def _compose_position_value_cell(
     cur_price: float,
     qrate: float,
     price_age_s: float | None = None,
+    venue_units=None,
 ) -> dict:
     """Compute the Current Position Value cell from an exchange price only.
 
     ``price_age_s`` is None whenever ``_fresh_display_price`` fell back to
     the bot's own reading, and every path but ``priced`` returns an empty
-    text with the reason in ``tip``. Qt-free: returns
+    text with the reason in ``tip``. The figure is priced from the bot's
+    attributed ``holdings``, and the priced tooltip says so and adds
+    ``balance_units_note`` over ``venue_units``. Qt-free: returns
     ``{text, color, tip, position_val, priced, path}``.
     """
     if holdings <= 0:
@@ -161,10 +170,10 @@ def _compose_position_value_cell(
     return {
         "text": f"${abs(position_val):,.4f}",
         "color": "",
-        "tip": (
-            f"Current position value from the exchange: {holdings:.6f} units "
-            f"at ${cur_price:,.4f}, priced {price_age_s:,.0f}s ago."
-        ),
+        "tip": PRICED_POSITION_TIP_FORMAT.format(
+            holdings=holdings, price=cur_price, price_age_s=price_age_s
+        )
+        + balance_units_note(holdings, venue_units, cur_price, qrate, price_age_s),
         "position_val": position_val,
         "priced": True,
         "path": "priced",
@@ -267,6 +276,12 @@ def _compose_ammo_cell(
         tip = AGED_PRICE_TIP_FORMAT.format(price_age_s=price_age_s)
         old_price = True
     tip = f"{tip}{units_note}"
+    from_two_reads = two_reads(
+        holdings, units, from_venue, cur_price, qrate, price_age_s
+    )
+    if from_two_reads:
+        text = f"{text} {TWO_READS_MARKER}"
+        tip = f"{tip}{TWO_READS_TIP}"
     # Appended after all three tip writers, so no branch can drop it.
     if manual_fire_noop:
         tip = MANUAL_FIRE_NOOP_TIP_FORMAT.format(
@@ -283,6 +298,7 @@ def _compose_ammo_cell(
         "position_val": position_val,
         "manual_fire_noop": manual_fire_noop,
         "price_age_s": price_age_s,
+        "two_reads": from_two_reads,
     }
 
 

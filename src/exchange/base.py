@@ -141,6 +141,7 @@ class MarketRules:
     sell_size_shapes: Optional[frozenset] = None  # size shapes a sell may name
     order_types: Optional[str] = None  # the order types the venue declares
     clearing_venue: Optional[str] = None  # the venue the product clears on
+    view_only: Optional[bool] = None  # the venue publishes it for reading alone
     expiry_ms: Optional[float] = None  # epoch ms the venue closes the contract on
     settlement_days: Optional[float] = None  # days the venue takes to settle a sale
     read: bool = True

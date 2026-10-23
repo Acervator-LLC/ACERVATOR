@@ -8,7 +8,9 @@ URL raises ``URLError`` from ``UnknownHandler``. The ``allowed_schemes``
 argument narrows that allowlist and never widens it. ``openable_url`` checks the
 same allowlist for an address bound for the system browser, and answers a
 refused one as an empty address carrying ``NO_ADDRESS_REASON`` or
-``REFUSED_SCHEME_REASON``.
+``REFUSED_SCHEME_REASON``. The address it answers is ``_checked_address``, the
+text the parse itself reads, so a caller never opens a string the check did not
+see.
 """
 
 from __future__ import annotations
@@ -36,6 +38,28 @@ NO_ADDRESS_REASON = "no address is known"
 
 #: What ``openable_url`` answers for a scheme outside the allowlist.
 REFUSED_SCHEME_REASON = "the {scheme} scheme does not open; allowed: {allowed}"
+
+#: What ``urllib.parse.urlsplit`` deletes from anywhere in an address before the
+#: scheme is read.
+_PARSE_DELETES: tuple[str, ...] = ("\t", "\r", "\n")
+
+#: What ``urllib.parse.urlsplit`` trims off the front of an address before the
+#: scheme is read. It trims the front only; a trailing character stays.
+_PARSE_TRIMS_LEAD: str = "".join(chr(one) for one in range(0x20)) + " "
+
+
+def _checked_address(url: object) -> str:
+    """The address text the scheme check reads, which ``openable_url`` answers.
+
+    ``urllib.parse.urlsplit`` trims C0 controls and spaces off the front of an
+    address and deletes tab, carriage return and newline from anywhere in it,
+    then reads the scheme off what is left. Answering that text keeps the
+    address a caller opens the same address the check judged.
+    """
+    text = str(url).lstrip(_PARSE_TRIMS_LEAD)
+    for one in _PARSE_DELETES:
+        text = text.replace(one, "")
+    return text
 
 
 def _extract_url(req_or_url: Union[str, urllib.request.Request]) -> str:
@@ -68,8 +92,12 @@ def openable_url(
     url: object,
     allowed_schemes: Optional[Iterable[str]] = None,
 ) -> tuple[str, str]:
-    """An address a browser may open, with ``NO_ADDRESS_REASON`` or ``REFUSED_SCHEME_REASON`` for one it may not."""
-    text = str(url)
+    """An address a browser may open, with ``NO_ADDRESS_REASON`` or ``REFUSED_SCHEME_REASON`` for one it may not.
+
+    The answered address is ``_checked_address``, so the string a caller opens
+    is the string the scheme check read.
+    """
+    text = _checked_address(url)
     allowed = (
         DEFAULT_ALLOWED_SCHEMES
         if allowed_schemes is None
