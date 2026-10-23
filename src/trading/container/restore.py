@@ -253,9 +253,14 @@ class StateRestoreMixin:
                 elif mode == BotMode.SCRUMMING:
                     from ...trading.scrumming_bot import ScrummingBot
 
-                    # Default True matches ScrummingBot.__init__, so a state
-                    # file without the flag keeps prior behaviour.
-                    _restored_phantoms_enabled = bot_data.get("phantoms_enabled", True)
+                    # settings.DEFAULT_ENABLE_PHANTOMS also opens the wizard box
+                    # and ScrummingBot.__init__, so a state file without the
+                    # flag keeps prior behaviour.
+                    from ...core.settings import DEFAULT_ENABLE_PHANTOMS
+
+                    _restored_phantoms_enabled = bot_data.get(
+                        "phantoms_enabled", DEFAULT_ENABLE_PHANTOMS
+                    )
                     # Absent leaves phantom_timeframes None, so
                     # default_phantom_timeframes picks the one above the parent.
                     _restored_phantom_tfs = [

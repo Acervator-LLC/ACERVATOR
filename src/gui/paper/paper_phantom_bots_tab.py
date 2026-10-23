@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
 
+from ...core.settings import DEFAULT_LOCK_CANDLE_COUNT
 from .. import design_system as ds
 from ..main_tabs import phantom_bots_tab_surface as surface
 
@@ -140,7 +141,11 @@ class PaperPhantomBotsTabMixin:
         self._phantom_lock = QSpinBox()
         self._phantom_lock.setRange(1, 10)
         coord = getattr(bot, "_coordinator", None)
-        current_lock = int(getattr(coord, "lock_candle_count", 2) if coord else 2)
+        current_lock = int(
+            getattr(coord, "lock_candle_count", DEFAULT_LOCK_CANDLE_COUNT)
+            if coord
+            else DEFAULT_LOCK_CANDLE_COUNT
+        )
         self._phantom_lock.setValue(current_lock)
         self._phantom_lock.setToolTip(
             "How many candles a higher-TF lock persists. The coordinator "

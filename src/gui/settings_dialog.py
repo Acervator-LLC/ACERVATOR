@@ -949,14 +949,16 @@ if _HAS_QT:
         def _create_phantom_tab(self) -> QWidget:
             w = QWidget()
             layout = QVBoxLayout(w)
-            self._phantoms_enabled = QCheckBox("Enable Phantom Bots for Scrumming")
-            self._phantoms_enabled.setChecked(True)
-            layout.addWidget(self._phantoms_enabled)
             from src.gui.main_tabs.settings_dialog_surface import (
                 LOCK_CANDLE_DEFAULT,
+                PHANTOM_ENABLE_DEFAULT,
                 PHANTOM_TIMEFRAME_DEFAULT,
                 PHANTOM_TIMEFRAMES,
             )
+
+            self._phantoms_enabled = QCheckBox("Enable Phantom Bots for Scrumming")
+            self._phantoms_enabled.setChecked(PHANTOM_ENABLE_DEFAULT)
+            layout.addWidget(self._phantoms_enabled)
 
             layout.addWidget(QLabel("Default Phantom Timeframes:"))
             self._phantom_timeframe = QComboBox()
@@ -1469,6 +1471,7 @@ if _HAS_QT:
             from src.gui.main_tabs.settings_dialog_surface import (
                 ACCENT_DEFAULT,
                 LOCK_CANDLE_DEFAULT,
+                PHANTOM_ENABLE_DEFAULT,
                 PHANTOM_TIMEFRAME_DEFAULT,
             )
 
@@ -1501,7 +1504,7 @@ if _HAS_QT:
                     "default_enable_phantoms",
                     self._phantoms_enabled.isChecked,
                     lambda value: self._phantoms_enabled.setChecked(bool(value)),
-                    True,
+                    PHANTOM_ENABLE_DEFAULT,
                 ),
                 (
                     "default_phantom_timeframe",
