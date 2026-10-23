@@ -94,6 +94,12 @@ NO_MATCHING_VENUE_LOG = (
 )
 
 
+#: The window's own floor, the figure it held before the header strip's own
+#: floor was read here. ``window_min_w_px`` takes whichever of the two is wider.
+WINDOW_MIN_W_PX = 1400
+WINDOW_MIN_H_PX = 900
+
+
 def _main_tab_book_class() -> type:
     """The main tab book class the running variant draws, Qt or React."""
     from .variant_surface import MAIN_TAB_BOOK, surface_class
@@ -188,6 +194,15 @@ __all__ = [
 
 if _HAS_QT:
 
+    def window_min_w_px() -> int:
+        """The narrowest the window opens at, holding the header strip whole.
+
+        The wider of ``WINDOW_MIN_W_PX`` and
+        ``header_strip_surface.window_min_w``, which is the one declaration of
+        what the top row's own slots need.
+        """
+        return max(WINDOW_MIN_W_PX, header_strip_surface.window_min_w())
+
     def _set_console_paused(window: MainWindow, *, paused: bool) -> None:
         """Set `window._console_paused`; `_drain_signals` reads it before rendering."""
         window._console_paused = bool(paused)
@@ -242,7 +257,7 @@ if _HAS_QT:
         def __init__(self, bot_manager=None, settings_manager=None, parent=None):
             super().__init__(parent)
             self.setWindowTitle("Acervator v" + __version__ + "")
-            self.setMinimumSize(1400, 900)
+            self.setMinimumSize(window_min_w_px(), WINDOW_MIN_H_PX)
             self._bot_manager = bot_manager
             self._settings = settings_manager
             self._exchange_tabs: dict[str, ExchangeTab] = {}

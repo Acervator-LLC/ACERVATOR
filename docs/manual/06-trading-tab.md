@@ -610,6 +610,15 @@ money column answers 1492 px.
 `src/gui/main_window.py` still pins the window's own floor to 1400 by 900 by
 hand. 1400 px holds the row as it stands and would not hold a seventh slot.
 
+OVERTAKEN, and the paragraph above is kept as written. The window no longer
+pins that width by hand. `main_window.py, in window_min_w_px` answers the wider
+of `WINDOW_MIN_W_PX`, the window's own figure, and
+`header_strip_surface.window_min_w`, which is the one declaration of what the
+top row's slots need. Six cards answer 1400 px, the figure the window already
+held, and a seventh answers 1476 px, which is what Qt reports as the row's own
+minimum and 76 px past where the hand figure stopped. The height is
+`WINDOW_MIN_H_PX` and is unchanged at 900 px.
+
 **The margins the two newest columns are drawn from.** A column leaves 3 px either
 side of the rule between it and its neighbour, the rule itself is 12 px, the panel's
 own side margin is 6 px, and a counter card's side margin is 4 px.
