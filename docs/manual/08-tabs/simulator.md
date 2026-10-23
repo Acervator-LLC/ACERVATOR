@@ -10061,3 +10061,220 @@ column, and the figure beneath it is the asset's mark or its ticker.
 The code block listing the ten column labels names `"Bot ID"` first.
 `src/gui/main_tabs/bot_status_table_surface.py, in COLUMN_LABELS` names `"Asset"`
 first today.
+
+## Both tabs build their sector pages from one declared list
+
+The Simulator tab and the Paper tab each hold a stack of sector pages. Both
+stacks come from the same declared list, read at the moment the page is asked
+for rather than at import.
+
+`src/gui/main_tabs/asset_class_surface.py, in LAYERED_CLASSES` declares the six
+sectors a trading layer stands behind.
+
+```python
+LAYERED_CLASSES = frozenset(
+    {"crypto", "stocks", "commodities", "forex", "indices", "futures_perps"}
+)
+```
+
+`src/gui/main_tabs/asset_class_surface.py, in layered_classes` puts those names
+in taxonomy order. `src/gui/main_tabs/trading_tab_surface.py, in layer_order`
+answers that order to every tab that draws a layer stack.
+
+`src/gui/simulator/sim_trading_tab_surface.py, in build_view_model` reads that
+one call and names the page on show out of the same list.
+
+```python
+key = live.layer_named(layer)
+order = live.layer_order()
+```
+
+Two fields of the tab payload carry the result: the page list and the position
+of the page on show inside it.
+
+```python
+"trading_stack": {
+    "pages": list(order),
+    "current_index": order.index(key),
+},
+```
+
+`src/gui/paper/paper_trading_tab_surface.py, in build_view_model` writes those
+same two fields from the same call, so neither tab holds a sector list of its
+own.
+
+### What each tab answers, per sector
+
+Each tab's own state object was asked for all six sectors, and the page list was
+read off the payload the tab serves.
+
+| sector asked | Sim pages | Sim page on show | Paper pages | Paper page on show |
+|---|---|---|---|---|
+| Crypto | 6 | 0 | 6 | 0 |
+| Stock | 6 | 1 | 6 | 1 |
+| Commodities | 6 | 2 | 6 | 2 |
+| Forex | 6 | 3 | 6 | 3 |
+| Indices | 6 | 4 | 6 | 4 |
+| Futures / Perps | 6 | 5 | 6 | 5 |
+| a name no layer carries | 6 | 0 | 6 | 0 |
+
+Both tabs answer the same list, in the same order, on every ask.
+
+```
+crypto, stocks, commodities, forex, indices, futures_perps
+```
+
+A sector name no layer carries draws page 0, which is the crypto layer. The
+page on show moves across all six asks, so the figure is read from the sector
+asked and is not a fixed answer.
+
+### The added-layer reading
+
+A seventh sector was added to the declaration and both tabs were asked again.
+Both gained the page together.
+
+| the declaration holds | Sim pages | Paper pages | highest page on show |
+|---|---|---|---|
+| six sectors | 6 | 6 | 5 |
+| seven sectors | 7 | 7 | 6 |
+
+The seventh name was last in both page lists and last in both card lists. The
+declaration was then put back, and both declaring files read byte for byte as
+they did before.
+
+## The sector press reaches every sector page on both tabs
+
+Pressing a sector on the header strip now moves the Simulator tab and the Paper
+tab to that sector's page, in the Qt build and in the React build. Before this
+change both tabs stayed on the Crypto page for every press, so five of the six
+pages could not be opened at all.
+
+`src/gui/main_tabs/class_filter_tab.py, in _ask_tab_for_class` is the one caller
+that hands a sector to these two tabs. It calls each tab's own
+`set_asset_class`, which now shows that sector's page as well as narrowing the
+rows.
+
+```python
+self._asset_class = class_filter_surface.normalise(name)
+self._show_class_layer(self._asset_class)
+```
+
+`src/gui/simulator/sim_trading_tab.py, in SimTradingTab._show_class_layer` and
+`src/gui/paper/paper_trading_tab.py, in PaperTradingTab._show_class_layer` each
+read the page number from the declared sector list and put the layer stack on
+it.
+
+```python
+stack.setCurrentIndex(acs.layer_page(key))
+```
+
+The React tabs send the sector as the layer, on the ask their own page already
+answers. `src/gui/simulator/sim_react_trading_tab.py, in SimTradingTabReact.set_asset_class`
+and `src/gui/paper/paper_react_trading_tab.py, in PaperTradingTabReact.set_asset_class`
+each carry it into `show_tab`.
+
+```python
+self.show_tab({"layer": self._asset_class})
+```
+
+No new button, panel or chooser was added. The sector buttons on the header
+strip are the way in, and they were already there.
+
+### The Qt stacks hold one page per sector
+
+`src/gui/simulator/sim_trading_tab.py, in SimTradingTab._build` and
+`src/gui/paper/paper_trading_tab.py, in PaperTradingTab._build` each built one
+Crypto page and one Stock page by hand. Both now build one page per declared
+sector, in the loop
+`src/gui/main_tabs/trading_tab.py, in TradingTabMixin._build_trading_tab`
+already uses for the Live tab.
+
+```python
+self._class_layers: dict = {}
+for layered in acs.layered_classes():
+    page, bar, store, card = _make_layer(
+        acs.display_name(layered), acs.accent(layered)
+    )
+    self._class_layers[layered] = {
+        "page": page,
+        "tabs": bar,
+        "exchange_tabs": store,
+        "placeholder": card,
+    }
+    self._trading_stack.addWidget(page)
+```
+
+Every name the two tabs used before is kept, and each one points at the same
+page it pointed at before. The six names below are read off the new list
+instead of being built one at a time, so nothing that reads them changed.
+
+```
+_crypto_tab_widget      _stock_tab_widget
+_crypto_placeholder     _stock_placeholder
+_crypto_exchange_tabs   _stock_exchange_tabs
+```
+
+Add Exchange still seats a crypto venue on the Crypto page and an equity venue
+on the Stock page. That routing is untouched.
+
+### What the sector press shows, before and after
+
+Each tab was built and asked for every sector through
+`ClassFilterTabMixin.select_asset_class`, which is the call the header strip's
+own press makes. The Qt figure is the page the layer stack shows, named by the
+heading drawn on that page. A React page's pixels cannot be read back, so the
+React figure is the page the tab payload names.
+
+| sector pressed | Sim before | Sim after | Paper before | Paper after | Live |
+|---|---|---|---|---|---|
+| Crypto | Crypto | Crypto | Crypto | Crypto | Crypto |
+| Stock | Crypto | Stock | Crypto | Stock | Stock |
+| Commodities | Crypto | Commodities | Crypto | Commodities | Commodities |
+| Forex | Crypto | Forex | Crypto | Forex | Forex |
+| Indices | Crypto | Indices | Crypto | Indices | Indices |
+| Futures / Perps | Crypto | Futures / Perps | Crypto | Futures / Perps | Futures / Perps |
+
+The table reads the same in both builds. The Live column did not move, before
+or after, because the Live tab already answered this way.
+
+The page count on the two tabs moved from 2 to 6 in the Qt build. In the React
+build it stayed at 6, where the six pages were already built and only the page
+on show was stuck.
+
+### An unknown sector draws the first page
+
+A sector name no layer carries draws the Crypto page on both tabs, in both
+builds, and on the Live tab as well. Nothing fails and nothing draws blank.
+
+| sector pressed | Sim | Paper | Live |
+|---|---|---|---|
+| a name no layer carries | Crypto | Crypto | Crypto |
+
+The page on show moves across the six declared sectors and falls back to the
+first on an unknown one, so the figure is read from the sector pressed.
+
+### The declared list is the only list
+
+One extra sector was added to the declaration and all four tabs were asked
+again. Every one of them gained the page, and every one of them showed it.
+
+| the declaration holds | Sim pages | Paper pages | highest page on show |
+|---|---|---|---|
+| six sectors | 6 | 6 | 5 |
+| seven sectors | 7 | 7 | 6 |
+
+The declaration was then put back, and both declaring files read byte for byte
+as they did before.
+
+### The sentence this entry overtakes
+
+From `docs/manual/08-tabs/paper-trader.md`, in the section titled "The Paper tab
+keeps its own card while no venue serves the class":
+
+> `src/gui/main_tabs/class_filter_tab.py, in _refilter_class_tabs` hands the
+> sector to the tab's own `set_asset_class`, which narrows the rows the tab
+> lists and nothing else.
+
+True today: the sector reaches `set_asset_class`, which narrows the rows and
+shows that sector's page. The tab still keeps its own card under every sector,
+served or not, and no sector replaces it, hides it or disables it.

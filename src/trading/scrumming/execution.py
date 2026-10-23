@@ -213,11 +213,13 @@ class ExecutionEngineMixin:
         quoted_price: float,
         label: str | None = None,
     ):
-        """Re-read a just-placed ``order`` until the venue reports a fill.
+        """Re-read a just-placed ``order`` until the venue reports a fill, and
+        answer ``(fill_amount, fill_price, is_real)`` where ``fill_amount`` is
+        the venue's own filled count, zero when it reported none.
 
-        Returns ``(fill_amount, fill_price, is_real)``, calls
-        ``_record_venue_fee`` on whichever order object settled, and clears both
-        venue-fee records when it books an estimate.
+        Calls ``_record_venue_fee`` on whichever order object settled, clears
+        both venue-fee records when it books an estimate, and falls back to
+        ``quoted_price`` for the price alone.
         """
         self._last_sell_venue_fee = None
         self._last_fill_venue_fee = None
@@ -260,7 +262,7 @@ class ExecutionEngineMixin:
                 amt = f_amt or amt
                 px = f_px or px
 
-        est_amt = amt if amt > 0 else float(requested_amount or 0.0)
+        est_amt = amt
         est_px = px if px > 0 else float(quoted_price or 0.0)
         self._last_sell_venue_fee = None
         self._last_fill_venue_fee = None
@@ -273,7 +275,10 @@ class ExecutionEngineMixin:
                 f"order {order_id or '?'}; booking the ESTIMATE "
                 f"({est_amt:.6f} @ ${est_px:.8f}) instead of a "
                 f"confirmed fill. Position accounting may drift from "
-                f"the exchange until the next reconcile."
+                f"the exchange until the next reconcile. The unit count is "
+                f"the exchange's own, out of "
+                f"{float(requested_amount or 0.0):.6f} asked, so a zero "
+                f"books nothing against the position."
             ),
         )
         return est_amt, est_px, False
@@ -1363,11 +1368,13 @@ class ExecutionEngineMixin:
             )
             return False
 
-        _filled_raw = (
-            getattr(order, "filled", None)
-            or getattr(order, "amount", None)
-            or sell_amount
-        )
+        # A reported filled of zero filled nothing; only an omitted field
+        # falls back to amount.
+        _filled_raw = getattr(order, "filled", None)
+        if _filled_raw is None:
+            _filled_raw = getattr(order, "amount", None)
+        if _filled_raw is None:
+            _filled_raw = sell_amount
         try:
             fill_amount = float(_filled_raw or 0.0)
         except (TypeError, ValueError):
@@ -1510,10 +1517,13 @@ class ExecutionEngineMixin:
         ``_settled_fill`` supplies the units the venue reported sold, under
         ``label``, and those units are what leaves ``_current_holdings``;
         ``amount`` is only what was asked for, so a partial fill no longer
-        takes units off the ledger the venue never sold. The figure is left on
-        ``_last_sell_filled_units`` for the callers that take the same units
-        off ``_main_lots``. Both venue-fee records are cleared on entry and
-        written by ``_settled_fill`` off whichever order object settled.
+        takes units off the ledger the venue never sold. A venue reporting no
+        filled amount leaves ``_current_holdings`` and ``_main_lots`` untouched
+        and answers None, which every caller already reads as no sale. The
+        figure is left on ``_last_sell_filled_units`` for the callers that take
+        the same units off ``_main_lots``. Both venue-fee records are cleared on
+        entry and written by ``_settled_fill`` off whichever order object
+        settled.
         """
         self._last_sell_venue_fee = None
         self._last_fill_venue_fee = None
@@ -1800,6 +1810,33 @@ class ExecutionEngineMixin:
             filled_units, actual_fill, _ = await self._settled_fill(
                 order, self.config.symbol, amount, price, label=label
             )
+            if filled_units <= 0:
+                self._bus.emit(
+                    "bot.log",
+                    bot_id=self.bot_id,
+                    message=(
+                        f"SELL SENT, NO FILL REPORTED: {amount:.6f} "
+                        f"{self.config.target_asset} @ ${price:.8f} was "
+                        f"accepted and the exchange reported no filled "
+                        f"amount. Holdings and the lot book are unchanged and "
+                        f"no fold tranche is queued. A LIMIT order resting on "
+                        f"the book reports this until it trades, and the "
+                        f"open-order check refuses a second SELL meanwhile."
+                    ),
+                )
+                self._emit_trade_notification(
+                    "SCRUM", "REFUSED", "exchange reported no filled amount"
+                )
+                try:
+                    await self._reconcile_holdings(reason="post_failure")
+                except Exception as _sup:
+                    logger.debug(
+                        "suppressed in %s: %s: %s",
+                        "_execute_sell",
+                        type(_sup).__name__,
+                        _sup,
+                    )
+                return None
             self._last_sell_filled_units = filled_units
             self._current_holdings = max(0.0, self._current_holdings - filled_units)
             self.stats.total_sells += 1

@@ -2069,12 +2069,15 @@ if _HAS_WEBENGINE:
             return handed
 
         def set_asset_class(self, name) -> tuple:
-            """Hold ``name`` as the class this tab shows.
+            """Hold ``name`` as the class this tab shows and draw its layer.
 
+            ``show_tab`` carries the class as the layer, so
+            ``build_view_model`` names that layer's page in ``current_index``.
             Answers the rows ``refresh_bots`` kept for ``name`` and the rows
             ``FleetSource.statuses`` holds in all.
             """
             self._asset_class = class_filter_surface.normalise(name)
+            self.show_tab({"layer": self._asset_class})
             return (self.refresh_bots(), len(self._fleet_source.statuses()))
 
         def refresh_votes(self) -> dict:
