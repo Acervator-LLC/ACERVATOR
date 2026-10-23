@@ -392,7 +392,8 @@ _BOT_CONFIG_EXTRACTOR_ONLY_FIELDS: frozenset = frozenset(
 #: A retirement record, not a setting set. Each name is a setting removed from
 #: the product, kept so a config stored before its removal still builds;
 #: `_sanitize_deprecated_kwargs` drops each before `BotConfig.__init__`.
-#: Add no name. Only `bulk_trading` is read, by `bot_config_kwargs`.
+#: A name joins it only when its setting leaves the product. Only
+#: `bulk_trading` is read, by `bot_config_kwargs`.
 _DEPRECATED_KWARGS: frozenset = frozenset(
     {
         "bulk_trading",  # renamed to stack_mode
