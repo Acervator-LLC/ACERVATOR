@@ -1669,8 +1669,9 @@ def _build_simulator_tab(self) -> None:
             SIMULATOR_BUILD_INDEX, self._simulator_tab, HEADING
         )
     except Exception as exc:  # noqa: BLE001 - a missing tab is not a crash
-        logger.warning("Sim tab unavailable: %s", exc)
+        logger.warning(UNAVAILABLE_LOG, exc)
         self._simulator_tab = None
+        self._seat_simulator_build_note(failure_text(exc))
 ```
 
 The window builds nine tabs. Sim takes the first slot and Paper the second.
@@ -1679,6 +1680,45 @@ The Accumulation tab stays off the bar until the operator asks for it.
 ```
 Sim  Paper  Live  Charts  Inspector  Swarm  History  Status  Console
 ```
+
+### A caught build keeps the slot and names what went wrong
+
+The Sim tab no longer drops off the bar. A caught build seats
+`src/gui/main_tabs/simulator_tab.py, in BuildFailureNote` in the same slot,
+under the same heading. The page draws three lines: the tab did not build, what
+the build reported, and that every other tab is working. The warning line is
+still written, so the log keeps its record as well.
+
+The window attribute stays unset. Every reader of it — the header strip, the
+Inspector's push and the sector filter — still reads the tab as absent, and the
+tab that follows no longer slides into the Sim slot.
+
+```python
+def _seat_simulator_build_note(self, text: str) -> None:
+    """Insert ``BuildFailureNote`` carrying ``text`` at ``SIMULATOR_BUILD_INDEX``.
+
+    A tab book that refuses this insert leaves ``NOTE_REFUSED_LOG`` and no
+    page, keeping a caught build clear of the window.
+    """
+    try:
+        self._main_tabs.insertTab(
+            SIMULATOR_BUILD_INDEX, BuildFailureNote(text), HEADING
+        )
+    except Exception as note_exc:
+        logger.warning(NOTE_REFUSED_LOG, note_exc)
+```
+
+Driven with the Sim class refused, beside the same drive accepting as the
+control:
+
+| the build | tabs seated | heading at the Sim slot | lines drawn | warnings |
+|---|---|---|---|---|
+| refused | 4 | Sim | 3 | 1 |
+| accepted | 4 | Sim | the tab's own | 0 |
+| the real registered class | 4 | Sim | the tab's own | 0 |
+
+Before this change the refused drive seated 3 tabs, no heading read Sim, and
+not one of the 8 strings in the tab book named the tab or the failure.
 
 ## The Qt tab is Live's tab code, forked
 
@@ -6008,6 +6048,17 @@ def scrum_fixture(context: GateContext, reading: Any = None) -> dict:
         **_landing(reading),
 ```
 
+**Functional.** The builder takes a third input, and the fixture now opens
+with it: each refusal an override replaced on that side, under the key the
+live gate log already writes. A row where no override acted carries an empty
+list, so a row an override passed and a row that passed on its own read apart.
+
+`src/simulator/sim_bus.py` — the key the fixture opens with
+
+```python
+OVERRIDES_APPLIED_KEY: [str(one) for one in overrides_applied],
+```
+
 One row per evaluated candle, not one per fill as Live writes, because a
 blocked candle is the one a person troubleshoots: the blocker list on that
 row names the light that held, and the fixture names the reading behind it.
@@ -10010,3 +10061,83 @@ column, and the figure beneath it is the asset's mark or its ticker.
 The code block listing the ten column labels names `"Bot ID"` first.
 `src/gui/main_tabs/bot_status_table_surface.py, in COLUMN_LABELS` names `"Asset"`
 first today.
+
+## Both tabs build their sector pages from one declared list
+
+The Simulator tab and the Paper tab each hold a stack of sector pages. Both
+stacks come from the same declared list, read at the moment the page is asked
+for rather than at import.
+
+`src/gui/main_tabs/asset_class_surface.py, in LAYERED_CLASSES` declares the six
+sectors a trading layer stands behind.
+
+```python
+LAYERED_CLASSES = frozenset(
+    {"crypto", "stocks", "commodities", "forex", "indices", "futures_perps"}
+)
+```
+
+`src/gui/main_tabs/asset_class_surface.py, in layered_classes` puts those names
+in taxonomy order. `src/gui/main_tabs/trading_tab_surface.py, in layer_order`
+answers that order to every tab that draws a layer stack.
+
+`src/gui/simulator/sim_trading_tab_surface.py, in build_view_model` reads that
+one call and names the page on show out of the same list.
+
+```python
+key = live.layer_named(layer)
+order = live.layer_order()
+```
+
+Two fields of the tab payload carry the result: the page list and the position
+of the page on show inside it.
+
+```python
+"trading_stack": {
+    "pages": list(order),
+    "current_index": order.index(key),
+},
+```
+
+`src/gui/paper/paper_trading_tab_surface.py, in build_view_model` writes those
+same two fields from the same call, so neither tab holds a sector list of its
+own.
+
+### What each tab answers, per sector
+
+Each tab's own state object was asked for all six sectors, and the page list was
+read off the payload the tab serves.
+
+| sector asked | Sim pages | Sim page on show | Paper pages | Paper page on show |
+|---|---|---|---|---|
+| Crypto | 6 | 0 | 6 | 0 |
+| Stock | 6 | 1 | 6 | 1 |
+| Commodities | 6 | 2 | 6 | 2 |
+| Forex | 6 | 3 | 6 | 3 |
+| Indices | 6 | 4 | 6 | 4 |
+| Futures / Perps | 6 | 5 | 6 | 5 |
+| a name no layer carries | 6 | 0 | 6 | 0 |
+
+Both tabs answer the same list, in the same order, on every ask.
+
+```
+crypto, stocks, commodities, forex, indices, futures_perps
+```
+
+A sector name no layer carries draws page 0, which is the crypto layer. The
+page on show moves across all six asks, so the figure is read from the sector
+asked and is not a fixed answer.
+
+### The added-layer reading
+
+A seventh sector was added to the declaration and both tabs were asked again.
+Both gained the page together.
+
+| the declaration holds | Sim pages | Paper pages | highest page on show |
+|---|---|---|---|
+| six sectors | 6 | 6 | 5 |
+| seven sectors | 7 | 7 | 6 |
+
+The seventh name was last in both page lists and last in both card lists. The
+declaration was then put back, and both declaring files read byte for byte as
+they did before.

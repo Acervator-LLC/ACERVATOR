@@ -4,7 +4,9 @@
 spacing that ``apply_rcparams`` writes into matplotlib rcParams.
 ``cover_page``, ``section_page``, ``chart_page`` and ``paginated_table``
 each draw pages into a ``PdfPages``. ``contrast_self_test`` measures the
-ink tokens against ``COLORS["bg"]`` through ``contrast_ratio``.
+ink tokens against ``COLORS["bg"]`` through ``contrast_ratio``, which
+``src.core.contrast`` declares beside ``_hex_to_rgb``,
+``_relative_luminance`` and ``validate_contrast``.
 """
 
 from __future__ import annotations
@@ -15,6 +17,39 @@ import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.patches import Rectangle
+
+from .core.contrast import (
+    _hex_to_rgb,
+    _relative_luminance,
+    contrast_ratio,
+    validate_contrast,
+)
+
+__all__ = [
+    "COLORS",
+    "FAMILY_MONO",
+    "FAMILY_SANS",
+    "GRID",
+    "TYPE",
+    "_hex_to_rgb",
+    "_relative_luminance",
+    "apply_rcparams",
+    "bar_h",
+    "blank_page",
+    "callout_value",
+    "chart_page",
+    "contrast_ratio",
+    "contrast_self_test",
+    "cover_page",
+    "fmt_count",
+    "fmt_pct",
+    "fmt_usd",
+    "hline",
+    "paginated_table",
+    "plt",
+    "section_page",
+    "validate_contrast",
+]
 
 COLORS = {
     "bg": "#ffffff",
@@ -117,44 +152,6 @@ def apply_rcparams():
             "pdf.fonttype": 42,  # 42 is TrueType; PDF text stays searchable
         }
     )
-
-
-def _hex_to_rgb(hex_str: str) -> tuple[float, float, float]:
-    h = hex_str.lstrip("#")
-    return (
-        int(h[0:2], 16) / 255.0,
-        int(h[2:4], 16) / 255.0,
-        int(h[4:6], 16) / 255.0,
-    )
-
-
-def _relative_luminance(rgb):
-    """Return the WCAG 2.1 relative luminance of ``rgb``."""
-
-    def channel(c):
-        return c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4
-
-    r, g, b = (channel(x) for x in rgb)
-    return 0.2126 * r + 0.7152 * g + 0.0722 * b
-
-
-def contrast_ratio(fg: str, bg: str) -> float:
-    """Return the contrast ratio of ``fg`` against ``bg``, from 1 to 21."""
-    l1 = _relative_luminance(_hex_to_rgb(fg))
-    l2 = _relative_luminance(_hex_to_rgb(bg))
-    if l1 < l2:
-        l1, l2 = l2, l1
-    return (l1 + 0.05) / (l2 + 0.05)
-
-
-def validate_contrast(fg: str, bg: str, large_text: bool = False) -> tuple[bool, float]:
-    """Return whether ``fg`` on ``bg`` clears the AA floor, and the measured ratio.
-
-    ``large_text`` lowers that floor from 4.5 to 3.0.
-    """
-    ratio = contrast_ratio(fg, bg)
-    threshold = 3.0 if large_text else 4.5
-    return ratio >= threshold, round(ratio, 2)
 
 
 def contrast_self_test() -> list[tuple]:
@@ -415,6 +412,7 @@ def paginated_table(
         return
 
     total_pages = math.ceil(len(rows) / rows_per_page)
+    last_page_i = total_pages - 1
     for page_i in range(total_pages):
         fig, ax = blank_page()
         page_rows = rows[page_i * rows_per_page : (page_i + 1) * rows_per_page]
@@ -467,7 +465,7 @@ def paginated_table(
             y -= row_h
 
         hline(ax, 0.09, x_start=0.08, x_end=0.92)
-        if takeaway and page_i == total_pages - 1:
+        if takeaway and page_i == last_page_i:
             _put(ax, 0.08, 0.12, takeaway, level="h4", color=COLORS["accent"])
         if source:
             _put(

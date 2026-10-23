@@ -479,7 +479,10 @@ class ExecutionEngineMixin:
         ``caller_intent`` picks the trade labels and the
         ``operator_initiated`` flag out of ``_INTENT_MAP`` and raises
         ``ValueError`` when unknown, and a delta inside
-        ``manual_fire_dust_band`` is a logged no-op.
+        ``manual_fire_dust_band`` is a logged no-op. Every intent, the Manual
+        Fire button included, reads the venue's own ``target_asset`` balance
+        before the size is decided and refuses a position the venue disputes
+        by more than that band.
         """
 
         _INTENT_MAP = {
@@ -521,69 +524,86 @@ class ExecutionEngineMixin:
         delta_usd = target_delta_usd(current_value, self._target_balance)
         dust = manual_fire_dust_band(self._target_balance)
 
-        # The pre-fill venue reading this path takes on the autonomous intents,
-        # and None on manual_button, which reads no target_asset balance.
+        # The pre-fill venue reading every intent takes, the button included.
         _venue_units: Optional[float] = None
 
-        if caller_intent != "manual_button":
-            try:
-                _xbal = await self._get_balance(self.config.target_asset)
-                _xunits = float(
-                    getattr(_xbal, "total", 0) or getattr(_xbal, "free", 0) or 0.0
+        # A refused press carries the words the Fire button itself shows.
+        _refusal_prefix = (
+            "MANUAL FIRE WILL NOT ACT"
+            if caller_intent == "manual_button"
+            else "AUTONOMOUS FIRE REFUSED"
+        )
+        _refusal_subject = (
+            "manual fire" if caller_intent == "manual_button" else "autonomous fire"
+        )
+        # The hold rate-limits a repeating tick; one deliberate press always answers.
+        _announce_every_refusal = caller_intent == "manual_button"
+
+        try:
+            _xbal = await self._get_balance(self.config.target_asset)
+            _xunits = float(
+                getattr(_xbal, "total", 0) or getattr(_xbal, "free", 0) or 0.0
+            )
+            _absent = bool(getattr(_xbal, "absent", False))
+        except Exception as _xb_exc:  # noqa: BLE001
+            if _announce_every_refusal or self._refusal_is_new(
+                "manual_balance_unreadable", price
+            ):
+                self._bus.emit(
+                    "bot.log",
+                    bot_id=self.bot_id,
+                    message=(
+                        f"{_refusal_prefix}: could not read "
+                        f"{self.config.target_asset} balance to verify the "
+                        f"position ({_xb_exc}). Gates are bypassed on this "
+                        f"path, so an unverified position is not traded."
+                    ),
                 )
-                _absent = bool(getattr(_xbal, "absent", False))
-            except Exception as _xb_exc:  # noqa: BLE001
-                if self._refusal_is_new("manual_balance_unreadable", price):
-                    self._bus.emit(
-                        "bot.log",
-                        bot_id=self.bot_id,
-                        message=(
-                            f"AUTONOMOUS FIRE REFUSED: could not read "
-                            f"{self.config.target_asset} balance to verify the "
-                            f"position ({_xb_exc}). Gates are bypassed on this "
-                            f"path, so an unverified position is not traded."
-                        ),
-                    )
-                return
-            if _absent:
-                if self._refusal_is_new("manual_balance_omitted", price):
-                    self._bus.emit(
-                        "bot.log",
-                        bot_id=self.bot_id,
-                        message=(
-                            f"AUTONOMOUS FIRE REFUSED: exchange OMITTED "
-                            f"{self.config.target_asset} from its balance "
-                            f"response, so the position cannot be verified."
-                        ),
-                    )
-                return
-            _venue_units = _xunits
-            _xvalue = _xunits * price * _qrate
-            if abs(_xvalue - current_value) > dust:
-                if self._refusal_is_new("manual_position_mismatch", price):
-                    self._bus.emit(
-                        "bot.log",
-                        bot_id=self.bot_id,
-                        message=(
-                            f"AUTONOMOUS FIRE REFUSED (position mismatch): this "
-                            f"bot has {self._current_holdings:.6f} "
-                            f"{self.config.target_asset} (${current_value:.2f}) "
-                            f"but the exchange reports {_xunits:.6f} "
-                            f"(${_xvalue:.2f}). Gates are bypassed on this path, "
-                            f"so it will not trade on a disputed position. "
-                            f"Intended {'SELL' if delta_usd > 0 else 'BUY'} of "
-                            f"${abs(delta_usd):.2f} withheld."
-                        ),
-                    )
-                    logger.warning(
-                        "Bot %s autonomous fire refused: internal %.8f vs "
-                        "exchange %.8f %s",
-                        self.bot_id,
-                        self._current_holdings,
-                        _xunits,
-                        self.config.target_asset,
-                    )
-                return
+            return
+        if _absent:
+            if _announce_every_refusal or self._refusal_is_new(
+                "manual_balance_omitted", price
+            ):
+                self._bus.emit(
+                    "bot.log",
+                    bot_id=self.bot_id,
+                    message=(
+                        f"{_refusal_prefix}: exchange OMITTED "
+                        f"{self.config.target_asset} from its balance "
+                        f"response, so the position cannot be verified."
+                    ),
+                )
+            return
+        _venue_units = _xunits
+        _xvalue = _xunits * price * _qrate
+        if abs(_xvalue - current_value) > dust:
+            if _announce_every_refusal or self._refusal_is_new(
+                "manual_position_mismatch", price
+            ):
+                self._bus.emit(
+                    "bot.log",
+                    bot_id=self.bot_id,
+                    message=(
+                        f"{_refusal_prefix} (position mismatch): this "
+                        f"bot has {self._current_holdings:.6f} "
+                        f"{self.config.target_asset} (${current_value:.2f}) "
+                        f"but the exchange reports {_xunits:.6f} "
+                        f"(${_xvalue:.2f}). Gates are bypassed on this path, "
+                        f"so it will not trade on a disputed position. "
+                        f"Intended {'SELL' if delta_usd > 0 else 'BUY'} of "
+                        f"${abs(delta_usd):.2f} withheld."
+                    ),
+                )
+                logger.warning(
+                    "Bot %s %s refused: internal %.8f vs exchange %.8f %s",
+                    self.bot_id,
+                    _refusal_subject,
+                    self._current_holdings,
+                    _xunits,
+                    self.config.target_asset,
+                )
+            return
+        if caller_intent != "manual_button":
             if delta_usd < 0:
                 _growth = float(
                     getattr(self.config, "max_target_growth_pct", 1.0) or 0.0

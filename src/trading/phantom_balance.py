@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     from ..exchange.base import ExchangeInterface
 
 from ..core.event_bus import get_event_bus
+from ..core.settings import DEFAULT_LOCK_CANDLE_COUNT
 from ..exchange.timeframes import ALL_TIMEFRAMES
 from .bot_container import BotState
 from .ta_engine import (
@@ -331,7 +332,9 @@ class TimeframeCoordinator:
     Bots tab and the saved record with no reader on this class.
     """
 
-    def __init__(self, lock_candle_count: int = 2, bus=None) -> None:
+    def __init__(
+        self, lock_candle_count: int = DEFAULT_LOCK_CANDLE_COUNT, bus=None
+    ) -> None:
         self.lock_candle_count = lock_candle_count
         self._locks: list[TradeLock] = []
         self._phantoms: dict[str, PhantomBot] = {}

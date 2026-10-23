@@ -228,6 +228,31 @@ phantoms_enabled false              38
 
 No bot in that fleet runs a phantom. Every record holds the enable flag off.
 
+**Three phantom keys reach the record, and no fourth.** A saved bot carries
+`phantoms_enabled`, `lock_candle_count`, and `phantom_timeframes` when the bot
+holds a name its venue serves. `src/trading/bot_container.py`, in
+`BotContainer.get_full_state`, writes all three. The Paper and Simulator records
+carry the same three names, from `wizard_record` in
+`src/paper/fleet_source.py` and in `src/simulator/fleet_source.py`. A bot built
+on any of those routes carries no key spelled `phantom_config`.
+
+**Three load paths step past the retired key.**
+`src/trading/container/restore.py`, in
+`StateRestoreMixin.restore_bots_from_state`, builds the live bot.
+`src/paper/paper_bot_view.py` and `src/simulator/sim_bot_view.py` build the
+Paper and the Simulator views, each in `config_of`. All three read the stored
+declaration through `bot_config_kwargs` in `src/trading/container/config.py`,
+which keeps only the names the declaration holds. A record carrying
+`phantom_config` builds a bot on each of the three, with its Target Balance
+intact.
+
+**The retirement record holds no entry for it.** `_DEPRECATED_KWARGS` in
+`src/trading/container/config.py` strips a retired name that a caller passes to
+the bot declaration. `phantom_config` was a top-level record key and never a
+field of the declaration. No load path hands it over, so the strip list needs no
+entry for it. Handed to `make_bot_config` directly the name raises, and a name
+the strip list does hold builds.
+
 **The cursor tick keeps a timestamp.** `PhantomBot.tick_for_cursor` stores the
 cursor itself, not a bucket number. It divides the stored cursor by the candle
 length on every call, so both bucket numbers come from one divisor.
@@ -510,6 +535,14 @@ Inspector for its current proposals at build time.
 
 `src/gui/main_tabs/simulator_tab.py` — `_build_simulator_tab`
 The Simulator rebuild removed this file; it is not in the tree.
+The file is back in the tree:
+`src/gui/main_tabs/simulator_tab.py, in SimulatorTabMixin._build_simulator_tab`
+seats the Sim tab, or the note naming a caught build. The block below is not in
+it: `set_topology_getter` is in no file, so nothing wires a getter at build
+time. The Inspector still answers
+`src/gui/main_tabs/market_inspector_surface.py, in current_topology_proposals`,
+and `src/gui/main_window.py, in _push_candidate_to_sim` is the push the operator
+presses.
 
 ```python
 if hasattr(self._simulator, "set_topology_getter"):
@@ -579,6 +612,15 @@ setting, and it defaults to one percent.
 
 ```python
 wire_inflow_stack_pct: float = 1.0
+```
+
+That setting is removed. An arriving inflow is added to the tranches the
+receiving bot already holds, or parked until a sell opens one, and no figure
+sizes it.
+
+```python
+if self._fold_tranches:
+    share = self._spread_wire_usd_over_fold_queue(u, [credit])
 ```
 
 Two mechanisms move capital between bots, and both are called throughout. The

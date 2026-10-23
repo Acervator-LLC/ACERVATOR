@@ -652,6 +652,10 @@ VENUE_DOMAIN_REASON = (
 #: The organisation's own site, the address a logo click opens.
 ORGANISATION_URL_FORMAT = "https://{domain}"
 
+#: What ``organisation_page`` logs when ``openable_url`` refuses the address it
+#: built from ``ORGANISATION_URL_FORMAT``.
+ORGANISATION_PAGE_REFUSED_LOG = "ata asset maps: %s's page at %s does not open: %s"
+
 #: The two standard locations an organisation serves its own mark at, asked in
 #: this order: the touch icon carries the higher fidelity and the second is the
 #: default every browser already asks for.
@@ -1136,7 +1140,9 @@ def organisation_page(symbol: Any) -> str:
     domain = organisation_site(symbol)
     if not domain or domain in VENUE_DOMAINS:
         return ""
-    address, _ = openable_url(ORGANISATION_URL_FORMAT.format(domain=domain))
+    address, refused = openable_url(ORGANISATION_URL_FORMAT.format(domain=domain))
+    if not address:
+        logger.warning(ORGANISATION_PAGE_REFUSED_LOG, symbol, domain, refused)
     return address
 
 

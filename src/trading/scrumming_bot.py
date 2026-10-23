@@ -43,6 +43,7 @@ from .ta_engine import (
     BBProximityResult,
     detect_landing_strip_v2,
 )
+from ..core.settings import DEFAULT_ENABLE_PHANTOMS
 from .phantom_balance import (
     TIMEFRAME_SECONDS,
     PhantomBalanceManager,
@@ -361,7 +362,7 @@ class ScrummingBot(
         coordinator: Optional[TimeframeCoordinator] = None,
         ta_weights: Optional[dict[str, float]] = None,
         phantom_timeframes: Optional[list[str]] = None,
-        enable_phantoms: bool = True,
+        enable_phantoms: bool = DEFAULT_ENABLE_PHANTOMS,
         lock_candle_count: Optional[int] = None,
         sim_mode: bool = False,
         capital_registry: Optional[Any] = None,
@@ -625,6 +626,8 @@ class ScrummingBot(
 
     def set_market_pairs_scout(self, scout) -> None:
         """Attach the process-wide MarketPairsScout; a falsy ``scout`` is a no-op."""
+        if not scout:
+            return
         self._market_pairs_scout = scout
 
     def get_target_asset_pairs(self):

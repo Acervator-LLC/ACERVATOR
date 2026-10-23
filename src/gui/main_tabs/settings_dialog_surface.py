@@ -320,6 +320,9 @@ PHANTOM_TIMEFRAME_DEFAULT = AppSettings().default_phantom_timeframe
 #: The lock spin box's opening figure and its fallback, declared once.
 LOCK_CANDLE_DEFAULT = AppSettings().default_lock_candle_count
 
+#: The phantom master box's opening state and its fallback, declared once.
+PHANTOM_ENABLE_DEFAULT = AppSettings().default_enable_phantoms
+
 THEME_ITEMS = (
     ("Cyberpunk Dark", "cyberpunk_dark"),
     ("Neon Light", "neon_light"),
@@ -567,7 +570,7 @@ PERSISTED_ROWS = (
     ("default_target_balance", "default_balance", 200.0),
     ("bot_visibility", "visibility", "orderbook"),
     ("aggressive_trading", "aggressive", False),
-    ("default_enable_phantoms", "phantoms_enabled", True),
+    ("default_enable_phantoms", "phantoms_enabled", PHANTOM_ENABLE_DEFAULT),
     ("default_phantom_timeframe", "phantom_timeframe", PHANTOM_TIMEFRAME_DEFAULT),
     ("default_lock_candle_count", "lock_candles", LOCK_CANDLE_DEFAULT),
     (THEME_KEY, "theme_combo", THEME_DEFAULT),
@@ -713,7 +716,7 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "name": "phantoms_enabled",
         "kind": CHECK,
         "text": "Enable Phantom Bots for Scrumming",
-        "checked": True,
+        "checked": PHANTOM_ENABLE_DEFAULT,
     },
     {
         "tab": PHANTOM_TAB,

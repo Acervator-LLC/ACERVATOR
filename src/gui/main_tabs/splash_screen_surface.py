@@ -179,22 +179,26 @@ AURA_FLAME_STEPS = 12
 
 SERPENT_HEAD_Y = -0.60
 SERPENT_TAIL_Y = 0.62
-SERPENT_BOW = 0.135
+# Clears IRIS_RADIUS and stays inside EYE_HALF_WIDTH, so each coil stands off the staff.
+SERPENT_BOW = 0.220
 SERPENT_COILS = 1.75
 SERPENT_STEPS = 84
-SERPENT_HALF_MIN = 0.010
-SERPENT_HALF_SWELL = 0.032
+SERPENT_HALF_MIN = 0.016
+# SERPENT_HALF_MIN plus SERPENT_HALF_SWELL is twice STAFF_HALF_BOTTOM.
+SERPENT_HALF_SWELL = 0.046
 SERPENT_TAPER_POWER = 0.62
-SERPENT_HALF_HEAD = 0.028
-SERPENT_SNOUT = (0.090, -0.140)
-SERPENT_JAW = (0.078, -0.030)
-SERPENT_TONGUE = (0.148, -0.232)
-SERPENT_TONGUE_FORK = 0.030
-SERPENT_TONGUE_HALF = 0.008
-SERPENT_EYE_OFFSET = (0.042, -0.078)
-SERPENT_EYE_RADIUS = 0.016
+SERPENT_HALF_HEAD = 0.041
+SERPENT_SNOUT = (0.133, -0.207)
+SERPENT_JAW = (0.115, -0.044)
+SERPENT_TONGUE = (0.219, -0.343)
+SERPENT_TONGUE_FORK = 0.044
+SERPENT_TONGUE_HALF = 0.012
+SERPENT_EYE_OFFSET = (0.062, -0.115)
+SERPENT_EYE_RADIUS = 0.024
 SERPENT_BROW_SHARE = 0.55
 SERPENT_BROW_LIFT = 1.30
+# Same swing as FACET_AURA_SWING, darkening the arc behind the staff.
+SERPENT_DEPTH_BIAS = 0.22
 
 SCALE_BEAM_Y = 0.56
 SCALE_BEAM_HALF = 0.34
@@ -710,8 +714,10 @@ def serpent_faces() -> list:
     for phase in (math.pi / 2, -math.pi / 2):
         for turn, (at, to, arc) in enumerate(serpent_coils(phase)):
             band = _ribbon_faces(arc, _serpent_half(at), _serpent_half(to), FACET_BANDS)
-            wraps = behind if (turn % 2 == 0) == (phase > 0) else infront
-            wraps.append((band, BLUE, SERPENT_ALPHA_SHARE, 0.0))
+            back = (turn % 2 == 0) == (phase > 0)
+            wraps = behind if back else infront
+            depth = -SERPENT_DEPTH_BIAS if back else SERPENT_DEPTH_BIAS
+            wraps.append((band, BLUE, SERPENT_ALPHA_SHARE, depth))
     groups = behind + infront
     for phase in (math.pi / 2, -math.pi / 2):
         spine = _serpent_spine(phase)

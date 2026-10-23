@@ -263,21 +263,6 @@ class SimSettingsTabMixin(SettingsTabMixin):
         )
         mf.addRow("Spacing:", self._stack_spacing)
 
-        self._personal_hold_qty = QDoubleSpinBox()
-        self._personal_hold_qty.setRange(0.0, 1_000_000_000.0)
-        self._personal_hold_qty.setDecimals(10)
-        self._personal_hold_qty.setValue(float(getattr(cfg, "personal_hold_qty", 0.0)))
-        self._personal_hold_qty.setToolTip(
-            "Target-asset units to hold OUT of the bot's view "
-            "(personal reserve). The bot won't buy or sell these "
-            "units; they're also reserved from any sibling bot on "
-            "the same asset via the CapitalReservationRegistry."
-        )
-        self._personal_hold_qty.valueChanged.connect(
-            lambda v: self._mark_changed("personal_hold_qty", float(v))
-        )
-        mf.addRow("Personal Hold (units):", self._personal_hold_qty)
-
         layout.addWidget(mode_group)
 
         scrum_group = QGroupBox(
@@ -694,24 +679,6 @@ class SimSettingsTabMixin(SettingsTabMixin):
             lambda v: self._mark_changed("tranche_despawn_days", v)
         )
         af.addRow("Tranche Despawn Timer:", self._tranche_despawn_days)
-
-        self._wire_inflow_stack_pct = QDoubleSpinBox()
-        self._wire_inflow_stack_pct.setRange(0.0, 100.0)
-        self._wire_inflow_stack_pct.setDecimals(2)
-        self._wire_inflow_stack_pct.setSuffix(" %")
-        self._wire_inflow_stack_pct.setValue(
-            float(getattr(cfg, "wire_inflow_stack_pct", 1.0))
-        )
-        self._wire_inflow_stack_pct.setToolTip(
-            "Wire inflow stacking percentage. Controls how "
-            "aggressively the bot stacks new buy-side positions "
-            "when fresh wire-inflow signals arrive. Default 1.0%; "
-            "rarely adjusted in practice."
-        )
-        self._wire_inflow_stack_pct.valueChanged.connect(
-            lambda v: self._mark_changed("wire_inflow_stack_pct", float(v))
-        )
-        af.addRow("Wire Inflow Stack:", self._wire_inflow_stack_pct)
 
         layout.addWidget(adv_group)
 

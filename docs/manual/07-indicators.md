@@ -2617,6 +2617,55 @@ side = "scrum"
 overrides = ("midline_scrum", "target_fires", "trend_hold", "ta_bullish")
 ```
 
+### Which records name the override
+
+**Functional.** Three records carry the name of the override that replaced a
+refusal, one for each data source, and all three write it under the same key.
+The key is spelled once, in `OVERRIDES_APPLIED_KEY`.
+
+| Data source | The record | Where the name is written |
+| ----------- | ---------- | ------------------------- |
+| Live | the gate log row `ScrummingBot.tick` writes | `scrum_fixture.overrides_applied` |
+| Paper | the gate row `paper_log.paper_row` writes | `scrum_fixture.overrides_applied` |
+| Simulator | the `bot.gate_decision` event `SimBus` emits | `scrum_fixture.overrides_applied` |
+
+**Functional.** The Paper Trader and the Simulator both read one record, the
+one the shipped chains are evaluated into. A row where no override acted
+carries an empty list; a row where one acted carries one entry per refusal it
+replaced. A row that passed outright and a row an override passed therefore
+read apart.
+
+`src/simulator/validation.py` — `latch`, the record both of them read
+
+```python
+return {
+    "scrum_armed": bool(scrum.should_fire),
+    "fold_armed": bool(fold.should_fire),
+    "scrum_blockers": [message for _name, message in scrum.blocked],
+    "fold_blockers": [message for _name, message in fold.blocked],
+    "scrum_overrides_applied": [str(one) for one in scrum.overrides_applied],
+    "fold_overrides_applied": [str(one) for one in fold.overrides_applied],
+}
+```
+
+**Not available.** The nineteen gate lights the Simulator's parity comparison
+draws read the armed flag and the blocker list alone, so a replaced refusal
+still reads there as a plain pass. Its two sides are a recorded row and a
+rerun of the same inputs, and a row recorded before the key existed carries
+none, so reading the override into those lights would move the parity verdict
+on past rows.
+
+`src/simulator/validation.py` — `light_states`, the four inputs it takes
+
+```python
+def light_states(
+    scrum_armed: bool,
+    fold_armed: bool,
+    scrum_blockers: Sequence[str],
+    fold_blockers: Sequence[str],
+) -> list[dict]:
+```
+
 ### Reading the chain after the fact
 
 **Not available.** A trade already on the books keeps the reading that was

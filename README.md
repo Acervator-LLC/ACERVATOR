@@ -604,6 +604,9 @@ setting, and it defaults to one percent.
 wire_inflow_stack_pct: float = 1.0
 ```
 
+That setting is removed. An arriving inflow is added to the tranches the
+receiving bot already holds, or parked until a sell opens one.
+
 One routing path is dead. The two spawn-and-route functions have no caller
 anywhere in the repository, while the fold distribution and wire registration
 beside them are called throughout. Issue #404 carries it, and issue #239 carries

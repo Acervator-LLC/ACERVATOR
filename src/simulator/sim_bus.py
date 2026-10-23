@@ -17,7 +17,7 @@ from __future__ import annotations
 import threading
 from contextlib import contextmanager
 from dataclasses import asdict
-from typing import TYPE_CHECKING, Any, Callable, Iterator, Optional
+from typing import TYPE_CHECKING, Any, Callable, Iterator, Optional, Sequence
 
 from ..core.emit_contracts import CONTRACTS, EmitContract, EmitObserver
 from ..core.event_bus import EventBus
@@ -31,6 +31,7 @@ from ..core.signal_contract import (
     route_thread,
     unroute_thread,
 )
+from ..trading.gate_chain import OVERRIDES_APPLIED_KEY
 from .validation import iso_stamp
 
 if TYPE_CHECKING:
@@ -208,10 +209,15 @@ def _landing(reading: Any) -> dict:
     }
 
 
-def scrum_fixture(context: GateContext, reading: Any = None) -> dict:
+def scrum_fixture(
+    context: GateContext,
+    reading: Any = None,
+    overrides_applied: Sequence[str] = (),
+) -> dict:
     """The ``scrum_fixture`` keys ``ScrummingBot.tick`` writes, read off
-    ``context`` and ``reading``."""
+    ``context`` and ``reading``, with each refusal an override replaced."""
     return {
+        OVERRIDES_APPLIED_KEY: [str(one) for one in overrides_applied],
         "delta": float(context.delta),
         "below_interval": bool(context.below_interval),
         "ticker_last": float(context.ticker_last),
@@ -241,10 +247,15 @@ def scrum_fixture(context: GateContext, reading: Any = None) -> dict:
     }
 
 
-def fold_fixture(context: GateContext, reading: Any = None) -> dict:
+def fold_fixture(
+    context: GateContext,
+    reading: Any = None,
+    overrides_applied: Sequence[str] = (),
+) -> dict:
     """The ``fold_fixture`` keys ``ScrummingBot.tick`` writes, read off
-    ``context`` and ``reading``."""
+    ``context`` and ``reading``, with each refusal an override replaced."""
     return {
+        OVERRIDES_APPLIED_KEY: [str(one) for one in overrides_applied],
         "has_fold_tranches": bool(context.has_fold_tranches),
         "n_fold_tranches": int(context.n_fold_tranches),
         **_landing(reading),
@@ -391,8 +402,12 @@ class RunEmitter:
             scrum_blockers=list(armed.get("scrum_blockers") or []),
             fold_blockers=list(armed.get("fold_blockers") or []),
             evaluated_at_tick=int(tick),
-            scrum_fixture=scrum_fixture(context, reading),
-            fold_fixture=fold_fixture(context, reading),
+            scrum_fixture=scrum_fixture(
+                context, reading, armed.get("scrum_overrides_applied") or []
+            ),
+            fold_fixture=fold_fixture(
+                context, reading, armed.get("fold_overrides_applied") or []
+            ),
             tranche_snapshot=tranche_snapshot(position),
             compounding_snapshot=compounding_snapshot(bot, position),
             **self.stamp(candle_ts_ms),

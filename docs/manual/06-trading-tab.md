@@ -595,6 +595,21 @@ TOP_ROW_STRETCH = [
 ]
 ```
 
+OVERTAKEN, and the paragraph at the head of this section is kept as written.
+"the sum of the floors is the narrowest the window opens at" reads true today and
+did not before. `top_row_min_w` added up `slot_min_w`, and the row floors every
+slot at `slot_floor_w`. The money strip's two figures are 512 px and 668 px, so
+the sum came out 156 px under the row it described: it answered a 1228 px window
+while the real row, built by `header_strip.py, in
+HeaderStripMixin._build_header_strip`, reported its own narrowest as 1384 px and
+Qt refused to draw the window any narrower. `top_row_min_w` now adds up
+`slot_floor_w`, so `window_min_w` answers 1384 px and the two agree. The figure
+follows the column list on its own: a seventh card answers 1476 px and a seventh
+money column answers 1492 px.
+
+`src/gui/main_window.py` still pins the window's own floor to 1400 by 900 by
+hand. 1400 px holds the row as it stands and would not hold a seventh slot.
+
 **The margins the two newest columns are drawn from.** A column leaves 3 px either
 side of the rule between it and its neighbour, the rule itself is 12 px, the panel's
 own side margin is 6 px, and a counter card's side margin is 4 px.
@@ -686,6 +701,14 @@ no side margin of its own on top of it, so the amount keeps the digits
 `TOP_ROW_STRETCH` gives the strip one share per `KPI_COLUMNS` column, each card
 one share and the class square none. Adding or removing a card changes that card's
 own slot and no other panel's width.
+
+OVERTAKEN, and the paragraph above is kept as written. "Adding or removing a card
+changes that card's own slot and no other panel's width" holds for the floor each
+panel declares and not for the width the row draws it at. Read off the real row at
+a 1400 px window: the floors in `width_budget` moved for the added or removed card
+alone, and every other card's drawn width moved with it — 91 px with six cards,
+88 px with seven and 110 px with five. The row shares what is left above the
+floors, so a slot added or taken away changes every slot's share of that surplus.
 
 **A card whose figure the fleet never published draws the dash.**
 `header_strip_surface.py, in counter_amount` reads each `COUNTER_CARDS` entry's
@@ -961,6 +984,31 @@ holds eight and still refuses the ninth caller.
 restart. The post-connect trade history scan is one: it drives the synchronous
 exchange handle on its own thread and does not pass the worker.
 
+**Functional.** The trade history scan now comes back on its own too. One lock
+queues every history scan on a venue, and a waiter gives the holding scan a
+fixed turn. The turn is the same minute the red line above reports a stop over.
+At the end of a turn the waiter asks whether the holding scan has finished a
+market. A market finished means the venue is answering, so the waiter waits
+again, however long the run takes. Two turns with no market finished means the
+scan has stopped, so the waiter takes a fresh lock and scans. The Console
+carries one line for each clearance, naming the venue and how long the scan was
+blocked.
+
+`src/exchange/ccxt_connector.py` — the turn a waiter gives the holding scan
+
+```python
+            lock = self._history_scan_lock
+            if lock.acquire(timeout=budget_s):
+                self._note_history_progress()
+                return lock
+```
+
+**Design intention.** Two turns is two minutes, above the longest one market can
+legitimately take. A scan that keeps finishing markets keeps its lock, so a long
+run across a large fleet is never cut short and raises no line. The blocked scan
+keeps its old lock and is never driven again, so no market it was part way
+through is read a second time. Nothing new runs while a scan is healthy.
+
 `src/exchange/market_pairs_scout.py` — the scout rebuilds only when every venue
 it polled has stopped
 
@@ -968,6 +1016,61 @@ it polled has stopped
 def _scout_has_stopped(scout: MarketPairsScout) -> bool:
     polled = scout.polled_exchanges()
     return bool(polled) and all(scout.is_stale(eid) for eid in polled)
+```
+
+#### A stopped feed and the crash box are two faults
+
+**Functional.** Two things have been seen on this screen. A feed stops and the
+figures stop moving. A Windows box also appears, saying the program tried to use
+something that was not there. These are two faults and not one. Driven on the
+current build: making a feed stop never raised the box, and raising the box
+never stopped a feed.
+
+**Functional.** A reader that fails is caught where it is built. The Console
+carries one line naming the feed, what is lost, and the error behind it. Nothing
+reaches the top of the program, so no box appears. Driven with the rate feed and
+the pairs scout both failing: both Console lines were written, every screen that
+reads them drew a blank cell rather than an error, and the box's own channel was
+never used once.
+
+`src/exchange/lazy_singleton.py` — `LazySingleton.get` catches a failing reader
+
+```python
+            except Exception as exc:  # noqa: BLE001 - a pump must not raise
+                self._fault.note_failure(exc)
+                return cached
+```
+
+**Functional.** The box is the other fault. It appears when an error reaches the
+top of the program with nothing holding it. Driven with that error raised inside
+a live screen timer: it was reported at the top, the program kept running, and
+the feed behind it was untouched. The same reader answered before and after, no
+replacement was built, and no Console line was written.
+
+`src/gui/main_tabs/console_log_handler.py` — `_append_to_widget` holds its own
+paint failure
+
+```python
+        except Exception:
+            self.handleError(_paint_failure(msg))
+```
+
+**Functional.** One underlying fault can still set both off. A Console line
+behind a stopped feed has carried the same error wording the box later showed.
+Where that wording comes from is not settled. Neither symptom produces the
+other, so each needs its own repair.
+
+**Functional.** A bot that already holds the pairs scout keeps it while the
+scout is down. A bot registered during a stop was handed nothing, and its pair
+list then stayed empty for the rest of the run. The list now holds its last
+answer, which is what every other stopped reader on this screen already does.
+
+`src/trading/scrumming_bot.py` — `set_market_pairs_scout` refuses an empty hand-off
+
+```python
+        if not scout:
+            return
+        self._market_pairs_scout = scout
 ```
 
 #### The news line
@@ -1266,13 +1369,15 @@ for each settled coin and a site already kept is never read twice.
 `src/exchange/crypto_assets.py` — `AssetManager.organisation_url`
 
 ```python
-indexed = str(
-    (self.coin_index.get(name) or {}).get(COIN_INDEX_SITE_KEY) or ""
-).strip()
+indexed = str(row.get(COIN_INDEX_SITE_KEY) or "").strip()
 if indexed:
     return openable_url(indexed, allowed_schemes=COIN_SITE_SCHEMES)
 asset = self.get_asset(name)
-return openable_url(asset.website if asset else "")
+address, refused = openable_url(asset.website if asset else "")
+if address:
+    return address, refused
+turned_away = str(row.get(COIN_INDEX_SITE_REFUSED_KEY) or "").strip()
+return "", turned_away or refused
 ```
 
 `src/exchange/crypto_assets.py` — the address that carries a site
@@ -1281,10 +1386,11 @@ return openable_url(asset.website if asset else "")
 COIN_DETAIL_URL = "https://api.coingecko.com/api/v3/coins/{id}"
 ```
 
-Of the thirty-eight target assets the saved fleet holds, thirty-six answer a web
-address. Two do not: one because several coins carry its ticker at comparable
-market rank, and one because its coin record names no secure web address. Neither
-is guessed at.
+Of the thirty-nine target assets the saved fleet holds, seven answer a web
+address. All seven come from the asset record's own `website` field. The coin
+index holds no site for any fleet ticker, and records the same reason for every
+one of them: no coin is settled for that ticker, so no site is looked up. None
+of the other thirty-two is guessed at.
 
 A mark's tooltip carries one extra line naming the address or its absence, so the
 operator can see which marks are links and which are not without pressing one.
@@ -1293,7 +1399,11 @@ operator can see which marks are links and which are not without pressing one.
 a mark whose asset resolves      Open <the site> in default browser: <the address>
 a mark whose asset resolves none no web address is known for <ticker>, so this mark
                                  is not a link
+a mark whose address is refused  <ticker> opens nothing: <the rule that refused it>
 ```
+
+The third line is new. An asset that never had an address and an asset whose
+address was refused used to read the same, and now the mark says which it is.
 
 **What the address check refuses.** An address is checked before any browser is
 asked to open it. Only a secure web address with a host opens. An insecure
@@ -1303,10 +1413,22 @@ opened, whatever the data carries. The window reads the address off the clicked
 cell and opens it; the page sends the row and the column out and Python opens it,
 so the page never opens anything itself. Both go through the one check.
 
+A refusal is no longer silent. The mark's tooltip names the rule that refused the
+address, and the same line goes to the log, so a refused address can be told from
+an asset that never had one.
+
 `src/gui/main_tabs/bot_status_table_surface.py` — `opening_address`
 
 ```python
 OPENING_SCHEMES: tuple[str, ...] = ("https",)
+```
+
+`src/gui/main_tabs/bot_status_table_surface.py` — `opening_refusal`
+
+```python
+if not host:
+    return EMPTY_TEXT, OPENING_NO_HOST_REASON
+return address, EMPTY_TEXT
 ```
 
 **HIS.**
@@ -1467,12 +1589,27 @@ cell takes the stored figure off the bot's status, so nothing is fetched while
 the table paints, and a bot none of the three has run for yet draws the marked
 attributed count.
 
+**The hold in that sentence is gone.** Personal Hold was removed. The three
+paths now net the reading against the sibling bots on the same asset and
+nothing else. `src/trading/scrumming/reconciliation.py`, in
+`_claimable_exchange_units`, is the one place the subtraction happens.
+
 The tooltip always names the count it measured. On the exchange's count it
 gives both figures, so a drift between them is visible in the cell that is
 affected by it. With no exchange reading held it opens `NO EXCHANGE COUNT HELD`
 and says the direction can read the wrong way, because an attributed count below
 the exchange turns a surplus into an apparent deficit and paints buy pressure on
 a position that is already above target.
+
+**The cell itself draws the amount and nothing else.** The two counts are a fact
+about where the figure came from, and the tooltip is the only place that fact is
+written. The column is sized for a dollar amount, so a note added beside the
+amount would run past the column edge and cut itself short. The stale marker is
+the one exception the cell still draws, and it marks the figure as not current
+rather than naming its source.
+
+`src/gui/main_tabs/table_cells_surface.py, in TableCellsModel._signal_cell` —
+the drawn figure and the tooltip, written apart
 
 `src/gui/main_tabs/table_cells_surface.py`, in `ammo_units` — the one rule all
 three Ammo readers share
@@ -1501,6 +1638,10 @@ Two routes reach one assignment: one stores a venue reading and nets it against
 the personal hold and the sibling bots, and the other moves the stored figure by
 the units a fill settled and asks no venue for anything.
 
+**Read that first route as the sibling bots alone.** Personal Hold was removed,
+so the hold named above and in the block below no longer exists. The venue
+reading is netted against the sibling bots and nothing else.
+
 ```
 src/trading/scrumming/reconciliation.py, in _store_audited_venue_units
     the one assignment both routes land on
@@ -1511,7 +1652,7 @@ src/trading/scrumming/reconciliation.py, in _record_venue_units_after_fill
 src/trading/scrumming/execution.py, in _execute_buy
     its own pre-fill reading plus the units bought
 src/trading/scrumming/execution.py, in _execute_manual_rebalance
-    its own pre-fill reading, on the two autonomous intents
+    its own pre-fill reading, on every intent
 src/trading/scrumming/execution.py, in _execute_detonation
     the second route, by the units it sold
 src/trading/scrumming/execution.py, in _execute_sell
@@ -1712,6 +1853,16 @@ whichever way the sort runs, and the bot's own identifier breaks a tie.
 drawn.sort(key=lambda row: (row[0], row[1]), reverse=descending)
 return [row[2] for row in drawn] + blank
 ```
+
+**One sentence above is true and incomplete, and this completes it.** Fire still
+sorts by what the engine would do next, and that is not the same question as what
+a press would do. The sort reads the bot's own armed action; the button reads how
+far the position sits from target. So a row can sort high as armed and still
+carry the refused word on its button. The word on the button is the answer about
+the press, and the sort position is not.
+
+`src/gui/main_tabs/bot_status_table_surface.py, in fire_sort_value` — the figure
+the column orders on
 
 **Functional.** The order is recomputed every time the rows are rewritten, not
 once at the press. A fleet arriving a second later is ordered again before it is
@@ -2282,6 +2433,140 @@ exchange's own price, and the bot's attributed count only where no exchange
 reading is held. The Ammo column section above names the rule and where the
 reading is stored.
 
+**Two bands measure that drift, and they answer two different questions.** The
+narrower one is a tenth of one per cent of the target. The bot's own tick parks
+inside it and trades nothing. The wider one is ten times that, one per cent of
+the target, and a Manual Fire press refuses inside it. Each figure is named for
+who stops and for what they stop doing, so a later reader cannot take one for
+the other.
+
+`src/trading/target_bands.py` — the two figures, each a fraction of the target
+
+```python
+TICK_PARK_PCT = 0.001
+MANUAL_FIRE_REFUSE_PCT = 0.01
+```
+
+`src/trading/target_bands.py, in at_target_dust_band` turns the first into
+dollars and `src/trading/target_bands.py, in manual_fire_dust_band` turns the
+second. Both hold a floor of one cent, so a tiny target still gets a band.
+
+**What the gap between the two bands means.** On a one-thousand-dollar target
+the tick's band is one dollar and Manual Fire's is ten. A position between those
+two is one the bot's own tick will trade and the button will not. The band stays
+where it is, and the button says so.
+
+**The button's own word changes inside that gap.** It reads `No Trade` in place
+of `Fire`. It carries no glow, it draws a dotted outline in neutral grey, and
+its tooltip names three things: how far the position sits from target, Manual
+Fire's own band, and where the tick's band starts. The press stays available and
+still writes its no-op line to the bot log, so nothing a press can do today is
+taken away.
+
+`src/gui/main_tabs/bot_status_table_surface.py, in FIRE_LABELS` — the word each
+Fire path draws, one entry a path
+
+`src/gui/main_tabs/bot_status_table_surface.py, in manual_fire_verdict` — the
+three answers that pick the path, read off the row's own Ammo cell so the cell
+and the button cannot disagree about one press
+
+```python
+MANUAL_FIRE_ACTS = "acts"
+MANUAL_FIRE_REFUSES = "refuses"
+MANUAL_FIRE_PARKED = "parked"
+```
+
+The Qt build picks the same word from the same table —
+`src/gui/widgets/bot_status_table.py, in BotStatusTable._write_row`. The Paper
+Trader's table and the Simulator's table are subclasses of those two and hold no
+word of their own, so all six surfaces read alike.
+
+**Manual Fire reads the exchange before it sizes the trade.** The press asks the
+exchange for the traded asset's balance first. It costs one call, so the press is
+slightly slower. Where the exchange's count agrees with the bot's own count
+inside Manual Fire's band, the press sizes the trade exactly as it did before.
+Where the two counts differ by more than that band, the press trades nothing and
+says so. The same answer covers an exchange that leaves the asset out of its
+reply, and an exchange that cannot be read at all. This is the path with no gates
+behind it, so a position the platform cannot verify is not traded.
+
+Driven on a target of $1,000.00, a price of $1.00 and a bot holding 1050.0
+units. Manual Fire's band is $10.00 and the position sits $50.00 above target:
+
+```
+the exchange reports     the press sells
+1050.0 units             50.000000 units
+1020.0 units              0.000000 units, refused
+the asset left out        0.000000 units, refused
+no answer at all          0.000000 units, refused
+```
+
+The refusal carries the same words the Fire button itself shows,
+`MANUAL FIRE WILL NOT ACT`, and names both counts and both dollar figures. It
+goes to the bot log the Console and the bot window both read. Every press gets
+an answer. The autonomous intents keep the hold that stops a repeating tick
+writing the same refusal on every candle.
+
+`src/trading/scrumming/execution.py`, in `_execute_manual_rebalance` — the one
+balance read every intent takes, the button included
+
+```python
+_xbal = await self._get_balance(self.config.target_asset)
+_xunits = float(
+    getattr(_xbal, "total", 0) or getattr(_xbal, "free", 0) or 0.0
+)
+```
+
+The growth-cap check that sits beside that read still runs for the two
+autonomous intents alone. The Max Entry Price entry below says Manual Fire goes
+around the entry-price gates, and the operator override keeps the cap bypassed
+the same way.
+
+**The row says the position is disputed before the press.** The Fire button
+reads the two counts the row already carries. Where the exchange's count and
+the bot's count stand further apart than Manual Fire's band, the button takes
+the same refused path a press inside the band takes. It reads `No Trade`, it
+carries no glow, and its tooltip names both counts, both dollar figures and the
+gap. Where the gap sits inside the band, and where the row holds no exchange
+reading at all, the button reads exactly as it did before. An absent reading is
+not a dispute.
+
+Driven on six rows, read off the live button on both build variants, at a
+target of $1,000.00 and a price of $1.00. Manual Fire's band is $10.00 and the
+tick's is $1.00:
+
+```
+the bot counts   the exchange reports   the button reads   its tooltip names
+1050.0 units     1050.0 units           Fire               the armed scrum
+1050.0 units     1020.0 units           No Trade           the $30.00 gap
+1050.0 units     1049.0 units           Fire               the armed scrum
+1050.0 units     no reading at all      Fire               the armed scrum
+1005.0 units     1005.0 units           No Trade           the $10.00 band
+1050.0 units     1005.0 units           No Trade           the $45.00 gap
+```
+
+**Two refusals reach that one path, and the tooltip names the gap first.** A
+press is refused where the gap between the two counts is past the band, and
+refused where the distance from target sits inside the band. A row can be in
+both states at once, and the last row above is one. The tooltip names the gap
+there, because `_execute_manual_rebalance` reads the exchange before it
+measures the distance, so the gap is the refusal a press would actually meet.
+The band entry above keeps its own wording for a row whose two counts agree.
+
+`src/gui/main_tabs/bot_status_table_surface.py`, in `manual_fire_dispute` — the
+one answer both build variants read
+
+```python
+reading = ammo if isinstance(ammo, dict) else {}
+if not reading.get("two_reads", False):
+    return None
+```
+
+The page's row and the window's row both call that function, and both read
+`manual_fire_verdict` beside it, so neither build variant can draw a button the
+other would not. The Ammo cell's own tooltip carries the same two counts, which
+the Ammo column section above describes.
+
 Scrum - To sell an amount from an investment position that allows it to return to its initial price level. This never closes the position. This is the first half of the infinitely divisible circle that can persist for such positions in a healthy market.
 
 One shared helper decides which half of the cycle a position sits in. It
@@ -2804,6 +3089,12 @@ Personal Hold still follows the market's own step alone. A share that divides
 during the trading day can be held in fractions, so that box keeps its decimal
 places even where Open Position At shows.
 
+**That box is gone.** Personal Hold was removed from every wizard and from
+every running-bot page, so no hold box takes a step from the market any more.
+Open Position At is the only row on this page that reads the market's own unit
+rule. `src/gui/main_tabs/bot_wizard_surface.py`, in
+`session_takes_whole_units`, is where the wizard reads that rule.
+
 Both builds draw the same four lines. The React page reads them from the same
 payload the Qt page reads, so neither can carry a word the other does not.
 
@@ -3026,6 +3317,32 @@ fibonacci    [1.0, 2.0, 3.0, 5.0]
 
 Personal Hold - Setting to be removed.
 
+**It is removed.** The box is off both New Bot wizards and off the running-bot
+page, on Live, on Paper and in the Simulator, and the React pages for all three.
+The field is off the bot declaration and both engine readers are gone with it.
+Everything written below this line records what the control did while it was
+there. Read it as history, not as the page you see now.
+
+**The reservation stays, and it is automatic.** A bot still works out which
+units on an asset are its own, so two bots on one asset cannot eat each other.
+Nothing on any screen configures it. `src/trading/capital_reservation.py`, in
+`effective_available`, is what bounds a bot to the units no other bot has
+claimed.
+
+**What changed, driven on records built by hand.** A bot holding nothing back is
+unaffected: every figure reads the same before and after — 30 units at the
+venue, 30 claimable, 30 it may sell, a claim of 2.2 units at a price of 100, and
+27.8 units left available to a bot sharing the asset. A bot holding five units
+back now sells the larger amount: 25 units before and 30 after, with its claim
+falling from 7.2 units to 2.2 and a co-tenant's available rising from 22.8 to
+27.8. All 38 stored bots hold nothing back, so no bot on the fleet sells a
+different amount.
+
+**A bot saved with the old setting still loads.** The retired name is dropped
+before a bot is built. `src/trading/container/config.py`, in
+`_sanitize_deprecated_kwargs`, is where it is dropped, and the record beside it
+lists every other setting retired the same way.
+
 The control is still on the page. `TradingParamsPage.get_config` still emits
 `personal_hold_qty`, and the capital reservation mixin still reads it, adding
 it to the units the bot claims against its siblings. A removal has that reader
@@ -3094,7 +3411,7 @@ src/trading/scrumming/reconciliation.py, in _record_audited_venue_units
 src/trading/scrumming/execution.py, in _execute_buy
     a fill that reaches that recorder
 src/trading/scrumming/execution.py, in _execute_manual_rebalance
-    a fill that reaches that recorder, on the two autonomous intents
+    a fill that reaches that recorder, on every intent
 ```
 
 The adoption ceiling is the reader that bears on a sale. A bot whose venue
@@ -3156,6 +3473,9 @@ Tranche Count        3                   3 on 38
 Spacing              Linear              linear on 38
 Personal Hold        0                   0.0 on 38
 ```
+
+The last row in that table names a control that no longer exists. Six rows draw
+in this group now, not seven, and the picture below was taken before the removal.
 
 ![The Scrumming Settings group.](p19-i0.png)
 
@@ -3268,6 +3588,18 @@ tightening = detect_landing_strip_v2(
 Raising the box's floor to three is not taken. A box holding a stored 2 answers 3
 the moment its range starts at three, and putting the range back leaves the 3
 behind, so the next Save would write three into a bot whose record says two.
+
+The description now reaches every screen that shows this row. The two wizards
+and the three Settings groups each attach it to their own box. Both row lists
+the shell draws from carry it in their wording tables, so a reader moving
+between a Qt screen and the shell meets one sentence. Read off the built
+screens, all eight answer that sentence and the stored figure stays 3 on each.
+
+`src/gui/main_tabs/live_settings_tab_surface.py` — the Settings row's wording
+
+```python
+"landing": "The bot confirms a Landing Strip when this many of the newest Heikin Ashi candles have small bodies and price sits near a Bollinger Band. This count reaches the band-proximity check only. The separate shrinking-body check keeps its own fixed count.",
+```
 
 TA Timeframe - This is the timeframe at which the bot operates and denotes the price chart it will monitor for trade decisions.
 
@@ -3893,6 +4225,46 @@ mgr.distribute_fold_profit(
 )
 ```
 
+The row is removed. Your ruling on Wire Credits retires the percentage: a share
+that sizes a stack is grid behaviour, and the requirement is that an arriving
+credit reaches an active tranche. No screen offers the row now, and no figure
+is read in its place. A credit takes one of two routes and no other.
+
+`src/trading/scrumming/wire_routing.py` — what is left of `apply_wire_income`
+
+```python
+if self._fold_tranches:
+    share = self._spread_wire_usd_over_fold_queue(u, [credit])
+    ...
+# Case 2 — no tranches yet; park in pending
+self._pending_wire_credits += u
+```
+
+Driven on the same bot, at its target and at its entry price, with a ten-dollar
+credit. The tranche figure is the one that matters: the stack took the credit
+away from an open tranche, and it no longer does.
+
+```
+the bot holds one $5.00 tranche    before      after
+what happened to the credit        stacked     added to the tranche
+the tranche                        $5.00       $15.00
+Target Balance                     $210.00     $200.00
+queued for an aggressive buy       $10.00      $0.00
+
+the bot holds no tranche           before      after
+what happened to the credit        stacked     parked
+the parked pool                    $0.00       $10.00
+Target Balance                     $210.00     $200.00
+```
+
+A bot saved with the figure still loads. The name joins the retirement record in
+`src/trading/container/config.py`, which drops it before the bot is built.
+
+```python
+"personal_hold_qty",
+"wire_inflow_stack_pct",
+```
+
 Hedge Rebalance Active - Determines if Current Price drifting below Initial Entry Price will have a limited amount of funds that can be used to keep re-zeroing the Target Delta at key bearish thresholds or areas of possible reversal.
 
 A checkbox, on at the start. It opens the one group on the page that holds a
@@ -4030,6 +4402,10 @@ BB Bullseye Check      ticked              on on 38
 Wire Inflow Stack      1.00 %              1.0 on 38
 Hedge Rebalance Active ticked              off on 32, on on 6
 ```
+
+Wire Inflow Stack leaves that list. All 38 ran the opening figure, which is why
+nothing in the stored record separates one bot from another on it. The row is
+gone from all six screens and no figure replaces it.
 
 ![The Circuit Breakers group.](p21-i0.png)
 
@@ -4739,6 +5115,15 @@ bot does with it.
 ```
 profit_folding_active   the fleet runs    true on 38 of 38
 a stored route          the fleet holds   none; the key is dropped on restore
+```
+
+The receiving bot no longer carries that row. Your ruling retired it, so a share
+arriving along a wire has one destination and no choice of its own. Nothing on a
+screen sizes the arrival, and no per-cent figure is read for it.
+
+```
+an arriving share   the bot holds tranches   added to them, evenly
+an arriving share   the bot holds none       parked until a sell opens one
 ```
 
 ![The Phantom Bots page.](p23-i0.png)

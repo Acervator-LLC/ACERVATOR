@@ -70,6 +70,7 @@ import math
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any, Optional
 
+from ...core.settings import DEFAULT_ENABLE_PHANTOMS, DEFAULT_LOCK_CANDLE_COUNT
 from ...exchange.timeframes import ALL_TIMEFRAMES
 from .indicator_panel_surface import ABSENT_CELL_TEXT
 
@@ -188,13 +189,6 @@ NUMBER_FIELDS: dict[str, dict] = {
         "value": 1.0,
     },
     "stack_count": {"kind": SPIN_INT, "minimum": 2, "maximum": 20, "value": 3},
-    "personal_hold_qty": {
-        "kind": SPIN_DOUBLE,
-        "minimum": 0.0,
-        "maximum": 1_000_000_000.0,
-        "decimals": 10,
-        "value": 0.0,
-    },
     "whole_unit_open_units": {
         "kind": SPIN_INT,
         "minimum": 0,
@@ -329,14 +323,6 @@ NUMBER_FIELDS: dict[str, dict] = {
         "value": 70,
         "suffix": " %",
     },
-    "wire_inflow_stack_pct": {
-        "kind": SPIN_DOUBLE,
-        "minimum": 0.0,
-        "maximum": 100.0,
-        "decimals": 2,
-        "suffix": " %",
-        "value": 1.0,
-    },
     "hedge_amount": {
         "kind": SPIN_DOUBLE,
         "minimum": 0.0,
@@ -427,21 +413,15 @@ NUMBER_FIELDS: dict[str, dict] = {
         "suffix": "%",
         "value": 100.0,
     },
-    "lock_candles": {"kind": SPIN_INT, "minimum": 1, "maximum": 10, "value": 2},
+    "lock_candles": {
+        "kind": SPIN_INT,
+        "minimum": 1,
+        "maximum": 10,
+        "value": DEFAULT_LOCK_CANDLE_COUNT,
+    },
 }
 
 STACK_MODE_DEFAULT = True
-
-#: ``personal_hold_qty``'s control on a market that places no fraction of a
-#: unit: whole units, stepped by one, so no unplaceable figure is typeable.
-WHOLE_UNIT_HOLD_FIELD: dict = {
-    "kind": SPIN_DOUBLE,
-    "minimum": 0.0,
-    "maximum": 1_000_000_000.0,
-    "decimals": 0,
-    "step": 1.0,
-    "value": 0.0,
-}
 
 CHECK_FIELDS: dict[str, bool] = {
     "aggressive": False,
@@ -457,7 +437,7 @@ CHECK_FIELDS: dict[str, bool] = {
     "gate_scrum_htf_chk": True,
     "gate_fold_ta_chk": True,
     "gate_fold_htf_chk": True,
-    "phantom_enable": False,
+    "phantom_enable": DEFAULT_ENABLE_PHANTOMS,
 }
 
 RADIO_FIELDS: dict[str, bool] = {
@@ -573,7 +553,6 @@ GROUP_ROWS = {
         "split_distance",
         "stack_count",
         "stack_spacing",
-        "personal_hold_qty",
     ),
     "scrum_group": (
         "scrumming_interval",
@@ -594,7 +573,6 @@ GROUP_ROWS = {
         "scrum_read_rate",
         "band_travel_pct",
         "bb_bullseye",
-        "wire_inflow_stack_pct",
     ),
     "hedge_group": ("hedge_rebalance", "hedge_amount"),
     "cb_group": (
@@ -676,7 +654,6 @@ ROW_LABELS = {
     "split_distance": "Split Distance:",
     "stack_count": "Tranche Count:",
     "stack_spacing": "Spacing:",
-    "personal_hold_qty": "Personal Hold (units):",
     "whole_unit_open_units": "Open Position At:",
     "expiry_close": "Expiry Close:",
     "expiry_lead_mode": "Expiry Lead Mode:",
@@ -697,7 +674,6 @@ ROW_LABELS = {
     "scrum_fire_pct": "Fire Threshold:",
     "scrum_read_rate": "Read Rate:",
     "band_travel_pct": "Band Travel:",
-    "wire_inflow_stack_pct": "Wire Inflow Stack:",
     "hedge_amount": "Hedge Balance:",
     "cb_soft_pct": "Soft CB Threshold:",
     "cb_hard_pct": "Hard CB Threshold:",
@@ -828,13 +804,6 @@ TOOL_TIPS = {
         "sequences show Δp in units of Split Distance between "
         "consecutive tranches."
     ),
-    "personal_hold_qty": (
-        "Target-asset units to hold OUT of the bot's view "
-        "(personal reserve). The bot won't buy or sell these "
-        "units; they're also reserved from any sibling bot on "
-        "the same asset. Leave at 0 unless you want the bot "
-        "to ignore a personal stash on the exchange."
-    ),
     "whole_unit_open_units": (
         "Whole units this bot opens its position at on a market "
         "that places no fraction of a unit. 0 leaves the engine's "
@@ -943,12 +912,6 @@ TOOL_TIPS = {
         "over the interval that arms the BB priority skew, "
         "which lowers the TA confidence floor. The fire "
         "threshold and the midline gate are unchanged."
-    ),
-    "wire_inflow_stack_pct": (
-        "Wire inflow stacking percentage. Controls how "
-        "aggressively the bot stacks new buy-side positions "
-        "when fresh wire-inflow signals arrive. Default "
-        "1.0 %; rarely adjusted in practice."
     ),
     "hedge_rebalance": (
         "Separate USD reserve for buying on sharp drawdowns. "
@@ -1609,11 +1572,18 @@ def recorded_venue_rows(venue: Any) -> dict:
 
 def rules_from_row(row: Any) -> Any:
     """The ``MarketRules`` one recorded row describes, ``read`` False for a row
-    the recording does not hold."""
+    the recording does not hold.
+
+    The numeric, the text and the mark rule groups are each read with the
+    store's own reader, so a mark the recording holds reaches
+    ``clearing_refusal`` on this page exactly as it reaches the order path.
+    """
     from ...exchange.base import MarketRules
     from ...exchange.market_rules_store import (
+        FLAG_RULE_FIELDS,
         RULE_FIELDS,
         TEXT_RULE_FIELDS,
+        rule_flag,
         rule_text,
         rule_value,
     )
@@ -1626,6 +1596,7 @@ def rules_from_row(row: Any) -> Any:
         read=True,
         **{name: rule_value(row.get(name)) for name in RULE_FIELDS},
         **{name: rule_text(row.get(name)) for name in TEXT_RULE_FIELDS},
+        **{name: rule_flag(row.get(name)) for name in FLAG_RULE_FIELDS},
     )
 
 
@@ -2667,8 +2638,7 @@ class BotWizardModel:
         ``target_session_whole``, because a US equity session takes a whole unit
         alone outside regular hours, so the opening-units setting
         ``BotContainer.guarded_place_order`` reads is offered wherever the engine
-        applies it. ``personal_hold_qty`` follows the pair's own step alone: a
-        market dividing in regular hours still holds a fraction.
+        applies it.
         """
         picked = bool(self.target_data()) and not self.is_extractor()
         step_whole = picked and self.is_whole_unit()
@@ -2677,20 +2647,6 @@ class BotWizardModel:
         for name, shown in (("whole_unit_group", whole), ("expiry_group", dated)):
             self.group_visible[name] = shown
             self.calls.append([GROUP_SET_VISIBLE, name, shown])
-        spec = (
-            WHOLE_UNIT_HOLD_FIELD if step_whole else NUMBER_FIELDS["personal_hold_qty"]
-        )
-        self.number_specs["personal_hold_qty"] = dict(spec)
-        self.numbers["personal_hold_qty"] = number_value(
-            self.numbers["personal_hold_qty"], spec
-        )
-        self.calls.append(
-            [
-                NUMBER_SET_VALUE,
-                "personal_hold_qty",
-                self.numbers["personal_hold_qty"],
-            ]
-        )
 
     def offered_rows(self) -> list:
         """Every parameter-page row the menu offers for the picked market, in
@@ -3035,7 +2991,6 @@ class BotWizardModel:
                 "split_distance": self.numbers["split_distance"],
                 "stack_tranche_count_target": int(self.numbers["stack_count"]),
                 "stack_spacing_mode": self.combo_data("stack_spacing"),
-                "personal_hold_qty": float(self.numbers["personal_hold_qty"]),
                 "scrumming_interval_pct": self.numbers["scrumming_interval"],
                 "bb_tolerance_pct": self.numbers["bb_tolerance"],
                 "bb_landing_strip_candles": int(self.numbers["ls_candles"]),
@@ -3054,7 +3009,6 @@ class BotWizardModel:
                 "scrum_read_rate_min": int(self.numbers["scrum_read_rate"]),
                 "band_travel_pct": int(self.numbers["band_travel_pct"]),
                 "bb_bullseye_check": self.checks["bb_bullseye"],
-                "wire_inflow_stack_pct": self.numbers["wire_inflow_stack_pct"],
                 "hedge_rebalance_active": self.checks["hedge_rebalance"],
                 "hedge_balance": self.numbers["hedge_amount"],
                 "circuit_breaker_soft_pct": self.numbers["cb_soft_pct"],
