@@ -103,7 +103,11 @@ HEADING_STYLES = {1: "section", 2: "sub", 3: "sub2", 4: "sub2", 5: "sub2", 6: "s
 
 FRONT_MATTER = re.compile(r"\A﻿?---[ \t]*\r?\n.*?\r?\n---[ \t]*(?:\r?\n|\Z)", re.S)
 FENCE_LINE = re.compile(r"^(?P<mark>`{3,}|~{3,})[ \t]*(?P<info>[^\s`~]*)[ \t]*$")
-CODE_SPAN = re.compile(r"`([^`\n]+)`")
+CODE_SPAN = re.compile(r"(?P<ticks>`+)(?P<code>[^`\n]+)(?P=ticks)(?!`)")
+QUOTE_MARK = re.compile(r"^>[ \t]?")
+CELL_EDGE = re.compile(r"(?<!\\)\|")
+ESCAPED_PIPE = re.compile(r"\\\|")
+QUOTED_STRUCTURE = frozenset({"bullet", "code", "diagram", "image", "table"})
 LINK_SPAN = re.compile(r"\[([^\]\n]+)\]\([^)\s]+\)")
 STRONG_SPAN = re.compile(r"(?<![\w*])\*\*(?!\s)(.+?)(?<!\s)\*\*(?![\w*])")
 EMPHASIS_SPAN = re.compile(r"(?<![\w*])\*(?!\s)([^*\n]+?)(?<!\s)\*(?![\w*])")
@@ -196,7 +200,7 @@ def escape(text: str) -> str:
 
 def plain(text: str) -> str:
     """Return ``text`` with its code span, link and emphasis markers removed."""
-    stripped = CODE_SPAN.sub(r"\1", LINK_SPAN.sub(r"\1", text))
+    stripped = CODE_SPAN.sub(r"\g<code>", LINK_SPAN.sub(r"\1", text))
     return EMPHASIS_SPAN.sub(r"\1", STRONG_SPAN.sub(r"\1", stripped))
 
 
@@ -209,13 +213,15 @@ def _marked_up(segment: str) -> str:
 def inline(text: str) -> str:
     """Return ``text`` as reportlab markup, its code spans set in the mono face.
 
-    A link keeps its label and drops its target; ``**`` becomes bold and ``*``
-    italic, both only where the marker hugs the word it opens or closes.
+    A span closes on the same run of backticks that opened it, so a double-tick
+    span carries no tick into the page. A link keeps its label and drops its
+    target; ``**`` becomes bold and ``*`` italic, both only where the marker hugs
+    the word it opens or closes.
     """
     spans: list[str] = []
 
     def hold(match: re.Match[str]) -> str:
-        spans.append(match.group(1))
+        spans.append(match.group("code"))
         return CODE_MARK.format(len(spans) - 1)
 
     face = font_name("mono")
@@ -379,16 +385,29 @@ def _bullet_blocks(lines: Sequence[str]) -> list[Block]:
     return out
 
 
+def _quote_blocks(lines: Sequence[str]) -> list[Block]:
+    """Return the blocks of a ``>`` quote, parsed as markdown behind its marker.
+
+    A kind in ``QUOTED_STRUCTURE`` keeps its own kind; every other kind becomes
+    one ``quote`` block whose paragraph lines join, so a code span opening on one
+    quoted line closes on the next.
+    """
+    body = "\n".join(QUOTE_MARK.sub("", line) for line in lines)
+    out: list[Block] = []
+    for block in parse_markdown(body):
+        if block.kind in QUOTED_STRUCTURE:
+            out.append(block)
+        elif block.text:
+            out.append(Block("quote", block.text))
+    return out
+
+
 def _run_blocks(lines: Sequence[str]) -> list[Block]:
     heading = HEADING_LINE.match(lines[0])
     if heading:
         return [Block("heading", heading.group(2).strip(), len(heading.group(1)))]
     if lines[0].startswith(">"):
-        return [
-            Block("quote", body)
-            for body in (line.lstrip(">").strip() for line in lines)
-            if body
-        ]
+        return _quote_blocks(lines)
     image = IMAGE_LINE.match(lines[0])
     if image:
         return [Block("image", image.group("alt"), src=image.group("src"))]
@@ -490,14 +509,28 @@ def parse_part_list(text: str) -> PartList:
     )
 
 
+def _row_cells(row: str) -> list[str]:
+    """Return the cells of one pipe table ``row``, splitting on unescaped pipes.
+
+    ``\\|`` carries a pipe inside a cell, so it never ends one and reaches the
+    page as the character it names.
+    """
+    parts = CELL_EDGE.split(row)
+    if parts and not parts[0].strip():
+        parts = parts[1:]
+    if parts and not parts[-1].strip():
+        parts = parts[:-1]
+    return [ESCAPED_PIPE.sub("|", cell).strip() for cell in parts]
+
+
 def _table_rows(text: str) -> list[list[str]]:
     rows: list[list[str]] = []
     for line in text.split("\n"):
         stripped = line.strip()
         if not stripped.startswith("|"):
             continue
-        cells = [cell.strip() for cell in stripped.strip("|").split("|")]
-        if all(SEPARATOR_CELL.match(cell) for cell in cells):
+        cells = _row_cells(stripped)
+        if cells and all(SEPARATOR_CELL.match(cell) for cell in cells):
             continue
         rows.append(cells)
     return rows
@@ -1037,7 +1070,7 @@ def _span_width(text: str, points: float, face: str) -> float:
     position = 0
     for span in CODE_SPAN.finditer(text):
         total += stringWidth(text[position : span.start()], face, points)
-        total += stringWidth(span.group(1), mono, points)
+        total += stringWidth(span.group("code"), mono, points)
         position = span.end()
     return total + stringWidth(text[position:], face, points)
 
