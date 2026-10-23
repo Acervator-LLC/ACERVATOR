@@ -2705,6 +2705,38 @@ reaches the fold tranches through `_last_sell_filled_units`, which
 `src/trading/scrumming/tick_phases.py` reads on both the scrum path and the
 distribute path.
 
+**When the exchange reports nothing sold.** A limit order resting on the book
+reports a filled count of zero until it trades, and the re-read waits six tenths
+of a second. A sale the exchange has not reported now takes no units off the
+position and queues no fold tranche. The bot asks the exchange for its balance
+again, the activity log says the sale was sent and nothing was reported, and the
+open-order check refuses a second sell while the first one is still there.
+
+```python
+# src/trading/scrumming/execution.py, in _settled_fill
+        est_amt = amt
+
+# src/trading/scrumming/execution.py, in _execute_sell
+            if filled_units <= 0:
+```
+
+**The same rule on the three other sale paths.** The Fire button's rebalance and
+the detonation read the exchange's own filled count and treat a reported zero as
+zero, so neither takes units off the lot book on a sale the exchange has not
+reported. The self-destruct sells the whole position and empties the lot book;
+whatever the exchange did not sell goes back as one lot at the fill price, so the
+book never falls below what the exchange holds, and the completion line on the
+activity log names those units.
+
+```python
+# src/trading/scrumming/execution.py, in _execute_detonation
+        _filled_raw = getattr(order, "filled", None)
+
+# src/trading/scrumming_bot.py, in self_destruct
+        if self._current_holdings > 0:
+            self._main_lots.append(
+```
+
 Fold - To buy an amount for an investment position that allows it to return to its initial price level. This also drives Compounding Growth based on Local Volatility and is restricted by the Maximum Growth Per Cycle setting which has been set to a conservative 1% globally for Acervator’s live test and development run.
 
 ![The wizard's first page: Trading Mode, with Scrumming selected.](p16-i0.png)
