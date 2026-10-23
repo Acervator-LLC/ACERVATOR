@@ -251,6 +251,7 @@ TOOLTIPS = {
     "split_distance": "Percent spacing between successive Stack tranches. Applied per stack_spacing_mode: Linear = constant delta, Logarithmic = arithmetically-growing delta, Exponential = geometrically-growing delta.",
     "stack_count": "Target number of Stack tranches to create from a SCRUM. Actual runtime count may be lower if (a) per-tranche size falls below the exchange minimum order size, or (b) two computed tranche prices land within 0.1% of each other (then merged upwards).",
     "stack_spacing": "Spacing model for successive Stack tranches. The sequences show Δp in units of Split Distance between consecutive tranches.",
+    "landing": "The bot confirms a Landing Strip when this many of the newest Heikin Ashi candles have small bodies and price sits near a Bollinger Band. This count reaches the band-proximity check only. The separate shrinking-body check keeps its own fixed count.",
     "ta_tf": "TA Timeframe — filtered to granularities supported by this bot's exchange.",
     "target_bal": "The balance this bot trades relative to. HARD-CAPPED: position can never exceed Target × (1 + Max Target Growth %/100).",
     "live_lbl": "The target the bot actually trades against.\n\nThe spinbox above is your input value and does not move when compounding grows the target. This row is the runtime figure.",
