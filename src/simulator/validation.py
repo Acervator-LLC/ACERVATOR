@@ -524,7 +524,8 @@ def rerun_context(
 
 
 def latch(context: GateContext) -> dict:
-    """The shipped scrum and fold chains evaluated on ``context``."""
+    """The shipped scrum and fold chains evaluated on ``context``, with each
+    refusal an override replaced named per side."""
     scrum = build_scrumming_scrum_chain().evaluate(context)
     fold = build_scrumming_fold_chain().evaluate(context)
     return {
@@ -532,6 +533,8 @@ def latch(context: GateContext) -> dict:
         "fold_armed": bool(fold.should_fire),
         "scrum_blockers": [message for _name, message in scrum.blocked],
         "fold_blockers": [message for _name, message in fold.blocked],
+        "scrum_overrides_applied": [str(one) for one in scrum.overrides_applied],
+        "fold_overrides_applied": [str(one) for one in fold.overrides_applied],
     }
 
 

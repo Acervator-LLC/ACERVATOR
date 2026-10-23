@@ -95,6 +95,15 @@ CREDENTIAL_FIELDS: tuple[str, ...] = tuple(
 )
 
 
+#: The figure the phantom master box opens on. The store, the Settings page
+#: and every bot wizard read this one name.
+DEFAULT_ENABLE_PHANTOMS = True
+
+#: The figure the higher-TF lock box opens on. The store, the Settings page,
+#: every bot wizard and ``TimeframeCoordinator`` read this one name.
+DEFAULT_LOCK_CANDLE_COUNT = 2
+
+
 @dataclass
 class AppSettings:
     """Every field ``SettingsManager`` persists.
@@ -134,7 +143,7 @@ class AppSettings:
 
     # The wizard's phantom box opens on this. A bot's own enable_phantoms,
     # which bot_container writes per bot, is a separate value.
-    default_enable_phantoms: bool = True
+    default_enable_phantoms: bool = DEFAULT_ENABLE_PHANTOMS
 
     # The one phantom timeframe a new bot starts with. 1d is the only entry
     # above the wizard's 1h ta_timeframe default that every venue offers;
@@ -143,7 +152,7 @@ class AppSettings:
 
     # The wizard's lock box opens on this. A bot's own lock_candle_count, held
     # by its TimeframeCoordinator, is a separate value.
-    default_lock_candle_count: int = 2
+    default_lock_candle_count: int = DEFAULT_LOCK_CANDLE_COUNT
 
     # The Sound page's nine switches and its volume.
     # sound_engine.sound_config_from_settings reads this group back.

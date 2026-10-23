@@ -993,6 +993,31 @@ holds eight and still refuses the ninth caller.
 restart. The post-connect trade history scan is one: it drives the synchronous
 exchange handle on its own thread and does not pass the worker.
 
+**Functional.** The trade history scan now comes back on its own too. One lock
+queues every history scan on a venue, and a waiter gives the holding scan a
+fixed turn. The turn is the same minute the red line above reports a stop over.
+At the end of a turn the waiter asks whether the holding scan has finished a
+market. A market finished means the venue is answering, so the waiter waits
+again, however long the run takes. Two turns with no market finished means the
+scan has stopped, so the waiter takes a fresh lock and scans. The Console
+carries one line for each clearance, naming the venue and how long the scan was
+blocked.
+
+`src/exchange/ccxt_connector.py` — the turn a waiter gives the holding scan
+
+```python
+            lock = self._history_scan_lock
+            if lock.acquire(timeout=budget_s):
+                self._note_history_progress()
+                return lock
+```
+
+**Design intention.** Two turns is two minutes, above the longest one market can
+legitimately take. A scan that keeps finishing markets keeps its lock, so a long
+run across a large fleet is never cut short and raises no line. The blocked scan
+keeps its old lock and is never driven again, so no market it was part way
+through is read a second time. Nothing new runs while a scan is healthy.
+
 `src/exchange/market_pairs_scout.py` — the scout rebuilds only when every venue
 it polled has stopped
 
@@ -1000,6 +1025,61 @@ it polled has stopped
 def _scout_has_stopped(scout: MarketPairsScout) -> bool:
     polled = scout.polled_exchanges()
     return bool(polled) and all(scout.is_stale(eid) for eid in polled)
+```
+
+#### A stopped feed and the crash box are two faults
+
+**Functional.** Two things have been seen on this screen. A feed stops and the
+figures stop moving. A Windows box also appears, saying the program tried to use
+something that was not there. These are two faults and not one. Driven on the
+current build: making a feed stop never raised the box, and raising the box
+never stopped a feed.
+
+**Functional.** A reader that fails is caught where it is built. The Console
+carries one line naming the feed, what is lost, and the error behind it. Nothing
+reaches the top of the program, so no box appears. Driven with the rate feed and
+the pairs scout both failing: both Console lines were written, every screen that
+reads them drew a blank cell rather than an error, and the box's own channel was
+never used once.
+
+`src/exchange/lazy_singleton.py` — `LazySingleton.get` catches a failing reader
+
+```python
+            except Exception as exc:  # noqa: BLE001 - a pump must not raise
+                self._fault.note_failure(exc)
+                return cached
+```
+
+**Functional.** The box is the other fault. It appears when an error reaches the
+top of the program with nothing holding it. Driven with that error raised inside
+a live screen timer: it was reported at the top, the program kept running, and
+the feed behind it was untouched. The same reader answered before and after, no
+replacement was built, and no Console line was written.
+
+`src/gui/main_tabs/console_log_handler.py` — `_append_to_widget` holds its own
+paint failure
+
+```python
+        except Exception:
+            self.handleError(_paint_failure(msg))
+```
+
+**Functional.** One underlying fault can still set both off. A Console line
+behind a stopped feed has carried the same error wording the box later showed.
+Where that wording comes from is not settled. Neither symptom produces the
+other, so each needs its own repair.
+
+**Functional.** A bot that already holds the pairs scout keeps it while the
+scout is down. A bot registered during a stop was handed nothing, and its pair
+list then stayed empty for the rest of the run. The list now holds its last
+answer, which is what every other stopped reader on this screen already does.
+
+`src/trading/scrumming_bot.py` — `set_market_pairs_scout` refuses an empty hand-off
+
+```python
+        if not scout:
+            return
+        self._market_pairs_scout = scout
 ```
 
 #### The news line
@@ -3517,6 +3597,18 @@ tightening = detect_landing_strip_v2(
 Raising the box's floor to three is not taken. A box holding a stored 2 answers 3
 the moment its range starts at three, and putting the range back leaves the 3
 behind, so the next Save would write three into a bot whose record says two.
+
+The description now reaches every screen that shows this row. The two wizards
+and the three Settings groups each attach it to their own box. Both row lists
+the shell draws from carry it in their wording tables, so a reader moving
+between a Qt screen and the shell meets one sentence. Read off the built
+screens, all eight answer that sentence and the stored figure stays 3 on each.
+
+`src/gui/main_tabs/live_settings_tab_surface.py` — the Settings row's wording
+
+```python
+"landing": "The bot confirms a Landing Strip when this many of the newest Heikin Ashi candles have small bodies and price sits near a Bollinger Band. This count reaches the band-proximity check only. The separate shrinking-body check keeps its own fixed count.",
+```
 
 TA Timeframe - This is the timeframe at which the bot operates and denotes the price chart it will monitor for trade decisions.
 
