@@ -1155,19 +1155,6 @@ if _HAS_QT:
             )
             af.addRow(self._bb_bullseye)
 
-            self._wire_inflow_stack_pct = QDoubleSpinBox()
-            self._wire_inflow_stack_pct.setRange(0.0, 100.0)
-            self._wire_inflow_stack_pct.setDecimals(2)
-            self._wire_inflow_stack_pct.setSuffix(" %")
-            self._wire_inflow_stack_pct.setValue(1.0)
-            self._wire_inflow_stack_pct.setToolTip(
-                "Wire inflow stacking percentage. Controls how "
-                "aggressively the bot stacks new buy-side positions "
-                "when fresh wire-inflow signals arrive. Default "
-                "1.0 %; rarely adjusted in practice."
-            )
-            af.addRow("Wire Inflow Stack:", self._wire_inflow_stack_pct)
-
             groups.addWidget(self._adv_group)
 
             self._hedge_group = QGroupBox("Hedge Rebalance")
@@ -1706,7 +1693,6 @@ if _HAS_QT:
                     "scrum_read_rate_min": self._scrum_read_rate.value(),
                     "band_travel_pct": self._band_travel_pct.value(),
                     "bb_bullseye_check": self._bb_bullseye.isChecked(),
-                    "wire_inflow_stack_pct": self._wire_inflow_stack_pct.value(),
                     "hedge_rebalance_active": self._hedge_rebalance.isChecked(),
                     "hedge_balance": self._hedge_amount.value(),
                     "circuit_breaker_soft_pct": self._cb_soft_pct.value(),

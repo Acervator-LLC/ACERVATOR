@@ -159,10 +159,6 @@ class BotConfig:
     max_cartridge_smart: bool = False
     max_cartridge_smart_ceiling_pct: float = 30.0
 
-    # Wire income buys the target asset when |position-target| and price-vs-entry
-    # are both within this %; 0 disables.
-    wire_inflow_stack_pct: float = 1.0
-
     # SCRUM-side (sell at top):
     scrum_require_ta_bullish: bool = True  # Requires is_bullish for auto-scrum
     scrum_hold_in_uptrend: bool = (
@@ -360,7 +356,6 @@ _BOT_CONFIG_SCRUMMING_ONLY_FIELDS: frozenset = frozenset(
         "max_cartridge_size_pct",
         "max_cartridge_smart",
         "max_cartridge_smart_ceiling_pct",
-        "wire_inflow_stack_pct",
         # strategy toggle fields
         "scrum_require_ta_bullish",
         "scrum_hold_in_uptrend",
@@ -408,6 +403,7 @@ _DEPRECATED_KWARGS: frozenset = frozenset(
         "distribute_target",
         "distribute_target_count",
         "personal_hold_qty",
+        "wire_inflow_stack_pct",
     }
 )
 
