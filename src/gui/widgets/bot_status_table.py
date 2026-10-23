@@ -718,6 +718,7 @@ if _HAS_QT:
                 cur_price,
                 qrate,
                 price_age_s=_price_age,
+                venue_units=status.get("audited_venue_units"),
             )
             _ammo = _compose_ammo_cell(
                 stats_pv,
