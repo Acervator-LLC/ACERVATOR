@@ -595,6 +595,21 @@ TOP_ROW_STRETCH = [
 ]
 ```
 
+OVERTAKEN, and the paragraph at the head of this section is kept as written.
+"the sum of the floors is the narrowest the window opens at" reads true today and
+did not before. `top_row_min_w` added up `slot_min_w`, and the row floors every
+slot at `slot_floor_w`. The money strip's two figures are 512 px and 668 px, so
+the sum came out 156 px under the row it described: it answered a 1228 px window
+while the real row, built by `header_strip.py, in
+HeaderStripMixin._build_header_strip`, reported its own narrowest as 1384 px and
+Qt refused to draw the window any narrower. `top_row_min_w` now adds up
+`slot_floor_w`, so `window_min_w` answers 1384 px and the two agree. The figure
+follows the column list on its own: a seventh card answers 1476 px and a seventh
+money column answers 1492 px.
+
+`src/gui/main_window.py` still pins the window's own floor to 1400 by 900 by
+hand. 1400 px holds the row as it stands and would not hold a seventh slot.
+
 **The margins the two newest columns are drawn from.** A column leaves 3 px either
 side of the rule between it and its neighbour, the rule itself is 12 px, the panel's
 own side margin is 6 px, and a counter card's side margin is 4 px.
@@ -686,6 +701,14 @@ no side margin of its own on top of it, so the amount keeps the digits
 `TOP_ROW_STRETCH` gives the strip one share per `KPI_COLUMNS` column, each card
 one share and the class square none. Adding or removing a card changes that card's
 own slot and no other panel's width.
+
+OVERTAKEN, and the paragraph above is kept as written. "Adding or removing a card
+changes that card's own slot and no other panel's width" holds for the floor each
+panel declares and not for the width the row draws it at. Read off the real row at
+a 1400 px window: the floors in `width_budget` moved for the added or removed card
+alone, and every other card's drawn width moved with it — 91 px with six cards,
+88 px with seven and 110 px with five. The row shares what is left above the
+floors, so a slot added or taken away changes every slot's share of that surplus.
 
 **A card whose figure the fleet never published draws the dash.**
 `header_strip_surface.py, in counter_amount` reads each `COUNTER_CARDS` entry's
