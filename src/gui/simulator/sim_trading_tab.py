@@ -1380,7 +1380,7 @@ class SimTradingTab(QWidget):
         # ── Equity exchange IDs (routes to Stock layer) ────────────
         self._equity_exchange_ids = acs.EQUITY_VENUES
 
-        # ── QStackedWidget: page 0 = Crypto, page 1 = Stock ────────
+        # ── QStackedWidget: one page per layered class, as Live's ──
         self._trading_stack = QStackedWidget()
         self._way_in_buttons: dict[str, QPushButton] = {}
         self._card_way_in_buttons: dict[str, QPushButton] = {}
@@ -1458,26 +1458,29 @@ class SimTradingTab(QWidget):
             page_layout.addWidget(tab_w)
             return page, tab_w, {}, placeholder
 
-        # Build both layers
-        (
-            crypto_page,
-            self._crypto_tab_widget,
-            _crypto_tabs,
-            self._crypto_placeholder,
-        ) = _make_layer("Crypto", ds.LAYER_CRYPTO)
-        (
-            stock_page,
-            self._stock_tab_widget,
-            _stock_tabs,
-            self._stock_placeholder,
-        ) = _make_layer("Stock", ds.LAYER_STOCK)
+        # One layer per declared class, in the order layer_page numbers.
+        self._class_layers: dict = {}
+        for layered in acs.layered_classes():
+            page, bar, store, card = _make_layer(
+                acs.display_name(layered), acs.accent(layered)
+            )
+            self._class_layers[layered] = {
+                "page": page,
+                "tabs": bar,
+                "exchange_tabs": store,
+                "placeholder": card,
+            }
+            self._trading_stack.addWidget(page)
 
-        self._crypto_exchange_tabs: dict = _crypto_tabs
-        self._stock_exchange_tabs: dict = _stock_tabs
+        self._crypto_tab_widget = self._class_layers["crypto"]["tabs"]
+        self._crypto_placeholder = self._class_layers["crypto"]["placeholder"]
+        self._stock_tab_widget = self._class_layers["stocks"]["tabs"]
+        self._stock_placeholder = self._class_layers["stocks"]["placeholder"]
 
-        self._trading_stack.addWidget(crypto_page)  # index 0
-        self._trading_stack.addWidget(stock_page)  # index 1
-        self._trading_stack.setCurrentIndex(0)  # start in crypto
+        self._crypto_exchange_tabs: dict = self._class_layers["crypto"]["exchange_tabs"]
+        self._stock_exchange_tabs: dict = self._class_layers["stocks"]["exchange_tabs"]
+
+        self._trading_stack.setCurrentIndex(acs.layer_page("crypto"))
 
         # Legacy alias: points to whichever layer is active
         self._tab_widget = self._crypto_tab_widget
@@ -1799,13 +1802,25 @@ class SimTradingTab(QWidget):
         return handed
 
     def set_asset_class(self, name) -> tuple:
-        """Hold ``name`` as the class this tab shows.
+        """Hold ``name`` as the class this tab shows and show that class's layer.
 
         Answers the rows ``refresh_bots`` kept for ``name`` and the rows
         ``FleetSource.statuses`` holds in all.
         """
         self._asset_class = class_filter_surface.normalise(name)
+        self._show_class_layer(self._asset_class)
         return (self.refresh_bots(), len(self._fleet_source.statuses()))
+
+    def _show_class_layer(self, key: str) -> int:
+        """Put ``_trading_stack`` on the page ``layer_page`` gives ``key``.
+
+        Answers the page index on show, or -1 while ``_trading_stack`` is unbuilt.
+        """
+        stack = getattr(self, "_trading_stack", None)
+        if stack is None:
+            return -1
+        stack.setCurrentIndex(acs.layer_page(key))
+        return stack.currentIndex()
 
     # -- the voting panel -----------------------------------------------
 
