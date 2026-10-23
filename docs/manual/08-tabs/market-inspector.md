@@ -4184,6 +4184,11 @@ def openable_url(
 The file, javascript, vbscript and data schemes open nothing. An empty address
 answers that no address is known.
 
+Every caller now reads that reason instead of dropping it. A mark whose address
+was refused says so on its own tooltip and writes the same line to the log, and
+the coin index records the refusal against the ticker it belongs to. A refused
+address can therefore be told from an asset that never had one.
+
 ### Where a mark is drawn
 
 Six places draw an asset icon and all six read the library. A row draws the kept

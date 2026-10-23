@@ -595,6 +595,21 @@ TOP_ROW_STRETCH = [
 ]
 ```
 
+OVERTAKEN, and the paragraph at the head of this section is kept as written.
+"the sum of the floors is the narrowest the window opens at" reads true today and
+did not before. `top_row_min_w` added up `slot_min_w`, and the row floors every
+slot at `slot_floor_w`. The money strip's two figures are 512 px and 668 px, so
+the sum came out 156 px under the row it described: it answered a 1228 px window
+while the real row, built by `header_strip.py, in
+HeaderStripMixin._build_header_strip`, reported its own narrowest as 1384 px and
+Qt refused to draw the window any narrower. `top_row_min_w` now adds up
+`slot_floor_w`, so `window_min_w` answers 1384 px and the two agree. The figure
+follows the column list on its own: a seventh card answers 1476 px and a seventh
+money column answers 1492 px.
+
+`src/gui/main_window.py` still pins the window's own floor to 1400 by 900 by
+hand. 1400 px holds the row as it stands and would not hold a seventh slot.
+
 **The margins the two newest columns are drawn from.** A column leaves 3 px either
 side of the rule between it and its neighbour, the rule itself is 12 px, the panel's
 own side margin is 6 px, and a counter card's side margin is 4 px.
@@ -686,6 +701,14 @@ no side margin of its own on top of it, so the amount keeps the digits
 `TOP_ROW_STRETCH` gives the strip one share per `KPI_COLUMNS` column, each card
 one share and the class square none. Adding or removing a card changes that card's
 own slot and no other panel's width.
+
+OVERTAKEN, and the paragraph above is kept as written. "Adding or removing a card
+changes that card's own slot and no other panel's width" holds for the floor each
+panel declares and not for the width the row draws it at. Read off the real row at
+a 1400 px window: the floors in `width_budget` moved for the added or removed card
+alone, and every other card's drawn width moved with it — 91 px with six cards,
+88 px with seven and 110 px with five. The row shares what is left above the
+floors, so a slot added or taken away changes every slot's share of that surplus.
 
 **A card whose figure the fleet never published draws the dash.**
 `header_strip_surface.py, in counter_amount` reads each `COUNTER_CARDS` entry's
@@ -1266,13 +1289,15 @@ for each settled coin and a site already kept is never read twice.
 `src/exchange/crypto_assets.py` — `AssetManager.organisation_url`
 
 ```python
-indexed = str(
-    (self.coin_index.get(name) or {}).get(COIN_INDEX_SITE_KEY) or ""
-).strip()
+indexed = str(row.get(COIN_INDEX_SITE_KEY) or "").strip()
 if indexed:
     return openable_url(indexed, allowed_schemes=COIN_SITE_SCHEMES)
 asset = self.get_asset(name)
-return openable_url(asset.website if asset else "")
+address, refused = openable_url(asset.website if asset else "")
+if address:
+    return address, refused
+turned_away = str(row.get(COIN_INDEX_SITE_REFUSED_KEY) or "").strip()
+return "", turned_away or refused
 ```
 
 `src/exchange/crypto_assets.py` — the address that carries a site
@@ -1281,10 +1306,11 @@ return openable_url(asset.website if asset else "")
 COIN_DETAIL_URL = "https://api.coingecko.com/api/v3/coins/{id}"
 ```
 
-Of the thirty-eight target assets the saved fleet holds, thirty-six answer a web
-address. Two do not: one because several coins carry its ticker at comparable
-market rank, and one because its coin record names no secure web address. Neither
-is guessed at.
+Of the thirty-nine target assets the saved fleet holds, seven answer a web
+address. All seven come from the asset record's own `website` field. The coin
+index holds no site for any fleet ticker, and records the same reason for every
+one of them: no coin is settled for that ticker, so no site is looked up. None
+of the other thirty-two is guessed at.
 
 A mark's tooltip carries one extra line naming the address or its absence, so the
 operator can see which marks are links and which are not without pressing one.
@@ -1293,7 +1319,11 @@ operator can see which marks are links and which are not without pressing one.
 a mark whose asset resolves      Open <the site> in default browser: <the address>
 a mark whose asset resolves none no web address is known for <ticker>, so this mark
                                  is not a link
+a mark whose address is refused  <ticker> opens nothing: <the rule that refused it>
 ```
+
+The third line is new. An asset that never had an address and an asset whose
+address was refused used to read the same, and now the mark says which it is.
 
 **What the address check refuses.** An address is checked before any browser is
 asked to open it. Only a secure web address with a host opens. An insecure
@@ -1303,10 +1333,22 @@ opened, whatever the data carries. The window reads the address off the clicked
 cell and opens it; the page sends the row and the column out and Python opens it,
 so the page never opens anything itself. Both go through the one check.
 
+A refusal is no longer silent. The mark's tooltip names the rule that refused the
+address, and the same line goes to the log, so a refused address can be told from
+an asset that never had one.
+
 `src/gui/main_tabs/bot_status_table_surface.py` — `opening_address`
 
 ```python
 OPENING_SCHEMES: tuple[str, ...] = ("https",)
+```
+
+`src/gui/main_tabs/bot_status_table_surface.py` — `opening_refusal`
+
+```python
+if not host:
+    return EMPTY_TEXT, OPENING_NO_HOST_REASON
+return address, EMPTY_TEXT
 ```
 
 **HIS.**
@@ -1473,6 +1515,16 @@ affected by it. With no exchange reading held it opens `NO EXCHANGE COUNT HELD`
 and says the direction can read the wrong way, because an attributed count below
 the exchange turns a surplus into an apparent deficit and paints buy pressure on
 a position that is already above target.
+
+**The cell itself draws the amount and nothing else.** The two counts are a fact
+about where the figure came from, and the tooltip is the only place that fact is
+written. The column is sized for a dollar amount, so a note added beside the
+amount would run past the column edge and cut itself short. The stale marker is
+the one exception the cell still draws, and it marks the figure as not current
+rather than naming its source.
+
+`src/gui/main_tabs/table_cells_surface.py, in TableCellsModel._signal_cell` —
+the drawn figure and the tooltip, written apart
 
 `src/gui/main_tabs/table_cells_surface.py`, in `ammo_units` — the one rule all
 three Ammo readers share
@@ -1712,6 +1764,16 @@ whichever way the sort runs, and the bot's own identifier breaks a tie.
 drawn.sort(key=lambda row: (row[0], row[1]), reverse=descending)
 return [row[2] for row in drawn] + blank
 ```
+
+**One sentence above is true and incomplete, and this completes it.** Fire still
+sorts by what the engine would do next, and that is not the same question as what
+a press would do. The sort reads the bot's own armed action; the button reads how
+far the position sits from target. So a row can sort high as armed and still
+carry the refused word on its button. The word on the button is the answer about
+the press, and the sort position is not.
+
+`src/gui/main_tabs/bot_status_table_surface.py, in fire_sort_value` — the figure
+the column orders on
 
 **Functional.** The order is recomputed every time the rows are rewritten, not
 once at the press. A fleet arriving a second later is ordered again before it is
@@ -2281,6 +2343,54 @@ The position value in that subtraction is the exchange's own unit count at the
 exchange's own price, and the bot's attributed count only where no exchange
 reading is held. The Ammo column section above names the rule and where the
 reading is stored.
+
+**Two bands measure that drift, and they answer two different questions.** The
+narrower one is a tenth of one per cent of the target. The bot's own tick parks
+inside it and trades nothing. The wider one is ten times that, one per cent of
+the target, and a Manual Fire press refuses inside it. Each figure is named for
+who stops and for what they stop doing, so a later reader cannot take one for
+the other.
+
+`src/trading/target_bands.py` — the two figures, each a fraction of the target
+
+```python
+TICK_PARK_PCT = 0.001
+MANUAL_FIRE_REFUSE_PCT = 0.01
+```
+
+`src/trading/target_bands.py, in at_target_dust_band` turns the first into
+dollars and `src/trading/target_bands.py, in manual_fire_dust_band` turns the
+second. Both hold a floor of one cent, so a tiny target still gets a band.
+
+**What the gap between the two bands means.** On a one-thousand-dollar target
+the tick's band is one dollar and Manual Fire's is ten. A position between those
+two is one the bot's own tick will trade and the button will not. The band stays
+where it is, and the button says so.
+
+**The button's own word changes inside that gap.** It reads `No Trade` in place
+of `Fire`. It carries no glow, it draws a dotted outline in neutral grey, and
+its tooltip names three things: how far the position sits from target, Manual
+Fire's own band, and where the tick's band starts. The press stays available and
+still writes its no-op line to the bot log, so nothing a press can do today is
+taken away.
+
+`src/gui/main_tabs/bot_status_table_surface.py, in FIRE_LABELS` — the word each
+Fire path draws, one entry a path
+
+`src/gui/main_tabs/bot_status_table_surface.py, in manual_fire_verdict` — the
+three answers that pick the path, read off the row's own Ammo cell so the cell
+and the button cannot disagree about one press
+
+```python
+MANUAL_FIRE_ACTS = "acts"
+MANUAL_FIRE_REFUSES = "refuses"
+MANUAL_FIRE_PARKED = "parked"
+```
+
+The Qt build picks the same word from the same table —
+`src/gui/widgets/bot_status_table.py, in BotStatusTable._write_row`. The Paper
+Trader's table and the Simulator's table are subclasses of those two and hold no
+word of their own, so all six surfaces read alike.
 
 Scrum - To sell an amount from an investment position that allows it to return to its initial price level. This never closes the position. This is the first half of the infinitely divisible circle that can persist for such positions in a healthy market.
 

@@ -1609,11 +1609,18 @@ def recorded_venue_rows(venue: Any) -> dict:
 
 def rules_from_row(row: Any) -> Any:
     """The ``MarketRules`` one recorded row describes, ``read`` False for a row
-    the recording does not hold."""
+    the recording does not hold.
+
+    The numeric, the text and the mark rule groups are each read with the
+    store's own reader, so a mark the recording holds reaches
+    ``clearing_refusal`` on this page exactly as it reaches the order path.
+    """
     from ...exchange.base import MarketRules
     from ...exchange.market_rules_store import (
+        FLAG_RULE_FIELDS,
         RULE_FIELDS,
         TEXT_RULE_FIELDS,
+        rule_flag,
         rule_text,
         rule_value,
     )
@@ -1626,6 +1633,7 @@ def rules_from_row(row: Any) -> Any:
         read=True,
         **{name: rule_value(row.get(name)) for name in RULE_FIELDS},
         **{name: rule_text(row.get(name)) for name in TEXT_RULE_FIELDS},
+        **{name: rule_flag(row.get(name)) for name in FLAG_RULE_FIELDS},
     )
 
 
