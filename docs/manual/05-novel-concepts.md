@@ -228,6 +228,31 @@ phantoms_enabled false              38
 
 No bot in that fleet runs a phantom. Every record holds the enable flag off.
 
+**Three phantom keys reach the record, and no fourth.** A saved bot carries
+`phantoms_enabled`, `lock_candle_count`, and `phantom_timeframes` when the bot
+holds a name its venue serves. `src/trading/bot_container.py`, in
+`BotContainer.get_full_state`, writes all three. The Paper and Simulator records
+carry the same three names, from `wizard_record` in
+`src/paper/fleet_source.py` and in `src/simulator/fleet_source.py`. A bot built
+on any of those routes carries no key spelled `phantom_config`.
+
+**Three load paths step past the retired key.**
+`src/trading/container/restore.py`, in
+`StateRestoreMixin.restore_bots_from_state`, builds the live bot.
+`src/paper/paper_bot_view.py` and `src/simulator/sim_bot_view.py` build the
+Paper and the Simulator views, each in `config_of`. All three read the stored
+declaration through `bot_config_kwargs` in `src/trading/container/config.py`,
+which keeps only the names the declaration holds. A record carrying
+`phantom_config` builds a bot on each of the three, with its Target Balance
+intact.
+
+**The retirement record holds no entry for it.** `_DEPRECATED_KWARGS` in
+`src/trading/container/config.py` strips a retired name that a caller passes to
+the bot declaration. `phantom_config` was a top-level record key and never a
+field of the declaration. No load path hands it over, so the strip list needs no
+entry for it. Handed to `make_bot_config` directly the name raises, and a name
+the strip list does hold builds.
+
 **The cursor tick keeps a timestamp.** `PhantomBot.tick_for_cursor` stores the
 cursor itself, not a bucket number. It divides the stored cursor by the candle
 length on every call, so both bucket numbers come from one divisor.
