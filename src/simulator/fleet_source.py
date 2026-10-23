@@ -58,6 +58,7 @@ from ..trading.container.config import (
     make_bot_config,
 )
 from ..trading.scrumming.sizing import DRAWDOWN_STATE, priced_usd
+from ..trading.scrumming.target_ramp import RAMP_MODES
 from ..trading.smart_wire import mature_profit_usd
 from ..trading.target_bands import fleet_ammo
 from .sim_wire import SimWireManager
@@ -316,7 +317,8 @@ def _sim_bot_from_record(
     state, and ``phantoms_enabled`` and ``phantom_timeframes`` the phantom
     set, read as the restore path reads them. A ``target_balance`` of None,
     which ``ytd_record`` writes for a pair whose fills give no basis, reads as
-    ``target_usd`` None.
+    ``target_usd`` None. A stored ``scrum_target_mode`` outside ``RAMP_MODES``
+    reads as None and is named in one warning line.
     """
     config = record.get("config")
     if not isinstance(config, dict):
@@ -366,6 +368,17 @@ def _sim_bot_from_record(
     cash = as_finite_float(stats.get("cash_balance_usd"))
     ytd_scrummed = as_finite_float(stats.get("ytd_scrummed_usd"))
     ytd_folded = as_finite_float(stats.get("ytd_folded_usd"))
+    scrum_mode = None
+    if saved.get("scrum_target_mode") is not None:
+        scrum_mode = str(saved["scrum_target_mode"])
+        if scrum_mode not in RAMP_MODES:
+            logger.warning(
+                "sim record %s stored an unusable scrum_target_mode (%r); "
+                "it reads as no phase",
+                bot_id,
+                scrum_mode,
+            )
+            scrum_mode = None
     return SimBot(
         bot_id=str(bot_id),
         symbol=symbol,
@@ -422,11 +435,7 @@ def _sim_bot_from_record(
         exchange_data_fresh_ts=(
             REFUSED_FIGURE if venue_fresh_ts is None else venue_fresh_ts
         ),
-        scrum_target_mode=(
-            str(saved["scrum_target_mode"])
-            if saved.get("scrum_target_mode") is not None
-            else None
-        ),
+        scrum_target_mode=scrum_mode,
         position_ceiling_enabled=bool(config.get("position_ceiling_enabled", False)),
         position_ceiling_multiple=(
             5.0 if ceiling_multiple is None else ceiling_multiple
