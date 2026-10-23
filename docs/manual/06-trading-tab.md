@@ -1516,6 +1516,16 @@ and says the direction can read the wrong way, because an attributed count below
 the exchange turns a surplus into an apparent deficit and paints buy pressure on
 a position that is already above target.
 
+**The cell itself draws the amount and nothing else.** The two counts are a fact
+about where the figure came from, and the tooltip is the only place that fact is
+written. The column is sized for a dollar amount, so a note added beside the
+amount would run past the column edge and cut itself short. The stale marker is
+the one exception the cell still draws, and it marks the figure as not current
+rather than naming its source.
+
+`src/gui/main_tabs/table_cells_surface.py, in TableCellsModel._signal_cell` —
+the drawn figure and the tooltip, written apart
+
 `src/gui/main_tabs/table_cells_surface.py`, in `ammo_units` — the one rule all
 three Ammo readers share
 
@@ -1754,6 +1764,16 @@ whichever way the sort runs, and the bot's own identifier breaks a tie.
 drawn.sort(key=lambda row: (row[0], row[1]), reverse=descending)
 return [row[2] for row in drawn] + blank
 ```
+
+**One sentence above is true and incomplete, and this completes it.** Fire still
+sorts by what the engine would do next, and that is not the same question as what
+a press would do. The sort reads the bot's own armed action; the button reads how
+far the position sits from target. So a row can sort high as armed and still
+carry the refused word on its button. The word on the button is the answer about
+the press, and the sort position is not.
+
+`src/gui/main_tabs/bot_status_table_surface.py, in fire_sort_value` — the figure
+the column orders on
 
 **Functional.** The order is recomputed every time the rows are rewritten, not
 once at the press. A fleet arriving a second later is ordered again before it is
@@ -2324,6 +2344,54 @@ exchange's own price, and the bot's attributed count only where no exchange
 reading is held. The Ammo column section above names the rule and where the
 reading is stored.
 
+**Two bands measure that drift, and they answer two different questions.** The
+narrower one is a tenth of one per cent of the target. The bot's own tick parks
+inside it and trades nothing. The wider one is ten times that, one per cent of
+the target, and a Manual Fire press refuses inside it. Each figure is named for
+who stops and for what they stop doing, so a later reader cannot take one for
+the other.
+
+`src/trading/target_bands.py` — the two figures, each a fraction of the target
+
+```python
+TICK_PARK_PCT = 0.001
+MANUAL_FIRE_REFUSE_PCT = 0.01
+```
+
+`src/trading/target_bands.py, in at_target_dust_band` turns the first into
+dollars and `src/trading/target_bands.py, in manual_fire_dust_band` turns the
+second. Both hold a floor of one cent, so a tiny target still gets a band.
+
+**What the gap between the two bands means.** On a one-thousand-dollar target
+the tick's band is one dollar and Manual Fire's is ten. A position between those
+two is one the bot's own tick will trade and the button will not. The band stays
+where it is, and the button says so.
+
+**The button's own word changes inside that gap.** It reads `No Trade` in place
+of `Fire`. It carries no glow, it draws a dotted outline in neutral grey, and
+its tooltip names three things: how far the position sits from target, Manual
+Fire's own band, and where the tick's band starts. The press stays available and
+still writes its no-op line to the bot log, so nothing a press can do today is
+taken away.
+
+`src/gui/main_tabs/bot_status_table_surface.py, in FIRE_LABELS` — the word each
+Fire path draws, one entry a path
+
+`src/gui/main_tabs/bot_status_table_surface.py, in manual_fire_verdict` — the
+three answers that pick the path, read off the row's own Ammo cell so the cell
+and the button cannot disagree about one press
+
+```python
+MANUAL_FIRE_ACTS = "acts"
+MANUAL_FIRE_REFUSES = "refuses"
+MANUAL_FIRE_PARKED = "parked"
+```
+
+The Qt build picks the same word from the same table —
+`src/gui/widgets/bot_status_table.py, in BotStatusTable._write_row`. The Paper
+Trader's table and the Simulator's table are subclasses of those two and hold no
+word of their own, so all six surfaces read alike.
+
 **Manual Fire reads the exchange before it sizes the trade.** The press asks the
 exchange for the traded asset's balance first. It costs one call, so the press is
 slightly slower. Where the exchange's count agrees with the bot's own count
@@ -2367,22 +2435,34 @@ the same way.
 
 **The row says the position is disputed before the press.** The Fire button
 reads the two counts the row already carries. Where the exchange's count and
-the bot's count stand further apart than Manual Fire's band, the button carries
-the same `MANUAL FIRE WILL NOT ACT` sentence it already uses for a press inside
-the band, and it names both counts, both dollar figures and the gap. Where the
-gap sits inside the band, and where the row holds no exchange reading at all,
-the button reads exactly as it did before. An absent reading is not a dispute.
+the bot's count stand further apart than Manual Fire's band, the button takes
+the same refused path a press inside the band takes. It reads `No Trade`, it
+carries no glow, and its tooltip names both counts, both dollar figures and the
+gap. Where the gap sits inside the band, and where the row holds no exchange
+reading at all, the button reads exactly as it did before. An absent reading is
+not a dispute.
 
-Driven on four rows, read off the live button on both build variants, at a
-target of $1,000.00, a price of $1.00 and a bot holding 1050.0 units:
+Driven on six rows, read off the live button on both build variants, at a
+target of $1,000.00 and a price of $1.00. Manual Fire's band is $10.00 and the
+tick's is $1.00:
 
 ```
-the exchange reports    the button says
-1050.0 units            ARMED for SCRUM
-1020.0 units            MANUAL FIRE WILL NOT ACT, the counts $30.00 apart
-1049.0 units            ARMED for SCRUM
-no reading at all       ARMED for SCRUM
+the bot counts   the exchange reports   the button reads   its tooltip names
+1050.0 units     1050.0 units           Fire               the armed scrum
+1050.0 units     1020.0 units           No Trade           the $30.00 gap
+1050.0 units     1049.0 units           Fire               the armed scrum
+1050.0 units     no reading at all      Fire               the armed scrum
+1005.0 units     1005.0 units           No Trade           the $10.00 band
+1050.0 units     1005.0 units           No Trade           the $45.00 gap
 ```
+
+**Two refusals reach that one path, and the tooltip names the gap first.** A
+press is refused where the gap between the two counts is past the band, and
+refused where the distance from target sits inside the band. A row can be in
+both states at once, and the last row above is one. The tooltip names the gap
+there, because `_execute_manual_rebalance` reads the exchange before it
+measures the distance, so the gap is the refusal a press would actually meet.
+The band entry above keeps its own wording for a row whose two counts agree.
 
 `src/gui/main_tabs/bot_status_table_surface.py`, in `manual_fire_dispute` — the
 one answer both build variants read
@@ -2395,8 +2475,8 @@ if not reading.get("two_reads", False):
 
 The page's row and the window's row both call that function, and both read
 `manual_fire_verdict` beside it, so neither build variant can draw a button the
-other would not. The mark the Ammo cell draws for the same two counts is the
-`(two reads)` mark the Ammo column section above describes.
+other would not. The Ammo cell's own tooltip carries the same two counts, which
+the Ammo column section above describes.
 
 Scrum - To sell an amount from an investment position that allows it to return to its initial price level. This never closes the position. This is the first half of the infinitely divisible circle that can persist for such positions in a healthy market.
 

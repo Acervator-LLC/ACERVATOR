@@ -19,11 +19,15 @@ property at ``NIGREDO`` paints the darker grounds under the same theme.
 
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass, replace
 from typing import Optional
 
+from ..core.contrast import AA_FLOOR, validate_contrast
 from .color_alpha import rgba
+
+logger = logging.getLogger("acervator.gui")
 
 
 # Theme token set
@@ -391,14 +395,36 @@ def stored_accent(value: object) -> str:
     return asked if _ACCENT_HEX.match(asked) else THEME_ACCENT
 
 
+#: What the log carries when a typed accent sits too close to a theme's ground.
+ACCENT_REFUSED = (
+    "Accent colour {accent} measures {ratio} to 1 against the {theme} "
+    "ground {ground}, under the {floor} floor; painting the {theme} accent."
+)
+
+
 def accented(theme: ThemeTokens, accent: object) -> ThemeTokens:
     """Return ``theme`` with ``accent_primary`` at ``accent``, or ``theme`` itself.
 
-    An accent ``stored_accent`` refuses leaves every token of ``theme`` alone,
-    which keeps that theme's audited contrast.
+    An accent ``stored_accent`` refuses, and one ``validate_contrast`` measures
+    under ``AA_FLOOR`` against ``theme.bg_primary``, leaves every token of
+    ``theme`` alone, which keeps that theme's audited contrast.
     """
     taken = stored_accent(accent)
-    return replace(theme, accent_primary=taken) if taken else theme
+    if not taken:
+        return theme
+    clears, ratio = validate_contrast(taken, theme.bg_primary)
+    if not clears:
+        logger.warning(
+            ACCENT_REFUSED.format(
+                accent=taken,
+                ratio=ratio,
+                theme=theme.name,
+                ground=theme.bg_primary,
+                floor=AA_FLOOR,
+            )
+        )
+        return theme
+    return replace(theme, accent_primary=taken)
 
 
 #: The Qt dynamic property a widget tree sets to take a tone, and the Simulator's tone.

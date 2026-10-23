@@ -285,6 +285,9 @@ CHART_OPEN_FAILED_LOG = "Chart URL open failed for %r: %s"
 BROWSER_NEW_WINDOW = 2
 
 FIRE_LABEL = "Fire"
+#: The word the button carries where ``manual_fire_verdict`` refuses the press,
+#: so the refusal reads on the control itself and not only in its tooltip.
+FIRE_LABEL_MANUAL_NOOP = "No Trade"
 FIRE_MASK_FIELD = "bot_table.fire"
 DETAIL_LABEL = "Detail"
 #: Fire and Detail fill their cell, so a row press paints no band around them.
@@ -376,6 +379,22 @@ FIRE_STYLES = {
     FIRE_PATH_MANUAL_NOOP: FIRE_STYLE_MANUAL_NOOP,
     FIRE_PATH_NOT_SCRUMMING: FIRE_STYLE_DISABLED,
     FIRE_PATH_INACTIVE: FIRE_STYLE_DISABLED,
+}
+
+#: The word each path draws on the button. Every path promising an order keeps
+#: ``FIRE_LABEL``; the refused path reads ``FIRE_LABEL_MANUAL_NOOP``.
+FIRE_LABELS = {
+    FIRE_PATH_SCRUM_SOLID: FIRE_LABEL,
+    FIRE_PATH_SCRUM_OUTLINE: FIRE_LABEL,
+    FIRE_PATH_FOLD_CEILING: FIRE_LABEL,
+    FIRE_PATH_FOLD_SOLID: FIRE_LABEL,
+    FIRE_PATH_FOLD_OUTLINE: FIRE_LABEL,
+    FIRE_PATH_PHASE_FIRE: FIRE_LABEL,
+    FIRE_PATH_PHASE_TRACK: FIRE_LABEL,
+    FIRE_PATH_PHASE_SEARCH: FIRE_LABEL,
+    FIRE_PATH_MANUAL_NOOP: FIRE_LABEL_MANUAL_NOOP,
+    FIRE_PATH_NOT_SCRUMMING: FIRE_LABEL,
+    FIRE_PATH_INACTIVE: FIRE_LABEL,
 }
 
 NO_GLOW = ""
@@ -1614,10 +1633,12 @@ class BotStatusTableModel:
         return found
 
     def _fire_button(self, status, state, mode, ammo, target_val, dispute) -> dict:
-        """The Manual Fire button: its look, its tooltip and its glow.
+        """The Manual Fire button: its word, its look, its tooltip and its glow.
 
         ``ammo`` is this row's own Ammo cell, already built, so the button
-        reads the same distance the cell beside it drew.
+        reads the same distance the cell beside it drew. The word comes from
+        ``FIRE_LABELS`` on the path the chain chose, so a refused press cannot
+        draw a word that promises an order.
         """
         is_scrumming = mode == MODE_SCRUMMING
         is_active = state in ACTIVE_STATES
@@ -1641,7 +1662,7 @@ class BotStatusTableModel:
             self.calls.append([FIRE_GLOW, glow])
         self.calls.append([FIRE_BUILT, path, enabled])
         return {
-            "text": mask_or(FIRE_LABEL, FIRE_MASK_FIELD),
+            "text": mask_or(FIRE_LABELS[path], FIRE_MASK_FIELD),
             "enabled": enabled,
             "height": BUTTON_HEIGHT_PX,
             "focus_policy": FOCUS_POLICY,

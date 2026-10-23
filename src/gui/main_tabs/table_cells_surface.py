@@ -38,7 +38,7 @@ from typing import Any, Optional
 
 from .. import design_system as ds
 from ...trading.target_bands import (
-    MANUAL_FIRE_PCT,
+    MANUAL_FIRE_REFUSE_PCT,
     TERRITORY_AT_TARGET,
     TERRITORY_FOLD,
     TERRITORY_SCRUM,
@@ -67,7 +67,7 @@ AMMO_FOLD_COLOR = ds.ERROR
 AMMO_NEUTRAL_COLOR = ds.TEXT_MED
 
 PRICE_STALE_AFTER_S = 20.0
-MANUAL_FIRE_DUST_PCT = MANUAL_FIRE_PCT
+MANUAL_FIRE_DUST_PCT = MANUAL_FIRE_REFUSE_PCT
 
 MAGNITUDE_FORMAT = "${magnitude:,.4f}"
 NO_TARGET_TEXT = "---"
@@ -720,8 +720,9 @@ class TableCellsModel:
         """A live position: its distance from target and the engine's band.
 
         ``note`` and ``TWO_READS_TIP`` are appended after the stale and aged
-        writers, so no branch drops either, and ``from_two_reads`` also puts
-        ``TWO_READS_MARKER`` beside the figure.
+        writers, so no branch drops either. ``from_two_reads`` reaches the
+        tooltip alone and leaves ``ammo_text`` as the whole drawn figure, which
+        is the width this column is sized for.
         """
         delta = target_delta(position_val, target_val)
         territory = target_territory(position_val, target_val)
@@ -747,7 +748,6 @@ class TableCellsModel:
             self.calls.append([AMMO_AGED, price_age_s])
         tip = f"{tip}{note}"
         if from_two_reads:
-            text = MARKED_FIGURE_FORMAT.format(text=text, marker=TWO_READS_MARKER)
             tip = f"{tip}{TWO_READS_TIP}"
             self.calls.append([AMMO_TWO_READS, TWO_READS_MARKER])
         if manual_fire_noop:

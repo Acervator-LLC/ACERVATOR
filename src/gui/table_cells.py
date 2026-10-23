@@ -20,7 +20,6 @@ from .main_tabs.table_cells_surface import (
     PRICE_STALE_AFTER_S,
     PRICED_POSITION_TIP_FORMAT,
     STALE_TIP_FORMAT,
-    TWO_READS_MARKER,
     TWO_READS_TIP,
     ammo_units_note,
     balance_units_note,
@@ -31,7 +30,7 @@ from .main_tabs.table_cells_surface import (
 
 # The Ammo cell reads the engine's thresholds rather than restating them.
 from ..trading.target_bands import (
-    MANUAL_FIRE_PCT,
+    MANUAL_FIRE_REFUSE_PCT,
     ammo_units,
     manual_fire_dust_band,
     manual_fire_will_noop,
@@ -51,7 +50,7 @@ _AMMO_NEUTRAL = ds.TEXT_MED
 _PRICE_STALE_AFTER_S = PRICE_STALE_AFTER_S
 
 # Manual Fire's no-op band is ten times the dashboard's actionable band.
-_MANUAL_FIRE_DUST_PCT = MANUAL_FIRE_PCT
+_MANUAL_FIRE_DUST_PCT = MANUAL_FIRE_REFUSE_PCT
 
 
 def _ammo_price_pool():
@@ -280,7 +279,7 @@ def _compose_ammo_cell(
         holdings, units, from_venue, cur_price, qrate, price_age_s
     )
     if from_two_reads:
-        text = f"{text} {TWO_READS_MARKER}"
+        # The drawn figure carries the amount alone; the tooltip says the rest.
         tip = f"{tip}{TWO_READS_TIP}"
     # Appended after all three tip writers, so no branch can drop it.
     if manual_fire_noop:
