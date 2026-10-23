@@ -1018,6 +1018,61 @@ def _scout_has_stopped(scout: MarketPairsScout) -> bool:
     return bool(polled) and all(scout.is_stale(eid) for eid in polled)
 ```
 
+#### A stopped feed and the crash box are two faults
+
+**Functional.** Two things have been seen on this screen. A feed stops and the
+figures stop moving. A Windows box also appears, saying the program tried to use
+something that was not there. These are two faults and not one. Driven on the
+current build: making a feed stop never raised the box, and raising the box
+never stopped a feed.
+
+**Functional.** A reader that fails is caught where it is built. The Console
+carries one line naming the feed, what is lost, and the error behind it. Nothing
+reaches the top of the program, so no box appears. Driven with the rate feed and
+the pairs scout both failing: both Console lines were written, every screen that
+reads them drew a blank cell rather than an error, and the box's own channel was
+never used once.
+
+`src/exchange/lazy_singleton.py` — `LazySingleton.get` catches a failing reader
+
+```python
+            except Exception as exc:  # noqa: BLE001 - a pump must not raise
+                self._fault.note_failure(exc)
+                return cached
+```
+
+**Functional.** The box is the other fault. It appears when an error reaches the
+top of the program with nothing holding it. Driven with that error raised inside
+a live screen timer: it was reported at the top, the program kept running, and
+the feed behind it was untouched. The same reader answered before and after, no
+replacement was built, and no Console line was written.
+
+`src/gui/main_tabs/console_log_handler.py` — `_append_to_widget` holds its own
+paint failure
+
+```python
+        except Exception:
+            self.handleError(_paint_failure(msg))
+```
+
+**Functional.** One underlying fault can still set both off. A Console line
+behind a stopped feed has carried the same error wording the box later showed.
+Where that wording comes from is not settled. Neither symptom produces the
+other, so each needs its own repair.
+
+**Functional.** A bot that already holds the pairs scout keeps it while the
+scout is down. A bot registered during a stop was handed nothing, and its pair
+list then stayed empty for the rest of the run. The list now holds its last
+answer, which is what every other stopped reader on this screen already does.
+
+`src/trading/scrumming_bot.py` — `set_market_pairs_scout` refuses an empty hand-off
+
+```python
+        if not scout:
+            return
+        self._market_pairs_scout = scout
+```
+
 #### The news line
 
 **Functional.** The headline between Privacy Mode and + New Bot is one item
