@@ -1189,7 +1189,12 @@ if _HAS_QT:
             layout = QVBoxLayout(self)
             self._enable = QCheckBox("Enable Phantom Bots")
             self._enable.setChecked(
-                bool((defaults or {}).get("default_enable_phantoms", False))
+                bool(
+                    (defaults or {}).get(
+                        "default_enable_phantoms",
+                        AppSettings().default_enable_phantoms,
+                    )
+                )
             )
             layout.addWidget(self._enable)
             layout.addWidget(QLabel(LABEL_TEXTS["phantom_timeframes_heading"]))
