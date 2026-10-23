@@ -182,6 +182,41 @@ context = tape_context(bot, balance, window, reading, summary)
 armed = latch(context)
 ```
 
+### The gate row names the override that replaced a refusal
+
+A tick's gate row now says which refusals an override lifted, one entry per
+refusal, per side. A row that passed outright and a row an override passed used
+to read the same: both showed armed with an empty refusal list. They read apart
+now, and the refusal's own text is kept beside the override's name.
+
+`src/paper/paper_log.py` — the entry written on the Paper Trader's gate row
+
+```python
+def scrum_fixture(context: Any, overrides_applied: Sequence[str] = ()) -> dict:
+    """The scrum half of a gate row, with each refusal an override replaced
+    under ``OVERRIDES_APPLIED_KEY``."""
+```
+
+The Paper Trader reads the same record the Simulator reads, and the key is
+spelled once for all three data sources. Live's gate log, the Paper Trader's gate
+row and the Simulator's gate event therefore record an override the same way.
+Which gate each override covers, and the sentence that says what the overrides
+are for, are on the indicators page under
+[The two overrides](../07-indicators.md).
+
+Two overrides exist and they cover six of the twenty-four gates the two shipped
+chains hold. Both chains were built and each gate asked which override covers
+it. The control is the same ask answering both ways in one run: it named an
+override for these six and nothing for the other eighteen.
+
+| Override | Side | Gates it covers |
+| -------- | ---- | --------------- |
+| `ripe_harvest_override` | scrum | midline_scrum, ta_bullish, target_fires, trend_hold |
+| `deep_fold_override` | fold | midline_fold, ta_bearish |
+
+Nothing about which trades fire changed. The armed verdict and the refusal list
+are untouched, and the row simply carries one more field.
+
 ## The fake balance
 
 Each bot opens a budget of twice its dollar target: units worth the target, and
@@ -3121,6 +3156,52 @@ running 0 through 5 as the sector moves. Both tabs are seated in both builds:
 the React build answers `SimTradingTabReact` and `PaperTradingTabReact`, and the
 Qt build answers `SimTradingTab` and `PaperTradingTab`. The bar holds nine tabs.
 
+The Paper tab holds no sector list of its own, in either build. The browser
+build reads the one declared list at the moment the page is asked for, and
+writes two fields of its payload from that call: the page list, and the position
+of the page on show inside it.
+
+`src/gui/paper/paper_trading_tab_surface.py` — both fields from one call
+
+```python
+    key = live.layer_named(layer)
+    order = live.layer_order()
+```
+
+The Qt build adds one stack page per name on the same list while the tab is
+built, and numbers the page on show from the same place, so the two builds
+cannot hold different sets of pages.
+
+`src/gui/paper/paper_trading_tab.py` — one page per declared sector
+
+```python
+        for layered in acs.layered_classes():
+            page, bar, store, card = _make_layer(
+                acs.display_name(layered), acs.accent(layered)
+            )
+```
+
+The declared list is six sectors long, so the Paper tab answers six pages. Its
+own state object was asked for every sector in turn and the page list was read
+off the payload the tab serves. The page on show moves across all six asks,
+which is the control: the figure follows the sector asked and is not a fixed
+answer. A sector name no layer carries draws page 0, which is the crypto layer.
+
+| Sector asked | Pages | Page on show |
+| ------------ | ----- | ------------ |
+| Crypto | 6 | 0 |
+| Stock | 6 | 1 |
+| Commodities | 6 | 2 |
+| Forex | 6 | 3 |
+| Indices | 6 | 4 |
+| Futures / Perps | 6 | 5 |
+| a name no layer carries | 6 | 0 |
+
+The Simulator tab reads the same call and answered the same seven rows, figure
+for figure. The declaration itself and the Simulator's own reading are on the
+Simulator page under
+[Both tabs build their sector pages from one declared list](simulator.md).
+
 ### What a failed tab build still does
 
 A tab whose build raises writes one warning line and leaves its window
@@ -3177,5 +3258,43 @@ The Import Live Fleet reading table holds the row
 `rgb(136, 136, 136)` under React. It is a recorded reading, not a sentence, so it
 stays exactly where it stands. The cell that carries that grey today is the Symbol
 cell.
+
+### Where the paper wizard's phantom defaults come from
+
+The paper wizard's phantom page opens its tick box and its lock duration from
+the same two declarations the Live wizard reads. Neither figure is typed into
+the paper host.
+
+`src/gui/paper/paper_bot_wizard.py` — the paper page falls back to the store's
+own declared figure
+
+```python
+            self._stored_lock_candles = int(
+                (defaults or {}).get("default_lock_candle_count")
+                or AppSettings().default_lock_candle_count
+            )
+```
+
+A figure set in Settings still wins, and a paper bot's own saved record wins
+over that, so an existing paper bot keeps the figure it was created with. The
+declarations themselves, the full reader list and what the counts were before
+are on the Trading tab page under
+[Where the wizard's phantom defaults come from](../06-trading-tab.md).
+
+All three wizard phantom pages were built and both boxes read off the built
+widgets. With nothing stored, each falls back to the declaration and opens on
+and 2. With off and 9 stored, each opens off and 9, so the boxes follow what is
+handed to them rather than holding a fixed answer.
+
+| Host | What was stored | Tick box | Lock box |
+| ---- | --------------- | -------- | -------- |
+| Live | nothing | on | 2 |
+| Paper | nothing | on | 2 |
+| Simulator | nothing | on | 2 |
+| Live | off and 9 | off | 9 |
+| Paper | off and 9 | off | 9 |
+| Simulator | off and 9 | off | 9 |
+
+The three hosts therefore no longer need comparing.
 
 Back to [the subsystem index](README.md).
