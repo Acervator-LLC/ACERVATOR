@@ -199,6 +199,7 @@ if _HAS_QT:
             """Return the symbol for bot_id, read from _viz._bot_widgets.
 
             Falls back to StateManager, then to a single question mark.
+            A sealed fleet answers ``SEALED_SYMBOL``, never the question mark.
             """
             try:
                 w = self._viz._bot_widgets.get(bot_id)
@@ -221,6 +222,7 @@ if _HAS_QT:
                     StateManager,
                     fleet_sealed,
                 )
+                from ..main_tabs.quick_routing_surface import SEALED_SYMBOL
 
                 st = StateManager().load_state()
                 if fleet_sealed(st):
@@ -229,7 +231,7 @@ if _HAS_QT:
                         bot_id[:8],
                         FLEET_SEALED_NOTE,
                     )
-                    return "?"
+                    return SEALED_SYMBOL
                 cfg = (st.get("bots", {}) or {}).get(bot_id, {}).get("config", {}) or {}
                 return str(cfg.get("symbol", "") or "?")
             except Exception as state_exc:
