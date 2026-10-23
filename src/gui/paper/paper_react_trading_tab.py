@@ -1291,12 +1291,18 @@ if _HAS_WEBENGINE:
             """Hold ``name`` as the class this tab shows and redraw the page.
 
             The class reaches the page through ``show_tab``, so its Add
-            Exchange seats read the same words the Qt buttons read. Answers
-            the rows ``refresh_bots`` kept for ``name`` and the rows
+            Exchange seats read the same words the Qt buttons read and
+            ``build_view_model`` names that layer's page in ``current_index``.
+            Answers the rows ``refresh_bots`` kept for ``name`` and the rows
             ``PaperFleetSource.statuses`` holds in all.
             """
             self._asset_class = class_filter_surface.normalise(name)
-            self.show_tab({tab_surface.ASSET_CLASS_PARAM: self._asset_class})
+            self.show_tab(
+                {
+                    "layer": self._asset_class,
+                    tab_surface.ASSET_CLASS_PARAM: self._asset_class,
+                }
+            )
             return (self.refresh_bots(), len(self._fleet_source.statuses()))
 
         def class_venues(self, name: Any = None) -> list:

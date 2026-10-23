@@ -3156,16 +3156,29 @@ running 0 through 5 as the sector moves. Both tabs are seated in both builds:
 the React build answers `SimTradingTabReact` and `PaperTradingTabReact`, and the
 Qt build answers `SimTradingTab` and `PaperTradingTab`. The bar holds nine tabs.
 
-The Paper tab holds no sector list of its own. It reads the one declared list,
-at the moment the page is asked for rather than at start-up, and writes two
-fields of its payload from that one call: the page list, and the position of the
-page on show inside it.
+The Paper tab holds no sector list of its own, in either build. The browser
+build reads the one declared list at the moment the page is asked for, and
+writes two fields of its payload from that call: the page list, and the position
+of the page on show inside it.
 
 `src/gui/paper/paper_trading_tab_surface.py` — both fields from one call
 
 ```python
     key = live.layer_named(layer)
     order = live.layer_order()
+```
+
+The Qt build adds one stack page per name on the same list while the tab is
+built, and numbers the page on show from the same place, so the two builds
+cannot hold different sets of pages.
+
+`src/gui/paper/paper_trading_tab.py` — one page per declared sector
+
+```python
+        for layered in acs.layered_classes():
+            page, bar, store, card = _make_layer(
+                acs.display_name(layered), acs.accent(layered)
+            )
 ```
 
 The declared list is six sectors long, so the Paper tab answers six pages. Its
