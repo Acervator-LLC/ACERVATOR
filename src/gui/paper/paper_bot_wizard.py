@@ -482,19 +482,6 @@ if _HAS_QT:
             )
             mf.addRow("Spacing:", self._stack_spacing)
 
-            self._personal_hold_qty = QDoubleSpinBox()
-            self._personal_hold_qty.setRange(0.0, 1_000_000_000.0)
-            self._personal_hold_qty.setDecimals(10)
-            self._personal_hold_qty.setValue(0.0)
-            self._personal_hold_qty.setToolTip(
-                "Target-asset units to hold OUT of the bot's view "
-                "(personal reserve). The bot won't buy or sell these "
-                "units; they're also reserved from any sibling bot on "
-                "the same asset. Leave at 0 unless you want the bot "
-                "to ignore a personal stash on the exchange."
-            )
-            mf.addRow("Personal Hold (units):", self._personal_hold_qty)
-
             groups.addWidget(self._mode_group)
 
             self._scrum_group = QGroupBox("Scrumming Settings")
@@ -1105,7 +1092,6 @@ if _HAS_QT:
                     "split_distance": self._split_distance.value(),
                     "stack_tranche_count_target": int(self._stack_count.value()),
                     "stack_spacing_mode": self._stack_spacing.currentData(),
-                    "personal_hold_qty": float(self._personal_hold_qty.value()),
                     "scrumming_interval_pct": self._scrumming_interval.value(),
                     "bb_tolerance_pct": self._bb_tolerance.value(),
                     "bb_landing_strip_candles": self._ls_candles.value(),
