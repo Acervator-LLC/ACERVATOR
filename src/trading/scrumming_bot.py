@@ -626,6 +626,8 @@ class ScrummingBot(
 
     def set_market_pairs_scout(self, scout) -> None:
         """Attach the process-wide MarketPairsScout; a falsy ``scout`` is a no-op."""
+        if not scout:
+            return
         self._market_pairs_scout = scout
 
     def get_target_asset_pairs(self):
