@@ -29,6 +29,12 @@ SHELL_FILES: tuple[str, ...] = ("main.js", "preload.js", "package.json")
 # npm writes this; a clone without `npm install` has the shell and no runtime.
 ELECTRON_RUNTIME = os.path.join("node_modules", "electron", "dist")
 
+#: The compiled-bytecode folder `build_graceful_datas` leaves out of a bundle.
+CACHE_DIRNAME = "__pycache__"
+
+#: Compiled file suffixes left out wherever they sit, inside `CACHE_DIRNAME` or not.
+COMPILED_SUFFIXES: tuple[str, ...] = (".pyc", ".pyo")
+
 
 def read_acervator_version(project_root: str) -> str:
     """Return what ``resolve_version`` answers for the tree at ``project_root``."""
@@ -100,17 +106,43 @@ def datas_candidates(project_root: str, variant: str) -> list[tuple[str, str]]:
     return pairs
 
 
-def build_graceful_datas(project_root: str, variant: str) -> list[tuple[str, str]]:
-    """Return the ``datas_candidates`` pairs for ``variant`` whose source exists.
+def files_outside_cache_dirs(src_path: str, dest_path: str) -> list[tuple[str, str]]:
+    """Return one (source, destination) pair per file under ``src_path``.
 
-    A missing source is printed and skipped; PyInstaller aborts on one it keeps.
+    PyInstaller expands a directory pair by walking it, and this returns the same
+    files without any ``CACHE_DIRNAME`` folder and without any
+    ``COMPILED_SUFFIXES`` file.
+    """
+    pairs = []
+    for here, children, names in os.walk(src_path):
+        if CACHE_DIRNAME in children:
+            children.remove(CACHE_DIRNAME)
+        target = os.path.normpath(
+            os.path.join(dest_path, os.path.relpath(here, src_path))
+        )
+        for name in names:
+            if name.endswith(COMPILED_SUFFIXES):
+                continue
+            source = os.path.join(here, name)
+            if os.path.isfile(source):
+                pairs.append((os.path.normpath(source), target))
+    return pairs
+
+
+def build_graceful_datas(project_root: str, variant: str) -> list[tuple[str, str]]:
+    """Return the ``datas_candidates`` pairs for ``variant``, each directory expanded.
+
+    ``files_outside_cache_dirs`` expands a directory source, and
+    ``build_graceful_datas`` prints and skips a source that is not on disk.
     """
     result = []
     for src_path, dest_path in datas_candidates(project_root, variant):
-        if os.path.exists(src_path):
-            result.append((src_path, dest_path))
-        else:
+        if not os.path.exists(src_path):
             print(f"  [spec] Skipping missing optional datas path: {src_path}")
+        elif os.path.isdir(src_path):
+            result.extend(files_outside_cache_dirs(src_path, dest_path))
+        else:
+            result.append((src_path, dest_path))
     return result
 
 
