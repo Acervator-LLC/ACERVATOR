@@ -10,8 +10,7 @@ from __future__ import annotations
 import logging
 from typing import Any, TYPE_CHECKING
 
-from ...core.event_bus import LINE_KIND_WIRE_FLOW, LINE_KIND_WIRE_STACK
-from .sizing import priced_usd
+from ...core.event_bus import LINE_KIND_WIRE_FLOW
 
 logger = logging.getLogger("acervator.scrumming")
 
@@ -294,10 +293,6 @@ class WireRoutingMixin(_Host):
            that was empty, the whole pool goes to the first new tranche and
            its initial `usd` = scrum_usd + pending.
 
-        A stack-at-entry fast path bumps the target and queues an
-        aggressive buy when the bot is at its center line and at its
-        entry price (guarded by `config.wire_inflow_stack_pct`).
-
         Non-blocking: caller ignores return value in happy path. Rejects
         invalid USD with {"applied": False, "reason": ...}.
         """
@@ -313,123 +308,6 @@ class WireRoutingMixin(_Host):
         import time as _t
 
         credit = {"ts": _t.time(), "source": src, "usd": u, "ref": rf}
-
-        # Stack-at-entry: at centre line and at entry price, the wire raises
-        # _target_balance and queues a buy instead of feeding the fold queue.
-        try:
-            stack_pct = float(getattr(self.config, "wire_inflow_stack_pct", 1.0) or 0)
-        except (TypeError, ValueError):
-            stack_pct = 0.0
-        _stack_eligible = False
-        _stack_reason = ""
-        _target = 0.0
-        _entry_px = 0.0
-        if stack_pct > 0:
-            try:
-                _last_px = getattr(self, "_last_trade_price", 0) or float(
-                    getattr(self.stats, "current_price", 0)
-                )
-                if _last_px <= 0:
-                    _stack_reason = "no last-trade price yet"
-                else:
-                    _qrate_local = float(self._quote_to_usd or 1.0)
-                    _pos_usd = priced_usd(
-                        self._current_holdings, _last_px, _qrate_local
-                    )
-                    _target = float(self._target_balance)
-                    _band_usd = _target * stack_pct / 100.0
-                    _at_center = abs(_pos_usd - _target) <= _band_usd
-                    _entry_px = 0.0
-                    if self._main_lots:
-                        try:
-                            _entry_px = float(
-                                self._main_lots[0].get("initial_buy_price", 0) or 0
-                            )
-                        except (TypeError, ValueError):
-                            _entry_px = 0.0
-                    _at_entry = (
-                        _entry_px > 0
-                        and abs(_last_px - _entry_px) <= _entry_px * stack_pct / 100.0
-                    )
-                    if _at_center and _at_entry and _target > 0:
-                        _stack_eligible = True
-                    elif not _at_center:
-                        _stack_reason = (
-                            f"position ${_pos_usd:.2f} not within "
-                            f"{stack_pct:.1f}% band of target ${_target:.2f}"
-                        )
-                    elif _entry_px <= 0:
-                        _stack_reason = "no entry price (no main lots)"
-                    elif not _at_entry:
-                        _stack_reason = (
-                            f"price ${_last_px:.6f} not within "
-                            f"{stack_pct:.1f}% of entry ${_entry_px:.6f}"
-                        )
-            except Exception as _stack_exc:  # noqa: BLE001 - reason emitted downstream
-                _stack_reason = f"eval raised {type(_stack_exc).__name__}"
-
-        if _stack_eligible:
-            self._target_balance = float(self._target_balance) + u
-            self._anchor_target_balance = float(self._anchor_target_balance) + u
-            try:
-                self.config.target_balance = self._target_balance
-            except Exception as _sup:  # noqa: BLE001 - best-effort mirror
-                logger.debug(
-                    "suppressed in %s: %s: %s",
-                    "apply_wire_income",
-                    type(_sup).__name__,
-                    _sup,
-                )
-            self._pending_stack_buy_usd = (
-                float(getattr(self, "_pending_stack_buy_usd", 0.0) or 0.0) + u
-            )
-            try:
-                self._bus.emit(
-                    "bot.log",
-                    bot_id=self.bot_id,
-                    message=(
-                        f"WIRE STACK: +${u:.2f} from {src} stacked at entry. "
-                        f"Target ${_target:.2f} → ${self._target_balance:.2f} "
-                        f"(at center line ±{stack_pct:.1f}%, at entry "
-                        f"${_entry_px:.6f}). Next tick will acquire "
-                        f"{u:.2f}-USD-worth of {self.config.target_asset} "
-                        f"via aggressive rebalance. ref={rf}"
-                    ),
-                    kind=LINE_KIND_WIRE_STACK,
-                )
-            except Exception as _sup:  # noqa: BLE001 - best-effort mirror
-                logger.debug(
-                    "suppressed in %s: %s: %s",
-                    "apply_wire_income",
-                    type(_sup).__name__,
-                    _sup,
-                )
-            return {
-                "applied": True,
-                "mode": "stacked",
-                "stacked_usd": u,
-                "new_target_balance": self._target_balance,
-                "entry_price": _entry_px,
-            }
-        elif stack_pct > 0 and _stack_reason:
-            try:
-                self._bus.emit(
-                    "bot.log",
-                    bot_id=self.bot_id,
-                    message=(
-                        f"WIRE STACK skipped ({_stack_reason}). "
-                        f"Income falls through to "
-                        f"{'distribute' if self._fold_tranches else 'pending'}."
-                    ),
-                    kind=LINE_KIND_WIRE_STACK,
-                )
-            except Exception as _sup:  # noqa: BLE001 - best-effort mirror
-                logger.debug(
-                    "suppressed in %s: %s: %s",
-                    "apply_wire_income",
-                    type(_sup).__name__,
-                    _sup,
-                )
 
         if self._fold_tranches:
             # Case 1 — even distribution across existing tranches

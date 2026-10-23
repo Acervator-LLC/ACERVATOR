@@ -1509,6 +1509,11 @@ cell takes the stored figure off the bot's status, so nothing is fetched while
 the table paints, and a bot none of the three has run for yet draws the marked
 attributed count.
 
+**The hold in that sentence is gone.** Personal Hold was removed. The three
+paths now net the reading against the sibling bots on the same asset and
+nothing else. `src/trading/scrumming/reconciliation.py`, in
+`_claimable_exchange_units`, is the one place the subtraction happens.
+
 The tooltip always names the count it measured. On the exchange's count it
 gives both figures, so a drift between them is visible in the cell that is
 affected by it. With no exchange reading held it opens `NO EXCHANGE COUNT HELD`
@@ -1553,6 +1558,10 @@ Two routes reach one assignment: one stores a venue reading and nets it against
 the personal hold and the sibling bots, and the other moves the stored figure by
 the units a fill settled and asks no venue for anything.
 
+**Read that first route as the sibling bots alone.** Personal Hold was removed,
+so the hold named above and in the block below no longer exists. The venue
+reading is netted against the sibling bots and nothing else.
+
 ```
 src/trading/scrumming/reconciliation.py, in _store_audited_venue_units
     the one assignment both routes land on
@@ -1563,7 +1572,7 @@ src/trading/scrumming/reconciliation.py, in _record_venue_units_after_fill
 src/trading/scrumming/execution.py, in _execute_buy
     its own pre-fill reading plus the units bought
 src/trading/scrumming/execution.py, in _execute_manual_rebalance
-    its own pre-fill reading, on the two autonomous intents
+    its own pre-fill reading, on every intent
 src/trading/scrumming/execution.py, in _execute_detonation
     the second route, by the units it sold
 src/trading/scrumming/execution.py, in _execute_sell
@@ -2392,6 +2401,92 @@ The Qt build picks the same word from the same table —
 Trader's table and the Simulator's table are subclasses of those two and hold no
 word of their own, so all six surfaces read alike.
 
+**Manual Fire reads the exchange before it sizes the trade.** The press asks the
+exchange for the traded asset's balance first. It costs one call, so the press is
+slightly slower. Where the exchange's count agrees with the bot's own count
+inside Manual Fire's band, the press sizes the trade exactly as it did before.
+Where the two counts differ by more than that band, the press trades nothing and
+says so. The same answer covers an exchange that leaves the asset out of its
+reply, and an exchange that cannot be read at all. This is the path with no gates
+behind it, so a position the platform cannot verify is not traded.
+
+Driven on a target of $1,000.00, a price of $1.00 and a bot holding 1050.0
+units. Manual Fire's band is $10.00 and the position sits $50.00 above target:
+
+```
+the exchange reports     the press sells
+1050.0 units             50.000000 units
+1020.0 units              0.000000 units, refused
+the asset left out        0.000000 units, refused
+no answer at all          0.000000 units, refused
+```
+
+The refusal carries the same words the Fire button itself shows,
+`MANUAL FIRE WILL NOT ACT`, and names both counts and both dollar figures. It
+goes to the bot log the Console and the bot window both read. Every press gets
+an answer. The autonomous intents keep the hold that stops a repeating tick
+writing the same refusal on every candle.
+
+`src/trading/scrumming/execution.py`, in `_execute_manual_rebalance` — the one
+balance read every intent takes, the button included
+
+```python
+_xbal = await self._get_balance(self.config.target_asset)
+_xunits = float(
+    getattr(_xbal, "total", 0) or getattr(_xbal, "free", 0) or 0.0
+)
+```
+
+The growth-cap check that sits beside that read still runs for the two
+autonomous intents alone. The Max Entry Price entry below says Manual Fire goes
+around the entry-price gates, and the operator override keeps the cap bypassed
+the same way.
+
+**The row says the position is disputed before the press.** The Fire button
+reads the two counts the row already carries. Where the exchange's count and
+the bot's count stand further apart than Manual Fire's band, the button takes
+the same refused path a press inside the band takes. It reads `No Trade`, it
+carries no glow, and its tooltip names both counts, both dollar figures and the
+gap. Where the gap sits inside the band, and where the row holds no exchange
+reading at all, the button reads exactly as it did before. An absent reading is
+not a dispute.
+
+Driven on six rows, read off the live button on both build variants, at a
+target of $1,000.00 and a price of $1.00. Manual Fire's band is $10.00 and the
+tick's is $1.00:
+
+```
+the bot counts   the exchange reports   the button reads   its tooltip names
+1050.0 units     1050.0 units           Fire               the armed scrum
+1050.0 units     1020.0 units           No Trade           the $30.00 gap
+1050.0 units     1049.0 units           Fire               the armed scrum
+1050.0 units     no reading at all      Fire               the armed scrum
+1005.0 units     1005.0 units           No Trade           the $10.00 band
+1050.0 units     1005.0 units           No Trade           the $45.00 gap
+```
+
+**Two refusals reach that one path, and the tooltip names the gap first.** A
+press is refused where the gap between the two counts is past the band, and
+refused where the distance from target sits inside the band. A row can be in
+both states at once, and the last row above is one. The tooltip names the gap
+there, because `_execute_manual_rebalance` reads the exchange before it
+measures the distance, so the gap is the refusal a press would actually meet.
+The band entry above keeps its own wording for a row whose two counts agree.
+
+`src/gui/main_tabs/bot_status_table_surface.py`, in `manual_fire_dispute` — the
+one answer both build variants read
+
+```python
+reading = ammo if isinstance(ammo, dict) else {}
+if not reading.get("two_reads", False):
+    return None
+```
+
+The page's row and the window's row both call that function, and both read
+`manual_fire_verdict` beside it, so neither build variant can draw a button the
+other would not. The Ammo cell's own tooltip carries the same two counts, which
+the Ammo column section above describes.
+
 Scrum - To sell an amount from an investment position that allows it to return to its initial price level. This never closes the position. This is the first half of the infinitely divisible circle that can persist for such positions in a healthy market.
 
 One shared helper decides which half of the cycle a position sits in. It
@@ -2914,6 +3009,12 @@ Personal Hold still follows the market's own step alone. A share that divides
 during the trading day can be held in fractions, so that box keeps its decimal
 places even where Open Position At shows.
 
+**That box is gone.** Personal Hold was removed from every wizard and from
+every running-bot page, so no hold box takes a step from the market any more.
+Open Position At is the only row on this page that reads the market's own unit
+rule. `src/gui/main_tabs/bot_wizard_surface.py`, in
+`session_takes_whole_units`, is where the wizard reads that rule.
+
 Both builds draw the same four lines. The React page reads them from the same
 payload the Qt page reads, so neither can carry a word the other does not.
 
@@ -3136,6 +3237,32 @@ fibonacci    [1.0, 2.0, 3.0, 5.0]
 
 Personal Hold - Setting to be removed.
 
+**It is removed.** The box is off both New Bot wizards and off the running-bot
+page, on Live, on Paper and in the Simulator, and the React pages for all three.
+The field is off the bot declaration and both engine readers are gone with it.
+Everything written below this line records what the control did while it was
+there. Read it as history, not as the page you see now.
+
+**The reservation stays, and it is automatic.** A bot still works out which
+units on an asset are its own, so two bots on one asset cannot eat each other.
+Nothing on any screen configures it. `src/trading/capital_reservation.py`, in
+`effective_available`, is what bounds a bot to the units no other bot has
+claimed.
+
+**What changed, driven on records built by hand.** A bot holding nothing back is
+unaffected: every figure reads the same before and after — 30 units at the
+venue, 30 claimable, 30 it may sell, a claim of 2.2 units at a price of 100, and
+27.8 units left available to a bot sharing the asset. A bot holding five units
+back now sells the larger amount: 25 units before and 30 after, with its claim
+falling from 7.2 units to 2.2 and a co-tenant's available rising from 22.8 to
+27.8. All 38 stored bots hold nothing back, so no bot on the fleet sells a
+different amount.
+
+**A bot saved with the old setting still loads.** The retired name is dropped
+before a bot is built. `src/trading/container/config.py`, in
+`_sanitize_deprecated_kwargs`, is where it is dropped, and the record beside it
+lists every other setting retired the same way.
+
 The control is still on the page. `TradingParamsPage.get_config` still emits
 `personal_hold_qty`, and the capital reservation mixin still reads it, adding
 it to the units the bot claims against its siblings. A removal has that reader
@@ -3204,7 +3331,7 @@ src/trading/scrumming/reconciliation.py, in _record_audited_venue_units
 src/trading/scrumming/execution.py, in _execute_buy
     a fill that reaches that recorder
 src/trading/scrumming/execution.py, in _execute_manual_rebalance
-    a fill that reaches that recorder, on the two autonomous intents
+    a fill that reaches that recorder, on every intent
 ```
 
 The adoption ceiling is the reader that bears on a sale. A bot whose venue
@@ -3266,6 +3393,9 @@ Tranche Count        3                   3 on 38
 Spacing              Linear              linear on 38
 Personal Hold        0                   0.0 on 38
 ```
+
+The last row in that table names a control that no longer exists. Six rows draw
+in this group now, not seven, and the picture below was taken before the removal.
 
 ![The Scrumming Settings group.](p19-i0.png)
 
@@ -4003,6 +4133,46 @@ mgr.distribute_fold_profit(
 )
 ```
 
+The row is removed. Your ruling on Wire Credits retires the percentage: a share
+that sizes a stack is grid behaviour, and the requirement is that an arriving
+credit reaches an active tranche. No screen offers the row now, and no figure
+is read in its place. A credit takes one of two routes and no other.
+
+`src/trading/scrumming/wire_routing.py` — what is left of `apply_wire_income`
+
+```python
+if self._fold_tranches:
+    share = self._spread_wire_usd_over_fold_queue(u, [credit])
+    ...
+# Case 2 — no tranches yet; park in pending
+self._pending_wire_credits += u
+```
+
+Driven on the same bot, at its target and at its entry price, with a ten-dollar
+credit. The tranche figure is the one that matters: the stack took the credit
+away from an open tranche, and it no longer does.
+
+```
+the bot holds one $5.00 tranche    before      after
+what happened to the credit        stacked     added to the tranche
+the tranche                        $5.00       $15.00
+Target Balance                     $210.00     $200.00
+queued for an aggressive buy       $10.00      $0.00
+
+the bot holds no tranche           before      after
+what happened to the credit        stacked     parked
+the parked pool                    $0.00       $10.00
+Target Balance                     $210.00     $200.00
+```
+
+A bot saved with the figure still loads. The name joins the retirement record in
+`src/trading/container/config.py`, which drops it before the bot is built.
+
+```python
+"personal_hold_qty",
+"wire_inflow_stack_pct",
+```
+
 Hedge Rebalance Active - Determines if Current Price drifting below Initial Entry Price will have a limited amount of funds that can be used to keep re-zeroing the Target Delta at key bearish thresholds or areas of possible reversal.
 
 A checkbox, on at the start. It opens the one group on the page that holds a
@@ -4140,6 +4310,10 @@ BB Bullseye Check      ticked              on on 38
 Wire Inflow Stack      1.00 %              1.0 on 38
 Hedge Rebalance Active ticked              off on 32, on on 6
 ```
+
+Wire Inflow Stack leaves that list. All 38 ran the opening figure, which is why
+nothing in the stored record separates one bot from another on it. The row is
+gone from all six screens and no figure replaces it.
 
 ![The Circuit Breakers group.](p21-i0.png)
 
@@ -4849,6 +5023,15 @@ bot does with it.
 ```
 profit_folding_active   the fleet runs    true on 38 of 38
 a stored route          the fleet holds   none; the key is dropped on restore
+```
+
+The receiving bot no longer carries that row. Your ruling retired it, so a share
+arriving along a wire has one destination and no choice of its own. Nothing on a
+screen sizes the arrival, and no per-cent figure is read for it.
+
+```
+an arriving share   the bot holds tranches   added to them, evenly
+an arriving share   the bot holds none       parked until a sell opens one
 ```
 
 ![The Phantom Bots page.](p23-i0.png)
