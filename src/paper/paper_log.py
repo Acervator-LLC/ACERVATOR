@@ -16,10 +16,11 @@ import logging
 from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, Sequence
 
 from ..exchange.ytd_trade_store import SIDE_BUY, SIDE_SELL, YtdTrade
 from ..simulator.back_test import FOLD, SCRUM
+from ..trading.gate_chain import OVERRIDES_APPLIED_KEY
 from ..trading.gate_vocabulary import gate_for_blocker, unknown_blockers
 from .fake_balance import CURRENCY
 from .paper_paths import paper_trader_log_path
@@ -49,9 +50,11 @@ def gate_labels(blockers: Any) -> list[str]:
     return out
 
 
-def scrum_fixture(context: Any) -> dict:
-    """The scrum half of a ``GateContext``, in the keys ``gate.log`` stores."""
+def scrum_fixture(context: Any, overrides_applied: Sequence[str] = ()) -> dict:
+    """The scrum half of a ``GateContext``, in the keys ``gate.log`` stores,
+    with each refusal an override replaced under ``OVERRIDES_APPLIED_KEY``."""
     return {
+        OVERRIDES_APPLIED_KEY: [str(one) for one in overrides_applied],
         "delta": float(context.delta),
         "below_interval": bool(context.below_interval),
         "ticker_last": float(context.ticker_last),
@@ -80,9 +83,11 @@ def scrum_fixture(context: Any) -> dict:
     }
 
 
-def fold_fixture(context: Any) -> dict:
-    """The fold half of a ``GateContext``, in the keys ``gate.log`` stores."""
+def fold_fixture(context: Any, overrides_applied: Sequence[str] = ()) -> dict:
+    """The fold half of a ``GateContext``, in the keys ``gate.log`` stores,
+    with each refusal an override replaced under ``OVERRIDES_APPLIED_KEY``."""
     return {
+        OVERRIDES_APPLIED_KEY: [str(one) for one in overrides_applied],
         "has_fold_tranches": bool(context.has_fold_tranches),
         "n_fold_tranches": int(context.n_fold_tranches),
         "is_bearish": bool(context.is_bearish),
