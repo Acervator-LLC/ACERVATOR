@@ -367,6 +367,60 @@ def datas_candidates(project_root: str, variant: str) -> list[tuple[str, str]]: 
 `build_graceful_datas` prints and skips a source folder that is not on disk. A
 clone that never installed the shell therefore builds with no Electron runtime.
 
+### No compiled Python folders reach a bundle
+
+Python leaves a `__pycache__` folder beside every package it has imported. A
+build copies the whole `src` folder into the bundle, so those folders were
+copied with it. Measured on this tree, the source folder holds 19 of them and
+166 compiled files.
+
+`tools/spec_common.py, in files_outside_cache_dirs` expands a source folder one
+file at a time and leaves out every compiled folder and every loose compiled
+file. `build_graceful_datas` calls it for each source folder that is a folder,
+so the list the spec hands the packager names no compiled file.
+
+```python
+CACHE_DIRNAME = "__pycache__"                   # tools/spec_common.py
+COMPILED_SUFFIXES: tuple[str, ...] = (".pyc", ".pyo")
+def files_outside_cache_dirs(src_path: str, dest_path: str) -> list[tuple[str, str]]: ...
+```
+
+| what a build copies | before | after |
+| --- | --- | --- |
+| files in a React build | 1,304 | 1,138 |
+| files in a Qt build | 1,228 | 1,062 |
+| compiled folders in the bundle | 19 | 0 |
+| compiled files in the bundle | 166 | 0 |
+
+Every other file is unchanged. The two file lists were compared whole, and the
+new one holds exactly the old one less its compiled files.
+
+### The startup cleanup stays inside the program's own code
+
+`main.py` runs a cleanup before anything else starts. It walks the folders
+`PROGRAM_CODE_DIRS` names, which is the source folder alone, plus the program
+root's own compiled folder. It never walks the program root itself, so a build
+folder, a node package folder or a log folder beside the entry point is never
+read.
+
+```python
+PROGRAM_CODE_DIRS = ("src",)                    # main.py
+def _cache_dirs(root, code_dirs): ...
+def _sweep_pycache(root, code_dirs): ...
+```
+
+Driven over a throwaway folder shaped like the repository root, whose build
+folder held two bundles carrying four compiled folders between them, the
+cleanup touched five files. All five sit under the source folder or the root's
+own compiled folder, and none sits inside the build folder. The same cleanup
+with no folder limit touched twelve files, four of them inside the build folder.
+
+The cleanup rebuilds a compiled file that records only a clock reading. Driven
+over a copy of the shipped React bundle's own source folder, the first launch
+rebuilt 139 files in 1.192 seconds, and every launch after kept them in 0.060
+seconds. The same folder with its compiled files left out reads 0.002 seconds on
+every launch, which is what a bundle built by the spec above now gives.
+
 ### Which outside packages a bundle carries
 
 The application uses 21 packages that are not part of Python itself. Eighteen of
