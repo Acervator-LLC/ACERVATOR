@@ -439,12 +439,22 @@ FIRE_TIP_PHASE_TRACK = (
 FIRE_TIP_PHASE_SEARCH = (
     "Bot within dust band of target. " "Manual Fire would be a no-op."
 )
+#: The one headline every Fire refusal opens with, on both build variants.
+MANUAL_FIRE_HEADLINE = "MANUAL FIRE WILL NOT ACT"
 FIRE_TIP_MANUAL_NOOP_FORMAT = (
-    "MANUAL FIRE WILL NOT ACT — |delta| ${magnitude:,.4f} is inside Manual "
+    MANUAL_FIRE_HEADLINE + " — |delta| ${magnitude:,.4f} is inside Manual "
     "Fire's own dust band of ${dust_band:,.2f}. Pressing logs a no-op and "
     "moves no figure on this row. The autonomous engine still works this "
     "range, which starts at ${tick_band:,.2f}, so the next tick may act "
     "where the button will not."
+)
+FIRE_TIP_MANUAL_DISPUTED_FORMAT = (
+    MANUAL_FIRE_HEADLINE + " — the exchange reports {venue_units:,.6f} units "
+    "(${venue_usd:,.2f}) and this bot counts {bot_units:,.6f} "
+    "(${bot_usd:,.2f}). The two stand ${gap:,.2f} apart, past Manual Fire's "
+    "band of ${dust_band:,.2f}. The press reads the exchange before it sizes "
+    "a trade, so it will not act on a position the exchange disputes. The "
+    "next audit brings the two counts together."
 )
 FIRE_TIP_NOT_SCRUMMING = "Manual Fire is scrumming-only."
 FIRE_TIP_INACTIVE_FORMAT = "Bot is {state}; start or resume to enable Fire."
@@ -960,16 +970,53 @@ def ammo_reading(status: Any) -> tuple:
     )
 
 
-def manual_fire_verdict(ammo: Any, target_balance: float) -> str:
-    """What a Fire press would do, read from the figures this row just drew.
+def manual_fire_dispute(
+    ammo: Any,
+    status: Any,
+    target_balance: float,
+    price: float,
+    quote_rate: float,
+) -> Optional[Dict[str, float]]:
+    """The two counts a Fire press would refuse on, or None where none is.
 
-    ``MANUAL_FIRE_REFUSES`` where the position sits inside Manual Fire's own
-    band and outside the tick's, so the engine still works the range and the
-    button alone declines. ``MANUAL_FIRE_PARKED`` where both bands hold it and
-    nothing acts. ``MANUAL_FIRE_ACTS`` otherwise. The Qt table and this model
-    both read this one answer off the Ammo cell's own ``manual_fire_noop``, so
-    a row's cell and its button cannot disagree about the same press.
+    None without the Ammo cell's own ``two_reads``, which covers a row holding
+    no exchange reading and a row off the priced path, and None where the gap
+    sits inside ``manual_fire_dust_band``, the band
+    ``_execute_manual_rebalance`` refuses on.
     """
+    reading = ammo if isinstance(ammo, dict) else {}
+    if not reading.get("two_reads", False):
+        return None
+    bot_units = holdings_of(status)
+    venue_units = measured_units_of(status)
+    bot_usd = priced_position(bot_units, price, quote_rate)
+    venue_usd = priced_position(venue_units, price, quote_rate)
+    gap = abs(venue_usd - bot_usd)
+    dust_band = manual_fire_dust_band(target_balance)
+    if gap <= dust_band:
+        return None
+    return {
+        "venue_units": venue_units,
+        "venue_usd": venue_usd,
+        "bot_units": bot_units,
+        "bot_usd": bot_usd,
+        "gap": gap,
+        "dust_band": dust_band,
+    }
+
+
+def manual_fire_verdict(
+    ammo: Any, target_balance: float, dispute: Optional[Dict[str, float]] = None
+) -> str:
+    """What a Fire press would do, read from ``dispute`` and this row's Ammo cell.
+
+    ``MANUAL_FIRE_REFUSES`` on a ``dispute`` or on ``manual_fire_noop`` outside
+    ``at_target_dust_band``, ``MANUAL_FIRE_PARKED`` inside both bands,
+    ``MANUAL_FIRE_ACTS`` otherwise, and the Qt table and this model read this
+    one answer.
+    """
+    if dispute is not None:
+        return MANUAL_FIRE_REFUSES
     reading = ammo if isinstance(ammo, dict) else {}
     if not reading.get("manual_fire_noop", False):
         return MANUAL_FIRE_ACTS
@@ -979,12 +1026,17 @@ def manual_fire_verdict(ammo: Any, target_balance: float) -> str:
     return MANUAL_FIRE_PARKED
 
 
-def manual_fire_noop_tooltip(ammo: Any, target_balance: float) -> str:
+def manual_fire_noop_tooltip(
+    ammo: Any, target_balance: float, dispute: Optional[Dict[str, float]] = None
+) -> str:
     """The Fire tooltip for a press ``manual_fire_verdict`` calls refused.
 
-    Names the distance, Manual Fire's band and where the tick's band starts,
-    so the operator reads why the press declined without opening the bot log.
+    A ``dispute`` names both counts, both dollar figures and the gap, and
+    ``FIRE_TIP_MANUAL_NOOP_FORMAT`` names the distance,
+    ``manual_fire_dust_band`` and ``at_target_dust_band``.
     """
+    if dispute is not None:
+        return FIRE_TIP_MANUAL_DISPUTED_FORMAT.format(**dispute)
     reading = ammo if isinstance(ammo, dict) else {}
     return FIRE_TIP_MANUAL_NOOP_FORMAT.format(
         magnitude=abs(float(reading.get("delta", NO_DELTA) or NO_DELTA)),
@@ -1478,7 +1530,12 @@ class BotStatusTableModel:
                 found = cell(text)
             self.set_cell(row, column, found)
         self.rows[row]["fire"] = self._fire_button(
-            status, state, mode, ammo, target_val
+            status,
+            state,
+            mode,
+            ammo,
+            target_val,
+            manual_fire_dispute(ammo, status, target_val, price, quote_rate),
         )
         self.rows[row]["detail"] = self._detail_button()
 
@@ -1556,7 +1613,7 @@ class BotStatusTableModel:
             self.calls.append([ROW_SYMBOL_LINK, url])
         return found
 
-    def _fire_button(self, status, state, mode, ammo, target_val) -> dict:
+    def _fire_button(self, status, state, mode, ammo, target_val, dispute) -> dict:
         """The Manual Fire button: its look, its tooltip and its glow.
 
         ``ammo`` is this row's own Ammo cell, already built, so the button
@@ -1566,7 +1623,7 @@ class BotStatusTableModel:
         is_active = state in ACTIVE_STATES
         enabled = is_scrumming and is_active
         if enabled:
-            path, tip = self._armed_fire(status, ammo, target_val)
+            path, tip = self._armed_fire(status, ammo, target_val, dispute)
         elif not is_scrumming:
             path, tip = FIRE_PATH_NOT_SCRUMMING, FIRE_TIP_NOT_SCRUMMING
         else:
@@ -1596,7 +1653,7 @@ class BotStatusTableModel:
             "glow_offset": list(GLOW_OFFSET),
         }
 
-    def _armed_fire(self, status, ammo, target_val) -> tuple:
+    def _armed_fire(self, status, ammo, target_val, dispute=None) -> tuple:
         """The path and the tooltip an enabled Fire button carries.
 
         A press ``manual_fire_verdict`` calls refused takes
@@ -1626,11 +1683,11 @@ class BotStatusTableModel:
             detonation_enabled,
             detonation_tf,
         )
-        verdict = manual_fire_verdict(ammo, target_val)
+        verdict = manual_fire_verdict(ammo, target_val, dispute)
         if verdict == MANUAL_FIRE_REFUSES:
             return (
                 FIRE_PATH_MANUAL_NOOP,
-                manual_fire_noop_tooltip(ammo, target_val) + risk,
+                manual_fire_noop_tooltip(ammo, target_val, dispute) + risk,
             )
         acts = verdict == MANUAL_FIRE_ACTS
         auto_fire = status.get("auto_fire", {}) or {}

@@ -51,6 +51,7 @@ from ..main_tabs.bot_status_table_surface import (
     SortLookups,
     icon_asset_of,
     kept_logo_path,
+    manual_fire_dispute,
     manual_fire_noop_tooltip,
     manual_fire_verdict,
     mode_tooltip,
@@ -733,7 +734,10 @@ if _HAS_QT:
             ammo_tip = _ammo["tip"]
             ammo_text = _ammo["text"]
             # The button reads the distance this row's own Ammo cell drew.
-            fire_verdict = manual_fire_verdict(_ammo, target_val)
+            fire_dispute = manual_fire_dispute(
+                _ammo, status, target_val, cur_price, qrate
+            )
+            fire_verdict = manual_fire_verdict(_ammo, target_val, fire_dispute)
             fire_acts = fire_verdict == MANUAL_FIRE_ACTS
 
             # Colour encodes direction, so the magnitudes print unsigned.
@@ -901,12 +905,14 @@ if _HAS_QT:
                     return "".join(parts)
 
                 if fire_verdict == MANUAL_FIRE_REFUSES:
-                    # Inside Manual Fire's band and outside the tick's: the
-                    # engine still works this range and the button does not.
+                    # Two reasons reach this path: a position the exchange
+                    # disputes, and a delta inside Manual Fire's band and
+                    # outside the tick's.
                     fire_path = FIRE_PATH_MANUAL_NOOP
                     fire_btn.setStyleSheet(FIRE_STYLE_MANUAL_NOOP)
                     fire_btn.setToolTip(
-                        manual_fire_noop_tooltip(_ammo, target_val) + _risk_suffix()
+                        manual_fire_noop_tooltip(_ammo, target_val, fire_dispute)
+                        + _risk_suffix()
                     )
                 elif armed_action == "scrum" and fire_acts:
                     # Solid means auto would fire now; outline means only manual remains.

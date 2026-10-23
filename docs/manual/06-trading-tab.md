@@ -2342,6 +2342,39 @@ autonomous intents alone. The Max Entry Price entry below says Manual Fire goes
 around the entry-price gates, and the operator override keeps the cap bypassed
 the same way.
 
+**The row says the position is disputed before the press.** The Fire button
+reads the two counts the row already carries. Where the exchange's count and
+the bot's count stand further apart than Manual Fire's band, the button carries
+the same `MANUAL FIRE WILL NOT ACT` sentence it already uses for a press inside
+the band, and it names both counts, both dollar figures and the gap. Where the
+gap sits inside the band, and where the row holds no exchange reading at all,
+the button reads exactly as it did before. An absent reading is not a dispute.
+
+Driven on four rows, read off the live button on both build variants, at a
+target of $1,000.00, a price of $1.00 and a bot holding 1050.0 units:
+
+```
+the exchange reports    the button says
+1050.0 units            ARMED for SCRUM
+1020.0 units            MANUAL FIRE WILL NOT ACT, the counts $30.00 apart
+1049.0 units            ARMED for SCRUM
+no reading at all       ARMED for SCRUM
+```
+
+`src/gui/main_tabs/bot_status_table_surface.py`, in `manual_fire_dispute` — the
+one answer both build variants read
+
+```python
+reading = ammo if isinstance(ammo, dict) else {}
+if not reading.get("two_reads", False):
+    return None
+```
+
+The page's row and the window's row both call that function, and both read
+`manual_fire_verdict` beside it, so neither build variant can draw a button the
+other would not. The mark the Ammo cell draws for the same two counts is the
+`(two reads)` mark the Ammo column section above describes.
+
 Scrum - To sell an amount from an investment position that allows it to return to its initial price level. This never closes the position. This is the first half of the infinitely divisible circle that can persist for such positions in a healthy market.
 
 One shared helper decides which half of the cycle a position sits in. It
