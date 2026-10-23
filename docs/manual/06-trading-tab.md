@@ -4133,6 +4133,46 @@ mgr.distribute_fold_profit(
 )
 ```
 
+The row is removed. Your ruling on Wire Credits retires the percentage: a share
+that sizes a stack is grid behaviour, and the requirement is that an arriving
+credit reaches an active tranche. No screen offers the row now, and no figure
+is read in its place. A credit takes one of two routes and no other.
+
+`src/trading/scrumming/wire_routing.py` — what is left of `apply_wire_income`
+
+```python
+if self._fold_tranches:
+    share = self._spread_wire_usd_over_fold_queue(u, [credit])
+    ...
+# Case 2 — no tranches yet; park in pending
+self._pending_wire_credits += u
+```
+
+Driven on the same bot, at its target and at its entry price, with a ten-dollar
+credit. The tranche figure is the one that matters: the stack took the credit
+away from an open tranche, and it no longer does.
+
+```
+the bot holds one $5.00 tranche    before      after
+what happened to the credit        stacked     added to the tranche
+the tranche                        $5.00       $15.00
+Target Balance                     $210.00     $200.00
+queued for an aggressive buy       $10.00      $0.00
+
+the bot holds no tranche           before      after
+what happened to the credit        stacked     parked
+the parked pool                    $0.00       $10.00
+Target Balance                     $210.00     $200.00
+```
+
+A bot saved with the figure still loads. The name joins the retirement record in
+`src/trading/container/config.py`, which drops it before the bot is built.
+
+```python
+"personal_hold_qty",
+"wire_inflow_stack_pct",
+```
+
 Hedge Rebalance Active - Determines if Current Price drifting below Initial Entry Price will have a limited amount of funds that can be used to keep re-zeroing the Target Delta at key bearish thresholds or areas of possible reversal.
 
 A checkbox, on at the start. It opens the one group on the page that holds a
@@ -4270,6 +4310,10 @@ BB Bullseye Check      ticked              on on 38
 Wire Inflow Stack      1.00 %              1.0 on 38
 Hedge Rebalance Active ticked              off on 32, on on 6
 ```
+
+Wire Inflow Stack leaves that list. All 38 ran the opening figure, which is why
+nothing in the stored record separates one bot from another on it. The row is
+gone from all six screens and no figure replaces it.
 
 ![The Circuit Breakers group.](p21-i0.png)
 
@@ -4979,6 +5023,15 @@ bot does with it.
 ```
 profit_folding_active   the fleet runs    true on 38 of 38
 a stored route          the fleet holds   none; the key is dropped on restore
+```
+
+The receiving bot no longer carries that row. Your ruling retired it, so a share
+arriving along a wire has one destination and no choice of its own. Nothing on a
+screen sizes the arrival, and no per-cent figure is read for it.
+
+```
+an arriving share   the bot holds tranches   added to them, evenly
+an arriving share   the bot holds none       parked until a sell opens one
 ```
 
 ![The Phantom Bots page.](p23-i0.png)

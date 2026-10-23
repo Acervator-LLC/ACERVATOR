@@ -589,6 +589,15 @@ setting, and it defaults to one percent.
 wire_inflow_stack_pct: float = 1.0
 ```
 
+That setting is removed. An arriving inflow is added to the tranches the
+receiving bot already holds, or parked until a sell opens one, and no figure
+sizes it.
+
+```python
+if self._fold_tranches:
+    share = self._spread_wire_usd_over_fold_queue(u, [credit])
+```
+
 Two mechanisms move capital between bots, and both are called throughout. The
 fold distribution sends a share of each realised fold to every wired target,
 and the scrum routing sends a share of each sale's proceeds along the same

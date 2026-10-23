@@ -322,14 +322,6 @@ NUMBER_FIELDS: dict[str, dict] = {
         "value": 70,
         "suffix": " %",
     },
-    "wire_inflow_stack_pct": {
-        "kind": SPIN_DOUBLE,
-        "minimum": 0.0,
-        "maximum": 100.0,
-        "decimals": 2,
-        "suffix": " %",
-        "value": 1.0,
-    },
     "hedge_amount": {
         "kind": SPIN_DOUBLE,
         "minimum": 0.0,
@@ -575,7 +567,6 @@ GROUP_ROWS = {
         "scrum_read_rate",
         "band_travel_pct",
         "bb_bullseye",
-        "wire_inflow_stack_pct",
     ),
     "hedge_group": ("hedge_rebalance", "hedge_amount"),
     "cb_group": (
@@ -677,7 +668,6 @@ ROW_LABELS = {
     "scrum_fire_pct": "Fire Threshold:",
     "scrum_read_rate": "Read Rate:",
     "band_travel_pct": "Band Travel:",
-    "wire_inflow_stack_pct": "Wire Inflow Stack:",
     "hedge_amount": "Hedge Balance:",
     "cb_soft_pct": "Soft CB Threshold:",
     "cb_hard_pct": "Hard CB Threshold:",
@@ -916,12 +906,6 @@ TOOL_TIPS = {
         "over the interval that arms the BB priority skew, "
         "which lowers the TA confidence floor. The fire "
         "threshold and the midline gate are unchanged."
-    ),
-    "wire_inflow_stack_pct": (
-        "Wire inflow stacking percentage. Controls how "
-        "aggressively the bot stacks new buy-side positions "
-        "when fresh wire-inflow signals arrive. Default "
-        "1.0 %; rarely adjusted in practice."
     ),
     "hedge_rebalance": (
         "Separate USD reserve for buying on sharp drawdowns. "
@@ -3019,7 +3003,6 @@ class BotWizardModel:
                 "scrum_read_rate_min": int(self.numbers["scrum_read_rate"]),
                 "band_travel_pct": int(self.numbers["band_travel_pct"]),
                 "bb_bullseye_check": self.checks["bb_bullseye"],
-                "wire_inflow_stack_pct": self.numbers["wire_inflow_stack_pct"],
                 "hedge_rebalance_active": self.checks["hedge_rebalance"],
                 "hedge_balance": self.numbers["hedge_amount"],
                 "circuit_breaker_soft_pct": self.numbers["cb_soft_pct"],

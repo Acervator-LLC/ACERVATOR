@@ -680,24 +680,6 @@ class PaperSettingsTabMixin(SettingsTabMixin):
         )
         af.addRow("Tranche Despawn Timer:", self._tranche_despawn_days)
 
-        self._wire_inflow_stack_pct = QDoubleSpinBox()
-        self._wire_inflow_stack_pct.setRange(0.0, 100.0)
-        self._wire_inflow_stack_pct.setDecimals(2)
-        self._wire_inflow_stack_pct.setSuffix(" %")
-        self._wire_inflow_stack_pct.setValue(
-            float(getattr(cfg, "wire_inflow_stack_pct", 1.0))
-        )
-        self._wire_inflow_stack_pct.setToolTip(
-            "Wire inflow stacking percentage. Controls how "
-            "aggressively the bot stacks new buy-side positions "
-            "when fresh wire-inflow signals arrive. Default 1.0%; "
-            "rarely adjusted in practice."
-        )
-        self._wire_inflow_stack_pct.valueChanged.connect(
-            lambda v: self._mark_changed("wire_inflow_stack_pct", float(v))
-        )
-        af.addRow("Wire Inflow Stack:", self._wire_inflow_stack_pct)
-
         layout.addWidget(adv_group)
 
         # --- Hedge Rebalance ---
