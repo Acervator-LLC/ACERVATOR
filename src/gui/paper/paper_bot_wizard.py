@@ -482,19 +482,6 @@ if _HAS_QT:
             )
             mf.addRow("Spacing:", self._stack_spacing)
 
-            self._personal_hold_qty = QDoubleSpinBox()
-            self._personal_hold_qty.setRange(0.0, 1_000_000_000.0)
-            self._personal_hold_qty.setDecimals(10)
-            self._personal_hold_qty.setValue(0.0)
-            self._personal_hold_qty.setToolTip(
-                "Target-asset units to hold OUT of the bot's view "
-                "(personal reserve). The bot won't buy or sell these "
-                "units; they're also reserved from any sibling bot on "
-                "the same asset. Leave at 0 unless you want the bot "
-                "to ignore a personal stash on the exchange."
-            )
-            mf.addRow("Personal Hold (units):", self._personal_hold_qty)
-
             groups.addWidget(self._mode_group)
 
             self._scrum_group = QGroupBox("Scrumming Settings")
@@ -696,19 +683,6 @@ if _HAS_QT:
                 "threshold and the midline gate are unchanged."
             )
             af.addRow(self._bb_bullseye)
-
-            self._wire_inflow_stack_pct = QDoubleSpinBox()
-            self._wire_inflow_stack_pct.setRange(0.0, 100.0)
-            self._wire_inflow_stack_pct.setDecimals(2)
-            self._wire_inflow_stack_pct.setSuffix(" %")
-            self._wire_inflow_stack_pct.setValue(1.0)
-            self._wire_inflow_stack_pct.setToolTip(
-                "Wire inflow stacking percentage. Controls how "
-                "aggressively the bot stacks new buy-side positions "
-                "when fresh wire-inflow signals arrive. Default "
-                "1.0 %; rarely adjusted in practice."
-            )
-            af.addRow("Wire Inflow Stack:", self._wire_inflow_stack_pct)
 
             groups.addWidget(self._adv_group)
 
@@ -1105,7 +1079,6 @@ if _HAS_QT:
                     "split_distance": self._split_distance.value(),
                     "stack_tranche_count_target": int(self._stack_count.value()),
                     "stack_spacing_mode": self._stack_spacing.currentData(),
-                    "personal_hold_qty": float(self._personal_hold_qty.value()),
                     "scrumming_interval_pct": self._scrumming_interval.value(),
                     "bb_tolerance_pct": self._bb_tolerance.value(),
                     "bb_landing_strip_candles": self._ls_candles.value(),
@@ -1122,7 +1095,6 @@ if _HAS_QT:
                     "scrum_read_rate_min": self._scrum_read_rate.value(),
                     "band_travel_pct": self._band_travel_pct.value(),
                     "bb_bullseye_check": self._bb_bullseye.isChecked(),
-                    "wire_inflow_stack_pct": self._wire_inflow_stack_pct.value(),
                     "hedge_rebalance_active": self._hedge_rebalance.isChecked(),
                     "hedge_balance": self._hedge_amount.value(),
                     "circuit_breaker_soft_pct": self._cb_soft_pct.value(),
@@ -1172,7 +1144,12 @@ if _HAS_QT:
             layout = QVBoxLayout(self)
             self._enable = QCheckBox("Enable Phantom Bots")
             self._enable.setChecked(
-                bool((defaults or {}).get("default_enable_phantoms", False))
+                bool(
+                    (defaults or {}).get(
+                        "default_enable_phantoms",
+                        AppSettings().default_enable_phantoms,
+                    )
+                )
             )
             layout.addWidget(self._enable)
             layout.addWidget(QLabel(LABEL_TEXTS["phantom_timeframes_heading"]))

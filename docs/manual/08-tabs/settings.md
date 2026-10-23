@@ -3488,8 +3488,8 @@ page. The earlier text stays where it is.
 | "Save writes all six keys." | Save writes five keys. |
 | "The load path restores all six keys on the Trading page." | The load path restores all five keys on the Trading page. |
 | "`src/gui/settings_dialog.py` — `_load_current`, the four it restores", and the `self._pos_distance.setValue` line inside that block | `_stored_rows` carries no `position_distance_pct` row, so the load path names four keys and the page has five rows. |
-| "\| Trading \| 6 \| all six \| four of six \|" in [What each page persists](#what-each-page-persists) | Trading, 5 controls, `_save` writes all five, `_load_current` restores all five. |
-| "\| Trading \| 6 \| all six \| all six \|" in [What each page restores now](#what-each-page-restores-now) | The same five. |
+| "`\| Trading \| 6 \| all six \| four of six \|`" in [What each page persists](#what-each-page-persists) | Trading, 5 controls, `_save` writes all five, `_load_current` restores all five. |
+| "`\| Trading \| 6 \| all six \| all six \|`" in [What each page restores now](#what-each-page-restores-now) | The same five. |
 
 ## 2026-09-11 - Increment Style is off the Trading page
 
@@ -3579,8 +3579,8 @@ page. The earlier text stays where it is.
 | "Save writes all six keys." | Save writes four keys. |
 | "The load path restores all six keys on the Trading page." | The load path restores all four keys on the Trading page. |
 | "`src/gui/settings_dialog.py` — `_load_current`, the four it restores", and the three `self._increment_style` lines inside that block | `_stored_rows` carries no `increment_style` row, so the load path names three keys and the page has four rows. |
-| "\| Trading \| 6 \| all six \| four of six \|" in [What each page persists](#what-each-page-persists) | Trading, 4 controls, `_save` writes all four, `_load_current` restores all four. |
-| "\| Trading \| 6 \| all six \| all six \|" in [What each page restores now](#what-each-page-restores-now) | The same four. |
+| "`\| Trading \| 6 \| all six \| four of six \|`" in [What each page persists](#what-each-page-persists) | Trading, 4 controls, `_save` writes all four, `_load_current` restores all four. |
+| "`\| Trading \| 6 \| all six \| all six \|`" in [What each page restores now](#what-each-page-restores-now) | The same four. |
 
 The 2026-09-11 Position Distance section above restated the same rows at five.
 Four is the count after both rows are gone.
@@ -3678,8 +3678,8 @@ page. The earlier text stays where it is.
 | "Save writes all six keys." | Save writes three keys. |
 | "The load path restores all six keys on the Trading page." | The load path restores all three keys on the Trading page. |
 | "`src/gui/settings_dialog.py` — `_load_current`, the four it restores", and the `self._default_positions.setValue` line inside that block | `_stored_rows` carries no `default_position_count` row, so of the four lines in that block one remains and the page has three rows. |
-| "\| Trading \| 6 \| all six \| four of six \|" in [What each page persists](#what-each-page-persists) | Trading, 3 controls, `_save` writes all three, `_load_current` restores all three. |
-| "\| Trading \| 6 \| all six \| all six \|" in [What each page restores now](#what-each-page-restores-now) | The same three. |
+| "`\| Trading \| 6 \| all six \| four of six \|`" in [What each page persists](#what-each-page-persists) | Trading, 3 controls, `_save` writes all three, `_load_current` restores all three. |
+| "`\| Trading \| 6 \| all six \| all six \|`" in [What each page restores now](#what-each-page-restores-now) | The same three. |
 
 The 2026-09-11 Increment Style section above restated the same rows at four.
 Three is the count after all three of the Grid Bot group are gone.
@@ -4292,8 +4292,8 @@ page. The earlier text stays where it is.
 | ---------------- | ---------------------- |
 | "One master checkbox and three groups of radio buttons, eleven controls in all." | One master checkbox and two groups of radio buttons, nine controls in all. |
 | "Distribution Mode - Chooses whether a fold spreads evenly across the chosen positions or on a curve." and the key line, the two sentences and the code block under it | The page carries no Distribution Mode group, and no fold in the engine takes a distribution mode. |
-| "\| Profit Folding \| 11 \| the whole group \| `active` alone \|" in [What each page persists](#what-each-page-persists) | Profit Folding, 9 controls, `_save` writes the whole group, `_load_current` restores the whole group. |
-| "\| Profit Folding \| 11 \| the whole group \| the whole group \|" in [What each page restores now](#what-each-page-restores-now) | The same nine controls and five keys. |
+| "`\| Profit Folding \| 11 \| the whole group \|` `active` alone \|" in [What each page persists](#what-each-page-persists) | Profit Folding, 9 controls, `_save` writes the whole group, `_load_current` restores the whole group. |
+| "`\| Profit Folding \| 11 \| the whole group \| the whole group \|`" in [What each page restores now](#what-each-page-restores-now) | The same nine controls and five keys. |
 | "\| Profit Folding \| Distribution Mode, Profit Folding Target, Fold to X# of buy positions, Upward Distribution Target, Distribute to X# of sell positions \|" in [The fourteen rows a Save overwrote](#the-fourteen-rows-a-save-overwrote) | Thirteen rows, four of them on this page. Distribution Mode is off the page. |
 
 The master switch above this row gated five rows. It gates four now, and the
@@ -4611,7 +4611,7 @@ page. The earlier text stays where it is.
 | "Fold to X# of buy positions - Sets that counted number. Key `fold_target_count`, 1 to 100, at 5." | The page sets no count, and one dollar cap bounds how many tranches a fold reaches. |
 | "Save collapses the two target groups into one dictionary." | Save collapses one target group, the sell side. |
 | "Four of the six keys then fail a second time further down: the two target names and their two counts are four of the eleven the bot factory strips." | Two of the three keys the page still stores are on the strip list: `distribute_target` and `distribute_target_count`. |
-| "\| Profit Folding \| 11 \| the whole group \| the whole group \|" in [What each page restores now](#what-each-page-restores-now) | Five controls, and three keys in the group. |
+| "`\| Profit Folding \| 11 \| the whole group \| the whole group \|`" in [What each page restores now](#what-each-page-restores-now) | Five controls, and three keys in the group. |
 | "\| Profit Folding \| Distribution Mode, Profit Folding Target, Fold to X# of buy positions, Upward Distribution Target, Distribute to X# of sell positions \|" | Two rows on this page, Upward Distribution Target and Distribute to X# of sell positions. |
 
 The master switch above the removed group gated four rows. It gates two now, and
@@ -7566,7 +7566,7 @@ code. The earlier text stays where it is.
 | ---------------- | ---------------------- |
 | "The list at the top of the Exchanges page is headed Exchange Status." | The panel keeps that heading and draws an array of buttons, four across and sixteen to a page. |
 | "Each line is a button, and pressing one points the Add form below at that venue." | Each button is one venue, and pressing one still points the Add form at that venue. |
-| "\| Sector \| Venues the registry answers \| Rows drawn \|" | The registry answers 16 commodities, 21 crypto, 6 forex, 16 futures / perps, 13 indices and 19 stocks venues. |
+| "`\| Sector \| Venues the registry answers \| Rows drawn \|`" | The registry answers 16 commodities, 21 crypto, 6 forex, 16 futures / perps, 13 indices and 19 stocks venues. |
 | "`src/gui/main_tabs/settings_dialog_surface.py` — `exchange_status_rows`" | `exchange_status_page` draws the panel, and `exchange_status_rows` answers the whole sector behind it. |
 | "ten redraws of the crypto panel, fifteen rows each time" | A redraw still reaches no venue. The crypto panel now draws sixteen buttons on page one and five on page two. |
 | "all fifteen crypto lines match character for character" | Both builds draw the same twenty-one crypto venues from one surface, sixteen on page one and five on page two. |
@@ -8407,5 +8407,91 @@ code. The earlier text stays where it is.
 | ---------------- | ---------------------- |
 | "`src/core/encryption.py` — `derive_key`", and the signature under it, in both of the two sections that carry it | `derive_key` takes a third argument, a keyword-only `iterations`, and runs the declared `KDF_ITERATIONS` where it is left out. A seal that recorded an earlier cost hands back the cost it recorded. |
 | "`src/core/encryption.py` - the declaration and the fallback", and the `vault_phrase` body under it that returns `MASTER_FORMAT` alone | `vault_phrase` reads `held_master_key` first and answers `master_key_phrase` of the held key where one is held. Where none is held it returns `MASTER_FORMAT` on the stored name exactly as the block shows, which is every install no password has been set on. |
+
+## 2026-10-22 - One declaration opens both Phantom Bots boxes
+
+The master box and the lock box each had their opening figure typed into several
+files. The master box was the one that disagreed: five files said on and four
+said off, and a wizard handed an empty bag of defaults opened the box clear
+while the Settings page opened it ticked.
+
+Both figures are now declared once, in the settings module, and every screen
+reads that one name.
+
+```python
+# src/core/settings.py, the two declarations
+DEFAULT_ENABLE_PHANTOMS = True
+
+DEFAULT_LOCK_CANDLE_COUNT = 2
+
+
+@dataclass
+class AppSettings:
+    default_enable_phantoms: bool = DEFAULT_ENABLE_PHANTOMS
+    default_lock_candle_count: int = DEFAULT_LOCK_CANDLE_COUNT
+```
+
+On is the figure kept. It is what the store's own schema already declared, and
+`SettingsManager.get_all` answers it on a machine with no settings file, so every
+wizard the main window opens has always opened with the box ticked. Two is the
+figure kept for the lock box, because every site already read two.
+
+### Where each figure used to be written down
+
+Nine sites named the master box default and four of them disagreed with the
+store. Seven sites named the lock figure and all seven agreed by luck.
+
+| Screen or module | Master box | Lock box |
+| ---------------- | ---------- | -------- |
+| `src/core/settings.py`, in `AppSettings` | the declaration | the declaration |
+| `src/gui/main_tabs/settings_dialog_surface.py`, `PERSISTED_ROWS` | reads it | reads it |
+| `src/gui/main_tabs/settings_dialog_surface.py`, `CONTROL_SPECS` | reads it | reads it |
+| `src/gui/settings_dialog.py`, in `_create_phantom_tab` | reads it | reads it |
+| `src/gui/settings_dialog.py`, in `_stored_rows` | reads it | reads it |
+| `src/gui/main_tabs/bot_wizard_surface.py`, `CHECK_FIELDS` and `NUMBER_FIELDS` | reads it | reads it |
+| `src/gui/bot_wizard.py`, in `PhantomConfigPage` | reads it | reads it |
+| `src/gui/paper/paper_bot_wizard.py`, in `PaperPhantomConfigPage` | reads it | reads it |
+| `src/gui/simulator/sim_bot_wizard.py`, in `SimPhantomConfigPage` | reads it | reads it |
+| `src/gui/live_settings/phantom_bots_tab.py`, in `PhantomBotsTabMixin` | from the bot | reads it |
+| `src/gui/paper/paper_phantom_bots_tab.py` | from the bot | reads it |
+| `src/gui/simulator/sim_phantom_bots_tab.py` | from the bot | reads it |
+| `src/trading/phantom_balance.py`, in `TimeframeCoordinator` | - | reads it |
+| `src/trading/scrumming_bot.py`, in `ScrummingBot` | reads it | from its coordinator |
+| `src/trading/container/restore.py`, in `restore_bots_from_state` | reads it | from the saved record |
+
+### What moving the one declaration does
+
+The declaration was set to off and seven, two figures no site held, and every
+screen was built again. Fourteen lock readings moved from two to seven together,
+and the master box went clear on all four wizard surfaces and on the Settings
+page. Neither figure moved anywhere before the change.
+
+```
+no store, declaration at on and 2      three wizards on, lock 2; Settings on, lock 2
+no store, declaration at off and 7     three wizards clear, lock 7; Settings clear, lock 7
+```
+
+### A stored figure still wins
+
+A store holding off, nine and `4h` opens all three wizards and the Settings page
+at off, nine and `4h`, whatever the declaration says. A running bot carrying a
+saved nine shows nine on its own Phantom Bots tab on Live, Paper and the
+Simulator.
+
+```
+declaration off and 7, store on and 9     every wizard opens on, lock 9
+declaration off and 7, bot saved 9        every running-bot page shows 9
+```
+
+### Two sentences this one declaration leaves standing
+
+Each sentence below stands in an earlier section and no longer describes the
+code. The earlier text stays where it is.
+
+| Earlier sentence | What the code does now |
+| ---------------- | ---------------------- |
+| "The one spin box on the page, inside its own group. It opens at 2 and Save reads it no more than it reads the other two." | It still opens at 2, and the 2 is now the one declared figure rather than a figure typed into this page. Save reads it and stores it. |
+| The Settings-row table whose Lock duration row shows an opened-at of 2, and whose master box row above it shows an opened-at of clear | The opened-at column is the one declared figure for both rows: ticked for the master box, 2 for the lock box. The stored column is unchanged. |
+
 
 Back to [the subsystem index](README.md).
