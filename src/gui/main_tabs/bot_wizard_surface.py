@@ -70,6 +70,7 @@ import math
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any, Optional
 
+from ...core.settings import DEFAULT_ENABLE_PHANTOMS, DEFAULT_LOCK_CANDLE_COUNT
 from ...exchange.timeframes import ALL_TIMEFRAMES
 from .indicator_panel_surface import ABSENT_CELL_TEXT
 
@@ -412,7 +413,12 @@ NUMBER_FIELDS: dict[str, dict] = {
         "suffix": "%",
         "value": 100.0,
     },
-    "lock_candles": {"kind": SPIN_INT, "minimum": 1, "maximum": 10, "value": 2},
+    "lock_candles": {
+        "kind": SPIN_INT,
+        "minimum": 1,
+        "maximum": 10,
+        "value": DEFAULT_LOCK_CANDLE_COUNT,
+    },
 }
 
 STACK_MODE_DEFAULT = True
@@ -431,7 +437,7 @@ CHECK_FIELDS: dict[str, bool] = {
     "gate_scrum_htf_chk": True,
     "gate_fold_ta_chk": True,
     "gate_fold_htf_chk": True,
-    "phantom_enable": False,
+    "phantom_enable": DEFAULT_ENABLE_PHANTOMS,
 }
 
 RADIO_FIELDS: dict[str, bool] = {
