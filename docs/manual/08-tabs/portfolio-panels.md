@@ -74,6 +74,32 @@ style.minWidth = length(floor);
 Measured at a 1920 pixel window, in both builds: the money strip 686, each card
 217, the square 112.
 
+Overtaken, quoted whole: the two code blocks above, which name `slot_natural_w`
+at both sites, and "Measured at a 1920 pixel window, in both builds: the money
+strip 686, each card 217, the square 112."
+
+True today: both sites read `slot_floor_w`, which answers `slot_natural_w` for
+the money strip and `slot_min_w` for every other slot. `top_row_min_w` adds up
+the same `slot_floor_w`, so the narrowest window the budget names is the
+narrowest the row can draw at — 1384 pixels, which is what Qt reports for the
+real window.
+
+`src/gui/main_tabs/header_strip.py` — `HeaderStripMixin._build_header_strip`
+
+```python
+card.setMinimumWidth(surface.slot_floor_w(model["key"]))
+```
+
+`src/gui/main_tabs/header_strip_surface.py` — `width_budget`
+
+```python
+"slots": {slot: slot_floor_w(slot) for slot in TOP_ROW_ORDER}
+```
+
+Read off the real row on the Qt build, with the machine's own fonts, at a
+1920 pixel window: the money strip 866, each card 144 or 145, the square 148.
+At 1400 the strip reads 668, a card 90 or 91, and the square 148.
+
 ## Left: the spendable columns
 
 Five labelled columns fill the left half, divided by thin vertical rules.
@@ -99,6 +125,17 @@ for label_text, key in [
     ("EXCH", "exchanges"),
 ]:
 ```
+
+Overtaken, quoted whole: the five-row table above, and the four labels in the
+block above it.
+
+True today: the strip draws six columns and REALISED is not one of them.
+`header_strip_surface.py, in KPI_COLUMNS` declares SPENDABLE, P/L, LOCKED,
+MATURE, EXCH and AMMO. `spendable_profits_surface.py, in COLUMNS` declares the
+same six, and `spendable_profits.py, in SpendableProfitsWidget._setup_ui` builds
+one column per entry of that list in place of the typed four. The name REALISED
+is spelled in neither file. P/L carries the only profit and loss figure the strip
+draws, and it is the unrealised figure the exchange answers.
 
 One payload draws all five. A value the payload leaves out draws an em dash
 rather than a zero, which keeps "no reading" and "a reading of nothing" apart.

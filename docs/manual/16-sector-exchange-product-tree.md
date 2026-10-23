@@ -792,6 +792,13 @@ recording and not of a lookup that answers anything.
 `contract_size` is on 231 rows and `expiry_ms` on 100. `clearing_venue` is on
 none of the 2,147, so the clearing gate stays dormant.
 
+OVERTAKEN, and the sentence above is kept as written. It reads a recording
+written before the field existed. `src/exchange/ccxt_connector.py, in
+market_rules` now reads the clearing label and the view-only mark off every
+market record, so the next venue read writes both onto every row and the
+clearing gate is no longer dormant. A row still holding neither is offered,
+which is what the sentence above describes.
+
 `session` is absent on every contract row and every index row.
 `ccxt_connector.market_session` answers nothing where the venue publishes a
 daily trading window, because neither session name the sizing path knows — the
@@ -832,6 +839,52 @@ serve are not on Coinbase's own derivatives exchange.
 The recording cannot tell the two apart. A recorded row carries six rule fields
 and no clearing label, so a row read back from the store does not say which
 exchange would clear it.
+
+OVERTAKEN, and the paragraph above is kept as written. A recorded row now
+carries the clearing label and the venue's own view-only mark beside it, so a
+row read back from the store does say which exchange would clear it.
+`src/exchange/base.py, in MarketRules` holds both facts.
+`src/exchange/market_rules_store.py, in rules_row` writes them and
+`in recorded_rules` reads them back, over four field groups: the numeric rules,
+the text rules, the mark rules and the permission rules.
+
+The two facts are separate and the platform reads both.
+
+```
+clearing_venue   the exchange that would clear an order on the product
+view_only        the venue publishes the product for reading alone
+```
+
+A product can clear on an exchange this platform reaches and still carry the
+mark. Measured on the public endpoint, 46 of Coinbase's 100 dated contracts do,
+all of them clearing on `FCM`.
+
+`src/trading/scrumming/sizing.py, in clearing_refusal` answers one sentence for
+both. The clearing venue answers first, through
+`in clearing_venue_reached` against `in CITED_VENUE_CLEARING_REACH`, which cites
+`CBE`, `CCM` and `FCM` on Coinbase. The mark answers second, through
+`in view_only_marked`, and only the venue's own `true` refuses. A row recorded
+before the field carries no mark and is offered.
+
+Two readers take that sentence and nothing else decides it.
+
+```
+src/trading/bot_container.py, in guarded_place_order       refuses before the order
+src/gui/main_tabs/bot_wizard_surface.py, in market_reason  refuses on the page
+```
+
+The wizard reads the same function the order path reads, so the page cannot
+offer a market the order path would refuse.
+`src/gui/main_tabs/bot_wizard_surface.py, in rules_from_row` rebuilds the rules
+from a recorded row over the same four field groups the store records, so the
+mark reaches the page.
+
+What the operator sees on the asset list, where a market is refused:
+
+```
+src/gui/main_tabs/bot_wizard_surface.py, in creatable        the Create button shuts
+src/gui/main_tabs/bot_wizard_surface.py, in target_reason    the sentence
+```
 
 ### How an order is sized, per product
 

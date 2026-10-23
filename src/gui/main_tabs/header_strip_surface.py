@@ -654,15 +654,17 @@ def slot_floor_w(slot: Any) -> int:
     return slot_min_w(name)
 
 
+# OVERTAKEN, quoted whole: "The sum of every ``slot_min_w``, plus the
+# ``TOP_ROW`` gap between two of them."
 def top_row_min_w() -> int:
     """The narrowest the header top row draws at, holding every slot.
 
-    The sum of every ``slot_min_w``, plus the ``TOP_ROW`` gap between two
-    of them.
+    The sum of every ``slot_floor_w``, the floor ``_build_header_strip`` sets on
+    each slot, plus the ``TOP_ROW`` gap between two of them.
     """
-    held = [slot for slot in TOP_ROW_ORDER if slot_min_w(slot) > 0]
+    held = [slot for slot in TOP_ROW_ORDER if slot_floor_w(slot) > 0]
     gaps = max(len(held) - 1, 0) * TOP_ROW_SPACING_PX
-    return sum(slot_min_w(slot) for slot in held) + gaps
+    return sum(slot_floor_w(slot) for slot in held) + gaps
 
 
 def window_min_w() -> int:

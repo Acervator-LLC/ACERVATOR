@@ -510,6 +510,14 @@ Inspector for its current proposals at build time.
 
 `src/gui/main_tabs/simulator_tab.py` — `_build_simulator_tab`
 The Simulator rebuild removed this file; it is not in the tree.
+The file is back in the tree:
+`src/gui/main_tabs/simulator_tab.py, in SimulatorTabMixin._build_simulator_tab`
+seats the Sim tab, or the note naming a caught build. The block below is not in
+it: `set_topology_getter` is in no file, so nothing wires a getter at build
+time. The Inspector still answers
+`src/gui/main_tabs/market_inspector_surface.py, in current_topology_proposals`,
+and `src/gui/main_window.py, in _push_candidate_to_sim` is the push the operator
+presses.
 
 ```python
 if hasattr(self._simulator, "set_topology_getter"):
