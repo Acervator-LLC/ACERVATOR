@@ -6048,6 +6048,17 @@ def scrum_fixture(context: GateContext, reading: Any = None) -> dict:
         **_landing(reading),
 ```
 
+**Functional.** The builder takes a third input, and the fixture now opens
+with it: each refusal an override replaced on that side, under the key the
+live gate log already writes. A row where no override acted carries an empty
+list, so a row an override passed and a row that passed on its own read apart.
+
+`src/simulator/sim_bus.py` — the key the fixture opens with
+
+```python
+OVERRIDES_APPLIED_KEY: [str(one) for one in overrides_applied],
+```
+
 One row per evaluated candle, not one per fill as Live writes, because a
 blocked candle is the one a person troubleshoots: the blocker list on that
 row names the light that held, and the fixture names the reading behind it.
