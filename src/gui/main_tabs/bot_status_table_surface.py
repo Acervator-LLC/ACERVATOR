@@ -37,7 +37,7 @@ from typing import Any, Dict, Optional
 
 from ...core.asset_logos import LogoCache, image_extension
 from ...core.privacy_mask_registry import get_privacy_mask_registry, mask_or
-from ...core.safe_url import openable_url
+from ...core.safe_url import NO_ADDRESS_REASON, openable_url
 from ...exchange.crypto_assets import AssetManager
 from ...exchange.exchange_chart_urls import chart_url
 from ...trading.ata_asset_maps import organisation_page
@@ -258,7 +258,14 @@ ORGANISATION_TIP_FORMAT = "Open {host} in default browser: {address}"
 NO_ORGANISATION_TIP_FORMAT = (
     "no web address is known for {asset}, so this mark is not a link"
 )
+#: What a mark's tooltip reads when an address was known and refused.
+REFUSED_ORGANISATION_TIP_FORMAT = "{asset} opens nothing: {reason}"
 ORGANISATION_READ_FAILED_LOG = "Organisation address read failed for %r: %s: %s"
+ORGANISATION_REFUSED_LOG = "Organisation address refused for %r: %s"
+OPENING_REFUSED_LOG = "Cell address refused for %r: %s"
+
+#: What ``opening_refusal`` answers for an address carrying no host.
+OPENING_NO_HOST_REASON = "the address names no host"
 ORGANISATION_READ_ERRORS = (AttributeError, KeyError, TypeError, ValueError)
 
 #: One ``LogoCache`` reader over the kept directory; ``resolve`` is never called.
@@ -268,6 +275,7 @@ CRYPTO_RECORDS = AssetManager()
 _LOGO_PATHS: Dict[str, str] = {}
 _LOGO_DATA: Dict[str, str] = {}
 _ORGANISATION_ADDRESSES: Dict[str, str] = {}
+_ORGANISATION_REFUSALS: Dict[str, str] = {}
 
 LINK_COLOR = ds.TEXT_INFO_SOFT
 LINK_UNDERLINE = True
@@ -719,6 +727,36 @@ def kept_logo_path(symbol: str) -> str:
     return EMPTY_TEXT
 
 
+def address_refusal(reason: str) -> str:
+    """``reason`` when it refuses an address that was there, empty for an absent one.
+
+    ``NO_ADDRESS_REASON`` answers a value carrying no address at all, which
+    ``NO_ORGANISATION_TIP_FORMAT`` names already.
+    """
+    text = str(reason or EMPTY_TEXT)
+    return EMPTY_TEXT if text == NO_ADDRESS_REASON else text
+
+
+def opening_refusal(value: Any) -> tuple[str, str]:
+    """``value`` when it is an ``https`` address carrying a host, and why it is not.
+
+    ``opening_address`` answers the address alone, and ``organisation_address``
+    reads the refusal text for a mark's tooltip.
+    """
+    address, refused = openable_url(
+        str(value or EMPTY_TEXT), allowed_schemes=OPENING_SCHEMES
+    )
+    if not address:
+        return EMPTY_TEXT, refused
+    try:
+        host = urllib.parse.urlsplit(address).hostname
+    except ValueError as malformed:
+        return EMPTY_TEXT, str(malformed)
+    if not host:
+        return EMPTY_TEXT, OPENING_NO_HOST_REASON
+    return address, EMPTY_TEXT
+
+
 def opening_address(value: Any) -> str:
     """``value`` when it is an ``https`` address carrying a host, empty for every other.
 
@@ -726,14 +764,11 @@ def opening_address(value: Any) -> str:
     browser is asked to open it, so an http, file, javascript, data or
     scheme-less value never reaches one.
     """
-    address, _ = openable_url(str(value or EMPTY_TEXT), allowed_schemes=OPENING_SCHEMES)
-    if not address:
-        return EMPTY_TEXT
-    try:
-        host = urllib.parse.urlsplit(address).hostname
-    except ValueError:
-        return EMPTY_TEXT
-    return address if host else EMPTY_TEXT
+    address, refused = opening_refusal(value)
+    named = address_refusal(refused)
+    if not address and named:
+        logger.warning(OPENING_REFUSED_LOG, str(value), named)
+    return address
 
 
 def organisation_address(symbol: str) -> str:
@@ -750,25 +785,51 @@ def organisation_address(symbol: str) -> str:
     if held is not None:
         return held
     found = EMPTY_TEXT
+    stored = EMPTY_TEXT
     for asked in (icon_asset_of(symbol), symbol):
         if not asked:
             continue
         try:
-            site, _ = CRYPTO_RECORDS.organisation_url(asked)
+            site, refused = CRYPTO_RECORDS.organisation_url(asked)
             found = site or organisation_page(asked)
+            stored = EMPTY_TEXT if found else (stored or address_refusal(refused))
         except ORGANISATION_READ_ERRORS as exc:
             logger.debug(ORGANISATION_READ_FAILED_LOG, asked, type(exc).__name__, exc)
             continue
         if found:
             break
-    address = opening_address(found)
+    address, refused = opening_refusal(found)
+    named = EMPTY_TEXT if address else (address_refusal(refused) or stored)
     _ORGANISATION_ADDRESSES[symbol] = address
+    for key in (symbol, icon_asset_of(symbol)):
+        if key:
+            _ORGANISATION_REFUSALS[key] = named
+    if named:
+        logger.warning(ORGANISATION_REFUSED_LOG, symbol, named)
     return address
 
 
-def organisation_tooltip(asset: str, address: str) -> str:
-    """The line a mark's tooltip carries: where a click goes, or that it is not a link."""
+def organisation_refusal(symbol: str) -> str:
+    """Why ``symbol`` resolves no organisation address, empty for one that resolves one.
+
+    ``organisation_address`` records it under both the pair and
+    ``icon_asset_of``, and ``organisation_tooltip`` names it on the mark.
+    """
+    if not symbol:
+        return EMPTY_TEXT
+    return _ORGANISATION_REFUSALS.get(symbol, EMPTY_TEXT)
+
+
+def organisation_tooltip(asset: str, address: str, refused: str = EMPTY_TEXT) -> str:
+    """The line a mark's tooltip carries: where a click goes, or that it is not a link.
+
+    An empty ``refused`` reads ``organisation_refusal`` on ``asset``, and a
+    named refusal replaces ``NO_ORGANISATION_TIP_FORMAT``.
+    """
     if not address:
+        named = address_refusal(refused) or organisation_refusal(asset)
+        if named:
+            return REFUSED_ORGANISATION_TIP_FORMAT.format(asset=asset, reason=named)
         return NO_ORGANISATION_TIP_FORMAT.format(asset=asset)
     host = urllib.parse.urlsplit(address).hostname or address
     return ORGANISATION_TIP_FORMAT.format(host=host, address=address)
@@ -800,15 +861,21 @@ def logo_data_address(path: str) -> str:
     return found
 
 
-def logo_cell(asset: str, shown: str, path: str, link: str = EMPTY_TEXT) -> dict:
+def logo_cell(
+    asset: str,
+    shown: str,
+    path: str,
+    link: str = EMPTY_TEXT,
+    refused: str = EMPTY_TEXT,
+) -> dict:
     """The first column's cell: ``asset``'s logo at ``path``, its ticker, or ``shown``.
 
-    ``link`` is the organisation address a click opens, and its tooltip line
-    names where that click goes or says the mark is not a link.
+    ``link`` is the organisation address a click opens and ``refused`` is what
+    ``organisation_refusal`` answers for one that opens nothing.
     """
     if shown != asset or not asset:
         return cell(shown)
-    mark_tip = organisation_tooltip(asset, link)
+    mark_tip = organisation_tooltip(asset, link, refused)
     address = logo_data_address(path)
     if path and address:
         return cell(
@@ -1463,8 +1530,9 @@ class BotStatusTableModel:
         asset = icon_asset_of(symbol)
         path = kept_logo_path(symbol)
         link = organisation_address(symbol)
+        refused = organisation_refusal(symbol)
         self.calls.append([ROW_LOGO, asset, LOGO_SIZE_PX, bool(path), bool(link)])
-        return logo_cell(asset, shown, path, link)
+        return logo_cell(asset, shown, path, link, refused)
 
     def _symbol_cell(self, text, status, exchange_id, state, mode) -> dict:
         """The Symbol cell: the state colour, the mode tooltip, and the chart link."""
@@ -1785,9 +1853,11 @@ class BotStatusTableModel:
         if not held:
             self.calls.append([CELL_IGNORED, column])
             return EMPTY_TEXT
-        url = opening_address(held)
+        url, refused = opening_refusal(held)
         if not url:
-            self.calls.append([CELL_REFUSED, column, held])
+            named = address_refusal(refused)
+            logger.warning(OPENING_REFUSED_LOG, str(held), named or refused)
+            self.calls.append([CELL_REFUSED, column, held, named])
             return EMPTY_TEXT
         self.opened_urls.append(url)
         self.calls.append([CELL_OPENED, url])

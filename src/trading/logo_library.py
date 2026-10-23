@@ -52,6 +52,7 @@ from ..exchange.crypto_assets import (
     COIN_INDEX_REASON_KEY,
     COIN_INDEX_SITE_KEY,
     COIN_INDEX_SITE_REASON_KEY,
+    COIN_INDEX_SITE_REFUSED_KEY,
     COIN_INDEX_VERSION,
     COIN_INDEX_VERSION_KEY,
     COIN_LIST_URL,
@@ -314,6 +315,13 @@ COIN_HOMEPAGE_KEY = "homepage"
 COIN_NO_SITE_REASON = "the coin record for {symbol} names no https web address"
 COIN_UNSETTLED_SITE_REASON = "no coin is settled for {symbol}, so no site is looked up"
 
+#: What a settled coin's site says when its record named a web address and
+#: ``openable_url`` refused it, which ``COIN_NO_SITE_REASON`` cannot be told from.
+COIN_SITE_REFUSED_REASON = (
+    "the coin record for {symbol} names a web address that does not open: {reason}"
+)
+COIN_SITE_REFUSED_LOG = "logo library: %s names a web address that does not open: %s"
+
 #: What a settled coin's site says when the ``COIN_DETAIL_URL`` read answered
 #: nothing, so ``COIN_NO_SITE_REASON`` cannot be told from a refused read.
 COIN_SITE_UNREAD_REASON = (
@@ -343,21 +351,32 @@ def coin_folded(text: Any) -> str:
     return "".join(one for one in str(text).lower() if one.isascii() and one.isalnum())
 
 
+def coin_site_answer(record: Any) -> tuple[str, str]:
+    """``record``'s first openable homepage, and why a named one was refused.
+
+    ``coin_site`` answers the address alone, and ``build_coin_index`` records
+    the refusal under ``COIN_INDEX_SITE_REASON_KEY``.
+    """
+    links = record.get(COIN_LINKS_KEY) if isinstance(record, dict) else None
+    named = links.get(COIN_HOMEPAGE_KEY) if isinstance(links, dict) else None
+    refused = ""
+    for one in named if isinstance(named, list) else [named]:
+        text = str(one or "").strip()
+        address, why = openable_url(text, allowed_schemes=COIN_SITE_SCHEMES)
+        if address:
+            return address, ""
+        if text and not refused:
+            refused = why
+    return "", refused
+
+
 def coin_site(record: Any) -> str:
     """The first web address ``record``'s links block names, empty for a record naming none.
 
     ``openable_url`` decides it, so a homepage outside ``COIN_SITE_SCHEMES``
     answers empty exactly as a refused ``website`` does.
     """
-    links = record.get(COIN_LINKS_KEY) if isinstance(record, dict) else None
-    named = links.get(COIN_HOMEPAGE_KEY) if isinstance(links, dict) else None
-    for one in named if isinstance(named, list) else [named]:
-        address, _ = openable_url(
-            str(one or "").strip(), allowed_schemes=COIN_SITE_SCHEMES
-        )
-        if address:
-            return address
-    return ""
+    return coin_site_answer(record)[0]
 
 
 def _coin_read(address: str, clock: Any) -> Optional[Any]:
@@ -640,6 +659,7 @@ def build_coin_index(
                 else ""
             )
             site_reason = COIN_NO_SITE_REASON.format(symbol=symbol)
+            site_refused = ""
             if not site:
                 detail = COIN_DETAIL_URL.format(id=chosen)
                 answered = _coin_read(detail, clock)
@@ -648,12 +668,20 @@ def build_coin_index(
                     unread.append(detail)
                     site_reason = COIN_SITE_UNREAD_REASON.format(symbol=symbol)
                 else:
-                    site = coin_site(answered)
+                    site, why_site = coin_site_answer(answered)
+                    if not site and why_site:
+                        site_refused = why_site
+                        site_reason = COIN_SITE_REFUSED_REASON.format(
+                            symbol=symbol, reason=why_site
+                        )
+                        logger.warning(COIN_SITE_REFUSED_LOG, symbol, why_site)
             if site:
                 row[COIN_INDEX_SITE_KEY] = site
                 sited += 1
             else:
                 row[COIN_INDEX_SITE_REASON_KEY] = site_reason
+                if site_refused:
+                    row[COIN_INDEX_SITE_REFUSED_KEY] = site_refused
                 siteless += 1
             assets[symbol] = row
             continue
@@ -928,6 +956,7 @@ __all__ = [
     "coin_folded",
     "coin_rank",
     "coin_site",
+    "coin_site_answer",
     "given_names",
     "recorded_name",
     "LOGO_PACE_S",
