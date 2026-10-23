@@ -1147,6 +1147,17 @@ no tab is reached narrower than 1400 through the window. Constructed alone,
 the Qt tab draws at 806 pixels wide and no narrower after a fleet loads, the
 sum of Live's own minimum sizes; the React page draws at 700.
 
+Overtaken, quoted whole: "The window's floor is 1400 by 900 pixels, set in
+`src/gui/main_window.py`".
+
+True today: 1400 by 900 is still the figure, and the width is no longer typed
+out beside it. `main_window.py, in window_min_w_px` answers the wider of
+`WINDOW_MIN_W_PX`, the window's own figure, and
+`header_strip_surface.window_min_w`, which is what the header strip's own slots
+need. Both are read in one place, so the two cannot drift. Six counter cards
+answer 1400 px and a seventh answers 1476 px. The height stays
+`WINDOW_MIN_H_PX`, 900 px.
+
 ### What the clone reading measured
 
 Read off the real window in both builds over a scratch home holding a

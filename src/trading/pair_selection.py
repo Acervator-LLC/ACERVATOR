@@ -11,6 +11,7 @@ when they are called, never when this module is.
 
 from __future__ import annotations
 
+import importlib.util
 import logging
 import math
 import warnings
@@ -48,6 +49,7 @@ JOHANSEN_CV_95_COLUMN = 1
 FLAT_SERIES_TOLERANCE = 1e-12
 
 COINTEGRATION_PACKAGE = "statsmodels"
+COINTEGRATION_REQUIREMENTS: tuple[str, ...] = (COINTEGRATION_PACKAGE, "scipy")
 
 BETA_FRACTION_STEPS = 300
 BETA_FRACTION_EPSILON = 3.0e-16
@@ -393,6 +395,27 @@ def johansen_trace(left: Sequence[float], right: Sequence[float]) -> tuple:
     return trace, critical
 
 
+def missing_cointegration_package() -> str:
+    """The first package ``cointegration_test`` needs and cannot find.
+
+    Answers an empty string when every name in ``COINTEGRATION_REQUIREMENTS``
+    is on the import path. It reads the path with ``importlib.util.find_spec``
+    and imports neither package, so the topology pane can name an absence
+    before any test is run. scipy is named beside statsmodels because
+    statsmodels requires it: with scipy absent neither
+    ``statsmodels.tsa.stattools`` nor ``statsmodels.tsa.vector_ar.vecm``
+    imports.
+    """
+    for name in COINTEGRATION_REQUIREMENTS:
+        try:
+            found = importlib.util.find_spec(name)
+        except (ImportError, ValueError):
+            return name
+        if found is None:
+            return name
+    return ""
+
+
 def cointegration_test(
     closes_a: Optional[Sequence[float]],
     closes_b: Optional[Sequence[float]],
@@ -522,7 +545,9 @@ __all__ = [
     "MIN_OBSERVATIONS",
     "SIGNIFICANCE",
     "COINTEGRATION_PACKAGE",
+    "COINTEGRATION_REQUIREMENTS",
     "MethodResult",
+    "missing_cointegration_package",
     "window_of",
     "is_flat",
     "daily_returns",
