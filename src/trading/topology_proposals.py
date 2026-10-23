@@ -23,6 +23,7 @@ from .pair_selection import (
     band_distance_result,
     cointegration_test,
     correlation_test,
+    missing_cointegration_package,
     score_from_correlation,
     score_from_p_value,
 )
@@ -641,7 +642,9 @@ def detect_all_topologies(
 
     Each detector runs in an arm of its own, so one whose statistics package the
     build left out answers nothing and the other three still return proposals;
-    every returned proposal carries that absence under ``UNAVAILABLE_KEY``.
+    every returned proposal carries that absence under ``UNAVAILABLE_KEY``. The
+    cointegration package is read off the import path as well as off a raise, so
+    the sentence stands whether or not a detector reached the import.
     Every ``context`` key is optional, and ``sector_map``, ``target_defaults``
     and ``target_fallback`` are read from disk when absent.
 
@@ -725,6 +728,21 @@ def detect_all_topologies(
                     detector=name, package=getattr(exc, "name", "") or exc
                 )
             )
+
+    # A row the Market Inspector built carries its own cointegration verdict, so
+    # the mean-reversion detector reaches no import and raises nothing. The
+    # absence is read off the import path instead, which is what puts the
+    # package's name on the pane rather than in the log alone.
+    absent_package = missing_cointegration_package()
+    if absent_package:
+        sentence = UNAVAILABLE_FORMAT.format(
+            detector=MEAN_REVERSION_DETECTOR_NAME, package=absent_package
+        )
+        if sentence not in unavailable:
+            logger.warning(
+                UNAVAILABLE_LOG_FORMAT, MEAN_REVERSION_DETECTOR_NAME, absent_package
+            )
+            unavailable.append(sentence)
 
     # _ARCHETYPE_RANK keys are the archetype values make_proposal writes.
     _ARCHETYPE_RANK = {
