@@ -1511,7 +1511,7 @@ src/trading/scrumming/reconciliation.py, in _record_venue_units_after_fill
 src/trading/scrumming/execution.py, in _execute_buy
     its own pre-fill reading plus the units bought
 src/trading/scrumming/execution.py, in _execute_manual_rebalance
-    its own pre-fill reading, on the two autonomous intents
+    its own pre-fill reading, on every intent
 src/trading/scrumming/execution.py, in _execute_detonation
     the second route, by the units it sold
 src/trading/scrumming/execution.py, in _execute_sell
@@ -2281,6 +2281,47 @@ The position value in that subtraction is the exchange's own unit count at the
 exchange's own price, and the bot's attributed count only where no exchange
 reading is held. The Ammo column section above names the rule and where the
 reading is stored.
+
+**Manual Fire reads the exchange before it sizes the trade.** The press asks the
+exchange for the traded asset's balance first. It costs one call, so the press is
+slightly slower. Where the exchange's count agrees with the bot's own count
+inside Manual Fire's band, the press sizes the trade exactly as it did before.
+Where the two counts differ by more than that band, the press trades nothing and
+says so. The same answer covers an exchange that leaves the asset out of its
+reply, and an exchange that cannot be read at all. This is the path with no gates
+behind it, so a position the platform cannot verify is not traded.
+
+Driven on a target of $1,000.00, a price of $1.00 and a bot holding 1050.0
+units. Manual Fire's band is $10.00 and the position sits $50.00 above target:
+
+```
+the exchange reports     the press sells
+1050.0 units             50.000000 units
+1020.0 units              0.000000 units, refused
+the asset left out        0.000000 units, refused
+no answer at all          0.000000 units, refused
+```
+
+The refusal carries the same words the Fire button itself shows,
+`MANUAL FIRE WILL NOT ACT`, and names both counts and both dollar figures. It
+goes to the bot log the Console and the bot window both read. Every press gets
+an answer. The autonomous intents keep the hold that stops a repeating tick
+writing the same refusal on every candle.
+
+`src/trading/scrumming/execution.py`, in `_execute_manual_rebalance` — the one
+balance read every intent takes, the button included
+
+```python
+_xbal = await self._get_balance(self.config.target_asset)
+_xunits = float(
+    getattr(_xbal, "total", 0) or getattr(_xbal, "free", 0) or 0.0
+)
+```
+
+The growth-cap check that sits beside that read still runs for the two
+autonomous intents alone. The Max Entry Price entry below says Manual Fire goes
+around the entry-price gates, and the operator override keeps the cap bypassed
+the same way.
 
 Scrum - To sell an amount from an investment position that allows it to return to its initial price level. This never closes the position. This is the first half of the infinitely divisible circle that can persist for such positions in a healthy market.
 
@@ -3094,7 +3135,7 @@ src/trading/scrumming/reconciliation.py, in _record_audited_venue_units
 src/trading/scrumming/execution.py, in _execute_buy
     a fill that reaches that recorder
 src/trading/scrumming/execution.py, in _execute_manual_rebalance
-    a fill that reaches that recorder, on the two autonomous intents
+    a fill that reaches that recorder, on every intent
 ```
 
 The adoption ceiling is the reader that bears on a sale. A bot whose venue
