@@ -40,6 +40,7 @@ from __future__ import annotations
 import math
 from typing import Any, Optional
 
+from ...exchange.api_load_monitor import DEFAULT_SAFETY_PCT
 from ...trading.ta_engine import DEFAULT_WEIGHTS
 from .. import design_system as ds
 from ..theme_engine import (
@@ -206,6 +207,10 @@ API_PILL_TOOLTIP = (
     "share of that window its one connector worker was busy, and the calls "
     "its queue refused. The percentage is the worse of the two loads, because "
     "a refused call reaches no log and reads as idleness in the count alone."
+)
+API_PILL_TOOLTIP_SAFETY_FORMAT = (
+    " Red above the {safety_pct:.0f} % phantom-creation safety threshold the "
+    "load monitor is holding."
 )
 API_PILL_TEXT_FORMAT = (
     "API {exchange}: {calls_per_minute:.0f} CPM, worker {worker_busy_pct:.0f} %"
@@ -741,6 +746,18 @@ def api_pill(sample: Any, safety_pct: Any) -> dict:
     if refusals > 0:
         text += API_PILL_REFUSED_FORMAT.format(queue_refusals=refusals)
     return {"text": text, "style": PILL_STYLE_FORMAT.format(colour=colour)}
+
+
+def api_pill_tooltip(safety_pct: Any) -> str:
+    """The pill's tooltip, naming the red threshold its load monitor holds.
+
+    ``safety_pct`` is the monitor's own ``safety_pct``, the share of the
+    ceiling ``api_pill`` paints red above, so the sentence and the colour
+    read the same figure.
+    """
+    return API_PILL_TOOLTIP + API_PILL_TOOLTIP_SAFETY_FORMAT.format(
+        safety_pct=100.0 * float(safety_pct)
+    )
 
 
 def api_pill_idle() -> dict:
@@ -1410,7 +1427,7 @@ class MainWindowModel:
         idle = api_pill_idle()
         self.api_pill_text = idle["text"]
         self.api_pill_style = idle["style"]
-        self.api_pill_tooltip = API_PILL_TOOLTIP
+        self.api_pill_tooltip = api_pill_tooltip(self._held_safety_pct())
         ai_config = self._ai_config()
         pill = ai_pill(ai_config) if self.settings is not None else ai_pill({})
         self.ai_pill_text = pill["text"]
@@ -1454,6 +1471,16 @@ class MainWindowModel:
             self._record("tick_empty_fleet", True)
         return self
 
+    def _held_safety_pct(self) -> Any:
+        """The red threshold this window's load monitor holds.
+
+        Falls back to ``DEFAULT_SAFETY_PCT`` where no monitor was handed in,
+        which is the figure a monitor built with no arguments holds.
+        """
+        if self.load_monitor is None:
+            return DEFAULT_SAFETY_PCT
+        return self.load_monitor.safety_pct
+
     def refresh_api_pill(self) -> "MainWindowModel":
         """Rewrite the status-line pill from the busiest connected exchange."""
         if not self.connector_ids or self.load_monitor is None:
@@ -1473,6 +1500,7 @@ class MainWindowModel:
         pill = api_pill(worst, self.load_monitor.safety_pct)
         self.api_pill_text = pill["text"]
         self.api_pill_style = pill["style"]
+        self.api_pill_tooltip = api_pill_tooltip(self.load_monitor.safety_pct)
         self._record("api_pill", self.api_pill_text)
         return self
 
