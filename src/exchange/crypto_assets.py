@@ -62,6 +62,9 @@ COIN_INDEX_ID_KEY = "coin_id"
 COIN_INDEX_CHOSEN_KEY = "chosen_by"
 COIN_INDEX_SITE_KEY = "site"
 COIN_INDEX_SITE_REASON_KEY = "site_reason"
+#: Held only where a coin record named a web address and ``openable_url``
+#: refused it. A row with no site and no entry here named no address at all.
+COIN_INDEX_SITE_REFUSED_KEY = "site_refused"
 #: The project name recorded for one ticker, which ``choose_coin`` settles a
 #: shared ticker by and ``coin_candidates`` looks a coin id up under.
 COIN_INDEX_NAME_KEY = "name"
@@ -732,17 +735,21 @@ class AssetManager:
     def organisation_url(self, symbol: str) -> tuple[str, str]:
         """``symbol``'s own site a browser may open, and the reason a refused one is not.
 
-        ``coin_index`` answers first where the fill looked a site up, and the
-        ``ASSETS`` record's ``website`` answers for the ten that carry one.
+        ``coin_index`` answers first where the fill looked a site up, the
+        ``ASSETS`` record's ``website`` answers next, and a row carrying
+        ``COIN_INDEX_SITE_REFUSED_KEY`` answers its own recorded refusal.
         """
         name = str(symbol).strip().upper()
-        indexed = str(
-            (self.coin_index.get(name) or {}).get(COIN_INDEX_SITE_KEY) or ""
-        ).strip()
+        row = self.coin_index.get(name) or {}
+        indexed = str(row.get(COIN_INDEX_SITE_KEY) or "").strip()
         if indexed:
             return openable_url(indexed, allowed_schemes=COIN_SITE_SCHEMES)
         asset = self.get_asset(name)
-        return openable_url(asset.website if asset else "")
+        address, refused = openable_url(asset.website if asset else "")
+        if address:
+            return address, refused
+        turned_away = str(row.get(COIN_INDEX_SITE_REFUSED_KEY) or "").strip()
+        return "", turned_away or refused
 
     def download_logo(self, symbol: str) -> Optional[Path]:
         """Download logo to cache if not already present. Returns cached path."""
