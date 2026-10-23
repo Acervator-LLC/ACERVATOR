@@ -1563,7 +1563,7 @@ src/trading/scrumming/reconciliation.py, in _record_venue_units_after_fill
 src/trading/scrumming/execution.py, in _execute_buy
     its own pre-fill reading plus the units bought
 src/trading/scrumming/execution.py, in _execute_manual_rebalance
-    its own pre-fill reading, on the two autonomous intents
+    its own pre-fill reading, on every intent
 src/trading/scrumming/execution.py, in _execute_detonation
     the second route, by the units it sold
 src/trading/scrumming/execution.py, in _execute_sell
@@ -2392,6 +2392,92 @@ The Qt build picks the same word from the same table —
 Trader's table and the Simulator's table are subclasses of those two and hold no
 word of their own, so all six surfaces read alike.
 
+**Manual Fire reads the exchange before it sizes the trade.** The press asks the
+exchange for the traded asset's balance first. It costs one call, so the press is
+slightly slower. Where the exchange's count agrees with the bot's own count
+inside Manual Fire's band, the press sizes the trade exactly as it did before.
+Where the two counts differ by more than that band, the press trades nothing and
+says so. The same answer covers an exchange that leaves the asset out of its
+reply, and an exchange that cannot be read at all. This is the path with no gates
+behind it, so a position the platform cannot verify is not traded.
+
+Driven on a target of $1,000.00, a price of $1.00 and a bot holding 1050.0
+units. Manual Fire's band is $10.00 and the position sits $50.00 above target:
+
+```
+the exchange reports     the press sells
+1050.0 units             50.000000 units
+1020.0 units              0.000000 units, refused
+the asset left out        0.000000 units, refused
+no answer at all          0.000000 units, refused
+```
+
+The refusal carries the same words the Fire button itself shows,
+`MANUAL FIRE WILL NOT ACT`, and names both counts and both dollar figures. It
+goes to the bot log the Console and the bot window both read. Every press gets
+an answer. The autonomous intents keep the hold that stops a repeating tick
+writing the same refusal on every candle.
+
+`src/trading/scrumming/execution.py`, in `_execute_manual_rebalance` — the one
+balance read every intent takes, the button included
+
+```python
+_xbal = await self._get_balance(self.config.target_asset)
+_xunits = float(
+    getattr(_xbal, "total", 0) or getattr(_xbal, "free", 0) or 0.0
+)
+```
+
+The growth-cap check that sits beside that read still runs for the two
+autonomous intents alone. The Max Entry Price entry below says Manual Fire goes
+around the entry-price gates, and the operator override keeps the cap bypassed
+the same way.
+
+**The row says the position is disputed before the press.** The Fire button
+reads the two counts the row already carries. Where the exchange's count and
+the bot's count stand further apart than Manual Fire's band, the button takes
+the same refused path a press inside the band takes. It reads `No Trade`, it
+carries no glow, and its tooltip names both counts, both dollar figures and the
+gap. Where the gap sits inside the band, and where the row holds no exchange
+reading at all, the button reads exactly as it did before. An absent reading is
+not a dispute.
+
+Driven on six rows, read off the live button on both build variants, at a
+target of $1,000.00 and a price of $1.00. Manual Fire's band is $10.00 and the
+tick's is $1.00:
+
+```
+the bot counts   the exchange reports   the button reads   its tooltip names
+1050.0 units     1050.0 units           Fire               the armed scrum
+1050.0 units     1020.0 units           No Trade           the $30.00 gap
+1050.0 units     1049.0 units           Fire               the armed scrum
+1050.0 units     no reading at all      Fire               the armed scrum
+1005.0 units     1005.0 units           No Trade           the $10.00 band
+1050.0 units     1005.0 units           No Trade           the $45.00 gap
+```
+
+**Two refusals reach that one path, and the tooltip names the gap first.** A
+press is refused where the gap between the two counts is past the band, and
+refused where the distance from target sits inside the band. A row can be in
+both states at once, and the last row above is one. The tooltip names the gap
+there, because `_execute_manual_rebalance` reads the exchange before it
+measures the distance, so the gap is the refusal a press would actually meet.
+The band entry above keeps its own wording for a row whose two counts agree.
+
+`src/gui/main_tabs/bot_status_table_surface.py`, in `manual_fire_dispute` — the
+one answer both build variants read
+
+```python
+reading = ammo if isinstance(ammo, dict) else {}
+if not reading.get("two_reads", False):
+    return None
+```
+
+The page's row and the window's row both call that function, and both read
+`manual_fire_verdict` beside it, so neither build variant can draw a button the
+other would not. The Ammo cell's own tooltip carries the same two counts, which
+the Ammo column section above describes.
+
 Scrum - To sell an amount from an investment position that allows it to return to its initial price level. This never closes the position. This is the first half of the infinitely divisible circle that can persist for such positions in a healthy market.
 
 One shared helper decides which half of the cycle a position sits in. It
@@ -3204,7 +3290,7 @@ src/trading/scrumming/reconciliation.py, in _record_audited_venue_units
 src/trading/scrumming/execution.py, in _execute_buy
     a fill that reaches that recorder
 src/trading/scrumming/execution.py, in _execute_manual_rebalance
-    a fill that reaches that recorder, on the two autonomous intents
+    a fill that reaches that recorder, on every intent
 ```
 
 The adoption ceiling is the reader that bears on a sale. A bot whose venue
