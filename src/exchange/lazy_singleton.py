@@ -22,7 +22,9 @@ supplies its own, naming what its reading is.
 
 ``note_cleared`` carries the same window over a blocked fetch path, which
 no singleton owns: ``MarketDataPool._clear_wedged_lock`` calls it when it
-replaces a fetch lock whose holder never finished.
+replaces a fetch lock whose holder never finished. ``CCXTConnector`` calls
+it twice more, for a leaked worker thread and for a trade-history scan
+whose lock holder stopped answering.
 
 ``_describe`` guards ``str(exc)``. An exception whose ``__str__`` raises
 propagates out of the logging call and into the caller. Measured.
