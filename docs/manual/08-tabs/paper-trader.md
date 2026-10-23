@@ -3137,6 +3137,19 @@ same book accepting as the control:
 Nothing reaches the screen for a refused build. The bar comes up short with no
 mark on it.
 
+### The Sim tab's own slot now carries the reason
+
+The Sim tab answers differently today.
+`src/gui/main_tabs/simulator_tab.py, in SimulatorTabMixin._build_simulator_tab`
+seats `src/gui/main_tabs/simulator_tab.py, in BuildFailureNote` in the Sim slot
+when it catches, so the bar keeps nine tabs and the Sim page names the tab and
+what the build reported. The window attribute still stays unset, so the header
+strip, the Inspector's push and the sector filter all still read the tab as
+absent.
+
+The Paper tab is unchanged. A refused Paper build still writes one warning line
+and leaves its slot empty.
+
 ## 2026-10-20 - #937 - a Paper row's state sits on its Symbol cell
 
 The Paper Trader's Scrumming Bots table is a subclass of the window's own bot

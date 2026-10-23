@@ -2,6 +2,8 @@
 
 ``at_target_dust_band`` is the band ``ScrummingBot.tick`` parks inside;
 ``manual_fire_dust_band`` is the wider one Manual Fire refuses inside.
+``TICK_PARK_PCT`` and ``MANUAL_FIRE_REFUSE_PCT`` each name the actor and the
+action its figure decides, so neither reads as the other's.
 ``target_territory`` and ``manual_fire_will_noop`` answer the same two
 questions from a position value, which is what the dashboard holds.
 """
@@ -11,12 +13,14 @@ from __future__ import annotations
 import math
 from typing import Any, Iterable, Sequence
 
-#: The tick's park band as a fraction of target; ScrummingBot.tick exits inside it.
-AT_TARGET_PCT = 0.001
+#: The band ScrummingBot.tick parks inside, as a fraction of target; the tick
+#: exits without trading while the position sits within it.
+TICK_PARK_PCT = 0.001
 
-#: Manual Fire's own no-op band, as a fraction of target; ten times
-#: ``AT_TARGET_PCT``.
-MANUAL_FIRE_PCT = 0.01
+#: The band Manual Fire refuses inside, as a fraction of target; ten times
+#: ``TICK_PARK_PCT``, so a position between the two is one the tick trades and
+#: the button declines.
+MANUAL_FIRE_REFUSE_PCT = 0.01
 
 #: Floor for both bands, in quote currency.
 BAND_FLOOR_USD = 0.01
@@ -29,12 +33,12 @@ TERRITORY_AT_TARGET = "at_target"
 
 def at_target_dust_band(target_balance: float) -> float:
     """The band inside which the tick parks: 0.1% of target, min $0.01."""
-    return max(float(target_balance) * AT_TARGET_PCT, BAND_FLOOR_USD)
+    return max(float(target_balance) * TICK_PARK_PCT, BAND_FLOOR_USD)
 
 
 def manual_fire_dust_band(target_balance: float) -> float:
     """The band inside which Manual Fire refuses: 1% of target, min $0.01."""
-    return max(float(target_balance) * MANUAL_FIRE_PCT, BAND_FLOOR_USD)
+    return max(float(target_balance) * MANUAL_FIRE_REFUSE_PCT, BAND_FLOOR_USD)
 
 
 def target_delta(position_value: float, target_balance: float) -> float:
@@ -63,7 +67,8 @@ def ammo_units(holdings: float, venue_units: Any) -> tuple:
     """The units an Ammo reading measures from, and whether the venue gave them.
 
     Prefers ``venue_units`` — the audited venue reading, already net of the
-    personal hold and of the sibling bots on the asset — over the bot's own
+    sibling bots on the asset, which
+    ``reconciliation._claimable_exchange_units`` subtracts — over the bot's own
     attributed ``holdings``. The exchange is the authority on what is held, and
     an attributed count below the venue inverts the sign ``target_delta`` and
     ``target_territory`` answer. Returns ``(holdings, False)`` when the reading

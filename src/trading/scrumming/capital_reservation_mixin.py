@@ -55,7 +55,7 @@ class CapitalReservationMixin(_Host):
         """Return the target-asset units this bot claims.
 
         ``_target_balance`` over the product of ``current_price`` and
-        ``_quote_to_usd``, scaled by 1.10, plus ``personal_hold_qty``.
+        ``_quote_to_usd``, scaled by 1.10. No setting adds to it.
         """
         if current_price <= 0:
             return 0.0
@@ -63,10 +63,6 @@ class CapitalReservationMixin(_Host):
             _target = float(self._target_balance or 0)
         except (TypeError, ValueError):
             _target = 0.0
-        try:
-            _hold = float(getattr(self.config, "personal_hold_qty", 0.0) or 0.0)
-        except (TypeError, ValueError):
-            _hold = 0.0
         _qrate = float(getattr(self, "_quote_to_usd", 1.0) or 1.0)
         if _qrate <= 0:
             _qrate = 1.0
@@ -74,7 +70,7 @@ class CapitalReservationMixin(_Host):
         if _usd_per_asset <= 0:
             return 0.0
         _base_units = (_target / _usd_per_asset) if _target > 0 else 0.0
-        return _base_units * 1.10 + max(0.0, _hold)
+        return _base_units * 1.10
 
     async def _ensure_capital_reservation(self, current_price: float) -> None:
         """Reserve on the first eligible call and update on later ones.
@@ -149,7 +145,6 @@ class CapitalReservationMixin(_Host):
                 _reason = (
                     f"Scrumming target — "
                     f"target_balance=${self._target_balance:.2f}, "
-                    f"personal_hold={float(getattr(self.config, 'personal_hold_qty', 0.0)):.10g}, "
                     f"at_price=${current_price:.8f}"
                 )
                 self._crr_token = _crr_reg.reserve(

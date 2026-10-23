@@ -4126,13 +4126,21 @@ plus the unnamed-sector name, and the program holds all eight. The limit-only,
 rolling-position and cash-amount names are not variants. `_tick_expiry_close`
 starts its close on the market's own expiry, through `market_permits_close`.
 
-OVERTAKEN, quoted whole: "| whole step, no date | 225 | `whole-unit position` |
+OVERTAKEN, quoted whole:
+
+```
+"| whole step, no date | 225 | `whole-unit position` |
 yes | 3.0 |"
+```
 
 True today: that row's variant is `Whole Unit Scrumming`.
 
-OVERTAKEN, quoted whole: "| dated contract | 100 | `rolling position` | no |
+OVERTAKEN, quoted whole:
+
+```
+"| dated contract | 100 | `rolling position` | no |
 3.0 |"
+```
 
 True today: that row's variant is the one its sector names, and its expiry is
 `MECHANIC_EXPIRY` beside it.
@@ -6082,7 +6090,7 @@ sell's `size` 0.001.
 
 A third route exists for a Unified Trading Account, and it states the unit in a
 field of its own. `POST api.kucoin.com/api/ua/v1/unified/order/place` carries
-`sizeUnit`, and the venue's own page says "UTA | SPOT | `size` required. Unit
+`sizeUnit`, and the venue's own page says "`UTA | SPOT |` `size` required. Unit
 controlled by `sizeUnit`. Market Order: `BASECCY` (default) or `QUOTECCY`.
 Limit Order: `BASECCY` only". The composed body carries `BASECCY` on a spot
 order and `UNIT` on a futures order. ccxt asks kucoin which account mode is in
@@ -7505,7 +7513,9 @@ contracts and the screen offered none of those 78 markets.
 
 OVERTAKEN, quoted whole:
 
+> ```
 > "| Schwab | **no** | **no** | the Trader API places no fractional order, and no connector exists |"
+> ```
 
 True today: a connector exists. `src/stocks/schwab_connector.py, in
 SchwabConnector` answers `BrokerBase` and `BROKER_CONNECTORS` holds the
@@ -7517,7 +7527,9 @@ from a credential-free host.
 
 OVERTAKEN, quoted whole:
 
+> ```
 > "| Schwab | yes | no | the Trader API places no fractional order at all. Schwab Trader API developer portal, read 2026-09-24 |"
+> ```
 
 True today: the developer portal cannot be read without signing in. It answers
 200 at 55,033 bytes for a real product page and for an invented slug alike, and
@@ -7967,8 +7979,10 @@ currency legs and eleven futures families, where an invented word finds 0.
 
 OVERTAKEN, quoted whole:
 
+> ```
 > "| Interactive Brokers | **no** | **no** | a quantity order rounds down to
 > whole shares, and no connector exists |"
+> ```
 
 True today: a connector exists. `src/stocks/ibkr_connector.py, in IbkrConnector`
 answers `BrokerBase` and `BROKER_CONNECTORS` holds the `ibkr` id, so a Start
@@ -7979,9 +7993,11 @@ trading with exception to Cryptocurrencies and Forex trading."
 
 OVERTAKEN, quoted whole:
 
+> ```
 > "| Interactive Brokers | yes | no | a quantity order rounds down to whole
 > shares, and a fraction is reached only by naming a cash amount. Interactive
 > Brokers TWS API documentation, read 2026-09-24 |"
+> ```
 
 True today: a fraction is reached by naming a cash amount on a crypto or a
 currency market and on nothing else. The same sentence of its own API page
@@ -7992,8 +8008,10 @@ API among none of them.
 
 OVERTAKEN, quoted whole:
 
+> ```
 > "| Interactive Brokers, Schwab, tastytrade, E\*TRADE, Webull, TD Ameritrade,
 > Fidelity | stocks | no | no module names any of the seven |"
+> ```
 
 True today: a module names two of the seven. `src/stocks/ibkr_connector.py` and
 `src/stocks/schwab_connector.py` each hold a `BrokerBase` subclass, and
@@ -8002,10 +8020,12 @@ five are unchanged.
 
 OVERTAKEN, quoted whole:
 
+> ```
 > "| Interactive Brokers | equities, funds, futures and 100 or more currency
 > pairs | yes, US broker | a TWS session, shape not stated by the pages read |
 > `src/gui/main_tabs/asset_class_surface.py, in EQUITY_VENUES`; Interactive Brokers TWS API
 > documentation, read 2026-09-24 |"
+> ```
 
 True today: the shape is stated, and it is a REST order and not a TWS session.
 The venue's own OpenAPI document publishes `POST
@@ -8015,11 +8035,13 @@ credential-free route of 939,918 bytes.
 
 OVERTAKEN, quoted whole:
 
+> ```
 > "| Interactive Brokers | a share or contract quantity | not stated by the
 > pages read; a minimum price increment is published per contract | not stated
 > by the pages read; an oversized order is refused with error 201 | Interactive
 > Brokers TWS API order limitations and minimum increment pages, read 2026-09-24
 > |"
+> ```
 
 True today: the minimum order size is stated, and it is none. Quoted whole from
 its own minimum-order FAQ: "Nearly every product offered by IBKR has NO minimum
@@ -8196,7 +8218,9 @@ stocks as the fallback a market the recording carries no step for falls to.
 
 OVERTAKEN, quoted whole:
 
+> ```
 > "| tastytrade | **no** | **no** | no fractional quantity for automated trading, and no connector exists |"
+> ```
 
 True today: a connector exists.
 `src/stocks/tastytrade_connector.py, in TastytradeConnector` answers `BrokerBase`
@@ -8372,7 +8396,9 @@ published maximum of 200 instead.
 
 OVERTAKEN, quoted whole:
 
+> ```
 > "| tastytrade | equities, options, futures and crypto, through one API | yes, US broker | not stated by the pages read | `src/gui/main_tabs/asset_class_surface.py, in EQUITY_VENUES`; tastytrade API documentation, read 2026-09-24 |"
+> ```
 
 True today: the credential is a two-field OAuth pair and the venue requires no US
 person. Quoted whole from its own International Accounts page: "**International
@@ -9709,8 +9735,8 @@ names **0**.
 
 Four enumerations of Fidelity's own products were read and not one names a
 futures market or a currency market: the Investment Accounts & Products page, the
-site navigation on all 50 pages ("Stocks, ETFs, Crypto | Mutual Funds | Fixed
-Income, Bonds & CDs | Options | IPOs | Annuities"), the Trading section's
+site navigation on all 50 pages ("`Stocks, ETFs, Crypto | Mutual Funds | Fixed
+Income, Bonds & CDs | Options | IPOs | Annuities`"), the Trading section's
 Investment Choices sub-navigation (five links: stock trading, options trading,
 gold-silver-platinum, international investments, investment research), and the
 commissions table (five product rows: Stocks, Options, ETFs, Bonds and CDs,

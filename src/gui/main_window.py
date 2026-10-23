@@ -18,7 +18,6 @@ from . import design_system as ds
 from .main_tabs.main_window_surface import (
     ABOUT_TITLE,
     ACCUMULATION_TAB,
-    API_PILL_TOOLTIP,
     BAR_TAB_ORDER,
     CHARTS_TAB,
     CONSOLE_TAB,
@@ -32,6 +31,7 @@ from .main_tabs.main_window_surface import (
     SWARM_TAB,
     UNBUILT_TABS,
     about_text,
+    api_pill_tooltip,
     header_strip_reads_paper,
     header_strip_reads_sim,
 )
@@ -744,6 +744,8 @@ if _HAS_QT:
                 logger.debug("console health emit failed: %s", exc)
 
         def _setup_status_bar(self) -> None:
+            from ..exchange.api_load_monitor import get_load_monitor
+
             status = QStatusBar()
             status.showMessage("Ready")
 
@@ -753,7 +755,9 @@ if _HAS_QT:
                 f"color: {ds.CARD_METRIC_LABEL}; font-size: 10px; padding: 0 8px; "
                 "font-family: Consolas;"
             )
-            self._api_load_label.setToolTip(API_PILL_TOOLTIP)
+            self._api_load_label.setToolTip(
+                api_pill_tooltip(get_load_monitor().safety_pct)
+            )
             status.addPermanentWidget(self._api_load_label)
 
             self._ai_monitor_label = QLabel("AI: OFF")
@@ -862,10 +866,7 @@ if _HAS_QT:
                         "font-family: Consolas;"
                     )
                     return
-                from .main_tabs.main_window_surface import (
-                    API_PILL_TOOLTIP,
-                    api_pill,
-                )
+                from .main_tabs.main_window_surface import api_pill
 
                 worst = None
                 for eid, conn in connectors.items():
@@ -877,7 +878,7 @@ if _HAS_QT:
                 pill = api_pill(worst, mon.safety_pct)
                 self._api_load_label.setText(pill["text"])
                 self._api_load_label.setStyleSheet(pill["style"])
-                self._api_load_label.setToolTip(API_PILL_TOOLTIP)
+                self._api_load_label.setToolTip(api_pill_tooltip(mon.safety_pct))
             except Exception as _pill_exc:
                 # Logged at debug: the 2 s dashboard tick would flood a warning stream.
                 logger.debug(
