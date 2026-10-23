@@ -984,6 +984,31 @@ holds eight and still refuses the ninth caller.
 restart. The post-connect trade history scan is one: it drives the synchronous
 exchange handle on its own thread and does not pass the worker.
 
+**Functional.** The trade history scan now comes back on its own too. One lock
+queues every history scan on a venue, and a waiter gives the holding scan a
+fixed turn. The turn is the same minute the red line above reports a stop over.
+At the end of a turn the waiter asks whether the holding scan has finished a
+market. A market finished means the venue is answering, so the waiter waits
+again, however long the run takes. Two turns with no market finished means the
+scan has stopped, so the waiter takes a fresh lock and scans. The Console
+carries one line for each clearance, naming the venue and how long the scan was
+blocked.
+
+`src/exchange/ccxt_connector.py` — the turn a waiter gives the holding scan
+
+```python
+            lock = self._history_scan_lock
+            if lock.acquire(timeout=budget_s):
+                self._note_history_progress()
+                return lock
+```
+
+**Design intention.** Two turns is two minutes, above the longest one market can
+legitimately take. A scan that keeps finishing markets keeps its lock, so a long
+run across a large fleet is never cut short and raises no line. The blocked scan
+keeps its old lock and is never driven again, so no market it was part way
+through is read a second time. Nothing new runs while a scan is healthy.
+
 `src/exchange/market_pairs_scout.py` — the scout rebuilds only when every venue
 it polled has stopped
 

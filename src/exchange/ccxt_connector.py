@@ -11,6 +11,7 @@ from ..core.fmt import fmt_price_coerced
 from ..core.retry import linear_delay, retry_any, retry_sync, with_retry
 from ..core.safe_url import SafeRequest, safe_urlopen
 from ..trading.ta_engine import DEFAULT_WEIGHTS
+from .api_load_monitor import DEFAULT_WINDOW_SECONDS
 import asyncio
 import logging
 import math
@@ -69,6 +70,18 @@ CCXT_TIMEOUT_HEADROOM_SEC: float = 1.0
 CCXT_REQUEST_TIMEOUT_MS: int = int(
     (SYNC_CALL_TIMEOUT_SEC - CCXT_TIMEOUT_HEADROOM_SEC) * 1000
 )
+
+# How long a history scan waits on `_history_scan_lock` before it asks whether
+# the holding scan has landed a symbol. `APILoadMonitor`'s rate window, the span
+# `fetch_stall.STALL_THRESHOLD_SECONDS` reports a stop over.
+HISTORY_SCAN_WAIT_BUDGET_SECONDS: float = DEFAULT_WINDOW_SECONDS
+
+# Budgets a waiter gives a holder that has landed no symbol. Two budgets is
+# 120 s, above the 75.3 s one symbol can legitimately hold: three
+# `HISTORY_FETCH_ATTEMPTS` bounded by `CCXT_REQUEST_TIMEOUT_MS`, with
+# `HISTORY_RETRY_BASE_DELAY_S` doubling between them and
+# `HISTORY_FETCH_INTERVAL_S` in front of each.
+HISTORY_SCAN_WAIT_BUDGETS_BEFORE_CLEAR: int = 2
 
 
 # ccxt caps a coinbase fetch_ohlcv page at this many candles.
@@ -1655,6 +1668,17 @@ class CCXTConnector(ExchangeInterface):
         self._sync_executor_lock = threading.Lock()
         # Serialises history scans; add_scan_symbol spawns one thread per symbol.
         self._history_scan_lock = threading.Lock()
+        # Held only across a history lock replacement, so two waiters that time
+        # out together cannot both start a scan.
+        self._history_lock_swap = threading.Lock()
+        # When the holding scan last landed a symbol. `_history_scan_stalled_s`
+        # reads it; a waiter past its budget treats a stale one as blocked.
+        self._history_scan_progress_at: float = 0.0
+        self._history_scan_fault = ThrottledFault(
+            f"the {exchange_id} trade history scan",
+            f"Trade history for {exchange_id} had stopped updating. The "
+            f"blocked scan keeps its own turn and is not driven again.",
+        )
 
     # -- Properties -----------------------------------------------------
     @property
@@ -2178,6 +2202,62 @@ class CCXTConnector(ExchangeInterface):
         """Register a callback the historian thread calls as ``(symbol, analysis)``."""
         self._on_history_ready = callback
 
+    def _note_history_progress(self) -> None:
+        """Stamp the moment this connector's history scan last made progress."""
+        self._history_scan_progress_at = time.monotonic()
+
+    def _history_scan_stalled_s(self) -> float:
+        """Seconds since the holding history scan last landed a symbol."""
+        return time.monotonic() - self._history_scan_progress_at
+
+    def _acquire_history_scan_lock(self) -> threading.Lock:
+        """Return the held history scan lock. Never waits without a bound.
+
+        Concurrent scans on one connector still queue on one lock. A waiter
+        that reaches ``HISTORY_SCAN_WAIT_BUDGET_SECONDS`` while the holder has
+        landed no symbol for ``HISTORY_SCAN_WAIT_BUDGETS_BEFORE_CLEAR``
+        budgets treats it as blocked and takes a fresh lock, so a stop
+        recovers on the next scan instead of on a restart. A holder that keeps
+        landing symbols keeps its lock however long its run takes.
+        """
+        budget_s = float(HISTORY_SCAN_WAIT_BUDGET_SECONDS)
+        ceiling_s = budget_s * HISTORY_SCAN_WAIT_BUDGETS_BEFORE_CLEAR
+        while True:
+            lock = self._history_scan_lock
+            if lock.acquire(timeout=budget_s):
+                self._note_history_progress()
+                return lock
+            fresh = self._clear_wedged_history_lock(lock, ceiling_s)
+            if fresh is not None:
+                return fresh
+
+    def _clear_wedged_history_lock(
+        self, waited_on: threading.Lock, ceiling_s: float
+    ) -> Optional[threading.Lock]:
+        """Replace ``waited_on`` with a lock this caller holds, else answer None.
+
+        None means wait again: the holder is still landing symbols, or another
+        waiter has already replaced the lock. The blocked scan keeps
+        ``waited_on`` and is never driven again, so no symbol it was part way
+        through reaches the venue twice. Reporting carries ``ThrottledFault``'s
+        window, so a venue that stays blocked costs one Console line per
+        widening window.
+        """
+        with self._history_lock_swap:
+            if waited_on is not self._history_scan_lock:
+                return None
+            stalled_s = self._history_scan_stalled_s()
+            if stalled_s < ceiling_s:
+                return None
+            fresh = threading.Lock()
+            fresh.acquire()
+            self._history_scan_lock = fresh
+            self._note_history_progress()
+        self._history_scan_fault.note_cleared(
+            f"the {self._exchange_id} trade history scan", stalled_s
+        )
+        return fresh
+
     def _scan_trade_history(self, symbols=None) -> None:
         """Scan trade history for *symbols*, or for the registered set when None."""
         if not self._ccxt_sync:
@@ -2198,8 +2278,10 @@ class CCXTConnector(ExchangeInterface):
             len(symbols),
             symbols,
         )
-        # The lock queues concurrent scans; pace_s is this connector's own interval.
-        with self._history_scan_lock:
+        # The lock queues concurrent scans and is replaced when its holder stops
+        # landing symbols; pace_s is this connector's own interval.
+        lock = self._acquire_history_scan_lock()
+        try:
             try:
                 # Timed inside the lock so the duration excludes waiting for a turn.
                 _dur_t0 = time.monotonic()
@@ -2229,6 +2311,8 @@ class CCXTConnector(ExchangeInterface):
                     pass
             except Exception as e:
                 logger.error("TradeHistorian: scan failed: %s", e)
+        finally:
+            lock.release()
 
     def _on_history_result(
         self,
@@ -2236,6 +2320,7 @@ class CCXTConnector(ExchangeInterface):
         analysis: HistoryAnalysis,
     ) -> None:
         """Called by scan_on_connect for each symbol as it completes."""
+        self._note_history_progress()
         self._history_analyses[symbol] = analysis
         if self._on_history_ready:
             try:
