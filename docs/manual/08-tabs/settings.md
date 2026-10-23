@@ -1227,7 +1227,7 @@ field, at `#00ffcc`.
 
 A plain text box. The default is placeholder text, not a value, so the field
 opens empty until something is typed or a stored value loads. Save stores what
-is there and the load path puts it back, but nothing paints with it.
+is there and the load path puts it back.
 
 `src/gui/settings_dialog.py` — the Accent Color field
 
@@ -1240,6 +1240,10 @@ layout.addWidget(self._accent_color)
 
 An empty box means the theme's own accent. A hex colour in the box paints over
 it. Everything else is refused, and the theme's own accent paints.
+
+The colour itself is not measured. A dark hex paints on a dark theme as typed:
+`#1a1a2e` on the Cyberpunk Dark ground measures 1.16 to 1, where each theme's
+own accent measures 4.95 to 1 or better against its own ground.
 
 `src/gui/theme_engine.py` — what the box is read through
 
