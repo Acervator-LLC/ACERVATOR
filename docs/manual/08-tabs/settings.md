@@ -1241,9 +1241,44 @@ layout.addWidget(self._accent_color)
 An empty box means the theme's own accent. A hex colour in the box paints over
 it. Everything else is refused, and the theme's own accent paints.
 
-The colour itself is not measured. A dark hex paints on a dark theme as typed:
-`#1a1a2e` on the Cyberpunk Dark ground measures 1.16 to 1, where each theme's
-own accent measures 4.95 to 1 or better against its own ground.
+The colour itself is now measured. A dark hex no longer paints on a dark theme
+as typed: `#1a1a2e` on the Cyberpunk Dark ground measures 1.16 to 1, where each
+theme's own accent measures 4.95 to 1 or better against its own ground.
+
+Under the 4.5 floor that measure applies, `#1a1a2e` is refused and the Cyberpunk
+Dark accent paints in its place. All five themes clear that floor with their own
+accent, so every theme paints as it did.
+
+The same colour can pass on one theme and fail on another. White is taken on the
+three dark themes and refused on Neon Light and Minimal Modern.
+
+A refusal goes to the application log with the colour, the theme, the ground, the
+measured ratio and the floor. The box keeps what was typed.
+
+The measure lives in `src/core/contrast.py`. It needs no chart library, so the
+built application reaches it.
+
+`src/gui/theme_engine.py` — the gate a typed colour passes
+
+```python
+def accented(theme: ThemeTokens, accent: object) -> ThemeTokens:
+    taken = stored_accent(accent)
+    if not taken:
+        return theme
+    clears, ratio = validate_contrast(taken, theme.bg_primary)
+    if not clears:
+        logger.warning(
+            ACCENT_REFUSED.format(
+                accent=taken,
+                ratio=ratio,
+                theme=theme.name,
+                ground=theme.bg_primary,
+                floor=AA_FLOOR,
+            )
+        )
+        return theme
+    return replace(theme, accent_primary=taken)
+```
 
 `src/gui/theme_engine.py` — what the box is read through
 
