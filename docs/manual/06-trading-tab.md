@@ -3534,6 +3534,18 @@ Raising the box's floor to three is not taken. A box holding a stored 2 answers 
 the moment its range starts at three, and putting the range back leaves the 3
 behind, so the next Save would write three into a bot whose record says two.
 
+The description now reaches every screen that shows this row. The two wizards
+and the three Settings groups each attach it to their own box. Both row lists
+the shell draws from carry it in their wording tables, so a reader moving
+between a Qt screen and the shell meets one sentence. Read off the built
+screens, all eight answer that sentence and the stored figure stays 3 on each.
+
+`src/gui/main_tabs/live_settings_tab_surface.py` — the Settings row's wording
+
+```python
+"landing": "The bot confirms a Landing Strip when this many of the newest Heikin Ashi candles have small bodies and price sits near a Bollinger Band. This count reaches the band-proximity check only. The separate shrinking-body check keeps its own fixed count.",
+```
+
 TA Timeframe - This is the timeframe at which the bot operates and denotes the price chart it will monitor for trade decisions.
 
 Seven entries to start, with 1h chosen. Pick an exchange and the list is
