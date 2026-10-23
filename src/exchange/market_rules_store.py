@@ -49,6 +49,11 @@ RULE_FIELDS = (
 #: recorded before one holds no such key and answers None.
 TEXT_RULE_FIELDS = ("order_types", "session", "clearing_venue")
 
+#: The mark rules ``MarketRules`` carries, each recorded as the venue's own
+#: bool. A row recorded before one holds no such key, which ``rule_flag``
+#: answers None for and no sizing path reads as a refusal.
+FLAG_RULE_FIELDS = ("view_only",)
+
 #: The permission rules ``MarketRules`` carries, each recorded as a sorted list
 #: of size-shape names. A row recorded before one holds no such key, which
 #: ``recorded_shapes`` answers None for and no sizing path reads as a refusal.
@@ -128,6 +133,15 @@ def rule_text(value: Any) -> Optional[str]:
     return value or None
 
 
+def rule_flag(value: Any) -> Optional[bool]:
+    """``value`` as a bool when it is one, else None.
+
+    A bool is not a number, so ``rule_value`` reads one as None and a mark
+    needs its own reader to survive the recording.
+    """
+    return value if type(value) is bool else None
+
+
 def rule_shapes(value: Any) -> Optional[list]:
     """``value`` as a sorted list of shape names when it is a set, else None.
 
@@ -162,6 +176,8 @@ def rules_row(rules: Any) -> dict[str, Any]:
     }
     for name in TEXT_RULE_FIELDS:
         row[name] = rule_text(getattr(rules, name, None))
+    for name in FLAG_RULE_FIELDS:
+        row[name] = rule_flag(getattr(rules, name, None))
     for name in SHAPE_RULE_FIELDS:
         row[name] = rule_shapes(getattr(rules, name, None))
     return row
@@ -232,8 +248,9 @@ def recorded_rules(venue: str, symbol: str, path: Optional[Path] = None) -> Mark
     ``read`` is False when the recording holds no row for the pair, the same
     unknown a venue that answered no market record carries.
 
-    Every name of ``RULE_FIELDS``, ``TEXT_RULE_FIELDS`` and ``SHAPE_RULE_FIELDS``
-    is read back here, so a rule ``rules_row`` writes never goes unread.
+    Every name of ``RULE_FIELDS``, ``TEXT_RULE_FIELDS``, ``FLAG_RULE_FIELDS``
+    and ``SHAPE_RULE_FIELDS`` is read back here, so a rule ``rules_row`` writes
+    never goes unread.
     """
     row = (load_document(path).get(str(venue or "")) or {}).get(str(symbol or ""))
     if not isinstance(row, dict):
@@ -249,6 +266,7 @@ def recorded_rules(venue: str, symbol: str, path: Optional[Path] = None) -> Mark
         order_types=rule_text(row.get("order_types")),
         session=rule_text(row.get("session")),
         clearing_venue=rule_text(row.get("clearing_venue")),
+        view_only=rule_flag(row.get("view_only")),
         buy_size_shapes=recorded_shapes(row.get("buy_size_shapes")),
         sell_size_shapes=recorded_shapes(row.get("sell_size_shapes")),
         read=True,
@@ -274,6 +292,7 @@ def recorded_classes(venue: str, path: Optional[Path] = None) -> dict[str, str]:
 __all__ = [
     "CLASS_FIELD",
     "EXPIRY_SEPARATOR",
+    "FLAG_RULE_FIELDS",
     "RULE_FIELDS",
     "SETTLE_SEPARATOR",
     "SHAPE_RULE_FIELDS",
@@ -288,6 +307,7 @@ __all__ = [
     "recorded_classes",
     "recorded_rules",
     "recorded_shapes",
+    "rule_flag",
     "rule_shapes",
     "rule_text",
     "rule_value",

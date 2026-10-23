@@ -29,6 +29,14 @@ from .sizing import (
     units_at_scrum,
 )
 from .snapshots import yes_no as _yes_no
+from .target_ramp import (
+    RAMP_FIRE,
+    RAMP_MODES,
+    RAMP_SEARCH,
+    RAMP_TRACK,
+    next_ramp_mode,
+    retreat_line,
+)
 
 logger = logging.getLogger("acervator.scrumming")
 
@@ -1169,80 +1177,69 @@ class TickPhaseMixin:
                 _band_span = max(_band_range, 1e-12)
                 _dist_abs = _price - _bb_mid
                 _dist_to_band = _dist_abs / _band_span
-                _near_band = abs(_price - _bb_upper) <= fire_pct_frac * _bb_upper
+                _edge_gap = abs(_price - _bb_upper)
+                _fire_limit = fire_pct_frac * _bb_upper
             else:
                 _side = "lower"
                 _band_range = _bb_mid - _bb_lower
                 _band_span = max(_band_range, 1e-12)
                 _dist_abs = _bb_mid - _price
                 _dist_to_band = _dist_abs / _band_span
-                _near_band = abs(_price - _bb_lower) <= fire_pct_frac * _bb_lower
+                _edge_gap = abs(_price - _bb_lower)
+                _fire_limit = fire_pct_frac * _bb_lower
 
             _prev_side = self._scrum_target_side
             _mode = self._scrum_target_mode
 
             if _prev_side is not None and _prev_side != _side:
-                _mode = "search"
+                _mode = RAMP_SEARCH
 
-            if _mode == "search":
-                if _near_band and abs(delta) >= _interval_usd * 0.5:
-                    _mode = "fire"
-                    self._scrum_target_side = _side
-                    self._bus.emit(
-                        "bot.log",
-                        bot_id=self.bot_id,
-                        message=f"TARGET: SEARCH→FIRE ({_side}) — fast move to band, "
-                        f"Δ {delta_pct:.1f}% ≥ {self.config.scrumming_interval_pct * 0.5:.1f}%",
-                    )
-                elif (
-                    _dist_abs >= detect_pct_frac * _band_span
-                    and abs(delta) >= _interval_usd * 0.5
-                ):
-                    _mode = "track"
-                    self._scrum_target_side = _side
-                    self._bus.emit(
-                        "bot.log",
-                        bot_id=self.bot_id,
-                        message=f"TARGET: SEARCH→TRACK ({_side}) — "
-                        f"BB dist {_dist_to_band:.0%} ≥ {detect_pct_frac:.0%}",
-                    )
-            elif _mode == "track":
-                if _near_band:
-                    _mode = "fire"
-                    self._bus.emit(
-                        "bot.log",
-                        bot_id=self.bot_id,
-                        message=f"TARGET: TRACK→FIRE ({_side}) — "
-                        f"within {fire_pct_frac:.2%} of BB band",
-                    )
-                elif _dist_abs < detect_pct_frac * 0.5 * _band_span:
-                    _mode = "search"
-                    self._bus.emit(
-                        "bot.log",
-                        bot_id=self.bot_id,
-                        message=f"TARGET: TRACK→SEARCH — retreated "
-                        f"(dist {_dist_to_band:.0%} < {detect_pct_frac * 0.5:.0%})",
-                    )
-            elif _mode == "fire":
-                if not _near_band and _dist_abs >= detect_pct_frac * _band_span:
-                    _mode = "track"
-                    self._bus.emit(
-                        "bot.log",
-                        bot_id=self.bot_id,
-                        message=f"TARGET: FIRE→TRACK ({_side}) — off band, "
-                        f"still in detect zone (dist {_dist_to_band:.0%})",
-                    )
-                elif _dist_abs < detect_pct_frac * 0.5 * _band_span:
-                    _mode = "search"
-                    self._bus.emit(
-                        "bot.log",
-                        bot_id=self.bot_id,
-                        message=f"TARGET: FIRE→SEARCH — retreated "
-                        f"(dist {_dist_to_band:.0%} < {detect_pct_frac * 0.5:.0%})",
-                    )
+            _next = _mode
+            if _mode in RAMP_MODES:
+                _next = next_ramp_mode(
+                    _mode,
+                    _dist_abs,
+                    detect_pct_frac * _band_span,
+                    retreat_line(detect_pct_frac) * _band_span,
+                    _edge_gap,
+                    _fire_limit,
+                    abs(delta) >= _interval_usd * 0.5,
+                )
 
-            self._scrum_target_mode = _mode
-            target_fires = _mode == "fire"
+            if _next != _mode:
+                if _mode == RAMP_SEARCH:
+                    self._scrum_target_side = _side
+                    _line = (
+                        f"TARGET: SEARCH→FIRE ({_side}) — fast move to band, "
+                        f"Δ {delta_pct:.1f}% ≥ {self.config.scrumming_interval_pct * 0.5:.1f}%"
+                        if _next == RAMP_FIRE
+                        else f"TARGET: SEARCH→TRACK ({_side}) — "
+                        f"BB dist {_dist_to_band:.0%} ≥ {detect_pct_frac:.0%}"
+                    )
+                elif _mode == RAMP_TRACK:
+                    _line = (
+                        f"TARGET: TRACK→FIRE ({_side}) — "
+                        f"within {fire_pct_frac:.2%} of BB band"
+                        if _next == RAMP_FIRE
+                        else f"TARGET: TRACK→SEARCH — retreated "
+                        f"(dist {_dist_to_band:.0%} < {detect_pct_frac * 0.5:.0%})"
+                    )
+                else:
+                    _line = (
+                        f"TARGET: FIRE→TRACK ({_side}) — off band, "
+                        f"still in detect zone (dist {_dist_to_band:.0%})"
+                        if _next == RAMP_TRACK
+                        else f"TARGET: FIRE→SEARCH — retreated "
+                        f"(dist {_dist_to_band:.0%} < {detect_pct_frac * 0.5:.0%})"
+                    )
+                self._bus.emit(
+                    "bot.log",
+                    bot_id=self.bot_id,
+                    message=_line,
+                )
+
+            self._scrum_target_mode = _next
+            target_fires = _next == RAMP_FIRE
         return target_fires
 
     def _tick_bullseye_notices(

@@ -23,6 +23,12 @@ from .indicators.bollinger import BollingerBands
 from .indicators.landing_strip import detect_landing_strip_v2
 from .indicators.types import SignalDirection
 from .otd_math import minimum_opposing_trade_distance_pct
+from .scrumming.target_ramp import (
+    RAMP_FIRE,
+    RAMP_SEARCH,
+    next_ramp_mode,
+    retreat_line,
+)
 from .ta_engine import MIN_CANDLES_FOR_TA
 
 #: The keys ``BollingerBands.compute`` publishes in ``Signal.details``.
@@ -137,11 +143,7 @@ TREND_MIN_BULL_SHARE = TREND_MIN_BULL_CANDLES / TREND_CANDLES
 BAND_TOUCH_TOLERANCE = 0.005
 BAND_WICK_TOLERANCE = 0.002
 
-RAMP_SEARCH = "search"
-RAMP_TRACK = "track"
-RAMP_FIRE = "fire"
 BAND_SPAN_FLOOR = 1e-12
-RETREAT_DIVISOR = 2.0
 
 HTF_MIN_CONFIDENCE = 0.30
 NO_WEIGHT = 0.0
@@ -324,24 +326,20 @@ def ramp_step(mode: Any, price: Any, band: dict, settings: Any) -> str:
     """
     detect_frac = float(settings.scrum_detect_pct) / PERCENT_PER_RATIO_UNIT
     fire_frac = float(settings.scrum_fire_pct) / PERCENT_PER_RATIO_UNIT
-    retreat_frac = detect_frac / RETREAT_DIVISOR
     middle = band[BAND_MIDDLE_KEY]
     edge = band[BAND_UPPER_KEY] if price > middle else band[BAND_LOWER_KEY]
     span = max(abs(edge - middle), BAND_SPAN_FLOOR)
     travel_frac = abs(price - middle) / span
     edge_gap_frac = abs(price - edge) / edge
-    near_band = edge_gap_frac <= fire_frac
-    if mode == RAMP_SEARCH:
-        if near_band:
-            return RAMP_FIRE
-        return RAMP_TRACK if travel_frac >= detect_frac else RAMP_SEARCH
-    if mode == RAMP_TRACK:
-        if near_band:
-            return RAMP_FIRE
-        return RAMP_SEARCH if travel_frac < retreat_frac else RAMP_TRACK
-    if not near_band and travel_frac >= detect_frac:
-        return RAMP_TRACK
-    return RAMP_SEARCH if travel_frac < retreat_frac else RAMP_FIRE
+    return next_ramp_mode(
+        mode,
+        travel_frac,
+        detect_frac,
+        retreat_line(detect_frac),
+        edge_gap_frac,
+        fire_frac,
+        True,
+    )
 
 
 def ramp_mode(candles: Any, settings: Any) -> str:

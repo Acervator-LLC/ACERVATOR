@@ -58,6 +58,20 @@ _OVERRIDES_APPLIED_KEY = "overrides_applied"
 #: The word the GATES line opens an overridden clause with.
 OVERRIDDEN_WORD = "overridden"
 
+#: The ``tick_exit`` a row carries when ``ScrummingBot.tick`` reached the gate
+#: chain and neither side fired.
+GATE_CHAIN_EXIT = "gate-chain"
+
+#: Ticks a refusal already in the record may hold before it writes a further
+#: row, so a reader is never far from an anchor and a stopped bot reads as a
+#: gap. The retained record's own tick rate is 315 evaluated ticks per bot per
+#: hour, so this is about one anchor an hour.
+GATE_ROW_TICK_CAP = 300
+
+#: Distinct refusals one stretch remembers before it starts the record again.
+#: The widest stretch in the retained record holds 62.
+GATE_ROW_KEY_MEMORY = 64
+
 
 def yes_no(flag: Any) -> str:
     """Render one flag as ``yes`` or ``no`` for a bot.log message."""
@@ -143,6 +157,43 @@ def _latched_risk_gates(blockers: list) -> list[str]:
     return sorted({str(one) for one in blockers or []} & _RISK_GATE_NAMES)
 
 
+def bare_gate_name(blocker: Any) -> str:
+    """A blocker phrase with the live figures it carries dropped.
+
+    ``BB-below-upper-detect(bb_pos=0.39<0.88)`` answers
+    ``BB-below-upper-detect``, so one gate refusing at two different prices
+    answers one name. ``_gate_row_key`` groups a tick's refusal by these names.
+    """
+    text = str(blocker)
+    for mark in ("(", "="):
+        cut = text.find(mark)
+        if cut > 0:
+            text = text[:cut]
+    return text
+
+
+def _gate_row_key(
+    tick_exit: str,
+    scrum_armed: bool,
+    fold_armed: bool,
+    scrum_blockers: Optional[list],
+    fold_blockers: Optional[list],
+) -> tuple:
+    """One tuple naming where a tick ended and which gates refused it.
+
+    Two ticks refused by the same gates at the same exit answer the same key.
+    ``_emit_gate_decision_at_quiet_tick`` looks it up in the refusals this quiet
+    stretch has already written, so an answer the record holds is not repeated.
+    """
+    return (
+        str(tick_exit),
+        bool(scrum_armed),
+        bool(fold_armed),
+        tuple(sorted({bare_gate_name(one) for one in scrum_blockers or []})),
+        tuple(sorted({bare_gate_name(one) for one in fold_blockers or []})),
+    )
+
+
 def _gate_line_text(
     lights: list, ticker_last: float, panel: dict, unknown: list, latched: list
 ) -> str:
@@ -199,6 +250,11 @@ class SnapshotEmitterMixin(_Host):
     #: ``ScrummingBot.__init__`` sets it; the GATES line reads it to stay quiet
     #: while the gate state has not moved.
     _last_gate_light_key: str
+
+    #: ``ScrummingBot.__init__`` sets both; the gate row reads them to write one
+    #: row per distinct refusal per quiet stretch.
+    _gate_row_keys_seen: set
+    _ticks_since_gate_row: int
 
     # One sentence of the docstring below is overtaken. Quoted whole:
     #   "The StatusLog widget detects the prefix and colors by stage (SENT /
@@ -455,6 +511,9 @@ class SnapshotEmitterMixin(_Host):
                 tranche_snapshot=self._tranche_snapshot(),
                 compounding_snapshot=self._compounding_snapshot(),
             )
+            # A fire ends the quiet stretch, so the next refusal writes a row.
+            self._gate_row_keys_seen.clear()
+            self._ticks_since_gate_row = 0
         except Exception as _gate_exc:  # noqa: BLE001
             # Counted in telemetry, so an unpaired gate row stays visible.
             try:
@@ -469,6 +528,87 @@ class SnapshotEmitterMixin(_Host):
                     _sup,
                 )
             logger.debug("Bot %s gate_decision emit failed: %s", self.bot_id, _gate_exc)
+
+    def _emit_gate_decision_at_quiet_tick(self, tick_exit: str) -> None:
+        """Emit ``bot.gate_decision`` for a tick that fired nothing, so the
+        record answers why a trade did not happen.
+
+        ``tick_exit`` names where ``ScrummingBot.tick`` ended.
+        ``GATE_CHAIN_EXIT`` reads the scrum and fold banks the tick has just
+        written; an earlier exit carries ``tick_exit`` as the blocker on both
+        sides, because no gate was evaluated there.
+
+        Each distinct refusal writes one row per stretch, and a stretch runs
+        until a trade fires or ``GATE_ROW_TICK_CAP`` ticks pass with nothing
+        new. A refusal the stretch already recorded writes nothing, so a gate
+        that flips on and off between two states costs two rows rather than one
+        a tick. ``quiet_ticks`` counts the ticks that reached a quiet exit since
+        this bot's last row, so an unchanged refusal reads differently from a
+        bot that stopped ticking. A tick the read-rate throttle skipped is not
+        counted, because it evaluated nothing.
+        """
+        self._ticks_since_gate_row = int(self._ticks_since_gate_row) + 1
+        at_gate_chain = str(tick_exit) == GATE_CHAIN_EXIT
+        state: dict = self._last_gate_state if at_gate_chain else {}
+        scrum_blockers = (
+            list(state.get("scrum_blockers") or []) if at_gate_chain else [tick_exit]
+        )
+        fold_blockers = (
+            list(state.get("fold_blockers") or []) if at_gate_chain else [tick_exit]
+        )
+        scrum_armed = bool(state.get("scrum_armed", False))
+        fold_armed = bool(state.get("fold_armed", False))
+        key = _gate_row_key(
+            tick_exit, scrum_armed, fold_armed, scrum_blockers, fold_blockers
+        )
+        recorded = key in self._gate_row_keys_seen
+        if recorded and self._ticks_since_gate_row < GATE_ROW_TICK_CAP:
+            return
+        quiet_ticks = self._ticks_since_gate_row
+        symbol = getattr(self.config, "symbol", "") or ""
+        try:
+            self._bus.emit(
+                "bot.gate_decision",
+                bot_id=self.bot_id,
+                exchange=getattr(self.config, "exchange_id", "") or "",
+                asset_class=self._asset_class(symbol),
+                symbol=symbol,
+                tick_exit=str(tick_exit),
+                quiet_ticks=int(quiet_ticks),
+                scrum_armed=scrum_armed,
+                fold_armed=fold_armed,
+                scrum_blockers=scrum_blockers,
+                fold_blockers=fold_blockers,
+                scrum_fixture=state.get(_SCRUM_FIXTURE_KEY),
+                fold_fixture=state.get(_FOLD_FIXTURE_KEY),
+                evaluated_at_tick=state.get("evaluated_at_tick"),
+                tranche_snapshot=self._tranche_snapshot(),
+                compounding_snapshot=self._compounding_snapshot(),
+            )
+            if recorded or len(self._gate_row_keys_seen) >= GATE_ROW_KEY_MEMORY:
+                self._gate_row_keys_seen.clear()
+            self._gate_row_keys_seen.add(key)
+            self._ticks_since_gate_row = 0
+        except Exception as _quiet_exc:  # noqa: BLE001
+            # Counted in telemetry, so a missing refusal row stays visible.
+            try:
+                from ...core.feature_telemetry import get_telemetry
+
+                get_telemetry().record_exception(
+                    "live.gate_decision.quiet_emit", _quiet_exc
+                )
+            except Exception as _sup:  # noqa: BLE001,S110
+                logger.debug(
+                    "suppressed in %s: %s: %s",
+                    "_emit_gate_decision_at_quiet_tick",
+                    type(_sup).__name__,
+                    _sup,
+                )
+            logger.debug(
+                "Bot %s quiet gate_decision emit failed: %s",
+                self.bot_id,
+                _quiet_exc,
+            )
 
     def _tranche_snapshot(self) -> dict:
         """Fold + stack tranche aggregates at fire time (count, USD, unit
