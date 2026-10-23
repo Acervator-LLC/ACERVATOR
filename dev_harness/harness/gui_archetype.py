@@ -2788,6 +2788,7 @@ class GUIArchetype:
             (
                 ("scaffolding", "dev_harness.harness.rules.scaffolding"),
                 ("hallucination", "dev_harness.harness.rules.hallucination"),
+                ("cell_text_fit", "dev_harness.harness.rules.cell_text_fit"),
             ),
             (".py",),
         )
