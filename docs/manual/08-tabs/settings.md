@@ -8408,4 +8408,90 @@ code. The earlier text stays where it is.
 | "`src/core/encryption.py` — `derive_key`", and the signature under it, in both of the two sections that carry it | `derive_key` takes a third argument, a keyword-only `iterations`, and runs the declared `KDF_ITERATIONS` where it is left out. A seal that recorded an earlier cost hands back the cost it recorded. |
 | "`src/core/encryption.py` - the declaration and the fallback", and the `vault_phrase` body under it that returns `MASTER_FORMAT` alone | `vault_phrase` reads `held_master_key` first and answers `master_key_phrase` of the held key where one is held. Where none is held it returns `MASTER_FORMAT` on the stored name exactly as the block shows, which is every install no password has been set on. |
 
+## 2026-10-22 - One declaration opens both Phantom Bots boxes
+
+The master box and the lock box each had their opening figure typed into several
+files. The master box was the one that disagreed: five files said on and four
+said off, and a wizard handed an empty bag of defaults opened the box clear
+while the Settings page opened it ticked.
+
+Both figures are now declared once, in the settings module, and every screen
+reads that one name.
+
+```python
+# src/core/settings.py, the two declarations
+DEFAULT_ENABLE_PHANTOMS = True
+
+DEFAULT_LOCK_CANDLE_COUNT = 2
+
+
+@dataclass
+class AppSettings:
+    default_enable_phantoms: bool = DEFAULT_ENABLE_PHANTOMS
+    default_lock_candle_count: int = DEFAULT_LOCK_CANDLE_COUNT
+```
+
+On is the figure kept. It is what the store's own schema already declared, and
+`SettingsManager.get_all` answers it on a machine with no settings file, so every
+wizard the main window opens has always opened with the box ticked. Two is the
+figure kept for the lock box, because every site already read two.
+
+### Where each figure used to be written down
+
+Nine sites named the master box default and four of them disagreed with the
+store. Seven sites named the lock figure and all seven agreed by luck.
+
+| Screen or module | Master box | Lock box |
+| ---------------- | ---------- | -------- |
+| `src/core/settings.py`, in `AppSettings` | the declaration | the declaration |
+| `src/gui/main_tabs/settings_dialog_surface.py`, `PERSISTED_ROWS` | reads it | reads it |
+| `src/gui/main_tabs/settings_dialog_surface.py`, `CONTROL_SPECS` | reads it | reads it |
+| `src/gui/settings_dialog.py`, in `_create_phantom_tab` | reads it | reads it |
+| `src/gui/settings_dialog.py`, in `_stored_rows` | reads it | reads it |
+| `src/gui/main_tabs/bot_wizard_surface.py`, `CHECK_FIELDS` and `NUMBER_FIELDS` | reads it | reads it |
+| `src/gui/bot_wizard.py`, in `PhantomConfigPage` | reads it | reads it |
+| `src/gui/paper/paper_bot_wizard.py`, in `PaperPhantomConfigPage` | reads it | reads it |
+| `src/gui/simulator/sim_bot_wizard.py`, in `SimPhantomConfigPage` | reads it | reads it |
+| `src/gui/live_settings/phantom_bots_tab.py`, in `PhantomBotsTabMixin` | from the bot | reads it |
+| `src/gui/paper/paper_phantom_bots_tab.py` | from the bot | reads it |
+| `src/gui/simulator/sim_phantom_bots_tab.py` | from the bot | reads it |
+| `src/trading/phantom_balance.py`, in `TimeframeCoordinator` | - | reads it |
+| `src/trading/scrumming_bot.py`, in `ScrummingBot` | reads it | from its coordinator |
+| `src/trading/container/restore.py`, in `restore_bots_from_state` | reads it | from the saved record |
+
+### What moving the one declaration does
+
+The declaration was set to off and seven, two figures no site held, and every
+screen was built again. Fourteen lock readings moved from two to seven together,
+and the master box went clear on all four wizard surfaces and on the Settings
+page. Neither figure moved anywhere before the change.
+
+```
+no store, declaration at on and 2      three wizards on, lock 2; Settings on, lock 2
+no store, declaration at off and 7     three wizards clear, lock 7; Settings clear, lock 7
+```
+
+### A stored figure still wins
+
+A store holding off, nine and `4h` opens all three wizards and the Settings page
+at off, nine and `4h`, whatever the declaration says. A running bot carrying a
+saved nine shows nine on its own Phantom Bots tab on Live, Paper and the
+Simulator.
+
+```
+declaration off and 7, store on and 9     every wizard opens on, lock 9
+declaration off and 7, bot saved 9        every running-bot page shows 9
+```
+
+### Two sentences this one declaration leaves standing
+
+Each sentence below stands in an earlier section and no longer describes the
+code. The earlier text stays where it is.
+
+| Earlier sentence | What the code does now |
+| ---------------- | ---------------------- |
+| "The one spin box on the page, inside its own group. It opens at 2 and Save reads it no more than it reads the other two." | It still opens at 2, and the 2 is now the one declared figure rather than a figure typed into this page. Save reads it and stores it. |
+| The Settings-row table whose Lock duration row shows an opened-at of 2, and whose master box row above it shows an opened-at of clear | The opened-at column is the one declared figure for both rows: ticked for the master box, 2 for the lock box. The stored column is unchanged. |
+
+
 Back to [the subsystem index](README.md).
