@@ -1289,13 +1289,15 @@ for each settled coin and a site already kept is never read twice.
 `src/exchange/crypto_assets.py` — `AssetManager.organisation_url`
 
 ```python
-indexed = str(
-    (self.coin_index.get(name) or {}).get(COIN_INDEX_SITE_KEY) or ""
-).strip()
+indexed = str(row.get(COIN_INDEX_SITE_KEY) or "").strip()
 if indexed:
     return openable_url(indexed, allowed_schemes=COIN_SITE_SCHEMES)
 asset = self.get_asset(name)
-return openable_url(asset.website if asset else "")
+address, refused = openable_url(asset.website if asset else "")
+if address:
+    return address, refused
+turned_away = str(row.get(COIN_INDEX_SITE_REFUSED_KEY) or "").strip()
+return "", turned_away or refused
 ```
 
 `src/exchange/crypto_assets.py` — the address that carries a site
@@ -1304,10 +1306,11 @@ return openable_url(asset.website if asset else "")
 COIN_DETAIL_URL = "https://api.coingecko.com/api/v3/coins/{id}"
 ```
 
-Of the thirty-eight target assets the saved fleet holds, thirty-six answer a web
-address. Two do not: one because several coins carry its ticker at comparable
-market rank, and one because its coin record names no secure web address. Neither
-is guessed at.
+Of the thirty-nine target assets the saved fleet holds, seven answer a web
+address. All seven come from the asset record's own `website` field. The coin
+index holds no site for any fleet ticker, and records the same reason for every
+one of them: no coin is settled for that ticker, so no site is looked up. None
+of the other thirty-two is guessed at.
 
 A mark's tooltip carries one extra line naming the address or its absence, so the
 operator can see which marks are links and which are not without pressing one.
@@ -1316,7 +1319,11 @@ operator can see which marks are links and which are not without pressing one.
 a mark whose asset resolves      Open <the site> in default browser: <the address>
 a mark whose asset resolves none no web address is known for <ticker>, so this mark
                                  is not a link
+a mark whose address is refused  <ticker> opens nothing: <the rule that refused it>
 ```
+
+The third line is new. An asset that never had an address and an asset whose
+address was refused used to read the same, and now the mark says which it is.
 
 **What the address check refuses.** An address is checked before any browser is
 asked to open it. Only a secure web address with a host opens. An insecure
@@ -1326,10 +1333,22 @@ opened, whatever the data carries. The window reads the address off the clicked
 cell and opens it; the page sends the row and the column out and Python opens it,
 so the page never opens anything itself. Both go through the one check.
 
+A refusal is no longer silent. The mark's tooltip names the rule that refused the
+address, and the same line goes to the log, so a refused address can be told from
+an asset that never had one.
+
 `src/gui/main_tabs/bot_status_table_surface.py` — `opening_address`
 
 ```python
 OPENING_SCHEMES: tuple[str, ...] = ("https",)
+```
+
+`src/gui/main_tabs/bot_status_table_surface.py` — `opening_refusal`
+
+```python
+if not host:
+    return EMPTY_TEXT, OPENING_NO_HOST_REASON
+return address, EMPTY_TEXT
 ```
 
 **HIS.**
