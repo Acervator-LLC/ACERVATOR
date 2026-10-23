@@ -67,7 +67,8 @@ def ammo_units(holdings: float, venue_units: Any) -> tuple:
     """The units an Ammo reading measures from, and whether the venue gave them.
 
     Prefers ``venue_units`` — the audited venue reading, already net of the
-    personal hold and of the sibling bots on the asset — over the bot's own
+    sibling bots on the asset, which
+    ``reconciliation._claimable_exchange_units`` subtracts — over the bot's own
     attributed ``holdings``. The exchange is the authority on what is held, and
     an attributed count below the venue inverts the sign ``target_delta`` and
     ``target_territory`` answer. Returns ``(holdings, False)`` when the reading

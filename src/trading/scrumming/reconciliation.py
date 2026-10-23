@@ -817,18 +817,13 @@ class ReconciliationEngineMixin:
             per_lot.append(_units)
         return per_lot, None
 
-    def _claimable_exchange_units(
-        self, exchange_units: float
-    ) -> tuple[float, float, float]:
-        """``(claimable, personal_hold, sibling_tracked)`` for this asset.
+    def _claimable_exchange_units(self, exchange_units: float) -> tuple[float, float]:
+        """``(claimable, sibling_tracked)`` for this asset.
 
-        ``claimable`` is ``exchange_units`` less ``config.personal_hold_qty``
-        and ``sum_sibling_tracked_units``; an unreadable second total becomes
+        ``claimable`` is ``exchange_units`` less
+        ``sum_sibling_tracked_units``; an unreadable total becomes
         ``inf``, which drives ``claimable`` negative and claims nothing.
         """
-        _personal = max(
-            0.0, float(getattr(self.config, "personal_hold_qty", 0.0) or 0.0)
-        )
         _sib_units = 0.0
         _mgr = getattr(self, "_bot_manager", None)
         if _mgr is not None:
@@ -849,7 +844,7 @@ class ReconciliationEngineMixin:
                     _sib_exc,
                 )
                 _sib_units = float("inf")
-        return (exchange_units - _personal - _sib_units, _personal, _sib_units)
+        return (exchange_units - _sib_units, _sib_units)
 
     def _store_audited_venue_units(self, claimable_units: float) -> float:
         """Assign ``_audited_venue_units`` from one claimable figure and return it.
@@ -864,7 +859,7 @@ class ReconciliationEngineMixin:
         """Move ``_audited_venue_units`` by the units one fill settled, positive
         for a buy and negative for a sale, and return it.
 
-        A fill leaves the personal hold and the sibling totals
+        A fill leaves the sibling totals
         ``_claimable_exchange_units`` subtracts untouched, so a delta that is
         not finite is refused and no venue is read.
         """
@@ -899,7 +894,7 @@ class ReconciliationEngineMixin:
 
         Reads the balance through ``_get_balance`` and prefers ``total`` over
         ``free``, the route ``_reconcile_holdings`` takes, then subtracts the
-        personal hold and the sibling bots through
+        sibling bots through
         ``_claimable_exchange_units``. Returns ``(None, reason)`` when the fetch
         raises, when ``Balance.absent`` marks the currency missing from the
         response, when ``_reconcilable_units`` refuses the reading, or when
@@ -926,13 +921,12 @@ class ReconciliationEngineMixin:
         )
         if _units is None:
             return None, _why
-        _claimable, _personal, _sib = self._claimable_exchange_units(_units)
+        _claimable, _sib = self._claimable_exchange_units(_units)
         self._record_audited_venue_units(_units)
         if _claimable <= 0.0:
             return None, (
                 f"the exchange holds {_units:.8f} {_asset} and none of it is "
-                f"this bot's to sell (personal hold {_personal:.8f}, "
-                f"siblings {_sib:.8f})"
+                f"this bot's to sell (siblings {_sib:.8f})"
             )
         return min(_units, _claimable), None
 
@@ -947,7 +941,7 @@ class ReconciliationEngineMixin:
         """
         if book_units <= 0:
             return None
-        _claimable, _personal, _sib = self._claimable_exchange_units(exchange_units)
+        _claimable, _sib = self._claimable_exchange_units(exchange_units)
         _adopt = min(exchange_units, _claimable)
         _gain = self._book_reconciliation_lot(_adopt, book_units, price)
         if _gain is None:
@@ -963,8 +957,7 @@ class ReconciliationEngineMixin:
                 f"(exchange={exchange_units:.8f}). Booked {_gain:.8f} "
                 f"units as a reconciliation lot at ${float(price):.8f}. "
                 + (
-                    f"{_foreign:.8f} units left unclaimed (personal hold "
-                    f"{_personal:.8f}, siblings {_sib:.8f})."
+                    f"{_foreign:.8f} units left unclaimed (siblings {_sib:.8f})."
                     if _foreign > 1e-9
                     else "No units on this asset are spoken for elsewhere."
                 )
@@ -1144,9 +1137,7 @@ class ReconciliationEngineMixin:
 
             _surplus = max(0.0, exchange_units - internal_units)
             if _surplus > 1e-9:
-                _claimable, _personal, _sib_units = self._claimable_exchange_units(
-                    exchange_units
-                )
+                _claimable, _sib_units = self._claimable_exchange_units(exchange_units)
                 _adopt = min(exchange_units, _claimable)
                 # Measured from _lot_units; internal_units is
                 # max(scalar, book) and would write a short lot.
@@ -1180,8 +1171,7 @@ class ReconciliationEngineMixin:
                             f"at ${_basis:.8f}. "
                             + (
                                 f"{_foreign:.8f} units left unclaimed "
-                                f"(personal hold {_personal:.8f}, "
-                                f"siblings {_sib_units:.8f})."
+                                f"(siblings {_sib_units:.8f})."
                                 if _foreign > 1e-9
                                 else "No units on this asset are spoken for "
                                 "elsewhere."
@@ -1190,13 +1180,12 @@ class ReconciliationEngineMixin:
                     )
                     logger.info(
                         "Bot %s drift UP (%s): adopted %.8f (was %.8f, "
-                        "exchange %.8f, personal %.8f, siblings %.8f)",
+                        "exchange %.8f, siblings %.8f)",
                         self.bot_id,
                         reason,
                         _adopt,
                         internal_units,
                         exchange_units,
-                        _personal,
                         _sib_units,
                     )
                 elif _gain > 1e-9:
@@ -1226,8 +1215,8 @@ class ReconciliationEngineMixin:
                         _basis,
                     )
                 else:
-                    # The whole surplus is attributed to personal hold
-                    # plus other bots, so nothing is claimed.
+                    # The whole surplus is attributed to other bots,
+                    # so nothing is claimed.
                     self._bus.emit(
                         "bot.log",
                         bot_id=self.bot_id,
@@ -1236,8 +1225,7 @@ class ReconciliationEngineMixin:
                             f"{self.config.target_asset} on exchange is "
                             f"not this bot's (internal="
                             f"{internal_units:.8f} exchange="
-                            f"{exchange_units:.8f}). Personal hold "
-                            f"{_personal:.8f}, sibling bots "
+                            f"{exchange_units:.8f}). Sibling bots "
                             f"{_sib_units:.8f}. Preserving internal "
                             f"state."
                         ),

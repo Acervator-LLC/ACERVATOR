@@ -393,21 +393,6 @@ class SettingsTabMixin:
         )
         mf.addRow("Spacing:", self._stack_spacing)
 
-        self._personal_hold_qty = QDoubleSpinBox()
-        self._personal_hold_qty.setRange(0.0, 1_000_000_000.0)
-        self._personal_hold_qty.setDecimals(10)
-        self._personal_hold_qty.setValue(float(getattr(cfg, "personal_hold_qty", 0.0)))
-        self._personal_hold_qty.setToolTip(
-            "Target-asset units to hold OUT of the bot's view "
-            "(personal reserve). The bot won't buy or sell these "
-            "units; they're also reserved from any sibling bot on "
-            "the same asset via the CapitalReservationRegistry."
-        )
-        self._personal_hold_qty.valueChanged.connect(
-            lambda v: self._mark_changed("personal_hold_qty", float(v))
-        )
-        mf.addRow("Personal Hold (units):", self._personal_hold_qty)
-
         layout.addWidget(mode_group)
 
         scrum_group = QGroupBox(

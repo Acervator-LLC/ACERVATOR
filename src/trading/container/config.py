@@ -228,9 +228,6 @@ class BotConfig:
     # position on a market that places no fraction opens at; 0 is the engine's.
     whole_unit_opening_units: int = WHOLE_UNIT_OPENING_ENGINE
 
-    # Target-asset units held out of the bot's decision math and reservation.
-    personal_hold_qty: float = 0.0
-
     # BotMode.EXTRACTOR anchors to a base-asset pool and sends chunks into ALT
     # pairs; it spawns no child bots.
 
@@ -376,8 +373,6 @@ _BOT_CONFIG_SCRUMMING_ONLY_FIELDS: frozenset = frozenset(
         "detonation_enabled",
         "detonation_timeframe",
         "detonation_confidence_min",
-        # interop fields
-        "personal_hold_qty",
     }
 )
 
@@ -397,7 +392,8 @@ _BOT_CONFIG_EXTRACTOR_ONLY_FIELDS: frozenset = frozenset(
 #: A retirement record, not a setting set. Each name is a setting removed from
 #: the product, kept so a config stored before its removal still builds;
 #: `_sanitize_deprecated_kwargs` drops each before `BotConfig.__init__`.
-#: Add no name. Only `bulk_trading` is read, by `bot_config_kwargs`.
+#: A name joins it only when its setting leaves the product. Only
+#: `bulk_trading` is read, by `bot_config_kwargs`.
 _DEPRECATED_KWARGS: frozenset = frozenset(
     {
         "bulk_trading",  # renamed to stack_mode
@@ -411,6 +407,7 @@ _DEPRECATED_KWARGS: frozenset = frozenset(
         "profit_fold_pct",
         "distribute_target",
         "distribute_target_count",
+        "personal_hold_qty",
     }
 )
 

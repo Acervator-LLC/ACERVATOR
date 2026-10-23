@@ -1509,6 +1509,11 @@ cell takes the stored figure off the bot's status, so nothing is fetched while
 the table paints, and a bot none of the three has run for yet draws the marked
 attributed count.
 
+**The hold in that sentence is gone.** Personal Hold was removed. The three
+paths now net the reading against the sibling bots on the same asset and
+nothing else. `src/trading/scrumming/reconciliation.py`, in
+`_claimable_exchange_units`, is the one place the subtraction happens.
+
 The tooltip always names the count it measured. On the exchange's count it
 gives both figures, so a drift between them is visible in the cell that is
 affected by it. With no exchange reading held it opens `NO EXCHANGE COUNT HELD`
@@ -1552,6 +1557,10 @@ The sell path holds no reading of its own and still waits for the periodic audit
 Two routes reach one assignment: one stores a venue reading and nets it against
 the personal hold and the sibling bots, and the other moves the stored figure by
 the units a fill settled and asks no venue for anything.
+
+**Read that first route as the sibling bots alone.** Personal Hold was removed,
+so the hold named above and in the block below no longer exists. The venue
+reading is netted against the sibling bots and nothing else.
 
 ```
 src/trading/scrumming/reconciliation.py, in _store_audited_venue_units
@@ -3000,6 +3009,12 @@ Personal Hold still follows the market's own step alone. A share that divides
 during the trading day can be held in fractions, so that box keeps its decimal
 places even where Open Position At shows.
 
+**That box is gone.** Personal Hold was removed from every wizard and from
+every running-bot page, so no hold box takes a step from the market any more.
+Open Position At is the only row on this page that reads the market's own unit
+rule. `src/gui/main_tabs/bot_wizard_surface.py`, in
+`session_takes_whole_units`, is where the wizard reads that rule.
+
 Both builds draw the same four lines. The React page reads them from the same
 payload the Qt page reads, so neither can carry a word the other does not.
 
@@ -3222,6 +3237,32 @@ fibonacci    [1.0, 2.0, 3.0, 5.0]
 
 Personal Hold - Setting to be removed.
 
+**It is removed.** The box is off both New Bot wizards and off the running-bot
+page, on Live, on Paper and in the Simulator, and the React pages for all three.
+The field is off the bot declaration and both engine readers are gone with it.
+Everything written below this line records what the control did while it was
+there. Read it as history, not as the page you see now.
+
+**The reservation stays, and it is automatic.** A bot still works out which
+units on an asset are its own, so two bots on one asset cannot eat each other.
+Nothing on any screen configures it. `src/trading/capital_reservation.py`, in
+`effective_available`, is what bounds a bot to the units no other bot has
+claimed.
+
+**What changed, driven on records built by hand.** A bot holding nothing back is
+unaffected: every figure reads the same before and after — 30 units at the
+venue, 30 claimable, 30 it may sell, a claim of 2.2 units at a price of 100, and
+27.8 units left available to a bot sharing the asset. A bot holding five units
+back now sells the larger amount: 25 units before and 30 after, with its claim
+falling from 7.2 units to 2.2 and a co-tenant's available rising from 22.8 to
+27.8. All 38 stored bots hold nothing back, so no bot on the fleet sells a
+different amount.
+
+**A bot saved with the old setting still loads.** The retired name is dropped
+before a bot is built. `src/trading/container/config.py`, in
+`_sanitize_deprecated_kwargs`, is where it is dropped, and the record beside it
+lists every other setting retired the same way.
+
 The control is still on the page. `TradingParamsPage.get_config` still emits
 `personal_hold_qty`, and the capital reservation mixin still reads it, adding
 it to the units the bot claims against its siblings. A removal has that reader
@@ -3352,6 +3393,9 @@ Tranche Count        3                   3 on 38
 Spacing              Linear              linear on 38
 Personal Hold        0                   0.0 on 38
 ```
+
+The last row in that table names a control that no longer exists. Six rows draw
+in this group now, not seven, and the picture below was taken before the removal.
 
 ![The Scrumming Settings group.](p19-i0.png)
 

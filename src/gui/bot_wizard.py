@@ -937,19 +937,6 @@ if _HAS_QT:
             )
             mf.addRow("Spacing:", self._stack_spacing)
 
-            self._personal_hold_qty = QDoubleSpinBox()
-            self._personal_hold_qty.setRange(0.0, 1_000_000_000.0)
-            self._personal_hold_qty.setDecimals(10)
-            self._personal_hold_qty.setValue(0.0)
-            self._personal_hold_qty.setToolTip(
-                "Target-asset units to hold OUT of the bot's view "
-                "(personal reserve). The bot won't buy or sell these "
-                "units; they're also reserved from any sibling bot on "
-                "the same asset. Leave at 0 unless you want the bot "
-                "to ignore a personal stash on the exchange."
-            )
-            mf.addRow("Personal Hold (units):", self._personal_hold_qty)
-
             groups.addWidget(self._mode_group)
 
             self._scrum_group = QGroupBox("Scrumming Settings")
@@ -1595,14 +1582,9 @@ if _HAS_QT:
             whole units: one whose own step is a whole unit, and one whose
             session takes a whole unit alone outside regular hours, which
             ``session_whole`` carries. ``Contract Expiry`` shows for a market
-            the venue expires on a date. Personal Hold takes whole units for the
-            market's own step alone, because a market dividing in regular hours
-            still holds a fraction.
+            the venue expires on a date.
             """
-            from .main_tabs.bot_wizard_surface import (
-                WHOLE_UNIT_HOLD_FIELD,
-                sizes_in_whole_units,
-            )
+            from .main_tabs.bot_wizard_surface import sizes_in_whole_units
 
             self._unit_rule = unit_rule or ""
             self._unit_price = price
@@ -1613,16 +1595,6 @@ if _HAS_QT:
             self._market_whole_unit = whole
             self._whole_unit_group.setVisible(whole)
             self._expiry_group.setVisible(self._market_expires)
-            if step_whole:
-                self._personal_hold_qty.setDecimals(
-                    int(WHOLE_UNIT_HOLD_FIELD["decimals"])
-                )
-                self._personal_hold_qty.setSingleStep(
-                    float(WHOLE_UNIT_HOLD_FIELD["step"])
-                )
-            else:
-                self._personal_hold_qty.setDecimals(10)
-                self._personal_hold_qty.setSingleStep(1.0)
             self._write_unit_notes()
 
         def _write_unit_notes(self) -> None:
@@ -1718,7 +1690,6 @@ if _HAS_QT:
                     "split_distance": self._split_distance.value(),
                     "stack_tranche_count_target": int(self._stack_count.value()),
                     "stack_spacing_mode": self._stack_spacing.currentData(),
-                    "personal_hold_qty": float(self._personal_hold_qty.value()),
                     "scrumming_interval_pct": self._scrumming_interval.value(),
                     "bb_tolerance_pct": self._bb_tolerance.value(),
                     "bb_landing_strip_candles": self._ls_candles.value(),
