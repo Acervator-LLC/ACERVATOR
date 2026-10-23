@@ -3488,8 +3488,8 @@ page. The earlier text stays where it is.
 | "Save writes all six keys." | Save writes five keys. |
 | "The load path restores all six keys on the Trading page." | The load path restores all five keys on the Trading page. |
 | "`src/gui/settings_dialog.py` — `_load_current`, the four it restores", and the `self._pos_distance.setValue` line inside that block | `_stored_rows` carries no `position_distance_pct` row, so the load path names four keys and the page has five rows. |
-| "\| Trading \| 6 \| all six \| four of six \|" in [What each page persists](#what-each-page-persists) | Trading, 5 controls, `_save` writes all five, `_load_current` restores all five. |
-| "\| Trading \| 6 \| all six \| all six \|" in [What each page restores now](#what-each-page-restores-now) | The same five. |
+| "`\| Trading \| 6 \| all six \| four of six \|`" in [What each page persists](#what-each-page-persists) | Trading, 5 controls, `_save` writes all five, `_load_current` restores all five. |
+| "`\| Trading \| 6 \| all six \| all six \|`" in [What each page restores now](#what-each-page-restores-now) | The same five. |
 
 ## 2026-09-11 - Increment Style is off the Trading page
 
@@ -3579,8 +3579,8 @@ page. The earlier text stays where it is.
 | "Save writes all six keys." | Save writes four keys. |
 | "The load path restores all six keys on the Trading page." | The load path restores all four keys on the Trading page. |
 | "`src/gui/settings_dialog.py` — `_load_current`, the four it restores", and the three `self._increment_style` lines inside that block | `_stored_rows` carries no `increment_style` row, so the load path names three keys and the page has four rows. |
-| "\| Trading \| 6 \| all six \| four of six \|" in [What each page persists](#what-each-page-persists) | Trading, 4 controls, `_save` writes all four, `_load_current` restores all four. |
-| "\| Trading \| 6 \| all six \| all six \|" in [What each page restores now](#what-each-page-restores-now) | The same four. |
+| "`\| Trading \| 6 \| all six \| four of six \|`" in [What each page persists](#what-each-page-persists) | Trading, 4 controls, `_save` writes all four, `_load_current` restores all four. |
+| "`\| Trading \| 6 \| all six \| all six \|`" in [What each page restores now](#what-each-page-restores-now) | The same four. |
 
 The 2026-09-11 Position Distance section above restated the same rows at five.
 Four is the count after both rows are gone.
@@ -3678,8 +3678,8 @@ page. The earlier text stays where it is.
 | "Save writes all six keys." | Save writes three keys. |
 | "The load path restores all six keys on the Trading page." | The load path restores all three keys on the Trading page. |
 | "`src/gui/settings_dialog.py` — `_load_current`, the four it restores", and the `self._default_positions.setValue` line inside that block | `_stored_rows` carries no `default_position_count` row, so of the four lines in that block one remains and the page has three rows. |
-| "\| Trading \| 6 \| all six \| four of six \|" in [What each page persists](#what-each-page-persists) | Trading, 3 controls, `_save` writes all three, `_load_current` restores all three. |
-| "\| Trading \| 6 \| all six \| all six \|" in [What each page restores now](#what-each-page-restores-now) | The same three. |
+| "`\| Trading \| 6 \| all six \| four of six \|`" in [What each page persists](#what-each-page-persists) | Trading, 3 controls, `_save` writes all three, `_load_current` restores all three. |
+| "`\| Trading \| 6 \| all six \| all six \|`" in [What each page restores now](#what-each-page-restores-now) | The same three. |
 
 The 2026-09-11 Increment Style section above restated the same rows at four.
 Three is the count after all three of the Grid Bot group are gone.
@@ -4292,8 +4292,8 @@ page. The earlier text stays where it is.
 | ---------------- | ---------------------- |
 | "One master checkbox and three groups of radio buttons, eleven controls in all." | One master checkbox and two groups of radio buttons, nine controls in all. |
 | "Distribution Mode - Chooses whether a fold spreads evenly across the chosen positions or on a curve." and the key line, the two sentences and the code block under it | The page carries no Distribution Mode group, and no fold in the engine takes a distribution mode. |
-| "\| Profit Folding \| 11 \| the whole group \| `active` alone \|" in [What each page persists](#what-each-page-persists) | Profit Folding, 9 controls, `_save` writes the whole group, `_load_current` restores the whole group. |
-| "\| Profit Folding \| 11 \| the whole group \| the whole group \|" in [What each page restores now](#what-each-page-restores-now) | The same nine controls and five keys. |
+| "`\| Profit Folding \| 11 \| the whole group \|` `active` alone \|" in [What each page persists](#what-each-page-persists) | Profit Folding, 9 controls, `_save` writes the whole group, `_load_current` restores the whole group. |
+| "`\| Profit Folding \| 11 \| the whole group \| the whole group \|`" in [What each page restores now](#what-each-page-restores-now) | The same nine controls and five keys. |
 | "\| Profit Folding \| Distribution Mode, Profit Folding Target, Fold to X# of buy positions, Upward Distribution Target, Distribute to X# of sell positions \|" in [The fourteen rows a Save overwrote](#the-fourteen-rows-a-save-overwrote) | Thirteen rows, four of them on this page. Distribution Mode is off the page. |
 
 The master switch above this row gated five rows. It gates four now, and the
@@ -4611,7 +4611,7 @@ page. The earlier text stays where it is.
 | "Fold to X# of buy positions - Sets that counted number. Key `fold_target_count`, 1 to 100, at 5." | The page sets no count, and one dollar cap bounds how many tranches a fold reaches. |
 | "Save collapses the two target groups into one dictionary." | Save collapses one target group, the sell side. |
 | "Four of the six keys then fail a second time further down: the two target names and their two counts are four of the eleven the bot factory strips." | Two of the three keys the page still stores are on the strip list: `distribute_target` and `distribute_target_count`. |
-| "\| Profit Folding \| 11 \| the whole group \| the whole group \|" in [What each page restores now](#what-each-page-restores-now) | Five controls, and three keys in the group. |
+| "`\| Profit Folding \| 11 \| the whole group \| the whole group \|`" in [What each page restores now](#what-each-page-restores-now) | Five controls, and three keys in the group. |
 | "\| Profit Folding \| Distribution Mode, Profit Folding Target, Fold to X# of buy positions, Upward Distribution Target, Distribute to X# of sell positions \|" | Two rows on this page, Upward Distribution Target and Distribute to X# of sell positions. |
 
 The master switch above the removed group gated four rows. It gates two now, and
@@ -7566,7 +7566,7 @@ code. The earlier text stays where it is.
 | ---------------- | ---------------------- |
 | "The list at the top of the Exchanges page is headed Exchange Status." | The panel keeps that heading and draws an array of buttons, four across and sixteen to a page. |
 | "Each line is a button, and pressing one points the Add form below at that venue." | Each button is one venue, and pressing one still points the Add form at that venue. |
-| "\| Sector \| Venues the registry answers \| Rows drawn \|" | The registry answers 16 commodities, 21 crypto, 6 forex, 16 futures / perps, 13 indices and 19 stocks venues. |
+| "`\| Sector \| Venues the registry answers \| Rows drawn \|`" | The registry answers 16 commodities, 21 crypto, 6 forex, 16 futures / perps, 13 indices and 19 stocks venues. |
 | "`src/gui/main_tabs/settings_dialog_surface.py` — `exchange_status_rows`" | `exchange_status_page` draws the panel, and `exchange_status_rows` answers the whole sector behind it. |
 | "ten redraws of the crypto panel, fifteen rows each time" | A redraw still reaches no venue. The crypto panel now draws sixteen buttons on page one and five on page two. |
 | "all fifteen crypto lines match character for character" | Both builds draw the same twenty-one crypto venues from one surface, sixteen on page one and five on page two. |
