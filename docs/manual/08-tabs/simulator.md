@@ -10061,3 +10061,83 @@ column, and the figure beneath it is the asset's mark or its ticker.
 The code block listing the ten column labels names `"Bot ID"` first.
 `src/gui/main_tabs/bot_status_table_surface.py, in COLUMN_LABELS` names `"Asset"`
 first today.
+
+## Both tabs build their sector pages from one declared list
+
+The Simulator tab and the Paper tab each hold a stack of sector pages. Both
+stacks come from the same declared list, read at the moment the page is asked
+for rather than at import.
+
+`src/gui/main_tabs/asset_class_surface.py, in LAYERED_CLASSES` declares the six
+sectors a trading layer stands behind.
+
+```python
+LAYERED_CLASSES = frozenset(
+    {"crypto", "stocks", "commodities", "forex", "indices", "futures_perps"}
+)
+```
+
+`src/gui/main_tabs/asset_class_surface.py, in layered_classes` puts those names
+in taxonomy order. `src/gui/main_tabs/trading_tab_surface.py, in layer_order`
+answers that order to every tab that draws a layer stack.
+
+`src/gui/simulator/sim_trading_tab_surface.py, in build_view_model` reads that
+one call and names the page on show out of the same list.
+
+```python
+key = live.layer_named(layer)
+order = live.layer_order()
+```
+
+Two fields of the tab payload carry the result: the page list and the position
+of the page on show inside it.
+
+```python
+"trading_stack": {
+    "pages": list(order),
+    "current_index": order.index(key),
+},
+```
+
+`src/gui/paper/paper_trading_tab_surface.py, in build_view_model` writes those
+same two fields from the same call, so neither tab holds a sector list of its
+own.
+
+### What each tab answers, per sector
+
+Each tab's own state object was asked for all six sectors, and the page list was
+read off the payload the tab serves.
+
+| sector asked | Sim pages | Sim page on show | Paper pages | Paper page on show |
+|---|---|---|---|---|
+| Crypto | 6 | 0 | 6 | 0 |
+| Stock | 6 | 1 | 6 | 1 |
+| Commodities | 6 | 2 | 6 | 2 |
+| Forex | 6 | 3 | 6 | 3 |
+| Indices | 6 | 4 | 6 | 4 |
+| Futures / Perps | 6 | 5 | 6 | 5 |
+| a name no layer carries | 6 | 0 | 6 | 0 |
+
+Both tabs answer the same list, in the same order, on every ask.
+
+```
+crypto, stocks, commodities, forex, indices, futures_perps
+```
+
+A sector name no layer carries draws page 0, which is the crypto layer. The
+page on show moves across all six asks, so the figure is read from the sector
+asked and is not a fixed answer.
+
+### The added-layer reading
+
+A seventh sector was added to the declaration and both tabs were asked again.
+Both gained the page together.
+
+| the declaration holds | Sim pages | Paper pages | highest page on show |
+|---|---|---|---|
+| six sectors | 6 | 6 | 5 |
+| seven sectors | 7 | 7 | 6 |
+
+The seventh name was last in both page lists and last in both card lists. The
+declaration was then put back, and both declaring files read byte for byte as
+they did before.
