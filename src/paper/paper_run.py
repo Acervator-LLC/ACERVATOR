@@ -843,8 +843,10 @@ def tick(
         order_refusal=refused[0] if refused else "",
         scrum_blockers=tuple(str(one) for one in armed["scrum_blockers"]),
         fold_blockers=tuple(str(one) for one in armed["fold_blockers"]),
-        scrum_fixture=paper_log.scrum_fixture(context),
-        fold_fixture=paper_log.fold_fixture(context),
+        scrum_fixture=paper_log.scrum_fixture(
+            context, armed["scrum_overrides_applied"]
+        ),
+        fold_fixture=paper_log.fold_fixture(context, armed["fold_overrides_applied"]),
         bid=bid,
         ask=ask,
         last=last,
