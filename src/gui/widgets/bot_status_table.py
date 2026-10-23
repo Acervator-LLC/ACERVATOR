@@ -13,6 +13,8 @@ from ..main_tabs.bot_status_table_surface import (
     BUTTON_HEIGHT_PX,
     COLUMN_LABELS,
     COLUMN_TOOLTIPS,
+    FIRE_LABEL_MANUAL_NOOP,
+    FIRE_MASK_FIELD,
     FIRE_PATH_FOLD_CEILING,
     FIRE_PATH_FOLD_OUTLINE,
     FIRE_PATH_FOLD_SOLID,
@@ -904,6 +906,7 @@ if _HAS_QT:
                     # Inside Manual Fire's band and outside the tick's: the
                     # engine still works this range and the button does not.
                     fire_path = FIRE_PATH_MANUAL_NOOP
+                    fire_btn.setText(mask_or(FIRE_LABEL_MANUAL_NOOP, FIRE_MASK_FIELD))
                     fire_btn.setStyleSheet(FIRE_STYLE_MANUAL_NOOP)
                     fire_btn.setToolTip(
                         manual_fire_noop_tooltip(_ammo, target_val) + _risk_suffix()

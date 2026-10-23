@@ -1516,6 +1516,16 @@ and says the direction can read the wrong way, because an attributed count below
 the exchange turns a surplus into an apparent deficit and paints buy pressure on
 a position that is already above target.
 
+**The cell itself draws the amount and nothing else.** The two counts are a fact
+about where the figure came from, and the tooltip is the only place that fact is
+written. The column is sized for a dollar amount, so a note added beside the
+amount would run past the column edge and cut itself short. The stale marker is
+the one exception the cell still draws, and it marks the figure as not current
+rather than naming its source.
+
+`src/gui/main_tabs/table_cells_surface.py, in TableCellsModel._signal_cell` —
+the drawn figure and the tooltip, written apart
+
 `src/gui/main_tabs/table_cells_surface.py`, in `ammo_units` — the one rule all
 three Ammo readers share
 
@@ -1754,6 +1764,16 @@ whichever way the sort runs, and the bot's own identifier breaks a tie.
 drawn.sort(key=lambda row: (row[0], row[1]), reverse=descending)
 return [row[2] for row in drawn] + blank
 ```
+
+**One sentence above is true and incomplete, and this completes it.** Fire still
+sorts by what the engine would do next, and that is not the same question as what
+a press would do. The sort reads the bot's own armed action; the button reads how
+far the position sits from target. So a row can sort high as armed and still
+carry the refused word on its button. The word on the button is the answer about
+the press, and the sort position is not.
+
+`src/gui/main_tabs/bot_status_table_surface.py, in fire_sort_value` — the figure
+the column orders on
 
 **Functional.** The order is recomputed every time the rows are rewritten, not
 once at the press. A fleet arriving a second later is ordered again before it is
@@ -2323,6 +2343,54 @@ The position value in that subtraction is the exchange's own unit count at the
 exchange's own price, and the bot's attributed count only where no exchange
 reading is held. The Ammo column section above names the rule and where the
 reading is stored.
+
+**Two bands measure that drift, and they answer two different questions.** The
+narrower one is a tenth of one per cent of the target. The bot's own tick parks
+inside it and trades nothing. The wider one is ten times that, one per cent of
+the target, and a Manual Fire press refuses inside it. Each figure is named for
+who stops and for what they stop doing, so a later reader cannot take one for
+the other.
+
+`src/trading/target_bands.py` — the two figures, each a fraction of the target
+
+```python
+TICK_PARK_PCT = 0.001
+MANUAL_FIRE_REFUSE_PCT = 0.01
+```
+
+`src/trading/target_bands.py, in at_target_dust_band` turns the first into
+dollars and `src/trading/target_bands.py, in manual_fire_dust_band` turns the
+second. Both hold a floor of one cent, so a tiny target still gets a band.
+
+**What the gap between the two bands means.** On a one-thousand-dollar target
+the tick's band is one dollar and Manual Fire's is ten. A position between those
+two is one the bot's own tick will trade and the button will not. The band stays
+where it is, and the button says so.
+
+**The button's own word changes inside that gap.** It reads `No Trade` in place
+of `Fire`. It carries no glow, it draws a dotted outline in neutral grey, and
+its tooltip names three things: how far the position sits from target, Manual
+Fire's own band, and where the tick's band starts. The press stays available and
+still writes its no-op line to the bot log, so nothing a press can do today is
+taken away.
+
+`src/gui/main_tabs/bot_status_table_surface.py, in FIRE_LABELS` — the word each
+Fire path draws, one entry a path
+
+`src/gui/main_tabs/bot_status_table_surface.py, in manual_fire_verdict` — the
+three answers that pick the path, read off the row's own Ammo cell so the cell
+and the button cannot disagree about one press
+
+```python
+MANUAL_FIRE_ACTS = "acts"
+MANUAL_FIRE_REFUSES = "refuses"
+MANUAL_FIRE_PARKED = "parked"
+```
+
+The Qt build picks the same word from the same table —
+`src/gui/widgets/bot_status_table.py, in BotStatusTable._write_row`. The Paper
+Trader's table and the Simulator's table are subclasses of those two and hold no
+word of their own, so all six surfaces read alike.
 
 Scrum - To sell an amount from an investment position that allows it to return to its initial price level. This never closes the position. This is the first half of the infinitely divisible circle that can persist for such positions in a healthy market.
 
