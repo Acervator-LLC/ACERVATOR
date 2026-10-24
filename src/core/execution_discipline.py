@@ -6,6 +6,14 @@ by ``LIVE_SPREAD_PCT``, and no live order carries its answer as a limit price.
 the drift between samples exceeds ``VERIFY_DRIFT_PCT``. ``classify_symbol``
 and ``verify_min_profit`` read the per-class tolerance out of
 ``VERIFY_MIN_PROFIT_BY_CLASS``.
+
+At the shipped constants no sample can fail, so nothing past the first sample
+runs. ``random.gauss`` is bounded at 8.5717 standard deviations, because the
+smallest value ``1.0 - random()`` reaches is 2**-53, and a draw scaled by
+``LIVE_SPREAD_PCT`` therefore reaches 0.6857% of price at most. The smallest
+entry in ``VERIFY_MIN_PROFIT_BY_CLASS`` is 1%. The first sample clears every
+class, so "adjusted", the drift test and "canceled" need a ``spread`` or a
+``min_profit`` the caller supplies, or a slippage read from the venue.
 """
 
 from __future__ import annotations
@@ -137,7 +145,10 @@ def verify_hit(
 
     Returns ``(price, status, samples)``, where status is "clean", "adjusted"
     or "canceled" and a canceled price is None; an explicit ``min_profit``
-    outranks ``symbol``, which outranks ``VERIFY_MIN_PROFIT``.
+    outranks ``symbol``, which outranks ``VERIFY_MIN_PROFIT``. At the shipped
+    ``LIVE_SPREAD_PCT`` the first sample clears every per-class tolerance, so
+    the answer is "clean" at one sample and the other two statuses need a
+    ``spread`` or ``min_profit`` the caller supplies.
     """
     if spread is None:
         spread = LIVE_SPREAD_PCT

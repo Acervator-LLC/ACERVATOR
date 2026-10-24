@@ -605,6 +605,66 @@ src/stocks/alpaca_connector.py    0 occurrences
 Nothing on any screen builds a bot on that path today, so this is recorded and
 not repaired here.
 
+## The slippage guard has never turned an order away
+
+Every live scrum and every live fold passes one more guard before the order
+leaves. The guard is `verify_hit`, in `src/core/execution_discipline.py`. Two
+places call it: `src/trading/scrumming/execution.py, in _execute_sell` and
+`src/trading/scrumming/execution.py, in _execute_buy`. Its job is to refuse a
+trade whose slippage would be too large. It has refused none.
+
+The guard reads no market. It draws a random number instead.
+`src/core/execution_discipline.py, in fill_price` moves the price by that
+number. The scale of the draw is a fixed figure, `LIVE_SPREAD_PCT`, set to
+0.0008, which is eight hundredths of one percent. The guard then compares the
+drawn figure against a tolerance it looks up per asset class in
+`VERIFY_MIN_PROFIT_BY_CLASS`. A crypto asset reads four percent. A bond reads
+one percent, the smallest of the six entries.
+
+The draw cannot reach the smallest of them. Python's `random.gauss` has a hard
+ceiling, because the smallest step a random number can take below one is
+2**-53. That ceiling is 8.5717 standard deviations, driven and confirmed
+against the closed form. Scaled by 0.0008, the largest slippage the draw can
+ever produce is 0.6857 percent of the price. The line it is judged against
+starts at 1.00 percent. So the first draw clears the line every time, and the
+guard has nothing left to catch.
+
+Three counters record what the guard did. They are `verify_clean`,
+`verify_adjusted` and `verify_canceled`, fields of
+`src/trading/container/config.py, in BotStats`. Driven over twenty thousand
+sells through the real sell path at the shipped figures:
+
+```
+verify_clean       20,000
+verify_adjusted         0
+verify_canceled         0
+orders placed      20,000   all at the price the bot decided
+refusal lines           0
+```
+
+Two of the three can only ever read zero. The Proof of Accumulation tab shows
+those two, under the names `fumble_adjusted` and `fumble_canceled` in
+`src/competition/rpg_metrics.py`, so both cells read zero for every bot.
+`verify_clean`, the one counter that moves, has no reader anywhere in the
+platform, so no screen displays it.
+
+The counters themselves work. Fed a five percent shortfall by hand instead of
+one the guard drew, the sell path cancelled 2,000 of 2,000 runs, placed no
+order, and wrote the refusal line to the Console feed each time. Fed five
+percent and then one percent, it reported "adjusted" 2,000 times and placed
+the order. With the draw left live and the scale widened to 0.06, it cancelled
+341 of 2,000 sells and adjusted 659 more. Nothing in the guard's own branches
+is broken.
+
+The repair is not to widen the draw or to narrow the tolerance. The limit
+price is already the figure the bot decided, so the drawn number now reaches
+nothing but these three counters. Making the guard fire on that number would
+refuse live orders at random — seventeen in every hundred sells, at the
+widened scale measured above — on a figure that reads no market at all. The
+guard needs a real slippage reading, which is the gap between the bot's price
+and the venue's own book. Where that spread comes from is not settled, so the
+guard stays as it is and this page records what it does.
+
 ## The simulation battery
 
 The venue record above is live money. Beside it sits a second body of evidence
