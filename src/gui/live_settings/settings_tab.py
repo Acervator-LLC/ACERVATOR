@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ...exchange.timeframes import unserved_timeframe_notice
 from .. import design_system as ds
 from .denom_rows import _compose_denom_row_text
 
@@ -477,6 +478,22 @@ class SettingsTabMixin:
                 lambda v: self._mark_changed("ta_timeframe", v)
             )
             sf.addRow("TA Timeframe:", self._ta_tf)
+            self._ta_tf_notice = QLabel(
+                unserved_timeframe_notice(
+                    getattr(cfg, "exchange_id", None),
+                    cfg.ta_timeframe,
+                    self._ta_tf.currentText(),
+                )
+            )
+            if self._ta_tf_notice.text():
+                self._ta_tf_notice.setWordWrap(True)
+                self._ta_tf_notice.setStyleSheet(
+                    f"color: {ds.WARNING}; font-size: 11px;"
+                )
+                self._ta_tf.setToolTip(
+                    f"{self._ta_tf.toolTip()}\n{self._ta_tf_notice.text()}"
+                )
+                sf.addRow(self._ta_tf_notice)
 
             self._target_bal = QDoubleSpinBox()
             self._target_bal.setRange(1.0, 1000000.0)
