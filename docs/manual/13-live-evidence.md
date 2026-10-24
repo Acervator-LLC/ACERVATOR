@@ -665,6 +665,99 @@ guard needs a real slippage reading, which is the gap between the bot's price
 and the venue's own book. Where that spread comes from is not settled, so the
 guard stays as it is and this page records what it does.
 
+## The guard now reads the venue's own book
+
+The section above records a guard judging a random number. That number no
+longer reaches the live path. Before each live order the bot asks the venue for
+its own order book and measures the gap between the best offer to buy and the
+best offer to sell. That gap is a real market figure, and it is the figure the
+asset class tolerance now judges. The three answers are set by two figures that
+were already in the module:
+
+```
+# src/core/execution_discipline.py, in verify_book_spread
+    if spread_pct > min_profit:
+        return None, "canceled", spread_pct
+    if spread_pct > VERIFY_DRIFT_PCT:
+        return intended_price, "adjusted", spread_pct
+    return intended_price, "clean", spread_pct
+```
+
+A gap inside half a percent of the price reads clean. A wider gap, up to the
+class tolerance, reads adjusted and the order still goes out. A gap above the
+class tolerance refuses the order and writes a refusal line to the Console
+feed. The order's own price never changes: it is the figure the bot decided, on
+every one of the three answers.
+
+The book comes from a route that already existed, and no second route to the
+same data was opened. The method is `get_orderbook`, declared on the exchange
+interface and served by every connector:
+
+```
+src/exchange/base.py, in get_orderbook                declared
+src/exchange/ccxt_connector.py, in get_orderbook      crypto venues
+src/exchange/robinhood_connector.py, in get_orderbook
+src/stocks/broker_exchange.py, in get_orderbook       brokers
+src/trading/scrumming/execution.py, in _book_spread_pct   the one caller
+```
+
+A venue that cannot answer must never stop a bot trading. The read is bounded
+by the same wait one venue call already gets, and anything that goes wrong —
+the venue refusing, an empty side, a crossed book, a venue that never answers —
+leaves the order on the path it took before. No counter moves in that case, so
+a reading that was never taken is not recorded as a clean one. Driven against
+stand-in books, with the home directory redirected to a throwaway tree and no
+socket leaving the machine:
+
+```
+ordinary book, gap 0.02%    2,000 sells   2,000 orders   0 refused
+wide book, gap 5.00%        2,000 sells       0 orders   2,000 refused
+widened book, gap 1.50%       200 sells     200 orders   0 refused, 200 adjusted
+venue raises on the read      200 sells     200 orders   0 refused
+empty book                    200 sells     200 orders   0 refused
+venue never answers             1 sell        1 order    0 refused, 25.0 s
+```
+
+An ordinary market refuses nothing. The same six arms were driven through the
+buy path and answered the same way.
+
+Three counters record what the guard did, and all three now move on a live bot.
+They were invisible before: two reach the Proof of Accumulation tab and read
+zero for every bot, and the third had no reader anywhere. All four figures now
+go into the gate log, beside the other records a fired trade writes, under the
+name `slippage_guard`. Read back off disk after driving three clean sells and
+two refused ones:
+
+```
+gate/<exchange>/<sector>/gate.log
+{"clean": 3, "adjusted": 0, "canceled": 0, "samples": 3,
+ "last_status": "clean", "book_spread_pct": 0.0002}
+{"clean": 0, "adjusted": 0, "canceled": 2, "samples": 2,
+ "last_status": "canceled", "book_spread_pct": 0.05}
+```
+
+The six tolerances were written for a random draw, and they are now compared
+with a real market gap. Every one of them sits far above what an ordinary book
+shows. A major crypto pair or a large-company share trades at a gap of roughly
+one to five hundredths of one percent, and the tightest line in the table is
+one percent. So the guard only turns an order away on a book that has genuinely
+blown out, which is what it is for. No figure in the table was changed:
+
+```
+# src/core/execution_discipline.py
+VERIFY_MIN_PROFIT_BY_CLASS = {
+    "crypto": 0.04,
+    "meme": 0.04,
+    "equity": 0.02,
+    "bond": 0.01,
+    "etf": 0.015,
+    "default": 0.02,
+}
+```
+
+The random draw and the guard that sampled it are both still in the module, for
+the Simulator, where modelling a fill is the point.
+
 ## The simulation battery
 
 The venue record above is live money. Beside it sits a second body of evidence
