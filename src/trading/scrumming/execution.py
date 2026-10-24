@@ -121,6 +121,7 @@ class ExecutionEngineMixin:
     exchange: Any
     guarded_place_order: Callable[..., Any]
     note_scrum_retention_usd: Callable[..., None]
+    refresh_priced_figures_after_fill: Callable[..., Any]
     reset_swos_cycle: Callable[..., None]
     stats: Any
 
@@ -1928,6 +1929,18 @@ class ExecutionEngineMixin:
                 slippage_pct,
                 summary.consensus_confidence,
             )
+            # The fill moved _current_holdings above and not the audited venue
+            # count. One read puts both priced figures on this fill. Guarded
+            # here too, so no refresh can lose a sale the venue already made.
+            try:
+                await self.refresh_priced_figures_after_fill(reason=label.lower())
+            except Exception as _sup:
+                logger.debug(
+                    "suppressed in %s: %s: %s",
+                    "_execute_sell",
+                    type(_sup).__name__,
+                    _sup,
+                )
             return actual_fill
         except Exception as exc:
             self._bus.emit("bot.log", bot_id=self.bot_id, message=f"SELL FAILED: {exc}")
