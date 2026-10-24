@@ -65,6 +65,7 @@ from tools.spec_common import (  # noqa: E402
     build_graceful_datas,
     hiddenimports_for,
     read_acervator_version,
+    reachable_only,
 )
 
 block_cipher = None
@@ -105,6 +106,8 @@ VERSION_RESOURCE = VSVersionInfo(
 # Collect all source modules.
 # collect_submodules('src') stays HERE and not in tools/spec_common.py so
 # that the shared module never has to import PyInstaller.
+# reachable_only drops the names main.py cannot reach. PyInstaller's own
+# import walk still runs, so a dropped name that anything imports stays in.
 # ---------------------------------------------------------------------------
 a = Analysis(
     [os.path.join(PROJECT_ROOT, 'main.py')],
@@ -115,7 +118,10 @@ a = Analysis(
         + bake_version_datas(PROJECT_ROOT)
         + bake_variant_datas(PROJECT_ROOT, ACERVATOR_VARIANT)
     ),
-    hiddenimports=collect_submodules('src') + hiddenimports_for('windows'),
+    hiddenimports=(
+        reachable_only(collect_submodules('src'), PROJECT_ROOT)
+        + hiddenimports_for('windows')
+    ),
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
