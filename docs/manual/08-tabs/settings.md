@@ -4070,7 +4070,7 @@ reading. The row therefore waits, and this section records what it waits on.
 
 | | The Settings row | The wizard control |
 | --- | --- | --- |
-| Where | `src/gui/main_tabs/settings_dialog_surface.py:627` | `src/gui/bot_wizard.py:1590-1597` |
+| Where | `settings_dialog_surface` | `bot_wizard` |
 | Kind | checkbox | checkbox |
 | Text | `Profit Folding / Upward Distribution Active` | `Enable Profit Folding` |
 | Choices | on, off | on, off |
@@ -4087,14 +4087,14 @@ application setting, and all eight are the dialog or the declaration behind it.
 
 | Site | What it is |
 | ---- | ---------- |
-| `src/core/settings.py:79` | the field defaults for the group |
-| `src/core/settings.py:159` | the `AppSettings` field that declares the group |
-| `src/core/settings.py:187` | the manager docstring naming the group |
-| `src/gui/settings_dialog.py:1206` | the row the save and the load path both walk |
-| `src/gui/main_tabs/settings_dialog_surface.py:417` | the group in the save list |
-| `src/gui/main_tabs/settings_dialog_surface.py:449` | the group key |
-| `src/gui/main_tabs/settings_dialog_surface.py:2234` | the same six rows on the Qt-free surface |
-| `src/gui/main_tabs/settings_dialog_surface.py:2576` | the group read off the page |
+| `settings` | the field defaults for the group |
+| `settings` | the `AppSettings` field that declares the group |
+| `settings` | the manager docstring naming the group |
+| `settings_dialog` | the row the save and the load path both walk |
+| `settings_dialog_surface` | the group in the save list |
+| `settings_dialog_surface` | the group key |
+| `settings_dialog_surface` | the same six rows on the Qt-free surface |
+| `settings_dialog_surface` | the group read off the page |
 
 The other 33 name a bot's own field `profit_folding_active`, which is a different
 name and a different thing. That field is read seven times inside the trading
@@ -4145,7 +4145,7 @@ flowchart LR
 No page answers the folding page. The only branch that would is guarded behind
 `src/gui/bot_wizard.py, in is_grid`, and `is_grid()` returns `False`
 always. The Qt-free wizard surface states the same in a named constant,
-`UNREACHABLE_PAGES` at `src/gui/main_tabs/bot_wizard_surface.py:110`, and its
+`UNREACHABLE_PAGES` at `bot_wizard_surface`, and its
 view model reports the folding page unreachable.
 
 A second cut sits behind the first. `BotCreationWizard.get_bot_config` never
@@ -4240,8 +4240,8 @@ parameter and none takes one.
 | `src/trading/scrumming_bot.py, in _apply_fold_target_growth` | drains fold surplus into one target balance; no positions, no spread |
 | `src/trading/smart_wire.py, in distribute_fold_profit` | splits realised fold profit across wires to other bots by per-wire percent |
 | `src/trading/scrumming/wire_routing.py, in _spread_wire_usd_over_fold_queue` | adds wire income evenly to every standing fold tranche; the even split is fixed and has no alternative |
-| `src/trading/stack_math.py:304` `fold_ladder_prices` | places fold prices from `stack_spacing_mode` and decides no size |
-| `src/trading/profit_fold.py:14` `apply_profit_fold` | grows one target balance; its own docstring records that no module imports it |
+| `stack_math` `fold_ladder_prices` | places fold prices from `stack_spacing_mode` and decides no size |
+| `profit_fold` `apply_profit_fold` | grows one target balance; its own docstring records that no module imports it |
 
 The one mode-like selector near folding refuses this row's value.
 `src/trading/stack_math.py, in SPACING_MODES` holds `quadratic`,
@@ -4354,13 +4354,13 @@ positions or a count of them.
 
 | Where | What it does |
 | ----- | ------------ |
-| `src/trading/profit_fold.py:14` `apply_profit_fold` | grows one dollar target balance; its `target` parameter is annotated `float`, and its own docstring records that no module imports it |
+| `profit_fold` `apply_profit_fold` | grows one dollar target balance; its `target` parameter is annotated `float`, and its own docstring records that no module imports it |
 | `src/trading/scrumming_bot.py, in _apply_fold_target_growth` | drains fold surplus into one target balance; no positions, no set |
 | `src/trading/smart_wire.py, in distribute_fold_profit` | splits realised fold profit across wires to other bots by per-wire percent |
 | `src/trading/scrumming/wire_routing.py, in _spread_wire_usd_over_fold_queue` | adds wire income evenly to every standing fold tranche; the share is fixed at the dollars divided by the tranche count |
 | `src/trading/scrumming/fold_tranches.py, in _fold_eligible_tranches` | picks the tranches a fold may reach by price alone |
 | `src/trading/scrumming/fold_tranches.py, in _fold_discharge_order` | orders those tranches by `ref`, highest first |
-| `src/trading/stack_math.py:304` `fold_ladder_prices` | places fold prices and decides no size; its `levels` counts prices on a ladder |
+| `stack_math` `fold_ladder_prices` | places fold prices and decides no size; its `levels` counts prices on a ladder |
 
 The two paths that do decide which tranches a fold reaches were driven over
 three tranches at refs 120, 110 and 100. `_fold_discharge_order` returned them in
@@ -4542,7 +4542,7 @@ recent" is not the order the queue discharges in.
 of $50. The share is the dollars divided by the tranche count, it is fed by wire
 income rather than by a fold, and it reaches every standing tranche.
 
-`fold_ladder_prices` at `src/trading/stack_math.py:304` takes `levels`, which
+`fold_ladder_prices` at `stack_math` takes `levels`, which
 counts prices on a ladder. `fold_ladder_prices(100.0, 4)` returned four prices
 and decided no size and no position.
 
@@ -4563,7 +4563,7 @@ Each live fold path was asked for a count or a target by keyword.
 | `apply_profit_fold(..., target='x_buy')` | `TypeError`, a word compared against a number |
 
 The `target` parameter of `apply_profit_fold` is a dollar balance, not one of
-this group's three words, and `src/trading/profit_fold.py` records in its own
+this group's three words, and `profit_fold` records in its own
 module docstring that no module imports it.
 
 ### A five-key store opening on three rows
@@ -6762,7 +6762,7 @@ the removal.
 
 ### The orphaned target-growth module
 
-`src/trading/profit_fold.py` held one function and forty-six lines. Its own
+`profit_fold` held one function and forty-six lines. Its own
 module docstring recorded that no module imported it, and that was still true:
 four occurrences in the product, all four inside that file, three of them in the
 docstring and one on the definition line.
@@ -8493,5 +8493,30 @@ code. The earlier text stays where it is.
 | "The one spin box on the page, inside its own group. It opens at 2 and Save reads it no more than it reads the other two." | It still opens at 2, and the 2 is now the one declared figure rather than a figure typed into this page. Save reads it and stores it. |
 | The Settings-row table whose Lock duration row shows an opened-at of 2, and whose master box row above it shows an opened-at of clear | The opened-at column is the one declared figure for both rows: ticked for the master box, 2 for the lock box. The stored column is unchanged. |
 
+
+## 2026-10-23 - Eighteen citations on this page name their module
+
+Eighteen citations in this page's own prose named a line number. The code above
+each of those lines has moved, and the site each citation named has since been
+removed, so none of the eighteen can name a live symbol. Each now names its
+module, and the words beside it still name the subject. No sentence above this
+one changed.
+
+The fold-ladder helper and the target-growth module are already answered in
+[the orphaned target-growth module](#the-orphaned-target-growth-module). The two
+subjects below had no answer anywhere on the page, and these are it.
+
+### The stored-group reader sites
+
+| Earlier citation | What is there now |
+| ---------------- | ----------------- |
+| the eight sites under Every reader of the stored group, each named with a line number | No site is in the tree. The bare name `profit_folding` returns no hit in any of the three modules those rows name. Each row now names its module with no line number |
+| the Settings row and the wizard box above them, each named with a line number | Both pages are removed, which the rows on the removal above already state. Each now names its module |
+
+### The unreachable-page constant
+
+| Earlier citation | What is there now |
+| ---------------- | ----------------- |
+| the named constant on the Qt-free wizard surface, held at a line number | The constant is in no file under `src/`. That surface declares no page list, and the folding page the constant named is removed with the rest of the wizard's folding path |
 
 Back to [the subsystem index](README.md).
