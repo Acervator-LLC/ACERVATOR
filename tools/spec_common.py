@@ -169,7 +169,9 @@ def _src_import_names(path: str, owner: str) -> set[str]:
 def reachable_src_modules(project_root: str) -> frozenset[str]:
     """Return every ``src_modules`` name ``ENTRY_SCRIPT`` reaches, plus every ``DYNAMIC_IMPORT_PREFIXES`` module."""
     held = src_modules(project_root)
-    pending = list(_src_import_names(os.path.join(project_root, ENTRY_SCRIPT), "__main__"))
+    pending = list(
+        _src_import_names(os.path.join(project_root, ENTRY_SCRIPT), "__main__")
+    )
     pending.extend(name for name in held if name.startswith(DYNAMIC_IMPORT_PREFIXES))
     seen: set[str] = set()
     while pending:
