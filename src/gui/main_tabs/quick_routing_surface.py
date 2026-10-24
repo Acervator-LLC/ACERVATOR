@@ -122,6 +122,8 @@ SYMBOL_MASK = "****"
 SHORT_ID_MASK = "********"
 SHORT_ID_LENGTH = 8
 UNKNOWN_SYMBOL = "?"
+SEALED_SYMBOL = "SEALED"
+"""What ``state_symbol`` answers for a sealed fleet, never ``UNKNOWN_SYMBOL``."""
 EMPTY_SYMBOL = ""
 ROW_FORMAT = "{symbol} [{short}]"
 
@@ -528,9 +530,18 @@ class LiveRoutingTab:
         return self.widget_symbols.get(bot_id)
 
     def state_symbol(self, bot_id: Any) -> Any:
-        """The symbol the saved fleet load carries for one bot."""
+        """The symbol the saved fleet load carries for one bot.
+
+        A sealed load answers ``SEALED_SYMBOL``, which ``symbol_for`` carries
+        through, so no row reads a sealed fleet as ``UNKNOWN_SYMBOL``.
+        """
+        from src.core.state_manager import fleet_sealed
+
         self.record(TAB_STATE_SYMBOL, bot_id)
-        bots = self.load().get(BOTS_FIELD) or {}
+        loaded = self.load()
+        if fleet_sealed(loaded):
+            return SEALED_SYMBOL
+        bots = loaded.get(BOTS_FIELD) or {}
         config = (bots.get(str(bot_id)) or {}).get(CONFIG_FIELD) or {}
         return config.get(SYMBOL_FIELD) or None
 
@@ -687,6 +698,7 @@ class QuickRoutingModel:
         The on-screen bot card answers first. A card that carries no
         symbol, and a bot with no card, fall through to the stored
         settings. Settings that cannot be read answer a question mark.
+        A sealed fleet answers ``SEALED_SYMBOL`` through ``state_symbol``.
         """
         try:
             found = self.tab.widget_symbol(bot_id)
@@ -1000,6 +1012,7 @@ def build_view_model(
             "symbol_mask": SYMBOL_MASK,
             "short_id_mask": SHORT_ID_MASK,
             "unknown_symbol": UNKNOWN_SYMBOL,
+            "sealed_symbol": SEALED_SYMBOL,
             "empty_symbol": EMPTY_SYMBOL,
         },
         "rate": {
