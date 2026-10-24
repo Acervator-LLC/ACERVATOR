@@ -202,7 +202,7 @@ a feature name. The telemetry behind that name counts calls, skips and exception
 per feature, and flags by name any feature that was never called.
 
 ```python
-TELEMETRY_PARITY = "sim.parity.compare_trades"      # src/gui/main_tabs/fleet_replay_panel_surface.py
+TELEMETRY_PARITY = "sim.parity.compare_trades"      # fleet_replay_panel_surface
 The Simulator rebuild removed this file; it is not in the tree.
 
 class FeatureCounter: ...       # src/core/feature_telemetry.py
@@ -236,8 +236,8 @@ class ExchangeInterface(ABC):       # src/exchange/base.py
 | Implementation | Module | Reaches |
 | --- | --- | --- |
 | `CCXTConnector` | `src/exchange/ccxt_connector.py` | any venue id in `SUPPORTED_EXCHANGES`, through ccxt; or a backend passed to `attach_backend` |
-| `FleetSimExchange` | `src/simulator/fleet/sim_exchange.py` | stored `CandleSeries` rows over real symbols; no venue |
-| `NuclearSimExchange` | `src/simulator/nuclear_sim_exchange.py` | synthetic `TAPEA`/`TAPEB` tapes; no venue |
+| `FleetSimExchange` | `sim_exchange` | stored `CandleSeries` rows over real symbols; no venue |
+| `NuclearSimExchange` | `nuclear_sim_exchange` | synthetic `TAPEA`/`TAPEB` tapes; no venue |
 The Simulator rebuild removed the files above; they are not in the tree.
 
 One connector method names the fifteen ccxt members a backend must serve, marks
@@ -330,7 +330,7 @@ OVERTAKEN, quoted whole:
 
 ```python
 def resolve_ccxt_class(...): ...        # src/exchange/ccxt_connector.py
-                                        # tests/test_exchange_registry.py, fifteen checks
+                                        # test_exchange_registry, fifteen checks
 ```
 
 True today: no check covers the sets. The file named above is not in the tree,
@@ -415,9 +415,9 @@ OVERTAKEN, quoted whole:
 | Stand-in | Where | Replaces |
 | --- | --- | --- |
 | a fake `ccxt` module put into `sys.modules` | 2 of the 70 files | the venue library, sync and async support both |
-| an emptied `PREFLIGHT_URLS` | `tests/test_connect_does_not_block_calling_thread.py` | the pre-flight HTTP call inside `sync_connect` |
+| an emptied `PREFLIGHT_URLS` | `test_connect_does_not_block_calling_thread` | the pre-flight HTTP call inside `sync_connect` |
 | a `socket.socket.connect` that raises | 19 test files | the wire itself, for the whole file |
-| `tests/fixtures/venue_precision_metadata.json` | `tests/test_venue_precision_is_decimal_places.py` | published market metadata for 13 venues, captured from a public `load_markets` with no credential |
+| `venue_precision_metadata.json` | `test_venue_precision_is_decimal_places` | published market metadata for 13 venues, captured from a public `load_markets` with no credential |
 | `TabletBackend` | `src/exchange/tablet_backend.py` | the ccxt surface beneath a real connector |
 ```
 
@@ -433,8 +433,8 @@ OVERTAKEN, quoted whole:
 
 ```
 coinbase_credentials    3 occurrences under tests/
-    tests/test_capture_live_baseline.py
-    tests/test_migration_verifier.py
+    test_capture_live_baseline
+    test_migration_verifier
 ```
 
 True today: four of the five stand-ins are gone with the files that held them,
@@ -489,7 +489,7 @@ OVERTAKEN, quoted whole:
 > two spellings:"
 
 ```
-tests/test_api_logger_redaction.py      "sign" masks signature and CB-ACCESS-SIGN
+test_api_logger_redaction               "sign" masks signature and CB-ACCESS-SIGN
                                         the control places a value in reason
 
 exchange.place_order called by      src/trading/bot_container.py
@@ -497,7 +497,7 @@ guarded_place_order called by       src/trading/scrumming/execution.py
                                     src/trading/scrumming_bot.py
                                     src/trading/extractor_bot.py
                                     nine sites, no other route out
-tests/test_u6_venue_amount_gate.py      five checks
+test_u6_venue_amount_gate               five checks
 ```
 
 True today: three of the four refusals carry no check. Every file named above
@@ -837,8 +837,8 @@ resolves, and nothing about what follows when that resolution raises.
 ```
 ScrummingBot.__init__(..., capital_registry=None)   src/trading/scrumming_bot.py
 
-passes one      src/simulator/fleet/fleet_replay_controller.py
-                src/simulator/nuclear_controller.py
+passes one      fleet_replay_controller
+                nuclear_controller
 The Simulator rebuild removed the files above; they are not in the tree.
 
 passes none     src/gui/main_window.py

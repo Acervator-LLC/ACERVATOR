@@ -1196,10 +1196,10 @@ OVERTAKEN, quoted whole:
 > running the same tape at several price scales and comparing the readings."
 
 ```
-tests/test_bollinger_and_slingshot_are_scale_invariant.py
-tests/test_vortex_and_landing_strip_are_scale_invariant.py
-tests/test_macd_and_kaufman_er_are_scale_invariant.py
-tests/test_the_last_eight_indicators_are_scale_invariant.py
+test_bollinger_and_slingshot_are_scale_invariant
+test_vortex_and_landing_strip_are_scale_invariant
+test_macd_and_kaufman_er_are_scale_invariant
+test_the_last_eight_indicators_are_scale_invariant
 ```
 
 True today: no check in the tree holds the property. None of the four files is
@@ -2144,7 +2144,7 @@ OVERTAKEN, quoted whole:
 > property they held is held by the runs recorded in each entry instead."
 
 ```
-tests/debug_reports/2026-09-09_indicator_rounding.md
+the 2026-09-09 indicator-rounding debug report
 ```
 
 True today: the four files are still absent, and so is the report named above.

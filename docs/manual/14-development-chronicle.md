@@ -12,7 +12,7 @@ file, a comment somebody dated. Where no artefact exists, the entry says so and
 stops there.
 
 ```
-docs/audits/2026-09-08_development_map.md
+the 2026-09-08 development map
     125 entries    120 artefact-recorded, 3 inferred, 2 gaps
     152 days       61 of them carry no usable record
     largest blank  27 June to 23 July
@@ -409,7 +409,7 @@ while the price beside it was five seconds old.
 
 ```
 src/exchange/ccxt_connector.py   the docstring that named it and left it
-docs/audits/2026-09-07_ta_window_lag.md
+the 2026-09-07 TA window-lag audit
     141 of 141 recorded rows reproduce at an offset of -50 bars
     no other offset and no other timeframe fits better
 b106df73   -50 bars on 1,215 pages before, 0 on 1,215 after
@@ -437,10 +437,11 @@ always the maximum. Every reported ninetieth percentile equals the largest run,
 in 39 of 39 rows, across three separate reports.
 
 ```
-docs/audits/2026-09-07_raintsimbat.md
+the 2026-09-07 RAIntSimBat audit
     p90 = run_advs[min(n_runs-1, int(n_runs * 0.90))]
     39 of 39 rows: the ninetieth percentile equals the largest value
     all ten runs of a configuration share the same three anchor prices
+553eec66   the commit that removed the audit folder holding it
 ```
 
 All ten runs also shared those three anchors, so the spread between them

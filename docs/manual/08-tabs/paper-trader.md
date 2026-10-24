@@ -10,7 +10,7 @@ describes what draws there today.
 The tab drew three lines: its name, one sentence saying it was not
 built, and the issue that owned it. It read no bot, no price and no trade.
 
-`src/gui/main_tabs/paper_trader_tab_surface.py` — the empty state it carried
+`paper_trader_tab_surface` — the empty state it carried
 
 ```python
 HEADING = "Paper Trader"
@@ -81,10 +81,10 @@ Issues #422 and #426 both folded into issue #19, which built the tab.
 ## The screen as it stands now
 
 The tab is built. It sits second on the bar and carries the Trading tab's panes
-over the live exchange feed. `src/gui/paper_trader_tab.py` draws them in Qt and
+over the live exchange feed. `PaperTraderTabQt` draws them in Qt and
 `src/gui/web/paper_trader_tab.js` draws them in React, from one view model.
 
-`src/gui/main_tabs/paper_trader_tab_surface.py` — the fields both hosts read
+`paper_trader_tab_surface` — the fields both hosts read
 
 ```python
 DECLARED_FIELDS = (
@@ -112,7 +112,7 @@ rows and the bot list. The bot list uses the Trading tab's own columns. The righ
 pane holds the Indicator Voting Panel, computed from the live window. An empty
 selector draws the empty state and invents no reading.
 
-`src/gui/main_tabs/paper_trader_tab_surface.py` — the empty state
+`paper_trader_tab_surface` — the empty state
 
 ```python
 def indicator_payload(
@@ -136,7 +136,7 @@ Import Live Fleet reads the stored bot record and lists what it finds. Start
 Paper Run opens the run and begins ticking. The same button then reads Stop
 Paper Run and ends it, leaving the balances and the trades on screen.
 
-`src/gui/main_tabs/paper_trader_tab_surface.py` — the second row's two faces
+`paper_trader_tab_surface` — the second row's two faces
 
 ```python
 {
@@ -293,7 +293,7 @@ FIGURE_LABELS = (
 The Qt window and the React page print one line from one view model, so the two
 hosts cannot report different money.
 
-`src/gui/main_tabs/paper_trader_tab_surface.py` — the one line
+`paper_trader_tab_surface` — the one line
 
 ```python
 "text": LEDGER_SEPARATOR.join(f"{one['label']} {one['text']}" for one in cells),
@@ -358,7 +358,7 @@ A run ticks on the wall clock and asks the feed for one bot per fire, so a fleet
 of many bots never blocks the window on a single pass. One bar is shared across
 the open bots.
 
-`src/gui/paper_trader_tab.py` — the round robin
+`PaperTraderTabQt` — the round robin
 
 ```python
 def advance_once(self) -> list:
@@ -396,7 +396,7 @@ Trader placeholder, which drew its name, one sentence saying it was not built,
 and the issue that owned it. The section under this one holds what the tab is
 now.
 
-`src/gui/main_tabs/paper_trader_tab_surface.py` — the empty state it carried
+`paper_trader_tab_surface` — the empty state it carried
 
 ```python
 HEADING = "Paper Trader"
@@ -433,7 +433,7 @@ the Privacy Mode row, the market selector, the two button rows, the bot list,
 the Indicator Voting Panel, the Live Feed pane, the Fake Balance table and the
 Paper Run table. The Qt window and the React page draw one view model.
 
-`src/gui/main_tabs/paper_trader_tab_surface.py` — what the tab answers
+`paper_trader_tab_surface` — what the tab answers
 
 ```python
 METHOD = "paper_trader_tab.state"
@@ -562,7 +562,7 @@ empty state and nothing else. The shared function `no_data_text` builds that
 line, and the [Simulator page](simulator.md) shows it. The label is hidden
 whenever the panel has values to draw.
 
-`src/gui/paper_trader_tab.py` — the Qt clone draws the line
+`PaperTraderTabQt` — the Qt clone draws the line
 
 ```python
 def _draw_indicators(self, panel: dict) -> None:
@@ -588,7 +588,7 @@ No TA data — No paper fleet yet. Press Import Live Fleet.
 The page carries one style sheet. `TAB_STYLE_ASSETS` names it, and
 `page_html` reads the file and writes it into the page's head.
 
-`src/gui/react_paper_trader_tab.py` — the sheet the page carries
+`react_paper_trader_tab` — the sheet the page carries
 
 ```python
 TAB_STYLE_ASSETS: tuple[str, ...] = ("paper_trader_tab.css",)
@@ -637,7 +637,7 @@ scrum row and a fold row in the Paper Run table take the two colours
 first tick returns nothing, so without that draw the Paper Run pane kept the
 word it held before the press while the run was open.
 
-`src/gui/paper_trader_tab.py` — the press that opens a run
+`PaperTraderTabQt` — the press that opens a run
 
 ```python
     def start_run(self) -> str:
@@ -660,8 +660,8 @@ Both builds carry the same draw.
 Unit Q1 of issue #19. The Paper tab is now Live's tab code, forked under Paper
 names in both builds, with Import Live Fleet as the fleet's one way in and the
 header strip reading the paper ledger while Paper is in front. The two hosts
-the sections above describe, `src/gui/paper_trader_tab.py` and
-`src/gui/react_paper_trader_tab.py`, stay on disk and nothing loads them; a
+the sections above describe, `PaperTraderTabQt` and
+`react_paper_trader_tab`, stay on disk and nothing loads them; a
 later unit removes them once a paper bot ticks on the clone.
 
 ### The budget rule today overtakes four sentences
@@ -1762,9 +1762,9 @@ the bar during a run ticks from the next pass.
 
 ### The old hosts are gone
 
-`src/gui/paper_trader_tab.py`, `src/gui/react_paper_trader_tab.py`,
-`src/gui/web/paper_trader_tab.js`, `src/gui/web/paper_trader_tab.css` and
-`src/gui/main_tabs/paper_trader_tab_surface.py` are removed. The six names
+`PaperTraderTabQt`, `react_paper_trader_tab`,
+`paper_trader_tab.js`, `paper_trader_tab.css` and
+`paper_trader_tab_surface` are removed. The six names
 the clone read off the old surface, `HEADING`, `IMPORT_LIVE_FLEET_ACTION`,
 `IMPORT_LIVE_FLEET_TEXT`, `START_RUN_ACTION`, `START_RUN_TEXT` and
 `button_name`, live in `src/gui/paper/paper_trading_tab_surface.py` with
