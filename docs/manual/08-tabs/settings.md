@@ -6790,25 +6790,6 @@ tree. The earlier text stays where it is.
 | "The master switch is the last row on the page, and its own verdict was that it waits on the wizard's folding page." | Both pages are removed. The verdict is settled by removal, not by waiting |
 | "`SettingsManager._apply_dict` copies the whole `profit_folding` dict off the file, so a store written before the removal still carries its `mode` entry and still opens." | It copies the fields the record declares, and the folding group is no longer one. The store still opens |
 
-Three earlier citations name a ladder helper removed with the wizard's folding
-page, and nobody had answered them. They are answered here.
-
-| Earlier citation | What is there now |
-| ---------------- | ----------------- |
-| "`src/trading/stack_math.py:304` `fold_ladder_prices` - places fold prices from `stack_spacing_mode` and decides no size" | The fold half is removed. Its twin still places scrum prices |
-| "`src/trading/stack_math.py:304` `fold_ladder_prices` - places fold prices and decides no size; its `levels` counts prices on a ladder" | The same helper, named a second time in the count table. It is gone |
-| "`fold_ladder_prices(100.0, 4)` returned four prices and decided no size and no position." | That reading was taken before the helper was removed, and no call can be made now |
-
-Five earlier citations name the target-growth module this section removes.
-
-| Earlier citation | What is there now |
-| ---------------- | ----------------- |
-| "`src/trading/profit_fold.py:14` `apply_profit_fold` - grows one target balance" | The module is removed. The target grows through the tranche applier |
-| "`src/trading/profit_fold.py:14` `apply_profit_fold` - grows one dollar target balance; its `target` parameter is annotated `float`" | The same module, named a second time in the count table |
-| "`apply_profit_fold(..., fold_target_count=2)` - `TypeError`, unexpected keyword argument" | No call can be made. The refusal it recorded stands for the applier that replaced it |
-| "`apply_profit_fold(..., target='x_buy')` - `TypeError`, a word compared against a number" | The same, and the point it made is unchanged: a fold is bounded in dollars |
-| "`src/trading/profit_fold.py` records in its own module docstring that no module imports it." | The docstring went with the file. Nothing imported it, which is why it went |
-
 The glossary entry that named the removed module as the fold's entry point is
 answered in place, in
 [the ADR index and glossary](../12-adr-index-and-glossary.md).

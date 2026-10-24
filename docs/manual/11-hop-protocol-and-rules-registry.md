@@ -134,15 +134,7 @@ top-level directory that no commit in this repository has ever added.
 
 ### The importer sentences, overtaken
 
-OVERTAKEN, quoted whole:
-
-> "An import scan over 957 Python files — parsing each file and reading its
-> import nodes, rather than matching text — finds one importer,
-> `tests/test_rule_registry_validation.py`, which is also the only caller of any
-> symbol in the module. The same scan against `src/core/log_paths.py` returns
-> three importers, so the instrument does find an importer where one exists."
-
-True today: the module has no importer at all. The one importer named above is
+True today: the module has no importer at all. The one importer it once had is
 not in the tree, so no file imports the registry and no file calls any symbol in
 it. One module names it in printed text rather than in an import:
 `unreached/core/version_sweep.py`, in `check_rule_registry`, prints a command a reader
@@ -209,48 +201,15 @@ were.
 
 ### The Simulator-module sentences, overtaken
 
-OVERTAKEN, quoted whole:
-
-> "The live file behind the second row is
-> `src/gui/simulator_tab/simulator_tab.py`."
-
-> "The Simulator rebuild removed this file; it is not in the tree."
-
 True today: the live file behind the second row is
-`src/gui/main_tabs/simulator_tab.py`, and it is in the tree. The two sentences
-above name a third path that was never in the tree and then call it removed, so
-the reader is pointed at nothing twice. The Simulator surface beside it is
-`src/gui/main_tabs/simulator_tab_surface.py`, and the panels the tab draws sit
-under `src/gui/simulator/`.
+`src/gui/main_tabs/simulator_tab.py`, and it is in the tree. The Simulator
+surface beside it is `src/gui/main_tabs/simulator_tab_surface.py`, and the
+panels the tab draws sit under `src/gui/simulator/`.
 
 ### The seven retirement checks, overtaken
 
-OVERTAKEN, quoted whole:
-
-> "What did ship was a set of references to it, and one test module holds the
-> line against their return. Two front-door documents and the build config may
-> not name the protocol or its battery, no shipped module may import it, and no
-> build may carry a path naming it. Fifty-one annotation comments naming those
-> ids survive in the source across 21 files, and they bind nothing."
-
-> "`tests/test_no_dead_sadp_references.py` — the seven checks"
-
-```python
-def test_sadp_directory_is_absent() -> None:
-def test_build_config_names_no_dead_subsystem(name: str) -> None:
-def test_front_door_docs_name_no_dead_subsystem(name: str) -> None:
-def test_readme_says_the_harness_was_retired() -> None:
-def test_no_shipped_python_imports_the_dead_package() -> None:
-def test_no_build_datas_pair_ships_a_dead_subsystem() -> None:
-def test_every_shipped_tool_imports() -> None:
-```
-
-> "The module records both directions of its own control: reverting the five
-> files to their earlier state failed four of the seven, and restoring them
-> passed all seven."
-
-True today: no check holds the line. The file named above is not in the tree,
-and the repository tracks one Python module under `tests/`, its own conftest.
+True today: no check holds the line. The repository tracks one Python module
+under `tests/`, its own conftest, and no retirement check is among them.
 The retirement itself still holds, and one rule reports on it rather than
 refusing it: the hallucination rule's H002 names the retired subsystem and
 reports at low severity, so a page naming it still answers `passed` true.

@@ -1505,42 +1505,6 @@ pure functions Live calls, fills a scrum at the book's best bid and a fold at
 the best ask with the venue's taker fee, and moves the paper ledger the
 header strip reads. The old hosts left the tree.
 
-### The sentences this unit overtakes
-
-Seven passages on this page describe the run as it was before this unit. Each
-is quoted here and kept above as it stands.
-
-- "`src/gui/main_tabs/paper_trader_tab_surface.py` — the second row's two
-  faces" (The two presses). The file is removed; the two faces are
-  `run_buttons` in `src/gui/paper/paper_trading_tab_surface.py`.
-- "A run ticks on the wall clock and asks the feed for one bot per fire, so a
-  fleet of many bots never blocks the window on a single pass. One bar is
-  shared across the open bots." and "`src/gui/paper_trader_tab.py` — the
-  round robin" with its `advance_once` block (Real time). The runner ticks
-  every running bot each 5 s on its own thread, and the window is never asked
-  to wait.
-- "The Qt window and the React page print one line from one view model, so
-  the two hosts cannot report different money." with its `LEDGER_SEPARATOR`
-  block (The fleet ledger). The four figures reach both hosts through
-  `strip_aggregate` and the header strip, from one figures dict the runner
-  posts.
-- "`src/gui/paper_trader_tab.py` — the press that opens a run" with its
-  `_tick_timer` block, and "`src/gui/react_paper_trader_tab.py` — the sheet
-  the page carries" with `paper_trader_tab.css` (Start Paper Run redraws the
-  pane, The style sheet the Paper page loads). Both files, the page module
-  and the sheet are removed.
-- "The two hosts the sections above describe, `src/gui/paper_trader_tab.py`
-  and `src/gui/react_paper_trader_tab.py`, stay on disk and nothing loads
-  them; a later unit removes them once a paper bot ticks on the clone."
-  (2026-09-19). This is that unit.
-- "`BUDGET_MULTIPLE` in `src/paper/fake_balance.py` still reads `2.0`; the
-  unit that starts a paper run retires it, and no clone code reads it." (The
-  budget rule today overtakes four sentences). Retired: `BUDGET_MULTIPLE`,
-  `budget_usd`, `fleet_budget_usd` and the `budget_usd` field are gone.
-- "A press on Start Paper Run writes one line saying no paper run is built;
-  the run is a later unit's too." with `START_RUN_TEXT` (What the fork
-  draws). The press starts the run below.
-
 The `apply_scrum` and `apply_fold` the earlier sections describe sized a fill
 with their own arithmetic; the two below are the Simulator's, forked over
 `src/trading/scrumming/sizing.py`.
@@ -2598,35 +2562,6 @@ fleet source.
         markets = wizard_surface.venue_markets(self._exchange)
         wizard = wizard_class(exchanges, defaults, self, markets=markets)
 ```
-
-### Four sentences this entry overtakes
-
-Each is quoted as it stands, with the sentence that is true today beneath it.
-
-> "`src/gui/paper_trader_tab.py` draws them in Qt and
-> `src/gui/web/paper_trader_tab.js` draws them in React, from one view model."
-
-**CITED AS ABSENT.** Neither file is in the tree. The Qt tab is
-`src/gui/paper/paper_trading_tab.py` and the React tab is
-`src/gui/paper/paper_react_trading_tab.py`.
-
-> "`src/gui/main_tabs/paper_trader_tab_surface.py` — the fields both hosts read"
-
-**CITED AS ABSENT.** That file is not in the tree either. The fields both hosts
-read are declared in `src/gui/paper/paper_trading_tab_surface.py`.
-
-> "The paper budget is twice the dollar target, so a bot has room to fold without
-> the exercise ending on the first dip."
-
-The opening figures are the fleet's summed targets and the budget is unbounded,
-so a run never ends on a balance.
-
-> "`_apply_changes` asks the view for every pending field, and the view raises
-> `SendRefused` for each, so the pending line reads `refused_text` and nothing is
-> written."
-
-Every pending field is written to the stored record; only a field the config
-does not declare still raises, and it is counted on its own.
 
 ## 2026-09-26 - #19 - a paper fill draws its own Activity Log line
 
