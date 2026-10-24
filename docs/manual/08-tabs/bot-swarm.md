@@ -602,7 +602,7 @@ One reservation per bot stands against a wallet. A total above the wallet
 figure is refused whole, and the free figure reports what is left. The claims
 settle against the venue, because the exchange is the authority.
 
-`src/trading/capital_registry.py` — `CapitalRegistry.request_reservation`
+`capital_registry` — `CapitalRegistry.request_reservation`
 
 ```python
 """Create or replace ``bot_id``'s ``Reservation`` and return
@@ -623,9 +623,9 @@ The paragraph above describes a subsystem the tree no longer holds. Nothing
 imported the dollar registry, so nothing built one, and the table it fed could
 draw no row.
 
-Four modules are removed: the registry in `src/trading/capital_registry.py`, the
-Qt table in `src/gui/widgets/capital_registry_panel.py`, the view model in
-`src/gui/main_tabs/capital_registry_surface.py`, and the renderer page in
+Four modules are removed: the registry in `capital_registry`, the
+Qt table in `capital_registry_panel`, the view model in
+`capital_registry_surface`, and the renderer page in
 `src/gui/web/capital_registry.js`.
 
 The bridge no longer offers the method. `build_registry` in
@@ -1224,7 +1224,7 @@ touched; the rows in the table above are the state before it.
 
 | Qt file | React module | Uses React | Bridge | Manifest | Registers in Electron | Ships in the build | RENDERS | Scope |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `src/gui/bot_swarm_list.py` | removed | - | - | - | - | - | - | deleted |
+| `bot_swarm_list` | removed | - | - | - | - | - | - | deleted |
 | `src/gui/bot_visualizer.py` | `bot_visualizer.js` | yes | yes | yes | yes | yes | yes | in scope |
 | `src/gui/visualizer/bot_node.py` | `bot_node.js` | yes | yes | yes | yes | yes | yes | in scope |
 | `src/gui/visualizer/wire_canvas.py` | `wire_canvas.js` | yes | yes | yes | yes | yes | yes | in scope |
@@ -1236,7 +1236,7 @@ The Qt widget file went. `BotListView` and `LaneWireCanvas` had one caller, the
 Swarm tab, and nothing else built either of them. The live bot settings window
 draws its own wire table from `QTableWidget`, so it lost nothing.
 
-`src/gui/bot_swarm_list.py` — what was deleted
+`bot_swarm_list` — what was deleted
 
 ```python
 class BotListView(QTableWidget):

@@ -508,10 +508,10 @@ over-allocation check.
 ```
 src/trading/container/registry.py      at admission
 src/trading/extractor_bot.py           at the chunk-rate claim
-src/trading/capital_registry.py        at the dollar grant
+capital_registry                       at the dollar grant
 ```
 
-All three of those lines have changed. `src/trading/capital_registry.py` is
+All three of those lines have changed. `capital_registry` is
 removed, so no dollar grant is made and that warning can no longer be written.
 The admission warning in `src/trading/container/registry.py` is removed as well.
 It was never true. A bot claims its own capital on its first tick, through

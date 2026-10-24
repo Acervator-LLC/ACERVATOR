@@ -40,8 +40,8 @@ OVERTAKEN, quoted whole:
 > "The two guards:"
 
 ```
-tests/test_repo_root_inventory.py         a reason per tracked root file
-tests/test_no_dead_sadp_references.py     the older protocol's retirement
+test_repo_root_inventory         a reason per tracked root file
+test_no_dead_sadp_references     the older protocol's retirement
 ```
 
 > "`docs/engineering-notes/ci_failure_ledger.md` is the narrowest of these: one
@@ -69,7 +69,7 @@ not repeated here.
 - **Scrum** — a sell of the excess above the target. `ScrummingBot` in
   `src/trading/scrumming_bot.py` decides and places it.
 - **Fold** — the buy back on the dip that follows a scrum, carried by
-  `apply_profit_fold` in `src/trading/profit_fold.py`.
+  `apply_profit_fold` in `profit_fold`.
 - **Fold, corrected 2026-09-13** — the sentence above names a module that no
   code ever called, and it is removed. A fold runs on the tranche book:
   `_fold_eligible_tranches` picks the tranches the fold may reach, and

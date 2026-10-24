@@ -23,7 +23,7 @@ OVERTAKEN, quoted whole:
 > one fails the check."
 
 ```python
-def test_the_inventory_names_every_tracked_root_file() -> None: ...  # tests/test_repo_root_inventory.py
+def test_the_inventory_names_every_tracked_root_file() -> None: ...  # test_repo_root_inventory
 def test_the_inventory_names_no_file_that_has_left() -> None: ...
 def test_every_inventory_entry_carries_a_reason() -> None: ...
 ```
@@ -164,8 +164,8 @@ of those five read `sadp/RULE_REGISTRY.json`.
 
 | check | path it reads | what it prints |
 |---|---|---|
-| `check_r6_two_paths` | `src/gui/simulator.py` | NOT INSPECTED, naming the absent file |
-| `check_snapshot_consistency` | `src/gui/simulator.py` | NOT INSPECTED, naming the absent file |
+| `check_r6_two_paths` | `simulator.py under src/gui` | NOT INSPECTED, naming the absent file |
+| `check_snapshot_consistency` | `simulator.py under src/gui` | NOT INSPECTED, naming the absent file |
 | `check_rule_registry` | `sadp/RULE_REGISTRY.json` | one informational finding |
 | `check_sadp_annotations` | `sadp/RULE_REGISTRY.json` | five high findings |
 | `check_sadp_dependency_graph` | `sadp/RULE_REGISTRY.json` | NOT INSPECTED, naming the absent file |
@@ -200,7 +200,7 @@ the commit that added it, which is the control saying the query works.
 ```
 the query finds no commit that added the first two rows
 sadp/, and RAIntSimBat.py and RULE_REGISTRY.json inside it   nothing
-src/gui/simulator.py                                         nothing
+simulator.py under src/gui                                  nothing
 src/core/log_paths.py                       the commit that added it
 ```
 

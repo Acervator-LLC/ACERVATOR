@@ -739,7 +739,7 @@ operator. This repository cannot regenerate either.
 ```
 git log --all --diff-filter=ADR --name-only
     1,626 distinct paths
-    tests/test_vwap_band_scales_to_price.py     the one vwap name
+    test_vwap_band_scales_to_price             the one vwap name
                                                 deleted; not in the tree
 
 git log -S<name> -- '*.py'

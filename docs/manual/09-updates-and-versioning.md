@@ -78,7 +78,7 @@ OVERTAKEN, quoted whole:
 > mean nothing more than a tree carrying no backup tag."
 
 ```python
-def test_src_init_holds_no_version_literal() -> None: ...       # tests/test_version_resolution.py
+def test_src_init_holds_no_version_literal() -> None: ...       # test_version_resolution
 def test_a_backup_tag_never_becomes_the_version(tmp_path) -> None: ...
 def test_the_unguarded_form_would_adopt_a_backup_tag(tmp_path) -> None: ...
 ```
@@ -168,7 +168,7 @@ OVERTAKEN, quoted whole:
 > "One check asserts every other shape carries that `+`."
 
 ```python
-def test_only_an_exact_clean_tag_reports_a_release_number(described: str) -> None: ...  # tests/test_version_resolution.py
+def test_only_an_exact_clean_tag_reports_a_release_number(described: str) -> None: ...  # test_version_resolution
 ```
 
 True today: no check asserts it. The file named above is not in the tree. No
@@ -324,7 +324,7 @@ OVERTAKEN, quoted whole:
 > taken away."
 
 ```python
-def test_a_frozen_bundle_prefers_the_baked_value_over_a_repository() -> None: ...   # tests/test_version_resolution.py
+def test_a_frozen_bundle_prefers_the_baked_value_over_a_repository() -> None: ...   # test_version_resolution
 def test_a_baked_tree_keeps_its_version_after_git_is_removed() -> None: ...
 ```
 
@@ -588,9 +588,9 @@ OVERTAKEN, quoted whole:
 > assertion runs."
 
 ```
-tests/test_specs_parity.py
-tests/test_version_resolution.py
-tests/test_build_variants_and_version_reach.py
+test_specs_parity
+test_version_resolution
+test_build_variants_and_version_reach
 ```
 
 > "A commit landing between those two moments changes the distance term, and the
@@ -634,7 +634,7 @@ OVERTAKEN, quoted whole:
 > nothing and asserts the gate calls it a failure."
 
 ```python
-def test_any_skip_flag_refuses_to_declare_ready(...) -> None: ...   # tests/test_check_release_readiness.py
+def test_any_skip_flag_refuses_to_declare_ready(...) -> None: ...   # test_check_release_readiness
 def test_green_pytest_with_zero_tests_is_a_failure(...) -> None: ...
 ```
 
