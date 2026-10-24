@@ -3882,6 +3882,52 @@ The Soft CB Cooldown and the Extractor's watch-list refresh both scale with this
 pick, so changing the chart changes how long those two last without either figure
 moving.
 
+**When a venue drops the pick, the row says so.** No venue carries every chart.
+Change the venue after picking a chart, or open Bot Settings on a bot whose saved
+chart its venue stopped carrying, and the list is rebuilt without that chart. The
+box then holds the hourly chart, or the first one on the list. One amber line
+under the box names the venue, the chart that was picked, and the chart the box
+holds instead.
+
+`src/exchange/timeframes.py, in unserved_timeframe_notice`
+
+```python
+UNSERVED_TIMEFRAME_FORMAT = (
+    "{exchange} does not serve the {chosen} candle. This picker now shows {used}."
+)
+```
+
+Driven on the wizard page and on all three Bot Settings dialogs, with the sockets
+refused and no venue contacted:
+
+```
+picked   venue        box holds   the line under the box
+4h       coinbase     1h          coinbase does not serve the 4h candle. This picker now shows 1h.
+2h       coinbase     2h          nothing, and the row is not drawn
+4h       notavenue    4h          nothing, and the row is not drawn
+```
+
+The middle row is the control. A chart the venue does carry is kept and nothing is
+said, so the line is reading the venue's own list and not firing on every open. The
+last row is the second control. A venue the table does not list is read as carrying
+every chart, so a venue that names nothing has nothing refused.
+
+The line is drawn in one place for every screen that holds a chart picker, so the
+wording cannot drift between them.
+
+```
+src/gui/bot_wizard.py, in set_exchange_id
+src/gui/live_settings/settings_tab.py, in _create_settings_tab
+src/gui/paper/paper_settings_tab.py, in _create_settings_tab
+src/gui/simulator/sim_settings_tab.py, in _create_settings_tab
+```
+
+**What is still silent, and it is not this row.** The line reports to a screen he
+opens. A bot already running on a chart its venue does not carry asks for that
+chart on every tick, reads nothing back, and takes no indicator reading from the
+answer. Nothing is written to its log and nothing is drawn on its card. Where that
+warning belongs on a running bot is an open question for the author.
+
 Target Balance - This is the intended starting and locked value for the investment position that the Scrumming Bot is controlling.
 
 From $1.00 to $1,000,000.00. Its start value is whatever default the wizard was

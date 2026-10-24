@@ -140,6 +140,27 @@ def is_supported(exchange_id: str | None, timeframe: str) -> bool:
     return timeframe in available_timeframes(exchange_id)
 
 
+UNSERVED_TIMEFRAME_FORMAT = (
+    "{exchange} does not serve the {chosen} candle. This picker now shows {used}."
+)
+"""The wording ``unserved_timeframe_notice`` fills in."""
+
+
+def unserved_timeframe_notice(exchange_id: str | None, chosen: str, used: str) -> str:
+    """The ``UNSERVED_TIMEFRAME_FORMAT`` sentence for a candle length
+    ``exchange_id`` does not serve, naming ``chosen`` and ``used``.
+
+    Empty where ``is_supported`` holds for ``chosen``, where ``exchange_id`` is
+    unnamed, and where ``used`` equals ``chosen``.
+    """
+    name = (exchange_id or "").strip()
+    if not name or not chosen or not used or chosen == used:
+        return ""
+    if is_supported(name, chosen):
+        return ""
+    return UNSERVED_TIMEFRAME_FORMAT.format(exchange=name, chosen=chosen, used=used)
+
+
 def filter_timeframes(exchange_id: str | None, requested: Iterable[str]) -> list[str]:
     """Filter a list of requested timeframes down to the ones the
     exchange supports. Order-preserving."""
