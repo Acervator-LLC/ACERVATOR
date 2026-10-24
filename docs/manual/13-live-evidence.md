@@ -459,51 +459,10 @@ its own module.
 
 ### The checks around the four refusals, overtaken
 
-OVERTAKEN, quoted whole:
-
-> "Each of the four carries checks that drive it to the refusal itself, so a
-> green run says the refusal still fires."
-
-> "`_live_roots` is injectable, so `tests/test_live_tree_guard.py` drives the
-> guard against temporary roots across 22 checks. Two of them replay the two
-> isolation breaches this project has shipped: a telemetry file created in the
-> live tree, and a reservation-state autosave."
-
-> "`tests/test_safe_url_scheme_policy.py` holds 40 checks, splitting the policy
-> half from the transport half because either can fail alone."
-
-> "The redaction checks name 13 credential field spellings that must come back
-> masked, five benign fields that must come back unchanged as the positive
-> control, and read the emitted log line for any param value — with a control
-> proving the same handler sees a value placed in a benign field. One substring
-> covers two credential spellings at once."
-
-> "One module calls the venue's order method directly: the bot container, inside
-> the guard itself. Nine sites across three trading modules call the guard, and
-> no other route out exists. Five checks cover it: one drives unusable amount
-> shapes into a recorder standing where the exchange stands, one drives a real
-> amount through as the positive control, and three more pin the text of the
-> refusal and which check turns an undersized order back."
-
-> "The modules on each side of the last two, and the one substring that covers
-> two spellings:"
-
-```
-test_api_logger_redaction               "sign" masks signature and CB-ACCESS-SIGN
-                                        the control places a value in reason
-
-exchange.place_order called by      src/trading/bot_container.py
-guarded_place_order called by       src/trading/scrumming/execution.py
-                                    src/trading/scrumming_bot.py
-                                    src/trading/extractor_bot.py
-                                    nine sites, no other route out
-test_u6_venue_amount_gate               five checks
-```
-
-True today: three of the four refusals carry no check. Every file named above
-is absent except `tests/conftest.py`, so the 22 guard checks, the 40 policy
-checks, the redaction checks and the five amount checks are all gone, and with
-them every positive control they held.
+True today: three of the four refusals carry no check. Every check module they
+once had is absent, so the 22 guard checks, the 40 policy checks, the redaction
+checks and the five amount checks are all gone, and with them every positive
+control they held.
 
 The refusals themselves did not move, and the route out is unchanged:
 

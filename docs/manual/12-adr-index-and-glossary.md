@@ -20,40 +20,10 @@ An audit records one measurement, and the issue it answers cites it by name.
 
 ### The four places, overtaken
 
-OVERTAKEN, quoted whole:
-
-> "Four places hold the decisions this repository has made. Each answers a
-> different question."
-
-> "`docs/engineering-notes/` — 21 notes, ten with an evidence directory beside
-> them holding the rows and the script that produced them. One note per
-> question, each naming the standard it measures against and the control beside
-> every measurement."
-
-> "Executable guards in the test suite. One holds a reason for every tracked file
-> at the repository root, and a reason has to name a mechanism. A second holds
-> the retirement of the older protocol, and it records driving itself both ways:
-> reverting the five files it guards failed four of its checks, and restoring
-> them passed all seven. A decision written as a guard fails when someone
-> reverses it, which a decision written as prose does not."
-
-> "The two guards:"
-
-```
-test_repo_root_inventory         a reason per tracked root file
-test_no_dead_sadp_references     the older protocol's retirement
-```
-
-> "`docs/engineering-notes/ci_failure_ledger.md` is the narrowest of these: one
-> row per continuous-integration failure, its class, the change that closed it,
-> and the run that shows it closed. A row leaves the file after three consecutive
-> green runs hold its tests, and the file states its own ceiling — past 20 rows,
-> the work is producing failures faster than it closes them."
-
 True today: two of the four places are gone, so two remain. The repository
 tracks no engineering-notes directory and no ledger file inside one. It tracks
-one Python module under `tests/`, its own conftest, so neither guard is there
-either and no decision in this repository is held as an executable guard.
+one Python module under `tests/`, its own conftest, so no decision in this
+repository is held as an executable guard.
 
 ## Glossary
 
