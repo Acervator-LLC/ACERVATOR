@@ -1018,6 +1018,9 @@ class BotContainer:
             "audited_venue_units": float(
                 getattr(self, "_audited_venue_units", 0.0) or 0.0
             ),
+            # Why the last fill-fired venue read refused, empty while the
+            # reading above is the one that read landed.
+            "venue_units_refusal": str(getattr(self, "_venue_units_refusal", "") or ""),
             # 1.0 for USD-quoted pairs.
             "quote_to_usd": float(getattr(self, "_quote_to_usd", 1.0) or 1.0),
             "stats": {

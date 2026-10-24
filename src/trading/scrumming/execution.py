@@ -121,6 +121,7 @@ class ExecutionEngineMixin:
     exchange: Any
     guarded_place_order: Callable[..., Any]
     note_scrum_retention_usd: Callable[..., None]
+    refresh_priced_figures_after_fill: Callable[..., Any]
     reset_swos_cycle: Callable[..., None]
     stats: Any
 
@@ -282,6 +283,36 @@ class ExecutionEngineMixin:
             ),
         )
         return est_amt, est_px, False
+
+    async def _book_spread_pct(self, symbol: str) -> Optional[float]:
+        """Read ``symbol``'s book off the venue and return its bid-ask gap.
+
+        Returns None when ``get_orderbook`` raises, exceeds
+        ``SYNC_CALL_TIMEOUT_SEC`` or serves an empty side, so a slow or
+        refusing venue leaves the order on the path it takes today.
+        """
+        try:
+            from ...core.execution_discipline import book_spread_pct
+            from ...exchange.ccxt_connector import SYNC_CALL_TIMEOUT_SEC
+
+            book = await asyncio.wait_for(
+                self.exchange.get_orderbook(symbol),
+                timeout=SYNC_CALL_TIMEOUT_SEC,
+            )
+            bids = list(getattr(book, "bids", None) or [])
+            asks = list(getattr(book, "asks", None) or [])
+            if not bids or not asks:
+                return None
+            return book_spread_pct(bids[0][0], asks[0][0])
+        except Exception as _book_exc:  # noqa: BLE001
+            logger.debug(
+                "Bot %s book read for %s failed: %s: %s",
+                self.bot_id,
+                symbol,
+                type(_book_exc).__name__,
+                _book_exc,
+            )
+            return None
 
     def _venue_quote_currency(self) -> str:
         """The currency a sale is credited in, read off the symbol through
@@ -1720,19 +1751,24 @@ class ExecutionEngineMixin:
             return None
 
         try:
-            from ...core.execution_discipline import verify_hit as _vh
+            from ...core.execution_discipline import verify_book_spread as _vbs
 
-            vh_fp, vh_status, vh_samples = _vh(
-                price, "sell", symbol=self.config.target_asset
+            _book_spread = await self._book_spread_pct(self.config.symbol)
+            vh_fp, vh_status, vh_spread = _vbs(
+                price, _book_spread, symbol=self.config.target_asset
             )
-            self.stats.verify_samples += vh_samples
+            self._last_book_spread_pct = vh_spread
+            self._last_slippage_status = vh_status
+            if vh_spread is not None:
+                self.stats.verify_samples += 1
             if vh_fp is None:
                 self.stats.verify_canceled += 1
                 if self._refusal_is_new("sell_slippage", price):
                     self._bus.emit(
                         "bot.log",
                         bot_id=self.bot_id,
-                        message=f"SELL CANCELED (VH): slippage would "
+                        message=f"SELL CANCELED (VH): venue book spread "
+                        f"{(vh_spread or 0.0) * 100.0:.4f}% would "
                         f"exceed {self.config.target_asset} class "
                         f"tolerance @ ${price:.8f}",
                     )
@@ -1745,7 +1781,7 @@ class ExecutionEngineMixin:
                 return
             if vh_status == "clean":
                 self.stats.verify_clean += 1
-            else:
+            elif vh_status == "adjusted":
                 self.stats.verify_adjusted += 1
 
             if self._invisible:
@@ -1893,6 +1929,18 @@ class ExecutionEngineMixin:
                 slippage_pct,
                 summary.consensus_confidence,
             )
+            # The fill moved _current_holdings above and not the audited venue
+            # count. One read puts both priced figures on this fill. Guarded
+            # here too, so no refresh can lose a sale the venue already made.
+            try:
+                await self.refresh_priced_figures_after_fill(reason=label.lower())
+            except Exception as _sup:
+                logger.debug(
+                    "suppressed in %s: %s: %s",
+                    "_execute_sell",
+                    type(_sup).__name__,
+                    _sup,
+                )
             return actual_fill
         except Exception as exc:
             self._bus.emit("bot.log", bot_id=self.bot_id, message=f"SELL FAILED: {exc}")
@@ -2187,19 +2235,24 @@ class ExecutionEngineMixin:
             if _qrate_buy > 0 and abs(_qrate_buy - 1.0) > 1e-9:
                 amount = amount / _qrate_buy
 
-            from ...core.execution_discipline import verify_hit as _vh
+            from ...core.execution_discipline import verify_book_spread as _vbs
 
-            vh_fp, vh_status, vh_samples = _vh(
-                price, "buy", symbol=self.config.target_asset
+            _book_spread = await self._book_spread_pct(self.config.symbol)
+            vh_fp, vh_status, vh_spread = _vbs(
+                price, _book_spread, symbol=self.config.target_asset
             )
-            self.stats.verify_samples += vh_samples
+            self._last_book_spread_pct = vh_spread
+            self._last_slippage_status = vh_status
+            if vh_spread is not None:
+                self.stats.verify_samples += 1
             if vh_fp is None:
                 self.stats.verify_canceled += 1
                 if self._refusal_is_new("buy_slippage", price):
                     self._bus.emit(
                         "bot.log",
                         bot_id=self.bot_id,
-                        message=f"BUY CANCELED (VH): slippage would "
+                        message=f"BUY CANCELED (VH): venue book spread "
+                        f"{(vh_spread or 0.0) * 100.0:.4f}% would "
                         f"exceed {self.config.target_asset} class "
                         f"tolerance @ ${price:.8f}",
                     )
@@ -2212,7 +2265,7 @@ class ExecutionEngineMixin:
                 return
             if vh_status == "clean":
                 self.stats.verify_clean += 1
-            else:
+            elif vh_status == "adjusted":
                 self.stats.verify_adjusted += 1
 
             if self._invisible:

@@ -6,10 +6,24 @@ by ``LIVE_SPREAD_PCT``, and no live order carries its answer as a limit price.
 the drift between samples exceeds ``VERIFY_DRIFT_PCT``. ``classify_symbol``
 and ``verify_min_profit`` read the per-class tolerance out of
 ``VERIFY_MIN_PROFIT_BY_CLASS``.
+
+At the shipped constants no sample can fail, so nothing past the first sample
+runs. ``random.gauss`` is bounded at 8.5717 standard deviations, because the
+smallest value ``1.0 - random()`` reaches is 2**-53, and a draw scaled by
+``LIVE_SPREAD_PCT`` therefore reaches 0.6857% of price at most. The smallest
+entry in ``VERIFY_MIN_PROFIT_BY_CLASS`` is 1%. The first sample clears every
+class, so "adjusted", the drift test and "canceled" need a ``spread`` or a
+``min_profit`` the caller supplies, or a slippage read from the venue.
+
+``book_spread_pct`` and ``verify_book_spread`` take that venue reading: the
+bid-ask gap off the venue's own book, judged against the same per-class
+tolerance. The live sell and buy paths call those two; ``verify_hit`` and
+``fill_price`` stay for the Simulator.
 """
 
 from __future__ import annotations
 
+import math
 import random
 from typing import Optional, Tuple
 
@@ -137,7 +151,10 @@ def verify_hit(
 
     Returns ``(price, status, samples)``, where status is "clean", "adjusted"
     or "canceled" and a canceled price is None; an explicit ``min_profit``
-    outranks ``symbol``, which outranks ``VERIFY_MIN_PROFIT``.
+    outranks ``symbol``, which outranks ``VERIFY_MIN_PROFIT``. At the shipped
+    ``LIVE_SPREAD_PCT`` the first sample clears every per-class tolerance, so
+    the answer is "clean" at one sample and the other two statuses need a
+    ``spread`` or ``min_profit`` the caller supplies.
     """
     if spread is None:
         spread = LIVE_SPREAD_PCT
@@ -170,6 +187,53 @@ def verify_hit(
                 return None, "canceled", i + 1
         prev = sample
     return None, "canceled", VERIFY_MAX_SAMPLES
+
+
+def book_spread_pct(best_bid: float, best_ask: float) -> Optional[float]:
+    """Return the venue's bid-ask gap as a fraction of the mid price.
+
+    A ``best_bid`` or ``best_ask`` that is not finite and positive, or a pair
+    that crosses, returns None.
+    """
+    try:
+        bid = float(best_bid)
+        ask = float(best_ask)
+    except (TypeError, ValueError):
+        return None
+    if not (math.isfinite(bid) and math.isfinite(ask)):
+        return None
+    if bid <= 0.0 or ask <= 0.0 or ask < bid:
+        return None
+    mid = (bid + ask) / 2.0
+    return (ask - bid) / mid
+
+
+def verify_book_spread(
+    intended_price: float,
+    spread_pct: Optional[float],
+    symbol: Optional[str] = None,
+    min_profit: Optional[float] = None,
+) -> Tuple[Optional[float], str, Optional[float]]:
+    """Judge ``spread_pct`` against the ``min_profit`` the asset class carries.
+
+    Returns ``(price, status, spread_pct)``: "unread" with ``intended_price``
+    when ``spread_pct`` is None, "clean" within ``VERIFY_DRIFT_PCT``,
+    "adjusted" up to ``min_profit``, and "canceled" with a None price above it.
+    """
+    if min_profit is None:
+        if symbol is not None:
+            min_profit = verify_min_profit(symbol)
+        else:
+            min_profit = VERIFY_MIN_PROFIT
+    if spread_pct is None:
+        return intended_price, "unread", None
+    if not VERIFY_HIT_ENABLED:
+        return intended_price, "clean", spread_pct
+    if spread_pct > min_profit:
+        return None, "canceled", spread_pct
+    if spread_pct > VERIFY_DRIFT_PCT:
+        return intended_price, "adjusted", spread_pct
+    return intended_price, "clean", spread_pct
 
 
 _live_verify_hit = verify_hit

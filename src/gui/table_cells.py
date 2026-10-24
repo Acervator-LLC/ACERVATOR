@@ -26,6 +26,8 @@ from .main_tabs.table_cells_surface import (
     held_figure_text,
     two_reads,
     units_text,
+    venue_held_figure,
+    venue_held_note,
 )
 
 # The Ammo cell reads the engine's thresholds rather than restating them.
@@ -187,6 +189,7 @@ def _compose_ammo_cell(
     target_val: float,
     price_age_s: float | None = None,
     venue_units: float | None = None,
+    venue_refusal=None,
 ) -> dict:
     """Compute the Ammo cell: distance from target, and its signal.
 
@@ -194,7 +197,10 @@ def _compose_ammo_cell(
     the audited ``venue_units`` reading over the attributed ``holdings``, and
     the tooltip names which one it used. Recomputes ``position_val`` from that
     count times ``cur_price`` times ``qrate`` whenever both are present and
-    falls back to ``stats_pv`` marked stale otherwise. Qt-free: returns
+    falls back to ``stats_pv`` marked stale otherwise. ``venue_refusal`` is
+    the bot's ``venue_units_refusal``: while it carries a reason the figure
+    keeps the last venue reading and wears ``VENUE_HELD_MARKER``, the same
+    mark ``TableCellsModel.ammo_cell`` draws. Qt-free: returns
     ``{text, color, tip, delta, stale, position_val}`` with a colour name the
     caller turns into a QColor.
     """
@@ -278,6 +284,10 @@ def _compose_ammo_cell(
     from_two_reads = two_reads(
         holdings, units, from_venue, cur_price, qrate, price_age_s
     )
+    held_note = venue_held_note(venue_refusal)
+    if held_note:
+        text = venue_held_figure(text, venue_refusal)
+        tip = f"{tip}{held_note}"
     if from_two_reads:
         # The drawn figure carries the amount alone; the tooltip says the rest.
         tip = f"{tip}{TWO_READS_TIP}"

@@ -1203,9 +1203,16 @@
     return report();
   }
 
-  // loadTable asks METHOD once per distinct request, clearing asked so a
-  // refusal retries and so a second screen is not answered with the first
-  // screen's rows.
+  // loadTable collapses requests that are still in flight under the same key,
+  // and releases the key once the answer has landed, so a later load asks
+  // METHOD again rather than drawing the first answer for the life of the
+  // page. A trade's own figures reach this table on that second ask.
+  function clearAsked(key) {
+    if (asked !== null && asked.key === key) {
+      asked = null;
+    }
+  }
+
   function loadTable(params) {
     var wanted = isPlainObject(params) ? params : {};
     var key = JSON.stringify(wanted);
@@ -1223,11 +1230,12 @@
         .then(function (model) {
           loadFault = null;
           setTable(model);
+          clearAsked(key);
           return model;
         })
         .catch(function (err) {
           loadFault = err.message;
-          asked = null;
+          clearAsked(key);
           return null;
         })
     };

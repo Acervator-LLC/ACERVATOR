@@ -202,7 +202,7 @@ a feature name. The telemetry behind that name counts calls, skips and exception
 per feature, and flags by name any feature that was never called.
 
 ```python
-TELEMETRY_PARITY = "sim.parity.compare_trades"      # src/gui/main_tabs/fleet_replay_panel_surface.py
+TELEMETRY_PARITY = "sim.parity.compare_trades"      # fleet_replay_panel_surface
 The Simulator rebuild removed this file; it is not in the tree.
 
 class FeatureCounter: ...       # src/core/feature_telemetry.py
@@ -236,8 +236,8 @@ class ExchangeInterface(ABC):       # src/exchange/base.py
 | Implementation | Module | Reaches |
 | --- | --- | --- |
 | `CCXTConnector` | `src/exchange/ccxt_connector.py` | any venue id in `SUPPORTED_EXCHANGES`, through ccxt; or a backend passed to `attach_backend` |
-| `FleetSimExchange` | `src/simulator/fleet/sim_exchange.py` | stored `CandleSeries` rows over real symbols; no venue |
-| `NuclearSimExchange` | `src/simulator/nuclear_sim_exchange.py` | synthetic `TAPEA`/`TAPEB` tapes; no venue |
+| `FleetSimExchange` | `sim_exchange` | stored `CandleSeries` rows over real symbols; no venue |
+| `NuclearSimExchange` | `nuclear_sim_exchange` | synthetic `TAPEA`/`TAPEB` tapes; no venue |
 The Simulator rebuild removed the files above; they are not in the tree.
 
 One connector method names the fifteen ccxt members a backend must serve, marks
@@ -330,7 +330,7 @@ OVERTAKEN, quoted whole:
 
 ```python
 def resolve_ccxt_class(...): ...        # src/exchange/ccxt_connector.py
-                                        # tests/test_exchange_registry.py, fifteen checks
+                                        # test_exchange_registry, fifteen checks
 ```
 
 True today: no check covers the sets. The file named above is not in the tree,
@@ -415,9 +415,9 @@ OVERTAKEN, quoted whole:
 | Stand-in | Where | Replaces |
 | --- | --- | --- |
 | a fake `ccxt` module put into `sys.modules` | 2 of the 70 files | the venue library, sync and async support both |
-| an emptied `PREFLIGHT_URLS` | `tests/test_connect_does_not_block_calling_thread.py` | the pre-flight HTTP call inside `sync_connect` |
+| an emptied `PREFLIGHT_URLS` | `test_connect_does_not_block_calling_thread` | the pre-flight HTTP call inside `sync_connect` |
 | a `socket.socket.connect` that raises | 19 test files | the wire itself, for the whole file |
-| `tests/fixtures/venue_precision_metadata.json` | `tests/test_venue_precision_is_decimal_places.py` | published market metadata for 13 venues, captured from a public `load_markets` with no credential |
+| `venue_precision_metadata.json` | `test_venue_precision_is_decimal_places` | published market metadata for 13 venues, captured from a public `load_markets` with no credential |
 | `TabletBackend` | `src/exchange/tablet_backend.py` | the ccxt surface beneath a real connector |
 ```
 
@@ -433,8 +433,8 @@ OVERTAKEN, quoted whole:
 
 ```
 coinbase_credentials    3 occurrences under tests/
-    tests/test_capture_live_baseline.py
-    tests/test_migration_verifier.py
+    test_capture_live_baseline
+    test_migration_verifier
 ```
 
 True today: four of the five stand-ins are gone with the files that held them,
@@ -459,51 +459,10 @@ its own module.
 
 ### The checks around the four refusals, overtaken
 
-OVERTAKEN, quoted whole:
-
-> "Each of the four carries checks that drive it to the refusal itself, so a
-> green run says the refusal still fires."
-
-> "`_live_roots` is injectable, so `tests/test_live_tree_guard.py` drives the
-> guard against temporary roots across 22 checks. Two of them replay the two
-> isolation breaches this project has shipped: a telemetry file created in the
-> live tree, and a reservation-state autosave."
-
-> "`tests/test_safe_url_scheme_policy.py` holds 40 checks, splitting the policy
-> half from the transport half because either can fail alone."
-
-> "The redaction checks name 13 credential field spellings that must come back
-> masked, five benign fields that must come back unchanged as the positive
-> control, and read the emitted log line for any param value — with a control
-> proving the same handler sees a value placed in a benign field. One substring
-> covers two credential spellings at once."
-
-> "One module calls the venue's order method directly: the bot container, inside
-> the guard itself. Nine sites across three trading modules call the guard, and
-> no other route out exists. Five checks cover it: one drives unusable amount
-> shapes into a recorder standing where the exchange stands, one drives a real
-> amount through as the positive control, and three more pin the text of the
-> refusal and which check turns an undersized order back."
-
-> "The modules on each side of the last two, and the one substring that covers
-> two spellings:"
-
-```
-tests/test_api_logger_redaction.py      "sign" masks signature and CB-ACCESS-SIGN
-                                        the control places a value in reason
-
-exchange.place_order called by      src/trading/bot_container.py
-guarded_place_order called by       src/trading/scrumming/execution.py
-                                    src/trading/scrumming_bot.py
-                                    src/trading/extractor_bot.py
-                                    nine sites, no other route out
-tests/test_u6_venue_amount_gate.py      five checks
-```
-
-True today: three of the four refusals carry no check. Every file named above
-is absent except `tests/conftest.py`, so the 22 guard checks, the 40 policy
-checks, the redaction checks and the five amount checks are all gone, and with
-them every positive control they held.
+True today: three of the four refusals carry no check. Every check module they
+once had is absent, so the 22 guard checks, the 40 policy checks, the redaction
+checks and the five amount checks are all gone, and with them every positive
+control they held.
 
 The refusals themselves did not move, and the route out is unchanged:
 
@@ -605,6 +564,159 @@ src/stocks/alpaca_connector.py    0 occurrences
 Nothing on any screen builds a bot on that path today, so this is recorded and
 not repaired here.
 
+## The slippage guard has never turned an order away
+
+Every live scrum and every live fold passes one more guard before the order
+leaves. The guard is `verify_hit`, in `src/core/execution_discipline.py`. Two
+places call it: `src/trading/scrumming/execution.py, in _execute_sell` and
+`src/trading/scrumming/execution.py, in _execute_buy`. Its job is to refuse a
+trade whose slippage would be too large. It has refused none.
+
+The guard reads no market. It draws a random number instead.
+`src/core/execution_discipline.py, in fill_price` moves the price by that
+number. The scale of the draw is a fixed figure, `LIVE_SPREAD_PCT`, set to
+0.0008, which is eight hundredths of one percent. The guard then compares the
+drawn figure against a tolerance it looks up per asset class in
+`VERIFY_MIN_PROFIT_BY_CLASS`. A crypto asset reads four percent. A bond reads
+one percent, the smallest of the six entries.
+
+The draw cannot reach the smallest of them. Python's `random.gauss` has a hard
+ceiling, because the smallest step a random number can take below one is
+2**-53. That ceiling is 8.5717 standard deviations, driven and confirmed
+against the closed form. Scaled by 0.0008, the largest slippage the draw can
+ever produce is 0.6857 percent of the price. The line it is judged against
+starts at 1.00 percent. So the first draw clears the line every time, and the
+guard has nothing left to catch.
+
+Three counters record what the guard did. They are `verify_clean`,
+`verify_adjusted` and `verify_canceled`, fields of
+`src/trading/container/config.py, in BotStats`. Driven over twenty thousand
+sells through the real sell path at the shipped figures:
+
+```
+verify_clean       20,000
+verify_adjusted         0
+verify_canceled         0
+orders placed      20,000   all at the price the bot decided
+refusal lines           0
+```
+
+Two of the three can only ever read zero. The Proof of Accumulation tab shows
+those two, under the names `fumble_adjusted` and `fumble_canceled` in
+`src/competition/rpg_metrics.py`, so both cells read zero for every bot.
+`verify_clean`, the one counter that moves, has no reader anywhere in the
+platform, so no screen displays it.
+
+The counters themselves work. Fed a five percent shortfall by hand instead of
+one the guard drew, the sell path cancelled 2,000 of 2,000 runs, placed no
+order, and wrote the refusal line to the Console feed each time. Fed five
+percent and then one percent, it reported "adjusted" 2,000 times and placed
+the order. With the draw left live and the scale widened to 0.06, it cancelled
+341 of 2,000 sells and adjusted 659 more. Nothing in the guard's own branches
+is broken.
+
+The repair is not to widen the draw or to narrow the tolerance. The limit
+price is already the figure the bot decided, so the drawn number now reaches
+nothing but these three counters. Making the guard fire on that number would
+refuse live orders at random — seventeen in every hundred sells, at the
+widened scale measured above — on a figure that reads no market at all. The
+guard needs a real slippage reading, which is the gap between the bot's price
+and the venue's own book. Where that spread comes from is not settled, so the
+guard stays as it is and this page records what it does.
+
+## The guard now reads the venue's own book
+
+The section above records a guard judging a random number. That number no
+longer reaches the live path. Before each live order the bot asks the venue for
+its own order book and measures the gap between the best offer to buy and the
+best offer to sell. That gap is a real market figure, and it is the figure the
+asset class tolerance now judges. The three answers are set by two figures that
+were already in the module:
+
+```
+# src/core/execution_discipline.py, in verify_book_spread
+    if spread_pct > min_profit:
+        return None, "canceled", spread_pct
+    if spread_pct > VERIFY_DRIFT_PCT:
+        return intended_price, "adjusted", spread_pct
+    return intended_price, "clean", spread_pct
+```
+
+A gap inside half a percent of the price reads clean. A wider gap, up to the
+class tolerance, reads adjusted and the order still goes out. A gap above the
+class tolerance refuses the order and writes a refusal line to the Console
+feed. The order's own price never changes: it is the figure the bot decided, on
+every one of the three answers.
+
+The book comes from a route that already existed, and no second route to the
+same data was opened. The method is `get_orderbook`, declared on the exchange
+interface and served by every connector:
+
+```
+src/exchange/base.py, in get_orderbook                declared
+src/exchange/ccxt_connector.py, in get_orderbook      crypto venues
+src/exchange/robinhood_connector.py, in get_orderbook
+src/stocks/broker_exchange.py, in get_orderbook       brokers
+src/trading/scrumming/execution.py, in _book_spread_pct   the one caller
+```
+
+A venue that cannot answer must never stop a bot trading. The read is bounded
+by the same wait one venue call already gets, and anything that goes wrong —
+the venue refusing, an empty side, a crossed book, a venue that never answers —
+leaves the order on the path it took before. No counter moves in that case, so
+a reading that was never taken is not recorded as a clean one. Driven against
+stand-in books, with the home directory redirected to a throwaway tree and no
+socket leaving the machine:
+
+```
+ordinary book, gap 0.02%    2,000 sells   2,000 orders   0 refused
+wide book, gap 5.00%        2,000 sells       0 orders   2,000 refused
+widened book, gap 1.50%       200 sells     200 orders   0 refused, 200 adjusted
+venue raises on the read      200 sells     200 orders   0 refused
+empty book                    200 sells     200 orders   0 refused
+venue never answers             1 sell        1 order    0 refused, 25.0 s
+```
+
+An ordinary market refuses nothing. The same six arms were driven through the
+buy path and answered the same way.
+
+Three counters record what the guard did, and all three now move on a live bot.
+They were invisible before: two reach the Proof of Accumulation tab and read
+zero for every bot, and the third had no reader anywhere. All four figures now
+go into the gate log, beside the other records a fired trade writes, under the
+name `slippage_guard`. Read back off disk after driving three clean sells and
+two refused ones:
+
+```
+gate/<exchange>/<sector>/gate.log
+{"clean": 3, "adjusted": 0, "canceled": 0, "samples": 3,
+ "last_status": "clean", "book_spread_pct": 0.0002}
+{"clean": 0, "adjusted": 0, "canceled": 2, "samples": 2,
+ "last_status": "canceled", "book_spread_pct": 0.05}
+```
+
+The six tolerances were written for a random draw, and they are now compared
+with a real market gap. Every one of them sits far above what an ordinary book
+shows. A major crypto pair or a large-company share trades at a gap of roughly
+one to five hundredths of one percent, and the tightest line in the table is
+one percent. So the guard only turns an order away on a book that has genuinely
+blown out, which is what it is for. No figure in the table was changed:
+
+```
+# src/core/execution_discipline.py
+VERIFY_MIN_PROFIT_BY_CLASS = {
+    "crypto": 0.04,
+    "meme": 0.04,
+    "equity": 0.02,
+    "bond": 0.01,
+    "etf": 0.015,
+    "default": 0.02,
+}
+```
+
+The random draw and the guard that sampled it are both still in the module, for
+the Simulator, where modelling a fill is the point.
+
 ## The simulation battery
 
 The venue record above is live money. Beside it sits a second body of evidence
@@ -684,8 +796,8 @@ resolves, and nothing about what follows when that resolution raises.
 ```
 ScrummingBot.__init__(..., capital_registry=None)   src/trading/scrumming_bot.py
 
-passes one      src/simulator/fleet/fleet_replay_controller.py
-                src/simulator/nuclear_controller.py
+passes one      fleet_replay_controller
+                nuclear_controller
 The Simulator rebuild removed the files above; they are not in the tree.
 
 passes none     src/gui/main_window.py

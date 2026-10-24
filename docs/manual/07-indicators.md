@@ -399,23 +399,9 @@ no vote still lives here so the voters can read it.
 
 ### The per-module rule sentences, overtaken
 
-OVERTAKEN, quoted whole:
-
-> "Nothing borrows another indicator's arithmetic, and a test in `tests/` fails
-> the moment one starts to."
-
-> "`tests/test_one_indicator_per_module.py` — the rule, held as tests"
-
-> "`tests/test_one_indicator_per_module.py` — and the name check beside it"
-
-```python
-def test_the_module_holds_exactly_one(self, module):
-def test_no_two_modules_define_the_same_name(self):
-```
-
 True today: no check in the tree holds the rule. The repository tracks one
-Python module under `tests/`, its own conftest, so the file named above and its
-two checks are gone.
+Python module under `tests/`, its own conftest, so the per-module check and its
+two assertions are gone.
 
 The package layout carries the rule instead. Each indicator is one module, and
 `src/trading/ta_engine.py` imports each indicator class or detector function by
@@ -435,14 +421,9 @@ part and is not repeated here.
 
 Every indicator computes its own maths from candles alone.
 
-OVERTAKEN, quoted whole:
-
-> "No indicator borrows another's arithmetic, and
-> `tests/test_one_indicator_per_module.py` fails when one starts to."
-
 True today: no voter borrows another voter's arithmetic, and no check in the
-tree holds that. [The twelve voters](#the-twelve-voters) above names the module
-layout that holds it instead.
+tree holds the rule. [The twelve voters](#the-twelve-voters) above names the
+module layout that holds it instead.
 
 Where the code departs from the published formula, the code is the defect.
 [Departures](#departures-from-the-published-maths) lists the ones found.
@@ -1196,10 +1177,10 @@ OVERTAKEN, quoted whole:
 > running the same tape at several price scales and comparing the readings."
 
 ```
-tests/test_bollinger_and_slingshot_are_scale_invariant.py
-tests/test_vortex_and_landing_strip_are_scale_invariant.py
-tests/test_macd_and_kaufman_er_are_scale_invariant.py
-tests/test_the_last_eight_indicators_are_scale_invariant.py
+test_bollinger_and_slingshot_are_scale_invariant
+test_vortex_and_landing_strip_are_scale_invariant
+test_macd_and_kaufman_er_are_scale_invariant
+test_the_last_eight_indicators_are_scale_invariant
 ```
 
 True today: no check in the tree holds the property. None of the four files is
@@ -2144,7 +2125,7 @@ OVERTAKEN, quoted whole:
 > property they held is held by the runs recorded in each entry instead."
 
 ```
-tests/debug_reports/2026-09-09_indicator_rounding.md
+the 2026-09-09 indicator-rounding debug report
 ```
 
 True today: the four files are still absent, and so is the report named above.

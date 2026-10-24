@@ -2259,6 +2259,107 @@ function mountChildren(target, model) {
 }
 ```
 
+
+**Functional.** A sale fires its own refresh of the two priced figures on the
+row. The sale reduces the count the bot attributes to itself, which is what
+Current Position Value is priced from. It does not move the audited exchange
+count, which is what the Ammo cell measures the Target Delta from. One exchange
+read at the fill puts both figures on the same sale. The read costs one call per
+fill and the lot book is left to the periodic reconcile, because the callers of
+the sale take the filled units off the lot book only after it returns.
+
+`src/trading/scrumming/execution.py` — `ExecutionEngineMixin._execute_sell`
+
+```python
+await self.refresh_priced_figures_after_fill(reason=label.lower())
+```
+
+**Functional.** The refresh reuses the one exchange-reading helper the engine
+already holds. That helper reads the balance once, subtracts the sibling bots,
+and stores the figure as the audited count. The engine's own scrum, the
+distribution sale and a stack close all run through one sale function, so all
+three get the refresh from one site.
+
+`src/trading/scrumming/reconciliation.py` — `ReconciliationEngineMixin.refresh_priced_figures_after_fill`
+
+```python
+try:
+    _units, _why = await self._venue_claimable_units()
+except Exception as exc:
+    _units, _why = None, (
+        f"the venue read raised {type(exc).__name__}: {exc}"
+    )
+```
+
+**Functional.** An exchange that cannot be read leaves the last audited count
+exactly as it was and records why. The reason reaches the bot's status record,
+and the Ammo cell then draws the last reading with the word `(held)` beside it
+and names the reason in its tooltip. The figure is never blanked and never drawn
+as though it were current. The order and the trade are unaffected: the sale has
+already settled at the exchange, and the refresh cannot refuse it.
+
+`src/trading/bot_container.py` — the status record's refusal field
+
+```python
+"venue_units_refusal": str(
+    getattr(self, "_venue_units_refusal", "") or ""
+),
+```
+
+**Functional.** Both bot tables read one definition of the mark, so one surface
+cannot carry it while the other does not. The Qt table and the React table each
+compose their own Ammo cell, and both ask the shared cell surface whether a
+reading is held.
+
+`src/gui/main_tabs/table_cells_surface.py` — `venue_held_figure`
+
+```python
+def venue_held_figure(text: str, refusal: Any) -> str:
+    if not venue_refusal_text(refusal):
+        return text
+    return MARKED_FIGURE_FORMAT.format(text=text, marker=VENUE_HELD_MARKER)
+```
+
+**Functional.** The React table asks the bridge again once an answer has
+landed. It still collapses two requests that carry the same question while the
+first is in flight. Before this, the first answer to one question was drawn for
+the life of the page, so a sale's figures could not reach that table at all.
+The table now follows the exchange screen's own pull-rate clock, which redraws
+the screen and remounts the table.
+
+`src/gui/web/bot_status_table.js` — `clearAsked`
+
+```javascript
+function clearAsked(key) {
+  if (asked !== null && asked.key === key) {
+    asked = null;
+  }
+}
+```
+
+The path a sale takes to both tables:
+
+```mermaid
+flowchart TD
+    sale["_execute_sell: the exchange reports a fill"]
+    held["_current_holdings falls by the filled units"]
+    read["refresh_priced_figures_after_fill: one balance read"]
+    audited["_audited_venue_units takes the new reading"]
+    mark["_venue_units_refusal records a read that refused"]
+    status["bot_container: the status record"]
+    qt["Qt table: _write_row, every two seconds"]
+    web["React table: loadTable, on the screen's pull rate"]
+    sale --> held
+    sale --> read
+    read --> audited
+    read --> mark
+    held --> status
+    audited --> status
+    mark --> status
+    status --> qt
+    status --> web
+```
+
 #### The command bar
 
 **Functional.** Start, Pause, Stop, Restart and Delete all act on one bot. Two

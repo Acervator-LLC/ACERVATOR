@@ -731,6 +731,7 @@ if _HAS_QT:
                 target_val,
                 price_age_s=_price_age,
                 venue_units=status.get("audited_venue_units"),
+                venue_refusal=status.get("venue_units_refusal"),
             )
             ammo_color = QColor(_ammo["color"])
             ammo_tip = _ammo["tip"]
