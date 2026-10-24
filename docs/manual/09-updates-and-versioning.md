@@ -415,7 +415,15 @@ DYNAMIC_IMPORT_PREFIXES: tuple[str, ...] = (
 )
 def reachable_src_modules(project_root: str) -> frozenset[str]: ...
 def reachable_only(module_names: list[str], project_root: str) -> list[str]: ...
+def unreachable_src_files(project_root: str) -> frozenset[str]: ...
+def files_outside_cache_dirs(
+    src_path: str, dest_path: str, left_out: frozenset[str] = frozenset()
+) -> list[tuple[str, str]]: ...
 ```
+
+The folder walker shown in the section above now takes a third argument, and
+the signature in this block is the current one. `build_graceful_datas` reads
+the paths once and passes them to every folder it expands.
 
 Measured on this tree, the source folder holds 497 modules, 468 of them
 reachable and 29 not. Among the 29 are the launcher the entry point refuses to
