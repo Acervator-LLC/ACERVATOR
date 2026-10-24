@@ -805,6 +805,34 @@ dev_harness/hooks/archetype_gate.py, in the --pre mode
     a write that adds no high or critical finding is allowed
 ```
 
+### The two build recipes reach the coding archetype
+
+One sentence above is overtaken a second time. Quoted whole:
+
+> A file of any other type is named in the log and counted as unowned,
+> because no archetype reads that type.
+
+A build recipe is Python, and the packager runs it to make a build. The coding
+archetype reads a recipe as Python and ignores the names the packager binds for
+it. Both routers send a recipe to that archetype. The tree holds two recipes,
+and they decide what a build ships.
+
+```
+Acervator_win.spec          coding archetype, judged, a red verdict blocks the merge
+Acervator_mac.spec          coding archetype, judged, a red verdict blocks the merge
+```
+
+The gate that runs on every save routes the same type, so a unit editing a
+recipe reads a verdict before the branch.
+
+```
+dev_harness/hooks/archetype_gate.py, in _pick_archetypes
+    .spec    the coding archetype, the module a .py file already gets
+```
+
+Measured on this tree: the coding archetype reads each recipe in 4.9 seconds,
+against the 180 second limit the gate gives one archetype run.
+
 ### What a green result means
 
 Green means every changed file passed the archetype that owns it, the Solidity
