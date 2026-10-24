@@ -161,6 +161,50 @@ def unserved_timeframe_notice(exchange_id: str | None, chosen: str, used: str) -
     return UNSERVED_TIMEFRAME_FORMAT.format(exchange=name, chosen=chosen, used=used)
 
 
+def snapped_timeframe(exchange_id: str | None, chosen: str) -> str:
+    """The longest ``ALL_TIMEFRAMES`` entry below ``chosen`` that
+    ``exchange_id`` serves, which ``BotConfig.__post_init__`` stores as the
+    bot's operating timeframe.
+
+    Empty where ``exchange_id`` already serves ``chosen``, where ``chosen`` is
+    outside ``ALL_TIMEFRAMES``, and where the venue serves no shorter entry.
+    """
+    if not chosen or chosen not in ALL_TIMEFRAMES:
+        return ""
+    served = available_timeframes(exchange_id)
+    if chosen in served:
+        return ""
+    below = ALL_TIMEFRAMES[: ALL_TIMEFRAMES.index(chosen)]
+    for shorter in reversed(below):
+        if shorter in served:
+            return shorter
+    return ""
+
+
+SNAPPED_TIMEFRAME_FORMAT = (
+    "{exchange} does not serve the {chosen} candle. This bot operates on "
+    "{used} instead, as a forced condition."
+)
+"""The wording ``snapped_timeframe_notice`` fills in."""
+
+
+def snapped_timeframe_notice(exchange_id: str | None, chosen: str, used: str) -> str:
+    """The ``SNAPPED_TIMEFRAME_FORMAT`` sentence naming ``chosen``, the length
+    ``exchange_id`` does not serve, and ``used``, the length the bot was
+    snapped to.
+
+    Empty where ``exchange_id`` is unnamed, where either length is missing,
+    where ``used`` equals ``chosen``, and where ``is_supported`` holds for
+    ``chosen``.
+    """
+    name = (exchange_id or "").strip()
+    if not name or not chosen or not used or chosen == used:
+        return ""
+    if is_supported(name, chosen):
+        return ""
+    return SNAPPED_TIMEFRAME_FORMAT.format(exchange=name, chosen=chosen, used=used)
+
+
 def filter_timeframes(exchange_id: str | None, requested: Iterable[str]) -> list[str]:
     """Filter a list of requested timeframes down to the ones the
     exchange supports. Order-preserving."""
