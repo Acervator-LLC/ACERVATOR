@@ -3928,6 +3928,124 @@ chart on every tick, reads nothing back, and takes no indicator reading from the
 answer. Nothing is written to its log and nothing is drawn on its card. Where that
 warning belongs on a running bot is an open question for the author.
 
+**The bot's own chart now changes with it.** The amber line above reports a
+picker. The bot kept the chart the venue does not carry and went on asking for
+it. A bot built or restored on such a chart now has its own stored chart
+replaced by the longest shorter chart that venue does carry, and runs on that.
+
+`src/exchange/timeframes.py, in snapped_timeframe`
+
+```python
+below = ALL_TIMEFRAMES[: ALL_TIMEFRAMES.index(chosen)]
+for shorter in reversed(below):
+    if shorter in served:
+        return shorter
+return ""
+```
+
+The replacement happens once, where the bot's settings are built, so every
+reader of the setting sees the same chart.
+
+`src/trading/container/config.py, in BotConfig._snap_ta_timeframe`
+
+```python
+unserved = self.ta_timeframe
+self.ta_timeframe = shorter
+self.ta_timeframe_unserved = unserved
+```
+
+Driven on a built bot with the sockets refused and no venue contacted, reading
+the chart the bot asks for rather than the chart a box displays:
+
+```
+stored   venue       bot runs on   bot asks the venue for
+4h       coinbase    2h            2h
+2h       coinbase    2h            2h
+4h       notavenue   4h            4h
+```
+
+The middle row is the control. A chart the venue does carry is left alone, so
+the replacement is reading the venue's own list. The last row is the second
+control. A venue the table does not list is read as carrying every chart, so a
+venue that names nothing has nothing replaced.
+
+**Every venue and every chart, driven as a stored setting.** The table holds 19
+venues and the application offers 11 charts, which is 209 pairs. Twenty-six of
+those pairs are a chart the venue does not carry, and all 26 are replaced.
+
+```
+bitfinex     2h->1h
+cryptocom    2h->1h
+coinbase     4h->2h   12h->6h   1w->1d
+gateio       6h->4h   12h->4h
+gemini       2h->1h   4h->1h    12h->6h   1w->1d
+huobi        2h->1h   6h->4h    12h->4h
+kraken       2h->1h   6h->4h    12h->4h
+mexc         2h->1h   6h->4h    12h->4h
+```
+
+The two Coinbase aliases carry the same three rows as Coinbase itself.
+
+**A chart with nothing shorter on the venue's list.** No chart is ever replaced
+by a longer one. Where the venue carries nothing shorter, the stored chart is
+left exactly as it is and the bot is not refused. Measured across all 209 pairs,
+that case arises **0** times, because every one of the 19 venues carries the
+one-minute chart, the shortest the application offers.
+
+**The warning and the log line.** One amber line under the box names the venue,
+the chart that was dropped, and the chart the bot runs on instead. It is drawn
+on the live, Paper and Simulator Bot Settings dialogs and appended to the box's
+tool tip on each.
+
+`src/exchange/timeframes.py, in snapped_timeframe_notice`
+
+```python
+SNAPPED_TIMEFRAME_FORMAT = (
+    "{exchange} does not serve the {chosen} candle. This bot operates on "
+    "{used} instead, as a forced condition."
+)
+```
+
+The same replacement writes one warning line to the console log, read back out
+of the file:
+
+```
+2026-10-24 [WARNING] coinbase does not serve the 4h candle; ta_timeframe forced to 2h on AAA/BBB
+```
+
+Driven on the same run, a bot on a chart Coinbase does carry wrote **0** such
+lines and a bot on a venue the table does not list wrote **0**, so the line
+follows the venue's list and not every start-up.
+
+**Picking a chart yourself clears the line.** A chart chosen in the dialog is
+the operator's own, so the forced-condition line stops being true. Choosing one
+clears the recorded dropped chart in the same press, and the line is gone the
+next time the dialog opens.
+
+`src/gui/live_settings/settings_tab.py, in SettingsTabMixin._ta_timeframe_picked`
+
+```python
+self._mark_changed("ta_timeframe", timeframe)
+self._mark_changed("ta_timeframe_unserved", "")
+```
+
+**All three wizards now say it too.** The Paper wizard and the Simulator wizard
+rebuilt their chart list from the venue and said nothing. All three wizard pages
+and all three Bot Settings dialogs now draw a line.
+
+```
+src/gui/bot_wizard.py, in set_exchange_id
+src/gui/paper/paper_bot_wizard.py, in set_exchange_id
+src/gui/simulator/sim_bot_wizard.py, in set_exchange_id
+src/gui/live_settings/settings_tab.py, in _create_settings_tab
+src/gui/paper/paper_settings_tab.py, in _create_settings_tab
+src/gui/simulator/sim_settings_tab.py, in _create_settings_tab
+```
+
+**What a bot restored on a carried chart looks like.** Fifty-nine settings
+before, sixty after, every one of the fifty-nine identical to the byte. The one
+setting added is the record of a dropped chart, and it is empty.
+
 Target Balance - This is the intended starting and locked value for the investment position that the Scrumming Bot is controlling.
 
 From $1.00 to $1,000,000.00. Its start value is whatever default the wizard was

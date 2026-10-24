@@ -21,7 +21,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ...exchange.timeframes import unserved_timeframe_notice
+from ...exchange.timeframes import (
+    snapped_timeframe_notice,
+    unserved_timeframe_notice,
+)
 from ...simulator.tablet_source import SendRefused
 from .. import design_system as ds
 from ..live_settings.settings_tab import SettingsTabMixin
@@ -344,12 +347,15 @@ class SimSettingsTabMixin(SettingsTabMixin):
                 "TA Timeframe — filtered to granularities supported "
                 "by this bot's exchange."
             )
-            self._ta_tf.currentTextChanged.connect(
-                lambda v: self._mark_changed("ta_timeframe", v)
-            )
+            self._ta_tf.currentTextChanged.connect(self._ta_timeframe_picked)
             sf.addRow("TA Timeframe:", self._ta_tf)
             self._ta_tf_notice = QLabel(
-                unserved_timeframe_notice(
+                snapped_timeframe_notice(
+                    getattr(cfg, "exchange_id", None),
+                    getattr(cfg, "ta_timeframe_unserved", ""),
+                    cfg.ta_timeframe,
+                )
+                or unserved_timeframe_notice(
                     getattr(cfg, "exchange_id", None),
                     cfg.ta_timeframe,
                     self._ta_tf.currentText(),

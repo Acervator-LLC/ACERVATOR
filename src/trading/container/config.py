@@ -7,10 +7,13 @@ runtime counters. ``make_bot_config`` refuses a kwarg foreign to the given
 
 from __future__ import annotations
 
+import logging
 import math
 from dataclasses import dataclass, fields
 from enum import Enum
 from typing import Optional
+
+logger = logging.getLogger("acervator.bot")
 
 # DOLLAR_PEGGED_CURRENCIES count as 1.00 USD; no market price is read for them.
 DOLLAR_PEGGED_CURRENCIES = frozenset(
@@ -126,6 +129,8 @@ class BotConfig:
         3  # Newest small-body HA candles the band-proximity check needs
     )
     ta_timeframe: str = "1h"  # Timeframe for TA indicator calculations
+    # The length exchange_id does not serve, which _snap_ta_timeframe replaced.
+    ta_timeframe_unserved: str = ""
 
     # % distance from the BB midline that switches SEARCH to TRACK; 10-90.
     scrum_detect_pct: int = 75
@@ -245,6 +250,32 @@ class BotConfig:
                 self.symbol = f"*/{self.base_currency}"
             else:
                 self.symbol = f"{self.target_asset}/{self.base_currency}"
+        self._snap_ta_timeframe()
+
+    def _snap_ta_timeframe(self) -> None:
+        """Replace a ``ta_timeframe`` the venue does not serve with the longest
+        length it does serve below it, recording the replaced length in
+        ``ta_timeframe_unserved``.
+
+        Leaves both fields alone where ``snapped_timeframe`` answers empty,
+        which covers a served length, an unlisted venue, and a length with
+        nothing shorter on the venue's list.
+        """
+        from ...exchange.timeframes import snapped_timeframe
+
+        shorter = snapped_timeframe(self.exchange_id, self.ta_timeframe)
+        if not shorter:
+            return
+        unserved = self.ta_timeframe
+        self.ta_timeframe = shorter
+        self.ta_timeframe_unserved = unserved
+        logger.warning(
+            "%s does not serve the %s candle; ta_timeframe forced to %s on %s",
+            self.exchange_id,
+            unserved,
+            shorter,
+            self.symbol,
+        )
 
     def validate_mode_shape(self) -> list:
         """Return mode-shape violations as human-readable strings.
@@ -307,6 +338,7 @@ _BOT_CONFIG_SHARED_FIELDS: frozenset = frozenset(
         "asset_class",
         "target_balance",  # mode-overloaded but always required
         "ta_timeframe",
+        "ta_timeframe_unserved",
         "trading_fee_pct",
         "visibility",
         "aggressive_trading",
