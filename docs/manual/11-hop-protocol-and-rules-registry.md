@@ -313,6 +313,19 @@ dev_harness/harness/rules/
     slop.py
 ```
 
+The first module also reads a module name a page writes bare, with no folder in
+front of it and no file extension after it. A page names the module a block came
+from, and that name is reported when no file of that name is on disk. The check
+reads one shape and leaves the name alone wherever else it appears.
+
+```
+dev_harness/harness/rules/hallucination.py, in _find_absent_module_headers
+
+read      a code span opening a line, then a dash, then a description
+present   a .py or .js file of that name, or a package of that name
+silent    a name inside a sentence, inside a fenced block, or mid-sentence
+```
+
 The fixtures directory holds the calibration bodies — a good body and a bad body
 per archetype. The pair is the control on the gate, and a run of the archetypes
 that skips the pair proves nothing about the archetypes.
