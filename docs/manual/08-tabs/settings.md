@@ -2890,6 +2890,26 @@ One unreadable entry in the settings file cannot stop the dialog opening.
 `SettingsDialogReact` replaces `_setup_ui` alone, so the React build and the Qt
 build load and save the same way.
 
+**A stored number now loads on the React build.** `_StoredWriter` admits a
+stored figure against the control's own span, which it reads through
+`minimum` and `maximum`. The React build's `PageNumber` answers both off the
+control's spec, and `PageDecimal` answers `decimals` for a number box that
+keeps them. Without those answers every stored number on this build was
+refused: driven with a stored SFX Volume of 0.25, the slider opened at 70 and
+20 keys were marked refused, among them the volume, the twelve indicator
+weights and four message figures. The same run now opens the slider at 25 and
+marks none.
+
+`src/gui/react_settings_dialog.py` — the span a stored figure is admitted against
+
+```python
+def minimum(self) -> Any:
+    return self._span()[0]
+
+def maximum(self) -> Any:
+    return self._span()[1]
+```
+
 ### What each page restores now
 
 This table replaces the restores column in

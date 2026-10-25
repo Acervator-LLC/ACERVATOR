@@ -254,8 +254,17 @@ class PageToggle(_Held):
         self._put(bool(ticked))
 
 
+#: What ``QDoubleSpinBox`` keeps when nothing sets its decimal places, so a
+#: spec naming none answers the figure the Qt control answers.
+DEFAULT_DECIMALS = 2
+
+
 class PageNumber(_Held):
-    """A number box or a slider, as ``QSpinBox`` reports it."""
+    """A number box or a slider, as ``QSpinBox`` reports it.
+
+    ``minimum`` and ``maximum`` answer the span the control's own spec names,
+    which is what ``_StoredWriter`` reads to admit a stored figure.
+    """
 
     def value(self) -> Any:
         """The number the control is showing."""
@@ -264,6 +273,26 @@ class PageNumber(_Held):
     def setValue(self, number: Any) -> None:
         """Show ``number`` and redraw. The spec's kind decides the type."""
         self._put(number)
+
+    def _span(self) -> Any:
+        return surface.spec_for(self._name)["range"]
+
+    def minimum(self) -> Any:
+        """The lowest figure the control takes."""
+        return self._span()[0]
+
+    def maximum(self) -> Any:
+        """The highest figure the control takes."""
+        return self._span()[1]
+
+
+class PageDecimal(PageNumber):
+    """A number box keeping decimal places, as ``QDoubleSpinBox`` reports it."""
+
+    def decimals(self) -> int:
+        """How many decimal places the control keeps."""
+        named = surface.spec_for(self._name).get("decimals")
+        return DEFAULT_DECIMALS if named is None else int(named)
 
 
 class PageCombo(_Held):
@@ -476,7 +505,7 @@ HOLDER_BY_KIND = {
     surface.TEXT_AREA: PageTextArea,
     surface.CHECK: PageToggle,
     surface.SPIN: PageNumber,
-    surface.DOUBLE_SPIN: PageNumber,
+    surface.DOUBLE_SPIN: PageDecimal,
     surface.SLIDER: PageNumber,
     surface.LIST: PageList,
 }
