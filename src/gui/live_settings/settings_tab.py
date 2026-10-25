@@ -20,6 +20,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ...exchange.timeframes import (
+    snapped_timeframe_notice,
+    unserved_timeframe_notice,
+)
 from .. import design_system as ds
 from .denom_rows import _compose_denom_row_text
 
@@ -78,6 +82,15 @@ class SettingsTabMixin:
     _bot: Any
     _configure_form: Callable[..., Any]
     _mark_changed: Callable[..., Any]
+
+    def _ta_timeframe_picked(self, timeframe: str) -> None:
+        """Mark ``ta_timeframe`` changed and clear ``ta_timeframe_unserved``.
+
+        A length picked here is the operator's own, so the forced-condition
+        sentence ``snapped_timeframe_notice`` draws no longer applies.
+        """
+        self._mark_changed("ta_timeframe", timeframe)
+        self._mark_changed("ta_timeframe_unserved", "")
 
     def _show_admitted_figure(self, box: Any, config: Any, name: str) -> bool:
         """Put one stored dollar figure into `box`, or draw the dash instead.
@@ -473,10 +486,29 @@ class SettingsTabMixin:
                 "TA Timeframe — filtered to granularities supported "
                 "by this bot's exchange."
             )
-            self._ta_tf.currentTextChanged.connect(
-                lambda v: self._mark_changed("ta_timeframe", v)
-            )
+            self._ta_tf.currentTextChanged.connect(self._ta_timeframe_picked)
             sf.addRow("TA Timeframe:", self._ta_tf)
+            self._ta_tf_notice = QLabel(
+                snapped_timeframe_notice(
+                    getattr(cfg, "exchange_id", None),
+                    getattr(cfg, "ta_timeframe_unserved", ""),
+                    cfg.ta_timeframe,
+                )
+                or unserved_timeframe_notice(
+                    getattr(cfg, "exchange_id", None),
+                    cfg.ta_timeframe,
+                    self._ta_tf.currentText(),
+                )
+            )
+            if self._ta_tf_notice.text():
+                self._ta_tf_notice.setWordWrap(True)
+                self._ta_tf_notice.setStyleSheet(
+                    f"color: {ds.WARNING}; font-size: 11px;"
+                )
+                self._ta_tf.setToolTip(
+                    f"{self._ta_tf.toolTip()}\n{self._ta_tf_notice.text()}"
+                )
+                sf.addRow(self._ta_tf_notice)
 
             self._target_bal = QDoubleSpinBox()
             self._target_bal.setRange(1.0, 1000000.0)

@@ -395,6 +395,71 @@ def files_outside_cache_dirs(src_path: str, dest_path: str) -> list[tuple[str, s
 Every other file is unchanged. The two file lists were compared whole, and the
 new one holds exactly the old one less its compiled files.
 
+### Reachability decides which source modules a bundle carries
+
+A build used to force every module under the source folder into the bundle,
+reached or not. It now forces in only the modules the entry point can import,
+and leaves the source file of every other module out of the copied list.
+
+A module counts as reachable when three readings join. The first is the import
+walk from the entry point, following every import statement, at module level and
+inside a function. The second adds each parent package of anything that walk
+found. The third adds every module under a prefix the program joins a name onto
+before asking Python for the module by that name, because no import statement
+names those.
+
+```python
+ENTRY_SCRIPT = "main.py"                        # tools/spec_common.py
+DYNAMIC_IMPORT_PREFIXES: tuple[str, ...] = (
+    "src.gui.main_tabs.", "src.gui.paper.", "src.gui.simulator.",
+)
+def reachable_src_modules(project_root: str) -> frozenset[str]: ...
+def reachable_only(module_names: list[str], project_root: str) -> list[str]: ...
+def unreachable_src_files(project_root: str) -> frozenset[str]: ...
+def files_outside_cache_dirs(
+    src_path: str, dest_path: str, left_out: frozenset[str] = frozenset()
+) -> list[tuple[str, str]]: ...
+```
+
+The folder walker shown in the section above now takes a third argument, and
+the signature in this block is the current one. `build_graceful_datas` reads
+the paths once and passes them to every folder it expands.
+
+Measured on this tree, the source folder holds 497 modules, 468 of them
+reachable and 29 not. Among the 29 are the launcher the entry point refuses to
+use, the two React strips no window builds, and the chart module whose only
+reader is the manual builder.
+
+| what a build carries | before | after |
+| --- | --- | --- |
+| files in a React build | 1,138 | 1,109 |
+| files in a Qt build | 1,062 | 1,033 |
+| source modules forced in | 497 | 468 |
+
+Every other file is unchanged. The two file lists were compared whole, and the
+new one holds exactly the old one less those 29 source files, with nothing added.
+
+The reading can miss. A module named from a value read while the program runs, a
+module that resolves only because a sibling touched it, and a new by-name import
+under a prefix nobody adds here would each read as unreachable. A miss would cost
+an import error at the moment the operator opens the screen that needs the
+module.
+
+One thing keeps a miss out of the operator's way. The module list is subtracted
+from and never replaced, so the packager's own import walk still runs and still
+pulls in whatever it reaches. A name dropped here that something imports stays in
+the bundle.
+
+### No mark in the tree says a screen is unfinished
+
+A build cannot hold an unfinished screen back, because nothing in the tree
+declares that a screen is unfinished. Measured over the source folder: no
+completeness field per screen, and no marker word. The 35 unwritten base-class
+methods are a different thing, and `src/core/feature_telemetry.py` reports a
+feature nothing has called only after the operator has used the application.
+
+In development.
+
 ### The startup cleanup stays inside the program's own code
 
 `main.py` runs a cleanup before anything else starts. It walks the folders
@@ -739,6 +804,34 @@ dev_harness/hooks/archetype_gate.py, in the --pre mode
     a write that adds a high or critical finding is denied
     a write that adds no high or critical finding is allowed
 ```
+
+### The two build recipes reach the coding archetype
+
+One sentence above is overtaken a second time. Quoted whole:
+
+> A file of any other type is named in the log and counted as unowned,
+> because no archetype reads that type.
+
+A build recipe is Python, and the packager runs it to make a build. The coding
+archetype reads a recipe as Python and ignores the names the packager binds for
+it. Both routers send a recipe to that archetype. The tree holds two recipes,
+and they decide what a build ships.
+
+```
+Acervator_win.spec          coding archetype, judged, a red verdict blocks the merge
+Acervator_mac.spec          coding archetype, judged, a red verdict blocks the merge
+```
+
+The gate that runs on every save routes the same type, so a unit editing a
+recipe reads a verdict before the branch.
+
+```
+dev_harness/hooks/archetype_gate.py, in _pick_archetypes
+    .spec    the coding archetype, the module a .py file already gets
+```
+
+Measured on this tree: the coding archetype reads each recipe in 4.9 seconds,
+against the 180 second limit the gate gives one archetype run.
 
 ### What a green result means
 

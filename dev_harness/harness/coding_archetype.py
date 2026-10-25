@@ -52,11 +52,14 @@ from dev_harness.harness.report import (
 
 __all__ = [
     "HANDLED_LANGUAGES",
+    "SPEC_INJECTED_GLOBALS",
+    "SPEC_SUFFIX",
     "UNKNOWN_LANGUAGE",
     "ArchetypeReport",
     "CodingArchetype",
     "Finding",
     "detect_language",
+    "drop_spec_injected_globals",
     "main",
 ]
 
@@ -427,6 +430,61 @@ def _possibly_unbound_severity(message: str, file_path: str) -> str:
     return "low"
 
 
+SPEC_SUFFIX = ".spec"
+
+# The names PyInstaller binds in the namespace it execs a spec file in,
+# read from PyInstaller.building.build_main.
+SPEC_INJECTED_GLOBALS: frozenset[str] = frozenset(
+    {
+        "Analysis",
+        "BUNDLE",
+        "COLLECT",
+        "DISTPATH",
+        "EXE",
+        "HOMEPATH",
+        "MERGE",
+        "PYZ",
+        "SPEC",
+        "SPECPATH",
+        "Splash",
+        "TOC",
+        "Tree",
+        "WARNFILE",
+        "os",
+        "specnm",
+        "workpath",
+    }
+)
+
+# The rule each analyzer reports an undefined name under: ruff, mypy, pyright.
+_UNDEFINED_NAME_RULES: frozenset[str] = frozenset(
+    {"F821", "name-defined", "reportUndefinedVariable"}
+)
+
+# mypy and pyright quote the name; ruff backticks it.
+_UNDEFINED_NAME_RE = re.compile(r"[\"`](?P<name>[A-Za-z_][A-Za-z0-9_]*)[\"`]")
+
+
+def _names_a_spec_injected_global(finding: Finding) -> bool:
+    """True when `finding` calls undefined a name listed in `SPEC_INJECTED_GLOBALS`."""
+    if finding.rule_id not in _UNDEFINED_NAME_RULES:
+        return False
+    match = _UNDEFINED_NAME_RE.search(finding.message or "")
+    return match is not None and match.group("name") in SPEC_INJECTED_GLOBALS
+
+
+def drop_spec_injected_globals(findings: list[Finding], target: Path) -> list[Finding]:
+    """Keep every finding on `target` except an undefined-name row PyInstaller binds.
+
+    FALSIFICATION: wrong if it drops a row for a target whose suffix is not
+    `SPEC_SUFFIX`, for a name absent from `SPEC_INJECTED_GLOBALS`, or for a
+    rule absent from `_UNDEFINED_NAME_RULES`.
+    """
+    if target.suffix.lower() != SPEC_SUFFIX:
+        return list(findings)
+    return [f for f in findings if not _names_a_spec_injected_global(f)]
+
+
 class CodingArchetype:
     """Coding-quality archetype v2 — subprocess-invokes ruff, mypy,
     pyright, bandit, vulture and semgrep on Python, eslint on JavaScript,
@@ -478,7 +536,7 @@ class CodingArchetype:
         for tool_name, runner in self._runners(report.language):
             try:
                 findings, status = runner(target)
-                report.findings.extend(findings)
+                report.findings.extend(drop_spec_injected_globals(findings, target))
                 report.tool_availability[tool_name] = status
             except FileNotFoundError:
                 report.tool_availability[tool_name] = "missing"

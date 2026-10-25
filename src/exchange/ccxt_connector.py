@@ -338,6 +338,30 @@ PASSPHRASE_EXCHANGES: set[str] = {
     "bitget",
 }
 
+# Exchanges whose stored secret is a PEM key, unescaped again in sync_connect.
+PEM_SECRET_EXCHANGES: set[str] = {
+    "coinbase",
+}
+
+
+def venue_record_key(exchange_id: str) -> str:
+    """The whole venue id every venue record in this module is matched on.
+
+    ``pem_secret_exchange`` and ``client_order_id_field`` read their records
+    through this key, so one venue id cannot answer two records two ways.
+    """
+    return (exchange_id or "").strip().lower()
+
+
+def pem_secret_exchange(exchange_id: str) -> bool:
+    """True while ``PEM_SECRET_EXCHANGES`` names *exchange_id* itself.
+
+    ``sync_connect`` reads this to decide whether to unescape the stored secret
+    again, and an id that merely contains a listed one is not a match.
+    """
+    return venue_record_key(exchange_id) in PEM_SECRET_EXCHANGES
+
+
 # Date the venue facts below were last measured.
 VENUE_MEASUREMENT_DATE: str = "2026-08-28"
 
@@ -474,6 +498,30 @@ EXCHANGE_OPTIONS: dict[str, dict] = {
         "brokenPairs": list(GEMINI_BROKEN_PAIRS),
     },
 }
+
+# Coinbase Advanced Trade is protobuf-strict: send only its own field name.
+# ccxt maps clientOrderId onto Kraken's cl_ord_id; its userref takes digits only.
+# Keyed on the whole venue id, as PEM_SECRET_EXCHANGES and EXCHANGE_OPTIONS are.
+CLIENT_ORDER_ID_FIELDS: dict[str, str] = {
+    "coinbase": "client_order_id",
+    "binance": "newClientOrderId",
+    "binanceus": "newClientOrderId",
+}
+
+# Default to ccxt canonical; CCXT translates per-exchange.
+CLIENT_ORDER_ID_FIELD_DEFAULT: str = "clientOrderId"
+
+
+def client_order_id_field(exchange_id: str) -> str:
+    """Name the field one venue takes a client order id under.
+
+    ``place_order`` puts the id under this key, and a venue ``CLIENT_ORDER_ID_FIELDS``
+    does not name itself takes ``CLIENT_ORDER_ID_FIELD_DEFAULT``.
+    """
+    return CLIENT_ORDER_ID_FIELDS.get(
+        venue_record_key(exchange_id), CLIENT_ORDER_ID_FIELD_DEFAULT
+    )
+
 
 # Exchanges where fetchCurrencies must be disabled (deprecated v2 endpoints)
 #
@@ -1753,7 +1801,7 @@ class CCXTConnector(ExchangeInterface):
         # A secret stored before the dialog converted on the way in still
         # arrives escaped, so this repeats the conversion and changes nothing
         # when the stored secret already carries real newlines.
-        if self._exchange_id == "coinbase" and api_secret:
+        if pem_secret_exchange(self._exchange_id) and api_secret:
             api_secret = unescape_pem_newlines(api_secret)
             config["secret"] = api_secret
 
@@ -2827,19 +2875,9 @@ class CCXTConnector(ExchangeInterface):
             data_usage="Order will be tracked for fill status; fills trigger profit folding or grid cycling",
         )
 
-        # Coinbase Advanced Trade is protobuf-strict: send only its own field name.
-        # ccxt maps clientOrderId onto Kraken's cl_ord_id; its userref takes digits only.
         extra_params: dict = {}
         if client_order_id:
-            _eid = (self._exchange_id or "").lower()
-            if "coinbase" in _eid:
-                # Coinbase Advanced Trade
-                extra_params["client_order_id"] = client_order_id
-            elif "binance" in _eid or "binanceus" in _eid:
-                extra_params["newClientOrderId"] = client_order_id
-            else:
-                # Default to ccxt canonical; CCXT translates per-exchange
-                extra_params["clientOrderId"] = client_order_id
+            extra_params[client_order_id_field(self._exchange_id)] = client_order_id
 
         # ccxt has no ioc_limit type: send limit with timeInForce=IOC.
         _ccxt_type = order_type.value

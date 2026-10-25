@@ -986,6 +986,12 @@ if _HAS_QT:
                 "Shorter = more responsive; longer = smoother signals."
             )
             sf.addRow("TA Timeframe:", self._ta_timeframe)
+            self._ta_tf_form = sf
+            self._ta_tf_notice = QLabel("")
+            self._ta_tf_notice.setWordWrap(True)
+            self._ta_tf_notice.setStyleSheet(f"color: {ds.WARNING}; font-size: 11px;")
+            sf.addRow(self._ta_tf_notice)
+            sf.setRowVisible(self._ta_tf_notice, False)
 
             self._target_balance = QDoubleSpinBox()
             self._target_balance.setRange(1.0, 1000000.0)
@@ -1536,7 +1542,10 @@ if _HAS_QT:
             should be disabled for Coinbase").
             """
             try:
-                from src.exchange.timeframes import available_timeframes
+                from src.exchange.timeframes import (
+                    available_timeframes,
+                    unserved_timeframe_notice,
+                )
             except Exception:
                 return
             allowed = available_timeframes(exchange_id)
@@ -1552,6 +1561,11 @@ if _HAS_QT:
                 idx = 0
             self._ta_timeframe.setCurrentIndex(idx)
             self._ta_timeframe.blockSignals(False)
+            notice = unserved_timeframe_notice(
+                exchange_id, current, self._ta_timeframe.currentData() or ""
+            )
+            self._ta_tf_notice.setText(notice)
+            self._ta_tf_form.setRowVisible(self._ta_tf_notice, bool(notice))
 
         def set_market(
             self,
