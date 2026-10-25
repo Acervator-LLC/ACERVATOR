@@ -2730,3 +2730,45 @@ dollar figure. `as_finite_float` answers nothing for either, and
 Overtaken. That rule refused a saved flag and still raised on a saved number
 too large to be a float. `as_finite_float` refuses both, and
 `VOLUME_REFUSED_USD` is the volume a refused pair row sorts by.
+
+## 2026-10-24 - #665 - a gate row carries the panel it was decided on
+
+The gate log is how a past decision is read back. A row held the decision and
+none of the numbers behind it, so the reasoning was unrecoverable. A row now
+carries one cell per voter, and each cell holds that indicator's direction, its
+confidence, its weight and its headline reading.
+
+`src/trading/scrumming/snapshots.py` — the panel a row carries
+
+```python
+def _indicator_values(self) -> Optional[dict]:
+    summary = getattr(self, "_last_summary", None)
+    if summary is None:
+        return None
+    return _build_panel_snapshot(summary)
+```
+
+Both gate emitters pass it, so a fired trade and a refused tick are recorded
+the same way. `src/trading/scrumming/snapshots.py, in
+_emit_gate_decision_at_fire` writes the fired row, and
+`_emit_gate_decision_at_quiet_tick` writes the refused one.
+
+**An absent panel is not a row of zeros.** A tick that computed no panel leaves
+the key off its row, so a reader can tell a panel that was never computed from
+a panel whose indicators all read zero. `src/core/logging_engine.py, in
+log_gate_decision` writes the key only when it is given one.
+
+Three rows read back off a written gate log — one fired, one refused, one with
+no panel:
+
+```
+trade_action SCRUM    adx BULLISH 0.71 weight 1.4 adx 27.5
+                      z_score BEARISH 0.33 weight 0.9 z -1.82
+                      kaufman_er NEUTRAL 0.00 weight 1.0 er 0.18
+tick_exit gate-chain  the same three cells
+tick_exit gate-chain  no indicator key at all, because no panel was computed
+```
+
+No gate decision moved. Both scrumming chains were driven over 1024 gate input
+sets before and after the change: 32 scrum fires and 32 fold fires on each
+side, and 0 of 1024 whole decisions differ.
