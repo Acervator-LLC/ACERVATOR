@@ -10486,3 +10486,110 @@ src/trading/stone_tablets/fetcher.py, in _parse_bot_state_targets
 src/trading/stone_tablets/fetcher.py, in _parse_bot_manager_targets
 src/trading/stone_tablets/fetcher.py, in main
 ```
+
+## 2026-10-24 — one rule now matches a venue id against every venue record
+
+The two records above matched a venue id two different ways. The secret record
+matched the whole id. The field record matched a listed token as a part of the
+id, so one entry answered for a whole family of venue ids.
+
+One venue id read differently on the two decisions.
+
+```
+coinbasepro, before
+    order-id field   client_order_id, which is Coinbase Advanced Trade's own
+    stored secret    not converted
+```
+
+Both records now read the whole venue id, through one function.
+
+```python
+src/exchange/ccxt_connector.py, in venue_record_key
+
+def venue_record_key(exchange_id: str) -> str:
+    return (exchange_id or "").strip().lower()
+```
+
+`src/exchange/ccxt_connector.py, in pem_secret_exchange` and
+`src/exchange/ccxt_connector.py, in client_order_id_field` both read their
+record through that key. The whole id is the rule because every other venue
+record in the connector already used it, and because
+`src/exchange/ccxt_connector.py, in CCXTConnector.__init__` refuses any id that
+is not a key of `SUPPORTED_EXCHANGES`, so no family of ids ever arrives.
+
+```
+records in the connector matched on the whole id, before   7
+records matched on a part of the id, before                1
+records matched on a part of the id, now                   0
+```
+
+### What a venue reads today
+
+Every venue id the platform's own records name was driven on both decisions,
+before and after, with the sockets refused, no venue contacted, no order placed
+and the home directory redirected.
+
+```
+venue ids driven                             35
+answers compared                             70
+answers that changed                          5
+answers that changed on a venue a bot can use 0
+```
+
+The 16 ids `SUPPORTED_EXCHANGES` holds are the only ids either decision can
+receive, and not one of their 32 answers moved.
+
+### The entry no venue could reach
+
+The field record lists `binance` and then `binanceus`. Under the old rule
+`binance` is a part of `binanceus`, so the first entry answered for both and the
+second answered for nothing. Each entry was changed on its own, and the venues
+whose answer moved were counted.
+
+```
+entry        venues it answered for, before   venues it answers for, now
+coinbase     5                                1
+binance      3                                1
+binanceus    0                                1
+```
+
+### The five answers that changed
+
+Each one is a venue id that strictly extends a listed one. None is a venue a bot
+can select, because none is a key of `SUPPORTED_EXCHANGES`.
+
+```
+venue id                before             now              what ccxt sends
+coinbasepro             client_order_id    clientOrderId    client_oid
+coinbaseexchange        client_order_id    clientOrderId    client_oid
+coinbaseinternational   client_order_id    clientOrderId    label
+binancecoinm            newClientOrderId   clientOrderId    newClientOrderId
+coinbaseplus            client_order_id    clientOrderId    no venue, a probe
+```
+
+The last column is read from the installed ccxt 4.5.90 on disk, in each venue
+class's own `create_order`. Three of the five reach the same venue field either
+way, because ccxt accepts both spellings and writes its own.
+
+Two reach a different field, and Coinbase's own documentation settles which one
+is right. Coinbase Exchange, which `coinbasepro` names, documents `client_oid`
+and documents no field called `client_order_id`.
+
+```
+Coinbase Developer Documentation, Exchange API, Create a new order
+https://docs.cdp.coinbase.com/api-reference/exchange-api/rest-api/orders/create-new-order
+
+"Optional Order ID selected by the user or the frontend client to identify
+ their order"   -- the description of the field client_oid
+```
+
+`clientOrderId` reaches that field and `client_order_id` reaches neither, so the
+new answer is the one the venue reads.
+
+### The adapter record, driven and unchanged
+
+`src/trading/stone_tablets/fetcher.py, at ADAPTERS_BY_EXCHANGE` already matched
+the whole id. All 35 ids were driven through
+`src/trading/stone_tablets/fetcher.py, in _build_adapter`, and `coinbase` and
+`coingecko` answered an adapter while the other 33 answered none. The file is
+unchanged.
