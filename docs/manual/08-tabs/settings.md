@@ -133,6 +133,23 @@ new_cfg = SoundConfig(
 That path runs when the slider moves or a test button plays a sample, and at no
 other time.
 
+**The engine now drops its own clips.** `src/core/sound_engine.py`, in
+`SoundEngine.update_config`, takes the new configuration and clears the cache
+itself, so no caller reaches into the engine to do it. The handler on this page
+hands the configuration over and stops there. The same method also removes the
+directory the old clips were written to, which the page used to leave behind on
+every slider step.
+
+`src/core/sound_engine.py` — `SoundEngine.update_config`
+
+```python
+self._config = config
+self.cleanup()
+self._temp_dir = None
+self._available = False
+self._cache = {}
+```
+
 The parent section, [08-tabs.md](../08-tabs.md), carries the figure for each
 page and names every control on it.
 
@@ -2050,6 +2067,23 @@ other time. Save reads no widget on this page and the schema declares no sound
 field, so nothing here survives the dialog closing. A checkbox cleared and the
 dialog saved comes back checked. Issue #423 carries it.
 
+**The engine now drops its own clips.** `src/core/sound_engine.py`, in
+`SoundEngine.update_config`, takes the new configuration and clears the cache
+itself, so no caller reaches into the engine to do it. The handler on this page
+hands the configuration over and stops there. The same method also removes the
+directory the old clips were written to, which the page used to leave behind on
+every slider step.
+
+`src/core/sound_engine.py` — `SoundEngine.update_config`
+
+```python
+self._config = config
+self.cleanup()
+self._temp_dir = None
+self._available = False
+self._cache = {}
+```
+
 `src/core/sound_engine.py` — `SoundConfig`, the ten fields and their defaults
 
 ```python
@@ -2174,6 +2208,29 @@ def play_sell(self) -> None:
     self.play("sell")
 ```
 
+**A filled order now plays its own clip.** `src/gui/main_window.py`, in
+`_on_trade_filled_sfx`, reads the fill's side and calls the buy helper on a
+filled buy and the sell helper on a filled sell. One function decides every
+clip a fill plays: `src/gui/main_tabs/main_window_surface.py`, in
+`trade_filled_sounds`. The engine still tests each clip's own switch, so a box
+cleared here keeps that clip silent while the rest of the fill still sounds.
+
+Nine places in the bot emit a fill. Four pass the fill's fields as keywords and
+five nest them under one `data` field. `main_window_surface.py`, in
+`fill_fields`, reads the fill at either level, so the manual scrum, the manual
+fold, the auto detonation, the manual tranche fold and the self destruct reach
+the sounds alongside the five that already did.
+
+`src/gui/main_tabs/main_window_surface.py` — the side decides the clip
+
+```python
+taken_side = (side or "").upper()
+if taken_side == BUY_SIDE:
+    played.append(BUY_SOUND)
+elif taken_side == SELL_SIDE:
+    played.append(SELL_SOUND)
+```
+
 The six Test buttons carry a part name of their own, and the page's click
 listener reports the plain button part alone, so a press on the React page
 reports nothing to the dialog. Those six are buttons, not settings, and the
@@ -2184,6 +2241,26 @@ switches beside them do not depend on them.
 ```javascript
 var BUTTON_PART = "button";
 var SOUND_BUTTON_PART = "sound-button";
+```
+
+**A press on the React page now reaches the dialog.** The page's click listener
+in `src/gui/react_settings_dialog.py`, in `HOST_SCRIPT`, recognises the sound
+button part and reports the sound the pressed button names.
+`SettingsDialogReact.run_action` routes that report to
+`SettingsDialog._test_sound`, which pushes the page's switches and plays the one
+clip. A name the page did not draw is refused and written to the log, because
+`SOUND_PRESS_NAMES` holds the six names `SOUND_TEST_BUTTONS` declares.
+
+`src/gui/react_settings_dialog.py` — the branch that reports a Test press
+
+```javascript
+if (part === "sound-button") {
+  console.log(
+    "acervator-act:" +
+      JSON.stringify({ sound: at.getAttribute("data-name") })
+  );
+  return;
+}
 ```
 
 ### Settings > SMS

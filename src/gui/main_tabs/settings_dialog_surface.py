@@ -2650,9 +2650,12 @@ class SoundEngineSink:
         self._cache: dict = {"stale": 1}
 
     def update_config(self, config: Any) -> None:
+        """Take ``config`` and drop the clips, as ``SoundEngine`` does."""
         if self.raises is not None:
             raise self.raises
         self.configs.append(config)
+        self._available = False
+        self._cache = {}
 
     def play(self, name: Any) -> None:
         self.played.append(name)
@@ -3244,18 +3247,16 @@ class SettingsDialogModel:
         self._record("update_weight_label")
 
     def sfx_volume_changed(self, position: Any) -> None:
-        """Hand the sound engine a fresh config and clear its cache.
+        """Hand the sound engine a fresh config.
 
-        Volume is baked into each sample when it is made, so the cache
-        must be dropped for the new volume to be heard.
+        ``update_config`` drops the engine's own cache, because volume is
+        baked into each sample when it is made.
         """
         self._record("sfx_volume_changed", position)
         try:
             config = {field: self.values[name] for field, name in SOUND_CONFIG_FIELDS}
             config["volume"] = position / VOLUME_SCALE
             self.sound.update_config(config)
-            self.sound._available = False
-            self.sound._cache = {}
         except Exception as exc:
             self._record("sfx_volume_failed", type(exc).__name__)
 
