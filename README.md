@@ -1241,7 +1241,7 @@ any page under `docs/manual/` the table does not name.
 - [Proof of Accumulation (Anonymized Trading Tournaments Via Blockchain)](docs/manual/08-tabs/proof-of-accumulation.md#proof-of-accumulation)
 - [Market Inspector Tab](docs/manual/08-tabs.md#market-inspector-tab)
 - [Bot Swarm Tab](docs/manual/08-tabs/bot-swarm.md#bot-swarm-tab)
-- [Asset Charts](docs/manual/08-tabs.md#asset-charts)
+- [Charts](docs/manual/08-tabs.md#charts)
 - [History Tab](docs/manual/08-tabs/history.md#history-tab)
 - [Console](docs/manual/08-tabs/console.md#console)
 - [System Status Tab (To Be Built)](docs/manual/08-tabs/system-status.md#system-status-tab)
