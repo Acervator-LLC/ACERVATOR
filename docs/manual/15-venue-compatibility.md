@@ -10423,3 +10423,66 @@ neither offers a contract market. Their market sources are not this recording.
 
 `src/gui/paper/paper_bot_wizard.py` and `src/gui/simulator/sim_bot_wizard.py` —
 the two rows this entry did not change
+
+## 2026-10-24 — three decisions that named a venue now read a venue record
+
+Three places in the program decided something by naming one venue in the code
+itself. Adding a venue meant remembering those three places, and a place that
+has to be remembered is a place that gets missed. Each one now reads a record
+that lists the venues, beside the five records the connector already keeps.
+
+```
+src/exchange/ccxt_connector.py, at PEM_SECRET_EXCHANGES
+    the venues whose stored secret is converted again on connect
+
+src/exchange/ccxt_connector.py, at CLIENT_ORDER_ID_FIELDS
+src/exchange/ccxt_connector.py, in client_order_id_field
+    the field name each venue takes the program's own order id under
+
+src/trading/stone_tablets/fetcher.py, at ADAPTERS_BY_EXCHANGE
+    each candle adapter under the venue it names itself
+```
+
+The adapter record is built from each adapter's own declaration, so no venue is
+named in the function that picks one. `src/simulator/back_test.py, in
+adapter_for` already read the adapters this way, and the two now agree.
+
+Nothing a venue does changed. Every venue the platform serves was driven on all
+three decisions, before and after, with the sockets refused, no venue contacted,
+no order placed and the home directory redirected.
+
+```
+venue ids driven   23
+answers compared   69
+differences         0
+```
+
+A venue the code singles out, and a venue it does not, read the same way on both
+sides.
+
+```
+venue       secret converted   order id field     candle adapter
+coinbase    yes                client_order_id    CoinbaseAdapter
+bitstamp    no                 clientOrderId      none
+```
+
+Two measured facts about the records, carried across unchanged.
+
+The field record matches a token inside the venue's id, so `coinbasepro` takes
+Coinbase's field name. The secret record matches the whole id, so the same
+`coinbasepro` does not have its secret converted. Both answers are what the
+program gave before.
+
+The record lists `binance` before `binanceus`, and the first is a part of the
+second, so the `binanceus` row is never the one that answers. It gives the same
+field name either way. The row is kept exactly as the code carried it.
+
+Four more places name a venue in the same two files and decide nothing by it.
+They supply Coinbase when a bot records no venue at all, so adding a venue never
+touches them.
+
+```
+src/trading/stone_tablets/fetcher.py, in _parse_bot_state_targets
+src/trading/stone_tablets/fetcher.py, in _parse_bot_manager_targets
+src/trading/stone_tablets/fetcher.py, in main
+```
