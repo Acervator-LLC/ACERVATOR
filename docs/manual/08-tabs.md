@@ -60,6 +60,10 @@ SYSTEM_STATUS_TAB = system_status_tab_surface.HEADING
 PROOF_OF_ACCUMULATION_TAB = proof_of_accumulation_tab_surface.HEADING
 ```
 
+The module `paper_trader_tab_surface` named in that block is gone.
+`src/gui/paper/paper_trading_tab_surface.py, in HEADING` carries the Paper label
+today.
+
 ### The order, the names and the colours today
 
 The bar now opens on Sim and every tab carries a single word. The order below is
@@ -97,7 +101,7 @@ HISTORY_TAB = "History"
 SIM_TAB = "Sim"
 CONSOLE_TAB = "Console"
 
-PAPER_TAB = paper_trader_tab_surface.HEADING
+PAPER_TAB = paper_trading_tab_surface.HEADING
 STATUS_TAB = system_status_tab_surface.HEADING
 ACCUMULATION_TAB = proof_of_accumulation_tab_surface.HEADING
 ```
@@ -796,7 +800,7 @@ True today: the run record is not in the tree. The figures it produced are the
 ones in this entry: one payload of 54 markets, 300 daily candles each, three
 ranked proposals, and twenty-seven of twenty-seven picture items matching.
 
-## Asset Charts
+## Charts
 
 Under the Asset Charts Tab, you will find our active bot (position) chart display. This will be upgraded to display only one chart at a time and will be able to display all indicators found in the Indicator Voting Panel.
 

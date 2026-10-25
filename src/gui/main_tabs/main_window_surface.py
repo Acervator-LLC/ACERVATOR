@@ -296,11 +296,16 @@ DEFAULT_TIMEFRAME = "1h"
 
 # The sounds the window decides on
 
+BUY_SOUND = "buy"
+SELL_SOUND = "sell"
 FIRE_SOUND = "fire"
 PROFIT_SOUND = "profit"
 DRIP_SOUND = "drip"
 RIFLE_TRADE_TYPES = ("SCRUM", "FOLD", "DIST")
 DRIP_TRADE_TYPE = "FOLD"
+BUY_SIDE = "BUY"
+SELL_SIDE = "SELL"
+FILL_NESTED_FIELD = "data"
 
 BEEP_FIRE_PHASE = "fire"
 BEEP_TRACK_PHASE = "track"
@@ -941,10 +946,32 @@ def cached_candle_count(bot: Any) -> Optional[int]:
         return None
 
 
-def trade_filled_sounds(trade_type: Any, profit: Any) -> list:
-    """Which sounds a filled trade plays, in the order the window plays them."""
+def fill_fields(data: Any) -> dict:
+    """One fill's own fields, whichever level the emitter put them at.
+
+    Four ``trade.filled`` emitters pass the fill as keywords and five nest it
+    under ``data``, so a reader of one level alone sees nothing from the other
+    five. ``_on_trade_filled_sfx`` reads the fill through this.
+    """
+    held = data if isinstance(data, dict) else {}
+    nested = held.get(FILL_NESTED_FIELD)
+    return nested if isinstance(nested, dict) else held
+
+
+def trade_filled_sounds(trade_type: Any, profit: Any, side: Any = "") -> list:
+    """Which sounds a filled trade plays, in the order the window plays them.
+
+    ``side`` names the fill's own direction and decides the buy or the sell
+    clip. The engine tests each clip's switch, so a name returned here is
+    still refused when the operator closed that box.
+    """
     played = []
     upper = (trade_type or "").upper()
+    taken_side = (side or "").upper()
+    if taken_side == BUY_SIDE:
+        played.append(BUY_SOUND)
+    elif taken_side == SELL_SIDE:
+        played.append(SELL_SOUND)
     if upper in RIFLE_TRADE_TYPES:
         played.append(FIRE_SOUND)
     if profit > 0:
@@ -1761,9 +1788,9 @@ class MainWindowModel:
         self._record("indicator_empty_state", answer[0])
         return answer
 
-    def trade_filled(self, trade_type: Any, profit: Any) -> list:
+    def trade_filled(self, trade_type: Any, profit: Any, side: Any = "") -> list:
         """A filled trade, and the sounds it plays."""
-        played = trade_filled_sounds(trade_type, profit)
+        played = trade_filled_sounds(trade_type, profit, side)
         self.sounds.extend(played)
         self._record("trade_filled", list(played))
         return played

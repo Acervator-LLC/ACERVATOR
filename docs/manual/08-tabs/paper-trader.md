@@ -20,6 +20,9 @@ STATE_TEXT = "This tab is not built."
 ISSUE_TEXT = f"Issue #{ISSUE} carries the build-out."
 ```
 
+The module `paper_trader_tab_surface` is gone, and the empty state above went
+with it. No module on disk holds `BUILT` or `STATE_TEXT` for this tab.
+
 Two frontends draw that one view model. `EmptyTabsMixin` in
 `src/gui/main_tabs/empty_tabs.py` builds the Qt tab, and
 `src/gui/web/paper_trader_tab.js` registers a panel with the Electron shell's
@@ -107,6 +110,11 @@ DECLARED_FIELDS = (
 )
 ```
 
+The module `paper_trader_tab_surface` is gone, and no module on disk holds
+`DECLARED_FIELDS` for this tab.
+`src/gui/paper/paper_trading_tab_surface.py, in view_model` answers the tab
+today.
+
 The left pane holds the Privacy Mode button, the market selector, the two button
 rows and the bot list. The bot list uses the Trading tab's own columns. The right
 pane holds the Indicator Voting Panel, computed from the live window. An empty
@@ -130,6 +138,10 @@ def indicator_payload(
     return ivp.build_payload(model)
 ```
 
+The module `paper_trader_tab_surface` is gone, and no module on disk holds
+`indicator_payload` for this tab.
+`src/gui/paper/paper_trading_tab_surface.py, in ivp_feed` reads the panel today.
+
 ## The two presses
 
 Import Live Fleet reads the stored bot record and lists what it finds. Start
@@ -149,6 +161,10 @@ Paper Run and ends it, leaving the balances and the trades on screen.
     ),
 }
 ```
+
+The module `paper_trader_tab_surface` is gone, and no module on disk holds
+`DATA_POOL_ROW`. `src/gui/paper/paper_trading_tab_surface.py, in run_buttons`
+carries the row's two faces today.
 
 ## Downstream only
 
@@ -299,6 +315,9 @@ hosts cannot report different money.
 "text": LEDGER_SEPARATOR.join(f"{one['label']} {one['text']}" for one in cells),
 ```
 
+The module `paper_trader_tab_surface` is gone, and no module on disk holds
+`LEDGER_SEPARATOR`.
+
 ## The Paper Trader log
 
 Every paper action is written to one file. Each line carries two halves: the
@@ -406,6 +425,9 @@ STATE_TEXT = "This tab is not built."
 ISSUE_TEXT = f"Issue #{ISSUE} carries the build-out."
 ```
 
+The module `paper_trader_tab_surface` is gone, and the empty state above went
+with it.
+
 The Qt tab and the `src/gui/web/paper_trader_tab.js` panel both draw that one
 view model, so neither can drift from the other.
 
@@ -442,6 +464,11 @@ HEADING = "Paper"
 ISSUE = 19
 BUILT = True
 ```
+
+The module `paper_trader_tab_surface` is gone.
+`src/gui/paper/paper_trading_tab_surface.py, in METHOD` answers
+`paper_trading.tab` today, and that file holds `HEADING` and `ISSUE`. No module
+on disk holds `BUILT` for this tab.
 
 The data path is the venue's public market feed, and it goes one way. The reader
 names the six things it answers, and every other name raises. An order, a

@@ -427,16 +427,6 @@ CONFIGURED_ITEM_FORMAT = "{name} ({eid})"
 KEY_FIELD = "api_key_enc"
 SIGNING_FIELD = "api_secret_enc"
 PHRASE_FIELD = "passphrase_enc"
-EXCHANGE_CONFIG_FIELDS = (
-    "exchange_id",
-    "display_name",
-    KEY_FIELD,
-    SIGNING_FIELD,
-    PHRASE_FIELD,
-    "enabled",
-    "hardware_mode",
-    "hw_volume_serial",
-)
 TYPED_CREDENTIAL_CONTROLS = (
     "new_api_key",
     "new_api_secret",
@@ -444,15 +434,18 @@ TYPED_CREDENTIAL_CONTROLS = (
     "new_verification_code",
 )
 EMPTY_TEXT = ""
-EXCHANGE_CONFIG_DEFAULTS = (
-    EMPTY_TEXT,
-    EMPTY_TEXT,
-    EMPTY_TEXT,
-    EMPTY_TEXT,
-    EMPTY_TEXT,
-    True,
-    False,
-    EMPTY_TEXT,
+
+#: One row per field of the venue record ``add_exchange`` writes, each field
+#: beside its own default.
+EXCHANGE_CONFIG_ROW: tuple[tuple[str, Any], ...] = (
+    ("exchange_id", EMPTY_TEXT),
+    ("display_name", EMPTY_TEXT),
+    (KEY_FIELD, EMPTY_TEXT),
+    (SIGNING_FIELD, EMPTY_TEXT),
+    (PHRASE_FIELD, EMPTY_TEXT),
+    ("enabled", True),
+    ("hardware_mode", False),
+    ("hw_volume_serial", EMPTY_TEXT),
 )
 
 NO_SELECTION_FEEDBACK = "Select an exchange to remove."
@@ -2657,9 +2650,12 @@ class SoundEngineSink:
         self._cache: dict = {"stale": 1}
 
     def update_config(self, config: Any) -> None:
+        """Take ``config`` and drop the clips, as ``SoundEngine`` does."""
         if self.raises is not None:
             raise self.raises
         self.configs.append(config)
+        self._available = False
+        self._cache = {}
 
     def play(self, name: Any) -> None:
         self.played.append(name)
@@ -3181,7 +3177,7 @@ class SettingsDialogModel:
                 if result is None or not result.success:
                     return
 
-            config = dict(zip(EXCHANGE_CONFIG_FIELDS, EXCHANGE_CONFIG_DEFAULTS))
+            config = dict(EXCHANGE_CONFIG_ROW)
             config[EXCHANGE_ID_KEY] = eid
             config[DISPLAY_NAME_KEY] = eid.capitalize()
 
@@ -3251,18 +3247,16 @@ class SettingsDialogModel:
         self._record("update_weight_label")
 
     def sfx_volume_changed(self, position: Any) -> None:
-        """Hand the sound engine a fresh config and clear its cache.
+        """Hand the sound engine a fresh config.
 
-        Volume is baked into each sample when it is made, so the cache
-        must be dropped for the new volume to be heard.
+        ``update_config`` drops the engine's own cache, because volume is
+        baked into each sample when it is made.
         """
         self._record("sfx_volume_changed", position)
         try:
             config = {field: self.values[name] for field, name in SOUND_CONFIG_FIELDS}
             config["volume"] = position / VOLUME_SCALE
             self.sound.update_config(config)
-            self.sound._available = False
-            self.sound._cache = {}
         except Exception as exc:
             self._record("sfx_volume_failed", type(exc).__name__)
 

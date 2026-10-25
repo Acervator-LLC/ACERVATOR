@@ -133,6 +133,23 @@ new_cfg = SoundConfig(
 That path runs when the slider moves or a test button plays a sample, and at no
 other time.
 
+**The engine now drops its own clips.** `src/core/sound_engine.py`, in
+`SoundEngine.update_config`, takes the new configuration and clears the cache
+itself, so no caller reaches into the engine to do it. The handler on this page
+hands the configuration over and stops there. The same method also removes the
+directory the old clips were written to, which the page used to leave behind on
+every slider step.
+
+`src/core/sound_engine.py` — `SoundEngine.update_config`
+
+```python
+self._config = config
+self.cleanup()
+self._temp_dir = None
+self._available = False
+self._cache = {}
+```
+
 The parent section, [08-tabs.md](../08-tabs.md), carries the figure for each
 page and names every control on it.
 
@@ -2050,6 +2067,23 @@ other time. Save reads no widget on this page and the schema declares no sound
 field, so nothing here survives the dialog closing. A checkbox cleared and the
 dialog saved comes back checked. Issue #423 carries it.
 
+**The engine now drops its own clips.** `src/core/sound_engine.py`, in
+`SoundEngine.update_config`, takes the new configuration and clears the cache
+itself, so no caller reaches into the engine to do it. The handler on this page
+hands the configuration over and stops there. The same method also removes the
+directory the old clips were written to, which the page used to leave behind on
+every slider step.
+
+`src/core/sound_engine.py` — `SoundEngine.update_config`
+
+```python
+self._config = config
+self.cleanup()
+self._temp_dir = None
+self._available = False
+self._cache = {}
+```
+
 `src/core/sound_engine.py` — `SoundConfig`, the ten fields and their defaults
 
 ```python
@@ -2174,6 +2208,29 @@ def play_sell(self) -> None:
     self.play("sell")
 ```
 
+**A filled order now plays its own clip.** `src/gui/main_window.py`, in
+`_on_trade_filled_sfx`, reads the fill's side and calls the buy helper on a
+filled buy and the sell helper on a filled sell. One function decides every
+clip a fill plays: `src/gui/main_tabs/main_window_surface.py`, in
+`trade_filled_sounds`. The engine still tests each clip's own switch, so a box
+cleared here keeps that clip silent while the rest of the fill still sounds.
+
+Nine places in the bot emit a fill. Four pass the fill's fields as keywords and
+five nest them under one `data` field. `main_window_surface.py`, in
+`fill_fields`, reads the fill at either level, so the manual scrum, the manual
+fold, the auto detonation, the manual tranche fold and the self destruct reach
+the sounds alongside the five that already did.
+
+`src/gui/main_tabs/main_window_surface.py` — the side decides the clip
+
+```python
+taken_side = (side or "").upper()
+if taken_side == BUY_SIDE:
+    played.append(BUY_SOUND)
+elif taken_side == SELL_SIDE:
+    played.append(SELL_SOUND)
+```
+
 The six Test buttons carry a part name of their own, and the page's click
 listener reports the plain button part alone, so a press on the React page
 reports nothing to the dialog. Those six are buttons, not settings, and the
@@ -2184,6 +2241,26 @@ switches beside them do not depend on them.
 ```javascript
 var BUTTON_PART = "button";
 var SOUND_BUTTON_PART = "sound-button";
+```
+
+**A press on the React page now reaches the dialog.** The page's click listener
+in `src/gui/react_settings_dialog.py`, in `HOST_SCRIPT`, recognises the sound
+button part and reports the sound the pressed button names.
+`SettingsDialogReact.run_action` routes that report to
+`SettingsDialog._test_sound`, which pushes the page's switches and plays the one
+clip. A name the page did not draw is refused and written to the log, because
+`SOUND_PRESS_NAMES` holds the six names `SOUND_TEST_BUTTONS` declares.
+
+`src/gui/react_settings_dialog.py` — the branch that reports a Test press
+
+```javascript
+if (part === "sound-button") {
+  console.log(
+    "acervator-act:" +
+      JSON.stringify({ sound: at.getAttribute("data-name") })
+  );
+  return;
+}
 ```
 
 ### Settings > SMS
@@ -2812,6 +2889,26 @@ One unreadable entry in the settings file cannot stop the dialog opening.
 
 `SettingsDialogReact` replaces `_setup_ui` alone, so the React build and the Qt
 build load and save the same way.
+
+**A stored number now loads on the React build.** `_StoredWriter` admits a
+stored figure against the control's own span, which it reads through
+`minimum` and `maximum`. The React build's `PageNumber` answers both off the
+control's spec, and `PageDecimal` answers `decimals` for a number box that
+keeps them. Without those answers every stored number on this build was
+refused: driven with a stored SFX Volume of 0.25, the slider opened at 70 and
+20 keys were marked refused, among them the volume, the twelve indicator
+weights and four message figures. The same run now opens the slider at 25 and
+marks none.
+
+`src/gui/react_settings_dialog.py` — the span a stored figure is admitted against
+
+```python
+def minimum(self) -> Any:
+    return self._span()[0]
+
+def maximum(self) -> Any:
+    return self._span()[1]
+```
 
 ### What each page restores now
 
@@ -8551,5 +8648,51 @@ subjects below had no answer anywhere on the page, and these are it.
 | Earlier citation | What is there now |
 | ---------------- | ----------------- |
 | the named constant on the Qt-free wizard surface, held at a line number | The constant is in no file under `src/`. That surface declares no page list, and the folding page the constant named is removed with the rest of the wizard's folding path |
+
+## 2026-10-24 - One declaration names each venue field and its default
+
+Adding a venue writes a record of eight fields. The field names and the field
+defaults were two separate lists matched by their position, and the two lists
+sat apart with other names between them. Inserting one field into one list
+alone moved every later default by one place, and nothing reported it.
+
+Driven on the real Add Exchange step with one field inserted ahead of the rest,
+the venue was added switched off, its hardware mode held an empty string, and
+its stored passphrase field held the word true. Nothing raised.
+
+`src/gui/main_tabs/settings_dialog_surface.py` — one row per field
+
+```python
+EXCHANGE_CONFIG_ROW: tuple[tuple[str, Any], ...] = (
+    ("exchange_id", EMPTY_TEXT),
+    ("display_name", EMPTY_TEXT),
+    (KEY_FIELD, EMPTY_TEXT),
+    (SIGNING_FIELD, EMPTY_TEXT),
+    (PHRASE_FIELD, EMPTY_TEXT),
+    ("enabled", True),
+    ("hardware_mode", False),
+    ("hw_volume_serial", EMPTY_TEXT),
+)
+```
+
+`src/gui/main_tabs/settings_dialog_surface.py, in add_exchange` builds the
+record from that one list, so each field carries its own default whatever order
+the list holds. The same insertion driven again left every field on its own
+default, and a venue added with no insertion is unchanged.
+
+**The four stored groups were already addressed by name.** Saving with the
+group list reversed writes exactly what saving in the declared order writes,
+measured on this page's own save path. The reading is shown able to report by a
+third arrangement whose groups are paired with the wrong rows.
+
+```
+declared order   ai_monitor, ta_indicator_weights, sound, message_channels
+reversed order   the same four keys hold the same rows
+mis-paired list  the AI rows land under the weights key, and it is seen
+```
+
+A stored settings file written before this change still loads. Sixteen stored
+rows across the four groups and the Username row each reached their own control,
+before and after, with the read-back identical.
 
 Back to [the subsystem index](README.md).

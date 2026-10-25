@@ -55,6 +55,17 @@ ArchetypeReport schema in tools.harness.coding_archetype:
         number records a measurement rather than pointing a reader
         at code.
 
+    H007 (medium) — CITED MODULE NAME THAT RESOLVES TO NO FILE
+        Reports a bare module name a markdown page cites, where no
+        file of that name is on disk. Reads one shape: a code span
+        opening a line that opens a block, then a dash, then a
+        description. Treats a name as present when _module_names
+        matches it to a ``.py`` or ``.js`` stem, or to a package
+        directory, anywhere under the repo root. Does not read a name
+        inside a sentence, inside a fenced block, or on a line
+        continuing the line above it. Markdown targets only, and
+        silent under the _H007_EXEMPT_DIRS directories.
+
 FALSIFICATION — this rule module is wrong if:
   (a) H001 fires on a path that exists via a case-sensitivity
       quirk (Windows FS is case-insensitive; the check is
@@ -75,6 +86,12 @@ FALSIFICATION — this rule module is wrong if:
   (f) H006 reports at medium, so a page carrying one still answers
       passed=True. Its silence on a page means that page cites
       symbols; its findings do not stop a merge.
+  (g) H007 reports at medium, so a page carrying one still answers
+      passed=True. It reads one shape, so a bare module name written
+      inside a sentence or inside a fenced block stays unreported.
+      _module_names is cached per repo root for the life of the
+      process, so a module created after the first scan reads as
+      absent.
 
 sadp: R28 SSS + R70 RCN
 """
@@ -82,6 +99,7 @@ sadp: R28 SSS + R70 RCN
 from __future__ import annotations
 
 import ast
+import functools
 import io
 import re
 import tokenize
@@ -268,6 +286,97 @@ def _is_h006_exempt(target: Path, repo_root: Path) -> bool:
     return any(rel.startswith(d) for d in _H006_EXEMPT_DIRS)
 
 
+# A code span opening a line, then a dash, then a description.
+_MODULE_SOURCE_HEADER = re.compile(
+    r"^`([a-z][a-z0-9]*(?:_[a-z0-9]+)+)`\s*[—–-]\s*\S"
+)
+
+_FENCE_LINE = re.compile(r"^\s*(?:```|~~~)")
+
+# Directories _module_names does not walk.
+_MODULE_INDEX_SKIP = frozenset(
+    {
+        ".claude",
+        ".git",
+        ".venv",
+        "__pycache__",
+        "build",
+        "dist",
+        "node_modules",
+        "venv",
+    }
+)
+
+# The suffixes the project imports a module from.
+_MODULE_SUFFIXES = (".py", ".js")
+
+# Directories whose pages record an earlier tree, where H007 stays silent.
+_H007_EXEMPT_DIRS = (
+    "docs/audits/",
+    "docs/hop_scratch/",
+    "docs-archive/",
+    "_archive/",
+    "dev_harness/skills/",
+)
+
+
+@functools.lru_cache(maxsize=8)
+def _module_names(repo_root: Path) -> frozenset[str]:
+    """Return every module stem and package directory name under repo_root."""
+    names: set[str] = set()
+    stack = [repo_root]
+    while stack:
+        current = stack.pop()
+        try:
+            entries = list(current.iterdir())
+        except OSError:
+            continue
+        for entry in entries:
+            if entry.is_dir():
+                if entry.name in _MODULE_INDEX_SKIP:
+                    continue
+                stack.append(entry)
+                if (entry / "__init__.py").exists():
+                    names.add(entry.name)
+            elif entry.suffix in _MODULE_SUFFIXES:
+                names.add(entry.stem)
+    return frozenset(names)
+
+
+def _is_h007_exempt(target: Path, repo_root: Path) -> bool:
+    """True when target sits under a directory H007 stays silent in."""
+    try:
+        rel = target.resolve().relative_to(repo_root.resolve()).as_posix()
+    except ValueError:
+        rel = target.as_posix()
+    return any(rel.startswith(d) for d in _H007_EXEMPT_DIRS)
+
+
+def _find_absent_module_headers(
+    source: str,
+    repo_root: Path,
+) -> list[tuple[int, str]]:
+    """Return (line, name) per module name heading a block and absent on disk."""
+    names = _module_names(repo_root)
+    hits: list[tuple[int, str]] = []
+    in_fence = False
+    opens_block = True
+    for i, line in enumerate(source.splitlines(), start=1):
+        if _FENCE_LINE.match(line):
+            in_fence = not in_fence
+            opens_block = False
+            continue
+        if in_fence:
+            continue
+        stripped = line.strip()
+        if opens_block:
+            match = _MODULE_SOURCE_HEADER.match(stripped)
+            if match is not None and match.group(1) not in names:
+                hits.append((i, match.group(1)))
+        opens_block = stripped == ""
+    return hits
+
+
 def _find_line_anchored_citations(source: str) -> list[tuple[int, str, int]]:
     """Return (line, cited path, cited number) per line-anchored citation.
 
@@ -438,6 +547,23 @@ def scan(target: Path, source: str) -> list[Any]:
                         f"number. The line stops naming that code as soon as "
                         f"anything above it moves. Name the symbol instead: "
                         f"{cited}, in <the function or class>."
+                    ),
+                )
+            )
+
+    if suffix in (".md", ".markdown") and not _is_h007_exempt(target, repo_root):
+        for line, name in _find_absent_module_headers(source, repo_root):
+            findings.append(
+                Finding(
+                    tool="hallucination",
+                    severity="medium",
+                    file=str(target),
+                    line=line,
+                    rule_id="H007",
+                    message=(
+                        f"the cited module {name!r} resolves to no file on "
+                        "disk. No .py or .js module and no package carries "
+                        "that name. Name the module that carries it today."
                     ),
                 )
             )

@@ -273,77 +273,10 @@ class _BlockedRecordProbe(logging.Handler):
 def _silent_capture_guard(request: pytest.FixtureRequest) -> Iterator[None]:
     """Fail a test whose ``caplog`` window cannot see what happened.
 
-    THE DEFECT
-    ==========
-    ``src/core/logging_engine.py`` sets
-    ``logging.getLogger("acervator").propagate = False``. ``caplog``
-    attaches its handler to the ROOT logger. So a record from any
-    ``acervator.*`` logger stops at the ``acervator`` node and never
-    reaches ``caplog``. A test that asserts on ``caplog.records`` then
-    reads an empty list. When the assertion is a negative one -- "this
-    must NOT be logged" -- the test PASSES. It fails green, which is
-    why nothing pushes back on it. This has bitten twice.
-
-    ORDER INDEPENDENCE -- HOW, EXACTLY
-    ==================================
-    The obvious form of this guard samples ``propagate``, and is then
-    hostage to the same dependency it exists to catch: until some test
-    constructs the logging engine, propagation is still on, ``caplog``
-    works, and the guard stays silent.
-
-    MEASURED on this tree 2026-08-24. Collection is alphabetical and
-    deterministic -- ``pytest-randomly`` is not installed. The first
-    test file to build a ``LogManager``, and so the first to set
-    ``propagate = False``, is ``tests/test_c39g_bot_log_reaches_disk``
-    at position 48 of 286. Nothing ever sets the flag back, so files
-    1-47 run sighted and files 48-286 run blind. A prefix of the first
-    35 files, 1,801 tests, ended with ``propagate=True`` and no handler
-    on the node. Every ``caplog`` reader in the suite sat at positions
-    23, 33 and 35 -- inside that sighted window. A sampling guard would
-    have been asleep for all of them.
-
-    So this guard does not sample the flag. It SETS it. For the
-    duration of any test that requested ``caplog``, and only such a
-    test, the ``acervator`` node is forced to ``propagate = False`` --
-    which is the production state, because the live application always
-    builds the logging engine. The test therefore meets the same wall
-    in isolation, on the first file, in any collection order, that it
-    would meet late in a full run. The guard is order-independent
-    because it stopped reading an accidental global and now establishes
-    the condition itself.
-
-    Restoring is deliberate, not symmetrical. If the engine was built
-    DURING the test it has set ``propagate = False`` and added its own
-    handler to the node; restoring ``True`` would then double every
-    record into the root handler. So the flag returns to its prior
-    value only while the node still has no handlers of its own.
-
-    COST
-    ====
-    A test that did not request ``caplog`` returns on the first line.
-    No handler is attached, no flag is touched, no teardown work runs.
-
-    THE OPT-OUT
-    ===========
-    ``@pytest.mark.caplog_may_be_empty("reason")`` suppresses the
-    guard. It exists for the one shape the guard cannot read: a test
-    that watches a NON-Acervator logger (``urllib3``, ``asyncio``) and
-    expects nothing from it, while unrelated Acervator logging happens
-    in the background. The guard sees an empty ``caplog`` beside
-    blocked Acervator records and cannot know the test never cared
-    about them. State a reason. The marker is not a silencer.
-
-    THE FIX, WHEN IT FIRES
-    ======================
-    Use the ``capture_log`` fixture above. It attaches to the named
-    logger directly and does not depend on propagation at all.
-
-    WHAT IT DOES NOT SEE
-    ====================
-    One node, ``acervator``. A test blinded by ``propagate = False``
-    on some other logger is outside this guard, and so is a test
-    blinded by a filter, a disabled logger or a level set on the root.
-    The rule is named for one measured defect and is scoped to it.
+    Sets ``propagate`` False on ``ACERVATOR_LOG_NODE`` for a test that
+    requested ``caplog``, counts what ``_BlockedRecordProbe`` stops there and
+    calls ``silent_capture_verdict``; ``SILENT_CAPTURE_MARKER`` opts a test out
+    and ``capture_log`` reads a named logger directly.
     """
     if "caplog" not in request.fixturenames:
         yield
@@ -790,10 +723,8 @@ def _assert_no_widget_leak(request: pytest.FixtureRequest) -> Iterator[None]:
         f"its last test:\n  "
         + "\n  ".join(f"{n} x {t}" for t, n in by_type)
         + "\n\nA surviving widget is not local. Anything that walks "
-        "`QApplication.topLevelWidgets()` -- and "
-        "tests/test_sim_visuals_expand_reentrancy.py does -- then "
-        "reads a widget from THIS file and reports the failure "
-        "against ITSELF.\n\n"
+        "`QApplication.topLevelWidgets()` then reads a widget from THIS "
+        "file and reports the failure against ITSELF.\n\n"
         "THE REPAIR IS IN THIS FILE. The owner destroys the widget:\n"
         "    w.close()\n"
         "    w.setParent(None)          # only if it HAD a parent\n"
