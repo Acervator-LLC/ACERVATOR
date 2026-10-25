@@ -25,6 +25,7 @@ from dataclasses import dataclass, replace
 from typing import Optional
 
 from ..core.contrast import AA_FLOOR, validate_contrast
+from ..core.settings import AppSettings
 from .color_alpha import rgba
 
 logger = logging.getLogger("acervator.gui")
@@ -374,8 +375,9 @@ def applied_theme() -> str:
     return _applied_name
 
 
-#: The accent field's value that leaves a theme's own ``accent_primary`` painting.
-THEME_ACCENT = ""
+#: ``AppSettings.accent_color``, the value that leaves a theme's own
+#: ``accent_primary`` painting. The store declares it, so this reads it.
+THEME_ACCENT = AppSettings().accent_color
 
 # Three or six hex digits are the two forms generate_qss paints as asked. Neither
 # can carry the ';' or '}' that would end the declaration it sits in.

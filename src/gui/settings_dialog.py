@@ -1473,6 +1473,7 @@ if _HAS_QT:
                 LOCK_CANDLE_DEFAULT,
                 PHANTOM_ENABLE_DEFAULT,
                 PHANTOM_TIMEFRAME_DEFAULT,
+                THEME_DEFAULT,
             )
 
             return (
@@ -1522,7 +1523,7 @@ if _HAS_QT:
                     "theme",
                     self._theme_combo.currentData,
                     lambda value: self._show_data(self._theme_combo, value),
-                    "cyberpunk_dark",
+                    THEME_DEFAULT,
                 ),
                 (
                     "accent_color",

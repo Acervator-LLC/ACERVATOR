@@ -1296,6 +1296,58 @@ def stored_accent(value: object) -> str:
     return asked if _ACCENT_HEX.match(asked) else THEME_ACCENT
 ```
 
+Both fallbacks now come from one declaration. The store declares the theme field
+and the accent field. The theme engine and the settings dialog surface read them
+rather than writing either value out again.
+
+`src/core/settings.py` — `AppSettings`, the one declaration
+
+```python
+    theme: str = VisualTheme.CYBERPUNK_DARK.value
+    accent_color: str = ""
+```
+
+`src/gui/theme_engine.py` — the accent sentinel, read from that field
+
+```python
+THEME_ACCENT = AppSettings().accent_color
+```
+
+`src/gui/main_tabs/settings_dialog_surface.py` — both row fallbacks
+
+```python
+THEME_DEFAULT = AppSettings().theme
+ACCENT_DEFAULT = AppSettings().accent_color
+```
+
+`src/gui/settings_dialog.py` — the theme row, in `_stored_rows`
+
+```python
+                (
+                    "theme",
+                    self._theme_combo.currentData,
+                    lambda value: self._show_data(self._theme_combo, value),
+                    THEME_DEFAULT,
+                ),
+```
+
+Neither value changed. The accent is empty and the theme is Cyberpunk Dark, as
+before. Moving the store's two fields to another value moved five surfaces
+together: the row table, the React model, the bridge payload, the launch
+resolution and the Qt dialog. The same move before the change left every one of
+those five where it was.
+
+The engine keeps a second theme name of its own, and that one answers a
+different question: which theme paints when a stored name is not a theme at all.
+It is taken from the engine's own Cyberpunk Dark tokens, so the name it falls
+back to is always a name the theme table carries. Both names read Cyberpunk Dark
+today.
+
+A store saved before this change keeps every value it holds. One saved with Neon
+Light and the accent `#ff8800` opened on Neon Light and that colour on all four
+surfaces that show them, and the contrast measure still refused the colour at 2.2
+to 1 against the Neon Light ground and painted that theme's own accent.
+
 Three hex digits or six, either case, surrounding spaces trimmed. Each value
 below was typed in and the accent button was then read off an offscreen render.
 
