@@ -443,7 +443,18 @@ class SoundEngine:
         self.play("drip")
 
     def update_config(self, config: SoundConfig) -> None:
+        """Take ``config`` and drop the clips written at the old volume.
+
+        Each generator multiplies ``volume`` into every sample before it is
+        written, so a cached clip cannot be played at a new volume. Dropping
+        ``_available`` and ``_cache`` here makes the next ``play`` write a
+        fresh set, and it keeps the two fields the engine's own to write.
+        """
         self._config = config
+        self.cleanup()
+        self._temp_dir = None
+        self._available = False
+        self._cache = {}
 
     def cleanup(self) -> None:
         if self._temp_dir:

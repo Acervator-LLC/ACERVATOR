@@ -139,6 +139,14 @@ HOST_SCRIPT = """(function (global) {
           );
           return;
         }
+        // A Test button carries its own part name, and its sound in data-name.
+        if (part === "sound-button") {
+          console.log(
+            "%(act)s" +
+              JSON.stringify({ sound: at.getAttribute("data-name") })
+          );
+          return;
+        }
       }
       at = at.parentElement;
     }
@@ -497,6 +505,12 @@ ACTION_HANDLERS: dict[str, str] = {
     "save_btn": "_save",
 }
 
+#: The sound each Test button plays, as the page reports its press. A name the
+#: page did not draw never reaches the engine.
+SOUND_PRESS_NAMES: frozenset[str] = frozenset(
+    name for _text, name, _tip in surface.SOUND_TEST_BUTTONS
+)
+
 #: The control whose edit runs a method, and the method it runs. ``apply_edit``
 #: calls with no argument, so every entry names a method that takes none.
 EDIT_HANDLERS: dict[str, str] = {
@@ -693,7 +707,7 @@ if _HAS_QT and _HAS_WEBENGINE:
                 getattr(self, handler)()
 
         def run_action(self, payload: str) -> None:
-            """Run the button, tab or list row the page reports."""
+            """Run the button, tab, list row or Test button the page reports."""
             try:
                 asked = json.loads(payload)
             except ValueError:
@@ -701,6 +715,13 @@ if _HAS_QT and _HAS_WEBENGINE:
                 return
             if "tab" in asked:
                 self.show_tab(str(asked.get("tab") or ""))
+                return
+            if "sound" in asked:
+                named = str(asked.get("sound") or "")
+                if named in SOUND_PRESS_NAMES:
+                    self._test_sound(named)
+                else:
+                    logger.warning("Settings page reported no such sound: %r", named)
                 return
             if "row" in asked:
                 self._exchange_list.setCurrentRow(asked.get("row"))

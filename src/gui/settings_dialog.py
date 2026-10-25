@@ -1122,8 +1122,8 @@ if _HAS_QT:
         def _on_sfx_volume_changed(self, v: int) -> None:
             """Hand the engine this page's switches at volume ``v``, in percent.
 
-            Each sample bakes its volume when it is made, so the engine's cache
-            is dropped and the next ``play`` regenerates. The switches come from
+            ``update_config`` drops the engine's own cache, because each sample
+            bakes its volume when it is made. The switches come from
             ``SOUND_CONFIG_FIELDS``, which is also what ``_sound_rows`` persists.
             """
             try:
@@ -1137,10 +1137,9 @@ if _HAS_QT:
                     key: getattr(self, f"_{name}").isChecked()
                     for key, name in SOUND_CONFIG_FIELDS
                 }
-                se = get_sound_engine()
-                se.update_config(SoundConfig(volume=v / VOLUME_SCALE, **asked))
-                se._available = False
-                se._cache = {}
+                get_sound_engine().update_config(
+                    SoundConfig(volume=v / VOLUME_SCALE, **asked)
+                )
             except Exception as _sf_exc:  # noqa: BLE001
                 logger.warning("sound settings did not reach the engine: %s", _sf_exc)
 
