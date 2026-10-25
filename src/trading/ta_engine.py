@@ -49,7 +49,7 @@ import math
 import time
 from typing import Optional
 
-from ..core.signal_contract import DIGEST_MIN_INTERVAL
+from ..core.signal_contract import DIGEST_MIN_INTERVAL, TA_RAW_PREFIX
 
 # Re-exported rather than moved, so the split into one module each changed no caller.
 from .indicators.adx import ADXIndicator
@@ -240,9 +240,6 @@ class _TAInstrumentationOff(Exception):
     """Raised to skip the emitter block when no sink is installed."""
 
 
-# Head of the raw pin name _ALWAYS_ON_PINS declares in signal_contract.
-TA_RAW_PREFIX = "ta.07.004.postcondition.raw."
-
 TA_EMIT_EVERY = DIGEST_MIN_INTERVAL
 """Seconds between admitted records from one emitter name on one market.
 
@@ -362,7 +359,7 @@ class VotingEngine:
                 # `check` returns (None, None) when no bound applies, and never raises.
                 _ok, _rule = _ta_inv.check(_sig.indicator, _details)
                 _ta_emit(
-                    f"ta.07.004.postcondition.raw.{_sig.indicator}",
+                    f"{TA_RAW_PREFIX}{_sig.indicator}",
                     actual=_details,
                     expected=_rule,
                     ok=_ok,
