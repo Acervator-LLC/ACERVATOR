@@ -293,6 +293,18 @@ class SnapshotEmitterMixin(_Host):
                 _sup,
             )
 
+    def _indicator_values(self) -> Optional[dict]:
+        """``_build_panel_snapshot`` of ``_last_summary``, None while it is None.
+
+        ``log_gate_decision`` writes ``indicators`` only when it is given one,
+        so a tick holding no summary leaves that key off the gate row rather
+        than writing a cell per indicator at zero.
+        """
+        summary = getattr(self, "_last_summary", None)
+        if summary is None:
+            return None
+        return _build_panel_snapshot(summary)
+
     def _chain_risk_gates(self, chain_result) -> list:
         """The ``_RISK_GATE_NAMES`` entries one ``ChainResult`` blocked on.
 
@@ -508,6 +520,7 @@ class SnapshotEmitterMixin(_Host):
                 fold_blockers=list(self._last_gate_state.get("fold_blockers") or []),
                 scrum_fixture=self._last_gate_state.get("scrum_fixture"),
                 fold_fixture=self._last_gate_state.get("fold_fixture"),
+                indicators=self._indicator_values(),
                 tranche_snapshot=self._tranche_snapshot(),
                 compounding_snapshot=self._compounding_snapshot(),
                 slippage_guard=self._slippage_guard_snapshot(),
@@ -582,6 +595,7 @@ class SnapshotEmitterMixin(_Host):
                 fold_blockers=fold_blockers,
                 scrum_fixture=state.get(_SCRUM_FIXTURE_KEY),
                 fold_fixture=state.get(_FOLD_FIXTURE_KEY),
+                indicators=self._indicator_values(),
                 evaluated_at_tick=state.get("evaluated_at_tick"),
                 tranche_snapshot=self._tranche_snapshot(),
                 compounding_snapshot=self._compounding_snapshot(),

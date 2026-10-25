@@ -427,16 +427,6 @@ CONFIGURED_ITEM_FORMAT = "{name} ({eid})"
 KEY_FIELD = "api_key_enc"
 SIGNING_FIELD = "api_secret_enc"
 PHRASE_FIELD = "passphrase_enc"
-EXCHANGE_CONFIG_FIELDS = (
-    "exchange_id",
-    "display_name",
-    KEY_FIELD,
-    SIGNING_FIELD,
-    PHRASE_FIELD,
-    "enabled",
-    "hardware_mode",
-    "hw_volume_serial",
-)
 TYPED_CREDENTIAL_CONTROLS = (
     "new_api_key",
     "new_api_secret",
@@ -444,15 +434,18 @@ TYPED_CREDENTIAL_CONTROLS = (
     "new_verification_code",
 )
 EMPTY_TEXT = ""
-EXCHANGE_CONFIG_DEFAULTS = (
-    EMPTY_TEXT,
-    EMPTY_TEXT,
-    EMPTY_TEXT,
-    EMPTY_TEXT,
-    EMPTY_TEXT,
-    True,
-    False,
-    EMPTY_TEXT,
+
+#: One row per field of the venue record ``add_exchange`` writes, each field
+#: beside its own default.
+EXCHANGE_CONFIG_ROW: tuple[tuple[str, Any], ...] = (
+    ("exchange_id", EMPTY_TEXT),
+    ("display_name", EMPTY_TEXT),
+    (KEY_FIELD, EMPTY_TEXT),
+    (SIGNING_FIELD, EMPTY_TEXT),
+    (PHRASE_FIELD, EMPTY_TEXT),
+    ("enabled", True),
+    ("hardware_mode", False),
+    ("hw_volume_serial", EMPTY_TEXT),
 )
 
 NO_SELECTION_FEEDBACK = "Select an exchange to remove."
@@ -3180,7 +3173,7 @@ class SettingsDialogModel:
                 if result is None or not result.success:
                     return
 
-            config = dict(zip(EXCHANGE_CONFIG_FIELDS, EXCHANGE_CONFIG_DEFAULTS))
+            config = dict(EXCHANGE_CONFIG_ROW)
             config[EXCHANGE_ID_KEY] = eid
             config[DISPLAY_NAME_KEY] = eid.capitalize()
 
