@@ -1445,13 +1445,16 @@ Issue [#117](https://github.com/Acervator-LLC/ACERVATOR/issues/117).
 **Paper Trader.** His own heading for it reads *Paper Trader Tab (To Be
 Built)*. The heading predates the build. It is built.
 
-`src/gui/main_tabs/paper_trader_tab_surface.py` — the tab's own record
+`src/gui/paper/paper_trading_tab_surface.py` — the tab's own record
 
 ```python
 HEADING = "Paper"
 ISSUE = 19
 BUILT = True
 ```
+
+That file holds `HEADING` and `ISSUE`. No module on disk holds `BUILT` for this
+tab. The module `paper_trader_tab_surface` that carried it is gone.
 
 Issue [#19](https://github.com/Acervator-LLC/ACERVATOR/issues/19).
 

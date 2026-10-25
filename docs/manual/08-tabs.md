@@ -60,6 +60,10 @@ SYSTEM_STATUS_TAB = system_status_tab_surface.HEADING
 PROOF_OF_ACCUMULATION_TAB = proof_of_accumulation_tab_surface.HEADING
 ```
 
+The module `paper_trader_tab_surface` named in that block is gone.
+`src/gui/paper/paper_trading_tab_surface.py, in HEADING` carries the Paper label
+today.
+
 ### The order, the names and the colours today
 
 The bar now opens on Sim and every tab carries a single word. The order below is
@@ -97,7 +101,7 @@ HISTORY_TAB = "History"
 SIM_TAB = "Sim"
 CONSOLE_TAB = "Console"
 
-PAPER_TAB = paper_trader_tab_surface.HEADING
+PAPER_TAB = paper_trading_tab_surface.HEADING
 STATUS_TAB = system_status_tab_surface.HEADING
 ACCUMULATION_TAB = proof_of_accumulation_tab_surface.HEADING
 ```
