@@ -796,7 +796,7 @@ True today: the run record is not in the tree. The figures it produced are the
 ones in this entry: one payload of 54 markets, 300 daily candles each, three
 ranked proposals, and twenty-seven of twenty-seven picture items matching.
 
-## Asset Charts
+## Charts
 
 Under the Asset Charts Tab, you will find our active bot (position) chart display. This will be upgraded to display only one chart at a time and will be able to display all indicators found in the Indicator Voting Panel.
 
