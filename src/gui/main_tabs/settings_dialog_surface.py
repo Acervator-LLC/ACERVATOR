@@ -544,10 +544,11 @@ AI_LOAD_KEYS = (
 )
 AI_GROUP_KEY = "ai_monitor"
 THEME_KEY = "theme"
-THEME_DEFAULT = "cyberpunk_dark"
+#: The theme picker's opening name and its fallback, declared once by the store.
+THEME_DEFAULT = AppSettings().theme
 #: Empty leaves the theme's own accent painting, so the box opens on its
-#: placeholder.
-ACCENT_DEFAULT = ""
+#: placeholder. ``theme_engine.THEME_ACCENT`` reads the same store field.
+ACCENT_DEFAULT = AppSettings().accent_color
 EXCHANGE_ID_KEY = "exchange_id"
 DISPLAY_NAME_KEY = "display_name"
 NO_MATCH_INDEX = -1
