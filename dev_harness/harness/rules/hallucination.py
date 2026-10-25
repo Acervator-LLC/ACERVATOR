@@ -106,6 +106,11 @@ FALSIFICATION — this rule module is wrong if:
       H001. Both are cached per repo root for the life of the
       process, so a top-level directory created after the first scan
       reads as absent.
+  (i) _checked_path_prefixes skips an empty directory, because git
+      tracks no empty directory, so an untracked leftover such as
+      .githooks/ returns the same prefix set in every checkout. A
+      non-empty untracked directory that .gitignore does not name is
+      still a prefix it returns.
 
 sadp: R28 SSS + R70 RCN
 """
@@ -185,8 +190,13 @@ def _checked_path_prefixes(repo_root: Path) -> frozenset[str]:
     except OSError:
         return frozenset(prefixes)
     for child in children:
-        if child.name not in excluded and child.is_dir():
-            prefixes.add(child.name + "/")
+        if child.name in excluded or not child.is_dir():
+            continue
+        try:
+            next(iter(child.iterdir()))
+        except (OSError, StopIteration):
+            continue
+        prefixes.add(child.name + "/")
     return frozenset(prefixes)
 
 
