@@ -8552,4 +8552,50 @@ subjects below had no answer anywhere on the page, and these are it.
 | ---------------- | ----------------- |
 | the named constant on the Qt-free wizard surface, held at a line number | The constant is in no file under `src/`. That surface declares no page list, and the folding page the constant named is removed with the rest of the wizard's folding path |
 
+## 2026-10-24 - One declaration names each venue field and its default
+
+Adding a venue writes a record of eight fields. The field names and the field
+defaults were two separate lists matched by their position, and the two lists
+sat apart with other names between them. Inserting one field into one list
+alone moved every later default by one place, and nothing reported it.
+
+Driven on the real Add Exchange step with one field inserted ahead of the rest,
+the venue was added switched off, its hardware mode held an empty string, and
+its stored passphrase field held the word true. Nothing raised.
+
+`src/gui/main_tabs/settings_dialog_surface.py` — one row per field
+
+```python
+EXCHANGE_CONFIG_ROW: tuple[tuple[str, Any], ...] = (
+    ("exchange_id", EMPTY_TEXT),
+    ("display_name", EMPTY_TEXT),
+    (KEY_FIELD, EMPTY_TEXT),
+    (SIGNING_FIELD, EMPTY_TEXT),
+    (PHRASE_FIELD, EMPTY_TEXT),
+    ("enabled", True),
+    ("hardware_mode", False),
+    ("hw_volume_serial", EMPTY_TEXT),
+)
+```
+
+`src/gui/main_tabs/settings_dialog_surface.py, in add_exchange` builds the
+record from that one list, so each field carries its own default whatever order
+the list holds. The same insertion driven again left every field on its own
+default, and a venue added with no insertion is unchanged.
+
+**The four stored groups were already addressed by name.** Saving with the
+group list reversed writes exactly what saving in the declared order writes,
+measured on this page's own save path. The reading is shown able to report by a
+third arrangement whose groups are paired with the wrong rows.
+
+```
+declared order   ai_monitor, ta_indicator_weights, sound, message_channels
+reversed order   the same four keys hold the same rows
+mis-paired list  the AI rows land under the weights key, and it is seen
+```
+
+A stored settings file written before this change still loads. Sixteen stored
+rows across the four groups and the Username row each reached their own control,
+before and after, with the read-back identical.
+
 Back to [the subsystem index](README.md).
