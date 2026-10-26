@@ -1879,6 +1879,33 @@ With `statsmodels` absent the line reads "2 proposal(s); 0 dismissed  ·
 Mean-reversion pair needs statsmodels, which this build left out". With every
 package present it reads the count alone.
 
+Two sentences above describe a stamp the pane no longer depends on.
+
+> Every proposal returned carries one sentence naming the contribution that did
+> not run.
+
+> `unavailable_tests` reads the proposals on display and keeps the first of each
+> repeated sentence, since one detector run stamps them all.
+
+A refresh that returns no proposal has nothing to carry the stamp. The pane now
+reads the import path whenever the stamp is absent. The count therefore carries
+the sentence with no proposal on display as well as with several.
+
+```python
+def unavailable_sentences() -> list[str]:
+    """Each unrun-contribution sentence read off the import path, importing nothing."""
+```
+
+`src/trading/topology_proposals.py, in unavailable_sentences` — the sentence
+with no proposal to ride on
+
+Measured offscreen on both hosts, with the package refused at the import finder.
+With one proposal on display the line read "1 proposal(s); 0 dismissed  ·
+Mean-reversion pair needs statsmodels, which this build left out" before and
+after. With no proposal on display it read "0 proposal(s); 0 dismissed" before,
+and after it carries that same sentence. The Qt pane and the React model report
+one string: both call the one helper.
+
 Two helpers read from disk under `src/trading/`. `suggested_target_usd` sizes each
 proposed bot from the asset target defaults, and the sector map names each asset's
 sector.

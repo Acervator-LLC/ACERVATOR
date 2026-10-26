@@ -793,6 +793,17 @@ if _HAS_QT:
             "Cross-pair readings on the dashboard and in the Bot "
             "Details Status tab will stop updating.",
         )
+        # logger.debug reaches no crash-log writer; note_failure emits at ERROR.
+        _tab_bots_fault = ThrottledFault(
+            "the exchange tab bot list",
+            "Every bot row on each exchange tab keeps its last figures and "
+            "stops refreshing.",
+        )
+        _tab_privacy_fault = ThrottledFault(
+            "the exchange tab privacy button",
+            "The privacy button on each exchange tab stops following the "
+            "privacy mode it is set to.",
+        )
 
         def _pump_currency_rates(self) -> None:
             """Refresh CurrencyRateMonitor and push its snapshot to the voting panel."""
@@ -992,13 +1003,13 @@ if _HAS_QT:
                                 tab.exchange_id
                             )
                             tab.update_bots(statuses)
+                            self._tab_bots_fault.note_success()
                     except Exception as tab_bots_exc:
-                        logger.debug(
-                            "exchange tab bot list refresh failed: %s",
-                            tab_bots_exc,
-                        )
+                        self._tab_bots_fault.note_failure(tab_bots_exc)
             except Exception as tabs_exc:
-                logger.debug("exchange tab privacy refresh failed: %s", tabs_exc)
+                self._tab_privacy_fault.note_failure(tabs_exc)
+            else:
+                self._tab_privacy_fault.note_success()
             try:
                 if (
                     hasattr(self, "_indicator_panel")

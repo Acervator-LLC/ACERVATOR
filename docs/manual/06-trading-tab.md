@@ -8211,6 +8211,37 @@ card with its Add button on it while no venue serves the sector, and the Paper
 tab still draws its own card the same way. Both are pages those tabs own, and
 neither is a note that replaces a tab.
 
+OVERTAKEN, quoted whole:
+
+> True today: no tab draws a class note.
+
+True today: every one of the seven class-following tabs draws its own note.
+`src/gui/main_tabs/class_filter_tab.py, in ClassFilterTabMixin._draw_class_notes`
+seats one label on each tab's own page and shows it only while that tab keeps no
+row of the active sector. `class_filter_surface.empty_note` still writes the
+sentence, so the Sim tab reads "No Crypto simulated bot to show." and the
+Inspector reads "No Crypto scanned market to show.". Status and Console carry no
+subject in `TAB_SUBJECTS` and get no note.
+
+The note does not replace a page. It is one line at the top of the page the tab
+already owns, so the Live and Paper cards named above still draw beside it.
+
+Driven offscreen with three records built by hand on one venue, in both builds,
+under each of the six sectors:
+
+```
+                  crypto   the other five sectors
+Live, Charts,      content  note
+Inspector, Swarm
+Sim, Paper,        note     note
+History
+Status, Console    none     none
+```
+
+The Qt build and the React build answer that table cell for cell. Under crypto
+the four fleet-fed tabs draw the records and no note, which is what makes the
+reading a measurement rather than a tab that failed to draw.
+
 **A filter hides rows and changes nothing else.** No bot is stopped, no position is
 closed and no state is written by a press, and the class survives a restart: a fresh
 window with a class stored draws every one of the seven tabs for that class at first

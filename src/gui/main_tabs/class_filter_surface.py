@@ -19,8 +19,13 @@ from .asset_class_surface import (
     venue_classes,
 )
 
-#: What each tab holds one of, for ``empty_note``. No tab draws that sentence:
-#: ``tools/capture_screen_figure.py``, in ``class_note``, is its one caller.
+# OVERTAKEN, quoted whole:
+#   "What each tab holds one of, for ``empty_note``. No tab draws that sentence:
+#   ``tools/capture_screen_figure.py``, in ``class_note``, is its one caller."
+# True today: every tab named below draws that sentence on its own page, seated
+# by ``class_filter_tab.ClassFilterTabMixin._draw_class_notes`` while the tab
+# keeps no row of the active class. ``class_note`` reads that label.
+#: What each tab holds one of, for ``empty_note``.
 TAB_SUBJECTS = {
     "Live": "bot",
     "Charts": "chart",
@@ -115,12 +120,16 @@ def trades_of_class(rows: Any, name: Optional[Any] = None) -> list:
     return kept
 
 
+# OVERTAKEN, quoted whole:
+#   "No tab draws this: ``tools/capture_screen_figure.py``, in ``class_note``,
+#   is the one caller, and a tab outside ``TAB_SUBJECTS`` answers an empty
+#   string."
+# True today: ``class_filter_tab.ClassFilterTabMixin._draw_class_notes`` draws
+# this on the tab it names, and ``class_note`` reads the label it seats.
 def empty_note(tab: Any, name: Optional[Any] = None) -> str:
     """The sentence naming what one tab holds none of for an asset class.
 
-    No tab draws this: ``tools/capture_screen_figure.py``, in ``class_note``,
-    is the one caller, and a tab outside ``TAB_SUBJECTS`` answers an empty
-    string.
+    A tab outside ``TAB_SUBJECTS`` answers an empty string.
     """
     key = normalise(name) if name is not None else active()
     subject = TAB_SUBJECTS.get(str(tab))

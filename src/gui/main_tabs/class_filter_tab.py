@@ -14,6 +14,9 @@ from __future__ import annotations
 import logging
 from typing import Any, Callable
 
+from PySide6.QtWidgets import QLabel
+
+from .. import design_system as ds
 from . import class_filter_surface as cfs
 
 logger = logging.getLogger("acervator.gui")
@@ -21,6 +24,20 @@ logger = logging.getLogger("acervator.gui")
 #: The window attribute holding each tab that offers ``set_asset_class`` and
 #: counts its own class-bearing rows.
 SELF_COUNTING_TABS = ("_history_tab", "_simulator_tab", "_paper_trader_tab")
+
+#: Each self-counting tab's label mapped to the attribute holding that tab, so
+#: ``_draw_class_notes`` reads the count that tab answered.
+COUNTED_TAB_ATTRS = {
+    "History": "_history_tab",
+    "Sim": "_simulator_tab",
+    "Paper": "_paper_trader_tab",
+}
+
+#: The one note a class-following tab draws while it keeps no row of the class.
+NOTE_NAME = "class-empty-note"
+
+NOTE_STYLE = f"QLabel {{ color: {ds.TEXT_EMPTY_STATE}; font-size: {ds.TYPE_BODY}px; }}"
+NOTE_MARGINS_PX = (ds.SPACE_L, ds.SPACE_L, ds.SPACE_L, ds.SPACE_L)
 
 
 class ClassFilterTabMixin:
@@ -153,8 +170,62 @@ class ClassFilterTabMixin:
         """
         key = cfs.active()
         self._filter_live_sub_tabs(key)
+        counts: dict = {}
         for attr in SELF_COUNTING_TABS:
-            self._ask_tab_for_class(attr, key)
+            counts[attr] = self._ask_tab_for_class(attr, key)
+        self._class_tab_counts = counts
+        self._draw_class_notes()
+
+    def _class_note_label(self, name: str, page: Any) -> Any:
+        """The note label ``name``'s page carries, seated at the top of its layout.
+
+        Answers None for a page holding no layout, and seats one label per tab
+        name so ``NOTE_NAME`` is never drawn twice.
+        """
+        held = getattr(self, "_class_notes", None)
+        if held is None:
+            held = {}
+            self._class_notes = held
+        label = held.get(name)
+        if label is not None:
+            return label
+        layout = page.layout() if page is not None else None
+        if layout is None:
+            return None
+        label = QLabel("", page)
+        label.setObjectName(NOTE_NAME)
+        label.setAccessibleName(NOTE_NAME)
+        label.setStyleSheet(NOTE_STYLE)
+        label.setContentsMargins(*NOTE_MARGINS_PX)
+        label.setWordWrap(True)
+        label.hide()
+        layout.insertWidget(0, label)
+        held[name] = label
+        return label
+
+    def _draw_class_notes(self) -> None:
+        """Draw each class-following tab's own note while it keeps no row.
+
+        ``class_filter_surface.empty_note`` supplies the sentence, and a tab
+        outside ``TAB_SUBJECTS`` is left alone.
+        """
+        book = getattr(self, "_main_tabs", None)
+        if book is None:
+            return
+        key = cfs.active()
+        counts = getattr(self, "_class_tab_counts", None) or {}
+        fleet = len(self._class_fleet())
+        for at in range(book.count()):
+            name = book.tabText(at)
+            if name not in cfs.TAB_SUBJECTS:
+                continue
+            attr = COUNTED_TAB_ATTRS.get(name)
+            kept = counts.get(attr, (fleet, fleet))[0] if attr else fleet
+            label = self._class_note_label(name, book.widget(at))
+            if label is None:
+                continue
+            label.setText(cfs.empty_note(name, key))
+            label.setVisible(not kept)
 
     def _ask_tab_for_class(self, attr: str, key: str) -> tuple:
         """The rows one tab keeps for ``key`` and the rows it holds in all.

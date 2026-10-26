@@ -802,6 +802,54 @@ before                        2           no
 after                         9           yes   (all three frames named)
 ```
 
+#### A fault reported below ERROR reaches none of the five
+
+`_CrashLogHandler` is attached at ERROR, so it is the fifth writer only for a
+record at ERROR or above. A broad `except` that reports the same fault with
+`logger.debug` builds a record no writer reads, and the crash log gains nothing.
+
+The second place an exchange tab's bot rows are refreshed is the privacy-widget
+sweep, which the privacy-mode button on each exchange tab runs. Its own `except`
+reported at DEBUG. It now hands the failure to a throttled fault, which reports
+the first failure at ERROR and names what the operator loses.
+
+`src/gui/main_window.py` — the two faults the sweep reports through
+
+```python
+        _tab_bots_fault = ThrottledFault(
+            "the exchange tab bot list",
+            "Every bot row on each exchange tab keeps its last figures and "
+            "stops refreshing.",
+        )
+        _tab_privacy_fault = ThrottledFault(
+            "the exchange tab privacy button",
+            "The privacy button on each exchange tab stops following the "
+            "privacy mode it is set to.",
+        )
+```
+
+The throttle is the same one the window already uses for its currency-rate and
+market-pairs pumps. The first failure reports and opens a thirty-second window;
+further failures inside that window are counted and not written, so a sweep that
+keeps failing costs one line rather than one per press.
+
+#### Read off the crash log, the privacy sweep
+
+The shipped method driven five times with one exchange tab whose bot-row refresh
+raises, and a second tab beside it whose refresh succeeds:
+
+```
+                       crash log lines    the fault named in it
+before                        0           no
+after                         9           yes
+reports emitted                1          from five failures
+neighbour tab refreshed        5 times     in both readings
+```
+
+The fault reaches the file as a `LOG_ERROR` entry naming the feature, what is
+lost, the retry window and the cause, followed by the frame inside
+`refresh_all_privacy_widgets`.
+
 ### The heartbeat file and the root that holds it
 
 The Watchdog half above says what the heartbeat is for. It polls the file, and a

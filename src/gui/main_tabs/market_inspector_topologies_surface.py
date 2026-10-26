@@ -27,7 +27,7 @@ from __future__ import annotations
 
 from typing import Any, Callable, Optional
 
-from ...trading.topology_proposals import UNAVAILABLE_KEY
+from ...trading.topology_proposals import UNAVAILABLE_KEY, unavailable_sentences
 from .market_inspector_surface import (
     METHOD_LINE_FORMAT,
     PUSH_TO_PAPER_LABEL,
@@ -515,10 +515,10 @@ def summary_line(new_bots: Any, budget: Any) -> str:
 
 
 def unavailable_tests(proposals: Any) -> list:
-    """Every unrun-contribution sentence the proposals of one refresh carry.
+    """Every unrun-contribution sentence one refresh has to name.
 
-    Reads the key ``detect_all_topologies`` stamps on each proposal and keeps
-    the first of each repeated sentence, since the whole run shares them.
+    Reads the stamp ``detect_all_topologies`` leaves on each proposal, and falls
+    back to ``unavailable_sentences`` when no proposal carries one.
     """
     out: list = []
     for one in proposals or []:
@@ -528,7 +528,9 @@ def unavailable_tests(proposals: Any) -> list:
             text = str(sentence)
             if text and text not in out:
                 out.append(text)
-    return out
+    if out:
+        return out
+    return [str(one) for one in unavailable_sentences() if str(one)]
 
 
 def status_count(proposals: Any, dismissed: Any, unavailable: Any = ()) -> str:
@@ -929,8 +931,8 @@ class TopologiesPaneModel:
     def status_line(self) -> str:
         """The count beside Refresh, or the unsaved-dismissal line over it.
 
-        The count names every contribution ``unavailable_tests`` finds on the
-        proposals on display.
+        The count names every contribution ``unavailable_tests`` reports for
+        this refresh, with no proposal on display or with several.
         """
         if self.save_error:
             return status_save_failed(self.save_error)

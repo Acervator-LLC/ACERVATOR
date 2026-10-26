@@ -405,8 +405,8 @@ if _HAS_QT:
         def _status_line(self) -> str:
             """The count beside Refresh, or the unsaved-dismissal line over it.
 
-            The count names every contribution ``unavailable_tests`` finds on
-            the proposals on display.
+            The count names every contribution ``unavailable_tests`` reports
+            for this refresh, with no proposal on display or with several.
             """
             if self._save_error:
                 return status_save_failed(self._save_error)
