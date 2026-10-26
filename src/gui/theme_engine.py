@@ -7,8 +7,10 @@ renders them into a stylesheet. ``ThemeManager`` serves Cyberpunk Dark, Neon
 Light, Classic Terminal, Minimal Modern and Glass Metal. Every ``ThemeTokens``
 pair meets WCAG 2.2 AA contrast, and a changed hex value needs a fresh audit.
 
-``stored_accent`` reads the operator's accent field and ``accented`` puts an
-accepted one over a theme's own ``accent_primary``.
+``stored_accent`` reads the operator's accent field, ``accent_refusal`` measures it
+against the theme's ground, and ``accented`` puts an accepted one over a theme's own
+``accent_primary``. ``applied_tokens`` answers which ``ThemeTokens`` ``apply_theme``
+last painted, and ``ThemeManager.current`` returns that same answer.
 
 ``nigredo`` is the Simulator's tone: the seven ground tokens moved
 ``NIGREDO_FRACTION`` of the way to black by ``toward_black``, every other token
@@ -22,7 +24,6 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass, replace
-from typing import Optional
 
 from ..core.contrast import AA_FLOOR, validate_contrast
 from ..core.settings import AppSettings
@@ -375,6 +376,19 @@ def applied_theme() -> str:
     return _applied_name
 
 
+_applied_tokens: ThemeTokens = THEMES[DEFAULT_THEME_NAME]
+
+
+def applied_tokens() -> ThemeTokens:
+    """Return the ``ThemeTokens`` ``ThemeManager.apply_theme`` last painted.
+
+    Every site that paints from the application's theme reads this one answer,
+    including ``ThemeManager.current``, so a second manager and a rebuild from
+    ``applied_theme`` cannot hold different accents.
+    """
+    return _applied_tokens
+
+
 #: ``AppSettings.accent_color``, the value that leaves a theme's own
 #: ``accent_primary`` painting. The store declares it, so this reads it.
 THEME_ACCENT = AppSettings().accent_color
@@ -404,27 +418,39 @@ ACCENT_REFUSED = (
 )
 
 
+def accent_refusal(theme: ThemeTokens, accent: object) -> str:
+    """Return the ``ACCENT_REFUSED`` line for ``accent`` on ``theme``, else empty.
+
+    ``accented`` logs what this returns and the main window puts the same line on
+    the Activity Log, so the pane and the log carry one ``validate_contrast`` figure.
+    """
+    taken = stored_accent(accent)
+    if not taken:
+        return ""
+    clears, ratio = validate_contrast(taken, theme.bg_primary)
+    if clears:
+        return ""
+    return ACCENT_REFUSED.format(
+        accent=taken,
+        ratio=ratio,
+        theme=theme.name,
+        ground=theme.bg_primary,
+        floor=AA_FLOOR,
+    )
+
+
 def accented(theme: ThemeTokens, accent: object) -> ThemeTokens:
     """Return ``theme`` with ``accent_primary`` at ``accent``, or ``theme`` itself.
 
-    An accent ``stored_accent`` refuses, and one ``validate_contrast`` measures
-    under ``AA_FLOOR`` against ``theme.bg_primary``, leaves every token of
-    ``theme`` alone, which keeps that theme's audited contrast.
+    An accent ``stored_accent`` refuses, and one ``accent_refusal`` measures under
+    ``AA_FLOOR`` against ``theme.bg_primary``, leaves every token of ``theme`` alone.
     """
     taken = stored_accent(accent)
     if not taken:
         return theme
-    clears, ratio = validate_contrast(taken, theme.bg_primary)
-    if not clears:
-        logger.warning(
-            ACCENT_REFUSED.format(
-                accent=taken,
-                ratio=ratio,
-                theme=theme.name,
-                ground=theme.bg_primary,
-                floor=AA_FLOOR,
-            )
-        )
+    refusal = accent_refusal(theme, accent)
+    if refusal:
+        logger.warning(refusal)
         return theme
     return replace(theme, accent_primary=taken)
 
@@ -905,9 +931,6 @@ class ThemeManager:
         available = tm.list_themes()
     """
 
-    def __init__(self) -> None:
-        self._current: Optional[ThemeTokens] = None
-
     def list_themes(self) -> list[dict[str, str]]:
         """Return available themes as [{name, display_name}, ...]."""
         return [
@@ -933,13 +956,13 @@ class ThemeManager:
         importing Qt at module level. ``accent`` paints over the theme's
         ``accent_primary`` when ``stored_accent`` accepts it.
         """
-        global _applied_name
-        qss = self.get_qss(name, accent)
-        self._current = accented(self.get_theme(name), accent)
-        _applied_name = self._current.name
+        global _applied_name, _applied_tokens
+        _applied_tokens = accented(self.get_theme(name), accent)
+        _applied_name = _applied_tokens.name
         if hasattr(app, "setStyleSheet"):
-            app.setStyleSheet(qss)
+            app.setStyleSheet(generate_qss(_applied_tokens))
 
     @property
-    def current(self) -> Optional[ThemeTokens]:
-        return self._current
+    def current(self) -> ThemeTokens:
+        """The theme the application is painted in, as ``applied_tokens`` answers it."""
+        return applied_tokens()

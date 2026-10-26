@@ -1443,6 +1443,43 @@ that says it did not paint are both on screen.
 Driven with `notacolour` against Neon Light, that line read: Accent colour
 'notacolour' is not a hex colour; painting the neon_light accent.
 
+A colour the measure refuses now reaches the same pane. The theme engine builds one
+refusal line, the engine writes it to the application log, and the main window puts
+the same line on the Activity Log, so the two carry one set of figures.
+
+`src/gui/theme_engine.py` — `accent_refusal`, the one line both carry
+
+```python
+def accent_refusal(theme: ThemeTokens, accent: object) -> str:
+    taken = stored_accent(accent)
+    if not taken:
+        return ""
+    clears, ratio = validate_contrast(taken, theme.bg_primary)
+    if clears:
+        return ""
+    return ACCENT_REFUSED.format(
+        accent=taken,
+        ratio=ratio,
+        theme=theme.name,
+        ground=theme.bg_primary,
+        floor=AA_FLOOR,
+    )
+```
+
+`src/gui/main_window.py` — `_switch_theme`, the pane he reads
+
+```python
+            refusal = accent_refusal(THEMES[stored_theme(name)], taken)
+            if refusal:
+                self._status_log.log(refusal, "warning")
+```
+
+Driven through that method with a real Activity Log pane, `#1a1a2e` typed against
+Cyberpunk Dark put this on the pane: Accent colour #1a1a2e measures 1.16 to 1
+against the cyberpunk_dark ground #0a0a0f, under the 4.5 floor; painting the
+cyberpunk_dark accent. The same press with `#ff8800`, which measures 8.25 to 1 on
+that ground, put no refusal on the pane.
+
 The React tab pages do not follow the typed value. Each page receives an
 `--accent` variable built from a theme name alone, so the seven rules in the
 Settings page's own stylesheet that read that variable stay on the theme's
@@ -1827,6 +1864,30 @@ flowchart LR
 
 The Simulator page under [the Simulator tab](simulator.md) states what each
 build paints in the tone and what was read off the renders.
+
+One answer says which theme the application is painted in. The theme engine records
+the colours it last painted, and every site that needs them reads that record,
+including the theme holder itself. A holder built fresh on a menu press and a chart
+asking later now give the same answer, accepted accent included.
+
+`src/gui/theme_engine.py` — `applied_tokens`, the one answer
+
+```python
+def applied_tokens() -> ThemeTokens:
+    """Return the ``ThemeTokens`` ``ThemeManager.apply_theme`` last painted.
+
+    Every site that paints from the application's theme reads this one answer,
+    including ``ThemeManager.current``, so a second manager and a rebuild from
+    ``applied_theme`` cannot hold different accents.
+    """
+    return _applied_tokens
+```
+
+Four sites ask: the holder that applied the theme, a holder built later, the Charts
+tab, and the native chart's own colour roles. Driven with Cyberpunk Dark and the
+accent `#ff8800`, all four read that accent. Moving the record to Glass Metal moved
+all four together; on the tree before this change two of the four moved, one held
+its own copy and one answered nothing at all.
 
 ### Settings > Logging
 

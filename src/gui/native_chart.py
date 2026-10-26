@@ -76,7 +76,7 @@ from src.gui.main_tabs.native_chart_surface import (
     zoom_factor,
     zoom_window,
 )
-from src.gui.theme_engine import CYBERPUNK_DARK, THEMES, applied_theme
+from src.gui.theme_engine import CYBERPUNK_DARK, applied_tokens
 from src.trading.ta_engine import (
     ADXIndicator,
     BollingerBands,
@@ -608,8 +608,12 @@ if _HAS_QT:
         return design_font(ds.FONT_FAMILY_MONO, OHLC_FONT_PX, bold=True)
 
     def theme_in_force():
-        """The ``ThemeTokens`` ``ThemeManager.apply_theme`` last painted."""
-        return THEMES.get(applied_theme(), DEFAULT_THEME_TOKENS)
+        """The ``ThemeTokens`` ``ThemeManager.apply_theme`` last painted.
+
+        ``applied_tokens`` carries an accepted accent; ``DEFAULT_THEME_TOKENS``
+        carries ``CYBERPUNK_DARK``'s own.
+        """
+        return applied_tokens()
 
     @dataclass
     class PaintContext:
