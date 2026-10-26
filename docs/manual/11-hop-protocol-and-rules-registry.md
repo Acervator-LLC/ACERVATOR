@@ -677,6 +677,49 @@ correct result rather than a missing file. The contrast with version one is the
 point: version one's subject has no source anywhere, in this repository or on
 disk.
 
+### A credential written into a page
+
+This repository is public. The documentation archetype reports a credential
+written into a markdown page, at the severity that makes the page fail, under
+rule id DOC014.
+
+```
+dev_harness/harness/docs_archetype.py, in _run_credentials
+
+reads     every markdown page whole, fenced blocks included
+reports   one high finding per credential, naming its shape and its line
+silent    a placeholder, a field name, a credentials file path, a short value
+```
+
+Six shapes are read, and each one is the shape a credential takes in this
+application's own files.
+
+```
+a labelled secret         src/exchange/api_logger.py, _SENSITIVE_LABEL
+a bearer token            src/stocks/robinhood_broker.py, BEARER_PREFIX
+a private key block       src/core/encryption.py, EC_PEM_HEADER
+a Coinbase key name       src/exchange/ccxt_connector.py, in sync_connect
+a hex private key         contracts/deploy.py
+a password in a URL       src/exchange/api_logger.py, in _redact
+```
+
+The finding names the shape and the line and never the secret, because a
+finding is pasted into a report and a report is read in public. The repair is
+to delete the credential from the page and rotate it at the venue.
+
+Before this rule the archetype raised a prose finding to high when its check
+name began with a security family. The installed prose linter registers 122
+checks across 23 families and none of them is a security family, so that branch
+had no subject and a page carrying a credential exited zero.
+
+```
+harness_fixtures/docs_archetype/credential_bad.md     exits 1
+harness_fixtures/docs_archetype/credential_good.md    exits 0
+```
+
+The good body carries the near-miss shapes the rule must not report, so the
+pair reads both sides of the rule rather than one.
+
 ## Related parts
 
 - [09-updates-and-versioning.md](09-updates-and-versioning.md) — the release gate
