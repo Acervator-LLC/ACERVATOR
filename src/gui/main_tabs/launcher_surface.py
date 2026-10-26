@@ -137,7 +137,9 @@ SHADOW_OFFSET_PX = (0, 0)
 SHADOW_ATTACHED = False
 
 CRYPTO_TITLE = "Crypto Trading"
-CRYPTO_SUBTITLE = "Multi-exchange cryptocurrency trading with Grid and Scrumming bots"
+CRYPTO_SUBTITLE = (
+    "Multi-exchange cryptocurrency trading with Scrumming and Extractor bots"
+)
 CRYPTO_ICON = "₿"
 #: The voter count is filled from DEFAULT_WEIGHTS, never typed in.
 CRYPTO_TA_FEATURE_FORMAT = "{indicator_count}-Indicator TA Voting Engine"
@@ -148,7 +150,7 @@ def crypto_features() -> tuple[str, ...]:
     ``DEFAULT_WEIGHTS`` declares."""
     return (
         "Multi-exchange (30+ supported)",
-        "Grid Bot & Scrumming Bot",
+        "Scrumming Bot & Extractor Bot",
         CRYPTO_TA_FEATURE_FORMAT.format(indicator_count=len(DEFAULT_WEIGHTS)),
         "Profit Folding & Distribution",
         "Phantom Balance Bots",
@@ -162,7 +164,7 @@ STOCKS_ICON = "↑"
 STOCKS_FEATURES = (
     "TradingView Webhook Signals",
     "Alpaca Broker Integration",
-    "Signal, DCA, Swing & Grid Bots",
+    "Accumulation, Signal, DCA & Swing Bots",
     "Market Hours Awareness",
     "Paper Trading Support",
     "Stop-Loss & Take-Profit",

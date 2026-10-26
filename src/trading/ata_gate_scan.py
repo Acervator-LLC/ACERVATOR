@@ -18,11 +18,13 @@ from .gate_chain import (
     GateContext,
     build_scrumming_fold_chain,
     build_scrumming_scrum_chain,
+    effective_gate_flags,
 )
 from .indicators.bollinger import BollingerBands
 from .indicators.landing_strip import detect_landing_strip_v2
 from .indicators.types import SignalDirection
 from .otd_math import minimum_opposing_trade_distance_pct
+from .scrumming.circuit_breakers import breaker_figures, breaker_move
 from .scrumming.target_ramp import (
     RAMP_FIRE,
     RAMP_SEARCH,
@@ -100,7 +102,16 @@ MIDLINE_POSITION = 0.5
 PERCENT_PER_RATIO_UNIT = 100.0
 NO_BAND_VALUE = 0.0
 DEFAULT_DETECT_PCT = 75.0
-DEFAULT_SOFT_BREAKER_PCT = 25.0
+
+#: The reading a scan publishes for the hard breaker, which no gate of either
+#: chain carries. ``NO_SIDE`` keeps it out of every chain verdict.
+HARD_BREAKER_GATE = "circuit_breaker_hard"
+HARD_BREAKER_FORMAT = (
+    "single-candle move {move:.2f}% against your hard {hard:.2f}% "
+    "and soft {soft:.2f}% (cooldown {cooldown} candles, soft side {side})"
+)
+HARD_BREAKER_NO_CANDLE = "the window carried no candle the move reader could read"
+NO_SOFT_SIDE_TEXT = "none"
 
 #: ``ScrummingBot.tick`` reads the same two zones off ``bb_pos``.
 UPPER_ZONE_FLOOR = 0.75
@@ -292,30 +303,45 @@ def band_of(candles: Any) -> Optional[dict]:
     }
 
 
-def circuit_breaker_sides(candles: Any, soft_pct: Any) -> tuple:
-    """Whether the newest candle trips the soft breaker on each side.
+def breaker_reading(candles: Any, settings: Any) -> tuple:
+    """The newest candle read against ``settings`` breaker figures.
 
-    The move is ``(high - low) / open`` against ``soft_pct``, and the
-    close against the open picks the side.
+    Answers the ``BreakerFigures`` and the ``BreakerMove``
+    ``CircuitBreakerMixin._check_circuit_breakers`` reads, or None for a
+    window the move reader cannot read.
     """
+    figures = breaker_figures(settings)
     held = list(candles or [])
     if not held:
-        return (False, False)
-    candle = held[-1]
-    try:
-        open_px = float(candle.open)
-        high = float(candle.high)
-        low = float(candle.low)
-        close = float(candle.close)
-        limit_ratio = float(soft_pct) / PERCENT_PER_RATIO_UNIT
-    except (TypeError, ValueError, AttributeError):
-        return (False, False)
-    if open_px <= 0 or limit_ratio <= 0:
-        return (False, False)
-    move_ratio = (high - low) / open_px
-    if move_ratio < limit_ratio:
-        return (False, False)
-    return (close >= open_px, close < open_px)
+        return (figures, None)
+    return (figures, breaker_move(held[-1], figures))
+
+
+def hard_breaker_row(figures: Any, move: Any) -> GateReading:
+    """One ``GateReading`` naming both stored breaker figures and the move.
+
+    ``HARD_BREAKER_GATE`` carries ``NO_SIDE``, so no chain verdict reads it
+    and a scan still shows what the hard breaker would do.
+    """
+    if move is None:
+        return GateReading(
+            name=HARD_BREAKER_GATE,
+            side=NO_SIDE,
+            state=STATE_NOT_RUN,
+            detail=HARD_BREAKER_NO_CANDLE,
+        )
+    return GateReading(
+        name=HARD_BREAKER_GATE,
+        side=NO_SIDE,
+        state=STATE_BLOCKED if move.hard_trips else STATE_LATCHED,
+        detail=HARD_BREAKER_FORMAT.format(
+            move=move.move_pct,
+            hard=figures.hard_pct,
+            soft=figures.soft_pct,
+            cooldown=figures.cooldown_candles,
+            side=move.soft_side or NO_SOFT_SIDE_TEXT,
+        ),
+    )
 
 
 def ramp_step(mode: Any, price: Any, band: dict, settings: Any) -> str:
@@ -636,14 +662,21 @@ def build_context(
         is_bearish = True
     trend_strength = bull_candle_count(candles) / TREND_CANDLES
     trend_hold = trend_strength > TREND_MIN_BULL_SHARE
-    blocks_scrum, blocks_fold = circuit_breaker_sides(
-        candles,
-        getattr(held, "circuit_breaker_soft_pct", DEFAULT_SOFT_BREAKER_PCT),
-    )
+    _, breaker = breaker_reading(candles, held)
+    blocks_scrum = breaker is not None and breaker.soft_side == SIDE_SCRUM
+    blocks_fold = breaker is not None and breaker.soft_side == SIDE_FOLD
     bias = htf_bias(rows, timeframe)
     htf_blocks_scrum = bias == SignalDirection.BULLISH
     htf_blocks_fold = bias == SignalDirection.BEARISH
     midline_gate = bool(getattr(held, "bb_midline_gate", True))
+    effective = effective_gate_flags(
+        held,
+        is_bullish=is_bullish,
+        is_bearish=is_bearish,
+        trend_hold=trend_hold,
+        htf_blocks_scrum=htf_blocks_scrum,
+        htf_blocks_fold=htf_blocks_fold,
+    )
     return GateContext(
         symbol=str(symbol),
         ticker_last=price,
@@ -658,11 +691,11 @@ def build_context(
         trend_hold=trend_hold,
         trend_strength=trend_strength,
         eff_direction_name=DIRECTION_NAMES.get(direction, ""),
-        eff_is_bullish=is_bullish or not held.scrum_require_ta_bullish,
-        eff_is_bearish=is_bearish or not held.fold_require_ta_bearish,
-        eff_trend_hold=trend_hold and bool(held.scrum_hold_in_uptrend),
-        eff_htf_blocks_scrum=htf_blocks_scrum and bool(held.scrum_defer_to_htf),
-        eff_htf_blocks_fold=htf_blocks_fold and bool(held.fold_defer_to_htf),
+        eff_is_bullish=effective.eff_is_bullish,
+        eff_is_bearish=effective.eff_is_bearish,
+        eff_trend_hold=effective.eff_trend_hold,
+        eff_htf_blocks_scrum=effective.eff_htf_blocks_scrum,
+        eff_htf_blocks_fold=effective.eff_htf_blocks_fold,
         flag_require_ta_bullish=bool(held.scrum_require_ta_bullish),
         flag_hold_in_uptrend=bool(held.scrum_hold_in_uptrend),
         flag_defer_to_htf=bool(held.scrum_defer_to_htf),
@@ -792,13 +825,17 @@ def scan_gates(
 ) -> GateScan:
     """Both chains run over one scanned market, as one ``GateScan``.
 
-    A window under ``MIN_CANDLES_FOR_TA`` answers an empty ``GateScan``.
+    A window under ``MIN_CANDLES_FOR_TA`` answers an empty ``GateScan``, and
+    ``hard_breaker_row`` closes the readings with both stored figures.
     """
     held = list(candles or [])
     if len(held) < MIN_CANDLES_FOR_TA or summary is None or band is None:
         return GateScan(symbol=str(symbol), timeframe=str(timeframe))
-    context = build_context(symbol, timeframe, held, summary, band, rows, settings)
+    settings_held = settings if settings is not None else scan_settings(symbol)
+    context = build_context(symbol, timeframe, held, summary, band, rows, settings_held)
     readings = read_chain(build_scrumming_scrum_chain(), context) + read_chain(
         build_scrumming_fold_chain(), context
     )
+    figures, move = breaker_reading(held, settings_held)
+    readings.append(hard_breaker_row(figures, move))
     return GateScan(symbol=str(symbol), timeframe=str(timeframe), readings=readings)

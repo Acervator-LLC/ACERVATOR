@@ -14,6 +14,10 @@ from typing import Optional
 from ...trading.container.config import (
     CEILING_MULTIPLE_MAX,
     CEILING_MULTIPLE_MIN,
+    FOLD_RATIO_MAX_PCT,
+    FOLD_RATIO_MIN_PCT,
+    FOLD_RATIO_PCT_DEFAULT,
+    POSITION_CEILING_MULTIPLE_DEFAULT,
     BotConfig,
     as_finite_float,
 )
@@ -615,8 +619,8 @@ if _HAS_QT:
             sf.addRow("Max Target Growth %:", self._max_target_growth_pct)
 
             self._scrum_fold_pct = QSpinBox()
-            self._scrum_fold_pct.setRange(1, 100)
-            self._scrum_fold_pct.setValue(100)
+            self._scrum_fold_pct.setRange(FOLD_RATIO_MIN_PCT, FOLD_RATIO_MAX_PCT)
+            self._scrum_fold_pct.setValue(FOLD_RATIO_PCT_DEFAULT)
             self._scrum_fold_pct.setSuffix(" %")
             self._scrum_fold_pct.setToolTip(
                 "% of scrum sale proceeds queued for fold (rebuy).\n"
@@ -665,14 +669,14 @@ if _HAS_QT:
             )
             af.addRow(self._bb_midline_gate)
 
-            self._scrum_read_rate = QSpinBox()
-            self._scrum_read_rate.setRange(1, 60)
-            self._scrum_read_rate.setSuffix(" min")
-            self._scrum_read_rate.setValue(5)
-            self._scrum_read_rate.setToolTip(
+            self._scrum_read_rate_min = QSpinBox()
+            self._scrum_read_rate_min.setRange(1, 60)
+            self._scrum_read_rate_min.setSuffix(" min")
+            self._scrum_read_rate_min.setValue(5)
+            self._scrum_read_rate_min.setToolTip(
                 "SEARCH-mode read rate in minutes. TRACK mode reads " "10x faster."
             )
-            af.addRow("Read Rate:", self._scrum_read_rate)
+            af.addRow("Read Rate:", self._scrum_read_rate_min)
 
             self._band_travel_pct = QSpinBox()
             self._band_travel_pct.setRange(0, 100)
@@ -684,16 +688,16 @@ if _HAS_QT:
             )
             af.addRow("Band Travel:", self._band_travel_pct)
 
-            self._bb_bullseye = QCheckBox("BB Bullseye Check")
-            self._bb_bullseye.setChecked(True)
-            self._bb_bullseye.setToolTip(
+            self._bb_bullseye_check = QCheckBox("BB Bullseye Check")
+            self._bb_bullseye_check.setChecked(True)
+            self._bb_bullseye_check.setToolTip(
                 "Counts a band touch within 0.5 % (or a candle wick "
                 "within 0.2 %) as BB proximity. With the delta at or "
                 "over the interval that arms the BB priority skew, "
                 "which lowers the TA confidence floor. The fire "
                 "threshold and the midline gate are unchanged."
             )
-            af.addRow(self._bb_bullseye)
+            af.addRow(self._bb_bullseye_check)
 
             groups.addWidget(self._adv_group)
 
@@ -811,7 +815,7 @@ if _HAS_QT:
             self._position_ceiling_enabled.setToolTip(
                 "Cap accumulation at Nx of the bot's INITIAL "
                 "target_balance (stable anchor set at creation). "
-                "Fold rate tapers 100 % → 10 % as value approaches "
+                "Fold size tapers 100 % → 10 % as value approaches "
                 "ceiling (ratio 0.5 → 1.0), hard-stops at ceiling. "
                 "Scrum always allowed. Protects against runaway "
                 "accumulation on conviction plays."
@@ -825,7 +829,7 @@ if _HAS_QT:
             self._position_ceiling_multiple.setDecimals(1)
             self._position_ceiling_multiple.setSingleStep(0.5)
             self._position_ceiling_multiple.setSuffix("x anchor")
-            self._position_ceiling_multiple.setValue(5.0)
+            self._position_ceiling_multiple.setValue(POSITION_CEILING_MULTIPLE_DEFAULT)
             self._position_ceiling_multiple.setToolTip(
                 "Ceiling multiplier. 1x = no accumulation beyond "
                 "anchor. 10x = 10x runway. Default 5x."
@@ -893,7 +897,12 @@ if _HAS_QT:
                 "ON (Conservative): if 65 %+ of last 20 candles "
                 "were bullish, bot holds rather than scrumming each "
                 "band touch. OFF (Lean): scrum every BB-upper touch "
-                "regardless of trend strength."
+                "regardless of trend strength. On a live bot an "
+                "override clears this hold on either of two "
+                "conditions: the position sits at least twice the "
+                "Scrumming Interval away from target, or Band Travel "
+                "fires. The gate line then names TRND as overridden "
+                "and its light paints cyan."
             )
             gf.addRow(self._gate_scrum_uptrend_chk)
 
@@ -1113,9 +1122,9 @@ if _HAS_QT:
                     "scrum_detect_pct": self._scrum_detect_pct.value(),
                     "scrum_fire_pct": self._scrum_fire_pct.value(),
                     "bb_midline_gate": self._bb_midline_gate.isChecked(),
-                    "scrum_read_rate_min": self._scrum_read_rate.value(),
+                    "scrum_read_rate_min": self._scrum_read_rate_min.value(),
                     "band_travel_pct": self._band_travel_pct.value(),
-                    "bb_bullseye_check": self._bb_bullseye.isChecked(),
+                    "bb_bullseye_check": self._bb_bullseye_check.isChecked(),
                     "hedge_rebalance_active": self._hedge_rebalance.isChecked(),
                     "hedge_balance": self._hedge_amount.value(),
                     "circuit_breaker_soft_pct": self._cb_soft_pct.value(),

@@ -35,6 +35,7 @@ from .container import (
 from .container.config import (
     DESPAWN_MAX_DAYS,
     DESPAWN_PREVIEW_WINDOWS,
+    DETONATION_CONFIDENCE_MIN_DEFAULT,
     DOLLAR_PEGGED_CURRENCIES,
     EXPIRY_CLOSE_ACTIONS,
     EXPIRY_CLOSE_FINISH_LADDER,
@@ -58,6 +59,7 @@ from .container.config import (
     _sanitize_deprecated_kwargs,
     as_finite_float,
     bot_config_kwargs,
+    ceiling_multiple,
     despawn_preview,
     despawn_threshold_days,
     expiry_close_decision,
@@ -949,7 +951,7 @@ class BotContainer:
         anchor_tb = getattr(self, "_anchor_target_balance", None)
         ceiling_usd = getattr(self, "position_ceiling_usd", None)
         ceiling_ratio = getattr(self, "ceiling_ratio", None)
-        fold_taper = getattr(self, "fold_rate_taper", 1.0)
+        fold_taper = getattr(self, "fold_size_taper", 1.0)
 
         # Queued tranches larger than one cycle's cycle_growth_cap_usd;
         # each is PART-CONSUMED, not skipped, so the count is advisory.
@@ -989,14 +991,19 @@ class BotContainer:
             "position_ceiling_enabled": getattr(
                 self.config, "position_ceiling_enabled", False
             ),
-            "position_ceiling_multiple": getattr(
-                self.config, "position_ceiling_multiple", 5.0
-            ),
+            "position_ceiling_multiple": ceiling_multiple(self.config),
             "position_ceiling_usd": ceiling_usd,
             "ceiling_ratio": ceiling_ratio,
-            "fold_rate_taper": fold_taper,
+            "fold_size_taper": fold_taper,
             "detonation_enabled": getattr(self.config, "detonation_enabled", False),
             "detonation_timeframe": getattr(self.config, "detonation_timeframe", "1d"),
+            "detonation_confidence_min": float(
+                getattr(
+                    self.config,
+                    "detonation_confidence_min",
+                    DETONATION_CONFIDENCE_MIN_DEFAULT,
+                )
+            ),
             "target_balance": self.config.target_balance,
             # Runtime values the bot trades against; config.target_balance
             # above is the operator's unchanged input.

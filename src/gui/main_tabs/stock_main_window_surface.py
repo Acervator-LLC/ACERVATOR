@@ -344,7 +344,7 @@ ABOUT_TEXT_FORMAT = (
     "Acervator — Stock Trading v{version}\n\n"
     "TradingView Webhook Integration\n"
     "Alpaca Broker Support\n"
-    "Signal • DCA • Swing • Grid Bots\n"
+    "Accumulation • Signal • DCA • Swing Bots\n"
     "Market Hours Awareness\n"
     "Shared Analytics & Risk Management"
 )

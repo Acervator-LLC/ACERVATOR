@@ -37,7 +37,10 @@ from typing import Any, Optional, Sequence
 
 from ..core.io_utils import atomic_write_json
 from ..trading.container.config import (
+    DETONATION_CONFIDENCE_MIN_DEFAULT,
+    POSITION_CEILING_MULTIPLE_DEFAULT,
     PUSHED_TARGET_DEFAULT,
+    TARGET_GROWTH_PCT_DEFAULT,
     BotConfig,
     BotMode,
     BotState,
@@ -45,6 +48,7 @@ from ..trading.container.config import (
     bot_config_kwargs,
     make_bot_config,
     pushed_target_usd,
+    stored_list,
 )
 from ..trading.scrumming.sizing import DRAWDOWN_STATE, priced_usd
 from ..trading.scrumming.target_ramp import RAMP_MODES
@@ -250,10 +254,11 @@ class PaperBot:
     exchange_data_fresh_ts: float = 0.0
     scrum_target_mode: Optional[str] = None
     position_ceiling_enabled: bool = False
-    position_ceiling_multiple: float = 5.0
-    max_target_growth_pct: float = 1.0
+    position_ceiling_multiple: float = POSITION_CEILING_MULTIPLE_DEFAULT
+    max_target_growth_pct: float = TARGET_GROWTH_PCT_DEFAULT
     detonation_enabled: bool = False
     detonation_timeframe: str = "1d"
+    detonation_confidence_min: float = DETONATION_CONFIDENCE_MIN_DEFAULT
     chunk_size_usd: float = 0.0
     chunk_size_base: float = 0.0
     chunk_free_base: float = 0.0
@@ -365,7 +370,9 @@ def paper_bot_from_record(
         else (REFUSED_FIGURE if target_read is None else target_read)
     )
     pool = _extractor_figures(config, record)
-    phantom_tfs = tuple(str(one) for one in (record.get("phantom_timeframes") or []))
+    phantom_tfs = tuple(
+        str(one) for one in stored_list(record.get("phantom_timeframes"))
+    )
     interval_pct = as_finite_float(config.get("scrumming_interval_pct"))
     read_rate_min = as_finite_float(config.get("scrum_read_rate_min"))
     fee_pct = as_finite_float(config.get("trading_fee_pct"))
@@ -393,6 +400,7 @@ def paper_bot_from_record(
     venue_fresh_ts = as_finite_float(stats.get("exchange_data_fresh_ts"))
     ceiling_multiple = as_finite_float(config.get("position_ceiling_multiple"))
     growth_cap_pct = as_finite_float(config.get("max_target_growth_pct"))
+    detonation_bar = as_finite_float(config.get("detonation_confidence_min"))
     cash = as_finite_float(stats.get("cash_balance_usd"))
     ytd_scrummed = as_finite_float(stats.get("ytd_scrummed_usd"))
     ytd_folded = as_finite_float(stats.get("ytd_folded_usd"))
@@ -469,11 +477,20 @@ def paper_bot_from_record(
         scrum_target_mode=scrum_mode,
         position_ceiling_enabled=bool(config.get("position_ceiling_enabled", False)),
         position_ceiling_multiple=(
-            5.0 if ceiling_multiple is None else ceiling_multiple
+            POSITION_CEILING_MULTIPLE_DEFAULT
+            if ceiling_multiple is None
+            else ceiling_multiple
         ),
-        max_target_growth_pct=1.0 if growth_cap_pct is None else growth_cap_pct,
+        max_target_growth_pct=(
+            TARGET_GROWTH_PCT_DEFAULT if growth_cap_pct is None else growth_cap_pct
+        ),
         detonation_enabled=bool(config.get("detonation_enabled", False)),
         detonation_timeframe=str(config.get("detonation_timeframe") or "1d"),
+        detonation_confidence_min=(
+            DETONATION_CONFIDENCE_MIN_DEFAULT
+            if detonation_bar is None
+            else detonation_bar
+        ),
         chunk_size_usd=pool["chunk_size_usd"],
         chunk_size_base=pool["chunk_size_base"],
         chunk_free_base=pool["chunk_free_base"],
@@ -809,7 +826,7 @@ def row_status(bot: PaperBot) -> dict:
     keys the Scrumming Bots table, the Extractor Bots table and the Status tab
     read, an extractor's carrying ``_extractor_status`` over the base keys.
     ``armed_action``, ``position_ceiling_usd``, ``ceiling_ratio`` and
-    ``fold_rate_taper`` are runtime values a stored record does not hold and
+    ``fold_size_taper`` are runtime values a stored record does not hold and
     read as they do on a live bot before its first tick."""
     status = {
         "bot_id": bot.bot_id,
@@ -823,9 +840,10 @@ def row_status(bot: PaperBot) -> dict:
         "position_ceiling_multiple": bot.position_ceiling_multiple,
         "position_ceiling_usd": None,
         "ceiling_ratio": None,
-        "fold_rate_taper": 1.0,
+        "fold_size_taper": 1.0,
         "detonation_enabled": bot.detonation_enabled,
         "detonation_timeframe": bot.detonation_timeframe,
+        "detonation_confidence_min": bot.detonation_confidence_min,
         "target_balance": bot.target_usd or 0.0,
         "live_target_balance": bot.live_target_usd,
         "ta_timeframe": bot.ta_timeframe or "1h",

@@ -1,1 +1,1 @@
-"""Trading subsystem: bot containers, grid mode, scrumming, profit folding."""
+"""Trading subsystem: bot containers, scrumming, extraction, profit folding."""

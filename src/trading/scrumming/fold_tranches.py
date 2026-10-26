@@ -12,6 +12,7 @@ import time
 from typing import Any, Optional
 
 from ..bot_container import as_finite_float, despawn_threshold_days
+from ..container.config import fold_ratio_pct
 from .sizing import (
     eligible_fold_tranches,
     plan_fold_consumption,
@@ -84,7 +85,7 @@ class FoldTrancheAccountingMixin:
             scrum_asset: units this sale sold, the same figure the build
                 loop divided. The two give the sale's own net rate.
         """
-        _fold_pct = max(0, min(100, int(getattr(self.config, "scrum_fold_pct", 100))))
+        _fold_pct = fold_ratio_pct(self.config)
         _new_tranches = self._fold_tranches[_tranche_count_before:]
         if _fold_pct < 100 and _new_tranches:
             _fold_frac = _fold_pct / 100.0

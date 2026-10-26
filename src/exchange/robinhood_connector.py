@@ -1489,7 +1489,7 @@ class RobinhoodCryptoConnector(ExchangeInterface):
             level="info",
             data_usage=(
                 "Order will be tracked for fill status; fills trigger profit "
-                "folding or grid cycling"
+                "folding or the next scrum/fold cycle"
             ),
         )
         await self._pace()

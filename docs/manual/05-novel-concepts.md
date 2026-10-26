@@ -366,6 +366,56 @@ draws its absent marks. The table ended the whole tab build on either one before
 | the Qt loop | `src/gui/live_settings/phantom_bots_tab.py` | `PhantomBotsTabMixin._create_phantom_bots_tab` |
 | the React loop | `src/gui/main_tabs/phantom_bots_tab_surface.py` | `PhantomBotsTabModel.build` |
 
+**The window's answer carries every row the tab draws.** The Bot Settings
+window publishes one bot reading that each of its tabs asks for. That reading
+carried the enable switch, the timeframe list and the lock figure, and the tab
+read six more names the window never sent. On the running build the started
+row, the dropped row and the lock-state row drew their built-in words, and
+neither runtime table drew at all.
+
+One declaration now names each status reading, its bot attribute and the value
+an absent attribute gets, so a row cannot reach the page alone.
+
+```python
+BOT_REQUEST_ROW: tuple = (
+    (REQUEST_ENABLED, ENABLED_ATTRIBUTE, False),
+    (REQUEST_STARTED, STARTED_ATTRIBUTE, False),
+    (REQUEST_TIMEFRAMES, TIMEFRAMES_ATTRIBUTE, None),
+    (REQUEST_DROPPED, DROPPED_ATTRIBUTE, None),
+    (REQUEST_LOCKED, LOCKED_ATTRIBUTE, False),
+    (REQUEST_LOCK_TIMEFRAME, LOCK_TIMEFRAME_ATTRIBUTE, DEFAULT_LOCK_TIMEFRAME),
+)
+```
+
+Driven on two bots differing in every row, the page and the Qt tab now report
+the same six rows and the same two tables.
+
+```
+                              before                 after
+Phantoms started              NO on both bots        YES then NO
+Dropped by the venue          none on both bots      1w then 3m, 6h
+SCRUM lock state              UNLOCKED on both       LOCKED then UNLOCKED
+per-phantom table rows        0 and 0                1 and 2
+active lock table rows        0 and 0                1 and 2
+```
+
+| reading | module | symbol |
+| ------- | ------ | ------ |
+| the declaration | `src/gui/main_tabs/phantom_bots_tab_surface.py` | `BOT_REQUEST_ROW` |
+| the bot read | `src/gui/main_tabs/phantom_bots_tab_surface.py` | `published_bot` |
+| the per-phantom read | `src/gui/main_tabs/phantom_bots_tab_surface.py` | `phantom_statuses` |
+| the lock read | `src/gui/main_tabs/phantom_bots_tab_surface.py` | `active_locks` |
+| the window's answer | `src/gui/main_tabs/bot_live_settings_surface.py` | `tab_bot` |
+| the page's reader | `src/gui/main_tabs/phantom_bots_tab_surface.py` | `view_model` |
+
+Paper and the Simulator read the same answer. Each builds its own window
+payload by calling Live's builder, so one repair reaches all three.
+
+```
+src/gui/paper/paper_bot_live_settings_surface.py, in build_view_model
+src/gui/simulator/sim_bot_live_settings_surface.py, in build_view_model
+```
+
 ## 3 - The Landing Strip
 
 Perhaps the earliest assumption that hit me the most and really presented the catalyzing challenge to creating all of my alternate trading methods, is that you cannot predict what the market will do and after only a short while of actively trading I asked the questions: “But what if I don’t have to?” “What if I decide that I do not have to speculate at all?” I do not remember exactly when I first used the term but I think it was when I was trading A34 and A27 some years ago while participating in a Telegram group with some psytrance friends and associations called the Better Bitcoin Bureau. The name changed a few times but this is the one I recall.
@@ -1217,6 +1267,35 @@ Issue #336 records both pairs among the wizard
 settings that never reach the bot. Issue #107 records a detonation that can fire
 twice across a restart. Any earlier description reading "bearish" is wrong: the
 code compares against the bullish direction.
+
+### How the taper and the detonation bar read today
+
+Two readings in section 14 above carry wording this unit changed. They stand as
+written, and these are the readings that replaced them.
+
+| written above | what it reads now |
+| --- | --- |
+| "the fold rate tapers as the position approaches it" | The fold size tapers. The figure multiplies the dollars a fold spends and never the interval between folds. The schedule itself is unchanged: full size below half the ceiling, a linear taper to a tenth across the upper half, a hard stop at the ceiling |
+| "`src/trading/scrumming_bot.py` — `ScrummingBot.fold_rate_taper`" | `src/trading/scrumming_bot.py, in ScrummingBot.fold_size_taper`, reading the same schedule from `src/trading/scrumming/sizing.py, in fold_size_taper` |
+| "a bullish consensus at or above the confidence minimum" | Unchanged, and the minimum now reaches the status record every screen reads, so the Fire tooltip on a Bot Swarm row names the figure a vote has to clear |
+
+`src/trading/scrumming_bot.py, in ScrummingBot.fold_size_taper` — the property
+
+```python
+ratio = self.ceiling_ratio
+if ratio is None:
+    return 1.0
+return fold_size_taper(ratio)
+```
+
+The opening confidence figure is one declaration, read by the stored record and by
+the Min Confidence box.
+
+`src/trading/container/config.py` — the figure
+
+```python
+DETONATION_CONFIDENCE_MIN_DEFAULT: float = 0.75
+```
 
 ## 15 - Proof of Accumulation (PoA)
 

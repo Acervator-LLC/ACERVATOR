@@ -531,9 +531,9 @@ class SimSettingsTabMixin(SettingsTabMixin):
         self._max_target_growth.setSuffix("%")
         self._max_target_growth.setDecimals(2)
         self._max_target_growth.setSingleStep(0.25)
-        self._max_target_growth.setValue(
-            float(getattr(cfg, "max_target_growth_pct", 1.0))
-        )
+        from ...trading.container.config import target_growth_pct
+
+        self._max_target_growth.setValue(float(target_growth_pct(cfg)))
         self._max_target_growth.setToolTip(
             "Per-event cap on how much a fold surplus may grow Target Balance.\n"
             "Absolute ceiling = Target × (1 + this%/100). Default 1%.\n"
@@ -544,6 +544,27 @@ class SimSettingsTabMixin(SettingsTabMixin):
             lambda v: self._mark_changed("max_target_growth_pct", v)
         )
         sf.addRow("Max Target Growth %:", self._max_target_growth)
+
+        from ...trading.container.config import (
+            FOLD_RATIO_MAX_PCT,
+            FOLD_RATIO_MIN_PCT,
+            fold_ratio_pct,
+        )
+
+        self._scrum_fold_pct = QSpinBox()
+        self._scrum_fold_pct.setRange(FOLD_RATIO_MIN_PCT, FOLD_RATIO_MAX_PCT)
+        self._scrum_fold_pct.setSuffix(" %")
+        self._scrum_fold_pct.setValue(fold_ratio_pct(cfg))
+        self._scrum_fold_pct.setToolTip(
+            "% of scrum sale proceeds queued for fold (rebuy).\n"
+            "100% = full reentry (max accumulation, max risk).\n"
+            "Lower values preserve cash buffer — safer when\n"
+            "price keeps falling after the scrum."
+        )
+        self._scrum_fold_pct.valueChanged.connect(
+            lambda v: self._mark_changed("scrum_fold_pct", v)
+        )
+        sf.addRow("Scrum Fold Ratio:", self._scrum_fold_pct)
 
         self._profit_folding_active = QCheckBox("Profit Folding Active")
         self._profit_folding_active.setChecked(
@@ -611,17 +632,17 @@ class SimSettingsTabMixin(SettingsTabMixin):
         )
         af.addRow(self._midline_gate)
 
-        self._read_rate = QSpinBox()
-        self._read_rate.setRange(1, 60)
-        self._read_rate.setSuffix(" min")
-        self._read_rate.setValue(int(cfg.scrum_read_rate_min))
-        self._read_rate.setToolTip(
+        self._scrum_read_rate_min = QSpinBox()
+        self._scrum_read_rate_min.setRange(1, 60)
+        self._scrum_read_rate_min.setSuffix(" min")
+        self._scrum_read_rate_min.setValue(int(cfg.scrum_read_rate_min))
+        self._scrum_read_rate_min.setToolTip(
             "SEARCH-mode read rate in minutes. TRACK mode reads 10x faster."
         )
-        self._read_rate.valueChanged.connect(
+        self._scrum_read_rate_min.valueChanged.connect(
             lambda v: self._mark_changed("scrum_read_rate_min", v)
         )
-        af.addRow("Read Rate:", self._read_rate)
+        af.addRow("Read Rate:", self._scrum_read_rate_min)
 
         self._band_travel = QSpinBox()
         self._band_travel.setRange(0, 100)
@@ -636,68 +657,29 @@ class SimSettingsTabMixin(SettingsTabMixin):
         )
         af.addRow("Band Travel:", self._band_travel)
 
-        self._bullseye = QCheckBox("BB Bullseye Check")
-        self._bullseye.setChecked(bool(cfg.bb_bullseye_check))
-        self._bullseye.setToolTip(
+        self._bb_bullseye_check = QCheckBox("BB Bullseye Check")
+        self._bb_bullseye_check.setChecked(bool(cfg.bb_bullseye_check))
+        self._bb_bullseye_check.setToolTip(
             "Counts a band touch within 0.5% (or a candle wick within "
             "0.2%) as BB proximity.\n"
             "With the delta at or over the interval that arms the BB "
             "priority skew, which lowers the TA confidence floor. The "
             "fire threshold and the midline gate are unchanged."
         )
-        self._bullseye.toggled.connect(
+        self._bb_bullseye_check.toggled.connect(
             lambda v: self._mark_changed("bb_bullseye_check", v)
         )
-        af.addRow(self._bullseye)
-
-        self._scrum_fold_pct = QSpinBox()
-        self._scrum_fold_pct.setRange(1, 100)
-        self._scrum_fold_pct.setSuffix(" %")
-        self._scrum_fold_pct.setValue(int(getattr(cfg, "scrum_fold_pct", 100)))
-        self._scrum_fold_pct.setToolTip(
-            "% of scrum sale proceeds queued for fold (rebuy).\n"
-            "100% = full reentry (max accumulation, max risk).\n"
-            "Lower values preserve cash buffer — safer when\n"
-            "price keeps falling after the scrum."
-        )
-        self._scrum_fold_pct.valueChanged.connect(
-            lambda v: self._mark_changed("scrum_fold_pct", v)
-        )
-        af.addRow("Scrum Fold Ratio:", self._scrum_fold_pct)
+        af.addRow(self._bb_bullseye_check)
 
         from ...trading.container.config import despawn_threshold_days
+        from ..main_tabs.live_settings_tab_surface import DESPAWN_FIELD, TOOLTIPS
 
         self._tranche_despawn_days = QSpinBox()
         self._tranche_despawn_days.setRange(0, 365)
         self._tranche_despawn_days.setSuffix(" days")
         self._tranche_despawn_days.setSpecialValueText("Off")
         self._tranche_despawn_days.setValue(despawn_threshold_days(cfg))
-        self._tranche_despawn_days.setToolTip(
-            "DESPAWN any tranche this old - both fold tranches\n"
-            "and stack tranches, from this one setting. 0 = Off\n"
-            "(default).\n\n"
-            "MERGE, DESPAWN and CLEAR are the only three things\n"
-            "that collapse or remove a tranche. This is despawn:\n"
-            "the age-driven one.\n\n"
-            "IT IS NOT A TRADE. No order is placed or cancelled,\n"
-            "no balance moves, holdings and cost basis are\n"
-            "untouched. The record goes.\n\n"
-            "WHAT THE RECORD HELD: the tranche's ref price, its\n"
-            "parked fold USD, its units, and its initial_buy_price\n"
-            "(the provenance figure). The scrum sale that\n"
-            "made it already happened, so those dollars are\n"
-            "already in the wallet - the record was only the\n"
-            "queued intent to buy the units back. A despawned\n"
-            "tranche can no longer fold back, so that money goes\n"
-            "from queued rebuy to ordinary spendable balance.\n\n"
-            "A tranche is despawned at exactly this age or older.\n"
-            "A tranche with no timestamp is NEVER despawned, and\n"
-            "a stack tranche holding a resting exchange order is\n"
-            "kept until that order settles.\n\n"
-            "SEE THE COUNT FIRST: the Fold Tranches tab prints how\n"
-            "many of this bot's tranches each candidate window\n"
-            "would remove, and what they hold."
-        )
+        self._tranche_despawn_days.setToolTip(TOOLTIPS[DESPAWN_FIELD])
         self._tranche_despawn_days.valueChanged.connect(
             lambda v: self._mark_changed("tranche_despawn_days", v)
         )
@@ -926,7 +908,7 @@ class SimSettingsTabMixin(SettingsTabMixin):
         self._ceiling_enabled.setToolTip(
             "Cap accumulation at Nx of the bot's INITIAL "
             "target_balance (stable anchor set at creation).\n"
-            "Fold rate tapers 100% → 10% as value approaches "
+            "Fold size tapers 100% → 10% as value approaches "
             "ceiling (ratio 0.5 → 1.0), hard-stops at ceiling.\n"
             "Scrum always allowed. Protects against runaway "
             "accumulation on conviction plays."
@@ -939,6 +921,7 @@ class SimSettingsTabMixin(SettingsTabMixin):
         from ...trading.container.config import (
             CEILING_MULTIPLE_MAX,
             CEILING_MULTIPLE_MIN,
+            ceiling_multiple,
         )
 
         self._ceiling_mult = QDoubleSpinBox()
@@ -946,9 +929,7 @@ class SimSettingsTabMixin(SettingsTabMixin):
         self._ceiling_mult.setDecimals(1)
         self._ceiling_mult.setSingleStep(0.5)
         self._ceiling_mult.setSuffix("x anchor")
-        self._ceiling_mult.setValue(
-            float(getattr(cfg, "position_ceiling_multiple", 5.0))
-        )
+        self._ceiling_mult.setValue(ceiling_multiple(cfg))
         self._ceiling_mult.setToolTip(
             "Ceiling multiplier. 1x = no accumulation beyond "
             "anchor. 10x = 10x runway. Default 5x."
@@ -1036,7 +1017,12 @@ class SimSettingsTabMixin(SettingsTabMixin):
             "ON (Conservative): if 65 %+ of last 20 candles "
             "were bullish, bot holds rather than scrumming "
             "each band touch. OFF (Lean): scrum every "
-            "BB-upper touch regardless of trend strength."
+            "BB-upper touch regardless of trend strength. "
+            "On a live bot an override clears this hold on either "
+            "of two conditions: the position sits at least twice "
+            "the Scrumming Interval away from target, or Band "
+            "Travel fires. The gate line then names TRND as "
+            "overridden and its light paints cyan."
         )
         self._gate_scrum_uptrend.toggled.connect(
             lambda v: self._mark_changed("scrum_hold_in_uptrend", v)

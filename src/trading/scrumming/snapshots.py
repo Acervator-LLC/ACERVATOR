@@ -12,6 +12,7 @@ from dataclasses import asdict
 from typing import TYPE_CHECKING, Any, Optional
 
 from ...core.event_bus import LINE_KIND_TRADE
+from ..container.config import target_growth_pct
 from ..gate_vocabulary import gate_light_row, unknown_blockers
 
 logger = logging.getLogger("acervator.scrumming")
@@ -195,19 +196,30 @@ def _gate_row_key(
 
 
 def _gate_line_text(
-    lights: list, ticker_last: float, panel: dict, unknown: list, latched: list
+    lights: list,
+    ticker_last: float,
+    panel: dict,
+    unknown: list,
+    latched: list,
+    armed: Optional[dict] = None,
+    unmapped: Optional[dict] = None,
 ) -> str:
     """The words the GATES line carries beside its lights.
 
-    Each bank reads ``armed`` or its blocked labels, then its overridden
-    labels under ``OVERRIDDEN_WORD``, and ``ticker_last``, ``panel``,
-    ``latched`` and ``unknown`` close it.
+    Each bank reads ``armed`` for its own side, then its blocked labels and the
+    bare names of any refusal no label covers, then its overridden labels under
+    ``OVERRIDDEN_WORD``; ``ticker_last``, ``panel``, ``latched`` and
+    ``unknown`` close it.
     """
     banks = []
     for bank, title in _GATE_LINE_BANKS:
         blocked = _labels_in_state(lights, bank, "blocked")
         replaced = _labels_in_state(lights, bank, OVERRIDDEN_WORD)
-        state = f"blocked {', '.join(blocked)}" if blocked else "armed"
+        named = blocked + sorted((unmapped or {}).get(bank, []))
+        side_armed = (armed or {}).get(bank)
+        if side_armed is None:
+            side_armed = not blocked
+        state = "armed" if side_armed else f"blocked {', '.join(named) or 'unnamed'}"
         if replaced:
             state = f"{state}, {OVERRIDDEN_WORD} {', '.join(replaced)}"
         banks.append(f"{title} {state}.")
@@ -364,15 +376,27 @@ class SnapshotEmitterMixin(_Host):
             if key == getattr(self, "_last_gate_light_key", ""):
                 return
             self._last_gate_light_key = key
-            unknown = unknown_blockers(
-                scrum_blockers + scrum_replaced
-            ) + unknown_blockers(fold_blockers + fold_replaced)
+            unknown = [
+                bare_gate_name(one)
+                for one in unknown_blockers(scrum_blockers + scrum_replaced)
+                + unknown_blockers(fold_blockers + fold_replaced)
+            ]
             latched = _latched_risk_gates(scrum_blockers + fold_blockers)
             panel = _build_panel_snapshot(summary)
+            armed = {
+                "S": bool(state.get("scrum_armed", False)),
+                "F": bool(state.get("fold_armed", False)),
+            }
+            unmapped = {
+                "S": [bare_gate_name(one) for one in unknown_blockers(scrum_blockers)],
+                "F": [bare_gate_name(one) for one in unknown_blockers(fold_blockers)],
+            }
             self._bus.emit(
                 "bot.log",
                 bot_id=self.bot_id,
-                message=_gate_line_text(lights, ticker_last, panel, unknown, latched),
+                message=_gate_line_text(
+                    lights, ticker_last, panel, unknown, latched, armed, unmapped
+                ),
                 lights=lights,
             )
             # The whole voter panel and the blocker phrases the pane no longer
@@ -700,9 +724,7 @@ class SnapshotEmitterMixin(_Host):
         try:
             target = float(getattr(self, "_target_balance", 0.0) or 0.0)
             anchor = float(getattr(self, "_anchor_target_balance", 0.0) or 0.0)
-            growth_pct = float(
-                getattr(self.config, "max_target_growth_pct", 1.0) or 0.0
-            )
+            growth_pct = float(target_growth_pct(self.config) or 0.0)
             snap["target_balance"] = round(target, 6)
             snap["anchor_target_balance"] = round(anchor, 6)
             # Positive => target has grown above anchor via compounding.

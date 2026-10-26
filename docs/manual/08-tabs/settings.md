@@ -564,6 +564,23 @@ self._new_passphrase.setPlaceholderText(
 self._new_passphrase.setVisible(False)
 ```
 
+**The words in that field are now one declaration, read by two screens.** The block
+above stands as written, and this is what the field reads today.
+
+`src/gui/settings_dialog.py` — the field reads the declaration
+
+```python
+from .main_tabs.init_wizard_surface import PHRASE_FIELD_PROMPT
+
+self._new_passphrase = QLineEdit()
+self._new_passphrase.setEchoMode(QLineEdit.Password)
+self._new_passphrase.setPlaceholderText(PHRASE_FIELD_PROMPT)
+```
+
+The install wizard wrote its own words for the same fact. Both screens now report
+the same 46 characters, and which venues ask for a passphrase did not change.
+Trading tab, under the ratio and the spare record, carries the reading.
+
 Test Connection runs the check and reports the answer. Test and Add Exchange
 runs the same check first and stores nothing when it fails. Remove Selected
 drops the highlighted entry.
@@ -8900,5 +8917,152 @@ the one declaration moved 4.0 -> 11.0
 Before the change the same move reached the monitor alone and left five copies
 and the Console line at four. Every file is byte identical after the move was
 put back.
+
+## 2026-10-26 - #665 - the venue record, the add box and the retired mode's name
+
+**The Add press hands the store the record the store declares.** The Qt-free
+model built a plain dictionary of eight names. The store's own method takes a
+declared record of ten, and converts it with a call that only a declared record
+answers. Nothing reached that path, so nothing had failed yet; driven against
+the real store it raised and stored no entry.
+
+`src/gui/main_tabs/settings_dialog_surface.py, in SettingsDialogModel.add_exchange`
+
+```python
+config = ExchangeConfig(exchange_id=eid, display_name=eid.capitalize())
+```
+
+The model now builds the same record the Qt press builds, so the two field sets
+cannot drift apart again. The page's stand-in store takes the declared record
+too, which keeps it from accepting a shape the real store refuses.
+
+```
+                            before                      after
+what the model hands        a dictionary of 8 names     the declared record
+the real store's answer     raised, 0 entries stored    1 entry stored
+the two MCP token fields    absent from the model       carried by the record
+```
+
+**The add box no longer promises a tab that is already there.** The box text
+ended with one sentence whatever the bar held. A venue already drawn in the
+Configured list got the same promise as a venue the bar had never seen.
+
+`src/gui/main_tabs/settings_dialog_surface.py, in added_box_text`
+
+```python
+ADDED_BOX_TAB_NEW = "The exchange tab will appear in the main window."
+ADDED_BOX_TAB_HELD = "The exchange tab is already in the main window."
+```
+
+Both builds read that one answer, because the React dialog inherits the Qt
+press. The Remove Selected line now names the tab as well; before, only the
+Activity Log said a tab had gone.
+
+```
+add, venue not listed      Alpaca has been added without credentials.
+                           The exchange tab will appear in the main window.
+add, venue already listed  Alpaca has been added without credentials.
+                           The exchange tab is already in the main window.
+removal                    Alpaca removed. Its exchange tab comes off the
+                           main window.
+```
+
+**The retired mode's name is off every surface that advertised it.** Nine files
+outside the bot wizard named a mode the engine does not declare. Each is a
+write site: a card, an About box, a tool tip, a log line or a package
+docstring.
+
+| site | what it said |
+| ---- | ------------ |
+| `src/gui/launcher.py` | both mode cards, now reading the surface's own text |
+| `src/gui/main_tabs/launcher_surface.py` | the crypto subtitle, a feature line and the stocks features |
+| `src/gui/main_tabs/main_window_surface.py` | the About box and the abbreviation tool tips |
+| `src/gui/main_window.py` | the abbreviation tool tips, a bot-ready record and the Manual Fire refusal |
+| `src/gui/main_tabs/stock_main_window_surface.py` | the stock About box |
+| `src/stocks/stock_bot.py` | a strategy line and two settings its own mode list never offered |
+| `src/gui/main_tabs/settings_dialog_surface.py` | the water-drip tool tip |
+| `src/gui/settings_dialog.py` | the same tool tip, second copy |
+| `src/exchange/ccxt_connector.py` | an order's data-usage line |
+| `src/exchange/robinhood_connector.py` | the same line, second copy |
+| `src/trading/__init__.py` | the package docstring |
+
+The restore path is the one read site and it still reads the old word. A saved
+record carrying it is named on the Console and skipped by name, and its record
+stays on disk.
+
+`src/trading/container/restore.py, in StateRestoreMixin.restore_bots_from_state`
+
+```
+three saved records driven, one carrying the old word
+  restored          the scrumming record and the extractor record
+  skipped by name   the legacy record, "legacy grid mode (unrestorable)"
+  records on disk   all three, untouched
+```
+
+Two places keep the word for a reason. The trade and reconciliation records
+name the legacy side values a stored row can still carry, so a reader of an old
+row is not left guessing.
+
+```
+src/trading/analytics_engine.py, the side field
+src/trading/reconciliation.py, the action field
+```
+
+## 2026-10-26 - #665 - the nested pair and the log field are off the tree
+
+Two readings on this page name a getter and setter on the settings store, and a field
+on the log record. Both were true when they were taken. Neither name is in the source
+tree now.
+
+`src/core/settings.py, class SettingsManager` — what the store declares
+
+```
+reads and writes   get, set, get_all, reset_defaults
+venue entries      add_exchange, get_exchange, list_exchanges, remove_exchange
+the removed pair   get_nested, set_nested
+```
+
+`src/core/logging_engine.py, class LogEntry` — the record's five fields
+
+```python
+timestamp: str = ""
+category: str = ""
+exchange: str = ""
+bot_id: str = ""
+data: dict = field(default_factory=dict)
+```
+
+Every stored field is still read and written. The pair took a group name and a key and
+reached the same group dictionary that `get` and `set` reach, so no field lost a route.
+A line written now carries no key for the removed field, and a line already on disk
+keeps it: every reader takes a stored line through a plain JSON parse, and no site
+builds the record back out of one.
+
+The two names were counted over the tracked source tree, with a name from the same
+module as the figure that shows the count reports.
+
+```
+name              occurrences under src/   occurrences on this page
+get_nested                             0                          4
+set_nested                             0                          1
+SettingsManager                       19                       many
+```
+
+### Where the earlier settings-store entries now read differently
+
+Five readings above name the removed pair or the removed field. They stand as written,
+and these are the readings that replaced them.
+
+| written above | what it reads now |
+| --- | --- |
+| "The nested getter and setter on `SettingsManager` still have no callers. The bare names `get_nested` and `set_nested` return two hits each, and both are the declaration and the class docstring in `src/core/settings.py`." | Both are off the store. It declares eight public methods and neither name is among them |
+| "The record type does declare a `highlight` field, and nothing in the tree sets it and nothing reads it." | The record declares five fields and none of them is that one. A line written now carries no such key |
+| "`sm.get_nested("profit_folding", "fold_target")`" in the read-shape table | That shape cannot be written now. Its zero stands: no site reads the word, by any shape |
+| "`get_nested(..., "fold_target_count")`" in the read-shape table | The same. The zero stands and the shape is gone |
+| "`get_nested(..., "distribute_target")`" in the read-shape table | The same. The zero stands and the shape is gone |
+
+The second sentence above wraps across two source lines, so a search that reads one
+line at a time cannot see it. Measured on this page, it reads nothing per line and one
+across the folded text.
 
 Back to [the subsystem index](README.md).

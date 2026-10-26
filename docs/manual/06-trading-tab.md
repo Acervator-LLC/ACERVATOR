@@ -4894,6 +4894,39 @@ where it was. A record carrying a cooldown of 0 is read as 3, the declared
 default. A record carrying a word stops the breaker check for that tick with a
 warning, which leaves the soft breaker unable to trip.
 
+#### A stored word now leaves both breakers armed
+
+The sentence above describes what the reader did before this unit. Every breaker
+figure is now read through one declaration, `breaker_figures`, and a stored value
+that is not a number reads the declared figure instead of stopping the check.
+
+Driven on one candle spanning 30.0 % of its open with the soft threshold at
+25.0 %:
+
+```
+stored cooldown   before                        after
+a word            no decision, breaker idle     3 candles, SCRUM side shut
+7                 7 candles, SCRUM side shut    7 candles, SCRUM side shut
+empty             3 candles, SCRUM side shut    3 candles, SCRUM side shut
+missing           3 candles, SCRUM side shut    3 candles, SCRUM side shut
+```
+
+The three readable rows do not move, which is what separates this from a change
+of behaviour. The Console names the bad value ahead of the trip line:
+
+```
+CIRCUIT BREAKER FIGURE UNREADABLE: circuit_breaker_cooldown_candles='three'.
+The declared figures are used — soft 25.00%, hard 35.00%, cooldown 3 candles —
+and both breakers stay armed.
+```
+
+That line repeats only when the set of unreadable fields changes, so one bad
+record writes it once rather than on every tick. The same declaration reads the
+two thresholds, so a word stored in Soft CB Threshold or Hard CB Threshold no
+longer stops the check either. A sweep of 63,168 candle and figure combinations
+reads the same decision, the same side, the same cooldown and the same Console
+wording before and after on every numeric figure.
+
 While a cooldown holds, the shut side is refused at the breaker gate and the bot
 keeps running — the cooldown pauses nothing. It ends on its own when the count
 reaches zero, with a SOFT CIRCUIT BREAKER RESET line naming the side that
@@ -4952,6 +4985,32 @@ fired nothing with it on.
 
 The band the box reads is the one the previous worked tick stored, so the first
 worked tick after a start has no band and keeps the fixed figure.
+
+#### The band is now the one this tick read
+
+The sentence above describes what the tick did before this unit. The band is
+written by `_refresh_market_reading`, which the tick calls above every early
+return, so the figure the cartridge reads belongs to the candle the tick has just
+fetched. What the band is has not changed: the same detection runs over the same
+candles with the same two settings.
+
+Driven from a cold start on a $200.00 target with the fixed figure at 10.0 % and
+a band spanning 7.48 % of its midline:
+
+```
+tick   before             after
+one    10.00 %, $20.00    7.48 %, $14.97
+two     7.48 %, $14.97    7.48 %, $14.97
+```
+
+The first worked tick after a start used the fixed figure and now uses the band
+of that tick. The second tick does not move. The Console names the figure on the
+first tick now instead of on the second:
+
+```
+SMART CARTRIDGE calibrated to 7.48% (BB range 7.48%, floor=1.00%,
+ceiling=30.00%). Effective threshold = $14.97.
+```
 
 Smart Ceiling - To be re-evaluated.
 
@@ -6227,6 +6286,54 @@ One case is open: a bot restored from a state file saved before the rebase exist
 keeps the base-unit figures that file holds, because a restore carries them. Every
 new round is still sized at the real rate; the pool total is the part that stays
 stale.
+
+#### The three phantom values a restored bot takes
+
+**Functional.** Three phantom values are not settings the engine declares: the
+enable flag, the timeframe list and the lock count. One declaration names all
+three, and both paths read it. The wizard path reads it when a bot is created, and
+the restore path reads it when a saved bot comes back, so neither path names a key
+of its own.
+
+`src/trading/container/config.py` — `PHANTOM_ARGUMENTS`, the one declaration
+
+```python
+PHANTOM_ARGUMENTS: tuple = (
+    PhantomArgument("enable_phantoms", False, _restored_phantom_flag),
+    PhantomArgument("phantom_timeframes", (), _restored_phantom_timeframes),
+    PhantomArgument("lock_candle_count", None, _restored_lock_count),
+)
+```
+
+A record naming none of the three leaves the engine's own figures in place: the
+flag reads on, the timeframe list is the length above the bot's own chart, and the
+lock count reads two. A saved lock count that is not a number keeps the count of
+two and the bot still loads, with one log line naming the figure it refused.
+
+#### What a restored watch list holds
+
+**Functional.** A saved watch list comes back as the pairs it holds. A record whose
+watch list holds a single pair as one word now restores as that one pair. The same
+reading serves the phantom timeframe list on all three data sources, so a stored
+timeframe of one word restores as that one length.
+
+`src/trading/container/config.py` — `stored_list`, the one reading
+
+```python
+def stored_list(value: Any) -> list:
+    if isinstance(value, str):
+        return [value] if value else []
+    if isinstance(value, (list, tuple)):
+        return list(value)
+    return []
+```
+
+| a saved record holds | the restored bot holds |
+|---|---|
+| one pair written as a word | that one pair |
+| a list of pairs | the same list |
+| an empty value | no pairs |
+| no key at all | no pairs |
 
 #### What the watch list holds
 
@@ -9190,3 +9297,558 @@ declaration to a figure nothing uses moved all five together; before the change 
 same move reached the declaration alone and all four wizard boxes still opened at
 $200.00. The max-cartridge box beside it was read the same way each time and never
 moved, which is the reading that shows the boxes answer for themselves.
+
+## 2026-10-26 - #665 - both Electron Ceiling Multiple rows read the one declaration
+
+The two rows the Electron build draws for the Ceiling Multiple still typed their own
+span and their own opening figure. Both read the one declaration now, so all eight
+screens on this page answer from the same place.
+
+`src/gui/main_tabs/bot_wizard_surface.py` — the Electron wizard row
+
+```python
+"position_ceiling_multiple": {
+    "kind": SPIN_DOUBLE,
+    "minimum": CEILING_MULTIPLE_MIN,
+    "maximum": CEILING_MULTIPLE_MAX,
+    "decimals": 1,
+    "step": 0.5,
+    "suffix": "x anchor",
+    "value": POSITION_CEILING_MULTIPLE_DEFAULT,
+},
+```
+
+The opening figure was written in thirteen places, not nine. The six boxes on this
+page, the status every bot row is read from, the two Electron rows, and four more in
+the Paper and Simulator record readers. All thirteen read one declaration now.
+
+`src/trading/container/config.py` — the one opening figure and the one span
+
+```python
+POSITION_CEILING_MULTIPLE_DEFAULT: float = 5.0
+CEILING_MULTIPLE_MIN: float = 1.0
+CEILING_MULTIPLE_MAX: float = 10.0
+```
+
+Every box was built on its real screen and read back off the real control. All six
+span 1.0 to 10.0, open at 5.0x and step half a multiple, before and after. Both
+Electron rows answer the same span and the same figure through the real bridge, and
+the dollar ceiling on a $100.00 anchor is unchanged at every stored multiple.
+
+Moving the declaration to a span of three to seventy-seven and an opening figure of
+6.25 moved every one of those readings together. The same move on the code before
+this change left both Electron rows at one to ten and 5.0, and left all six opening
+fallbacks at 5.0. The Smart Ceiling box beside it was read the same way each time and
+never moved, which is the reading that shows each box answers for itself.
+
+The Fold Tranches surface no longer claims that a figure written out by hand is
+reported when it changes on one side alone. Nothing did that reporting, and the
+module it named imports the old interface library, which a surface may not reach. The
+docstring now says where its two imported figures come from.
+
+`src/gui/main_tabs/fold_tranches_tab_surface.py` — what the module reads in
+
+```python
+from ...trading.container.config import DESPAWN_MAX_DAYS, DESPAWN_PREVIEW_WINDOWS
+```
+
+Every value that surface hands out was read back before and after the sentence went.
+The payload is the same 28,046 bytes and its 409 declared figures are unchanged, so
+no figure left with the sentence.
+
+## 2026-10-26 - #665 - a stored zero fold ratio reads as the declared ratio
+
+The Scrum Fold Ratio box runs from 1 to 100 and opens at 100. The engine clamp
+accepted anything from zero upward, and a stored zero emptied a whole sale's fold
+queue. Driven on a sale of two tranches worth $200.00 and two units, a stored zero
+queued $0.0000 and no units at all, and retired the whole $200.00 as cash. The sale
+still wrote its usual line, naming a ratio of nought per cent. A record like that is
+not something the screen can write.
+
+The clamp now admits only a figure a box offers, and a record outside that span reads
+the declared ratio of 100. The same sale with a stored zero queues the full $200.00
+and two units. This is the choice between two answers, and the declared ratio is the
+one the page already states: a whole percentage from 1 to 100, at 100 % to start. The
+ratio is a cushion that holds proceeds back, so an unreadable record means no
+cushion, not the largest one a box can hold. It is also the rule every other stored
+figure on this screen already follows, where a figure outside a box's span is no
+figure at all.
+
+`src/trading/container/config.py` — the one reader every surface calls
+
+```python
+def fold_ratio_pct(config) -> int:
+    read = as_box_figure(
+        getattr(config, "scrum_fold_pct", FOLD_RATIO_PCT_DEFAULT),
+        FOLD_RATIO_MIN_PCT,
+        FOLD_RATIO_MAX_PCT,
+    )
+    if read is None:
+        return FOLD_RATIO_PCT_DEFAULT
+    return int(read)
+```
+
+The span was written in nine places and the clamp was a tenth that disagreed with all
+nine at its bottom end. The three settings pages, the three New Bot wizards and the
+two Electron rows each typed one to a hundred, and the engine accepted zero. All ten
+read one declaration now.
+
+`src/trading/container/config.py` — the one span and the one opening ratio
+
+```python
+FOLD_RATIO_MIN_PCT: int = 1
+FOLD_RATIO_MAX_PCT: int = 100
+FOLD_RATIO_PCT_DEFAULT: int = int(
+    next(one.default for one in fields(BotConfig) if one.name == "scrum_fold_pct")
+)
+```
+
+The Max Target Growth figure had the same shape in a quieter way. Thirteen places read
+it and every one of them named its own standby figure of one per cent for a record
+that carries no such figure. None of those standby figures could ever answer, because
+every bot record and both fleet records declare the field, so the read always finds a
+value. Measured against a record built without the field, with a null, with a zero,
+with a text number, with a flag and with a not-a-number: the field is present in every
+case and the standby figure answers in none.
+
+`src/trading/container/config.py` — the one growth reader
+
+```python
+def target_growth_pct(config):
+    return getattr(config, "max_target_growth_pct", TARGET_GROWTH_PCT_DEFAULT)
+```
+
+Each of the thirteen calls that reader now and names no figure of its own. Every one
+keeps its own handling of what it reads, so a record holding a null still reads as
+nought where it did before and still raises where it did before. The Paper and
+Simulator record readers carried the figure twice more each; those four read the one
+declaration too.
+
+The two blocker lines the gate writes when a reversal is too close spelled the
+distance themselves, by adding the interval to the fee. The distance has one
+definition and the market scan beside it already called it.
+
+`src/trading/gate_chain.py` — the distance both lines print
+
+```python
+eff_pct = minimum_opposing_trade_distance_pct(
+    ctx.scrumming_interval_pct, ctx.trading_fee_pct
+)
+```
+
+Both lines read the same figures as before. At an interval of 1.00 % and a fee of
+0.60 % the scrum line still reads a required $101.60000000 against a pivot of
+$100.00000000 and the fold line still reads $98.40000000, and across all 42 pairs the
+two boxes can hold the readings are identical. The definition bounds the distance at
+fifty per cent, and the widest pair the boxes offer reaches 25.00 %, so the bound
+never binds on anything a reader can set. The same two lines the cartridge writes, and
+the figure the stack ladder opens on, read the one definition now as well.
+
+The two refusals the buy and sell executors write still read the fee for themselves,
+because they read a fee set to zero as zero where every other place reads it as
+0.60 %. Routing them would change a refusal a bot makes today, so they are named and
+left.
+
+The ratio was swept from minus five to a hundred and five in steps of a hundredth,
+which is 11,001 readings, and every integer boundary falls on a step. 600 readings
+moved and all 600 sit below one, where the old clamp read nought. The 10,401 readings
+from one upward are identical, so no bot carrying a ratio a box can hold folds any
+differently. Three record classes that used to stop the sale with an error — a null, a
+not-a-number and an endless number — now read the declared ratio and the sale
+finishes. A flag and a text number moved as well, and no box can write either.
+
+Moving the declared ratio to seventy-seven and the declared growth to 7.77 moved every
+reading together: the zero-ratio sale queued $154.0000 and the growth cap on a record
+with no figure read $15.5400. The same move on the code before this change left the
+zero-ratio sale at $0.0000 and the cap at $2.0000, which is the reading that shows the
+copies did not follow. A sale at a legitimate ratio of 40 queued $80.0000 and 0.8000
+units in all four readings, which is the figure read the same way each time to show the
+readings report at all.
+
+### Where the earlier fold-ratio entry now reads differently
+
+Three passages above described the clamp and the standby figures as they were. They
+stand as written, and these are the readings that replaced them.
+
+| written above | what it reads now |
+| --- | --- |
+| "`_fold_pct = max(0, min(100, int(getattr(self.config, \"scrum_fold_pct\", 100))))`" under Where the Scrum Fold Ratio is read | `_fold_pct = fold_ratio_pct(self.config)`, the one reader, admitting 1 to 100 |
+| "The clamp's lower bound is zero and both controls start at one, so a record carrying a zero empties the sale's whole fold queue and retires the cash instead." | The clamp admits only a figure a box offers. A record carrying a zero reads the declared 100 and the sale queues its whole proceeds |
+| "Raising the clamp to match the controls would change what such a bot rebuys on its next sale." | It did, and only for a record below one. Every ratio from 1 to 100 rebuys exactly as before |
+
+## 2026-10-26 - #665 - the despawn tooltip is declared once
+
+The Tranche Despawn Timer box carries the longest words on the Bot Settings page.
+Live, Paper and the Simulator each spelled those words out, and the Electron row list
+held a fourth copy. One entry answers for all four now.
+
+`src/gui/live_settings/settings_tab.py, in _create_settings_tab` — the read the three
+Qt tabs share
+
+```python
+from ..main_tabs.live_settings_tab_surface import DESPAWN_FIELD, TOOLTIPS
+
+self._tranche_despawn_days.setToolTip(TOOLTIPS[DESPAWN_FIELD])
+```
+
+Each box was built for real and asked what words it carries. All four report the same
+length, and so does the Scrum Fold Ratio row beside it.
+
+```
+surface     the despawn words it reports   the Scrum Fold Ratio row
+Live        1,086 characters               183 characters
+Paper       1,086 characters               183 characters
+Simulator   1,086 characters               183 characters
+Electron    1,086 characters               183 characters
+```
+
+Moving the one declaration to wording nothing uses moved all four together, to 1,095
+characters each. The same move before this change reached the Electron row alone and
+the three Qt boxes kept the old words. The file is byte identical after the move was
+put back. The neighbouring row read 183 characters in every one of those readings,
+which is the figure that shows a reading happened at all.
+
+### Where the earlier despawn timer entry now reads differently
+
+Three statements in "The Tranche Despawn Timer" above describe the control. They stand
+as written, and these are the readings that replaced them.
+
+| written above | what it reads now |
+| --- | --- |
+| "The timer is the one row of the Hedge Rebalance group that a new bot cannot be given" | The box is built into the Advanced Scrumming group. The Hedge Rebalance group is the next group down and holds no despawn row. A new bot still cannot be given the timer |
+| "neither wizard build carries it" | Four wizard builds exist and none carries the row. Each of the fifteen wizard files names the field no times, against 7, 5, 7 and 7 for the neighbouring ratio field, so the zero reads the tree |
+| "the one control, 0 to 365 days" | Four screens build that box: the Live, Paper and Simulator settings tabs and the Electron row list. The span is unchanged |
+
+## 2026-10-26 - #665 - the grid conversion method is gone
+
+The engine held one method that turned remembered trades into buy and sell pairs for
+the retired mode. Nothing called it, and no page of this manual named it.
+
+`src/trading/scrumming_bot.py, in memorize_to_grid` — removed
+
+```
+                            call sites   definitions   occurrences
+memorize_to_grid, before             0             1             1
+memorize_to_grid, after              0             0             0
+_main_lots_invariant_ok              1             1             2
+a name never declared                0             0             0
+```
+
+The count walks the parsed tree of all 624 tracked Python files. A method a few lines
+below it in the same class reads one caller, and a name that was never declared reads
+the same figures as the removed one, so the zero is a reading rather than a search
+that matched nothing. The engine was then imported for real: the class no longer
+carries the name and three neighbouring methods are still there.
+
+**What the record it read is used for now.** Nothing reads it. One entry joins the
+remembered-trade list for each filled sell and each filled buy, and this method was
+the only thing that had ever read that list.
+
+```
+the record   src/trading/scrumming/execution.py, class MemorisedTrade
+the writers  src/trading/scrumming/execution.py, in _execute_sell
+             src/trading/scrumming/execution.py, in _execute_buy
+the readers  none
+```
+
+Both writers sit inside the paths that place an order, so they are named and left.
+
+## 2026-10-26 - #665 - the ratio sits in one group, and the fill writes no spare record
+
+Five names said something the code did not. A ratio box filed under two different
+group titles, two controls a stored-key search could not find, one fact worded two
+ways, a way in nobody used, and a record written on every fill and read by nothing.
+
+### The Scrum Fold Ratio box sits in Scrumming Settings on every screen
+
+Eight screens build the box. Four put it under Scrumming Settings and four under
+Advanced Scrumming. Each box was built for real and asked which group box holds it.
+
+```
+screen                    before                after
+Live settings             Advanced Scrumming    Scrumming Settings
+Paper settings            Advanced Scrumming    Scrumming Settings
+Simulator settings        Advanced Scrumming    Scrumming Settings
+Electron settings rows    Advanced Scrumming    Scrumming Settings
+Live wizard               Scrumming Settings    Scrumming Settings
+Paper wizard              Scrumming Settings    Scrumming Settings
+Simulator wizard          Scrumming Settings    Scrumming Settings
+Electron wizard rows      Scrumming Settings    Scrumming Settings
+```
+
+**Scrumming Settings is the group, because the manual already says so.** The
+Trading Parameters section states that four unit-rule lines sit under Scrum Fold
+Ratio in the Scrumming Settings group, and the control's own description ties it to
+Max Target Growth %, which reads Scrumming Settings on all eight screens. No page
+of this manual puts the ratio in Advanced Scrumming.
+
+`src/gui/live_settings/settings_tab.py, in _create_settings_tab` — the row's new home
+
+```python
+sf.addRow("Max Target Growth %:", self._max_target_growth)
+sf.addRow("Scrum Fold Ratio:", self._scrum_fold_pct)
+```
+
+The box itself is untouched. Every screen reports a value of 100 and a tooltip of
+183 characters, before and after, and Max Target Growth % beside it reads Scrumming
+Settings in all sixteen readings.
+
+### The read-rate and bullseye controls carry the name of the key they store
+
+A search of a wizard for a stored key found the read-rate control and the bullseye
+control once each, against seven for the two rows beside them. The one hit was the
+line that hands the value out; the control itself was named for neither key. The
+three settings screens and the Electron row list carried the same two short names.
+
+```
+file                          read rate        bullseye         ratio    travel
+                              before  after    before  after    control  control
+bot_wizard.py                      1      7         1      5          7        7
+paper_bot_wizard.py                1      7         1      5          7        7
+sim_bot_wizard.py                  1      7         1      5          7        7
+bot_wizard_surface.py              1      5         1      5          5        5
+settings_tab.py                    2      8         2      6          8        2
+paper_settings_tab.py              2      8         2      6          8        2
+sim_settings_tab.py                2      8         2      6          8        2
+live_settings_tab_surface.py       1      3         1      3          3        1
+```
+
+`src/gui/bot_wizard.py, class TradingParamsPage` — the control now carries the key's
+own name
+
+```python
+self._scrum_read_rate_min = QSpinBox()
+af.addRow("Read Rate:", self._scrum_read_rate_min)
+```
+
+The bullseye reads fewer lines than the read rate because a tick box takes fewer
+setter calls; the tick box beside it, the midline gate, reads the same figure.
+
+**No stored key changed.** All four wizard builds hand out the same keys and the
+same values: 50 keys on the Live build, 47 on Paper, 47 on the Simulator and 50 on
+the Electron build, with none of the 194 key readings different. A record carrying
+the two keys was written by hand and loaded: a stored read rate of 17 and a stored
+bullseye of off reach the box and the tick box on the running screen.
+
+**A further 24 stored keys in the Live wizard are still found on one line each.** The
+same short-name shape covers them, and the settings screens abbreviate throughout.
+Those are not this entry's two controls and are recorded on the issue.
+
+### One declaration holds the passphrase prompt
+
+The install wizard and the Settings page each wrote their own words for one fact.
+Both screens now read one declaration.
+
+```
+screen           before                                           after
+install wizard   Passphrase you chose when creating the API key    unchanged
+Settings page    Passphrase set when creating API key              the same 46 characters
+```
+
+`src/gui/main_tabs/init_wizard_surface.py` — the one declaration
+
+```python
+PHRASE_FIELD_PROMPT = "Passphrase you chose when creating the API key"
+```
+
+Which venues ask for a passphrase did not change. Both screens already read
+`PASSPHRASE_EXCHANGES`, so only the words differed.
+
+Moving the one declaration to wording nothing uses moved both screens together. The
+same move before this change reached the install wizard alone and the Settings page
+kept the old words. Both files are byte identical after the move was put back, by
+sha256. The API key prompt beside it held its own words in every reading.
+
+### The signal provider drops a way in that nobody used
+
+The provider took a trend-strength figure from its caller. The Extractor builds the
+only provider in the tree and passes a venue and a timeframe alone.
+
+```
+name                        before   after
+trend_strength_threshold         0       0    callers that pass it
+trend_strength                   8       8    callers that pass it, the control
+a name never declared            0       0
+```
+
+The count walks the parsed tree of all 624 tracked Python files. The control name
+reads eight, so the count reports; a name that was never declared reads zero
+everywhere. The figure stays at 0.65 and is now one declaration.
+
+`src/trading/ta_signal_provider.py` — the figure, and the one line that reads it
+
+```python
+TREND_HOLD_MIN_SHARE: float = 0.65
+
+trend_hold = trend_strength > TREND_HOLD_MIN_SHARE
+```
+
+### Every fill stops writing the spare record
+
+One record joined a list on each filled sell and each filled buy. Nothing read the
+list once the retired mode's method went.
+
+A hand-built venue answered every read from records written by hand and settled an
+order as filled. No venue was contacted: the socket counter read zero on every run
+and its control moved it to one on a single refused call.
+
+```
+one fill                records   holdings   sells   buys   volume   scrummed   folded   fill
+sell, before the change       1        8.0       1      0    200.0      200.0      0.0    100
+sell, after the change     none        8.0       1      0    200.0      200.0      0.0    100
+buy, before the change        1      10.01       0      1      1.0        0.0      1.0    100
+buy, after the change      none      10.01       0      1      1.0        0.0      1.0    100
+```
+
+**Nothing else about either fill moved.** The record type, the field and both
+writers are gone, and the list no longer exists to be written.
+
+### Where the two earlier entries now read differently
+
+Two statements above describe what this unit changed. They stand as written, and
+these are the readings that replaced them.
+
+| written above | what it reads now |
+| --- | --- |
+| "All four report the same length, and so does the Scrum Fold Ratio row beside it" | The despawn reading is unchanged at 1,086 characters on all four screens. The Scrum Fold Ratio row is no longer the row beside it: the ratio sits in Scrumming Settings and the despawn box stays in Advanced Scrumming. The row beside the despawn box is now Band Travel |
+| "Both writers sit inside the paths that place an order, so they are named and left" | Both writers are gone. A hand-built venue settled an order as filled with no network, which drove each writer for real, so the removal was proved rather than named |
+| "the record `src/trading/scrumming/execution.py, class MemorisedTrade`" | That class is gone, with the field that held its list and the two lines that appended to it. The file is still there and still holds `SettledFillFee`, the fee record each settled fill writes |
+## 2026-10-26 - #665 - the cartridge cap, the taper's name, and the bar on the Bot Swarm row
+
+### The cartridge cap carries its own words in the log
+
+Two unrelated controls wrote the word ceiling. One is the percentage cap on the
+cartridge threshold. The other is the dollar ceiling on the position. A line in the
+bot log could therefore send a reader to either control. The cartridge line now names
+the cartridge cap. The position-ceiling lines keep the words row 118 gave them.
+
+Both controls were driven on one bot in one run. The calibration wrote its line, then
+the fold refused on the position ceiling.
+
+```
+cartridge, before   SMART CARTRIDGE calibrated to 24.00% (BB range 24.00%, floor=5.00%, ceiling=30.00%). Effective threshold = $48.00.
+cartridge, after    SMART CARTRIDGE calibrated to 24.00% (BB range 24.00%, floor=5.00%, cartridge cap=30.00%). Effective threshold = $48.00.
+ceiling, both       FOLD BLOCKED by position ceiling: current $1000.00 >= ceiling $600.00 (166.7% of ceiling). Scrum still allowed.
+```
+
+The words the two lines share read `ceiling` before the change and nothing after it.
+The ceiling line is the same in both runs, which is the reading that shows only the
+cartridge line moved.
+
+`src/trading/scrumming/tick_phases.py, in _tick_smart_cartridge_pct` — the line
+
+```python
+f"floor={_interval_floor:.2f}%, "
+f"cartridge cap={_cap_text}). "
+```
+
+### The fold taper is named for the size it scales
+
+The taper multiplies the dollars a fold spends. It does not change how often a fold
+happens. Its name said rate. The engine's figure, the status record's key and the
+wording on both screens now say size.
+
+| site | kind | before | after |
+| --- | --- | --- | --- |
+| `src/trading/scrumming/sizing.py` | the schedule | `fold_rate_taper` | `fold_size_taper` |
+| `src/trading/bot_container.py, in get_status` | write | `fold_rate_taper` | `fold_size_taper` |
+| `src/gui/main_tabs/bot_status_table_surface.py, in risk_suffix` | read | fold rate tapered to | fold size tapered to |
+| `src/gui/widgets/bot_status_table.py, in update_bots` | read | fold rate tapered to | fold size tapered to |
+| `src/gui/web/bot_status_table.js` | the page read | default_fold_taper | unchanged, it never said rate |
+| the Enable Position Ceiling tooltip, eight files | write | Fold rate tapers | Fold size tapers |
+
+A record saved under the old key still reads. The reader takes the new key first, then
+the old one, then the declared figure of one.
+
+```
+record carries                 Live page   Paper page   Sim page   Live widget   Paper widget   Sim widget
+fold_size_taper 0.37               37%          37%        37%           37%            37%         37%
+fold_rate_taper 0.42               42%          42%        42%           42%            42%         42%
+neither key                       100%         100%       100%          100%           100%        100%
+```
+
+`src/gui/main_tabs/bot_status_table_surface.py, in fold_taper_of` — the reader
+
+```python
+for field in (FOLD_TAPER_FIELD, FOLD_TAPER_FIELD_RETIRED):
+    if field in status and status[field] is not None:
+```
+
+Moving the one declaration to wording nothing writes sent all six readings to 100 per
+cent for the new key and left the old-key reading at 42 per cent. The surface file is
+byte identical after the move was put back, by sha256.
+
+### The Bot Swarm row shows the bar a detonation must clear
+
+Min Confidence reached no status record. The Fire tooltip on a Bot Swarm row could
+name the timeframe a bot watches and never the figure a vote has to reach. The record
+now carries the bar and the tooltip names it.
+
+```
+record carries                            the tooltip's detonation line
+0.60, before the change    Detonation armed: monitoring 1W for BULLISH auto-harvest.
+0.75, before the change    Detonation armed: monitoring 1W for BULLISH auto-harvest.
+0.60, after the change     Detonation armed: monitoring 1W for BULLISH auto-harvest at confidence 0.60 or above.
+0.75, after the change     Detonation armed: monitoring 1W for BULLISH auto-harvest at confidence 0.75 or above.
+```
+
+Before the change the two records read the same, so no screen could tell a set figure
+from the opening one. After it they differ. The timeframe is the same in all four
+readings, which is the reading that shows only the bar was added.
+
+`src/trading/bot_container.py, in get_status` — the key
+
+```python
+"detonation_confidence_min": float(
+    getattr(
+        self.config,
+        "detonation_confidence_min",
+        DETONATION_CONFIDENCE_MIN_DEFAULT,
+    )
+),
+```
+
+The opening figure of 0.75 is one declaration, read by the record and by the box.
+
+`src/trading/container/config.py` — the figure
+
+```python
+DETONATION_CONFIDENCE_MIN_DEFAULT: float = 0.75
+```
+
+### What the three repairs reach, and what they do not move
+
+The Paper Trader's table and the Simulator's table are the Live table with their own
+price feed, so one repair in the Live surface and one in the Live widget reach all
+three. Every one of the six readings above was taken on the real model or the real
+widget of its own build.
+
+Nothing detonates differently, no ceiling moves and no bar changes. The taper, the
+ceiling, the ceiling multiple, the ratio and the calibrated cartridge percentage were
+each driven over a swept set of 269 readings on the tree before the change and the
+tree after it. The two sets are byte identical by sha256, and changing one reading by
+hand makes the comparison report one difference.
+
+```
+area                   readings   differing
+the taper schedule           21           0
+the position ceiling         60           0
+the ceiling multiple         10           0
+the ratio to ceiling         20           0
+the cartridge figure        150           0
+the detonation bar            8           0
+```
+
+No venue was contacted on any run. The socket counter read zero every time and a single
+deliberate call moved it to one.
+
+### Where three earlier entries now read differently
+
+Three statements above describe what this unit changed. They stand as written, and
+these are the readings that replaced them.
+
+| written above | what it reads now |
+| --- | --- |
+| "the engine reports it inside its cartridge line as a percentage" | It still does, and the percentage is now labelled cartridge cap. The bare word ceiling no longer appears in the cartridge line, so a search of the log for ceiling returns the position-ceiling lines alone |
+| "the taper schedule is `fold_rate_taper`, both in the shared sizing module" | The schedule is `fold_size_taper`, in the same module. The multiplication is still `fold_spend_usd` |
+| "It is absent from the record the Bot Swarm row reads, so that tooltip can report the timeframe a bot is watching and never the bar it must clear" | The record carries `detonation_confidence_min` and the tooltip names it. The reading for a stored 0.60 and the reading for the opening 0.75 now differ |

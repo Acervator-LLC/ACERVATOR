@@ -13,6 +13,7 @@ from ..main_tabs.bot_status_table_surface import (
     BUTTON_HEIGHT_PX,
     COLUMN_LABELS,
     COLUMN_TOOLTIPS,
+    DEFAULT_DETONATION_CONFIDENCE,
     FIRE_LABEL_MANUAL_NOOP,
     FIRE_MASK_FIELD,
     FIRE_PATH_FOLD_CEILING,
@@ -51,6 +52,7 @@ from ..main_tabs.bot_status_table_surface import (
     SORTABLE_COLUMNS,
     TOOLTIP_LINE_GAP,
     SortLookups,
+    fold_taper_of,
     icon_asset_of,
     kept_logo_path,
     manual_fire_dispute,
@@ -828,9 +830,12 @@ if _HAS_QT:
             ceiling_enabled = status.get("position_ceiling_enabled", False)
             ceiling_ratio = status.get("ceiling_ratio")
             ceiling_usd = status.get("position_ceiling_usd")
-            fold_taper = status.get("fold_rate_taper", 1.0)
+            fold_taper = fold_taper_of(status)
             detonation_enabled = status.get("detonation_enabled", False)
             detonation_tf = status.get("detonation_timeframe", "1d")
+            detonation_bar = status.get(
+                "detonation_confidence_min", DEFAULT_DETONATION_CONFIDENCE
+            )
             # Fold is hard-stopped when ceiling enabled AND ratio >= 1.0
             fold_blocked_by_ceiling = (
                 ceiling_enabled and ceiling_ratio is not None and ceiling_ratio >= 1.0
@@ -891,19 +896,20 @@ if _HAS_QT:
                             parts.append(
                                 f"\n\n⚠ Approaching ceiling "
                                 f"({pct:.1f}% of ${ceiling_usd:.2f}) — "
-                                f"fold rate tapered to {fold_taper*100:.0f}%."
+                                f"fold size tapered to {fold_taper*100:.0f}%."
                             )
                         else:
                             parts.append(
                                 f"\n\nCeiling: {pct:.1f}% of "
                                 f"${ceiling_usd:.2f} "
-                                f"(fold rate: {fold_taper*100:.0f}%)."
+                                f"(fold size: {fold_taper*100:.0f}%)."
                             )
                     if detonation_enabled:
                         parts.append(
                             f"\nDetonation armed: monitoring "
                             f"{detonation_tf.upper()} for BULLISH "
-                            f"auto-harvest."
+                            f"auto-harvest at confidence "
+                            f"{float(detonation_bar):.2f} or above."
                         )
                     return "".join(parts)
 

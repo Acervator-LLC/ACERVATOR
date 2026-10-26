@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from typing import Any, Callable, Optional
 
 from ...exchange.base import OrderSide, OrderType
+from ..container.config import target_growth_pct
 from ..target_bands import manual_fire_dust_band
 from ..ta_engine import VotingSummary
 from ..wallet_reservations import get_wallet_reservations, wallet_key
@@ -33,17 +34,6 @@ logger = logging.getLogger("acervator.scrumming")
 
 # A fraction of the price a refusal was taken at, not a percent.
 REFUSAL_HOLD_MOVE_FRACTION: float = 0.001
-
-
-@dataclass
-class MemorisedTrade:
-    """A scrumming event stored for potential conversion to a grid level."""
-
-    timestamp: float
-    side: str
-    price: float
-    amount: float
-    voting_summary: Optional[VotingSummary] = None
 
 
 @dataclass(frozen=True)
@@ -98,7 +88,6 @@ class ExecutionEngineMixin:
     _last_trade_side: Optional[str]
     _main_lots: list[dict]
     _manual_fire_pending: bool
-    _memorised_trades: list[MemorisedTrade]
     _open_stack_from_scrum: Callable[..., Any]
     _preview_fold_growth: Callable[..., Any]
     _quote_to_usd: float
@@ -641,9 +630,7 @@ class ExecutionEngineMixin:
             return
         if caller_intent != "manual_button":
             if delta_usd < 0:
-                _growth = float(
-                    getattr(self.config, "max_target_growth_pct", 1.0) or 0.0
-                )
+                _growth = float(target_growth_pct(self.config) or 0.0)
                 _ceiling = float(self._target_balance) * (1.0 + _growth / 100.0)
                 _prospective = _xvalue + abs(delta_usd)
                 if _prospective > _ceiling + dust:
@@ -1900,15 +1887,6 @@ class ExecutionEngineMixin:
                     _sup,
                 )
 
-            self._memorised_trades.append(
-                MemorisedTrade(
-                    timestamp=time.time(),
-                    side="sell",
-                    price=actual_fill,
-                    amount=filled_units,
-                    voting_summary=summary,
-                )
-            )
             self._bus.emit(
                 "bot.log",
                 bot_id=self.bot_id,
@@ -2145,7 +2123,7 @@ class ExecutionEngineMixin:
 
         _ctx = trace_context or {}
         _path = _ctx.get("path", "unspecified")
-        _cap_pct = float(getattr(self.config, "max_target_growth_pct", 1.0))
+        _cap_pct = float(target_growth_pct(self.config))
         _anchor = float(getattr(self, "_anchor_target_balance", self._target_balance))
         _per_cycle_growth_budget = _anchor * (_cap_pct / 100.0)
 
@@ -2361,15 +2339,6 @@ class ExecutionEngineMixin:
                     _sup,
                 )
 
-            self._memorised_trades.append(
-                MemorisedTrade(
-                    timestamp=time.time(),
-                    side="buy",
-                    price=actual_fill,
-                    amount=amount,
-                    voting_summary=summary,
-                )
-            )
             self._bus.emit(
                 "bot.log",
                 bot_id=self.bot_id,

@@ -357,11 +357,11 @@ if _HAS_QT:
 
             # _new_passphrase is built above _pp_check so _sync_passphrase_row
             # has both names. The rows keep the painted order below.
+            from .main_tabs.init_wizard_surface import PHRASE_FIELD_PROMPT
+
             self._new_passphrase = QLineEdit()
             self._new_passphrase.setEchoMode(QLineEdit.Password)
-            self._new_passphrase.setPlaceholderText(
-                "Passphrase set when creating API key"
-            )
+            self._new_passphrase.setPlaceholderText(PHRASE_FIELD_PROMPT)
             self._new_passphrase.setVisible(False)
 
             self._pp_check = QCheckBox("This exchange uses an API passphrase")
@@ -764,7 +764,7 @@ if _HAS_QT:
                         config.passphrase_enc = encrypt(pp, master)
 
                 self._sm.add_exchange(config)
-                self._list_exchange_once(eid)
+                tab_is_new = self._list_exchange_once(eid)
                 self._refresh_exchange_status()
                 self._new_api_key.clear()
                 self._new_api_secret.clear()
@@ -772,6 +772,8 @@ if _HAS_QT:
                 self._new_verification_code.clear()
 
                 from .main_tabs.settings_dialog_surface import (
+                    ADDED_BOX_TITLE,
+                    added_box_text,
                     stored_credential_phrase,
                 )
 
@@ -783,9 +785,8 @@ if _HAS_QT:
                     )
                 QMessageBox.information(
                     self,
-                    "Exchange Added",
-                    f"{eid.capitalize()} has been added {has_creds}.\n"
-                    f"The exchange tab will appear in the main window.",
+                    ADDED_BOX_TITLE,
+                    added_box_text(eid.capitalize(), has_creds, tab_is_new),
                 )
                 self.accept()
             finally:
@@ -883,11 +884,11 @@ if _HAS_QT:
             if self._status_log:
                 self._status_log.log(words, level)
 
-        def _list_exchange_once(self, eid: str) -> None:
+        def _list_exchange_once(self, eid: str) -> bool:
             """Draw ``eid`` in ``_exchange_list`` while no line names it yet.
 
-            Both builds run this method and the Qt-free model calls the same
-            ``listed_exchange_position``.
+            Answers True where a line was added, which is what
+            ``added_box_text`` reads for its tab sentence.
             """
             from .main_tabs.settings_dialog_surface import (
                 NO_MATCH_INDEX,
@@ -898,8 +899,10 @@ if _HAS_QT:
                 self._exchange_list.item(at).text()
                 for at in range(self._exchange_list.count())
             ]
-            if listed_exchange_position(drawn, eid) == NO_MATCH_INDEX:
-                self._exchange_list.addItem(f"{eid.capitalize()} ({eid})")
+            if listed_exchange_position(drawn, eid) != NO_MATCH_INDEX:
+                return False
+            self._exchange_list.addItem(f"{eid.capitalize()} ({eid})")
+            return True
 
         def _remove_exchange(self) -> None:
             item = self._exchange_list.currentItem()
@@ -910,11 +913,13 @@ if _HAS_QT:
             eid = text.split("(")[-1].rstrip(")")
             from src.exchange.credential_state import forget
 
+            from .main_tabs.settings_dialog_surface import removed_feedback_text
+
             self._sm.remove_exchange(eid)
             self._exchange_list.takeItem(self._exchange_list.row(item))
             forget(eid)
             self._refresh_exchange_status()
-            self._set_feedback(f"{eid.capitalize()} removed.", "info")
+            self._set_feedback(removed_feedback_text(eid.capitalize()), "info")
             if self._status_log:
                 self._status_log.log(f"Exchange removed: {eid}", "warning")
 
@@ -1081,8 +1086,8 @@ if _HAS_QT:
             self._sound_profit.setChecked(True)
             self._sound_profit.setToolTip(
                 "Synthesized 3-coin bucket drop plays on any trade\n"
-                "event with realized profit > 0. Fires on grid and\n"
-                "scrumming bots alike."
+                "event with realized profit > 0. Fires on scrumming\n"
+                "and extractor bots alike."
             )
             layout.addWidget(self._sound_profit)
 

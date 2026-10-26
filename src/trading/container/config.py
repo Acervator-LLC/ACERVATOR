@@ -11,7 +11,9 @@ import logging
 import math
 from dataclasses import dataclass, fields
 from enum import Enum
-from typing import Optional
+from typing import Any, Callable, Optional
+
+from ...core.settings import DEFAULT_ENABLE_PHANTOMS, DEFAULT_LOCK_CANDLE_COUNT
 
 logger = logging.getLogger("acervator.bot")
 
@@ -110,6 +112,10 @@ SMART_CARTRIDGE_CEILING_OFF: float = 0.0
 #: ``SMART_CARTRIDGE_CEILING_OFF``.
 SMART_CARTRIDGE_CEILING_OFF_TEXT: str = "off"
 
+#: ``BotConfig.detonation_confidence_min`` opening figure, the BULLISH
+#: confidence a detonation must reach.
+DETONATION_CONFIDENCE_MIN_DEFAULT: float = 0.75
+
 #: ``BotConfig.position_ceiling_multiple`` opening figure, in anchor multiples,
 #: read by ``ceiling_multiple``.
 POSITION_CEILING_MULTIPLE_DEFAULT: float = 5.0
@@ -118,6 +124,11 @@ POSITION_CEILING_MULTIPLE_DEFAULT: float = 5.0
 #: ``BotConfig.position_ceiling_multiple`` to, in anchor multiples.
 CEILING_MULTIPLE_MIN: float = 1.0
 CEILING_MULTIPLE_MAX: float = 10.0
+
+#: The span every Scrum Fold Ratio box offers and ``fold_ratio_pct`` admits, in
+#: per cent of one sale's own proceeds.
+FOLD_RATIO_MIN_PCT: int = 1
+FOLD_RATIO_MAX_PCT: int = 100
 
 
 @dataclass
@@ -222,7 +233,7 @@ class BotConfig:
     trading_fee_pct: float = 0.6
 
     # Caps accumulation at position_ceiling_multiple x the anchor target_balance;
-    # fold_rate_taper shrinks the fold's USD size 100%->10% over ratio 0.5->1.0.
+    # fold_size_taper shrinks the fold's USD size 100%->10% over ratio 0.5->1.0.
     position_ceiling_enabled: bool = False
     # Range [1.0, 10.0].
     position_ceiling_multiple: float = POSITION_CEILING_MULTIPLE_DEFAULT
@@ -232,9 +243,8 @@ class BotConfig:
     # anchor, not on the ceiling.
     detonation_enabled: bool = False
     detonation_timeframe: str = "1d"  # "1d", "1w"
-    detonation_confidence_min: float = (
-        0.75  # BULLISH confidence threshold; operator-adjustable 0.50-1.00
-    )
+    # operator-adjustable 0.50-1.00
+    detonation_confidence_min: float = DETONATION_CONFIDENCE_MIN_DEFAULT
 
     # Read through expiry_close_decision() below, never raw. The close acts only
     # inside the resolved lead time and inside expiry_horizon_days.
@@ -550,6 +560,20 @@ PUSHED_TARGET_DEFAULT: float = float(
     next(one.default for one in fields(BotConfig) if one.name == "target_balance")
 )
 
+#: What `fold_ratio_pct` answers for a record outside `FOLD_RATIO_MIN_PCT` to
+#: `FOLD_RATIO_MAX_PCT`, read off `BotConfig`'s own `scrum_fold_pct` default.
+FOLD_RATIO_PCT_DEFAULT: int = int(
+    next(one.default for one in fields(BotConfig) if one.name == "scrum_fold_pct")
+)
+
+#: The per-cycle Target Balance growth cap every box opens at and
+#: `target_growth_pct` answers for an object carrying no such field.
+TARGET_GROWTH_PCT_DEFAULT: float = float(
+    next(
+        one.default for one in fields(BotConfig) if one.name == "max_target_growth_pct"
+    )
+)
+
 
 def pushed_target_usd(value) -> Optional[float]:
     """Return the Target Balance one pushed market takes, or None when no bot
@@ -596,6 +620,33 @@ def smart_cartridge_ceiling_pct(config) -> float:
             MAX_CARTRIDGE_SMART_CEILING_PCT_DEFAULT,
         )
     )
+
+
+def fold_ratio_pct(config) -> int:
+    """`config.scrum_fold_pct` as the whole per cent a Scrum Fold Ratio box offers.
+
+    `as_box_figure` over `FOLD_RATIO_MIN_PCT` to `FOLD_RATIO_MAX_PCT` is the
+    admission, a figure it refuses answers `FOLD_RATIO_PCT_DEFAULT`, and
+    `_apply_scrum_fold_pct` and all three settings pages call it.
+    """
+    read = as_box_figure(
+        getattr(config, "scrum_fold_pct", FOLD_RATIO_PCT_DEFAULT),
+        FOLD_RATIO_MIN_PCT,
+        FOLD_RATIO_MAX_PCT,
+    )
+    if read is None:
+        return FOLD_RATIO_PCT_DEFAULT
+    return int(read)
+
+
+def target_growth_pct(config):
+    """`config.max_target_growth_pct` as the record holds it, uncoerced.
+
+    `TARGET_GROWTH_PCT_DEFAULT` answers an object carrying no such field, which
+    `BotConfig`, `PaperFleetBot` and `SimFleetBot` all declare, so each caller
+    keeps its own `float` and `or` coercion.
+    """
+    return getattr(config, "max_target_growth_pct", TARGET_GROWTH_PCT_DEFAULT)
 
 
 def ceiling_multiple(config) -> float:
@@ -1074,25 +1125,84 @@ def bot_config_kwargs(mode, collected: dict, *, exchange_id: str = "") -> dict:
     return kwargs
 
 
-def phantom_init_kwargs(collected: dict) -> dict:
-    """Return the phantom constructor kwargs for a Scrumming bot out of
-    `collected`.
+def stored_list(value: Any) -> list:
+    """The entries a stored list field holds, a stored word answering one entry
+    and never one entry per letter."""
+    if isinstance(value, str):
+        return [value] if value else []
+    if isinstance(value, (list, tuple)):
+        return list(value)
+    return []
 
-    `bot_config_kwargs` carries the declared `BotConfig` fields; the wizard's
-    phantom page writes three keys that are none of them. The enable flag and
-    the timeframe list are runtime attributes and the lock count belongs to the
-    bot's `TimeframeCoordinator`, so all three travel as keyword arguments
-    instead. An absent `lock_candle_count` is left out, which keeps the
-    coordinator's own declared count.
-    """
-    kwargs: dict = {
-        "enable_phantoms": collected.get("enable_phantoms", False),
-        "phantom_timeframes": collected.get("phantom_timeframes", []),
+
+def _restored_phantom_flag(record: dict, bot_id: str) -> bool:
+    """``phantoms_enabled`` off a saved bot `record`, as the enable flag."""
+    return bool(record.get("phantoms_enabled", DEFAULT_ENABLE_PHANTOMS))
+
+
+def _restored_phantom_timeframes(record: dict, bot_id: str) -> Optional[list]:
+    """``phantom_timeframes`` off a saved bot `record`, or None for the length
+    above the bot's own."""
+    names = [str(one) for one in stored_list(record.get("phantom_timeframes"))]
+    if not names:
+        names = [str(one) for one in stored_list(record.get("phantom_timeframe"))]
+    return names or None
+
+
+def _restored_lock_count(record: dict, bot_id: str) -> Optional[int]:
+    """``lock_candle_count`` off a saved bot `record`, or None to keep
+    ``TimeframeCoordinator``'s own count."""
+    held = record.get("lock_candle_count")
+    if held is None:
+        return None
+    try:
+        return int(held)
+    except (TypeError, ValueError):
+        logger.warning(
+            "Bot %s saved lock_candle_count %r is not a number. The "
+            "coordinator keeps its own count of %s and the bot is still "
+            "loaded.",
+            str(bot_id)[:8],
+            held,
+            DEFAULT_LOCK_CANDLE_COUNT,
+        )
+        return None
+
+
+@dataclass(frozen=True)
+class PhantomArgument:
+    """One phantom value a Scrumming bot takes as a constructor argument, with
+    its wizard default and its saved-record reader."""
+
+    keyword: str
+    wizard_absent: Any
+    read_record: Callable[[dict, str], Any]
+
+
+#: One declaration of every phantom value that reaches a Scrumming bot outside
+#: ``BotConfig``. ``phantom_init_kwargs`` and ``phantom_restore_kwargs`` both
+#: read it, so neither the wizard path nor the restore path names a key. A
+#: keyword answering None leaves ``ScrummingBot``'s own default in place.
+PHANTOM_ARGUMENTS: tuple = (
+    PhantomArgument("enable_phantoms", False, _restored_phantom_flag),
+    PhantomArgument("phantom_timeframes", (), _restored_phantom_timeframes),
+    PhantomArgument("lock_candle_count", None, _restored_lock_count),
+)
+
+
+def phantom_init_kwargs(collected: dict) -> dict:
+    """The phantom constructor kwargs for a Scrumming bot out of the wizard's
+    `collected` mapping, every keyword read from `PHANTOM_ARGUMENTS`."""
+    return {
+        one.keyword: collected.get(one.keyword, one.wizard_absent)
+        for one in PHANTOM_ARGUMENTS
     }
-    lock_candles = collected.get("lock_candle_count")
-    if lock_candles is not None:
-        kwargs["lock_candle_count"] = lock_candles
-    return kwargs
+
+
+def phantom_restore_kwargs(record: dict, bot_id: str = "") -> dict:
+    """The phantom constructor kwargs for a Scrumming bot out of a saved bot
+    `record`, every keyword read from `PHANTOM_ARGUMENTS`."""
+    return {one.keyword: one.read_record(record, bot_id) for one in PHANTOM_ARGUMENTS}
 
 
 @dataclass

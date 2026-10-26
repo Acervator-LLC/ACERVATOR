@@ -19,10 +19,10 @@ fleet save, so the tab can be driven over the bridge from values alone.
 
 ``src.core.desktop_bridge`` registers ``view_model`` as the handler for the
 ``fold_tranches_tab.state`` method, which is how the Electron renderer
-reaches it. Every value below is written out here rather than read from
-``src.gui.live_settings.fold_tranches_tab`` or its two sibling modules, so
-a value changed on one side alone is reported. Nothing here imports Qt and
-nothing here reads the clock: ``now`` is handed in.
+reaches it. ``DESPAWN_MAX_DAYS`` and ``DESPAWN_PREVIEW_WINDOWS`` come from
+``src.trading.container.config``; every other figure is declared in this
+module. Nothing here imports Qt and nothing here reads the clock: ``now``
+is handed in.
 """
 
 from __future__ import annotations

@@ -34,7 +34,15 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from ...trading.container.config import DESPAWN_MAX_DAYS
+from ...trading.container.config import (
+    CEILING_MULTIPLE_MAX,
+    CEILING_MULTIPLE_MIN,
+    DESPAWN_MAX_DAYS,
+    FOLD_RATIO_MAX_PCT,
+    FOLD_RATIO_MIN_PCT,
+    FOLD_RATIO_PCT_DEFAULT,
+    POSITION_CEILING_MULTIPLE_DEFAULT,
+)
 from .. import design_system as ds
 from .indicator_panel_surface import ABSENT_CELL_TEXT
 
@@ -244,6 +252,8 @@ FLOAT_SAFE_INT = 2**1023
 DESPAWN_FIELD = "tranche_despawn_days"
 DESPAWN_OFF = 0
 
+#: The row tooltips. The Live, Paper and Simulator settings tabs read
+#: ``TOOLTIPS[DESPAWN_FIELD]`` from here rather than spelling it again.
 TOOLTIPS = {
     "aggressive": "When ON, every engine-initiated buy/sell executes as an Immediate-Or-Cancel limit order priced through the spread — i.e., pays the taker fee for immediate fill. When OFF, the bot may use passive maker orders where appropriate. Manual fire is unaffected by this flag.",
     "stack_mode": "When ON, a SCRUM fires as N Stack Tranches at ascending price levels instead of a single sell. First tranche at the Minimum Opposing Trade Distance (opposing hysteresis level); successive tranches spaced by Split Distance per the Spacing model. See the Stack Tranches tab for live tranche state (added Sub-phase 2E). Visibility gates book placement: orderbook = resting limits; internal = tracked off-books, market-fire on threshold cross.",
@@ -266,9 +276,9 @@ TOOLTIPS = {
     "detect_pct": "BB DETECT threshold: % distance from BB midline to band before SEARCH→TRACK. Lower = earlier detection. Also defines the HARD GATE: SCRUM cannot occur below the Upper BB Detection Threshold; FOLD cannot occur above the Lower BB Detection Threshold. 75% → upper gate at bb_pos≥0.875, lower gate at bb_pos≤0.125. Live-editable.",
     "fire_pct": "FIRE threshold: % distance from BB band to trigger trade.",
     "midline_gate": "When enabled: scrums ONLY fire above BB midline,\nfolds ONLY fire below midline (sell-high/buy-low).",
-    "read_rate": "SEARCH-mode read rate in minutes. TRACK mode reads 10x faster.",
+    "scrum_read_rate_min": "SEARCH-mode read rate in minutes. TRACK mode reads 10x faster.",
     "band_travel": "Secondary harvest trigger: % of BB band width price must travel since last fold. 0 disables.",
-    "bullseye": "Counts a band touch within 0.5% (or a candle wick within 0.2%) as BB proximity.\nWith the delta at or over the interval that arms the BB priority skew, which lowers the TA confidence floor. The fire threshold and the midline gate are unchanged.",
+    "bb_bullseye_check": "Counts a band touch within 0.5% (or a candle wick within 0.2%) as BB proximity.\nWith the delta at or over the interval that arms the BB priority skew, which lowers the TA confidence floor. The fire threshold and the midline gate are unchanged.",
     "scrum_fold_pct": "% of scrum sale proceeds queued for fold (rebuy).\n100% = full reentry (max accumulation, max risk).\nLower values preserve cash buffer — safer when\nprice keeps falling after the scrum.",
     "tranche_despawn_days": "DESPAWN any tranche this old - both fold tranches\nand stack tranches, from this one setting. 0 = Off\n(default).\n\nMERGE, DESPAWN and CLEAR are the only three things\nthat collapse or remove a tranche. This is despawn:\nthe age-driven one.\n\nIT IS NOT A TRADE. No order is placed or cancelled,\nno balance moves, holdings and cost basis are\nuntouched. The record goes.\n\nWHAT THE RECORD HELD: the tranche's ref price, its\nparked fold USD, its units, and its initial_buy_price\n(the provenance figure). The scrum sale that\nmade it already happened, so those dollars are\nalready in the wallet - the record was only the\nqueued intent to buy the units back. A despawned\ntranche can no longer fold back, so that money goes\nfrom queued rebuy to ordinary spendable balance.\n\nA tranche is despawned at exactly this age or older.\nA tranche with no timestamp is NEVER despawned, and\na stack tranche holding a resting exchange order is\nkept until that order settles.\n\nSEE THE COUNT FIRST: the Fold Tranches tab prints how\nmany of this bot's tranches each candidate window\nwould remove, and what they hold.",
     "hedge_active": "Separate USD reserve for buying on sharp drawdowns.\nNOT taken from Target Balance.\n\nTicking this on a running bot fills the reserve up to Hedge Balance at once.\nUnticking keeps the reserve and refuses every hedge buy and every refill.",
@@ -281,7 +291,7 @@ TOOLTIPS = {
     "cartridge_smart_ceiling": "Maximum effective cartridge threshold under Smart calibration. Prevents cartridge from being effectively disabled during volatility expansion. Only applies when Smart Cartridge is ON. Default 30%.",
     "cb_reset_all_btn": "Operator override: clears any active soft and hard circuit breakers. Hard reset also resumes the bot if it is PAUSED.",
     "self_destruct_btn": "Aggressively exit the entire position. Confirmation required.",
-    "ceiling_enabled": "Cap accumulation at Nx of the bot's INITIAL target_balance (stable anchor set at creation).\nFold rate tapers 100% → 10% as value approaches ceiling (ratio 0.5 → 1.0), hard-stops at ceiling.\nScrum always allowed. Protects against runaway accumulation on conviction plays.",
+    "ceiling_enabled": "Cap accumulation at Nx of the bot's INITIAL target_balance (stable anchor set at creation).\nFold size tapers 100% → 10% as value approaches ceiling (ratio 0.5 → 1.0), hard-stops at ceiling.\nScrum always allowed. Protects against runaway accumulation on conviction plays.",
     "ceiling_mult": "Ceiling multiplier. 1x = no accumulation beyond anchor. 10x = 10x runway. Default 5x.",
     "deto_enabled": "Monitor a higher TF for BULLISH + high-confidence signal. Edge-triggered: fires ONCE per transition into bullish state.\nOn trigger: MARKET sell everything above the anchor, then reset target_balance to anchor ('lock in' gains, re-accumulate from scratch).\nRate-limited to 1 check/hour.\nAdditional gate: fires only when current value is above the anchor — no harvest if the bot is below its initial anchor.",
     "deto_tf": "Timeframe to monitor for bullish detonation signal. 1D = daily, 1W = weekly. Higher = stronger conviction, fewer triggers.",
@@ -292,7 +302,7 @@ TOOLTIPS = {
     "expiry_lead_days": "Days before expiry the close fires. Read only in A number of days mode. 0 is off.",
     "expiry_horizon": "A contract expiring beyond this many days counts as non-expiring and gets no close at all. 0 turns every close off.\nThe venue publishes contracts dated 2030 and 2089; 365 days leaves both of those alone and still covers every dated month.",
     "gate_scrum_ta": "ON (Conservative): scrum auto-fire requires TA consensus BULLISH. Protects against scrumming false tops. OFF (Lean): scrum fires at BB-upper + delta regardless of TA.",
-    "gate_scrum_uptrend": "ON (Conservative): if 65 %+ of last 20 candles were bullish, bot holds rather than scrumming each band touch. OFF (Lean): scrum every BB-upper touch regardless of trend strength.",
+    "gate_scrum_uptrend": "ON (Conservative): if 65 %+ of last 20 candles were bullish, bot holds rather than scrumming each band touch. OFF (Lean): scrum every BB-upper touch regardless of trend strength. On a live bot an override clears this hold on either of two conditions: the position sits at least twice the Scrumming Interval away from target, or Band Travel fires. The gate line then names TRND as overridden and its light paints cyan.",
     "gate_scrum_htf": "ON (Conservative): refuse scrum when a higher-TF phantom signals BULLISH. OFF (Lean): cartridge captures HTF swings organically; this gate is redundant if Smart Cartridge is ON.",
     "gate_fold_ta": "ON (Conservative): mirror of SCRUM TA gate on the fold side. OFF (Lean): fold fires at BB-lower + tranche-eligible regardless of TA.",
     "gate_fold_htf": "ON (Conservative): mirror of SCRUM HTF gate on the fold side. OFF (Lean): fold fires regardless of higher-TF bearish bias.",
@@ -797,6 +807,17 @@ CONTROL_SPECS = (
         "step": 0.25,
     },
     {
+        "name": "scrum_fold_pct",
+        "kind": SPIN,
+        "group": SCRUM_GROUP,
+        "row_label": "Scrum Fold Ratio:",
+        "field": "scrum_fold_pct",
+        "reading": INT_READING,
+        "default": FOLD_RATIO_PCT_DEFAULT,
+        "range": (FOLD_RATIO_MIN_PCT, FOLD_RATIO_MAX_PCT),
+        "suffix": " %",
+    },
+    {
         "name": "profit_folding_active",
         "kind": CHECK,
         "group": SCRUM_GROUP,
@@ -843,7 +864,7 @@ CONTROL_SPECS = (
         "no_default": True,
     },
     {
-        "name": "read_rate",
+        "name": "scrum_read_rate_min",
         "kind": SPIN,
         "group": ADVANCED_GROUP,
         "row_label": "Read Rate:",
@@ -867,7 +888,7 @@ CONTROL_SPECS = (
         "suffix": " %",
     },
     {
-        "name": "bullseye",
+        "name": "bb_bullseye_check",
         "kind": CHECK,
         "group": ADVANCED_GROUP,
         "row_label": NO_ROW_LABEL,
@@ -876,17 +897,6 @@ CONTROL_SPECS = (
         "reading": BOOL_READING,
         "default": None,
         "no_default": True,
-    },
-    {
-        "name": "scrum_fold_pct",
-        "kind": SPIN,
-        "group": ADVANCED_GROUP,
-        "row_label": "Scrum Fold Ratio:",
-        "field": "scrum_fold_pct",
-        "reading": INT_READING,
-        "default": 100,
-        "range": (1, 100),
-        "suffix": " %",
     },
     {
         "name": "tranche_despawn_days",
@@ -1009,8 +1019,8 @@ CONTROL_SPECS = (
         "row_label": "Ceiling Multiple:",
         "field": "position_ceiling_multiple",
         "reading": FLOAT_READING,
-        "default": 5.0,
-        "range": (1.0, 10.0),
+        "default": POSITION_CEILING_MULTIPLE_DEFAULT,
+        "range": (CEILING_MULTIPLE_MIN, CEILING_MULTIPLE_MAX),
         "decimals": 1,
         "suffix": "x anchor",
         "step": 0.5,
