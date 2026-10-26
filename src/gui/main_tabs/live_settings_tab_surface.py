@@ -297,7 +297,7 @@ TOOLTIPS = {
     "expiry_lead_days": "Days before expiry the close fires. Read only in A number of days mode. 0 is off.",
     "expiry_horizon": "A contract expiring beyond this many days counts as non-expiring and gets no close at all. 0 turns every close off.\nThe venue publishes contracts dated 2030 and 2089; 365 days leaves both of those alone and still covers every dated month.",
     "gate_scrum_ta": "ON (Conservative): scrum auto-fire requires TA consensus BULLISH. Protects against scrumming false tops. OFF (Lean): scrum fires at BB-upper + delta regardless of TA.",
-    "gate_scrum_uptrend": "ON (Conservative): if 65 %+ of last 20 candles were bullish, bot holds rather than scrumming each band touch. OFF (Lean): scrum every BB-upper touch regardless of trend strength.",
+    "gate_scrum_uptrend": "ON (Conservative): if 65 %+ of last 20 candles were bullish, bot holds rather than scrumming each band touch. OFF (Lean): scrum every BB-upper touch regardless of trend strength. On a live bot an override clears this hold on either of two conditions: the position sits at least twice the Scrumming Interval away from target, or Band Travel fires. The gate line then names TRND as overridden and its light paints cyan.",
     "gate_scrum_htf": "ON (Conservative): refuse scrum when a higher-TF phantom signals BULLISH. OFF (Lean): cartridge captures HTF swings organically; this gate is redundant if Smart Cartridge is ON.",
     "gate_fold_ta": "ON (Conservative): mirror of SCRUM TA gate on the fold side. OFF (Lean): fold fires at BB-lower + tranche-eligible regardless of TA.",
     "gate_fold_htf": "ON (Conservative): mirror of SCRUM HTF gate on the fold side. OFF (Lean): fold fires regardless of higher-TF bearish bias.",

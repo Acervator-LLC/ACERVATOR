@@ -2647,6 +2647,17 @@ is the profit the whole cycle exists to take, and holding it back to wait out a
 trend forfeits it. What was missing was the record, not a different rule: the
 hold was cleared and no screen said so.
 
+**Functional.** The override is in the live engine alone. The back test and the
+paper fleet build their gate inputs from the raw trend reading and never clear
+it, so a Simulator tick and a Paper tick hold where a live tick sells. The
+checkbox tooltip says so on all three screens.
+
+`src/trading/scrumming_bot.py` — the only module the override is written in
+
+```python
+trend_override = abs(delta) >= _interval_usd * 2.0 or band_travel_triggered
+```
+
 ### Where the armed flag comes from
 
 **Functional.** The gate row's two armed flags are the chain's own verdict. One
