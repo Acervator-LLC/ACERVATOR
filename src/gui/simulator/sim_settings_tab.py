@@ -1091,7 +1091,7 @@ class SimSettingsTabMixin(SettingsTabMixin):
             self._ext_chunk_size.valueChanged.connect(
                 lambda v: self._mark_changed("extractor_chunk_size_usd", v)
             )
-            ef.addRow("Pool size (USD):", self._ext_chunk_size)
+            ef.addRow("Chunk size (USD):", self._ext_chunk_size)
 
             self._ext_artillery_size = QDoubleSpinBox()
             self._ext_artillery_size.setRange(0.5, 100_000.0)
@@ -1114,13 +1114,13 @@ class SimSettingsTabMixin(SettingsTabMixin):
             self._ext_scan_top_n.setValue(int(getattr(cfg, "extractor_scan_top_n", 8)))
             self._ext_scan_top_n.setToolTip(
                 "Top-N */<base> pairs by 24h volume to keep on the "
-                "auto-scan watch list. Range [5, 10] per design "
-                "doc §6. Ignored when manual alt-targets are set."
+                "watch list. Clamped to 5 to 10. A pair holding an "
+                "open position stays on the list below the cut."
             )
             self._ext_scan_top_n.valueChanged.connect(
                 lambda v: self._mark_changed("extractor_scan_top_n", v)
             )
-            ef.addRow("Auto-scan top-N:", self._ext_scan_top_n)
+            ef.addRow("Watch list top-N:", self._ext_scan_top_n)
 
             self._ext_scan_refresh = QSpinBox()
             # The wizard row and the manual both offer 10 to 240 candles.
@@ -1137,7 +1137,7 @@ class SimSettingsTabMixin(SettingsTabMixin):
             self._ext_scan_refresh.valueChanged.connect(
                 lambda v: self._mark_changed("extractor_scan_refresh_candles", v)
             )
-            ef.addRow("Scan refresh:", self._ext_scan_refresh)
+            ef.addRow("Watch list refresh:", self._ext_scan_refresh)
 
             self._ext_exit_pct = QDoubleSpinBox()
             self._ext_exit_pct.setRange(10.0, 100.0)
