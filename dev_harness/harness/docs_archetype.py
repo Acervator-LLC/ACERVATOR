@@ -50,20 +50,15 @@ __all__ = ["ArchetypeReport", "DocsArchetype", "Finding", "main"]
 
 # proselint check families scored high, whatever severity proselint gave them.
 _PROSELINT_HIGH_FAMILIES = {
-    "misc.illogic",  # logical errors
     "security",  # credentials-in-docs class
 }
 
-# House-style families, scored low whatever severity proselint gave them.
-_PROSELINT_STYLE_FAMILIES = ("typography.",)
 
-
-def _normalize_proselint_severity(check: str, sev: str) -> str:
+def _normalize_proselint_severity(check: str) -> str:
+    """Return high for a `_PROSELINT_HIGH_FAMILIES` check and low for every other."""
     if any(check.startswith(f) for f in _PROSELINT_HIGH_FAMILIES):
         return "high"
-    if check.startswith(_PROSELINT_STYLE_FAMILIES):
-        return "low"
-    return {"error": "medium", "warning": "medium", "suggestion": "low"}.get(sev, "low")
+    return "low"
 
 
 # House-style families, scored low whatever level vale gave them.
@@ -71,9 +66,12 @@ _VALE_STYLE_FAMILIES = ("write-good.",)
 
 
 def _normalize_vale_severity(check: str, level: str) -> str:
+    """Return low for a `_VALE_STYLE_FAMILIES` check and medium at most for any other."""
     if check.startswith(_VALE_STYLE_FAMILIES):
         return "low"
-    return {"error": "high", "warning": "medium", "suggestion": "low"}.get(level, "low")
+    return {"error": "medium", "warning": "medium", "suggestion": "low"}.get(
+        level, "low"
+    )
 
 
 # Fenced blocks (``` / ~~~) and inline code spans (`...`).
@@ -512,7 +510,7 @@ class DocsArchetype:
                         tool="proselint",
                         # proselint's text format doesn't carry severity;
                         # normalize by check-family only.
-                        severity=_normalize_proselint_severity(check, "warning"),
+                        severity=_normalize_proselint_severity(check),
                         file=str(f),
                         line=int(m.group("line")),
                         rule_id=check,
