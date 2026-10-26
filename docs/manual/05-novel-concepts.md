@@ -1658,5 +1658,12 @@ Issue #19 covers the build-out. Two surfaces that told the operator a Paper
 Trader was present were issues #422 and #426, and both folded into #19. Issue
 #117 tracks the Simulator rebuild that gated it.
 
+Issue #117 closed on 2026-09-19 and issue #19 closed on 2026-09-26, so neither
+tracks anything now. Both screens are in the tree:
+`src/gui/paper/paper_trading_tab.py` and
+`src/gui/paper/paper_react_trading_tab.py` draw Paper, and
+`src/gui/main_tabs/simulator_tab_surface.py` with
+`src/gui/react_simulator_tab.py` draw the Simulator.
+
 Today the workflow runs Market Inspector, then Simulator, then Paper, then Live.
 Every stage has a screen.
