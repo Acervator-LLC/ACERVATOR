@@ -56,7 +56,7 @@ from ..visualizer.growth_stage import (
 METHOD = "bot_node.state"
 
 MIN_WIDTH_PX = 88
-MIN_HEIGHT_PX = 78
+BODY_BOX_HEIGHT_PX = 78
 
 RENDER_HINT = "Antialiasing"
 RENDER_HINT_VALUE = 1
@@ -383,6 +383,16 @@ PNL_RECT_HEIGHT_PX = 11
 BOT_ID_RECT_BOTTOM_PX = 10
 BOT_ID_RECT_HEIGHT_PX = 9
 RECT_LEFT_PX = 0
+
+FACT_FONT_SIZE_PT = 5
+FACT_RECT_HEIGHT_PX = 10
+STATUS_RECT_TOP_PX = BODY_BOX_HEIGHT_PX
+TRADES_RECT_TOP_PX = STATUS_RECT_TOP_PX + FACT_RECT_HEIGHT_PX
+PRICE_RECT_TOP_PX = TRADES_RECT_TOP_PX + FACT_RECT_HEIGHT_PX
+
+MIN_HEIGHT_PX = PRICE_RECT_TOP_PX + FACT_RECT_HEIGHT_PX
+
+TRADES_TEXT_FORMAT = "{trades} trades"
 
 MASK_FIELD_ID = "bot_swarm.identifiers"
 BOT_ID_LABEL_CHARS = 8
@@ -851,6 +861,16 @@ def volume_text(volume: Any) -> tuple:
     return VOLUME_PLAIN_FORMAT.format(value=volume), VOLUME_PLAIN
 
 
+def status_text(state: Any) -> str:
+    """One bot's run state as the card writes it under the icon."""
+    return str(state).upper()
+
+
+def trades_text(trades: Any) -> str:
+    """One bot's trade count as the card writes it under the icon."""
+    return TRADES_TEXT_FORMAT.format(trades=trades)
+
+
 def body_parts(
     cx: Any, cy: Any, scale: Any, wing_open: Any, wing_ratio: Any = 1.0
 ) -> dict:
@@ -1088,7 +1108,7 @@ class BotNodeModel:
         calls.append([SET_RENDER_HINT, RENDER_HINT, RENDER_HINT_VALUE])
         colors = theme(self.theme_key)
         width, height = self.width_px, self.height_px
-        cx, cy = width / 2, height / 2
+        cx, cy = width / 2, BODY_BOX_HEIGHT_PX / 2
         calls.append([FILL_RECT, [0, 0, width, height], as_color(colors["bg"])])
 
         data = self.bot_data
@@ -1121,7 +1141,7 @@ class BotNodeModel:
         trim_color = hex_color(trim_hex)
         self.paint_branches.append(STAGE_BRANCHES[stage])
 
-        scale = min(width, height) / SCALE_DIVISOR * BODY_SCALE_RATIO[stage]
+        scale = min(width, BODY_BOX_HEIGHT_PX) / SCALE_DIVISOR * BODY_SCALE_RATIO[stage]
         wing_open, wing_branches = wing_openness(state, self.phase, self.trade_pulses)
         self.paint_branches.extend(wing_branches)
 
@@ -1414,7 +1434,7 @@ class BotNodeModel:
                 DRAW_TEXT,
                 [
                     float(RECT_LEFT_PX),
-                    float(height - PNL_RECT_BOTTOM_PX),
+                    float(BODY_BOX_HEIGHT_PX - PNL_RECT_BOTTOM_PX),
                     float(width),
                     float(PNL_RECT_HEIGHT_PX),
                 ],
@@ -1449,7 +1469,7 @@ class BotNodeModel:
                 DRAW_TEXT,
                 [
                     float(RECT_LEFT_PX),
-                    float(height - GROWTH_RECT_BOTTOM_PX),
+                    float(BODY_BOX_HEIGHT_PX - GROWTH_RECT_BOTTOM_PX),
                     float(width),
                     float(GROWTH_RECT_HEIGHT_PX),
                 ],
@@ -1466,7 +1486,7 @@ class BotNodeModel:
                 DRAW_TEXT,
                 [
                     float(RECT_LEFT_PX),
-                    float(height - BOT_ID_RECT_BOTTOM_PX),
+                    float(BODY_BOX_HEIGHT_PX - BOT_ID_RECT_BOTTOM_PX),
                     float(width),
                     float(BOT_ID_RECT_HEIGHT_PX),
                 ],
@@ -1483,6 +1503,52 @@ class BotNodeModel:
         else:
             price_text = PRICE_DASH
             self.paint_branches.append(PRICE_HIDDEN)
+
+        calls.append([SET_FONT, FONT_FAMILY, FACT_FONT_SIZE_PT, FONT_WEIGHT_BOLD])
+        calls.append([SET_PEN_COLOR, as_color(state_color)])
+        calls.append(
+            [
+                DRAW_TEXT,
+                [
+                    float(RECT_LEFT_PX),
+                    float(STATUS_RECT_TOP_PX),
+                    float(width),
+                    float(FACT_RECT_HEIGHT_PX),
+                ],
+                ALIGN_CENTER,
+                status_text(state),
+            ]
+        )
+
+        calls.append([SET_FONT, FONT_FAMILY, FACT_FONT_SIZE_PT, FONT_WEIGHT_NORMAL])
+        calls.append([SET_PEN_COLOR, as_color(colors["text"])])
+        calls.append(
+            [
+                DRAW_TEXT,
+                [
+                    float(RECT_LEFT_PX),
+                    float(TRADES_RECT_TOP_PX),
+                    float(width),
+                    float(FACT_RECT_HEIGHT_PX),
+                ],
+                ALIGN_CENTER,
+                trades_text(trades),
+            ]
+        )
+        calls.append(
+            [
+                DRAW_TEXT,
+                [
+                    float(RECT_LEFT_PX),
+                    float(PRICE_RECT_TOP_PX),
+                    float(width),
+                    float(FACT_RECT_HEIGHT_PX),
+                ],
+                ALIGN_CENTER,
+                price_text,
+            ]
+        )
+
         self.tooltip = TOOLTIP_FORMAT.format(
             symbol=hide(symbol, MASK_FIELD_ID),
             state=state.upper(),
@@ -1771,6 +1837,7 @@ def build_view_model(
         },
         "labels": {
             "left_px": RECT_LEFT_PX,
+            "body_box_height_px": BODY_BOX_HEIGHT_PX,
             "symbol_top_px": SYMBOL_RECT_TOP_PX,
             "symbol_height_px": SYMBOL_RECT_HEIGHT_PX,
             "pnl_bottom_px": PNL_RECT_BOTTOM_PX,
@@ -1778,6 +1845,12 @@ def build_view_model(
             "bot_id_bottom_px": BOT_ID_RECT_BOTTOM_PX,
             "bot_id_height_px": BOT_ID_RECT_HEIGHT_PX,
             "bot_id_color": hex_color(id_text_color(model.app_theme_name)),
+            "status_top_px": STATUS_RECT_TOP_PX,
+            "trades_top_px": TRADES_RECT_TOP_PX,
+            "price_top_px": PRICE_RECT_TOP_PX,
+            "fact_height_px": FACT_RECT_HEIGHT_PX,
+            "fact_size_pt": FACT_FONT_SIZE_PT,
+            "trades_format": TRADES_TEXT_FORMAT,
         },
         "privacy": {
             "field_id": MASK_FIELD_ID,

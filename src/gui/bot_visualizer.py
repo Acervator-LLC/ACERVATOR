@@ -1,7 +1,7 @@
 """The Bot Swarm tab and its Smart Wire canvas.
 
 ``BotVisualizationTab`` holds a ``BotNodeWidget`` per bot, a
-``QuickRoutingMatrix``, and sub-tabs for the simulator and paper rows.
+``QuickRoutingMatrix``, and sub-tabs for the simulator and paper benches.
 ``_WireCanvas`` paints the wires between bot nodes, and ``THEMES``
 supplies the accent colours.
 """
@@ -191,31 +191,6 @@ if _HAS_QT:
 
             viz_lay.addLayout(header)
 
-            self._live_rows_scroll = QScrollArea()
-            self._live_rows_scroll.setWidgetResizable(True)
-            self._live_rows_scroll.setStyleSheet(
-                f"QScrollArea{{border:1px solid {ds.VIZ_PANEL_BORDER};"
-                f"background:{ds.VIZ_SWARM_SURFACE};}}"
-            )
-            self._live_rows_widget = QWidget()
-            self._live_rows_widget.setStyleSheet(f"background:{ds.VIZ_SWARM_SURFACE};")
-            self._live_rows_layout = QVBoxLayout(self._live_rows_widget)
-            self._live_rows_layout.setSpacing(4)
-            self._live_rows_layout.setContentsMargins(4, 4, 4, 4)
-            self._live_rows_empty = QLabel("No live bots registered.")
-            self._live_rows_empty.setStyleSheet(
-                f"color:{ds.TEXT_PLACEHOLDER};font-size:8px;background:transparent;"
-            )
-            self._live_rows_layout.addWidget(self._live_rows_empty)
-            self._live_rows_layout.addStretch()
-            self._live_rows_scroll.setWidget(self._live_rows_widget)
-            self._live_rows_scroll.setMaximumHeight(140)
-            # Hidden while no live row exists, so _grid_layout keeps the tab height.
-            self._live_rows_scroll.setVisible(False)
-            viz_lay.addWidget(self._live_rows_scroll)
-
-            self._live_bot_rows: dict = {}
-
             # No scroll area: _grid_layout wraps the locusts across rows.
             self._grid_widget = QWidget()
             self._grid_layout = QGridLayout(self._grid_widget)
@@ -341,7 +316,6 @@ if _HAS_QT:
             sim_lay.addWidget(sim_summary)
 
             self._sim_bots: list[dict] = []
-            self._live_sim_rows: dict = {}  # sim_id → handle
             self._tabs.addTab(sim_tab, "🖥 Simulator Swarm")
 
             def _add_sim_bot():
@@ -454,7 +428,6 @@ if _HAS_QT:
             paper_lay.addWidget(paper_summary)
 
             self._paper_bots: list[dict] = []
-            self._live_paper_rows: dict = {}  # paper_id → handle
             self._tabs.addTab(paper_tab, "📄 Paper Swarm")
 
             def _add_paper_bot():
@@ -801,461 +774,11 @@ if _HAS_QT:
 
             rem_btn.clicked.connect(_remove)
 
-        # Accent colours per layer: (border, label, dot)
-        _SWARM_ACCENTS = {
-            "live": (ds.SUCCESS, ds.SUCCESS, ds.SUCCESS),
-            "sim": (ds.SUCCESS, ds.PRIMARY_BRIGHT, ds.SUCCESS),
-            "paper": (ds.ACCENT_GOLD, ds.ACCENT_GOLD, ds.ACCENT_GOLD),
-        }
-
-        def _create_swarm_row(self, kind: str, label: str, cfg: dict):
-            """Build one swarm row for ``kind`` in {live, sim, paper}.
-
-            The handle dict carries the same keys for every kind:
-            widget, dot, id_lbl, context_lbl, mode_lbl, feed_lbl,
-            cap_lbl, status_lbl, metric_lbl, pnl_lbl, trades_lbl, kind.
-            """
-            border, label_color, dot_color = self._SWARM_ACCENTS.get(
-                kind, self._SWARM_ACCENTS["sim"]
-            )
-
-            bg_tint = {
-                "live": ds.VIZ_LANE_LIVE,
-                "sim": ds.VIZ_LANE_LIVE,
-                "paper": ds.VIZ_LANE_PAPER,
-            }.get(kind, ds.VIZ_PANEL_SURFACE)
-
-            row = QFrame()
-            row.setStyleSheet(
-                f"QFrame{{background:{bg_tint};border:1px solid {border};"
-                f"border-radius:4px;}}"
-            )
-            rl = QHBoxLayout(row)
-            rl.setContentsMargins(8, 4, 8, 4)
-            rl.setSpacing(6)
-
-            dot = QLabel("●")
-            dot.setFixedWidth(12)
-            dot.setStyleSheet(
-                f"color:{dot_color};font-size:10px;font-weight:bold;"
-                f"background:transparent;"
-            )
-            rl.addWidget(dot)
-
-            id_lbl = QLabel(label)
-            id_lbl.setFixedWidth(80)
-            id_lbl.setStyleSheet(
-                f"color:{label_color};font-size:9px;font-weight:bold;"
-                f"font-family:Consolas;background:transparent;"
-            )
-            rl.addWidget(id_lbl)
-
-            context_lbl = QLabel(
-                cfg.get("context", cfg.get("pair", cfg.get("asset", "—")))
-            )
-            context_lbl.setFixedWidth(88)
-            context_lbl.setStyleSheet(
-                f"color:{ds.PRIMARY_BRIGHT};font-size:9px;font-weight:bold;"
-                "font-family:Consolas;background:transparent;"
-            )
-            rl.addWidget(context_lbl)
-
-            mode_lbl = QLabel(cfg.get("mode", "—"))
-            mode_lbl.setFixedWidth(72)
-            mode_lbl.setStyleSheet(
-                f"color:{ds.CARD_METRIC_LABEL};font-size:8px;font-family:Consolas;"
-                "background:transparent;"
-            )
-            rl.addWidget(mode_lbl)
-
-            # feed: timeframe for sim, data source for paper and live.
-            feed_lbl = QLabel(
-                cfg.get("feed", cfg.get("timeframe", cfg.get("source", "—")))
-            )
-            feed_lbl.setFixedWidth(60)
-            feed_lbl.setStyleSheet(
-                f"color:{ds.VIZ_CAPTION_DIM};font-size:8px;font-family:Consolas;"
-                "background:transparent;"
-            )
-            rl.addWidget(feed_lbl)
-
-            cap_lbl = QLabel(f"${cfg.get('capital', 0):,.0f}")
-            cap_lbl.setFixedWidth(58)
-            cap_lbl.setStyleSheet(
-                f"color:{ds.VIZ_CAPTION_DIM};font-size:8px;font-family:Consolas;"
-                "background:transparent;"
-            )
-            rl.addWidget(cap_lbl)
-
-            initial_status = cfg.get("status", "RUNNING")
-            status_lbl = QLabel(initial_status)
-            status_lbl.setFixedWidth(60)
-            status_lbl.setStyleSheet(
-                f"color:{label_color};font-size:8px;font-family:Consolas;"
-                f"font-weight:bold;background:transparent;"
-            )
-            rl.addWidget(status_lbl)
-
-            # metric: progress share for sim, price for live and paper.
-            metric_lbl = QLabel(cfg.get("metric_init", "—"))
-            metric_lbl.setFixedWidth(58)
-            metric_lbl.setStyleSheet(
-                f"color:{ds.VIZ_CAPTION};font-size:8px;font-family:Consolas;"
-                "background:transparent;"
-            )
-            rl.addWidget(metric_lbl)
-
-            pnl_lbl = QLabel("PnL —")
-            pnl_lbl.setFixedWidth(88)
-            pnl_lbl.setStyleSheet(
-                f"color:{ds.VIZ_CAPTION};font-size:8px;font-family:Consolas;"
-                "background:transparent;"
-            )
-            rl.addWidget(pnl_lbl)
-
-            trades_lbl = QLabel("0 trades")
-            trades_lbl.setFixedWidth(68)
-            trades_lbl.setStyleSheet(
-                f"color:{ds.VIZ_CAPTION};font-size:8px;font-family:Consolas;"
-                "background:transparent;"
-            )
-            rl.addWidget(trades_lbl)
-
-            rl.addStretch()
-
-            return {
-                "kind": kind,
-                "widget": row,
-                "dot": dot,
-                "id_lbl": id_lbl,
-                "context_lbl": context_lbl,
-                "mode_lbl": mode_lbl,
-                "feed_lbl": feed_lbl,
-                "cap_lbl": cap_lbl,
-                "status_lbl": status_lbl,
-                "metric_lbl": metric_lbl,
-                "pnl_lbl": pnl_lbl,
-                "trades_lbl": trades_lbl,
-                "_accent": label_color,
-                "running": True,
-                "total_candles": cfg.get("candle_total", 0),
-            }
-
-        def _apply_stopped_style(self, handle: dict):
-            """Clear a row handle's ``running`` flag and mute its colours."""
-            handle["running"] = False
-            handle["dot"].setStyleSheet(
-                f"color:{ds.VIZ_CAPTION};font-size:10px;font-weight:bold;"
-                "background:transparent;"
-            )
-            handle["widget"].setStyleSheet(
-                f"QFrame{{background:{ds.VIZ_PANEL_SURFACE};border:1px solid {ds.VIZ_PANEL_BORDER};"
-                "border-radius:4px;}"
-            )
-            handle["status_lbl"].setStyleSheet(
-                f"color:{ds.VIZ_CAPTION};font-size:8px;font-family:Consolas;"
-                "font-weight:bold;background:transparent;"
-            )
-
-        def _apply_pnl_color(self, handle: dict, pnl: float):
-            """Colour a row's ``pnl_lbl`` by the sign of ``pnl``."""
-            col = ds.SUCCESS if pnl >= 0 else ds.ERROR
-            handle["pnl_lbl"].setText(f"PnL {pnl:+,.2f}")
-            handle["pnl_lbl"].setStyleSheet(
-                f"color:{col};font-size:8px;font-family:Consolas;"
-                f"background:transparent;"
-            )
-
-        def register_sim_run(self, sim_id: str, label: str, cfg: dict):
-            """Add one ``_live_sim_rows`` entry for an active sim.
-
-            ``_create_swarm_row`` builds the widget; the returned handle
-            carries ``update`` and ``stop``.
-            """
-            _dur_t0 = time.monotonic()
-            self._remove_live_sim(sim_id)
-
-            unified_cfg = {
-                "context": cfg.get("asset", cfg.get("label", label)),
-                "mode": cfg.get("mode", "SIM"),
-                "feed": cfg.get("timeframe", "—"),
-                "capital": cfg.get("capital", 0),
-                "status": "RUNNING",
-                "metric_init": "0%",
-                "candle_total": cfg.get("candle_total", 1),
-            }
-            handle = self._create_swarm_row("sim", label, unified_cfg)
-            handle["sim_id"] = sim_id
-
-            insert_pos = self._sim_swarm_layout.count() - 1
-            self._sim_swarm_layout.insertWidget(insert_pos, handle["widget"])
-
-            # Timed before the emitter, which is not billed to the registration.
-            _dur_elapsed = time.monotonic() - _dur_t0
-            self._live_sim_rows[sim_id] = handle
-            # `actual` is read back out of the store, never from the argument.
-            try:
-                from src.core.signal_contract import emit as _sw_emit
-
-                _sw_emit(
-                    "swarm.11.001.postcondition.sim_run_registered",
-                    actual=(self._live_sim_rows.get(sim_id, {}) or {}).get("kind"),
-                    expected="sim",
-                    duration=_dur_elapsed,
-                    context={
-                        "layer": "sim",
-                        "id": str(sim_id),
-                        "rows_in_layer": len(self._live_sim_rows),
-                    },
-                )
-            except Exception as pin_exc:
-                logger.debug(
-                    "Bot Swarm: the sim_run_registered pin did not emit (%s: "
-                    "%s); the row is registered and the pin reports nothing "
-                    "for it",
-                    type(pin_exc).__name__,
-                    pin_exc,
-                )
-            self._update_sim_summary()
-            return handle
-
-        def update_sim_run(
-            self, sim_id: str, pnl: float, trades: int, candle_idx: int = 0
-        ):
-            """Update one ``_live_sim_rows`` row from a sim tick."""
-            h = self._live_sim_rows.get(sim_id)
-            if h is None:
-                return
-            total = max(1, h.get("total_candles", 1))
-            pct = min(100, int(candle_idx / total * 100))
-            h["metric_lbl"].setText(f"{pct}%")
-            self._apply_pnl_color(h, pnl)
-            h["trades_lbl"].setText(f"{trades} trades")
-            h["_pnl"] = pnl
-            self._update_sim_summary()
-
-        def stop_sim_run(self, sim_id: str, pnl: float = 0.0, trades: int = 0):
-            """Mark one ``_live_sim_rows`` row stopped."""
-            h = self._live_sim_rows.get(sim_id)
-            if h is None:
-                return
-            self._apply_stopped_style(h)
-            h["status_lbl"].setText("DONE")
-            self._apply_pnl_color(h, pnl)
-            h["trades_lbl"].setText(f"{trades} trades")
-            h["metric_lbl"].setText("100%")
-            self._update_sim_summary()
-
-        def _remove_live_sim(self, sim_id: str):
-            h = self._live_sim_rows.pop(sim_id, None)
-            if h:
-                h["widget"].setParent(None)
-                h["widget"].deleteLater()
-
-        def register_paper_run(self, paper_id: str, label: str, cfg: dict):
-            """Add one ``_live_paper_rows`` entry for a paper session.
-
-            ``_create_swarm_row`` builds the widget; the source lands in
-            the feed column and the price in the metric column.
-            """
-            _dur_t0 = time.monotonic()
-            self._remove_live_paper(paper_id)
-
-            unified_cfg = {
-                "context": cfg.get("pair", "—"),
-                "mode": cfg.get("mode", "PAPER"),
-                "feed": cfg.get("source", "—"),
-                "capital": cfg.get("capital", 0),
-                "status": "LIVE",
-                "metric_init": "—",
-            }
-            handle = self._create_swarm_row("paper", label, unified_cfg)
-            handle["paper_id"] = paper_id
-
-            insert_pos = self._paper_swarm_layout.count() - 1
-            self._paper_swarm_layout.insertWidget(insert_pos, handle["widget"])
-
-            # Timed before the emitter, which is not billed to the registration.
-            _dur_elapsed = time.monotonic() - _dur_t0
-            self._live_paper_rows[paper_id] = handle
-            # `actual` is read back out of the store, never from the argument.
-            try:
-                from src.core.signal_contract import emit as _sw_emit
-
-                _sw_emit(
-                    "swarm.11.002.postcondition.paper_run_registered",
-                    actual=(self._live_paper_rows.get(paper_id, {}) or {}).get("kind"),
-                    expected="paper",
-                    duration=_dur_elapsed,
-                    context={
-                        "layer": "paper",
-                        "id": str(paper_id),
-                        "rows_in_layer": len(self._live_paper_rows),
-                    },
-                )
-            except Exception as pin_exc:
-                logger.debug(
-                    "Bot Swarm: the paper_run_registered pin did not emit (%s: "
-                    "%s); the row is registered and the pin reports nothing "
-                    "for it",
-                    type(pin_exc).__name__,
-                    pin_exc,
-                )
-            self._update_paper_summary()
-            return handle
-
-        def update_paper_run(
-            self, paper_id: str, price: float, pnl: float, trades: int
-        ):
-            """Update one ``_live_paper_rows`` row from a paper tick."""
-            h = self._live_paper_rows.get(paper_id)
-            if h is None:
-                return
-            p_str = f"${price:,.4f}" if price < 1000 else f"${price:,.2f}"
-            h["metric_lbl"].setText(p_str)
-            h["metric_lbl"].setStyleSheet(
-                f"color:{ds.PRIMARY_BRIGHT};font-size:8px;font-family:Consolas;"
-                "background:transparent;"
-            )
-            self._apply_pnl_color(h, pnl)
-            h["trades_lbl"].setText(f"{trades} trades")
-            h["_pnl"] = pnl
-            self._update_paper_summary()
-
-        def stop_paper_run(self, paper_id: str, pnl: float = 0.0, trades: int = 0):
-            """Mark one ``_live_paper_rows`` row stopped."""
-            h = self._live_paper_rows.get(paper_id)
-            if h is None:
-                return
-            self._apply_stopped_style(h)
-            h["status_lbl"].setText("STOPPED")
-            self._apply_pnl_color(h, pnl)
-            h["trades_lbl"].setText(f"{trades} trades")
-            self._update_paper_summary()
-
-        def _remove_live_paper(self, paper_id: str):
-            h = self._live_paper_rows.pop(paper_id, None)
-            if h:
-                h["widget"].setParent(None)
-                h["widget"].deleteLater()
-
-        def register_live_run(self, bot_id: str, label: str, cfg: dict):
-            """Add one ``_live_bot_rows`` entry for a real-exchange bot.
-
-            ``cfg`` carries pair or asset, mode, timeframe or source,
-            and capital.
-            """
-            self._remove_live_bot_row(bot_id)
-
-            unified_cfg = {
-                "context": cfg.get("pair", cfg.get("asset", "—")),
-                "mode": cfg.get("mode", "LIVE"),
-                "feed": cfg.get("timeframe", cfg.get("source", "—")),
-                "capital": cfg.get("capital", 0),
-                "status": "RUNNING",
-                "metric_init": cfg.get("metric_init", "—"),
-            }
-            handle = self._create_swarm_row("live", label, unified_cfg)
-            handle["bot_id"] = bot_id
-
-            if hasattr(self, "_live_rows_empty"):
-                self._live_rows_empty.setVisible(False)
-            self._live_rows_scroll.setVisible(True)
-            insert_pos = self._live_rows_layout.count() - 1
-            self._live_rows_layout.insertWidget(insert_pos, handle["widget"])
-
-            self._live_bot_rows[bot_id] = handle
-            return handle
-
-        def update_live_run(
-            self,
-            bot_id: str,
-            price: float = 0.0,
-            pnl: float = 0.0,
-            trades: int = 0,
-            status: str = None,
-        ):
-            """Update one ``_live_bot_rows`` row from a bot tick."""
-            h = self._live_bot_rows.get(bot_id)
-            if h is None:
-                return
-            if status is not None:
-                h["status_lbl"].setText(status)
-            if price > 0:
-                p_str = f"${price:,.4f}" if price < 1000 else f"${price:,.2f}"
-                h["metric_lbl"].setText(p_str)
-                h["metric_lbl"].setStyleSheet(
-                    f"color:{ds.PRIMARY_BRIGHT};font-size:8px;font-family:Consolas;"
-                    "background:transparent;"
-                )
-            self._apply_pnl_color(h, pnl)
-            h["trades_lbl"].setText(f"{trades} trades")
-            h["_pnl"] = pnl
-
-        def stop_live_run(self, bot_id: str, pnl: float = 0.0, trades: int = 0):
-            """Mark one ``_live_bot_rows`` row stopped."""
-            h = self._live_bot_rows.get(bot_id)
-            if h is None:
-                return
-            self._apply_stopped_style(h)
-            h["status_lbl"].setText("STOPPED")
-            self._apply_pnl_color(h, pnl)
-            h["trades_lbl"].setText(f"{trades} trades")
-
-        def _remove_live_bot_row(self, bot_id: str):
-            h = self._live_bot_rows.pop(bot_id, None)
-            if h:
-                h["widget"].setParent(None)
-                h["widget"].deleteLater()
-            if not self._live_bot_rows and hasattr(self, "_live_rows_empty"):
-                self._live_rows_empty.setVisible(True)
-                self._live_rows_scroll.setVisible(False)
-
-        def _sync_live_rows(self, bot_statuses: list[dict]) -> None:
-            """Hold one ``_live_bot_rows`` row per bot in one fleet load.
-
-            A row is rebuilt when the identifier mask changes the id it
-            shows, and a bot no longer in the load loses its row.
-            """
-            from .main_tabs import bot_visualizer_surface as surface
-            from .visualizer.privacy import _mask_or
-
-            seen: list[str] = []
-            for status in bot_statuses:
-                if not isinstance(status, dict):
-                    continue
-                bot_id = status.get("bot_id", "")
-                if not bot_id:
-                    continue
-                seen.append(bot_id)
-                label = _mask_or(surface.live_row_id(bot_id), "bot_swarm.identifiers")
-                handle = self._live_bot_rows.get(bot_id)
-                if handle is None or handle["id_lbl"].text() != label:
-                    self.register_live_run(bot_id, label, surface.live_row_cfg(status))
-                self.update_live_run(bot_id, **surface.live_row_tick(status))
-            for bot_id in [one for one in self._live_bot_rows if one not in seen]:
-                self._remove_live_bot_row(bot_id)
-
-        def _relabel_live_rows(self) -> None:
-            """Write the masked or revealed id into every live row's id column."""
-            from .main_tabs import bot_visualizer_surface as surface
-            from .visualizer.privacy import _mask_or
-
-            for bot_id, handle in self._live_bot_rows.items():
-                handle["id_lbl"].setText(
-                    _mask_or(surface.live_row_id(bot_id), "bot_swarm.identifiers")
-                )
-
         def _update_sim_summary(self):
             running = sum(1 for b in self._sim_bots if b.get("running"))
-            running += sum(1 for h in self._live_sim_rows.values() if h.get("running"))
-            total = len(self._sim_bots) + len(self._live_sim_rows)
+            total = len(self._sim_bots)
             self._sim_swarm_wins.setText(f"Bots: {running}/{total} running")
-            pnls = [h.get("_pnl", 0) for h in self._live_sim_rows.values()]
-            if pnls:
-                self._sim_swarm_pnl.setText(f"Total PnL: ${sum(pnls):+,.2f}")
-            else:
-                self._sim_swarm_pnl.setText("Total PnL: —")
+            self._sim_swarm_pnl.setText("Total PnL: —")
             self._sim_swarm_trades.setText("Aggregate trades: —")
 
         def _update_paper_summary(self):
@@ -1369,7 +892,6 @@ if _HAS_QT:
             self._refresh_privacy_mode_btn()
             for w in self._bot_widgets.values():
                 w.update()
-            self._relabel_live_rows()
             # The Source and Destination labels re-read the mask on re-render.
             self._rebuild_quick_routing_scope_in_place()
 
@@ -1449,7 +971,6 @@ if _HAS_QT:
             self._refresh_bot_swarm_privacy_dot()
             for w in self._bot_widgets.values():
                 w.update()
-            self._relabel_live_rows()
             # The Source and Destination labels re-read the masks on re-render.
             self._rebuild_quick_routing_scope_in_place()
 
@@ -2234,7 +1755,7 @@ if _HAS_QT:
                 self.remove_wire(wire["target_id"], wire["source_id"])
 
         def update_bots(self, bot_statuses: list[dict]):
-            """Rebuild ``_bot_widgets`` and ``_live_bot_rows`` from status data.
+            """Rebuild ``_bot_widgets`` from status data.
 
             One status dict per bot feeds the locust grid.
             """
@@ -2292,8 +1813,6 @@ if _HAS_QT:
 
             if not self._bot_widgets:
                 self._empty_label.setVisible(True)
-
-            self._sync_live_rows(bot_statuses)
 
             # A new widget would stack over _wire_canvas and eat its mouse events.
             if self._wire_canvas.isVisible():

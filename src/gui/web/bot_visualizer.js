@@ -7,87 +7,62 @@
   // Every field bot_visualizer_surface publishes, answered by field().
   var DECLARED_FIELDS = [
     "actions", "all_exchanges_label", "all_exchanges_value", "any_masked",
-    "bench_pnl_placeholder", "bench_remove_button_size",
+    "app_theme_name", "bench_pnl_placeholder", "bench_remove_button_size",
     "bench_run_button_size", "bench_start_button_size", "bench_widths",
-    "bidirectional_offset_px", "bot_ids", "bot_log_topic", "bots_key",
-    "broken_dot_style_sheet", "broken_privacy_button_style_sheet",
-    "bus_emitted", "bus_topics", "button_kind", "canvas_shown",
-    "capital_max", "capital_min", "capital_prefix",
-    "capital_start", "capital_text_format", "colors", "column_widths",
-    "confirm_default_button", "confirm_head_format", "confirm_line_format",
-    "confirm_pct_format", "confirm_plural", "confirm_tail", "confirm_title",
-    "confirm_unshowable_log", "context_cfg_keys", "curve_scale",
-    "default_candle_total", "default_capital", "default_pnl",
-    "default_theme_key", "description_style_sheet",
-    "description_word_wrap", "dest_key", "dot_cursor", "dot_text",
-    "drag_onto_wired_why", "drag_start_id", "drag_to_empty_why", "dragging",
+    "bidirectional_offset_px", "bot_ids", "bot_log_topic", "bot_symbols",
+    "bots_key", "broken_dot_style_sheet", "broken_privacy_button_style_sheet",
+    "bus_emitted", "bus_topics", "button_kind", "canvas_shown", "capital_max",
+    "capital_min", "capital_prefix", "capital_start", "colors", "confirm_default_button",
+    "confirm_head_format", "confirm_line_format", "confirm_pct_format",
+    "confirm_plural", "confirm_tail", "confirm_title", "confirm_unshowable_log",
+    "curve_scale", "default_capital", "default_theme_key", "description_style_sheet",
+    "description_word_wrap", "dest_key", "dot_cursor", "drag_onto_wired_why",
+    "drag_start_id", "drag_start_pos", "drag_to_empty_why", "dragging",
     "emitted", "empty_alignment", "empty_style_sheet", "empty_text",
     "empty_visible", "exchange", "exchange_caption", "exchange_items",
-    "exchange_tooltip", "exchanges", "fallback_kind", "fallback_tint",
-    "feed_cfg_keys", "frame_interval_ms", "grid_alignment", "grid_cells",
-    "grid_cols", "grid_margins", "grid_spacing", "header_hint",
+    "exchange_tooltip", "exchanges", "frame_interval_ms", "grid_alignment",
+    "grid_cells", "grid_cols", "grid_margins", "grid_spacing", "header_hint",
     "header_spacing", "header_title", "hit_samples", "hit_threshold_px",
-    "hydration_emitted_info", "hydration_failed_error",
-    "hydration_no_bus_error", "hydration_rejected_warning",
-    "hydration_shortfall_warning", "ids_in_scope", "inflow_stat_key",
-    "info_level", "inner_spacing", "is_empty", "label_kind",
-    "label_word_wrap", "layer_chrome", "layer_header_spacing",
-    "layer_id_keys", "layer_list_margins", "layer_list_spacing",
-    "layer_margins", "layer_signals", "layer_spacing", "layer_stop_status",
-    "list_refresh_debug", "list_row_keys", "live_mode", "live_row_order",
-    "live_rows", "log_lines", "logger_name", "mask_failed_warning_format",
+    "hydration_emitted_info", "hydration_failed_error", "hydration_no_bus_error",
+    "hydration_rejected_warning", "hydration_shortfall_warning", "ids_in_scope",
+    "info_level", "inner_spacing", "is_empty", "label_kind", "label_word_wrap",
+    "layer_chrome", "layer_header_spacing", "layer_list_margins", "layer_list_spacing",
+    "layer_list_style_sheet", "layer_margins", "layer_spacing", "list_refresh_debug",
+    "locust_cards", "log_lines", "logger_name", "mask_failed_warning_format",
     "mask_field_id", "mask_text", "mask_unavailable_warning", "masked",
     "masked_glyph", "menu_cancel", "menu_disconnect", "menu_disconnect_both",
     "menu_separator", "menu_style_sheet", "menu_wire_header_format",
-    "method", "min_wire_pct", "missing_amount", "missing_text",
-    "nested_margins", "no_offset_px", "opacity_max_pct", "opacity_min_pct",
-    "opacity_pct", "opacity_slider_width_px", "opacity_start_pct",
-    "opacity_tooltip", "outer_margins", "outer_spacing", "outflow_stat_key",
-    "paper_bench_id_format", "paper_bench_pairs", "paper_bench_sources",
-    "paper_mode", "paper_registered_signal", "paper_row_order", "paper_rows",
-    "bot_symbols", "drag_start_pos", "locust_cards", "overlay_style",
-    "panel", "panel_words",
-    "paper_summary", "paper_summary_active_format",
-    "paper_summary_active_start", "paper_summary_capital_format",
-    "paper_summary_capital_start", "paper_summary_pnl",
-    "paper_summary_start", "paper_summary_title", "paper_tab_index",
-    "pct_key", "phase_rate", "picker_incoming_format",
-    "picker_incoming_header", "picker_outgoing_format",
-    "picker_outgoing_header", "pnl_placeholder_text", "pnl_text_format",
-    "price_format_limit", "price_large_format", "price_small_format",
-    "privacy_dot_style_sheet", "privacy_dot_tooltip",
-    "privacy_failed_warning_format", "privacy_glyph",
-    "privacy_mode_off_text", "privacy_mode_on_text",
+    "method", "min_wire_pct", "missing_text", "nested_margins", "no_offset_px",
+    "opacity_max_pct", "opacity_min_pct", "opacity_pct", "opacity_slider_width_px",
+    "opacity_start_pct", "opacity_tooltip", "outer_margins", "outer_spacing",
+    "overlay_style", "panel", "panel_words", "paper_bench_id_format",
+    "paper_bench_pairs", "paper_bench_sources", "paper_summary", "paper_summary_active_format",
+    "paper_summary_active_start", "paper_summary_capital_format", "paper_summary_capital_start",
+    "paper_summary_pnl", "paper_summary_start", "paper_summary_title",
+    "paper_tab_index", "pct_key", "phase_rate", "picker_incoming_format",
+    "picker_incoming_header", "picker_outgoing_format", "picker_outgoing_header",
+    "privacy_dot_style_sheet", "privacy_dot_tooltip", "privacy_failed_warning_format",
+    "privacy_glyph", "privacy_mode_off_text", "privacy_mode_on_text",
     "privacy_mode_style_sheet", "privacy_mode_text", "privacy_mode_tooltip",
-    "privacy_off_style_sheet", "privacy_on_style_sheet",
-    "privacy_unavailable_warning", "progress_done_text", "progress_max_pct",
-    "progress_min_total", "progress_scale", "progress_start_text",
-    "progress_text_format", "qt_unset_spacing", "remove_button_text",
-    "revealed_glyph", "routes_key", "row_handle_keys", "row_kind",
-    "row_kinds", "row_margins", "row_radius_px", "row_spacing", "rows_sent",
-    "run_button_text", "scroll_style_sheet", "scrumming_key",
-    "short_id_length", "signals", "sim_bench_assets", "sim_bench_id_format",
-    "sim_bench_presets", "sim_candle_total", "sim_mode",
-    "sim_registered_signal", "sim_row_order", "sim_rows", "sim_summary",
-    "sim_summary_pnl_empty", "sim_summary_pnl_format",
-    "sim_summary_running_format", "sim_summary_start", "sim_summary_title",
-    "sim_summary_trades", "sim_summary_trades_start",
-    "sim_summary_wins_start", "sim_tab_index", "start_button_text",
-    "start_phase", "state_write_failed_error", "status_done", "status_idle",
-    "status_live", "status_running", "status_stopped", "stop_button_text",
-    "summary_label_style_sheet", "summary_margins", "summary_spacing",
-    "layer_list_style_sheet", "swarm_accents", "swarm_tab_index",
-    "swarm_tints", "tab_kind", "tab_style_sheet", "tab_titles",
-    "theme_caption", "theme_key", "theme_keys", "theme_start_index",
-    "threads", "timer_delays_ms", "timers", "trades_placeholder_text",
-    "trades_text_format", "visible_bots", "viz_margins", "viz_spacing",
-    "warning_level", "wire_config_prompt_format", "wire_config_row_label",
-    "wire_config_title", "wire_config_width_px", "wire_connected_log_format",
-    "wire_count", "wire_created_topic", "wire_disconnected_log_format",
-    "wire_keys", "wire_menu_style_sheet", "wire_pct_max", "wire_pct_min",
-    "wire_pct_start", "wire_pct_suffix", "wire_removed_topic", "wire_sheet",
-    "wires",
-    "wires_caption"
+    "privacy_off_style_sheet", "privacy_on_style_sheet", "privacy_unavailable_warning",
+    "qt_unset_spacing", "remove_button_text", "revealed_glyph", "routes_key",
+    "row_kind", "row_kinds", "run_button_text", "scroll_style_sheet",
+    "scrumming_key", "short_id_length", "signals", "sim_bench_assets",
+    "sim_bench_id_format", "sim_bench_presets", "sim_summary", "sim_summary_pnl_empty",
+    "sim_summary_pnl_format", "sim_summary_running_format", "sim_summary_start",
+    "sim_summary_title", "sim_summary_trades", "sim_summary_trades_start",
+    "sim_summary_wins_start", "sim_tab_index", "start_button_text", "start_phase",
+    "state_write_failed_error", "status_done", "status_idle", "status_live",
+    "status_running", "status_stopped", "stop_button_text", "summary_label_style_sheet",
+    "summary_margins", "summary_spacing", "swarm_tab_index", "tab_kind",
+    "tab_style_sheet", "tab_titles", "theme_caption", "theme_key", "theme_keys",
+    "theme_start_index", "threads", "timer_delays_ms", "timers", "visible_bots",
+    "viz_margins", "viz_spacing", "warning_level", "wire_config_prompt_format",
+    "wire_config_row_label", "wire_config_title", "wire_config_width_px",
+    "wire_connected_log_format", "wire_count", "wire_created_topic",
+    "wire_disconnected_log_format", "wire_keys", "wire_menu_style_sheet",
+    "wire_pct_max", "wire_pct_min", "wire_pct_start", "wire_pct_suffix",
+    "wire_removed_topic", "wire_sheet", "wires", "wires_caption"
   ];
 
   var HEADER_TITLE = "header_title";
@@ -146,16 +121,8 @@
   var LAYER_LIST_STYLE_SHEET = "layer_list_style_sheet";
   var SUMMARY_LABEL_STYLE_SHEET = "summary_label_style_sheet";
   var LAYER_CHROME = "layer_chrome";
-  var COLUMN_WIDTHS = "column_widths";
-  var ROW_HANDLE_KEYS = "row_handle_keys";
   var ACTIONS = "actions";
 
-  var LIVE_ROWS = "live_rows";
-  var SIM_ROWS = "sim_rows";
-  var PAPER_ROWS = "paper_rows";
-  var LIVE_ROW_ORDER = "live_row_order";
-  var SIM_ROW_ORDER = "sim_row_order";
-  var PAPER_ROW_ORDER = "paper_row_order";
   var SIM_SUMMARY = "sim_summary";
   var PAPER_SUMMARY = "paper_summary";
 
@@ -169,11 +136,7 @@
 
   var TEXT = "text";
   var STYLE_SHEET = "style_sheet";
-  var WIDTH = "width";
   var KIND = "kind";
-  var WIDGET = "widget";
-  var MARGINS = "margins";
-  var SPACING = "spacing";
   var WIRES = "wires";
   var IS_EMPTY = "is_empty";
   var TAB_WIDGET_SELECTOR = "QTabWidget";
@@ -185,24 +148,16 @@
   var SIM = "sim";
   var PAPER = "paper";
 
-  // Each layer names the payload fields its rows and order arrive in.
-  var LAYER_SLOTS = [
-    { key: LIVE, rows: LIVE_ROWS, order: LIVE_ROW_ORDER },
-    { key: SIM, rows: SIM_ROWS, order: SIM_ROW_ORDER },
-    { key: PAPER, rows: PAPER_ROWS, order: PAPER_ROW_ORDER }
-  ];
+  var LAYER_KEYS = [LIVE, SIM, PAPER];
 
   var MISSING_FAULT = "missing";
   var NULL_FAULT = "null";
   var NOT_AN_OBJECT_FAULT = "not-an-object";
-  var WRONG_TYPE_FAULT = "wrong-type";
   var QT_COLOUR_FAULT = "qt-colour";
   var DISAGREES_FAULT = "disagrees";
-  var UNPLACED_FAULT = "unplaced";
   var NO_SHEET_SOURCE_FAULT = "no-sheet-source";
   var NO_THEME_SOURCE_FAULT = "no-theme-source";
 
-  var ROW_AT = "row:";
   var LAYER_AT = "layer:";
 
   var NO_BRIDGE = "the preload bridge is not present";
@@ -210,7 +165,6 @@
   var PATH_SPLIT = ".";
   var EMPTY = "";
   var GAP = " ";
-  var SLASH = "/";
   var SEMICOLON = ";";
   var COLON = ":";
   var COMMA = ",";
@@ -262,7 +216,6 @@
   var INPUT_TAG = "input";
 
   var TAB_CLASS = "acervator-swarm-tab";
-  var ROW_CLASS = "acervator-swarm-row";
   var CELL_CLASS = "acervator-swarm-cell";
   var INPUT_CLASS = "acervator-swarm-input";
 
@@ -288,15 +241,12 @@
   var EMPTY_PART = "empty";
   var WIRE_CANVAS_PART = "wire-canvas";
   var QUICK_ROUTING_PART = "quick-routing";
-  var LIVE_ROWS_PART = "live-rows";
   var LAYER_HEADER_PART = "layer-header";
   var LAYER_HEADING_PART = "layer-heading";
   var LAYER_BUTTON_PART = "layer-button";
   var LAYER_DESCRIPTION_PART = "layer-description";
   var LAYER_SCROLL_PART = "layer-scroll";
   var LAYER_LIST_PART = "layer-list";
-  var SWARM_ROW_PART = "swarm-row";
-  var SWARM_CELL_PART = "swarm-cell";
   var SUMMARY_PART = "summary";
   var SUMMARY_TITLE_PART = "summary-title";
   var SUMMARY_LINE_PART = "summary-line";
@@ -1289,58 +1239,6 @@
     return element(DIV_TAG, pageProps, drawn);
   }
 
-  function SwarmCell(props) {
-    var model = props.model;
-    var cell = isPlainObject(props.cell) ? props.cell : {};
-    var style = labelStyle(model, cell[STYLE_SHEET]);
-    style.width = widthOf(cell[WIDTH]);
-    style.flex = FLEX_NONE;
-    var cellProps = { className: CELL_CLASS, style: style };
-    cellProps[PART_ATTR] = SWARM_CELL_PART;
-    cellProps[COLUMN_ATTR] = props.name;
-    cellProps[KEY_ATTR] = props.runId;
-    cellProps[LAYER_ATTR] = props.layer;
-    return element(SPAN_TAG, cellProps, text(cell[TEXT]));
-  }
-
-  // A column is a handle entry carrying both a text and a width.
-  function columnNames(model, handle) {
-    return listField(model, ROW_HANDLE_KEYS).filter(function (name) {
-      var one = isPlainObject(handle) ? handle[name] : undefined;
-      return isPlainObject(one) && owns(one, TEXT) && owns(one, WIDTH);
-    });
-  }
-
-  function declaredColumnCount(model) {
-    return Object.keys(objectField(model, COLUMN_WIDTHS)).length;
-  }
-
-  function SwarmRow(props) {
-    var model = props.model;
-    var handle = isPlainObject(props.handle) ? props.handle : {};
-    var frame = objectField(handle, WIDGET);
-    var style = styleOf(frame[STYLE_SHEET]);
-    merged(style, boxStyle(frame, MARGINS, SPACING, ROW));
-    style.alignItems = CENTER;
-    style.flex = FLEX_NONE;
-    var rowProps = { className: ROW_CLASS, style: style };
-    rowProps[PART_ATTR] = SWARM_ROW_PART;
-    rowProps[LAYER_ATTR] = props.layer;
-    rowProps[KEY_ATTR] = props.runId;
-    rowProps[INDEX_ATTR] = String(props.at);
-    var drawn = columnNames(model, handle).map(function (name) {
-      return element(SwarmCell, {
-        key: name,
-        name: name,
-        cell: handle[name],
-        model: model,
-        runId: props.runId,
-        layer: props.layer
-      });
-    });
-    return element(DIV_TAG, rowProps, drawn);
-  }
-
   function LayerSummary(props) {
     var model = props.model;
     var chrome = props.chrome;
@@ -1424,8 +1322,6 @@
   function LayerPane(props) {
     var model = props.model;
     var chrome = objectField(objectField(model, LAYER_CHROME), props.layer);
-    var order = listField(model, props.slot.order);
-    var rows = objectField(model, props.slot.rows);
     var style = boxStyle(model, LAYER_MARGINS, LAYER_SPACING, COLUMN);
     style.flex = AUTO;
     style.overflow = HIDDEN;
@@ -1437,8 +1333,6 @@
     paneProps[PART_ATTR] = LAYER_PANE_PART;
     paneProps[LAYER_ATTR] = props.layer;
     paneProps[CURRENT_ATTR] = text(props.current);
-    paneProps[DECLARED_ATTR] = String(Object.keys(rows).length);
-    paneProps[HELD_ATTR] = String(order.length);
 
     var descriptionProps = {
       key: LAYER_DESCRIPTION_PART,
@@ -1465,17 +1359,6 @@
     listProps[PART_ATTR] = LAYER_LIST_PART;
     listProps[LAYER_ATTR] = props.layer;
 
-    var drawn = order.map(function (runId, at) {
-      return element(SwarmRow, {
-        key: String(runId),
-        runId: text(runId),
-        layer: props.layer,
-        handle: rows[runId],
-        model: model,
-        at: at
-      });
-    });
-
     return element(
       DIV_TAG,
       paneProps,
@@ -1486,7 +1369,7 @@
         layer: props.layer
       }),
       element(DIV_TAG, descriptionProps, text(chrome[DESCRIPTION_TEXT])),
-      element(DIV_TAG, scrollProps, element(DIV_TAG, listProps, drawn)),
+      element(DIV_TAG, scrollProps, element(DIV_TAG, listProps, null)),
       element(LayerSummary, {
         key: SUMMARY_PART,
         model: model,
@@ -1495,30 +1378,6 @@
         lines: props.lines
       })
     );
-  }
-
-  // The live rows the surface builds, which the Qt tab never showed.
-  function LiveRows(props) {
-    var model = props.model;
-    var order = listField(model, LIVE_ROW_ORDER);
-    var rows = objectField(model, LIVE_ROWS);
-    var style = boxStyle(model, LAYER_LIST_MARGINS, LAYER_LIST_SPACING, COLUMN);
-    style.flex = FLEX_NONE;
-    var liveProps = { className: TAB_CLASS, style: style };
-    liveProps[PART_ATTR] = LIVE_ROWS_PART;
-    liveProps[DECLARED_ATTR] = String(Object.keys(rows).length);
-    liveProps[HELD_ATTR] = String(order.length);
-    var drawn = order.map(function (runId, at) {
-      return element(SwarmRow, {
-        key: String(runId),
-        runId: text(runId),
-        layer: LIVE,
-        handle: rows[runId],
-        model: model,
-        at: at
-      });
-    });
-    return element(DIV_TAG, liveProps, drawn);
   }
 
   function SwarmPane(props) {
@@ -1554,8 +1413,7 @@
         innerProps,
         element(GridPage, { key: GRID_PAGE_PART, model: model }),
         element(DIV_TAG, routingProps, routingBody)
-      ),
-      element(LiveRows, { key: LIVE_ROWS_PART, model: model })
+      )
     );
   }
 
@@ -1647,7 +1505,6 @@
           key: SIM,
           model: model,
           layer: SIM,
-          slot: LAYER_SLOTS[STEP],
           lines: objectField(model, SIM_SUMMARY),
           current: current === model[SIM_TAB_INDEX]
         }),
@@ -1655,7 +1512,6 @@
           key: PAPER,
           model: model,
           layer: PAPER,
-          slot: LAYER_SLOTS[STEP + STEP],
           lines: objectField(model, PAPER_SUMMARY),
           current: current === model[PAPER_TAB_INDEX]
         })
@@ -1700,22 +1556,6 @@
         });
       });
     });
-    LAYER_SLOTS.forEach(function (slot) {
-      var rows = objectField(model, slot.rows);
-      Object.keys(rows).forEach(function (runId) {
-        var handle = objectField(rows, runId);
-        found.push({
-          where: ROW_AT + slot.key + SLASH + runId,
-          sheet: objectField(handle, WIDGET)[STYLE_SHEET]
-        });
-        columnNames(model, handle).forEach(function (name) {
-          found.push({
-            where: ROW_AT + slot.key + SLASH + runId,
-            sheet: handle[name][STYLE_SHEET]
-          });
-        });
-      });
-    });
     return found;
   }
 
@@ -1726,74 +1566,6 @@
         if (why !== undefined) {
           swarmFaults.push(fault(one.where, declared.property, QT_COLOUR_FAULT, why));
         }
-      });
-    });
-  }
-
-  // A row named in an order the tab has no handle for is never drawn.
-  function checkRowOrder(model) {
-    LAYER_SLOTS.forEach(function (slot) {
-      var rows = objectField(model, slot.rows);
-      var order = listField(model, slot.order);
-      order.forEach(function (runId) {
-        if (!owns(rows, String(runId))) {
-          swarmFaults.push(
-            fault(LAYER_AT + slot.key, slot.order, UNPLACED_FAULT, runId)
-          );
-        }
-      });
-      Object.keys(rows).forEach(function (runId) {
-        var named = order.filter(function (one) {
-          return String(one) === runId;
-        });
-        if (!named.length) {
-          swarmFaults.push(
-            fault(LAYER_AT + slot.key, slot.rows, UNPLACED_FAULT, runId)
-          );
-        }
-      });
-    });
-  }
-
-  function checkCells(model) {
-    var declared = declaredColumnCount(model);
-    LAYER_SLOTS.forEach(function (slot) {
-      var rows = objectField(model, slot.rows);
-      Object.keys(rows).forEach(function (runId) {
-        var handle = objectField(rows, runId);
-        var names = columnNames(model, handle);
-        if (names.length !== declared) {
-          swarmFaults.push(
-            fault(
-              ROW_AT + slot.key + SLASH + runId,
-              COLUMN_WIDTHS,
-              DISAGREES_FAULT,
-              declared
-            )
-          );
-        }
-        listField(model, ROW_HANDLE_KEYS).forEach(function (name) {
-          if (!owns(handle, name)) {
-            swarmFaults.push(
-              fault(ROW_AT + slot.key + SLASH + runId, name, MISSING_FAULT, null)
-            );
-            return;
-          }
-          if (!isPlainObject(handle[name])) {
-            return;
-          }
-          var written = handle[name][TEXT];
-          if (written !== undefined && typeof written === "object") {
-            swarmFaults.push(
-              fault(
-                ROW_AT + slot.key + SLASH + runId,
-                name,
-                written === null ? NULL_FAULT : WRONG_TYPE_FAULT,
-                kindOf(written)
-              )
-            );
-          }
-        });
       });
     });
   }
@@ -1831,45 +1603,16 @@
     }).length;
   }
 
-  function rowCounts(model, pick) {
-    var total = ZERO;
-    LAYER_SLOTS.forEach(function (slot) {
-      total = total + pick(model, slot);
-    });
-    return total;
-  }
-
-  function drawnCellCount(model) {
-    var total = ZERO;
-    LAYER_SLOTS.forEach(function (slot) {
-      var rows = objectField(model, slot.rows);
-      listField(model, slot.order).forEach(function (runId) {
-        total = total + columnNames(model, rows[runId]).length;
-      });
-    });
-    return total;
-  }
-
   function report() {
     var model = held.model;
     return {
       declared: {
         fields: DECLARED_FIELDS.length,
-        rows: rowCounts(model, function (one, slot) {
-          return Object.keys(objectField(one, slot.rows)).length;
-        }),
-        bots: listField(model, BOT_IDS).length,
-        cells: declaredColumnCount(model) * rowCounts(model, function (one, slot) {
-          return listField(one, slot.order).length;
-        })
+        bots: listField(model, BOT_IDS).length
       },
       held: {
         fields: heldFieldCount(),
-        rows: rowCounts(model, function (one, slot) {
-          return listField(one, slot.order).length;
-        }),
-        bots: listField(model, GRID_CELLS).length,
-        cells: drawnCellCount(model)
+        bots: listField(model, GRID_CELLS).length
       },
       faults: swarmFaults.slice()
     };
@@ -1886,8 +1629,6 @@
     swarmFaults = [];
     checkFields(model);
     checkColours(model);
-    checkRowOrder(model);
-    checkCells(model);
     checkGrid(model);
     checkSources();
     return report();
@@ -1928,32 +1669,12 @@
     return held === null ? {} : copyOf(objectField(held.model, name));
   }
 
-  function list(name) {
-    return held === null ? [] : listField(held.model, name).slice();
-  }
-
   function declaredNames() {
     return DECLARED_FIELDS.slice();
   }
 
   function layerNames() {
-    return LAYER_SLOTS.map(function (slot) {
-      return slot.key;
-    });
-  }
-
-  function rowOrder(layer) {
-    var named = LAYER_SLOTS.filter(function (slot) {
-      return slot.key === layer;
-    });
-    return named.length ? list(named[ZERO].order) : [];
-  }
-
-  function rowsOf(layer) {
-    var named = LAYER_SLOTS.filter(function (slot) {
-      return slot.key === layer;
-    });
-    return named.length ? bag(named[ZERO].rows) : {};
+    return LAYER_KEYS.slice();
   }
 
   function summaryOf(layer) {
@@ -2088,22 +1809,10 @@
     LayerPane: LayerPane,
     LayerHeader: LayerHeader,
     LayerSummary: LayerSummary,
-    SwarmRow: SwarmRow,
-    SwarmCell: SwarmCell,
-    LiveRows: LiveRows,
     field: field,
     declaredNames: declaredNames,
     layerNames: layerNames,
-    rowOrder: rowOrder,
-    rowsOf: rowsOf,
     summaryOf: summaryOf,
-    columnNames: function (layer, runId) {
-      var found = rowsOf(layer);
-      return held === null ? [] : columnNames(held.model, found[runId]);
-    },
-    columnCount: function () {
-      return held === null ? ZERO : declaredColumnCount(held.model);
-    },
     actions: actions,
     sent: sent,
     declarations: declarations,
