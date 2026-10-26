@@ -560,6 +560,17 @@ def pushed_target_usd(value) -> Optional[float]:
 UNREADABLE_TOTALS_KEY: str = "unreadable_totals"
 
 
+def whole_despawn_days(value) -> int:
+    """`value` as whole despawn days under `as_finite_float`, saturated at `DESPAWN_MAX_DAYS`.
+
+    `despawn_threshold_days`, `despawn_preview` and both screen readings call it.
+    """
+    days = as_finite_float(value)
+    if days is None:
+        return 0
+    return min(DESPAWN_MAX_DAYS, max(0, int(days)))
+
+
 def despawn_threshold_days(config) -> int:
     """Return the tranche despawn threshold in whole days; 0 means OFF.
 
@@ -573,10 +584,7 @@ def despawn_threshold_days(config) -> int:
     Returns:
       Whole days in [0, DESPAWN_MAX_DAYS]. 0 means the timer is off.
     """
-    days = as_finite_float(getattr(config, "tranche_despawn_days", 0))
-    if days is None:
-        return 0
-    return min(DESPAWN_MAX_DAYS, max(0, int(days)))
+    return whole_despawn_days(getattr(config, "tranche_despawn_days", 0))
 
 
 #: Candidate windows the Fold Tranches panel offers when the timer is OFF.
@@ -686,10 +694,7 @@ def despawn_preview(
         "usd_removed": 0.0,
         "units_removed": 0.0,
     }
-    _days = as_finite_float(days)
-    if _days is None:
-        return report
-    _days = min(DESPAWN_MAX_DAYS, max(0, int(_days)))
+    _days = whole_despawn_days(days)
     report["threshold_days"] = _days
     if _days <= 0:
         return report

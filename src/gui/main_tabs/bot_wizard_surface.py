@@ -72,6 +72,7 @@ from typing import Any, Optional
 
 from ...core.settings import DEFAULT_ENABLE_PHANTOMS, DEFAULT_LOCK_CANDLE_COUNT
 from ...exchange.timeframes import ALL_TIMEFRAMES
+from ...trading.container.config import BotConfig
 from .indicator_panel_surface import ABSENT_CELL_TEXT
 
 #: The spec key the React field reads for the words it draws in place of a
@@ -329,7 +330,7 @@ NUMBER_FIELDS: dict[str, dict] = {
         "maximum": 999999999.0,
         "decimals": 2,
         "prefix": "$ ",
-        "value": 200.0,
+        "value": BotConfig.hedge_balance,
     },
     "cb_soft_pct": {
         "kind": SPIN_DOUBLE,

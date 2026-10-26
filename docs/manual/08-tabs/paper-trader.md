@@ -3361,4 +3361,24 @@ no key       record holds no key      tab box 2
 A paper record written before this change holds no such key, loads, and leaves
 the tab box on the declared 2.
 
+## 2026-10-25 - #665 - the Paper wizard reads the one Hedge Balance figure
+
+The Hedge Balance box on the Paper wizard used to open on a figure typed into the
+Paper wizard itself. It reads the bot's own declaration now, the same declaration the
+Live wizard, the Simulator wizard and the Electron wizard read.
+
+`src/gui/paper/paper_bot_wizard.py, in PaperTradingParamsPage` — the opening figure
+
+```python
+self._hedge_amount.setValue(BotConfig.hedge_balance)
+```
+
+The Paper despawn box takes the same route: the whole-days rule it reads is the one
+rule in `src/trading/container/config.py, in whole_despawn_days`, which the Paper Fold
+Tranches panel reads through the chrome it shares with Live.
+
+Read before and after, the box opened on $200.00 both times. Moving the declaration to
+a figure nothing uses moved the Paper box with the other three; before the change the
+same move left all four at $200.00.
+
 Back to [the subsystem index](README.md).

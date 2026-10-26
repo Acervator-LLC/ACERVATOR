@@ -10430,3 +10430,25 @@ no key       record holds no key      tab box 2
 A simulated record written before this change holds no such key, loads, and
 leaves the tab box on the declared 2. The Simulator and the Paper Trader take
 the same route, so the two cannot answer this differently.
+
+## 2026-10-25 - #665 - the Simulator wizard reads the one Hedge Balance figure
+
+The Hedge Balance box on the Simulator wizard used to open on a figure typed into the
+Simulator wizard itself. It reads the bot's own declaration now, the same declaration
+the Live wizard, the Paper wizard and the Electron wizard read.
+
+`src/gui/simulator/sim_bot_wizard.py, in SimTradingParamsPage` — the opening figure
+
+```python
+self._hedge_amount.setValue(BotConfig.hedge_balance)
+```
+
+Two more readings on this build join one declaration. The whole-days despawn rule is
+the one rule in `src/trading/container/config.py, in whole_despawn_days`, read by the
+Simulator Fold Tranches panel through the chrome it shares with Live. The Apply
+routing map the Simulator's Detail page reads is the one list in
+`src/gui/main_tabs/bot_live_settings_surface.py`, which the Qt window now reads too.
+
+Read before and after, the box opened on $200.00 both times. Moving the declaration to
+a figure nothing uses moved the Simulator box with the other three; before the change
+the same move left all four at $200.00.

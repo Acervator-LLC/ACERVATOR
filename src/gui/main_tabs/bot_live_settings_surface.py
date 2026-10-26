@@ -195,6 +195,7 @@ RUNTIME_ROUTED = {
     "hedge_balance": "set_hedge_balance_live",
     # setattr alone moves the flag and leaves _hedge_bal at zero.
     "hedge_rebalance_active": "set_hedge_rebalance_active_live",
+    # set_chunk_size_usd also rescales _chunk_free_base and the registry claim.
     "extractor_chunk_size_usd": "set_chunk_size_usd",
 }
 ROUTE_APPLIED_KEY = "applied"
