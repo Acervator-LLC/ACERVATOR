@@ -468,6 +468,36 @@ present   a .py or .js file of that name, or a package of that name
 silent    a name inside a sentence, inside a fenced block, or mid-sentence
 ```
 
+The same module reads the declaration a page writes when it names a path only to
+record that the path has gone. Each one is listed under a `## CITED AS ABSENT`
+heading with its reason, and the dead-path check then stays silent on that path
+anywhere in that page. A listed path that is on disk is reported instead, so the
+heading cannot quiet a citation that still resolves, and a listing with no reason
+beside it is not a declaration at all.
+
+```
+dev_harness/harness/rules/hallucination.py, in _declared_absent
+
+read      each list item under the CITED AS ABSENT heading
+declared  the item's first backtick-quoted path, with prose beside it
+silent    H001 on a declared path, everywhere in that page
+reported  H008 when a declared path opens on disk
+```
+
+The reason may run onto the next line, so the item is read whole rather than one
+line at a time. Read one line at a time the handoff declares one path; read as
+items it declares two.
+
+```
+ACERVATOR_HOP8.md, under CITED AS ABSENT
+
+declared, items     2      both absent from disk, both with a reason
+declared, lines     1      the wrapped reason is not seen
+dead paths before   8
+dead paths after    5      none of the five is declared anywhere
+stale declarations  0
+```
+
 The fixtures directory holds the calibration bodies — a good body and a bad body
 per archetype. The pair is the control on the gate, and a run of the archetypes
 that skips the pair proves nothing about the archetypes.
@@ -475,6 +505,32 @@ that skips the pair proves nothing about the archetypes.
 ```
 harness_fixtures/<archetype>/known_good.<ext>       exits 0
 harness_fixtures/<archetype>/known_bad.<ext>        exits 1
+```
+
+### The comment check reads a branch's own work
+
+One program judges every comment and docstring a branch adds against the comment
+rule — one sentence, twenty words, and a list of words a comment may not carry.
+It finds its own file list from git, so no list is typed in. It compares against
+the commit the branch left, never against where the base has since moved to, so a
+branch is judged on what it wrote and not on what landed beside it.
+
+```
+tools/check_added_comments.py, in merge_base
+
+base      the default base branch, or the ref given with the base option
+point     the commit that base and the branch share
+judged    every line added since that point, plus anything uncommitted
+exit      1 while any added comment breaks the rule
+```
+
+Driven on a branch twenty commits behind the base, carrying one commit of its own
+with one comment that breaks the rule:
+
+```
+diffed against the base tip      93 changed files   144 breaks
+diffed against the shared commit  2 changed files     3 breaks
+the branch's own comment          reported in both readings
 ```
 
 ### The harness holds six archetypes and eight rule modules
