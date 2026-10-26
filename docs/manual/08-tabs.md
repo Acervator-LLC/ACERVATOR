@@ -162,6 +162,11 @@ one tab by its position. The theme's own style sheet sets the six colours on the
 bar, so switching theme repaints it.
 
 `main_tab_bar` — `MainWindowTabBar.paintEvent`
+The file is deleted and no module paints a tab ground by its position now. The
+bar takes its look from the theme's own Qt style sheet, in
+`src/gui/theme_engine.py` under its `QTabBar::tab` rules, with the selected-tab
+rule in `src/gui/main_tabs/main_window_surface.py`. The block below records what
+the bar did while the file was in the tree.
 
 ```python
 painter.fillRect(self.tabRect(index), ground)
@@ -343,6 +348,24 @@ hidden number rather than an empty column.
 [06-trading-tab.md](06-trading-tab.md) carries the proposal for the first of
 the two. Issue #428 carries a second disagreement on this strip, between what
 the counter tooltips promise and what the cards draw.
+
+**The issue #428 clause above is overtaken.** It is not edited and not removed.
+It read:
+
+> Issue #428 carries a second disagreement on this strip, between what the
+> counter tooltips promise and what the cards draw.
+
+Issue #428 closed on 2026-10-03. The two counter tooltips name the same source
+the cards draw from, and neither promises a reset.
+
+```
+src/gui/main_tabs/header_strip_surface.py
+
+SCRUMMED_TOOLTIP   "the dollars every bot has sold so far this year ...
+                    comes from the exchange's own trade history, so the venue
+                    and the card agree ... It survives a restart."
+FOLDED_TOOLTIP     the same sentence for buys
+```
 
 Both columns now carry an exchange figure. The window hands the strip the same
 payload the React strip receives, built by one function, so the two hosts cannot
@@ -883,6 +906,23 @@ Volume starts on and the other seven start off, which is the state the figure
 shows. Sling and BBull paint a placeholder shape rather than the indicator, and
 each says as much in its own tooltip. Issue #430 carries a tooltip on this
 toolbar that names a colour the chart does not paint.
+
+**The issue #430 clause above is overtaken.** It is not edited and not removed.
+It read:
+
+> Issue #430 carries a tooltip on this toolbar that names a colour the chart
+> does not paint.
+
+Issue #430 closed on 2026-09-09. No tooltip on this toolbar names a colour. The
+Vortex entry names its two lines, its period and its pane and stops there.
+
+```
+src/gui/native_chart.py
+    tooltip="Vortex Indicator (VI+ / VI-, period 14, sub-pane)"
+
+tooltips declared in that module   14
+tooltips naming a colour            0
+```
 
 The legend at the right names the two position markers, Invisible and On Book,
 and the feed label closes the row.
