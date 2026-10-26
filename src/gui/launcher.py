@@ -9,7 +9,13 @@ from __future__ import annotations
 
 import logging
 
-from .main_tabs.launcher_surface import WINDOW_STYLE, crypto_features
+from .main_tabs.launcher_surface import (
+    CRYPTO_SUBTITLE,
+    STOCKS_FEATURES,
+    STOCKS_SUBTITLE,
+    WINDOW_STYLE,
+    crypto_features,
+)
 
 logger = logging.getLogger("acervator.gui")
 
@@ -156,8 +162,7 @@ if _HAS_QT:
             # Crypto card
             crypto_card = ModeCard(
                 title="Crypto Trading",
-                subtitle="Multi-exchange cryptocurrency trading with "
-                "Grid and Scrumming bots",
+                subtitle=CRYPTO_SUBTITLE,
                 icon_char="\u20bf",  # ₿
                 color="#00ffcc",
                 features=list(crypto_features()),
@@ -168,18 +173,10 @@ if _HAS_QT:
             # Stocks card
             stocks_card = ModeCard(
                 title="Stock Trading",
-                subtitle="Equity trading via TradingView signals "
-                "with broker integration",
+                subtitle=STOCKS_SUBTITLE,
                 icon_char="\u2191",  # ↑
                 color="#00aaff",
-                features=[
-                    "TradingView Webhook Signals",
-                    "Alpaca Broker Integration",
-                    "Signal, DCA, Swing & Grid Bots",
-                    "Market Hours Awareness",
-                    "Paper Trading Support",
-                    "Stop-Loss & Take-Profit",
-                ],
+                features=list(STOCKS_FEATURES),
             )
             stocks_card.clicked.connect(self.stocks_selected.emit)
             cards.addWidget(stocks_card)

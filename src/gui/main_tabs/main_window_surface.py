@@ -340,7 +340,7 @@ ABOUT_TITLE = "About Acervator"
 ABOUT_TEXT_FORMAT = (
     "Acervator v{version}\n\n"
     "A multi-exchange crypto auto-trading platform.\n"
-    "Grid Mode - Speculative Scrumming\n"
+    "Speculative Scrumming\n"
     "Profit Folding - Upward Distribution\n"
     "Phantom Bots - {indicator_count}-Indicator TA Voting\n"
     "TradingView Charts - Multi-Timeframe Analysis\n"
@@ -562,7 +562,6 @@ ABBREVIATION_TOOLTIPS = (
         "Extended Position - extra position created when accumulated "
         "profit reaches position size",
     ),
-    ("Grid", "Grid Mode - stacked buy/sell pairs at fixed price intervals"),
     (
         "Scrumming",
         "Speculative Scrumming - TA-driven delta trading against a target balance",

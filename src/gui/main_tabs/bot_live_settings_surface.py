@@ -983,10 +983,11 @@ def pane_model() -> BotLiveSettingsModel:
 def tab_bot(model: BotLiveSettingsModel) -> dict:
     """The bot a tab of this window is asked for, read off ``model.bot``.
 
-    Carries the three phantom readings the Phantom Bots tab builds on, so
-    ``enabled``, ``timeframes`` and ``lock_candle_count`` reach it from the
-    bot rather than from that tab's own defaults.
+    ``phantom_bots_tab_surface.published_bot`` carries every status row and
+    both runtime tables the Phantom Bots tab draws.
     """
+    from .phantom_bots_tab_surface import published_bot
+
     config = model.bot.config
     coordinator = getattr(model.bot, COORDINATOR_ATTRIBUTE, None)
     published = {
@@ -996,11 +997,8 @@ def tab_bot(model: BotLiveSettingsModel) -> dict:
         "state": model.bot.state,
         "exchange_id": getattr(config, "exchange_id", None),
         "ta_timeframe": getattr(config, "ta_timeframe", None),
-        "enabled": bool(getattr(model.bot, PHANTOM_ENABLE_ATTRIBUTE, False)),
-        "timeframes": list(
-            getattr(model.bot, PHANTOM_TIMEFRAMES_ATTRIBUTE, None) or []
-        ),
     }
+    published.update(published_bot(model.bot))
     lock_candles = getattr(coordinator, COORDINATOR_LOCK_ATTRIBUTE, None)
     if lock_candles is not None:
         published["lock_candle_count"] = int(lock_candles)

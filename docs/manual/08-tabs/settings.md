@@ -8901,4 +8901,94 @@ Before the change the same move reached the monitor alone and left five copies
 and the Console line at four. Every file is byte identical after the move was
 put back.
 
+## 2026-10-26 - #665 - the venue record, the add box and the retired mode's name
+
+**The Add press hands the store the record the store declares.** The Qt-free
+model built a plain dictionary of eight names. The store's own method takes a
+declared record of ten, and converts it with a call that only a declared record
+answers. Nothing reached that path, so nothing had failed yet; driven against
+the real store it raised and stored no entry.
+
+`src/gui/main_tabs/settings_dialog_surface.py, in SettingsDialogModel.add_exchange`
+
+```python
+config = ExchangeConfig(exchange_id=eid, display_name=eid.capitalize())
+```
+
+The model now builds the same record the Qt press builds, so the two field sets
+cannot drift apart again. The page's stand-in store takes the declared record
+too, which keeps it from accepting a shape the real store refuses.
+
+```
+                            before                      after
+what the model hands        a dictionary of 8 names     the declared record
+the real store's answer     raised, 0 entries stored    1 entry stored
+the two MCP token fields    absent from the model       carried by the record
+```
+
+**The add box no longer promises a tab that is already there.** The box text
+ended with one sentence whatever the bar held. A venue already drawn in the
+Configured list got the same promise as a venue the bar had never seen.
+
+`src/gui/main_tabs/settings_dialog_surface.py, in added_box_text`
+
+```python
+ADDED_BOX_TAB_NEW = "The exchange tab will appear in the main window."
+ADDED_BOX_TAB_HELD = "The exchange tab is already in the main window."
+```
+
+Both builds read that one answer, because the React dialog inherits the Qt
+press. The Remove Selected line now names the tab as well; before, only the
+Activity Log said a tab had gone.
+
+```
+add, venue not listed      Alpaca has been added without credentials.
+                           The exchange tab will appear in the main window.
+add, venue already listed  Alpaca has been added without credentials.
+                           The exchange tab is already in the main window.
+removal                    Alpaca removed. Its exchange tab comes off the
+                           main window.
+```
+
+**The retired mode's name is off every surface that advertised it.** Nine files
+outside the bot wizard named a mode the engine does not declare. Each is a
+write site: a card, an About box, a tool tip, a log line or a package
+docstring.
+
+| site | what it said |
+| ---- | ------------ |
+| `src/gui/launcher.py` | both mode cards, now reading the surface's own text |
+| `src/gui/main_tabs/launcher_surface.py` | the crypto subtitle, a feature line and the stocks features |
+| `src/gui/main_tabs/main_window_surface.py` | the About box and the abbreviation tool tips |
+| `src/gui/main_window.py` | the abbreviation tool tips, a bot-ready record and the Manual Fire refusal |
+| `src/gui/main_tabs/stock_main_window_surface.py` | the stock About box |
+| `src/stocks/stock_bot.py` | a strategy line and two settings its own mode list never offered |
+| `src/gui/main_tabs/settings_dialog_surface.py` | the water-drip tool tip |
+| `src/gui/settings_dialog.py` | the same tool tip, second copy |
+| `src/exchange/ccxt_connector.py` | an order's data-usage line |
+| `src/exchange/robinhood_connector.py` | the same line, second copy |
+| `src/trading/__init__.py` | the package docstring |
+
+The restore path is the one read site and it still reads the old word. A saved
+record carrying it is named on the Console and skipped by name, and its record
+stays on disk.
+
+`src/trading/container/restore.py, in StateRestoreMixin.restore_bots_from_state`
+
+```
+three saved records driven, one carrying the old word
+  restored          the scrumming record and the extractor record
+  skipped by name   the legacy record, "legacy grid mode (unrestorable)"
+  records on disk   all three, untouched
+```
+
+Two places keep the word for a reason. The trade and reconciliation records
+name the legacy side values a stored row can still carry, so a reader of an old
+row is not left guessing.
+
+```
+src/trading/analytics_engine.py, the side field
+src/trading/reconciliation.py, the action field
+```
+
 Back to [the subsystem index](README.md).

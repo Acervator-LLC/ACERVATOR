@@ -1034,7 +1034,6 @@ if _HAS_QT:
                 "Mature": "Mature - profits from positions filled 30+ days ago, safely withdrawable",
                 "Spendable": "Spendable Profits - estimated expendable liquidity from mature positions",
                 "Extended": "Extended Position - extra position created when accumulated profit reaches position size",
-                "Grid": "Grid Mode - stacked buy/sell pairs at fixed price intervals",
                 "Scrumming": "Speculative Scrumming - TA-driven delta trading against a target balance",
                 "Phantom": "Phantom Bot - shadow bot analyzing a different timeframe",
                 "Folding": "Profit Folding - distributing realized sell profits back into buy positions",
@@ -3699,7 +3698,7 @@ if _HAS_QT:
                     reason="Balance verified, exchange connected",
                     result=f"Bot {bot.bot_id} ready to trade. {bal_summary}",
                     level="success",
-                    data_usage="Bot will now enter the trading loop: fetch price, compute grid, place orders",
+                    data_usage="Bot will now enter the trading loop: fetch price, compute target delta, place orders",
                 )
 
                 return True, f"Connected. {bal_summary}"
@@ -3745,7 +3744,7 @@ if _HAS_QT:
             else:
                 self._status_log.log(
                     f"Manual Fire unavailable for {bot_id[:8]} "
-                    f"(grid bot or unknown id).",
+                    f"(no scrum target mode or unknown id).",
                     "warning",
                 )
 

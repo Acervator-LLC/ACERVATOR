@@ -2644,7 +2644,7 @@ class CCXTConnector(ExchangeInterface):
             elapsed_ms=timing.served_ms,
             queued_ms=timing.queued_ms,
             level="success",
-            data_usage="Used by bots for delta calculation, grid level checks, and P/L computation",
+            data_usage="Used by bots for delta calculation and P/L computation",
         )
         return ticker
 
@@ -2872,7 +2872,7 @@ class CCXTConnector(ExchangeInterface):
             result="Sending to exchange...",
             elapsed_ms=0,
             level="info",
-            data_usage="Order will be tracked for fill status; fills trigger profit folding or grid cycling",
+            data_usage="Order will be tracked for fill status; fills trigger profit folding or the next scrum/fold cycle",
         )
 
         extra_params: dict = {}

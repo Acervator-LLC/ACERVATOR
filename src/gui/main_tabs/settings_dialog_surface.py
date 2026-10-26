@@ -34,12 +34,18 @@ reads a clock, opens a file or reaches a network.
 from __future__ import annotations
 
 import math
+from dataclasses import asdict
 from functools import partial
 from typing import Any, Optional
 
 from ...core.encryption import looks_like_pem, unescape_pem_newlines, vault_phrase
 from ...exchange.timeframes import ALL_TIMEFRAMES
-from ...core.settings import CREDENTIAL_FIELDS, AIMonitorSettings, AppSettings
+from ...core.settings import (
+    CREDENTIAL_FIELDS,
+    AIMonitorSettings,
+    AppSettings,
+    ExchangeConfig,
+)
 from ...core.sms_engine import (
     CARRIER_GATEWAYS,
     EMAIL_GATEWAY,
@@ -423,9 +429,9 @@ RENAME_FAILED_LOG_FORMAT = (
 ADDED_FEEDBACK_FORMAT = "{name} added {how}."
 ADDED_LOG_FORMAT = "Exchange added: {name} ({how})"
 ADDED_BOX_TITLE = "Exchange Added"
-ADDED_BOX_FORMAT = (
-    "{name} has been added {how}.\n" "The exchange tab will appear in the main window."
-)
+ADDED_BOX_TAB_NEW = "The exchange tab will appear in the main window."
+ADDED_BOX_TAB_HELD = "The exchange tab is already in the main window."
+ADDED_BOX_FORMAT = "{name} has been added {how}.\n{tab}"
 EXCHANGE_ITEM_FORMAT = "{name} ({eid})"
 CONFIGURED_ITEM_FORMAT = "{name} ({eid})"
 KEY_FIELD = "api_key_enc"
@@ -439,21 +445,9 @@ TYPED_CREDENTIAL_CONTROLS = (
 )
 EMPTY_TEXT = ""
 
-#: One row per field of the venue record ``add_exchange`` writes, each field
-#: beside its own default.
-EXCHANGE_CONFIG_ROW: tuple[tuple[str, Any], ...] = (
-    ("exchange_id", EMPTY_TEXT),
-    ("display_name", EMPTY_TEXT),
-    (KEY_FIELD, EMPTY_TEXT),
-    (SIGNING_FIELD, EMPTY_TEXT),
-    (PHRASE_FIELD, EMPTY_TEXT),
-    ("enabled", True),
-    ("hardware_mode", False),
-    ("hw_volume_serial", EMPTY_TEXT),
-)
-
 NO_SELECTION_FEEDBACK = "Select an exchange to remove."
-REMOVED_FEEDBACK_FORMAT = "{name} removed."
+REMOVED_TAB_TEXT = "Its exchange tab comes off the main window."
+REMOVED_FEEDBACK_FORMAT = "{name} removed. " + REMOVED_TAB_TEXT
 REMOVED_LOG_FORMAT = "Exchange removed: {eid}"
 
 PROCESS_EVENTS_REASON = "legacy processEvents site"
@@ -837,8 +831,8 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "checked": True,
         "tooltip": (
             "Synthesized 3-coin bucket drop plays on any trade\n"
-            "event with realized profit > 0. Fires on grid and\n"
-            "scrumming bots alike."
+            "event with realized profit > 0. Fires on scrumming\n"
+            "and extractor bots alike."
         ),
     },
     {
@@ -1831,6 +1825,28 @@ def listed_exchange_position(listed: Any, exchange_id: Any) -> int:
     return NO_MATCH_INDEX
 
 
+def added_box_text(name: Any, how: Any, tab_is_new: Any) -> str:
+    """The Exchange Added box, promising a tab only where the bar gains one.
+
+    ``SettingsDialog._add_exchange`` and ``SettingsDialogModel.add_exchange``
+    both read this one answer.
+    """
+    return ADDED_BOX_FORMAT.format(
+        name=name,
+        how=how,
+        tab=ADDED_BOX_TAB_NEW if tab_is_new else ADDED_BOX_TAB_HELD,
+    )
+
+
+def removed_feedback_text(name: Any) -> str:
+    """The Remove Selected line, naming the tab that comes off the bar.
+
+    ``SettingsDialog._remove_exchange`` and
+    ``SettingsDialogModel.remove_exchange`` both read this one answer.
+    """
+    return REMOVED_FEEDBACK_FORMAT.format(name=name)
+
+
 def stored_credential_phrase(entry: Any) -> str:
     """The phrase an add reports, read off ``entry`` and not off the typed rows.
 
@@ -2599,13 +2615,13 @@ class SettingsSource:
                 return dict(one)
         return None
 
-    def add_exchange(self, config: Any) -> None:
+    def add_exchange(self, config: ExchangeConfig) -> None:
         """Store ``config`` under its id, keeping a token it leaves empty.
 
-        ``SettingsManager.add_exchange`` merges the same way, so a blank
-        re-add cannot read differently here.
+        ``SettingsManager.add_exchange`` takes the same declared record and
+        merges the same way.
         """
-        entry = dict(config)
+        entry = asdict(config)
         for at, one in enumerate(self.exchanges):
             if not isinstance(one, dict):
                 continue
@@ -3206,19 +3222,23 @@ class SettingsDialogModel:
                 if result is None or not result.success:
                     return
 
-            config = dict(EXCHANGE_CONFIG_ROW)
-            config[EXCHANGE_ID_KEY] = eid
-            config[DISPLAY_NAME_KEY] = eid.capitalize()
+            config = ExchangeConfig(exchange_id=eid, display_name=eid.capitalize())
 
             if key and secret:
                 master = self._master_phrase()
-                config[KEY_FIELD] = self.encryptor(key, master)
-                config[SIGNING_FIELD] = self.encryptor(secret, master)
-                if phrase:
-                    config[PHRASE_FIELD] = self.encryptor(phrase, master)
+                for field, typed in (
+                    (KEY_FIELD, key),
+                    (SIGNING_FIELD, secret),
+                    (PHRASE_FIELD, phrase),
+                ):
+                    if typed:
+                        setattr(config, field, self.encryptor(typed, master))
 
             self.settings.add_exchange(config)
-            if listed_exchange_position(self.listed_exchanges, eid) == NO_MATCH_INDEX:
+            tab_is_new = (
+                listed_exchange_position(self.listed_exchanges, eid) == NO_MATCH_INDEX
+            )
+            if tab_is_new:
                 self.listed_exchanges.append(
                     EXCHANGE_ITEM_FORMAT.format(name=eid.capitalize(), eid=eid)
                 )
@@ -3240,7 +3260,7 @@ class SettingsDialogModel:
                 [
                     INFORMATION_ICON,
                     ADDED_BOX_TITLE,
-                    ADDED_BOX_FORMAT.format(name=eid.capitalize(), how=how),
+                    added_box_text(eid.capitalize(), how, tab_is_new),
                 ]
             )
             self.accepted = True
@@ -3259,9 +3279,7 @@ class SettingsDialogModel:
         if selected in self.listed_exchanges:
             self.listed_exchanges.remove(selected)
         self.values["exchange_list"] = list(self.listed_exchanges)
-        self.set_feedback(
-            REMOVED_FEEDBACK_FORMAT.format(name=eid.capitalize()), INFO_LEVEL
-        )
+        self.set_feedback(removed_feedback_text(eid.capitalize()), INFO_LEVEL)
         if self.status_log:
             self.status_log.log(REMOVED_LOG_FORMAT.format(eid=eid), WARNING_LEVEL)
 
