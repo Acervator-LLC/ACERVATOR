@@ -114,6 +114,11 @@ SMART_CARTRIDGE_CEILING_OFF_TEXT: str = "off"
 #: read by ``ceiling_multiple``.
 POSITION_CEILING_MULTIPLE_DEFAULT: float = 5.0
 
+#: The span every Ceiling Multiple box offers and ``position_ceiling`` clamps
+#: ``BotConfig.position_ceiling_multiple`` to, in anchor multiples.
+CEILING_MULTIPLE_MIN: float = 1.0
+CEILING_MULTIPLE_MAX: float = 10.0
+
 
 @dataclass
 class BotConfig:

@@ -11,6 +11,8 @@ from typing import Any, Callable, Optional
 from ...core.event_bus import LINE_KIND_WIRE_STACK
 from ...exchange.base import OrderSide, OrderType
 from ..container.config import (
+    CEILING_MULTIPLE_MAX,
+    CEILING_MULTIPLE_MIN,
     EXPIRY_CLOSE_SELL_ALL,
     SMART_CARTRIDGE_CEILING_OFF,
     SMART_CARTRIDGE_CEILING_OFF_TEXT,
@@ -877,7 +879,9 @@ class TickPhaseMixin:
             if getattr(self.config, "position_ceiling_enabled", False):
                 try:
                     _smart_mult = ceiling_multiple(self.config)
-                    _smart_mult = max(1.0, min(10.0, _smart_mult))
+                    _smart_mult = max(
+                        CEILING_MULTIPLE_MIN, min(CEILING_MULTIPLE_MAX, _smart_mult)
+                    )
                     _smart_ceiling_usd = self._anchor_target_balance * _smart_mult
                     _prospective = _fresh_usd + self._target_balance
                     if _prospective > _smart_ceiling_usd:
