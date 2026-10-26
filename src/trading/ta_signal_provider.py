@@ -25,6 +25,10 @@ from .ta_engine import (
 
 logger = logging.getLogger("acervator.ta_signal_provider")
 
+#: The bullish share of the last 20 candles above which ``analyze`` sets
+#: ``trend_hold``. No caller sets it.
+TREND_HOLD_MIN_SHARE: float = 0.65
+
 
 @dataclass
 class TASnapshot:
@@ -81,7 +85,6 @@ class TASignalProvider:
         confidence_threshold: float = 0.3,
         bb_proximity_tolerance_pct: float = 1.0,
         ohlcv_limit: int = 100,
-        trend_strength_threshold: float = 0.65,
         min_candles_for_signal: int = 30,
     ) -> None:
         self._exchange = exchange
@@ -92,7 +95,6 @@ class TASignalProvider:
         )
         self._bb_tolerance = float(bb_proximity_tolerance_pct)
         self._ohlcv_limit = int(ohlcv_limit)
-        self._trend_strength_threshold = float(trend_strength_threshold)
         self._min_candles = int(min_candles_for_signal)
 
     @property
@@ -165,14 +167,14 @@ class TASignalProvider:
         is_bullish = direction == SignalDirection.BULLISH
         is_bearish = direction == SignalDirection.BEARISH
 
-        # The 20-candle window is fixed; only the threshold it feeds is configurable.
+        # The 20-candle window and TREND_HOLD_MIN_SHARE are both fixed.
         if len(candles) >= 20:
             recent = candles[-20:]
             bull_in_recent = sum(1 for c in recent if c.close > c.open)
             trend_strength = bull_in_recent / 20.0
         else:
             trend_strength = 0.5
-        trend_hold = trend_strength > self._trend_strength_threshold
+        trend_hold = trend_strength > TREND_HOLD_MIN_SHARE
 
         return TASnapshot(
             symbol=symbol,

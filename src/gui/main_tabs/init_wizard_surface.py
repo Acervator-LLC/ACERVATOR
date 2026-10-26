@@ -125,11 +125,15 @@ LABEL_TEXTS = {
     PASSPHRASE_HINT: "This exchange requires an API passphrase.",
     FEEDBACK: EMPTY_TEXT,
 }
+PHRASE_FIELD_PROMPT = "Passphrase you chose when creating the API key"
+"""The prompt drawn inside the phrase field, read by this wizard and by the
+Settings page so both name the API key the phrase was set on."""
+
 PLACEHOLDERS = {
     USERNAME: "Enter your display name",
     API_KEY: "API key or organizations/.../apiKeys/... (CDP)",
     API_SECRET: "API secret or EC private key (PEM with \\n is OK)",
-    PASSPHRASE: "Passphrase you chose when creating the API key",
+    PASSPHRASE: PHRASE_FIELD_PROMPT,
 }
 TOOL_TIPS = {
     FRESH_START: (
