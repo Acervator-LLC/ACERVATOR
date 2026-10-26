@@ -8,8 +8,7 @@ colour already in the table, and ``ALIAS_TARGETS`` says which name
 each one copies.
 
 The table declares style. It runs nothing, wires no control and
-starts no timer, so ``ACTIONS``, ``TIMERS`` and ``SKIN`` are empty and
-a test proves them empty against the module they replace.
+starts no timer, so ``ACTIONS``, ``TIMERS`` and ``SKIN`` are empty.
 
 Five things leave this surface. ``token`` returns one value by name
 and returns the caller's default for a name the table does not hold.
@@ -20,278 +19,19 @@ caller asked for. ``view_model`` is the bridge handler.
 
 ``src.core.desktop_bridge`` registers ``view_model`` as the handler
 for the ``design_system.state`` method, which is how the Electron
-renderer reaches it. Every value below is written out here rather
-than read from ``src.gui.design_system``, so a value changed on one
-side alone is reported. Nothing here imports Qt.
+renderer reaches it. ``TOKENS`` reads each of the 195 values from
+``src.gui.design_system``, which declares every one and holds the
+only copy. Nothing here imports Qt.
 """
 
 from __future__ import annotations
 
 from typing import Any, Optional
 
+from .. import design_system
 from ..color_alpha import css_colours
 
 METHOD = "design_system.state"
-
-# COLOURS
-
-# ---- Surface elevation -------------------------------------------------
-SURFACE_0 = "#0a0a0f"
-SURFACE_1 = "#141420"
-SURFACE_2 = "#1a1a28"
-SURFACE_3 = "#22223a"
-SURFACE_4 = "#2a2a44"
-
-# ---- Text roles --------------------------------------------------------
-TEXT_HIGH = "#e0e0f0"
-TEXT_MED = "#a8a8c5"
-TEXT_LOW = "#8a8ab0"
-TEXT_DISABLED = "#555577"
-
-# ---- Primary and secondary accents -------------------------------------
-PRIMARY = "#00ffcc"
-ON_PRIMARY = "#003d33"
-PRIMARY_CONTAINER = "#00998a"
-ON_PRIMARY_CONTAINER = "#c8fff0"
-SECONDARY = "#ff00aa"
-ON_SECONDARY = "#3d0029"
-SECONDARY_CONTAINER = "#a8006d"
-ON_SECONDARY_CONTAINER = "#ffd8ee"
-
-# ---- Semantic roles ----------------------------------------------------
-SUCCESS = "#00ff88"
-DANGER = "#ff5577"
-WARNING = "#ffaa00"
-INFO = "#4fc3ff"
-
-# ---- Outlines ----------------------------------------------------------
-OUTLINE = "#7a7a9c"
-OUTLINE_STRONG = "#a0a0c0"
-
-# ---- Glow and scrim ----------------------------------------------------
-GLOW_PRIMARY = "rgba(0,255,204,51)"
-GLOW_SECONDARY = "rgba(255,0,170,51)"
-SCRIM = "rgba(0,0,0,136)"
-
-# ---- Stat-card skins ---------------------------------------------------
-CARD_STOCK_SURFACE = "#0e1428"
-CARD_STOCK_BORDER = "#1a2a4f"
-CARD_STOCK_LABEL = "#6688aa"
-CARD_STOCK_VALUE = "#e0e8f0"
-CARD_METRIC_SURFACE = "#12121f"
-CARD_METRIC_BORDER = "#2a2a3f"
-CARD_METRIC_LABEL = "#888888"
-
-# ---- Widget colours ----------------------------------------------------
-ERROR = "#ff3366"
-WARNING_STRONG = "#ff6600"
-STATUS_INFO = "#00aaff"
-STATUS_NEUTRAL = "#8899aa"
-STATUS_AUTHENTICATED = "#00ddff"
-PRIMARY_BRIGHT = "#00ffee"
-ACCENT_GOLD = "#ffd700"
-LAYER_CRYPTO = "#00ccaa"
-LAYER_STOCK = "#6699ff"
-
-# ---- Text roles beyond high, medium and low ----------------------------
-TEXT_MAX = "#ffffff"
-TEXT_NEUTRAL = "#cccccc"
-TEXT_CONSOLE = "#c0c0c0"
-TEXT_INACTIVE = "#aaaaaa"
-TEXT_EMPTY_STATE = "#8a8aab"
-TEXT_MUTED = "#666666"
-TEXT_PLACEHOLDER = "#555555"
-TEXT_INFO_SOFT = "#66ccff"
-TEXT_LOG_MINT = "#c0ffe0"
-TEXT_ON_LIGHT = "#000000"
-
-# ---- Surfaces beyond the five elevations -------------------------------
-SURFACE_CHART = "#0a0a12"
-SURFACE_CONTROL = "#1a1a2e"
-SURFACE_INPUT = "#0e0e1a"
-SURFACE_CONSOLE = "#05050a"
-SURFACE_CONSOLE_HEADER = "#0a0a14"
-BORDER_DISABLED = "#444444"
-
-# ---- Context menu ------------------------------------------------------
-MENU_SURFACE = "#1a1a2f"
-MENU_BORDER = "#3a3a5f"
-MENU_ITEM_SELECTED = "#2a2a4f"
-
-# ---- Control states ----------------------------------------------------
-STATE_ARMED = "#3ed080"
-STATE_ENGAGED = "#2d9d5f"
-STATE_ENGAGED_DIM = "#2d5f48"
-STATE_ENGAGED_GLOW = "#557766"
-STATE_PENDING = "#ffcc44"
-STATE_STARTING = "#00e6ff"
-STATE_MARKET = "#88ccff"
-
-# ---- Tranche row skins -------------------------------------------------
-FOLD_RATIO_AMBER = "#ff9900"
-FOLD_SOURCE_MANUAL = "#00ccff"
-FOLD_TRANCHE_SURFACE = "#123a63"
-FOLD_TRANCHE_BORDER = "#6ea6e6"
-EXTRACTOR_TRANCHE_SURFACE = "#b3261e"
-EXTRACTOR_TRANCHE_BORDER = "#ffb0a6"
-
-# ---- Settings dialog controls ------------------------------------------
-SETTINGS_PRIMARY_HOVER = "#00ddaa"
-SETTINGS_ON_INFO = "#001122"
-SETTINGS_DANGER_SURFACE = "#3a2020"
-SETTINGS_WARNING_HOVER = "#ff8833"
-SETTINGS_DESTRUCTIVE_SURFACE = "#440011"
-SETTINGS_DESTRUCTIVE_HOVER = "#660022"
-SETTINGS_DISABLED_SURFACE = "#1a1a1a"
-SETTINGS_DISABLED_DEEP = "#333333"
-GLOW_PRIMARY_EDGE = "rgba(0,255,204,85)"
-GLOW_PRIMARY_FAINT = "rgba(0,255,204,34)"
-
-# ---- Bot visualizer ----------------------------------------------------
-VIZ_PANEL_SURFACE = "#0c0c1a"
-VIZ_PANEL_BORDER = "#1a1a3f"
-VIZ_SWARM_SURFACE = "#070710"
-VIZ_TAB_SELECTED = "#0a0a20"
-VIZ_TAB_TEXT = "#79798a"
-VIZ_HEADING = "#c8d8f0"
-VIZ_CAPTION = "#6b7c8d"
-VIZ_CAPTION_DIM = "#556677"
-VIZ_LIST_SURFACE = "#0a0a18"
-VIZ_LIST_BORDER = "#1a2a4a"
-VIZ_LIST_TEXT = "#aaccff"
-VIZ_INPUT_SURFACE = "#142244"
-VIZ_INPUT_BORDER = "#2244aa"
-VIZ_GO_HOVER = "#001a0a"
-VIZ_GO_HOVER_DEEP = "#00290f"
-VIZ_STOP_HOVER = "#1a0011"
-VIZ_STOP_HOVER_DEEP = "#2a0018"
-VIZ_SIM_HOVER = "#001a18"
-VIZ_GOLD_HOVER = "#1a1400"
-VIZ_CONFIRM_SURFACE = "#003822"
-VIZ_NUCLEAR_SURFACE = "#ff0000"
-VIZ_NUCLEAR_BORDER = "#cc0000"
-VIZ_LANE_LIVE = "#091a0e"
-VIZ_LANE_PAPER = "#0e0e09"
-
-# ---- Main window chrome ------------------------------------------------
-MAIN_TOOLBAR_SURFACE = "#14141e"
-MAIN_SEPARATOR = "#2a2a3a"
-MAIN_BUTTON_SURFACE = "#1a1a26"
-MAIN_BUTTON_BORDER = "#3a3a4a"
-MAIN_BUTTON_HOVER = "#22222e"
-MAIN_TOGGLE_SURFACE = "#1a1a3a"
-MAIN_TOGGLE_HOVER = "#222250"
-MAIN_TOGGLE_CHECKED = "#381818"
-MAIN_TOGGLE_CHECKED_AMBER = "#663300"
-MAIN_TOOLTIP_BORDER = "#00cccc"
-MAIN_TABLE_HEADER = "#c0c4d8"
-MAIN_CAPTION = "#7a7d99"
-MAIN_BADGE_TEXT = "#7fb3ff"
-MAIN_BADGE_MAGENTA = "#ff66dd"
-MAIN_ALERT_SURFACE = "#d61a3d"
-MAIN_HIGHLIGHT_AMBER = "#33220a"
-MAIN_HIGHLIGHT_AMBER_TEXT = "#ffb000"
-MAIN_LOG_NAME = "#88c0ff"
-MAIN_LOG_SITE = "#667788"
-MAIN_LOG_CRITICAL = "#ff0044"
-
-# ---- Stock window ------------------------------------------------------
-CARD_STOCK_PANEL = "#0a1020"
-CARD_STOCK_BODY = "#aabbcc"
-CARD_STOCK_LOG_SURFACE = "#080c18"
-CARD_STOCK_BUTTON_BORDER = "#2a3a5f"
-CARD_STOCK_BUTTON_HOVER = "#2a3a6f"
-STOCK_POSITIVE = "#00cc66"
-STOCK_NEGATIVE = "#ff4466"
-STOCK_WARNING = "#ddaa00"
-STOCK_BUTTON_HOVER = "#0088dd"
-STOCK_LOG_DEBUG = "#444455"
-STOCK_LOG_TIMESTAMP = "#555566"
-STOCK_LOG_CRITICAL = "#ff0033"
-
-# TYPOGRAPHY
-
-# ---- Type ramp, in pixels ------------------------------------------------
-TYPE_DISPLAY = 36
-TYPE_H1 = 28
-TYPE_H2 = 22
-TYPE_H3 = 18
-TYPE_H4 = 15
-TYPE_BODY = 13
-TYPE_SMALL = 11
-TYPE_CAPTION = 10
-TYPE_CARD_VALUE = 16
-
-# ---- Line heights, as a multiple of the type size -------------------------
-LINE_HEIGHT_TIGHT = 1.2
-LINE_HEIGHT_BODY = 1.4
-LINE_HEIGHT_LOOSE = 1.5
-
-# ---- Font families, as the stack a style sheet names ----------------------
-FONT_FAMILY_UI = "'Rajdhani', 'Orbitron', 'Segoe UI', sans-serif"
-FONT_FAMILY_MONO = "'JetBrains Mono', 'Fira Code', 'Consolas', monospace"
-
-# ---- Font weights --------------------------------------------------------
-WEIGHT_REGULAR = 400
-WEIGHT_MEDIUM = 500
-WEIGHT_BOLD = 700
-
-# SPACING, SHAPE, MOTION AND TARGET SIZE
-
-# ---- Spacing, in pixels ------------------------------------------------
-SPACE_XS = 4
-SPACE_XXS = 2
-SPACE_CARD_TIGHT = 10
-SPACE_CARD_PAD = 12
-SPACE_S = 8
-SPACE_M = 16
-SPACE_L = 24
-SPACE_XL = 32
-SPACE_XXL = 48
-
-# ---- Corner radius, in pixels ------------------------------------------
-RADIUS_NONE = 0
-RADIUS_XS = 4
-RADIUS_CARD = 6
-RADIUS_SM = 8
-RADIUS_MD = 12
-RADIUS_LG = 16
-
-# ---- Motion, in milliseconds -------------------------------------------
-MOTION_INSTANT = 0
-MOTION_SHORT = 100
-MOTION_MEDIUM = 250
-MOTION_LONG = 500
-MOTION_EXTRA = 1000
-
-# ---- Pointer target size, in pixels ------------------------------------
-TARGET_MIN = 24
-TARGET_COMFORTABLE = 32
-TARGET_LARGE = 44
-
-# ---- Bot-table fixed column widths, in pixels --------------------------
-TABLE_COL_FIRE_W = 70
-TABLE_COL_DETAIL_W = 60
-
-# ---- Focus ring, in pixels ---------------------------------------------
-FOCUS_RING_WIDTH = 2
-FOCUS_RING_OFFSET = 2
-
-# ---- Drop shadow: vertical offset, blur radius, alpha ---------------------
-SHADOW_0 = (0, 0, "00")
-SHADOW_1 = (1, 2, "40")
-SHADOW_2 = (2, 4, "50")
-SHADOW_3 = (4, 8, "60")
-SHADOW_4 = (8, 16, "70")
-
-# SECOND NAMES FOR A COLOUR ALREADY IN THE TABLE
-
-BG = "#0a0a0f"
-CARD = "#141420"
-FG = "#e0e0f0"
-DIM = "#a8a8c5"
-HINT = "#8a8ab0"
-FOCUS_RING_COLOR = "#a0a0c0"
 
 # THE GROUPS
 
@@ -754,7 +494,7 @@ GROUP_MEMBERS: dict[str, tuple[str, ...]] = {
 
 GROUP_NAMES = tuple(GROUP_MEMBERS)
 
-TOKENS: dict[str, Any] = {name: globals()[name] for name in TOKEN_NAMES}
+TOKENS: dict[str, Any] = {name: getattr(design_system, name) for name in TOKEN_NAMES}
 
 GROUPS: dict[str, dict[str, Any]] = {
     group: {name: TOKENS[name] for name in members}

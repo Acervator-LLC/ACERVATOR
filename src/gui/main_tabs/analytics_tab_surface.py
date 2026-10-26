@@ -5,11 +5,11 @@ painted equity chart, a ten-column bot table and a four-column
 timeframe table, held in two splitters inside three group boxes.
 
 The card values, the table cells and the chart geometry are built from
-the numbers an analytics source hands over. Every colour, every layout
-number, every column heading and every number format is written out
-here rather than read from ``src.gui.analytics_tab`` or from
-``src.gui.design_system``, so a value changed on one side alone is
-reported.
+the numbers an analytics source hands over. Nine colours come from
+``src.gui.design_system``, which holds the only copy of each. Every
+other colour, layout number, column heading and number format is
+written out here rather than read from ``src.gui.analytics_tab``, and
+nothing compares the two copies.
 
 ``AnalyticsTabModel`` holds the source the tab was built with.
 ``refresh`` reads the four number sets the tab shows and returns them,
@@ -26,20 +26,22 @@ from __future__ import annotations
 from typing import Any, Optional
 
 from ..color_alpha import css_alpha
+from ..design_system import (
+    ERROR,
+    PRIMARY,
+    SUCCESS,
+    SURFACE_CHART,
+    SURFACE_CONTROL,
+    TEXT_HIGH,
+    TEXT_MUTED,
+    TEXT_PLACEHOLDER,
+    WARNING,
+)
 
 METHOD = "analytics.tab"
 
 TAB_ACCESSIBLE_NAME = "Analytics Tab"
 
-SUCCESS = "#00ff88"
-ERROR = "#ff3366"
-WARNING = "#ffaa00"
-PRIMARY = "#00ffcc"
-TEXT_HIGH = "#e0e0f0"
-TEXT_MUTED = "#666666"
-TEXT_PLACEHOLDER = "#555555"
-SURFACE_CHART = "#0a0a12"
-SURFACE_CONTROL = "#1a1a2e"
 CARD_SURFACE = "#12121f"
 CARD_BORDER = "#2a2a3f"
 CARD_LABEL_COLOR = "#888"

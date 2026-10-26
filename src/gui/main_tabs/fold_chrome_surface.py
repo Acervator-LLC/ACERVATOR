@@ -15,9 +15,9 @@ the panel can be driven over the bridge from values alone.
 ``src.core.desktop_bridge`` registers ``view_model`` as the handler for
 the ``fold_chrome.state`` method, which is how the Electron renderer
 reaches it. Every value below is written out here rather than read from
-``src.gui.live_settings.fold_chrome``, so a value changed on one side
-alone is reported. Nothing here imports Qt, and nothing at import time
-reads a clock, a file or the network.
+``src.gui.live_settings.fold_chrome``, and nothing compares the two
+copies. Nothing here imports Qt, and nothing at import time reads a
+clock, a file or the network.
 """
 
 from __future__ import annotations
