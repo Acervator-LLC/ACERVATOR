@@ -1,13 +1,12 @@
 """bot_visualizer_surface.py -- the Bot Swarm tab and its three layers.
 
 Describes everything the Bot Swarm screen works out before it draws: the
-three swarm layers (live, simulator, paper) and the identical row each
-one builds, the locust grid and the message shown when no bot is
-running, the wires between bots and where they sit, the routes those
-wires are saved as, the Exchange filter, the privacy glyphs, and the
-words every menu and confirmation puts on screen.
+three swarm layers (live, simulator, paper) and the bench rows and
+summary each one carries, the locust grid and the message shown when no
+bot is running, the wires between bots and where they sit, the routes
+those wires are saved as, the Exchange filter, the privacy glyphs, and
+the words every menu and confirmation puts on screen.
 
-``SwarmLayer`` holds one layer's rows and the summary line under them.
 ``WireBoard`` holds the wires, adds and drops them, and answers which
 wire a click landed on. ``FleetGrid`` places each bot in the grid and
 decides when the empty message shows. The route helpers turn a stored
@@ -129,46 +128,14 @@ PAPER_TAB_INDEX = 2
 HEADER_TITLE = "Bot Swarm"
 HEADER_HINT = "   Drag between bots to connect  •  Right-click wire to disconnect"
 
-# The unified swarm row
+# The three swarm layers
 
 LIVE_KIND = "live"
 SIM_KIND = "sim"
 PAPER_KIND = "paper"
 ROW_KINDS = (LIVE_KIND, SIM_KIND, PAPER_KIND)
-FALLBACK_KIND = SIM_KIND
 
-SWARM_ACCENTS: dict[str, tuple[str, str, str]] = {
-    LIVE_KIND: (SUCCESS_COLOR, SUCCESS_COLOR, SUCCESS_COLOR),
-    SIM_KIND: (SUCCESS_COLOR, PRIMARY_BRIGHT_COLOR, SUCCESS_COLOR),
-    PAPER_KIND: (ACCENT_GOLD_COLOR, ACCENT_GOLD_COLOR, ACCENT_GOLD_COLOR),
-}
-
-SWARM_TINTS: dict[str, str] = {
-    LIVE_KIND: VIZ_LANE_LIVE_COLOR,
-    SIM_KIND: VIZ_LANE_LIVE_COLOR,
-    PAPER_KIND: VIZ_LANE_PAPER_COLOR,
-}
-FALLBACK_TINT = VIZ_PANEL_SURFACE_COLOR
-
-ROW_MARGINS = (8, 4, 8, 4)
-ROW_SPACING = 6
-ROW_RADIUS_PX = 4
-
-DOT_WIDTH_PX = 12
-ID_WIDTH_PX = 80
-CONTEXT_WIDTH_PX = 88
-MODE_WIDTH_PX = 72
-FEED_WIDTH_PX = 60
-CAPITAL_WIDTH_PX = 58
-STATUS_WIDTH_PX = 60
-METRIC_WIDTH_PX = 58
-PNL_WIDTH_PX = 88
-TRADES_WIDTH_PX = 68
-
-DOT_TEXT = "●"
 MISSING_TEXT = "—"
-PNL_PLACEHOLDER_TEXT = "PnL —"
-TRADES_PLACEHOLDER_TEXT = "0 trades"
 
 STATUS_RUNNING = "RUNNING"
 STATUS_STOPPED = "STOPPED"
@@ -176,487 +143,7 @@ STATUS_DONE = "DONE"
 STATUS_LIVE = "LIVE"
 STATUS_IDLE = "IDLE"
 
-CAPITAL_TEXT_FORMAT = "${capital:,.0f}"
-PNL_TEXT_FORMAT = "PnL {pnl:+,.2f}"
-TRADES_TEXT_FORMAT = "{trades} trades"
-PROGRESS_TEXT_FORMAT = "{pct}%"
-PRICE_SMALL_FORMAT = "${price:,.4f}"
-PRICE_LARGE_FORMAT = "${price:,.2f}"
-PRICE_FORMAT_LIMIT = 1000
-
-PROGRESS_MIN_TOTAL = 1
-PROGRESS_MAX_PCT = 100
-PROGRESS_SCALE = 100
-PROGRESS_DONE_TEXT = "100%"
-PROGRESS_START_TEXT = "0%"
-
 DEFAULT_CAPITAL = 0
-DEFAULT_CANDLE_TOTAL = 0
-SIM_CANDLE_TOTAL = 1
-DEFAULT_PNL = 0
-
-ROW_HANDLE_KEYS = (
-    "kind",
-    "widget",
-    "dot",
-    "id_lbl",
-    "context_lbl",
-    "mode_lbl",
-    "feed_lbl",
-    "cap_lbl",
-    "status_lbl",
-    "metric_lbl",
-    "pnl_lbl",
-    "trades_lbl",
-    "_accent",
-    "running",
-    "total_candles",
-)
-
-CONTEXT_CFG_KEYS = ("context", "pair", "asset")
-FEED_CFG_KEYS = ("feed", "timeframe", "source")
-
-
-def row_style_sheet(tint: str, border: str) -> str:
-    """The frame rule one swarm row is painted with."""
-    return (
-        f"QFrame{{background:{tint};border:1px solid {border};"
-        f"border-radius:{ROW_RADIUS_PX}px;}}"
-    )
-
-
-def dot_style_sheet(color: str) -> str:
-    """The rule the live dot at the left of a row is painted with."""
-    return f"color:{color};font-size:10px;font-weight:bold;background:transparent;"
-
-
-def id_style_sheet(color: str) -> str:
-    """The rule the row's identifier is painted with."""
-    return (
-        f"color:{color};font-size:9px;font-weight:bold;"
-        f"font-family:Consolas;background:transparent;"
-    )
-
-
-def context_style_sheet() -> str:
-    """The rule the asset column is painted with."""
-    return (
-        f"color:{PRIMARY_BRIGHT_COLOR};font-size:9px;font-weight:bold;"
-        "font-family:Consolas;background:transparent;"
-    )
-
-
-def small_style_sheet(color: str) -> str:
-    """The rule every eight-point column in a row is painted with."""
-    return f"color:{color};font-size:8px;font-family:Consolas;background:transparent;"
-
-
-def bold_small_style_sheet(color: str) -> str:
-    """The rule the status column is painted with."""
-    return (
-        f"color:{color};font-size:8px;font-family:Consolas;"
-        f"font-weight:bold;background:transparent;"
-    )
-
-
-def stopped_row_style_sheet() -> str:
-    """The frame rule a stopped row is repainted with."""
-    return (
-        f"QFrame{{background:{VIZ_PANEL_SURFACE_COLOR};"
-        f"border:1px solid {VIZ_PANEL_BORDER_COLOR};"
-        f"border-radius:{ROW_RADIUS_PX}px;}}"
-    )
-
-
-def stopped_status_style_sheet() -> str:
-    """The rule the status column is repainted with when a row stops."""
-    return (
-        f"color:{VIZ_CAPTION_COLOR};font-size:8px;font-family:Consolas;"
-        "font-weight:bold;background:transparent;"
-    )
-
-
-def accents_for(kind: str) -> tuple[str, str, str]:
-    """The border, label and dot colours one layer's rows carry.
-
-    A layer name the screen does not know takes the simulator colours.
-    """
-    return SWARM_ACCENTS.get(kind, SWARM_ACCENTS[FALLBACK_KIND])
-
-
-def tint_for(kind: str) -> str:
-    """The background one layer's rows carry."""
-    return SWARM_TINTS.get(kind, FALLBACK_TINT)
-
-
-def first_present(cfg: dict, keys: tuple, fallback: str) -> Any:
-    """The first of `keys` the run carries, else `fallback`.
-
-    A key present and holding nothing is carried as it is; only a key
-    that is absent falls through to the next.
-    """
-    for key in keys:
-        if key in cfg:
-            return cfg[key]
-    return fallback
-
-
-def capital_text(capital: Any) -> str:
-    """One layer's starting money as the capital column writes it."""
-    return CAPITAL_TEXT_FORMAT.format(capital=capital)
-
-
-def pnl_text(pnl: Any) -> str:
-    """One run's profit as the PnL column writes it."""
-    return PNL_TEXT_FORMAT.format(pnl=pnl)
-
-
-def pnl_color(pnl: Any) -> str:
-    """The colour a profit is written in.
-
-    Nothing lost is green and anything else red. A profit that is not a
-    number is red, because every comparison against it is false.
-    """
-    return SUCCESS_COLOR if pnl >= 0 else ERROR_COLOR
-
-
-def trades_text(trades: Any) -> str:
-    """One run's trade count as the trades column writes it."""
-    return TRADES_TEXT_FORMAT.format(trades=trades)
-
-
-def progress_pct(candle_idx: Any, total_candles: Any) -> int:
-    """How far a bounded simulator run has got, as a whole percentage.
-
-    A total below one is lifted to one, so a run with no candles reads
-    as finished rather than dividing by nothing. The share is cut off at
-    a hundred.
-    """
-    total = max(PROGRESS_MIN_TOTAL, total_candles)
-    return min(PROGRESS_MAX_PCT, int(candle_idx / total * PROGRESS_SCALE))
-
-
-def progress_text(candle_idx: Any, total_candles: Any) -> str:
-    """One simulator run's progress as the metric column writes it."""
-    return PROGRESS_TEXT_FORMAT.format(pct=progress_pct(candle_idx, total_candles))
-
-
-def price_text(price: Any) -> str:
-    """One price as the metric column writes it.
-
-    Under a thousand takes four decimal places and anything else two. A
-    price that is not a number takes the two-place form, because the
-    comparison against it is false.
-    """
-    if price < PRICE_FORMAT_LIMIT:
-        return PRICE_SMALL_FORMAT.format(price=price)
-    return PRICE_LARGE_FORMAT.format(price=price)
-
-
-def price_style_sheet() -> str:
-    """The rule the metric column is repainted with once it shows a price."""
-    return small_style_sheet(PRIMARY_BRIGHT_COLOR)
-
-
-def swarm_row(kind: str, label: str, cfg: dict) -> dict:
-    """One swarm row: the same ten columns whatever layer built it.
-
-    The handle carries the same key set for every layer, which is what
-    lets one update path serve all three.
-    """
-    border, label_color, dot_color = accents_for(kind)
-    tint = tint_for(kind)
-    return {
-        "kind": kind,
-        "widget": {
-            "kind": ROW_KIND,
-            "style_sheet": row_style_sheet(tint, border),
-            "margins": list(ROW_MARGINS),
-            "spacing": ROW_SPACING,
-        },
-        "dot": column(DOT_TEXT, DOT_WIDTH_PX, dot_style_sheet(dot_color)),
-        "id_lbl": column(label, ID_WIDTH_PX, id_style_sheet(label_color)),
-        "context_lbl": column(
-            first_present(cfg, CONTEXT_CFG_KEYS, MISSING_TEXT),
-            CONTEXT_WIDTH_PX,
-            context_style_sheet(),
-        ),
-        "mode_lbl": column(
-            cfg.get("mode", MISSING_TEXT),
-            MODE_WIDTH_PX,
-            small_style_sheet(CARD_METRIC_LABEL_COLOR),
-        ),
-        "feed_lbl": column(
-            first_present(cfg, FEED_CFG_KEYS, MISSING_TEXT),
-            FEED_WIDTH_PX,
-            small_style_sheet(VIZ_CAPTION_DIM_COLOR),
-        ),
-        "cap_lbl": column(
-            capital_text(cfg.get("capital", DEFAULT_CAPITAL)),
-            CAPITAL_WIDTH_PX,
-            small_style_sheet(VIZ_CAPTION_DIM_COLOR),
-        ),
-        "status_lbl": column(
-            cfg.get("status", STATUS_RUNNING),
-            STATUS_WIDTH_PX,
-            bold_small_style_sheet(label_color),
-        ),
-        "metric_lbl": column(
-            cfg.get("metric_init", MISSING_TEXT),
-            METRIC_WIDTH_PX,
-            small_style_sheet(VIZ_CAPTION_COLOR),
-        ),
-        "pnl_lbl": column(
-            PNL_PLACEHOLDER_TEXT, PNL_WIDTH_PX, small_style_sheet(VIZ_CAPTION_COLOR)
-        ),
-        "trades_lbl": column(
-            TRADES_PLACEHOLDER_TEXT,
-            TRADES_WIDTH_PX,
-            small_style_sheet(VIZ_CAPTION_COLOR),
-        ),
-        "_accent": label_color,
-        "running": True,
-        "total_candles": cfg.get("candle_total", DEFAULT_CANDLE_TOTAL),
-    }
-
-
-def column(text: Any, width: int, style_sheet: str) -> dict:
-    """One column of a swarm row: its text, its width and its paint rule."""
-    return {
-        "kind": LABEL_KIND,
-        "text": text,
-        "width": width,
-        "style_sheet": style_sheet,
-    }
-
-
-def apply_stopped_style(handle: dict) -> dict:
-    """Repaint one row in the stopped colours and mark it not running."""
-    handle["running"] = False
-    handle["dot"]["style_sheet"] = dot_style_sheet(VIZ_CAPTION_COLOR)
-    handle["widget"]["style_sheet"] = stopped_row_style_sheet()
-    handle["status_lbl"]["style_sheet"] = stopped_status_style_sheet()
-    return handle
-
-
-def apply_pnl(handle: dict, pnl: Any) -> dict:
-    """Write one profit into a row, in the colour that profit earns."""
-    handle["pnl_lbl"]["text"] = pnl_text(pnl)
-    handle["pnl_lbl"]["style_sheet"] = small_style_sheet(pnl_color(pnl))
-    return handle
-
-
-# What each layer's caller hands the row factory
-
-SIM_MODE = "SIM"
-PAPER_MODE = "PAPER"
-LIVE_MODE = "LIVE"
-
-
-def sim_cfg(label: str, cfg: dict) -> dict:
-    """One simulator run's settings in the shape every row is built from."""
-    return {
-        "context": cfg.get("asset", cfg.get("label", label)),
-        "mode": cfg.get("mode", SIM_MODE),
-        "feed": cfg.get("timeframe", MISSING_TEXT),
-        "capital": cfg.get("capital", DEFAULT_CAPITAL),
-        "status": STATUS_RUNNING,
-        "metric_init": PROGRESS_START_TEXT,
-        "candle_total": cfg.get("candle_total", SIM_CANDLE_TOTAL),
-    }
-
-
-def paper_cfg(cfg: dict) -> dict:
-    """One paper run's settings in the shape every row is built from."""
-    return {
-        "context": cfg.get("pair", MISSING_TEXT),
-        "mode": cfg.get("mode", PAPER_MODE),
-        "feed": cfg.get("source", MISSING_TEXT),
-        "capital": cfg.get("capital", DEFAULT_CAPITAL),
-        "status": STATUS_LIVE,
-        "metric_init": MISSING_TEXT,
-    }
-
-
-def live_cfg(cfg: dict) -> dict:
-    """One live bot's settings in the shape every row is built from."""
-    return {
-        "context": cfg.get("pair", cfg.get("asset", MISSING_TEXT)),
-        "mode": cfg.get("mode", LIVE_MODE),
-        "feed": cfg.get("timeframe", cfg.get("source", MISSING_TEXT)),
-        "capital": cfg.get("capital", DEFAULT_CAPITAL),
-        "status": STATUS_RUNNING,
-        "metric_init": cfg.get("metric_init", MISSING_TEXT),
-    }
-
-
-LIVE_ROW_ID_CHARS = 8
-
-
-def live_row_id(bot_id: Any) -> str:
-    """The id column of one live row: ``bot_id`` cut to ``LIVE_ROW_ID_CHARS``."""
-    return str(bot_id)[:LIVE_ROW_ID_CHARS]
-
-
-def live_row_number(value: Any) -> float:
-    """One stored reading as a money or count column writes it.
-
-    A bool, a text value, an overflowing value and a value that is not
-    finite all read 0.0, so no stored reading can stop a row drawing.
-    """
-    if isinstance(value, bool):
-        return 0.0
-    try:
-        found = float(value)
-    except (TypeError, ValueError, OverflowError):
-        return 0.0
-    return found if math.isfinite(found) else 0.0
-
-
-def live_row_cfg(status: dict) -> dict:
-    """One bot status in the shape ``register_live_run`` takes."""
-    return {
-        "pair": status.get("symbol") or MISSING_TEXT,
-        "mode": str(status.get("mode") or LIVE_MODE).upper(),
-        "timeframe": status.get("ta_timeframe") or MISSING_TEXT,
-        "capital": live_row_number(status.get("target_balance")),
-    }
-
-
-def live_row_tick(status: dict) -> dict:
-    """One bot status in the shape ``update_live_run`` takes."""
-    stats = status.get("stats")
-    if not isinstance(stats, dict):
-        stats = {}
-    return {
-        "price": live_row_number(stats.get("current_price")),
-        "pnl": live_row_number(stats.get("realised_pnl"))
-        + live_row_number(stats.get("unrealised_pnl")),
-        "trades": int(live_row_number(stats.get("total_trades"))),
-        "status": str(status.get("state") or STATUS_RUNNING).upper(),
-    }
-
-
-LAYER_CFG_BUILDERS = {SIM_KIND: sim_cfg, PAPER_KIND: paper_cfg, LIVE_KIND: live_cfg}
-LAYER_ID_KEYS = {SIM_KIND: "sim_id", PAPER_KIND: "paper_id", LIVE_KIND: "bot_id"}
-LAYER_STOP_STATUS = {
-    SIM_KIND: STATUS_DONE,
-    PAPER_KIND: STATUS_STOPPED,
-    LIVE_KIND: STATUS_STOPPED,
-}
-
-SIM_REGISTERED_SIGNAL = "swarm.11.001.postcondition.sim_run_registered"
-PAPER_REGISTERED_SIGNAL = "swarm.11.002.postcondition.paper_run_registered"
-REGISTERED_SIGNALS = {
-    SIM_KIND: SIM_REGISTERED_SIGNAL,
-    PAPER_KIND: PAPER_REGISTERED_SIGNAL,
-}
-
-
-class SwarmLayer:
-    """One swarm layer: the rows it holds, keyed by run.
-
-    `on_change` is called after every register, update and stop that
-    found its row, and nowhere else. The summary under the rows is
-    rewritten there, so a summary shows the last event and not the
-    moment it was read.
-    """
-
-    def __init__(self, kind: str, on_change=None) -> None:
-        self.kind = kind
-        self.rows: dict[str, dict] = {}
-        self.order: list[str] = []
-        self.signals: list[dict] = []
-        self.on_change = on_change
-
-    def _changed(self) -> None:
-        if self.on_change is not None:
-            self.on_change()
-
-    def register(self, run_id: str, label: str, cfg: dict) -> dict:
-        """Build one row for a run, replacing any row that run already had."""
-        self.remove(run_id)
-        builder = LAYER_CFG_BUILDERS[self.kind]
-        built = builder(label, cfg) if self.kind == SIM_KIND else builder(cfg)
-        handle = swarm_row(self.kind, label, built)
-        handle[LAYER_ID_KEYS[self.kind]] = run_id
-        self.rows[run_id] = handle
-        self.order.append(run_id)
-        topic = REGISTERED_SIGNALS.get(self.kind)
-        if topic is not None:
-            self.signals.append(
-                {
-                    "topic": topic,
-                    "actual": (self.rows.get(run_id) or {}).get("kind"),
-                    "expected": self.kind,
-                    "layer": self.kind,
-                    "id": str(run_id),
-                    "rows_in_layer": len(self.rows),
-                }
-            )
-        self._changed()
-        return handle
-
-    def update(
-        self,
-        run_id: str,
-        pnl: Any = DEFAULT_PNL,
-        trades: Any = 0,
-        candle_idx: Any = 0,
-        price: Optional[Any] = None,
-        status: Optional[str] = None,
-    ) -> Optional[dict]:
-        """Write one tick into a run's row. A run with no row is ignored."""
-        handle = self.rows.get(run_id)
-        if handle is None:
-            return None
-        if status is not None:
-            handle["status_lbl"]["text"] = status
-        if self.kind == SIM_KIND:
-            handle["metric_lbl"]["text"] = progress_text(
-                candle_idx, handle.get("total_candles", SIM_CANDLE_TOTAL)
-            )
-        elif price is not None and (self.kind == PAPER_KIND or price > 0):
-            handle["metric_lbl"]["text"] = price_text(price)
-            handle["metric_lbl"]["style_sheet"] = price_style_sheet()
-        apply_pnl(handle, pnl)
-        handle["trades_lbl"]["text"] = trades_text(trades)
-        handle["_pnl"] = pnl
-        self._changed()
-        return handle
-
-    def stop(
-        self, run_id: str, pnl: Any = DEFAULT_PNL, trades: Any = 0
-    ) -> Optional[dict]:
-        """Mark one run finished. A run with no row is ignored."""
-        handle = self.rows.get(run_id)
-        if handle is None:
-            return None
-        apply_stopped_style(handle)
-        handle["status_lbl"]["text"] = LAYER_STOP_STATUS[self.kind]
-        apply_pnl(handle, pnl)
-        handle["trades_lbl"]["text"] = trades_text(trades)
-        if self.kind == SIM_KIND:
-            handle["metric_lbl"]["text"] = PROGRESS_DONE_TEXT
-        self._changed()
-        return handle
-
-    def remove(self, run_id: str) -> bool:
-        """Drop one run's row. True when a row was there to drop."""
-        if run_id not in self.rows:
-            return False
-        del self.rows[run_id]
-        self.order = [one for one in self.order if one != run_id]
-        return True
-
-    def running_count(self) -> int:
-        """How many of this layer's rows are still running."""
-        return sum(1 for one in self.rows.values() if one.get("running"))
-
-    def pnls(self) -> list:
-        """Every profit this layer's rows carry, in the order they were built."""
-        return [self.rows[one].get("_pnl", DEFAULT_PNL) for one in self.order]
-
 
 SIM_SUMMARY_RUNNING_FORMAT = "Bots: {running}/{total} running"
 SIM_SUMMARY_PNL_FORMAT = "Total PnL: ${total:+,.2f}"
@@ -685,22 +172,17 @@ PAPER_SUMMARY_START = {
 }
 
 
-def sim_summary(bench_running: int, bench_total: int, layer: SwarmLayer) -> dict:
-    """The three lines under the Simulator Swarm rows.
+def sim_summary(bench_running: int, bench_total: int) -> dict:
+    """The three lines under the Simulator Swarm bench rows.
 
     `bench_running` and `bench_total` are the bench rows the operator
-    added by hand; the layer holds the runs the simulator started.
+    added by hand, and no other row reaches `SIM_SUMMARY_RUNNING_FORMAT`.
     """
-    running = bench_running + layer.running_count()
-    total = bench_total + len(layer.rows)
-    found = layer.pnls()
     return {
-        "wins": SIM_SUMMARY_RUNNING_FORMAT.format(running=running, total=total),
-        "pnl": (
-            SIM_SUMMARY_PNL_FORMAT.format(total=sum(found))
-            if found
-            else SIM_SUMMARY_PNL_EMPTY
+        "wins": SIM_SUMMARY_RUNNING_FORMAT.format(
+            running=bench_running, total=bench_total
         ),
+        "pnl": SIM_SUMMARY_PNL_EMPTY,
         "trades": SIM_SUMMARY_TRADES,
     }
 
@@ -1901,16 +1383,7 @@ LAYER_CHROME = {
 # The whole screen
 
 ACTIONS = {
-    "register_sim": "Build a Simulator Swarm row for one run",
-    "update_sim": "Write one simulator tick into its row",
-    "stop_sim": "Mark one simulator run finished",
-    "register_paper": "Build a Paper Swarm row for one session",
-    "update_paper": "Write one paper tick into its row",
-    "stop_paper": "Mark one paper session stopped",
-    "register_live": "Build a Bot Swarm row for one live bot",
-    "update_live": "Write one live tick into its row",
-    "stop_live": "Mark one live bot stopped",
-    "update_bots": "Take one fleet load into the locust grid and the live rows",
+    "update_bots": "Take one fleet load into the locust grid",
     "wire_created": "Take one wire.created message",
     "wire_removed": "Take one wire.removed message",
     "remove_wire": "Cut one wire",
@@ -1939,9 +1412,6 @@ class BotVisualizerModel:
     def __init__(self) -> None:
         self.grid = FleetGrid()
         self.board = WireBoard()
-        self.live = SwarmLayer(LIVE_KIND)
-        self.sim = SwarmLayer(SIM_KIND, self.refresh_sim_summary)
-        self.paper = SwarmLayer(PAPER_KIND, self.refresh_paper_summary)
         self.sim_summary_shown = dict(SIM_SUMMARY_START)
         self.paper_summary_shown = dict(PAPER_SUMMARY_START)
         self.bench_sim_running = 0
@@ -1963,38 +1433,11 @@ class BotVisualizerModel:
         self.panel: Optional[dict] = None
         self.sheet: dict = {}
 
-    def layer(self, kind: str) -> SwarmLayer:
-        """One of the three layers, by name."""
-        return {LIVE_KIND: self.live, SIM_KIND: self.sim, PAPER_KIND: self.paper}[kind]
-
     def update_bots(self, bot_statuses: list) -> None:
         """Take one fleet load, then cut the wires of every bot that left."""
         for bot_id in self.grid.update_bots(bot_statuses):
             self.board.drop_bot(bot_id)
-        self.sync_live_rows(bot_statuses)
         self.set_exchange(self.exchange)
-
-    def sync_live_rows(self, bot_statuses: list) -> None:
-        """Hold one ``self.live`` row per bot in one fleet load.
-
-        A row is rebuilt when ``masked`` changes the id it shows, and a
-        bot no longer in the load loses its row.
-        """
-        seen: list[str] = []
-        for status in bot_statuses:
-            if not isinstance(status, dict):
-                continue
-            bot_id = status.get("bot_id", "")
-            if not bot_id:
-                continue
-            seen.append(bot_id)
-            label = mask_or(live_row_id(bot_id), self.masked)
-            held = self.live.rows.get(bot_id)
-            if held is None or held.get("id_lbl", {}).get("text") != label:
-                self.live.register(bot_id, label, live_row_cfg(status))
-            self.live.update(bot_id, **live_row_tick(status))
-        for bot_id in [one for one in list(self.live.order) if one not in seen]:
-            self.live.remove(bot_id)
 
     def set_exchange(self, exchange: str) -> None:
         """Choose one exchange to filter by.
@@ -2042,16 +1485,10 @@ class BotVisualizerModel:
             registry.set_masked(MASK_FIELD_ID, wanted)
             self.masked = wanted
         self.any_masked = self.any_mask_on()
-        self.relabel_live_rows()
         self.privacy_mode_shown = {
             "text": privacy_mode_text(self.any_masked),
             "style_sheet": privacy_mode_style_sheet(self.any_masked),
         }
-
-    def relabel_live_rows(self) -> None:
-        """Write the masked or revealed id into every live row's id column."""
-        for bot_id, handle in self.live.rows.items():
-            handle["id_lbl"]["text"] = mask_or(live_row_id(bot_id), self.masked)
 
     def any_mask_on(self) -> bool:
         """Whether ``mask_registry`` holds any mask on.
@@ -2163,9 +1600,9 @@ class BotVisualizerModel:
         }
 
     def refresh_sim_summary(self) -> None:
-        """Rewrite the three lines under the Simulator Swarm rows."""
+        """Rewrite the three lines under the Simulator Swarm bench rows."""
         self.sim_summary_shown = sim_summary(
-            self.bench_sim_running, self.bench_sim_total, self.sim
+            self.bench_sim_running, self.bench_sim_total
         )
 
     def refresh_paper_summary(self) -> None:
@@ -2254,60 +1691,13 @@ def build_payload(model: BotVisualizerModel) -> dict:
         "header_title": HEADER_TITLE,
         "header_hint": HEADER_HINT,
         "row_kinds": list(ROW_KINDS),
-        "fallback_kind": FALLBACK_KIND,
-        "swarm_accents": {one: list(found) for one, found in SWARM_ACCENTS.items()},
-        "swarm_tints": dict(SWARM_TINTS),
-        "fallback_tint": FALLBACK_TINT,
-        "row_margins": list(ROW_MARGINS),
-        "row_spacing": ROW_SPACING,
-        "row_radius_px": ROW_RADIUS_PX,
-        "row_handle_keys": list(ROW_HANDLE_KEYS),
-        "context_cfg_keys": list(CONTEXT_CFG_KEYS),
-        "feed_cfg_keys": list(FEED_CFG_KEYS),
-        "column_widths": {
-            "dot": DOT_WIDTH_PX,
-            "id": ID_WIDTH_PX,
-            "context": CONTEXT_WIDTH_PX,
-            "mode": MODE_WIDTH_PX,
-            "feed": FEED_WIDTH_PX,
-            "capital": CAPITAL_WIDTH_PX,
-            "status": STATUS_WIDTH_PX,
-            "metric": METRIC_WIDTH_PX,
-            "pnl": PNL_WIDTH_PX,
-            "trades": TRADES_WIDTH_PX,
-        },
-        "dot_text": DOT_TEXT,
         "missing_text": MISSING_TEXT,
-        "pnl_placeholder_text": PNL_PLACEHOLDER_TEXT,
-        "trades_placeholder_text": TRADES_PLACEHOLDER_TEXT,
         "status_running": STATUS_RUNNING,
         "status_stopped": STATUS_STOPPED,
         "status_done": STATUS_DONE,
         "status_live": STATUS_LIVE,
         "status_idle": STATUS_IDLE,
-        "capital_text_format": CAPITAL_TEXT_FORMAT,
-        "pnl_text_format": PNL_TEXT_FORMAT,
-        "trades_text_format": TRADES_TEXT_FORMAT,
-        "progress_text_format": PROGRESS_TEXT_FORMAT,
-        "price_small_format": PRICE_SMALL_FORMAT,
-        "price_large_format": PRICE_LARGE_FORMAT,
-        "price_format_limit": PRICE_FORMAT_LIMIT,
-        "progress_min_total": PROGRESS_MIN_TOTAL,
-        "progress_max_pct": PROGRESS_MAX_PCT,
-        "progress_scale": PROGRESS_SCALE,
-        "progress_done_text": PROGRESS_DONE_TEXT,
-        "progress_start_text": PROGRESS_START_TEXT,
         "default_capital": DEFAULT_CAPITAL,
-        "default_candle_total": DEFAULT_CANDLE_TOTAL,
-        "sim_candle_total": SIM_CANDLE_TOTAL,
-        "default_pnl": DEFAULT_PNL,
-        "sim_mode": SIM_MODE,
-        "paper_mode": PAPER_MODE,
-        "live_mode": LIVE_MODE,
-        "layer_id_keys": dict(LAYER_ID_KEYS),
-        "layer_stop_status": dict(LAYER_STOP_STATUS),
-        "sim_registered_signal": SIM_REGISTERED_SIGNAL,
-        "paper_registered_signal": PAPER_REGISTERED_SIGNAL,
         "sim_summary_running_format": SIM_SUMMARY_RUNNING_FORMAT,
         "sim_summary_pnl_format": SIM_SUMMARY_PNL_FORMAT,
         "sim_summary_pnl_empty": SIM_SUMMARY_PNL_EMPTY,
@@ -2517,35 +1907,11 @@ def build_payload(model: BotVisualizerModel) -> dict:
         "drag_start_id": model.board.drag_start_id,
         "emitted": [list(one) for one in model.board.emitted],
         "log_lines": [list(one) for one in model.log_lines],
-        "live_rows": {one: dict(found) for one, found in model.live.rows.items()},
-        "sim_rows": {one: dict(found) for one, found in model.sim.rows.items()},
-        "paper_rows": {one: dict(found) for one, found in model.paper.rows.items()},
-        "live_row_order": list(model.live.order),
-        "sim_row_order": list(model.sim.order),
-        "paper_row_order": list(model.paper.order),
-        "layer_signals": {
-            LIVE_KIND: [dict(one) for one in model.live.signals],
-            SIM_KIND: [dict(one) for one in model.sim.signals],
-            PAPER_KIND: [dict(one) for one in model.paper.signals],
-        },
         "sim_summary": dict(model.sim_summary_shown),
         "paper_summary": dict(model.paper_summary_shown),
         "sim_summary_start": dict(SIM_SUMMARY_START),
         "paper_summary_start": dict(PAPER_SUMMARY_START),
     }
-
-
-LAYER_OF_ACTION = {
-    "register_sim": SIM_KIND,
-    "update_sim": SIM_KIND,
-    "stop_sim": SIM_KIND,
-    "register_paper": PAPER_KIND,
-    "update_paper": PAPER_KIND,
-    "stop_paper": PAPER_KIND,
-    "register_live": LIVE_KIND,
-    "update_live": LIVE_KIND,
-    "stop_live": LIVE_KIND,
-}
 
 
 def apply_action(model: BotVisualizerModel, params: dict) -> dict:
@@ -2556,28 +1922,7 @@ def apply_action(model: BotVisualizerModel, params: dict) -> dict:
     take the same action by the same code.
     """
     action = params.get("action", "")
-    kind = LAYER_OF_ACTION.get(action)
-    if kind is not None:
-        layer = model.layer(kind)
-        run_id = params.get("run_id", "")
-        if action.startswith("register"):
-            layer.register(run_id, params.get("label", ""), params.get("cfg") or {})
-        elif action.startswith("update"):
-            layer.update(
-                run_id,
-                pnl=params.get("pnl", DEFAULT_PNL),
-                trades=params.get("trades", 0),
-                candle_idx=params.get("candle_idx", 0),
-                price=params.get("price"),
-                status=params.get("status"),
-            )
-        else:
-            layer.stop(
-                run_id,
-                pnl=params.get("pnl", DEFAULT_PNL),
-                trades=params.get("trades", 0),
-            )
-    elif action == "update_bots":
+    if action == "update_bots":
         model.update_bots(params.get("bot_statuses") or [])
     elif action == "wire_created":
         model.board.on_created(params.get("event") or {})

@@ -60,11 +60,6 @@ body {
   align-content: flex-start;
 }
 
-.acervator-swarm-row {
-  display: flex;
-  align-items: center;
-}
-
 .acervator-swarm-cell {
   overflow: hidden;
   text-overflow: ellipsis;
