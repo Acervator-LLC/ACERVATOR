@@ -39,6 +39,7 @@ from .bot_container import (
     BotMode,
 )
 from .buy_safety import verify_buy_safe_or_refuse
+from .container.config import stored_list
 from .phantom_balance import TIMEFRAME_SECONDS
 from .scrumming.sizing import DRAWDOWN_STATE
 from .ta_signal_provider import TASignalProvider, TASnapshot
@@ -1565,8 +1566,8 @@ class ExtractorBot(BotContainer):
                     exc,
                 )
                 continue
-        self._closed_position_log = list(state.get("closed_position_log", []))
-        self._watch_list = list(state.get("watch_list", []))
+        self._closed_position_log = stored_list(state.get("closed_position_log"))
+        self._watch_list = stored_list(state.get("watch_list"))
         self._tick_counter = int(state.get("tick_counter", 0))
         self._cycle_extracted_total = float(state.get("cycle_extracted_total", 0.0))
         self._lifetime_extracted_total = float(

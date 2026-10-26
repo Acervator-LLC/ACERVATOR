@@ -2575,9 +2575,14 @@ class SettingsSource:
         self.refuses = tuple(refuses)
         self.written: list = []
         self.removed: list = []
+        self.declared = AppSettings()
 
     def get(self, key: str, default: Any = None) -> Any:
-        return self.values.get(key, default)
+        """One stored value, a key `values` does not hold answering the field
+        `declared` carries, as `SettingsManager.get` answers it."""
+        if key in self.values:
+            return self.values[key]
+        return getattr(self.declared, key, default)
 
     def set(self, key: str, value: Any) -> None:
         if key in self.refuses:

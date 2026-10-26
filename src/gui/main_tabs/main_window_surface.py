@@ -40,6 +40,7 @@ from __future__ import annotations
 import math
 from typing import Any, Optional
 
+from ...core.settings import AppSettings
 from ...exchange.api_load_monitor import DEFAULT_SAFETY_PCT
 from ...trading.ta_engine import DEFAULT_WEIGHTS
 from .. import design_system as ds
@@ -1265,10 +1266,14 @@ class SettingsSource:
         self.values = dict(values or {})
         self.reset_raises = reset_raises
         self.reset_count = 0
+        self.declared = AppSettings()
 
     def get(self, key: Any, default: Any = None) -> Any:
-        """One stored value, or `default`."""
-        return self.values.get(key, default)
+        """One stored value, a key `values` does not hold answering the field
+        `declared` carries, as `SettingsManager.get` answers it."""
+        if key in self.values:
+            return self.values[key]
+        return getattr(self.declared, key, default)
 
     def reset_defaults(self) -> None:
         """Clear every stored value."""

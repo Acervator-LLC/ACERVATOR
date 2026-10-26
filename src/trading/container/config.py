@@ -11,7 +11,9 @@ import logging
 import math
 from dataclasses import dataclass, fields
 from enum import Enum
-from typing import Optional
+from typing import Any, Callable, Optional
+
+from ...core.settings import DEFAULT_ENABLE_PHANTOMS, DEFAULT_LOCK_CANDLE_COUNT
 
 logger = logging.getLogger("acervator.bot")
 
@@ -1074,25 +1076,84 @@ def bot_config_kwargs(mode, collected: dict, *, exchange_id: str = "") -> dict:
     return kwargs
 
 
-def phantom_init_kwargs(collected: dict) -> dict:
-    """Return the phantom constructor kwargs for a Scrumming bot out of
-    `collected`.
+def stored_list(value: Any) -> list:
+    """The entries a stored list field holds, a stored word answering one entry
+    and never one entry per letter."""
+    if isinstance(value, str):
+        return [value] if value else []
+    if isinstance(value, (list, tuple)):
+        return list(value)
+    return []
 
-    `bot_config_kwargs` carries the declared `BotConfig` fields; the wizard's
-    phantom page writes three keys that are none of them. The enable flag and
-    the timeframe list are runtime attributes and the lock count belongs to the
-    bot's `TimeframeCoordinator`, so all three travel as keyword arguments
-    instead. An absent `lock_candle_count` is left out, which keeps the
-    coordinator's own declared count.
-    """
-    kwargs: dict = {
-        "enable_phantoms": collected.get("enable_phantoms", False),
-        "phantom_timeframes": collected.get("phantom_timeframes", []),
+
+def _restored_phantom_flag(record: dict, bot_id: str) -> bool:
+    """``phantoms_enabled`` off a saved bot `record`, as the enable flag."""
+    return bool(record.get("phantoms_enabled", DEFAULT_ENABLE_PHANTOMS))
+
+
+def _restored_phantom_timeframes(record: dict, bot_id: str) -> Optional[list]:
+    """``phantom_timeframes`` off a saved bot `record`, or None for the length
+    above the bot's own."""
+    names = [str(one) for one in stored_list(record.get("phantom_timeframes"))]
+    if not names:
+        names = [str(one) for one in stored_list(record.get("phantom_timeframe"))]
+    return names or None
+
+
+def _restored_lock_count(record: dict, bot_id: str) -> Optional[int]:
+    """``lock_candle_count`` off a saved bot `record`, or None to keep
+    ``TimeframeCoordinator``'s own count."""
+    held = record.get("lock_candle_count")
+    if held is None:
+        return None
+    try:
+        return int(held)
+    except (TypeError, ValueError):
+        logger.warning(
+            "Bot %s saved lock_candle_count %r is not a number. The "
+            "coordinator keeps its own count of %s and the bot is still "
+            "loaded.",
+            str(bot_id)[:8],
+            held,
+            DEFAULT_LOCK_CANDLE_COUNT,
+        )
+        return None
+
+
+@dataclass(frozen=True)
+class PhantomArgument:
+    """One phantom value a Scrumming bot takes as a constructor argument, with
+    its wizard default and its saved-record reader."""
+
+    keyword: str
+    wizard_absent: Any
+    read_record: Callable[[dict, str], Any]
+
+
+#: One declaration of every phantom value that reaches a Scrumming bot outside
+#: ``BotConfig``. ``phantom_init_kwargs`` and ``phantom_restore_kwargs`` both
+#: read it, so neither the wizard path nor the restore path names a key. A
+#: keyword answering None leaves ``ScrummingBot``'s own default in place.
+PHANTOM_ARGUMENTS: tuple = (
+    PhantomArgument("enable_phantoms", False, _restored_phantom_flag),
+    PhantomArgument("phantom_timeframes", (), _restored_phantom_timeframes),
+    PhantomArgument("lock_candle_count", None, _restored_lock_count),
+)
+
+
+def phantom_init_kwargs(collected: dict) -> dict:
+    """The phantom constructor kwargs for a Scrumming bot out of the wizard's
+    `collected` mapping, every keyword read from `PHANTOM_ARGUMENTS`."""
+    return {
+        one.keyword: collected.get(one.keyword, one.wizard_absent)
+        for one in PHANTOM_ARGUMENTS
     }
-    lock_candles = collected.get("lock_candle_count")
-    if lock_candles is not None:
-        kwargs["lock_candle_count"] = lock_candles
-    return kwargs
+
+
+def phantom_restore_kwargs(record: dict, bot_id: str = "") -> dict:
+    """The phantom constructor kwargs for a Scrumming bot out of a saved bot
+    `record`, every keyword read from `PHANTOM_ARGUMENTS`."""
+    return {one.keyword: one.read_record(record, bot_id) for one in PHANTOM_ARGUMENTS}
 
 
 @dataclass
