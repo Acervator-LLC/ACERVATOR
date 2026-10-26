@@ -3172,6 +3172,56 @@ the tablet ends. The banner is hidden on every empty state.
 ⏱ LAST TA READ, NOT CURRENT — taken 11:35:00, 46d 20h ago. Stone Tablet ends 2026-08-01.
 ```
 
+### The weighting behind these votes
+
+A vote is a weighted total. Twelve indicators each cast a direction, and each
+one's say is scaled by the weight you set on the Settings TA Indicators page.
+The panel reads those same twelve figures, so the direction and the confidence
+it draws are the ones a live bot on that market would reach.
+
+`src/gui/main_tabs/simulator_tab_surface.py` — `multi_tf_summary`
+
+```python
+summary = VotingEngine(weights=weights_in_force()).compute_all(
+    parsed, timeframe
+)
+```
+
+No recorded decision carries the weighting it was made under. The gate log
+holds the armed flags, the blockers and the figures behind them, and it holds
+no weight. A reading over past candles is therefore today's weighting over an
+old tape, and the banner says that beside the figures rather than leaving them
+to look settled.
+
+`src/gui/main_tabs/simulator_tab_surface.py` — `WEIGHTING_NOT_RECORDED_TEXT`
+
+```python
+WEIGHTING_NOT_RECORDED_TEXT = (
+    "Votes computed at the indicator weights your settings hold now. No "
+    "recorded decision carries the weighting it was made under."
+)
+```
+
+A run says the same thing once, in the Activity Log, and counts how many of the
+twelve sit away from the built-in figures. A count of zero means your sliders
+are at the figures the program ships with.
+
+`src/simulator/back_test.py` — `weighting_line`
+
+```
+Indicator weighting: this rerun votes at the 12 weights your settings hold
+now, 12 of them away from the built-in figures. No recorded gate decision
+carries the weighting it was made under, so a weight you have changed since
+then moves this reading.
+```
+
+Driven on a hand-built tape of 240 candles, with twelve weights written by hand
+and every one away from the built-in figure, the walk's own recorded votes moved
+on 211 of 211 ticks, and the ticks whose recorded decision read bearish moved
+from 5 to 14. The Validation rerun is a separate matter: it reads the recorded
+direction off the gate row itself and computes no vote, so its reading of a
+decision is the decision's own.
+
 ### A bot with nothing to read
 
 An idle or stopped sim bot draws Live's empty state for a bot that is not

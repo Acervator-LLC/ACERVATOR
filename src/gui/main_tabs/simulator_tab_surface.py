@@ -277,6 +277,14 @@ SHORT_TABLET_FORMAT = "{asset} {year} holds {count} candles; {need} are needed."
 #: candle the reading was computed on.
 TABLET_ENDS_FORMAT = "Stone Tablet ends {day}."
 
+#: Beside a tablet reading: no gate record carries the indicator weighting its
+#: decision was made under, so ``multi_tf_summary`` votes at the weights held
+#: now.
+WEIGHTING_NOT_RECORDED_TEXT = (
+    "Votes computed at the indicator weights your settings hold now. No "
+    "recorded decision carries the weighting it was made under."
+)
+
 LAYER_INDICATORS = "indicators"
 LAYER_PLAYBACK = "playback"
 LAYERS = (LAYER_INDICATORS, LAYER_PLAYBACK)
@@ -614,14 +622,18 @@ def multi_tf_summary(candles: Sequence[Sequence[float]], timeframe: str) -> dict
     """The voting engine's reading of ``candles``, keyed by ``timeframe``, each
     signal carrying the ``details`` its indicator published.
 
-    An empty dict comes back when ``candles_from_raw`` or ``compute_all`` raises.
+    The engine is built on ``weights_in_force``, the mapping a live bot votes
+    at, so this reading is not a different weighting from the bot's. An empty
+    dict comes back when ``candles_from_raw`` or ``compute_all`` raises.
     """
     try:
         from ...trading.indicators.types import candles_from_raw
-        from ...trading.ta_engine import VotingEngine
+        from ...trading.ta_engine import VotingEngine, weights_in_force
 
         parsed = candles_from_raw([list(row) for row in candles])
-        summary = VotingEngine().compute_all(parsed, timeframe)
+        summary = VotingEngine(weights=weights_in_force()).compute_all(
+            parsed, timeframe
+        )
     except Exception as exc:  # noqa: BLE001 - a bad tablet draws the empty state
         logger.warning("Simulator: the voting engine refused the tablet: %s", exc)
         return {}
@@ -653,6 +665,8 @@ def indicator_payload(
     """The Indicator Voting Panel drawn from ``candles``, or the empty state.
 
     A non-empty ``refusal`` reaches ``show_no_data`` and no reading is computed.
+    A drawn reading carries ``WEIGHTING_NOT_RECORDED_TEXT`` on the banner, so
+    the weighting behind the figures is named beside them.
     """
     model = ivp.IndicatorPanelModel()
     if refusal:
@@ -663,6 +677,7 @@ def indicator_payload(
         model.show_no_data(NO_TABLET_TEXT)
         return ivp.build_payload(model)
     model.set_summary(summary, symbol)
+    model.staleness_line = WEIGHTING_NOT_RECORDED_TEXT
     return ivp.build_payload(model)
 
 
