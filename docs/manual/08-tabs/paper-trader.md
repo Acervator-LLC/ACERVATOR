@@ -88,6 +88,12 @@ over the live exchange feed. `PaperTraderTabQt` draws them in Qt and
 `src/gui/web/paper_trader_tab.js` draws them in React, from one view model.
 
 `paper_trader_tab_surface` — the fields both hosts read
+That module is gone and no module on disk holds `DECLARED_FIELDS` for this tab.
+The Paper tab's surface is `src/gui/paper/paper_trading_tab_surface.py`,
+`PaperTradingTab` in `src/gui/paper/paper_trading_tab.py` draws it in Qt, and
+`PaperTradingTabReact` in `src/gui/paper/paper_react_trading_tab.py` draws
+`src/gui/web/paper_trading_tab.js` in React. The names
+`PaperTraderTabQt` and `src/gui/web/paper_trader_tab.js` are on no file.
 
 ```python
 DECLARED_FIELDS = (
@@ -121,6 +127,11 @@ pane holds the Indicator Voting Panel, computed from the live window. An empty
 selector draws the empty state and invents no reading.
 
 `paper_trader_tab_surface` — the empty state
+That module is gone, and `indicator_payload` is declared once, in
+`src/gui/main_tabs/simulator_tab_surface.py`, with its only caller in that same
+module. Nothing on the Paper side reads it. The Paper pane is
+`src/gui/paper/paper_indicator_panel.py` in Qt and
+`src/gui/web/paper_indicator_panel.js` in React.
 
 ```python
 def indicator_payload(
@@ -149,6 +160,10 @@ Paper Run opens the run and begins ticking. The same button then reads Stop
 Paper Run and ends it, leaving the balances and the trades on screen.
 
 `paper_trader_tab_surface` — the second row's two faces
+That module is gone. The two faces are declared in
+`src/gui/paper/paper_trading_tab_surface.py`, which holds `START_RUN_ACTION`,
+`STOP_RUN_ACTION`, `START_RUN_TEXT`, `STOP_RUN_TEXT`, `in button_name` and
+`in run_buttons`.
 
 ```python
 {
@@ -456,6 +471,10 @@ the Indicator Voting Panel, the Live Feed pane, the Fake Balance table and the
 Paper Run table. The Qt window and the React page draw one view model.
 
 `paper_trader_tab_surface` — what the tab answers
+That module is gone and no bridge serves `paper_trader_tab.state`. The surface is
+`src/gui/paper/paper_trading_tab_surface.py`, which declares
+`METHOD = "paper_trading.tab"`, `HEADING = "Paper"` and `ISSUE = 19`. The block
+below records the older names.
 
 ```python
 METHOD = "paper_trader_tab.state"
@@ -616,9 +635,20 @@ The page carries one style sheet. `TAB_STYLE_ASSETS` names it, and
 `page_html` reads the file and writes it into the page's head.
 
 `react_paper_trader_tab` — the sheet the page carries
+That module is gone, no module declares `TAB_STYLE_ASSETS` for this page, and
+there is no `paper_trader_tab.css` on disk. The Paper page carries Live's own two
+sheets, declared in `src/gui/paper/paper_react_trading_tab.py` as
+`STYLE_ASSETS`, and `in page_html` from `src/gui/react_history_panel.py` writes
+them into the page's head.
 
 ```python
 TAB_STYLE_ASSETS: tuple[str, ...] = ("paper_trader_tab.css",)
+```
+
+`src/gui/paper/paper_react_trading_tab.py` — the sheets the page carries today
+
+```python
+STYLE_ASSETS: tuple[str, ...] = ("trading_tab.css", "exchange_tab.css")
 ```
 
 The sheet sets the page ground, the type, the pane grid and the table rules.
@@ -3411,5 +3441,17 @@ both.
 Read on the real Paper page model and the real Paper widget, a record carrying 0.60
 shows "at confidence 0.60 or above" and a record carrying the opening 0.75 shows 0.75.
 Before the change both records read the same line, with no figure in it.
+
+## CITED AS ABSENT
+
+The two paths below are named on this page only to record what the Paper tab
+drew before its rebuild. Neither opens on disk.
+
+- `src/gui/web/paper_trader_tab.js` — the React panel the empty tab registered.
+  The Paper page is `src/gui/web/paper_trading_tab.js` now, hosted by
+  `src/gui/paper/paper_react_trading_tab.py`.
+- `src/gui/web/paper_trader_tab.css` — the sheet that page loaded. The Paper page
+  carries `trading_tab.css` and `exchange_tab.css`, named by `STYLE_ASSETS` in
+  `src/gui/paper/paper_react_trading_tab.py`.
 
 Back to [the subsystem index](README.md).

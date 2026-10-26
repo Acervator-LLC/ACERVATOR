@@ -32,6 +32,32 @@ of every running Scrumming Bot. Nothing declares or reads that name, so the
 choice reaches the coordinator and stops there. The tooltip on the box says the
 lock feeds directly into active Scrumming Bots. Issue #155 carries this.
 
+**The issue #155 clause above is overtaken.** It is not edited and not removed.
+It read:
+
+> The tooltip on the box says the lock feeds directly into active Scrumming
+> Bots. Issue #155 carries this.
+
+Issue #155 closed on 2026-10-22, so the pointer names no open work. The reading
+above it still holds: the write reaches no reader. The name the window sets on
+the coordinator and the name the Phantom Bots pages read are two different
+names, and only the second is declared on the bot.
+
+```
+src/gui/main_window.py, in _on_tf_lock_changed
+    writes   bot._coordinator._lock_timeframe
+    readers  none
+
+src/trading/scrumming_bot.py        declares _phantom_lock_timeframe on the bot
+src/gui/main_tabs/phantom_bots_tab_surface.py   LOCK_TIMEFRAME_ATTRIBUTE names that one
+src/gui/live_settings/phantom_bots_tab.py       reads it off the bot
+src/gui/paper/paper_phantom_bots_tab.py         reads it off the bot
+src/gui/simulator/sim_phantom_bots_tab.py       reads it off the bot
+```
+
+Which of the two names the drop-down should set is a product choice, so nothing
+here proposes one.
+
 `src/gui/main_window.py` — `_on_tf_lock_changed`
 
 ```python

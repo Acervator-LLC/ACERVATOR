@@ -115,6 +115,27 @@ to 1.0 and three fall back to 0.0, so a bot whose stored config lacks the key
 compounds or freezes depending on which site read it first. Issue #409 carries
 it.
 
+**The issue #409 clause above is overtaken.** It is not edited and not removed.
+It read:
+
+> Nine read sites fall back to 1.0 and three fall back to 0.0, so a bot whose
+> stored config lacks the key compounds or freezes depending on which site read
+> it first. Issue #409 carries it.
+
+Issue #409 closed on 2026-09-25. One declaration answers the key now, and no
+read site carries a fallback of its own. `src/trading/container/config.py`
+declares `TARGET_GROWTH_PCT_DEFAULT` from the field's own declared default, and
+`in target_growth_pct` is the single reader. Fourteen call sites read that
+function.
+
+```
+src/trading/container/config.py, in BotConfig    max_target_growth_pct: float = 1.0
+src/trading/container/config.py                  TARGET_GROWTH_PCT_DEFAULT reads that default
+src/trading/container/config.py, in target_growth_pct   the one reader
+call sites reading target_growth_pct             14
+read sites carrying their own fallback            0
+```
+
 The gate set the bot writes is named in one place: ten scrum labels and nine
 fold labels, nineteen lights per bot.
 
@@ -551,6 +572,29 @@ tightening = detect_landing_strip_v2(
 
 Issue #432 carries it.
 
+**The issue #432 clause above is overtaken.** It is not edited and not removed.
+It read:
+
+> The tick hands it a literal three, so the wizard's Landing Strip Candles
+> control moves the first detector and leaves the second where it is. Issue
+> #432 carries it.
+
+Issue #432 closed on 2026-10-23. The literal three is a named constant now, and
+the call states why the two counts are different things. `min_consecutive`
+counts shrinking Heikin Ashi bodies; the wizard's control counts the newest
+small-body candles the band-proximity check needs. The control is not meant to
+move the second detector.
+
+```
+src/trading/ata_gate_scan.py   TIGHTENING_MIN_CANDLES = 25
+src/trading/ata_gate_scan.py   TIGHTENING_MIN_CONSECUTIVE = 3
+src/trading/ata_gate_scan.py   TIGHTENING_SHRINK_THRESHOLD = 0.90
+src/trading/ata_gate_scan.py   TIGHTENING_TOLERANCE_PCT = 3.0
+
+src/trading/container/config.py, in BotConfig   bb_landing_strip_candles: int = 3
+src/trading/scrumming_bot.py                    the call passes the four constants
+```
+
 ## 4 - Bollinger Band Travel Detection
 
 Allowing a strategy to “see” where it is in relation to local width of the Bollinger Band is another aspect of treating the immediate market as a region on a map through which a stack of tokens is traveling. Along the route, we are able to offload surplus at the peaks and pick up additional supplies in the next valley. This is used in combination with Minimum Opposing Trade Distance. The complete question then becomes “Has the market traveled 70% (default), is current price X% distant from the most recent trade event, and is Target Delta not zero? When combining these gates with the (Technical Analysis) Indicator Voting Panel and Landing Strip Detection, you have a full market structure detection suite that is able to incrementally adjust a position’s size and generate recurring profits or growth with each market cycle.
@@ -687,6 +731,23 @@ if hasattr(self._simulator, "set_topology_getter"):
 No Paper Trader exists to push to; entry 17 gives the measurement. Issue #23
 tracks the tab's build-out and the topology and oppositional pushes, and
 issue #290 a live connector defect on Refresh.
+
+**The issue #290 clause above is overtaken.** It is not edited and not removed.
+It read:
+
+> and issue #290 a live connector defect on Refresh.
+
+Issue #290 closed on 2026-10-17. The Inspector holds no connector. The window
+hands it a getter, and Refresh calls that getter and copies what it answers, so
+a wired source is read fresh on each press rather than kept from the build.
+
+```
+src/gui/main_tabs/market_inspector_tab.py, in _build_market_inspector_tab
+    set_exchange_source(connectors_getter=..., scheduler=...)
+
+src/gui/market_inspector.py, in set_exchange_source   stores the getter
+src/gui/market_inspector.py                           dict(self._connectors_getter() or {})
+```
 
 ## 7 - Bot Swarm and Smart Wire Network w/ Provenance Tracking
 
@@ -954,6 +1015,26 @@ rather than an injected one.
 The first anchor in the block above named a line that had moved. The bot it
 means is built in `src/gui/live_bot_window.py`, in `_run_bot`, and that is the
 anchor the block now carries.
+
+**The issue #367 clause above is overtaken.** It is not edited and not removed.
+It read:
+
+> spawned tranches do not match the scrum that spawned them (issue #367)
+
+Issue #367 closed on 2026-10-03. A spawned tranche carries the sale that made
+it. The sell loop writes the fill price onto each new record and carries the
+lot's own buy price with it, and the bounding pass then reads the sale's own net
+rate, which is the dollars the sale left with this bot divided by the units it
+sold.
+
+```
+src/trading/scrumming/execution.py
+    each new record carries   usd, units, ref (the fill price), initial_buy_price
+
+src/trading/scrumming/fold_tranches.py, in _bound_new_fold_tranches
+    reads   the slice this sale appended, scrum_usd and scrum_asset
+    rate    scrum_usd / scrum_asset, the sale's own net rate
+```
 
 **The issue #133 clause above is overtaken.** It is not edited and not removed.
 It read:
@@ -1344,6 +1425,36 @@ settings that never reach the bot. Issue #107 records a detonation that can fire
 twice across a restart. Any earlier description reading "bearish" is wrong: the
 code compares against the bullish direction.
 
+**The issue #336 and issue #107 clauses above are overtaken.** They are not
+edited and not removed. They read:
+
+> Issue #336 records both pairs among the wizard settings that never reach the
+> bot. Issue #107 records a detonation that can fire twice across a restart.
+
+Issue #336 closed on 2026-10-04 and issue #107 closed on 2026-10-17. Both pairs
+reach the bot, and the detonation flag survives a restart.
+
+```
+src/trading/container/config.py, in _BOT_CONFIG_SCRUMMING_ONLY_FIELDS
+    position_ceiling_enabled, position_ceiling_multiple,
+    detonation_enabled, detonation_timeframe, detonation_confidence_min
+
+src/trading/scrumming/execution.py   reads position_ceiling_enabled and the multiple
+src/trading/container/config.py, in ceiling_multiple   the one reader of the multiple
+src/trading/bot_container.py         publishes both to the screen
+src/trading/scrumming_bot.py         reads detonation_enabled before the bar fires
+```
+
+The flag the detonation bar reads is saved with the bot and read back on load,
+so a restart no longer presents a bull run the bar has already fired on as a
+fresh one.
+
+```
+src/trading/scrumming/state_io.py
+    saved     detonation_last_signal_bullish
+    restored  detonation_last_signal_bullish, False when the record has none
+```
+
 ### How the taper and the detonation bar read today
 
 Two readings in section 14 above carry wording this unit changed. They stand as
@@ -1470,6 +1581,25 @@ definition yet and nothing here to attach it to, so nothing is proposed. Issue
 #117 carries it.
 
 In development.
+
+**The issue #117 clause above is overtaken.** It is not edited and not removed.
+It read:
+
+> The measure has no settled definition yet and nothing here to attach it to, so
+> nothing is proposed. Issue #117 carries it.
+
+Issue #117 closed on 2026-09-19. The criterion is settled and it is in the tree.
+A run reads identical when no light disagrees and both armed flags match, and
+every disagreeing light is charged to one of three causes.
+
+```
+src/simulator/validation.py, in latches_identically
+    true while   no light disagreed, scrum armed matches, fold armed matches
+
+src/simulator/validation.py, in causes   how many disagreeing lights per cause
+src/simulator/validation.py              CAUSES = (TAPE_CAUSE, FIXTURE_CAUSE, CHAIN_CAUSE)
+src/simulator/parity_report.py           one report per run, a page and a sidecar
+```
 
 No standing defect touches the panel. The eight
 indicator implementations that departed from their published formulae are all

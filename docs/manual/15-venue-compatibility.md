@@ -5414,6 +5414,29 @@ one peso token, `MXNT` ("Tether MXNt"), stay under crypto. Whether a national
 currency's token against a dollar stablecoin is a forex market is the open
 decision on issue #1192, and nothing here settles it.
 
+**The issue #1192 clause above is overtaken.** It is not edited and not removed.
+It read:
+
+> Whether a national currency's token against a dollar stablecoin is a forex
+> market is the open decision on issue #1192, and nothing here settles it.
+
+Issue #1192 closed on 2026-10-16. The question is answered per symbol by a
+recording rather than by a rule, so each market's sector is a stored value the
+platform reads.
+
+```
+src/gui/main_tabs/asset_class_surface.py, in symbol_class
+    reads     recorded_symbol_classes(venue_id) for the symbol
+    fallback  CLASS_CRYPTO when the recording holds no class for it
+
+src/gui/main_tabs/class_filter_surface.py, in market_class
+    one sector served   answers it
+    several served      narrows by symbol_class
+```
+
+Which sector a given token pair is recorded under stays the operator's choice,
+so nothing here proposes one.
+
 ### The order shape, one endpoint for every sector
 
 Read with the transport replaced, so nothing left the machine and no credential

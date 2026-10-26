@@ -946,3 +946,17 @@ comparison of units against units at one price, and it reads the same whichever
 way the market went.
 
 ![Each base's change across the first stretch beside its change across the second, and the equal-weight index and median through the whole window.](figures/evidence_market.png)
+
+## CITED AS ABSENT
+
+The two paths below are named at the top of this page only to record what the
+history holds. Neither opens on disk, and that is the point the block makes: the
+tree tracks no spreadsheet file, and these two are the only spreadsheet paths any
+commit ever added, deleted or renamed.
+
+- `docs/audits/2026-08-04_function_complexity_inventory.csv` — a function
+  complexity inventory, deleted. Nothing replaced it, and `docs/audits` holds no
+  file matching `complexity` today.
+- `docs/engineering-notes/2026-08-04_function_complexity_inventory.csv` — the same
+  inventory at an earlier path. The whole `docs/engineering-notes` directory is
+  gone.
