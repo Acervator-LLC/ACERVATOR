@@ -52,7 +52,7 @@ if _HAS_QT:
                 "Pool — operator-set chunk size in USD (the budget "
                 "this Extractor owns and rotates through positions). "
                 "Live-edit in the bot's Settings tab → Extractor → "
-                "Pool size (USD)."
+                "Chunk size (USD)."
             ),
             5: (
                 "Liquid — USD-equivalent of the base-currency units "
