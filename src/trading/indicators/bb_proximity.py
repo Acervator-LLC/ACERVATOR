@@ -22,6 +22,10 @@ from .helpers import (
 # `test_one_indicator_per_module.py` allowlists this edge.
 from .heikin_ashi import compute_heikin_ashi
 
+#: Percentage points of a candle's own high-low range; a Heikin Ashi body at or
+#: under this is tight.
+CONSOLIDATION_THRESHOLD_PCT: float = 3.0
+
 
 @dataclass
 class BBProximityResult:
@@ -44,7 +48,7 @@ class BBProximityResult:
 def detect_bb_proximity(
     candles: list[Candle],
     tolerance_pct: float = 1.0,  # 0.25% to 5% — distance from band
-    consolidation_threshold: float = 3.0,  # HA body % below this = tight
+    consolidation_threshold: float = CONSOLIDATION_THRESHOLD_PCT,
     min_pattern_candles: int = 2,
     max_pattern_candles: int = 10,
     bb_period: int = 20,

@@ -2772,3 +2772,63 @@ tick_exit gate-chain  no indicator key at all, because no panel was computed
 No gate decision moved. Both scrumming chains were driven over 1024 gate input
 sets before and after the change: 32 scrum fires and 32 fold fires on each
 side, and 0 of 1024 whole decisions differ.
+
+## 2026-10-25 - #665 - the consolidation figure is declared once
+
+Row 280. Landing Strip detection asks whether a Heikin-Ashi body is tight. The
+figure it compares against is three percentage points of the candle's own
+high-low range, and that figure was written in five places: the detector's own
+parameter, a number typed at the live tick, a second number typed at initial
+entry, a named copy in the gate scan, and a third named copy in the Simulator.
+
+No control writes this figure. It is not an operator setting, and the Product
+Manual named it under no spelling before this entry.
+
+One declaration now serves every caller, and it sits beside the detector that
+reads it.
+
+`src/trading/indicators/bb_proximity.py, in detect_bb_proximity`
+
+```python
+CONSOLIDATION_THRESHOLD_PCT: float = 3.0
+
+
+def detect_bb_proximity(
+    candles: list[Candle],
+    tolerance_pct: float = 1.0,
+    consolidation_threshold: float = CONSOLIDATION_THRESHOLD_PCT,
+    min_pattern_candles: int = 2,
+```
+
+Four callers read that one name. The live tick and the initial entry are the two
+that reach real money.
+
+```
+src/trading/scrumming_bot.py, in tick
+src/trading/scrumming/tick_phases.py, in _tick_initial_entry
+src/trading/ata_spm.py, in proximity_of
+src/simulator/validation.py, in bb_reading
+```
+
+The last of the four is read by the Paper build, the Simulator and the back
+test, so Live, Paper and the Simulator now ask the same question of a candle.
+
+Driven on one 222-candle tape, the reading is unchanged. The declaration was
+then moved to a figure nothing uses and all four callers followed it together,
+while the detector's other two opening figures did not move.
+
+```
+figure 3.0, the declaration
+  gate scan reading     landing strip upper, 10 candles, strength 1.0000
+  Simulator reading     landing strip upper, 10 candles, strength 1.0000
+
+the one declaration moved 3.0 -> 0.77
+  gate scan reading     no landing strip, 0 candles, strength 0.0000
+  Simulator reading     no landing strip, 0 candles, strength 0.0000
+  pattern candles       2      unmoved
+  band tolerance        1.0    unmoved
+```
+
+Before the change the same move reached the detector's own parameter alone, and
+all four callers kept reading three, because each passed its own copy. The file
+is byte identical after the move was put back.

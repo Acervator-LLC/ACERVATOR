@@ -13,6 +13,8 @@ from datetime import datetime, timezone
 from dataclasses import dataclass, asdict
 from pathlib import Path
 
+from ..core.settings import AIMonitorSettings
+
 logger = logging.getLogger("acervator.live_monitor")
 REPORT_SCHEMA = "1.0.0"
 
@@ -300,7 +302,7 @@ class LiveMonitor:
 
     DEFAULT_CONNECT = "acervator-heapbuilder-live"
     DEFAULT_CONFIRM = "the-heap-grows-by-accumulation"
-    DEFAULT_INTERVAL_HOURS = 4.0
+    DEFAULT_INTERVAL_HOURS = AIMonitorSettings.interval_hours
 
     @classmethod
     def wait_hours(cls, raw) -> float:

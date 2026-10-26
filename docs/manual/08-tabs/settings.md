@@ -8813,4 +8813,92 @@ A settings file written before this change still loads. Eighteen declared
 top-level fields read back with none differing, all five stored groups read back
 with their own field counts, and the out-of-list word survives on disk.
 
+## 2026-10-25 - #665 - the AI Monitor's opening wait is declared once
+
+Row 262. The four-hour wait the Check interval box opens on was written in seven
+places. Six of the seven were copies, and one copy held the whole number four
+where the other six held four point zero.
+
+One declaration now serves every site. It is the stored field, and the page, both
+windows and the monitor all read it.
+
+`src/core/settings.py, in AIMonitorSettings`
+
+```python
+api_key: str = ""
+interval_hours: float = 4.0
+connect_phrase: str = ""
+```
+
+The page builds that group's own opening figures once and reads the wait off
+them, the way it already reads the message channel's figures.
+
+`src/gui/main_tabs/settings_dialog_surface.py, in AI_LOAD_KEYS`
+
+```python
+AI_BUILT = AIMonitorSettings()
+
+AI_LOAD_KEYS = (
+    ("api_key", "", "ai_api_key"),
+    ("interval_hours", AI_BUILT.interval_hours, "ai_interval"),
+    ("connect_phrase", "", "ai_connect_phrase"),
+)
+```
+
+The same figure opens the box on both windows and stands behind the Save and
+load row, so the Qt window and the React window cannot disagree about it.
+
+`src/gui/settings_dialog.py, in _create_ai_monitor_tab`
+
+```python
+self._ai_interval.setRange(0.5, 24.0)
+self._ai_interval.setValue(sds.AI_BUILT.interval_hours)
+self._ai_interval.setSuffix(" hours")
+```
+
+The monitor's own name for the wait is now a read of that field rather than a
+second figure, so `wait_hours` refuses a stored figure against the same number
+the box opens on.
+
+`src/trading/live_monitor.py, in LiveMonitor`
+
+```python
+DEFAULT_INTERVAL_HOURS = AIMonitorSettings.interval_hours
+```
+
+**One line on the Console reads differently.** A stored AI Monitor group that
+carries the switch and the key but no interval used to print the whole number;
+it now prints the same four point zero every other path already printed.
+
+```
+stored group with no interval
+  before   AI Monitor enabled (phrase: '...', interval: 4h)
+  after    AI Monitor enabled (phrase: '...', interval: 4.0h)
+
+stored group carrying 4.0
+  before   AI Monitor enabled (phrase: '...', interval: 4.0h)
+  after    AI Monitor enabled (phrase: '...', interval: 4.0h)
+```
+
+Driven with the one declaration moved to eleven hours, every site followed it
+together, and the box span and the handshake switch beside it did not move.
+
+```
+the one declaration moved 4.0 -> 11.0
+  stored field                 11.0
+  monitor's own name           11.0
+  the wait a bad figure keeps  11.0
+  page load fallback           11.0
+  React control opens on       11.0
+  Qt control opens on          11.0
+  Qt Save and load fallback    11.0
+  Console line, no interval    11.0h
+  box span                     (0.5, 24.0)   unmoved
+  handshake switch             True          unmoved
+```
+
+Before the change the same move reached the monitor alone and left five copies
+and the Console line at four. Every file is byte identical after the move was
+put back.
+
 Back to [the subsystem index](README.md).

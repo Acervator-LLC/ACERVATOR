@@ -8949,3 +8949,47 @@ Simulator  7 -> tab box 7         2 -> tab box 2         none -> tab box 2
 
 Nothing creates a higher-timeframe lock yet, so the figure still sizes a lock
 that is never held. Row 222 of issue #665 carries that half.
+
+## 2026-10-25 - #665 - one read seeds every row on the Detail page
+
+Row 277. Opening Detail on a running bot fills each row from the bot's own
+stored record. Reading one field off that record was written twice in the page's
+own module: once for the numeric boxes and once, separately, for the tick boxes,
+the drop-downs and the text rows.
+
+The two copies decided the same thing. Each chose between reading the field with
+a fallback and reading it with none, and a row that names no fallback must raise
+rather than draw a figure nobody stored.
+
+One read now serves every row.
+
+`src/gui/main_tabs/live_settings_tab_surface.py, in read_config_field`
+
+```python
+def read_config_field(config: Any, field: str, default: Any, no_default: bool) -> Any:
+    return getattr(config, field) if no_default else getattr(config, field, default)
+```
+
+`read_number` seeds the numeric boxes through it, and
+`LiveSettingsTabModel._read_control` seeds every other kind of row through the
+same call. The Paper page and the Simulator page both inherit that model, so
+three Detail pages read a row one way.
+
+Every row draws what it drew before, and a row whose field the record does not
+carry still refuses rather than inventing a figure.
+
+```
+stored record carrying the field
+  numeric box       2.5
+  tick box          True
+  drop-down         both
+
+record missing the field, row naming no fallback
+  numeric box       refused
+  tick box          refused
+```
+
+Driven with the one read moved to a figure nothing uses, every kind of row
+followed it together. Before the change the same move reached the numeric boxes
+alone and the tick box and the drop-down kept their own values. The file is byte
+identical after the move was put back.
