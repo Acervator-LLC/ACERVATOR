@@ -518,6 +518,7 @@ MANUAL_FIRE_ACTS = "acts"
 MANUAL_FIRE_REFUSES = "refuses"
 MANUAL_FIRE_PARKED = "parked"
 VENUE_UNITS_FIELD = "audited_venue_units"
+VENUE_REFUSAL_FIELD = "venue_units_refusal"
 SYMBOL_SEPARATOR = "/"
 QUOTE_BTC = "BTC"
 QUOTE_ETH = "ETH"
@@ -956,6 +957,15 @@ def holdings_of(status: Any) -> float:
 def venue_units_of(status: Any) -> Any:
     """The ``VENUE_UNITS_FIELD`` reading this bot reports, uncoerced for ``ammo_units``."""
     return status.get(VENUE_UNITS_FIELD)
+
+
+def venue_refusal_of(status: Any) -> Any:
+    """The ``VENUE_REFUSAL_FIELD`` reason this bot reports, or None where none is.
+
+    A reason reaches ``venue_held_note``, so ``_ammo_cell`` wears
+    ``VENUE_HELD_MARKER`` over the ``VENUE_UNITS_FIELD`` reading it holds.
+    """
+    return status.get(VENUE_REFUSAL_FIELD)
 
 
 def measured_units_of(status: Any) -> float:
@@ -1508,6 +1518,7 @@ class BotStatusTableModel:
             quote_rate,
             price_age_s,
             venue_units_of(status),
+            venue_refusal_of(status),
         )
         symbol = status.get("symbol", EMPTY_TEXT) or EMPTY_TEXT
         base_asset = base_asset_of(symbol)
@@ -1582,13 +1593,22 @@ class BotStatusTableModel:
         return price, price_age_s, quote_rate
 
     def _ammo_cell(
-        self, stats, target_val, holdings, price, quote_rate, price_age_s, venue_units
+        self,
+        stats,
+        target_val,
+        holdings,
+        price,
+        quote_rate,
+        price_age_s,
+        venue_units,
+        venue_refusal=None,
     ) -> dict:
         """The Ammo cell, computed from a fresh price wherever one exists.
 
         ``venue_units`` reaches ``TableCellsModel.ammo_cell``, which measures
         the distance from it rather than from ``holdings`` wherever it holds a
-        reading.
+        reading, and ``venue_refusal`` is what makes that cell mark the reading
+        as held.
         """
         stats_pv = float(stats.get("position_value", NO_TARGET_VALUE))
         return self.cells.ammo_cell(
@@ -1599,6 +1619,7 @@ class BotStatusTableModel:
             target_val,
             price_age_s=price_age_s,
             venue_units=venue_units,
+            venue_refusal=venue_refusal,
         )
 
     def _logo_cell(self, symbol, shown) -> dict:
@@ -2141,6 +2162,7 @@ def build_view_model(model: BotStatusTableModel) -> dict:
         "no_price": NO_PRICE,
         "no_holdings": NO_HOLDINGS,
         "venue_units_field": VENUE_UNITS_FIELD,
+        "venue_refusal_field": VENUE_REFUSAL_FIELD,
         "no_trades": NO_TRADES,
         "sorting_enabled": SORTING_ENABLED,
         "sortable_columns": list(SORTABLE_COLUMNS),

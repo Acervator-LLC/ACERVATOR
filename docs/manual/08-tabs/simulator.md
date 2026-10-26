@@ -6048,6 +6048,17 @@ def scrum_fixture(context: GateContext, reading: Any = None) -> dict:
         **_landing(reading),
 ```
 
+**Functional.** The builder takes a third input, and the fixture now opens
+with it: each refusal an override replaced on that side, under the key the
+live gate log already writes. A row where no override acted carries an empty
+list, so a row an override passed and a row that passed on its own read apart.
+
+`src/simulator/sim_bus.py` — the key the fixture opens with
+
+```python
+OVERRIDES_APPLIED_KEY: [str(one) for one in overrides_applied],
+```
+
 One row per evaluated candle, not one per fill as Live writes, because a
 blocked candle is the one a person troubleshoots: the blocker list on that
 row names the light that held, and the fixture names the reading behind it.
@@ -7519,7 +7530,7 @@ The tab is isolated. The window's header strip hides while the Simulator is in
 front, and the tab draws its own strip of the same ten fields against sim
 balances.
 
-`src/gui/simulator_tab/sim_stat_strip.py` — `SimStatStrip.FIELDS`
+`sim_stat_strip` — `SimStatStrip.FIELDS`
 The Simulator rebuild removed this file; it is not in the tree.
 
 ```python
@@ -7540,7 +7551,7 @@ The Simulator rebuild removed this file; it is not in the tree.
 The Mode picker names three modes and drives two panels. Nuclear raises its own
 page. Validation and Looping Back Test both raise Fleet Replay.
 
-`src/gui/simulator_tab/simulator_tab.py` — `SimulatorTab._on_sim_mode_changed`
+`SimulatorTab` — `SimulatorTab._on_sim_mode_changed`
 The Simulator rebuild removed this file; it is not in the tree.
 
 ```python
@@ -7555,7 +7566,7 @@ The mode goes no further than the picker. The handler passes the key on only to
 a panel that carries a matching setter, and Fleet Replay carries none, so the
 two fleet modes run the same replay and the choice changes the hint line alone.
 
-`src/gui/simulator_tab/simulator_tab.py` — the mode hand-off
+`SimulatorTab` — the mode hand-off
 The Simulator rebuild removed this file; it is not in the tree.
 
 ```python
@@ -7567,7 +7578,7 @@ The Simulator rebuild removed this file; it is not in the tree.
 
 ## Fleet Replay
 
-`FleetReplayPanel` in `src/gui/simulator_tab/fleet/fleet_replay_panel.py` is the
+`FleetReplayPanel` in `fleet_replay_panel` is the
 panel. Four steps run it.
 The Simulator rebuild removed this file; it is not in the tree.
 
@@ -7577,7 +7588,7 @@ own, so the sim runs live code against a stored tape rather than a second
 implementation; the single sim-only branch gives each bot a private event bus,
 which is why a sim fill never reaches the live sound engine or the live logs.
 
-`src/gui/simulator_tab/fleet/fleet_replay_panel.py` — `_spawn_sim_fleet`
+`fleet_replay_panel` — `_spawn_sim_fleet`
 The Simulator rebuild removed this file; it is not in the tree.
 
 ```python
@@ -7599,7 +7610,7 @@ each bot's saved config. `load_smart_wires_from_state` does the same for the
 topology, and `summarize_loaded_configs` reports what loaded. The fleet is never
 fabricated; it is whatever that file holds.
 
-`src/simulator/fleet/bot_state_loader.py` — `load_bot_configs_from_state`
+`bot_state_loader` — `load_bot_configs_from_state`
 The Simulator rebuild removed this file; it is not in the tree.
 
 ```python
@@ -7613,7 +7624,7 @@ def load_bot_configs_from_state(
 calls, so the two return the same trades. A replay still runs without it, and
 the panel then says on screen that the run is synthetic.
 
-`src/gui/simulator_tab/fleet/fleet_replay_panel.py` — `_on_fetch_ytd_clicked`
+`fleet_replay_panel` — `_on_fetch_ytd_clicked`
 The Simulator rebuild removed this file; it is not in the tree.
 
 ```python
@@ -7628,7 +7639,7 @@ The Simulator rebuild removed this file; it is not in the tree.
 ```
 
 **Run.** `FleetReplayController` in
-`src/simulator/fleet/fleet_replay_controller.py` drives it.
+`fleet_replay_controller` drives it.
 The Simulator rebuild removed this file; it is not in the tree.
 
 | Piece | What it does |
@@ -7640,7 +7651,7 @@ The Simulator rebuild removed this file; it is not in the tree.
 One assertion runs once, at the point where the bot set is final and before any
 of them can trade.
 
-`src/simulator/fleet/fleet_replay_controller.py` — `_assert_capital_isolation`
+`fleet_replay_controller` — `_assert_capital_isolation`
 The Simulator rebuild removed this file; it is not in the tree.
 
 ```python
@@ -7660,7 +7671,7 @@ The bots trade against a tape, not against a venue. `TabletBackend` implements
 the ccxt surface beneath a real connector, holds the seeded balances, sweeps
 resting orders, and owns the one clock every symbol advances on.
 
-`src/simulator/fleet/fleet_replay_controller.py` — the tape the bots are handed
+`fleet_replay_controller` — the tape the bots are handed
 The Simulator rebuild removed this file; it is not in the tree.
 
 ```python
@@ -7683,7 +7694,7 @@ older fake exchange is built only by tests, the union clock is constructed only
 inside that exchange, and the candle series a replay builds is thrown away once
 its symbol names have been read.
 
-`src/simulator/fleet/sim_exchange.py` — `FleetSimExchange`
+`sim_exchange` — `FleetSimExchange`
 The Simulator rebuild removed this file; it is not in the tree.
 
 ```python
@@ -7691,7 +7702,7 @@ The Simulator rebuild removed this file; it is not in the tree.
 
 Serves per-symbol ``CandleSeries`` through the ``ExchangeInterface`` API,
 so a bot trades A15/USD or A14/USD against stored candles instead of a
-venue. ``NuclearSimExchange`` (``src/simulator/nuclear_sim_exchange.py``)
+venue. ``NuclearSimExchange`` (``nuclear_sim_exchange``)
 is the other simulated venue and serves synthetic TAPEA/TAPEB symbols.
 The Simulator rebuild removed this file; it is not in the tree.
 
@@ -7705,7 +7716,7 @@ this module and runs against ``TabletBackend``
 the panel's progress timer, and a finished run is written under the log root in
 the live schema.
 
-`src/trading/sim_run_log.py` — `SimRunLog`
+`sim_run_log` — `SimRunLog`
 The Simulator rebuild removed this file; it is not in the tree.
 
 ```python
@@ -7716,7 +7727,7 @@ Two bot tables draw at once. The Trading tab's own table is mounted into the
 Simulator, and the fleet panel's three-column table is still built and still
 filled. Collapsing the two is the first of the seven pieces of issue #117.
 
-`src/gui/simulator_tab/fleet/fleet_replay_panel.py` — `FleetReplayPanel.COLUMNS`
+`fleet_replay_panel` — `FleetReplayPanel.COLUMNS`
 The Simulator rebuild removed this file; it is not in the tree.
 
 ```python
@@ -7739,7 +7750,7 @@ What the screen does show is each bot's arm state while the tape runs. On every
 refresh tick the panel reads each bot's last gate state and paints a
 double-stacked row of lights, ten scrum then nine fold.
 
-`src/gui/simulator_tab/fleet/sim_visuals.py` — `GateLightsCell`
+`sim_visuals` — `GateLightsCell`
 The Simulator rebuild removed this file; it is not in the tree.
 
 ```python
@@ -7762,7 +7773,7 @@ surfaces cannot drift apart on what a gate is called or on what blocked it.
 """gate_vocabulary.py -- the bot's gate labels, blocker map and light states.
 
 Qt-free. Two renderers read it: the Simulator's ``GateLightsCell``
-(``src/gui/simulator_tab/fleet/sim_visuals.py``) and the History table's
+(``sim_visuals``) and the History table's
 gate cell (``src/exchange/history_read_contract.py``). One vocabulary,
 so a gate added on one surface cannot be missing from the other.
 ```
@@ -7788,7 +7799,7 @@ The panel puts the honest label on screen. A run with no live trades loaded is
 comparable to nothing, and the panel says so rather than looking like a parity
 run.
 
-`src/gui/simulator_tab/fleet/fleet_replay_panel.py` — `_note_parity_state`
+`fleet_replay_panel` — `_note_parity_state`
 The Simulator rebuild removed this file; it is not in the tree.
 
 ```python
@@ -7805,7 +7816,7 @@ The Simulator rebuild removed this file; it is not in the tree.
 The last two halt immediately whatever their count. The guard is defined and
 covered by tests, and no module under `src/` calls it.
 
-`src/trading/sim_validation_guard.py` — `ValidationIssueType`
+`sim_validation_guard` — `ValidationIssueType`
 The Simulator rebuild removed this file; it is not in the tree.
 
 ```python
@@ -7900,7 +7911,7 @@ exchange rather than a second implementation.
 The tab is now called Sim. It sits first on the bar, on a black ground
 with red text.
 
-`src/gui/simulator_tab/fleet/fleet_replay_panel.py` — `_spawn_sim_fleet`
+`fleet_replay_panel` — `_spawn_sim_fleet`
 The Simulator rebuild removed this file; it is not in the tree.
 
 ```python
@@ -7917,7 +7928,7 @@ and loss, and not the trade count. The sim's gate cell reads the same
 vocabulary the History table reads, which stops the two surfaces drifting
 apart.
 
-`src/gui/simulator_tab/fleet/sim_visuals.py` — `GateLightsCell`
+`sim_visuals` — `GateLightsCell`
 The Simulator rebuild removed this file; it is not in the tree.
 
 ```python
@@ -7940,7 +7951,7 @@ React draws that strip. The tab asks `variant_surface` which of the two strips
 to build, and both answer the same `set` and `clear` calls, so the fleet panel
 and Nuclear Mode write to either without knowing which they hold.
 
-`src/gui/simulator_tab/simulator_tab.py` — `SimulatorTab._build_stat_strip`
+`SimulatorTab` — `SimulatorTab._build_stat_strip`
 The Simulator rebuild removed this file; it is not in the tree.
 
 ```python
@@ -7958,7 +7969,7 @@ strip instead, unchanged.
 React drew the Nuclear Mode page too, before the rebuild deleted both. The tab
 asked the same seam for the panel class that it asked for the strip.
 
-`src/gui/simulator_tab/simulator_tab.py` — `SimulatorTab._nuclear_panel_class`
+`SimulatorTab` — `SimulatorTab._nuclear_panel_class`
 The Simulator rebuild removed this file; it is not in the tree.
 
 ```python
@@ -7973,7 +7984,7 @@ Every widget write moved behind a named accessor. The Qt panel answers those
 with labels, spin boxes and tick boxes; the React panel answers them by
 writing into its view model and redrawing the page.
 
-`src/gui/react_nuclear_mode_panel.py` — `NuclearModeReactPanel._set_status_text`
+`react_nuclear_mode_panel` — `NuclearModeReactPanel._set_status_text`
 The Simulator rebuild removed this file; it is not in the tree.
 
 ```python
@@ -7993,7 +8004,7 @@ The two drawn panels follow the same route. `SimPriceVwapChartReact` inherits
 the price and VWAP chart, so the ticks, the thinning and the trade markers stay
 one piece of Python, and `GateStatusPanelReact` inherits the gate pane.
 
-`src/gui/simulator_tab/simulator_tab.py` — `SimulatorTab._price_chart_class`
+`SimulatorTab` — `SimulatorTab._price_chart_class`
 The Simulator rebuild removed this file; it is not in the tree.
 
 ```python
@@ -8007,7 +8018,7 @@ every line, box, dot and label, with its colour and its position — and
 `sim_visuals.js` runs that program on one canvas. The picture is decided on the
 Python side, so the two builds cannot draw different charts from the same ticks.
 
-`src/gui/main_tabs/sim_visuals_surface.py` — `chart_program`
+`sim_visuals_surface` — `chart_program`
 The Simulator rebuild removed this file; it is not in the tree.
 
 ```python
@@ -8028,7 +8039,7 @@ timers are the same Python. Every widget write the panel used to make moved
 behind a named accessor, and the React panel answers those by writing into its
 view model.
 
-`src/gui/simulator_tab/simulator_tab.py` — `SimulatorTab._fleet_replay_class`
+`SimulatorTab` — `SimulatorTab._fleet_replay_class`
 The Simulator rebuild removed this file; it is not in the tree.
 
 ```python
@@ -8041,7 +8052,7 @@ A press on the page names its own action. The panel maps that name to the
 method the Qt button was wired to, looked up on the panel itself, so the two
 sides run one piece of code.
 
-`src/gui/react_fleet_replay_panel.py` — `FleetReplayReactPanel.run_action`
+`react_fleet_replay_panel` — `FleetReplayReactPanel.run_action`
 The Simulator rebuild removed this file; it is not in the tree.
 
 ```python
@@ -8056,7 +8067,7 @@ Everything else on this tab is still drawn by Qt.
 Mode is the picker beside it. Three modes, each with its own line saying what
 it collects.
 
-`src/gui/simulator_tab/simulator_tab.py` — `SimulatorTab.SIM_MODES`
+`SimulatorTab` — `SimulatorTab.SIM_MODES`
 The Simulator rebuild removed this file; it is not in the tree.
 
 ```python
@@ -8119,7 +8130,7 @@ and Stop drains the current tick and exits.
 The panel says so out loud when a run cannot be compared to live, rather than
 letting a synthetic run look like a parity run.
 
-`src/gui/simulator_tab/fleet/fleet_replay_panel.py` — `_note_parity_state`
+`fleet_replay_panel` — `_note_parity_state`
 The Simulator rebuild removed this file; it is not in the tree.
 
 ```python
@@ -10050,3 +10061,322 @@ column, and the figure beneath it is the asset's mark or its ticker.
 The code block listing the ten column labels names `"Bot ID"` first.
 `src/gui/main_tabs/bot_status_table_surface.py, in COLUMN_LABELS` names `"Asset"`
 first today.
+
+## Both tabs build their sector pages from one declared list
+
+The Simulator tab and the Paper tab each hold a stack of sector pages. Both
+stacks come from the same declared list, read at the moment the page is asked
+for rather than at import.
+
+`src/gui/main_tabs/asset_class_surface.py, in LAYERED_CLASSES` declares the six
+sectors a trading layer stands behind.
+
+```python
+LAYERED_CLASSES = frozenset(
+    {"crypto", "stocks", "commodities", "forex", "indices", "futures_perps"}
+)
+```
+
+`src/gui/main_tabs/asset_class_surface.py, in layered_classes` puts those names
+in taxonomy order. `src/gui/main_tabs/trading_tab_surface.py, in layer_order`
+answers that order to every tab that draws a layer stack.
+
+`src/gui/simulator/sim_trading_tab_surface.py, in build_view_model` reads that
+one call and names the page on show out of the same list.
+
+```python
+key = live.layer_named(layer)
+order = live.layer_order()
+```
+
+Two fields of the tab payload carry the result: the page list and the position
+of the page on show inside it.
+
+```python
+"trading_stack": {
+    "pages": list(order),
+    "current_index": order.index(key),
+},
+```
+
+`src/gui/paper/paper_trading_tab_surface.py, in build_view_model` writes those
+same two fields from the same call, so neither tab holds a sector list of its
+own.
+
+### What each tab answers, per sector
+
+Each tab's own state object was asked for all six sectors, and the page list was
+read off the payload the tab serves.
+
+| sector asked | Sim pages | Sim page on show | Paper pages | Paper page on show |
+|---|---|---|---|---|
+| Crypto | 6 | 0 | 6 | 0 |
+| Stock | 6 | 1 | 6 | 1 |
+| Commodities | 6 | 2 | 6 | 2 |
+| Forex | 6 | 3 | 6 | 3 |
+| Indices | 6 | 4 | 6 | 4 |
+| Futures / Perps | 6 | 5 | 6 | 5 |
+| a name no layer carries | 6 | 0 | 6 | 0 |
+
+Both tabs answer the same list, in the same order, on every ask.
+
+```
+crypto, stocks, commodities, forex, indices, futures_perps
+```
+
+A sector name no layer carries draws page 0, which is the crypto layer. The
+page on show moves across all six asks, so the figure is read from the sector
+asked and is not a fixed answer.
+
+### The added-layer reading
+
+A seventh sector was added to the declaration and both tabs were asked again.
+Both gained the page together.
+
+| the declaration holds | Sim pages | Paper pages | highest page on show |
+|---|---|---|---|
+| six sectors | 6 | 6 | 5 |
+| seven sectors | 7 | 7 | 6 |
+
+The seventh name was last in both page lists and last in both card lists. The
+declaration was then put back, and both declaring files read byte for byte as
+they did before.
+
+## The sector press reaches every sector page on both tabs
+
+Pressing a sector on the header strip now moves the Simulator tab and the Paper
+tab to that sector's page, in the Qt build and in the React build. Before this
+change both tabs stayed on the Crypto page for every press, so five of the six
+pages could not be opened at all.
+
+`src/gui/main_tabs/class_filter_tab.py, in _ask_tab_for_class` is the one caller
+that hands a sector to these two tabs. It calls each tab's own
+`set_asset_class`, which now shows that sector's page as well as narrowing the
+rows.
+
+```python
+self._asset_class = class_filter_surface.normalise(name)
+self._show_class_layer(self._asset_class)
+```
+
+`src/gui/simulator/sim_trading_tab.py, in SimTradingTab._show_class_layer` and
+`src/gui/paper/paper_trading_tab.py, in PaperTradingTab._show_class_layer` each
+read the page number from the declared sector list and put the layer stack on
+it.
+
+```python
+stack.setCurrentIndex(acs.layer_page(key))
+```
+
+The React tabs send the sector as the layer, on the ask their own page already
+answers. `src/gui/simulator/sim_react_trading_tab.py, in SimTradingTabReact.set_asset_class`
+and `src/gui/paper/paper_react_trading_tab.py, in PaperTradingTabReact.set_asset_class`
+each carry it into `show_tab`.
+
+```python
+self.show_tab({"layer": self._asset_class})
+```
+
+No new button, panel or chooser was added. The sector buttons on the header
+strip are the way in, and they were already there.
+
+### The Qt stacks hold one page per sector
+
+`src/gui/simulator/sim_trading_tab.py, in SimTradingTab._build` and
+`src/gui/paper/paper_trading_tab.py, in PaperTradingTab._build` each built one
+Crypto page and one Stock page by hand. Both now build one page per declared
+sector, in the loop
+`src/gui/main_tabs/trading_tab.py, in TradingTabMixin._build_trading_tab`
+already uses for the Live tab.
+
+```python
+self._class_layers: dict = {}
+for layered in acs.layered_classes():
+    page, bar, store, card = _make_layer(
+        acs.display_name(layered), acs.accent(layered)
+    )
+    self._class_layers[layered] = {
+        "page": page,
+        "tabs": bar,
+        "exchange_tabs": store,
+        "placeholder": card,
+    }
+    self._trading_stack.addWidget(page)
+```
+
+Every name the two tabs used before is kept, and each one points at the same
+page it pointed at before. The six names below are read off the new list
+instead of being built one at a time, so nothing that reads them changed.
+
+```
+_crypto_tab_widget      _stock_tab_widget
+_crypto_placeholder     _stock_placeholder
+_crypto_exchange_tabs   _stock_exchange_tabs
+```
+
+Add Exchange still seats a crypto venue on the Crypto page and an equity venue
+on the Stock page. That routing is untouched.
+
+### What the sector press shows, before and after
+
+Each tab was built and asked for every sector through
+`ClassFilterTabMixin.select_asset_class`, which is the call the header strip's
+own press makes. The Qt figure is the page the layer stack shows, named by the
+heading drawn on that page. A React page's pixels cannot be read back, so the
+React figure is the page the tab payload names.
+
+| sector pressed | Sim before | Sim after | Paper before | Paper after | Live |
+|---|---|---|---|---|---|
+| Crypto | Crypto | Crypto | Crypto | Crypto | Crypto |
+| Stock | Crypto | Stock | Crypto | Stock | Stock |
+| Commodities | Crypto | Commodities | Crypto | Commodities | Commodities |
+| Forex | Crypto | Forex | Crypto | Forex | Forex |
+| Indices | Crypto | Indices | Crypto | Indices | Indices |
+| Futures / Perps | Crypto | Futures / Perps | Crypto | Futures / Perps | Futures / Perps |
+
+The table reads the same in both builds. The Live column did not move, before
+or after, because the Live tab already answered this way.
+
+The page count on the two tabs moved from 2 to 6 in the Qt build. In the React
+build it stayed at 6, where the six pages were already built and only the page
+on show was stuck.
+
+### An unknown sector draws the first page
+
+A sector name no layer carries draws the Crypto page on both tabs, in both
+builds, and on the Live tab as well. Nothing fails and nothing draws blank.
+
+| sector pressed | Sim | Paper | Live |
+|---|---|---|---|
+| a name no layer carries | Crypto | Crypto | Crypto |
+
+The page on show moves across the six declared sectors and falls back to the
+first on an unknown one, so the figure is read from the sector pressed.
+
+### The declared list is the only list
+
+One extra sector was added to the declaration and all four tabs were asked
+again. Every one of them gained the page, and every one of them showed it.
+
+| the declaration holds | Sim pages | Paper pages | highest page on show |
+|---|---|---|---|
+| six sectors | 6 | 6 | 5 |
+| seven sectors | 7 | 7 | 6 |
+
+The declaration was then put back, and both declaring files read byte for byte
+as they did before.
+
+### The sentence this entry overtakes
+
+From `docs/manual/08-tabs/paper-trader.md`, in the section titled "The Paper tab
+keeps its own card while no venue serves the class":
+
+> `src/gui/main_tabs/class_filter_tab.py, in _refilter_class_tabs` hands the
+> sector to the tab's own `set_asset_class`, which narrows the rows the tab
+> lists and nothing else.
+
+True today: the sector reaches `set_asset_class`, which narrows the rows and
+shows that sector's page. The tab still keeps its own card under every sector,
+served or not, and no sector replaces it, hides it or disables it.
+
+## 2026-10-25 - #937 - the Simulator page draws the Asset column's mark
+
+The Simulator draws its Scrumming Bots table twice. The window draws one, and
+the page inside the window's browser draws the other. Both now draw the first
+column the same way. Where the logo library has put a file on disk for that
+asset, the cell draws that image at 32 pixels and holds no text. Where none is
+kept, the cell draws the asset's ticker, so the row still names what the bot
+accumulates. Where the asset database knows that asset's own organisation, the
+address rides on the cell and a press opens it.
+
+`src/gui/web/sim_bot_status_table.js` — `AssetLogo`
+
+```javascript
+logoProps[PART_ATTR] = LOGO_PART;
+logoProps[LOGO_PATH_ATTR] = text(found[LOGO_PATH]);
+logoProps[LOGO_SIZE_ATTR] = text(found[LOGO_SIZE]);
+```
+
+### Three invented bots on the Simulator's page
+
+One asset has a kept file. One has none and is named by the asset database. One
+is named nowhere. Each reads differently from the other two.
+
+```
+a file is kept             no text, one 32-pixel image, no address
+no file, the base is known the ticker, no image, the address on the cell
+the base is known nowhere  the ticker, no image, no address
+row height                 38 pixels, the same on the Live and Paper pages
+```
+
+### What the Simulator's page reports about the payload
+
+The page checks the payload it was handed and lists what is missing. It names the
+mark's four cell fields, so a payload that stops carrying one is reported rather
+than drawn as a blank square.
+
+`src/gui/web/sim_bot_status_table.js` — the audited cell fields
+
+```javascript
+  var CELL_FIELDS = [
+    TEXT,
+    COLOR,
+    TOOLTIP,
+    ALIGNMENT,
+    ALIGNMENT_VALUE,
+    LOGO_PATH,
+    LOGO_IMAGE,
+    LOGO_SIZE,
+    LINK_URL,
+    CHART_URL,
+    UNDERLINE
+  ];
+```
+
+Driven with every outward connection refused, the reading made no connection
+attempt and the page made no request. A control attempt afterwards was counted
+and refused, so the counter was able to report one.
+
+### The Simulator sentence this entry completes
+
+It is quoted whole, and the sentence under it is true today.
+
+Quoted whole:
+
+> "The Simulator's Scrumming Bots table is a subclass of the window's own bot list,
+> so it draws that list's ten columns. The first column is Asset. It draws the
+> target asset's own mark, and the asset's ticker where no mark is kept."
+
+True today: that holds for the window's table and for the page, which draws the
+same mark from the same payload. The Extractor Bots table keeps its own Bot ID
+column on both surfaces.
+
+## 2026-10-25 - #665 - the simulated record carries the wizard's lock figure
+
+The simulator wizard collected the Candles-to-lock figure and the record it
+saved held no key for it, so the bot built from that record had no lock holder
+and the Phantom Bots tab fell back to the declared 2.
+
+`src/simulator/fleet_source.py, in wizard_record` now writes the figure beside
+the two phantom keys it already wrote, clamped at 1, which is the clamp the live
+bot's own constructor applies.
+
+```python
+    lock_candles = collected.get("lock_candle_count") if scrumming else None
+    if isinstance(lock_candles, (int, float)) and not isinstance(lock_candles, bool):
+        record["lock_candle_count"] = max(1, int(lock_candles))
+```
+
+`src/simulator/sim_bot_view.py, in SimBotView` reads that key to build the bot's
+lock holder, and the Candles-to-lock box on the Phantom Bots tab reads the
+holder.
+
+```
+wizard 7     record holds the key     tab box 7
+wizard 2     record holds the key     tab box 2
+no key       record holds no key      tab box 2
+```
+
+A simulated record written before this change holds no such key, loads, and
+leaves the tab box on the declared 2. The Simulator and the Paper Trader take
+the same route, so the two cannot answer this differently.

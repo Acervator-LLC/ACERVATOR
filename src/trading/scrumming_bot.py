@@ -2356,9 +2356,14 @@ class ScrummingBot(
                 "fill_price": 0.0,
             }
 
-        fill_amount = float(
-            getattr(order, "filled", None) or getattr(order, "amount", None) or units
-        )
+        # A reported filled of zero filled nothing; only an omitted field
+        # falls back to amount.
+        _sd_filled = getattr(order, "filled", None)
+        if _sd_filled is None:
+            _sd_filled = getattr(order, "amount", None)
+        if _sd_filled is None:
+            _sd_filled = units
+        fill_amount = float(_sd_filled or 0.0)
         fill_price = float(
             getattr(order, "average_price", None)
             or getattr(order, "average", None)
@@ -2384,6 +2389,16 @@ class ScrummingBot(
         self._fold_tranches = []
         self._fold_queue_usd = 0.0
         self._current_holdings = max(0.0, self._current_holdings - fill_amount)
+        # The exchange still holds what it did not sell, so the emptied book is
+        # reseeded with it.
+        if self._current_holdings > 0:
+            self._main_lots.append(
+                {
+                    "units": self._current_holdings,
+                    "initial_buy_price": fill_price,
+                    "self_destruct_remnant": True,
+                }
+            )
         self._last_trade_side = "SCRUM"
         self._last_trade_price = fill_price
         self._reset_opposing_hysteresis_after_fill()
@@ -2449,6 +2464,13 @@ class ScrummingBot(
                     f"Internal state cleared. Bot "
                     + ("PAUSED" if not keep_running else "kept RUNNING")
                     + "."
+                    + (
+                        f" {self._current_holdings:.8f} "
+                        f"{self.config.target_asset} the exchange did not sell "
+                        f"are kept as one lot at the fill price."
+                        if self._current_holdings > 0
+                        else ""
+                    )
                 ),
             )
         except Exception as _sup:

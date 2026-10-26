@@ -221,6 +221,14 @@ class CoinGeckoAdapter(ExchangeAdapter):
         )
 
 
+#: Each shipped ``ExchangeAdapter`` subclass under its own ``exchange_id``,
+#: which ``_build_adapter`` reads.
+ADAPTERS_BY_EXCHANGE: dict[str, type[ExchangeAdapter]] = {
+    adapter_class.exchange_id: adapter_class
+    for adapter_class in (CoinbaseAdapter, CoinGeckoAdapter)
+}
+
+
 @dataclass
 class FillReport:
     asset: str
@@ -617,11 +625,10 @@ def _build_adapter(
     exchange_id: str,
     connector: Any,
 ) -> Optional[ExchangeAdapter]:
-    if exchange_id == "coinbase":
-        return CoinbaseAdapter(connector)
-    if exchange_id == "coingecko":
-        return CoinGeckoAdapter(connector)
-    return None
+    adapter_class = ADAPTERS_BY_EXCHANGE.get(exchange_id)
+    if adapter_class is None:
+        return None
+    return adapter_class(connector)
 
 
 def _cli_status(reg: StoneTabletsRegistry) -> int:

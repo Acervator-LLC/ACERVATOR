@@ -121,6 +121,7 @@ class ExecutionEngineMixin:
     exchange: Any
     guarded_place_order: Callable[..., Any]
     note_scrum_retention_usd: Callable[..., None]
+    refresh_priced_figures_after_fill: Callable[..., Any]
     reset_swos_cycle: Callable[..., None]
     stats: Any
 
@@ -213,11 +214,13 @@ class ExecutionEngineMixin:
         quoted_price: float,
         label: str | None = None,
     ):
-        """Re-read a just-placed ``order`` until the venue reports a fill.
+        """Re-read a just-placed ``order`` until the venue reports a fill, and
+        answer ``(fill_amount, fill_price, is_real)`` where ``fill_amount`` is
+        the venue's own filled count, zero when it reported none.
 
-        Returns ``(fill_amount, fill_price, is_real)``, calls
-        ``_record_venue_fee`` on whichever order object settled, and clears both
-        venue-fee records when it books an estimate.
+        Calls ``_record_venue_fee`` on whichever order object settled, clears
+        both venue-fee records when it books an estimate, and falls back to
+        ``quoted_price`` for the price alone.
         """
         self._last_sell_venue_fee = None
         self._last_fill_venue_fee = None
@@ -260,7 +263,7 @@ class ExecutionEngineMixin:
                 amt = f_amt or amt
                 px = f_px or px
 
-        est_amt = amt if amt > 0 else float(requested_amount or 0.0)
+        est_amt = amt
         est_px = px if px > 0 else float(quoted_price or 0.0)
         self._last_sell_venue_fee = None
         self._last_fill_venue_fee = None
@@ -273,10 +276,43 @@ class ExecutionEngineMixin:
                 f"order {order_id or '?'}; booking the ESTIMATE "
                 f"({est_amt:.6f} @ ${est_px:.8f}) instead of a "
                 f"confirmed fill. Position accounting may drift from "
-                f"the exchange until the next reconcile."
+                f"the exchange until the next reconcile. The unit count is "
+                f"the exchange's own, out of "
+                f"{float(requested_amount or 0.0):.6f} asked, so a zero "
+                f"books nothing against the position."
             ),
         )
         return est_amt, est_px, False
+
+    async def _book_spread_pct(self, symbol: str) -> Optional[float]:
+        """Read ``symbol``'s book off the venue and return its bid-ask gap.
+
+        Returns None when ``get_orderbook`` raises, exceeds
+        ``SYNC_CALL_TIMEOUT_SEC`` or serves an empty side, so a slow or
+        refusing venue leaves the order on the path it takes today.
+        """
+        try:
+            from ...core.execution_discipline import book_spread_pct
+            from ...exchange.ccxt_connector import SYNC_CALL_TIMEOUT_SEC
+
+            book = await asyncio.wait_for(
+                self.exchange.get_orderbook(symbol),
+                timeout=SYNC_CALL_TIMEOUT_SEC,
+            )
+            bids = list(getattr(book, "bids", None) or [])
+            asks = list(getattr(book, "asks", None) or [])
+            if not bids or not asks:
+                return None
+            return book_spread_pct(bids[0][0], asks[0][0])
+        except Exception as _book_exc:  # noqa: BLE001
+            logger.debug(
+                "Bot %s book read for %s failed: %s: %s",
+                self.bot_id,
+                symbol,
+                type(_book_exc).__name__,
+                _book_exc,
+            )
+            return None
 
     def _venue_quote_currency(self) -> str:
         """The currency a sale is credited in, read off the symbol through
@@ -1363,11 +1399,13 @@ class ExecutionEngineMixin:
             )
             return False
 
-        _filled_raw = (
-            getattr(order, "filled", None)
-            or getattr(order, "amount", None)
-            or sell_amount
-        )
+        # A reported filled of zero filled nothing; only an omitted field
+        # falls back to amount.
+        _filled_raw = getattr(order, "filled", None)
+        if _filled_raw is None:
+            _filled_raw = getattr(order, "amount", None)
+        if _filled_raw is None:
+            _filled_raw = sell_amount
         try:
             fill_amount = float(_filled_raw or 0.0)
         except (TypeError, ValueError):
@@ -1510,10 +1548,13 @@ class ExecutionEngineMixin:
         ``_settled_fill`` supplies the units the venue reported sold, under
         ``label``, and those units are what leaves ``_current_holdings``;
         ``amount`` is only what was asked for, so a partial fill no longer
-        takes units off the ledger the venue never sold. The figure is left on
-        ``_last_sell_filled_units`` for the callers that take the same units
-        off ``_main_lots``. Both venue-fee records are cleared on entry and
-        written by ``_settled_fill`` off whichever order object settled.
+        takes units off the ledger the venue never sold. A venue reporting no
+        filled amount leaves ``_current_holdings`` and ``_main_lots`` untouched
+        and answers None, which every caller already reads as no sale. The
+        figure is left on ``_last_sell_filled_units`` for the callers that take
+        the same units off ``_main_lots``. Both venue-fee records are cleared on
+        entry and written by ``_settled_fill`` off whichever order object
+        settled.
         """
         self._last_sell_venue_fee = None
         self._last_fill_venue_fee = None
@@ -1710,19 +1751,24 @@ class ExecutionEngineMixin:
             return None
 
         try:
-            from ...core.execution_discipline import verify_hit as _vh
+            from ...core.execution_discipline import verify_book_spread as _vbs
 
-            vh_fp, vh_status, vh_samples = _vh(
-                price, "sell", symbol=self.config.target_asset
+            _book_spread = await self._book_spread_pct(self.config.symbol)
+            vh_fp, vh_status, vh_spread = _vbs(
+                price, _book_spread, symbol=self.config.target_asset
             )
-            self.stats.verify_samples += vh_samples
+            self._last_book_spread_pct = vh_spread
+            self._last_slippage_status = vh_status
+            if vh_spread is not None:
+                self.stats.verify_samples += 1
             if vh_fp is None:
                 self.stats.verify_canceled += 1
                 if self._refusal_is_new("sell_slippage", price):
                     self._bus.emit(
                         "bot.log",
                         bot_id=self.bot_id,
-                        message=f"SELL CANCELED (VH): slippage would "
+                        message=f"SELL CANCELED (VH): venue book spread "
+                        f"{(vh_spread or 0.0) * 100.0:.4f}% would "
                         f"exceed {self.config.target_asset} class "
                         f"tolerance @ ${price:.8f}",
                     )
@@ -1735,7 +1781,7 @@ class ExecutionEngineMixin:
                 return
             if vh_status == "clean":
                 self.stats.verify_clean += 1
-            else:
+            elif vh_status == "adjusted":
                 self.stats.verify_adjusted += 1
 
             if self._invisible:
@@ -1800,6 +1846,33 @@ class ExecutionEngineMixin:
             filled_units, actual_fill, _ = await self._settled_fill(
                 order, self.config.symbol, amount, price, label=label
             )
+            if filled_units <= 0:
+                self._bus.emit(
+                    "bot.log",
+                    bot_id=self.bot_id,
+                    message=(
+                        f"SELL SENT, NO FILL REPORTED: {amount:.6f} "
+                        f"{self.config.target_asset} @ ${price:.8f} was "
+                        f"accepted and the exchange reported no filled "
+                        f"amount. Holdings and the lot book are unchanged and "
+                        f"no fold tranche is queued. A LIMIT order resting on "
+                        f"the book reports this until it trades, and the "
+                        f"open-order check refuses a second SELL meanwhile."
+                    ),
+                )
+                self._emit_trade_notification(
+                    "SCRUM", "REFUSED", "exchange reported no filled amount"
+                )
+                try:
+                    await self._reconcile_holdings(reason="post_failure")
+                except Exception as _sup:
+                    logger.debug(
+                        "suppressed in %s: %s: %s",
+                        "_execute_sell",
+                        type(_sup).__name__,
+                        _sup,
+                    )
+                return None
             self._last_sell_filled_units = filled_units
             self._current_holdings = max(0.0, self._current_holdings - filled_units)
             self.stats.total_sells += 1
@@ -1856,6 +1929,18 @@ class ExecutionEngineMixin:
                 slippage_pct,
                 summary.consensus_confidence,
             )
+            # The fill moved _current_holdings above and not the audited venue
+            # count. One read puts both priced figures on this fill. Guarded
+            # here too, so no refresh can lose a sale the venue already made.
+            try:
+                await self.refresh_priced_figures_after_fill(reason=label.lower())
+            except Exception as _sup:
+                logger.debug(
+                    "suppressed in %s: %s: %s",
+                    "_execute_sell",
+                    type(_sup).__name__,
+                    _sup,
+                )
             return actual_fill
         except Exception as exc:
             self._bus.emit("bot.log", bot_id=self.bot_id, message=f"SELL FAILED: {exc}")
@@ -2150,19 +2235,24 @@ class ExecutionEngineMixin:
             if _qrate_buy > 0 and abs(_qrate_buy - 1.0) > 1e-9:
                 amount = amount / _qrate_buy
 
-            from ...core.execution_discipline import verify_hit as _vh
+            from ...core.execution_discipline import verify_book_spread as _vbs
 
-            vh_fp, vh_status, vh_samples = _vh(
-                price, "buy", symbol=self.config.target_asset
+            _book_spread = await self._book_spread_pct(self.config.symbol)
+            vh_fp, vh_status, vh_spread = _vbs(
+                price, _book_spread, symbol=self.config.target_asset
             )
-            self.stats.verify_samples += vh_samples
+            self._last_book_spread_pct = vh_spread
+            self._last_slippage_status = vh_status
+            if vh_spread is not None:
+                self.stats.verify_samples += 1
             if vh_fp is None:
                 self.stats.verify_canceled += 1
                 if self._refusal_is_new("buy_slippage", price):
                     self._bus.emit(
                         "bot.log",
                         bot_id=self.bot_id,
-                        message=f"BUY CANCELED (VH): slippage would "
+                        message=f"BUY CANCELED (VH): venue book spread "
+                        f"{(vh_spread or 0.0) * 100.0:.4f}% would "
                         f"exceed {self.config.target_asset} class "
                         f"tolerance @ ${price:.8f}",
                     )
@@ -2175,7 +2265,7 @@ class ExecutionEngineMixin:
                 return
             if vh_status == "clean":
                 self.stats.verify_clean += 1
-            else:
+            elif vh_status == "adjusted":
                 self.stats.verify_adjusted += 1
 
             if self._invisible:

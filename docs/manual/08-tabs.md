@@ -60,6 +60,10 @@ SYSTEM_STATUS_TAB = system_status_tab_surface.HEADING
 PROOF_OF_ACCUMULATION_TAB = proof_of_accumulation_tab_surface.HEADING
 ```
 
+The module `paper_trader_tab_surface` named in that block is gone.
+`src/gui/paper/paper_trading_tab_surface.py, in HEADING` carries the Paper label
+today.
+
 ### The order, the names and the colours today
 
 The bar now opens on Sim and every tab carries a single word. The order below is
@@ -97,7 +101,7 @@ HISTORY_TAB = "History"
 SIM_TAB = "Sim"
 CONSOLE_TAB = "Console"
 
-PAPER_TAB = paper_trader_tab_surface.HEADING
+PAPER_TAB = paper_trading_tab_surface.HEADING
 STATUS_TAB = system_status_tab_surface.HEADING
 ACCUMULATION_TAB = proof_of_accumulation_tab_surface.HEADING
 ```
@@ -157,7 +161,7 @@ The Qt bar paints those colours itself, because a Qt style sheet cannot colour
 one tab by its position. The theme's own style sheet sets the six colours on the
 bar, so switching theme repaints it.
 
-`src/gui/main_tabs/main_tab_bar.py` — `MainWindowTabBar.paintEvent`
+`main_tab_bar` — `MainWindowTabBar.paintEvent`
 
 ```python
 painter.fillRect(self.tabRect(index), ground)
@@ -796,7 +800,7 @@ True today: the run record is not in the tree. The figures it produced are the
 ones in this entry: one payload of 54 markets, 300 daily candles each, three
 ranked proposals, and twenty-seven of twenty-seven picture items matching.
 
-## Asset Charts
+## Charts
 
 Under the Asset Charts Tab, you will find our active bot (position) chart display. This will be upgraded to display only one chart at a time and will be able to display all indicators found in the Indicator Voting Panel.
 
@@ -1242,7 +1246,7 @@ panels that failed to draw           0
 
 The two that register are the Console tab panel and the header strip. The full
 per-file record is in
-[docs/audits/2026-09-05_128_file_verification.md](../audits/2026-09-05_128_file_verification.md).
+the 2026-09-05 file-verification audit, removed with the audit folders.
 
 ### The tab bar the shell draws now
 
@@ -1330,7 +1334,7 @@ rather than typed.
 | `src/gui/analytics_tab.py` | `analytics_tab.js` | yes | yes | yes | no | yes | no | shelved |
 | `src/gui/audio_suite.py` | `audio_suite.js` | yes | yes | yes | no | yes | no | shelved |
 | `src/gui/bot_live_settings.py` | `bot_live_settings.js` | yes | yes | yes | yes | yes | yes | in scope |
-| `src/gui/bot_swarm_list.py` | removed | - | - | - | - | - | - | deleted |
+| `bot_swarm_list` | removed | - | - | - | - | - | - | deleted |
 | `src/gui/bot_visualizer.py` | `bot_visualizer.js` | yes | yes | yes | yes | yes | yes | in scope |
 | `src/gui/bot_wizard.py` | `bot_wizard.js` | yes | yes | yes | - | yes | yes | in scope |
 | `src/gui/buy_confirmation_dialog.py` | `buy_confirmation.js` | yes | yes | yes | - | yes | yes | in scope |
@@ -1369,22 +1373,22 @@ rather than typed.
 | `src/gui/market_inspector.py` | `market_inspector.js` | yes | yes | yes | yes | yes | yes | in scope |
 | `src/gui/market_inspector_topologies.py` | `market_inspector_topologies.js` | yes | yes | yes | yes | yes | yes | in scope |
 | `src/gui/native_chart.py` | `native_chart.js` | yes | yes | yes | yes | yes | yes | in scope |
-| `src/gui/paper_trader_tab.py` | `paper_trader_tab.js` | yes | yes | yes | yes | no | yes | in scope |
+| `PaperTraderTabQt` | `paper_trader_tab.js` | yes | yes | yes | yes | no | yes | in scope |
 | `src/gui/qt_safe_events.py` | no | - | yes | no | no | - | no | not a screen |
 | `src/gui/react_history_panel.py` | no | - | yes | no | no | - | no | React side |
 | `src/gui/react_history_tab.py` | no | - | no | no | no | - | no | React side |
-| `src/gui/react_paper_trader_tab.py` | no | - | no | no | no | - | no | React side |
+| `react_paper_trader_tab` | no | - | no | no | no | - | no | React side |
 | `src/gui/react_proof_of_accumulation_tab.py` | no | - | no | no | no | - | no | React side |
 | `src/gui/react_simulator_tab.py` | no | - | no | no | no | - | no | React side |
 | `src/gui/react_system_status_tab.py` | no | - | no | no | no | - | no | React side |
 | `src/gui/settings_dialog.py` | `settings_dialog.js` | yes | yes | yes | - | yes | yes | in scope |
 | `src/gui/shared_testnet.py` | `shared_testnet.js` | no | yes | yes | no | yes | no | shelved |
 | `src/gui/simulator_tab.py` | `simulator_tab.js` | yes | yes | yes | yes | yes | yes | in scope |
-| `src/gui/simulator_tab/fleet/fleet_replay_panel.py` | `fleet_replay_panel.js` | yes | yes | yes | no | yes | yes | shelved |
-| `src/gui/simulator_tab/fleet/sim_visuals.py` | `sim_visuals.js` | yes | yes | yes | no | yes | yes | shelved |
-| `src/gui/simulator_tab/nuclear_mode_panel.py` | `nuclear_mode_panel.js` | yes | yes | yes | no | yes | yes | shelved |
-| `src/gui/simulator_tab/sim_stat_strip.py` | `sim_stat_strip.js` | yes | yes | yes | no | yes | yes | shelved |
-| `src/gui/simulator_tab/simulator_tab.py` | `simulator_tab.js` | yes | yes | yes | yes | yes | yes | shelved |
+| `fleet_replay_panel` | `fleet_replay_panel.js` | yes | yes | yes | no | yes | yes | shelved |
+| `sim_visuals` | `sim_visuals.js` | yes | yes | yes | no | yes | yes | shelved |
+| `nuclear_mode_panel` | `nuclear_mode_panel.js` | yes | yes | yes | no | yes | yes | shelved |
+| `sim_stat_strip` | `sim_stat_strip.js` | yes | yes | yes | no | yes | yes | shelved |
+| `SimulatorTab` | `simulator_tab.js` | yes | yes | yes | yes | yes | yes | shelved |
 | `src/gui/start_all_progress_dialog.py` | `start_all_progress.js` | yes | yes | yes | - | yes | yes | in scope |
 | `src/gui/stock_main_window.py` | no | - | yes | no | no | - | no | shelved |
 | `src/gui/testnet_tab.py` | `testnet_tab.js` | yes | yes | yes | no | yes | no | shelved |
@@ -1398,7 +1402,7 @@ rather than typed.
 | `src/gui/widgets/api_tester_tab.py` | `api_tester_tab.js` | yes | yes | yes | no | yes | no | shelved |
 | `src/gui/widgets/bot_selection.py` | `bot_selection.js` | yes | yes | yes | no | yes | no | not a screen |
 | `src/gui/widgets/bot_status_table.py` | `bot_status_table.js` | yes | yes | yes | - | yes | yes | in scope |
-| `src/gui/widgets/capital_registry_panel.py` | no | - | no | no | no | - | no | shelved |
+| `capital_registry_panel` | no | - | no | no | no | - | no | shelved |
 | `src/gui/widgets/dashboard_stat_card.py` | `dashboard_stat_card.js` | yes | yes | yes | - | yes | yes | in scope |
 | `src/gui/widgets/exchange_tab.py` | `exchange_tab.js` | yes | yes | yes | no | yes | - | in scope |
 | `src/gui/widgets/extractor_bot_table.py` | `extractor_bot_table.js` | yes | yes | yes | no | yes | yes | in scope |
@@ -1412,7 +1416,7 @@ The Simulator rebuild removed the files above; they are not in the tree.
 
 The Capital Registry row names a file the tree no longer holds. The registry it
 drew was built nowhere, so the table could draw no row. Four modules went
-together: `src/gui/widgets/capital_registry_panel.py`, its view model, its
+together: `capital_registry_panel`, its view model, its
 renderer page, and the registry behind them. The bridge no longer offers the
 method, and the renderer manifest no longer names the page.
 
@@ -3151,7 +3155,7 @@ def _qt_main_tab_book() -> type:
 colour and a text colour for black, white and gold. None of the thirty values is
 declared now, and no style sheet names one.
 
-**CITED AS ABSENT.** The file `src/gui/main_tabs/main_tab_bar.py` is deleted, so
+**CITED AS ABSENT.** The file `main_tab_bar` is deleted, so
 the paint block earlier on this page records what the bar did between the seventh
 and the thirteenth of September 2026.
 

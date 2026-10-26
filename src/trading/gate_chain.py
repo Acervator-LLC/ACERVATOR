@@ -21,6 +21,9 @@ OVERRIDE_APPLIED_FORMAT = "{gate} overridden by {override}: {refusal}"
 OVERRIDE_NOT_APPLIED_FORMAT = "{message} [override not applied: {overrides}]"
 """One ``ChainResult.blocked`` message from a gate an override covers."""
 
+OVERRIDES_APPLIED_KEY = "overrides_applied"
+"""The gate record key every ``overrides_applied`` entry is written under."""
+
 
 @dataclass
 class GateContext:

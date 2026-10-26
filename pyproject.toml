@@ -261,6 +261,11 @@ dev = [
     # distribution, so it belongs with the type checker and never in
     # `dependencies`.
     "types-defusedxml>=0.7.0.20260504",
+    # Acervator_win.spec and Acervator_mac.spec import PyInstaller.utils,
+    # and without these stubs mypy reports `import-untyped` on those
+    # imports. A stub-only distribution, so it belongs with the type
+    # checker and never in `dependencies`.
+    "types-pyinstaller>=6.22.1.20260827",
     # The lockfile generator behind `python -m tools.deps lock`. No build
     # installs from a lock, and `.gitignore` keeps the output untracked.
     "pip-tools>=7.6.1",

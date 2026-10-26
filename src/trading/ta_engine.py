@@ -7,9 +7,9 @@ The indicators live one per module under ``src/trading/indicators/``. This
 module holds their consumer, the VotingEngine, and re-exports the package so
 every existing ``ta_engine`` import path still resolves.
 
-Indicator formulae are published, and each indicator computes its own maths
-from candles alone. ``tests/test_one_indicator_per_module.py`` fails when a
-module grows a second indicator or reaches into another's maths.
+Indicator formulae are published. No voter imports another voter: the only two
+imports that cross are in ``bb_proximity`` and ``landing_strip``, each reading
+``compute_heikin_ashi``.
 
 Indicators, one module each under ``src/trading/indicators/``:
   1. Bollinger Bands — price position within bands, squeeze detection
@@ -49,7 +49,7 @@ import math
 import time
 from typing import Optional
 
-from ..core.signal_contract import DIGEST_MIN_INTERVAL
+from ..core.signal_contract import DIGEST_MIN_INTERVAL, TA_RAW_PREFIX
 
 # Re-exported rather than moved, so the split into one module each changed no caller.
 from .indicators.adx import ADXIndicator
@@ -108,8 +108,6 @@ from .indicators.w_bottom import detect_w_bottom
 from .indicators.zscore import ZScoreIndicator
 
 __all__ = [
-    # tests/test_ta_suffix_bit_identity.py imports the four underscore stats
-    # names from here.
     "_ema",
     "_sma",
     "_sma_tail",
@@ -242,10 +240,6 @@ class _TAInstrumentationOff(Exception):
     """Raised to skip the emitter block when no sink is installed."""
 
 
-# Head of the raw emitter name; tests/test_ta_raw_prefix_consumer.py fails
-# when this copy drifts from the emitter.
-TA_RAW_PREFIX = "ta.07.004.postcondition.raw."
-
 TA_EMIT_EVERY = DIGEST_MIN_INTERVAL
 """Seconds between admitted records from one emitter name on one market.
 
@@ -365,7 +359,7 @@ class VotingEngine:
                 # `check` returns (None, None) when no bound applies, and never raises.
                 _ok, _rule = _ta_inv.check(_sig.indicator, _details)
                 _ta_emit(
-                    f"ta.07.004.postcondition.raw.{_sig.indicator}",
+                    f"{TA_RAW_PREFIX}{_sig.indicator}",
                     actual=_details,
                     expected=_rule,
                     ok=_ok,

@@ -6,12 +6,15 @@ that is per-platform. ``read_acervator_version`` and ``bake_version_datas``
 resolve the version and write it under ``BAKE_SUBDIR`` for the bundle to carry.
 ``datas_candidates`` ships ``renderer_candidate`` in every variant, because the
 Status tab reads ``panel_host.js`` from it under both, and adds
-``shell_candidates`` to a ``REACT`` build alone. Nothing here imports
+``shell_candidates`` to a ``REACT`` build alone. ``reachable_src_modules``
+measures which modules ``ENTRY_SCRIPT`` can import, and ``reachable_only`` and
+``unreachable_src_files`` keep the rest out of a build. Nothing here imports
 PyInstaller, so the module imports on a machine that has none.
 """
 
 from __future__ import annotations
 
+import ast
 import os
 
 from src._variant import REACT, normalise
@@ -28,6 +31,26 @@ SHELL_FILES: tuple[str, ...] = ("main.js", "preload.js", "package.json")
 
 # npm writes this; a clone without `npm install` has the shell and no runtime.
 ELECTRON_RUNTIME = os.path.join("node_modules", "electron", "dist")
+
+#: The compiled-bytecode folder `build_graceful_datas` leaves out of a bundle.
+CACHE_DIRNAME = "__pycache__"
+
+#: Compiled file suffixes left out wherever they sit, inside `CACHE_DIRNAME` or not.
+COMPILED_SUFFIXES: tuple[str, ...] = (".pyc", ".pyo")
+
+#: The folder `src_modules` walks and `reachable_src_modules` measures.
+SRC_DIRNAME = "src"
+
+#: The one file `reachable_src_modules` starts its import walk from.
+ENTRY_SCRIPT = "main.py"
+
+# Each prefix is a literal `tab_payload` joins a name onto before calling
+# importlib.import_module, so no import statement names the module.
+DYNAMIC_IMPORT_PREFIXES: tuple[str, ...] = (
+    "src.gui.main_tabs.",
+    "src.gui.paper.",
+    "src.gui.simulator.",
+)
 
 
 def read_acervator_version(project_root: str) -> str:
@@ -100,17 +123,130 @@ def datas_candidates(project_root: str, variant: str) -> list[tuple[str, str]]:
     return pairs
 
 
-def build_graceful_datas(project_root: str, variant: str) -> list[tuple[str, str]]:
-    """Return the ``datas_candidates`` pairs for ``variant`` whose source exists.
+def src_modules(project_root: str) -> dict[str, str]:
+    """Map every module name under ``SRC_DIRNAME`` to the file that holds it."""
+    held: dict[str, str] = {}
+    root = os.path.join(project_root, SRC_DIRNAME)
+    for here, children, names in os.walk(root):
+        if CACHE_DIRNAME in children:
+            children.remove(CACHE_DIRNAME)
+        for name in names:
+            if not name.endswith(".py"):
+                continue
+            path = os.path.join(here, name)
+            dotted = os.path.relpath(path, project_root).replace(os.sep, ".")[:-3]
+            if dotted.endswith(".__init__"):
+                dotted = dotted[: -len(".__init__")]
+            held[dotted] = os.path.normpath(path)
+    return held
 
-    A missing source is printed and skipped; PyInstaller aborts on one it keeps.
+
+def _src_import_names(path: str, owner: str) -> set[str]:
+    """Return every ``SRC_DIRNAME`` module name the imports in ``path`` name, for ``owner``."""
+    with open(path, "rb") as handle:
+        tree = ast.parse(handle.read(), filename=path)
+    package = owner if path.endswith("__init__.py") else owner.rpartition(".")[0]
+    named: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            named.update(alias.name for alias in node.names)
+            continue
+        if not isinstance(node, ast.ImportFrom):
+            continue
+        if node.level:
+            parts = package.split(".")
+            base = ".".join(parts[: len(parts) - node.level + 1])
+            head = f"{base}.{node.module}" if node.module else base
+        else:
+            head = node.module or ""
+        if not head:
+            continue
+        named.add(head)
+        named.update(f"{head}.{alias.name}" for alias in node.names)
+    return {n for n in named if n == SRC_DIRNAME or n.startswith(SRC_DIRNAME + ".")}
+
+
+def reachable_src_modules(project_root: str) -> frozenset[str]:
+    """Return every ``src_modules`` name ``ENTRY_SCRIPT`` reaches, plus every ``DYNAMIC_IMPORT_PREFIXES`` module."""
+    held = src_modules(project_root)
+    pending = list(
+        _src_import_names(os.path.join(project_root, ENTRY_SCRIPT), "__main__")
+    )
+    pending.extend(name for name in held if name.startswith(DYNAMIC_IMPORT_PREFIXES))
+    seen: set[str] = set()
+    while pending:
+        name = pending.pop()
+        if name in seen:
+            continue
+        seen.add(name)
+        parts = name.split(".")
+        pending.extend(".".join(parts[:depth]) for depth in range(1, len(parts)))
+        path = held.get(name)
+        if path is not None:
+            pending.extend(_src_import_names(path, name))
+    return frozenset(seen & set(held))
+
+
+def unreachable_src_modules(project_root: str) -> frozenset[str]:
+    """Return every ``src_modules`` name ``reachable_src_modules`` does not hold."""
+    return frozenset(src_modules(project_root)) - reachable_src_modules(project_root)
+
+
+def unreachable_src_files(project_root: str) -> frozenset[str]:
+    """Return the file path of each module ``unreachable_src_modules`` names."""
+    held = src_modules(project_root)
+    return frozenset(held[name] for name in unreachable_src_modules(project_root))
+
+
+def reachable_only(module_names: list[str], project_root: str) -> list[str]:
+    """Return ``module_names`` less every name ``unreachable_src_modules`` holds."""
+    left_out = unreachable_src_modules(project_root)
+    return [name for name in module_names if name not in left_out]
+
+
+def files_outside_cache_dirs(
+    src_path: str, dest_path: str, left_out: frozenset[str] = frozenset()
+) -> list[tuple[str, str]]:
+    """Return one (source, destination) pair per file under ``src_path``.
+
+    PyInstaller expands a directory pair by walking it, and this returns the same
+    files without any ``CACHE_DIRNAME`` folder, without any
+    ``COMPILED_SUFFIXES`` file, and without any path ``left_out`` names.
     """
+    pairs = []
+    for here, children, names in os.walk(src_path):
+        if CACHE_DIRNAME in children:
+            children.remove(CACHE_DIRNAME)
+        target = os.path.normpath(
+            os.path.join(dest_path, os.path.relpath(here, src_path))
+        )
+        for name in names:
+            if name.endswith(COMPILED_SUFFIXES):
+                continue
+            source = os.path.normpath(os.path.join(here, name))
+            if source in left_out:
+                continue
+            if os.path.isfile(source):
+                pairs.append((source, target))
+    return pairs
+
+
+def build_graceful_datas(project_root: str, variant: str) -> list[tuple[str, str]]:
+    """Return the ``datas_candidates`` pairs for ``variant``, each directory expanded.
+
+    ``files_outside_cache_dirs`` expands a directory source and drops every
+    ``unreachable_src_files`` path, and ``build_graceful_datas`` prints and skips
+    a source that is not on disk.
+    """
+    left_out = unreachable_src_files(project_root)
     result = []
     for src_path, dest_path in datas_candidates(project_root, variant):
-        if os.path.exists(src_path):
-            result.append((src_path, dest_path))
-        else:
+        if not os.path.exists(src_path):
             print(f"  [spec] Skipping missing optional datas path: {src_path}")
+        elif os.path.isdir(src_path):
+            result.extend(files_outside_cache_dirs(src_path, dest_path, left_out))
+        else:
+            result.append((src_path, dest_path))
     return result
 
 

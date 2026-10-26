@@ -293,6 +293,18 @@ class SnapshotEmitterMixin(_Host):
                 _sup,
             )
 
+    def _indicator_values(self) -> Optional[dict]:
+        """``_build_panel_snapshot`` of ``_last_summary``, None while it is None.
+
+        ``log_gate_decision`` writes ``indicators`` only when it is given one,
+        so a tick holding no summary leaves that key off the gate row rather
+        than writing a cell per indicator at zero.
+        """
+        summary = getattr(self, "_last_summary", None)
+        if summary is None:
+            return None
+        return _build_panel_snapshot(summary)
+
     def _chain_risk_gates(self, chain_result) -> list:
         """The ``_RISK_GATE_NAMES`` entries one ``ChainResult`` blocked on.
 
@@ -508,8 +520,10 @@ class SnapshotEmitterMixin(_Host):
                 fold_blockers=list(self._last_gate_state.get("fold_blockers") or []),
                 scrum_fixture=self._last_gate_state.get("scrum_fixture"),
                 fold_fixture=self._last_gate_state.get("fold_fixture"),
+                indicators=self._indicator_values(),
                 tranche_snapshot=self._tranche_snapshot(),
                 compounding_snapshot=self._compounding_snapshot(),
+                slippage_guard=self._slippage_guard_snapshot(),
             )
             # A fire ends the quiet stretch, so the next refusal writes a row.
             self._gate_row_keys_seen.clear()
@@ -581,9 +595,11 @@ class SnapshotEmitterMixin(_Host):
                 fold_blockers=fold_blockers,
                 scrum_fixture=state.get(_SCRUM_FIXTURE_KEY),
                 fold_fixture=state.get(_FOLD_FIXTURE_KEY),
+                indicators=self._indicator_values(),
                 evaluated_at_tick=state.get("evaluated_at_tick"),
                 tranche_snapshot=self._tranche_snapshot(),
                 compounding_snapshot=self._compounding_snapshot(),
+                slippage_guard=self._slippage_guard_snapshot(),
             )
             if recorded or len(self._gate_row_keys_seen) >= GATE_ROW_KEY_MEMORY:
                 self._gate_row_keys_seen.clear()
@@ -609,6 +625,27 @@ class SnapshotEmitterMixin(_Host):
                 self.bot_id,
                 _quiet_exc,
             )
+
+    def _slippage_guard_snapshot(self) -> dict:
+        """The slippage guard's four ``BotStats`` counters and its last reading.
+
+        ``verify_clean`` and ``verify_samples`` have no other reader, and
+        ``_last_book_spread_pct`` carries the gap ``_book_spread_pct`` read on
+        the most recent order.
+        """
+        stats = getattr(self, "stats", None)
+        spread = getattr(self, "_last_book_spread_pct", None)
+        snap: dict = {}
+        try:
+            snap["clean"] = int(getattr(stats, "verify_clean", 0) or 0)
+            snap["adjusted"] = int(getattr(stats, "verify_adjusted", 0) or 0)
+            snap["canceled"] = int(getattr(stats, "verify_canceled", 0) or 0)
+            snap["samples"] = int(getattr(stats, "verify_samples", 0) or 0)
+            snap["last_status"] = str(getattr(self, "_last_slippage_status", "") or "")
+            snap["book_spread_pct"] = None if spread is None else float(spread)
+        except Exception as _vh_exc:  # noqa: BLE001
+            snap["slippage_error"] = f"{type(_vh_exc).__name__}"
+        return snap
 
     def _tranche_snapshot(self) -> dict:
         """Fold + stack tranche aggregates at fire time (count, USD, unit

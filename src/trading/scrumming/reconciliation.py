@@ -56,6 +56,10 @@ class ReconciliationEngineMixin:
     # audited venue reading as claimable units, for readers off the tick path.
     _audited_venue_units: float = 0.0
 
+    # Why the last fill-fired venue read refused, empty while the stored
+    # reading is the one that read landed. The bot tables draw the mark.
+    _venue_units_refusal: str = ""
+
     EXCHANGE_HEALTH_REFRESH_COOLDOWN_SEC = 300.0
 
     async def fetch_fill_history(self) -> Optional[list]:
@@ -1013,6 +1017,66 @@ class ReconciliationEngineMixin:
             float(lot.get("units", 0) or 0) for lot in self._main_lots
         )
         return _gain
+
+    async def refresh_priced_figures_after_fill(self, reason: str = "fill") -> bool:
+        """Re-read the venue once so the row's two priced figures rest on the fill.
+
+        ``_execute_sell`` awaits this at every settled fill. Current Position
+        Value prices ``_current_holdings``, which the fill site already moved,
+        and Target Delta prices ``_audited_venue_units``, which it did not, so
+        one reading is what the pair needs. ``_venue_claimable_units`` is the
+        read: it fetches the balance once and hands the figure to
+        ``_record_audited_venue_units``. The lot book is left to the periodic
+        ``_reconcile_holdings``, because the callers of ``_execute_sell`` take
+        the filled units off ``_main_lots`` only after it returns.
+
+        A venue that cannot be read leaves ``_audited_venue_units`` exactly as
+        it was and records why on ``_venue_units_refusal``, which the bot
+        tables draw as a mark beside the held reading. Returns True once the
+        reading landed. Never raises, so a refused read cannot reach the order
+        or the trade that fired it.
+        """
+        try:
+            _units, _why = await self._venue_claimable_units()
+        except Exception as exc:
+            _units, _why = None, (f"the venue read raised {type(exc).__name__}: {exc}")
+        if _why is None and _units is not None:
+            self._venue_units_refusal = ""
+            logger.debug(
+                "Bot %s post-%s venue read: %.8f claimable units",
+                self.bot_id,
+                reason,
+                self._audited_venue_units,
+            )
+            return True
+        self._venue_units_refusal = str(_why or "the venue could not be read")
+        try:
+            self._bus.emit(
+                "bot.log",
+                bot_id=self.bot_id,
+                message=(
+                    f"VENUE READ REFUSED (post {reason}): "
+                    f"{self._venue_units_refusal}. Target Delta keeps its last "
+                    f"reading of {self._audited_venue_units:.8f} units and the "
+                    f"row marks it as held. The order and the fill are "
+                    f"unaffected."
+                ),
+            )
+        except Exception as _sup:
+            logger.debug(
+                "suppressed in %s: %s: %s",
+                "refresh_priced_figures_after_fill",
+                type(_sup).__name__,
+                _sup,
+            )
+        logger.warning(
+            "Bot %s post-%s venue read refused — %s. Holding %.8f units.",
+            self.bot_id,
+            reason,
+            self._venue_units_refusal,
+            self._audited_venue_units,
+        )
+        return False
 
     async def _reconcile_holdings(self, reason: str = "periodic") -> bool:
         """Compare ``_current_holdings`` and ``_main_lots`` against the venue.

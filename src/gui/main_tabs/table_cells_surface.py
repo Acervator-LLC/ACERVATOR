@@ -137,6 +137,16 @@ ATTRIBUTED_UNITS_NOTE_FORMAT = (
     "direction this cell draws."
 )
 
+#: Drawn beside the figure when the last fill-fired venue read refused.
+VENUE_HELD_MARKER = "(held)"
+VENUE_HELD_NOTE_FORMAT = (
+    " HELD READING — the venue read this trade fired could not be made "
+    "({refusal}), so the exchange count above is the one before it. The "
+    "figure is the last reading, not a current one. The trade itself "
+    "settled."
+)
+NO_VENUE_REFUSAL = ""
+
 AMMO_FIELDS = (
     "text",
     "color",
@@ -325,6 +335,7 @@ AMMO_TERRITORY = "ammo.territory"
 AMMO_NOOP = "ammo.noop"
 AMMO_TWO_READS = "ammo.two_reads"
 AMMO_AGED = "ammo.aged"
+AMMO_VENUE_HELD = "ammo.venue_held"
 AMMO_RETURN = "ammo.return"
 DENOM_START = "denom.start"
 DENOM_BLANK = "denom.blank"
@@ -353,6 +364,41 @@ def ammo_units_note(units: float, holdings: float, from_venue: bool) -> str:
     if from_venue:
         return VENUE_UNITS_NOTE_FORMAT.format(units=units, holdings=holdings)
     return ATTRIBUTED_UNITS_NOTE_FORMAT.format(holdings=holdings)
+
+
+def venue_refusal_text(refusal: Any) -> str:
+    """One bot's ``venue_units_refusal``, as text, or ``NO_VENUE_REFUSAL``.
+
+    ``_compose_ammo_cell`` and ``TableCellsModel.ammo_cell`` both read this,
+    so the Qt row and the browser row cannot disagree about whether the last
+    venue read refused.
+    """
+    if refusal is None:
+        return NO_VENUE_REFUSAL
+    return str(refusal).strip()
+
+
+def venue_held_note(refusal: Any) -> str:
+    """The Ammo tooltip clause naming why the held reading is not a fresh one.
+
+    Empty while ``venue_refusal_text`` finds no refusal, so a row whose venue
+    read landed carries no mark at all.
+    """
+    found = venue_refusal_text(refusal)
+    if not found:
+        return NO_VENUE_REFUSAL
+    return VENUE_HELD_NOTE_FORMAT.format(refusal=found)
+
+
+def venue_held_figure(text: str, refusal: Any) -> str:
+    """``text`` with ``VENUE_HELD_MARKER`` on it while a venue read is refused.
+
+    The marker goes on the drawn figure rather than replacing it, so the last
+    reading stays on the row and is never blanked.
+    """
+    if not venue_refusal_text(refusal):
+        return text
+    return MARKED_FIGURE_FORMAT.format(text=text, marker=VENUE_HELD_MARKER)
 
 
 def priced_position(holdings: float, price: float, quote_rate: float) -> float:
@@ -638,6 +684,7 @@ class TableCellsModel:
         target_val: float,
         price_age_s: Optional[float] = MISSING_PRICE_AGE_S,
         venue_units: Any = None,
+        venue_refusal: Any = None,
     ) -> dict:
         """The Ammo cell: distance from target, and the signal it carries.
 
@@ -646,6 +693,9 @@ class TableCellsModel:
         the tooltip names which one it used. Recomputes the position from
         that count and the price whenever both are present. Falls back to
         the last known value and marks it stale when they are not.
+        ``venue_refusal`` is the bot's ``venue_units_refusal``: while it
+        carries a reason, the figure keeps the last venue reading and wears
+        ``VENUE_HELD_MARKER``.
         """
         self.calls.append([AMMO_START, stats_pv, holdings, cur_price, qrate])
         units, from_venue = ammo_units(holdings, venue_units)
@@ -674,6 +724,7 @@ class TableCellsModel:
             price_age_s,
             note,
             from_two_reads,
+            venue_refusal,
         )
 
     def _empty_cell(self, position_val: float, target_val: float) -> dict:
@@ -716,13 +767,16 @@ class TableCellsModel:
         price_age_s: Optional[float],
         note: str = "",
         from_two_reads: bool = False,
+        venue_refusal: Any = None,
     ) -> dict:
         """A live position: its distance from target and the engine's band.
 
         ``note`` and ``TWO_READS_TIP`` are appended after the stale and aged
         writers, so no branch drops either. ``from_two_reads`` reaches the
         tooltip alone and leaves ``ammo_text`` as the whole drawn figure, which
-        is the width this column is sized for.
+        is the width this column is sized for. A ``venue_refusal`` puts
+        ``VENUE_HELD_MARKER`` on the figure and ``venue_held_note`` in the
+        tooltip, and leaves the figure itself alone.
         """
         delta = target_delta(position_val, target_val)
         territory = target_territory(position_val, target_val)
@@ -747,6 +801,11 @@ class TableCellsModel:
             old_price = True
             self.calls.append([AMMO_AGED, price_age_s])
         tip = f"{tip}{note}"
+        held_note = venue_held_note(venue_refusal)
+        if held_note:
+            text = venue_held_figure(text, venue_refusal)
+            tip = f"{tip}{held_note}"
+            self.calls.append([AMMO_VENUE_HELD, venue_refusal_text(venue_refusal)])
         if from_two_reads:
             tip = f"{tip}{TWO_READS_TIP}"
             self.calls.append([AMMO_TWO_READS, TWO_READS_MARKER])

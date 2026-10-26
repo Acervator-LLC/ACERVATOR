@@ -133,6 +133,23 @@ new_cfg = SoundConfig(
 That path runs when the slider moves or a test button plays a sample, and at no
 other time.
 
+**The engine now drops its own clips.** `src/core/sound_engine.py`, in
+`SoundEngine.update_config`, takes the new configuration and clears the cache
+itself, so no caller reaches into the engine to do it. The handler on this page
+hands the configuration over and stops there. The same method also removes the
+directory the old clips were written to, which the page used to leave behind on
+every slider step.
+
+`src/core/sound_engine.py` — `SoundEngine.update_config`
+
+```python
+self._config = config
+self.cleanup()
+self._temp_dir = None
+self._available = False
+self._cache = {}
+```
+
 The parent section, [08-tabs.md](../08-tabs.md), carries the figure for each
 page and names every control on it.
 
@@ -1296,6 +1313,58 @@ def stored_accent(value: object) -> str:
     return asked if _ACCENT_HEX.match(asked) else THEME_ACCENT
 ```
 
+Both fallbacks now come from one declaration. The store declares the theme field
+and the accent field. The theme engine and the settings dialog surface read them
+rather than writing either value out again.
+
+`src/core/settings.py` — `AppSettings`, the one declaration
+
+```python
+    theme: str = VisualTheme.CYBERPUNK_DARK.value
+    accent_color: str = ""
+```
+
+`src/gui/theme_engine.py` — the accent sentinel, read from that field
+
+```python
+THEME_ACCENT = AppSettings().accent_color
+```
+
+`src/gui/main_tabs/settings_dialog_surface.py` — both row fallbacks
+
+```python
+THEME_DEFAULT = AppSettings().theme
+ACCENT_DEFAULT = AppSettings().accent_color
+```
+
+`src/gui/settings_dialog.py` — the theme row, in `_stored_rows`
+
+```python
+                (
+                    "theme",
+                    self._theme_combo.currentData,
+                    lambda value: self._show_data(self._theme_combo, value),
+                    THEME_DEFAULT,
+                ),
+```
+
+Neither value changed. The accent is empty and the theme is Cyberpunk Dark, as
+before. Moving the store's two fields to another value moved five surfaces
+together: the row table, the React model, the bridge payload, the launch
+resolution and the Qt dialog. The same move before the change left every one of
+those five where it was.
+
+The engine keeps a second theme name of its own, and that one answers a
+different question: which theme paints when a stored name is not a theme at all.
+It is taken from the engine's own Cyberpunk Dark tokens, so the name it falls
+back to is always a name the theme table carries. Both names read Cyberpunk Dark
+today.
+
+A store saved before this change keeps every value it holds. One saved with Neon
+Light and the accent `#ff8800` opened on Neon Light and that colour on all four
+surfaces that show them, and the contrast measure still refused the colour at 2.2
+to 1 against the Neon Light ground and painted that theme's own accent.
+
 Three hex digits or six, either case, surrounding spaces trimmed. Each value
 below was typed in and the accent button was then read off an offscreen render.
 
@@ -1998,6 +2067,23 @@ other time. Save reads no widget on this page and the schema declares no sound
 field, so nothing here survives the dialog closing. A checkbox cleared and the
 dialog saved comes back checked. Issue #423 carries it.
 
+**The engine now drops its own clips.** `src/core/sound_engine.py`, in
+`SoundEngine.update_config`, takes the new configuration and clears the cache
+itself, so no caller reaches into the engine to do it. The handler on this page
+hands the configuration over and stops there. The same method also removes the
+directory the old clips were written to, which the page used to leave behind on
+every slider step.
+
+`src/core/sound_engine.py` — `SoundEngine.update_config`
+
+```python
+self._config = config
+self.cleanup()
+self._temp_dir = None
+self._available = False
+self._cache = {}
+```
+
 `src/core/sound_engine.py` — `SoundConfig`, the ten fields and their defaults
 
 ```python
@@ -2122,6 +2208,29 @@ def play_sell(self) -> None:
     self.play("sell")
 ```
 
+**A filled order now plays its own clip.** `src/gui/main_window.py`, in
+`_on_trade_filled_sfx`, reads the fill's side and calls the buy helper on a
+filled buy and the sell helper on a filled sell. One function decides every
+clip a fill plays: `src/gui/main_tabs/main_window_surface.py`, in
+`trade_filled_sounds`. The engine still tests each clip's own switch, so a box
+cleared here keeps that clip silent while the rest of the fill still sounds.
+
+Nine places in the bot emit a fill. Four pass the fill's fields as keywords and
+five nest them under one `data` field. `main_window_surface.py`, in
+`fill_fields`, reads the fill at either level, so the manual scrum, the manual
+fold, the auto detonation, the manual tranche fold and the self destruct reach
+the sounds alongside the five that already did.
+
+`src/gui/main_tabs/main_window_surface.py` — the side decides the clip
+
+```python
+taken_side = (side or "").upper()
+if taken_side == BUY_SIDE:
+    played.append(BUY_SOUND)
+elif taken_side == SELL_SIDE:
+    played.append(SELL_SOUND)
+```
+
 The six Test buttons carry a part name of their own, and the page's click
 listener reports the plain button part alone, so a press on the React page
 reports nothing to the dialog. Those six are buttons, not settings, and the
@@ -2132,6 +2241,26 @@ switches beside them do not depend on them.
 ```javascript
 var BUTTON_PART = "button";
 var SOUND_BUTTON_PART = "sound-button";
+```
+
+**A press on the React page now reaches the dialog.** The page's click listener
+in `src/gui/react_settings_dialog.py`, in `HOST_SCRIPT`, recognises the sound
+button part and reports the sound the pressed button names.
+`SettingsDialogReact.run_action` routes that report to
+`SettingsDialog._test_sound`, which pushes the page's switches and plays the one
+clip. A name the page did not draw is refused and written to the log, because
+`SOUND_PRESS_NAMES` holds the six names `SOUND_TEST_BUTTONS` declares.
+
+`src/gui/react_settings_dialog.py` — the branch that reports a Test press
+
+```javascript
+if (part === "sound-button") {
+  console.log(
+    "acervator-act:" +
+      JSON.stringify({ sound: at.getAttribute("data-name") })
+  );
+  return;
+}
 ```
 
 ### Settings > SMS
@@ -2760,6 +2889,26 @@ One unreadable entry in the settings file cannot stop the dialog opening.
 
 `SettingsDialogReact` replaces `_setup_ui` alone, so the React build and the Qt
 build load and save the same way.
+
+**A stored number now loads on the React build.** `_StoredWriter` admits a
+stored figure against the control's own span, which it reads through
+`minimum` and `maximum`. The React build's `PageNumber` answers both off the
+control's spec, and `PageDecimal` answers `decimals` for a number box that
+keeps them. Without those answers every stored number on this build was
+refused: driven with a stored SFX Volume of 0.25, the slider opened at 70 and
+20 keys were marked refused, among them the volume, the twelve indicator
+weights and four message figures. The same run now opens the slider at 25 and
+marks none.
+
+`src/gui/react_settings_dialog.py` — the span a stored figure is admitted against
+
+```python
+def minimum(self) -> Any:
+    return self._span()[0]
+
+def maximum(self) -> Any:
+    return self._span()[1]
+```
 
 ### What each page restores now
 
@@ -4070,7 +4219,7 @@ reading. The row therefore waits, and this section records what it waits on.
 
 | | The Settings row | The wizard control |
 | --- | --- | --- |
-| Where | `src/gui/main_tabs/settings_dialog_surface.py:627` | `src/gui/bot_wizard.py:1590-1597` |
+| Where | `settings_dialog_surface` | `bot_wizard` |
 | Kind | checkbox | checkbox |
 | Text | `Profit Folding / Upward Distribution Active` | `Enable Profit Folding` |
 | Choices | on, off | on, off |
@@ -4087,14 +4236,14 @@ application setting, and all eight are the dialog or the declaration behind it.
 
 | Site | What it is |
 | ---- | ---------- |
-| `src/core/settings.py:79` | the field defaults for the group |
-| `src/core/settings.py:159` | the `AppSettings` field that declares the group |
-| `src/core/settings.py:187` | the manager docstring naming the group |
-| `src/gui/settings_dialog.py:1206` | the row the save and the load path both walk |
-| `src/gui/main_tabs/settings_dialog_surface.py:417` | the group in the save list |
-| `src/gui/main_tabs/settings_dialog_surface.py:449` | the group key |
-| `src/gui/main_tabs/settings_dialog_surface.py:2234` | the same six rows on the Qt-free surface |
-| `src/gui/main_tabs/settings_dialog_surface.py:2576` | the group read off the page |
+| `settings` | the field defaults for the group |
+| `settings` | the `AppSettings` field that declares the group |
+| `settings` | the manager docstring naming the group |
+| `settings_dialog` | the row the save and the load path both walk |
+| `settings_dialog_surface` | the group in the save list |
+| `settings_dialog_surface` | the group key |
+| `settings_dialog_surface` | the same six rows on the Qt-free surface |
+| `settings_dialog_surface` | the group read off the page |
 
 The other 33 name a bot's own field `profit_folding_active`, which is a different
 name and a different thing. That field is read seven times inside the trading
@@ -4145,7 +4294,7 @@ flowchart LR
 No page answers the folding page. The only branch that would is guarded behind
 `src/gui/bot_wizard.py, in is_grid`, and `is_grid()` returns `False`
 always. The Qt-free wizard surface states the same in a named constant,
-`UNREACHABLE_PAGES` at `src/gui/main_tabs/bot_wizard_surface.py:110`, and its
+`UNREACHABLE_PAGES` at `bot_wizard_surface`, and its
 view model reports the folding page unreachable.
 
 A second cut sits behind the first. `BotCreationWizard.get_bot_config` never
@@ -4240,8 +4389,8 @@ parameter and none takes one.
 | `src/trading/scrumming_bot.py, in _apply_fold_target_growth` | drains fold surplus into one target balance; no positions, no spread |
 | `src/trading/smart_wire.py, in distribute_fold_profit` | splits realised fold profit across wires to other bots by per-wire percent |
 | `src/trading/scrumming/wire_routing.py, in _spread_wire_usd_over_fold_queue` | adds wire income evenly to every standing fold tranche; the even split is fixed and has no alternative |
-| `src/trading/stack_math.py:304` `fold_ladder_prices` | places fold prices from `stack_spacing_mode` and decides no size |
-| `src/trading/profit_fold.py:14` `apply_profit_fold` | grows one target balance; its own docstring records that no module imports it |
+| `stack_math` `fold_ladder_prices` | places fold prices from `stack_spacing_mode` and decides no size |
+| `profit_fold` `apply_profit_fold` | grows one target balance; its own docstring records that no module imports it |
 
 The one mode-like selector near folding refuses this row's value.
 `src/trading/stack_math.py, in SPACING_MODES` holds `quadratic`,
@@ -4354,13 +4503,13 @@ positions or a count of them.
 
 | Where | What it does |
 | ----- | ------------ |
-| `src/trading/profit_fold.py:14` `apply_profit_fold` | grows one dollar target balance; its `target` parameter is annotated `float`, and its own docstring records that no module imports it |
+| `profit_fold` `apply_profit_fold` | grows one dollar target balance; its `target` parameter is annotated `float`, and its own docstring records that no module imports it |
 | `src/trading/scrumming_bot.py, in _apply_fold_target_growth` | drains fold surplus into one target balance; no positions, no set |
 | `src/trading/smart_wire.py, in distribute_fold_profit` | splits realised fold profit across wires to other bots by per-wire percent |
 | `src/trading/scrumming/wire_routing.py, in _spread_wire_usd_over_fold_queue` | adds wire income evenly to every standing fold tranche; the share is fixed at the dollars divided by the tranche count |
 | `src/trading/scrumming/fold_tranches.py, in _fold_eligible_tranches` | picks the tranches a fold may reach by price alone |
 | `src/trading/scrumming/fold_tranches.py, in _fold_discharge_order` | orders those tranches by `ref`, highest first |
-| `src/trading/stack_math.py:304` `fold_ladder_prices` | places fold prices and decides no size; its `levels` counts prices on a ladder |
+| `stack_math` `fold_ladder_prices` | places fold prices and decides no size; its `levels` counts prices on a ladder |
 
 The two paths that do decide which tranches a fold reaches were driven over
 three tranches at refs 120, 110 and 100. `_fold_discharge_order` returned them in
@@ -4542,7 +4691,7 @@ recent" is not the order the queue discharges in.
 of $50. The share is the dollars divided by the tranche count, it is fed by wire
 income rather than by a fold, and it reaches every standing tranche.
 
-`fold_ladder_prices` at `src/trading/stack_math.py:304` takes `levels`, which
+`fold_ladder_prices` at `stack_math` takes `levels`, which
 counts prices on a ladder. `fold_ladder_prices(100.0, 4)` returned four prices
 and decided no size and no position.
 
@@ -4563,7 +4712,7 @@ Each live fold path was asked for a count or a target by keyword.
 | `apply_profit_fold(..., target='x_buy')` | `TypeError`, a word compared against a number |
 
 The `target` parameter of `apply_profit_fold` is a dollar balance, not one of
-this group's three words, and `src/trading/profit_fold.py` records in its own
+this group's three words, and `profit_fold` records in its own
 module docstring that no module imports it.
 
 ### A five-key store opening on three rows
@@ -6762,7 +6911,7 @@ the removal.
 
 ### The orphaned target-growth module
 
-`src/trading/profit_fold.py` held one function and forty-six lines. Its own
+`profit_fold` held one function and forty-six lines. Its own
 module docstring recorded that no module imported it, and that was still true:
 four occurrences in the product, all four inside that file, three of them in the
 docstring and one on the definition line.
@@ -6789,25 +6938,6 @@ tree. The earlier text stays where it is.
 | "What the Profit Folding page holds now - One checkbox and nothing else." | It holds no checkbox, because the page is removed |
 | "The master switch is the last row on the page, and its own verdict was that it waits on the wizard's folding page." | Both pages are removed. The verdict is settled by removal, not by waiting |
 | "`SettingsManager._apply_dict` copies the whole `profit_folding` dict off the file, so a store written before the removal still carries its `mode` entry and still opens." | It copies the fields the record declares, and the folding group is no longer one. The store still opens |
-
-Three earlier citations name a ladder helper removed with the wizard's folding
-page, and nobody had answered them. They are answered here.
-
-| Earlier citation | What is there now |
-| ---------------- | ----------------- |
-| "`src/trading/stack_math.py:304` `fold_ladder_prices` - places fold prices from `stack_spacing_mode` and decides no size" | The fold half is removed. Its twin still places scrum prices |
-| "`src/trading/stack_math.py:304` `fold_ladder_prices` - places fold prices and decides no size; its `levels` counts prices on a ladder" | The same helper, named a second time in the count table. It is gone |
-| "`fold_ladder_prices(100.0, 4)` returned four prices and decided no size and no position." | That reading was taken before the helper was removed, and no call can be made now |
-
-Five earlier citations name the target-growth module this section removes.
-
-| Earlier citation | What is there now |
-| ---------------- | ----------------- |
-| "`src/trading/profit_fold.py:14` `apply_profit_fold` - grows one target balance" | The module is removed. The target grows through the tranche applier |
-| "`src/trading/profit_fold.py:14` `apply_profit_fold` - grows one dollar target balance; its `target` parameter is annotated `float`" | The same module, named a second time in the count table |
-| "`apply_profit_fold(..., fold_target_count=2)` - `TypeError`, unexpected keyword argument" | No call can be made. The refusal it recorded stands for the applier that replaced it |
-| "`apply_profit_fold(..., target='x_buy')` - `TypeError`, a word compared against a number" | The same, and the point it made is unchanged: a fold is bounded in dollars |
-| "`src/trading/profit_fold.py` records in its own module docstring that no module imports it." | The docstring went with the file. Nothing imported it, which is why it went |
 
 The glossary entry that named the removed module as the fold's entry point is
 answered in place, in
@@ -8493,5 +8623,133 @@ code. The earlier text stays where it is.
 | "The one spin box on the page, inside its own group. It opens at 2 and Save reads it no more than it reads the other two." | It still opens at 2, and the 2 is now the one declared figure rather than a figure typed into this page. Save reads it and stores it. |
 | The Settings-row table whose Lock duration row shows an opened-at of 2, and whose master box row above it shows an opened-at of clear | The opened-at column is the one declared figure for both rows: ticked for the master box, 2 for the lock box. The stored column is unchanged. |
 
+
+## 2026-10-23 - Eighteen citations on this page name their module
+
+Eighteen citations in this page's own prose named a line number. The code above
+each of those lines has moved, and the site each citation named has since been
+removed, so none of the eighteen can name a live symbol. Each now names its
+module, and the words beside it still name the subject. No sentence above this
+one changed.
+
+The fold-ladder helper and the target-growth module are already answered in
+[the orphaned target-growth module](#the-orphaned-target-growth-module). The two
+subjects below had no answer anywhere on the page, and these are it.
+
+### The stored-group reader sites
+
+| Earlier citation | What is there now |
+| ---------------- | ----------------- |
+| the eight sites under Every reader of the stored group, each named with a line number | No site is in the tree. The bare name `profit_folding` returns no hit in any of the three modules those rows name. Each row now names its module with no line number |
+| the Settings row and the wizard box above them, each named with a line number | Both pages are removed, which the rows on the removal above already state. Each now names its module |
+
+### The unreachable-page constant
+
+| Earlier citation | What is there now |
+| ---------------- | ----------------- |
+| the named constant on the Qt-free wizard surface, held at a line number | The constant is in no file under `src/`. That surface declares no page list, and the folding page the constant named is removed with the rest of the wizard's folding path |
+
+## 2026-10-24 - One declaration names each venue field and its default
+
+Adding a venue writes a record of eight fields. The field names and the field
+defaults were two separate lists matched by their position, and the two lists
+sat apart with other names between them. Inserting one field into one list
+alone moved every later default by one place, and nothing reported it.
+
+Driven on the real Add Exchange step with one field inserted ahead of the rest,
+the venue was added switched off, its hardware mode held an empty string, and
+its stored passphrase field held the word true. Nothing raised.
+
+`src/gui/main_tabs/settings_dialog_surface.py` — one row per field
+
+```python
+EXCHANGE_CONFIG_ROW: tuple[tuple[str, Any], ...] = (
+    ("exchange_id", EMPTY_TEXT),
+    ("display_name", EMPTY_TEXT),
+    (KEY_FIELD, EMPTY_TEXT),
+    (SIGNING_FIELD, EMPTY_TEXT),
+    (PHRASE_FIELD, EMPTY_TEXT),
+    ("enabled", True),
+    ("hardware_mode", False),
+    ("hw_volume_serial", EMPTY_TEXT),
+)
+```
+
+`src/gui/main_tabs/settings_dialog_surface.py, in add_exchange` builds the
+record from that one list, so each field carries its own default whatever order
+the list holds. The same insertion driven again left every field on its own
+default, and a venue added with no insertion is unchanged.
+
+**The four stored groups were already addressed by name.** Saving with the
+group list reversed writes exactly what saving in the declared order writes,
+measured on this page's own save path. The reading is shown able to report by a
+third arrangement whose groups are paired with the wrong rows.
+
+```
+declared order   ai_monitor, ta_indicator_weights, sound, message_channels
+reversed order   the same four keys hold the same rows
+mis-paired list  the AI rows land under the weights key, and it is seen
+```
+
+A stored settings file written before this change still loads. Sixteen stored
+rows across the four groups and the Username row each reached their own control,
+before and after, with the read-back identical.
+
+## 2026-10-25 - #665 - a stored choice outside its list says so on the control
+
+Settings outlive the lists they were chosen from. A word stored under
+`bot_visibility` that the Bot Visibility list no longer offers used to raise two
+different faults on the two builds. The Qt window raised a refusal naming the
+word. The running React window raised a missing-method fault instead, because
+the one reader both windows share asked the drop-down whether it takes typed
+text, and only the Qt drop-down answers that question.
+
+`src/gui/settings_dialog.py` — the reader asks whether the control can answer
+
+```python
+def _combo_takes_typed_text(combo: object) -> bool:
+    """Whether ``combo`` answers ``isEditable`` and reports it takes typed text.
+
+    The page-backed drop-down draws a fixed list and declares no such method,
+    so a control that cannot answer is read as taking no typed text.
+    """
+    asked = getattr(combo, "isEditable", None)
+    return bool(asked()) if callable(asked) else False
+```
+
+`src/gui/react_settings_dialog.py, in PageCombo` now answers the same question
+with False, because the page draws a fixed list. Both windows therefore take one
+route for a word the list does not hold, and the word on the control's refusal
+is the stored word.
+
+**The operator is told on the control.** A refused choice hangs a sentence on
+the drop-down itself, which both windows draw as the control's hover text. The
+sentence is declared once, in
+`src/gui/main_tabs/settings_dialog_surface.py, in refused_item_tooltip`, and
+names the stored key rather than a figure, because a list of words is no figure.
+
+```
+stored bot_visibility 'both'
+  Qt     box opens on 'orderbook'   hover text names bot_visibility
+  React  box opens on 'orderbook'   hover text names bot_visibility
+  both   LookupError: this list holds no row for both
+
+stored bot_visibility 'internal'
+  Qt     box opens on 'internal'    no hover text, no refusal
+  React  box opens on 'internal'    no hover text, no refusal
+```
+
+Save leaves the stored word alone while the box still holds what the refusal
+left in it, so the word on disk is not replaced by a choice the operator never
+made.
+
+The colour a refused number is drawn in does not reach a drop-down on the React
+window. `src/gui/web/settings_dialog.js, in controlProps` draws the hover text
+for every control and reads no style for one, so the sentence is the channel both
+windows share.
+
+A settings file written before this change still loads. Eighteen declared
+top-level fields read back with none differing, all five stored groups read back
+with their own field counts, and the out-of-list word survives on disk.
 
 Back to [the subsystem index](README.md).

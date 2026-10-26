@@ -475,7 +475,7 @@ ISOLATED_TABS = (SIM_TAB, PAPER_TAB)
 ```
 
 The Simulator draws its own strip in place of this one. `SimStatStrip` in
-`src/gui/simulator_tab/sim_stat_strip.py` mirrors these ten fields against sim
+`sim_stat_strip` mirrors these ten fields against sim
 balances.
 The Simulator rebuild removed this file; it is not in the tree.
 

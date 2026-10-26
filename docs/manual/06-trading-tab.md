@@ -100,6 +100,59 @@ already had.
 | The pupil | Narrows and widens on the same breath |
 | The scale beam | Swings once, then settles level |
 
+### How far the coil reaches, and which arcs draw behind the staff
+
+The coiled serpents are drawn at the splash screen's own size, not at an
+inspection size, so the coil has to clear the staff by enough to read as two
+snakes. It swings out from the centre line by a fixed share of the mark's
+radius, and each strand thickens and thins along its own length.
+
+`src/gui/main_tabs/splash_screen_surface.py` — the reach and the strand
+
+```python
+SERPENT_BOW = 0.220
+#: The thinnest and the widest half-thickness of one strand.
+#: SERPENT_HALF_MIN plus SERPENT_HALF_SWELL is twice STAFF_HALF_BOTTOM.
+SERPENT_HALF_MIN = 0.016
+SERPENT_HALF_SWELL = 0.046
+```
+
+At its widest a strand is twice as thick as the foot of the staff it wraps, so
+neither wire disappears into the staff's own channel. The widest figure is tied
+to the staff rather than typed on its own, so a change to the staff carries
+through to the serpents.
+
+Each serpent crosses the staff several times, and half of those arcs pass behind
+it. The generator sorts them into a behind set and a front set, gives the two
+sets opposite shading, and hands back the behind set first so the front arcs
+draw over it. A crossing therefore reads as a crossing rather than as one flat
+ribbon.
+
+`src/gui/main_tabs/splash_screen_surface.py` — the behind arcs are shaded apart
+
+```python
+            back = (turn % 2 == 0) == (phase > 0)
+            wraps = behind if back else infront
+            depth = -SERPENT_DEPTH_BIAS if back else SERPENT_DEPTH_BIAS
+            wraps.append((band, BLUE, SERPENT_ALPHA_SHARE, depth))
+```
+
+Read off the generator on the shipped tree: sixteen groups holding 1072
+triangles, four arc groups behind the staff and four in front, and three shade
+values across the whole component.
+
+| What was read | Figure |
+| ------------- | ------ |
+| Groups the generator returns | 16 |
+| Triangles in those groups | 1072 |
+| Arc groups behind the staff | 4, handed back first |
+| Arc groups in front of the staff | 4 |
+| Shade values present | -0.22, 0.0 and +0.22 |
+
+The browser build holds none of this geometry. It replays the triangle list the
+painter sends it, so one generator serves both builds and there is no second
+copy to fall out of step.
+
 ## Trading Tab
 
 Here you see the first subsystem we are going to cover and this will primarily be due to familiarizing the prospective investor or user with the core trading philosophy and strategies that drive Acervator. To begin, the platform runs locally on whichever hardware is selected. A single authorization phase requiring a purchased license key will be the only non-exchange communication the application will ever need. The user’s keys and secrets are stored locally and encrypted after API handshake verification passes which allows the chosen exchange to be initialized. At a later development stage, I have plans for dedicated hardware that uses a hardware key for quick boot into a given user’s account and also allows the platform to run in isolation under Linux.
@@ -610,6 +663,15 @@ money column answers 1492 px.
 `src/gui/main_window.py` still pins the window's own floor to 1400 by 900 by
 hand. 1400 px holds the row as it stands and would not hold a seventh slot.
 
+OVERTAKEN, and the paragraph above is kept as written. The window no longer
+pins that width by hand. `main_window.py, in window_min_w_px` answers the wider
+of `WINDOW_MIN_W_PX`, the window's own figure, and
+`header_strip_surface.window_min_w`, which is the one declaration of what the
+top row's slots need. Six cards answer 1400 px, the figure the window already
+held, and a seventh answers 1476 px, which is what Qt reports as the row's own
+minimum and 76 px past where the hand figure stopped. The height is
+`WINDOW_MIN_H_PX` and is unchanged at 900 px.
+
 **The margins the two newest columns are drawn from.** A column leaves 3 px either
 side of the rule between it and its neighbour, the rule itself is 12 px, the panel's
 own side margin is 6 px, and a counter card's side margin is 4 px.
@@ -1016,6 +1078,50 @@ it polled has stopped
 def _scout_has_stopped(scout: MarketPairsScout) -> bool:
     polled = scout.polled_exchanges()
     return bool(polled) and all(scout.is_stale(eid) for eid in polled)
+```
+
+**Functional.** A reading whose very first build fails also comes back on its
+own, and it needs no restart either. The first attempt is made the moment the
+dashboard asks for the reader. When the venue refuses, the Console carries the
+offline line and every later ask is skipped until the cooling-off window closes.
+One attempt is made per window. The attempt at the end of the first window is
+the one that answers once the venue is reachable again, and the first window is
+thirty seconds. Until then the strip draws a dash for each price, because a
+reader that has never answered holds nothing to hand on.
+
+`src/exchange/lazy_singleton.py` — the cooling-off is asked before every build
+
+```python
+                if self._fault.quiet():
+                    self._fault.note_skip()
+                    return cached
+                self._constructions += 1
+                instance = self._factory()
+```
+
+**Design intention.** A venue that never comes back must not be stormed. The
+window starts at thirty seconds, doubles after each failed attempt, and stops
+widening at five minutes. Each Console line names the next wait. Driven with the
+window shortened to one second, so the thirty did not have to be waited out, a
+reader whose first build failed answered at the end of its first window. The
+control is the same reader against a venue that never answers: it made one
+attempt per window over the same span, answered nothing, and was still holding
+nothing at the end.
+
+| The venue | Accessor calls | Build attempts | First answer |
+| --------- | -------------- | -------------- | ------------ |
+| refuses, then answers | 389 | 2 | at the end of the first window |
+| never answers | 387 | 3 | none |
+
+`src/exchange/lazy_singleton.py` — the three figures the windows are built from
+
+```python
+#: First cooling-off window, seconds.
+DEFAULT_BASE_COOLOFF_S = 30.0
+#: Ceiling the window doubles up to, seconds.
+DEFAULT_MAX_COOLOFF_S = 300.0
+#: Window multiplier per further failure.
+BACKOFF_FACTOR = 2.0
 ```
 
 #### A stopped feed and the crash box are two faults
@@ -2153,6 +2259,107 @@ function mountChildren(target, model) {
 }
 ```
 
+
+**Functional.** A sale fires its own refresh of the two priced figures on the
+row. The sale reduces the count the bot attributes to itself, which is what
+Current Position Value is priced from. It does not move the audited exchange
+count, which is what the Ammo cell measures the Target Delta from. One exchange
+read at the fill puts both figures on the same sale. The read costs one call per
+fill and the lot book is left to the periodic reconcile, because the callers of
+the sale take the filled units off the lot book only after it returns.
+
+`src/trading/scrumming/execution.py` — `ExecutionEngineMixin._execute_sell`
+
+```python
+await self.refresh_priced_figures_after_fill(reason=label.lower())
+```
+
+**Functional.** The refresh reuses the one exchange-reading helper the engine
+already holds. That helper reads the balance once, subtracts the sibling bots,
+and stores the figure as the audited count. The engine's own scrum, the
+distribution sale and a stack close all run through one sale function, so all
+three get the refresh from one site.
+
+`src/trading/scrumming/reconciliation.py` — `ReconciliationEngineMixin.refresh_priced_figures_after_fill`
+
+```python
+try:
+    _units, _why = await self._venue_claimable_units()
+except Exception as exc:
+    _units, _why = None, (
+        f"the venue read raised {type(exc).__name__}: {exc}"
+    )
+```
+
+**Functional.** An exchange that cannot be read leaves the last audited count
+exactly as it was and records why. The reason reaches the bot's status record,
+and the Ammo cell then draws the last reading with the word `(held)` beside it
+and names the reason in its tooltip. The figure is never blanked and never drawn
+as though it were current. The order and the trade are unaffected: the sale has
+already settled at the exchange, and the refresh cannot refuse it.
+
+`src/trading/bot_container.py` — the status record's refusal field
+
+```python
+"venue_units_refusal": str(
+    getattr(self, "_venue_units_refusal", "") or ""
+),
+```
+
+**Functional.** Both bot tables read one definition of the mark, so one surface
+cannot carry it while the other does not. The Qt table and the React table each
+compose their own Ammo cell, and both ask the shared cell surface whether a
+reading is held.
+
+`src/gui/main_tabs/table_cells_surface.py` — `venue_held_figure`
+
+```python
+def venue_held_figure(text: str, refusal: Any) -> str:
+    if not venue_refusal_text(refusal):
+        return text
+    return MARKED_FIGURE_FORMAT.format(text=text, marker=VENUE_HELD_MARKER)
+```
+
+**Functional.** The React table asks the bridge again once an answer has
+landed. It still collapses two requests that carry the same question while the
+first is in flight. Before this, the first answer to one question was drawn for
+the life of the page, so a sale's figures could not reach that table at all.
+The table now follows the exchange screen's own pull-rate clock, which redraws
+the screen and remounts the table.
+
+`src/gui/web/bot_status_table.js` — `clearAsked`
+
+```javascript
+function clearAsked(key) {
+  if (asked !== null && asked.key === key) {
+    asked = null;
+  }
+}
+```
+
+The path a sale takes to both tables:
+
+```mermaid
+flowchart TD
+    sale["_execute_sell: the exchange reports a fill"]
+    held["_current_holdings falls by the filled units"]
+    read["refresh_priced_figures_after_fill: one balance read"]
+    audited["_audited_venue_units takes the new reading"]
+    mark["_venue_units_refusal records a read that refused"]
+    status["bot_container: the status record"]
+    qt["Qt table: _write_row, every two seconds"]
+    web["React table: loadTable, on the screen's pull rate"]
+    sale --> held
+    sale --> read
+    read --> audited
+    read --> mark
+    held --> status
+    audited --> status
+    mark --> status
+    status --> qt
+    status --> web
+```
+
 #### The command bar
 
 **Functional.** Start, Pause, Stop, Restart and Delete all act on one bot. Two
@@ -2598,6 +2805,38 @@ the exchange answers and warns on the log when it never does. The same figure
 reaches the fold tranches through `_last_sell_filled_units`, which
 `src/trading/scrumming/tick_phases.py` reads on both the scrum path and the
 distribute path.
+
+**When the exchange reports nothing sold.** A limit order resting on the book
+reports a filled count of zero until it trades, and the re-read waits six tenths
+of a second. A sale the exchange has not reported now takes no units off the
+position and queues no fold tranche. The bot asks the exchange for its balance
+again, the activity log says the sale was sent and nothing was reported, and the
+open-order check refuses a second sell while the first one is still there.
+
+```python
+# src/trading/scrumming/execution.py, in _settled_fill
+        est_amt = amt
+
+# src/trading/scrumming/execution.py, in _execute_sell
+            if filled_units <= 0:
+```
+
+**The same rule on the three other sale paths.** The Fire button's rebalance and
+the detonation read the exchange's own filled count and treat a reported zero as
+zero, so neither takes units off the lot book on a sale the exchange has not
+reported. The self-destruct sells the whole position and empties the lot book;
+whatever the exchange did not sell goes back as one lot at the fill price, so the
+book never falls below what the exchange holds, and the completion line on the
+activity log names those units.
+
+```python
+# src/trading/scrumming/execution.py, in _execute_detonation
+        _filled_raw = getattr(order, "filled", None)
+
+# src/trading/scrumming_bot.py, in self_destruct
+        if self._current_holdings > 0:
+            self._main_lots.append(
+```
 
 Fold - To buy an amount for an investment position that allows it to return to its initial price level. This also drives Compounding Growth based on Local Volatility and is restricted by the Maximum Growth Per Cycle setting which has been set to a conservative 1% globally for Acervator’s live test and development run.
 
@@ -3642,6 +3881,170 @@ The choice also reaches two rows that are counted in candles rather than in minu
 The Soft CB Cooldown and the Extractor's watch-list refresh both scale with this
 pick, so changing the chart changes how long those two last without either figure
 moving.
+
+**When a venue drops the pick, the row says so.** No venue carries every chart.
+Change the venue after picking a chart, or open Bot Settings on a bot whose saved
+chart its venue stopped carrying, and the list is rebuilt without that chart. The
+box then holds the hourly chart, or the first one on the list. One amber line
+under the box names the venue, the chart that was picked, and the chart the box
+holds instead.
+
+`src/exchange/timeframes.py, in unserved_timeframe_notice`
+
+```python
+UNSERVED_TIMEFRAME_FORMAT = (
+    "{exchange} does not serve the {chosen} candle. This picker now shows {used}."
+)
+```
+
+Driven on the wizard page and on all three Bot Settings dialogs, with the sockets
+refused and no venue contacted:
+
+```
+picked   venue        box holds   the line under the box
+4h       coinbase     1h          coinbase does not serve the 4h candle. This picker now shows 1h.
+2h       coinbase     2h          nothing, and the row is not drawn
+4h       notavenue    4h          nothing, and the row is not drawn
+```
+
+The middle row is the control. A chart the venue does carry is kept and nothing is
+said, so the line is reading the venue's own list and not firing on every open. The
+last row is the second control. A venue the table does not list is read as carrying
+every chart, so a venue that names nothing has nothing refused.
+
+The line is drawn in one place for every screen that holds a chart picker, so the
+wording cannot drift between them.
+
+```
+src/gui/bot_wizard.py, in set_exchange_id
+src/gui/live_settings/settings_tab.py, in _create_settings_tab
+src/gui/paper/paper_settings_tab.py, in _create_settings_tab
+src/gui/simulator/sim_settings_tab.py, in _create_settings_tab
+```
+
+**What is still silent, and it is not this row.** The line reports to a screen he
+opens. A bot already running on a chart its venue does not carry asks for that
+chart on every tick, reads nothing back, and takes no indicator reading from the
+answer. Nothing is written to its log and nothing is drawn on its card. Where that
+warning belongs on a running bot is an open question for the author.
+
+**The bot's own chart now changes with it.** The amber line above reports a
+picker. The bot kept the chart the venue does not carry and went on asking for
+it. A bot built or restored on such a chart now has its own stored chart
+replaced by the longest shorter chart that venue does carry, and runs on that.
+
+`src/exchange/timeframes.py, in snapped_timeframe`
+
+```python
+below = ALL_TIMEFRAMES[: ALL_TIMEFRAMES.index(chosen)]
+for shorter in reversed(below):
+    if shorter in served:
+        return shorter
+return ""
+```
+
+The replacement happens once, where the bot's settings are built, so every
+reader of the setting sees the same chart.
+
+`src/trading/container/config.py, in BotConfig._snap_ta_timeframe`
+
+```python
+unserved = self.ta_timeframe
+self.ta_timeframe = shorter
+self.ta_timeframe_unserved = unserved
+```
+
+Driven on a built bot with the sockets refused and no venue contacted, reading
+the chart the bot asks for rather than the chart a box displays:
+
+```
+stored   venue       bot runs on   bot asks the venue for
+4h       coinbase    2h            2h
+2h       coinbase    2h            2h
+4h       notavenue   4h            4h
+```
+
+The middle row is the control. A chart the venue does carry is left alone, so
+the replacement is reading the venue's own list. The last row is the second
+control. A venue the table does not list is read as carrying every chart, so a
+venue that names nothing has nothing replaced.
+
+**Every venue and every chart, driven as a stored setting.** The table holds 19
+venues and the application offers 11 charts, which is 209 pairs. Twenty-six of
+those pairs are a chart the venue does not carry, and all 26 are replaced.
+
+```
+bitfinex     2h->1h
+cryptocom    2h->1h
+coinbase     4h->2h   12h->6h   1w->1d
+gateio       6h->4h   12h->4h
+gemini       2h->1h   4h->1h    12h->6h   1w->1d
+huobi        2h->1h   6h->4h    12h->4h
+kraken       2h->1h   6h->4h    12h->4h
+mexc         2h->1h   6h->4h    12h->4h
+```
+
+The two Coinbase aliases carry the same three rows as Coinbase itself.
+
+**A chart with nothing shorter on the venue's list.** No chart is ever replaced
+by a longer one. Where the venue carries nothing shorter, the stored chart is
+left exactly as it is and the bot is not refused. Measured across all 209 pairs,
+that case arises **0** times, because every one of the 19 venues carries the
+one-minute chart, the shortest the application offers.
+
+**The warning and the log line.** One amber line under the box names the venue,
+the chart that was dropped, and the chart the bot runs on instead. It is drawn
+on the live, Paper and Simulator Bot Settings dialogs and appended to the box's
+tool tip on each.
+
+`src/exchange/timeframes.py, in snapped_timeframe_notice`
+
+```python
+SNAPPED_TIMEFRAME_FORMAT = (
+    "{exchange} does not serve the {chosen} candle. This bot operates on "
+    "{used} instead, as a forced condition."
+)
+```
+
+The same replacement writes one warning line to the console log, read back out
+of the file:
+
+```
+2026-10-24 [WARNING] coinbase does not serve the 4h candle; ta_timeframe forced to 2h on AAA/BBB
+```
+
+Driven on the same run, a bot on a chart Coinbase does carry wrote **0** such
+lines and a bot on a venue the table does not list wrote **0**, so the line
+follows the venue's list and not every start-up.
+
+**Picking a chart yourself clears the line.** A chart chosen in the dialog is
+the operator's own, so the forced-condition line stops being true. Choosing one
+clears the recorded dropped chart in the same press, and the line is gone the
+next time the dialog opens.
+
+`src/gui/live_settings/settings_tab.py, in SettingsTabMixin._ta_timeframe_picked`
+
+```python
+self._mark_changed("ta_timeframe", timeframe)
+self._mark_changed("ta_timeframe_unserved", "")
+```
+
+**All three wizards now say it too.** The Paper wizard and the Simulator wizard
+rebuilt their chart list from the venue and said nothing. All three wizard pages
+and all three Bot Settings dialogs now draw a line.
+
+```
+src/gui/bot_wizard.py, in set_exchange_id
+src/gui/paper/paper_bot_wizard.py, in set_exchange_id
+src/gui/simulator/sim_bot_wizard.py, in set_exchange_id
+src/gui/live_settings/settings_tab.py, in _create_settings_tab
+src/gui/paper/paper_settings_tab.py, in _create_settings_tab
+src/gui/simulator/sim_settings_tab.py, in _create_settings_tab
+```
+
+**What a bot restored on a carried chart looks like.** Fifty-nine settings
+before, sixty after, every one of the fifty-nine identical to the byte. The one
+setting added is the record of a dropped chart, and it is empty.
 
 Target Balance - This is the intended starting and locked value for the investment position that the Scrumming Bot is controlling.
 
@@ -8476,3 +8879,73 @@ place.
 | the wizard's stored default | `src/gui/bot_wizard.py, in _show_stored_target` |
 | the Finish refusal | `src/gui/bot_wizard.py, in TradingParamsPage.isComplete` |
 | the pair list's volatility | `src/gui/main_tabs/bot_wizard_surface.py, in bag_number` |
+
+### Where the wizard's phantom defaults come from
+
+Two boxes on the wizard's phantom page open on a figure nobody typed: the tick
+box that turns phantom bots on, and the lock duration beside it. Each of those
+figures is now declared in one place, and every surface that draws the box reads
+that one place.
+
+`src/core/settings.py` — the two declarations every wizard reads
+
+```python
+#: The phantom tick box every new bot opens with.
+DEFAULT_ENABLE_PHANTOMS = True
+#: Candles a higher-timeframe lock holds an opposing trade back for.
+DEFAULT_LOCK_CANDLE_COUNT = 2
+```
+
+The readers are the Settings page, the Live wizard, the Paper wizard, the
+Simulator wizard, the shell wizard model, and the running-bot phantom page on
+all three data sources. The bot itself and the restore path read the tick box
+too, so a saved bot with no stored answer starts the same way a new one does.
+
+A figure you have set always wins. A stored figure in Settings beats the
+declaration, and a saved bot's own record beats both, so a bot created before
+this change keeps the figure it was created with.
+
+Before this, the tick box had its answer typed in nine places and four of them
+said off while five said on, and the lock figure was typed in seven places that
+happened to agree. Nothing compared any of them. Moving the one declaration to
+off cleared all four wizard surfaces and the Settings page together; moving the
+lock figure to seven moved fourteen readings across eight screens at once. Both
+were put back to the values the screens have always shown.
+
+Counted on the shipped tree, as files that name the declaration besides the file
+that declares it:
+
+| Box | Declared value | Files reading it | Places it used to be typed |
+| --- | -------------- | ---------------- | -------------------------- |
+| Enable Phantom Bots | on | 8 | 9, four of them disagreeing |
+| Candles to lock | 2 | 10 | 7, all agreeing by luck |
+
+## 2026-10-25 - #665 - the lock figure reaches a new bot on all three builds
+
+The table above records that the lock figure is no argument of the bot's own
+constructor. That is no longer true of any of the three builds.
+
+On the live build the figure travels as a keyword argument, because it belongs
+to the bot's timeframe coordinator rather than to the bot's configuration.
+
+`src/trading/container/config.py, in phantom_init_kwargs` passes it, and
+`src/trading/scrumming_bot.py, in __init__` hands it to the coordinator clamped
+at 1. An absent figure is left out, which keeps the coordinator's own declared
+count.
+
+On the Paper Trader and the Simulator the figure travels in the saved record,
+because a bot on those builds reads its lock holder out of that record. The two
+record builders are `src/paper/fleet_source.py, in wizard_record` and
+`src/simulator/fleet_source.py, in wizard_record`.
+
+Driven on each build, with the wizard box set to 7, left on the declared 2, and
+with no figure sent at all:
+
+```
+Live       7 -> coordinator 7     2 -> coordinator 2     none -> coordinator 2
+Paper      7 -> tab box 7         2 -> tab box 2         none -> tab box 2
+Simulator  7 -> tab box 7         2 -> tab box 2         none -> tab box 2
+```
+
+Nothing creates a higher-timeframe lock yet, so the figure still sizes a lock
+that is never held. Row 222 of issue #665 carries that half.

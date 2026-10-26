@@ -78,7 +78,7 @@ OVERTAKEN, quoted whole:
 > mean nothing more than a tree carrying no backup tag."
 
 ```python
-def test_src_init_holds_no_version_literal() -> None: ...       # tests/test_version_resolution.py
+def test_src_init_holds_no_version_literal() -> None: ...       # test_version_resolution
 def test_a_backup_tag_never_becomes_the_version(tmp_path) -> None: ...
 def test_the_unguarded_form_would_adopt_a_backup_tag(tmp_path) -> None: ...
 ```
@@ -168,7 +168,7 @@ OVERTAKEN, quoted whole:
 > "One check asserts every other shape carries that `+`."
 
 ```python
-def test_only_an_exact_clean_tag_reports_a_release_number(described: str) -> None: ...  # tests/test_version_resolution.py
+def test_only_an_exact_clean_tag_reports_a_release_number(described: str) -> None: ...  # test_version_resolution
 ```
 
 True today: no check asserts it. The file named above is not in the tree. No
@@ -324,7 +324,7 @@ OVERTAKEN, quoted whole:
 > taken away."
 
 ```python
-def test_a_frozen_bundle_prefers_the_baked_value_over_a_repository() -> None: ...   # tests/test_version_resolution.py
+def test_a_frozen_bundle_prefers_the_baked_value_over_a_repository() -> None: ...   # test_version_resolution
 def test_a_baked_tree_keeps_its_version_after_git_is_removed() -> None: ...
 ```
 
@@ -366,6 +366,125 @@ def datas_candidates(project_root: str, variant: str) -> list[tuple[str, str]]: 
 
 `build_graceful_datas` prints and skips a source folder that is not on disk. A
 clone that never installed the shell therefore builds with no Electron runtime.
+
+### No compiled Python folders reach a bundle
+
+Python leaves a `__pycache__` folder beside every package it has imported. A
+build copies the whole `src` folder into the bundle, so those folders were
+copied with it. Measured on this tree, the source folder holds 19 of them and
+166 compiled files.
+
+`tools/spec_common.py, in files_outside_cache_dirs` expands a source folder one
+file at a time and leaves out every compiled folder and every loose compiled
+file. `build_graceful_datas` calls it for each source folder that is a folder,
+so the list the spec hands the packager names no compiled file.
+
+```python
+CACHE_DIRNAME = "__pycache__"                   # tools/spec_common.py
+COMPILED_SUFFIXES: tuple[str, ...] = (".pyc", ".pyo")
+def files_outside_cache_dirs(src_path: str, dest_path: str) -> list[tuple[str, str]]: ...
+```
+
+| what a build copies | before | after |
+| --- | --- | --- |
+| files in a React build | 1,304 | 1,138 |
+| files in a Qt build | 1,228 | 1,062 |
+| compiled folders in the bundle | 19 | 0 |
+| compiled files in the bundle | 166 | 0 |
+
+Every other file is unchanged. The two file lists were compared whole, and the
+new one holds exactly the old one less its compiled files.
+
+### Reachability decides which source modules a bundle carries
+
+A build used to force every module under the source folder into the bundle,
+reached or not. It now forces in only the modules the entry point can import,
+and leaves the source file of every other module out of the copied list.
+
+A module counts as reachable when three readings join. The first is the import
+walk from the entry point, following every import statement, at module level and
+inside a function. The second adds each parent package of anything that walk
+found. The third adds every module under a prefix the program joins a name onto
+before asking Python for the module by that name, because no import statement
+names those.
+
+```python
+ENTRY_SCRIPT = "main.py"                        # tools/spec_common.py
+DYNAMIC_IMPORT_PREFIXES: tuple[str, ...] = (
+    "src.gui.main_tabs.", "src.gui.paper.", "src.gui.simulator.",
+)
+def reachable_src_modules(project_root: str) -> frozenset[str]: ...
+def reachable_only(module_names: list[str], project_root: str) -> list[str]: ...
+def unreachable_src_files(project_root: str) -> frozenset[str]: ...
+def files_outside_cache_dirs(
+    src_path: str, dest_path: str, left_out: frozenset[str] = frozenset()
+) -> list[tuple[str, str]]: ...
+```
+
+The folder walker shown in the section above now takes a third argument, and
+the signature in this block is the current one. `build_graceful_datas` reads
+the paths once and passes them to every folder it expands.
+
+Measured on this tree, the source folder holds 497 modules, 468 of them
+reachable and 29 not. Among the 29 are the launcher the entry point refuses to
+use, the two React strips no window builds, and the chart module whose only
+reader is the manual builder.
+
+| what a build carries | before | after |
+| --- | --- | --- |
+| files in a React build | 1,138 | 1,109 |
+| files in a Qt build | 1,062 | 1,033 |
+| source modules forced in | 497 | 468 |
+
+Every other file is unchanged. The two file lists were compared whole, and the
+new one holds exactly the old one less those 29 source files, with nothing added.
+
+The reading can miss. A module named from a value read while the program runs, a
+module that resolves only because a sibling touched it, and a new by-name import
+under a prefix nobody adds here would each read as unreachable. A miss would cost
+an import error at the moment the operator opens the screen that needs the
+module.
+
+One thing keeps a miss out of the operator's way. The module list is subtracted
+from and never replaced, so the packager's own import walk still runs and still
+pulls in whatever it reaches. A name dropped here that something imports stays in
+the bundle.
+
+### No mark in the tree says a screen is unfinished
+
+A build cannot hold an unfinished screen back, because nothing in the tree
+declares that a screen is unfinished. Measured over the source folder: no
+completeness field per screen, and no marker word. The 35 unwritten base-class
+methods are a different thing, and `src/core/feature_telemetry.py` reports a
+feature nothing has called only after the operator has used the application.
+
+In development.
+
+### The startup cleanup stays inside the program's own code
+
+`main.py` runs a cleanup before anything else starts. It walks the folders
+`PROGRAM_CODE_DIRS` names, which is the source folder alone, plus the program
+root's own compiled folder. It never walks the program root itself, so a build
+folder, a node package folder or a log folder beside the entry point is never
+read.
+
+```python
+PROGRAM_CODE_DIRS = ("src",)                    # main.py
+def _cache_dirs(root, code_dirs): ...
+def _sweep_pycache(root, code_dirs): ...
+```
+
+Driven over a throwaway folder shaped like the repository root, whose build
+folder held two bundles carrying four compiled folders between them, the
+cleanup touched five files. All five sit under the source folder or the root's
+own compiled folder, and none sits inside the build folder. The same cleanup
+with no folder limit touched twelve files, four of them inside the build folder.
+
+The cleanup rebuilds a compiled file that records only a clock reading. Driven
+over a copy of the shipped React bundle's own source folder, the first launch
+rebuilt 139 files in 1.192 seconds, and every launch after kept them in 0.060
+seconds. The same folder with its compiled files left out reads 0.002 seconds on
+every launch, which is what a bundle built by the spec above now gives.
 
 ### Which outside packages a bundle carries
 
@@ -534,9 +653,9 @@ OVERTAKEN, quoted whole:
 > assertion runs."
 
 ```
-tests/test_specs_parity.py
-tests/test_version_resolution.py
-tests/test_build_variants_and_version_reach.py
+test_specs_parity
+test_version_resolution
+test_build_variants_and_version_reach
 ```
 
 > "A commit landing between those two moments changes the distance term, and the
@@ -580,7 +699,7 @@ OVERTAKEN, quoted whole:
 > nothing and asserts the gate calls it a failure."
 
 ```python
-def test_any_skip_flag_refuses_to_declare_ready(...) -> None: ...   # tests/test_check_release_readiness.py
+def test_any_skip_flag_refuses_to_declare_ready(...) -> None: ...   # test_check_release_readiness
 def test_green_pytest_with_zero_tests_is_a_failure(...) -> None: ...
 ```
 
@@ -685,6 +804,34 @@ dev_harness/hooks/archetype_gate.py, in the --pre mode
     a write that adds a high or critical finding is denied
     a write that adds no high or critical finding is allowed
 ```
+
+### The two build recipes reach the coding archetype
+
+One sentence above is overtaken a second time. Quoted whole:
+
+> A file of any other type is named in the log and counted as unowned,
+> because no archetype reads that type.
+
+A build recipe is Python, and the packager runs it to make a build. The coding
+archetype reads a recipe as Python and ignores the names the packager binds for
+it. Both routers send a recipe to that archetype. The tree holds two recipes,
+and they decide what a build ships.
+
+```
+Acervator_win.spec          coding archetype, judged, a red verdict blocks the merge
+Acervator_mac.spec          coding archetype, judged, a red verdict blocks the merge
+```
+
+The gate that runs on every save routes the same type, so a unit editing a
+recipe reads a verdict before the branch.
+
+```
+dev_harness/hooks/archetype_gate.py, in _pick_archetypes
+    .spec    the coding archetype, the module a .py file already gets
+```
+
+Measured on this tree: the coding archetype reads each recipe in 4.9 seconds,
+against the 180 second limit the gate gives one archetype run.
 
 ### What a green result means
 

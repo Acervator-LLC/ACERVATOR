@@ -13,7 +13,7 @@
 #                  libraries from node_modules, so `npm ci` runs first. Runs when
 #                  `code` is true.
 #   * archetypes — runs EVERY archetype that owns each changed file: coding for
-#                  .py, .sh/.bash/.zsh and .yml/.yaml, gui for
+#                  .py, .sh/.bash/.zsh, .yml/.yaml and .spec, gui for
 #                  .js/.mjs/.cjs/.css/.html, docs for .md. A .py file under
 #                  src/gui/ is owned twice — it is Python and it is a PySide6
 #                  screen — so it is read by the coding archetype AND the GUI
@@ -311,6 +311,9 @@ jobs:
               *.py)                          modules=coding_archetype ;;
               *.sh|*.bash|*.zsh)             modules=coding_archetype ;;
               *.yml|*.yaml)                  modules=coding_archetype ;;
+              # A PyInstaller spec is Python that PyInstaller execs, and
+              # Acervator_win.spec and Acervator_mac.spec decide what ships.
+              *.spec)                        modules=coding_archetype ;;
               *.js|*.mjs|*.cjs|*.css|*.html) modules=gui_archetype ;;
               # docs_archetype still runs and still prints every finding; a
               # markdown verdict is reported and never reaches `failed`.

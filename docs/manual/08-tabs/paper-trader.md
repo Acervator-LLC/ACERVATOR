@@ -10,7 +10,7 @@ describes what draws there today.
 The tab drew three lines: its name, one sentence saying it was not
 built, and the issue that owned it. It read no bot, no price and no trade.
 
-`src/gui/main_tabs/paper_trader_tab_surface.py` — the empty state it carried
+`paper_trader_tab_surface` — the empty state it carried
 
 ```python
 HEADING = "Paper Trader"
@@ -19,6 +19,9 @@ BUILT = False
 STATE_TEXT = "This tab is not built."
 ISSUE_TEXT = f"Issue #{ISSUE} carries the build-out."
 ```
+
+The module `paper_trader_tab_surface` is gone, and the empty state above went
+with it. No module on disk holds `BUILT` or `STATE_TEXT` for this tab.
 
 Two frontends draw that one view model. `EmptyTabsMixin` in
 `src/gui/main_tabs/empty_tabs.py` builds the Qt tab, and
@@ -81,10 +84,10 @@ Issues #422 and #426 both folded into issue #19, which built the tab.
 ## The screen as it stands now
 
 The tab is built. It sits second on the bar and carries the Trading tab's panes
-over the live exchange feed. `src/gui/paper_trader_tab.py` draws them in Qt and
+over the live exchange feed. `PaperTraderTabQt` draws them in Qt and
 `src/gui/web/paper_trader_tab.js` draws them in React, from one view model.
 
-`src/gui/main_tabs/paper_trader_tab_surface.py` — the fields both hosts read
+`paper_trader_tab_surface` — the fields both hosts read
 
 ```python
 DECLARED_FIELDS = (
@@ -107,12 +110,17 @@ DECLARED_FIELDS = (
 )
 ```
 
+The module `paper_trader_tab_surface` is gone, and no module on disk holds
+`DECLARED_FIELDS` for this tab.
+`src/gui/paper/paper_trading_tab_surface.py, in view_model` answers the tab
+today.
+
 The left pane holds the Privacy Mode button, the market selector, the two button
 rows and the bot list. The bot list uses the Trading tab's own columns. The right
 pane holds the Indicator Voting Panel, computed from the live window. An empty
 selector draws the empty state and invents no reading.
 
-`src/gui/main_tabs/paper_trader_tab_surface.py` — the empty state
+`paper_trader_tab_surface` — the empty state
 
 ```python
 def indicator_payload(
@@ -130,13 +138,17 @@ def indicator_payload(
     return ivp.build_payload(model)
 ```
 
+The module `paper_trader_tab_surface` is gone, and no module on disk holds
+`indicator_payload` for this tab.
+`src/gui/paper/paper_trading_tab_surface.py, in ivp_feed` reads the panel today.
+
 ## The two presses
 
 Import Live Fleet reads the stored bot record and lists what it finds. Start
 Paper Run opens the run and begins ticking. The same button then reads Stop
 Paper Run and ends it, leaving the balances and the trades on screen.
 
-`src/gui/main_tabs/paper_trader_tab_surface.py` — the second row's two faces
+`paper_trader_tab_surface` — the second row's two faces
 
 ```python
 {
@@ -149,6 +161,10 @@ Paper Run and ends it, leaving the balances and the trades on screen.
     ),
 }
 ```
+
+The module `paper_trader_tab_surface` is gone, and no module on disk holds
+`DATA_POOL_ROW`. `src/gui/paper/paper_trading_tab_surface.py, in run_buttons`
+carries the row's two faces today.
 
 ## Downstream only
 
@@ -181,6 +197,41 @@ summary = VotingEngine().compute_all(window, bot.ta_timeframe, symbol=bot.symbol
 context = tape_context(bot, balance, window, reading, summary)
 armed = latch(context)
 ```
+
+### The gate row names the override that replaced a refusal
+
+A tick's gate row now says which refusals an override lifted, one entry per
+refusal, per side. A row that passed outright and a row an override passed used
+to read the same: both showed armed with an empty refusal list. They read apart
+now, and the refusal's own text is kept beside the override's name.
+
+`src/paper/paper_log.py` — the entry written on the Paper Trader's gate row
+
+```python
+def scrum_fixture(context: Any, overrides_applied: Sequence[str] = ()) -> dict:
+    """The scrum half of a gate row, with each refusal an override replaced
+    under ``OVERRIDES_APPLIED_KEY``."""
+```
+
+The Paper Trader reads the same record the Simulator reads, and the key is
+spelled once for all three data sources. Live's gate log, the Paper Trader's gate
+row and the Simulator's gate event therefore record an override the same way.
+Which gate each override covers, and the sentence that says what the overrides
+are for, are on the indicators page under
+[The two overrides](../07-indicators.md).
+
+Two overrides exist and they cover six of the twenty-four gates the two shipped
+chains hold. Both chains were built and each gate asked which override covers
+it. The control is the same ask answering both ways in one run: it named an
+override for these six and nothing for the other eighteen.
+
+| Override | Side | Gates it covers |
+| -------- | ---- | --------------- |
+| `ripe_harvest_override` | scrum | midline_scrum, ta_bullish, target_fires, trend_hold |
+| `deep_fold_override` | fold | midline_fold, ta_bearish |
+
+Nothing about which trades fire changed. The armed verdict and the refusal list
+are untouched, and the row simply carries one more field.
 
 ## The fake balance
 
@@ -258,11 +309,14 @@ FIGURE_LABELS = (
 The Qt window and the React page print one line from one view model, so the two
 hosts cannot report different money.
 
-`src/gui/main_tabs/paper_trader_tab_surface.py` — the one line
+`paper_trader_tab_surface` — the one line
 
 ```python
 "text": LEDGER_SEPARATOR.join(f"{one['label']} {one['text']}" for one in cells),
 ```
+
+The module `paper_trader_tab_surface` is gone, and no module on disk holds
+`LEDGER_SEPARATOR`.
 
 ## The Paper Trader log
 
@@ -323,7 +377,7 @@ A run ticks on the wall clock and asks the feed for one bot per fire, so a fleet
 of many bots never blocks the window on a single pass. One bar is shared across
 the open bots.
 
-`src/gui/paper_trader_tab.py` — the round robin
+`PaperTraderTabQt` — the round robin
 
 ```python
 def advance_once(self) -> list:
@@ -361,7 +415,7 @@ Trader placeholder, which drew its name, one sentence saying it was not built,
 and the issue that owned it. The section under this one holds what the tab is
 now.
 
-`src/gui/main_tabs/paper_trader_tab_surface.py` — the empty state it carried
+`paper_trader_tab_surface` — the empty state it carried
 
 ```python
 HEADING = "Paper Trader"
@@ -370,6 +424,9 @@ BUILT = False
 STATE_TEXT = "This tab is not built."
 ISSUE_TEXT = f"Issue #{ISSUE} carries the build-out."
 ```
+
+The module `paper_trader_tab_surface` is gone, and the empty state above went
+with it.
 
 The Qt tab and the `src/gui/web/paper_trader_tab.js` panel both draw that one
 view model, so neither can drift from the other.
@@ -398,7 +455,7 @@ the Privacy Mode row, the market selector, the two button rows, the bot list,
 the Indicator Voting Panel, the Live Feed pane, the Fake Balance table and the
 Paper Run table. The Qt window and the React page draw one view model.
 
-`src/gui/main_tabs/paper_trader_tab_surface.py` — what the tab answers
+`paper_trader_tab_surface` — what the tab answers
 
 ```python
 METHOD = "paper_trader_tab.state"
@@ -407,6 +464,11 @@ HEADING = "Paper"
 ISSUE = 19
 BUILT = True
 ```
+
+The module `paper_trader_tab_surface` is gone.
+`src/gui/paper/paper_trading_tab_surface.py, in METHOD` answers
+`paper_trading.tab` today, and that file holds `HEADING` and `ISSUE`. No module
+on disk holds `BUILT` for this tab.
 
 The data path is the venue's public market feed, and it goes one way. The reader
 names the six things it answers, and every other name raises. An order, a
@@ -527,7 +589,7 @@ empty state and nothing else. The shared function `no_data_text` builds that
 line, and the [Simulator page](simulator.md) shows it. The label is hidden
 whenever the panel has values to draw.
 
-`src/gui/paper_trader_tab.py` — the Qt clone draws the line
+`PaperTraderTabQt` — the Qt clone draws the line
 
 ```python
 def _draw_indicators(self, panel: dict) -> None:
@@ -553,7 +615,7 @@ No TA data — No paper fleet yet. Press Import Live Fleet.
 The page carries one style sheet. `TAB_STYLE_ASSETS` names it, and
 `page_html` reads the file and writes it into the page's head.
 
-`src/gui/react_paper_trader_tab.py` — the sheet the page carries
+`react_paper_trader_tab` — the sheet the page carries
 
 ```python
 TAB_STYLE_ASSETS: tuple[str, ...] = ("paper_trader_tab.css",)
@@ -602,7 +664,7 @@ scrum row and a fold row in the Paper Run table take the two colours
 first tick returns nothing, so without that draw the Paper Run pane kept the
 word it held before the press while the run was open.
 
-`src/gui/paper_trader_tab.py` — the press that opens a run
+`PaperTraderTabQt` — the press that opens a run
 
 ```python
     def start_run(self) -> str:
@@ -625,8 +687,8 @@ Both builds carry the same draw.
 Unit Q1 of issue #19. The Paper tab is now Live's tab code, forked under Paper
 names in both builds, with Import Live Fleet as the fleet's one way in and the
 header strip reading the paper ledger while Paper is in front. The two hosts
-the sections above describe, `src/gui/paper_trader_tab.py` and
-`src/gui/react_paper_trader_tab.py`, stay on disk and nothing loads them; a
+the sections above describe, `PaperTraderTabQt` and
+`react_paper_trader_tab`, stay on disk and nothing loads them; a
 later unit removes them once a paper bot ticks on the clone.
 
 ### The budget rule today overtakes four sentences
@@ -1147,6 +1209,17 @@ no tab is reached narrower than 1400 through the window. Constructed alone,
 the Qt tab draws at 806 pixels wide and no narrower after a fleet loads, the
 sum of Live's own minimum sizes; the React page draws at 700.
 
+Overtaken, quoted whole: "The window's floor is 1400 by 900 pixels, set in
+`src/gui/main_window.py`".
+
+True today: 1400 by 900 is still the figure, and the width is no longer typed
+out beside it. `main_window.py, in window_min_w_px` answers the wider of
+`WINDOW_MIN_W_PX`, the window's own figure, and
+`header_strip_surface.window_min_w`, which is what the header strip's own slots
+need. Both are read in one place, so the two cannot drift. Six counter cards
+answer 1400 px and a seventh answers 1476 px. The height stays
+`WINDOW_MIN_H_PX`, 900 px.
+
 ### What the clone reading measured
 
 Read off the real window in both builds over a scratch home holding a
@@ -1459,42 +1532,6 @@ pure functions Live calls, fills a scrum at the book's best bid and a fold at
 the best ask with the venue's taker fee, and moves the paper ledger the
 header strip reads. The old hosts left the tree.
 
-### The sentences this unit overtakes
-
-Seven passages on this page describe the run as it was before this unit. Each
-is quoted here and kept above as it stands.
-
-- "`src/gui/main_tabs/paper_trader_tab_surface.py` — the second row's two
-  faces" (The two presses). The file is removed; the two faces are
-  `run_buttons` in `src/gui/paper/paper_trading_tab_surface.py`.
-- "A run ticks on the wall clock and asks the feed for one bot per fire, so a
-  fleet of many bots never blocks the window on a single pass. One bar is
-  shared across the open bots." and "`src/gui/paper_trader_tab.py` — the
-  round robin" with its `advance_once` block (Real time). The runner ticks
-  every running bot each 5 s on its own thread, and the window is never asked
-  to wait.
-- "The Qt window and the React page print one line from one view model, so
-  the two hosts cannot report different money." with its `LEDGER_SEPARATOR`
-  block (The fleet ledger). The four figures reach both hosts through
-  `strip_aggregate` and the header strip, from one figures dict the runner
-  posts.
-- "`src/gui/paper_trader_tab.py` — the press that opens a run" with its
-  `_tick_timer` block, and "`src/gui/react_paper_trader_tab.py` — the sheet
-  the page carries" with `paper_trader_tab.css` (Start Paper Run redraws the
-  pane, The style sheet the Paper page loads). Both files, the page module
-  and the sheet are removed.
-- "The two hosts the sections above describe, `src/gui/paper_trader_tab.py`
-  and `src/gui/react_paper_trader_tab.py`, stay on disk and nothing loads
-  them; a later unit removes them once a paper bot ticks on the clone."
-  (2026-09-19). This is that unit.
-- "`BUDGET_MULTIPLE` in `src/paper/fake_balance.py` still reads `2.0`; the
-  unit that starts a paper run retires it, and no clone code reads it." (The
-  budget rule today overtakes four sentences). Retired: `BUDGET_MULTIPLE`,
-  `budget_usd`, `fleet_budget_usd` and the `budget_usd` field are gone.
-- "A press on Start Paper Run writes one line saying no paper run is built;
-  the run is a later unit's too." with `START_RUN_TEXT` (What the fork
-  draws). The press starts the run below.
-
 The `apply_scrum` and `apply_fold` the earlier sections describe sized a fill
 with their own arithmetic; the two below are the Simulator's, forked over
 `src/trading/scrumming/sizing.py`.
@@ -1716,9 +1753,9 @@ the bar during a run ticks from the next pass.
 
 ### The old hosts are gone
 
-`src/gui/paper_trader_tab.py`, `src/gui/react_paper_trader_tab.py`,
-`src/gui/web/paper_trader_tab.js`, `src/gui/web/paper_trader_tab.css` and
-`src/gui/main_tabs/paper_trader_tab_surface.py` are removed. The six names
+`PaperTraderTabQt`, `react_paper_trader_tab`,
+`paper_trader_tab.js`, `paper_trader_tab.css` and
+`paper_trader_tab_surface` are removed. The six names
 the clone read off the old surface, `HEADING`, `IMPORT_LIVE_FLEET_ACTION`,
 `IMPORT_LIVE_FLEET_TEXT`, `START_RUN_ACTION`, `START_RUN_TEXT` and
 `button_name`, live in `src/gui/paper/paper_trading_tab_surface.py` with
@@ -2553,35 +2590,6 @@ fleet source.
         wizard = wizard_class(exchanges, defaults, self, markets=markets)
 ```
 
-### Four sentences this entry overtakes
-
-Each is quoted as it stands, with the sentence that is true today beneath it.
-
-> "`src/gui/paper_trader_tab.py` draws them in Qt and
-> `src/gui/web/paper_trader_tab.js` draws them in React, from one view model."
-
-**CITED AS ABSENT.** Neither file is in the tree. The Qt tab is
-`src/gui/paper/paper_trading_tab.py` and the React tab is
-`src/gui/paper/paper_react_trading_tab.py`.
-
-> "`src/gui/main_tabs/paper_trader_tab_surface.py` — the fields both hosts read"
-
-**CITED AS ABSENT.** That file is not in the tree either. The fields both hosts
-read are declared in `src/gui/paper/paper_trading_tab_surface.py`.
-
-> "The paper budget is twice the dollar target, so a bot has room to fold without
-> the exercise ending on the first dip."
-
-The opening figures are the fleet's summed targets and the budget is unbounded,
-so a run never ends on a balance.
-
-> "`_apply_changes` asks the view for every pending field, and the view raises
-> `SendRefused` for each, so the pending line reads `refused_text` and nothing is
-> written."
-
-Every pending field is written to the stored record; only a field the config
-does not declare still raises, and it is counted on its own.
-
 ## 2026-09-26 - #19 - a paper fill draws its own Activity Log line
 
 A paper run held each fill and drew none of them. The pane beside the bot table
@@ -3110,6 +3118,52 @@ running 0 through 5 as the sector moves. Both tabs are seated in both builds:
 the React build answers `SimTradingTabReact` and `PaperTradingTabReact`, and the
 Qt build answers `SimTradingTab` and `PaperTradingTab`. The bar holds nine tabs.
 
+The Paper tab holds no sector list of its own, in either build. The browser
+build reads the one declared list at the moment the page is asked for, and
+writes two fields of its payload from that call: the page list, and the position
+of the page on show inside it.
+
+`src/gui/paper/paper_trading_tab_surface.py` — both fields from one call
+
+```python
+    key = live.layer_named(layer)
+    order = live.layer_order()
+```
+
+The Qt build adds one stack page per name on the same list while the tab is
+built, and numbers the page on show from the same place, so the two builds
+cannot hold different sets of pages.
+
+`src/gui/paper/paper_trading_tab.py` — one page per declared sector
+
+```python
+        for layered in acs.layered_classes():
+            page, bar, store, card = _make_layer(
+                acs.display_name(layered), acs.accent(layered)
+            )
+```
+
+The declared list is six sectors long, so the Paper tab answers six pages. Its
+own state object was asked for every sector in turn and the page list was read
+off the payload the tab serves. The page on show moves across all six asks,
+which is the control: the figure follows the sector asked and is not a fixed
+answer. A sector name no layer carries draws page 0, which is the crypto layer.
+
+| Sector asked | Pages | Page on show |
+| ------------ | ----- | ------------ |
+| Crypto | 6 | 0 |
+| Stock | 6 | 1 |
+| Commodities | 6 | 2 |
+| Forex | 6 | 3 |
+| Indices | 6 | 4 |
+| Futures / Perps | 6 | 5 |
+| a name no layer carries | 6 | 0 |
+
+The Simulator tab reads the same call and answered the same seven rows, figure
+for figure. The declaration itself and the Simulator's own reading are on the
+Simulator page under
+[Both tabs build their sector pages from one declared list](simulator.md).
+
 ### What a failed tab build still does
 
 A tab whose build raises writes one warning line and leaves its window
@@ -3166,5 +3220,145 @@ The Import Live Fleet reading table holds the row
 `rgb(136, 136, 136)` under React. It is a recorded reading, not a sentence, so it
 stays exactly where it stands. The cell that carries that grey today is the Symbol
 cell.
+
+### Where the paper wizard's phantom defaults come from
+
+The paper wizard's phantom page opens its tick box and its lock duration from
+the same two declarations the Live wizard reads. Neither figure is typed into
+the paper host.
+
+`src/gui/paper/paper_bot_wizard.py` — the paper page falls back to the store's
+own declared figure
+
+```python
+            self._stored_lock_candles = int(
+                (defaults or {}).get("default_lock_candle_count")
+                or AppSettings().default_lock_candle_count
+            )
+```
+
+A figure set in Settings still wins, and a paper bot's own saved record wins
+over that, so an existing paper bot keeps the figure it was created with. The
+declarations themselves, the full reader list and what the counts were before
+are on the Trading tab page under
+[Where the wizard's phantom defaults come from](../06-trading-tab.md).
+
+All three wizard phantom pages were built and both boxes read off the built
+widgets. With nothing stored, each falls back to the declaration and opens on
+and 2. With off and 9 stored, each opens off and 9, so the boxes follow what is
+handed to them rather than holding a fixed answer.
+
+| Host | What was stored | Tick box | Lock box |
+| ---- | --------------- | -------- | -------- |
+| Live | nothing | on | 2 |
+| Paper | nothing | on | 2 |
+| Simulator | nothing | on | 2 |
+| Live | off and 9 | off | 9 |
+| Paper | off and 9 | off | 9 |
+| Simulator | off and 9 | off | 9 |
+
+The three hosts therefore no longer need comparing.
+
+## 2026-10-25 - #937 - the Paper page draws the Asset column's mark
+
+The Paper Trader draws its Scrumming Bots table twice. The window draws one, and
+the page inside the window's browser draws the other. Both now draw the first
+column the same way. Where the logo library has put a file on disk for that
+asset, the cell draws that image at 32 pixels and holds no text. Where none is
+kept, the cell draws the asset's ticker, so the row still names what the bot
+accumulates. Where the asset database knows that asset's own organisation, the
+address rides on the cell and a press opens it.
+
+`src/gui/web/paper_bot_status_table.js` — `AssetLogo`
+
+```javascript
+logoProps[PART_ATTR] = LOGO_PART;
+logoProps[LOGO_PATH_ATTR] = text(found[LOGO_PATH]);
+logoProps[LOGO_SIZE_ATTR] = text(found[LOGO_SIZE]);
+```
+
+### Three invented bots, read off the drawn page
+
+One asset has a kept file. One has none and is named by the asset database. One
+is named nowhere. Each reads differently from the other two.
+
+```
+a file is kept             no text, one 32-pixel image, no address
+no file, the base is known the ticker, no image, the address on the cell
+the base is known nowhere  the ticker, no image, no address
+row height                 38 pixels, the same on all three pages
+```
+
+### The page's own report of the payload
+
+Each page checks the payload it was handed and lists what is missing. The three
+pages name the mark's four cell fields, so a payload that stops carrying one is
+reported rather than drawn as a blank square.
+
+`src/gui/web/paper_bot_status_table.js` — the audited cell fields
+
+```javascript
+  var CELL_FIELDS = [
+    TEXT,
+    COLOR,
+    TOOLTIP,
+    ALIGNMENT,
+    ALIGNMENT_VALUE,
+    LOGO_PATH,
+    LOGO_IMAGE,
+    LOGO_SIZE,
+    LINK_URL,
+    CHART_URL,
+    UNDERLINE
+  ];
+```
+
+Driven with every outward connection refused, the reading made no connection
+attempt and the page made no request. A control attempt afterwards was counted
+and refused, so the counter was able to report one.
+
+### The sentence above that this entry completes
+
+It is quoted whole, and the sentence under it is true today.
+
+Quoted whole:
+
+> "The Paper Trader's Scrumming Bots table is a subclass of the window's own bot
+> list, so its first column is Asset. It draws the target asset's own mark, and the
+> asset's ticker where no mark is kept."
+
+True today: that holds for the window's table and for the page, which draws the
+same mark from the same payload. Neither surface fetches anything while a row
+draws.
+
+## 2026-10-25 - #665 - the paper record carries the wizard's lock figure
+
+The paper wizard collected the Candles-to-lock figure and the record it saved
+held no key for it. The bot built from that record therefore had no lock holder
+at all, and the Phantom Bots tab fell back to the declared 2 whatever the
+operator typed.
+
+`src/paper/fleet_source.py, in wizard_record` now writes the figure beside the
+two phantom keys it already wrote, clamped at 1, which is the clamp the live
+bot's own constructor applies.
+
+```python
+    lock_candles = collected.get("lock_candle_count") if scrumming else None
+    if isinstance(lock_candles, (int, float)) and not isinstance(lock_candles, bool):
+        record["lock_candle_count"] = max(1, int(lock_candles))
+```
+
+`src/paper/paper_bot_view.py, in PaperBotView` reads that key to build the bot's
+lock holder, and the Candles-to-lock box on the Phantom Bots tab reads the
+holder.
+
+```
+wizard 7     record holds the key     tab box 7
+wizard 2     record holds the key     tab box 2
+no key       record holds no key      tab box 2
+```
+
+A paper record written before this change holds no such key, loads, and leaves
+the tab box on the declared 2.
 
 Back to [the subsystem index](README.md).

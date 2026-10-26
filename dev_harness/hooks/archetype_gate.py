@@ -351,6 +351,11 @@ _MD_SUFFIXES = (".md", ".markdown")
 _SH_SUFFIXES = (".sh", ".bash", ".zsh")
 _YAML_SUFFIXES = (".yml", ".yaml")
 
+# A PyInstaller spec is Python that PyInstaller execs. coding_archetype maps
+# .spec to python in _LANGUAGE_BY_SUFFIX and drops the globals PyInstaller
+# injects. Acervator_win.spec and Acervator_mac.spec decide what a build ships.
+_SPEC_SUFFIXES = (".spec",)
+
 _QT_BASES = frozenset({
     "QWidget", "QDialog", "QMainWindow", "QFrame",
     "QPushButton", "QLineEdit", "QTextEdit", "QLabel",
@@ -449,7 +454,11 @@ def _pick_archetypes(path: Path, source: str) -> list:
             mods.append("dev_harness.harness.ta_archetype")
     elif suffix in _MD_SUFFIXES:
         mods.append("dev_harness.harness.docs_archetype")
-    elif suffix in _SH_SUFFIXES or suffix in _YAML_SUFFIXES:
+    elif (
+        suffix in _SH_SUFFIXES
+        or suffix in _YAML_SUFFIXES
+        or suffix in _SPEC_SUFFIXES
+    ):
         mods.append("dev_harness.harness.coding_archetype")
     return mods
 

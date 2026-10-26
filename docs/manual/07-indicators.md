@@ -399,23 +399,9 @@ no vote still lives here so the voters can read it.
 
 ### The per-module rule sentences, overtaken
 
-OVERTAKEN, quoted whole:
-
-> "Nothing borrows another indicator's arithmetic, and a test in `tests/` fails
-> the moment one starts to."
-
-> "`tests/test_one_indicator_per_module.py` — the rule, held as tests"
-
-> "`tests/test_one_indicator_per_module.py` — and the name check beside it"
-
-```python
-def test_the_module_holds_exactly_one(self, module):
-def test_no_two_modules_define_the_same_name(self):
-```
-
 True today: no check in the tree holds the rule. The repository tracks one
-Python module under `tests/`, its own conftest, so the file named above and its
-two checks are gone.
+Python module under `tests/`, its own conftest, so the per-module check and its
+two assertions are gone.
 
 The package layout carries the rule instead. Each indicator is one module, and
 `src/trading/ta_engine.py` imports each indicator class or detector function by
@@ -435,14 +421,9 @@ part and is not repeated here.
 
 Every indicator computes its own maths from candles alone.
 
-OVERTAKEN, quoted whole:
-
-> "No indicator borrows another's arithmetic, and
-> `tests/test_one_indicator_per_module.py` fails when one starts to."
-
 True today: no voter borrows another voter's arithmetic, and no check in the
-tree holds that. [The twelve voters](#the-twelve-voters) above names the module
-layout that holds it instead.
+tree holds the rule. [The twelve voters](#the-twelve-voters) above names the
+module layout that holds it instead.
 
 Where the code departs from the published formula, the code is the defect.
 [Departures](#departures-from-the-published-maths) lists the ones found.
@@ -1196,10 +1177,10 @@ OVERTAKEN, quoted whole:
 > running the same tape at several price scales and comparing the readings."
 
 ```
-tests/test_bollinger_and_slingshot_are_scale_invariant.py
-tests/test_vortex_and_landing_strip_are_scale_invariant.py
-tests/test_macd_and_kaufman_er_are_scale_invariant.py
-tests/test_the_last_eight_indicators_are_scale_invariant.py
+test_bollinger_and_slingshot_are_scale_invariant
+test_vortex_and_landing_strip_are_scale_invariant
+test_macd_and_kaufman_er_are_scale_invariant
+test_the_last_eight_indicators_are_scale_invariant
 ```
 
 True today: no check in the tree holds the property. None of the four files is
@@ -2144,7 +2125,7 @@ OVERTAKEN, quoted whole:
 > property they held is held by the runs recorded in each entry instead."
 
 ```
-tests/debug_reports/2026-09-09_indicator_rounding.md
+the 2026-09-09 indicator-rounding debug report
 ```
 
 True today: the four files are still absent, and so is the report named above.
@@ -2617,6 +2598,55 @@ side = "scrum"
 overrides = ("midline_scrum", "target_fires", "trend_hold", "ta_bullish")
 ```
 
+### Which records name the override
+
+**Functional.** Three records carry the name of the override that replaced a
+refusal, one for each data source, and all three write it under the same key.
+The key is spelled once, in `OVERRIDES_APPLIED_KEY`.
+
+| Data source | The record | Where the name is written |
+| ----------- | ---------- | ------------------------- |
+| Live | the gate log row `ScrummingBot.tick` writes | `scrum_fixture.overrides_applied` |
+| Paper | the gate row `paper_log.paper_row` writes | `scrum_fixture.overrides_applied` |
+| Simulator | the `bot.gate_decision` event `SimBus` emits | `scrum_fixture.overrides_applied` |
+
+**Functional.** The Paper Trader and the Simulator both read one record, the
+one the shipped chains are evaluated into. A row where no override acted
+carries an empty list; a row where one acted carries one entry per refusal it
+replaced. A row that passed outright and a row an override passed therefore
+read apart.
+
+`src/simulator/validation.py` — `latch`, the record both of them read
+
+```python
+return {
+    "scrum_armed": bool(scrum.should_fire),
+    "fold_armed": bool(fold.should_fire),
+    "scrum_blockers": [message for _name, message in scrum.blocked],
+    "fold_blockers": [message for _name, message in fold.blocked],
+    "scrum_overrides_applied": [str(one) for one in scrum.overrides_applied],
+    "fold_overrides_applied": [str(one) for one in fold.overrides_applied],
+}
+```
+
+**Not available.** The nineteen gate lights the Simulator's parity comparison
+draws read the armed flag and the blocker list alone, so a replaced refusal
+still reads there as a plain pass. Its two sides are a recorded row and a
+rerun of the same inputs, and a row recorded before the key existed carries
+none, so reading the override into those lights would move the parity verdict
+on past rows.
+
+`src/simulator/validation.py` — `light_states`, the four inputs it takes
+
+```python
+def light_states(
+    scrum_armed: bool,
+    fold_armed: bool,
+    scrum_blockers: Sequence[str],
+    fold_blockers: Sequence[str],
+) -> list[dict]:
+```
+
 ### Reading the chain after the fact
 
 **Not available.** A trade already on the books keeps the reading that was
@@ -2700,3 +2730,45 @@ dollar figure. `as_finite_float` answers nothing for either, and
 Overtaken. That rule refused a saved flag and still raised on a saved number
 too large to be a float. `as_finite_float` refuses both, and
 `VOLUME_REFUSED_USD` is the volume a refused pair row sorts by.
+
+## 2026-10-24 - #665 - a gate row carries the panel it was decided on
+
+The gate log is how a past decision is read back. A row held the decision and
+none of the numbers behind it, so the reasoning was unrecoverable. A row now
+carries one cell per voter, and each cell holds that indicator's direction, its
+confidence, its weight and its headline reading.
+
+`src/trading/scrumming/snapshots.py` — the panel a row carries
+
+```python
+def _indicator_values(self) -> Optional[dict]:
+    summary = getattr(self, "_last_summary", None)
+    if summary is None:
+        return None
+    return _build_panel_snapshot(summary)
+```
+
+Both gate emitters pass it, so a fired trade and a refused tick are recorded
+the same way. `src/trading/scrumming/snapshots.py, in
+_emit_gate_decision_at_fire` writes the fired row, and
+`_emit_gate_decision_at_quiet_tick` writes the refused one.
+
+**An absent panel is not a row of zeros.** A tick that computed no panel leaves
+the key off its row, so a reader can tell a panel that was never computed from
+a panel whose indicators all read zero. `src/core/logging_engine.py, in
+log_gate_decision` writes the key only when it is given one.
+
+Three rows read back off a written gate log — one fired, one refused, one with
+no panel:
+
+```
+trade_action SCRUM    adx BULLISH 0.71 weight 1.4 adx 27.5
+                      z_score BEARISH 0.33 weight 0.9 z -1.82
+                      kaufman_er NEUTRAL 0.00 weight 1.0 er 0.18
+tick_exit gate-chain  the same three cells
+tick_exit gate-chain  no indicator key at all, because no panel was computed
+```
+
+No gate decision moved. Both scrumming chains were driven over 1024 gate input
+sets before and after the change: 32 scrum fires and 32 fold fires on each
+side, and 0 of 1024 whole decisions differ.
