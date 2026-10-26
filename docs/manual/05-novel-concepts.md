@@ -1268,6 +1268,35 @@ settings that never reach the bot. Issue #107 records a detonation that can fire
 twice across a restart. Any earlier description reading "bearish" is wrong: the
 code compares against the bullish direction.
 
+### How the taper and the detonation bar read today
+
+Two readings in section 14 above carry wording this unit changed. They stand as
+written, and these are the readings that replaced them.
+
+| written above | what it reads now |
+| --- | --- |
+| "the fold rate tapers as the position approaches it" | The fold size tapers. The figure multiplies the dollars a fold spends and never the interval between folds. The schedule itself is unchanged: full size below half the ceiling, a linear taper to a tenth across the upper half, a hard stop at the ceiling |
+| "`src/trading/scrumming_bot.py` — `ScrummingBot.fold_rate_taper`" | `src/trading/scrumming_bot.py, in ScrummingBot.fold_size_taper`, reading the same schedule from `src/trading/scrumming/sizing.py, in fold_size_taper` |
+| "a bullish consensus at or above the confidence minimum" | Unchanged, and the minimum now reaches the status record every screen reads, so the Fire tooltip on a Bot Swarm row names the figure a vote has to clear |
+
+`src/trading/scrumming_bot.py, in ScrummingBot.fold_size_taper` — the property
+
+```python
+ratio = self.ceiling_ratio
+if ratio is None:
+    return 1.0
+return fold_size_taper(ratio)
+```
+
+The opening confidence figure is one declaration, read by the stored record and by
+the Min Confidence box.
+
+`src/trading/container/config.py` — the figure
+
+```python
+DETONATION_CONFIDENCE_MIN_DEFAULT: float = 0.75
+```
+
 ## 15 - Proof of Accumulation (PoA)
 
 This is another one of the larger and more distinguishing features of the platform. At this point, it is a design proposal for a blockchain that provides certified trade performance between competitors without revealing their specific strategy tunings within Acervator or their identity. When this blockchain is initiated, ZERO tokens for it will exist in the world. I intend it to be, much like A15 to 1) have a fixed supply, 2) mean something through its generation and acquisition. Tokens are only created through the PoA tournaments and defeating Token Beasts or inflicting the most damage to them in a colosseum format. Additional functions would allow PoA tokens to be socketed into the platform to change its appearance and identify a user as a victor.

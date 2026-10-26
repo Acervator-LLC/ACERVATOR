@@ -61,7 +61,7 @@ from ..trading.scrumming.sizing import (
     eligible_fold_tranches,
     estimated_fee_usd,
     fold_cap_remaining_usd,
-    fold_rate_taper,
+    fold_size_taper,
     fold_spend_usd,
     fold_surplus_usd,
     growth_cycle_side,
@@ -1326,9 +1326,9 @@ def apply_scrum(
 
 
 def fold_taper(bot: SimBot, position: SimPosition) -> float:
-    """``fold_rate_taper`` over the position's ``ratio_to_ceiling`` at its
+    """``fold_size_taper`` over the position's ``ratio_to_ceiling`` at its
     ``last_trade_price`` when the bot's ceiling is on and a trade has filled,
-    one otherwise, as ``ScrummingBot.fold_rate_taper`` reads ``ceiling_ratio``
+    one otherwise, as ``ScrummingBot.fold_size_taper`` reads ``ceiling_ratio``
     with the anchor at the bot's target."""
     if not bot.position_ceiling_enabled:
         return 1.0
@@ -1338,7 +1338,7 @@ def fold_taper(bot: SimBot, position: SimPosition) -> float:
     if ceiling <= 0.0 or position.last_trade_price <= 0.0:
         return 1.0
     value = position.value_usd(position.last_trade_price)
-    return fold_rate_taper(ratio_to_ceiling(value, ceiling))
+    return fold_size_taper(ratio_to_ceiling(value, ceiling))
 
 
 # OVERTAKEN: "booked as ``fold_units`` at ``price`` under ``rule``".

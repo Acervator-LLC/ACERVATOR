@@ -552,14 +552,14 @@ class TickPhaseMixin:
                         (_smart_bb.upper - _smart_bb.lower) / _bb_mid * 100.0
                     )
                     _interval_floor = float(self.config.scrumming_interval_pct or 0)
-                    _smart_ceiling = smart_cartridge_ceiling_pct(self.config)
-                    if _smart_ceiling == SMART_CARTRIDGE_CEILING_OFF:
-                        _ceiling_text = SMART_CARTRIDGE_CEILING_OFF_TEXT
+                    _cartridge_cap_pct = smart_cartridge_ceiling_pct(self.config)
+                    if _cartridge_cap_pct == SMART_CARTRIDGE_CEILING_OFF:
+                        _cap_text = SMART_CARTRIDGE_CEILING_OFF_TEXT
                         _smart_pct = max(_interval_floor, _bb_range_pct)
                     else:
-                        _ceiling_text = f"{_smart_ceiling:.2f}%"
+                        _cap_text = f"{_cartridge_cap_pct:.2f}%"
                         _smart_pct = max(
-                            _interval_floor, min(_smart_ceiling, _bb_range_pct)
+                            _interval_floor, min(_cartridge_cap_pct, _bb_range_pct)
                         )
                     _last_smart = float(
                         getattr(self, "_cartridge_last_smart_pct", 0.0) or 0.0
@@ -574,7 +574,7 @@ class TickPhaseMixin:
                                     f"{_smart_pct:.2f}% "
                                     f"(BB range {_bb_range_pct:.2f}%, "
                                     f"floor={_interval_floor:.2f}%, "
-                                    f"ceiling={_ceiling_text}). "
+                                    f"cartridge cap={_cap_text}). "
                                     f"Effective threshold = "
                                     f"${self._target_balance * _smart_pct / 100.0:.2f}."
                                 ),
@@ -1793,7 +1793,7 @@ class TickPhaseMixin:
                 )
             _eligible = _elig_capped
         if _eligible:
-            _taper = self.fold_rate_taper
+            _taper = self.fold_size_taper
             if _taper <= 0.0:
                 _ratio = self.ceiling_ratio or 0.0
                 _ceiling_pos_usd = priced_usd(

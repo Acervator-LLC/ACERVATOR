@@ -112,6 +112,10 @@ SMART_CARTRIDGE_CEILING_OFF: float = 0.0
 #: ``SMART_CARTRIDGE_CEILING_OFF``.
 SMART_CARTRIDGE_CEILING_OFF_TEXT: str = "off"
 
+#: ``BotConfig.detonation_confidence_min`` opening figure, the BULLISH
+#: confidence a detonation must reach.
+DETONATION_CONFIDENCE_MIN_DEFAULT: float = 0.75
+
 #: ``BotConfig.position_ceiling_multiple`` opening figure, in anchor multiples,
 #: read by ``ceiling_multiple``.
 POSITION_CEILING_MULTIPLE_DEFAULT: float = 5.0
@@ -229,7 +233,7 @@ class BotConfig:
     trading_fee_pct: float = 0.6
 
     # Caps accumulation at position_ceiling_multiple x the anchor target_balance;
-    # fold_rate_taper shrinks the fold's USD size 100%->10% over ratio 0.5->1.0.
+    # fold_size_taper shrinks the fold's USD size 100%->10% over ratio 0.5->1.0.
     position_ceiling_enabled: bool = False
     # Range [1.0, 10.0].
     position_ceiling_multiple: float = POSITION_CEILING_MULTIPLE_DEFAULT
@@ -239,9 +243,8 @@ class BotConfig:
     # anchor, not on the ceiling.
     detonation_enabled: bool = False
     detonation_timeframe: str = "1d"  # "1d", "1w"
-    detonation_confidence_min: float = (
-        0.75  # BULLISH confidence threshold; operator-adjustable 0.50-1.00
-    )
+    # operator-adjustable 0.50-1.00
+    detonation_confidence_min: float = DETONATION_CONFIDENCE_MIN_DEFAULT
 
     # Read through expiry_close_decision() below, never raw. The close acts only
     # inside the resolved lead time and inside expiry_horizon_days.

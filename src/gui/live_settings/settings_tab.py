@@ -1053,7 +1053,7 @@ class SettingsTabMixin:
         self._ceiling_enabled.setToolTip(
             "Cap accumulation at Nx of the bot's INITIAL "
             "target_balance (stable anchor set at creation).\n"
-            "Fold rate tapers 100% → 10% as value approaches "
+            "Fold size tapers 100% → 10% as value approaches "
             "ceiling (ratio 0.5 → 1.0), hard-stops at ceiling.\n"
             "Scrum always allowed. Protects against runaway "
             "accumulation on conviction plays."

@@ -96,7 +96,7 @@ from .scrumming.sizing import (
     cartridge_threshold_usd,
     cycle_growth_cap_usd,
     delta_below_interval,
-    fold_rate_taper,
+    fold_size_taper,
     position_ceiling,
     priced_usd,
     ratio_to_ceiling,
@@ -2696,7 +2696,7 @@ class ScrummingBot(
         return ratio_to_ceiling(value, ceiling)
 
     @property
-    def fold_rate_taper(self) -> float:
+    def fold_size_taper(self) -> float:
         """Multiplier on the fold's USD size in [0.0, 1.0], 1.0 when the ceiling
         is disabled.
 
@@ -2712,7 +2712,7 @@ class ScrummingBot(
         ratio = self.ceiling_ratio
         if ratio is None:
             return 1.0
-        return fold_rate_taper(ratio)
+        return fold_size_taper(ratio)
 
     def force_fire(self, aggressive: bool = False) -> None:
         """Manual Fire from the dashboard."""

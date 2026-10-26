@@ -291,7 +291,7 @@ TOOLTIPS = {
     "cartridge_smart_ceiling": "Maximum effective cartridge threshold under Smart calibration. Prevents cartridge from being effectively disabled during volatility expansion. Only applies when Smart Cartridge is ON. Default 30%.",
     "cb_reset_all_btn": "Operator override: clears any active soft and hard circuit breakers. Hard reset also resumes the bot if it is PAUSED.",
     "self_destruct_btn": "Aggressively exit the entire position. Confirmation required.",
-    "ceiling_enabled": "Cap accumulation at Nx of the bot's INITIAL target_balance (stable anchor set at creation).\nFold rate tapers 100% → 10% as value approaches ceiling (ratio 0.5 → 1.0), hard-stops at ceiling.\nScrum always allowed. Protects against runaway accumulation on conviction plays.",
+    "ceiling_enabled": "Cap accumulation at Nx of the bot's INITIAL target_balance (stable anchor set at creation).\nFold size tapers 100% → 10% as value approaches ceiling (ratio 0.5 → 1.0), hard-stops at ceiling.\nScrum always allowed. Protects against runaway accumulation on conviction plays.",
     "ceiling_mult": "Ceiling multiplier. 1x = no accumulation beyond anchor. 10x = 10x runway. Default 5x.",
     "deto_enabled": "Monitor a higher TF for BULLISH + high-confidence signal. Edge-triggered: fires ONCE per transition into bullish state.\nOn trigger: MARKET sell everything above the anchor, then reset target_balance to anchor ('lock in' gains, re-accumulate from scratch).\nRate-limited to 1 check/hour.\nAdditional gate: fires only when current value is above the anchor — no harvest if the bot is below its initial anchor.",
     "deto_tf": "Timeframe to monitor for bullish detonation signal. 1D = daily, 1W = weekly. Higher = stronger conviction, fewer triggers.",

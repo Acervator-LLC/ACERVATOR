@@ -77,7 +77,7 @@ from ..trading.scrumming.sizing import (
     eligible_fold_tranches,
     estimated_fee_usd,
     fold_cap_remaining_usd,
-    fold_rate_taper,
+    fold_size_taper,
     fold_spend_usd,
     fold_surplus_usd,
     market_unit_rule,
@@ -256,7 +256,7 @@ def paper_scrum_excess_usd(bot: PaperBot, balance: FakeBalance) -> float:
 
 
 def fold_taper(bot: PaperBot, balance: FakeBalance) -> float:
-    """``fold_rate_taper`` over the balance's ``ratio_to_ceiling`` at its
+    """``fold_size_taper`` over the balance's ``ratio_to_ceiling`` at its
     ``last_trade_price`` when the bot's ceiling is on and a trade has filled,
     one otherwise, the Simulator's ``fold_taper``."""
     if not bot.position_ceiling_enabled:
@@ -267,7 +267,7 @@ def fold_taper(bot: PaperBot, balance: FakeBalance) -> float:
     if ceiling <= 0.0 or balance.last_trade_price <= 0.0:
         return 1.0
     value = balance.value_usd(balance.last_trade_price)
-    return fold_rate_taper(ratio_to_ceiling(value, ceiling))
+    return fold_size_taper(ratio_to_ceiling(value, ceiling))
 
 
 def paper_tape_context(
