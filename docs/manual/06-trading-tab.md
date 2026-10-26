@@ -8993,3 +8993,103 @@ Driven with the one read moved to a figure nothing uses, every kind of row
 followed it together. Before the change the same move reached the numeric boxes
 alone and the tick box and the drop-down kept their own values. The file is byte
 identical after the move was put back.
+
+## 2026-10-25 - #665 - the despawn rule is declared once
+
+The section "The Tranche Despawn Timer" above records the rule being written three
+times and defers collapsing it. It is collapsed now.
+
+One function turns a stored figure into whole despawn days. The sweep that removes
+records, the shared preview the Qt panel reads, the Fold Tranches screen and the Bot
+Settings despawn row all call it. The cap it saturates at and the four candidate
+windows the panel offers are each declared once beside it.
+
+`src/trading/container/config.py` — the one rule
+
+```python
+def whole_despawn_days(value) -> int:
+    days = as_finite_float(value)
+    if days is None:
+        return 0
+    return min(DESPAWN_MAX_DAYS, max(0, int(days)))
+```
+
+Live, Paper and the Simulator read it through the panel chrome they share, and the
+Electron build reads it from its two screen modules. That is one rule on all four
+surfaces.
+
+Thirteen stored figures were read at five sites before and after, and every site gave
+the same answer on every figure, including a flag, a word and the two endless
+numbers. Moving the cap to a figure nothing uses moved all five together; before the
+change the same move reached the shared site alone and both screens kept the old cap.
+The file is byte identical after the move was put back.
+
+| Stored figure | Whole days |
+| ------------- | ---------- |
+| 0 | 0, which is off |
+| 7 | 7 |
+| 365 | 365 |
+| the cap itself | the cap |
+| one past the cap | the cap |
+| 7.9 | 7 |
+| a negative figure | 0 |
+| a flag, a word, nothing at all | 0 |
+| a not-a-number, an endless number | 0 |
+| a whole number too large for a figure | 0 |
+
+## 2026-10-25 - #665 - the Apply routing map is declared once
+
+Apply decides, per edited row, whether the figure goes through one of the bot's own
+live setters or is written straight onto its stored record. Six rows take a setter.
+That list was written twice, once for the Qt window and once for the Electron
+surface, with nothing comparing them.
+
+`src/gui/main_tabs/bot_live_settings_surface.py` — the one list
+
+```python
+RUNTIME_ROUTED = {
+    "target_balance": "set_target_balance_live",
+    "visibility": "set_visibility_live",
+    "aggressive_trading": "set_aggressive_live",
+    "hedge_balance": "set_hedge_balance_live",
+    # setattr alone moves the flag and leaves _hedge_bal at zero.
+    "hedge_rebalance_active": "set_hedge_rebalance_active_live",
+    # set_chunk_size_usd also rescales _chunk_free_base and the registry claim.
+    "extractor_chunk_size_usd": "set_chunk_size_usd",
+}
+```
+
+The Qt window, the Electron surface and the Simulator's Detail page all read it, and
+the Electron build is handed it in the same payload it draws from. The Paper window
+routes nothing on purpose: a paper bot is a stored record with no running object, so
+every row there goes to one record writer.
+
+Driven by pressing Apply on a bot that records each setter it is handed. Both Apply
+paths routed the same six, and a seventh row that carries no entry was written onto
+the record by both, which is the reading that shows a difference would show.
+
+Adding a seventh entry to the one list made both paths route seven. Before the change
+the same addition reached the Electron surface alone and the Qt window still routed
+six. The file is byte identical after the entry was removed.
+
+## 2026-10-25 - #665 - the Hedge Balance opening figure is declared once
+
+The Hedge Balance box on the creation wizard opens on a figure nobody typed. That
+figure was written in five places: the bot's own declaration, and once in each of the
+four wizards the operator can reach.
+
+`src/trading/container/config.py` — the one figure
+
+```python
+hedge_balance: float = 200.0
+```
+
+The Live wizard, the Paper wizard, the Simulator wizard and the Electron wizard all
+read it now. A bot you created earlier keeps the figure it was created with, because
+a saved record carries its own.
+
+Read at all five places before and after, every one answered $200.00. Moving the
+declaration to a figure nothing uses moved all five together; before the change the
+same move reached the declaration alone and all four wizard boxes still opened at
+$200.00. The max-cartridge box beside it was read the same way each time and never
+moved, which is the reading that shows the boxes answer for themselves.
