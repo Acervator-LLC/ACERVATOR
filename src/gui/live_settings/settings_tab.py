@@ -1084,6 +1084,7 @@ class SettingsTabMixin:
         from ...trading.container.config import (
             CEILING_MULTIPLE_MAX,
             CEILING_MULTIPLE_MIN,
+            ceiling_multiple,
         )
 
         self._ceiling_mult = QDoubleSpinBox()
@@ -1091,9 +1092,7 @@ class SettingsTabMixin:
         self._ceiling_mult.setDecimals(1)
         self._ceiling_mult.setSingleStep(0.5)
         self._ceiling_mult.setSuffix("x anchor")
-        self._ceiling_mult.setValue(
-            float(getattr(cfg, "position_ceiling_multiple", 5.0))
-        )
+        self._ceiling_mult.setValue(ceiling_multiple(cfg))
         self._ceiling_mult.setToolTip(
             "Ceiling multiplier. 1x = no accumulation beyond "
             "anchor. 10x = 10x runway. Default 5x."
