@@ -12,7 +12,7 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from ..bot_container import BotState, as_finite_float
-from ..container.config import as_whole_count
+from ..container.config import as_whole_count, ceiling_multiple
 from .target_ramp import RAMP_MODES, RAMP_SEARCH
 
 if TYPE_CHECKING:
@@ -220,9 +220,7 @@ class StateSerializerMixin:
         # stale; snap it to the ceiling.
         if getattr(self.config, "position_ceiling_enabled", False):
             try:
-                _smart_mult = float(
-                    getattr(self.config, "position_ceiling_multiple", 1.0)
-                )
+                _smart_mult = ceiling_multiple(self.config)
                 _smart_mult = max(1.0, min(10.0, _smart_mult))
                 _smart_ceiling_target = self._anchor_target_balance * _smart_mult
                 if _restored_target > _smart_ceiling_target:
