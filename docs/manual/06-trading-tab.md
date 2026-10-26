@@ -9593,19 +9593,24 @@ The box itself is untouched. Every screen reports a value of 100 and a tooltip o
 183 characters, before and after, and Max Target Growth % beside it reads Scrumming
 Settings in all sixteen readings.
 
-### Two wizard controls carry the name of the key they store
+### The read-rate and bullseye controls carry the name of the key they store
 
 A search of a wizard for a stored key found the read-rate control and the bullseye
 control once each, against seven for the two rows beside them. The one hit was the
-line that hands the value out; the control itself was named for neither key.
+line that hands the value out; the control itself was named for neither key. The
+three settings screens and the Electron row list carried the same two short names.
 
 ```
-wizard file               before                                after
-                          read rate  bullseye  ratio  travel    read rate  bullseye
-bot_wizard.py                     1         1      7       7            7         5
-paper_bot_wizard.py               1         1      7       7            7         5
-sim_bot_wizard.py                 1         1      7       7            7         5
-bot_wizard_surface.py             1         1      5       5            5         5
+file                          read rate        bullseye         ratio    travel
+                              before  after    before  after    control  control
+bot_wizard.py                      1      7         1      5          7        7
+paper_bot_wizard.py                1      7         1      5          7        7
+sim_bot_wizard.py                  1      7         1      5          7        7
+bot_wizard_surface.py              1      5         1      5          5        5
+settings_tab.py                    2      8         2      6          8        2
+paper_settings_tab.py              2      8         2      6          8        2
+sim_settings_tab.py                2      8         2      6          8        2
+live_settings_tab_surface.py       1      3         1      3          3        1
 ```
 
 `src/gui/bot_wizard.py, class TradingParamsPage` — the control now carries the key's
@@ -9616,12 +9621,18 @@ self._scrum_read_rate_min = QSpinBox()
 af.addRow("Read Rate:", self._scrum_read_rate_min)
 ```
 
-The bullseye reads five rather than seven because a tick box takes fewer setter
-calls; the tick box beside it, the midline gate, reads five as well.
+The bullseye reads fewer lines than the read rate because a tick box takes fewer
+setter calls; the tick box beside it, the midline gate, reads the same figure.
 
 **No stored key changed.** All four wizard builds hand out the same keys and the
 same values: 50 keys on the Live build, 47 on Paper, 47 on the Simulator and 50 on
-the Electron build, with none of the 194 key readings different.
+the Electron build, with none of the 194 key readings different. A record carrying
+the two keys was written by hand and loaded: a stored read rate of 17 and a stored
+bullseye of off reach the box and the tick box on the running screen.
+
+**A further 24 stored keys in the Live wizard are still found on one line each.** The
+same short-name shape covers them, and the settings screens abbreviate throughout.
+Those are not this entry's two controls and are recorded on the issue.
 
 ### One declaration holds the passphrase prompt
 
