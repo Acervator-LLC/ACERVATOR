@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, Callable, Optional
+from typing import Any, Optional
 
 from .main_tabs import bot_visualizer_surface as surface
 from .react_history_panel import page_html
@@ -53,9 +53,6 @@ TAB_SCRIPT_ASSETS: tuple[str, ...] = (
 )
 
 TAB_BODY = f'<div id="{TAB_ROOT_ID}"></div>'
-
-#: The count of swarm rows the browser drew, over all three layers.
-ROW_COUNT_JS = "document.querySelectorAll('[data-part=\"swarm-row\"]').length"
 
 #: The bridge this host answers. The Electron shell binds ``window.acervator``
 #: in its own preload, so this source is never a file under ``src/gui/web``.
@@ -250,16 +247,6 @@ if _HAS_WEBENGINE:
             """A copy of the last payload pushed, empty before the first push."""
             return dict(self._last_model)
 
-        def row_count(self, callback: Callable[[Any], None]) -> bool:
-            """Run ``ROW_COUNT_JS`` and hand the count to ``callback``.
-
-            Returns False and calls nothing while the page is not ready.
-            """
-            if not self._page_ready:
-                return False
-            self._web.page().runJavaScript(ROW_COUNT_JS, callback)
-            return True
-
         # -- what the page reports back ----------------------------------
 
         def answer_call(self, payload: str) -> None:
@@ -318,80 +305,6 @@ if _HAS_WEBENGINE:
             """Read every locust's growth-stage colours from theme_name."""
             self.take({"action": "set_app_theme", "name": theme_name})
 
-        def register_sim_run(self, sim_id: str, label: str, cfg: dict) -> None:
-            """Add one Simulator Swarm row."""
-            self._register(surface.SIM_KIND, sim_id, label, cfg)
-
-        def update_sim_run(
-            self, sim_id: str, pnl: float, trades: int, candle_idx: int = 0
-        ) -> None:
-            """Update one Simulator Swarm row from a sim tick."""
-            self.take(
-                {
-                    "action": "update_sim",
-                    "run_id": sim_id,
-                    "pnl": pnl,
-                    "trades": trades,
-                    "candle_idx": candle_idx,
-                }
-            )
-
-        def stop_sim_run(self, sim_id: str, pnl: float = 0.0, trades: int = 0) -> None:
-            """Mark one Simulator Swarm row stopped."""
-            self._stop("stop_sim", sim_id, pnl, trades)
-
-        def register_paper_run(self, paper_id: str, label: str, cfg: dict) -> None:
-            """Add one Paper Swarm row."""
-            self._register(surface.PAPER_KIND, paper_id, label, cfg)
-
-        def update_paper_run(
-            self, paper_id: str, price: float, pnl: float, trades: int
-        ) -> None:
-            """Update one Paper Swarm row from a paper tick."""
-            self.take(
-                {
-                    "action": "update_paper",
-                    "run_id": paper_id,
-                    "price": price,
-                    "pnl": pnl,
-                    "trades": trades,
-                }
-            )
-
-        def stop_paper_run(
-            self, paper_id: str, pnl: float = 0.0, trades: int = 0
-        ) -> None:
-            """Mark one Paper Swarm row stopped."""
-            self._stop("stop_paper", paper_id, pnl, trades)
-
-        def register_live_run(self, bot_id: str, label: str, cfg: dict) -> None:
-            """Add one live swarm row."""
-            self._register(surface.LIVE_KIND, bot_id, label, cfg)
-
-        def update_live_run(
-            self,
-            bot_id: str,
-            price: float = 0.0,
-            pnl: float = 0.0,
-            trades: int = 0,
-            status: str = None,
-        ) -> None:
-            """Update one live swarm row from a bot tick."""
-            self.take(
-                {
-                    "action": "update_live",
-                    "run_id": bot_id,
-                    "price": price,
-                    "pnl": pnl,
-                    "trades": trades,
-                    "status": status,
-                }
-            )
-
-        def stop_live_run(self, bot_id: str, pnl: float = 0.0, trades: int = 0) -> None:
-            """Mark one live swarm row stopped."""
-            self._stop("stop_live", bot_id, pnl, trades)
-
         def remove_wire(self, source_id: str, target_id: str) -> None:
             """Drop the wire between two bots."""
             self.take(
@@ -403,26 +316,6 @@ if _HAS_WEBENGINE:
             )
 
         # -- internals ----------------------------------------------------
-
-        def _register(self, kind: str, run_id: str, label: str, cfg: dict) -> None:
-            self.take(
-                {
-                    "action": "register_" + kind,
-                    "run_id": run_id,
-                    "label": label,
-                    "cfg": cfg,
-                }
-            )
-
-        def _stop(self, action: str, run_id: str, pnl: float, trades: int) -> None:
-            self.take(
-                {
-                    "action": action,
-                    "run_id": run_id,
-                    "pnl": pnl,
-                    "trades": trades,
-                }
-            )
 
         def _run(self, script: str) -> None:
             self._web.page().runJavaScript(script)

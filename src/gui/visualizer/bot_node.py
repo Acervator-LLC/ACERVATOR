@@ -27,7 +27,14 @@ from .themes import THEMES
 _RNG = secrets.SystemRandom()
 
 CARD_WIDTH_PX = 88
-CARD_HEIGHT_PX = 78
+# The locust body and its first three labels keep this box; the card is taller.
+BODY_BOX_HEIGHT_PX = 78
+FACT_FONT_PT = 5
+FACT_RECT_HEIGHT_PX = 10
+STATUS_RECT_TOP_PX = BODY_BOX_HEIGHT_PX
+TRADES_RECT_TOP_PX = STATUS_RECT_TOP_PX + FACT_RECT_HEIGHT_PX
+PRICE_RECT_TOP_PX = TRADES_RECT_TOP_PX + FACT_RECT_HEIGHT_PX
+CARD_HEIGHT_PX = PRICE_RECT_TOP_PX + FACT_RECT_HEIGHT_PX
 # animate repaints every 4th frame of the tab's 33 ms timer, which is 7.5 Hz.
 REPAINT_INTERVAL_S = 0.125
 CROWN_SPINE_LENGTH_U = 3.0
@@ -95,7 +102,7 @@ if _HAS_QT:
             new_trades = data.get("stats", {}).get("total_trades", 0)
             if new_trades > old_trades:
                 self._trade_pulses.append(1.0)
-                cx, cy = self.width() / 2, self.height() / 2
+                cx, cy = self.width() / 2, BODY_BOX_HEIGHT_PX / 2
                 for _ in range(5):
                     self._particles.append(
                         Particle(
@@ -228,7 +235,7 @@ if _HAS_QT:
             p.setRenderHint(QPainter.Antialiasing)
             t = self._theme
             w, h = self.width(), self.height()
-            cx, cy = w / 2, h / 2
+            cx, cy = w / 2, BODY_BOX_HEIGHT_PX / 2
 
             p.fillRect(0, 0, w, h, t["bg"])
 
@@ -258,7 +265,7 @@ if _HAS_QT:
             body_color = QColor(body_hex)
             trim_color = QColor(trim_hex)
 
-            scale = min(w, h) / 52.0 * BODY_SCALE_RATIO[stage]
+            scale = min(w, BODY_BOX_HEIGHT_PX) / 52.0 * BODY_SCALE_RATIO[stage]
 
             wing_open = 0.35
             if state == "running":
@@ -493,7 +500,11 @@ if _HAS_QT:
             font.setPointSize(7)
             p.setFont(font)
             p.setPen(pnl_color)
-            p.drawText(QRectF(0, h - 22, w, 11), Qt.AlignCenter, _fpnl(pnl))
+            p.drawText(
+                QRectF(0, BODY_BOX_HEIGHT_PX - 22, w, 11),
+                Qt.AlignCenter,
+                _fpnl(pnl),
+            )
 
             # The growth figure that placed this card in its stage.
             font.setPointSize(STAGE_BADGE_FONT_PT)
@@ -510,7 +521,7 @@ if _HAS_QT:
                 STAGE_INITIALS[stage],
             )
             p.drawText(
-                QRectF(0, h - 31, w, 9),
+                QRectF(0, BODY_BOX_HEIGHT_PX - 31, w, 9),
                 Qt.AlignCenter,
                 growth_text(growth_pct),
             )
@@ -521,13 +532,40 @@ if _HAS_QT:
             p.setPen(QColor(id_text_color(self._app_theme_name)))
             bot_id_short = data.get("bot_id", "")[:8]
             p.drawText(
-                QRectF(0, h - 10, w, 9),
+                QRectF(0, BODY_BOX_HEIGHT_PX - 10, w, 9),
                 Qt.AlignCenter,
                 _mask_or(bot_id_short, "bot_swarm.identifiers"),
             )
 
-            # setToolTip runs on every paint, from the current _bot_data.
             from ...core.fmt import fmt_price as _fp
+
+            price_str = _fp(price) if price > 0 else "—"
+
+            font.setPointSize(FACT_FONT_PT)
+            font.setBold(True)
+            p.setFont(font)
+            p.setPen(state_color)
+            p.drawText(
+                QRectF(0, STATUS_RECT_TOP_PX, w, FACT_RECT_HEIGHT_PX),
+                Qt.AlignCenter,
+                str(state).upper(),
+            )
+
+            font.setBold(False)
+            p.setFont(font)
+            p.setPen(t["text"])
+            p.drawText(
+                QRectF(0, TRADES_RECT_TOP_PX, w, FACT_RECT_HEIGHT_PX),
+                Qt.AlignCenter,
+                f"{trades} trades",
+            )
+            p.drawText(
+                QRectF(0, PRICE_RECT_TOP_PX, w, FACT_RECT_HEIGHT_PX),
+                Qt.AlignCenter,
+                price_str,
+            )
+
+            # setToolTip runs on every paint, from the current _bot_data.
 
             vol_str = (
                 f"${volume/1e6:.1f}M"
@@ -539,7 +577,7 @@ if _HAS_QT:
                 f"State: {state.upper()}\n"
                 f"Mode: {mode.upper()}\n"
                 f"Trades: {trades}\n"
-                f"Price: {_fp(price) if price > 0 else '—'}\n"
+                f"Price: {price_str}\n"
                 f"Volume: {vol_str}\n"
                 f"P/L: {_fpnl(pnl)}\n"
                 f"Stage: {STAGE_LABELS[stage]}\n"

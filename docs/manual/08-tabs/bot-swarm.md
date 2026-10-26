@@ -1512,4 +1512,50 @@ file saved with a password: the top level holds five fields — `fleet_sealed`,
 four fleet fields. Read on the same material saved with no password: the same
 seven fields the page describes, and no latch.
 
+### The grid is the only surface that draws a bot's figures
+
+**The sentences this overtakes**, from the section on the live rows:
+
+> A strip above the locust grid holds one dense row per live bot: the id, the
+> pair, the mode, the timeframe, the capital, the state, the price, the profit
+> and the trade count. The strip is hidden while the fleet is empty. The same
+> fleet load that draws the locusts fills it.
+
+**The true sentences.** No swarm tab draws a one-line bot row. The locust grid
+is the only surface that draws a bot's figures and it carries them under the
+icon. Driven with a six-bot fleet, Bot Swarm, Simulator Swarm and Paper Swarm
+build no row between them.
+
+Each locust draws eight strings. The pair sits above the icon. Under the icon
+sit the realised growth figure, the profit and loss, the short id, the run
+state, the trade count and the last price. The mode, the candle length and the
+budget are not on the card, because the running-bot window already shows them.
+
+The card is 88 by 108 pixels. It grew downward by three lines and the locust
+did not move: `BODY_BOX_HEIGHT_PX` pins the body box at the former card height,
+so the body centre and the body scale read what they read before.
+
+`src/gui/main_tabs/bot_node_surface.py, in BotNodeModel.paint`
+
+```python
+cx, cy = width / 2, BODY_BOX_HEIGHT_PX / 2
+scale = min(width, BODY_BOX_HEIGHT_PX) / SCALE_DIVISOR * BODY_SCALE_RATIO[stage]
+```
+
+The three new lines are drawn at five point Consolas, each in a rectangle the
+full width of the card and ten pixels tall. The widest string each field can
+produce, measured with the machine's own Consolas loaded:
+
+| line | longest string | width |
+| ---- | -------------- | ----- |
+| pair | thirteen characters | 65 px |
+| profit and loss | sign, seven digits, four decimals | 80 px |
+| run state | `COOLDOWN` | 32 px |
+| trade count | four digits and the word | 44 px |
+| last price | eight decimals, or seven digits | 52 px |
+
+Every one fits the 88-pixel card. The Qt card and the React card take the same
+sizes from `bot_node_surface`, so the two builds draw the same eight strings in
+the same places.
+
 Back to [the subsystem index](README.md).

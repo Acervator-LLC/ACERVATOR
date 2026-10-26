@@ -158,6 +158,7 @@
   ];
 
   var LEFT_PX = "left_px";
+  var BODY_BOX_HEIGHT_PX = "body_box_height_px";
   var SYMBOL_TOP_PX = "symbol_top_px";
   var SYMBOL_HEIGHT_PX = "symbol_height_px";
   var PNL_BOTTOM_PX = "pnl_bottom_px";
@@ -165,16 +166,29 @@
   var BOT_ID_BOTTOM_PX = "bot_id_bottom_px";
   var BOT_ID_HEIGHT_PX = "bot_id_height_px";
   var BOT_ID_COLOR = "bot_id_color";
+  var STATUS_TOP_PX = "status_top_px";
+  var TRADES_TOP_PX = "trades_top_px";
+  var PRICE_TOP_PX = "price_top_px";
+  var FACT_HEIGHT_PX = "fact_height_px";
+  var FACT_SIZE_PT = "fact_size_pt";
+  var TRADES_FORMAT = "trades_format";
 
   var LABEL_FIELDS = [
+    BODY_BOX_HEIGHT_PX,
     BOT_ID_BOTTOM_PX,
     BOT_ID_COLOR,
     BOT_ID_HEIGHT_PX,
+    FACT_HEIGHT_PX,
+    FACT_SIZE_PT,
     LEFT_PX,
     PNL_BOTTOM_PX,
     PNL_HEIGHT_PX,
+    PRICE_TOP_PX,
+    STATUS_TOP_PX,
     SYMBOL_HEIGHT_PX,
-    SYMBOL_TOP_PX
+    SYMBOL_TOP_PX,
+    TRADES_FORMAT,
+    TRADES_TOP_PX
   ];
 
   var FAMILY = "family";
@@ -254,6 +268,9 @@
   var SYMBOL_LABEL = "symbol";
   var PNL_LABEL = "pnl";
   var BOT_ID_LABEL = "bot-id";
+  var STATUS_LABEL = "status";
+  var TRADES_LABEL = "trades";
+  var PRICE_LABEL = "price";
 
   var MISSING_FAULT = "missing";
   var NULL_FAULT = "null";
@@ -569,17 +586,27 @@
   }
 
   // The label one text rectangle carries, matched to the published boxes.
-  function labelFor(model, rect, height) {
+  function labelFor(model, rect) {
     var labels = objectField(model, LABELS);
+    var box = labels[BODY_BOX_HEIGHT_PX];
     var top = at(rect, ONE);
     if (top === labels[SYMBOL_TOP_PX]) {
       return SYMBOL_LABEL;
     }
-    if (isNumber(height) && top === height - labels[PNL_BOTTOM_PX]) {
+    if (isNumber(box) && top === box - labels[PNL_BOTTOM_PX]) {
       return PNL_LABEL;
     }
-    if (isNumber(height) && top === height - labels[BOT_ID_BOTTOM_PX]) {
+    if (isNumber(box) && top === box - labels[BOT_ID_BOTTOM_PX]) {
       return BOT_ID_LABEL;
+    }
+    if (top === labels[STATUS_TOP_PX]) {
+      return STATUS_LABEL;
+    }
+    if (top === labels[TRADES_TOP_PX]) {
+      return TRADES_LABEL;
+    }
+    if (top === labels[PRICE_TOP_PX]) {
+      return PRICE_LABEL;
     }
     return undefined;
   }
@@ -781,7 +808,7 @@
     return false;
   }
 
-  function ellipseNode(model, call, index, paint, divisor) {
+  function ellipseNode(model, call, index, paint) {
     var where = String(index);
     var centre = at(call, ONE);
     var rx = at(call, TWO);
@@ -877,7 +904,7 @@
       note(where, OP_DRAW_TEXT, UNKNOWN_ALIGN_FAULT, text(align));
     }
     markupIn(where, words);
-    var label = labelFor(model, rect, objectField(model, CARD)[HEIGHT_PX]);
+    var label = labelFor(model, rect);
     if (label === undefined) {
       note(where, OP_DRAW_TEXT, UNKNOWN_LABEL_FAULT, String(at(rect, ONE)));
     }
@@ -994,7 +1021,7 @@
         return;
       }
       if (op === OP_DRAW_ELLIPSE) {
-        var dot = ellipseNode(model, call, index, paint, divisor);
+        var dot = ellipseNode(model, call, index, paint);
         if (dot !== undefined) {
           counts.dots += ONE;
           drawn.push(dot);
@@ -1371,7 +1398,14 @@
       FONT_FIELDS,
       PEN_FIELDS,
       [NAME_FIELD, PEN_STYLE, VALUE_FIELD, TEXT_FIELD],
-      [SYMBOL_LABEL, PNL_LABEL, BOT_ID_LABEL]
+      [
+        SYMBOL_LABEL,
+        PNL_LABEL,
+        BOT_ID_LABEL,
+        STATUS_LABEL,
+        TRADES_LABEL,
+        PRICE_LABEL
+      ]
     );
   }
 
