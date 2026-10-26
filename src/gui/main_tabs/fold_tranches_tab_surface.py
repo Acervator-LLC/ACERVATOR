@@ -1042,7 +1042,7 @@ def units_marked_row(tranches: Any, holdings: Any) -> list:
         return [UNITS_NO_RATIO_FORMAT.format(text=text, held=held), NO_CELL_COLOR]
     ratio = marked / held
     full = UNITS_RATIO_FORMAT.format(text=text, held=held, ratio=ratio)
-    if ratio > UNITS_OVER_ALLOTMENT:
+    if marked > held * UNITS_OVER_ALLOTMENT:
         return [full, FOLD_OVER_ALLOTMENT_FG_HEX]
     return [full, NO_CELL_COLOR]
 
@@ -1076,9 +1076,9 @@ def cycle_close_ratio(
     )
     if denominator < RATIO_QUIET_DENOMINATOR:
         return [text, NO_CELL_COLOR]
-    if ratio < RATIO_RED_BELOW:
+    if int(closed) < denominator * RATIO_RED_BELOW:
         return [text, FOLD_RATIO_RED_FG_HEX]
-    if ratio < RATIO_AMBER_BELOW:
+    if int(closed) < denominator * RATIO_AMBER_BELOW:
         return [text, FOLD_RATIO_AMBER_FG_HEX]
     return [text, FOLD_RATIO_GREEN_FG_HEX]
 

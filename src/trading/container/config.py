@@ -98,6 +98,22 @@ ASSET_CLASS_DEFAULT: str = "crypto"
 #: ``sizing.WHOLE_UNIT_POSITION_MINIMUM`` decides the opening size.
 WHOLE_UNIT_OPENING_ENGINE: int = 0
 
+#: ``BotConfig.max_cartridge_smart_ceiling_pct`` opening figure, read by
+#: ``smart_cartridge_ceiling_pct``.
+MAX_CARTRIDGE_SMART_CEILING_PCT_DEFAULT: float = 30.0
+
+#: ``smart_cartridge_ceiling_pct`` reading OFF, where no ceiling holds the band
+#: range down.
+SMART_CARTRIDGE_CEILING_OFF: float = 0.0
+
+#: What the Console line prints in place of a figure for
+#: ``SMART_CARTRIDGE_CEILING_OFF``.
+SMART_CARTRIDGE_CEILING_OFF_TEXT: str = "off"
+
+#: ``BotConfig.position_ceiling_multiple`` opening figure, in anchor multiples,
+#: read by ``ceiling_multiple``.
+POSITION_CEILING_MULTIPLE_DEFAULT: float = 5.0
+
 
 @dataclass
 class BotConfig:
@@ -162,7 +178,7 @@ class BotConfig:
     # Derives the threshold from the BB range, clamped by
     # max_cartridge_smart_ceiling_pct.
     max_cartridge_smart: bool = False
-    max_cartridge_smart_ceiling_pct: float = 30.0
+    max_cartridge_smart_ceiling_pct: float = MAX_CARTRIDGE_SMART_CEILING_PCT_DEFAULT
 
     # SCRUM-side (sell at top):
     scrum_require_ta_bullish: bool = True  # Requires is_bullish for auto-scrum
@@ -203,7 +219,8 @@ class BotConfig:
     # Caps accumulation at position_ceiling_multiple x the anchor target_balance;
     # fold_rate_taper shrinks the fold's USD size 100%->10% over ratio 0.5->1.0.
     position_ceiling_enabled: bool = False
-    position_ceiling_multiple: float = 5.0  # Range [1.0, 10.0]
+    # Range [1.0, 10.0].
+    position_ceiling_multiple: float = POSITION_CEILING_MULTIPLE_DEFAULT
     # A BULLISH reversal on detonation_timeframe at or above
     # detonation_confidence_min market-sells above the anchor, once per reversal.
     # position_ceiling_enabled gates none of the three: detonation fires on the
@@ -558,6 +575,34 @@ def pushed_target_usd(value) -> Optional[float]:
 #: out. `get_aggregate_stats` writes it and the header strip draws a dash for
 #: each total it names.
 UNREADABLE_TOTALS_KEY: str = "unreadable_totals"
+
+
+def smart_cartridge_ceiling_pct(config) -> float:
+    """`config.max_cartridge_smart_ceiling_pct` as a float, where
+    `SMART_CARTRIDGE_CEILING_OFF` holds no band range down.
+
+    `_tick_smart_cartridge_pct` calls it, and an absent field reads
+    `MAX_CARTRIDGE_SMART_CEILING_PCT_DEFAULT`.
+    """
+    return float(
+        getattr(
+            config,
+            "max_cartridge_smart_ceiling_pct",
+            MAX_CARTRIDGE_SMART_CEILING_PCT_DEFAULT,
+        )
+    )
+
+
+def ceiling_multiple(config) -> float:
+    """`config.position_ceiling_multiple` as a float, in anchor multiples.
+
+    `import_scrumming_state`, `_tick_initial_entry` and both `ScrummingBot`
+    ceiling checks call it, and an absent field reads
+    `POSITION_CEILING_MULTIPLE_DEFAULT`.
+    """
+    return float(
+        getattr(config, "position_ceiling_multiple", POSITION_CEILING_MULTIPLE_DEFAULT)
+    )
 
 
 def whole_despawn_days(value) -> int:

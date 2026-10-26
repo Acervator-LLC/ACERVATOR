@@ -4969,6 +4969,43 @@ lower bound binds there instead.
 The control cannot emit a zero. A record hand-edited to carry one is read as
 30.0 %, the declared default, not as no ceiling.
 
+#### A stored zero now means no ceiling
+
+The two sentences above describe what the reader did before this unit. A stored
+zero is now read as off, and the band range passes through held only by the
+Opposing Trade Interval below it. The box still cannot emit a zero, so only a
+hand-edited record reaches this reading.
+
+Driven on a $200.00 target with Smart Cartridge on, a band spanning 100.0 % of
+its midline and the interval at 1.0 %:
+
+```
+stored ceiling   answer      threshold
+0.0              100.00 %    $200.00
+missing          30.00 %      $60.00
+-5.0              1.00 %       $2.00
+15.0             15.00 %      $30.00
+30.0             30.00 %      $60.00
+```
+
+A missing field and a negative figure read exactly as they read before. The
+Console names the reading in words rather than printing a zero per cent:
+
+```
+SMART CARTRIDGE calibrated to 100.00% (BB range 100.00%, floor=1.00%,
+ceiling=off). Effective threshold = $200.00.
+```
+
+The opening figure is declared once, in
+`src/trading/container/config.py`, and
+`smart_cartridge_ceiling_pct` in that module is the one reader.
+
+```python
+MAX_CARTRIDGE_SMART_CEILING_PCT_DEFAULT: float = 30.0
+SMART_CARTRIDGE_CEILING_OFF: float = 0.0
+SMART_CARTRIDGE_CEILING_OFF_TEXT: str = "off"
+```
+
 `src/gui/bot_wizard.py` — `TradingParamsPage.get_config`, the settings this
 group emits, in the order of the rows above
 
@@ -5191,6 +5228,40 @@ f"(BB range {_bb_range_pct:.2f}%, "
 f"floor={_interval_floor:.2f}%, "
 f"ceiling={_smart_ceiling:.2f}%). "
 ```
+
+The block above is the line as it read before this unit. The ceiling now prints
+through a name, so a stored zero reads as a word instead of as nought per cent.
+
+```python
+f"floor={_interval_floor:.2f}%, "
+f"ceiling={_ceiling_text}). "
+```
+
+#### One declaration holds the Ceiling Multiple opening figure
+
+Four readers in the engine each wrote their own figure to fall back on when a
+bot's record carries no Ceiling Multiple, and all four named one anchor multiple
+against the 5.0 this page states. On a $200.00 anchor that is a $200.00 ceiling
+in place of a $1,000.00 one, so a restored target of $700.00 was snapped to
+$200.00 and a buy was refused at a fifth of the figure you set. No real record
+reaches those figures, because every bot's configuration declares the field.
+
+Two of the four now read one declaration.
+`src/trading/container/config.py` holds the figure and `ceiling_multiple` in
+that module answers for it.
+
+```python
+POSITION_CEILING_MULTIPLE_DEFAULT: float = 5.0
+```
+
+Driven on a record carrying no Ceiling Multiple, with a stored target of
+$700.00 against a $200.00 anchor: the restore left the target at $700.00, where
+before it cut it to $200.00. A record that does carry the figure restored to
+$700.00 both times, and the same restore with Enable Position Ceiling clear left
+$700.00 in every reading.
+
+The two readers inside `src/trading/scrumming_bot.py` still carry their own
+figure. An open unit holds that file, so they are owed.
 
 Enable Detonation - Enables an entire remaining position to be sold after the Ceiling Multiple growth threshold is crossed.
 
