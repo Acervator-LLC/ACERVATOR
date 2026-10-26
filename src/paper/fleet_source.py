@@ -37,6 +37,7 @@ from typing import Any, Optional, Sequence
 
 from ..core.io_utils import atomic_write_json
 from ..trading.container.config import (
+    POSITION_CEILING_MULTIPLE_DEFAULT,
     PUSHED_TARGET_DEFAULT,
     BotConfig,
     BotMode,
@@ -250,7 +251,7 @@ class PaperBot:
     exchange_data_fresh_ts: float = 0.0
     scrum_target_mode: Optional[str] = None
     position_ceiling_enabled: bool = False
-    position_ceiling_multiple: float = 5.0
+    position_ceiling_multiple: float = POSITION_CEILING_MULTIPLE_DEFAULT
     max_target_growth_pct: float = 1.0
     detonation_enabled: bool = False
     detonation_timeframe: str = "1d"
@@ -469,7 +470,9 @@ def paper_bot_from_record(
         scrum_target_mode=scrum_mode,
         position_ceiling_enabled=bool(config.get("position_ceiling_enabled", False)),
         position_ceiling_multiple=(
-            5.0 if ceiling_multiple is None else ceiling_multiple
+            POSITION_CEILING_MULTIPLE_DEFAULT
+            if ceiling_multiple is None
+            else ceiling_multiple
         ),
         max_target_growth_pct=1.0 if growth_cap_pct is None else growth_cap_pct,
         detonation_enabled=bool(config.get("detonation_enabled", False)),

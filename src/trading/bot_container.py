@@ -58,6 +58,7 @@ from .container.config import (
     _sanitize_deprecated_kwargs,
     as_finite_float,
     bot_config_kwargs,
+    ceiling_multiple,
     despawn_preview,
     despawn_threshold_days,
     expiry_close_decision,
@@ -989,9 +990,7 @@ class BotContainer:
             "position_ceiling_enabled": getattr(
                 self.config, "position_ceiling_enabled", False
             ),
-            "position_ceiling_multiple": getattr(
-                self.config, "position_ceiling_multiple", 5.0
-            ),
+            "position_ceiling_multiple": ceiling_multiple(self.config),
             "position_ceiling_usd": ceiling_usd,
             "ceiling_ratio": ceiling_ratio,
             "fold_rate_taper": fold_taper,

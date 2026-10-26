@@ -9190,3 +9190,61 @@ declaration to a figure nothing uses moved all five together; before the change 
 same move reached the declaration alone and all four wizard boxes still opened at
 $200.00. The max-cartridge box beside it was read the same way each time and never
 moved, which is the reading that shows the boxes answer for themselves.
+
+## 2026-10-26 - #665 - both Electron Ceiling Multiple rows read the one declaration
+
+The two rows the Electron build draws for the Ceiling Multiple still typed their own
+span and their own opening figure. Both read the one declaration now, so all eight
+screens on this page answer from the same place.
+
+`src/gui/main_tabs/bot_wizard_surface.py` — the Electron wizard row
+
+```python
+"position_ceiling_multiple": {
+    "kind": SPIN_DOUBLE,
+    "minimum": CEILING_MULTIPLE_MIN,
+    "maximum": CEILING_MULTIPLE_MAX,
+    "decimals": 1,
+    "step": 0.5,
+    "suffix": "x anchor",
+    "value": POSITION_CEILING_MULTIPLE_DEFAULT,
+},
+```
+
+The opening figure was written in thirteen places, not nine. The six boxes on this
+page, the status every bot row is read from, the two Electron rows, and four more in
+the Paper and Simulator record readers. All thirteen read one declaration now.
+
+`src/trading/container/config.py` — the one opening figure and the one span
+
+```python
+POSITION_CEILING_MULTIPLE_DEFAULT: float = 5.0
+CEILING_MULTIPLE_MIN: float = 1.0
+CEILING_MULTIPLE_MAX: float = 10.0
+```
+
+Every box was built on its real screen and read back off the real control. All six
+span 1.0 to 10.0, open at 5.0x and step half a multiple, before and after. Both
+Electron rows answer the same span and the same figure through the real bridge, and
+the dollar ceiling on a $100.00 anchor is unchanged at every stored multiple.
+
+Moving the declaration to a span of three to seventy-seven and an opening figure of
+6.25 moved every one of those readings together. The same move on the code before
+this change left both Electron rows at one to ten and 5.0, and left all six opening
+fallbacks at 5.0. The Smart Ceiling box beside it was read the same way each time and
+never moved, which is the reading that shows each box answers for itself.
+
+The Fold Tranches surface no longer claims that a figure written out by hand is
+reported when it changes on one side alone. Nothing did that reporting, and the
+module it named imports the old interface library, which a surface may not reach. The
+docstring now says where its two imported figures come from.
+
+`src/gui/main_tabs/fold_tranches_tab_surface.py` — what the module reads in
+
+```python
+from ...trading.container.config import DESPAWN_MAX_DAYS, DESPAWN_PREVIEW_WINDOWS
+```
+
+Every value that surface hands out was read back before and after the sentence went.
+The payload is the same 28,046 bytes and its 409 declared figures are unchanged, so
+no figure left with the sentence.
