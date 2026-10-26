@@ -1647,7 +1647,10 @@ def ivp_feed(source: Any, bot: Any, now: Optional[float] = None) -> dict:
     """The voting panel's reading for ``bot`` over the tablet ``tablet_for``
     finds, with each phantom timeframe merged and ``composite_net`` over the
     phantom rows, or the one empty-state cause; a reading carries ``summary``,
-    ``stored``, ``when``, ``age`` and ``message`` for ``show_stored``."""
+    ``stored``, ``when``, ``age`` and ``message`` for ``show_stored``.
+
+    ``message`` carries the tablet's last day and
+    ``sim.WEIGHTING_NOT_RECORDED_TEXT``."""
     import time
 
     from ...trading.ata_gate_scan import composite_net
@@ -1722,7 +1725,11 @@ def ivp_feed(source: Any, bot: Any, now: Optional[float] = None) -> dict:
         },
         "when": time.strftime(STALENESS_WHEN_FORMAT, time.localtime(taken_at)),
         "age": age_phrase(max(0.0, moment - taken_at)),
-        "message": sim.TABLET_ENDS_FORMAT.format(day=sim.iso_day(rows[-1][0])),
+        "message": (
+            sim.TABLET_ENDS_FORMAT.format(day=sim.iso_day(rows[-1][0]))
+            + " "
+            + sim.WEIGHTING_NOT_RECORDED_TEXT
+        ),
         "tablet": entry.file,
         "skipped_phantoms": skipped,
     }

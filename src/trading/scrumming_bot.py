@@ -43,6 +43,7 @@ from .ta_engine import (
     BBProximityResult,
     detect_landing_strip_v2,
 )
+from .container.config import ceiling_multiple
 from .indicators.bb_proximity import CONSOLIDATION_THRESHOLD_PCT
 from ..core.settings import DEFAULT_ENABLE_PHANTOMS
 from .phantom_balance import (
@@ -649,7 +650,12 @@ class ScrummingBot(
     async def _get_cached_exchange_balance(
         self, asset: str, max_age_s: float = 60.0
     ) -> Optional[float]:
-        """Return this bot's exchange free-balance for ``asset``."""
+        """Return this bot's exchange free-balance for ``asset``.
+
+        A read that raises answers None and warns, naming the venue, the asset
+        and the error, because ``_ensure_capital_reservation`` places no claim
+        on None.
+        """
         _asset = (asset or "").upper()
         if not _asset:
             return None
@@ -665,11 +671,14 @@ class ScrummingBot(
             self._exchange_balance_cache[_asset] = (_free, _now)
             return _free
         except Exception as _bal_exc:  # noqa: BLE001
-            logger.debug(
-                "Bot %s balance fetch for %s (CRR ensure) raised %s — "
-                "skipping over-commit check this cycle.",
+            logger.warning(
+                "Bot %s could not read its %s balance on %s (%s: %s). "
+                "No holdings figure bounds a claim, so no new claim is "
+                "placed and no standing one is resized. Retrying next call.",
                 self.bot_id,
                 _asset,
+                str(getattr(self.config, "exchange_id", "") or "an unnamed venue"),
+                type(_bal_exc).__name__,
                 _bal_exc,
             )
             return None
@@ -2782,9 +2791,7 @@ class ScrummingBot(
 
             if getattr(self.config, "position_ceiling_enabled", False):
                 try:
-                    _smart_mult = float(
-                        getattr(self.config, "position_ceiling_multiple", 1.0)
-                    )
+                    _smart_mult = ceiling_multiple(self.config)
                     _smart_ceiling_usd = position_ceiling(_anchor, _smart_mult)
                     if _projected > _smart_ceiling_usd:
                         return False, (
@@ -4075,9 +4082,7 @@ class ScrummingBot(
         _mem253_smart_ceiling_usd = None
         if getattr(self.config, "position_ceiling_enabled", False):
             try:
-                _smart_mult_253 = float(
-                    getattr(self.config, "position_ceiling_multiple", 1.0)
-                )
+                _smart_mult_253 = ceiling_multiple(self.config)
                 _mem253_smart_ceiling_usd = position_ceiling(_anchor, _smart_mult_253)
                 _mem253_at_smart_ceiling = (
                     _mem253_current_pos >= _mem253_smart_ceiling_usd

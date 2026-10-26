@@ -626,6 +626,30 @@ holdings figure bounds it.
 The Extractor claims once for each run, so it does not try again on a later
 call. A start reads the balance again.
 
+#### The reader names the venue and the error
+
+The refusal above tells you a claim was not placed. It does not tell you which
+venue would not answer, or what the venue said. The reader writes that itself,
+at warning level, so the whole failure sits on one line in this pane.
+
+`src/trading/scrumming_bot.py` — `_get_cached_exchange_balance`
+
+```
+Bot <id> could not read its <asset> balance on <venue> (TimeoutError: the
+venue balance endpoint did not answer). No holdings figure bounds a claim, so
+no new claim is placed and no standing one is resized. Retrying next call.
+```
+
+Warning is the level this pane reads. The program runs its logging at
+information level, so a line written below that is dropped before any pane
+sees it. A venue that answered zero and a venue that refused used to look the
+same here; the line above tells them apart.
+
+Driven with a venue stand-in whose balance call raises, the line was absent
+from a reading taken at warning level and present in a reading taken one level
+below it. It is now present in both. A neighbouring warning the same bot writes
+was present in all four readings, so the reading itself reports.
+
 ### The bot named in a refused sale
 
 A sale stops when another bot claims the units. The check is

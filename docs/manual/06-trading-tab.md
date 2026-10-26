@@ -5246,7 +5246,7 @@ in place of a $1,000.00 one, so a restored target of $700.00 was snapped to
 $200.00 and a buy was refused at a fifth of the figure you set. No real record
 reaches those figures, because every bot's configuration declares the field.
 
-Two of the four now read one declaration.
+All four now read one declaration.
 `src/trading/container/config.py` holds the figure and `ceiling_multiple` in
 that module answers for it.
 
@@ -5260,8 +5260,9 @@ before it cut it to $200.00. A record that does carry the figure restored to
 $700.00 both times, and the same restore with Enable Position Ceiling clear left
 $700.00 in every reading.
 
-The two readers inside `src/trading/scrumming_bot.py` still carry their own
-figure. An open unit holds that file, so they are owed.
+The two readers inside `src/trading/scrumming_bot.py` read the same declaration,
+so the pre-buy refusal, the first entry of a brand-new bot, the fold hold and the
+restore all answer one figure.
 
 Enable Detonation - Enables an entire remaining position to be sold after the Ceiling Multiple growth threshold is crossed.
 
