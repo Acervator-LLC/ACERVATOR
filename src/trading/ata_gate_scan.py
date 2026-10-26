@@ -18,6 +18,7 @@ from .gate_chain import (
     GateContext,
     build_scrumming_fold_chain,
     build_scrumming_scrum_chain,
+    effective_gate_flags,
 )
 from .indicators.bollinger import BollingerBands
 from .indicators.landing_strip import detect_landing_strip_v2
@@ -644,6 +645,14 @@ def build_context(
     htf_blocks_scrum = bias == SignalDirection.BULLISH
     htf_blocks_fold = bias == SignalDirection.BEARISH
     midline_gate = bool(getattr(held, "bb_midline_gate", True))
+    effective = effective_gate_flags(
+        held,
+        is_bullish=is_bullish,
+        is_bearish=is_bearish,
+        trend_hold=trend_hold,
+        htf_blocks_scrum=htf_blocks_scrum,
+        htf_blocks_fold=htf_blocks_fold,
+    )
     return GateContext(
         symbol=str(symbol),
         ticker_last=price,
@@ -658,11 +667,11 @@ def build_context(
         trend_hold=trend_hold,
         trend_strength=trend_strength,
         eff_direction_name=DIRECTION_NAMES.get(direction, ""),
-        eff_is_bullish=is_bullish or not held.scrum_require_ta_bullish,
-        eff_is_bearish=is_bearish or not held.fold_require_ta_bearish,
-        eff_trend_hold=trend_hold and bool(held.scrum_hold_in_uptrend),
-        eff_htf_blocks_scrum=htf_blocks_scrum and bool(held.scrum_defer_to_htf),
-        eff_htf_blocks_fold=htf_blocks_fold and bool(held.fold_defer_to_htf),
+        eff_is_bullish=effective.eff_is_bullish,
+        eff_is_bearish=effective.eff_is_bearish,
+        eff_trend_hold=effective.eff_trend_hold,
+        eff_htf_blocks_scrum=effective.eff_htf_blocks_scrum,
+        eff_htf_blocks_fold=effective.eff_htf_blocks_fold,
         flag_require_ta_bullish=bool(held.scrum_require_ta_bullish),
         flag_hold_in_uptrend=bool(held.scrum_hold_in_uptrend),
         flag_defer_to_htf=bool(held.scrum_defer_to_htf),

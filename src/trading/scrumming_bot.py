@@ -63,15 +63,12 @@ from .ata_gate_scan import (
 )
 from .gate_chain import (
     OVERRIDE_APPLIED_FORMAT,
-    DeepFoldOverride,
+    TREND_HOLD_OVERRIDE,
     GateContext,
-    MidlineGate,
-    RipeHarvestScrumOverride,
-    TADirectionGate,
-    TargetFiresGate,
     TrendHoldGate,
     build_scrumming_scrum_chain,
     build_scrumming_fold_chain,
+    effective_gate_flags,
 )
 from .scrumming import (
     CapitalReservationMixin,
@@ -109,17 +106,9 @@ logger = logging.getLogger("acervator.scrumming")
 #: The gate log key carrying each refusal an override replaced on one side.
 OVERRIDES_APPLIED_KEY = "overrides_applied"
 
-#: The override names and the covered gate names, read off the gate classes so
-#: a replaced refusal reads the same in the gate log as in
-#: ``ChainResult.overrides_applied``.
-_RIPE_OVERRIDE = RipeHarvestScrumOverride.name
-_DEEP_FOLD_OVERRIDE = DeepFoldOverride.name
-_GATE_TA_SCRUM = TADirectionGate(side="scrum").name
-_GATE_TA_FOLD = TADirectionGate(side="fold").name
-_GATE_MIDLINE_SCRUM = MidlineGate(side="scrum").name
-_GATE_MIDLINE_FOLD = MidlineGate(side="fold").name
+#: The gate name the trend-hold override's record entry is written against,
+#: read off the gate class so it matches ``ChainResult.overrides_applied``.
 _GATE_TREND_HOLD = TrendHoldGate.name
-_GATE_TARGET_FIRES = TargetFiresGate.name
 
 #: Seconds between detonation trigger checks.
 _DETONATION_CHECK_INTERVAL_S: float = 3600.0
@@ -3367,12 +3356,18 @@ class ScrummingBot(
                 band_travel_triggered = True
 
         trend_override = abs(delta) >= _interval_usd * 2.0 or band_travel_triggered
+        _trend_hold_cleared_by = ""
         if trend_hold and trend_override:
+            _trend_hold_cleared_by = (
+                f"band travel {band_travel_frac:.0%}"
+                if band_travel_triggered
+                else f"delta 2x interval (${_interval_usd * 2.0:.2f})"
+            )
             self._bus.emit(
                 "bot.log",
                 bot_id=self.bot_id,
                 message=f"TREND-HOLD OVERRIDE: trend {trend_strength:.0%} bullish "
-                f"but {'band travel ' + f'{band_travel_frac:.0%}' if band_travel_triggered else 'delta 2x interval'} "
+                f"but {_trend_hold_cleared_by} "
                 f"— scrum allowed this tick",
             )
             trend_hold = False
@@ -3726,6 +3721,7 @@ class ScrummingBot(
                 _hbexc,
             )
         _htf_blocks_scrum = _htf_bias_dir == SignalDirection.BULLISH
+        _htf_blocks_fold = _htf_bias_dir == SignalDirection.BEARISH
         _flag_require_ta_bullish = bool(
             getattr(self.config, "scrum_require_ta_bullish", True)
         )
@@ -3733,78 +3729,99 @@ class ScrummingBot(
             getattr(self.config, "scrum_hold_in_uptrend", True)
         )
         _flag_defer_to_htf = bool(getattr(self.config, "scrum_defer_to_htf", True))
-        _eff_is_bullish = is_bullish if _flag_require_ta_bullish else True
-        _eff_trend_hold = trend_hold if _flag_hold_in_uptrend else False
-        _eff_htf_blocks = _htf_blocks_scrum if _flag_defer_to_htf else False
+        _flag_fold_require_ta_bearish = bool(
+            getattr(self.config, "fold_require_ta_bearish", True)
+        )
+        _flag_fold_defer_to_htf = bool(getattr(self.config, "fold_defer_to_htf", True))
+        _effective = effective_gate_flags(
+            self.config,
+            is_bullish=is_bullish,
+            is_bearish=is_bearish,
+            trend_hold=trend_hold,
+            htf_blocks_scrum=_htf_blocks_scrum,
+            htf_blocks_fold=_htf_blocks_fold,
+        )
+        _eff_is_bullish = _effective.eff_is_bullish
+        _eff_trend_hold = _effective.eff_trend_hold
+        _eff_htf_blocks = _effective.eff_htf_blocks_scrum
+        _eff_is_bearish = _effective.eff_is_bearish
+        _eff_htf_blocks_fold = _effective.eff_htf_blocks_fold
 
-        _scrum_blockers: list[str] = []
-        _scrum_replaced: list[str] = []
-
-        def _note_scrum_refusal(gate_name: str, refusal: str) -> None:
-            """File one scrum refusal as standing, or as replaced when ripe.
-
-            A ripe row is the ``RipeHarvestScrumOverride`` condition, so the
-            refusal it covers is recorded against that override's name rather
-            than dropped.
-            """
-            if _ripe_scrum:
-                _scrum_replaced.append(
-                    OVERRIDE_APPLIED_FORMAT.format(
-                        gate=gate_name, override=_RIPE_OVERRIDE, refusal=refusal
-                    )
+        _scrum_ctx = GateContext(
+            symbol=str(self.config.symbol),
+            ticker_last=float(ticker.last),
+            bb_pos=float(bb_pos),
+            bb_upper_dt=float(_bb_upper_dt),
+            bb_lower_dt=float(_bb_lower_dt),
+            delta=float(delta),
+            delta_pct=abs(float(delta)),
+            below_interval=bool(below_interval),
+            is_bullish=bool(is_bullish),
+            is_bearish=False,
+            trend_hold=bool(trend_hold),
+            trend_strength=float(trend_strength),
+            eff_direction_name=str(eff_direction.name),
+            eff_is_bullish=bool(_eff_is_bullish),
+            eff_is_bearish=False,
+            eff_trend_hold=bool(_eff_trend_hold),
+            eff_htf_blocks_scrum=bool(_eff_htf_blocks),
+            eff_htf_blocks_fold=False,
+            flag_require_ta_bullish=bool(_flag_require_ta_bullish),
+            flag_hold_in_uptrend=bool(_flag_hold_in_uptrend),
+            flag_defer_to_htf=bool(_flag_defer_to_htf),
+            flag_fold_require_ta_bearish=True,
+            flag_fold_defer_to_htf=True,
+            bb_above_upper_dt=bool(_bb_above_upper_dt),
+            bb_below_lower_dt=False,
+            scrum_ok=bool(scrum_ok),
+            fold_ok_midline=False,
+            target_fires=bool(target_fires),
+            cb_blocks_scrum=bool(_cb_blocks_scrum),
+            cb_blocks_fold=False,
+            hyst_ok_scrum_side=bool(_hyst_ok_scrum_side),
+            hyst_ok_fold_side=True,
+            hyst_armed_scrum_side=bool(getattr(self, "_hyst_armed_scrum_side", False)),
+            hyst_armed_fold_side=False,
+            hyst_ref_scrum_side=float(
+                getattr(self, "_hyst_ref_scrum_side", 0.0) or 0.0
+            ),
+            hyst_ref_fold_side=0.0,
+            mem253_at_ceiling=False,
+            mem253_smart_ceiling_usd=0.0,
+            mem253_current_pos=0.0,
+            has_fold_tranches=bool(self._fold_tranches),
+            n_fold_tranches=len(self._fold_tranches or []),
+            htf_bias_name=(
+                str(_htf_bias_dir.name) if _htf_bias_dir is not None else None
+            ),
+            htf_blocks_scrum=bool(_htf_blocks_scrum),
+            htf_blocks_fold=False,
+            scrumming_interval_pct=float(self.config.scrumming_interval_pct or 0),
+            trading_fee_pct=float(getattr(self.config, "trading_fee_pct", 0.6) or 0.6),
+            ripe_scrum=bool(_ripe_scrum),
+            deep_fold=bool(_deep_fold),
+            adx=_extract_signal_detail(summary, "adx", "adx", 0.0),
+            efficiency_ratio=_extract_signal_detail(summary, "kaufman_er", "er", 0.0),
+            z_score=_extract_signal_detail(summary, "zscore", "z", 0.0),
+            eff_confidence=float(eff_confidence),
+            ta_conf_floor=float(_eff_conf_floor),
+        )
+        _scrum_chain_result = self._scrum_chain.evaluate(_scrum_ctx)
+        _scrum_blockers = [message for _name, message in _scrum_chain_result.blocked]
+        _scrum_replaced = list(_scrum_chain_result.overrides_applied)
+        if _trend_hold_cleared_by and _flag_hold_in_uptrend:
+            _scrum_replaced.append(
+                OVERRIDE_APPLIED_FORMAT.format(
+                    gate=_GATE_TREND_HOLD,
+                    override=TREND_HOLD_OVERRIDE,
+                    refusal=(
+                        f"trend_hold({trend_strength:.0%}) cleared by "
+                        f"{_trend_hold_cleared_by}"
+                    ),
                 )
-            else:
-                _scrum_blockers.append(refusal)
-
-        if delta <= 0:
-            _scrum_blockers.append("delta≤0")
-        if below_interval:
-            _scrum_blockers.append(
-                f"below_interval(Δ%<{self.config.scrumming_interval_pct})"
             )
-        if not _eff_is_bullish:
-            _note_scrum_refusal(
-                _GATE_TA_SCRUM,
-                (
-                    f"TA-conf-below-floor(dir={eff_direction.name},"
-                    f"conf={eff_confidence:.4f}<{_eff_conf_floor:.4f})"
-                    if eff_direction
-                    in (SignalDirection.BULLISH, SignalDirection.NEUTRAL)
-                    else f"TA-not-bullish(dir={eff_direction.name})"
-                ),
-            )
-        if _eff_trend_hold:
-            _note_scrum_refusal(_GATE_TREND_HOLD, f"trend_hold({trend_strength:.0%})")
-        if not scrum_ok:
-            _note_scrum_refusal(
-                _GATE_MIDLINE_SCRUM, f"scrum_ok=False(bb_pos={bb_pos:.2f})"
-            )
-        if not target_fires:
-            _note_scrum_refusal(_GATE_TARGET_FIRES, "target_fires=False(detect/fire)")
-        if not _bb_above_upper_dt:
-            _scrum_blockers.append(
-                f"BB-below-upper-detect(bb_pos={bb_pos:.2f}<{_bb_upper_dt:.2f})"
-            )
-        if _cb_blocks_scrum:
-            _scrum_blockers.append("CB-soft-trip")
-        if _eff_htf_blocks:
-            _scrum_blockers.append("HTF-bullish")
-        if not _hyst_ok_scrum_side:
-            try:
-                _ref_px = float(self._hyst_ref_scrum_side or 0)
-                _eff_pct = float(self.config.scrumming_interval_pct or 0) + float(
-                    getattr(self.config, "trading_fee_pct", 0.6) or 0.6
-                )
-                _required = _ref_px * (1.0 + _eff_pct / 100.0)
-                _scrum_blockers.append(
-                    f"OTD-hyst(px ${ticker.last:.8f} < "
-                    f"${_required:.8f}; pivot ${_ref_px:.8f} "
-                    f"+ {_eff_pct:.2f}%)"
-                )
-            except Exception:
-                _scrum_blockers.append("OTD-hyst-armed")
         try:
-            self._last_gate_state["scrum_armed"] = len(_scrum_blockers) == 0
+            self._last_gate_state["scrum_armed"] = bool(_scrum_chain_result.should_fire)
             self._last_gate_state["scrum_blockers"] = list(_scrum_blockers)
             self._last_gate_state["evaluated_at_tick"] = (
                 self._last_gate_state.get("evaluated_at_tick", 0) + 1
@@ -3863,64 +3880,6 @@ class ScrummingBot(
                     _sfx_exc,
                 )
 
-        _scrum_ctx = GateContext(
-            symbol=str(self.config.symbol),
-            ticker_last=float(ticker.last),
-            bb_pos=float(bb_pos),
-            bb_upper_dt=float(_bb_upper_dt),
-            bb_lower_dt=float(_bb_lower_dt),
-            delta=float(delta),
-            delta_pct=abs(float(delta)),
-            below_interval=bool(below_interval),
-            is_bullish=bool(is_bullish),
-            is_bearish=False,
-            trend_hold=bool(trend_hold),
-            trend_strength=float(trend_strength),
-            eff_direction_name=str(eff_direction.name),
-            eff_is_bullish=bool(_eff_is_bullish),
-            eff_is_bearish=False,
-            eff_trend_hold=bool(_eff_trend_hold),
-            eff_htf_blocks_scrum=bool(_eff_htf_blocks),
-            eff_htf_blocks_fold=False,
-            flag_require_ta_bullish=bool(_flag_require_ta_bullish),
-            flag_hold_in_uptrend=bool(_flag_hold_in_uptrend),
-            flag_defer_to_htf=bool(_flag_defer_to_htf),
-            flag_fold_require_ta_bearish=True,
-            flag_fold_defer_to_htf=True,
-            bb_above_upper_dt=bool(_bb_above_upper_dt),
-            bb_below_lower_dt=False,
-            scrum_ok=bool(scrum_ok),
-            fold_ok_midline=False,
-            target_fires=bool(target_fires),
-            cb_blocks_scrum=bool(_cb_blocks_scrum),
-            cb_blocks_fold=False,
-            hyst_ok_scrum_side=bool(_hyst_ok_scrum_side),
-            hyst_ok_fold_side=True,
-            hyst_armed_scrum_side=bool(getattr(self, "_hyst_armed_scrum_side", False)),
-            hyst_armed_fold_side=False,
-            hyst_ref_scrum_side=float(
-                getattr(self, "_hyst_ref_scrum_side", 0.0) or 0.0
-            ),
-            hyst_ref_fold_side=0.0,
-            mem253_at_ceiling=False,
-            mem253_smart_ceiling_usd=0.0,
-            mem253_current_pos=0.0,
-            has_fold_tranches=bool(self._fold_tranches),
-            n_fold_tranches=len(self._fold_tranches or []),
-            htf_bias_name=(
-                str(_htf_bias_dir.name) if _htf_bias_dir is not None else None
-            ),
-            htf_blocks_scrum=bool(_htf_blocks_scrum),
-            htf_blocks_fold=False,
-            scrumming_interval_pct=float(self.config.scrumming_interval_pct or 0),
-            trading_fee_pct=float(getattr(self.config, "trading_fee_pct", 0.6) or 0.6),
-            ripe_scrum=bool(_ripe_scrum),
-            deep_fold=bool(_deep_fold),
-            adx=_extract_signal_detail(summary, "adx", "adx", 0.0),
-            efficiency_ratio=_extract_signal_detail(summary, "kaufman_er", "er", 0.0),
-            z_score=_extract_signal_detail(summary, "zscore", "z", 0.0),
-        )
-        _scrum_chain_result = self._scrum_chain.evaluate(_scrum_ctx)
         _stack_spent = 0
         if _scrum_chain_result.should_fire:
             _stack_spent = await self._spend_activated_stack_tranches(
@@ -4114,75 +4073,73 @@ class ScrummingBot(
             self._fold_ceiling_hold_count = 0
 
         _cb_blocks_fold = self._cb_soft_active_side == "fold"
-        _htf_blocks_fold = _htf_bias_dir == SignalDirection.BEARISH
-        _flag_fold_require_ta_bearish = bool(
-            getattr(self.config, "fold_require_ta_bearish", True)
+
+        _fold_ctx = GateContext(
+            symbol=str(self.config.symbol),
+            ticker_last=float(ticker.last),
+            bb_pos=float(bb_pos),
+            bb_upper_dt=float(_bb_upper_dt),
+            bb_lower_dt=float(_bb_lower_dt),
+            delta=float(delta),
+            delta_pct=abs(float(delta)),
+            below_interval=bool(below_interval),
+            is_bullish=bool(is_bullish),
+            is_bearish=bool(is_bearish),
+            trend_hold=bool(trend_hold),
+            trend_strength=float(trend_strength),
+            eff_direction_name=str(eff_direction.name),
+            eff_is_bullish=bool(_eff_is_bullish),
+            eff_is_bearish=bool(_eff_is_bearish),
+            eff_trend_hold=bool(_eff_trend_hold),
+            eff_htf_blocks_scrum=bool(_eff_htf_blocks),
+            eff_htf_blocks_fold=bool(_eff_htf_blocks_fold),
+            flag_require_ta_bullish=bool(_flag_require_ta_bullish),
+            flag_hold_in_uptrend=bool(_flag_hold_in_uptrend),
+            flag_defer_to_htf=bool(_flag_defer_to_htf),
+            flag_fold_require_ta_bearish=bool(_flag_fold_require_ta_bearish),
+            flag_fold_defer_to_htf=bool(_flag_fold_defer_to_htf),
+            bb_above_upper_dt=bool(_bb_above_upper_dt),
+            bb_below_lower_dt=bool(_bb_below_lower_dt),
+            scrum_ok=bool(scrum_ok),
+            fold_ok_midline=bool(fold_ok_midline),
+            target_fires=bool(target_fires),
+            cb_blocks_scrum=bool(_cb_blocks_scrum),
+            cb_blocks_fold=bool(_cb_blocks_fold),
+            hyst_ok_scrum_side=bool(_hyst_ok_scrum_side),
+            hyst_ok_fold_side=bool(_hyst_ok_fold_side),
+            hyst_armed_scrum_side=bool(getattr(self, "_hyst_armed_scrum_side", False)),
+            hyst_armed_fold_side=bool(getattr(self, "_hyst_armed_fold_side", False)),
+            hyst_ref_scrum_side=float(
+                getattr(self, "_hyst_ref_scrum_side", 0.0) or 0.0
+            ),
+            hyst_ref_fold_side=float(getattr(self, "_hyst_ref_fold_side", 0.0) or 0.0),
+            mem253_at_ceiling=bool(_mem253_at_ceiling),
+            mem253_smart_ceiling_usd=float(
+                _mem253_smart_ceiling_usd if _mem253_smart_ceiling_usd else 0.0
+            ),
+            mem253_current_pos=float(
+                _mem253_current_pos if _mem253_current_pos else 0.0
+            ),
+            has_fold_tranches=bool(self._fold_tranches),
+            n_fold_tranches=len(self._fold_tranches or []),
+            htf_bias_name=(
+                str(_htf_bias_dir.name) if _htf_bias_dir is not None else None
+            ),
+            htf_blocks_scrum=bool(_htf_blocks_scrum),
+            htf_blocks_fold=bool(_htf_blocks_fold),
+            scrumming_interval_pct=float(self.config.scrumming_interval_pct or 0),
+            trading_fee_pct=float(getattr(self.config, "trading_fee_pct", 0.6) or 0.6),
+            ripe_scrum=bool(_ripe_scrum),
+            deep_fold=bool(_deep_fold),
+            z_score=_extract_signal_detail(summary, "zscore", "z", 0.0),
+            eff_confidence=float(eff_confidence),
+            ta_conf_floor=float(_eff_conf_floor),
         )
-        _flag_fold_defer_to_htf = bool(getattr(self.config, "fold_defer_to_htf", True))
-        _eff_is_bearish = is_bearish if _flag_fold_require_ta_bearish else True
-        _eff_htf_blocks_fold = _htf_blocks_fold if _flag_fold_defer_to_htf else False
-
-        _fold_blockers: list[str] = []
-        _fold_replaced: list[str] = []
-
-        def _note_fold_refusal(gate_name: str, refusal: str) -> None:
-            """File one fold refusal as standing, or as replaced when deep.
-
-            A deep row is the ``DeepFoldOverride`` condition, so the refusal it
-            covers is recorded against that override's name rather than dropped.
-            """
-            if _deep_fold:
-                _fold_replaced.append(
-                    OVERRIDE_APPLIED_FORMAT.format(
-                        gate=gate_name, override=_DEEP_FOLD_OVERRIDE, refusal=refusal
-                    )
-                )
-            else:
-                _fold_blockers.append(refusal)
-
-        if not self._fold_tranches:
-            _fold_blockers.append("no-tranches-queued")
-        if not _eff_is_bearish:
-            _note_fold_refusal(
-                _GATE_TA_FOLD,
-                (
-                    f"TA-conf-below-floor(dir={eff_direction.name},"
-                    f"conf={eff_confidence:.4f}<{_eff_conf_floor:.4f})"
-                    if eff_direction
-                    in (SignalDirection.BEARISH, SignalDirection.NEUTRAL)
-                    else f"TA-not-bearish(dir={eff_direction.name})"
-                ),
-            )
-        if not fold_ok_midline:
-            _note_fold_refusal(
-                _GATE_MIDLINE_FOLD, f"fold_ok_midline=False(bb_pos={bb_pos:.2f})"
-            )
-        if _mem253_at_ceiling:
-            _fold_blockers.append("position-ceiling")
-        if not _bb_below_lower_dt:
-            _fold_blockers.append(
-                f"BB-above-lower-detect(bb_pos={bb_pos:.2f}>{_bb_lower_dt:.2f})"
-            )
-        if _cb_blocks_fold:
-            _fold_blockers.append("CB-soft-trip")
-        if _eff_htf_blocks_fold:
-            _fold_blockers.append("HTF-bearish")
-        if not _hyst_ok_fold_side:
-            try:
-                _ref_px = float(self._hyst_ref_fold_side or 0)
-                _eff_pct = float(self.config.scrumming_interval_pct or 0) + float(
-                    getattr(self.config, "trading_fee_pct", 0.6) or 0.6
-                )
-                _required = _ref_px * (1.0 - _eff_pct / 100.0)
-                _fold_blockers.append(
-                    f"OTD-hyst(px ${ticker.last:.8f} > "
-                    f"${_required:.8f}; pivot ${_ref_px:.8f} "
-                    f"- {_eff_pct:.2f}%)"
-                )
-            except Exception:
-                _fold_blockers.append("OTD-hyst-armed")
+        _fold_chain_result = self._fold_chain.evaluate(_fold_ctx)
+        _fold_blockers = [message for _name, message in _fold_chain_result.blocked]
+        _fold_replaced = list(_fold_chain_result.overrides_applied)
         try:
-            self._last_gate_state["fold_armed"] = len(_fold_blockers) == 0
+            self._last_gate_state["fold_armed"] = bool(_fold_chain_result.should_fire)
             self._last_gate_state["fold_blockers"] = list(_fold_blockers)
             self._last_gate_state["fold_fixture"] = {
                 OVERRIDES_APPLIED_KEY: list(_fold_replaced),
@@ -4250,68 +4207,8 @@ class ScrummingBot(
             _otd_factor,
         )
 
-        _fold_ctx = GateContext(
-            symbol=str(self.config.symbol),
-            ticker_last=float(ticker.last),
-            bb_pos=float(bb_pos),
-            bb_upper_dt=float(_bb_upper_dt),
-            bb_lower_dt=float(_bb_lower_dt),
-            delta=float(delta),
-            delta_pct=abs(float(delta)),
-            below_interval=bool(below_interval),
-            is_bullish=bool(is_bullish),
-            is_bearish=bool(is_bearish),
-            trend_hold=bool(trend_hold),
-            trend_strength=float(trend_strength),
-            eff_direction_name=str(eff_direction.name),
-            eff_is_bullish=bool(_eff_is_bullish),
-            eff_is_bearish=bool(_eff_is_bearish),
-            eff_trend_hold=bool(_eff_trend_hold),
-            eff_htf_blocks_scrum=bool(_eff_htf_blocks),
-            eff_htf_blocks_fold=bool(_eff_htf_blocks_fold),
-            flag_require_ta_bullish=bool(_flag_require_ta_bullish),
-            flag_hold_in_uptrend=bool(_flag_hold_in_uptrend),
-            flag_defer_to_htf=bool(_flag_defer_to_htf),
-            flag_fold_require_ta_bearish=bool(_flag_fold_require_ta_bearish),
-            flag_fold_defer_to_htf=bool(_flag_fold_defer_to_htf),
-            bb_above_upper_dt=bool(_bb_above_upper_dt),
-            bb_below_lower_dt=bool(_bb_below_lower_dt),
-            scrum_ok=bool(scrum_ok),
-            fold_ok_midline=bool(fold_ok_midline),
-            target_fires=bool(target_fires),
-            cb_blocks_scrum=bool(_cb_blocks_scrum),
-            cb_blocks_fold=bool(_cb_blocks_fold),
-            hyst_ok_scrum_side=bool(_hyst_ok_scrum_side),
-            hyst_ok_fold_side=bool(_hyst_ok_fold_side),
-            hyst_armed_scrum_side=bool(getattr(self, "_hyst_armed_scrum_side", False)),
-            hyst_armed_fold_side=bool(getattr(self, "_hyst_armed_fold_side", False)),
-            hyst_ref_scrum_side=float(
-                getattr(self, "_hyst_ref_scrum_side", 0.0) or 0.0
-            ),
-            hyst_ref_fold_side=float(getattr(self, "_hyst_ref_fold_side", 0.0) or 0.0),
-            mem253_at_ceiling=bool(_mem253_at_ceiling),
-            mem253_smart_ceiling_usd=float(
-                _mem253_smart_ceiling_usd if _mem253_smart_ceiling_usd else 0.0
-            ),
-            mem253_current_pos=float(
-                _mem253_current_pos if _mem253_current_pos else 0.0
-            ),
-            has_fold_tranches=bool(self._fold_tranches),
-            n_fold_tranches=len(self._fold_tranches or []),
-            htf_bias_name=(
-                str(_htf_bias_dir.name) if _htf_bias_dir is not None else None
-            ),
-            htf_blocks_scrum=bool(_htf_blocks_scrum),
-            htf_blocks_fold=bool(_htf_blocks_fold),
-            scrumming_interval_pct=float(self.config.scrumming_interval_pct or 0),
-            trading_fee_pct=float(getattr(self.config, "trading_fee_pct", 0.6) or 0.6),
-            ripe_scrum=bool(_ripe_scrum),
-            deep_fold=bool(_deep_fold),
-            z_score=_extract_signal_detail(summary, "zscore", "z", 0.0),
-        )
-        _fold_chain_result = self._fold_chain.evaluate(_fold_ctx)
-        # Both banks are fresh here: the scrum blockers are written above and
-        # the fold blockers just above this line, so one line carries the tick.
+        # Both chains have been evaluated and both banks written, so one line
+        # carries the tick.
         self._emit_gate_light_line(
             _scrum_chain_result, _fold_chain_result, summary, float(ticker.last)
         )

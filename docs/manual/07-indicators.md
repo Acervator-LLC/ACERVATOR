@@ -2598,6 +2598,98 @@ side = "scrum"
 overrides = ("midline_scrum", "target_fires", "trend_hold", "ta_bullish")
 ```
 
+### The trend-hold override
+
+**Functional.** A third override clears the uptrend hold, and it is not a gate
+in either chain. It runs in `ScrummingBot.tick` before the chain is built, and
+it fires on either of two conditions: the position is at least twice the
+scrumming interval away from target in dollars, or Band Travel has raised its
+own trigger. When it fires, the bot sells into a sustained uptrend that the
+SCRUM holds in sustained uptrend box was set to hold through.
+
+`src/trading/scrumming_bot.py` — the override in `ScrummingBot.tick`
+
+```python
+trend_override = abs(delta) >= _interval_usd * 2.0 or band_travel_triggered
+if trend_hold and trend_override:
+```
+
+| Override | Arms on | What it clears |
+| -------- | ------- | -------------- |
+| `trend_hold_override` | the delta at twice the scrumming interval in dollars, or the Band Travel trigger | the uptrend hold, before the chain is built |
+
+**Functional.** The operator sees it in three places. The bot log carries a
+TREND-HOLD OVERRIDE line naming the trend share, the condition that cleared it
+and the dollar figure behind that condition. The per-tick GATES line names TRND
+under its overridden clause, so the TRND light paints the landing strip's cyan
+rather than the passed green. The gate record carries one entry under
+`overrides_applied`, written only when the box was set, so a tick with the box
+clear reads apart from a tick the override acted on.
+
+`src/trading/scrumming_bot.py` — the record entry, in `ScrummingBot.tick`
+
+```python
+if _trend_hold_cleared_by and _flag_hold_in_uptrend:
+    _scrum_replaced.append(
+        OVERRIDE_APPLIED_FORMAT.format(
+            gate=_GATE_TREND_HOLD,
+            override=TREND_HOLD_OVERRIDE,
+            refusal=(
+                f"trend_hold({trend_strength:.0%}) cleared by "
+                f"{_trend_hold_cleared_by}"
+            ),
+        )
+    )
+```
+
+**Design intention.** The override stays as it is. A move of twice the interval
+is the profit the whole cycle exists to take, and holding it back to wait out a
+trend forfeits it. What was missing was the record, not a different rule: the
+hold was cleared and no screen said so.
+
+### Where the armed flag comes from
+
+**Functional.** The gate row's two armed flags are the chain's own verdict. One
+chain decides per side, and the row carries that decision and the refusals that
+produced it, so a row and a decision cannot disagree. Every refusal the gate row
+names is a refusal a gate wrote, including the three indicator gates, which the
+row reports under their own names.
+
+`src/trading/scrumming_bot.py` — the row, written in `ScrummingBot.tick`
+
+```python
+self._last_gate_state["scrum_armed"] = bool(
+    _scrum_chain_result.should_fire
+)
+self._last_gate_state["scrum_blockers"] = list(_scrum_blockers)
+```
+
+### The one effective-flag mapping
+
+**Functional.** Five raw readings become five effective readings through one
+function. A cleared require box passes its direction outright; a cleared hold or
+defer box drops its block. Four readers call it: the live tick, the Market
+Inspector's gate scan, the back test and the paper fleet.
+
+`src/trading/gate_chain.py` — `effective_gate_flags`, the one mapping
+
+```python
+return EffectiveGateFlags(
+    eff_is_bullish=bool(is_bullish) if require_bullish else True,
+    eff_is_bearish=bool(is_bearish) if require_bearish else True,
+    eff_trend_hold=bool(trend_hold) if hold_in_uptrend else False,
+    eff_htf_blocks_scrum=bool(htf_blocks_scrum) if defer_scrum else False,
+    eff_htf_blocks_fold=bool(htf_blocks_fold) if defer_fold else False,
+)
+```
+
+| Reader | Where it calls the mapping |
+| ------ | -------------------------- |
+| Live | `src/trading/scrumming_bot.py`, in `ScrummingBot.tick` |
+| Market Inspector | `src/trading/ata_gate_scan.py`, in `build_context` |
+| Simulator | `src/simulator/back_test.py`, in `tape_context` |
+| Paper Trader | `src/paper/paper_run.py`, in `paper_tape_context` |
+
 ### Which records name the override
 
 **Functional.** Three records carry the name of the override that replaced a
