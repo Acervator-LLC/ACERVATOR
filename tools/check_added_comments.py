@@ -1,4 +1,8 @@
-"""Judge every comment a branch adds against the repository's comment rule."""
+"""Judge every comment a branch adds against the repository's comment rule.
+
+`merge_base` resolves the commit the branch left, and `changed_files` and
+`added_lines` diff against that point, never against the `BASE_REF` tip.
+"""
 
 from __future__ import annotations
 
@@ -54,15 +58,21 @@ COMMENT_KIND = "comment"
 DOCSTRING_KIND = "docstring"
 
 
+def merge_base(base: str = BASE_REF) -> str:
+    """The commit `base` and HEAD share, or `base` itself when git names none."""
+    return _git("merge-base", base, "HEAD") or base
+
+
 def changed_files(root: Path, base: str = BASE_REF) -> list:
     """Every file this branch adds or changes, discovered from git alone."""
     found: set = set()
+    point = merge_base(base)
     for line in _git("status", "--porcelain").splitlines():
         name = line[STATUS_NAME_AT:].strip().strip('"')
         if RENAME_ARROW in name:
             name = name.split(RENAME_ARROW)[-1]
         found.add(name)
-    for line in _git("diff", "--name-only", "--diff-filter=d", base).splitlines():
+    for line in _git("diff", "--name-only", "--diff-filter=d", point).splitlines():
         found.add(line.strip())
     return sorted(
         one
@@ -73,7 +83,7 @@ def changed_files(root: Path, base: str = BASE_REF) -> list:
 
 def added_lines(name: str, root: Path, base: str = BASE_REF) -> set:
     """The line numbers this branch added to one file."""
-    diff = _git("diff", "-U0", base, "--", name)
+    diff = _git("diff", "-U0", merge_base(base), "--", name)
     if not diff.strip():
         text = (root / name).read_text(encoding="utf-8", errors="replace")
         return set(range(1, len(text.splitlines()) + 1))

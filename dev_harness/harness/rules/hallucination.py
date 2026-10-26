@@ -73,6 +73,15 @@ ArchetypeReport schema in tools.harness.coding_archetype:
         continuing the line above it. Markdown targets only, and
         silent under the _H007_EXEMPT_DIRS directories.
 
+    H008 (medium) — A DECLARED-ABSENT PATH THAT IS PRESENT ON DISK
+        A path listed under the ``## CITED AS ABSENT`` heading with a
+        reason, where that path opens on disk. The declaration records
+        a path the tree no longer holds, so a present path means the
+        record is stale. _declared_absent reads the heading, matching
+        tools/hop_check.py's declared_absent, and H001 stays silent on
+        every path it returns. A listing carrying no reason is not a
+        declaration: H001 reports it and H008 does not read it.
+
 FALSIFICATION — this rule module is wrong if:
   (a) H001 fires on a path that exists via a case-sensitivity
       quirk (Windows FS is case-insensitive; the check is
@@ -111,6 +120,13 @@ FALSIFICATION — this rule module is wrong if:
       .githooks/ returns the same prefix set in every checkout. A
       non-empty untracked directory that .gitignore does not name is
       still a prefix it returns.
+  (j) _declared_absent reads the heading only where it opens a line as
+      a markdown heading, so a page naming ``## CITED AS ABSENT`` inside
+      a sentence or inside backticks declares nothing. It reads the
+      first backtick-quoted span of each list item, so a second path on
+      one item stays undeclared. A blank line closes an item, so a
+      reason written after one is not read. H008 reports at medium, so a
+      page carrying one still answers passed=True.
 
 sadp: R28 SSS + R70 RCN
 """
@@ -200,14 +216,73 @@ def _checked_path_prefixes(repo_root: Path) -> frozenset[str]:
     return frozenset(prefixes)
 
 
-def _find_dead_paths(source: str, repo_root: Path) -> list[tuple[int, str]]:
+# The heading tools/hop_check.py reads, written as a markdown heading.
+_ABSENT_HEADING = re.compile(r"^##\s+CITED AS ABSENT\s*$")
+
+_ABSENT_SECTION_END = re.compile(r"^##\s+\S")
+
+_ABSENT_ITEM = re.compile(r"^\s*[-*]\s+(.+)$")
+
+_QUOTED_SPAN = re.compile(r"`([^`]+)`")
+
+# A reason carries at least one word of this length; a bare path carries none.
+_REASON_WORD = re.compile(r"[A-Za-z]{3,}")
+
+
+def _absent_items(source: str) -> list[tuple[int, str]]:
+    """Return (line, joined text) per list item under the CITED AS ABSENT heading."""
+    rows: list[tuple[int, str]] = []
+    inside = False
+    open_item = False
+    for i, line in enumerate(source.splitlines(), start=1):
+        if _ABSENT_HEADING.match(line):
+            inside = True
+            open_item = False
+            continue
+        if not inside:
+            continue
+        if _ABSENT_SECTION_END.match(line):
+            break
+        if not line.strip():
+            open_item = False
+            continue
+        match = _ABSENT_ITEM.match(line)
+        if match is not None:
+            rows.append((i, match.group(1).strip()))
+            open_item = True
+        elif open_item and rows:
+            rows[-1] = (rows[-1][0], rows[-1][1] + " " + line.strip())
+    return rows
+
+
+def _declared_absent(source: str) -> dict[str, int]:
+    """Return each path declared absent with a reason, mapped to its item's line."""
+    declared: dict[str, int] = {}
+    for line, text in _absent_items(source):
+        quoted = _QUOTED_SPAN.findall(text)
+        if not quoted:
+            continue
+        if not _REASON_WORD.search(_QUOTED_SPAN.sub(" ", text)):
+            continue
+        declared.setdefault(quoted[0].strip().replace("\\", "/"), line)
+    return declared
+
+
+def _find_dead_paths(
+    source: str,
+    repo_root: Path,
+    declared: dict[str, int] | None = None,
+) -> list[tuple[int, str]]:
     hits: list[tuple[int, str]] = []
     seen: set[tuple[int, str]] = set()
     prefixes = _checked_path_prefixes(repo_root)
+    excused = declared or {}
     for i, line in enumerate(source.splitlines(), start=1):
         for match in _PATH_PATTERN.finditer(line):
             raw = match.group(0)
             norm = raw.replace("\\", "/")
+            if norm in excused:
+                continue
             # Only check paths that look repo-relative
             if not any(norm.startswith(p) for p in prefixes):
                 continue
@@ -343,9 +418,7 @@ def _is_h006_exempt(target: Path, repo_root: Path) -> bool:
 
 
 # A code span opening a line, then a dash, then a description.
-_MODULE_SOURCE_HEADER = re.compile(
-    r"^`([a-z][a-z0-9]*(?:_[a-z0-9]+)+)`\s*[—–-]\s*\S"
-)
+_MODULE_SOURCE_HEADER = re.compile(r"^`([a-z][a-z0-9]*(?:_[a-z0-9]+)+)`\s*[—–-]\s*\S")
 
 _FENCE_LINE = re.compile(r"^\s*(?:```|~~~)")
 
@@ -518,6 +591,23 @@ def _find_split_dotted_names(source: str) -> list[tuple[int, str]]:
     return hits
 
 
+def _find_stale_declarations(
+    declared: dict[str, int],
+    repo_root: Path,
+) -> list[tuple[int, str]]:
+    """Return (line, path) per declared-absent path that opens under repo_root."""
+    hits: list[tuple[int, str]] = []
+    for path, line in declared.items():
+        candidate = (repo_root / path).resolve()
+        try:
+            candidate.relative_to(repo_root.resolve())
+        except ValueError:
+            continue
+        if candidate.exists():
+            hits.append((line, path))
+    return sorted(hits)
+
+
 def _find_repo_root(start: Path) -> Path:
     """Walk parents until we find one containing pyproject.toml OR
     src/ + tools/ (repo markers). Fall back to start's parent."""
@@ -540,8 +630,9 @@ def scan(target: Path, source: str) -> list[Any]:
         return []
     repo_root = _find_repo_root(target)
     findings: list[Any] = []
+    declared = _declared_absent(source)
 
-    for line, path in _find_dead_paths(source, repo_root):
+    for line, path in _find_dead_paths(source, repo_root, declared):
         findings.append(
             Finding(
                 tool="hallucination",
@@ -554,6 +645,23 @@ def scan(target: Path, source: str) -> list[Any]:
                     "Common hallucination when copying old code or when "
                     "a file was renamed/archived without updating this "
                     "reference."
+                ),
+            )
+        )
+
+    for line, path in _find_stale_declarations(declared, repo_root):
+        findings.append(
+            Finding(
+                tool="hallucination",
+                severity="medium",
+                file=str(target),
+                line=line,
+                rule_id="H008",
+                message=(
+                    f"the path {path!r} is declared absent under "
+                    "'## CITED AS ABSENT' and opens on disk. The declaration "
+                    "records a path the tree no longer holds, so this entry "
+                    "is stale. Remove the entry, or name the path that is gone."
                 ),
             )
         )
