@@ -98,6 +98,27 @@ ASSET_CLASS_DEFAULT: str = "crypto"
 #: ``sizing.WHOLE_UNIT_POSITION_MINIMUM`` decides the opening size.
 WHOLE_UNIT_OPENING_ENGINE: int = 0
 
+#: ``BotConfig.max_cartridge_smart_ceiling_pct`` opening figure, read by
+#: ``smart_cartridge_ceiling_pct``.
+MAX_CARTRIDGE_SMART_CEILING_PCT_DEFAULT: float = 30.0
+
+#: ``smart_cartridge_ceiling_pct`` reading OFF, where no ceiling holds the band
+#: range down.
+SMART_CARTRIDGE_CEILING_OFF: float = 0.0
+
+#: What the Console line prints in place of a figure for
+#: ``SMART_CARTRIDGE_CEILING_OFF``.
+SMART_CARTRIDGE_CEILING_OFF_TEXT: str = "off"
+
+#: ``BotConfig.position_ceiling_multiple`` opening figure, in anchor multiples,
+#: read by ``ceiling_multiple``.
+POSITION_CEILING_MULTIPLE_DEFAULT: float = 5.0
+
+#: The span every Ceiling Multiple box offers and ``position_ceiling`` clamps
+#: ``BotConfig.position_ceiling_multiple`` to, in anchor multiples.
+CEILING_MULTIPLE_MIN: float = 1.0
+CEILING_MULTIPLE_MAX: float = 10.0
+
 
 @dataclass
 class BotConfig:
@@ -162,7 +183,7 @@ class BotConfig:
     # Derives the threshold from the BB range, clamped by
     # max_cartridge_smart_ceiling_pct.
     max_cartridge_smart: bool = False
-    max_cartridge_smart_ceiling_pct: float = 30.0
+    max_cartridge_smart_ceiling_pct: float = MAX_CARTRIDGE_SMART_CEILING_PCT_DEFAULT
 
     # SCRUM-side (sell at top):
     scrum_require_ta_bullish: bool = True  # Requires is_bullish for auto-scrum
@@ -203,7 +224,8 @@ class BotConfig:
     # Caps accumulation at position_ceiling_multiple x the anchor target_balance;
     # fold_rate_taper shrinks the fold's USD size 100%->10% over ratio 0.5->1.0.
     position_ceiling_enabled: bool = False
-    position_ceiling_multiple: float = 5.0  # Range [1.0, 10.0]
+    # Range [1.0, 10.0].
+    position_ceiling_multiple: float = POSITION_CEILING_MULTIPLE_DEFAULT
     # A BULLISH reversal on detonation_timeframe at or above
     # detonation_confidence_min market-sells above the anchor, once per reversal.
     # position_ceiling_enabled gates none of the three: detonation fires on the
@@ -560,6 +582,45 @@ def pushed_target_usd(value) -> Optional[float]:
 UNREADABLE_TOTALS_KEY: str = "unreadable_totals"
 
 
+def smart_cartridge_ceiling_pct(config) -> float:
+    """`config.max_cartridge_smart_ceiling_pct` as a float, where
+    `SMART_CARTRIDGE_CEILING_OFF` holds no band range down.
+
+    `_tick_smart_cartridge_pct` calls it, and an absent field reads
+    `MAX_CARTRIDGE_SMART_CEILING_PCT_DEFAULT`.
+    """
+    return float(
+        getattr(
+            config,
+            "max_cartridge_smart_ceiling_pct",
+            MAX_CARTRIDGE_SMART_CEILING_PCT_DEFAULT,
+        )
+    )
+
+
+def ceiling_multiple(config) -> float:
+    """`config.position_ceiling_multiple` as a float, in anchor multiples.
+
+    `import_scrumming_state`, `_tick_initial_entry` and both `ScrummingBot`
+    ceiling checks call it, and an absent field reads
+    `POSITION_CEILING_MULTIPLE_DEFAULT`.
+    """
+    return float(
+        getattr(config, "position_ceiling_multiple", POSITION_CEILING_MULTIPLE_DEFAULT)
+    )
+
+
+def whole_despawn_days(value) -> int:
+    """`value` as whole despawn days under `as_finite_float`, saturated at `DESPAWN_MAX_DAYS`.
+
+    `despawn_threshold_days`, `despawn_preview` and both screen readings call it.
+    """
+    days = as_finite_float(value)
+    if days is None:
+        return 0
+    return min(DESPAWN_MAX_DAYS, max(0, int(days)))
+
+
 def despawn_threshold_days(config) -> int:
     """Return the tranche despawn threshold in whole days; 0 means OFF.
 
@@ -573,10 +634,7 @@ def despawn_threshold_days(config) -> int:
     Returns:
       Whole days in [0, DESPAWN_MAX_DAYS]. 0 means the timer is off.
     """
-    days = as_finite_float(getattr(config, "tranche_despawn_days", 0))
-    if days is None:
-        return 0
-    return min(DESPAWN_MAX_DAYS, max(0, int(days)))
+    return whole_despawn_days(getattr(config, "tranche_despawn_days", 0))
 
 
 #: Candidate windows the Fold Tranches panel offers when the timer is OFF.
@@ -686,10 +744,7 @@ def despawn_preview(
         "usd_removed": 0.0,
         "units_removed": 0.0,
     }
-    _days = as_finite_float(days)
-    if _days is None:
-        return report
-    _days = min(DESPAWN_MAX_DAYS, max(0, int(_days)))
+    _days = whole_despawn_days(days)
     report["threshold_days"] = _days
     if _days <= 0:
         return report

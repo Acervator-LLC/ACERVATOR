@@ -10,7 +10,16 @@ from typing import Any, Callable, Optional
 
 from ...core.event_bus import LINE_KIND_WIRE_STACK
 from ...exchange.base import OrderSide, OrderType
-from ..container.config import EXPIRY_CLOSE_SELL_ALL, expiry_close_decision
+from ..container.config import (
+    CEILING_MULTIPLE_MAX,
+    CEILING_MULTIPLE_MIN,
+    EXPIRY_CLOSE_SELL_ALL,
+    SMART_CARTRIDGE_CEILING_OFF,
+    SMART_CARTRIDGE_CEILING_OFF_TEXT,
+    ceiling_multiple,
+    expiry_close_decision,
+    smart_cartridge_ceiling_pct,
+)
 from ..indicators.bb_proximity import CONSOLIDATION_THRESHOLD_PCT
 from ..target_bands import at_target_dust_band
 from ..ta_engine import (
@@ -542,13 +551,15 @@ class TickPhaseMixin:
                         (_smart_bb.upper - _smart_bb.lower) / _bb_mid * 100.0
                     )
                     _interval_floor = float(self.config.scrumming_interval_pct or 0)
-                    _smart_ceiling = float(
-                        getattr(self.config, "max_cartridge_smart_ceiling_pct", 30.0)
-                        or 30.0
-                    )
-                    _smart_pct = max(
-                        _interval_floor, min(_smart_ceiling, _bb_range_pct)
-                    )
+                    _smart_ceiling = smart_cartridge_ceiling_pct(self.config)
+                    if _smart_ceiling == SMART_CARTRIDGE_CEILING_OFF:
+                        _ceiling_text = SMART_CARTRIDGE_CEILING_OFF_TEXT
+                        _smart_pct = max(_interval_floor, _bb_range_pct)
+                    else:
+                        _ceiling_text = f"{_smart_ceiling:.2f}%"
+                        _smart_pct = max(
+                            _interval_floor, min(_smart_ceiling, _bb_range_pct)
+                        )
                     _last_smart = float(
                         getattr(self, "_cartridge_last_smart_pct", 0.0) or 0.0
                     )
@@ -562,7 +573,7 @@ class TickPhaseMixin:
                                     f"{_smart_pct:.2f}% "
                                     f"(BB range {_bb_range_pct:.2f}%, "
                                     f"floor={_interval_floor:.2f}%, "
-                                    f"ceiling={_smart_ceiling:.2f}%). "
+                                    f"ceiling={_ceiling_text}). "
                                     f"Effective threshold = "
                                     f"${self._target_balance * _smart_pct / 100.0:.2f}."
                                 ),
@@ -867,10 +878,10 @@ class TickPhaseMixin:
 
             if getattr(self.config, "position_ceiling_enabled", False):
                 try:
-                    _smart_mult = float(
-                        getattr(self.config, "position_ceiling_multiple", 1.0)
+                    _smart_mult = ceiling_multiple(self.config)
+                    _smart_mult = max(
+                        CEILING_MULTIPLE_MIN, min(CEILING_MULTIPLE_MAX, _smart_mult)
                     )
-                    _smart_mult = max(1.0, min(10.0, _smart_mult))
                     _smart_ceiling_usd = self._anchor_target_balance * _smart_mult
                     _prospective = _fresh_usd + self._target_balance
                     if _prospective > _smart_ceiling_usd:

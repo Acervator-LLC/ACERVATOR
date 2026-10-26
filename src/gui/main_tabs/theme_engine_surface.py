@@ -2,12 +2,13 @@
 
 Describes the theme table the whole window draws from. Five themes
 carry 48 named values each: two names, 40 colours, one font stack,
-three text sizes and two corner roundings. A theme that does not name
-a value takes the default written in ``DEFAULT_TOKENS``.
+three text sizes and two corner roundings. ``DEFAULT_TOKENS`` reads
+each default off ``ThemeTokens``, so a theme that names no value takes
+the one that dataclass declares.
 
 ``generate_qss`` turns one theme into the style-sheet text the window
-applies. The template is written out here in full, so the two sides
-build the same 7404 characters from their own copies of the values.
+applies. ``QSS_TEMPLATE`` holds that text with a hole for each token,
+and no declaration of it exists outside this module to read.
 
 ``ThemeManagerModel`` holds the selected theme. ``list_themes``
 returns the name and display name of each. ``get_theme`` returns one
@@ -19,283 +20,85 @@ is applied.
 
 ``src.core.desktop_bridge`` registers ``view_model`` as the handler
 for the ``theme_engine.state`` method, which is how the Electron
-renderer reaches it. Every value below is written out here rather
-than read from ``src.gui.theme_engine``, so a value changed on one
-side alone is reported. Nothing here imports Qt.
+renderer reaches it. Every theme value comes from
+``src.gui.theme_engine``, which holds the only copy of each. Nothing
+here imports Qt.
 """
 
 from __future__ import annotations
 
 from typing import Any, Optional
 
+from .. import theme_engine
 from ..color_alpha import css_colours, rgba
 
 METHOD = "theme_engine.state"
 
 REQUIRED_FIELD_NAMES = ("name", "display_name")
 
-#: The alpha a pressed splitter handle paints its accent under: 0.85 of full
-#: opacity written as the byte Qt reads, because Qt has no ``opacity``.
-SPLITTER_PRESSED_ALPHA = 217
+#: The names each theme publishes, in the order ``ThemeTokens`` declares them.
+TOKEN_FIELD_NAMES = (
+    "bg_primary",
+    "bg_secondary",
+    "bg_tertiary",
+    "bg_card",
+    "bg_input",
+    "bg_hover",
+    "bg_selected",
+    "text_primary",
+    "text_secondary",
+    "text_muted",
+    "text_accent",
+    "accent_primary",
+    "accent_secondary",
+    "accent_danger",
+    "border_primary",
+    "border_secondary",
+    "border_accent",
+    "scrollbar_bg",
+    "scrollbar_handle",
+    "font_family",
+    "font_size",
+    "font_size_small",
+    "font_size_title",
+    "radius_sm",
+    "radius_md",
+    "chart_bg_top",
+    "chart_bg_bottom",
+    "chart_grid",
+    "chart_axis_text",
+    "chart_up",
+    "chart_up_edge",
+    "chart_down",
+    "chart_down_edge",
+    "chart_crosshair",
+    "chart_last_price",
+    "chart_band",
+    "chart_band_mid",
+    "chart_bull",
+    "chart_bear",
+    "chart_zone_scrum",
+    "chart_zone_fold",
+    "chart_event_mark",
+    "chart_gap",
+    "chart_trend_fast",
+    "chart_trend_slow",
+    "chart_oscillator",
+)
+
+SPLITTER_PRESSED_ALPHA = theme_engine.SPLITTER_PRESSED_ALPHA
+
+_UNNAMED_THEME = theme_engine.ThemeTokens(name="", display_name="")
 
 DEFAULT_TOKENS: dict[str, str] = {
-    "bg_primary": "#0a0a0f",
-    "bg_secondary": "#12121a",
-    "bg_tertiary": "#1a1a28",
-    "bg_card": "#16162a",
-    "bg_input": "#0e0e1a",
-    "bg_hover": "#1e1e35",
-    "bg_selected": "#252545",
-    "text_primary": "#e0e0f0",
-    "text_secondary": "#8888aa",
-    "text_muted": "#8a8ab0",
-    "text_accent": "#00ffcc",
-    "accent_primary": "#00ffcc",
-    "accent_secondary": "#ff00aa",
-    "accent_danger": "#ff5577",
-    "border_primary": "#7a7a9c",
-    "border_secondary": "#5e5e80",
-    "border_accent": "rgba(0,255,204,68)",
-    "scrollbar_bg": "#0a0a14",
-    "scrollbar_handle": "#2a2a44",
-    "font_family": "'Rajdhani', 'Orbitron', 'Segoe UI', sans-serif",
-    "font_size": "13px",
-    "font_size_small": "11px",
-    "font_size_title": "20px",
-    "radius_sm": "4px",
-    "radius_md": "8px",
-    "chart_bg_top": "#08080e",
-    "chart_bg_bottom": "#0c0c16",
-    "chart_grid": "#1c1c30",
-    "chart_axis_text": "#b4b4d2",
-    "chart_up": "#00e5a0",
-    "chart_up_edge": "#5cffd0",
-    "chart_down": "#ff2d6f",
-    "chart_down_edge": "#ff86a8",
-    "chart_crosshair": "#3c3c64",
-    "chart_last_price": "#ffc800",
-    "chart_band": "#50a0f0",
-    "chart_band_mid": "#ffc850",
-    "chart_bull": "#00ff88",
-    "chart_bear": "#ff5577",
-    "chart_zone_scrum": "#ff0080",
-    "chart_zone_fold": "#fcee0a",
-    "chart_event_mark": "#ff00aa",
-    "chart_gap": "#5e5e80",
-    "chart_trend_fast": "#ff8c00",
-    "chart_trend_slow": "#4fc3ff",
-    "chart_oscillator": "#ff9060",
+    name: getattr(_UNNAMED_THEME, name) for name in TOKEN_FIELD_NAMES
 }
 
 FIELD_NAMES = REQUIRED_FIELD_NAMES + tuple(DEFAULT_TOKENS)
 
-
-def build_theme(name: str, display_name: str, **named: str) -> dict[str, str]:
-    """One theme's 48 values: its two names, then a default for each it does not name.
-
-    Field order follows the dataclass the surface replaces, so the two
-    sides hand the frontend their values in one order.
-    """
-    return dict(name=name, display_name=display_name, **{**DEFAULT_TOKENS, **named})
-
-
-CYBERPUNK_DARK: dict[str, str] = build_theme(
-    name="cyberpunk_dark",
-    display_name="Cyberpunk Dark",
-)
-
-NEON_LIGHT: dict[str, str] = build_theme(
-    name="neon_light",
-    display_name="Neon Light",
-    bg_primary="#f5f5fa",
-    bg_secondary="#eeeef5",
-    bg_tertiary="#e5e5f0",
-    bg_card="#ffffff",
-    bg_input="#f0f0f8",
-    bg_hover="#e0e0f0",
-    bg_selected="#d0d0e8",
-    text_primary="#1a1a2e",
-    text_secondary="#4a4a6a",
-    text_muted="#8888aa",
-    text_accent="#6600cc",
-    accent_primary="#6600cc",
-    accent_secondary="#cc0066",
-    accent_danger="#cc0033",
-    border_primary="#ccccdd",
-    border_secondary="#ddddee",
-    border_accent="rgba(102,0,204,68)",
-    scrollbar_bg="#e0e0ea",
-    scrollbar_handle="#bbbbcc",
-    chart_bg_top="#ffffff",
-    chart_bg_bottom="#f0f0f8",
-    chart_grid="#d8d8e8",
-    chart_axis_text="#3a3a5a",
-    chart_up="#00883f",
-    chart_up_edge="#00662f",
-    chart_down="#cc0033",
-    chart_down_edge="#990026",
-    chart_crosshair="#9a9ab8",
-    chart_last_price="#b36b00",
-    chart_band="#6600cc",
-    chart_band_mid="#8a5c00",
-    chart_bull="#00803a",
-    chart_bear="#cc0033",
-    chart_zone_scrum="#cc0066",
-    chart_zone_fold="#8a6e00",
-    chart_event_mark="#6600cc",
-    chart_gap="#6f6f88",
-    chart_trend_fast="#b35a00",
-    chart_trend_slow="#0055aa",
-    chart_oscillator="#b34700",
-)
-
-CLASSIC_TERMINAL: dict[str, str] = build_theme(
-    name="classic_terminal",
-    display_name="Classic Terminal",
-    bg_primary="#0a0a0a",
-    bg_secondary="#111111",
-    bg_tertiary="#181818",
-    bg_card="#0f0f0f",
-    bg_input="#080808",
-    bg_hover="#1a1a1a",
-    bg_selected="#222222",
-    text_primary="#00ff00",
-    text_secondary="#00aa00",
-    text_muted="#006600",
-    text_accent="#00ff00",
-    accent_primary="#00ff00",
-    accent_secondary="#00cc00",
-    accent_danger="#ff0000",
-    border_primary="#003300",
-    border_secondary="#002200",
-    border_accent="rgba(0,255,0,68)",
-    scrollbar_bg="#0a0a0a",
-    scrollbar_handle="#003300",
-    font_family="'JetBrains Mono', 'Fira Code', 'Consolas', monospace",
-    chart_bg_top="#050505",
-    chart_bg_bottom="#0a0a0a",
-    chart_grid="#003300",
-    chart_axis_text="#00cc00",
-    chart_up="#00ff44",
-    chart_up_edge="#66ff99",
-    chart_down="#ff0000",
-    chart_down_edge="#ff6666",
-    chart_crosshair="#006600",
-    chart_last_price="#ffff00",
-    chart_band="#00ffff",
-    chart_band_mid="#00aa00",
-    chart_bull="#00ff44",
-    chart_bear="#ff0000",
-    chart_zone_scrum="#ff3333",
-    chart_zone_fold="#ffff00",
-    chart_event_mark="#00ffff",
-    chart_gap="#008800",
-    chart_trend_fast="#ffaa00",
-    chart_trend_slow="#00ffff",
-    chart_oscillator="#00ff88",
-)
-
-MINIMAL_MODERN: dict[str, str] = build_theme(
-    name="minimal_modern",
-    display_name="Minimal Modern",
-    bg_primary="#fafafa",
-    bg_secondary="#f0f0f0",
-    bg_tertiary="#e8e8e8",
-    bg_card="#ffffff",
-    bg_input="#f5f5f5",
-    bg_hover="#eeeeee",
-    bg_selected="#e0e0e0",
-    text_primary="#1a1a1a",
-    text_secondary="#666666",
-    text_muted="#999999",
-    text_accent="#2563eb",
-    accent_primary="#2563eb",
-    accent_secondary="#7c3aed",
-    accent_danger="#dc2626",
-    border_primary="#e0e0e0",
-    border_secondary="#eeeeee",
-    border_accent="rgba(37,99,235,51)",
-    scrollbar_bg="#f0f0f0",
-    scrollbar_handle="#cccccc",
-    font_family="'SF Pro Display', 'Inter', 'Segoe UI', sans-serif",
-    chart_bg_top="#ffffff",
-    chart_bg_bottom="#fafafa",
-    chart_grid="#e4e4e4",
-    chart_axis_text="#444444",
-    chart_up="#059669",
-    chart_up_edge="#047857",
-    chart_down="#dc2626",
-    chart_down_edge="#b91c1c",
-    chart_crosshair="#9ca3af",
-    chart_last_price="#d97706",
-    chart_band="#2563eb",
-    chart_band_mid="#d97706",
-    chart_bull="#059669",
-    chart_bear="#dc2626",
-    chart_zone_scrum="#be123c",
-    chart_zone_fold="#a16207",
-    chart_event_mark="#7c3aed",
-    chart_gap="#8a8a8a",
-    chart_trend_fast="#c2410c",
-    chart_trend_slow="#1d4ed8",
-    chart_oscillator="#b45309",
-)
-
-GLASS_METAL: dict[str, str] = build_theme(
-    name="glass_metal",
-    display_name="Glass & Metal",
-    bg_primary="#1c1c24",
-    bg_secondary="#242430",
-    bg_tertiary="#2c2c3a",
-    bg_card="#20202c",
-    bg_input="#181824",
-    bg_hover="#30303f",
-    bg_selected="#383848",
-    text_primary="#d0d0e0",
-    text_secondary="#9090a8",
-    text_muted="#606078",
-    text_accent="#88ccff",
-    accent_primary="#88ccff",
-    accent_secondary="#cc88ff",
-    accent_danger="#ff6688",
-    border_primary="#3a3a50",
-    border_secondary="#2e2e42",
-    border_accent="rgba(136,204,255,68)",
-    scrollbar_bg="#1c1c24",
-    scrollbar_handle="#3a3a50",
-    font_family="'Exo 2', 'Rajdhani', 'Segoe UI', sans-serif",
-    chart_bg_top="#181820",
-    chart_bg_bottom="#20202c",
-    chart_grid="#32324a",
-    chart_axis_text="#a8a8c0",
-    chart_up="#3fd6a0",
-    chart_up_edge="#88ffcc",
-    chart_down="#ff5f88",
-    chart_down_edge="#ffa0b8",
-    chart_crosshair="#4a4a62",
-    chart_last_price="#ffcc66",
-    chart_band="#88ccff",
-    chart_band_mid="#ffcc66",
-    chart_bull="#88ffaa",
-    chart_bear="#ff6688",
-    chart_zone_scrum="#ff4d7d",
-    chart_zone_fold="#e8b34a",
-    chart_event_mark="#cc88ff",
-    chart_gap="#8f8fb0",
-    chart_trend_fast="#ffb066",
-    chart_trend_slow="#88ccff",
-    chart_oscillator="#ffa07a",
-)
-
 THEMES: dict[str, dict[str, str]] = {
-    theme["name"]: theme
-    for theme in (
-        CYBERPUNK_DARK,
-        NEON_LIGHT,
-        CLASSIC_TERMINAL,
-        MINIMAL_MODERN,
-        GLASS_METAL,
-    )
+    name: {field: getattr(tokens, field) for field in FIELD_NAMES}
+    for name, tokens in theme_engine.THEMES.items()
 }
 
 THEME_NAMES = tuple(THEMES)

@@ -721,10 +721,10 @@ class StackTranchesTabModel:
             return RATIO_NO_STYLE
         if self.state.created_lifetime < RATIO_MIN_OPENED or pending <= 0:
             return RATIO_NO_STYLE
-        ratio = filled / self.state.created_lifetime
-        if ratio < RATIO_RED_BELOW:
+        opened = self.state.created_lifetime
+        if filled < opened * RATIO_RED_BELOW:
             return RATIO_STYLE_FORMAT.format(colour=RATIO_RED)
-        if ratio < RATIO_AMBER_BELOW:
+        if filled < opened * RATIO_AMBER_BELOW:
             return RATIO_STYLE_FORMAT.format(colour=RATIO_AMBER)
         return RATIO_STYLE_FORMAT.format(colour=RATIO_GREEN)
 

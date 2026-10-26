@@ -4969,6 +4969,43 @@ lower bound binds there instead.
 The control cannot emit a zero. A record hand-edited to carry one is read as
 30.0 %, the declared default, not as no ceiling.
 
+#### A stored zero now means no ceiling
+
+The two sentences above describe what the reader did before this unit. A stored
+zero is now read as off, and the band range passes through held only by the
+Opposing Trade Interval below it. The box still cannot emit a zero, so only a
+hand-edited record reaches this reading.
+
+Driven on a $200.00 target with Smart Cartridge on, a band spanning 100.0 % of
+its midline and the interval at 1.0 %:
+
+```
+stored ceiling   answer      threshold
+0.0              100.00 %    $200.00
+missing          30.00 %      $60.00
+-5.0              1.00 %       $2.00
+15.0             15.00 %      $30.00
+30.0             30.00 %      $60.00
+```
+
+A missing field and a negative figure read exactly as they read before. The
+Console names the reading in words rather than printing a zero per cent:
+
+```
+SMART CARTRIDGE calibrated to 100.00% (BB range 100.00%, floor=1.00%,
+ceiling=off). Effective threshold = $200.00.
+```
+
+The opening figure is declared once, in
+`src/trading/container/config.py`, and
+`smart_cartridge_ceiling_pct` in that module is the one reader.
+
+```python
+MAX_CARTRIDGE_SMART_CEILING_PCT_DEFAULT: float = 30.0
+SMART_CARTRIDGE_CEILING_OFF: float = 0.0
+SMART_CARTRIDGE_CEILING_OFF_TEXT: str = "off"
+```
+
 `src/gui/bot_wizard.py` — `TradingParamsPage.get_config`, the settings this
 group emits, in the order of the rows above
 
@@ -5191,6 +5228,66 @@ f"(BB range {_bb_range_pct:.2f}%, "
 f"floor={_interval_floor:.2f}%, "
 f"ceiling={_smart_ceiling:.2f}%). "
 ```
+
+The block above is the line as it read before this unit. The ceiling now prints
+through a name, so a stored zero reads as a word instead of as nought per cent.
+
+```python
+f"floor={_interval_floor:.2f}%, "
+f"ceiling={_ceiling_text}). "
+```
+
+#### One declaration holds the Ceiling Multiple opening figure
+
+Four readers in the engine each wrote their own figure to fall back on when a
+bot's record carries no Ceiling Multiple, and all four named one anchor multiple
+against the 5.0 this page states. On a $200.00 anchor that is a $200.00 ceiling
+in place of a $1,000.00 one, so a restored target of $700.00 was snapped to
+$200.00 and a buy was refused at a fifth of the figure you set. No real record
+reaches those figures, because every bot's configuration declares the field.
+
+All four now read one declaration.
+`src/trading/container/config.py` holds the figure and `ceiling_multiple` in
+that module answers for it.
+
+```python
+POSITION_CEILING_MULTIPLE_DEFAULT: float = 5.0
+```
+
+Driven on a record carrying no Ceiling Multiple, with a stored target of
+$700.00 against a $200.00 anchor: the restore left the target at $700.00, where
+before it cut it to $200.00. A record that does carry the figure restored to
+$700.00 both times, and the same restore with Enable Position Ceiling clear left
+$700.00 in every reading.
+
+The two readers inside `src/trading/scrumming_bot.py` read the same declaration,
+so the pre-buy refusal, the first entry of a brand-new bot, the fold hold and the
+restore all answer one figure.
+
+#### One declaration holds the Ceiling Multiple range
+
+Eleven places held the one-to-ten span. Two engine readers wrote the pair out by
+hand, and all six Ceiling Multiple boxes typed it into their own control.
+Nothing reported a disagreement, so a change in one place would have left the
+other ten behind.
+
+Eight of those copies now read one declaration, in
+`src/trading/container/config.py`.
+
+```python
+CEILING_MULTIPLE_MIN: float = 1.0
+CEILING_MULTIPLE_MAX: float = 10.0
+```
+
+The two Electron rows still carry their own pair. They sit in a directory
+another change holds open, and they are named rather than touched.
+
+Driven on a $100.00 anchor, every reading is what it was. A stored multiple of
+twenty still caps at ten, a restored target of $1,500.00 still snaps to
+$1,000.00, and all six boxes still open at 5.0x and span 1.0 to 10.0. Moving the
+declaration to a span of three to seventy-seven moved every one of those
+readings together. The same move against the old code moved only the sizing
+function that reads the declaration and left all eight copies where they were.
 
 Enable Detonation - Enables an entire remaining position to be sold after the Ceiling Multiple growth threshold is crossed.
 
@@ -8993,3 +9090,103 @@ Driven with the one read moved to a figure nothing uses, every kind of row
 followed it together. Before the change the same move reached the numeric boxes
 alone and the tick box and the drop-down kept their own values. The file is byte
 identical after the move was put back.
+
+## 2026-10-25 - #665 - the despawn rule is declared once
+
+The section "The Tranche Despawn Timer" above records the rule being written three
+times and defers collapsing it. It is collapsed now.
+
+One function turns a stored figure into whole despawn days. The sweep that removes
+records, the shared preview the Qt panel reads, the Fold Tranches screen and the Bot
+Settings despawn row all call it. The cap it saturates at and the four candidate
+windows the panel offers are each declared once beside it.
+
+`src/trading/container/config.py` — the one rule
+
+```python
+def whole_despawn_days(value) -> int:
+    days = as_finite_float(value)
+    if days is None:
+        return 0
+    return min(DESPAWN_MAX_DAYS, max(0, int(days)))
+```
+
+Live, Paper and the Simulator read it through the panel chrome they share, and the
+Electron build reads it from its two screen modules. That is one rule on all four
+surfaces.
+
+Thirteen stored figures were read at five sites before and after, and every site gave
+the same answer on every figure, including a flag, a word and the two endless
+numbers. Moving the cap to a figure nothing uses moved all five together; before the
+change the same move reached the shared site alone and both screens kept the old cap.
+The file is byte identical after the move was put back.
+
+| Stored figure | Whole days |
+| ------------- | ---------- |
+| 0 | 0, which is off |
+| 7 | 7 |
+| 365 | 365 |
+| the cap itself | the cap |
+| one past the cap | the cap |
+| 7.9 | 7 |
+| a negative figure | 0 |
+| a flag, a word, nothing at all | 0 |
+| a not-a-number, an endless number | 0 |
+| a whole number too large for a figure | 0 |
+
+## 2026-10-25 - #665 - the Apply routing map is declared once
+
+Apply decides, per edited row, whether the figure goes through one of the bot's own
+live setters or is written straight onto its stored record. Six rows take a setter.
+That list was written twice, once for the Qt window and once for the Electron
+surface, with nothing comparing them.
+
+`src/gui/main_tabs/bot_live_settings_surface.py` — the one list
+
+```python
+RUNTIME_ROUTED = {
+    "target_balance": "set_target_balance_live",
+    "visibility": "set_visibility_live",
+    "aggressive_trading": "set_aggressive_live",
+    "hedge_balance": "set_hedge_balance_live",
+    # setattr alone moves the flag and leaves _hedge_bal at zero.
+    "hedge_rebalance_active": "set_hedge_rebalance_active_live",
+    # set_chunk_size_usd also rescales _chunk_free_base and the registry claim.
+    "extractor_chunk_size_usd": "set_chunk_size_usd",
+}
+```
+
+The Qt window, the Electron surface and the Simulator's Detail page all read it, and
+the Electron build is handed it in the same payload it draws from. The Paper window
+routes nothing on purpose: a paper bot is a stored record with no running object, so
+every row there goes to one record writer.
+
+Driven by pressing Apply on a bot that records each setter it is handed. Both Apply
+paths routed the same six, and a seventh row that carries no entry was written onto
+the record by both, which is the reading that shows a difference would show.
+
+Adding a seventh entry to the one list made both paths route seven. Before the change
+the same addition reached the Electron surface alone and the Qt window still routed
+six. The file is byte identical after the entry was removed.
+
+## 2026-10-25 - #665 - the Hedge Balance opening figure is declared once
+
+The Hedge Balance box on the creation wizard opens on a figure nobody typed. That
+figure was written in five places: the bot's own declaration, and once in each of the
+four wizards the operator can reach.
+
+`src/trading/container/config.py` — the one figure
+
+```python
+hedge_balance: float = 200.0
+```
+
+The Live wizard, the Paper wizard, the Simulator wizard and the Electron wizard all
+read it now. A bot you created earlier keeps the figure it was created with, because
+a saved record carries its own.
+
+Read at all five places before and after, every one answered $200.00. Moving the
+declaration to a figure nothing uses moved all five together; before the change the
+same move reached the declaration alone and all four wizard boxes still opened at
+$200.00. The max-cartridge box beside it was read the same way each time and never
+moved, which is the reading that shows the boxes answer for themselves.

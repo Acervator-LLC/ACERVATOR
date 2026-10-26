@@ -12,7 +12,12 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
-from ...trading.container.config import as_finite_float
+from ...trading.container.config import (
+    CEILING_MULTIPLE_MAX,
+    CEILING_MULTIPLE_MIN,
+    BotConfig,
+    as_finite_float,
+)
 from .. import design_system as ds
 from ..bot_wizard import (
     VOLUME_REFUSED_USD,
@@ -753,7 +758,7 @@ if _HAS_QT:
             self._hedge_amount.setRange(0.0, 999999999.0)
             self._hedge_amount.setDecimals(2)
             self._hedge_amount.setPrefix("$ ")
-            self._hedge_amount.setValue(200.0)
+            self._hedge_amount.setValue(BotConfig.hedge_balance)
             self._hedge_amount.setToolTip(
                 "USD reserve amount for hedge rebalancing (separate "
                 "from Target Balance)."
@@ -859,7 +864,9 @@ if _HAS_QT:
             rf.addRow(self._position_ceiling_enabled)
 
             self._position_ceiling_multiple = QDoubleSpinBox()
-            self._position_ceiling_multiple.setRange(1.0, 10.0)
+            self._position_ceiling_multiple.setRange(
+                CEILING_MULTIPLE_MIN, CEILING_MULTIPLE_MAX
+            )
             self._position_ceiling_multiple.setDecimals(1)
             self._position_ceiling_multiple.setSingleStep(0.5)
             self._position_ceiling_multiple.setSuffix("x anchor")

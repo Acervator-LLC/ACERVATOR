@@ -30,9 +30,9 @@ produces; nothing here invents one.
 
 ``src.core.desktop_bridge`` registers ``view_model`` as the handler for
 the ``main_window.state`` method. Every value below is written out here
-rather than read from ``src.gui.main_window``, so a value changed on one
-side alone is reported. Nothing here imports Qt and nothing here reads a
-clock: a time reaches the model as a value.
+rather than read from ``src.gui.main_window``, and nothing compares the
+two copies. Nothing here imports Qt and nothing here reads a clock: a
+time reaches the model as a value.
 """
 
 from __future__ import annotations

@@ -66,6 +66,7 @@ from typing import Any, Optional, Sequence
 
 from ...exchange.base import SETTLEMENT_DAY_SECONDS
 from ...stocks.market_hours import MarketSession, accepts_order, session_at
+from ..container.config import CEILING_MULTIPLE_MAX, CEILING_MULTIPLE_MIN
 
 #: The ``state`` an ``ExtractorBot`` writes on a position below its entry value.
 DRAWDOWN_STATE = "drawdown"
@@ -642,10 +643,6 @@ def venue_market_sector(venue: Any, symbol: Any) -> Optional[str]:
     key = (str(venue or "").strip().lower(), str(symbol or "").strip().upper())
     return CITED_VENUE_MARKET_SECTORS.get(key)
 
-
-#: ``position_ceiling`` clamps ``position_ceiling_multiple`` to this range.
-CEILING_MULTIPLE_MIN = 1.0
-CEILING_MULTIPLE_MAX = 10.0
 
 #: ``fold_rate_taper`` reads full size under this ratio and nothing at 1.0.
 TAPER_START_RATIO = 0.5

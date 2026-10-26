@@ -30,6 +30,8 @@ from __future__ import annotations
 import math
 from typing import Any, Optional
 
+from ...trading.container.config import DESPAWN_MAX_DAYS, DESPAWN_PREVIEW_WINDOWS
+
 METHOD = "fold_tranches_tab.state"
 
 ACCESSIBLE_NAME = ""
@@ -302,8 +304,6 @@ RATIO_RED_BELOW = 0.5
 RATIO_AMBER_BELOW = 0.8
 
 # ── The despawn rows ─────────────────────────────────────────────────
-DESPAWN_MAX_DAYS = 3_650_000
-DESPAWN_PREVIEW_WINDOWS = (7, 14, 30, 60)
 DESPAWN_DAYS_FIELD = "tranche_despawn_days"
 DESPAWN_CONTROL_PLACE = "Settings tab > Advanced > Tranche Despawn Timer"
 DESPAWN_OFF_FORMAT = "Off  -  {where}"
@@ -1042,7 +1042,7 @@ def units_marked_row(tranches: Any, holdings: Any) -> list:
         return [UNITS_NO_RATIO_FORMAT.format(text=text, held=held), NO_CELL_COLOR]
     ratio = marked / held
     full = UNITS_RATIO_FORMAT.format(text=text, held=held, ratio=ratio)
-    if ratio > UNITS_OVER_ALLOTMENT:
+    if marked > held * UNITS_OVER_ALLOTMENT:
         return [full, FOLD_OVER_ALLOTMENT_FG_HEX]
     return [full, NO_CELL_COLOR]
 
@@ -1076,9 +1076,9 @@ def cycle_close_ratio(
     )
     if denominator < RATIO_QUIET_DENOMINATOR:
         return [text, NO_CELL_COLOR]
-    if ratio < RATIO_RED_BELOW:
+    if int(closed) < denominator * RATIO_RED_BELOW:
         return [text, FOLD_RATIO_RED_FG_HEX]
-    if ratio < RATIO_AMBER_BELOW:
+    if int(closed) < denominator * RATIO_AMBER_BELOW:
         return [text, FOLD_RATIO_AMBER_FG_HEX]
     return [text, FOLD_RATIO_GREEN_FG_HEX]
 
@@ -1167,11 +1167,13 @@ def arbiter_tooltip(value: Any) -> str:
 
 
 def despawn_threshold_days(config: Any) -> int:
-    """The armed despawn threshold in whole days. 0 is off."""
-    days = finite_number(getattr(config, DESPAWN_DAYS_FIELD, 0))
-    if days is None:
-        return 0
-    return min(DESPAWN_MAX_DAYS, max(0, int(days)))
+    """The armed despawn threshold in whole days. 0 is off.
+
+    Reads `despawn_threshold_days` in `src.trading.container.config`.
+    """
+    from ...trading.container.config import despawn_threshold_days as armed
+
+    return armed(config)
 
 
 def despawn_timer_text(days: int) -> str:
@@ -1196,10 +1198,9 @@ def despawn_preview(fold: Any, stack: Any, days: Any, now: Any) -> dict:
         "usd_removed": 0.0,
         "units_removed": 0.0,
     }
-    read_days = finite_number(days)
-    if read_days is None:
-        return report
-    whole_days = min(DESPAWN_MAX_DAYS, max(0, int(read_days)))
+    from ...trading.container.config import whole_despawn_days
+
+    whole_days = whole_despawn_days(days)
     report["threshold_days"] = whole_days
     if whole_days <= 0:
         return report

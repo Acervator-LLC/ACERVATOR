@@ -15,8 +15,8 @@ fleet load into the wires the canvas paints, and back again.
 ``src.core.desktop_bridge`` registers ``view_model`` as the handler for
 the ``bot_visualizer.state`` method, which is how the Electron renderer
 reaches it. Every value below is written out here rather than read from
-``src.gui.bot_visualizer``, so a value changed on one side alone is
-reported. Nothing here imports Qt, reads a file or reads the clock.
+``src.gui.bot_visualizer``, and nothing compares the two copies.
+Nothing here imports Qt, reads a file or reads the clock.
 """
 
 from __future__ import annotations

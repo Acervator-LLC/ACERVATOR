@@ -19,9 +19,9 @@ every value it admits.
 ``src.core.desktop_bridge`` registers ``view_model`` as the handler for
 the ``bot_swarm_tab.state`` method, which is how the Electron renderer
 reaches it. Every value below is written out here rather than read from
-``src.gui.live_settings.bot_swarm_tab``, so a value changed on one side
-alone is reported. Nothing here imports Qt, and nothing here reads the
-clock: ``build`` takes the epoch second it ages rows against.
+``src.gui.live_settings.bot_swarm_tab``, and nothing compares the two
+copies. Nothing here imports Qt, and nothing here reads the clock:
+``build`` takes the epoch second it ages rows against.
 """
 
 from __future__ import annotations

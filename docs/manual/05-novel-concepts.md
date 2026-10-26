@@ -894,6 +894,68 @@ the dash for that pair and names the two counts beside it, never a share above
 one hundred percent. `src/gui/main_tabs/fold_tranches_tab_surface.py`, in
 `cycle_close_ratio`, draws the same thing for the React page.
 
+### How the ratio cell picks its colour
+
+Red under a half, amber under four fifths, green above, and no colour at all
+while fewer than five tranches are openable. The allotment cell above it draws
+red when the queue claims more units than the bot holds.
+
+The cell prints the share and decides the colour on the counts themselves. The
+share is worked out for the text alone, so the division has no part in the
+verdict.
+
+`src/gui/main_tabs/fold_tranches_tab_surface.py`, in `cycle_close_ratio`
+
+```python
+if int(closed) < denominator * RATIO_RED_BELOW:
+    return [text, FOLD_RATIO_RED_FG_HEX]
+if int(closed) < denominator * RATIO_AMBER_BELOW:
+    return [text, FOLD_RATIO_AMBER_FG_HEX]
+```
+
+Both ways of asking give the same answer on every count either cell can be
+given. Swept over 1,399,894 whole-number pairs, with denominators up to one
+hundred thousand and every closed count within three of each threshold, no cell
+changes colour; 9,396 allotment readings stepped by the smallest amount a stored
+figure can move give the same result. The Fold Tranches screen on the Electron
+build, the Stack Tranches screen beside it and the Qt panel all draw the same
+colour for the same counts.
+
+### The Qt panel reads the same three names
+
+The Qt Fold Tranches panel wrote the three figures in as plain numbers, so the
+arithmetic check could not read any of its three colour decisions. It now reads
+the names the Electron page declares, and it decides on the counts the way that
+page does.
+
+The names are declared in `src/gui/main_tabs/fold_tokens_surface.py`.
+
+`src/gui/live_settings/fold_tokens.py`, in `compose_cycle_close_ratio`
+
+```python
+if denominator < RATIO_MIN_DENOMINATOR:
+    return (text, None)
+if int(closed) < denominator * RATIO_RED_BELOW:
+    return (text, FOLD_RATIO_RED_FG_HEX)
+if int(closed) < denominator * RATIO_AMBER_BELOW:
+    return (text, FOLD_RATIO_AMBER_FG_HEX)
+```
+
+Every colour is what it was. Swept over 131,302 whole-number pairs, with
+denominators from one to two hundred and three larger ones up to one hundred
+thousand, and every closed count from nothing up to the denominator, the panel
+draws the same colour on every pair and agrees with the Electron page on all
+131,302 of them. Both counts are whole numbers, so a step of one is the finest
+step there is and no colour change can fall between two readings.
+
+Moving the three declarations moved 77,340 of the 131,302 colours, on both sides
+together. Loosening the amber figure by a thousandth moved 151 of them. The same
+two moves against the old panel moved nothing on the Qt side, which left it
+disagreeing with the Electron page on 77,340 readings.
+
+The arithmetic check now reads thirty-two of this panel's comparisons, where it
+read twenty-nine before. The three it gained are the three it could not see.
+
 ### Standing tranches against the sells that opened them
 
 The queue may never hold more tranches than the sells that opened them, outside

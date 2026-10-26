@@ -26,9 +26,9 @@ recorded when a later step refuses.
 ``src.core.desktop_bridge`` registers ``view_model`` as the handler for
 the ``fold_tokens.state`` method, which is how the Electron renderer
 reaches it. Every value below is written out here rather than read from
-``src.gui.live_settings.fold_tokens``, so a value changed on one side
-alone is reported. Nothing here imports Qt, and nothing here reads the
-clock, the filesystem or the environment -- at import time or later.
+``src.gui.live_settings.fold_tokens``, and nothing compares the two
+copies. Nothing here imports Qt, and nothing here reads the clock, the
+filesystem or the environment -- at import time or later.
 """
 
 from __future__ import annotations
@@ -513,7 +513,7 @@ def compose_units_marked_row(tranches: Any, holdings: Any) -> tuple:
         return (text + HELD_FORMAT.format(held=held), NO_COLOUR)
     ratio = marked / held
     text += HELD_FORMAT.format(held=held) + RATIO_FORMAT.format(ratio=ratio)
-    if ratio > OVER_ALLOTMENT_ABOVE:
+    if marked > held * OVER_ALLOTMENT_ABOVE:
         return (text, FOLD_OVER_ALLOTMENT_FG_HEX)
     return (text, NO_COLOUR)
 
@@ -536,9 +536,9 @@ def compose_cycle_close_ratio(created: Any, closed: Any, discarded: Any) -> tupl
     )
     if denominator < RATIO_MIN_DENOMINATOR:
         return (text, NO_COLOUR)
-    if ratio < RATIO_RED_BELOW:
+    if int(closed) < denominator * RATIO_RED_BELOW:
         return (text, FOLD_RATIO_RED_FG_HEX)
-    if ratio < RATIO_AMBER_BELOW:
+    if int(closed) < denominator * RATIO_AMBER_BELOW:
         return (text, FOLD_RATIO_AMBER_FG_HEX)
     return (text, FOLD_RATIO_GREEN_FG_HEX)
 

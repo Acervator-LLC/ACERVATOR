@@ -3172,6 +3172,56 @@ the tablet ends. The banner is hidden on every empty state.
 ⏱ LAST TA READ, NOT CURRENT — taken 11:35:00, 46d 20h ago. Stone Tablet ends 2026-08-01.
 ```
 
+### The weighting behind these votes
+
+A vote is a weighted total. Twelve indicators each cast a direction, and each
+one's say is scaled by the weight you set on the Settings TA Indicators page.
+The panel reads those same twelve figures, so the direction and the confidence
+it draws are the ones a live bot on that market would reach.
+
+`src/gui/main_tabs/simulator_tab_surface.py` — `multi_tf_summary`
+
+```python
+summary = VotingEngine(weights=weights_in_force()).compute_all(
+    parsed, timeframe
+)
+```
+
+No recorded decision carries the weighting it was made under. The gate log
+holds the armed flags, the blockers and the figures behind them, and it holds
+no weight. A reading over past candles is therefore today's weighting over an
+old tape, and the banner says that beside the figures rather than leaving them
+to look settled.
+
+`src/gui/main_tabs/simulator_tab_surface.py` — `WEIGHTING_NOT_RECORDED_TEXT`
+
+```python
+WEIGHTING_NOT_RECORDED_TEXT = (
+    "Votes computed at the indicator weights your settings hold now. No "
+    "recorded decision carries the weighting it was made under."
+)
+```
+
+A run says the same thing once, in the Activity Log, and counts how many of the
+twelve sit away from the built-in figures. A count of zero means your sliders
+are at the figures the program ships with.
+
+`src/simulator/back_test.py` — `weighting_line`
+
+```
+Indicator weighting: this rerun votes at the 12 weights your settings hold
+now, 12 of them away from the built-in figures. No recorded gate decision
+carries the weighting it was made under, so a weight you have changed since
+then moves this reading.
+```
+
+Driven on a hand-built tape of 240 candles, with twelve weights written by hand
+and every one away from the built-in figure, the walk's own recorded votes moved
+on 211 of 211 ticks, and the ticks whose recorded decision read bearish moved
+from 5 to 14. The Validation rerun is a separate matter: it reads the recorded
+direction off the gate row itself and computes no vote, so its reading of a
+decision is the decision's own.
+
 ### A bot with nothing to read
 
 An idle or stopped sim bot draws Live's empty state for a bot that is not
@@ -10380,3 +10430,25 @@ no key       record holds no key      tab box 2
 A simulated record written before this change holds no such key, loads, and
 leaves the tab box on the declared 2. The Simulator and the Paper Trader take
 the same route, so the two cannot answer this differently.
+
+## 2026-10-25 - #665 - the Simulator wizard reads the one Hedge Balance figure
+
+The Hedge Balance box on the Simulator wizard used to open on a figure typed into the
+Simulator wizard itself. It reads the bot's own declaration now, the same declaration
+the Live wizard, the Paper wizard and the Electron wizard read.
+
+`src/gui/simulator/sim_bot_wizard.py, in SimTradingParamsPage` — the opening figure
+
+```python
+self._hedge_amount.setValue(BotConfig.hedge_balance)
+```
+
+Two more readings on this build join one declaration. The whole-days despawn rule is
+the one rule in `src/trading/container/config.py, in whole_despawn_days`, read by the
+Simulator Fold Tranches panel through the chrome it shares with Live. The Apply
+routing map the Simulator's Detail page reads is the one list in
+`src/gui/main_tabs/bot_live_settings_surface.py`, which the Qt window now reads too.
+
+Read before and after, the box opened on $200.00 both times. Moving the declaration to
+a figure nothing uses moved the Simulator box with the other three; before the change
+the same move left all four at $200.00.

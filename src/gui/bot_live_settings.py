@@ -741,18 +741,10 @@ if _HAS_QT:
                     )
 
             # A field snapshotted into a runtime attribute is routed through a bot method.
-            _RUNTIME_ROUTED = {
-                "target_balance": "set_target_balance_live",
-                "visibility": "set_visibility_live",
-                "aggressive_trading": "set_aggressive_live",
-                "hedge_balance": "set_hedge_balance_live",
-                # setattr alone moves the flag and leaves _hedge_bal at zero.
-                "hedge_rebalance_active": "set_hedge_rebalance_active_live",
-                # set_chunk_size_usd also rescales _chunk_free_base and the registry claim.
-                "extractor_chunk_size_usd": "set_chunk_size_usd",
-            }
+            from .main_tabs.bot_live_settings_surface import RUNTIME_ROUTED
+
             for field, value in other_changes.items():
-                route = _RUNTIME_ROUTED.get(field)
+                route = RUNTIME_ROUTED.get(field)
                 if route and hasattr(self._bot, route):
                     try:
                         result = getattr(self._bot, route)(value)
