@@ -634,6 +634,22 @@ def detect_distance_to_band(
     return out
 
 
+def unavailable_sentences() -> list[str]:
+    """Each unrun-contribution sentence read off the import path, importing nothing.
+
+    ``detect_all_topologies`` stamps these on the proposals it returns, and a
+    refresh returning none leaves the pane this function to read.
+    """
+    absent_package = missing_cointegration_package()
+    if not absent_package:
+        return []
+    return [
+        UNAVAILABLE_FORMAT.format(
+            detector=MEAN_REVERSION_DETECTOR_NAME, package=absent_package
+        )
+    ]
+
+
 def detect_all_topologies(
     context: dict[str, Any],
     cap: int = PROPOSAL_CAP,
@@ -733,14 +749,12 @@ def detect_all_topologies(
     # the mean-reversion detector reaches no import and raises nothing. The
     # absence is read off the import path instead, which is what puts the
     # package's name on the pane rather than in the log alone.
-    absent_package = missing_cointegration_package()
-    if absent_package:
-        sentence = UNAVAILABLE_FORMAT.format(
-            detector=MEAN_REVERSION_DETECTOR_NAME, package=absent_package
-        )
+    for sentence in unavailable_sentences():
         if sentence not in unavailable:
             logger.warning(
-                UNAVAILABLE_LOG_FORMAT, MEAN_REVERSION_DETECTOR_NAME, absent_package
+                UNAVAILABLE_LOG_FORMAT,
+                MEAN_REVERSION_DETECTOR_NAME,
+                missing_cointegration_package(),
             )
             unavailable.append(sentence)
 
@@ -812,4 +826,5 @@ __all__ = [
     "detect_sector_cluster",
     "detect_distance_to_band",
     "detect_all_topologies",
+    "unavailable_sentences",
 ]
