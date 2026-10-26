@@ -9102,4 +9102,60 @@ The second sentence above wraps across two source lines, so a search that reads 
 line at a time cannot see it. Measured on this page, it reads nothing per line and one
 across the folded text.
 
+## 2026-10-26 - The Phantom Bots figure is retaken from the drawn page
+
+The picture on this page was taken from the eleven-box grid. The page draws one
+drop-down now, so the picture showed a control the operator cannot find. It has
+been retaken from the running dialog.
+
+### What the retaken figure shows
+
+The dialog was built and its Phantom Bots tab selected, then the picture was
+taken off the widget. Read off that page while it was open: one drop-down, one
+tick box, and no timeframe tick box at all. The drop-down holds eleven names,
+1m through 1w, and opens on the daily chart.
+
+`src/gui/settings_dialog.py, in SettingsDialog._create_phantom_tab`
+
+```python
+self._phantom_timeframe = QComboBox()
+for tf in PHANTOM_TIMEFRAMES:
+    self._phantom_timeframe.addItem(tf, tf)
+self._phantom_timeframe.setCurrentIndex(
+    self._phantom_timeframe.findData(PHANTOM_TIMEFRAME_DEFAULT)
+)
+```
+
+The tab strip in the retaken picture carries nine names and no Profit Folding
+tab, because that page is gone. Every character in the four labels was checked
+against the ink a missing character draws, and none of them drew as an empty
+box, so the words in the picture are the words the page holds.
+
+### Where the sentences about the old picture now read differently
+
+Three readings above describe the picture that has been replaced. They stand as
+written, and these are the readings that replaced them.
+
+| written above | what it reads now |
+| --- | --- |
+| "The build checks 5m, 15m, 1h, 4h and 1d, which is the state the figure shows." | The picture shows one drop-down reading 1d. No box is checked, because the page draws no timeframe box |
+| "One box per timeframe in a single row. The build decides which five open checked, and those five are the ones the figure shows." | The picture shows the drop-down in that row and the one name it holds |
+| "the figure on this page shows the old grid" in the table of what this row waits on | The picture is retaken. That absence is closed |
+
+### What the drop-down does not draw
+
+The picture carries no arrow on the drop-down, and that is what the application
+draws. The theme reserves twenty-four points of width for the arrow and names no
+image for it, and no rule anywhere in the tree names the arrow itself, so the
+reserved strip is painted empty on every drop-down in the application.
+
+`src/gui/theme_engine.py` — the rule that reserves the strip
+
+```css
+QComboBox::drop-down {
+    border: none;
+    width: 24px;
+}
+```
+
 Back to [the subsystem index](README.md).
