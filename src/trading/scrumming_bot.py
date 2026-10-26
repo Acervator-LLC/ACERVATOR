@@ -43,6 +43,7 @@ from .ta_engine import (
     BBProximityResult,
     detect_landing_strip_v2,
 )
+from .container.config import ceiling_multiple
 from .indicators.bb_proximity import CONSOLIDATION_THRESHOLD_PCT
 from ..core.settings import DEFAULT_ENABLE_PHANTOMS
 from .phantom_balance import (
@@ -2790,9 +2791,7 @@ class ScrummingBot(
 
             if getattr(self.config, "position_ceiling_enabled", False):
                 try:
-                    _smart_mult = float(
-                        getattr(self.config, "position_ceiling_multiple", 1.0)
-                    )
+                    _smart_mult = ceiling_multiple(self.config)
                     _smart_ceiling_usd = position_ceiling(_anchor, _smart_mult)
                     if _projected > _smart_ceiling_usd:
                         return False, (
@@ -4083,9 +4082,7 @@ class ScrummingBot(
         _mem253_smart_ceiling_usd = None
         if getattr(self.config, "position_ceiling_enabled", False):
             try:
-                _smart_mult_253 = float(
-                    getattr(self.config, "position_ceiling_multiple", 1.0)
-                )
+                _smart_mult_253 = ceiling_multiple(self.config)
                 _mem253_smart_ceiling_usd = position_ceiling(_anchor, _smart_mult_253)
                 _mem253_at_smart_ceiling = (
                     _mem253_current_pos >= _mem253_smart_ceiling_usd
