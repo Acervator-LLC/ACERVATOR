@@ -9355,3 +9355,112 @@ from ...trading.container.config import DESPAWN_MAX_DAYS, DESPAWN_PREVIEW_WINDOW
 Every value that surface hands out was read back before and after the sentence went.
 The payload is the same 28,046 bytes and its 409 declared figures are unchanged, so
 no figure left with the sentence.
+
+## 2026-10-26 - #665 - a stored zero fold ratio reads as the declared ratio
+
+The Scrum Fold Ratio box runs from 1 to 100 and opens at 100. The engine clamp
+accepted anything from zero upward, and a stored zero emptied a whole sale's fold
+queue. Driven on a sale of two tranches worth $200.00 and two units, a stored zero
+queued $0.0000 and no units at all, and retired the whole $200.00 as cash. The sale
+still wrote its usual line, naming a ratio of nought per cent. A record like that is
+not something the screen can write.
+
+The clamp now admits only a figure a box offers, and a record outside that span reads
+the declared ratio of 100. The same sale with a stored zero queues the full $200.00
+and two units. This is the choice between two answers, and the declared ratio is the
+one the page already states: a whole percentage from 1 to 100, at 100 % to start. The
+ratio is a cushion that holds proceeds back, so an unreadable record means no
+cushion, not the largest one a box can hold. It is also the rule every other stored
+figure on this screen already follows, where a figure outside a box's span is no
+figure at all.
+
+`src/trading/container/config.py` — the one reader every surface calls
+
+```python
+def fold_ratio_pct(config) -> int:
+    read = as_box_figure(
+        getattr(config, "scrum_fold_pct", FOLD_RATIO_PCT_DEFAULT),
+        FOLD_RATIO_MIN_PCT,
+        FOLD_RATIO_MAX_PCT,
+    )
+    if read is None:
+        return FOLD_RATIO_PCT_DEFAULT
+    return int(read)
+```
+
+The span was written in nine places and the clamp was a tenth that disagreed with all
+nine at its bottom end. The three settings pages, the three New Bot wizards and the
+two Electron rows each typed one to a hundred, and the engine accepted zero. All ten
+read one declaration now.
+
+`src/trading/container/config.py` — the one span and the one opening ratio
+
+```python
+FOLD_RATIO_MIN_PCT: int = 1
+FOLD_RATIO_MAX_PCT: int = 100
+FOLD_RATIO_PCT_DEFAULT: int = int(
+    next(one.default for one in fields(BotConfig) if one.name == "scrum_fold_pct")
+)
+```
+
+The Max Target Growth figure had the same shape in a quieter way. Thirteen places read
+it and every one of them named its own standby figure of one per cent for a record
+that carries no such figure. None of those standby figures could ever answer, because
+every bot record and both fleet records declare the field, so the read always finds a
+value. Measured against a record built without the field, with a null, with a zero,
+with a text number, with a flag and with a not-a-number: the field is present in every
+case and the standby figure answers in none.
+
+`src/trading/container/config.py` — the one growth reader
+
+```python
+def target_growth_pct(config):
+    return getattr(config, "max_target_growth_pct", TARGET_GROWTH_PCT_DEFAULT)
+```
+
+Each of the thirteen calls that reader now and names no figure of its own. Every one
+keeps its own handling of what it reads, so a record holding a null still reads as
+nought where it did before and still raises where it did before. The Paper and
+Simulator record readers carried the figure twice more each; those four read the one
+declaration too.
+
+The two blocker lines the gate writes when a reversal is too close spelled the
+distance themselves, by adding the interval to the fee. The distance has one
+definition and the market scan beside it already called it.
+
+`src/trading/gate_chain.py` — the distance both lines print
+
+```python
+eff_pct = minimum_opposing_trade_distance_pct(
+    ctx.scrumming_interval_pct, ctx.trading_fee_pct
+)
+```
+
+Both lines read the same figures as before. At an interval of 1.00 % and a fee of
+0.60 % the scrum line still reads a required $101.60000000 against a pivot of
+$100.00000000 and the fold line still reads $98.40000000, and across all 42 pairs the
+two boxes can hold the readings are identical. The definition bounds the distance at
+fifty per cent, and the widest pair the boxes offer reaches 25.00 %, so the bound
+never binds on anything a reader can set. The same two lines the cartridge writes, and
+the figure the stack ladder opens on, read the one definition now as well.
+
+The two refusals the buy and sell executors write still read the fee for themselves,
+because they read a fee set to zero as zero where every other place reads it as
+0.60 %. Routing them would change a refusal a bot makes today, so they are named and
+left.
+
+The ratio was swept from minus five to a hundred and five in steps of a hundredth,
+which is 11,001 readings, and every integer boundary falls on a step. 600 readings
+moved and all 600 sit below one, where the old clamp read nought. The 10,401 readings
+from one upward are identical, so no bot carrying a ratio a box can hold folds any
+differently. Three record classes that used to stop the sale with an error — a null, a
+not-a-number and an endless number — now read the declared ratio and the sale
+finishes. A flag and a text number moved as well, and no box can write either.
+
+Moving the declared ratio to seventy-seven and the declared growth to 7.77 moved every
+reading together: the zero-ratio sale queued $154.0000 and the growth cap on a record
+with no figure read $15.5400. The same move on the code before this change left the
+zero-ratio sale at $0.0000 and the cap at $2.0000, which is the reading that shows the
+copies did not follow. A sale at a legitimate ratio of 40 queued $80.0000 and 0.8000
+units in all four readings, which is the figure read the same way each time to show the
+readings report at all.

@@ -39,6 +39,7 @@ from ..core.io_utils import atomic_write_json
 from ..trading.container.config import (
     POSITION_CEILING_MULTIPLE_DEFAULT,
     PUSHED_TARGET_DEFAULT,
+    TARGET_GROWTH_PCT_DEFAULT,
     BotConfig,
     BotMode,
     BotState,
@@ -253,7 +254,7 @@ class PaperBot:
     scrum_target_mode: Optional[str] = None
     position_ceiling_enabled: bool = False
     position_ceiling_multiple: float = POSITION_CEILING_MULTIPLE_DEFAULT
-    max_target_growth_pct: float = 1.0
+    max_target_growth_pct: float = TARGET_GROWTH_PCT_DEFAULT
     detonation_enabled: bool = False
     detonation_timeframe: str = "1d"
     chunk_size_usd: float = 0.0
@@ -477,7 +478,9 @@ def paper_bot_from_record(
             if ceiling_multiple is None
             else ceiling_multiple
         ),
-        max_target_growth_pct=1.0 if growth_cap_pct is None else growth_cap_pct,
+        max_target_growth_pct=(
+            TARGET_GROWTH_PCT_DEFAULT if growth_cap_pct is None else growth_cap_pct
+        ),
         detonation_enabled=bool(config.get("detonation_enabled", False)),
         detonation_timeframe=str(config.get("detonation_timeframe") or "1d"),
         chunk_size_usd=pool["chunk_size_usd"],

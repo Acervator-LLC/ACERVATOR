@@ -49,14 +49,18 @@ the arithmetic does not stop a caller feeding it different inputs, so
 read as well.
 
 WHICH CALLERS USE IT TODAY, AND WHICH DO NOT
-The Fold-Tranche panel (``gui/bot_live_settings.py``) calls it. The two
-executor sites -- the autonomous tick fold gate and the manual-rebalance
-refusal in ``scrumming_bot.py`` -- still spell the ``getattr`` pair
-inline. The reader reproduces their coercion exactly, quirk for quirk.
+The Fold-Tranche panel (``gui/bot_live_settings.py``), ``HysteresisGate``
+in ``gate_chain.py``, the cartridge hold and the stack open in
+``scrumming_bot.py``, and ``hypothetical_reading`` in
+``ata_gate_scan.py`` all read this module. Nothing in the gate path adds
+the two fields itself.
 
-THAT IS STILL TWO STATEMENTS OF ONE DEFAULT, AND IT IS NAMED, NOT
-HIDDEN. Routing those two sites through this reader is the obvious
-finish and is NOT done here.
+THE TWO EXECUTOR REFUSALS IN ``scrumming/execution.py`` KEEP THEIR OWN
+READ. ``_execute_sell`` and ``_execute_buy`` read the fee as
+``getattr(config, "trading_fee_pct", 0.6)`` with no ``or 0.6``, so a
+configured 0.0 reads as 0.0 there and as 0.6 here. Routing them through
+this reader would change the distance those two refusals apply on a
+zero-fee record, so it is named here, not done here.
 
 Public API:
     minimum_opposing_trade_distance_pct(interval_pct, fee_pct) -> float
@@ -130,9 +134,9 @@ def minimum_opposing_trade_distance_pct_from_config(
     default. A surface that repeats the `getattr` pair is a second
     reader, and a second reader is how the panel came to omit the fee.
 
-    THE TWO EXECUTOR SITES IN `scrumming_bot` DO NOT CALL IT YET. See
-    the module docstring for why, and for what proves the agreement
-    meanwhile.
+    THE CARTRIDGE HOLD AND THE STACK OPEN IN `scrumming_bot` CALL IT.
+    The two executor refusals in `scrumming/execution.py` do not; see
+    the module docstring for the zero-fee reason.
 
     ``config`` is read by attribute only. No I/O, no state, and this
     module still imports nothing from ``src.trading``.

@@ -15,6 +15,9 @@ from typing import Optional
 from ...trading.container.config import (
     CEILING_MULTIPLE_MAX,
     CEILING_MULTIPLE_MIN,
+    FOLD_RATIO_MAX_PCT,
+    FOLD_RATIO_MIN_PCT,
+    FOLD_RATIO_PCT_DEFAULT,
     POSITION_CEILING_MULTIPLE_DEFAULT,
     BotConfig,
     as_finite_float,
@@ -661,8 +664,8 @@ if _HAS_QT:
             sf.addRow("Max Target Growth %:", self._max_target_growth_pct)
 
             self._scrum_fold_pct = QSpinBox()
-            self._scrum_fold_pct.setRange(1, 100)
-            self._scrum_fold_pct.setValue(100)
+            self._scrum_fold_pct.setRange(FOLD_RATIO_MIN_PCT, FOLD_RATIO_MAX_PCT)
+            self._scrum_fold_pct.setValue(FOLD_RATIO_PCT_DEFAULT)
             self._scrum_fold_pct.setSuffix(" %")
             self._scrum_fold_pct.setToolTip(
                 "% of scrum sale proceeds queued for fold (rebuy).\n"

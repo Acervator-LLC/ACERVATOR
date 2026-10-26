@@ -12,6 +12,7 @@ from dataclasses import asdict
 from typing import TYPE_CHECKING, Any, Optional
 
 from ...core.event_bus import LINE_KIND_TRADE
+from ..container.config import target_growth_pct
 from ..gate_vocabulary import gate_light_row, unknown_blockers
 
 logger = logging.getLogger("acervator.scrumming")
@@ -723,9 +724,7 @@ class SnapshotEmitterMixin(_Host):
         try:
             target = float(getattr(self, "_target_balance", 0.0) or 0.0)
             anchor = float(getattr(self, "_anchor_target_balance", 0.0) or 0.0)
-            growth_pct = float(
-                getattr(self.config, "max_target_growth_pct", 1.0) or 0.0
-            )
+            growth_pct = float(target_growth_pct(self.config) or 0.0)
             snap["target_balance"] = round(target, 6)
             snap["anchor_target_balance"] = round(anchor, 6)
             # Positive => target has grown above anchor via compounding.
