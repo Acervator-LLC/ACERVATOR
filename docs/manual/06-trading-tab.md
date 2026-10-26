@@ -4894,6 +4894,39 @@ where it was. A record carrying a cooldown of 0 is read as 3, the declared
 default. A record carrying a word stops the breaker check for that tick with a
 warning, which leaves the soft breaker unable to trip.
 
+#### A stored word now leaves both breakers armed
+
+The sentence above describes what the reader did before this unit. Every breaker
+figure is now read through one declaration, `breaker_figures`, and a stored value
+that is not a number reads the declared figure instead of stopping the check.
+
+Driven on one candle spanning 30.0 % of its open with the soft threshold at
+25.0 %:
+
+```
+stored cooldown   before                        after
+a word            no decision, breaker idle     3 candles, SCRUM side shut
+7                 7 candles, SCRUM side shut    7 candles, SCRUM side shut
+empty             3 candles, SCRUM side shut    3 candles, SCRUM side shut
+missing           3 candles, SCRUM side shut    3 candles, SCRUM side shut
+```
+
+The three readable rows do not move, which is what separates this from a change
+of behaviour. The Console names the bad value ahead of the trip line:
+
+```
+CIRCUIT BREAKER FIGURE UNREADABLE: circuit_breaker_cooldown_candles='three'.
+The declared figures are used — soft 25.00%, hard 35.00%, cooldown 3 candles —
+and both breakers stay armed.
+```
+
+That line repeats only when the set of unreadable fields changes, so one bad
+record writes it once rather than on every tick. The same declaration reads the
+two thresholds, so a word stored in Soft CB Threshold or Hard CB Threshold no
+longer stops the check either. A sweep of 63,168 candle and figure combinations
+reads the same decision, the same side, the same cooldown and the same Console
+wording before and after on every numeric figure.
+
 While a cooldown holds, the shut side is refused at the breaker gate and the bot
 keeps running — the cooldown pauses nothing. It ends on its own when the count
 reaches zero, with a SOFT CIRCUIT BREAKER RESET line naming the side that
@@ -4952,6 +4985,32 @@ fired nothing with it on.
 
 The band the box reads is the one the previous worked tick stored, so the first
 worked tick after a start has no band and keeps the fixed figure.
+
+#### The band is now the one this tick read
+
+The sentence above describes what the tick did before this unit. The band is
+written by `_refresh_market_reading`, which the tick calls above every early
+return, so the figure the cartridge reads belongs to the candle the tick has just
+fetched. What the band is has not changed: the same detection runs over the same
+candles with the same two settings.
+
+Driven from a cold start on a $200.00 target with the fixed figure at 10.0 % and
+a band spanning 7.48 % of its midline:
+
+```
+tick   before             after
+one    10.00 %, $20.00    7.48 %, $14.97
+two     7.48 %, $14.97    7.48 %, $14.97
+```
+
+The first worked tick after a start used the fixed figure and now uses the band
+of that tick. The second tick does not move. The Console names the figure on the
+first tick now instead of on the second:
+
+```
+SMART CARTRIDGE calibrated to 7.48% (BB range 7.48%, floor=1.00%,
+ceiling=30.00%). Effective threshold = $14.97.
+```
 
 Smart Ceiling - To be re-evaluated.
 
