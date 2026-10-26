@@ -317,6 +317,40 @@ anything else          unhandled - no analyzer ran
 The archetype marks an absent analyzer missing, and a report carrying a missing
 analyzer never counts as a pass.
 
+### What the dead-code floor admits
+
+The dead-code analyzer scores a candidate from 0 to 100 and prints only the rows
+at or above a floor. An uncalled function, method, class or property scores 60.
+A hand-typed run reads its floor from the vulture block in `pyproject.toml`; the
+coding archetype passes its own floor on the command line, which overrides that
+block.
+
+```
+floor 60, the whole declared path set     1148 rows, exit 3
+floor 70, the same paths                     0 rows, exit 0
+floor 100, the same paths                    0 rows, exit 0
+```
+
+The floor is 60. At 70 the analyzer had nothing to say about any file, because
+every one of the 1,148 rows scores exactly 60 and no row in the declared paths
+scores higher. A silence from it was available to read as a clean result.
+
+The archetype's verdict does not move with this block. It reads one file at a
+time, and a 60% row is scored low, which never blocks a pass.
+
+```
+coding archetype on one module, floor 60 in the block    5 rows, all low, passed
+coding archetype on the same module, floor 100           5 rows, all low, passed
+```
+
+A single-file reading cannot see a caller in another file, so a row it prints is
+a question rather than an answer. The whole-path run is the reading that settles
+it: of those 5 rows, 1 survives the whole-path run and 4 have a caller elsewhere.
+
+The declared path set is `src` and the watchdog entry file. A callable reached
+only from `main.py` therefore reads as uncalled, because the caller sits outside
+the set.
+
 The gate and the ledger:
 
 - `check_release_readiness.py` — the release gate. It runs the suite, runs each
