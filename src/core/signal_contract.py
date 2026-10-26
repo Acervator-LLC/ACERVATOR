@@ -163,6 +163,9 @@ CADENCE_VERDICTS = (
 )
 """Every verdict a cadence row can carry."""
 
+TA_RAW_PREFIX = "ta.07.004.postcondition.raw."
+"""Head of the raw pin name `_ALWAYS_ON_PINS` declares and `ta_engine` emits."""
+
 _ALWAYS_ON_PINS: dict[str, str] = {
     "bot.01.002.postcondition.capital_reservation": (
         "the no-raise arm of a call every tick of every bot makes"
@@ -170,9 +173,7 @@ _ALWAYS_ON_PINS: dict[str, str] = {
     "ta.07.003.postcondition.computed": (
         "the indicator compute every worked tick of every bot runs"
     ),
-    "ta.07.004.postcondition.raw.{}": (
-        "the reporting loop of that same per-tick compute"
-    ),
+    TA_RAW_PREFIX + "{}": "the reporting loop of that same per-tick compute",
     "tick.08.001.event.throttled": (
         "the throttle arm of the tick loop; the loop's own pacing takes it, not any "
         "event"

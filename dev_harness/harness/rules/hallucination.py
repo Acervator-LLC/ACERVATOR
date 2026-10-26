@@ -13,6 +13,13 @@ ArchetypeReport schema in tools.harness.coding_archetype:
         that does not exist on disk. Common hallucination when
         copying an old block or when a file was renamed / archived
         without updating the reference.
+        A path resolves when it opens with a prefix
+        _checked_path_prefixes returns: _REPO_PATH_PREFIXES, plus
+        every top-level directory under the repo root that
+        _excluded_top_level does not name. A path under an excluded
+        directory such as ``node_modules/``, a venue address, and a
+        log path under the home directory all stay unresolved and
+        unreported.
 
     H002 (low) — DEAD ARCHITECTURE REFERENCE
         Mentions of retired subsystems that no longer exist in the
@@ -92,6 +99,18 @@ FALSIFICATION — this rule module is wrong if:
       _module_names is cached per repo root for the life of the
       process, so a module created after the first scan reads as
       absent.
+  (h) _excluded_top_level reads only a bare .gitignore entry, so a
+      top-level directory ignored by a pattern carrying a wildcard,
+      an inner slash or a character class is still a prefix
+      _checked_path_prefixes returns, and a dead path under it draws
+      H001. Both are cached per repo root for the life of the
+      process, so a top-level directory created after the first scan
+      reads as absent.
+  (i) _checked_path_prefixes skips an empty directory, because git
+      tracks no empty directory, so an untracked leftover such as
+      .githooks/ returns the same prefix set in every checkout. A
+      non-empty untracked directory that .gitignore does not name is
+      still a prefix it returns.
 
 sadp: R28 SSS + R70 RCN
 """
@@ -143,17 +162,54 @@ _REPO_PATH_PREFIXES = (
 )
 
 
+@functools.lru_cache(maxsize=8)
+def _excluded_top_level(repo_root: Path) -> frozenset[str]:
+    """Return each bare directory name repo_root's .gitignore excludes, plus '.git'."""
+    names = {".git"}
+    try:
+        text = (repo_root / ".gitignore").read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return frozenset(names)
+    for row in text.splitlines():
+        entry = row.strip()
+        if not entry or entry.startswith(("#", "!")):
+            continue
+        name = entry.strip("/")
+        if name and not any(mark in name for mark in ("/", "*", "?", "[")):
+            names.add(name)
+    return frozenset(names)
+
+
+@functools.lru_cache(maxsize=8)
+def _checked_path_prefixes(repo_root: Path) -> frozenset[str]:
+    """Return _REPO_PATH_PREFIXES plus every tracked top-level directory."""
+    prefixes = {p.replace("\\", "/") for p in _REPO_PATH_PREFIXES}
+    excluded = _excluded_top_level(repo_root)
+    try:
+        children = sorted(repo_root.iterdir())
+    except OSError:
+        return frozenset(prefixes)
+    for child in children:
+        if child.name in excluded or not child.is_dir():
+            continue
+        try:
+            next(iter(child.iterdir()))
+        except (OSError, StopIteration):
+            continue
+        prefixes.add(child.name + "/")
+    return frozenset(prefixes)
+
+
 def _find_dead_paths(source: str, repo_root: Path) -> list[tuple[int, str]]:
     hits: list[tuple[int, str]] = []
     seen: set[tuple[int, str]] = set()
+    prefixes = _checked_path_prefixes(repo_root)
     for i, line in enumerate(source.splitlines(), start=1):
         for match in _PATH_PATTERN.finditer(line):
             raw = match.group(0)
             norm = raw.replace("\\", "/")
             # Only check paths that look repo-relative
-            if not any(
-                norm.startswith(p.replace("\\", "/")) for p in _REPO_PATH_PREFIXES
-            ):
+            if not any(norm.startswith(p) for p in prefixes):
                 continue
             candidate = (repo_root / norm).resolve()
             # Guard against path traversal outside the repo
