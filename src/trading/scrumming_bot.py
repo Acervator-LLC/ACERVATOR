@@ -649,7 +649,12 @@ class ScrummingBot(
     async def _get_cached_exchange_balance(
         self, asset: str, max_age_s: float = 60.0
     ) -> Optional[float]:
-        """Return this bot's exchange free-balance for ``asset``."""
+        """Return this bot's exchange free-balance for ``asset``.
+
+        A read that raises answers None and warns, naming the venue, the asset
+        and the error, because ``_ensure_capital_reservation`` places no claim
+        on None.
+        """
         _asset = (asset or "").upper()
         if not _asset:
             return None
@@ -665,11 +670,14 @@ class ScrummingBot(
             self._exchange_balance_cache[_asset] = (_free, _now)
             return _free
         except Exception as _bal_exc:  # noqa: BLE001
-            logger.debug(
-                "Bot %s balance fetch for %s (CRR ensure) raised %s — "
-                "skipping over-commit check this cycle.",
+            logger.warning(
+                "Bot %s could not read its %s balance on %s (%s: %s). "
+                "No holdings figure bounds a claim, so no new claim is "
+                "placed and no standing one is resized. Retrying next call.",
                 self.bot_id,
                 _asset,
+                str(getattr(self.config, "exchange_id", "") or "an unnamed venue"),
+                type(_bal_exc).__name__,
                 _bal_exc,
             )
             return None

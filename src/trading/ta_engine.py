@@ -163,7 +163,9 @@ __all__ = [
     "detect_macd_taper",
     "detect_volume_confirmed_spring",
     "detect_w_bottom",
+    "weights_away_from_default",
     "weights_from_settings",
+    "weights_in_force",
 ]
 
 
@@ -234,6 +236,40 @@ def weights_from_settings(stored: Optional[dict]) -> dict[str, float]:
             continue
         found[name] = number
     return found
+
+
+def weights_in_force() -> dict[str, float]:
+    """``weights_from_settings`` over the ``ta_indicator_weights`` the
+    ``SettingsManager`` holds.
+
+    This is the mapping ``main`` hands every bot at launch, so a reconstruction
+    calling it votes at the same figures the bot voted at. A settings file that
+    will not read answers ``DEFAULT_WEIGHTS`` and warns.
+    """
+    try:
+        from ..core.settings import SettingsManager
+
+        stored = SettingsManager().get("ta_indicator_weights", {})
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "ta weights unread from the settings file (%s: %s); the twelve "
+            "built-in figures stand",
+            type(exc).__name__,
+            exc,
+        )
+        return DEFAULT_WEIGHTS.copy()
+    return weights_from_settings(stored)
+
+
+def weights_away_from_default(weights: Optional[dict] = None) -> int:
+    """How many of the twelve ``weights`` carry a figure ``DEFAULT_WEIGHTS``
+    does not."""
+    held = weights_in_force() if weights is None else dict(weights)
+    return sum(
+        1
+        for name, default in DEFAULT_WEIGHTS.items()
+        if float(held.get(name, default)) != float(default)
+    )
 
 
 class _TAInstrumentationOff(Exception):

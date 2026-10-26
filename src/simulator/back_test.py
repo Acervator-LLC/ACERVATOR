@@ -202,6 +202,16 @@ WALK_SECONDS_PER_THOUSAND = 5.4
 #: The signal one bot's whole walk emits through ``signal_contract``.
 BOT_WALKED_SIGNAL = "sim.backtest.bot_walked"
 
+#: The Activity Log line ``run`` writes once, naming the weighting the rerun
+#: votes at. No gate record carries the weighting its decision was made under,
+#: so this reading is today's figures over past candles.
+WEIGHTING_LINE_FORMAT = (
+    "Indicator weighting: this rerun votes at the {names} weights your "
+    "settings hold now, {changed} of them away from the built-in figures. No "
+    "recorded gate decision carries the weighting it was made under, so a "
+    "weight you have changed since then moves this reading."
+)
+
 #: The Activity Log lines one bot's Back Test walk writes through ``progress``.
 WALK_STARTED_LINE_FORMAT = (
     "Walking {bot_id} ({symbol}) at {timeframe} on {exchange_id}: {files} "
@@ -1604,6 +1614,17 @@ def opening_position(
     )
 
 
+def weighting_line() -> str:
+    """``WEIGHTING_LINE_FORMAT`` over the twelve weights ``weights_in_force``
+    holds and the count ``weights_away_from_default`` answers."""
+    from ..trading.ta_engine import weights_away_from_default, weights_in_force
+
+    held = weights_in_force()
+    return WEIGHTING_LINE_FORMAT.format(
+        names=len(held), changed=weights_away_from_default(held)
+    )
+
+
 def run_budget_usd(bots: Sequence[SimBot]) -> float:
     """The sum of every held bot's ``target_usd``; a bot with no target adds
     nothing."""
@@ -1626,6 +1647,7 @@ def walk(
     emitter: Optional[RunEmitter] = None,
     on_tick: Optional[Callable[[int, int, int], None]] = None,
     wires: Any = None,
+    weights: Optional[dict] = None,
 ) -> BotResult:
     """Run ``bot`` over ``candles``, one gate-chain evaluation every ``step``
     bars, each fold funded as ``funding`` says and every fill sized under
@@ -1641,8 +1663,10 @@ def walk(
     before its gates, as ``ScrummingBot.tick`` orders them. A ``wires`` manager
     holds ``position`` through ``attach_bot`` for the length of the walk and
     gives it back through ``release_bot``, and ``land_wire_credits`` runs once
-    before the first tick."""
-    from ..trading.ta_engine import VotingEngine
+    before the first tick. Both voters are built on ``weights``, or on
+    ``weights_in_force`` when it is None, so the rerun votes at the figures a
+    live bot votes at."""
+    from ..trading.ta_engine import VotingEngine, weights_in_force
 
     if len(candles) < MIN_CANDLES:
         if emitter is not None:
@@ -1655,8 +1679,9 @@ def walk(
             candles_read=len(candles),
             unit_rule=rule,
         )
-    engine = VotingEngine()
-    phantom_engine = VotingEngine()
+    voting_weights = weights_in_force() if weights is None else dict(weights)
+    engine = VotingEngine(weights=voting_weights)
+    phantom_engine = VotingEngine(weights=voting_weights)
     timeframe = bot.ta_timeframe or DEFAULT_TIMEFRAME
     rows = [
         [one.timestamp, one.open, one.high, one.low, one.close, one.volume]
@@ -2254,6 +2279,7 @@ def _walk_fleet(
         if progress is not None:
             progress(line)
 
+    say(weighting_line())
     entries = tablets.entries()
     registry = StoneTabletsRegistry(tablets.root())
     outcomes: dict[str, int] = {name: 0 for name in BOT_OUTCOMES}
