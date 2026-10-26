@@ -5264,6 +5264,31 @@ The two readers inside `src/trading/scrumming_bot.py` read the same declaration,
 so the pre-buy refusal, the first entry of a brand-new bot, the fold hold and the
 restore all answer one figure.
 
+#### One declaration holds the Ceiling Multiple range
+
+Eleven places held the one-to-ten span. Two engine readers wrote the pair out by
+hand, and all six Ceiling Multiple boxes typed it into their own control.
+Nothing reported a disagreement, so a change in one place would have left the
+other ten behind.
+
+Eight of those copies now read one declaration, in
+`src/trading/container/config.py`.
+
+```python
+CEILING_MULTIPLE_MIN: float = 1.0
+CEILING_MULTIPLE_MAX: float = 10.0
+```
+
+The two Electron rows still carry their own pair. They sit in a directory
+another change holds open, and they are named rather than touched.
+
+Driven on a $100.00 anchor, every reading is what it was. A stored multiple of
+twenty still caps at ten, a restored target of $1,500.00 still snaps to
+$1,000.00, and all six boxes still open at 5.0x and span 1.0 to 10.0. Moving the
+declaration to a span of three to seventy-seven moved every one of those
+readings together. The same move against the old code moved only the sizing
+function that reads the declaration and left all eight copies where they were.
+
 Enable Detonation - Enables an entire remaining position to be sold after the Ceiling Multiple growth threshold is crossed.
 
 A checkbox, off at the start. Detonation needs the box ticked, a position worth

@@ -936,8 +936,13 @@ class SimSettingsTabMixin(SettingsTabMixin):
         )
         rf.addRow(self._ceiling_enabled)
 
+        from ...trading.container.config import (
+            CEILING_MULTIPLE_MAX,
+            CEILING_MULTIPLE_MIN,
+        )
+
         self._ceiling_mult = QDoubleSpinBox()
-        self._ceiling_mult.setRange(1.0, 10.0)
+        self._ceiling_mult.setRange(CEILING_MULTIPLE_MIN, CEILING_MULTIPLE_MAX)
         self._ceiling_mult.setDecimals(1)
         self._ceiling_mult.setSingleStep(0.5)
         self._ceiling_mult.setSuffix("x anchor")

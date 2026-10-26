@@ -10,6 +10,11 @@ import logging
 from typing import TYPE_CHECKING
 
 from .. import design_system as ds
+from ..main_tabs.fold_tokens_surface import (
+    RATIO_AMBER_BELOW,
+    RATIO_MIN_DENOMINATOR,
+    RATIO_RED_BELOW,
+)
 
 if TYPE_CHECKING:
     from PySide6.QtWidgets import QFormLayout, QTableWidget, QWidget
@@ -480,11 +485,11 @@ def compose_cycle_close_ratio(
         )
     ratio = int(closed) / denominator
     text = f"{ratio:.2%}  ({int(closed)}/{denominator})"
-    if denominator < 5:
+    if denominator < RATIO_MIN_DENOMINATOR:
         return (text, None)
-    if ratio < 0.5:
+    if int(closed) < denominator * RATIO_RED_BELOW:
         return (text, FOLD_RATIO_RED_FG_HEX)
-    if ratio < 0.8:
+    if int(closed) < denominator * RATIO_AMBER_BELOW:
         return (text, FOLD_RATIO_AMBER_FG_HEX)
     return (text, FOLD_RATIO_GREEN_FG_HEX)
 
