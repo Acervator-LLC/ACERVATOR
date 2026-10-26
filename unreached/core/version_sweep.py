@@ -1260,19 +1260,21 @@ class VersionSweep:
     def check_sadp_annotations(self):
         """Check the ``ann_pat`` annotations against ``MANDATORY``.
 
-        Suspended entries are read from ``registry_path``.
+        Suspended entries are read from ``registry_path``. Reports through
+        ``_no_subject`` when ``registry_path`` is absent or unreadable.
         """
         import re as _re, json as _json
 
         registry_path = self.root / "sadp" / "RULE_REGISTRY.json"
+        rel = self._rel(registry_path)
+        if not registry_path.exists():
+            self._no_subject(f"{rel} absent")
+            return
         try:
-            registry = (
-                _json.loads(registry_path.read_text(encoding="utf-8"))
-                if registry_path.exists()
-                else {}
-            )
-        except Exception:
-            registry = {}
+            registry = _json.loads(registry_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            self._no_subject(f"{rel} unreadable: {type(exc).__name__}")
+            return
         suspended = {
             rid for rid, v in registry.items() if v.get("state") == "SUSPENDED"
         }

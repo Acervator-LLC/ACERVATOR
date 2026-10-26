@@ -178,6 +178,69 @@ finds no importer of the module, and finds fourteen importers of
 `src/core/log_paths.py` in the same pass. No workflow, script or build step
 names it. A reader reaches the per-check column only by typing the module name.
 
+### The annotation check's sentences, overtaken
+
+The sentence above that names this check's reading stays whole:
+
+> `check_sadp_annotations` reads an absent registry as an empty mapping and does
+> not return early.
+
+True today: the check returns early. It names the file it could not read and
+reports NOT INSPECTED, which is what the two siblings in the same class already
+did. The row for it in the table above, and the count of NOT INSPECTED lines in
+the paragraph before that table, are overtaken by the same change.
+
+`unreached/core/version_sweep.py, in check_sadp_annotations`
+
+```python
+        registry_path = self.root / "sadp" / "RULE_REGISTRY.json"
+        rel = self._rel(registry_path)
+        if not registry_path.exists():
+            self._no_subject(f"{rel} absent")
+            return
+        try:
+            registry = _json.loads(registry_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            self._no_subject(f"{rel} unreadable: {type(exc).__name__}")
+            return
+```
+
+A sweep over a tree holding no scratch checkout reads one line differently and
+every other line the same.
+
+```
+                          before     after
+SADP annotations (R38)    5 findings NOT INSPECTED
+NOT INSPECTED lines                3         4
+HIGH                              13         8
+MEDIUM                            83        83
+LOW                              488       488
+INFO                               2         2
+files scanned                    624       624
+lines scanned                361,698   361,698
+```
+
+The five findings that stopped being printed are the whole of the difference.
+Each one demanded an annotation of the retired protocol on a file that is not in
+this repository, and nothing else was added, removed or changed. The retirement
+is recorded under version one of the protocol, below.
+
+Driven against a tree built for the reading, with the registry file on disk and
+with it removed, the printed line separates where it did not before.
+
+```
+registry present, before    6 findings
+registry present, after     6 findings
+registry absent, before     6 findings
+registry absent, after      NOT INSPECTED, naming the absent file
+```
+
+The present arm reads the same either way, so the change took nothing away from
+a check that had something to read. Two neighbouring checks were read the same
+way in all four arms: the registry check printed one finding throughout, and the
+dependency check printed NOT INSPECTED with the file absent and one finding with
+it present.
+
 ## Version one of the protocol
 
 Version one was never built here. It named a directory, and the history holds no
