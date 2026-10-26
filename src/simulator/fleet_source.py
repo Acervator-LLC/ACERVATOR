@@ -52,6 +52,7 @@ from ..core.log_paths import get_sim_dir
 from ..exchange.ytd_trade_store import SIDE_BUY, SIDE_SELL, YtdFileEntry, YtdTrade
 from ..trading.container.config import (
     POSITION_CEILING_MULTIPLE_DEFAULT,
+    TARGET_GROWTH_PCT_DEFAULT,
     BotMode,
     BotState,
     as_finite_float,
@@ -218,7 +219,7 @@ class SimBot:
     scrum_target_mode: Optional[str] = None
     position_ceiling_enabled: bool = False
     position_ceiling_multiple: float = POSITION_CEILING_MULTIPLE_DEFAULT
-    max_target_growth_pct: float = 1.0
+    max_target_growth_pct: float = TARGET_GROWTH_PCT_DEFAULT
     detonation_enabled: bool = False
     detonation_timeframe: str = "1d"
     chunk_size_usd: float = 0.0
@@ -446,7 +447,9 @@ def _sim_bot_from_record(
             if ceiling_multiple is None
             else ceiling_multiple
         ),
-        max_target_growth_pct=1.0 if growth_cap_pct is None else growth_cap_pct,
+        max_target_growth_pct=(
+            TARGET_GROWTH_PCT_DEFAULT if growth_cap_pct is None else growth_cap_pct
+        ),
         detonation_enabled=bool(config.get("detonation_enabled", False)),
         detonation_timeframe=str(config.get("detonation_timeframe") or "1d"),
         chunk_size_usd=pool["chunk_size_usd"],

@@ -15,6 +15,8 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any, Literal, Optional
 
+from .otd_math import minimum_opposing_trade_distance_pct
+
 OVERRIDE_APPLIED_FORMAT = "{gate} overridden by {override}: {refusal}"
 """One ``ChainResult.overrides_applied`` entry, naming the override."""
 
@@ -390,7 +392,8 @@ class HysteresisGate(Gate):
     """Passes on ``ctx.hyst_ok_scrum_side`` or ``ctx.hyst_ok_fold_side``.
 
     ``blocker_message`` rebuilds the required price from ``hyst_ref_scrum_side``
-    or ``hyst_ref_fold_side`` plus ``scrumming_interval_pct`` and ``trading_fee_pct``.
+    or ``hyst_ref_fold_side`` plus the
+    ``minimum_opposing_trade_distance_pct`` of the context's interval and fee.
     """
 
     def __init__(self, side: Literal["scrum", "fold"]):
@@ -404,7 +407,9 @@ class HysteresisGate(Gate):
         ref = (
             ctx.hyst_ref_scrum_side if self.side == "scrum" else ctx.hyst_ref_fold_side
         )
-        eff_pct = ctx.scrumming_interval_pct + ctx.trading_fee_pct
+        eff_pct = minimum_opposing_trade_distance_pct(
+            ctx.scrumming_interval_pct, ctx.trading_fee_pct
+        )
         if self.side == "scrum":
             required = ref * (1.0 + eff_pct / 100.0)
             return GateResult(

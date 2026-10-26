@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from typing import Any, Callable, Optional
 
 from ...exchange.base import OrderSide, OrderType
+from ..container.config import target_growth_pct
 from ..target_bands import manual_fire_dust_band
 from ..ta_engine import VotingSummary
 from ..wallet_reservations import get_wallet_reservations, wallet_key
@@ -641,9 +642,7 @@ class ExecutionEngineMixin:
             return
         if caller_intent != "manual_button":
             if delta_usd < 0:
-                _growth = float(
-                    getattr(self.config, "max_target_growth_pct", 1.0) or 0.0
-                )
+                _growth = float(target_growth_pct(self.config) or 0.0)
                 _ceiling = float(self._target_balance) * (1.0 + _growth / 100.0)
                 _prospective = _xvalue + abs(delta_usd)
                 if _prospective > _ceiling + dust:
@@ -2145,7 +2144,7 @@ class ExecutionEngineMixin:
 
         _ctx = trace_context or {}
         _path = _ctx.get("path", "unspecified")
-        _cap_pct = float(getattr(self.config, "max_target_growth_pct", 1.0))
+        _cap_pct = float(target_growth_pct(self.config))
         _anchor = float(getattr(self, "_anchor_target_balance", self._target_balance))
         _per_cycle_growth_budget = _anchor * (_cap_pct / 100.0)
 

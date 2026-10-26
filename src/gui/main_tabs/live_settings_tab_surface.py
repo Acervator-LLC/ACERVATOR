@@ -38,6 +38,9 @@ from ...trading.container.config import (
     CEILING_MULTIPLE_MAX,
     CEILING_MULTIPLE_MIN,
     DESPAWN_MAX_DAYS,
+    FOLD_RATIO_MAX_PCT,
+    FOLD_RATIO_MIN_PCT,
+    FOLD_RATIO_PCT_DEFAULT,
     POSITION_CEILING_MULTIPLE_DEFAULT,
 )
 from .. import design_system as ds
@@ -889,8 +892,8 @@ CONTROL_SPECS = (
         "row_label": "Scrum Fold Ratio:",
         "field": "scrum_fold_pct",
         "reading": INT_READING,
-        "default": 100,
-        "range": (1, 100),
+        "default": FOLD_RATIO_PCT_DEFAULT,
+        "range": (FOLD_RATIO_MIN_PCT, FOLD_RATIO_MAX_PCT),
         "suffix": " %",
     },
     {

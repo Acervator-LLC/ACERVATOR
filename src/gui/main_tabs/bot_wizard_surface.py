@@ -75,6 +75,9 @@ from ...exchange.timeframes import ALL_TIMEFRAMES
 from ...trading.container.config import (
     CEILING_MULTIPLE_MAX,
     CEILING_MULTIPLE_MIN,
+    FOLD_RATIO_MAX_PCT,
+    FOLD_RATIO_MIN_PCT,
+    FOLD_RATIO_PCT_DEFAULT,
     POSITION_CEILING_MULTIPLE_DEFAULT,
     BotConfig,
 )
@@ -295,9 +298,9 @@ NUMBER_FIELDS: dict[str, dict] = {
     },
     "scrum_fold_pct": {
         "kind": SPIN_INT,
-        "minimum": 1,
-        "maximum": 100,
-        "value": 100,
+        "minimum": FOLD_RATIO_MIN_PCT,
+        "maximum": FOLD_RATIO_MAX_PCT,
+        "value": FOLD_RATIO_PCT_DEFAULT,
         "suffix": " %",
     },
     "scrum_detect_pct": {

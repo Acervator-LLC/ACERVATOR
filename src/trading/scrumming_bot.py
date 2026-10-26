@@ -43,7 +43,11 @@ from .ta_engine import (
     BBProximityResult,
     detect_landing_strip_v2,
 )
-from .container.config import ceiling_multiple
+from .container.config import ceiling_multiple, target_growth_pct
+from .otd_math import (
+    minimum_opposing_trade_distance_pct,
+    minimum_opposing_trade_distance_pct_from_config,
+)
 from .indicators.bb_proximity import CONSOLIDATION_THRESHOLD_PCT
 from ..core.settings import DEFAULT_ENABLE_PHANTOMS
 from .phantom_balance import (
@@ -578,7 +582,7 @@ class ScrummingBot(
             _interval = float(
                 getattr(self.config, "scrumming_interval_pct", 1.0) or 1.0
             )
-            _growth = float(getattr(self.config, "max_target_growth_pct", 1.0) or 0.0)
+            _growth = float(target_growth_pct(self.config) or 0.0)
             _cash = float(getattr(self.stats, "cash_balance_usd", 0.0) or 0.0)
             _retained = float(getattr(self, "_retained_this_cycle_usd", 0.0) or 0.0)
             if _price <= 0 or _target <= 0:
@@ -847,7 +851,7 @@ class ScrummingBot(
 
         """
         try:
-            _pct = float(getattr(self.config, "max_target_growth_pct", 1.0) or 0.0)
+            _pct = float(target_growth_pct(self.config) or 0.0)
             _target = float(getattr(self, "_target_balance", 0.0) or 0.0)
             _consumed = float(getattr(self, "_fold_cycle_cap_consumed", 0.0) or 0.0)
         except (TypeError, ValueError):
@@ -2751,7 +2755,7 @@ class ScrummingBot(
 
         """
         try:
-            _cap_pct = float(getattr(self.config, "max_target_growth_pct", 1.0))
+            _cap_pct = float(target_growth_pct(self.config))
             _anchor = float(
                 getattr(self, "_anchor_target_balance", self._target_balance)
             )
@@ -3004,9 +3008,9 @@ class ScrummingBot(
                 _hyst_blocks = False
                 _hyst_reason = ""
                 try:
-                    _interval = float(self.config.scrumming_interval_pct or 0)
-                    _fee = float(getattr(self.config, "trading_fee_pct", 0.6) or 0.6)
-                    _eff_pct = _interval + _fee
+                    _eff_pct = minimum_opposing_trade_distance_pct_from_config(
+                        self.config
+                    )
                     _eff_frac = _eff_pct / 100.0
                 except (TypeError, ValueError):
                     _eff_pct = 3.6
@@ -3441,9 +3445,12 @@ class ScrummingBot(
 
         try:
             _eff_hyst_pct = (
-                float(self.config.scrumming_interval_pct)
-                + float(getattr(self.config, "trading_fee_pct", 0.6) or 0.6)
-            ) / 100.0
+                minimum_opposing_trade_distance_pct(
+                    float(self.config.scrumming_interval_pct),
+                    float(getattr(self.config, "trading_fee_pct", 0.6) or 0.6),
+                )
+                / 100.0
+            )
         except Exception:
             _eff_hyst_pct = 0.036
         _hyst_ok_scrum_side = True
@@ -4188,10 +4195,7 @@ class ScrummingBot(
         except Exception as _sup:
             logger.debug("suppressed in %s: %s: %s", "tick", type(_sup).__name__, _sup)
 
-        from .otd_math import (
-            fold_rebuy_factor_from_pct,
-            minimum_opposing_trade_distance_pct,
-        )
+        from .otd_math import fold_rebuy_factor_from_pct
 
         _otd_pct_for_gate = 0.0
         try:
@@ -4729,9 +4733,7 @@ class ScrummingBot(
             split_scrum_into_tranches,
         )
 
-        _interval = float(getattr(self.config, "scrumming_interval_pct", 0) or 0)
-        _fee = float(getattr(self.config, "trading_fee_pct", 0.6) or 0.6)
-        min_opposing_pct = _interval + _fee
+        min_opposing_pct = minimum_opposing_trade_distance_pct_from_config(self.config)
 
         n_target = int(getattr(self.config, "stack_tranche_count_target", 3) or 3)
         split_dist = float(getattr(self.config, "split_distance", 1.0) or 1.0)

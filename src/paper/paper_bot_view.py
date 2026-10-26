@@ -28,6 +28,7 @@ from ..trading.container.config import (
     bot_config_kwargs,
     make_bot_config,
     stored_list,
+    target_growth_pct,
 )
 from ..trading.scrumming.sizing import cycle_growth_cap_usd
 from .fleet_source import (
@@ -188,7 +189,7 @@ class PaperBotView:
         self.cycle_growth_cap_usd = cycle_growth_cap_usd(
             self._target_balance,
             self._fold_cycle_cap_consumed,
-            float(getattr(self.config, "max_target_growth_pct", 1.0) or 0.0),
+            float(target_growth_pct(self.config) or 0.0),
         )
 
     def get_status(self) -> dict:

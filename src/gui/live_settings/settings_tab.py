@@ -676,9 +676,9 @@ class SettingsTabMixin:
         self._max_target_growth.setSuffix("%")
         self._max_target_growth.setDecimals(2)
         self._max_target_growth.setSingleStep(0.25)
-        self._max_target_growth.setValue(
-            float(getattr(cfg, "max_target_growth_pct", 1.0))
-        )
+        from ...trading.container.config import target_growth_pct
+
+        self._max_target_growth.setValue(float(target_growth_pct(cfg)))
         self._max_target_growth.setToolTip(
             "Per-event cap on how much a fold surplus may grow Target Balance.\n"
             "Absolute ceiling = Target × (1 + this%/100). Default 1%.\n"
@@ -795,10 +795,16 @@ class SettingsTabMixin:
         )
         af.addRow(self._bullseye)
 
+        from ...trading.container.config import (
+            FOLD_RATIO_MAX_PCT,
+            FOLD_RATIO_MIN_PCT,
+            fold_ratio_pct,
+        )
+
         self._scrum_fold_pct = QSpinBox()
-        self._scrum_fold_pct.setRange(1, 100)
+        self._scrum_fold_pct.setRange(FOLD_RATIO_MIN_PCT, FOLD_RATIO_MAX_PCT)
         self._scrum_fold_pct.setSuffix(" %")
-        self._scrum_fold_pct.setValue(int(getattr(cfg, "scrum_fold_pct", 100)))
+        self._scrum_fold_pct.setValue(fold_ratio_pct(cfg))
         self._scrum_fold_pct.setToolTip(
             "% of scrum sale proceeds queued for fold (rebuy).\n"
             "100% = full reentry (max accumulation, max risk).\n"

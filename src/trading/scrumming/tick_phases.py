@@ -19,6 +19,7 @@ from ..container.config import (
     ceiling_multiple,
     expiry_close_decision,
     smart_cartridge_ceiling_pct,
+    target_growth_pct,
 )
 from ..indicators.bb_proximity import CONSOLIDATION_THRESHOLD_PCT
 from ..target_bands import at_target_dust_band
@@ -1743,7 +1744,7 @@ class TickPhaseMixin:
         if _eligible:
             # cycle_growth_cap_usd is the bound _plan_fold_consumption
             # applies; _max_growth_pct only feeds the emit below.
-            _max_growth_pct = float(getattr(self.config, "max_target_growth_pct", 1.0))
+            _max_growth_pct = float(target_growth_pct(self.config))
             _cycle_cap_usd = self.cycle_growth_cap_usd
             # _cycle_open_target only feeds the emit below.
             _cycle_open_target = max(
@@ -1955,7 +1956,7 @@ class TickPhaseMixin:
 
             # These three feed only the FOLD DIAG surplus emit;
             # _apply_fold_target_growth reads the cap itself.
-            _cap_pct_growth = float(getattr(self.config, "max_target_growth_pct", 1.0))
+            _cap_pct_growth = float(target_growth_pct(self.config))
             _cycle_cap_growth = self.cycle_growth_cap_usd
             _cycle_open_target_d = max(
                 0.0,

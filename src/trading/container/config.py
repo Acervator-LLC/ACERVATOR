@@ -121,6 +121,11 @@ POSITION_CEILING_MULTIPLE_DEFAULT: float = 5.0
 CEILING_MULTIPLE_MIN: float = 1.0
 CEILING_MULTIPLE_MAX: float = 10.0
 
+#: The span every Scrum Fold Ratio box offers and ``fold_ratio_pct`` admits, in
+#: per cent of one sale's own proceeds.
+FOLD_RATIO_MIN_PCT: int = 1
+FOLD_RATIO_MAX_PCT: int = 100
+
 
 @dataclass
 class BotConfig:
@@ -552,6 +557,20 @@ PUSHED_TARGET_DEFAULT: float = float(
     next(one.default for one in fields(BotConfig) if one.name == "target_balance")
 )
 
+#: What `fold_ratio_pct` answers for a record outside `FOLD_RATIO_MIN_PCT` to
+#: `FOLD_RATIO_MAX_PCT`, read off `BotConfig`'s own `scrum_fold_pct` default.
+FOLD_RATIO_PCT_DEFAULT: int = int(
+    next(one.default for one in fields(BotConfig) if one.name == "scrum_fold_pct")
+)
+
+#: The per-cycle Target Balance growth cap every box opens at and
+#: `target_growth_pct` answers for an object carrying no such field.
+TARGET_GROWTH_PCT_DEFAULT: float = float(
+    next(
+        one.default for one in fields(BotConfig) if one.name == "max_target_growth_pct"
+    )
+)
+
 
 def pushed_target_usd(value) -> Optional[float]:
     """Return the Target Balance one pushed market takes, or None when no bot
@@ -598,6 +617,33 @@ def smart_cartridge_ceiling_pct(config) -> float:
             MAX_CARTRIDGE_SMART_CEILING_PCT_DEFAULT,
         )
     )
+
+
+def fold_ratio_pct(config) -> int:
+    """`config.scrum_fold_pct` as the whole per cent a Scrum Fold Ratio box offers.
+
+    `as_box_figure` over `FOLD_RATIO_MIN_PCT` to `FOLD_RATIO_MAX_PCT` is the
+    admission, a figure it refuses answers `FOLD_RATIO_PCT_DEFAULT`, and
+    `_apply_scrum_fold_pct` and all three settings pages call it.
+    """
+    read = as_box_figure(
+        getattr(config, "scrum_fold_pct", FOLD_RATIO_PCT_DEFAULT),
+        FOLD_RATIO_MIN_PCT,
+        FOLD_RATIO_MAX_PCT,
+    )
+    if read is None:
+        return FOLD_RATIO_PCT_DEFAULT
+    return int(read)
+
+
+def target_growth_pct(config):
+    """`config.max_target_growth_pct` as the record holds it, uncoerced.
+
+    `TARGET_GROWTH_PCT_DEFAULT` answers an object carrying no such field, which
+    `BotConfig`, `PaperFleetBot` and `SimFleetBot` all declare, so each caller
+    keeps its own `float` and `or` coercion.
+    """
+    return getattr(config, "max_target_growth_pct", TARGET_GROWTH_PCT_DEFAULT)
 
 
 def ceiling_multiple(config) -> float:
