@@ -47,9 +47,6 @@ FALLBACK_INTERVAL_MS = 300_000
 #: ``ScrummingBot`` compares ``bb_pos`` against this midline.
 BB_MIDLINE = 0.50
 
-#: ``detect_bb_proximity`` is called with this, matching ``ScrummingBot.tick``.
-BB_CONSOLIDATION_THRESHOLD = 3.0
-
 #: How far a recorded gate row may sit from a fill and still describe it.
 GATE_MATCH_WINDOW_MS = 300_000
 
@@ -417,12 +414,15 @@ def phantom_locked(bot: SimBot, fixture: dict) -> tuple[bool, bool]:
 def bb_reading(candles: Sequence[Any], bot: SimBot):
     """``detect_bb_proximity`` over ``candles``, called as ``ScrummingBot.tick``
     calls it."""
-    from ..trading.indicators.bb_proximity import detect_bb_proximity
+    from ..trading.indicators.bb_proximity import (
+        CONSOLIDATION_THRESHOLD_PCT,
+        detect_bb_proximity,
+    )
 
     return detect_bb_proximity(
         list(candles),
         tolerance_pct=bot.bb_tolerance_pct,
-        consolidation_threshold=BB_CONSOLIDATION_THRESHOLD,
+        consolidation_threshold=CONSOLIDATION_THRESHOLD_PCT,
         min_pattern_candles=bot.bb_landing_strip_candles,
     )
 
@@ -1254,7 +1254,6 @@ def _validate(
 
 __all__ = [
     "AFTER_LAST_CANDLE",
-    "BB_CONSOLIDATION_THRESHOLD",
     "BB_MIDLINE",
     "BEFORE_FIRST_CANDLE",
     "BLOCKED_STATE",

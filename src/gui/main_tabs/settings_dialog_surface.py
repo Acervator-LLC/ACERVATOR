@@ -39,7 +39,7 @@ from typing import Any, Optional
 
 from ...core.encryption import looks_like_pem, unescape_pem_newlines, vault_phrase
 from ...exchange.timeframes import ALL_TIMEFRAMES
-from ...core.settings import CREDENTIAL_FIELDS, AppSettings
+from ...core.settings import CREDENTIAL_FIELDS, AIMonitorSettings, AppSettings
 from ...core.sms_engine import (
     CARRIER_GATEWAYS,
     EMAIL_GATEWAY,
@@ -338,6 +338,10 @@ CARRIER_NAMES = tuple(CARRIER_GATEWAYS)
 #: The engine's own opening figures, so the page declares no second set.
 SMS_BUILT = SMSConfig()
 
+#: The stored AI Monitor group's own opening figures, read by `AI_LOAD_KEYS`
+#: and by the `ai_interval` control spec.
+AI_BUILT = AIMonitorSettings()
+
 #: The printed label beside the value the send path tests, so the picker stores
 #: a provider the engine routes on.
 SMS_PROVIDERS = (
@@ -535,7 +539,7 @@ INFORMATION_ICON = "information"
 
 AI_LOAD_KEYS = (
     ("api_key", "", "ai_api_key"),
-    ("interval_hours", 4.0, "ai_interval"),
+    ("interval_hours", AI_BUILT.interval_hours, "ai_interval"),
     ("connect_phrase", "", "ai_connect_phrase"),
     ("confirm_phrase", "", "ai_confirm_phrase"),
     ("enabled", False, "ai_enabled"),
@@ -1085,7 +1089,7 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "name": "ai_interval",
         "kind": DOUBLE_SPIN,
         "range": (0.5, 24.0),
-        "value": 4.0,
+        "value": AI_BUILT.interval_hours,
         "suffix": " hours",
         "decimals": 1,
         "min_height": SMS_CONTROL_MIN_HEIGHT,
@@ -2376,6 +2380,21 @@ def refused_tooltip(key: str, carried: str = "") -> str:
     return str(carried) + REFUSED_TOOLTIP.format(key=str(key), dash=REFUSED_FIGURE_TEXT)
 
 
+#: What a drop-down adds to its tooltip when its list holds no row for the
+#: stored value. `REFUSED_TOOLTIP` names a figure and a number, which a list of
+#: words is neither.
+REFUSED_ITEM_TOOLTIP = (
+    "\n\nThe stored {key} is not one of the choices this list offers, so the "
+    "list stays on the choice it opened with. Pick a choice to store one; Save "
+    "leaves {key} as it was until you do."
+)
+
+
+def refused_item_tooltip(key: str, carried: str = "") -> str:
+    """`carried` with the sentence a refused drop-down choice adds under it."""
+    return str(carried) + REFUSED_ITEM_TOOLTIP.format(key=str(key))
+
+
 def _named(value: Any) -> str:
     return type(value).__name__
 
@@ -2859,7 +2878,12 @@ class SettingsDialogModel:
             self.values[name] = spec["range"][0]
         self.texts[name + REFUSED_MARK_SUFFIX] = REFUSED_FIGURE_TEXT
         self.styles[name + REFUSED_MARK_SUFFIX] = REFUSED_FIGURE_COLOR
-        self.tooltips[name] = refused_tooltip(key, self.tooltips.get(name, EMPTY_TEXT))
+        said = (
+            refused_item_tooltip
+            if spec["kind"] in (COMBO_TEXT, COMBO_DATA)
+            else refused_tooltip
+        )
+        self.tooltips[name] = said(key, self.tooltips.get(name, EMPTY_TEXT))
 
     def _untouched_since_refusal(self, key: str, read: Any) -> bool:
         """Whether `key`'s control still holds what the refusal left in it.

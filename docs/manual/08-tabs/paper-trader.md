@@ -3259,4 +3259,106 @@ handed to them rather than holding a fixed answer.
 
 The three hosts therefore no longer need comparing.
 
+## 2026-10-25 - #937 - the Paper page draws the Asset column's mark
+
+The Paper Trader draws its Scrumming Bots table twice. The window draws one, and
+the page inside the window's browser draws the other. Both now draw the first
+column the same way. Where the logo library has put a file on disk for that
+asset, the cell draws that image at 32 pixels and holds no text. Where none is
+kept, the cell draws the asset's ticker, so the row still names what the bot
+accumulates. Where the asset database knows that asset's own organisation, the
+address rides on the cell and a press opens it.
+
+`src/gui/web/paper_bot_status_table.js` — `AssetLogo`
+
+```javascript
+logoProps[PART_ATTR] = LOGO_PART;
+logoProps[LOGO_PATH_ATTR] = text(found[LOGO_PATH]);
+logoProps[LOGO_SIZE_ATTR] = text(found[LOGO_SIZE]);
+```
+
+### Three invented bots, read off the drawn page
+
+One asset has a kept file. One has none and is named by the asset database. One
+is named nowhere. Each reads differently from the other two.
+
+```
+a file is kept             no text, one 32-pixel image, no address
+no file, the base is known the ticker, no image, the address on the cell
+the base is known nowhere  the ticker, no image, no address
+row height                 38 pixels, the same on all three pages
+```
+
+### The page's own report of the payload
+
+Each page checks the payload it was handed and lists what is missing. The three
+pages name the mark's four cell fields, so a payload that stops carrying one is
+reported rather than drawn as a blank square.
+
+`src/gui/web/paper_bot_status_table.js` — the audited cell fields
+
+```javascript
+  var CELL_FIELDS = [
+    TEXT,
+    COLOR,
+    TOOLTIP,
+    ALIGNMENT,
+    ALIGNMENT_VALUE,
+    LOGO_PATH,
+    LOGO_IMAGE,
+    LOGO_SIZE,
+    LINK_URL,
+    CHART_URL,
+    UNDERLINE
+  ];
+```
+
+Driven with every outward connection refused, the reading made no connection
+attempt and the page made no request. A control attempt afterwards was counted
+and refused, so the counter was able to report one.
+
+### The sentence above that this entry completes
+
+It is quoted whole, and the sentence under it is true today.
+
+Quoted whole:
+
+> "The Paper Trader's Scrumming Bots table is a subclass of the window's own bot
+> list, so its first column is Asset. It draws the target asset's own mark, and the
+> asset's ticker where no mark is kept."
+
+True today: that holds for the window's table and for the page, which draws the
+same mark from the same payload. Neither surface fetches anything while a row
+draws.
+
+## 2026-10-25 - #665 - the paper record carries the wizard's lock figure
+
+The paper wizard collected the Candles-to-lock figure and the record it saved
+held no key for it. The bot built from that record therefore had no lock holder
+at all, and the Phantom Bots tab fell back to the declared 2 whatever the
+operator typed.
+
+`src/paper/fleet_source.py, in wizard_record` now writes the figure beside the
+two phantom keys it already wrote, clamped at 1, which is the clamp the live
+bot's own constructor applies.
+
+```python
+    lock_candles = collected.get("lock_candle_count") if scrumming else None
+    if isinstance(lock_candles, (int, float)) and not isinstance(lock_candles, bool):
+        record["lock_candle_count"] = max(1, int(lock_candles))
+```
+
+`src/paper/paper_bot_view.py, in PaperBotView` reads that key to build the bot's
+lock holder, and the Candles-to-lock box on the Phantom Bots tab reads the
+holder.
+
+```
+wizard 7     record holds the key     tab box 7
+wizard 2     record holds the key     tab box 2
+no key       record holds no key      tab box 2
+```
+
+A paper record written before this change holds no such key, loads, and leaves
+the tab box on the declared 2.
+
 Back to [the subsystem index](README.md).

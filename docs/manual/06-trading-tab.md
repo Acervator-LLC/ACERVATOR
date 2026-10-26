@@ -8920,3 +8920,76 @@ that declares it:
 | Enable Phantom Bots | on | 8 | 9, four of them disagreeing |
 | Candles to lock | 2 | 10 | 7, all agreeing by luck |
 
+## 2026-10-25 - #665 - the lock figure reaches a new bot on all three builds
+
+The table above records that the lock figure is no argument of the bot's own
+constructor. That is no longer true of any of the three builds.
+
+On the live build the figure travels as a keyword argument, because it belongs
+to the bot's timeframe coordinator rather than to the bot's configuration.
+
+`src/trading/container/config.py, in phantom_init_kwargs` passes it, and
+`src/trading/scrumming_bot.py, in __init__` hands it to the coordinator clamped
+at 1. An absent figure is left out, which keeps the coordinator's own declared
+count.
+
+On the Paper Trader and the Simulator the figure travels in the saved record,
+because a bot on those builds reads its lock holder out of that record. The two
+record builders are `src/paper/fleet_source.py, in wizard_record` and
+`src/simulator/fleet_source.py, in wizard_record`.
+
+Driven on each build, with the wizard box set to 7, left on the declared 2, and
+with no figure sent at all:
+
+```
+Live       7 -> coordinator 7     2 -> coordinator 2     none -> coordinator 2
+Paper      7 -> tab box 7         2 -> tab box 2         none -> tab box 2
+Simulator  7 -> tab box 7         2 -> tab box 2         none -> tab box 2
+```
+
+Nothing creates a higher-timeframe lock yet, so the figure still sizes a lock
+that is never held. Row 222 of issue #665 carries that half.
+
+## 2026-10-25 - #665 - one read seeds every row on the Detail page
+
+Row 277. Opening Detail on a running bot fills each row from the bot's own
+stored record. Reading one field off that record was written twice in the page's
+own module: once for the numeric boxes and once, separately, for the tick boxes,
+the drop-downs and the text rows.
+
+The two copies decided the same thing. Each chose between reading the field with
+a fallback and reading it with none, and a row that names no fallback must raise
+rather than draw a figure nobody stored.
+
+One read now serves every row.
+
+`src/gui/main_tabs/live_settings_tab_surface.py, in read_config_field`
+
+```python
+def read_config_field(config: Any, field: str, default: Any, no_default: bool) -> Any:
+    return getattr(config, field) if no_default else getattr(config, field, default)
+```
+
+`read_number` seeds the numeric boxes through it, and
+`LiveSettingsTabModel._read_control` seeds every other kind of row through the
+same call. The Paper page and the Simulator page both inherit that model, so
+three Detail pages read a row one way.
+
+Every row draws what it drew before, and a row whose field the record does not
+carry still refuses rather than inventing a figure.
+
+```
+stored record carrying the field
+  numeric box       2.5
+  tick box          True
+  drop-down         both
+
+record missing the field, row naming no fallback
+  numeric box       refused
+  tick box          refused
+```
+
+Driven with the one read moved to a figure nothing uses, every kind of row
+followed it together. Before the change the same move reached the numeric boxes
+alone and the tick box and the drop-down kept their own values. The file is byte
+identical after the move was put back.

@@ -1443,6 +1443,43 @@ that says it did not paint are both on screen.
 Driven with `notacolour` against Neon Light, that line read: Accent colour
 'notacolour' is not a hex colour; painting the neon_light accent.
 
+A colour the measure refuses now reaches the same pane. The theme engine builds one
+refusal line, the engine writes it to the application log, and the main window puts
+the same line on the Activity Log, so the two carry one set of figures.
+
+`src/gui/theme_engine.py` — `accent_refusal`, the one line both carry
+
+```python
+def accent_refusal(theme: ThemeTokens, accent: object) -> str:
+    taken = stored_accent(accent)
+    if not taken:
+        return ""
+    clears, ratio = validate_contrast(taken, theme.bg_primary)
+    if clears:
+        return ""
+    return ACCENT_REFUSED.format(
+        accent=taken,
+        ratio=ratio,
+        theme=theme.name,
+        ground=theme.bg_primary,
+        floor=AA_FLOOR,
+    )
+```
+
+`src/gui/main_window.py` — `_switch_theme`, the pane he reads
+
+```python
+            refusal = accent_refusal(THEMES[stored_theme(name)], taken)
+            if refusal:
+                self._status_log.log(refusal, "warning")
+```
+
+Driven through that method with a real Activity Log pane, `#1a1a2e` typed against
+Cyberpunk Dark put this on the pane: Accent colour #1a1a2e measures 1.16 to 1
+against the cyberpunk_dark ground #0a0a0f, under the 4.5 floor; painting the
+cyberpunk_dark accent. The same press with `#ff8800`, which measures 8.25 to 1 on
+that ground, put no refusal on the pane.
+
 The React tab pages do not follow the typed value. Each page receives an
 `--accent` variable built from a theme name alone, so the seven rules in the
 Settings page's own stylesheet that read that variable stay on the theme's
@@ -1827,6 +1864,30 @@ flowchart LR
 
 The Simulator page under [the Simulator tab](simulator.md) states what each
 build paints in the tone and what was read off the renders.
+
+One answer says which theme the application is painted in. The theme engine records
+the colours it last painted, and every site that needs them reads that record,
+including the theme holder itself. A holder built fresh on a menu press and a chart
+asking later now give the same answer, accepted accent included.
+
+`src/gui/theme_engine.py` — `applied_tokens`, the one answer
+
+```python
+def applied_tokens() -> ThemeTokens:
+    """Return the ``ThemeTokens`` ``ThemeManager.apply_theme`` last painted.
+
+    Every site that paints from the application's theme reads this one answer,
+    including ``ThemeManager.current``, so a second manager and a rebuild from
+    ``applied_theme`` cannot hold different accents.
+    """
+    return _applied_tokens
+```
+
+Four sites ask: the holder that applied the theme, a holder built later, the Charts
+tab, and the native chart's own colour roles. Driven with Cyberpunk Dark and the
+accent `#ff8800`, all four read that accent. Moving the record to Glass Metal moved
+all four together; on the tree before this change two of the four moved, one held
+its own copy and one answered nothing at all.
 
 ### Settings > Logging
 
@@ -8694,5 +8755,150 @@ mis-paired list  the AI rows land under the weights key, and it is seen
 A stored settings file written before this change still loads. Sixteen stored
 rows across the four groups and the Username row each reached their own control,
 before and after, with the read-back identical.
+
+## 2026-10-25 - #665 - a stored choice outside its list says so on the control
+
+Settings outlive the lists they were chosen from. A word stored under
+`bot_visibility` that the Bot Visibility list no longer offers used to raise two
+different faults on the two builds. The Qt window raised a refusal naming the
+word. The running React window raised a missing-method fault instead, because
+the one reader both windows share asked the drop-down whether it takes typed
+text, and only the Qt drop-down answers that question.
+
+`src/gui/settings_dialog.py` — the reader asks whether the control can answer
+
+```python
+def _combo_takes_typed_text(combo: object) -> bool:
+    """Whether ``combo`` answers ``isEditable`` and reports it takes typed text.
+
+    The page-backed drop-down draws a fixed list and declares no such method,
+    so a control that cannot answer is read as taking no typed text.
+    """
+    asked = getattr(combo, "isEditable", None)
+    return bool(asked()) if callable(asked) else False
+```
+
+`src/gui/react_settings_dialog.py, in PageCombo` now answers the same question
+with False, because the page draws a fixed list. Both windows therefore take one
+route for a word the list does not hold, and the word on the control's refusal
+is the stored word.
+
+**The operator is told on the control.** A refused choice hangs a sentence on
+the drop-down itself, which both windows draw as the control's hover text. The
+sentence is declared once, in
+`src/gui/main_tabs/settings_dialog_surface.py, in refused_item_tooltip`, and
+names the stored key rather than a figure, because a list of words is no figure.
+
+```
+stored bot_visibility 'both'
+  Qt     box opens on 'orderbook'   hover text names bot_visibility
+  React  box opens on 'orderbook'   hover text names bot_visibility
+  both   LookupError: this list holds no row for both
+
+stored bot_visibility 'internal'
+  Qt     box opens on 'internal'    no hover text, no refusal
+  React  box opens on 'internal'    no hover text, no refusal
+```
+
+Save leaves the stored word alone while the box still holds what the refusal
+left in it, so the word on disk is not replaced by a choice the operator never
+made.
+
+The colour a refused number is drawn in does not reach a drop-down on the React
+window. `src/gui/web/settings_dialog.js, in controlProps` draws the hover text
+for every control and reads no style for one, so the sentence is the channel both
+windows share.
+
+A settings file written before this change still loads. Eighteen declared
+top-level fields read back with none differing, all five stored groups read back
+with their own field counts, and the out-of-list word survives on disk.
+
+## 2026-10-25 - #665 - the AI Monitor's opening wait is declared once
+
+Row 262. The four-hour wait the Check interval box opens on was written in seven
+places. Six of the seven were copies, and one copy held the whole number four
+where the other six held four point zero.
+
+One declaration now serves every site. It is the stored field, and the page, both
+windows and the monitor all read it.
+
+`src/core/settings.py, in AIMonitorSettings`
+
+```python
+api_key: str = ""
+interval_hours: float = 4.0
+connect_phrase: str = ""
+```
+
+The page builds that group's own opening figures once and reads the wait off
+them, the way it already reads the message channel's figures.
+
+`src/gui/main_tabs/settings_dialog_surface.py, in AI_LOAD_KEYS`
+
+```python
+AI_BUILT = AIMonitorSettings()
+
+AI_LOAD_KEYS = (
+    ("api_key", "", "ai_api_key"),
+    ("interval_hours", AI_BUILT.interval_hours, "ai_interval"),
+    ("connect_phrase", "", "ai_connect_phrase"),
+)
+```
+
+The same figure opens the box on both windows and stands behind the Save and
+load row, so the Qt window and the React window cannot disagree about it.
+
+`src/gui/settings_dialog.py, in _create_ai_monitor_tab`
+
+```python
+self._ai_interval.setRange(0.5, 24.0)
+self._ai_interval.setValue(sds.AI_BUILT.interval_hours)
+self._ai_interval.setSuffix(" hours")
+```
+
+The monitor's own name for the wait is now a read of that field rather than a
+second figure, so `wait_hours` refuses a stored figure against the same number
+the box opens on.
+
+`src/trading/live_monitor.py, in LiveMonitor`
+
+```python
+DEFAULT_INTERVAL_HOURS = AIMonitorSettings.interval_hours
+```
+
+**One line on the Console reads differently.** A stored AI Monitor group that
+carries the switch and the key but no interval used to print the whole number;
+it now prints the same four point zero every other path already printed.
+
+```
+stored group with no interval
+  before   AI Monitor enabled (phrase: '...', interval: 4h)
+  after    AI Monitor enabled (phrase: '...', interval: 4.0h)
+
+stored group carrying 4.0
+  before   AI Monitor enabled (phrase: '...', interval: 4.0h)
+  after    AI Monitor enabled (phrase: '...', interval: 4.0h)
+```
+
+Driven with the one declaration moved to eleven hours, every site followed it
+together, and the box span and the handshake switch beside it did not move.
+
+```
+the one declaration moved 4.0 -> 11.0
+  stored field                 11.0
+  monitor's own name           11.0
+  the wait a bad figure keeps  11.0
+  page load fallback           11.0
+  React control opens on       11.0
+  Qt control opens on          11.0
+  Qt Save and load fallback    11.0
+  Console line, no interval    11.0h
+  box span                     (0.5, 24.0)   unmoved
+  handshake switch             True          unmoved
+```
+
+Before the change the same move reached the monitor alone and left five copies
+and the Console line at four. Every file is byte identical after the move was
+put back.
 
 Back to [the subsystem index](README.md).

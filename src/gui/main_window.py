@@ -2763,13 +2763,16 @@ if _HAS_QT:
             """Initialize LiveMonitor from saved settings."""
             if not self._settings or not self._bot_manager:
                 return
+            from ..core.settings import AIMonitorSettings
+
             ai_cfg = self._settings.get("ai_monitor", {})
             if ai_cfg.get("enabled") and ai_cfg.get("api_key"):
                 self._bot_manager.configure_live_monitor(ai_cfg)
                 phrase = ai_cfg.get("connect_phrase", "")[:20]
+                wait = ai_cfg.get("interval_hours", AIMonitorSettings.interval_hours)
                 self._status_log.log(
                     f"AI Monitor enabled (phrase: '{phrase}...', "
-                    f"interval: {ai_cfg.get('interval_hours', 4)}h)",
+                    f"interval: {wait}h)",
                     "info",
                 )
                 self._log_ai_monitor_absence()
@@ -4837,7 +4840,13 @@ if _HAS_QT:
 
         def _switch_theme(self, name: str, accent: object = None) -> None:
             from .react_history_panel import repaint_pages
-            from .theme_engine import ThemeManager, stored_accent
+            from .theme_engine import (
+                THEMES,
+                ThemeManager,
+                accent_refusal,
+                stored_accent,
+                stored_theme,
+            )
 
             tm = ThemeManager()
             taken = stored_accent(accent)
@@ -4847,6 +4856,9 @@ if _HAS_QT:
                     f"painting the {name} accent.",
                     "warning",
                 )
+            refusal = accent_refusal(THEMES[stored_theme(name)], taken)
+            if refusal:
+                self._status_log.log(refusal, "warning")
             app = self.parent()
             if app is None:
                 from PySide6.QtWidgets import QApplication
