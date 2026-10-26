@@ -26,9 +26,9 @@ recorded when a later step refuses.
 ``src.core.desktop_bridge`` registers ``view_model`` as the handler for
 the ``fold_tokens.state`` method, which is how the Electron renderer
 reaches it. Every value below is written out here rather than read from
-``src.gui.live_settings.fold_tokens``, so a value changed on one side
-alone is reported. Nothing here imports Qt, and nothing here reads the
-clock, the filesystem or the environment -- at import time or later.
+``src.gui.live_settings.fold_tokens``, and nothing compares the two
+copies. Nothing here imports Qt, and nothing here reads the clock, the
+filesystem or the environment -- at import time or later.
 """
 
 from __future__ import annotations

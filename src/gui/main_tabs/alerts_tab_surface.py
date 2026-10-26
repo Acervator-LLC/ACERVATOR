@@ -20,8 +20,8 @@ driven over the bridge from values alone.
 ``src.core.desktop_bridge`` registers ``view_model`` as the handler for
 the ``alerts_tab.state`` method, which is how the Electron renderer
 reaches it. Every value below is written out here rather than read from
-``src.gui.alerts_tab``, so a value changed on one side alone is reported.
-Nothing here imports Qt.
+``src.gui.alerts_tab``, and nothing compares the two copies. Nothing here
+imports Qt.
 """
 
 from __future__ import annotations

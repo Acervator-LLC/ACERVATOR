@@ -22,9 +22,9 @@ hands in no privacy answer.
 ``src.core.desktop_bridge`` registers ``view_model`` as the handler for
 the ``bot_node.state`` method, which is how the Electron renderer
 reaches it. Every value below is written out here rather than read from
-``src.gui.visualizer.bot_node`` or its colour table, so a value changed
-on one side alone is reported. Nothing here imports Qt, and nothing runs
-at import time except building the tables below.
+``src.gui.visualizer.bot_node`` or its colour table, and nothing
+compares the two copies. Nothing here imports Qt, and nothing runs at
+import time except building the tables below.
 """
 
 from __future__ import annotations

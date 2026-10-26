@@ -22,11 +22,11 @@ emitted signal.
 ``src.core.desktop_bridge`` registers ``view_model`` as the handler for the
 ``trade_charts_tab.state`` method, which is how the Electron renderer
 reaches it. Every value below is written out here rather than read from
-``src.gui.widgets.trade_charts_tab``, so a value changed on one side alone
-is reported. The one exception is the timeframe list the per-panel combo
-offers: ``ChartPanel`` owns it, so it is imported from
-``native_chart_surface`` rather than written twice. Nothing here imports
-Qt, and nothing runs at import time.
+``src.gui.widgets.trade_charts_tab``, and nothing compares the two copies.
+The one exception is the timeframe list the per-panel combo offers:
+``ChartPanel`` owns it, so it is imported from ``native_chart_surface``
+rather than written twice. Nothing here imports Qt, and nothing runs at
+import time.
 """
 
 from __future__ import annotations

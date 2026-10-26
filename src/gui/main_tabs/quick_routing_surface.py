@@ -19,11 +19,10 @@ the order of the checks and the routing, and nothing else.
 ``src.core.desktop_bridge`` registers ``view_model`` as the handler for
 the ``quick_routing.state`` method, which is how the Electron renderer
 reaches it. Every value below is written out here rather than read from
-``src.gui.visualizer.quick_routing`` or the design system, so a value
-changed on one side alone is reported. Nothing here imports Qt, opens a
-file, reads a clock or reaches a network address, and nothing runs when
-the module is imported: the panel the bridge keeps is built on the
-first request.
+``src.gui.visualizer.quick_routing`` or the design system, and nothing
+compares the two copies. Nothing here imports Qt, opens a file, reads a
+clock or reaches a network address, and nothing runs when the module is
+imported: the panel the bridge keeps is built on the first request.
 """
 
 from __future__ import annotations

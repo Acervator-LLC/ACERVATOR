@@ -22,8 +22,8 @@ index, the step name and the kind of refusal. Neither ``apply_step`` nor
 ``src.core.desktop_bridge`` registers ``view_model`` as the handler for
 the ``audio_suite.state`` method, which is how the Electron renderer
 reaches it. Every value below is written out here rather than read from
-``src.gui.audio_suite`` or from ``src.gui.design_system``, so a value
-changed on one side alone is reported. Nothing here imports Qt.
+``src.gui.audio_suite`` or from ``src.gui.design_system``, and nothing
+compares the two copies. Nothing here imports Qt.
 """
 
 from __future__ import annotations
