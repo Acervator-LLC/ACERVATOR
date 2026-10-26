@@ -947,6 +947,73 @@ files, 7 to the action versions, 2 that changed no file, and 0 to
 altogether. A security advisory against a declared package still reaches the
 remaining entry.
 
+### An npm declaration that admits the version an advisory names
+
+A pip requirement is declared as a lower bound, and the page above says what
+that costs. The two npm manifests carry the same exposure in a second shape. A
+range admits every version above its own floor, and a lock pins one version
+exactly, so `npm ci` installs the pinned version and nothing else.
+
+Three declarations admitted a version a published advisory names. Each is now
+declared above the advisory's range, read through the resolver's own range test:
+
+```
+package        declaration   admits the named version   advisory range
+source-map-js  ^1.2.1        yes                        >= 1.0.0, < 1.2.2
+source-map-js  ^1.2.2        no
+electron       44.9.0        yes                        >= 44.0.0, < 44.9.1
+electron       44.9.1        no
+undici         ^7.24.4       yes                        >= 7.18.0, < 7.30.1
+undici         ^7.30.1       no
+```
+
+`package.json` and `desktop/package.json` — the three declarations
+
+```json
+  "overrides": { "source-map-js": "^1.2.2" }
+  "devDependencies": { "electron": "44.9.1" }
+  "overrides": { "undici": "^7.30.1" }
+```
+
+Neither `source-map-js` nor `undici` is named in any `devDependencies` list.
+Each arrives through a development dependency, so each is declared in an
+`overrides` block, which is how the root manifest already holds two other
+transitive packages above their own parents' ranges.
+
+#### What the two locks install now
+
+Read out of each lock file, with four neighbouring packages beside them that did
+not move:
+
+```
+                       before      after
+source-map-js          1.2.1       1.2.2
+electron               44.9.0      44.9.1
+undici                 7.29.1      7.30.1
+eslint                 10.13.0     10.13.0
+stylelint              17.16.0     17.16.0
+html-validate          11.16.4     11.16.4
+@types/node            24.13.3     24.13.3
+```
+
+`npm ci` at the repository root exits 0 and installs 382 packages, and the
+`source-map-js` folder on disk reads 1.2.2. The three analyzers the GUI
+archetype shells out to all report available afterwards.
+
+#### One package has no published version to raise to
+
+`sprintf-js` is installed at 1.0.3 and its advisory covers every release up to
+and including 1.1.3. The newest release published is 1.1.3, so the advisory
+covers the whole published set and there is nothing to install. That entry stays
+open and says so, rather than closing because an alert was dismissed. It closes
+when a fix is published, or when the dependency that brings it in is replaced.
+
+#### Which lane installs which manifest
+
+Both `npm ci` steps in the workflow run at the repository root. No lane installs
+`desktop/`, so a change to the Electron manifest is read by the operator's own
+build of the desktop shell and by nothing in the pull-request checks.
+
 ### What clears the queue
 
 One scheduled workflow clears the queue. It runs at 13 and 43 minutes past every
