@@ -72,7 +72,12 @@ from typing import Any, Optional
 
 from ...core.settings import DEFAULT_ENABLE_PHANTOMS, DEFAULT_LOCK_CANDLE_COUNT
 from ...exchange.timeframes import ALL_TIMEFRAMES
-from ...trading.container.config import BotConfig
+from ...trading.container.config import (
+    CEILING_MULTIPLE_MAX,
+    CEILING_MULTIPLE_MIN,
+    POSITION_CEILING_MULTIPLE_DEFAULT,
+    BotConfig,
+)
 from .indicator_panel_surface import ABSENT_CELL_TEXT
 
 #: The spec key the React field reads for the words it draws in place of a
@@ -367,12 +372,12 @@ NUMBER_FIELDS: dict[str, dict] = {
     },
     "position_ceiling_multiple": {
         "kind": SPIN_DOUBLE,
-        "minimum": 1.0,
-        "maximum": 10.0,
+        "minimum": CEILING_MULTIPLE_MIN,
+        "maximum": CEILING_MULTIPLE_MAX,
         "decimals": 1,
         "step": 0.5,
         "suffix": "x anchor",
-        "value": 5.0,
+        "value": POSITION_CEILING_MULTIPLE_DEFAULT,
     },
     "detonation_confidence_min": {
         "kind": SPIN_DOUBLE,

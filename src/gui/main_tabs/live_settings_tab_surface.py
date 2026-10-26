@@ -34,7 +34,12 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from ...trading.container.config import DESPAWN_MAX_DAYS
+from ...trading.container.config import (
+    CEILING_MULTIPLE_MAX,
+    CEILING_MULTIPLE_MIN,
+    DESPAWN_MAX_DAYS,
+    POSITION_CEILING_MULTIPLE_DEFAULT,
+)
 from .. import design_system as ds
 from .indicator_panel_surface import ABSENT_CELL_TEXT
 
@@ -1009,8 +1014,8 @@ CONTROL_SPECS = (
         "row_label": "Ceiling Multiple:",
         "field": "position_ceiling_multiple",
         "reading": FLOAT_READING,
-        "default": 5.0,
-        "range": (1.0, 10.0),
+        "default": POSITION_CEILING_MULTIPLE_DEFAULT,
+        "range": (CEILING_MULTIPLE_MIN, CEILING_MULTIPLE_MAX),
         "decimals": 1,
         "suffix": "x anchor",
         "step": 0.5,

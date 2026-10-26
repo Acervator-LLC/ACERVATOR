@@ -47,6 +47,7 @@ from src.exchange.lazy_singleton import ThrottledFault
 from src.trading.container.config import (
     CEILING_MULTIPLE_MAX,
     CEILING_MULTIPLE_MIN,
+    POSITION_CEILING_MULTIPLE_DEFAULT,
     BotConfig,
     as_finite_float,
 )
@@ -1296,7 +1297,7 @@ if _HAS_QT:
             self._position_ceiling_multiple.setDecimals(1)
             self._position_ceiling_multiple.setSingleStep(0.5)
             self._position_ceiling_multiple.setSuffix("x anchor")
-            self._position_ceiling_multiple.setValue(5.0)
+            self._position_ceiling_multiple.setValue(POSITION_CEILING_MULTIPLE_DEFAULT)
             self._position_ceiling_multiple.setToolTip(
                 "Ceiling multiplier. 1x = no accumulation beyond "
                 "anchor. 10x = 10x runway. Default 5x."
