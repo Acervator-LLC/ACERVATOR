@@ -8991,4 +8991,61 @@ src/trading/analytics_engine.py, the side field
 src/trading/reconciliation.py, the action field
 ```
 
+## 2026-10-26 - #665 - the nested pair and the log field are off the tree
+
+Two readings on this page name a getter and setter on the settings store, and a field
+on the log record. Both were true when they were taken. Neither name is in the source
+tree now.
+
+`src/core/settings.py, class SettingsManager` — what the store declares
+
+```
+reads and writes   get, set, get_all, reset_defaults
+venue entries      add_exchange, get_exchange, list_exchanges, remove_exchange
+the removed pair   get_nested, set_nested
+```
+
+`src/core/logging_engine.py, class LogEntry` — the record's five fields
+
+```python
+timestamp: str = ""
+category: str = ""
+exchange: str = ""
+bot_id: str = ""
+data: dict = field(default_factory=dict)
+```
+
+Every stored field is still read and written. The pair took a group name and a key and
+reached the same group dictionary that `get` and `set` reach, so no field lost a route.
+A line written now carries no key for the removed field, and a line already on disk
+keeps it: every reader takes a stored line through a plain JSON parse, and no site
+builds the record back out of one.
+
+The two names were counted over the tracked source tree, with a name from the same
+module as the figure that shows the count reports.
+
+```
+name              occurrences under src/   occurrences on this page
+get_nested                             0                          4
+set_nested                             0                          1
+SettingsManager                       19                       many
+```
+
+### Where the earlier settings-store entries now read differently
+
+Five readings above name the removed pair or the removed field. They stand as written,
+and these are the readings that replaced them.
+
+| written above | what it reads now |
+| --- | --- |
+| "The nested getter and setter on `SettingsManager` still have no callers. The bare names `get_nested` and `set_nested` return two hits each, and both are the declaration and the class docstring in `src/core/settings.py`." | Both are off the store. It declares eight public methods and neither name is among them |
+| "The record type does declare a `highlight` field, and nothing in the tree sets it and nothing reads it." | The record declares five fields and none of them is that one. A line written now carries no such key |
+| "`sm.get_nested("profit_folding", "fold_target")`" in the read-shape table | That shape cannot be written now. Its zero stands: no site reads the word, by any shape |
+| "`get_nested(..., "fold_target_count")`" in the read-shape table | The same. The zero stands and the shape is gone |
+| "`get_nested(..., "distribute_target")`" in the read-shape table | The same. The zero stands and the shape is gone |
+
+The second sentence above wraps across two source lines, so a search that reads one
+line at a time cannot see it. Measured on this page, it reads nothing per line and one
+across the folded text.
+
 Back to [the subsystem index](README.md).

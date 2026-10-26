@@ -817,38 +817,14 @@ class SettingsTabMixin:
         af.addRow("Scrum Fold Ratio:", self._scrum_fold_pct)
 
         from ...trading.bot_container import despawn_threshold_days
+        from ..main_tabs.live_settings_tab_surface import DESPAWN_FIELD, TOOLTIPS
 
         self._tranche_despawn_days = QSpinBox()
         self._tranche_despawn_days.setRange(0, 365)
         self._tranche_despawn_days.setSuffix(" days")
         self._tranche_despawn_days.setSpecialValueText("Off")
         self._tranche_despawn_days.setValue(despawn_threshold_days(cfg))
-        self._tranche_despawn_days.setToolTip(
-            "DESPAWN any tranche this old - both fold tranches\n"
-            "and stack tranches, from this one setting. 0 = Off\n"
-            "(default).\n\n"
-            "MERGE, DESPAWN and CLEAR are the only three things\n"
-            "that collapse or remove a tranche. This is despawn:\n"
-            "the age-driven one.\n\n"
-            "IT IS NOT A TRADE. No order is placed or cancelled,\n"
-            "no balance moves, holdings and cost basis are\n"
-            "untouched. The record goes.\n\n"
-            "WHAT THE RECORD HELD: the tranche's ref price, its\n"
-            "parked fold USD, its units, and its initial_buy_price\n"
-            "(the provenance figure). The scrum sale that\n"
-            "made it already happened, so those dollars are\n"
-            "already in the wallet - the record was only the\n"
-            "queued intent to buy the units back. A despawned\n"
-            "tranche can no longer fold back, so that money goes\n"
-            "from queued rebuy to ordinary spendable balance.\n\n"
-            "A tranche is despawned at exactly this age or older.\n"
-            "A tranche with no timestamp is NEVER despawned, and\n"
-            "a stack tranche holding a resting exchange order is\n"
-            "kept until that order settles.\n\n"
-            "SEE THE COUNT FIRST: the Fold Tranches tab prints how\n"
-            "many of this bot's tranches each candidate window\n"
-            "would remove, and what they hold."
-        )
+        self._tranche_despawn_days.setToolTip(TOOLTIPS[DESPAWN_FIELD])
         self._tranche_despawn_days.valueChanged.connect(
             lambda v: self._mark_changed("tranche_despawn_days", v)
         )
