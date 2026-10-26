@@ -10350,3 +10350,33 @@ Quoted whole:
 True today: that holds for the window's table and for the page, which draws the
 same mark from the same payload. The Extractor Bots table keeps its own Bot ID
 column on both surfaces.
+
+## 2026-10-25 - #665 - the simulated record carries the wizard's lock figure
+
+The simulator wizard collected the Candles-to-lock figure and the record it
+saved held no key for it, so the bot built from that record had no lock holder
+and the Phantom Bots tab fell back to the declared 2.
+
+`src/simulator/fleet_source.py, in wizard_record` now writes the figure beside
+the two phantom keys it already wrote, clamped at 1, which is the clamp the live
+bot's own constructor applies.
+
+```python
+    lock_candles = collected.get("lock_candle_count") if scrumming else None
+    if isinstance(lock_candles, (int, float)) and not isinstance(lock_candles, bool):
+        record["lock_candle_count"] = max(1, int(lock_candles))
+```
+
+`src/simulator/sim_bot_view.py, in SimBotView` reads that key to build the bot's
+lock holder, and the Candles-to-lock box on the Phantom Bots tab reads the
+holder.
+
+```
+wizard 7     record holds the key     tab box 7
+wizard 2     record holds the key     tab box 2
+no key       record holds no key      tab box 2
+```
+
+A simulated record written before this change holds no such key, loads, and
+leaves the tab box on the declared 2. The Simulator and the Paper Trader take
+the same route, so the two cannot answer this differently.

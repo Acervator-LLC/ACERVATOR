@@ -496,6 +496,8 @@ def wizard_record(config: dict) -> dict:
     ``make_bot_config``, with ``state_when_saved`` idle, no stats,
     ``phantoms_enabled`` from the wizard's ``enable_phantoms`` and
     ``phantom_timeframes`` from ``wizard_phantom_timeframes``.
+    A ``lock_candle_count`` the wizard set is carried, clamped at 1, which is
+    what ``SimBotView`` reads to build the bot's ``PhantomLock``.
 
     ``make_bot_config`` raises ``ValueError`` on a mode-foreign key or a bad
     shape and ``TypeError`` on a value a ``BotConfig`` field cannot hold.
@@ -529,6 +531,9 @@ def wizard_record(config: dict) -> dict:
     )
     if timeframes:
         record["phantom_timeframes"] = timeframes
+    lock_candles = collected.get("lock_candle_count") if scrumming else None
+    if isinstance(lock_candles, (int, float)) and not isinstance(lock_candles, bool):
+        record["lock_candle_count"] = max(1, int(lock_candles))
     return record
 
 

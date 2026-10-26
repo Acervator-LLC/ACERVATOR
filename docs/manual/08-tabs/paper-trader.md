@@ -3331,4 +3331,34 @@ True today: that holds for the window's table and for the page, which draws the
 same mark from the same payload. Neither surface fetches anything while a row
 draws.
 
+## 2026-10-25 - #665 - the paper record carries the wizard's lock figure
+
+The paper wizard collected the Candles-to-lock figure and the record it saved
+held no key for it. The bot built from that record therefore had no lock holder
+at all, and the Phantom Bots tab fell back to the declared 2 whatever the
+operator typed.
+
+`src/paper/fleet_source.py, in wizard_record` now writes the figure beside the
+two phantom keys it already wrote, clamped at 1, which is the clamp the live
+bot's own constructor applies.
+
+```python
+    lock_candles = collected.get("lock_candle_count") if scrumming else None
+    if isinstance(lock_candles, (int, float)) and not isinstance(lock_candles, bool):
+        record["lock_candle_count"] = max(1, int(lock_candles))
+```
+
+`src/paper/paper_bot_view.py, in PaperBotView` reads that key to build the bot's
+lock holder, and the Candles-to-lock box on the Phantom Bots tab reads the
+holder.
+
+```
+wizard 7     record holds the key     tab box 7
+wizard 2     record holds the key     tab box 2
+no key       record holds no key      tab box 2
+```
+
+A paper record written before this change holds no such key, loads, and leaves
+the tab box on the declared 2.
+
 Back to [the subsystem index](README.md).
