@@ -9712,3 +9712,4 @@ these are the readings that replaced them.
 | --- | --- |
 | "All four report the same length, and so does the Scrum Fold Ratio row beside it" | The despawn reading is unchanged at 1,086 characters on all four screens. The Scrum Fold Ratio row is no longer the row beside it: the ratio sits in Scrumming Settings and the despawn box stays in Advanced Scrumming. The row beside the despawn box is now Band Travel |
 | "Both writers sit inside the paths that place an order, so they are named and left" | Both writers are gone. A hand-built venue settled an order as filled with no network, which drove each writer for real, so the removal was proved rather than named |
+| "the record `src/trading/scrumming/execution.py, class MemorisedTrade`" | That class is gone, with the field that held its list and the two lines that appended to it. The file is still there and still holds `SettledFillFee`, the fee record each settled fill writes |
