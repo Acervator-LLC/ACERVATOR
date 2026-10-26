@@ -357,11 +357,11 @@ if _HAS_QT:
 
             # _new_passphrase is built above _pp_check so _sync_passphrase_row
             # has both names. The rows keep the painted order below.
+            from .main_tabs.init_wizard_surface import PHRASE_FIELD_PROMPT
+
             self._new_passphrase = QLineEdit()
             self._new_passphrase.setEchoMode(QLineEdit.Password)
-            self._new_passphrase.setPlaceholderText(
-                "Passphrase set when creating API key"
-            )
+            self._new_passphrase.setPlaceholderText(PHRASE_FIELD_PROMPT)
             self._new_passphrase.setVisible(False)
 
             self._pp_check = QCheckBox("This exchange uses an API passphrase")

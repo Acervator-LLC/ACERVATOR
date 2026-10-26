@@ -669,14 +669,14 @@ if _HAS_QT:
             )
             af.addRow(self._bb_midline_gate)
 
-            self._scrum_read_rate = QSpinBox()
-            self._scrum_read_rate.setRange(1, 60)
-            self._scrum_read_rate.setSuffix(" min")
-            self._scrum_read_rate.setValue(5)
-            self._scrum_read_rate.setToolTip(
+            self._scrum_read_rate_min = QSpinBox()
+            self._scrum_read_rate_min.setRange(1, 60)
+            self._scrum_read_rate_min.setSuffix(" min")
+            self._scrum_read_rate_min.setValue(5)
+            self._scrum_read_rate_min.setToolTip(
                 "SEARCH-mode read rate in minutes. TRACK mode reads " "10x faster."
             )
-            af.addRow("Read Rate:", self._scrum_read_rate)
+            af.addRow("Read Rate:", self._scrum_read_rate_min)
 
             self._band_travel_pct = QSpinBox()
             self._band_travel_pct.setRange(0, 100)
@@ -688,16 +688,16 @@ if _HAS_QT:
             )
             af.addRow("Band Travel:", self._band_travel_pct)
 
-            self._bb_bullseye = QCheckBox("BB Bullseye Check")
-            self._bb_bullseye.setChecked(True)
-            self._bb_bullseye.setToolTip(
+            self._bb_bullseye_check = QCheckBox("BB Bullseye Check")
+            self._bb_bullseye_check.setChecked(True)
+            self._bb_bullseye_check.setToolTip(
                 "Counts a band touch within 0.5 % (or a candle wick "
                 "within 0.2 %) as BB proximity. With the delta at or "
                 "over the interval that arms the BB priority skew, "
                 "which lowers the TA confidence floor. The fire "
                 "threshold and the midline gate are unchanged."
             )
-            af.addRow(self._bb_bullseye)
+            af.addRow(self._bb_bullseye_check)
 
             groups.addWidget(self._adv_group)
 
@@ -1122,9 +1122,9 @@ if _HAS_QT:
                     "scrum_detect_pct": self._scrum_detect_pct.value(),
                     "scrum_fire_pct": self._scrum_fire_pct.value(),
                     "bb_midline_gate": self._bb_midline_gate.isChecked(),
-                    "scrum_read_rate_min": self._scrum_read_rate.value(),
+                    "scrum_read_rate_min": self._scrum_read_rate_min.value(),
                     "band_travel_pct": self._band_travel_pct.value(),
-                    "bb_bullseye_check": self._bb_bullseye.isChecked(),
+                    "bb_bullseye_check": self._bb_bullseye_check.isChecked(),
                     "hedge_rebalance_active": self._hedge_rebalance.isChecked(),
                     "hedge_balance": self._hedge_amount.value(),
                     "circuit_breaker_soft_pct": self._cb_soft_pct.value(),

@@ -545,6 +545,27 @@ class PaperSettingsTabMixin(SettingsTabMixin):
         )
         sf.addRow("Max Target Growth %:", self._max_target_growth)
 
+        from ...trading.container.config import (
+            FOLD_RATIO_MAX_PCT,
+            FOLD_RATIO_MIN_PCT,
+            fold_ratio_pct,
+        )
+
+        self._scrum_fold_pct = QSpinBox()
+        self._scrum_fold_pct.setRange(FOLD_RATIO_MIN_PCT, FOLD_RATIO_MAX_PCT)
+        self._scrum_fold_pct.setSuffix(" %")
+        self._scrum_fold_pct.setValue(fold_ratio_pct(cfg))
+        self._scrum_fold_pct.setToolTip(
+            "% of scrum sale proceeds queued for fold (rebuy).\n"
+            "100% = full reentry (max accumulation, max risk).\n"
+            "Lower values preserve cash buffer — safer when\n"
+            "price keeps falling after the scrum."
+        )
+        self._scrum_fold_pct.valueChanged.connect(
+            lambda v: self._mark_changed("scrum_fold_pct", v)
+        )
+        sf.addRow("Scrum Fold Ratio:", self._scrum_fold_pct)
+
         self._profit_folding_active = QCheckBox("Profit Folding Active")
         self._profit_folding_active.setChecked(
             bool(getattr(cfg, "profit_folding_active", True))
@@ -611,17 +632,17 @@ class PaperSettingsTabMixin(SettingsTabMixin):
         )
         af.addRow(self._midline_gate)
 
-        self._read_rate = QSpinBox()
-        self._read_rate.setRange(1, 60)
-        self._read_rate.setSuffix(" min")
-        self._read_rate.setValue(int(cfg.scrum_read_rate_min))
-        self._read_rate.setToolTip(
+        self._scrum_read_rate_min = QSpinBox()
+        self._scrum_read_rate_min.setRange(1, 60)
+        self._scrum_read_rate_min.setSuffix(" min")
+        self._scrum_read_rate_min.setValue(int(cfg.scrum_read_rate_min))
+        self._scrum_read_rate_min.setToolTip(
             "SEARCH-mode read rate in minutes. TRACK mode reads 10x faster."
         )
-        self._read_rate.valueChanged.connect(
+        self._scrum_read_rate_min.valueChanged.connect(
             lambda v: self._mark_changed("scrum_read_rate_min", v)
         )
-        af.addRow("Read Rate:", self._read_rate)
+        af.addRow("Read Rate:", self._scrum_read_rate_min)
 
         self._band_travel = QSpinBox()
         self._band_travel.setRange(0, 100)
@@ -636,40 +657,19 @@ class PaperSettingsTabMixin(SettingsTabMixin):
         )
         af.addRow("Band Travel:", self._band_travel)
 
-        self._bullseye = QCheckBox("BB Bullseye Check")
-        self._bullseye.setChecked(bool(cfg.bb_bullseye_check))
-        self._bullseye.setToolTip(
+        self._bb_bullseye_check = QCheckBox("BB Bullseye Check")
+        self._bb_bullseye_check.setChecked(bool(cfg.bb_bullseye_check))
+        self._bb_bullseye_check.setToolTip(
             "Counts a band touch within 0.5% (or a candle wick within "
             "0.2%) as BB proximity.\n"
             "With the delta at or over the interval that arms the BB "
             "priority skew, which lowers the TA confidence floor. The "
             "fire threshold and the midline gate are unchanged."
         )
-        self._bullseye.toggled.connect(
+        self._bb_bullseye_check.toggled.connect(
             lambda v: self._mark_changed("bb_bullseye_check", v)
         )
-        af.addRow(self._bullseye)
-
-        from ...trading.container.config import (
-            FOLD_RATIO_MAX_PCT,
-            FOLD_RATIO_MIN_PCT,
-            fold_ratio_pct,
-        )
-
-        self._scrum_fold_pct = QSpinBox()
-        self._scrum_fold_pct.setRange(FOLD_RATIO_MIN_PCT, FOLD_RATIO_MAX_PCT)
-        self._scrum_fold_pct.setSuffix(" %")
-        self._scrum_fold_pct.setValue(fold_ratio_pct(cfg))
-        self._scrum_fold_pct.setToolTip(
-            "% of scrum sale proceeds queued for fold (rebuy).\n"
-            "100% = full reentry (max accumulation, max risk).\n"
-            "Lower values preserve cash buffer — safer when\n"
-            "price keeps falling after the scrum."
-        )
-        self._scrum_fold_pct.valueChanged.connect(
-            lambda v: self._mark_changed("scrum_fold_pct", v)
-        )
-        af.addRow("Scrum Fold Ratio:", self._scrum_fold_pct)
+        af.addRow(self._bb_bullseye_check)
 
         from ...trading.container.config import despawn_threshold_days
         from ..main_tabs.live_settings_tab_surface import DESPAWN_FIELD, TOOLTIPS

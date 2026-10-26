@@ -36,17 +36,6 @@ logger = logging.getLogger("acervator.scrumming")
 REFUSAL_HOLD_MOVE_FRACTION: float = 0.001
 
 
-@dataclass
-class MemorisedTrade:
-    """A scrumming event stored for potential conversion to a grid level."""
-
-    timestamp: float
-    side: str
-    price: float
-    amount: float
-    voting_summary: Optional[VotingSummary] = None
-
-
 @dataclass(frozen=True)
 class SettledFillFee:
     """The fee the venue reported for one settled fill, on either side.
@@ -99,7 +88,6 @@ class ExecutionEngineMixin:
     _last_trade_side: Optional[str]
     _main_lots: list[dict]
     _manual_fire_pending: bool
-    _memorised_trades: list[MemorisedTrade]
     _open_stack_from_scrum: Callable[..., Any]
     _preview_fold_growth: Callable[..., Any]
     _quote_to_usd: float
@@ -1899,15 +1887,6 @@ class ExecutionEngineMixin:
                     _sup,
                 )
 
-            self._memorised_trades.append(
-                MemorisedTrade(
-                    timestamp=time.time(),
-                    side="sell",
-                    price=actual_fill,
-                    amount=filled_units,
-                    voting_summary=summary,
-                )
-            )
             self._bus.emit(
                 "bot.log",
                 bot_id=self.bot_id,
@@ -2360,15 +2339,6 @@ class ExecutionEngineMixin:
                     _sup,
                 )
 
-            self._memorised_trades.append(
-                MemorisedTrade(
-                    timestamp=time.time(),
-                    side="buy",
-                    price=actual_fill,
-                    amount=amount,
-                    voting_summary=summary,
-                )
-            )
             self._bus.emit(
                 "bot.log",
                 bot_id=self.bot_id,

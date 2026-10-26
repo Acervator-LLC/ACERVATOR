@@ -564,6 +564,23 @@ self._new_passphrase.setPlaceholderText(
 self._new_passphrase.setVisible(False)
 ```
 
+**The words in that field are now one declaration, read by two screens.** The block
+above stands as written, and this is what the field reads today.
+
+`src/gui/settings_dialog.py` — the field reads the declaration
+
+```python
+from .main_tabs.init_wizard_surface import PHRASE_FIELD_PROMPT
+
+self._new_passphrase = QLineEdit()
+self._new_passphrase.setEchoMode(QLineEdit.Password)
+self._new_passphrase.setPlaceholderText(PHRASE_FIELD_PROMPT)
+```
+
+The install wizard wrote its own words for the same fact. Both screens now report
+the same 46 characters, and which venues ask for a passphrase did not change.
+Trading tab, under the ratio and the spare record, carries the reading.
+
 Test Connection runs the check and reports the answer. Test and Add Exchange
 runs the same check first and stores nothing when it fails. Remove Selected
 drops the highlighted entry.

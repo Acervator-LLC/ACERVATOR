@@ -58,6 +58,7 @@ from ...core.sms_engine import (
 from ...trading.ta_engine import DEFAULT_WEIGHTS
 from ..color_alpha import ALPHA_HIGHEST, rgba
 from .indicator_panel_surface import ABSENT_CELL_TEXT
+from .init_wizard_surface import PHRASE_FIELD_PROMPT
 
 METHOD = "settings_dialog.state"
 
@@ -661,7 +662,7 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "kind": LINE,
         "echo": "password",
         "visible": False,
-        "placeholder": "Passphrase set when creating API key",
+        "placeholder": PHRASE_FIELD_PROMPT,
     },
     {
         "tab": EXCHANGE_TAB,

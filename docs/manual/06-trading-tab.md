@@ -9552,3 +9552,164 @@ the readers  none
 ```
 
 Both writers sit inside the paths that place an order, so they are named and left.
+
+## 2026-10-26 - #665 - the ratio sits in one group, and the fill writes no spare record
+
+Five names said something the code did not. A ratio box filed under two different
+group titles, two controls a stored-key search could not find, one fact worded two
+ways, a way in nobody used, and a record written on every fill and read by nothing.
+
+### The Scrum Fold Ratio box sits in Scrumming Settings on every screen
+
+Eight screens build the box. Four put it under Scrumming Settings and four under
+Advanced Scrumming. Each box was built for real and asked which group box holds it.
+
+```
+screen                    before                after
+Live settings             Advanced Scrumming    Scrumming Settings
+Paper settings            Advanced Scrumming    Scrumming Settings
+Simulator settings        Advanced Scrumming    Scrumming Settings
+Electron settings rows    Advanced Scrumming    Scrumming Settings
+Live wizard               Scrumming Settings    Scrumming Settings
+Paper wizard              Scrumming Settings    Scrumming Settings
+Simulator wizard          Scrumming Settings    Scrumming Settings
+Electron wizard rows      Scrumming Settings    Scrumming Settings
+```
+
+**Scrumming Settings is the group, because the manual already says so.** The
+Trading Parameters section states that four unit-rule lines sit under Scrum Fold
+Ratio in the Scrumming Settings group, and the control's own description ties it to
+Max Target Growth %, which reads Scrumming Settings on all eight screens. No page
+of this manual puts the ratio in Advanced Scrumming.
+
+`src/gui/live_settings/settings_tab.py, in _create_settings_tab` — the row's new home
+
+```python
+sf.addRow("Max Target Growth %:", self._max_target_growth)
+sf.addRow("Scrum Fold Ratio:", self._scrum_fold_pct)
+```
+
+The box itself is untouched. Every screen reports a value of 100 and a tooltip of
+183 characters, before and after, and Max Target Growth % beside it reads Scrumming
+Settings in all sixteen readings.
+
+### The read-rate and bullseye controls carry the name of the key they store
+
+A search of a wizard for a stored key found the read-rate control and the bullseye
+control once each, against seven for the two rows beside them. The one hit was the
+line that hands the value out; the control itself was named for neither key. The
+three settings screens and the Electron row list carried the same two short names.
+
+```
+file                          read rate        bullseye         ratio    travel
+                              before  after    before  after    control  control
+bot_wizard.py                      1      7         1      5          7        7
+paper_bot_wizard.py                1      7         1      5          7        7
+sim_bot_wizard.py                  1      7         1      5          7        7
+bot_wizard_surface.py              1      5         1      5          5        5
+settings_tab.py                    2      8         2      6          8        2
+paper_settings_tab.py              2      8         2      6          8        2
+sim_settings_tab.py                2      8         2      6          8        2
+live_settings_tab_surface.py       1      3         1      3          3        1
+```
+
+`src/gui/bot_wizard.py, class TradingParamsPage` — the control now carries the key's
+own name
+
+```python
+self._scrum_read_rate_min = QSpinBox()
+af.addRow("Read Rate:", self._scrum_read_rate_min)
+```
+
+The bullseye reads fewer lines than the read rate because a tick box takes fewer
+setter calls; the tick box beside it, the midline gate, reads the same figure.
+
+**No stored key changed.** All four wizard builds hand out the same keys and the
+same values: 50 keys on the Live build, 47 on Paper, 47 on the Simulator and 50 on
+the Electron build, with none of the 194 key readings different. A record carrying
+the two keys was written by hand and loaded: a stored read rate of 17 and a stored
+bullseye of off reach the box and the tick box on the running screen.
+
+**A further 24 stored keys in the Live wizard are still found on one line each.** The
+same short-name shape covers them, and the settings screens abbreviate throughout.
+Those are not this entry's two controls and are recorded on the issue.
+
+### One declaration holds the passphrase prompt
+
+The install wizard and the Settings page each wrote their own words for one fact.
+Both screens now read one declaration.
+
+```
+screen           before                                           after
+install wizard   Passphrase you chose when creating the API key    unchanged
+Settings page    Passphrase set when creating API key              the same 46 characters
+```
+
+`src/gui/main_tabs/init_wizard_surface.py` — the one declaration
+
+```python
+PHRASE_FIELD_PROMPT = "Passphrase you chose when creating the API key"
+```
+
+Which venues ask for a passphrase did not change. Both screens already read
+`PASSPHRASE_EXCHANGES`, so only the words differed.
+
+Moving the one declaration to wording nothing uses moved both screens together. The
+same move before this change reached the install wizard alone and the Settings page
+kept the old words. Both files are byte identical after the move was put back, by
+sha256. The API key prompt beside it held its own words in every reading.
+
+### The signal provider drops a way in that nobody used
+
+The provider took a trend-strength figure from its caller. The Extractor builds the
+only provider in the tree and passes a venue and a timeframe alone.
+
+```
+name                        before   after
+trend_strength_threshold         0       0    callers that pass it
+trend_strength                   8       8    callers that pass it, the control
+a name never declared            0       0
+```
+
+The count walks the parsed tree of all 624 tracked Python files. The control name
+reads eight, so the count reports; a name that was never declared reads zero
+everywhere. The figure stays at 0.65 and is now one declaration.
+
+`src/trading/ta_signal_provider.py` — the figure, and the one line that reads it
+
+```python
+TREND_HOLD_MIN_SHARE: float = 0.65
+
+trend_hold = trend_strength > TREND_HOLD_MIN_SHARE
+```
+
+### Every fill stops writing the spare record
+
+One record joined a list on each filled sell and each filled buy. Nothing read the
+list once the retired mode's method went.
+
+A hand-built venue answered every read from records written by hand and settled an
+order as filled. No venue was contacted: the socket counter read zero on every run
+and its control moved it to one on a single refused call.
+
+```
+one fill                records   holdings   sells   buys   volume   scrummed   folded   fill
+sell, before the change       1        8.0       1      0    200.0      200.0      0.0    100
+sell, after the change     none        8.0       1      0    200.0      200.0      0.0    100
+buy, before the change        1      10.01       0      1      1.0        0.0      1.0    100
+buy, after the change      none      10.01       0      1      1.0        0.0      1.0    100
+```
+
+**Nothing else about either fill moved.** The record type, the field and both
+writers are gone, and the list no longer exists to be written.
+
+### Where the two earlier entries now read differently
+
+Two statements above describe what this unit changed. They stand as written, and
+these are the readings that replaced them.
+
+| written above | what it reads now |
+| --- | --- |
+| "All four report the same length, and so does the Scrum Fold Ratio row beside it" | The despawn reading is unchanged at 1,086 characters on all four screens. The Scrum Fold Ratio row is no longer the row beside it: the ratio sits in Scrumming Settings and the despawn box stays in Advanced Scrumming. The row beside the despawn box is now Band Travel |
+| "Both writers sit inside the paths that place an order, so they are named and left" | Both writers are gone. A hand-built venue settled an order as filled with no network, which drove each writer for real, so the removal was proved rather than named |
+| "the record `src/trading/scrumming/execution.py, class MemorisedTrade`" | That class is gone, with the field that held its list and the two lines that appended to it. The file is still there and still holds `SettledFillFee`, the fee record each settled fill writes |

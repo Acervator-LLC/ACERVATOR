@@ -155,10 +155,10 @@ if _HAS_QT:
             # Passphrase
             self._passphrase_label = QLabel("API Passphrase:")
             p3_layout.addWidget(self._passphrase_label)
+            from .main_tabs.init_wizard_surface import PHRASE_FIELD_PROMPT
+
             self._passphrase = QLineEdit()
-            self._passphrase.setPlaceholderText(
-                "Passphrase you chose when creating the API key"
-            )
+            self._passphrase.setPlaceholderText(PHRASE_FIELD_PROMPT)
             self._passphrase.setEchoMode(QLineEdit.Password)
             p3_layout.addWidget(self._passphrase)
 

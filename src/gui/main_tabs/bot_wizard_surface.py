@@ -318,7 +318,7 @@ NUMBER_FIELDS: dict[str, dict] = {
         "suffix": " %",
         "value": 0.5,
     },
-    "scrum_read_rate": {
+    "scrum_read_rate_min": {
         "kind": SPIN_INT,
         "minimum": 1,
         "maximum": 60,
@@ -436,7 +436,7 @@ CHECK_FIELDS: dict[str, bool] = {
     "aggressive": False,
     "stack_mode": STACK_MODE_DEFAULT,
     "bb_midline_gate": True,
-    "bb_bullseye": True,
+    "bb_bullseye_check": True,
     "hedge_rebalance": True,
     "cartridge_smart_chk": False,
     "position_ceiling_enabled": False,
@@ -579,9 +579,9 @@ GROUP_ROWS = {
         "scrum_detect_pct",
         "scrum_fire_pct",
         "bb_midline_gate",
-        "scrum_read_rate",
+        "scrum_read_rate_min",
         "band_travel_pct",
-        "bb_bullseye",
+        "bb_bullseye_check",
     ),
     "hedge_group": ("hedge_rebalance", "hedge_amount"),
     "cb_group": (
@@ -681,7 +681,7 @@ ROW_LABELS = {
     "scrum_fold_pct": "Scrum Fold Ratio:",
     "scrum_detect_pct": "Detect Threshold:",
     "scrum_fire_pct": "Fire Threshold:",
-    "scrum_read_rate": "Read Rate:",
+    "scrum_read_rate_min": "Read Rate:",
     "band_travel_pct": "Band Travel:",
     "hedge_amount": "Hedge Balance:",
     "cb_soft_pct": "Soft CB Threshold:",
@@ -705,7 +705,7 @@ CHECK_TEXTS = {
     "aggressive": "Aggressive Trading (force IOC-limit takers)",
     "stack_mode": "Stack Mode (split SCRUM across upward tranches)",
     "bb_midline_gate": "BB Midline Gate",
-    "bb_bullseye": "BB Bullseye Check",
+    "bb_bullseye_check": "BB Bullseye Check",
     "hedge_rebalance": "Hedge Rebalance Active",
     "cartridge_smart_chk": "Calibrate to BB range",
     "position_ceiling_enabled": "Enable Position Ceiling",
@@ -910,12 +910,14 @@ TOOL_TIPS = {
         "When enabled: scrums ONLY fire above BB midline, "
         "folds ONLY fire below midline (sell-high/buy-low)."
     ),
-    "scrum_read_rate": "SEARCH-mode read rate in minutes. TRACK mode reads 10x faster.",
+    "scrum_read_rate_min": (
+        "SEARCH-mode read rate in minutes. TRACK mode reads 10x faster."
+    ),
     "band_travel_pct": (
         "Secondary harvest trigger: % of BB band width price "
         "must travel since last fold. 0 disables."
     ),
-    "bb_bullseye": (
+    "bb_bullseye_check": (
         "Counts a band touch within 0.5 % (or a candle wick "
         "within 0.2 %) as BB proximity. With the delta at or "
         "over the interval that arms the BB priority skew, "
@@ -3019,9 +3021,9 @@ class BotWizardModel:
                 "scrum_detect_pct": int(self.numbers["scrum_detect_pct"]),
                 "scrum_fire_pct": self.numbers["scrum_fire_pct"],
                 "bb_midline_gate": self.checks["bb_midline_gate"],
-                "scrum_read_rate_min": int(self.numbers["scrum_read_rate"]),
+                "scrum_read_rate_min": int(self.numbers["scrum_read_rate_min"]),
                 "band_travel_pct": int(self.numbers["band_travel_pct"]),
-                "bb_bullseye_check": self.checks["bb_bullseye"],
+                "bb_bullseye_check": self.checks["bb_bullseye_check"],
                 "hedge_rebalance_active": self.checks["hedge_rebalance"],
                 "hedge_balance": self.numbers["hedge_amount"],
                 "circuit_breaker_soft_pct": self.numbers["cb_soft_pct"],

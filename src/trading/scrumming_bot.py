@@ -85,7 +85,7 @@ from .scrumming import (
     TickPhaseMixin,
     WireRoutingMixin,
 )
-from .scrumming.execution import MemorisedTrade, SettledFillFee
+from .scrumming.execution import SettledFillFee
 from .scrumming.snapshots import GATE_CHAIN_EXIT
 from .scrumming.snapshots import yes_no as _yes_no
 from .scrumming.fold_tranches import (
@@ -371,7 +371,6 @@ class ScrummingBot(
         self._target_balance = config.target_balance
         self._current_holdings: float = 0.0
         self._last_price: float = 0.0
-        self._memorised_trades: list[MemorisedTrade] = []
         self._initialised = False
         self._invisible = config.visibility == "internal"
         self._aggressive = config.aggressive_trading
