@@ -2328,6 +2328,47 @@ that the market was judged, which gates blocked it and why.
     )
 ```
 
+### What a scan shows of your circuit breakers
+
+The scan reads both breaker thresholds and the soft cooldown off the settings it
+is handed, through the one declaration the trading engine reads, and closes its
+readings with a row named `circuit_breaker_hard`. The row carries no side, so no
+chain verdict reads it.
+
+`src/trading/ata_gate_scan.py` — the reading that row carries
+
+```python
+HARD_BREAKER_FORMAT = (
+    "single-candle move {move:.2f}% against your hard {hard:.2f}% "
+    "and soft {soft:.2f}% (cooldown {cooldown} candles, soft side {side})"
+)
+```
+
+Driven on one bar spanning 12.00 % of its open, two scans in the same run:
+
+```
+stored soft / hard   state      the row's reading
+5.0 / 10.0           blocked    move 12.00% against your hard 10.00% and
+                                soft 5.00%, soft side scrum
+25.0 / 35.0          latched    move 12.00% against your hard 35.00% and
+                                soft 25.00%, soft side none
+```
+
+The two rows name different figures, so the reading follows the stored record
+rather than a figure held inside the scan. Before this the scan held its own
+copy of the move arithmetic and its own copy of the opening soft figure, named
+the hard field nowhere, and published no figure at all.
+
+The verdict does not move. Over twenty scans across five tapes and four stored
+pairs, the firing side, the fire-or-refuse answer and every chain gate's state
+and wording are identical; the readings per scan go from 22 to 23 and the
+decided count from 16 to 17, which is the new row. A sweep of 63,168 candle and
+figure combinations reads the same soft-breaker sides before and after.
+
+No store in the tree holds a breaker figure for a scan, so a scan started from
+this tab reads the declared 25.0 % and 35.0 % until a caller hands it a record
+carrying yours.
+
 ### The voting panel a called asset carries
 
 ATA-SMP carries its own Indicator Voting Panel. It is a clone of the live one,

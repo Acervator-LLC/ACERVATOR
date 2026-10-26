@@ -563,6 +563,7 @@ class ScrummingBot(
         self._cb_soft_tripped_at: float = 0.0
         self._cb_soft_trip_pct: float = 0.0
         self._cb_last_candle_ts: float = 0.0
+        self._cb_unreadable_named: tuple = ()
 
     def get_swos_inputs(self) -> Optional[dict]:
         """Return the input dict for ``smart_wire.compute_safe_outflow_pct``.
@@ -2000,16 +2001,16 @@ class ScrummingBot(
         return await self.exchange.get_ohlcv(symbol, timeframe, limit=limit)
 
     async def _refresh_market_reading(self, symbol: str) -> bool:
-        """Write ``_last_summary`` from the pooled candles for ``symbol``, and
-        answer whether a summary was written.
+        """Write ``_last_summary`` and ``_last_bb`` from the pooled candles for
+        ``symbol``, and answer whether a summary was written.
 
         ``tick`` calls this above every early return, so a bot parked at
         target, firing a cartridge or answering a manual fire still holds a
         current reading for the Indicator Voting Panel to draw. The shared
         ``MarketDataPool`` slot lives one timeframe, so a tick that finds the
-        slot fresh makes no venue call. ``_last_summary`` has no reader in the
-        trading engine and ``_last_bb`` does, so this writes only the first and
-        leaves every firing decision to ``_tick_main``.
+        slot fresh makes no venue call. ``_tick_smart_cartridge_pct`` reads
+        ``_last_bb`` earlier in the tick than ``_tick_main`` writes it, so the
+        band is written here, from the same candles, before that read.
 
         ``_reading_candle_stamp`` holds the newest candle the last compute saw.
         Candles with that stamp again give the same summary, so the compute is
@@ -2029,6 +2030,12 @@ class ScrummingBot(
             return False
         if len(candles) < MIN_CANDLES_FOR_TA:
             return False
+        self._last_bb = detect_bb_proximity(
+            candles,
+            tolerance_pct=self.config.bb_tolerance_pct,
+            consolidation_threshold=CONSOLIDATION_THRESHOLD_PCT,
+            min_pattern_candles=self.config.bb_landing_strip_candles,
+        )
         stamp = float(getattr(candles[-1], "timestamp", 0) or 0)
         if (
             self._last_summary is not None
