@@ -57,6 +57,7 @@ from ..trading.container.config import (
     as_finite_float,
     bot_config_kwargs,
     make_bot_config,
+    stored_list,
 )
 from ..trading.scrumming.sizing import DRAWDOWN_STATE, priced_usd
 from ..trading.scrumming.target_ramp import RAMP_MODES
@@ -339,7 +340,9 @@ def _sim_bot_from_record(
         else (REFUSED_FIGURE if target_read is None else target_read)
     )
     pool = _extractor_figures(config, record)
-    phantom_tfs = tuple(str(one) for one in (record.get("phantom_timeframes") or []))
+    phantom_tfs = tuple(
+        str(one) for one in stored_list(record.get("phantom_timeframes"))
+    )
     interval_pct = as_finite_float(config.get("scrumming_interval_pct"))
     fee_pct = as_finite_float(config.get("trading_fee_pct"))
     tolerance_pct = as_finite_float(config.get("bb_tolerance_pct"))
