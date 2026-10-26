@@ -202,6 +202,15 @@ LOCK_COUNT_ATTRIBUTE = "lock_candle_count"
 TA_TIMEFRAME_ATTRIBUTE = "ta_timeframe"
 PARENT_TIMEFRAME_DEFAULT = "1h"
 
+REQUEST_ENABLED = "enabled"
+REQUEST_STARTED = "started"
+REQUEST_TIMEFRAMES = "timeframes"
+REQUEST_DROPPED = "dropped"
+REQUEST_LOCKED = "locked"
+REQUEST_LOCK_TIMEFRAME = "lock_timeframe"
+REQUEST_PHANTOMS = "phantoms"
+REQUEST_LOCKS = "locks"
+
 TIMEFRAME_KEY = "timeframe"
 STATE_KEY = "state"
 TARGET_KEY = "target_balance"
@@ -224,6 +233,17 @@ DEFAULT_BOT_ID = ""
 DEFAULT_LOCK_TIMEFRAME = ""
 NO_EXCHANGE_ID: Optional[str] = None
 NO_CONFIG: Optional[Any] = None
+
+#: One row per status reading: its request key, its bot attribute, and the
+#: value an absent attribute gets.
+BOT_REQUEST_ROW: tuple = (
+    (REQUEST_ENABLED, ENABLED_ATTRIBUTE, False),
+    (REQUEST_STARTED, STARTED_ATTRIBUTE, False),
+    (REQUEST_TIMEFRAMES, TIMEFRAMES_ATTRIBUTE, None),
+    (REQUEST_DROPPED, DROPPED_ATTRIBUTE, None),
+    (REQUEST_LOCKED, LOCKED_ATTRIBUTE, False),
+    (REQUEST_LOCK_TIMEFRAME, LOCK_TIMEFRAME_ATTRIBUTE, DEFAULT_LOCK_TIMEFRAME),
+)
 
 ENABLE_FIELD = "enable_phantoms"
 TIMEFRAMES_FIELD = "phantom_timeframes"
@@ -664,6 +684,56 @@ def empty_text(enabled: Any, started: Any) -> str:
     if not started:
         return EMPTY_NOT_STARTED_TEXT
     return EMPTY_NO_STATE_TEXT
+
+
+def phantom_statuses(bot: Any) -> Optional[list]:
+    """Each shadow bot's status dict, or ``None`` where the bot holds no manager.
+
+    ``None`` leaves ``view_model`` with no ``PhantomManagerSource`` and the
+    per-phantom group hidden.
+    """
+    manager = getattr(bot, PHANTOM_MANAGER_ATTRIBUTE, None)
+    if manager is None:
+        return None
+    try:
+        held = list(
+            manager.get_phantoms(getattr(bot, BOT_ID_ATTRIBUTE, DEFAULT_BOT_ID)) or []
+        )
+    except Exception:
+        return []
+    return [phantom_status(one) for one in held]
+
+
+def active_locks(bot: Any) -> list:
+    """Each unexpired cross-bot lock the coordinator reports, empty where none."""
+    coordinator = getattr(bot, COORDINATOR_ATTRIBUTE, None)
+    if coordinator is None:
+        return []
+    try:
+        reported = coordinator.get_active_locks() or []
+    except Exception:
+        return []
+    return [dict(one) for one in reported if isinstance(one, dict)]
+
+
+def published_bot(bot: Any) -> dict:
+    """Every phantom reading this tab draws, read off the running ``bot``.
+
+    ``tab_bot`` writes this into the window's answer and ``view_model`` reads
+    it back onto a ``BotSource``.
+    """
+    read: dict = {}
+    for key, attribute, absent in BOT_REQUEST_ROW:
+        held = getattr(bot, attribute, absent)
+        if isinstance(absent, bool):
+            read[key] = bool(held)
+        elif absent is None:
+            read[key] = [str(one) for one in (held or ())]
+        else:
+            read[key] = str(held or absent)
+    read[REQUEST_PHANTOMS] = phantom_statuses(bot)
+    read[REQUEST_LOCKS] = active_locks(bot)
+    return read
 
 
 class BotConfig:
@@ -1398,17 +1468,14 @@ def view_model(params: dict) -> dict:
         PANE_MODEL = PhantomBotsTabModel()
     bot = params.get("bot")
     if bot is not None:
-        given_phantoms = bot.get("phantoms")
+        given_phantoms = bot.get(REQUEST_PHANTOMS)
+        status_readings = {
+            key: bot.get(key, absent) for key, _attribute, absent in BOT_REQUEST_ROW
+        }
         PANE_MODEL.bot = BotSource(
-            exchange_id=bot.get("exchange_id", NO_EXCHANGE_ID),
-            ta_timeframe=bot.get("ta_timeframe", PARENT_TIMEFRAME_DEFAULT),
-            enabled=bot.get("enabled", False),
-            started=bot.get("started", False),
-            timeframes=bot.get("timeframes"),
-            dropped=bot.get("dropped"),
-            locked=bot.get("locked", False),
-            lock_timeframe=bot.get("lock_timeframe", DEFAULT_LOCK_TIMEFRAME),
-            bot_id=bot.get("bot_id", DEFAULT_BOT_ID),
+            exchange_id=bot.get(EXCHANGE_ID_ATTRIBUTE, NO_EXCHANGE_ID),
+            ta_timeframe=bot.get(TA_TIMEFRAME_ATTRIBUTE, PARENT_TIMEFRAME_DEFAULT),
+            bot_id=bot.get(BOT_ID_ATTRIBUTE, DEFAULT_BOT_ID),
             manager=(
                 None
                 if given_phantoms is None
@@ -1417,8 +1484,9 @@ def view_model(params: dict) -> dict:
                 )
             ),
             coordinator=CoordinatorSource(
-                bot.get("lock_candle_count", LOCK_DEFAULT), bot.get("locks")
+                bot.get(LOCK_COUNT_ATTRIBUTE, LOCK_DEFAULT), bot.get(REQUEST_LOCKS)
             ),
+            **status_readings,
         )
     steps = params.get("steps")
     if steps:

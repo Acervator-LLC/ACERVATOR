@@ -5,7 +5,6 @@ Supports multiple strategies:
 - Signal: Execute trades based on TradingView webhook alerts
 - DCA: Dollar-cost averaging on a schedule
 - Swing: TA-driven swing trading (adapted from scrumming)
-- Grid: Price grid for range-bound stocks (adapted from crypto grid)
 
 All strategies respect market hours and support paper trading.
 """
@@ -59,9 +58,6 @@ class StockBotConfig:
     ta_timeframe: str = "1D"
     swing_entry_confidence: float = 0.6  # TA confidence to enter
     swing_exit_confidence: float = 0.4  # TA confidence to exit
-    # Grid settings
-    grid_levels: int = 10
-    grid_spread_pct: float = 2.0
     # Market hours
     allow_premarket: bool = False
     allow_afterhours: bool = False
