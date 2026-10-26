@@ -123,9 +123,9 @@ is why the same view model serves the Qt tab and the renderer without a second
 description of the screen existing.
 
 Thirty-three surface modules wrote their values out a second time rather than
-reading them from the module that declares them. Three of the thirty-three now
-read that one declaration. The design system table and the theme engine import
-no Qt, so a surface that imports none can read either.
+reading them from the module that declares them. Four of them now read that one
+declaration. The design system table and the theme engine import no Qt, so a
+surface that imports none can read either.
 
 `src/gui/main_tabs/design_system_surface.py`, in the module body
 
@@ -135,9 +135,8 @@ TOKENS: dict[str, Any] = {
 }
 ```
 
-The other thirty keep their own copy. Each names a Qt source, and a surface
-reaches no Qt source, so no read of the one declaration is available to them.
-Every one of their docstrings now states what the module does instead: nothing
-compares the two copies.
+The rest keep their own copy. Each names a Qt source, and a surface reaches no
+Qt source, so no read of the one declaration is available to them. Their
+docstrings state what the module does instead: nothing compares the two copies.
 
 Back to [the manual index](../README.md).
