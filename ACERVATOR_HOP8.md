@@ -702,3 +702,8 @@ under it. Do not delete the citation, and do not recreate the file.
 The docs archetype still reports that path as a medium hallucination finding,
 because its rule does not read this heading. That gap is **#541**, open. The
 finding is expected and the citation stays.
+
+Overtaken. The rule reads this heading now, and the citation still stays. The
+docs archetype reports five dead paths on this page rather than eight, and
+neither declared path is among the five. A declared path that is on disk draws
+its own finding, so the heading cannot quiet a citation that resolves.
