@@ -20,6 +20,7 @@
       "@openzeppelin/contracts-4.7.3": "npm:@openzeppelin/contracts@4.9.6",
       "@openzeppelin/contracts-4.8.3": "npm:@openzeppelin/contracts@4.9.6"
     },
+    "source-map-js": "^1.2.2",
     "tmp": "^0.2.7",
     "ws": "^8.21.0"
   }
