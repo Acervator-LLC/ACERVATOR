@@ -8,6 +8,9 @@ other bot's ``Reservation`` on the same asset, excluding the caller's own.
 ``bot_id`` is outside the fleet it is given. ``effective_available`` and
 ``heartbeat`` run ``_prune_on_schedule`` first, so a dead bot's claim expires
 on ``HEARTBEAT_INTERVAL`` rather than waiting for a sibling to reserve.
+Every ``Reservation`` carries an ``expires_at``: ``reserve`` sets it
+``HEARTBEAT_TTL`` ahead and ``_stamp_alive`` pushes it forward each time its
+owner is seen.
 """
 
 from __future__ import annotations
@@ -74,6 +77,9 @@ class Reservation:
     reserved_at: float
     expires_at: Optional[float] = None
     bot_kind: str = "unknown"
+    #: The caller's own lifetime. None means the HEARTBEAT_TTL default,
+    #: which _stamp_alive pushes forward; a figure here is never moved.
+    ttl_seconds: Optional[float] = None
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -90,6 +96,10 @@ class Reservation:
         ``prune_expired`` applies heartbeat staleness separately.
         """
         return self.expires_at is not None and now >= self.expires_at
+
+    def renewable(self) -> bool:
+        """Report whether ``expires_at`` is the ``HEARTBEAT_TTL`` default."""
+        return self.ttl_seconds is None
 
 
 class CapitalReservationRegistry:
@@ -231,7 +241,10 @@ class CapitalReservationRegistry:
             qty:            asset units, greater than 0.
             reason:         audit text, logged only.
             bot_kind:       "scrumming" or "extractor", logged only.
-            ttl_seconds:    when set, fixes ``expires_at`` this far ahead.
+            ttl_seconds:    when set, fixes ``expires_at`` this far ahead and
+                            ``_stamp_alive`` never moves it. Left out, the
+                            claim expires ``HEARTBEAT_TTL`` after its owner
+                            was last seen.
             total_holdings: when set, caps this ``qty`` plus every existing
                             ``Reservation`` on ``asset``.
 
@@ -274,11 +287,12 @@ class CapitalReservationRegistry:
                 qty=qty,
                 reason=reason,
                 reserved_at=now,
-                expires_at=(now + ttl_seconds) if ttl_seconds else None,
+                expires_at=now + (ttl_seconds if ttl_seconds else HEARTBEAT_TTL),
                 bot_kind=bot_kind,
+                ttl_seconds=ttl_seconds,
             )
             self._reservations[token] = r
-            self._heartbeats[bot_id] = now
+            self._stamp_alive(bot_id, now)
             persisted = self._save()
             logger.log(
                 logging.INFO if persisted else logging.ERROR,
@@ -308,7 +322,7 @@ class CapitalReservationRegistry:
                     f"not {bot_id!r}. Only the owner releases a claim."
                 )
             del self._reservations[token]
-            self._heartbeats[bot_id] = time.time()
+            self._stamp_alive(bot_id, time.time())
             self._save()
             logger.info(
                 "CRR.release: %s released %s (%.10g %s)",
@@ -344,7 +358,7 @@ class CapitalReservationRegistry:
                     r.qty,
                     r.asset,
                 )
-            self._heartbeats[bot_id] = time.time()
+            self._stamp_alive(bot_id, time.time())
             self._save()
             return len(doomed)
 
@@ -390,7 +404,7 @@ class CapitalReservationRegistry:
                     )
             old_qty = r.qty
             r.qty = new_qty
-            self._heartbeats[bot_id] = time.time()
+            self._stamp_alive(bot_id, time.time())
             self._save()
             logger.info(
                 "CRR.update: %s adjusted %s on %s from %.10g to %.10g",
@@ -443,6 +457,18 @@ class CapitalReservationRegistry:
                     note,
                 )
             return dropped
+
+    def _stamp_alive(self, bot_id: str, now: float) -> None:
+        """Stamp ``bot_id`` in ``_heartbeats`` and push its renewable claims to
+        ``now`` plus ``HEARTBEAT_TTL``.
+
+        The caller holds ``_lock``, and a ``Reservation`` carrying its own
+        ``ttl_seconds`` keeps the ``expires_at`` it was reserved with.
+        """
+        self._heartbeats[bot_id] = now
+        for r in self._reservations.values():
+            if r.bot_id == bot_id and r.renewable():
+                r.expires_at = now + HEARTBEAT_TTL
 
     def _prune_on_schedule(self) -> None:
         """Run ``prune_expired`` once ``HEARTBEAT_INTERVAL`` has passed.
@@ -525,7 +551,7 @@ class CapitalReservationRegistry:
         its own claim.
         """
         with self._lock:
-            self._heartbeats[bot_id] = time.time()
+            self._stamp_alive(bot_id, time.time())
             # Not persisted here; the next _save call writes _heartbeats.
         self._prune_on_schedule()
 
@@ -533,9 +559,10 @@ class CapitalReservationRegistry:
         """Drop each ``Reservation`` past ``is_expired``, or whose owner has
         been silent longer than ``HEARTBEAT_TTL``.
 
-        Silence is ignored for ``_restart_grace`` seconds after construction,
-        and the dropped objects are returned. Stamps ``_last_prune``, which
-        is what ``_prune_on_schedule`` measures its interval from.
+        A claim reserved before ``_boot_time`` is left alone for
+        ``_restart_grace`` seconds, and the dropped objects are returned.
+        Stamps ``_last_prune``, which is what ``_prune_on_schedule`` measures
+        its interval from.
         """
         if now is None:
             now = time.time()
@@ -545,14 +572,19 @@ class CapitalReservationRegistry:
         with self._lock:
             pruned: list[Reservation] = []
             for token, r in list(self._reservations.items()):
+                # A claim read from the file carries an expires_at and a
+                # heartbeat written by the previous run; neither answers for a
+                # bot that has had no chance to pulse since _boot_time.
+                if within_grace and r.reserved_at < self._boot_time:
+                    continue
                 drop = False
                 drop_reason = ""
 
                 if r.is_expired(now):
                     drop = True
-                    drop_reason = f"explicit TTL expired at {r.expires_at}"
+                    drop_reason = f"expiry passed at {r.expires_at}"
 
-                elif not within_grace:
+                else:
                     last_hb = self._heartbeats.get(r.bot_id, r.reserved_at)
                     silence = now - last_hb
                     if silence > HEARTBEAT_TTL:
