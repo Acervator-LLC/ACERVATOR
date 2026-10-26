@@ -8695,4 +8695,61 @@ A stored settings file written before this change still loads. Sixteen stored
 rows across the four groups and the Username row each reached their own control,
 before and after, with the read-back identical.
 
+## 2026-10-25 - #665 - a stored choice outside its list says so on the control
+
+Settings outlive the lists they were chosen from. A word stored under
+`bot_visibility` that the Bot Visibility list no longer offers used to raise two
+different faults on the two builds. The Qt window raised a refusal naming the
+word. The running React window raised a missing-method fault instead, because
+the one reader both windows share asked the drop-down whether it takes typed
+text, and only the Qt drop-down answers that question.
+
+`src/gui/settings_dialog.py` — the reader asks whether the control can answer
+
+```python
+def _combo_takes_typed_text(combo: object) -> bool:
+    """Whether ``combo`` answers ``isEditable`` and reports it takes typed text.
+
+    The page-backed drop-down draws a fixed list and declares no such method,
+    so a control that cannot answer is read as taking no typed text.
+    """
+    asked = getattr(combo, "isEditable", None)
+    return bool(asked()) if callable(asked) else False
+```
+
+`src/gui/react_settings_dialog.py, in PageCombo` now answers the same question
+with False, because the page draws a fixed list. Both windows therefore take one
+route for a word the list does not hold, and the word on the control's refusal
+is the stored word.
+
+**The operator is told on the control.** A refused choice hangs a sentence on
+the drop-down itself, which both windows draw as the control's hover text. The
+sentence is declared once, in
+`src/gui/main_tabs/settings_dialog_surface.py, in refused_item_tooltip`, and
+names the stored key rather than a figure, because a list of words is no figure.
+
+```
+stored bot_visibility 'both'
+  Qt     box opens on 'orderbook'   hover text names bot_visibility
+  React  box opens on 'orderbook'   hover text names bot_visibility
+  both   LookupError: this list holds no row for both
+
+stored bot_visibility 'internal'
+  Qt     box opens on 'internal'    no hover text, no refusal
+  React  box opens on 'internal'    no hover text, no refusal
+```
+
+Save leaves the stored word alone while the box still holds what the refusal
+left in it, so the word on disk is not replaced by a choice the operator never
+made.
+
+The colour a refused number is drawn in does not reach a drop-down on the React
+window. `src/gui/web/settings_dialog.js, in controlProps` draws the hover text
+for every control and reads no style for one, so the sentence is the channel both
+windows share.
+
+A settings file written before this change still loads. Eighteen declared
+top-level fields read back with none differing, all five stored groups read back
+with their own field counts, and the out-of-list word survives on disk.
+
 Back to [the subsystem index](README.md).

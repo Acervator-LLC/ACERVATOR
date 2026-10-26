@@ -2376,6 +2376,21 @@ def refused_tooltip(key: str, carried: str = "") -> str:
     return str(carried) + REFUSED_TOOLTIP.format(key=str(key), dash=REFUSED_FIGURE_TEXT)
 
 
+#: What a drop-down adds to its tooltip when its list holds no row for the
+#: stored value. `REFUSED_TOOLTIP` names a figure and a number, which a list of
+#: words is neither.
+REFUSED_ITEM_TOOLTIP = (
+    "\n\nThe stored {key} is not one of the choices this list offers, so the "
+    "list stays on the choice it opened with. Pick a choice to store one; Save "
+    "leaves {key} as it was until you do."
+)
+
+
+def refused_item_tooltip(key: str, carried: str = "") -> str:
+    """`carried` with the sentence a refused drop-down choice adds under it."""
+    return str(carried) + REFUSED_ITEM_TOOLTIP.format(key=str(key))
+
+
 def _named(value: Any) -> str:
     return type(value).__name__
 
@@ -2859,7 +2874,12 @@ class SettingsDialogModel:
             self.values[name] = spec["range"][0]
         self.texts[name + REFUSED_MARK_SUFFIX] = REFUSED_FIGURE_TEXT
         self.styles[name + REFUSED_MARK_SUFFIX] = REFUSED_FIGURE_COLOR
-        self.tooltips[name] = refused_tooltip(key, self.tooltips.get(name, EMPTY_TEXT))
+        said = (
+            refused_item_tooltip
+            if spec["kind"] in (COMBO_TEXT, COMBO_DATA)
+            else refused_tooltip
+        )
+        self.tooltips[name] = said(key, self.tooltips.get(name, EMPTY_TEXT))
 
     def _untouched_since_refusal(self, key: str, read: Any) -> bool:
         """Whether `key`'s control still holds what the refusal left in it.

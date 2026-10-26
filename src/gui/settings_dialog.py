@@ -52,6 +52,31 @@ class _StoredWriter:
             box.setValue(int(round(read * self.scale)))
 
 
+class _ItemWriter:
+    """Puts one stored choice into a drop-down through ``show``.
+
+    ``SettingsDialog._mark_refused`` reads ``box`` off this writer to mark the
+    drop-down a refused choice left on its build row.
+    """
+
+    def __init__(self, box: object, show: Callable[[object, object], None]) -> None:
+        self.box = box
+        self.show = show
+
+    def __call__(self, value: object) -> None:
+        self.show(self.box, value)
+
+
+def _combo_takes_typed_text(combo: object) -> bool:
+    """Whether ``combo`` answers ``isEditable`` and reports it takes typed text.
+
+    The page-backed drop-down draws a fixed list and declares no such method,
+    so a control that cannot answer is read as taking no typed text.
+    """
+    asked = getattr(combo, "isEditable", None)
+    return bool(asked()) if callable(asked) else False
+
+
 try:
     from PySide6.QtWidgets import (
         QDialog,
@@ -1443,7 +1468,7 @@ if _HAS_QT:
             at = combo.findText(str(value))
             if at >= 0:
                 combo.setCurrentIndex(at)
-            elif combo.isEditable():
+            elif _combo_takes_typed_text(combo):
                 combo.setCurrentText(str(value))
             else:
                 raise LookupError(REFUSED_ITEM.format(found=value))
@@ -1491,7 +1516,7 @@ if _HAS_QT:
                 (
                     "bot_visibility",
                     self._visibility.currentText,
-                    lambda value: self._show_text(self._visibility, value),
+                    _ItemWriter(self._visibility, self._show_text),
                     "orderbook",
                 ),
                 (
@@ -1509,7 +1534,7 @@ if _HAS_QT:
                 (
                     "default_phantom_timeframe",
                     self._phantom_timeframe.currentData,
-                    lambda value: self._show_data(self._phantom_timeframe, value),
+                    _ItemWriter(self._phantom_timeframe, self._show_data),
                     PHANTOM_TIMEFRAME_DEFAULT,
                 ),
                 (
@@ -1521,7 +1546,7 @@ if _HAS_QT:
                 (
                     "theme",
                     self._theme_combo.currentData,
-                    lambda value: self._show_data(self._theme_combo, value),
+                    _ItemWriter(self._theme_combo, self._show_data),
                     THEME_DEFAULT,
                 ),
                 (
@@ -1776,12 +1801,18 @@ if _HAS_QT:
             from .main_tabs.settings_dialog_surface import (
                 REFUSED_FIGURE_COLOR,
                 REFUSED_FIGURE_TEXT,
+                refused_item_tooltip,
                 refused_tooltip,
             )
 
             box = getattr(show, "box", None) or getattr(show, "__self__", None)
             if box is None:
                 return
+            said = (
+                refused_item_tooltip
+                if callable(getattr(box, "findText", None))
+                else refused_tooltip
+            )
             if callable(getattr(box, "setSpecialValueText", None)):
                 box.setSpecialValueText(REFUSED_FIGURE_TEXT)
                 box.setValue(box.minimum())
@@ -1789,7 +1820,7 @@ if _HAS_QT:
             if callable(getattr(box, "setStyleSheet", None)):
                 box.setStyleSheet(f"color: {REFUSED_FIGURE_COLOR};")
             if callable(getattr(box, "setToolTip", None)):
-                box.setToolTip(refused_tooltip(key, box.toolTip()))
+                box.setToolTip(said(key, box.toolTip()))
 
         @staticmethod
         def _clear_refused(box: object) -> None:

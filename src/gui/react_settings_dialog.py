@@ -207,6 +207,19 @@ class _Held:
         """Take one operator edit of this control from the page."""
         self._put(value)
 
+    def toolTip(self) -> str:
+        """The words hanging off this control, as ``QWidget`` reports them."""
+        held = self._owner.store().tooltips.get(self._name)
+        return "" if held is None else str(held)
+
+    def setToolTip(self, words: Any) -> None:
+        """Hang ``words`` off this control and redraw.
+
+        ``settings_dialog.js`` draws the tooltips bag as the control's title,
+        which is where ``_mark_refused`` puts a refused value's reason.
+        """
+        self._owner.set_tooltip(self._name, "" if words is None else str(words))
+
 
 class PageLine(_Held):
     """A line of text, as ``QLineEdit`` reports it."""
@@ -311,6 +324,10 @@ class PageCombo(_Held):
     def items(self) -> list:
         """The choices the drop-down offers, in painted order."""
         return list(self._items)
+
+    def isEditable(self) -> bool:
+        """False: the page draws a fixed list and takes no typed text."""
+        return False
 
     def _at(self) -> Any:
         held = self._get()
