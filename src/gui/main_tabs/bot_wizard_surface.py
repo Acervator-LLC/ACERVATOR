@@ -1004,7 +1004,11 @@ TOOL_TIPS = {
         "ON (Conservative): if 65 %+ of last 20 candles "
         "were bullish, bot holds rather than scrumming each "
         "band touch. OFF (Lean): scrum every BB-upper touch "
-        "regardless of trend strength."
+        "regardless of trend strength. On a live bot an override "
+        "clears this hold on either of two conditions: the position "
+        "sits at least twice the Scrumming Interval away from "
+        "target, or Band Travel fires. The gate line then names "
+        "TRND as overridden and its light paints cyan."
     ),
     "gate_scrum_htf_chk": (
         "ON (Conservative): refuse scrum when a higher-TF "

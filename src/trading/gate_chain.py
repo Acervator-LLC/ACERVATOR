@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 
 OVERRIDE_APPLIED_FORMAT = "{gate} overridden by {override}: {refusal}"
 """One ``ChainResult.overrides_applied`` entry, naming the override."""
@@ -23,6 +23,10 @@ OVERRIDE_NOT_APPLIED_FORMAT = "{message} [override not applied: {overrides}]"
 
 OVERRIDES_APPLIED_KEY = "overrides_applied"
 """The gate record key every ``overrides_applied`` entry is written under."""
+
+TREND_HOLD_OVERRIDE = "trend_hold_override"
+"""The override ScrummingBot.tick applies when the delta reaches twice the
+scrumming interval or band travel fires."""
 
 
 @dataclass
@@ -101,6 +105,52 @@ class GateContext:
 
     # 0.0 reads as not-populated or exactly at mean; ZScoreExtremityGate passes.
     z_score: float = 0.0
+
+    # The collated vote confidence and the floor it is read against. Both 0.0
+    # leaves TADirectionGate on its plain refusal text.
+    eff_confidence: float = 0.0
+    ta_conf_floor: float = 0.0
+
+
+@dataclass(frozen=True)
+class EffectiveGateFlags:
+    """The five GateContext ``eff_`` values the Strategy Gate Flags produce."""
+
+    eff_is_bullish: bool
+    eff_is_bearish: bool
+    eff_trend_hold: bool
+    eff_htf_blocks_scrum: bool
+    eff_htf_blocks_fold: bool
+
+
+def effective_gate_flags(
+    settings: Any,
+    *,
+    is_bullish: bool,
+    is_bearish: bool,
+    trend_hold: bool,
+    htf_blocks_scrum: bool,
+    htf_blocks_fold: bool,
+) -> EffectiveGateFlags:
+    """Apply the five Strategy Gate Flags on ``settings`` to five raw readings.
+
+    A cleared require flag passes its direction outright; a cleared hold or
+    defer flag drops its block. ScrummingBot.tick, ata_gate_scan.gate_context,
+    back_test.tape_context and paper_run.tape_context all read this one
+    mapping, and each flag defaults to True when ``settings`` omits it.
+    """
+    require_bullish = bool(getattr(settings, "scrum_require_ta_bullish", True))
+    hold_in_uptrend = bool(getattr(settings, "scrum_hold_in_uptrend", True))
+    defer_scrum = bool(getattr(settings, "scrum_defer_to_htf", True))
+    require_bearish = bool(getattr(settings, "fold_require_ta_bearish", True))
+    defer_fold = bool(getattr(settings, "fold_defer_to_htf", True))
+    return EffectiveGateFlags(
+        eff_is_bullish=bool(is_bullish) if require_bullish else True,
+        eff_is_bearish=bool(is_bearish) if require_bearish else True,
+        eff_trend_hold=bool(trend_hold) if hold_in_uptrend else False,
+        eff_htf_blocks_scrum=bool(htf_blocks_scrum) if defer_scrum else False,
+        eff_htf_blocks_fold=bool(htf_blocks_fold) if defer_fold else False,
+    )
 
 
 @dataclass
@@ -194,21 +244,26 @@ class TADirectionGate(Gate):
         self.side = side
         self.name = f"ta_{('bullish' if side == 'scrum' else 'bearish')}"
 
+    def _refusal(self, ctx: GateContext) -> str:
+        """The refusal text, naming the floor when the direction cleared it.
+
+        ``eff_confidence`` and ``ta_conf_floor`` both 0.0 leaves the plain
+        direction text.
+        """
+        wanted = "BULLISH" if self.side == "scrum" else "BEARISH"
+        direction_ok = ctx.eff_direction_name in (wanted, "NEUTRAL")
+        if direction_ok and (ctx.eff_confidence or ctx.ta_conf_floor):
+            return (
+                f"TA-conf-below-floor(dir={ctx.eff_direction_name},"
+                f"conf={ctx.eff_confidence:.4f}<{ctx.ta_conf_floor:.4f})"
+            )
+        return f"TA-not-{wanted.lower()}(dir={ctx.eff_direction_name})"
+
     def evaluate(self, ctx: GateContext) -> GateResult:
-        if self.side == "scrum":
-            if ctx.eff_is_bullish:
-                return GateResult(passed=True)
-            return GateResult(
-                passed=False,
-                blocker_message=f"TA-not-bullish(dir={ctx.eff_direction_name})",
-            )
-        else:
-            if ctx.eff_is_bearish:
-                return GateResult(passed=True)
-            return GateResult(
-                passed=False,
-                blocker_message=f"TA-not-bearish(dir={ctx.eff_direction_name})",
-            )
+        passed = ctx.eff_is_bullish if self.side == "scrum" else ctx.eff_is_bearish
+        if passed:
+            return GateResult(passed=True)
+        return GateResult(passed=False, blocker_message=self._refusal(ctx))
 
 
 class TrendHoldGate(Gate):

@@ -1035,7 +1035,12 @@ class PaperSettingsTabMixin(SettingsTabMixin):
             "ON (Conservative): if 65 %+ of last 20 candles "
             "were bullish, bot holds rather than scrumming "
             "each band touch. OFF (Lean): scrum every "
-            "BB-upper touch regardless of trend strength."
+            "BB-upper touch regardless of trend strength. "
+            "On a live bot an override clears this hold on either "
+            "of two conditions: the position sits at least twice "
+            "the Scrumming Interval away from target, or Band "
+            "Travel fires. The gate line then names TRND as "
+            "overridden and its light paints cyan."
         )
         self._gate_scrum_uptrend.toggled.connect(
             lambda v: self._mark_changed("scrum_hold_in_uptrend", v)

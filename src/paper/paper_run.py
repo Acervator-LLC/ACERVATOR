@@ -65,7 +65,7 @@ from ..exchange.base import MarketRules
 from ..exchange.market_rules_store import recorded_rules
 from ..simulator.validation import BB_MIDLINE, bb_reading, latch
 from ..trading.container.config import BotState
-from ..trading.gate_chain import GateContext
+from ..trading.gate_chain import GateContext, effective_gate_flags
 from ..trading.otd_math import fold_rebuy_factor
 from ..trading.scrumming.sizing import (
     BELOW_POSITION_MINIMUM,
@@ -313,6 +313,14 @@ def paper_tape_context(
     above_upper = bb_pos >= upper_dt
     below_lower = bb_pos <= lower_dt
     banded = reading is not None and reading.upper > 0 and reading.lower > 0
+    effective = effective_gate_flags(
+        bot,
+        is_bullish=is_bullish,
+        is_bearish=is_bearish,
+        trend_hold=trend_hold,
+        htf_blocks_scrum=htf_blocks_scrum,
+        htf_blocks_fold=htf_blocks_fold,
+    )
     return GateContext(
         symbol=bot.symbol,
         ticker_last=last,
@@ -327,11 +335,11 @@ def paper_tape_context(
         trend_hold=trend_hold,
         trend_strength=trend_strength,
         eff_direction_name=direction_name,
-        eff_is_bullish=is_bullish if bot.scrum_require_ta_bullish else True,
-        eff_is_bearish=is_bearish if bot.fold_require_ta_bearish else True,
-        eff_trend_hold=trend_hold if bot.scrum_hold_in_uptrend else False,
-        eff_htf_blocks_scrum=htf_blocks_scrum if bot.scrum_defer_to_htf else False,
-        eff_htf_blocks_fold=htf_blocks_fold if bot.fold_defer_to_htf else False,
+        eff_is_bullish=effective.eff_is_bullish,
+        eff_is_bearish=effective.eff_is_bearish,
+        eff_trend_hold=effective.eff_trend_hold,
+        eff_htf_blocks_scrum=effective.eff_htf_blocks_scrum,
+        eff_htf_blocks_fold=effective.eff_htf_blocks_fold,
         flag_require_ta_bullish=bot.scrum_require_ta_bullish,
         flag_hold_in_uptrend=bot.scrum_hold_in_uptrend,
         flag_defer_to_htf=bot.scrum_defer_to_htf,
