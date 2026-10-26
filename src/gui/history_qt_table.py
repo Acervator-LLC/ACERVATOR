@@ -30,6 +30,11 @@ knowledge of which one it holds.
 knows its count synchronously. The React panel has to ask a browser and
 cannot answer inline; keeping the callback shape identical is what lets
 the tab stay written once.
+
+Construction takes a parent and nothing else. ``HistoryWebTable`` takes a
+theme because ``panel_html`` builds its page in one; the application
+stylesheet paints this table's chrome, so a theme here would reach no
+colour. ``history_tab`` passes neither.
 """
 
 from __future__ import annotations
@@ -293,10 +298,9 @@ if _HAS_QT:
           * row_count(callback)   -- the rows drawn, through a callback
         """
 
-        def __init__(self, parent=None, theme: str = "cyberpunk_dark") -> None:
+        def __init__(self, parent=None) -> None:
             super().__init__(parent)
             self.setAccessibleName("Qt History Table")
-            self._theme = theme
             self._last_model: dict = {}
             layout = QVBoxLayout(self)
             layout.setContentsMargins(0, 0, 0, 0)
