@@ -18,9 +18,9 @@ needs the current second takes ``now``, and the pane carries the last
 ``src.core.desktop_bridge`` registers ``view_model`` as the handler for
 the ``market_inspector_topologies.state`` method, which is how the
 Electron renderer reaches it. Every value below is written out here
-rather than read from ``src.gui.market_inspector_topologies``, so a
-value changed on one side alone is reported. Nothing here imports Qt and
-nothing here runs at import.
+rather than read from ``src.gui.market_inspector_topologies``, and
+nothing compares the two copies. Nothing here imports Qt and nothing
+here runs at import.
 """
 
 from __future__ import annotations

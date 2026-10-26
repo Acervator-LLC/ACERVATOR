@@ -10,8 +10,7 @@ The page is one HTML document with eight named holes in it. The holes
 are filled from a theme table and from the symbol the chart was built
 with. Every colour, every layout number, every button label and every
 call format is written out here rather than read from
-``src.gui.tradingview_chart``, so a value changed on one side alone is
-reported.
+``src.gui.tradingview_chart``, and nothing compares the two copies.
 
 The page carries the charting library at ``LIBRARY_ASSET``, read off
 disk from the same web directory the React panel reads. The page names

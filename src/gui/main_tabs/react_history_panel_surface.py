@@ -21,8 +21,7 @@ and in what order, and derives no value of its own.
 the ``react_history_panel.state`` method, which is how the Electron
 renderer reaches it. Every value below is written out here rather than
 read from ``src.gui.react_history_panel`` or from the chart's theme
-table, so a value changed on one side alone is reported. Nothing here
-imports Qt.
+table, and nothing compares the two copies. Nothing here imports Qt.
 """
 
 from __future__ import annotations
