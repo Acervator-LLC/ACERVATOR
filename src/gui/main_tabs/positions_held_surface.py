@@ -122,22 +122,46 @@ FOOTER_WRAP = NO_WRAP
 FOOTER_STYLE = f"color: {ds.TEXT_EMPTY_STATE}; padding: 8px; font-size: 11px;"
 FOOTER_WORD_WRAP = True
 
-COLUMNS = (
-    "Pair",
-    "State",
-    "Tier",
-    "Alt units",
-    "Entry (USD)",
-    "Current (USD)",
-    "Δ% (USD)",
-    "Corrections",
-    "Manual Fire",
+PAIR_NAME = "pair"
+STATE_NAME = "state"
+ALT_UNITS_NAME = "alt_units"
+ENTRY_NAME = "entry_usd"
+CURRENT_NAME = "current_usd"
+DELTA_NAME = "delta_pct"
+FIRE_NAME = "fire"
+
+#: One entry per column that holds a cell, in the order the table draws them.
+CELL_COLUMNS = (
+    (PAIR_NAME, "Pair"),
+    (STATE_NAME, "State"),
+    (ALT_UNITS_NAME, "Alt units"),
+    (ENTRY_NAME, "Entry (USD)"),
+    (CURRENT_NAME, "Current (USD)"),
+    (DELTA_NAME, "Δ% (USD)"),
 )
-COLUMN_COUNT = 9
-CELL_COLUMN_COUNT = 8
-STATE_COLUMN = 1
-DELTA_COLUMN = 6
-FIRE_COLUMN = 8
+FIRE_HEADING = "Manual Fire"
+
+COLUMNS = tuple(heading for _, heading in CELL_COLUMNS) + (FIRE_HEADING,)
+COLUMN_NAMES = tuple(name for name, _ in CELL_COLUMNS) + (FIRE_NAME,)
+CELL_COLUMN_COUNT = len(CELL_COLUMNS)
+COLUMN_COUNT = len(COLUMNS)
+
+
+def column_at(name: str) -> int:
+    """The table column that draws the reading called ``name``.
+
+    Raises KeyError for a name no column holds, so a caller cannot address
+    a column that is not there.
+    """
+    try:
+        return COLUMN_NAMES.index(name)
+    except ValueError:
+        raise KeyError(f"no Positions Held column is named {name!r}") from None
+
+
+STATE_COLUMN = column_at(STATE_NAME)
+DELTA_COLUMN = column_at(DELTA_NAME)
+FIRE_COLUMN = column_at(FIRE_NAME)
 
 HEADER_RESIZE_MODE = "ResizeToContents"
 VERTICAL_HEADER_VISIBLE = False
@@ -160,22 +184,30 @@ UNREADABLE_COLOR = ds.WARNING
 NO_CELL_COLOR: Optional[str] = None
 
 UNREADABLE_TEXT = "—"
+#: The readings a position can fail to supply, against the column each fills.
 UNREADABLE_COLUMNS = {
-    "tier": 2,
-    "alt_units": 3,
-    "entry_usd": 4,
-    "current_usd": 5,
-    "delta_pct": 6,
-    "corrections": 7,
+    ALT_UNITS_NAME: column_at(ALT_UNITS_NAME),
+    ENTRY_NAME: column_at(ENTRY_NAME),
+    CURRENT_NAME: column_at(CURRENT_NAME),
+    DELTA_NAME: column_at(DELTA_NAME),
 }
 
 PAIR_FORMAT = "{pair}"
-TIER_FORMAT = "{tier}"
+STATE_FORMAT = "{state}"
 ALT_UNITS_FORMAT = "{alt_units:.6f}"
 ENTRY_FORMAT = "${entry_usd:,.4f}"
 CURRENT_FORMAT = "${current_usd:,.4f}"
 DELTA_FORMAT = "{delta_pct:+.2f}%"
-CORRECTIONS_FORMAT = "{corrections}"
+
+#: The format each cell column draws its reading through, keyed by column name.
+CELL_FORMATS = {
+    PAIR_NAME: PAIR_FORMAT,
+    STATE_NAME: STATE_FORMAT,
+    ALT_UNITS_NAME: ALT_UNITS_FORMAT,
+    ENTRY_NAME: ENTRY_FORMAT,
+    CURRENT_NAME: CURRENT_FORMAT,
+    DELTA_NAME: DELTA_FORMAT,
+}
 
 FIRE_BUTTON_TEXT = "Fire"
 FIRE_BUTTON_HEIGHT_PX = 24
@@ -239,22 +271,18 @@ DEFAULT_CHUNK_USD = 0.0
 DEFAULT_CHUNK_BASE = 0.0
 DEFAULT_PAIR = ""
 DEFAULT_STATE = ""
-DEFAULT_TIER = 1
 DEFAULT_ALT_UNITS = 0.0
 DEFAULT_ENTRY_USD = 0.0
 DEFAULT_CURRENT_USD = 0.0
 DEFAULT_DELTA_PCT = 0.0
-DEFAULT_CORRECTIONS = 0
 DEFAULT_OPENED_AT = ""
 
 PAIR_KEY = "pair"
 STATE_KEY = "state"
-TIER_KEY = "tier"
 ALT_UNITS_KEY = "alt_units"
 ENTRY_KEY = "entry_usd"
 CURRENT_KEY = "current_usd_approx"
 DELTA_KEY = "delta_pct_usd_approx"
-CORRECTIONS_KEY = "corrections_fired"
 OPENED_AT_KEY = "opened_at"
 
 OUTCOME_DECLINED = "declined"
@@ -440,17 +468,15 @@ def read_amount(raw: Any, fallback: Any) -> list:
 
 
 _NUMBER_PLAN = (
-    ("tier", TIER_KEY, DEFAULT_TIER, True),
-    ("alt_units", ALT_UNITS_KEY, DEFAULT_ALT_UNITS, False),
-    ("entry_usd", ENTRY_KEY, DEFAULT_ENTRY_USD, False),
-    ("current_usd", CURRENT_KEY, DEFAULT_CURRENT_USD, False),
-    ("delta_pct", DELTA_KEY, DEFAULT_DELTA_PCT, False),
-    ("corrections", CORRECTIONS_KEY, DEFAULT_CORRECTIONS, True),
+    (ALT_UNITS_NAME, ALT_UNITS_KEY, DEFAULT_ALT_UNITS, False),
+    (ENTRY_NAME, ENTRY_KEY, DEFAULT_ENTRY_USD, False),
+    (CURRENT_NAME, CURRENT_KEY, DEFAULT_CURRENT_USD, False),
+    (DELTA_NAME, DELTA_KEY, DEFAULT_DELTA_PCT, False),
 )
 
 
 def position_values(position: dict) -> dict:
-    """The nine readings one open position hands the table row.
+    """The seven readings one open position hands the table row.
 
     A number the position does not carry, and one that cannot be read,
     are both named in ``unreadable`` so no row prints an invented value.
@@ -480,21 +506,18 @@ def position_identity(position: dict) -> list:
     return [read["pair"], read["opened_at"]]
 
 
+def cell_text(name: str, read: dict) -> str:
+    """The text the column called ``name`` draws from one set of readings."""
+    value = read[name].upper() if name == STATE_NAME else read[name]
+    return CELL_FORMATS[name].format(**{name: value})
+
+
 def row_cells(position: dict) -> list:
-    """The eight cell texts one open position fills a table row with."""
+    """The cell texts one open position fills a table row with."""
     read = position_values(position)
-    cells = [
-        PAIR_FORMAT.format(pair=read["pair"]),
-        read["state"].upper(),
-        TIER_FORMAT.format(tier=read["tier"]),
-        ALT_UNITS_FORMAT.format(alt_units=read["alt_units"]),
-        ENTRY_FORMAT.format(entry_usd=read["entry_usd"]),
-        CURRENT_FORMAT.format(current_usd=read["current_usd"]),
-        DELTA_FORMAT.format(delta_pct=read["delta_pct"]),
-        CORRECTIONS_FORMAT.format(corrections=read["corrections"]),
-    ]
+    cells = [cell_text(name, read) for name, _ in CELL_COLUMNS]
     for name in read["unreadable"]:
-        cells[UNREADABLE_COLUMNS[name]] = UNREADABLE_TEXT
+        cells[column_at(name)] = UNREADABLE_TEXT
     return cells
 
 
@@ -502,10 +525,10 @@ def row_colors(position: dict) -> list:
     """The colour each cell of one row is drawn in, or none where default."""
     read = position_values(position)
     colors: list = [NO_CELL_COLOR] * CELL_COLUMN_COUNT
-    colors[STATE_COLUMN] = state_color(read["state"])
-    colors[DELTA_COLUMN] = delta_color(read["delta_pct"])
+    colors[column_at(STATE_NAME)] = state_color(read[STATE_NAME])
+    colors[column_at(DELTA_NAME)] = delta_color(read[DELTA_NAME])
     for name in read["unreadable"]:
-        colors[UNREADABLE_COLUMNS[name]] = UNREADABLE_COLOR
+        colors[column_at(name)] = UNREADABLE_COLOR
     return colors
 
 
@@ -1042,12 +1065,11 @@ def build_view_model(
             "chunk_free_value": CHUNK_FREE_VALUE_FORMAT,
             "extracted_value": EXTRACTED_VALUE_FORMAT,
             "pair": PAIR_FORMAT,
-            "tier": TIER_FORMAT,
+            "state": STATE_FORMAT,
             "alt_units": ALT_UNITS_FORMAT,
             "entry": ENTRY_FORMAT,
             "current": CURRENT_FORMAT,
             "delta": DELTA_FORMAT,
-            "corrections": CORRECTIONS_FORMAT,
             "confirm_text": CONFIRM_TEXT_FORMAT,
             "schedule_failed_text": SCHEDULE_FAILED_TEXT_FORMAT,
             "dispatched_text": DISPATCHED_TEXT_FORMAT,
@@ -1056,12 +1078,10 @@ def build_view_model(
         "keys": {
             "pair": PAIR_KEY,
             "state": STATE_KEY,
-            "tier": TIER_KEY,
             "alt_units": ALT_UNITS_KEY,
             "entry": ENTRY_KEY,
             "current": CURRENT_KEY,
             "delta": DELTA_KEY,
-            "corrections": CORRECTIONS_KEY,
             "opened_at": OPENED_AT_KEY,
         },
         "attributes": {
@@ -1076,12 +1096,10 @@ def build_view_model(
             "chunk_base": DEFAULT_CHUNK_BASE,
             "pair": DEFAULT_PAIR,
             "state": DEFAULT_STATE,
-            "tier": DEFAULT_TIER,
             "alt_units": DEFAULT_ALT_UNITS,
             "entry_usd": DEFAULT_ENTRY_USD,
             "current_usd": DEFAULT_CURRENT_USD,
             "delta_pct": DEFAULT_DELTA_PCT,
-            "corrections": DEFAULT_CORRECTIONS,
             "opened_at": DEFAULT_OPENED_AT,
         },
         "actions": dict(ACTIONS),
