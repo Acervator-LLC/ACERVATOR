@@ -1,8 +1,4 @@
-"""Judge every comment a branch adds against the repository's comment rule.
-
-`merge_base` resolves the commit the branch left, and `changed_files` and
-`added_lines` diff against that point, never against the `BASE_REF` tip.
-"""
+"""Judge every comment a branch adds against the repository's comment rule."""
 
 from __future__ import annotations
 
