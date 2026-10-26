@@ -1052,7 +1052,7 @@ class BotNodeModel:
         if new_trades > old_trades:
             self.trade_pulses.append(PULSE_START)
             self.particles.extend(
-                spawn_particles(self.width_px / 2, self.height_px / 2, draws)
+                spawn_particles(self.width_px / 2, BODY_BOX_HEIGHT_PX / 2, draws)
             )
         old_price = self.bot_data.get(STATS_KEY, {}).get(PRICE_KEY, ZERO_STAT)
         new_price = data.get(STATS_KEY, {}).get(PRICE_KEY, ZERO_STAT)
