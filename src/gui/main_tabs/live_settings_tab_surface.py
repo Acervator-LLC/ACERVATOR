@@ -32,9 +32,9 @@ at import time that reads a clock, opens a file or reaches a network.
 
 from __future__ import annotations
 
-import math
 from typing import Any, Optional
 
+from ...trading.container.config import DESPAWN_MAX_DAYS
 from .. import design_system as ds
 from .indicator_panel_surface import ABSENT_CELL_TEXT
 
@@ -240,7 +240,6 @@ CONSUMED_ATTRIBUTE = "_fold_cycle_cap_consumed"
 TRANCHES_ATTRIBUTE = "_fold_tranches"
 RESET_BREAKER_METHOD = "reset_circuit_breaker"
 
-DESPAWN_MAX_DAYS = 3_650_000
 FLOAT_SAFE_INT = 2**1023
 DESPAWN_FIELD = "tranche_despawn_days"
 DESPAWN_OFF = 0
@@ -308,29 +307,21 @@ TOOLTIPS = {
 def as_finite_float(value: Any) -> Optional[float]:
     """`value` as a float when it is exactly int or float and finite.
 
-    None for everything else. Exact type, so a stored `True` is refused
-    rather than read as the number one; finite, so `nan` and the two
-    infinities are refused as well. A huge int is refused rather than
-    converted, because `float()` of one raises.
+    Reads `as_finite_float` in `src.trading.container.config`.
     """
-    if type(value) is float:
-        return value if math.isfinite(value) else None
-    if type(value) is int and -FLOAT_SAFE_INT <= value <= FLOAT_SAFE_INT:
-        return float(value)
-    return None
+    from ...trading.container.config import as_finite_float as admitted
+
+    return admitted(value)
 
 
 def despawn_days(config: Any) -> int:
     """The tranche despawn threshold in whole days, 0 meaning off.
 
-    The one rule both the sweep and this control read, so a stored value
-    cannot mean one thing to each. A non-numeric, non-finite or negative
-    setting is off.
+    Reads `despawn_threshold_days` in `src.trading.container.config`.
     """
-    days = as_finite_float(getattr(config, DESPAWN_FIELD, DESPAWN_OFF))
-    if days is None:
-        return DESPAWN_OFF
-    return min(DESPAWN_MAX_DAYS, max(DESPAWN_OFF, int(days)))
+    from ...trading.container.config import despawn_threshold_days as armed
+
+    return armed(config)
 
 
 def style_for(color: Optional[str]) -> str:

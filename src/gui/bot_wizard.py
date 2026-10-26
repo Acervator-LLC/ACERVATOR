@@ -44,7 +44,7 @@ except ImportError:
 from src.core.asset_logos import LogoCache
 from src.gui.qt_safe_events import safe_process_events
 from src.exchange.lazy_singleton import ThrottledFault
-from src.trading.container.config import as_finite_float
+from src.trading.container.config import BotConfig, as_finite_float
 
 #: The volume a pair row sorts and labels by when `as_finite_float` refuses it.
 VOLUME_REFUSED_USD: float = 0.0
@@ -1179,7 +1179,7 @@ if _HAS_QT:
             self._hedge_amount.setRange(0.0, 999999999.0)
             self._hedge_amount.setDecimals(2)
             self._hedge_amount.setPrefix("$ ")
-            self._hedge_amount.setValue(200.0)
+            self._hedge_amount.setValue(BotConfig.hedge_balance)
             self._hedge_amount.setToolTip(
                 "USD reserve amount for hedge rebalancing (separate "
                 "from Target Balance)."
