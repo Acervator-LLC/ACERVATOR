@@ -680,6 +680,19 @@ Two add context rather than deny, and both are machine-local, not in the tree:
 `session_stop_backstop.py` writes a forensic record of whatever is uncommitted
 at a session boundary.
 
+`prompt_router.py` also points a turn at the rows of the OCIR catalogue that
+bear on it. `prompt_router.py, in _catalogue_index` reads the row lists off the
+catalogue's own index table, so a row added to `dev_harness/skills/ocir/SKILL.md`
+reaches a turn with no edit to the hook. Each of the eleven index sections has a
+routing entry, and all 153 rows the catalogue holds were delivered when the hook
+was driven over one prompt per section.
+
+Each entry still carries a row list of its own, used only when the catalogue
+cannot be read. `prompt_router.py, in _build_catalogue_gaps` reports an index
+section no entry routes, and reports how many entries carry a shorter list than
+the index. That report prints on the first turn and every tenth turn, the same
+interval the long form of the law uses.
+
 The count reads the directory, not a list. Eight names end in `.py` and each of
 those runs. Six saved copies and one cache directory sit beside them, and the
 listing marks every entry the count leaves out.

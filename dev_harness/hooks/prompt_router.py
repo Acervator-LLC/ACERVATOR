@@ -343,7 +343,146 @@ _CATALOGUE_RULES = (
             r"rule I|directive)\b", re.I),
         "C25, C82, C83, C86, C88, C89",
     ),
+    (
+        "Order, identity and position",
+        re.compile(
+            r"\b(order|ordering|sort|sorted|arrangement|sequence|position|"
+            r"offset|identity|swapped?)\b", re.I),
+        "",
+    ),
+    (
+        "Objects, threads and windows that outlive their owner",
+        re.compile(
+            r"\b(thread|outlive[sd]?|freed|collected|lifetime|owner|"
+            r"orphan\w*|leak\w*|destroyed)\b", re.I),
+        "",
+    ),
+    (
+        "Shells, files and other runs",
+        re.compile(
+            r"\b(shell|heredoc|exit code|stdout|stderr|redirect\w*|"
+            r"tempfile|scratchpad|worktree|concurrent|subprocess)\b", re.I),
+        "",
+    ),
+    (
+        "Comparing values and types",
+        re.compile(
+            r"\b(compare[sd]?|comparison|equal|equality|isinstance|float|"
+            r"decimal|rounding|nan|tolerance|coerce[sd]?)\b", re.I),
+        "",
+    ),
+    (
+        "Names, markers and registries",
+        re.compile(
+            r"\b(renamed?|rename|alias\w*|marker|registry|manifest|noqa|"
+            r"nosec|suppress\w*|allowlist|accessible name)\b", re.I),
+        "",
+    ),
 )
+
+
+#: The catalogue the row lists are read from. ``_skill_exists`` looks in the
+#: same two places this walks first.
+_CATALOGUE_SLUG = "ocir"
+
+_ROW_ID = re.compile(r"\bC(\d+)\b")
+_ROW_RANGE = re.compile(r"\bC(\d+)\s*-\s*C?(\d+)\b")
+
+_INDEX_CACHE: dict[str, str] = {}
+
+
+def _row_ids(text: str) -> frozenset[int]:
+    """Every row id one list names, with each ``C1-C6`` range expanded."""
+    held: set[int] = set()
+    for low, high in _ROW_RANGE.findall(text):
+        held.update(range(int(low), int(high) + 1))
+    held.update(int(one) for one in _ROW_ID.findall(_ROW_RANGE.sub(" ", text)))
+    return frozenset(held)
+
+
+def _catalogue_path() -> Path | None:
+    """The catalogue file, the loaded copy first, then the repository's own."""
+    rel = Path(".claude") / "skills" / _CATALOGUE_SLUG / "SKILL.md"
+    for cand in (
+        Path.home() / rel,
+        REPO / rel,
+        REPO / "dev_harness" / "skills" / _CATALOGUE_SLUG / "SKILL.md",
+    ):
+        if cand.is_file():
+            return cand
+    return None
+
+
+def _catalogue_index() -> dict[str, str]:
+    """Each index section mapped to the row list it carries in the catalogue.
+
+    An unreadable catalogue answers an empty mapping, which leaves each entry's
+    own ``rows`` to print.
+    """
+    if _INDEX_CACHE:
+        return dict(_INDEX_CACHE)
+    target = _catalogue_path()
+    if target is None:
+        return {}
+    try:
+        text = target.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return {}
+    found: dict[str, str] = {}
+    inside = False
+    for line in text.splitlines():
+        if line.startswith("| section |"):
+            inside = True
+            continue
+        if not inside:
+            continue
+        if not line.startswith("|"):
+            break
+        if set(line) <= set("|- "):
+            continue
+        cells = [one.strip() for one in line.strip().strip("|").split("|")]
+        if len(cells) < 3:
+            continue
+        title = cells[0].strip("*").strip()
+        if title and cells[2]:
+            found[title] = cells[2]
+    _INDEX_CACHE.update(found)
+    return dict(found)
+
+
+def _catalogue_rows(title: str, held: str) -> str:
+    """The row list ``title`` prints: the catalogue's index, else ``held``."""
+    return _catalogue_index().get(title, "") or held
+
+
+def _build_catalogue_gaps() -> str:
+    """Report an index section no entry routes, and an entry's short own copy.
+
+    Answers an empty string while ``_catalogue_index`` and ``_CATALOGUE_RULES``
+    agree on every section.
+    """
+    index = _catalogue_index()
+    if not index:
+        return ""
+    routed = {title for title, _pattern, _rows in _CATALOGUE_RULES}
+    unrouted = [title for title in index if title not in routed]
+    behind = 0
+    for title, _pattern, rows in _CATALOGUE_RULES:
+        listed = index.get(title, "")
+        if rows and listed and _row_ids(listed) - _row_ids(rows):
+            behind += 1
+    if not unrouted and not behind:
+        return ""
+    lines = ["[ocir] the catalogue index and this hook's entries disagree."]
+    for title in unrouted:
+        lines.append(
+            f"  - no entry in `_CATALOGUE_RULES` routes **{title}**, so its rows "
+            f"reach no turn. Add one.")
+    if behind:
+        lines.append(
+            f"  - {behind} of {len(_CATALOGUE_RULES)} entries carry a shorter "
+            f"row list of their own than the index. The index is what printed.")
+    return "\n".join(lines)
 
 
 #: Bans the environment's own guidance contradicts. Each row names the
@@ -376,11 +515,17 @@ def _build_environment_conflicts() -> str:
 
 
 def _build_catalogue_section(title: str, rows: str) -> str:
-    """Name one OCIR section and its rows, without quoting them."""
+    """Name one OCIR section and its rows, without quoting them.
+
+    ``_catalogue_rows`` supplies the list from the catalogue's index, and
+    ``rows`` prints only while that catalogue is unreadable.
+    """
     return "\n".join([
         f"[ocir] this turn touches **{title}**.",
-        f"  - Rows to read before trusting a result: {rows}",
-        "  - Reach them through the index in `.claude/skills/ocir/SKILL.md`.",
+        f"  - Rows to read before trusting a result: "
+        f"{_catalogue_rows(title, rows)}",
+        f"  - Reach them through the index in "
+        f"`.claude/skills/{_CATALOGUE_SLUG}/SKILL.md`.",
     ])
 
 
@@ -434,7 +579,8 @@ def main() -> int:
         return 0  # no prompt is not a turn
 
     # The law rides every turn. Domain routing stays quiet when neutral.
-    print(_build_law(_bump_turn(_session_id(raw))))
+    turn = _bump_turn(_session_id(raw))
+    print(_build_law(turn))
 
     # Rides every turn: the guidance it contradicts also rides every turn.
     sections: list[str] = [_build_environment_conflicts()]
@@ -447,6 +593,10 @@ def main() -> int:
     for title, pattern, rows in _CATALOGUE_RULES:
         if pattern.search(prompt):
             sections.append(_build_catalogue_section(title, rows))
+    if turn == 1 or turn % _LAW_FULL_EVERY == 0:
+        gaps = _build_catalogue_gaps()
+        if gaps:
+            sections.append(gaps)
     if not sections:
         return 0
 
