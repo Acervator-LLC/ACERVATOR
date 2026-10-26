@@ -74,6 +74,69 @@ def _normalize_vale_severity(check: str, level: str) -> str:
     )
 
 
+# The labels `api_logger._SENSITIVE_LABEL` masks in the application's own logs.
+_CREDENTIAL_LABEL = (
+    r"api[_-]?key|access[_-]?key|secret[_-]?key|private[_-]?key"
+    r"|secret|password|passphrase|token|signature|authorization|credential"
+)
+
+# `api_logger._redact` prints 20 characters of a value it leaves unmasked.
+_CREDENTIAL_VALUE_CHARS = 20
+
+# The characters a base64, hex or URL-safe credential value is written in.
+_CREDENTIAL_CHARS = r"A-Za-z0-9+/=._\-"
+
+# One (shape, pattern) row per credential form, most specific first. Every
+# pattern names the matched secret `value`.
+_CREDENTIAL_SHAPES: tuple[tuple[str, re.Pattern[str]], ...] = (
+    (
+        "a private key block",
+        re.compile(
+            r"-----BEGIN (?:[A-Z]+ )*PRIVATE KEY-----"
+            rf"[\s\\n]+(?P<value>[A-Za-z0-9+/=]{{{_CREDENTIAL_VALUE_CHARS},}})"
+        ),
+    ),
+    (
+        "a bearer token",
+        re.compile(
+            rf"(?i)\bbearer\s+(?P<value>[{_CREDENTIAL_CHARS}]"
+            rf"{{{_CREDENTIAL_VALUE_CHARS},}})"
+        ),
+    ),
+    (
+        "a Coinbase key name",
+        re.compile(
+            r"organizations/(?P<value>[0-9a-fA-F][0-9a-fA-F-]{19,})"
+            r"/apiKeys/[0-9a-fA-F-]{20,}"
+        ),
+    ),
+    (
+        "a hex private key",
+        re.compile(r"(?i)(?<![0-9a-z])0x(?P<value>[0-9a-f]{64})(?![0-9a-z])"),
+    ),
+    (
+        "a connection string carrying a password",
+        re.compile(r"\b[a-z][a-z0-9+.\-]*://[^\s/:@]+:(?P<value>[^\s/@]+)@"),
+    ),
+    (
+        "a labelled secret",
+        re.compile(
+            rf"(?i)(?<![A-Za-z0-9])(?:[a-z0-9]+[_-])?(?:{_CREDENTIAL_LABEL})"
+            rf"(?![A-Za-z])\s*[=:]\s*[\"']?(?P<value>"
+            rf"(?=[{_CREDENTIAL_CHARS}]*[0-9])(?=[{_CREDENTIAL_CHARS}]*[A-Za-z])"
+            rf"[{_CREDENTIAL_CHARS}]{{{_CREDENTIAL_VALUE_CHARS},}})"
+        ),
+    ),
+)
+
+# A stand-in rather than a secret, including `api_logger.REDACTED` and the
+# `0xYOUR_PRIVATE_KEY` of `contracts/deploy.py`.
+_CREDENTIAL_PLACEHOLDER = re.compile(
+    r"(?i)your|example|sample|dummy|fake|placeholder|redact|changeme"
+    r"|insert|paste|todo|xxxx|^[.*x_\-]+$"
+)
+
+
 # Fenced blocks (``` / ~~~) and inline code spans (`...`).
 _FENCE_RE = re.compile(r"^\s*(```|~~~)")
 _INLINE_CODE_RE = re.compile(r"`[^`\n]*`")
@@ -136,6 +199,7 @@ class DocsArchetype:
         "story",
         "updates",
         "cover",
+        "credentials",
     )
     calibration_name = "docs"
 
@@ -176,6 +240,7 @@ class DocsArchetype:
                 ("story", partial(self._run_story, files)),
                 ("updates", partial(self._run_updates, files)),
                 ("cover", partial(self._run_cover, files)),
+                ("credentials", partial(self._run_credentials, files)),
             ]
         if pdfs:
             runners.append(("contents", partial(self._run_contents, pdfs)))
@@ -240,6 +305,13 @@ class DocsArchetype:
             "the cover page, if load_manual stops naming a cover, or if a page "
             "whose folder holds no README.md and 04-manual-parts.md is a cover; "
             "in each case the rule reports nothing and its silence is not a pass."
+        )
+        parts.append(
+            "(h) DOC014 is wrong if a credential is written in a shape no row of "
+            "_CREDENTIAL_SHAPES names, if its value is shorter than "
+            f"{_CREDENTIAL_VALUE_CHARS} characters, or if it carries a word "
+            "_CREDENTIAL_PLACEHOLDER matches; in each case the rule reports "
+            "nothing and its silence is not a pass."
         )
         return " ".join(parts)
 
@@ -395,6 +467,58 @@ class DocsArchetype:
                     ),
                 )
             )
+        return findings
+
+    def _run_credentials(self, files: list[Path]) -> tuple[list[Finding], str]:
+        """Report every credential written into one of `files`, one per secret.
+
+        Each page is read whole, fenced blocks included, because a pasted
+        credential usually sits in one. `_credential_findings` matches
+        `_CREDENTIAL_SHAPES` and drops a `_CREDENTIAL_PLACEHOLDER` value.
+        """
+        findings: list[Finding] = []
+        for f in files:
+            findings.extend(
+                self._credential_findings(
+                    f, f.read_text(encoding="utf-8", errors="replace")
+                )
+            )
+        return findings, "ok"
+
+    def _credential_findings(self, page: Path, text: str) -> list[Finding]:
+        """Return one DOC014 per credential in `text`, naming its shape only.
+
+        A match overlapping one already reported is skipped, so a secret two
+        shapes both name yields one finding. The secret never reaches the
+        message, which this repository being public requires.
+        """
+        claimed: list[tuple[int, int]] = []
+        findings: list[Finding] = []
+        for shape, pattern in _CREDENTIAL_SHAPES:
+            for match in pattern.finditer(text):
+                if _CREDENTIAL_PLACEHOLDER.search(match.group("value")):
+                    continue
+                if any(
+                    match.start() < end and start < match.end()
+                    for start, end in claimed
+                ):
+                    continue
+                claimed.append((match.start(), match.end()))
+                findings.append(
+                    Finding(
+                        tool="credentials",
+                        severity="high",
+                        file=str(page),
+                        line=text.count("\n", 0, match.start()) + 1,
+                        rule_id="DOC014",
+                        message=(
+                            f"This page carries {shape}. A documentation page in "
+                            f"a public repository must not hold a credential: "
+                            f"delete it from the page and rotate the secret at "
+                            f"the venue."
+                        ),
+                    )
+                )
         return findings
 
     def _run_updates(self, files: list[Path]) -> tuple[list[Finding], str]:
