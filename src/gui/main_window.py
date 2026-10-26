@@ -4837,7 +4837,13 @@ if _HAS_QT:
 
         def _switch_theme(self, name: str, accent: object = None) -> None:
             from .react_history_panel import repaint_pages
-            from .theme_engine import ThemeManager, stored_accent
+            from .theme_engine import (
+                THEMES,
+                ThemeManager,
+                accent_refusal,
+                stored_accent,
+                stored_theme,
+            )
 
             tm = ThemeManager()
             taken = stored_accent(accent)
@@ -4847,6 +4853,9 @@ if _HAS_QT:
                     f"painting the {name} accent.",
                     "warning",
                 )
+            refusal = accent_refusal(THEMES[stored_theme(name)], taken)
+            if refusal:
+                self._status_log.log(refusal, "warning")
             app = self.parent()
             if app is None:
                 from PySide6.QtWidgets import QApplication

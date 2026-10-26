@@ -20,7 +20,6 @@ class ChartsTabMixin:
     # Supplied by MainWindow at runtime; annotation only, so no attribute
     # is created here.
     _main_tabs: Any
-    _stored_accent: Any
 
     def _build_charts_tab(self) -> None:
         """Build the Charts tab and add it to the main tab widget."""
@@ -34,9 +33,7 @@ class ChartsTabMixin:
 
             built = TradeChartsTab()
         self._charts_tab = built
-        from ..theme_engine import THEMES, accented, applied_theme
+        from ..theme_engine import applied_tokens
 
-        self._charts_tab.set_theme(
-            accented(THEMES[applied_theme()], self._stored_accent())
-        )
+        self._charts_tab.set_theme(applied_tokens())
         self._main_tabs.addTab(self._charts_tab, CHARTS_TAB)

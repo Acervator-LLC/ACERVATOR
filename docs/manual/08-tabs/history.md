@@ -408,6 +408,24 @@ SYNC_QUEUE_CAP: int = 8
 React inside the Chromium PySide6 ships, and sits where the Qt table used to.
 One History tab, one renderer, one set of rows.
 
+The Qt table takes no theme. The React table takes one because it builds its page
+in that theme, and the Qt table's chrome comes from the application stylesheet
+instead, so a theme handed to it reached no colour. The tab passes neither.
+
+`src/gui/history_qt_table.py` — `HistoryQtTable`, what construction takes
+
+```python
+        def __init__(self, parent=None) -> None:
+            super().__init__(parent)
+            self.setAccessibleName("Qt History Table")
+            self._last_model: dict = {}
+```
+
+Driven with one row and two columns, 26 values read back off the real table under
+Cyberpunk Dark and then Neon Light: every colour and every string was identical and
+the only value that moved was the theme name the table had stored. The React table,
+driven the same two ways, moves all six of its page colours.
+
 ## The Simulator front-load
 
 Refreshing History hands the Simulator the year of live trades it needs before
