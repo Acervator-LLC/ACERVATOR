@@ -135,6 +135,82 @@ _GATE_ORDER_SCRUM: tuple[str, ...] = (
 )
 ```
 
+#### What the ripe-harvest override replaces at the midline
+
+The entry above states this:
+
+> Nothing sets that lock today, and on a ripe row the ripe-harvest override
+> force-passes the gate that reads it.
+
+**The current reading.** On a ripe row the override force-passes nothing at the
+midline, because the gate has already passed. A row is ripe only when the band
+position reaches the upper detect threshold, and that threshold never sits below
+the midline. A ripe row is therefore above the midline by construction, so the
+band half of the scrum flag is already true. The phantom lock is the only other
+way that flag can read false, and no method in the platform sets it.
+
+`src/trading/scrumming/circuit_breakers.py` — `_bb_detect_thresholds`, the
+reason a ripe row is above the midline
+
+```python
+detect_frac = max(0.0, min(1.0, detect_pct / 100.0))
+half = detect_frac * 0.5
+return (0.5 - half, 0.5 + half)
+```
+
+**Driven.** The shipped scrum chain ran over a swept window of hand-built
+candles. The last candle's close moved from 95.00 to 105.00 in steps of 0.0005,
+which is 20,001 rows, and the band position read from -0.3089 to 1.3165 off the
+real band reading. Both the midline and the upper detect threshold sit inside
+that span, and one step moves the band position by about 0.00008, so no change
+of verdict can fall between two rows.
+
+```
+20,001 rows, the phantom lock clear
+
+the gate passed on its own merit          10,106
+the gate refused and the refusal stood     9,895
+the gate was passed regardless                 0
+rows reaching a real verdict              20,001
+
+6,832 rows were ripe, and the gate passed on its own on every one of them
+```
+
+**The same override does replace a refusal, on a different gate.** With the
+voting panel not bullish, the override passed the bullish-vote gate on exactly
+the 6,832 ripe rows, and its refusal stood on the other 13,169. The override
+acts, and the midline gate is not the gate it acts on.
+
+```
+20,001 rows, the phantom lock clear, the voting panel not bullish
+
+ta_bullish passed regardless     6,832
+ta_bullish refusal stood        13,169
+midline passed regardless             0
+```
+
+**What a recorded lock does.** The Simulator can recover a lock from a stored
+record. Driven with the lock recovered, the midline gate was passed regardless
+on the 6,832 ripe rows and its refusal stood on the other 13,169, and the record
+named the override every time. That is the only state in which the override
+reaches the midline gate, and nothing in the running program produces it.
+
+```
+midline_scrum overridden by ripe_harvest_override: scrum_ok=False(bb_pos=1.23)
+scrum_ok=False(bb_pos=-0.22) [override not applied: ripe_harvest_override]
+```
+
+**What is still open, and it is his.** The open decision on the midline rule is
+whether the band should hold a ripe scrum at all. It is not a decision about the
+higher timeframe. The reading above moves the ground under it: the band does not
+hold a ripe scrum today because a ripe row is already above the band midline,
+not because an override lifts the band. Two settings carry that behaviour and
+both are his, the BB Midline Gate tick box and the BB Detect threshold, and both
+are described in [Part 6, the Trading tab](06-trading-tab.md).
+
+Which gate each override covers is on the gate table in
+[Part 7, Indicators](07-indicators.md).
+
 ## 2 - The Phantom Bot
 
 While the Harvest-Fold method housed with the Scrumming Bot addresses several persistent and nagging questions around any given investment position (Should I buy more? Should I sell some? When? How much?), it does have the weakness of operating on a single timeframe. The Phantom Bot is another feature intended to optimize trade execution position. In this specific case, it allows a single Scrumming Bot to be inhibited by a higher timeframe signal with the intention of capturing alignments or disagreements so that trades are not being executed prematurely. The design intention here is that, for example, a 5m TF bot can be inhibited by a 15m, 30m or 1hr signal while maintaining a volatility watch on its primary TF. The intention is to build out this feature so that it obviates or reduces the need for multi-screen monitoring of individual assets.
