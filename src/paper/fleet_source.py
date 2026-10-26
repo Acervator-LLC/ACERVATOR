@@ -46,6 +46,7 @@ from ..trading.container.config import (
     bot_config_kwargs,
     make_bot_config,
     pushed_target_usd,
+    stored_list,
 )
 from ..trading.scrumming.sizing import DRAWDOWN_STATE, priced_usd
 from ..trading.scrumming.target_ramp import RAMP_MODES
@@ -366,7 +367,9 @@ def paper_bot_from_record(
         else (REFUSED_FIGURE if target_read is None else target_read)
     )
     pool = _extractor_figures(config, record)
-    phantom_tfs = tuple(str(one) for one in (record.get("phantom_timeframes") or []))
+    phantom_tfs = tuple(
+        str(one) for one in stored_list(record.get("phantom_timeframes"))
+    )
     interval_pct = as_finite_float(config.get("scrumming_interval_pct"))
     read_rate_min = as_finite_float(config.get("scrum_read_rate_min"))
     fee_pct = as_finite_float(config.get("trading_fee_pct"))

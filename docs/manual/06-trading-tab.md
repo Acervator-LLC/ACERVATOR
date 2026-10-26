@@ -6287,6 +6287,54 @@ keeps the base-unit figures that file holds, because a restore carries them. Eve
 new round is still sized at the real rate; the pool total is the part that stays
 stale.
 
+#### The three phantom values a restored bot takes
+
+**Functional.** Three phantom values are not settings the engine declares: the
+enable flag, the timeframe list and the lock count. One declaration names all
+three, and both paths read it. The wizard path reads it when a bot is created, and
+the restore path reads it when a saved bot comes back, so neither path names a key
+of its own.
+
+`src/trading/container/config.py` — `PHANTOM_ARGUMENTS`, the one declaration
+
+```python
+PHANTOM_ARGUMENTS: tuple = (
+    PhantomArgument("enable_phantoms", False, _restored_phantom_flag),
+    PhantomArgument("phantom_timeframes", (), _restored_phantom_timeframes),
+    PhantomArgument("lock_candle_count", None, _restored_lock_count),
+)
+```
+
+A record naming none of the three leaves the engine's own figures in place: the
+flag reads on, the timeframe list is the length above the bot's own chart, and the
+lock count reads two. A saved lock count that is not a number keeps the count of
+two and the bot still loads, with one log line naming the figure it refused.
+
+#### What a restored watch list holds
+
+**Functional.** A saved watch list comes back as the pairs it holds. A record whose
+watch list holds a single pair as one word now restores as that one pair. The same
+reading serves the phantom timeframe list on all three data sources, so a stored
+timeframe of one word restores as that one length.
+
+`src/trading/container/config.py` — `stored_list`, the one reading
+
+```python
+def stored_list(value: Any) -> list:
+    if isinstance(value, str):
+        return [value] if value else []
+    if isinstance(value, (list, tuple)):
+        return list(value)
+    return []
+```
+
+| a saved record holds | the restored bot holds |
+|---|---|
+| one pair written as a word | that one pair |
+| a list of pairs | the same list |
+| an empty value | no pairs |
+| no key at all | no pairs |
+
 #### What the watch list holds
 
 **Functional.** The bot ranks every alt that trades against its base by the last

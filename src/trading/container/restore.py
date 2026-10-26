@@ -10,6 +10,7 @@ from .config import (
     BotState,
     bot_config_kwargs,
     make_bot_config,
+    phantom_restore_kwargs,
 )
 
 logger = logging.getLogger("acervator.bot")
@@ -253,49 +254,15 @@ class StateRestoreMixin:
                 elif mode == BotMode.SCRUMMING:
                     from ...trading.scrumming_bot import ScrummingBot
 
-                    # settings.DEFAULT_ENABLE_PHANTOMS also opens the wizard box
-                    # and ScrummingBot.__init__, so a state file without the
-                    # flag keeps prior behaviour.
-                    from ...core.settings import DEFAULT_ENABLE_PHANTOMS
-
-                    _restored_phantoms_enabled = bot_data.get(
-                        "phantoms_enabled", DEFAULT_ENABLE_PHANTOMS
-                    )
-                    # Absent leaves phantom_timeframes None, so
-                    # default_phantom_timeframes picks the one above the parent.
-                    _restored_phantom_tfs = [
-                        str(one) for one in (bot_data.get("phantom_timeframes") or [])
-                    ]
-                    if not _restored_phantom_tfs:
-                        # Records saved before the key took the plural spelling.
-                        _legacy_tf = bot_data.get("phantom_timeframe")
-                        if _legacy_tf:
-                            _restored_phantom_tfs = [str(_legacy_tf)]
+                    # phantom_restore_kwargs reads PHANTOM_ARGUMENTS, the one
+                    # declaration the wizard path reads.
+                    _phantom_kwargs = phantom_restore_kwargs(bot_data, bid)
                     bot = ScrummingBot(
                         config,
                         _PlaceholderExchangeForRestore(cfg["exchange_id"]),
-                        enable_phantoms=bool(_restored_phantoms_enabled),
-                        phantom_timeframes=_restored_phantom_tfs or None,
                         ta_weights=self._ta_weights,
+                        **_phantom_kwargs,
                     )
-                    _restored_lock_candles = bot_data.get("lock_candle_count")
-                    if _restored_lock_candles is not None and bot._coordinator:
-                        # A figure that will not parse keeps the coordinator's
-                        # own count; it must not cost the bot its place in the
-                        # fleet, because no lock reads the figure.
-                        try:
-                            bot._coordinator.lock_candle_count = max(
-                                1, int(_restored_lock_candles)
-                            )
-                        except (TypeError, ValueError):
-                            logger.warning(
-                                "Bot %s saved lock_candle_count %r is not a "
-                                "number. The coordinator keeps its own count "
-                                "of %s and the bot is still loaded.",
-                                bid[:8],
-                                _restored_lock_candles,
-                                bot._coordinator.lock_candle_count,
-                            )
                     logger.info(
                         "P0g-DIAG | bot=%s saved_phantoms_enabled=%s "
                         "constructed_with_enable_phantoms=%s "
@@ -303,10 +270,10 @@ class StateRestoreMixin:
                         "saved_phantom_timeframes=%s "
                         "bot._phantom_timeframes=%s",
                         bid[:8],
-                        _restored_phantoms_enabled,
-                        bool(_restored_phantoms_enabled),
+                        _phantom_kwargs["enable_phantoms"],
+                        _phantom_kwargs["enable_phantoms"],
                         bot._phantoms_enabled,
-                        _restored_phantom_tfs,
+                        _phantom_kwargs["phantom_timeframes"] or [],
                         bot._phantom_timeframes,
                     )
                 else:
