@@ -9475,3 +9475,80 @@ stand as written, and these are the readings that replaced them.
 | "`_fold_pct = max(0, min(100, int(getattr(self.config, \"scrum_fold_pct\", 100))))`" under Where the Scrum Fold Ratio is read | `_fold_pct = fold_ratio_pct(self.config)`, the one reader, admitting 1 to 100 |
 | "The clamp's lower bound is zero and both controls start at one, so a record carrying a zero empties the sale's whole fold queue and retires the cash instead." | The clamp admits only a figure a box offers. A record carrying a zero reads the declared 100 and the sale queues its whole proceeds |
 | "Raising the clamp to match the controls would change what such a bot rebuys on its next sale." | It did, and only for a record below one. Every ratio from 1 to 100 rebuys exactly as before |
+
+## 2026-10-26 - #665 - the despawn tooltip is declared once
+
+The Tranche Despawn Timer box carries the longest words on the Bot Settings page.
+Live, Paper and the Simulator each spelled those words out, and the Electron row list
+held a fourth copy. One entry answers for all four now.
+
+`src/gui/live_settings/settings_tab.py, in _create_settings_tab` — the read the three
+Qt tabs share
+
+```python
+from ..main_tabs.live_settings_tab_surface import DESPAWN_FIELD, TOOLTIPS
+
+self._tranche_despawn_days.setToolTip(TOOLTIPS[DESPAWN_FIELD])
+```
+
+Each box was built for real and asked what words it carries. All four report the same
+length, and so does the Scrum Fold Ratio row beside it.
+
+```
+surface     the despawn words it reports   the Scrum Fold Ratio row
+Live        1,086 characters               183 characters
+Paper       1,086 characters               183 characters
+Simulator   1,086 characters               183 characters
+Electron    1,086 characters               183 characters
+```
+
+Moving the one declaration to wording nothing uses moved all four together, to 1,095
+characters each. The same move before this change reached the Electron row alone and
+the three Qt boxes kept the old words. The file is byte identical after the move was
+put back. The neighbouring row read 183 characters in every one of those readings,
+which is the figure that shows a reading happened at all.
+
+### Where the earlier despawn timer entry now reads differently
+
+Three statements in "The Tranche Despawn Timer" above describe the control. They stand
+as written, and these are the readings that replaced them.
+
+| written above | what it reads now |
+| --- | --- |
+| "The timer is the one row of the Hedge Rebalance group that a new bot cannot be given" | The box is built into the Advanced Scrumming group. The Hedge Rebalance group is the next group down and holds no despawn row. A new bot still cannot be given the timer |
+| "neither wizard build carries it" | Four wizard builds exist and none carries the row. Each of the fifteen wizard files names the field no times, against 7, 5, 7 and 7 for the neighbouring ratio field, so the zero reads the tree |
+| "the one control, 0 to 365 days" | Four screens build that box: the Live, Paper and Simulator settings tabs and the Electron row list. The span is unchanged |
+
+## 2026-10-26 - #665 - the grid conversion method is gone
+
+The engine held one method that turned remembered trades into buy and sell pairs for
+the retired mode. Nothing called it, and no page of this manual named it.
+
+`src/trading/scrumming_bot.py, in memorize_to_grid` — removed
+
+```
+                            call sites   definitions   occurrences
+memorize_to_grid, before             0             1             1
+memorize_to_grid, after              0             0             0
+_main_lots_invariant_ok              1             1             2
+a name never declared                0             0             0
+```
+
+The count walks the parsed tree of all 624 tracked Python files. A method a few lines
+below it in the same class reads one caller, and a name that was never declared reads
+the same figures as the removed one, so the zero is a reading rather than a search
+that matched nothing. The engine was then imported for real: the class no longer
+carries the name and three neighbouring methods are still there.
+
+**What the record it read is used for now.** Nothing reads it. One entry joins the
+remembered-trade list for each filled sell and each filled buy, and this method was
+the only thing that had ever read that list.
+
+```
+the record   src/trading/scrumming/execution.py, class MemorisedTrade
+the writers  src/trading/scrumming/execution.py, in _execute_sell
+             src/trading/scrumming/execution.py, in _execute_buy
+the readers  none
+```
+
+Both writers sit inside the paths that place an order, so they are named and left.

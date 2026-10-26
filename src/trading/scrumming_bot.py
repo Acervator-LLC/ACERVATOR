@@ -5083,48 +5083,6 @@ class ScrummingBot(
             )
         return spent
 
-    def memorize_to_grid(self) -> list[dict]:
-        """Convert memorised scrumming trades into grid-style buy/sell pairs."""
-        if not self._memorised_trades:
-            return []
-
-        levels = []
-        buys = [t for t in self._memorised_trades if t.side == "buy"]
-        sells = [t for t in self._memorised_trades if t.side == "sell"]
-
-        used_sells = set()
-        for buy in buys:
-            best_sell = None
-            best_dist = float("inf")
-            for i, sell in enumerate(sells):
-                if i in used_sells:
-                    continue
-                if sell.price > buy.price:
-                    dist = sell.price - buy.price
-                    if dist < best_dist:
-                        best_dist = dist
-                        best_sell = (i, sell)
-            if best_sell:
-                idx, sell = best_sell
-                used_sells.add(idx)
-                levels.append(
-                    {
-                        "buy_price": buy.price,
-                        "sell_price": sell.price,
-                        "position_size": buy.amount * buy.price,
-                        "is_extended": False,
-                        "organic": True,
-                    }
-                )
-
-        logger.info(
-            "Bot %s memorised %d trades → %d grid levels",
-            self.bot_id,
-            len(self._memorised_trades),
-            len(levels),
-        )
-        return levels
-
     def _main_lots_invariant_ok(self, tol: float = 1e-6) -> bool:
         """True iff sum(lot['units']) == _current_holdings within tolerance."""
         lots_sum = sum(l["units"] for l in self._main_lots)

@@ -252,6 +252,8 @@ FLOAT_SAFE_INT = 2**1023
 DESPAWN_FIELD = "tranche_despawn_days"
 DESPAWN_OFF = 0
 
+#: The row tooltips. The Live, Paper and Simulator settings tabs read
+#: ``TOOLTIPS[DESPAWN_FIELD]`` from here rather than spelling it again.
 TOOLTIPS = {
     "aggressive": "When ON, every engine-initiated buy/sell executes as an Immediate-Or-Cancel limit order priced through the spread — i.e., pays the taker fee for immediate fill. When OFF, the bot may use passive maker orders where appropriate. Manual fire is unaffected by this flag.",
     "stack_mode": "When ON, a SCRUM fires as N Stack Tranches at ascending price levels instead of a single sell. First tranche at the Minimum Opposing Trade Distance (opposing hysteresis level); successive tranches spaced by Split Distance per the Spacing model. See the Stack Tranches tab for live tranche state (added Sub-phase 2E). Visibility gates book placement: orderbook = resting limits; internal = tracked off-books, market-fire on threshold cross.",
