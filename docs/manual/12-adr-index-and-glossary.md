@@ -85,6 +85,21 @@ tranche. [08-tabs/bot-swarm.md](08-tabs/bot-swarm.md) describes each in full.
   of it loads from `bot_state.json` through `StateManager`, which is the only
   source.
 
+OVERTAKEN, and the Phantom balance entry above is kept as written. The module
+holds no view of holdings and no selling rule. It holds one read-only observer
+per timeframe. Each observer holds its own voting engine, runs it on its own
+candle length, keeps the summary, and builds no order and holds no position. The
+coordinator
+weights those summaries by timeframe rank and answers the parent bot with them.
+A bot's hold on a quantity of an asset is the Capital claim entry above, in a
+different module.
+
+`src/trading/phantom_balance.py` — the module's own first line
+
+```python
+"""``PhantomBot`` read-only TA observers, one per timeframe.
+```
+
 The classes behind the wire, the phantom balance and the fleet load:
 
 ```python
