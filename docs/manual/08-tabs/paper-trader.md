@@ -20,6 +20,9 @@ STATE_TEXT = "This tab is not built."
 ISSUE_TEXT = f"Issue #{ISSUE} carries the build-out."
 ```
 
+The module `paper_trader_tab_surface` is gone, and the empty state above went
+with it. No module on disk holds `BUILT` or `STATE_TEXT` for this tab.
+
 Two frontends draw that one view model. `EmptyTabsMixin` in
 `src/gui/main_tabs/empty_tabs.py` builds the Qt tab, and
 `src/gui/web/paper_trader_tab.js` registers a panel with the Electron shell's
@@ -107,6 +110,11 @@ DECLARED_FIELDS = (
 )
 ```
 
+The module `paper_trader_tab_surface` is gone, and no module on disk holds
+`DECLARED_FIELDS` for this tab.
+`src/gui/paper/paper_trading_tab_surface.py, in view_model` answers the tab
+today.
+
 The left pane holds the Privacy Mode button, the market selector, the two button
 rows and the bot list. The bot list uses the Trading tab's own columns. The right
 pane holds the Indicator Voting Panel, computed from the live window. An empty
@@ -130,6 +138,10 @@ def indicator_payload(
     return ivp.build_payload(model)
 ```
 
+The module `paper_trader_tab_surface` is gone, and no module on disk holds
+`indicator_payload` for this tab.
+`src/gui/paper/paper_trading_tab_surface.py, in ivp_feed` reads the panel today.
+
 ## The two presses
 
 Import Live Fleet reads the stored bot record and lists what it finds. Start
@@ -149,6 +161,10 @@ Paper Run and ends it, leaving the balances and the trades on screen.
     ),
 }
 ```
+
+The module `paper_trader_tab_surface` is gone, and no module on disk holds
+`DATA_POOL_ROW`. `src/gui/paper/paper_trading_tab_surface.py, in run_buttons`
+carries the row's two faces today.
 
 ## Downstream only
 
@@ -299,6 +315,9 @@ hosts cannot report different money.
 "text": LEDGER_SEPARATOR.join(f"{one['label']} {one['text']}" for one in cells),
 ```
 
+The module `paper_trader_tab_surface` is gone, and no module on disk holds
+`LEDGER_SEPARATOR`.
+
 ## The Paper Trader log
 
 Every paper action is written to one file. Each line carries two halves: the
@@ -406,6 +425,9 @@ STATE_TEXT = "This tab is not built."
 ISSUE_TEXT = f"Issue #{ISSUE} carries the build-out."
 ```
 
+The module `paper_trader_tab_surface` is gone, and the empty state above went
+with it.
+
 The Qt tab and the `src/gui/web/paper_trader_tab.js` panel both draw that one
 view model, so neither can drift from the other.
 
@@ -442,6 +464,11 @@ HEADING = "Paper"
 ISSUE = 19
 BUILT = True
 ```
+
+The module `paper_trader_tab_surface` is gone.
+`src/gui/paper/paper_trading_tab_surface.py, in METHOD` answers
+`paper_trading.tab` today, and that file holds `HEADING` and `ISSUE`. No module
+on disk holds `BUILT` for this tab.
 
 The data path is the venue's public market feed, and it goes one way. The reader
 names the six things it answers, and every other name raises. An order, a
@@ -3231,5 +3258,107 @@ handed to them rather than holding a fixed answer.
 | Simulator | off and 9 | off | 9 |
 
 The three hosts therefore no longer need comparing.
+
+## 2026-10-25 - #937 - the Paper page draws the Asset column's mark
+
+The Paper Trader draws its Scrumming Bots table twice. The window draws one, and
+the page inside the window's browser draws the other. Both now draw the first
+column the same way. Where the logo library has put a file on disk for that
+asset, the cell draws that image at 32 pixels and holds no text. Where none is
+kept, the cell draws the asset's ticker, so the row still names what the bot
+accumulates. Where the asset database knows that asset's own organisation, the
+address rides on the cell and a press opens it.
+
+`src/gui/web/paper_bot_status_table.js` — `AssetLogo`
+
+```javascript
+logoProps[PART_ATTR] = LOGO_PART;
+logoProps[LOGO_PATH_ATTR] = text(found[LOGO_PATH]);
+logoProps[LOGO_SIZE_ATTR] = text(found[LOGO_SIZE]);
+```
+
+### Three invented bots, read off the drawn page
+
+One asset has a kept file. One has none and is named by the asset database. One
+is named nowhere. Each reads differently from the other two.
+
+```
+a file is kept             no text, one 32-pixel image, no address
+no file, the base is known the ticker, no image, the address on the cell
+the base is known nowhere  the ticker, no image, no address
+row height                 38 pixels, the same on all three pages
+```
+
+### The page's own report of the payload
+
+Each page checks the payload it was handed and lists what is missing. The three
+pages name the mark's four cell fields, so a payload that stops carrying one is
+reported rather than drawn as a blank square.
+
+`src/gui/web/paper_bot_status_table.js` — the audited cell fields
+
+```javascript
+  var CELL_FIELDS = [
+    TEXT,
+    COLOR,
+    TOOLTIP,
+    ALIGNMENT,
+    ALIGNMENT_VALUE,
+    LOGO_PATH,
+    LOGO_IMAGE,
+    LOGO_SIZE,
+    LINK_URL,
+    CHART_URL,
+    UNDERLINE
+  ];
+```
+
+Driven with every outward connection refused, the reading made no connection
+attempt and the page made no request. A control attempt afterwards was counted
+and refused, so the counter was able to report one.
+
+### The sentence above that this entry completes
+
+It is quoted whole, and the sentence under it is true today.
+
+Quoted whole:
+
+> "The Paper Trader's Scrumming Bots table is a subclass of the window's own bot
+> list, so its first column is Asset. It draws the target asset's own mark, and the
+> asset's ticker where no mark is kept."
+
+True today: that holds for the window's table and for the page, which draws the
+same mark from the same payload. Neither surface fetches anything while a row
+draws.
+
+## 2026-10-25 - #665 - the paper record carries the wizard's lock figure
+
+The paper wizard collected the Candles-to-lock figure and the record it saved
+held no key for it. The bot built from that record therefore had no lock holder
+at all, and the Phantom Bots tab fell back to the declared 2 whatever the
+operator typed.
+
+`src/paper/fleet_source.py, in wizard_record` now writes the figure beside the
+two phantom keys it already wrote, clamped at 1, which is the clamp the live
+bot's own constructor applies.
+
+```python
+    lock_candles = collected.get("lock_candle_count") if scrumming else None
+    if isinstance(lock_candles, (int, float)) and not isinstance(lock_candles, bool):
+        record["lock_candle_count"] = max(1, int(lock_candles))
+```
+
+`src/paper/paper_bot_view.py, in PaperBotView` reads that key to build the bot's
+lock holder, and the Candles-to-lock box on the Phantom Bots tab reads the
+holder.
+
+```
+wizard 7     record holds the key     tab box 7
+wizard 2     record holds the key     tab box 2
+no key       record holds no key      tab box 2
+```
+
+A paper record written before this change holds no such key, loads, and leaves
+the tab box on the declared 2.
 
 Back to [the subsystem index](README.md).

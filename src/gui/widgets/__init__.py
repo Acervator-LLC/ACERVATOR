@@ -1,27 +1,15 @@
 """
 # Copyright (c) 2025 Anthony L. Brown (Ekthelius the Accumulator). All rights reserved.
-widgets.py — shared themed widgets for src/gui/
-===============================================
+
+The shared themed widgets of src/gui/.
 
 Holds `StatCard`, the label-above-value card the stock window and the
-analytics tab render, and `ColumnarTableWidget`, the column setup the
-three bot tables share. Each caller passes a frozen preset built from
-`design_system` tokens, so one class carries every skin and no widget
-repeats a hex literal.
+analytics tab render, and `ColumnarTableWidget`, the column setup the bot
+tables share. Each caller passes a frozen `CardStyle` or `ColumnSpec` built
+from `design_system` tokens, so one class carries every skin.
 
 The frame stylesheet is keyed on the runtime class name, so a Qt type
 selector written against a subclass still matches its instances.
-
-`main_window.StatCard` is a third card of this shape and does NOT
-subclass this one: it adds methods that reach inherited Qt attributes,
-and the scaffolding rule resolves a base class only within one module,
-so a cross-module base costs 7 S003 findings on that file.
-
-The cost is specific to a subclass sharing its base's name. S003 skips
-a class whose base it cannot resolve, and resolves an aliased base back
-to the real name, which then matches the same-named local class. The
-tables below subclass `ColumnarTableWidget` under their own names and
-draw no findings.
 """
 
 from __future__ import annotations

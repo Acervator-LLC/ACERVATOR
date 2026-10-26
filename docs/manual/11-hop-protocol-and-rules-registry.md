@@ -199,6 +199,51 @@ src/core/log_paths.py                       the commit that added it
 Version one's R-numbers were never live and must not be cited as though they
 were.
 
+### What SADP was, and what happened to it
+
+The directory version one named belongs to SADP. The name is written out in
+full on the manual's own legal page.
+
+> Produced using the SADP (Structured Assistant Development Protocol) discipline
+> framework designed by Ekthelius and deployed within Claude Code as a
+> Skills-based and python-driven harness.
+
+Seven lines on this page name that directory, and not one of them says what it
+is. It held version one's rule registry, its rule specifications, its episodic
+memory and its edit log.
+
+No commit in this repository ever added it. The query in the table above returns
+nothing for it. All that ever existed here was a set of references pointing at
+it, and one commit removed them.
+
+```
+76879e44, 2026-08-22, issue #68, "strip the dead SADP references"
+
+    pyproject.toml    the coverage source, the omit list, the vulture paths
+    README.md         four sections, the launcher line, the battery instructions
+    CONTRIBUTING.md   the pull-request step that ran a file that is not there
+```
+
+The repository front page records the retirement in one sentence.
+
+> An earlier governance harness, SADP, was retired.
+
+What replaced it is version two, below: the harness in this repository, the
+skills, and the hooks. Nothing in the tree reads a version-one R-number.
+
+One live path reads like the retired one and is not it. The session-stop hook
+writes a record of whatever is uncommitted at a session boundary into a
+directory named `.sadp` at the repository root, and the ignore list calls that
+directory regenerable.
+
+```
+dev_harness/hooks/session_stop_backstop.py, in main    writes the record
+.gitignore                                            names .sadp regenerable
+```
+
+The two names share four letters. The retired directory is in no commit and
+never was. The one the hook writes is created at every session boundary.
+
 ### The Simulator-module sentences, overtaken
 
 True today: the live file behind the second row is
@@ -313,6 +358,19 @@ dev_harness/harness/rules/
     slop.py
 ```
 
+The first module also reads a module name a page writes bare, with no folder in
+front of it and no file extension after it. A page names the module a block came
+from, and that name is reported when no file of that name is on disk. The check
+reads one shape and leaves the name alone wherever else it appears.
+
+```
+dev_harness/harness/rules/hallucination.py, in _find_absent_module_headers
+
+read      a code span opening a line, then a dash, then a description
+present   a .py or .js file of that name, or a package of that name
+silent    a name inside a sentence, inside a fenced block, or mid-sentence
+```
+
 The fixtures directory holds the calibration bodies — a good body and a bad body
 per archetype. The pair is the control on the gate, and a run of the archetypes
 that skips the pair proves nothing about the archetypes.
@@ -320,6 +378,46 @@ that skips the pair proves nothing about the archetypes.
 ```
 harness_fixtures/<archetype>/known_good.<ext>       exits 0
 harness_fixtures/<archetype>/known_bad.<ext>        exits 1
+```
+
+### The harness holds six archetypes and eight rule modules
+
+Three counts above are overtaken. Each sentence is quoted whole below, and the
+true sentence follows it.
+
+> The harness directory holds twelve modules and the shared report contract.
+
+Overtaken. Its top level holds sixteen Python modules, the shared report
+contract among them, and a calibration folder beside them.
+
+> Five archetypes, one per domain:
+
+Overtaken. There are six. The sixth is the truth archetype, and its domain is a
+report or a claim: it resolves the checkable claims in a text against the tree.
+
+> Four rule modules run inside the archetypes rather than alone.
+
+Overtaken. Eight run there, beside the package file. The four the sentence names
+are all still present and still carry what it says they carry.
+
+```
+dev_harness/harness/
+    coding_archetype.py      Python, JavaScript, shell and settings source
+    docs_archetype.py        markdown
+    gui_archetype.py         PySide6 widget source
+    ta_archetype.py          indicator source
+    truth_archetype.py       a report or a claim
+    watchdog_archetype.py    the out-of-process crash watchdog
+
+dev_harness/harness/rules/
+    cell_text_fit.py         a cell's drawn text against its column's room
+    delegated_canon.py       a canon run handed to a spawned agent
+    hallucination.py         dead path, dead subsystem, absent import, bad citation
+    numeric_guard.py         an open numeric type guard
+    restore_set.py           a restore that stores a choice it never tests
+    scaffolding.py           a placeholder or a stub shipped as finished work
+    slop.py                  duplicate handling, oversized functions and files
+    story.py                 the Storyteller subtype of the documentation archetype
 ```
 
 ### The skills, outside the repository
@@ -477,6 +575,98 @@ Overtaken. A reader who searches this repository for a hook finds its source, an
 `dev_harness/hooks/REGISTRATIONS.md` records the event each one runs at. The
 skills are tracked the same way, under `dev_harness/skills/`, one directory per
 skill.
+
+### What each hook refuses or reports
+
+Three more sentences above are overtaken, and the listing under them names eight
+of twenty-eight. Each sentence is quoted whole below, and the true sentence
+follows it.
+
+> They are the blocking layer, and six of them deny a call outright rather than
+> warn about it.
+
+Overtaken. Twenty-six of the twenty-eight refuse a call. Twenty-four refuse by
+exiting with code 2, and two refuse by printing a deny decision.
+
+> Six saved copies and one cache directory sit beside them, and the listing marks
+> every entry the count leaves out.
+
+Overtaken. The tracked directory holds twenty-nine files and no saved copy. The
+twenty-ninth is the registration record, which is markdown, so the hook count
+counts the twenty-eight Python files. The machine profile still carries six
+saved copies and a cache directory beside its own set.
+
+> Two add context rather than deny, and both are machine-local, not in the tree:
+
+Overtaken. Those two still only report. Both are in the tree with the rest, and
+every other file in the directory refuses something.
+
+The hook count, read against the registration record:
+
+```
+29  tracked files in the hooks directory
+28  of them end in the Python extension
+ 1  REGISTRATIONS.md, the record of the event each hook runs at
+22  named in the hooks block of the machine settings file, so an event calls them
+ 6  on disk, in no block, called by no event
+```
+
+The twenty-two an event calls, and what each one refuses or reports:
+
+```
+archetype_gate.py              --pre refuses a write that adds a high or critical finding
+                               --post reports the archetype's verdict as context
+verify_release_gate.py         refuses a write to either version file when the
+                               release-ready record is absent or over an hour old
+block_unanchored_docstring.py  refuses a docstring that argues instead of describing
+block_heredoc.py               refuses a shell command carrying a heredoc
+block_heavy_run.py             refuses a test run over the memory ceiling, a run while
+                               another is resident, and an unbounded worker count
+block_custom_test_run.py       refuses a run of the source-shape parity tests, and a
+                               run wide enough to include them
+block_table_search.py          refuses a search for a fact the conversion table states
+block_new_test.py              refuses the creation of a new test file
+check_directive_drift.py       refuses a brief that contradicts a pinned directive
+block_off_item.py              refuses a dispatch that does not name the locked item
+block_missing_skills.py        refuses a brief that omits a skill the work requires
+block_uncanonized_workflow.py  refuses a commissioning brief that skips a workflow step
+block_unreachable_done.py      refuses a brief whose proof cannot observe what it builds
+block_narrowed_bar.py          refuses a brief whose acceptance bar drops a term the
+                               directive carries
+block_subsystem_anchor.py      refuses a general-scope brief whose subject is one
+                               subsystem
+block_alt_grounding.py         refuses a brief grounded in anything but the issues, the
+                               manual and the skills
+block_detour.py                refuses a new tool file, and a brief that inserts a
+                               reading step
+block_coined_instrument.py     refuses making an instrument this project never imported
+block_unanchored_claim.py      refuses a reply that predicts a result it has not measured
+block_long_reply.py            refuses a reply longer than the report format, while an
+                               item is locked
+prompt_router.py               reports the archetype a prompt's task needs, and the
+                               skills to load; refuses nothing
+session_stop_backstop.py       reports what is uncommitted at a session boundary;
+                               refuses nothing
+```
+
+The six no event calls, and what each one would refuse:
+
+```
+block_banned_words.py                 the vocabulary the operator banned, in a reply
+                                      and in a brief
+block_deflection.py                   a reply handing a technical decision back to him
+block_delegated_canon.py              a workflow script spawning an agent to run a
+                                      canon command
+block_conversion_table_grounding.py   a brief grounding a unit to the closed conversion
+                                      table
+block_stand_in_without_source.py      a brief whose stand-in names nothing the real
+                                      source serves, and a proof ending at an empty state
+block_screen_point_input.py           a script posting input at a screen point, or
+                                      reading the window under one
+```
+
+Each of the six needs an entry in the settings file before it fires, and the
+registration record carries the entry each one wants.
 
 ### Where each layer resolves
 

@@ -1236,16 +1236,16 @@ any page under `docs/manual/` the table does not name.
 **[Subsystem Tabs](docs/manual/08-tabs.md)**
 
 - [Main Window](docs/manual/08-tabs.md#main-window)
-- [Simulator Tab (Hot Mess; Complete Rebuild In Progress)](docs/manual/08-tabs.md#simulator-tab-hot-mess-complete-rebuild-in-progress)
-- [Paper Trader Tab (To Be Built)](docs/manual/08-tabs.md#paper-trader-tab-to-be-built)
-- [Proof of Accumulation (Anonymized Trading Tournaments Via Blockchain)](docs/manual/08-tabs.md#proof-of-accumulation-anonymized-trading-tournaments-via-blockchain)
+- [Simulator Tab (Hot Mess; Complete Rebuild In Progress)](docs/manual/08-tabs/simulator.md#simulator-tab)
+- [Paper Trader Tab (To Be Built)](docs/manual/08-tabs/paper-trader.md#paper-trader-tab)
+- [Proof of Accumulation (Anonymized Trading Tournaments Via Blockchain)](docs/manual/08-tabs/proof-of-accumulation.md#proof-of-accumulation)
 - [Market Inspector Tab](docs/manual/08-tabs.md#market-inspector-tab)
-- [Bot Swarm Tab](docs/manual/08-tabs.md#bot-swarm-tab)
-- [Asset Charts](docs/manual/08-tabs.md#asset-charts)
-- [History Tab](docs/manual/08-tabs.md#history-tab)
-- [Console](docs/manual/08-tabs.md#console)
-- [System Status Tab (To Be Built)](docs/manual/08-tabs.md#system-status-tab-to-be-built)
-- [Settings](docs/manual/08-tabs.md#settings)
+- [Bot Swarm Tab](docs/manual/08-tabs/bot-swarm.md#bot-swarm-tab)
+- [Charts](docs/manual/08-tabs.md#charts)
+- [History Tab](docs/manual/08-tabs/history.md#history-tab)
+- [Console](docs/manual/08-tabs/console.md#console)
+- [System Status Tab (To Be Built)](docs/manual/08-tabs/system-status.md#system-status-tab)
+- [Settings](docs/manual/08-tabs/settings.md#settings)
 - [Converting the Interface to React](docs/manual/08-tabs.md#converting-the-interface-to-react)
 
 **[Subsystem Detail](docs/manual/08-tabs/README.md)**
@@ -1274,7 +1274,7 @@ any page under `docs/manual/` the table does not name.
 - [Right half: topology proposals](docs/manual/08-tabs/market-inspector.md#right-half-topology-proposals)
 - [Dismissal](docs/manual/08-tabs/market-inspector.md#dismissal)
 - [Adopt](docs/manual/08-tabs/market-inspector.md#adopt)
-- [Exchange comparison arbitrage](docs/manual/08-tabs/market-inspector.md#exchange-comparison-arbitrage)
+- [Multi-Exchange Arbitrage](docs/manual/08-tabs/market-inspector.md#multi-exchange-arbitrage)
 - [Bridge](docs/manual/08-tabs/market-inspector.md#bridge)
 
 **[Bot Swarm Tab](docs/manual/08-tabs/bot-swarm.md)**
@@ -1286,7 +1286,6 @@ any page under `docs/manual/` the table does not name.
 - [Landing the profit](docs/manual/08-tabs/bot-swarm.md#landing-the-profit)
 - [The tranche book](docs/manual/08-tabs/bot-swarm.md#the-tranche-book)
 - [Where the fleet comes from](docs/manual/08-tabs/bot-swarm.md#where-the-fleet-comes-from)
-- [The list view](docs/manual/08-tabs/bot-swarm.md#the-list-view)
 - [Capital claims](docs/manual/08-tabs/bot-swarm.md#capital-claims)
 - [Bridge](docs/manual/08-tabs/bot-swarm.md#bridge)
 
@@ -1329,7 +1328,7 @@ any page under `docs/manual/` the table does not name.
 
 **[Settings](docs/manual/08-tabs/settings.md)**
 
-- [The eleven pages](docs/manual/08-tabs/settings.md#the-eleven-pages)
+- [The pages](docs/manual/08-tabs/settings.md#the-pages)
 - [What each page persists](docs/manual/08-tabs/settings.md#what-each-page-persists)
 - [Settings, User page](docs/manual/08-tabs/settings.md#settings-user-page)
 - [Settings, Exchanges page](docs/manual/08-tabs/settings.md#settings-exchanges-page)
@@ -1353,7 +1352,7 @@ any page under `docs/manual/` the table does not name.
 - [How a test stands in for a venue](docs/manual/13-live-evidence.md#how-a-test-stands-in-for-a-venue)
 - [The four refusals around an exchange call](docs/manual/13-live-evidence.md#the-four-refusals-around-an-exchange-call)
 - [The simulation battery](docs/manual/13-live-evidence.md#the-simulation-battery)
-- [Where a figure and a run carry less than they read](docs/manual/13-live-evidence.md#where-a-figure-and-a-run-carry-less-than-they-read)
+- [Where a run carries less than it reads](docs/manual/13-live-evidence.md#where-a-run-carries-less-than-it-reads)
 
 ### Part 5 — The HOP Protocol and the Rules Registry
 
@@ -1446,13 +1445,16 @@ Issue [#117](https://github.com/Acervator-LLC/ACERVATOR/issues/117).
 **Paper Trader.** His own heading for it reads *Paper Trader Tab (To Be
 Built)*. The heading predates the build. It is built.
 
-`src/gui/main_tabs/paper_trader_tab_surface.py` — the tab's own record
+`src/gui/paper/paper_trading_tab_surface.py` — the tab's own record
 
 ```python
 HEADING = "Paper"
 ISSUE = 19
 BUILT = True
 ```
+
+That file holds `HEADING` and `ISSUE`. No module on disk holds `BUILT` for this
+tab. The module `paper_trader_tab_surface` that carried it is gone.
 
 Issue [#19](https://github.com/Acervator-LLC/ACERVATOR/issues/19).
 

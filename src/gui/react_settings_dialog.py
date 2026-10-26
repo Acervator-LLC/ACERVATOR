@@ -139,6 +139,14 @@ HOST_SCRIPT = """(function (global) {
           );
           return;
         }
+        // A Test button carries its own part name, and its sound in data-name.
+        if (part === "sound-button") {
+          console.log(
+            "%(act)s" +
+              JSON.stringify({ sound: at.getAttribute("data-name") })
+          );
+          return;
+        }
       }
       at = at.parentElement;
     }
@@ -199,6 +207,19 @@ class _Held:
         """Take one operator edit of this control from the page."""
         self._put(value)
 
+    def toolTip(self) -> str:
+        """The words hanging off this control, as ``QWidget`` reports them."""
+        held = self._owner.store().tooltips.get(self._name)
+        return "" if held is None else str(held)
+
+    def setToolTip(self, words: Any) -> None:
+        """Hang ``words`` off this control and redraw.
+
+        ``settings_dialog.js`` draws the tooltips bag as the control's title,
+        which is where ``_mark_refused`` puts a refused value's reason.
+        """
+        self._owner.set_tooltip(self._name, "" if words is None else str(words))
+
 
 class PageLine(_Held):
     """A line of text, as ``QLineEdit`` reports it."""
@@ -246,8 +267,17 @@ class PageToggle(_Held):
         self._put(bool(ticked))
 
 
+#: What ``QDoubleSpinBox`` keeps when nothing sets its decimal places, so a
+#: spec naming none answers the figure the Qt control answers.
+DEFAULT_DECIMALS = 2
+
+
 class PageNumber(_Held):
-    """A number box or a slider, as ``QSpinBox`` reports it."""
+    """A number box or a slider, as ``QSpinBox`` reports it.
+
+    ``minimum`` and ``maximum`` answer the span the control's own spec names,
+    which is what ``_StoredWriter`` reads to admit a stored figure.
+    """
 
     def value(self) -> Any:
         """The number the control is showing."""
@@ -256,6 +286,26 @@ class PageNumber(_Held):
     def setValue(self, number: Any) -> None:
         """Show ``number`` and redraw. The spec's kind decides the type."""
         self._put(number)
+
+    def _span(self) -> Any:
+        return surface.spec_for(self._name)["range"]
+
+    def minimum(self) -> Any:
+        """The lowest figure the control takes."""
+        return self._span()[0]
+
+    def maximum(self) -> Any:
+        """The highest figure the control takes."""
+        return self._span()[1]
+
+
+class PageDecimal(PageNumber):
+    """A number box keeping decimal places, as ``QDoubleSpinBox`` reports it."""
+
+    def decimals(self) -> int:
+        """How many decimal places the control keeps."""
+        named = surface.spec_for(self._name).get("decimals")
+        return DEFAULT_DECIMALS if named is None else int(named)
 
 
 class PageCombo(_Held):
@@ -274,6 +324,10 @@ class PageCombo(_Held):
     def items(self) -> list:
         """The choices the drop-down offers, in painted order."""
         return list(self._items)
+
+    def isEditable(self) -> bool:
+        """False: the page draws a fixed list and takes no typed text."""
+        return False
 
     def _at(self) -> Any:
         held = self._get()
@@ -468,7 +522,7 @@ HOLDER_BY_KIND = {
     surface.TEXT_AREA: PageTextArea,
     surface.CHECK: PageToggle,
     surface.SPIN: PageNumber,
-    surface.DOUBLE_SPIN: PageNumber,
+    surface.DOUBLE_SPIN: PageDecimal,
     surface.SLIDER: PageNumber,
     surface.LIST: PageList,
 }
@@ -496,6 +550,12 @@ ACTION_HANDLERS: dict[str, str] = {
     "cancel_btn": "reject",
     "save_btn": "_save",
 }
+
+#: The sound each Test button plays, as the page reports its press. A name the
+#: page did not draw never reaches the engine.
+SOUND_PRESS_NAMES: frozenset[str] = frozenset(
+    name for _text, name, _tip in surface.SOUND_TEST_BUTTONS
+)
 
 #: The control whose edit runs a method, and the method it runs. ``apply_edit``
 #: calls with no argument, so every entry names a method that takes none.
@@ -693,7 +753,7 @@ if _HAS_QT and _HAS_WEBENGINE:
                 getattr(self, handler)()
 
         def run_action(self, payload: str) -> None:
-            """Run the button, tab or list row the page reports."""
+            """Run the button, tab, list row or Test button the page reports."""
             try:
                 asked = json.loads(payload)
             except ValueError:
@@ -701,6 +761,13 @@ if _HAS_QT and _HAS_WEBENGINE:
                 return
             if "tab" in asked:
                 self.show_tab(str(asked.get("tab") or ""))
+                return
+            if "sound" in asked:
+                named = str(asked.get("sound") or "")
+                if named in SOUND_PRESS_NAMES:
+                    self._test_sound(named)
+                else:
+                    logger.warning("Settings page reported no such sound: %r", named)
                 return
             if "row" in asked:
                 self._exchange_list.setCurrentRow(asked.get("row"))
