@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
 
 from ...simulator.tablet_source import SendRefused
 from .. import design_system as ds
+from ..main_tabs import positions_held_surface
 from ..main_tabs.bot_status_table_surface import BUTTON_HEIGHT_PX, ROW_HEIGHT_PX
 
 
@@ -28,9 +29,10 @@ class SimPositionsHeldTabMixin:
     def _create_positions_held_tab(self) -> QWidget:
         """Positions Held tab for Extractor bots.
 
-        Draws one row per open ExtractorPosition with the columns Pair,
-        State, Tier, Alt units, Entry (USD), Current (USD), Δ% (USD),
-        Corrections and a per-position Manual Fire button.
+        Draws one row per open ExtractorPosition. The headings, the cell
+        texts and the cell colours all come from
+        ``main_tabs.positions_held_surface``, so no column is addressed
+        by its place here.
 
         Per operator decision #7 the Manual Fire button is per-position
         only. Its handler is bound to the position's pair and opening
@@ -123,17 +125,7 @@ class SimPositionsHeldTabMixin:
             return w
 
         table = QTableWidget()
-        columns = [
-            "Pair",
-            "State",
-            "Tier",
-            "Alt units",
-            "Entry (USD)",
-            "Current (USD)",
-            "Δ% (USD)",
-            "Corrections",
-            "Manual Fire",
-        ]
+        columns = list(positions_held_surface.COLUMNS)
         table.setColumnCount(len(columns))
         table.setHorizontalHeaderLabels(columns)
         table.setRowCount(len(positions))
@@ -145,77 +137,18 @@ class SimPositionsHeldTabMixin:
         table.setSelectionBehavior(QTableWidget.SelectRows)
         table.setAlternatingRowColors(True)
 
-        # The column each reading fills, matching the map the surface holds.
-        unreadable_columns = {
-            "tier": 2,
-            "alt_units": 3,
-            "entry_usd": 4,
-            "current_usd": 5,
-            "delta_pct": 6,
-            "corrections": 7,
-        }
-        number_plan = (
-            ("tier", "tier", 1, True),
-            ("alt_units", "alt_units", 0.0, False),
-            ("entry_usd", "entry_usd", 0.0, False),
-            ("current_usd", "current_usd_approx", 0.0, False),
-            ("delta_pct", "delta_pct_usd_approx", 0.0, False),
-            ("corrections", "corrections_fired", 0, True),
-        )
-
         for row, p in enumerate(positions):
-            pair = str(p.get("pair", ""))
-            state = str(p.get("state", ""))
-            opened_at = str(p.get("opened_at", ""))
-            read: dict = {}
-            unreadable = []
-            for name, key, fallback, whole in number_plan:
-                if key not in p:
-                    read[name] = fallback
-                    unreadable.append(name)
-                    continue
-                try:
-                    read[name] = int(p[key]) if whole else float(p[key])
-                except (TypeError, ValueError, OverflowError):
-                    read[name] = fallback
-                    unreadable.append(name)
-
-            cells = [
-                pair,
-                state.upper(),
-                str(read["tier"]),
-                f"{read['alt_units']:.6f}",
-                f"${read['entry_usd']:,.4f}",
-                f"${read['current_usd']:,.4f}",
-                f"{read['delta_pct']:+.2f}%",
-                str(read["corrections"]),
-            ]
-            painted = sorted(unreadable_columns[name] for name in unreadable)
-            for col in painted:
-                cells[col] = "—"
+            pair = str(p.get(positions_held_surface.PAIR_KEY, ""))
+            opened_at = str(p.get(positions_held_surface.OPENED_AT_KEY, ""))
+            cells = positions_held_surface.row_cells(p)
+            colors = positions_held_surface.row_colors(p)
 
             for col, txt in enumerate(cells):
                 item = QTableWidgetItem(txt)
                 item.setTextAlignment(Qt.AlignCenter)
-                # State cell color: red on drawdown, amber on
-                # bullish_exit-pending, green on in_flight
-                if col == 1:
-                    if state == "drawdown":
-                        item.setForeground(Qt.red)
-                    elif state == "bullish_exit":
-                        item.setForeground(Qt.yellow)
-                    else:
-                        item.setForeground(Qt.green)
-                # Δ% color: green if positive, red if negative
-                if col == 6:
-                    if read["delta_pct"] > 0:
-                        item.setForeground(Qt.green)
-                    elif read["delta_pct"] < 0:
-                        item.setForeground(Qt.red)
-                # A reading nobody could take is drawn in the warning
-                # colour, over whatever the two rules above painted.
-                if col in painted:
-                    item.setForeground(QColor(ds.WARNING))
+                paint = colors[col]
+                if paint is not None:
+                    item.setForeground(QColor(paint))
                 table.setItem(row, col, item)
 
             fire_btn = QPushButton("Fire")
@@ -263,7 +196,7 @@ class SimPositionsHeldTabMixin:
                 return _on_fire
 
             fire_btn.clicked.connect(_make_fire_handler([pair, opened_at]))
-            table.setCellWidget(row, 8, fire_btn)
+            table.setCellWidget(row, positions_held_surface.FIRE_COLUMN, fire_btn)
 
         layout.addWidget(table, stretch=1)
 
