@@ -9464,3 +9464,14 @@ zero-ratio sale at $0.0000 and the cap at $2.0000, which is the reading that sho
 copies did not follow. A sale at a legitimate ratio of 40 queued $80.0000 and 0.8000
 units in all four readings, which is the figure read the same way each time to show the
 readings report at all.
+
+### Where the earlier fold-ratio entry now reads differently
+
+Three passages above described the clamp and the standby figures as they were. They
+stand as written, and these are the readings that replaced them.
+
+| written above | what it reads now |
+| --- | --- |
+| "`_fold_pct = max(0, min(100, int(getattr(self.config, \"scrum_fold_pct\", 100))))`" under Where the Scrum Fold Ratio is read | `_fold_pct = fold_ratio_pct(self.config)`, the one reader, admitting 1 to 100 |
+| "The clamp's lower bound is zero and both controls start at one, so a record carrying a zero empties the sale's whole fold queue and retires the cash instead." | The clamp admits only a figure a box offers. A record carrying a zero reads the declared 100 and the sale queues its whole proceeds |
+| "Raising the clamp to match the controls would change what such a bot rebuys on its next sale." | It did, and only for a record below one. Every ratio from 1 to 100 rebuys exactly as before |
