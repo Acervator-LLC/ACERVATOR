@@ -992,7 +992,9 @@ class ExtractorBot(BotContainer):
         config field, so no save can read a temporary share.
         """
         share_pct = (
-            float(self.config.extractor_exit_pct) if exit_pct is None else float(exit_pct)
+            float(self.config.extractor_exit_pct)
+            if exit_pct is None
+            else float(exit_pct)
         )
         units_to_sell = pos.alt_units * (share_pct / 100.0)
         if units_to_sell <= 0:
