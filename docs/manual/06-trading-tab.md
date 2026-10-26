@@ -6103,6 +6103,40 @@ through as `extractor_exit_pct`. It sets the share of a position's alt units an
 exit sells, and the Extractor reads it nine times across three methods: the
 profitability test, the bullish exit, and the per-position Manual Fire.
 
+OVERTAKEN, and the sentences above are kept as written. The Extractor reads the
+field three times, in two methods: twice in the profitability test and once in
+the bullish exit. The Manual Fire neither reads it nor writes it. It passes the
+full share to the exit as an argument, so a save taken while the order is in
+flight writes the share you set rather than a temporary 100.0.
+
+`src/trading/extractor_bot.py` — `ExtractorBot.manual_fire_position`, the share it passes
+
+```python
+try:
+    await self._execute_bullish_exit(
+        pos, alt_price_in_base, exit_pct=FULL_EXIT_PCT
+    )
+```
+
+A press that sells nothing now says so. A full exit always removes the pair from
+the held positions, so a pair still held after the press means the venue refused
+the order and nothing was sold. The press then reports a refusal, names the
+units still held, and points at the exit's own line for the reason. Before this,
+the same press reported a completed close and a unit count it had not sold,
+while the position stayed open.
+
+`src/trading/extractor_bot.py` — `ExtractorBot.manual_fire_position`, the refusal
+
+```python
+if pair in self._positions:
+    msg = (
+        f"EXTRACTOR MANUAL FIRE {pair}: nothing sold. The position is "
+        f"still open and still holds "
+        f"{self._positions[pair].alt_units:.6f} units. The exit's own "
+        f"refusal line carries the reason."
+    )
+```
+
 The profitability test is the one that can refuse. It prices the proportional
 sell in base units, takes the trading fee off, and compares the result against
 the same share of the cost basis. An exit that would gain dollars but lose base

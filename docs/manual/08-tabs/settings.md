@@ -764,6 +764,26 @@ if idx >= 0:
 Three of the four reads in that block belonged to rows now off the page. The
 page saves and restores Default Target Balance alone out of the four.
 
+OVERTAKEN, and the sentences and the block above are kept as written. The load
+path reads back every row, not the first four. One declaration lists the rows
+the dialog persists, and the save and the load walk that same declaration, so no
+row can be written without also being loaded. It holds nine rows today, Bot
+Visibility and Enable aggressive trading mode among them, and the groups below
+it load the same way.
+
+`src/gui/settings_dialog.py` — `SettingsDialog._load_current`
+
+```python
+for key, read, show, fallback in self._stored_rows():
+    self._show_stored(key, show, self._sm.get(key, fallback), read)
+for group, rows in self._stored_groups():
+    stored = self._sm.get(group, {})
+    for key, read, show, fallback in rows:
+        self._show_stored(
+            f"{group}.{key}", show, stored.get(key, fallback), read
+        )
+```
+
 ### Settings > Profit Folding
 
 The dialog draws no Profit Folding page. `TAB_TITLES` in
@@ -3740,7 +3760,7 @@ so the strip list is unchanged.
 `increment_style` names a field on two objects that never meet. `AppSettings`
 held the page's word. `BotConfig` declares its own at
 `src/trading/container/config.py, in _BOT_CONFIG_SCRUMMING_ONLY_FIELDS`, `_BOT_CONFIG_SCRUMMING_ONLY_FIELDS` names
-it at `:307` so an Extractor is refused it, and
+it in `src/trading/container/config.py` so an Extractor is refused it, and
 `src/trading/container/restore.py, in restore_bots_from_state` copies it out of a saved bot. All three
 stay. The page never wrote any of them, and a bot built through the real
 creation path holds the same `linear` it held before.
@@ -3748,6 +3768,12 @@ creation path holds the same `linear` it held before.
 Nothing reads the bot field either. `git grep "\.increment_style"` finds no
 reader, and the same search shape finds thirteen reads of `.target_balance`, so
 the absence is a fact about the code rather than about the search.
+
+OVERTAKEN, and the sentences above are kept as written. The bot config field has
+since gone too. The name occurs 19 times in the tree and all 19 are on this
+page, so no module declares it, names it in a mode-only set, or copies it out of
+a saved bot. The same count on `target_balance` reads 677 occurrences across 89
+files, so the zero is a reading rather than a search that found nothing.
 
 ### Why no wizard control could open at it
 
@@ -4146,7 +4172,13 @@ Two absences stand outside this row and sit here as measured facts.
 | Absence | What was measured |
 | ------- | ----------------- |
 | the shell's wizard request carries no stored defaults | `src/gui/web/bot_wizard.js, in press` calls `bot_wizard.state` with the step values alone. `src/gui/main_tabs/bot_wizard_surface.py, in view_model` reads `defaults` from the request, so the Qt-free wizard surface receives an empty bag on every call and `_apply_stored_target_balance` falls back to its built-in figure |
-| the Qt-free wizard surface has no visibility lookup | `src/gui/main_tabs/bot_wizard_surface.py, in _apply_stored_target_balance` applies the stored target balance and nothing applies a stored visibility. Its `visibility` combo at `:472-474` carries the same two entries as the Qt one and opens at index 0 |
+| the Qt-free wizard surface has no visibility lookup | `src/gui/main_tabs/bot_wizard_surface.py, in _apply_stored_target_balance` applies the stored target balance and nothing applies a stored visibility. Its `visibility` combo in `COMBO_FIELDS` carries the same two entries as the Qt one and opens at index 0 |
+
+OVERTAKEN, and the row above is kept as written. The lookup is there now.
+`src/gui/main_tabs/bot_wizard_surface.py, in _apply_stored_visibility` reads the
+stored key and is one of five stored reads the surface runs together, beside the
+target balance, the aggressive flag, the phantom switch and the lock count. The
+two entries are unchanged.
 
 ## 2026-09-12 - Enable aggressive trading mode opens the wizard's own box
 
@@ -4278,8 +4310,13 @@ wizard surface opens its box at the build figure whatever the store holds.
 | Absence | What was measured |
 | ------- | ----------------- |
 | the shell's wizard request carries no stored defaults | `src/gui/web/bot_wizard.js` never names `defaults`, and `src/gui/main_tabs/bot_wizard_surface.py, in view_model` reads `defaults` out of the request. A request with no bag left `target_balance` at its built-in 200.0 |
-| the Qt-free wizard surface has no aggressive lookup | `bot_wizard_surface.view_model` with a bag holding the flag on still answered off. `CHECK_FIELDS` at `:425` seeds the box at `False` and nothing reads the store |
+| the Qt-free wizard surface has no aggressive lookup | `bot_wizard_surface.view_model` with a bag holding the flag on still answered off. `CHECK_FIELDS` in `src/gui/main_tabs/bot_wizard_surface.py` seeds the box at `False` and nothing reads the store |
 | a hand-edited word in the store reads as on | The store declares a boolean. A word put there by hand ticks the box on the Settings page and in the wizard alike, because both admit the value as `bool(value)` |
+
+OVERTAKEN, and the row about the missing lookup is kept as written. The lookup
+is there now. `src/gui/main_tabs/bot_wizard_surface.py, in
+_apply_stored_aggressive` reads the stored key and falls back to the seeded
+`False` only when the store holds none. The seeded figure is unchanged.
 
 ## 2026-09-12 - Profit Folding Active waits on the wizard's folding page
 
