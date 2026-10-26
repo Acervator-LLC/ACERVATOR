@@ -53,6 +53,10 @@ logger = logging.getLogger("acervator.extractor")
 # Percent-to-ratio conversion factor used by update_usd_per_base_rate().
 PERCENT_PER_RATIO_UNIT = 100.0
 
+#: The share manual_fire_position passes to _execute_bullish_exit, which closes
+#: the whole position without reading or writing config.extractor_exit_pct.
+FULL_EXIT_PCT = 100.0
+
 POSITION_STATE_PENDING = "pending"  # (transitional — never persisted on a Position)
 POSITION_STATE_IN_FLIGHT = "in_flight"
 POSITION_STATE_DRAWDOWN = DRAWDOWN_STATE
@@ -912,14 +916,13 @@ class ExtractorBot(BotContainer):
         # Snapshot pre-close state for the return dict
         units_before = pos.alt_units
 
-        # Overrides exit_pct on the shared config for this call only;
-        # restored in the finally clause below.
-        _original_exit_pct = float(self.config.extractor_exit_pct)
+        # FULL_EXIT_PCT is passed, never stored, so a save taken while the order
+        # is in flight writes config.extractor_exit_pct as the operator set it.
         try:
-            self.config.extractor_exit_pct = 100.0
-            await self._execute_bullish_exit(pos, alt_price_in_base)
+            await self._execute_bullish_exit(
+                pos, alt_price_in_base, exit_pct=FULL_EXIT_PCT
+            )
         except Exception as exc:
-            self.config.extractor_exit_pct = _original_exit_pct
             msg = (
                 f"EXTRACTOR MANUAL FIRE {pair}: exit raised "
                 f"{type(exc).__name__}: {exc}."
@@ -935,8 +938,26 @@ class ExtractorBot(BotContainer):
                 "gain_base": 0.0,
                 "log_message": msg,
             }
-        finally:
-            self.config.extractor_exit_pct = _original_exit_pct
+
+        # A full exit always pops the pair, so a pair still held means the exit
+        # sold nothing and the last closed-log entry belongs to an earlier close.
+        if pair in self._positions:
+            msg = (
+                f"EXTRACTOR MANUAL FIRE {pair}: nothing sold. The position is "
+                f"still open and still holds "
+                f"{self._positions[pair].alt_units:.6f} units. The exit's own "
+                f"refusal line carries the reason."
+            )
+            self._bus.emit("bot.log", bot_id=self.bot_id, message=msg)
+            return {
+                "success": False,
+                "pair": pair,
+                "reason": "the exit sold nothing",
+                "alt_units_closed": 0.0,
+                "base_received": 0.0,
+                "gain_base": 0.0,
+                "log_message": msg,
+            }
 
         # A full exit removes the position and appends this close to
         # _closed_position_log; read the last entry for the return dict.
@@ -962,9 +983,18 @@ class ExtractorBot(BotContainer):
         self,
         pos: ExtractorPosition,
         alt_price_in_base: float,
+        exit_pct: Optional[float] = None,
     ) -> None:
-        """Sell extractor_exit_pct of the position back to base."""
-        units_to_sell = pos.alt_units * (self.config.extractor_exit_pct / 100.0)
+        """Sell ``exit_pct`` of the position back to base.
+
+        ``exit_pct`` defaults to ``config.extractor_exit_pct``;
+        ``manual_fire_position`` passes ``FULL_EXIT_PCT`` instead of writing the
+        config field, so no save can read a temporary share.
+        """
+        share_pct = (
+            float(self.config.extractor_exit_pct) if exit_pct is None else float(exit_pct)
+        )
+        units_to_sell = pos.alt_units * (share_pct / 100.0)
         if units_to_sell <= 0:
             return
 
@@ -1003,9 +1033,7 @@ class ExtractorBot(BotContainer):
             or alt_price_in_base
         )
         base_received = filled_units * fill_price
-        cost_basis_proportional = pos.cost_basis_base * (
-            self.config.extractor_exit_pct / 100.0
-        )
+        cost_basis_proportional = pos.cost_basis_base * (share_pct / 100.0)
         gain_base = base_received - cost_basis_proportional
 
         # Update position: deduct sold units, deduct proportional cost basis
@@ -1025,7 +1053,7 @@ class ExtractorBot(BotContainer):
         self._hand_base_currency_to_parent(base_received, pos.pair)
 
         # If position fully exited, remove + log to closed list
-        if pos.alt_units < 1e-12 or self.config.extractor_exit_pct >= 100.0:
+        if pos.alt_units < 1e-12 or share_pct >= 100.0:
             self._closed_position_log.append(
                 {
                     "pair": pos.pair,
