@@ -5945,6 +5945,21 @@ for i in range(self._alt_list.count()):
             checked.append(sym)
 ```
 
+The typed pair list the two blocks above collect left the product under his
+ruling of 13 September 2026, and its name reads **zero** occurrences across the
+source, the Electron build, the tooling and the entry point. The pool page still
+asks for the exchange and the base currency, and the bot ranks the pairs itself.
+
+`src/trading/extractor_bot.py` — `ExtractorBot._refresh_watch_list`, how the
+pairs are chosen now
+
+```python
+ranked.sort(key=lambda x: x[1], reverse=True)
+top_n = int(self.config.extractor_scan_top_n)
+top_n = max(5, min(10, top_n))
+new_watch = [sym for sym, _ in ranked[:top_n]]
+```
+
 ![The Extractor group of the parameter page, first nine rows.](p25-i0.png)
 
 **Functional.** Choosing the Extractor hides the eight scrumming groups and
@@ -6008,6 +6023,41 @@ else:
         rate = float(ticker.last)
 ```
 
+Both screens call this row Chunk size (USD), the name the sentence above gives
+it. The running-bot window used to call it Pool size (USD) and the Bot Swarm
+pool tooltip used to send the operator to that name. Four sites carried the
+second name and all four now carry the first. The stored key is unchanged, so a
+saved bot still loads.
+
+`src/gui/main_tabs/live_settings_tab_surface.py` — the row the running window
+and the Electron page both draw
+
+```python
+{
+    "name": "ext_chunk_size",
+    "kind": DOUBLE_SPIN,
+    "group": EXTRACTOR_GROUP,
+    "row_label": "Chunk size (USD):",
+    "field": "extractor_chunk_size_usd",
+}
+```
+
+An edit to this row on a running bot reaches the bot and not only the stored
+configuration. Apply looks the field up in one routing map and sends it to the
+bot's own method, which writes the configuration field and the base-unit pool
+figures together. Driven on a $250.00 pool against a base priced at $4,000.00,
+an edit to $800.00 moved the bot's own pool from 0.0625 base units to 0.2 in the
+same run.
+
+`src/gui/main_tabs/bot_live_settings_surface.py` — `RUNTIME_ROUTED`, the one map
+both Apply paths read
+
+```python
+RUNTIME_ROUTED = {
+    "extractor_chunk_size_usd": "set_chunk_size_usd",
+}
+```
+
 Artillery size (USD) - This determines the individual size of Extractor Tranches.
 
 From $0.50 to $100,000.00, at $5.00 to start. The default is set small enough
@@ -6047,6 +6097,27 @@ self._ext_scan_top_n.setRange(5, 10)
 self._ext_scan_top_n.setValue(8)
 ```
 
+Both screens call this row Watch list top-N. The running-bot window used to call
+it Auto-scan top-N. Its own hint used to end *"Ignored when manual alt-targets
+are set."*, and the typed pair list that sentence named left the product under
+his ruling of 13 September 2026, so the condition could no longer happen. The
+hint now names the clamp and the one pair that survives the cut.
+
+`src/gui/main_tabs/live_settings_tab_surface.py` — the hint the row carries
+
+```python
+"ext_scan_top_n": (
+    "Top-N */<base> pairs by 24h volume to keep on the watch list. "
+    "Clamped to 5 to 10. A pair holding an open position stays on "
+    "the list below the cut."
+),
+```
+
+An edit to this row on a running bot reaches the bot. The engine reads the
+figure where it ranks the list, so the write onto the configuration is the write
+the bot trades on. Driven, a running bot ranked twelve offered pairs and kept 8
+before the edit and 5 after it, in the same run.
+
 Watch list refresh - This determines the rate at which the Extractor will scan its watched markets. This is the equivalent of a Timeframe for the Extractor but covers multiple pairs.
 
 From 10 to 240 candles, at 60 to start, which is once an hour at a one-minute
@@ -6069,6 +6140,14 @@ seconds and not after 300.
 The running-bot window used to offer 10 to 600 and call them ticks. It offers
 the same 10 to 240 candles the wizard does, so both screens and the sentence
 above agree.
+
+They now agree on the name as well. The running-bot window used to call this row
+Scan refresh and now calls it Watch list refresh, the name the sentence above
+gives it.
+
+An edit to this row on a running bot reaches the bot. Driven on a one-hour bot,
+60 candles answered 216,000 seconds before the edit and 120 candles answered
+432,000 seconds after it, in the same run.
 
 One method turns the setting into seconds, and both the refresh check and the
 base-currency price read ask it, so the two share one cadence and one reading of
@@ -6298,6 +6377,42 @@ kwargs = {
 One of the five is read once, at construction, and never again: the pool size. The
 other four are read off the config as the bot ticks, so an edit to a running bot
 reaches them.
+
+The sentence above is overtaken on its first half. The pool size is still read
+once at construction, and it is read again whenever the operator edits the row on
+a running bot: Apply sends that one field to the bot's own setter, which writes
+the configuration field and the base-unit pool figures in one step. So all five
+settings reach a running bot, four by being read where the decision is taken and
+the fifth by being routed.
+
+Driven once per setting, with the configuration value and the bot's own figure
+read in the same run:
+
+| setting | configuration, before and after | the bot's own figure, before and after |
+|---|---|---|
+| Chunk size (USD) | 250.00 to 800.00 | 0.0625 to 0.2 base units |
+| Artillery size (USD) | 5.00 to 20.00 | 0.00125 to 0.005 base units |
+| Watch list top-N | 8 to 5 | 8 pairs to 5 pairs |
+| Watch list refresh | 60 to 120 candles | 216,000 to 432,000 seconds |
+| Exit % | 100.0 to 40.0 | 10.0 to 4.0 alt units |
+
+Two settings that were read once per process have left the product. The hedge
+budget and the standing alt units each converted to base units inside the
+first-tick rebase and never converted again. Both left with their own rows under
+his ruling of 13 September 2026, and neither name appears anywhere in the source
+today.
+
+`src/trading/extractor_bot.py` — `ExtractorBot.set_chunk_size_usd`, the routed
+re-derivation
+
+```python
+self._chunk_size_usd = new_value
+self.config.extractor_chunk_size_usd = new_value
+if rate > 0:
+    new_chunk_base = new_value / rate
+else:
+    new_chunk_base = new_value
+```
 
 **The dollar-to-base rate.** The Extractor reads its own base currency's dollar
 price on every watch-list refresh, which is the moment it already goes to the
@@ -8585,6 +8700,21 @@ if "inverted_extractor_standing_alt_units" in _kwargs:
     _kwargs["inverted_extractor_standing_alt_units"] = float(
         _kwargs["inverted_extractor_standing_alt_units"] or 0.0
     )
+```
+
+The block above is overtaken. The setting it coerces left the product under his
+ruling of 13 September 2026, and the name reads **zero** occurrences across the
+source, the Electron build, the tooling and the entry point. The sanitiser the
+restore path calls today drops every retired key and promotes one retired
+spacing word, and it coerces no quantity.
+
+`src/trading/container/config.py` — `_sanitize_deprecated_kwargs`
+
+```python
+out = {k: v for k, v in kwargs.items() if k not in _DEPRECATED_KWARGS}
+if out.get("stack_spacing_mode") == "logarithmic":
+    out["stack_spacing_mode"] = "quadratic"
+return out
 ```
 
 **One bad stored value stops one bot.** The build of a bot's configuration sits inside
