@@ -8963,10 +8963,10 @@ rather than draw a figure nobody stored.
 
 One read now serves every row.
 
-`src/gui/main_tabs/live_settings_tab_surface.py, in read_field`
+`src/gui/main_tabs/live_settings_tab_surface.py, in read_config_field`
 
 ```python
-def read_field(config: Any, field: str, default: Any, no_default: bool) -> Any:
+def read_config_field(config: Any, field: str, default: Any, no_default: bool) -> Any:
     return getattr(config, field) if no_default else getattr(config, field, default)
 ```
 

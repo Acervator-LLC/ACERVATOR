@@ -552,7 +552,7 @@ def admitted_figure(config: Any, spec: dict) -> Optional[float]:
     return as_box_figure(raw, low, high)
 
 
-def read_field(config: Any, field: str, default: Any, no_default: bool) -> Any:
+def read_config_field(config: Any, field: str, default: Any, no_default: bool) -> Any:
     """`field` off `config`, with `default` unless `no_default` refuses one.
 
     `read_number` and `LiveSettingsTabModel._read_control` both seed a drawn
@@ -573,7 +573,7 @@ def read_number(
     """
     if kind == DESPAWN_READING:
         return despawn_days(config)
-    raw = read_field(config, field, default, no_default)
+    raw = read_config_field(config, field, default, no_default)
     if kind == BARE_READING:
         return raw
     if kind == INT_READING:
@@ -1587,7 +1587,7 @@ class LiveSettingsTabModel:
             return self._read_admitted(config, spec)
         if kind in (DOUBLE_SPIN, SPIN):
             return read_number(config, field, default, reading, no_default)
-        raw = read_field(config, field, default, no_default)
+        raw = read_config_field(config, field, default, no_default)
         if kind == CHECK:
             return raw if reading == BARE_READING else bool(raw)
         if kind == LINE:
