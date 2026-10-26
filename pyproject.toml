@@ -399,8 +399,15 @@ show_contexts = false
 #     --min-confidence 70 \
 #     --ignore-names "fold_hold_in_downtrend,value_at_bar_end,prev_col,prev_row"
 #
+# The floor in that recipe is now 60, matching min_confidence below.
+#
 # Pyproject [tool.vulture] is read by vulture 2.x via pyproject.toml
 # when invoked from a directory containing it.
+#
+# min_confidence is 60. An uncalled function, method, class or property
+# scores 60 in vulture, so a floor of 70 reported no row over these paths.
+# coding_archetype._run_vulture passes --min-confidence 60 on the command
+# line, which overrides this value, and scores a 60% row low.
 [tool.vulture]
 ignore_names = [
     # v3.19.12 documented false-positives on API/callback parameters:
@@ -410,4 +417,4 @@ ignore_names = [
     "prev_row",                  # Qt QTableWidget.currentCellChanged slot
 ]
 paths = ["src", "acervator_watchdog.py"]
-min_confidence = 70
+min_confidence = 60
