@@ -860,7 +860,7 @@ if _HAS_QT:
             self._position_ceiling_enabled.setToolTip(
                 "Cap accumulation at Nx of the bot's INITIAL "
                 "target_balance (stable anchor set at creation). "
-                "Fold rate tapers 100 % → 10 % as value approaches "
+                "Fold size tapers 100 % → 10 % as value approaches "
                 "ceiling (ratio 0.5 → 1.0), hard-stops at ceiling. "
                 "Scrum always allowed. Protects against runaway "
                 "accumulation on conviction plays."

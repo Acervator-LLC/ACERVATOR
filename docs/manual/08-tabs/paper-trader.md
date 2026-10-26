@@ -3381,4 +3381,35 @@ Read before and after, the box opened on $200.00 both times. Moving the declarat
 a figure nothing uses moved the Paper box with the other three; before the change the
 same move left all four at $200.00.
 
+## 2026-10-26 - #665 - the Paper row names the fold taper by size and shows the detonation bar
+
+The Paper fold reads the same taper schedule as Live, and that schedule's name changed.
+One statement above carries the old name. It stands as written, and this is the reading
+that replaced it.
+
+| written above | what it reads now |
+| --- | --- |
+| "`plan_fold_consumption`, `fold_rate_taper`, `fold_spend_usd`, `fold_units`" | The same four, with the schedule now named `fold_size_taper`. It multiplies the dollars a fold spends, which is what the Paper fold always used it for |
+
+`src/paper/paper_run.py, in fold_taper` — the Paper reading
+
+```python
+return fold_size_taper(ratio_to_ceiling(value, ceiling))
+```
+
+The Paper row's status record also carries the detonation confidence minimum now, so
+the Fire tooltip on a Paper row names the figure a vote has to clear. The Paper table
+is the Live table with the Paper price feed, so one repair in the Live surface reaches
+both.
+
+`src/paper/fleet_source.py, in row_status` — the key the Paper row carries
+
+```python
+"detonation_confidence_min": bot.detonation_confidence_min,
+```
+
+Read on the real Paper page model and the real Paper widget, a record carrying 0.60
+shows "at confidence 0.60 or above" and a record carrying the opening 0.75 shows 0.75.
+Before the change both records read the same line, with no figure in it.
+
 Back to [the subsystem index](README.md).

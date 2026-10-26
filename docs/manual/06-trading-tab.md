@@ -9713,3 +9713,142 @@ these are the readings that replaced them.
 | "All four report the same length, and so does the Scrum Fold Ratio row beside it" | The despawn reading is unchanged at 1,086 characters on all four screens. The Scrum Fold Ratio row is no longer the row beside it: the ratio sits in Scrumming Settings and the despawn box stays in Advanced Scrumming. The row beside the despawn box is now Band Travel |
 | "Both writers sit inside the paths that place an order, so they are named and left" | Both writers are gone. A hand-built venue settled an order as filled with no network, which drove each writer for real, so the removal was proved rather than named |
 | "the record `src/trading/scrumming/execution.py, class MemorisedTrade`" | That class is gone, with the field that held its list and the two lines that appended to it. The file is still there and still holds `SettledFillFee`, the fee record each settled fill writes |
+## 2026-10-26 - #665 - the cartridge cap, the taper's name, and the bar on the Bot Swarm row
+
+### The cartridge cap carries its own words in the log
+
+Two unrelated controls wrote the word ceiling. One is the percentage cap on the
+cartridge threshold. The other is the dollar ceiling on the position. A line in the
+bot log could therefore send a reader to either control. The cartridge line now names
+the cartridge cap. The position-ceiling lines keep the words row 118 gave them.
+
+Both controls were driven on one bot in one run. The calibration wrote its line, then
+the fold refused on the position ceiling.
+
+```
+cartridge, before   SMART CARTRIDGE calibrated to 24.00% (BB range 24.00%, floor=5.00%, ceiling=30.00%). Effective threshold = $48.00.
+cartridge, after    SMART CARTRIDGE calibrated to 24.00% (BB range 24.00%, floor=5.00%, cartridge cap=30.00%). Effective threshold = $48.00.
+ceiling, both       FOLD BLOCKED by position ceiling: current $1000.00 >= ceiling $600.00 (166.7% of ceiling). Scrum still allowed.
+```
+
+The words the two lines share read `ceiling` before the change and nothing after it.
+The ceiling line is the same in both runs, which is the reading that shows only the
+cartridge line moved.
+
+`src/trading/scrumming/tick_phases.py, in _tick_smart_cartridge_pct` — the line
+
+```python
+f"floor={_interval_floor:.2f}%, "
+f"cartridge cap={_cap_text}). "
+```
+
+### The fold taper is named for the size it scales
+
+The taper multiplies the dollars a fold spends. It does not change how often a fold
+happens. Its name said rate. The engine's figure, the status record's key and the
+wording on both screens now say size.
+
+| site | kind | before | after |
+| --- | --- | --- | --- |
+| `src/trading/scrumming/sizing.py` | the schedule | `fold_rate_taper` | `fold_size_taper` |
+| `src/trading/bot_container.py, in get_status` | write | `fold_rate_taper` | `fold_size_taper` |
+| `src/gui/main_tabs/bot_status_table_surface.py, in risk_suffix` | read | fold rate tapered to | fold size tapered to |
+| `src/gui/widgets/bot_status_table.py, in update_bots` | read | fold rate tapered to | fold size tapered to |
+| `src/gui/web/bot_status_table.js` | the page read | default_fold_taper | unchanged, it never said rate |
+| the Enable Position Ceiling tooltip, eight files | write | Fold rate tapers | Fold size tapers |
+
+A record saved under the old key still reads. The reader takes the new key first, then
+the old one, then the declared figure of one.
+
+```
+record carries                 Live page   Paper page   Sim page   Live widget   Paper widget   Sim widget
+fold_size_taper 0.37               37%          37%        37%           37%            37%         37%
+fold_rate_taper 0.42               42%          42%        42%           42%            42%         42%
+neither key                       100%         100%       100%          100%           100%        100%
+```
+
+`src/gui/main_tabs/bot_status_table_surface.py, in fold_taper_of` — the reader
+
+```python
+for field in (FOLD_TAPER_FIELD, FOLD_TAPER_FIELD_RETIRED):
+    if field in status and status[field] is not None:
+```
+
+Moving the one declaration to wording nothing writes sent all six readings to 100 per
+cent for the new key and left the old-key reading at 42 per cent. The surface file is
+byte identical after the move was put back, by sha256.
+
+### The Bot Swarm row shows the bar a detonation must clear
+
+Min Confidence reached no status record. The Fire tooltip on a Bot Swarm row could
+name the timeframe a bot watches and never the figure a vote has to reach. The record
+now carries the bar and the tooltip names it.
+
+```
+record carries                            the tooltip's detonation line
+0.60, before the change    Detonation armed: monitoring 1W for BULLISH auto-harvest.
+0.75, before the change    Detonation armed: monitoring 1W for BULLISH auto-harvest.
+0.60, after the change     Detonation armed: monitoring 1W for BULLISH auto-harvest at confidence 0.60 or above.
+0.75, after the change     Detonation armed: monitoring 1W for BULLISH auto-harvest at confidence 0.75 or above.
+```
+
+Before the change the two records read the same, so no screen could tell a set figure
+from the opening one. After it they differ. The timeframe is the same in all four
+readings, which is the reading that shows only the bar was added.
+
+`src/trading/bot_container.py, in get_status` — the key
+
+```python
+"detonation_confidence_min": float(
+    getattr(
+        self.config,
+        "detonation_confidence_min",
+        DETONATION_CONFIDENCE_MIN_DEFAULT,
+    )
+),
+```
+
+The opening figure of 0.75 is one declaration, read by the record and by the box.
+
+`src/trading/container/config.py` — the figure
+
+```python
+DETONATION_CONFIDENCE_MIN_DEFAULT: float = 0.75
+```
+
+### What the three repairs reach, and what they do not move
+
+The Paper Trader's table and the Simulator's table are the Live table with their own
+price feed, so one repair in the Live surface and one in the Live widget reach all
+three. Every one of the six readings above was taken on the real model or the real
+widget of its own build.
+
+Nothing detonates differently, no ceiling moves and no bar changes. The taper, the
+ceiling, the ceiling multiple, the ratio and the calibrated cartridge percentage were
+each driven over a swept set of 269 readings on the tree before the change and the
+tree after it. The two sets are byte identical by sha256, and changing one reading by
+hand makes the comparison report one difference.
+
+```
+area                   readings   differing
+the taper schedule           21           0
+the position ceiling         60           0
+the ceiling multiple         10           0
+the ratio to ceiling         20           0
+the cartridge figure        150           0
+the detonation bar            8           0
+```
+
+No venue was contacted on any run. The socket counter read zero every time and a single
+deliberate call moved it to one.
+
+### Where three earlier entries now read differently
+
+Three statements above describe what this unit changed. They stand as written, and
+these are the readings that replaced them.
+
+| written above | what it reads now |
+| --- | --- |
+| "the engine reports it inside its cartridge line as a percentage" | It still does, and the percentage is now labelled cartridge cap. The bare word ceiling no longer appears in the cartridge line, so a search of the log for ceiling returns the position-ceiling lines alone |
+| "the taper schedule is `fold_rate_taper`, both in the shared sizing module" | The schedule is `fold_size_taper`, in the same module. The multiplication is still `fold_spend_usd` |
+| "It is absent from the record the Bot Swarm row reads, so that tooltip can report the timeframe a bot is watching and never the bar it must clear" | The record carries `detonation_confidence_min` and the tooltip names it. The reading for a stored 0.60 and the reading for the opening 0.75 now differ |

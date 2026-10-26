@@ -495,17 +495,23 @@ CEILING_REACHED_FORMAT = (
 CEILING_APPROACH_FORMAT = (
     "\n\n⚠ Approaching ceiling "
     "({pct:.1f}% of ${ceiling_usd:.2f}) — "
-    "fold rate tapered to {taper_pct:.0f}%."
+    "fold size tapered to {taper_pct:.0f}%."
 )
 CEILING_NORMAL_FORMAT = (
-    "\n\nCeiling: {pct:.1f}% of " "${ceiling_usd:.2f} " "(fold rate: {taper_pct:.0f}%)."
+    "\n\nCeiling: {pct:.1f}% of " "${ceiling_usd:.2f} " "(fold size: {taper_pct:.0f}%)."
 )
 DETONATION_FORMAT = (
-    "\nDetonation armed: monitoring " "{timeframe} for BULLISH " "auto-harvest."
+    "\nDetonation armed: monitoring "
+    "{timeframe} for BULLISH "
+    "auto-harvest at confidence "
+    "{confidence:.2f} or above."
 )
 
+FOLD_TAPER_FIELD = "fold_size_taper"
+FOLD_TAPER_FIELD_RETIRED = "fold_rate_taper"
 DEFAULT_FOLD_TAPER = 1.0
 DEFAULT_DETONATION_TIMEFRAME = "1d"
+DEFAULT_DETONATION_CONFIDENCE = 0.75
 DEFAULT_QUOTE_TO_USD = 1.0
 NO_TARGET_VALUE = 0.0
 NO_PRICE = 0.0
@@ -921,6 +927,21 @@ def logo_cell(
         tooltip=NO_LOGO_TIP_FORMAT.format(asset=asset) + TOOLTIP_LINE_GAP + mark_tip,
         link_url=link,
     )
+
+
+def fold_taper_of(status: Any) -> float:
+    """``FOLD_TAPER_FIELD`` of ``status``, falling back to
+    ``FOLD_TAPER_FIELD_RETIRED`` so a record saved under the old key still
+    reads, then to ``DEFAULT_FOLD_TAPER``."""
+    if not isinstance(status, dict):
+        return DEFAULT_FOLD_TAPER
+    for field in (FOLD_TAPER_FIELD, FOLD_TAPER_FIELD_RETIRED):
+        if field in status and status[field] is not None:
+            try:
+                return float(status[field])
+            except (TypeError, ValueError):
+                return DEFAULT_FOLD_TAPER
+    return DEFAULT_FOLD_TAPER
 
 
 def blockers_text(blockers: list) -> str:
@@ -1708,9 +1729,12 @@ class BotStatusTableModel:
         ceiling_enabled = status.get("position_ceiling_enabled", False)
         ceiling_ratio = status.get("ceiling_ratio")
         ceiling_usd = status.get("position_ceiling_usd")
-        fold_taper = status.get("fold_rate_taper", DEFAULT_FOLD_TAPER)
+        fold_taper = fold_taper_of(status)
         detonation_enabled = status.get("detonation_enabled", False)
         detonation_tf = status.get("detonation_timeframe", DEFAULT_DETONATION_TIMEFRAME)
+        detonation_bar = status.get(
+            "detonation_confidence_min", DEFAULT_DETONATION_CONFIDENCE
+        )
         fold_blocked = (
             ceiling_enabled
             and ceiling_ratio is not None
@@ -1724,6 +1748,7 @@ class BotStatusTableModel:
             fold_blocked,
             detonation_enabled,
             detonation_tf,
+            detonation_bar,
         )
         verdict = manual_fire_verdict(ammo, target_val, dispute)
         if verdict == MANUAL_FIRE_REFUSES:
@@ -1766,8 +1791,13 @@ class BotStatusTableModel:
         fold_blocked,
         detonation_enabled,
         detonation_tf,
+        detonation_bar=DEFAULT_DETONATION_CONFIDENCE,
     ) -> str:
-        """The lines the Fire tooltip carries about this bot's risk controls."""
+        """The lines the Fire tooltip carries about this bot's risk controls.
+
+        ``detonation_bar`` is the confidence a detonation must reach, so the
+        tooltip names the bar beside ``detonation_tf``.
+        """
         parts = []
         if ceiling_enabled and ceiling_ratio is not None:
             pct = ceiling_ratio * PERCENT_SCALE
@@ -1789,7 +1819,12 @@ class BotStatusTableModel:
                     )
                 )
         if detonation_enabled:
-            parts.append(DETONATION_FORMAT.format(timeframe=detonation_tf.upper()))
+            parts.append(
+                DETONATION_FORMAT.format(
+                    timeframe=detonation_tf.upper(),
+                    confidence=float(detonation_bar),
+                )
+            )
         return EMPTY_TEXT.join(parts)
 
     def _detail_button(self) -> dict:
@@ -2109,7 +2144,10 @@ def build_view_model(model: BotStatusTableModel) -> dict:
         "ceiling_approach_ratio": CEILING_APPROACH_RATIO,
         "percent_scale": PERCENT_SCALE,
         "default_fold_taper": DEFAULT_FOLD_TAPER,
+        "fold_taper_field": FOLD_TAPER_FIELD,
+        "fold_taper_field_retired": FOLD_TAPER_FIELD_RETIRED,
         "default_detonation_timeframe": DEFAULT_DETONATION_TIMEFRAME,
+        "default_detonation_confidence": DEFAULT_DETONATION_CONFIDENCE,
         "default_quote_to_usd": DEFAULT_QUOTE_TO_USD,
         "fire_tooltips": {
             FIRE_PATH_SCRUM_SOLID: FIRE_TIP_SCRUM_SOLID,

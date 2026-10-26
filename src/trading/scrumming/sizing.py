@@ -644,10 +644,10 @@ def venue_market_sector(venue: Any, symbol: Any) -> Optional[str]:
     return CITED_VENUE_MARKET_SECTORS.get(key)
 
 
-#: ``fold_rate_taper`` reads full size under this ratio and nothing at 1.0.
+#: ``fold_size_taper`` reads full size under this ratio and nothing at 1.0.
 TAPER_START_RATIO = 0.5
 
-#: How much of the size ``fold_rate_taper`` takes off between the start ratio
+#: How much of the size ``fold_size_taper`` takes off between the start ratio
 #: and 1.0, so the taper lands at a tenth of the size there.
 TAPER_DROP = 0.9
 
@@ -2870,7 +2870,7 @@ def ratio_to_ceiling(position_usd: float, ceiling_usd: float) -> float:
     return position_usd / ceiling_usd
 
 
-def fold_rate_taper(ratio: float) -> float:
+def fold_size_taper(ratio: float) -> float:
     """The multiplier on a fold's USD size for ``ratio``: full under
     ``TAPER_START_RATIO``, then linear by ``TAPER_DROP`` to 1.0, and nothing
     from 1.0 up."""
@@ -2981,7 +2981,7 @@ __all__ = [
     "estimated_fee_usd",
     "fleet_excess_note",
     "fold_cap_remaining_usd",
-    "fold_rate_taper",
+    "fold_size_taper",
     "fold_spend_usd",
     "fold_surplus_usd",
     "fold_units",
