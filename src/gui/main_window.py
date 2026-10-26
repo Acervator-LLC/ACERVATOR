@@ -2763,13 +2763,16 @@ if _HAS_QT:
             """Initialize LiveMonitor from saved settings."""
             if not self._settings or not self._bot_manager:
                 return
+            from ..core.settings import AIMonitorSettings
+
             ai_cfg = self._settings.get("ai_monitor", {})
             if ai_cfg.get("enabled") and ai_cfg.get("api_key"):
                 self._bot_manager.configure_live_monitor(ai_cfg)
                 phrase = ai_cfg.get("connect_phrase", "")[:20]
+                wait = ai_cfg.get("interval_hours", AIMonitorSettings.interval_hours)
                 self._status_log.log(
                     f"AI Monitor enabled (phrase: '{phrase}...', "
-                    f"interval: {ai_cfg.get('interval_hours', 4)}h)",
+                    f"interval: {wait}h)",
                     "info",
                 )
                 self._log_ai_monitor_absence()

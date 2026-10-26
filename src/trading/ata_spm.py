@@ -32,7 +32,10 @@ from .ata_gate_scan import (
     BAND_POSITION_KEY,
     BAND_UPPER_KEY,
 )
-from .indicators.bb_proximity import detect_bb_proximity
+from .indicators.bb_proximity import (
+    CONSOLIDATION_THRESHOLD_PCT,
+    detect_bb_proximity,
+)
 from .indicators.bollinger import BollingerBands
 from .indicators.types import (
     PERCENT_PER_RATIO_UNIT,
@@ -133,10 +136,6 @@ DIRECTION_NAMES = {
 
 #: The voter that reads where the close sits between Bollinger's bands.
 BAND_INDICATOR = "bollinger_bands"
-
-#: The Heikin Ashi body percent under which ``detect_bb_proximity`` calls a
-#: window tight, the same threshold ``ScrummingBot.tick`` passes.
-CONSOLIDATION_THRESHOLD = 3.0
 
 MIDLINE_POSITION = 0.5
 NO_BAND_VALUE = 0.0
@@ -1859,7 +1858,7 @@ def proximity_of(candles: Any, settings: Any) -> Any:
     return detect_bb_proximity(
         held,
         tolerance_pct=settings.bb_tolerance_pct,
-        consolidation_threshold=CONSOLIDATION_THRESHOLD,
+        consolidation_threshold=CONSOLIDATION_THRESHOLD_PCT,
         min_pattern_candles=settings.bb_landing_strip_candles,
     )
 

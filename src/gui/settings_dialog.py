@@ -1359,7 +1359,7 @@ if _HAS_QT:
             self._ai_interval = QDoubleSpinBox()
             self._ai_interval.setMinimumHeight(28)
             self._ai_interval.setRange(0.5, 24.0)
-            self._ai_interval.setValue(4.0)
+            self._ai_interval.setValue(sds.AI_BUILT.interval_hours)
             self._ai_interval.setSuffix(" hours")
             self._ai_interval.setDecimals(1)
             af.addRow("Check interval:", self._ai_interval)
@@ -1578,7 +1578,7 @@ if _HAS_QT:
                             "interval_hours",
                             self._ai_interval.value,
                             self._put_stored(self._ai_interval),
-                            4.0,
+                            sds.AI_BUILT.interval_hours,
                         ),
                         (
                             "connect_phrase",

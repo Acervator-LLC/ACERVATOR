@@ -11,6 +11,7 @@ from typing import Any, Callable, Optional
 from ...core.event_bus import LINE_KIND_WIRE_STACK
 from ...exchange.base import OrderSide, OrderType
 from ..container.config import EXPIRY_CLOSE_SELL_ALL, expiry_close_decision
+from ..indicators.bb_proximity import CONSOLIDATION_THRESHOLD_PCT
 from ..target_bands import at_target_dust_band
 from ..ta_engine import (
     MIN_CANDLES_FOR_TA,
@@ -1004,7 +1005,7 @@ class TickPhaseMixin:
             _init_bb = detect_bb_proximity(
                 parsed,
                 tolerance_pct=self.config.bb_tolerance_pct,
-                consolidation_threshold=3.0,
+                consolidation_threshold=CONSOLIDATION_THRESHOLD_PCT,
                 min_pattern_candles=self.config.bb_landing_strip_candles,
             )
             if (

@@ -43,6 +43,7 @@ from .ta_engine import (
     BBProximityResult,
     detect_landing_strip_v2,
 )
+from .indicators.bb_proximity import CONSOLIDATION_THRESHOLD_PCT
 from ..core.settings import DEFAULT_ENABLE_PHANTOMS
 from .phantom_balance import (
     TIMEFRAME_SECONDS,
@@ -3120,7 +3121,7 @@ class ScrummingBot(
             bb_result = detect_bb_proximity(
                 candles,
                 tolerance_pct=self.config.bb_tolerance_pct,
-                consolidation_threshold=3.0,
+                consolidation_threshold=CONSOLIDATION_THRESHOLD_PCT,
                 min_pattern_candles=self.config.bb_landing_strip_candles,
             )
             self._last_bb = bb_result

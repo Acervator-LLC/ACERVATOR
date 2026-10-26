@@ -39,7 +39,7 @@ from typing import Any, Optional
 
 from ...core.encryption import looks_like_pem, unescape_pem_newlines, vault_phrase
 from ...exchange.timeframes import ALL_TIMEFRAMES
-from ...core.settings import CREDENTIAL_FIELDS, AppSettings
+from ...core.settings import CREDENTIAL_FIELDS, AIMonitorSettings, AppSettings
 from ...core.sms_engine import (
     CARRIER_GATEWAYS,
     EMAIL_GATEWAY,
@@ -338,6 +338,10 @@ CARRIER_NAMES = tuple(CARRIER_GATEWAYS)
 #: The engine's own opening figures, so the page declares no second set.
 SMS_BUILT = SMSConfig()
 
+#: The stored AI Monitor group's own opening figures, read by `AI_LOAD_KEYS`
+#: and by the `ai_interval` control spec.
+AI_BUILT = AIMonitorSettings()
+
 #: The printed label beside the value the send path tests, so the picker stores
 #: a provider the engine routes on.
 SMS_PROVIDERS = (
@@ -535,7 +539,7 @@ INFORMATION_ICON = "information"
 
 AI_LOAD_KEYS = (
     ("api_key", "", "ai_api_key"),
-    ("interval_hours", 4.0, "ai_interval"),
+    ("interval_hours", AI_BUILT.interval_hours, "ai_interval"),
     ("connect_phrase", "", "ai_connect_phrase"),
     ("confirm_phrase", "", "ai_confirm_phrase"),
     ("enabled", False, "ai_enabled"),
@@ -1085,7 +1089,7 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "name": "ai_interval",
         "kind": DOUBLE_SPIN,
         "range": (0.5, 24.0),
-        "value": 4.0,
+        "value": AI_BUILT.interval_hours,
         "suffix": " hours",
         "decimals": 1,
         "min_height": SMS_CONTROL_MIN_HEIGHT,
