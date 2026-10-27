@@ -258,9 +258,7 @@ if _HAS_QT:
             self._from_dt.setDisplayFormat("yyyy-MM-dd HH:mm")
             self._from_dt.setMinimumWidth(150)
             self._from_dt.setToolTip(
-                "Default is the 2026-04-01 platform launch date. Drag "
-                "or type an earlier/later date to widen or narrow the "
-                "trade fetch window."
+                "Start of the trade window. Defaults to the 2026-04-01 launch date. Type or drag to widen or narrow it."
             )
             fl.addWidget(self._from_dt)
 
@@ -270,9 +268,7 @@ if _HAS_QT:
             self._to_dt.setDisplayFormat("yyyy-MM-dd HH:mm")
             self._to_dt.setMinimumWidth(150)
             self._to_dt.setToolTip(
-                "Upper bound of the trade window. Left alone it follows the "
-                "clock, so trades filled while the tab is open still show. "
-                "Set it to pin the window to a fixed instant."
+                "End of the trade window. Left alone it follows the clock, so new fills still show. Set it to pin."
             )
             self._remember_to_bound()
             fl.addWidget(self._to_dt)

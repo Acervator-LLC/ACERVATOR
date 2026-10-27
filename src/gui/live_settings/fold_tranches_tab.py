@@ -81,6 +81,7 @@ from .fold_chrome import (
     fold_sort_order,
     install_despawn_rows,
 )
+from ..descriptions import FOLD_TRANCHES_TAB_DESCRIPTIONS
 
 if TYPE_CHECKING:
     from ..bot_live_settings import BotLiveSettingsDialog
@@ -928,12 +929,7 @@ class FoldTranchesTabMixin:
             else "Clear Fold Tranches"
         )
         clear_btn.setEnabled(bool(open_count))
-        clear_btn.setToolTip(
-            "Discard every queued fold tranche for this bot.\n\n"
-            "Places NO order. Holdings, cost basis and target balance "
-            "are untouched — only the queued intent to buy back is "
-            "discarded. New tranches are created by the next SCRUM."
-        )
+        clear_btn.setToolTip(FOLD_TRANCHES_TAB_DESCRIPTIONS["clear_btn"])
         clear_btn.setStyleSheet(
             f"QPushButton {{ background: {ds.SETTINGS_DANGER_SURFACE}; color: {ds.FOLD_RATIO_AMBER}; "
             f"border: 1px solid {ds.ERROR}; padding: 6px 12px; }} "
@@ -952,12 +948,7 @@ class FoldTranchesTabMixin:
             else "Clear Wire Credits"
         )
         wire_btn.setEnabled(fold_parked_credit_stands(parked))
-        wire_btn.setToolTip(
-            "Discard this bot's parked Smart Wire credits.\n\n"
-            "Releases an EARMARK only. No order is placed and no "
-            "funds move — all bots share one exchange wallet, so the "
-            "cash simply returns to ordinary spendable balance."
-        )
+        wire_btn.setToolTip(FOLD_TRANCHES_TAB_DESCRIPTIONS["wire_btn"])
         wire_btn.setStyleSheet(
             f"QPushButton {{ background: {ds.SETTINGS_DANGER_SURFACE}; color: {ds.FOLD_RATIO_AMBER}; "
             f"border: 1px solid {ds.ERROR}; padding: 6px 12px; }} "
@@ -983,14 +974,7 @@ class FoldTranchesTabMixin:
             else "Clear Lifetime Counters"
         )
         counters_btn.setEnabled(_counters_stand)
-        counters_btn.setToolTip(
-            "Set this bot's four fold-tranche lifetime counters to "
-            "zero.\n\n"
-            "Places NO order and removes NO tranche. Open tranches, "
-            "parked wire credits, holdings, cost basis and target "
-            "balance are all untouched - this clears the record of "
-            "what happened, not what the bot holds."
-        )
+        counters_btn.setToolTip(FOLD_TRANCHES_TAB_DESCRIPTIONS["counters_btn"])
         counters_btn.setStyleSheet(
             f"QPushButton {{ background: {ds.SETTINGS_DANGER_SURFACE}; color: {ds.FOLD_RATIO_AMBER}; "
             f"border: 1px solid {ds.ERROR}; padding: 6px 12px; }} "
@@ -1175,16 +1159,7 @@ class FoldTranchesTabMixin:
                         status_color = ds.FOLD_RATIO_AMBER
                     si_status = QTableWidgetItem(status_str)
                     si_status.setForeground(QColor(status_color))
-                    si_status.setToolTip(
-                        "Price-gate status only (OTD threshold per "
-                        "tranche). Actual fold-back additionally "
-                        "requires TA validation in the GEP (bearish "
-                        "+ midline + lower-DT) AND the bot's position "
-                        "must be below its smart ceiling. "
-                        "'Price-OK' means the per-tranche OTD gate "
-                        "would pass IF TA confirms this tick AND the "
-                        "position has not saturated."
-                    )
+                    si_status.setToolTip(FOLD_TRANCHES_TAB_DESCRIPTIONS["si_status"])
                     table.setItem(row, 7, si_status)
                 elif cur_price > 0 and ref_v is not None and ref_v > 0:
                     # OTD == 0: no per-tranche threshold; shows
@@ -1218,12 +1193,7 @@ class FoldTranchesTabMixin:
                 # Captures the tranche dict by identity, so a
                 # post-click index lookup survives list mutation.
                 fire_btn = QPushButton("Fire")
-                fire_btn.setToolTip(
-                    "Operator-initiated fold-back of THIS tranche. "
-                    "Bypasses TA / OTD / Target-Delta gates. Smart "
-                    "Ceiling + fail-closed buy safety still apply. "
-                    "Bot must be RUNNING."
-                )
+                fire_btn.setToolTip(FOLD_TRANCHES_TAB_DESCRIPTIONS["fire_btn"])
                 # The inset leaves the row border delegate visible under the button.
                 _inset = TRANCHE_FIRE_BTN_INSET_PX // 2
                 fire_btn.setStyleSheet(
@@ -1246,12 +1216,7 @@ class FoldTranchesTabMixin:
                 table.setCellWidget(row, 9, fire_btn)
 
                 arb_na = QTableWidgetItem(ARBITER_NOT_APPLICABLE)
-                arb_na.setToolTip(
-                    "Arbiter applies to Extractor Tranches only. "
-                    "This is one of this bot's own fold tranches — "
-                    "no child holds it, and its Fire button is how "
-                    "you close it."
-                )
+                arb_na.setToolTip(FOLD_TRANCHES_TAB_DESCRIPTIONS["arb_na"])
                 table.setItem(row, ARBITER_COLUMN_INDEX, arb_na)
 
                 # LAST in the row, so every semantic foreground set

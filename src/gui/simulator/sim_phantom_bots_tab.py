@@ -26,6 +26,7 @@ from PySide6.QtGui import QColor
 from ...core.settings import DEFAULT_LOCK_CANDLE_COUNT
 from .. import design_system as ds
 from ..main_tabs import phantom_bots_tab_surface as surface
+from ..descriptions import PHANTOM_BOTS_TAB_DESCRIPTIONS
 
 
 class SimPhantomBotsTabMixin:
@@ -145,12 +146,7 @@ class SimPhantomBotsTabMixin:
             else DEFAULT_LOCK_CANDLE_COUNT
         )
         self._phantom_lock.setValue(current_lock)
-        self._phantom_lock.setToolTip(
-            "How many candles a higher-TF lock persists. The coordinator "
-            "keeps the figure and saves it with the bot. Nothing creates a "
-            "lock today, so Active Locks stays empty and SCRUM lock state "
-            "stays UNLOCKED."
-        )
+        self._phantom_lock.setToolTip(PHANTOM_BOTS_TAB_DESCRIPTIONS["phantom_lock"])
         self._phantom_lock.valueChanged.connect(
             lambda v: self._mark_changed("lock_candle_count", int(v))
         )

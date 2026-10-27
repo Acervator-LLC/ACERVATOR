@@ -79,13 +79,7 @@ if _HAS_QT:
             header = QHBoxLayout()
             self._privacy_mode_btn = QPushButton("Privacy Mode: OFF")
             self._privacy_mode_btn.setToolTip(
-                "Toggle ALL 18 privacy masks at once. When ON, every "
-                "registered field (5 KPIs, 5 counters, 7 Bot table "
-                "columns, IVP bot selector) renders as **** until the "
-                "operator reveals them.\n\n"
-                "Per-dot toggles remain available even when this is "
-                "OFF — Privacy Mode is a fast 'mask everything' "
-                "shortcut for screen-sharing."
+                "Masks every registered field at once, for screen sharing. Each field's own dot still works when this is OFF."
             )
             self._privacy_mode_btn.setFocusPolicy(Qt.NoFocus)
             self._privacy_mode_btn.clicked.connect(self._on_global_privacy_clicked)

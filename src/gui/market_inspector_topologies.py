@@ -162,10 +162,7 @@ if _HAS_QT:
             bots_tree.setColumnCount(4)
             bots_tree.setHeaderLabels(["Asset", "Role", "Symbol", "Status"])
             bots_tree.setToolTip(
-                "Bots involved in this topology proposal — EXISTING "
-                "means the bot is already live; WILL CREATE means "
-                "adopting will open the Bot Wizard for a new bot at "
-                "the shown target USD."
+                "Bots in this topology proposal. EXISTING is already live. WILL CREATE opens the Bot Wizard at the shown target USD."
             )
             bots_tree.setRootIsDecorated(False)
             bots_tree.setAlternatingRowColors(True)
@@ -253,9 +250,7 @@ if _HAS_QT:
                 self._adopt_btn.setToolTip("Adopt is disabled (test override).")
             else:
                 self._adopt_btn.setToolTip(
-                    "Walk the Bot Wizard for each new bot, then draw "
-                    "the wires listed above. Cancelling any wizard "
-                    "aborts the entire adoption."
+                    "Walks the Bot Wizard for each new bot, then draws the wires above. Cancelling any wizard aborts the adoption."
                 )
             self._adopt_btn.clicked.connect(self._on_adopt)
             btn_row.addWidget(self._adopt_btn)

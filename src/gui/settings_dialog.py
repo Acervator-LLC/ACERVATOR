@@ -349,9 +349,7 @@ if _HAS_QT:
                 "API Secret or EC Private Key (PEM format with \\n is OK)"
             )
             self._new_api_secret.setToolTip(
-                "For Coinbase CDP keys, paste the full PEM key including\n"
-                "-----BEGIN EC PRIVATE KEY----- and -----END EC PRIVATE KEY-----\n"
-                "Literal \\n characters will be auto-converted to newlines."
+                "For Coinbase CDP keys, paste the whole PEM key with its BEGIN and END lines. Literal newline escapes are converted."
             )
             add_form.addRow("API Secret:", self._new_api_secret)
 
@@ -1085,18 +1083,14 @@ if _HAS_QT:
             self._sound_profit = QCheckBox("P/L increase (coins dropping into bucket)")
             self._sound_profit.setChecked(True)
             self._sound_profit.setToolTip(
-                "Synthesized 3-coin bucket drop plays on any trade\n"
-                "event with realized profit > 0. Fires on scrumming\n"
-                "and extractor bots alike."
+                "A three-coin bucket drop plays on any trade with realized profit. Fires on scrumming and Extractor bots alike."
             )
             layout.addWidget(self._sound_profit)
 
             self._sound_drip = QCheckBox("Accumulation (water drip)")
             self._sound_drip.setChecked(True)
             self._sound_drip.setToolTip(
-                "Water drip plays on FOLD events — the canonical\n"
-                "Acervator accumulation moment (buying back more asset\n"
-                "than was sold). Does not fire on SCRUM or DIST."
+                "A water drip plays on FOLD, when the bot buys back more than it sold. Silent on SCRUM and DIST."
             )
             layout.addWidget(self._sound_drip)
 

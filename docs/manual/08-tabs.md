@@ -3535,3 +3535,92 @@ glass_metal       15618        yes
 draws the browser's own box. That box takes no stylesheet and no wait figure, so
 neither declaration reaches it. Changing those sites to the page's own box is a
 separate job, one screen at a time.
+
+### 2026-10-27 - #53 - every mouse-over description fits twenty words
+
+The operator set the limit:
+
+> A longer flat limit, no exceptions.
+
+The figure is twenty words. Every mouse-over description meets it, and no class
+of control is exempt. That figure replaces `ten words unless unavoidable`, which
+had no definition of `unavoidable` and so gave no sentence a verdict.
+
+**The same screen was written three times.** The settings tab and the creation
+wizard each exist as a Live file, a Paper file and a Simulator file, and 113 of
+their controls carried a byte-identical description in all three copies. Each
+copy was its own sentence, so a repair to one left the other two behind.
+
+```
+                                    on origin/current   on this change
+controls with a description             597 calls          597 calls
+descriptions over twenty words              228                  0
+copies of a shared sentence                   3                  1
+shared declarations                           0                112
+```
+
+`src/gui/descriptions.py` now holds one dict per screen, keyed by the control's
+own name, and the Live, Paper and Simulator copies of that screen all read it.
+One control is left out: the indicator panel sets its own window description
+twice, so it has no single declaration to carry.
+
+```
+SETTINGS_TAB_DESCRIPTIONS        50 controls
+BOT_WIZARD_DESCRIPTIONS          49
+FOLD_TRANCHES_TAB_DESCRIPTIONS    6
+TRADING_TAB_DESCRIPTIONS          3
+STACK_TRANCHES_TAB_DESCRIPTIONS   2
+INDICATOR_PANEL_DESCRIPTIONS      1
+PHANTOM_BOTS_TAB_DESCRIPTIONS     1
+```
+
+**One control keeps its own sentence on each build.** The indicator panel's
+staleness banner says more on Live than on Paper and the Simulator, because the
+Live panel also draws it when a bot has no stored reading at all. Forcing one
+sentence on all three would lose that, so the three stay separate.
+
+**Move the one declaration and all three screens follow.** The Aggressive
+Trading box was set to wording nothing else uses, the three settings tabs were
+built, and each was asked what its box reports.
+
+```
+                   this change                      on origin/current
+Live               the moved wording                the moved wording
+Paper              the moved wording                its own old sentence
+Simulator          the moved wording                its own old sentence
+control, the box's label    unchanged on all three  unchanged on all three
+```
+
+On `origin/current` there is no shared declaration, so the same move reaches the
+Live file alone. Both files were restored and read byte-identical by sha256.
+
+**Four descriptions were wrong about the code, and each is repaired.**
+
+```
+control                where it sat                     what it said
+Split Distance         the three settings tabs          a Logarithmic spacing mode
+Standing Surplus       the three settings tabs          the pool never drains
+Profit Folding         the three settings tabs          only this control turns it off
+Privacy Mode           two exchange tabs                18 masked fields
+```
+
+The spacing modes are `linear`, `quadratic`, `fibonacci` and `exponential` in
+`src/trading/stack_math.py`, and `src/trading/container/config.py` migrates the
+old `logarithmic` value to `quadratic`. The pool does drain:
+`src/trading/scrumming_bot.py` reduces it by whatever Max Target Growth allows
+and names the drained figure in its own log line. The creation wizard turns
+Profit Folding off for every Extractor bot, so the settings control is not the
+only place it is set. `src/core/privacy_mask_registry.py` holds 21 fields, not
+18, so the new sentence names no count and cannot drift again.
+
+**What a shorter sentence costs.** A description capped at twenty words cannot
+carry every clause the long one did. Each rewrite keeps the fact the control is
+for and drops the rest: a worked example, a figure for a default that the box
+already shows, or a second mechanism named in passing. The longest loss is the
+data pool freshness line, which fell from 79 words and no longer spells out the
+cache-hit arithmetic or the per-entry lifetimes.
+
+**What is still open on this item.** A description on every control that has
+none is unbuilt, and `src/gui/tooltips.py, in set_description` still has no
+callers. 178 of the 597 calls build their text at runtime, so no static count
+reaches them.

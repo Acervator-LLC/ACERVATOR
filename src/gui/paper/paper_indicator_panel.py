@@ -34,6 +34,7 @@ from ..main_tabs import indicator_panel_surface as ivp
 # ivp.bot_selector is the only IVP field in the privacy mask registry;
 # TA columns carry no privacy wiring.
 from ...core.privacy_mask_registry import get_privacy_mask_registry
+from ..descriptions import INDICATOR_PANEL_DESCRIPTIONS
 
 logger = logging.getLogger("acervator.gui")
 
@@ -653,10 +654,7 @@ if _HAS_QT:
             self._staleness_label.setWordWrap(True)
             self._staleness_label.setAccessibleName("TA Staleness Banner")
             self._staleness_label.setToolTip(
-                "Shown when the panel is displaying the LAST TA read "
-                "this bot produced rather than a current one, with the "
-                "age of that reading and the reason no current one "
-                "exists. Nothing is recomputed to draw it."
+                "Shown when the panel has only a stored TA read, naming its age and why no current one exists."
             )
             self._staleness_label.hide()
             layout.addWidget(self._staleness_label)
@@ -668,12 +666,7 @@ if _HAS_QT:
                 "background: rgba(30, 40, 60, 60); "
                 "border-radius: 2px;"
             )
-            self._rate_strip.setToolTip(
-                "Live BTC/USD and ETH/USD spot from the connected "
-                "exchange plus satoshi-per-USD and gwei-per-USD "
-                "conversions (1 gwei = 10⁹ wei). Refreshed on the "
-                "dashboard tick."
-            )
+            self._rate_strip.setToolTip(INDICATOR_PANEL_DESCRIPTIONS["rate_strip"])
             self._rate_strip.setAccessibleName("Currency Rate Strip")
             layout.addWidget(self._rate_strip)
 
