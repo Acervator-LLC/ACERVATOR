@@ -3401,3 +3401,20 @@ now      isTabVisible(1)         True, then False once hidden
 The neighbouring tab is the control. Tab 0 reads True on every reading, and the
 full label list is unchanged, so the False on tab 1 is a reading and not a book
 that lost its tabs.
+
+**A press still reaches the page it names.** The book maps a pressed label back
+to a page through the full list, so hiding a tab does not shift the pages after
+it. Driven on a book of four tabs with the second hidden, each press landing on
+the page whose label it carried.
+
+```
+hidden            Charts
+pressed Trading   page 0, reads Trading
+pressed History   page 2, reads History
+pressed Console   page 3, reads Console
+shown again       pressed Charts, page 1, reads Charts
+pressed Nowhere   the page does not move
+```
+
+The last two rows are the controls. A label the book carries again is reachable
+again, and a label the book does not carry moves nothing.
