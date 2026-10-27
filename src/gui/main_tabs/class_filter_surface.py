@@ -53,17 +53,19 @@ def set_active(name: Any) -> str:
     return _active
 
 
+# OVERTAKEN, quoted whole:
+#   "A venue serving one class answers it, and a venue serving several is
+#   narrowed to the class ``symbol_class`` holds for the symbol."
+# True today: ``symbol_class`` reads the recording first on every venue, so a
+# pair recorded under one sector is never answered under another.
 def market_class(venue_id: Any, symbol: Any = "") -> str:
     """The asset class one market belongs to, or an empty string for none.
 
-    A venue serving one class answers it, and a venue serving several is
-    narrowed to the class ``symbol_class`` holds for the symbol.
+    ``symbol_class`` reads the venue's own recording, then the one class the
+    venue serves, and answers an empty string where neither can.
     """
-    served = venue_classes(venue_id)
-    if not served:
+    if not venue_classes(venue_id):
         return ""
-    if len(served) == 1:
-        return next(iter(served))
     return symbol_class(venue_id, symbol)
 
 
