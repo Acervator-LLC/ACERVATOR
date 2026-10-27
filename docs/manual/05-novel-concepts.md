@@ -286,6 +286,39 @@ the flag set by hand, band position 0.70         the midline gate refuses
 the flag set by hand, band position 0.91         the ripe row force-passes it
 ```
 
+**Two sentences above are overtaken in part.** Neither is edited and neither is
+removed. They read:
+
+> The scrum flag also carries the phantom lock. Nothing sets that lock today,
+> and on a ripe row the ripe-harvest override force-passes the gate that reads
+> it.
+
+> The phantom lock is the only other way that flag can read false, and no method
+> in the platform sets it.
+
+**The current reading.** A method on the bot now sets the flag. It runs on every
+tick, above the scrum flag, and it takes the state from the coordinator's own
+active lock list rather than from a field nobody wrote. Where the operator has
+phantom bots switched off it clears the flag instead.
+
+`src/trading/scrumming_bot.py` — `ScrummingBot.tick`, the call above the flag
+
+```python
+self._refresh_phantom_lock()
+if self.config.bb_midline_gate:
+    scrum_ok = (bb_pos > 0.50) and not self._phantom_locked
+    fold_ok_midline = bb_pos < 0.50
+```
+
+The rest of both sentences still holds. No method on the coordinator creates a
+lock, so the lock list is empty on every running bot and the flag reads clear.
+The ripe-harvest override still force-passes the gate on a ripe row, which is
+why a held lock changes no trade. Driven across 3,201 band positions with a lock
+held, the scrum flag changed on 1,601 rows and the final scrum decision on none.
+
+The full reading, the method, the coordinator's answer and the swept figures are
+on [the Indicator Voting Panel page](07-indicators.md).
+
 **The saved record carries the timeframe.** The bot writes every name it holds
 under the key `phantom_timeframes`. The fleet load reads that key and gives the
 list to the bot it builds. The key, the change field and the bot attribute now
