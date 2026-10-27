@@ -470,7 +470,6 @@ AI_PHRASE_CHARACTERS = 20
 BUS_SUBSCRIPTIONS = (
     "bot.log",
     "wire.created",
-    "indicator.tf_lock_changed",
     "indicator.bot_selected",
     "ai.feedback",
     "trade.filled",
@@ -514,7 +513,6 @@ WIRED_PATHS = (
     "_on_bot_log",
     "_on_bot_row_selected",
     "_on_live_settings_changed",
-    "_on_tf_lock_changed",
     "_on_wire_created",
     "_pump_currency_rates",
     "_pump_market_pairs_scout",
