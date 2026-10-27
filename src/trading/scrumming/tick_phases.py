@@ -111,6 +111,7 @@ class TickPhaseMixin:
     _phantom_gate_logged: bool
     _phantom_mgr: Any
     _phantom_tf_dropped_note: Optional[str]
+    _phantom_tf_set_aside_note: Optional[str]
     _phantom_timeframes: list[str]
     _phantoms_enabled: bool
     _phantoms_started: bool
@@ -463,6 +464,12 @@ class TickPhaseMixin:
                     "bot.log",
                     bot_id=self.bot_id,
                     message=self._phantom_tf_dropped_note,
+                )
+            if self._phantom_tf_set_aside_note:
+                self._bus.emit(
+                    "bot.log",
+                    bot_id=self.bot_id,
+                    message=self._phantom_tf_set_aside_note,
                 )
 
     async def _tick_manual_fire(self, ticker: Any) -> None:
