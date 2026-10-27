@@ -26,8 +26,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional
 
-# ── Elo engine ────────────────────────────────────────────────────────────────
-
 DEFAULT_ELO = 1200
 ELO_K_FACTOR = 32
 MIN_ELO = 100
@@ -47,9 +45,6 @@ def elo_update(
     new_w = winner_rating + k * (1 - exp_w)
     new_l = max(MIN_ELO, loser_rating + k * (0 - exp_l))
     return round(new_w, 1), round(new_l, 1)
-
-
-# ── Rating registry ───────────────────────────────────────────────────────────
 
 
 @dataclass
@@ -166,9 +161,6 @@ class RatingRegistry:
             self._ratings[bid] = BotRating(**rd)
         self._history = data.get("history", [])
         return self
-
-
-# ── Challenge message ─────────────────────────────────────────────────────────
 
 
 @dataclass

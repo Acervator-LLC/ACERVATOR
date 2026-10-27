@@ -3418,3 +3418,234 @@ pressed Nowhere   the page does not move
 
 The last two rows are the controls. A label the book carries again is reachable
 again, and a label the book does not carry moves nothing.
+
+### 2026-10-27 - #53 - one declaration carries the mouse-over box's size and its wait
+
+**A control's mouse-over description draws in a box, and four figures decide
+that box.** Three are its size and one is its wait. All four now sit together in
+`src/gui/theme_engine.py`, and every rule that draws the box reads them from
+there.
+
+`src/gui/theme_engine.py` — the one declaration
+
+```python
+TOOLTIP_MAX_WIDTH_PX = 560
+TOOLTIP_FONT_SIZE_PX = 12
+TOOLTIP_PADDING_PX = 8
+TOOLTIP_DELAY_MS = 3000
+```
+
+**Four style sheets draw the box, and two of them used to carry their own
+numbers.** `src/gui/main_tabs/theme_engine_surface.py` typed 560px, 12px and 8px
+into its template. `src/gui/main_window.py` read the width and set no text size
+and no spacing at all. Both read the declaration now.
+
+```
+rule set                                           width  size  padding
+src/gui/theme_engine.py                              560    12        8
+src/gui/main_tabs/theme_engine_surface.py            560    12        8
+src/gui/main_window.py                               560    12        8
+src/gui/main_tabs/main_window_surface.py             560    12        8
+```
+
+**The wait is a style hint, not a timer.** `src/gui/tooltips.py, in
+WakeDelayStyle` answers Qt's own wake-up hint with `TOOLTIP_DELAY_MS`, and
+`main.py` puts that style on the application at launch. Qt restarts the wait on
+every pointer movement, however small, so the pointer has to hold still for the
+full three seconds.
+
+```
+application without the style   the toolkit's own 700 ms
+application with the style      3000 ms
+```
+
+**The React History page carries its own declaration, read by its own rule and
+its own timer.** `src/gui/web/history_panel.css` declares the two figures on
+`:root`. The `.tooltip` rule reads the width and `src/gui/web/history_panel.js`
+reads the wait, which it used to hold as a number of its own.
+
+`src/gui/web/history_panel.css` — the React declaration
+
+```css
+:root {
+  --tooltip-max-width: 560px;
+  --tooltip-delay-ms: 3000;
+}
+```
+
+**Read off the running page.** The page was asked what wait it will use and what
+width its box draws at, with a neighbouring element as the control.
+
+```
+--tooltip-delay-ms           3000
+--tooltip-max-width          560px
+the wait the page will use   3000
+.tooltip max-width           560px
+.pager max-width             none
+```
+
+The pager is the control. The rule reaches the box and not the pager, so the
+560px is a reading of the rule rather than of every element on the page.
+
+**Move the declaration and every box follows it together.** Set the four figures
+to numbers nothing else uses and read all four Qt rule sets and the running
+React page again.
+
+```
+                                              branch        before this change
+src/gui/theme_engine.py                       377 17 3      377 17 3
+src/gui/main_tabs/theme_engine_surface.py     377 17 3      560 12 8
+src/gui/main_window.py                        377 17 3      377 -- --
+src/gui/main_tabs/main_window_surface.py      377 17 3      377 17 3
+the wake hint                                 4321          4321
+the React page's wait                         4747          not reachable
+the React box's width                         393px         393px
+```
+
+**What this does not change.** No description's words change. 597 controls across
+the Live, Paper and Simulator screens set one, 365 of those sentences run over
+ten words, and rewriting them waits on the definition of `unavoidable` that
+requirement 3 asks for.
+
+**The rule sits on the application, so all three Qt screens draw from it.** No
+`QToolTip` rule exists under `src/gui/paper/` or `src/gui/simulator/`. The
+Simulator's darker tone restates the whole block under its own selector, built
+from the same four figures, so a box on a Simulator screen reads the same.
+
+```
+plain tone      maximum width 578   text size 12   margin 9
+Simulator tone  maximum width 578   text size 12   margin 9
+```
+
+The 578 is the 560 plus the box's own 9 pixel margin on each side.
+
+**Nothing else on a screen moves.** All ten style sheets, five themes on each
+build, are byte-identical to the ones before this change.
+
+```
+theme             characters   unchanged
+cyberpunk_dark    15605        yes
+neon_light        15601        yes
+classic_terminal  15599        yes
+minimal_modern    15611        yes
+glass_metal       15618        yes
+```
+
+**One box no rule can reach.** 124 React controls pass a `title` property, which
+draws the browser's own box. That box takes no stylesheet and no wait figure, so
+neither declaration reaches it. Changing those sites to the page's own box is a
+separate job, one screen at a time.
+
+### 2026-10-27 - #53 - every mouse-over description fits twenty words
+
+The operator set the limit:
+
+> A longer flat limit, no exceptions.
+
+The figure is twenty words. Every mouse-over description meets it, and no class
+of control is exempt. That figure replaces `ten words unless unavoidable`, which
+had no definition of `unavoidable` and so gave no sentence a verdict.
+
+**The same screen was written three times.** The settings tab and the creation
+wizard each exist as a Live file, a Paper file and a Simulator file, and 113 of
+their controls carried a byte-identical description in all three copies. Each
+copy was its own sentence, so a repair to one left the other two behind.
+
+```
+                                    on origin/current   on this change
+controls with a description             597 calls          597 calls
+descriptions over twenty words              228                  0
+copies of a shared sentence                   3                  1
+shared declarations                           0                112
+```
+
+`src/gui/descriptions.py` now holds one dict per screen, keyed by the control's
+own name, and the Live, Paper and Simulator copies of that screen all read it.
+One control is left out: the indicator panel sets its own window description
+twice, so it has no single declaration to carry.
+
+```
+SETTINGS_TAB_DESCRIPTIONS        50 controls
+BOT_WIZARD_DESCRIPTIONS          49
+FOLD_TRANCHES_TAB_DESCRIPTIONS    6
+TRADING_TAB_DESCRIPTIONS          3
+STACK_TRANCHES_TAB_DESCRIPTIONS   2
+INDICATOR_PANEL_DESCRIPTIONS      1
+PHANTOM_BOTS_TAB_DESCRIPTIONS     1
+```
+
+**One control keeps its own sentence on each build.** The indicator panel's
+staleness banner says more on Live than on Paper and the Simulator, because the
+Live panel also draws it when a bot has no stored reading at all. Forcing one
+sentence on all three would lose that, so the three stay separate.
+
+**Move the one declaration and all three screens follow.** The Aggressive
+Trading box was set to wording nothing else uses, the three settings tabs were
+built, and each was asked what its box reports.
+
+```
+                   this change                      on origin/current
+Live               the moved wording                the moved wording
+Paper              the moved wording                its own old sentence
+Simulator          the moved wording                its own old sentence
+control, the box's label    unchanged on all three  unchanged on all three
+```
+
+On `origin/current` there is no shared declaration, so the same move reaches the
+Live file alone. Both files were restored and read byte-identical by sha256.
+
+**Four descriptions were wrong about the code, and each is repaired.**
+
+```
+control                where it sat                     what it said
+Split Distance         the three settings tabs          a Logarithmic spacing mode
+Standing Surplus       the three settings tabs          the pool never drains
+Profit Folding         the three settings tabs          only this control turns it off
+Privacy Mode           two exchange tabs                18 masked fields
+```
+
+The spacing modes are `linear`, `quadratic`, `fibonacci` and `exponential` in
+`src/trading/stack_math.py`, and `src/trading/container/config.py` migrates the
+old `logarithmic` value to `quadratic`. The pool does drain:
+`src/trading/scrumming_bot.py` reduces it by whatever Max Target Growth allows
+and names the drained figure in its own log line. The creation wizard turns
+Profit Folding off for every Extractor bot, so the settings control is not the
+only place it is set. `src/core/privacy_mask_registry.py` holds 21 fields, not
+18, so the new sentence names no count and cannot drift again.
+
+**What a shorter sentence costs.** A description capped at twenty words cannot
+carry every clause the long one did. Each rewrite keeps the fact the control is
+for and drops the rest: a worked example, a figure for a default that the box
+already shows, or a second mechanism named in passing. The longest loss is the
+data pool freshness line, which fell from 79 words and no longer spells out the
+cache-hit arithmetic or the per-entry lifetimes.
+
+**What is still open on this item.** A description on every control that has
+none is unbuilt, and `src/gui/tooltips.py, in set_description` still has no
+callers. 178 of the 597 calls build their text at runtime, so no static count
+reaches them.
+
+**Eight descriptions are built while the screen runs, and their fixed words ran
+over too.** A word count of a stored sentence cannot see them, so they were
+counted a second way: the fixed text inside the template, with the values left
+out. Eight came out over twenty words, and all eight are now under.
+
+```
+                                        fixed words before   after
+the Fire button, five states                    22 to 26     15 to 19
+the minimum rebuy guide, three tabs                   41          17
+```
+
+The Fire button's five sentences lived twice — once in
+`src/gui/main_tabs/bot_status_table_surface.py` as a named value the React build
+reads, and once typed again inside `src/gui/widgets/bot_status_table.py`. The Qt
+table now reads the named value, so both builds draw one sentence.
+
+```
+                        this change        on origin/current
+the five sentences      15 to 19 words     22 to 26 words
+one declaration         yes                no, each build its own copy
+```
+
+Two runtime lines are appended to a Fire description and are not part of the
+sentence: a ceiling warning, and the list of gates blocking a fire.

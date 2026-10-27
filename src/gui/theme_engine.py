@@ -12,6 +12,9 @@ against the theme's ground, and ``accented`` puts an accepted one over a theme's
 ``accent_primary``. ``applied_tokens`` answers which ``ThemeTokens`` ``apply_theme``
 last painted, and ``ThemeManager.current`` returns that same answer.
 
+``TOOLTIP_MAX_WIDTH_PX``, ``TOOLTIP_FONT_SIZE_PX``, ``TOOLTIP_PADDING_PX`` and
+``TOOLTIP_DELAY_MS`` are the one declaration every ``QToolTip`` rule reads.
+
 ``nigredo`` is the Simulator's tone: the seven ground tokens moved
 ``NIGREDO_FRACTION`` of the way to black by ``toward_black``, every other token
 the theme's own. ``generate_qss`` ends with ``nigredo_qss``, the ground rules
@@ -49,7 +52,6 @@ class ThemeTokens:
     bg_hover: str = "#1e1e35"
     bg_selected: str = "#252545"
 
-    # Text
     text_primary: str = "#e0e0f0"
     text_secondary: str = "#8888aa"
     text_muted: str = "#8a8ab0"  # was "#555577" — WCAG C2: 2.62:1 → 5.19:1 (SC 1.4.3)
@@ -71,7 +73,6 @@ class ThemeTokens:
     scrollbar_bg: str = "#0a0a14"
     scrollbar_handle: str = "#2a2a44"
 
-    # Font
     font_family: str = "'Rajdhani', 'Orbitron', 'Segoe UI', sans-serif"
     font_size: str = "13px"
     font_size_small: str = "11px"
@@ -482,6 +483,10 @@ TOOLTIP_MAX_WIDTH_PX = 560
 #: The text size and inner spacing every ``QToolTip`` box draws at.
 TOOLTIP_FONT_SIZE_PX = 12
 TOOLTIP_PADDING_PX = 8
+
+#: Milliseconds the pointer rests unmoved before Qt draws a ``QToolTip``,
+#: restarted on every pointer move.
+TOOLTIP_DELAY_MS = 3000
 
 #: The alpha a pressed ``QSplitter`` handle paints its accent under: 0.85 of
 #: full opacity written as the byte Qt reads, because Qt has no ``opacity``.
@@ -919,7 +924,6 @@ QRadioButton::indicator {{
 """
 
 
-# Theme manager
 class ThemeManager:
     """
     Manages theme selection and application.

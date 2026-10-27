@@ -551,8 +551,6 @@ def _build() -> dict:
             self.resize(int(width), int(height))
             return int(width), int(height)
 
-        # -- what the render path pushes through -------------------------
-
         @property
         def page_ready(self) -> bool:
             """True once ``_on_load_finished`` has seen a successful load."""
@@ -594,8 +592,6 @@ def _build() -> dict:
             self._last_tabs = tabs
             if self._page_ready:
                 self._run(push_script(window, tabs))
-
-        # -- what the page reports back ----------------------------------
 
         def apply_edit(self, payload: str) -> None:
             """Take one operator edit and record it the way the widget did."""
@@ -661,8 +657,6 @@ def _build() -> dict:
                 self._change_lbl.setText(str(exc))
                 return str(exc)
             return ""
-
-        # -- internals ----------------------------------------------------
 
         def _run(self, script: str) -> None:
             self._web.page().runJavaScript(script)

@@ -1426,8 +1426,6 @@ class MainWindowModel:
         self.error_buffer: list = []
         self.calls: list = []
 
-    # -- construction --------------------------------------------------
-
     def build(self) -> "MainWindowModel":
         """Fill the title, the menus, the tab book and the status line."""
         self.window_title = window_title(self.version)
@@ -1532,8 +1530,6 @@ class MainWindowModel:
         self.api_pill_tooltip = api_pill_tooltip(self.load_monitor.safety_pct)
         self._record("api_pill", self.api_pill_text)
         return self
-
-    # -- the window's own paths ----------------------------------------
 
     def change_tab(self, index: Any, now: Any = 0.0) -> "MainWindowModel":
         """The operator picks a tab."""
@@ -1832,8 +1828,6 @@ class MainWindowModel:
         """Whether this exchange belongs to the stock layer."""
         return is_equity_exchange(exchange_id, self.equity_exchange_ids)
 
-    # -- sinks ---------------------------------------------------------
-
     def log(self, text: Any, level: Any = "info") -> None:
         """One line on the activity log."""
         self.log_lines.append({"text": text, "level": level})
@@ -1844,8 +1838,6 @@ class MainWindowModel:
 
     def _record(self, name: str, detail: Any = None) -> None:
         self.calls.append(ModelCall(name, detail))
-
-    # -- the answer ----------------------------------------------------
 
     def as_dict(self) -> dict:
         """Every value the window shows, as plain values."""

@@ -413,37 +413,24 @@ FIRE_GLOWS = {
 }
 
 FIRE_TIP_SCRUM_SOLID = (
-    "ARMED for SCRUM (auto would fire). "
-    "Holdings above target; all gates clear. "
-    "Clicking fires a MARKET sell to "
-    "rebalance back to target."
+    "ARMED for SCRUM. Holdings above target and all gates clear. "
+    "Clicking fires a market sell back to target."
 )
 FIRE_TIP_SCRUM_OUTLINE = (
-    "Manual SCRUM override available — "
-    "delta > 0 but auto-fire blocked. "
-    "Clicking fires a MARKET sell sized to "
-    "rebalance back to target (bypasses "
-    "auto's TA/BB/HTF gates)."
+    "Manual SCRUM override. Auto-fire is blocked. Clicking fires a "
+    "market sell back to target and bypasses the auto gates."
 )
 FIRE_TIP_FOLD_CEILING = (
-    "Fold would be armed, but POSITION "
-    "CEILING has been reached. Fold is "
-    "hard-stopped. Manual Fire will still "
-    "attempt to rebalance (operator "
-    "override bypasses the ceiling)."
+    "Fold is hard-stopped: the position ceiling is reached. "
+    "Manual Fire still rebalances, bypassing the ceiling."
 )
 FIRE_TIP_FOLD_SOLID = (
-    "ARMED for FOLD (auto would fire). "
-    "Holdings below target; all gates clear. "
-    "Clicking fires a MARKET buy to "
-    "rebalance back to target."
+    "ARMED for FOLD. Holdings below target and all gates clear. "
+    "Clicking fires a market buy back to target."
 )
 FIRE_TIP_FOLD_OUTLINE = (
-    "Manual FOLD override available — "
-    "delta < 0 but auto-fire blocked. "
-    "Clicking fires a MARKET buy sized to "
-    "rebalance back to target (bypasses "
-    "auto's TA/BB/price-floor gates)."
+    "Manual FOLD override. Auto-fire is blocked. Clicking fires a "
+    "market buy back to target and bypasses the auto gates."
 )
 FIRE_TIP_PHASE_FIRE = (
     "Organic FIRE phase — bot at band but "
@@ -1382,8 +1369,6 @@ class BotStatusTableModel:
         self.sort_descending = False
         self.refresh_header_dots()
 
-    # ----- headers -----
-
     def refresh_header_dots(self) -> None:
         """Rebuild the ten column headers, each with its own dot's state."""
         try:
@@ -1437,8 +1422,6 @@ class BotStatusTableModel:
         self.refresh_header_dots()
         if self.last_statuses:
             self.update_bots(self.last_statuses)
-
-    # ----- rows -----
 
     def set_row_count(self, count: int) -> None:
         """Make room for `count` rows, keeping the rows that already fit.
@@ -1838,8 +1821,6 @@ class BotStatusTableModel:
             "tooltip": DETAIL_TIP,
         }
 
-    # ----- selection -----
-
     def get_selected_bot_id(self) -> str:
         """The bot the highlight is on, or nothing when none is highlighted."""
         if not self.has_selection:
@@ -1917,8 +1898,6 @@ class BotStatusTableModel:
         found = self.get_selected_bot_id()
         self.calls.append([ROW_HIGHLIGHTED, wanted, found])
         return found
-
-    # ----- the five things the operator can press -----
 
     def on_row_pressed(self, bot_id: str) -> str:
         """Answer a press on one row and report the bot it leaves selected.

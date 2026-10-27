@@ -265,8 +265,6 @@ class MarketRotation:
         """The lookup ``eligible_pool`` asks the six-month rule of."""
         return self._age_lookup
 
-    # -- The volume ranking --------------------------------------------------
-
     def ranked_usd_markets(
         self,
         exchange_id: str,
@@ -294,8 +292,6 @@ class MarketRotation:
         )
         return tuple(pairs)
 
-    # -- Exchange exclusion --------------------------------------------------
-
     def file_exclusion(
         self, exchange_id: str, symbol: str, filed_in_season: int
     ) -> int:
@@ -321,8 +317,6 @@ class MarketRotation:
         return tuple(
             sorted(sym for sym, start in filed.items() if int(season) >= start)
         )
-
-    # -- Eligibility ---------------------------------------------------------
 
     def eligible_pool(
         self,
@@ -463,8 +457,6 @@ class MarketRotation:
             is_eligible=False,
             reason=OUTSIDE_TOP_VOLUME,
         )
-
-    # -- The window ----------------------------------------------------------
 
     def open_window(self, pool: EligiblePool) -> RotationWindow:
         """Draw ``pool.draw_size`` markets and post their salted root to the chain.
@@ -611,8 +603,6 @@ class MarketRotation:
             "root": reveal.commitment,
             "verified": verify_proof(leaves[index], proof, reveal.commitment),
         }
-
-    # -- Persistence ---------------------------------------------------------
 
     def save(self) -> None:
         """Write the windows, the drawn sets, the salts and the exclusions to disk."""

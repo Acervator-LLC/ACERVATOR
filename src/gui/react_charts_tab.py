@@ -388,8 +388,6 @@ if _HAS_WEBENGINE:
 
             get_event_bus().subscribe(FILLED_TOPIC, self._on_trade_filled)
 
-        # -- what the page is built from ---------------------------------
-
         @property
         def page_ready(self) -> bool:
             """True once ``_on_load_finished`` has seen a successful load."""
@@ -438,8 +436,6 @@ if _HAS_WEBENGINE:
                 return
             self._run(mount_script(self._payload))
             self._drawn = True
-
-        # -- the painted chart -------------------------------------------
 
         @property
         def painter(self) -> Any:
@@ -794,8 +790,6 @@ if _HAS_WEBENGINE:
             self._painter.set_pane_drag_height(height, width)
             return self.chart_image(width, ratio, height)
 
-        # -- the calls the main window makes on the tab ------------------
-
         @property
         def panel(self):
             """The one chart panel every asset is drawn in."""
@@ -887,8 +881,6 @@ if _HAS_WEBENGINE:
             )
             self.redraw()
 
-        # -- what the page asks back -------------------------------------
-
         def run_ask(self, payload: str) -> None:
             """Answer one bridge ask the page reported and hand it back by id."""
             try:
@@ -904,8 +896,6 @@ if _HAS_WEBENGINE:
                 self._run(refusal_script(ask_id, f"{type(exc).__name__}: {exc}"))
                 return
             self._run(answer_script(ask_id, answered))
-
-        # -- internals ----------------------------------------------------
 
         def _answer(self, method: str, params: Any) -> Any:
             asked = params if isinstance(params, dict) else {}

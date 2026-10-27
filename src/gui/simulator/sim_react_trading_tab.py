@@ -1068,8 +1068,6 @@ if _HAS_WEBENGINE:
             self._trade_push_timer.setInterval(TRADE_PUSH_INTERVAL_MS)
             self._trade_push_timer.timeout.connect(self._push_pending_log)
 
-        # -- what the window reads ----------------------------------------
-
         @property
         def page_ready(self) -> bool:
             """True once ``_on_load_finished`` has seen a successful load."""
@@ -1669,8 +1667,6 @@ if _HAS_WEBENGINE:
             ``log`` at the ``success`` level ``_import_live_fleet`` uses."""
             self.log(report_line(report), "success")
 
-        # -- the Validation and Back Test runs ----------------------------
-
         def _run_bots(self, exchange_id: str) -> list[SimBot]:
             """Every held scrumming bot on ``exchange_id``, the fleet a run
             covers."""
@@ -1916,8 +1912,6 @@ if _HAS_WEBENGINE:
             if not self._trade_push_timer.isActive():
                 self._trade_push_timer.start()
 
-        # -- the walk's stats on the record ---------------------------------
-
         def _on_bus_stats(self, event: Any) -> None:
             """The bus subscriber for ``STATS_TOPIC``, called on the walk's
             thread: re-emit the event's ``snapshot`` through ``bot_stats`` so
@@ -1976,8 +1970,6 @@ if _HAS_WEBENGINE:
         def layer(self) -> str:
             """The layer the page shows behind the panel slot."""
             return self._state.replay_layer
-
-        # -- what the window pushes ---------------------------------------
 
         def show_models(self, fresh: Any) -> bool:
             """Hold one payload per bridge method and draw them on the page.
@@ -2465,8 +2457,6 @@ if _HAS_WEBENGINE:
             self._refresh_replay()
             self.show_tab({})
 
-        # -- the replay layer ---------------------------------------------
-
         def _selected_bot(self):
             chosen = str(self._panel.selected_bot_id or "")
             return self._fleet_source.bot_for(chosen) if chosen else None
@@ -2704,8 +2694,6 @@ if _HAS_WEBENGINE:
             self._refresh_replay()
             self._feed_votes()
 
-        # -- what the operator presses ------------------------------------
-
         def show_layer(self, layer: str, pressed: Optional[dict] = None) -> str:
             """Show ``layer`` behind the panel slot and redraw the tab; a change
             of layer emits ``LAYER_FLIPPED_SIGNAL`` with ``pressed``, the flip
@@ -2809,8 +2797,6 @@ if _HAS_WEBENGINE:
                 venue = self._venues.get(venue_of_ask(method, params))
                 if venue is not None and venue.answer(method, params):
                     self._venue_published()
-
-        # -- construction -------------------------------------------------
 
         def showEvent(self, event) -> None:  # noqa: N802
             """Build the web view the first time the tab is shown."""

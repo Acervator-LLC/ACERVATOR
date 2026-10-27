@@ -284,7 +284,6 @@ if _HAS_WEBENGINE:
             self._web.setHtml(panel_html(theme))
             layout.addWidget(self._web, 1)
 
-        # -- public ---------------------------------------------------
         @property
         def page_ready(self) -> bool:
             """True once ``_on_load_finished`` has seen a successful load."""
@@ -313,7 +312,6 @@ if _HAS_WEBENGINE:
             self._web.page().runJavaScript(ROW_COUNT_JS, callback)
             return True
 
-        # -- internals ------------------------------------------------
         def _push(self, model: dict) -> None:
             self._web.page().runJavaScript(state_push_script(model))
 

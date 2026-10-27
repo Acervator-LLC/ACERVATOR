@@ -284,8 +284,6 @@ if _HAS_WEBENGINE:
             self._book.currentChanged.connect(self._on_current_changed)
             self._book.tabBar().tabMoved.connect(self._on_tab_moved)
 
-        # -- the QTabWidget calls the window makes ------------------------
-
         def addTab(self, widget, label: str) -> int:
             """Add ``widget`` under ``label`` and redraw the bar."""
             index = self._book.addTab(widget, label)
@@ -344,8 +342,6 @@ if _HAS_WEBENGINE:
             self._book.setTabVisible(index, visible)
             self._push_tabs()
 
-        # -- the bar ------------------------------------------------------
-
         def labels(self) -> list:
             """Every tab label, left to right, hidden tabs included."""
             return [self._book.tabText(at) for at in range(self._book.count())]
@@ -401,8 +397,6 @@ if _HAS_WEBENGINE:
             move = request.get("move") or {}
             if "from" in move and "to" in move:
                 self._book.tabBar().moveTab(int(move["from"]), int(move["to"]))
-
-        # -- internals ----------------------------------------------------
 
         def _run(self, script: str) -> None:
             if self._web is not None and self._page_ready:

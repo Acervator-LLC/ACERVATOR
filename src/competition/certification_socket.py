@@ -220,8 +220,6 @@ class CertificationSocket:
         self._identity_resolver: Callable[[str], BotIdentity | None] = _no_identity
         self._bus_unsubscribe: Callable[[], None] | None = None
 
-    # -- Certification -------------------------------------------------------
-
     def certify(
         self, identity: BotIdentity, fill: CertifiedFill
     ) -> CertificationReceipt:
@@ -400,8 +398,6 @@ class CertificationSocket:
             chain.emit(tx.tx_hash, CERTIFICATION_CONTRACT, CERTIFIED_EVENT, args)
         return str(tx.tx_hash)
 
-    # -- Participation -------------------------------------------------------
-
     def may_participate(self, bot_id: str) -> bool:
         """Answer whether ``bot_id`` has certified at least one fill."""
         with self._state_lock:
@@ -414,8 +410,6 @@ class CertificationSocket:
                 f"bot {bot_id[:12]} has certified no trades and cannot enter a "
                 f"PoA event"
             )
-
-    # -- Queries -------------------------------------------------------------
 
     @property
     def participants(self) -> ParticipantRegistry | None:
@@ -517,8 +511,6 @@ class CertificationSocket:
                 "quintessence": self._ledger.supply_summary(),
             }
 
-    # -- Bus ------------------------------------------------------------------
-
     def attach_to_bus(
         self,
         bus: EventBus,
@@ -590,8 +582,6 @@ class CertificationSocket:
         except Exception:
             logger.exception("trade.filled certification failed")
 
-    # -- Persistence ---------------------------------------------------------
-
     def save(self) -> Path:
         """Write the per-bot fee totals and certified fill ids to the socket path."""
         return atomic_write_json(
@@ -641,8 +631,6 @@ class CertificationSocket:
                     str(i) for i in row.get("certified_fill_ids", ())
                 )
         return self
-
-    # -- Internals -----------------------------------------------------------
 
     @staticmethod
     def _season_in(merged: dict) -> int | None:

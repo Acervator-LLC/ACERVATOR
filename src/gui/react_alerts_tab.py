@@ -299,8 +299,6 @@ if _HAS_QT and _HAS_WEBENGINE:
             self._web.page().runJavaScript(TAB_TEXT_JS, callback)
             return True
 
-        # -- what the page reports back ----------------------------------
-
         def answer_call(self, payload: str) -> None:
             """Apply one request from the page and settle its promise."""
             try:
@@ -311,8 +309,6 @@ if _HAS_QT and _HAS_WEBENGINE:
             self._apply_request(request.get("params") or {})
             self.redraw()
             self._run(resolve_script(request.get("id"), self._last_model))
-
-        # -- internals ----------------------------------------------------
 
         def _apply_request(self, params: dict) -> None:
             """Take the page's typed values, then run whichever button it pressed."""

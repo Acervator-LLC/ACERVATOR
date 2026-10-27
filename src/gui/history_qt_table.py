@@ -312,7 +312,6 @@ if _HAS_QT:
             self._table.verticalHeader().setVisible(False)
             layout.addWidget(self._table, 1)
 
-        # -- public ---------------------------------------------------
         @property
         def page_ready(self) -> bool:
             """True once the table exists and can be drawn into.
@@ -343,7 +342,6 @@ if _HAS_QT:
             callback(self._table.rowCount())
             return True
 
-        # -- internals ------------------------------------------------
         def _draw_headers(self, model: dict) -> None:
             headers = column_headers(model)
             tooltips = column_tooltips(model)

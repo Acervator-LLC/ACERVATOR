@@ -11,6 +11,11 @@
   --border: #2a2a44;
   --accent: #00ffcc;
   --btn-bg: #12121a;
+  /* The one declaration for a description box: the width `.tooltip` wraps
+   * at, and the milliseconds `history_panel.js` waits before it shows.
+   * `src/gui/theme_engine.py` carries the same two figures for Qt. */
+  --tooltip-max-width: 560px;
+  --tooltip-delay-ms: 3000;
 }
 
 * {
@@ -159,7 +164,7 @@ table.history tbody tr:hover td {
   position: fixed;
   display: none;
   z-index: 50;
-  max-width: 560px;
+  max-width: var(--tooltip-max-width);
   padding: 6px 9px;
   border: 1px solid var(--border);
   border-radius: 3px;

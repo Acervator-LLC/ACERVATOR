@@ -32,6 +32,7 @@ from .trading_tab_surface import (
     placeholder_title_text,
 )
 from .notify_stub import _NotifyStub
+from ..descriptions import TRADING_TAB_DESCRIPTIONS
 
 logger = logging.getLogger("acervator.gui")
 
@@ -138,7 +139,6 @@ class TradingTabMixin:
 
     def _build_trading_tab(self) -> None:
         """Build the Trading tab and add it to the main tab widget."""
-        # --- Tab 1: Trading ---
         trading_tab = QWidget()
         trading_layout = QVBoxLayout(trading_tab)
         trading_layout.setContentsMargins(2, 2, 2, 2)
@@ -348,10 +348,7 @@ class TradingTabMixin:
         )
         self._activity_pause_btn.setCheckable(True)
         self._activity_pause_btn.setToolTip(
-            "Pause the Activity Log spool so errors don't scroll "
-            "off-screen. Messages received while paused are "
-            "buffered (cap 2000) and flushed on resume in "
-            "chronological order."
+            TRADING_TAB_DESCRIPTIONS["activity_pause_btn"]
         )
 
         def _on_activity_pause_toggled(checked: bool):
@@ -472,11 +469,7 @@ class TradingTabMixin:
             f"QPushButton:hover{{background:{ds.MAIN_TOGGLE_HOVER};}}"
         )
         self._api_pause_btn.setCheckable(True)
-        self._api_pause_btn.setToolTip(
-            "Freeze the API Interaction Log so you can capture an "
-            "error without it scrolling away. Internal events keep "
-            "happening; the buffer just stops appending to the view."
-        )
+        self._api_pause_btn.setToolTip(TRADING_TAB_DESCRIPTIONS["api_pause_btn"])
         # _on_api_event reads this flag; QPlainTextEdit has no StatusLog subclass.
         self._api_log_paused: bool = False
         self._api_log_pause_buffer: list[str] = []
@@ -507,9 +500,7 @@ class TradingTabMixin:
         self._api_log_view.setPlaceholderText(
             "API calls, responses, timing, data usage..."
         )
-        self._api_log_view.setToolTip(
-            "Every API call: endpoint, reason, result, timing, data usage"
-        )
+        self._api_log_view.setToolTip(TRADING_TAB_DESCRIPTIONS["api_log_view"])
         self._api_log_view.setLineWrapMode(QPlainTextEdit.NoWrap)
         self._api_log_view.setMaximumBlockCount(2000)
         api_layout.addWidget(self._api_log_view)

@@ -2239,8 +2239,6 @@ class BotWizardModel:
         self.fetched: list[str] = []
         self._build()
 
-    # -- build ---------------------------------------------------------
-
     def _build(self) -> None:
         """Record the calls that lay out the wizard and its five pages."""
         self.calls.append([WIZARD_SET_WINDOW_TITLE, WINDOW_TITLE])
@@ -2367,8 +2365,6 @@ class BotWizardModel:
             [CHECK_SET_CHECKED, "phantom_enable", self.checks["phantom_enable"]]
         )
 
-    # -- fields --------------------------------------------------------
-
     def set_number(self, name: str, value: Any) -> None:
         """Type a number into one field, held to the spec the picked market
         leaves that field under."""
@@ -2473,8 +2469,6 @@ class BotWizardModel:
     def is_grid(self) -> bool:
         """Say whether the operator picked grid trading. It cannot be picked."""
         return GRID_IS_SELECTABLE
-
-    # -- the asset page ------------------------------------------------
 
     def exchange_items(self) -> list:
         """Every venue drop-down entry, its wording beside the id behind it."""
@@ -2759,8 +2753,6 @@ class BotWizardModel:
             "sizing_mode": self.target_unit_rule(),
         }
 
-    # -- the pool page -------------------------------------------------
-
     def pool_exchange_id(self) -> Optional[str]:
         """The venue id the pool page shows."""
         if 0 <= self.pool_exchange_index < len(self.exchanges):
@@ -2821,8 +2813,6 @@ class BotWizardModel:
             "base_currency": self.combo_text("pool_base").strip().upper(),
             "target_asset": POOL_SIGIL,
         }
-
-    # -- the parameter page --------------------------------------------
 
     def set_mode_groups(self) -> None:
         """Show the groups the picked mode uses and hide the rest."""
@@ -3062,8 +3052,6 @@ class BotWizardModel:
             )
         return config
 
-    # -- the phantom page ----------------------------------------------
-
     def phantom_config(self) -> dict:
         """The phantom settings the phantom page collected."""
         return {
@@ -3104,8 +3092,6 @@ class BotWizardModel:
         ]
         self.calls.append([MESSAGE_BOX_WARNING, *self.warning_box])
         return bool(keep_going)
-
-    # -- walking the pages ---------------------------------------------
 
     def current_page_id(self) -> int:
         """The page the wizard is on, or -1 once it has been closed."""

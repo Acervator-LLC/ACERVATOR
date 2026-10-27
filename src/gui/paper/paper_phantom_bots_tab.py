@@ -26,6 +26,7 @@ from PySide6.QtGui import QColor
 from ...core.settings import DEFAULT_LOCK_CANDLE_COUNT
 from .. import design_system as ds
 from ..main_tabs import phantom_bots_tab_surface as surface
+from ..descriptions import PHANTOM_BOTS_TAB_DESCRIPTIONS
 
 
 class PaperPhantomBotsTabMixin:
@@ -73,7 +74,6 @@ class PaperPhantomBotsTabMixin:
         info.setWordWrap(True)
         layout.addWidget(info)
 
-        # ── Config: Enable toggle ─────────────────────────────────
         enable_group = QGroupBox("Phantom Bots")
         ef = QVBoxLayout(enable_group)
         self._phantom_enable = QCheckBox("Enable Phantom Bots")
@@ -134,7 +134,6 @@ class PaperPhantomBotsTabMixin:
         tf_layout.addWidget(self._phantom_tf_refusal)
         layout.addWidget(tf_group)
 
-        # ── Config: Lock duration ─────────────────────────────────
         lock_group = QGroupBox("Higher-TF Lock Duration")
         lf = QFormLayout(lock_group)
         self._configure_form(lf)
@@ -147,19 +146,13 @@ class PaperPhantomBotsTabMixin:
             else DEFAULT_LOCK_CANDLE_COUNT
         )
         self._phantom_lock.setValue(current_lock)
-        self._phantom_lock.setToolTip(
-            "How many candles a higher-TF lock persists. The coordinator "
-            "keeps the figure and saves it with the bot. Nothing creates a "
-            "lock today, so Active Locks stays empty and SCRUM lock state "
-            "stays UNLOCKED."
-        )
+        self._phantom_lock.setToolTip(PHANTOM_BOTS_TAB_DESCRIPTIONS["phantom_lock"])
         self._phantom_lock.valueChanged.connect(
             lambda v: self._mark_changed("lock_candle_count", int(v))
         )
         lf.addRow("Candles to lock:", self._phantom_lock)
         layout.addWidget(lock_group)
 
-        # ── Runtime: Coordinator Status ───────────────────────────
         phantoms_enabled = bool(getattr(bot, "_phantoms_enabled", False))
         phantoms_started = bool(getattr(bot, "_phantoms_started", False))
         phantom_tfs = list(getattr(bot, "_phantom_timeframes", []) or [])
@@ -219,7 +212,6 @@ class PaperPhantomBotsTabMixin:
         sf.addRow("SCRUM lock state:", lock_lbl)
         layout.addWidget(summary)
 
-        # ── Runtime: Per-Phantom State table ─────────────────────
         phantom_mgr = getattr(bot, "_phantom_mgr", None)
         bot_id = getattr(bot, "bot_id", "")
         phantoms: list = []

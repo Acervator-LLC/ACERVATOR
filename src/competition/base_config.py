@@ -41,8 +41,6 @@ class BaseNetworkConfig:
     max_priority_fee_per_gas_gwei: float = 0.001
 
 
-# ── Network definitions ───────────────────────────────────────────────────────
-
 BASE_MAINNET = BaseNetworkConfig(
     name="Base Mainnet",
     chain_id=8453,

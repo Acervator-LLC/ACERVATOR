@@ -460,9 +460,6 @@ def item_type_for_tier(tier: LootTier, yields: Mapping[str, str] | None) -> str:
     return require_yields(yields)[tier.name]
 
 
-# -- The drop ----------------------------------------------------------------
-
-
 def drop_rng(seed: int = LOOT_DROP_SEED) -> Generator:
     """Seed a numpy generator with ``seed``, which ``drop_for_market`` rolls from."""
     return default_rng(seed)
@@ -648,9 +645,6 @@ def drop_from_pool(
         )
         raise LootDropRefusedError(refusal)
     return drop_for_market(rotation, request, yields, rng, band)
-
-
-# -- The store ---------------------------------------------------------------
 
 
 class LootStore:

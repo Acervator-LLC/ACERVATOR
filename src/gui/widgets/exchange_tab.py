@@ -72,13 +72,7 @@ if _HAS_QT:
             header = QHBoxLayout()
             self._privacy_mode_btn = QPushButton("Privacy Mode: OFF")
             self._privacy_mode_btn.setToolTip(
-                "Toggle ALL 18 privacy masks at once. When ON, every "
-                "registered field (5 KPIs, 5 counters, 7 Bot table "
-                "columns, IVP bot selector) renders as **** until the "
-                "operator reveals them.\n\n"
-                "Per-dot toggles remain available even when this is "
-                "OFF — Privacy Mode is a fast 'mask everything' "
-                "shortcut for screen-sharing."
+                "Masks every registered field at once, for screen sharing. Each field's own dot still works when this is OFF."
             )
             self._privacy_mode_btn.setFocusPolicy(Qt.NoFocus)
             self._privacy_mode_btn.clicked.connect(self._on_global_privacy_clicked)
@@ -109,17 +103,7 @@ if _HAS_QT:
             # a QLabel with no vertical flag paints its words at the box's top.
             self._pull_rate_lbl.setAlignment(Qt.AlignLeft)
             self._pull_rate_lbl.setToolTip(
-                "MarketDataPool freshness diagnostic. Slots = number "
-                "of distinct (exchange, symbol[, TF]) cache entries. "
-                "Freshest = seconds since the most-recently-fetched "
-                "slot. Oldest = seconds since the least-recently "
-                "fetched slot. Stale = slots past their TTL "
-                "(ticker 5s, balance 10s, OHLCV = timeframe). "
-                "Cache-hit = coalesced-hits / (hits + fetches). "
-                "Coalescing covers OHLCV and balances. "
-                "Blocked fetches cleared = fetches the pool found blocked and "
-                "released itself, rather than waiting for a restart. It "
-                "appears only once it is above zero."
+                "Data pool freshness. Slots are cache entries, Freshest and Oldest their ages in seconds, Stale those past their lifetime."
             )
             layout.addWidget(self._pull_rate_lbl)
 
@@ -137,10 +121,7 @@ if _HAS_QT:
                 "font-size:13px; font-weight:bold; padding:6px 8px;"
             )
             self._pool_stopped_lbl.setToolTip(
-                "Appears only while nothing is coming back from this venue. "
-                "The age it names is the time since the last reading of any "
-                "kind landed in the data pool. Single slots passing their "
-                "time to live is ordinary and does not raise this line."
+                "Appears while nothing comes back from this venue. The age names the time since the last reading reached the pool."
             )
             self._pool_stopped_lbl.setVisible(False)
             layout.addWidget(self._pool_stopped_lbl)

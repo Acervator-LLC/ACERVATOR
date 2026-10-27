@@ -119,7 +119,7 @@ class USBStatusIndicator(QWidget):
         self.setToolTip(tips.get(state, "USB Hardware Key"))
         self.update()
 
-    def paintEvent(self, event):
+    def paintEvent(self, _event):
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         colours = {
@@ -276,14 +276,11 @@ class USBAuthWidget(QWidget):
         # Auto-scan on open
         QTimer.singleShot(300, self._worker.scan)
 
-    # ── Build UI ─────────────────────────────────────────────────────────
-
     def _build_ui(self):
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(12)
 
-        # ── Header ──────────────────────────────────────────────────────
         hdr = QLabel("🔐  USB Hardware Authentication Keys")
         hdr.setStyleSheet(f"color: {_C_CYAN}; font-size: 14px; font-weight: bold;")
         root.addWidget(hdr)
@@ -299,7 +296,6 @@ class USBAuthWidget(QWidget):
         desc.setStyleSheet(f"color: {_C_GREY}; font-size: 10px;")
         root.addWidget(desc)
 
-        # ── Export Section ───────────────────────────────────────────────
         export_group = QGroupBox("Export Credentials to USB Key")
         export_group.setStyleSheet(f"""
             QGroupBox {{
@@ -371,7 +367,6 @@ class USBAuthWidget(QWidget):
 
         root.addWidget(export_group)
 
-        # ── Exchange Hardware Mode ───────────────────────────────────────
         mode_group = QGroupBox("Exchange Hardware Mode")
         mode_group.setStyleSheet(export_group.styleSheet())
         mode_layout = QVBoxLayout(mode_group)
@@ -401,8 +396,6 @@ class USBAuthWidget(QWidget):
         root.addStretch()
 
         self._rebuild_exchange_rows()
-
-    # ── Exchange rows ─────────────────────────────────────────────────────
 
     def _rebuild_exchange_rows(self):
         while self._rows_layout.count():
@@ -444,8 +437,6 @@ class USBAuthWidget(QWidget):
             self._settings.save()
         except Exception as _sf_exc:  # noqa: BLE001
             logger.warning("USB auth widget refresh failed: %s", _sf_exc)
-
-    # ── USB scan ──────────────────────────────────────────────────────────
 
     def _on_refresh(self):
         self._drive_combo.clear()
@@ -492,8 +483,6 @@ class USBAuthWidget(QWidget):
         if idx < 0 or not self._usb_vols:
             return None
         return self._drive_combo.currentData()
-
-    # ── Export / Verify ───────────────────────────────────────────────────
 
     def _on_export(self):
         vol = self._selected_volume()
@@ -590,8 +579,6 @@ class USBAuthWidget(QWidget):
                 "It may be corrupted or from a different installation.\n"
                 "Try re-exporting.",
             )
-
-    # ── Helpers ───────────────────────────────────────────────────────────
 
     @staticmethod
     def _btn_style(colour: str) -> str:

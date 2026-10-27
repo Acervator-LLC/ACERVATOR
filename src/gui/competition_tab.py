@@ -48,7 +48,6 @@ if _QT:
         TOTAL_SUPPLY_CAP,
     )
 
-# ── Style constants ──────────────────────────────────────────────────────────
 CYAN = "#00FFEE"
 GREEN = "#00FF88"
 AMBER = "#FFAA00"
@@ -100,7 +99,6 @@ if _QT:
         def inner(self) -> QVBoxLayout:
             return self._inner
 
-    # ── Bot identity panel ────────────────────────────────────────────────────
     class _IdentityPanel(_Section):
         def __init__(self, identity: Optional[BotIdentity], parent=None):
             super().__init__("Bot Identity", parent)
@@ -117,7 +115,6 @@ if _QT:
                 row.addWidget(QLabel("No identity — generate keypair to compete"))
             self.inner().addLayout(row)
 
-    # ── Wallet panel ──────────────────────────────────────────────────────────
     class _WalletPanel(_Section):
         def __init__(self, ledger: TokenLedger, bot_id: str, parent=None):
             super().__init__("ACRV Wallet", parent)
@@ -158,7 +155,6 @@ if _QT:
                     QLabel("No awards yet — enter a competition to earn ACRV")
                 )
 
-    # ── Supply dashboard ──────────────────────────────────────────────────────
     class _SupplyPanel(_Section):
         def __init__(self, ledger: TokenLedger, season: int = 1, parent=None):
             super().__init__("Global Supply", parent)
@@ -186,7 +182,6 @@ if _QT:
                 row.addLayout(col)
             self.inner().addLayout(row)
 
-    # ── Leaderboard ───────────────────────────────────────────────────────────
     class _LeaderboardPanel(_Section):
         def __init__(self, registry: RatingRegistry, parent=None):
             super().__init__("Elo Leaderboard", parent)
@@ -217,7 +212,6 @@ if _QT:
                     tbl.setItem(r, c, item)
             self.inner().addWidget(tbl)
 
-    # ── Main competition tab ──────────────────────────────────────────────────
     class CompetitionTab(QWidget):
         """
         PoA Network tab — read-only identity and wallet panel.

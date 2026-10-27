@@ -57,7 +57,6 @@ if _HAS_QT:
             self._skipped = False
             self._is_upgrade = is_upgrade
 
-            # --- Page 1: Username + Skip ---
             page1 = QWizardPage()
             if is_upgrade:
                 page1.setTitle("Acervator - New Version")
@@ -100,7 +99,6 @@ if _HAS_QT:
             skip_btn.setStyleSheet(f"color: {ds.CARD_METRIC_LABEL}; padding: 8px;")
             p1_layout.addWidget(skip_btn)
 
-            # --- Page 2: Exchange ---
             page2 = QWizardPage()
             page2.setTitle("Select Your Exchange")
             page2.setSubTitle(
@@ -119,7 +117,6 @@ if _HAS_QT:
                 self._exchange_combo.addItem(label, eid)
             p2_layout.addWidget(self._exchange_combo)
 
-            # --- Page 3: API Keys ---
             page3 = QWizardPage()
             page3.setTitle("API Credentials")
             page3.setSubTitle(

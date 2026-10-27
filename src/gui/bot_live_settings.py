@@ -402,14 +402,11 @@ if _HAS_QT:
 
             layout.addLayout(hdr_row)
 
-            # Tabs
             tabs = QTabWidget()
             self._tabs = tabs
 
-            # --- Tab 1: Status ---
             self._add_guarded_tab(tabs, "Status", self._create_status_tab)
 
-            # --- Tab 2: Settings ---
             self._add_guarded_tab(tabs, "Settings", self._create_settings_tab)
 
             # --- Tab 3: Fold Tranches (Scrumming only) ---

@@ -56,6 +56,7 @@ try:
 except ImportError:
     _HAS_QT = False
 from src.gui.qt_safe_events import safe_process_events
+from ..descriptions import BOT_WIZARD_DESCRIPTIONS
 
 if _HAS_QT:
 
@@ -251,11 +252,7 @@ if _HAS_QT:
             layout.addWidget(sd)
 
             self._extractor = QRadioButton("Base Currency Extractor (Multi-Target)")
-            self._extractor.setToolTip(
-                "Grows a base-currency pool by harvesting volatility across "
-                "top-N */<base> alt pairs. No spawn cascades, no phantoms; "
-                "per-position Manual Fire in the detail dialog."
-            )
+            self._extractor.setToolTip(BOT_WIZARD_DESCRIPTIONS["extractor"])
             ed = QLabel(
                 "Grows a base-currency pool by extracting volatility from "
                 "top-N */<base> alt pairs. Fires small artillery rounds into "
@@ -305,19 +302,13 @@ if _HAS_QT:
                 eid = _market_text(exch.get("exchange_id"))
                 self._exchange.addItem(exch.get("display_name", eid), eid)
             self._exchange.currentIndexChanged.connect(self._on_exchange_changed)
-            self._exchange.setToolTip(
-                "Exchange this pool trades on. Changing it re-scans that "
-                "exchange for tradable pairs."
-            )
+            self._exchange.setToolTip(BOT_WIZARD_DESCRIPTIONS["exchange"])
             form.addRow("Exchange:", self._exchange)
 
             self._base = QComboBox()
             self._base.addItems(self._POOL_BASES)
             self._base.currentIndexChanged.connect(self._refresh_alt_list)
-            self._base.setToolTip(
-                "The asset this pool accumulates. The list below shows the "
-                "alts that trade against it."
-            )
+            self._base.setToolTip(BOT_WIZARD_DESCRIPTIONS["base"])
             form.addRow("Pool Base Currency:", self._base)
             outer.addLayout(form)
 
@@ -333,10 +324,7 @@ if _HAS_QT:
             # 10-50 alt pairs typical.
             self._alt_list.setMinimumHeight(280)
             self._alt_list.setAccessibleName("Compatible alt pairs")
-            self._alt_list.setToolTip(
-                "The alt pairs that trade against this pool's base. The "
-                "Extractor auto-scans the top-N of them by 24h volume."
-            )
+            self._alt_list.setToolTip(BOT_WIZARD_DESCRIPTIONS["alt_list"])
             outer.addWidget(self._alt_list)
 
             if exchanges:
@@ -463,7 +451,7 @@ if _HAS_QT:
             )
             if _vis_at >= 0:
                 self._visibility.setCurrentIndex(_vis_at)
-            self._visibility.setToolTip("How orders appear on the exchange.")
+            self._visibility.setToolTip(BOT_WIZARD_DESCRIPTIONS["visibility"])
             self._visibility.currentIndexChanged.connect(self._on_visibility_changed)
             mf.addRow("Order Visibility:", self._visibility)
 
@@ -471,13 +459,7 @@ if _HAS_QT:
             # defaults carries the stored aggressive_trading, admitted the way
             # the Settings dialog's own load row admits it.
             self._aggressive.setChecked(bool(defaults.get("aggressive_trading", False)))
-            self._aggressive.setToolTip(
-                "When ON, every engine-initiated buy/sell executes as "
-                "an Immediate-Or-Cancel limit order priced through "
-                "the spread — i.e., pays the taker fee for immediate "
-                "fill. When OFF, the bot may use passive maker orders "
-                "where appropriate. Manual fire is unaffected."
-            )
+            self._aggressive.setToolTip(BOT_WIZARD_DESCRIPTIONS["aggressive"])
             mf.addRow(self._aggressive)
 
             from ...trading.container.config import STACK_MODE_DEFAULT
@@ -487,16 +469,7 @@ if _HAS_QT:
             )
             # One declaration, so the box and the config cannot disagree.
             self._stack_mode.setChecked(STACK_MODE_DEFAULT)
-            self._stack_mode.setToolTip(
-                "When ON, a SCRUM fires as N Stack Tranches at "
-                "ascending price levels instead of a single sell. "
-                "First tranche at the Minimum Opposing Trade Distance "
-                "(opposing hysteresis level); successive tranches "
-                "spaced by Split Distance per the Spacing model. "
-                "Visibility gates book placement: orderbook = resting "
-                "limits; internal = tracked off-books, market-fire on "
-                "threshold cross."
-            )
+            self._stack_mode.setToolTip(BOT_WIZARD_DESCRIPTIONS["stack_mode"])
             mf.addRow(self._stack_mode)
 
             self._split_distance = QDoubleSpinBox()
@@ -504,24 +477,13 @@ if _HAS_QT:
             self._split_distance.setDecimals(2)
             self._split_distance.setSuffix(" %")
             self._split_distance.setValue(1.0)
-            self._split_distance.setToolTip(
-                "Percent spacing between successive Stack tranches. "
-                "Applied per Spacing mode: Linear = constant delta, "
-                "Quadratic = arithmetically-growing delta, "
-                "Exponential = geometrically-growing delta."
-            )
+            self._split_distance.setToolTip(BOT_WIZARD_DESCRIPTIONS["split_distance"])
             mf.addRow("Split Distance:", self._split_distance)
 
             self._stack_count = QSpinBox()
             self._stack_count.setRange(2, 20)
             self._stack_count.setValue(3)
-            self._stack_count.setToolTip(
-                "Target number of Stack tranches to create from a "
-                "SCRUM. Actual runtime count may be lower if "
-                "per-tranche size falls below the exchange minimum, "
-                "or two computed tranche prices land within 0.1% of "
-                "each other (then merged upwards)."
-            )
+            self._stack_count.setToolTip(BOT_WIZARD_DESCRIPTIONS["stack_count"])
             mf.addRow("Tranche Count:", self._stack_count)
 
             self._stack_spacing = QComboBox()
@@ -529,11 +491,7 @@ if _HAS_QT:
             self._stack_spacing.addItem("Linear (1, 2, 3, 4…)", "linear")
             self._stack_spacing.addItem("Quadratic (1, 4, 9, 16…)", "quadratic")
             self._stack_spacing.addItem("Exponential (1, 2, 4, 8…)", "exponential")
-            self._stack_spacing.setToolTip(
-                "Spacing model for successive Stack tranches. Each "
-                "sequence is the cumulative distance from the anchor, "
-                "in units of Split Distance."
-            )
+            self._stack_spacing.setToolTip(BOT_WIZARD_DESCRIPTIONS["stack_spacing"])
             mf.addRow("Spacing:", self._stack_spacing)
 
             groups.addWidget(self._mode_group)
@@ -548,7 +506,7 @@ if _HAS_QT:
             self._scrumming_interval.setSuffix(" %")
             self._scrumming_interval.setValue(1.0)
             self._scrumming_interval.setToolTip(
-                "Minimum market move before the bot takes action."
+                BOT_WIZARD_DESCRIPTIONS["scrumming_interval"]
             )
             sf.addRow("Opposing Trade Interval:", self._scrumming_interval)
 
@@ -557,33 +515,21 @@ if _HAS_QT:
             self._bb_tolerance.setDecimals(2)
             self._bb_tolerance.setSuffix(" %")
             self._bb_tolerance.setValue(1.0)
-            self._bb_tolerance.setToolTip(
-                "Bollinger Band proximity tolerance for Landing Strip."
-            )
+            self._bb_tolerance.setToolTip(BOT_WIZARD_DESCRIPTIONS["bb_tolerance"])
             sf.addRow("BB Tolerance:", self._bb_tolerance)
 
             self._ls_candles = QSpinBox()
             self._ls_candles.setRange(2, 10)
             self._ls_candles.setValue(3)
             self._ls_candles.setSuffix(" candles")
-            self._ls_candles.setToolTip(
-                "The bot confirms a Landing Strip when this many of the "
-                "newest Heikin Ashi candles have small bodies and price "
-                "sits near a Bollinger Band. This count reaches the "
-                "band-proximity check only. The separate shrinking-body "
-                "check keeps its own fixed count."
-            )
+            self._ls_candles.setToolTip(BOT_WIZARD_DESCRIPTIONS["ls_candles"])
             sf.addRow("Landing Strip Candles:", self._ls_candles)
 
             self._ta_timeframe = QComboBox()
             for _tf in ("1m", "5m", "15m", "30m", "1h", "4h", "1d"):
                 self._ta_timeframe.addItem(_tf, _tf)
             self._ta_timeframe.setCurrentIndex(4)  # Default 1h
-            self._ta_timeframe.setToolTip(
-                "Timeframe for TA indicator calculations. Filtered "
-                "against exchange support at set_exchange_id() time. "
-                "Shorter = more responsive; longer = smoother signals."
-            )
+            self._ta_timeframe.setToolTip(BOT_WIZARD_DESCRIPTIONS["ta_timeframe"])
             sf.addRow("TA Timeframe:", self._ta_timeframe)
             self._ta_tf_form = sf
             self._ta_tf_notice = QLabel("")
@@ -602,11 +548,7 @@ if _HAS_QT:
                 defaults.get("default_target_balance", 200.0),
                 self,
             )
-            self._target_balance.setToolTip(
-                "The balance this bot trades relative to. HARD-CAPPED: "
-                "position can never exceed Target × (1 + Max Target "
-                "Growth %/100)."
-            )
+            self._target_balance.setToolTip(BOT_WIZARD_DESCRIPTIONS["target_balance"])
             sf.addRow("Target Balance:", self._target_balance)
 
             self._max_entry_px = QDoubleSpinBox()
@@ -614,11 +556,7 @@ if _HAS_QT:
             self._max_entry_px.setDecimals(8)
             self._max_entry_px.setPrefix("$ ")
             self._max_entry_px.setValue(0.0)
-            self._max_entry_px.setToolTip(
-                "Bot REFUSES any auto-buy when current price is ABOVE "
-                "this. 0 = no ceiling (default). Manual Fire bypasses "
-                "this gate."
-            )
+            self._max_entry_px.setToolTip(BOT_WIZARD_DESCRIPTIONS["max_entry_px"])
             sf.addRow("Max Entry Price:", self._max_entry_px)
 
             self._min_entry_px = QDoubleSpinBox()
@@ -626,11 +564,7 @@ if _HAS_QT:
             self._min_entry_px.setDecimals(8)
             self._min_entry_px.setPrefix("$ ")
             self._min_entry_px.setValue(0.0)
-            self._min_entry_px.setToolTip(
-                "Bot REFUSES any auto-buy when current price is BELOW "
-                "this. 0 = no floor (default). Manual Fire bypasses "
-                "this gate."
-            )
+            self._min_entry_px.setToolTip(BOT_WIZARD_DESCRIPTIONS["min_entry_px"])
             sf.addRow("Min Entry Price:", self._min_entry_px)
 
             self._trading_fee = QDoubleSpinBox()
@@ -639,13 +573,7 @@ if _HAS_QT:
             self._trading_fee.setDecimals(2)
             self._trading_fee.setSingleStep(0.05)
             self._trading_fee.setValue(0.6)
-            self._trading_fee.setToolTip(
-                "Coinbase trading fee tier (per side). The opposite-"
-                "direction hysteresis safety adds this to the scrum "
-                "interval — bot will not flip BUY↔SELL until price "
-                "moves ≥ (interval + fee)% in the opposing direction. "
-                "0.6 % = Coinbase Advanced Trade max-tier default."
-            )
+            self._trading_fee.setToolTip(BOT_WIZARD_DESCRIPTIONS["trading_fee"])
             sf.addRow("Trading Fee %:", self._trading_fee)
 
             self._max_target_growth_pct = QDoubleSpinBox()
@@ -655,11 +583,7 @@ if _HAS_QT:
             self._max_target_growth_pct.setSingleStep(0.25)
             self._max_target_growth_pct.setValue(1.0)
             self._max_target_growth_pct.setToolTip(
-                "Per-event cap on how much a fold surplus may grow "
-                "Target Balance.\nAbsolute ceiling = Target × (1 + "
-                "this%/100). Default 1%.\nTHIS IS THE ONLY MECHANISM "
-                "ALLOWED TO INCREASE TARGET BALANCE.\nSet to 0% to "
-                "freeze Target Balance entirely."
+                BOT_WIZARD_DESCRIPTIONS["max_target_growth_pct"]
             )
             sf.addRow("Max Target Growth %:", self._max_target_growth_pct)
 
@@ -667,12 +591,7 @@ if _HAS_QT:
             self._scrum_fold_pct.setRange(FOLD_RATIO_MIN_PCT, FOLD_RATIO_MAX_PCT)
             self._scrum_fold_pct.setValue(FOLD_RATIO_PCT_DEFAULT)
             self._scrum_fold_pct.setSuffix(" %")
-            self._scrum_fold_pct.setToolTip(
-                "% of scrum sale proceeds queued for fold (rebuy).\n"
-                "100 % = full reentry (max accumulation, max risk).\n"
-                "Lower values preserve cash buffer — safer when price "
-                "keeps falling after the scrum."
-            )
+            self._scrum_fold_pct.setToolTip(BOT_WIZARD_DESCRIPTIONS["scrum_fold_pct"])
             sf.addRow("Scrum Fold Ratio:", self._scrum_fold_pct)
 
             groups.addWidget(self._scrum_group)
@@ -686,13 +605,7 @@ if _HAS_QT:
             self._scrum_detect_pct.setSuffix(" %")
             self._scrum_detect_pct.setValue(75)
             self._scrum_detect_pct.setToolTip(
-                "BB DETECT threshold: % distance from BB midline to "
-                "band before SEARCH→TRACK. Lower = earlier detection. "
-                "HARD GATE: SCRUM cannot occur below the "
-                "Upper BB Detection Threshold; FOLD cannot occur "
-                "above the Lower BB Detection Threshold. 75 % → "
-                "upper gate at bb_pos ≥ 0.875, lower gate at "
-                "bb_pos ≤ 0.125."
+                BOT_WIZARD_DESCRIPTIONS["scrum_detect_pct"]
             )
             af.addRow("Detect Threshold:", self._scrum_detect_pct)
 
@@ -701,17 +614,12 @@ if _HAS_QT:
             self._scrum_fire_pct.setDecimals(2)
             self._scrum_fire_pct.setSuffix(" %")
             self._scrum_fire_pct.setValue(0.5)
-            self._scrum_fire_pct.setToolTip(
-                "FIRE threshold: % distance from BB band to trigger " "trade."
-            )
+            self._scrum_fire_pct.setToolTip(BOT_WIZARD_DESCRIPTIONS["scrum_fire_pct"])
             af.addRow("Fire Threshold:", self._scrum_fire_pct)
 
             self._bb_midline_gate = QCheckBox("BB Midline Gate")
             self._bb_midline_gate.setChecked(True)
-            self._bb_midline_gate.setToolTip(
-                "When enabled: scrums ONLY fire above BB midline, "
-                "folds ONLY fire below midline (sell-high/buy-low)."
-            )
+            self._bb_midline_gate.setToolTip(BOT_WIZARD_DESCRIPTIONS["bb_midline_gate"])
             af.addRow(self._bb_midline_gate)
 
             self._scrum_read_rate_min = QSpinBox()
@@ -719,7 +627,7 @@ if _HAS_QT:
             self._scrum_read_rate_min.setSuffix(" min")
             self._scrum_read_rate_min.setValue(5)
             self._scrum_read_rate_min.setToolTip(
-                "SEARCH-mode read rate in minutes. TRACK mode reads " "10x faster."
+                BOT_WIZARD_DESCRIPTIONS["scrum_read_rate_min"]
             )
             af.addRow("Read Rate:", self._scrum_read_rate_min)
 
@@ -727,20 +635,13 @@ if _HAS_QT:
             self._band_travel_pct.setRange(0, 100)
             self._band_travel_pct.setSuffix(" %")
             self._band_travel_pct.setValue(70)
-            self._band_travel_pct.setToolTip(
-                "Secondary harvest trigger: % of BB band width price "
-                "must travel since last fold. 0 disables."
-            )
+            self._band_travel_pct.setToolTip(BOT_WIZARD_DESCRIPTIONS["band_travel_pct"])
             af.addRow("Band Travel:", self._band_travel_pct)
 
             self._bb_bullseye_check = QCheckBox("BB Bullseye Check")
             self._bb_bullseye_check.setChecked(True)
             self._bb_bullseye_check.setToolTip(
-                "Counts a band touch within 0.5 % (or a candle wick "
-                "within 0.2 %) as BB proximity. With the delta at or "
-                "over the interval that arms the BB priority skew, "
-                "which lowers the TA confidence floor. The fire "
-                "threshold and the midline gate are unchanged."
+                BOT_WIZARD_DESCRIPTIONS["bb_bullseye_check"]
             )
             af.addRow(self._bb_bullseye_check)
 
@@ -752,10 +653,7 @@ if _HAS_QT:
 
             self._hedge_rebalance = QCheckBox("Hedge Rebalance Active")
             self._hedge_rebalance.setChecked(True)
-            self._hedge_rebalance.setToolTip(
-                "Separate USD reserve for buying on sharp drawdowns. "
-                "NOT taken from Target Balance."
-            )
+            self._hedge_rebalance.setToolTip(BOT_WIZARD_DESCRIPTIONS["hedge_rebalance"])
             hf.addRow(self._hedge_rebalance)
 
             self._hedge_amount = QDoubleSpinBox()
@@ -763,10 +661,7 @@ if _HAS_QT:
             self._hedge_amount.setDecimals(2)
             self._hedge_amount.setPrefix("$ ")
             self._hedge_amount.setValue(BotConfig.hedge_balance)
-            self._hedge_amount.setToolTip(
-                "USD reserve amount for hedge rebalancing (separate "
-                "from Target Balance)."
-            )
+            self._hedge_amount.setToolTip(BOT_WIZARD_DESCRIPTIONS["hedge_amount"])
             hf.addRow("Hedge Balance:", self._hedge_amount)
 
             groups.addWidget(self._hedge_group)
@@ -780,12 +675,7 @@ if _HAS_QT:
             self._cb_soft_pct.setDecimals(1)
             self._cb_soft_pct.setSuffix(" %")
             self._cb_soft_pct.setValue(25.0)
-            self._cb_soft_pct.setToolTip(
-                "SOFT Circuit Breaker threshold. Single-candle move "
-                "≥ this % interrupts the side of the market that "
-                "just moved (UP→SCRUM, DOWN→FOLD). Re-opens after "
-                "cooldown candles. Default 25 %. Set 0 to disable."
-            )
+            self._cb_soft_pct.setToolTip(BOT_WIZARD_DESCRIPTIONS["cb_soft_pct"])
             cf.addRow("Soft CB Threshold:", self._cb_soft_pct)
 
             self._cb_hard_pct = QDoubleSpinBox()
@@ -793,21 +683,13 @@ if _HAS_QT:
             self._cb_hard_pct.setDecimals(1)
             self._cb_hard_pct.setSuffix(" %")
             self._cb_hard_pct.setValue(35.0)
-            self._cb_hard_pct.setToolTip(
-                "HARD Circuit Breaker threshold. Single-candle move "
-                "≥ this % PAUSES the bot. Operator reset required "
-                "to resume. Persists across restart. Default 35 %. "
-                "Set 0 to disable."
-            )
+            self._cb_hard_pct.setToolTip(BOT_WIZARD_DESCRIPTIONS["cb_hard_pct"])
             cf.addRow("Hard CB Threshold:", self._cb_hard_pct)
 
             self._cb_cooldown = QSpinBox()
             self._cb_cooldown.setRange(1, 100)
             self._cb_cooldown.setValue(3)
-            self._cb_cooldown.setToolTip(
-                "Number of candles the soft breaker stays active "
-                "before re-opening. Default 3."
-            )
+            self._cb_cooldown.setToolTip(BOT_WIZARD_DESCRIPTIONS["cb_cooldown"])
             cf.addRow("Soft CB Cooldown:", self._cb_cooldown)
 
             self._max_cartridge_pct = QDoubleSpinBox()
@@ -816,22 +698,14 @@ if _HAS_QT:
             self._max_cartridge_pct.setSuffix(" %")
             self._max_cartridge_pct.setValue(10.0)
             self._max_cartridge_pct.setToolTip(
-                "Maximum |Target Delta| as % of Target Balance. "
-                "When the position drifts beyond this %, the bot "
-                "fires an immediate aggressive rebalance (bypasses "
-                "BB Detection / hysteresis / soft CB / higher-TF "
-                "bias). Default 10 %. Set 0 to disable."
+                BOT_WIZARD_DESCRIPTIONS["max_cartridge_pct"]
             )
             cf.addRow("Max Cartridge Size:", self._max_cartridge_pct)
 
             self._cartridge_smart_chk = QCheckBox("Calibrate to BB range")
             self._cartridge_smart_chk.setChecked(False)
             self._cartridge_smart_chk.setToolTip(
-                "When ON, Cartridge size is derived from current BB "
-                "range rather than the static % above. Hard floor "
-                "at the Opposing Trade Interval (cartridge cannot "
-                "fire below the interval). Soft ceiling configured "
-                "below. Default OFF preserves static behavior."
+                BOT_WIZARD_DESCRIPTIONS["cartridge_smart_chk"]
             )
             cf.addRow("Smart Cartridge:", self._cartridge_smart_chk)
 
@@ -841,11 +715,7 @@ if _HAS_QT:
             self._cartridge_smart_ceiling.setSuffix(" %")
             self._cartridge_smart_ceiling.setValue(30.0)
             self._cartridge_smart_ceiling.setToolTip(
-                "Maximum effective cartridge threshold under Smart "
-                "calibration. Prevents cartridge from being "
-                "effectively disabled during volatility expansion. "
-                "Only applies when Smart Cartridge is ON. Default "
-                "30 %."
+                BOT_WIZARD_DESCRIPTIONS["cartridge_smart_ceiling"]
             )
             cf.addRow("Smart Ceiling:", self._cartridge_smart_ceiling)
 
@@ -858,12 +728,7 @@ if _HAS_QT:
             self._position_ceiling_enabled = QCheckBox("Enable Position Ceiling")
             self._position_ceiling_enabled.setChecked(False)
             self._position_ceiling_enabled.setToolTip(
-                "Cap accumulation at Nx of the bot's INITIAL "
-                "target_balance (stable anchor set at creation). "
-                "Fold size tapers 100 % → 10 % as value approaches "
-                "ceiling (ratio 0.5 → 1.0), hard-stops at ceiling. "
-                "Scrum always allowed. Protects against runaway "
-                "accumulation on conviction plays."
+                BOT_WIZARD_DESCRIPTIONS["position_ceiling_enabled"]
             )
             rf.addRow(self._position_ceiling_enabled)
 
@@ -876,8 +741,7 @@ if _HAS_QT:
             self._position_ceiling_multiple.setSuffix("x anchor")
             self._position_ceiling_multiple.setValue(POSITION_CEILING_MULTIPLE_DEFAULT)
             self._position_ceiling_multiple.setToolTip(
-                "Ceiling multiplier. 1x = no accumulation beyond "
-                "anchor. 10x = 10x runway. Default 5x."
+                BOT_WIZARD_DESCRIPTIONS["position_ceiling_multiple"]
             )
             rf.addRow("Ceiling Multiple:", self._position_ceiling_multiple)
 
@@ -886,15 +750,7 @@ if _HAS_QT:
             )
             self._detonation_enabled.setChecked(False)
             self._detonation_enabled.setToolTip(
-                "Monitor a higher TF for BULLISH + high-confidence "
-                "signal. Edge-triggered: fires ONCE per transition "
-                "into bullish state.\nOn trigger: MARKET sell "
-                "everything above the anchor, then reset "
-                "target_balance to anchor ('lock in' gains, "
-                "re-accumulate from scratch).\nRate-limited to 1 "
-                "check/hour.\nAdditional gate: fires only when "
-                "current value is above the anchor — no harvest if "
-                "the bot is below its initial anchor."
+                BOT_WIZARD_DESCRIPTIONS["detonation_enabled"]
             )
             rf.addRow(self._detonation_enabled)
 
@@ -902,9 +758,7 @@ if _HAS_QT:
             self._detonation_timeframe.addItem("1d", "1d")
             self._detonation_timeframe.addItem("1w", "1w")
             self._detonation_timeframe.setToolTip(
-                "Timeframe to monitor for bullish detonation "
-                "signal. 1D = daily, 1W = weekly. Higher = stronger "
-                "conviction, fewer triggers."
+                BOT_WIZARD_DESCRIPTIONS["detonation_timeframe"]
             )
             rf.addRow("Detonation TF:", self._detonation_timeframe)
 
@@ -914,8 +768,7 @@ if _HAS_QT:
             self._detonation_confidence_min.setSingleStep(0.05)
             self._detonation_confidence_min.setValue(0.75)
             self._detonation_confidence_min.setToolTip(
-                "Minimum TA consensus confidence for detonation. "
-                "Default 0.75 — high conviction only."
+                BOT_WIZARD_DESCRIPTIONS["detonation_confidence_min"]
             )
             rf.addRow("Min Confidence:", self._detonation_confidence_min)
 
@@ -930,51 +783,35 @@ if _HAS_QT:
             self._gate_scrum_ta_chk = QCheckBox("SCRUM requires bullish TA")
             self._gate_scrum_ta_chk.setChecked(True)
             self._gate_scrum_ta_chk.setToolTip(
-                "ON (Conservative): scrum auto-fire requires TA "
-                "consensus BULLISH. OFF (Lean): scrum fires at "
-                "BB-upper + delta regardless of TA."
+                BOT_WIZARD_DESCRIPTIONS["gate_scrum_ta_chk"]
             )
             gf.addRow(self._gate_scrum_ta_chk)
 
             self._gate_scrum_uptrend_chk = QCheckBox("SCRUM holds in sustained uptrend")
             self._gate_scrum_uptrend_chk.setChecked(True)
             self._gate_scrum_uptrend_chk.setToolTip(
-                "ON (Conservative): if 65 %+ of last 20 candles "
-                "were bullish, bot holds rather than scrumming each "
-                "band touch. OFF (Lean): scrum every BB-upper touch "
-                "regardless of trend strength. On a live bot an "
-                "override clears this hold on either of two "
-                "conditions: the position sits at least twice the "
-                "Scrumming Interval away from target, or Band Travel "
-                "fires. The gate line then names TRND as overridden "
-                "and its light paints cyan."
+                BOT_WIZARD_DESCRIPTIONS["gate_scrum_uptrend_chk"]
             )
             gf.addRow(self._gate_scrum_uptrend_chk)
 
             self._gate_scrum_htf_chk = QCheckBox("SCRUM defers to higher-TF bullish")
             self._gate_scrum_htf_chk.setChecked(True)
             self._gate_scrum_htf_chk.setToolTip(
-                "ON (Conservative): refuse scrum when a higher-TF "
-                "phantom signals BULLISH. OFF (Lean): cartridge "
-                "captures HTF swings organically."
+                BOT_WIZARD_DESCRIPTIONS["gate_scrum_htf_chk"]
             )
             gf.addRow(self._gate_scrum_htf_chk)
 
             self._gate_fold_ta_chk = QCheckBox("FOLD requires bearish TA")
             self._gate_fold_ta_chk.setChecked(True)
             self._gate_fold_ta_chk.setToolTip(
-                "ON (Conservative): mirror of SCRUM TA gate on the "
-                "fold side. OFF (Lean): fold fires at BB-lower + "
-                "tranche-eligible regardless of TA."
+                BOT_WIZARD_DESCRIPTIONS["gate_fold_ta_chk"]
             )
             gf.addRow(self._gate_fold_ta_chk)
 
             self._gate_fold_htf_chk = QCheckBox("FOLD defers to higher-TF bearish")
             self._gate_fold_htf_chk.setChecked(True)
             self._gate_fold_htf_chk.setToolTip(
-                "ON (Conservative): mirror of SCRUM HTF gate on "
-                "the fold side. OFF (Lean): fold fires regardless "
-                "of higher-TF bearish bias."
+                BOT_WIZARD_DESCRIPTIONS["gate_fold_htf_chk"]
             )
             gf.addRow(self._gate_fold_htf_chk)
 
@@ -993,10 +830,7 @@ if _HAS_QT:
             self._ext_chunk_size_usd.setDecimals(2)
             self._ext_chunk_size_usd.setValue(100.0)
             self._ext_chunk_size_usd.setToolTip(
-                "USD-equivalent of base currency THIS bot owns. Converted "
-                "to base units at bot creation; thereafter tracked in "
-                "base units. The bot NEVER queries the total exchange "
-                "balance — only this chunk."
+                BOT_WIZARD_DESCRIPTIONS["ext_chunk_size_usd"]
             )
             eform.addRow("Chunk size (USD):", self._ext_chunk_size_usd)
 
@@ -1006,20 +840,14 @@ if _HAS_QT:
             self._ext_artillery_size_usd.setDecimals(2)
             self._ext_artillery_size_usd.setValue(5.0)
             self._ext_artillery_size_usd.setToolTip(
-                "USD value of each artillery round (single buy into one "
-                "alt pair). Default $5 — small enough to fire frequently, "
-                "large enough to clear exchange min-cost thresholds."
+                BOT_WIZARD_DESCRIPTIONS["ext_artillery_size_usd"]
             )
             eform.addRow("Artillery size (USD):", self._ext_artillery_size_usd)
 
             self._ext_scan_top_n = QSpinBox()
             self._ext_scan_top_n.setRange(5, 10)
             self._ext_scan_top_n.setValue(8)
-            self._ext_scan_top_n.setToolTip(
-                "Top-N */<base> pairs by 24h volume kept on the watch "
-                "list. Range 5-10. Higher = more candidates; lower = "
-                "tighter focus on the most-liquid alts."
-            )
+            self._ext_scan_top_n.setToolTip(BOT_WIZARD_DESCRIPTIONS["ext_scan_top_n"])
             eform.addRow("Watch list top-N:", self._ext_scan_top_n)
 
             self._ext_scan_refresh = QSpinBox()
@@ -1027,9 +855,7 @@ if _HAS_QT:
             self._ext_scan_refresh.setValue(60)
             self._ext_scan_refresh.setSuffix(" candles")
             self._ext_scan_refresh.setToolTip(
-                "Re-rank top-N every N candles. Default 60 = once per "
-                "hour at 1m cadence. Lower = more responsive to volume "
-                "shifts; higher = less API churn."
+                BOT_WIZARD_DESCRIPTIONS["ext_scan_refresh"]
             )
             eform.addRow("Watch list refresh:", self._ext_scan_refresh)
 
@@ -1038,11 +864,7 @@ if _HAS_QT:
             self._ext_exit_pct.setSuffix("%")
             self._ext_exit_pct.setDecimals(1)
             self._ext_exit_pct.setValue(100.0)
-            self._ext_exit_pct.setToolTip(
-                "Fraction of position sold on bullish trigger. 100 = "
-                "full exit. Below 100 leaves a 'rider' tail in the "
-                "position for continued upside."
-            )
+            self._ext_exit_pct.setToolTip(BOT_WIZARD_DESCRIPTIONS["ext_exit_pct"])
             eform.addRow("Exit %:", self._ext_exit_pct)
 
             groups.addWidget(self._extractor_group)

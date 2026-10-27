@@ -1033,7 +1033,11 @@ if _HAS_QT:
             """Build `_abbreviation_tooltips` and rescan widgets every 5000 ms."""
             from PySide6.QtWidgets import QApplication
 
-            from .theme_engine import TOOLTIP_MAX_WIDTH_PX
+            from .theme_engine import (
+                TOOLTIP_FONT_SIZE_PX,
+                TOOLTIP_MAX_WIDTH_PX,
+                TOOLTIP_PADDING_PX,
+            )
 
             app = QApplication.instance()
             if app:
@@ -1041,6 +1045,8 @@ if _HAS_QT:
                 app.setStyleSheet(
                     current + "\nQToolTip { "
                     f"max-width: {TOOLTIP_MAX_WIDTH_PX}px; "
+                    f"font-size: {TOOLTIP_FONT_SIZE_PX}px; "
+                    f"padding: {TOOLTIP_PADDING_PX}px; "
                     f"background: {ds.SURFACE_CONTROL}; color: {ds.TEXT_HIGH}; border: "
                     f"1px solid {ds.MAIN_TOOLTIP_BORDER}; }}"
                 )

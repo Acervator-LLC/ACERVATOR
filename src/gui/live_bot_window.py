@@ -104,8 +104,6 @@ class LiteLiveBotWindow(QMainWindow):
         self._build_ui()
         self._wire_signals()
 
-    # ─── UI construction ───────────────────────────────────────────────
-
     def _build_ui(self) -> None:
         central = QWidget()
         root = QVBoxLayout(central)
@@ -245,8 +243,6 @@ class LiteLiveBotWindow(QMainWindow):
     def _on_api_event(self, event) -> None:
         topic = event.topic
         self._sig_api.emit(f"[{topic}] {event.data}")
-
-    # ─── Lifecycle ─────────────────────────────────────────────────────
 
     def _on_start(self) -> None:
         if self._bot is not None:

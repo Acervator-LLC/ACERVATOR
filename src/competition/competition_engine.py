@@ -130,8 +130,6 @@ class CompetitionEngine:
         self._results_dir = Path(results_dir or DEFAULT_RESULTS_DIR)
         self._participants = ParticipantRegistry(quint_ledger)
 
-    # ── Registration phase ────────────────────────────────────────────────────
-
     def register_participant(
         self, node_id: str, wallet_address: str
     ) -> ParticipantNode:
@@ -216,8 +214,6 @@ class CompetitionEngine:
         self.status = CompetitionStatus.ACTIVE
         self.start_time = time.time()
 
-    # ── Active trading phase ──────────────────────────────────────────────────
-
     def record_trade(
         self,
         identity: BotIdentity,
@@ -264,8 +260,6 @@ class CompetitionEngine:
         self.end_time = time.time()
         self.market_regime = market_regime
 
-    # ── Submission phase ──────────────────────────────────────────────────────
-
     def submit(
         self,
         bot_id: str,
@@ -302,8 +296,6 @@ class CompetitionEngine:
         )
         self._submissions[bot_id] = sub
         return sub
-
-    # ── Adjudication phase ────────────────────────────────────────────────────
 
     def adjudicate(self) -> CompetitionResult:
         """
@@ -397,8 +389,6 @@ class CompetitionEngine:
         self._save_result()
         return self._result
 
-    # ── Result display ────────────────────────────────────────────────────────
-
     def results_table(self) -> str:
         """Human-readable results table."""
         if not self._result:
@@ -428,8 +418,6 @@ class CompetitionEngine:
             f"Award: {r.winner_token_award:,} ACRV"
         )
         return "\n".join(lines)
-
-    # ── Helpers ───────────────────────────────────────────────────────────────
 
     @staticmethod
     def _hash_config(config: dict) -> str:

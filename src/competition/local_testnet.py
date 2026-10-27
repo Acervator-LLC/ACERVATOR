@@ -43,7 +43,6 @@ from .season_schedule import TOTAL_SUPPLY_CAP
 
 logger = logging.getLogger("acervator.local_testnet")
 
-# ── Chain primitives ──────────────────────────────────────────────────────────
 
 TOKEN_DECIMALS = 18
 MAX_SUPPLY_WEI = TOTAL_SUPPLY_CAP * (10**TOKEN_DECIMALS)
@@ -460,9 +459,6 @@ class LocalChain:
         return self._txs.get(tx_hash)
 
 
-# ── ACRV token simulation ─────────────────────────────────────────────────────
-
-
 class LocalACRV:
     """In-memory ACRV ERC-20 token."""
 
@@ -569,9 +565,6 @@ class LocalACRV:
                 "tier_counts": tier_counts,
                 "mint_history": self._mint_log[-20:],
             }
-
-
-# ── CompetitionRegistry simulation ───────────────────────────────────────────
 
 
 class LocalRegistry:
@@ -883,8 +876,6 @@ class LocalTestnet:
             self.OWNER,
         )
         return tx.tx_hash
-
-    # ── Token queries ─────────────────────────────────────────────────────────
 
     def get_balance(self, wallet: str) -> float:
         return self._acrv.balance_of(wallet)

@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
 )
 
 from .. import design_system as ds
+from ..descriptions import STACK_TRANCHES_TAB_DESCRIPTIONS
 
 if TYPE_CHECKING:
     from .paper_bot_detail import PaperBotDetailDialog
@@ -478,14 +479,7 @@ class PaperStackTranchesTabMixin:
             else "Clear Stack Tranches"
         )
         stack_clear_btn.setEnabled(bool(_droppable))
-        stack_clear_btn.setToolTip(
-            "Discard this bot's standing stack tranches.\n\n"
-            "Places NO order and cancels NO order. Holdings, cost "
-            "basis and target balance are untouched. A tranche "
-            "holding a resting exchange order is KEPT - removing "
-            "it would leave that order on the book with nothing "
-            "tracking it."
-        )
+        stack_clear_btn.setToolTip(STACK_TRANCHES_TAB_DESCRIPTIONS["stack_clear_btn"])
         stack_clear_btn.setStyleSheet(
             f"QPushButton {{ background: {ds.SETTINGS_DANGER_SURFACE}; color: {ds.FOLD_RATIO_AMBER}; "
             f"border: 1px solid {ds.ERROR}; padding: 6px 12px; }} "
@@ -508,12 +502,7 @@ class PaperStackTranchesTabMixin:
         )
         stack_counters_btn.setEnabled(_stack_counters_stand)
         stack_counters_btn.setToolTip(
-            "Set this bot's two stack lifetime counters to "
-            "zero.\n\n"
-            "Places NO order and removes NO tranche. Standing stack "
-            "tranches, holdings, cost basis and target balance are "
-            "all untouched - this clears the record of what "
-            "happened, not what the bot holds."
+            STACK_TRANCHES_TAB_DESCRIPTIONS["stack_counters_btn"]
         )
         stack_counters_btn.setStyleSheet(
             f"QPushButton {{ background: {ds.SETTINGS_DANGER_SURFACE}; color: {ds.FOLD_RATIO_AMBER}; "
