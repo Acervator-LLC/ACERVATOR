@@ -876,6 +876,104 @@ The fault reaches the file as a `LOG_ERROR` entry naming the feature, what is
 lost, the retry window and the cause, followed by the frame inside
 `refresh_all_privacy_widgets`.
 
+#### A stopped work loop names the restart it needs
+
+The platform runs its venue reads on one background work loop. A fifty-
+millisecond timer advances that loop, and the slot that drives it is
+`main.py, in _make_async_pump_timer`. When the call that queues the loop's next
+step raises, the loop is not advanced, every bot stops reading its venue, and
+nothing a running platform does recovers it.
+
+`main.py, in PumpStallReport` is what the slot now reports through. The first
+raising pump writes one line naming what stopped and what is lost. Further
+raising pumps inside the thirty-second window are silent. Once the run of
+raising pumps has lasted the venue-stall span, one further line names the
+restart.
+
+```
+BACKGROUND WORK STOPPED - the loop that runs every bot's venue reads was not
+advanced. Every bot stops reading its venue and every figure on screen keeps
+its last value. Cause: TypeError: __init__() should return None, not 'NoneType'
+
+RESTART NEEDED - the loop that runs every bot's venue reads has not advanced
+for 1 minute, over 1193 pump(s). Nothing recovers it while the platform runs.
+Close the platform and start it again. Cause: TypeError: __init__() should
+return None, not 'NoneType'
+```
+
+The span is the one already in the tree. `STALL_THRESHOLD_SECONDS` is the same
+sixty seconds the Exchange sub-tab's red line reads, so the Console and that
+line cannot disagree about when a stop has begun. The window between reports is
+`DEFAULT_BASE_COOLOFF_S`, the thirty seconds every other feature fault uses.
+
+#### Read off the crash log, the background work loop
+
+The real pump slot fired every fifty milliseconds for seventy seconds, in a
+failing arm and a healthy arm of the same run, with an ordinary queued callback
+in both arms read the same way.
+
+```
+                                   before      after
+crash log lines                     37912        126
+Console lines                        1354          7
+lines naming a restart                  0          1
+queued callbacks that ran, failing      0          0
+queued callbacks that ran, healthy   1390       1390
+```
+
+The healthy arm is the control. It ran for the same seventy seconds, past the
+sixty-second span, and wrote nothing in either reading, so the lines above are a
+reading of the stop and not of the pump's ordinary work. The failing arm's
+queued callback never runs in either reading: this names the stop, it does not
+prevent it.
+
+#### The two signatures one state produces
+
+The crash record for the recorded run holds two different failures. Driven on
+this interpreter, both come from one state: an object whose type is named
+`NoneType` and which an `is None` test refuses.
+
+```
+TypeError: __init__() should return None, not 'NoneType'
+    raised where CPython compares what __init__ answered against its own None
+
+AttributeError: 'NoneType' object has no attribute 'partition'
+    raised in the standard library's traceback reader, one line below its own
+    is-None guard
+```
+
+With the interpreter's own None both sites behave: a constructor raises nothing
+and the traceback reader answers None cleanly. So the two signatures are one
+fault seen twice, and the exit dialog's missing-callable message is that same
+state at a third site.
+
+#### Overtaken by the pump's own report
+
+The sentence below stands as written above. The sentence under it is the current
+reading.
+
+> One font warning that repeats for the life of the process costs two lines
+> instead of hundreds.
+
+That holds for a warning that repeats with nothing between it. A raising pump
+wrote an `ASYNCIO` entry and a `LOG_ERROR` entry alternately, so no entry ever
+equalled the one before it and the count never fired: 1,354 raising pumps wrote
+37,912 lines in seventy seconds. The pump now reports once per window, so the
+same seventy seconds cost 126 lines.
+
+#### What this does not name
+
+The state itself is not produced by any Python in this repository. Counted
+across the source tree and the entry point: classes named `NoneType`, nothing.
+Application imports of the two installed packages that define one, nothing,
+against sixteen for the exchange library as a control. Calls that hand raw
+object pointers to a C library, nothing. Across the 699 installed extension
+modules the only interpreter runtime named is `python314.dll`, on 591 of them,
+with a name that must appear reading 699 and a name that must not reading zero.
+
+So nothing below the report is repaired here, and the report is what a restart
+is now made for.
+
 ### The heartbeat file and the root that holds it
 
 The Watchdog half above says what the heartbeat is for. It polls the file, and a
