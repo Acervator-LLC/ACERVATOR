@@ -217,6 +217,117 @@ Nothing creates a lock on the coordinator yet, so the flag reads clear on every
 running bot today. What should create one changes which trades fire and is the
 operator's decision.
 
+**The operator's ruling, 2026-10-27.** Asked what should create a phantom lock,
+he answered:
+
+> This is a strange question. A phantom bot is simply a higher timeframe read
+> that is piped through a parallel trading gate logic chain. It is intended to
+> improve rather than restrict ripe scrums or folds so it must work on both
+> sides. It should be thought of as an optional guardian angel that may optimize
+> trades.
+
+On precedence he answered that where the phantom does hold, it holds ahead of
+the ripe-harvest override.
+
+**Three readings above are overtaken.** None is edited and none is removed. They
+read:
+
+> | 1d | 1d | LOCKED — SCRUM suppressed by 1d TF phantom |
+
+> fold decision differs, as a control          0
+
+> Nothing creates a lock on the coordinator yet, so the flag reads clear on
+> every running bot today. What should create one changes which trades fire and
+> is the operator's decision.
+
+**The phantom read reaches both sides.** The fold flag now carries the same lock
+term the scrum flag carries, written by the same method on the bot, taken from
+the same active lock list, and read by the same gate on the other chain. The
+term is optional per bot through the tick box the operator already has: with
+phantom bots switched off, that method clears the flag and neither side reads
+anything.
+
+`src/trading/scrumming_bot.py` — `ScrummingBot.tick`, both flags
+
+```python
+self._refresh_phantom_lock()
+if self.config.bb_midline_gate:
+    scrum_ok = (bb_pos > 0.50) and not self._phantom_locked
+    fold_ok_midline = (bb_pos < 0.50) and not self._phantom_locked
+else:
+    scrum_ok = not self._phantom_locked
+    fold_ok_midline = not self._phantom_locked
+```
+
+**Driven through the real tick.** A bot was built by hand with a stand-in venue
+that refuses every order, one tranche queued and a position above target, so the
+tick reached both gate chains rather than returning above them. Four arms ran,
+each of them twice: once with the fold's own technical-analysis tick box on, and
+once with it cleared, which is a box the operator sets.
+
+```
+band position 0.11, the fold gate's own verdict, the TA box cleared
+
+phantoms off, lock held        fold gate passes      fold fires
+phantoms on,  lock held        fold gate refuses     fold held
+phantoms on,  lock expired     fold gate passes      fold fires
+phantoms on,  no lock          fold gate passes      fold fires
+```
+
+**Swept, before against after.** Each arm ran over 801 window levels from 0.800
+to 1.200 in steps of 0.0005. That moved the real band position from -0.558 to
+1.559 and put 398 of the 801 rows below the midline. Every row was compared on
+eleven recorded verdicts. A second sweep of 2,001 rows at a step of 0.000001
+covered the midline crossing on its own, reading band positions from 0.4737 to
+0.5181, and the fold refusal appeared on exactly the 1,185 rows below 0.50 and
+on none of the 816 at or above it.
+
+```
+801 rows an arm, eleven verdicts a row, two trees
+
+phantoms off, lock held          every verdict identical
+phantoms on,  no lock            every verdict identical
+phantoms on,  lock expired       every verdict identical
+phantoms on,  lock held          fold flag differs on            398
+                                 fold gate refusal differs on    398
+                                 fold decision differs on        362
+                                 every scrum reading differs on    0
+```
+
+The 398 rows are the rows below the midline, where the band used to pass the
+fold on its own. The 362 are the rows where no other gate was holding the fold,
+so the lock is what changed the trade.
+
+**The control on that reading.** Measured on the same rows after the change, a
+held lock against no lock differs on 801 lock readings, 403 scrum flag readings,
+398 fold flag readings and 362 fold decisions, so the comparison can report a
+difference. The scrum side and three neighbouring fold gates were read in every
+arm the same way and all of them are identical before and after. No venue socket
+was attempted in either run, and the counter reached one on a single refused
+attempt.
+
+**Which surfaces it reaches.** Live reads the lock on both sides. Paper and the
+Simulator compose both flags from the band alone and read no lock, before this
+change and after it, so neither moved. The Simulator's replay of a Live record
+does recover the lock, and it now applies it to both sides, so a replayed record
+answers what Live answered.
+
+`src/simulator/validation.py` — `rerun_context`, the replay's two flags
+
+```python
+if bot.bb_midline_gate:
+    scrum_ok = (bb_pos > BB_MIDLINE) and not locked
+    fold_ok_midline = (bb_pos < BB_MIDLINE) and not locked
+else:
+    scrum_ok = not locked
+    fold_ok_midline = not locked
+```
+
+**Still the operator's.** What should create a lock on the coordinator. Nothing
+creates one today, so the flag reads clear on every running bot. The naming has
+not moved either: the flag, the page row quoted above and the log line all still
+describe restriction rather than the guardian his ruling names.
+
 Bot - Drop down menu for selecting which bot’s TA signals are displayed.
 
 The list refills every tick and carries one entry per running bot, opening on a

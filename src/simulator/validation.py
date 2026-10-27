@@ -458,12 +458,13 @@ def rerun_context(
     locked, locked_known = phantom_locked(bot, scrum)
     if bot.bb_midline_gate:
         scrum_ok = (bb_pos > BB_MIDLINE) and not locked
-        fold_ok_midline = bb_pos < BB_MIDLINE
+        fold_ok_midline = (bb_pos < BB_MIDLINE) and not locked
     else:
         scrum_ok = not locked
-        fold_ok_midline = True
+        fold_ok_midline = not locked
     if not locked_known:
         scrum_ok = bool(scrum.get("scrum_ok"))
+        fold_ok_midline = bool(fold.get("fold_ok_midline"))
 
     bb_above_upper_dt = bb_pos >= bb_upper_dt
     bb_below_lower_dt = bb_pos <= bb_lower_dt

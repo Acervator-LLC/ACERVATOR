@@ -2008,9 +2008,9 @@ class ScrummingBot(
         coordinator's active locks, and clear both where ``_phantoms_enabled``
         is off.
 
-        ``tick`` calls this above the ``scrum_ok`` composition, so the scrum
-        gate term, the hold-summary line and the Phantom Bots pages all read
-        one state.
+        ``tick`` calls this above the ``scrum_ok`` and ``fold_ok_midline``
+        composition, so both gate terms, the hold-summary line and the Phantom
+        Bots pages all read one state.
         """
         if not self._phantoms_enabled:
             self._phantom_locked = False
@@ -3604,10 +3604,10 @@ class ScrummingBot(
         self._refresh_phantom_lock()
         if self.config.bb_midline_gate:
             scrum_ok = (bb_pos > 0.50) and not self._phantom_locked
-            fold_ok_midline = bb_pos < 0.50
+            fold_ok_midline = (bb_pos < 0.50) and not self._phantom_locked
         else:
             scrum_ok = not self._phantom_locked
-            fold_ok_midline = True
+            fold_ok_midline = not self._phantom_locked
 
         _ripe_scrum = False
         _deep_fold = False
@@ -4294,7 +4294,8 @@ class ScrummingBot(
                     message=f"HOLD FOLD: BEARISH and {len(self._fold_tranches)} "
                     f"tranche(s) queued but BB position {bb_pos:.0%} > 50% "
                     f"(bb_midline_gate blocking fold — wait for price "
-                    f"to drop below midline)",
+                    f"to drop below midline), phantom lock "
+                    f"{_yes_no(self._phantom_locked)}",
                 )
 
         elif (

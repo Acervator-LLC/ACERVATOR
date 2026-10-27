@@ -4497,6 +4497,31 @@ else:
     fold_ok_midline = True
 ```
 
+**One sentence above is overtaken.** It is not edited and not removed. It reads:
+
+> The fold half of the same reading stayed open both ways, because the price sat
+> below the midline.
+
+**The current reading.** That holds while no phantom lock is held. The fold half
+now carries the phantom lock as well as the band, so with phantom bots switched
+on and a lock held, the fold half is refused below the midline too. With phantom
+bots switched off the fold half reads the band alone, exactly as the sentence
+describes.
+
+`src/trading/scrumming_bot.py` — the midline block, as it stands
+
+```python
+if self.config.bb_midline_gate:
+    scrum_ok = (bb_pos > 0.50) and not self._phantom_locked
+    fold_ok_midline = (bb_pos < 0.50) and not self._phantom_locked
+else:
+    scrum_ok = not self._phantom_locked
+    fold_ok_midline = not self._phantom_locked
+```
+
+The lock the fold half reads, who writes it and the swept figures are on
+[Part 7, Indicators](07-indicators.md).
+
 Read Rate - To be re-evaluated.
 
 From 1 to 60 minutes, at 5 minutes to start. It sets the search-mode read rate;
