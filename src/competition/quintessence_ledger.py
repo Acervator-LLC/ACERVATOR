@@ -257,8 +257,6 @@ class QuintessenceLedger:
         self._total_ever_minted: Decimal = Decimal(0)
         self._load_failed: bool = False
 
-    # -- Write path ----------------------------------------------------------
-
     def distil(self, address: str, fee_usd: object, trade_grade: object) -> Decimal:
         """Mint fee_usd times QUINTESSENCE_PER_FEE_USD times trade_grade, under the cap.
 
@@ -446,8 +444,6 @@ class QuintessenceLedger:
         self._commit([self._movement(RELEASE_TO_PLEROMA, released, None, None)])
         return released
 
-    # -- Queries -------------------------------------------------------------
-
     def balance(self, address: str) -> Decimal:
         """Return the Quintessence in address's wallet."""
         return self._wallets.get(address, Decimal(0))
@@ -524,8 +520,6 @@ class QuintessenceLedger:
         summary["movement_count"] = len(self._movements)
         return summary
 
-    # -- Persistence ---------------------------------------------------------
-
     def save(self) -> Path:
         """Write the movement log to the ledger path through atomic_write_json."""
         self._require_usable()
@@ -578,8 +572,6 @@ class QuintessenceLedger:
             )
         self._require_conservation()
         return self
-
-    # -- Internals -----------------------------------------------------------
 
     @staticmethod
     def _movement(

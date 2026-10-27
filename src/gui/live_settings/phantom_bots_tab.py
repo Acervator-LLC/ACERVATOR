@@ -71,7 +71,6 @@ class PhantomBotsTabMixin:
         info.setWordWrap(True)
         layout.addWidget(info)
 
-        # ── Config: Enable toggle ─────────────────────────────────
         enable_group = QGroupBox("Phantom Bots")
         ef = QVBoxLayout(enable_group)
         self._phantom_enable = QCheckBox("Enable Phantom Bots")
@@ -132,7 +131,6 @@ class PhantomBotsTabMixin:
         tf_layout.addWidget(self._phantom_tf_refusal)
         layout.addWidget(tf_group)
 
-        # ── Config: Lock duration ─────────────────────────────────
         lock_group = QGroupBox("Higher-TF Lock Duration")
         lf = QFormLayout(lock_group)
         self._configure_form(lf)
@@ -157,7 +155,6 @@ class PhantomBotsTabMixin:
         lf.addRow("Candles to lock:", self._phantom_lock)
         layout.addWidget(lock_group)
 
-        # ── Runtime: Coordinator Status ───────────────────────────
         phantoms_enabled = bool(getattr(bot, "_phantoms_enabled", False))
         phantoms_started = bool(getattr(bot, "_phantoms_started", False))
         phantom_tfs = list(getattr(bot, "_phantom_timeframes", []) or [])
@@ -217,7 +214,6 @@ class PhantomBotsTabMixin:
         sf.addRow("SCRUM lock state:", lock_lbl)
         layout.addWidget(summary)
 
-        # ── Runtime: Per-Phantom State table ─────────────────────
         phantom_mgr = getattr(bot, "_phantom_mgr", None)
         bot_id = getattr(bot, "bot_id", "")
         phantoms: list = []

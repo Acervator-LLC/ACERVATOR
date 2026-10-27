@@ -673,8 +673,6 @@ if _HAS_QT and _HAS_WEBENGINE:
             self._model.tooltips[name] = words
             self.redraw()
 
-        # -- what the render path pushes through -------------------------
-
         @property
         def page_ready(self) -> bool:
             """True once ``_on_load_finished`` has seen a successful load."""
@@ -719,8 +717,6 @@ if _HAS_QT and _HAS_WEBENGINE:
                 return False
             self._web.page().runJavaScript(CONTROL_COUNT_JS, callback)
             return True
-
-        # -- what the page reports back ----------------------------------
 
         def apply_edit(self, payload: str) -> None:
             """Take one operator edit and run whatever the control is wired to."""
@@ -832,8 +828,6 @@ if _HAS_QT and _HAS_WEBENGINE:
             if title in surface.TAB_TITLES:
                 self._tab = title
                 self.redraw()
-
-        # -- internals ----------------------------------------------------
 
         def _theme_name(self) -> str:
             """The stored theme the page paints in, always a name ``THEMES`` holds."""

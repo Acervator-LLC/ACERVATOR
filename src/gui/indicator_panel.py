@@ -841,7 +841,6 @@ if _HAS_QT:
             layout.setContentsMargins(0, 0, 0, 0)
             layout.setSpacing(2)
 
-            # --- Header: an arrow, the bot dropdown, an arrow, the dot ---
             header = QHBoxLayout()
             header.setContentsMargins(*ivp.HEADER["margins_px"])
             self._title = QLabel("Indicator Voting Panel")

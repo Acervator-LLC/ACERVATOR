@@ -610,8 +610,6 @@ class WorldJourneys:
             "has_arrived": here["has_arrived"],
         }
 
-    # -- Internals -----------------------------------------------------------
-
     def _require_zone_covers_leg(
         self,
         zone,
@@ -687,8 +685,6 @@ class WorldJourneys:
         tx = chain.send_tx(sender, JOURNEY_CONTRACT, function, args)
         chain.emit(tx.tx_hash, JOURNEY_CONTRACT, event, args)
         return tx.tx_hash
-
-    # -- Persistence ---------------------------------------------------------
 
     def save(self) -> None:
         """Write every journey's legs and every zone's terrain multiplier."""

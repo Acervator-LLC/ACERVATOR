@@ -178,8 +178,6 @@ if _HAS_WEBENGINE:
             self._web.setHtml(tab_html(self._theme))
             self._layout.addWidget(self._web, 1)
 
-        # -- what the window reads --------------------------------------
-
         @property
         def page_ready(self) -> bool:
             """True once ``_on_load_finished`` has seen a successful load."""
@@ -201,8 +199,6 @@ if _HAS_WEBENGINE:
             """The key of the tablet the windows are drawn from."""
             found = self._model.get("tablet")
             return str(found["key"]) if found else ""
-
-        # -- what the operator presses ----------------------------------
 
         def flip_layer(self) -> str:
             """Swap the page between the panel layer and the chart layer."""
@@ -352,8 +348,6 @@ if _HAS_WEBENGINE:
                 self.choose_span(str(asked.get("value") or ""))
             elif key in FLEET_ACTIONS:
                 self.run_mode(key)
-
-        # -- drawing ----------------------------------------------------
 
         def refresh(self) -> dict:
             """Re-read the tablet and push the new model to the page."""

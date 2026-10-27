@@ -376,7 +376,6 @@ FOLD_SCRUM_SELLS_TOOLTIP = (
     "above sells is only expected then."
 )
 
-# ── The counter rows ───────────────────────────────────────────────────
 FOLD_OPENED_TOOLTIP = "Fold tranches this bot ever opened, less merged ones."
 FOLD_CLOSED_TOOLTIP = "Fold tranches that folded back and bought the asset."
 FOLD_CLOSE_RATIO_TOOLTIP = (

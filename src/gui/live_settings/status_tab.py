@@ -31,7 +31,6 @@ class StatusTabMixin:
         status = self._bot.get_status()
         stats = status.get("stats", {})
 
-        # Stats
         stats_group = QGroupBox("Statistics")
         sf = QFormLayout(stats_group)
         self._configure_form(sf)

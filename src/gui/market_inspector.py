@@ -1033,7 +1033,6 @@ if _HAS_QT:
             layout.setContentsMargins(0, 0, 0, 0)
             layout.setSpacing(6)
 
-            # --- The three left-side zones ---
             self._module_labels: dict = {}
             self._module_boxes: dict = {}
             self._zone_steppers: dict = {}
@@ -1073,7 +1072,6 @@ if _HAS_QT:
             pane_column.addWidget(self._left_stack)
             zone = self._module_boxes[OPPOSING_TRADES_MODULE]
 
-            # --- Filter row ---
             top_row = QHBoxLayout()
             top_row.setSpacing(8)
             self._refresh_btn = QPushButton("Refresh")
@@ -1184,7 +1182,6 @@ if _HAS_QT:
                 for group, share in zip(groups, shares):
                     group.setFixedHeight(usable * share // total)
 
-        # ── the ATA-SPM control row ──────────────────────────────────
         def _build_ata_row(self) -> "QVBoxLayout":
             """The sector line, the timeframe buttons, then Scan Now and Settings.
 
@@ -1344,7 +1341,6 @@ if _HAS_QT:
             line.addStretch()
             return line
 
-        # ── Level 1 and Level 1A ─────────────────────────────────────
         def _build_settings_page(self) -> "QWidget":
             """Level 1 and Level 1A in one stack, with Level 1 on top.
 
@@ -1793,7 +1789,6 @@ if _HAS_QT:
                 MESSAGE_STYLE_FORMAT.format(colour=colour) if colour else NO_STYLE
             )
 
-        # ── the Ready to Send control row ────────────────────────────
         def _build_bucket_row(self) -> "QWidget":
             """Post Selected, Post All and Send Bucket Full Auto, wrapped to fit.
 
@@ -2636,7 +2631,6 @@ if _HAS_QT:
             self._left_stack.setCurrentIndex(1 if self._push_board.settings_open else 0)
             self._render_settings_page()
 
-        # ── the three left-side modules ──────────────────────────────
         def set_ata_run_source(self, getter) -> None:
             """Take the callable the ATA-SPM region reads its run report from.
 
@@ -2766,7 +2760,6 @@ if _HAS_QT:
                 if stepper is not None:
                     stepper.show_view(view)
 
-        # ── the widgets the logic below writes through ───────────────
         def _set_status(self, text: str) -> None:
             """Show ``text`` on the status line."""
             self._status_lbl.setText(text)
@@ -2785,7 +2778,6 @@ if _HAS_QT:
             self._pairs = list(pairs)
             self._render_empty_notes()
 
-        # ── external API ─────────────────────────────────────────────
         def scan_state(self) -> str:
             """Whether a scan is unasked, running, or finished.
 
@@ -3012,7 +3004,6 @@ if _HAS_QT:
             self._scheduler = scheduler
             self._render_left_modules()
 
-        # ── fetch cycle ──────────────────────────────────────────────
         def _start_fetch(self, force: bool = False) -> None:
             if self._pending_refresh:
                 return
@@ -3160,7 +3151,6 @@ if _HAS_QT:
             """Redraw the six zones, whose notes name the scan state."""
             self._render_left_modules()
 
-        # ── rendering ────────────────────────────────────────────────
         def _on_toggle_show_active(self, checked: bool) -> None:
             self._show_active = bool(checked)
             self._render_signals()

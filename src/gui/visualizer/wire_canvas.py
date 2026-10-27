@@ -147,7 +147,6 @@ if _HAS_QT:
                     wire.get("pct", 50),
                 )
 
-            # --- Draw dragging wire ---
             if self._viz._dragging_wire and self._viz._wire_mouse_pos:
                 src = self._viz._get_bot_center(self._viz._wire_start_id)
                 if src:

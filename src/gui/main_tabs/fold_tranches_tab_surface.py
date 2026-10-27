@@ -42,14 +42,12 @@ CONTENT_MARGINS_SET = False
 HEALTH_GROUP_TITLE = "Fold-Tranche Cycle Health"
 HEALTH_FORM_CONFIGURED_BY_HOST = True
 
-# ── The admission rule ───────────────────────────────────────────────
 # Written out here, not imported, so a change to the shipped reader is
 # reported rather than followed. `FINITE_SAFE_INT` is the largest whole
 # number `float()` accepts.
 FINITE_SAFE_INT = 2**1023
 NOT_A_NUMBER: Optional[float] = None
 
-# ── Colours ──────────────────────────────────────────────────────────
 FOLD_TRANCHE_BG_HEX = "#123a63"
 FOLD_TRANCHE_FG_HEX = "#e0e0f0"
 EXTRACTOR_TRANCHE_BG_HEX = "#b3261e"
@@ -87,7 +85,6 @@ TRANCHE_TABLE_VISIBLE_ROWS = 18
 TRANCHE_TABLE_FRAME_PX = 4
 TRANCHE_TABLE_HEADER_PX = 24
 
-# ── The table ────────────────────────────────────────────────────────
 COLUMNS = (
     "#",
     "Age",
@@ -134,7 +131,6 @@ ARBITER_NOT_APPLICABLE = EM_DASH
 NO_VALUE_TEXT = EM_DASH
 EXTRACTOR_ROW_NUMBER = "EXT"
 
-# ── Row cell formats ─────────────────────────────────────────────────
 QUEUE_NUMBER_FORMAT = "{number}"
 UNITS_FORMAT = "{units:.6f}"
 USD_FORMAT = "${usd:,.4f}"
@@ -175,7 +171,6 @@ ARBITER_NOT_APPLICABLE_TOOLTIP = (
     "button is how you close it."
 )
 
-# ── The Source column ────────────────────────────────────────────────
 SOURCE_MANUAL_SCRUM = "manual scrum"
 SOURCE_AUTO_REBALANCE = "auto rebalance"
 SOURCE_AUTO_SCRUM = "auto scrum"
@@ -204,7 +199,6 @@ SOURCE_TOOLTIPS = {
     ),
 }
 
-# ── The Arbiter ──────────────────────────────────────────────────────
 ARBITER_PARENT = "parent"
 ARBITER_SIBLING = "sibling"
 ARBITER_LABELS = {ARBITER_PARENT: "Parent", ARBITER_SIBLING: "Sibling"}
@@ -231,7 +225,6 @@ ARBITER_TOOLTIP_FORMAT = (
     "own Arbiter."
 )
 
-# ── The health rows ──────────────────────────────────────────────────
 OPEN_COUNT_ROW = "Open tranches:"
 SCRUM_SELLS_ROW = "Standing vs scrums that opened them:"
 PARKED_USD_ROW = "Parked USD (in fold queue):"
@@ -303,7 +296,6 @@ RATIO_QUIET_DENOMINATOR = 5
 RATIO_RED_BELOW = 0.5
 RATIO_AMBER_BELOW = 0.8
 
-# ── The despawn rows ─────────────────────────────────────────────────
 DESPAWN_DAYS_FIELD = "tranche_despawn_days"
 DESPAWN_CONTROL_PLACE = "Settings tab > Advanced > Tranche Despawn Timer"
 DESPAWN_OFF_FORMAT = "Off  -  {where}"
@@ -342,7 +334,6 @@ DESPAWN_ROW_TOOLTIP = (
     "collapse or remove a tranche."
 )
 
-# ── The row controls ─────────────────────────────────────────────────
 SORT_QUEUE_ORDER = "Queue order"
 SORT_OLDEST_FIRST = "Oldest first"
 SORT_NEWEST_FIRST = "Newest first"
@@ -366,7 +357,6 @@ FILTER_TOOLTIP = "Show only rows that contain this text."
 FILTER_PLACEHOLDER = "Filter rows..."
 ORDER_LABEL = "Order:"
 
-# ── The three Clear buttons ──────────────────────────────────────────
 CLEAR_FOLD_IDLE_TEXT = "Clear Fold Tranches"
 CLEAR_FOLD_TEXT_FORMAT = "Clear {count} Fold Tranche(s)"
 CLEAR_WIRE_IDLE_TEXT = "Clear Wire Credits"
@@ -428,7 +418,6 @@ DETAIL_TITLE_WITH_EXTRACTOR_FORMAT = (
     "Open Tranches ({fold} fold, {extractor} extractor)"
 )
 
-# ── Bot fields ───────────────────────────────────────────────────────
 FOLD_TRANCHES_ATTRIBUTE = "_fold_tranches"
 STACK_TRANCHES_ATTRIBUTE = "_stack_tranches"
 WIRE_CREDITS_ATTRIBUTE = "_pending_wire_credits"
@@ -480,7 +469,6 @@ STACK_PENDING_STATUS = "pending"
 WIRE_CREDIT_FLOOR_USD = 1e-9
 CLEAR_REASON = "operator (GUI)"
 
-# ── The message boxes ────────────────────────────────────────────────
 QUESTION_ICON = "question"
 WARNING_ICON = "warning"
 CRITICAL_ICON = "critical"
@@ -601,7 +589,6 @@ BODY_JOIN = "\n"
 BLANK_LINE = ""
 RESULT_JOIN = "\n\n"
 
-# ── The settle lines ─────────────────────────────────────────────────
 REFRESH_DONE = "refreshed"
 REFRESH_NO_TAB = "not refreshed: this dialog has no Fold Tranches tab installed"
 REFRESH_NOT_LOCATED_FORMAT = "not refreshed: the tab could not be located ({error})"
@@ -625,7 +612,6 @@ SAVE_FAILED_FORMAT = "{error}: {message}"
 
 SETTLE_SIGNAL = "gui.04.002.postcondition.clear_settled"
 
-# ── The Arbiter refusals ─────────────────────────────────────────────
 ARBITER_NO_REGISTRY_TEXT = (
     "Nothing was written. This panel has no bot "
     "registry attached, so the Extractor holding this "
@@ -650,7 +636,6 @@ ARBITER_NO_POSITION_TEXT = (
 )
 UNKNOWN_CHILD_ID = "?"
 
-# ── The Fire paths ───────────────────────────────────────────────────
 FIRE_GONE_THIS_TRANCHE = "This tranche"
 FIRE_GONE_NUMBERED_FORMAT = "Tranche #{number}"
 FIRE_GONE_TEXT_FORMAT = (
@@ -737,7 +722,6 @@ FIRE_UNITS_KEY = "units_returned"
 FIRE_REMAINING_KEY = "remaining_tranches"
 FIRE_REASON_KEY = "reason"
 
-# ── The outcomes ─────────────────────────────────────────────────────
 OUTCOME_NO_TRANCHES = "no_tranches"
 OUTCOME_NOT_SUPPORTED = "not_supported"
 OUTCOME_DECLINED = "declined"
@@ -783,7 +767,6 @@ OUTCOMES = (
     OUTCOME_GAVE_UP,
 )
 
-# ── The wiring ───────────────────────────────────────────────────────
 ACTIONS = {
     "clear_button.clicked": "clear_fold",
     "wire_button.clicked": "clear_wire",
@@ -896,9 +879,6 @@ CALL_NAMES = (
 )
 
 ModelCall = list
-
-
-# ── The pure readings ────────────────────────────────────────────────
 
 
 def finite_number(value: Any) -> Optional[float]:
@@ -1654,9 +1634,6 @@ def fire_confirm_text(
     )
 
 
-# ── The stand-ins ────────────────────────────────────────────────────
-
-
 def take_away(source: Any, name: str) -> None:
     """Leave `name` on `source` present but not callable.
 
@@ -1875,9 +1852,6 @@ class BotSource:
         return ["fold_back", index]
 
 
-# ── The model ────────────────────────────────────────────────────────
-
-
 class FoldTranchesTabModel:
     """The Fold Tranches tab's health rows, table, buttons and handlers.
 
@@ -1934,8 +1908,6 @@ class FoldTranchesTabModel:
         self.poll_elapsed_s = 0.0
         self.calls: list[ModelCall] = []
 
-    # -- reading the bot ------------------------------------------------
-
     def tranches(self) -> list:
         return list(getattr(self.bot, FOLD_TRANCHES_ATTRIBUTE, []) or [])
 
@@ -1968,8 +1940,6 @@ class FoldTranchesTabModel:
         found = [one for one in raw if isinstance(one, dict)]
         self.calls.append([BUILD_EXTRACTOR, len(found)])
         return found
-
-    # -- building -------------------------------------------------------
 
     def add_health_row(self, label: str, value: Any, colour: Optional[str]) -> None:
         self.health_rows.append([label, value])
@@ -2156,8 +2126,6 @@ class FoldTranchesTabModel:
         self.calls.append([BUILD_RETURN, len(self.rows)])
         return None
 
-    # -- what the panel shows -------------------------------------------
-
     def panel_shows(self) -> dict:
         """Report what the tab shows right now, read off the model."""
         opened = self.health_value(OPENED_ROW)
@@ -2202,8 +2170,6 @@ class FoldTranchesTabModel:
         if index < len(self.buttons):
             return bool(self.buttons[index][1])
         return None
-
-    # -- the three clears -----------------------------------------------
 
     def refresh(self) -> str:
         """Rebuild the tab in place and say what happened."""
@@ -2489,8 +2455,6 @@ class FoldTranchesTabModel:
         self.calls.append([CLEAR_REPORTED, CLEAR_COUNTERS_TITLE])
         return self.outcome
 
-    # -- the Arbiter ----------------------------------------------------
-
     def arbiter_toggle(self, tranche_id: Any, child_bot_id: Any) -> Optional[str]:
         """Flip one Extractor Tranche's Arbiter. Moves no money."""
         self.calls.append([ARBITER_START, tranche_id, child_bot_id])
@@ -2547,8 +2511,6 @@ class FoldTranchesTabModel:
         self.outcome = OUTCOME_TOGGLED
         self.calls.append([ARBITER_TOGGLED, tranche_id, arbiter_label(written)])
         return self.outcome
-
-    # -- the Fire button ------------------------------------------------
 
     def fire(
         self,
@@ -2751,8 +2713,6 @@ class FoldTranchesTabModel:
             return self.outcome
         self.outcome = OUTCOME_PENDING
         return self.outcome
-
-    # -- the two row controls -------------------------------------------
 
     def choose_order(self, order: Any) -> str:
         """Remember the row order and rebuild the table to apply it."""

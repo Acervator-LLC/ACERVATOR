@@ -442,8 +442,6 @@ if _HAS_QT and _HAS_WEBENGINE:
             self._web.setHtml(tab_html())
             layout.addWidget(self._web, 1)
 
-        # -- what the page is drawn from ----------------------------------
-
         @property
         def page_ready(self) -> bool:
             """True once ``_on_load_finished`` has seen a successful load."""
@@ -476,8 +474,6 @@ if _HAS_QT and _HAS_WEBENGINE:
             self._run(screen_push_script(self._last_model))
             pane = self._topologies_pane
             self._run(topology_push_script(pane.view_model(), pane.preview_at))
-
-        # -- what the page reports back -----------------------------------
 
         def run_action(self, payload: str) -> None:
             """Run one filter-row press the page reported."""
@@ -613,8 +609,6 @@ if _HAS_QT and _HAS_WEBENGINE:
             )
             self.push()
 
-        # -- the widgets the inherited logic writes through ----------------
-
         def _set_status(self, text: str) -> None:
             """Show ``text`` on the status line."""
             self._screen.status_label_text = text
@@ -666,8 +660,6 @@ if _HAS_QT and _HAS_WEBENGINE:
             self._tiles_drawn = bool(rows)
             if self._page_ready:
                 self._run(tile_push_script(rows))
-
-        # -- internals ------------------------------------------------------
 
         def _run(self, script: str) -> None:
             self._web.page().runJavaScript(script)

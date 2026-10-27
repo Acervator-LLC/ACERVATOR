@@ -323,8 +323,6 @@ if _HAS_WEBENGINE:
             self._layout.setContentsMargins(0, 0, 0, 0)
             self._layout.setSpacing(0)
 
-        # -- what the exchange header already calls ---------------------------
-
         def start(self) -> None:
             """Fetch now and start the cycle and the refresh waits."""
             self._strip.start()
@@ -358,8 +356,6 @@ if _HAS_WEBENGINE:
             """The stories the strip is cycling through."""
             return self._strip.current_headlines()
 
-        # -- what the page reports back ----------------------------------------
-
         def run_action(self, payload: str) -> None:
             """Answer one bridge call the page made and push the new payload."""
             if self._stopped:
@@ -373,8 +369,6 @@ if _HAS_WEBENGINE:
             params = asked.get("params")
             self._answer(method, params if isinstance(params, dict) else {})
             self._publish()
-
-        # -- the models the page is built from ----------------------------------
 
         def models(self) -> dict:
             """A copy of the payloads the page was last built or pushed with."""
@@ -405,8 +399,6 @@ if _HAS_WEBENGINE:
             """Build the web view the first time the strip is shown."""
             super().showEvent(event)
             self.build_panel()
-
-        # -- internals -----------------------------------------------------------
 
         def _build_models(self) -> dict:
             """The payload of every bridge method the page's modules ask for."""

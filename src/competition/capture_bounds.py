@@ -335,8 +335,6 @@ class CaptureBounds:
         """The ``MarketRotation`` ``activate`` draws its markets from."""
         return self._rotation
 
-    # -- The activation and its allotments -----------------------------------
-
     def activate(
         self,
         exchange_id: str,
@@ -430,8 +428,6 @@ class CaptureBounds:
             self.save()
         logger.info("%s closed; %d allotments retired", key, len(activation.allotments))
         return (reveal, activation.allotments)
-
-    # -- The bounds ----------------------------------------------------------
 
     def cooldown_remaining_s(self, participant: str, at_epoch: float) -> float:
         """Seconds left on ``participant``'s cooldown, never below zero."""
@@ -595,8 +591,6 @@ class CaptureBounds:
         tx = chain.send_tx(participant, CAPTURE_CONTRACT, AWARD_FUNCTION, args)
         chain.emit(tx.tx_hash, CAPTURE_CONTRACT, AWARDED_EVENT, args)
         return tx.tx_hash
-
-    # -- Persistence ---------------------------------------------------------
 
     def save(self) -> Path:
         """Write the activations, the takes, the drawn totals and the cooldowns."""

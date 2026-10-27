@@ -411,8 +411,6 @@ class LiveBotWindowModel:
         self.build_ui()
         self.wire_signals()
 
-    # ----- building the window -----
-
     def build_ui(self) -> None:
         """Put the configuration group above the three panes."""
         self.build_controls()
@@ -468,8 +466,6 @@ class LiveBotWindowModel:
         self.target_asset = target_asset
         self.calls.append([TARGET_PICKED, target_asset])
 
-    # ----- the three panes -----
-
     def append_console(self, line: object) -> None:
         """Add one line to the Console pane."""
         self.console.append(line)
@@ -481,8 +477,6 @@ class LiveBotWindowModel:
     def append_activity(self, line: object) -> None:
         """Add one line to the Trading Activity pane."""
         self.activity.append(line)
-
-    # ----- what the bus sends the window -----
 
     def on_bot_log(self, event: "BusEvent") -> None:
         """One bot log line: to the Console, and to Activity when it trades."""
@@ -504,8 +498,6 @@ class LiveBotWindowModel:
         line = api_line(event.topic, event.data)
         self.append_api(line)
         self.calls.append([API_SEEN, event.topic])
-
-    # ----- START -----
 
     def press_start(self) -> None:
         """A press on START, which a disabled button ignores."""
@@ -592,8 +584,6 @@ class LiveBotWindowModel:
         thread.start()
         return thread
 
-    # ----- the worker -----
-
     def run_bot(
         self,
         exchange_id: str,
@@ -646,8 +636,6 @@ class LiveBotWindowModel:
                 except Exception as exc:
                     logger.warning(DISCONNECT_FAILED_LOG, exc)
                     self.calls.append([DISCONNECT_FAILED, type(exc).__name__])
-
-    # ----- STOP -----
 
     def on_stop(self) -> None:
         """Ask the bot to stop, drop the four topics and reset the buttons."""

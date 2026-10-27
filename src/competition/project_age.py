@@ -137,8 +137,6 @@ class ProjectAgeLookup:
         """The file ``_store`` writes and ``_load`` reads."""
         return self._path
 
-    # -- The genesis date ----------------------------------------------------
-
     def _load(self) -> dict[str, str]:
         """Return the kept dates, reading ``cache_path`` once per instance."""
         if self._genesis_dates is not None:
@@ -223,8 +221,6 @@ class ProjectAgeLookup:
         if not coingecko_id:
             return True
         return coingecko_id in self._load() or coingecko_id in self._ids_without_a_date
-
-    # -- The rule -----------------------------------------------------------
 
     def verdict_for(self, market: str) -> ProjectAgeVerdict:
         """Return the ``ProjectAgeVerdict`` for ``market``, refusing an unknown age."""

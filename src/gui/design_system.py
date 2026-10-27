@@ -19,19 +19,16 @@ SURFACE_2 = "#1a1a28"  # Raised cards and popovers
 SURFACE_3 = "#22223a"  # Modal surfaces
 SURFACE_4 = "#2a2a44"  # Menus, tooltips, top-most dialogs
 
-# ---- Text roles ------------------------------------------------------------
 TEXT_HIGH = "#e0e0f0"  # Primary body text (≥10.63:1 on SURFACE_0-4)
 TEXT_MED = "#a8a8c5"  # Secondary text, labels (≥6.68:1 on SURFACE_0-3)
 TEXT_LOW = "#8a8ab0"  # Tertiary, hints, metadata (≥4.67:1 on SURFACE_0-3)
 TEXT_DISABLED = "#555577"  # Disabled foreground (2.78:1 on SURFACE_0)
 
-# ---- Primary accent --------------------------------------------------------
 PRIMARY = "#00ffcc"  # The signature accent (15.21:1 on SURFACE_0)
 ON_PRIMARY = "#003d33"  # Text on PRIMARY-colored surface (9.43:1)
 PRIMARY_CONTAINER = "#00998a"  # PRIMARY-tinted container background
 ON_PRIMARY_CONTAINER = "#c8fff0"  # Text on PRIMARY_CONTAINER
 
-# ---- Secondary accent ------------------------------------------------------
 SECONDARY = "#ff00aa"
 ON_SECONDARY = "#3d0029"
 SECONDARY_CONTAINER = "#a8006d"
@@ -61,7 +58,6 @@ CARD_METRIC_SURFACE = "#12121f"  # Analytics tab card background
 CARD_METRIC_BORDER = "#2a2a3f"
 CARD_METRIC_LABEL = "#888888"
 
-# ---- Widget colours ---------------------------------------------------------
 
 # Semantic roles the widgets render
 ERROR = "#ff3366"  # Negative P&L, destructive controls, error text
@@ -231,7 +227,6 @@ SPACE_L = 24  # Between groups
 SPACE_XL = 32  # Between sections
 SPACE_XXL = 48  # Between major regions
 
-# ---- Corner radii ----------------------------------------------------------
 RADIUS_NONE = 0
 RADIUS_XS = 4  # Chips, tight inputs
 RADIUS_CARD = 6  # Analytics metric cards

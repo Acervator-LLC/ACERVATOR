@@ -344,8 +344,6 @@ class PoaRecordStore:
         """Return the file ``save`` writes and ``load`` replays."""
         return self._path
 
-    # -- The skill ladder's store --------------------------------------------
-
     def skill_progress(self, address: str, skill_name: str) -> SkillProgress:
         """Return ``address``'s ``SkillProgress``, building it on first use."""
         wallet = _as_identifier(address, "address")
@@ -538,8 +536,6 @@ class PoaRecordStore:
                 record.settled_at = 0.0
             self.save()
         return records
-
-    # -- Persistence ---------------------------------------------------------
 
     def save(self) -> Path:
         """Write every ``SkillProgress`` and ``ActionRecord`` to ``store_path``."""
@@ -757,8 +753,6 @@ class ActionSpend:
             del self._charges[charge_id]
         return self._settle(charge.draft, at_epoch)
 
-    # -- The treasury underwrite --------------------------------------------
-
     def offer_underwrite(self, draft: ActionDraft, officer: str) -> UnderwriteOffer:
         """Record an officer's commitment of treasury funds, debiting nothing yet."""
         if draft.payer != PAYER_TREASURY:
@@ -808,8 +802,6 @@ class ActionSpend:
             state=OFFER_REFUSED,
         )
 
-    # -- Readouts -----------------------------------------------------------
-
     def spend_summary(self, event_id: str) -> dict:
         """Return the curve, the held address and every record in ``event_id``."""
         return {
@@ -825,8 +817,6 @@ class ActionSpend:
             "open_charges": len(self.open_charges()),
             "open_offers": len(self.open_offers()),
         }
-
-    # -- Internals ----------------------------------------------------------
 
     def _require_balance(self, draft: ActionDraft) -> None:
         """Raise ``UnaffordableActionError`` while the payer holds under the cost."""

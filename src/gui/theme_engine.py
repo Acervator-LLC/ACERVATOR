@@ -52,7 +52,6 @@ class ThemeTokens:
     bg_hover: str = "#1e1e35"
     bg_selected: str = "#252545"
 
-    # Text
     text_primary: str = "#e0e0f0"
     text_secondary: str = "#8888aa"
     text_muted: str = "#8a8ab0"  # was "#555577" — WCAG C2: 2.62:1 → 5.19:1 (SC 1.4.3)
@@ -74,7 +73,6 @@ class ThemeTokens:
     scrollbar_bg: str = "#0a0a14"
     scrollbar_handle: str = "#2a2a44"
 
-    # Font
     font_family: str = "'Rajdhani', 'Orbitron', 'Segoe UI', sans-serif"
     font_size: str = "13px"
     font_size_small: str = "11px"
@@ -926,7 +924,6 @@ QRadioButton::indicator {{
 """
 
 
-# Theme manager
 class ThemeManager:
     """
     Manages theme selection and application.

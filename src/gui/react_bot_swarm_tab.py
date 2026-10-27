@@ -236,8 +236,6 @@ if _HAS_WEBENGINE:
             self._bus_unsubs = []
             super().closeEvent(event)
 
-        # -- what the render path pushes through -------------------------
-
         @property
         def page_ready(self) -> bool:
             """True once ``_on_load_finished`` has seen a successful load."""
@@ -246,8 +244,6 @@ if _HAS_WEBENGINE:
         def model(self) -> dict:
             """A copy of the last payload pushed, empty before the first push."""
             return dict(self._last_model)
-
-        # -- what the page reports back ----------------------------------
 
         def answer_call(self, payload: str) -> None:
             """Apply one action from the page and settle its promise."""
@@ -314,8 +310,6 @@ if _HAS_WEBENGINE:
                     "target_id": target_id,
                 }
             )
-
-        # -- internals ----------------------------------------------------
 
         def _run(self, script: str) -> None:
             self._web.page().runJavaScript(script)

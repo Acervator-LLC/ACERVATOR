@@ -412,8 +412,6 @@ class SimTradingTab(QWidget):
         self.retrieval_finished.connect(self._take_retrieval)
         self._sync_exchange_tabs()
 
-    # -- what the window reads ------------------------------------------
-
     def bus(self) -> Any:
         """The tab's private bus from ``new_sim_bus``; every run's rows are
         emitted on it."""
@@ -538,8 +536,6 @@ class SimTradingTab(QWidget):
     def mode(self) -> str:
         """The run mode in force, one of ``MODES``."""
         return self._mode
-
-    # -- the run mode -----------------------------------------------------
 
     def set_mode(self, mode: str) -> str:
         """Make ``mode`` the run mode through ``FleetSource.set_mode``, so its
@@ -1065,8 +1061,6 @@ class SimTradingTab(QWidget):
         ``SimStatusLog.log`` at the ``success`` level ``_import_live_fleet`` uses."""
         self._status_log.log(report_line(report), "success")
 
-    # -- the Validation and Back Test runs --------------------------------
-
     def _run_bots(self, exchange_id: str) -> list[SimBot]:
         """Every held scrumming bot on ``exchange_id``, the fleet a run covers."""
         return [
@@ -1310,8 +1304,6 @@ class SimTradingTab(QWidget):
             tab_surface.TRADE_LINE_LEVEL,
         )
 
-    # -- the walk's stats on the record -------------------------------------
-
     def _on_bus_stats(self, event: Any) -> None:
         """The bus subscriber for ``STATS_TOPIC``, called on the walk's
         thread: re-emit the event's ``snapshot`` through ``bot_stats`` so
@@ -1359,8 +1351,6 @@ class SimTradingTab(QWidget):
         self._stats_dirty = False
         self._stats_redraw_timer.stop()
         self.refresh_bots()
-
-    # -- construction ---------------------------------------------------
 
     def _build(self) -> None:
         trading_layout = QVBoxLayout(self)
@@ -1688,8 +1678,6 @@ class SimTradingTab(QWidget):
         column.addWidget(self._layer_splitter, 1)
         return pane
 
-    # -- the venue sub-tabs ---------------------------------------------
-
     def _is_equity_exchange(self, exchange_id: str) -> bool:
         """Return True if this exchange ID belongs to the stock/equity layer."""
         return exchange_id.lower() in self._equity_exchange_ids
@@ -1783,8 +1771,6 @@ class SimTradingTab(QWidget):
         self._refresh_replay()
         self._draw_way_ins()
 
-    # -- the rows -------------------------------------------------------
-
     def refresh_bots(self) -> int:
         """Hand every seated venue its rows from ``FleetSource.statuses``.
 
@@ -1821,8 +1807,6 @@ class SimTradingTab(QWidget):
             return -1
         stack.setCurrentIndex(acs.layer_page(key))
         return stack.currentIndex()
-
-    # -- the voting panel -----------------------------------------------
 
     def refresh_votes(self) -> dict:
         """Hand the panel the fleet's statuses, the fleet's own rate snapshot
@@ -1861,8 +1845,6 @@ class SimTradingTab(QWidget):
                 detail=feed["detail"],
             )
         return feed
-
-    # -- the replay layer -----------------------------------------------
 
     def _selected_bot(self):
         chosen = str(self._indicator_panel.selected_bot_id or "")
@@ -2329,8 +2311,6 @@ class SimTradingTab(QWidget):
             saved_tab_index = dlg.active_tab_index()
             target_id = dlg._pending_navigate_to
             bot = self._fleet_source.bot_for(target_id) if target_id else None
-
-    # -- what the operator presses --------------------------------------
 
     def flip_rect(self) -> dict:
         """The flip button's rect in the layer stack's coordinates."""

@@ -300,9 +300,6 @@ def require_locator(locator: str) -> tuple[int, GridPosition]:
     return layer, position
 
 
-# -- The derived monster -----------------------------------------------------
-
-
 @dataclass(frozen=True)
 class DerivedMonster:
     """One locator's encounter, the tier it sits at and the design it drew.

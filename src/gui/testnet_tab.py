@@ -49,7 +49,6 @@ if _QT:
 
 _LOG = logging.getLogger("acervator.testnet")
 
-# ── Style ─────────────────────────────────────────────────────────────────────
 CYAN = "#00FFEE"
 GREEN = "#00FF88"
 AMBER = "#FFAA00"
@@ -211,7 +210,6 @@ if _QT:
             root.setContentsMargins(10, 8, 10, 8)
             root.setSpacing(6)
 
-            # ── Header ────────────────────────────────────────────────────────
             hdr = QHBoxLayout()
             ttl = QLabel("Local Testnet")
             ttl.setStyleSheet(
@@ -230,7 +228,6 @@ if _QT:
             sep.setStyleSheet("color:rgba(0,255,238,0.15);")
             root.addWidget(sep)
 
-            # ── Status bar ────────────────────────────────────────────────────
             stat = _section("Chain Status")
             stat_lay = stat.layout() or QVBoxLayout(stat)
             self._stat_row = QHBoxLayout()
@@ -255,7 +252,6 @@ if _QT:
             stat_lay.addLayout(self._stat_row)
             root.addWidget(stat)
 
-            # ── Run competition controls ───────────────────────────────────────
             run_box = _section("Run Competition")
             run_lay = run_box.layout() or QVBoxLayout(run_box)
             ctrl_row = QHBoxLayout()
@@ -340,7 +336,6 @@ if _QT:
             run_lay.addLayout(oracle_row)
             root.addWidget(run_box)
 
-            # ── Splitter: blocks + events ──────────────────────────────────────
             split = QSplitter(Qt.Horizontal)
             split.setHandleWidth(5)
             split.setChildrenCollapsible(False)
@@ -361,21 +356,18 @@ if _QT:
 
             root.addWidget(split)
 
-            # ── Event log ─────────────────────────────────────────────────────
             evt_box = _section("Contract Events")
             evt_lay = evt_box.layout() or QVBoxLayout(evt_box)
             self._evt_tbl = _table(["Block", "Event", "Details"], max_h=150)
             evt_lay.addWidget(self._evt_tbl)
             root.addWidget(evt_box)
 
-            # ── Token holders ──────────────────────────────────────────────────
             tok_box = _section("Token Holders")
             tok_lay = tok_box.layout() or QVBoxLayout(tok_box)
             self._tok_tbl = _table(["Wallet", "Balance (ACRV)", "Tier"], max_h=130)
             tok_lay.addWidget(self._tok_tbl)
             root.addWidget(tok_box)
 
-            # ── Log ───────────────────────────────────────────────────────────
             log_box = _section("Testnet Log")
             log_lay = log_box.layout() or QVBoxLayout(log_box)
             self._log = QTextEdit()

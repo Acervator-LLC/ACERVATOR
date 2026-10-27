@@ -327,9 +327,6 @@ def require_square_locator(locator: str) -> tuple[int, GridPosition]:
     return layer, position
 
 
-# -- What the place holds ----------------------------------------------------
-
-
 @dataclass(frozen=True)
 class ForagePlace:
     """One square's material and grade, both drawn from that square's own leaf.
@@ -462,9 +459,6 @@ def forage_units_per_run() -> int:
 def forage_yield_provenance() -> str:
     """The provenance the yield rate carries, which says who set the figure."""
     return rate_named(FORAGE_YIELD_RATE_NAME).provenance
-
-
-# -- What one run did --------------------------------------------------------
 
 
 @dataclass(frozen=True)

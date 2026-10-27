@@ -213,8 +213,6 @@ class PaperTradingTab(QWidget):
         self.fleet_changed.connect(self._sync_exchange_tabs)
         self._sync_exchange_tabs()
 
-    # -- what the window reads ------------------------------------------
-
     def fleet_source(self) -> PaperFleetSource:
         """The fleet reader the tables are fed from."""
         return self._fleet_source
@@ -286,8 +284,6 @@ class PaperTradingTab(QWidget):
     def card_buttons(self) -> dict[str, QPushButton]:
         """The crypto layer's Get Started card buttons, keyed by action."""
         return dict(self._card_buttons)
-
-    # -- the ways in ------------------------------------------------------
 
     def _way_in(self, action: str) -> None:
         """Run the corner or card press ``action``: ``_add_exchange`` for Add
@@ -562,8 +558,6 @@ class PaperTradingTab(QWidget):
         """Write one ``feed_line`` for ``summary`` on the Activity Log."""
         text, level = tab_surface.feed_line(summary)
         self._status_log.log(text, level)
-
-    # -- construction -----------------------------------------------------
 
     def _build(self) -> None:
         trading_layout = QVBoxLayout(self)
@@ -926,8 +920,6 @@ class PaperTradingTab(QWidget):
         self.refresh_bots()
         self.refresh_votes()
 
-    # -- the rows -------------------------------------------------------
-
     def refresh_bots(self) -> int:
         """Hand every seated venue its rows from ``PaperFleetSource.statuses``
         and answer how many rows were handed out."""
@@ -974,8 +966,6 @@ class PaperTradingTab(QWidget):
         seated = list(self._crypto_exchange_tabs) + list(self._stock_exchange_tabs)
         return class_filter_surface.venues_of_class(seated, key)
 
-    # -- the voting panel -----------------------------------------------
-
     def refresh_votes(self) -> dict:
         """Hand the panel the fleet's statuses, the fleet's own rate snapshot
         and the selected bot's reading, as the window's tick feeds Live's."""
@@ -1006,8 +996,6 @@ class PaperTradingTab(QWidget):
             detail=feed["detail"],
         )
         return feed
-
-    # -- what the operator presses --------------------------------------
 
     def _create_bot(
         self,

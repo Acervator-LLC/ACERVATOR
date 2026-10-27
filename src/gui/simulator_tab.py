@@ -276,8 +276,6 @@ class SimulatorTabQt(QWidget):
         self._build()
         self.refresh()
 
-    # -- what the window reads ------------------------------------------
-
     def model(self) -> dict:
         """A copy of the model the panes were last drawn from."""
         return dict(self._model)
@@ -290,8 +288,6 @@ class SimulatorTabQt(QWidget):
         """The key of the tablet the windows are drawn from."""
         found = self._model.get("tablet")
         return str(found["key"]) if found else ""
-
-    # -- construction ---------------------------------------------------
 
     def _build(self) -> None:
         outer = QVBoxLayout(self)
@@ -636,8 +632,6 @@ class SimulatorTabQt(QWidget):
         column.addWidget(self._battery_table, 1)
         return pane
 
-    # -- what the operator presses --------------------------------------
-
     def first_way_in(self) -> dict:
         """Clone the live fleet from bot_state and run the showing mode on
         it."""
@@ -776,8 +770,6 @@ class SimulatorTabQt(QWidget):
         if key and key != self._tablet_key:
             self._tablet_key = key
             self.refresh()
-
-    # -- drawing --------------------------------------------------------
 
     def refresh(self) -> dict:
         """Re-read the tablet and draw every pane from the new model."""

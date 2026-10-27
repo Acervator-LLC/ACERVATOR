@@ -228,8 +228,6 @@ class PoaNodeLink:
         self._server: _LinkServer | None = None
         self._serve_thread: threading.Thread | None = None
 
-    # -- Identity ------------------------------------------------------------
-
     @property
     def node_id(self) -> str:
         """The id naming this node's announcement file in ``peer_dir``."""
@@ -264,8 +262,6 @@ class PoaNodeLink:
             host=str(host),
             port=int(port),
         )
-
-    # -- Chain records -------------------------------------------------------
 
     def records(self) -> list[ChainRecord]:
         """Every transaction on this node's chain, in the order it was mined."""
@@ -324,8 +320,6 @@ class PoaNodeLink:
                     chain.emit(tx.tx_hash, contract, event_name, dict(event_args))
         return len(placed)
 
-    # -- Listening -----------------------------------------------------------
-
     def start_listening(self) -> PeerEndpoint:
         """Bind an ephemeral loopback port, serve it on a thread, and announce it."""
         if self._server is not None:
@@ -379,8 +373,6 @@ class PoaNodeLink:
                 "node %s left its announcement behind: %s", self._node_id, exc
             )
 
-    # -- Discovery -----------------------------------------------------------
-
     def peers(self) -> list[PeerEndpoint]:
         """Every endpoint announced in ``peer_dir`` on this ``network``, bar
         ``node_id``.
@@ -399,8 +391,6 @@ class PoaNodeLink:
                 continue
             found.append(endpoint)
         return found
-
-    # -- Synchronisation -----------------------------------------------------
 
     def sync_with(self, peer: PeerEndpoint) -> int:
         """Trade records with ``peer`` and return how many this node took from it."""

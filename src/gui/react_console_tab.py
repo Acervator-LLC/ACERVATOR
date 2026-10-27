@@ -270,8 +270,6 @@ if _HAS_WEBENGINE:
             self._web.setHtml(tab_html(theme))
             layout.addWidget(self._web, 1)
 
-        # -- what the render path pushes through -------------------------
-
         @property
         def page_ready(self) -> bool:
             """True once ``_on_load_finished`` has seen a successful load."""
@@ -318,8 +316,6 @@ if _HAS_WEBENGINE:
             if self._page_ready:
                 self._run(push_script(model))
 
-        # -- what the page reports back ----------------------------------
-
         def run_action(self, payload: str) -> None:
             """Run the Pause or the Clear the page reports."""
             try:
@@ -335,8 +331,6 @@ if _HAS_WEBENGINE:
                 self._pressed(key)
             elif key == surface.ACTIONS["clear_button.clicked"]:
                 self.log_pane.clear()
-
-        # -- internals ----------------------------------------------------
 
         def _paint_log_line(
             self, message: str, red: int, green: int, blue: int

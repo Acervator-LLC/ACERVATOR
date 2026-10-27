@@ -77,8 +77,6 @@ class ParticipantRegistry:
         self._node_of_bot: dict[str, str] = {}
         self._bots_of_node: dict[str, list[str]] = {}
 
-    # -- Registration --------------------------------------------------------
-
     def register_node(self, node_id: str, wallet_address: str) -> ParticipantNode:
         """File ``node_id`` as one participant holding ``wallet_address``.
 
@@ -139,8 +137,6 @@ class ParticipantRegistry:
             self._bots_of_node[node].append(bot)
             logger.info("bot %s feeds participant node %s", bot[:12], node)
         return filed
-
-    # -- Queries -------------------------------------------------------------
 
     def participant_count(self) -> int:
         """Return how many participant nodes this registry holds."""

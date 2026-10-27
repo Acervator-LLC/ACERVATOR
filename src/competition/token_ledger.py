@@ -77,8 +77,6 @@ class TokenLedger:
         self._events: List[AwardRecord] = []
         self._seen: set = set()  # idempotency keys
 
-    # ── Award ─────────────────────────────────────────────────────────────────
-
     def award(
         self,
         bot_id: str,
@@ -145,8 +143,6 @@ class TokenLedger:
         self.save()
         return record
 
-    # ── Queries ───────────────────────────────────────────────────────────────
-
     def balance(self, bot_id: str) -> int:
         """Total ACRV held by a bot (sum of all award amounts)."""
         return sum(e.amount for e in self._events if e.bot_id == bot_id)
@@ -196,8 +192,6 @@ class TokenLedger:
             "tier_counts": tier_counts,
             "total_holders": len({e.bot_id for e in self._events}),
         }
-
-    # ── Persistence ───────────────────────────────────────────────────────────
 
     def save(self):
 

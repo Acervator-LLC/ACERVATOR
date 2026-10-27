@@ -435,7 +435,6 @@ READY_TO_SEND_NONE_TEXT = "The last scan left no post. Nothing to approve."
 READY_TO_SEND_HOLDS_FORMAT = "{count} post(s) waiting. Approve or decline each."
 NO_POSTS = 0
 
-# ── phases four, five and six: the bucket, its buttons and the settings ──
 
 APPROVE_LABEL = "Approve"
 DECLINE_LABEL = "Decline"

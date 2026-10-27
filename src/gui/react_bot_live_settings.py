@@ -501,8 +501,6 @@ def _build() -> dict:
             self.resize(int(width), int(height))
             return int(width), int(height)
 
-        # -- what the render path pushes through -------------------------
-
         @property
         def page_ready(self) -> bool:
             """True once ``_on_load_finished`` has seen a successful load."""
@@ -543,8 +541,6 @@ def _build() -> dict:
             if self._page_ready:
                 self._run(push_script(window, tabs))
 
-        # -- what the page reports back ----------------------------------
-
         def apply_edit(self, payload: str) -> None:
             """Take one operator edit and record it the way the widget did."""
             try:
@@ -576,8 +572,6 @@ def _build() -> dict:
                 self._navigate_to_sibling(surface.PREV_STEP)
             elif key == "next-button":
                 self._navigate_to_sibling(surface.NEXT_STEP)
-
-        # -- internals ----------------------------------------------------
 
         def _run(self, script: str) -> None:
             self._web.page().runJavaScript(script)
