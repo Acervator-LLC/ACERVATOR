@@ -3624,3 +3624,28 @@ cache-hit arithmetic or the per-entry lifetimes.
 none is unbuilt, and `src/gui/tooltips.py, in set_description` still has no
 callers. 178 of the 597 calls build their text at runtime, so no static count
 reaches them.
+
+**Eight descriptions are built while the screen runs, and their fixed words ran
+over too.** A word count of a stored sentence cannot see them, so they were
+counted a second way: the fixed text inside the template, with the values left
+out. Eight came out over twenty words, and all eight are now under.
+
+```
+                                        fixed words before   after
+the Fire button, five states                    22 to 26     15 to 19
+the minimum rebuy guide, three tabs                   41          17
+```
+
+The Fire button's five sentences lived twice — once in
+`src/gui/main_tabs/bot_status_table_surface.py` as a named value the React build
+reads, and once typed again inside `src/gui/widgets/bot_status_table.py`. The Qt
+table now reads the named value, so both builds draw one sentence.
+
+```
+                        this change        on origin/current
+the five sentences      15 to 19 words     22 to 26 words
+one declaration         yes                no, each build its own copy
+```
+
+Two runtime lines are appended to a Fire description and are not part of the
+sentence: a ceiling warning, and the list of gates blocking a fire.

@@ -28,6 +28,11 @@ from ..main_tabs.bot_status_table_surface import (
     FIRE_PATH_SCRUM_OUTLINE,
     FIRE_PATH_SCRUM_SOLID,
     FIRE_STYLE_MANUAL_NOOP,
+    FIRE_TIP_FOLD_CEILING,
+    FIRE_TIP_FOLD_OUTLINE,
+    FIRE_TIP_FOLD_SOLID,
+    FIRE_TIP_SCRUM_OUTLINE,
+    FIRE_TIP_SCRUM_SOLID,
     FIXED_WIDTHS,
     HEADER_CELL_GAP_PX,
     HEADER_CELL_PAD_PX,
@@ -939,12 +944,7 @@ if _HAS_QT:
                             f"border: 1px solid {ds.ERROR};"
                         )
                         _apply_glow(ds.ERROR)
-                        fire_btn.setToolTip(
-                            "ARMED for SCRUM (auto would fire). "
-                            "Holdings above target; all gates clear. "
-                            "Clicking fires a MARKET sell to "
-                            "rebalance back to target." + _risk_suffix()
-                        )
+                        fire_btn.setToolTip(FIRE_TIP_SCRUM_SOLID + _risk_suffix())
                     else:
                         # Outline only — manual override available
                         # but auto-fire is blocked by ≥1 gate.
@@ -963,11 +963,7 @@ if _HAS_QT:
                             else ""
                         )
                         fire_btn.setToolTip(
-                            "Manual SCRUM override available — "
-                            "delta > 0 but auto-fire blocked. "
-                            "Clicking fires a MARKET sell sized to "
-                            "rebalance back to target (bypasses "
-                            "auto's TA/BB/HTF gates)." + _blockers_text + _risk_suffix()
+                            FIRE_TIP_SCRUM_OUTLINE + _blockers_text + _risk_suffix()
                         )
                 elif armed_action == "fold" and fire_acts:
                     # Mirrors the SCRUM branch above.
@@ -985,13 +981,7 @@ if _HAS_QT:
                             f"border: 1px dashed {ds.CARD_METRIC_LABEL};"
                         )
                         _apply_glow(ds.STATE_ENGAGED_GLOW)
-                        fire_btn.setToolTip(
-                            "Fold would be armed, but POSITION "
-                            "CEILING has been reached. Fold is "
-                            "hard-stopped. Manual Fire will still "
-                            "attempt to rebalance (operator "
-                            "override bypasses the ceiling)." + _risk_suffix()
-                        )
+                        fire_btn.setToolTip(FIRE_TIP_FOLD_CEILING + _risk_suffix())
                     elif _auto_armed_fold:
                         # Solid green — auto-fire FOLD would fire NOW.
                         fire_path = FIRE_PATH_FOLD_SOLID
@@ -1002,12 +992,7 @@ if _HAS_QT:
                             f"border: 1px solid {ds.STATE_ARMED};"
                         )
                         _apply_glow(ds.STATE_ARMED)
-                        fire_btn.setToolTip(
-                            "ARMED for FOLD (auto would fire). "
-                            "Holdings below target; all gates clear. "
-                            "Clicking fires a MARKET buy to "
-                            "rebalance back to target." + _risk_suffix()
-                        )
+                        fire_btn.setToolTip(FIRE_TIP_FOLD_SOLID + _risk_suffix())
                     else:
                         # Outline only — manual override available
                         # but auto-fire is blocked.
@@ -1024,13 +1009,7 @@ if _HAS_QT:
                             else ""
                         )
                         fire_btn.setToolTip(
-                            "Manual FOLD override available — "
-                            "delta < 0 but auto-fire blocked. "
-                            "Clicking fires a MARKET buy sized to "
-                            "rebalance back to target (bypasses "
-                            "auto's TA/BB/price-floor gates)."
-                            + _blockers_text
-                            + _risk_suffix()
+                            FIRE_TIP_FOLD_OUTLINE + _blockers_text + _risk_suffix()
                         )
                 elif scrum_phase == "fire":
                     # Inside the dust band, so amber: no rebalance is needed.

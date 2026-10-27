@@ -1127,13 +1127,9 @@ class SimFoldTranchesTabMixin:
                     min_rebuy_v = ref_v * _otd_factor
                     mr_item = QTableWidgetItem(f"≤${min_rebuy_v:.8f}")
                     mr_item.setToolTip(
-                        f"OTD-derived guide only (ref × (1 − "
-                        f"{_otd_pct:.2f}%), the Minimum Opposing "
-                        f"Trade Distance = scrumming interval + "
-                        f"trading fee, read from the same otd_math "
-                        f"the executor uses). Fold-back requires TA "
-                        f"validation in the GEP regardless. This is "
-                        f"NOT a trigger price."
+                        f"A guide only, the reference price less "
+                        f"{_otd_pct:.2f}%. Not a trigger price: a "
+                        f"fold-back still needs TA."
                     )
                     table.setItem(row, 6, mr_item)
                 elif ref_v is not None and ref_v > 0:
