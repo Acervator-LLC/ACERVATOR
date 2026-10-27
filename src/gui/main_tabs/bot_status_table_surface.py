@@ -413,37 +413,24 @@ FIRE_GLOWS = {
 }
 
 FIRE_TIP_SCRUM_SOLID = (
-    "ARMED for SCRUM (auto would fire). "
-    "Holdings above target; all gates clear. "
-    "Clicking fires a MARKET sell to "
-    "rebalance back to target."
+    "ARMED for SCRUM. Holdings above target and all gates clear. "
+    "Clicking fires a market sell back to target."
 )
 FIRE_TIP_SCRUM_OUTLINE = (
-    "Manual SCRUM override available — "
-    "delta > 0 but auto-fire blocked. "
-    "Clicking fires a MARKET sell sized to "
-    "rebalance back to target (bypasses "
-    "auto's TA/BB/HTF gates)."
+    "Manual SCRUM override. Auto-fire is blocked. Clicking fires a "
+    "market sell back to target and bypasses the auto gates."
 )
 FIRE_TIP_FOLD_CEILING = (
-    "Fold would be armed, but POSITION "
-    "CEILING has been reached. Fold is "
-    "hard-stopped. Manual Fire will still "
-    "attempt to rebalance (operator "
-    "override bypasses the ceiling)."
+    "Fold is hard-stopped: the position ceiling is reached. "
+    "Manual Fire still rebalances, bypassing the ceiling."
 )
 FIRE_TIP_FOLD_SOLID = (
-    "ARMED for FOLD (auto would fire). "
-    "Holdings below target; all gates clear. "
-    "Clicking fires a MARKET buy to "
-    "rebalance back to target."
+    "ARMED for FOLD. Holdings below target and all gates clear. "
+    "Clicking fires a market buy back to target."
 )
 FIRE_TIP_FOLD_OUTLINE = (
-    "Manual FOLD override available — "
-    "delta < 0 but auto-fire blocked. "
-    "Clicking fires a MARKET buy sized to "
-    "rebalance back to target (bypasses "
-    "auto's TA/BB/price-floor gates)."
+    "Manual FOLD override. Auto-fire is blocked. Clicking fires a "
+    "market buy back to target and bypasses the auto gates."
 )
 FIRE_TIP_PHASE_FIRE = (
     "Organic FIRE phase — bot at band but "

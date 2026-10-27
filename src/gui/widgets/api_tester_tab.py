@@ -155,9 +155,7 @@ if _HAS_QT:
 
             raw_btn = QPushButton("Raw HTTP Probe")
             raw_btn.setToolTip(
-                "Bypass CCXT and make a direct HTTP request to the exchange.\n"
-                "Shows exact HTTP status, headers, and response body.\n"
-                "Use this to diagnose connection failures."
+                "Sends a direct HTTP request to the venue, bypassing CCXT, and shows the exact status, headers and body."
             )
             raw_btn.clicked.connect(self._raw_http_probe)
             btn_layout.addWidget(raw_btn)

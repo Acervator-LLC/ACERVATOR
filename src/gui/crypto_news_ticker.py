@@ -511,9 +511,7 @@ if _HAS_QT:
             # label draws them as characters and resolves no address.
             self._label.setTextFormat(Qt.PlainText)
             self._label.setToolTip(
-                "Cycling crypto + fintech headlines from 10 free RSS "
-                "feeds. Click to open story in default browser. "
-                "Hover to pause auto-advance. Refreshes hourly."
+                "Crypto and fintech headlines from 10 RSS feeds. Click to open a story. Hover to pause. Refreshes hourly."
             )
             self._label.setCursor(QCursor(Qt.PointingHandCursor))
             self._label.setStyleSheet("color: #cfe6ff; font-size: 11px;")

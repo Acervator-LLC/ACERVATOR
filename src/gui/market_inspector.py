@@ -1076,11 +1076,7 @@ if _HAS_QT:
             top_row.setSpacing(8)
             self._refresh_btn = QPushButton("Refresh")
             self._refresh_btn.setToolTip(
-                "Fetch HTF OHLCV from the connected exchange(s). "
-                "Universe = top-volume */USD markets on those "
-                "exchanges (active bot targets are always included). "
-                "Runs on the app's async loop; typical time ~10-30 s "
-                "depending on exchange rate limits."
+                "Fetches higher-timeframe candles for top-volume USD markets on connected venues. Active bot targets are included. Takes 10 to 30 seconds."
             )
             self._refresh_btn.clicked.connect(lambda: self._start_fetch(force=True))
             top_row.addWidget(self._refresh_btn)
@@ -1088,9 +1084,7 @@ if _HAS_QT:
             self._show_active_chk = QCheckBox("Include active markets")
             self._show_active_chk.setChecked(False)
             self._show_active_chk.setToolTip(
-                "By default the Market Inspector focuses on markets "
-                "you are NOT already trading. Check this to include "
-                "your active bot targets in the table."
+                "By default the table leaves out markets you already trade. Check this to include your active bot targets."
             )
             self._show_active_chk.toggled.connect(self._on_toggle_show_active)
             top_row.addWidget(self._show_active_chk)
