@@ -10789,3 +10789,117 @@ no price step published        the price is sent as the chain named it
 The first of those four is unchanged by this entry and is the one case where an
 order still leaves without a figure behind it. It is a venue the program could
 not reach for a market list, not a venue that published nothing.
+
+## 2026-10-27 - a pair the recording holds no row for is filed under no sector
+
+The class group's reader filed every pair the venue recording holds no row for
+under crypto. That default reached 23 of the 26 venue ids the platform knows,
+because only three of them serve one sector and the rest fell through to the
+name. A stocks broker's pair therefore read crypto on a screen, and nothing
+said the sector had been guessed.
+
+OVERTAKEN, and every sentence this page already carries is kept as written.
+Three of them are quoted here because this entry replaces what they say.
+
+> fallback  CLASS_CRYPTO when the recording holds no class for it
+
+> one sector served   answers it
+> several served      narrows by symbol_class
+
+> It now answers crypto only where the recording holds no row.
+
+The reader now answers the recorded sector, then the one sector the venue
+serves, and nothing at all where neither can answer.
+
+```
+src/gui/main_tabs/asset_class_surface.py, in symbol_class
+    reads     the recording's own asset_class for the symbol
+    then      the one sector venue_classes names, where it names one
+    else      an empty string, and no sector is named for the pair
+
+src/gui/main_tabs/asset_class_surface.py, in row_class
+    reads     symbol_class for the row's symbol
+    then      market_asset_class off the fetched record's own fields
+
+src/gui/main_tabs/class_filter_surface.py, in market_class
+    reads     symbol_class on every venue, the recording first
+```
+
+### What the reader answers, driven per sector
+
+Driven over the recording with the home directory redirected, no venue
+contacted and the venue socket count at zero.
+
+| the recording's sector | rows | before | after |
+| --- | --- | --- | --- |
+| stocks | 1000 | stocks | stocks |
+| crypto | 898 | crypto | crypto |
+| futures_perps | 91 | futures_perps | futures_perps |
+| commodities | 21 | commodities | commodities |
+| forex | 19 | forex | forex |
+| no row at all | 0 | crypto | nothing |
+
+Controls: a venue serving crypto alone answers crypto in both arms, and a venue
+serving stocks alone answered crypto before and answers stocks now. A venue id
+nothing names and an empty id answer nothing in both arms. The two
+single-sector venues answer two different sectors, so an answer is a reading
+and not a path that failed to run.
+
+### A fetched market record answers its own sector
+
+The Bot Wizard fetches a venue's market list without recording it, so the
+recording holds no row for those pairs. Each row is now read through the same
+rule the recording itself is written with.
+
+| the fetched row | before | after |
+| --- | --- | --- |
+| an ordinary coin pair | crypto | crypto |
+| a tokenised metal | crypto | commodities |
+| a tokenised national currency | crypto | forex |
+
+### No figure a bot trades on moved
+
+Driven through the real sizing paths for each of the five recorded sectors, over
+20,000 steps: the price from 0.05 to 1000.00 in steps of 0.05 and the dollar
+move from 0.25 to 5000.00 in steps of 0.25.
+
+```
+the size rule, the session, the order types, the settlement
+days and the variant      identical in every sector
+the swept size, the booked price and the smallest order
+                          one digest per sector, identical
+the sector the engine answers for all 2029 recorded rows
+                          one digest, identical
+```
+
+`src/trading/bot_container.py, in _asset_class` is untouched, so the engine
+reads the recording and then the sector the bot declares, exactly as before.
+
+### One sector is offered by name and holds no product
+
+The venue is listed under six sectors and its recording carries rows for five.
+`src/gui/main_tabs/asset_class_surface.py, at EXTRA_VENUE_CLASSES` names
+indices for it, and the recording holds 0 index rows, so that sector offers the
+venue and the venue offers it no market.
+
+| reader | sectors answered |
+| --- | --- |
+| `venue_classes` | 6 |
+| `venue_served_classes` | 5 |
+
+### What the stored rules carry, per sector
+
+Read from the recording, counts only, never written.
+
+| sector | rows | the five numeric rules | order types | session | contract size | expiry | clearing venue |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| stocks | 1000 | 1000 | 1000 | 992 | 8 | 3 | 1000 |
+| crypto | 898 | 898 | 898 | 898 | 0 | 0 | 898 |
+| futures_perps | 91 | 91 | 91 | 0 | 91 | 68 | 91 |
+| commodities | 21 | 21 | 21 | 2 | 19 | 18 | 21 |
+| forex | 19 | 19 | 19 | 19 | 0 | 0 | 19 |
+
+Rows carrying no sector: 0 of 2029. The five numeric rules are the minimum
+amount, the minimum cost, the amount step, the price step and the money step,
+and every row of every sector carries all five with its order types. Session is
+absent on all 91 contract rows and on 19 of the 21 commodity rows.

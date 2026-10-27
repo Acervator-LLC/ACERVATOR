@@ -346,8 +346,11 @@ if _HAS_QT:
                         type(_vol_exc).__name__,
                         _vol_exc,
                     )
-                # A fetched record carries no class, so the recording decides
-                # each symbol's sector and an unrecorded symbol reads crypto.
+                # OVERTAKEN, quoted whole:
+                #   "A fetched record carries no class, so the recording decides
+                #   each symbol's sector and an unrecorded symbol reads crypto."
+                # True today: markets_of_class reads the recording first and
+                # then the fetched record's own fields.
                 return markets_of_class(markets, exchange_id, self._sector)
             except Exception as exc:
                 logger.warning("Market fetch failed for %s: %s", exchange_id, exc)

@@ -983,26 +983,54 @@ def recorded_symbol_classes(venue_id: Any) -> dict:
     return recorded_classes(asked)
 
 
+# OVERTAKEN, quoted whole:
+#   "The class ``recorded_symbol_classes`` holds for ``symbol`` on
+#   ``venue_id``, else ``CLASS_CRYPTO``, the class ``BotContainer._asset_class``
+#   answers for a symbol the recording holds none for."
+# True today: a pair the recording holds no class for answers the one class
+# ``venue_classes`` names, and an empty string where that set holds several.
 def symbol_class(venue_id: Any, symbol: Any, recorded: Any = None) -> str:
     """The class ``recorded_symbol_classes`` holds for ``symbol`` on
-    ``venue_id``, else ``CLASS_CRYPTO``, the class ``BotContainer._asset_class``
-    answers for a symbol the recording holds none for.
+    ``venue_id``, the one class ``venue_classes`` names where the recording
+    holds none, and an empty string where that set holds several.
 
     Every surface narrowing a market by sector reads this, so a bot and the tab
-    filtering it answer one class.
+    filtering it answer one class, and no pair is filed under a sector the
+    recording never recorded for it.
     """
-    from src.trading.ata_spm import CLASS_CRYPTO
-
     held = recorded if isinstance(recorded, dict) else recorded_symbol_classes(venue_id)
     named = str(held.get(str(symbol or ""), "") or "")
-    if not named:
-        return CLASS_CRYPTO
-    return retired_onto(named)
+    if named:
+        return retired_onto(named)
+    served = venue_classes(venue_id)
+    if len(served) == 1:
+        return next(iter(served))
+    return ""
 
 
+def row_class(venue_id: Any, row: Any, recorded: Any = None) -> str:
+    """The class one loaded market record belongs to: the class ``symbol_class``
+    holds for its symbol, else the class ``market_asset_class`` reads off the
+    record's own fields, which is the rule ``record_venue`` writes with."""
+    held = row if isinstance(row, dict) else {}
+    named = symbol_class(venue_id, held.get("symbol"), recorded)
+    if named:
+        return named
+    try:
+        from ...exchange.ccxt_connector import market_asset_class
+    except ImportError:
+        return ""
+    return retired_onto(market_asset_class(held, venue=venue_id))
+
+
+# OVERTAKEN, quoted whole:
+#   "Every market row of ``rows`` whose ``symbol_class`` on ``venue_id`` is
+#   one asset class, in the order given."
+# True today: a row the recording holds no class for is read through
+# ``row_class``, so a fetched record answers its own sector.
 def markets_of_class(rows: Any, venue_id: Any, name: Any, recorded: Any = None) -> list:
-    """Every market row of ``rows`` whose ``symbol_class`` on ``venue_id`` is
-    one asset class, in the order given.
+    """Every market row of ``rows`` whose ``row_class`` on ``venue_id`` is one
+    asset class, in the order given.
 
     OVERTAKEN, quoted whole: "An empty ``name`` narrows nothing." True today:
     ``normalise`` answers the first declared class for a name it does not
@@ -1014,9 +1042,7 @@ def markets_of_class(rows: Any, venue_id: Any, name: Any, recorded: Any = None) 
     if not key:
         return listed
     held = recorded if isinstance(recorded, dict) else recorded_symbol_classes(venue_id)
-    return [
-        row for row in listed if symbol_class(venue_id, row.get("symbol"), held) == key
-    ]
+    return [row for row in listed if row_class(venue_id, row, held) == key]
 
 
 def known_venues(recorded: Any = None) -> frozenset:
