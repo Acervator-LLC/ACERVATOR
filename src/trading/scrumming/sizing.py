@@ -2300,6 +2300,29 @@ class SizedOrder:
     refusal: str = ""
 
 
+def booked_price(rules: Any, price: Any) -> float:
+    """``price`` moved to the venue's own ``price_increment`` through
+    ``MarketRules.price_on_tick``, and ``price`` unchanged where the venue
+    published no tick.
+
+    Live, the Simulator and the Paper Trader each resolve an order's price
+    through this, so one market's order is priced the same on all three.
+    """
+    try:
+        held = float(price)
+    except (TypeError, ValueError):
+        return price
+    if not math.isfinite(held) or held <= 0.0:
+        return held
+    reader = getattr(rules, "price_on_tick", None)
+    if reader is None:
+        return held
+    stepped = reader(held)
+    if stepped is None or not math.isfinite(stepped) or stepped <= 0.0:
+        return held
+    return float(stepped)
+
+
 def rule_published(value: Any) -> bool:
     """True while ``value`` is a finite number the venue published, False for
     the None an unpublished rule carries."""

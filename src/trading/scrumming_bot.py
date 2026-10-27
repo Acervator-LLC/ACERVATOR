@@ -2008,9 +2008,9 @@ class ScrummingBot(
         coordinator's active locks, and clear both where ``_phantoms_enabled``
         is off.
 
-        ``tick`` calls this above the ``scrum_ok`` composition, so the scrum
-        gate term, the hold-summary line and the Phantom Bots pages all read
-        one state.
+        ``tick`` calls this above the ``scrum_ok`` and ``fold_ok_midline``
+        composition, so both gate terms, the hold-summary line and the Phantom
+        Bots pages all read one state.
         """
         if not self._phantoms_enabled:
             self._phantom_locked = False
@@ -2396,11 +2396,10 @@ class ScrummingBot(
 
         # A reported filled of zero filled nothing; only an omitted field
         # falls back to amount.
+        # OVERTAKEN, the sentence above: an omitted field books nothing too,
+        # because ``amount`` is the count the venue accepted and not one it
+        # filled, and ``units`` is the count this sale asked for.
         _sd_filled = getattr(order, "filled", None)
-        if _sd_filled is None:
-            _sd_filled = getattr(order, "amount", None)
-        if _sd_filled is None:
-            _sd_filled = units
         fill_amount = float(_sd_filled or 0.0)
         fill_price = float(
             getattr(order, "average_price", None)
@@ -2415,7 +2414,7 @@ class ScrummingBot(
         )
         await self._settle_venue_fee(order, fill_amount, fill_price)
 
-        self._main_lots = []
+        self._take_filled_units_off_lots(fill_amount)
         try:
             self._tranches_closed_lifetime = int(
                 getattr(self, "_tranches_closed_lifetime", 0) or 0
@@ -2427,12 +2426,17 @@ class ScrummingBot(
         self._fold_tranches = []
         self._fold_queue_usd = 0.0
         self._current_holdings = max(0.0, self._current_holdings - fill_amount)
-        # The exchange still holds what it did not sell, so the emptied book is
-        # reseeded with it.
-        if self._current_holdings > 0:
+        # The exchange holds units the surviving lots do not account for, so the
+        # shortfall is added at the fill price.
+        _sd_book_units = sum(
+            float(_lot.get("units", 0.0) or 0.0)
+            for _lot in self._main_lots
+            if isinstance(_lot, dict)
+        )
+        if self._current_holdings - _sd_book_units > 1e-12:
             self._main_lots.append(
                 {
-                    "units": self._current_holdings,
+                    "units": self._current_holdings - _sd_book_units,
                     "initial_buy_price": fill_price,
                     "self_destruct_remnant": True,
                 }
@@ -3605,10 +3609,10 @@ class ScrummingBot(
         self._refresh_phantom_lock()
         if self.config.bb_midline_gate:
             scrum_ok = (bb_pos > 0.50) and not self._phantom_locked
-            fold_ok_midline = bb_pos < 0.50
+            fold_ok_midline = (bb_pos < 0.50) and not self._phantom_locked
         else:
             scrum_ok = not self._phantom_locked
-            fold_ok_midline = True
+            fold_ok_midline = not self._phantom_locked
 
         _ripe_scrum = False
         _deep_fold = False
@@ -4295,7 +4299,8 @@ class ScrummingBot(
                     message=f"HOLD FOLD: BEARISH and {len(self._fold_tranches)} "
                     f"tranche(s) queued but BB position {bb_pos:.0%} > 50% "
                     f"(bb_midline_gate blocking fold — wait for price "
-                    f"to drop below midline)",
+                    f"to drop below midline), phantom lock "
+                    f"{_yes_no(self._phantom_locked)}",
                 )
 
         elif (
@@ -5111,6 +5116,43 @@ class ScrummingBot(
                 ),
             )
         return spent
+
+    def _take_filled_units_off_lots(self, filled_units: float) -> int:
+        """Take ``filled_units`` off ``_main_lots``, highest ``initial_buy_price``
+        first, and answer how many lots the sale drained.
+
+        A surviving lot keeps the ``initial_buy_price`` it was bought at, which
+        is the figure the fold path prices its tranches off. A filled count of
+        nought takes nothing, and a lot whose ``units`` is not a finite number
+        is left where it is rather than dropped.
+        """
+        _remaining = 0.0
+        if type(filled_units) in (int, float) and math.isfinite(float(filled_units)):
+            _remaining = max(0.0, float(filled_units))
+        _ordered = sorted(
+            (_lot for _lot in self._main_lots if isinstance(_lot, dict)),
+            key=lambda _lot: float(_lot.get("initial_buy_price", 0.0) or 0.0),
+            reverse=True,
+        )
+        for _lot in _ordered:
+            if _remaining <= 1e-12:
+                break
+            _held = float(_lot.get("units", 0.0) or 0.0)
+            if not math.isfinite(_held) or _held <= 0.0:
+                continue
+            _take = min(_held, _remaining)
+            _lot["units"] = _held - _take
+            _remaining -= _take
+        _kept = [
+            _lot
+            for _lot in self._main_lots
+            if not isinstance(_lot, dict)
+            or not math.isfinite(float(_lot.get("units", 0.0) or 0.0))
+            or float(_lot.get("units", 0.0) or 0.0) > 1e-12
+        ]
+        _drained = len(self._main_lots) - len(_kept)
+        self._main_lots = _kept
+        return _drained
 
     def _main_lots_invariant_ok(self, tol: float = 1e-6) -> bool:
         """True iff sum(lot['units']) == _current_holdings within tolerance."""

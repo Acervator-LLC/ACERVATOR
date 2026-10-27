@@ -1206,6 +1206,11 @@ def class_note(page, tab: str):
     from src.gui.main_tabs import class_filter_surface
 
     wanted = class_filter_surface.empty_note(tab)
+    if not wanted.strip():
+        raise CaptureRefused(
+            f"{tab!r} is outside class_filter_surface.TAB_SUBJECTS, so "
+            f"empty_note answers no sentence and no label can carry one"
+        )
     found = [
         one
         for one in page.findChildren(QLabel)

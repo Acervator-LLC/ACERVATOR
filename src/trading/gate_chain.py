@@ -70,7 +70,8 @@ class GateContext:
 
     bb_above_upper_dt: bool
     bb_below_lower_dt: bool
-    # Combines the midline with the phantom lock; bb_pos alone may not explain it.
+    # Both combine the midline with the phantom lock; bb_pos alone may not
+    # explain either.
     scrum_ok: bool
     fold_ok_midline: bool
     target_fires: bool
@@ -285,7 +286,7 @@ class TrendHoldGate(Gate):
 class MidlineGate(Gate):
     """Passes on ``ctx.scrum_ok`` for scrum, ``ctx.fold_ok_midline`` for fold.
 
-    ``ctx.scrum_ok`` combines the midline with ScrummingBot's phantom lock, and
+    Both terms combine the midline with ScrummingBot's phantom lock, and
     ``blocker_message`` reports ``ctx.bb_pos`` for either cause.
     """
 

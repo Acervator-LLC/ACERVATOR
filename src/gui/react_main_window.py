@@ -263,8 +263,9 @@ if _HAS_WEBENGINE:
 
         Answers ``addTab``, ``insertTab``, ``removeTab``, ``count``,
         ``tabText``, ``widget``, ``indexOf``, ``currentIndex``,
-        ``setCurrentIndex``, ``setMovable`` and ``tabBar`` over the
-        ``QTabWidget`` it holds, whose own bar is hidden.
+        ``setCurrentIndex``, ``setMovable``, ``isTabVisible``,
+        ``setTabVisible`` and ``tabBar`` over the ``QTabWidget`` it holds,
+        whose own bar is hidden.
         """
 
         def __init__(self, parent=None) -> None:
@@ -334,11 +335,28 @@ if _HAS_WEBENGINE:
             """Let a press drag a tab to another slot."""
             self._book.setMovable(movable)
 
+        def isTabVisible(self, index: int) -> bool:
+            """True while the tab at ``index`` is one the bar draws."""
+            return self._book.isTabVisible(index)
+
+        def setTabVisible(self, index: int, visible: bool) -> None:
+            """Show or hide the tab at ``index`` and redraw the bar without it."""
+            self._book.setTabVisible(index, visible)
+            self._push_tabs()
+
         # -- the bar ------------------------------------------------------
 
         def labels(self) -> list:
-            """Every tab label, left to right."""
+            """Every tab label, left to right, hidden tabs included."""
             return [self._book.tabText(at) for at in range(self._book.count())]
+
+        def shown_labels(self) -> list:
+            """The labels of the visible tabs alone, which the bar draws."""
+            return [
+                self._book.tabText(at)
+                for at in range(self._book.count())
+                if self._book.isTabVisible(at)
+            ]
 
         @property
         def page_ready(self) -> bool:
@@ -393,7 +411,7 @@ if _HAS_WEBENGINE:
         def _push_tabs(self) -> None:
             index = self._book.currentIndex()
             selected = self._book.tabText(index) if index >= 0 else None
-            self._run(set_tabs_script(self.labels(), selected))
+            self._run(set_tabs_script(self.shown_labels(), selected))
 
         def _on_current_changed(self, index: int) -> None:
             if index >= 0:

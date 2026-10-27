@@ -782,9 +782,10 @@ class TickPhaseMixin:
 
         # A venue reporting a filled count of zero filled nothing. Only a venue
         # omitting the field entirely falls back to the count it accepted.
+        # OVERTAKEN, the second sentence above: an omitted field books nothing
+        # too, because the accepted count is not a filled count. The held count
+        # is unchanged and the next tick sends nothing.
         reported = getattr(order, "filled", None)
-        if reported is None:
-            reported = getattr(order, "amount", None)
         try:
             filled = float(reported) if reported is not None else 0.0
         except (TypeError, ValueError):

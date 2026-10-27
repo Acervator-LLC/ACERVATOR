@@ -488,6 +488,7 @@ class BotContainer:
             MARKET_BUY_NAMES_CASH,
             SIDE_BUY,
             SIDE_SELL,
+            booked_price,
             clearing_refusal,
             contract_count_note,
             contracts_for_units,
@@ -598,6 +599,21 @@ class BotContainer:
                 f"API not called."
             )
 
+        # Every refusal the sizer answers refuses the order. Naming only two of
+        # them left ``NO_SIZE_RULE`` unread, and the unsized amount was sent.
+        if _sized.refusal:
+            self._refuse_order(
+                f"PRE-FLIGHT REJECTED: {_side_str} {symbol} amount "
+                f"{_amt:.10f} cannot be sized to this market: "
+                f"{_sized.refusal}. The venue published a size increment of "
+                f"{_rules.amount_increment} and a minimum size of "
+                f"{_rules.min_amount}, and no rule is cited for "
+                f"{_class} on {self.config.exchange_id}. The market is still "
+                f"read and still charted.{_shape_note}{_session_note}"
+                f"{_contract_note} "
+                f"API not called."
+            )
+
         # A venue that published no step and a pair with no cited rule both
         # leave the amount as it came in, and neither refuses on that ground.
         if 0.0 < _sized.units < _contracts:
@@ -610,6 +626,20 @@ class BotContainer:
             _contracts = _sized.units
             _amt = units_for_contracts(_contracts, _rules.contract_size)
             amount = _amt
+
+        # The venue books a price on its own tick, so the order carries the
+        # price it would book. The library steps it again at the submitting
+        # site, onto the same step, and agrees over every tick measured.
+        if price is not None:
+            _named_px = price
+            price = booked_price(_rules, price)
+            if price != _named_px:
+                self._warn_order(
+                    f"PRICED ON THE VENUE'S TICK: {_side_str} {symbol} "
+                    f"{_amt:.10f} at ${float(_named_px):.8f} books at "
+                    f"${float(price):.8f} on a price tick of "
+                    f"{_rules.price_increment}."
+                )
 
         if _rules.min_cost is not None and price is not None:
             try:

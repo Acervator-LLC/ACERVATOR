@@ -10616,3 +10616,176 @@ the whole id. All 35 ids were driven through
 `src/trading/stone_tablets/fetcher.py, in _build_adapter`, and `coinbase` and
 `coingecko` answered an adapter while the other 33 answered none. The file is
 unchanged.
+
+## 2026-10-26 - the price step reaches every order path, and an order the sizer cannot size refuses
+
+A venue publishes three order rules: the smallest size it accepts, the step that
+size moves by, and the step a price moves by. The size step and the smallest size
+reached all three order paths already. The price step reached one.
+
+### The venue figures each path reads
+
+```
+                      size step   smallest size   price step
+Live                  yes         yes             yes
+the Simulator         yes         yes             yes
+the Paper Trader      yes         yes             yes
+```
+
+Before this entry the price step column read `yes`, `no`, `no`.
+`src/exchange/base.py, in MarketRules.price_on_tick` had three call sites and all
+three sat in `src/trading/bot_container.py`, so the Simulator and the Paper
+Trader priced a fill at the bar price the tape carried rather than at the price
+the venue would book.
+
+The page already states the rule this closes. Under **The price a venue books**
+it reads:
+
+> A venue does not book the price a bot names. It moves that price to its own
+> nearest step and books the result, so the money an order is worth is the size
+> times the stepped price. The minimum order cost is now compared against that
+> number.
+
+That sentence stands. The current reading adds to its last clause: **the minimum
+order cost is compared against that number, and the order itself now carries that
+number, on Live, in the Simulator and in the Paper Trader.**
+
+### The price a venue books, on all three paths
+
+One function answers it for every path, so one market's order is priced the same
+wherever it is composed.
+
+```python
+# src/trading/scrumming/sizing.py, in booked_price
+    reader = getattr(rules, "price_on_tick", None)
+    if reader is None:
+        return held
+    stepped = reader(held)
+```
+
+`src/trading/bot_container.py, in guarded_place_order` resolves the price through
+it before the minimum cost is measured, and names the move on the Console when
+the price changes:
+
+```
+PRICED ON THE VENUE'S TICK: SELL A14/USD 92.6200000000 at $1.23456789 books at
+$1.23000000 on a price tick of 0.01.
+```
+
+`src/simulator/back_test.py, in apply_scrum` and `, in apply_fold`, and
+`src/paper/paper_run.py, in apply_scrum` and `, in apply_fold`, each resolve the
+same figure at entry, so the units sold, the proceeds, the cash and each fold
+tranche's reference price are all priced at the step the venue books.
+
+A market whose venue published no price step keeps the price it was handed. The
+Paper Trader's `ticker_last` is a reading rather than an order price and is not
+moved.
+
+### The swept comparison
+
+The Simulator's own scrum and fold were driven over a price sweep from 1.200 to
+1.300 at a step of 0.001, 101 points, against a venue publishing a price step of
+0.01. Every bot record and every candle was built for the run; no venue was
+contacted and the home directory was redirected before the first import.
+
+```
+scrum rows that filled          101 of 101, before and after
+fold rows that filled           101 of 101, before and after
+rows that moved                 90 of 101
+rows identical before and after 11 of 101
+```
+
+The eleven identical rows are exactly the eleven swept prices that already sit on
+the venue's own step. A price the venue would book unchanged produces the same
+units, the same proceeds and the same cash as before.
+
+The control on that sweep is the same run with the venue publishing no price
+step. Before this entry it reported **0 of 101** rows differing between a
+published step and none, because no path read one. It now reports **90 of 101**,
+so the ninety moved rows are a measurement rather than a reading that cannot see
+a difference.
+
+The step this platform applies and the step the trading library applies at the
+submitting site were compared over eight price steps, from 0.1 down to one
+hundred-millionth, each swept 400 steps either side of 1.0 plus every exact half
+step over 41 steps: **6,210 probes, 6,210 agree, 0 disagree.** Asked for a step
+ten times coarser the same comparison reported 692 disagreements of 768 probes,
+so it can report one. The venue therefore books the same price it booked before,
+and the figure the order carries now says so.
+
+### An order the sizer cannot size now refuses
+
+`src/trading/scrumming/sizing.py, in sized_order` answers zero units and the
+refusal `no size rule for the pair` for a market whose venue published neither a
+size step nor a smallest size and whose sector and venue the cited table does not
+name. `src/trading/bot_container.py, in guarded_place_order` compared that answer
+against two refusal reasons by name and submitted the unsized amount for any
+third, so the one refusal it did not name was dropped and the order went out at
+the amount the chain had computed.
+
+An earlier entry on this page records that refusal as a control reading alone:
+
+> the refusal "no size rule for the pair".
+
+That sentence stands. The current reading is that **the refusal now refuses the
+order**, on the one site every live order passes, and the Console names the
+market's own published figures and the sector and venue the table does not cite.
+
+```
+PRE-FLIGHT REJECTED: SELL A14/USD amount 92.6218980951 cannot be sized to this
+market: no size rule for the pair. The venue published a size increment of None
+and a minimum size of None, and no rule is cited for crypto on kraken. The
+market is still read and still charted. API not called.
+```
+
+The Simulator and the Paper Trader already refused on it, because both read the
+sizer's refusal whatever its reason. The three paths now agree.
+
+`src/trading/scrumming/sizing.py, at CITED_UNIT_RULES` holds 45 pairs. Driven
+over the venue lists the asset page offers, **75 of 120** offered sector-and-venue
+pairs have no cited row, and every offered crypto venue but two is among them. A
+market on one of those venues that publishes neither figure is the reachable
+case, and it now refuses rather than sending a size nothing checked.
+
+### What the figures were, before and after
+
+Eleven venue-rule shapes were driven through the real `guarded_place_order`
+against a stand-in that counts each order call and refuses to send. The amount
+handed in was 92.62189809510927 units at a price of 1.23456789.
+
+| Venue shape | Amount sent before | Amount sent after | Price before | Price after |
+| --- | --- | --- | --- | --- |
+| step 0.01, smallest 0.1, price step 0.01 | 92.6200000000 | 92.6200000000 | 1.23456789 | 1.23000000 |
+| step one hundred-millionth, price step 0.01 | 92.6218980900 | 92.6218980900 | 1.23456789 | 1.23000000 |
+| step 1.0, smallest 1.0, price step 0.01 | 92.0000000000 | 92.0000000000 | 1.23456789 | 1.23000000 |
+| no market record read | 92.6218980951 | 92.6218980951 | 1.23456789 | 1.23456789 |
+| record read, no rule published, venue cited | 92.6218980951 | 92.6218980951 | 1.23456789 | 1.23456789 |
+| record read, no rule published, venue not cited | 92.6218980951 | refused | 1.23456789 | none |
+| record read, no rule published, sector not cited | refused | refused | none | none |
+| the market is absent from the venue's list | 92.6218980951 | 92.6218980951 | 1.23456789 | 1.23456789 |
+| 0.05 under a smallest size of 0.1 | refused | refused | none | none |
+| 0.5 under a whole-unit step | refused | refused | none | none |
+| 0.5, no rule published, venue cited | 0.5000000000 | 0.5000000000 | 1.23456789 | 1.23456789 |
+
+Of eleven shapes, **0** send a larger amount than before, **0** send where they
+refused before, **1** refuses where it sent before, and **3** carry the price the
+venue books instead of the price the chain named. A refusal reads 0 venue calls
+and a submission reads 1, in the same run. The neighbouring figure, the order's
+own side and type, read the same in every submitting arm.
+
+### What a missing figure does
+
+A figure the venue did not publish is None and never zero, and None satisfies no
+comparison. What follows from each absence is stated rather than guessed.
+
+```
+no market record obtained      the Console reads LIMITS NOT READ and the order
+                               goes out; the venue enforces its own rules
+a rule the venue left unset    the cited sector rule sizes the amount
+no rule and no cited row       the order refuses and names both absences
+no price step published        the price is sent as the chain named it
+```
+
+The first of those four is unchanged by this entry and is the one case where an
+order still leaves without a figure behind it. It is a venue the program could
+not reach for a market list, not a venue that published nothing.
