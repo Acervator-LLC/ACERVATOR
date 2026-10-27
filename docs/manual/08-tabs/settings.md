@@ -104,6 +104,34 @@ Four pages hold controls `_save` never reads, and the schema declares no field
 any of them could land in: TA Indicators, Phantom Bots, Sound and SMS. Issue
 #423 carries all four and counts the controls.
 
+**The issue #423 clause above is overtaken, and so is every later clause on this
+page that names it.** None is edited and none is removed. This one read:
+
+> Four pages hold controls `_save` never reads, and the schema declares no field
+> any of them could land in: TA Indicators, Phantom Bots, Sound and SMS. Issue
+> #423 carries all four and counts the controls.
+
+Issue #423 closed on 2026-09-25. The schema declares a field for each of the four
+pages now, and each group has a named reader.
+
+```
+src/core/settings.py, in AppSettings
+
+ta_indicator_weights        the TA Indicators sliders, one key per weight
+default_enable_phantoms     the phantom master box
+default_phantom_timeframe   the one timeframe a new bot starts with
+sound                       the Sound page's nine switches and its volume
+message_channels            the SMS page's twenty-two values
+```
+
+```
+src/trading/ta_engine.py, in weights_from_settings   reads ta_indicator_weights
+src/core/sound_engine.py, in sound_config_from_settings   reads sound
+src/core/sms_engine.py, in sms_config_from_settings       reads message_channels
+src/gui/main_tabs/bot_wizard_surface.py   DEFAULT_ENABLE_PHANTOMS_KEY,
+                                          DEFAULT_PHANTOM_TIMEFRAME_KEY
+```
+
 The Exchanges page is the exception to the whole pattern. `_add_exchange` and
 `_remove_exchange` write through the settings manager as the operator uses
 them, rather than waiting for Save.
@@ -385,6 +413,10 @@ tabs.addTab(self._create_ai_monitor_tab(), "AI Monitor")
 which under its own heading. Issue #423 carries the four pages whose controls
 Save never reads.
 
+Issue #423 closed on 2026-09-25, and `src/core/settings.py, in AppSettings`
+declares a field for each of the four pages. The declaration and its readers are
+named under [What each page persists](#what-each-page-persists) above.
+
 The User page itself is one form row, and the settings manager persists it. No
 credential field, no licence field and no key import.
 
@@ -449,6 +481,27 @@ the phrase never fires. An install where the row was never filled encrypts
 under a phrase with an empty middle. Change the name on a machine that already
 holds credentials and the stored secrets stop opening, because the connect path
 rebuilds the same phrase from the new name. Issue #436 carries it.
+
+**The issue #436 clause above is overtaken.** It is not edited and not removed.
+It read:
+
+> Change the name on a machine that already holds credentials and the stored
+> secrets stop opening, because the connect path rebuilds the same phrase from
+> the new name. Issue #436 carries it.
+
+Issue #436 closed on 2026-10-19. The phrase format is written once and one
+function builds it, so no caller spells it out.
+
+```
+src/core/encryption.py          MASTER_FORMAT = "qat_{username}_vault"
+src/core/encryption.py, in vault_phrase      the one builder
+src/core/encryption.py, in hold_master_key   the held key every site answers from
+sites naming vault_phrase       22 occurrences
+sites spelling the format out    1, the declaration itself
+```
+
+What the renaming of a machine's username should do to stored secrets is a
+product choice, so nothing here proposes one.
 
 `src/gui/main_window.py` — the decrypt side, rebuilding the same phrase
 
@@ -848,6 +901,16 @@ the defaults above, and no construction site under `src/` supplies one from the
 settings store. The page label promises an adjustment the engine never sees.
 Issue #423 carries it.
 
+Issue #423 closed on 2026-09-25. The schema declares `ta_indicator_weights`, one
+key per weight slider, and `src/trading/ta_engine.py, in weights_from_settings`
+reads that group and hands the engine the stored weights.
+
+```
+src/core/settings.py, in AppSettings           ta_indicator_weights: dict
+src/gui/main_tabs/settings_dialog_surface.py   TA_WEIGHT_GROUP_KEY
+src/trading/ta_engine.py                       reads the group from the store
+```
+
 `src/trading/ta_engine.py` — `VotingEngine.__init__`, the fallback every
 construction site takes
 
@@ -1162,6 +1225,12 @@ with self._lock:
 Issue #423 carries this page. The per-bot equivalents do persist: the wizard's
 phantom page emits the same three names into the bot's own config, and the Live
 Bot Settings dialog edits them there.
+
+Issue #423 closed on 2026-09-25. The schema declares `default_enable_phantoms`
+and `default_phantom_timeframe`, and
+`src/gui/main_tabs/bot_wizard_surface.py` names both keys as
+`DEFAULT_ENABLE_PHANTOMS_KEY` and `DEFAULT_PHANTOM_TIMEFRAME_KEY`, which is where
+each one reaches a new bot.
 
 `src/gui/bot_wizard.py` — `PhantomConfigPage.get_config`, the three keys that
 do reach a bot
@@ -1994,6 +2063,10 @@ consults. Issue #423 carries this page.
 In development. What the load path should restore for this page has not been
 settled against the rest of the dialog, so nothing is proposed here.
 
+Issue #423 closed on 2026-09-25, so the pointer names no open work. What the
+load path should restore for this page is still unsettled, and it is a product
+choice, so nothing is proposed here either.
+
 ### Settings > Sound
 
 ![Settings, the Sound page.](p42-i0.png)
@@ -2164,6 +2237,10 @@ That path runs when the slider moves or a test button is pressed, and at no
 other time. Save reads no widget on this page and the schema declares no sound
 field, so nothing here survives the dialog closing. A checkbox cleared and the
 dialog saved comes back checked. Issue #423 carries it.
+
+Issue #423 closed on 2026-09-25. The schema declares `sound`, which holds the
+Sound page's nine switches and its volume, and
+`src/core/sound_engine.py, in sound_config_from_settings` reads that group back.
 
 **The engine now drops its own clips.** `src/core/sound_engine.py`, in
 `SoundEngine.update_config`, takes the new configuration and clears the cache
@@ -2651,6 +2728,10 @@ Twilio credentials the send path reads.
 
 Issue #423 carries the page.
 
+Issue #423 closed on 2026-09-25. The schema declares `message_channels`, which
+holds the SMS page's twenty-two values, and
+`src/core/sms_engine.py, in sms_config_from_settings` reads that group back.
+
 `src/core/sms_engine.py` — `SMSConfig`, the three credentials no row fills
 
 ```python
@@ -2943,6 +3024,24 @@ self._ai_status.setStyleSheet("color: #00ddff; font-weight: bold;")
 
 The button reports the fields it read, never a venue answer. Issue #327 carries
 that.
+
+**The issue #327 clause above is overtaken.** It is not edited and not removed.
+It read:
+
+> The button reports the fields it read, never a venue answer. Issue #327
+> carries that.
+
+Issue #327 closed on 2026-10-22. The button still reads the fields and no venue,
+and its stated purpose now says so, which is what the issue asked for.
+
+```
+src/gui/main_tabs/settings_dialog_surface.py, in test_ai_handshake
+    "Report whether the AI Monitor has what it needs to connect."
+    reads   ai_api_key, ai_connect_phrase, ai_confirm_phrase
+
+src/gui/main_tabs/settings_dialog_surface.py   AI_TEST_BUTTON_TEXT = "Test Handshake"
+src/gui/main_tabs/settings_dialog_surface.py   AI_SAVED_TEXT names the next bot cycle
+```
 
 Six of the seven do reach the engine. `configure_live_monitor` in
 `src/trading/bot_container.py` reads five of them and builds or clears the

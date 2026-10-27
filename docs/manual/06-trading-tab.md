@@ -4769,6 +4769,28 @@ The group title on screen carries an internal release identifier after the
 words Advanced Scrumming. Issue #420 carries that, and four more group titles
 with it.
 
+**The issue #420 clause above is overtaken.** It is not edited and not removed.
+It read:
+
+> The group title on screen carries an internal release identifier after the
+> words Advanced Scrumming. Issue #420 carries that, and four more group titles
+> with it.
+
+Issue #420 closed on 2026-10-02. Every group title the wizard draws is plain
+words. Read off the eleven titles one declaration holds, none carries a release
+number or an internal note number.
+
+```
+src/gui/main_tabs/bot_wizard_surface.py, in GROUP_TITLES
+
+mode_group        Trading Parameters       scrum_group       Scrumming Settings
+adv_group         Advanced Scrumming       hedge_group       Hedge Rebalance
+cb_group          Circuit Breakers         risk_group        Risk Controls
+gates_group       Strategy Gate Flags      whole_unit_group  Whole-Unit Market
+expiry_group      Contract Expiry          lock_group        Higher-TF Lock Duration
+extractor_group   Extractor — Pool & Artillery
+```
+
 **What the fleet runs.** Read Rate is the row that differs most from the page. The
 box opens at five minutes, and 30 of the 38 live bots run it at one minute, with
 eight at five. At one minute the search throttle skips twelve ticks and works one;

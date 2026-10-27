@@ -115,6 +115,27 @@ to 1.0 and three fall back to 0.0, so a bot whose stored config lacks the key
 compounds or freezes depending on which site read it first. Issue #409 carries
 it.
 
+**The issue #409 clause above is overtaken.** It is not edited and not removed.
+It read:
+
+> Nine read sites fall back to 1.0 and three fall back to 0.0, so a bot whose
+> stored config lacks the key compounds or freezes depending on which site read
+> it first. Issue #409 carries it.
+
+Issue #409 closed on 2026-09-25. One declaration answers the key now, and no
+read site carries a fallback of its own. `src/trading/container/config.py`
+declares `TARGET_GROWTH_PCT_DEFAULT` from the field's own declared default, and
+`in target_growth_pct` is the single reader. Fourteen call sites read that
+function.
+
+```
+src/trading/container/config.py, in BotConfig    max_target_growth_pct: float = 1.0
+src/trading/container/config.py                  TARGET_GROWTH_PCT_DEFAULT reads that default
+src/trading/container/config.py, in target_growth_pct   the one reader
+call sites reading target_growth_pct             14
+read sites carrying their own fallback            0
+```
+
 The gate set the bot writes is named in one place: ten scrum labels and nine
 fold labels, nineteen lights per bot.
 
@@ -134,6 +155,82 @@ _GATE_ORDER_SCRUM: tuple[str, ...] = (
     "OTD",
 )
 ```
+
+#### What the ripe-harvest override replaces at the midline
+
+The entry above states this:
+
+> Nothing sets that lock today, and on a ripe row the ripe-harvest override
+> force-passes the gate that reads it.
+
+**The current reading.** On a ripe row the override force-passes nothing at the
+midline, because the gate has already passed. A row is ripe only when the band
+position reaches the upper detect threshold, and that threshold never sits below
+the midline. A ripe row is therefore above the midline by construction, so the
+band half of the scrum flag is already true. The phantom lock is the only other
+way that flag can read false, and no method in the platform sets it.
+
+`src/trading/scrumming/circuit_breakers.py` — `_bb_detect_thresholds`, the
+reason a ripe row is above the midline
+
+```python
+detect_frac = max(0.0, min(1.0, detect_pct / 100.0))
+half = detect_frac * 0.5
+return (0.5 - half, 0.5 + half)
+```
+
+**Driven.** The shipped scrum chain ran over a swept window of hand-built
+candles. The last candle's close moved from 95.00 to 105.00 in steps of 0.0005,
+which is 20,001 rows, and the band position read from -0.3089 to 1.3165 off the
+real band reading. Both the midline and the upper detect threshold sit inside
+that span, and one step moves the band position by about 0.00008, so no change
+of verdict can fall between two rows.
+
+```
+20,001 rows, the phantom lock clear
+
+the gate passed on its own merit          10,106
+the gate refused and the refusal stood     9,895
+the gate was passed regardless                 0
+rows reaching a real verdict              20,001
+
+6,832 rows were ripe, and the gate passed on its own on every one of them
+```
+
+**The same override does replace a refusal, on a different gate.** With the
+voting panel not bullish, the override passed the bullish-vote gate on exactly
+the 6,832 ripe rows, and its refusal stood on the other 13,169. The override
+acts, and the midline gate is not the gate it acts on.
+
+```
+20,001 rows, the phantom lock clear, the voting panel not bullish
+
+ta_bullish passed regardless     6,832
+ta_bullish refusal stood        13,169
+midline passed regardless             0
+```
+
+**What a recorded lock does.** The Simulator can recover a lock from a stored
+record. Driven with the lock recovered, the midline gate was passed regardless
+on the 6,832 ripe rows and its refusal stood on the other 13,169, and the record
+named the override every time. That is the only state in which the override
+reaches the midline gate, and nothing in the running program produces it.
+
+```
+midline_scrum overridden by ripe_harvest_override: scrum_ok=False(bb_pos=1.23)
+scrum_ok=False(bb_pos=-0.22) [override not applied: ripe_harvest_override]
+```
+
+**What is still open, and it is his.** The open decision on the midline rule is
+whether the band should hold a ripe scrum at all. It is not a decision about the
+higher timeframe. The reading above moves the ground under it: the band does not
+hold a ripe scrum today because a ripe row is already above the band midline,
+not because an override lifts the band. Two settings carry that behaviour and
+both are his, the BB Midline Gate tick box and the BB Detect threshold, and both
+are described in [Part 6, the Trading tab](06-trading-tab.md).
+
+Which gate each override covers is on the gate table in
+[Part 7, Indicators](07-indicators.md).
 
 ## 2 - The Phantom Bot
 
@@ -188,6 +285,39 @@ the coordinator's active locks                   []
 the flag set by hand, band position 0.70         the midline gate refuses
 the flag set by hand, band position 0.91         the ripe row force-passes it
 ```
+
+**Two sentences above are overtaken in part.** Neither is edited and neither is
+removed. They read:
+
+> The scrum flag also carries the phantom lock. Nothing sets that lock today,
+> and on a ripe row the ripe-harvest override force-passes the gate that reads
+> it.
+
+> The phantom lock is the only other way that flag can read false, and no method
+> in the platform sets it.
+
+**The current reading.** A method on the bot now sets the flag. It runs on every
+tick, above the scrum flag, and it takes the state from the coordinator's own
+active lock list rather than from a field nobody wrote. Where the operator has
+phantom bots switched off it clears the flag instead.
+
+`src/trading/scrumming_bot.py` — `ScrummingBot.tick`, the call above the flag
+
+```python
+self._refresh_phantom_lock()
+if self.config.bb_midline_gate:
+    scrum_ok = (bb_pos > 0.50) and not self._phantom_locked
+    fold_ok_midline = bb_pos < 0.50
+```
+
+The rest of both sentences still holds. No method on the coordinator creates a
+lock, so the lock list is empty on every running bot and the flag reads clear.
+The ripe-harvest override still force-passes the gate on a ripe row, which is
+why a held lock changes no trade. Driven across 3,201 band positions with a lock
+held, the scrum flag changed on 1,601 rows and the final scrum decision on none.
+
+The full reading, the method, the coordinator's answer and the swept figures are
+on [the Indicator Voting Panel page](07-indicators.md).
 
 **The saved record carries the timeframe.** The bot writes every name it holds
 under the key `phantom_timeframes`. The fleet load reads that key and gives the
@@ -475,6 +605,29 @@ tightening = detect_landing_strip_v2(
 
 Issue #432 carries it.
 
+**The issue #432 clause above is overtaken.** It is not edited and not removed.
+It read:
+
+> The tick hands it a literal three, so the wizard's Landing Strip Candles
+> control moves the first detector and leaves the second where it is. Issue
+> #432 carries it.
+
+Issue #432 closed on 2026-10-23. The literal three is a named constant now, and
+the call states why the two counts are different things. `min_consecutive`
+counts shrinking Heikin Ashi bodies; the wizard's control counts the newest
+small-body candles the band-proximity check needs. The control is not meant to
+move the second detector.
+
+```
+src/trading/ata_gate_scan.py   TIGHTENING_MIN_CANDLES = 25
+src/trading/ata_gate_scan.py   TIGHTENING_MIN_CONSECUTIVE = 3
+src/trading/ata_gate_scan.py   TIGHTENING_SHRINK_THRESHOLD = 0.90
+src/trading/ata_gate_scan.py   TIGHTENING_TOLERANCE_PCT = 3.0
+
+src/trading/container/config.py, in BotConfig   bb_landing_strip_candles: int = 3
+src/trading/scrumming_bot.py                    the call passes the four constants
+```
+
 ## 4 - Bollinger Band Travel Detection
 
 Allowing a strategy to “see” where it is in relation to local width of the Bollinger Band is another aspect of treating the immediate market as a region on a map through which a stack of tokens is traveling. Along the route, we are able to offload surplus at the peaks and pick up additional supplies in the next valley. This is used in combination with Minimum Opposing Trade Distance. The complete question then becomes “Has the market traveled 70% (default), is current price X% distant from the most recent trade event, and is Target Delta not zero? When combining these gates with the (Technical Analysis) Indicator Voting Panel and Landing Strip Detection, you have a full market structure detection suite that is able to incrementally adjust a position’s size and generate recurring profits or growth with each market cycle.
@@ -611,6 +764,23 @@ if hasattr(self._simulator, "set_topology_getter"):
 No Paper Trader exists to push to; entry 17 gives the measurement. Issue #23
 tracks the tab's build-out and the topology and oppositional pushes, and
 issue #290 a live connector defect on Refresh.
+
+**The issue #290 clause above is overtaken.** It is not edited and not removed.
+It read:
+
+> and issue #290 a live connector defect on Refresh.
+
+Issue #290 closed on 2026-10-17. The Inspector holds no connector. The window
+hands it a getter, and Refresh calls that getter and copies what it answers, so
+a wired source is read fresh on each press rather than kept from the build.
+
+```
+src/gui/main_tabs/market_inspector_tab.py, in _build_market_inspector_tab
+    set_exchange_source(connectors_getter=..., scheduler=...)
+
+src/gui/market_inspector.py, in set_exchange_source   stores the getter
+src/gui/market_inspector.py                           dict(self._connectors_getter() or {})
+```
 
 ## 7 - Bot Swarm and Smart Wire Network w/ Provenance Tracking
 
@@ -878,6 +1048,26 @@ rather than an injected one.
 The first anchor in the block above named a line that had moved. The bot it
 means is built in `src/gui/live_bot_window.py`, in `_run_bot`, and that is the
 anchor the block now carries.
+
+**The issue #367 clause above is overtaken.** It is not edited and not removed.
+It read:
+
+> spawned tranches do not match the scrum that spawned them (issue #367)
+
+Issue #367 closed on 2026-10-03. A spawned tranche carries the sale that made
+it. The sell loop writes the fill price onto each new record and carries the
+lot's own buy price with it, and the bounding pass then reads the sale's own net
+rate, which is the dollars the sale left with this bot divided by the units it
+sold.
+
+```
+src/trading/scrumming/execution.py
+    each new record carries   usd, units, ref (the fill price), initial_buy_price
+
+src/trading/scrumming/fold_tranches.py, in _bound_new_fold_tranches
+    reads   the slice this sale appended, scrum_usd and scrum_asset
+    rate    scrum_usd / scrum_asset, the sale's own net rate
+```
 
 **The issue #133 clause above is overtaken.** It is not edited and not removed.
 It read:
@@ -1268,6 +1458,36 @@ settings that never reach the bot. Issue #107 records a detonation that can fire
 twice across a restart. Any earlier description reading "bearish" is wrong: the
 code compares against the bullish direction.
 
+**The issue #336 and issue #107 clauses above are overtaken.** They are not
+edited and not removed. They read:
+
+> Issue #336 records both pairs among the wizard settings that never reach the
+> bot. Issue #107 records a detonation that can fire twice across a restart.
+
+Issue #336 closed on 2026-10-04 and issue #107 closed on 2026-10-17. Both pairs
+reach the bot, and the detonation flag survives a restart.
+
+```
+src/trading/container/config.py, in _BOT_CONFIG_SCRUMMING_ONLY_FIELDS
+    position_ceiling_enabled, position_ceiling_multiple,
+    detonation_enabled, detonation_timeframe, detonation_confidence_min
+
+src/trading/scrumming/execution.py   reads position_ceiling_enabled and the multiple
+src/trading/container/config.py, in ceiling_multiple   the one reader of the multiple
+src/trading/bot_container.py         publishes both to the screen
+src/trading/scrumming_bot.py         reads detonation_enabled before the bar fires
+```
+
+The flag the detonation bar reads is saved with the bot and read back on load,
+so a restart no longer presents a bull run the bar has already fired on as a
+fresh one.
+
+```
+src/trading/scrumming/state_io.py
+    saved     detonation_last_signal_bullish
+    restored  detonation_last_signal_bullish, False when the record has none
+```
+
 ### How the taper and the detonation bar read today
 
 Two readings in section 14 above carry wording this unit changed. They stand as
@@ -1395,6 +1615,25 @@ definition yet and nothing here to attach it to, so nothing is proposed. Issue
 
 In development.
 
+**The issue #117 clause above is overtaken.** It is not edited and not removed.
+It read:
+
+> The measure has no settled definition yet and nothing here to attach it to, so
+> nothing is proposed. Issue #117 carries it.
+
+Issue #117 closed on 2026-09-19. The criterion is settled and it is in the tree.
+A run reads identical when no light disagrees and both armed flags match, and
+every disagreeing light is charged to one of three causes.
+
+```
+src/simulator/validation.py, in latches_identically
+    true while   no light disagreed, scrum armed matches, fold armed matches
+
+src/simulator/validation.py, in causes   how many disagreeing lights per cause
+src/simulator/validation.py              CAUSES = (TAPE_CAUSE, FIXTURE_CAUSE, CHAIN_CAUSE)
+src/simulator/parity_report.py           one report per run, a page and a sidecar
+```
+
 No standing defect touches the panel. The eight
 indicator implementations that departed from their published formulae are all
 repaired, one indicator per unit, and issue #414 is closed.
@@ -1451,6 +1690,13 @@ landed it after the Simulator rebuild.
 Issue #19 covers the build-out. Two surfaces that told the operator a Paper
 Trader was present were issues #422 and #426, and both folded into #19. Issue
 #117 tracks the Simulator rebuild that gated it.
+
+Issue #117 closed on 2026-09-19 and issue #19 closed on 2026-09-26, so neither
+tracks anything now. Both screens are in the tree:
+`src/gui/paper/paper_trading_tab.py` and
+`src/gui/paper/paper_react_trading_tab.py` draw Paper, and
+`src/gui/main_tabs/simulator_tab_surface.py` with
+`src/gui/react_simulator_tab.py` draw the Simulator.
 
 Today the workflow runs Market Inspector, then Simulator, then Paper, then Live.
 Every stage has a screen.

@@ -299,7 +299,6 @@ if _HAS_QT:
 
             self._bus.subscribe("bot.log", self._on_bot_log)
             self._bus.subscribe("wire.created", self._on_wire_created)
-            self._bus.subscribe("indicator.tf_lock_changed", self._on_tf_lock_changed)
             self._bus.subscribe("ai.feedback", self._on_ai_feedback)
             self._bus.subscribe("trade.filled", self._on_trade_filled_sfx)
             from collections import deque as _deque
@@ -2717,22 +2716,6 @@ if _HAS_QT:
                     f"unaffected. Enable it in Live Settings if you want "
                     f"compounding from this wire.",
                     "warning",
-                )
-
-        def _on_tf_lock_changed(self, event) -> None:
-            """Set `_lock_timeframe` on each ScrummingBot coordinator from the event."""
-            tf = event.data.get("timeframe", "")
-            if not self._bot_manager:
-                return
-            from ..trading.scrumming_bot import ScrummingBot
-
-            for bot in self._bot_manager._bots.values():
-                if isinstance(bot, ScrummingBot) and hasattr(bot, "_coordinator"):
-                    bot._coordinator._lock_timeframe = tf
-            if tf:
-                self._status_log.log(
-                    f"TF Lock set: {tf} — Accumulation Bots will respect higher-TF direction",
-                    "info",
                 )
 
         def _draw_ai_monitor_pill(self, enabled: bool) -> None:

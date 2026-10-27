@@ -373,6 +373,25 @@ self._stat_errors.clicked.connect(self._show_error_log_dialog)
 Issue #428 carries a disagreement between what the tooltips on these cards
 promise and what the cards draw.
 
+**The issue #428 clause above is overtaken.** It is not edited and not removed.
+It read:
+
+> Issue #428 carries a disagreement between what the tooltips on these cards
+> promise and what the cards draw.
+
+Issue #428 closed on 2026-10-03. The two counter tooltips name the exchange's own
+trade history, which is the source the cards draw from, and both say the figure
+survives a restart.
+
+```
+src/gui/main_tabs/header_strip_surface.py
+
+SCRUMMED_TOOLTIP   "the dollars every bot has sold so far this year ...
+                    comes from the exchange's own trade history, so the venue
+                    and the card agree ... It survives a restart."
+FOLDED_TOOLTIP     the same sentence for buys
+```
+
 A sixth card, P/L, is constructed and then hidden. Code that still writes to it
 keeps working and nothing appears on screen.
 

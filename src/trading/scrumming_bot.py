@@ -2003,6 +2003,35 @@ class ScrummingBot(
                 raise
         return await self.exchange.get_ohlcv(symbol, timeframe, limit=limit)
 
+    def _refresh_phantom_lock(self) -> None:
+        """Write ``_phantom_locked`` and ``_phantom_lock_timeframe`` from the
+        coordinator's active locks, and clear both where ``_phantoms_enabled``
+        is off.
+
+        ``tick`` calls this above the ``scrum_ok`` composition, so the scrum
+        gate term, the hold-summary line and the Phantom Bots pages all read
+        one state.
+        """
+        if not self._phantoms_enabled:
+            self._phantom_locked = False
+            self._phantom_lock_timeframe = ""
+            return
+        timeframe = ""
+        coordinator = self._coordinator
+        if coordinator is not None:
+            try:
+                timeframe = str(coordinator.active_lock_timeframe() or "")
+            except Exception as _lock_exc:
+                logger.debug(
+                    "Bot %s lock read raised %s: %s",
+                    self.bot_id,
+                    type(_lock_exc).__name__,
+                    _lock_exc,
+                )
+                timeframe = ""
+        self._phantom_locked = bool(timeframe)
+        self._phantom_lock_timeframe = timeframe
+
     async def _refresh_market_reading(self, symbol: str) -> bool:
         """Write ``_last_summary`` and ``_last_bb`` from the pooled candles for
         ``symbol``, and answer whether a summary was written.
@@ -3573,6 +3602,7 @@ class ScrummingBot(
         ):
             is_bearish = True
 
+        self._refresh_phantom_lock()
         if self.config.bb_midline_gate:
             scrum_ok = (bb_pos > 0.50) and not self._phantom_locked
             fold_ok_midline = bb_pos < 0.50

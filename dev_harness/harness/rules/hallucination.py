@@ -154,9 +154,11 @@ class Finding:
 
 
 # One slash plus a code or docs extension, so a bare dotted name is not a path.
+# The lookahead stops `.json` matching `js` and `.markdown` matching `md`.
 _PATH_PATTERN = re.compile(
     r"[a-zA-Z0-9_\-./]*[a-zA-Z0-9_\-]+/[a-zA-Z0-9_\-./]+"
-    r"\.(py|md|markdown|json|toml|yaml|yml|csv|txt|log)"
+    r"\.(py|markdown|md|jsonl|json|js|css|toml|yaml|yml|csv|txt|log)"
+    r"(?![a-zA-Z0-9])"
 )
 
 # A path under one of these is resolved against the repo root and checked on disk.

@@ -33,6 +33,19 @@ COUNTED_TAB_ATTRS = {
     "Paper": "_paper_trader_tab",
 }
 
+#: Each class-following tab's label mapped to the attribute holding that tab.
+#: ``_draw_class_notes`` seats a note only on the page that is this object, so
+#: ``simulator_tab.BuildFailureNote`` keeps its own page.
+CLASS_TAB_ATTRS = {
+    "Live": "_trading_tab",
+    "Charts": "_charts_tab",
+    "Inspector": "_market_inspector",
+    "Swarm": "_bot_viz",
+    "History": "_history_tab",
+    "Sim": "_simulator_tab",
+    "Paper": "_paper_trader_tab",
+}
+
 #: The one note a class-following tab draws while it keeps no row of the class.
 NOTE_NAME = "class-empty-note"
 
@@ -217,11 +230,16 @@ class ClassFilterTabMixin:
         fleet = len(self._class_fleet())
         for at in range(book.count()):
             name = book.tabText(at)
-            if name not in cfs.TAB_SUBJECTS:
+            held = CLASS_TAB_ATTRS.get(name)
+            if name not in cfs.TAB_SUBJECTS or held is None:
+                continue
+            tab = getattr(self, held, None)
+            page = book.widget(at)
+            if tab is None or page is not tab:
                 continue
             attr = COUNTED_TAB_ATTRS.get(name)
             kept = counts.get(attr, (fleet, fleet))[0] if attr else fleet
-            label = self._class_note_label(name, book.widget(at))
+            label = self._class_note_label(name, page)
             if label is None:
                 continue
             label.setText(cfs.empty_note(name, key))

@@ -32,6 +32,32 @@ of every running Scrumming Bot. Nothing declares or reads that name, so the
 choice reaches the coordinator and stops there. The tooltip on the box says the
 lock feeds directly into active Scrumming Bots. Issue #155 carries this.
 
+**The issue #155 clause above is overtaken.** It is not edited and not removed.
+It read:
+
+> The tooltip on the box says the lock feeds directly into active Scrumming
+> Bots. Issue #155 carries this.
+
+Issue #155 closed on 2026-10-22, so the pointer names no open work. The reading
+above it still holds: the write reaches no reader. The name the window sets on
+the coordinator and the name the Phantom Bots pages read are two different
+names, and only the second is declared on the bot.
+
+```
+src/gui/main_window.py, in _on_tf_lock_changed
+    writes   bot._coordinator._lock_timeframe
+    readers  none
+
+src/trading/scrumming_bot.py        declares _phantom_lock_timeframe on the bot
+src/gui/main_tabs/phantom_bots_tab_surface.py   LOCK_TIMEFRAME_ATTRIBUTE names that one
+src/gui/live_settings/phantom_bots_tab.py       reads it off the bot
+src/gui/paper/paper_phantom_bots_tab.py         reads it off the bot
+src/gui/simulator/sim_phantom_bots_tab.py       reads it off the bot
+```
+
+Which of the two names the drop-down should set is a product choice, so nothing
+here proposes one.
+
 `src/gui/main_window.py` — `_on_tf_lock_changed`
 
 ```python
@@ -39,6 +65,157 @@ for bot in self._bot_manager._bots.values():
     if isinstance(bot, ScrummingBot) and hasattr(bot, "_coordinator"):
         bot._coordinator._lock_timeframe = tf
 ```
+
+**The two clauses above are overtaken.** Neither is edited and neither is
+removed. They read:
+
+> The reading above it still holds: the write reaches no reader. The name the
+> window sets on the coordinator and the name the Phantom Bots pages read are
+> two different names, and only the second is declared on the bot.
+
+> Which of the two names the drop-down should set is a product choice, so
+> nothing here proposes one.
+
+The choice is settled, and it is an implementation one. The name the three
+Phantom Bots pages already read is the one that survives. The handler sets that
+name on the bot and keeps setting the older name on the coordinator, so a reader
+of the older spelling still finds its value.
+
+`src/gui/main_window.py` — `_on_tf_lock_changed`, as it stands
+
+```python
+for bot in self._bot_manager._bots.values():
+    if not isinstance(bot, ScrummingBot):
+        continue
+    setattr(bot, LOCK_TIMEFRAME_ATTRIBUTE, tf)
+    if hasattr(bot, "_coordinator"):
+        bot._coordinator._lock_timeframe = tf
+```
+
+Driven on a hand-built record, with two different settings in one run, both
+names hold the chosen timeframe and the lock row on the page carries it.
+
+| lock set to | what the pages read | the page's SCRUM lock state row |
+| ----------- | ------------------- | ------------------------------- |
+| nothing yet | empty | LOCKED — SCRUM suppressed by  TF phantom |
+| 4h | 4h | LOCKED — SCRUM suppressed by 4h TF phantom |
+| 1d | 1d | LOCKED — SCRUM suppressed by 1d TF phantom |
+
+The first row is what the page drew for every setting before this change: a gap
+where the timeframe belongs.
+
+Live, Paper and the Simulator read the one name, so all three draw the timeframe
+once a value arrives. Only the Live window subscribes to the topic, and nothing
+publishes it, so no press reaches any of the three today. Parity across the
+three surfaces is not closed while the control is absent.
+
+**Three clauses above are overtaken.** None is edited and none is removed. They
+read:
+
+> `main_window.py` still subscribes to that topic; with no publisher,
+> `_lock_timeframe` keeps whatever the coordinator sets for itself.
+
+> The handler sets that name on the bot and keeps setting the older name on the
+> coordinator, so a reader of the older spelling still finds its value.
+
+> Only the Live window subscribes to the topic, and nothing publishes it, so no
+> press reaches any of the three today.
+
+**The current reading.** The operator has ruled that the control is not coming
+back to this panel and that the setting stays with the Phantom Bots page. The
+handler and its subscription are therefore removed, and so is its write onto the
+coordinator. The window subscribes to nothing on that topic, and the register in
+`main_window_surface.py` no longer names either the topic or the handler.
+
+The bot now reads the lock from the coordinator instead. One method on the bot
+writes both names every tick, from the coordinator's own active lock list, and
+clears both where the operator has phantom bots switched off.
+
+**Which ticks reach it, measured.** The call sits on the main gate path, so it
+runs on every tick that reaches the scrum flag and on no tick that returns
+above it. A hand-built bot driven through the real tick ran eight full passes
+and reached the call on none of them, because its position value equals its
+target balance, which leaves no delta and returns at the interval guard. Twelve
+returns sit above the call. Calling the method directly on the same bot moved
+the flag to locked and the timeframe to the lock's own, so the zero is a fact
+about the path that tick took and not about the reading.
+
+`src/trading/scrumming_bot.py` — `ScrummingBot._refresh_phantom_lock`
+
+```python
+if not self._phantoms_enabled:
+    self._phantom_locked = False
+    self._phantom_lock_timeframe = ""
+    return
+timeframe = str(coordinator.active_lock_timeframe() or "")
+self._phantom_locked = bool(timeframe)
+self._phantom_lock_timeframe = timeframe
+```
+
+The timeframe comes from the lock itself, so the page names the timeframe that
+suppressed the scrum rather than leaving the gap the first table row shows.
+
+`src/trading/phantom_balance.py` — `TimeframeCoordinator.active_lock_timeframe`
+
+```python
+held = [str(one.get("source_tf") or "") for one in self.get_active_locks()]
+if not held:
+    return ""
+return max(held, key=tf_rank)
+```
+
+**Driven.** A bot was built by hand with a stand-in venue that refuses every
+order, and a lock was placed on its coordinator for a timeframe above the
+parent. Four arms ran in one pass, and a second pair ran on a ripe row.
+
+```
+a lock on the coordinator, read at the bot and at the page
+
+phantoms off, lock active      flag False   page UNLOCKED — SCRUM allowed
+phantoms on, lock active       flag True    page LOCKED — suppressed by 1d
+phantoms on, lock expired      flag False   page UNLOCKED — SCRUM allowed
+phantoms on, no lock           flag False   page UNLOCKED — SCRUM allowed
+```
+
+The locking arm and the non-locking arm answer differently at the bot, at the
+scrum flag and on the page, so the reading can see the lock. Before this change
+all four arms answered alike, with the coordinator reporting the same active
+lock.
+
+Swept across the band from -0.3 to 1.3 in steps of 0.0005, which is 3,201 rows,
+with phantom bots on and a lock held: the scrum flag changes on 1,601 rows and
+the midline refusal appears on 801 more, between 0.5 and 0.9. The final scrum
+decision changes on none of the 3,201 rows.
+
+```
+3,201 rows, phantoms on, a held lock against an expired one
+
+scrum flag differs                      1,601
+midline refusal differs                    801
+final scrum decision differs                 0
+fold decision differs, as a control          0
+```
+
+**Why no trade changes.** On a ripe row the ripe-harvest override removes the
+midline refusal, and a row below the upper detect threshold is already refused
+by band proximity. Driven on a ripe row at 0.95 with the lock held, the scrum
+flag reads false, the blocked list is empty and the scrum fires. Whether the
+band should hold a ripe scrum is the open decision on issue #1359.
+
+With phantom bots switched off, every one of the 3,201 rows is identical before
+and after the change, compared row by row on the scrum flag, the midline
+refusal, the final scrum decision and the fold decision.
+
+Live, Paper and the Simulator draw from one page model, and all three were
+driven with the same locked bot. All three answer the identical sentence, and
+all three answer the unlocked sentence when the lock expires, so parity across
+the three is closed on that row. A Paper or Simulator page fed a stored record
+rather than a running bot draws the unlocked sentence, because a saved record
+carries the phantom settings and never a lock.
+
+Nothing creates a lock on the coordinator yet, so the flag reads clear on every
+running bot today. What should create one changes which trades fire and is the
+operator's decision.
 
 Bot - Drop down menu for selecting which bot’s TA signals are displayed.
 

@@ -372,6 +372,17 @@ class TimeframeCoordinator:
             for lk in self._locks
         ]
 
+    def active_lock_timeframe(self) -> str:
+        """The highest-ranked ``source_tf`` among the active locks, else ``""``.
+
+        ``ScrummingBot._refresh_phantom_lock`` reads this for the bot's
+        ``_phantom_lock_timeframe``, which the Phantom Bots pages draw.
+        """
+        held = [str(one.get("source_tf") or "") for one in self.get_active_locks()]
+        if not held:
+            return ""
+        return max(held, key=tf_rank)
+
     def _cleanup_expired(self) -> None:
         before = len(self._locks)
         self._locks = [lk for lk in self._locks if not lk.is_expired]

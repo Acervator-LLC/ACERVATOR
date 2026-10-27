@@ -450,6 +450,53 @@ from and never replaced, so the packager's own import walk still runs and still
 pulls in whatever it reaches. A name dropped here that something imports stays in
 the bundle.
 
+### What the bundle's own archive holds
+
+A folder listing of a bundle cannot say which packages it carries. A package
+written in pure Python ships inside the executable's own archive and has no
+folder on disk, so a directory walk answers zero for a package that ships and
+zero for one that does not. The reading comes from the archive's own table of
+contents.
+
+```
+python -m PyInstaller.utils.cliutils.archive_viewer --list --recursive <the bundle executable>
+```
+
+Measured on the two Windows builds either side of the reachability change, and
+on both variants of each. Both variants of one build answer the same figures,
+because both read one module list.
+
+| what the bundle holds | before | after | removed |
+| --- | --- | --- | --- |
+| archive entries | 4,033 | 4,003 | 30 |
+| archive bytes, uncompressed | 42,416,549 | 42,101,085 | 315,464 |
+| source modules in the archive | 497 | 468 | 29 |
+| files in the bundle folder | 5,222 | 5,193 | 29 |
+| bytes in the 29 source files | 444,627 | 0 | 444,627 |
+| bytes in the executable | 42,664,299 | 42,348,835 | 315,464 |
+
+A launch therefore carries 760,091 fewer bytes. The whole bundle folder reads
+779,193 bytes smaller, and the extra 19,102 bytes belong to two days of other
+commits that sit between the two builds, not to the exclusion.
+
+The thirtieth archive entry is a Python date-and-plist library. Its only reader
+in the tree is the USB authentication module, which is one of the 29, so nothing
+reaches it any more and it leaves with them.
+
+The archive's source-module set and the tree's reachable set were compared whole
+on both variants. They are identical at 468 names each: nothing reachable is
+absent, nothing unreachable is present, and none of the 29 survives. So the
+exclusion removed nothing a running path reaches.
+
+Two package names read against the same listing show that a zero is a reading
+rather than a pattern matching nothing. The exchange library, which the build
+declares and the order path needs, answers 430 entries. The plotting library,
+which the exclude list names, answers none.
+
+The third reading is the one a folder listing gets wrong. The web client the
+live monitor imports reads **no** folder entries and **23** archive entries on
+the same bundle, which is why the folder listing is never the reading.
+
 ### No mark in the tree says a screen is unfinished
 
 A build cannot hold an unfinished screen back, because nothing in the tree
@@ -485,6 +532,62 @@ over a copy of the shipped React bundle's own source folder, the first launch
 rebuilt 139 files in 1.192 seconds, and every launch after kept them in 0.060
 seconds. The same folder with its compiled files left out reads 0.002 seconds on
 every launch, which is what a bundle built by the spec above now gives.
+
+### Where the wait before the splash goes
+
+Twenty-five stages run before a splash object exists. Each was timed on the
+entry point's own stage order, with the home directory redirected, the screen
+drawn offscreen, and every network call to another machine refused.
+
+| the stage | seconds |
+| --- | --- |
+| the window's construction, thirteen tab steps inside it | 0.929 |
+| the window module and the state modules, imported | 0.449 |
+| the entry point itself, with the cache sweep inside it | 0.347 |
+| the key store | 0.139 |
+| the settings, log and bot modules, imported | 0.102 |
+| the Qt library, imported | 0.053 |
+| the stone tablet index, 406 tablets | 0.030 |
+| the other eighteen stages in all | 0.026 |
+| total to the splash | 2.077 |
+
+Three warm launches read 2.077, 2.057 and 2.096 seconds, a spread of 0.039
+seconds. The first launch in a fresh folder reads 4.611 seconds, because it
+compiles the source the cache sweep has nothing stored for. Four stages carry 91
+per cent of the wait, and the window is 45 per cent on its own.
+
+The figures belong to the stages they name. A fourth launch with 0.300 seconds
+added inside the window's construction read 1.229 seconds for that stage against
+0.929, while the import stage beside it stayed inside its own 0.019 second
+spread.
+
+Three of the twenty-five stages have to run before a splash pixel can exist: the
+application object, the theme, and the splash's own paint module. They take
+0.013 seconds between them. The other 2.064 seconds is work a splash does not
+need, so the order looks like it could simply be swapped.
+
+It cannot, and the splash's own clock is the reason. The splash paints
+everything at a master alpha the moment decides, and that moment starts at zero
+and advances only on a 25 millisecond timer.
+
+```python
+TIMER_INTERVAL_MS = 25          # src/gui/main_tabs/splash_screen_surface.py
+TICK_SECONDS = 0.025
+MASTER_RISE_S = 1.0
+FULL_ALPHA = 255
+def master_alpha(t: Any) -> int: ...
+```
+
+Driven through that module, the first frame answers an alpha of **0**, and the
+frame at one second answers **255**. Driven on a real timer, a 25 millisecond
+timer fires **0** times in one second while no event loop is running, and **31**
+times in one second once it is. The loop starts after every stage in the table
+above. A splash shown before the window would therefore be a window painting
+nothing, for as long as the window takes to build.
+
+Moving the splash earlier is not a change this reading supports. What would
+give the operator a pixel sooner is a shorter window construction, which is the
+thirteen tab steps the launch already reports one by one.
 
 ### Which outside packages a bundle carries
 

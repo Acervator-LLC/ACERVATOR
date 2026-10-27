@@ -148,6 +148,24 @@ Sling and BBull paint a placeholder shape rather than the indicator, and each
 says as much in its own tooltip. Issue #430 carries one further disagreement
 between a tooltip on this toolbar and what the chart paints.
 
+**The issue #430 clause above is overtaken.** It is not edited and not removed.
+It read:
+
+> Issue #430 carries one further disagreement between a tooltip on this toolbar
+> and what the chart paints.
+
+Issue #430 closed on 2026-09-09. No tooltip on this toolbar names a colour, so
+no tooltip can disagree with what the chart paints. The Vortex entry names its
+two lines, its period and its pane.
+
+```
+src/gui/native_chart.py
+    tooltip="Vortex Indicator (VI+ / VI-, period 14, sub-pane)"
+
+tooltips declared in that module   14
+tooltips naming a colour            0
+```
+
 The complete voter set and the maths behind each indicator belong to
 [the Indicator Voting Panel](../07-indicators.md).
 

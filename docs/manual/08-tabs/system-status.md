@@ -369,6 +369,32 @@ sign of it, and silence can only be read against a rhythm each emitter is
 expected to keep. No emitter declares one, so nothing returns Red and no light
 on this screen can show it.
 
+**The issue #14 clause above is overtaken.** It is not edited and not removed.
+It read:
+
+> Red waits on issue #14. No emitter declares one, so nothing returns Red and no
+> light on this screen can show it.
+
+Issue #14 closed on 2026-09-01, and the rhythm it asked for is declared. Every
+emitter carries a cadence category, and an always-on pin has an age above which
+it reads late.
+
+```
+src/core/signal_contract.py
+
+CADENCE_ALWAYS_ON          "always_on"
+CADENCE_TOGGLE             "toggle"
+CADENCE_CATEGORIES         the two above
+ALWAYS_ON_STALE_AFTER      10.0 seconds
+ALWAYS_ON_WORST_HEALTHY_GAP   4.736 seconds
+in cadence_verdict         answers on_time, stale or late per pin
+```
+
+The second half of the clause still holds. `HEALTH_RED` is declared and is not
+one of the states `subsystem_health` returns, so no light on this screen shows
+Red. Whether a late always-on pin should turn a subsystem Red is a product
+choice, so nothing here proposes one.
+
 ### What the log record carries
 
 The persisted row now names the subsystem it belongs to, so the report and the

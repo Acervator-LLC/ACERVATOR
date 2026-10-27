@@ -603,6 +603,11 @@ figure is refused whole, and the free figure reports what is left. The claims
 settle against the venue, because the exchange is the authority.
 
 `capital_registry` — `CapitalRegistry.request_reservation`
+That file and that method are gone. The claims table lives in
+`src/trading/capital_reservation.py` now, as `CapitalReservationRegistry`, and
+`in reserve` is the call that takes a claim. It stores a `Reservation` and
+returns its token rather than a granted figure, and `in effective_available`
+answers what is left. The block below records the older contract.
 
 ```python
 """Create or replace ``bot_id``'s ``Reservation`` and return
@@ -1477,6 +1482,33 @@ nothing under `src/gui/web/` binds a context menu. The Simulator bench belongs t
 Paper bench to #19; a bench row's own Run and Start buttons flip a label and a status and start
 no session in either build.
 
+**The issue #117 and issue #19 clause above is overtaken.** It is not edited and
+not removed. It read:
+
+> The Simulator bench belongs to #117 and the Paper bench to #19; a bench row's
+> own Run and Start buttons flip a label and a status and start no session in
+> either build.
+
+Issue #117 closed on 2026-09-19 and issue #19 closed on 2026-09-26, so neither
+pointer names open work. One surface declares both benches now, and the React
+page names the bench eleven times.
+
+```
+src/gui/main_tabs/bot_visualizer_surface.py
+    SIM_BENCH_ID_FORMAT      "SIM-{idx:02d}"
+    PAPER_BENCH_ID_FORMAT    "PAP-{idx:02d}"
+    in sim_summary           the three lines under the Simulator bench rows
+    in paper_summary         the same for Paper, with the bench capital
+    in bench_id_text         a row's own id
+    in bench_toggled         what a row's Run press answers
+    in bench_status_style_sheet   the status colour
+
+src/gui/web/bot_visualizer.js   names the bench on 11 lines
+```
+
+Whether a bench row starts a session is a product choice, so nothing here
+proposes one.
+
 ### How wide the Swarm tab has to be
 
 The Qt tab refuses to draw narrower than **1086 px**: the locust grid asks 786 px across its
@@ -1557,5 +1589,15 @@ produce, measured with the machine's own Consolas loaded:
 Every one fits the 88-pixel card. The Qt card and the React card take the same
 sizes from `bot_node_surface`, so the two builds draw the same eight strings in
 the same places.
+
+## CITED AS ABSENT
+
+The path below is named on this page only to record which renderer page the
+dollar registry used before its removal. It does not open on disk.
+
+- `src/gui/web/capital_registry.js` — the renderer page the dollar registry fed.
+  Commit `d72f69cf` removed the registry, its Qt table, its view model and this
+  page together. The renderer manifest names 68 modules and every one has a file
+  on disk.
 
 Back to [the subsystem index](README.md).
