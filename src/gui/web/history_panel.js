@@ -11,9 +11,9 @@
 
   var h = global.React.createElement;
 
-  // Milliseconds a pointer must rest on a cell before its tooltip shows.
-  // Qt's QToolTip wakes at the same figure.
-  var TOOLTIP_DELAY_MS = 3000;
+  // The custom property history_panel.css declares the wait in. Every page
+  // that loads this script loads that stylesheet, so the property is set.
+  var TOOLTIP_DELAY_PROPERTY = "--tooltip-delay-ms";
 
   // The bridge method the pager re-asks for a neighbouring page.
   var VIEW_MODEL_METHOD = "history.view_model";
@@ -163,6 +163,15 @@
 
   var tooltipTimer = null;
 
+  // The wait before a cell's description shows, read from
+  // TOOLTIP_DELAY_PROPERTY on the page's own root element.
+  function tooltipDelayMs() {
+    var declared = global
+      .getComputedStyle(document.documentElement)
+      .getPropertyValue(TOOLTIP_DELAY_PROPERTY);
+    return parseInt(declared, 10);
+  }
+
   function tooltipNode() {
     var node = document.getElementById("panel-tooltip");
     if (node === null) {
@@ -212,7 +221,7 @@
     tooltipTimer = global.setTimeout(function () {
       tooltipTimer = null;
       showTooltip(text, x, y);
-    }, TOOLTIP_DELAY_MS);
+    }, tooltipDelayMs());
   }
 
   document.addEventListener("mouseover", armTooltip, true);
@@ -607,6 +616,9 @@
   global.acervatorRenderTooltip = function (text) {
     return renderTooltip(document.createElement("div"), text);
   };
+  // The wait the page will use, reachable without a pointer, the way
+  // acervatorRenderTooltip reaches the box's markup.
+  global.acervatorTooltipDelayMs = tooltipDelayMs;
   global.acervatorChromeDefault = CHROME_DEFAULT;
   global.acervatorHistoryPanelTurnTo = turnTo;
 
