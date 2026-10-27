@@ -2838,6 +2838,50 @@ activity log names those units.
             self._main_lots.append(
 ```
 
+**An exchange that sends no filled count at all.** The paragraph above says the
+other sale paths "treat a reported zero as zero". That sentence stands, and this
+adds the case it does not name: an exchange that leaves the filled count out of
+its reply entirely. Three sale paths read the missing count as the count the
+exchange had accepted, which is the count the bot asked for, so a sale that
+reported nothing took the whole asked amount off the position. The detonation,
+the expiry close and the self-destruct each did this. **A missing count now books
+nothing, exactly as a reported zero does**, and the scrum path already read it
+that way.
+
+```python
+# the detonation, now with no fallback under it
+        _filled_raw = getattr(order, "filled", None)
+        try:
+            fill_amount = float(_filled_raw or 0.0)
+
+# the expiry close, src/trading/scrumming/tick_phases.py in _tick_expiry_close
+        reported = getattr(order, "filled", None)
+
+# the self-destruct, src/trading/scrumming_bot.py in self_destruct
+        _sd_filled = getattr(order, "filled", None)
+        fill_amount = float(_sd_filled or 0.0)
+```
+
+**What the four sale paths wrote, driven.** Each site was driven with the
+exchange filling the whole amount, filling part of it, reporting zero, and
+leaving the count out. The bot record and the lot book were built for the run,
+the home directory was redirected before the first import, no exchange was
+contacted and no order was placed anywhere.
+
+| What the exchange said | Held after | Lot book after | Saved to disk |
+| --- | --- | --- | --- |
+| filled all ten units | 2.000000 | 2.000000 | 2.000000 |
+| filled four of ten | 8.000000 | 8.000000 | 8.000000 |
+| reported zero filled | 12.000000 | 12.000000 | 12.000000 |
+| sent no filled count | 12.000000 | 12.000000 | 12.000000 |
+
+The position held twelve units in two lots before each run. The full fill is the
+control: it moves the held count, drops a drained lot and writes both figures to
+the saved document, so a row that does not move is a reading and not a writer
+that never ran. Across the scrum, the detonation and the self-destruct, the count
+of sites where the position fell further than the exchange filled is **nothing**,
+against **two** before this change on the two sites that read a missing count.
+
 Fold - To buy an amount for an investment position that allows it to return to its initial price level. This also drives Compounding Growth based on Local Volatility and is restricted by the Maximum Growth Per Cycle setting which has been set to a conservative 1% globally for Acervator’s live test and development run.
 
 ![The wizard's first page: Trading Mode, with Scrumming selected.](p16-i0.png)

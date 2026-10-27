@@ -56,6 +56,7 @@ from ..trading.scrumming.sizing import (
     GROWTH_SIDE_LOWER,
     HELD_OUTSIDE_SESSION,
     HELD_UNSETTLED_CASH,
+    booked_price,
     cycle_growth_cap_usd,
     delta_below_interval,
     eligible_fold_tranches,
@@ -1231,7 +1232,12 @@ def apply_scrum(
     when a whole-unit ``delta`` buys under one unit, which is logged. A
     ``wires`` manager lands its parked credits on the tranches the sale builds
     through ``land_wire_credits``.
+
+    ``price`` is the figure the venue would book, which ``booked_price`` moves
+    onto ``MarketRules.price_increment``, so the sale's units and proceeds are
+    priced as Live's are.
     """
+    price = booked_price(rules, price)
     if outside_session(getattr(rules, "session", None), float(ts_ms) / 1000.0):
         logger.info(
             "%s: a scrum of $%.2f is %s; nothing fills and nothing changes",
@@ -1385,8 +1391,13 @@ def apply_fold(
     ``_apply_fold_target_growth`` grows a live bot's target. A ``wires``
     manager is handed that growth through ``distribute_fold_profit``, the
     moment ``tick_phases`` hands a live bot's to ``SmartWireManager``.
+
+    ``price`` is the figure the venue would book, which ``booked_price`` moves
+    onto ``MarketRules.price_increment``, so the rebuy's units and spend are
+    priced as Live's are.
     """
     del delta
+    price = booked_price(rules, price)
     if outside_session(getattr(rules, "session", None), float(ts_ms) / 1000.0):
         logger.info(
             "%s: a fold is %s; nothing fills and the tranches stay queued",
