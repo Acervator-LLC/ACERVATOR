@@ -55,6 +55,8 @@ from .phantom_balance import (
     PhantomBalanceManager,
     TimeframeCoordinator,
     default_phantom_timeframes,
+    one_active_phantom_timeframe,
+    set_aside_note,
 )
 
 from .ata_gate_scan import (
@@ -451,6 +453,13 @@ class ScrummingBot(
                     f"'{config.exchange_id}' does not serve them. "
                     f"Remaining: {self._phantom_timeframes}."
                 )
+
+        _active, _set_aside = one_active_phantom_timeframe(self._phantom_timeframes)
+        self._phantom_timeframes = _active
+        self._phantom_tf_set_aside: list[str] = _set_aside
+        self._phantom_tf_set_aside_note: Optional[str] = (
+            set_aside_note(_active[0] if _active else "", _set_aside) or None
+        )
 
         self._phantoms_enabled = enable_phantoms
         self._phantoms_started = False
@@ -1927,8 +1936,16 @@ class ScrummingBot(
             from ..exchange.timeframes import available_timeframes
 
             _offered = set(available_timeframes(self.config.exchange_id))
-            filtered = [tf for tf in phantom_timeframes if tf in _offered]
+            served = [tf for tf in phantom_timeframes if tf in _offered]
             dropped = [tf for tf in phantom_timeframes if tf not in _offered]
+            filtered, set_aside = one_active_phantom_timeframe(served)
+            _note = set_aside_note(filtered[0] if filtered else "", set_aside)
+            # The set-aside row follows the request even where the active name
+            # does not move, so a name he cleared leaves the page.
+            self._phantom_tf_set_aside = list(set_aside)
+            self._phantom_tf_set_aside_note = _note or None
+            if set_aside:
+                caveats.append(_note)
             if list(filtered) != list(self._phantom_timeframes):
                 self._phantom_timeframes = list(filtered)
                 self._phantom_tf_dropped = list(dropped)

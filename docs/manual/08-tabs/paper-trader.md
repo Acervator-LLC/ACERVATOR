@@ -3442,6 +3442,43 @@ Read on the real Paper page model and the real Paper widget, a record carrying 0
 shows "at confidence 0.60 or above" and a record carrying the opening 0.75 shows 0.75.
 Before the change both records read the same line, with no figure in it.
 
+## 2026-10-27 - #1125 - a pair with no recorded row answers no sector at all
+
+The chain above ends at the venue's own recording, and its last step named a
+sector where the recording named none.
+
+OVERTAKEN, and the sentence and the table row above are kept as written:
+
+> A symbol the recording holds no sector for answers crypto.
+
+> | no sector recorded | crypto |
+
+Current reading: `src/gui/main_tabs/asset_class_surface.py, in symbol_class`
+answers the recorded sector, then the one sector the venue serves where it
+serves one, and an empty string where the venue serves several and the
+recording holds no row. A pair whose sector cannot be read is filed under no
+sector rather than under crypto.
+
+| the recording's sector | `market_class` answers |
+| --- | --- |
+| crypto | crypto |
+| stocks | stocks |
+| commodities | commodities |
+| forex | forex |
+| futures_perps | futures_perps |
+| no row at all | nothing |
+
+Driven on one venue serving six sectors, with its own recording holding 2029
+rows. Every recorded sector answers itself, before and after. The last row is
+what moved. A venue serving crypto alone and a venue serving stocks alone are
+the controls: each answers its own sector, and the two answers differ.
+
+A Paper row carries no declared sector of its own, so
+`src/gui/main_tabs/class_filter_surface.py, in bot_class` resolves it from the
+venue and the symbol. A Paper bot on a venue whose recording holds its pair
+answers that pair's sector. A Paper bot on a pair no recording holds now
+appears under no sector button.
+
 ## CITED AS ABSENT
 
 The two paths below are named on this page only to record what the Paper tab

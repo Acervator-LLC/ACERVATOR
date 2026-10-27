@@ -1165,11 +1165,15 @@ class BotContainer:
         # The key spells the field and the attribute: phantom_timeframes.
         # Every name the bot holds is written, however many, so a set of
         # several survives a restart instead of falling back to a default.
-        _phantom_tfs = [
-            str(one)
-            for one in (getattr(self, "_phantom_timeframes", None) or [])
-            if str(one) in ALL_TIMEFRAMES
-        ]
+        # The one active name and the names the limit set aside are both
+        # written, so a save never loses a timeframe the operator chose.
+        _phantom_held = list(getattr(self, "_phantom_timeframes", None) or []) + list(
+            getattr(self, "_phantom_tf_set_aside", None) or []
+        )
+        _phantom_tfs = sorted(
+            {str(one) for one in _phantom_held if str(one) in ALL_TIMEFRAMES},
+            key=list(ALL_TIMEFRAMES).index,
+        )
         if _phantom_tfs:
             state["phantom_timeframes"] = _phantom_tfs
 

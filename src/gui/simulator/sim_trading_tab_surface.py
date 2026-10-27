@@ -1654,7 +1654,11 @@ def ivp_feed(source: Any, bot: Any, now: Optional[float] = None) -> dict:
     import time
 
     from ...trading.ata_gate_scan import composite_net
-    from ...trading.phantom_balance import default_phantom_timeframes, tf_rank
+    from ...trading.phantom_balance import (
+        default_phantom_timeframes,
+        one_active_phantom_timeframe,
+        tf_rank,
+    )
     from ..indicator_panel import age_phrase
 
     if bot is None:
@@ -1684,9 +1688,10 @@ def ivp_feed(source: Any, bot: Any, now: Optional[float] = None) -> dict:
     phantom_rows: dict = {}
     skipped: list = []
     if bot.phantoms_enabled:
-        phantom_tfs = list(bot.phantom_timeframes) or default_phantom_timeframes(
-            timeframe
+        phantom_tfs, _set_aside = one_active_phantom_timeframe(
+            list(bot.phantom_timeframes)
         )
+        phantom_tfs = phantom_tfs or default_phantom_timeframes(timeframe)
         for phantom_tf in phantom_tfs:
             if phantom_tf == timeframe:
                 continue
