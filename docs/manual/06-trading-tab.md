@@ -2882,6 +2882,86 @@ that never ran. Across the scrum, the detonation and the self-destruct, the coun
 of sites where the position fell further than the exchange filled is **nothing**,
 against **two** before this change on the two sites that read a missing count.
 
+OVERTAKEN, quoted whole:
+
+> The self-destruct sells the whole position and empties the lot book;
+> whatever the exchange did not sell goes back as one lot at the fill price, so the
+> book never falls below what the exchange holds, and the completion line on the
+> activity log names those units.
+
+True today: the self-destruct takes off the lot book only the units the exchange
+filled, highest buy price first, and every lot that survives keeps the price it
+was bought at. A sale that filled nothing takes nothing off. The book still
+never falls below what the exchange holds, because where the surviving lots
+account for fewer units than the exchange reports, that shortfall alone is added
+as one lot at the fill price.
+
+`src/trading/scrumming_bot.py`, in `_take_filled_units_off_lots`
+
+```python
+            _take = min(_held, _remaining)
+            _lot["units"] = _held - _take
+            _remaining -= _take
+```
+
+**Why a lot's buy price is the figure at risk.** A scrum queues one fold tranche
+per lot it sells from, and each tranche carries that lot's own buy price. A book
+holding one lot at the sale price prices every later fold off a price the bot
+never paid, and the held count stays right the whole time, so a check that
+watches units alone reports nothing.
+
+**Driven on a bot holding three lots.** One unit bought at $10.00, two at
+$20.00 and three at $30.00, six units in all, the mark at $50.00. The home
+directory was redirected before the first import, every lot was built by hand,
+no exchange was contacted and no order was sent anywhere.
+
+| What the exchange said | Lot book before | Lot book now | Held after |
+| --- | --- | --- | --- |
+| filled nothing | 1 lot at $50.00 | 3 lots at $10.00, $20.00, $30.00 | 6.000000 |
+| filled 2 of 6 | 1 lot at $50.00 | 3 lots at $10.00, $20.00, $30.00 | 4.000000 |
+| sent no filled count | 1 lot at $50.00 | 3 lots at $10.00, $20.00, $30.00 | 6.000000 |
+| filled all 6 | no lots | no lots | 0.000000 |
+
+The full fill is the control. It empties the book on both sides and reads the
+same figure in every column, so a row that moved is a reading and not a writer
+that stopped running.
+
+**What a later fold reads.** The same bot was driven through a real scrum, which
+queues the tranche, and then a real fold, which discharges it.
+
+| The sale that ran first | The buy price the queued tranche carried |
+| --- | --- |
+| no self-destruct at all | $30.00 |
+| a self-destruct that filled nothing, before | $50.00 |
+| a self-destruct that filled nothing, now | $30.00 |
+
+**What else moved, swept.** The filled count was swept from 0.00 to 6.00 units
+in steps of 0.05, 121 points, plus the case where the exchange sends no filled
+count at all. Fourteen figures read the same at every one of the 122 points: the
+fill price, the fold queue dollars, the tranche count, the held count, the last
+trade price, the units the book holds in total, the outcome, the reason, the sold
+count, the sold dollars, the bot's state, the lifetime scrummed dollars, the
+trade count and the closed-tranche count. Six figures moved, and every one of
+the six is the lot book's own shape or its prices, in memory and in the saved
+document alike. The prices moved at 121 of the 122 points, and the one point
+they did not move is the full fill.
+
+**Which surfaces this reaches.** Live only. The Paper Trader and the Simulator
+place no venue order, so neither has a sale that can fill short, and neither
+`PaperBotView` nor `SimBotView` carries a self-destruct at all — both settings
+tabs ask whether the bot has one before they press. The two surfaces that
+rebuild a Live composition from a saved record read each lot's units and no
+lot's buy price, so both read 6.000000 from the repaired record and from the old
+one, against a control reading 3.000000 when a lot is dropped. Parity on a
+recovered record is closed by that reading.
+
+```
+src/simulator/fleet_source.py, in _lots_units    one lot at $50.00   6.0
+                                                 three lots         6.0
+src/paper/fleet_source.py, in _lots_units        one lot at $50.00   6.0
+                                                 three lots         6.0
+```
+
 Fold - To buy an amount for an investment position that allows it to return to its initial price level. This also drives Compounding Growth based on Local Volatility and is restricted by the Maximum Growth Per Cycle setting which has been set to a conservative 1% globally for Acervator’s live test and development run.
 
 ![The wizard's first page: Trading Mode, with Scrumming selected.](p16-i0.png)
@@ -8313,6 +8393,31 @@ row of the active sector. `class_filter_surface.empty_note` still writes the
 sentence, so the Sim tab reads "No Crypto simulated bot to show." and the
 Inspector reads "No Crypto scanned market to show.". Status and Console carry no
 subject in `TAB_SUBJECTS` and get no note.
+
+**A tab with no note is now refused before any label is read.** The sentence
+above says which tabs get no note. The figure helper asked for the sentence,
+received an empty string for those tabs, and then matched a visible label
+against it, so any blank label on the page answered as the note. The helper now
+refuses the capture as soon as the sentence comes back empty, naming the tab.
+
+`tools/capture_screen_figure.py`, in `class_note`
+
+```python
+    if not wanted.strip():
+        raise CaptureRefused(
+```
+
+Driven offscreen on a page carrying one blank label. Asked for the Trading tab,
+which carries no subject, the helper returned that blank label before and
+refuses now. The two controls read the same on both sides: the real note on a
+class tab is still found, and a class tab drawing no note is still refused for
+drawing none.
+
+| What the page held | Tab asked for | Before | Now |
+| --- | --- | --- | --- |
+| one blank label | Trading | returned the blank label | refused, naming the tab |
+| the real note and a blank label | Live | returned the note | returned the note |
+| no note | Live | refused | refused |
 
 The note does not replace a page. It is one line at the top of the page the tab
 already owns, so the Live and Paper cards named above still draw beside it.
