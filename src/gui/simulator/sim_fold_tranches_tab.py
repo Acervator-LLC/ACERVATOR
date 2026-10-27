@@ -717,7 +717,6 @@ class SimFoldTranchesTabMixin:
         )
         closed_lifetime = fold_lifetime_counter(self._bot, "_tranches_closed_lifetime")
 
-        # --- Summary section ---
         summary = QGroupBox("Fold-Tranche Cycle Health")
         sf = QFormLayout(summary)
         self._configure_form(sf)
@@ -916,7 +915,6 @@ class SimFoldTranchesTabMixin:
 
         layout.addWidget(summary)
 
-        # --- Clear tranches ---
         clear_btn = QPushButton(
             f"Clear {open_count} Fold Tranche(s)"
             if open_count
@@ -1005,7 +1003,6 @@ class SimFoldTranchesTabMixin:
         # Column headers and per-column tooltips are the
         # authoritative per-tranche documentation, not prose text.
 
-        # --- Per-tranche detail table ---
         if tranches or ext_rows:
             if ext_rows:
                 _detail_title = (

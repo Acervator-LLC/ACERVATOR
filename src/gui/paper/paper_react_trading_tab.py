@@ -875,8 +875,6 @@ if _HAS_WEBENGINE:
             )
             self._activity_log_watchdog_timer.start(WATCHDOG_INTERVAL_MS)
 
-        # -- what the window reads ----------------------------------------
-
         @property
         def page_ready(self) -> bool:
             """True once ``_on_load_finished`` has seen a successful load."""
@@ -944,8 +942,6 @@ if _HAS_WEBENGINE:
         def exchange_count(self) -> int:
             """How many venues ``add_exchange_tab`` has seated; EXCH reads it."""
             return len(self._venues)
-
-        # -- the ways in --------------------------------------------------
 
         def _way_in(self, action: str) -> None:
             """Run the corner or card press ``action``: ``_add_exchange`` for
@@ -1210,8 +1206,6 @@ if _HAS_WEBENGINE:
             text, level = tab_surface.feed_line(summary)
             self.log(text, level)
 
-        # -- what the window pushes ---------------------------------------
-
         def show_models(self, fresh: Any) -> bool:
             """Hold one payload per bridge method and draw them on the page;
             a page built later still opens on what the tab last held."""
@@ -1350,8 +1344,6 @@ if _HAS_WEBENGINE:
                 self._panel.bars_b.step()
             self.show_votes(panel_payload(self._panel))
             return feed
-
-        # -- what the operator presses ------------------------------------
 
         def _create_bot(
             self,
@@ -1730,8 +1722,6 @@ if _HAS_WEBENGINE:
                 venue = self._venues.get(venue_of_ask(method, params))
                 if venue is not None and venue.answer(method, params):
                     self._venue_published()
-
-        # -- construction -------------------------------------------------
 
         def showEvent(self, event) -> None:  # noqa: N802
             """Build the web view the first time the tab is shown."""

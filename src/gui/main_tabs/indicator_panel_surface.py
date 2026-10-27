@@ -80,7 +80,6 @@ HEADER = {
 TITLE_HEADING_PROPERTY = "heading"
 LOCKS_MUTED_PROPERTY = "muted"
 
-# -- the two arrows either side of the bot dropdown -------------------
 
 #: The glyphs, the size and the family the Charts tab's own arrows carry,
 #: imported rather than copied so the two control rows cannot drift.
@@ -129,8 +128,6 @@ def arrows_payload() -> dict:
         "style_sheet": ARROW_STYLE_SHEET,
     }
 
-
-# -- the twelve indicator columns -------------------------------------
 
 #: (key, short label, group) -- T=Trend, M=Momentum, S=Structure.
 INDICATOR_COLS = [
@@ -208,7 +205,6 @@ CONF_BAR_FILLED = "█"
 CONF_BAR_EMPTY = "░"
 CONF_BAR_CELLS = 10
 
-# -- cell colours ------------------------------------------------------
 
 BULLISH_TEXT_COLOR = "#00ff88"
 BEARISH_TEXT_COLOR = "#ff3366"
@@ -261,7 +257,6 @@ CELL_LIFT_RGB = (255, 255, 255)
 #: still placed on the grid rather than absent.
 PILLAR_MINIMUM_FRACTION = 0.02
 
-# -- the confidence bar graph -----------------------------------------
 
 BAR_COLORS = {
     "BULLISH": (0, 255, 136),
@@ -318,7 +313,6 @@ BARS_GRID_FONT = ("Consolas", 7)
 BARS_LABEL_FONT = ("Consolas", 8)
 BARS_ARROW_FONT = ("Segoe UI", 12)
 
-# -- the table ---------------------------------------------------------
 
 ROW_HEIGHT_PX = 28
 TABLE_SLACK_ROWS = 2
@@ -346,7 +340,6 @@ UNKNOWN_TIMEFRAME_RANK = 99
 BOT_SELECTED_TOPIC = "indicator.bot_selected"
 BUS_TOPICS = [BOT_SELECTED_TOPIC]
 
-# -- the bot selector --------------------------------------------------
 
 SELECTOR_PLACEHOLDER_TEXT = "(select a bot)"
 SELECTOR_PLACEHOLDER_VALUE = ""
@@ -390,8 +383,6 @@ def universal_dot_payload(*, masked: bool) -> dict:
     found["mask_text"] = PRIVACY_MASK_TEXT
     return found
 
-
-# -- the staleness banner and the rate strip ---------------------------
 
 STALENESS_TEXT_COLOR = "#ffb020"
 STALENESS_BACKGROUND_RGB = (60, 45, 15)

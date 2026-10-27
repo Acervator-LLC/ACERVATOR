@@ -138,7 +138,6 @@ class TradingTabMixin:
 
     def _build_trading_tab(self) -> None:
         """Build the Trading tab and add it to the main tab widget."""
-        # --- Tab 1: Trading ---
         trading_tab = QWidget()
         trading_layout = QVBoxLayout(trading_tab)
         trading_layout.setContentsMargins(2, 2, 2, 2)

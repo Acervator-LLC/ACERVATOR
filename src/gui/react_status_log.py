@@ -310,8 +310,6 @@ if _HAS_WEBENGINE:
             self._layout.setContentsMargins(0, 0, 0, 0)
             self._layout.setSpacing(0)
 
-        # -- what the window already calls ----------------------------------
-
         def log(
             self,
             message: str,
@@ -358,8 +356,6 @@ if _HAS_WEBENGINE:
             """The counters the Activity-Log watchdog polls every 60 s."""
             return self._log.health_stats()
 
-        # -- what the page reports back --------------------------------------
-
         def run_action(self, payload: str) -> None:
             """Answer one bridge call the page made and push the new payload."""
             if self._stopped:
@@ -379,8 +375,6 @@ if _HAS_WEBENGINE:
             self._stopped = True
             if self._page_ready and self._web is not None:
                 self._web.page().runJavaScript(STOP_FEEDS_JS)
-
-        # -- the models the page is built from --------------------------------
 
         def models(self) -> dict:
             """A copy of the payloads the page was last built or pushed with."""
@@ -411,8 +405,6 @@ if _HAS_WEBENGINE:
             """Build the web view the first time the pane is shown."""
             super().showEvent(event)
             self.build_panel()
-
-        # -- internals ---------------------------------------------------------
 
         def _build_models(self) -> dict:
             """The payload of every bridge method the page's modules ask for."""

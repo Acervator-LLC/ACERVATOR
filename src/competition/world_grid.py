@@ -681,8 +681,6 @@ class PoaWorld:
             "level": mean_level,
         }
 
-    # -- The fact, the knowledge and the extraction --------------------------
-
     def discover(
         self,
         world_id: str,
@@ -869,8 +867,6 @@ class PoaWorld:
         self.world(world_id)
         return world_id in self._published
 
-    # -- What the store holds ------------------------------------------------
-
     def world_summary(self, world_id: str) -> dict:
         """Every count this world holds, beside the figures its budget rests on."""
         record = self.world(world_id)
@@ -895,8 +891,6 @@ class PoaWorld:
             "base_viewrange_squares": squares_at_radius(BASE_VIEWRANGE_RADIUS),
         }
 
-    # -- Internals -----------------------------------------------------------
-
     def _post(self, sender: str, function: str, event: str, args: dict) -> str:
         """Send one world record to the chain and emit its event."""
         chain = self._testnet.chain
@@ -920,8 +914,6 @@ class PoaWorld:
         self._remember(world_id, address, reference)
         self.save()
         logger.info("%s now knows %s in world %s", address, reference, world_id)
-
-    # -- Persistence ---------------------------------------------------------
 
     def save(self) -> None:
         """Write the worlds, the seeds, the breaches, the zones and the facts."""

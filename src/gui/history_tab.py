@@ -357,7 +357,6 @@ if _HAS_QT:
 
             outer.addLayout(foot)
 
-        # -- what the fetch, the filter and the render read and write ----
         # A variant that draws this tab another way overrides these and
         # inherits the fetch, filter, page and export behaviour unchanged.
 

@@ -620,7 +620,6 @@ if _HAS_QT:
             layout.setContentsMargins(0, 0, 0, 0)
             layout.setSpacing(2)
 
-            # --- Header with bot selector ---
             header = QHBoxLayout()
             self._header_row = header
             header.setContentsMargins(4, 2, 4, 2)

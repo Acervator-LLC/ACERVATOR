@@ -649,8 +649,6 @@ class SharedTestnetBridge(QObject):
         )
         return ledger
 
-    # ── Public API ────────────────────────────────────────────────────
-
     @property
     def testnet(self):
         """Read the shared ``LocalTestnet``; ``request_competition`` is
@@ -725,8 +723,6 @@ class SharedTestnetBridge(QObject):
             self._schedule_save()
             self.chain_updated.emit()
         self.competition_completed.emit(result)
-
-    # ── Persistence ────────────────────────────────────────────────────
 
     def _schedule_save(self) -> None:
         """Start ``_persist_timer``, which coalesces rapid updates into

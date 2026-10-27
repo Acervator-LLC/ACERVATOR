@@ -11,8 +11,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional
 
-# ── Supply constants ──────────────────────────────────────────────────────────
-
 TOTAL_SUPPLY_CAP = 10_000_000  # Hard cap — immutable
 GENESIS_SEASON = 1
 INITIAL_REWARD = 500_000  # season 1 pool, in ACRV tokens
@@ -40,9 +38,6 @@ def cumulative_supply(through_season: int) -> int:
     """Total tokens that could have been awarded through a given season."""
     total = sum(season_reward(s) for s in range(1, through_season + 1))
     return min(total, TOTAL_SUPPLY_CAP)
-
-
-# ── Rarity tiers ──────────────────────────────────────────────────────────────
 
 
 @dataclass(frozen=True)

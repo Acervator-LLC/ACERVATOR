@@ -27,8 +27,6 @@ from typing import List, Optional
 
 from .bot_identity import BotIdentity, TradeRecord
 
-# ── Merkle helpers ────────────────────────────────────────────────────────────
-
 
 def _sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
@@ -96,9 +94,6 @@ def verify_proof(leaf_hash: str, proof: List[dict], root: str) -> bool:
     return current == root
 
 
-# ── Merkle log ────────────────────────────────────────────────────────────────
-
-
 class MerkleTradeLog:
     """
     Append-only log of signed trade records backed by a Merkle tree.
@@ -122,8 +117,6 @@ class MerkleTradeLog:
         self._leaves: List[str] = []
         self._log_path = Path(log_path) if log_path else None
         self._opened_at = time.time()
-
-    # ── Append ────────────────────────────────────────────────────────────────
 
     def append(self, record: TradeRecord, skip_sig_verify: bool = False) -> str:
         """
@@ -152,8 +145,6 @@ class MerkleTradeLog:
         self._records.append(record)
         self._leaves.append(leaf)
         return leaf
-
-    # ── Tree state ────────────────────────────────────────────────────────────
 
     @property
     def root(self) -> str:
@@ -212,8 +203,6 @@ class MerkleTradeLog:
             "first_trade_ts": self._records[0].timestamp,
             "last_trade_ts": self._records[-1].timestamp,
         }
-
-    # ── Persistence ───────────────────────────────────────────────────────────
 
     def save(self):
         """Save the full log to disk; it never overwrites, it appends."""

@@ -308,7 +308,6 @@ class SettingsTabMixin:
         info.setWordWrap(True)
         layout.addWidget(info)
 
-        # --- Trading Mode Settings ---
         mode_group = QGroupBox("Trading Parameters")
         mf = QFormLayout(mode_group)
         self._configure_form(mf)
@@ -730,7 +729,6 @@ class SettingsTabMixin:
 
         layout.addWidget(scrum_group)
 
-        # --- Advanced ---
         adv_group = QGroupBox("Advanced Scrumming")
         af = QFormLayout(adv_group)
         self._configure_form(af)
@@ -832,7 +830,6 @@ class SettingsTabMixin:
 
         layout.addWidget(adv_group)
 
-        # --- Hedge Rebalance ---
         hedge_group = QGroupBox("Hedge Rebalance")
         hf = QFormLayout(hedge_group)
         self._configure_form(hf)

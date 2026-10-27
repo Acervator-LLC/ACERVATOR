@@ -646,8 +646,6 @@ class DungeonRegister:
         with self._lock:
             return key in self._entries and key not in self._exits
 
-    # -- Readers -------------------------------------------------------------
-
     def entry(self, entry_id: str) -> DungeonEntry:
         """Return the ``DungeonEntry`` ``entry_id`` names, refusing one nobody holds."""
         key = _as_identifier(entry_id, "entry_id")
@@ -740,8 +738,6 @@ class DungeonRegister:
     def absent_notes(self) -> dict:
         """Return every mechanism ``ABSENT_MECHANISMS`` names and what it waits on."""
         return dict(ABSENT_MECHANISMS)
-
-    # -- Refusals ------------------------------------------------------------
 
     def _require_party_mode(self, party: Party, variant: EventVariant) -> None:
         """Raise unless ``party`` was formed in the mode ``variant`` runs."""
@@ -849,8 +845,6 @@ class DungeonRegister:
             )
             raise DungeonEntryError(refusal)
         return str(held[0])
-
-    # -- Durability ----------------------------------------------------------
 
     def to_dict(self) -> dict:
         """Return every entry and exit as a JSON-safe dict ``load`` replays."""

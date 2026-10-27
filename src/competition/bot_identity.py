@@ -36,8 +36,6 @@ import hashlib
 import hmac
 import secrets
 
-# ── Trade record ──────────────────────────────────────────────────────────────
-
 
 @dataclass
 class TradeRecord:
@@ -87,9 +85,6 @@ class TradeRecord:
         return cls(**d)
 
 
-# ── Bot identity ──────────────────────────────────────────────────────────────
-
-
 class BotIdentity:
     """
     Manages a bot's Ed25519 keypair.  The private key never leaves this object
@@ -116,8 +111,6 @@ class BotIdentity:
         self._created_at: float = 0.0
         self._fallback_secret: bytes = b""
         self._fallback_privkey_b64: str = ""
-
-    # ── Public API ────────────────────────────────────────────────────────────
 
     @property
     def bot_id(self) -> str:

@@ -138,7 +138,6 @@ if _HAS_QT:
             root.setContentsMargins(12, 12, 12, 12)
             root.setSpacing(10)
 
-            # --- Header ----------------------------------------------
             header = QHBoxLayout()
             title_lbl = QLabel(f"<b>{self._proposal.get('title', '')}</b>")
             title_lbl.setStyleSheet("font-size: 14px;")
@@ -154,7 +153,6 @@ if _HAS_QT:
             header.addWidget(badge)
             root.addLayout(header)
 
-            # --- Body: two columns -----------------------------------
             body = QHBoxLayout()
             body.setSpacing(12)
 
@@ -221,7 +219,6 @@ if _HAS_QT:
             body.addWidget(wires_box, 1)
             root.addLayout(body, 1)
 
-            # --- Adopt summary + notes -------------------------------
             new_bots = sum(
                 1
                 for b in self._proposal.get("bots", [])
@@ -244,7 +241,6 @@ if _HAS_QT:
                 nl.setStyleSheet("color: #aaa; font-size: 11px;")
                 root.addWidget(nl)
 
-            # --- Buttons ---------------------------------------------
             btn_row = QHBoxLayout()
             btn_row.addStretch()
             self._cancel_btn = QPushButton("Cancel")
@@ -364,7 +360,6 @@ if _HAS_QT:
             # entry hint instead of the empty sentence the page draws.
             self._render()
 
-        # ── external API ─────────────────────────────────────────────
         def set_proposal_source(
             self,
             getter: Callable[[], list[dict]],
@@ -530,7 +525,6 @@ if _HAS_QT:
             else:
                 self._save_error = ""
 
-        # ── rendering ────────────────────────────────────────────────
         def _shown(self) -> int:
             """Which proposal is on screen, held inside the list the pane holds."""
             if not self._proposals:

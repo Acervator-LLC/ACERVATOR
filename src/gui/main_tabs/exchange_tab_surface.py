@@ -589,8 +589,6 @@ class ExchangeTabModel:
         self.refresh_privacy_mode_btn_style()
         self.calls.append([TAB_BUILT, exchange_id])
 
-    # ----- header -----
-
     def build_news_ticker(self) -> None:
         """Put the news strip between the Privacy button and "+ New Bot".
 
@@ -665,8 +663,6 @@ class ExchangeTabModel:
             return float(self.rate_reader())
         except Exception:
             return NO_CALL_RATE
-
-    # ----- the two tables -----
 
     def scrum_clicked(self, bot_id: str) -> None:
         """A Detail button on the Scrumming table was pressed."""
@@ -800,8 +796,6 @@ class ExchangeTabModel:
             }
         )
 
-    # ----- the command bar -----
-
     def cmd(self, command: str, shift_held: bool = False) -> None:
         """Send one command to the bot the operator highlighted.
 
@@ -869,8 +863,6 @@ class ExchangeTabModel:
             return
         self.fleet_commands_sent.append(fleet_command)
         self.on_fleet_cmd(fleet_command)
-
-    # ----- Privacy Mode -----
 
     def on_global_privacy_clicked(self) -> None:
         """Flip every registered privacy mask in one shot."""

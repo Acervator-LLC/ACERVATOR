@@ -427,8 +427,6 @@ if _HAS_WEBENGINE:
             self._pull_rate_timer.timeout.connect(self._update_pull_rate_label)
             self._pull_rate_timer.start()
 
-        # -- what the window already calls --------------------------------
-
         def _update_pull_rate_label(self) -> None:
             """Rewrite the data-pool line from ``data_pool_summary`` and publish it.
 
@@ -534,8 +532,6 @@ if _HAS_WEBENGINE:
             self._scrum.refresh_header_dots()
             self._publish()
 
-        # -- what the page reports back ------------------------------------
-
         def run_action(self, payload: str) -> None:
             """Answer one bridge call the page made and push the new payloads."""
             if self._stopped:
@@ -549,8 +545,6 @@ if _HAS_WEBENGINE:
             params = asked.get("params")
             self._answer(method, params if isinstance(params, dict) else {})
             self._publish()
-
-        # -- the models the page is built from -----------------------------
 
         def models(self) -> dict:
             """A copy of the payloads the page was last built or pushed with."""
@@ -581,8 +575,6 @@ if _HAS_WEBENGINE:
             """Build the web view the first time the venue's page is shown."""
             super().showEvent(event)
             self.build_panel()
-
-        # -- internals ------------------------------------------------------
 
         def _build_models(self) -> dict:
             """The payload of every bridge method the page's modules ask for."""

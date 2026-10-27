@@ -636,8 +636,6 @@ class CryptoNewsTickerModel:
         self.fetches_started = 0
         self.calls.append([TICKER_BUILT])
 
-    # ----- the two waits -----
-
     def start(self) -> None:
         """Fetch now and start both waits."""
         self.force_refresh()
@@ -653,8 +651,6 @@ class CryptoNewsTickerModel:
         self.calls.append([CYCLE_STOPPED])
         self.calls.append([REFRESH_STOPPED])
         self.stop_worker()
-
-    # ----- the fetch -----
 
     def force_refresh(self) -> None:
         """Start a fetch now, unless one is already running.
@@ -778,8 +774,6 @@ class CryptoNewsTickerModel:
         self.worker = None
         retire_worker(thread, self.live_workers)
         self.calls.append([WORKER_RETIRED])
-
-    # ----- what the pointer does -----
 
     def handle_event(self, event_type: int, on_label: bool = True) -> bool:
         """One pointer event on the strip. True when the strip took it."""

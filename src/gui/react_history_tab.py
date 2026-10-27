@@ -180,8 +180,6 @@ if _HAS_QT and _HAS_WEBENGINE:
             self._web.setHtml(tab_html())
             layout.addWidget(self._web, 1)
 
-        # -- the table host the render path pushes through ---------------
-
         @property
         def page_ready(self) -> bool:
             """True once ``_on_load_finished`` has seen a successful load."""
@@ -206,8 +204,6 @@ if _HAS_QT and _HAS_WEBENGINE:
                 return False
             self._web.page().runJavaScript(ROW_COUNT_JS, callback)
             return True
-
-        # -- what the page reports back ----------------------------------
 
         def answer_call(self, payload: str) -> None:
             """Apply one request from the page and settle its promise."""
@@ -322,8 +318,6 @@ if _HAS_QT and _HAS_WEBENGINE:
             if self._status is not None:
                 self._status = None
                 self.set_model(self._build_model())
-
-        # -- internals ----------------------------------------------------
 
         def _apply_request(self, params: dict) -> None:
             """Take the page's action, filters and page number."""

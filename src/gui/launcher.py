@@ -68,13 +68,11 @@ if _HAS_QT:
             layout.setContentsMargins(30, 30, 30, 30)
             layout.setSpacing(12)
 
-            # Icon
             icon = QLabel(icon_char)
             icon.setAlignment(Qt.AlignCenter)
             icon.setStyleSheet(f"font-size: 64px; color: {color};")
             layout.addWidget(icon)
 
-            # Title
             title_lbl = QLabel(title)
             title_lbl.setAlignment(Qt.AlignCenter)
             title_lbl.setStyleSheet(
@@ -139,7 +137,6 @@ if _HAS_QT:
             layout.setContentsMargins(40, 30, 40, 30)
             layout.setSpacing(20)
 
-            # Title
             title = QLabel("QUANTUM AUTO TRADER")
             title.setAlignment(Qt.AlignCenter)
             title.setStyleSheet(
@@ -159,7 +156,6 @@ if _HAS_QT:
             cards = QHBoxLayout()
             cards.setSpacing(40)
 
-            # Crypto card
             crypto_card = ModeCard(
                 title="Crypto Trading",
                 subtitle=CRYPTO_SUBTITLE,
@@ -170,7 +166,6 @@ if _HAS_QT:
             crypto_card.clicked.connect(self.crypto_selected.emit)
             cards.addWidget(crypto_card)
 
-            # Stocks card
             stocks_card = ModeCard(
                 title="Stock Trading",
                 subtitle=STOCKS_SUBTITLE,
@@ -183,7 +178,6 @@ if _HAS_QT:
 
             layout.addLayout(cards)
 
-            # Footer
             footer = QLabel(
                 "Both modes can run simultaneously  •  "
                 "Shared analytics, risk management, and notifications"

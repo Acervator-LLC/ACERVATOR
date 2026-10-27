@@ -229,8 +229,6 @@ class GuildRoster:
             raise UnknownGuildError(refusal)
         return found
 
-    # -- Membership ----------------------------------------------------------
-
     def found(self, name: object, founder: object) -> Guild:
         """Open a guild under ``name`` with ``founder`` as first member and officer.
 
@@ -352,8 +350,6 @@ class GuildRoster:
         guild = self.guild_of(address)
         return None if guild is None else guild.treasury
 
-    # -- The underwrite check -------------------------------------------------
-
     def require_underwrite(self, officer: object, actor: object) -> Guild:
         """Return the guild whose treasury ``officer`` may commit to ``actor``'s action.
 
@@ -391,8 +387,6 @@ class GuildRoster:
             raise MembershipError(refusal)
         return guild
 
-    # -- The party check ------------------------------------------------------
-
     def require_party(self, mode: EventMode, party: Sequence[object]) -> Guild | None:
         """Return the guild a party shares, or None for a mode needing no guild.
 
@@ -421,8 +415,6 @@ class GuildRoster:
             )
             raise PartyError(refusal)
         return guild
-
-    # -- Reconstruction and readout ------------------------------------------
 
     def to_dict(self) -> dict:
         """Return every guild as a JSON-safe dict ``from_dict`` rebuilds."""
@@ -531,8 +523,6 @@ class GuildRoster:
             "treasury_bucket": TREASURY_LEDGER_BUCKET,
             "guilds": self.roster_rows(),
         }
-
-    # -- Internals ------------------------------------------------------------
 
     def _seated(self, party: Sequence[object]) -> list[str]:
         """Return a party as addresses, refusing one address seated twice."""

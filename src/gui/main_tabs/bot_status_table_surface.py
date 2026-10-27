@@ -1382,8 +1382,6 @@ class BotStatusTableModel:
         self.sort_descending = False
         self.refresh_header_dots()
 
-    # ----- headers -----
-
     def refresh_header_dots(self) -> None:
         """Rebuild the ten column headers, each with its own dot's state."""
         try:
@@ -1437,8 +1435,6 @@ class BotStatusTableModel:
         self.refresh_header_dots()
         if self.last_statuses:
             self.update_bots(self.last_statuses)
-
-    # ----- rows -----
 
     def set_row_count(self, count: int) -> None:
         """Make room for `count` rows, keeping the rows that already fit.
@@ -1838,8 +1834,6 @@ class BotStatusTableModel:
             "tooltip": DETAIL_TIP,
         }
 
-    # ----- selection -----
-
     def get_selected_bot_id(self) -> str:
         """The bot the highlight is on, or nothing when none is highlighted."""
         if not self.has_selection:
@@ -1917,8 +1911,6 @@ class BotStatusTableModel:
         found = self.get_selected_bot_id()
         self.calls.append([ROW_HIGHLIGHTED, wanted, found])
         return found
-
-    # ----- the five things the operator can press -----
 
     def on_row_pressed(self, bot_id: str) -> str:
         """Answer a press on one row and report the bot it leaves selected.
