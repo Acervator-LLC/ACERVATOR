@@ -319,6 +319,55 @@ held, the scrum flag changed on 1,601 rows and the final scrum decision on none.
 The full reading, the method, the coordinator's answer and the swept figures are
 on [the Indicator Voting Panel page](07-indicators.md).
 
+**The operator's ruling, 2026-10-27.** Asked what should create a phantom lock,
+he answered:
+
+> This is a strange question. A phantom bot is simply a higher timeframe read
+> that is piped through a parallel trading gate logic chain. It is intended to
+> improve rather than restrict ripe scrums or folds so it must work on both
+> sides. It should be thought of as an optional guardian angel that may optimize
+> trades.
+
+**Two clauses above are overtaken.** Neither is edited and neither is removed.
+They read:
+
+> The ripe-harvest override still force-passes the gate on a ripe row, which is
+> why a held lock changes no trade.
+
+> fold_ok_midline = bb_pos < 0.50
+
+**The current reading.** The fold flag carries the lock too, so a held lock does
+change a trade. The clause remains correct about the scrum side, where a ripe row
+is above the midline and the override force-passes the gate anyway. On the fold
+side there is no such override below the midline, so the refusal stands and the
+fold is held.
+
+`src/trading/scrumming_bot.py` — `ScrummingBot.tick`, the fold flag
+
+```python
+fold_ok_midline = (bb_pos < 0.50) and not self._phantom_locked
+```
+
+**Driven.** A bot was built by hand with a stand-in venue that refuses every
+order, and the real tick was driven over 801 window levels an arm, which moved
+the band position from -0.558 to 1.559. With phantom bots off, and with them on
+and no lock held, every recorded verdict is identical before and after. With
+them on and a lock held, the fold gate's refusal appears on the 398 rows below
+the midline, and the fold decision itself moves on 362 of them. No scrum reading
+moves on any row.
+
+```
+801 rows an arm, two trees compared row by row
+
+phantoms off, lock held     every verdict identical
+phantoms on,  no lock       every verdict identical
+phantoms on,  lock held     fold decision differs on   362
+                            scrum readings differ on     0
+```
+
+What should create a lock on the coordinator is still his, and nothing creates
+one today.
+
 **The saved record carries the timeframe.** The bot writes every name it holds
 under the key `phantom_timeframes`. The fleet load reads that key and gives the
 list to the bot it builds. The key, the change field and the bot attribute now
