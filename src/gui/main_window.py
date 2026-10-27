@@ -2720,14 +2720,18 @@ if _HAS_QT:
                 )
 
         def _on_tf_lock_changed(self, event) -> None:
-            """Set `_lock_timeframe` on each ScrummingBot coordinator from the event."""
+            """Sets `_phantom_lock_timeframe` on each bot and on its coordinator."""
             tf = event.data.get("timeframe", "")
             if not self._bot_manager:
                 return
             from ..trading.scrumming_bot import ScrummingBot
+            from .main_tabs.phantom_bots_tab_surface import LOCK_TIMEFRAME_ATTRIBUTE
 
             for bot in self._bot_manager._bots.values():
-                if isinstance(bot, ScrummingBot) and hasattr(bot, "_coordinator"):
+                if not isinstance(bot, ScrummingBot):
+                    continue
+                setattr(bot, LOCK_TIMEFRAME_ATTRIBUTE, tf)
+                if hasattr(bot, "_coordinator"):
                     bot._coordinator._lock_timeframe = tf
             if tf:
                 self._status_log.log(

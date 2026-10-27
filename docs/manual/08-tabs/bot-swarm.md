@@ -1590,4 +1590,14 @@ Every one fits the 88-pixel card. The Qt card and the React card take the same
 sizes from `bot_node_surface`, so the two builds draw the same eight strings in
 the same places.
 
+## CITED AS ABSENT
+
+The path below is named on this page only to record which renderer page the
+dollar registry used before its removal. It does not open on disk.
+
+- `src/gui/web/capital_registry.js` — the renderer page the dollar registry fed.
+  Commit `d72f69cf` removed the registry, its Qt table, its view model and this
+  page together. The renderer manifest names 68 modules and every one has a file
+  on disk.
+
 Back to [the subsystem index](README.md).
