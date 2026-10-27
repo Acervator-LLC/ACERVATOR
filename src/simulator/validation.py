@@ -136,6 +136,10 @@ CAUSES = (TAPE_CAUSE, FIXTURE_CAUSE, CHAIN_CAUSE)
 SCRUM_FIXTURE = "scrum"
 FOLD_FIXTURE = "fold"
 
+#: The lights whose gate term carries the phantom lock, so an unrecoverable
+#: lock is a fixture cause rather than a chain one.
+LOCK_READING_LIGHTS = (("S", "BB"), ("F", "MID"))
+
 #: The recorded fixture fields ``rerun_context`` reads for each light.
 LABEL_FIELDS: dict[tuple[str, str], tuple[tuple[str, str], ...]] = {
     ("S", "TGT"): ((SCRUM_FIXTURE, "delta"),),
@@ -614,7 +618,7 @@ def light_cause(
             return FIXTURE_CAUSE
         if tape_moved(row, context, light.bank):
             return TAPE_CAUSE
-        if key == ("S", "BB") and not locked_known:
+        if key in LOCK_READING_LIGHTS and not locked_known:
             return FIXTURE_CAUSE
         return CHAIN_CAUSE
     if light.driven_by == RECORD:

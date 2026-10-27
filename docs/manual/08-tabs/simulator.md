@@ -5882,6 +5882,21 @@ counts a line `differs by cause: tape N, fixture N, chain N` with the three
 definitions, in both files. No tolerance is widened and no gate is changed to
 make a light agree; the chain is Live's.
 
+**Two lights read the phantom lock, not one.** The lock used to reach only the
+scrum band term, so an unrecoverable lock was a fixture cause on the scrum band
+light alone. The fold midline term now carries the lock as well, so the same
+unrecoverable lock is a fixture cause on the fold midline light too. One
+declaration names both lights and the classifier reads it.
+
+`src/simulator/validation.py` — the two lights, and the clause that reads them
+
+```python
+LOCK_READING_LIGHTS = (("S", "BB"), ("F", "MID"))
+
+if key in LOCK_READING_LIGHTS and not locked_known:
+    return FIXTURE_CAUSE
+```
+
 ### The empty cases name the missing source
 
 The run still runs when a source is empty, and the report's Not verified
