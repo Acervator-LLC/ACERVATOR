@@ -97,6 +97,29 @@ PULL_RATE_TOOLTIP = (
     "Coalescing covers OHLCV and balances."
 )
 PULL_RATE_INTERVAL_MS = 1000
+POOL_STOPPED_STYLE = (
+    f"background-color:{ds.MAIN_ALERT_SURFACE}; color:{ds.TEXT_MAX}; "
+    f"border:1px solid {ds.ERROR}; border-radius:4px; "
+    "font-size:13px; font-weight:bold; padding:6px 8px;"
+)
+POOL_STOPPED_TOOLTIP = (
+    "Appears only while nothing is coming back from this venue. "
+    "The age it names is the time since the last reading of any "
+    "kind landed in the data pool. Single slots passing their "
+    "time to live is ordinary and does not raise this line."
+)
+POOL_STOPPED_FORMAT = (
+    "DATA POOL STOPPED REFRESHING — nothing has come back from "
+    "{venue} for {span}. Every price, balance and ammo figure below is "
+    "at least that old. The platform clears a block of its own on the "
+    "next fetch; restart only if this line stays."
+)
+NO_POOL_STOP_TEXT = ""
+CLEARED_TAIL_FORMAT = "  ·  {count} {noun} cleared"
+CLEARED_ONE_NOUN = "blocked fetch"
+CLEARED_MANY_NOUN = "blocked fetches"
+NO_CLEARED_TAIL = ""
+NO_CLEARANCES = 0
 PULL_RATE_IDLE_TEXT = "Data pool: idle (no active bots)"
 PULL_RATE_AWAITING_FORMAT = (
     "Data pool: {slots} slots · awaiting first " "fetch  ·  cache-hit {hit:.0f}%"
@@ -222,6 +245,8 @@ NEWS_TICKER_FAILED = "news.failed"
 HEADER_STRETCH_ADDED = "news.stretch"
 PULL_RATE_UNREADABLE = "pull.unreadable"
 PULL_RATE_WRITTEN = "pull.written"
+POOL_STOPPED_WRITTEN = "pool.stopped.written"
+NO_CALL_RATE = 0.0
 ROUTED = "bots.routed"
 SECTIONS_SHOWN = "sections.shown"
 COMMAND_REFUSED = "command.refused"
@@ -287,6 +312,41 @@ def hit_rate_pct(hits: float, fetches: float) -> float:
     return PERCENT_SCALE * hits / total
 
 
+def cleared_words(wedged_locks_cleared) -> str:
+    """The data-pool line's tail naming blocked fetches the pool cleared.
+
+    Empty at a count of zero, which is every run that never stopped, so the
+    line carries the figure only once the platform has recovered a stop of its
+    own accord.
+    """
+    try:
+        count = int(wedged_locks_cleared or NO_CLEARANCES)
+    except (TypeError, ValueError):
+        return NO_CLEARED_TAIL
+    if count <= NO_CLEARANCES:
+        return NO_CLEARED_TAIL
+    noun = CLEARED_ONE_NOUN if count == 1 else CLEARED_MANY_NOUN
+    return CLEARED_TAIL_FORMAT.format(count=count, noun=noun)
+
+
+def pool_stopped_words(exchange_name: str, freshest_age_s, calls_per_minute) -> str:
+    """The red line shown while one venue's fetching has stopped, or empty.
+
+    ``fetch_stall.stall_seconds`` answers the span, so every surface drawing
+    this line and the Console line read one verdict with one threshold.
+    """
+    try:
+        from ...exchange.fetch_stall import span_words, stall_seconds
+
+        stopped_for = stall_seconds(freshest_age_s, calls_per_minute)
+    except Exception as exc:
+        logger.debug("pool-stopped line could not be read: %s", exc)
+        return NO_POOL_STOP_TEXT
+    if stopped_for is None:
+        return NO_POOL_STOP_TEXT
+    return POOL_STOPPED_FORMAT.format(venue=exchange_name, span=span_words(stopped_for))
+
+
 def pull_rate_text(summary: dict) -> str:
     """The data-pool line under the "+ New Bot" button, for one pool report."""
     tick = summary["ticker_slots"]
@@ -309,17 +369,21 @@ def pull_rate_text(summary: dict) -> str:
     fresh = summary.get("freshest_age_s")
     old = summary.get("oldest_age_s")
     stale = summary.get("stale_slots", NO_SLOTS)
+    cleared = cleared_words(summary.get("wedged_locks_cleared", NO_CLEARANCES))
     if fresh is None:
-        return PULL_RATE_AWAITING_FORMAT.format(slots=slots, hit=hit)
-    return PULL_RATE_FULL_FORMAT.format(
-        slots=slots,
-        tick=tick,
-        ohlcv=ohlcv,
-        bal=bal,
-        fresh=fresh,
-        old=old,
-        stale=stale,
-        hit=hit,
+        return PULL_RATE_AWAITING_FORMAT.format(slots=slots, hit=hit) + cleared
+    return (
+        PULL_RATE_FULL_FORMAT.format(
+            slots=slots,
+            tick=tick,
+            ohlcv=ohlcv,
+            bal=bal,
+            fresh=fresh,
+            old=old,
+            stale=stale,
+            hit=hit,
+        )
+        + cleared
     )
 
 
@@ -487,6 +551,7 @@ class ExchangeTabModel:
         pool_reader=None,
         window_refresh=None,
         on_fleet_cmd=None,
+        rate_reader=None,
     ) -> None:
         self.exchange_id = exchange_id
         self.exchange_name = exchange_name
@@ -498,6 +563,7 @@ class ExchangeTabModel:
         self.status_log = status_log
         self.news_ticker_factory = news_ticker_factory
         self.pool_reader = pool_reader
+        self.rate_reader = rate_reader
         self.window_refresh = window_refresh
         self.calls: list = []
         self.pins: list = []
@@ -509,6 +575,7 @@ class ExchangeTabModel:
         self.privacy_label_text = PRIVACY_LABEL_OFF
         self.privacy_style_sheet = PRIVACY_STYLE_OFF
         self.pull_rate_label_text = PULL_RATE_INITIAL_TEXT
+        self.pool_stopped_label_text = NO_POOL_STOP_TEXT
         self.news_ticker = None
         self.news_ticker_started = 0
         self.header_stretch = False
@@ -566,7 +633,13 @@ class ExchangeTabModel:
         self.calls.append([BOT_WIZARD_CLOSED, self.exchange_id])
 
     def update_pull_rate_label(self) -> None:
-        """Rewrite the data-pool freshness line under the "+ New Bot" button."""
+        """Rewrite the data-pool freshness line and the stop line above the
+        bot tables.
+
+        An unreadable pool leaves both lines carrying the words they already
+        show, so a venue whose report cannot be read does not clear a stop the
+        previous tick reported.
+        """
         try:
             summary = self.pool_reader() if self.pool_reader else None
         except Exception:
@@ -576,7 +649,22 @@ class ExchangeTabModel:
             self.calls.append([PULL_RATE_UNREADABLE])
             return
         self.pull_rate_label_text = pull_rate_text(summary)
+        self.pool_stopped_label_text = pool_stopped_words(
+            self.exchange_name,
+            summary.get("freshest_age_s"),
+            self._venue_call_rate(),
+        )
         self.calls.append([PULL_RATE_WRITTEN, self.pull_rate_label_text])
+        self.calls.append([POOL_STOPPED_WRITTEN, self.pool_stopped_label_text])
+
+    def _venue_call_rate(self) -> float:
+        """This venue's calls per minute, or zero when no reader is wired."""
+        if not self.rate_reader:
+            return NO_CALL_RATE
+        try:
+            return float(self.rate_reader())
+        except Exception:
+            return NO_CALL_RATE
 
     # ----- the two tables -----
 
@@ -995,6 +1083,10 @@ def build_view_model(model: ExchangeTabModel) -> dict:
         "bot_wizard_open": model.bot_wizard is not None,
         "bot_wizard_stretch": BOT_WIZARD_STRETCH,
         "pull_rate_text": model.pull_rate_label_text,
+        "pool_stopped_text": model.pool_stopped_label_text,
+        "pool_stopped_shown": bool(model.pool_stopped_label_text),
+        "pool_stopped_style": POOL_STOPPED_STYLE,
+        "pool_stopped_tooltip": POOL_STOPPED_TOOLTIP,
         "pull_rate_initial_text": PULL_RATE_INITIAL_TEXT,
         "pull_rate_style": PULL_RATE_STYLE,
         "pull_rate_tooltip": PULL_RATE_TOOLTIP,
