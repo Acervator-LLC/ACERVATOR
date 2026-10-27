@@ -131,6 +131,15 @@ The bot now reads the lock from the coordinator instead. One method on the bot
 writes both names every tick, from the coordinator's own active lock list, and
 clears both where the operator has phantom bots switched off.
 
+**Which ticks reach it, measured.** The call sits on the main gate path, so it
+runs on every tick that reaches the scrum flag and on no tick that returns
+above it. A hand-built bot driven through the real tick ran eight full passes
+and reached the call on none of them, because its position value equals its
+target balance, which leaves no delta and returns at the interval guard. Twelve
+returns sit above the call. Calling the method directly on the same bot moved
+the flag to locked and the timeframe to the lock's own, so the zero is a fact
+about the path that tick took and not about the reading.
+
 `src/trading/scrumming_bot.py` — `ScrummingBot._refresh_phantom_lock`
 
 ```python
