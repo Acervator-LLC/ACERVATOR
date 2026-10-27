@@ -3506,3 +3506,32 @@ the React box's width                         393px         393px
 the Live, Paper and Simulator screens set one, 365 of those sentences run over
 ten words, and rewriting them waits on the definition of `unavoidable` that
 requirement 3 asks for.
+
+**The rule sits on the application, so all three Qt screens draw from it.** No
+`QToolTip` rule exists under `src/gui/paper/` or `src/gui/simulator/`. The
+Simulator's darker tone restates the whole block under its own selector, built
+from the same four figures, so a box on a Simulator screen reads the same.
+
+```
+plain tone      maximum width 578   text size 12   margin 9
+Simulator tone  maximum width 578   text size 12   margin 9
+```
+
+The 578 is the 560 plus the box's own 9 pixel margin on each side.
+
+**Nothing else on a screen moves.** All ten style sheets, five themes on each
+build, are byte-identical to the ones before this change.
+
+```
+theme             characters   unchanged
+cyberpunk_dark    15605        yes
+neon_light        15601        yes
+classic_terminal  15599        yes
+minimal_modern    15611        yes
+glass_metal       15618        yes
+```
+
+**One box no rule can reach.** 124 React controls pass a `title` property, which
+draws the browser's own box. That box takes no stylesheet and no wait figure, so
+neither declaration reaches it. Changing those sites to the page's own box is a
+separate job, one screen at a time.
