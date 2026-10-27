@@ -368,6 +368,103 @@ phantoms on,  lock held     fold decision differs on   362
 What should create a lock on the coordinator is still his, and nothing creates
 one today.
 
+**The operator's specification, 2026-10-27.** On what a phantom bot is for, and
+the last change he made to its design:
+
+> Again, the entire function of a Phantom Bot is to provide high TF over rides
+> and trade optimization. From this perspective, all such questions can be
+> inferred. The design spec is established but simply not fully implemented with
+> the last major modification to it being the decision to only allow one Phantom
+> Bot TF to be active per bot or Target Asset.
+
+**One phantom timeframe is active per bot.** The limit is one declaration and
+every site that builds a reader reads it. The active name is the highest-ranked
+one the bot was given, which is the name the Phantom Bots picker already drew and
+the name the rank weighting already counted for most.
+
+`src/trading/phantom_balance.py` — `one_active_phantom_timeframe`
+
+```python
+active = max(ranked, key=tf_rank)
+set_aside = sorted(
+    [one for one in held if one != active],
+    key=tf_rank,
+)
+return [active], set_aside
+```
+
+| step | module | symbol |
+| ---- | ------ | ------ |
+| name the one | `src/trading/phantom_balance.py` | `one_active_phantom_timeframe` |
+| hold the one | `src/trading/scrumming_bot.py` | `ScrummingBot.__init__` |
+| build the one | `src/trading/phantom_balance.py` | `PhantomBalanceManager.create_phantom_set` |
+| keep it on a live change | `src/trading/scrumming_bot.py` | `ScrummingBot.update_phantom_config` |
+| name it on the page | `src/gui/main_tabs/phantom_bots_tab_surface.py` | `configured_timeframes` |
+| name it in the Simulator | `src/simulator/back_test.py` | `phantom_timeframes_for` |
+
+**Nothing is dropped in silence.** A name the limit holds back is drawn on its
+own status row, and the bot writes the same sentence to its Activity Log on the
+tick that starts its phantom.
+
+```
+a bot given 6h and 1d, read off the page and the log
+
+the picker                       1d
+Configured timeframes:           6h, 1d
+Set aside, one runs:             6h
+the Activity Log line            Phantom timeframes set aside: 6h
+```
+
+**Two sentences below are overtaken.** Neither is edited and neither is removed.
+They read:
+
+> A bot holding three names writes all three and reads all three back, so a set
+> of several survives a restart.
+
+> A bot holding 2h, 6h and 1d writes all three. The fleet load hands all three
+> back, and the phantom manager builds three PhantomBots on them.
+
+**The current reading.** The record still carries every name and the fleet load
+still hands them all back, so both sentences hold for the record. The bot now
+keeps the highest of them as the one it runs and the rest as names set aside, and
+the manager builds one reader rather than three.
+
+The save writes both halves back, so a save loses no name the operator chose.
+
+`src/trading/bot_container.py` — `BotContainer.get_full_state`
+
+```python
+_phantom_held = list(getattr(self, "_phantom_timeframes", None) or []) + list(
+    getattr(self, "_phantom_tf_set_aside", None) or []
+)
+```
+
+Driven on a bot given 6h and 1d, saved and restored three times in a row: the
+record reads 6h and 1d on every pass, the bot runs 1d on every pass, and the
+page names 6h as set aside on every pass.
+
+**Driven.** A bot was built by hand with a stand-in venue that refuses every
+order, and the real tick was driven over 801 window levels an arm, which moved
+the band position from -0.292 to 1.283 in steps of 0.03 of a price unit. With
+phantom bots off, and with exactly one timeframe given, every recorded verdict is
+identical before and after. With two given, the lower-ranked reading no longer
+reaches the gate.
+
+```
+801 rows an arm, two trees compared row by row
+
+phantoms off              every verdict identical
+one timeframe             every verdict identical
+one timeframe, lock held  every verdict identical
+two timeframes            scrum decision differs on   256
+                          fold decision differs on    265
+```
+
+**One bot, one Target Asset.** Each bot builds its own coordinator and no code
+hands one bot another bot's, so the limit at the bot is the limit at the Target
+Asset that bot holds. Two bots on one asset each run their own one, and neither
+changes the other.
+
 **The saved record carries the timeframe.** The bot writes every name it holds
 under the key `phantom_timeframes`. The fleet load reads that key and gives the
 list to the bot it builds. The key, the change field and the bot attribute now
@@ -593,6 +690,50 @@ payload by calling Live's builder, so one repair reaches all three.
 ```
 src/gui/paper/paper_bot_live_settings_surface.py, in build_view_model
 src/gui/simulator/sim_bot_live_settings_surface.py, in build_view_model
+```
+
+**A seventh status row names the timeframes the one-phantom limit holds back.**
+Two sentences above are overtaken. Neither is edited and neither is removed.
+They read:
+
+> One declaration now names each status reading, its bot attribute and the value
+> an absent attribute gets, so a row cannot reach the page alone.
+
+> Driven on two bots differing in every row, the page and the Qt tab now report
+> the same six rows and the same two tables.
+
+**The current reading.** The declaration still names each reading and a row still
+cannot reach the page alone. It holds seven entries rather than six, and the
+seventh is the set-aside row.
+
+```python
+(REQUEST_SET_ASIDE, SET_ASIDE_ATTRIBUTE, None),
+```
+
+The row reads the same on a running bot and on a stored record. A running bot
+holds the names it set aside in its own attribute; a Paper or Simulator record
+holds the whole list, and one read on the page derives the same answer from
+either.
+
+`src/gui/main_tabs/phantom_bots_tab_surface.py` — `configured_timeframes`
+
+```python
+held = [str(one) for one in (getattr(bot, TIMEFRAMES_ATTRIBUTE, None) or ())]
+aside = getattr(bot, SET_ASIDE_ATTRIBUTE, None)
+if aside is None:
+    return held
+extra = [str(one) for one in (aside or ()) if str(one) not in held]
+return sorted(held + extra, key=timeframe_order_key)
+```
+
+Driven offscreen on all three pages, with a bot given 6h and 1d, reading the
+strings each row reports:
+
+```
+                              Live       Paper      Simulator
+the picker                    1d         1d         1d
+Configured timeframes:        6h, 1d     6h, 1d     6h, 1d
+Set aside, one runs:          6h         6h         6h
 ```
 
 ## 3 - The Landing Strip

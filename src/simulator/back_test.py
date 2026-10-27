@@ -523,14 +523,19 @@ class PhantomTape:
 
 
 def phantom_timeframes_for(bot: SimBot, walk_timeframe: str) -> list[str]:
-    """The phantom timeframes Live's bot would run for ``bot`` at
-    ``walk_timeframe``: the record's own, or ``default_phantom_timeframes``
+    """The one phantom timeframe Live's bot would run for ``bot`` at
+    ``walk_timeframe``: the record's own through
+    ``one_active_phantom_timeframe``, or ``default_phantom_timeframes``
     above the walk's timeframe when it names none."""
-    from ..trading.phantom_balance import default_phantom_timeframes
+    from ..trading.phantom_balance import (
+        default_phantom_timeframes,
+        one_active_phantom_timeframe,
+    )
 
     named = [str(one) for one in (bot.phantom_timeframes or ()) if str(one)]
     if named:
-        return named
+        active, _set_aside = one_active_phantom_timeframe(named)
+        return active
     return list(default_phantom_timeframes(str(walk_timeframe)))
 
 

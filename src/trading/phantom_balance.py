@@ -58,6 +58,13 @@ MIN_TICK_CANDLES: int = MIN_CANDLES_FOR_TA
 #: places at or below its parent, which the Comp field never weighs.
 BELOW_PARENT_REASON: str = "at or below the parent timeframe"
 
+#: ``set_aside_note`` fills this for the timeframes ``one_active_phantom_timeframe``
+#: holds back, so a name the operator chose is never dropped in silence.
+SET_ASIDE_NOTE_FORMAT: str = (
+    "Phantom timeframes set aside: {set_aside} — one phantom timeframe is "
+    "active per bot and this bot runs {active}."
+)
+
 
 def tf_rank(timeframe: str) -> int:
     """Return the index of ``timeframe`` in ``TIMEFRAME_ORDER``, or -1."""
@@ -90,6 +97,31 @@ def default_phantom_timeframes(
         if one in allowed and is_higher_tf(one, parent_timeframe)
     ]
     return above[:1]
+
+
+def one_active_phantom_timeframe(
+    timeframes: Optional[list[str]],
+) -> tuple[list[str], list[str]]:
+    """The one highest-``tf_rank`` name in ``timeframes``, and the rest set aside."""
+    held = [str(one) for one in (timeframes or []) if str(one)]
+    ranked = [one for one in held if tf_rank(one) >= 0]
+    if not ranked:
+        return [], [one for one in held if tf_rank(one) < 0]
+    active = max(ranked, key=tf_rank)
+    set_aside = sorted(
+        [one for one in held if one != active],
+        key=tf_rank,
+    )
+    return [active], set_aside
+
+
+def set_aside_note(active: str, set_aside: list[str]) -> str:
+    """The line naming the ``set_aside`` timeframes ``active`` runs in place of."""
+    if not set_aside:
+        return ""
+    return SET_ASIDE_NOTE_FORMAT.format(
+        set_aside=", ".join(set_aside), active=active or "none"
+    )
 
 
 def weigh_higher_tf_bias(
@@ -481,12 +513,20 @@ class PhantomBalanceManager:
         balance_scaling: str = "equal",
         ta_weights: Optional[dict[str, float]] = None,
     ) -> list[PhantomBot]:
-        """Build one ``PhantomBot`` per entry in ``timeframes`` and
-        register each on ``coordinator``.
+        """Build one ``PhantomBot`` on the one timeframe
+        ``one_active_phantom_timeframe`` names, and register it on ``coordinator``.
 
         ``balance_scaling`` of "weighted" scales ``target_balance`` by
         ``tf_rank``; any other value gives every phantom ``target_balance``.
         """
+        active, set_aside = one_active_phantom_timeframe(list(timeframes))
+        if set_aside:
+            logger.info(
+                "Phantom %s: %s",
+                str(parent_bot_id)[:8],
+                set_aside_note(active[0] if active else "", set_aside),
+            )
+        timeframes = active
         phantoms = []
         for i, tf in enumerate(sorted(timeframes, key=tf_rank)):
             if balance_scaling == "weighted":

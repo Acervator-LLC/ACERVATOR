@@ -108,7 +108,7 @@ class PhantomBotsTabMixin:
                 Qt.ToolTipRole,
             )
         self._phantom_tf_current = surface.chosen_timeframe(
-            getattr(bot, "_phantom_timeframes", []) or []
+            surface.configured_timeframes(bot)
         )
         self._phantom_timeframe.setCurrentIndex(
             max(0, self._phantom_timeframe.findData(self._phantom_tf_current))
@@ -116,7 +116,7 @@ class PhantomBotsTabMixin:
         self._phantom_timeframe.setToolTip(surface.TF_TOOLTIP)
         self._phantom_tf_refusal = QLabel(
             surface.stored_timeframe_notice(
-                getattr(bot, "_phantom_timeframes", []) or [],
+                surface.configured_timeframes(bot),
                 self._phantom_tf_current,
                 self._phantom_tf_allowed,
                 self._phantom_tf_exchange,
@@ -153,7 +153,7 @@ class PhantomBotsTabMixin:
 
         phantoms_enabled = bool(getattr(bot, "_phantoms_enabled", False))
         phantoms_started = bool(getattr(bot, "_phantoms_started", False))
-        phantom_tfs = list(getattr(bot, "_phantom_timeframes", []) or [])
+        phantom_tfs = surface.configured_timeframes(bot)
         phantom_locked = bool(getattr(bot, "_phantom_locked", False))
         phantom_lock_tf = str(getattr(bot, "_phantom_lock_timeframe", "") or "")
 
@@ -186,6 +186,13 @@ class PhantomBotsTabMixin:
         sf.addRow(
             surface.DROPPED_ROW_LABEL,
             QLabel(surface.timeframes_text(phantom_dropped)),
+        )
+        phantom_set_aside = list(
+            getattr(bot, surface.SET_ASIDE_ATTRIBUTE, None) or []
+        ) or surface.set_aside_timeframes(phantom_tfs)
+        sf.addRow(
+            surface.SET_ASIDE_ROW_LABEL,
+            QLabel(surface.timeframes_text(phantom_set_aside)),
         )
         sf.addRow(
             surface.BELOW_PARENT_ROW_LABEL,
