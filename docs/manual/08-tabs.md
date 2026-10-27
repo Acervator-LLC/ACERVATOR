@@ -3359,3 +3359,45 @@ classic_terminal  7427               7402
 minimal_modern    7422               7407
 glass_metal       7415               7410
 ```
+
+### 2026-10-26 - #1556 - the React tab book answers both tab-visibility questions
+
+**The Qt tab widget can hide a tab, and the React book could not be asked.** The
+React book stands in for the Qt tab widget and forwards the calls the window
+makes over the hidden widget it holds. Two calls were missing: the one that asks
+whether a tab is on show, and the one that hides or shows it. Each raised an
+attribute error, so anything hiding a tab on the main book would have stopped
+the window.
+
+`src/gui/react_main_window.py` — `MainTabBookReact.setTabVisible`
+
+```python
+        def setTabVisible(self, index: int, visible: bool) -> None:
+            """Show or hide the tab at ``index`` and redraw the bar without it."""
+            self._book.setTabVisible(index, visible)
+            self._push_tabs()
+```
+
+**A hidden tab also leaves the bar.** The bar is drawn from a list of labels the
+book sends it. That list was every label the book held, so a hidden tab would
+have stayed on the bar with no page behind it. The book now sends the visible
+labels alone, and keeps the full list for mapping a press back to a page, so a
+press still reaches the right tab.
+
+**Driven offscreen on a book holding three tabs.** Nothing on this machine draws
+text offscreen, so every figure below is a value the widget reports or the list
+the page is sent, never a picture.
+
+```
+before   isTabVisible(1)         raised 'MainTabBookReact' object has no attribute
+         setTabVisible(1, False) raised 'MainTabBookReact' object has no attribute
+now      isTabVisible(1)         True, then False once hidden
+         isTabVisible(0)         True throughout
+         labels                  Trading, Charts, History, throughout
+         the bar is sent         Trading, History
+         shown again             Trading, Charts, History
+```
+
+The neighbouring tab is the control. Tab 0 reads True on every reading, and the
+full label list is unchanged, so the False on tab 1 is a reading and not a book
+that lost its tabs.
