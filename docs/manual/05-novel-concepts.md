@@ -429,6 +429,20 @@ still hands them all back, so both sentences hold for the record. The bot now
 keeps the highest of them as the one it runs and the rest as names set aside, and
 the manager builds one reader rather than three.
 
+The save writes both halves back, so a save loses no name the operator chose.
+
+`src/trading/bot_container.py` — `BotContainer.get_full_state`
+
+```python
+_phantom_held = list(getattr(self, "_phantom_timeframes", None) or []) + list(
+    getattr(self, "_phantom_tf_set_aside", None) or []
+)
+```
+
+Driven on a bot given 6h and 1d, saved and restored three times in a row: the
+record reads 6h and 1d on every pass, the bot runs 1d on every pass, and the
+page names 6h as set aside on every pass.
+
 **Driven.** A bot was built by hand with a stand-in venue that refuses every
 order, and the real tick was driven over 801 window levels an arm, which moved
 the band position from -0.292 to 1.283 in steps of 0.03 of a price unit. With
