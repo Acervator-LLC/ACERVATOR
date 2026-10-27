@@ -66,6 +66,49 @@ for bot in self._bot_manager._bots.values():
         bot._coordinator._lock_timeframe = tf
 ```
 
+**The two clauses above are overtaken.** Neither is edited and neither is
+removed. They read:
+
+> The reading above it still holds: the write reaches no reader. The name the
+> window sets on the coordinator and the name the Phantom Bots pages read are
+> two different names, and only the second is declared on the bot.
+
+> Which of the two names the drop-down should set is a product choice, so
+> nothing here proposes one.
+
+The choice is settled, and it is an implementation one. The name the three
+Phantom Bots pages already read is the one that survives. The handler sets that
+name on the bot and keeps setting the older name on the coordinator, so a reader
+of the older spelling still finds its value.
+
+`src/gui/main_window.py` — `_on_tf_lock_changed`, as it stands
+
+```python
+for bot in self._bot_manager._bots.values():
+    if not isinstance(bot, ScrummingBot):
+        continue
+    setattr(bot, LOCK_TIMEFRAME_ATTRIBUTE, tf)
+    if hasattr(bot, "_coordinator"):
+        bot._coordinator._lock_timeframe = tf
+```
+
+Driven on a hand-built record, with two different settings in one run, both
+names hold the chosen timeframe and the lock row on the page carries it.
+
+| lock set to | what the pages read | the page's SCRUM lock state row |
+| ----------- | ------------------- | ------------------------------- |
+| nothing yet | empty | LOCKED — SCRUM suppressed by  TF phantom |
+| 4h | 4h | LOCKED — SCRUM suppressed by 4h TF phantom |
+| 1d | 1d | LOCKED — SCRUM suppressed by 1d TF phantom |
+
+The first row is what the page drew for every setting before this change: a gap
+where the timeframe belongs.
+
+Live, Paper and the Simulator read the one name, so all three draw the timeframe
+once a value arrives. Only the Live window subscribes to the topic, and nothing
+publishes it, so no press reaches any of the three today. Parity across the
+three surfaces is not closed while the control is absent.
+
 Bot - Drop down menu for selecting which bot’s TA signals are displayed.
 
 The list refills every tick and carries one entry per running bot, opening on a
