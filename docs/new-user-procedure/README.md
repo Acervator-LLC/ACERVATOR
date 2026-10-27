@@ -69,3 +69,45 @@ it. Numbering the pages again is this table's job and nothing else's.
 ## Where the pictures sit
 
 Each one sits in `figures/` under the name of the step that shows it.
+
+## The deck
+
+A slide show sits beside these pages:
+
+```
+docs/new-user-procedure/New-User-Procedure.pptx
+```
+
+It is a view of the pages and not a second source. One slide stands for one row
+of the table above. Each slide carries that page's heading, its picture, the
+picture's own caption and its bold instruction.
+
+One command writes it:
+
+```
+python -m tools.build_vwap_deck --deck new-user
+```
+
+`tools/build_vwap_deck.py, in build_procedure` takes the order from the table
+above and the four parts from each page. It embeds each figure's own bytes. It
+writes the file in place, reads the written file back, and refuses any slide that
+differs from its page. A page with no heading, no picture or no instruction stops
+the write, and so does a picture the disk does not carry. The message names what
+is missing.
+
+A page edit reaches a reader by running that command. A new page needs its row in
+the table above, and the next run gives it a slide.
+
+Two runs over unchanged pages do not write the same bytes. Each run stamps its own
+time into the archive the slide show is packed in. The slides are the same and
+only the bytes differ.
+
+The deck's own second commit recorded the state this replaces:
+
+> The producer is still not in the tree. A guard refuses a new file under
+> `tools/`, so the deck was built from a throwaway script and needs rebuilding by
+> hand whenever a page is added.
+
+The current reading: the production is in the tree. The guard still refuses a new
+file of its own under that folder, so the production joined the module that
+already composes this repository's other slide show.
