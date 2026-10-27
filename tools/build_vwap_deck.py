@@ -8,6 +8,7 @@ disk does not carry stops the build, except the one absence ``ABSENT_FIGURES``
 declares.
 
     python -m tools.build_vwap_deck
+    python -m tools.build_vwap_deck --deck new-user
 """
 
 from __future__ import annotations
@@ -969,10 +970,189 @@ def build(title: str, doc_dir: Path | None) -> list[Path]:
     return written
 
 
+PROCEDURE_DIR = REPO_ROOT / "docs" / "new-user-procedure"
+PROCEDURE_README = PROCEDURE_DIR / "README.md"
+PROCEDURE_DECK = PROCEDURE_DIR / "New-User-Procedure.pptx"
+PROCEDURE_ORDER_HEADER = ["#", "page", "the step"]
+PROCEDURE_PAGE_LINK = re.compile(r"\]\((\d\d-[^)]+\.md)\)")
+PROCEDURE_HEADING = re.compile(r"^#[ \t]+(.+?)[ \t]*$", re.MULTILINE)
+PROCEDURE_FIGURE = re.compile(r"!\[(.+?)\]\((figures/[^)]+)\)", re.DOTALL)
+PROCEDURE_GUIDE = re.compile(r"^\*\*(.+?)\*\*[ \t]*$", re.MULTILINE | re.DOTALL)
+PROCEDURE_PICTURE_BOX = Box(MARGIN, Inches(1.8), BODY_W, Inches(4.2))
+PROCEDURE_GUIDE_BOX = Box(MARGIN, Inches(6.14), BODY_W, Inches(0.72))
+PROCEDURE_GUIDE_SIZE = 15
+
+
+@dataclass(frozen=True)
+class ProcedureStep:
+    """One step page's heading, picture caption, guiding line and figure."""
+
+    page: str
+    title: str
+    caption: str
+    guide: str
+    figure: Path
+
+    def note(self) -> str:
+        """Return the line naming the page this step was read from."""
+        return f"docs/new-user-procedure/{self.page}"
+
+
+def fold_lines(text: str) -> str:
+    """Return ``text`` on one line, every run of whitespace a single space."""
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def procedure_page_names() -> list[str]:
+    """Return the step page names in the order the README table sets."""
+    if not PROCEDURE_README.is_file():
+        message = f"the order table is not on disk: {PROCEDURE_README}"
+        raise BuildRefusedError(message)
+    rows = table_with_header(
+        PROCEDURE_README.read_text(encoding="utf-8"),
+        PROCEDURE_ORDER_HEADER,
+    )
+    names: list[str] = []
+    for row in rows:
+        link = PROCEDURE_PAGE_LINK.search(row["page"])
+        if link is None:
+            message = f"an order row links to no step page: {row}"
+            raise BuildRefusedError(message)
+        names.append(link.group(1))
+    return names
+
+
+def procedure_step(name: str) -> ProcedureStep:
+    """Return one ``ProcedureStep`` read from its page, refusing an absent part."""
+    path = PROCEDURE_DIR / name
+    if not path.is_file():
+        message = f"the order table names a page the disk does not carry: {path}"
+        raise BuildRefusedError(message)
+    text = path.read_text(encoding="utf-8")
+    title = PROCEDURE_HEADING.search(text)
+    if title is None:
+        message = f"{name} carries no heading"
+        raise BuildRefusedError(message)
+    drawn = PROCEDURE_FIGURE.search(text)
+    if drawn is None:
+        message = f"{name} embeds no picture"
+        raise BuildRefusedError(message)
+    guide = PROCEDURE_GUIDE.search(text)
+    if guide is None:
+        message = f"{name} carries no guiding line"
+        raise BuildRefusedError(message)
+    figure = PROCEDURE_DIR / drawn.group(2)
+    if not figure.is_file():
+        message = f"{name} embeds a figure the disk does not carry: {figure}"
+        raise BuildRefusedError(message)
+    return ProcedureStep(
+        page=name,
+        title=fold_lines(title.group(1)),
+        caption=fold_lines(drawn.group(1)),
+        guide=fold_lines(guide.group(1)),
+        figure=figure,
+    )
+
+
+def slide_procedure_step(
+    prs: Presentation,
+    step: ProcedureStep,
+    ledger: Ledger,
+) -> None:
+    """Add one slide carrying the step's heading, caption, picture and guide."""
+    slide = blank(prs)
+    heading(slide, step.title, step.caption)
+    picture(slide, step.figure, PROCEDURE_PICTURE_BOX, ledger)
+    text_box(
+        slide, PROCEDURE_GUIDE_BOX, step.guide, size=PROCEDURE_GUIDE_SIZE, bold=True
+    )
+    source_note(slide, step.note())
+
+
+def compose_procedure(steps: list[ProcedureStep]) -> tuple[Presentation, Ledger]:
+    """Return the procedure deck, one slide per step, and the figure ledger."""
+    ledger = Ledger()
+    prs = pptx.Presentation()
+    prs.slide_width = SLIDE_W
+    prs.slide_height = SLIDE_H
+    for step in steps:
+        slide_procedure_step(prs, step, ledger)
+    return prs, ledger
+
+
+def slide_lines(slide: Slide) -> list[str]:
+    """Return every non-empty line of text the slide draws, in shape order."""
+    found: list[str] = []
+    for shape in slide.shapes:
+        if not shape.has_text_frame:
+            continue
+        for para in shape.text_frame.paragraphs:
+            line = fold_lines("".join(run.text for run in para.runs))
+            if line:
+                found.append(line)
+    return found
+
+
+def slide_images(slide: Slide) -> list[bytes]:
+    """Return the bytes of every picture the slide embeds, in shape order."""
+    found: list[bytes] = []
+    for shape in slide.shapes:
+        image = getattr(shape, "image", None)
+        if image is not None:
+            found.append(image.blob)
+    return found
+
+
+def verify_procedure_deck(path: Path, steps: list[ProcedureStep]) -> None:
+    """Read the written deck back and refuse a slide that differs from its page."""
+    written = pptx.Presentation(str(path))
+    slides = list(written.slides)
+    if len(slides) != len(steps):
+        message = (
+            f"the written deck holds {len(slides)} slides"
+            f" against {len(steps)} pages"
+        )
+        raise BuildRefusedError(message)
+    for index, (slide, step) in enumerate(zip(slides, steps, strict=True), start=1):
+        lines = slide_lines(slide)
+        absent = [
+            wanted
+            for wanted in (step.title, step.caption, step.guide, step.note())
+            if wanted not in lines
+        ]
+        images = slide_images(slide)
+        if absent or images != [step.figure.read_bytes()]:
+            message = (
+                f"slide {index} differs from {step.page}:"
+                f" absent {absent}, pictures {len(images)}"
+            )
+            raise BuildRefusedError(message)
+        print(f"slide {index:2d}  {step.page:34s}  title caption guide picture")
+
+
+def build_procedure() -> Path:
+    """Compose the procedure deck from its pages and write it beside them."""
+    steps = [procedure_step(name) for name in procedure_page_names()]
+    prs, ledger = compose_procedure(steps)
+    prs.save(str(PROCEDURE_DECK))
+    verify_procedure_deck(PROCEDURE_DECK, steps)
+    size = PROCEDURE_DECK.stat().st_size
+    print(f"slides            {len(prs.slides)}")
+    print(f"figures embedded  {ledger.embedded()}")
+    print(f"wrote             {PROCEDURE_DECK}  {size} bytes")
+    return PROCEDURE_DECK
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Return the command line: the title, and where the copy goes."""
     parser = argparse.ArgumentParser(
         description="Compose the manual's VWAP part into a slide deck.",
+    )
+    parser.add_argument(
+        "--deck",
+        choices=("vwap", "new-user"),
+        default="vwap",
+        help="which deck to compose; new-user reads docs/new-user-procedure",
     )
     parser.add_argument("--title", help=f"the deck title; default {DEFAULT_TITLE!r}")
     parser.add_argument(
@@ -990,6 +1170,13 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     """Read the title, compose the deck, and report what was written."""
     args = build_parser().parse_args(argv)
+    if args.deck == "new-user":
+        try:
+            build_procedure()
+        except BuildRefusedError as refusal:
+            print(f"REFUSED           {refusal}", file=sys.stderr)
+            return 1
+        return 0
     title, source = deck_title(args.title)
     print(f"title             {title}")
     print(f"title from        {source}")
