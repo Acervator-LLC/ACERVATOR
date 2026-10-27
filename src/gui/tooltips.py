@@ -4,7 +4,8 @@
 on it. ``WakeDelayStyle`` answers ``SH_ToolTip_WakeUpDelay`` with
 ``TOOLTIP_DELAY_MS`` and hands every other hint to the style it wraps,
 and ``install`` puts it on the application. ``src.gui.theme_engine``
-holds ``TOOLTIP_MAX_WIDTH_PX``, the width the box wraps at.
+holds ``TOOLTIP_DELAY_MS`` beside the three size figures every
+``QToolTip`` rule reads, so one declaration carries the wait and the box.
 """
 
 from __future__ import annotations
@@ -13,11 +14,9 @@ from typing import Any, Optional
 
 from PySide6.QtWidgets import QApplication, QProxyStyle, QStyle, QWidget
 
-__all__ = ["TOOLTIP_DELAY_MS", "WakeDelayStyle", "install", "set_description"]
+from .theme_engine import TOOLTIP_DELAY_MS
 
-#: Milliseconds the pointer must rest UNMOVED before Qt draws a description;
-#: Qt restarts this wait on every pointer move, however small.
-TOOLTIP_DELAY_MS = 3000
+__all__ = ["TOOLTIP_DELAY_MS", "WakeDelayStyle", "install", "set_description"]
 
 
 def set_description(widget: QWidget, text: str) -> None:

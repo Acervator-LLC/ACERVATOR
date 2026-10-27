@@ -88,6 +88,10 @@ TOKEN_FIELD_NAMES = (
 
 SPLITTER_PRESSED_ALPHA = theme_engine.SPLITTER_PRESSED_ALPHA
 
+TOOLTIP_MAX_WIDTH_PX = theme_engine.TOOLTIP_MAX_WIDTH_PX
+TOOLTIP_FONT_SIZE_PX = theme_engine.TOOLTIP_FONT_SIZE_PX
+TOOLTIP_PADDING_PX = theme_engine.TOOLTIP_PADDING_PX
+
 _UNNAMED_THEME = theme_engine.ThemeTokens(name="", display_name="")
 
 DEFAULT_TOKENS: dict[str, str] = {
@@ -415,12 +419,12 @@ QStatusBar {{
 
 /* --- Tool tips --- */
 QToolTip {{
-    max-width: 560px;
+    max-width: {tooltip_max_width}px;
     background-color: {bg_card};
     color: {text_primary};
     border: 1px solid {accent_primary};
-    font-size: 12px;
-    padding: 8px;
+    font-size: {tooltip_font_size}px;
+    padding: {tooltip_padding}px;
     border-radius: {radius_sm};
 }}
 
@@ -475,12 +479,18 @@ QRadioButton::indicator {{
 def generate_qss(tokens: dict) -> str:
     """The complete style-sheet text one theme's values produce.
 
-    The template holds one name the token table does not: the pressed
-    splitter handle, which is this theme's own accent under
-    ``SPLITTER_PRESSED_ALPHA``.
+    The template holds names the token table does not: the pressed splitter
+    handle, which is this theme's own accent under ``SPLITTER_PRESSED_ALPHA``,
+    and the three ``QToolTip`` figures ``src.gui.theme_engine`` declares.
     """
     pressed = rgba(tokens["accent_primary"], SPLITTER_PRESSED_ALPHA)
-    return QSS_TEMPLATE.format(splitter_pressed=pressed, **tokens)
+    return QSS_TEMPLATE.format(
+        splitter_pressed=pressed,
+        tooltip_max_width=TOOLTIP_MAX_WIDTH_PX,
+        tooltip_font_size=TOOLTIP_FONT_SIZE_PX,
+        tooltip_padding=TOOLTIP_PADDING_PX,
+        **tokens,
+    )
 
 
 STYLE_SHEETS: dict[str, str] = {
