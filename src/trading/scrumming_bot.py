@@ -2396,11 +2396,10 @@ class ScrummingBot(
 
         # A reported filled of zero filled nothing; only an omitted field
         # falls back to amount.
+        # OVERTAKEN, the sentence above: an omitted field books nothing too,
+        # because ``amount`` is the count the venue accepted and not one it
+        # filled, and ``units`` is the count this sale asked for.
         _sd_filled = getattr(order, "filled", None)
-        if _sd_filled is None:
-            _sd_filled = getattr(order, "amount", None)
-        if _sd_filled is None:
-            _sd_filled = units
         fill_amount = float(_sd_filled or 0.0)
         fill_price = float(
             getattr(order, "average_price", None)

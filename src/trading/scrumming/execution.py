@@ -1388,11 +1388,10 @@ class ExecutionEngineMixin:
 
         # A reported filled of zero filled nothing; only an omitted field
         # falls back to amount.
+        # OVERTAKEN, the sentence above: an omitted field books nothing too,
+        # because ``amount`` is the count the venue accepted and not one it
+        # filled. ``_execute_sell`` reads an omitted field the same way.
         _filled_raw = getattr(order, "filled", None)
-        if _filled_raw is None:
-            _filled_raw = getattr(order, "amount", None)
-        if _filled_raw is None:
-            _filled_raw = sell_amount
         try:
             fill_amount = float(_filled_raw or 0.0)
         except (TypeError, ValueError):

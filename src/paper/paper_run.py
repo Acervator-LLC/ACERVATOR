@@ -72,6 +72,7 @@ from ..trading.scrumming.sizing import (
     CLASS_CRYPTO,
     HELD_OUTSIDE_SESSION,
     HELD_UNSETTLED_CASH,
+    booked_price,
     cycle_growth_cap_usd,
     delta_below_interval,
     eligible_fold_tranches,
@@ -443,7 +444,12 @@ def apply_scrum(
     the sell needs or a whole-unit ``delta`` buys under one unit.
 
     A ``wires`` manager lands its parked credits on the tranches the sale
-    builds through ``land_wire_credits``."""
+    builds through ``land_wire_credits``.
+
+    ``price`` is the figure the venue would book, which ``booked_price`` moves
+    onto ``MarketRules.price_increment``, so the sale's units and proceeds are
+    priced as Live's are."""
+    price = booked_price(rules, price)
     if outside_session(getattr(rules, "session", None), float(now_s)):
         logger.info(
             "%s: a scrum of $%.2f is %s; nothing fills and nothing changes",
@@ -576,7 +582,13 @@ def apply_fold(
     under the cycle cap, as ``_apply_fold_target_growth`` compounds a live
     bot's, and a ``wires`` manager takes that same growth figure to its wire
     targets through ``route_fold_growth``.
+
+    ``price`` is the figure the venue would book, which ``booked_price`` moves
+    onto ``MarketRules.price_increment``, so the rebuy's units and spend are
+    priced as Live's are. ``ticker_last`` is a reading rather than an order
+    price and is not moved.
     """
+    price = booked_price(rules, price)
     if outside_session(getattr(rules, "session", None), float(now_s)):
         logger.info(
             "%s: a fold is %s; nothing fills and the tranches stay queued",
