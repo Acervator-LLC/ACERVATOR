@@ -769,7 +769,7 @@
     }
   }
 
-  // Four status rows, each found by the label the payload names it with.
+  // Each status row is found by the label the payload names it with.
   function checkSummary(found) {
     var named = objectField(found, LABELS);
     var rows = listField(found, SUMMARY_ROWS);
