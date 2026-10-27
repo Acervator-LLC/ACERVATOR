@@ -57,6 +57,10 @@
   var PULL_RATE_STYLE = "pull_rate_style";
   var PULL_RATE_TEXT = "pull_rate_text";
   var PULL_RATE_TOOLTIP = "pull_rate_tooltip";
+  var POOL_STOPPED_TEXT = "pool_stopped_text";
+  var POOL_STOPPED_SHOWN = "pool_stopped_shown";
+  var POOL_STOPPED_STYLE = "pool_stopped_style";
+  var POOL_STOPPED_TOOLTIP = "pool_stopped_tooltip";
   var ROW_COUNT = "row_count";
   var SCRUM_SECTION_LABEL = "scrum_section_label";
   var SCRUM_SECTION_STYLE = "scrum_section_style";
@@ -171,7 +175,13 @@
     PULL_RATE_STYLE,
     PULL_RATE_TEXT,
     PULL_RATE_TOOLTIP,
+    POOL_STOPPED_SHOWN,
+    POOL_STOPPED_STYLE,
+    POOL_STOPPED_TEXT,
+    POOL_STOPPED_TOOLTIP,
     "pool_summary_param",
+    EXTRACTOR_TABLE_STRETCH,
+    SCRUM_TABLE_STRETCH,
     "refresh_every_s",
     "refusal_types",
     "reset_param",
@@ -251,6 +261,7 @@
     PRIVACY_STYLE_OFF,
     PRIVACY_STYLE_ON,
     PULL_RATE_STYLE,
+    POOL_STOPPED_STYLE,
     SCRUM_SECTION_STYLE,
     STYLE_SHEET
   ];
@@ -261,6 +272,7 @@
     EXTRACTOR_SECTION_LABEL,
     PRIVACY_LABEL,
     PULL_RATE_TEXT,
+    POOL_STOPPED_TEXT,
     SCRUM_SECTION_LABEL,
     SELECT_FIRST_MESSAGE
   ];
@@ -335,6 +347,7 @@
   var STRETCH_PART = "header-stretch";
   var ADD_BOT_PART = "add-bot-button";
   var PULL_RATE_PART = "pull-rate";
+  var POOL_STOPPED_PART = "pool-stopped";
   var SCRUM_SECTION_PART = "scrum-section";
   var SCRUM_TABLE_PART = "scrum-table";
   var EXTRACTOR_SECTION_PART = "extractor-section";
@@ -775,6 +788,18 @@
     return element(DIV_TAG, lineProps, text(model[PULL_RATE_TEXT]));
   }
 
+  // Hidden until nothing has come back from this venue for a full minute.
+  function PoolStopped(props) {
+    var model = props.model;
+    var lineProps = {
+      style: styleOf(model[POOL_STOPPED_STYLE]),
+      title: label(model[POOL_STOPPED_TOOLTIP]),
+      hidden: model[POOL_STOPPED_SHOWN] !== true
+    };
+    lineProps[PART_ATTR] = POOL_STOPPED_PART;
+    return element(DIV_TAG, lineProps, text(model[POOL_STOPPED_TEXT]));
+  }
+
   function SectionLabel(props) {
     var labelProps = { style: styleOf(props.sheet), hidden: props.visible !== true };
     labelProps.style.whiteSpace = NOWRAP;
@@ -910,6 +935,7 @@
       tabProps,
       element(Header, { key: HEADER_PART, model: model }),
       element(PullRate, { key: PULL_RATE_PART, model: model }),
+      element(PoolStopped, { key: POOL_STOPPED_PART, model: model }),
       element(SectionLabel, {
         key: SCRUM_SECTION_PART,
         part: SCRUM_SECTION_PART,

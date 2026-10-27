@@ -327,6 +327,21 @@ def data_pool_summary() -> Optional[dict]:
         return None
 
 
+def venue_call_rate(exchange_id: str) -> float:
+    """One venue's calls per minute, or zero when the monitor refuses.
+
+    ``ExchangeTabModel.update_pull_rate_label`` reads this beside
+    ``data_pool_summary`` to decide whether the venue has stopped answering.
+    """
+    try:
+        from ..exchange.api_load_monitor import get_load_monitor
+
+        return float(get_load_monitor().sample(exchange_id).calls_per_minute)
+    except Exception as exc:
+        logger.debug("venue call rate not read: %s", exc)
+        return 0.0
+
+
 if _HAS_WEBENGINE:
 
     class ExchangePage(QWebEnginePage):
@@ -386,6 +401,7 @@ if _HAS_WEBENGINE:
                 status_log=status_log,
                 news_ticker_factory=surface.react_news_ticker,
                 pool_reader=data_pool_summary,
+                rate_reader=lambda: venue_call_rate(exchange_id),
                 window_refresh=self._refresh_window_privacy,
             )
             self._scrum = scrum_surface.BotStatusTableModel(
