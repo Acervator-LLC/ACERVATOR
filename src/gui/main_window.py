@@ -803,6 +803,16 @@ if _HAS_QT:
             "The privacy button on each exchange tab stops following the "
             "privacy mode it is set to.",
         )
+        _chart_fetch_fault = ThrottledFault(
+            "the asset chart candle fetch",
+            "The Asset Charts tab keeps its last candles and stops "
+            "refreshing them.",
+        )
+        _coalesce_cancel_fault = ThrottledFault(
+            "the scheduled task cancel",
+            "A task scheduled on an earlier tick keeps running, so two "
+            "refreshes of the same feed can overlap.",
+        )
 
         def _pump_currency_rates(self) -> None:
             """Refresh CurrencyRateMonitor and push its snapshot to the voting panel."""
@@ -1609,11 +1619,9 @@ if _HAS_QT:
                                     self._exchange_connectors
                                 ),
                             )
+                            self._chart_fetch_fault.note_success()
                         except Exception as chart_fetch_exc:
-                            logger.debug(
-                                "chart data fetch schedule failed: %s",
-                                chart_fetch_exc,
-                            )
+                            self._chart_fetch_fault.note_failure(chart_fetch_exc)
 
                 try:
                     if self._risk_manager:
@@ -2921,20 +2929,17 @@ if _HAS_QT:
             setattr(self, slot, found)
             return found
 
-        @staticmethod
-        def _cancel_if_pending(fut) -> None:
-            """Cancel `fut` when it exists and is not done; failures log at debug."""
+        def _cancel_if_pending(self, fut) -> None:
+            """Cancel `fut` when it exists and is not done; a failure reports through `_coalesce_cancel_fault`."""
             if fut is None:
                 return
             try:
                 if not fut.done():
                     fut.cancel()
             except (AttributeError, RuntimeError) as _cancel_exc:
-                logger.debug(
-                    "Pending future not cancelled: %s: %s",
-                    type(_cancel_exc).__name__,
-                    _cancel_exc,
-                )
+                self._coalesce_cancel_fault.note_failure(_cancel_exc)
+            else:
+                self._coalesce_cancel_fault.note_success()
 
         def _live_connector(self, eid: str):
             """Return the connector held for *eid* while it reports connected.

@@ -280,6 +280,7 @@ import faulthandler
 import logging
 import os
 import threading
+import time
 import traceback
 from datetime import datetime
 from pathlib import Path
@@ -798,6 +799,138 @@ def _write_heartbeat():
 ASYNC_PUMP_INTERVAL_MS = 50
 
 
+class PumpStallReport:
+    """Reports a raising pump once per cooling-off window and names a restart past ``stall_seconds``."""
+
+    def __init__(
+        self,
+        *,
+        stall_seconds: float,
+        cooloff_seconds: float,
+        render_span,
+        clock=time.monotonic,
+        log: Optional[logging.Logger] = None,
+    ) -> None:
+        """``render_span`` turns a held span into the words ``_restart_line`` prints."""
+        self._stall = float(stall_seconds)
+        self._cooloff = float(cooloff_seconds)
+        self._render_span = render_span
+        self._clock = clock
+        self._log = log if log is not None else logger
+        self._lock = threading.RLock()
+        self._failures = 0
+        self._first_failure_at: Optional[float] = None
+        self._next_report_at: Optional[float] = None
+        self._reported = False
+        self._restart_named = False
+        self._cause = ""
+        self._reports_total = 0
+        self._lost_reports = 0
+
+    @property
+    def failures(self) -> int:
+        """Pumps that raised since the last pump that advanced the loop."""
+        with self._lock:
+            return self._failures
+
+    @property
+    def restart_named(self) -> bool:
+        """True once ``_restart_line`` has been written for the current run of failures."""
+        with self._lock:
+            return self._restart_named
+
+    @property
+    def reports_total(self) -> int:
+        """Lines written since process start."""
+        with self._lock:
+            return self._reports_total
+
+    @property
+    def lost_reports(self) -> int:
+        """Lines the logging subsystem itself refused."""
+        with self._lock:
+            return self._lost_reports
+
+    def note_failure(self, exc: BaseException) -> bool:
+        """Record one raising pump and answer whether this call wrote a line."""
+        with self._lock:
+            now = self._clock()
+            self._failures += 1
+            self._cause = _exc_headline(type(exc), exc)
+            if self._first_failure_at is None:
+                self._first_failure_at = now
+            held = now - self._first_failure_at
+            if held >= self._stall and not self._restart_named:
+                self._restart_named = True
+                self._reported = True
+                self._next_report_at = now + self._cooloff
+                self._emit(logging.ERROR, self._restart_line(held))
+                return True
+            if self._next_report_at is not None and now < self._next_report_at:
+                return False
+            line = self._still_stopped_line(held) if self._reported else self._stopped_line()
+            self._reported = True
+            self._next_report_at = now + self._cooloff
+            self._emit(logging.ERROR, line)
+            return True
+
+    def note_success(self) -> bool:
+        """Record one advancing pump and answer whether ``_running_line`` was written."""
+        if not self._reported and self._failures == 0:
+            return False
+        with self._lock:
+            wrote = False
+            if self._reported:
+                self._emit(logging.WARNING, self._running_line())
+                wrote = True
+            self._failures = 0
+            self._first_failure_at = None
+            self._next_report_at = None
+            self._reported = False
+            self._restart_named = False
+            return wrote
+
+    def _emit(self, level: int, message: str) -> None:
+        """Write one finished line; a logging failure counts in ``_lost_reports`` and never escapes."""
+        self._reports_total += 1
+        try:
+            self._log.log(level, "%s", message)
+        except Exception:  # noqa: BLE001 - reporting must not break the pump slot
+            self._lost_reports += 1
+
+    def _stopped_line(self) -> str:
+        return (
+            "BACKGROUND WORK STOPPED - the loop that runs every bot's venue "
+            "reads was not advanced. Every bot stops reading its venue and "
+            "every figure on screen keeps its last value. "
+            f"Cause: {self._cause}"
+        )
+
+    def _still_stopped_line(self, held_s: float) -> str:
+        return (
+            "BACKGROUND WORK STILL STOPPED - the loop that runs every bot's "
+            f"venue reads has not advanced for {self._render_span(held_s)}. "
+            f"Since the first failure: {self._failures} pump(s) raised. "
+            f"Cause: {self._cause}"
+        )
+
+    def _restart_line(self, held_s: float) -> str:
+        return (
+            "RESTART NEEDED - the loop that runs every bot's venue reads has "
+            f"not advanced for {self._render_span(held_s)}, over "
+            f"{self._failures} pump(s). Nothing recovers it while the platform "
+            "runs. Close the platform and start it again. "
+            f"Cause: {self._cause}"
+        )
+
+    def _running_line(self) -> str:
+        return (
+            "BACKGROUND WORK RUNNING AGAIN - the loop that runs every bot's "
+            f"venue reads is advancing again after {self._failures} pump(s) "
+            "raised."
+        )
+
+
 def _make_async_pump_timer(
     loop: asyncio.AbstractEventLoop, interval_ms: int = ASYNC_PUMP_INTERVAL_MS
 ) -> QTimer:
@@ -810,17 +943,28 @@ def _make_async_pump_timer(
     from PySide6.QtCore import Qt, QTimer
 
     from src.core.tick_driver import pump_once
+    from src.exchange.fetch_stall import STALL_THRESHOLD_SECONDS, span_words
+    from src.exchange.lazy_singleton import DEFAULT_BASE_COOLOFF_S
+
+    stall_report = PumpStallReport(
+        stall_seconds=STALL_THRESHOLD_SECONDS,
+        cooloff_seconds=DEFAULT_BASE_COOLOFF_S,
+        render_span=span_words,
+    )
 
     def pump_async():
         try:
             pump_once(loop)
         except Exception as exc:
-            loop.call_exception_handler(
-                {
-                    "message": "asyncio pump raised; the loop was not advanced",
-                    "exception": exc,
-                }
-            )
+            if stall_report.note_failure(exc):
+                loop.call_exception_handler(
+                    {
+                        "message": "asyncio pump raised; the loop was not advanced",
+                        "exception": exc,
+                    }
+                )
+        else:
+            stall_report.note_success()
 
     timer = QTimer()
     timer.setTimerType(Qt.TimerType.PreciseTimer)
