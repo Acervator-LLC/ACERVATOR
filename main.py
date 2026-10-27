@@ -868,7 +868,11 @@ class PumpStallReport:
                 return True
             if self._next_report_at is not None and now < self._next_report_at:
                 return False
-            line = self._still_stopped_line(held) if self._reported else self._stopped_line()
+            line = (
+                self._still_stopped_line(held)
+                if self._reported
+                else self._stopped_line()
+            )
             self._reported = True
             self._next_report_at = now + self._cooloff
             self._emit(logging.ERROR, line)

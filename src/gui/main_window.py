@@ -805,8 +805,7 @@ if _HAS_QT:
         )
         _chart_fetch_fault = ThrottledFault(
             "the asset chart candle fetch",
-            "The Asset Charts tab keeps its last candles and stops "
-            "refreshing them.",
+            "The Asset Charts tab keeps its last candles and stops refreshing.",
         )
         _coalesce_cancel_fault = ThrottledFault(
             "the scheduled task cancel",
