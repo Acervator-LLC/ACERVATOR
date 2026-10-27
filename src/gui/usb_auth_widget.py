@@ -119,7 +119,7 @@ class USBStatusIndicator(QWidget):
         self.setToolTip(tips.get(state, "USB Hardware Key"))
         self.update()
 
-    def paintEvent(self, event):
+    def paintEvent(self, _event):
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         colours = {
