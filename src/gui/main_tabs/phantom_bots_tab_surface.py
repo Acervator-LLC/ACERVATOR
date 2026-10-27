@@ -33,6 +33,7 @@ from __future__ import annotations
 from typing import Any, Optional
 
 from ...exchange.timeframes import ALL_TIMEFRAMES
+from ...trading.phantom_balance import one_active_phantom_timeframe
 from .. import design_system as ds
 from .indicator_panel_surface import ABSENT_CELL_TEXT
 
@@ -96,6 +97,7 @@ ENABLED_ROW_LABEL = "Phantoms enabled:"
 STARTED_ROW_LABEL = "Phantoms started:"
 TIMEFRAMES_ROW_LABEL = "Configured timeframes:"
 DROPPED_ROW_LABEL = "Dropped by the venue:"
+SET_ASIDE_ROW_LABEL = "Set aside, one runs:"
 BELOW_PARENT_ROW_LABEL = "At or below the parent TF:"
 LOCK_STATE_ROW_LABEL = "SCRUM lock state:"
 
@@ -191,6 +193,7 @@ ENABLED_ATTRIBUTE = "_phantoms_enabled"
 STARTED_ATTRIBUTE = "_phantoms_started"
 TIMEFRAMES_ATTRIBUTE = "_phantom_timeframes"
 DROPPED_ATTRIBUTE = "_phantom_tf_dropped"
+SET_ASIDE_ATTRIBUTE = "_phantom_tf_set_aside"
 LOCKED_ATTRIBUTE = "_phantom_locked"
 LOCK_TIMEFRAME_ATTRIBUTE = "_phantom_lock_timeframe"
 COORDINATOR_ATTRIBUTE = "_coordinator"
@@ -206,6 +209,7 @@ REQUEST_ENABLED = "enabled"
 REQUEST_STARTED = "started"
 REQUEST_TIMEFRAMES = "timeframes"
 REQUEST_DROPPED = "dropped"
+REQUEST_SET_ASIDE = "set_aside"
 REQUEST_LOCKED = "locked"
 REQUEST_LOCK_TIMEFRAME = "lock_timeframe"
 REQUEST_PHANTOMS = "phantoms"
@@ -241,6 +245,7 @@ BOT_REQUEST_ROW: tuple = (
     (REQUEST_STARTED, STARTED_ATTRIBUTE, False),
     (REQUEST_TIMEFRAMES, TIMEFRAMES_ATTRIBUTE, None),
     (REQUEST_DROPPED, DROPPED_ATTRIBUTE, None),
+    (REQUEST_SET_ASIDE, SET_ASIDE_ATTRIBUTE, None),
     (REQUEST_LOCKED, LOCKED_ATTRIBUTE, False),
     (REQUEST_LOCK_TIMEFRAME, LOCK_TIMEFRAME_ATTRIBUTE, DEFAULT_LOCK_TIMEFRAME),
 )
@@ -414,16 +419,48 @@ def is_higher_timeframe(timeframe: Any, parent: Any) -> bool:
 
 
 def chosen_timeframe(timeframes: Any) -> str:
-    """Pick the highest-ranked name in ``timeframes``, else ``TIMEFRAME_DEFAULT``.
+    """The one active name ``one_active_phantom_timeframe`` names, else
+    ``TIMEFRAME_DEFAULT``.
 
     A bot restored before one timeframe became the selection holds several, and
-    the highest is the one the higher-timeframe bias weighs most.
+    the engine and this picker read one declaration for which of them runs.
     """
-    order = list(TIMEFRAMES)
-    held = [one for one in list(timeframes or ()) if one in order]
-    if not held:
+    active, _set_aside = one_active_phantom_timeframe(
+        [str(one) for one in list(timeframes or ())]
+    )
+    if not active or active[0] not in list(TIMEFRAMES):
         return TIMEFRAME_DEFAULT
-    return max(held, key=order.index)
+    return active[0]
+
+
+def set_aside_timeframes(timeframes: Any) -> list:
+    """The names ``one_active_phantom_timeframe`` holds back out of ``timeframes``."""
+    _active, set_aside = one_active_phantom_timeframe(
+        [str(one) for one in list(timeframes or ())]
+    )
+    return [one for one in set_aside if one in list(TIMEFRAMES)]
+
+
+def timeframe_order_key(timeframe: Any) -> int:
+    """The ``TIMEFRAMES`` index of ``timeframe``, or one past the last name."""
+    order = list(TIMEFRAMES)
+    name = str(timeframe)
+    return order.index(name) if name in order else len(order)
+
+
+def configured_timeframes(bot: Any) -> list:
+    """Every phantom timeframe ``bot`` was given, the one it runs and the rest.
+
+    The Live bot holds the one it runs in ``_phantom_timeframes`` and the rest in
+    ``_phantom_tf_set_aside``; a Paper or Simulator view holds the stored list
+    whole, so this reads one row on all three surfaces.
+    """
+    held = [str(one) for one in (getattr(bot, TIMEFRAMES_ATTRIBUTE, None) or ())]
+    aside = getattr(bot, SET_ASIDE_ATTRIBUTE, None)
+    if aside is None:
+        return held
+    extra = [str(one) for one in (aside or ()) if str(one) not in held]
+    return sorted(held + extra, key=timeframe_order_key)
 
 
 def timeframe_refusal(
@@ -821,6 +858,7 @@ class BotSource:
         started: Any = False,
         timeframes: Any = None,
         dropped: Any = None,
+        set_aside: Any = None,
         locked: Any = False,
         lock_timeframe: Any = DEFAULT_LOCK_TIMEFRAME,
         bot_id: Any = DEFAULT_BOT_ID,
@@ -838,6 +876,7 @@ class BotSource:
             [STARTED_ATTRIBUTE, started],
             [TIMEFRAMES_ATTRIBUTE, timeframes],
             [DROPPED_ATTRIBUTE, dropped],
+            [SET_ASIDE_ATTRIBUTE, set_aside],
             [LOCKED_ATTRIBUTE, locked],
             [LOCK_TIMEFRAME_ATTRIBUTE, lock_timeframe],
             [BOT_ID_ATTRIBUTE, bot_id],
@@ -853,10 +892,10 @@ class PhantomBotsTabModel:
     """The Phantom Bots tab: its settings, its status rows and its tables.
 
     ``build`` reads the bot and fills the note, the three setting boxes,
-    the six status rows and either the two tables or one explanatory
-    line. ``dropped`` and ``below_parent`` name the timeframes no phantom
-    runs on. ``enable_changed``, ``timeframe_chosen`` and ``lock_changed``
-    are the three settings the operator moves.
+    the seven status rows and either the two tables or one explanatory
+    line. ``dropped``, ``set_aside`` and ``below_parent`` name the timeframes
+    no phantom runs on. ``enable_changed``, ``timeframe_chosen`` and
+    ``lock_changed`` are the three settings the operator moves.
     """
 
     def __init__(self, bot: Any = None) -> None:
@@ -874,6 +913,7 @@ class PhantomBotsTabModel:
         self.lock_requested = LOCK_DEFAULT
         self.lock_value = LOCK_DEFAULT
         self.dropped: list = []
+        self.set_aside: list = []
         self.below_parent: list = []
         self.summary_rows: list = []
         self.phantom_rows: list = []
@@ -908,6 +948,7 @@ class PhantomBotsTabModel:
         self.lock_requested = LOCK_DEFAULT
         self.lock_value = LOCK_DEFAULT
         self.dropped = []
+        self.set_aside = []
         self.below_parent = []
         self.summary_rows = []
         self.phantom_rows = []
@@ -961,14 +1002,13 @@ class PhantomBotsTabModel:
                 ]
             )
             self.calls.append([BUILD_TF_ITEM, timeframe, supported])
-        self.timeframe_current = chosen_timeframe(
-            getattr(bot, TIMEFRAMES_ATTRIBUTE, []) or []
-        )
+        configured = configured_timeframes(bot)
+        self.timeframe_current = chosen_timeframe(configured)
         self.calls.append(
             [BUILD_TF_CURRENT, self.timeframe_current, self.parent_timeframe]
         )
         self.refusal = stored_timeframe_notice(
-            getattr(bot, TIMEFRAMES_ATTRIBUTE, []) or [],
+            configured,
             self.timeframe_current,
             self.allowed,
             self.exchange_id,
@@ -995,7 +1035,7 @@ class PhantomBotsTabModel:
 
         enabled = bool(getattr(bot, ENABLED_ATTRIBUTE, False))
         started = bool(getattr(bot, STARTED_ATTRIBUTE, False))
-        timeframes = list(getattr(bot, TIMEFRAMES_ATTRIBUTE, []) or [])
+        timeframes = configured_timeframes(bot)
         locked = bool(getattr(bot, LOCKED_ATTRIBUTE, False))
         lock_timeframe = str(
             getattr(bot, LOCK_TIMEFRAME_ATTRIBUTE, DEFAULT_LOCK_TIMEFRAME)
@@ -1022,8 +1062,14 @@ class PhantomBotsTabModel:
             [TIMEFRAMES_ROW_LABEL, timeframes_text(timeframes), ""]
         )
         self.dropped = [str(one) for one in (getattr(bot, DROPPED_ATTRIBUTE, []) or [])]
+        self.set_aside = [
+            str(one) for one in (getattr(bot, SET_ASIDE_ATTRIBUTE, None) or [])
+        ] or set_aside_timeframes(timeframes)
         self.below_parent = below_parent_timeframes(timeframes, self.parent_timeframe)
         self.summary_rows.append([DROPPED_ROW_LABEL, timeframes_text(self.dropped), ""])
+        self.summary_rows.append(
+            [SET_ASIDE_ROW_LABEL, timeframes_text(self.set_aside), ""]
+        )
         self.summary_rows.append(
             [BELOW_PARENT_ROW_LABEL, timeframes_text(self.below_parent), ""]
         )
@@ -1341,6 +1387,7 @@ def build_view_model(model: PhantomBotsTabModel, build_now: bool = False) -> dic
             "started_row": STARTED_ROW_LABEL,
             "timeframes_row": TIMEFRAMES_ROW_LABEL,
             "dropped_row": DROPPED_ROW_LABEL,
+            "set_aside_row": SET_ASIDE_ROW_LABEL,
             "below_parent_row": BELOW_PARENT_ROW_LABEL,
             "lock_state_row": LOCK_STATE_ROW_LABEL,
         },

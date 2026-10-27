@@ -6003,6 +6003,26 @@ lock_candle_count     7      7
 A config carrying no count leaves the argument out, so the coordinator keeps its
 own figure of two. An Extractor holds no coordinator and takes no count.
 
+**The engine now holds the same one-phantom rule as this page.** The wizard let
+one box stay ticked, and the engine kept whatever a saved record named. A bot
+restored with several names built one reader for each of them. It keeps the
+highest-ranked name as the one it runs and the rest as names set aside, through
+the one declaration `one_active_phantom_timeframe`, and so does every path that
+writes the record.
+
+`src/paper/fleet_source.py` — `wizard_phantom_timeframes`
+
+```python
+served = [one for one in chosen if one in offered]
+active, _set_aside = one_active_phantom_timeframe(served)
+return active
+```
+
+Driven on a bot given 6h and 1d over 801 band positions in steps of 0.03 of a
+price unit: one reader is built where two were, and the lower-ranked reading no
+longer reaches either gate chain. A bot given one name answers identically on
+every row.
+
 The count creates no lock, because the coordinator has no method that makes one.
 What it reaches is the attribute the state file saves, the restore path writes back
 and the Bot Settings phantom page shows, so each of those reads the figure the

@@ -3240,6 +3240,36 @@ A phantom timeframe with no tablet of its own is skipped, and one line names
 it in the program's log. On the operator's machine every tablet is 5m, so
 every phantom is skipped today and the Comp column reads the Net column.
 
+**One phantom timeframe reaches the Comp column.** Two sentences above are
+overtaken in part. Neither is edited and neither is removed. They read:
+
+> It finds the tablet, reads the window, runs the engine, merges each phantom
+> timeframe that has a tablet of its own, and weighs the Comp column over those
+> rows with the same function the live feed weighs by.
+
+> The voting panel's reading for ``bot`` over the tablet ``tablet_for``
+> finds, with each phantom timeframe merged and ``composite_net`` over the
+> phantom rows, or the one empty-state cause; a reading carries ``summary``,
+> ``stored``, ``when``, ``age`` and ``message`` for ``show_stored``.
+
+**The current reading.** The feed still merges a phantom timeframe that has a
+tablet, and still weighs the Comp column with the live feed's own function. The
+record's list is reduced to one name first, by the declaration Live reads, so a
+record naming several reaches the column with the highest-ranked of them alone.
+
+`src/gui/simulator/sim_trading_tab_surface.py` — the feed's phantom read
+
+```python
+phantom_tfs, _set_aside = one_active_phantom_timeframe(
+    list(bot.phantom_timeframes)
+)
+phantom_tfs = phantom_tfs or default_phantom_timeframes(timeframe)
+```
+
+The back test reads the same declaration, in
+`src/simulator/back_test.py, in phantom_timeframes_for`, so a walk builds one
+phantom tape where a record names several.
+
 ### What the reading measured
 
 The real window, both builds, a scratch tablet root holding copies of the A15

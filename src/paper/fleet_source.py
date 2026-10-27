@@ -790,18 +790,23 @@ def wizard_record(config: dict) -> dict:
 def wizard_phantom_timeframes(
     typed: Any, ta_timeframe: str, exchange_id: str
 ) -> list[str]:
-    """The phantom timeframes ``ScrummingBot.__init__`` gives a new bot:
-    ``typed`` as the wizard handed it, or ``default_phantom_timeframes`` over
-    ``ta_timeframe`` when ``typed`` is empty, kept to what
-    ``available_timeframes`` lists for ``exchange_id``."""
+    """The one phantom timeframe ``ScrummingBot.__init__`` gives a new bot:
+    ``typed`` through ``one_active_phantom_timeframe``, or
+    ``default_phantom_timeframes`` over ``ta_timeframe`` when ``typed`` is
+    empty, kept to what ``available_timeframes`` lists for ``exchange_id``."""
     from ..exchange.timeframes import available_timeframes
-    from ..trading.phantom_balance import default_phantom_timeframes
+    from ..trading.phantom_balance import (
+        default_phantom_timeframes,
+        one_active_phantom_timeframe,
+    )
 
     offered = list(available_timeframes(exchange_id))
     chosen = [str(one) for one in (typed or []) if str(one)]
     if not chosen:
         chosen = default_phantom_timeframes(str(ta_timeframe or ""), offered)
-    return [one for one in chosen if one in offered]
+    served = [one for one in chosen if one in offered]
+    active, _set_aside = one_active_phantom_timeframe(served)
+    return active
 
 
 def _extractor_status(bot: PaperBot) -> dict:
