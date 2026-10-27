@@ -13,6 +13,9 @@ from ..main_tabs.exchange_tab_surface import (
     EXTRACTOR_TABLE_STRETCH,
     FLEET_COMMANDS,
     SCRUM_TABLE_STRETCH,
+    cleared_words,
+    pool_stopped_words,
+    pull_rate_text,
     shift_held_after_key,
 )
 
@@ -280,89 +283,46 @@ if _HAS_QT:
                 )
                 return
             self._draw_pool_stopped(summary.get("freshest_age_s"))
-            tick_s = summary["ticker_slots"]
-            ohlc_s = summary["ohlcv_slots"]
-            bal_s = summary.get("balance_slots", 0)
-            slots = tick_s + ohlc_s + bal_s
-            if slots <= 0:
-                self._pull_rate_lbl.setText("Data pool: idle (no active bots)")
-                return
-            fetches = (
-                summary["ticker_fetches"]
-                + summary["ohlcv_fetches"]
-                + summary.get("balance_fetches", 0)
-            )
-            hits = (
-                summary["ticker_hits"]
-                + summary["ohlcv_hits"]
-                + summary.get("balance_hits", 0)
-            )
-            hit_rate = 100.0 * hits / (hits + fetches) if (hits + fetches) > 0 else 0.0
-            fresh = summary.get("freshest_age_s")
-            old = summary.get("oldest_age_s")
-            stale = summary.get("stale_slots", 0)
-            cleared = self._cleared_words(summary.get("wedged_locks_cleared", 0))
-            if fresh is None:
-                self._pull_rate_lbl.setText(
-                    f"Data pool: {slots} slots · awaiting first "
-                    f"fetch  ·  cache-hit {hit_rate:.0f}%{cleared}"
-                )
-                return
-            self._pull_rate_lbl.setText(
-                f"Data pool: {slots} slots "
-                f"(tick {tick_s}/ohlcv {ohlc_s}/bal {bal_s})  ·  "
-                f"freshest {fresh:>4.0f}s  ·  "
-                f"oldest {old:>4.0f}s  ·  "
-                f"{stale} stale  ·  cache-hit {hit_rate:.0f}%{cleared}"
-            )
+            self._pull_rate_lbl.setText(pull_rate_text(summary))
 
         @staticmethod
         def _cleared_words(wedged_locks_cleared) -> str:
             """The data pool line's tail naming blocked fetches the pool cleared.
 
-            Empty at a count of zero, which is every run that never stopped, so
-            the line carries the figure only once the platform has recovered a
-            stop of its own accord.
+            ``exchange_tab_surface.cleared_words`` answers it, so this tail and
+            the one the React venue page draws cannot differ.
             """
+            return cleared_words(wedged_locks_cleared)
+
+        def _venue_call_rate(self) -> float:
+            """This venue's calls per minute, or zero when the monitor refuses."""
             try:
-                count = int(wedged_locks_cleared or 0)
-            except (TypeError, ValueError):
-                return ""
-            if count <= 0:
-                return ""
-            noun = "blocked fetch" if count == 1 else "blocked fetches"
-            return f"  ·  {count} {noun} cleared"
+                from ...exchange.api_load_monitor import get_load_monitor
+
+                return float(
+                    get_load_monitor().sample(self.exchange_id).calls_per_minute
+                )
+            except Exception as exc:
+                logger.debug("venue call rate could not be read: %s", exc)
+                return 0.0
 
         def _draw_pool_stopped(self, freshest_age_s) -> None:
             """Show one line while the data pool has stopped refreshing, and
             hide it again once a reading comes back.
 
             ``freshest_age_s`` is the pool's own age of its most recently
-            fetched slot. The verdict comes from ``fetch_stall.stall_seconds``,
-            the same function the Console line uses, read here with this
-            venue's own calls-per-minute. A single slot passing its time to
-            live is ordinary and leaves the line hidden.
+            fetched slot. ``exchange_tab_surface.pool_stopped_words`` answers
+            the words, read here with this venue's own calls-per-minute, so
+            this line and the one the React venue page draws cannot differ.
             """
-            try:
-                from ...exchange.api_load_monitor import get_load_monitor
-                from ...exchange.fetch_stall import span_words, stall_seconds
-
-                rate = get_load_monitor().sample(self.exchange_id)
-                stopped_for = stall_seconds(freshest_age_s, rate.calls_per_minute)
-            except Exception as exc:
-                logger.debug("pool-stopped line could not be read: %s", exc)
-                return
-            if stopped_for is None:
+            words = pool_stopped_words(
+                self._exchange_name, freshest_age_s, self._venue_call_rate()
+            )
+            if not words:
                 self._pool_stopped_lbl.clear()
                 self._pool_stopped_lbl.setVisible(False)
                 return
-            self._pool_stopped_lbl.setText(
-                "DATA POOL STOPPED REFRESHING — nothing has come back from "
-                f"{self._exchange_name} for {span_words(stopped_for)}. Every "
-                "price, balance and ammo figure below is at least that old. "
-                "The platform clears a block of its own on the next fetch; "
-                "restart only if this line stays."
-            )
+            self._pool_stopped_lbl.setText(words)
             self._pool_stopped_lbl.setVisible(True)
 
         def eventFilter(self, watched, event) -> bool:  # noqa: N802 - Qt name

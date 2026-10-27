@@ -88,6 +88,12 @@ button.acervator-exchange-tab:focus-visible {
   border-bottom: 1px solid var(--OUTLINE, var(--border));
 }
 
+/* QLabel: the stop line keeps its own ground and border from the payload, and
+ * takes only the height its words need. */
+[data-part="pool-stopped"] {
+  flex: none;
+}
+
 [data-part="scrum-section"],
 [data-part="extractor-section"] {
   flex: none;

@@ -975,6 +975,51 @@ fresh = ThreadPoolExecutor(
 self._sync_executor = fresh
 ```
 
+**Functional.** The red line and the count beside it now draw on both builds of
+the venue page. Before this, only the first build drew them: the second build
+drew the data pool line and nothing under it, so a fleet that had stopped
+reading the venue looked normal on that build.
+
+A passage above names one file for the words of the red line:
+
+> `src/gui/widgets/exchange_tab.py` — `ExchangeTab._draw_pool_stopped`
+
+The current reading is that the words live in the shared venue surface and both
+pages read them from there. The same holds for the count of cleared blocks,
+named above as `ExchangeTab._cleared_words`.
+
+`src/gui/main_tabs/exchange_tab_surface.py` — the words both pages draw
+
+```python
+    if stopped_for is None:
+        return NO_POOL_STOP_TEXT
+    return POOL_STOPPED_FORMAT.format(
+        venue=exchange_name, span=span_words(stopped_for)
+    )
+```
+
+**Design intention.** One function answers for both builds, so the two cannot
+show a different age for the same stop. Read off the real screen and the real
+page values, with nothing coming back for two minutes and twenty seconds, both
+builds name the same span and the same count.
+
+| what was read | refreshing normally | nothing back for 2 m 20 s |
+|---|---|---|
+| first build, the red line | hidden | shown, naming 2 minutes 20 seconds |
+| first build, the count | absent | 2 blocked fetches cleared |
+| second build, the red line | hidden | shown, naming 2 minutes 20 seconds |
+| second build, the count | absent | 2 blocked fetches cleared |
+
+**Design intention.** The Paper Trader and the Simulator draw no data pool row,
+and neither reads the live market cache, so neither has a venue read that can
+stop this way. Each one publishes an empty row.
+
+`src/gui/simulator/sim_exchange_tab_surface.py` — the row the Simulator publishes
+
+```python
+DATA_POOL_ROW_TEXT = ""
+```
+
 #### What comes back on its own
 
 **Functional.** Two readings rebuild themselves and need no restart. The BTC/USD
