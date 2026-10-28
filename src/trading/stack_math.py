@@ -367,6 +367,27 @@ def _rung_is_order_free(record: dict) -> bool:
     return str(record.get(STACK_STATUS_KEY, "")) == STACK_STATUS_PENDING
 
 
+RUNG_NO_SIZE = "no size"
+RUNG_NO_PRICE = "no price"
+
+
+def unproduced_stack_amount(record: dict) -> str:
+    """Why no fold produced this rung's amount, or "" where one could, read as
+    `STACK_SIZE_KEY` and `STACK_PRICE_KEY` alone.
+
+    `split_scrum_into_tranches` spreads one fold event's tokens over spaced
+    rungs, so the alignment is at their sum and those two figures are all a
+    single stored rung can be tested against.
+    """
+    size = _record_float(record.get(STACK_SIZE_KEY))
+    price = _record_float(record.get(STACK_PRICE_KEY))
+    if size is None or size <= 0.0:
+        return RUNG_NO_SIZE
+    if price is None or price <= 0.0:
+        return RUNG_NO_PRICE
+    return ""
+
+
 def merge_into_standing_rungs(
     standing: list[dict],
     fresh: list[dict],

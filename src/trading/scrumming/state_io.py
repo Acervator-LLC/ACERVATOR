@@ -77,6 +77,7 @@ class StateSerializerMixin:
     _target_balance: float
     bot_id: Any
     config: Any
+    retire_unaligned_tranches: Callable[..., dict]
     state: Any
 
     def export_scrumming_state(self) -> dict:
@@ -518,6 +519,12 @@ class StateSerializerMixin:
         # _land_pending_wire_credits moves _pending_wire_credits into the
         # fold tranches restored above.
         self._land_pending_wire_credits()
+
+        # Ordered after the wire landing so a record's wired-in dollars are on
+        # it before retire_unaligned_tranches measures its amount. Runs once
+        # per bot: every record queued after it is handed out of one sale's own
+        # figures by fold_tranche_records.
+        self.retire_unaligned_tranches("load")
 
         # _fold_queue_usd is re-derived from the tranche sums, not read out
         # of data.
