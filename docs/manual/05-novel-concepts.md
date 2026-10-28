@@ -1651,6 +1651,100 @@ by one digit changed the digest and left all 120 standing. A bot whose fee
 setting read 0.00 per cent against five records queued at 0.6 per cent retired
 none of them and wrote the refusal.
 
+### The marked total is brought under the held total on load
+
+The sweep above retires the records whose own figures no sale produced. The
+operator's second ruling covers what is left: keep the aligned tranches up to
+the held total and retire the oldest beyond it, so the units the queue marks
+never exceed the units the bot holds.
+
+**This is not a limit on how many tranches stand.** Many may stand on either
+side, in any number. Only their sum is bounded.
+
+`src/trading/scrumming/fold_tranches.py`, in `retire_tranches_above_held`, is
+the sweep. `src/trading/scrumming/state_io.py`, in `import_scrumming_state`, is
+the one caller, and it runs this sweep straight after the alignment sweep and
+before the fold queue's dollar total is re-derived. So it judges only what the
+alignment sweep left standing, and the re-derive reads the queue it leaves.
+
+```mermaid
+flowchart TD
+    A[a bot's state is restored] --> B[parked wire credit lands on the records]
+    B --> C[retire_unaligned_tranches<br/>drops what no sale produced]
+    C --> D[retire_tranches_above_held<br/>drops the oldest beyond the held total]
+    D --> E[the fold queue's dollar total is re-derived]
+```
+
+**Which figure is the held total.** `import_scrumming_state` does not restore
+`_current_holdings`; the exchange supplies that on the next tick, and it still
+reads zero while the sweep runs. `src/trading/scrumming/fold_tranches.py`, in
+`_held_units_now`, therefore sums the units of this bot's restored lots, the
+same figure the restore drift warning in `import_scrumming_state` already sums.
+A lot holding no readable units figure is counted beside the total, never added
+as zero.
+
+**A held total of zero or less refuses the whole sweep** and every tranche is
+kept. A bot whose lots were never saved would otherwise lose the lot. The
+refusal is written to the bot log and names the figure it read.
+
+**Which field dates a record.** `src/trading/scrumming/sizing.py` declares
+`FOLD_AGE_KEY` as `created_ts`, written by `fold_tranche_records`, and
+`STACK_AGE_KEY` as `opened_ts`, written by `split_scrum_into_tranches`. The age
+sweep and this one read the same two names.
+`src/trading/scrumming/sizing.py`, in `tranches_beyond_held_total`, sorts the
+standing records oldest first on that field and drops from the front while the
+remainder still marks more than the held total, so the newest records are the
+ones that stay. A record whose stamp is not a positive finite number sorts as
+the oldest and is counted, and the log line states how many records the ordering
+could not place.
+
+One sale stamps every record it queues with one `created_ts`, so a tie is the
+normal case. A tie keeps the queue's own order, which is the order those records
+were written in.
+
+**The two queues are measured separately and never added together.** A fold
+tranche's units left the position when the scrum sold them; a stack rung's units
+are still in it, because `split_scrum_into_tranches` places a sell for each
+rung. One total across both is not a quantity. Each queue is measured against
+the one held total on its own.
+
+A rung holding a resting venue order is kept whatever the arithmetic says,
+exactly as the alignment sweep and `src/trading/scrumming_bot.py`, in
+`clear_stack_tranches`, keep it, and its units are charged against the held
+total first. Where those kept rungs alone still mark more than the bot holds,
+the log line says so rather than claiming the invariant.
+
+**What this costs.** Every record dropped here is units the bot sold and will
+now never buy back at that price. The operator chose this with that consequence
+stated. Each drop is written to the bot log with its price, its units, its
+dollars, its age in days and the reason it went, and counts as discarded and
+never as closed, so opened less closed less discarded still equals what stands.
+No order is placed or cancelled, and holdings, cost basis and target balance are
+unchanged.
+
+**What the screen reads afterwards.** The allotment row described under *How the
+ratio cell picks its colour* draws its figure through
+`src/gui/live_settings/fold_tokens.py`, in `compose_units_marked_row`, on the Qt
+panel and through `src/gui/main_tabs/fold_tokens_surface.py`, in
+`compose_units_marked_row`, on the Electron page. After a load that sweep ran
+on, that row reads at or below `1.00x` and draws no red, unless a resting venue
+order pinned a rung or no held total was readable.
+
+Driven on constructed records in a redirected home, with no venue reached and no
+order placed. Three fold records of 30 units each against 40 units held kept the
+newest and retired the two older ones; the tree before this work kept all three.
+Over 400 bots whose held figure sat just above their marked total, both trees
+left the same queues with the same digest on all 400 and dropped nothing.
+Lowering one digit of that held figure left 4 of the 400 digests matching and
+dropped 945 records. Over 1,200 pseudo-random bots, 645 stood above their held
+total on the tree before this work and 62 after it, and those 62 are exactly the
+bots whose remaining excess sits in rungs holding a resting venue order, each
+reported as such. The counter reconciliation held on all 1,200. Blinding the
+date stamp on all three records of the first reading made the sweep report three
+records it could not place.
+
+The Product Manual PDF rebuild is owed for this page.
+
 ## 12 - Technical Analysis Indicator Confidence Tiers
 
 Most TA systems stack indicators additively. The Tier-4 suite organizes signals into four confidence tiers with cumulative weighting: Tier-1 (structural, highest weight), Tier-2 (confirmation, medium weight), Tier-3 (momentum), Tier-4 (context). Entries require Tier-1 + Tier-2 alignment; Tier-3/4 scale confidence but cannot override. This tier system arose out of queries with Claude Code while it was roleplaying as a TA Archetype and is only one such example where most of the other such contributions deal with bug fixes.
