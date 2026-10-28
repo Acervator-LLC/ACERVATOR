@@ -8,7 +8,7 @@
     "start": "electron ."
   },
   "devDependencies": {
-    "electron": "44.9.1"
+    "electron": "45.0.0"
   },
   "overrides": {
     "undici": "^7.30.1"
