@@ -446,6 +446,202 @@ TYPED_CREDENTIAL_CONTROLS = (
 )
 EMPTY_TEXT = ""
 
+#: The Fleet Lock rows of the User tab. One optional password seals the saved
+#: fleet and the venue vault together. ``fleet_lock_intent`` is the whole
+#: decision, and ``SettingsDialog._settle_fleet_lock`` and the drawn build read
+#: that one answer, so neither can take a password the other would refuse.
+FLEET_LOCK_GROUP_TITLE = "Fleet Lock"
+FLEET_LOCK_PHRASE_LABEL = "Password:"
+FLEET_LOCK_CONFIRM_LABEL = "Confirm Password:"
+FLEET_LOCK_PHRASE_PLACEHOLDER_ABSENT = "Leave both rows empty for no lock"
+FLEET_LOCK_PHRASE_PLACEHOLDER_HELD = "Type a new password to change the lock"
+FLEET_LOCK_CONFIRM_PLACEHOLDER = "Type the same password again"
+FLEET_LOCK_PHRASE_DESCRIPTION = (
+    "Seals the saved fleet and the venue vault. Lose it and the lot book is gone."
+)
+FLEET_LOCK_CONFIRM_DESCRIPTION = (
+    "Type the same password again. Neither row is taken unless both match."
+)
+FLEET_LOCK_CLEAR_BUTTON_TEXT = "Clear the lock"
+FLEET_LOCK_CLEAR_DESCRIPTION = (
+    "Destroys the sealed key and the venue vault. Every API key is entered again."
+)
+FLEET_LOCK_UNLOCK_BUTTON_TEXT = "Unlock the fleet now"
+FLEET_LOCK_UNLOCK_DESCRIPTION = (
+    "Opens the sealed fleet with the password and loads every saved bot now."
+)
+
+FLEET_LOCK_ABSENT_WORDS = (
+    "No password is set. The saved fleet is plain text on this computer and a "
+    "launch starts the bots by itself."
+)
+FLEET_LOCK_HELD_WORDS = (
+    "A password is set. The saved fleet is sealed, and a launch starts no bot "
+    "until the password is given."
+)
+
+FLEET_LOCK_NOTHING = "nothing"
+FLEET_LOCK_SET = "set"
+FLEET_LOCK_CHANGE = "change"
+FLEET_LOCK_CLEAR = "clear"
+FLEET_LOCK_HALF_FILLED = "half_filled"
+FLEET_LOCK_MISMATCH = "mismatch"
+FLEET_LOCK_CLEAR_NEEDS_PHRASE = "clear_needs_password"
+FLEET_LOCK_CHANGE_NEEDS_UNLOCK = "change_needs_unlock"
+
+FLEET_LOCK_SET_BOX_TITLE = "This password becomes the only way into your lot book"
+FLEET_LOCK_SET_QUESTION = (
+    "Save will seal the saved fleet and every stored venue key under this "
+    "password.\n\n"
+    "The password itself is never written down. Nothing on this computer can "
+    "recover it and nobody can reset it.\n\n"
+    "Lose the password and you lose the lot book: every bot, every tranche and "
+    "every lot the saved fleet holds.\n\n"
+    "Seal the fleet under this password?"
+)
+FLEET_LOCK_CHANGE_BOX_TITLE = "The new password becomes the only way in"
+FLEET_LOCK_CHANGE_QUESTION = (
+    "Save will seal the master key under the new password. The old password "
+    "stops working the moment it is written.\n\n"
+    "Lose the new password and you lose the lot book: every bot, every tranche "
+    "and every lot the saved fleet holds.\n\n"
+    "Change the password?"
+)
+FLEET_LOCK_CLEAR_BOX_TITLE = "Clearing the lock destroys the key and the vault"
+FLEET_LOCK_CLEAR_QUESTION = (
+    "Clearing the lock throws two things away for good:\n\n"
+    "  the sealed key file, which is the only thing the password opens\n"
+    "  the venue vault, which holds the API keys you typed in\n\n"
+    "The saved fleet is written back in plain text, and every venue has to be "
+    "entered again by hand on the Exchanges page.\n\n"
+    "This cannot be undone. Clear the lock?"
+)
+
+FLEET_LOCK_HALF_FILLED_LOG = (
+    "Fleet Lock left as it was: one of the two password rows was empty, so "
+    "neither was taken"
+)
+FLEET_LOCK_MISMATCH_LOG = (
+    "Fleet Lock left as it was: the two password rows did not match, so "
+    "neither was taken"
+)
+FLEET_LOCK_CLEAR_NEEDS_PHRASE_LOG = (
+    "Fleet Lock left as it was: clearing the lock needs the current password "
+    "in the Password row"
+)
+FLEET_LOCK_CHANGE_NEEDS_UNLOCK_LOG = (
+    "Fleet Lock left as it was: give the current password through Unlock the "
+    "fleet now, then change it"
+)
+FLEET_LOCK_KEPT_LOG = "Fleet Lock left as it was; nothing was sealed or destroyed"
+FLEET_LOCK_SET_LOG_FORMAT = (
+    "Fleet Lock set. The saved fleet is sealed and {count} venue(s) moved "
+    "under the new key: {names}"
+)
+FLEET_LOCK_CHANGED_LOG = (
+    "Fleet Lock password changed. The old password no longer opens it"
+)
+FLEET_LOCK_CLEARED_LOG_FORMAT = (
+    "Fleet Lock cleared. The sealed key is gone and {count} venue(s) were "
+    "written back: {names}"
+)
+FLEET_LOCK_REFUSED_LOG_FORMAT = (
+    "Fleet Lock left as it was; the reseal could not finish: {error}"
+)
+FLEET_LOCK_WRONG_PHRASE_LOG = (
+    "Fleet Lock left as it was: that password did not open the sealed key"
+)
+FLEET_LOCK_STATE_REFUSED_LOG = (
+    "Fleet Lock changed, but the saved fleet file could not be written back. "
+    "Save the fleet again before the next shutdown"
+)
+FLEET_LOCK_CLEAR_INCOMPLETE_LOG = (
+    "Fleet Lock NOT cleared: the saved fleet would not open, so the sealed key "
+    "was kept. Press Clear the lock again"
+)
+
+
+def fleet_lock_words(held: Any) -> str:
+    """The sentence the Fleet Lock group shows for the lock this install holds.
+
+    ``src/core/encryption.py, in has_master_key`` is what *held* answers, so
+    these words name the key file on disk and never a typed row.
+    """
+    return FLEET_LOCK_HELD_WORDS if held else FLEET_LOCK_ABSENT_WORDS
+
+
+def _fleet_lock_answer(
+    action: str,
+    *,
+    asks: bool = False,
+    title: str = EMPTY_TEXT,
+    words: str = EMPTY_TEXT,
+    refusal: str = EMPTY_TEXT,
+) -> dict:
+    """One ``fleet_lock_intent`` answer, with every field present on all of them."""
+    return {
+        "action": action,
+        "asks": asks,
+        "title": title,
+        "words": words,
+        "refusal": refusal,
+    }
+
+
+def fleet_lock_intent(
+    held: Any, typed: Any, confirm: Any, clearing: Any, opened: Any = True
+) -> dict:
+    """What a Save does to the lock, from the two rows and the Clear press.
+
+    ``action`` is one of ``FLEET_LOCK_NOTHING``, ``FLEET_LOCK_SET``,
+    ``FLEET_LOCK_CHANGE``, ``FLEET_LOCK_CLEAR``, ``FLEET_LOCK_HALF_FILLED``,
+    ``FLEET_LOCK_MISMATCH``, ``FLEET_LOCK_CLEAR_NEEDS_PHRASE`` or
+    ``FLEET_LOCK_CHANGE_NEEDS_UNLOCK``; ``asks`` is True only for the three
+    that change a file, ``words`` is the question those three put on screen,
+    and no password is ever in the answer.
+    """
+    first = str(typed or "")
+    second = str(confirm or "")
+    if clearing:
+        if not first:
+            return _fleet_lock_answer(
+                FLEET_LOCK_CLEAR_NEEDS_PHRASE,
+                refusal=FLEET_LOCK_CLEAR_NEEDS_PHRASE_LOG,
+            )
+        return _fleet_lock_answer(
+            FLEET_LOCK_CLEAR,
+            asks=True,
+            title=FLEET_LOCK_CLEAR_BOX_TITLE,
+            words=FLEET_LOCK_CLEAR_QUESTION,
+        )
+    if not first and not second:
+        return _fleet_lock_answer(FLEET_LOCK_NOTHING)
+    if not first or not second:
+        return _fleet_lock_answer(
+            FLEET_LOCK_HALF_FILLED, refusal=FLEET_LOCK_HALF_FILLED_LOG
+        )
+    if first != second:
+        return _fleet_lock_answer(FLEET_LOCK_MISMATCH, refusal=FLEET_LOCK_MISMATCH_LOG)
+    if held:
+        if not opened:
+            return _fleet_lock_answer(
+                FLEET_LOCK_CHANGE_NEEDS_UNLOCK,
+                refusal=FLEET_LOCK_CHANGE_NEEDS_UNLOCK_LOG,
+            )
+        return _fleet_lock_answer(
+            FLEET_LOCK_CHANGE,
+            asks=True,
+            title=FLEET_LOCK_CHANGE_BOX_TITLE,
+            words=FLEET_LOCK_CHANGE_QUESTION,
+        )
+    return _fleet_lock_answer(
+        FLEET_LOCK_SET,
+        asks=True,
+        title=FLEET_LOCK_SET_BOX_TITLE,
+        words=FLEET_LOCK_SET_QUESTION,
+    )
+
+
 NO_SELECTION_FEEDBACK = "Select an exchange to remove."
 REMOVED_TAB_TEXT = "Its exchange tab comes off the main window."
 REMOVED_FEEDBACK_FORMAT = "{name} removed. " + REMOVED_TAB_TEXT
