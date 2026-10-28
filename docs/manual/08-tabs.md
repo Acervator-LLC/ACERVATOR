@@ -3772,3 +3772,18 @@ the same teardown that raised in that filter ends clean.
 **The rebuild is owed.** `docs/Acervator-Product-Manual.pdf` is not rebuilt here;
 another branch holds that file. This page, `docs/manual/08-tabs.md`, is the one
 that needs it.
+
+## 2026-10-28 - #1374 - where the owed rebuild now stands
+
+### Where the sentence about the rebuild now reads differently
+
+One reading above describes the state before this branch. It stands as written,
+and this is the reading that replaced it.
+
+| written above | what it reads now |
+| --- | --- |
+| "**The rebuild is owed.** `docs/Acervator-Product-Manual.pdf` is not rebuilt here; another branch holds that file. This page, `docs/manual/08-tabs.md`, is the one that needs it." | `docs/Acervator-Product-Manual.pdf` is rebuilt in this branch from the merged pages, and it carries this page |
+
+`tools/build_product_manual.py` is what builds it, and the page order it reads
+is the order of `docs/manual`.
+
