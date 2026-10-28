@@ -303,8 +303,6 @@ class NotificationManager:
             },
         }
 
-    # --- Channel handlers ---
-
     def _send_in_app(self, title: str, message: str, priority: AlertPriority):
         """In-app notification (logged, picked up by GUI)."""
         logger.info("NOTIFICATION [%s]: %s — %s", priority.value, title, message)

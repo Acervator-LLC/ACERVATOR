@@ -97,7 +97,6 @@ def check_start_balance(
         )
         return False, msg, bal_summary
 
-    # ── Scrumming branch ──────────────────────────────────────────
     sym_tag = f"{target}/{base}" if target else base
     bal_summary = f"[SCRUMMING {sym_tag}] " f"{base}: {base_free:.4f} free (spend)"
     if target_free > 0:

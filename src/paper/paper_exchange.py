@@ -224,8 +224,6 @@ class PaperExchange:
         self._tickers: dict[str, TickerEntry] = {}
         self._candles: dict[tuple[str, str], CacheEntry] = {}
 
-    # -- the small reads ---------------------------------------------------
-
     def venue(self) -> str:
         """The exchange id ``VENUE`` every answer here comes from."""
         return VENUE
@@ -250,8 +248,6 @@ class PaperExchange:
     def calls(self) -> int:
         """How many venue calls ``_call`` has made; a cache hit adds none."""
         return self._calls
-
-    # -- the venue reads ---------------------------------------------------
 
     def products(self) -> list[Product]:
         """The products the venue trades, one ``Product`` each by id, from one
@@ -395,8 +391,6 @@ class PaperExchange:
         if view["best_bid"] and view["best_ask"]:
             return (float(view["best_bid"]) + float(view["best_ask"])) / 2.0
         return None
-
-    # -- the mechanism -----------------------------------------------------
 
     def _ticker_view(self, symbol: str, entry: TickerEntry) -> dict:
         """The ``ticker`` answer built from ``entry``, zero fields as None."""
