@@ -465,6 +465,38 @@ part-spent tranches instead of opening more records, and
 record when the fill arrived as many lots. Both reduce the record count and
 move USD; neither loses any.
 
+### A fourth function combines a standing pair within a tenth of a percent
+
+**The sentence at the head of this subsection is overtaken.** It is not edited
+and not removed. It read:
+
+> Three functions collapse or remove a tranche. No other code path does.
+
+A fourth now does. `src/trading/scrumming/fold_tranches.py`, in
+`_combine_fold_tranches_within_distance`, combines two standing fold tranches
+whose reference prices sit inside a tenth of a percent of each other. It runs
+each time a sale queues a tranche, after the top-up.
+
+`src/trading/scrumming/sizing.py`, in `merge_fold_tranches_within_distance`,
+holds the arithmetic, and `src/trading/stack_math.py`, in
+`within_merge_distance`, holds the figure. The Stack ladder read that same
+declaration already.
+
+The survivor keeps the lower reference price, which is the stricter fold
+threshold, sums the cash and the units, takes the units-weighted original cost
+and names both events. It moves USD and loses none, as the two merges above it
+do, and it brings the opened counter down by what it combined so
+`created - closed - discarded == standing` still holds.
+
+Driven on a hand-built pair in one run: refs 0.05 percent apart combined, two
+records into one carrying $100.0000 and 1.000000 units at a cost basis of
+85.00000000; refs 0.5 percent apart stayed as two.
+
+A standing Stack rung also combines with a new rung inside the same distance,
+through `src/trading/stack_math.py`, in `merge_into_standing_rungs`. A rung
+holding a venue order is never a candidate, since combining it would need that
+order cancelled.
+
 **Despawn.** Aged tranches are removed outright. The record leaves the book,
 the queue total recomputes from what is left, and the count lands in the
 discarded ledger rather than the closed one, because a closed tranche is one
