@@ -269,14 +269,22 @@ jobs:
               return 1;
             }
 
+            // A page target exists while the document is still loading, so
+            // the read repeats until readyState reaches complete.
             console.log("page url:      " + target.url);
             let reading = null;
-            try {
-              reading = await readPage(target.webSocketDebuggerUrl);
-            } catch (refused) {
-              console.log("FAILURE " + refused.message);
-              child.kill();
-              return 1;
+            let faults = ["the page was never read"];
+            for (let second = 0; second < WAIT_SECONDS; second += 1) {
+              try {
+                reading = await readPage(target.webSocketDebuggerUrl);
+                faults = faultsIn(reading);
+              } catch (refused) {
+                faults = [refused.message];
+              }
+              if (!faults.length) {
+                break;
+              }
+              await sleep(1000);
             }
             console.log("page reading:  " + JSON.stringify(reading));
             console.log(
@@ -284,7 +292,6 @@ jobs:
             );
             child.kill();
 
-            const faults = faultsIn(reading);
             for (const fault of faults) {
               console.log("FAILURE " + fault);
             }
