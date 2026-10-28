@@ -1097,7 +1097,7 @@ class FoldTrancheAccountingMixin:
             report["refused"],
         )
 
-    def _held_units_now(self) -> tuple[Optional[float], int]:
+    def _held_units_now(self) -> tuple[float, int]:
         """The units this bot's restored lots record, and how many lots held no
         readable figure.
 
@@ -1252,11 +1252,7 @@ class FoldTrancheAccountingMixin:
             f"{_age_text(_t, STACK_AGE_KEY)} — {_why}"
             for _t, _why in stack
         )
-        _held_text = (
-            "no readable held total"
-            if report["held"] is None
-            else f"{report['held']:.8f} units held"
-        )
+        _held_text = f"{report['held']:.8f} units held"
         _notes = ""
         if report["held_unreadable"]:
             _notes += (
