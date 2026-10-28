@@ -1773,7 +1773,9 @@ class ScrummingBot(
                 ),
             }
 
-        rebought_units = cost / float(fill_price)
+        # _execute_buy leaves the venue's own count here; cost is only what was
+        # asked for, and a partial fill bought less.
+        rebought_units = float(self._last_buy_filled_units or 0.0)
 
         _mf_ref = float(tranche.get("ref", 0.0) or 0.0)
         _mf_profit = (
@@ -4447,20 +4449,26 @@ class ScrummingBot(
                                 ),
                             )
                     else:
-                        _hedge_asset = _use / hedge_fill
+                        # _execute_buy leaves the venue's own count here; _use
+                        # is only what was asked for.
+                        _hedge_asset = float(self._last_buy_filled_units or 0.0)
                         self._main_lots.append(
                             {
                                 "units": _hedge_asset,
                                 "initial_buy_price": hedge_fill,
                             }
                         )
-                        self._hedge_bal -= _use
+                        # The reserve falls by what the fill cost, never by the
+                        # ask, and never below zero.
+                        _hedge_spent = min(_use, _hedge_asset * hedge_fill)
+                        self._hedge_bal -= _hedge_spent
                         self._hedge_trades += 1
-                        self.stats.trade_volume += _use
+                        self.stats.trade_volume += _hedge_spent
                         self._bus.emit(
                             "bot.log",
                             bot_id=self.bot_id,
-                            message=f"HEDGE REBALANCE: spent ${_use:.4f} "
+                            message=f"HEDGE REBALANCE: spent ${_hedge_spent:.4f} "
+                            f"of ${_use:.4f} asked "
                             f"(reserve ${self._hedge_bal:.2f} remaining) "
                             f"→ bought {_hedge_asset:.6f} @ ${hedge_fill:.8f} "
                             f"(intended ${ticker.last:.8f}), "
@@ -4474,8 +4482,8 @@ class ScrummingBot(
                             type="HEDGE",
                             price=hedge_fill,
                             amount=_hedge_asset,
-                            usd=_use,
-                            size=_use,
+                            usd=_hedge_spent,
+                            size=_hedge_spent,
                             profit=0,
                             **self._fill_fee_fields(hedge_fill),
                         )

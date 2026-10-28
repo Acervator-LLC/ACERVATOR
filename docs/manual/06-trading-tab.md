@@ -10390,3 +10390,123 @@ these are the readings that replaced them.
 | "the engine reports it inside its cartridge line as a percentage" | It still does, and the percentage is now labelled cartridge cap. The bare word ceiling no longer appears in the cartridge line, so a search of the log for ceiling returns the position-ceiling lines alone |
 | "the taper schedule is `fold_rate_taper`, both in the shared sizing module" | The schedule is `fold_size_taper`, in the same module. The multiplication is still `fold_spend_usd` |
 | "It is absent from the record the Bot Swarm row reads, so that tooltip can report the timeframe a bot is watching and never the bar it must clear" | The record carries `detonation_confidence_min` and the tooltip names it. The reading for a stored 0.60 and the reading for the opening 0.75 now differ |
+
+## 2026-10-27 - the holdings audit, and what a buy books
+
+### The three figures the holdings audit compares
+
+The audit reads three counts for one bot on one asset. Two are the bot's own: the
+total of its lot book, and its single holdings figure. The third is the
+exchange's own balance for that asset. The audit takes the larger of the bot's
+two counts and compares it against the exchange's count, inside a band of half a
+per cent.
+
+`src/trading/scrumming/reconciliation.py, in _reconcile_holdings`
+
+```python
+exchange_units, _scalar_units, _lot_units = _readings
+self._record_audited_venue_units(exchange_units)
+internal_units = _lot_units if _lot_units > _scalar_units else _scalar_units
+```
+
+### What the audit does for each ordering
+
+Each ordering below was driven on constructed counts. No exchange was contacted.
+
+| the three counts | what the audit did | the lot book after |
+| --- | --- | --- |
+| exchange 50.1, lots 50.0, holdings 50.0 | inside the band, so nothing was written | 50.0 |
+| exchange 40.0, lots 50.0, holdings 50.0 | scaled every lot by the exchange ratio and set the holdings figure to the exchange | 40.0 |
+| exchange 40.0, lots 30.0, holdings 30.0, a usable price | booked the ten missing units as one reconciliation lot | 40.0 |
+| exchange 40.0, lots 30.0, holdings 30.0, no usable price | deferred the adoption and wrote nothing | 30.0 |
+| exchange 40.0, lots 30.0, holdings 30.0, sibling bots holding ten | claimed nothing, because no unit on the asset was this bot's | 30.0 |
+| the exchange omitted the asset from its answer | refused, and kept the last exchange count | 30.0 |
+
+A lot book below the exchange stays below it in the last three rows. The startup
+read repairs it when a price is usable and no sibling bot holds the surplus, and
+leaves it short otherwise, so the gap can survive a restart.
+
+### The reading only the operator can take
+
+Those six rows say what the audit does with each ordering. They do not say which
+ordering any live bot is in. That needs the lot total, the holdings figure and
+the exchange's balance for one bot, read beside each other in one pass, and the
+third of them can only come from the exchange. The reading is the operator's to
+take on the running platform.
+
+### A buy books the units the exchange reported
+
+A fold buy, an initial entry, a hedge buy and a manual tranche fire all book the
+count the exchange reported bought, never the count that was asked for. An order
+resting on the book reports no filled amount, and the bot answers that press as
+no buy: no lot is added, the holdings figure does not move, and the log reads
+`BUY SENT, NO FILL REPORTED`.
+
+`src/trading/scrumming/execution.py, in _execute_buy`
+
+```python
+filled_units, actual_fill, _ = await self._settled_fill(
+    order, self.config.symbol, amount, price, label="FOLD"
+)
+```
+
+The four places that add the bought units to the lot book read one figure the buy
+leaves behind, so none of them can size a lot from the ask.
+
+`src/trading/scrumming/execution.py, in ExecutionEngineMixin`
+
+```python
+_last_buy_filled_units: float = 0.0
+```
+
+```mermaid
+flowchart LR
+  A["_execute_buy reads the settled fill"] --> B["_last_buy_filled_units"]
+  B --> C["initial entry lot"]
+  B --> D["fold rebuy lots"]
+  B --> E["manual tranche lot"]
+  B --> F["hedge lot"]
+```
+
+### What that repair stops
+
+A press the exchange never filled used to credit the position anyway. The next
+audit then read the position above the exchange, took the first ordering in the
+table above, and scaled every lot down to match. Units left the lot book that the
+exchange had never sold.
+
+| the exchange bought | what was booked before | what is booked now |
+| --- | --- | --- |
+| ten of ten asked | ten | ten |
+| five of ten asked | ten | five |
+| none of ten asked | ten | nothing, and the press reads as no buy |
+
+Driven on a two-lot book of 6.0 and 4.0 units against an exchange holding 10.0: a
+buy of ten units that filled nothing left the book at 3.0 and 2.0 units before
+the repair, and at 6.0 and 4.0 units after it. The drift line the audit writes
+appears in the first run and not in the second.
+
+### The hedge reserve falls by what the fill cost
+
+A hedge buy debits the reserve by the money the fill cost, capped at the amount
+it asked for, and the log names both.
+
+`src/trading/scrumming_bot.py, in tick`
+
+```python
+_hedge_spent = min(_use, _hedge_asset * hedge_fill)
+```
+
+### Which count the Ammo cell priced
+
+The cell's rule is unchanged and was read off the composed cell on four inputs.
+It prices the exchange's count where the platform holds one, falls back to the
+bot's attributed count where it does not, and names the count it used in its
+tooltip either way.
+
+| what the cell was given | what it drew | what the tooltip said |
+| --- | --- | --- |
+| exchange 40.0, attributed 30.0 | $100.0000 | measured on the exchange's count |
+| no exchange count | $50.0000 | no exchange count held, measured on the attributed count |
+| an exchange count of zero | $50.0000 | no exchange count held, measured on the attributed count |
+| exchange 40.0, the last read refused | $100.0000 (held) | the held reading, with the reason |
