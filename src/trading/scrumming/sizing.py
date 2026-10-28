@@ -65,6 +65,7 @@ from decimal import ROUND_FLOOR, Decimal, InvalidOperation
 from typing import Any, Optional, Sequence
 
 from ...exchange.base import SETTLEMENT_DAY_SECONDS
+from ..bot_container import as_finite_float
 from ...stocks.market_hours import MarketSession, accepts_order, session_at
 from ..container.config import CEILING_MULTIPLE_MAX, CEILING_MULTIPLE_MIN
 
@@ -2692,6 +2693,143 @@ def eligible_fold_tranches(
     """The tranches in ``tranches`` whose ``ref`` times ``otd_factor`` is at or
     above ``ticker_last``."""
     return [t for t in tranches if ticker_last <= float(t.get("ref", 0)) * otd_factor]
+
+
+EVENT_ID_KEY = "opposing_event_id"
+EVENT_UNITS_KEY = "opposing_event_units"
+EVENT_USD_KEY = "opposing_event_usd"
+
+
+def opposing_event_id(label: str, created_ts: float) -> str:
+    """The identity every tranche of one sale or buy carries, from that trade's
+    ``label`` and the ``created_ts`` its records are stamped with."""
+    return f"{label}:{created_ts:.6f}"
+
+
+def combined_event_reference(survivor: dict, absorbed: dict) -> dict:
+    """``EVENT_ID_KEY``, ``EVENT_UNITS_KEY`` and ``EVENT_USD_KEY`` for two
+    combining tranches: the amounts add and the identities join once each."""
+    names: list[str] = []
+    for part in (survivor.get(EVENT_ID_KEY), absorbed.get(EVENT_ID_KEY)):
+        for name in str(part or "").split("+"):
+            if name and name not in names:
+                names.append(name)
+    out: dict = {EVENT_ID_KEY: "+".join(names)}
+    for key in (EVENT_UNITS_KEY, EVENT_USD_KEY):
+        if key in survivor or key in absorbed:
+            out[key] = (as_finite_float(survivor.get(key)) or 0.0) + (
+                as_finite_float(absorbed.get(key)) or 0.0
+            )
+    return out
+
+
+def fold_tranche_records(
+    lots: list,
+    fill_price: float,
+    sold_units: float,
+    proceeds_usd: float,
+    event_id: str,
+    created_ts: float,
+) -> tuple[list, float]:
+    """One sale's fold-tranche records out of ``lots``, every amount handed out
+    of that sale's own ``sold_units`` and ``proceeds_usd``, plus the units no
+    lot covered; each record carries ``fill_price`` as ``ref``, ``event_id``
+    and the sale's two amounts."""
+    units_budget = as_finite_float(sold_units)
+    usd_budget = as_finite_float(proceeds_usd)
+    price = as_finite_float(fill_price)
+    if (
+        units_budget is None
+        or usd_budget is None
+        or price is None
+        or units_budget <= 0.0
+        or price <= 0.0
+    ):
+        return [], 0.0
+    records: list[dict] = []
+    remaining = units_budget
+    for lot in list(lots):
+        if remaining <= 1e-12:
+            break
+        lot_units = as_finite_float(lot.get("units", 0.0))
+        basis = as_finite_float(lot.get("initial_buy_price", 0.0))
+        if lot_units is None or basis is None or lot_units <= 1e-12:
+            continue
+        take = min(lot_units, remaining)
+        if take <= 1e-12:
+            continue
+        records.append(
+            {
+                "usd": (take / units_budget) * usd_budget,
+                "units": take,
+                "ref": price,
+                "initial_buy_price": basis,
+                "created_ts": created_ts,
+                EVENT_ID_KEY: event_id,
+                EVENT_UNITS_KEY: units_budget,
+                EVENT_USD_KEY: usd_budget,
+            }
+        )
+        lot["units"] = lot_units - take
+        remaining -= take
+        if lot["units"] <= 1e-12:
+            lots.remove(lot)
+    return records, max(0.0, remaining)
+
+
+def merge_fold_tranches_within_distance(tranches: list) -> tuple[list, int, float]:
+    """The standing fold tranches left after every pair inside
+    ``within_merge_distance`` of each other in ``ref`` combines, with how many
+    combined away and the USD moved.
+
+    A survivor keeps the lower ``ref``, sums ``usd`` and ``units``, takes the
+    units-weighted ``initial_buy_price`` and carries
+    ``combined_event_reference``."""
+    from ..stack_math import within_merge_distance
+
+    kept: list = []
+    merged_n = 0
+    merged_usd = 0.0
+    for record in tranches:
+        ref = as_finite_float(record.get("ref", 0.0))
+        units = as_finite_float(record.get("units", 0.0))
+        usd = as_finite_float(record.get("usd", 0.0))
+        basis = as_finite_float(record.get("initial_buy_price", 0.0))
+        if ref is None or units is None or usd is None or basis is None:
+            kept.append(record)
+            continue
+        if ref <= 0.0 or units <= 0.0:
+            kept.append(record)
+            continue
+        target = None
+        for standing in kept:
+            standing_ref = as_finite_float(standing.get("ref", 0.0))
+            standing_units = as_finite_float(standing.get("units", 0.0))
+            if standing_ref is None or standing_units is None:
+                continue
+            if standing_units <= 0.0 or standing_ref <= 0.0:
+                continue
+            if within_merge_distance(standing_ref, ref):
+                target = standing
+                break
+        if target is None:
+            kept.append(record)
+            continue
+        target_units = as_finite_float(target.get("units", 0.0)) or 0.0
+        target_usd = as_finite_float(target.get("usd", 0.0)) or 0.0
+        target_basis = as_finite_float(target.get("initial_buy_price", 0.0)) or 0.0
+        target_ref = as_finite_float(target.get("ref", 0.0)) or 0.0
+        total_units = target_units + units
+        target["usd"] = target_usd + usd
+        target["units"] = total_units
+        target["ref"] = min(target_ref, ref)
+        target["initial_buy_price"] = (
+            target_units * target_basis + units * basis
+        ) / total_units
+        target.update(combined_event_reference(target, record))
+        merged_n += 1
+        merged_usd += usd
+    return kept, merged_n, merged_usd
 
 
 def cycle_growth_cap_usd(

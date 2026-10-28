@@ -33,7 +33,9 @@ from .sizing import (
     FRACTIONAL_UNITS,
     fold_cap_remaining_usd,
     fold_spend_usd,
+    fold_tranche_records,
     fold_units,
+    opposing_event_id,
     priced_usd,
     scrum_units,
     target_delta_usd,
@@ -68,6 +70,7 @@ class TickPhaseMixin:
     _bus: Any
     _cartridge_last_smart_pct: float
     _check_detonation_trigger: Callable[..., Any]
+    _combine_fold_tranches_within_distance: Callable[..., Any]
     _current_holdings: float
     _detonation_last_signal_bullish: bool
     _dist_accumulator: float
@@ -1462,30 +1465,30 @@ class TickPhaseMixin:
 
             self._main_lots.sort(key=lambda l: l["initial_buy_price"], reverse=True)
             _tranche_count_before = len(self._fold_tranches)
-            _units_remaining = _sold_units
-            _first_new_tranche = None
-            for _lot in list(self._main_lots):
-                if _units_remaining <= 1e-12:
-                    break
-                _take = min(_lot["units"], _units_remaining)
-                if _take <= 1e-12:
-                    continue
-                _t_usd = (_take / _sold_units) * scrum_usd
-                _new_tr = {
-                    "usd": _t_usd,
-                    "units": _take,
-                    "ref": sell_fill,
-                    "initial_buy_price": _lot["initial_buy_price"],
-                    "created_ts": time.time(),
-                }
-                self._fold_tranches.append(_new_tr)
-                self._tranches_created_lifetime += 1
-                if _first_new_tranche is None:
-                    _first_new_tranche = _new_tr
-                _lot["units"] -= _take
-                _units_remaining -= _take
-                if _lot["units"] <= 1e-12:
-                    self._main_lots.remove(_lot)
+            _scrum_event_ts = time.time()
+            _scrum_records, _scrum_unqueued = fold_tranche_records(
+                self._main_lots,
+                sell_fill,
+                _sold_units,
+                scrum_usd,
+                opposing_event_id("SCRUM", _scrum_event_ts),
+                _scrum_event_ts,
+            )
+            self._fold_tranches.extend(_scrum_records)
+            self._tranches_created_lifetime += len(_scrum_records)
+            _first_new_tranche = _scrum_records[0] if _scrum_records else None
+            if _scrum_unqueued > 1e-12:
+                self._bus.emit(
+                    "bot.log",
+                    bot_id=self.bot_id,
+                    message=(
+                        f"FOLD ALIGNMENT SHORT: this SCRUM sold "
+                        f"{_sold_units:.8f} units and the lot book covered "
+                        f"only {_sold_units - _scrum_unqueued:.8f}. "
+                        f"{_scrum_unqueued:.8f} units are queued against no "
+                        f"tranche and will not be bought back."
+                    ),
+                )
 
             # _bound_new_fold_tranches merges and replaces the tranche
             # object, so _first_new_tranche is re-read from the list.
@@ -1506,6 +1509,7 @@ class TickPhaseMixin:
                 float(getattr(bb_result, "lower", 0.0) or 0.0),
                 float(getattr(bb_result, "upper", 0.0) or 0.0),
             )
+            self._combine_fold_tranches_within_distance()
 
             # Ordered after the top-up because wire USD carries no units.
             self._land_pending_wire_credits()
@@ -2228,28 +2232,31 @@ class TickPhaseMixin:
                             key=lambda l: l["initial_buy_price"], reverse=True
                         )
                         _dist_tranche_count_before = len(self._fold_tranches)
-                        _units_remaining = _sold_units
-                        for _lot in list(self._main_lots):
-                            if _units_remaining <= 1e-12:
-                                break
-                            _take = min(_lot["units"], _units_remaining)
-                            if _take <= 1e-12:
-                                continue
-                            _t_usd = (_take / _sold_units) * dist_usd
-                            self._fold_tranches.append(
-                                {
-                                    "usd": _t_usd,
-                                    "units": _take,
-                                    "ref": dist_fill,
-                                    "initial_buy_price": _lot["initial_buy_price"],
-                                    "created_ts": time.time(),
-                                }
+                        _dist_event_ts = time.time()
+                        _dist_records, _dist_unqueued = fold_tranche_records(
+                            self._main_lots,
+                            dist_fill,
+                            _sold_units,
+                            dist_usd,
+                            opposing_event_id("DIST", _dist_event_ts),
+                            _dist_event_ts,
+                        )
+                        self._fold_tranches.extend(_dist_records)
+                        self._tranches_created_lifetime += len(_dist_records)
+                        if _dist_unqueued > 1e-12:
+                            self._bus.emit(
+                                "bot.log",
+                                bot_id=self.bot_id,
+                                message=(
+                                    f"FOLD ALIGNMENT SHORT: this DIST sold "
+                                    f"{_sold_units:.8f} units and the lot "
+                                    f"book covered only "
+                                    f"{_sold_units - _dist_unqueued:.8f}. "
+                                    f"{_dist_unqueued:.8f} units are queued "
+                                    f"against no tranche and will not be "
+                                    f"bought back."
+                                ),
                             )
-                            self._tranches_created_lifetime += 1
-                            _lot["units"] -= _take
-                            _units_remaining -= _take
-                            if _lot["units"] <= 1e-12:
-                                self._main_lots.remove(_lot)
                         self._bound_new_fold_tranches(_dist_tranche_count_before)
                         # scrum_fold_pct governs DIST proceeds as it governs a SCRUM.
                         self._apply_scrum_fold_pct(
@@ -2260,6 +2267,7 @@ class TickPhaseMixin:
                             float(getattr(bb_result, "lower", 0.0) or 0.0),
                             float(getattr(bb_result, "upper", 0.0) or 0.0),
                         )
+                        self._combine_fold_tranches_within_distance()
                         # Ordered after the top-up because wire USD carries no units.
                         self._land_pending_wire_credits()
                         self._fold_queue_usd = sum(

@@ -24,7 +24,12 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QBrush, QColor
 
 from .. import design_system as ds
-from ..main_tabs.fold_tranches_tab_surface import min_rebuy_cell, status_cell
+from ..main_tabs.fold_tokens_surface import FOLD_COLUMN_TOOLTIPS
+from ..main_tabs.fold_tranches_tab_surface import (
+    min_rebuy_cell,
+    status_cell,
+    units_cell,
+)
 from .fold_tokens import (
     ARBITER_COLUMN_HEADER,
     ARBITER_COLUMN_INDEX,
@@ -33,7 +38,6 @@ from .fold_tokens import (
     EXTRACTOR_TRANCHE_FG_HEX,
     FOLD_CLOSED_TOOLTIP,
     FOLD_CLOSE_RATIO_TOOLTIP,
-    FOLD_COLUMN_TOOLTIPS,
     FOLD_COUNTERS_RESET_TOOLTIP,
     FOLD_CYCLE_CAP_TOOLTIP,
     FOLD_DISCARDED_TOOLTIP,
@@ -1097,12 +1101,13 @@ class FoldTranchesTabMixin:
                     age_str = "—"
                 table.setItem(row, 1, QTableWidgetItem(age_str))
 
-                units = _as_finite_float(t.get("units", 0))
-                table.setItem(
-                    row,
-                    2,
-                    QTableWidgetItem(f"{units:.6f}" if units is not None else "—"),
-                )
+                # units_cell is the one declaration of this cell; the
+                # React page draws the same call's answer.
+                _units = units_cell(t)
+                _units_item = QTableWidgetItem(_units[0])
+                if _units[1] is not None:
+                    _units_item.setToolTip(_units[1])
+                table.setItem(row, 2, _units_item)
 
                 usd_v = _as_finite_float(t.get("usd", 0))
                 table.setItem(

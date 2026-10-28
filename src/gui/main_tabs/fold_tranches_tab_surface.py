@@ -116,7 +116,7 @@ TABLE_ROW_NUMBERS_HIDDEN = True
 COLUMN_TOOLTIPS = (
     "Position of this tranche in the fold queue.",
     "Time since the scrum created this tranche.",
-    "Asset units this tranche will buy back.",
+    "Units this tranche buys back, against the units its scrum sold.",
     "Cash parked for this tranche's buy-back.",
     "Price per unit at which the scrum sold.",
     "Price per unit first paid. Informational only.",
@@ -134,6 +134,15 @@ EXTRACTOR_ROW_NUMBER = "EXT"
 
 QUEUE_NUMBER_FORMAT = "{number}"
 UNITS_FORMAT = "{units:.6f}"
+UNITS_ALIGNED_FORMAT = "{units:.6f} of {event_units:.6f}"
+UNITS_TOOLTIP_FORMAT = (
+    "Aligned to {event_id}, which sold {event_units:.6f} units "
+    "for ${event_usd:,.4f}."
+)
+UNITS_NO_EVENT_TOOLTIP = (
+    "This tranche names no opposing event. It was queued before the "
+    "engine recorded one."
+)
 USD_FORMAT = "${usd:,.4f}"
 PRICE_FORMAT = "${price:.8f}"
 MIN_REBUY_FORMAT = "≤${price:.8f}"
@@ -443,6 +452,9 @@ UNITS_KEY = "units"
 REF_KEY = "ref"
 INITIAL_BUY_PRICE_KEY = "initial_buy_price"
 CREATED_TS_KEY = "created_ts"
+EVENT_ID_KEY = "opposing_event_id"
+EVENT_UNITS_KEY = "opposing_event_units"
+EVENT_USD_KEY = "opposing_event_usd"
 EXTRACTOR_OPENED_KEY = "opened_at"
 EXTRACTOR_UNITS_KEY = "base_deployed"
 EXTRACTOR_MARK_KEY = "mark_value_usd"
@@ -1292,6 +1304,28 @@ def sort_order(chosen: Any) -> str:
     return chosen
 
 
+def units_cell(tranche: dict) -> list:
+    """The Units cell and its tooltip: the tranche's own units against the
+    units its opposing event sold, and an em dash where either is unreadable.
+    """
+    units = finite_number(tranche.get(UNITS_KEY, 0))
+    event_units = finite_number(tranche.get(EVENT_UNITS_KEY))
+    event_usd = finite_number(tranche.get(EVENT_USD_KEY))
+    event_id = str(tranche.get(EVENT_ID_KEY, "") or "")
+    if units is None:
+        return [NO_VALUE_TEXT, None]
+    if event_units is None or event_units <= 0.0 or not event_id:
+        return [UNITS_FORMAT.format(units=units), UNITS_NO_EVENT_TOOLTIP]
+    return [
+        UNITS_ALIGNED_FORMAT.format(units=units, event_units=event_units),
+        UNITS_TOOLTIP_FORMAT.format(
+            event_id=event_id,
+            event_units=event_units,
+            event_usd=event_usd if event_usd is not None else 0.0,
+        ),
+    ]
+
+
 def min_rebuy_cell(ref: Optional[float], otd_pct: float) -> list:
     """The Min-rebuy cell and its tooltip, or an em dash and none.
 
@@ -1375,12 +1409,11 @@ def fold_row_cells(
     """The eleven cell texts one fold tranche fills a table row with."""
     stamp = finite_number(tranche.get(CREATED_TS_KEY))
     age = format_age(now - stamp) if stamp is not None and stamp > 0 else NO_VALUE_TEXT
-    units = finite_number(tranche.get(UNITS_KEY, 0))
     ref = finite_number(tranche.get(REF_KEY, 0))
     return [
         QUEUE_NUMBER_FORMAT.format(number=queue_index + 1),
         age,
-        UNITS_FORMAT.format(units=units) if units is not None else NO_VALUE_TEXT,
+        units_cell(tranche)[0],
         usd_cell(tranche.get(USD_KEY, 0)),
         price_cell(tranche.get(REF_KEY, 0)),
         price_cell(tranche.get(INITIAL_BUY_PRICE_KEY, 0)),

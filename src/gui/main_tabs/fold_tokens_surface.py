@@ -36,6 +36,8 @@ from __future__ import annotations
 import math
 from typing import Any, Optional
 
+from .fold_tranches_tab_surface import COLUMN_TOOLTIPS
+
 METHOD = "fold_tokens.state"
 
 EXTRACTOR_TRANCHE_BG_HEX = "#b3261e"
@@ -134,19 +136,9 @@ CREATED_TS_KEY = "created_ts"
 USD_KEY = "usd"
 UNITS_KEY = "units"
 
-FOLD_COLUMN_TOOLTIPS = (
-    "Position of this tranche in the fold queue.",
-    "Time since the scrum created this tranche.",
-    "Asset units this tranche will buy back.",
-    "Cash parked for this tranche's buy-back.",
-    "Price per unit at which the scrum sold.",
-    "Price per unit first paid. Informational only.",
-    "Price the fold gate needs. Not a trigger.",
-    "Price gate only. Technical analysis must also agree.",
-    "The action that created this tranche.",
-    "Buy this tranche back now. Moves real money.",
-    "Who may close this Extractor Tranche.",
-)
+# The Fold Tranches page model declares these once; the Qt tables read them
+# through this name so a header cannot differ from the drawn page.
+FOLD_COLUMN_TOOLTIPS = COLUMN_TOOLTIPS
 
 FOLD_SORT_TOOLTIP = "Choose the row order. Unreadable rows stay last."
 FOLD_FILTER_TOOLTIP = "Show only rows that contain this text."
