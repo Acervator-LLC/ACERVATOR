@@ -1626,12 +1626,13 @@ panel's opened less closed less discarded still equals what stands, and the
 dropped record's price, its units, its dollars and the reason it went are written
 to the bot log.
 
-**Where the sweep retires nothing.** A Trading Fee % lowered after a sale moves
-every record that sale queued below the window at once. Where no standing record
-sits inside the window, the reading measures that setting and not the records,
-so the sweep retires nothing on the fee window and names the fee in the log. One
-record passing is the proof that the declared fee is the fee this queue's sales
-paid.
+**Where the sweep spares a record.** A Trading Fee % lowered by more than a
+tenth of a point moves every record the earlier sales queued below the window at
+once. `src/trading/scrumming/sizing.py`, in `unaligned_fold_tranches`, spares a
+record the fee window condemns where another standing record shares its implied
+fee, and where no record passed the window at all. Records agreeing on one fee
+are sales at one fee, which is what a changed setting leaves standing, and the
+log names the fee and how many were spared.
 
 `src/trading/stack_math.py`, in `unproduced_stack_amount`, is the stack side. A
 stored rung carries no figure of the fold event that acquired its units, because

@@ -2772,6 +2772,67 @@ def unproduced_fold_amount(record: dict, fee_pct: Optional[float]) -> str:
     return ""
 
 
+def tranche_implied_fee_pct(record: dict) -> Optional[float]:
+    """The fee per cent a fold tranche's own figures imply, ``tranche_sale_usd``
+    against ``units`` times ``tranche_sale_rate``.
+
+    None answers a record whose units or rate are not a positive finite number,
+    and ``unaligned_fold_tranches`` reads it to find the records whose figure no
+    other standing record shares.
+    """
+    units = as_finite_float(record.get("units", 0.0))
+    rate = as_finite_float(tranche_sale_rate(record))
+    if units is None or rate is None or units <= 0.0 or rate <= 0.0:
+        return None
+    return 100.0 * (1.0 - tranche_sale_usd(record) / (units * rate))
+
+
+def _fee_reading_shared(record: dict, queue: list) -> bool:
+    """Does another record in ``queue`` read the same
+    ``tranche_implied_fee_pct`` as ``record``, inside one ``MERGE_THRESHOLD``
+    of fee per cent."""
+    from ..stack_math import MERGE_THRESHOLD
+
+    mine = tranche_implied_fee_pct(record)
+    if mine is None:
+        return False
+    for other in queue:
+        if other is record:
+            continue
+        theirs = tranche_implied_fee_pct(other)
+        if theirs is not None and abs(theirs - mine) <= MERGE_THRESHOLD * 100.0:
+            return True
+    return False
+
+
+def unaligned_fold_tranches(
+    tranches: list, fee_pct: Optional[float]
+) -> tuple[list, int]:
+    """The standing records ``unproduced_fold_amount`` condemns, each beside its
+    reason, and how many the fee window spared.
+
+    A record condemned on a ``FEE_JUDGED_REASONS`` reading is spared where
+    another standing record shares its ``tranche_implied_fee_pct``, or where no
+    record at all passed the window, because records agreeing on one fee are
+    sales at one fee and a lowered Trading Fee % is what leaves them standing.
+    """
+    judged = [(one, unproduced_fold_amount(one, fee_pct)) for one in tranches or []]
+    queue = [one for one, _why in judged]
+    passed = any(not _why for _one, _why in judged)
+    out: list = []
+    spared = 0
+    for one, why in judged:
+        if not why:
+            continue
+        if why in FEE_JUDGED_REASONS and (
+            not passed or _fee_reading_shared(one, queue)
+        ):
+            spared += 1
+            continue
+        out.append((one, why))
+    return out, spared
+
+
 EVENT_ID_KEY = "opposing_event_id"
 EVENT_UNITS_KEY = "opposing_event_units"
 EVENT_USD_KEY = "opposing_event_usd"

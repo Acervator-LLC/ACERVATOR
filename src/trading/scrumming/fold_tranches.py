@@ -22,14 +22,13 @@ from ..stack_math import (
     unproduced_stack_amount,
 )
 from .sizing import (
-    FEE_JUDGED_REASONS,
     combined_event_reference,
     eligible_fold_tranches,
     merge_fold_tranches_within_distance,
     plan_fold_consumption,
     settle_fold_plan,
     tranche_sale_rate,
-    unproduced_fold_amount,
+    unaligned_fold_tranches,
 )
 
 logger = logging.getLogger("acervator.scrumming")
@@ -950,12 +949,12 @@ class FoldTrancheAccountingMixin:
         aligned ones, and name every drop in ``bot.log`` with its price, its
         units and why it went.
 
-        ``unproduced_fold_amount`` reads a fold record's own figures against
-        the bot's Trading Fee %, ``unproduced_stack_amount`` reads a rung's
-        size and price, a rung holding a venue order is kept so that order is
-        never stranded, and every drop counts in
-        ``_tranches_discarded_lifetime`` or ``_stack_discarded`` and never in
-        ``_tranches_closed_lifetime``.
+        ``unaligned_fold_tranches`` reads a fold record's own figures against
+        the bot's Trading Fee % and spares the records a changed fee setting
+        explains, ``unproduced_stack_amount`` reads a rung's size and price, a
+        rung holding a venue order is kept so that order is never stranded, and
+        every drop counts in ``_tranches_discarded_lifetime`` or
+        ``_stack_discarded`` and never in ``_tranches_closed_lifetime``.
 
         Args:
           reason: what ran the sweep, carried into the log line.
@@ -963,10 +962,9 @@ class FoldTrancheAccountingMixin:
         Returns:
           A report keyed ``fold_removed``, ``fold_kept``, ``stack_removed``,
           ``stack_kept``, ``stack_kept_live_order``, ``usd_removed``,
-          ``fee_pct`` and ``refused``. ``refused`` is True where no standing
-          fold record sat inside the fee window, which measures the Trading
-          Fee % setting rather than the records, and the fee-judged records
-          were kept.
+          ``fee_pct``, ``fee_spared`` and ``refused``. ``fee_spared`` counts the
+          records the fee window condemned and the shared-fee reading kept, and
+          ``refused`` is True where that count is above zero.
         """
         _fee = as_finite_float(getattr(self.config, "trading_fee_pct", None))
         report = {
@@ -977,18 +975,12 @@ class FoldTrancheAccountingMixin:
             "stack_kept_live_order": 0,
             "usd_removed": 0.0,
             "fee_pct": _fee,
+            "fee_spared": 0,
             "refused": False,
         }
-        _judged = [
-            (_t, unproduced_fold_amount(_t, _fee)) for _t in self._fold_tranches or []
-        ]
-        _aligned = [_t for _t, _why in _judged if not _why]
-        _condemned = [(_t, _why) for _t, _why in _judged if _why]
-        if not _aligned and any(_why in FEE_JUDGED_REASONS for _t, _why in _condemned):
-            report["refused"] = True
-            _condemned = [
-                (_t, _why) for _t, _why in _condemned if _why not in FEE_JUDGED_REASONS
-            ]
+        _condemned, _spared = unaligned_fold_tranches(self._fold_tranches, _fee)
+        report["fee_spared"] = _spared
+        report["refused"] = bool(_spared)
 
         _stack_keep: list[dict] = []
         _stack_dropped: list[tuple[dict, str]] = []
@@ -1049,8 +1041,8 @@ class FoldTrancheAccountingMixin:
         """Write what ``retire_unaligned_tranches`` dropped to ``bot.log``, each
         record with its price, its units and the reason it went.
 
-        A ``refused`` report names the Trading Fee % that condemned the whole
-        queue, so the operator reads why nothing was retired.
+        A ``fee_spared`` count above zero names the Trading Fee % and how many
+        records it condemned, so the operator reads why those were kept.
         """
         _fold_detail = "; ".join(
             f"ref ${as_finite_float(_t.get('ref', 0.0)) or 0.0:.8f}, "
@@ -1067,11 +1059,12 @@ class FoldTrancheAccountingMixin:
         _refusal = ""
         if report["refused"]:
             _refusal = (
-                f" NOTHING was retired on the fee window: no standing fold "
-                f"tranche sat inside it at a Trading Fee % of "
-                f"{report['fee_pct']}, so the reading measures that setting "
-                f"and not the records. Lower the fee setting after a sale and "
-                f"every tranche it queued falls below the window at once."
+                f" {report['fee_spared']} tranche(s) the fee window condemned "
+                f"were KEPT: each shares its implied fee with another standing "
+                f"tranche, or none passed the window at all, so the reading "
+                f"measures a Trading Fee % of {report['fee_pct']} and not the "
+                f"records. Lower that setting after a sale and every tranche "
+                f"it queued reads short at once."
             )
         self._bus.emit(
             "bot.log",
