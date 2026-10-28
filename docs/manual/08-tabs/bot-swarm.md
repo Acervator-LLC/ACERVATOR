@@ -1576,6 +1576,52 @@ file saved with a password: the top level holds five fields — `fleet_sealed`,
 four fleet fields. Read on the same material saved with no password: the same
 seven fields the page describes, and no latch.
 
+### What a routing row reads while the fleet is sealed
+
+**The sentence this stands beside**, from the section on the privacy dot. It is
+not edited and not removed:
+
+> The dot flips `bot_swarm.identifiers`, the glyph turns from `●` to `○`, and the
+> routing row labels turn from the symbol and short id to `**** [********]`.
+
+**The current reading.** A row label is the pair and the short id while the
+fleet is open. While the fleet is sealed there is no pair to read, and the row
+says so in a word instead of drawing a question mark.
+`src/gui/main_tabs/quick_routing_surface.py, in SEALED_SYMBOL` holds that word
+and `in LiveRoutingTab.state_symbol` returns it when
+`src/core/state_manager.py, in fleet_sealed` answers True.
+`in QuickRoutingModel.symbol_for` carries it into the label, and
+`src/gui/visualizer/quick_routing.py, in QuickRoutingMatrix._symbol_for` answers
+the same word on the Qt panel.
+
+Read on a hand-built fleet of two, once sealed with a password and once saved
+without one:
+
+```
+the file   privacy dot   symbol_for    the drawn row label
+sealed     off           SEALED        SEALED [UNIT-A1]
+sealed     on            SEALED        **** [********]
+plain      off           AAA/BBB       AAA/BBB [UNIT-A1]
+plain      on            AAA/BBB       **** [********]
+```
+
+The privacy dot still masks a sealed row, so the sentence above holds unchanged
+for what the dot does.
+
+`?` is what the row reads for a bot the stored settings cannot answer for, and
+that case is still a question mark.
+`src/gui/main_tabs/quick_routing_surface.py, in UNKNOWN_SYMBOL` holds it. A
+sealed fleet and a bot with no stored symbol are two different readings and the
+row no longer draws them alike.
+
+Both builds draw the word. The label is formatted before the panel is handed
+its values, so the React page draws `SEALED [UNIT-A1]` from the same string the
+Qt panel draws.
+
+**Owed, one line.** `docs/Acervator-Product-Manual.pdf` needs a rebuild for this
+page, `docs/manual/08-tabs/bot-swarm.md`. Another branch holds that binary and
+this change does not touch it.
+
 ### The grid is the only surface that draws a bot's figures
 
 **The sentences this overtakes**, from the section on the live rows:
