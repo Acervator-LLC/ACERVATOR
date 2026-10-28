@@ -49,6 +49,7 @@ from .main_tabs.market_inspector_surface import (
     CONNECT_TOOLTIP,
     CONNECT_WIDTH_PX,
     COUNT_SETTINGS,
+    CREDENTIAL_FIELD_TOOLTIP_FORMAT,
     CREDENTIAL_FIELD_WIDTH_PX,
     CREDENTIAL_MESSAGE_PART,
     CREDENTIAL_ROW_WIDTH_PX,
@@ -77,6 +78,7 @@ from .main_tabs.market_inspector_surface import (
     SECTION_TITLE_PART,
     SETTING_FIELD_WIDTH_PX,
     SETTING_ROWS,
+    SETTING_TOOLTIPS,
     SETTING_ROW_WIDTH_PX,
     SETTINGS_LABEL,
     SETTINGS_LABEL_WIDTH_PX,
@@ -249,6 +251,8 @@ try:
         QStandardItem,
         QStandardItemModel,
     )
+
+    from .tooltips import set_description
 
     _HAS_QT = True
 except ImportError:
@@ -435,7 +439,7 @@ if _HAS_QT:
             self.setFixedSize(int(chart["width_px"]), int(chart["height_px"]))
             self.setStyleSheet(str(chart["box_style"]))
             self.setAccessibleName(str(chart["part"]))
-            self.setToolTip(str(chart.get("tooltip", "")))
+            set_description(self, str(chart.get("tooltip", "")))
             self.marks = [list(one) for one in chart["marks"]]
             self.image = decode_chart_image(chart.get("image", ""))
             self.update()
@@ -491,13 +495,13 @@ if _HAS_QT:
             self.setFixedSize(int(panel["width_px"]), int(panel["height_px"]))
             self.setStyleSheet(str(panel["box_style"]))
             self.setAccessibleName(str(panel["part"]))
-            self.setToolTip(str(panel.get("tooltip", "")))
+            set_description(self, str(panel.get("tooltip", "")))
             for drawn_row, (height_px, cells) in zip(self.cells, panel["rows"]):
                 for drawn, (part, width_px, text, style, tip) in zip(drawn_row, cells):
                     drawn.setFixedSize(int(width_px), int(height_px))
                     drawn.setStyleSheet(str(style))
                     drawn.setAccessibleName(str(part))
-                    drawn.setToolTip(str(tip))
+                    set_description(drawn, str(tip))
                     drawn.setText(str(text))
             return True
 
@@ -549,13 +553,13 @@ if _HAS_QT:
             row = QHBoxLayout()
             row.setSpacing(ENTRY_SPACING_PX)
             self.back_button = QPushButton(STEP_BACK_TEXT)
-            self.back_button.setToolTip(STEP_BACK_TOOLTIP)
+            set_description(self.back_button, STEP_BACK_TOOLTIP)
             self.back_button.setFixedWidth(STEP_BUTTON_WIDTH_PX)
             self.back_button.setStyleSheet(STEP_BUTTON_STYLE)
             self.back_button.clicked.connect(lambda: self.stepped.emit(-1))
             row.addWidget(self.back_button)
             self.next_button = QPushButton(STEP_NEXT_TEXT)
-            self.next_button.setToolTip(STEP_NEXT_TOOLTIP)
+            set_description(self.next_button, STEP_NEXT_TOOLTIP)
             self.next_button.setFixedWidth(STEP_BUTTON_WIDTH_PX)
             self.next_button.setStyleSheet(STEP_BUTTON_STYLE)
             self.next_button.clicked.connect(lambda: self.stepped.emit(1))
@@ -804,7 +808,7 @@ if _HAS_QT:
                 gone.deleteLater()
             for part, label, tooltip, enabled, width_px in rows:
                 button = QPushButton(str(label))
-                button.setToolTip(str(tooltip))
+                set_description(button, str(tooltip))
                 button.setEnabled(bool(enabled))
                 button.setAccessibleName(str(part))
                 button.setFixedSize(int(width_px), PUSH_BUTTON_HEIGHT_PX)
@@ -883,7 +887,7 @@ if _HAS_QT:
             pair.setAccessibleName(TIMER_PAIR_PART)
             close = QPushButton(TIMER_CLOSE_TEXT)
             close.setStyleSheet(TIMER_CLOSE_STYLE)
-            close.setToolTip(TIMER_CLOSE_TOOLTIP)
+            set_description(close, TIMER_CLOSE_TOOLTIP)
             close.setFixedSize(TIMER_CLOSE_SIZE_PX, TIMER_CLOSE_SIZE_PX)
             close.setCursor(Qt.PointingHandCursor)
             close.clicked.connect(lambda _checked=False, held=close: self._press(held))
@@ -1075,16 +1079,18 @@ if _HAS_QT:
             top_row = QHBoxLayout()
             top_row.setSpacing(8)
             self._refresh_btn = QPushButton("Refresh")
-            self._refresh_btn.setToolTip(
-                "Fetches higher-timeframe candles for top-volume USD markets on connected venues. Active bot targets are included. Takes 10 to 30 seconds."
+            set_description(
+                self._refresh_btn,
+                "Fetches higher-timeframe candles for top-volume USD markets on connected venues. Active bot targets are included. Takes 10 to 30 seconds.",
             )
             self._refresh_btn.clicked.connect(lambda: self._start_fetch(force=True))
             top_row.addWidget(self._refresh_btn)
 
             self._show_active_chk = QCheckBox("Include active markets")
             self._show_active_chk.setChecked(False)
-            self._show_active_chk.setToolTip(
-                "By default the table leaves out markets you already trade. Check this to include your active bot targets."
+            set_description(
+                self._show_active_chk,
+                "By default the table leaves out markets you already trade. Check this to include your active bot targets.",
             )
             self._show_active_chk.toggled.connect(self._on_toggle_show_active)
             top_row.addWidget(self._show_active_chk)
@@ -1220,7 +1226,7 @@ if _HAS_QT:
             line.setSpacing(ATA_ROW_SPACING_PX)
             self._ticker_edit = QLineEdit()
             self._ticker_edit.setPlaceholderText(TICKER_FIELD_PLACEHOLDER)
-            self._ticker_edit.setToolTip(TICKER_FIELD_TOOLTIP)
+            set_description(self._ticker_edit, TICKER_FIELD_TOOLTIP)
             self._ticker_edit.setMinimumWidth(TICKER_FIELD_MIN_WIDTH_PX)
             self._ticker_edit.setFixedHeight(FIELD_HEIGHT_PX)
             self._ticker_edit.setAccessibleName(TICKER_FIELD_PART)
@@ -1237,7 +1243,7 @@ if _HAS_QT:
             line.addWidget(self._ticker_edit)
 
             self._class_box = QComboBox()
-            self._class_box.setToolTip(CLASS_BOX_TOOLTIP)
+            set_description(self._class_box, CLASS_BOX_TOOLTIP)
             self._class_box.setAccessibleName(CLASS_BOX_PART)
             self._class_box.setFixedSize(CLASS_BOX_WIDTH_PX, FIELD_HEIGHT_PX)
             self._class_box.addItems(list(ata_spm.ASSET_CLASSES))
@@ -1299,7 +1305,9 @@ if _HAS_QT:
                 button.setFixedHeight(PUSH_BUTTON_HEIGHT_PX)
                 button.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Fixed)
                 button.setAccessibleName(f"{TIMEFRAME_ROW_PART} {key}")
-                button.setToolTip(TIMEFRAME_BOX_TOOLTIP_FORMAT.format(label=label))
+                set_description(
+                    button, TIMEFRAME_BOX_TOOLTIP_FORMAT.format(label=label)
+                )
                 # The key is read at the press: the class box moves the four
                 # rows, and the button at this position keeps its place.
                 button.clicked.connect(
@@ -1315,19 +1323,19 @@ if _HAS_QT:
             line = QHBoxLayout()
             line.setSpacing(ATA_ROW_SPACING_PX)
             self._scan_now_btn = QPushButton(SCAN_NOW_LABEL)
-            self._scan_now_btn.setToolTip(SCAN_NOW_TOOLTIP)
+            set_description(self._scan_now_btn, SCAN_NOW_TOOLTIP)
             self._scan_now_btn.setFixedSize(SCAN_NOW_WIDTH_PX, PUSH_BUTTON_HEIGHT_PX)
             self._scan_now_btn.setAccessibleName(SCAN_ROW_PART)
             self._scan_now_btn.clicked.connect(self._on_scan_now)
             line.addWidget(self._scan_now_btn)
             self._scan_all_btn = QPushButton(SCAN_ALL_LABEL)
-            self._scan_all_btn.setToolTip(SCAN_ALL_TOOLTIP)
+            set_description(self._scan_all_btn, SCAN_ALL_TOOLTIP)
             self._scan_all_btn.setFixedSize(SCAN_NOW_WIDTH_PX, PUSH_BUTTON_HEIGHT_PX)
             self._scan_all_btn.setAccessibleName(SCAN_ALL_PART)
             self._scan_all_btn.clicked.connect(self._on_scan_all)
             line.addWidget(self._scan_all_btn)
             self._settings_btn = QPushButton(SETTINGS_LABEL)
-            self._settings_btn.setToolTip(SETTINGS_TOOLTIP)
+            set_description(self._settings_btn, SETTINGS_TOOLTIP)
             self._settings_btn.setFixedSize(SETTINGS_WIDTH_PX, PUSH_BUTTON_HEIGHT_PX)
             self._settings_btn.setAccessibleName(SETTINGS_PART)
             self._settings_btn.clicked.connect(self._on_settings_pressed)
@@ -1373,6 +1381,13 @@ if _HAS_QT:
                 button.setStyleSheet(CHECKED_BUTTON_STYLE)
                 button.setFixedSize(VENUE_BUTTON_WIDTH_PX, PUSH_BUTTON_HEIGHT_PX)
                 button.setAccessibleName(f"{VENUE_BUTTON_PART} {name}")
+                set_description(
+                    button,
+                    VENUE_TOOLTIP_FORMAT.format(
+                        target=name,
+                        state=self._push_board.settings.credential_row(name)[2],
+                    ),
+                )
                 button.clicked.connect(
                     lambda _checked, target=name: self._on_venue_pressed(target)
                 )
@@ -1386,7 +1401,7 @@ if _HAS_QT:
             for name in ata_spm.ASSET_CLASSES:
                 button = QPushButton(name)
                 button.setCheckable(True)
-                button.setToolTip(CATEGORY_TOOLTIP_FORMAT.format(name=name))
+                set_description(button, CATEGORY_TOOLTIP_FORMAT.format(name=name))
                 button.setStyleSheet(CHECKED_BUTTON_STYLE)
                 button.setFixedSize(ASSET_CATEGORY_WIDTH_PX, PUSH_BUTTON_HEIGHT_PX)
                 button.setAccessibleName(f"{ASSET_CATEGORY_PART} {name}")
@@ -1405,6 +1420,7 @@ if _HAS_QT:
                 field = QLineEdit()
                 field.setFixedSize(SETTING_FIELD_WIDTH_PX, FIELD_HEIGHT_PX)
                 field.setAccessibleName(key)
+                set_description(field, SETTING_TOOLTIPS[key])
                 field.textChanged.connect(
                     lambda text, name=key: self._on_setting_changed(name, text)
                 )
@@ -1413,7 +1429,7 @@ if _HAS_QT:
             column.addLayout(self._setting_grid)
             self._relay_accounts_page(page.width())
             self._zones_btn = QPushButton(BACK_LABEL)
-            self._zones_btn.setToolTip(ZONES_TOOLTIP)
+            set_description(self._zones_btn, ZONES_TOOLTIP)
             self._zones_btn.setFixedSize(BACK_WIDTH_PX, PUSH_BUTTON_HEIGHT_PX)
             self._zones_btn.setAccessibleName(ZONES_PART)
             self._zones_btn.clicked.connect(self._on_settings_pressed)
@@ -1530,6 +1546,12 @@ if _HAS_QT:
                     field.setPlaceholderText(one.label)
                     field.setFixedSize(CREDENTIAL_FIELD_WIDTH_PX, FIELD_HEIGHT_PX)
                     field.setAccessibleName(f"{one.key} {name}")
+                    set_description(
+                        field,
+                        CREDENTIAL_FIELD_TOOLTIP_FORMAT.format(
+                            label=one.label, target=name
+                        ),
+                    )
                     field.textChanged.connect(
                         lambda typed, target=name, key=one.key: (
                             self._push_board.settings.set_credential_text(
@@ -1554,13 +1576,13 @@ if _HAS_QT:
             buttons = QHBoxLayout()
             buttons.setSpacing(SETTINGS_ROW_SPACING_PX)
             self._connect_btn = QPushButton(CONNECT_LABEL)
-            self._connect_btn.setToolTip(CONNECT_TOOLTIP)
+            set_description(self._connect_btn, CONNECT_TOOLTIP)
             self._connect_btn.setFixedSize(CONNECT_WIDTH_PX, PUSH_BUTTON_HEIGHT_PX)
             self._connect_btn.setAccessibleName(CONNECT_PART)
             self._connect_btn.clicked.connect(self._on_connect_pressed)
             buttons.addWidget(self._connect_btn)
             self._back_btn = QPushButton(BACK_LABEL)
-            self._back_btn.setToolTip(BACK_TOOLTIP)
+            set_description(self._back_btn, BACK_TOOLTIP)
             self._back_btn.setFixedSize(BACK_WIDTH_PX, PUSH_BUTTON_HEIGHT_PX)
             self._back_btn.setAccessibleName(BACK_PART)
             self._back_btn.clicked.connect(self._on_back_pressed)
@@ -1730,8 +1752,8 @@ if _HAS_QT:
                 button = self._venue_buttons.get(name)
                 if button is not None:
                     button.setChecked(bool(held))
-                    button.setToolTip(
-                        VENUE_TOOLTIP_FORMAT.format(target=name, state=state)
+                    set_description(
+                        button, VENUE_TOOLTIP_FORMAT.format(target=name, state=state)
                     )
             for name, button in self._category_buttons.items():
                 button.setChecked(name == self._ata_board.asset_class)
@@ -1796,23 +1818,23 @@ if _HAS_QT:
             self._bucket_grid.setSpacing(ATA_ROW_SPACING_PX)
             column.addLayout(self._bucket_grid)
             self._post_selected_btn = QPushButton(POST_SELECTED_LABEL)
-            self._post_selected_btn.setToolTip(POST_SELECTED_TOOLTIP)
+            set_description(self._post_selected_btn, POST_SELECTED_TOOLTIP)
             self._post_selected_btn.clicked.connect(
                 lambda: self._on_push_action(POST_SELECTED_PART)
             )
             self._post_all_btn = QPushButton(POST_ALL_LABEL)
-            self._post_all_btn.setToolTip(POST_ALL_TOOLTIP)
+            set_description(self._post_all_btn, POST_ALL_TOOLTIP)
             self._post_all_btn.clicked.connect(
                 lambda: self._on_push_action(POST_ALL_PART)
             )
             self._full_auto_btn = QPushButton(FULL_AUTO_LABEL)
-            self._full_auto_btn.setToolTip(FULL_AUTO_TOOLTIP)
+            set_description(self._full_auto_btn, FULL_AUTO_TOOLTIP)
             self._full_auto_btn.setCheckable(True)
             self._full_auto_btn.clicked.connect(
                 lambda: self._on_push_action(FULL_AUTO_PART)
             )
             self._chart_folder_btn = QPushButton(CHART_FOLDER_LABEL)
-            self._chart_folder_btn.setToolTip(CHART_FOLDER_TOOLTIP)
+            set_description(self._chart_folder_btn, CHART_FOLDER_TOOLTIP)
             self._chart_folder_btn.setAccessibleName(CHART_FOLDER_PART)
             self._chart_folder_btn.clicked.connect(
                 lambda: self._on_push_action(CHART_FOLDER_PART)
@@ -2616,7 +2638,7 @@ if _HAS_QT:
             for check, (key, label, ticked) in zip(self._tf_boxes, rows):
                 check.setText(label)
                 check.setAccessibleName(f"{TIMEFRAME_ROW_PART} {key}")
-                check.setToolTip(TIMEFRAME_BOX_TOOLTIP_FORMAT.format(label=label))
+                set_description(check, TIMEFRAME_BOX_TOOLTIP_FORMAT.format(label=label))
                 check.blockSignals(True)
                 check.setChecked(ticked)
                 check.blockSignals(False)

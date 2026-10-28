@@ -129,6 +129,7 @@ try:
     from . import ColumnSpec, ColumnarTableWidget
     from .bot_selection import _reanchor_bot_selection, _select_row_for_bot
     from .privacy_dot import PrivacyDot
+    from ..tooltips import set_description
 
     _HAS_QT = True
 except ImportError:
@@ -501,7 +502,7 @@ if _HAS_QT:
             cells = []
             for col, label in enumerate(self.COLUMNS):
                 item = QTableWidgetItem("")
-                item.setToolTip(self._header_tooltip(col))
+                set_description(item, self._header_tooltip(col))
                 self.setHorizontalHeaderItem(col, item)
                 cells.append(
                     ColumnHeaderCell(
@@ -541,7 +542,7 @@ if _HAS_QT:
                 cell.set_sort_mark(sort_mark(direction))
                 item = self.horizontalHeaderItem(col)
                 if item is not None:
-                    item.setToolTip(self._header_tooltip(col))
+                    set_description(item, self._header_tooltip(col))
 
         def sort_state(self) -> tuple:
             """Which column this table is ordered by, and which way."""
@@ -700,14 +701,17 @@ if _HAS_QT:
             path = kept_logo_path(symbol)
             icon = self._logo_icon(path) if path else None
             if icon is None:
-                item.setToolTip(
-                    NO_LOGO_TIP_FORMAT.format(asset=asset) + TOOLTIP_LINE_GAP + mark_tip
+                set_description(
+                    item,
+                    NO_LOGO_TIP_FORMAT.format(asset=asset)
+                    + TOOLTIP_LINE_GAP
+                    + mark_tip,
                 )
                 return
             item.setIcon(icon)
             item.setText("")
-            item.setToolTip(
-                LOGO_TIP_FORMAT.format(asset=asset) + TOOLTIP_LINE_GAP + mark_tip
+            set_description(
+                item, LOGO_TIP_FORMAT.format(asset=asset) + TOOLTIP_LINE_GAP + mark_tip
             )
 
         def _write_row(self, row: int, status: dict) -> None:
@@ -786,7 +790,7 @@ if _HAS_QT:
                 if col == 1 and text:
                     color = self.STATE_COLORS.get(state, QColor(ds.TEXT_HIGH))
                     item.setForeground(color)
-                    item.setToolTip(mode_tooltip(mode, state))
+                    set_description(item, mode_tooltip(mode, state))
                     # UserRole carries (exchange_id, raw_symbol) for _on_cell_clicked.
                     try:
                         from ...exchange.exchange_chart_urls import (
@@ -803,11 +807,12 @@ if _HAS_QT:
                             _f = item.font()
                             _f.setUnderline(True)
                             item.setFont(_f)
-                            item.setToolTip(
+                            set_description(
+                                item,
                                 item.toolTip()
                                 + TOOLTIP_LINE_GAP
                                 + f"Open chart on {exchange_id} "
-                                f"in default browser: {_url}"
+                                f"in default browser: {_url}",
                             )
                     except Exception as _chart_url_exc:
                         # The status dict may be the malformed input, so only the exception is logged.
@@ -819,14 +824,14 @@ if _HAS_QT:
                 if col == 0:
                     self._draw_logo(item, symbol, text)
                 if col == 2:
-                    item.setToolTip(_position["tip"])
+                    set_description(item, _position["tip"])
                 if col == 5:
                     item.setForeground(QColor(target_btc_color))
                 if col == 6:
                     item.setForeground(QColor(target_eth_color))
                 if col == 7:
                     item.setForeground(ammo_color)
-                    item.setToolTip(ammo_tip)
+                    set_description(item, ammo_tip)
                 self.setItem(row, col, item)
 
             # The fill states the direction of the rebalance before the operator clicks.
@@ -925,9 +930,10 @@ if _HAS_QT:
                     fire_path = FIRE_PATH_MANUAL_NOOP
                     fire_btn.setText(mask_or(FIRE_LABEL_MANUAL_NOOP, FIRE_MASK_FIELD))
                     fire_btn.setStyleSheet(FIRE_STYLE_MANUAL_NOOP)
-                    fire_btn.setToolTip(
+                    set_description(
+                        fire_btn,
                         manual_fire_noop_tooltip(_ammo, target_val, fire_dispute)
-                        + _risk_suffix()
+                        + _risk_suffix(),
                     )
                 elif armed_action == "scrum" and fire_acts:
                     # Solid means auto would fire now; outline means only manual remains.
@@ -944,7 +950,7 @@ if _HAS_QT:
                             f"border: 1px solid {ds.ERROR};"
                         )
                         _apply_glow(ds.ERROR)
-                        fire_btn.setToolTip(FIRE_TIP_SCRUM_SOLID + _risk_suffix())
+                        set_description(fire_btn, FIRE_TIP_SCRUM_SOLID + _risk_suffix())
                     else:
                         # Outline only — manual override available
                         # but auto-fire is blocked by ≥1 gate.
@@ -962,8 +968,9 @@ if _HAS_QT:
                             if _scrum_blockers
                             else ""
                         )
-                        fire_btn.setToolTip(
-                            FIRE_TIP_SCRUM_OUTLINE + _blockers_text + _risk_suffix()
+                        set_description(
+                            fire_btn,
+                            FIRE_TIP_SCRUM_OUTLINE + _blockers_text + _risk_suffix(),
                         )
                 elif armed_action == "fold" and fire_acts:
                     # Mirrors the SCRUM branch above.
@@ -981,7 +988,9 @@ if _HAS_QT:
                             f"border: 1px dashed {ds.CARD_METRIC_LABEL};"
                         )
                         _apply_glow(ds.STATE_ENGAGED_GLOW)
-                        fire_btn.setToolTip(FIRE_TIP_FOLD_CEILING + _risk_suffix())
+                        set_description(
+                            fire_btn, FIRE_TIP_FOLD_CEILING + _risk_suffix()
+                        )
                     elif _auto_armed_fold:
                         # Solid green — auto-fire FOLD would fire NOW.
                         fire_path = FIRE_PATH_FOLD_SOLID
@@ -992,7 +1001,7 @@ if _HAS_QT:
                             f"border: 1px solid {ds.STATE_ARMED};"
                         )
                         _apply_glow(ds.STATE_ARMED)
-                        fire_btn.setToolTip(FIRE_TIP_FOLD_SOLID + _risk_suffix())
+                        set_description(fire_btn, FIRE_TIP_FOLD_SOLID + _risk_suffix())
                     else:
                         # Outline only — manual override available
                         # but auto-fire is blocked.
@@ -1008,8 +1017,9 @@ if _HAS_QT:
                             if _fold_blockers
                             else ""
                         )
-                        fire_btn.setToolTip(
-                            FIRE_TIP_FOLD_OUTLINE + _blockers_text + _risk_suffix()
+                        set_description(
+                            fire_btn,
+                            FIRE_TIP_FOLD_OUTLINE + _blockers_text + _risk_suffix(),
                         )
                 elif scrum_phase == "fire":
                     # Inside the dust band, so amber: no rebalance is needed.
@@ -1021,10 +1031,11 @@ if _HAS_QT:
                         f"border: 1px solid {ds.STATE_PENDING};"
                     )
                     _apply_glow(ds.STATE_PENDING)
-                    fire_btn.setToolTip(
+                    set_description(
+                        fire_btn,
                         "Organic FIRE phase — bot at band but "
                         "holdings within dust band of target. "
-                        "Clicking has no effect." + _risk_suffix()
+                        "Clicking has no effect." + _risk_suffix(),
                     )
                 elif scrum_phase == "track":
                     fire_path = FIRE_PATH_PHASE_TRACK
@@ -1032,10 +1043,11 @@ if _HAS_QT:
                         "font-size: 10px; padding: 1px 6px; "
                         f"color: {ds.WARNING}; font-weight: bold;"
                     )
-                    fire_btn.setToolTip(
+                    set_description(
+                        fire_btn,
                         "TRACKING — bot detected band approach. "
                         "Fire is available but bot is within dust "
-                        "band; rebalance would be a no-op."
+                        "band; rebalance would be a no-op.",
                     )
                 else:
                     # SEARCH / idle — subdued red
@@ -1044,9 +1056,10 @@ if _HAS_QT:
                         "font-size: 10px; padding: 1px 6px; "
                         f"color: {ds.ERROR}; font-weight: bold;"
                     )
-                    fire_btn.setToolTip(
+                    set_description(
+                        fire_btn,
                         "Bot within dust band of target. "
-                        "Manual Fire would be a no-op."
+                        "Manual Fire would be a no-op.",
                     )
             else:
                 fire_btn.setStyleSheet(
@@ -1055,11 +1068,11 @@ if _HAS_QT:
                 )
                 if not is_scrumming:
                     fire_path = FIRE_PATH_NOT_SCRUMMING
-                    fire_btn.setToolTip("Manual Fire is scrumming-only.")
+                    set_description(fire_btn, "Manual Fire is scrumming-only.")
                 else:
                     fire_path = FIRE_PATH_INACTIVE
-                    fire_btn.setToolTip(
-                        f"Bot is {state}; start or resume to enable Fire."
+                    set_description(
+                        fire_btn, f"Bot is {state}; start or resume to enable Fire."
                     )
             # The path the row chose, readable off the button itself.
             fire_btn.setProperty(FIRE_PATH_PROPERTY, fire_path)
@@ -1069,8 +1082,8 @@ if _HAS_QT:
             detail_btn = QPushButton("Detail")
             detail_btn.setFixedHeight(BUTTON_HEIGHT_PX)
             detail_btn.setStyleSheet("font-size: 10px; padding: 1px 6px;")
-            detail_btn.setToolTip(
-                "View full bot status, configuration, and error details"
+            set_description(
+                detail_btn, "View full bot status, configuration, and error details"
             )
             detail_btn.clicked.connect(lambda _checked, b=bid: self._on_detail(b))
             self.setCellWidget(row, 9, detail_btn)
