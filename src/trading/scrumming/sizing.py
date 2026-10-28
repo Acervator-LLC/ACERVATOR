@@ -2695,6 +2695,144 @@ def eligible_fold_tranches(
     return [t for t in tranches if ticker_last <= float(t.get("ref", 0)) * otd_factor]
 
 
+WIRE_CREDIT_DETAIL_KEY = "wire_credits"
+WIRE_CREDIT_ROLLED_KEY = "wire_credits_rolled"
+
+NO_READABLE_FIGURE = "no readable figure"
+NO_UNITS = "no units"
+NO_DOLLARS = "no dollars"
+NO_SALE_PRICE = "no sale price"
+NO_LOT_BEHIND_THE_UNITS = "no lot behind its units"
+FEWER_DOLLARS_THAN_PRODUCED = "fewer dollars than its sale produced"
+MORE_DOLLARS_THAN_PRODUCED = "more dollars than its sale could produce"
+
+FEE_JUDGED_REASONS = (FEWER_DOLLARS_THAN_PRODUCED, MORE_DOLLARS_THAN_PRODUCED)
+"""The two ``unproduced_fold_amount`` reasons whose edge is a bot's own Trading
+Fee %, where the other five hold at every fee."""
+
+
+def tranche_wire_usd(record: dict) -> float:
+    """The Smart Wire dollars a fold tranche records, ``WIRE_CREDIT_DETAIL_KEY``
+    plus ``WIRE_CREDIT_ROLLED_KEY``.
+
+    ``wire_routing._roll_wire_credit_overflow`` moves the oldest detail entries
+    into the aggregate, so ``unproduced_fold_amount`` has to read both.
+    """
+    total = 0.0
+    for entry in record.get(WIRE_CREDIT_DETAIL_KEY) or []:
+        if isinstance(entry, dict):
+            total += as_finite_float(entry.get("usd", 0.0)) or 0.0
+    rolled = record.get(WIRE_CREDIT_ROLLED_KEY)
+    if isinstance(rolled, dict):
+        total += as_finite_float(rolled.get("total_usd", 0.0)) or 0.0
+    return total
+
+
+def tranche_sale_usd(record: dict) -> float:
+    """A fold tranche's ``usd`` less ``tranche_wire_usd``, the dollars its own
+    sale produced and the figure ``unproduced_fold_amount`` measures."""
+    return (as_finite_float(record.get("usd", 0.0)) or 0.0) - tranche_wire_usd(record)
+
+
+def unproduced_fold_amount(record: dict, fee_pct: Optional[float]) -> str:
+    """Why no sale produced this fold tranche's amount, or "" where one could,
+    read as ``tranche_sale_usd`` against ``units`` times ``tranche_sale_rate``
+    less ``fee_pct``, with one ``MERGE_THRESHOLD`` of slack at each edge, the
+    distance at which ``within_merge_distance`` already calls two prices one.
+
+    A ``fee_pct`` that is not a finite number at or above zero leaves the
+    window no lower edge, so only the reasons outside ``FEE_JUDGED_REASONS``
+    are answered.
+    """
+    from ..stack_math import MERGE_THRESHOLD
+
+    units = as_finite_float(record.get("units", 0.0))
+    usd = as_finite_float(record.get("usd", 0.0))
+    basis = as_finite_float(record.get("initial_buy_price", 0.0))
+    rate = as_finite_float(tranche_sale_rate(record))
+    if units is None or usd is None or basis is None or rate is None:
+        return NO_READABLE_FIGURE
+    if units <= 0.0:
+        return NO_UNITS
+    if usd <= 0.0:
+        return NO_DOLLARS
+    if rate <= 0.0:
+        return NO_SALE_PRICE
+    if basis <= 0.0:
+        return NO_LOT_BEHIND_THE_UNITS
+    produced = units * rate
+    share = tranche_sale_usd(record)
+    if share > produced * (1.0 + MERGE_THRESHOLD):
+        return MORE_DOLLARS_THAN_PRODUCED
+    fee = as_finite_float(fee_pct)
+    if fee is None or fee < 0.0:
+        return ""
+    if share < produced * (1.0 - fee / 100.0) * (1.0 - MERGE_THRESHOLD):
+        return FEWER_DOLLARS_THAN_PRODUCED
+    return ""
+
+
+def tranche_implied_fee_pct(record: dict) -> Optional[float]:
+    """The fee per cent a fold tranche's own figures imply, ``tranche_sale_usd``
+    against ``units`` times ``tranche_sale_rate``.
+
+    None answers a record whose units or rate are not a positive finite number,
+    and ``unaligned_fold_tranches`` reads it to find the records whose figure no
+    other standing record shares.
+    """
+    units = as_finite_float(record.get("units", 0.0))
+    rate = as_finite_float(tranche_sale_rate(record))
+    if units is None or rate is None or units <= 0.0 or rate <= 0.0:
+        return None
+    return 100.0 * (1.0 - tranche_sale_usd(record) / (units * rate))
+
+
+def _fee_reading_shared(record: dict, queue: list) -> bool:
+    """Does another record in ``queue`` read the same
+    ``tranche_implied_fee_pct`` as ``record``, inside one ``MERGE_THRESHOLD``
+    of fee per cent."""
+    from ..stack_math import MERGE_THRESHOLD
+
+    mine = tranche_implied_fee_pct(record)
+    if mine is None:
+        return False
+    for other in queue:
+        if other is record:
+            continue
+        theirs = tranche_implied_fee_pct(other)
+        if theirs is not None and abs(theirs - mine) <= MERGE_THRESHOLD * 100.0:
+            return True
+    return False
+
+
+def unaligned_fold_tranches(
+    tranches: list, fee_pct: Optional[float]
+) -> tuple[list, int]:
+    """The standing records ``unproduced_fold_amount`` condemns, each beside its
+    reason, and how many the fee window spared.
+
+    A record condemned on a ``FEE_JUDGED_REASONS`` reading is spared where
+    another standing record shares its ``tranche_implied_fee_pct``, or where no
+    record at all passed the window, because records agreeing on one fee are
+    sales at one fee and a lowered Trading Fee % is what leaves them standing.
+    """
+    judged = [(one, unproduced_fold_amount(one, fee_pct)) for one in tranches or []]
+    queue = [one for one, _why in judged]
+    passed = any(not _why for _one, _why in judged)
+    out: list = []
+    spared = 0
+    for one, why in judged:
+        if not why:
+            continue
+        if why in FEE_JUDGED_REASONS and (
+            not passed or _fee_reading_shared(one, queue)
+        ):
+            spared += 1
+            continue
+        out.append((one, why))
+    return out, spared
+
+
 EVENT_ID_KEY = "opposing_event_id"
 EVENT_UNITS_KEY = "opposing_event_units"
 EVENT_USD_KEY = "opposing_event_usd"
