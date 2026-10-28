@@ -248,6 +248,8 @@ jobs:
       - name: Install the JavaScript, CSS and HTML analyzers
         # gui_archetype runs eslint, stylelint and html-validate out of
         # node_modules at the repository root.
+        # docs_archetype runs jscpd out of the same directory, and an absent
+        # required analyzer makes the archetype report fail closed.
         run: npm ci
       - name: Install vale (the prose analyzer docs_archetype requires)
         # vale is a Go binary, not pip-installable, and an absent required

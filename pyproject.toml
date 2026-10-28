@@ -238,6 +238,11 @@ dev = [
     "bandit>=1.9.4",
     "vulture>=2.16",
     "pyright>=1.1.411",
+    # `CodingArchetype._run_pylint` spawns a seventh Python analyzer, pylint,
+    # with every message disabled except `duplicate-code`. It is the only
+    # analyzer here that reads a tree rather than one file, because a repeated
+    # block needs a second site. 4.1.3 is the version measured over src/.
+    "pylint>=4.1.3",
     # coding_archetype.py spawns shellcheck on a .sh target and yamllint on a
     # .yml target. shellcheck-py ships the shellcheck binary as a console
     # script, so `_resolve_executable("shellcheck")` finds it on PATH; without

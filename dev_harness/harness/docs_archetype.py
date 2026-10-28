@@ -36,11 +36,13 @@ from functools import partial
 from pathlib import Path
 from typing import Optional
 
+from dev_harness.harness import web_analyzers
 from dev_harness.harness.report import (
     REPO_ROOT,
     ArchetypeReport,
     Finding,
     cli_exit,
+    duplication_scope,
     refuse_silent_failure,
     scan_rule_modules,
 )
@@ -194,6 +196,7 @@ class DocsArchetype:
     tools = (
         "proselint",
         "vale",
+        "jscpd",
         "structure",
         "contents",
         "story",
@@ -236,6 +239,7 @@ class DocsArchetype:
             runners += [
                 ("proselint", partial(self._run_proselint, files)),
                 ("vale", partial(self._run_vale, files)),
+                ("jscpd", partial(self._run_jscpd, target, files)),
                 ("structure", partial(self._run_structure, files)),
                 ("story", partial(self._run_story, files)),
                 ("updates", partial(self._run_updates, files)),
@@ -689,6 +693,21 @@ class DocsArchetype:
                     )
         return findings, "ok"
 
+    @staticmethod
+    def _run_jscpd(
+        target: Path, files: list[Path]
+    ) -> tuple[list[Finding], str]:
+        """Report the passages `files` repeat on another page.
+
+        `duplication_scope` widens the run to the first-level directory
+        holding `target`, and `web_analyzers.run_jscpd` keeps only the
+        clones naming a page in `files`.
+        """
+        pages = [page for page in files if page.suffix == ".md"]
+        if not pages:
+            return [], "ok"
+        return web_analyzers.run_jscpd(duplication_scope(target, "*.md"), pages)
+
     def _run_structure(self, files: list[Path]) -> tuple[list[Finding], str]:
         findings: list[Finding] = []
         for f in files:
@@ -814,6 +833,7 @@ def main(argv: list[str] | None = None) -> int:
         print(
             "       reviews Markdown/text docs with proselint (+ vale if installed) + structure check"
         )
+        print("       jscpd reports a passage repeated on another page")
         return 2
     target = Path(argv[0])
     report = DocsArchetype().review(target)
