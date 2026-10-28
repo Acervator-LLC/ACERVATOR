@@ -2383,6 +2383,14 @@ alerts tab       13 routing rows, 4 history rows      differences 0
 news strip       6 stories, 8 steps, wraps 6 to 1     differences 0
 ```
 
+The routing table now draws **14** rows. `AlertEvent.TRADE_EXECUTED` in
+`src/core/notifications.py` became `BUY_FILLED` and `SELL_FILLED`, one event for
+each of the two fill boxes on `Settings > SMS`. The table reads the rows off
+`NotificationManager.get_config`, so it draws whatever that answers and no count
+is written on the page. Eleven of the fourteen rows name the SMS channel, which
+`notifications.message_channels_for` gives every event
+`notifications.EVENT_MESSAGE_KIND` pairs with a switch.
+
 Every alert row matches: its time, its priority word, its title, its message,
 its channels, and the colour of each. The four priorities draw in four colours,
 low grey through critical red, and the rows run newest first on both sides.

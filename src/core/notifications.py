@@ -1,20 +1,44 @@
-"""
-notifications.py — Multi-channel alert and notification system.
+"""``NotificationManager.send`` routes one ``AlertEvent`` to every
+``AlertChannel`` the event's ``AlertRule`` names.
 
-Supports: Telegram bot, SMS (via existing sms_engine), system tray,
-and in-app notification spool. Configurable per-event alert routing.
+``NotificationManager.attach_to_bus`` subscribes ``FILL_TOPIC``, so a fill
+raises ``BUY_FILLED`` or ``SELL_FILLED`` with no window in the path, and
+``get_notification_manager`` attaches the process-wide manager as it builds it.
+``EVENT_MESSAGE_KIND`` pairs an ``AlertEvent`` with the ``sms_engine`` event
+kind it reports, and ``message_channels_for`` gives every paired event the
+``TELEGRAM`` and ``SMS`` channels.
 """
 
 from __future__ import annotations
 
 from .safe_url import safe_urlopen
 import logging
+import threading
 import time
 from dataclasses import dataclass, field, replace
 from enum import Enum, auto
-from typing import Optional
+from typing import Any, Optional
+
+from .emit_contracts import CONTRACTS
+from .sms_engine import (
+    EVENT_BOT_STATE,
+    EVENT_BUY_FILL,
+    EVENT_CONNECTION,
+    EVENT_PL_THRESHOLD,
+    EVENT_SELL_FILL,
+)
 
 logger = logging.getLogger("acervator.notifications")
+
+FILL_TOPIC = "trade.filled"
+
+BUY_SIDE = "BUY"
+SELL_SIDE = "SELL"
+
+#: The thread one fill's channels are driven on. The emitters run on a bot's own
+#: loop thread and the Telegram channel places an HTTPS request, so no channel
+#: may run where it can hold up a trading tick.
+FILL_ALERT_THREAD = "fill-alert"
 
 
 class AlertChannel(Enum):
@@ -38,7 +62,8 @@ class AlertEvent(Enum):
     BOT_STOPPED = "bot_stopped"
     BOT_ERROR = "bot_error"
     BOT_PAUSED_BY_RISK = "bot_paused_by_risk"
-    TRADE_EXECUTED = "trade_executed"
+    BUY_FILLED = "buy_filled"
+    SELL_FILLED = "sell_filled"
     PNL_MILESTONE = "pnl_milestone"
     DRAWDOWN_WARNING = "drawdown_warning"
     DRAWDOWN_CRITICAL = "drawdown_critical"
@@ -47,6 +72,123 @@ class AlertEvent(Enum):
     CONNECTION_LOST = "connection_lost"
     CONNECTION_RESTORED = "connection_restored"
     DAILY_SUMMARY = "daily_summary"
+
+
+#: The ``sms_engine`` event kind each alert event reports, which is the switch
+#: the operator ticks for it on ``Settings > SMS``. An event listed here routes
+#: to the message channels; one left out reaches the in-app spool and the sound
+#: engine alone. The kinds are imported rather than spelled, so a kind the
+#: engine holds no switch for cannot be written here.
+EVENT_MESSAGE_KIND: dict[AlertEvent, str] = {
+    AlertEvent.BUY_FILLED: EVENT_BUY_FILL,
+    AlertEvent.SELL_FILLED: EVENT_SELL_FILL,
+    AlertEvent.BOT_STARTED: EVENT_BOT_STATE,
+    AlertEvent.BOT_STOPPED: EVENT_BOT_STATE,
+    AlertEvent.BOT_ERROR: EVENT_BOT_STATE,
+    AlertEvent.BOT_PAUSED_BY_RISK: EVENT_BOT_STATE,
+    AlertEvent.PNL_MILESTONE: EVENT_PL_THRESHOLD,
+    AlertEvent.DRAWDOWN_WARNING: EVENT_PL_THRESHOLD,
+    AlertEvent.DRAWDOWN_CRITICAL: EVENT_PL_THRESHOLD,
+    AlertEvent.CONNECTION_LOST: EVENT_CONNECTION,
+    AlertEvent.CONNECTION_RESTORED: EVENT_CONNECTION,
+}
+
+#: The channels every event reaches, before its own message pairing is read.
+BASE_CHANNELS: tuple[AlertChannel, ...] = (AlertChannel.IN_APP,)
+
+#: The channels an event ``EVENT_MESSAGE_KIND`` pairs reaches on top of those.
+MESSAGE_CHANNELS: tuple[AlertChannel, ...] = (AlertChannel.TELEGRAM, AlertChannel.SMS)
+
+#: The ``extra`` an event asking for the alert sound passes.
+SOUND_EXTRA: tuple[AlertChannel, ...] = (AlertChannel.SOUND,)
+
+#: The ``extra`` an event asking for Telegram without a message pairing passes.
+TELEGRAM_EXTRA: tuple[AlertChannel, ...] = (AlertChannel.TELEGRAM,)
+
+#: Seconds between two fill alerts of one side. The engine's own
+#: ``cooldown_seconds`` and ``max_messages_per_hour`` bound the messages again.
+FILL_COOLDOWN_S = 10.0
+
+
+#: The title each fill alert carries, as the message and the history row read it.
+FILL_TITLES: dict[AlertEvent, str] = {
+    AlertEvent.BUY_FILLED: "Buy filled",
+    AlertEvent.SELL_FILLED: "Sell filled",
+}
+
+#: The fill alert each ``FILL_TOPIC`` side raises.
+FILL_SIDE_EVENTS: dict[str, AlertEvent] = {
+    BUY_SIDE: AlertEvent.BUY_FILLED,
+    SELL_SIDE: AlertEvent.SELL_FILLED,
+}
+
+
+#: The field names a fill's dollar value arrives under. Five emitters write
+#: ``usd`` and five write ``size``, so a reader of one alone prints zero dollars
+#: for the other five.
+FILL_USD_FIELDS: tuple[str, ...] = ("usd", "size")
+
+
+def fill_payload(data: Any) -> dict:
+    """One fill's own fields, whichever level the emitter put them at.
+
+    The ``FILL_TOPIC`` contract in ``emit_contracts`` declares the nesting, so
+    the five emitters that pass the fill as keywords and the five that nest it
+    both read here.
+    """
+    for contract in CONTRACTS:
+        if contract.topic == FILL_TOPIC:
+            return contract.extract(data)
+    return data if isinstance(data, dict) else {}
+
+
+def fill_alert_event(side: Any) -> Optional[AlertEvent]:
+    """The alert one fill's side raises, or None for a side no event names."""
+    return FILL_SIDE_EVENTS.get(str(side or "").upper())
+
+
+def fill_message(fill: dict) -> str:
+    """One fill as the message channels print it: kind, units, price, dollars.
+
+    The dollars come from the first ``FILL_USD_FIELDS`` entry the fill carries.
+    """
+    kind = str(fill.get("type") or "FILL")
+    units = _as_number(fill.get("amount"))
+    price = _as_number(fill.get("price"))
+    usd = 0.0
+    for name in FILL_USD_FIELDS:
+        if name in fill:
+            usd = _as_number(fill.get(name))
+            break
+    return f"{kind}: {units:.6f} units at ${price:,.8f}, ${usd:,.2f}"
+
+
+def _as_number(value: Any) -> float:
+    """``value`` as a float, or 0.0 when it is not a number."""
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def message_kind(event: AlertEvent) -> Optional[str]:
+    """The ``sms_engine`` event kind *event* reports, or None for none."""
+    return EVENT_MESSAGE_KIND.get(event)
+
+
+def message_channels_for(
+    event: AlertEvent, extra: tuple[AlertChannel, ...] = ()
+) -> list[AlertChannel]:
+    """The channels *event* reaches, with ``MESSAGE_CHANNELS`` when it is paired.
+
+    ``DEFAULT_RULES`` builds every channel list through here, so an event that
+    reports a message kind cannot be declared without the channels that carry
+    it, and ``extra`` adds the sound channel where an event asks for one.
+    """
+    taken = list(BASE_CHANNELS) + list(extra)
+    if message_kind(event) is not None:
+        taken += [one for one in MESSAGE_CHANNELS if one not in taken]
+    return taken
 
 
 @dataclass
@@ -82,78 +224,79 @@ class NotificationManager:
     DEFAULT_RULES = {
         AlertEvent.BOT_STARTED: AlertRule(
             event=AlertEvent.BOT_STARTED,
-            channels=[AlertChannel.IN_APP],
+            channels=message_channels_for(AlertEvent.BOT_STARTED),
             priority=AlertPriority.LOW,
         ),
         AlertEvent.BOT_STOPPED: AlertRule(
             event=AlertEvent.BOT_STOPPED,
-            channels=[AlertChannel.IN_APP],
+            channels=message_channels_for(AlertEvent.BOT_STOPPED),
             priority=AlertPriority.MEDIUM,
         ),
         AlertEvent.BOT_ERROR: AlertRule(
             event=AlertEvent.BOT_ERROR,
-            channels=[AlertChannel.IN_APP, AlertChannel.SOUND],
+            channels=message_channels_for(AlertEvent.BOT_ERROR, SOUND_EXTRA),
             priority=AlertPriority.HIGH,
         ),
         AlertEvent.BOT_PAUSED_BY_RISK: AlertRule(
             event=AlertEvent.BOT_PAUSED_BY_RISK,
-            channels=[AlertChannel.IN_APP, AlertChannel.TELEGRAM, AlertChannel.SOUND],
+            channels=message_channels_for(AlertEvent.BOT_PAUSED_BY_RISK, SOUND_EXTRA),
             priority=AlertPriority.CRITICAL,
         ),
-        AlertEvent.TRADE_EXECUTED: AlertRule(
-            event=AlertEvent.TRADE_EXECUTED,
-            channels=[AlertChannel.IN_APP],
+        AlertEvent.BUY_FILLED: AlertRule(
+            event=AlertEvent.BUY_FILLED,
+            channels=message_channels_for(AlertEvent.BUY_FILLED),
             priority=AlertPriority.LOW,
-            cooldown_seconds=10,
+            cooldown_seconds=FILL_COOLDOWN_S,
+        ),
+        AlertEvent.SELL_FILLED: AlertRule(
+            event=AlertEvent.SELL_FILLED,
+            channels=message_channels_for(AlertEvent.SELL_FILLED),
+            priority=AlertPriority.LOW,
+            cooldown_seconds=FILL_COOLDOWN_S,
         ),
         AlertEvent.PNL_MILESTONE: AlertRule(
             event=AlertEvent.PNL_MILESTONE,
-            channels=[AlertChannel.IN_APP, AlertChannel.TELEGRAM],
+            channels=message_channels_for(AlertEvent.PNL_MILESTONE),
             priority=AlertPriority.MEDIUM,
             cooldown_seconds=3600,
         ),
         AlertEvent.DRAWDOWN_WARNING: AlertRule(
             event=AlertEvent.DRAWDOWN_WARNING,
-            channels=[AlertChannel.IN_APP, AlertChannel.SOUND],
+            channels=message_channels_for(AlertEvent.DRAWDOWN_WARNING, SOUND_EXTRA),
             priority=AlertPriority.HIGH,
             cooldown_seconds=300,
         ),
         AlertEvent.DRAWDOWN_CRITICAL: AlertRule(
             event=AlertEvent.DRAWDOWN_CRITICAL,
-            channels=[
-                AlertChannel.IN_APP,
-                AlertChannel.TELEGRAM,
-                AlertChannel.SMS,
-                AlertChannel.SOUND,
-            ],
+            channels=message_channels_for(AlertEvent.DRAWDOWN_CRITICAL, SOUND_EXTRA),
             priority=AlertPriority.CRITICAL,
             cooldown_seconds=600,
         ),
         AlertEvent.TA_CONSENSUS_FLIP: AlertRule(
             event=AlertEvent.TA_CONSENSUS_FLIP,
-            channels=[AlertChannel.IN_APP],
+            channels=message_channels_for(AlertEvent.TA_CONSENSUS_FLIP),
             priority=AlertPriority.MEDIUM,
             cooldown_seconds=300,
         ),
         AlertEvent.SPREAD_DETECTED: AlertRule(
             event=AlertEvent.SPREAD_DETECTED,
-            channels=[AlertChannel.IN_APP],
+            channels=message_channels_for(AlertEvent.SPREAD_DETECTED),
             priority=AlertPriority.LOW,
             cooldown_seconds=120,
         ),
         AlertEvent.CONNECTION_LOST: AlertRule(
             event=AlertEvent.CONNECTION_LOST,
-            channels=[AlertChannel.IN_APP, AlertChannel.TELEGRAM, AlertChannel.SOUND],
+            channels=message_channels_for(AlertEvent.CONNECTION_LOST, SOUND_EXTRA),
             priority=AlertPriority.HIGH,
         ),
         AlertEvent.CONNECTION_RESTORED: AlertRule(
             event=AlertEvent.CONNECTION_RESTORED,
-            channels=[AlertChannel.IN_APP],
+            channels=message_channels_for(AlertEvent.CONNECTION_RESTORED),
             priority=AlertPriority.MEDIUM,
         ),
         AlertEvent.DAILY_SUMMARY: AlertRule(
             event=AlertEvent.DAILY_SUMMARY,
-            channels=[AlertChannel.TELEGRAM],
+            channels=message_channels_for(AlertEvent.DAILY_SUMMARY, TELEGRAM_EXTRA),
             priority=AlertPriority.LOW,
             cooldown_seconds=82800,
         ),  # 23 hours
@@ -168,9 +311,11 @@ class NotificationManager:
         self._history: list[Notification] = []
         self._max_history = 1000
         self._telegram_config: dict = {}  # bot_token, chat_id
-        self._sms_config: dict = {}  # phone, provider
+        self._bus_unsubscribe = None
         self._enabled = True
-        self._pnl_milestones_hit: set[int] = set()  # Track which $ milestones sent
+        # Which whole multiples of pl_threshold_amount have already been sent.
+        self._pnl_steps_reached: set[int] = set()
+        self._pnl_step: float = 0.0
 
         # Channel handlers
         self._handlers: dict[AlertChannel, callable] = {
@@ -203,9 +348,64 @@ class NotificationManager:
             "Telegram notifications configured (chat_id=%s)", chat_id[:6] + "..."
         )
 
-    def configure_sms(self, phone: str, provider: str = "twilio"):
-        """Record the SMS destination. ``sms_engine`` holds the credentials."""
-        self._sms_config = {"phone": phone, "provider": provider}
+    def configure_sms(self, phone: str):
+        """Write the SMS destination into ``sms_engine``, which owns it.
+
+        The Notifications and Alerts tab calls this, and the provider stays with
+        ``Settings > SMS``. The number this sets and the number that page stores
+        are one field, so a number typed on either page reaches ``_send_sms``.
+        """
+        from ..core.sms_engine import get_sms_engine
+
+        get_sms_engine().set_phone_number(phone)
+
+    def _sms_destination(self) -> str:
+        """The number ``sms_engine`` holds, or '' when no page has set one."""
+        try:
+            from ..core.sms_engine import get_sms_engine
+
+            return str(get_sms_engine()._config.phone_number or "")
+        except Exception as exc:
+            logger.debug("SMS destination unreadable: %s", exc)
+            return ""
+
+    def attach_to_bus(self, bus) -> None:
+        """Subscribe ``FILL_TOPIC`` so every filled trade raises its own event.
+
+        A second call drops the previous subscription first, so one manager
+        cannot answer one fill twice.
+        """
+        if self._bus_unsubscribe is not None:
+            try:
+                self._bus_unsubscribe()
+            except Exception as exc:
+                logger.warning("fill subscription not removed: %s", exc)
+            self._bus_unsubscribe = None
+        self._bus_unsubscribe = bus.subscribe(FILL_TOPIC, self._on_trade_filled)
+        logger.info("NotificationManager subscribed to %s", FILL_TOPIC)
+
+    def _on_trade_filled(self, event) -> None:
+        """Raise ``BUY_FILLED`` or ``SELL_FILLED`` for one ``FILL_TOPIC`` event.
+
+        The channels run on a ``FILL_ALERT_THREAD`` thread, because the emitters
+        run on a bot's own loop thread and the Telegram channel places an HTTPS
+        request.
+        """
+        fill = fill_payload(getattr(event, "data", None))
+        alert = fill_alert_event(fill.get("side"))
+        if alert is None:
+            logger.debug("fill with side %r raises no alert", fill.get("side"))
+            return
+        title = FILL_TITLES[alert]
+        message = fill_message(fill)
+
+        def deliver() -> None:
+            try:
+                self.send(alert, title, message)
+            except Exception as exc:
+                logger.warning("fill alert %s not sent: %s", alert.value, exc)
+
+        threading.Thread(target=deliver, daemon=True, name=FILL_ALERT_THREAD).start()
 
     def set_rule(
         self,
@@ -250,7 +450,7 @@ class NotificationManager:
             handler = self._handlers.get(channel)
             if handler:
                 try:
-                    handler(title, message, rule.priority)
+                    handler(event, title, message, rule.priority)
                     channels_sent.append(channel.name)
                 except Exception as e:
                     logger.error("Notification channel %s failed: %s", channel.name, e)
@@ -270,16 +470,37 @@ class NotificationManager:
         return notification
 
     def check_pnl_milestone(self, total_pnl: float):
-        """Check if P/L has crossed a milestone worth notifying about."""
-        milestones = [10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000]
-        for m in milestones:
-            if total_pnl >= m and m not in self._pnl_milestones_hit:
-                self._pnl_milestones_hit.add(m)
-                self.send(
-                    AlertEvent.PNL_MILESTONE,
-                    f"P/L Milestone: ${m}",
-                    f"Portfolio has reached ${total_pnl:,.2f} in realized P/L!",
-                )
+        """Raise ``PNL_MILESTONE`` for each new multiple of the stored threshold.
+
+        ``Settings > SMS`` stores that figure as ``pl_threshold_amount``, so the
+        milestones are the operator's own figure. A changed figure clears the
+        multiples already reached.
+        """
+        step = self._pnl_threshold()
+        if step <= 0:
+            return
+        if step != self._pnl_step:
+            self._pnl_step = step
+            self._pnl_steps_reached.clear()
+        reached = int(total_pnl // step)
+        if reached < 1 or reached in self._pnl_steps_reached:
+            return
+        self._pnl_steps_reached.add(reached)
+        self.send(
+            AlertEvent.PNL_MILESTONE,
+            f"P/L Milestone: ${reached * step:,.2f}",
+            f"Portfolio has reached ${total_pnl:,.2f} in realized P/L.",
+        )
+
+    def _pnl_threshold(self) -> float:
+        """The ``pl_threshold_amount`` ``sms_engine`` holds, or 0.0 when unreadable."""
+        try:
+            from ..core.sms_engine import get_sms_engine
+
+            return float(get_sms_engine()._config.pl_threshold_amount)
+        except Exception as exc:
+            logger.debug("P/L threshold unreadable: %s", exc)
+            return 0.0
 
     def acknowledge_all(self):
         """Mark all notifications as acknowledged."""
@@ -291,7 +512,7 @@ class NotificationManager:
         return {
             "enabled": self._enabled,
             "telegram_configured": bool(self._telegram_config.get("bot_token")),
-            "sms_configured": bool(self._sms_config.get("phone")),
+            "sms_configured": bool(self._sms_destination()),
             "rules": {
                 event.value: {
                     "enabled": rule.enabled,
@@ -303,11 +524,17 @@ class NotificationManager:
             },
         }
 
-    def _send_in_app(self, title: str, message: str, priority: AlertPriority):
-        """In-app notification (logged, picked up by GUI)."""
-        logger.info("NOTIFICATION [%s]: %s — %s", priority.value, title, message)
+    def _send_in_app(
+        self, event: AlertEvent, title: str, message: str, priority: AlertPriority
+    ):
+        """In-app notification (logged, picked up by GUI), named with its event."""
+        logger.info(
+            "NOTIFICATION [%s] %s: %s — %s", priority.value, event.value, title, message
+        )
 
-    def _send_telegram(self, title: str, message: str, priority: AlertPriority):
+    def _send_telegram(
+        self, event: AlertEvent, title: str, message: str, priority: AlertPriority
+    ):
         """Send via Telegram Bot API."""
         token = self._telegram_config.get("bot_token")
         chat_id = self._telegram_config.get("chat_id")
@@ -332,25 +559,33 @@ class NotificationManager:
                 url, data=data, headers={"Content-Type": "application/json"}
             )
             safe_urlopen(req, timeout=10)
-            logger.debug("Telegram sent: %s", title)
+            logger.debug("Telegram sent %s: %s", event.value, title)
         except Exception as e:
             logger.warning("Telegram send failed: %s", e)
 
-    def _send_sms(self, title: str, message: str, priority: AlertPriority):
-        """Send via SMS (delegates to sms_engine)."""
-        phone = self._sms_config.get("phone")
-        if not phone:
+    def _send_sms(
+        self, event: AlertEvent, title: str, message: str, priority: AlertPriority
+    ):
+        """Send one message through ``sms_engine``, naming which event fired.
+
+        ``EVENT_MESSAGE_KIND`` names the engine's event kind, which is the
+        switch the operator ticks on ``Settings > SMS``. The engine holds the
+        destination and the rate caps, so nothing here keeps a second copy.
+        """
+        kind = message_kind(event)
+        if kind is None:
+            logger.debug("%s reaches no message switch; not sent", event.value)
             return
         try:
             from ..core.sms_engine import get_sms_engine
 
-            engine = get_sms_engine()
-            # send(message, event_type); the number lives on SMSConfig.phone_number.
-            engine.send(f"{title}: {message}")
+            get_sms_engine().send(f"{title}: {message}", kind)
         except Exception as e:
             logger.warning("SMS send failed: %s", e)
 
-    def _send_sound(self, title: str, message: str, priority: AlertPriority):
+    def _send_sound(
+        self, event: AlertEvent, title: str, message: str, priority: AlertPriority
+    ):
         """Play alert sound."""
         try:
             from ..core.sound_engine import get_sound_engine
@@ -371,7 +606,15 @@ _instance: Optional[NotificationManager] = None
 
 
 def get_notification_manager() -> NotificationManager:
+    """The process-wide ``NotificationManager``, already subscribed to ``FILL_TOPIC``.
+
+    ``attach_to_bus`` runs here, so no manager exists without the subscription
+    that turns a fill into a message.
+    """
     global _instance
     if _instance is None:
         _instance = NotificationManager()
+        from .event_bus import get_event_bus
+
+        _instance.attach_to_bus(get_event_bus())
     return _instance

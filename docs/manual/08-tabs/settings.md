@@ -2671,6 +2671,41 @@ self._sms_connection = QCheckBox("Exchange connection status")
 ef.addRow(self._sms_connection)
 ```
 
+#### What the eight event rows reach today
+
+The eight sentences above are the specification. Five of the eight rows now
+govern a real send.
+
+`src/core/notifications.py, in attach_to_bus` subscribes the fill topic, and
+`src/core/notifications.py, in get_notification_manager` makes that
+subscription as it builds the manager. A filled trade therefore raises
+`BUY_FILLED` or `SELL_FILLED` with no window in the path.
+`src/core/notifications.py, in _send_sms` hands the engine the event, and
+`src/core/sms_engine.py, in send` reads `EVENT_SWITCHES` to find the switch that
+gates it. `Buy fills` gates `buy_fill` and `Sell fills` gates `sell_fill`.
+
+`P/L threshold alerts` is reached from
+`src/core/notifications.py, in check_pnl_milestone`, which now reads
+`pl_threshold_amount` and raises one alert for each new whole multiple of it.
+`Exchange connection status` is reached from
+`src/exchange/ccxt_connector.py, in _alert_venue`, for a lost connection and for
+a venue that answers again.
+
+Three rows still wait on a trigger of their own.
+
+| Row | What is missing |
+|---|---|
+| Bot state changes | Nothing raises `BOT_STARTED`, `BOT_STOPPED` or `BOT_ERROR` |
+| API errors and failures | No alert event names a failed venue call. `src/exchange/ccxt_connector.py, in note_venue_refusal` raises one for a lost connection alone |
+| Low balance warnings | No alert event names a low balance |
+
+The number the send reaches is one field.
+`src/core/notifications.py, in configure_sms` writes the number the
+Notifications and Alerts tab types into `SMSConfig.phone_number`, which is the
+field `Phone Number` on this page stores.
+
+The Product Manual PDF rebuild is owed for this page.
+
 Max messages per hour - Caps how many messages one hour may carry. Key
 `max_messages_per_hour`, 1 to 100, at 20. Below the area the figure shows.
 
