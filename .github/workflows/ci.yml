@@ -1,11 +1,12 @@
 # Acervator CI — the checks a pull request must pass before it can merge.
 #
-# Four lanes, and each one adjudicates something this repository actually holds:
+# Five lanes, and each one adjudicates something this repository actually holds:
 #
 #   * changes    — diffs the push or pull request and publishes the changed file
-#                  list the archetype lane reads, plus two flags: `any` (the diff
-#                  is non-empty) and `code` (at least one changed file can affect
-#                  the build). Always runs.
+#                  list the archetype lane reads, plus three flags: `any` (the
+#                  diff is non-empty), `code` (at least one changed file can
+#                  affect the build) and `desktop` (at least one changed file is
+#                  the Electron shell's own). Always runs.
 #   * lint       — black --check and flake8 over `src tests tools *.py`, from the
 #                  [lint] extra. Runs when `code` is true.
 #   * contracts  — `forge test` over tests/contracts, the six Solidity test files
@@ -32,6 +33,9 @@
 #                  on its own line.
 #                  Runs when `any` is true, so a documentation-only pull request
 #                  is still adjudicated.
+#   * shell      — installs `desktop/` with `npm ci`, starts electron once under
+#                  xvfb-run and reads the loaded page back out of the running
+#                  window. Runs when `desktop` is true.
 #
 # There are no pytest lanes. `git ls-files tests/` returns 7 files: six Solidity
 # tests and conftest.py. No `test_*.py` exists, so pytest collected nothing and
@@ -44,10 +48,15 @@
 # CI never fans out across versions. To move the whole project to a new Python,
 # edit `.python-version` (and `requires-python` in pyproject.toml); nothing here.
 #
-# `ci-gate` is the single status the repository ruleset requires. It always runs,
-# and it passes when no required lane failed — a lane skipped because the change
-# did not call for it counts as acceptable, so a documentation-only pull request
-# is never wedged by a lane reporting "skipped" rather than "success". Requiring
+# `ci-gate` is the single status the repository ruleset requires. Every lane
+# above is in its `needs` list, which is why the shell lane is a job here and
+# not its own workflow file: a job cannot `need` a job in another file, so a
+# shell lane outside this file would report a verdict that gated nothing.
+#
+# It always runs, and it passes when no required lane failed — a lane skipped
+# because the change did not call for it counts as acceptable, so a
+# documentation-only pull request is never wedged by a lane reporting "skipped"
+# rather than "success". Requiring
 # the lanes by name would wedge exactly those pull requests.
 name: CI
 
@@ -76,6 +85,7 @@ jobs:
     outputs:
       any: ${{ steps.detect.outputs.any }}
       code: ${{ steps.detect.outputs.code }}
+      desktop: ${{ steps.detect.outputs.desktop }}
       files: ${{ steps.detect.outputs.files }}
     steps:
       - uses: actions/checkout@v7
@@ -99,6 +109,11 @@ jobs:
           # matched here is treated as functional, so the list is deliberately
           # conservative — add to it, don't broaden it.
           IGNORE='^\.claude/|^docs/|\.md$|^LICENSE$|^\.gitignore$|^\.gitattributes$|^\.editorconfig$'
+
+          # Paths the shell lane reads. A change matching none of them leaves
+          # that lane skipped, which ci-gate counts as acceptable. This file is
+          # in the list so a change to the lane itself still starts it.
+          DESKTOP='^desktop/|^\.github/workflows/ci\.yml$'
 
           case "$EVENT_NAME" in
             pull_request) BASE="$PR_BASE_SHA"; HEAD="$PR_HEAD_SHA" ;;
@@ -140,12 +155,14 @@ jobs:
           # time anything merges into its base branch.
           if [ "$EVENT_NAME" = "pull_request" ] && [ "$PR_DRAFT" = "true" ]; then
             echo "Draft pull request - skipping code lanes."
-            echo "code=false" >> "$GITHUB_OUTPUT"; exit 0
+            echo "code=false" >> "$GITHUB_OUTPUT"
+            echo "desktop=false" >> "$GITHUB_OUTPUT"; exit 0
           fi
 
           # A manual dispatch asks for every lane, whatever the diff holds.
           if [ "$EVENT_NAME" = "workflow_dispatch" ] || [ -z "$BASE" ]; then
-            echo "code=true" >> "$GITHUB_OUTPUT"; exit 0
+            echo "code=true" >> "$GITHUB_OUTPUT"
+            echo "desktop=true" >> "$GITHUB_OUTPUT"; exit 0
           fi
 
           CODE_FILES="$(printf '%s\n' "$CHANGED" | grep -vE "$IGNORE" || true)"
@@ -155,6 +172,15 @@ jobs:
           else
             echo "Only non-functional files changed — skipping the code lanes."
             echo "code=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          SHELL_FILES="$(printf '%s\n' "$CHANGED" | grep -E "$DESKTOP" || true)"
+          if [ -n "$SHELL_FILES" ]; then
+            echo "The shell's own folder changed — running the shell lane."
+            echo "desktop=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No shell file changed — skipping the shell lane."
+            echo "desktop=false" >> "$GITHUB_OUTPUT"
           fi
 
   lint:
@@ -363,13 +389,311 @@ jobs:
                "reported: the verdict is printed and blocks nothing."
           [ "$failed" -eq 0 ]
 
+  shell:
+    # `desktop/package.json` declares electron and `desktop/package-lock.json`
+    # pins it. No other lane reaches that folder: both `npm ci` steps above run
+    # at the repository root, the root package.json declares no workspaces, and
+    # electron is in no root lock file.
+    #
+    # An install on its own catches a dependency that will not resolve and
+    # catches no breaking change, so this job starts the shell once and reads
+    # the loaded page back out of the running window. The read-back goes through
+    # Chromium's own debugging endpoint and asks the document for its
+    # `readyState`, the `panels` element index.html declares, its `script[src]`
+    # count, and the type of `window.React`. An error page carries none of
+    # those.
+    #
+    # The launch runs with HOME on a scratch directory, so no bot state file and
+    # no credential file is reachable. ACERVATOR_BRIDGE_ARGV names an inert
+    # interpreter, so main.js spawns `-c pass` instead of main.py and no venue
+    # is contacted.
+    #
+    # `ci-gate` needs this job, so a red shell leaves the merge blocked. The
+    # `if` below leaves it skipped when no shell file changed, and ci-gate reads
+    # skipped as acceptable, so an unrelated pull request is never wedged.
+    name: shell
+    needs: changes
+    if: needs.changes.outputs.desktop == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      # Where the launched shell writes. Not the runner's own HOME.
+      LAUNCH_HOME: ${{ github.workspace }}/launch-home
+      # The port Chromium answers /json/list on.
+      DEBUG_PORT: 9222
+      # Seconds to wait for the window to publish a page target.
+      PAGE_WAIT_SECONDS: 90
+      # main.js reads this as the backend argv; `-c pass` exits at once.
+      ACERVATOR_BRIDGE_ARGV: -c pass
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          # desktop/package-lock.json was written by npm 11, which ships with
+          # node 24.
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      - name: Install the shell's own folder
+        working-directory: desktop
+        run: npm ci
+
+      - name: Report the electron that arrived
+        # electron 45 declares no postinstall script, so `npm ci` leaves
+        # node_modules/electron/dist empty and require() fetches the binary.
+        working-directory: desktop
+        run: |
+          set -euo pipefail
+          node -p "require('electron/package.json').version"
+          # The first require prints a progress line on stdout, so the path is
+          # read from a second one.
+          node -e "require('electron')"
+          binary="$(node -p "require('electron')")"
+          ls -l "$binary"
+
+      - name: Install the display the shell draws into
+        # Electron opens a real window; xvfb-run supplies the X display the
+        # runner has none of.
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends xvfb
+          xvfb-run --help | head -3
+
+      - name: Start the shell once and read its page back
+        shell: xvfb-run -a node {0}
+        run: |
+          "use strict";
+
+          const { spawn } = require("child_process");
+          const fs = require("fs");
+          const path = require("path");
+
+          const SHELL_DIR = path.join(process.cwd(), "desktop");
+          const DEBUG_PORT = Number(process.env.DEBUG_PORT || 9222);
+          const WAIT_SECONDS = Number(process.env.PAGE_WAIT_SECONDS || 90);
+          const LAUNCH_HOME =
+            process.env.LAUNCH_HOME || path.join(process.cwd(), "launch-home");
+          // Every file electron writes lands here, on every platform.
+          const USER_DATA_DIR = path.join(LAUNCH_HOME, "electron");
+          const PAGE_SUFFIX = "renderer/index.html";
+          const ANSWER_MS = 30000;
+
+          // Reads readyState, the panels element, every script[src], and
+          // window.React.
+          const READ_BACK = `JSON.stringify({
+            state: document.readyState,
+            title: document.title,
+            panels: document.getElementById("panels") ? 1 : 0,
+            scripts: document.querySelectorAll("script[src]").length,
+            react: typeof window.React
+          })`;
+
+          function sleep(ms) {
+            return new Promise((done) => setTimeout(done, ms));
+          }
+
+          async function pageTarget() {
+            const answer = await fetch(
+              `http://127.0.0.1:${DEBUG_PORT}/json/list`
+            );
+            const targets = await answer.json();
+            return (
+              targets.find(
+                (one) =>
+                  one.type === "page" && String(one.url).endsWith(PAGE_SUFFIX)
+              ) || null
+            );
+          }
+
+          function readPage(socketUrl) {
+            return new Promise((resolve, reject) => {
+              const socket = new WebSocket(socketUrl);
+              const giveUp = setTimeout(() => {
+                socket.close();
+                reject(new Error("the page did not answer"));
+              }, ANSWER_MS);
+              socket.addEventListener("open", () => {
+                socket.send(
+                  JSON.stringify({
+                    id: 1,
+                    method: "Runtime.evaluate",
+                    params: { expression: READ_BACK, returnByValue: true }
+                  })
+                );
+              });
+              socket.addEventListener("message", (event) => {
+                const frame = JSON.parse(event.data);
+                if (frame.id !== 1) {
+                  return;
+                }
+                clearTimeout(giveUp);
+                socket.close();
+                const held = frame.result && frame.result.result;
+                if (!held || typeof held.value !== "string") {
+                  reject(new Error("Runtime.evaluate: " + event.data));
+                  return;
+                }
+                resolve(JSON.parse(held.value));
+              });
+              socket.addEventListener("error", () => {
+                clearTimeout(giveUp);
+                reject(new Error("the debugging socket failed"));
+              });
+            });
+          }
+
+          function faultsIn(reading) {
+            const faults = [];
+            if (reading.state !== "complete") {
+              faults.push("readyState is " + reading.state);
+            }
+            if (reading.panels !== 1) {
+              faults.push("the page carries no panels element");
+            }
+            if (reading.scripts < 1) {
+              faults.push("the page carries no script element");
+            }
+            if (reading.react !== "object") {
+              faults.push("window.React is " + reading.react);
+            }
+            return faults;
+          }
+
+          // ELECTRON_RUN_AS_NODE makes the binary run main.js as plain node,
+          // where `app` is undefined and no window opens.
+          function childEnvironment() {
+            const held = { ...process.env, HOME: LAUNCH_HOME };
+            delete held.ELECTRON_RUN_AS_NODE;
+            return held;
+          }
+
+          async function main() {
+            fs.mkdirSync(LAUNCH_HOME, { recursive: true });
+            const binary = require(
+              path.join(SHELL_DIR, "node_modules", "electron")
+            );
+            console.log("shell folder:  " + SHELL_DIR);
+            console.log("electron:      " + binary);
+            console.log("HOME:          " + LAUNCH_HOME);
+            console.log("user data dir: " + USER_DATA_DIR);
+            console.log(
+              "backend argv:  " + (process.env.ACERVATOR_BRIDGE_ARGV || "unset")
+            );
+
+            const child = spawn(
+              binary,
+              [
+                ".",
+                "--remote-debugging-port=" + DEBUG_PORT,
+                "--user-data-dir=" + USER_DATA_DIR,
+                "--no-sandbox",
+                "--disable-gpu"
+              ],
+              {
+                cwd: SHELL_DIR,
+                env: childEnvironment(),
+                stdio: ["ignore", "pipe", "pipe"]
+              }
+            );
+            let exited = null;
+            child.on("exit", (code) => {
+              exited = code;
+            });
+            for (const stream of [child.stdout, child.stderr]) {
+              stream.setEncoding("utf8");
+              stream.on("data", (text) =>
+                process.stdout.write("[shell] " + text)
+              );
+            }
+
+            let target = null;
+            for (let second = 0; second < WAIT_SECONDS; second += 1) {
+              if (exited !== null) {
+                break;
+              }
+              try {
+                target = await pageTarget();
+              } catch (unreachable) {
+                target = null;
+              }
+              if (target) {
+                break;
+              }
+              await sleep(1000);
+            }
+
+            if (exited !== null) {
+              console.log(
+                "FAILURE the shell exited with code " +
+                  exited +
+                  " before any page loaded"
+              );
+              return 1;
+            }
+            if (!target) {
+              console.log(
+                "FAILURE no page target after " + WAIT_SECONDS + " seconds"
+              );
+              child.kill();
+              return 1;
+            }
+
+            // A page target exists while the document is still loading, so
+            // the read repeats until readyState reaches complete.
+            console.log("page url:      " + target.url);
+            let reading = null;
+            let faults = ["the page was never read"];
+            for (let second = 0; second < WAIT_SECONDS; second += 1) {
+              try {
+                reading = await readPage(target.webSocketDebuggerUrl);
+                faults = faultsIn(reading);
+              } catch (refused) {
+                faults = [refused.message];
+              }
+              if (!faults.length) {
+                break;
+              }
+              await sleep(1000);
+            }
+            console.log("page reading:  " + JSON.stringify(reading));
+            console.log(
+              "HOME holds:    " + fs.readdirSync(LAUNCH_HOME).join(" ")
+            );
+            child.kill();
+
+            for (const fault of faults) {
+              console.log("FAILURE " + fault);
+            }
+            if (faults.length) {
+              return 1;
+            }
+            console.log(
+              "the shell started and its page loaded: " +
+                reading.scripts +
+                " scripts, title " +
+                reading.title
+            );
+            return 0;
+          }
+
+          main().then(
+            (code) => process.exit(code),
+            (err) => {
+              console.log("FAILURE " + err.stack);
+              process.exit(1);
+            }
+          );
+
   ci-gate:
     # The single stable status the repository ruleset requires. It always runs —
     # even when a lane was skipped because the change did not call for it — and
     # passes only when no required lane actually failed.
     name: ci-gate
     if: always()
-    needs: [changes, lint, contracts, archetypes]
+    needs: [changes, lint, contracts, archetypes, shell]
     runs-on: ubuntu-latest
     steps:
       - name: Verify required lanes
@@ -378,6 +702,9 @@ jobs:
           LINT: ${{ needs.lint.result }}
           CONTRACTS: ${{ needs.contracts.result }}
           ARCHETYPES: ${{ needs.archetypes.result }}
+          # Not SHELL: the runner already carries that name for its own
+          # interpreter path.
+          SHELL_LANE: ${{ needs.shell.result }}
         run: |
           set -euo pipefail
           fail=0
@@ -391,7 +718,7 @@ jobs:
 
           # A lane is acceptable when it succeeded or was skipped; skipped means
           # the change did not call for it. Any other result fails the gate.
-          for name in LINT CONTRACTS ARCHETYPES; do
+          for name in LINT CONTRACTS ARCHETYPES SHELL_LANE; do
             result="$(eval "echo \$$name")"
             case "$result" in
               success|skipped) echo "$name: $result — ok" ;;
