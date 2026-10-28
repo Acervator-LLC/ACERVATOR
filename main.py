@@ -1758,18 +1758,29 @@ def main() -> int:
     def _hold_fleet_for_unlock() -> None:
         """Record the locked boot that ``authorise_auto_start`` refuses.
 
-        No consent is asked and no bot is loaded, and
-        ``MainWindow.hold_fleet_for_unlock`` puts the reason in the Console.
+        ``MainWindow.hold_fleet_for_unlock`` puts the reason in the Console
+        whatever the gate raises, and no consent is asked.
         """
-        from src.core.instance_guard import authorise_auto_start
-        from src.gui.instance_consent_dialog import ask_for_consent
-
-        _, why = authorise_auto_start(
-            instance_guard,
-            instance_decision,
-            lambda d: ask_for_consent(d, parent=crypto_window),
-            fleet_sealed=True,
+        from src.core.instance_guard import (
+            WITHHELD_FLEET_SEALED,
+            authorise_auto_start,
         )
+
+        why = WITHHELD_FLEET_SEALED
+        try:
+            from src.gui.instance_consent_dialog import ask_for_consent
+
+            _, why = authorise_auto_start(
+                instance_guard,
+                instance_decision,
+                lambda d: ask_for_consent(d, parent=crypto_window),
+                fleet_sealed=True,
+            )
+        except Exception as exc:
+            log_manager.warning(
+                f"Locked-boot gate raised: {exc}. The fleet stays sealed "
+                f"and no bot is loaded."
+            )
         crypto_window.hold_fleet_for_unlock(why)
 
     def _start_fleet_after_unlock() -> None:
