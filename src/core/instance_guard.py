@@ -750,18 +750,31 @@ AUTHORISED_ALREADY_OWNER = "already_owner"
 AUTHORISED_BY_OPERATOR = "operator_consent"
 WITHHELD_BY_OPERATOR = "operator_refused"
 WITHHELD_NO_EXCLUSIVE_HANDLE = "no_exclusive_handle"
+WITHHELD_FLEET_SEALED = "fleet_sealed"
+
+FLEET_SEALED_WITHHELD_LOG = (
+    "instance guard: the saved fleet is sealed and this session holds no key, "
+    "so no bot starts and no consent is asked. A locked boot is not a fault."
+)
 
 
 def authorise_auto_start(
     guard: "InstanceGuard",
     decision: GuardDecision,
     ask_consent: Callable[[GuardDecision], bool],
+    fleet_sealed: bool = False,
 ) -> tuple[bool, str]:
-    """Return whether the fleet may start, with one of the four reason constants.
+    """Return whether the fleet may start, with one of the five reason constants.
 
+    A True *fleet_sealed* answers ``WITHHELD_FLEET_SEALED`` at INFO before
+    *decision* is read and before *ask_consent* can run, so an unattended
+    restart under the fleet latch asks nothing and records no fault.
     ``ask_consent`` runs only when ``decision.permits_auto_start`` is False, and
     a granted consent still needs ``guard.take_ownership`` to return True.
     """
+    if fleet_sealed:
+        logger.info(FLEET_SEALED_WITHHELD_LOG)
+        return (False, WITHHELD_FLEET_SEALED)
     if decision.permits_auto_start:
         return (True, AUTHORISED_ALREADY_OWNER)
     try:

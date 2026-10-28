@@ -1003,15 +1003,20 @@ def build_instance_guard(state_mgr, app_version: str):
     return InstanceGuard(state_mgr.config_dir, app_version=app_version)
 
 
-def autostart_gate(guard, decision, ask_consent, on_withheld, on_granted) -> bool:
+def autostart_gate(
+    guard, decision, ask_consent, on_withheld, on_granted, fleet_sealed=False
+) -> bool:
     """Answer whether the fleet may auto-start, and never start it here.
 
     ``on_withheld`` takes the refusal reason and ``on_granted`` the grant
-    reason; a False answer means no bot may be started.
+    reason, a False answer means no bot may be started, and a True
+    *fleet_sealed* makes ``authorise_auto_start`` refuse before any consent.
     """
     from src.core.instance_guard import AUTHORISED_ALREADY_OWNER, authorise_auto_start
 
-    authorised, why = authorise_auto_start(guard, decision, ask_consent)
+    authorised, why = authorise_auto_start(
+        guard, decision, ask_consent, fleet_sealed=fleet_sealed
+    )
     if not authorised:
         on_withheld(why)
         return False
@@ -1316,8 +1321,8 @@ def main() -> int:
     from src.gui.main_window import MainWindow
     from src.core.state_manager import (
         FLEET_SEALED_NOTE,
+        LAUNCH_LOCKED,
         PROBE_HAS_BOTS,
-        PROBE_SEALED,
         StateManager,
     )
     from src.trading.risk_manager import RiskManager
@@ -1408,8 +1413,9 @@ def main() -> int:
             )
     # Read unconditionally below; assigned only inside the restore branch.
     _autostart_bot_count = 0
+    _fleet_launch = state_mgr.launch_classification()
     _fleet_probe = state_mgr.probe()
-    if _fleet_probe == PROBE_SEALED:
+    if _fleet_launch == LAUNCH_LOCKED:
         log_manager.warning(FLEET_SEALED_NOTE)
     if _fleet_probe == PROBE_HAS_BOTS:
         saved = state_mgr.load_state()
@@ -1689,36 +1695,55 @@ def main() -> int:
     save_timer.timeout.connect(periodic_save)
     save_timer.start(60000)
 
+    def _log_withheld_for(decision, count: int, why: str) -> None:
+        """Record in ``log_manager`` and the Console that *count* bot(s) stay idle."""
+        log_manager.warning(
+            f"Auto-start WITHHELD ({why}, verdict "
+            f"{decision.verdict}). "
+            f"{count} bot(s) stay IDLE."
+        )
+        crypto_window._status_log.log(
+            f"Auto-start withheld: {decision.headline} "
+            f"Bots remain idle; start them from the Start All "
+            f"button when this machine should own the fleet.",
+            "warning",
+        )
+
+    def _log_granted_for(decision, why: str) -> None:
+        """Record in ``log_manager`` that *decision* gave this machine ownership."""
+        log_manager.warning(
+            f"Instance guard: ownership granted to this machine "
+            f"({decision.identity.label}) by {why}. "
+            f"Auto-start proceeds."
+        )
+
+    def _fleet_is_sealed() -> bool:
+        """Answer whether ``state_mgr`` reads ``LAUNCH_LOCKED`` at this moment."""
+        return state_mgr.launch_classification() == LAUNCH_LOCKED
+
+    def _eligible_bot_count() -> int:
+        """Count the ``bot_manager`` bots ``run_fleet_sequence`` would start."""
+        return len(
+            [
+                b
+                for b in bot_manager._bots.values()
+                if b.state.value in ("idle", "stopped")
+            ]
+        )
+
     def _trigger_auto_restart():
         try:
             from src.gui.instance_consent_dialog import ask_for_consent
-
-            def _log_withheld(why: str) -> None:
-                log_manager.warning(
-                    f"Auto-start WITHHELD ({why}, verdict "
-                    f"{instance_decision.verdict}). "
-                    f"{_autostart_bot_count} bot(s) stay IDLE."
-                )
-                crypto_window._status_log.log(
-                    f"Auto-start withheld: {instance_decision.headline} "
-                    f"Bots remain idle; start them from the Start All "
-                    f"button when this machine should own the fleet.",
-                    "warning",
-                )
-
-            def _log_granted(why: str) -> None:
-                log_manager.warning(
-                    f"Instance guard: ownership granted to this machine "
-                    f"({instance_decision.identity.label}) by {why}. "
-                    f"Auto-start proceeds."
-                )
 
             if not autostart_gate(
                 instance_guard,
                 instance_decision,
                 lambda d: ask_for_consent(d, parent=crypto_window),
-                _log_withheld,
-                _log_granted,
+                lambda why: _log_withheld_for(
+                    instance_decision, _autostart_bot_count, why
+                ),
+                lambda why: _log_granted_for(instance_decision, why),
+                fleet_sealed=_fleet_is_sealed(),
             ):
                 return
             if not crypto_window.run_fleet_sequence("start"):
@@ -1730,7 +1755,68 @@ def main() -> int:
                 f"Start All button."
             )
 
-    if _autostart_bot_count > 0:
+    def _hold_fleet_for_unlock() -> None:
+        """Record the locked boot that ``authorise_auto_start`` refuses.
+
+        ``MainWindow.hold_fleet_for_unlock`` puts the reason in the Console
+        whatever the gate raises, and no consent is asked.
+        """
+        from src.core.instance_guard import (
+            WITHHELD_FLEET_SEALED,
+            authorise_auto_start,
+        )
+
+        why = WITHHELD_FLEET_SEALED
+        try:
+            from src.gui.instance_consent_dialog import ask_for_consent
+
+            _, why = authorise_auto_start(
+                instance_guard,
+                instance_decision,
+                lambda d: ask_for_consent(d, parent=crypto_window),
+                fleet_sealed=True,
+            )
+        except Exception as exc:
+            log_manager.warning(
+                f"Locked-boot gate raised: {exc}. The fleet stays sealed "
+                f"and no bot is loaded."
+            )
+        crypto_window.hold_fleet_for_unlock(why)
+
+    def _start_fleet_after_unlock() -> None:
+        """Re-gate and start the fleet ``MainWindow.unlock_fleet`` has just loaded.
+
+        ``InstanceGuard.evaluate`` is asked again with ``_eligible_bot_count``,
+        because the launch asked it with a fleet of none.
+        """
+        try:
+            from src.gui.instance_consent_dialog import ask_for_consent
+
+            eligible = _eligible_bot_count()
+            decision = instance_guard.evaluate(eligible)
+            if not autostart_gate(
+                instance_guard,
+                decision,
+                lambda d: ask_for_consent(d, parent=crypto_window),
+                lambda why: _log_withheld_for(decision, eligible, why),
+                lambda why: _log_granted_for(decision, why),
+                fleet_sealed=_fleet_is_sealed(),
+            ):
+                return
+            if not crypto_window.run_fleet_sequence("start"):
+                log_manager.info("Unlocked fleet: no eligible bots, skipping.")
+        except Exception as exc:
+            log_manager.warning(
+                f"Fleet start after unlock raised: {exc}. "
+                f"Bots remain in IDLE; operator can start manually via "
+                f"Start All button."
+            )
+
+    crypto_window.set_fleet_start_callback(_start_fleet_after_unlock)
+
+    if _fleet_launch == LAUNCH_LOCKED:
+        _hold_fleet_for_unlock()
+    elif _autostart_bot_count > 0:
         # The splash schedules this on close; the timer is the fallback.
         try:
             _splash._on_finished_callback = _trigger_auto_restart
