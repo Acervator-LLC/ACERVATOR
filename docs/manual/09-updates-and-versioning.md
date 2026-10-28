@@ -832,6 +832,44 @@ archetypes   the owning archetype for each changed file
 ci-gate      one status saying whether any required lane failed
 ```
 
+### A fifth lane starts the Electron shell
+
+The two sentences above are overtaken. Quoted whole:
+
+> Four lanes run on every pull request, and each one judges something the tree
+> actually holds. One workflow file declares all of them.
+
+One workflow file still declares all of them, and there are five. The fifth is
+`shell`. It installs `desktop/` with `npm ci`, starts electron once under
+`xvfb-run`, and reads the loaded page back out of the running window. It is
+declared in `.github/workflows/ci.yml, in shell`.
+
+```
+shell        installs desktop/, starts electron once, reads its page back
+```
+
+`ci-gate` lists every lane in its `needs`, and `shell` is one of them. A red
+shell therefore leaves the merge blocked. That is why the lane is a job in this
+one file rather than a workflow file of its own: a job cannot `need` a job in
+another file, so a shell lane outside `ci.yml` reports a verdict that gates
+nothing.
+
+The lane reads one changed file at a time, like every other lane. The job's
+`if` reads the `desktop` flag that `.github/workflows/ci.yml, in changes`
+publishes, and that flag is true only when a changed file is the shell's own or
+is `ci.yml` itself.
+
+```
+a change touching desktop/          the lane runs
+a change touching src/              the lane reports skipped
+a change touching docs/             the lane reports skipped
+a change touching neither           the lane reports skipped
+the lane failing outright           ci-gate FAILS, and the merge is blocked
+```
+
+A skipped lane is acceptable to `ci-gate`, which is what keeps a pull request
+that never touches the shell from waiting on a lane that never starts.
+
 ### Which archetype owns which file
 
 The archetype lane reads each changed file's type and runs the archetype that
@@ -970,6 +1008,26 @@ the step names each one on its own line above the summary.
 ```
 scanned=2 judged=1 reported=1 unowned=0 exempt=0 failed=0
 ```
+
+#### Green covers the Electron shell when the change touched it
+
+The same first sentence is overtaken a second time. Quoted whole:
+
+> Green means every changed file passed the archetype that owns it, the Solidity
+> tests passed, and the formatting and lint lanes passed.
+
+Green now carries one more thing. When a change touches `desktop/`, green also
+means the shell was installed, started once, and its page loaded. When a change
+touches nothing in that folder the shell lane reports skipped, and green says
+nothing about the shell.
+
+```
+a change touching desktop/     green covers the shell starting
+any other change               green says nothing about the shell
+```
+
+Read the lane's own result on the run to tell the two apart. A skipped `shell`
+lane means the change did not call for it.
 
 ### The two pytest lanes, overtaken
 
@@ -1116,6 +1174,37 @@ when a fix is published, or when the dependency that brings it in is replaced.
 Both `npm ci` steps in the workflow run at the repository root. No lane installs
 `desktop/`, so a change to the Electron manifest is read by the operator's own
 build of the desktop shell and by nothing in the pull-request checks.
+
+#### The shell lane installs the desktop manifest
+
+The paragraph above is overtaken. Quoted whole:
+
+> Both `npm ci` steps in the workflow run at the repository root. No lane
+> installs `desktop/`, so a change to the Electron manifest is read by the
+> operator's own build of the desktop shell and by nothing in the pull-request
+> checks.
+
+There are three `npm ci` steps now. Two still run at the repository root, and
+the third runs in `desktop/`, in `.github/workflows/ci.yml, in shell`. A change
+to the Electron manifest is installed, the shell is started once, and its page
+is read back.
+
+```
+npm ci     repository root     contracts lane
+npm ci     repository root     archetypes lane
+npm ci     desktop/            shell lane
+```
+
+The shell lane reads the page through Chromium's own debugging endpoint. It asks
+for the document's `readyState`, the `panels` element `desktop/renderer/index.html`
+declares, the number of `script[src]` elements, and the type of `window.React`.
+An error page carries none of those, so a shell that starts and draws nothing
+still fails the lane.
+
+The launch runs with `HOME` on a scratch directory inside the runner's
+workspace, so no bot state file and no credential file is reachable. The job
+sets `ACERVATOR_BRIDGE_ARGV` to an inert interpreter, so `desktop/main.js`
+starts that instead of `main.py` and no venue is contacted.
 
 ### What clears the queue
 
