@@ -22,12 +22,15 @@ from ..stack_math import (
     unproduced_stack_amount,
 )
 from .sizing import (
+    FOLD_AGE_KEY,
+    STACK_AGE_KEY,
     combined_event_reference,
     eligible_fold_tranches,
     merge_fold_tranches_within_distance,
     plan_fold_consumption,
     settle_fold_plan,
     tranche_sale_rate,
+    tranches_beyond_held_total,
     unaligned_fold_tranches,
 )
 
@@ -54,6 +57,7 @@ class FoldTrancheAccountingMixin:
     _fold_queue_usd: float
     _fold_tranches: list[dict]
     _last_trend_bull_candles: int
+    _main_lots: list[dict]
     _scrum_sells_lifetime: int
     _stack_discarded: int
     _stack_tranches: list[dict]
@@ -844,7 +848,7 @@ class FoldTrancheAccountingMixin:
 
         _fold_keep = []
         for _t in self._fold_tranches or []:
-            _age = self._tranche_age_seconds(_t, "created_ts", _now)
+            _age = self._tranche_age_seconds(_t, FOLD_AGE_KEY, _now)
             if _age is None:
                 report["ageless_kept"] += 1
                 _fold_keep.append(_t)
@@ -858,7 +862,7 @@ class FoldTrancheAccountingMixin:
 
         _stack_keep = []
         for _t in self._stack_tranches or []:
-            _age = self._tranche_age_seconds(_t, "opened_ts", _now)
+            _age = self._tranche_age_seconds(_t, STACK_AGE_KEY, _now)
             if _age is None:
                 report["ageless_kept"] += 1
                 _stack_keep.append(_t)
@@ -1091,4 +1095,230 @@ class FoldTrancheAccountingMixin:
             report["stack_removed"],
             reason,
             report["refused"],
+        )
+
+    def _held_units_now(self) -> tuple[Optional[float], int]:
+        """The units this bot's restored lots record, and how many lots held no
+        readable figure.
+
+        ``_main_lots`` is the held figure on load: ``import_scrumming_state``
+        does not restore ``_current_holdings``, which the exchange supplies on
+        the next tick, and an unreadable lot is counted beside the total rather
+        than added as zero.
+        """
+        total = 0.0
+        unreadable = 0
+        for _lot in self._main_lots or []:
+            _one = (
+                as_finite_float(_lot.get("units")) if isinstance(_lot, dict) else None
+            )
+            if _one is None or _one < 0.0:
+                unreadable += 1
+            else:
+                total += _one
+        return total, unreadable
+
+    def retire_tranches_above_held(self, reason: str = "load") -> dict:
+        """Drop the oldest standing tranches until the units they mark no longer
+        exceed the units this bot holds, and name every drop in ``bot.log``.
+
+        ``tranches_beyond_held_total`` makes the selection against
+        ``_held_units_now``, the fold queue on ``FOLD_AGE_KEY`` and the stack
+        queue on ``STACK_AGE_KEY``, each measured against that one held total
+        and never summed together; a rung holding a resting venue order is kept
+        whatever the arithmetic says, and every drop counts in
+        ``_tranches_discarded_lifetime`` or ``_stack_discarded``.
+
+        Args:
+          reason: what ran the sweep, carried into the log line.
+
+        Returns:
+          A report keyed ``fold_removed``, ``fold_kept``, ``stack_removed``,
+          ``stack_kept``, ``stack_kept_live_order``, ``units_removed``,
+          ``usd_removed``, ``held``, ``held_unreadable``, ``fold_marked``,
+          ``stack_marked``, ``ageless``, ``unreadable``, ``refused`` and
+          ``breached``. ``refused`` is True where no held total above zero was
+          readable, and ``breached`` is True where the rungs that had to be kept
+          still mark more than the held total.
+        """
+        _held, _held_unreadable = self._held_units_now()
+        _pinned = frozenset(
+            id(_t)
+            for _t in self._stack_tranches or []
+            if isinstance(_t, dict)
+            and _t.get(STACK_STATUS_KEY) == STACK_STATUS_PENDING
+            and _t.get(STACK_ORDER_ID_KEY)
+        )
+        _fold_drop, _fold_read = tranches_beyond_held_total(
+            self._fold_tranches, "units", FOLD_AGE_KEY, _held
+        )
+        _stack_drop, _stack_read = tranches_beyond_held_total(
+            self._stack_tranches, STACK_SIZE_KEY, STACK_AGE_KEY, _held, _pinned
+        )
+        report = {
+            "fold_removed": 0,
+            "fold_kept": len(self._fold_tranches or []),
+            "stack_removed": 0,
+            "stack_kept": len(self._stack_tranches or []),
+            "stack_kept_live_order": len(_pinned),
+            "units_removed": 0.0,
+            "usd_removed": 0.0,
+            "held": _held,
+            "held_unreadable": _held_unreadable,
+            "fold_marked": _fold_read["marked"],
+            "stack_marked": _stack_read["marked"],
+            "ageless": _fold_read["ageless"] + _stack_read["ageless"],
+            "unreadable": _fold_read["unreadable"] + _stack_read["unreadable"],
+            "refused": bool(_fold_read["refused"] or _stack_read["refused"]),
+            "breached": bool(_fold_read["breached"] or _stack_read["breached"]),
+        }
+        if not _fold_drop and not _stack_drop:
+            if report["refused"] and (self._fold_tranches or self._stack_tranches):
+                self._announce_held_ceiling(reason, report, [], [])
+            return report
+
+        _fold_ids = {id(_t) for _t, _why in _fold_drop}
+        self._fold_tranches = [
+            _t for _t in self._fold_tranches or [] if id(_t) not in _fold_ids
+        ]
+        _stack_ids = {id(_t) for _t, _why in _stack_drop}
+        self._stack_tranches = [
+            _t for _t in self._stack_tranches or [] if id(_t) not in _stack_ids
+        ]
+        report["fold_removed"] = len(_fold_drop)
+        report["fold_kept"] = len(self._fold_tranches)
+        report["stack_removed"] = len(_stack_drop)
+        report["stack_kept"] = len(self._stack_tranches)
+        report["units_removed"] = sum(
+            (as_finite_float(_t.get("units")) or 0.0) for _t, _why in _fold_drop
+        ) + sum(
+            (as_finite_float(_t.get(STACK_SIZE_KEY)) or 0.0) for _t, _why in _stack_drop
+        )
+        report["usd_removed"] = sum(
+            (as_finite_float(_t.get("usd")) or 0.0) for _t, _why in _fold_drop
+        )
+        self._fold_queue_usd = sum(
+            (as_finite_float(_t.get("usd")) or 0.0) for _t in self._fold_tranches
+        )
+        if report["fold_removed"]:
+            self._tranches_discarded_lifetime = (
+                int(as_finite_float(self._tranches_discarded_lifetime) or 0.0)
+                + report["fold_removed"]
+            )
+            try:
+                self.stats.tranches_discarded_lifetime = (
+                    self._tranches_discarded_lifetime
+                )
+            except AttributeError as exc:
+                logger.debug("retire_tranches_above_held: stats mirror failed: %s", exc)
+        if report["stack_removed"]:
+            self._stack_discarded = (
+                int(as_finite_float(getattr(self, "_stack_discarded", 0)) or 0.0)
+                + report["stack_removed"]
+            )
+        self._announce_held_ceiling(reason, report, _fold_drop, _stack_drop)
+        return report
+
+    def _announce_held_ceiling(
+        self, reason: str, report: dict, fold: list, stack: list
+    ) -> None:
+        """Write what ``retire_tranches_above_held`` dropped to ``bot.log``, each
+        record with its price, its units, its dollars, its age and why it went.
+
+        An ``ageless`` count above zero names how many records carried no
+        readable stamp, so the operator reads that the oldest-first ordering was
+        undetermined for that many, and a ``refused`` or ``breached`` reading
+        states that the held total gave the sweep no ceiling or that the kept
+        rungs still exceed it.
+        """
+        _now = time.time()
+
+        def _age_text(record: dict, field: str) -> str:
+            _age = self._tranche_age_seconds(record, field, _now)
+            if _age is None:
+                return "no age"
+            return f"{_age / 86400.0:.2f} days old"
+
+        _fold_detail = "; ".join(
+            f"ref ${as_finite_float(_t.get('ref')) or 0.0:.8f}, "
+            f"{as_finite_float(_t.get('units')) or 0.0:.8f} units, "
+            f"${as_finite_float(_t.get('usd')) or 0.0:.4f}, "
+            f"{_age_text(_t, FOLD_AGE_KEY)} — {_why}"
+            for _t, _why in fold
+        )
+        _stack_detail = "; ".join(
+            f"${as_finite_float(_t.get(STACK_PRICE_KEY)) or 0.0:.8f}, "
+            f"{as_finite_float(_t.get(STACK_SIZE_KEY)) or 0.0:.8f} units, "
+            f"{_age_text(_t, STACK_AGE_KEY)} — {_why}"
+            for _t, _why in stack
+        )
+        _held_text = (
+            "no readable held total"
+            if report["held"] is None
+            else f"{report['held']:.8f} units held"
+        )
+        _notes = ""
+        if report["held_unreadable"]:
+            _notes += (
+                f" {report['held_unreadable']} lot(s) held no readable units "
+                f"figure and are not in the held total."
+            )
+        if report["ageless"]:
+            _notes += (
+                f" {report['ageless']} record(s) carried no readable date "
+                f"stamp. The oldest-first ordering could not place them and "
+                f"they were treated as the oldest."
+            )
+        if report["unreadable"]:
+            _notes += (
+                f" {report['unreadable']} record(s) held no readable units "
+                f"figure and are not in the marked total."
+            )
+        if report["breached"]:
+            _notes += (
+                " The rungs holding a resting venue order still mark more "
+                "units than the bot holds. Those orders were left on the book."
+            )
+        if report["refused"]:
+            _message = (
+                f"TRANCHES OVER HELD TOTAL ({reason}): REFUSED, and every "
+                f"tranche kept. The bot's restored lots gave {_held_text}, so "
+                f"the sweep has no ceiling to measure against. The queue marks "
+                f"{report['fold_marked']:.8f} fold units and "
+                f"{report['stack_marked']:.8f} stack units across "
+                f"{report['fold_kept']} fold tranche(s) and "
+                f"{report['stack_kept']} rung(s), every one of them left "
+                f"standing. The exchange supplies this bot's holdings on the "
+                f"next tick.{_notes}"
+            )
+        else:
+            _message = (
+                f"TRANCHES OVER HELD TOTAL ({reason}): dropped "
+                f"{report['fold_removed']} fold tranche(s) and "
+                f"{report['stack_removed']} stack rung(s) marking "
+                f"{report['units_removed']:.8f} units and holding "
+                f"${report['usd_removed']:.4f}, the oldest beyond "
+                f"{_held_text}. The queue marked "
+                f"{report['fold_marked']:.8f} fold units and "
+                f"{report['stack_marked']:.8f} stack units before. "
+                f"Fold: [{_fold_detail}]. Stack: [{_stack_detail}]. "
+                f"{report['fold_kept']} fold tranche(s) and "
+                f"{report['stack_kept']} rung(s) kept, "
+                f"{report['stack_kept_live_order']} of them holding a venue "
+                f"order. Each dropped record is units this bot sold and will "
+                f"not buy back at that price. These are counted as DISCARDED, "
+                f"never as closed. No order was placed or cancelled; holdings, "
+                f"cost basis and target balance are unchanged.{_notes}"
+            )
+        self._bus.emit("bot.log", bot_id=self.bot_id, message=_message)
+        logger.info(
+            "Bot %s retired %d fold + %d stack record(s) above the held "
+            "total (%s), held=%s, refused=%s, breached=%s",
+            self.bot_id,
+            report["fold_removed"],
+            report["stack_removed"],
+            reason,
+            report["held"],
+            report["refused"],
+            report["breached"],
         )

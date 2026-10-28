@@ -77,6 +77,7 @@ class StateSerializerMixin:
     _target_balance: float
     bot_id: Any
     config: Any
+    retire_tranches_above_held: Callable[..., dict]
     retire_unaligned_tranches: Callable[..., dict]
     state: Any
 
@@ -525,6 +526,12 @@ class StateSerializerMixin:
         # per bot: every record queued after it is handed out of one sale's own
         # figures by fold_tranche_records.
         self.retire_unaligned_tranches("load")
+
+        # Ordered after the alignment sweep so the held ceiling judges only what
+        # that sweep left standing, and before the re-derive below so the sum
+        # reads the queue this one leaves. _main_lots above is the held total;
+        # _current_holdings is still zero here.
+        self.retire_tranches_above_held("load")
 
         # _fold_queue_usd is re-derived from the tranche sums, not read out
         # of data.
