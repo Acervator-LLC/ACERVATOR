@@ -2837,6 +2837,21 @@ UNITS_DUST = 1e-12
 """The units difference this module calls zero, the figure ``fold_tranche_records``
 already treats as an emptied lot."""
 
+
+def units_dust_at(scale: float) -> float:
+    """``UNITS_DUST`` read against ``scale``, the larger of the absolute figure
+    and that share of it.
+
+    One bit of a figure above ten thousand units is already wider than the
+    absolute dust, so a queue summing to exactly its held total could read one
+    bit above it; ``tranches_beyond_held_total`` compares against this instead.
+    """
+    size = as_finite_float(scale)
+    if size is None:
+        return UNITS_DUST
+    return max(UNITS_DUST, abs(size) * UNITS_DUST)
+
+
 BEYOND_THE_HELD_TOTAL = "beyond the units the bot holds"
 
 FOLD_AGE_KEY = "created_ts"
@@ -2880,17 +2895,12 @@ def tranches_beyond_held_total(
     """
     held = as_finite_float(held_units)
     rows = [one for one in records or [] if isinstance(one, dict)]
-    marked = 0.0
-    unreadable = 0
-    ageless = 0
-    for one in rows:
-        figure = as_finite_float(one.get(units_key))
-        if figure is None or figure < 0.0:
-            unreadable += 1
-        else:
-            marked += figure
-        if _record_age(one, age_key) is None:
-            ageless += 1
+    figures = [as_finite_float(one.get(units_key)) for one in rows]
+    unreadable = sum(1 for one in figures if one is None or one < 0.0)
+    ageless = sum(1 for one in rows if _record_age(one, age_key) is None)
+    # math.fsum is exactly rounded, so accumulation order cannot push a queue
+    # equal to its held total above it.
+    marked = math.fsum(one for one in figures if one is not None and one >= 0.0)
     report = {
         "marked": marked,
         "held": held,
@@ -2912,21 +2922,27 @@ def tranches_beyond_held_total(
         ),
     )
     out: list = []
+    gone: set = set()
     standing = marked
+    dust = units_dust_at(held)
     for i in oldest_first:
-        if standing - held <= UNITS_DUST:
+        if standing - held <= dust:
             break
         if id(rows[i]) in pinned_ids:
             report["pinned"] += 1
             continue
-        figure = as_finite_float(rows[i].get(units_key))
-        if figure is None or figure < 0.0:
+        gone.add(i)
+        if figures[i] is None or figures[i] < 0.0:
             out.append((rows[i], NO_READABLE_FIGURE))
             continue
         out.append((rows[i], BEYOND_THE_HELD_TOTAL))
-        standing -= figure
+        standing = math.fsum(
+            one
+            for n, one in enumerate(figures)
+            if n not in gone and one is not None and one >= 0.0
+        )
     report["standing"] = standing
-    report["breached"] = standing - held > UNITS_DUST
+    report["breached"] = standing - held > dust
     return out, report
 
 

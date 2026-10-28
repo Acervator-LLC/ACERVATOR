@@ -1702,6 +1702,23 @@ One sale stamps every record it queues with one `created_ts`, so a tie is the
 normal case. A tie keeps the queue's own order, which is the order those records
 were written in.
 
+**A queue that equals its held total exactly is left alone.** Two things make
+that hold. `tranches_beyond_held_total` sums the marked units with `math.fsum`,
+which is exactly rounded, so the order the records are added in cannot push the
+total above the held figure; a running total of seven equal parts of ten
+thousand units reads 1.82 trillionths above it, which is near three times the
+real excess of 0.68 trillionths. And
+`src/trading/scrumming/sizing.py`, in `units_dust_at`, reads `UNITS_DUST`
+against the held figure and takes the larger of the absolute figure and that
+share of it, because one bit of a figure above ten thousand units is already
+wider than the absolute dust.
+
+Measured at thirteen scales from a thousandth of a unit to a billion units, and
+at four part counts each: of 52 such queues the running total and the absolute
+dust dropped a record from 10, and the exact sum with the scaled dust dropped
+none. A queue genuinely above its held total still loses its oldest records at
+every one of those scales.
+
 **The two queues are measured separately and never added together.** A fold
 tranche's units left the position when the scrum sold them; a stack rung's units
 are still in it, because `split_scrum_into_tranches` places a sell for each
