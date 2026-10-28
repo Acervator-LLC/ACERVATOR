@@ -44,13 +44,8 @@ SRC_DIRNAME = "src"
 #: The one file `reachable_src_modules` starts its import walk from.
 ENTRY_SCRIPT = "main.py"
 
-# Each prefix is a literal `tab_payload` joins a name onto before calling
-# importlib.import_module, so no import statement names the module.
-DYNAMIC_IMPORT_PREFIXES: tuple[str, ...] = (
-    "src.gui.main_tabs.",
-    "src.gui.paper.",
-    "src.gui.simulator.",
-)
+#: The function a module calls on a module name it builds at run time.
+DYNAMIC_IMPORT_CALL = "import_module"
 
 
 def read_acervator_version(project_root: str) -> str:
@@ -141,11 +136,19 @@ def src_modules(project_root: str) -> dict[str, str]:
     return held
 
 
-def _src_import_names(path: str, owner: str) -> set[str]:
-    """Return every ``SRC_DIRNAME`` module name the imports in ``path`` name, for ``owner``."""
+def _parsed(path: str) -> ast.Module:
+    """Return the syntax tree of the file at ``path``."""
     with open(path, "rb") as handle:
-        tree = ast.parse(handle.read(), filename=path)
-    package = owner if path.endswith("__init__.py") else owner.rpartition(".")[0]
+        return ast.parse(handle.read(), filename=path)
+
+
+def _src_import_names(tree: ast.Module, owner: str, is_package: bool) -> set[str]:
+    """Return every ``SRC_DIRNAME`` module name the imports in ``tree`` name, for ``owner``.
+
+    ``is_package`` marks an ``__init__`` file, whose relative imports resolve
+    against ``owner`` itself.
+    """
+    package = owner if is_package else owner.rpartition(".")[0]
     named: set[str] = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
@@ -166,13 +169,71 @@ def _src_import_names(path: str, owner: str) -> set[str]:
     return {n for n in named if n == SRC_DIRNAME or n.startswith(SRC_DIRNAME + ".")}
 
 
+def _joined_import_prefixes(tree: ast.Module) -> set[str]:
+    """Return every text literal a ``DYNAMIC_IMPORT_CALL`` argument joins a value onto.
+
+    The literal is the left side of a ``+`` or the head of an f-string, and an
+    argument that is one whole literal adds nothing.
+    """
+    out: set[str] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call) or not node.args:
+            continue
+        called = (
+            node.func.attr
+            if isinstance(node.func, ast.Attribute)
+            else getattr(node.func, "id", "")
+        )
+        if called != DYNAMIC_IMPORT_CALL:
+            continue
+        head: ast.expr = node.args[0]
+        if isinstance(head, ast.BinOp) and isinstance(head.op, ast.Add):
+            head = head.left
+        elif isinstance(head, ast.JoinedStr) and head.values:
+            head = head.values[0]
+        else:
+            continue
+        if isinstance(head, ast.Constant) and isinstance(head.value, str):
+            out.add(head.value)
+    return out
+
+
+def _dynamic_src_names(tree: ast.Module, held: dict[str, str]) -> set[str]:
+    """Return every ``held`` name a ``_joined_import_prefixes`` literal and a text value in ``tree`` spell together.
+
+    A prefix outside ``SRC_DIRNAME`` is dropped, and a join that spells no
+    ``held`` name is dropped with it.
+    """
+    prefixes = {
+        found
+        for found in _joined_import_prefixes(tree)
+        if found == SRC_DIRNAME or found.startswith(SRC_DIRNAME + ".")
+    }
+    if not prefixes:
+        return set()
+    pieces = {
+        node.value
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Constant) and isinstance(node.value, str)
+    }
+    return {
+        prefix + piece
+        for prefix in prefixes
+        for piece in pieces
+        if prefix + piece in held
+    }
+
+
 def reachable_src_modules(project_root: str) -> frozenset[str]:
-    """Return every ``src_modules`` name ``ENTRY_SCRIPT`` reaches, plus every ``DYNAMIC_IMPORT_PREFIXES`` module."""
+    """Return every ``src_modules`` name ``ENTRY_SCRIPT`` reaches, by an import line or by a name a module builds at run time.
+
+    ``_dynamic_src_names`` answers the second kind from the text each reachable
+    module holds, and walks what that module imports in turn.
+    """
     held = src_modules(project_root)
-    pending = list(
-        _src_import_names(os.path.join(project_root, ENTRY_SCRIPT), "__main__")
-    )
-    pending.extend(name for name in held if name.startswith(DYNAMIC_IMPORT_PREFIXES))
+    entry = _parsed(os.path.join(project_root, ENTRY_SCRIPT))
+    pending = list(_src_import_names(entry, "__main__", False))
+    pending.extend(_dynamic_src_names(entry, held))
     seen: set[str] = set()
     while pending:
         name = pending.pop()
@@ -182,8 +243,11 @@ def reachable_src_modules(project_root: str) -> frozenset[str]:
         parts = name.split(".")
         pending.extend(".".join(parts[:depth]) for depth in range(1, len(parts)))
         path = held.get(name)
-        if path is not None:
-            pending.extend(_src_import_names(path, name))
+        if path is None:
+            continue
+        tree = _parsed(path)
+        pending.extend(_src_import_names(tree, name, path.endswith("__init__.py")))
+        pending.extend(_dynamic_src_names(tree, held))
     return frozenset(seen & set(held))
 
 
@@ -196,6 +260,20 @@ def unreachable_src_files(project_root: str) -> frozenset[str]:
     """Return the file path of each module ``unreachable_src_modules`` names."""
     held = src_modules(project_root)
     return frozenset(held[name] for name in unreachable_src_modules(project_root))
+
+
+def report_unreachable(project_root: str) -> list[str]:
+    """Print one line per ``unreachable_src_modules`` name and return the names printed.
+
+    Both spec files call this before ``Analysis``, so the build log names every
+    module ``reachable_only`` and ``build_graceful_datas`` leave out.
+    """
+    names = sorted(unreachable_src_modules(project_root))
+    held = len(src_modules(project_root))
+    print(f"  [spec] {len(names)} of {held} src modules unreached, left out:")
+    for name in names:
+        print(f"  [spec]   {name}")
+    return names
 
 
 def reachable_only(module_names: list[str], project_root: str) -> list[str]:

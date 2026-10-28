@@ -1143,7 +1143,9 @@ class TickPhaseMixin:
                         ),
                     )
                 return
-            bought_units = buy_cost / entry_fill
+            # _execute_buy leaves the venue's own count here; buy_cost is only
+            # what was asked for, and a partial fill bought less.
+            bought_units = float(self._last_buy_filled_units or 0.0)
             self._main_lots.append(
                 {
                     "units": bought_units,
@@ -1927,7 +1929,9 @@ class TickPhaseMixin:
                     )
                 return True
 
-            buy_asset = fold_units(buy_cost, buy_fill, FRACTIONAL_UNITS)
+            # _execute_buy leaves the venue's own count here; buy_cost is only
+            # what was asked for, and a partial fill bought less.
+            buy_asset = float(self._last_buy_filled_units or 0.0)
             asset_at_scrum = sum(units_at_scrum(t) for t in _eligible)
             extra_asset = buy_asset - asset_at_scrum
             pct_cheaper = (1 - buy_fill / _intended_min_ref) * 100
@@ -2092,11 +2096,7 @@ class TickPhaseMixin:
                 side="buy",
                 type="FOLD",
                 price=buy_fill,
-                amount=(
-                    fold_units(buy_cost, buy_fill, FRACTIONAL_UNITS)
-                    if buy_fill
-                    else 0.0
-                ),
+                amount=buy_asset,
                 size=buy_cost,
                 profit=_growth_applied,
                 **self._fill_fee_fields(buy_fill),

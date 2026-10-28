@@ -66,6 +66,7 @@ from tools.spec_common import (  # noqa: E402
     hiddenimports_for,
     read_acervator_version,
     reachable_only,
+    report_unreachable,
 )
 
 block_cipher = None
@@ -108,7 +109,10 @@ VERSION_RESOURCE = VSVersionInfo(
 # that the shared module never has to import PyInstaller.
 # reachable_only drops the names main.py cannot reach. PyInstaller's own
 # import walk still runs, so a dropped name that anything imports stays in.
+# report_unreachable prints every dropped name into the build log first.
 # ---------------------------------------------------------------------------
+report_unreachable(PROJECT_ROOT)
+
 a = Analysis(
     [os.path.join(PROJECT_ROOT, 'main.py')],
     pathex=[PROJECT_ROOT],
