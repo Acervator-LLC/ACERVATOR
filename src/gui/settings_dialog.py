@@ -281,7 +281,123 @@ if _HAS_QT:
             form = QFormLayout(w)
             self._username = QLineEdit()
             form.addRow("Username:", self._username)
+            form.addRow(self._create_fleet_lock_group(w))
             return w
+
+        def _create_fleet_lock_group(self, parent: QWidget) -> QGroupBox:
+            """Build the Fleet Lock group: two password rows, Unlock and Clear.
+
+            Every word comes off ``settings_dialog_surface``, and
+            ``_settle_fleet_lock`` is the only method that writes a key, so a
+            keystroke in either row changes nothing on disk.
+            """
+            from .tooltips import set_description
+
+            group = QGroupBox(sds.FLEET_LOCK_GROUP_TITLE, parent)
+            form = QFormLayout(group)
+
+            self._lock_state = QLabel(group)
+            self._lock_state.setWordWrap(True)
+            form.addRow(self._lock_state)
+
+            self._lock_phrase = QLineEdit(group)
+            self._lock_phrase.setEchoMode(QLineEdit.Password)
+            set_description(self._lock_phrase, sds.FLEET_LOCK_PHRASE_DESCRIPTION)
+            form.addRow(sds.FLEET_LOCK_PHRASE_LABEL, self._lock_phrase)
+
+            self._lock_confirm = QLineEdit(group)
+            self._lock_confirm.setEchoMode(QLineEdit.Password)
+            self._lock_confirm.setPlaceholderText(sds.FLEET_LOCK_CONFIRM_PLACEHOLDER)
+            set_description(self._lock_confirm, sds.FLEET_LOCK_CONFIRM_DESCRIPTION)
+            form.addRow(sds.FLEET_LOCK_CONFIRM_LABEL, self._lock_confirm)
+
+            buttons = QHBoxLayout()
+            self._lock_unlock = QPushButton(sds.FLEET_LOCK_UNLOCK_BUTTON_TEXT, group)
+            set_description(self._lock_unlock, sds.FLEET_LOCK_UNLOCK_DESCRIPTION)
+            self._lock_unlock.clicked.connect(self._open_fleet_unlock)
+            buttons.addWidget(self._lock_unlock)
+            self._lock_clear = QPushButton(sds.FLEET_LOCK_CLEAR_BUTTON_TEXT, group)
+            self._lock_clear.setCheckable(True)
+            self._lock_clear.setProperty(sds.DANGER_PROPERTY, True)
+            set_description(self._lock_clear, sds.FLEET_LOCK_CLEAR_DESCRIPTION)
+            self._lock_clear.toggled.connect(self._show_fleet_lock_state)
+            buttons.addWidget(self._lock_clear)
+            form.addRow(buttons)
+
+            self._show_fleet_lock_state()
+            return group
+
+        def _fleet_lock_drawn(self) -> bool:
+            """Whether this build drew the three controls ``_settle_fleet_lock`` reads.
+
+            ``_create_fleet_lock_group`` builds them for the Qt page, and the
+            drawn build replaces ``_setup_ui`` with one web view and holds no
+            row of its own, so there is nothing for a Save to read there.
+            """
+            return all(
+                getattr(self, name, None) is not None
+                for name in ("_lock_phrase", "_lock_confirm", "_lock_clear")
+            )
+
+        def _fleet_lock_held(self) -> bool:
+            """Whether a sealed master key file is on disk for this install.
+
+            ``src/core/encryption.py, in has_master_key`` is the whole reading,
+            and an unreadable file answers False there.
+            """
+            from src.core.encryption import has_master_key
+
+            return bool(has_master_key())
+
+        def _fleet_lock_opened(self) -> bool:
+            """Whether this session already holds the opened master key.
+
+            ``src/core/encryption.py, in held_master_key`` answers it, and a
+            change of password reseals the key it returns.
+            """
+            from src.core.encryption import held_master_key
+
+            return held_master_key() is not None
+
+        def _show_fleet_lock_state(self) -> None:
+            """Put the lock the install holds, or the demolition, on the group's line.
+
+            ``sds.fleet_lock_words`` carries the resting sentence and
+            ``sds.FLEET_LOCK_CLEAR_QUESTION`` replaces it while ``_lock_clear``
+            is pressed in, so the demolition is on screen before Save is reached.
+            """
+            held = self._fleet_lock_held()
+            clearing = bool(self._lock_clear.isChecked())
+            self._lock_state.setText(
+                sds.FLEET_LOCK_CLEAR_QUESTION
+                if clearing
+                else sds.fleet_lock_words(held)
+            )
+            self._lock_phrase.setPlaceholderText(
+                sds.FLEET_LOCK_PHRASE_PLACEHOLDER_HELD
+                if held
+                else sds.FLEET_LOCK_PHRASE_PLACEHOLDER_ABSENT
+            )
+            self._lock_confirm.setEnabled(not clearing)
+            self._lock_unlock.setEnabled(held and not self._fleet_lock_opened())
+            self._lock_clear.setEnabled(held)
+
+        def _log_fleet_lock(self, words: str, level: str) -> None:
+            """Put one Fleet Lock line on the status log where this dialog holds one."""
+            if self._status_log:
+                self._status_log.log(words, level)
+
+        def _open_fleet_unlock(self) -> None:
+            """Raise the unlock screen over this dialog and refresh the group's line.
+
+            ``src/gui/fleet_unlock_dialog.py, in ask_for_unlock`` owns the
+            screen and the window it hands the password to, and this method
+            decides nothing about the password itself.
+            """
+            from .fleet_unlock_dialog import ask_for_unlock
+
+            ask_for_unlock(self.parent(), parent=self)
+            self._show_fleet_lock_state()
 
         def _create_exchange_tab(self) -> QWidget:
             w = QWidget()
@@ -1937,6 +2053,203 @@ if _HAS_QT:
                     )
             return True
 
+        def _settle_fleet_lock(self) -> None:
+            """Put the Fleet Lock question to the operator, then seal, reseal or clear.
+
+            ``sds.fleet_lock_intent`` is the whole decision and
+            ``_seal_fleet_lock``, ``_reseal_fleet_lock`` and
+            ``_clear_fleet_lock`` are the three that touch a file, each reached
+            only after the operator answers Yes to the question that names what
+            it does. A build whose ``_fleet_lock_drawn`` answers False is left
+            alone, so no Save reports a question it had no rows to put.
+            """
+            if not self._fleet_lock_drawn():
+                return
+            answer = sds.fleet_lock_intent(
+                self._fleet_lock_held(),
+                self._lock_phrase.text(),
+                self._lock_confirm.text(),
+                self._lock_clear.isChecked(),
+                self._fleet_lock_opened(),
+            )
+            action = answer["action"]
+            if action == sds.FLEET_LOCK_NOTHING:
+                return
+            if not answer["asks"]:
+                self._log_fleet_lock(answer["refusal"], "warning")
+                return
+            reply = QMessageBox.question(
+                self,
+                answer["title"],
+                answer["words"],
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                self._log_fleet_lock(sds.FLEET_LOCK_KEPT_LOG, "warning")
+                return
+            typed = self._lock_phrase.text()
+            try:
+                if action == sds.FLEET_LOCK_SET:
+                    self._seal_fleet_lock(typed)
+                elif action == sds.FLEET_LOCK_CHANGE:
+                    self._reseal_fleet_lock(typed)
+                else:
+                    self._clear_fleet_lock(typed)
+            except (OSError, ValueError, KeyError) as exc:
+                logger.warning("fleet lock abandoned: %s", exc)
+                self._log_fleet_lock(
+                    sds.FLEET_LOCK_REFUSED_LOG_FORMAT.format(error=exc), "error"
+                )
+            self._lock_phrase.clear()
+            self._lock_confirm.clear()
+            self._lock_clear.setChecked(False)
+            self._show_fleet_lock_state()
+
+        def _state_manager(self):
+            """The saved-fleet reader this dialog reseals through.
+
+            The window that opened this dialog holds the one the fleet runs on,
+            and ``src/core/state_manager.py, in StateManager`` resolves the same
+            file for a reader built here where that window holds none.
+            """
+            from src.core.state_manager import StateManager
+
+            window = self.parent()
+            manager = getattr(
+                getattr(window, "_bot_manager", None), "_state_manager", None
+            )
+            return manager if manager is not None else StateManager()
+
+        def _move_vault(self, old_phrase: str, new_phrase: str) -> dict:
+            """Reseal every stored venue secret from *old_phrase* to *new_phrase*.
+
+            ``src/core/encryption.py, in rekey_credential_stores`` carries both
+            stores, and a venue it could not open keeps the tokens it had and is
+            named under ``refused``.
+            """
+            from src.core.encryption import rekey_credential_stores
+
+            return rekey_credential_stores(self._sm, old_phrase, new_phrase)
+
+        def _username_phrase(self) -> str:
+            """The vault phrase an install holding no master key builds.
+
+            ``src/core/encryption.py, in username_phrase`` answers it off the
+            stored Username whether or not this session holds a key, which
+            ``in vault_phrase`` would not while the lock is open.
+            """
+            from src.core.encryption import username_phrase
+
+            return username_phrase(str(self._sm.get(sds.USERNAME_KEY, "") or ""))
+
+        def _seal_fleet_lock(self, typed: str) -> None:
+            """Mint a master key, seal it under *typed*, and move the fleet and the vault.
+
+            The sealed key is opened again before it reaches disk, so a seal
+            that does not round-trip writes nothing; the latch is set through
+            ``reseal_on_disk`` before the vault moves, so the saved fleet is
+            never the thing left behind.
+            """
+            from src.core.encryption import (
+                hold_master_key,
+                master_key_phrase,
+                open_master_key,
+                seal_master_key,
+                write_master_key,
+            )
+
+            was = self._username_phrase()
+            sealed = seal_master_key(typed)
+            key = open_master_key(sealed, typed)
+            write_master_key(sealed)
+            hold_master_key(key)
+            if not self._state_manager().reseal_on_disk():
+                self._log_fleet_lock(sds.FLEET_LOCK_STATE_REFUSED_LOG, "error")
+            moved = self._move_vault(was, master_key_phrase(key))
+            self._report_vault_move(sds.FLEET_LOCK_SET_LOG_FORMAT, moved)
+
+        def _reseal_fleet_lock(self, typed: str) -> None:
+            """Seal the held master key under *typed* and write it over the key file.
+
+            Nothing but the key file moves: ``src/core/encryption.py, in
+            vault_phrase`` and the fleet payload are both keyed on the master
+            key, and ``seal_master_key`` is given the key this session already
+            holds.
+            """
+            from src.core.encryption import (
+                held_master_key,
+                seal_master_key,
+                write_master_key,
+            )
+
+            key = held_master_key()
+            if key is None:
+                self._log_fleet_lock(sds.FLEET_LOCK_CHANGE_NEEDS_UNLOCK_LOG, "warning")
+                return
+            write_master_key(seal_master_key(typed, key))
+            self._log_fleet_lock(sds.FLEET_LOCK_CHANGED_LOG, "success")
+
+        def _clear_fleet_lock(self, typed: str) -> None:
+            """Destroy the sealed key and the vault *typed* opens, the key file last.
+
+            ``src/core/state_manager.py, in unseal_on_disk`` has to write the
+            fleet back in plain text before ``master_key_path`` is unlinked, and
+            a run that stops before it keeps the sealed key, so a second press
+            of Clear is the recovery at every point.
+            """
+            from src.core.encryption import (
+                hold_master_key,
+                master_key_phrase,
+                master_key_path,
+                open_master_key,
+                read_master_key,
+            )
+
+            sealed = read_master_key()
+            if sealed is None:
+                self._log_fleet_lock(sds.FLEET_LOCK_WRONG_PHRASE_LOG, "warning")
+                return
+            try:
+                key = open_master_key(sealed, typed)
+            except ValueError:
+                self._log_fleet_lock(sds.FLEET_LOCK_WRONG_PHRASE_LOG, "warning")
+                return
+            back_to = self._username_phrase()
+            hold_master_key(key)
+            moved = self._move_vault(master_key_phrase(key), back_to)
+            if self._state_manager().unseal_on_disk():
+                master_key_path().unlink(missing_ok=True)
+                self._report_vault_move(sds.FLEET_LOCK_CLEARED_LOG_FORMAT, moved)
+                return
+            hold_master_key(None)
+            self._log_fleet_lock(sds.FLEET_LOCK_CLEAR_INCOMPLETE_LOG, "error")
+
+        def _report_vault_move(self, words: str, moved: dict) -> None:
+            """Put what ``_move_vault`` resealed, and what it refused, on the status log.
+
+            ``sds.FLEET_LOCK_REFUSED_LOG_FORMAT`` is not this refusal: a venue
+            under ``refused`` keeps the tokens it had and is named through
+            ``sds.RENAME_REFUSED_LOG_FORMAT``.
+            """
+            resealed = moved["resealed"]
+            self._log_fleet_lock(
+                words.format(
+                    count=len(resealed),
+                    names=sds.RENAME_NAMES_JOIN.join(resealed),
+                ),
+                "success",
+            )
+            refused = moved["refused"]
+            if refused:
+                self._log_fleet_lock(
+                    sds.RENAME_REFUSED_LOG_FORMAT.format(
+                        count=len(refused),
+                        names=sds.RENAME_NAMES_JOIN.join(refused),
+                    ),
+                    "error",
+                )
+
         def _save(self) -> None:
             """Save all settings and close. ALWAYS closes the dialog."""
             import sys
@@ -1958,6 +2271,13 @@ if _HAS_QT:
                 write_username = False
                 logger.warning(
                     "Username question not put; the stored name is kept: %s", _rn_exc
+                )
+
+            try:
+                self._settle_fleet_lock()
+            except RENAME_FAULTS as _fl_exc:
+                logger.warning(
+                    "Fleet Lock question not put; the lock is kept: %s", _fl_exc
                 )
 
             # A setting that fails to save never blocks the close.
