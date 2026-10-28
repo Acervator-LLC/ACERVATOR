@@ -167,7 +167,22 @@ The window declares four menus — Exchange, File, Help and Theme — and **none
 the four has a page**. That is the second row of this how-to's own build order
 and it is not built.
 
-The program offers seven asset classes, and every one of them accepts a venue:
-crypto, stocks, derivatives, forex, commodities, indices and futures perps.
-These pages name crypto and nothing else, so the control that picks a class is
+The program offers six asset classes and every one of them takes a venue. Read
+off `src/trading/ata_spm.py, in ASSET_CLASSES`, with the venue count each one
+reports:
+
+| class, as the screen titles it | venues |
+|---|---|
+| Crypto | 24 |
+| Stock | 21 |
+| Commodities | 21 |
+| Forex | 16 |
+| Indices | 20 |
+| Futures / Perps | 18 |
+
+`derivatives` is a retired name. `asset_class_surface.normalise` sends it to
+crypto, and so does any name the taxonomy does not hold, so a reading taken on
+that word is a reading of Crypto.
+
+These pages name Crypto and nothing else, so the control that picks a class is
 on no page.
