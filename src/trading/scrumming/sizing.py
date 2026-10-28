@@ -2833,6 +2833,112 @@ def unaligned_fold_tranches(
     return out, spared
 
 
+UNITS_DUST = 1e-12
+"""The units difference this module calls zero, the figure ``fold_tranche_records``
+already treats as an emptied lot."""
+
+BEYOND_THE_HELD_TOTAL = "beyond the units the bot holds"
+
+FOLD_AGE_KEY = "created_ts"
+"""The stamp that dates a fold tranche, written by ``fold_tranche_records``."""
+
+STACK_AGE_KEY = "opened_ts"
+"""The stamp that dates a stack rung, written by ``split_scrum_into_tranches``."""
+
+
+def tranches_beyond_held_total(
+    records: list,
+    units_key: str,
+    age_key: str,
+    held_units: Optional[float],
+    pinned_ids: frozenset = frozenset(),
+) -> tuple[list, dict]:
+    """The standing records to drop so the units they mark stop exceeding
+    ``held_units``, oldest first by ``age_key``, each beside its reason.
+
+    A record whose ``age_key`` is not a positive finite number sorts as the
+    oldest and counts in ``ageless``, so the report states how many records the
+    ordering could not place; a record in ``pinned_ids`` is never dropped and
+    its units are charged against ``held_units`` first.
+
+    Args:
+      records: one bot's standing fold tranches or stack rungs.
+      units_key: ``units`` on the fold side, ``size`` on the stack side.
+      age_key: ``created_ts`` on the fold side, ``opened_ts`` on the stack side.
+      held_units: the units the bot holds; a figure that is not above zero
+        refuses the whole reading.
+      pinned_ids: ``id`` of every record that is kept whatever the arithmetic
+        says, such as a rung holding a resting venue order.
+
+    Returns:
+      ``(dropped, report)``. ``dropped`` is ``(record, reason)`` oldest first.
+      ``report`` carries ``marked``, ``held``, ``standing``, ``ageless``,
+      ``unreadable``, ``pinned``, ``refused`` and ``breached``. ``refused`` is
+      True where ``held_units`` gave the reading no ceiling, and ``breached``
+      is True where the pinned records alone still mark more than
+      ``held_units``.
+    """
+    held = as_finite_float(held_units)
+    rows = [one for one in records or [] if isinstance(one, dict)]
+    marked = 0.0
+    unreadable = 0
+    ageless = 0
+    for one in rows:
+        figure = as_finite_float(one.get(units_key))
+        if figure is None or figure < 0.0:
+            unreadable += 1
+        else:
+            marked += figure
+        if _record_age(one, age_key) is None:
+            ageless += 1
+    report = {
+        "marked": marked,
+        "held": held,
+        "standing": marked,
+        "ageless": ageless,
+        "unreadable": unreadable,
+        "pinned": 0,
+        "refused": held is None or held <= 0.0,
+        "breached": False,
+    }
+    if report["refused"]:
+        return [], report
+    oldest_first = sorted(
+        range(len(rows)),
+        key=lambda i: (
+            _record_age(rows[i], age_key) is not None,
+            _record_age(rows[i], age_key) or 0.0,
+            i,
+        ),
+    )
+    out: list = []
+    standing = marked
+    for i in oldest_first:
+        if standing - held <= UNITS_DUST:
+            break
+        if id(rows[i]) in pinned_ids:
+            report["pinned"] += 1
+            continue
+        figure = as_finite_float(rows[i].get(units_key))
+        if figure is None or figure < 0.0:
+            out.append((rows[i], NO_READABLE_FIGURE))
+            continue
+        out.append((rows[i], BEYOND_THE_HELD_TOTAL))
+        standing -= figure
+    report["standing"] = standing
+    report["breached"] = standing - held > UNITS_DUST
+    return out, report
+
+
+def _record_age(record: dict, age_key: str) -> Optional[float]:
+    """The stamp ``age_key`` holds on ``record``, or None where it holds no
+    positive finite number."""
+    stamp = as_finite_float(record.get(age_key))
+    if stamp is None or stamp <= 0.0:
+        return None
+    return stamp
+
+
 EVENT_ID_KEY = "opposing_event_id"
 EVENT_UNITS_KEY = "opposing_event_units"
 EVENT_USD_KEY = "opposing_event_usd"
