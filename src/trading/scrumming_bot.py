@@ -4249,9 +4249,11 @@ class ScrummingBot(
 
         _otd_pct_for_gate = 0.0
         try:
-            _otd_pct_for_gate = minimum_opposing_trade_distance_pct(
-                getattr(self.config, "scrumming_interval_pct", 0) or 0,
-                getattr(self.config, "trading_fee_pct", 0.6) or 0.6,
+            _otd_pct_for_gate = minimum_opposing_trade_distance_pct_from_config(
+                self.config,
+                band_upper=float(getattr(bb_result, "upper", 0.0) or 0.0),
+                band_lower=float(getattr(bb_result, "lower", 0.0) or 0.0),
+                reference_price=float(getattr(bb_result, "middle", 0.0) or 0.0),
             )
         except (TypeError, ValueError):
             _otd_pct_for_gate = 0.0

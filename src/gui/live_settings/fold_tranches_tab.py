@@ -1019,8 +1019,12 @@ class FoldTranchesTabMixin:
                     minimum_opposing_trade_distance_pct_from_config,
                 )
 
+                _band = getattr(self._bot, "_last_bb", None)
                 _otd_pct = minimum_opposing_trade_distance_pct_from_config(
-                    self._bot.config
+                    self._bot.config,
+                    band_upper=float(getattr(_band, "upper", 0.0) or 0.0),
+                    band_lower=float(getattr(_band, "lower", 0.0) or 0.0),
+                    reference_price=float(getattr(_band, "middle", 0.0) or 0.0),
                 )
             except Exception:
                 _otd_pct = 0.0

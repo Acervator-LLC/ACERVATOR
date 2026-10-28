@@ -853,6 +853,27 @@ labels carry no travel light.
 trend_override = abs(delta) >= _interval_usd * 2.0 or band_travel_triggered
 ```
 
+**The clause above saying travel is no gate of its own is overtaken.** It is not
+edited and not removed. It read:
+
+> Travel is no gate of its own: the ten scrum labels carry no travel light.
+
+The labels still carry no travel light. Travel is now a term inside Minimum
+Opposing Trade Distance, which is the combination the entry above names.
+`src/trading/otd_math.py`, in `band_extension_pct`, turns `band_travel_pct` and
+the band span into a percentage of the band midline, and
+`minimum_opposing_trade_distance_pct` adds that percentage to the interval and
+the fee. Zero keeps the term absent.
+
+```python
+span = float(upper) - float(lower)
+price = float(reference_price)
+travel = float(travel_pct)
+if travel <= 0.0 or span <= 0.0 or price <= 0.0:
+    return BAND_EXTENSION_ABSENT_PCT
+return span * (travel / 100.0) / price * 100.0
+```
+
 ## 5 - Position-Aware Technical Analysis
 
 Traditional TA treats a signal (e.g., RSI > 70) as context-independent. Position-Aware TA encodes the current Bollinger Band position as context: RSI > 70 near the upper band confirms overbought (sell bias), but RSI > 70 near the lower band is a failed oversold — a trap for mean-reversion buyers. The system applies this inversion systematically across all oscillator signals. In other words, it attempts to strengthen the price to Bollinger Band relationship by reading additional indicators with relation to it. If you have the landing strip, band travel, opposing trade distance, and a bullish or bearish confidence score from the Indicator Voting Panel, it is likely a trading event will occur. In the end, many of these functions were layered in one after the other until I saw the platform take most trades that I would myself manually execute most of the time.
