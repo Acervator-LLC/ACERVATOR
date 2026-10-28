@@ -461,6 +461,29 @@ STARTED_LOG_FORMAT = "Acervator v{version} started."
 CONSOLE_ACTIVE_LOG_FORMAT = (
     "Acervator v{version} — Console logging active. " "All system messages appear here."
 )
+FLEET_LOCKED_TEXT = (
+    "The saved fleet is sealed. Every screen is open and no bot is loaded. "
+    "The fleet starts when the unlock password is given."
+)
+FLEET_LOCKED_SEQUENCE_LOG = (
+    "Fleet %s refused: the saved fleet is sealed and this session holds no "
+    "key, so no bot is started."
+)
+FLEET_UNLOCK_REFUSED_TEXT = (
+    "That password did not open the saved fleet. The fleet stays sealed and "
+    "no bot is loaded."
+)
+FLEET_UNLOCK_NO_READER_TEXT = (
+    "No saved-state reader is attached to this window, so the unlock cannot "
+    "reach the fleet file."
+)
+FLEET_UNLOCKED_FORMAT = "The saved fleet is open: {bots} bot(s) loaded."
+FLEET_UNLOCK_WIRES_FORMAT = "{wires} Smart Wire(s) loaded with the fleet."
+FLEET_UNLOCK_NO_START_TEXT = (
+    "The saved fleet is open and no fleet-start step is registered, so the "
+    "bots stay idle. Start All starts them."
+)
+
 DEFAULT_THEME = "cyberpunk_dark"
 AI_RECONFIGURED_LOG_FORMAT = "AI Monitor reconfigured (phrase: '{phrase}...')"
 AI_PHRASE_CHARACTERS = 20
@@ -530,8 +553,12 @@ WIRED_PATHS = (
     "_wire_is_registered",
     "_wire_manager",
     "add_exchange_tab",
+    "fleet_locked",
+    "hold_fleet_for_unlock",
     "run_fleet_sequence",
     "set_async_loop",
+    "set_fleet_start_callback",
+    "unlock_fleet",
 )
 
 # The abbreviation tooltips the window applies to its own children

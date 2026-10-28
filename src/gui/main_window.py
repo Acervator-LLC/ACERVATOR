@@ -21,6 +21,13 @@ from .main_tabs.main_window_surface import (
     BAR_TAB_ORDER,
     CHARTS_TAB,
     CONSOLE_TAB,
+    FLEET_LOCKED_SEQUENCE_LOG,
+    FLEET_LOCKED_TEXT,
+    FLEET_UNLOCK_NO_READER_TEXT,
+    FLEET_UNLOCK_NO_START_TEXT,
+    FLEET_UNLOCK_REFUSED_TEXT,
+    FLEET_UNLOCK_WIRES_FORMAT,
+    FLEET_UNLOCKED_FORMAT,
     HISTORY_TAB,
     INSPECTOR_TAB,
     ISOLATED_TABS,
@@ -250,6 +257,9 @@ if _HAS_QT:
 
         # Annotated only: `_drain_signals` reads it by `getattr`, default False.
         _console_paused: bool
+
+        # Annotated only: `fleet_locked` reads it by `getattr`, default False.
+        _fleet_locked: bool
 
         #: One API Interaction Log entry, crossed to the GUI thread for `_on_api_event`.
         apiEntryLogged = Signal(object)  # noqa: N815 - Qt signal name
@@ -3987,6 +3997,69 @@ if _HAS_QT:
             elif command == "adjust_stack":
                 self._on_bot_clicked(bot_id)
 
+        def fleet_locked(self) -> bool:
+            """True while a sealed saved fleet is waiting for ``unlock_fleet``."""
+            return bool(getattr(self, "_fleet_locked", False))
+
+        def set_fleet_start_callback(self, callback) -> None:
+            """Hold what ``unlock_fleet`` runs once the fleet is in the process.
+
+            ``main.py`` registers the same instance-guard gate the splash
+            callback runs, so an unlock mid-session reaches
+            ``run_fleet_sequence`` with no restart.
+            """
+            self._fleet_start_callback = callback
+
+        def hold_fleet_for_unlock(self, reason: str = "") -> None:
+            """Latch this window locked and put ``FLEET_LOCKED_TEXT`` in the Console.
+
+            ``main.py`` calls it on a launch whose saved fleet is sealed, after
+            every screen is already built, so the window draws unchanged and
+            ``run_fleet_sequence`` starts nothing until ``unlock_fleet`` runs.
+            """
+            self._fleet_locked = True
+            self._status_log.log(FLEET_LOCKED_TEXT, "warning")
+            logger.info("%s (%s)", FLEET_LOCKED_TEXT, reason or "sealed")
+
+        def unlock_fleet(self, password: str) -> bool:
+            """Open the sealed saved fleet with *password* and load it into this session.
+
+            Answers False and leaves ``fleet_locked`` True where *password*
+            does not open the master key; on True the saved bots and wires are
+            in ``_bot_manager`` and the callback
+            ``set_fleet_start_callback`` holds has run.
+            """
+            state_mgr = getattr(self._bot_manager, "_state_manager", None)
+            if state_mgr is None:
+                self._status_log.log(FLEET_UNLOCK_NO_READER_TEXT, "error")
+                return False
+            if not state_mgr.unlock(str(password)):
+                self._status_log.log(FLEET_UNLOCK_REFUSED_TEXT, "error")
+                return False
+
+            saved = state_mgr.load_state()
+            restored = self._bot_manager.restore_bots_from_state(saved)
+            self._fleet_locked = False
+            self._status_log.log(
+                FLEET_UNLOCKED_FORMAT.format(bots=len(restored)), "success"
+            )
+            try:
+                wires = self._bot_manager.restore_smart_wires_from_state(saved)
+            except Exception as exc:
+                logger.warning("Smart Wire restore after unlock raised: %s", exc)
+                wires = 0
+            if wires:
+                self._status_log.log(
+                    FLEET_UNLOCK_WIRES_FORMAT.format(wires=wires), "info"
+                )
+
+            callback = getattr(self, "_fleet_start_callback", None)
+            if callback is None:
+                self._status_log.log(FLEET_UNLOCK_NO_START_TEXT, "warning")
+                return True
+            callback()
+            return True
+
         def run_fleet_sequence(self, command: str = "start") -> int:
             """Move every eligible bot through ``_on_bot_command`` one at a
             time, with the Start All progress window open, waiting for each to
@@ -3994,9 +4067,14 @@ if _HAS_QT:
 
             This is the sequence the application runs at launch: ``main.py``
             calls it after the instance consent gate, and the command bar's
-            Start All and Restart All call the same method. Answers how many
-            bots it took as eligible.
+            Start All and Restart All call the same method. A True
+            ``fleet_locked`` takes no bot as eligible. Answers how many bots it
+            took as eligible.
             """
+            if self.fleet_locked():
+                logger.warning(FLEET_LOCKED_SEQUENCE_LOG, command)
+                self._status_log.log(FLEET_LOCKED_TEXT, "warning")
+                return 0
             if not self._bot_manager:
                 return 0
             wanted = FLEET_SEQUENCE_STATES.get(command)

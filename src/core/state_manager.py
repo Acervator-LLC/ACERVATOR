@@ -38,6 +38,11 @@ PROBE_EMPTY = "empty"
 PROBE_HAS_BOTS = "has_bots"
 PROBE_UNREADABLE = "unreadable"
 
+LAUNCH_OPEN = "open"
+LAUNCH_LOCKED = "locked"
+LAUNCH_UNLOCKED = "unlocked"
+"""The three answers ``launch_classification`` gives a launch."""
+
 FLEET_SEALED_NOTE = (
     "The saved fleet is sealed and this session holds no key for it. No bot is "
     "loaded and none starts. This is NOT the same as having no saved bots, and "
@@ -332,6 +337,18 @@ class StateManager:
         except Exception as exc:  # noqa: BLE001 - must never stop a launch
             logger.warning(LATCH_READ_FAILED_LOG, self._path.name, exc)
             return False
+
+    def launch_classification(self) -> str:
+        """``LAUNCH_OPEN``, ``LAUNCH_LOCKED`` or ``LAUNCH_UNLOCKED`` for this file.
+
+        One answer every launch site reads, so ``main.py`` and
+        ``src/gui/main_window.py`` cannot decide the lock differently. A file
+        carrying no latch answers ``LAUNCH_OPEN`` without a ``probe``, which is
+        the launch an install with no password runs.
+        """
+        if not self.latch_on():
+            return LAUNCH_OPEN
+        return LAUNCH_LOCKED if self.probe() == PROBE_SEALED else LAUNCH_UNLOCKED
 
     def unlock(self, password: str) -> bool:
         """Hold the master key *password* opens, so ``load_state`` opens the payload.
