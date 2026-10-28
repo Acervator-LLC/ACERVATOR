@@ -190,7 +190,6 @@ class ChartDataFetcher:
         """
         errors = []
 
-        # --- Source 1: Exchange OHLCV via CCXT ---
         if exchange is not None:
             try:
                 candles, source = await self._fetch_exchange(
@@ -203,7 +202,6 @@ class ChartDataFetcher:
                 errors.append(f"Exchange: {exc}")
                 logger.debug("Exchange OHLCV failed for %s: %s", symbol, exc)
 
-        # --- Source 2: CoinGecko API ---
         try:
             candles, source = await self._fetch_coingecko(symbol, timeframe)
             if candles:
@@ -213,7 +211,6 @@ class ChartDataFetcher:
             errors.append(f"CoinGecko: {exc}")
             logger.debug("CoinGecko failed for %s: %s", symbol, exc)
 
-        # --- Source 3: Cache ---
         cached = self._get_cached(symbol, timeframe)
         if cached:
             return cached, "Cache (stale)"

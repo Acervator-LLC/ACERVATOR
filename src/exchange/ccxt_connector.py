@@ -1728,7 +1728,6 @@ class CCXTConnector(ExchangeInterface):
             f"blocked scan keeps its own turn and is not driven again.",
         )
 
-    # -- Properties -----------------------------------------------------
     @property
     def exchange_id(self) -> str:
         return self._exchange_id
@@ -1741,7 +1740,6 @@ class CCXTConnector(ExchangeInterface):
     def is_connected(self) -> bool:
         return self._connected
 
-    # -- Connection lifecycle -------------------------------------------
     async def connect(
         self, api_key: str, api_secret: str, passphrase: str = ""
     ) -> None:
@@ -1817,12 +1815,10 @@ class CCXTConnector(ExchangeInterface):
                 data_usage="CDP keys use JWT auth with EC signing. Legacy keys use HMAC-SHA256.",
             )
 
-        # --- Apply exchange-specific options ---
         exch_opts = EXCHANGE_OPTIONS.get(self._exchange_id)
         if exch_opts:
             config["options"].update(exch_opts)
 
-        # --- Passphrase ---
         if self._exchange_id in PASSPHRASE_EXCHANGES:
             if not passphrase:
                 raise ValueError(
@@ -1831,7 +1827,6 @@ class CCXTConnector(ExchangeInterface):
                 )
             config["password"] = passphrase
 
-        # --- US restriction warning ---
         if self._exchange_id in US_RESTRICTED_EXCHANGES:
             _log.record(
                 exchange=self._exchange_id,
@@ -1845,7 +1840,6 @@ class CCXTConnector(ExchangeInterface):
                 data_usage="Check exchange terms of service for your region.",
             )
 
-        # --- Pre-flight connectivity check ---
         preflight_url = PREFLIGHT_URLS.get(self._exchange_id)
         if preflight_url:
             _log.record(
@@ -1899,7 +1893,6 @@ class CCXTConnector(ExchangeInterface):
                     f"URL: {preflight_url}"
                 )
 
-        # --- Create SYNC CCXT exchange and load markets ---
         _log.record(
             exchange=self._exchange_id,
             action="CONNECTING",
@@ -1997,8 +1990,6 @@ class CCXTConnector(ExchangeInterface):
             # `from None` keeps the traceback single-frame.
             raise ConnectionError(self._format_exchange_error(exc)) from None
 
-    # ── Venue state ─────────────────────────────────────────────────────────
-
     def _note_venue_refusal(self, exc: BaseException) -> str:
         """Record one refusal of this connector's venue and name its class."""
         kind = note_venue_refusal(self._exchange_id, exc)
@@ -2012,8 +2003,6 @@ class CCXTConnector(ExchangeInterface):
             return
         note_venue_answered(self._exchange_id)
         self._venue_answer_noted = True
-
-    # ── Sync CCXT serialization ─────────────────────────────────────────────
 
     async def await_bulk_read_slot(
         self, budget_sec: float = BULK_READ_WAIT_BUDGET_SEC
@@ -2243,8 +2232,6 @@ class CCXTConnector(ExchangeInterface):
         finally:
             self._sync_queue_depth = max(0, self._sync_queue_depth - 1)
             self._release_bulk_read_slot()
-
-    # ── Trade history scanning ───────────────────────────────────────────────
 
     def set_history_callback(self, callback: HistoryCallback) -> None:
         """Register a callback the historian thread calls as ``(symbol, analysis)``."""
@@ -2599,7 +2586,6 @@ class CCXTConnector(ExchangeInterface):
         # A backend has no venue to throttle, so no interval is enforced.
         self._min_request_interval = 0.0
 
-    # -- Rate limiting --------------------------------------------------
     async def _rate_limit(self) -> None:
         """Enforce minimum interval between requests."""
         elapsed = time.monotonic() - self._last_request_time
@@ -2714,7 +2700,6 @@ class CCXTConnector(ExchangeInterface):
         )
         return data
 
-    # -- Account --------------------------------------------------------
     @_with_retry()
     async def get_account_balances(self) -> dict[str, Balance]:
         """Every currency one ``fetch_balance`` reports, zero totals included.
@@ -2779,8 +2764,6 @@ class CCXTConnector(ExchangeInterface):
 
         # The exchange did not report this currency at all.
         return Balance(currency=currency, free=0.0, used=0.0, total=0.0, absent=True)
-
-    # -- Orders ---------------------------------------------------------
 
     # Submission is never retried: create_order is not idempotent without a
     # client_order_id.
@@ -3087,7 +3070,6 @@ class CCXTConnector(ExchangeInterface):
         self._spot_positions_cache = (time.time(), positions)
         return positions
 
-    # -- Asset discovery ------------------------------------------------
     def _sector_products(self) -> dict[str, dict]:
         """Every market record this venue serves an extra asset class under.
 
@@ -3290,7 +3272,6 @@ class CCXTConnector(ExchangeInterface):
         """Return a CDN URL for the asset's logo."""
         return _LOGO_FALLBACK.format(symbol=currency.upper())
 
-    # -- Helpers --------------------------------------------------------
     @staticmethod
     def _parse_order(raw: dict) -> Order:
         """Convert a CCXT order dict to an :class:`Order`.

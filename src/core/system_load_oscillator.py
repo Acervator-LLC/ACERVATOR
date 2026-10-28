@@ -66,8 +66,6 @@ class SystemLoadOscillator:
         self.cooling_exit_count = 0
         self.samples_taken = 0
 
-    # ══ Lifecycle ══════════════════════════════════════════════════
-
     def start(self):
         """Begin oscillation cycle + start COOLING monitor thread."""
         with self._lock:
@@ -92,8 +90,6 @@ class SystemLoadOscillator:
         self._thread = None
         with self._lock:
             self._start_time = None
-
-    # ══ Public query API ═══════════════════════════════════════════
 
     def cycle_position(self) -> float:
         """Seconds into current 120s cycle, or 0 if not started."""
@@ -161,8 +157,6 @@ class SystemLoadOscillator:
     def started(self) -> bool:
         with self._lock:
             return self._start_time is not None
-
-    # ══ Internal: COOLING monitor thread ═══════════════════════════
 
     def _monitor_loop(self):
         """Background sampler. Runs at SAMPLING_HZ independent of the
