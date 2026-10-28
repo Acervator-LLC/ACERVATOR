@@ -3712,17 +3712,23 @@ the six Add Exchange buttons on the empty-state cards
 the indicator panel's bot menu, the Charts timeframe menu, New Bot, Cancel
 ```
 
-**Two sentences lived in two files, and the screen read the wrong copy.** The
-Extractor table declared all eight of its column descriptions a second time
-inside `src/gui/widgets/extractor_bot_table.py`, and the topology preview typed
-four of its own. Both now read the surface that already declared them, so the Qt
+**Two sentence sets lived in several files, and a screen read the wrong copy.**
+The Extractor table's eight column descriptions were declared four times — in
+`src/gui/main_tabs/extractor_bot_table_surface.py` and again in the Live, Paper
+and Simulator tables — and the topology preview typed four of its own beside the
+surface that already held them. Each now reads the one declaration, so the Qt
 screen and the browser screen draw one sentence.
 
 ```
                                            declarations before   after
-Extractor column descriptions                              2       1
+Extractor column descriptions                              4       1
 topology preview's bots, wires and adopt                   2       1
 ```
+
+The three Extractor tables were built and each asked what its eight column
+headings report: all three read the same, and all three are under the figure.
+Control: changing one column in the surface alone makes that comparison report a
+difference.
 
 The copies had already drifted. `src/gui/main_tabs/market_inspector_topologies_surface.py`
 still held a 31-word bots sentence and a 21-word adopt sentence while the Qt
