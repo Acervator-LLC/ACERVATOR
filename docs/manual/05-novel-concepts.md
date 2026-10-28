@@ -1589,6 +1589,99 @@ One gap sits in the same path, and the function names it in its own docstring.
 The fold gate wraps the distance call and falls back to a distance of zero when
 a config value is not a number. At that fallback the rule is not active.
 
+### Where a tranche's rebuy guide is placed
+
+The owner states the rule for where a tranche sits:
+
+> Placement of Tranches must first be a function of Minimum Opposing Trade
+> Distance + Trading Fee + BB Extension (if present...).
+
+The guide is measured from the price the tranche's scrum sold at, the `ref` on
+the stored row, and never from the price first paid. A row shows both: the Sell
+ref column holds the first and the Original cost column holds the second. A
+guide above the cost basis is normal, because a bot that sold high can buy back
+above its own cost and still gain units.
+
+`src/trading/otd_math.py` — the guide, from the sell reference
+
+```python
+def fold_rebuy_price(sell_ref_price: float, otd_pct: float) -> float:
+    return float(sell_ref_price) * fold_rebuy_factor_from_pct(otd_pct)
+```
+
+Two of the three terms reach the guide. The opposing trade distance is
+`scrumming_interval_pct` and the trading fee is `trading_fee_pct`, both declared
+in `src/trading/container/config.py`, and
+`minimum_opposing_trade_distance_pct_from_config` is the one place that reads
+either. Moving the declared interval from 1.0 to 7.3 moves the guide on a
+hundred-dollar sell reference from $98.40 to $92.10; moving the declared fee
+from 0.6 to 2.9 moves it to $96.10.
+
+The band extension is the third term and no caller supplies it yet.
+`band_extension_pct` states it as a share of the reference price, taking the
+band's own span the way `src/trading/indicators/bb_proximity.py`, in
+`detect_bb_proximity`, takes it. Moving the declared `bb_tolerance_pct` from 1.0
+to 4.7 moves that term from 0.200% to 0.940%, and a distance holding it would
+read 2.540% in place of 1.600%. A band makes the distance differ per tranche,
+and `src/trading/scrumming/sizing.py`, in `eligible_fold_tranches`, takes one
+factor for the whole queue, so wiring the term reaches that function,
+`src/trading/scrumming/tick_phases.py`, `src/paper/paper_run.py` and
+`src/simulator/back_test.py`.
+
+### A guide above the price it is measured from cannot be produced
+
+An earlier reading of the factor trusted its caller to clamp the percentage
+first. Its own docstring said so:
+
+> Convert an already-clamped OTD percentage to a FOLD rebuy factor.
+
+The current reading is that the factor clamps its own argument, so a negative
+percentage cannot lift it above 1.0 and the guide cannot read above the price it
+is measured from.
+
+`src/trading/otd_math.py` — the clamp inside the factor
+
+```python
+def fold_rebuy_factor_from_pct(otd_pct: float) -> float:
+    return 1.0 - (clamped_otd_pct(otd_pct) / 100.0)
+```
+
+Swept from -5.0% to 60.0% in steps of 0.001%, 5,000 of the 65,001 percentages
+produced a guide above its own reference before the clamp moved and none produce
+one now. The worst was 1.05 times the reference at -5.0%. The configured path
+never reached that domain: over 251,001 interval and fee pairs from -2.0 to 3.0
+in steps of 0.01, the guide ratio stayed between 0.94 and 1.00 both before and
+after.
+
+The Fold Tranches page model held the percentage and the factor as two numbers a
+host could set apart. Asked for a percentage of 1.60 and a factor of 1.04, the
+row drew a guide of $104.00000000 against a sell reference of $100.00000000. The
+model now derives the factor from the percentage and the same request draws
+$98.40000000.
+
+### What the row's percentage means
+
+The Status cell states the move the live price must still make to reach the
+guide, so the figure carries a minus while the price sits above it. With a
+hundred-dollar sell reference and a distance of 1.60%, a price of $110 reads
+`Need price ≤ OTD (-10.55%)` and a price of $90 reads
+`Price-OK (+9.33% vs OTD)`. The earlier reading stated where the price sat
+rather than the move it must make, so the same two prices read `+11.79%` and
+`-8.54%`.
+
+`src/gui/main_tabs/fold_tranches_tab_surface.py` — the signed move
+
+```python
+def status_move_pct(price: float, threshold: float) -> float:
+    return (threshold - price) / price * 100.0
+```
+
+The Min rebuy tooltip names both prices the guide sits between: *A guide, not a
+trigger: sell ref $100.00000000 less 1.60% is $98.40000000. A fold-back still
+needs TA.* The Live, Paper and Simulator panels and both React pages draw
+`min_rebuy_cell` and `status_cell` from this one module, so no screen can carry
+a different figure.
+
 ## 14 - Position Ceiling and Detonation
 
 This setting allows a total profit cap to be set for a given position before it sells its entire or a large portion of its total value.

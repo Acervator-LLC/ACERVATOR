@@ -24,6 +24,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QBrush, QColor
 
 from .. import design_system as ds
+from ..main_tabs.fold_tranches_tab_surface import min_rebuy_cell, status_cell
 from .fold_tokens import (
     ARBITER_COLUMN_HEADER,
     ARBITER_COLUMN_INDEX,
@@ -1007,22 +1008,18 @@ class FoldTranchesTabMixin:
             # "Original cost $" is informational; "Min rebuy $" is
             # the binding per-tranche threshold.
             _otd_pct = 0.0
-            _otd_factor = 1.0
             try:
                 # Same otd_math call as `ScrummingBot.tick`, so this
                 # cannot drift from the executor's own threshold.
                 from ...trading.otd_math import (
-                    fold_rebuy_factor_from_pct,
                     minimum_opposing_trade_distance_pct_from_config,
                 )
 
                 _otd_pct = minimum_opposing_trade_distance_pct_from_config(
                     self._bot.config
                 )
-                _otd_factor = fold_rebuy_factor_from_pct(_otd_pct)
             except Exception:
                 _otd_pct = 0.0
-                _otd_factor = 1.0
 
             table = QTableWidget()
             table.setColumnCount(ARBITER_COLUMN_INDEX + 1)
@@ -1130,31 +1127,18 @@ class FoldTranchesTabMixin:
                     ),
                 )
 
-                if ref_v is not None and ref_v > 0 and _otd_pct > 0:
-                    min_rebuy_v = ref_v * _otd_factor
-                    mr_item = QTableWidgetItem(f"≤${min_rebuy_v:.8f}")
-                    mr_item.setToolTip(
-                        f"A guide only, the reference price less "
-                        f"{_otd_pct:.2f}%. Not a trigger price: a "
-                        f"fold-back still needs TA."
-                    )
-                    table.setItem(row, 6, mr_item)
-                elif ref_v is not None and ref_v > 0:
-                    table.setItem(row, 6, QTableWidgetItem(f"<${ref_v:.8f}"))
-                else:
-                    table.setItem(row, 6, QTableWidgetItem("—"))
+                # min_rebuy_cell is the one declaration of this cell;
+                # the React page draws the same call's answer.
+                _rebuy = min_rebuy_cell(ref_v, _otd_pct)
+                mr_item = QTableWidgetItem(_rebuy[0])
+                if _rebuy[1] is not None:
+                    mr_item.setToolTip(_rebuy[1])
+                table.setItem(row, 6, mr_item)
 
                 if cur_price > 0 and ref_v is not None and ref_v > 0 and _otd_pct > 0:
-                    otd_thresh = ref_v * _otd_factor
-                    otd_factor_diff_pct = (cur_price - otd_thresh) / otd_thresh * 100.0
-                    if cur_price <= otd_thresh:
-                        status_str = f"Price-OK ({otd_factor_diff_pct:+.2f}% vs OTD)"
-                        status_color = ds.SUCCESS
-                    else:
-                        status_str = f"Need price ≤ OTD ({otd_factor_diff_pct:+.2f}%)"
-                        status_color = ds.FOLD_RATIO_AMBER
-                    si_status = QTableWidgetItem(status_str)
-                    si_status.setForeground(QColor(status_color))
+                    _status = status_cell(cur_price, ref_v, _otd_pct)
+                    si_status = QTableWidgetItem(_status[0])
+                    si_status.setForeground(QColor(_status[1]))
                     si_status.setToolTip(FOLD_TRANCHES_TAB_DESCRIPTIONS["si_status"])
                     table.setItem(row, 7, si_status)
                 elif cur_price > 0 and ref_v is not None and ref_v > 0:

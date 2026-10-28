@@ -62,11 +62,42 @@ configured 0.0 reads as 0.0 there and as 0.6 here. Routing them through
 this reader would change the distance those two refusals apply on a
 zero-fee record, so it is named here, not done here.
 
+THE THIRD TERM IS THE BAND EXTENSION, AND IT IS ABSENT UNLESS A BAND IS
+PASSED
+The operator's placement rule names three terms: the minimum opposing
+trade distance, the trading fee, and the Bollinger Band extension where
+one is present. ``band_extension_pct`` is that third term. It reads the
+one declaration, ``BotConfig.bb_tolerance_pct``, and applies it the way
+``indicators/bb_proximity.detect_bb_proximity`` does -- a share of the
+band's own span, not of the price -- then states the result as a
+percentage of the reference price so the three terms add.
+
+``minimum_opposing_trade_distance_pct`` takes it as a third argument
+defaulting to ``BAND_EXTENSION_ABSENT_PCT``, so every caller that passes
+two arguments answers exactly what it answered before. No caller passes a
+band today: the band would make the distance per-tranche, and the fold
+gate's consumer ``scrumming/sizing.eligible_fold_tranches`` takes one
+factor for the whole queue. Wiring it reaches that function,
+``scrumming/tick_phases.py``, ``paper/paper_run.py`` and
+``simulator/back_test.py``.
+
+A GUIDE ABOVE THE PRICE IT IS MEASURED FROM IS UNREPRESENTABLE, NOT
+CHECKED FOR
+``fold_rebuy_factor_from_pct`` clamps its own argument, so the factor it
+returns lies in ``[0.5, 1.0]`` for every input including a negative
+percentage. ``fold_rebuy_price`` multiplies a sell reference by that
+factor, so its answer is at or below the price handed to it and no
+caller can produce one above it. The previous reading of
+``fold_rebuy_factor_from_pct`` trusted its caller to clamp first, and a
+negative percentage returned a factor above 1.0.
+
 Public API:
     minimum_opposing_trade_distance_pct(interval_pct, fee_pct) -> float
     fold_rebuy_factor_from_pct(otd_pct) -> float
     fold_rebuy_factor(interval_pct, fee_pct) -> float
     minimum_opposing_trade_distance_pct_from_config(config) -> float
+    band_extension_pct(upper, lower, tolerance_pct, reference_price) -> float
+    fold_rebuy_price(sell_ref_price, otd_pct) -> float
 
 FALSIFICATION: this module is wrong if (a)
 ``minimum_opposing_trade_distance_pct`` ever returns a value outside
@@ -83,12 +114,49 @@ from __future__ import annotations
 OTD_MIN_PCT = 0.0
 OTD_MAX_PCT = 50.0
 
+# The band extension a caller that holds no Bollinger Band contributes.
+BAND_EXTENSION_ABSENT_PCT = 0.0
 
-def minimum_opposing_trade_distance_pct(interval_pct: float, fee_pct: float) -> float:
+
+def clamped_otd_pct(otd_pct: float) -> float:
+    """``otd_pct`` held inside ``OTD_MIN_PCT`` and ``OTD_MAX_PCT``."""
+    return max(OTD_MIN_PCT, min(OTD_MAX_PCT, float(otd_pct)))
+
+
+def band_extension_pct(
+    upper: float,
+    lower: float,
+    tolerance_pct: float,
+    reference_price: float,
+) -> float:
+    """The band extension as a percentage of ``reference_price``.
+
+    ``upper`` and ``lower`` are the Bollinger Band prices and
+    ``tolerance_pct`` is ``BotConfig.bb_tolerance_pct``, applied to the
+    band's own span exactly as ``detect_bb_proximity`` applies it.
+    Answers ``BAND_EXTENSION_ABSENT_PCT`` where no band is present --
+    the span is not above zero, or ``reference_price`` is not above
+    zero.
+    """
+    span = float(upper) - float(lower)
+    price = float(reference_price)
+    if span <= 0.0 or price <= 0.0:
+        return BAND_EXTENSION_ABSENT_PCT
+    return span * (float(tolerance_pct) / 100.0) / price * 100.0
+
+
+def minimum_opposing_trade_distance_pct(
+    interval_pct: float,
+    fee_pct: float,
+    extension_pct: float = BAND_EXTENSION_ABSENT_PCT,
+) -> float:
     """The clamped percentage an opposing trade must travel.
 
     ``interval_pct`` is ``config.scrumming_interval_pct``; ``fee_pct`` is
-    ``config.trading_fee_pct``. Both are coerced with ``float()``, so a
+    ``config.trading_fee_pct``; ``extension_pct`` is what
+    ``band_extension_pct`` answered for this tranche, or
+    ``BAND_EXTENSION_ABSENT_PCT`` where the caller holds no band. All
+    three are coerced with ``float()``, so a
     non-numeric config value raises ``TypeError``/``ValueError`` out of
     this function rather than being absorbed here.
 
@@ -102,19 +170,34 @@ def minimum_opposing_trade_distance_pct(interval_pct: float, fee_pct: float) -> 
 
     Returns a value in ``[OTD_MIN_PCT, OTD_MAX_PCT]``.
     """
-    total = float(interval_pct) + float(fee_pct)
-    return max(OTD_MIN_PCT, min(OTD_MAX_PCT, total))
+    total = float(interval_pct) + float(fee_pct) + float(extension_pct)
+    return clamped_otd_pct(total)
 
 
 def fold_rebuy_factor_from_pct(otd_pct: float) -> float:
-    """Convert an already-clamped OTD percentage to a FOLD rebuy factor.
+    """Convert an OTD percentage to a FOLD rebuy factor.
 
     Multiply a tranche's ``ref`` by this to get the HIGHEST price at
     which that tranche is still eligible to be re-bought:
 
         eligible  <=>  ticker.last <= ref * factor
+
+    ``clamped_otd_pct`` holds the argument inside ``OTD_MIN_PCT`` and
+    ``OTD_MAX_PCT`` first, so the factor lies in ``[0.5, 1.0]`` for
+    every input and a negative percentage cannot lift it above 1.0.
     """
-    return 1.0 - (float(otd_pct) / 100.0)
+    return 1.0 - (clamped_otd_pct(otd_pct) / 100.0)
+
+
+def fold_rebuy_price(sell_ref_price: float, otd_pct: float) -> float:
+    """The highest price a tranche sold at ``sell_ref_price`` may be re-bought at.
+
+    ``sell_ref_price`` is the tranche's ``ref``, the price its scrum
+    sold at, and never ``initial_buy_price``. Because
+    ``fold_rebuy_factor_from_pct`` cannot answer above 1.0, this answer
+    is at or below ``sell_ref_price`` for every ``otd_pct``.
+    """
+    return float(sell_ref_price) * fold_rebuy_factor_from_pct(otd_pct)
 
 
 def fold_rebuy_factor(interval_pct: float, fee_pct: float) -> float:
