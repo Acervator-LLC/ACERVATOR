@@ -4001,6 +4001,30 @@ On a $200 target that is a $10 drift before the tick reads any gate, where the
 opening figure would start reading gates at $2. The Trading Fee is added on top, so
 the real reversal distance on the fleet is 5 % plus that bot's own fee.
 
+**The sentence above about the reversal distance is overtaken by a third term.**
+It is not edited and not removed. It read:
+
+> The Trading Fee is added on top, so the real reversal distance on the fleet is
+> 5 % plus that bot's own fee.
+
+A third term now joins those two. `src/trading/otd_math.py`, in
+`minimum_opposing_trade_distance_pct_from_config`, adds the band extension, and
+`band_extension_pct_from_config` reads it off `BotConfig.band_travel_pct`. The
+operator's placement rule names that term: the minimum opposing trade distance,
+the trading fee, and the Bollinger Band extension where one is present.
+
+Driven on one tape whose band span sat at 7.7331 % of its own midline, with the
+fleet's 5.00 % interval and a 1.60 % fee:
+
+```
+Band Travel   distance        guide on a tranche sold at $100.00
+   0 %         6.600000 %      $93.40000000
+  70 %        12.013138 %      $87.98686200
+```
+
+Zero switches the term off, so a bot with Band Travel at zero reads the same
+6.600000 % it read before.
+
 This is the row that decides how often a bot trades at all. A smaller figure makes
 the bot act on smaller moves and pay the fee more often; a larger one waits for a
 move worth acting on. Five per cent is the figure the live run has used throughout,
@@ -5082,6 +5106,28 @@ decides when the bot starts looking, Fire Threshold decides when it may shoot, a
 BB Midline Gate refuses a sell below the midline and a buy above it whatever the
 other two say. Band Travel sits outside that chain and can release a trade the trend
 gates were holding, so it is the one row that loosens rather than tightens.
+
+**The sentence above about Band Travel loosening only is overtaken.** It is not
+edited and not removed. It read:
+
+> Band Travel sits outside that chain and can release a trade the trend gates
+> were holding, so it is the one row that loosens rather than tightens.
+
+The override it names is unchanged. The row now tightens as well.
+`src/trading/otd_math.py`, in `band_extension_pct`, makes Band Travel the third
+term of the placement distance, and `src/trading/scrumming_bot.py`, in `tick`,
+hands that reader the band the tick already computed. The Fold-Tranche panel in
+`src/gui/live_settings/fold_tranches_tab.py` hands it the same band, so the gate
+and the guide answer one distance.
+
+```python
+_otd_pct_for_gate = minimum_opposing_trade_distance_pct_from_config(
+    self.config,
+    band_upper=float(getattr(bb_result, "upper", 0.0) or 0.0),
+    band_lower=float(getattr(bb_result, "lower", 0.0) or 0.0),
+    reference_price=float(getattr(bb_result, "middle", 0.0) or 0.0),
+)
+```
 
 ```
 setting                the page opens at   the fleet runs
