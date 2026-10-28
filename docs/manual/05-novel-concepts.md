@@ -1587,6 +1587,69 @@ stands where three stood.
 A queue that already exceeds its holding is not changed by any of this. What
 happens to an excess that already stands is the operator's decision.
 
+### The standing excess is retired on load
+
+**The decision above has been taken.** The operator's ruling: drop the standing
+tranches whose amount no sale produced, keep the aligned ones, and bring the
+marked total back under the held total.
+
+`src/trading/scrumming/fold_tranches.py`, in `retire_unaligned_tranches`, is the
+sweep. `src/trading/scrumming/state_io.py`, in `import_scrumming_state`, is the
+one caller. It runs once per bot, as that bot's state is restored, and after the
+parked wire credit has landed on the records. Every record queued after it is
+handed out of one sale's own figures, so the standing set is the only set that
+can hold an amount no sale produced, and that set does not grow.
+
+No standing tranche carries the identity of the event that produced it, because
+the field did not exist when the tranche was queued. The sweep does not read it.
+One relation holds across every record the creation path makes: a record's
+dollars, less the wired-in dollars the record itself records, equal its units
+times the price its sale filled at, less the trading fee.
+
+```
+sale dollars / (units x sale rate)  =  1 - trading fee / 100
+```
+
+`src/trading/scrumming/sizing.py`, in `unproduced_fold_amount`, reads that and
+answers why no sale produced a record's amount, or nothing where one could.
+`tranche_wire_usd` beside it takes off the wired-in dollars first, because wire
+money reaches a tranche with no units behind it.
+
+The window carries one merge distance of slack at each edge, the distance at
+which `src/trading/stack_math.py`, in `within_merge_distance`, already calls two
+prices one price. For a bot at a 0.6 per cent fee a record is kept from 0.99301
+to 1.00100 of price times units.
+
+A record with no price, with no lot behind its units, or with no readable figure
+is retired at every fee. A drop counts as discarded and never as closed, so the
+panel's opened less closed less discarded still equals what stands, and the
+dropped record's price, its units, its dollars and the reason it went are written
+to the bot log.
+
+**Where the sweep retires nothing.** A Trading Fee % lowered after a sale moves
+every record that sale queued below the window at once. Where no standing record
+sits inside the window, the reading measures that setting and not the records,
+so the sweep retires nothing on the fee window and names the fee in the log. One
+record passing is the proof that the declared fee is the fee this queue's sales
+paid.
+
+`src/trading/stack_math.py`, in `unproduced_stack_amount`, is the stack side. A
+stored rung carries no figure of the fold event that acquired its units, because
+`split_scrum_into_tranches` spreads one fold's tokens over spaced rungs and the
+alignment is at their sum. Size and price are all a single stored rung can be
+tested against, and a rung holding a resting venue order is kept whatever it
+reads, because dropping the record would strand that order on the book.
+
+Driven on constructed records in a redirected home, with no venue reached. On a
+queue holding one aligned record beside one carrying a quarter of its sale's
+dollars, the tree before this work kept both and the tree after kept the aligned
+one and retired the other. Over a swept domain of 120 records a sale produced,
+both trees left the same 120 records with the same digest, the same
+$468,656,385.72274005 and the same 27,528.615 units. Moving one of those records
+by one digit changed the digest and left all 120 standing. A bot whose fee
+setting read 0.00 per cent against five records queued at 0.6 per cent retired
+none of them and wrote the refusal.
+
 ## 12 - Technical Analysis Indicator Confidence Tiers
 
 Most TA systems stack indicators additively. The Tier-4 suite organizes signals into four confidence tiers with cumulative weighting: Tier-1 (structural, highest weight), Tier-2 (confirmation, medium weight), Tier-3 (momentum), Tier-4 (context). Entries require Tier-1 + Tier-2 alignment; Tier-3/4 scale confidence but cannot override. This tier system arose out of queries with Claude Code while it was roleplaying as a TA Archetype and is only one such example where most of the other such contributions deal with bug fixes.

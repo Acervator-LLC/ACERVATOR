@@ -2695,6 +2695,83 @@ def eligible_fold_tranches(
     return [t for t in tranches if ticker_last <= float(t.get("ref", 0)) * otd_factor]
 
 
+WIRE_CREDIT_DETAIL_KEY = "wire_credits"
+WIRE_CREDIT_ROLLED_KEY = "wire_credits_rolled"
+
+NO_READABLE_FIGURE = "no readable figure"
+NO_UNITS = "no units"
+NO_DOLLARS = "no dollars"
+NO_SALE_PRICE = "no sale price"
+NO_LOT_BEHIND_THE_UNITS = "no lot behind its units"
+FEWER_DOLLARS_THAN_PRODUCED = "fewer dollars than its sale produced"
+MORE_DOLLARS_THAN_PRODUCED = "more dollars than its sale could produce"
+
+FEE_JUDGED_REASONS = (FEWER_DOLLARS_THAN_PRODUCED, MORE_DOLLARS_THAN_PRODUCED)
+"""The two ``unproduced_fold_amount`` reasons whose edge is a bot's own Trading
+Fee %, where the other five hold at every fee."""
+
+
+def tranche_wire_usd(record: dict) -> float:
+    """The Smart Wire dollars a fold tranche records, ``WIRE_CREDIT_DETAIL_KEY``
+    plus ``WIRE_CREDIT_ROLLED_KEY``.
+
+    ``wire_routing._roll_wire_credit_overflow`` moves the oldest detail entries
+    into the aggregate, so ``unproduced_fold_amount`` has to read both.
+    """
+    total = 0.0
+    for entry in record.get(WIRE_CREDIT_DETAIL_KEY) or []:
+        if isinstance(entry, dict):
+            total += as_finite_float(entry.get("usd", 0.0)) or 0.0
+    rolled = record.get(WIRE_CREDIT_ROLLED_KEY)
+    if isinstance(rolled, dict):
+        total += as_finite_float(rolled.get("total_usd", 0.0)) or 0.0
+    return total
+
+
+def tranche_sale_usd(record: dict) -> float:
+    """A fold tranche's ``usd`` less ``tranche_wire_usd``, the dollars its own
+    sale produced and the figure ``unproduced_fold_amount`` measures."""
+    return (as_finite_float(record.get("usd", 0.0)) or 0.0) - tranche_wire_usd(record)
+
+
+def unproduced_fold_amount(record: dict, fee_pct: Optional[float]) -> str:
+    """Why no sale produced this fold tranche's amount, or "" where one could,
+    read as ``tranche_sale_usd`` against ``units`` times ``tranche_sale_rate``
+    less ``fee_pct``, with one ``MERGE_THRESHOLD`` of slack at each edge, the
+    distance at which ``within_merge_distance`` already calls two prices one.
+
+    A ``fee_pct`` that is not a finite number at or above zero leaves the
+    window no lower edge, so only the reasons outside ``FEE_JUDGED_REASONS``
+    are answered.
+    """
+    from ..stack_math import MERGE_THRESHOLD
+
+    units = as_finite_float(record.get("units", 0.0))
+    usd = as_finite_float(record.get("usd", 0.0))
+    basis = as_finite_float(record.get("initial_buy_price", 0.0))
+    rate = as_finite_float(tranche_sale_rate(record))
+    if units is None or usd is None or basis is None or rate is None:
+        return NO_READABLE_FIGURE
+    if units <= 0.0:
+        return NO_UNITS
+    if usd <= 0.0:
+        return NO_DOLLARS
+    if rate <= 0.0:
+        return NO_SALE_PRICE
+    if basis <= 0.0:
+        return NO_LOT_BEHIND_THE_UNITS
+    produced = units * rate
+    share = tranche_sale_usd(record)
+    if share > produced * (1.0 + MERGE_THRESHOLD):
+        return MORE_DOLLARS_THAN_PRODUCED
+    fee = as_finite_float(fee_pct)
+    if fee is None or fee < 0.0:
+        return ""
+    if share < produced * (1.0 - fee / 100.0) * (1.0 - MERGE_THRESHOLD):
+        return FEWER_DOLLARS_THAN_PRODUCED
+    return ""
+
+
 EVENT_ID_KEY = "opposing_event_id"
 EVENT_UNITS_KEY = "opposing_event_units"
 EVENT_USD_KEY = "opposing_event_usd"
