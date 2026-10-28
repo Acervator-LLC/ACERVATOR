@@ -123,11 +123,17 @@ FILL_SIDE_EVENTS: dict[str, AlertEvent] = {
 }
 
 
+#: The field names a fill's dollar value arrives under. Five emitters write
+#: ``usd`` and five write ``size``, so a reader of one alone prints zero dollars
+#: for the other five.
+FILL_USD_FIELDS: tuple[str, ...] = ("usd", "size")
+
+
 def fill_payload(data: Any) -> dict:
     """One fill's own fields, whichever level the emitter put them at.
 
     The ``FILL_TOPIC`` contract in ``emit_contracts`` declares the nesting, so
-    the four emitters that pass the fill as keywords and the six that nest it
+    the five emitters that pass the fill as keywords and the five that nest it
     both read here.
     """
     for contract in CONTRACTS:
@@ -142,11 +148,18 @@ def fill_alert_event(side: Any) -> Optional[AlertEvent]:
 
 
 def fill_message(fill: dict) -> str:
-    """One fill as the message channels print it: kind, units, price, dollars."""
+    """One fill as the message channels print it: kind, units, price, dollars.
+
+    The dollars come from the first ``FILL_USD_FIELDS`` entry the fill carries.
+    """
     kind = str(fill.get("type") or "FILL")
     units = _as_number(fill.get("amount"))
     price = _as_number(fill.get("price"))
-    usd = _as_number(fill.get("usd"))
+    usd = 0.0
+    for name in FILL_USD_FIELDS:
+        if name in fill:
+            usd = _as_number(fill.get(name))
+            break
     return f"{kind}: {units:.6f} units at ${price:,.8f}, ${usd:,.2f}"
 
 
