@@ -1422,6 +1422,150 @@ opens the window at its full content width with a whole tranche row inside it.
 The screen clamp in `dialog_open_size_px` stays, because the operator cannot
 drag back a window wider than the display.
 
+### Every tranche names the opposing event that produced it
+
+A fold tranche holds the tokens the scrum that made it sold. A scrum stack holds
+the base currency the fold that made it spent. Each record now carries the
+identity of that event and the two amounts the event produced, so the amount on
+the record can be read against the amount the event supplied.
+
+`src/trading/scrumming/sizing.py`, in `fold_tranche_records`, is the one place a
+fold tranche is built. It takes the sale's own figures as its whole budget and
+hands them out across the lots the sale consumed, so a record carrying an amount
+the sale did not produce cannot be written there.
+
+```python
+def fold_tranche_records(
+    lots: list,
+    fill_price: float,
+    sold_units: float,
+    proceeds_usd: float,
+    event_id: str,
+    created_ts: float,
+) -> tuple[list, float]:
+```
+
+Three sites called their own copy of that loop before: the scrum phase, the
+distribution phase and the operator's Manual Fire. All three now call this one
+function. The second value it returns is the units a sale sold that no lot
+covered, and each site writes a FOLD ALIGNMENT SHORT line naming that figure.
+
+`src/trading/scrumming_bot.py`, in `_open_stack_from_scrum`, is the one place a
+stack tranche is built, and it writes the same three fields from the fold fill
+that spawned the ladder.
+
+The Units cell on the Fold Tranches row reads the tranche's units against the
+units its event sold, and its mouse-over names the event and both amounts.
+`src/gui/main_tabs/fold_tranches_tab_surface.py`, in `units_cell`, is the one
+declaration of that cell, and the Live, Paper and Simulator tables each call it.
+
+The Stack-Tranche Cycle Health box gains a row reading the standing size against
+what the events that produced it acquired, from
+`src/gui/main_tabs/stack_tranches_tab_surface.py`, in
+`compose_event_alignment_row`. The row draws red while the standing size passes
+what was produced.
+
+### Marked units above held units, and what produces it
+
+Driven on hand-built tranches with no venue reached, three scrums in a row at one
+price read 0.60, 2.20 and 5.40 times the holding. Every tranche's units equalled
+the units its own sale sold on all three. The ratio first passed one on the
+second scrum.
+
+A bot that scrums three times without folding holds the units of three sales in
+its queue and only the remainder in its position, so the ratio climbs on every
+scrum and falls on every fold. The same six-event sequence read 2.20, 0.60 and
+0.00 on the three folds that followed.
+
+So a ratio above one is not by itself a tranche whose amount no event produced.
+The reading that separates the two is the amount on the record against the amount
+its event supplied, which is what the row now states.
+
+### A split against an unknown venue minimum is refused
+
+A Stack ladder divides one fold's acquired tokens across spaced prices, and every
+piece must reach the smallest order size the venue published. Where the venue
+published no size rule the floor is unknown, and the split is refused rather than
+sized against a guess.
+
+`src/trading/stack_math.py`, in `split_scrum_into_tranches`, refuses a minimum
+that is not a positive finite number, and `src/trading/scrumming_bot.py`, in
+`_open_stack_from_scrum`, passes the venue's own figure through unmasked so an
+absent rule arrives as the absence it is. The scrum still sells as one undivided
+order; only the split is refused.
+
+**The signature in the code block at the head of this entry is overtaken.** It is
+not edited and not removed. It read:
+
+```python
+    min_order_size: float = 0.0,
+```
+
+The parameter now defaults to `None`, and both `None` and zero are refused:
+
+```python
+    min_order_size: Optional[float] = None,
+```
+
+Driven on a hand-built ladder of one unit over four rungs: a floor of 0.20 gives
+four pieces of 0.250000, a floor of 0.40 gives two of 0.500000, and both have
+every piece at or above the floor. A floor of 2.00 against one unit is refused.
+No floor at all is refused. In every arm that is not refused the pieces sum to
+the units the fold acquired.
+
+`src/trading/stack_math.py`, in `_apply_min_order_size`, reads the smallest piece
+the ladder actually holds rather than a count of pieces. Two rungs that merge
+leave the ladder with pieces of unequal size, and a count can fit while a piece
+sits under the floor. On a merged ladder of one unit the same arm read pieces of
+0.500000, 0.250000 and 0.250000 against a floor of 0.300000 before, and three
+pieces of 0.333333 after.
+
+### The merge distance is one declaration both tranche types read
+
+Two tranches within a tenth of a percent of each other in price combine.
+`src/trading/stack_math.py`, in `within_merge_distance`, is the one declaration
+of that distance, and `MERGE_THRESHOLD` beside it holds the figure.
+
+The Stack ladder read that distance already, inside its own build.
+`src/trading/scrumming/sizing.py`, in
+`merge_fold_tranches_within_distance`, now reads the same declaration for the
+fold queue. The survivor keeps the lower reference price, which is the stricter
+fold threshold, sums the cash and the units, takes the units-weighted original
+cost and names both events.
+
+```python
+def within_merge_distance(lower_price: float, higher_price: float) -> bool:
+```
+
+`src/trading/scrumming/fold_tranches.py`, in
+`_combine_fold_tranches_within_distance`, runs it on the standing queue each time
+a sale queues a tranche, and lowers the opened counter by what it combined so the
+panel's reconciliation still balances.
+
+`src/trading/stack_math.py`, in `merge_into_standing_rungs`, moves a new rung
+into a standing rung inside the same distance. A standing rung holding a venue
+order is never a candidate, since combining it would need that order cancelled.
+
+Driven in one run on both types: a pair 0.05 percent apart combined and a pair
+0.5 percent apart did not. On the fold pair the survivor's cash and units were
+the sums of both, and its original cost was the units-weighted figure.
+
+### What this changes for a queue that is already aligned
+
+Three sales at prices a percent apart, driven through the real queueing path,
+produced the same three tranches before and after, to the digit. Sweeping the
+fold gate over 120,001 prices from $40.000 to $160.000 in steps of $0.001 gave
+356,457 admitted rows, 3,352,311.201596 admitted units and $537,573,705.000000
+of planned spend on both readings, and the same digest over every price.
+
+Three sales at one price produced three tranches before and one after. The cash
+and the units the gate admits and plans over the same swept domain are identical
+on both readings; the row count falls from 352,323 to 117,441 because one record
+stands where three stood.
+
+A queue that already exceeds its holding is not changed by any of this. What
+happens to an excess that already stands is the operator's decision.
+
 ## 12 - Technical Analysis Indicator Confidence Tiers
 
 Most TA systems stack indicators additively. The Tier-4 suite organizes signals into four confidence tiers with cumulative weighting: Tier-1 (structural, highest weight), Tier-2 (confirmation, medium weight), Tier-3 (momentum), Tier-4 (context). Entries require Tier-1 + Tier-2 alignment; Tier-3/4 scale confidence but cannot override. This tier system arose out of queries with Claude Code while it was roleplaying as a TA Archetype and is only one such example where most of the other such contributions deal with bug fixes.
@@ -1588,6 +1732,99 @@ _patent_only_eligible = sum(
 One gap sits in the same path, and the function names it in its own docstring.
 The fold gate wraps the distance call and falls back to a distance of zero when
 a config value is not a number. At that fallback the rule is not active.
+
+### Where a tranche's rebuy guide is placed
+
+The owner states the rule for where a tranche sits:
+
+> Placement of Tranches must first be a function of Minimum Opposing Trade
+> Distance + Trading Fee + BB Extension (if present...).
+
+The guide is measured from the price the tranche's scrum sold at, the `ref` on
+the stored row, and never from the price first paid. A row shows both: the Sell
+ref column holds the first and the Original cost column holds the second. A
+guide above the cost basis is normal, because a bot that sold high can buy back
+above its own cost and still gain units.
+
+`src/trading/otd_math.py` — the guide, from the sell reference
+
+```python
+def fold_rebuy_price(sell_ref_price: float, otd_pct: float) -> float:
+    return float(sell_ref_price) * fold_rebuy_factor_from_pct(otd_pct)
+```
+
+Two of the three terms reach the guide. The opposing trade distance is
+`scrumming_interval_pct` and the trading fee is `trading_fee_pct`, both declared
+in `src/trading/container/config.py`, and
+`minimum_opposing_trade_distance_pct_from_config` is the one place that reads
+either. Moving the declared interval from 1.0 to 7.3 moves the guide on a
+hundred-dollar sell reference from $98.40 to $92.10; moving the declared fee
+from 0.6 to 2.9 moves it to $96.10.
+
+The band extension is the third term and no caller supplies it yet.
+`band_extension_pct` states it as a share of the reference price, taking the
+band's own span the way `src/trading/indicators/bb_proximity.py`, in
+`detect_bb_proximity`, takes it. Moving the declared `bb_tolerance_pct` from 1.0
+to 4.7 moves that term from 0.200% to 0.940%, and a distance holding it would
+read 2.540% in place of 1.600%. A band makes the distance differ per tranche,
+and `src/trading/scrumming/sizing.py`, in `eligible_fold_tranches`, takes one
+factor for the whole queue, so wiring the term reaches that function,
+`src/trading/scrumming/tick_phases.py`, `src/paper/paper_run.py` and
+`src/simulator/back_test.py`.
+
+### A guide above the price it is measured from cannot be produced
+
+An earlier reading of the factor trusted its caller to clamp the percentage
+first. Its own docstring said so:
+
+> Convert an already-clamped OTD percentage to a FOLD rebuy factor.
+
+The current reading is that the factor clamps its own argument, so a negative
+percentage cannot lift it above 1.0 and the guide cannot read above the price it
+is measured from.
+
+`src/trading/otd_math.py` — the clamp inside the factor
+
+```python
+def fold_rebuy_factor_from_pct(otd_pct: float) -> float:
+    return 1.0 - (clamped_otd_pct(otd_pct) / 100.0)
+```
+
+Swept from -5.0% to 60.0% in steps of 0.001%, 5,000 of the 65,001 percentages
+produced a guide above its own reference before the clamp moved and none produce
+one now. The worst was 1.05 times the reference at -5.0%. The configured path
+never reached that domain: over 251,001 interval and fee pairs from -2.0 to 3.0
+in steps of 0.01, the guide ratio stayed between 0.94 and 1.00 both before and
+after.
+
+The Fold Tranches page model held the percentage and the factor as two numbers a
+host could set apart. Asked for a percentage of 1.60 and a factor of 1.04, the
+row drew a guide of $104.00000000 against a sell reference of $100.00000000. The
+model now derives the factor from the percentage and the same request draws
+$98.40000000.
+
+### What the row's percentage means
+
+The Status cell states the move the live price must still make to reach the
+guide, so the figure carries a minus while the price sits above it. With a
+hundred-dollar sell reference and a distance of 1.60%, a price of $110 reads
+`Need price ≤ OTD (-10.55%)` and a price of $90 reads
+`Price-OK (+9.33% vs OTD)`. The earlier reading stated where the price sat
+rather than the move it must make, so the same two prices read `+11.79%` and
+`-8.54%`.
+
+`src/gui/main_tabs/fold_tranches_tab_surface.py` — the signed move
+
+```python
+def status_move_pct(price: float, threshold: float) -> float:
+    return (threshold - price) / price * 100.0
+```
+
+The Min rebuy tooltip names both prices the guide sits between: *A guide, not a
+trigger: sell ref $100.00000000 less 1.60% is $98.40000000. A fold-back still
+needs TA.* The Live, Paper and Simulator panels and both React pages draw
+`min_rebuy_cell` and `status_cell` from this one module, so no screen can carry
+a different figure.
 
 ## 14 - Position Ceiling and Detonation
 

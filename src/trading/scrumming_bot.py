@@ -4780,7 +4780,15 @@ class ScrummingBot(
             ``self._stack_tranches`` and records ``origin`` on every tranche.
 
         """
+        from .scrumming.sizing import (
+            EVENT_ID_KEY,
+            EVENT_UNITS_KEY,
+            EVENT_USD_KEY,
+            opposing_event_id,
+        )
         from .stack_math import (
+            STACK_PRICE_KEY,
+            merge_into_standing_rungs,
             split_scrum_into_tranches,
         )
 
@@ -4790,7 +4798,9 @@ class ScrummingBot(
         split_dist = float(getattr(self.config, "split_distance", 1.0) or 1.0)
         spacing = str(getattr(self.config, "stack_spacing_mode", "linear") or "linear")
         _rules = await self._get_market_rules(self.config.symbol)
-        min_order = float(_rules.smallest_amount or 0.0)
+        # Passed through unmasked: None is the venue publishing no size rule,
+        # and split_scrum_into_tranches refuses an unknown floor.
+        min_order = _rules.smallest_amount
 
         try:
             tranches = split_scrum_into_tranches(
@@ -4828,8 +4838,10 @@ class ScrummingBot(
             OrderType.IOC_LIMIT if _aggressive else OrderType.LIMIT
         )
 
-        for t in tranches:
-            entry = {
+        _event_id = opposing_event_id(f"STACK_{origin.upper()}", now)
+        _event_usd = float(scrum_size) * float(scrum_price)
+        _fresh_rungs = [
+            {
                 "index": t.index,
                 "price": t.price,
                 "size": t.size,
@@ -4843,15 +4855,41 @@ class ScrummingBot(
                 "open_direction": _open_dir,
                 "activated": False,
                 "activated_ts": 0.0,
+                EVENT_ID_KEY: _event_id,
+                EVENT_UNITS_KEY: float(scrum_size),
+                EVENT_USD_KEY: _event_usd,
             }
+            for t in tranches
+        ]
+        _fresh_rungs, _combined_n, _combined_size = merge_into_standing_rungs(
+            self._stack_tranches,
+            _fresh_rungs,
+            sum_keys=(EVENT_UNITS_KEY, EVENT_USD_KEY),
+            id_key=EVENT_ID_KEY,
+        )
+        if _combined_n:
+            self._bus.emit(
+                "bot.log",
+                bot_id=self.bot_id,
+                message=(
+                    f"STACK TRANCHE COMBINED: {_combined_n} new rung(s) "
+                    f"holding {_combined_size:.8f} units sat within 0.1% of "
+                    f"a standing rung with no venue order and were combined "
+                    f"into it. No order was placed for them."
+                ),
+            )
+        for entry in _fresh_rungs:
+            t_index = entry["index"]
+            t_size = entry["size"]
+            t_price = entry["price"]
             if _visible:
                 try:
                     order = await self.guarded_place_order(
                         symbol=self.config.symbol,
                         side=OrderSide.SELL,
                         order_type=_order_type_for_visible,
-                        amount=float(t.size),
-                        price=float(t.price),
+                        amount=float(t_size),
+                        price=float(t_price),
                     )
                     if order is not None:
                         entry["order_id"] = getattr(order, "id", None)
@@ -4863,7 +4901,7 @@ class ScrummingBot(
                     logger.warning(
                         "Bot %s stack tranche %d placement failed: %s",
                         self.bot_id,
-                        t.index,
+                        t_index,
                         _place_exc,
                     )
                     entry["status"] = "cancelled"
@@ -4874,7 +4912,7 @@ class ScrummingBot(
                         "bot.log",
                         bot_id=self.bot_id,
                         message=(
-                            f"STACK TRANCHE {t.index} PLACEMENT FAILED: "
+                            f"STACK TRANCHE {t_index} PLACEMENT FAILED: "
                             f"{entry['cancel_reason']}. "
                             f"Tranche cancelled."
                         ),
@@ -4889,13 +4927,16 @@ class ScrummingBot(
             bot_id=self.bot_id,
             message=(
                 f"STACK OPENED [{_mode_label}{_agg_label}] "
-                f"({len(tranches)} tranches) from {origin} @ "
+                f"({len(_fresh_rungs)} tranches) from {origin} @ "
                 f"${scrum_price:.8f}, size {scrum_size:.6f}. "
-                f"Prices: {[f'${t.price:.8f}' for t in tranches[:5]]}"
-                f"{'…' if len(tranches) > 5 else ''}"
+                f"Prices: "
+                f"{[f'${r[STACK_PRICE_KEY]:.8f}' for r in _fresh_rungs[:5]]}"
+                f"{'…' if len(_fresh_rungs) > 5 else ''}"
             ),
         )
-        return len(tranches)
+        # A rung combined into a standing one still took this sale's units, so
+        # the caller must not fall through to an undivided market sell.
+        return len(_fresh_rungs) + _combined_n
 
     async def _reconcile_stack_tranches_visible(self) -> int:
         """Visible-mode Stack reconciliation, once per tick.

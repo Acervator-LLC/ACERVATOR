@@ -3717,6 +3717,37 @@ A whole number from 2 to 20, at 3 to start, written out as
 count drops when a tranche would fall under the venue minimum, or when two
 computed prices land within a tenth of a percent of each other and merge.
 
+**The sentence above about the runtime count is overtaken in one clause.** It is
+not edited and not removed. It read:
+
+> It is a target rather than a promise: the runtime count drops when a tranche
+> would fall under the venue minimum, or when two computed prices land within a
+> tenth of a percent of each other and merge.
+
+The merge clause stands. The venue-minimum clause now reads: the count drops
+while the split can still give every piece the venue's smallest order size, and
+the split is **refused** where it cannot.
+
+Three cases, driven on a hand-built ladder of one unit over four rungs:
+
+```
+floor 0.200000   four pieces of 0.250000      the count holds at four
+floor 0.400000   two pieces of 0.500000       the count drops to two
+floor 2.000000   refused                      no Stack opens
+no floor cited   refused                      no Stack opens
+```
+
+`src/trading/stack_math.py`, in `_apply_min_order_size`, reads the smallest piece
+the ladder actually holds rather than a count of pieces, because a merge leaves
+pieces of unequal size and a count can fit while one piece sits under the floor.
+`src/trading/stack_math.py`, in `split_scrum_into_tranches`, refuses a floor that
+is not a positive finite number.
+
+A venue that published neither a minimum amount nor an amount step has an unknown
+floor, and `src/trading/scrumming_bot.py`, in `_open_stack_from_scrum`, passes
+that absence through rather than reading it as zero. The scrum still sells as one
+undivided order; only the split is refused.
+
 `src/gui/bot_wizard.py` — the Tranche Count row
 
 ```python
@@ -5917,6 +5948,15 @@ any screen. Investment amount was saved and restored and read by nothing.
 Spacing style was saved and restored and read by nothing, and the placement the
 engine derives from Opposing Trade Distance and the band extension is the
 method that replaced it.
+
+The sentence above names two terms behind a tranche's placement and the engine
+reads one of them. `src/trading/otd_math.py`, in
+`minimum_opposing_trade_distance_pct_from_config`, adds the scrumming interval
+and the trading fee and nothing else, and that sum is what the fold gate and the
+Fold Tranches row both use. `band_extension_pct` in the same module states the
+band term and no caller hands it a band, so the figure it would contribute is
+0.000% everywhere today. Section 13 of
+[05-novel-concepts.md](05-novel-concepts.md) carries the rule and the figures.
 
 **What the fleet runs.** Neither removed row has a figure to report, because
 neither ever reached a saved record. What runs in their place is profit folding,

@@ -31,6 +31,7 @@ import math
 from typing import Any, Optional
 
 from ...trading.container.config import DESPAWN_MAX_DAYS, DESPAWN_PREVIEW_WINDOWS
+from ...trading.otd_math import fold_rebuy_factor_from_pct, fold_rebuy_price
 
 METHOD = "fold_tranches_tab.state"
 
@@ -115,12 +116,12 @@ TABLE_ROW_NUMBERS_HIDDEN = True
 COLUMN_TOOLTIPS = (
     "Position of this tranche in the fold queue.",
     "Time since the scrum created this tranche.",
-    "Asset units this tranche will buy back.",
+    "Units this tranche buys back, against the units its scrum sold.",
     "Cash parked for this tranche's buy-back.",
     "Price per unit at which the scrum sold.",
     "Price per unit first paid. Informational only.",
-    "Price the fold gate needs. Not a trigger.",
-    "Price gate only. Technical analysis must also agree.",
+    "Sell ref less the opposing trade distance. The fold gate needs it.",
+    "Price gate only. A minus is the fall still needed.",
     "The action that created this tranche.",
     "Buy this tranche back now. Moves real money.",
     "Who may close this Extractor Tranche.",
@@ -133,6 +134,15 @@ EXTRACTOR_ROW_NUMBER = "EXT"
 
 QUEUE_NUMBER_FORMAT = "{number}"
 UNITS_FORMAT = "{units:.6f}"
+UNITS_ALIGNED_FORMAT = "{units:.6f} of {event_units:.6f}"
+UNITS_TOOLTIP_FORMAT = (
+    "Aligned to {event_id}, which sold {event_units:.6f} units "
+    "for ${event_usd:,.4f}."
+)
+UNITS_NO_EVENT_TOOLTIP = (
+    "This tranche names no opposing event. It was queued before the "
+    "engine recorded one."
+)
 USD_FORMAT = "${usd:,.4f}"
 PRICE_FORMAT = "${price:.8f}"
 MIN_REBUY_FORMAT = "≤${price:.8f}"
@@ -148,10 +158,8 @@ STATUS_BELOW_REF_FORMAT = "Below ref ({delta:+.2f}%)"
 STATUS_ABOVE_REF_FORMAT = "Above ref ({delta:+.2f}%)"
 
 MIN_REBUY_TOOLTIP_FORMAT = (
-    "OTD-derived guide only (ref × (1 − {otd_pct:.2f}%), the "
-    "Minimum Opposing Trade Distance = scrumming interval + trading fee, "
-    "read from the same otd_math the executor uses). Fold-back requires "
-    "TA validation in the GEP regardless. This is NOT a trigger price."
+    "A guide, not a trigger: sell ref ${ref:.8f} less "
+    "{otd_pct:.2f}% is ${guide:.8f}. A fold-back still needs TA."
 )
 STATUS_TOOLTIP = (
     "Price-gate status only (OTD threshold per tranche). Actual "
@@ -444,6 +452,9 @@ UNITS_KEY = "units"
 REF_KEY = "ref"
 INITIAL_BUY_PRICE_KEY = "initial_buy_price"
 CREATED_TS_KEY = "created_ts"
+EVENT_ID_KEY = "opposing_event_id"
+EVENT_UNITS_KEY = "opposing_event_units"
+EVENT_USD_KEY = "opposing_event_usd"
 EXTRACTOR_OPENED_KEY = "opened_at"
 EXTRACTOR_UNITS_KEY = "base_deployed"
 EXTRACTOR_MARK_KEY = "mark_value_usd"
@@ -1293,25 +1304,66 @@ def sort_order(chosen: Any) -> str:
     return chosen
 
 
-def min_rebuy_cell(ref: Optional[float], otd_pct: float, otd_factor: float) -> list:
-    """The Min-rebuy cell and its tooltip, or an em dash and none."""
+def units_cell(tranche: dict) -> list:
+    """The Units cell and its tooltip: the tranche's own units against the
+    units its opposing event sold, and an em dash where either is unreadable.
+    """
+    units = finite_number(tranche.get(UNITS_KEY, 0))
+    event_units = finite_number(tranche.get(EVENT_UNITS_KEY))
+    event_usd = finite_number(tranche.get(EVENT_USD_KEY))
+    event_id = str(tranche.get(EVENT_ID_KEY, "") or "")
+    if units is None:
+        return [NO_VALUE_TEXT, None]
+    if event_units is None or event_units <= 0.0 or not event_id:
+        return [UNITS_FORMAT.format(units=units), UNITS_NO_EVENT_TOOLTIP]
+    return [
+        UNITS_ALIGNED_FORMAT.format(units=units, event_units=event_units),
+        UNITS_TOOLTIP_FORMAT.format(
+            event_id=event_id,
+            event_units=event_units,
+            event_usd=event_usd if event_usd is not None else 0.0,
+        ),
+    ]
+
+
+def min_rebuy_cell(ref: Optional[float], otd_pct: float) -> list:
+    """The Min-rebuy cell and its tooltip, or an em dash and none.
+
+    ``ref`` is the tranche's sell reference price and the guide is
+    ``fold_rebuy_price`` of it and ``otd_pct``.
+    """
     if ref is not None and ref > 0 and otd_pct > 0:
         return [
-            MIN_REBUY_FORMAT.format(price=ref * otd_factor),
-            MIN_REBUY_TOOLTIP_FORMAT.format(otd_pct=otd_pct),
+            MIN_REBUY_FORMAT.format(price=fold_rebuy_price(ref, otd_pct)),
+            MIN_REBUY_TOOLTIP_FORMAT.format(
+                ref=ref,
+                otd_pct=otd_pct,
+                guide=fold_rebuy_price(ref, otd_pct),
+            ),
         ]
     if ref is not None and ref > 0:
         return [MIN_REBUY_NO_OTD_FORMAT.format(price=ref), None]
     return [NO_VALUE_TEXT, None]
 
 
-def status_cell(
-    price: float, ref: Optional[float], otd_pct: float, otd_factor: float
-) -> list:
-    """The Status cell, its colour and its tooltip."""
+def status_move_pct(price: float, threshold: float) -> float:
+    """The signed percentage ``price`` must move to reach ``threshold``.
+
+    Negative while ``price`` sits above ``threshold`` and positive below
+    it.
+    """
+    return (threshold - price) / price * 100.0
+
+
+def status_cell(price: float, ref: Optional[float], otd_pct: float) -> list:
+    """The Status cell, its colour and its tooltip.
+
+    The percentage is ``status_move_pct`` of ``price`` against the
+    ``fold_rebuy_price`` guide.
+    """
     if price > 0 and ref is not None and ref > 0 and otd_pct > 0:
-        threshold = ref * otd_factor
-        delta = (price - threshold) / threshold * 100.0
+        threshold = fold_rebuy_price(ref, otd_pct)
+        delta = status_move_pct(price, threshold)
         if price <= threshold:
             return [
                 STATUS_PRICE_OK_FORMAT.format(delta=delta),
@@ -1353,35 +1405,31 @@ def fold_row_cells(
     now: float,
     price: float,
     otd_pct: float,
-    otd_factor: float,
 ) -> list:
     """The eleven cell texts one fold tranche fills a table row with."""
     stamp = finite_number(tranche.get(CREATED_TS_KEY))
     age = format_age(now - stamp) if stamp is not None and stamp > 0 else NO_VALUE_TEXT
-    units = finite_number(tranche.get(UNITS_KEY, 0))
     ref = finite_number(tranche.get(REF_KEY, 0))
     return [
         QUEUE_NUMBER_FORMAT.format(number=queue_index + 1),
         age,
-        UNITS_FORMAT.format(units=units) if units is not None else NO_VALUE_TEXT,
+        units_cell(tranche)[0],
         usd_cell(tranche.get(USD_KEY, 0)),
         price_cell(tranche.get(REF_KEY, 0)),
         price_cell(tranche.get(INITIAL_BUY_PRICE_KEY, 0)),
-        min_rebuy_cell(ref, otd_pct, otd_factor)[0],
-        status_cell(price, ref, otd_pct, otd_factor)[0],
+        min_rebuy_cell(ref, otd_pct)[0],
+        status_cell(price, ref, otd_pct)[0],
         source_label(tranche),
         BLANK_LINE,
         ARBITER_NOT_APPLICABLE,
     ]
 
 
-def fold_row_colors(
-    tranche: dict, price: float, otd_pct: float, otd_factor: float
-) -> list:
+def fold_row_colors(tranche: dict, price: float, otd_pct: float) -> list:
     """The colour each cell of one fold row is drawn in."""
     colors: list = [FOLD_TRANCHE_FG_HEX] * COLUMN_COUNT
     ref = finite_number(tranche.get(REF_KEY, 0))
-    status = status_cell(price, ref, otd_pct, otd_factor)[1]
+    status = status_cell(price, ref, otd_pct)[1]
     if status is not NO_CELL_COLOR:
         colors[7] = status
     if source_label(tranche) == SOURCE_MANUAL_SCRUM:
@@ -1870,7 +1918,6 @@ class FoldTranchesTabModel:
         save: Any = None,
         now: float = 0.0,
         otd_pct: float = 0.0,
-        otd_factor: float = 1.0,
         refresh_result: str = REFRESH_DONE,
     ) -> None:
         self.bot = bot
@@ -1879,7 +1926,6 @@ class FoldTranchesTabModel:
         self.save = save if save is not None else SaveSink()
         self.now = now
         self.otd_pct = otd_pct
-        self.otd_factor = otd_factor
         self.refresh_result = refresh_result
         self.accessible_name = ACCESSIBLE_NAME
         self.form_configured = False
@@ -1907,6 +1953,15 @@ class FoldTranchesTabModel:
         self.arbiter_labels: list = []
         self.poll_elapsed_s = 0.0
         self.calls: list[ModelCall] = []
+
+    @property
+    def otd_factor(self) -> float:
+        """``fold_rebuy_factor_from_pct`` of ``otd_pct``, never settable.
+
+        Nothing can hold a factor that disagrees with ``otd_pct`` or one
+        above 1.0.
+        """
+        return fold_rebuy_factor_from_pct(self.otd_pct)
 
     def tranches(self) -> list:
         return list(getattr(self.bot, FOLD_TRANCHES_ATTRIBUTE, []) or [])
@@ -2093,7 +2148,6 @@ class FoldTranchesTabModel:
                     self.now,
                     float(getattr(self.bot, "price", 0.0) or 0.0),
                     self.otd_pct,
-                    self.otd_factor,
                 )
             )
             self.row_colors.append(
@@ -2101,7 +2155,6 @@ class FoldTranchesTabModel:
                     tranche,
                     float(getattr(self.bot, "price", 0.0) or 0.0),
                     self.otd_pct,
-                    self.otd_factor,
                 )
             )
             self.row_backgrounds.append(FOLD_TRANCHE_BG_HEX)
@@ -3225,7 +3278,6 @@ def view_model(params: dict) -> dict:
     otd = params.get("otd")
     if otd is not None:
         PANE_MODEL.otd_pct = float(otd.get("pct", 0.0) or 0.0)
-        PANE_MODEL.otd_factor = float(otd.get("factor", 1.0) or 1.0)
     bot = params.get("bot")
     if bot is not None:
         PANE_MODEL.bot = build_bot(bot)
