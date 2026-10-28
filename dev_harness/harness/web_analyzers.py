@@ -14,6 +14,8 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
+import tempfile
+from collections.abc import Sequence
 from pathlib import Path
 
 from dev_harness.harness.report import REPO_ROOT, Finding, refuse_silent_failure
@@ -22,6 +24,7 @@ __all__ = [
     "NODE_MODULES",
     "run_eslint",
     "run_html_validate",
+    "run_jscpd",
     "run_stylelint",
 ]
 
@@ -36,6 +39,19 @@ _HTML_VALIDATE_SEVERITY: dict[int, str] = {2: "high", 1: "medium"}
 
 # A message carrying a null rule name still needs a rule_id in the report.
 _NO_RULE = "no-rule"
+
+# The one format jscpd carries that reads a documentation page; its format
+# list names no plain-text reader, so a .txt page draws no clone.
+_JSCPD_FORMAT = "markdown"
+
+# jscpd's own defaults. Measured over docs/manual: 74 clones here, against
+# 27952 at --min-lines 1 --min-tokens 3, the floor that reads one line.
+_JSCPD_MIN_LINES = 5
+_JSCPD_MIN_TOKENS = 50
+
+# jscpd --absolute prints the Windows extended-length form, and no Path
+# comparison matches a name carrying this prefix.
+_EXTENDED_PATH_PREFIX = "\\\\?\\"
 
 
 def _node_executable() -> str:
@@ -201,6 +217,98 @@ def run_html_validate(target: Path) -> tuple[list[Finding], str]:
                     line=message.get("line", 0),
                     rule_id=message.get("ruleId") or _NO_RULE,
                     message=message.get("message", ""),
+                )
+            )
+    return findings, "ok"
+
+
+def _jscpd_report(scope: Sequence[Path]) -> list[dict]:
+    """Run jscpd over `scope` and return its `duplicates` rows.
+
+    jscpd writes its json reporter to a file, so the run gets a temporary
+    `--output` directory that is removed once the rows are read.
+    """
+    out_dir = Path(tempfile.mkdtemp(prefix="jscpd-"))
+    try:
+        proc = subprocess.run(
+            [
+                _node_executable(),
+                _package_script("jscpd"),
+                *(str(path) for path in scope),
+                "--format",
+                _JSCPD_FORMAT,
+                "--min-lines",
+                str(_JSCPD_MIN_LINES),
+                "--min-tokens",
+                str(_JSCPD_MIN_TOKENS),
+                "--reporters",
+                "json",
+                "--output",
+                str(out_dir),
+                "--absolute",
+                "--no-colors",
+                "--silent",
+            ],
+            cwd=str(REPO_ROOT),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=_TIMEOUT_SECONDS,
+            check=False,
+        )
+        report = out_dir / "jscpd-report.json"
+        if not report.is_file():
+            detail = (proc.stderr or "").strip().replace("\n", " ")
+            raise RuntimeError(
+                f"jscpd exited {proc.returncode} and wrote no report: {detail[:240]}"
+            )
+        parsed = json.loads(report.read_text(encoding="utf-8"))
+    finally:
+        shutil.rmtree(out_dir, ignore_errors=True)
+    rows = parsed.get("duplicates", [])
+    if not isinstance(rows, list):
+        raise RuntimeError(f"jscpd reported {type(rows).__name__}, not a list")
+    return rows
+
+
+def _clone_path(name: str) -> str:
+    """Resolved path of a jscpd clone side, with `_EXTENDED_PATH_PREFIX` cut."""
+    if name.startswith(_EXTENDED_PATH_PREFIX):
+        name = name[len(_EXTENDED_PATH_PREFIX) :]
+    return str(Path(name).resolve())
+
+
+def run_jscpd(
+    scope: Sequence[Path], pages: Sequence[Path]
+) -> tuple[list[Finding], str]:
+    """Report the passages `pages` repeat elsewhere under `scope`.
+
+    Every row is `low`: measured over `docs/manual` at the jscpd defaults
+    `_JSCPD_MIN_LINES` and `_JSCPD_MIN_TOKENS`, 74 clones name 17 of 31
+    pages, and a blocking severity would refuse all 17 at once.
+    """
+    wanted = {str(page.resolve()) for page in pages}
+    findings: list[Finding] = []
+    for row in _jscpd_report(scope):
+        first = row.get("firstFile") or {}
+        second = row.get("secondFile") or {}
+        for near, far in ((first, second), (second, first)):
+            name = near.get("name") or ""
+            if not name or _clone_path(name) not in wanted:
+                continue
+            findings.append(
+                Finding(
+                    tool="jscpd",
+                    severity="low",
+                    file=_clone_path(name),
+                    line=(near.get("startLoc") or {}).get("line", 0),
+                    rule_id=f"clone-{row.get('kind') or 'exact'}",
+                    message=(
+                        f"{row.get('lines', 0)} lines repeated in "
+                        f"{Path(far.get('name') or '').name} at line "
+                        f"{(far.get('startLoc') or {}).get('line', 0)}"
+                    ),
                 )
             )
     return findings, "ok"

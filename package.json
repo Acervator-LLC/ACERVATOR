@@ -2,7 +2,7 @@
   "name": "acervator-analyzers",
   "private": true,
   "version": "0.0.0",
-  "description": "ESLint, Stylelint and html-validate, plus the Solidity libraries contracts/ imports. Resolved by forge through the libs path in foundry.toml.",
+  "description": "ESLint, Stylelint, html-validate and jscpd, plus the Solidity libraries contracts/ imports. Resolved by forge through the libs path in foundry.toml.",
   "devDependencies": {
     "@chainlink/contracts": "1.5.0",
     "@eslint/js": "10.0.1",
@@ -10,6 +10,7 @@
     "eslint": "10.13.0",
     "globals": "17.13.0",
     "html-validate": "11.17.0",
+    "jscpd": "5.4.2",
     "stylelint": "17.16.0",
     "stylelint-config-recommended": "18.0.0"
   },
