@@ -125,6 +125,10 @@ class ExecutionEngineMixin:
     # callers that take those units off _main_lots.
     _last_sell_filled_units: float = 0.0
 
+    # The units the venue reported bought on the last _execute_buy, for the
+    # callers that add those units to _main_lots.
+    _last_buy_filled_units: float = 0.0
+
     # One get_order per fill whose placed order reported no fee, and none otherwise.
     _VENUE_FEE_REREADS = 1
     _VENUE_FEE_REREAD_DELAY_S = 0.2
@@ -139,6 +143,7 @@ class ExecutionEngineMixin:
             "SCRUM",
             "DIST",
             "STACK",
+            "FOLD",
         )
     )
 
@@ -1974,9 +1979,17 @@ class ExecutionEngineMixin:
         """Place a market buy and return the fill price, or None when refused.
 
         ``trace_context`` supplies the ``path`` named in the buy trace this
-        emits to ``bot.log``, and ``_last_fill_venue_fee`` is cleared on entry.
+        emits to ``bot.log``. ``_settled_fill`` supplies the units the venue
+        reported bought, and those units are what reaches
+        ``_current_holdings`` and ``_audited_venue_units``; ``cost`` is only
+        what was asked for, so a resting or partly filled order adds no units
+        the venue never bought. A venue reporting no filled amount leaves both
+        figures untouched and answers None, which every caller already reads as
+        no buy. The figure is left on ``_last_buy_filled_units`` for the
+        callers that add the same units to ``_main_lots``.
         """
         self._last_fill_venue_fee = None
+        self._last_buy_filled_units = 0.0
 
         try:
             _ctx = dict(trace_context or {})
@@ -2310,31 +2323,56 @@ class ExecutionEngineMixin:
                     )
                 return None
 
-            self._current_holdings += amount
+            # The only point on the FOLD and ENTRY paths holding the settled
+            # order; _settled_fill records the venue fee off it.
+            filled_units, actual_fill, _ = await self._settled_fill(
+                order, self.config.symbol, amount, price, label="FOLD"
+            )
+            if filled_units <= 0:
+                self._bus.emit(
+                    "bot.log",
+                    bot_id=self.bot_id,
+                    message=(
+                        f"BUY SENT, NO FILL REPORTED: {amount:.6f} "
+                        f"{self.config.target_asset} @ ${price:.8f} was "
+                        f"accepted and the exchange reported no filled "
+                        f"amount. Holdings and the lot book are unchanged. A "
+                        f"LIMIT order resting on the book reports this until "
+                        f"it trades."
+                    ),
+                )
+                self._emit_trade_notification(
+                    "FOLD", "REFUSED", "exchange reported no filled amount"
+                )
+                try:
+                    await self._reconcile_holdings(reason="post_failure")
+                except Exception as _sup:
+                    logger.debug(
+                        "suppressed in %s: %s: %s",
+                        "_execute_buy",
+                        type(_sup).__name__,
+                        _sup,
+                    )
+                return None
+            if not actual_fill or actual_fill <= 0:
+                actual_fill = price
+
+            self._last_buy_filled_units = filled_units
+            self._current_holdings += filled_units
             # _fresh_units is the pre-fill venue reading _verify_buy_safe_or_refuse
             # already took, so the row's venue figure moves with no second fetch.
-            self._record_audited_venue_units(_fresh_units + amount)
+            self._record_audited_venue_units(_fresh_units + filled_units)
             self.stats.total_buys += 1
             self.stats.total_trades += 1
 
-            actual_fill = getattr(order, "average", None) or getattr(
-                order, "price", None
-            )
-            if not actual_fill or actual_fill <= 0:
-                actual_fill = price
-            # The only point on the FOLD and ENTRY paths holding the settled order.
-            self._last_fill_venue_fee = self._venue_fee_record(
-                order, amount, actual_fill
-            )
-            await self._settle_venue_fee(order, amount, actual_fill)
             slippage_pct = ((actual_fill - price) / price * 100.0) if price > 0 else 0.0
 
-            self.stats.trade_volume += amount * actual_fill
+            self.stats.trade_volume += filled_units * actual_fill
             self.stats.last_trade_time = time.time()
 
             try:
                 _qrate = float(getattr(self, "_quote_to_usd", 1.0) or 1.0)
-                _fill_usd = float(amount) * float(actual_fill) * _qrate
+                _fill_usd = float(filled_units) * float(actual_fill) * _qrate
                 self.stats.ytd_folded_usd = (
                     float(getattr(self.stats, "ytd_folded_usd", 0.0) or 0.0) + _fill_usd
                 )
@@ -2349,17 +2387,21 @@ class ExecutionEngineMixin:
             self._bus.emit(
                 "bot.log",
                 bot_id=self.bot_id,
-                message=f"BUY FILLED: {amount:.6f} {self.config.target_asset} "
+                message=f"BUY FILLED: {filled_units:.6f} "
+                f"{self.config.target_asset} of {amount:.6f} asked "
                 f"@ ${actual_fill:.8f} "
                 f"(intended ${price:.8f}, slip {slippage_pct:+.3f}%, "
                 f"holdings now {self._current_holdings:.6f})",
             )
             self._emit_trade_notification(
-                "FOLD", "FILLED", f"{amount:.6f} @ ${actual_fill:.8f}"
+                "FOLD", "FILLED", f"{filled_units:.6f} @ ${actual_fill:.8f}"
             )
 
             await self._spawn_stack_from_fold(
-                fold_price=actual_fill, fold_size=amount, summary=summary, path=_path
+                fold_price=actual_fill,
+                fold_size=filled_units,
+                summary=summary,
+                path=_path,
             )
             return actual_fill
         except Exception as exc:
