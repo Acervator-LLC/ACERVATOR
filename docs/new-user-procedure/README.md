@@ -111,3 +111,78 @@ The deck's own second commit recorded the state this replaces:
 The current reading: the production is in the tree. The guard still refuses a new
 file of its own under that folder, so the production joined the module that
 already composes this repository's other slide show.
+
+## How many screens and how many decisions
+
+Driven on an empty home, with the home redirected before the first import. Nine
+screens stand between a double-click and one running bot.
+
+| # | screen | what the owner does | decisions |
+|---|---|---|---|
+| 1 | the splash | nothing, or one click to skip it | 1, optional |
+| 2 | the window, open on Live | press Add Crypto Exchange | 1 |
+| 3 | the venue form | type the key and the secret, press Test and Add | 3 |
+| 4 | the venue's own sub-tab | press New Bot | 1 |
+| 5 | Trading Mode | pick the engine, press Next | 3 |
+| 6 | Select Asset Pair | pick the venue and the pair, press Next | 4 |
+| 7 | Trading Parameters | set what the cycle runs on, press Next | 64 |
+| 8 | Phantom Bots | settle the shadow reader, press Finish | 15 |
+| 9 | the bot list under Live | press Start | 1 |
+
+The four wizard pages carry **82** controls an owner may set. The three pages
+before them and the one after carry **6** presses and two fields. Nothing
+refuses to advance: every page on the path reports itself complete as it opens,
+so an owner who touches none of the 82 reaches Start on the shipped defaults.
+
+The splash closes on its own at 8.5 seconds. `src/gui/main_tabs/splash_screen_surface.py, in paint_ops`
+reports 467 drawing calls at the three second mark, eight lines of text, and the
+sigil's seven layers at 3,500 triangles.
+
+**No walkthrough appears inside the window.** A machine that has never run
+Acervator reads an empty stored name, the startup block writes a line to the log
+and opens nothing, and `src/core/instance_guard.py, in InstanceGuard.evaluate`
+answers that this machine now owns the directory. These pages are the whole
+procedure. Driven on an empty home and on a home holding a saved fleet, the
+count of screens the program offers a newcomer of its own accord is nought in
+both.
+
+### What these pages describe, and what they do not
+
+The bar carries nine tabs. Six have a page of their own, Live is reached by
+steps 6 to 8, and three have none.
+
+| tab | page |
+|---|---|
+| Sim | step 22 |
+| Paper | step 23 |
+| Live | steps 6, 7 and 8 |
+| Charts | step 24 |
+| Inspector | step 25 |
+| Swarm | step 26 |
+| History | step 27 |
+| Status | none |
+| Console | none |
+
+The window declares four menus — Exchange, File, Help and Theme — and **none of
+the four has a page**. That is the second row of this how-to's own build order
+and it is not built.
+
+The program offers six asset classes and every one of them takes a venue. Read
+off `src/trading/ata_spm.py, in ASSET_CLASSES`, with the venue count each one
+reports:
+
+| class, as the screen titles it | venues |
+|---|---|
+| Crypto | 24 |
+| Stock | 21 |
+| Commodities | 21 |
+| Forex | 16 |
+| Indices | 20 |
+| Futures / Perps | 18 |
+
+`derivatives` is a retired name. `asset_class_surface.normalise` sends it to
+crypto, and so does any name the taxonomy does not hold, so a reading taken on
+that word is a reading of Crypto.
+
+These pages name Crypto and nothing else, so the control that picks a class is
+on no page.

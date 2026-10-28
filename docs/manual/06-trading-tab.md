@@ -153,6 +153,48 @@ The browser build holds none of this geometry. It replays the triangle list the
 painter sends it, so one generator serves both builds and there is no second
 copy to fall out of step.
 
+### What the launch frame shades, and what only the still picture gets
+
+The section *How it is built* above says:
+
+> `compose_still` in `src/gui/main_tabs/splash_screen_painter.py` runs every
+> generator into its own layer, adds a bloom, a blur, grain, a tone grade and a
+> vignette, and writes the picture above.
+
+That sentence describes the picture on this page. It does not describe a launch.
+`compose_still` has no caller in the tree, so the bloom, the blur, the grain,
+the tone grade and the vignette reach the still picture alone. A launch goes
+through `mark_ops` in the same module, which emits the triangle list and no post
+step.
+
+Read off both routes on the shipped tree:
+
+| What was read | Figure |
+| ------------- | ------ |
+| Callers of `compose_still` | 0 |
+| Callers of `mark_ops` | 1, `main.py` |
+| Triangle groups the launch frame draws | 76 |
+| Distinct triangle tones in the launch frame | 810 |
+| Post steps applied to the launch frame | 0 |
+| Post steps `compose_still` applies | 5 |
+
+So the mark is not flat. `toned_mesh` gives every triangle its own tone of its
+layer's colour, and the launch frame carries 810 of them across the seven
+layers. What a launch does not carry is the surface texture: no bloom around the
+aura, no grain, no tone grade and no vignette.
+
+`src/gui/main_tabs/splash_screen_painter.py` — the two routes
+
+```python
+def mark_ops(cx: Any, cy: Any, alpha: int, spin: Any, pulse: Any, t: Any) -> list:
+    """The mark's painter calls, taken from `sigil_ops` in the surface module."""
+    return surface.sigil_ops(cx, cy, alpha, spin, pulse, t)
+```
+
+The five post steps named above are `with_bloom`, `with_outer_blur`,
+`with_grain`, `with_grade` and `with_vignette`. All five are present and all
+five sit behind `compose_still`.
+
 ## Trading Tab
 
 Here you see the first subsystem we are going to cover and this will primarily be due to familiarizing the prospective investor or user with the core trading philosophy and strategies that drive Acervator. To begin, the platform runs locally on whichever hardware is selected. A single authorization phase requiring a purchased license key will be the only non-exchange communication the application will ever need. The user’s keys and secrets are stored locally and encrypted after API handshake verification passes which allows the chosen exchange to be initialized. At a later development stage, I have plans for dedicated hardware that uses a hardware key for quick boot into a given user’s account and also allows the platform to run in isolation under Linux.
