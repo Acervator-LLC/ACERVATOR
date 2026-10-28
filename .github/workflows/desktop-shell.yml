@@ -1,0 +1,309 @@
+# Acervator desktop shell — the check that installs the shell and starts it.
+#
+# `desktop/package.json` declares electron and `desktop/package-lock.json`
+# pins it. No other workflow reaches that folder: both `npm ci` steps in
+# ci.yml run at the repository root, the root package.json declares no
+# workspaces, and electron is in no root lock file. A version bump of the
+# shell therefore reached `current` having never been installed or started.
+#
+# An install on its own catches a dependency that will not resolve and
+# catches no breaking change, so this job starts the shell once and reads the
+# loaded page back out of the running window. The read-back goes through
+# Chromium's own debugging endpoint and asks the document for its
+# `readyState`, the `panels` element index.html declares, its `script[src]`
+# count, and the type of `window.React`. An error page carries none of those.
+#
+# The launch runs with HOME on a scratch directory, so no bot state file and
+# no credential file is reachable. ACERVATOR_BRIDGE_ARGV names an inert
+# interpreter, so main.js spawns `-c pass` instead of main.py and no venue is
+# contacted.
+#
+# ci.yml is unchanged and `ci-gate` does not require this job, so its verdict
+# is reported and blocks no merge.
+name: desktop shell
+
+on:
+  pull_request:
+    paths:
+      - desktop/**
+      - .github/workflows/desktop-shell.yml
+  push:
+    branches: [main]
+    paths:
+      - desktop/**
+      - .github/workflows/desktop-shell.yml
+  # Lets the job be run on demand against any branch from the Actions tab.
+  workflow_dispatch:
+
+concurrency:
+  group: desktop-shell-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  shell:
+    name: shell
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      # Where the launched shell writes. Not the runner's own HOME.
+      LAUNCH_HOME: ${{ github.workspace }}/launch-home
+      # The port Chromium answers /json/list on.
+      DEBUG_PORT: 9222
+      # Seconds to wait for the window to publish a page target.
+      PAGE_WAIT_SECONDS: 90
+      # main.js reads this as the backend argv; `-c pass` exits at once.
+      ACERVATOR_BRIDGE_ARGV: -c pass
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          # desktop/package-lock.json was written by npm 11, which ships with
+          # node 24.
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      - name: Install the shell's own folder
+        working-directory: desktop
+        run: npm ci
+
+      - name: Report the electron that arrived
+        # electron 45 declares no postinstall script, so `npm ci` leaves
+        # node_modules/electron/dist empty and require() fetches the binary.
+        working-directory: desktop
+        run: |
+          set -euo pipefail
+          node -p "require('electron/package.json').version"
+          # The first require prints a progress line on stdout, so the path is
+          # read from a second one.
+          node -e "require('electron')"
+          binary="$(node -p "require('electron')")"
+          ls -l "$binary"
+
+      - name: Install the display the shell draws into
+        # Electron opens a real window; xvfb-run supplies the X display the
+        # runner has none of.
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends xvfb
+          xvfb-run --help | head -3
+
+      - name: Start the shell once and read its page back
+        shell: xvfb-run -a node {0}
+        run: |
+          "use strict";
+
+          const { spawn } = require("child_process");
+          const fs = require("fs");
+          const path = require("path");
+
+          const SHELL_DIR = path.join(process.cwd(), "desktop");
+          const DEBUG_PORT = Number(process.env.DEBUG_PORT || 9222);
+          const WAIT_SECONDS = Number(process.env.PAGE_WAIT_SECONDS || 90);
+          const LAUNCH_HOME =
+            process.env.LAUNCH_HOME || path.join(process.cwd(), "launch-home");
+          // Every file electron writes lands here, on every platform.
+          const USER_DATA_DIR = path.join(LAUNCH_HOME, "electron");
+          const PAGE_SUFFIX = "renderer/index.html";
+          const ANSWER_MS = 30000;
+
+          // Reads readyState, the panels element, every script[src], and
+          // window.React.
+          const READ_BACK = `JSON.stringify({
+            state: document.readyState,
+            title: document.title,
+            panels: document.getElementById("panels") ? 1 : 0,
+            scripts: document.querySelectorAll("script[src]").length,
+            react: typeof window.React
+          })`;
+
+          function sleep(ms) {
+            return new Promise((done) => setTimeout(done, ms));
+          }
+
+          async function pageTarget() {
+            const answer = await fetch(
+              `http://127.0.0.1:${DEBUG_PORT}/json/list`
+            );
+            const targets = await answer.json();
+            return (
+              targets.find(
+                (one) =>
+                  one.type === "page" && String(one.url).endsWith(PAGE_SUFFIX)
+              ) || null
+            );
+          }
+
+          function readPage(socketUrl) {
+            return new Promise((resolve, reject) => {
+              const socket = new WebSocket(socketUrl);
+              const giveUp = setTimeout(() => {
+                socket.close();
+                reject(new Error("the page did not answer"));
+              }, ANSWER_MS);
+              socket.addEventListener("open", () => {
+                socket.send(
+                  JSON.stringify({
+                    id: 1,
+                    method: "Runtime.evaluate",
+                    params: { expression: READ_BACK, returnByValue: true }
+                  })
+                );
+              });
+              socket.addEventListener("message", (event) => {
+                const frame = JSON.parse(event.data);
+                if (frame.id !== 1) {
+                  return;
+                }
+                clearTimeout(giveUp);
+                socket.close();
+                const held = frame.result && frame.result.result;
+                if (!held || typeof held.value !== "string") {
+                  reject(new Error("Runtime.evaluate: " + event.data));
+                  return;
+                }
+                resolve(JSON.parse(held.value));
+              });
+              socket.addEventListener("error", () => {
+                clearTimeout(giveUp);
+                reject(new Error("the debugging socket failed"));
+              });
+            });
+          }
+
+          function faultsIn(reading) {
+            const faults = [];
+            if (reading.state !== "complete") {
+              faults.push("readyState is " + reading.state);
+            }
+            if (reading.panels !== 1) {
+              faults.push("the page carries no panels element");
+            }
+            if (reading.scripts < 1) {
+              faults.push("the page carries no script element");
+            }
+            if (reading.react !== "object") {
+              faults.push("window.React is " + reading.react);
+            }
+            return faults;
+          }
+
+          // ELECTRON_RUN_AS_NODE makes the binary run main.js as plain node,
+          // where `app` is undefined and no window opens.
+          function childEnvironment() {
+            const held = { ...process.env, HOME: LAUNCH_HOME };
+            delete held.ELECTRON_RUN_AS_NODE;
+            return held;
+          }
+
+          async function main() {
+            fs.mkdirSync(LAUNCH_HOME, { recursive: true });
+            const binary = require(
+              path.join(SHELL_DIR, "node_modules", "electron")
+            );
+            console.log("shell folder:  " + SHELL_DIR);
+            console.log("electron:      " + binary);
+            console.log("HOME:          " + LAUNCH_HOME);
+            console.log("user data dir: " + USER_DATA_DIR);
+            console.log(
+              "backend argv:  " + (process.env.ACERVATOR_BRIDGE_ARGV || "unset")
+            );
+
+            const child = spawn(
+              binary,
+              [
+                ".",
+                "--remote-debugging-port=" + DEBUG_PORT,
+                "--user-data-dir=" + USER_DATA_DIR,
+                "--no-sandbox",
+                "--disable-gpu"
+              ],
+              {
+                cwd: SHELL_DIR,
+                env: childEnvironment(),
+                stdio: ["ignore", "pipe", "pipe"]
+              }
+            );
+            let exited = null;
+            child.on("exit", (code) => {
+              exited = code;
+            });
+            for (const stream of [child.stdout, child.stderr]) {
+              stream.setEncoding("utf8");
+              stream.on("data", (text) =>
+                process.stdout.write("[shell] " + text)
+              );
+            }
+
+            let target = null;
+            for (let second = 0; second < WAIT_SECONDS; second += 1) {
+              if (exited !== null) {
+                break;
+              }
+              try {
+                target = await pageTarget();
+              } catch (unreachable) {
+                target = null;
+              }
+              if (target) {
+                break;
+              }
+              await sleep(1000);
+            }
+
+            if (exited !== null) {
+              console.log(
+                "FAILURE the shell exited with code " +
+                  exited +
+                  " before any page loaded"
+              );
+              return 1;
+            }
+            if (!target) {
+              console.log(
+                "FAILURE no page target after " + WAIT_SECONDS + " seconds"
+              );
+              child.kill();
+              return 1;
+            }
+
+            console.log("page url:      " + target.url);
+            let reading = null;
+            try {
+              reading = await readPage(target.webSocketDebuggerUrl);
+            } catch (refused) {
+              console.log("FAILURE " + refused.message);
+              child.kill();
+              return 1;
+            }
+            console.log("page reading:  " + JSON.stringify(reading));
+            console.log(
+              "HOME holds:    " + fs.readdirSync(LAUNCH_HOME).join(" ")
+            );
+            child.kill();
+
+            const faults = faultsIn(reading);
+            for (const fault of faults) {
+              console.log("FAILURE " + fault);
+            }
+            if (faults.length) {
+              return 1;
+            }
+            console.log(
+              "the shell started and its page loaded: " +
+                reading.scripts +
+                " scripts, title " +
+                reading.title
+            );
+            return 0;
+          }
+
+          main().then(
+            (code) => process.exit(code),
+            (err) => {
+              console.log("FAILURE " + err.stack);
+              process.exit(1);
+            }
+          );
