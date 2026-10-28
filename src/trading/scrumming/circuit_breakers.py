@@ -277,7 +277,6 @@ class CircuitBreakerMixin(_Host):
                     ),
                 )
 
-        # --- Soft breaker check ---
         # Only trip on a fresh candle, not already soft-tripped.
         if not already_seen and self._cb_soft_active_side is None and move.soft_side:
             side = move.soft_side
