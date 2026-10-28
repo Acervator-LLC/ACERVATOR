@@ -327,6 +327,18 @@ if _HAS_QT:
             self._show_fleet_lock_state()
             return group
 
+        def _fleet_lock_drawn(self) -> bool:
+            """Whether this build drew the three controls ``_settle_fleet_lock`` reads.
+
+            ``_create_fleet_lock_group`` builds them for the Qt page, and the
+            drawn build replaces ``_setup_ui`` with one web view and holds no
+            row of its own, so there is nothing for a Save to read there.
+            """
+            return all(
+                getattr(self, name, None) is not None
+                for name in ("_lock_phrase", "_lock_confirm", "_lock_clear")
+            )
+
         def _fleet_lock_held(self) -> bool:
             """Whether a sealed master key file is on disk for this install.
 
@@ -2048,8 +2060,11 @@ if _HAS_QT:
             ``_seal_fleet_lock``, ``_reseal_fleet_lock`` and
             ``_clear_fleet_lock`` are the three that touch a file, each reached
             only after the operator answers Yes to the question that names what
-            it does.
+            it does. A build whose ``_fleet_lock_drawn`` answers False is left
+            alone, so no Save reports a question it had no rows to put.
             """
+            if not self._fleet_lock_drawn():
+                return
             answer = sds.fleet_lock_intent(
                 self._fleet_lock_held(),
                 self._lock_phrase.text(),

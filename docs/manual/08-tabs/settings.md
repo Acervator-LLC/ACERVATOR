@@ -9412,6 +9412,13 @@ Unlock the fleet is dead while the row is empty, on both builds.
 `src/gui/main_tabs/fleet_unlock_surface.py, in takes_press` is the one reading
 behind it.
 
+The four Fleet Lock controls are on the Qt page. The drawn build replaces
+`in _setup_ui` with one web view and holds no row of its own, so
+`src/gui/settings_dialog.py, in _fleet_lock_drawn` answers False there and a
+Save on that page touches no lock and puts no line on the Console. Measured both
+ways: the page that drew the group refused a half-filled pair with one line, and
+the page that drew none added no line and asked no question.
+
 Measured on the built screen, against a sealed fleet of two bots and one wire:
 
 | The password | The answer | On screen | Bots loaded | Files changed |
