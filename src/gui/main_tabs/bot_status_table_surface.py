@@ -81,50 +81,14 @@ COLUMN_LABELS = (
 COLUMN_COUNT = len(COLUMN_LABELS)
 
 COLUMN_TOOLTIPS = {
-    0: (
-        "The target asset this bot accumulates, drawn as that asset's own\n"
-        "official logo. An asset with no logo kept yet shows its ticker.\n"
-        "Click a mark to open that asset's own organisation in your browser.\n"
-        "A mark for an asset with no web address is not a link and says so.\n"
-        "The bot's own id is no longer shown here: it stays in the record\n"
-        "and in the logs, and the Detail button opens the bot that holds it."
-    ),
-    1: (
-        "Trading pair (Target Asset / Base Currency), coloured by current state.\n"
-        "Green = RUNNING · Amber = PAUSED · Gray = IDLE/STOPPED\n"
-        "Red = ERROR · Orange = COOLDOWN · Cyan = STARTING\n"
-        "Hover a cell to read the mode and the state in full."
-    ),
-    2: (
-        "Current Position Value — what this bot's holdings are worth now,\n"
-        "priced from the exchange (holdings × exchange price × quote rate).\n"
-        "Blank whenever no fresh exchange price exists: the cell never shows\n"
-        "a last-known figure, a computed stand-in or a ledger value.\n"
-        "Hover a blank cell to read which of those is missing."
-    ),
+    0: "The asset this bot accumulates. A mark opens its organisation.",
+    1: "The trading pair, coloured by this bot's state.",
+    2: "What the holdings are worth now, priced from the exchange.",
     3: "Total number of executed buy and sell trades",
-    4: "Target Balance — the operator-set balance this bot trades\n"
-    "relative to. Position can never exceed Target × (1 + Max Target Growth %).",
-    5: (
-        "Target Balance denominated in BTC (target USD ÷ BTC/USD spot).\n"
-        "Suffix Δ = 24h % change of <target>/BTC minus 24h % of "
-        "<target>/USD.\n"
-        "Positive Δ (green) = BTC-quoted pair cheaper in USD terms than USD-quoted.\n"
-        "Blank when pair unlisted on this exchange or target is BTC itself."
-    ),
-    6: (
-        "Target Balance denominated in ETH (target USD ÷ ETH/USD spot).\n"
-        "Suffix Δ = 24h % change of <target>/ETH minus 24h % of "
-        "<target>/USD.\n"
-        "Positive Δ (green) = ETH-quoted pair cheaper in USD terms than USD-quoted.\n"
-        "Blank when pair unlisted on this exchange or target is ETH itself."
-    ),
-    7: (
-        "Ammo — distance of current position value from Target.\n"
-        "Green = surplus above target (Scrum territory, next action = SELL).\n"
-        "Red = deficit below target (Fold territory, next action = BUY).\n"
-        "Neutral grey = within dust band around target (no action pending)."
-    ),
+    4: "The balance this bot trades against, and its hard cap.",
+    5: "Target balance in BTC. Blank when the pair is unlisted.",
+    6: "Target balance in ETH. Blank when the pair is unlisted.",
+    7: "The distance from Target. Green sells, red buys.",
     8: "Manual Fire — force immediate scrum/fold evaluation on next tick",
     9: "Click for full bot detail and status explanation",
 }

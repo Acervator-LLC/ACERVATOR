@@ -52,6 +52,7 @@ try:
     from PySide6.QtCore import Qt, QTimer, QPointF
 
     from . import design_system as ds
+    from .tooltips import set_description
 
     _HAS_QT = True
 except ImportError:
@@ -70,6 +71,7 @@ if _HAS_QT:
 
         def __init__(self, parent=None):
             super().__init__(parent)
+            self.setAccessibleName("Bot Swarm")
             from .main_tabs.bot_visualizer_surface import FrameCadence
 
             self._theme_key = "quantum"
@@ -131,9 +133,10 @@ if _HAS_QT:
             # bot_swarm.identifiers masks both bot ids and symbol labels.
             self._bot_swarm_privacy_dot = QLabel("●")
             self._bot_swarm_privacy_dot.setCursor(Qt.PointingHandCursor)
-            self._bot_swarm_privacy_dot.setToolTip(
+            set_description(
+                self._bot_swarm_privacy_dot,
                 "Bot Swarm identifier privacy — masks bot hash IDs + "
-                "symbol labels (● revealed / ○ masked)."
+                "symbol labels (● revealed / ○ masked).",
             )
             self._bot_swarm_privacy_dot.mousePressEvent = (
                 lambda _e: self._toggle_bot_swarm_identifier_mask()
@@ -144,9 +147,10 @@ if _HAS_QT:
             header.addStretch()
 
             self._privacy_mode_btn = QPushButton("Privacy Mode: OFF")
-            self._privacy_mode_btn.setToolTip(
+            set_description(
+                self._privacy_mode_btn,
                 "Toggle ALL privacy masks across Trading + Bot Swarm "
-                "tabs (shared singleton)."
+                "tabs (shared singleton).",
             )
             self._privacy_mode_btn.clicked.connect(self._on_privacy_mode_btn_clicked)
             self._refresh_privacy_mode_btn()
@@ -156,9 +160,10 @@ if _HAS_QT:
             header.addWidget(QLabel("Exchange:"))
             self._exchange_combo = QComboBox()
             self._exchange_combo.addItem("All", "")
-            self._exchange_combo.setToolTip(
+            set_description(
+                self._exchange_combo,
                 "Filter Bot Swarm visualizer + Quick Routing scope by "
-                "exchange. Default: All."
+                "exchange. Default: All.",
             )
             self._exchange_combo.currentIndexChanged.connect(
                 self._on_exchange_filter_changed
@@ -167,6 +172,10 @@ if _HAS_QT:
 
             header.addWidget(QLabel("Theme:"))
             self._theme_combo = QComboBox()
+            set_description(
+                self._theme_combo,
+                "The colour theme this canvas draws its bots and wires in.",
+            )
             for key, theme in THEMES.items():
                 self._theme_combo.addItem(theme["name"], key)
             self._theme_combo.setCurrentIndex(2)
@@ -180,9 +189,10 @@ if _HAS_QT:
             self._wire_opacity_slider.setRange(0, 100)
             self._wire_opacity_slider.setValue(100)
             self._wire_opacity_slider.setFixedWidth(90)
-            self._wire_opacity_slider.setToolTip(
+            set_description(
+                self._wire_opacity_slider,
                 "Wire opacity 0–100 %. Lower for more contrast on "
-                "underlying readouts; 100 = fully opaque."
+                "underlying readouts; 100 = fully opaque.",
             )
             self._wire_opacity_slider.valueChanged.connect(
                 self._on_wire_opacity_changed
@@ -246,6 +256,7 @@ if _HAS_QT:
             sim_hdr.addStretch()
 
             sim_add_btn = QPushButton("+ Add Sim Bot")
+            set_description(sim_add_btn, "Adds one simulated bot row to this swarm.")
             sim_add_btn.setStyleSheet(
                 f"QPushButton{{background:{ds.VIZ_PANEL_SURFACE};color:{ds.SUCCESS};border:1px solid {ds.SUCCESS};"
                 "border-radius:3px;padding:3px 10px;font-size:9px;font-weight:bold;}"
@@ -254,6 +265,9 @@ if _HAS_QT:
             sim_hdr.addWidget(sim_add_btn)
 
             sim_run_all = QPushButton("▶ Run All")
+            set_description(
+                sim_run_all, "Starts every simulated bot row that is not running."
+            )
             sim_run_all.setStyleSheet(
                 f"QPushButton{{background:{ds.VIZ_PANEL_SURFACE};color:{ds.PRIMARY_BRIGHT};border:1px solid {ds.PRIMARY_BRIGHT};"
                 "border-radius:3px;padding:3px 10px;font-size:9px;font-weight:bold;}"
@@ -262,6 +276,9 @@ if _HAS_QT:
             sim_hdr.addWidget(sim_run_all)
 
             sim_stop_all = QPushButton("■ Stop All")
+            set_description(
+                sim_stop_all, "Stops every simulated bot row that is running."
+            )
             sim_stop_all.setStyleSheet(
                 f"QPushButton{{background:{ds.VIZ_PANEL_SURFACE};color:{ds.ERROR};border:1px solid {ds.ERROR};"
                 "border-radius:3px;padding:3px 10px;font-size:9px;font-weight:bold;}"
@@ -355,6 +372,7 @@ if _HAS_QT:
             paper_hdr.addStretch()
 
             paper_add_btn = QPushButton("+ Add Paper Bot")
+            set_description(paper_add_btn, "Adds one paper bot row to this swarm.")
             paper_add_btn.setStyleSheet(
                 f"QPushButton{{background:{ds.VIZ_PANEL_SURFACE};color:{ds.ACCENT_GOLD};border:1px solid {ds.ACCENT_GOLD};"
                 "border-radius:3px;padding:3px 10px;font-size:9px;font-weight:bold;}"
@@ -363,6 +381,9 @@ if _HAS_QT:
             paper_hdr.addWidget(paper_add_btn)
 
             paper_start_all = QPushButton("▶ Start All")
+            set_description(
+                paper_start_all, "Starts every paper bot row that is not running."
+            )
             paper_start_all.setStyleSheet(
                 f"QPushButton{{background:{ds.VIZ_PANEL_SURFACE};color:{ds.SUCCESS};border:1px solid {ds.SUCCESS};"
                 "border-radius:3px;padding:3px 10px;font-size:9px;font-weight:bold;}"
@@ -371,6 +392,9 @@ if _HAS_QT:
             paper_hdr.addWidget(paper_start_all)
 
             paper_stop_all = QPushButton("■ Stop All")
+            set_description(
+                paper_stop_all, "Stops every paper bot row that is running."
+            )
             paper_stop_all.setStyleSheet(
                 f"QPushButton{{background:{ds.VIZ_PANEL_SURFACE};color:{ds.ERROR};border:1px solid {ds.ERROR};"
                 "border-radius:3px;padding:3px 10px;font-size:9px;font-weight:bold;}"
@@ -513,7 +537,7 @@ if _HAS_QT:
                 ]
             )
             asset_combo.setFixedWidth(110)
-            asset_combo.setToolTip("Trading pair — type any symbol")
+            set_description(asset_combo, "Trading pair — type any symbol")
             rl.addWidget(asset_combo)
 
             preset_combo = QComboBox()
@@ -659,9 +683,10 @@ if _HAS_QT:
                 ]
             )
             pair_edit.setFixedWidth(110)
-            pair_edit.setToolTip(
+            set_description(
+                pair_edit,
                 "Crypto: any CoinGecko pair (BTC/USDT, SHIB/USDT …)\n"
-                "Equity: any Yahoo Finance ticker (SPY, AAPL, TLT …)"
+                "Equity: any Yahoo Finance ticker (SPY, AAPL, TLT …)",
             )
             rl.addWidget(pair_edit)
 

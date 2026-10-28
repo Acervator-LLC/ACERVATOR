@@ -35,10 +35,17 @@ from .main_tabs.market_inspector_surface import (
     step_to,
 )
 from .main_tabs.market_inspector_topologies_surface import (
+    ADOPT_DISABLED_TOOLTIP,
+    ADOPT_TOOLTIP,
+    BOTS_COLUMN_TOOLTIPS,
+    BOTS_COLUMNS,
+    BOTS_TOOLTIP,
+    CANCEL_TOOLTIP,
     DISMISS_PART,
     FOOTER_STYLE,
     FOOTER_TEXT,
     HEADER_WORD_WRAP,
+    LIST_GROUP_TITLE,
     PANE_MARGINS,
     PANE_SPACING,
     PREVIEW_PART,
@@ -48,6 +55,9 @@ from .main_tabs.market_inspector_topologies_surface import (
     STATUS_READY,
     STATUS_STYLE,
     STATUS_UNWIRED,
+    WIRES_COLUMN_TOOLTIPS,
+    WIRES_COLUMNS,
+    WIRES_TOOLTIP,
     pane_view,
     status_count,
     status_error,
@@ -73,6 +83,8 @@ try:
         QSizePolicy,
     )
     from PySide6.QtCore import Qt, QTimer, Signal
+
+    from .tooltips import set_description
 
     _HAS_QT = True
 except ImportError:  # pragma: no cover - GUI-only guard
@@ -159,11 +171,11 @@ if _HAS_QT:
             bots_box = QGroupBox("Bots")
             bots_v = QVBoxLayout(bots_box)
             bots_tree = QTreeWidget(bots_box)
-            bots_tree.setColumnCount(4)
-            bots_tree.setHeaderLabels(["Asset", "Role", "Symbol", "Status"])
-            bots_tree.setToolTip(
-                "Bots in this topology proposal. EXISTING is already live. WILL CREATE opens the Bot Wizard at the shown target USD."
-            )
+            bots_tree.setColumnCount(len(BOTS_COLUMNS))
+            bots_tree.setHeaderLabels(list(BOTS_COLUMNS))
+            set_description(bots_tree, BOTS_TOOLTIP)
+            for at, tip in enumerate(BOTS_COLUMN_TOOLTIPS):
+                set_description(bots_tree.headerItem(), tip, at)
             bots_tree.setRootIsDecorated(False)
             bots_tree.setAlternatingRowColors(True)
             for b in self._proposal.get("bots", []):
@@ -192,13 +204,11 @@ if _HAS_QT:
             wires_box = QGroupBox("Wires")
             wires_v = QVBoxLayout(wires_box)
             wires_tree = QTreeWidget(wires_box)
-            wires_tree.setColumnCount(4)
-            wires_tree.setHeaderLabels(["Source", "Target", "Pct", "Rationale"])
-            wires_tree.setToolTip(
-                "Wires the Adopt handoff will create between the bots "
-                "above. Percentages are the operator's Rate spinbox "
-                "equivalent (0-100)."
-            )
+            wires_tree.setColumnCount(len(WIRES_COLUMNS))
+            wires_tree.setHeaderLabels(list(WIRES_COLUMNS))
+            set_description(wires_tree, WIRES_TOOLTIP)
+            for at, tip in enumerate(WIRES_COLUMN_TOOLTIPS):
+                set_description(wires_tree.headerItem(), tip, at)
             wires_tree.setRootIsDecorated(False)
             wires_tree.setAlternatingRowColors(True)
             for w in self._proposal.get("wires", []):
@@ -241,30 +251,29 @@ if _HAS_QT:
             btn_row = QHBoxLayout()
             btn_row.addStretch()
             self._cancel_btn = QPushButton("Cancel")
+            set_description(self._cancel_btn, CANCEL_TOOLTIP)
             self._cancel_btn.setDefault(True)
             self._cancel_btn.clicked.connect(self.reject)
             btn_row.addWidget(self._cancel_btn)
             self._adopt_btn = QPushButton("Adopt")
             self._adopt_btn.setEnabled(not force_adopt_disabled)
             if force_adopt_disabled:
-                self._adopt_btn.setToolTip("Adopt is disabled (test override).")
+                set_description(self._adopt_btn, ADOPT_DISABLED_TOOLTIP)
             else:
-                self._adopt_btn.setToolTip(
-                    "Walks the Bot Wizard for each new bot, then draws the wires above. Cancelling any wizard aborts the adoption."
-                )
+                set_description(self._adopt_btn, ADOPT_TOOLTIP)
             self._adopt_btn.clicked.connect(self._on_adopt)
             btn_row.addWidget(self._adopt_btn)
             self._push_to_sim_btn = QPushButton(PUSH_TO_SIM_LABEL)
             self._push_to_sim_btn.setObjectName(PUSH_TO_SIM_PART)
             self._push_to_sim_btn.setAccessibleName(PUSH_TO_SIM_PART)
-            self._push_to_sim_btn.setToolTip(PUSH_TO_SIM_TOOLTIP)
+            set_description(self._push_to_sim_btn, PUSH_TO_SIM_TOOLTIP)
             self._push_to_sim_btn.setMinimumWidth(PUSH_TO_SIM_WIDTH_PX)
             self._push_to_sim_btn.clicked.connect(self._on_push_to_sim)
             btn_row.addWidget(self._push_to_sim_btn)
             self._push_to_paper_btn = QPushButton(PUSH_TO_PAPER_LABEL)
             self._push_to_paper_btn.setObjectName(PUSH_TO_PAPER_PART)
             self._push_to_paper_btn.setAccessibleName(PUSH_TO_PAPER_PART)
-            self._push_to_paper_btn.setToolTip(PUSH_TO_PAPER_TOOLTIP)
+            set_description(self._push_to_paper_btn, PUSH_TO_PAPER_TOOLTIP)
             self._push_to_paper_btn.setMinimumWidth(PUSH_TO_PAPER_WIDTH_PX)
             self._push_to_paper_btn.clicked.connect(self._on_push_to_paper)
             btn_row.addWidget(self._push_to_paper_btn)
@@ -296,6 +305,7 @@ if _HAS_QT:
 
         def __init__(self, parent: Optional[QWidget] = None) -> None:
             super().__init__(parent)
+            self.setAccessibleName(LIST_GROUP_TITLE)
             self._proposal_source: Optional[Callable[[], list[dict]]] = None
             # Injected by ``set_scan_state_source``; unset reads SCAN_FINISHED.
             self._scan_state_source: Optional[Callable[[], Any]] = None
@@ -319,7 +329,7 @@ if _HAS_QT:
             top_row = QHBoxLayout()
             top_row.setSpacing(PANE_SPACING)
             self._refresh_btn = QPushButton(REFRESH_TEXT)
-            self._refresh_btn.setToolTip(REFRESH_TOOLTIP)
+            set_description(self._refresh_btn, REFRESH_TOOLTIP)
             self._refresh_btn.setFixedWidth(REFRESH_WIDTH_PX)
             self._refresh_btn.clicked.connect(self.refresh)
             top_row.addWidget(self._refresh_btn)

@@ -235,16 +235,13 @@ TICKER_NOTE_SIZE_PX = 11
 TICKER_NOTE_STYLE = f"color: {TICKER_NOTE_COLOUR}; font-size: {TICKER_NOTE_SIZE_PX}px;"
 SCAN_NOW_LABEL = "Scan Now"
 SCAN_NOW_TOOLTIP = (
-    "Scan now on the timeframes ticked beside it, without waiting for a "
-    "rotation. A ticker in the field reads that one market; an empty field "
-    "reads the sector menu's markets, largest volume first, until Hits per "
-    "scan markets pass the push gates."
+    "Scan the ticked timeframes now. The field reads one market; empty, it "
+    "reads the sector's own markets."
 )
 SCAN_ALL_LABEL = "Scan All"
 SCAN_ALL_TOOLTIP = (
-    "Scan every market of every sector on every timeframe, with no stop at a "
-    "hit count. The reads are paced under each public host's limit, so the "
-    "walk takes minutes; each hit chimes and enters Ready to Send as it lands."
+    "Scan every sector's markets on every timeframe, with no hit count to "
+    "stop at. The walk takes minutes."
 )
 #: The Scan All button, named so a reader can find it beside Scan Now.
 SCAN_ALL_PART = "scan-all"
@@ -535,6 +532,10 @@ CHECKED_BUTTON_STYLE = (
 CONNECT_LABEL = "Connect"
 BACK_LABEL = "Back"
 VENUE_TOOLTIP_FORMAT = "{target} credentials · {state}"
+#: What one credential box carries, naming the field and the venue it belongs to.
+CREDENTIAL_FIELD_TOOLTIP_FORMAT = (
+    "{label} for {target}. Held in the vault when you leave the box."
+)
 CATEGORY_TOOLTIP_FORMAT = "Scan {name} sectors."
 CONNECT_TOOLTIP = "Sign in to this venue and hold the credential in the vault."
 BACK_TOOLTIP = "Leave this venue's page without signing in."
@@ -569,9 +570,8 @@ POST_SELECTED_TOOLTIP = "Send the post on screen, at no more than the configured
 POST_ALL_TOOLTIP = "Send every approved post, at no more than the configured rate."
 FULL_AUTO_TOOLTIP = "Release approved posts without a click, at the configured rate."
 CHART_FOLDER_TOOLTIP = (
-    "Open the folder holding the chart images, in the system file browser. "
-    "Each image carries the standardised message, so it can be posted by hand. "
-    "One folder per venue holds that venue's own image and message text."
+    "Open the chart image folder in the file browser. One folder per venue, "
+    "each holding its image and message."
 )
 SETTINGS_TOOLTIP = "Show the ATA-SPM accounts page, or the scan page."
 CREDENTIAL_FIELD_WIDTH_PX = 160
@@ -627,6 +627,23 @@ SETTING_ROWS = (
     (SETTING_MESSAGE_FORMAT, "Standardised message text"),
     (SETTING_HITS_PER_SCAN, "Hits per scan"),
 )
+#: The description each setting box carries, keyed as ``SETTING_ROWS`` keys it.
+SETTING_TOOLTIPS = {
+    SETTING_MAX_POSTS: "The ceiling on posts sent in one hour, which SendRate obeys.",
+    SETTING_MAX_INDICATORS: (
+        "How many supporting indicators a post's message may draw under."
+    ),
+    SETTING_CONFIRMATION_SHARE: (
+        "The share of the run to the Bollinger midline a confirmation reads."
+    ),
+    SETTING_CONFIRMATION_CANDLES: (
+        "The closed candles a confirmation waits for after the first read."
+    ),
+    SETTING_MESSAGE_FORMAT: (
+        "The standardised text every post carries, with its own value slots."
+    ),
+    SETTING_HITS_PER_SCAN: "The hits an empty-field Scan Now stops at.",
+}
 COUNT_SETTINGS = (
     SETTING_MAX_POSTS,
     SETTING_MAX_INDICATORS,
@@ -881,8 +898,8 @@ PUSH_PUSHED_FORMAT = "Pushed {held} bot(s) to the Simulator; its run mode is {mo
 PUSH_TO_PAPER_PART = "push-to-paper-button"
 PUSH_TO_PAPER_LABEL = "Push to Paper"
 PUSH_TO_PAPER_TOOLTIP = (
-    "Spawn this candidate's bots on the Paper Trader, where they trade the "
-    "venue's own data. The Paper tab has no run mode and none is moved."
+    "Spawn this candidate's bots on the Paper Trader, which trades the "
+    "venue's own data."
 )
 PUSH_TO_PAPER_WIDTH_PX = 120
 

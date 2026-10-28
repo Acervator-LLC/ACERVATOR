@@ -3649,3 +3649,112 @@ one declaration         yes                no, each build its own copy
 
 Two runtime lines are appended to a Fire description and are not part of the
 sentence: a ceiling warning, and the list of gates blocking a fire.
+
+### 2026-10-28 - #53 - the four live screens route every description through one helper
+
+The operator ranks four screens as the ones he works: Trading, Charts, Bot Swarm
+and Market Inspector. On those screens every control now carries a description,
+every description fits the twenty-word figure, and every one of them is set by
+`src/gui/tooltips.py, in set_description`.
+
+**The one way in had no callers, so no rule could reach a single box.** The
+helper existed and 84 calls on these four screens went straight to the toolkit
+instead. Each of those 84 is now a `set_description` call, so the next rule about
+a description is one change rather than 84.
+
+```
+                                  before   after
+set_description calls in src           1      100
+setToolTip calls in src/gui          603      520
+on the four screens                   84        0
+```
+
+**The twenty was prose, and prose reaches no screen.** No module held the
+figure: `src/gui/theme_engine.py` declares the box's width, padding, text size
+and wait, and none of the four is a word count. `src/gui/tooltips.py, in
+DESCRIPTION_WORD_LIMIT` now holds it, `set_description` reads it on every call,
+and a description over it is still shown and is named in the GUI log with its
+word count. The screen never loses a sentence to the figure, and an over-long
+one stops being invisible.
+
+**What the built screens report.** Each of the four was built with no window on
+screen, its widget tree walked, and `toolTip()` read off every control. A
+scrollbar and the toolkit's own tab arrows are left out; they are the toolkit's,
+not the product's.
+
+```
+screen                        controls   no description   over twenty words
+                                         before  after    before   after
+Trading                             44      10      3          7       0
+Trading, one exchange layer         37       6      0         10       0
+Charts                              19       1      0          3       0
+Bot Swarm                           17       7      0          0       0
+Market Inspector                    73      36      0          3       0
+Market Inspector, topologies         3       0      0          0       0
+Market Inspector, topology preview  14       9      0          1       0
+total                              207      69      3         24       0
+```
+
+The three left are the indicator panel's blank padding columns. `src/gui/main_tabs/indicator_panel_surface.py,
+in column_titles` pads each table to a fixed column count with an empty title, so
+those three head nothing and describe nothing.
+
+**Where the 66 new descriptions went.**
+
+```
+the Market Inspector's credential boxes      20, one format naming the field and venue
+its venue buttons                            10, each naming its credential state
+its ATA settings boxes                        6, one per setting a phase reads
+the Bot Swarm's swarm buttons and theme menu  7
+one exchange layer's fleet commands           6, each naming what SHIFT adds
+the topology preview's two column sets        8
+the six Add Exchange buttons on the empty-state cards
+the indicator panel's bot menu, the Charts timeframe menu, New Bot, Cancel
+```
+
+**Two sentences lived in two files, and the screen read the wrong copy.** The
+Extractor table declared all eight of its column descriptions a second time
+inside `src/gui/widgets/extractor_bot_table.py`, and the topology preview typed
+four of its own. Both now read the surface that already declared them, so the Qt
+screen and the browser screen draw one sentence.
+
+```
+                                           declarations before   after
+Extractor column descriptions                              2       1
+topology preview's bots, wires and adopt                   2       1
+```
+
+The copies had already drifted. `src/gui/main_tabs/market_inspector_topologies_surface.py`
+still held a 31-word bots sentence and a 21-word adopt sentence while the Qt
+dialog beside it held the short ones, so the browser screen was over the figure
+and the Qt screen was not.
+
+**What a shorter sentence costs here.** The indicator panel's column headings
+lost the most. Their long form named the author of each indicator, the raw value
+range, and the second threshold a gate reads where it differs from the voter's.
+Each heading keeps what the column is and the one threshold that acts:
+
+```
+heading   words before   after
+Conf                86      19
+KER                107      17
+ADX                 78      19
+ZSc                 73      19
+Comp                56      17
+Net                 49      19
+```
+
+A column heading also carries the line about pressing the label to sort, which
+is nine of the twenty. `src/gui/main_tabs/bot_status_table_surface.py, in
+COLUMN_TOOLTIPS` is therefore held to eleven words a column, and the browser
+build appends a privacy line of ten instead.
+
+**One defect found in the same files.** `src/gui/widgets/exchange_tab.py, in
+ExchangeTab` installs an event filter on the application and never took it off.
+A layer taken off the bar stopped its feeds and left the filter in place, so
+every later key press reached a freed widget. `stop_feeds` now removes it, and
+the same teardown that raised in that filter ends clean.
+
+**The rebuild is owed.** `docs/Acervator-Product-Manual.pdf` is not rebuilt here;
+another branch holds that file. This page, `docs/manual/08-tabs.md`, is the one
+that needs it.

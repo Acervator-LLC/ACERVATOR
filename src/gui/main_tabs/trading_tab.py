@@ -33,6 +33,7 @@ from .trading_tab_surface import (
 )
 from .notify_stub import _NotifyStub
 from ..descriptions import TRADING_TAB_DESCRIPTIONS
+from ..tooltips import set_description
 
 logger = logging.getLogger("acervator.gui")
 
@@ -174,7 +175,7 @@ class TradingTabMixin:
             tab_w = QTabWidget()
             add_btn = QPushButton(acs.add_exchange_label(asset_class))
             add_btn.setMinimumWidth(140)
-            add_btn.setToolTip(acs.add_exchange_tooltip(asset_class))
+            set_description(add_btn, acs.add_exchange_tooltip(asset_class))
             add_btn.clicked.connect(self._add_exchange)
             self._add_exchange_buttons.append(add_btn)
             tab_w.setCornerWidget(add_btn)
@@ -198,6 +199,7 @@ class TradingTabMixin:
             ph_title.setAlignment(Qt.AlignCenter)
             ph_layout.addWidget(ph_title)
             ph_add = QPushButton(acs.add_exchange_label(asset_class))
+            set_description(ph_add, acs.add_exchange_tooltip(asset_class))
             ph_add.setMinimumSize(180, 36)
             ph_add.setStyleSheet(
                 f"QPushButton {{ border: 1px solid {accent}; "
@@ -347,8 +349,8 @@ class TradingTabMixin:
             f"border:1px solid {ds.ERROR};}}"
         )
         self._activity_pause_btn.setCheckable(True)
-        self._activity_pause_btn.setToolTip(
-            TRADING_TAB_DESCRIPTIONS["activity_pause_btn"]
+        set_description(
+            self._activity_pause_btn, TRADING_TAB_DESCRIPTIONS["activity_pause_btn"]
         )
 
         def _on_activity_pause_toggled(checked: bool):
@@ -469,7 +471,7 @@ class TradingTabMixin:
             f"QPushButton:hover{{background:{ds.MAIN_TOGGLE_HOVER};}}"
         )
         self._api_pause_btn.setCheckable(True)
-        self._api_pause_btn.setToolTip(TRADING_TAB_DESCRIPTIONS["api_pause_btn"])
+        set_description(self._api_pause_btn, TRADING_TAB_DESCRIPTIONS["api_pause_btn"])
         # _on_api_event reads this flag; QPlainTextEdit has no StatusLog subclass.
         self._api_log_paused: bool = False
         self._api_log_pause_buffer: list[str] = []
@@ -500,7 +502,7 @@ class TradingTabMixin:
         self._api_log_view.setPlaceholderText(
             "API calls, responses, timing, data usage..."
         )
-        self._api_log_view.setToolTip(TRADING_TAB_DESCRIPTIONS["api_log_view"])
+        set_description(self._api_log_view, TRADING_TAB_DESCRIPTIONS["api_log_view"])
         self._api_log_view.setLineWrapMode(QPlainTextEdit.NoWrap)
         self._api_log_view.setMaximumBlockCount(2000)
         api_layout.addWidget(self._api_log_view)
