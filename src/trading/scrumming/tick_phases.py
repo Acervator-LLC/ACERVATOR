@@ -1171,7 +1171,7 @@ class TickPhaseMixin:
                 type="ENTRY",
                 price=entry_fill,
                 amount=bought_units,
-                size=buy_cost,
+                usd=buy_cost,
                 profit=0.0,
                 operator_initiated=False,
                 **self._fill_fee_fields(entry_fill),
@@ -1539,7 +1539,7 @@ class TickPhaseMixin:
                 type="SCRUM",
                 price=sell_fill,
                 amount=_sold_units,
-                size=scrum_usd,
+                usd=scrum_usd,
                 profit=0,
                 **self._fill_fee_fields(sell_fill),
             )
@@ -2097,7 +2097,7 @@ class TickPhaseMixin:
                 type="FOLD",
                 price=buy_fill,
                 amount=buy_asset,
-                size=buy_cost,
+                usd=buy_cost,
                 profit=_growth_applied,
                 **self._fill_fee_fields(buy_fill),
             )
@@ -2215,7 +2215,7 @@ class TickPhaseMixin:
                         type="DIST",
                         price=dist_fill,
                         amount=_sold_units,
-                        size=dist_usd,
+                        usd=dist_usd,
                         profit=dist_usd * 0.02,
                         **self._fill_fee_fields(dist_fill),
                     )

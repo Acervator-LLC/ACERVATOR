@@ -19,7 +19,8 @@ from dataclasses import dataclass, field, replace
 from enum import Enum, auto
 from typing import Any, Optional
 
-from .emit_contracts import CONTRACTS
+from .emit_contracts import CONTRACTS, fill_usd
+from .emit_contracts import FILL_USD_FIELDS as CONTRACT_FILL_USD_FIELDS
 from .sms_engine import (
     EVENT_BOT_STATE,
     EVENT_BUY_FILL,
@@ -123,18 +124,17 @@ FILL_SIDE_EVENTS: dict[str, AlertEvent] = {
 }
 
 
-#: The field names a fill's dollar value arrives under. Five emitters write
-#: ``usd`` and five write ``size``, so a reader of one alone prints zero dollars
-#: for the other five.
-FILL_USD_FIELDS: tuple[str, ...] = ("usd", "size")
+#: Re-exported from ``emit_contracts`` so this reader and the ``trade.filled``
+#: contract name one field. All ten fill emitters write it.
+FILL_USD_FIELDS = CONTRACT_FILL_USD_FIELDS
 
 
 def fill_payload(data: Any) -> dict:
     """One fill's own fields, whichever level the emitter put them at.
 
     The ``FILL_TOPIC`` contract in ``emit_contracts`` declares the nesting, so
-    the five emitters that pass the fill as keywords and the five that nest it
-    both read here.
+    the emitters that pass the fill as keywords and those that nest it under
+    ``data`` both read here.
     """
     for contract in CONTRACTS:
         if contract.topic == FILL_TOPIC:
@@ -150,16 +150,13 @@ def fill_alert_event(side: Any) -> Optional[AlertEvent]:
 def fill_message(fill: dict) -> str:
     """One fill as the message channels print it: kind, units, price, dollars.
 
-    The dollars come from the first ``FILL_USD_FIELDS`` entry the fill carries.
+    The dollars come from ``emit_contracts.fill_usd``, which reads the one field
+    name ``FILL_USD_FIELDS`` declares.
     """
     kind = str(fill.get("type") or "FILL")
     units = _as_number(fill.get("amount"))
     price = _as_number(fill.get("price"))
-    usd = 0.0
-    for name in FILL_USD_FIELDS:
-        if name in fill:
-            usd = _as_number(fill.get(name))
-            break
+    usd = _as_number(fill_usd(fill))
     return f"{kind}: {units:.6f} units at ${price:,.8f}, ${usd:,.2f}"
 
 
@@ -424,6 +421,32 @@ class NotificationManager:
             rule.channels = channels
         if priority is not None:
             rule.priority = priority
+
+    def set_route(self, event_name: str, channel_name: str, routed: bool) -> bool:
+        """Route one event to one channel, or stop routing it, and report the change.
+
+        The two names are the ones ``get_config`` reports, so the Event Routing
+        table writes back in the vocabulary it read, and the write lands in
+        ``set_rule``.
+        """
+        try:
+            event = AlertEvent(str(event_name))
+            channel = AlertChannel[str(channel_name)]
+        except (ValueError, KeyError):
+            logger.warning(
+                "no route for event %r on channel %r", event_name, channel_name
+            )
+            return False
+        rule = self._rules.get(event)
+        if rule is None:
+            return False
+        taken = [one for one in rule.channels if one is not channel]
+        if routed:
+            taken.append(channel)
+        if taken == rule.channels:
+            return False
+        self.set_rule(event, channels=taken)
+        return True
 
     def send(
         self, event: AlertEvent, title: str, message: str, force: bool = False

@@ -109,13 +109,20 @@ TRADE_TYPES: tuple[str, ...] = (
     "MANUAL_TRANCHE_FOLD",
 )
 
+FILL_USD_FIELDS: tuple[str, ...] = ("usd",)
+"""The field names one fill's dollar value arrives under. The ``trade.filled``
+contract takes its optional dollar fields from here, and
+``notifications.fill_message`` and ``logging_engine`` read the figure through the
+same tuple, so a contract and its readers cannot name different fields.
+"""
+
 CONTRACTS: tuple[EmitContract, ...] = (
     EmitContract(
         topic="trade.filled",
         required=("side", "amount", "price"),
         optional=(
             "type",
-            "usd",
+            *FILL_USD_FIELDS,
             "profit",
             "operator_initiated",
             "fee_usd",
@@ -176,6 +183,20 @@ CONTRACTS: tuple[EmitContract, ...] = (
 )
 
 _BY_TOPIC = {c.topic: c for c in CONTRACTS}
+
+
+def fill_usd(fill: Any) -> Any:
+    """One fill's dollar value, read by the first ``FILL_USD_FIELDS`` name it carries.
+
+    Answers 0 for a fill carrying none, and every reader of the dollar figure
+    comes here so no reader can look under a name the contract does not declare.
+    """
+    if not isinstance(fill, dict):
+        return 0
+    for name in FILL_USD_FIELDS:
+        if name in fill:
+            return fill[name]
+    return 0
 
 
 class EmitObserver:

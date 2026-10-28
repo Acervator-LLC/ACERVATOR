@@ -19,9 +19,9 @@ driven over the bridge from values alone.
 
 ``src.core.desktop_bridge`` registers ``view_model`` as the handler for
 the ``alerts_tab.state`` method, which is how the Electron renderer
-reaches it. Every value below is written out here rather than read from
-``src.gui.alerts_tab``, and nothing compares the two copies. Nothing here
-imports Qt.
+reaches it. ``src.gui.alerts_tab`` reads the Event Routing columns,
+headings and channel keys from here, so the two builds cannot disagree on
+a channel. Nothing here imports Qt.
 """
 
 from __future__ import annotations
@@ -116,9 +116,7 @@ ACK_BUTTON_STYLE = (
     f"border-radius: 4px; padding: 4px 10px; }}"
 )
 
-RULES_COLUMNS = ("Event", "Priority", "In-App", "Telegram", "Sound")
 HISTORY_COLUMNS = ("Time", "Priority", "Title", "Message", "Channels")
-RULES_COLUMN_COUNT = 5
 HISTORY_COLUMN_COUNT = 5
 
 HEADER_RESIZE_MODE = "Stretch"
@@ -144,8 +142,31 @@ UNACKNOWLEDGED_COLOR = ds.TEXT_HIGH
 
 CHANNEL_IN_APP = "IN_APP"
 CHANNEL_TELEGRAM = "TELEGRAM"
+CHANNEL_SMS = "SMS"
 CHANNEL_SOUND = "SOUND"
-ROUTED_CHANNELS = (CHANNEL_IN_APP, CHANNEL_TELEGRAM, CHANNEL_SOUND)
+
+EVENT_HEADING = "Event"
+PRIORITY_HEADING = "Priority"
+RULES_FIXED_COLUMNS = (EVENT_HEADING, PRIORITY_HEADING)
+
+ROUTING_COLUMNS: tuple[tuple[str, str], ...] = (
+    (CHANNEL_IN_APP, "In-App"),
+    (CHANNEL_TELEGRAM, "Telegram"),
+    (CHANNEL_SMS, "SMS"),
+    (CHANNEL_SOUND, "Sound"),
+)
+"""One Event Routing column per channel ``NotificationManager.send`` dispatches
+to, each with the heading above it, in drawing order. ``RULES_COLUMNS``,
+``RULES_COLUMN_COUNT`` and ``ROUTED_CHANNELS`` all derive from here, so the Qt
+table, the drawn table and the cell writer cannot disagree on a channel.
+"""
+
+ROUTE_DESCRIPTION = "Click to route this event to this channel, or to stop routing it."
+"""The words a routing cell shows under the pointer, in both builds."""
+
+ROUTED_CHANNELS = tuple(channel for channel, _ in ROUTING_COLUMNS)
+RULES_COLUMNS = RULES_FIXED_COLUMNS + tuple(heading for _, heading in ROUTING_COLUMNS)
+RULES_COLUMN_COUNT = len(RULES_COLUMNS)
 
 PRIORITY_LOW = "low"
 PRIORITY_MEDIUM = "medium"
@@ -167,8 +188,8 @@ MESSAGE_MAX_CHARS = 60
 HISTORY_LIMIT = 100
 CHANNEL_JOIN = ", "
 
-PRIORITY_COLUMN = 1
-COLORED_FROM_COLUMN = 2
+PRIORITY_COLUMN = RULES_FIXED_COLUMNS.index(PRIORITY_HEADING)
+COLORED_FROM_COLUMN = len(RULES_FIXED_COLUMNS)
 
 CONFIG_TELEGRAM_KEY = "telegram_configured"
 CONFIG_SMS_KEY = "sms_configured"
@@ -202,6 +223,11 @@ ACK_PATH_NO_MANAGER = "no_manager"
 ACK_PATH_ACKNOWLEDGED = "acknowledged"
 ACK_PATHS = (ACK_PATH_NO_MANAGER, ACK_PATH_ACKNOWLEDGED)
 
+ROUTE_PATH_NO_ROW = "no_row"
+ROUTE_PATH_NO_CHANNEL = "no_channel"
+ROUTE_PATH_WRITTEN = "written"
+ROUTE_PATHS = (ROUTE_PATH_NO_ROW, ROUTE_PATH_NO_CHANNEL, ROUTE_PATH_WRITTEN)
+
 REFRESH_PATH_NO_MANAGER = "no_manager"
 REFRESH_PATH_PAINTED = "painted"
 REFRESH_PATHS = (REFRESH_PATH_NO_MANAGER, REFRESH_PATH_PAINTED)
@@ -222,6 +248,10 @@ SAVE_RETURN = "save.return"
 ACK_START = "ack.start"
 ACK_CALLED = "ack.called"
 ACK_RETURN = "ack.return"
+
+ROUTE_START = "route.start"
+ROUTE_WRITTEN = "route.written"
+ROUTE_RETURN = "route.return"
 REFRESH_START = "refresh.start"
 REFRESH_CONFIG = "refresh.config"
 REFRESH_UNREAD = "refresh.unread"
@@ -390,7 +420,7 @@ WIDGETS = (
         resize_mode=HEADER_RESIZE_MODE,
         alternating_row_colors=ALTERNATING_ROW_COLORS,
         vertical_header_visible=VERTICAL_HEADER_VISIBLE,
-        edit_triggers=EDIT_TRIGGERS_DEFAULT,
+        edit_triggers=EDIT_TRIGGERS_NONE,
     ),
     widget(
         "history_group",
@@ -471,7 +501,7 @@ class ManagerSnapshot:
     """A notification manager built from plain values.
 
     Carries the three reads the tab makes -- the config, the unread count
-    and the history -- and records the four writes, so a caller over the
+    and the history -- and records every write, so a caller over the
     bridge can drive the tab with no manager wired.
     """
 
@@ -486,6 +516,7 @@ class ManagerSnapshot:
         self._unread = unread
         self.telegram_calls: list = []
         self.sms_calls: list = []
+        self.route_calls: list = []
         self.sent: list = []
         self.acknowledge_count = 0
 
@@ -505,6 +536,24 @@ class ManagerSnapshot:
 
     def configure_sms(self, phone: Any) -> None:
         self.sms_calls.append([phone])
+
+    def set_route(self, event_name: Any, channel_name: Any, routed: Any) -> bool:
+        """Record one routing write and apply it to the held config.
+
+        ``toggle_route`` reads the config back after the write, so the snapshot
+        has to carry the change rather than only note it.
+        """
+        self.route_calls.append([event_name, channel_name, bool(routed)])
+        rule = self._config.get(CONFIG_RULES_KEY, {}).get(str(event_name))
+        if not isinstance(rule, dict):
+            return False
+        taken = [
+            one for one in rule.get(RULE_CHANNELS_KEY, []) if one != str(channel_name)
+        ]
+        if routed:
+            taken.append(str(channel_name))
+        rule[RULE_CHANNELS_KEY] = taken
+        return True
 
     def acknowledge_all(self) -> None:
         self.acknowledge_count += 1
@@ -531,6 +580,39 @@ def routed_text(channels: Any, channel: str) -> str:
 def routed_color(text: Any) -> str:
     """The colour a routing answer is drawn in."""
     return CELL_YES_COLOR if text == YES_TEXT else CELL_NO_COLOR
+
+
+def routed_channel(column: Any) -> Optional[str]:
+    """The ``ROUTED_CHANNELS`` entry one table column routes to, else None.
+
+    ``COLORED_FROM_COLUMN`` sets the offset, so the Event and Priority columns
+    and any index off the table answer None.
+    """
+    try:
+        at = int(column) - COLORED_FROM_COLUMN
+    except (TypeError, ValueError):
+        return None
+    if at < 0 or at >= len(ROUTED_CHANNELS):
+        return None
+    return ROUTED_CHANNELS[at]
+
+
+def toggle_route(manager: Any, event: Any, column: Any) -> Optional[bool]:
+    """Flip one Event Routing cell through ``manager.set_route`` and report it.
+
+    Answers None when ``routed_channel`` names no channel or ``CONFIG_RULES_KEY``
+    holds no rule for *event*, and both the Qt tab and the drawn tab call here.
+    """
+    channel = routed_channel(column)
+    if manager is None or channel is None:
+        return None
+    rules = manager.get_config().get(CONFIG_RULES_KEY, {})
+    rule = rules.get(str(event))
+    if not isinstance(rule, dict):
+        return None
+    routed = channel not in rule.get(RULE_CHANNELS_KEY, [])
+    manager.set_route(str(event), channel, routed)
+    return routed
 
 
 def priority_color(priority: Any) -> str:
@@ -584,10 +666,12 @@ class AlertsTabModel:
         self.chat_id: Any = ""
         self.phone: Any = ""
         self.rules_rows: list = []
+        self.rules_events: list = []
         self.history_rows: list = []
         self.test_path = NO_PATH
         self.save_path = NO_PATH
         self.ack_path = NO_PATH
+        self.route_path = NO_PATH
         self.refresh_path = NO_PATH
         self.calls: list = []
 
@@ -672,6 +756,31 @@ class AlertsTabModel:
             return self._ack_finish(ACK_PATH_ACKNOWLEDGED)
         return self._ack_finish(ACK_PATH_NO_MANAGER)
 
+    def toggle_route(self, row: Any, column: Any) -> dict:
+        """Flip the routing cell at *row* and *column*, then repaint the tab.
+
+        The event comes from ``rules_events`` at *row* and the write goes through
+        the module's ``toggle_route``, which is the path the Qt tab also takes.
+        """
+        self.calls.append([ROUTE_START, row, column])
+        at = int(row) if str(row).lstrip("-").isdigit() else -1
+        if not 0 <= at < len(self.rules_events):
+            return self._route_finish(ROUTE_PATH_NO_ROW, None)
+        event = self.rules_events[at]
+        routed = toggle_route(self.manager, event, column)
+        if routed is None:
+            return self._route_finish(ROUTE_PATH_NO_CHANNEL, None)
+        self.calls.append([ROUTE_WRITTEN, event, routed_channel(column), routed])
+        self.refresh()
+        return self._route_finish(ROUTE_PATH_WRITTEN, routed)
+
+    def _route_finish(self, path: str, routed: Optional[bool]) -> dict:
+        """Keep the routing path and report whether the cell now reads yes."""
+        self.route_path = path
+        answer = {"path": path, "routed": routed}
+        self.calls.append([ROUTE_RETURN, path, routed])
+        return answer
+
     def _ack_finish(self, path: str) -> dict:
         """Keep the Acknowledge path and report the unread line it left."""
         self.ack_path = path
@@ -703,6 +812,7 @@ class AlertsTabModel:
         self.calls.append([REFRESH_STATUS, self.status_text])
         rules = config.get(CONFIG_RULES_KEY, {})
         self.rules_rows = [blank_row(RULES_COLUMN_COUNT) for _ in rules]
+        self.rules_events = list(rules)
         for index, (event, rule) in enumerate(rules.items()):
             self.rules_rows[index] = self._rule_row(event, rule)
         self.calls.append([REFRESH_RULES, len(self.rules_rows)])
@@ -714,7 +824,7 @@ class AlertsTabModel:
         return self._refresh_finish(REFRESH_PATH_PAINTED)
 
     def _rule_row(self, event: Any, rule: Any) -> list:
-        """One Event Routing row: its five cells and their colours."""
+        """One Event Routing row: a cell per ``RULES_COLUMNS`` entry, coloured."""
         channels = rule.get(RULE_CHANNELS_KEY, [])
         texts = [
             event_title(event),
@@ -791,12 +901,19 @@ def build_view_model(
     model: AlertsTabModel,
     fields: Optional[dict] = None,
     action: str = "",
+    route: Optional[dict] = None,
 ) -> dict:
-    """Return the whole tab state as one serialisable dict."""
+    """Return the whole tab state as one serialisable dict.
+
+    ``route`` carries the ``row`` and ``column`` of a routing cell the operator
+    clicked, which ``AlertsTabModel.toggle_route`` writes before the draw.
+    """
     if fields is not None:
         model.token = fields.get("token", model.token)
         model.chat_id = fields.get("chat_id", model.chat_id)
         model.phone = fields.get("phone", model.phone)
+    if isinstance(route, dict):
+        model.toggle_route(route.get("row"), route.get("column"))
     if action == "test_telegram":
         model.test_telegram()
     elif action == "save_config":
@@ -903,7 +1020,8 @@ def build_view_model(
         ],
         "default_priority": DEFAULT_PRIORITY,
         "routed_channels": list(ROUTED_CHANNELS),
-        "channels": [CHANNEL_IN_APP, CHANNEL_TELEGRAM, CHANNEL_SOUND],
+        "channels": list(ROUTED_CHANNELS),
+        "route_description": ROUTE_DESCRIPTION,
         "config_keys": [CONFIG_TELEGRAM_KEY, CONFIG_SMS_KEY, CONFIG_RULES_KEY],
         "rule_keys": [RULE_CHANNELS_KEY, RULE_PRIORITY_KEY],
         "message_max_chars": MESSAGE_MAX_CHARS,
@@ -913,6 +1031,7 @@ def build_view_model(
         "test_paths": list(TEST_PATHS),
         "save_paths": list(SAVE_PATHS),
         "ack_paths": list(ACK_PATHS),
+        "route_paths": list(ROUTE_PATHS),
         "refresh_paths": list(REFRESH_PATHS),
         "no_path": NO_PATH,
         "actions": dict(ACTIONS),
@@ -933,10 +1052,12 @@ def build_view_model(
         "chat_id": model.chat_id,
         "phone": model.phone,
         "rules_rows": [list(row) for row in model.rules_rows],
+        "rules_events": list(model.rules_events),
         "history_rows": [list(row) for row in model.history_rows],
         "test_path": model.test_path,
         "save_path": model.save_path,
         "ack_path": model.ack_path,
+        "route_path": model.route_path,
         "refresh_path": model.refresh_path,
         "has_manager": model.manager is not None,
         "calls": [list(call) for call in model.calls],
@@ -966,5 +1087,6 @@ def view_model(params: dict) -> dict:
             TAB_MODEL,
             params.get("fields"),
             params.get("action", ""),
+            params.get("route"),
         )
     )
