@@ -5918,6 +5918,15 @@ Spacing style was saved and restored and read by nothing, and the placement the
 engine derives from Opposing Trade Distance and the band extension is the
 method that replaced it.
 
+The sentence above names two terms behind a tranche's placement and the engine
+reads one of them. `src/trading/otd_math.py`, in
+`minimum_opposing_trade_distance_pct_from_config`, adds the scrumming interval
+and the trading fee and nothing else, and that sum is what the fold gate and the
+Fold Tranches row both use. `band_extension_pct` in the same module states the
+band term and no caller hands it a band, so the figure it would contribute is
+0.000% everywhere today. Section 13 of
+[05-novel-concepts.md](05-novel-concepts.md) carries the rule and the figures.
+
 **What the fleet runs.** Neither removed row has a figure to report, because
 neither ever reached a saved record. What runs in their place is profit folding,
 which is on for all 38 live bots, and the Smart Wires drawn on the Bot Swarm tab,
