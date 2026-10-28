@@ -450,6 +450,47 @@ from and never replaced, so the packager's own import walk still runs and still
 pulls in whatever it reaches. A name dropped here that something imports stays in
 the bundle.
 
+### The folder-prefix reading, overtaken
+
+OVERTAKEN, quoted whole:
+
+> "The third adds every module under a prefix the program joins a name onto
+> before asking Python for the module by that name, because no import statement
+> names those."
+
+The line of the block above that names those prefixes, quoted whole:
+
+```python
+DYNAMIC_IMPORT_PREFIXES: tuple[str, ...] = (
+    "src.gui.main_tabs.", "src.gui.paper.", "src.gui.simulator.",
+)
+```
+
+True today: no folder name decides anything. The third reading now reads the
+joining call itself and tries the text in that same file against it, so a module
+reaches the build when something names it and never because of the folder it
+sits in.
+
+```python
+DYNAMIC_IMPORT_CALL = "import_module"           # tools/spec_common.py
+def _joined_import_prefixes(tree: ast.Module) -> set[str]: ...
+def _dynamic_src_names(tree: ast.Module, held: dict[str, str]) -> set[str]: ...
+```
+
+Measured on the same tree either side of the change: 469 modules reached, 29
+not, and the two sets are identical. The change carries nothing new into a
+build and takes nothing out of one. What it ends is a file shipping because of
+where it sits: a module placed in one of those three folders that nothing names
+read as reached before and reads as unreached now.
+
+The whole rule, the readings, the build log and the 29 names have a page of
+their own: [17-what-the-build-includes.md](17-what-the-build-includes.md).
+
+The module figures above this section are also overtaken. The tree held 497
+modules when they were taken and holds 498 now, with 469 reached rather than
+468. The 29 unreached are the same count and `src.gui.journal_tab` is among
+them.
+
 ### What the bundle's own archive holds
 
 A folder listing of a bundle cannot say which packages it carries. A package

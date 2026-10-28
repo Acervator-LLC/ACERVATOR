@@ -39,6 +39,7 @@ meaning; the Part column below is what places a file in the manual.
 | [11-hop-protocol-and-rules-registry.md](11-hop-protocol-and-rules-registry.md) | 5 | — | The handoff file and its drift check, the rules registry, and the two versions of the development protocol |
 | [12-adr-index-and-glossary.md](12-adr-index-and-glossary.md) | 6 | — | Where a decision is recorded, and the glossary anchored to the modules behind it |
 | [09-updates-and-versioning.md](09-updates-and-versioning.md) | 7 | — | Version derivation, the six readers, the baked bundle value, the release gate, how dependency updates reach the branch |
+| [17-what-the-build-includes.md](17-what-the-build-includes.md) | 7 | — | The reading that decides which source modules a build carries, what leaves with a module, the outside packages named outright, and what the reading cannot see |
 | [14-development-chronicle.md](14-development-chronicle.md) | 8 | — | The three records of the work, the corrections that became the instruments, the audits they produced, and what they cost and missed |
 | [10-live-trade-history.md](10-live-trade-history.md) | 9 | — | The live fill record, VWAP charts, trade grading, gate coverage |
 | [FIGURES.md](FIGURES.md) | — | 15 to 44 | The figure inventory |
