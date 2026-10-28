@@ -425,6 +425,7 @@ TOOLBAR_MARGINS = (4, 2, 4, 2)
 INDICATOR_ROW_SPACING_PX = 6
 LEGEND_SPACING_PX = 12
 TIMEFRAME_LABEL = "TF:"
+TIMEFRAME_TOOLTIP = "The candle length this chart draws. It refetches on a change."
 TIMEFRAME_COMBO_MAX_WIDTH_PX = 90
 CHART_PANEL_MIN_HEIGHT_PX = 250
 #: The accessible name of the scroll area the chart sits in on the Qt panel.

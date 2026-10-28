@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 
 from .. import design_system as ds
+from ..main_tabs import extractor_bot_table_surface as ebts
 from ..main_tabs.bot_status_table_surface import BUTTON_HEIGHT_PX, ROW_HEIGHT_PX
 
 logger = logging.getLogger("acervator.gui")
@@ -16,6 +17,7 @@ try:
 
     from . import ColumnSpec, ColumnarTableWidget
     from .bot_selection import _reanchor_bot_selection, _select_row_for_bot
+    from ..tooltips import set_description
 
     _HAS_QT = True
 except ImportError:
@@ -25,50 +27,9 @@ except ImportError:
 if _HAS_QT:
 
     EXTRACTOR_COLUMNS = ColumnSpec(
-        labels=(
-            "Bot ID",
-            "Symbol",
-            "Mode",
-            "Trades",
-            "Pool",
-            "Liquid",
-            "Fire",
-            "",
-        ),
-        tooltips={
-            0: "Unique identifier for this Extractor instance",
-            1: "Base currency this Extractor accumulates",
-            2: (
-                "Trading mode + current state.\n"
-                "Green = RUNNING · Amber = PAUSED · Gray = IDLE/STOPPED\n"
-                "Red = ERROR · Orange = COOLDOWN · Cyan = STARTING"
-            ),
-            3: "Total number of executed trades across all positions",
-            4: (
-                "Pool — operator-set chunk size in USD (the budget "
-                "this Extractor owns and rotates through positions). "
-                "Live-edit in the bot's Settings tab → Extractor → "
-                "Chunk size (USD)."
-            ),
-            5: (
-                "Liquid — USD-equivalent of the base-currency units "
-                "currently NOT deployed to any open position. As "
-                "positions close back to base, Liquid grows. Pool "
-                "minus Liquid is the currently-deployed amount.\n"
-                "Color: green = pool fully in base (no open "
-                "positions), yellow = positions open, none in "
-                "drawdown, red = at least one position in drawdown."
-            ),
-            6: (
-                "Manual Fire is per-position for Extractors. "
-                "Use the Detail dialog's Positions Held tab."
-            ),
-            7: "Click for full bot detail and status explanation",
-        },
-        fixed_widths={
-            6: ds.TABLE_COL_FIRE_W,
-            7: ds.TABLE_COL_DETAIL_W,
-        },
+        labels=ebts.COLUMN_LABELS,
+        tooltips=dict(ebts.COLUMN_TOOLTIPS),
+        fixed_widths=dict(ebts.COLUMN_FIXED_WIDTHS),
     )
 
     class ExtractorBotTable(ColumnarTableWidget):
@@ -190,16 +151,10 @@ if _HAS_QT:
                     if col == 2:  # Mode cell
                         color = self.STATE_COLORS.get(state, QColor(ds.TEXT_HIGH))
                         item.setForeground(color)
-                        item.setToolTip(
-                            f"Mode: extractor (Base Currency "
-                            f"Extractor Multi-Target)\nState: "
-                            f"{state.upper() if state else 'UNKNOWN'}\n"
-                            f"Accumulates base-currency "
-                            f"units via top-N pair scanning."
-                        )
+                        set_description(item, ebts.mode_tooltip(state))
                     if col == 5:  # Liquid cell
                         item.setForeground(liquid_color)
-                        item.setToolTip(liquid_tip)
+                        set_description(item, liquid_tip)
                     self.setItem(row, col, item)
 
                 fire_btn = QPushButton("Fire")
@@ -209,18 +164,13 @@ if _HAS_QT:
                 fire_btn.setStyleSheet(
                     f"font-size: 10px; padding: 1px 6px; color: {ds.TEXT_PLACEHOLDER};"
                 )
-                fire_btn.setToolTip(
-                    "Manual Fire is per-position for Extractor bots. "
-                    "Use the Detail dialog's Positions Held tab."
-                )
+                set_description(fire_btn, ebts.FIRE_TOOLTIP)
                 self.setCellWidget(row, 6, fire_btn)
 
                 detail_btn = QPushButton("Detail")
                 detail_btn.setFixedHeight(BUTTON_HEIGHT_PX)
                 detail_btn.setStyleSheet("font-size: 10px; padding: 1px 6px;")
-                detail_btn.setToolTip(
-                    "View full bot status, configuration, and error " "details"
-                )
+                set_description(detail_btn, ebts.DETAIL_TOOLTIP)
                 detail_btn.clicked.connect(lambda _checked, b=bid: self._on_detail(b))
                 self.setCellWidget(row, 7, detail_btn)
 

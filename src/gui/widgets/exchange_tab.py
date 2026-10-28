@@ -8,7 +8,9 @@ from ...core.privacy_mask_registry import get_privacy_mask_registry
 
 from .. import design_system as ds
 from ..main_tabs.exchange_tab_surface import (
+    ADD_BOT_TOOLTIP,
     COMMAND_BUTTONS,
+    COMMAND_TOOLTIPS,
     DANGER_COMMAND_LABEL,
     EXTRACTOR_TABLE_STRETCH,
     FLEET_COMMANDS,
@@ -35,6 +37,7 @@ try:
 
     from .bot_status_table import BotStatusTable
     from .extractor_bot_table import ExtractorBotTable
+    from ..tooltips import set_description
 
     _HAS_QT = True
 except ImportError:
@@ -58,6 +61,7 @@ if _HAS_QT:
             on_fleet_cmd=None,
         ):
             super().__init__(parent)
+            self.setAccessibleName(f"{exchange_name} layer")
             self.exchange_id = exchange_id
             self._status_log = status_log
             self._on_bot_cmd = on_bot_cmd
@@ -71,8 +75,9 @@ if _HAS_QT:
             self._exchange_name = exchange_name
             header = QHBoxLayout()
             self._privacy_mode_btn = QPushButton("Privacy Mode: OFF")
-            self._privacy_mode_btn.setToolTip(
-                "Masks every registered field at once, for screen sharing. Each field's own dot still works when this is OFF."
+            set_description(
+                self._privacy_mode_btn,
+                "Masks every registered field at once, for screen sharing. Each field's own dot still works when this is OFF.",
             )
             self._privacy_mode_btn.setFocusPolicy(Qt.NoFocus)
             self._privacy_mode_btn.clicked.connect(self._on_global_privacy_clicked)
@@ -89,6 +94,7 @@ if _HAS_QT:
                 logger.debug("news ticker failed to initialise: %s", _news_exc)
                 header.addStretch()
             self._add_bot_btn = QPushButton("+ New Bot")
+            set_description(self._add_bot_btn, ADD_BOT_TOOLTIP)
             self._add_bot_btn.setProperty("accent", True)
             if on_new_bot:
                 self._add_bot_btn.clicked.connect(lambda: on_new_bot(exchange_id))
@@ -102,8 +108,9 @@ if _HAS_QT:
             # The hidden bot tables leave this box taller than its one line, and
             # a QLabel with no vertical flag paints its words at the box's top.
             self._pull_rate_lbl.setAlignment(Qt.AlignLeft)
-            self._pull_rate_lbl.setToolTip(
-                "Data pool freshness. Slots are cache entries, Freshest and Oldest their ages in seconds, Stale those past their lifetime."
+            set_description(
+                self._pull_rate_lbl,
+                "Data pool freshness. Slots are cache entries, Freshest and Oldest their ages in seconds, Stale those past their lifetime.",
             )
             layout.addWidget(self._pull_rate_lbl)
 
@@ -120,8 +127,9 @@ if _HAS_QT:
                 f"border:1px solid {ds.ERROR}; border-radius:4px; "
                 "font-size:13px; font-weight:bold; padding:6px 8px;"
             )
-            self._pool_stopped_lbl.setToolTip(
-                "Appears while nothing comes back from this venue. The age names the time since the last reading reached the pool."
+            set_description(
+                self._pool_stopped_lbl,
+                "Appears while nothing comes back from this venue. The age names the time since the last reading reached the pool.",
             )
             self._pool_stopped_lbl.setVisible(False)
             layout.addWidget(self._pool_stopped_lbl)
@@ -202,6 +210,7 @@ if _HAS_QT:
             cmd_bar = QHBoxLayout()
             for label, cmd in COMMAND_BUTTONS:
                 btn = QPushButton(label)
+                set_description(btn, COMMAND_TOOLTIPS[cmd])
                 if label == DANGER_COMMAND_LABEL:
                     btn.setProperty("danger", True)
                 btn.clicked.connect(lambda _checked, c=cmd: self._cmd(c))
@@ -231,6 +240,11 @@ if _HAS_QT:
             timer = getattr(self, "_pull_rate_timer", None)
             if timer is not None:
                 timer.stop()
+            # The filter sits on the application, so a tab that keeps it after
+            # teardown takes every later key press into a freed widget.
+            app = QApplication.instance()
+            if app is not None:
+                app.removeEventFilter(self)
 
         def closeEvent(self, event) -> None:  # noqa: N802 - Qt name
             """Reach ``stop_feeds`` when the tab itself is closed.

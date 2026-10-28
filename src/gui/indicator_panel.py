@@ -467,6 +467,8 @@ try:
         QLinearGradient,
     )
 
+    from .tooltips import set_description
+
     _HAS_QT = True
 except ImportError:
     _HAS_QT = False
@@ -521,10 +523,11 @@ if _HAS_QT:
             from PySide6.QtWidgets import QSizePolicy
 
             self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-            self.setToolTip(
+            set_description(
+                self,
                 "Animated bar graph: per-indicator vote confidence for "
                 "the parent bot's timeframe, colour-coded by direction "
-                "(green=bullish, red=bearish, grey=neutral)."
+                "(green=bullish, red=bearish, grey=neutral).",
             )
             self.setAccessibleName("Indicator Confidence Bar Graph")
 
@@ -734,9 +737,10 @@ if _HAS_QT:
             self._top = 0
             self._base = 0
             self.setAccessibleName("Collated Indicator Pillars")
-            self.setToolTip(
+            set_description(
+                self,
                 "Net, Comp and Conf stand behind both tables. Each one's "
-                "height and colour follow its own reading."
+                "height and colour follow its own reading.",
             )
 
         def set_pillars(self, pillars: list) -> None:
@@ -859,6 +863,9 @@ if _HAS_QT:
             )
             header.addWidget(self._prev_bot_btn)
             self._bot_selector = QComboBox()
+            set_description(
+                self._bot_selector, INDICATOR_PANEL_DESCRIPTIONS["bot_selector"]
+            )
             self._bot_selector.setMinimumWidth(ivp.HEADER["selector_minimum_width_px"])
             self._bot_selector.addItem(ivp.SELECTOR_PLACEHOLDER_TEXT, "")
             self._bot_selector.currentIndexChanged.connect(self._on_bot_selected)
@@ -888,8 +895,9 @@ if _HAS_QT:
             )
             self._staleness_label.setWordWrap(True)
             self._staleness_label.setAccessibleName("TA Staleness Banner")
-            self._staleness_label.setToolTip(
-                "Shown when the panel has only a stored TA read, or no reading at all, naming the age and cause."
+            set_description(
+                self._staleness_label,
+                "Shown when the panel has only a stored TA read, or no reading at all, naming the age and cause.",
             )
             self._staleness_label.hide()
             layout.addWidget(self._staleness_label)
@@ -901,7 +909,9 @@ if _HAS_QT:
                 "background: rgba(30, 40, 60, 60); "
                 "border-radius: 2px;"
             )
-            self._rate_strip.setToolTip(INDICATOR_PANEL_DESCRIPTIONS["rate_strip"])
+            set_description(
+                self._rate_strip, INDICATOR_PANEL_DESCRIPTIONS["rate_strip"]
+            )
             self._rate_strip.setAccessibleName("Currency Rate Strip")
             layout.addWidget(self._rate_strip)
             # Sim mode: hide the bot selector and its arrows (a single sim bot)
@@ -999,7 +1009,7 @@ if _HAS_QT:
             for _idx, _name in enumerate(col_names):
                 _hdr = table.horizontalHeaderItem(_idx)
                 if _hdr is not None:
-                    _hdr.setToolTip(self._HEADER_TOOLTIPS.get(_name, _name))
+                    set_description(_hdr, self._HEADER_TOOLTIPS.get(_name, _name))
             hdr = table.horizontalHeader()
 
             # Columns stretch equally but never below the widest
@@ -1184,7 +1194,7 @@ if _HAS_QT:
             takes them from the Charts tab's own arrows.
             """
             button = QPushButton(glyph, self)
-            button.setToolTip(tip)
+            set_description(button, tip)
             button.setFixedSize(ivp.ARROW_WIDTH_PX, ivp.ARROW_HEIGHT_PX)
             button.setStyleSheet(ivp.ARROW_STYLE_SHEET)
             button.setFocusPolicy(Qt.NoFocus)
@@ -1770,8 +1780,8 @@ if _HAS_QT:
                     tf_item = QTableWidgetItem(tf)
                     tf_item.setTextAlignment(Qt.AlignCenter)
                     tf_item.setFont(QFont("", -1, QFont.Bold))
-                    tf_item.setToolTip(
-                        self._HEADER_TOOLTIPS.get(ivp.TF_COLUMN_TITLE, tf)
+                    set_description(
+                        tf_item, self._HEADER_TOOLTIPS.get(ivp.TF_COLUMN_TITLE, tf)
                     )
                     _tbl.setItem(row, 0, tf_item)
 
@@ -1863,7 +1873,7 @@ if _HAS_QT:
             red, green, blue = colors["fill_rgb"]
             cell.setForeground(QBrush(QColor(colors["text_color"])))
             cell.setBackground(QBrush(QColor(red, green, blue, colors["fill_alpha"])))
-            cell.setToolTip(ivp.indicator_cell_tooltip(ind_key, sig))
+            set_description(cell, ivp.indicator_cell_tooltip(ind_key, sig))
             table.setItem(row, col, cell)
 
         def _collated_bars(self, tf_data) -> list:
@@ -1885,7 +1895,7 @@ if _HAS_QT:
             if cell.get("text_color"):
                 item.setForeground(QBrush(QColor(cell["text_color"])))
             if cell.get("tooltip"):
-                item.setToolTip(cell["tooltip"])
+                set_description(item, cell["tooltip"])
             table.setItem(row, col, item)
             return item
 
@@ -2001,9 +2011,10 @@ if _HAS_QT:
             super().__init__(parent)
             self.setWindowTitle(f"Signal Detail: {indicator_name}")
             self.setMinimumSize(400, 300)
-            self.setToolTip(
+            set_description(
+                self,
                 f"Detailed signal history and response controls for "
-                f"the {indicator_name} indicator."
+                f"the {indicator_name} indicator.",
             )
             self.setAccessibleName(f"{indicator_name} Signal Detail Dialog")
 

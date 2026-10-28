@@ -99,11 +99,16 @@ HEADER_BADGE_STYLE_FORMAT = (
 
 BOTS_BOX_TITLE = "Bots"
 BOTS_COLUMNS = ("Asset", "Role", "Symbol", "Status")
+#: One description per Bots column, in ``BOTS_COLUMNS`` order.
+BOTS_COLUMN_TOOLTIPS = (
+    "The asset this bot accumulates.",
+    "What this bot does in the topology: a pool, or a feeder.",
+    "The trading pair this bot works.",
+    "EXISTING is already live. WILL CREATE names the target USD a new bot opens at.",
+)
 BOTS_TOOLTIP = (
-    "Bots involved in this topology proposal — EXISTING "
-    "means the bot is already live; WILL CREATE means "
-    "adopting will open the Bot Wizard for a new bot at "
-    "the shown target USD."
+    "Bots in this topology proposal. EXISTING is already live. WILL CREATE "
+    "opens the Bot Wizard at the shown target USD."
 )
 BOT_STATUS_EXISTING = "EXISTING"
 BOT_STATUS_NEW_FORMAT = "WILL CREATE (${target_usd})"
@@ -111,6 +116,13 @@ NEW_BOT_COLOR = "#ffff00"
 
 WIRES_BOX_TITLE = "Wires"
 WIRES_COLUMNS = ("Source", "Target", "Pct", "Rationale")
+#: One description per Wires column, in ``WIRES_COLUMNS`` order.
+WIRES_COLUMN_TOOLTIPS = (
+    "The asset the wire draws its proceeds from.",
+    "The asset the wire sends those proceeds to.",
+    "The share the wire carries, 0 to 100.",
+    "Why the proposal drew this wire.",
+)
 WIRES_TOOLTIP = (
     "Wires the Adopt handoff will create between the bots "
     "above. Percentages are the operator's Rate spinbox "
@@ -137,12 +149,12 @@ NOTE_STYLE = "color: #aaa; font-size: 11px;"
 NOTE_WORD_WRAP = True
 
 CANCEL_TEXT = "Cancel"
+CANCEL_TOOLTIP = "Closes this preview. No bot is built and no wire is drawn."
 CANCEL_IS_DEFAULT = True
 ADOPT_TEXT = "Adopt"
 ADOPT_TOOLTIP = (
-    "Walk the Bot Wizard for each new bot, then draw "
-    "the wires listed above. Cancelling any wizard "
-    "aborts the entire adoption."
+    "Walks the Bot Wizard for each new bot, then draws the wires above. "
+    "Cancelling any wizard aborts the adoption."
 )
 ADOPT_DISABLED_TOOLTIP = "Adopt is disabled (test override)."
 
