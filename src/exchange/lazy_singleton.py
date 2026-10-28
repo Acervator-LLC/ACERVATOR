@@ -102,7 +102,6 @@ class ThrottledFault:
         self._suppressed_total = 0
         self._lost_reports = 0
 
-    # -- observation ---------------------------------------------------
     @property
     def offline(self) -> bool:
         """True between a reported failure and its recovery line."""
@@ -138,7 +137,6 @@ class ThrottledFault:
         with self._lock:
             return self._quiet(self._clock())
 
-    # -- recording -----------------------------------------------------
     def note_skip(self) -> None:
         """Count a call the cooling-off refused."""
         with self._lock:
@@ -229,7 +227,6 @@ class ThrottledFault:
             self._last_detail = ""
             self._reset_counts()
 
-    # -- internals -----------------------------------------------------
     def _quiet(self, now: float) -> bool:
         return self._next_report_at is not None and now < self._next_report_at
 
