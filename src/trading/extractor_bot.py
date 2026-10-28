@@ -181,7 +181,6 @@ class ExtractorBot(BotContainer):
         self._closed_position_log: list[dict] = []  # last 200 closed
         self._closed_log_max: int = 200
 
-        # ── Top-N watch list ──
         self._watch_list: list[str] = []
         # Zero means never refreshed, so the first tick is always due.
         self._watch_list_refreshed_at: float = 0.0
@@ -201,14 +200,11 @@ class ExtractorBot(BotContainer):
             timeframe=self._timeframe,
         )
 
-        # ── Trade metrics ──
         self._cycle_extracted_total: float = 0.0  # this session
         self._lifetime_extracted_total: float = 0.0
 
         # Reserved at set_initial_chunk_rate, released at stop(), pulsed each tick.
         self._crr_token: Optional[str] = None
-
-    # ── Public chunk-rate setter ────────────────────────────────────
 
     def set_initial_chunk_rate(
         self, usd_per_base: float, *, total_holdings: Optional[float]
@@ -393,8 +389,6 @@ class ExtractorBot(BotContainer):
             "registry_updated": registry_updated,
         }
 
-    # ── Lifecycle override: release reservation on stop ─────────────
-
     async def stop(self) -> None:
         """Release the capital reservation, then delegate to
         BotContainer.stop() for the standard shutdown path.
@@ -428,8 +422,6 @@ class ExtractorBot(BotContainer):
                 # via set_initial_chunk_rate and this token is pruned by TTL.
         await super().stop()
 
-    # ── Capacity check ──────────────────────────────────────────────
-
     def _has_chunk_capacity(self, artillery_base: float) -> bool:
         """Return True iff this bot's claim-aware free chunk has room
         for one more artillery round of `artillery_base` base units.
@@ -454,8 +446,6 @@ class ExtractorBot(BotContainer):
             if pos.state == POSITION_STATE_DRAWDOWN:
                 return "red"
         return "yellow"
-
-    # ── Watch-list refresh ──────────────────────────────────────────
 
     async def _refresh_watch_list(self) -> None:
         """Re-rank the top-N ``*/<base>`` pairs by 24h volume.
@@ -562,8 +552,6 @@ class ExtractorBot(BotContainer):
         elapsed = time.time() - self._watch_list_refreshed_at
         return elapsed >= self._refresh_interval_seconds()
 
-    # ── USD ↔ base conversion ───────────────────────────────────────
-
     def _usd_to_base(self, usd: float) -> float:
         """Divide ``usd`` by ``_usd_per_base_rate`` to reach base-currency units."""
         if self._usd_per_base_rate <= 0:
@@ -657,8 +645,6 @@ class ExtractorBot(BotContainer):
             return float(_free)
         except (TypeError, ValueError):
             return None
-
-    # ── Pair filter and signals ───────────────────────────────────────
 
     def _pair_filter_matches(self, market) -> bool:
         """Return True if `market` belongs in this bot's scanning universe.
@@ -773,8 +759,6 @@ class ExtractorBot(BotContainer):
         self._usd_per_base_rate = new_rate
         return True, "accepted"
 
-    # ── State-machine evaluators ────────────────────────────────────
-
     def _position_value_usd(
         self,
         pos: ExtractorPosition,
@@ -814,8 +798,6 @@ class ExtractorBot(BotContainer):
             self.config.extractor_exit_pct / 100.0
         )
         return base_back_after_fee > base_in_proportional
-
-    # ── Pair action evaluation ──────────────────────────────────────
 
     async def _evaluate_open_position(
         self,
@@ -1219,8 +1201,6 @@ class ExtractorBot(BotContainer):
             ),
         )
 
-    # ── tick() — main per-cycle entrypoint ──────────────────────────
-
     async def tick(self) -> None:
         """One tick of the Extractor.
 
@@ -1326,8 +1306,6 @@ class ExtractorBot(BotContainer):
                 continue
             # First eligible wins per tick — break to manage capital
             break
-
-    # ── Positions snapshot (for detail-dialog Positions Held tab) ──
 
     def positions_for_gui(self) -> list[dict]:
         """Return a list of per-position dicts for the detail dialog's
@@ -1473,8 +1451,6 @@ class ExtractorBot(BotContainer):
         rows.sort(key=lambda r: r["tranche_id"])
         return rows
 
-    # ── Status snapshot (for GUI / dashboard) ───────────────────────
-
     def get_status(self) -> dict:
         """Snapshot of Extractor state for the bot table / dashboard."""
         base = super().get_status() if hasattr(super(), "get_status") else {}
@@ -1499,8 +1475,6 @@ class ExtractorBot(BotContainer):
             }
         )
         return base
-
-    # ── State persistence ──────────────────────────────────────────
 
     def export_state(self) -> dict:
         """Serialize the Extractor's runtime state for save/restore."""
