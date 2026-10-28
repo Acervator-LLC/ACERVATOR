@@ -9257,4 +9257,171 @@ QComboBox::drop-down {
 }
 ```
 
+
+## 2026-10-28 - #1374 - the Fleet Lock rows, and the screen that gives the password back
+
+The User tab takes one optional password beside the Username. With a password
+set, the saved fleet and the venue vault are both sealed, and a launch starts no
+bot until the password is given. With no password set the page behaves as it
+always did.
+
+`src/gui/main_tabs/settings_dialog_surface.py, in fleet_lock_intent` holds the
+whole decision, so the Qt build and the drawn build take and refuse the same
+thing.
+
+### The four controls
+
+| On screen | What it is | Module, symbol |
+| --- | --- | --- |
+| Password | Takes a new password, hidden as it is typed | `src/gui/settings_dialog.py, in _create_fleet_lock_group` |
+| Confirm Password | Takes it a second time | the same |
+| Unlock the fleet now | Raises the unlock screen; live only while a key file exists and this session holds no key | `src/gui/settings_dialog.py, in _open_fleet_unlock` |
+| Clear the lock | Presses in to arm the demolition; live only while a key file exists | `src/gui/settings_dialog.py, in _show_fleet_lock_state` |
+
+A line above the four says which state the install is in.
+`src/gui/main_tabs/settings_dialog_surface.py, in fleet_lock_words` holds both
+sentences.
+
+### What a Save does with the two rows
+
+Nothing is written when a key is typed. Save is the only moment anything moves.
+
+| The rows | The answer | What happens |
+| --- | --- | --- |
+| both empty | `nothing` | no question, no line, no file touched |
+| one filled, one empty | `half_filled` | one Console line, no file touched |
+| the two differ | `mismatch` | one Console line, no file touched |
+| both match, no lock held | `set` | the question, then the seal |
+| both match, a lock held and open | `change` | the question, then the reseal |
+| both match, a lock held and shut | `change_needs_unlock` | one Console line, no file touched |
+| Clear armed, Password row empty | `clear_needs_password` | one Console line, no file touched |
+| Clear armed, Password row filled | `clear` | the question, then the demolition |
+
+Measured on the built page: the four refusing rows put 0 questions on screen and
+left both files byte-identical.
+
+### What changes on disk
+
+```mermaid
+flowchart TD
+    A[Save pressed] --> B[fleet_lock_intent]
+    B -->|set| C[seal_master_key, write_master_key]
+    C --> D[reseal_on_disk, the latch goes on]
+    D --> E[rekey_credential_stores, the vault moves to the master key]
+    B -->|change| F[seal_master_key over the key this session holds]
+    F --> G[write_master_key, one file, nothing else moves]
+    B -->|clear| H[open_master_key with the typed password]
+    H --> I[rekey_credential_stores, the vault moves back to the username]
+    I --> J[unseal_on_disk, the latch goes off]
+    J --> K[master_key_path unlinked]
+```
+
+| He does | What moves |
+| --- | --- |
+| sets a password | the sealed key file appears under `src/core/log_paths.py, in resolve_state_root`. The saved fleet's top level drops from seven fields to five: the four fleet fields move inside one `sealed_fleet` token. Every stored venue secret moves from the Username phrase to the master key |
+| changes it | the sealed key file only. `src/core/encryption.py, in seal_master_key` is given the key this session already holds, so the vault phrase and the fleet payload do not move |
+| clears it | every stored venue secret moves back to the Username phrase, the saved fleet is written back in plain text, and the sealed key file is unlinked last |
+
+The key file is the last thing to go and the first thing to arrive, so a second
+press of Clear the lock is the recovery at every point a run can stop.
+`src/core/state_manager.py, in unseal_on_disk` is the only path that turns the
+latch off, and it keeps the key file where it could not write the fleet back.
+
+### The question before the seal
+
+A password is never taken on the press alone. The box reads
+`This password becomes the only way into your lot book` and its words state that
+the password is never written down, that nobody can reset it, and that losing it
+loses every bot, every tranche and every lot the saved fleet holds.
+`src/gui/main_tabs/settings_dialog_surface.py, FLEET_LOCK_SET_QUESTION` holds
+them.
+
+Measured: answering No left the key file absent and both files byte-identical.
+Answering Yes wrote the key file, turned the latch on, and moved one stored
+venue secret under the new key.
+
+### The demolition
+
+Clear the lock presses in and stays in. While it is in, the line above the rows
+is replaced by the demolition itself: the sealed key file goes, the venue vault
+goes, and every venue has to be entered again by hand on the Exchanges page.
+Save then puts the same words in a box that opens on No.
+
+Three things have to agree before anything is destroyed: the button is pressed
+in, the current password is in the Password row, and the box is answered Yes.
+
+| The arm | Key file after | Files changed |
+| --- | --- | --- |
+| armed, Password row empty | present | none |
+| armed, the box answered No | present | none |
+| armed, the wrong password | present | none |
+| armed, the right password, Yes | gone | the vault and the saved fleet, as stated |
+
+### The unlock screen
+
+`src/gui/fleet_unlock_dialog.py, in FleetUnlockDialog` is one screen, and it is
+reached two ways: `main.py, in main` raises it when the splash closes on a
+locked launch, and the Unlock the fleet now button raises the same screen at any
+time.
+
+| On screen | What it is |
+| --- | --- |
+| The saved fleet is sealed. | the headline |
+| the Console's own locked-launch sentence | the detail, from `src/gui/main_tabs/main_window_surface.py, FLEET_LOCKED_TEXT` |
+| Password | the one row, hidden as it is typed |
+| a red line, empty at rest | the refusal, from `src/gui/main_tabs/main_window_surface.py, FLEET_UNLOCK_REFUSED_TEXT` |
+| Not now | leaves the fleet sealed; the Escape key and the window X do the same |
+| Unlock the fleet | hands the password to `src/gui/main_window.py, in unlock_fleet` |
+
+Unlock the fleet is dead while the row is empty, on both builds.
+`src/gui/main_tabs/fleet_unlock_surface.py, in takes_press` is the one reading
+behind it.
+
+Measured on the built screen, against a sealed fleet of two bots and one wire:
+
+| The password | The answer | On screen | Bots loaded | Files changed |
+| --- | --- | --- | --- | --- |
+| nothing typed | the button is dead | nothing | none | none |
+| wrong | `refused` | the refusal line | none | none |
+| right | `opened` | nothing | both | the fleet is open to every reader |
+
+### Both builds draw the unlock from one declaration
+
+`src/gui/main_tabs/fleet_unlock_surface.py, in build_view_model` serves the
+whole screen as one payload, `src/core/desktop_bridge.py` registers it under
+`fleet_unlock.state`, and `src/gui/web/fleet_unlock.js` draws it.
+
+Handed the real payload, the drawn build found all 21 declared fields, reported
+0 faults, and drew 15 nodes: the same headline, the same detail sentence, the
+same refusal line, the same two button labels, and the password row as a hidden
+input. The control: a payload with one field removed and the hidden row flipped
+to plain reported both faults by name and drew the row as plain text, so the
+clean reading is a reading.
+
+### What the arm with no password reads
+
+A launch with no password set reads the same through the files before this
+section and the files after it. Measured over six saved-file shapes — no file,
+an empty file, one bot, two bots and a wire, nested lots and tranches, and
+unicode with floats and nulls — `in latch_on`, `in launch_classification`,
+`in probe`, `in has_saved_state` and `in load_state` all answered alike. The
+control: one wire rate moved from 25.0 to 26.0 and the same comparison named the
+difference.
+
+`src/core/encryption.py, in vault_phrase` also reads the same both ways, over
+six usernames against three held-key states plus six seal-and-open round trips.
+`in username_phrase` now names the branch that build takes with no key held, and
+it is what `src/gui/settings_dialog.py, in _username_phrase` asks while a key is
+held, which is the one moment the two answers differ. The control: one username
+moved and the comparison named it.
+
+### One defect found in the same files
+
+`src/gui/settings_dialog.py, in _clear_fleet_lock` first asked
+`src/core/encryption.py, in vault_phrase` for the Username phrase while the key
+was held. That call answers the master key phrase, so the clear resealed the
+vault under the phrase it was already under and reported success, and the stored
+secrets then opened under nothing. `in username_phrase` answers the same whether
+a key is held or not, and the clear asks it instead.
+
 Back to [the subsystem index](README.md).

@@ -1812,10 +1812,36 @@ def main() -> int:
                 f"Start All button."
             )
 
+    def _ask_for_unlock() -> None:
+        """Raise the unlock screen over the drawn window and record what it answered.
+
+        ``src/gui/fleet_unlock_dialog.py, in ask_for_unlock`` hands the typed
+        password to ``MainWindow.unlock_fleet``, which runs
+        ``_start_fleet_after_unlock`` on its own; a screen that cannot be shown
+        leaves the fleet sealed and no bot is started.
+        """
+        try:
+            from src.gui.fleet_unlock_dialog import ask_for_unlock
+
+            if not ask_for_unlock(crypto_window, parent=crypto_window):
+                log_manager.warning(
+                    "Fleet unlock not given. The fleet stays sealed; the "
+                    "screen reopens from Settings, User tab, Fleet Lock."
+                )
+        except Exception as exc:
+            log_manager.warning(
+                f"Fleet unlock screen raised: {exc}. The fleet stays sealed "
+                f"and no bot is loaded."
+            )
+
     crypto_window.set_fleet_start_callback(_start_fleet_after_unlock)
 
     if _fleet_launch == LAUNCH_LOCKED:
         _hold_fleet_for_unlock()
+        try:
+            _splash._on_finished_callback = _ask_for_unlock
+        except Exception:
+            QTimer.singleShot(9500, _ask_for_unlock)
     elif _autostart_bot_count > 0:
         # The splash schedules this on close; the timer is the fallback.
         try:

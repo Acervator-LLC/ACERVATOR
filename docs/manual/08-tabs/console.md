@@ -1010,4 +1010,59 @@ keystroke.
 
 The Product Manual PDF rebuild is owed for this page.
 
+
+## 2026-10-28 - #1374 - the screen that takes the password is built
+
+### Where the sentences about the unlock now read differently
+
+Two readings above describe the build before the screens landed. They stand as
+written, and these are the readings that replaced them.
+
+| written above | what it reads now |
+| --- | --- |
+| "No screen takes the password. `src/gui/settings_dialog.py` owns that screen and it is not built, so `in unlock_fleet` is reachable from code and not yet from a keystroke." | Two screens take it. `src/gui/settings_dialog.py, in _create_fleet_lock_group` draws the Password and Confirm Password rows that set it, and `src/gui/fleet_unlock_dialog.py, in FleetUnlockDialog` takes it back. `in unlock_fleet` is reached from a keystroke |
+| "The Product Manual PDF rebuild is owed for this page." | `docs/Acervator-Product-Manual.pdf` is rebuilt in this branch and carries this page |
+
+### Where the unlock screen appears
+
+`main.py, in main` hands `_ask_for_unlock` to the splash's finished hook inside
+the branch a locked launch takes, beside `in hold_fleet_for_unlock`. The screen
+therefore opens over a window that already drew every tab. Dismissing it leaves
+the fleet sealed and the Console line in place, and the Unlock the fleet now
+button on the Settings User tab raises the same screen again.
+
+```mermaid
+flowchart TD
+    A[launch_classification reads locked] --> B[hold_fleet_for_unlock]
+    B --> C[one Console line, no bot loaded]
+    C --> D[the splash closes]
+    D --> E[ask_for_unlock]
+    E -->|password given| F[unlock_fleet, the fleet loads]
+    E -->|Not now| G[the fleet stays sealed]
+    G --> H[Settings, User tab, Unlock the fleet now]
+    H --> E
+```
+
+### What the screen was measured doing
+
+Driven as a built widget against a sealed fleet of two bots and one wire: the
+Unlock button is dead on an empty row; a wrong password answered `refused`, put
+the Console's own refusal sentence on the screen, left the fleet sealed and
+changed no file; the right password answered `opened` and both bots and the wire
+came out of the payload in the same session.
+
+The control for that reading: the same screen pointed at a window answering no
+`unlock_fleet` answered `no_window`, reported no unlock, and said so on the
+screen. So a reading that reports a reachable screen can also report that no
+screen accepts the password.
+
+The words on the screen are the Console's words.
+`src/gui/main_tabs/fleet_unlock_surface.py` takes its detail line from
+`src/gui/main_tabs/main_window_surface.py, FLEET_LOCKED_TEXT` and its refusal
+line from `FLEET_UNLOCK_REFUSED_TEXT`, so the screen and the Console cannot
+disagree.
+
+The rows that set the password are on the Settings page. See
+[the Settings page](settings.md).
+
 Back to [the subsystem index](README.md).
