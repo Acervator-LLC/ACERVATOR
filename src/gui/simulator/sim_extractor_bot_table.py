@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 
 from .. import design_system as ds
+from ..main_tabs import extractor_bot_table_surface as ebts
 from ..main_tabs.bot_status_table_surface import BUTTON_HEIGHT_PX, ROW_HEIGHT_PX
 
 logger = logging.getLogger("acervator.gui")
@@ -29,50 +30,9 @@ except ImportError:
 if _HAS_QT:
 
     EXTRACTOR_COLUMNS = ColumnSpec(
-        labels=(
-            "Bot ID",
-            "Symbol",
-            "Mode",
-            "Trades",
-            "Pool",
-            "Liquid",
-            "Fire",
-            "",
-        ),
-        tooltips={
-            0: "Unique identifier for this Extractor instance",
-            1: "Base currency this Extractor accumulates",
-            2: (
-                "Trading mode + current state.\n"
-                "Green = RUNNING · Amber = PAUSED · Gray = IDLE/STOPPED\n"
-                "Red = ERROR · Orange = COOLDOWN · Cyan = STARTING"
-            ),
-            3: "Total number of executed trades across all positions",
-            4: (
-                "Pool — operator-set chunk size in USD (the budget "
-                "this Extractor owns and rotates through positions). "
-                "Live-edit in the bot's Settings tab → Extractor → "
-                "Chunk size (USD)."
-            ),
-            5: (
-                "Liquid — USD-equivalent of the base-currency units "
-                "currently NOT deployed to any open position. As "
-                "positions close back to base, Liquid grows. Pool "
-                "minus Liquid is the currently-deployed amount.\n"
-                "Color: green = pool fully in base (no open "
-                "positions), yellow = positions open, none in "
-                "drawdown, red = at least one position in drawdown."
-            ),
-            6: (
-                "Manual Fire is per-position for Extractors. "
-                "Use the Detail dialog's Positions Held tab."
-            ),
-            7: "Click for full bot detail and status explanation",
-        },
-        fixed_widths={
-            6: ds.TABLE_COL_FIRE_W,
-            7: ds.TABLE_COL_DETAIL_W,
-        },
+        labels=ebts.COLUMN_LABELS,
+        tooltips=dict(ebts.COLUMN_TOOLTIPS),
+        fixed_widths=dict(ebts.COLUMN_FIXED_WIDTHS),
     )
 
     class SimExtractorBotTable(ColumnarTableWidget):

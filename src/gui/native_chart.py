@@ -53,6 +53,7 @@ from src.gui.main_tabs.native_chart_surface import (
     TAG_HEIGHT_PX,
     TIMEFRAME_COMBO_MAX_WIDTH_PX,
     TIMEFRAME_LABEL,
+    TIMEFRAME_TOOLTIP,
     ALL_CANDLES_REFUSED_TEXT,
     NO_PRICE_RANGE_TEXT,
     TOGGLE_BOX_PX,
@@ -77,6 +78,7 @@ from src.gui.main_tabs.native_chart_surface import (
     zoom_window,
 )
 from src.gui.theme_engine import CYBERPUNK_DARK, applied_tokens
+from src.gui.tooltips import set_description
 from src.trading.ta_engine import (
     ADXIndicator,
     BollingerBands,
@@ -369,10 +371,8 @@ CHART_OVERLAYS: tuple[ChartOverlay, ...] = (
         occludes=True,
         draw="_draw_slingshot",
         tooltip=(
-            "Slingshot marks — diamond at a squeeze release (Bollinger bands "
-            "back outside the Keltner channel, signed by momentum), circle at "
-            "a Bollinger snapback, from SlingshotIndicator.lines. Opaque marks "
-            "sit over the bands, so it starts off."
+            "Slingshot marks — a diamond at a squeeze release, a circle at "
+            "a snapback. It starts off."
         ),
         voter="slingshot",
     ),
@@ -435,8 +435,7 @@ CHART_OVERLAYS: tuple[ChartOverlay, ...] = (
         draw="_draw_zscore_point",
         tooltip=(
             "Z-Score algo point — the resistance and support prices the "
-            "averaged reversals project (mean + target z × deviation). "
-            "Lines over the price pane, so it starts off."
+            "reversals project. It starts off."
         ),
         voter="zscore",
     ),
@@ -448,8 +447,8 @@ CHART_OVERLAYS: tuple[ChartOverlay, ...] = (
         occludes=True,
         draw="_draw_bullseye",
         tooltip=(
-            "BB Bullseye zones — shaded ±0.5% and ±0.2% envelopes "
-            "on the Bollinger bands. The fill covers the bands, so it starts off."
+            "BB Bullseye zones — shaded ±0.5% and ±0.2% envelopes on the "
+            "Bollinger bands. It starts off."
         ),
     ),
 )
@@ -3606,6 +3605,7 @@ if _HAS_QT:
             self._tf_label = QLabel(TIMEFRAME_LABEL, self)
             self._tf_combo = QComboBox(self)
             self._tf_combo.setAccessibleName("Chart timeframe")
+            set_description(self._tf_combo, TIMEFRAME_TOOLTIP)
             self._tf_combo.addItems(self.TIMEFRAMES)
             self._tf_combo.setCurrentText("1h")
             self._tf_combo.setMaximumWidth(TIMEFRAME_COMBO_MAX_WIDTH_PX)
@@ -3638,7 +3638,7 @@ if _HAS_QT:
             for overlay in CHART_OVERLAYS:
                 box = QCheckBox(overlay.label, self)
                 box.setAccessibleName(f"{overlay.label} toggle")
-                box.setToolTip(overlay.tooltip)
+                set_description(box, overlay.tooltip)
                 box.setChecked(overlay.starts_on)
                 box.toggled.connect(
                     lambda on, key=overlay.key: self._toggle_indicator(key, on)

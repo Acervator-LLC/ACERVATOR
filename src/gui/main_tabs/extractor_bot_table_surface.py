@@ -54,27 +54,10 @@ COLUMN_LABELS = (
 COLUMN_TOOLTIPS = {
     0: "Unique identifier for this Extractor instance",
     1: "Base currency this Extractor accumulates",
-    2: (
-        "Trading mode + current state.\n"
-        "Green = RUNNING · Amber = PAUSED · Gray = IDLE/STOPPED\n"
-        "Red = ERROR · Orange = COOLDOWN · Cyan = STARTING"
-    ),
+    2: "The trading mode and the state, coloured by that state.",
     3: "Total number of executed trades across all positions",
-    4: (
-        "Pool — operator-set chunk size in USD (the budget "
-        "this Extractor owns and rotates through positions). "
-        "Live-edit in the bot's Settings tab → Extractor → "
-        "Chunk size (USD)."
-    ),
-    5: (
-        "Liquid — USD-equivalent of the base-currency units "
-        "currently NOT deployed to any open position. As "
-        "positions close back to base, Liquid grows. Pool "
-        "minus Liquid is the currently-deployed amount.\n"
-        "Color: green = pool fully in base (no open "
-        "positions), yellow = positions open, none in "
-        "drawdown, red = at least one position in drawdown."
-    ),
+    4: "The budget in USD this Extractor rotates through its positions.",
+    5: "The part of the pool not in a position, in USD.",
     6: (
         "Manual Fire is per-position for Extractors. "
         "Use the Detail dialog's Positions Held tab."

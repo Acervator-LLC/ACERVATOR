@@ -75,6 +75,7 @@ NEWS_TICKER_FAILED_LOG = "news ticker failed to initialise: %s"
 NEWS_TICKER_MODULE = "crypto_news_ticker"
 
 ADD_BOT_LABEL = "+ New Bot"
+ADD_BOT_TOOLTIP = "Opens the Bot Wizard on this venue, which builds one new bot."
 ADD_BOT_ACCENT = True
 BOT_WIZARD_MODULE = "bot_wizard"
 BOT_WIZARD_STRETCH = 1
@@ -154,6 +155,17 @@ COMMAND_BUTTONS = (
     ("Delete", "delete"),
 )
 DANGER_COMMAND_LABEL = "Delete"
+
+#: The description each command button carries, keyed by its command.
+COMMAND_TOOLTIPS = {
+    "start": "Starts the selected bot. Hold SHIFT to start every bot on this layer.",
+    "pause": "Pauses the selected bot. Hold SHIFT to pause every bot on this layer.",
+    "stop": "Stops the selected bot. Hold SHIFT to stop every bot on this layer.",
+    "restart": (
+        "Restarts the selected bot. Hold SHIFT to restart every bot on this layer."
+    ),
+    "delete": "Deletes the selected bot. There is no all-bots form of Delete.",
+}
 
 #: The label and the command each single-bot command becomes while SHIFT is
 #: held. Delete has no all-bots form, so SHIFT leaves it alone.

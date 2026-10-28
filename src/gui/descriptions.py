@@ -147,5 +147,6 @@ PHANTOM_BOTS_TAB_DESCRIPTIONS = {
 }
 
 INDICATOR_PANEL_DESCRIPTIONS = {
+    "bot_selector": "The bot whose votes this panel reads. The arrows beside it step through the fleet.",
     "rate_strip": "BTC/USD and ETH/USD spot from the connected exchange, with satoshi-per-USD and gwei-per-USD. Refreshed on the dashboard tick.",
 }
