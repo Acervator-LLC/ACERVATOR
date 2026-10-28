@@ -170,6 +170,61 @@ Neither reports a single repeated line at its default floor, so the eight-file
 constant measured above needs the similarity floor set to two lines, or a low
 token count. **Installing either is the operator's call.**
 
+## Both reporters are now installed
+
+The operator ruled on the proposal above:
+
+> install both reporters; they cover different halves
+
+Both run. `pylint` is declared in the `dev` extra of `pyproject.toml` and joins
+the coding archetype. `jscpd` is declared in `package.json` and joins the
+documentation archetype.
+
+| reporter | the archetype that runs it | rule id | severity |
+|---|---|---|---|
+| pylint | coding, on a Python target | `R0801` | low |
+| jscpd | documentation, on a markdown page | `clone-exact` | low |
+
+Each one reads a tree rather than one file. A repeated block needs a second
+site, so `duplication_scope` in `dev_harness/harness/report.py` widens the run
+to the first-level directory that holds the target, and each runner keeps only
+the rows that name the target.
+
+### What the severity rests on
+
+Both rows are `low`, so the verdict does not move on either. The counts at the
+wired floors, measured over the tree as it stands:
+
+| tree | pylint rows | jscpd clones |
+|---|---|---|
+| `src/` | 1120, naming 301 modules | 876 |
+| `docs/manual/` | 0, no Python | 74, naming 17 of 31 pages |
+| `dev_harness/skills/` | 0, no Python | 0 |
+
+A blocking severity would refuse 301 Python modules and 17 manual pages on the
+day it landed. The severity can move only after those counts reach zero at the
+same floors; then a raise would refuse new duplication alone.
+
+### The floor that reads one repeated line
+
+`Symilar._find_common` in pylint yields a row only when the common line count
+is strictly greater than `min_similarity_lines`, and the value 0 switches the
+checker off. So pylint reports a two-line repeat at a floor of one and reports
+**no single repeated line at any setting**. Measured over a planted pair:
+
+```
+shared lines   1    2    3    4
+floor 1        0    1    1    1
+floor 2        0    0    1    1
+floor 3        0    0    0    1
+floor 4        0    0    0    0
+```
+
+jscpd does read one line, at `--min-lines 1 --min-tokens 3`, and that floor is
+unusable: 27,952 clones over `docs/manual/`, 1,768 over `dev_harness/skills/`
+and 148,012 over `src/`, against 74, 0 and 876 at the defaults. The defaults
+are therefore what the archetypes run.
+
 ## Falsification
 
 This page is wrong if:

@@ -46,6 +46,7 @@ from dev_harness.harness.report import (
     ArchetypeReport,
     Finding,
     cli_exit,
+    duplication_scope,
     refuse_silent_failure,
     scan_rule_modules,
 )
@@ -370,6 +371,16 @@ _YAMLLINT_LAYOUT_DEMOTIONS: dict[str, str] = {
     "trailing-spaces": "low",
 }
 
+# pylint reads a tree rather than one file, and measured 17 seconds over the
+# 498 modules of src/, which is the largest tree here.
+_DUPLICATION_TIMEOUT_S = 300
+
+# One line of a pylint `duplicate-code` message: the module and the stripped
+# line span of the fragment it repeats.
+_PYLINT_FRAGMENT = re.compile(
+    r"^==(?P<module>[\w.]+):\[(?P<start>\d+):(?P<end>\d+)\]$", re.MULTILINE
+)
+
 
 def _module_binding_kinds(path: str) -> tuple[set[str], set[str]]:
     """Return (import_bound, assignment_bound) name sets for a module.
@@ -488,7 +499,11 @@ def drop_spec_injected_globals(findings: list[Finding], target: Path) -> list[Fi
 class CodingArchetype:
     """Coding-quality archetype v2 — subprocess-invokes ruff, mypy,
     pyright, bandit, vulture and semgrep on Python, eslint on JavaScript,
-    shellcheck on a shell script and yamllint on a YAML file."""
+    shellcheck on a shell script and yamllint on a YAML file.
+
+    pylint joins the Python set and reports only `duplicate-code`, the one
+    finding class that needs a second file to exist.
+    """
 
     name = "coding_quality"
     version = "2.1"  # v2.1: added falsification field + calibration hook
@@ -499,6 +514,7 @@ class CodingArchetype:
         "bandit",
         "vulture",
         "semgrep",
+        "pylint",
         "eslint",
         "shellcheck",
         "yamllint",
@@ -618,6 +634,7 @@ class CodingArchetype:
             ("bandit", self._run_bandit),
             ("vulture", self._run_vulture),
             ("semgrep", self._run_semgrep),
+            ("pylint", self._run_pylint),
         ]
 
     # ---- tool runners ----
@@ -1075,12 +1092,100 @@ class CodingArchetype:
             )
         return findings, "ok"
 
+    @staticmethod
+    def _pylint_module_names(target: Path) -> set[str]:
+        """Every dotted name pylint can print for `target`.
+
+        pylint names a module by the dotted path from wherever the package
+        root stops, so `src/exchange/fetch_stall.py` can read as
+        `src.exchange.fetch_stall`, `exchange.fetch_stall` or
+        `fetch_stall`. Returning every tail makes the match exact without
+        re-deriving pylint's own root detection.
+        """
+        names = {target.stem}
+        try:
+            parts = target.resolve().relative_to(REPO_ROOT).with_suffix("").parts
+        except ValueError:
+            return names
+        for start in range(len(parts)):
+            names.add(".".join(parts[start:]))
+        return names
+
+    def _run_pylint(self, target: Path) -> tuple[list[Finding], str]:
+        """Report the blocks `target` repeats in another Python module.
+
+        Every pylint message is disabled except `duplicate-code`, and only
+        the rows whose message names `target` are kept, because pylint
+        files every row against the last module it read.
+
+        Each row is `low`. Measured over `src/` at the default similarity
+        floor, the tree carries 1120 rows naming 301 modules, so a
+        blocking severity would refuse those 301 modules on the day this
+        runner landed. The floor is pylint's own default of four lines:
+        `Symilar._find_common` yields only when the common line count is
+        strictly greater than `min_similarity_lines`, and 0 switches the
+        checker off, so no setting reports a single repeated line.
+
+        pylint parses `.py` alone, so a `.spec` target draws no row.
+        """
+        scope = [str(path) for path in duplication_scope(target, "*.py")]
+        if not scope:
+            return [], "ok"
+        proc = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "pylint",
+                "--disable=all",
+                "--enable=duplicate-code",
+                "--output-format=json",
+                *scope,
+            ],
+            cwd=str(REPO_ROOT),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=_DUPLICATION_TIMEOUT_S,
+        )
+        if self._module_absent(proc, "pylint"):
+            return [], "missing"
+        refuse_silent_failure(proc, "pylint")
+        try:
+            rows = json.loads(proc.stdout)
+        except json.JSONDecodeError as exc:
+            raise RuntimeError(f"pylint produced non-JSON output: {exc}") from exc
+        own = self._pylint_module_names(target)
+        findings: list[Finding] = []
+        for row in rows:
+            spans = _PYLINT_FRAGMENT.findall(row.get("message", ""))
+            mine = [span for span in spans if span[0] in own]
+            others = [f"{m}:[{a}:{b}]" for m, a, b in spans if m not in own]
+            if not mine or not others:
+                continue
+            module, start, end = mine[0]
+            findings.append(
+                Finding(
+                    tool="pylint",
+                    severity="low",
+                    file=str(target),
+                    line=int(start) + 1,
+                    rule_id=row.get("message-id", "R0801"),
+                    message=(
+                        f"{int(end) - int(start)} lines of {module} are also in "
+                        + ", ".join(others)
+                    ),
+                )
+            )
+        return findings, "ok"
+
 
 def main(argv: list[str] | None = None) -> int:
     argv = argv if argv is not None else sys.argv[1:]
     if not argv or argv[0] in ("-h", "--help"):
         print("usage: python -m tools.harness.coding_archetype <path>")
         print("       .py: ruff + mypy + pyright + bandit + vulture + semgrep;")
+        print("       .py: pylint duplicate-code over the target's own tree;")
         print("       .js: eslint;")
         print("       .sh: shellcheck;")
         print("       .yml: yamllint;")
