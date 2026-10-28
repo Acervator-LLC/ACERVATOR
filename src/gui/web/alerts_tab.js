@@ -10,6 +10,7 @@
   var BUTTON_TEXTS = "button_texts";
   var BUTTONS_ENABLED = "buttons_enabled";
   var CHAT_ID = "chat_id";
+  var COLORED_FROM_COLUMN = "colored_from_column";
   var CONTENT_MARGINS = "content_margins";
   var CONTENT_SPACING = "content_spacing";
   var ECHO_MODES = "echo_modes";
@@ -19,6 +20,7 @@
   var PANE_MARGINS = "pane_margins";
   var PHONE = "phone";
   var PLACEHOLDERS = "placeholders";
+  var ROUTE_DESCRIPTION = "route_description";
   var ROW_LABELS = "row_labels";
   var RULES_COLUMNS = "rules_columns";
   var RULES_ROWS = "rules_rows";
@@ -46,6 +48,7 @@
     BUTTON_TEXTS,
     BUTTONS_ENABLED,
     CHAT_ID,
+    COLORED_FROM_COLUMN,
     CONTENT_MARGINS,
     CONTENT_SPACING,
     ECHO_MODES,
@@ -55,6 +58,7 @@
     PANE_MARGINS,
     PHONE,
     PLACEHOLDERS,
+    ROUTE_DESCRIPTION,
     ROW_LABELS,
     RULES_COLUMNS,
     RULES_ROWS,
@@ -96,6 +100,7 @@
 
   var PART_ATTR = "data-part";
   var ACTION_ATTR = "data-action";
+  var ROUTE_ATTR = "data-route-column";
   var HOVERED_ATTR = "data-hovered";
   var LABEL_ATTR = "aria-label";
   var ROLE_ATTR = "role";
@@ -147,6 +152,7 @@
   var COLUMN = "column";
   var ROW = "row";
   var CENTER = "center";
+  var POINTER = "pointer";
   var AUTO = "auto";
   var NOWRAP = "nowrap";
   var COLLAPSE = "collapse";
@@ -378,8 +384,11 @@
     return name === undefined ? undefined : objectField(model, STYLES)[name];
   }
 
-  function dispatch(action, fields) {
+  function dispatch(action, fields, route) {
     var params = { action: action, fields: fields };
+    if (route !== undefined) {
+      params.route = route;
+    }
     dispatched.push(copyOf(params));
     if (!global.acervator || typeof global.acervator.call !== "function") {
       return null;
@@ -504,17 +513,34 @@
       style: { color: painted === EMPTY ? undefined : painted, textAlign: CENTER }
     };
     cellProps[PART_ATTR] = CELL_PART;
+    if (typeof props.onRoute === "function") {
+      cellProps.style.cursor = POINTER;
+      cellProps.onClick = props.onRoute;
+      cellProps[ROUTE_ATTR] = text(props.column);
+      cellProps.title = label(props.description);
+    }
     return element(CELL_TAG, cellProps, text(cell[TEXT]));
   }
 
   function Row(props) {
     var rowProps = {};
     rowProps[PART_ATTR] = ROW_PART;
+    var route = props.onRoute;
+    var from = props.routedFrom;
     return element(
       ROW_TAG,
       rowProps,
       props.cells.map(function (cell, index) {
-        return element(Cell, { key: String(index), cell: cell });
+        return element(Cell, {
+          key: String(index),
+          cell: cell,
+          column: index,
+          description: props.description,
+          onRoute:
+            typeof route === "function" && from !== undefined && index >= from
+              ? route(props.row, index)
+              : undefined
+        });
       })
     );
   }
@@ -549,7 +575,11 @@
           props.rows.map(function (cells, index) {
             return element(Row, {
               key: String(index),
-              cells: Array.isArray(cells) ? cells : []
+              cells: Array.isArray(cells) ? cells : [],
+              row: index,
+              onRoute: props.onRoute,
+              routedFrom: props.routedFrom,
+              description: props.description
             });
           })
         )
@@ -690,7 +720,12 @@
         element(Table, {
           part: RULES_TABLE_PART,
           columns: listField(model, RULES_COLUMNS),
-          rows: listField(model, RULES_ROWS)
+          rows: listField(model, RULES_ROWS),
+          onRoute: props.onRoute,
+          routedFrom: isNumber(model[COLORED_FROM_COLUMN])
+            ? model[COLORED_FROM_COLUMN]
+            : undefined,
+          description: model[ROUTE_DESCRIPTION]
         })
       ),
       element(
@@ -765,6 +800,11 @@
         dispatch(actionAt(model, index), undefined);
       };
     }
+    function route(row, column) {
+      return function () {
+        dispatch(undefined, undefined, { row: row, column: column });
+      };
+    }
     return element(
       DIV_TAG,
       tabProps,
@@ -801,7 +841,8 @@
           },
           element(RightPane, {
             model: model,
-            onAcknowledge: press(ACK_BUTTON_AT)
+            onAcknowledge: press(ACK_BUTTON_AT),
+            onRoute: route
           })
         )
       )

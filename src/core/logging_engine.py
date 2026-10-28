@@ -22,6 +22,7 @@ from pathlib import Path
 from threading import Lock
 from typing import Any, Callable, Optional
 
+from src.core.emit_contracts import fill_usd
 from src.core.log_paths import (
     gate_archive_dir,
     gate_log_path,
@@ -968,7 +969,7 @@ class LogManager:
             except (TypeError, ValueError):
                 price = 0.0
             try:
-                usd = float(merged.get("usd", merged.get("size", 0)) or 0)
+                usd = float(fill_usd(merged) or 0)
             except (TypeError, ValueError):
                 usd = 0.0
             if usd <= 0 and amount > 0 and price > 0:

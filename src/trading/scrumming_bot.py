@@ -4485,7 +4485,6 @@ class ScrummingBot(
                             price=hedge_fill,
                             amount=_hedge_asset,
                             usd=_hedge_spent,
-                            size=_hedge_spent,
                             profit=0,
                             **self._fill_fee_fields(hedge_fill),
                         )
