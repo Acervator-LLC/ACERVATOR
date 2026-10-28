@@ -231,8 +231,9 @@ def reachable_src_modules(project_root: str) -> frozenset[str]:
     module holds, and walks what that module imports in turn.
     """
     held = src_modules(project_root)
-    entry = os.path.join(project_root, ENTRY_SCRIPT)
-    pending = list(_src_import_names(_parsed(entry), "__main__", False))
+    entry = _parsed(os.path.join(project_root, ENTRY_SCRIPT))
+    pending = list(_src_import_names(entry, "__main__", False))
+    pending.extend(_dynamic_src_names(entry, held))
     seen: set[str] = set()
     while pending:
         name = pending.pop()
