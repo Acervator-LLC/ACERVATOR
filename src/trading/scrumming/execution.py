@@ -20,7 +20,9 @@ from ..ta_engine import VotingSummary
 from ..wallet_reservations import get_wallet_reservations, wallet_key
 from .sizing import (
     FRACTIONAL_UNITS,
+    fold_tranche_records,
     fold_units,
+    opposing_event_id,
     priced_usd,
     sale_proceeds_usd,
     scrum_units,
@@ -66,6 +68,7 @@ class ExecutionEngineMixin:
     _bound_new_fold_tranches: Callable[..., Any]
     _bus: Any
     _cb_last_candle_ts: float
+    _combine_fold_tranches_within_distance: Callable[..., Any]
     _crr: Callable[..., Any]
     _current_holdings: float
     _emit_gate_decision_at_fire: Callable[..., None]
@@ -744,29 +747,32 @@ class ExecutionEngineMixin:
 
             self._main_lots.sort(key=lambda l: l["initial_buy_price"], reverse=True)
             _manual_tranche_count_before = len(self._fold_tranches)
-            remaining = fill_amount
-            new_tranches_count = 0
-            for lot in list(self._main_lots):
-                if remaining <= 1e-12:
-                    break
-                take = min(lot["units"], remaining)
-                t_usd = (take / fill_amount) * fill_usd
-                self._fold_tranches.append(
-                    {
-                        "usd": t_usd,
-                        "units": take,
-                        "ref": fill_price,
-                        "initial_buy_price": lot["initial_buy_price"],
-                        "operator_initiated": _operator_initiated,
-                        "created_ts": time.time(),
-                    }
+            _manual_event_ts = time.time()
+            _manual_records, _manual_unqueued = fold_tranche_records(
+                self._main_lots,
+                fill_price,
+                fill_amount,
+                fill_usd,
+                opposing_event_id(_scrum_label, _manual_event_ts),
+                _manual_event_ts,
+            )
+            for _record in _manual_records:
+                _record["operator_initiated"] = _operator_initiated
+            self._fold_tranches.extend(_manual_records)
+            self._tranches_created_lifetime += len(_manual_records)
+            new_tranches_count = len(_manual_records)
+            if _manual_unqueued > 1e-12:
+                self._bus.emit(
+                    "bot.log",
+                    bot_id=self.bot_id,
+                    message=(
+                        f"FOLD ALIGNMENT SHORT: this sale sold "
+                        f"{fill_amount:.8f} units and the lot book covered "
+                        f"only {fill_amount - _manual_unqueued:.8f}. "
+                        f"{_manual_unqueued:.8f} units are queued against no "
+                        f"tranche and will not be bought back."
+                    ),
                 )
-                self._tranches_created_lifetime += 1
-                lot["units"] -= take
-                remaining -= take
-                if lot["units"] <= 1e-12:
-                    self._main_lots.remove(lot)
-                new_tranches_count += 1
 
             # Returns how many tranches the merge removed.
             new_tranches_count -= self._bound_new_fold_tranches(
@@ -785,6 +791,8 @@ class ExecutionEngineMixin:
                 float(getattr(_bb_last, "upper", 0.0) or 0.0),
             )
             new_tranches_count -= _merged_n
+            _combined_n, _ = self._combine_fold_tranches_within_distance()
+            new_tranches_count = max(0, new_tranches_count - _combined_n)
 
             self._land_pending_wire_credits()
 

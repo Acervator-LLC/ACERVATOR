@@ -336,20 +336,6 @@ def fold_row_matches_filter(cell_texts: list, needle: str) -> bool:
     return any(text in str(cell or "").casefold() for cell in cell_texts)
 
 
-FOLD_COLUMN_TOOLTIPS = (
-    "Position of this tranche in the fold queue.",
-    "Time since the scrum created this tranche.",
-    "Asset units this tranche will buy back.",
-    "Cash parked for this tranche's buy-back.",
-    "Price per unit at which the scrum sold.",
-    "Price per unit first paid. Informational only.",
-    "Price the fold gate needs. Not a trigger.",
-    "Price gate only. Technical analysis must also agree.",
-    "The action that created this tranche.",
-    "Buy this tranche back now. Moves real money.",
-    "Who may close this Extractor Tranche.",
-)
-
 # For the sort combo box and the filter field.
 FOLD_SORT_TOOLTIP = "Choose the row order. Unreadable rows stay last."
 FOLD_FILTER_TOOLTIP = "Show only rows that contain this text."

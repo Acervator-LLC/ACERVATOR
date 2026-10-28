@@ -10,6 +10,7 @@ import logging
 
 from . import design_system as ds
 from .color_alpha import rgba
+from .main_tabs.fold_tokens_surface import FOLD_COLUMN_TOOLTIPS
 from .live_settings.fold_tokens import (
     ARBITER_COLUMN_HEADER,
     ARBITER_COLUMN_INDEX,
@@ -19,7 +20,6 @@ from .live_settings.fold_tokens import (
     EXTRACTOR_TRANCHE_FG_HEX,
     FOLD_CLOSED_TOOLTIP,
     FOLD_CLOSE_RATIO_TOOLTIP,
-    FOLD_COLUMN_TOOLTIPS,
     FOLD_COUNTERS_RESET_TOOLTIP,
     FOLD_CYCLE_CAP_TOOLTIP,
     FOLD_DISCARDED_TOOLTIP,

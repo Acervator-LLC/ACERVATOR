@@ -14,7 +14,9 @@ from typing import Any, Optional
 from ..bot_container import as_finite_float, despawn_threshold_days
 from ..container.config import fold_ratio_pct
 from .sizing import (
+    combined_event_reference,
     eligible_fold_tranches,
+    merge_fold_tranches_within_distance,
     plan_fold_consumption,
     settle_fold_plan,
     tranche_sale_rate,
@@ -281,6 +283,8 @@ class FoldTrancheAccountingMixin:
                 # the `ticker.last <= ref x factor` comparison at its bound.
                 _units_at_sale = (_b_usd / _b_rate) + (_new_usd / _new_rate)
                 _best["blend_rate"] = _best["usd"] / _units_at_sale
+            # The survivor now holds two sales' money and names both events.
+            _best.update(combined_event_reference(_best, _new_t))
             _merged_away.add(id(_new_t))
             _merged_n += 1
             _merged_usd += _new_usd
@@ -302,6 +306,36 @@ class FoldTrancheAccountingMixin:
                 f"initial_buy_price, lowest ref inside the BB "
                 f"range ${bb_lower:.8f}..${bb_upper:.8f}. "
                 f"{len(self._fold_tranches)} tranche(s) open."
+            ),
+        )
+        return _merged_n, _merged_usd
+
+    def _combine_fold_tranches_within_distance(self) -> tuple[int, float]:
+        """Combine every standing pair whose ``ref`` prices sit inside the
+        merge distance, and report how many combined away with the USD moved.
+
+        ``merge_fold_tranches_within_distance`` holds the arithmetic and the
+        0.1 per cent figure, and each combine lowers
+        ``_tranches_created_lifetime`` so ``created - closed - discarded ==
+        standing`` holds.
+        """
+        _kept, _merged_n, _merged_usd = merge_fold_tranches_within_distance(
+            self._fold_tranches
+        )
+        if not _merged_n:
+            return 0, 0.0
+        self._fold_tranches = _kept
+        self._tranches_created_lifetime = max(
+            0, int(self._tranches_created_lifetime) - _merged_n
+        )
+        self._bus.emit(
+            "bot.log",
+            bot_id=self.bot_id,
+            message=(
+                f"FOLD TRANCHE COMBINED: {_merged_n} tranche(s) holding "
+                f"${_merged_usd:.4f} sat within 0.1% of another in price and "
+                f"were combined into it. {len(self._fold_tranches)} "
+                f"tranche(s) open."
             ),
         )
         return _merged_n, _merged_usd

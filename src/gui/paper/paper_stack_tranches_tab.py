@@ -18,6 +18,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ..main_tabs.stack_tranches_tab_surface import (
+    ALIGNMENT_ROW_LABEL,
+    compose_event_alignment_row,
+)
 from .. import design_system as ds
 from ..descriptions import STACK_TRANCHES_TAB_DESCRIPTIONS
 
@@ -423,6 +427,14 @@ class PaperStackTranchesTabMixin:
             f"font-weight: bold; font-size: 13px; color: {ds.FOLD_RATIO_AMBER};"
         )
         sf.addRow("Pending size (unfilled):", pending_lbl)
+
+        # compose_event_alignment_row is the one declaration of this row; the
+        # React page draws the same call's answer.
+        _alignment_text, _alignment_style = compose_event_alignment_row(tranches)
+        _alignment_lbl = QLabel(_alignment_text)
+        if _alignment_style:
+            _alignment_lbl.setStyleSheet(_alignment_style)
+        sf.addRow(ALIGNMENT_ROW_LABEL, _alignment_lbl)
 
         ages_sec = []
         for t in pending:

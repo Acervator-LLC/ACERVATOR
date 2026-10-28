@@ -16,11 +16,18 @@ SCRUM ladder, then reshapes it with ``_apply_merge_rule`` and
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Optional, Sequence
 
 # _apply_merge_rule combines two rung prices closer than this fraction, 0.1%.
 MERGE_THRESHOLD = 0.001
+
+STACK_PRICE_KEY = "price"
+STACK_SIZE_KEY = "size"
+STACK_ORDER_ID_KEY = "order_id"
+STACK_STATUS_KEY = "status"
+STACK_STATUS_PENDING = "pending"
 
 SPACING_MODES = ("quadratic", "fibonacci", "linear", "exponential")
 DEFAULT_SPACING_MODE = "quadratic"
@@ -300,6 +307,31 @@ def scrum_ladder_prices(
     )
 
 
+def _record_float(value: object) -> Optional[float]:
+    """`value` as a finite float, or None where it is not a finite number."""
+    try:
+        read = float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return read if math.isfinite(read) else None
+
+
+def within_merge_distance(lower_price: float, higher_price: float) -> bool:
+    """Do two prices sit inside MERGE_THRESHOLD of each other.
+
+    This is the one declaration of the 0.1 per cent distance, read for a Stack
+    rung and for a fold tranche `ref` alike, and a non-positive price reads
+    False.
+    """
+    low = _record_float(lower_price)
+    high = _record_float(higher_price)
+    if low is None or high is None or low <= 0.0 or high <= 0.0:
+        return False
+    if high < low:
+        low, high = high, low
+    return (high - low) < low * MERGE_THRESHOLD
+
+
 def _apply_merge_rule(tranches: list[Tranche]) -> list[Tranche]:
     """Combine adjacent tranches whose prices are within MERGE_THRESHOLD.
 
@@ -314,8 +346,7 @@ def _apply_merge_rule(tranches: list[Tranche]) -> list[Tranche]:
         if prev.price <= 0:
             out.append(cur)
             continue
-        # The prev.price > 0 guard above makes this width test equal a ratio.
-        if (cur.price - prev.price) < prev.price * MERGE_THRESHOLD:
+        if within_merge_distance(prev.price, cur.price):
             merged = Tranche(
                 index=prev.index,
                 price=cur.price,
@@ -329,6 +360,71 @@ def _apply_merge_rule(tranches: list[Tranche]) -> list[Tranche]:
     return out
 
 
+def _rung_is_order_free(record: dict) -> bool:
+    """Does `record` hold no `order_id` and read `pending` as its `status`."""
+    if record.get(STACK_ORDER_ID_KEY):
+        return False
+    return str(record.get(STACK_STATUS_KEY, "")) == STACK_STATUS_PENDING
+
+
+def merge_into_standing_rungs(
+    standing: list[dict],
+    fresh: list[dict],
+    sum_keys: Sequence[str] = (),
+    id_key: str = "",
+) -> tuple[list[dict], int, float]:
+    """Move each `fresh` rung inside `within_merge_distance` of an order-free
+    `standing` rung into that rung.
+
+    A standing rung holding an `order_id` is never a candidate, and the
+    survivor keeps its own `price`, takes the summed `size`, sums every
+    `sum_keys` figure and joins `id_key`.
+    """
+    kept: list[dict] = []
+    merged_n = 0
+    merged_size = 0.0
+    for new_rung in fresh:
+        new_price = _record_float(new_rung.get(STACK_PRICE_KEY))
+        new_size = _record_float(new_rung.get(STACK_SIZE_KEY))
+        if new_price is None or new_size is None or new_size <= 0.0:
+            kept.append(new_rung)
+            continue
+        target = None
+        for old_rung in standing:
+            if not _rung_is_order_free(old_rung):
+                continue
+            old_price = _record_float(old_rung.get(STACK_PRICE_KEY))
+            if old_price is not None and within_merge_distance(old_price, new_price):
+                target = old_rung
+                break
+        if target is None:
+            kept.append(new_rung)
+            continue
+        target[STACK_SIZE_KEY] = (
+            _record_float(target.get(STACK_SIZE_KEY)) or 0.0
+        ) + new_size
+        for amount_key in sum_keys:
+            if amount_key in new_rung or amount_key in target:
+                target[amount_key] = (_record_float(target.get(amount_key)) or 0.0) + (
+                    _record_float(new_rung.get(amount_key)) or 0.0
+                )
+        if id_key:
+            target[id_key] = _joined_ids(target.get(id_key), new_rung.get(id_key))
+        merged_n += 1
+        merged_size += new_size
+    return kept, merged_n, merged_size
+
+
+def _joined_ids(first: object, second: object) -> str:
+    """Both ids as one `+`-joined string, each name kept once and in order."""
+    names: list[str] = []
+    for part in (first, second):
+        for name in str(part or "").split("+"):
+            if name and name not in names:
+                names.append(name)
+    return "+".join(names)
+
+
 def _max_slices(total_size: float, min_order_size: float) -> int:
     """Return how many slices of at least `min_order_size` fit in `total_size`."""
     return int(total_size // min_order_size)
@@ -337,18 +433,24 @@ def _max_slices(total_size: float, min_order_size: float) -> int:
 def _apply_min_order_size(
     tranches: list[Tranche], total_size: float, min_order_size: float
 ) -> list[Tranche]:
-    """Reduce the tranche count until each `size` reaches `min_order_size`.
+    """Reduce the tranche count until every `size` reaches `min_order_size`.
 
     The survivors are the lowest-priced `_max_slices` of them, re-split evenly
-    out of `total_size`; a `total_size` under `min_order_size` returns one
-    Tranche carrying all of it.
+    out of `total_size`, and a `total_size` under one `min_order_size` piece
+    raises ValueError.
     """
-    if min_order_size <= 0 or not tranches:
+    if not tranches:
         return tranches
     max_viable_n = _max_slices(total_size, min_order_size)
     if max_viable_n <= 0:
-        return [Tranche(index=0, price=tranches[0].price, size=total_size)]
-    if max_viable_n >= len(tranches):
+        raise ValueError(
+            f"total_size {total_size} is under the venue's smallest order "
+            f"size {min_order_size}; no Stack piece could fill"
+        )
+    # The count alone is not the test: _apply_merge_rule leaves unequal
+    # sizes, so a ladder can hold a size under min_order_size while
+    # max_viable_n still fits len(tranches).
+    if min(t.size for t in tranches) >= min_order_size:
         return tranches
     kept = tranches[:max_viable_n]
     even = total_size / max_viable_n
@@ -362,7 +464,7 @@ def split_scrum_into_tranches(
     split_distance_pct: float = DEFAULT_INITIAL_GAP_PCT,
     spacing_mode: str = DEFAULT_SPACING_MODE,
     min_opposing_pct: float = 0.0,
-    min_order_size: float = 0.0,
+    min_order_size: Optional[float] = None,
     *,
     exponential_ratio: float = DEFAULT_EXPONENTIAL_RATIO,
     last_candle_close: Optional[float] = None,
@@ -382,7 +484,9 @@ def split_scrum_into_tranches(
         spacing_mode: one of SPACING_MODES.
         min_opposing_pct: percent by which the anchor sits above the base
             price, and the floor `placement_floor_price` holds level 1 to.
-        min_order_size: exchange minimum order size, in base asset units.
+        min_order_size: the venue's own smallest order size, in base asset
+            units. None is the venue publishing no size rule and raises; the
+            split is refused where the floor is unknown.
         exponential_ratio: growth ratio r for "exponential".
         last_candle_close: required for "fibonacci", ignored otherwise.
         bb_bounds: (lower, upper) local Bollinger range; None leaves
@@ -392,9 +496,10 @@ def split_scrum_into_tranches(
         Tranche instances ordered by ascending `price`, at least one.
 
     Raises:
-        ValueError on a non-positive size, an unknown `spacing_mode`,
-        "fibonacci" without `last_candle_close`, or a level 1 outside
-        `bb_bounds`.
+        ValueError on a non-positive size, a `min_order_size` that is not a
+        positive finite number, a `scrum_size` under one `min_order_size`
+        piece, an unknown `spacing_mode`, "fibonacci" without
+        `last_candle_close`, or a level 1 outside `bb_bounds`.
 
     """
     # These raise under this function's parameter names, not the ladder's.
@@ -411,6 +516,13 @@ def split_scrum_into_tranches(
     gap = _number("split_distance_pct", split_distance_pct)
     if gap < 0:
         raise ValueError(f"split_distance_pct must be >= 0; got {gap}")
+    floor = _record_float(min_order_size)
+    if floor is None or floor <= 0.0:
+        raise ValueError(
+            f"min_order_size must be a positive finite number; got "
+            f"{min_order_size!r}. A venue that published no size rule has an "
+            f"unknown floor and the split is refused"
+        )
     if spacing_mode not in SPACING_MODES:
         raise ValueError(
             f"unknown spacing_mode {spacing_mode!r}; "
@@ -434,7 +546,14 @@ def split_scrum_into_tranches(
     ]
 
     tranches = _apply_merge_rule(tranches)
-    tranches = _apply_min_order_size(tranches, size, min_order_size)
+    tranches = _apply_min_order_size(tranches, size, floor)
+    # The sum is the alignment: a fold's pieces come to the units it acquired.
+    if abs(math.fsum(t.size for t in tranches) - size) > size * 1e-9:
+        raise ValueError(
+            f"split lost size: pieces sum to "
+            f"{math.fsum(t.size for t in tranches)} against a scrum_size of "
+            f"{size}"
+        )
 
     # Raised, not asserted: `python -O` strips an `assert`.
     for k in range(1, len(tranches)):

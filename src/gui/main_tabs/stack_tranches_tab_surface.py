@@ -58,6 +58,15 @@ OLDEST_AGE_ROW_LABEL = "Oldest pending age:"
 OPENED_ROW_LABEL = "Lifetime tranches opened:"
 FILL_RATIO_ROW_LABEL = "Fill ratio (filled/opened):"
 DISCARDED_ROW_LABEL = "Lifetime tranches discarded (removed, not filled):"
+ALIGNMENT_ROW_LABEL = "Standing size vs the events that produced it:"
+
+EVENT_ID_KEY = "opposing_event_id"
+EVENT_UNITS_KEY = "opposing_event_units"
+
+ALIGNMENT_FORMAT = "{standing:,.6f} standing / {produced:,.6f} produced"
+ALIGNMENT_NO_EVENT_TEXT = "no tranche names an opposing event"
+ALIGNMENT_OVER_SUFFIX = "  (over by {over:,.6f})"
+ALIGNMENT_UNNAMED_SUFFIX = "  (+{unnamed} naming no event)"
 
 COUNT_FORMAT = "{count}"
 PENDING_SIZE_FORMAT = "{size_total:,.6f} base units"
@@ -338,6 +347,44 @@ def as_finite_float(value) -> Optional[float]:
     from ...trading.bot_container import as_finite_float as admitted
 
     return admitted(value)
+
+
+def compose_event_alignment_row(tranches: list) -> tuple:
+    """``(text, style)`` for the alignment row: the standing size against what
+    the events that produced it acquired, red while the first exceeds the
+    second.
+
+    A tranche naming no event is counted in the suffix and never added to
+    either figure, and the style is RATIO_NO_STYLE while the two agree.
+    """
+    produced: dict = {}
+    standing = 0.0
+    unnamed = 0
+    for record in list(tranches or []):
+        if not isinstance(record, dict):
+            unnamed += 1
+            continue
+        size = as_finite_float(record.get(SIZE_KEY, 0))
+        event_id = str(record.get(EVENT_ID_KEY, "") or "")
+        event_units = as_finite_float(record.get(EVENT_UNITS_KEY))
+        if size is None or not event_id or event_units is None:
+            unnamed += 1
+            continue
+        standing += size
+        produced[event_id] = event_units
+    if not produced:
+        text = ALIGNMENT_NO_EVENT_TEXT
+        if unnamed:
+            text += ALIGNMENT_UNNAMED_SUFFIX.format(unnamed=unnamed)
+        return (text, RATIO_NO_STYLE)
+    total_produced = sum(produced.values())
+    text = ALIGNMENT_FORMAT.format(standing=standing, produced=total_produced)
+    if unnamed:
+        text += ALIGNMENT_UNNAMED_SUFFIX.format(unnamed=unnamed)
+    if standing - total_produced > 1e-9:
+        text += ALIGNMENT_OVER_SUFFIX.format(over=standing - total_produced)
+        return (text, RATIO_STYLE_FORMAT.format(colour=RATIO_RED))
+    return (text, RATIO_NO_STYLE)
 
 
 def lifetime_counter(bot, field: str) -> Optional[int]:
@@ -635,6 +682,9 @@ class StackTranchesTabModel:
                 unreadable=self.state.pending_size_unreadable
             )
         self._add_row(PENDING_SIZE_ROW_LABEL, size_text, PENDING_SIZE_STYLE)
+
+        _alignment_text, _alignment_style = compose_event_alignment_row(tranches)
+        self._add_row(ALIGNMENT_ROW_LABEL, _alignment_text, _alignment_style)
 
         ages = []
         for row in pending:
@@ -995,6 +1045,7 @@ def payload_labels() -> dict:
         "filled": FILLED_ROW_LABEL,
         "cancelled": CANCELLED_ROW_LABEL,
         "pending_size": PENDING_SIZE_ROW_LABEL,
+        "alignment": ALIGNMENT_ROW_LABEL,
         "oldest_age": OLDEST_AGE_ROW_LABEL,
         "opened": OPENED_ROW_LABEL,
         "fill_ratio": FILL_RATIO_ROW_LABEL,
