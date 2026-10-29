@@ -360,11 +360,17 @@ def _apply_merge_rule(tranches: list[Tranche]) -> list[Tranche]:
     return out
 
 
+def rung_is_pending(record: dict) -> bool:
+    """Does `record` read `pending` as its `status`; a filled or cancelled rung
+    marks no units."""
+    return str(record.get(STACK_STATUS_KEY, "")) == STACK_STATUS_PENDING
+
+
 def _rung_is_order_free(record: dict) -> bool:
     """Does `record` hold no `order_id` and read `pending` as its `status`."""
     if record.get(STACK_ORDER_ID_KEY):
         return False
-    return str(record.get(STACK_STATUS_KEY, "")) == STACK_STATUS_PENDING
+    return rung_is_pending(record)
 
 
 RUNG_NO_SIZE = "no size"

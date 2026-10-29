@@ -2858,7 +2858,7 @@ FOLD_AGE_KEY = "created_ts"
 """The stamp that dates a fold tranche, written by ``fold_tranche_records``."""
 
 STACK_AGE_KEY = "opened_ts"
-"""The stamp that dates a stack rung, written by ``split_scrum_into_tranches``."""
+"""The stamp that dates a stack rung, written by ``_open_stack_from_scrum``."""
 
 
 def tranches_beyond_held_total(
@@ -2877,7 +2877,8 @@ def tranches_beyond_held_total(
     its units are charged against ``held_units`` first.
 
     Args:
-      records: one bot's standing fold tranches or stack rungs.
+      records: one bot's standing fold tranches, or the stack rungs
+        ``rung_is_pending`` admits; every record passed counts in ``marked``.
       units_key: ``units`` on the fold side, ``size`` on the stack side.
       age_key: ``created_ts`` on the fold side, ``opened_ts`` on the stack side.
       held_units: the units the bot holds; a figure that is not above zero
