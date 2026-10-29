@@ -30,7 +30,9 @@ from __future__ import annotations
 import time
 from typing import Any, Optional
 
-METHOD = "journal_tab.state"
+from . import retired_surfaces
+
+METHOD = retired_surfaces.JOURNAL_TAB_METHOD
 
 LOGGER_NAME = "acervator.gui"
 

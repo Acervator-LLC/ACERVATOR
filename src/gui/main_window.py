@@ -252,9 +252,6 @@ if _HAS_QT:
         QMainWindow,
     ):
 
-        # Annotated, not assigned: the dashboard tick reads `hasattr` on the first pass.
-        _last_equity_snap: float
-
         # Annotated only: `_drain_signals` reads it by `getattr`, default False.
         _console_paused: bool
 
@@ -292,19 +289,9 @@ if _HAS_QT:
                 self._buy_confirmation_broker = None
 
             from ..trading.risk_manager import RiskManager
-            from ..trading.analytics_engine import AnalyticsEngine
-            from ..trading.reconciliation import (
-                TradeJournal,
-                ReconciliationEngine,
-                CrashRecovery,
-            )
             from ..core.notifications import get_notification_manager
 
             self._risk_manager = RiskManager(bot_manager)
-            self._analytics = AnalyticsEngine()
-            self._journal = TradeJournal()
-            self._recon_engine = ReconciliationEngine()
-            self._crash_recovery = CrashRecovery()
             self._notif_manager = get_notification_manager()
 
             self._bus.subscribe("bot.log", self._on_bot_log)
@@ -424,24 +411,6 @@ if _HAS_QT:
             main_layout = self._timed_build_step(
                 "header strip", self._build_header_strip
             )
-
-            def _install_testnet_bridge() -> None:
-                """Install ``SharedTestnetBridge`` on this window, clearing both handles on failure."""
-                try:
-                    from .shared_testnet import SharedTestnetBridge
-
-                    SharedTestnetBridge.install_on(self)
-                except Exception as _e:
-                    import traceback as _tb
-
-                    logging.getLogger("acervator").warning(
-                        f"SharedTestnetBridge install failed: {_e}\n"
-                        f"{_tb.format_exc()}"
-                    )
-                    self._local_testnet = None
-                    self._testnet_bridge = None
-
-            self._timed_build_step("testnet bridge", _install_testnet_bridge)
 
             self._main_tabs = _main_tab_book_class()()
             self._main_tabs.setMovable(True)
@@ -1651,17 +1620,6 @@ if _HAS_QT:
                                     alert.message,
                                 )
 
-                    if self._analytics and hasattr(self, "_last_equity_snap"):
-                        if time.time() - self._last_equity_snap >= 10:
-                            self._analytics.snapshot_equity(self._bot_manager)
-                            self._last_equity_snap = time.time()
-                    elif self._analytics:
-                        self._analytics.snapshot_equity(self._bot_manager)
-                        self._last_equity_snap = time.time()
-
-                    if self._crash_recovery:
-                        self._crash_recovery.save_snapshot(self._bot_manager)
-
                     if self._notif_manager and agg:
                         self._notif_manager.check_pnl_milestone(
                             agg.get("total_realised_pnl", 0)
@@ -1671,14 +1629,8 @@ if _HAS_QT:
                         self._last_tab_refresh = 0
                     if time.time() - self._last_tab_refresh >= 4:
                         self._last_tab_refresh = time.time()
-                        if self._analytics_tab:
-                            self._analytics_tab.refresh(self._analytics)
                         if self._risk_tab:
                             self._risk_tab.refresh(self._risk_manager)
-                        if self._journal_tab:
-                            self._journal_tab.refresh(
-                                self._journal, self._recon_engine, self._crash_recovery
-                            )
                         if self._alerts_tab:
                             self._alerts_tab.refresh(self._notif_manager)
 
@@ -2826,9 +2778,9 @@ if _HAS_QT:
                 ai_cfg = self._settings.get("ai_monitor", {}) if self._settings else {}
                 if ai_cfg.get("log_feedback"):
                     try:
-                        # _journal is reconciliation.TradeJournal, so the note
-                        # goes in through record_from_trade as a JournalEntry.
-                        self._journal.record_from_trade(
+                        from ..trading.reconciliation import TradeJournal
+
+                        TradeJournal().record_from_trade(
                             bot_id="AI_MONITOR",
                             symbol="SYSTEM",
                             action="AI_FEEDBACK",

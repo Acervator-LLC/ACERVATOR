@@ -9466,4 +9466,39 @@ vault under the phrase it was already under and reported success, and the stored
 secrets then opened under nothing. `in username_phrase` answers the same whether
 a key is held or not, and the clear asks it instead.
 
+## 2026-10-28 - #305 - the AI note builds its journal when it is written
+
+The journal switch still writes one line for each answer. The window no longer
+holds a trade journal from launch, so no launch makes the journal folder or
+reads the day files. `src/gui/main_window.py, in MainWindow._on_ai_feedback`
+builds the journal at the moment an answer arrives with the switch on, writes
+the note, and lets the journal go.
+
+`src/gui/main_window.py` — `MainWindow._on_ai_feedback`, the note as it is written now
+
+```python
+if ai_cfg.get("log_feedback"):
+    try:
+        from ..trading.reconciliation import TradeJournal
+
+        TradeJournal().record_from_trade(
+            bot_id="AI_MONITOR",
+            symbol="SYSTEM",
+            action="AI_FEEDBACK",
+            side="neutral",
+            price=0.0,
+            quantity=0.0,
+            reason=feedback[:500],
+        )
+```
+
+Driven in a redirected home, on the tree before this change and on this tree:
+
+```
+switch on    one Console line    one journal line holding the note
+switch off   one Console line    no journal line
+window build, before   journal and recovery folders made
+window build, now      no folder made
+```
+
 Back to [the subsystem index](README.md).

@@ -32,8 +32,9 @@ from typing import Any, Optional
 
 from .. import design_system as ds
 from ..color_alpha import css_colours
+from . import retired_surfaces
 
-METHOD = "risk_tab.state"
+METHOD = retired_surfaces.RISK_TAB_METHOD
 
 ACCESSIBLE_NAME = "Risk Tab"
 GAUGE_ACCESSIBLE_NAME = "Drawdown Gauge"

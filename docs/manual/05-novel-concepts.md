@@ -2251,6 +2251,21 @@ build-out.
 MAX_SUPPLY_WEI = TOTAL_SUPPLY_CAP * (10**TOKEN_DECIMALS)
 ```
 
+Read on the current tree, no session builds the chain. The main window no
+longer installs the testnet bridge at launch, so the bridge and the eleven
+competition parts it installs stay unbuilt, and its 250 ms timer never starts.
+The competition package stays on disk while Proof of Accumulation is paused.
+
+`src/gui/main_window.py` — `MainWindow._setup_ui`, the first two build steps
+
+```python
+            main_layout = self._timed_build_step(
+                "header strip", self._build_header_strip
+            )
+
+            self._main_tabs = _main_tab_book_class()()
+```
+
 The trophy generator draws the trophy as vector art and letters SOLVE ET COAGULA
 around its rim. No module imports it. Token Beasts and the colosseum appear in
 no Python file at all.
