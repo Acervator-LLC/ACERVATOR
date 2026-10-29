@@ -670,6 +670,12 @@ NO_SELECTION_FEEDBACK = "Select an exchange to remove."
 REMOVED_TAB_TEXT = "Its exchange tab comes off the main window."
 REMOVED_FEEDBACK_FORMAT = "{name} removed. " + REMOVED_TAB_TEXT
 REMOVED_LOG_FORMAT = "Exchange removed: {eid}"
+REMOVE_REFUSED_FORMAT = (
+    "{name} cannot be removed while a bot trades on it. Stop each bot first: {bots}."
+)
+REMOVE_UNREAD_FORMAT = "{name} cannot be removed: its bots could not be read ({error})."
+REMOVE_BLOCKER_FORMAT = "{symbol} (bot {bot_id}, {state})"
+REMOVE_BLOCKER_JOIN = ", "
 
 PROCESS_EVENTS_REASON = "legacy processEvents site"
 
@@ -2223,6 +2229,41 @@ def removed_feedback_text(name: Any) -> str:
     return REMOVED_FEEDBACK_FORMAT.format(name=name)
 
 
+def remove_refusal(exchange_id: str, fleet: object) -> str:
+    """Answer why Remove keeps *exchange_id*, or no text where it may go.
+
+    ``list_bots_by_exchange`` on *fleet* names its bots, and one not idle or
+    stopped, or a read that raises, keeps the venue for
+    ``SettingsDialog._remove_exchange`` and ``SettingsDialogModel.remove_exchange``.
+    """
+    from .main_window_surface import NOT_RUNNING_STATES
+
+    reader = getattr(fleet, "list_bots_by_exchange", None)
+    if reader is None:
+        return ""
+    name = str(exchange_id).capitalize()
+    try:
+        statuses = [dict(one) for one in reader(exchange_id) or ()]
+    except (AttributeError, KeyError, RuntimeError, TypeError, ValueError) as exc:
+        return REMOVE_UNREAD_FORMAT.format(
+            name=name, error=f"{type(exc).__name__}: {exc}"
+        )
+    blocking = [
+        REMOVE_BLOCKER_FORMAT.format(
+            symbol=one.get("symbol", ""),
+            bot_id=one.get("bot_id", ""),
+            state=one.get("state", ""),
+        )
+        for one in statuses
+        if str(one.get("state", "")) not in NOT_RUNNING_STATES
+    ]
+    if not blocking:
+        return ""
+    return REMOVE_REFUSED_FORMAT.format(
+        name=name, bots=REMOVE_BLOCKER_JOIN.join(blocking)
+    )
+
+
 def stored_credential_phrase(entry: Any) -> str:
     """The phrase an add reports, read off ``entry`` and not off the typed rows.
 
@@ -3094,6 +3135,7 @@ class SettingsDialogModel:
         validator: Any = None,
         sound: Any = None,
         encryptor: Any = None,
+        fleet: object = None,
     ) -> None:
         self.settings = settings
         self.status_log = status_log
@@ -3112,6 +3154,8 @@ class SettingsDialogModel:
         self.validator = validator
         self.sound = sound
         self.encryptor = encryptor
+        #: The ``BotManager`` ``remove_refusal`` reads before ``remove_exchange``.
+        self.fleet = fleet
         self.window_title = title_for(self.wing)
         self.minimum_size = MINIMUM_SIZE
         self.last_validation: Any = None
@@ -3651,12 +3695,18 @@ class SettingsDialogModel:
             self.enabled["test_btn"] = True
 
     def remove_exchange(self, selected: Any = None) -> None:
-        """Drop the selected exchange from the store and the list."""
+        """Remove the selected exchange unless ``remove_refusal`` refuses it."""
         self._record("remove_exchange", selected)
         if selected is None:
             self.set_feedback(NO_SELECTION_FEEDBACK, WARNING_LEVEL)
             return
         eid = selected.split("(")[-1].rstrip(")")
+        refusal = remove_refusal(eid, self.fleet)
+        if refusal:
+            self.set_feedback(refusal, WARNING_LEVEL)
+            if self.status_log:
+                self.status_log.log(refusal, WARNING_LEVEL)
+            return
         self.settings.remove_exchange(eid)
         if selected in self.listed_exchanges:
             self.listed_exchanges.remove(selected)

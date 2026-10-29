@@ -1049,8 +1049,17 @@ if _HAS_QT:
             eid = text.split("(")[-1].rstrip(")")
             from src.exchange.credential_state import forget
 
-            from .main_tabs.settings_dialog_surface import removed_feedback_text
+            from .main_tabs.settings_dialog_surface import (
+                remove_refusal,
+                removed_feedback_text,
+            )
 
+            refusal = remove_refusal(eid, self._window_fleet())
+            if refusal:
+                self._set_feedback(refusal, "warning")
+                if self._status_log:
+                    self._status_log.log(refusal, "warning")
+                return
             self._sm.remove_exchange(eid)
             self._exchange_list.takeItem(self._exchange_list.row(item))
             forget(eid)
@@ -2137,11 +2146,12 @@ if _HAS_QT:
             """
             from src.core.state_manager import StateManager
 
-            window = self.parent()
-            manager = getattr(
-                getattr(window, "_bot_manager", None), "_state_manager", None
-            )
+            manager = getattr(self._window_fleet(), "_state_manager", None)
             return manager if manager is not None else StateManager()
+
+        def _window_fleet(self) -> object:
+            """Answer the ``BotManager`` the opening window runs, or None."""
+            return getattr(self.parent(), "_bot_manager", None)
 
         def _move_vault(self, old_phrase: str, new_phrase: str) -> dict:
             """Reseal every stored venue secret from *old_phrase* to *new_phrase*.
