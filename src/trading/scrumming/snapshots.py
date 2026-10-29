@@ -13,7 +13,14 @@ from typing import TYPE_CHECKING, Any, Optional
 
 from ...core.event_bus import LINE_KIND_TRADE
 from ..container.config import target_growth_pct
-from ..gate_vocabulary import gate_light_row, unknown_blockers
+from ..gate_vocabulary import (
+    FOLD_BANK,
+    SCRUM_BANK,
+    LightReading,
+    bare_gate_name,
+    light_reading,
+    unknown_blockers,
+)
 
 logger = logging.getLogger("acervator.scrumming")
 
@@ -158,19 +165,34 @@ def _latched_risk_gates(blockers: list) -> list[str]:
     return sorted({str(one) for one in blockers or []} & _RISK_GATE_NAMES)
 
 
-def bare_gate_name(blocker: Any) -> str:
-    """A blocker phrase with the live figures it carries dropped.
+def state_reading(
+    state: Any, scrum_extra: Any = (), fold_extra: Any = ()
+) -> LightReading:
+    """``light_reading`` over one ``_last_gate_state`` record, ``scrum_extra``
+    and ``fold_extra`` joined to each side's recorded blockers.
 
-    ``BB-below-upper-detect(bb_pos=0.39<0.88)`` answers
-    ``BB-below-upper-detect``, so one gate refusing at two different prices
-    answers one name. ``_gate_row_key`` groups a tick's refusal by these names.
+    The GATES line and the Market Inspector's Phantom Bot zone both read a bot
+    through it.
     """
-    text = str(blocker)
-    for mark in ("(", "="):
-        cut = text.find(mark)
-        if cut > 0:
-            text = text[:cut]
-    return text
+    held = state or {}
+    fixture = held.get(_SCRUM_FIXTURE_KEY) or {}
+    return light_reading(
+        armed={
+            SCRUM_BANK: bool(held.get("scrum_armed", False)),
+            FOLD_BANK: bool(held.get("fold_armed", False)),
+        },
+        blockers={
+            SCRUM_BANK: list(held.get("scrum_blockers") or []) + list(scrum_extra),
+            FOLD_BANK: list(held.get("fold_blockers") or []) + list(fold_extra),
+        },
+        replaced={
+            SCRUM_BANK: list(fixture.get(_OVERRIDES_APPLIED_KEY) or []),
+            FOLD_BANK: list(
+                (held.get(_FOLD_FIXTURE_KEY) or {}).get(_OVERRIDES_APPLIED_KEY) or []
+            ),
+        },
+        landing_strip_side=str(fixture.get(_LANDING_STRIP_SIDE_KEY, "") or ""),
+    )
 
 
 def _gate_row_key(
@@ -195,21 +217,15 @@ def _gate_row_key(
     )
 
 
-def _gate_line_text(
+def bank_text(
     lights: list,
-    ticker_last: float,
-    panel: dict,
-    unknown: list,
-    latched: list,
     armed: Optional[dict] = None,
     unmapped: Optional[dict] = None,
 ) -> str:
-    """The words the GATES line carries beside its lights.
+    """One sentence per ``_GATE_LINE_BANKS`` bank: armed, or its blocked labels.
 
-    Each bank reads ``armed`` for its own side, then its blocked labels and the
-    bare names of any refusal no label covers, then its overridden labels under
-    ``OVERRIDDEN_WORD``; ``ticker_last``, ``panel``, ``latched`` and
-    ``unknown`` close it.
+    A bank reads ``armed`` for its own side, names the ``unmapped`` refusals no
+    label covers, and closes on its overridden labels under ``OVERRIDDEN_WORD``.
     """
     banks = []
     for bank, title in _GATE_LINE_BANKS:
@@ -223,7 +239,24 @@ def _gate_line_text(
         if replaced:
             state = f"{state}, {OVERRIDDEN_WORD} {', '.join(replaced)}"
         banks.append(f"{title} {state}.")
-    said = " ".join(banks)
+    return " ".join(banks)
+
+
+def _gate_line_text(
+    lights: list,
+    ticker_last: float,
+    panel: dict,
+    unknown: list,
+    latched: list,
+    armed: Optional[dict] = None,
+    unmapped: Optional[dict] = None,
+) -> str:
+    """The words the GATES line carries beside its lights.
+
+    ``bank_text`` opens it, and ``ticker_last``, ``panel``, ``latched`` and
+    ``unknown`` close it.
+    """
+    said = bank_text(lights, armed, unmapped)
     tail = f" Latched {', '.join(latched)}." if latched else ""
     tail += f" Unmapped {', '.join(sorted(set(unknown)))}." if unknown else ""
     return (
@@ -352,25 +385,14 @@ class SnapshotEmitterMixin(_Host):
         design: emits nothing when no risk gate is in the blocked list.
         """
         try:
-            state = self._last_gate_state
-            scrum_blockers = list(state.get("scrum_blockers") or [])
-            scrum_blockers += self._chain_risk_gates(scrum_result)
-            fold_blockers = list(state.get("fold_blockers") or [])
-            fold_blockers += self._chain_risk_gates(fold_result)
-            fixture = state.get(_SCRUM_FIXTURE_KEY) or {}
-            scrum_replaced = list(fixture.get(_OVERRIDES_APPLIED_KEY) or [])
-            fold_replaced = list(
-                (state.get(_FOLD_FIXTURE_KEY) or {}).get(_OVERRIDES_APPLIED_KEY) or []
+            reading = state_reading(
+                self._last_gate_state,
+                self._chain_risk_gates(scrum_result),
+                self._chain_risk_gates(fold_result),
             )
-            lights = gate_light_row(
-                scrum_armed=bool(state.get("scrum_armed", False)),
-                fold_armed=bool(state.get("fold_armed", False)),
-                scrum_blockers=scrum_blockers,
-                fold_blockers=fold_blockers,
-                landing_strip_side=str(fixture.get(_LANDING_STRIP_SIDE_KEY, "") or ""),
-                scrum_overridden=scrum_replaced,
-                fold_overridden=fold_replaced,
-            )
+            lights = reading.lights
+            scrum_blockers = reading.blockers[SCRUM_BANK]
+            fold_blockers = reading.blockers[FOLD_BANK]
             key = _light_key(lights)
             # A host without the attribute draws every tick; it never goes dark.
             if key == getattr(self, "_last_gate_light_key", ""):
@@ -378,24 +400,24 @@ class SnapshotEmitterMixin(_Host):
             self._last_gate_light_key = key
             unknown = [
                 bare_gate_name(one)
-                for one in unknown_blockers(scrum_blockers + scrum_replaced)
-                + unknown_blockers(fold_blockers + fold_replaced)
+                for one in unknown_blockers(
+                    scrum_blockers + reading.replaced[SCRUM_BANK]
+                )
+                + unknown_blockers(fold_blockers + reading.replaced[FOLD_BANK])
             ]
             latched = _latched_risk_gates(scrum_blockers + fold_blockers)
             panel = _build_panel_snapshot(summary)
-            armed = {
-                "S": bool(state.get("scrum_armed", False)),
-                "F": bool(state.get("fold_armed", False)),
-            }
-            unmapped = {
-                "S": [bare_gate_name(one) for one in unknown_blockers(scrum_blockers)],
-                "F": [bare_gate_name(one) for one in unknown_blockers(fold_blockers)],
-            }
             self._bus.emit(
                 "bot.log",
                 bot_id=self.bot_id,
                 message=_gate_line_text(
-                    lights, ticker_last, panel, unknown, latched, armed, unmapped
+                    lights,
+                    ticker_last,
+                    panel,
+                    unknown,
+                    latched,
+                    reading.armed,
+                    reading.unmapped,
                 ),
                 lights=lights,
             )

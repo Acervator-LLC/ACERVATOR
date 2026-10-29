@@ -9,7 +9,8 @@ The labels and the blocker prefixes are the ones ScrummingBot writes into
 
 from __future__ import annotations
 
-from typing import Optional
+from dataclasses import dataclass
+from typing import Any, Optional
 
 # Scrum and fold are asymmetric: the bot evaluates a different condition
 # set on each side. 10 scrum labels, 9 fold labels, 19 lights per row.
@@ -74,6 +75,8 @@ _BLOCKER_PREFIXES: tuple[tuple[str, str], ...] = (
     ("smart_ceiling", "CEIL"),
     ("hysteresis_scrum", "OTD"),
     ("hysteresis_fold", "OTD"),
+    ("interval", "INT"),
+    ("tranches_queued", "TRNQ"),
 )
 
 # The six light states and the colour each one paints. "override" is the LS
@@ -179,11 +182,14 @@ def gate_light_row(
     evaluated: bool = True,
     scrum_overridden: Optional[list] = None,
     fold_overridden: Optional[list] = None,
+    scrum_not_run: Optional[list] = None,
+    fold_not_run: Optional[list] = None,
 ) -> list[dict]:
     """The nineteen lights, in draw order: the scrum bank then the fold.
 
     ``scrum_overridden`` and ``fold_overridden`` carry each refusal an
-    override replaced on that side, and every entry is serialisable.
+    override replaced, and a gate ``scrum_not_run`` or ``fold_not_run`` names
+    reads not evaluated.
     """
     scrum_blocked = _labels_for(scrum_blockers or [])
     fold_blocked = _labels_for(fold_blockers or [])
@@ -191,7 +197,7 @@ def gate_light_row(
     fold_replaced = _labels_for(fold_overridden or [])
     side = str(landing_strip_side or "").lower()
     out: list[dict] = []
-    for bank, gates, armed, blocked, ls_active, replaced in (
+    for bank, gates, armed, blocked, ls_active, replaced, unread in (
         (
             "S",
             _GATE_ORDER_SCRUM,
@@ -199,6 +205,7 @@ def gate_light_row(
             scrum_blocked,
             side == "upper",
             scrum_replaced,
+            _labels_for(scrum_not_run or []),
         ),
         (
             "F",
@@ -207,11 +214,17 @@ def gate_light_row(
             fold_blocked,
             side == "lower",
             fold_replaced,
+            _labels_for(fold_not_run or []),
         ),
     ):
         for label in gates:
             state = gate_light_state(
-                label, evaluated, armed, blocked, ls_active, replaced
+                label,
+                evaluated and label not in unread,
+                armed,
+                blocked,
+                ls_active,
+                replaced,
             )
             out.append(
                 {
@@ -224,13 +237,86 @@ def gate_light_row(
     return out
 
 
+SCRUM_BANK = "S"
+FOLD_BANK = "F"
+
+
+def bare_gate_name(blocker: Any) -> str:
+    """A blocker phrase with the live figures it carries dropped.
+
+    ``BB-below-upper-detect(bb_pos=0.39<0.88)`` answers
+    ``BB-below-upper-detect``, so one gate refusing at two prices answers one name.
+    """
+    text = str(blocker)
+    for mark in ("(", "="):
+        cut = text.find(mark)
+        if cut > 0:
+            text = text[:cut]
+    return text
+
+
+@dataclass(frozen=True)
+class LightReading:
+    """One gate reading's ``gate_light_row`` lights, with ``armed``, ``blockers``,
+    ``replaced`` and ``unmapped`` keyed by ``SCRUM_BANK`` and ``FOLD_BANK``."""
+
+    lights: list
+    armed: dict
+    blockers: dict
+    replaced: dict
+    unmapped: dict
+
+
+def light_reading(
+    armed: dict,
+    blockers: dict,
+    replaced: dict,
+    landing_strip_side: str = "",
+    not_run: Optional[dict] = None,
+) -> LightReading:
+    """``gate_light_row`` over per-bank ``armed``, ``blockers`` and ``replaced``.
+
+    A gate ``not_run`` names reads not evaluated, and each ``unknown_blockers``
+    phrase is kept under ``unmapped`` by its ``bare_gate_name``.
+    """
+    unread = not_run or {}
+    return LightReading(
+        lights=gate_light_row(
+            scrum_armed=bool(armed.get(SCRUM_BANK)),
+            fold_armed=bool(armed.get(FOLD_BANK)),
+            scrum_blockers=list(blockers.get(SCRUM_BANK) or []),
+            fold_blockers=list(blockers.get(FOLD_BANK) or []),
+            landing_strip_side=landing_strip_side,
+            scrum_overridden=list(replaced.get(SCRUM_BANK) or []),
+            fold_overridden=list(replaced.get(FOLD_BANK) or []),
+            scrum_not_run=list(unread.get(SCRUM_BANK) or []),
+            fold_not_run=list(unread.get(FOLD_BANK) or []),
+        ),
+        armed=dict(armed),
+        blockers=dict(blockers),
+        replaced=dict(replaced),
+        unmapped={
+            bank: [
+                bare_gate_name(one)
+                for one in unknown_blockers(blockers.get(bank) or [])
+            ]
+            for bank in (SCRUM_BANK, FOLD_BANK)
+        },
+    )
+
+
 __all__ = [
     "BANK_MARKER_COLOR",
+    "FOLD_BANK",
     "LIGHT_COLORS",
     "LIGHT_LABEL_COLOR",
+    "SCRUM_BANK",
+    "LightReading",
+    "bare_gate_name",
     "gate_for_blocker",
     "gate_light_color",
     "gate_light_row",
     "gate_light_state",
+    "light_reading",
     "unknown_blockers",
 ]

@@ -39,15 +39,26 @@ from ...exchange.base import MarketRules
 from ...exchange.market_inspector_fetcher import DEFAULT_MIN_REFRESH_S, DEFAULT_QUOTES
 from ...trading import (
     ata_asset_maps,
+    ata_gate_scan,
     ata_post_paths,
     ata_spm,
     ata_spm_push,
     ata_spm_send,
     ata_spm_signin,
 )
+from ...trading.gate_vocabulary import (
+    FOLD_BANK,
+    LIGHT_LABEL_COLOR,
+    SCRUM_BANK,
+    gate_for_blocker,
+)
+from ...trading.phantom_balance import one_active_phantom_timeframe, summary_row
 from ...trading.scrumming import sizing
+from ...trading.scrumming.snapshots import bank_text, state_reading
 from .. import design_system as ds
 from . import indicator_panel_surface as ivp
+from . import phantom_bots_tab_surface as phantom_page
+from .trade_charts_tab_surface import GATE_STATE_ATTRIBUTE
 
 logger = logging.getLogger("acervator.market_inspector_gui")
 
@@ -430,6 +441,52 @@ TOPOLOGIES_GROUP_TITLE = "Bot Swarm Topologies"
 PHANTOM_HTF_GROUP_TITLE = "Phantom Bot HTF Signals"
 
 PHANTOM_HTF_UNWIRED_TEXT = "Phantom Bot source not wired."
+PHANTOM_HTF_NONE_FORMAT = "No bot runs a phantom timeframe. {count} bot(s) read."
+
+#: One Phantom Bot HTF Signals entry: the bot's market and its two timeframes.
+PHANTOM_HEADLINE_FORMAT = "{symbol} {primary} with phantom {phantom}"
+PHANTOM_PANEL_LABEL_FORMAT = "{primary} with phantom {phantom}"
+PHANTOM_PANEL_TOOLTIP_FORMAT = (
+    "The Indicator Voting Panel of {symbol}, at the bot's timeframe and at its "
+    "phantom's."
+)
+PHANTOM_READ_FORMAT = "{timeframe} Comp {comp} Conf {conf}"
+PHANTOM_CONF_FORMAT = "{value:.0%}"
+PHANTOM_PART_JOIN = " · "
+PHANTOM_GATES_NAME_FORMAT = "{timeframe} gates"
+PHANTOM_POSITION_NAME_FORMAT = "{timeframe} position"
+PHANTOM_NOT_READ_TEXT = "the phantom has not read yet."
+PHANTOM_NOT_RUN_FORMAT = (
+    "Scrum {scrum} and Fold {fold} did not run. They read the bot's position, "
+    "at {primary}."
+)
+PHANTOM_LABEL_JOIN = ", "
+PHANTOM_TEST_FORMAT = (
+    "The bot's own scrum and fold gate chains, at {primary} and at the phantom "
+    "{phantom}."
+)
+PHANTOM_WINDOW_FORMAT = (
+    "{primary}: the bot's last tick. {phantom}: the phantom's last read."
+)
+PHANTOM_WHY_FORMAT = (
+    "Phantom bots are on, and {phantom} is the one phantom timeframe this bot runs."
+)
+#: The bot attribute ``ScrummingBot.tick`` writes its ``VotingSummary`` to.
+SUMMARY_ATTRIBUTE = "_last_summary"
+#: The key one fleet status names its bot under.
+BOT_ID_KEY = "bot_id"
+#: The request parameter ``live_view_model`` hands the fleet's bot lookup under.
+PHANTOM_LOOKUP_PARAM = "phantom_lookup"
+
+#: The gate-light grid an open Phantom Bot HTF Signals entry draws.
+LIGHTS_PART = "gate-lights"
+LIGHTS_TITLE_FORMAT = "{symbol} gate lights"
+LIGHTS_TOOLTIP = "Each light is one gate, at the bot's timeframe and at its phantom's."
+LIGHT_CELL_WIDTH_PX = 54
+LIGHT_STYLE_FORMAT = "background-color: {color};"
+LIGHT_TOOLTIP_FORMAT = "{timeframe} {side} {label}: {state}"
+LIGHT_STATE_SPLIT = "_"
+LIGHT_STATE_JOIN = " "
 
 READY_TO_SEND_UNWIRED_TEXT = "Phase source not wired. Nothing to approve."
 READY_TO_SEND_NO_RUN_TEXT = "No run yet. Nothing to approve."
@@ -692,7 +749,7 @@ STRIP_TEXT_PART = "strip-text"
 CHART_LOW_FLOOR = 0.0
 CHART_FLAT_SPAN = 1.0
 
-#: The Indicator Voting Panel ATA-SMP carries, drawn inside an open entry.
+#: The Indicator Voting Panel an open ATA-SMP or Phantom Bot entry draws.
 PANEL_PART = "ata-voting-panel"
 PANEL_CELL_PART = "ata-voting-cell"
 PANEL_TABLE_ROW_PART = "ata-voting-row"
@@ -1186,6 +1243,7 @@ SCAN_NOW_REFUSED = "scan_now.refused"
 SCAN_ALL_RUN = "scan_all.run"
 ZONE_STEPPED = "zone.stepped"
 ZONE_TOGGLED = "zone.toggled"
+PHANTOM_SOURCE_SET = "phantom.set"
 
 CALL_NAMES = (
     SCREEN_BUILT,
@@ -1235,6 +1293,7 @@ CALL_NAMES = (
     CREDENTIAL_PAGE_REFUSED,
     SETTING_WRITTEN,
     SETTINGS_PAGE_TOGGLED,
+    PHANTOM_SOURCE_SET,
 )
 
 
@@ -2136,9 +2195,11 @@ def panel_summary_text(rows: Any) -> str:
     )
 
 
-def panel_grid(symbol: Any, label: Any, rows: Any, lines: Any = ()) -> Optional[dict]:
-    """One Indicator Voting Panel: its title, its two ``panel_table`` tables
-    and its ``lines``.
+def panel_grid(
+    symbol: Any, label: Any, rows: Any, lines: Any = (), tooltip: Any = None
+) -> Optional[dict]:
+    """One Indicator Voting Panel: its title, its two ``panel_table`` tables,
+    its ``lines`` and its ``tooltip``, ``PANEL_TOOLTIP_FORMAT`` while none is given.
 
     ``voting_panel`` and ``scan_panel`` both build through this, so a called
     asset and a market under read draw the same reading the same way.
@@ -2167,9 +2228,24 @@ def panel_grid(symbol: Any, label: Any, rows: Any, lines: Any = ()) -> Optional[
         + [gap]
         + panel_table(held, ivp.ROW_B_INDICATOR_COLS, False)
     )
+    return panel_frame(
+        PANEL_PART,
+        width,
+        built,
+        lines,
+        symbol,
+        PANEL_TOOLTIP_FORMAT.format(symbol=symbol) if tooltip is None else tooltip,
+    )
+
+
+def panel_frame(
+    part: Any, width: Any, built: Any, lines: Any, symbol: Any, tooltip: Any
+) -> dict:
+    """One grid an open entry draws: its ``part``, its ``built`` rows and the
+    ``lines`` under it, which ``panel_grid`` and ``lights_panel`` both answer."""
     return {
-        "part": PANEL_PART,
-        "width_px": width,
+        "part": str(part),
+        "width_px": int(width),
         "height_px": sum(one[0] for one in built),
         "cell_part": PANEL_CELL_PART,
         "row_part": PANEL_TABLE_ROW_PART,
@@ -2177,10 +2253,10 @@ def panel_grid(symbol: Any, label: Any, rows: Any, lines: Any = ()) -> Optional[
         "line_part": PANEL_LINE_PART,
         "box_style": PANEL_BOX_STYLE,
         "line_style": DETAIL_STYLE,
-        "rows": built,
+        "rows": list(built),
         "lines": list(lines),
         "symbol": str(symbol),
-        "tooltip": PANEL_TOOLTIP_FORMAT.format(symbol=symbol),
+        "tooltip": str(tooltip),
     }
 
 
@@ -2750,8 +2826,259 @@ def ready_to_send_text(run: Any) -> str:
     return READY_TO_SEND_HOLDS_FORMAT.format(count=count)
 
 
-def right_zone_rows(run: Any, bucket: Any = None) -> list:
-    """The three right-side zones as key, title and status, in screen order."""
+def fleet_ids(bot_statuses: Any) -> list:
+    """The ``BOT_ID_KEY`` each status in ``bot_statuses`` names, in fleet order."""
+    return [
+        str(one.get(BOT_ID_KEY))
+        for one in bot_statuses or []
+        if isinstance(one, dict) and one.get(BOT_ID_KEY)
+    ]
+
+
+def phantom_fleet(ids: Any, lookup: Any) -> Optional[list]:
+    """The bot ``lookup`` answers for each of ``ids``, None while no ``lookup``
+    is wired.
+
+    An id ``lookup`` answers None for is left out.
+    """
+    if lookup is None:
+        return None
+    found = [lookup(bot_id) for bot_id in ids or []]
+    return [bot for bot in found if bot is not None]
+
+
+def phantom_timeframe(bot: Any) -> str:
+    """The one phantom timeframe ``bot`` runs, or "" while its phantom bots are off.
+
+    ``one_active_phantom_timeframe`` names it out of ``TIMEFRAMES_ATTRIBUTE``.
+    """
+    if not bool(getattr(bot, phantom_page.ENABLED_ATTRIBUTE, False)):
+        return ""
+    held = getattr(bot, phantom_page.TIMEFRAMES_ATTRIBUTE, None) or ()
+    active, _set_aside = one_active_phantom_timeframe([str(one) for one in held])
+    return active[0] if active else ""
+
+
+def primary_timeframe(bot: Any) -> str:
+    """The TA timeframe ``bot`` trades on, ``PARENT_TIMEFRAME_DEFAULT`` while it
+    names none."""
+    config = getattr(bot, phantom_page.CONFIG_ATTRIBUTE, None)
+    named = getattr(config, phantom_page.TA_TIMEFRAME_ATTRIBUTE, "")
+    return str(named or phantom_page.PARENT_TIMEFRAME_DEFAULT)
+
+
+def running_phantom(bot: Any, timeframe: Any) -> Any:
+    """The ``PhantomBot`` ``bot`` runs on ``timeframe``, or None while none is built."""
+    manager = getattr(bot, phantom_page.PHANTOM_MANAGER_ATTRIBUTE, None)
+    if manager is None:
+        return None
+    held = manager.get_phantoms(getattr(bot, phantom_page.BOT_ID_ATTRIBUTE, ""))
+    return next((one for one in held or [] if one.timeframe == timeframe), None)
+
+
+def timeframe_rows(reads: Any) -> dict:
+    """Each ``(timeframe, summary)`` of ``reads`` as its ``summary_row``, under
+    ``composite_rows``.
+
+    A summary of None, or a timeframe already held, adds no row.
+    """
+    rows: dict = {}
+    for timeframe, summary in reads:
+        if summary is not None and timeframe not in rows:
+            rows[timeframe] = summary_row(summary)
+    return ata_gate_scan.composite_rows(rows)
+
+
+def read_text(timeframe: Any, row: Any) -> str:
+    """One timeframe's Comp and Conf in ``PHANTOM_READ_FORMAT``, each
+    ``ABSENT_CELL_TEXT`` while ``row`` holds no reading."""
+    confidence = ivp.as_finite_float((row or {}).get("confidence"))
+    return PHANTOM_READ_FORMAT.format(
+        timeframe=timeframe,
+        comp=ivp.comp_cell(row or {})["text"],
+        conf=(
+            ivp.ABSENT_CELL_TEXT
+            if confidence is None
+            else PHANTOM_CONF_FORMAT.format(value=confidence)
+        ),
+    )
+
+
+def unread_labels(scan: Any, side: Any) -> list:
+    """The light label of each gate one ``GateScan`` side did not run, in chain
+    order."""
+    found: list = []
+    for one in scan.side_readings(side):
+        label = gate_for_blocker(one.name)
+        if not one.ran and label and label not in found:
+            found.append(label)
+    return found
+
+
+def light_cell(timeframe: Any, side: Any, light: Any) -> list:
+    """One ``gate_light_row`` light as a ``panel_cell`` filled in its colour,
+    its state on the tooltip."""
+    state = LIGHT_STATE_JOIN.join(str(light["state"]).split(LIGHT_STATE_SPLIT))
+    return panel_cell(
+        LIGHT_CELL_WIDTH_PX,
+        NO_TEXT_LINE,
+        LIGHT_STYLE_FORMAT.format(color=light["color"]),
+        LIGHT_TOOLTIP_FORMAT.format(
+            timeframe=timeframe, side=side, label=light["label"], state=state
+        ),
+    )
+
+
+def lights_panel(symbol: Any, reads: Any, lines: Any) -> Optional[dict]:
+    """Each ``(timeframe, LightReading)`` of ``reads`` as one row of lights,
+    the scrum bank's rows above the fold bank's, each bank under its labels.
+
+    ``lines`` are drawn under the grid, and no ``reads`` answers None.
+    """
+    held = list(reads or [])
+    if not held:
+        return None
+    plain = PANEL_HEADER_STYLE_FORMAT.format(color=PANEL_PLAIN_COLOR)
+    labelled = PANEL_HEADER_STYLE_FORMAT.format(color=LIGHT_LABEL_COLOR)
+    built: list = []
+    widest = 0
+    for bank, side in (
+        (SCRUM_BANK, ata_gate_scan.SIDE_SCRUM),
+        (FOLD_BANK, ata_gate_scan.SIDE_FOLD),
+    ):
+        labels = [one["label"] for one in held[0][1].lights if one["bank"] == bank]
+        widest = max(widest, len(labels))
+        built.append(
+            panel_row(
+                [panel_cell(PANEL_TF_WIDTH_PX, side.capitalize(), plain)]
+                + [panel_cell(LIGHT_CELL_WIDTH_PX, one, labelled) for one in labels]
+            )
+        )
+        built.extend(
+            panel_row(
+                [panel_cell(PANEL_TF_WIDTH_PX, timeframe, plain)]
+                + [
+                    light_cell(timeframe, side, one)
+                    for one in reading.lights
+                    if one["bank"] == bank
+                ]
+            )
+            for timeframe, reading in held
+        )
+    width = PANEL_TF_WIDTH_PX + LIGHT_CELL_WIDTH_PX * widest
+    title = panel_row(
+        [panel_cell(width, LIGHTS_TITLE_FORMAT.format(symbol=symbol), plain)]
+    )
+    return panel_frame(
+        LIGHTS_PART, width, [title] + built, lines, symbol, LIGHTS_TOOLTIP
+    )
+
+
+def phantom_entry(bot: Any) -> dict:
+    """One bot as the Phantom Bot HTF Signals zone steps through it.
+
+    ``state_reading`` reads the bot's last tick and ``ata_gate_scan.scan_reading``
+    its ``PhantomBot.last_gates``, both off the chains ``gate_chain`` builds.
+    """
+    symbol = str(getattr(bot.config, "symbol", NO_SYMBOL) or NO_SYMBOL)
+    primary = primary_timeframe(bot)
+    phantom = phantom_timeframe(bot)
+    reader = running_phantom(bot, phantom)
+    rows = timeframe_rows(
+        (
+            (primary, getattr(bot, SUMMARY_ATTRIBUTE, None)),
+            (phantom, getattr(reader, "last_summary", None)),
+        )
+    )
+    reads = [(primary, state_reading(getattr(bot, GATE_STATE_ATTRIBUTE, None)))]
+    gates = getattr(reader, "last_gates", None)
+    if gates is not None and gates.readings:
+        reads.append((phantom, ata_gate_scan.scan_reading(gates)))
+    said = [
+        detail_row(
+            PHANTOM_GATES_NAME_FORMAT.format(timeframe=timeframe),
+            bank_text(reading.lights, reading.armed, reading.unmapped),
+        )
+        for timeframe, reading in reads
+    ]
+    if len(reads) == 1:
+        said.append(
+            detail_row(
+                PHANTOM_GATES_NAME_FORMAT.format(timeframe=phantom),
+                PHANTOM_NOT_READ_TEXT,
+            )
+        )
+        unread: list = []
+    else:
+        unread = [
+            detail_row(
+                PHANTOM_POSITION_NAME_FORMAT.format(timeframe=phantom),
+                PHANTOM_NOT_RUN_FORMAT.format(
+                    scrum=PHANTOM_LABEL_JOIN.join(
+                        unread_labels(gates, ata_gate_scan.SIDE_SCRUM)
+                    ),
+                    fold=PHANTOM_LABEL_JOIN.join(
+                        unread_labels(gates, ata_gate_scan.SIDE_FOLD)
+                    ),
+                    primary=primary,
+                ),
+            )
+        ]
+    return zone_entry(
+        PHANTOM_HEADLINE_FORMAT.format(symbol=symbol, primary=primary, phantom=phantom),
+        PHANTOM_PART_JOIN.join(
+            read_text(one, rows.get(one)) for one in (primary, phantom)
+        ),
+        detail=[
+            detail_row(
+                DETAIL_TEST_NAME,
+                PHANTOM_TEST_FORMAT.format(primary=primary, phantom=phantom),
+            ),
+            detail_row(
+                DETAIL_WINDOW_NAME,
+                PHANTOM_WINDOW_FORMAT.format(primary=primary, phantom=phantom),
+            ),
+            detail_row(DETAIL_REASON_NAME, PHANTOM_WHY_FORMAT.format(phantom=phantom)),
+        ],
+        method_text=PHANTOM_PART_JOIN.join(line for _name, line in said),
+        panels=[
+            drawn
+            for drawn in (
+                panel_grid(
+                    symbol,
+                    PHANTOM_PANEL_LABEL_FORMAT.format(primary=primary, phantom=phantom),
+                    rows,
+                    tooltip=PHANTOM_PANEL_TOOLTIP_FORMAT.format(symbol=symbol),
+                ),
+                lights_panel(symbol, reads, said + unread),
+            )
+            if drawn is not None
+        ],
+    )
+
+
+def phantom_entries(bots: Any) -> list:
+    """One ``phantom_entry`` per bot of ``bots`` that runs a ``phantom_timeframe``,
+    in fleet order."""
+    return [phantom_entry(one) for one in bots or [] if phantom_timeframe(one)]
+
+
+def phantom_zone_text(bots: Any) -> str:
+    """The Phantom Bot HTF Signals line while the zone shows no entry.
+
+    None says no bot source is wired, which no caller can confuse with a wired
+    fleet in which no bot runs a phantom timeframe.
+    """
+    if bots is None:
+        return PHANTOM_HTF_UNWIRED_TEXT
+    return PHANTOM_HTF_NONE_FORMAT.format(count=len(list(bots)))
+
+
+def right_zone_rows(run: Any, bucket: Any = None, phantoms: Any = None) -> list:
+    """The three right-side zones as key, title and status, in screen order.
+
+    ``phantoms`` is the fleet ``phantom_fleet`` answers, None while unwired.
+    """
     return [
         [
             READY_TO_SEND_ZONE,
@@ -2759,7 +3086,7 @@ def right_zone_rows(run: Any, bucket: Any = None) -> list:
             bucket_zone_text(bucket, run),
         ],
         [TOPOLOGIES_ZONE, TOPOLOGIES_GROUP_TITLE, NO_TEXT_LINE],
-        [PHANTOM_HTF_ZONE, PHANTOM_HTF_GROUP_TITLE, PHANTOM_HTF_UNWIRED_TEXT],
+        [PHANTOM_HTF_ZONE, PHANTOM_HTF_GROUP_TITLE, phantom_zone_text(phantoms)],
     ]
 
 
@@ -4199,6 +4526,8 @@ class MarketInspectorScreenModel:
         self.ata_asset_source: Any = None
         self.ata_candle_source: Any = None
         self.ata_class_source: Any = None
+        self.phantom_lookup: Any = None
+        self.fleet_ids: list = []
         self.board = ata_spm.SectorBoard()
         self.push = ata_spm_push.PushBoard()
         self.push.settings.set_vault(encryption.default_vault())
@@ -4283,6 +4612,15 @@ class MarketInspectorScreenModel:
         """Take the callable the ATA-SPM region reads its run report from."""
         self.ata_run_source = getter
         self.calls.append([ATA_SOURCE_SET])
+
+    def set_phantom_source(self, lookup: Any) -> None:
+        """Take the callable the Phantom Bot HTF Signals zone looks one bot id up with."""
+        self.phantom_lookup = lookup
+        self.calls.append([PHANTOM_SOURCE_SET])
+
+    def phantom_bots(self) -> Optional[list]:
+        """The ``phantom_fleet`` of ``fleet_ids``, None while no lookup is wired."""
+        return phantom_fleet(self.fleet_ids, self.phantom_lookup)
 
     def ata_run(self) -> Any:
         """The ATA-SPM run report, or None while no source answers.
@@ -4612,14 +4950,14 @@ class MarketInspectorScreenModel:
         Ready to Send reads ``ata_report``, the ATA-SPM board's own run,
         so a scan that left no post says so rather than reading unwired.
         """
-        return right_zone_rows(self.ata_report(), self.push.bucket)
+        return right_zone_rows(self.ata_report(), self.push.bucket, self.phantom_bots())
 
     def zone_entries(self, key: Any) -> list:
         """The entries one zone steps through.
 
         ATA-SPM steps the sectors the last Scan Now covered, Opposing Trades
-        the pairs the scan kept, and Ready to Send the posts phase four
-        formatted.
+        the pairs the scan kept, Ready to Send the posts phase four formatted,
+        and Phantom Bot HTF Signals the ``phantom_entries`` of ``phantom_bots``.
         """
         if key == ATA_SPM_MODULE:
             return self.ata_entries()
@@ -4627,6 +4965,8 @@ class MarketInspectorScreenModel:
             return [pair_entry(one) for one in self.pairs]
         if key == READY_TO_SEND_ZONE:
             return bucket_entries(self.push.bucket)
+        if key == PHANTOM_HTF_ZONE:
+            return phantom_entries(self.phantom_bots())
         return []
 
     def step_zone(self, key: Any, by: Any) -> int:
@@ -4676,6 +5016,7 @@ class MarketInspectorScreenModel:
     def update_active_symbols(self, bot_statuses: Any) -> None:
         """Take the base assets the fleet trades and redraw the screen."""
         self.active_symbols = active_symbols_from(bot_statuses)
+        self.fleet_ids = fleet_ids(bot_statuses)
         self.calls.append([ACTIVE_SYMBOLS_SET, len(self.active_symbols)])
         self.render_signals()
 
@@ -5414,22 +5755,19 @@ def pane_model() -> MarketInspectorScreenModel:
 
 
 def view_model(params: dict) -> dict:
-    """Bridge handler for ``market_inspector.state``.
+    """Bridge handler for ``market_inspector.state``: each request parameter
+    reaches ``pane_model``, ``reset`` and ``PHANTOM_LOOKUP_PARAM`` first.
 
-    Reads ``reset``, ``proposals``, ``meta``, ``show_active``,
-    ``bot_statuses``, ``sector_text``, ``sector_class``,
-    ``toggle_timeframe``, ``scan_now``, ``scan_all``, ``open_credentials``,
-    ``step_zone``, ``toggle_zone``,
-    ``render``, ``refresh``, ``force`` and
-    ``bot_symbol`` from the request parameters. The screen keeps its rows
-    between calls because the shipped screen does; ``reset`` is what a
-    fresh paint sends. ``bot_symbol`` is what the per-bot view is built
-    for; a request naming none publishes an empty one.
+    ``reset`` is what a fresh paint sends, and a request naming no
+    ``bot_symbol`` publishes an empty per-bot view.
     """
     global PANE_MODEL
     if params.get("reset", False):
         PANE_MODEL = MarketInspectorScreenModel()
     model = pane_model()
+    lookup = params.get(PHANTOM_LOOKUP_PARAM)
+    if lookup is not None and lookup != model.phantom_lookup:
+        model.set_phantom_source(lookup)
     if params.get("proposals") is not None:
         model.topologies_pane = TopologyPaneModel(params["proposals"])
     if params.get("meta") is not None:
@@ -5488,6 +5826,9 @@ def live_view_model(params: dict, live: Any) -> dict:
     if manager is not None and hasattr(manager, "list_bots"):
         if asked.get("bot_statuses") is None:
             asked["bot_statuses"] = list(manager.list_bots())
+    lookup = getattr(manager, "get_bot", None)
+    if lookup is not None:
+        asked[PHANTOM_LOOKUP_PARAM] = lookup
     return view_model(asked)
 
 
