@@ -56,6 +56,7 @@ from . import history_tab_surface
 from . import market_inspector_surface
 from ..paper import paper_trading_tab_surface
 from . import proof_of_accumulation_tab_surface
+from . import settings_dialog_surface
 from . import simulator_tab_surface
 from . import system_status_tab_surface
 from . import trade_charts_tab_surface
@@ -483,6 +484,20 @@ FLEET_UNLOCK_NO_START_TEXT = (
     "The saved fleet is open and no fleet-start step is registered, so the "
     "bots stay idle. Start All starts them."
 )
+FLEET_UNLOCK_SEALED_TEXT = (
+    "That password opened the key file, but the saved fleet did not open with "
+    "that key. The fleet stays sealed and no bot is loaded."
+)
+FLEET_SEALED_CREATE_TITLE = "Unlock the fleet first"
+FLEET_SEALED_CREATE_TEXT = (
+    "The saved fleet is sealed. A bot made now could not be saved, so no bot "
+    "is made. Unlock the fleet first: Settings, "
+    f"{settings_dialog_surface.USER_TAB} tab, "
+    f"{settings_dialog_surface.FLEET_LOCK_UNLOCK_BUTTON_TEXT}."
+)
+FLEET_SEALED_CREATE_ACTION = "BOT_CREATE_REFUSED"
+FLEET_SEALED_CREATE_RESULT = "REFUSED: the saved fleet is sealed"
+FLEET_SEALED_CREATE_USAGE = "No bot was created and no state was written."
 
 DEFAULT_THEME = "cyberpunk_dark"
 AI_RECONFIGURED_LOG_FORMAT = "AI Monitor reconfigured (phrase: '{phrase}...')"

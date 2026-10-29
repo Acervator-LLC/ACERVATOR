@@ -2009,6 +2009,17 @@ An adopt that aborts part way calls `_report_adopt_orphans`, which names the bot
 ids it created and left unwired. Adopt is the only control on this screen that
 creates anything.
 
+While the saved fleet is sealed, Adopt shows none of that. The handler asks
+`src/gui/main_window.py, in _refuse_while_sealed` first, so the press puts one
+box over the window and one Console line saying to unlock first. No confirm box,
+no wizard, no wire and no snapshot file follow. The words and the measurement are
+on [the Console page](console.md).
+
+```python
+if self._refuse_while_sealed():
+    return
+```
+
 ## Push to the Simulator, the Paper Trader and Live
 
 Both candidate zones carry a Push to Sim button. An open Opposing Trades entry

@@ -23,9 +23,15 @@ from .main_tabs.main_window_surface import (
     CONSOLE_TAB,
     FLEET_LOCKED_SEQUENCE_LOG,
     FLEET_LOCKED_TEXT,
+    FLEET_SEALED_CREATE_ACTION,
+    FLEET_SEALED_CREATE_RESULT,
+    FLEET_SEALED_CREATE_TEXT,
+    FLEET_SEALED_CREATE_TITLE,
+    FLEET_SEALED_CREATE_USAGE,
     FLEET_UNLOCK_NO_READER_TEXT,
     FLEET_UNLOCK_NO_START_TEXT,
     FLEET_UNLOCK_REFUSED_TEXT,
+    FLEET_UNLOCK_SEALED_TEXT,
     FLEET_UNLOCK_WIRES_FORMAT,
     FLEET_UNLOCKED_FORMAT,
     HISTORY_TAB,
@@ -2199,6 +2205,8 @@ if _HAS_QT:
                     self, "Adopt topology", "Bot manager not available."
                 )
                 return
+            if self._refuse_while_sealed():
+                return
 
             new_bots = [
                 b for b in proposal.get("bots", []) if not b.get("existing_bot_id")
@@ -3986,6 +3994,30 @@ if _HAS_QT:
             """True while a sealed saved fleet is waiting for ``unlock_fleet``."""
             return bool(getattr(self, "_fleet_locked", False))
 
+        def _refuse_while_sealed(self, exchange_id: str = "") -> bool:
+            """Show ``FLEET_SEALED_CREATE_TEXT`` and answer True while
+            ``launch_classification`` reads ``LAUNCH_LOCKED``."""
+            from ..core.state_manager import LAUNCH_LOCKED
+
+            state_mgr = getattr(self._bot_manager, "_state_manager", None)
+            if state_mgr is None or state_mgr.launch_classification() != LAUNCH_LOCKED:
+                return False
+            QMessageBox.warning(
+                self, FLEET_SEALED_CREATE_TITLE, FLEET_SEALED_CREATE_TEXT
+            )
+            self._status_log.log(FLEET_SEALED_CREATE_TEXT, "warning")
+            from ..exchange.api_logger import get_api_log
+
+            get_api_log().record(
+                exchange=exchange_id or "app",
+                action=FLEET_SEALED_CREATE_ACTION,
+                reason=FLEET_SEALED_CREATE_TEXT,
+                result=FLEET_SEALED_CREATE_RESULT,
+                level="warning",
+                data_usage=FLEET_SEALED_CREATE_USAGE,
+            )
+            return True
+
         def set_fleet_start_callback(self, callback) -> None:
             """Hold what ``unlock_fleet`` runs once the fleet is in the process.
 
@@ -4010,9 +4042,9 @@ if _HAS_QT:
             """Open the sealed saved fleet with *password* and load it into this session.
 
             Answers False and leaves ``fleet_locked`` True where *password*
-            does not open the master key; on True the saved bots and wires are
-            in ``_bot_manager`` and the callback
-            ``set_fleet_start_callback`` holds has run.
+            does not open the master key, or the key does not open the payload;
+            on True the saved bots and wires are in ``_bot_manager`` and the
+            callback ``set_fleet_start_callback`` holds has run.
             """
             state_mgr = getattr(self._bot_manager, "_state_manager", None)
             if state_mgr is None:
@@ -4023,6 +4055,14 @@ if _HAS_QT:
                 return False
 
             saved = state_mgr.load_state()
+            from ..core.state_manager import fleet_sealed
+
+            if fleet_sealed(saved):
+                from ..core.encryption import hold_master_key
+
+                hold_master_key(None)
+                self._status_log.log(FLEET_UNLOCK_SEALED_TEXT, "error")
+                return False
             restored = self._bot_manager.restore_bots_from_state(saved)
             self._fleet_locked = False
             self._status_log.log(
@@ -4599,6 +4639,8 @@ if _HAS_QT:
             defaults_override: Optional[dict] = None,
         ) -> None:
             """Open the Bot Creation Wizard; ``defaults_override`` merges in."""
+            if self._refuse_while_sealed(exchange_id):
+                return
             self._status_log.log(f"Creating new bot for {exchange_id}...")
             from ..exchange.api_logger import get_api_log
 
