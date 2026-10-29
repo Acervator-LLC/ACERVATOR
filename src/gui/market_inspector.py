@@ -28,10 +28,10 @@ from ..trading import (
 from . import sign_in_view
 from .audio_suite import Chime
 from .main_tabs.market_inspector_surface import (
-    PHANTOM_HTF_ZONE,
     READY_TO_SEND_ZONE,
     TOPOLOGIES_ZONE,
 )
+from .main_tabs.market_inspector_surface import PHANTOM_HTF_ZONE
 from .main_tabs.market_inspector_surface import fleet_ids as _fleet_ids
 from .main_tabs.market_inspector_surface import phantom_entries as _phantom_entries
 from .main_tabs.market_inspector_surface import phantom_fleet as _phantom_fleet
