@@ -9723,4 +9723,20 @@ They stand as written, and these are the readings that replaced them.
 
 The Product Manual PDF rebuild is owed for this page.
 
+## 2026-10-28 - #1374 - a sealed fleet makes no new bot
+
+While the saved fleet is sealed, New Bot and Adopt make no bot. The box they show
+names the Unlock the fleet now button on the User tab as the way to unlock
+first. It takes that name from `FLEET_LOCK_UNLOCK_BUTTON_TEXT` in
+`src/gui/main_tabs/settings_dialog_surface.py`, so the box and the button cannot
+disagree. The words and the measurement are on [the Console page](console.md).
+
+### Where an earlier sentence now reads differently
+
+The sentence above stands as written. This is the reading that replaced it.
+
+| written above | what it reads now |
+| --- | --- |
+| "The Product Manual PDF rebuild is owed for this page." | `docs/Acervator-Product-Manual.pdf` is rebuilt with this section and carries this page |
+
 Back to [the subsystem index](README.md).

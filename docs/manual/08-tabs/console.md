@@ -1143,4 +1143,94 @@ the same rate read, and with neither it schedules nothing.
 
 The Product Manual PDF rebuild is owed for this page.
 
+
+## 2026-10-28 - #1374 - a sealed fleet makes no new bot
+
+While the saved fleet is sealed, New Bot and Adopt make no bot. Each press puts
+one box over the window and one line in the Console, and nothing opens and
+nothing is written. A bot made then could not be saved, so it would trade with
+no record that the next launch could load.
+
+### Where the press stops
+
+`src/gui/main_window.py, in _refuse_while_sealed` is the one place every press
+stops. It reads `src/core/state_manager.py, in launch_classification`, which is
+the answer every launch site reads and the answer under which each save is
+refused.
+
+```python
+def _create_bot(self, exchange_id="", defaults_override=None):
+    """Open the Bot Creation Wizard; ``defaults_override`` merges in."""
+    if self._refuse_while_sealed(exchange_id):
+        return
+```
+
+| the press | how it reaches the stop |
+| --- | --- |
+| + New Bot, Qt build | `src/gui/widgets/exchange_tab.py, in ExchangeTab.__init__` hands it to `in _create_bot` |
+| + New Bot, React build | `src/gui/react_exchange_tab.py, in ExchangeTabReact._answer` hands it to `in _create_bot` |
+| Adopt, both builds | `in _adopt_topology_proposal` asks the stop before its confirm box and before its wire snapshot |
+
+These are the only presses that make a live bot. The restore at launch and the
+restore at the unlock bring back the saved fleet, and neither runs while it is
+sealed. Paper and Sim bots live in their own fleets, and the lock seals neither.
+
+### What he sees
+
+Both builds draw the same box, because one window holds every page in both.
+`src/gui/main_tabs/main_window_surface.py` declares the words.
+
+| where | the words |
+| --- | --- |
+| the box title | Unlock the fleet first |
+| the box and the Console line | The saved fleet is sealed. A bot made now could not be saved, so no bot is made. Unlock the fleet first: Settings, User tab, Unlock the fleet now. |
+
+The last sentence takes the button name from
+`src/gui/main_tabs/settings_dialog_surface.py, FLEET_LOCK_UNLOCK_BUTTON_TEXT`, so
+the route and the button cannot disagree. The API log records one
+`BOT_CREATE_REFUSED` line.
+
+### What was measured
+
+Driven with the home redirected, against a sealed fleet of two bots, through the
+files before this section and the files after it. The wizard, the pre-flight
+check and the venue connect were stand-ins, and every other part was the real
+one. No socket left the machine.
+
+| the press | before | after |
+| --- | --- | --- |
+| + New Bot, Qt build | the wizard built, 1 bot made and not saved, and its Start reached the venue connect | the box and the line; no wizard, no bot, the file unchanged |
+| + New Bot, React build | the same | the same |
+| Adopt, 2 bots and 1 wire | the confirm box, a snapshot file, 2 bots and 1 wire made and not saved | the box and the line; no confirm box, no snapshot, no bot, no wire |
+
+With no password set, and after an unlock, all three presses made the same bots
+through both sets of files, on both builds, and saved them. The control: one
+target balance moved from 200 to 201, and the comparison named the bot that
+differed.
+
+### An unlock that opens the key and not the fleet
+
+`src/gui/main_window.py, in unlock_fleet` now answers False when the password
+opens the key file and the saved fleet does not open with that key. That happens
+when the two files come from two different seals, or the fleet file is damaged.
+The window stays held, no key is held, and the Console says:
+
+```
+That password opened the key file, but the saved fleet did not open with that key. The fleet stays sealed and no bot is loaded.
+```
+
+Measured both ways on a key file from another seal. Before, the unlock answered
+True, the window let go of the lock, the Console said the fleet was open with 0
+bots, and the fleet start ran, while a save still left the file unchanged. After,
+the unlock answered False, the window stayed held, and the fleet start did not
+run.
+
+### Where an earlier sentence now reads differently
+
+The sentence above stands as written. This is the reading that replaced it.
+
+| written above | what it reads now |
+| --- | --- |
+| "The Product Manual PDF rebuild is owed for this page." | `docs/Acervator-Product-Manual.pdf` is rebuilt with this section and carries this page |
+
 Back to [the subsystem index](README.md).

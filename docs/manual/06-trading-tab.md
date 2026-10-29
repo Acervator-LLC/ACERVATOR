@@ -3484,6 +3484,18 @@ if not exchanges:
     return
 ```
 
+A sealed fleet opens no wizard either. While the saved fleet is sealed, pressing
+New Bot puts one box over the window and one Console line saying to unlock
+first, and no bot is made. The words and the measurement are on
+[the Console page](08-tabs/console.md).
+
+`src/gui/main_window.py` — what New Bot answers while the fleet is sealed
+
+```python
+if self._refuse_while_sealed(exchange_id):
+    return
+```
+
 ### Trading Parameters
 
 Next we come to the combined Scrumming Bot configuration page which has several sections for fine tuning how the specific instance behaves. Given that Acervator, at the time of this writing, is still in active development the description for each setting should be seen as a design intention should any issues be encountered.
