@@ -3820,6 +3820,11 @@ and the status log, and nothing else.
 `_sync_exchange_tabs` only adds a tab, so the removed venue's tab stays on
 screen until the next launch.
 
+OVERTAKEN, and the table above is kept as written. Remove Selected now refuses
+this press while a bot on the venue still trades, and it names the bot. The
+section *2026-10-29 - A venue a running bot trades on is kept* holds the
+reading.
+
 ## 2026-09-11 - Position Distance is off the Trading page
 
 The Trading page carries five rows. The Position Distance row is removed. The row
@@ -9738,5 +9743,128 @@ The sentence above stands as written. This is the reading that replaced it.
 | written above | what it reads now |
 | --- | --- |
 | "The Product Manual PDF rebuild is owed for this page." | `docs/Acervator-Product-Manual.pdf` is rebuilt with this section and carries this page |
+
+## 2026-10-29 - A venue a running bot trades on is kept
+
+Remove Selected keeps a venue while a bot on it still trades. The line under
+the Add form names each bot to stop, and the status log carries the same
+words. The press writes nothing: the stored entry, its sealed tokens and its
+recorded check all stay. Once every bot on the venue is idle or stopped,
+Remove Selected drops the entry as it did before.
+
+A bot is on a venue when its own venue id is that venue's id. One stored entry
+serves every sector a venue trades, so a bot under any sector counts. Idle and
+stopped are the two states with no trading loop. Starting, running, paused,
+error and cooldown each keep a loop, and each keeps the venue.
+
+### The guard both builds call
+
+The Qt dialog runs `SettingsDialog._remove_exchange` on the press. The React
+dialog inherits that method and reaches it through `ACTION_HANDLERS`, so one
+method serves both builds.
+
+`src/gui/settings_dialog.py` — `_remove_exchange`, before any write
+
+```python
+refusal = remove_refusal(eid, self._window_fleet())
+if refusal:
+    self._set_feedback(refusal, "warning")
+    if self._status_log:
+        self._status_log.log(refusal, "warning")
+    return
+self._sm.remove_exchange(eid)
+```
+
+The fleet is the one the window that opened the dialog runs. A fleet that
+raises while it is read keeps the venue too, and the line says its bots could
+not be read.
+
+`src/gui/main_tabs/settings_dialog_surface.py` — `remove_refusal`
+
+```python
+reader = getattr(fleet, "list_bots_by_exchange", None)
+if reader is None:
+    return ""
+name = str(exchange_id).capitalize()
+try:
+    statuses = [dict(one) for one in reader(exchange_id) or ()]
+except (AttributeError, KeyError, RuntimeError, TypeError, ValueError) as exc:
+    return REMOVE_UNREAD_FORMAT.format(
+        name=name, error=f"{type(exc).__name__}: {exc}"
+    )
+blocking = [
+    REMOVE_BLOCKER_FORMAT.format(
+        symbol=one.get("symbol", ""),
+        bot_id=one.get("bot_id", ""),
+        state=one.get("state", ""),
+    )
+    for one in statuses
+    if str(one.get("state", "")) not in NOT_RUNNING_STATES
+]
+```
+
+`list_bots_by_exchange` also fills each venue tab's bot table, where only the
+active sector's bots are kept. The guard keeps the bots of every sector.
+
+`NOT_RUNNING_STATES` in `src/gui/main_tabs/main_window_surface.py` holds idle
+and stopped, the two states the main window already reads as not running.
+
+The Qt-free model of the same press, `SettingsDialogModel.remove_exchange`,
+calls the same guard. Nothing in the running program presses the model.
+
+### Remove Selected on a venue a bot trades on
+
+Driven on both builds and on the Qt-free model, before and after the change,
+in one run. The venue is Binance, holding a stand-in credential in a redirected
+home, and every outbound connection was refused. The bots are stand-ins that
+ask the venue for one price on each tick.
+
+| Bots on the venue | Before | After |
+| --- | --- | --- |
+| one running | removed, and the bot kept calling the venue on the connector it holds: 12 calls at the press, 23 after 0.15 s more | refused, the bot named, nothing written |
+| one running, one paused, one stopped | removed | refused, the running and the paused bot named, the stopped bot not named |
+| one in cooldown after five failed calls | removed | refused, the bot named in cooldown |
+| none | removed | removed, every reading the same |
+| one stopped and one idle | removed | removed, every reading the same |
+| one running on another venue | removed | removed, every reading the same |
+
+Both builds and the model gave the same answer in every row. In the three rows
+that still remove, seven readings were compared on each side and 0 differed.
+Changing one reading on one side made the same comparison report 1 difference,
+so a zero there can report a change.
+
+The line the React page drew for the second row, read off the page:
+
+```
+Binance cannot be removed while a bot trades on it. Stop each bot first: STANDA/USD (bot u172b000, running), STANDB/USD (bot u172b001, paused).
+```
+
+### What a stopped bot does on its next Start
+
+Once every bot on a venue is stopped, Remove Selected drops the entry. A
+stopped bot on that venue then meets its Start path with no entry to read.
+Driven on the real main window methods with the entry removed:
+
+| Start path | With the venue's entry removed |
+| --- | --- |
+| a ccxt venue, `_connect_exchange_for_bot` | refused: `Exchange binance not found in settings. Add it in Settings first.` |
+| Robinhood crypto, `_connect_written_crypto_for_bot` | Settings opens to ask for the venue, then refused: `No API credentials for Robinhood. Add them in Settings. No connector was built.` |
+| a broker venue with no session open, `_open_broker_session` | refused: `no API credentials are stored` |
+| a broker venue with a session already open, `_open_broker_session` | the open session is reused and the store is not read |
+
+### Where earlier sentences on Remove now read differently
+
+They stand as written, and these are the readings that replace them.
+
+| written above | what it reads now |
+| --- | --- |
+| "Remove Selected drops the highlighted entry." | Remove Selected drops the highlighted entry once every bot on that venue is idle or stopped. While one is not, it keeps the entry and names each such bot |
+| "\| `_remove_exchange` \| Drops the selected entry \|" | `_remove_exchange` drops the selected entry only where `remove_refusal` answers no words |
+| "`_remove_exchange` drops the stored entry and its recorded check, and the line returns to grey." | It does so only while no bot on the venue still trades |
+| "Nothing on this path can see a bot. The dialog is handed the settings manager and the status log, and nothing else." | The dialog reads the fleet of the window that opened it, through `_window_fleet` |
+| "\| Refused \| False \|", "\| Warned about the bot \| False \|" and "\| Silently allowed \| True \|" | The press is refused and the refusal names the bot. Nothing is allowed in silence |
+
+The Product Manual PDF is not rebuilt with this section, and its rebuild is
+owed for this page.
 
 Back to [the subsystem index](README.md).
