@@ -491,6 +491,28 @@ modules when they were taken and holds 498 now, with 469 reached rather than
 468. The 29 unreached are the same count and `src.gui.journal_tab` is among
 them.
 
+### The packager's own walk, overtaken
+
+OVERTAKEN, quoted whole:
+
+> "One thing keeps a miss out of the operator's way. The module list is
+> subtracted from and never replaced, so the packager's own import walk still
+> runs and still pulls in whatever it reaches. A name dropped here that
+> something imports stays in the bundle."
+
+True today: that holds for a module nothing reaches. A module that only a screen
+the window never builds reaches is also named to the packager as a module to
+refuse. It leaves the bundle even though an import line in a builder that never
+runs still names it.
+
+```python
+def excludes_for(project_root: str) -> list[str]: ...   # tools/spec_common.py
+```
+
+Ten modules leave this way on this tree. The rule, the three marks it reads and
+the ten names are on [17-what-the-build-includes.md](17-what-the-build-includes.md),
+under "A screen the window never builds".
+
 ### What the bundle's own archive holds
 
 A folder listing of a bundle cannot say which packages it carries. A package
