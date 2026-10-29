@@ -4092,11 +4092,17 @@ def build_view_model(model: SettingsDialogModel) -> dict:
         "calls": [list(one) for one in model.calls],
         "call_names": sorted(
             {
+                "bind_venue_row",
                 "build",
+                "edit",
+                "fill_gateway_email",
                 "load_current",
+                "load_refused",
                 "load_skipped",
                 "on_exchange_changed",
+                "show_key_rows",
                 "show_passphrase",
+                "update_weight_label",
                 "show_verification_code",
                 "set_feedback",
                 "test_api_connection",

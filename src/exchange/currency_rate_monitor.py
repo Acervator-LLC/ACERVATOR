@@ -86,6 +86,8 @@ class CurrencyRateMonitor:
     def __init__(self, refresh_seconds: float = DEFAULT_REFRESH_SECONDS):
         self._refresh_s = float(refresh_seconds)
         self._snapshot = CurrencyRates()
+        #: True while ``refresh_from_feed`` waits on its two ticker reads.
+        self._feed_asking = False
 
     @property
     def refresh_seconds(self) -> float:
@@ -149,12 +151,16 @@ class CurrencyRateMonitor:
     async def refresh_from_feed(self, feed, force: bool = False) -> CurrencyRates:
         """Read BTC/USD and ETH/USD through ``feed.ticker`` on a worker thread.
 
-        ``feed`` is a keyless public source such as ``LiveFeedSource``; a fresh snapshot is kept unless ``force``.
+        ``feed`` is a keyless public source such as ``LiveFeedSource``; a fresh snapshot, or ``_feed_asking``, keeps it.
         """
-        if not force and not self.is_stale():
+        if self._feed_asking or (not force and not self.is_stale()):
             return self._snapshot
-        btc = await asyncio.to_thread(feed.ticker, "BTC/USD")
-        eth = await asyncio.to_thread(feed.ticker, "ETH/USD")
+        self._feed_asking = True
+        try:
+            btc = await asyncio.to_thread(feed.ticker, "BTC/USD")
+            eth = await asyncio.to_thread(feed.ticker, "ETH/USD")
+        finally:
+            self._feed_asking = False
         if btc and eth and btc > 0 and eth > 0:
             return self.update_from_prices(btc, eth, source=str(feed.venue()))
         self._snapshot.error = NO_FEED_RATES_ERROR
