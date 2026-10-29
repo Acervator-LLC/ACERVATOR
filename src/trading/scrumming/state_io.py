@@ -62,10 +62,12 @@ class StateSerializerMixin:
     _compact_wire_credits: Callable[..., int]
     _current_holdings: float
     _dist_accumulator: float
+    _export_resting_orders: Callable[..., list]
     _fold_queue_usd: float
     _fold_tranches: list[dict]
     _hedge_bal: float
     _hedge_trades: int
+    _import_resting_orders: Callable[..., None]
     _initialised: bool
     _land_pending_wire_credits: Callable[..., float]
     _last_trade_price: float
@@ -199,6 +201,7 @@ class StateSerializerMixin:
             "stack_counters_reset_ts": float(
                 as_finite_float(getattr(self, "_stack_counters_reset_ts", 0.0)) or 0.0
             ),
+            "resting_orders": self._export_resting_orders(),
             "target_grow_last_side": (
                 str(getattr(self, "_target_grow_last_side", None))
                 if getattr(self, "_target_grow_last_side", None) in ("lower", "upper")
@@ -477,6 +480,7 @@ class StateSerializerMixin:
         self._stack_counters_reset_ts = float(
             as_finite_float(data.get("stack_counters_reset_ts", 0.0)) or 0.0
         )
+        self._import_resting_orders(data.get("resting_orders"))
         # closed > created is structurally impossible; clamp and surface it.
         if _closed > _created:
             try:
