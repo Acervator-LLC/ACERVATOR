@@ -30,6 +30,7 @@ from .. import design_system as ds
 from ..live_settings.settings_tab import SettingsTabMixin
 from .sim_bot_status_table_surface import sim_target_denom_cell
 from ..descriptions import SETTINGS_TAB_DESCRIPTIONS
+from ..tooltips import set_description
 
 logger = logging.getLogger("acervator.gui")
 
@@ -184,11 +185,12 @@ class SimSettingsTabMixin(SettingsTabMixin):
         self._vis.currentIndexChanged.connect(
             lambda: self._mark_changed("visibility", self._vis.currentData())
         )
+        set_description(self._vis, SETTINGS_TAB_DESCRIPTIONS["vis"])
         mf.addRow("Order Visibility:", self._vis)
 
         self._aggressive = QCheckBox("Aggressive Trading (force IOC-limit takers)")
         self._aggressive.setChecked(cfg.aggressive_trading)
-        self._aggressive.setToolTip(SETTINGS_TAB_DESCRIPTIONS["aggressive"])
+        set_description(self._aggressive, SETTINGS_TAB_DESCRIPTIONS["aggressive"])
         self._aggressive.toggled.connect(
             lambda v: self._mark_changed("aggressive_trading", v)
         )
@@ -196,7 +198,7 @@ class SimSettingsTabMixin(SettingsTabMixin):
 
         self._stack_mode = QCheckBox("Stack Mode (split SCRUM across upward tranches)")
         self._stack_mode.setChecked(getattr(cfg, "stack_mode", False))
-        self._stack_mode.setToolTip(SETTINGS_TAB_DESCRIPTIONS["stack_mode"])
+        set_description(self._stack_mode, SETTINGS_TAB_DESCRIPTIONS["stack_mode"])
         self._stack_mode.toggled.connect(lambda v: self._mark_changed("stack_mode", v))
         mf.addRow(self._stack_mode)
 
@@ -205,7 +207,9 @@ class SimSettingsTabMixin(SettingsTabMixin):
         self._split_distance.setDecimals(2)
         self._split_distance.setSuffix(" %")
         self._split_distance.setValue(getattr(cfg, "split_distance", 1.0))
-        self._split_distance.setToolTip(SETTINGS_TAB_DESCRIPTIONS["split_distance"])
+        set_description(
+            self._split_distance, SETTINGS_TAB_DESCRIPTIONS["split_distance"]
+        )
         self._split_distance.valueChanged.connect(
             lambda v: self._mark_changed("split_distance", v)
         )
@@ -214,7 +218,7 @@ class SimSettingsTabMixin(SettingsTabMixin):
         self._stack_count = QSpinBox()
         self._stack_count.setRange(2, 20)
         self._stack_count.setValue(int(getattr(cfg, "stack_tranche_count_target", 3)))
-        self._stack_count.setToolTip(SETTINGS_TAB_DESCRIPTIONS["stack_count"])
+        set_description(self._stack_count, SETTINGS_TAB_DESCRIPTIONS["stack_count"])
         self._stack_count.valueChanged.connect(
             lambda v: self._mark_changed("stack_tranche_count_target", v)
         )
@@ -229,7 +233,7 @@ class SimSettingsTabMixin(SettingsTabMixin):
         _idx = self._stack_spacing.findData(_cur_spacing)
         if _idx >= 0:
             self._stack_spacing.setCurrentIndex(_idx)
-        self._stack_spacing.setToolTip(SETTINGS_TAB_DESCRIPTIONS["stack_spacing"])
+        set_description(self._stack_spacing, SETTINGS_TAB_DESCRIPTIONS["stack_spacing"])
         self._stack_spacing.currentIndexChanged.connect(
             lambda: self._mark_changed(
                 "stack_spacing_mode", self._stack_spacing.currentData()
@@ -254,6 +258,9 @@ class SimSettingsTabMixin(SettingsTabMixin):
             self._scrum_interval.valueChanged.connect(
                 lambda v: self._mark_changed("scrumming_interval_pct", v)
             )
+            set_description(
+                self._scrum_interval, SETTINGS_TAB_DESCRIPTIONS["scrum_interval"]
+            )
             sf.addRow("Opposing Trade Interval:", self._scrum_interval)
 
             self._bb_tol = QDoubleSpinBox()
@@ -264,12 +271,13 @@ class SimSettingsTabMixin(SettingsTabMixin):
             self._bb_tol.valueChanged.connect(
                 lambda v: self._mark_changed("bb_tolerance_pct", v)
             )
+            set_description(self._bb_tol, SETTINGS_TAB_DESCRIPTIONS["bb_tol"])
             sf.addRow("BB Tolerance:", self._bb_tol)
 
             self._landing = QSpinBox()
             self._landing.setRange(2, 10)
             self._landing.setValue(cfg.bb_landing_strip_candles)
-            self._landing.setToolTip(SETTINGS_TAB_DESCRIPTIONS["landing"])
+            set_description(self._landing, SETTINGS_TAB_DESCRIPTIONS["landing"])
             self._landing.valueChanged.connect(
                 lambda v: self._mark_changed("bb_landing_strip_candles", v)
             )
@@ -307,7 +315,7 @@ class SimSettingsTabMixin(SettingsTabMixin):
                 if fallback_idx < 0:
                     fallback_idx = 0
                 self._ta_tf.setCurrentIndex(fallback_idx)
-            self._ta_tf.setToolTip(SETTINGS_TAB_DESCRIPTIONS["ta_tf"])
+            set_description(self._ta_tf, SETTINGS_TAB_DESCRIPTIONS["ta_tf"])
             self._ta_tf.currentTextChanged.connect(self._ta_timeframe_picked)
             sf.addRow("TA Timeframe:", self._ta_tf)
             self._ta_tf_notice = QLabel(
@@ -327,8 +335,8 @@ class SimSettingsTabMixin(SettingsTabMixin):
                 self._ta_tf_notice.setStyleSheet(
                     f"color: {ds.WARNING}; font-size: 11px;"
                 )
-                self._ta_tf.setToolTip(
-                    f"{self._ta_tf.toolTip()}\n{self._ta_tf_notice.text()}"
+                set_description(
+                    self._ta_tf, f"{self._ta_tf.toolTip()}\n{self._ta_tf_notice.text()}"
                 )
                 sf.addRow(self._ta_tf_notice)
 
@@ -336,7 +344,7 @@ class SimSettingsTabMixin(SettingsTabMixin):
             self._target_bal.setRange(1.0, 1000000.0)
             self._target_bal.setDecimals(2)
             self._target_bal.setPrefix("$ ")
-            self._target_bal.setToolTip(SETTINGS_TAB_DESCRIPTIONS["target_bal"])
+            set_description(self._target_bal, SETTINGS_TAB_DESCRIPTIONS["target_bal"])
             self._show_admitted_figure(self._target_bal, cfg, "target_bal")
             self._target_bal.valueChanged.connect(
                 lambda v: self._mark_changed("target_balance", v)
@@ -359,14 +367,14 @@ class SimSettingsTabMixin(SettingsTabMixin):
             _live_lbl.setStyleSheet(f"color: {ds.FOLD_RATIO_AMBER};")
         else:
             _live_lbl.setStyleSheet(f"color: {ds.SUCCESS};")
-        _live_lbl.setToolTip(SETTINGS_TAB_DESCRIPTIONS["live_lbl"])
+        set_description(_live_lbl, SETTINGS_TAB_DESCRIPTIONS["live_lbl"])
         sf.addRow("Live target (traded against):", _live_lbl)
 
         _surplus = float(getattr(self._bot, "_standing_surplus_usd", 0.0) or 0.0)
         _surplus_lbl = QLabel(f"${_surplus:,.4f}")
         if _surplus > 1e-9:
             _surplus_lbl.setStyleSheet(f"color: {ds.FOLD_RATIO_AMBER};")
-            _surplus_lbl.setToolTip(SETTINGS_TAB_DESCRIPTIONS["surplus_lbl"])
+            set_description(_surplus_lbl, SETTINGS_TAB_DESCRIPTIONS["surplus_lbl"])
         sf.addRow("Standing surplus:", _surplus_lbl)
 
         _cap = getattr(self._bot, "cycle_growth_cap_usd", None)
@@ -394,15 +402,19 @@ class SimSettingsTabMixin(SettingsTabMixin):
                 f"{len(_over)} of {len(_tranches)} " f"(${sum(_over):,.4f})"
             )
             _over_lbl.setStyleSheet(f"color: {ds.ERROR};")
-            _over_lbl.setToolTip(SETTINGS_TAB_DESCRIPTIONS["over_lbl"])
+            set_description(_over_lbl, SETTINGS_TAB_DESCRIPTIONS["over_lbl"])
             sf.addRow("Over-cap tranches:", _over_lbl)
 
         self._target_btc_lbl = QLabel("—")
-        self._target_btc_lbl.setToolTip(SETTINGS_TAB_DESCRIPTIONS["target_btc_lbl"])
+        set_description(
+            self._target_btc_lbl, SETTINGS_TAB_DESCRIPTIONS["target_btc_lbl"]
+        )
         self._target_btc_row_label = QLabel("Target BTC:")
         sf.addRow(self._target_btc_row_label, self._target_btc_lbl)
         self._target_eth_lbl = QLabel("—")
-        self._target_eth_lbl.setToolTip(SETTINGS_TAB_DESCRIPTIONS["target_eth_lbl"])
+        set_description(
+            self._target_eth_lbl, SETTINGS_TAB_DESCRIPTIONS["target_eth_lbl"]
+        )
         self._target_eth_row_label = QLabel("Target ETH:")
         sf.addRow(self._target_eth_row_label, self._target_eth_lbl)
         self._refresh_target_denom_rows()
@@ -413,7 +425,7 @@ class SimSettingsTabMixin(SettingsTabMixin):
         self._max_entry_px.setPrefix("$ ")
         _max_ep_cfg = getattr(cfg, "max_entry_price", None)
         self._max_entry_px.setValue(float(_max_ep_cfg) if _max_ep_cfg else 0.0)
-        self._max_entry_px.setToolTip(SETTINGS_TAB_DESCRIPTIONS["max_entry_px"])
+        set_description(self._max_entry_px, SETTINGS_TAB_DESCRIPTIONS["max_entry_px"])
         self._max_entry_px.valueChanged.connect(
             lambda v: self._mark_changed("max_entry_price", float(v) if v > 0 else None)
         )
@@ -425,7 +437,7 @@ class SimSettingsTabMixin(SettingsTabMixin):
         self._min_entry_px.setPrefix("$ ")
         _min_ep_cfg = getattr(cfg, "min_entry_price", None)
         self._min_entry_px.setValue(float(_min_ep_cfg) if _min_ep_cfg else 0.0)
-        self._min_entry_px.setToolTip(SETTINGS_TAB_DESCRIPTIONS["min_entry_px"])
+        set_description(self._min_entry_px, SETTINGS_TAB_DESCRIPTIONS["min_entry_px"])
         self._min_entry_px.valueChanged.connect(
             lambda v: self._mark_changed("min_entry_price", float(v) if v > 0 else None)
         )
@@ -437,7 +449,7 @@ class SimSettingsTabMixin(SettingsTabMixin):
         self._trading_fee.setDecimals(2)
         self._trading_fee.setSingleStep(0.05)
         self._trading_fee.setValue(float(getattr(cfg, "trading_fee_pct", 0.6) or 0.6))
-        self._trading_fee.setToolTip(SETTINGS_TAB_DESCRIPTIONS["trading_fee"])
+        set_description(self._trading_fee, SETTINGS_TAB_DESCRIPTIONS["trading_fee"])
         self._trading_fee.valueChanged.connect(
             lambda v: self._mark_changed("trading_fee_pct", float(v))
         )
@@ -451,8 +463,8 @@ class SimSettingsTabMixin(SettingsTabMixin):
         from ...trading.container.config import target_growth_pct
 
         self._max_target_growth.setValue(float(target_growth_pct(cfg)))
-        self._max_target_growth.setToolTip(
-            SETTINGS_TAB_DESCRIPTIONS["max_target_growth"]
+        set_description(
+            self._max_target_growth, SETTINGS_TAB_DESCRIPTIONS["max_target_growth"]
         )
         self._max_target_growth.valueChanged.connect(
             lambda v: self._mark_changed("max_target_growth_pct", v)
@@ -469,7 +481,9 @@ class SimSettingsTabMixin(SettingsTabMixin):
         self._scrum_fold_pct.setRange(FOLD_RATIO_MIN_PCT, FOLD_RATIO_MAX_PCT)
         self._scrum_fold_pct.setSuffix(" %")
         self._scrum_fold_pct.setValue(fold_ratio_pct(cfg))
-        self._scrum_fold_pct.setToolTip(SETTINGS_TAB_DESCRIPTIONS["scrum_fold_pct"])
+        set_description(
+            self._scrum_fold_pct, SETTINGS_TAB_DESCRIPTIONS["scrum_fold_pct"]
+        )
         self._scrum_fold_pct.valueChanged.connect(
             lambda v: self._mark_changed("scrum_fold_pct", v)
         )
@@ -479,8 +493,9 @@ class SimSettingsTabMixin(SettingsTabMixin):
         self._profit_folding_active.setChecked(
             bool(getattr(cfg, "profit_folding_active", True))
         )
-        self._profit_folding_active.setToolTip(
-            SETTINGS_TAB_DESCRIPTIONS["profit_folding_active"]
+        set_description(
+            self._profit_folding_active,
+            SETTINGS_TAB_DESCRIPTIONS["profit_folding_active"],
         )
         self._profit_folding_active.toggled.connect(
             lambda v: self._mark_changed("profit_folding_active", v)
@@ -497,7 +512,7 @@ class SimSettingsTabMixin(SettingsTabMixin):
         self._detect_pct.setRange(10, 90)
         self._detect_pct.setSuffix(" %")
         self._detect_pct.setValue(int(cfg.scrum_detect_pct))
-        self._detect_pct.setToolTip(SETTINGS_TAB_DESCRIPTIONS["detect_pct"])
+        set_description(self._detect_pct, SETTINGS_TAB_DESCRIPTIONS["detect_pct"])
         self._detect_pct.valueChanged.connect(
             lambda v: self._mark_changed("scrum_detect_pct", v)
         )
@@ -508,7 +523,7 @@ class SimSettingsTabMixin(SettingsTabMixin):
         self._fire_pct.setDecimals(2)
         self._fire_pct.setSuffix(" %")
         self._fire_pct.setValue(float(cfg.scrum_fire_pct))
-        self._fire_pct.setToolTip(SETTINGS_TAB_DESCRIPTIONS["fire_pct"])
+        set_description(self._fire_pct, SETTINGS_TAB_DESCRIPTIONS["fire_pct"])
         self._fire_pct.valueChanged.connect(
             lambda v: self._mark_changed("scrum_fire_pct", v)
         )
@@ -516,7 +531,7 @@ class SimSettingsTabMixin(SettingsTabMixin):
 
         self._midline_gate = QCheckBox("BB Midline Gate")
         self._midline_gate.setChecked(bool(cfg.bb_midline_gate))
-        self._midline_gate.setToolTip(SETTINGS_TAB_DESCRIPTIONS["midline_gate"])
+        set_description(self._midline_gate, SETTINGS_TAB_DESCRIPTIONS["midline_gate"])
         self._midline_gate.toggled.connect(
             lambda v: self._mark_changed("bb_midline_gate", v)
         )
@@ -526,8 +541,8 @@ class SimSettingsTabMixin(SettingsTabMixin):
         self._scrum_read_rate_min.setRange(1, 60)
         self._scrum_read_rate_min.setSuffix(" min")
         self._scrum_read_rate_min.setValue(int(cfg.scrum_read_rate_min))
-        self._scrum_read_rate_min.setToolTip(
-            SETTINGS_TAB_DESCRIPTIONS["scrum_read_rate_min"]
+        set_description(
+            self._scrum_read_rate_min, SETTINGS_TAB_DESCRIPTIONS["scrum_read_rate_min"]
         )
         self._scrum_read_rate_min.valueChanged.connect(
             lambda v: self._mark_changed("scrum_read_rate_min", v)
@@ -538,7 +553,7 @@ class SimSettingsTabMixin(SettingsTabMixin):
         self._band_travel.setRange(0, 100)
         self._band_travel.setSuffix(" %")
         self._band_travel.setValue(int(cfg.band_travel_pct))
-        self._band_travel.setToolTip(SETTINGS_TAB_DESCRIPTIONS["band_travel"])
+        set_description(self._band_travel, SETTINGS_TAB_DESCRIPTIONS["band_travel"])
         self._band_travel.valueChanged.connect(
             lambda v: self._mark_changed("band_travel_pct", v)
         )
@@ -546,8 +561,8 @@ class SimSettingsTabMixin(SettingsTabMixin):
 
         self._bb_bullseye_check = QCheckBox("BB Bullseye Check")
         self._bb_bullseye_check.setChecked(bool(cfg.bb_bullseye_check))
-        self._bb_bullseye_check.setToolTip(
-            SETTINGS_TAB_DESCRIPTIONS["bb_bullseye_check"]
+        set_description(
+            self._bb_bullseye_check, SETTINGS_TAB_DESCRIPTIONS["bb_bullseye_check"]
         )
         self._bb_bullseye_check.toggled.connect(
             lambda v: self._mark_changed("bb_bullseye_check", v)
@@ -562,7 +577,7 @@ class SimSettingsTabMixin(SettingsTabMixin):
         self._tranche_despawn_days.setSuffix(" days")
         self._tranche_despawn_days.setSpecialValueText("Off")
         self._tranche_despawn_days.setValue(despawn_threshold_days(cfg))
-        self._tranche_despawn_days.setToolTip(TOOLTIPS[DESPAWN_FIELD])
+        set_description(self._tranche_despawn_days, TOOLTIPS[DESPAWN_FIELD])
         self._tranche_despawn_days.valueChanged.connect(
             lambda v: self._mark_changed("tranche_despawn_days", v)
         )
@@ -576,7 +591,7 @@ class SimSettingsTabMixin(SettingsTabMixin):
 
         self._hedge_active = QCheckBox("Hedge Rebalance Active")
         self._hedge_active.setChecked(bool(cfg.hedge_rebalance_active))
-        self._hedge_active.setToolTip(SETTINGS_TAB_DESCRIPTIONS["hedge_active"])
+        set_description(self._hedge_active, SETTINGS_TAB_DESCRIPTIONS["hedge_active"])
         self._hedge_active.toggled.connect(
             lambda v: self._mark_changed("hedge_rebalance_active", v)
         )
@@ -586,7 +601,7 @@ class SimSettingsTabMixin(SettingsTabMixin):
         self._hedge_balance.setRange(0.0, 999999999.0)
         self._hedge_balance.setDecimals(2)
         self._hedge_balance.setPrefix("$ ")
-        self._hedge_balance.setToolTip(SETTINGS_TAB_DESCRIPTIONS["hedge_balance"])
+        set_description(self._hedge_balance, SETTINGS_TAB_DESCRIPTIONS["hedge_balance"])
         self._show_admitted_figure(self._hedge_balance, cfg, "hedge_balance")
         self._hedge_balance.valueChanged.connect(
             lambda v: self._mark_changed("hedge_balance", v)
@@ -606,7 +621,7 @@ class SimSettingsTabMixin(SettingsTabMixin):
         self._cb_soft_pct.setValue(
             float(getattr(cfg, "circuit_breaker_soft_pct", 25.0))
         )
-        self._cb_soft_pct.setToolTip(SETTINGS_TAB_DESCRIPTIONS["cb_soft_pct"])
+        set_description(self._cb_soft_pct, SETTINGS_TAB_DESCRIPTIONS["cb_soft_pct"])
         self._cb_soft_pct.valueChanged.connect(
             lambda v: self._mark_changed("circuit_breaker_soft_pct", float(v))
         )
@@ -619,7 +634,7 @@ class SimSettingsTabMixin(SettingsTabMixin):
         self._cb_hard_pct.setValue(
             float(getattr(cfg, "circuit_breaker_hard_pct", 35.0))
         )
-        self._cb_hard_pct.setToolTip(SETTINGS_TAB_DESCRIPTIONS["cb_hard_pct"])
+        set_description(self._cb_hard_pct, SETTINGS_TAB_DESCRIPTIONS["cb_hard_pct"])
         self._cb_hard_pct.valueChanged.connect(
             lambda v: self._mark_changed("circuit_breaker_hard_pct", float(v))
         )
@@ -630,7 +645,7 @@ class SimSettingsTabMixin(SettingsTabMixin):
         self._cb_cooldown.setValue(
             int(getattr(cfg, "circuit_breaker_cooldown_candles", 3))
         )
-        self._cb_cooldown.setToolTip(SETTINGS_TAB_DESCRIPTIONS["cb_cooldown"])
+        set_description(self._cb_cooldown, SETTINGS_TAB_DESCRIPTIONS["cb_cooldown"])
         self._cb_cooldown.valueChanged.connect(
             lambda v: self._mark_changed("circuit_breaker_cooldown_candles", int(v))
         )
@@ -643,8 +658,8 @@ class SimSettingsTabMixin(SettingsTabMixin):
         self._max_cartridge_pct.setValue(
             float(getattr(cfg, "max_cartridge_size_pct", 10.0))
         )
-        self._max_cartridge_pct.setToolTip(
-            SETTINGS_TAB_DESCRIPTIONS["max_cartridge_pct"]
+        set_description(
+            self._max_cartridge_pct, SETTINGS_TAB_DESCRIPTIONS["max_cartridge_pct"]
         )
         self._max_cartridge_pct.valueChanged.connect(
             lambda v: self._mark_changed("max_cartridge_size_pct", float(v))
@@ -655,8 +670,8 @@ class SimSettingsTabMixin(SettingsTabMixin):
         self._cartridge_smart_chk.setChecked(
             bool(getattr(cfg, "max_cartridge_smart", False))
         )
-        self._cartridge_smart_chk.setToolTip(
-            SETTINGS_TAB_DESCRIPTIONS["cartridge_smart_chk"]
+        set_description(
+            self._cartridge_smart_chk, SETTINGS_TAB_DESCRIPTIONS["cartridge_smart_chk"]
         )
         self._cartridge_smart_chk.toggled.connect(
             lambda checked: self._mark_changed("max_cartridge_smart", bool(checked))
@@ -670,8 +685,9 @@ class SimSettingsTabMixin(SettingsTabMixin):
         self._cartridge_smart_ceiling.setValue(
             float(getattr(cfg, "max_cartridge_smart_ceiling_pct", 30.0))
         )
-        self._cartridge_smart_ceiling.setToolTip(
-            SETTINGS_TAB_DESCRIPTIONS["cartridge_smart_ceiling"]
+        set_description(
+            self._cartridge_smart_ceiling,
+            SETTINGS_TAB_DESCRIPTIONS["cartridge_smart_ceiling"],
         )
         self._cartridge_smart_ceiling.valueChanged.connect(
             lambda v: self._mark_changed("max_cartridge_smart_ceiling_pct", float(v))
@@ -680,7 +696,9 @@ class SimSettingsTabMixin(SettingsTabMixin):
 
         reset_row = QHBoxLayout()
         self._cb_reset_all_btn = QPushButton("Reset All Breakers")
-        self._cb_reset_all_btn.setToolTip(SETTINGS_TAB_DESCRIPTIONS["cb_reset_all_btn"])
+        set_description(
+            self._cb_reset_all_btn, SETTINGS_TAB_DESCRIPTIONS["cb_reset_all_btn"]
+        )
 
         def _on_cb_reset_all():
             orig = self._cb_reset_all_btn.text()
@@ -728,8 +746,8 @@ class SimSettingsTabMixin(SettingsTabMixin):
             "padding:8px 12px;font-weight:bold;}"
             f"QPushButton:hover{{background:{ds.SETTINGS_DESTRUCTIVE_HOVER};color:{ds.TEXT_MAX};}}"
         )
-        self._self_destruct_btn.setToolTip(
-            SETTINGS_TAB_DESCRIPTIONS["self_destruct_btn"]
+        set_description(
+            self._self_destruct_btn, SETTINGS_TAB_DESCRIPTIONS["self_destruct_btn"]
         )
         self._self_destruct_btn.clicked.connect(self._on_self_destruct_clicked)
         sdv.addWidget(self._self_destruct_btn)
@@ -743,7 +761,9 @@ class SimSettingsTabMixin(SettingsTabMixin):
         self._ceiling_enabled.setChecked(
             bool(getattr(cfg, "position_ceiling_enabled", False))
         )
-        self._ceiling_enabled.setToolTip(SETTINGS_TAB_DESCRIPTIONS["ceiling_enabled"])
+        set_description(
+            self._ceiling_enabled, SETTINGS_TAB_DESCRIPTIONS["ceiling_enabled"]
+        )
         self._ceiling_enabled.toggled.connect(
             lambda v: self._mark_changed("position_ceiling_enabled", v)
         )
@@ -764,7 +784,7 @@ class SimSettingsTabMixin(SettingsTabMixin):
         self._ceiling_mult.setSingleStep(0.5)
         self._ceiling_mult.setSuffix("x anchor")
         self._ceiling_mult.setValue(ceiling_multiple(cfg))
-        self._ceiling_mult.setToolTip(SETTINGS_TAB_DESCRIPTIONS["ceiling_mult"])
+        set_description(self._ceiling_mult, SETTINGS_TAB_DESCRIPTIONS["ceiling_mult"])
         self._ceiling_mult.valueChanged.connect(
             lambda v: self._mark_changed("position_ceiling_multiple", v)
         )
@@ -772,7 +792,7 @@ class SimSettingsTabMixin(SettingsTabMixin):
 
         self._deto_enabled = QCheckBox("Enable Detonation (auto-harvest on bullish TF)")
         self._deto_enabled.setChecked(bool(getattr(cfg, "detonation_enabled", False)))
-        self._deto_enabled.setToolTip(SETTINGS_TAB_DESCRIPTIONS["deto_enabled"])
+        set_description(self._deto_enabled, SETTINGS_TAB_DESCRIPTIONS["deto_enabled"])
         self._deto_enabled.toggled.connect(
             lambda v: self._mark_changed("detonation_enabled", v)
         )
@@ -784,7 +804,7 @@ class SimSettingsTabMixin(SettingsTabMixin):
         _idx = self._deto_tf.findText(_cur_tf)
         if _idx >= 0:
             self._deto_tf.setCurrentIndex(_idx)
-        self._deto_tf.setToolTip(SETTINGS_TAB_DESCRIPTIONS["deto_tf"])
+        set_description(self._deto_tf, SETTINGS_TAB_DESCRIPTIONS["deto_tf"])
         self._deto_tf.currentTextChanged.connect(
             lambda v: self._mark_changed("detonation_timeframe", v)
         )
@@ -801,7 +821,7 @@ class SimSettingsTabMixin(SettingsTabMixin):
                 )
             )
         )
-        self._deto_conf.setToolTip(SETTINGS_TAB_DESCRIPTIONS["deto_conf"])
+        set_description(self._deto_conf, SETTINGS_TAB_DESCRIPTIONS["deto_conf"])
         self._deto_conf.valueChanged.connect(
             lambda v: self._mark_changed("detonation_confidence_min", v)
         )
@@ -817,7 +837,7 @@ class SimSettingsTabMixin(SettingsTabMixin):
         self._gate_scrum_ta.setChecked(
             bool(getattr(cfg, "scrum_require_ta_bullish", True))
         )
-        self._gate_scrum_ta.setToolTip(SETTINGS_TAB_DESCRIPTIONS["gate_scrum_ta"])
+        set_description(self._gate_scrum_ta, SETTINGS_TAB_DESCRIPTIONS["gate_scrum_ta"])
         self._gate_scrum_ta.toggled.connect(
             lambda v: self._mark_changed("scrum_require_ta_bullish", v)
         )
@@ -827,8 +847,8 @@ class SimSettingsTabMixin(SettingsTabMixin):
         self._gate_scrum_uptrend.setChecked(
             bool(getattr(cfg, "scrum_hold_in_uptrend", True))
         )
-        self._gate_scrum_uptrend.setToolTip(
-            SETTINGS_TAB_DESCRIPTIONS["gate_scrum_uptrend"]
+        set_description(
+            self._gate_scrum_uptrend, SETTINGS_TAB_DESCRIPTIONS["gate_scrum_uptrend"]
         )
         self._gate_scrum_uptrend.toggled.connect(
             lambda v: self._mark_changed("scrum_hold_in_uptrend", v)
@@ -837,7 +857,9 @@ class SimSettingsTabMixin(SettingsTabMixin):
 
         self._gate_scrum_htf = QCheckBox("SCRUM defers to higher-TF bullish")
         self._gate_scrum_htf.setChecked(bool(getattr(cfg, "scrum_defer_to_htf", True)))
-        self._gate_scrum_htf.setToolTip(SETTINGS_TAB_DESCRIPTIONS["gate_scrum_htf"])
+        set_description(
+            self._gate_scrum_htf, SETTINGS_TAB_DESCRIPTIONS["gate_scrum_htf"]
+        )
         self._gate_scrum_htf.toggled.connect(
             lambda v: self._mark_changed("scrum_defer_to_htf", v)
         )
@@ -847,7 +869,7 @@ class SimSettingsTabMixin(SettingsTabMixin):
         self._gate_fold_ta.setChecked(
             bool(getattr(cfg, "fold_require_ta_bearish", True))
         )
-        self._gate_fold_ta.setToolTip(SETTINGS_TAB_DESCRIPTIONS["gate_fold_ta"])
+        set_description(self._gate_fold_ta, SETTINGS_TAB_DESCRIPTIONS["gate_fold_ta"])
         self._gate_fold_ta.toggled.connect(
             lambda v: self._mark_changed("fold_require_ta_bearish", v)
         )
@@ -855,7 +877,7 @@ class SimSettingsTabMixin(SettingsTabMixin):
 
         self._gate_fold_htf = QCheckBox("FOLD defers to higher-TF bearish")
         self._gate_fold_htf.setChecked(bool(getattr(cfg, "fold_defer_to_htf", True)))
-        self._gate_fold_htf.setToolTip(SETTINGS_TAB_DESCRIPTIONS["gate_fold_htf"])
+        set_description(self._gate_fold_htf, SETTINGS_TAB_DESCRIPTIONS["gate_fold_htf"])
         self._gate_fold_htf.toggled.connect(
             lambda v: self._mark_changed("fold_defer_to_htf", v)
         )
@@ -875,7 +897,9 @@ class SimSettingsTabMixin(SettingsTabMixin):
             self._ext_chunk_size.setValue(
                 float(getattr(cfg, "extractor_chunk_size_usd", 100.0))
             )
-            self._ext_chunk_size.setToolTip(SETTINGS_TAB_DESCRIPTIONS["ext_chunk_size"])
+            set_description(
+                self._ext_chunk_size, SETTINGS_TAB_DESCRIPTIONS["ext_chunk_size"]
+            )
             self._ext_chunk_size.valueChanged.connect(
                 lambda v: self._mark_changed("extractor_chunk_size_usd", v)
             )
@@ -888,8 +912,9 @@ class SimSettingsTabMixin(SettingsTabMixin):
             self._ext_artillery_size.setValue(
                 float(getattr(cfg, "extractor_artillery_size_usd", 5.0))
             )
-            self._ext_artillery_size.setToolTip(
-                SETTINGS_TAB_DESCRIPTIONS["ext_artillery_size"]
+            set_description(
+                self._ext_artillery_size,
+                SETTINGS_TAB_DESCRIPTIONS["ext_artillery_size"],
             )
             self._ext_artillery_size.valueChanged.connect(
                 lambda v: self._mark_changed("extractor_artillery_size_usd", v)
@@ -899,7 +924,9 @@ class SimSettingsTabMixin(SettingsTabMixin):
             self._ext_scan_top_n = QSpinBox()
             self._ext_scan_top_n.setRange(5, 10)
             self._ext_scan_top_n.setValue(int(getattr(cfg, "extractor_scan_top_n", 8)))
-            self._ext_scan_top_n.setToolTip(SETTINGS_TAB_DESCRIPTIONS["ext_scan_top_n"])
+            set_description(
+                self._ext_scan_top_n, SETTINGS_TAB_DESCRIPTIONS["ext_scan_top_n"]
+            )
             self._ext_scan_top_n.valueChanged.connect(
                 lambda v: self._mark_changed("extractor_scan_top_n", v)
             )
@@ -912,8 +939,8 @@ class SimSettingsTabMixin(SettingsTabMixin):
             self._ext_scan_refresh.setValue(
                 int(getattr(cfg, "extractor_scan_refresh_candles", 60))
             )
-            self._ext_scan_refresh.setToolTip(
-                SETTINGS_TAB_DESCRIPTIONS["ext_scan_refresh"]
+            set_description(
+                self._ext_scan_refresh, SETTINGS_TAB_DESCRIPTIONS["ext_scan_refresh"]
             )
             self._ext_scan_refresh.valueChanged.connect(
                 lambda v: self._mark_changed("extractor_scan_refresh_candles", v)
@@ -927,7 +954,9 @@ class SimSettingsTabMixin(SettingsTabMixin):
             self._ext_exit_pct.setValue(
                 float(getattr(cfg, "extractor_exit_pct", 100.0))
             )
-            self._ext_exit_pct.setToolTip(SETTINGS_TAB_DESCRIPTIONS["ext_exit_pct"])
+            set_description(
+                self._ext_exit_pct, SETTINGS_TAB_DESCRIPTIONS["ext_exit_pct"]
+            )
             self._ext_exit_pct.valueChanged.connect(
                 lambda v: self._mark_changed("extractor_exit_pct", v)
             )

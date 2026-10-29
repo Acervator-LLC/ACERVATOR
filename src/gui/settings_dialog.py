@@ -104,6 +104,8 @@ try:
     )
     from PySide6.QtCore import Qt, Signal
 
+    from .tooltips import set_description
+
     _HAS_QT = True
 except ImportError:
     _HAS_QT = False
@@ -202,6 +204,7 @@ if _HAS_QT:
                 if wing in ("crypto", "stock")
                 else "Settings"
             )
+            self.setAccessibleName(sds.DIALOG_ACCESSIBLE_NAME)
             self.setMinimumSize(700, 600)
             self._sm = settings_manager
             self._status_log = status_log
@@ -240,6 +243,10 @@ if _HAS_QT:
             tabs.addTab(self._create_sms_tab(), "SMS")
             tabs.addTab(self._create_ai_monitor_tab(), "AI Monitor")
             self._tabs = tabs
+            for at in range(tabs.count()):
+                said = sds.TAB_TOOLTIPS.get(tabs.tabText(at))
+                if said:
+                    set_description(tabs, said, at)
             layout.addWidget(tabs)
 
             btn_row = QHBoxLayout()
@@ -253,6 +260,17 @@ if _HAS_QT:
             self._save_btn.clicked.connect(lambda: self._save())
             btn_row.addWidget(self._save_btn)
             layout.addLayout(btn_row)
+            set_description(self._cancel_btn, sds.BUTTON_TOOLTIPS["cancel_btn"])
+            set_description(self._save_btn, sds.BUTTON_TOOLTIPS["save_btn"])
+            self._describe_controls()
+
+        def _describe_controls(self) -> None:
+            """Sets each ``sds.CONTROL_SPECS`` tooltip on the control held as ``self._<name>``."""
+            for spec in sds.CONTROL_SPECS:
+                said = spec.get("tooltip")
+                held = getattr(self, f"_{spec['name']}", None)
+                if said and held is not None:
+                    set_description(held, said)
 
         @property
         def tab(self) -> str:
@@ -331,8 +349,6 @@ if _HAS_QT:
 
         def _describe_fleet_lock(self) -> None:
             """Hang each ``sds.FLEET_LOCK_CONTROLS`` description on its control through ``set_description``."""
-            from .tooltips import set_description
-
             for one in sds.FLEET_LOCK_CONTROLS:
                 held = getattr(self, "_" + str(one.get("name") or ""), None)
                 if held is not None and "description" in one:
@@ -476,18 +492,12 @@ if _HAS_QT:
             self._new_api_key.setPlaceholderText(
                 "API Key or organizations/.../.../apiKeys/..."
             )
-            self._new_api_key.setToolTip(
-                "For Coinbase CDP keys, paste the full organizations/.../apiKeys/... string"
-            )
             add_form.addRow("API Key:", self._new_api_key)
 
             self._new_api_secret = QTextEdit()
             self._new_api_secret.setMaximumHeight(60)
             self._new_api_secret.setPlaceholderText(
                 "API Secret or EC Private Key (PEM format with \\n is OK)"
-            )
-            self._new_api_secret.setToolTip(
-                "For Coinbase CDP keys, paste the whole PEM key with its BEGIN and END lines. Literal newline escapes are converted."
             )
             add_form.addRow("API Secret:", self._new_api_secret)
 
@@ -512,7 +522,6 @@ if _HAS_QT:
             self._new_verification_code.setPlaceholderText(
                 sds.VERIFICATION_CODE_PLACEHOLDER
             )
-            self._new_verification_code.setToolTip(sds.VERIFICATION_CODE_TOOLTIP)
             self._new_verification_code.setVisible(False)
             add_form.addRow(sds.VERIFICATION_CODE_LABEL, self._new_verification_code)
 
@@ -544,6 +553,7 @@ if _HAS_QT:
             layout.addWidget(add_group)
 
             rm_btn = QPushButton("Remove Selected")
+            set_description(rm_btn, sds.BUTTON_TOOLTIPS["remove_btn"])
             rm_btn.setProperty("danger", True)
             rm_btn.clicked.connect(self._remove_exchange)
             layout.addWidget(rm_btn)
@@ -626,7 +636,7 @@ if _HAS_QT:
                 press = QPushButton(one["text"], self._venue_array)
                 press.setFont(acs.segment_font())
                 press.setStyleSheet(one["style_sheet"])
-                press.setToolTip(one["tooltip"])
+                set_description(press, one["tooltip"])
                 press.setEnabled(bool(one["venue"]))
                 press.setCheckable(bool(one["venue"]))
                 press.setChecked(int(one["at"]) == selected)
@@ -646,7 +656,7 @@ if _HAS_QT:
                     int(one["column_span"]),
                 )
             self._venue_pages.setText(pages["text"])
-            self._venue_pages.setToolTip(pages["tooltip"])
+            set_description(self._venue_pages, pages["tooltip"])
             self._venue_pages.setStyleSheet(pages["style_sheet"])
             self._venue_pages.setFont(acs.segment_font())
             self._venue_pages.setMinimumHeight(height)
@@ -757,7 +767,8 @@ if _HAS_QT:
             if not coded:
                 self._new_verification_code.clear()
             self._add_btn.setText(str(form["add_text"]))
-            self._test_btn.setToolTip(str(form["test_tip"]))
+            set_description(self._test_btn, str(form["test_tip"]))
+            set_description(self._add_btn, str(form["add_tip"]))
             self._add_btn.setEnabled(bool(form["add_enabled"]))
             self._test_btn.setEnabled(bool(form["test_enabled"]))
 
@@ -1107,6 +1118,7 @@ if _HAS_QT:
                 slider = QSlider(Qt.Horizontal)
                 slider.setRange(*TA_SLIDER_RANGE)
                 slider.setValue(ta_slider_value(default_w))
+                set_description(slider, sds.ta_tooltip(ind_name))
                 row.addWidget(slider)
                 val_label = QLabel(ta_value_text(default_w))
                 val_label.setMinimumWidth(TA_VALUE_MIN_WIDTH)
@@ -1141,9 +1153,6 @@ if _HAS_QT:
                 self._phantom_timeframe.addItem(tf, tf)
             self._phantom_timeframe.setCurrentIndex(
                 self._phantom_timeframe.findData(PHANTOM_TIMEFRAME_DEFAULT)
-            )
-            self._phantom_timeframe.setToolTip(
-                "The one phantom timeframe a new bot starts with"
             )
             layout.addWidget(self._phantom_timeframe)
             lock_group = QGroupBox("Higher-TF Lock Settings")
@@ -1181,22 +1190,15 @@ if _HAS_QT:
             layout = QVBoxLayout(w)
             self._sound_enabled = QCheckBox("Enable sound notifications")
             self._sound_enabled.setChecked(True)
-            self._sound_enabled.setToolTip("Master switch for all audio notifications")
             layout.addWidget(self._sound_enabled)
 
             layout.addWidget(QLabel("Sound Events:"))
             self._sound_buy = QCheckBox("Buy order fills (blurb + squirt tone)")
             self._sound_buy.setChecked(True)
-            self._sound_buy.setToolTip(
-                "Plays a low bubbly rising tone when a buy order is filled"
-            )
             layout.addWidget(self._sound_buy)
 
             self._sound_sell = QCheckBox("Sell order fills (bell + jingle tone)")
             self._sound_sell.setChecked(True)
-            self._sound_sell.setToolTip(
-                "Plays a high bright bell tone when a sell order is filled"
-            )
             layout.addWidget(self._sound_sell)
 
             self._sound_error = QCheckBox("Errors (alert tone)")
@@ -1209,36 +1211,20 @@ if _HAS_QT:
 
             self._sound_fire = QCheckBox("Scrum/Fold Fire (sniper rifle shot)")
             self._sound_fire.setChecked(True)
-            self._sound_fire.setToolTip(
-                "Synthesized rifle shot plays when a scrum or fold\n"
-                "actually executes. Also plays on Manual Fire."
-            )
             layout.addWidget(self._sound_fire)
 
             self._sound_track = QCheckBox(
                 "Tracking beeps (speeds up as bot closes on fire)"
             )
             self._sound_track.setChecked(True)
-            self._sound_track.setToolTip(
-                "Short beep paced by scrum phase:\n"
-                "  SEARCH = silent\n"
-                "  TRACK  = slow beep (800ms)\n"
-                "  FIRE   = fast beep (200ms)"
-            )
             layout.addWidget(self._sound_track)
 
             self._sound_profit = QCheckBox("P/L increase (coins dropping into bucket)")
             self._sound_profit.setChecked(True)
-            self._sound_profit.setToolTip(
-                "A three-coin bucket drop plays on any trade with realized profit. Fires on scrumming and Extractor bots alike."
-            )
             layout.addWidget(self._sound_profit)
 
             self._sound_drip = QCheckBox("Accumulation (water drip)")
             self._sound_drip.setChecked(True)
-            self._sound_drip.setToolTip(
-                "A water drip plays on FOLD, when the bot buys back more than it sold. Silent on SCRUM and DIST."
-            )
             layout.addWidget(self._sound_drip)
 
             vol_row = QHBoxLayout()
@@ -1262,27 +1248,30 @@ if _HAS_QT:
             for _key, name in SOUND_CONFIG_FIELDS:
                 getattr(self, f"_{name}").toggled.connect(self._push_sound_config)
 
+            tips = {name: tip for _text, name, tip in sds.SOUND_TEST_BUTTONS}
             test_row = QHBoxLayout()
             test_buy = QPushButton("Test Buy")
+            set_description(test_buy, tips["buy"])
             test_buy.clicked.connect(lambda: self._test_sound("buy"))
             test_row.addWidget(test_buy)
             test_sell = QPushButton("Test Sell")
+            set_description(test_sell, tips["sell"])
             test_sell.clicked.connect(lambda: self._test_sound("sell"))
             test_row.addWidget(test_sell)
             test_fire = QPushButton("Test Fire")
-            test_fire.setToolTip("Play the sniper rifle SFX.")
+            set_description(test_fire, tips["fire"])
             test_fire.clicked.connect(lambda: self._test_sound("fire"))
             test_row.addWidget(test_fire)
             test_track = QPushButton("Test Track")
-            test_track.setToolTip("Play one tracking beep.")
+            set_description(test_track, tips["track"])
             test_track.clicked.connect(lambda: self._test_sound("track"))
             test_row.addWidget(test_track)
             test_profit = QPushButton("Test Profit")
-            test_profit.setToolTip("Play the coins-in-bucket SFX.")
+            set_description(test_profit, tips["profit"])
             test_profit.clicked.connect(lambda: self._test_sound("profit"))
             test_row.addWidget(test_profit)
             test_drip = QPushButton("Test Drip")
-            test_drip.setToolTip("Play the water-drip SFX.")
+            set_description(test_drip, tips["drip"])
             test_drip.clicked.connect(lambda: self._test_sound("drip"))
             test_row.addWidget(test_drip)
             layout.addLayout(test_row)
@@ -1340,9 +1329,6 @@ if _HAS_QT:
             layout.setSpacing(8)
 
             self._sms_enabled = QCheckBox("Enable SMS notifications")
-            self._sms_enabled.setToolTip(
-                "Send text messages to your phone for trading events"
-            )
             layout.addWidget(self._sms_enabled)
 
             provider_group = QGroupBox("SMS Provider")
@@ -1400,7 +1386,6 @@ if _HAS_QT:
             self._sms_gateway = QLineEdit()
             self._sms_gateway.setMinimumHeight(28)
             self._sms_gateway.setPlaceholderText("5551234567@vtext.com")
-            self._sms_gateway.setToolTip("Full email address for carrier SMS gateway")
             pf.addRow("Gateway Email:", self._sms_gateway)
 
             self._sms_smtp_user = QLineEdit()
@@ -1574,6 +1559,7 @@ if _HAS_QT:
             sf.addRow("Checks completed:", self._ai_checks)
 
             self._ai_test_btn = QPushButton("Test Handshake")
+            set_description(self._ai_test_btn, sds.BUTTON_TOOLTIPS["ai_test_btn"])
             self._ai_test_btn.setMinimumHeight(32)
             self._ai_test_btn.setStyleSheet(
                 "background: #1a3a4a; color: #00ddff; border: 1px solid #00aacc; "
@@ -1966,7 +1952,7 @@ if _HAS_QT:
             if callable(getattr(box, "setStyleSheet", None)):
                 box.setStyleSheet(f"color: {REFUSED_FIGURE_COLOR};")
             if callable(getattr(box, "setToolTip", None)):
-                box.setToolTip(said(key, box.toolTip()))
+                set_description(box, said())
 
         @staticmethod
         def _clear_refused(box: object) -> None:

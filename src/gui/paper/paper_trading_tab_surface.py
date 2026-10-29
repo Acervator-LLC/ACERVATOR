@@ -61,6 +61,19 @@ IMPORT_LIVE_FLEET_TEXT = "Import Live Fleet"
 START_RUN_TEXT = "Start Paper Run"
 STOP_RUN_TEXT = "Stop Paper Run"
 
+#: The description each way-in and run button carries, keyed by its action.
+RUN_TOOLTIPS = {
+    IMPORT_LIVE_FLEET_ACTION: (
+        "Copies one exchange's live bots into the Paper Trader. The live fleet is "
+        "only read."
+    ),
+    START_RUN_ACTION: (
+        "Starts the paper run, which ticks every running paper bot. No order "
+        "reaches an exchange."
+    ),
+    STOP_RUN_ACTION: "Stops the paper run. The paper bots keep their records.",
+}
+
 #: The two corner buttons, in order, each ``(action, text)``: the corner Live
 #: gives ``＋ Add Crypto Exchange`` holds them at Live's corner-button width.
 CORNER_BUTTONS = (
@@ -236,7 +249,12 @@ def corner_buttons(running: bool = False, asset_class: Any = None) -> list:
         }
     ]
     seats += [
-        {"action": action, "text": text, "accessible_name": button_name(action)}
+        {
+            "action": action,
+            "text": text,
+            "tooltip": RUN_TOOLTIPS[action],
+            "accessible_name": button_name(action),
+        }
         for action, text in run_buttons(running)
     ]
     for seat in seats:
@@ -257,7 +275,12 @@ def placeholder_way_in_buttons(
         }
     ]
     seats += [
-        {"action": action, "text": text, "accessible_name": card_button_name(action)}
+        {
+            "action": action,
+            "text": text,
+            "tooltip": RUN_TOOLTIPS[action],
+            "accessible_name": card_button_name(action),
+        }
         for action, text in run_buttons(running)
     ]
     for seat in seats:
@@ -265,6 +288,12 @@ def placeholder_way_in_buttons(
         seat["style_sheet"] = live.placeholder_add_style(accent)
         seat["align"] = "center"
     return seats
+
+
+PLACEHOLDER_TAB_TOOLTIP = (
+    "Shown until a fleet is loaded. Its buttons add an exchange, import the live "
+    "fleet or start a run."
+)
 
 
 def placeholder_title_text(label: Any) -> str:

@@ -92,19 +92,19 @@ TERRITORY_TIPS = {
     TERRITORY_AT_TARGET: AT_TARGET_TIP,
 }
 
-EMPTY_POSITION_TIP = "No position — Ammo is the full target."
-PENDING_PRICE_TIP = "Price pending; Ammo updates on the next tick."
+EMPTY_POSITION_TIP = "No position; Ammo is the full target."
+PENDING_PRICE_TIP = "Price pending; Ammo updates next tick."
 MANUAL_FIRE_NOOP_CLAUSE = "Manual Fire no-ops."
 TWO_READS_CLAUSE = "Position Value reads holdings."
 NO_AMMO_CLAUSE = ""
 STALE_TIP_FORMAT = "STALE: last value ${stats_pv:,.4f}; do not fire."
-AGED_PRICE_TIP_FORMAT = "PRICE {price_age_s:,.0f}s OLD; the delta may differ."
+AGED_PRICE_TIP_FORMAT = "PRICE {price_age_s:,.0f}s OLD; delta may differ."
 
 VENUE_UNITS_NOTE_FORMAT = (
     "Measured on exchange {units:.6f}; holdings {holdings:.6f}, lot book {lots}."
 )
 ATTRIBUTED_UNITS_NOTE_FORMAT = (
-    "NO EXCHANGE COUNT; measured on holdings {holdings:.6f}, lot book {lots}."
+    "NO EXCHANGE COUNT; holdings {holdings:.6f}, lot book {lots}."
 )
 LOT_UNITS_FORMAT = "{lots:.6f}"
 NO_LOT_UNITS_TEXT = "unread"
@@ -151,18 +151,11 @@ AGED_POSITION_TIP_FORMAT = (
     "limit. Blank rather than a figure priced off it."
 )
 PRICED_POSITION_TIP_FORMAT = (
-    "Current position value on the bot's own count of {holdings:.6f} units, at "
-    "the exchange's price of ${price:,.4f}, priced {price_age_s:,.0f}s ago."
+    "{holdings:.6f} units on the bot's count at ${price:,.4f}, priced "
+    "{price_age_s:,.0f}s ago."
 )
-BALANCE_VENUE_AGREES_NOTE_FORMAT = (
-    " The exchange's own count agrees at {units:.6f} units, so this figure and "
-    "the Ammo figure beside it rest on one reading."
-)
-BALANCE_VENUE_DIFFERS_NOTE_FORMAT = (
-    " TWO READS, NOT ONE MOMENT: the exchange's own count is {units:.6f} units, "
-    "which the Ammo figure beside this one is priced from, so the two dollar "
-    "figures on this row rest on two separate readings of what is held."
-)
+BALANCE_VENUE_AGREES_NOTE_FORMAT = " The exchange agrees at {units:.6f} units."
+BALANCE_VENUE_DIFFERS_NOTE_FORMAT = " TWO READS: Ammo uses the exchange's {units:.6f}."
 BALANCE_NO_VENUE_NOTE = ""
 
 POSITION_PATH_PRICED = "priced"

@@ -27,6 +27,7 @@ from ...core.settings import DEFAULT_LOCK_CANDLE_COUNT
 from .. import design_system as ds
 from ..main_tabs import phantom_bots_tab_surface as surface
 from ..descriptions import PHANTOM_BOTS_TAB_DESCRIPTIONS
+from ..tooltips import set_description
 
 
 class PaperPhantomBotsTabMixin:
@@ -77,6 +78,9 @@ class PaperPhantomBotsTabMixin:
         enable_group = QGroupBox("Phantom Bots")
         ef = QVBoxLayout(enable_group)
         self._phantom_enable = QCheckBox("Enable Phantom Bots")
+        set_description(
+            self._phantom_enable, PHANTOM_BOTS_TAB_DESCRIPTIONS["phantoms_enabled"]
+        )
         self._phantom_enable.setChecked(bool(getattr(bot, "_phantoms_enabled", False)))
         self._phantom_enable.toggled.connect(
             lambda v: self._mark_changed("enable_phantoms", bool(v))
@@ -115,7 +119,7 @@ class PaperPhantomBotsTabMixin:
         self._phantom_timeframe.setCurrentIndex(
             max(0, self._phantom_timeframe.findData(self._phantom_tf_current))
         )
-        self._phantom_timeframe.setToolTip(surface.TF_TOOLTIP)
+        set_description(self._phantom_timeframe, surface.TF_TOOLTIP)
         self._phantom_tf_refusal = QLabel(
             surface.stored_timeframe_notice(
                 surface.configured_timeframes(bot),
@@ -146,7 +150,9 @@ class PaperPhantomBotsTabMixin:
             else DEFAULT_LOCK_CANDLE_COUNT
         )
         self._phantom_lock.setValue(current_lock)
-        self._phantom_lock.setToolTip(PHANTOM_BOTS_TAB_DESCRIPTIONS["phantom_lock"])
+        set_description(
+            self._phantom_lock, PHANTOM_BOTS_TAB_DESCRIPTIONS["phantom_lock"]
+        )
         self._phantom_lock.valueChanged.connect(
             lambda v: self._mark_changed("lock_candle_count", int(v))
         )
@@ -233,18 +239,10 @@ class PaperPhantomBotsTabMixin:
             pl = QVBoxLayout(ph_group)
 
             tbl = QTableWidget()
-            tbl.setColumnCount(7)
-            tbl.setHorizontalHeaderLabels(
-                [
-                    "TF",
-                    "State",
-                    "Target",
-                    "Trades",
-                    "P&L",
-                    "Bullish/Bearish",
-                    "Confidence",
-                ]
-            )
+            tbl.setColumnCount(surface.PHANTOM_COLUMN_COUNT)
+            tbl.setHorizontalHeaderLabels(list(surface.PHANTOM_COLUMNS))
+            for column, words in enumerate(surface.PHANTOM_COLUMN_TOOLTIPS):
+                set_description(tbl.horizontalHeaderItem(column), words)
             tbl.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
             tbl.setRowCount(len(phantoms))
             tbl.setMaximumHeight(280)
@@ -309,10 +307,10 @@ class PaperPhantomBotsTabMixin:
             ll = QVBoxLayout(locks_group)
 
             lock_tbl = QTableWidget()
-            lock_tbl.setColumnCount(4)
-            lock_tbl.setHorizontalHeaderLabels(
-                ["Source TF", "Source Bot", "Direction", "Candles left"]
-            )
+            lock_tbl.setColumnCount(surface.LOCK_COLUMN_COUNT)
+            lock_tbl.setHorizontalHeaderLabels(list(surface.LOCK_COLUMNS))
+            for column, words in enumerate(surface.LOCK_COLUMN_TOOLTIPS):
+                set_description(lock_tbl.horizontalHeaderItem(column), words)
             lock_tbl.horizontalHeader().setSectionResizeMode(
                 QHeaderView.ResizeToContents
             )

@@ -66,11 +66,22 @@ EMITTER_COLUMNS = (
 
 EMITTER_FIELDS = tuple(pair[0] for pair in EMITTER_COLUMNS)
 
+#: The description each ``EMITTER_COLUMNS`` heading carries, in column order.
+EMITTER_COLUMN_TOOLTIPS = (
+    "The name of one signal this subsystem reports.",
+    "Always-on fires on every pass of its loop. Toggle needs a trigger, so its "
+    "silence says nothing.",
+    "Records this emitter has written in this run.",
+    "Records from this emitter that report a failure.",
+    "The value this emitter's newest kept record carries.",
+)
+
 #: Every word the renderer module draws that no count or name supplies.
 LABELS = {
     "subsystems": "By subsystem",
     "tabs": "By tab",
     "emitter_columns": [pair[1] for pair in EMITTER_COLUMNS],
+    "emitter_column_tooltips": list(EMITTER_COLUMN_TOOLTIPS),
     "counts": [list(pair) for pair in COUNT_LABELS],
     "feed": [list(pair) for pair in FEED_LABELS],
     "totals": [["subsystems", "subsystems"]] + [list(p) for p in COUNT_LABELS],

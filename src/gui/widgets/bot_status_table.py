@@ -31,6 +31,11 @@ from ..main_tabs.bot_status_table_surface import (
     FIRE_TIP_FOLD_CEILING,
     FIRE_TIP_FOLD_OUTLINE,
     FIRE_TIP_FOLD_SOLID,
+    FIRE_TIP_INACTIVE_FORMAT,
+    FIRE_TIP_NOT_SCRUMMING,
+    FIRE_TIP_PHASE_FIRE,
+    FIRE_TIP_PHASE_SEARCH,
+    FIRE_TIP_PHASE_TRACK,
     FIRE_TIP_SCRUM_OUTLINE,
     FIRE_TIP_SCRUM_SOLID,
     FIXED_WIDTHS,
@@ -57,6 +62,7 @@ from ..main_tabs.bot_status_table_surface import (
     SORTABLE_COLUMNS,
     TOOLTIP_LINE_GAP,
     SortLookups,
+    blockers_text,
     fold_taper_of,
     icon_asset_of,
     kept_logo_path,
@@ -69,6 +75,7 @@ from ..main_tabs.bot_status_table_surface import (
     organisation_address,
     organisation_tooltip,
     order_statuses,
+    risk_lines,
     selection_after_press,
     selection_after_view_moved,
     sort_direction,
@@ -76,6 +83,7 @@ from ..main_tabs.bot_status_table_surface import (
     sort_tooltip,
     target_value,
 )
+from ..descriptions import fitted
 from ..table_cells import (
     _ammo_price_pool,
     _compose_ammo_cell,
@@ -841,7 +849,6 @@ if _HAS_QT:
             armed_action = status.get("armed_action")
             ceiling_enabled = status.get("position_ceiling_enabled", False)
             ceiling_ratio = status.get("ceiling_ratio")
-            ceiling_usd = status.get("position_ceiling_usd")
             fold_taper = fold_taper_of(status)
             detonation_enabled = status.get("detonation_enabled", False)
             detonation_tf = status.get("detonation_timeframe", "1d")
@@ -894,36 +901,15 @@ if _HAS_QT:
                             _glow_exc,
                         )
 
-                def _risk_suffix() -> str:
-                    parts = []
-                    if ceiling_enabled and ceiling_ratio is not None:
-                        pct = ceiling_ratio * 100
-                        if fold_blocked_by_ceiling:
-                            parts.append(
-                                f"\n\n⚠ CEILING REACHED "
-                                f"({pct:.1f}% of ${ceiling_usd:.2f}) — "
-                                f"fold hard-stopped, scrum only."
-                            )
-                        elif ceiling_ratio >= 0.5:
-                            parts.append(
-                                f"\n\n⚠ Approaching ceiling "
-                                f"({pct:.1f}% of ${ceiling_usd:.2f}) — "
-                                f"fold size tapered to {fold_taper*100:.0f}%."
-                            )
-                        else:
-                            parts.append(
-                                f"\n\nCeiling: {pct:.1f}% of "
-                                f"${ceiling_usd:.2f} "
-                                f"(fold size: {fold_taper*100:.0f}%)."
-                            )
-                    if detonation_enabled:
-                        parts.append(
-                            f"\nDetonation armed: monitoring "
-                            f"{detonation_tf.upper()} for BULLISH "
-                            f"auto-harvest at confidence "
-                            f"{float(detonation_bar):.2f} or above."
-                        )
-                    return "".join(parts)
+                risk = risk_lines(
+                    ceiling_enabled,
+                    ceiling_ratio,
+                    fold_taper,
+                    fold_blocked_by_ceiling,
+                    detonation_enabled,
+                    detonation_tf,
+                    detonation_bar,
+                )
 
                 if fire_verdict == MANUAL_FIRE_REFUSES:
                     # Two reasons reach this path: a position the exchange
@@ -934,8 +920,10 @@ if _HAS_QT:
                     fire_btn.setStyleSheet(FIRE_STYLE_MANUAL_NOOP)
                     set_description(
                         fire_btn,
-                        manual_fire_noop_tooltip(_ammo, target_val, fire_dispute)
-                        + _risk_suffix(),
+                        fitted(
+                            manual_fire_noop_tooltip(_ammo, target_val, fire_dispute),
+                            *risk,
+                        ),
                     )
                 elif armed_action == "scrum" and fire_acts:
                     # Solid means auto would fire now; outline means only manual remains.
@@ -952,7 +940,7 @@ if _HAS_QT:
                             f"border: 1px solid {ds.ERROR};"
                         )
                         _apply_glow(ds.ERROR)
-                        set_description(fire_btn, FIRE_TIP_SCRUM_SOLID + _risk_suffix())
+                        set_description(fire_btn, fitted(FIRE_TIP_SCRUM_SOLID, *risk))
                     else:
                         # Outline only — manual override available
                         # but auto-fire is blocked by ≥1 gate.
@@ -965,14 +953,13 @@ if _HAS_QT:
                         )
                         # No glow — visually quieter so operator
                         # sees the difference at a glance.
-                        _blockers_text = (
-                            "\nBlocked by: " + ", ".join(_scrum_blockers)
-                            if _scrum_blockers
-                            else ""
-                        )
                         set_description(
                             fire_btn,
-                            FIRE_TIP_SCRUM_OUTLINE + _blockers_text + _risk_suffix(),
+                            fitted(
+                                FIRE_TIP_SCRUM_OUTLINE,
+                                blockers_text(_scrum_blockers),
+                                *risk,
+                            ),
                         )
                 elif armed_action == "fold" and fire_acts:
                     # Mirrors the SCRUM branch above.
@@ -990,9 +977,7 @@ if _HAS_QT:
                             f"border: 1px dashed {ds.CARD_METRIC_LABEL};"
                         )
                         _apply_glow(ds.STATE_ENGAGED_GLOW)
-                        set_description(
-                            fire_btn, FIRE_TIP_FOLD_CEILING + _risk_suffix()
-                        )
+                        set_description(fire_btn, fitted(FIRE_TIP_FOLD_CEILING, *risk))
                     elif _auto_armed_fold:
                         # Solid green — auto-fire FOLD would fire NOW.
                         fire_path = FIRE_PATH_FOLD_SOLID
@@ -1003,7 +988,7 @@ if _HAS_QT:
                             f"border: 1px solid {ds.STATE_ARMED};"
                         )
                         _apply_glow(ds.STATE_ARMED)
-                        set_description(fire_btn, FIRE_TIP_FOLD_SOLID + _risk_suffix())
+                        set_description(fire_btn, fitted(FIRE_TIP_FOLD_SOLID, *risk))
                     else:
                         # Outline only — manual override available
                         # but auto-fire is blocked.
@@ -1014,14 +999,13 @@ if _HAS_QT:
                             "background-color: transparent; "
                             f"border: 1px dashed {ds.STATE_ARMED};"
                         )
-                        _blockers_text = (
-                            "\nBlocked by: " + ", ".join(_fold_blockers)
-                            if _fold_blockers
-                            else ""
-                        )
                         set_description(
                             fire_btn,
-                            FIRE_TIP_FOLD_OUTLINE + _blockers_text + _risk_suffix(),
+                            fitted(
+                                FIRE_TIP_FOLD_OUTLINE,
+                                blockers_text(_fold_blockers),
+                                *risk,
+                            ),
                         )
                 elif scrum_phase == "fire":
                     # Inside the dust band, so amber: no rebalance is needed.
@@ -1033,24 +1017,14 @@ if _HAS_QT:
                         f"border: 1px solid {ds.STATE_PENDING};"
                     )
                     _apply_glow(ds.STATE_PENDING)
-                    set_description(
-                        fire_btn,
-                        "Organic FIRE phase — bot at band but "
-                        "holdings within dust band of target. "
-                        "Clicking has no effect." + _risk_suffix(),
-                    )
+                    set_description(fire_btn, fitted(FIRE_TIP_PHASE_FIRE, *risk))
                 elif scrum_phase == "track":
                     fire_path = FIRE_PATH_PHASE_TRACK
                     fire_btn.setStyleSheet(
                         "font-size: 10px; padding: 1px 6px; "
                         f"color: {ds.WARNING}; font-weight: bold;"
                     )
-                    set_description(
-                        fire_btn,
-                        "TRACKING — bot detected band approach. "
-                        "Fire is available but bot is within dust "
-                        "band; rebalance would be a no-op.",
-                    )
+                    set_description(fire_btn, FIRE_TIP_PHASE_TRACK)
                 else:
                     # SEARCH / idle — subdued red
                     fire_path = FIRE_PATH_PHASE_SEARCH
@@ -1058,11 +1032,7 @@ if _HAS_QT:
                         "font-size: 10px; padding: 1px 6px; "
                         f"color: {ds.ERROR}; font-weight: bold;"
                     )
-                    set_description(
-                        fire_btn,
-                        "Bot within dust band of target. "
-                        "Manual Fire would be a no-op.",
-                    )
+                    set_description(fire_btn, FIRE_TIP_PHASE_SEARCH)
             else:
                 fire_btn.setStyleSheet(
                     "font-size: 10px; padding: 1px 6px; color: "
@@ -1070,11 +1040,11 @@ if _HAS_QT:
                 )
                 if not is_scrumming:
                     fire_path = FIRE_PATH_NOT_SCRUMMING
-                    set_description(fire_btn, "Manual Fire is scrumming-only.")
+                    set_description(fire_btn, FIRE_TIP_NOT_SCRUMMING)
                 else:
                     fire_path = FIRE_PATH_INACTIVE
                     set_description(
-                        fire_btn, f"Bot is {state}; start or resume to enable Fire."
+                        fire_btn, FIRE_TIP_INACTIVE_FORMAT.format(state=state)
                     )
             # The path the row chose, readable off the button itself.
             fire_btn.setProperty(FIRE_PATH_PROPERTY, fire_path)

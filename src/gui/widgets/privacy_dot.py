@@ -14,6 +14,7 @@ logger = logging.getLogger("acervator.gui.privacy_dot")
 try:
     from PySide6.QtWidgets import QPushButton
     from PySide6.QtCore import Qt
+    from ..tooltips import set_description
 
     _HAS_QT = True
 except ImportError:
@@ -31,6 +32,7 @@ if _HAS_QT:
 
         def __init__(self, field_id: str, on_toggle=None, parent=None):
             super().__init__(parent)
+            self.setAccessibleName("Privacy Dot")
             self._field_id = field_id
             self._on_toggle = on_toggle
             # No setFixedSize: the glyph sizes to its own text metrics.
@@ -86,4 +88,4 @@ if _HAS_QT:
                 "} "
                 f"PrivacyDot:hover {{ color: {ds.TEXT_MAX}; }}"
             )
-            self.setToolTip(surface.tooltip(self._field_id, masked))
+            set_description(self, surface.tooltip(self._field_id, masked))

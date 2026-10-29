@@ -72,19 +72,15 @@ SKIN: dict = {}
 
 REFRESH_LABEL = "Refresh"
 REFRESH_TOOLTIP = (
-    "Fetch HTF OHLCV from the connected exchange(s). "
-    "Universe = top-volume */USD markets on those "
-    "exchanges (active bot targets are always included). "
-    "Runs on the app's async loop; typical time ~10-30 s "
-    "depending on exchange rate limits."
+    "Fetches higher-timeframe candles for top-volume USD markets on connected "
+    "venues. Active bot targets are included. Takes 10 to 30 seconds."
 )
 
 SHOW_ACTIVE_LABEL = "Include active markets"
 SHOW_ACTIVE_CHECKED = False
 SHOW_ACTIVE_TOOLTIP = (
-    "By default the Market Inspector focuses on markets "
-    "you are NOT already trading. Check this to include "
-    "your active bot targets in the table."
+    "By default the table leaves out markets you already trade. Check this to "
+    "include your active bot targets."
 )
 
 STATUS_INITIAL_TEXT = "No data yet — press Refresh."

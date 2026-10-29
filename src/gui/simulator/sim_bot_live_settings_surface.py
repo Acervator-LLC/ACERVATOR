@@ -17,6 +17,10 @@ METHOD = "sim_bot_live_settings.state"
 
 CHANGE_REFUSED_FORMAT = "Refused {count} change(s) — the Simulator sends nothing"
 CHANGE_REFUSED_STYLE = live.CHANGE_PENDING_STYLE
+APPLY_TOOLTIP = (
+    "Sends your changes to this simulated bot. The Simulator refuses each one and "
+    "logs it."
+)
 
 
 def refused_text(count: Any) -> str:
@@ -45,4 +49,5 @@ def build_view_model(model: live.BotLiveSettingsModel) -> dict:
     """Live's ``build_view_model`` under ``METHOD``."""
     payload = dict(live.build_view_model(model))
     payload["method"] = METHOD
+    payload["apply_tooltip"] = APPLY_TOOLTIP
     return payload

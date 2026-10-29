@@ -55,8 +55,8 @@
     "state_write_failed_error", "status_done", "status_idle", "status_live",
     "status_running", "status_stopped", "stop_button_text", "summary_label_style_sheet",
     "summary_margins", "summary_spacing", "swarm_tab_index", "tab_kind",
-    "tab_style_sheet", "tab_titles", "theme_caption", "theme_key", "theme_keys",
-    "theme_start_index", "threads", "timer_delays_ms", "timers", "visible_bots",
+    "tab_style_sheet", "tab_titles", "tab_tooltips", "theme_caption", "theme_key",
+    "theme_keys", "theme_start_index", "theme_tooltip", "threads", "timer_delays_ms", "timers", "visible_bots",
     "viz_margins", "viz_spacing", "warning_level", "wire_config_prompt_format",
     "wire_config_row_label", "wire_config_title", "wire_config_width_px",
     "wire_connected_log_format", "wire_count", "wire_created_topic",
@@ -90,6 +90,7 @@
   var EMPTY_STYLE_SHEET = "empty_style_sheet";
   var EMPTY_VISIBLE = "empty_visible";
   var TAB_TITLES = "tab_titles";
+  var TAB_TOOLTIPS = "tab_tooltips";
   var TAB_STYLE_SHEET = "tab_style_sheet";
   var SWARM_TAB_INDEX = "swarm_tab_index";
   var SIM_TAB_INDEX = "sim_tab_index";
@@ -99,6 +100,7 @@
   var EXCHANGE_CAPTION = "exchange_caption";
   var EXCHANGE_TOOLTIP = "exchange_tooltip";
   var THEME_CAPTION = "theme_caption";
+  var THEME_TOOLTIP = "theme_tooltip";
   var THEME_KEY = "theme_key";
   var THEME_KEYS = "theme_keys";
   var WIRES_CAPTION = "wires_caption";
@@ -136,6 +138,7 @@
 
   var TEXT = "text";
   var STYLE_SHEET = "style_sheet";
+  var BUTTON_TOOLTIP = "tooltip";
   var KIND = "kind";
   var WIRES = "wires";
   var IS_EMPTY = "is_empty";
@@ -1151,7 +1154,7 @@
         slot: THEME_KEY,
         items: themeItems(model),
         value: text(model[THEME_KEY]),
-        tooltip: undefined,
+        tooltip: model[THEME_TOOLTIP],
         action: actionName(model, SET_THEME),
         onPick: function (event) {
           dispatch(SET_THEME, { theme_key: event.target.value });
@@ -1310,7 +1313,7 @@
           slot: props.layer,
           sheet: button[STYLE_SHEET],
           text: button[TEXT],
-          tooltip: undefined,
+          tooltip: button[BUTTON_TOOLTIP],
           action: undefined,
           onPress: undefined
         })
@@ -1452,6 +1455,7 @@
     buttonProps[CURRENT_ATTR] = text(props.current);
     buttonProps[HOVERED_ATTR] = text(hovered);
     buttonProps[ARIA_SELECTED] = text(props.current);
+    buttonProps.title = label(listField(model, TAB_TOOLTIPS)[props.at]);
     return element(BUTTON_TAG, buttonProps, text(props.title));
   }
 

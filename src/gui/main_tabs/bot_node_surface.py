@@ -415,7 +415,7 @@ TOOLTIP_FORMAT = (
     "Volume: {volume}\n"
     "P/L: {pnl}\n"
     "Stage: {stage}\n"
-    "Realised growth: {growth}\n"
+    "Growth: {growth}\n"
     "Bot: {bot_id}"
 )
 

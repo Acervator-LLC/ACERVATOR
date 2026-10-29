@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
 )
 
 from .. import design_system as ds
+from ..tooltips import set_description
 
 
 class StatusTabMixin:
@@ -60,10 +61,11 @@ class StatusTabMixin:
                     f"font-weight: bold; font-size: 13px; "
                     f"color: {ds.SUCCESS if _re >= 0 else ds.ERROR};"
                 )
-                rep_lbl.setToolTip(
+                set_description(
+                    rep_lbl,
                     f"Realized P/L pulled from the exchange "
                     f"(FIFO-matched buy/sell pairs from {_tc} trades). "
-                    f"Refreshed {_age_str} ago."
+                    f"Refreshed {_age_str} ago.",
                 )
                 sf.addRow("Realised P/L:", rep_lbl)
 
@@ -82,10 +84,11 @@ class StatusTabMixin:
             else:
                 pending_lbl = QLabel("— (refresh pending)")
                 pending_lbl.setStyleSheet(f"color: {ds.CARD_METRIC_LABEL};")
-                pending_lbl.setToolTip(
+                set_description(
+                    pending_lbl,
                     "Exchange position health refresh has not yet "
                     "completed. First refresh fires on bot bootstrap; "
-                    "subsequent every 5 minutes."
+                    "subsequent every 5 minutes.",
                 )
                 sf.addRow("Realised P/L:", pending_lbl)
 

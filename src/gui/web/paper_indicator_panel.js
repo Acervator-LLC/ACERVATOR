@@ -471,6 +471,7 @@
     };
     selectProps[PART_ATTR] = SELECTOR_PART;
     selectProps[SLOT_ATTR] = SELECTOR_PART;
+    selectProps.title = label(objectField(model, HEADER).selector_tooltip);
     return element(SELECT_TAG, selectProps, drawn);
   }
 

@@ -131,6 +131,8 @@ try:
         QWidget,
     )
 
+    from .tooltips import set_description
+
     _HAS_QT = True
 except ImportError:
     # Without Qt, SystemStatusQtTab is never defined and its import fails by name.
@@ -198,7 +200,9 @@ if _HAS_QT:
         grid.setHorizontalSpacing(ds.SPACE_XS)
         grid.setVerticalSpacing(0)
         for at, name in enumerate(columns):
-            grid.addWidget(plain_label(str(name), COLUMN_HEAD_STYLE, held), 0, at)
+            head = plain_label(str(name), COLUMN_HEAD_STYLE, held)
+            set_description(head, surface.EMITTER_COLUMN_TOOLTIPS[at])
+            grid.addWidget(head, 0, at)
         for index, emitter in enumerate(reading.get("emitters") or [], start=1):
             for at, field in enumerate(surface.EMITTER_FIELDS):
                 style = CELL_NAME_STYLE if at == 0 else CELL_STYLE

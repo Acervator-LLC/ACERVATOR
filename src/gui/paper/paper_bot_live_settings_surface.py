@@ -23,6 +23,10 @@ CHANGE_REFUSED_STYLE = live.CHANGE_PENDING_STYLE
 
 CHANGE_APPLIED_FORMAT = "Applied {count} change(s) to the paper record"
 CHANGE_APPLIED_STYLE = live.CHANGE_APPLIED_STYLE
+APPLY_TOOLTIP = (
+    "Writes every pending change to this paper bot's record. A change it cannot "
+    "take is refused and logged."
+)
 CHANGE_MIXED_JOIN = "; "
 
 
@@ -66,4 +70,5 @@ def build_view_model(model: live.BotLiveSettingsModel) -> dict:
     """Live's ``build_view_model`` under ``METHOD``."""
     payload = dict(live.build_view_model(model))
     payload["method"] = METHOD
+    payload["apply_tooltip"] = APPLY_TOOLTIP
     return payload

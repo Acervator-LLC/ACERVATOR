@@ -7,8 +7,10 @@
   var ACTIONS = "actions";
   var ADD_BOT_ACCENT = "add_bot_accent";
   var ADD_BOT_LABEL = "add_bot_label";
+  var ADD_BOT_TOOLTIP = "add_bot_tooltip";
   var BOT_IDS = "bot_ids";
   var COMMAND_BUTTONS = "command_buttons";
+  var COMMAND_TOOLTIPS = "command_tooltips";
   var COMMAND_PARAM = "command_param";
   var CURRENT_ROW = "current_row";
   var DANGER_COMMAND_LABEL = "danger_command_label";
@@ -740,6 +742,7 @@
   function AddBotButton(props) {
     var model = props.model;
     var buttonProps = { className: TAB_CLASS, type: BUTTON_TYPE, onClick: askNewBot };
+    buttonProps.title = label(model[ADD_BOT_TOOLTIP]);
     buttonProps[PART_ATTR] = ADD_BOT_PART;
     buttonProps[ACTION_ATTR] = text(actionNamed(model, ADD_BOT_CLICKED));
     buttonProps[ACCENT_ATTR] = text(model[ADD_BOT_ACCENT]);
@@ -844,6 +847,7 @@
         sendCommand(key, Boolean(event && event.shiftKey));
       }
     };
+    buttonProps.title = label(objectField(props.model, COMMAND_TOOLTIPS)[key]);
     buttonProps[PART_ATTR] = COMMAND_BUTTON_PART;
     buttonProps[KEY_ATTR] = text(key);
     buttonProps[INDEX_ATTR] = String(props.at);

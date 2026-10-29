@@ -49,12 +49,26 @@ try:
         QWidget,
     )
     from PySide6.QtCore import Qt, QSize
+    from ..tooltips import set_description
 
     _HAS_QT = True
 except ImportError:
     _HAS_QT = False
 from src.gui.qt_safe_events import safe_process_events
 from ..descriptions import BOT_WIZARD_DESCRIPTIONS
+from ..main_tabs.bot_wizard_surface import (
+    PHANTOM_CHECK_FORMAT,
+    PHANTOM_SUPPORTED_TEXT,
+    PHANTOM_TOOL_TIP_FORMAT,
+    PHANTOM_UNKNOWN_EXCHANGE,
+    PHANTOM_UNSUPPORTED_FORMAT,
+    WALK_BACK,
+    WALK_CANCEL,
+    WALK_FINISH,
+    WALK_NEXT,
+    WALK_TOOLTIPS,
+    info_tool_tip,
+)
 
 if _HAS_QT:
 
@@ -67,6 +81,7 @@ if _HAS_QT:
     class PaperAssetSelectionPage(QWizardPage):
         def __init__(self, exchanges: list[dict], markets: dict, parent=None):
             super().__init__(parent)
+            self.setAccessibleName("Paper Asset Selection Page")
             self.setTitle("Select Asset Pair")
             self.setSubTitle("Choose the exchange and trading pair.")
             self._exchanges = exchanges
@@ -78,11 +93,13 @@ if _HAS_QT:
                 eid = _market_text(exch.get("exchange_id"))
                 self._exchange.addItem(exch.get("display_name", eid), eid)
             self._exchange.currentIndexChanged.connect(self._on_exchange_changed)
+            set_description(self._exchange, BOT_WIZARD_DESCRIPTIONS["exchange"])
             form.addRow("Exchange:", self._exchange)
 
             self._base = QComboBox()
             self._base.addItems(["USDT", "USDC", "BTC", "ETH", "BNB", "EUR", "USD"])
             self._base.currentIndexChanged.connect(self._filter_assets)
+            set_description(self._base, BOT_WIZARD_DESCRIPTIONS["base"])
             form.addRow("Base Currency:", self._base)
 
             target_row = QHBoxLayout()
@@ -90,6 +107,7 @@ if _HAS_QT:
             self._target.setMinimumWidth(400)
             self._target.setIconSize(QSize(20, 20))
             self._target.currentIndexChanged.connect(self._update_info)
+            set_description(self._target, BOT_WIZARD_DESCRIPTIONS["target"])
             target_row.addWidget(self._target, stretch=1)
             self._info_btn = QPushButton(" ℹ ")
             self._info_btn.setStyleSheet(
@@ -179,7 +197,7 @@ if _HAS_QT:
         def _update_info(self):
             sym = self._target.currentData()
             desc = self._descriptions_cache.get(sym, "")
-            self._info_btn.setToolTip(desc or f"No info available for {sym}")
+            set_description(self._info_btn, info_tool_tip(sym, desc))
 
         def _show_info(self):
             """Show asset description popup on (i) click."""
@@ -207,10 +225,12 @@ if _HAS_QT:
     class PaperModeSelectionPage(QWizardPage):
         def __init__(self, parent=None):
             super().__init__(parent)
+            self.setAccessibleName("Paper Mode Selection Page")
             self.setTitle("Trading Mode")
             self.setSubTitle("Select the trading engine for this bot.")
             layout = QVBoxLayout(self)
             self._scrumming = QRadioButton("Accumulation Trading (Scrumming)")
+            set_description(self._scrumming, BOT_WIZARD_DESCRIPTIONS["scrumming"])
             self._scrumming.setChecked(True)
             sd = QLabel(
                 "The core trading engine. Uses 12-indicator TA voting to optimize "
@@ -224,7 +244,7 @@ if _HAS_QT:
             layout.addWidget(sd)
 
             self._extractor = QRadioButton("Base Currency Extractor (Multi-Target)")
-            self._extractor.setToolTip(BOT_WIZARD_DESCRIPTIONS["extractor"])
+            set_description(self._extractor, BOT_WIZARD_DESCRIPTIONS["extractor"])
             ed = QLabel(
                 "Grows a base-currency pool by extracting volatility from "
                 "top-N */<base> alt pairs. Fires small artillery rounds into "
@@ -274,13 +294,13 @@ if _HAS_QT:
                 eid = _market_text(exch.get("exchange_id"))
                 self._exchange.addItem(exch.get("display_name", eid), eid)
             self._exchange.currentIndexChanged.connect(self._on_exchange_changed)
-            self._exchange.setToolTip(BOT_WIZARD_DESCRIPTIONS["exchange"])
+            set_description(self._exchange, BOT_WIZARD_DESCRIPTIONS["pool_exchange"])
             form.addRow("Exchange:", self._exchange)
 
             self._base = QComboBox()
             self._base.addItems(self._POOL_BASES)
             self._base.currentIndexChanged.connect(self._refresh_alt_list)
-            self._base.setToolTip(BOT_WIZARD_DESCRIPTIONS["base"])
+            set_description(self._base, BOT_WIZARD_DESCRIPTIONS["pool_base"])
             form.addRow("Pool Base Currency:", self._base)
             outer.addLayout(form)
 
@@ -296,7 +316,7 @@ if _HAS_QT:
             # 10-50 alt pairs typical.
             self._alt_list.setMinimumHeight(280)
             self._alt_list.setAccessibleName("Compatible alt pairs")
-            self._alt_list.setToolTip(BOT_WIZARD_DESCRIPTIONS["alt_list"])
+            set_description(self._alt_list, BOT_WIZARD_DESCRIPTIONS["alt_list"])
             outer.addWidget(self._alt_list)
 
             if exchanges:
@@ -370,6 +390,7 @@ if _HAS_QT:
     class PaperTradingParamsPage(QWizardPage):
         def __init__(self, defaults: dict, parent=None):
             super().__init__(parent)
+            self.setAccessibleName("Paper Trading Params Page")
             self.setTitle("Trading Parameters")
             self._is_grid = False
             outer = QVBoxLayout(self)
@@ -409,7 +430,7 @@ if _HAS_QT:
             )
             if _vis_at >= 0:
                 self._visibility.setCurrentIndex(_vis_at)
-            self._visibility.setToolTip(BOT_WIZARD_DESCRIPTIONS["visibility"])
+            set_description(self._visibility, BOT_WIZARD_DESCRIPTIONS["visibility"])
             self._visibility.currentIndexChanged.connect(self._on_visibility_changed)
             mf.addRow("Order Visibility:", self._visibility)
 
@@ -417,7 +438,7 @@ if _HAS_QT:
             # defaults carries the stored aggressive_trading, admitted the way
             # the Settings dialog's own load row admits it.
             self._aggressive.setChecked(bool(defaults.get("aggressive_trading", False)))
-            self._aggressive.setToolTip(BOT_WIZARD_DESCRIPTIONS["aggressive"])
+            set_description(self._aggressive, BOT_WIZARD_DESCRIPTIONS["aggressive"])
             mf.addRow(self._aggressive)
 
             from ...trading.container.config import STACK_MODE_DEFAULT
@@ -427,7 +448,7 @@ if _HAS_QT:
             )
             # One declaration, so the box and the config cannot disagree.
             self._stack_mode.setChecked(STACK_MODE_DEFAULT)
-            self._stack_mode.setToolTip(BOT_WIZARD_DESCRIPTIONS["stack_mode"])
+            set_description(self._stack_mode, BOT_WIZARD_DESCRIPTIONS["stack_mode"])
             mf.addRow(self._stack_mode)
 
             self._split_distance = QDoubleSpinBox()
@@ -435,13 +456,15 @@ if _HAS_QT:
             self._split_distance.setDecimals(2)
             self._split_distance.setSuffix(" %")
             self._split_distance.setValue(1.0)
-            self._split_distance.setToolTip(BOT_WIZARD_DESCRIPTIONS["split_distance"])
+            set_description(
+                self._split_distance, BOT_WIZARD_DESCRIPTIONS["split_distance"]
+            )
             mf.addRow("Split Distance:", self._split_distance)
 
             self._stack_count = QSpinBox()
             self._stack_count.setRange(2, 20)
             self._stack_count.setValue(3)
-            self._stack_count.setToolTip(BOT_WIZARD_DESCRIPTIONS["stack_count"])
+            set_description(self._stack_count, BOT_WIZARD_DESCRIPTIONS["stack_count"])
             mf.addRow("Tranche Count:", self._stack_count)
 
             self._stack_spacing = QComboBox()
@@ -449,7 +472,9 @@ if _HAS_QT:
             self._stack_spacing.addItem("Linear (1, 2, 3, 4…)", "linear")
             self._stack_spacing.addItem("Quadratic (1, 4, 9, 16…)", "quadratic")
             self._stack_spacing.addItem("Exponential (1, 2, 4, 8…)", "exponential")
-            self._stack_spacing.setToolTip(BOT_WIZARD_DESCRIPTIONS["stack_spacing"])
+            set_description(
+                self._stack_spacing, BOT_WIZARD_DESCRIPTIONS["stack_spacing"]
+            )
             mf.addRow("Spacing:", self._stack_spacing)
 
             groups.addWidget(self._mode_group)
@@ -463,8 +488,8 @@ if _HAS_QT:
             self._scrumming_interval.setDecimals(2)
             self._scrumming_interval.setSuffix(" %")
             self._scrumming_interval.setValue(1.0)
-            self._scrumming_interval.setToolTip(
-                BOT_WIZARD_DESCRIPTIONS["scrumming_interval"]
+            set_description(
+                self._scrumming_interval, BOT_WIZARD_DESCRIPTIONS["scrumming_interval"]
             )
             sf.addRow("Opposing Trade Interval:", self._scrumming_interval)
 
@@ -473,21 +498,21 @@ if _HAS_QT:
             self._bb_tolerance.setDecimals(2)
             self._bb_tolerance.setSuffix(" %")
             self._bb_tolerance.setValue(1.0)
-            self._bb_tolerance.setToolTip(BOT_WIZARD_DESCRIPTIONS["bb_tolerance"])
+            set_description(self._bb_tolerance, BOT_WIZARD_DESCRIPTIONS["bb_tolerance"])
             sf.addRow("BB Tolerance:", self._bb_tolerance)
 
             self._ls_candles = QSpinBox()
             self._ls_candles.setRange(2, 10)
             self._ls_candles.setValue(3)
             self._ls_candles.setSuffix(" candles")
-            self._ls_candles.setToolTip(BOT_WIZARD_DESCRIPTIONS["ls_candles"])
+            set_description(self._ls_candles, BOT_WIZARD_DESCRIPTIONS["ls_candles"])
             sf.addRow("Landing Strip Candles:", self._ls_candles)
 
             self._ta_timeframe = QComboBox()
             for _tf in ("1m", "5m", "15m", "30m", "1h", "4h", "1d"):
                 self._ta_timeframe.addItem(_tf, _tf)
             self._ta_timeframe.setCurrentIndex(4)  # Default 1h
-            self._ta_timeframe.setToolTip(BOT_WIZARD_DESCRIPTIONS["ta_timeframe"])
+            set_description(self._ta_timeframe, BOT_WIZARD_DESCRIPTIONS["ta_timeframe"])
             sf.addRow("TA Timeframe:", self._ta_timeframe)
             self._ta_tf_form = sf
             self._ta_tf_notice = QLabel("")
@@ -506,7 +531,9 @@ if _HAS_QT:
                 defaults.get("default_target_balance", 200.0),
                 self,
             )
-            self._target_balance.setToolTip(BOT_WIZARD_DESCRIPTIONS["target_balance"])
+            set_description(
+                self._target_balance, BOT_WIZARD_DESCRIPTIONS["target_balance"]
+            )
             sf.addRow("Target Balance:", self._target_balance)
 
             self._max_entry_px = QDoubleSpinBox()
@@ -514,7 +541,7 @@ if _HAS_QT:
             self._max_entry_px.setDecimals(8)
             self._max_entry_px.setPrefix("$ ")
             self._max_entry_px.setValue(0.0)
-            self._max_entry_px.setToolTip(BOT_WIZARD_DESCRIPTIONS["max_entry_px"])
+            set_description(self._max_entry_px, BOT_WIZARD_DESCRIPTIONS["max_entry_px"])
             sf.addRow("Max Entry Price:", self._max_entry_px)
 
             self._min_entry_px = QDoubleSpinBox()
@@ -522,7 +549,7 @@ if _HAS_QT:
             self._min_entry_px.setDecimals(8)
             self._min_entry_px.setPrefix("$ ")
             self._min_entry_px.setValue(0.0)
-            self._min_entry_px.setToolTip(BOT_WIZARD_DESCRIPTIONS["min_entry_px"])
+            set_description(self._min_entry_px, BOT_WIZARD_DESCRIPTIONS["min_entry_px"])
             sf.addRow("Min Entry Price:", self._min_entry_px)
 
             self._trading_fee = QDoubleSpinBox()
@@ -531,7 +558,7 @@ if _HAS_QT:
             self._trading_fee.setDecimals(2)
             self._trading_fee.setSingleStep(0.05)
             self._trading_fee.setValue(0.6)
-            self._trading_fee.setToolTip(BOT_WIZARD_DESCRIPTIONS["trading_fee"])
+            set_description(self._trading_fee, BOT_WIZARD_DESCRIPTIONS["trading_fee"])
             sf.addRow("Trading Fee %:", self._trading_fee)
 
             self._max_target_growth_pct = QDoubleSpinBox()
@@ -540,8 +567,9 @@ if _HAS_QT:
             self._max_target_growth_pct.setDecimals(2)
             self._max_target_growth_pct.setSingleStep(0.25)
             self._max_target_growth_pct.setValue(1.0)
-            self._max_target_growth_pct.setToolTip(
-                BOT_WIZARD_DESCRIPTIONS["max_target_growth_pct"]
+            set_description(
+                self._max_target_growth_pct,
+                BOT_WIZARD_DESCRIPTIONS["max_target_growth_pct"],
             )
             sf.addRow("Max Target Growth %:", self._max_target_growth_pct)
 
@@ -549,7 +577,9 @@ if _HAS_QT:
             self._scrum_fold_pct.setRange(FOLD_RATIO_MIN_PCT, FOLD_RATIO_MAX_PCT)
             self._scrum_fold_pct.setValue(FOLD_RATIO_PCT_DEFAULT)
             self._scrum_fold_pct.setSuffix(" %")
-            self._scrum_fold_pct.setToolTip(BOT_WIZARD_DESCRIPTIONS["scrum_fold_pct"])
+            set_description(
+                self._scrum_fold_pct, BOT_WIZARD_DESCRIPTIONS["scrum_fold_pct"]
+            )
             sf.addRow("Scrum Fold Ratio:", self._scrum_fold_pct)
 
             groups.addWidget(self._scrum_group)
@@ -562,8 +592,8 @@ if _HAS_QT:
             self._scrum_detect_pct.setRange(10, 90)
             self._scrum_detect_pct.setSuffix(" %")
             self._scrum_detect_pct.setValue(75)
-            self._scrum_detect_pct.setToolTip(
-                BOT_WIZARD_DESCRIPTIONS["scrum_detect_pct"]
+            set_description(
+                self._scrum_detect_pct, BOT_WIZARD_DESCRIPTIONS["scrum_detect_pct"]
             )
             af.addRow("Detect Threshold:", self._scrum_detect_pct)
 
@@ -572,20 +602,25 @@ if _HAS_QT:
             self._scrum_fire_pct.setDecimals(2)
             self._scrum_fire_pct.setSuffix(" %")
             self._scrum_fire_pct.setValue(0.5)
-            self._scrum_fire_pct.setToolTip(BOT_WIZARD_DESCRIPTIONS["scrum_fire_pct"])
+            set_description(
+                self._scrum_fire_pct, BOT_WIZARD_DESCRIPTIONS["scrum_fire_pct"]
+            )
             af.addRow("Fire Threshold:", self._scrum_fire_pct)
 
             self._bb_midline_gate = QCheckBox("BB Midline Gate")
             self._bb_midline_gate.setChecked(True)
-            self._bb_midline_gate.setToolTip(BOT_WIZARD_DESCRIPTIONS["bb_midline_gate"])
+            set_description(
+                self._bb_midline_gate, BOT_WIZARD_DESCRIPTIONS["bb_midline_gate"]
+            )
             af.addRow(self._bb_midline_gate)
 
             self._scrum_read_rate_min = QSpinBox()
             self._scrum_read_rate_min.setRange(1, 60)
             self._scrum_read_rate_min.setSuffix(" min")
             self._scrum_read_rate_min.setValue(5)
-            self._scrum_read_rate_min.setToolTip(
-                BOT_WIZARD_DESCRIPTIONS["scrum_read_rate_min"]
+            set_description(
+                self._scrum_read_rate_min,
+                BOT_WIZARD_DESCRIPTIONS["scrum_read_rate_min"],
             )
             af.addRow("Read Rate:", self._scrum_read_rate_min)
 
@@ -593,13 +628,15 @@ if _HAS_QT:
             self._band_travel_pct.setRange(0, 100)
             self._band_travel_pct.setSuffix(" %")
             self._band_travel_pct.setValue(70)
-            self._band_travel_pct.setToolTip(BOT_WIZARD_DESCRIPTIONS["band_travel_pct"])
+            set_description(
+                self._band_travel_pct, BOT_WIZARD_DESCRIPTIONS["band_travel_pct"]
+            )
             af.addRow("Band Travel:", self._band_travel_pct)
 
             self._bb_bullseye_check = QCheckBox("BB Bullseye Check")
             self._bb_bullseye_check.setChecked(True)
-            self._bb_bullseye_check.setToolTip(
-                BOT_WIZARD_DESCRIPTIONS["bb_bullseye_check"]
+            set_description(
+                self._bb_bullseye_check, BOT_WIZARD_DESCRIPTIONS["bb_bullseye_check"]
             )
             af.addRow(self._bb_bullseye_check)
 
@@ -611,7 +648,9 @@ if _HAS_QT:
 
             self._hedge_rebalance = QCheckBox("Hedge Rebalance Active")
             self._hedge_rebalance.setChecked(True)
-            self._hedge_rebalance.setToolTip(BOT_WIZARD_DESCRIPTIONS["hedge_rebalance"])
+            set_description(
+                self._hedge_rebalance, BOT_WIZARD_DESCRIPTIONS["hedge_rebalance"]
+            )
             hf.addRow(self._hedge_rebalance)
 
             self._hedge_amount = QDoubleSpinBox()
@@ -619,7 +658,7 @@ if _HAS_QT:
             self._hedge_amount.setDecimals(2)
             self._hedge_amount.setPrefix("$ ")
             self._hedge_amount.setValue(BotConfig.hedge_balance)
-            self._hedge_amount.setToolTip(BOT_WIZARD_DESCRIPTIONS["hedge_amount"])
+            set_description(self._hedge_amount, BOT_WIZARD_DESCRIPTIONS["hedge_amount"])
             hf.addRow("Hedge Balance:", self._hedge_amount)
 
             groups.addWidget(self._hedge_group)
@@ -633,7 +672,7 @@ if _HAS_QT:
             self._cb_soft_pct.setDecimals(1)
             self._cb_soft_pct.setSuffix(" %")
             self._cb_soft_pct.setValue(25.0)
-            self._cb_soft_pct.setToolTip(BOT_WIZARD_DESCRIPTIONS["cb_soft_pct"])
+            set_description(self._cb_soft_pct, BOT_WIZARD_DESCRIPTIONS["cb_soft_pct"])
             cf.addRow("Soft CB Threshold:", self._cb_soft_pct)
 
             self._cb_hard_pct = QDoubleSpinBox()
@@ -641,13 +680,13 @@ if _HAS_QT:
             self._cb_hard_pct.setDecimals(1)
             self._cb_hard_pct.setSuffix(" %")
             self._cb_hard_pct.setValue(35.0)
-            self._cb_hard_pct.setToolTip(BOT_WIZARD_DESCRIPTIONS["cb_hard_pct"])
+            set_description(self._cb_hard_pct, BOT_WIZARD_DESCRIPTIONS["cb_hard_pct"])
             cf.addRow("Hard CB Threshold:", self._cb_hard_pct)
 
             self._cb_cooldown = QSpinBox()
             self._cb_cooldown.setRange(1, 100)
             self._cb_cooldown.setValue(3)
-            self._cb_cooldown.setToolTip(BOT_WIZARD_DESCRIPTIONS["cb_cooldown"])
+            set_description(self._cb_cooldown, BOT_WIZARD_DESCRIPTIONS["cb_cooldown"])
             cf.addRow("Soft CB Cooldown:", self._cb_cooldown)
 
             self._max_cartridge_pct = QDoubleSpinBox()
@@ -655,15 +694,16 @@ if _HAS_QT:
             self._max_cartridge_pct.setDecimals(1)
             self._max_cartridge_pct.setSuffix(" %")
             self._max_cartridge_pct.setValue(10.0)
-            self._max_cartridge_pct.setToolTip(
-                BOT_WIZARD_DESCRIPTIONS["max_cartridge_pct"]
+            set_description(
+                self._max_cartridge_pct, BOT_WIZARD_DESCRIPTIONS["max_cartridge_pct"]
             )
             cf.addRow("Max Cartridge Size:", self._max_cartridge_pct)
 
             self._cartridge_smart_chk = QCheckBox("Calibrate to BB range")
             self._cartridge_smart_chk.setChecked(False)
-            self._cartridge_smart_chk.setToolTip(
-                BOT_WIZARD_DESCRIPTIONS["cartridge_smart_chk"]
+            set_description(
+                self._cartridge_smart_chk,
+                BOT_WIZARD_DESCRIPTIONS["cartridge_smart_chk"],
             )
             cf.addRow("Smart Cartridge:", self._cartridge_smart_chk)
 
@@ -672,8 +712,9 @@ if _HAS_QT:
             self._cartridge_smart_ceiling.setDecimals(1)
             self._cartridge_smart_ceiling.setSuffix(" %")
             self._cartridge_smart_ceiling.setValue(30.0)
-            self._cartridge_smart_ceiling.setToolTip(
-                BOT_WIZARD_DESCRIPTIONS["cartridge_smart_ceiling"]
+            set_description(
+                self._cartridge_smart_ceiling,
+                BOT_WIZARD_DESCRIPTIONS["cartridge_smart_ceiling"],
             )
             cf.addRow("Smart Ceiling:", self._cartridge_smart_ceiling)
 
@@ -685,8 +726,9 @@ if _HAS_QT:
 
             self._position_ceiling_enabled = QCheckBox("Enable Position Ceiling")
             self._position_ceiling_enabled.setChecked(False)
-            self._position_ceiling_enabled.setToolTip(
-                BOT_WIZARD_DESCRIPTIONS["position_ceiling_enabled"]
+            set_description(
+                self._position_ceiling_enabled,
+                BOT_WIZARD_DESCRIPTIONS["position_ceiling_enabled"],
             )
             rf.addRow(self._position_ceiling_enabled)
 
@@ -698,8 +740,9 @@ if _HAS_QT:
             self._position_ceiling_multiple.setSingleStep(0.5)
             self._position_ceiling_multiple.setSuffix("x anchor")
             self._position_ceiling_multiple.setValue(POSITION_CEILING_MULTIPLE_DEFAULT)
-            self._position_ceiling_multiple.setToolTip(
-                BOT_WIZARD_DESCRIPTIONS["position_ceiling_multiple"]
+            set_description(
+                self._position_ceiling_multiple,
+                BOT_WIZARD_DESCRIPTIONS["position_ceiling_multiple"],
             )
             rf.addRow("Ceiling Multiple:", self._position_ceiling_multiple)
 
@@ -707,16 +750,17 @@ if _HAS_QT:
                 "Enable Detonation (auto-harvest on bullish TF)"
             )
             self._detonation_enabled.setChecked(False)
-            self._detonation_enabled.setToolTip(
-                BOT_WIZARD_DESCRIPTIONS["detonation_enabled"]
+            set_description(
+                self._detonation_enabled, BOT_WIZARD_DESCRIPTIONS["detonation_enabled"]
             )
             rf.addRow(self._detonation_enabled)
 
             self._detonation_timeframe = QComboBox()
             self._detonation_timeframe.addItem("1d", "1d")
             self._detonation_timeframe.addItem("1w", "1w")
-            self._detonation_timeframe.setToolTip(
-                BOT_WIZARD_DESCRIPTIONS["detonation_timeframe"]
+            set_description(
+                self._detonation_timeframe,
+                BOT_WIZARD_DESCRIPTIONS["detonation_timeframe"],
             )
             rf.addRow("Detonation TF:", self._detonation_timeframe)
 
@@ -727,8 +771,9 @@ if _HAS_QT:
             self._detonation_confidence_min.setDecimals(2)
             self._detonation_confidence_min.setSingleStep(0.05)
             self._detonation_confidence_min.setValue(DETONATION_CONFIDENCE_MIN_DEFAULT)
-            self._detonation_confidence_min.setToolTip(
-                BOT_WIZARD_DESCRIPTIONS["detonation_confidence_min"]
+            set_description(
+                self._detonation_confidence_min,
+                BOT_WIZARD_DESCRIPTIONS["detonation_confidence_min"],
             )
             rf.addRow("Min Confidence:", self._detonation_confidence_min)
 
@@ -742,36 +787,37 @@ if _HAS_QT:
 
             self._gate_scrum_ta_chk = QCheckBox("SCRUM requires bullish TA")
             self._gate_scrum_ta_chk.setChecked(True)
-            self._gate_scrum_ta_chk.setToolTip(
-                BOT_WIZARD_DESCRIPTIONS["gate_scrum_ta_chk"]
+            set_description(
+                self._gate_scrum_ta_chk, BOT_WIZARD_DESCRIPTIONS["gate_scrum_ta_chk"]
             )
             gf.addRow(self._gate_scrum_ta_chk)
 
             self._gate_scrum_uptrend_chk = QCheckBox("SCRUM holds in sustained uptrend")
             self._gate_scrum_uptrend_chk.setChecked(True)
-            self._gate_scrum_uptrend_chk.setToolTip(
-                BOT_WIZARD_DESCRIPTIONS["gate_scrum_uptrend_chk"]
+            set_description(
+                self._gate_scrum_uptrend_chk,
+                BOT_WIZARD_DESCRIPTIONS["gate_scrum_uptrend_chk"],
             )
             gf.addRow(self._gate_scrum_uptrend_chk)
 
             self._gate_scrum_htf_chk = QCheckBox("SCRUM defers to higher-TF bullish")
             self._gate_scrum_htf_chk.setChecked(True)
-            self._gate_scrum_htf_chk.setToolTip(
-                BOT_WIZARD_DESCRIPTIONS["gate_scrum_htf_chk"]
+            set_description(
+                self._gate_scrum_htf_chk, BOT_WIZARD_DESCRIPTIONS["gate_scrum_htf_chk"]
             )
             gf.addRow(self._gate_scrum_htf_chk)
 
             self._gate_fold_ta_chk = QCheckBox("FOLD requires bearish TA")
             self._gate_fold_ta_chk.setChecked(True)
-            self._gate_fold_ta_chk.setToolTip(
-                BOT_WIZARD_DESCRIPTIONS["gate_fold_ta_chk"]
+            set_description(
+                self._gate_fold_ta_chk, BOT_WIZARD_DESCRIPTIONS["gate_fold_ta_chk"]
             )
             gf.addRow(self._gate_fold_ta_chk)
 
             self._gate_fold_htf_chk = QCheckBox("FOLD defers to higher-TF bearish")
             self._gate_fold_htf_chk.setChecked(True)
-            self._gate_fold_htf_chk.setToolTip(
-                BOT_WIZARD_DESCRIPTIONS["gate_fold_htf_chk"]
+            set_description(
+                self._gate_fold_htf_chk, BOT_WIZARD_DESCRIPTIONS["gate_fold_htf_chk"]
             )
             gf.addRow(self._gate_fold_htf_chk)
 
@@ -789,8 +835,8 @@ if _HAS_QT:
             self._ext_chunk_size_usd.setPrefix("$")
             self._ext_chunk_size_usd.setDecimals(2)
             self._ext_chunk_size_usd.setValue(100.0)
-            self._ext_chunk_size_usd.setToolTip(
-                BOT_WIZARD_DESCRIPTIONS["ext_chunk_size_usd"]
+            set_description(
+                self._ext_chunk_size_usd, BOT_WIZARD_DESCRIPTIONS["ext_chunk_size_usd"]
             )
             eform.addRow("Chunk size (USD):", self._ext_chunk_size_usd)
 
@@ -799,23 +845,26 @@ if _HAS_QT:
             self._ext_artillery_size_usd.setPrefix("$")
             self._ext_artillery_size_usd.setDecimals(2)
             self._ext_artillery_size_usd.setValue(5.0)
-            self._ext_artillery_size_usd.setToolTip(
-                BOT_WIZARD_DESCRIPTIONS["ext_artillery_size_usd"]
+            set_description(
+                self._ext_artillery_size_usd,
+                BOT_WIZARD_DESCRIPTIONS["ext_artillery_size_usd"],
             )
             eform.addRow("Artillery size (USD):", self._ext_artillery_size_usd)
 
             self._ext_scan_top_n = QSpinBox()
             self._ext_scan_top_n.setRange(5, 10)
             self._ext_scan_top_n.setValue(8)
-            self._ext_scan_top_n.setToolTip(BOT_WIZARD_DESCRIPTIONS["ext_scan_top_n"])
+            set_description(
+                self._ext_scan_top_n, BOT_WIZARD_DESCRIPTIONS["ext_scan_top_n"]
+            )
             eform.addRow("Watch list top-N:", self._ext_scan_top_n)
 
             self._ext_scan_refresh = QSpinBox()
             self._ext_scan_refresh.setRange(10, 240)
             self._ext_scan_refresh.setValue(60)
             self._ext_scan_refresh.setSuffix(" candles")
-            self._ext_scan_refresh.setToolTip(
-                BOT_WIZARD_DESCRIPTIONS["ext_scan_refresh"]
+            set_description(
+                self._ext_scan_refresh, BOT_WIZARD_DESCRIPTIONS["ext_scan_refresh"]
             )
             eform.addRow("Watch list refresh:", self._ext_scan_refresh)
 
@@ -824,7 +873,7 @@ if _HAS_QT:
             self._ext_exit_pct.setSuffix("%")
             self._ext_exit_pct.setDecimals(1)
             self._ext_exit_pct.setValue(100.0)
-            self._ext_exit_pct.setToolTip(BOT_WIZARD_DESCRIPTIONS["ext_exit_pct"])
+            set_description(self._ext_exit_pct, BOT_WIZARD_DESCRIPTIONS["ext_exit_pct"])
             eform.addRow("Exit %:", self._ext_exit_pct)
 
             groups.addWidget(self._extractor_group)
@@ -977,6 +1026,7 @@ if _HAS_QT:
     class PaperPhantomConfigPage(QWizardPage):
         def __init__(self, defaults: dict, parent=None):
             super().__init__(parent)
+            self.setAccessibleName("Paper Phantom Config Page")
             from src.gui.main_tabs.bot_wizard_surface import (
                 LABEL_TEXTS,
                 PAGE_SUBTITLES,
@@ -1000,6 +1050,7 @@ if _HAS_QT:
             )
             layout = QVBoxLayout(self)
             self._enable = QCheckBox("Enable Phantom Bots")
+            set_description(self._enable, BOT_WIZARD_DESCRIPTIONS["phantom_enable"])
             self._enable.setChecked(
                 bool(
                     (defaults or {}).get(
@@ -1014,6 +1065,7 @@ if _HAS_QT:
             tf_row = QHBoxLayout()
             for tf in PHANTOM_TIMEFRAMES:
                 cb = QCheckBox(tf)
+                set_description(cb, PHANTOM_CHECK_FORMAT.format(timeframe=tf))
                 cb.setChecked(False)
                 cb.toggled.connect(
                     lambda ticked, name=tf: self._on_timeframe_toggled(name, ticked)
@@ -1026,6 +1078,7 @@ if _HAS_QT:
             self._lock_candles = QSpinBox()
             self._lock_candles.setRange(1, 10)
             self._lock_candles.setValue(self._stored_lock_candles)
+            set_description(self._lock_candles, BOT_WIZARD_DESCRIPTIONS["lock_candles"])
             lf.addRow("Candles to lock:", self._lock_candles)
             layout.addWidget(lock_group)
             layout.addStretch()
@@ -1066,7 +1119,7 @@ if _HAS_QT:
             box = self._tf_checks[timeframe]
             refused = self._timeframe_refusal(timeframe)
             if refused:
-                box.setToolTip(refused)
+                set_description(box, refused)
                 box.blockSignals(True)
                 box.setChecked(False)
                 box.blockSignals(False)
@@ -1106,13 +1159,15 @@ if _HAS_QT:
                 cb.setEnabled(supported)
                 if not supported and cb.isChecked():
                     cb.setChecked(False)
-                cb.setToolTip(
-                    f"Timeframe {tf}: "
-                    + (
-                        "supported"
-                        if supported
-                        else f"NOT supported by {exchange_id or 'this exchange'}"
+                state = (
+                    PHANTOM_SUPPORTED_TEXT
+                    if supported
+                    else PHANTOM_UNSUPPORTED_FORMAT.format(
+                        exchange=exchange_id or PHANTOM_UNKNOWN_EXCHANGE
                     )
+                )
+                set_description(
+                    cb, PHANTOM_TOOL_TIP_FORMAT.format(timeframe=tf, state=state)
                 )
 
         def set_parent_timeframe(self, ta_timeframe: str | None) -> None:
@@ -1126,7 +1181,7 @@ if _HAS_QT:
             for name, box in self._tf_checks.items():
                 refused = self._timeframe_refusal(name)
                 if refused:
-                    box.setToolTip(refused)
+                    set_description(box, refused)
             if any(one.isChecked() for one in self._tf_checks.values()):
                 return
             cb = self._tf_checks.get(self._stored_timeframe)
@@ -1155,6 +1210,13 @@ if _HAS_QT:
             )
             self.setMinimumSize(700, 550)
             self.resize(1100, 750)
+            for which, step in (
+                (QWizard.WizardButton.BackButton, WALK_BACK),
+                (QWizard.WizardButton.NextButton, WALK_NEXT),
+                (QWizard.WizardButton.CancelButton, WALK_CANCEL),
+                (QWizard.WizardButton.FinishButton, WALK_FINISH),
+            ):
+                set_description(self.button(which), WALK_TOOLTIPS[step])
             table = dict(markets or {})
             self._asset_page = PaperAssetSelectionPage(exchanges, table)
             self._mode_page = PaperModeSelectionPage()

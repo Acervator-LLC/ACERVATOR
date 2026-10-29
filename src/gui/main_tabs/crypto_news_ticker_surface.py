@@ -99,9 +99,8 @@ INITIAL_TEXT = "Fetching crypto news…"
 NO_FEEDS_TEXT = "(no crypto news feeds reachable)"
 UNAVAILABLE_TEXT = "(crypto news feeds unavailable)"
 LABEL_TOOLTIP = (
-    "Cycling crypto + fintech headlines from 10 free RSS "
-    "feeds. Click to open story in default browser. "
-    "Hover to pause auto-advance. Refreshes hourly."
+    "Crypto and fintech headlines from 10 RSS feeds. Click to open a story. Hover "
+    "to pause. Refreshes hourly."
 )
 LABEL_STYLE = "color: #cfe6ff; font-size: 11px;"
 LABEL_CURSOR = "PointingHandCursor"

@@ -370,6 +370,16 @@ self._stat_errors.set_clickable(True, "Click to open the error log.")
 self._stat_errors.clicked.connect(self._show_error_log_dialog)
 ```
 
+**Current reading, 2026-10-29.** The card takes no words of its own when it is made clickable. Its
+description and its click line are declared beside it.
+
+`src/gui/main_tabs/header_strip_surface.py` — `ERRORS_CLICK_TOOLTIP`
+
+```python
+ERRORS_TOOLTIP = "Errors across all bots since the last reset."
+ERRORS_CLICK_TOOLTIP = "Press to open the Error Log, where Reset clears them."
+```
+
 Issue #428 carries a disagreement between what the tooltips on these cards
 promise and what the cards draw.
 
@@ -390,6 +400,18 @@ SCRUMMED_TOOLTIP   "the dollars every bot has sold so far this year ...
                     comes from the exchange's own trade history, so the venue
                     and the card agree ... It survives a restart."
 FOLDED_TOOLTIP     the same sentence for buys
+```
+
+**Current reading, 2026-10-29.** Both counter descriptions are shorter, within twenty words. They
+keep the source and the restart.
+
+`src/gui/main_tabs/header_strip_surface.py` — `SCRUMMED_TOOLTIP`
+
+```python
+SCRUMMED_TOOLTIP = (
+    "Dollars every bot has sold this year, read from the exchange's own trade "
+    "history. It survives a restart."
+)
 ```
 
 A sixth card, P/L, is constructed and then hidden. Code that still writes to it

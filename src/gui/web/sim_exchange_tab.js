@@ -10,8 +10,10 @@
   var ACTIONS = "actions";
   var ADD_BOT_ACCENT = "add_bot_accent";
   var ADD_BOT_LABEL = "add_bot_label";
+  var ADD_BOT_TOOLTIP = "add_bot_tooltip";
   var BOT_IDS = "bot_ids";
   var COMMAND_BUTTONS = "command_buttons";
+  var COMMAND_TOOLTIPS = "command_tooltips";
   var COMMAND_PARAM = "command_param";
   var CURRENT_ROW = "current_row";
   var DANGER_COMMAND_LABEL = "danger_command_label";
@@ -326,6 +328,7 @@
   var MODE_FOCUS_POLICY = "focus_policy";
   var MODE_FOCUSABLE = "focusable";
   var MODE_ACCESSIBLE_NAME = "accessible_name";
+  var MODE_TOOLTIP = "tooltip";
   var MODE_ACTIVE = "active";
 
   var ZERO = Number(EMPTY);
@@ -628,6 +631,7 @@
     buttonProps[ACTION_ATTR] = text(actionNamed(model, MODE_CLICKED));
     buttonProps[FOCUS_ATTR] = text(button[MODE_FOCUS_POLICY]);
     buttonProps[ARIA_LABEL] = label(button[MODE_ACCESSIBLE_NAME]);
+    buttonProps.title = label(button[MODE_TOOLTIP]);
     buttonProps[ARIA_PRESSED] = text(button[MODE_ACTIVE] === true);
     return element(BUTTON_TAG, buttonProps, text(button[MODE_TEXT]));
   }
@@ -654,6 +658,7 @@
   function AddBotButton(props) {
     var model = props.model;
     var buttonProps = { className: TAB_CLASS, type: BUTTON_TYPE, onClick: askNewBot };
+    buttonProps.title = label(model[ADD_BOT_TOOLTIP]);
     buttonProps[PART_ATTR] = ADD_BOT_PART;
     buttonProps[ACTION_ATTR] = text(actionNamed(model, ADD_BOT_CLICKED));
     buttonProps[ACCENT_ATTR] = text(model[ADD_BOT_ACCENT]);
@@ -740,6 +745,7 @@
         sendCommand(key);
       }
     };
+    buttonProps.title = label(objectField(props.model, COMMAND_TOOLTIPS)[key]);
     buttonProps[PART_ATTR] = COMMAND_BUTTON_PART;
     buttonProps[KEY_ATTR] = text(key);
     buttonProps[INDEX_ATTR] = String(props.at);

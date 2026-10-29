@@ -185,6 +185,8 @@ try:
     )
     from PySide6.QtCore import Signal
     from PySide6.QtGui import QGuiApplication
+    from .main_tabs import bot_live_settings_surface as window_surface
+    from .tooltips import set_description
 
     _HAS_QT = True
 except ImportError:
@@ -319,6 +321,7 @@ if _HAS_QT:
 
         def __init__(self, bot, bot_manager=None, parent=None):
             super().__init__(parent)
+            self.setAccessibleName(window_surface.WINDOW_ACCESSIBLE_NAME)
             self._bot = bot
             self._bm = bot_manager
             self._changes: dict = {}
@@ -378,19 +381,13 @@ if _HAS_QT:
             )
             self._prev_btn = QPushButton("◀ Prev")
             self._prev_btn.setStyleSheet(nav_btn_qss)
-            self._prev_btn.setToolTip(
-                "Switch to the previous bot in the swarm without "
-                "closing this dialog (Ctrl+Left)"
-            )
+            set_description(self._prev_btn, window_surface.PREV_TOOLTIP)
             self._prev_btn.clicked.connect(lambda: self._navigate_to_sibling(-1))
             hdr_row.addWidget(self._prev_btn)
 
             self._next_btn = QPushButton("Next ▶")
             self._next_btn.setStyleSheet(nav_btn_qss)
-            self._next_btn.setToolTip(
-                "Switch to the next bot in the swarm without "
-                "closing this dialog (Ctrl+Right)"
-            )
+            set_description(self._next_btn, window_surface.NEXT_TOOLTIP)
             self._next_btn.clicked.connect(lambda: self._navigate_to_sibling(1))
             hdr_row.addWidget(self._next_btn)
 
@@ -445,6 +442,11 @@ if _HAS_QT:
                     tabs, "Positions Held", self._create_positions_held_tab
                 )
 
+            for at in range(tabs.count()):
+                name = tabs.tabText(at)
+                if name in window_surface.TAB_TOOLTIPS:
+                    set_description(tabs, window_surface.TAB_TOOLTIPS[name], at)
+
             layout.addWidget(tabs)
 
             # Bottom buttons
@@ -460,10 +462,12 @@ if _HAS_QT:
                 f"QPushButton:disabled {{ background: {ds.SETTINGS_DISABLED_DEEP}; color: {ds.TEXT_MUTED}; }}"
             )
             self._apply_btn.setEnabled(False)
+            set_description(self._apply_btn, window_surface.APPLY_TOOLTIP)
             self._apply_btn.clicked.connect(self._apply_changes)
             btn_row.addWidget(self._apply_btn)
 
             close_btn = QPushButton("Close")
+            set_description(close_btn, window_surface.CLOSE_TOOLTIP)
             close_btn.setStyleSheet(
                 f"QPushButton {{ background: {ds.CARD_METRIC_BORDER}; color: {ds.TEXT_INACTIVE}; "
                 f"border: 1px solid {ds.MENU_BORDER}; border-radius: 6px; "

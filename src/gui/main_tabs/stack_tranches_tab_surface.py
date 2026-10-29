@@ -15,6 +15,7 @@ from __future__ import annotations
 from typing import Any, Optional
 
 from .. import design_system as ds
+from ..descriptions import STACK_TRANCHES_TAB_DESCRIPTIONS
 
 METHOD = "stack_tranches_tab.state"
 
@@ -95,25 +96,11 @@ RATIO_GREEN = ds.SUCCESS
 
 CLEAR_BUTTON_COUNTED_FORMAT = "Clear {droppable} Stack Tranche(s)"
 CLEAR_BUTTON_PLAIN_TEXT = "Clear Stack Tranches"
-CLEAR_BUTTON_TOOLTIP = (
-    "Discard this bot's standing stack tranches.\n\n"
-    "Places NO order and cancels NO order. Holdings, cost "
-    "basis and target balance are untouched. A tranche "
-    "holding a resting exchange order is KEPT - removing "
-    "it would leave that order on the book with nothing "
-    "tracking it."
-)
+CLEAR_BUTTON_TOOLTIP = STACK_TRANCHES_TAB_DESCRIPTIONS["stack_clear_btn"]
 
 COUNTERS_BUTTON_COUNTED_FORMAT = "Clear Lifetime Counters ({created} opened)"
 COUNTERS_BUTTON_PLAIN_TEXT = "Clear Lifetime Counters"
-COUNTERS_BUTTON_TOOLTIP = (
-    "Set this bot's two stack lifetime counters to "
-    "zero.\n\n"
-    "Places NO order and removes NO tranche. Standing stack "
-    "tranches, holdings, cost basis and target balance are "
-    "all untouched - this clears the record of what "
-    "happened, not what the bot holds."
-)
+COUNTERS_BUTTON_TOOLTIP = STACK_TRANCHES_TAB_DESCRIPTIONS["stack_counters_btn"]
 
 DANGER_BUTTON_STYLE = (
     f"QPushButton {{ background: {ds.SETTINGS_DANGER_SURFACE}; "

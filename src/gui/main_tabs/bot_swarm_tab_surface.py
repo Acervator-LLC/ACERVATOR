@@ -177,6 +177,30 @@ INBOUND_HEADERS = ("Source Bot", "Wire %", "Lifetime $ from source")
 PENDING_HEADERS = ("Age", "Source", "USD", "Ref")
 TRANSACTIONS_HEADERS = ("Age", "Direction", "Other Bot", "USD", "Type")
 
+OUTBOUND_HEADER_TOOLTIPS = (
+    "The bot this wire carries profit to, with its asset when known.",
+    "The share of this bot's routed profit that this wire is set to carry.",
+    "Dollars this bot has sent to the target, summed over the transfers on record.",
+)
+INBOUND_HEADER_TOOLTIPS = (
+    "The bot this wire carries profit from, with its asset when known.",
+    "The share of the source's routed profit that this wire is set to carry.",
+    "Dollars the source has sent to this bot, summed over the transfers on record.",
+)
+PENDING_HEADER_TOOLTIPS = (
+    "How long ago this credit arrived.",
+    "The bot that sent this credit.",
+    "Dollars waiting to join the next fold tranche this bot builds.",
+    "The trade that paid this credit: its kind and fill price.",
+)
+TRANSACTIONS_HEADER_TOOLTIPS = (
+    "How long ago this transfer was booked.",
+    "OUT is money this bot sent. IN is money it received.",
+    "The bot at the other end of this transfer.",
+    "Dollars this transfer moved.",
+    "The kind of transfer, such as a routed sell or a wire back.",
+)
+
 WIRE_TABLE_MAX_HEIGHT_PX = 180
 TRANSACTIONS_TABLE_MAX_HEIGHT_PX = 280
 TABLE_RESIZE_MODE = "ResizeToContents"
@@ -995,6 +1019,7 @@ def build_view_model(model: BotSwarmTabModel) -> dict:
             "shown": model.state.outbound_shown,
             "title": model.state.outbound_title,
             "headers": list(OUTBOUND_HEADERS),
+            "header_tooltips": list(OUTBOUND_HEADER_TOOLTIPS),
             "rows": [list(row) for row in model.state.outbound_rows],
             "count": model.state.outbound_count,
         },
@@ -1002,6 +1027,7 @@ def build_view_model(model: BotSwarmTabModel) -> dict:
             "shown": model.state.inbound_shown,
             "title": model.state.inbound_title,
             "headers": list(INBOUND_HEADERS),
+            "header_tooltips": list(INBOUND_HEADER_TOOLTIPS),
             "rows": [list(row) for row in model.state.inbound_rows],
             "count": model.state.inbound_count,
         },
@@ -1009,12 +1035,14 @@ def build_view_model(model: BotSwarmTabModel) -> dict:
             "shown": model.state.pending_shown,
             "title": model.state.pending_title,
             "headers": list(PENDING_HEADERS),
+            "header_tooltips": list(PENDING_HEADER_TOOLTIPS),
             "rows": [list(row) for row in model.state.pending_rows],
         },
         "transactions_table": {
             "shown": model.state.transactions_shown,
             "title": model.state.transactions_title,
             "headers": list(TRANSACTIONS_HEADERS),
+            "header_tooltips": list(TRANSACTIONS_HEADER_TOOLTIPS),
             "rows": [list(row) for row in model.state.transactions_rows],
             "direction_colours": list(model.state.transactions_colours),
         },

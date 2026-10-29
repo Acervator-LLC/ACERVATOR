@@ -137,9 +137,10 @@ _HOST_SOURCE = """(function (global) {
     };
   }
 
-  global.acervatorMainWindowSetTabs = function (labels, selected) {
+  global.acervatorMainWindowSetTabs = function (labels, selected, descriptions) {
     var host = global.acervatorPanelHost;
     var bar = global.acervatorTabBar;
+    global.acervatorMainWindowDescriptions = descriptions || {};
     bar.forget();
     host.forget();
     var declared = [];
@@ -218,13 +219,18 @@ def chrome_html(theme: object = None) -> str:
     return page_html((), BAR_SCRIPT_ASSETS, body, theme, inline + (host_script(),))
 
 
-def set_tabs_script(labels: list, selected: Optional[str]) -> str:
-    """The one JS statement that hands the page its tab set and selection."""
+def set_tabs_script(
+    labels: list, selected: Optional[str], descriptions: Optional[dict] = None
+) -> str:
+    """The one JS statement that hands the page its tab set, selection and
+    each tab's description."""
     return (
         "window.acervatorMainWindowSetTabs("
         + json.dumps(list(labels), ensure_ascii=True)
         + ", "
         + json.dumps(selected, ensure_ascii=True)
+        + ", "
+        + json.dumps(dict(descriptions or {}), ensure_ascii=True)
         + ");"
     )
 
@@ -342,6 +348,22 @@ if _HAS_WEBENGINE:
             self._book.setTabVisible(index, visible)
             self._push_tabs()
 
+        def setTabToolTip(self, index: int, text: str) -> None:
+            """Hold ``text`` as the description of the tab at ``index`` and redraw."""
+            self._book.setTabToolTip(index, text)
+            self._push_tabs()
+
+        def tabToolTip(self, index: int) -> str:
+            """The description of the tab at ``index``."""
+            return self._book.tabToolTip(index)
+
+        def descriptions(self) -> dict:
+            """Each tab label with the description it carries."""
+            return {
+                self._book.tabText(at): self._book.tabToolTip(at)
+                for at in range(self._book.count())
+            }
+
         def labels(self) -> list:
             """Every tab label, left to right, hidden tabs included."""
             return [self._book.tabText(at) for at in range(self._book.count())]
@@ -405,7 +427,9 @@ if _HAS_WEBENGINE:
         def _push_tabs(self) -> None:
             index = self._book.currentIndex()
             selected = self._book.tabText(index) if index >= 0 else None
-            self._run(set_tabs_script(self.shown_labels(), selected))
+            self._run(
+                set_tabs_script(self.shown_labels(), selected, self.descriptions())
+            )
 
         def _on_current_changed(self, index: int) -> None:
             if index >= 0:

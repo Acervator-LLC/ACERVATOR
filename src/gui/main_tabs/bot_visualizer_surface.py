@@ -121,6 +121,11 @@ TAB_STYLE_SHEET = (
 )
 
 TAB_TITLES = ("⚡ Bot Swarm", "\U0001f5a5 Simulator Swarm", "\U0001f4c4 Paper Swarm")
+TAB_TOOLTIPS = (
+    "The live bots, the Smart Wires between them and the Quick Routing matrix.",
+    "Simulated bots side by side, each on its own asset and timeframe.",
+    "Paper bots side by side. A paper bot sends no order to an exchange.",
+)
 SWARM_TAB_INDEX = 0
 SIM_TAB_INDEX = 1
 PAPER_TAB_INDEX = 2
@@ -1276,6 +1281,7 @@ WIRES_CAPTION = "Wires:"
 EXCHANGE_TOOLTIP = (
     "Filter Bot Swarm visualizer + Quick Routing scope by exchange. Default: All."
 )
+THEME_TOOLTIP = "The colour theme this canvas draws its bots and wires in."
 OPACITY_TOOLTIP = (
     "Wire opacity 0–100 %. Lower for more contrast on underlying "
     "readouts; 100 = fully opaque."
@@ -1295,6 +1301,15 @@ SIM_STOP_ALL_TEXT = "■ Stop All"
 PAPER_ADD_TEXT = "+ Add Paper Bot"
 PAPER_START_ALL_TEXT = "▶ Start All"
 PAPER_STOP_ALL_TEXT = "■ Stop All"
+
+SIM_ADD_TOOLTIP = "Adds one simulated bot row to this swarm."
+SIM_RUN_ALL_TOOLTIP = "Starts every simulated bot row that is not running."
+SIM_STOP_ALL_TOOLTIP = "Stops every simulated bot row that is running."
+PAPER_ADD_TOOLTIP = "Adds one paper bot row to this swarm."
+PAPER_START_ALL_TOOLTIP = "Starts every paper bot row that is not running."
+PAPER_STOP_ALL_TOOLTIP = "Stops every paper bot row that is running."
+#: What a layer button on the React page says: that page does not act on its presses.
+LAYER_BUTTON_IDLE_TOOLTIP = "Not active on this page yet; pressing it does nothing."
 
 SIM_SUMMARY_ORDER = ("wins", "pnl", "trades")
 PAPER_SUMMARY_ORDER = ("total", "pnl", "active")
@@ -1342,10 +1357,11 @@ SUMMARY_LABEL_STYLE_SHEET = (
 
 
 def layer_button(text: str, color: str, hover: str) -> dict:
-    """One header button of a layer: its word and its paint rule."""
+    """One header button of a layer: its word, its paint rule and its description."""
     return {
         "kind": BUTTON_KIND,
         "text": text,
+        "tooltip": LAYER_BUTTON_IDLE_TOOLTIP,
         "style_sheet": layer_button_style_sheet(color, hover),
     }
 
@@ -1685,6 +1701,7 @@ def build_payload(model: BotVisualizerModel) -> dict:
         "button_kind": BUTTON_KIND,
         "tab_style_sheet": TAB_STYLE_SHEET,
         "tab_titles": list(TAB_TITLES),
+        "tab_tooltips": list(TAB_TOOLTIPS),
         "swarm_tab_index": SWARM_TAB_INDEX,
         "sim_tab_index": SIM_TAB_INDEX,
         "paper_tab_index": PAPER_TAB_INDEX,
@@ -1850,6 +1867,7 @@ def build_payload(model: BotVisualizerModel) -> dict:
         "dot_cursor": DOT_CURSOR,
         "exchange_caption": EXCHANGE_CAPTION,
         "theme_caption": THEME_CAPTION,
+        "theme_tooltip": THEME_TOOLTIP,
         "wires_caption": WIRES_CAPTION,
         "exchange_tooltip": EXCHANGE_TOOLTIP,
         "opacity_tooltip": OPACITY_TOOLTIP,

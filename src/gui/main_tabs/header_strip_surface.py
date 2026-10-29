@@ -213,9 +213,8 @@ UNREADABLE_TOOLTIP = (
 
 AMMO_LABEL = "AMMO"
 AMMO_TOOLTIP = (
-    "Total Ammo — every bot's Target Delta added together, in whole "
-    "dollars. Green while more bots hold more than their target, red "
-    "while more hold less."
+    "Every bot's Target Delta summed, in whole dollars. Green when more bots sit "
+    "above target, red when more sit below."
 )
 AMMO_UNKNOWN_TOOLTIP = (
     "This fleet reports no Target Delta total, so nothing is shown for it."
@@ -228,15 +227,14 @@ AMMO_FORMAT = ",.0f"
 PNL_FORMAT = "+,.2f"
 
 PNL_TOOLTIP = (
-    "P/L — the unrealised profit and loss the exchange answers across "
-    "every bot's open position. It is the only profit and loss figure "
-    "the strip carries."
+    "Unrealised profit and loss across every bot's open position, as the "
+    "exchange reports it."
 )
 
 ACCUMULATED_LABEL = "ACCUMULATED"
 ACCUMULATED_TOOLTIP = (
-    "Accumulated — every bot's accrued funds added together, which is "
-    "each live Target Balance less the anchor it was set from."
+    "Every bot's live Target Balance less the anchor it was set from, added "
+    "together."
 )
 
 KPI_COLUMNS = (
@@ -380,31 +378,20 @@ CARD_LABEL_PROPERTY = "muted"
 CARD_VALUE_PROPERTY = "heading"
 
 SCRUMMED_TOOLTIP = (
-    "Total Scrummed (high score) — the dollars every bot has sold "
-    "so far this year. The figure comes from the exchange's own "
-    "trade history, so the venue and the card agree. Every sell "
-    "adds to it. It survives a restart."
+    "Dollars every bot has sold this year, read from the exchange's own trade "
+    "history. It survives a restart."
 )
 FOLDED_TOOLTIP = (
-    "Total Folded (high score) — the dollars every bot has bought "
-    "so far this year. The figure comes from the exchange's own "
-    "trade history, so the venue and the card agree. Every buy "
-    "adds to it. It survives a restart."
+    "Dollars every bot has bought this year, read from the exchange's own trade "
+    "history. It survives a restart."
 )
 TRADES_TOOLTIP = (
-    "Total Trades — the orders the exchange has filled for every bot so "
-    "far this year. One order counts once, however many pieces the "
-    "exchange filled it in. A bot the exchange has not answered for "
-    "completely counts nothing rather than its last figure."
+    "Orders filled for every bot this year, one per order. A bot the exchange "
+    "has not fully answered counts nothing."
 )
 BOTS_TOOLTIP = "Bots currently in RUNNING state (actively trading)."
-ERRORS_TOOLTIP = (
-    "Error count across all bots since last reset. "
-    "Click to open the Error Log; use the Reset button "
-    "inside to clear all previous faults.\n\n"
-    "Hover bot rows to see current ERROR/COOLDOWN state."
-)
-ERRORS_CLICK_TOOLTIP = "Click to open the error log."
+ERRORS_TOOLTIP = "Errors across all bots since the last reset."
+ERRORS_CLICK_TOOLTIP = "Press to open the Error Log, where Reset clears them."
 
 
 def click_tooltip(base: Any, suffix: Any) -> str:

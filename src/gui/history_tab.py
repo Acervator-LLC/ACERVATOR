@@ -13,6 +13,7 @@ from typing import Optional
 
 from src.core.trade_historian import missing_history_line
 from src.exchange import history_read_contract as hrc
+from src.gui.main_tabs import history_tab_surface as hts
 
 from . import design_system as ds
 from .main_tabs import class_filter_surface
@@ -32,6 +33,7 @@ try:
         QVBoxLayout,
         QWidget,
     )
+    from .tooltips import set_description
 
     _HAS_QT = True
 except ImportError:
@@ -170,6 +172,7 @@ if _HAS_QT:
 
         def __init__(self, parent=None) -> None:
             super().__init__(parent)
+            self.setAccessibleName("History Tab")
             self._bot_manager = None
             self._all_trades: list[dict] = []
             self._filtered: list[dict] = []
@@ -257,9 +260,7 @@ if _HAS_QT:
             self._from_dt.setCalendarPopup(True)
             self._from_dt.setDisplayFormat("yyyy-MM-dd HH:mm")
             self._from_dt.setMinimumWidth(150)
-            self._from_dt.setToolTip(
-                "Start of the trade window. Defaults to the 2026-04-01 launch date. Type or drag to widen or narrow it."
-            )
+            set_description(self._from_dt, hts.FROM_TOOLTIP)
             fl.addWidget(self._from_dt)
 
             fl.addWidget(QLabel("To:"))
@@ -267,9 +268,7 @@ if _HAS_QT:
             self._to_dt.setCalendarPopup(True)
             self._to_dt.setDisplayFormat("yyyy-MM-dd HH:mm")
             self._to_dt.setMinimumWidth(150)
-            self._to_dt.setToolTip(
-                "End of the trade window. Left alone it follows the clock, so new fills still show. Set it to pin."
-            )
+            set_description(self._to_dt, hts.TO_TOOLTIP)
             self._remember_to_bound()
             fl.addWidget(self._to_dt)
 
@@ -277,35 +276,36 @@ if _HAS_QT:
             self._exch_combo = QComboBox()
             self._exch_combo.addItem("(all)")
             self._exch_combo.setMinimumWidth(120)
+            set_description(self._exch_combo, hts.EXCHANGE_TOOLTIP)
             fl.addWidget(self._exch_combo)
 
             fl.addWidget(QLabel("Symbol:"))
             self._sym_combo = QComboBox()
             self._sym_combo.addItem("(all)")
             self._sym_combo.setMinimumWidth(120)
+            set_description(self._sym_combo, hts.SYMBOL_TOOLTIP)
             fl.addWidget(self._sym_combo)
 
             fl.addWidget(QLabel("Side:"))
             self._side_combo = QComboBox()
             self._side_combo.addItems(["(all)", "BUY", "SELL"])
+            set_description(self._side_combo, hts.SIDE_TOOLTIP)
             fl.addWidget(self._side_combo)
 
             fl.addStretch(1)
 
             self._apply_btn = QPushButton("Apply")
-            self._apply_btn.setToolTip("Apply current filters to the loaded history.")
+            set_description(self._apply_btn, hts.APPLY_TOOLTIP)
             self._apply_btn.clicked.connect(self._apply_filters)
             fl.addWidget(self._apply_btn)
 
             self._reset_btn = QPushButton("Reset")
-            self._reset_btn.setToolTip("Clear all filters and show full history.")
+            set_description(self._reset_btn, hts.RESET_TOOLTIP)
             self._reset_btn.clicked.connect(self._reset_filters)
             fl.addWidget(self._reset_btn)
 
             self._refresh_btn = QPushButton("Refresh")
-            self._refresh_btn.setToolTip(
-                "Pull fresh trade history from every active exchange."
-            )
+            set_description(self._refresh_btn, hts.REFRESH_TOOLTIP)
             self._refresh_btn.clicked.connect(self.refresh)
             fl.addWidget(self._refresh_btn)
 
@@ -324,6 +324,7 @@ if _HAS_QT:
             foot.setContentsMargins(0, 0, 0, 0)
 
             self._prev_btn = QPushButton("◀ Prev")
+            set_description(self._prev_btn, hts.PREV_TOOLTIP)
             self._prev_btn.clicked.connect(self._prev_page)
             foot.addWidget(self._prev_btn)
 
@@ -333,6 +334,7 @@ if _HAS_QT:
             foot.addWidget(self._page_label)
 
             self._next_btn = QPushButton("Next ▶")
+            set_description(self._next_btn, hts.NEXT_TOOLTIP)
             self._next_btn.clicked.connect(self._next_page)
             foot.addWidget(self._next_btn)
 
@@ -345,9 +347,7 @@ if _HAS_QT:
             foot.addWidget(self._progress)
 
             self._export_btn = QPushButton("Export CSV…")
-            self._export_btn.setToolTip(
-                "Export the currently-filtered history view to a CSV file."
-            )
+            set_description(self._export_btn, hts.EXPORT_TOOLTIP)
             self._export_btn.clicked.connect(self._export_csv)
             foot.addWidget(self._export_btn)
 

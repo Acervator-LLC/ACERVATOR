@@ -109,8 +109,13 @@ APPLY_STYLE = (
     f"color: {ds.TEXT_MUTED}; }}"
 )
 APPLY_ENABLED_AT_START = False
+APPLY_TOOLTIP = (
+    "Applies every pending change to this bot at once. It turns on once a "
+    "setting changes."
+)
 
 CLOSE_LABEL = "Close"
+CLOSE_TOOLTIP = "Closes this window. Changes you have not applied are dropped."
 CLOSE_STYLE = (
     f"QPushButton {{ background: {ds.CARD_METRIC_BORDER}; color: {ds.TEXT_INACTIVE}; "
     f"border: 1px solid {ds.MENU_BORDER}; border-radius: 6px; "
@@ -148,6 +153,25 @@ FOLD_CHROME_CONTROLS_PARAM = "controls"
 
 # One row per tab: its name, the mode that gets it, whether the window
 # wraps it in a scroller itself, and which side installs it.
+#: The name a screen reader announces for the Qt window.
+WINDOW_ACCESSIBLE_NAME = "Bot Settings Window"
+
+#: The description each tab of the window shows under the pointer, in both builds.
+TAB_TOOLTIPS = {
+    TAB_STATUS: "This bot's figures right now. Nothing here can be changed.",
+    TAB_SETTINGS: "Every setting this bot trades by. Change any, then press Apply Changes.",
+    TAB_FOLD_TRANCHES: "The buy-backs this bot queued after its sells, with their counters.",
+    TAB_STACK_TRANCHES: (
+        "The rising sell levels a Stack Mode scrum opened, with their counters."
+    ),
+    TAB_BOT_SWARM: "The wires that route profit between this bot and others.",
+    TAB_MARKET_INSPECTOR: "This bot's market as the Market Inspector's last scan read it.",
+    TAB_PHANTOM_BOTS: "This bot's higher-timeframe phantom bots and the locks they hold.",
+    TAB_POSITIONS_HELD: (
+        "The alt positions this Extractor holds, each with its own Manual Fire."
+    ),
+}
+
 TAB_PLAN = (
     (TAB_STATUS, ANY_MODE, True, INSTALLED_BY_WINDOW),
     (TAB_SETTINGS, ANY_MODE, True, INSTALLED_BY_WINDOW),
@@ -1045,6 +1069,9 @@ def build_view_model(model: BotLiveSettingsModel) -> dict:
         "next_label": NEXT_LABEL,
         "prev_tooltip": PREV_TOOLTIP,
         "next_tooltip": NEXT_TOOLTIP,
+        "apply_tooltip": APPLY_TOOLTIP,
+        "close_tooltip": CLOSE_TOOLTIP,
+        "tab_tooltips": dict(TAB_TOOLTIPS),
         "prev_step": PREV_STEP,
         "next_step": NEXT_STEP,
         "nav_shown": model.nav_shown,

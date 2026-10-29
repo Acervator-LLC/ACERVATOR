@@ -24,6 +24,7 @@ from __future__ import annotations
 from typing import Any, Optional
 
 from .. import design_system as ds
+from ..descriptions import TRADING_TAB_DESCRIPTIONS
 from ..color_alpha import rgba
 from . import asset_class_surface
 from .asset_class_surface import EQUITY_VENUES
@@ -95,6 +96,9 @@ PLACEHOLDER_CARD_MIN_SIZE_PX = [280, 140]
 PLACEHOLDER_ADD_MIN_SIZE_PX = [180, 36]
 PLACEHOLDER_SPACING_PX = 12
 PLACEHOLDER_TAB_TITLE = "Get Started"
+PLACEHOLDER_TAB_TOOLTIP = (
+    "Shown until this class has an exchange. The button on it adds the first one."
+)
 
 PLACEHOLDER_CARD_BORDER_ALPHA = 68
 
@@ -152,22 +156,13 @@ ACTIVITY_PAUSE_STYLE = TOGGLE_BASE_STYLE + (
 
 API_PAUSE_STYLE = TOGGLE_BASE_STYLE
 
-ACTIVITY_PAUSE_TOOLTIP = (
-    "Pause the Activity Log spool so errors don't scroll "
-    "off-screen. Messages received while paused are "
-    "buffered (cap 2000) and flushed on resume in "
-    "chronological order."
-)
-API_PAUSE_TOOLTIP = (
-    "Freeze the API Interaction Log so you can capture an "
-    "error without it scrolling away. Internal events keep "
-    "happening; the buffer just stops appending to the view."
-)
+ACTIVITY_PAUSE_TOOLTIP = TRADING_TAB_DESCRIPTIONS["activity_pause_btn"]
+API_PAUSE_TOOLTIP = TRADING_TAB_DESCRIPTIONS["api_pause_btn"]
 
 STATUS_LOG_MAX_HEIGHT_PX = 16777215
 
 API_LOG_PLACEHOLDER = "API calls, responses, timing, data usage..."
-API_LOG_TOOLTIP = "Every API call: endpoint, reason, result, timing, data usage"
+API_LOG_TOOLTIP = TRADING_TAB_DESCRIPTIONS["api_log_view"]
 API_LOG_MAX_BLOCKS = 2000
 API_LOG_TAB_INDEX = 0
 API_PAUSE_BUFFER_CAP = 2000
@@ -295,6 +290,16 @@ def layer_named(key: Any) -> str:
     return name if name in layer_order() else ALIAS_LAYER
 
 
+VENUE_TAB_TOOLTIP_FORMAT = (
+    "The {name} venue: its bots, their commands and its data pool line."
+)
+
+
+def venue_tab_tooltip(name: Any) -> str:
+    """The description one venue's tab carries, naming the venue ``name``."""
+    return VENUE_TAB_TOOLTIP_FORMAT.format(name=name)
+
+
 def layer_card(key: Any, exchanges: Any = None, current: Any = None) -> dict:
     """One trading layer: its page, tab widget, add button and empty state.
 
@@ -339,6 +344,7 @@ def layer_card(key: Any, exchanges: Any = None, current: Any = None) -> dict:
             },
             "add_button": {
                 "text": asset_class_surface.add_exchange_label(name),
+                "tooltip": asset_class_surface.add_exchange_tooltip(name),
                 "enabled": asset_class_surface.add_exchange_enabled(name),
                 "minimum_size_px": list(PLACEHOLDER_ADD_MIN_SIZE_PX),
                 "style_sheet": placeholder_add_style(accent),
@@ -351,6 +357,10 @@ def layer_card(key: Any, exchanges: Any = None, current: Any = None) -> dict:
             },
         },
         "exchange_tabs": tabs,
+        "exchange_tab_tooltips": {
+            exchange_id: venue_tab_tooltip(caption)
+            for exchange_id, caption in tabs.items()
+        },
         "current_exchange": on_show,
         "placeholder_shown": not order,
     }

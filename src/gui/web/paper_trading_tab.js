@@ -65,6 +65,7 @@
   var ACCESSIBLE_NAME = "accessible_name";
   var PLACEHOLDER = "placeholder";
   var EXCHANGE_TABS = "exchange_tabs";
+  var EXCHANGE_TAB_TOOLTIPS = "exchange_tab_tooltips";
   var CURRENT_EXCHANGE = "current_exchange";
   var PLACEHOLDER_SHOWN = "placeholder_shown";
   var TEXT = "text";
@@ -903,6 +904,7 @@
     buttonProps[EXCHANGE_ATTR] = props.exchangeId;
     buttonProps[CURRENT_ATTR] = text(props.current);
     buttonProps[ARIA_LABEL] = label(props.caption);
+    buttonProps.title = label(props.tooltip);
     return element(BUTTON_TAG, buttonProps, text(props.caption));
   }
 
@@ -969,6 +971,7 @@
             layerKey: text(layer[KEY]),
             exchangeId: one,
             caption: text(tabs[one]),
+            tooltip: objectField(layer, EXCHANGE_TAB_TOOLTIPS)[one],
             current: one === onShow
           });
         });

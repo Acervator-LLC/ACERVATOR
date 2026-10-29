@@ -140,12 +140,9 @@ MODE_TIP_FORMAT = (
 )
 
 LIQUID_TIP_FORMAT = (
-    "Extractor pool: {pool_color_name}\n"
-    "  • {n_positions} position(s) open\n"
-    "  • {n_drawdown} in drawdown\n"
-    "  • {base_currency} base currency\n"
-    "  • {chunk_free_base:.8f} {base_currency} free ({free_usd:.2f} USD)\n"
-    "  • {deployed_base:.8f} {base_currency} deployed ({deployed_usd:.2f} USD)"
+    "Pool {pool_color_name}: {n_positions} open, {n_drawdown} in drawdown. "
+    "{chunk_free_base:.8f} {base_currency} free (${free_usd:.2f}); "
+    "{deployed_base:.8f} deployed (${deployed_usd:.2f})."
 )
 
 FIRE_LABEL = "Fire"

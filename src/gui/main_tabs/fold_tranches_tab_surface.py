@@ -32,6 +32,7 @@ from typing import Any, Optional
 
 from ...trading.container.config import DESPAWN_MAX_DAYS, DESPAWN_PREVIEW_WINDOWS
 from ...trading.otd_math import fold_rebuy_factor_from_pct, fold_rebuy_price
+from ..descriptions import FOLD_TRANCHES_TAB_DESCRIPTIONS
 
 METHOD = "fold_tranches_tab.state"
 
@@ -161,23 +162,9 @@ MIN_REBUY_TOOLTIP_FORMAT = (
     "A guide, not a trigger: sell ref ${ref:.8f} less "
     "{otd_pct:.2f}% is ${guide:.8f}. A fold-back still needs TA."
 )
-STATUS_TOOLTIP = (
-    "Price-gate status only (OTD threshold per tranche). Actual "
-    "fold-back additionally requires TA validation in the GEP (bearish "
-    "+ midline + lower-DT) AND the bot's position must be below its "
-    "smart ceiling. 'Price-OK' means the per-tranche OTD gate would "
-    "pass IF TA confirms this tick AND the position has not saturated."
-)
-FIRE_BUTTON_TOOLTIP = (
-    "Operator-initiated fold-back of THIS tranche. Bypasses TA / OTD / "
-    "Target-Delta gates. Smart Ceiling + fail-closed buy safety still "
-    "apply. Bot must be RUNNING."
-)
-ARBITER_NOT_APPLICABLE_TOOLTIP = (
-    "Arbiter applies to Extractor Tranches only. This is one of this "
-    "bot's own fold tranches — no child holds it, and its Fire "
-    "button is how you close it."
-)
+STATUS_TOOLTIP = FOLD_TRANCHES_TAB_DESCRIPTIONS["si_status"]
+FIRE_BUTTON_TOOLTIP = FOLD_TRANCHES_TAB_DESCRIPTIONS["fire_btn"]
+ARBITER_NOT_APPLICABLE_TOOLTIP = FOLD_TRANCHES_TAB_DESCRIPTIONS["arb_na"]
 
 SOURCE_MANUAL_SCRUM = "manual scrum"
 SOURCE_AUTO_REBALANCE = "auto rebalance"
@@ -186,24 +173,16 @@ OPERATOR_INITIATED_KEY = "operator_initiated"
 
 SOURCE_TOOLTIPS = {
     SOURCE_MANUAL_SCRUM: (
-        "An operator-pressed Manual Fire created this tranche. That "
-        "button runs a rebalance; its SELL leg is a manual SCRUM, and "
-        "a scrum is what queues a fold tranche.\n\n"
-        "Stored as operator_initiated = true."
+        "Made by a Manual Fire press: its sell leg is a manual scrum, which queues "
+        "a fold tranche."
     ),
     SOURCE_AUTO_REBALANCE: (
-        "An AUTONOMOUS rebalance created this tranche: Wire Stack Fire "
-        "or Max Cartridge Fire. The bot fired it, not the operator.\n\n"
-        "Stored as operator_initiated = false. Which of the two fired "
-        "is NOT stored on the tranche, so this panel does not name "
-        "it; the trade log carries WIRE_STACK_SCRUM or "
-        "CARTRIDGE_SCRUM for the sale itself."
+        "Made by an automatic rebalance, a Wire Stack or Max Cartridge Fire. The "
+        "trade log names which."
     ),
     SOURCE_AUTO_SCRUM: (
-        "The ordinary scrum cycle created this tranche, or the DIST "
-        "re-fold that follows a distribution sell.\n\n"
-        "Those two paths store no operator_initiated key at all, and "
-        "that absence is what this label reads."
+        "Made by the ordinary scrum cycle, or by the DIST re-fold after a "
+        "distribution sell."
     ),
 }
 
@@ -212,25 +191,8 @@ ARBITER_SIBLING = "sibling"
 ARBITER_LABELS = {ARBITER_PARENT: "Parent", ARBITER_SIBLING: "Sibling"}
 ARBITER_FALLBACK = ARBITER_SIBLING
 ARBITER_TOOLTIP_FORMAT = (
-    "ARBITER: {label} — who may close THIS Extractor Tranche.\n"
-    "\n"
-    "Parent — the base-currency Scrumming Bot force-sells this "
-    "tranche at x% of growth.\n"
-    "Sibling — the Extractor does all the work and the parent "
-    "stands back.\n"
-    "\n"
-    "RECORDS A DECISION, MOVES NO MONEY. Clicking this places no "
-    "order, cancels none, and changes no balance or Target "
-    "Balance. It writes one value on this tranche and nothing "
-    "else.\n"
-    "\n"
-    "NOT YET ACTED ON. The parent force-sell that 'Parent' names "
-    "is not built, so today a Parent tranche behaves exactly like "
-    "a Sibling one. The value is stored and survives a restart, "
-    "ready for the unit that builds it.\n"
-    "\n"
-    "Per tranche, not per bot. Every Extractor Tranche carries its "
-    "own Arbiter."
+    "Arbiter {label}: who may close this Extractor Tranche. Recorded only; Parent "
+    "acts as Sibling today."
 )
 
 OPEN_COUNT_ROW = "Open tranches:"
@@ -251,11 +213,8 @@ CYCLE_CAP_ROW = "Fold budget this cycle:"
 
 OPEN_COUNT_TOOLTIP = "Fold tranches this bot holds in its queue now."
 SCRUM_SELLS_TOOLTIP = (
-    "Standing tranches against the sells that opened them.\n\n"
-    "The queue may never hold more tranches than the sells that "
-    "opened them, outside a strong trend. A strong trend lifts the "
-    "bound and lets one sell keep its per-lot rows, so standing "
-    "above sells is only expected then."
+    "Standing tranches against the sells that opened them. Standing above sells is "
+    "expected only in a strong trend."
 )
 PARKED_USD_TOOLTIP = "Total cash parked by every open fold tranche."
 OLDEST_AGE_TOOLTIP = "Age of the oldest tranche in this queue."
@@ -266,10 +225,8 @@ CYCLE_CAP_TOOLTIP = "Growth cash one fold cycle may spend, and spent."
 OPENED_TOOLTIP = "Fold tranches this bot ever opened, less merged ones."
 CLOSED_TOOLTIP = "Fold tranches that folded back and bought the asset."
 CLOSE_RATIO_TOOLTIP = (
-    "Share of opened tranches that folded back, discards excluded.\n\n"
-    "A dash means the three counters leave no share to work out: more "
-    "tranches closed than the opened count still admits, because a "
-    "merge lowers the opened count while the discarded count holds."
+    "Share of opened tranches that folded back, discards excluded. A dash means the "
+    "counters leave no share to work out."
 )
 DISCARDED_TOOLTIP = "Fold tranches removed without folding back, lifetime total."
 COUNTERS_RESET_TOOLTIP = "When an operator last set these four counters to zero."
@@ -326,20 +283,8 @@ DESPAWN_AGELESS_FORMAT = "{count} kept (no timestamp)"
 SECONDS_PER_DAY = 86400.0
 
 DESPAWN_ROW_TOOLTIP = (
-    "DESPAWN removes a tranche once it reaches this age.\n\n"
-    "The control is on the Settings tab, under Advanced -\n"
-    "Tranche Despawn Timer. 0 is Off and is the default.\n\n"
-    "IT IS NOT A TRADE. No order is placed or cancelled and no\n"
-    "balance moves. The scrum sale already happened, so the\n"
-    "dollars are already in the wallet; the record is only this\n"
-    "bot's queued intent to buy those units back. Removing it\n"
-    "returns that money to ordinary spendable balance and drops\n"
-    "the original-cost provenance the record carried.\n\n"
-    "A tranche with no timestamp is NEVER removed. A stack\n"
-    "tranche holding a resting exchange order is kept until that\n"
-    "order settles.\n\n"
-    "MERGE, DESPAWN and CLEAR are the only three things that\n"
-    "collapse or remove a tranche."
+    "DESPAWN removes a tranche at this age. It is not a trade. Set it on Settings, "
+    "under Advanced."
 )
 
 SORT_QUEUE_ORDER = "Queue order"
@@ -372,26 +317,9 @@ CLEAR_WIRE_TEXT_FORMAT = "Clear ${parked:,.2f} Wire Credits"
 CLEAR_COUNTERS_IDLE_TEXT = "Clear Lifetime Counters"
 CLEAR_COUNTERS_TEXT_FORMAT = "Clear Lifetime Counters ({opened} opened)"
 
-CLEAR_FOLD_TOOLTIP = (
-    "Discard every queued fold tranche for this bot.\n\n"
-    "Places NO order. Holdings, cost basis and target balance "
-    "are untouched — only the queued intent to buy back is "
-    "discarded. New tranches are created by the next SCRUM."
-)
-CLEAR_WIRE_TOOLTIP = (
-    "Discard this bot's parked Smart Wire credits.\n\n"
-    "Releases an EARMARK only. No order is placed and no "
-    "funds move — all bots share one exchange wallet, so the "
-    "cash simply returns to ordinary spendable balance."
-)
-CLEAR_COUNTERS_TOOLTIP = (
-    "Set this bot's four fold-tranche lifetime counters to "
-    "zero.\n\n"
-    "Places NO order and removes NO tranche. Open tranches, "
-    "parked wire credits, holdings, cost basis and target "
-    "balance are all untouched - this clears the record of "
-    "what happened, not what the bot holds."
-)
+CLEAR_FOLD_TOOLTIP = FOLD_TRANCHES_TAB_DESCRIPTIONS["clear_btn"]
+CLEAR_WIRE_TOOLTIP = FOLD_TRANCHES_TAB_DESCRIPTIONS["wire_btn"]
+CLEAR_COUNTERS_TOOLTIP = FOLD_TRANCHES_TAB_DESCRIPTIONS["counters_btn"]
 
 DANGER_BUTTON_STYLE = (
     f"QPushButton {{ background: {DANGER_SURFACE_HEX}; "
