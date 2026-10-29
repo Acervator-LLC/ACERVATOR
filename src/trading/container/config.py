@@ -213,6 +213,11 @@ class BotConfig:
     fold_require_ta_bearish: bool = True  # Requires is_bearish for auto-fold
     fold_defer_to_htf: bool = True  # Refuses fold when higher-TF phantom is BEARISH
 
+    # Floor skew each idle candle off target adds; 0.0 is off.
+    hunger_gain_per_candle: float = 0.0
+    # The most hunger_gain_per_candle may add to the floor skew.
+    hunger_skew_max: float = 0.20
+
     visibility: str = "orderbook"  # "orderbook" or "internal"
     # Forces engine-initiated trades to execute as IOC-limit taker orders;
     # Manual Fire is unaffected.
@@ -435,6 +440,9 @@ _BOT_CONFIG_SCRUMMING_ONLY_FIELDS: frozenset = frozenset(
         "scrum_defer_to_htf",
         "fold_require_ta_bearish",
         "fold_defer_to_htf",
+        # ScrummingBot.tick alone counts idle candles into its floor skew.
+        "hunger_gain_per_candle",
+        "hunger_skew_max",
         # risk-control fields
         "position_ceiling_enabled",
         "position_ceiling_multiple",
