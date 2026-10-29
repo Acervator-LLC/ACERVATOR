@@ -501,6 +501,19 @@ OVERTAKEN, the same block: the rule ran only where the venue published no
 asset-sector list of its own. It now runs wherever that list names no sector
 for the market, and the venue's own word still wins wherever it names one.
 
+OVERTAKEN, the eight steps above: one rule now runs after all of them. A
+contract market whose answer reads Crypto records under Futures / Perps.
+`src/exchange/ccxt_connector.py, in market_asset_class` passes every contract
+through `src/trading/ata_spm.py, in contract_class`, so a venue table can no
+longer file a contract under Crypto. Each broker connector that files a future
+by its family passes that family's sector through the same rule.
+
+```python
+# src/exchange/ccxt_connector.py, in market_asset_class
+    named = record_class(market, published, venue)
+    return contract_class(named) if is_contract_market(market) else named
+```
+
 ### The two spot rules, checkable against a recorded row
 
 A tokenised fiat pair and a tokenised metal arrive as ordinary spot products.

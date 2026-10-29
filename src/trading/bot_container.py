@@ -211,11 +211,13 @@ class BotContainer:
     def _asset_class(self, symbol: str) -> str:
         """The sector this bot trades ``symbol`` under, cached for the
         container's life: the class ``market_rules_store`` recorded for the
-        pair on this bot's venue, else ``config.asset_class``.
+        pair on this bot's venue, else ``config.asset_class``, else
+        ``CLASS_CRYPTO``.
 
-        ``CLASS_CRYPTO`` where the recording holds no class for the pair, where
-        it could not be read at all, and where the config names no sector.
+        A ``symbol`` that ``is_contract`` holds passes through ``contract_class``.
         """
+        from ..exchange.market_rules_store import is_contract
+        from .ata_spm import contract_class
         from .scrumming.sizing import CLASS_CRYPTO
 
         held = self._asset_class_cache.get(symbol)
@@ -235,8 +237,30 @@ class BotContainer:
             )
         declared = str(getattr(self.config, "asset_class", "") or "")
         resolved = named or declared or CLASS_CRYPTO
+        if is_contract(symbol):
+            resolved = contract_class(resolved)
         self._asset_class_cache[symbol] = resolved
         return resolved
+
+    def market_expires(self) -> bool:
+        """True while ``MarketRules.expires`` holds for ``config.symbol``: the rules
+        ``_get_market_rules`` cached, else the row ``recorded_rules`` holds."""
+        symbol = self.config.symbol
+        rules = self._market_rules_cache.get(symbol)
+        if rules is None:
+            try:
+                from ..exchange.market_rules_store import recorded_rules
+
+                rules = recorded_rules(self.config.exchange_id, symbol)
+            except Exception as exc:
+                logger.debug(
+                    "Bot %s could not read the recorded rules for %s: %s",
+                    self.bot_id,
+                    symbol,
+                    exc,
+                )
+                return False
+        return bool(getattr(rules, "expires", False))
 
     # OVERTAKEN, every ``CLASS_CRYPTO`` below: ``_asset_class`` answers the
     # class the recording holds for the symbol, then the class the bot declares.

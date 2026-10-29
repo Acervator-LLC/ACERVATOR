@@ -296,11 +296,11 @@ TOOLTIPS = {
     "deto_enabled": "Monitor a higher TF for BULLISH + high-confidence signal. Edge-triggered: fires ONCE per transition into bullish state.\nOn trigger: MARKET sell everything above the anchor, then reset target_balance to anchor ('lock in' gains, re-accumulate from scratch).\nRate-limited to 1 check/hour.\nAdditional gate: fires only when current value is above the anchor — no harvest if the bot is below its initial anchor.",
     "deto_tf": "Timeframe to monitor for bullish detonation signal. 1D = daily, 1W = weekly. Higher = stronger conviction, fewer triggers.",
     "deto_conf": "Minimum TA consensus confidence for detonation. Default 0.75 — high conviction only.",
-    "expiry_action": "What this bot does as a dated contract nears its end.\nFinish the sell ladder: stop buying this contract and let the open sell levels run to their end.\nSell the whole position: one order for everything still held.",
-    "expiry_lead_mode": "How the lead time is written.\nShare of the contract's life: a fraction of the days left when the bot started, so one setting covers contracts days apart and years apart.\nA number of days: the Lead Days figure below.",
-    "expiry_lead_fraction": "Share of the contract's remaining life measured when the bot started. 0 is off.\nAt 0.20, a contract with 12 days left at start closes 2.4 days out, and one with 264 days left closes 53 days out.",
-    "expiry_lead_days": "Days before expiry the close fires. Read only in A number of days mode. 0 is off.",
-    "expiry_horizon": "A contract expiring beyond this many days counts as non-expiring and gets no close at all. 0 turns every close off.\nThe venue publishes contracts dated 2030 and 2089; 365 days leaves both of those alone and still covers every dated month.",
+    "expiry_action": "What this bot does as its dated contract nears expiry: finish the sell ladder, or sell the whole position.",
+    "expiry_lead_mode": "How the lead time is set: a share of the contract's life at start, or a number of days.",
+    "expiry_lead_fraction": "Share of the contract's remaining life, measured at bot start, at which the close acts. 0 is off.",
+    "expiry_lead_days": "Days before expiry the close acts. Read only in the number-of-days mode. 0 is off.",
+    "expiry_horizon": "A contract expiring later than this many days counts as non-expiring and gets no close. 0 turns it off.",
     "gate_scrum_ta": "ON (Conservative): scrum auto-fire requires TA consensus BULLISH. Protects against scrumming false tops. OFF (Lean): scrum fires at BB-upper + delta regardless of TA.",
     "gate_scrum_uptrend": "ON (Conservative): if 65 %+ of last 20 candles were bullish, bot holds rather than scrumming each band touch. OFF (Lean): scrum every BB-upper touch regardless of trend strength. On a live bot an override clears this hold on either of two conditions: the position sits at least twice the Scrumming Interval away from target, or Band Travel fires. The gate line then names TRND as overridden and its light paints cyan.",
     "gate_scrum_htf": "ON (Conservative): refuse scrum when a higher-TF phantom signals BULLISH. OFF (Lean): cartridge captures HTF swings organically; this gate is redundant if Smart Cartridge is ON.",
@@ -1227,6 +1227,23 @@ CONTROL_SPECS = (
 CONTROL_NAMES = tuple(spec["name"] for spec in CONTROL_SPECS)
 EXTRACTOR_ONLY_GROUPS = (EXTRACTOR_GROUP,)
 
+#: The Risk Controls rows ``build`` and ``SettingsTabMixin`` draw only while
+#: ``bot_market_expires`` answers True.
+EXPIRY_CONTROL_NAMES = (
+    "expiry_action",
+    "expiry_lead_mode",
+    "expiry_lead_fraction",
+    "expiry_lead_days",
+    "expiry_horizon",
+)
+
+
+def bot_market_expires(bot: Any) -> bool:
+    """True while ``bot`` answers ``market_expires`` with True, and False for a
+    ``bot`` carrying no such method."""
+    asked = getattr(bot, "market_expires", None)
+    return bool(asked()) if callable(asked) else False
+
 
 def reading_kinds() -> dict:
     """How each numeric control admits the value stored for it.
@@ -1463,9 +1480,11 @@ class BotSource:
         has_reset: bool = True,
         reset_applied: Any = None,
         reset_raises: Optional[BaseException] = None,
+        expires: bool = False,
     ) -> None:
         self.config = config if config is not None else BotConfigSource()
         self.bot_id = bot_id
+        self._expires = bool(expires)
         if symbol is not None:
             self.config.symbol = symbol
         setattr(self, LIVE_TARGET_ATTRIBUTE, live_target)
@@ -1482,6 +1501,10 @@ class BotSource:
             self.self_destruct = self._self_destruct
         if has_reset:
             self.reset_circuit_breaker = self._reset_circuit_breaker
+
+    def market_expires(self) -> bool:
+        """The ``expires`` flag this bot was built with."""
+        return self._expires
 
     def _self_destruct(self, confirmation_token: Any = None) -> Any:
         self.destruct_phrases.append(confirmation_token)
@@ -1555,10 +1578,14 @@ class LiveSettingsTabModel:
     def _config(self) -> Any:
         return getattr(self.bot, "config", None)
 
-    def _shows(self, spec: dict, is_scrumming: bool, is_extractor: bool) -> bool:
+    def _shows(
+        self, spec: dict, is_scrumming: bool, is_extractor: bool, expires: bool
+    ) -> bool:
         if spec.get("scrumming_only") and not is_scrumming:
             return False
         if spec["group"] == EXTRACTOR_GROUP and not is_extractor:
+            return False
+        if spec["name"] in EXPIRY_CONTROL_NAMES and not expires:
             return False
         return True
 
@@ -1653,6 +1680,7 @@ class LiveSettingsTabModel:
         mode = getattr(config, "mode").value
         is_scrumming = mode == SCRUMMING_MODE
         is_extractor = mode == EXTRACTOR_MODE
+        expires = bot_market_expires(self.bot)
         self.calls.append([BUILD_INFO, INFO_TEXT])
 
         self._add_group(MODE_GROUP, MODE_GROUP_TITLE)
@@ -1669,7 +1697,7 @@ class LiveSettingsTabModel:
         for spec in CONTROL_SPECS:
             if spec["group"] != SCRUM_GROUP:
                 continue
-            if not self._shows(spec, is_scrumming, is_extractor):
+            if not self._shows(spec, is_scrumming, is_extractor, expires):
                 continue
             if spec["name"] == "max_entry_px":
                 self._add_read_only_rows(config)
@@ -1704,7 +1732,9 @@ class LiveSettingsTabModel:
         self._add_group(RISK_GROUP, RISK_GROUP_TITLE)
         self._add_form()
         for spec in CONTROL_SPECS:
-            if spec["group"] == RISK_GROUP:
+            if spec["group"] != RISK_GROUP:
+                continue
+            if self._shows(spec, is_scrumming, is_extractor, expires):
                 self._add_control(config, spec)
 
         self._add_group(GATES_GROUP, GATES_GROUP_TITLE)
@@ -2156,6 +2186,7 @@ def view_model(params: dict) -> dict:
             has_self_destruct=bot.get("has_self_destruct", True),
             has_reset=bot.get("has_reset", True),
             reset_applied=bot.get("reset_applied"),
+            expires=bot.get("market_expires", False),
         )
     scout = params.get("scout")
     if scout is not None:

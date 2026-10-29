@@ -1594,6 +1594,41 @@ rolls a position into another contract.
             return
 ```
 
+### The expiry controls draw only for a contract the venue expires
+
+The Settings page draws the five expiry controls only for a bot whose market the
+venue expires on a date: Expiry Close, Expiry Lead Mode, Lead Fraction, Lead
+Days and Expiry Horizon. A standard Scrumming bot trades a spot market, so its
+Settings page shows none of them in either build.
+
+`src/gui/main_tabs/live_settings_tab_surface.py, in bot_market_expires` decides
+for the Qt page and the React page. It asks
+`src/trading/bot_container.py, in BotContainer.market_expires`, which reads the
+bot's own market rules and then the recording.
+
+```python
+# src/gui/main_tabs/live_settings_tab_surface.py, in bot_market_expires
+    asked = getattr(bot, "market_expires", None)
+    return bool(asked()) if callable(asked) else False
+```
+
+The engine reads none of the five settings on a market with no expiry.
+`src/trading/container/config.py, in expiry_close_decision` asks
+`MarketRules.expires` first and returns before it reads a setting. The tick and
+the order path reach the settings through that function alone.
+
+```python
+# src/trading/container/config.py, in expiry_close_decision
+    if rules is None or not getattr(rules, "expires", False):
+        return answer
+    answer["action"] = expiry_close_action(config)
+    answer["mode"] = expiry_lead_mode(config)
+    answer["horizon_days"] = expiry_horizon_days(config)
+```
+
+The five settings stay on `BotConfig`. A saved bot that holds them still loads
+with its figures, and a spot bot acts on none of them.
+
 ### A fold waits while the venue holds the cash
 
 A sale whose cash the venue has not handed over has not returned its money, and
@@ -6313,6 +6348,13 @@ dollar" — and `crypto` on every other.
 The nine remaining currency markets are `EUR/USD`, its perpetual, `GBP/USD`,
 `SGD/USD`, `USDC/EUR`, `USDT/EUR`, `EURC/USDC`, `XSGD/USD` and `XSGD/USDT`.
 
+The last row of the table above is overtaken, and the row is kept as written.
+That perpetual now records under futures_perps.
+`src/exchange/ccxt_connector.py, in market_asset_class` passes every contract
+market through `src/trading/ata_spm.py, in contract_class`, which files a
+contract whose sector reads crypto under futures_perps. A standard Scrumming bot
+trades crypto, so no contract reaches one.
+
 ### A United States account reaches the spot markets and none of the perpetuals
 
 Spot, in the venue's own words:
@@ -7388,6 +7430,13 @@ declares, and the page's own headline reads "Access to over 65 currency pairs".
 - **forex** — 70 spot pairs beside 8 contracts: `/E7`, `/J7`, `/M6E`, `/M6A`, `/MCD`, `/M6B`, `/MSF` and `/DX`.
 - **futures and perpetuals** — all 139 contracts, every one dated. Schwab lists no perpetual: the word names none of the 139 rows.
 
+The crypto entry above is overtaken, and it is kept as written. Those eight
+contracts now record under futures_perps:
+`src/stocks/schwab_connector.py, in asset_sector` passes the family's sector
+through `src/trading/ata_spm.py, in contract_class`. No Schwab market records
+under crypto now, because its spot crypto sits in an account no interface
+reaches.
+
 ### The size unit, and the two the venue offers
 
 Schwab publishes two size units on its equity order and names both: "Place
@@ -7880,6 +7929,11 @@ FUTURES_FAMILY_SECTORS` maps eight of them.
 | Fixed Income, Interest Rates | no sector this platform draws |
 | E-mini and Micro E-mini Futures | a size family whose products repeat a product in another family |
 
+The Cryptocurrency row above is overtaken, and the row is kept as written. A
+contract on that family now records under futures_perps:
+`src/stocks/ibkr_connector.py, in asset_sector` passes the family's sector
+through `src/trading/ata_spm.py, in contract_class`.
+
 **No perpetual.** The word names **0** of the 13 ibkr pages read, where
 "futures" names 265, "currency" 137, "gold" 72 and "index" 24. So futures_perps
 is dated contracts alone, which is what schwab reads too.
@@ -8214,6 +8268,11 @@ platform draws. `src/stocks/tastytrade_connector.py, in FUTURES_PRODUCT_SECTORS`
 holds the 57 codes whose family names one, and
 `in MARKET_SECTOR_SECTORS` reads the record's own `market-sector` field ahead of
 them.
+
+The Cryptocurrency row and the crypto count above are overtaken, and both are
+kept as written. Those five contracts now record under futures_perps:
+`src/stocks/tastytrade_connector.py, in futures_sector` passes each answer
+through `src/trading/ata_spm.py, in contract_class`.
 
 **No perpetual.** The word names **0** of the 29 venue files read, where
 "futures" names 725, "currency" 327, "crypto" 325 and "fractional" 55, and an

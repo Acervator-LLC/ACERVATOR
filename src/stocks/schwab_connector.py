@@ -140,9 +140,10 @@ def asset_sector(asset: Any) -> Optional[str]:
 
     ``venue_market_sector`` is read first and ``venue_base_sector`` second, the
     precedence ``ccxt_connector.market_asset_class`` takes, then the record's own
-    ``family`` through ``FUTURES_FAMILY_SECTORS``, then ``currency_pair_symbol``
-    and ``BARE_SYMBOL_SECTOR``.
+    ``family`` through ``FUTURES_FAMILY_SECTORS`` and ``contract_class``, then
+    ``currency_pair_symbol`` and ``BARE_SYMBOL_SECTOR``.
     """
+    from ..trading.ata_spm import contract_class
     from ..trading.scrumming.sizing import venue_base_sector, venue_market_sector
 
     if not isinstance(asset, dict):
@@ -157,7 +158,7 @@ def asset_sector(asset: Any) -> Optional[str]:
         return str(cited)
     family = FUTURES_FAMILY_SECTORS.get(str(asset.get("family") or "").strip().lower())
     if family:
-        return family
+        return contract_class(family)
     if currency_pair_symbol(symbol):
         return "forex"
     if futures_symbol(symbol) or not symbol:
