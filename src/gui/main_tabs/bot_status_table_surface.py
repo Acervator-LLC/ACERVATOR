@@ -41,6 +41,7 @@ from ...core.safe_url import NO_ADDRESS_REASON, openable_url
 from ...exchange.crypto_assets import AssetManager
 from ...exchange.exchange_chart_urls import chart_url
 from ...trading.ata_asset_maps import organisation_page
+from ...trading.container.config import DETONATION_CONFIDENCE_MIN_DEFAULT
 from ...trading.target_bands import (
     ammo_target,
     ammo_units,
@@ -462,7 +463,7 @@ FOLD_TAPER_FIELD = "fold_size_taper"
 FOLD_TAPER_FIELD_RETIRED = "fold_rate_taper"
 DEFAULT_FOLD_TAPER = 1.0
 DEFAULT_DETONATION_TIMEFRAME = "1d"
-DEFAULT_DETONATION_CONFIDENCE = 0.75
+DEFAULT_DETONATION_CONFIDENCE = DETONATION_CONFIDENCE_MIN_DEFAULT
 DEFAULT_QUOTE_TO_USD = 1.0
 NO_TARGET_VALUE = 0.0
 NO_PRICE = 0.0
