@@ -19,7 +19,15 @@ from contextlib import contextmanager
 from dataclasses import asdict
 from typing import TYPE_CHECKING, Any, Callable, Iterator, Optional, Sequence
 
-from ..core.emit_contracts import CONTRACTS, EmitContract, EmitObserver
+from ..core.emit_contracts import (
+    CONTRACTS,
+    FILL_BUY,
+    FILL_SELL,
+    FILL_TOPIC,
+    EmitContract,
+    EmitObserver,
+    SettledFill,
+)
 from ..core.event_bus import EventBus
 from ..core.log_paths import gate_log_files, get_sim_dir
 from ..core.logging_engine import LogManager
@@ -40,7 +48,7 @@ if TYPE_CHECKING:
     from .fleet_source import SimBot
 
 GATE_TOPIC = "bot.gate_decision"
-TRADE_TOPIC = "trade.filled"
+TRADE_TOPIC = FILL_TOPIC
 VOTING_TOPIC = "bot.voting_panel_snapshot"
 BOT_LOG_TOPIC = "bot.log"
 
@@ -415,32 +423,32 @@ class RunEmitter:
         )
 
     def trade_filled(self, trade: SimTrade, exchange: str = "") -> None:
-        """Emit ``TRADE_TOPIC`` for ``trade`` on ``exchange`` with the fields
-        the scrum and fold fire sites put in the event: ``side``, ``type``,
-        ``price``, ``amount``, ``size``, ``profit`` and ``fee_usd``."""
+        """Emit ``TRADE_TOPIC`` for ``trade`` on ``exchange`` as the ``SettledFill`` a
+        live scrum or fold announces, with the run's ``stamp`` beside it.
+
+        ``usd`` is a scrum's proceeds after ``fee_usd``, or a fold's spend."""
         from ..trading.scrumming.sizing import sale_proceeds_usd
         from .back_test import SCRUM
 
         is_scrum = trade.side == SCRUM
-        self._send(
-            TRADE_TOPIC,
-            bot_id=trade.bot_id,
-            exchange=str(exchange or ""),
-            symbol=trade.symbol,
-            side=SCRUM_SIDE if is_scrum else FOLD_SIDE,
+        fill = SettledFill(
+            bot_id=str(trade.bot_id),
+            side=FILL_SELL if is_scrum else FILL_BUY,
             type=SCRUM_ACTION if is_scrum else FOLD_ACTION,
-            price=float(trade.price),
             amount=float(trade.units),
-            size=(
+            price=float(trade.price),
+            usd=(
                 sale_proceeds_usd(float(trade.usd), float(trade.fee_usd))
                 if is_scrum
                 else float(trade.usd)
             ),
-            profit=0,
-            fee_usd=float(trade.fee_usd),
+            profit=0.0,
             operator_initiated=False,
-            **self.stamp(trade.ts_ms),
+            symbol=str(trade.symbol),
+            exchange=str(exchange or ""),
+            fee_usd=float(trade.fee_usd),
         )
+        self._send(TRADE_TOPIC, **fill.payload(), **self.stamp(trade.ts_ms))
 
     def voting_snapshot(
         self,

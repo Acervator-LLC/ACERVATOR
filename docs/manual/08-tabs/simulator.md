@@ -6288,6 +6288,20 @@ written under no contract and the observer does not read it. Live's trade
 rows carry an empty exchange, because the live fire sites pass none; the
 Simulator's carry the bot's exchange in that field.
 
+**The current reading, 2026-10-29.** Live's trade rows now carry the bot's
+exchange too, because every Live fill is sent in one shape that names it. The
+Simulator's emitter builds that same shape, so its dollar figure arrives as
+`usd`, the name the trade log reads. One scrum of 1.25 units at $100 with a
+$0.75 fee wrote $125.00 to the trade log on the commit before this change, the
+units times the price, and writes $124.25 now. A fold row wrote $123.50 on both.
+
+`src/simulator/sim_bus.py, in RunEmitter.trade_filled` — the one shape, with the
+run's stamp beside it
+
+```python
+        self._send(TRADE_TOPIC, **fill.payload(), **self.stamp(trade.ts_ms))
+```
+
 ### What the bucket holds and how large it grows
 
 After a run the sim bucket holds the four files beside the sim fleet file and
@@ -9278,6 +9292,12 @@ carries no realised figure.
 ```
 
 The Product Manual PDF rebuild is owed for this page.
+
+The sentence above stands as written. This is the reading that replaced it.
+
+| written above | what it reads now |
+| --- | --- |
+| "The Product Manual PDF rebuild is owed for this page." | `docs/Acervator-Product-Manual.pdf` is rebuilt with this page |
 
 ### Scrums and folds form tranches on the record
 

@@ -2223,6 +2223,12 @@ engine = VotingEngine(weights=self._ta_weights)
 
 The Product Manual PDF rebuild is owed for this page.
 
+The sentence above stands as written. This is the reading that replaced it.
+
+| written above | what it reads now |
+| --- | --- |
+| "The Product Manual PDF rebuild is owed for this page." | `docs/Acervator-Product-Manual.pdf` is rebuilt with this page |
+
 ## 15 - Proof of Accumulation (PoA)
 
 This is another one of the larger and more distinguishing features of the platform. At this point, it is a design proposal for a blockchain that provides certified trade performance between competitors without revealing their specific strategy tunings within Acervator or their identity. When this blockchain is initiated, ZERO tokens for it will exist in the world. I intend it to be, much like A15 to 1) have a fixed supply, 2) mean something through its generation and acquisition. Tokens are only created through the PoA tournaments and defeating Token Beasts or inflicting the most damage to them in a colosseum format. Additional functions would allow PoA tokens to be socketed into the platform to change its appearance and identify a user as a victor.

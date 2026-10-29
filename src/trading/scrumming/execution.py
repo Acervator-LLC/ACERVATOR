@@ -13,6 +13,7 @@ import time
 from dataclasses import dataclass
 from typing import Any, Callable, Optional
 
+from ...core.emit_contracts import FILL_BUY, FILL_SELL
 from ...exchange.base import OrderSide, OrderType
 from ..container.config import target_growth_pct
 from ..target_bands import manual_fire_dust_band
@@ -54,6 +55,67 @@ class SettledFillFee:
     reported: bool
 
 
+def venue_fee_record(order: Any, units: Any, price: Any) -> Optional[SettledFillFee]:
+    """Build a ``SettledFillFee`` from ``order.fee`` and ``order.fee_currency``.
+
+    Returns None when ``units`` or ``price`` is not a number, and computes no fee of
+    its own.
+    """
+    try:
+        _units = float(units)
+        _price = float(price)
+    except (TypeError, ValueError):
+        return None
+    try:
+        _amount = float(getattr(order, "fee", 0) or 0)
+        _currency = str(getattr(order, "fee_currency", "") or "")
+    except (TypeError, ValueError):
+        _amount = 0.0
+        _currency = ""
+    return SettledFillFee(
+        units=_units,
+        price=_price,
+        fee_amount=_amount,
+        currency=_currency.strip().upper(),
+        reported=_amount > 0.0,
+    )
+
+
+def fill_fee_fields(
+    record: Optional[SettledFillFee], fill_price: Any, quote: str, rate: Any
+) -> dict:
+    """The fee field of one ``SettledFill``: ``fee_usd`` for a fee ``record`` charged in
+    ``quote`` at ``fill_price``, priced at ``rate`` dollars a unit, otherwise
+    ``fee_refusal`` naming why.
+    """
+    try:
+        _price = float(fill_price)
+    except (TypeError, ValueError):
+        return {"fee_refusal": "the fill price is not a number"}
+    if record is None:
+        return {"fee_refusal": "no settled order was held for this fill"}
+    if not record.reported:
+        return {"fee_refusal": "the venue reported no fee"}
+    if not math.isclose(record.price, _price, rel_tol=1e-9, abs_tol=1e-12):
+        return {"fee_refusal": "the reported fee belongs to a different fill"}
+    if not record.currency:
+        return {"fee_refusal": "the venue named no fee currency"}
+    if quote and record.currency != quote:
+        return {
+            "fee_refusal": (
+                f"the venue charged the fee in {record.currency}, not the "
+                f"{quote} this fill is priced in"
+            )
+        }
+    _rate = float(rate or 0.0)
+    if _rate <= 0.0:
+        return {"fee_refusal": f"no {quote or 'quote'}-to-USD rate is cached"}
+    _fee_usd = record.fee_amount * _rate
+    if not math.isfinite(_fee_usd) or _fee_usd <= 0.0:
+        return {"fee_refusal": "the reported fee converts to nothing in USD"}
+    return {"fee_usd": _fee_usd}
+
+
 class ExecutionEngineMixin:
     """Place orders at the venue and book what the venue reports back.
 
@@ -63,6 +125,7 @@ class ExecutionEngineMixin:
 
     # ScrummingBot supplies these at runtime; the annotations create no attributes.
     _anchor_target_balance: float
+    _announce_fill: Callable[..., None]
     _apply_fold_target_growth: Callable[..., Any]
     _apply_scrum_fold_pct: Callable[..., None]
     _bound_new_fold_tranches: Callable[..., Any]
@@ -544,41 +607,13 @@ class ExecutionEngineMixin:
         ``_last_sell_venue_fee`` for a sell only, reads ``order.fee`` and
         ``order.fee_currency`` only, and never raises.
         """
-        self._last_fill_venue_fee = self._venue_fee_record(order, units, price)
+        self._last_fill_venue_fee = venue_fee_record(order, units, price)
         _side = getattr(order, "side", None)
         _side_txt = str(getattr(_side, "value", _side) or "").lower()
         if _side_txt != "sell":
             self._last_sell_venue_fee = None
             return
         self._last_sell_venue_fee = self._last_fill_venue_fee
-
-    @staticmethod
-    def _venue_fee_record(
-        order, units: float, price: float
-    ) -> Optional[SettledFillFee]:
-        """Build a ``SettledFillFee`` from ``order.fee`` and ``order.fee_currency``.
-
-        Returns None when ``units`` or ``price`` is not a number, and computes no
-        fee of its own.
-        """
-        try:
-            _units = float(units)
-            _price = float(price)
-        except (TypeError, ValueError):
-            return None
-        try:
-            _amount = float(getattr(order, "fee", 0) or 0)
-            _currency = str(getattr(order, "fee_currency", "") or "")
-        except (TypeError, ValueError):
-            _amount = 0.0
-            _currency = ""
-        return SettledFillFee(
-            units=_units,
-            price=_price,
-            fee_amount=_amount,
-            currency=_currency.strip().upper(),
-            reported=_amount > 0.0,
-        )
 
     async def _settle_venue_fee(self, order, units: float, price: float) -> None:
         """Re-reads ``order`` by its id and takes the settled venue fee from that body.
@@ -600,7 +635,7 @@ class ExecutionEngineMixin:
             except Exception as exc:
                 logger.debug("venue-fee re-read failed for %s: %s", _order_id, exc)
                 return
-            _probe = self._venue_fee_record(_settled, units, price)
+            _probe = venue_fee_record(_settled, units, price)
             if _probe is not None and _probe.reported:
                 self._last_fill_venue_fee = _probe
                 return
@@ -627,40 +662,19 @@ class ExecutionEngineMixin:
         return _rec
 
     def _fill_fee_fields(self, fill_price: float) -> dict:
-        """The ``trade.filled`` fee fields for the fill that settled at ``fill_price``.
+        """The ``SettledFill`` fee field for the fill that settled at ``fill_price``,
+        read by ``fill_fee_fields`` off ``_last_fill_venue_fee``, which this consumes.
 
-        Returns ``fee_usd`` when the venue reported a usable fee, otherwise
-        ``fee_refusal`` naming why, and never reads ``config.trading_fee_pct``.
+        It never reads ``config.trading_fee_pct``.
         """
         _rec = self._last_fill_venue_fee
         self._last_fill_venue_fee = None
-        try:
-            _price = float(fill_price)
-        except (TypeError, ValueError):
-            return {"fee_refusal": "the fill price is not a number"}
-        if _rec is None:
-            return {"fee_refusal": "no settled order was held for this fill"}
-        if not _rec.reported:
-            return {"fee_refusal": "the venue reported no fee"}
-        if not math.isclose(_rec.price, _price, rel_tol=1e-9, abs_tol=1e-12):
-            return {"fee_refusal": "the reported fee belongs to a different fill"}
-        if not _rec.currency:
-            return {"fee_refusal": "the venue named no fee currency"}
-        _quote = self._venue_quote_currency()
-        if _quote and _rec.currency != _quote:
-            return {
-                "fee_refusal": (
-                    f"the venue charged the fee in {_rec.currency}, not the "
-                    f"{_quote} this fill is priced in"
-                )
-            }
-        _rate = float(getattr(self, "_quote_to_usd", 0.0) or 0.0)
-        if _rate <= 0.0:
-            return {"fee_refusal": f"no {_quote or 'quote'}-to-USD rate is cached"}
-        _fee_usd = _rec.fee_amount * _rate
-        if not math.isfinite(_fee_usd) or _fee_usd <= 0.0:
-            return {"fee_refusal": "the reported fee converts to nothing in USD"}
-        return {"fee_usd": _fee_usd}
+        return fill_fee_fields(
+            _rec,
+            fill_price,
+            self._venue_quote_currency(),
+            getattr(self, "_quote_to_usd", 0.0),
+        )
 
     def _settled_sale_proceeds(
         self, units: float, price: float, *, label: str
@@ -1408,20 +1422,6 @@ class ExecutionEngineMixin:
                 f"(~${priced_usd(self._current_holdings, price, float(self._quote_to_usd or 1.0)):.2f})."
             ),
         )
-        self._bus.emit(
-            "trade.filled",
-            bot_id=self.bot_id,
-            data={
-                "type": label,
-                "side": "SELL",
-                "amount": fill_amount,
-                "price": fill_price,
-                "usd": fill_usd,
-                "profit": 0.0,
-                "operator_initiated": operator_initiated,
-                **self._fill_fee_fields(fill_price),
-            },
-        )
         self._emit_voting_panel_snapshot_at_fire(
             side="SELL", trade_action=str(label or "MANUAL_SCRUM")
         )
@@ -1456,6 +1456,16 @@ class ExecutionEngineMixin:
         self._last_trade_side = "SCRUM"
         self._last_trade_price = fill_price
         self._reset_opposing_hysteresis_after_fill()
+        self._announce_fill(
+            kind=label,
+            side=FILL_SELL,
+            units=fill_amount,
+            price=fill_price,
+            usd=fill_usd,
+            profit=0.0,
+            operator_initiated=operator_initiated,
+            fee=self._fill_fee_fields(fill_price),
+        )
 
     async def _book_manual_purchase(
         self,
@@ -1582,20 +1592,6 @@ class ExecutionEngineMixin:
         self.reset_swos_cycle()
         self._last_trade_side = "FOLD"
         self._reset_opposing_hysteresis_after_fill()
-        self._bus.emit(
-            "trade.filled",
-            bot_id=self.bot_id,
-            data={
-                "type": label,
-                "side": "BUY",
-                "amount": fill_amount,
-                "price": fill_price,
-                "usd": fill_amount * fill_price,
-                "profit": _growth_applied,
-                "operator_initiated": operator_initiated,
-                **self._fill_fee_fields(fill_price),
-            },
-        )
         self._emit_voting_panel_snapshot_at_fire(
             side="BUY", trade_action=str(label or "MANUAL_FOLD")
         )
@@ -1626,6 +1622,16 @@ class ExecutionEngineMixin:
                 _sup,
             )
         self._last_trade_price = fill_price
+        self._announce_fill(
+            kind=label,
+            side=FILL_BUY,
+            units=fill_amount,
+            price=fill_price,
+            usd=fill_amount * fill_price,
+            profit=_growth_applied,
+            operator_initiated=operator_initiated,
+            fee=self._fill_fee_fields(fill_price),
+        )
 
     async def _execute_detonation(self, ticker) -> bool:
         """Sell everything above ``_anchor_target_balance`` and reset to it.
@@ -1634,9 +1640,9 @@ class ExecutionEngineMixin:
         from the exchange balance rather than from the attributed
         ``_current_holdings``. Clears ``_fold_tranches`` and
         ``_standing_surplus_usd``, reseeds ``_main_lots`` at the fill price,
-        and emits ``trade.filled`` carrying ``auto_detonated``. Returns True
-        once the venue figure decided the harvest, and False on every refusal,
-        which ``_tick_detonation`` reads as no fire.
+        and announces an ``AUTO_DETONATION`` fill through ``_announce_fill``.
+        Returns True once the venue figure decided the harvest, and False on
+        every refusal, which ``_tick_detonation`` reads as no fire.
         """
         price = getattr(ticker, "last", None)
         if not price or price <= 0:
@@ -1844,25 +1850,20 @@ class ExecutionEngineMixin:
             ),
         )
 
-        self._bus.emit(
-            "trade.filled",
-            bot_id=self.bot_id,
-            data={
-                "type": "AUTO_DETONATION",
-                "side": "SELL",
-                "amount": fill_amount,
-                "price": fill_price,
-                "usd": fill_usd,
-                "profit": excess_usd,
-                "auto_detonated": True,
-                "anchor": self._anchor_target_balance,
-                **self._fill_fee_fields(fill_price),
-            },
-        )
         self._emit_voting_panel_snapshot_at_fire(
             side="SELL", trade_action="AUTO_DETONATION"
         )
         self._emit_gate_decision_at_fire(side="SELL", trade_action="AUTO_DETONATION")
+        self._announce_fill(
+            kind="AUTO_DETONATION",
+            side=FILL_SELL,
+            units=fill_amount,
+            price=fill_price,
+            usd=fill_usd,
+            profit=excess_usd,
+            operator_initiated=False,
+            fee=self._fill_fee_fields(fill_price),
+        )
 
     async def _execute_sell(
         self,

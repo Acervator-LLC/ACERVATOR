@@ -77,6 +77,19 @@ price and the dollars of one fill. The dollars are read by
 name, and the `trade.filled` contract takes its optional dollar fields from the
 same tuple.
 
+**The current reading, 2026-10-29.** The message prints the `usd` field of the
+fill that `read_settled_fill` returns, and the two names above are gone. Every
+place in the bot that books a fill sends it in one shape, and the contract for
+the fill event requires every field of that shape, the dollars among them. A
+fill that is not in that shape raises no alert, and the refusal is written to
+the log.
+
+`src/core/notifications.py, in fill_message` — the dollars of the one shape
+
+```python
+    usd = _as_number(fill.usd)
+```
+
 ## The state of this screen
 
 `src/gui/variant_surface.py` registers both builders under the name `ALERTS`.
@@ -100,5 +113,13 @@ METHOD = retired_surfaces.ALERTS_TAB_METHOD
 ```
 
 The Product Manual PDF rebuild is owed for this page.
+
+### Where an earlier sentence now reads differently
+
+It stands as written. This is the reading that replaced it.
+
+| written above | what it reads now |
+| --- | --- |
+| "The Product Manual PDF rebuild is owed for this page." | `docs/Acervator-Product-Manual.pdf` is rebuilt with this page |
 
 Back to [the subsystem index](README.md).

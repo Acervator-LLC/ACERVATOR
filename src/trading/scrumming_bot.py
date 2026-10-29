@@ -24,6 +24,7 @@ from typing import Any, Optional, TYPE_CHECKING
 if TYPE_CHECKING:
     from ..exchange.base import ExchangeInterface
 
+from ..core.emit_contracts import FILL_BUY, FILL_SELL
 from ..exchange.base import OrderSide, OrderType
 from .target_bands import at_target_dust_band
 from .bot_container import (
@@ -92,7 +93,7 @@ from .scrumming import (
     TickPhaseMixin,
     WireRoutingMixin,
 )
-from .scrumming.execution import SettledFillFee
+from .scrumming.execution import SettledFillFee, venue_fee_record
 from .scrumming.snapshots import GATE_CHAIN_EXIT
 from .scrumming.snapshots import yes_no as _yes_no
 from .scrumming.fold_tranches import (
@@ -1934,25 +1935,20 @@ class ScrummingBot(
                 type(_sup).__name__,
                 _sup,
             )
-        self._bus.emit(
-            "trade.filled",
-            bot_id=self.bot_id,
-            data={
-                "type": "MANUAL_TRANCHE_FOLD",
-                "side": "BUY",
-                "amount": rebought_units,
-                "price": fill_price,
-                "usd": _cost,
-                "operator_initiated": True,
-                "accum_profit": float(_mf_profit),
-                "growth_applied": float(_mf_growth),
-                **self._fill_fee_fields(fill_price),
-            },
-        )
         self._emit_voting_panel_snapshot_at_fire(
             side="BUY", trade_action="MANUAL_TRANCHE_FOLD"
         )
         self._emit_gate_decision_at_fire(side="BUY", trade_action="MANUAL_TRANCHE_FOLD")
+        self._announce_fill(
+            kind="MANUAL_TRANCHE_FOLD",
+            side=FILL_BUY,
+            units=rebought_units,
+            price=fill_price,
+            usd=_cost,
+            profit=0.0,
+            operator_initiated=True,
+            fee=self._fill_fee_fields(fill_price),
+        )
 
     def update_phantom_config(
         self,
@@ -2589,26 +2585,20 @@ class ScrummingBot(
             )
 
         try:
-            self._bus.emit(
-                "trade.filled",
-                bot_id=self.bot_id,
-                data={
-                    "type": "SELF_DESTRUCT",
-                    "side": "SELL",
-                    "amount": fill_amount,
-                    "price": fill_price,
-                    "usd": fill_usd,
-                    "profit": 0.0,
-                    "operator_initiated": True,
-                    "symbol": self.config.symbol,
-                    "exchange": self.config.exchange_id,
-                    **self._fill_fee_fields(fill_price),
-                },
-            )
             self._emit_voting_panel_snapshot_at_fire(
                 side="SELL", trade_action="SELF_DESTRUCT"
             )
             self._emit_gate_decision_at_fire(side="SELL", trade_action="SELF_DESTRUCT")
+            self._announce_fill(
+                kind="SELF_DESTRUCT",
+                side=FILL_SELL,
+                units=fill_amount,
+                price=fill_price,
+                usd=fill_usd,
+                profit=0.0,
+                operator_initiated=True,
+                fee=self._fill_fee_fields(fill_price),
+            )
         except Exception as _sup:
             logger.debug(
                 "suppressed in %s: %s: %s", "self_destruct", type(_sup).__name__, _sup
@@ -4619,20 +4609,19 @@ class ScrummingBot(
             f"gap=${gap:.4f} ({gap/max(self._target_balance, 1e-9)*100:.1f}%), "
             f"bb={bb_pos:.0%}. Trade #{self._hedge_trades}",
         )
-        self._bus.emit(
-            "trade.filled",
-            bot_id=self.bot_id,
-            side="buy",
-            type="HEDGE",
-            price=hedge_fill,
-            amount=_hedge_asset,
-            usd=_hedge_spent,
-            profit=0,
-            **self._fill_fee_fields(hedge_fill),
-        )
         self._emit_voting_panel_snapshot_at_fire(side="BUY", trade_action="HEDGE")
         self._emit_gate_decision_at_fire(side="BUY", trade_action="HEDGE")
         self._last_trade_price = hedge_fill
+        self._announce_fill(
+            kind="HEDGE",
+            side=FILL_BUY,
+            units=_hedge_asset,
+            price=hedge_fill,
+            usd=_hedge_spent,
+            profit=0.0,
+            operator_initiated=False,
+            fee=self._fill_fee_fields(hedge_fill),
+        )
 
     async def _check_detonation_trigger(self, ticker) -> bool:
         """Check the higher-timeframe signal for a detonation trigger, edge-triggered
@@ -5093,7 +5082,7 @@ class ScrummingBot(
         Cross-references:
             ``_stack_tranches`` order_ids against the exchange's open orders,
             fetching the terminal state of any that no longer appear, then
-            updating status and fill price.
+            updating status and fill price and announcing a ``STACK_RUNG`` fill.
 
         Returns:
             0 when not visible mode, when there are no pending tranches, when
@@ -5169,6 +5158,21 @@ class ScrummingBot(
                         f"@ ${float(_avg or t['price']):.8f} "
                         f"({_filled:.6f}/{t['size']:.6f})"
                     ),
+                )
+                self._last_fill_venue_fee = venue_fee_record(
+                    order, _filled, t["fill_price"]
+                )
+                self._announce_fill(
+                    kind="STACK_RUNG",
+                    side=FILL_SELL,
+                    units=_filled,
+                    price=t["fill_price"],
+                    usd=priced_usd(
+                        _filled, t["fill_price"], float(self._quote_to_usd or 1.0)
+                    ),
+                    profit=0.0,
+                    operator_initiated=False,
+                    fee=self._fill_fee_fields(t["fill_price"]),
                 )
             else:
                 t["status"] = "cancelled"
@@ -5321,7 +5325,7 @@ class ScrummingBot(
 
     async def _book_stack_spend(
         self,
-        _units: float,
+        units: float,
         fill_price: float,
         _asked: float,
         first: bool,
@@ -5330,32 +5334,42 @@ class ScrummingBot(
         rung_opened_ts: Any,
     ) -> None:
         """Mark the stack rung named by ``rung_index`` and ``rung_opened_ts`` filled at
-        its order's first settled piece, and write the spend to ``bot.log``.
+        its order's first settled piece, and announce each piece as a ``STACK_SPEND``.
         """
-        if not first:
-            return
-        rung = next(
-            (
-                t
-                for t in self._stack_tranches
-                if t.get("index") == rung_index and t.get("opened_ts") == rung_opened_ts
-            ),
-            None,
-        )
-        if rung is None:
-            return
-        rung["status"] = "filled"
-        rung["fill_price"] = float(fill_price)
-        self._bus.emit(
-            "bot.log",
-            bot_id=self.bot_id,
-            message=(
-                f"STACK TRANCHE {rung['index']} SPENT @ "
-                f"${float(fill_price):.8f} (threshold "
-                f"${float(rung['price']):.8f}, size "
-                f"{float(rung['size']):.6f}) under an authorised "
-                f"SCRUM gate-chain decision."
-            ),
+        rung = None
+        if first:
+            rung = next(
+                (
+                    t
+                    for t in self._stack_tranches
+                    if t.get("index") == rung_index
+                    and t.get("opened_ts") == rung_opened_ts
+                ),
+                None,
+            )
+        if rung is not None:
+            rung["status"] = "filled"
+            rung["fill_price"] = float(fill_price)
+            self._bus.emit(
+                "bot.log",
+                bot_id=self.bot_id,
+                message=(
+                    f"STACK TRANCHE {rung['index']} SPENT @ "
+                    f"${float(fill_price):.8f} (threshold "
+                    f"${float(rung['price']):.8f}, size "
+                    f"{float(rung['size']):.6f}) under an authorised "
+                    f"SCRUM gate-chain decision."
+                ),
+            )
+        self._announce_fill(
+            kind="STACK_SPEND",
+            side=FILL_SELL,
+            units=units,
+            price=fill_price,
+            usd=priced_usd(units, fill_price, float(self._quote_to_usd or 1.0)),
+            profit=0.0,
+            operator_initiated=False,
+            fee=self._fill_fee_fields(fill_price),
         )
 
     def _take_filled_units_off_lots(self, filled_units: float) -> int:

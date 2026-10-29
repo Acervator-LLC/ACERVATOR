@@ -22,7 +22,7 @@ from pathlib import Path
 from threading import Lock
 from typing import Any, Callable, Optional
 
-from src.core.emit_contracts import fill_usd
+from src.core.emit_contracts import FILL_TOPIC, read_settled_fill
 from src.core.log_paths import (
     gate_archive_dir,
     gate_log_path,
@@ -674,7 +674,7 @@ class LogManager:
         if getattr(self, "_bus_attached", False):
             # A failed unsubscribe leaves the old handler on the bus, logging twice.
             try:
-                bus.unsubscribe("trade.filled", self._on_trade_filled_bus)
+                bus.unsubscribe(FILL_TOPIC, self._on_trade_filled_bus)
             except Exception as exc:
                 self._note_internal_failure(
                     "attach_to_bus/unsubscribe trade.filled", exc
@@ -702,7 +702,7 @@ class LogManager:
             except Exception as exc:
                 self._note_internal_failure("attach_to_bus/unsubscribe bot.log", exc)
         try:
-            bus.subscribe("trade.filled", self._on_trade_filled_bus)
+            bus.subscribe(FILL_TOPIC, self._on_trade_filled_bus)
             # ScrummingBot emits pnl.event at the SCRUM and FOLD success sites.
             bus.subscribe("pnl.event", self._on_pnl_event_bus)
             # ScrummingBot emits bot.gate_decision at fire time, once per trade.
@@ -936,84 +936,46 @@ class LogManager:
             self._sys_logger.warning("LogManager._on_pnl_event_bus raised: %s", exc)
 
     def _on_trade_filled_bus(self, event_obj) -> None:
-        """Route one ``trade.filled`` event into ``log_trade``.
+        """Route one ``FILL_TOPIC`` announcement, read through ``read_settled_fill``,
+        into ``log_trade``.
 
-        ``side`` is normalised to BUY or SELL, ``usd`` falls back to ``amount``
-        times ``price``, and the row carries whichever of ``fee_usd`` or
-        ``fee_refusal`` the fill supplied.
+        ``usd`` falls back to ``amount`` times ``price``, the row carries the fee field
+        the fill holds, and a refused announcement reaches ``_note_internal_failure``.
         """
         try:
-            data = getattr(event_obj, "data", None)
-            if not isinstance(data, dict) or not data:
-                return
-            inner = data.get("data") if isinstance(data.get("data"), dict) else None
-            merged = dict(data)
-            if inner is not None:
-                merged.update(inner)
-
-            bot_id = str(merged.get("bot_id", "") or "")
-            raw_side = str(merged.get("side", "") or "").upper()
-            if raw_side in ("BUY", "B"):
-                side = "BUY"
-            elif raw_side in ("SELL", "S"):
-                side = "SELL"
-            else:
-                side = raw_side or ""
-            role = str(merged.get("type", "") or merged.get("role", "") or "").upper()
-            try:
-                amount = float(merged.get("amount", 0) or 0)
-            except (TypeError, ValueError):
-                amount = 0.0
-            try:
-                price = float(merged.get("price", 0) or 0)
-            except (TypeError, ValueError):
-                price = 0.0
-            try:
-                usd = float(fill_usd(merged) or 0)
-            except (TypeError, ValueError):
-                usd = 0.0
+            fill = read_settled_fill(getattr(event_obj, "data", None))
+            amount = float(fill.amount)
+            price = float(fill.price)
+            usd = float(fill.usd)
             if usd <= 0 and amount > 0 and price > 0:
                 usd = amount * price
-            try:
-                profit = float(merged.get("profit", 0) or 0)
-            except (TypeError, ValueError):
-                profit = 0.0
 
-            extra = {
+            extra: dict = {
                 "usd": usd,
-                "profit": profit,
-                "operator_initiated": bool(merged.get("operator_initiated", False)),
+                "profit": float(fill.profit),
+                "operator_initiated": bool(fill.operator_initiated),
             }
-            if "fee_usd" in merged:
-                try:
-                    extra["fee_usd"] = float(merged["fee_usd"])
-                except (TypeError, ValueError):
-                    pass
-            elif "fee_refusal" in merged:
-                extra["fee_refusal"] = str(merged["fee_refusal"])
-            if "confidence" in merged:
-                try:
-                    extra["confidence"] = float(merged["confidence"])
-                except (TypeError, ValueError):
-                    pass
+            if fill.fee_usd is not None:
+                extra["fee_usd"] = float(fill.fee_usd)
+            else:
+                extra["fee_refusal"] = str(fill.fee_refusal)
 
-            _symbol = str(merged.get("symbol", "") or "")
-            if not _symbol and self._symbol_resolver and bot_id:
+            _symbol = fill.symbol
+            if not _symbol and self._symbol_resolver and fill.bot_id:
                 try:
-                    _symbol = str(self._symbol_resolver(bot_id) or "")
+                    _symbol = str(self._symbol_resolver(fill.bot_id) or "")
                 except Exception:
                     _symbol = ""
 
             self.log_trade(
-                exchange=str(merged.get("exchange", "") or ""),
-                bot_id=bot_id,
-                action=role
-                or ("SELL" if side == "SELL" else "BUY" if side == "BUY" else "TRADE"),
+                exchange=fill.exchange,
+                bot_id=fill.bot_id,
+                action=fill.type.upper() or fill.side,
                 symbol=_symbol,
-                side=side,
+                side=fill.side,
                 amount=amount,
                 price=price,
-                status=str(merged.get("status", "filled") or "filled"),
+                status="filled",
                 extra=extra,
             )
         except Exception as exc:

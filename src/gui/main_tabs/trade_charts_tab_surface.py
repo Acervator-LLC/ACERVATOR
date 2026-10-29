@@ -31,10 +31,12 @@ import time.
 
 from __future__ import annotations
 
+import logging
 import time
 from datetime import datetime
 from typing import Any, Optional
 
+from ...core.emit_contracts import FillShapeError, read_settled_fill
 from .native_chart_surface import ARROW_GLYPH_FAMILY, ARROW_GLYPH_PX, CAPTION_PX
 from .native_chart_surface import CONTROL_FONT_FAMILY, CONTROL_FONT_PX
 from .native_chart_surface import CONTROL_HEIGHT_PX, TOGGLE_BOX_PX
@@ -49,6 +51,8 @@ from .native_chart_surface import LEGEND_SPACING_PX as PANEL_LEGEND_GAP_PX
 from .native_chart_surface import LEGEND_ON_BOOK_TEXT as PANEL_LEGEND_ON_BOOK
 from .native_chart_surface import TIMEFRAME_LABEL as PANEL_TIMEFRAME_LABEL
 from .native_chart_surface import TIMEFRAMES as PANEL_TIMEFRAME_OPTIONS
+
+logger = logging.getLogger("acervator.gui.trade_charts_tab_surface")
 
 METHOD = "trade_charts_tab.state"
 
@@ -200,8 +204,6 @@ FILL_TS_KEY = "ts"
 FILL_SIDE_KEY = "side"
 FILL_PRICE_KEY = "price"
 FILL_ROLE_KEY = "role"
-FILL_TYPE_KEY = "type"
-FILL_DATA_KEY = "data"
 SCRUM_ROLE = "SCRUM"
 FOLD_ROLE = "FOLD"
 SELL_SIDE = "sell"
@@ -523,29 +525,25 @@ def history_fills(rows: Any, symbol: Any) -> list:
 
 
 def fill_record(stamp: Any, data: Any, symbol: Any) -> Optional[dict]:
-    """A ``trade.filled`` event as the row ``log_trade`` records, or None with no price.
+    """A ``FILL_TOPIC`` announcement as the row ``log_trade`` records, or None when
+    ``read_settled_fill`` refuses it or its price is not above zero.
 
-    A nested ``data`` dict is merged over the top-level fields, the side is
-    lowered and ``type`` becomes the upper-case role.
+    The side is lowered, and the fill's ``type`` becomes the upper-case role.
     """
-    merged = dict(data or {})
-    inner = merged.get(FILL_DATA_KEY)
-    if isinstance(inner, dict):
-        merged.update(inner)
     try:
-        price = float(merged.get(FILL_PRICE_KEY, 0) or 0)
-    except (TypeError, ValueError):
+        fill = read_settled_fill(data)
+    except FillShapeError as exc:
+        logger.warning("chart glyph refused a fill announcement: %s", exc)
         return None
-    if price <= 0:
+    if fill.price <= 0:
         return None
-    role = merged.get(FILL_TYPE_KEY) or merged.get(FILL_ROLE_KEY) or ""
     return {
-        BOT_ID_KEY: str(merged.get(BOT_ID_KEY, "") or ""),
-        SYMBOL_KEY: str(symbol or merged.get(SYMBOL_KEY, "") or ""),
+        BOT_ID_KEY: fill.bot_id,
+        SYMBOL_KEY: str(symbol or fill.symbol),
         FILL_TS_KEY: int(float(stamp or 0)),
-        FILL_SIDE_KEY: str(merged.get(FILL_SIDE_KEY, "") or "").lower(),
-        FILL_PRICE_KEY: price,
-        FILL_ROLE_KEY: str(role).upper(),
+        FILL_SIDE_KEY: fill.side.lower(),
+        FILL_PRICE_KEY: float(fill.price),
+        FILL_ROLE_KEY: fill.type.upper(),
     }
 
 

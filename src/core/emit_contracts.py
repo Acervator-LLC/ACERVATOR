@@ -1,17 +1,17 @@
 """Expected-shape validation for bus emissions.
 
-``CONTRACTS`` declares each topic's required fields and ``TRADE_TYPES`` its
-accepted trade vocabulary, both taken from the emit sites. ``EmitObserver``
-collects one ``Violation`` per breach and never raises into the producer, and
-``EmitObserver.silence`` reads each topic against the silence budget its
-contract declares. ``format_observer_lines`` renders what it collected.
+``SettledFill`` declares the fields every ``FILL_TOPIC`` announcement carries,
+and ``read_settled_fill`` reads one back or raises ``FillShapeError``.
+``CONTRACTS`` declares each topic's required fields, and ``EmitObserver``
+collects one ``Violation`` per breach without raising into the producer.
+``format_observer_lines`` renders what it collected.
 """
 
 from __future__ import annotations
 
 import logging
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from typing import Any, Optional
 
 from .signal_contract import STALE_AFTER
@@ -55,15 +55,14 @@ reading cannot drift to two ages.
 class EmitContract:
     """The expected shape of one topic's payload.
 
-    ``nested_key`` handles the wrapper this codebase actually uses:
-    ``bus.emit("trade.filled", bot_id=..., data={...})`` puts the real
-    payload one level down, so a contract that checked the top level
-    would report every required field missing.
+    ``nested_key`` names the wrapper a topic such as ``pnl.event`` nests its
+    payload under, and ``exclusive`` names fields of which exactly one is present.
     """
 
     topic: str
     required: tuple[str, ...] = ()
     optional: tuple[str, ...] = ()
+    exclusive: tuple[str, ...] = ()
     vocab: dict = field(default_factory=dict)
     nested_key: Optional[str] = "data"
     description: str = ""
@@ -94,45 +93,152 @@ class Violation:
         return (self.topic, self.kind, self.detail)
 
 
-# Field names come from the emit sites: trade.filled carries type, the log row action.
+FILL_TOPIC = "trade.filled"
+"""The topic ``BotContainer._announce_fill`` sends each verified fill on, once."""
+
+FILL_BUY = "BUY"
+FILL_SELL = "SELL"
+FILL_SIDES: tuple[str, ...] = (FILL_BUY, FILL_SELL)
+
+FILL_FEE_FIELDS: tuple[str, ...] = ("fee_usd", "fee_refusal")
+"""The two fee fields of a ``SettledFill``, of which a payload carries exactly one."""
+
+FILL_NUMBER_FIELDS: tuple[str, ...] = ("amount", "price", "usd", "profit")
+FILL_TEXT_FIELDS: tuple[str, ...] = ("bot_id", "type", "symbol", "exchange")
+
+
+@dataclass(frozen=True)
+class SettledFill:
+    """One verified fill, in the shape every ``FILL_TOPIC`` announcement carries.
+
+    ``amount`` is the units one booking settled at ``price``, and exactly one of
+    ``fee_usd`` and ``fee_refusal`` is set.
+    """
+
+    bot_id: str
+    side: str
+    type: str
+    amount: float
+    price: float
+    usd: float
+    profit: float
+    operator_initiated: bool
+    symbol: str
+    exchange: str
+    fee_usd: Optional[float] = None
+    fee_refusal: Optional[str] = None
+
+    def payload(self) -> dict:
+        """The field map ``FILL_TOPIC`` carries: each of ``SETTLED_FILL_FIELDS``
+        and the fee field of ``FILL_FEE_FIELDS`` that is set.
+        """
+        out = {name: getattr(self, name) for name in SETTLED_FILL_FIELDS}
+        for name in FILL_FEE_FIELDS:
+            value = getattr(self, name)
+            if value is not None:
+                out[name] = value
+        return out
+
+
+SETTLED_FILL_FIELDS: tuple[str, ...] = tuple(
+    one.name for one in fields(SettledFill) if one.name not in FILL_FEE_FIELDS
+)
+
+
+class FillShapeError(ValueError):
+    """A ``FILL_TOPIC`` announcement not in the shape ``SettledFill`` declares."""
+
+
+def _is_number(value: Any) -> bool:
+    """True for an int or a float, and False for a bool."""
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def _fill_faults(event_data: dict) -> list[str]:
+    """Each way ``event_data`` departs from ``SettledFill``, named by its field."""
+    faults = [
+        f"{name} absent" for name in SETTLED_FILL_FIELDS if name not in event_data
+    ]
+    held = [name for name in FILL_FEE_FIELDS if name in event_data]
+    if len(held) != 1:
+        faults.append(f"{len(held)} of {', '.join(FILL_FEE_FIELDS)} present, not 1")
+    faults += [
+        f"{name} is not a number"
+        for name in (*FILL_NUMBER_FIELDS, "fee_usd")
+        if name in event_data and not _is_number(event_data[name])
+    ]
+    faults += [
+        f"{name} is not text"
+        for name in (*FILL_TEXT_FIELDS, "fee_refusal")
+        if name in event_data and not isinstance(event_data[name], str)
+    ]
+    if "side" in event_data and event_data["side"] not in FILL_SIDES:
+        faults.append(f"side {event_data['side']!r} is not one of {FILL_SIDES}")
+    if "operator_initiated" in event_data and not isinstance(
+        event_data["operator_initiated"], bool
+    ):
+        faults.append("operator_initiated is not True or False")
+    return faults
+
+
+def read_settled_fill(event_data: Any) -> SettledFill:
+    """The ``SettledFill`` one ``FILL_TOPIC`` announcement carries, with no field
+    defaulted.
+
+    Raises ``FillShapeError`` naming every fault ``_fill_faults`` finds.
+    """
+    if not isinstance(event_data, dict):
+        raise FillShapeError(
+            f"the announcement is a {type(event_data).__name__}, not a field map"
+        )
+    faults = _fill_faults(event_data)
+    if faults:
+        raise FillShapeError("; ".join(faults))
+    return SettledFill(
+        **{
+            name: event_data[name]
+            for name in (*SETTLED_FILL_FIELDS, *FILL_FEE_FIELDS)
+            if name in event_data
+        }
+    )
+
 
 TRADE_TYPES: tuple[str, ...] = (
     "SCRUM",
     "FOLD",
-    "CARTRIDGE_SCRUM",
-    "CARTRIDGE_FOLD",
+    "DIST",
     "ENTRY",
     "HEDGE",
-    "DIST",
+    "MANUAL_SCRUM",
+    "MANUAL_FOLD",
+    "CARTRIDGE_SCRUM",
+    "CARTRIDGE_FOLD",
+    "WIRE_STACK_SCRUM",
+    "WIRE_STACK_FOLD",
     "AUTO_DETONATION",
     "SELF_DESTRUCT",
     "MANUAL_TRANCHE_FOLD",
+    "STACK_SPEND",
+    "STACK_RUNG",
+    "EXPIRY_CLOSE",
+    "EXTRACTOR_ARTILLERY",
+    "EXTRACTOR_EXIT",
 )
-
-FILL_USD_FIELDS: tuple[str, ...] = ("usd",)
-"""The field names one fill's dollar value arrives under. The ``trade.filled``
-contract takes its optional dollar fields from here, and
-``notifications.fill_message`` and ``logging_engine`` read the figure through the
-same tuple, so a contract and its readers cannot name different fields.
-"""
+"""Every ``SettledFill.type`` a completion point announces."""
 
 CONTRACTS: tuple[EmitContract, ...] = (
     EmitContract(
-        topic="trade.filled",
-        required=("side", "amount", "price"),
-        optional=(
-            "type",
-            *FILL_USD_FIELDS,
-            "profit",
-            "operator_initiated",
-            "fee_usd",
-            "fee_refusal",
-        ),
-        vocab={"side": ("BUY", "SELL", "buy", "sell")},
-        description="A fill. NOTE: the trade kind is `type` here, not "
-        "`action` — the log schema uses `action`. `fee_usd` is the venue's "
-        "own fee for this fill; `fee_refusal` replaces it when the venue "
-        "reported none, and exactly one of the two is present.",
+        topic=FILL_TOPIC,
+        required=SETTLED_FILL_FIELDS,
+        optional=FILL_FEE_FIELDS,
+        exclusive=FILL_FEE_FIELDS,
+        vocab={"side": FILL_SIDES, "type": TRADE_TYPES},
+        nested_key=None,
+        description="One verified fill, flat, in the shape SettledFill "
+        "declares. NOTE: the trade kind is `type` here, not `action` — the "
+        "log schema uses `action`. `fee_usd` is the venue's own fee for this "
+        "fill; `fee_refusal` replaces it when the venue reported none, and "
+        "exactly one of the two is present.",
     ),
     EmitContract(
         topic="bot.gate_decision",
@@ -183,20 +289,6 @@ CONTRACTS: tuple[EmitContract, ...] = (
 )
 
 _BY_TOPIC = {c.topic: c for c in CONTRACTS}
-
-
-def fill_usd(fill: Any) -> Any:
-    """One fill's dollar value, read by the first ``FILL_USD_FIELDS`` name it carries.
-
-    Answers 0 for a fill carrying none, and every reader of the dollar figure
-    comes here so no reader can look under a name the contract does not declare.
-    """
-    if not isinstance(fill, dict):
-        return 0
-    for name in FILL_USD_FIELDS:
-        if name in fill:
-            return fill[name]
-    return 0
 
 
 class EmitObserver:
@@ -253,6 +345,18 @@ class EmitObserver:
                         "missing_field",
                         f"required field {fieldname!r} absent; payload had "
                         f"{sorted(payload)[:8]}",
+                    )
+                )
+
+        if contract.exclusive:
+            held = [name for name in contract.exclusive if name in payload]
+            if len(held) != 1:
+                self._add(
+                    Violation(
+                        topic,
+                        "bad_value" if held else "missing_field",
+                        f"exactly one of {list(contract.exclusive)} expected; "
+                        f"payload had {held}",
                     )
                 )
 

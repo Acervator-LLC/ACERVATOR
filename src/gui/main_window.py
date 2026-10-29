@@ -3760,7 +3760,7 @@ if _HAS_QT:
 
             Buy on a filled buy, sell on a filled sell, rifle on
             SCRUM/FOLD/DIST, coins on profit above zero and drip on FOLD.
-            ``fill_fields`` finds the fill at either level the emitters use.
+            ``fill_fields`` reads the fill in the one shape ``SettledFill`` declares.
             """
             try:
                 from ..core.sound_engine import get_sound_engine

@@ -19,8 +19,7 @@ from dataclasses import dataclass, field, replace
 from enum import Enum, auto
 from typing import Any, Optional
 
-from .emit_contracts import CONTRACTS, fill_usd
-from .emit_contracts import FILL_USD_FIELDS as CONTRACT_FILL_USD_FIELDS
+from .emit_contracts import FILL_TOPIC, FillShapeError, SettledFill, read_settled_fill
 from .sms_engine import (
     EVENT_BOT_STATE,
     EVENT_BUY_FILL,
@@ -30,8 +29,6 @@ from .sms_engine import (
 )
 
 logger = logging.getLogger("acervator.notifications")
-
-FILL_TOPIC = "trade.filled"
 
 BUY_SIDE = "BUY"
 SELL_SIDE = "SELL"
@@ -124,39 +121,19 @@ FILL_SIDE_EVENTS: dict[str, AlertEvent] = {
 }
 
 
-#: Re-exported from ``emit_contracts`` so this reader and the ``trade.filled``
-#: contract name one field. All ten fill emitters write it.
-FILL_USD_FIELDS = CONTRACT_FILL_USD_FIELDS
-
-
-def fill_payload(data: Any) -> dict:
-    """One fill's own fields, whichever level the emitter put them at.
-
-    The ``FILL_TOPIC`` contract in ``emit_contracts`` declares the nesting, so
-    the emitters that pass the fill as keywords and those that nest it under
-    ``data`` both read here.
-    """
-    for contract in CONTRACTS:
-        if contract.topic == FILL_TOPIC:
-            return contract.extract(data)
-    return data if isinstance(data, dict) else {}
-
-
 def fill_alert_event(side: Any) -> Optional[AlertEvent]:
     """The alert one fill's side raises, or None for a side no event names."""
     return FILL_SIDE_EVENTS.get(str(side or "").upper())
 
 
-def fill_message(fill: dict) -> str:
-    """One fill as the message channels print it: kind, units, price, dollars.
-
-    The dollars come from ``emit_contracts.fill_usd``, which reads the one field
-    name ``FILL_USD_FIELDS`` declares.
+def fill_message(fill: SettledFill) -> str:
+    """One ``SettledFill`` as the message channels print it: kind, units, price and
+    its ``usd``.
     """
-    kind = str(fill.get("type") or "FILL")
-    units = _as_number(fill.get("amount"))
-    price = _as_number(fill.get("price"))
-    usd = _as_number(fill_usd(fill))
+    kind = str(fill.type or "FILL")
+    units = _as_number(fill.amount)
+    price = _as_number(fill.price)
+    usd = _as_number(fill.usd)
     return f"{kind}: {units:.6f} units at ${price:,.8f}, ${usd:,.2f}"
 
 
@@ -382,16 +359,21 @@ class NotificationManager:
         logger.info("NotificationManager subscribed to %s", FILL_TOPIC)
 
     def _on_trade_filled(self, event) -> None:
-        """Raise ``BUY_FILLED`` or ``SELL_FILLED`` for one ``FILL_TOPIC`` event.
+        """Raise ``BUY_FILLED`` or ``SELL_FILLED`` for one ``FILL_TOPIC`` event, read
+        through ``read_settled_fill``.
 
         The channels run on a ``FILL_ALERT_THREAD`` thread, because the emitters
         run on a bot's own loop thread and the Telegram channel places an HTTPS
         request.
         """
-        fill = fill_payload(getattr(event, "data", None))
-        alert = fill_alert_event(fill.get("side"))
+        try:
+            fill = read_settled_fill(getattr(event, "data", None))
+        except FillShapeError as exc:
+            logger.warning("fill announcement raises no alert: %s", exc)
+            return
+        alert = fill_alert_event(fill.side)
         if alert is None:
-            logger.debug("fill with side %r raises no alert", fill.get("side"))
+            logger.debug("fill with side %r raises no alert", fill.side)
             return
         title = FILL_TITLES[alert]
         message = fill_message(fill)

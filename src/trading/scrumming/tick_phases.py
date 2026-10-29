@@ -8,6 +8,7 @@ import math
 import time
 from typing import Any, Callable, Optional
 
+from ...core.emit_contracts import FILL_BUY, FILL_SELL
 from ...core.event_bus import LINE_KIND_WIRE_STACK
 from ...exchange.base import OrderSide, OrderType
 from ..container.config import (
@@ -62,6 +63,7 @@ class TickPhaseMixin:
     _absorb_pending_wire_credits_into: Callable[..., None]
     _aggressive: bool
     _anchor_target_balance: float
+    _announce_fill: Callable[..., None]
     _apply_fold_target_growth: Callable[..., Any]
     _apply_scrum_fold_pct: Callable[..., None]
     _below_min_fold_log_ts: float
@@ -847,7 +849,7 @@ class TickPhaseMixin:
     ) -> None:
         """Take one settled piece of an expiry close off ``_main_lots``,
         ``_current_holdings`` and the venue count, count the order once in
-        ``stats.total_trades``, and write it to ``bot.log``.
+        ``stats.total_trades``, and announce it as an ``EXPIRY_CLOSE`` fill.
         """
         filled = float(units)
         self._take_filled_units_off_lots(filled)
@@ -864,6 +866,16 @@ class TickPhaseMixin:
                 f"{held:.10f}, leaving {self._current_holdings:.10f} held, "
                 f"{days_left:.2f} days before expiry."
             ),
+        )
+        self._announce_fill(
+            kind="EXPIRY_CLOSE",
+            side=FILL_SELL,
+            units=filled,
+            price=fill_price,
+            usd=priced_usd(filled, fill_price, float(self._quote_to_usd or 1.0)),
+            profit=0.0,
+            operator_initiated=False,
+            fee=self._fill_fee_fields(fill_price),
         )
 
     async def _tick_initial_entry(
@@ -1221,20 +1233,18 @@ class TickPhaseMixin:
                 f"intended ${intended:.8f})"
             ),
         )
-        self._bus.emit(
-            "trade.filled",
-            bot_id=self.bot_id,
-            side="buy",
-            type="ENTRY",
+        self._emit_voting_panel_snapshot_at_fire(side="BUY", trade_action="ENTRY")
+        self._emit_gate_decision_at_fire(side="BUY", trade_action="ENTRY")
+        self._announce_fill(
+            kind="ENTRY",
+            side=FILL_BUY,
+            units=bought_units,
             price=entry_fill,
-            amount=bought_units,
             usd=float(buy_cost) * _share_filled,
             profit=0.0,
             operator_initiated=False,
-            **self._fill_fee_fields(entry_fill),
+            fee=self._fill_fee_fields(entry_fill),
         )
-        self._emit_voting_panel_snapshot_at_fire(side="BUY", trade_action="ENTRY")
-        self._emit_gate_decision_at_fire(side="BUY", trade_action="ENTRY")
 
     def _tick_target_ramp(
         self,
@@ -1621,17 +1631,6 @@ class TickPhaseMixin:
             f"pos_skew={position_boost:+.2f}, bb={bb_pos:.0%}). "
             f"Fill=${sell_fill:.8f}, queued ${scrum_usd:.4f} for fold.",
         )
-        self._bus.emit(
-            "trade.filled",
-            bot_id=self.bot_id,
-            side="sell",
-            type="SCRUM",
-            price=sell_fill,
-            amount=_sold_units,
-            usd=scrum_usd,
-            profit=0,
-            **self._fill_fee_fields(sell_fill),
-        )
         self._emit_voting_panel_snapshot_at_fire(side="SELL", trade_action="SCRUM")
         self._emit_gate_decision_at_fire(side="SELL", trade_action="SCRUM")
         try:
@@ -1677,6 +1676,16 @@ class TickPhaseMixin:
         self._scrum_target_mode = "search"
         self._scrum_target_side = None
         self._last_trade_price = sell_fill
+        self._announce_fill(
+            kind="SCRUM",
+            side=FILL_SELL,
+            units=_sold_units,
+            price=sell_fill,
+            usd=scrum_usd,
+            profit=0.0,
+            operator_initiated=False,
+            fee=self._fill_fee_fields(sell_fill),
+        )
 
     def _tick_fold_diagnostics(
         self,
@@ -2291,17 +2300,6 @@ class TickPhaseMixin:
             )
             + ")",
         )
-        self._bus.emit(
-            "trade.filled",
-            bot_id=self.bot_id,
-            side="buy",
-            type="FOLD",
-            price=buy_fill,
-            amount=buy_asset,
-            usd=_cost,
-            profit=_growth_applied,
-            **self._fill_fee_fields(buy_fill),
-        )
         self._emit_voting_panel_snapshot_at_fire(side="BUY", trade_action="FOLD")
         self._emit_gate_decision_at_fire(side="BUY", trade_action="FOLD")
         try:
@@ -2336,6 +2334,16 @@ class TickPhaseMixin:
 
         if extra_asset > 0:
             self._dist_accumulator += extra_asset
+        self._announce_fill(
+            kind="FOLD",
+            side=FILL_BUY,
+            units=buy_asset,
+            price=buy_fill,
+            usd=_cost,
+            profit=_growth_applied,
+            operator_initiated=False,
+            fee=self._fill_fee_fields(buy_fill),
+        )
 
     async def _tick_distribute(
         self, ticker: Any, summary: Any, bb_result: Any, is_bullish: bool
@@ -2407,17 +2415,6 @@ class TickPhaseMixin:
             f"{dist_asset:.6f} asked @ ${dist_fill:.8f} "
             f"(intended ${intended:.8f}) = ${dist_usd:.4f}",
         )
-        self._bus.emit(
-            "trade.filled",
-            bot_id=self.bot_id,
-            side="sell",
-            type="DIST",
-            price=dist_fill,
-            amount=_sold_units,
-            usd=dist_usd,
-            profit=dist_usd * 0.02,
-            **self._fill_fee_fields(dist_fill),
-        )
         self._emit_voting_panel_snapshot_at_fire(side="SELL", trade_action="DIST")
         self._emit_gate_decision_at_fire(side="SELL", trade_action="DIST")
         self._last_trade_price = dist_fill
@@ -2471,3 +2468,13 @@ class TickPhaseMixin:
                 message=f"DIST proceeds ${dist_usd:.4f} queued for re-fold "
                 f"(tranche-provenance preserved, fill=${dist_fill:.8f})",
             )
+        self._announce_fill(
+            kind="DIST",
+            side=FILL_SELL,
+            units=_sold_units,
+            price=dist_fill,
+            usd=dist_usd,
+            profit=dist_usd * 0.02,
+            operator_initiated=False,
+            fee=self._fill_fee_fields(dist_fill),
+        )
