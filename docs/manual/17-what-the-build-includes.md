@@ -20,6 +20,12 @@ The rule is a reading taken at every build. It is not a list anybody keeps up to
 date. Delete a screen and the next build stops carrying it with no edit
 anywhere.
 
+**Read on the current tree.** The program reaches a module only through a screen
+the window builds. A module that only a screen the window never builds imports
+stays out, and its source file stays out with it. How the build reads that from
+the window's own code is under
+[A screen the window never builds](#a-screen-the-window-never-builds).
+
 ## The three readings that make up "reached"
 
 `tools/spec_common.py, in reachable_src_modules` joins three readings.
@@ -29,6 +35,10 @@ then every `import` line in each file that reaches, and so on until no new name
 appears. `tools/spec_common.py, in _src_import_names` does the following, and it
 reads an import line wherever it sits, at the top of a file or inside a
 function.
+
+**Read on the current tree.** Two kinds of import line inside a function are not
+followed: one inside a builder the window never calls, and one inside a loader of
+a screen that nothing asks for. Every other import line is followed as before.
 
 **Two, the folders on the way.** A module named `src.gui.main_window` needs
 `src`, then `src.gui`, before Python can load it. Each of those parent names is
@@ -49,6 +59,11 @@ The three screens doing the joining are
 tab pages in its own table, `MODEL_BY_SURFACE`, so twenty-four modules reach the
 build this way.
 
+**Read on the current tree.** A fourth module joins a module name from text:
+`src/gui/main_tabs/retired_surfaces.py, in _handler`, the loader of the retired
+pages. The build reads its joins as it reads the other three, then skips each
+join onto a retired page.
+
 Anything else stays out. A file reaches the build because something names it,
 never because of the folder it sits in.
 
@@ -67,6 +82,12 @@ Its source file is dropped from the copied files by
 Any outside package that only that module used then has no reader left, so the
 packager's own walk never reaches it and it is not carried. One retired screen
 took a whole image library out of the product this way.
+
+**Read on the current tree.** A module that only a screen the window never builds
+reaches leaves a fourth way as well. The build names it in the list of modules
+the packager refuses, `tools/spec_common.py, in excludes_for`. Without that, the
+packager would pull the module back in through the import line in a builder that
+never runs.
 
 ## The outside packages named outright
 
@@ -92,6 +113,21 @@ the top of the build output.
 
 If a screen the operator wants is on that list, the build log says so before the
 build finishes.
+
+**Read on the current tree.** The log prints a second list: the modules that only
+a screen the window never builds reaches.
+
+`tools/spec_common.py` — `report_unreachable`, both lists on this tree
+
+```
+  [spec] 30 of 501 src modules unreached, left out:
+  ...
+  [spec] 10 of 501 src modules reached only through a screen the window never builds, left out:
+  [spec]   src.gui.alerts_tab
+  [spec]   src.gui.main_tabs.alerts_tab_surface
+  ...
+  [spec]   src.gui.react_proof_of_accumulation_tab
+```
 
 ## Today's reading
 
@@ -130,6 +166,11 @@ them wrong. `src.gui.audio_suite` is reached from
 `src.gui.alerts_tab` is reached from `src/gui/variant_surface.py`, which the
 live tabs reach. Leaving either one out would break a screen the operator uses.
 
+**Read on the current tree.** `src.gui.audio_suite` still ships, because the
+Market Inspector imports its chime. `src.gui.alerts_tab` now leaves the build.
+The window never builds the Alerts screen, and the one path to that module is a
+loader that no screen asks for.
+
 ## What the reading cannot see
 
 The reading is taken from the text of the files, not from a running program. It
@@ -144,6 +185,12 @@ One thing holds that mistake back. The module list is **subtracted from and
 never replaced**, so the packager's own import walk still runs over the real
 imports. A name dropped by this reading that any carried file imports is pulled
 back in by the packager and ships anyway.
+
+**Read on the current tree.** That holds for a module nothing reaches. A module
+that only a screen the window never builds reaches is named to the packager as a
+module to refuse, so the packager does not pull it back. What keeps a reading of
+a mark from removing a module that a built screen needs is under
+[What each mark reading keeps](#what-each-mark-reading-keeps).
 
 The reading cannot be proved by this repository. Nothing here launches the
 packaged application. The proof is the operator's own launch.
@@ -163,3 +210,141 @@ So a half-built screen the window builds reads as reached, and it ships. Keeping
 it out needs the operator to name which screens are not finished.
 
 In development.
+
+**Read on the current tree.** The build now reads the window's own marks of a
+screen it never builds, and leaves that screen out. A screen the window does
+build still ships, finished or not.
+
+## A screen the window never builds
+
+The window's own code marks a screen it never builds in three places. The build
+reads each mark where the window declares it, and the import walk does not
+follow the edges behind it. No list of screens is kept anywhere else, so a
+screen the window stops building leaves the next build with no edit to the build.
+
+| the window's mark | where the build reads it | the edge the walk skips |
+| --- | --- | --- |
+| a retired page | `src/gui/main_tabs/retired_surfaces.py`, `SURFACE_MODULES` | the loader's join onto that page's surface |
+| an unbuilt tab | `src/gui/main_tabs/main_window_surface.py`, `UNBUILT_TABS`, and each `if X not in UNBUILT_TABS:` guard | each import line in the builder that the guard skips |
+| a screen nothing asks for | `src/gui/variant_surface.py`, each `register` call | each import line in the loaders of a screen that no `surface_class` or `draws_react` call names |
+
+`RetiredTabsMixin._install_retired_tab_sentinels` assigns None to attributes,
+not to modules, so the build reads no module from it. The first and third rows
+cover the screens it marks.
+
+`tools/spec_common.py` — the three places the build reads, each named once
+
+```python
+RETIRED_PAGE_TABLE = ("src.gui.main_tabs.retired_surfaces", "SURFACE_MODULES")
+UNBUILT_TAB_TUPLE = ("src.gui.main_tabs.main_window_surface", "UNBUILT_TABS")
+SCREEN_REGISTRY = "src.gui.variant_surface"
+REGISTER_CALL = "register"
+ASKING_CALLS: tuple[str, ...] = ("surface_class", "draws_react")
+```
+
+### How a screen's mark becomes its absence
+
+`tools/spec_common.py, in _readings` walks the imports twice. The first walk
+follows every edge. The second walk skips the edges the three marks name. A
+module the first walk reaches and the second does not is reached only through a
+screen the window never builds.
+
+```mermaid
+flowchart LR
+    A[a mark in the window's code] --> B[the second walk skips the edge behind it]
+    B --> C[retired_src_modules names the module]
+    C --> D[out of the forced-import list]
+    C --> E[out of the copied source files]
+    C --> F[excludes_for names it to the packager]
+```
+
+Such a module leaves three ways. The third is needed because the packager reads
+an import line inside a function too, so a builder that never runs would
+otherwise carry its module back into the bundle.
+
+`tools/spec_common.py` — the answers both recipes read
+
+```python
+def reachable_src_modules(project_root: str) -> frozenset[str]: ...
+def retired_src_modules(project_root: str) -> frozenset[str]: ...
+def excludes_for(project_root: str) -> list[str]: ...
+```
+
+### What a request for a left-out page gets
+
+The seven retired pages keep their place in the bridge's source.
+`src/gui/main_tabs/retired_surfaces.py, in on_demand_handlers` registers a page
+only when the running program can find its surface. A packaged build carries
+none of the seven, so its registry holds none of their methods. A request for
+one gets the bridge's refusal for a method that no surface serves, and no import
+runs.
+
+`src/gui/main_tabs/retired_surfaces.py` — `_is_carried`, the test each retired page passes before it is registered
+
+```python
+def _is_carried(module_name: str) -> bool:
+    """Return True when ``find_spec`` finds ``module_name`` beside this module."""
+    return importlib.util.find_spec("." + module_name, __package__) is not None
+```
+
+The registry passage and the whole function that calls this are in
+[the tab index](08-tabs/README.md), under "How a screen reaches its renderer".
+
+Read on a copy of the source folder without the seven surface files, which is
+what a packaged build carries:
+
+```
+registry methods          66, against 73 with the files present
+analytics.tab answers     UnknownMethod: analytics.tab
+surface module imported   no
+```
+
+A run from the source folder still answers all seven pages.
+
+### What each mark reading keeps
+
+Each reading keeps a module whenever it cannot be sure.
+
+- An import line outside the skipped builder or loader is followed, inside a
+  function or not.
+- A builder named anywhere outside its guard keeps its imports, and so does a
+  loader named anywhere outside its `register` call.
+- An ask that names its screen by any value but the screen's own constant keeps
+  every registered screen. So does `surface_class` or `draws_react` used without
+  a call.
+- A mark the build cannot find where it reads it stops the build with the mark's
+  name.
+
+Each case was read on a copy of the source folder:
+
+| the copy | modules the marks leave out |
+| --- | --- |
+| unchanged | 10 |
+| the Accumulation builder also called outside its guard | 9, and the panel stays |
+| one screen asked for through a variable | 7, and both Alerts screens and their surface stay |
+| `surface_class` handed on without a call | 7, and the same three stay |
+| the retired-page table renamed | none: the build stops with `LookupError` |
+
+The reading cannot see a method name assembled from text while the program runs.
+A builder called only that way would read as never called.
+
+### What leaves today
+
+Measured on this tree, the source folder holds 501 modules. 461 are reached
+through a screen the window builds, 30 are reached by nothing, and 10 are
+reached only through a screen the window never builds.
+
+| the window's mark | the modules that leave |
+| --- | --- |
+| retired page | `src.gui.main_tabs.alerts_tab_surface`, `src.gui.main_tabs.analytics_tab_surface`, `src.gui.main_tabs.audio_suite_surface`, `src.gui.main_tabs.competition_tab_surface`, `src.gui.main_tabs.journal_tab_surface`, `src.gui.main_tabs.risk_tab_surface`, `src.gui.main_tabs.testnet_tab_surface` |
+| unbuilt tab, Accumulation | `src.gui.react_proof_of_accumulation_tab` |
+| screen nothing asks for, Alerts | `src.gui.alerts_tab`, `src.gui.react_alerts_tab` |
+
+Each module's other imports are reached through a screen the window builds, so
+nothing else leaves with them. Two modules of those screens stay.
+`src.gui.audio_suite` stays because the Market Inspector imports its chime, and
+`src.gui.main_tabs.proof_of_accumulation_tab_surface` stays because the window's
+own model imports it for the tab's heading.
+
+Nothing here launches the packaged application. The launch is the operator's
+verification.

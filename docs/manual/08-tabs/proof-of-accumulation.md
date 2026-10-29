@@ -34,6 +34,24 @@ same list, so the method that would append the panel is never called.
                 self._build_proof_of_accumulation_tab()
 ```
 
+Read on the current tree, the guard hands the builder to the step timer, and the
+build reads the same guard. The window calls the builder only under it, so the
+build leaves the panel module the builder imports,
+`src.gui.react_proof_of_accumulation_tab`, out of a packaged build. The tab's
+own surface still ships, because the window's model imports it for the heading.
+
+`src/gui/main_window.py, in MainWindow._setup_ui` — the guard as it reads now
+
+```python
+            if ACCUMULATION_TAB not in UNBUILT_TABS:
+                self._timed_build_step(
+                    ACCUMULATION_TAB, self._build_proof_of_accumulation_tab
+                )
+```
+
+Dropping the name from the skip list puts the panel back in the build as well.
+The rule is on [17-what-the-build-includes.md](../17-what-the-build-includes.md).
+
 The Competition tab and the Local Testnet tab are not built either. One mixin
 assigns `None` to both attributes on every launch.
 
