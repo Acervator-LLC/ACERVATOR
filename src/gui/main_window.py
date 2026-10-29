@@ -793,7 +793,10 @@ if _HAS_QT:
         )
 
         def _pump_currency_rates(self) -> None:
-            """Refresh CurrencyRateMonitor and push its snapshot to the voting panel."""
+            """Refresh CurrencyRateMonitor and push its snapshot to the voting panel.
+
+            With no connector and ``fleet_locked`` True the rates come through ``_public_feed``.
+            """
             try:
                 from ..exchange.currency_rate_monitor import get_currency_monitor
 
@@ -803,12 +806,39 @@ if _HAS_QT:
                 connectors = getattr(self, "_exchange_connectors", {}) or {}
                 if connectors:
                     self._schedule_async(mon.refresh_from_connectors(connectors))
+                elif self.fleet_locked():
+                    self._schedule_async(mon.refresh_from_feed(self._public_feed()))
                 if hasattr(self, "_indicator_panel"):
                     self._indicator_panel.update_currency_rates(mon.snapshot())
                     self._publish_votes()
                 self._currency_pump_fault.note_success()
             except Exception as exc:
                 self._currency_pump_fault.note_failure(exc)
+
+        def _public_feed(self):
+            """The one keyless ``LiveFeedSource`` a locked window reads the rate strip through."""
+            held = getattr(self, "_locked_feed", None)
+            if held is None:
+                from ..paper.live_feed_source import LiveFeedSource
+
+                held = LiveFeedSource()
+                self._locked_feed = held
+            return held
+
+        def _feed_locked_price_screens(self) -> None:
+            """Feed the Charts ATA-SMP list and the rate strip while ``fleet_locked`` holds no bot.
+
+            ``fetch_chart_data`` reads with no connector, so ``ChartDataFetcher`` takes its keyless route.
+            """
+            try:
+                self._charts_tab.update_charts([], bot_manager=self._bot_manager)
+                self._schedule_coalesced(
+                    "_pending_chart_fetch", self._charts_tab.fetch_chart_data({})
+                )
+                self._chart_fetch_fault.note_success()
+            except Exception as chart_fetch_exc:
+                self._chart_fetch_fault.note_failure(chart_fetch_exc)
+            self._pump_currency_rates()
 
         def _pump_market_pairs_scout(self) -> None:
             """Refresh MarketPairsScout for connected exchanges, one at a time."""
@@ -1475,6 +1505,9 @@ if _HAS_QT:
                             len(all_bot_statuses),
                         )
                         self._dash_empty_warned = True
+
+                if self.fleet_locked():
+                    self._feed_locked_price_screens()
 
                 if self._bot_manager:
                     try:

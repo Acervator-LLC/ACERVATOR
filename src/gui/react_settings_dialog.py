@@ -241,6 +241,18 @@ class PageLine(_Held):
         """Show or hide the field and redraw."""
         self._owner.set_visible(self._name, bool(shown))
 
+    def isEnabled(self) -> bool:
+        """True while the field takes typing."""
+        return self._owner.store().enabled.get(self._name) is True
+
+    def setEnabled(self, on: Any) -> None:
+        """Take typing or refuse it, and redraw."""
+        self._owner.set_enabled(self._name, bool(on))
+
+    def setPlaceholderText(self, words: Any) -> None:
+        """Show ``words`` in the empty field in place of its spec's placeholder."""
+        self._owner.set_placeholder(self._name, "" if words is None else str(words))
+
 
 class PageTextArea(_Held):
     """A block of text, as ``QTextEdit`` reports it."""
@@ -516,6 +528,18 @@ class PagePress:
         self._owner.set_tooltip(self._name, "" if words is None else str(words))
 
 
+class PageCheckedPress(PagePress):
+    """A button that stays pressed in, as a checkable ``QPushButton`` reports it."""
+
+    def isChecked(self) -> bool:
+        """True while the button is pressed in."""
+        return self._owner.store().checked.get(self._name) is True
+
+    def setChecked(self, on: Any) -> None:
+        """Press the button in or let it out, and redraw."""
+        self._owner.set_checked(self._name, bool(on))
+
+
 #: The holder class each control kind is drawn by.
 HOLDER_BY_KIND = {
     surface.LINE: PageLine,
@@ -535,6 +559,7 @@ TEXT_NAMES: tuple[str, ...] = (
     "ai_hash",
     "ai_checks",
     "vol_label",
+    surface.FLEET_LOCK_STATE_NAME,
 )
 
 #: Every button the dialog turns on or off.
@@ -549,6 +574,8 @@ ACTION_HANDLERS: dict[str, str] = {
     "ai_test_btn": "_test_ai_handshake",
     "cancel_btn": "reject",
     "save_btn": "_save",
+    surface.FLEET_LOCK_UNLOCK_NAME: "_open_fleet_unlock",
+    surface.FLEET_LOCK_CLEAR_NAME: "_press_fleet_lock_clear",
 }
 
 #: The sound each Test button plays, as the page reports its press. A name the
@@ -625,6 +652,9 @@ if _HAS_QT and _HAS_WEBENGINE:
             self._passphrase_exchanges = surface.passphrase_exchange_ids()
             self._build_holders()
             self._refresh_exchange_status()
+            self._describe_fleet_lock()
+            self._report_fleet_lock_faults()
+            self._show_fleet_lock_state()
 
             self.setAccessibleName(ACCESSIBLE_NAME)
             layout = QVBoxLayout(self)
@@ -673,6 +703,33 @@ if _HAS_QT and _HAS_WEBENGINE:
             self._model.tooltips[name] = words
             self.redraw()
 
+        def set_checked(self, name: str, on: bool) -> None:
+            """Press the button named ``name`` in, or let it out."""
+            self._model.checked[name] = on
+            self.redraw()
+
+        def set_placeholder(self, name: str, words: str) -> None:
+            """Show ``words`` in the empty row named ``name``."""
+            self._model.placeholders[name] = words
+            self.redraw()
+
+        def _press_fleet_lock_clear(self) -> None:
+            """Press Clear the lock in or let it out, then redraw the group's line.
+
+            A press while ``_lock_clear`` is dead changes nothing, as the Qt button refuses it.
+            """
+            press = getattr(self, "_" + surface.FLEET_LOCK_CLEAR_NAME, None)
+            if press is None or not press.isEnabled():
+                return
+            press.setChecked(not press.isChecked())
+            self._show_fleet_lock_state()
+
+        def _danger_tint(self) -> str:
+            """The danger colour of the stored theme, the one its Qt sheet paints."""
+            from .theme_engine import THEMES
+
+            return str(THEMES[self._theme_name()].accent_danger)
+
         @property
         def page_ready(self) -> bool:
             """True once ``_on_load_finished`` has seen a successful load."""
@@ -704,6 +761,7 @@ if _HAS_QT and _HAS_WEBENGINE:
                 for spec in found["control_specs"]
             ]
             found["exchange_status"].update(self._venue_array_payload())
+            found["fleet_lock"] = surface.fleet_lock_payload(self._danger_tint())
             self._last_model = found
             if self._page_ready:
                 self._run(push_script(found, self._tab))
@@ -849,7 +907,12 @@ if _HAS_QT and _HAS_WEBENGINE:
             for name in TEXT_NAMES:
                 setattr(self, "_" + name, PageText(self, name))
             for name in PRESS_NAMES:
-                setattr(self, "_" + name, PagePress(self, name))
+                press = (
+                    PageCheckedPress
+                    if name in surface.CHECKABLE_PRESS_NAMES
+                    else PagePress
+                )
+                setattr(self, "_" + name, press(self, name))
             # _stored_groups reads the weights out of this dict, so the page
             # holders go in it under the same keys the Qt sliders use.
             self._ta_weight_sliders = {
