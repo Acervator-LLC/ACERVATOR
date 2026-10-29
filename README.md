@@ -617,41 +617,98 @@ Inspector is an intention.
 
 These elements were implemented as part of an effort to boost accumulation and scrumming performance in longer term bearish or bullish conditions that might not latch all logic gates to trigger a fold or scrum despite the Target Delta not being zero. This piece adds a factor to the bot that makes it more aggressively evaluate subsequent candles and will increase its likelihood of executing the re-zeroing action. This allows for trades to be executed in the hypothetical ‘dead zone’ between Minimum Opposing Trade Distance and the lower or upper Bollinger Band extent if the candle structure begins to float or cruise within it for too long.
 
-**Not built.** Neither index exists in code today. No aggression factor shortens
-the wait between candles, and the bot has no term that widens its willingness to
-fire inside the dead zone between the Minimum Opposing Trade Distance and the
-band extreme.
+**Built, and switched off on every bot.** Hunger is a count of the candles that
+pass while the position is off target and nothing fills. Satiety sets the count
+back to zero. The count becomes a skew on the TA confidence floor, so after a
+long idle stretch a weaker vote clears the floor.
 
-**The build this specifies.** The engine already carries a skew term that
-relaxes the confidence floor, and hunger is that term driven by time rather than
-by band position. A counter grows while the target delta is non-zero and nothing
-fires, and it resets to zero on a fill. That reset is satiety. Two new config
-fields set the rate and the ceiling, and the counter joins the skew the floor
-already reads, so no new gate and no new call site are needed.
+Each bot carries its own two figures. The gain is zero on every bot, so no bot
+trades differently today. No screen sets the gain, and no measurement sets its
+figure.
 
-*Proposed, not present, in `src/trading/container/config.py`:*
+`src/trading/container/config.py` — `BotConfig`
 
 ```python
-hunger_gain_per_candle: float = 0.0
-hunger_skew_max: float = 0.20
+    # Floor skew each idle candle off target adds; 0.0 is off.
+    hunger_gain_per_candle: float = 0.0
+    # The most hunger_gain_per_candle may add to the floor skew.
+    hunger_skew_max: float = 0.20
 ```
 
-*Proposed, not present, in `ScrummingBot.tick`:*
+The tick adds one when the newest candle of the bot's TA timeframe carries a
+newer timestamp, the rule the circuit breaker uses for its cooldown. A hard
+circuit-breaker trip stops the count. A fill sets it to zero, and so does a tick
+inside the at-target dust band. The count lives in memory, so a restart starts it
+again at zero.
+
+`src/trading/scrumming_bot.py` — `ScrummingBot._count_hunger_candle`
 
 ```python
-if territory != "at_target" and not fired_this_tick:
-    self._hunger_candles += 1
-else:
-    self._hunger_candles = 0
-hunger_skew = min(
-    float(self.config.hunger_skew_max),
-    self._hunger_candles * float(self.config.hunger_gain_per_candle),
-)
-_ta_conf_skew = position_boost + bb_confidence_boost + hunger_skew
+        if not math.isfinite(stamp) or stamp <= self._hunger_candle_ts:
+            return
+        anchored = self._hunger_candle_ts > 0.0
+        self._hunger_candle_ts = stamp
+        if not anchored:
+            return
+        before = self._hunger_floor_skew()
+        self._hunger_candles += 1
 ```
 
-The default gain of zero keeps present behaviour exactly, so the feature ships
-switched off and the operator turns it on per bot. Issue #433 carries the build.
+Every fill the bot books reaches its clock figures once, so satiety sits there.
+
+`src/trading/scrumming_bot.py` — `ScrummingBot._write_clock_figures`
+
+```python
+    def _write_clock_figures(
+        self, fill: SettledFill, order_id: str, filled: float, rests: bool
+    ) -> None:
+        """Run ``_sate_hunger`` for ``fill``, then write the mixin's clock figures."""
+        self._sate_hunger(f"a {fill.type} fill")
+        super()._write_clock_figures(fill, order_id, filled, rests)
+```
+
+The skew is the count times the gain, held at the ceiling. It joins the favours
+the floor already divides by, so the floor is 0.25 divided by one plus their sum.
+At the 0.20 ceiling alone the floor is 0.2083.
+
+`src/trading/scrumming_bot.py` — `_hunger_skew`
+
+```python
+def _hunger_skew(idle_candles: int, gain_per_candle: object, skew_max: object) -> float:
+    """Return ``idle_candles`` times ``gain_per_candle``, capped at ``skew_max``.
+
+    ``gain_per_candle`` and ``skew_max`` must be finite and above zero, else it is 0.0.
+    """
+    gain = as_finite_float(gain_per_candle)
+    ceiling = as_finite_float(skew_max)
+    if gain is None or ceiling is None or gain <= 0.0 or ceiling <= 0.0:
+        return 0.0
+    return min(ceiling, idle_candles * gain)
+```
+
+`src/trading/scrumming_bot.py` — `ScrummingBot.tick`
+
+```python
+        _ta_conf_skew = position_boost + bb_confidence_boost
+        if hunger_skew:
+            _ta_conf_skew += hunger_skew
+        if _bb_priority_arm:
+            _ta_conf_skew += _BB_PRIORITY_SKEW
+        _eff_conf_floor = _skewed_confidence_floor(_ta_conf_skew)
+```
+
+A lower floor changes three decisions and leaves a fourth alone. It releases a
+fold that every other gate passes and the TA confidence alone holds. That
+happens at the lower band while the delta is still inside the interval, where
+the deep-fold override does not reach. It lets a DIST sale through sooner. It
+refuses the hedge top-up more often, because that buy waits for a vote that is
+not bullish. It changes no scrum, because the ripe-harvest override already
+passes the TA gate wherever the band lets a scrum through. The band detect lines
+do not move, so hunger opens no trade short of them.
+
+The bot log names hunger while it acts. A HUNGER line gives the count and the
+floor it sets alone, and a SATIETY line names the fill or the return to target
+that ended it.
 
 ### 9 - Accumulation Shadows
 
@@ -1173,7 +1230,7 @@ it.
 
 - **Scrum/Fold cycle** — harvest the excess above target, buy back cheaper
 - **Profit folding** — each fold permanently raises the target, compounding growth
-- **Hunger and Satiety dual index** — a delta-driven aggression scalar
+- **Hunger and Satiety dual index** — idle candles off target lower the TA confidence floor until a fill
 - **Provenance fold queue** — per-tranche independent fold execution
 - **BB midline gate** — scrum only above the midline, fold only below it
 - **Bollinger Band bullseye** — rapid-fire execution when price touches the band exactly

@@ -24,7 +24,7 @@ from typing import Any, Optional, TYPE_CHECKING
 if TYPE_CHECKING:
     from ..exchange.base import ExchangeInterface
 
-from ..core.emit_contracts import FILL_BUY, FILL_SELL
+from ..core.emit_contracts import FILL_BUY, FILL_SELL, SettledFill
 from ..exchange.base import OrderSide, OrderType
 from .target_bands import at_target_dust_band
 from .bot_container import (
@@ -242,6 +242,18 @@ def _skewed_confidence_floor(skew: float, floor: float = _TA_CONFIDENCE_FLOOR) -
     if denominator <= 0.0:
         return math.inf
     return floor / denominator
+
+
+def _hunger_skew(idle_candles: int, gain_per_candle: object, skew_max: object) -> float:
+    """Return ``idle_candles`` times ``gain_per_candle``, capped at ``skew_max``.
+
+    ``gain_per_candle`` and ``skew_max`` must be finite and above zero, else it is 0.0.
+    """
+    gain = as_finite_float(gain_per_candle)
+    ceiling = as_finite_float(skew_max)
+    if gain is None or ceiling is None or gain <= 0.0 or ceiling <= 0.0:
+        return 0.0
+    return min(ceiling, idle_candles * gain)
 
 
 _WIRE_CREDIT_CAP = 20
@@ -591,6 +603,9 @@ class ScrummingBot(
         self._cb_soft_trip_pct: float = 0.0
         self._cb_last_candle_ts: float = 0.0
         self._cb_unreadable_named: tuple = ()
+
+        self._hunger_candles: int = 0
+        self._hunger_candle_ts: float = 0.0
 
     def get_swos_inputs(self) -> Optional[dict]:
         """Return the input dict for ``smart_wire.compute_safe_outflow_pct``.
@@ -2643,6 +2658,70 @@ class ScrummingBot(
             "fill_price": fill_price,
         }
 
+    def _hunger_floor_skew(self) -> float:
+        """Return ``_hunger_skew`` for ``_hunger_candles`` at this bot's two figures."""
+        return _hunger_skew(
+            self._hunger_candles,
+            self.config.hunger_gain_per_candle,
+            self.config.hunger_skew_max,
+        )
+
+    def _count_hunger_candle(self, candles: list) -> None:
+        """Add one to ``_hunger_candles`` each time ``candles`` ends on a newer candle.
+
+        ``_hunger_candle_ts`` holds the timestamp of the last candle counted.
+        """
+        try:
+            stamp = float(getattr(candles[-1], "timestamp", 0) or 0) if candles else 0.0
+        except (TypeError, ValueError):
+            return
+        if not math.isfinite(stamp) or stamp <= self._hunger_candle_ts:
+            return
+        anchored = self._hunger_candle_ts > 0.0
+        self._hunger_candle_ts = stamp
+        if not anchored:
+            return
+        before = self._hunger_floor_skew()
+        self._hunger_candles += 1
+        after = self._hunger_floor_skew()
+        if after != before:
+            self._bus.emit(
+                "bot.log",
+                bot_id=self.bot_id,
+                message=(
+                    f"HUNGER: {self._hunger_candles} candle(s) off target "
+                    f"with no fill. Hunger adds {after:+.2f} to the floor "
+                    f"skew, which alone moves the {_TA_CONFIDENCE_FLOOR:.2f} "
+                    f"confidence floor to {_skewed_confidence_floor(after):.4f}."
+                ),
+            )
+
+    def _sate_hunger(self, cause: str) -> None:
+        """Zero ``_hunger_candles`` and ``_hunger_candle_ts``.
+
+        A SATIETY line names ``cause`` when ``_hunger_floor_skew`` was above zero.
+        """
+        held = self._hunger_floor_skew()
+        if held > 0.0:
+            self._bus.emit(
+                "bot.log",
+                bot_id=self.bot_id,
+                message=(
+                    f"SATIETY: {cause}. Hunger returns to zero after "
+                    f"{self._hunger_candles} idle candle(s), and its "
+                    f"{held:+.2f} floor skew ends."
+                ),
+            )
+        self._hunger_candles = 0
+        self._hunger_candle_ts = 0.0
+
+    def _write_clock_figures(
+        self, fill: SettledFill, order_id: str, filled: float, rests: bool
+    ) -> None:
+        """Run ``_sate_hunger`` for ``fill``, then write the mixin's clock figures."""
+        self._sate_hunger(f"a {fill.type} fill")
+        super()._write_clock_figures(fill, order_id, filled, rests)
+
     def _update_opposing_hysteresis_state(
         self, delta: float, current_price: float
     ) -> None:
@@ -3127,6 +3206,7 @@ class ScrummingBot(
             self._emit_gate_decision_at_quiet_tick(
                 f"at-target-dust-band(+/-${_dust_band_usd:.4f})"
             )
+            self._sate_hunger("the position is back at target")
             return
         self._at_target_counter = 0
 
@@ -3270,6 +3350,7 @@ class ScrummingBot(
         if self._cb_hard_tripped:
             self._emit_gate_decision_at_quiet_tick("cb-hard-tripped")
             return
+        self._count_hunger_candle(candles)
 
         summary = None
         bb_result = None
@@ -3551,14 +3632,21 @@ class ScrummingBot(
             elif bb_result.near_lower:
                 bb_near = ", near the lower band"
 
-        # Both favours skew the floor, so the confidence prints alone.
+        hunger_skew = self._hunger_floor_skew()
+        # The favours and hunger skew the floor, so the confidence prints alone.
         if self._refusal_is_new(
             f"state_ta_vote_{summary.consensus_direction.name}", ticker.last
         ):
             _skew_note = ""
-            if position_boost or bb_confidence_boost:
-                _skew_note = f", floor skew {position_boost:+.2f} position" + (
-                    "" if not bb_confidence_boost else f" {bb_confidence_boost:+.2f} BB"
+            if position_boost or bb_confidence_boost or hunger_skew:
+                _skew_note = (
+                    f", floor skew {position_boost:+.2f} position"
+                    + (
+                        ""
+                        if not bb_confidence_boost
+                        else f" {bb_confidence_boost:+.2f} BB"
+                    )
+                    + ("" if not hunger_skew else f" {hunger_skew:+.2f} hunger")
                 )
             self._bus.emit(
                 "bot.log",
@@ -3672,8 +3760,10 @@ class ScrummingBot(
             and delta < 0
         )
         _bb_priority_arm = _bb_priority_scrum_skew or _bb_priority_fold_skew
-        # All three favours sum into one skew applied to the floor.
+        # All three favours and hunger sum into one skew applied to the floor.
         _ta_conf_skew = position_boost + bb_confidence_boost
+        if hunger_skew:
+            _ta_conf_skew += hunger_skew
         if _bb_priority_arm:
             _ta_conf_skew += _BB_PRIORITY_SKEW
         _eff_conf_floor = _skewed_confidence_floor(_ta_conf_skew)
@@ -3681,6 +3771,7 @@ class ScrummingBot(
         if _bb_priority_arm and self._refusal_is_new(
             f"state_bb_skew_{_bb_skew_side}", ticker.last
         ):
+            _hunger_note = "" if not hunger_skew else f", hunger {hunger_skew:+.2f}"
             try:
                 self._bus.emit(
                     "bot.log",
@@ -3696,7 +3787,7 @@ class ScrummingBot(
                         f"{1.0 + _ta_conf_skew:.2f}: BB priority "
                         f"{_BB_PRIORITY_SKEW:+.2f}, position "
                         f"{position_boost:+.2f}, BB confidence "
-                        f"{bb_confidence_boost:+.2f}. The direction is "
+                        f"{bb_confidence_boost:+.2f}{_hunger_note}. The direction is "
                         f"untouched, so a contradicting TA still refuses "
                         f"the trade."
                     ),
