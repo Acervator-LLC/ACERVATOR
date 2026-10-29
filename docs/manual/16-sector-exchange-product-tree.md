@@ -101,6 +101,19 @@ RETIRED_CLASSES = {
 }
 ```
 
+OVERTAKEN, and the block above is kept as written. `derivatives` now resolves
+onto futures_perps, the sector the contract rule files a contract on a crypto
+underlying under.
+
+```python
+# src/trading/ata_spm.py, in RETIRED_CLASSES
+RETIRED_CLASSES = {
+    "metals": CLASS_COMMODITIES,
+    "energy": CLASS_COMMODITIES,
+    RETIRED_CLASS_DERIVATIVES: contract_class(CLASS_CRYPTO),
+}
+```
+
 ## Exchange
 
 `venues_for_class` answers one sector's venue ids. The counts below were read in
@@ -183,6 +196,55 @@ it offers a market whose two legs are both national currencies. Gemini and
 Bitstamp each offer a euro-dollar market, and Interactive Brokers documents a
 currency security type. A currency token quoted against a dollar stablecoin is
 not counted.
+
+OVERTAKEN, and the tables and the sentences above are kept as written. A venue is
+now listed under a sector only where it trades a market there. A market that the
+one placement rule files under another sector does not count, and neither does a
+market no interface the venue publishes takes an order on. Read in one running
+process with nothing recorded, eleven venue-and-sector cells left:
+
+| Sector | Venues the registry answers | Was | Left |
+| ------ | --------------------------- | --- | ---- |
+| Crypto | 22 | 24 | Schwab, E*TRADE |
+| Stocks | 18 | 21 | Huobi, TD Ameritrade, the second Interactive Brokers id |
+| Commodities | 21 | 21 | none |
+| Forex | 15 | 16 | E*TRADE |
+| Indices | 16 | 20 | Bitget, KuCoin, OKX, OKX US |
+| Futures / Perps | 17 | 18 | E*TRADE |
+
+| Venue | Sector | Why nothing is tradeable there |
+| ----- | ------ | ------------------------------ |
+| schwab | crypto | its crypto contracts file under futures_perps, and the bank holding its spot crypto publishes no interface |
+| etrade | crypto | its spot crypto is reached on its website and app alone, its contracts take no API order, and a crypto fund records under stocks |
+| etrade | forex | its currency contracts take no API order, and it lists no spot forex |
+| etrade | futures_perps | its order interface takes no contract |
+| bitget, kucoin, okx, okxus | indices | each venue publishes its index funds as stocks, and they record under stocks |
+| huobi | stocks | its equity symbols read offline, and no rule files a Huobi market under stocks |
+| tdameritrade | stocks | the venue no longer exists, and no broker connector answers the id |
+| interactivebrokers | stocks | no broker connector answers the id, and `ibkr` carries the firm |
+
+```python
+# src/gui/main_tabs/asset_class_surface.py, in venue_classes
+    found = {retired_onto(one) for one in EXTRA_VENUE_CLASSES.get(asked, ())}
+    served = broker_served(asked)
+    if asked in EQUITY_VENUES and served is not None:
+        found.add("stocks")
+    held = recorded if isinstance(recorded, dict) else recorded_venue_classes()
+    found |= set(held.get(asked, frozenset()))
+    if served:
+        found &= set(served)
+    if asked in crypto_venues():
+        found.add("crypto")
+```
+
+Every other cell stayed. The 109 cells on this branch are the 120 before it less
+the eleven, and a reading with one kept cell taken out of the registry names that
+cell. The first-run wizard offers the same 24 venue ids the sector lists hold,
+where it offered 26.
+
+Fidelity stays under its four sectors. It publishes no order route on any host, so
+a program can trade nothing there either, and whether a firm with no interface
+belongs on any tab is the operator's decision.
 
 **A venue in a registry is not a venue proved to work.** One venue has ever
 traded. [15-venue-compatibility.md](15-venue-compatibility.md) states it at
@@ -335,6 +397,12 @@ nothing recorded, `venue_served_classes` answers nothing for Kraken and nothing
 for Alpaca, while `venue_classes` answers Crypto and Stocks. A fresh install has
 recorded nothing, and a venue the operator has never configured is recorded
 nowhere, so a derived-only answer would empty every sector on both.
+
+OVERTAKEN, and the table and the sentences above are kept as written. Both halves
+are still read, and a broker that names its own sectors bounds them.
+`src/gui/main_tabs/asset_class_surface.py, in broker_served` answers that set. With
+one Schwab contract row written under crypto into a scratch home, Schwab answers
+five sectors and not crypto, where it answered six.
 
 ### The Configured list reads the sector, not the wing
 

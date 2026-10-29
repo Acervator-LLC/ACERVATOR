@@ -81,18 +81,27 @@ CLASS_OPTIONS = "options"
 #: sorts a future as one of six instrument categories, beside equities and
 #: debt, so the class belongs to the underlying and the contract form rides on
 #: the listing. ``ata_asset_maps.futures_placement`` reads each product's own
-#: underlying and answers the class holding it.
+#: underlying and answers the class ``contract_class`` files it under.
 RETIRED_CLASS_DERIVATIVES = "derivatives"
+
+
+def contract_class(sector: Any) -> str:
+    """The sector a contract product records under: ``CLASS_FUTURES_PERPS``
+    where ``sector`` is ``CLASS_CRYPTO``, else ``sector``."""
+    named = str(sector or "")
+    return CLASS_FUTURES_PERPS if named == CLASS_CRYPTO else named
+
 
 #: A class name an earlier taxonomy drew, and the live class now holding its
 #: markets. The S&P GSCI makes energy and metals sectors of commodities, so a
-#: held selection naming either still reaches the markets it named. Every CDE
-#: product this repository has read carries a crypto underlying, so a held
-#: ``derivatives`` selection reaches crypto.
+#: held selection naming either still reaches the markets it named. A held
+#: ``derivatives`` selection reaches the class ``contract_class`` files a
+#: contract on a crypto underlying under, where the CDE products on a crypto
+#: root sit.
 RETIRED_CLASSES = {
     "metals": CLASS_COMMODITIES,
     "energy": CLASS_COMMODITIES,
-    RETIRED_CLASS_DERIVATIVES: CLASS_CRYPTO,
+    RETIRED_CLASS_DERIVATIVES: contract_class(CLASS_CRYPTO),
 }
 
 CRYPTO_TIMEFRAMES = ("5m", "1h", "1d", "1w")
@@ -403,13 +412,6 @@ def asset_class_named(name: Any) -> str:
     if folded in ASSET_CLASSES:
         return folded
     return RETIRED_CLASSES.get(folded, NO_ASSET_CLASS)
-
-
-def contract_class(sector: Any) -> str:
-    """The sector a contract product records under: ``CLASS_FUTURES_PERPS``
-    where ``sector`` is ``CLASS_CRYPTO``, else ``sector``."""
-    named = str(sector or "")
-    return CLASS_FUTURES_PERPS if named == CLASS_CRYPTO else named
 
 
 def timeframes_for(asset_class: Any) -> tuple:
