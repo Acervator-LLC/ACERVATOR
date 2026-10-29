@@ -468,8 +468,6 @@ class FidelityConnector(BrokerBase):
     #: Left empty on purpose, the reading the etrade unit landed. A narrowed set
     #: would send a bot on a sector outside it down the crypto path, and ccxt
     #: 4.5.85 carries no ``fidelity``, so the bot would fail with no sentence.
-    #: ``asset_class_surface.EXTRA_VENUE_CLASSES`` is what narrows the screen to
-    #: the four sectors this venue lists a product in.
     SECTORS_SERVED: tuple = ()
 
     #: Fidelity publishes no API host at all, so it publishes no paper one

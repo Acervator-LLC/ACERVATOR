@@ -246,6 +246,42 @@ Fidelity stays under its four sectors. It publishes no order route on any host, 
 a program can trade nothing there either, and whether a firm with no interface
 belongs on any tab is the operator's decision.
 
+OVERTAKEN, and the sentences above are kept as written. Fidelity is now listed
+under no sector. It publishes no order route that a program can call, on any
+host, so no sector tab, Add Exchange list or bot wizard offers it, in either
+build. Read in one running process with nothing recorded:
+
+| Sector | Venues the registry answers | Was | Left |
+| ------ | --------------------------- | --- | ---- |
+| Crypto | 21 | 22 | Fidelity |
+| Stocks | 17 | 18 | Fidelity |
+| Commodities | 20 | 21 | Fidelity |
+| Forex | 15 | 15 | none |
+| Indices | 15 | 16 | Fidelity |
+| Futures / Perps | 17 | 17 | none |
+
+```python
+# src/gui/main_tabs/asset_class_surface.py, in EQUITY_VENUES
+EQUITY_VENUES = frozenset(
+    {
+        "alpaca",
+        "ibkr",
+        "schwab",
+        "tdameritrade",
+        "webull",
+        "tastytrade",
+        "etrade",
+        "interactivebrokers",
+        "robinhood",
+    }
+)
+```
+
+`EXTRA_VENUE_CLASSES` holds no Fidelity row either. Every other cell stayed, and
+the first-run wizard offers 23 venue ids, where it offered 24. What Fidelity
+publishes is recorded in [15-venue-compatibility.md](15-venue-compatibility.md),
+under Fidelity.
+
 **A venue in a registry is not a venue proved to work.** One venue has ever
 traded. [15-venue-compatibility.md](15-venue-compatibility.md) states it at
 line 99:
@@ -271,7 +307,7 @@ that is not a `ccxt` venue, and `crypto_venues` reads it off
 ### Stocks, 10 venues
 
 ```
-alpaca    etrade        fidelity   ibkr      interactivebrokers
+alpaca    etrade        fidelity (not offered)   ibkr      interactivebrokers
 schwab    tastytrade    tdameritrade          webull
 coinbase  through EXTRA_VENUE_CLASSES
 ```
