@@ -87,6 +87,7 @@ from .fold_chrome import (
     install_despawn_rows,
 )
 from ..descriptions import FOLD_TRANCHES_TAB_DESCRIPTIONS
+from ..tooltips import set_description
 
 if TYPE_CHECKING:
     from ..bot_live_settings import BotLiveSettingsDialog
@@ -443,18 +444,18 @@ class FoldTranchesTabMixin:
                 cell = QTableWidgetItem(text)
                 cell.setBackground(bg)
                 cell.setForeground(fg)
-                cell.setToolTip(tip)
+                set_description(cell, tip)
                 table.setItem(target_row, col, cell)
 
             arb_value = row_data.get("arbiter")
             arb_cell = QTableWidgetItem(_arbiter_label(arb_value))
             arb_cell.setBackground(bg)
             arb_cell.setForeground(fg)
-            arb_cell.setToolTip(_compose_arbiter_tooltip(arb_value))
+            set_description(arb_cell, _compose_arbiter_tooltip(arb_value))
             table.setItem(target_row, ARBITER_COLUMN_INDEX, arb_cell)
 
             arb_btn = QPushButton(_arbiter_label(arb_value))
-            arb_btn.setToolTip(_compose_arbiter_tooltip(arb_value))
+            set_description(arb_btn, _compose_arbiter_tooltip(arb_value))
             # The inset leaves the row border delegate visible under the button.
             _arb_inset = TRANCHE_FIRE_BTN_INSET_PX // 2
             arb_btn.setStyleSheet(
@@ -934,7 +935,7 @@ class FoldTranchesTabMixin:
             else "Clear Fold Tranches"
         )
         clear_btn.setEnabled(bool(open_count))
-        clear_btn.setToolTip(FOLD_TRANCHES_TAB_DESCRIPTIONS["clear_btn"])
+        set_description(clear_btn, FOLD_TRANCHES_TAB_DESCRIPTIONS["clear_btn"])
         clear_btn.setStyleSheet(
             f"QPushButton {{ background: {ds.SETTINGS_DANGER_SURFACE}; color: {ds.FOLD_RATIO_AMBER}; "
             f"border: 1px solid {ds.ERROR}; padding: 6px 12px; }} "
@@ -953,7 +954,7 @@ class FoldTranchesTabMixin:
             else "Clear Wire Credits"
         )
         wire_btn.setEnabled(fold_parked_credit_stands(parked))
-        wire_btn.setToolTip(FOLD_TRANCHES_TAB_DESCRIPTIONS["wire_btn"])
+        set_description(wire_btn, FOLD_TRANCHES_TAB_DESCRIPTIONS["wire_btn"])
         wire_btn.setStyleSheet(
             f"QPushButton {{ background: {ds.SETTINGS_DANGER_SURFACE}; color: {ds.FOLD_RATIO_AMBER}; "
             f"border: 1px solid {ds.ERROR}; padding: 6px 12px; }} "
@@ -979,7 +980,7 @@ class FoldTranchesTabMixin:
             else "Clear Lifetime Counters"
         )
         counters_btn.setEnabled(_counters_stand)
-        counters_btn.setToolTip(FOLD_TRANCHES_TAB_DESCRIPTIONS["counters_btn"])
+        set_description(counters_btn, FOLD_TRANCHES_TAB_DESCRIPTIONS["counters_btn"])
         counters_btn.setStyleSheet(
             f"QPushButton {{ background: {ds.SETTINGS_DANGER_SURFACE}; color: {ds.FOLD_RATIO_AMBER}; "
             f"border: 1px solid {ds.ERROR}; padding: 6px 12px; }} "
@@ -1050,7 +1051,7 @@ class FoldTranchesTabMixin:
             for _col, _tip in enumerate(FOLD_COLUMN_TOOLTIPS):
                 _head = table.horizontalHeaderItem(_col)
                 if _head is not None:
-                    _head.setToolTip(_tip)
+                    set_description(_head, _tip)
 
             table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
             # Extractor rows come last, so a fold row number is its tranches index.
@@ -1110,7 +1111,7 @@ class FoldTranchesTabMixin:
                 _units = units_cell(t)
                 _units_item = QTableWidgetItem(_units[0])
                 if _units[1] is not None:
-                    _units_item.setToolTip(_units[1])
+                    set_description(_units_item, _units[1])
                 table.setItem(row, 2, _units_item)
 
                 usd_v = _as_finite_float(t.get("usd", 0))
@@ -1141,14 +1142,16 @@ class FoldTranchesTabMixin:
                 _rebuy = min_rebuy_cell(ref_v, _otd_pct)
                 mr_item = QTableWidgetItem(_rebuy[0])
                 if _rebuy[1] is not None:
-                    mr_item.setToolTip(_rebuy[1])
+                    set_description(mr_item, _rebuy[1])
                 table.setItem(row, 6, mr_item)
 
                 if cur_price > 0 and ref_v is not None and ref_v > 0 and _otd_pct > 0:
                     _status = status_cell(cur_price, ref_v, _otd_pct)
                     si_status = QTableWidgetItem(_status[0])
                     si_status.setForeground(QColor(_status[1]))
-                    si_status.setToolTip(FOLD_TRANCHES_TAB_DESCRIPTIONS["si_status"])
+                    set_description(
+                        si_status, FOLD_TRANCHES_TAB_DESCRIPTIONS["si_status"]
+                    )
                     table.setItem(row, 7, si_status)
                 elif cur_price > 0 and ref_v is not None and ref_v > 0:
                     # OTD == 0: no per-tranche threshold; shows
@@ -1172,7 +1175,7 @@ class FoldTranchesTabMixin:
                 # this row, not what a fold-back removes it with.
                 src_str = _fold_tranche_source_label(t)
                 si = QTableWidgetItem(src_str)
-                si.setToolTip(FOLD_SOURCE_TOOLTIPS[src_str])
+                set_description(si, FOLD_SOURCE_TOOLTIPS[src_str])
                 if src_str == FOLD_SOURCE_MANUAL_SCRUM:
                     # `_paint_fold_tranche_row` never overwrites a
                     # cell that already owns a foreground brush.
@@ -1182,7 +1185,7 @@ class FoldTranchesTabMixin:
                 # Captures the tranche dict by identity, so a
                 # post-click index lookup survives list mutation.
                 fire_btn = QPushButton("Fire")
-                fire_btn.setToolTip(FOLD_TRANCHES_TAB_DESCRIPTIONS["fire_btn"])
+                set_description(fire_btn, FOLD_TRANCHES_TAB_DESCRIPTIONS["fire_btn"])
                 # The inset leaves the row border delegate visible under the button.
                 _inset = TRANCHE_FIRE_BTN_INSET_PX // 2
                 fire_btn.setStyleSheet(
@@ -1205,7 +1208,7 @@ class FoldTranchesTabMixin:
                 table.setCellWidget(row, 9, fire_btn)
 
                 arb_na = QTableWidgetItem(ARBITER_NOT_APPLICABLE)
-                arb_na.setToolTip(FOLD_TRANCHES_TAB_DESCRIPTIONS["arb_na"])
+                set_description(arb_na, FOLD_TRANCHES_TAB_DESCRIPTIONS["arb_na"])
                 table.setItem(row, ARBITER_COLUMN_INDEX, arb_na)
 
                 # LAST in the row, so every semantic foreground set
@@ -1340,9 +1343,9 @@ class FoldTranchesTabMixin:
         # Sets both the item and the button, so the stored value and
         # the widget cannot disagree.
         button.setText(label)
-        button.setToolTip(tip)
+        set_description(button, tip)
         item.setText(label)
-        item.setToolTip(tip)
+        set_description(item, tip)
 
     def _on_fire_tranche_clicked(
         self, tranche: dict, clicked_number: int | None = None

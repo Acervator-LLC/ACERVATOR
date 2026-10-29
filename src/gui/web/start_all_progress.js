@@ -91,6 +91,7 @@
   var BOLD = "bold";
 
   var TEXT_KEY = "text";
+  var TOOLTIP_KEY = "tooltip";
   var WORD_WRAP = "word_wrap";
   var ENABLED_KEY = "enabled";
 
@@ -432,6 +433,7 @@
       type: BUTTON_TYPE,
       disabled: !enabled,
       style: style,
+      title: text(one[TOOLTIP_KEY]),
       onClick: handlerFor(props.name)
     };
     p[PART_ATTR] = BUTTON_PART;

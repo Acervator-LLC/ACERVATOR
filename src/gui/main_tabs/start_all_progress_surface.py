@@ -99,6 +99,12 @@ SUBLINE_WORD_WRAP = True
 
 CANCEL_TEXT = "Cancel remaining"
 CLOSE_TEXT = "Close"
+CANCEL_TOOLTIP = (
+    "Stops the start after the bot now starting. Bots already started keep running."
+)
+CLOSE_TOOLTIP = (
+    "Closes this window. It turns on once the start finishes or is cancelled."
+)
 CANCEL_ENABLED_AT_START = True
 CLOSE_ENABLED_AT_START = False
 
@@ -115,8 +121,16 @@ SUBLINE = {
 }
 
 BUTTONS = {
-    "cancel": {"text": CANCEL_TEXT, "enabled": CANCEL_ENABLED_AT_START},
-    "close": {"text": CLOSE_TEXT, "enabled": CLOSE_ENABLED_AT_START},
+    "cancel": {
+        "text": CANCEL_TEXT,
+        "tooltip": CANCEL_TOOLTIP,
+        "enabled": CANCEL_ENABLED_AT_START,
+    },
+    "close": {
+        "text": CLOSE_TEXT,
+        "tooltip": CLOSE_TOOLTIP,
+        "enabled": CLOSE_ENABLED_AT_START,
+    },
 }
 
 ACTIONS = {

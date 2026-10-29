@@ -16,11 +16,16 @@ import logging
 
 from .. import design_system as ds
 from ..main_tabs.exchange_tab_surface import (
+    ADD_BOT_TOOLTIP,
     EXTRACTOR_TABLE_STRETCH,
     SCRUM_TABLE_STRETCH,
 )
-from ..main_tabs.simulator_tab_surface import MODE_TEXT, MODES
-from .sim_exchange_tab_surface import MODE_BUTTON_STYLE, mode_style
+from ..main_tabs.simulator_tab_surface import MODE_TEXT, MODE_TOOLTIPS, MODES
+from .sim_exchange_tab_surface import (
+    MODE_BUTTON_STYLE,
+    SIM_COMMAND_TOOLTIPS,
+    mode_style,
+)
 
 logger = logging.getLogger("acervator.gui")
 
@@ -36,6 +41,7 @@ try:
 
     from .sim_bot_status_table import SimBotStatusTable
     from .sim_extractor_bot_table import SimExtractorBotTable
+    from ..tooltips import set_description
 
     _HAS_QT = True
 except ImportError:
@@ -79,6 +85,7 @@ if _HAS_QT:
             for mode_key in MODES:
                 mode_btn = QPushButton(MODE_TEXT[mode_key])
                 mode_btn.setAccessibleName(MODE_TEXT[mode_key])
+                set_description(mode_btn, MODE_TOOLTIPS[mode_key])
                 mode_btn.setFocusPolicy(Qt.NoFocus)
                 mode_btn.setStyleSheet(MODE_BUTTON_STYLE)
                 if on_mode:
@@ -90,6 +97,7 @@ if _HAS_QT:
             self.show_mode(mode)
             header.addStretch()
             self._add_bot_btn = QPushButton("+ New Bot")
+            set_description(self._add_bot_btn, ADD_BOT_TOOLTIP)
             self._add_bot_btn.setProperty("accent", True)
             if on_new_bot:
                 self._add_bot_btn.clicked.connect(lambda: on_new_bot(exchange_id))
@@ -183,6 +191,7 @@ if _HAS_QT:
                 ("Delete", "delete"),
             ]:
                 btn = QPushButton(label)
+                set_description(btn, SIM_COMMAND_TOOLTIPS[cmd])
                 if label == "Delete":
                     btn.setProperty("danger", True)
                 btn.clicked.connect(lambda _checked, c=cmd: self._cmd(c))

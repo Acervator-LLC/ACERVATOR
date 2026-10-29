@@ -214,6 +214,7 @@ def clear_fleet_button() -> dict:
     return {
         "action": sim.CLEAR_FLEET_ACTION,
         "text": sim.CLEAR_FLEET_TEXT,
+        "tooltip": sim.ACTION_TOOLTIPS[sim.CLEAR_FLEET_ACTION],
         "accessible_name": sim.button_name(sim.CLEAR_FLEET_ACTION),
         "minimum_width_px": live.ADD_BUTTON_MIN_WIDTH_PX,
         "minimum_height_px": WAY_IN_BUTTON_HEIGHT_PX,
@@ -225,6 +226,7 @@ def start_run_button() -> dict:
     return {
         "action": sim.START_RUN_ACTION,
         "text": sim.START_RUN_TEXT,
+        "tooltip": sim.ACTION_TOOLTIPS[sim.START_RUN_ACTION],
         "accessible_name": sim.button_name(sim.START_RUN_ACTION),
         "minimum_width_px": live.ADD_BUTTON_MIN_WIDTH_PX,
         "minimum_height_px": WAY_IN_BUTTON_HEIGHT_PX,
@@ -244,6 +246,7 @@ def way_in_buttons(mode: str = sim.MODES[0], held: int = 0) -> list:
             {
                 "action": row["action"],
                 "text": row["text"],
+                "tooltip": sim.ACTION_TOOLTIPS[row["action"]],
                 "accessible_name": row["button_name"],
                 "minimum_width_px": live.ADD_BUTTON_MIN_WIDTH_PX,
                 "minimum_height_px": WAY_IN_BUTTON_HEIGHT_PX,
@@ -1105,6 +1108,7 @@ def flip_button(layer: Any) -> dict:
     return {
         "text": sim.FLIP_BUTTON_TEXT[shown],
         "other_text": sim.FLIP_BUTTON_TEXT[other],
+        "tooltip": sim.FLIP_BUTTON_TOOLTIPS[shown],
         "name": FLIP_BUTTON_NAME,
     }
 
@@ -1132,6 +1136,7 @@ def replay_model(feed: Any, choices: Any = (), running: bool = False) -> dict:
         },
         "chooser": {
             "name": TABLET_CHOOSER_NAME,
+            "tooltip": sim.TABLET_CHOOSER_TOOLTIP,
             "width_px": TABLET_CHOOSER_WIDTH_PX,
             "options": [
                 {"key": str(one["key"]), "text": str(one["text"])} for one in choices
@@ -1140,6 +1145,7 @@ def replay_model(feed: Any, choices: Any = (), running: bool = False) -> dict:
         },
         "retrieve_button": {
             "text": str(held.get("button_text") or sim.RETRIEVE_TABLET_TEXT),
+            "tooltip": sim.retrieve_tooltip(held.get("button_text")),
             "name": RETRIEVE_BUTTON_NAME,
             "enabled": not bool(running),
         },
@@ -1275,6 +1281,12 @@ def ytd_api_entry(made: Any, exchange_id: Any, root: Any, elapsed_ms: float) -> 
     }
 
 
+PLACEHOLDER_TAB_TOOLTIP = (
+    "Shown until a simulated fleet is held. Its buttons choose a mode and build "
+    "the fleet."
+)
+
+
 def placeholder_title_text(label: Any) -> str:
     """The Get Started card's heading for one layer: the first step is a fleet."""
     return f"No {label} Fleet Loaded"
@@ -1379,6 +1391,7 @@ def placeholder_way_in_buttons(
         {
             "action": row["action"],
             "text": row["text"],
+            "tooltip": sim.ACTION_TOOLTIPS[row["action"]],
             "accessible_name": card_button_name(row["action"]),
             "minimum_size_px": list(live.PLACEHOLDER_ADD_MIN_SIZE_PX),
             "style_sheet": live.placeholder_add_style(accent),

@@ -20,9 +20,18 @@ from PySide6.QtGui import QColor
 
 from .. import design_system as ds
 from ..main_tabs.bot_swarm_tab_surface import (
+    INBOUND_HEADER_TOOLTIPS,
+    INBOUND_HEADERS,
+    OUTBOUND_HEADER_TOOLTIPS,
+    OUTBOUND_HEADERS,
+    PENDING_HEADER_TOOLTIPS,
+    PENDING_HEADERS,
     PROVENANCE_GROUP_TITLE_QT,
     SUMMARY_GROUP_TITLE_QT,
+    TRANSACTIONS_HEADER_TOOLTIPS,
+    TRANSACTIONS_HEADERS,
 )
+from ..tooltips import set_description
 
 logger = logging.getLogger("acervator.gui")
 
@@ -200,10 +209,10 @@ class PaperBotSwarmTabMixin:
             ol = QVBoxLayout(out_group)
 
             out_tbl = QTableWidget()
-            out_tbl.setColumnCount(3)
-            out_tbl.setHorizontalHeaderLabels(
-                ["Target Bot", "Wire %", "Lifetime $ to target"]
-            )
+            out_tbl.setColumnCount(len(OUTBOUND_HEADERS))
+            out_tbl.setHorizontalHeaderLabels(list(OUTBOUND_HEADERS))
+            for column, words in enumerate(OUTBOUND_HEADER_TOOLTIPS):
+                set_description(out_tbl.horizontalHeaderItem(column), words)
             out_tbl.horizontalHeader().setSectionResizeMode(
                 QHeaderView.ResizeToContents
             )
@@ -254,10 +263,10 @@ class PaperBotSwarmTabMixin:
             il = QVBoxLayout(in_group)
 
             in_tbl = QTableWidget()
-            in_tbl.setColumnCount(3)
-            in_tbl.setHorizontalHeaderLabels(
-                ["Source Bot", "Wire %", "Lifetime $ from source"]
-            )
+            in_tbl.setColumnCount(len(INBOUND_HEADERS))
+            in_tbl.setHorizontalHeaderLabels(list(INBOUND_HEADERS))
+            for column, words in enumerate(INBOUND_HEADER_TOOLTIPS):
+                set_description(in_tbl.horizontalHeaderItem(column), words)
             in_tbl.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
             in_tbl.setRowCount(len(inbound))
             in_tbl.setMaximumHeight(180)
@@ -305,8 +314,10 @@ class PaperBotSwarmTabMixin:
             pll = QVBoxLayout(pl_group)
 
             pl_tbl = QTableWidget()
-            pl_tbl.setColumnCount(4)
-            pl_tbl.setHorizontalHeaderLabels(["Age", "Source", "USD", "Ref"])
+            pl_tbl.setColumnCount(len(PENDING_HEADERS))
+            pl_tbl.setHorizontalHeaderLabels(list(PENDING_HEADERS))
+            for column, words in enumerate(PENDING_HEADER_TOOLTIPS):
+                set_description(pl_tbl.horizontalHeaderItem(column), words)
             pl_tbl.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
             pl_tbl.setRowCount(len(pending_ledger))
             pl_tbl.setMaximumHeight(180)
@@ -347,10 +358,10 @@ class PaperBotSwarmTabMixin:
             tl = QVBoxLayout(tx_group)
 
             tx_tbl = QTableWidget()
-            tx_tbl.setColumnCount(5)
-            tx_tbl.setHorizontalHeaderLabels(
-                ["Age", "Direction", "Other Bot", "USD", "Type"]
-            )
+            tx_tbl.setColumnCount(len(TRANSACTIONS_HEADERS))
+            tx_tbl.setHorizontalHeaderLabels(list(TRANSACTIONS_HEADERS))
+            for column, words in enumerate(TRANSACTIONS_HEADER_TOOLTIPS):
+                set_description(tx_tbl.horizontalHeaderItem(column), words)
             tx_tbl.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
             tx_tbl.setRowCount(len(recent_tx))
             tx_tbl.setMaximumHeight(280)

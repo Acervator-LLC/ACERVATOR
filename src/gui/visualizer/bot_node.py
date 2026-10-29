@@ -19,6 +19,7 @@ from .growth_stage import (
     stage_colors,
     stage_for,
 )
+from ..main_tabs.bot_node_surface import TOOLTIP_FORMAT
 from .particle import Particle
 from .privacy import _mask_or
 from .themes import THEMES
@@ -57,6 +58,7 @@ try:
         QLinearGradient,
         QPainterPath,
     )
+    from ..tooltips import set_description
 
     _HAS_QT = True
 except ImportError:
@@ -75,6 +77,7 @@ if _HAS_QT:
 
         def __init__(self, parent=None):
             super().__init__(parent)
+            self.setAccessibleName("Bot Swarm Node")
             self.setMinimumSize(CARD_WIDTH_PX, CARD_HEIGHT_PX)
             self._theme = THEMES["quantum"]
             self._phase = _RNG.uniform(0, math.pi * 2)
@@ -572,17 +575,24 @@ if _HAS_QT:
                 if volume >= 1e6
                 else f"${volume/1e3:.1f}K" if volume >= 1e3 else f"${volume:.0f}"
             )
-            self.setToolTip(
-                f"{_mask_or(symbol, 'bot_swarm.identifiers')}\n"
-                f"State: {state.upper()}\n"
-                f"Mode: {mode.upper()}\n"
-                f"Trades: {trades}\n"
-                f"Price: {price_str}\n"
-                f"Volume: {vol_str}\n"
-                f"P/L: {_fpnl(pnl)}\n"
-                f"Stage: {STAGE_LABELS[stage]}\n"
-                f"Realised growth: {growth_text(growth_pct)}\n"
-                f"Bot: {_mask_or(str(data.get('bot_id', ''))[:12], 'bot_swarm.identifiers', mask='********')}"
+            set_description(
+                self,
+                TOOLTIP_FORMAT.format(
+                    symbol=_mask_or(symbol, "bot_swarm.identifiers"),
+                    state=state.upper(),
+                    mode=mode.upper(),
+                    trades=trades,
+                    price=price_str,
+                    volume=vol_str,
+                    pnl=_fpnl(pnl),
+                    stage=STAGE_LABELS[stage],
+                    growth=growth_text(growth_pct),
+                    bot_id=_mask_or(
+                        str(data.get("bot_id", ""))[:12],
+                        "bot_swarm.identifiers",
+                        mask="********",
+                    ),
+                ),
             )
 
             p.end()

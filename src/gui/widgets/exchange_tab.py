@@ -14,6 +14,9 @@ from ..main_tabs.exchange_tab_surface import (
     DANGER_COMMAND_LABEL,
     EXTRACTOR_TABLE_STRETCH,
     FLEET_COMMANDS,
+    POOL_STOPPED_TOOLTIP,
+    PRIVACY_TOOLTIP,
+    PULL_RATE_TOOLTIP,
     SCRUM_TABLE_STRETCH,
     cleared_words,
     pool_stopped_words,
@@ -75,10 +78,7 @@ if _HAS_QT:
             self._exchange_name = exchange_name
             header = QHBoxLayout()
             self._privacy_mode_btn = QPushButton("Privacy Mode: OFF")
-            set_description(
-                self._privacy_mode_btn,
-                "Masks every registered field at once, for screen sharing. Each field's own dot still works when this is OFF.",
-            )
+            set_description(self._privacy_mode_btn, PRIVACY_TOOLTIP)
             self._privacy_mode_btn.setFocusPolicy(Qt.NoFocus)
             self._privacy_mode_btn.clicked.connect(self._on_global_privacy_clicked)
             self._refresh_privacy_mode_btn_style()
@@ -108,10 +108,7 @@ if _HAS_QT:
             # The hidden bot tables leave this box taller than its one line, and
             # a QLabel with no vertical flag paints its words at the box's top.
             self._pull_rate_lbl.setAlignment(Qt.AlignLeft)
-            set_description(
-                self._pull_rate_lbl,
-                "Data pool freshness. Slots are cache entries, Freshest and Oldest their ages in seconds, Stale those past their lifetime.",
-            )
+            set_description(self._pull_rate_lbl, PULL_RATE_TOOLTIP)
             layout.addWidget(self._pull_rate_lbl)
 
             self._pool_stopped_lbl = QLabel("")
@@ -127,10 +124,7 @@ if _HAS_QT:
                 f"border:1px solid {ds.ERROR}; border-radius:4px; "
                 "font-size:13px; font-weight:bold; padding:6px 8px;"
             )
-            set_description(
-                self._pool_stopped_lbl,
-                "Appears while nothing comes back from this venue. The age names the time since the last reading reached the pool.",
-            )
+            set_description(self._pool_stopped_lbl, POOL_STOPPED_TOOLTIP)
             self._pool_stopped_lbl.setVisible(False)
             layout.addWidget(self._pool_stopped_lbl)
 

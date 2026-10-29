@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from .descriptions import DESCRIPTION_WORD_LIMIT
 from .theme_engine import TOOLTIP_DELAY_MS
 
 logger = logging.getLogger("acervator.gui")
@@ -35,9 +36,6 @@ __all__ = [
     "set_description",
     "word_count",
 ]
-
-DESCRIPTION_WORD_LIMIT = 20
-"""Words a mouse-over description may carry, the operator's figure, no exceptions."""
 
 Describable = Union[QWidget, QTableWidgetItem, QTreeWidgetItem]
 """The three things on a screen that carry a description of their own."""
@@ -53,8 +51,8 @@ def set_description(
 ) -> None:
     """Sets ``text`` as the description ``widget`` shows under the pointer.
 
-    ``column`` names one column of a tree item; a ``text`` over
-    ``DESCRIPTION_WORD_LIMIT`` words is still set and reaches ``logger``.
+    ``column`` names one column of a tree item, or one tab of a tab book; a
+    ``text`` over ``DESCRIPTION_WORD_LIMIT`` words is still set and reaches ``logger``.
     """
     body = str(text)
     counted = word_count(body)
@@ -65,8 +63,11 @@ def set_description(
             DESCRIPTION_WORD_LIMIT,
             body.replace("\n", " "),
         )
+    tab_setter = getattr(widget, "setTabToolTip", None)
     if column is None:
         widget.setToolTip(body)
+    elif callable(tab_setter):
+        tab_setter(column, body)
     else:
         widget.setToolTip(column, body)
 

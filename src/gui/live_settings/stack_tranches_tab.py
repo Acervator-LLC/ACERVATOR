@@ -22,6 +22,7 @@ from ..main_tabs.stack_tranches_tab_surface import (
 )
 from .. import design_system as ds
 from ..descriptions import STACK_TRANCHES_TAB_DESCRIPTIONS
+from ..tooltips import set_description
 
 if TYPE_CHECKING:
     from ..bot_live_settings import BotLiveSettingsDialog
@@ -485,7 +486,9 @@ class StackTranchesTabMixin:
             else "Clear Stack Tranches"
         )
         stack_clear_btn.setEnabled(bool(_droppable))
-        stack_clear_btn.setToolTip(STACK_TRANCHES_TAB_DESCRIPTIONS["stack_clear_btn"])
+        set_description(
+            stack_clear_btn, STACK_TRANCHES_TAB_DESCRIPTIONS["stack_clear_btn"]
+        )
         stack_clear_btn.setStyleSheet(
             f"QPushButton {{ background: {ds.SETTINGS_DANGER_SURFACE}; color: {ds.FOLD_RATIO_AMBER}; "
             f"border: 1px solid {ds.ERROR}; padding: 6px 12px; }} "
@@ -505,8 +508,8 @@ class StackTranchesTabMixin:
         stack_counters_btn.setEnabled(
             bool(_stack_counter_total) or _stack_counter_refused
         )
-        stack_counters_btn.setToolTip(
-            STACK_TRANCHES_TAB_DESCRIPTIONS["stack_counters_btn"]
+        set_description(
+            stack_counters_btn, STACK_TRANCHES_TAB_DESCRIPTIONS["stack_counters_btn"]
         )
         stack_counters_btn.setStyleSheet(
             f"QPushButton {{ background: {ds.SETTINGS_DANGER_SURFACE}; color: {ds.FOLD_RATIO_AMBER}; "

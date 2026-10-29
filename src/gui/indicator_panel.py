@@ -895,10 +895,7 @@ if _HAS_QT:
             )
             self._staleness_label.setWordWrap(True)
             self._staleness_label.setAccessibleName("TA Staleness Banner")
-            set_description(
-                self._staleness_label,
-                "Shown when the panel has only a stored TA read, or no reading at all, naming the age and cause.",
-            )
+            set_description(self._staleness_label, ivp.STALENESS_TOOLTIP)
             self._staleness_label.hide()
             layout.addWidget(self._staleness_label)
 
@@ -1006,10 +1003,13 @@ if _HAS_QT:
             )
             table.setColumnCount(len(col_names))
             table.setHorizontalHeaderLabels(col_names)
-            for _idx, _name in enumerate(col_names):
+            col_tips = ivp.column_tooltips(
+                indicator_subset, include_aggregates=include_aggregates
+            )
+            for _idx, _words in enumerate(col_tips):
                 _hdr = table.horizontalHeaderItem(_idx)
                 if _hdr is not None:
-                    set_description(_hdr, self._HEADER_TOOLTIPS.get(_name, _name))
+                    set_description(_hdr, _words)
             hdr = table.horizontalHeader()
 
             # Columns stretch equally but never below the widest

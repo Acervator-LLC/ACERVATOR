@@ -25,6 +25,7 @@ from typing import Any, Optional
 from ...exchange.timeframes import ALL_TIMEFRAMES
 
 from .. import design_system as ds
+from ..descriptions import INDICATOR_PANEL_DESCRIPTIONS
 from . import privacy_dot_surface
 from .native_chart_surface import (
     ARROW_GLYPH_FAMILY,
@@ -75,6 +76,7 @@ HEADER = {
     "margins_px": [4, 2, 4, 2],
     "bot_label_text": "Bot:",
     "selector_minimum_width_px": 180,
+    "selector_tooltip": INDICATOR_PANEL_DESCRIPTIONS["bot_selector"],
 }
 
 TITLE_HEADING_PROPERTY = "heading"
@@ -390,12 +392,8 @@ STALENESS_BACKGROUND_ALPHA = 90
 STALENESS_FORMAT = "⏱ THESE VOTES ARE OLD — read at {when}, {age}. {message}"
 
 STALENESS_TOOLTIP = (
-    "Shown when the votes below are the last ones this bot "
-    "produced, not current ones. It carries the time they "
-    "were read, how old they are, and why no current ones "
-    "exist. Nothing is recalculated to show it. "
-    "The same line also appears with no votes below it, "
-    "naming the one reason that applies."
+    "Shown when the panel has only a stored TA read, or no reading at all, "
+    "naming the age and cause."
 )
 
 RATE_STRIP_TEXT_COLOR = "#66ccff"
@@ -415,12 +413,7 @@ RATE_STRIP_JOIN = "   "
 RATE_STRIP_SOURCE_FORMAT = "  ·  {source}"
 RATE_STRIP_SOURCE_NONE = "none"
 
-RATE_STRIP_TOOLTIP = (
-    "Live BTC/USD and ETH/USD spot from the connected "
-    "exchange plus satoshi-per-USD and gwei-per-USD "
-    "conversions (1 gwei = 10⁹ wei). Refreshed on the "
-    "dashboard tick."
-)
+RATE_STRIP_TOOLTIP = INDICATOR_PANEL_DESCRIPTIONS["rate_strip"]
 
 BARS_TOOLTIP = (
     "Animated bar graph: per-indicator vote confidence for "
@@ -944,6 +937,18 @@ def column_titles(subset: list, *, include_aggregates: bool = False) -> list:
     return titles + [EMPTY_TITLE] * (PANEL_COLUMN_COUNT - len(titles))
 
 
+def column_tooltips(subset: list, *, include_aggregates: bool = False) -> list:
+    """The ``HEADER_TOOLTIPS`` sentence over each ``column_titles`` column; a blank one carries its pillar's."""
+    first = PANEL_COLUMN_COUNT - len(AGGREGATE_TITLES)
+    described = []
+    titles = column_titles(subset, include_aggregates=include_aggregates)
+    for at, title in enumerate(titles):
+        if title == EMPTY_TITLE and at >= first:
+            title = AGGREGATE_TITLES[at - first]
+        described.append(HEADER_TOOLTIPS.get(title, title))
+    return described
+
+
 class IndicatorTableModel:
     """One mini-panel's table: its columns, and a row per timeframe.
 
@@ -964,7 +969,7 @@ class IndicatorTableModel:
         return len(self.titles)
 
     def tooltips(self) -> list:
-        return [HEADER_TOOLTIPS.get(title, title) for title in self.titles]
+        return column_tooltips(self.subset, include_aggregates=self.include_aggregates)
 
     def _indicator_cells(self, signals: dict) -> list:
         cells = []

@@ -59,15 +59,16 @@ SYMBOL_LABEL = "Symbol:"
 SIDE_LABEL = "Side:"
 
 FROM_TOOLTIP = (
-    "Default is the 2026-04-01 platform launch date. Drag "
-    "or type an earlier/later date to widen or narrow the "
-    "trade fetch window."
+    "Start of the trade window. Defaults to the 2026-04-01 launch date. Type or "
+    "drag to widen or narrow it."
 )
 TO_TOOLTIP = (
-    "Upper bound of the trade window. Left alone it follows the "
-    "clock, so trades filled while the tab is open still show. "
-    "Set it to pin the window to a fixed instant."
+    "End of the trade window. Left alone it follows the clock, so new fills still "
+    "show. Set it to pin."
 )
+EXCHANGE_TOOLTIP = "The exchange to narrow the trades to. (all) keeps every exchange."
+SYMBOL_TOOLTIP = "The market to narrow the trades to. (all) keeps every market."
+SIDE_TOOLTIP = "Narrows the trades to buys or to sells. (all) keeps both."
 
 APPLY_TEXT = "Apply"
 APPLY_TOOLTIP = "Apply current filters to the loaded history."
@@ -76,7 +77,9 @@ RESET_TOOLTIP = "Clear all filters and show full history."
 REFRESH_TEXT = "Refresh"
 REFRESH_TOOLTIP = "Pull fresh trade history from every active exchange."
 PREV_TEXT = "◀ Prev"
+PREV_TOOLTIP = "Shows the previous page of trades."
 NEXT_TEXT = "Next ▶"
+NEXT_TOOLTIP = "Shows the next page of trades."
 EXPORT_TEXT = "Export CSV…"
 EXPORT_TOOLTIP = "Export the currently-filtered history view to a CSV file."
 
@@ -177,11 +180,23 @@ WIDGETS = (
         tooltip=TO_TOOLTIP,
     ),
     widget("exchange_label", LABEL_KIND, "filters", text=EXCHANGE_LABEL),
-    widget("exchange", COMBO_KIND, "filters", minimum_width=COMBO_MINIMUM_WIDTH_PX),
+    widget(
+        "exchange",
+        COMBO_KIND,
+        "filters",
+        minimum_width=COMBO_MINIMUM_WIDTH_PX,
+        tooltip=EXCHANGE_TOOLTIP,
+    ),
     widget("symbol_label", LABEL_KIND, "filters", text=SYMBOL_LABEL),
-    widget("symbol", COMBO_KIND, "filters", minimum_width=COMBO_MINIMUM_WIDTH_PX),
+    widget(
+        "symbol",
+        COMBO_KIND,
+        "filters",
+        minimum_width=COMBO_MINIMUM_WIDTH_PX,
+        tooltip=SYMBOL_TOOLTIP,
+    ),
     widget("side_label", LABEL_KIND, "filters", text=SIDE_LABEL),
-    widget("side", COMBO_KIND, "filters"),
+    widget("side", COMBO_KIND, "filters", tooltip=SIDE_TOOLTIP),
     widget("apply", BUTTON_KIND, "filters", text=APPLY_TEXT, tooltip=APPLY_TOOLTIP),
     widget("reset", BUTTON_KIND, "filters", text=RESET_TEXT, tooltip=RESET_TOOLTIP),
     widget(
@@ -189,7 +204,7 @@ WIDGETS = (
     ),
     widget("summary", LABEL_KIND, "tab", style_sheet=SUMMARY_STYLE),
     widget("table", TABLE_KIND, "tab", stretch=CONTENT_STRETCH),
-    widget("prev", BUTTON_KIND, "footer", text=PREV_TEXT),
+    widget("prev", BUTTON_KIND, "footer", text=PREV_TEXT, tooltip=PREV_TOOLTIP),
     widget(
         "page_label",
         LABEL_KIND,
@@ -197,7 +212,7 @@ WIDGETS = (
         text=PAGE_LABEL_IDLE,
         minimum_width=PAGE_LABEL_MINIMUM_WIDTH_PX,
     ),
-    widget("next", BUTTON_KIND, "footer", text=NEXT_TEXT),
+    widget("next", BUTTON_KIND, "footer", text=NEXT_TEXT, tooltip=NEXT_TOOLTIP),
     widget(
         "progress",
         PROGRESS_KIND,
@@ -294,6 +309,7 @@ def filter_bar(trades: list, filters: Any) -> dict:
             {
                 "key": key,
                 "label": label,
+                "tooltip": WIDGET_TOOLTIPS[key],
                 "options": options[key],
                 "value": values[key],
             }

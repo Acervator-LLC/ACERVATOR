@@ -2096,6 +2096,21 @@ self._sound_enabled.setChecked(True)
 self._sound_enabled.setToolTip("Master switch for all audio notifications")
 ```
 
+**Current reading, 2026-10-29.** The words are the same. Each Settings control's sentence is now the
+`tooltip` of its entry in the control declarations, and the dialog sets them all
+once its tabs are built.
+
+`src/gui/settings_dialog.py` — `_describe_controls`
+
+```python
+def _describe_controls(self) -> None:
+    for spec in sds.CONTROL_SPECS:
+        said = spec.get("tooltip")
+        held = getattr(self, f"_{spec['name']}", None)
+        if said and held is not None:
+            set_description(held, said)
+```
+
 Buy order fills - Plays a low rising tone when a buy fills. Key `buy_sound`,
 on.
 
@@ -2169,6 +2184,9 @@ self._sound_fire.setToolTip(
     "actually executes. Also plays on Manual Fire."
 )
 ```
+
+**Current reading, 2026-10-29.** The words are the same, and the dialog sets them
+from this box's control declaration, as it does the master switch above.
 
 Tracking beeps - Paces a beep by the scrum phase: silent in SEARCH, slow in
 TRACK, fast in FIRE. Key `track_sound`, on.
@@ -2491,6 +2509,9 @@ self._sms_enabled.setToolTip(
 layout.addWidget(self._sms_enabled)
 ```
 
+**Current reading, 2026-10-29.** The words are the same, and the dialog sets them
+from this box's control declaration.
+
 Provider - Chooses how a message leaves the machine: a carrier's email gateway,
 or the Twilio web interface. Key `provider`, at the email gateway. Nothing
 loads a stored choice into the picker, so it opens on the first entry whatever
@@ -2558,6 +2579,9 @@ self._sms_gateway.setPlaceholderText("5551234567@vtext.com")
 self._sms_gateway.setToolTip("Full email address for carrier SMS gateway")
 pf.addRow("Gateway Email:", self._sms_gateway)
 ```
+
+**Current reading, 2026-10-29.** The words are the same, and the dialog sets them
+from this row's control declaration.
 
 SMTP Username - Sets the mailbox a message is sent from. Key `smtp_username`,
 empty.

@@ -64,6 +64,9 @@ METHOD = "settings_dialog.state"
 
 ACCESSIBLE_NAME = ""
 
+#: The name a screen reader announces for the Qt dialog.
+DIALOG_ACCESSIBLE_NAME = "Settings Dialog"
+
 WINDOW_TITLE_FORMAT = "Settings — {wing} Wing"
 PLAIN_WINDOW_TITLE = "Settings"
 MINIMUM_SIZE = (700, 600)
@@ -98,6 +101,24 @@ TAB_TITLES = (
     SMS_TAB,
     AI_TAB,
 )
+
+TAB_TOOLTIPS = {
+    USER_TAB: "Your user name and the Fleet Lock password.",
+    EXCHANGE_TAB: "Add, test and remove exchange keys, and see each venue's state.",
+    TRADING_TAB: (
+        "Starting choices for each new bot: target, order visibility and "
+        "aggressive mode."
+    ),
+    TA_TAB: "How much each indicator's vote counts in the voting engine.",
+    PHANTOM_TAB: "Phantom bot choices each new bot starts with.",
+    THEME_TAB: "The colour theme and accent colour.",
+    SOUND_TAB: "Which events play a sound, and how loud.",
+    SMS_TAB: (
+        "Text message alerts: how they are sent, which events send them, and how "
+        "often."
+    ),
+    AI_TAB: "The AI Monitor's API key, handshake phrases and behaviour.",
+}
 
 SCROLLING_TABS = (SMS_TAB, AI_TAB)
 
@@ -171,9 +192,8 @@ STOCK_BANNER_STYLE = STOCK_BANNER_STYLE_FORMAT.format(
 #: reading, and ``api_validator.validate_credentials`` is the route it asks
 #: after.
 NO_CREDENTIAL_TEST_TIP = (
-    "Nothing here checks this venue's credential without opening a session. "
-    "The Add press stores the key and secret, and the Start press opens the "
-    "session and reports what the venue answered."
+    "Nothing here checks this venue's key without a session. Add stores it; "
+    "Start opens one and reports the answer."
 )
 
 #: What the feedback row carries for a venue id no registry holds a connector
@@ -190,9 +210,8 @@ NO_CONNECTOR_PROMPT = (
 VERIFICATION_CODE_LABEL = "Verification Code:"
 VERIFICATION_CODE_PLACEHOLDER = "Code the venue showed you after you approved"
 VERIFICATION_CODE_TOOLTIP = (
-    "Open the venue's authorization page, sign in, and approve this "
-    "application. The venue then shows you a short code. Paste that code "
-    "here. The code is used once and is never saved."
+    "Approve this application on the venue's page, then paste the code it "
+    "shows. It is used once and never saved."
 )
 
 CRYPTO_LIST_LABEL = "Configured Crypto Exchanges:"
@@ -317,6 +336,16 @@ def ta_slider_value(weight: float) -> int:
 def ta_value_text(weight: float) -> str:
     """One indicator weight as the figure printed beside its slider."""
     return TA_VALUE_FORMAT.format(weight=weight)
+
+
+TA_TOOLTIP_FORMAT = (
+    "How much the {name} vote counts in the voting engine, from zero to two."
+)
+
+
+def ta_tooltip(name: str) -> str:
+    """The description the indicator ``name`` weight slider carries."""
+    return TA_TOOLTIP_FORMAT.format(name=name.replace("_", " ").title())
 
 
 PHANTOM_TIMEFRAMES = ALL_TIMEFRAMES
@@ -684,8 +713,8 @@ VOLUME_SCALE = 100.0
 VOLUME_RANGE = (0, 100)
 SOUND_NAMES = ("buy", "sell", "fire", "track", "profit", "drip")
 SOUND_TEST_BUTTONS = (
-    ("Test Buy", "buy", None),
-    ("Test Sell", "sell", None),
+    ("Test Buy", "buy", "Play the buy-fill tone."),
+    ("Test Sell", "sell", "Play the sell-fill tone."),
     ("Test Fire", "fire", "Play the sniper rifle SFX."),
     ("Test Track", "track", "Play one tracking beep."),
     ("Test Profit", "profit", "Play the coins-in-bucket SFX."),
@@ -955,6 +984,10 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "group": None,
         "label": "Username:",
         "name": "username",
+        "tooltip": (
+            "Your user name. Stored exchange secrets are encrypted under it, so a "
+            "change re-encrypts them."
+        ),
         "kind": LINE,
     },
     *fleet_lock_specs(),
@@ -963,6 +996,10 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "group": None,
         "label": None,
         "name": "exchange_list",
+        "tooltip": (
+            "The exchanges set up on this wing. Select one, then press Remove Selected "
+            "to remove it."
+        ),
         "kind": LIST,
     },
     {
@@ -988,9 +1025,8 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "max_height": 60,
         "placeholder": "API Secret or EC Private Key (PEM format with \\n is OK)",
         "tooltip": (
-            "For Coinbase CDP keys, paste the full PEM key including\n"
-            "-----BEGIN EC PRIVATE KEY----- and -----END EC PRIVATE KEY-----\n"
-            "Literal \\n characters will be auto-converted to newlines."
+            "For Coinbase CDP keys, paste the whole PEM key with its BEGIN and END "
+            "lines. Literal newline escapes are converted."
         ),
     },
     {
@@ -998,6 +1034,10 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "group": CRYPTO_ADD_GROUP,
         "label": None,
         "name": "pp_check",
+        "tooltip": (
+            "Tick when this exchange's API key has a passphrase, to show the "
+            "passphrase row."
+        ),
         "kind": CHECK,
         "text": "This exchange uses an API passphrase",
         "checked": False,
@@ -1007,6 +1047,7 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "group": CRYPTO_ADD_GROUP,
         "label": "",
         "name": "new_passphrase",
+        "tooltip": "The passphrase set on this exchange's API key.",
         "kind": LINE,
         "echo": "password",
         "visible": False,
@@ -1028,6 +1069,7 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "group": None,
         "label": "Default Target Balance:",
         "name": "default_balance",
+        "tooltip": "The dollar target a new bot starts with in the New Bot wizard.",
         "kind": DOUBLE_SPIN,
         "range": (1.0, 1000000.0),
         "prefix": "$",
@@ -1038,6 +1080,10 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "group": None,
         "label": "Bot Visibility:",
         "name": "visibility",
+        "tooltip": (
+            "The order visibility a new bot starts with. Orderbook rests orders on the "
+            "book; Internal keeps them off."
+        ),
         "kind": COMBO_TEXT,
         "items": ("orderbook", "internal"),
     },
@@ -1046,6 +1092,10 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "group": None,
         "label": None,
         "name": "aggressive",
+        "tooltip": (
+            "A new bot's starting choice. ON places buys and sells as "
+            "immediate-or-cancel taker orders; OFF uses maker orders."
+        ),
         "kind": CHECK,
         "text": "Enable aggressive trading mode",
         "checked": False,
@@ -1055,6 +1105,7 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "group": None,
         "label": None,
         "name": "phantoms_enabled",
+        "tooltip": "Whether a new Scrumming bot starts with its phantom bots running.",
         "kind": CHECK,
         "text": "Enable Phantom Bots for Scrumming",
         "checked": PHANTOM_ENABLE_DEFAULT,
@@ -1074,6 +1125,10 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "group": LOCK_GROUP_TITLE,
         "label": "Lock duration (candles):",
         "name": "lock_candles",
+        "tooltip": (
+            "Candles a higher-timeframe lock lasts, for new bots. Nothing creates a "
+            "lock today."
+        ),
         "kind": SPIN,
         "range": (1, 10),
         "value": LOCK_CANDLE_DEFAULT,
@@ -1083,6 +1138,7 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "group": None,
         "label": None,
         "name": "theme_combo",
+        "tooltip": "The colour theme the whole application draws in.",
         "kind": COMBO_DATA,
         "items": THEME_ITEMS,
     },
@@ -1091,6 +1147,10 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "group": None,
         "label": None,
         "name": "accent_color",
+        "tooltip": (
+            "A hex colour, such as #00ffcc, that replaces the theme's accent. Empty "
+            "keeps the theme's own."
+        ),
         "kind": LINE,
         "placeholder": "#00ffcc",
     },
@@ -1129,6 +1189,7 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "group": None,
         "label": None,
         "name": "sound_error",
+        "tooltip": "Plays an alert tone on errors.",
         "kind": CHECK,
         "text": "Errors (alert tone)",
         "checked": True,
@@ -1138,6 +1199,7 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "group": None,
         "label": None,
         "name": "sound_state",
+        "tooltip": "Plays a soft click when a bot's state changes.",
         "kind": CHECK,
         "text": "Bot state changes (subtle click)",
         "checked": True,
@@ -1179,9 +1241,8 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "text": "P/L increase (coins dropping into bucket)",
         "checked": True,
         "tooltip": (
-            "Synthesized 3-coin bucket drop plays on any trade\n"
-            "event with realized profit > 0. Fires on scrumming\n"
-            "and extractor bots alike."
+            "A three-coin bucket drop plays on any trade with realized profit. "
+            "Fires on scrumming and Extractor bots alike."
         ),
     },
     {
@@ -1193,9 +1254,8 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "text": "Accumulation (water drip)",
         "checked": True,
         "tooltip": (
-            "Water drip plays on FOLD events — the canonical\n"
-            "Acervator accumulation moment (buying back more asset\n"
-            "than was sold). Does not fire on SCRUM or DIST."
+            "A water drip plays on FOLD, when the bot buys back more than it sold. "
+            "Silent on SCRUM and DIST."
         ),
     },
     {
@@ -1203,6 +1263,7 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "group": None,
         "label": None,
         "name": "sound_volume",
+        "tooltip": "Loudness of every sound effect.",
         "kind": SLIDER,
         "range": VOLUME_RANGE,
         "value": 70,
@@ -1222,6 +1283,10 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "group": SMS_PROVIDER_GROUP_TITLE,
         "label": "Provider:",
         "name": "sms_provider",
+        "tooltip": (
+            "How messages are sent: through your carrier's email gateway, or through "
+            "Twilio."
+        ),
         "kind": COMBO_DATA,
         "items": SMS_PROVIDERS,
         "min_height": SMS_CONTROL_MIN_HEIGHT,
@@ -1231,6 +1296,7 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "group": SMS_PROVIDER_GROUP_TITLE,
         "label": "Phone Number:",
         "name": "sms_phone",
+        "tooltip": "The phone number that receives the messages.",
         "kind": LINE,
         "min_height": SMS_CONTROL_MIN_HEIGHT,
         "placeholder": "+15551234567",
@@ -1240,6 +1306,7 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "group": SMS_PROVIDER_GROUP_TITLE,
         "label": "Twilio Account SID:",
         "name": "sms_twilio_sid",
+        "tooltip": "Your Twilio account SID, from the Twilio console.",
         "kind": LINE,
         "min_height": SMS_CONTROL_MIN_HEIGHT,
         "placeholder": "AC...",
@@ -1249,6 +1316,7 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "group": SMS_PROVIDER_GROUP_TITLE,
         "label": "Twilio Auth Token:",
         "name": "sms_twilio_token",
+        "tooltip": "Your Twilio auth token, from the Twilio console.",
         "kind": LINE,
         "min_height": SMS_CONTROL_MIN_HEIGHT,
         "echo": "password",
@@ -1259,6 +1327,7 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "group": SMS_PROVIDER_GROUP_TITLE,
         "label": "Twilio From Number:",
         "name": "sms_twilio_from",
+        "tooltip": "The Twilio number the messages come from.",
         "kind": LINE,
         "min_height": SMS_CONTROL_MIN_HEIGHT,
         "placeholder": "+15559876543",
@@ -1268,6 +1337,10 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "group": SMS_PROVIDER_GROUP_TITLE,
         "label": "Carrier:",
         "name": "sms_carrier",
+        "tooltip": (
+            "Your phone carrier. Choosing one fills in the gateway email from the "
+            "phone number."
+        ),
         "kind": COMBO_TEXT,
         "items": CARRIER_NAMES,
         "min_height": SMS_CONTROL_MIN_HEIGHT,
@@ -1287,6 +1360,7 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "group": SMS_PROVIDER_GROUP_TITLE,
         "label": "SMTP Username:",
         "name": "sms_smtp_user",
+        "tooltip": "The email account that sends the gateway messages.",
         "kind": LINE,
         "min_height": SMS_CONTROL_MIN_HEIGHT,
         "placeholder": "your.email@gmail.com",
@@ -1296,6 +1370,7 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "group": SMS_PROVIDER_GROUP_TITLE,
         "label": "SMTP Password:",
         "name": "sms_smtp_pass",
+        "tooltip": "That email account's app password, not its regular password.",
         "kind": LINE,
         "min_height": SMS_CONTROL_MIN_HEIGHT,
         "echo": "password",
@@ -1306,6 +1381,7 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "group": SMS_PROVIDER_GROUP_TITLE,
         "label": "Mail Server:",
         "name": "sms_smtp_server",
+        "tooltip": "The outgoing mail server for that email account.",
         "kind": LINE,
         "min_height": SMS_CONTROL_MIN_HEIGHT,
         "placeholder": SMS_BUILT.smtp_server,
@@ -1315,6 +1391,7 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "group": SMS_PROVIDER_GROUP_TITLE,
         "label": "Mail Port:",
         "name": "sms_smtp_port",
+        "tooltip": "The outgoing mail server's port.",
         "kind": SPIN,
         "range": FIELD_BOUNDS["smtp_port"],
         "value": SMS_BUILT.smtp_port,
@@ -1325,6 +1402,7 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "group": SMS_EVENTS_GROUP_TITLE,
         "label": None,
         "name": "sms_buy",
+        "tooltip": "Send a message when a buy order fills.",
         "kind": CHECK,
         "text": "Buy fills",
         "checked": SMS_BUILT.notify_buy_fills,
@@ -1334,6 +1412,7 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "group": SMS_EVENTS_GROUP_TITLE,
         "label": None,
         "name": "sms_sell",
+        "tooltip": "Send a message when a sell order fills.",
         "kind": CHECK,
         "text": "Sell fills",
         "checked": SMS_BUILT.notify_sell_fills,
@@ -1343,6 +1422,7 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "group": SMS_EVENTS_GROUP_TITLE,
         "label": None,
         "name": "sms_state",
+        "tooltip": "Send a message when a bot starts, stops or errors.",
         "kind": CHECK,
         "text": "Bot state changes (start/stop/error)",
         "checked": SMS_BUILT.notify_bot_state_changes,
@@ -1352,6 +1432,7 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "group": SMS_EVENTS_GROUP_TITLE,
         "label": None,
         "name": "sms_errors",
+        "tooltip": "Send a message on exchange API errors and failures.",
         "kind": CHECK,
         "text": "API errors and failures",
         "checked": SMS_BUILT.notify_errors,
@@ -1361,6 +1442,7 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "group": SMS_EVENTS_GROUP_TITLE,
         "label": None,
         "name": "sms_pl",
+        "tooltip": "Send a message when profit or loss passes the threshold below.",
         "kind": CHECK,
         "text": "P/L threshold alerts",
         "checked": SMS_BUILT.notify_pl_threshold,
@@ -1370,6 +1452,7 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "group": SMS_EVENTS_GROUP_TITLE,
         "label": "P/L threshold:",
         "name": "sms_pl_amount",
+        "tooltip": "The dollar profit or loss that sends an alert.",
         "kind": DOUBLE_SPIN,
         "range": FIELD_BOUNDS["pl_threshold_amount"],
         "value": SMS_BUILT.pl_threshold_amount,
@@ -1381,6 +1464,7 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "group": SMS_EVENTS_GROUP_TITLE,
         "label": None,
         "name": "sms_balance",
+        "tooltip": "Send a message when a balance runs low.",
         "kind": CHECK,
         "text": "Low balance warnings",
         "checked": SMS_BUILT.notify_balance_warning,
@@ -1390,6 +1474,7 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "group": SMS_EVENTS_GROUP_TITLE,
         "label": None,
         "name": "sms_connection",
+        "tooltip": "Send a message when an exchange connection changes.",
         "kind": CHECK,
         "text": "Exchange connection status",
         "checked": SMS_BUILT.notify_connection_status,
@@ -1399,6 +1484,7 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "group": SMS_RATE_GROUP_TITLE,
         "label": "Max messages per hour:",
         "name": "sms_max_hour",
+        "tooltip": "The most messages sent in one hour.",
         "kind": SPIN,
         "range": FIELD_BOUNDS["max_messages_per_hour"],
         "value": SMS_BUILT.max_messages_per_hour,
@@ -1409,6 +1495,7 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "group": SMS_RATE_GROUP_TITLE,
         "label": "Min time between messages:",
         "name": "sms_cooldown",
+        "tooltip": "The shortest wait between two messages, in seconds.",
         "kind": SPIN,
         "range": FIELD_BOUNDS["cooldown_seconds"],
         "value": SMS_BUILT.cooldown_seconds,
@@ -1420,6 +1507,7 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "group": AI_API_GROUP_TITLE,
         "label": "Anthropic API Key:",
         "name": "ai_api_key",
+        "tooltip": "Your Anthropic API key, which the AI Monitor uses to reach Claude.",
         "kind": LINE,
         "min_height": SMS_CONTROL_MIN_HEIGHT,
         "echo": "password",
@@ -1430,6 +1518,7 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "group": AI_API_GROUP_TITLE,
         "label": "Check interval:",
         "name": "ai_interval",
+        "tooltip": "Hours between the AI Monitor's checks.",
         "kind": DOUBLE_SPIN,
         "range": (0.5, 24.0),
         "value": AI_BUILT.interval_hours,
@@ -1442,6 +1531,10 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "group": AI_HANDSHAKE_GROUP_TITLE,
         "label": "Connect phrase:",
         "name": "ai_connect_phrase",
+        "tooltip": (
+            "The phrase the AI Monitor sends to open its handshake. Empty uses the "
+            "built-in phrase."
+        ),
         "kind": LINE,
         "min_height": SMS_CONTROL_MIN_HEIGHT,
         "placeholder": "acervator-heapbuilder-live",
@@ -1451,6 +1544,10 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "group": AI_HANDSHAKE_GROUP_TITLE,
         "label": "Confirm phrase:",
         "name": "ai_confirm_phrase",
+        "tooltip": (
+            "The phrase the reply must carry to complete the handshake. Empty uses the "
+            "built-in phrase."
+        ),
         "kind": LINE,
         "min_height": SMS_CONTROL_MIN_HEIGHT,
         "placeholder": "the-heap-grows-by-accumulation",
@@ -1460,6 +1557,7 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "group": AI_BEHAVIOUR_GROUP_TITLE,
         "label": None,
         "name": "ai_enabled",
+        "tooltip": "Turns the AI Monitor's feedback loop on or off.",
         "kind": CHECK,
         "text": "Enable AI Monitor feedback loop",
         "checked": False,
@@ -1469,6 +1567,7 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "group": AI_BEHAVIOUR_GROUP_TITLE,
         "label": None,
         "name": "ai_auto_handshake",
+        "tooltip": "Runs the handshake by itself before the first analysis.",
         "kind": CHECK,
         "text": "Auto-handshake on first analysis",
         "checked": True,
@@ -1478,6 +1577,7 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "group": AI_BEHAVIOUR_GROUP_TITLE,
         "label": None,
         "name": "ai_log_feedback",
+        "tooltip": "Writes the AI Monitor's feedback into the trade journal.",
         "kind": CHECK,
         "text": "Log AI feedback to trade journal",
         "checked": True,
@@ -1490,6 +1590,7 @@ CONTROL_SPECS: tuple[dict, ...] = (
             "group": None,
             "label": None,
             "name": ta_slider_name(name),
+            "tooltip": ta_tooltip(name),
             "kind": SLIDER,
             "range": TA_SLIDER_RANGE,
             "value": ta_slider_value(weight),
@@ -1668,6 +1769,20 @@ BUTTON_NAMES_BY_TEXT = {
     CANCEL_BUTTON_TEXT: "cancel_btn",
     SAVE_BUTTON_TEXT: "save_btn",
     **{one["text"]: one["name"] for one in FLEET_LOCK_NAMED_PRESSES},
+}
+
+#: Each press's description; ``credential_form`` holds the Test Connection and Add ones.
+BUTTON_TOOLTIPS = {
+    "remove_btn": (
+        "Removes the selected exchange and its tab. Refused while a bot on it "
+        "still trades."
+    ),
+    "ai_test_btn": (
+        "Checks the API key and both phrases are filled in. Contacts nothing; the "
+        "handshake runs on the next bot cycle."
+    ),
+    "cancel_btn": "Closes the window without saving.",
+    "save_btn": "Saves every tab's settings and closes the window.",
 }
 
 #: The press names a Fleet Lock press keeps pressed in, as ``checkable`` declares.
@@ -2329,8 +2444,20 @@ BROWSER_ADD_BUTTON_TEXT = "Connect with a Browser"
 
 #: Why Test Connection is disabled for a venue holding no key to test.
 NO_KEY_TO_TEST = (
-    "This venue takes a browser authorization and no API key, so there is "
-    "nothing to test. Press Connect with a Browser."
+    "This venue signs in at a browser and holds no API key to test. Press "
+    "Connect with a Browser."
+)
+TEST_CONNECTION_TOOLTIP = (
+    "Checks the typed key and secret with the venue and shows its balances. "
+    "Saves nothing."
+)
+ADD_EXCHANGE_TOOLTIP = (
+    "Adds this venue and stores any typed key, encrypted. A key the venue can "
+    "check is tested first."
+)
+BROWSER_ADD_TOOLTIP = (
+    "Signs in at the venue's own page and stores what it issues. No key or "
+    "secret row is read."
 )
 
 #: The Add form's own prompt per credential kind, which ``venue_form_bound``
@@ -2538,7 +2665,7 @@ def credential_form(venue_id: Any, wing: Any = "") -> dict:
     bound = bool(str(venue_id or "").strip())
     route = credential_route_held(venue_id) if bound else True
     built = connector_held(venue_id) if bound else True
-    tip = ""
+    tip = TEST_CONNECTION_TOOLTIP
     if browser:
         tip = NO_KEY_TO_TEST
     elif not route:
@@ -2557,6 +2684,7 @@ def credential_form(venue_id: Any, wing: Any = "") -> dict:
         "code_row": coded,
         "add_text": BROWSER_ADD_BUTTON_TEXT if browser else ADD_BUTTON_TEXT,
         "add_enabled": built,
+        "add_tip": BROWSER_ADD_TOOLTIP if browser else ADD_EXCHANGE_TOOLTIP,
         "test_enabled": not browser and route,
         "test_tip": tip,
         "prompt": prompt.format(name=name),
@@ -2802,30 +2930,27 @@ REFUSED_FIGURE_TEXT: str = ABSENT_CELL_TEXT
 REFUSED_FIGURE_COLOR: str = ds.TEXT_MUTED
 
 REFUSED_TOOLTIP = (
-    "\n\nThe stored {key} is not a figure this control can hold, so the "
-    "control shows {dash} rather than a number. Set a figure to store one; "
-    "Save leaves {key} as it was until you do."
+    "The stored value is not a usable figure, so {dash} shows. Set one; Save keeps "
+    "the old value until then."
 )
 
 
-def refused_tooltip(key: str, carried: str = "") -> str:
-    """`carried` with the sentence a refused control adds under it."""
-    return str(carried) + REFUSED_TOOLTIP.format(key=str(key), dash=REFUSED_FIGURE_TEXT)
+def refused_tooltip() -> str:
+    """The sentence a refused control shows in place of its own description."""
+    return REFUSED_TOOLTIP.format(dash=REFUSED_FIGURE_TEXT)
 
 
-#: What a drop-down adds to its tooltip when its list holds no row for the
-#: stored value. `REFUSED_TOOLTIP` names a figure and a number, which a list of
-#: words is neither.
+#: What a drop-down shows when its list holds no row for the stored value.
+#: `REFUSED_TOOLTIP` names a figure, which a list of words is not.
 REFUSED_ITEM_TOOLTIP = (
-    "\n\nThe stored {key} is not one of the choices this list offers, so the "
-    "list stays on the choice it opened with. Pick a choice to store one; Save "
-    "leaves {key} as it was until you do."
+    "The stored choice is not in this list. Pick one; until then Save keeps the "
+    "old value."
 )
 
 
-def refused_item_tooltip(key: str, carried: str = "") -> str:
-    """`carried` with the sentence a refused drop-down choice adds under it."""
-    return str(carried) + REFUSED_ITEM_TOOLTIP.format(key=str(key))
+def refused_item_tooltip() -> str:
+    """The sentence a refused drop-down shows in place of its own description."""
+    return REFUSED_ITEM_TOOLTIP
 
 
 def _named(value: Any) -> str:
@@ -3203,6 +3328,7 @@ class SettingsDialogModel:
             self.values[name] = self._seed(spec)
             if spec["label"]:
                 self.rows.append([spec["tab"], spec["group"], spec["label"], name])
+        self.tooltips.update(BUTTON_TOOLTIPS)
         for button in BUTTON_NAMES_BY_TEXT.values():
             self.enabled[button] = True
         for button in CHECKABLE_PRESS_NAMES:
@@ -3330,7 +3456,7 @@ class SettingsDialogModel:
             if spec["kind"] in (COMBO_TEXT, COMBO_DATA)
             else refused_tooltip
         )
-        self.tooltips[name] = said(key, self.tooltips.get(name, EMPTY_TEXT))
+        self.tooltips[name] = said()
 
     def _untouched_since_refusal(self, key: str, read: Any) -> bool:
         """Whether `key`'s control still holds what the refusal left in it.
@@ -3519,6 +3645,7 @@ class SettingsDialogModel:
         self.enabled["add_btn"] = bool(form["add_enabled"])
         self.enabled["test_btn"] = bool(form["test_enabled"])
         self.tooltips["test_btn"] = str(form["test_tip"])
+        self.tooltips["add_btn"] = str(form["add_tip"])
 
     def show_key_rows(self, on: Any) -> None:
         """Show or hide the API Key, API Secret and passphrase-box rows.
@@ -4078,6 +4205,7 @@ def build_view_model(model: SettingsDialogModel) -> dict:
         "enabled": dict(model.enabled),
         "visible": dict(model.visible),
         "tooltips": dict(model.tooltips),
+        "tab_tooltips": dict(TAB_TOOLTIPS),
         "checked": dict(model.checked),
         "placeholders": dict(model.placeholders),
         "fleet_lock": fleet_lock_payload(),

@@ -11,10 +11,16 @@ from typing import TYPE_CHECKING
 
 from .. import design_system as ds
 from ..main_tabs.fold_tokens_surface import (
+    ARBITER_TOOLTIP_FORMAT as _ARBITER_TOOLTIP_FORMAT,
+    FOLD_CLOSE_RATIO_TOOLTIP as _FOLD_CLOSE_RATIO_TOOLTIP,
+    FOLD_SCRUM_SELLS_TOOLTIP as _FOLD_SCRUM_SELLS_TOOLTIP,
+    FOLD_SOURCE_TOOLTIPS as _FOLD_SOURCE_TOOLTIPS,
     RATIO_AMBER_BELOW,
     RATIO_MIN_DENOMINATOR,
     RATIO_RED_BELOW,
+    extractor_tranche_tooltip as _extractor_tranche_tooltip,
 )
+from ..tooltips import set_description
 
 if TYPE_CHECKING:
     from PySide6.QtWidgets import QFormLayout, QTableWidget, QWidget
@@ -69,28 +75,7 @@ FOLD_SOURCE_AUTO_SCRUM = "auto scrum"
 # per `_paint_fold_tranche_row`.
 FOLD_SOURCE_MANUAL_FG_HEX = ds.FOLD_SOURCE_MANUAL
 
-FOLD_SOURCE_TOOLTIPS = {
-    FOLD_SOURCE_MANUAL_SCRUM: (
-        "An operator-pressed Manual Fire created this tranche. That "
-        "button runs a rebalance; its SELL leg is a manual SCRUM, and "
-        "a scrum is what queues a fold tranche.\n\n"
-        "Stored as operator_initiated = true."
-    ),
-    FOLD_SOURCE_AUTO_REBALANCE: (
-        "An AUTONOMOUS rebalance created this tranche: Wire Stack Fire "
-        "or Max Cartridge Fire. The bot fired it, not the operator.\n\n"
-        "Stored as operator_initiated = false. Which of the two fired "
-        "is NOT stored on the tranche, so this panel does not name "
-        "it; the trade log carries WIRE_STACK_SCRUM or "
-        "CARTRIDGE_SCRUM for the sale itself."
-    ),
-    FOLD_SOURCE_AUTO_SCRUM: (
-        "The ordinary scrum cycle created this tranche, or the DIST "
-        "re-fold that follows a distribution sell.\n\n"
-        "Those two paths store no operator_initiated key at all, and "
-        "that absence is what this label reads."
-    ),
-}
+FOLD_SOURCE_TOOLTIPS = dict(_FOLD_SOURCE_TOOLTIPS)
 
 
 TRANCHE_TABLE_VISIBLE_ROWS = 18
@@ -354,22 +339,11 @@ FOLD_CYCLE_CAP_TOOLTIP = "Growth cash one fold cycle may spend, and spent."
 # one screen cannot read is never a number another screen prints.
 FOLD_UNREADABLE_FIGURE = "—"
 
-FOLD_SCRUM_SELLS_TOOLTIP = (
-    "Standing tranches against the sells that opened them.\n\n"
-    "The queue may never hold more tranches than the sells that "
-    "opened them, outside a strong trend. A strong trend lifts the "
-    "bound and lets one sell keep its per-lot rows, so standing "
-    "above sells is only expected then."
-)
+FOLD_SCRUM_SELLS_TOOLTIP = _FOLD_SCRUM_SELLS_TOOLTIP
 
 FOLD_OPENED_TOOLTIP = "Fold tranches this bot ever opened, less merged ones."
 FOLD_CLOSED_TOOLTIP = "Fold tranches that folded back and bought the asset."
-FOLD_CLOSE_RATIO_TOOLTIP = (
-    "Share of opened tranches that folded back, discards excluded.\n\n"
-    "A dash means the three counters leave no share to work out: more "
-    "tranches closed than the opened count still admits, because a "
-    "merge lowers the opened count while the discarded count holds."
-)
+FOLD_CLOSE_RATIO_TOOLTIP = _FOLD_CLOSE_RATIO_TOOLTIP
 FOLD_DISCARDED_TOOLTIP = "Fold tranches removed without folding back, lifetime total."
 FOLD_COUNTERS_RESET_TOOLTIP = "When an operator last set these four counters to zero."
 
@@ -385,10 +359,10 @@ def install_health_row(
     that could drift from it.
     """
     form.addRow(label_text, widget)
-    widget.setToolTip(tooltip)
+    set_description(widget, tooltip)
     label = form.labelForField(widget)
     if label is not None:
-        label.setToolTip(tooltip)
+        set_description(label, tooltip)
     return widget
 
 
@@ -552,36 +526,8 @@ def _arbiter_label(value: object) -> str:
 
 
 def _compose_arbiter_tooltip(value: object) -> str:
-    """Explain the Arbiter toggle without overstating what it does.
-
-    The `Parent` value names a force-sell of the tranche by the
-    base-currency Scrumming Bot at a growth threshold; no trigger,
-    threshold field or caller for that exists yet, so today a Parent
-    tranche behaves exactly like a Sibling one. The toggle only stores
-    the value.
-    """
-    label = _arbiter_label(value)
-    return (
-        f"ARBITER: {label} — who may close THIS Extractor Tranche.\n"
-        f"\n"
-        f"Parent — the base-currency Scrumming Bot force-sells this "
-        f"tranche at x% of growth.\n"
-        f"Sibling — the Extractor does all the work and the parent "
-        f"stands back.\n"
-        f"\n"
-        f"RECORDS A DECISION, MOVES NO MONEY. Clicking this places no "
-        f"order, cancels none, and changes no balance or Target "
-        f"Balance. It writes one value on this tranche and nothing "
-        f"else.\n"
-        f"\n"
-        f"NOT YET ACTED ON. The parent force-sell that 'Parent' names "
-        f"is not built, so today a Parent tranche behaves exactly like "
-        f"a Sibling one. The value is stored and survives a restart, "
-        f"ready for the unit that builds it.\n"
-        f"\n"
-        f"Per tranche, not per bot. Every Extractor Tranche carries its "
-        f"own Arbiter."
-    )
+    """``ARBITER_TOOLTIP_FORMAT`` over the Arbiter label of ``value``, the sentence the React page draws."""
+    return _ARBITER_TOOLTIP_FORMAT.format(label=_arbiter_label(value))
 
 
 def _format_tranche_age(seconds: float) -> str:
@@ -657,58 +603,5 @@ def _compose_extractor_tranche_cells(row: dict, now_ts: float) -> list[str]:
 
 
 def _compose_extractor_tranche_tooltip(row: dict) -> str:
-    """Explain one Extractor Tranche row, units included.
-
-    Carries what the columns cannot: which child holds the lease, the
-    alt-denominated figures, and, when there is no mark, that fact
-    rather than a number standing in for one. A leased amount or an alt
-    holding that is not a finite number prints an em dash here too.
-    """
-    # Same admission rule as the cell composer: the "—" cell and this
-    # tooltip must never disagree about whether a mark exists.
-    from ...trading.bot_container import as_finite_float
-
-    base_asset = row.get("base_asset", "") or "base"
-    deployed = as_finite_float(row.get("base_deployed"))
-    deployed_text = f"{deployed:.8f}" if deployed is not None else "—"
-    alt_units = as_finite_float(row.get("alt_units"))
-    alt_units_text = f"{alt_units:.8f}" if alt_units is not None else "—"
-    lines = [
-        "EXTRACTOR TRANCHE — not this bot's inventory.",
-        "",
-        (
-            f"Child bot: {row.get('child_bot_name', '?')} "
-            f"({row.get('child_bot_id', '?')})"
-        ),
-        f"Pair: {row.get('pair', '?')}",
-        f"State: {row.get('state', '?')}",
-        "",
-        (
-            f"{deployed_text} "
-            f"{base_asset} of this bot's asset is leased to that "
-            f"Extractor."
-        ),
-        f"Alt units held: {alt_units_text}",
-    ]
-    mark_price = as_finite_float(row.get("mark_price_base_per_alt"))
-    if mark_price is not None:
-        lines.append(
-            f"Last mark: {mark_price:.8f} {base_asset} per alt "
-            f"unit, recorded by the Extractor's own tick."
-        )
-    else:
-        lines.append(
-            "No mark available — this position has not been priced "
-            "since it was loaded. The USD column shows an em dash "
-            "rather than substituting cost basis."
-        )
-    lines += [
-        "",
-        (
-            "This row is a RECORD, not inventory. It is not in this bot's "
-            "fold queue and not in its lots, so no gate, no SCRUM sizing "
-            "and no fold-back can act on it. There is no Fire button "
-            "because the parent does not close a child's position."
-        ),
-    ]
-    return "\n".join(lines)
+    """``extractor_tranche_tooltip`` over ``row``, the description the React page draws."""
+    return _extractor_tranche_tooltip(row)

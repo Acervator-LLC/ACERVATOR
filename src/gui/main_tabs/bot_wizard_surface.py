@@ -16,7 +16,7 @@ Every field the wizard carries is one entry in ``NUMBER_FIELDS``,
 name. A number field carries its lowest and highest value, its decimal
 places, its step, its prefix or suffix and the value it opens on. The
 row label each field sits against is in ``ROW_LABELS`` and the hover
-text in ``TOOL_TIPS``.
+text in ``TOOL_TIPS``, read from ``src.gui.descriptions``.
 
 OVERTAKEN, the sentence above reading "where the operator picks accumulation
 trading or the base-currency extractor": the mode page offers the sector's own
@@ -84,6 +84,7 @@ from ...trading.container.config import (
     POSITION_CEILING_MULTIPLE_DEFAULT,
     BotConfig,
 )
+from ..descriptions import BOT_WIZARD_DESCRIPTIONS
 from .indicator_panel_surface import ABSENT_CELL_TEXT
 
 #: The spec key the React field reads for the words it draws in place of a
@@ -762,304 +763,7 @@ WORD_WRAPPED_LABELS = (
     "mode_refusal",
 )
 
-TOOL_TIPS = {
-    "extractor": (
-        "Grows a base-currency pool by harvesting volatility across "
-        "top-N */<base> alt pairs. No spawn cascades, no phantoms; "
-        "per-position Manual Fire in the detail dialog."
-    ),
-    "pool_exchange": (
-        "Exchange this pool trades on. Changing it re-scans that "
-        "exchange for tradable pairs."
-    ),
-    "pool_base": (
-        "The asset this pool accumulates. The list below shows the "
-        "alts that trade against it."
-    ),
-    "alt_list": (
-        "The alt pairs that trade against this pool's base. The "
-        "Extractor auto-scans the top-N of them by 24h volume."
-    ),
-    "visibility": "How orders appear on the exchange.",
-    "aggressive": (
-        "When ON, every engine-initiated buy/sell executes as "
-        "an Immediate-Or-Cancel limit order priced through "
-        "the spread — i.e., pays the taker fee for immediate "
-        "fill. When OFF, the bot may use passive maker orders "
-        "where appropriate. Manual fire is unaffected."
-    ),
-    "stack_mode": (
-        "When ON, a SCRUM fires as N Stack Tranches at "
-        "ascending price levels instead of a single sell. "
-        "First tranche at the Minimum Opposing Trade Distance "
-        "(opposing hysteresis level); successive tranches "
-        "spaced by Split Distance per the Spacing model. "
-        "Visibility gates book placement: orderbook = resting "
-        "limits; internal = tracked off-books, market-fire on "
-        "threshold cross."
-    ),
-    "split_distance": (
-        "Percent spacing between successive Stack tranches. "
-        "Applied per Spacing mode: Linear = constant delta, "
-        "Quadratic = arithmetically-growing delta, "
-        "Exponential = geometrically-growing delta."
-    ),
-    "stack_count": (
-        "Target number of Stack tranches to create from a "
-        "SCRUM. Actual runtime count may be lower if "
-        "per-tranche size falls below the exchange minimum, "
-        "or two computed tranche prices land within 0.1% of "
-        "each other (then merged upwards)."
-    ),
-    "stack_spacing": (
-        "Spacing model for successive Stack tranches. The "
-        "sequences show Δp in units of Split Distance between "
-        "consecutive tranches."
-    ),
-    "whole_unit_open_units": (
-        "Whole units this bot opens its position at on a market "
-        "that places no fraction of a unit. 0 leaves the engine's "
-        "own two-unit minimum deciding. A larger figure makes every "
-        "one-unit move a smaller share of the position, so the move "
-        "sits closer to the Opposing Trade Interval."
-    ),
-    "expiry_close": (
-        "What this bot does as a dated contract nears its end.\n"
-        "Finish the sell ladder: stop buying this contract and let "
-        "the open sell levels run to their end.\n"
-        "Sell the whole position: one order for everything still held."
-    ),
-    "expiry_lead_mode": (
-        "How the lead time is written.\n"
-        "Share of the contract's life: a fraction of the days left "
-        "when the bot started, so one setting covers contracts days "
-        "apart and years apart.\n"
-        "A number of days: the Lead Days figure below."
-    ),
-    "expiry_lead_fraction": (
-        "Share of the contract's remaining life measured when the "
-        "bot started. 0 is off. At 0.20, a contract with 12 days "
-        "left at start closes 2.4 days out, and one with 264 days "
-        "left closes 53 days out."
-    ),
-    "expiry_lead_days": (
-        "Days before expiry the close fires. Read only in A number "
-        "of days mode. 0 is off."
-    ),
-    "expiry_horizon": (
-        "A contract dated beyond this reads as non-expiring and "
-        "gains no close at all. 0 turns the close off."
-    ),
-    "scrumming_interval": "Minimum market move before the bot takes action.",
-    "bb_tolerance": "Bollinger Band proximity tolerance for Landing Strip.",
-    "ls_candles": (
-        "The bot confirms a Landing Strip when this many of the newest "
-        "Heikin Ashi candles have small bodies and price sits near a "
-        "Bollinger Band. This count reaches the band-proximity check "
-        "only. The separate shrinking-body check keeps its own fixed "
-        "count."
-    ),
-    "ta_timeframe": (
-        "Timeframe for TA indicator calculations. Filtered "
-        "against exchange support at set_exchange_id() time. "
-        "Shorter = more responsive; longer = smoother signals."
-    ),
-    "target_balance": (
-        "The balance this bot trades relative to. HARD-CAPPED: "
-        "position can never exceed Target × (1 + Max Target "
-        "Growth %/100)."
-    ),
-    "max_entry_px": (
-        "Bot REFUSES any auto-buy when current price is ABOVE "
-        "this. 0 = no ceiling (default). Manual Fire bypasses "
-        "this gate."
-    ),
-    "min_entry_px": (
-        "Bot REFUSES any auto-buy when current price is BELOW "
-        "this. 0 = no floor (default). Manual Fire bypasses "
-        "this gate."
-    ),
-    "trading_fee": (
-        "Coinbase trading fee tier (per side). The opposite-"
-        "direction hysteresis safety adds this to the scrum "
-        "interval — bot will not flip BUY↔SELL until price "
-        "moves ≥ (interval + fee)% in the opposing direction. "
-        "0.6 % = Coinbase Advanced Trade max-tier default."
-    ),
-    "max_target_growth_pct": (
-        "Per-event cap on how much a fold surplus may grow "
-        "Target Balance.\nAbsolute ceiling = Target × (1 + "
-        "this%/100). Default 1%.\nTHIS IS THE ONLY MECHANISM "
-        "ALLOWED TO INCREASE TARGET BALANCE.\nSet to 0% to "
-        "freeze Target Balance entirely."
-    ),
-    "scrum_fold_pct": (
-        "% of scrum sale proceeds queued for fold (rebuy).\n"
-        "100 % = full reentry (max accumulation, max risk).\n"
-        "Lower values preserve cash buffer — safer when price "
-        "keeps falling after the scrum."
-    ),
-    "scrum_detect_pct": (
-        "BB DETECT threshold: % distance from BB midline to "
-        "band before SEARCH→TRACK. Lower = earlier detection. "
-        "HARD GATE: SCRUM cannot occur below the "
-        "Upper BB Detection Threshold; FOLD cannot occur "
-        "above the Lower BB Detection Threshold. 75 % → "
-        "upper gate at bb_pos ≥ 0.875, lower gate at "
-        "bb_pos ≤ 0.125."
-    ),
-    "scrum_fire_pct": "FIRE threshold: % distance from BB band to trigger trade.",
-    "bb_midline_gate": (
-        "When enabled: scrums ONLY fire above BB midline, "
-        "folds ONLY fire below midline (sell-high/buy-low)."
-    ),
-    "scrum_read_rate_min": (
-        "SEARCH-mode read rate in minutes. TRACK mode reads 10x faster."
-    ),
-    "band_travel_pct": (
-        "Secondary harvest trigger: % of BB band width price "
-        "must travel since last fold. 0 disables."
-    ),
-    "bb_bullseye_check": (
-        "Counts a band touch within 0.5 % (or a candle wick "
-        "within 0.2 %) as BB proximity. With the delta at or "
-        "over the interval that arms the BB priority skew, "
-        "which lowers the TA confidence floor. The fire "
-        "threshold and the midline gate are unchanged."
-    ),
-    "hedge_rebalance": (
-        "Separate USD reserve for buying on sharp drawdowns. "
-        "NOT taken from Target Balance."
-    ),
-    "hedge_amount": (
-        "USD reserve amount for hedge rebalancing (separate " "from Target Balance)."
-    ),
-    "cb_soft_pct": (
-        "SOFT Circuit Breaker threshold. Single-candle move "
-        "≥ this % interrupts the side of the market that "
-        "just moved (UP→SCRUM, DOWN→FOLD). Re-opens after "
-        "cooldown candles. Default 25 %. Set 0 to disable."
-    ),
-    "cb_hard_pct": (
-        "HARD Circuit Breaker threshold. Single-candle move "
-        "≥ this % PAUSES the bot. Operator reset required "
-        "to resume. Persists across restart. Default 35 %. "
-        "Set 0 to disable."
-    ),
-    "cb_cooldown": (
-        "Number of candles the soft breaker stays active "
-        "before re-opening. Default 3."
-    ),
-    "max_cartridge_pct": (
-        "Maximum |Target Delta| as % of Target Balance. "
-        "When the position drifts beyond this %, the bot "
-        "fires an immediate aggressive rebalance (bypasses "
-        "BB Detection / hysteresis / soft CB / higher-TF "
-        "bias). Default 10 %. Set 0 to disable."
-    ),
-    "cartridge_smart_chk": (
-        "When ON, Cartridge size is derived from current BB "
-        "range rather than the static % above. Hard floor "
-        "at the Opposing Trade Interval (cartridge cannot "
-        "fire below the interval). Soft ceiling configured "
-        "below. Default OFF preserves static behavior."
-    ),
-    "cartridge_smart_ceiling": (
-        "Maximum effective cartridge threshold under Smart "
-        "calibration. Prevents cartridge from being "
-        "effectively disabled during volatility expansion. "
-        "Only applies when Smart Cartridge is ON. Default "
-        "30 %."
-    ),
-    "position_ceiling_enabled": (
-        "Cap accumulation at Nx of the bot's INITIAL "
-        "target_balance (stable anchor set at creation). "
-        "Fold size tapers 100 % → 10 % as value approaches "
-        "ceiling (ratio 0.5 → 1.0), hard-stops at ceiling. "
-        "Scrum always allowed. Protects against runaway "
-        "accumulation on conviction plays."
-    ),
-    "position_ceiling_multiple": (
-        "Ceiling multiplier. 1x = no accumulation beyond "
-        "anchor. 10x = 10x runway. Default 5x."
-    ),
-    "detonation_enabled": (
-        "Monitor a higher TF for BULLISH + high-confidence "
-        "signal. Edge-triggered: fires ONCE per transition "
-        "into bullish state.\nOn trigger: MARKET sell "
-        "everything above the anchor, then reset "
-        "target_balance to anchor ('lock in' gains, "
-        "re-accumulate from scratch).\nRate-limited to 1 "
-        "check/hour.\nAdditional gate: fires only when "
-        "current value is above the anchor — no harvest if "
-        "the bot is below its initial anchor."
-    ),
-    "detonation_timeframe": (
-        "Timeframe to monitor for bullish detonation "
-        "signal. 1D = daily, 1W = weekly. Higher = stronger "
-        "conviction, fewer triggers."
-    ),
-    "detonation_confidence_min": (
-        "Minimum TA consensus confidence for detonation. "
-        "Default 0.75 — high conviction only."
-    ),
-    "gate_scrum_ta_chk": (
-        "ON (Conservative): scrum auto-fire requires TA "
-        "consensus BULLISH. OFF (Lean): scrum fires at "
-        "BB-upper + delta regardless of TA."
-    ),
-    "gate_scrum_uptrend_chk": (
-        "ON (Conservative): if 65 %+ of last 20 candles "
-        "were bullish, bot holds rather than scrumming each "
-        "band touch. OFF (Lean): scrum every BB-upper touch "
-        "regardless of trend strength. On a live bot an override "
-        "clears this hold on either of two conditions: the position "
-        "sits at least twice the Scrumming Interval away from "
-        "target, or Band Travel fires. The gate line then names "
-        "TRND as overridden and its light paints cyan."
-    ),
-    "gate_scrum_htf_chk": (
-        "ON (Conservative): refuse scrum when a higher-TF "
-        "phantom signals BULLISH. OFF (Lean): cartridge "
-        "captures HTF swings organically."
-    ),
-    "gate_fold_ta_chk": (
-        "ON (Conservative): mirror of SCRUM TA gate on the "
-        "fold side. OFF (Lean): fold fires at BB-lower + "
-        "tranche-eligible regardless of TA."
-    ),
-    "gate_fold_htf_chk": (
-        "ON (Conservative): mirror of SCRUM HTF gate on "
-        "the fold side. OFF (Lean): fold fires regardless "
-        "of higher-TF bearish bias."
-    ),
-    "ext_chunk_size_usd": (
-        "USD-equivalent of base currency THIS bot owns. Converted "
-        "to base units at bot creation; thereafter tracked in "
-        "base units. The bot NEVER queries the total exchange "
-        "balance — only this chunk."
-    ),
-    "ext_artillery_size_usd": (
-        "USD value of each artillery round (single buy into one "
-        "alt pair). Default $5 — small enough to fire frequently, "
-        "large enough to clear exchange min-cost thresholds."
-    ),
-    "ext_scan_top_n": (
-        "Top-N */<base> pairs by 24h volume kept on the watch "
-        "list. Range 5-10. Higher = more candidates; lower = "
-        "tighter focus on the most-liquid alts."
-    ),
-    "ext_scan_refresh": (
-        "Re-rank top-N every N candles. Default 60 = once per "
-        "hour at 1m cadence. Lower = more responsive to volume "
-        "shifts; higher = less API churn."
-    ),
-    "ext_exit_pct": (
-        "Fraction of position sold on bullish trigger. 100 = "
-        "full exit. Below 100 leaves a 'rider' tail in the "
-        "position for continued upside."
-    ),
-}
+TOOL_TIPS = dict(BOT_WIZARD_DESCRIPTIONS)
 
 INFO_BUTTON_COLOR = "#00ccff"
 INFO_BUTTON_STYLE = (
@@ -1147,6 +851,16 @@ UNTRADEABLE_FORMAT = (
 UNTRADEABLE_REFUSAL_FORMAT = "No bot can be created on this market: {reason}."
 
 NO_INFO_FORMAT = "No info available for {symbol}"
+INFO_TOOL_TIP_FORMAT = "Press to read what {symbol} is."
+
+
+def info_tool_tip(symbol: Any, described: Any) -> str:
+    """The info button's description for ``symbol``; the box ``show_info`` opens holds the full text."""
+    if described:
+        return INFO_TOOL_TIP_FORMAT.format(symbol=symbol)
+    return NO_INFO_FORMAT.format(symbol=symbol)
+
+
 INFO_TITLE_FORMAT = "Asset Info — {symbol}"
 NO_DESCRIPTION_FORMAT = "{symbol}\nNo detailed description available for this asset."
 INFO_BOX_ICON = "Information"
@@ -1155,6 +869,10 @@ PHANTOM_SUPPORTED_TEXT = "supported"
 PHANTOM_UNSUPPORTED_FORMAT = "NOT supported by {exchange}"
 PHANTOM_UNKNOWN_EXCHANGE = "this exchange"
 PHANTOM_TOOL_TIP_FORMAT = "Timeframe {timeframe}: {state}"
+PHANTOM_CHECK_FORMAT = (
+    "Tick to run the phantom on the {timeframe} timeframe. Ticking it clears the "
+    "others."
+)
 PHANTOM_NOT_HIGHER_FORMAT = (
     "Timeframe {timeframe}: REFUSED, a phantom must sit above the bot's own "
     "TA Timeframe of {parent}"
@@ -1416,6 +1134,12 @@ WALK_BACK = "back"
 WALK_CANCEL = "cancel"
 WALK_FINISH = "finish"
 WALK_STEPS = (WALK_NEXT, WALK_BACK, WALK_CANCEL, WALK_FINISH)
+WALK_TOOLTIPS = {
+    WALK_NEXT: "Go to the next page.",
+    WALK_BACK: "Go back to the previous page.",
+    WALK_CANCEL: "Close the wizard without creating a bot.",
+    WALK_FINISH: "Create the bot from the choices on these pages.",
+}
 
 C_LONG_MIN = -9223372036854775808
 C_LONG_MAX = 9223372036854775807
@@ -2206,9 +1930,10 @@ class BotWizardModel:
         self.phantom_enabled_timeframes: dict[str, bool] = dict.fromkeys(
             PHANTOM_TIMEFRAMES, True
         )
-        self.phantom_tool_tips: dict[str, str] = dict.fromkeys(
-            PHANTOM_TIMEFRAMES, EMPTY_TEXT
-        )
+        self.phantom_tool_tips: dict[str, str] = {
+            one: PHANTOM_CHECK_FORMAT.format(timeframe=one)
+            for one in PHANTOM_TIMEFRAMES
+        }
         self.ta_timeframe_items = list(COMBO_FIELDS["ta_timeframe"])
         self.base_items = list(COMBO_FIELDS["base"])
         self.exchange_index = 0 if self.exchanges else -1
@@ -2726,7 +2451,7 @@ class BotWizardModel:
         """Put the picked asset's description on the info button."""
         symbol = self.target_data()
         described = self.descriptions.get(symbol, EMPTY_TEXT)
-        self.info_tool_tip = described or NO_INFO_FORMAT.format(symbol=symbol)
+        self.info_tool_tip = info_tool_tip(symbol, described)
         self.calls.append([BUTTON_SET_TOOL_TIP, "info_button", self.info_tool_tip])
 
     def show_info(self) -> None:
@@ -3644,6 +3369,7 @@ def build_view_model(
             "refusals": list(model.refusals),
             "refusal_types": list(REFUSAL_TYPES),
             "steps": list(WALK_STEPS),
+            "step_tooltips": dict(WALK_TOOLTIPS),
         },
         "config": model.get_bot_config(),
         "config_fields": list(CONFIG_FIELDS),

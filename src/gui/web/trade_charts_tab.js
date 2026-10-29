@@ -57,6 +57,7 @@
   var LEGEND = "legend";
   var LEGEND_STYLES = "legend_styles";
   var TOGGLE_KEY = "key";
+  var OVERLAY_TOOLTIP = "tooltip";
   var CHECKED = "checked";
   var COLOR = "color";
   var TOGGLE_GAP = "toggle_gap_px";
@@ -156,6 +157,7 @@
 
   var COMBO_TIMEFRAME = "combo_timeframe";
   var TIMEFRAME_OPTIONS = "timeframe_options";
+  var TIMEFRAME_TOOLTIP = "timeframe_tooltip";
 
   var TIMEFRAME_ACTION = "panel.chart.timeframe_changed";
   var TIMEFRAME_CHANGE_PARAM = "timeframe_change";
@@ -635,6 +637,10 @@
     return listField(objectField(model, PANEL_DEFAULTS), TIMEFRAME_OPTIONS);
   }
 
+  function timeframeTooltip(model) {
+    return label(objectField(model, PANEL_DEFAULTS)[TIMEFRAME_TOOLTIP]);
+  }
+
   // A chosen timeframe re-arms this panel's fetch through the surface.
   function timeframeChosen(botId, chosen) {
     if (!global.acervator || typeof global.acervator.call !== "function") {
@@ -690,6 +696,7 @@
         timeframeChosen(props.botId, event.target.value);
       }
     };
+    selectProps.title = props.tooltip;
     selectProps[PART_ATTR] = TIMEFRAME_PART;
     selectProps[BOT_ATTR] = text(props.botId);
     selectProps[ACTION_ATTR] = text(props.action);
@@ -783,6 +790,7 @@
           flex: FLEX_NONE
         },
         "aria-label": text(one[LABEL]),
+        title: label(one[OVERLAY_TOOLTIP]),
         checked: Boolean(one[CHECKED]),
         onChange: function (event) {
           overlayChosen(one[TOGGLE_KEY], event.target.checked);
@@ -994,6 +1002,7 @@
         botId: props.botId,
         timeframe: panel[TIMEFRAME],
         options: props.options,
+        tooltip: props.tooltip,
         action: props.action,
         height: height(selector[CONTROL_HEIGHT])
       })
@@ -1069,6 +1078,7 @@
         panel: objectField(model, PANEL),
         chrome: objectField(model, PANEL_CHROME),
         options: timeframeOptionList(model),
+        tooltip: timeframeTooltip(model),
         action: objectField(model, ACTIONS)[TIMEFRAME_ACTION]
       })
     ];

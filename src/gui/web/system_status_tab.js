@@ -164,6 +164,7 @@
 
   function emitterTable(row, labels) {
     var columns = pairs(labels, "emitter_columns");
+    var tips = pairs(labels, "emitter_column_tooltips");
     var emitters = isList(row[EMITTERS]) ? row[EMITTERS] : [];
     return element(
       "table",
@@ -177,7 +178,7 @@
           columns.map(function (name, index) {
             return element(
               "th",
-              part("emitter-column", { key: index, scope: "col" }),
+              part("emitter-column", { key: index, scope: "col", title: text(tips[index]) }),
               text(name)
             );
           })

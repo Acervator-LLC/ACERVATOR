@@ -47,6 +47,7 @@ from ...trading.container.config import (
     POSITION_CEILING_MULTIPLE_DEFAULT,
 )
 from .. import design_system as ds
+from ..descriptions import SETTINGS_TAB_DESCRIPTIONS
 from .indicator_panel_surface import ABSENT_CELL_TEXT
 
 METHOD = "live_settings_tab.state"
@@ -255,66 +256,8 @@ FLOAT_SAFE_INT = 2**1023
 DESPAWN_FIELD = "tranche_despawn_days"
 DESPAWN_OFF = 0
 
-#: The row tooltips. The Live, Paper and Simulator settings tabs read
-#: ``TOOLTIPS[DESPAWN_FIELD]`` from here rather than spelling it again.
-TOOLTIPS = {
-    "aggressive": "When ON, every engine-initiated buy/sell executes as an Immediate-Or-Cancel limit order priced through the spread — i.e., pays the taker fee for immediate fill. When OFF, the bot may use passive maker orders where appropriate. Manual fire is unaffected by this flag.",
-    "stack_mode": "When ON, a SCRUM fires as N Stack Tranches at ascending price levels instead of a single sell. First tranche at the Minimum Opposing Trade Distance (opposing hysteresis level); successive tranches spaced by Split Distance per the Spacing model. See the Stack Tranches tab for live tranche state (added Sub-phase 2E). Visibility gates book placement: orderbook = resting limits; internal = tracked off-books, market-fire on threshold cross.",
-    "split_distance": "Percent spacing between successive Stack tranches. Applied per stack_spacing_mode: Linear = constant delta, Logarithmic = arithmetically-growing delta, Exponential = geometrically-growing delta.",
-    "stack_count": "Target number of Stack tranches to create from a SCRUM. Actual runtime count may be lower if (a) per-tranche size falls below the exchange minimum order size, or (b) two computed tranche prices land within 0.1% of each other (then merged upwards).",
-    "stack_spacing": "Spacing model for successive Stack tranches. The sequences show Δp in units of Split Distance between consecutive tranches.",
-    "landing": "The bot confirms a Landing Strip when this many of the newest Heikin Ashi candles have small bodies and price sits near a Bollinger Band. This count reaches the band-proximity check only. The separate shrinking-body check keeps its own fixed count.",
-    "ta_tf": "TA Timeframe — filtered to granularities supported by this bot's exchange.",
-    "target_bal": "The balance this bot trades relative to. HARD-CAPPED: position can never exceed Target × (1 + Max Target Growth %/100).",
-    "live_lbl": "The target the bot actually trades against.\n\nThe spinbox above is your input value and does not move when compounding grows the target. This row is the runtime figure.",
-    "surplus_lbl": "Surplus parked above the per-cycle growth cap.\n\nThere is currently NO drain from this pool — it accrues and stays. Implementing the drain is Phase 2 of the tranche repair.",
-    "over_lbl": "Tranches larger than the entire per-cycle budget.\n\nThe fold takes what the budget allows from the first of these that does not fit and leaves the remainder queued, so each needs more than one cycle to fold back in full.",
-    "target_btc_lbl": "Target USD ÷ (BTC/USD spot). Δ24h vs USD = pct_24h(<target>/BTC) − pct_24h(<target>/USD). Positive Δ means BTC-quoted pair is cheaper in USD terms than the USD-quoted pair right now.",
-    "target_eth_lbl": "Target USD ÷ (ETH/USD spot). Δ24h vs USD = pct_24h(<target>/ETH) − pct_24h(<target>/USD). Positive Δ means ETH-quoted pair is cheaper in USD terms than the USD-quoted pair right now.",
-    "max_entry_px": "Bot REFUSES any auto-buy when current price is ABOVE this. Use to cap entry exposure at known overvaluation. 0 = no ceiling (default). Manual Fire bypasses this gate.",
-    "min_entry_px": "Bot REFUSES any auto-buy when current price is BELOW this. Use to avoid catching a falling knife. 0 = no floor (default). Manual Fire bypasses this gate.",
-    "trading_fee": "Coinbase trading fee tier (per side). The opposite-direction hysteresis safety adds this to the scrum interval — bot will not flip BUY↔SELL until price moves ≥ (interval + fee)% in the opposing direction. 0.6% = Coinbase Advanced Trade max-tier default. Lower this if you're on a discounted tier.",
-    "max_target_growth": "Per-event cap on how much a fold surplus may grow Target Balance.\nAbsolute ceiling = Target × (1 + this%/100). Default 1%.\nTHIS IS THE ONLY MECHANISM ALLOWED TO INCREASE TARGET BALANCE.\nSet to 0% to freeze Target Balance entirely (no growth at all).",
-    "profit_folding_active": "When ON, fold surplus grows the effective target balance via the compounding drain (subject to Max Target Growth % cap). OFF freezes target at anchor regardless of fold profit. The creation wizard carries no row for this, so a new bot opens ON and this is the only place that turns it off.",
-    "detect_pct": "BB DETECT threshold: % distance from BB midline to band before SEARCH→TRACK. Lower = earlier detection. Also defines the HARD GATE: SCRUM cannot occur below the Upper BB Detection Threshold; FOLD cannot occur above the Lower BB Detection Threshold. 75% → upper gate at bb_pos≥0.875, lower gate at bb_pos≤0.125. Live-editable.",
-    "fire_pct": "FIRE threshold: % distance from BB band to trigger trade.",
-    "midline_gate": "When enabled: scrums ONLY fire above BB midline,\nfolds ONLY fire below midline (sell-high/buy-low).",
-    "scrum_read_rate_min": "SEARCH-mode read rate in minutes. TRACK mode reads 10x faster.",
-    "band_travel": "Secondary harvest trigger: % of BB band width price must travel since last fold. 0 disables.",
-    "bb_bullseye_check": "Counts a band touch within 0.5% (or a candle wick within 0.2%) as BB proximity.\nWith the delta at or over the interval that arms the BB priority skew, which lowers the TA confidence floor. The fire threshold and the midline gate are unchanged.",
-    "scrum_fold_pct": "% of scrum sale proceeds queued for fold (rebuy).\n100% = full reentry (max accumulation, max risk).\nLower values preserve cash buffer — safer when\nprice keeps falling after the scrum.",
-    "tranche_despawn_days": "DESPAWN any tranche this old - both fold tranches\nand stack tranches, from this one setting. 0 = Off\n(default).\n\nMERGE, DESPAWN and CLEAR are the only three things\nthat collapse or remove a tranche. This is despawn:\nthe age-driven one.\n\nIT IS NOT A TRADE. No order is placed or cancelled,\nno balance moves, holdings and cost basis are\nuntouched. The record goes.\n\nWHAT THE RECORD HELD: the tranche's ref price, its\nparked fold USD, its units, and its initial_buy_price\n(the provenance figure). The scrum sale that\nmade it already happened, so those dollars are\nalready in the wallet - the record was only the\nqueued intent to buy the units back. A despawned\ntranche can no longer fold back, so that money goes\nfrom queued rebuy to ordinary spendable balance.\n\nA tranche is despawned at exactly this age or older.\nA tranche with no timestamp is NEVER despawned, and\na stack tranche holding a resting exchange order is\nkept until that order settles.\n\nSEE THE COUNT FIRST: the Fold Tranches tab prints how\nmany of this bot's tranches each candidate window\nwould remove, and what they hold.",
-    "hedge_active": "Separate USD reserve for buying on sharp drawdowns.\nNOT taken from Target Balance.\n\nTicking this on a running bot fills the reserve up to Hedge Balance at once.\nUnticking keeps the reserve and refuses every hedge buy and every refill.",
-    "hedge_balance": "USD reserve amount for hedge rebalancing (separate from Target Balance).\n\n$ 0.00 is NOT an off switch. It is an empty reserve that never refills,\nand any reserve the bot already holds stays spendable until it drains.\nUntick Hedge Rebalance Active to turn the hedge off.",
-    "cb_soft_pct": "SOFT Circuit Breaker threshold. Single-candle move ≥ this % interrupts the side of the market that just moved (UP→SCRUM, DOWN→FOLD). Re-opens after cooldown candles. Default 25%. Set 0 to disable.",
-    "cb_hard_pct": "HARD Circuit Breaker threshold. Single-candle move ≥ this % PAUSES the bot. Operator reset required to resume. Persists across restart. Default 35%. Set 0 to disable.",
-    "cb_cooldown": "Number of candles the soft breaker stays active before re-opening. Default 3.",
-    "max_cartridge_pct": "Maximum |Target Delta| as % of Target Balance. When the position drifts beyond this %, the bot fires an immediate aggressive rebalance (bypasses BB Detection / hysteresis / soft CB / higher-TF bias). Default 10%. Set 0 to disable.",
-    "cartridge_smart_chk": "When ON, Cartridge size is derived from current BB range rather than the static % above. Hard floor at the Opposing Trade Interval (cartridge cannot fire below the interval). Soft ceiling configured below. Default OFF preserves static behavior.",
-    "cartridge_smart_ceiling": "Maximum effective cartridge threshold under Smart calibration. Prevents cartridge from being effectively disabled during volatility expansion. Only applies when Smart Cartridge is ON. Default 30%.",
-    "cb_reset_all_btn": "Operator override: clears any active soft and hard circuit breakers. Hard reset also resumes the bot if it is PAUSED.",
-    "self_destruct_btn": "Aggressively exit the entire position. Confirmation required.",
-    "ceiling_enabled": "Cap accumulation at Nx of the bot's INITIAL target_balance (stable anchor set at creation).\nFold size tapers 100% → 10% as value approaches ceiling (ratio 0.5 → 1.0), hard-stops at ceiling.\nScrum always allowed. Protects against runaway accumulation on conviction plays.",
-    "ceiling_mult": "Ceiling multiplier. 1x = no accumulation beyond anchor. 10x = 10x runway. Default 5x.",
-    "deto_enabled": "Monitor a higher TF for BULLISH + high-confidence signal. Edge-triggered: fires ONCE per transition into bullish state.\nOn trigger: MARKET sell everything above the anchor, then reset target_balance to anchor ('lock in' gains, re-accumulate from scratch).\nRate-limited to 1 check/hour.\nAdditional gate: fires only when current value is above the anchor — no harvest if the bot is below its initial anchor.",
-    "deto_tf": "Timeframe to monitor for bullish detonation signal. 1D = daily, 1W = weekly. Higher = stronger conviction, fewer triggers.",
-    "deto_conf": "Minimum TA consensus confidence for detonation. Default 0.75 — high conviction only.",
-    "expiry_action": "What this bot does as its dated contract nears expiry: finish the sell ladder, or sell the whole position.",
-    "expiry_lead_mode": "How the lead time is set: a share of the contract's life at start, or a number of days.",
-    "expiry_lead_fraction": "Share of the contract's remaining life, measured at bot start, at which the close acts. 0 is off.",
-    "expiry_lead_days": "Days before expiry the close acts. Read only in the number-of-days mode. 0 is off.",
-    "expiry_horizon": "A contract expiring later than this many days counts as non-expiring and gets no close. 0 turns it off.",
-    "gate_scrum_ta": "ON (Conservative): scrum auto-fire requires TA consensus BULLISH. Protects against scrumming false tops. OFF (Lean): scrum fires at BB-upper + delta regardless of TA.",
-    "gate_scrum_uptrend": "ON (Conservative): if 65 %+ of last 20 candles were bullish, bot holds rather than scrumming each band touch. OFF (Lean): scrum every BB-upper touch regardless of trend strength. On a live bot an override clears this hold on either of two conditions: the position sits at least twice the Scrumming Interval away from target, or Band Travel fires. The gate line then names TRND as overridden and its light paints cyan.",
-    "gate_scrum_htf": "ON (Conservative): refuse scrum when a higher-TF phantom signals BULLISH. OFF (Lean): cartridge captures HTF swings organically; this gate is redundant if Smart Cartridge is ON.",
-    "gate_fold_ta": "ON (Conservative): mirror of SCRUM TA gate on the fold side. OFF (Lean): fold fires at BB-lower + tranche-eligible regardless of TA.",
-    "gate_fold_htf": "ON (Conservative): mirror of SCRUM HTF gate on the fold side. OFF (Lean): fold fires regardless of higher-TF bearish bias.",
-    "ext_chunk_size": "USD-equivalent of base currency this bot owns. Sized at construction; changing live re-anchors the pool's reference USD value (not the held base units — those are exchange-tracked).",
-    "ext_artillery_size": "USD-equivalent per artillery round. Smaller = more opportunities; larger = bigger per-round impact.",
-    "ext_scan_top_n": "Top-N */<base> pairs by 24h volume to keep on the watch list. Clamped to 5 to 10. A pair holding an open position stays on the list below the cut.",
-    "ext_scan_refresh": "Candles of this bot's timeframe between watch-list refreshes. Lower = more responsive; higher = less thrashing.",
-    "ext_exit_pct": "% of alt position sold on bullish trigger. 100 = full exit; <100 leaves a rider tail.",
-}
+#: The row tooltips, read from ``SETTINGS_TAB_DESCRIPTIONS``, the dict the Qt tabs read.
+TOOLTIPS = dict(SETTINGS_TAB_DESCRIPTIONS)
 
 
 def as_finite_float(value: Any) -> Optional[float]:
@@ -509,9 +452,8 @@ REFUSED_FIGURE_TEXT: str = ABSENT_CELL_TEXT
 REFUSED_FIGURE_COLOR: str = ds.TEXT_MUTED
 
 REFUSED_FIGURE_TOOLTIP = (
-    "\n\nThis bot's stored {label} is not a figure this box can hold, so the "
-    "box shows {dash} rather than a number. Type a figure to set one; Apply "
-    "writes nothing for this field until you do."
+    "Stored {label} is unusable, so {dash} shows. Type a figure; Apply skips it "
+    "until then."
 )
 
 REFUSED_FIGURE_LOG = "Bot %s: stored %s is not a figure the box can hold (%r)"
@@ -533,12 +475,10 @@ def refused_spec(spec: dict, refused: Any) -> dict:
     return copied
 
 
-def refused_figure_tooltip(spec: dict, carried: str = "") -> str:
-    """`carried` with the sentence a refused dollar box adds under it."""
+def refused_figure_tooltip(spec: dict) -> str:
+    """The sentence a refused dollar box shows in place of its own description."""
     label = str(spec.get("row_label") or spec.get("field") or "").rstrip(":")
-    return str(carried) + REFUSED_FIGURE_TOOLTIP.format(
-        label=label, dash=REFUSED_FIGURE_TEXT
-    )
+    return REFUSED_FIGURE_TOOLTIP.format(label=label, dash=REFUSED_FIGURE_TEXT)
 
 
 def admitted_figure(config: Any, spec: dict) -> Optional[float]:
@@ -1664,9 +1604,7 @@ class LiveSettingsTabModel:
         if name in TOOLTIPS:
             self.tooltips_applied[name] = TOOLTIPS[name]
         if name in self.refused:
-            self.tooltips_applied[name] = refused_figure_tooltip(
-                spec, self.tooltips_applied.get(name, "")
-            )
+            self.tooltips_applied[name] = refused_figure_tooltip(spec)
         self.calls.append([BUILD_CONTROL, name, value])
         self._add_row(spec["group"], spec["row_label"], name)
 

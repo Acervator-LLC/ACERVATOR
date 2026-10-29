@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import math
+import re
 import time
 from pathlib import Path
 from typing import Optional
@@ -42,15 +43,19 @@ from .main_tabs.main_window_surface import (
     SIM_TAB,
     STATUS_TAB,
     SWARM_TAB,
+    TAB_TOOLTIPS,
     UNBUILT_TABS,
     about_text,
     api_pill_tooltip,
     header_strip_reads_paper,
     header_strip_reads_sim,
 )
+from .main_tabs import main_window_surface as window_surface
 from .main_tabs.trading_tab_surface import (
     PLACEHOLDER_TAB_TITLE,
+    PLACEHOLDER_TAB_TOOLTIP,
     exchange_display_name,
+    venue_tab_tooltip,
 )
 
 
@@ -166,6 +171,7 @@ try:
     from .widgets.spendable_profits import SpendableProfitsWidget
     from .widgets.status_log import StatusLog
     from .widgets.trade_charts_tab import TradeChartsTab
+    from .tooltips import set_description
 
     _HAS_QT = True
 except ImportError:
@@ -270,6 +276,7 @@ if _HAS_QT:
         def __init__(self, bot_manager=None, settings_manager=None, parent=None):
             super().__init__(parent)
             self.setWindowTitle("Acervator v" + __version__ + "")
+            self.setAccessibleName(window_surface.WINDOW_ACCESSIBLE_NAME)
             self.setMinimumSize(window_min_w_px(), WINDOW_MIN_H_PX)
             self._bot_manager = bot_manager
             self._settings = settings_manager
@@ -444,11 +451,19 @@ if _HAS_QT:
             )
 
             self._reorder_main_tabs(list(BAR_TAB_ORDER))
+            self._describe_main_tabs()
 
             self._main_tabs.currentChanged.connect(self._on_main_tab_changed)
 
             main_layout.addWidget(self._main_tabs, 1)
             self._apply_asset_class()
+
+        def _describe_main_tabs(self) -> None:
+            """Give each main tab the ``TAB_TOOLTIPS`` sentence its label names."""
+            for at in range(self._main_tabs.count()):
+                label = self._main_tabs.tabText(at)
+                if label in TAB_TOOLTIPS:
+                    set_description(self._main_tabs, TAB_TOOLTIPS[label], at)
 
         def _reorder_main_tabs(self, desired: list[str]) -> None:
             """Move each label in ``desired`` to the next slot; unlisted tabs stay put.
@@ -739,8 +754,8 @@ if _HAS_QT:
                 f"color: {ds.CARD_METRIC_LABEL}; font-size: 10px; padding: 0 8px; "
                 "font-family: Consolas;"
             )
-            self._api_load_label.setToolTip(
-                api_pill_tooltip(get_load_monitor().safety_pct)
+            set_description(
+                self._api_load_label, api_pill_tooltip(get_load_monitor().safety_pct)
             )
             status.addPermanentWidget(self._api_load_label)
 
@@ -912,7 +927,7 @@ if _HAS_QT:
                 pill = api_pill(worst, mon.safety_pct)
                 self._api_load_label.setText(pill["text"])
                 self._api_load_label.setStyleSheet(pill["style"])
-                self._api_load_label.setToolTip(api_pill_tooltip(mon.safety_pct))
+                set_description(self._api_load_label, api_pill_tooltip(mon.safety_pct))
             except Exception as _pill_exc:
                 # Logged at debug: the 2 s dashboard tick would flood a warning stream.
                 logger.debug(
@@ -1111,31 +1126,23 @@ if _HAS_QT:
         def _apply_abbreviation_tooltips(self) -> None:
             """Set a tooltip on each QLabel, QPushButton and QGroupBox lacking one."""
             for label in self.findChildren(QLabel):
-                text = label.text()
-                if not text or label.toolTip():
-                    continue
-                for abbrev, explanation in self._abbreviation_tooltips.items():
-                    if abbrev in text:
-                        label.setToolTip(explanation)
-                        break
-
+                self._describe_abbreviation(label, label.text())
             for btn in self.findChildren(QPushButton):
-                text = btn.text()
-                if not text or btn.toolTip():
-                    continue
-                for abbrev, explanation in self._abbreviation_tooltips.items():
-                    if abbrev in text:
-                        btn.setToolTip(explanation)
-                        break
-
+                self._describe_abbreviation(btn, btn.text())
             for gb in self.findChildren(QGroupBox):
-                text = gb.title()
-                if not text or gb.toolTip():
-                    continue
-                for abbrev, explanation in self._abbreviation_tooltips.items():
-                    if abbrev in text:
-                        gb.setToolTip(explanation)
-                        break
+                self._describe_abbreviation(gb, gb.title())
+
+        def _describe_abbreviation(self, widget, text: str) -> None:
+            """Describe ``widget`` by the first abbreviation ``text`` holds as a whole word.
+
+            A widget already carrying a description, or holding no text, is left alone.
+            """
+            if not text or widget.toolTip():
+                return
+            for abbrev, explanation in self._abbreviation_tooltips.items():
+                if re.search(r"(?<!\w)" + re.escape(abbrev) + r"(?!\w)", text):
+                    set_description(widget, explanation)
+                    return
 
         def _cross_api_event(self, entry: dict) -> None:
             """The `APIInteractionLog` listener: emit `apiEntryLogged`, which Qt
@@ -1790,7 +1797,11 @@ if _HAS_QT:
                     status_log=self._status_log,
                     on_bot_selected=self._on_bot_row_selected,
                 )
-                target_widget.addTab(tab, display_name)
+                set_description(
+                    target_widget,
+                    venue_tab_tooltip(display_name),
+                    target_widget.addTab(tab, display_name),
+                )
                 target_tabs[exchange_id] = tab
                 if target_tabs is self._exchange_tabs:
                     self._exchange_tabs[exchange_id] = tab
@@ -2577,7 +2588,12 @@ if _HAS_QT:
                 ev_tab.setItem(row, 1, QTableWidgetItem(_bid_short))
                 ev_tab.setItem(row, 2, QTableWidgetItem(str(consec)))
                 ev_tab.setItem(row, 3, QTableWidgetItem(str(err)))
-            tabs.addTab(ev_tab, f"Recent events ({len(events)})")
+            for column, words in enumerate(
+                window_surface.ERROR_LOG_EVENT_COLUMN_TOOLTIPS
+            ):
+                set_description(ev_tab.horizontalHeaderItem(column), words)
+            events_at = tabs.addTab(ev_tab, f"Recent events ({len(events)})")
+            set_description(tabs, window_surface.ERROR_LOG_EVENTS_TOOLTIP, events_at)
 
             snap = QTableWidget()
             snap.setColumnCount(5)
@@ -2615,16 +2631,17 @@ if _HAS_QT:
                 snap.setItem(row, 2, QTableWidgetItem(str(_tot)))
                 snap.setItem(row, 3, QTableWidgetItem(str(_con)))
                 snap.setItem(row, 4, QTableWidgetItem(_last))
-            tabs.addTab(snap, f"Per-bot snapshot ({len(_bots)})")
+            for column, words in enumerate(
+                window_surface.ERROR_LOG_SNAPSHOT_COLUMN_TOOLTIPS
+            ):
+                set_description(snap.horizontalHeaderItem(column), words)
+            snap_at = tabs.addTab(snap, f"Per-bot snapshot ({len(_bots)})")
+            set_description(tabs, window_surface.ERROR_LOG_SNAPSHOT_TOOLTIP, snap_at)
 
             btns = QHBoxLayout()
             btns.addStretch(1)
             btn_reset = QPushButton("Reset all errors")
-            btn_reset.setToolTip(
-                "Clear the rolling event buffer AND zero every "
-                "bot's total_errors, consecutive_errors, and "
-                "last_error snapshot. Cannot be undone."
-            )
+            set_description(btn_reset, window_surface.ERROR_LOG_RESET_TOOLTIP)
 
             def _reset_all_errors():
                 self._error_log_buffer.clear()
@@ -2666,6 +2683,7 @@ if _HAS_QT:
             btn_reset.clicked.connect(_reset_all_errors)
             btns.addWidget(btn_reset)
             btn_close = QPushButton("Close")
+            set_description(btn_close, window_surface.ERROR_LOG_CLOSE_TOOLTIP)
             btn_close.clicked.connect(dlg.accept)
             btns.addWidget(btn_close)
             v.addLayout(btns)
@@ -4419,7 +4437,11 @@ if _HAS_QT:
                     self._status_log.log(f"Exchange tab removed: {eid}", "warning")
                 ph = held.get("placeholder")
                 if ph is not None and not store and bar.indexOf(ph) < 0:
-                    bar.addTab(ph, PLACEHOLDER_TAB_TITLE)
+                    set_description(
+                        bar,
+                        PLACEHOLDER_TAB_TOOLTIP,
+                        bar.addTab(ph, PLACEHOLDER_TAB_TITLE),
+                    )
             if dropped:
                 self._push_live_tab({})
             return dropped
