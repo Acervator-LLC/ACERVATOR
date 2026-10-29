@@ -25,7 +25,7 @@ if TYPE_CHECKING:
         OrderType,
     )
 
-from ..core.emit_contracts import FILL_TOPIC, TRADE_TYPES, SettledFill
+from ..core.emit_contracts import FILL_BUY, FILL_TOPIC, TRADE_TYPES, SettledFill
 from ..core.event_bus import get_event_bus
 from ..exchange.base import OrderStatus
 from ..exchange.data_pool import BALANCE_TTL_SECONDS, TICKER_TTL_SECONDS
@@ -212,7 +212,7 @@ class BotContainer:
         self._resting_orders: list[dict] = []
         # The queued tranches each held order settles, by order id, never saved.
         self._resting_sources: dict[str, list] = {}
-        # The newest order body _read_settled_order read.
+        # The newest order body read for a booking, which _write_fill_figures reads.
         self._last_settled_order: object = None
 
     def force_fire(self, aggressive: bool = False) -> None:
@@ -271,8 +271,8 @@ class BotContainer:
         fee: dict,
         symbol: str = "",
     ) -> None:
-        """Send one booked piece on ``FILL_TOPIC`` as a ``SettledFill`` naming this bot,
-        ``config.exchange_id`` and ``symbol`` or ``config.symbol``.
+        """Write one booked piece's figures through ``_write_fill_figures``, then send it on
+        ``FILL_TOPIC`` as a ``SettledFill`` naming this bot and ``config.exchange_id``.
 
         ``fee`` holds one of the two ``SettledFill`` fee fields, and a ``kind``
         outside ``TRADE_TYPES`` is logged and still sent.
@@ -296,7 +296,68 @@ class BotContainer:
             exchange=str(self.config.exchange_id),
             **fee,
         )
+        try:
+            self._write_fill_figures(fill)
+        except Exception:
+            logger.exception(
+                "Bot %s %s fill of %.8f: writing its figures raised, and the "
+                "fill is still announced",
+                self.bot_id,
+                kind,
+                fill.amount,
+            )
         self._bus.emit(FILL_TOPIC, **fill.payload())
+
+    def _write_fill_figures(self, fill: SettledFill) -> None:
+        """Count ``fill`` into the trade tally once per order, stamp ``last_trade_time``, then
+        call ``_write_clock_figures`` and each sibling's ``_join_walk_readings``.
+
+        ``_last_settled_order`` is the order body that settled ``fill``.
+        """
+        order = self._last_settled_order
+        units = float(fill.amount)
+        filled = max(order_filled_and_average(order)[0], units)
+        if filled - units <= FILL_DUST_UNITS:
+            self.stats.total_trades += 1
+            if fill.side == FILL_BUY:
+                self.stats.total_buys += 1
+            else:
+                self.stats.total_sells += 1
+        self.stats.last_trade_time = time.time()
+        rests = (
+            order is not None
+            and order_status_text(order) not in CLOSED_ORDER_STATUSES
+            and self._order_asked_units(order, filled) - filled > FILL_DUST_UNITS
+        )
+        order_id = str(getattr(order, "id", "") or "")
+        self._write_clock_figures(fill, order_id, filled, rests)
+        for sibling in self._symbol_siblings(fill.symbol):
+            sibling._join_walk_readings(fill, order_id, filled, rests)
+
+    def _symbol_siblings(self, symbol: str) -> list:
+        """The other bots ``_bot_manager`` holds on ``config.exchange_id`` and ``symbol``."""
+        lookup = getattr(getattr(self, "_bot_manager", None), "bots_on_symbol", None)
+        if not callable(lookup):
+            return []
+        return [
+            bot for bot in lookup(self.config.exchange_id, symbol) if bot is not self
+        ]
+
+    def _write_clock_figures(
+        self, fill: SettledFill, order_id: str, filled: float, rests: bool
+    ) -> None:
+        """The figures the exchange walk and the worked tick own; this base class runs
+        neither.
+        """
+        return
+
+    def _join_walk_readings(
+        self, fill: SettledFill, order_id: str, filled: float, rests: bool
+    ) -> None:
+        """Add ``fill`` to the readings the exchange walk holds; this base class holds
+        none.
+        """
+        return
 
     def _count_trade_volume(
         self, units: float, price: float, usd_rate: Optional[float] = None
@@ -504,6 +565,7 @@ class BotContainer:
         record["booked"] = filled
         record["booked_cost"] = cost
         record["booked_fee"] = max(fee_total, held_fee)
+        self._last_settled_order = body
         try:
             await self._book_resting_delta(
                 record,

@@ -352,20 +352,15 @@ class ExecutionEngineMixin:
         asked_units: float,
         intended: float,
         label: str,
-        first: bool,
         confidence: float,
     ) -> float:
-        """Take one settled piece of a sale off ``_current_holdings`` and onto the sale
-        counters, and return its fill price.
+        """Take one settled piece of a sale off ``_current_holdings``, and return its fill
+        price.
 
-        ``first`` counts the order once, and ``refresh_priced_figures_after_fill`` takes
-        one venue reading for the row.
+        ``refresh_priced_figures_after_fill`` takes one venue reading for the row.
         """
         self._last_sell_filled_units = units
         self._current_holdings = max(0.0, self._current_holdings - units)
-        if first:
-            self.stats.total_sells += 1
-            self.stats.total_trades += 1
 
         if not fill_price or fill_price <= 0:
             fill_price = intended
@@ -374,21 +369,6 @@ class ExecutionEngineMixin:
         )
 
         self._count_trade_volume(units, fill_price)
-        self.stats.last_trade_time = time.time()
-
-        try:
-            _qrate = float(getattr(self, "_quote_to_usd", 1.0) or 1.0)
-            _fill_usd = float(units) * float(fill_price) * _qrate
-            self.stats.ytd_scrummed_usd = (
-                float(getattr(self.stats, "ytd_scrummed_usd", 0.0) or 0.0) + _fill_usd
-            )
-        except (TypeError, ValueError) as _sup:
-            logger.debug(
-                "suppressed in %s: %s: %s",
-                "_book_sale",
-                type(_sup).__name__,
-                _sup,
-            )
 
         self._bus.emit(
             "bot.log",
@@ -443,7 +423,7 @@ class ExecutionEngineMixin:
         method ``path_booker`` names.
         """
         fill_price = await self._book_sale(
-            units, fill_price, asked_units, intended, label, first, confidence
+            units, fill_price, asked_units, intended, label, confidence
         )
         await self._run_booker(
             path_booker, units, fill_price, asked, first, path_context, sources
@@ -457,12 +437,11 @@ class ExecutionEngineMixin:
         asked_units: float,
         intended: float,
         path: str,
-        first: bool,
         venue_before: Optional[float],
         summary: Any,
     ) -> float:
-        """Add one settled piece of a buy to ``_current_holdings`` and the buy counters,
-        and return its fill price.
+        """Add one settled piece of a buy to ``_current_holdings``, and return its fill
+        price.
 
         ``venue_before`` is the venue reading taken before the order, None for a later
         piece, which moves ``_audited_venue_units`` by ``units``.
@@ -478,30 +457,12 @@ class ExecutionEngineMixin:
             self._record_audited_venue_units(venue_before + units)
         else:
             self._record_venue_units_after_fill(units)
-        if first:
-            self.stats.total_buys += 1
-            self.stats.total_trades += 1
 
         slippage_pct = (
             ((fill_price - intended) / intended * 100.0) if intended > 0 else 0.0
         )
 
         self._count_trade_volume(units, fill_price)
-        self.stats.last_trade_time = time.time()
-
-        try:
-            _qrate = float(getattr(self, "_quote_to_usd", 1.0) or 1.0)
-            _fill_usd = float(units) * float(fill_price) * _qrate
-            self.stats.ytd_folded_usd = (
-                float(getattr(self.stats, "ytd_folded_usd", 0.0) or 0.0) + _fill_usd
-            )
-        except (TypeError, ValueError) as _sup:
-            logger.debug(
-                "suppressed in %s: %s: %s",
-                "_book_purchase",
-                type(_sup).__name__,
-                _sup,
-            )
 
         self._bus.emit(
             "bot.log",
@@ -549,7 +510,6 @@ class ExecutionEngineMixin:
             asked_units,
             intended,
             path,
-            first,
             None,
             VotingSummary(net_score=net_score, consensus_confidence=confidence),
         )
@@ -1327,7 +1287,7 @@ class ExecutionEngineMixin:
         units: float,
         fill_price: float,
         asked: float,
-        first: bool,
+        _first: bool,
         *,
         label: str,
         operator_initiated: bool,
@@ -1406,8 +1366,6 @@ class ExecutionEngineMixin:
         self._land_pending_wire_credits()
 
         self._fold_queue_usd = sum(t["usd"] for t in self._fold_tranches)
-        if first:
-            self.stats.total_trades += 1
         self._count_trade_volume(fill_amount, fill_price)
 
         self._bus.emit(
@@ -1472,7 +1430,7 @@ class ExecutionEngineMixin:
         units: float,
         fill_price: float,
         asked: float,
-        first: bool,
+        _first: bool,
         *,
         label: str,
         operator_initiated: bool,
@@ -1569,8 +1527,6 @@ class ExecutionEngineMixin:
             self._record_audited_venue_units(venue_units + fill_amount)
         else:
             self._record_venue_units_after_fill(fill_amount)
-        if first:
-            self.stats.total_trades += 1
         self._count_trade_volume(fill_amount, fill_price)
 
         _growth_applied = self._apply_fold_target_growth(
@@ -1753,7 +1709,7 @@ class ExecutionEngineMixin:
         units: float,
         fill_price: float,
         asked: float,
-        first: bool,
+        _first: bool,
         *,
         excess_usd: float,
         venue_units: Optional[float] = None,
@@ -1829,8 +1785,6 @@ class ExecutionEngineMixin:
                 }
             )
 
-        if first:
-            self.stats.total_trades += 1
         self._count_trade_volume(fill_amount, fill_price)
         self._last_trade_price = fill_price
 
@@ -2227,7 +2181,6 @@ class ExecutionEngineMixin:
                 amount,
                 price,
                 label,
-                True,
                 summary.consensus_confidence,
             )
         except Exception as exc:
@@ -2681,7 +2634,6 @@ class ExecutionEngineMixin:
                 amount,
                 price,
                 _path,
-                True,
                 _fresh_units,
                 summary,
             )
