@@ -24,6 +24,7 @@ class MarketInspectorTabMixin:
     _main_tabs: Any
     _schedule_async: Callable[..., Any]
     _settings: Any
+    fleet_locked: Callable[..., bool]
 
     def _build_market_inspector_tab(self) -> None:
         """Build the Inspector tab and add it to the main tab widget."""
@@ -37,6 +38,7 @@ class MarketInspectorTabMixin:
         self._market_inspector.set_exchange_source(
             connectors_getter=(lambda: getattr(self, "_exchange_connectors", {})),
             scheduler=self._schedule_async,
+            sealed=self.fleet_locked,
         )
         self._market_inspector.set_proposal_source(
             lambda: self._build_topology_proposals()

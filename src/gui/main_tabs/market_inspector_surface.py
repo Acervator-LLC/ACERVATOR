@@ -993,6 +993,12 @@ NOT_WIRED_TEXT = (
 NO_CONNECTORS_TEXT = (
     "No exchange connectors — connect an exchange " "on the Trading tab first."
 )
+#: The Refresh line while the saved fleet is sealed: a bot opens the venue
+#: connection, and no bot loads until the password is given.
+SEALED_NO_CONNECTORS_TEXT = (
+    "The saved fleet is sealed, so no bot has opened a venue connection. "
+    "Give the password: Settings, User tab, Unlock the fleet now."
+)
 FETCHING_TEXT = "Fetching…"
 SCHEDULER_ERROR_FORMAT = "Scheduler error: {error}"
 ANALYZER_ERROR_FORMAT = "Analyzer error: {error}"

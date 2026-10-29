@@ -285,14 +285,10 @@ if _HAS_QT:
             return w
 
         def _create_fleet_lock_group(self, parent: QWidget) -> QGroupBox:
-            """Build the Fleet Lock group: two password rows, Unlock and Clear.
+            """Build the Fleet Lock group from ``sds.FLEET_LOCK_CONTROLS``, the declaration the React page draws.
 
-            Every word comes off ``settings_dialog_surface``, and
-            ``_settle_fleet_lock`` is the only method that writes a key, so a
-            keystroke in either row changes nothing on disk.
+            ``_settle_fleet_lock`` is the only method that writes a key, so a keystroke in either row changes nothing on disk.
             """
-            from .tooltips import set_description
-
             group = QGroupBox(sds.FLEET_LOCK_GROUP_TITLE, parent)
             form = QFormLayout(group)
 
@@ -300,43 +296,67 @@ if _HAS_QT:
             self._lock_state.setWordWrap(True)
             form.addRow(self._lock_state)
 
-            self._lock_phrase = QLineEdit(group)
-            self._lock_phrase.setEchoMode(QLineEdit.Password)
-            set_description(self._lock_phrase, sds.FLEET_LOCK_PHRASE_DESCRIPTION)
-            form.addRow(sds.FLEET_LOCK_PHRASE_LABEL, self._lock_phrase)
-
-            self._lock_confirm = QLineEdit(group)
-            self._lock_confirm.setEchoMode(QLineEdit.Password)
-            self._lock_confirm.setPlaceholderText(sds.FLEET_LOCK_CONFIRM_PLACEHOLDER)
-            set_description(self._lock_confirm, sds.FLEET_LOCK_CONFIRM_DESCRIPTION)
-            form.addRow(sds.FLEET_LOCK_CONFIRM_LABEL, self._lock_confirm)
-
+            built: dict = {}
             buttons = QHBoxLayout()
-            self._lock_unlock = QPushButton(sds.FLEET_LOCK_UNLOCK_BUTTON_TEXT, group)
-            set_description(self._lock_unlock, sds.FLEET_LOCK_UNLOCK_DESCRIPTION)
-            self._lock_unlock.clicked.connect(self._open_fleet_unlock)
-            buttons.addWidget(self._lock_unlock)
-            self._lock_clear = QPushButton(sds.FLEET_LOCK_CLEAR_BUTTON_TEXT, group)
-            self._lock_clear.setCheckable(True)
-            self._lock_clear.setProperty(sds.DANGER_PROPERTY, True)
-            set_description(self._lock_clear, sds.FLEET_LOCK_CLEAR_DESCRIPTION)
-            self._lock_clear.toggled.connect(self._show_fleet_lock_state)
-            buttons.addWidget(self._lock_clear)
+            for one in sds.FLEET_LOCK_CONTROLS:
+                name = str(one.get("name") or "")
+                if one.get("kind") == sds.LINE:
+                    row = QLineEdit(group)
+                    if one.get("echo") == sds.HIDDEN_ECHO:
+                        row.setEchoMode(QLineEdit.Password)
+                    row.setPlaceholderText(str(one.get("placeholder") or ""))
+                    form.addRow(str(one.get("label") or ""), row)
+                    built[name] = row
+                elif one.get("kind") == sds.PRESS:
+                    press = QPushButton(str(one.get("text") or ""), group)
+                    press.setCheckable(one.get("checkable") is True)
+                    press.setProperty(sds.DANGER_PROPERTY, one.get("danger") is True)
+                    buttons.addWidget(press)
+                    built[name] = press
             form.addRow(buttons)
 
+            self._lock_phrase = built.get(sds.FLEET_LOCK_PHRASE_NAME)
+            self._lock_confirm = built.get(sds.FLEET_LOCK_CONFIRM_NAME)
+            self._lock_unlock = built.get(sds.FLEET_LOCK_UNLOCK_NAME)
+            self._lock_clear = built.get(sds.FLEET_LOCK_CLEAR_NAME)
+            if self._lock_unlock is not None:
+                self._lock_unlock.clicked.connect(self._open_fleet_unlock)
+            if self._lock_clear is not None:
+                self._lock_clear.toggled.connect(self._show_fleet_lock_state)
+
+            self._describe_fleet_lock()
+            self._report_fleet_lock_faults()
             self._show_fleet_lock_state()
             return group
 
-        def _fleet_lock_drawn(self) -> bool:
-            """Whether this build drew the three controls ``_settle_fleet_lock`` reads.
+        def _describe_fleet_lock(self) -> None:
+            """Hang each ``sds.FLEET_LOCK_CONTROLS`` description on its control through ``set_description``."""
+            from .tooltips import set_description
 
-            ``_create_fleet_lock_group`` builds them for the Qt page, and the
-            drawn build replaces ``_setup_ui`` with one web view and holds no
-            row of its own, so there is nothing for a Save to read there.
+            for one in sds.FLEET_LOCK_CONTROLS:
+                held = getattr(self, "_" + str(one.get("name") or ""), None)
+                if held is not None and "description" in one:
+                    set_description(held, one["description"])
+
+        def _report_fleet_lock_faults(self) -> list:
+            """Log every ``sds.fleet_lock_faults`` record at error and answer the list.
+
+            ``fleet_lock_faults`` holds the faults this build read, on both builds.
+            """
+            found = sds.fleet_lock_faults()
+            for one in found:
+                logger.error(sds.FLEET_LOCK_FAULT_LOG_FORMAT.format(**one))
+            self.fleet_lock_faults = list(found)
+            return found
+
+        def _fleet_lock_drawn(self) -> bool:
+            """Whether this build holds every control ``sds.FLEET_LOCK_HELD_NAMES`` names.
+
+            ``_create_fleet_lock_group`` builds them for the Qt page, and the React page holds one holder for each.
             """
             return all(
-                getattr(self, name, None) is not None
-                for name in ("_lock_phrase", "_lock_confirm", "_lock_clear")
+                getattr(self, "_" + name, None) is not None
+                for name in sds.FLEET_LOCK_HELD_NAMES
             )
 
         def _fleet_lock_held(self) -> bool:
@@ -366,6 +386,8 @@ if _HAS_QT:
             ``sds.FLEET_LOCK_CLEAR_QUESTION`` replaces it while ``_lock_clear``
             is pressed in, so the demolition is on screen before Save is reached.
             """
+            if not self._fleet_lock_drawn():
+                return
             held = self._fleet_lock_held()
             clearing = bool(self._lock_clear.isChecked())
             self._lock_state.setText(

@@ -471,6 +471,30 @@ FLEET_LOCK_UNLOCK_DESCRIPTION = (
     "Opens the sealed fleet with the password and loads every saved bot now."
 )
 
+FLEET_LOCK_STATE_NAME = "lock_state"
+FLEET_LOCK_PHRASE_NAME = "lock_phrase"
+FLEET_LOCK_CONFIRM_NAME = "lock_confirm"
+FLEET_LOCK_UNLOCK_NAME = "lock_unlock"
+FLEET_LOCK_CLEAR_NAME = "lock_clear"
+
+#: The five names ``SettingsDialog._show_fleet_lock_state`` and
+#: ``SettingsDialog._settle_fleet_lock`` read, each prefixed with ``_``.
+FLEET_LOCK_HELD_NAMES = (
+    FLEET_LOCK_STATE_NAME,
+    FLEET_LOCK_PHRASE_NAME,
+    FLEET_LOCK_CONFIRM_NAME,
+    FLEET_LOCK_UNLOCK_NAME,
+    FLEET_LOCK_CLEAR_NAME,
+)
+
+HIDDEN_ECHO = "password"
+FLEET_LOCK_MISSING_FAULT = "missing"
+FLEET_LOCK_PLAIN_FAULT = "plain-echo"
+FLEET_LOCK_FAULT_LOG_FORMAT = "Fleet Lock declaration fault: {where} {field} {fault}"
+
+#: The Qt sheet a danger press is drawn with, ``{tint}`` the theme's danger colour.
+FLEET_LOCK_DANGER_STYLE_FORMAT = "border-color: {tint}; color: {tint};"
+
 FLEET_LOCK_ABSENT_WORDS = (
     "No password is set. The saved fleet is plain text on this computer and a "
     "launch starts the bots by itself."
@@ -798,6 +822,127 @@ TIMERS_STARTED: tuple = ()
 THREADS_BUILT: tuple = ()
 THREADS_STARTED: tuple = ()
 
+#: A Fleet Lock press; ``checkable`` marks the one that stays pressed in.
+PRESS = "press"
+
+#: The Fleet Lock group's four controls in painted order, the one declaration
+#: ``SettingsDialog._create_fleet_lock_group`` and ``settings_dialog.js`` draw.
+FLEET_LOCK_CONTROLS: tuple[dict, ...] = (
+    {
+        "name": FLEET_LOCK_PHRASE_NAME,
+        "kind": LINE,
+        "label": FLEET_LOCK_PHRASE_LABEL,
+        "echo": HIDDEN_ECHO,
+        "placeholder": FLEET_LOCK_PHRASE_PLACEHOLDER_ABSENT,
+        "description": FLEET_LOCK_PHRASE_DESCRIPTION,
+    },
+    {
+        "name": FLEET_LOCK_CONFIRM_NAME,
+        "kind": LINE,
+        "label": FLEET_LOCK_CONFIRM_LABEL,
+        "echo": HIDDEN_ECHO,
+        "placeholder": FLEET_LOCK_CONFIRM_PLACEHOLDER,
+        "description": FLEET_LOCK_CONFIRM_DESCRIPTION,
+    },
+    {
+        "name": FLEET_LOCK_UNLOCK_NAME,
+        "kind": PRESS,
+        "text": FLEET_LOCK_UNLOCK_BUTTON_TEXT,
+        "checkable": False,
+        "danger": False,
+        "description": FLEET_LOCK_UNLOCK_DESCRIPTION,
+    },
+    {
+        "name": FLEET_LOCK_CLEAR_NAME,
+        "kind": PRESS,
+        "text": FLEET_LOCK_CLEAR_BUTTON_TEXT,
+        "checkable": True,
+        "danger": True,
+        "description": FLEET_LOCK_CLEAR_DESCRIPTION,
+    },
+)
+
+#: Every field one Fleet Lock control of each kind carries.
+FLEET_LOCK_FIELDS = {
+    LINE: ("name", "kind", "label", "echo", "placeholder", "description"),
+    PRESS: ("name", "kind", "text", "checkable", "danger", "description"),
+}
+
+FLEET_LOCK_ROWS = tuple(one for one in FLEET_LOCK_CONTROLS if one.get("kind") == LINE)
+FLEET_LOCK_PRESSES = tuple(
+    one for one in FLEET_LOCK_CONTROLS if one.get("kind") == PRESS
+)
+
+
+def fleet_lock_specs() -> tuple:
+    """One ``CONTROL_SPECS`` entry per named ``FLEET_LOCK_ROWS`` row, carrying its declared fields."""
+    found = []
+    for one in FLEET_LOCK_ROWS:
+        if not one.get("name"):
+            continue
+        spec = {
+            "tab": USER_TAB,
+            "group": FLEET_LOCK_GROUP_TITLE,
+            "label": one.get("label"),
+            "name": one.get("name"),
+            "kind": LINE,
+        }
+        for field in ("echo", "placeholder"):
+            if field in one:
+                spec[field] = one[field]
+        found.append(spec)
+    return tuple(found)
+
+
+def fleet_lock_faults(controls: Any = None) -> list:
+    """Every field ``FLEET_LOCK_FIELDS`` names that a control lacks, and every row not hidden.
+
+    ``controls`` of None reads ``FLEET_LOCK_CONTROLS``; a name of ``FLEET_LOCK_HELD_NAMES`` no control carries is a fault too.
+    """
+    held = FLEET_LOCK_CONTROLS if controls is None else controls
+    found: list = []
+    named: set = set()
+    for at, one in enumerate(held):
+        entry = one if isinstance(one, dict) else {}
+        where = str(entry.get("name") or f"at:{at}")
+        named.add(where)
+        kind = entry.get("kind")
+        for field in FLEET_LOCK_FIELDS.get(kind, ("name", "kind")):
+            if field not in entry:
+                found.append(
+                    {"where": where, "field": field, "fault": FLEET_LOCK_MISSING_FAULT}
+                )
+        if kind == LINE and entry.get("echo", HIDDEN_ECHO) != HIDDEN_ECHO:
+            found.append(
+                {"where": where, "field": "echo", "fault": FLEET_LOCK_PLAIN_FAULT}
+            )
+    for name in FLEET_LOCK_HELD_NAMES:
+        if name != FLEET_LOCK_STATE_NAME and name not in named:
+            found.append(
+                {"where": name, "field": "name", "fault": FLEET_LOCK_MISSING_FAULT}
+            )
+    return found
+
+
+def fleet_lock_payload(tint: Any = None) -> dict:
+    """The Fleet Lock declaration as plain data, with the danger press sheet in ``tint``.
+
+    ``settings_dialog.js`` checks ``controls`` against ``fields`` and ``names`` itself.
+    """
+    return {
+        "group": FLEET_LOCK_GROUP_TITLE,
+        "names": [
+            name for name in FLEET_LOCK_HELD_NAMES if name != FLEET_LOCK_STATE_NAME
+        ],
+        "fields": {kind: list(fields) for kind, fields in FLEET_LOCK_FIELDS.items()},
+        "controls": [dict(one) for one in FLEET_LOCK_CONTROLS],
+        "hidden_echo": HIDDEN_ECHO,
+        "danger_style": FLEET_LOCK_DANGER_STYLE_FORMAT.format(
+            tint=ds.DANGER if tint is None else tint
+        ),
+    }
+
+
 CONTROL_SPECS: tuple[dict, ...] = (
     {
         "tab": USER_TAB,
@@ -806,6 +951,7 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "name": "username",
         "kind": LINE,
     },
+    *fleet_lock_specs(),
     {
         "tab": EXCHANGE_TAB,
         "group": None,
@@ -1347,6 +1493,7 @@ CONTROL_SPECS: tuple[dict, ...] = (
 )
 
 GROUPS = (
+    (USER_TAB, FLEET_LOCK_GROUP_TITLE),
     (EXCHANGE_TAB, CRYPTO_ADD_GROUP),
     (PHANTOM_TAB, LOCK_GROUP_TITLE),
     (SMS_TAB, SMS_PROVIDER_GROUP_TITLE),
@@ -1361,6 +1508,14 @@ GROUPS = (
 NO_STYLE = ""
 
 TEXT_ROWS = (
+    (
+        USER_TAB,
+        FLEET_LOCK_GROUP_TITLE,
+        None,
+        FLEET_LOCK_STATE_NAME,
+        FLEET_LOCK_ABSENT_WORDS,
+        NO_STYLE,
+    ),
     (
         EXCHANGE_TAB,
         CRYPTO_ADD_GROUP,
@@ -1494,6 +1649,11 @@ ADD_GROUP_BY_WING = "add_group"
 TEST_BUTTON_TEXT = "Test Connection"
 ADD_BUTTON_TEXT = "Test and Add Exchange"
 
+#: The Fleet Lock presses the declaration names and words.
+FLEET_LOCK_NAMED_PRESSES = tuple(
+    one for one in FLEET_LOCK_PRESSES if one.get("name") and one.get("text")
+)
+
 BUTTON_NAMES_BY_TEXT = {
     TEST_BUTTON_TEXT: "test_btn",
     ADD_BUTTON_TEXT: "add_btn",
@@ -1501,10 +1661,29 @@ BUTTON_NAMES_BY_TEXT = {
     AI_TEST_BUTTON_TEXT: "ai_test_btn",
     CANCEL_BUTTON_TEXT: "cancel_btn",
     SAVE_BUTTON_TEXT: "save_btn",
+    **{one["text"]: one["name"] for one in FLEET_LOCK_NAMED_PRESSES},
 }
 
+#: The press names a Fleet Lock press keeps pressed in, as ``checkable`` declares.
+CHECKABLE_PRESS_NAMES = frozenset(
+    one["name"] for one in FLEET_LOCK_NAMED_PRESSES if one.get("checkable") is True
+)
+
+FLEET_LOCK_LAYOUT = (
+    GROUP,
+    FLEET_LOCK_GROUP_TITLE,
+    (
+        FORM,
+        (
+            (TEXT, FLEET_LOCK_STATE_NAME),
+            *((CONTROL, one["name"]) for one in FLEET_LOCK_ROWS if one.get("name")),
+            (ROW, tuple((BUTTON, one["text"]) for one in FLEET_LOCK_NAMED_PRESSES)),
+        ),
+    ),
+)
+
 LAYOUT = {
-    USER_TAB: (FORM, ((CONTROL, "username"),)),
+    USER_TAB: (FORM, ((CONTROL, "username"), FLEET_LOCK_LAYOUT)),
     EXCHANGE_TAB: (
         COLUMN,
         (
@@ -2947,6 +3126,10 @@ class SettingsDialogModel:
         self.enabled: dict = {}
         self.visible: dict = {}
         self.tooltips: dict = {}
+        #: Whether each ``CHECKABLE_PRESS_NAMES`` press is pressed in.
+        self.checked: dict = {}
+        #: The placeholder a row shows in place of its spec's own.
+        self.placeholders: dict = {}
         self.rows: list = []
         self.listed_exchanges: list = []
         self.calls: list = []
@@ -2978,6 +3161,8 @@ class SettingsDialogModel:
                 self.rows.append([spec["tab"], spec["group"], spec["label"], name])
         for button in BUTTON_NAMES_BY_TEXT.values():
             self.enabled[button] = True
+        for button in CHECKABLE_PRESS_NAMES:
+            self.checked[button] = False
         self.values[TA_ROWS] = [list(one) for one in ta_rows(self.values)]
         self.texts["vol_label"] = volume_label_text(spec_for("sound_volume")["value"])
         self.texts["api_feedback"] = ""
@@ -3783,7 +3968,7 @@ class _Walker:
             return
         if role == TEXT:
             named = item[1]
-            if named in TEXT_ROW_LABELS:
+            if TEXT_ROW_LABELS.get(named):
                 self.emit(LABEL, TEXT_ROW_LABELS[named])
             self.emit(LABEL, self.model.texts[named])
             return
@@ -3843,6 +4028,9 @@ def build_view_model(model: SettingsDialogModel) -> dict:
         "enabled": dict(model.enabled),
         "visible": dict(model.visible),
         "tooltips": dict(model.tooltips),
+        "checked": dict(model.checked),
+        "placeholders": dict(model.placeholders),
+        "fleet_lock": fleet_lock_payload(),
         "refused": {str(key): True for key in model.refused},
         "refused_text": REFUSED_FIGURE_TEXT,
         "refused_color": REFUSED_FIGURE_COLOR,

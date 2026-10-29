@@ -12,12 +12,14 @@
   var BUTTONS = "buttons";
   var CALL_NAMES = "call_names";
   var CALLS = "calls";
+  var CHECKED = "checked";
   var CONNECT_ORDER = "connect_order";
   var CONNECTIONS = "connections";
   var CONTROL_SPECS = "control_specs";
   var EMITTED = "emitted";
   var ENABLED = "enabled";
   var EXCHANGE_STATUS = "exchange_status";
+  var FLEET_LOCK = "fleet_lock";
   var GROUPS = "groups";
   var HEADINGS = "headings";
   var LAYOUT = "layout";
@@ -26,6 +28,7 @@
   var METHOD_FIELD = "method";
   var MINIMUM_SIZE = "minimum_size";
   var PAINTED = "painted";
+  var PLACEHOLDERS = "placeholders";
   var PRINTS = "prints";
   var PROCESSED_EVENTS = "processed_events";
   var REJECTED = "rejected";
@@ -56,12 +59,14 @@
     BUTTONS,
     CALL_NAMES,
     CALLS,
+    CHECKED,
     CONNECT_ORDER,
     CONNECTIONS,
     CONTROL_SPECS,
     EMITTED,
     ENABLED,
     EXCHANGE_STATUS,
+    FLEET_LOCK,
     GROUPS,
     HEADINGS,
     LAYOUT,
@@ -69,6 +74,7 @@
     MESSAGE_BOXES,
     MINIMUM_SIZE,
     PAINTED,
+    PLACEHOLDERS,
     PRINTS,
     PROCESSED_EVENTS,
     REJECTED,
@@ -95,13 +101,16 @@
     BANNER_FIELD,
     BUS,
     BUTTONS,
+    CHECKED,
     CONNECTIONS,
     ENABLED,
     EXCHANGE_STATUS,
+    FLEET_LOCK,
     GROUPS,
     HEADINGS,
     LAYOUT,
     PAINTED,
+    PLACEHOLDERS,
     SPACING,
     STYLES,
     TEXTS,
@@ -259,6 +268,15 @@
   var MARKUP_FAULT = "markup";
   var NOT_CSS_FAULT = "not-css";
   var NEVER_FILLED_FAULT = "never-filled";
+  var PLAIN_ECHO_FAULT = "plain-echo";
+
+  // The fields the fleet_lock payload carries, the one Fleet Lock declaration.
+  var LOCK_NAMES = "names";
+  var LOCK_FIELDS = "fields";
+  var LOCK_CONTROLS = "controls";
+  var LOCK_HIDDEN_ECHO = "hidden_echo";
+  var LOCK_DANGER_STYLE = "danger_style";
+  var LOCK_DANGER = "danger";
 
   var AT = "at:";
   var PATH_SPLIT = ".";
@@ -358,6 +376,7 @@
   var ECHO_ATTR = "data-echo";
   var HEIGHT_ATTR = "data-height";
   var TICKED_ATTR = "data-ticked";
+  var DANGER_ATTR = "data-danger";
   var STATE_ATTR = "data-state";
   var ARIA_LABEL = "aria-label";
   var TITLE_ATTR = "title";
@@ -670,6 +689,29 @@
 
   function tooltipOf(name) {
     return fromBag(TOOLTIPS, name);
+  }
+
+  function checkedOf(name) {
+    return fromBag(CHECKED, name);
+  }
+
+  function placeholderOf(name) {
+    return fromBag(PLACEHOLDERS, name);
+  }
+
+  function lockControls() {
+    return listField(objectField(model(), FLEET_LOCK), LOCK_CONTROLS);
+  }
+
+  // The Fleet Lock declaration entry one control name draws from.
+  function lockEntry(name) {
+    var found;
+    lockControls().forEach(function (one) {
+      if (isPlainObject(one) && String(one[NAME]) === String(name)) {
+        found = one;
+      }
+    });
+    return found;
   }
 
   function textNamed(name) {
@@ -1242,6 +1284,39 @@
     }
   }
 
+  // Every field the Fleet Lock declaration names that a control lacks, every
+  // row not hidden, and every named control the declaration does not carry.
+  function checkFleetLock(found) {
+    var lock = objectField(found, FLEET_LOCK);
+    var fields = objectField(lock, LOCK_FIELDS);
+    var carried = {};
+    listField(lock, LOCK_CONTROLS).forEach(function (one, index) {
+      if (!isPlainObject(one)) {
+        note(AT + String(index), FLEET_LOCK, NOT_AN_OBJECT_FAULT, kindOf(one));
+        return;
+      }
+      var where = text(one[NAME]) || AT + String(index);
+      carried[where] = true;
+      if (!owns(one, KIND)) {
+        note(where, FLEET_LOCK, MISSING_FAULT, KIND);
+        return;
+      }
+      listField(fields, String(one[KIND])).forEach(function (field) {
+        if (!owns(one, field)) {
+          note(where, FLEET_LOCK, MISSING_FAULT, field);
+        }
+      });
+      if (owns(one, ECHO) && one[ECHO] !== lock[LOCK_HIDDEN_ECHO]) {
+        note(where, FLEET_LOCK, PLAIN_ECHO_FAULT, ECHO);
+      }
+    });
+    listField(lock, LOCK_NAMES).forEach(function (name) {
+      if (!owns(carried, String(name))) {
+        note(String(name), FLEET_LOCK, MISSING_FAULT, NAME);
+      }
+    });
+  }
+
   function sheetsOf(found) {
     var sheets = [];
     Object.keys(objectField(found, STYLES)).forEach(function (name) {
@@ -1410,13 +1485,28 @@
     return found === undefined || found === "" ? words : found;
   }
 
+  // A Fleet Lock press the declaration marks danger takes its danger sheet,
+  // and a press the checked bag holds draws whether it is pressed in.
   function DialogButton(props) {
     var sheet = sheetForButton(props.words);
+    var entry = lockEntry(props.name);
+    var danger = entry !== undefined && entry[LOCK_DANGER] === true;
+    if (danger) {
+      sheet = objectField(model(), FLEET_LOCK)[LOCK_DANGER_STYLE];
+    }
     var one = partProps(BUTTON_PART, paintedStyle(sheet));
     one[KEY_ATTR] = text(props.words);
     one[NAME_ATTR] = text(props.name);
     one[ENABLED_ATTR] = String(buttonEnabled(props.name));
     one.disabled = !buttonEnabled(props.name);
+    if (entry !== undefined) {
+      one[DANGER_ATTR] = String(danger);
+    }
+    var pressed = checkedOf(props.name);
+    if (pressed !== undefined) {
+      one[ARIA_PRESSED] = String(pressed === true);
+      one[TICKED_ATTR] = String(pressed === true);
+    }
     if (tooltipOf(props.name) !== undefined) {
       one[TITLE_ATTR] = text(tooltipOf(props.name));
     }
@@ -1570,8 +1660,12 @@
     if (tooltipOf(name) !== undefined) {
       one[TITLE_ATTR] = text(tooltipOf(name));
     }
-    if (spec[PLACEHOLDER] !== undefined) {
-      one.placeholder = text(spec[PLACEHOLDER]);
+    var placeholder = placeholderOf(name);
+    if (placeholder === undefined) {
+      placeholder = spec[PLACEHOLDER];
+    }
+    if (placeholder !== undefined) {
+      one.placeholder = text(placeholder);
     }
     if (Array.isArray(spec[RANGE])) {
       one[RANGE_LOW_ATTR] = text(at(spec[RANGE], ZERO));
@@ -2056,6 +2150,7 @@
     checkSteps(found);
     checkBanner(found);
     checkPaired(found);
+    checkFleetLock(found);
     checkColours(found);
     checkBagOrder(found);
     checkDrawnMarkup(found);
@@ -2328,6 +2423,10 @@
     enabledOf: enabledOf,
     visibleOf: visibleOf,
     tooltipOf: tooltipOf,
+    checkedOf: checkedOf,
+    placeholderOf: placeholderOf,
+    lockControls: lockControls,
+    lockEntry: lockEntry,
     textNamed: textNamed,
     styleNamed: styleNamed,
     buttonNamed: buttonNamed,
