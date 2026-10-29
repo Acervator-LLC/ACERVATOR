@@ -7,14 +7,15 @@ from its target and which way the engine will move it. The
 Target-denom cell restates the same target in BTC and in ETH and says
 how far that pair has drifted from the same asset priced in dollars.
 
-Ten things leave this surface. ``position_path`` names which of its
+Eleven things leave this surface. ``position_path`` names which of its
 five paths one Position Value reading takes, and ``two_reads`` answers
 whether the row's Balance figure and its Ammo figure rest on two
 different counts. ``price_pool`` finds the shared price
 cache. ``fresh_price`` picks the price the cells are drawn from and
 says how old it is. ``ammo_units_note`` writes the tooltip sentence
 naming which unit count ``target_bands.ammo_units`` picked for the Ammo
-cell, and ``balance_units_note`` writes the Position Value tooltip's
+cell, ``ammo_tip`` joins it to the cell's lead and one clause, and
+``balance_units_note`` writes the Position Value tooltip's
 clause naming the exchange's own count beside the bot's.
 ``priced_position`` is the one
 multiplication both priced cells read. ``position_value_cell`` composes the Current
@@ -91,60 +92,26 @@ TERRITORY_TIPS = {
     TERRITORY_AT_TARGET: AT_TARGET_TIP,
 }
 
-EMPTY_POSITION_TIP = (
-    "No position — initial entry pending. " "Ammo = full target (bot must buy in)."
-)
-PENDING_PRICE_TIP_FORMAT = (
-    "Holdings present ({holdings:.6f}) but price not "
-    "yet fetched. Ammo will update on first tick."
-)
-MANUAL_FIRE_NOOP_TIP_FORMAT = (
-    "{tip}\n\nMANUAL FIRE WILL NOT ACT: |delta| "
-    "${magnitude:,.4f} is inside Manual Fire's own dust "
-    "band of ${dust_band:,.2f} (1% of target). The autonomous "
-    "engine still works this range; the button will no-op."
-)
-MANUAL_FIRE_NOOP_OLD_PRICE_SUFFIX = (
-    " The delta above rests on the old price named here, so the no-op is "
-    "likely rather than certain."
-)
-TWO_READS_TIP = (
-    " TWO READS, NOT ONE MOMENT: this figure is priced from the exchange's "
-    "count and the Current Balance beside it is priced from the bot's own, so "
-    "the two dollar figures on this row rest on two separate readings of what "
-    "is held. No time is kept for either reading, so neither can be named the "
-    "older one."
-)
-STALE_TIP_FORMAT = (
-    "STALE — price unavailable this tick, so this is the last "
-    "known position value (${stats_pv:,.4f}), not a current "
-    "one. Do not fire on it."
-)
-AGED_PRICE_TIP_FORMAT = (
-    "PRICE {price_age_s:,.0f}s OLD — this figure is computed "
-    "from a price that has not refreshed recently, so the "
-    "true delta may differ. Manual Fire will act on the "
-    "CURRENT price, not this one."
-)
+EMPTY_POSITION_TIP = "No position — Ammo is the full target."
+PENDING_PRICE_TIP = "Price pending; Ammo updates on the next tick."
+MANUAL_FIRE_NOOP_CLAUSE = "Manual Fire no-ops."
+TWO_READS_CLAUSE = "Position Value reads holdings."
+NO_AMMO_CLAUSE = ""
+STALE_TIP_FORMAT = "STALE: last value ${stats_pv:,.4f}; do not fire."
+AGED_PRICE_TIP_FORMAT = "PRICE {price_age_s:,.0f}s OLD; the delta may differ."
 
 VENUE_UNITS_NOTE_FORMAT = (
-    " Measured on the exchange's count of {units:.6f} units; the bot "
-    "attributes {holdings:.6f}."
+    "Measured on exchange {units:.6f}; holdings {holdings:.6f}, lot book {lots}."
 )
 ATTRIBUTED_UNITS_NOTE_FORMAT = (
-    " NO EXCHANGE COUNT HELD — measured on the bot's attributed "
-    "{holdings:.6f} units, which can sit below the exchange and invert the "
-    "direction this cell draws."
+    "NO EXCHANGE COUNT; measured on holdings {holdings:.6f}, lot book {lots}."
 )
+LOT_UNITS_FORMAT = "{lots:.6f}"
+NO_LOT_UNITS_TEXT = "unread"
 
 #: Drawn beside the figure when the last fill-fired venue read refused.
 VENUE_HELD_MARKER = "(held)"
-VENUE_HELD_NOTE_FORMAT = (
-    " HELD READING — the venue read this trade fired could not be made "
-    "({refusal}), so the exchange count above is the one before it. The "
-    "figure is the last reading, not a current one. The trade itself "
-    "settled."
-)
+VENUE_HELD_CLAUSE = "Exchange read refused."
 NO_VENUE_REFUSAL = ""
 
 AMMO_FIELDS = (
@@ -359,11 +326,52 @@ def magnitude(value: float) -> str:
     return MAGNITUDE_FORMAT.format(magnitude=abs(value))
 
 
-def ammo_units_note(units: float, holdings: float, from_venue: bool) -> str:
-    """The tooltip sentence naming which unit count the Ammo cell measured."""
+def _lot_units_text(lot_units: Any) -> str:
+    """``lot_units`` through ``LOT_UNITS_FORMAT``, or ``NO_LOT_UNITS_TEXT`` where
+    it is not a finite int or float."""
+    if type(lot_units) is not int and type(lot_units) is not float:
+        return NO_LOT_UNITS_TEXT
+    if not math.isfinite(lot_units):
+        return NO_LOT_UNITS_TEXT
+    return LOT_UNITS_FORMAT.format(lots=float(lot_units))
+
+
+def ammo_units_note(
+    units: float, holdings: float, from_venue: bool, lot_units: Any = None
+) -> str:
+    """The tooltip sentence naming which unit count the Ammo cell measured.
+
+    ``holdings`` and the ``lot_units`` total stand beside it, so the exchange
+    count, the holdings figure and the lot book read in one sentence.
+    """
+    lots = _lot_units_text(lot_units)
     if from_venue:
-        return VENUE_UNITS_NOTE_FORMAT.format(units=units, holdings=holdings)
-    return ATTRIBUTED_UNITS_NOTE_FORMAT.format(holdings=holdings)
+        return VENUE_UNITS_NOTE_FORMAT.format(units=units, holdings=holdings, lots=lots)
+    return ATTRIBUTED_UNITS_NOTE_FORMAT.format(holdings=holdings, lots=lots)
+
+
+def ammo_tip(
+    lead: str,
+    note: str,
+    held_note: str = NO_VENUE_REFUSAL,
+    noop: bool = False,
+    from_two_reads: bool = False,
+) -> str:
+    """``lead`` and ``note``, then the first of ``held_note``,
+    ``MANUAL_FIRE_NOOP_CLAUSE`` and ``TWO_READS_CLAUSE`` that applies.
+
+    ``_compose_ammo_cell`` and ``TableCellsModel.ammo_cell`` both read this,
+    so the Qt row and the browser row carry one Ammo tooltip.
+    """
+    if held_note:
+        clause = held_note
+    elif noop:
+        clause = MANUAL_FIRE_NOOP_CLAUSE
+    elif from_two_reads:
+        clause = TWO_READS_CLAUSE
+    else:
+        clause = NO_AMMO_CLAUSE
+    return " ".join(part for part in (lead, note, clause) if part)
 
 
 def venue_refusal_text(refusal: Any) -> str:
@@ -384,10 +392,9 @@ def venue_held_note(refusal: Any) -> str:
     Empty while ``venue_refusal_text`` finds no refusal, so a row whose venue
     read landed carries no mark at all.
     """
-    found = venue_refusal_text(refusal)
-    if not found:
+    if not venue_refusal_text(refusal):
         return NO_VENUE_REFUSAL
-    return VENUE_HELD_NOTE_FORMAT.format(refusal=found)
+    return VENUE_HELD_CLAUSE
 
 
 def venue_held_figure(text: str, refusal: Any) -> str:
@@ -685,6 +692,7 @@ class TableCellsModel:
         price_age_s: Optional[float] = MISSING_PRICE_AGE_S,
         venue_units: Any = None,
         venue_refusal: Any = None,
+        lot_units: Any = None,
     ) -> dict:
         """The Ammo cell: distance from target, and the signal it carries.
 
@@ -700,7 +708,7 @@ class TableCellsModel:
         self.calls.append([AMMO_START, stats_pv, holdings, cur_price, qrate])
         units, from_venue = ammo_units(holdings, venue_units)
         self.calls.append([AMMO_UNITS, units, from_venue])
-        note = ammo_units_note(units, holdings, from_venue)
+        note = ammo_units_note(units, holdings, from_venue, lot_units)
         fresh_ok = units > 0 and cur_price > 0
         fresh_pv = priced_position(units, cur_price, qrate) if fresh_ok else 0.0
         if fresh_ok:
@@ -710,9 +718,9 @@ class TableCellsModel:
             position_val, stale = stats_pv, stats_pv > 0
             self.calls.append([AMMO_CACHED, position_val, stale])
         if position_val <= 0 and units <= 0:
-            return self._empty_cell(position_val, target_val)
+            return self._empty_cell(position_val, target_val, note)
         if position_val <= 0 and units > 0:
-            return self._pending_cell(position_val, units)
+            return self._pending_cell(position_val, units, note)
         from_two_reads = two_reads(
             holdings, units, from_venue, cur_price, qrate, price_age_s
         )
@@ -727,7 +735,9 @@ class TableCellsModel:
             venue_refusal,
         )
 
-    def _empty_cell(self, position_val: float, target_val: float) -> dict:
+    def _empty_cell(
+        self, position_val: float, target_val: float, note: str = ""
+    ) -> dict:
         """Never held and never traded. Ammo is the whole target, to buy."""
         delta = target_delta(0.0, target_val)
         self.calls.append([AMMO_EMPTY, delta])
@@ -739,11 +749,13 @@ class TableCellsModel:
                 "delta": delta,
                 "stale": False,
                 "position_val": position_val,
-                "tip": EMPTY_POSITION_TIP,
+                "tip": ammo_tip(EMPTY_POSITION_TIP, note),
             },
         )
 
-    def _pending_cell(self, position_val: float, holdings: float) -> dict:
+    def _pending_cell(
+        self, position_val: float, holdings: float, note: str = ""
+    ) -> dict:
         """Holdings exist and no price has arrived. Say so, never zero."""
         self.calls.append([AMMO_PENDING, holdings])
         return self._finish(
@@ -754,7 +766,7 @@ class TableCellsModel:
                 "delta": 0.0,
                 "stale": False,
                 "position_val": position_val,
-                "tip": PENDING_PRICE_TIP_FORMAT.format(holdings=holdings),
+                "tip": ammo_tip(PENDING_PRICE_TIP, note),
             },
         )
 
@@ -771,8 +783,8 @@ class TableCellsModel:
     ) -> dict:
         """A live position: its distance from target and the engine's band.
 
-        ``note`` and ``TWO_READS_TIP`` are appended after the stale and aged
-        writers, so no branch drops either. ``from_two_reads`` reaches the
+        ``ammo_tip`` joins ``note`` and one clause after the stale and aged
+        writers, so no branch drops ``note``. ``from_two_reads`` reaches the
         tooltip alone and leaves ``ammo_text`` as the whole drawn figure, which
         is the width this column is sized for. A ``venue_refusal`` puts
         ``VENUE_HELD_MARKER`` on the figure and ``venue_held_note`` in the
@@ -788,34 +800,24 @@ class TableCellsModel:
             position_val, target_val
         )
         text = ammo_text(delta, target_val)
-        old_price = False
         if stale:
             color = AMMO_NEUTRAL_COLOR
             text = MARKED_FIGURE_FORMAT.format(text=text, marker=STALE_MARKER)
             tip = STALE_TIP_FORMAT.format(stats_pv=stats_pv)
-            old_price = True
         elif price_age_s is not None and price_age_s > PRICE_STALE_AFTER_S:
             color = AMMO_NEUTRAL_COLOR
             text = MARKED_FIGURE_FORMAT.format(text=text, marker=STALE_MARKER)
             tip = AGED_PRICE_TIP_FORMAT.format(price_age_s=price_age_s)
-            old_price = True
             self.calls.append([AMMO_AGED, price_age_s])
-        tip = f"{tip}{note}"
         held_note = venue_held_note(venue_refusal)
         if held_note:
             text = venue_held_figure(text, venue_refusal)
-            tip = f"{tip}{held_note}"
             self.calls.append([AMMO_VENUE_HELD, venue_refusal_text(venue_refusal)])
         if from_two_reads:
-            tip = f"{tip}{TWO_READS_TIP}"
             self.calls.append([AMMO_TWO_READS, TWO_READS_MARKER])
         if manual_fire_noop:
-            tip = MANUAL_FIRE_NOOP_TIP_FORMAT.format(
-                tip=tip, magnitude=abs(delta), dust_band=dust_band
-            )
-            if old_price:
-                tip = f"{tip}{MANUAL_FIRE_NOOP_OLD_PRICE_SUFFIX}"
             self.calls.append([AMMO_NOOP, dust_band])
+        tip = ammo_tip(tip, note, held_note, manual_fire_noop, from_two_reads)
         return self._finish(
             AMMO_PATH_SIGNAL,
             {
@@ -959,6 +961,7 @@ def build_view_model(
             ammo.get("target_val", 0.0),
             ammo.get("price_age_s", MISSING_PRICE_AGE_S),
             venue_units=ammo.get("venue_units"),
+            lot_units=ammo.get("lot_units"),
         )
     if denom is not None:
         model.target_denom_cell(

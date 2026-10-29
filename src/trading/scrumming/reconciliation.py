@@ -1078,14 +1078,106 @@ class ReconciliationEngineMixin:
         )
         return False
 
+    def _emit_reconcile_refused(self, reason: str, why: str) -> None:
+        """Write one ``RECONCILE REFUSED`` line naming ``why`` to ``bot.log``."""
+        self._bus.emit(
+            "bot.log",
+            bot_id=self.bot_id,
+            message=(
+                f"RECONCILE REFUSED ({reason}): {why}. No lot was rescaled and "
+                f"no holdings were reset. Retrying next interval."
+            ),
+        )
+
+    def _lot_book_total(self) -> float | None:
+        """The ``_main_lots`` total ``_reconcile_holdings`` compares, or None.
+
+        None where ``_reconcilable_lot_book`` refuses a lot or the sum is not
+        finite; ``BotContainer.get_status`` serves it as ``lot_book_units``.
+        """
+        _lot_each, _why = self._reconcilable_lot_book()
+        if _lot_each is None:
+            return None
+        _total = sum(_lot_each)
+        return _total if math.isfinite(_total) else None
+
+    def _adopt_drift_down(
+        self,
+        exchange_units: float,
+        lot_each: list[float],
+        scalar_units: float,
+        reason: str,
+    ) -> None:
+        """Set ``_current_holdings`` and the ``_main_lots`` total to ``exchange_units``.
+
+        A lot book above it scales every lot by the ratio; one below it books
+        the gap through ``_book_reconciliation_lot`` under the
+        ``_claimable_exchange_units`` ceiling at ``stats.current_price``.
+        """
+        _asset = self.config.target_asset
+        _lots_before = sum(lot_each)
+        _short_why = ""
+        if _lots_before > exchange_units:
+            _ratio = exchange_units / _lots_before
+            for _lot, _units in zip(self._main_lots, lot_each, strict=True):
+                _lot["units"] = _units * _ratio
+            self._main_lots = [l for l in self._main_lots if l["units"] > 1e-12]
+        elif exchange_units - _lots_before > 1e-9:
+            _claimable, _sib_units = self._claimable_exchange_units(exchange_units)
+            _adopt = min(exchange_units, _claimable)
+            _basis = float(
+                getattr(getattr(self, "stats", None), "current_price", 0.0) or 0.0
+            )
+            _written = (
+                self._book_reconciliation_lot(_adopt, _lots_before, _basis)
+                if _adopt - _lots_before > 1e-9
+                else None
+            )
+            if _adopt - _lots_before > 1e-9 and _written is None:
+                _short_why = (
+                    f"no usable price to book it at (stats.current_price "
+                    f"{_basis:.8f})"
+                )
+            elif exchange_units - _adopt > 1e-9:
+                _short_why = (
+                    f"sibling bots hold {_sib_units:.8f} {_asset} on this exchange"
+                )
+        self._current_holdings = exchange_units
+        _lots_after = sum(
+            float(_lot.get("units", 0.0) or 0.0) for _lot in self._main_lots
+        )
+        _message = (
+            f"DRIFT DOWN ({reason}): adopted the exchange balance of "
+            f"{exchange_units:.8f} {_asset}. Lots {_lots_before:.8f} -> "
+            f"{_lots_after:.8f}, holdings {scalar_units:.8f} -> "
+            f"{exchange_units:.8f}."
+        )
+        if _short_why:
+            _message += (
+                f" The lot book stays {exchange_units - _lots_after:.8f} short: "
+                f"{_short_why}. Retrying next cycle."
+            )
+        self._bus.emit("bot.log", bot_id=self.bot_id, message=_message)
+        logger.info(
+            "Bot %s drift DOWN (%s): lots %.8f -> %.8f, holdings %.8f -> %.8f%s",
+            self.bot_id,
+            reason,
+            _lots_before,
+            _lots_after,
+            scalar_units,
+            exchange_units,
+            f"; lot book short: {_short_why}" if _short_why else "",
+        )
+
     async def _reconcile_holdings(self, reason: str = "periodic") -> bool:
-        """Compare ``_current_holdings`` and ``_main_lots`` against the venue.
+        """Compare ``_current_holdings`` and the ``_main_lots`` total against the
+        venue, and on drift down ``_adopt_drift_down`` sets both to the venue.
 
         ``reason`` tags every log line with ``periodic`` or ``post_failure``,
         and the return is True once the comparison completes, False when the
         balance fetch raises, when ``Balance.absent`` marks the currency
-        missing from the response, or when ``_reconcilable_units`` refuses an
-        input.
+        missing from the response, or when ``_reconcilable_lot_book`` or
+        ``_reconcilable_units`` refuses an input.
         """
         try:
             balance = await self._get_balance(self.config.target_asset)
@@ -1095,6 +1187,11 @@ class ReconciliationEngineMixin:
         except Exception as exc:
             logger.debug(
                 "Bot %s reconcile fetch failed (%s): %s", self.bot_id, reason, exc
+            )
+            self._emit_reconcile_refused(
+                reason,
+                f"the {self.config.target_asset} balance could not be read "
+                f"({type(exc).__name__}: {exc})",
             )
             return False
 
@@ -1140,6 +1237,7 @@ class ReconciliationEngineMixin:
                 reason,
                 _why,
             )
+            self._emit_reconcile_refused(reason, str(_why))
             return False
         exchange_units, _scalar_units, _lot_units = _readings
         self._record_audited_venue_units(exchange_units)
@@ -1155,8 +1253,14 @@ class ReconciliationEngineMixin:
 
         _TOLERANCE_PCT = 0.5
         _tolerance_units = abs(internal_units) * _TOLERANCE_PCT / 100.0
+        _drift_down = exchange_units <= internal_units
+        _widest_units = (
+            max(abs(exchange_units - _lot_units), abs(exchange_units - _scalar_units))
+            if _drift_down
+            else abs(drift_units)
+        )
 
-        if abs(drift_units) <= _tolerance_units:
+        if _widest_units <= _tolerance_units or (_drift_down and _widest_units <= 1e-9):
             logger.debug(
                 "Bot %s reconcile (%s) aligned: internal=%.6f exchange=%.6f "
                 "drift=%.4f (%.3f%%)",
@@ -1190,13 +1294,8 @@ class ReconciliationEngineMixin:
             drift_pct,
         )
 
-        if exchange_units < internal_units - 1e-9:
-            if internal_units > 0 and self._main_lots:
-                _ratio = exchange_units / internal_units
-                for _lot, _units in zip(self._main_lots, _lot_each, strict=True):
-                    _lot["units"] = _units * _ratio
-                self._main_lots = [l for l in self._main_lots if l["units"] > 1e-12]
-            self._current_holdings = exchange_units
+        if _drift_down:
+            self._adopt_drift_down(exchange_units, _lot_each, _scalar_units, reason)
         else:
 
             _surplus = max(0.0, exchange_units - internal_units)

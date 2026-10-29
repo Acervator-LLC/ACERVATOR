@@ -1794,6 +1794,13 @@ and says the direction can read the wrong way, because an attributed count below
 the exchange turns a surplus into an apparent deficit and paints buy pressure on
 a position that is already above target.
 
+Read today: the tooltip names three figures together, the exchange count, the
+holdings figure and the lot-book total. With no exchange reading held it opens
+`NO EXCHANGE COUNT` and names the other two. The sentence about the direction
+reading the wrong way is gone from the tooltip, which now fits twenty words in
+every state. **What the Ammo mouse-over reads**, in the 2026-10-28 entry at the
+end of this page, gives each sentence.
+
 **The cell itself draws the amount and nothing else.** The two counts are a fact
 about where the figure came from, and the tooltip is the only place that fact is
 written. The column is sized for a dollar amount, so a note added beside the
@@ -2384,6 +2391,9 @@ and the Ammo cell then draws the last reading with the word `(held)` beside it
 and names the reason in its tooltip. The figure is never blanked and never drawn
 as though it were current. The order and the trade are unaffected: the sale has
 already settled at the exchange, and the refresh cannot refuse it.
+
+Read today: the tooltip ends `Exchange read refused.` and no longer names the
+reason. The reason stays in the `VENUE READ REFUSED` line of the bot log.
 
 `src/trading/bot_container.py` — the status record's refusal field
 
@@ -10455,6 +10465,22 @@ self._record_audited_venue_units(exchange_units)
 internal_units = _lot_units if _lot_units > _scalar_units else _scalar_units
 ```
 
+Read today: the larger count still decides the direction. Where the exchange
+sits at or below it, the half-per-cent band applies to each of the two counts,
+so the audit no longer reads aligned while the lot book sits below the exchange.
+Where the exchange sits above it, nothing changed.
+
+`src/trading/scrumming/reconciliation.py, in _reconcile_holdings`
+
+```python
+_drift_down = exchange_units <= internal_units
+_widest_units = (
+    max(abs(exchange_units - _lot_units), abs(exchange_units - _scalar_units))
+    if _drift_down
+    else abs(drift_units)
+)
+```
+
 ### What the audit does for each ordering
 
 Each ordering below was driven on constructed counts. No exchange was contacted.
@@ -10463,6 +10489,16 @@ Each ordering below was driven on constructed counts. No exchange was contacted.
 | --- | --- | --- |
 | exchange 50.1, lots 50.0, holdings 50.0 | inside the band, so nothing was written | 50.0 |
 | exchange 40.0, lots 50.0, holdings 50.0 | scaled every lot by the exchange ratio and set the holdings figure to the exchange | 40.0 |
+| exchange 40.0, lots 45.0, holdings 50.0 | scaled every lot by the exchange over the lot total and set the holdings figure to the exchange | 40.0 |
+| exchange 45.0, lots 40.0, holdings 50.0, a usable price | booked the five units the lot book lacked as one reconciliation lot and set the holdings figure to the exchange | 45.0 |
+| exchange 45.0, lots 40.0, holdings 50.0, no usable price | set the holdings figure to the exchange, booked nothing, and logged the lot book five short | 40.0 |
+| exchange 45.0, lots 40.0, holdings 50.0, sibling bots holding five | set the holdings figure to the exchange, booked nothing, and logged the five units the sibling bots hold | 40.0 |
+| exchange 40.0, lots 36.0, holdings 40.1 | the holdings figure sat inside the band and the lot book outside it, so booked four units as one reconciliation lot | 40.0 |
+| exchange 40.0, lots 40.0, holdings 30.0 | set the holdings figure to the exchange and left the lot book where it was | 40.0 |
+| a lot whose units are text, not finite, or not a lot | refused before any write and logged `RECONCILE REFUSED`; the lot book, the holdings figure and the stored exchange count stay as they were | unchanged |
+| a holdings figure that is not finite | refused before any write and logged `RECONCILE REFUSED`; nothing is repaired and the stored exchange count stays as it was | unchanged |
+| an exchange total that is not finite, below zero, or not a number | refused before any write and logged `RECONCILE REFUSED`; nothing is repaired and the stored exchange count stays as it was | unchanged |
+| the balance read raised | refused before any write and logged `RECONCILE REFUSED` with the error; nothing is repaired and the stored exchange count stays as it was | unchanged |
 | exchange 40.0, lots 30.0, holdings 30.0, a usable price | booked the ten missing units as one reconciliation lot | 40.0 |
 | exchange 40.0, lots 30.0, holdings 30.0, no usable price | deferred the adoption and wrote nothing | 30.0 |
 | exchange 40.0, lots 30.0, holdings 30.0, sibling bots holding ten | claimed nothing, because no unit on the asset was this bot's | 30.0 |
@@ -10472,6 +10508,12 @@ A lot book below the exchange stays below it in the last three rows. The startup
 read repairs it when a price is usable and no sibling bot holds the surplus, and
 leaves it short otherwise, so the gap can survive a restart.
 
+Read today: the table holds sixteen rows, and the three that sentence names are
+still its last three. Two rows above them also end with the lot book below the
+exchange: a holdings figure above the exchange with no usable price, and one with
+sibling bots holding the gap. Both retry on the next audit. The four refusal rows
+added above them leave every figure where it was.
+
 ### The reading only the operator can take
 
 Those six rows say what the audit does with each ordering. They do not say which
@@ -10479,6 +10521,11 @@ ordering any live bot is in. That needs the lot total, the holdings figure and
 the exchange's balance for one bot, read beside each other in one pass, and the
 third of them can only come from the exchange. The reading is the operator's to
 take on the running platform.
+
+Read today: the reading sits on the Trading tab. Rest the pointer on a bot's Ammo
+cell, and its mouse-over names the stored exchange count, the holdings figure and
+the lot-book total together. The exchange count is net of any sibling bot on the
+same asset, as the Ammo column section above describes.
 
 ### A buy books the units the exchange reported
 
@@ -10556,3 +10603,139 @@ tooltip either way.
 | no exchange count | $50.0000 | no exchange count held, measured on the attributed count |
 | an exchange count of zero | $50.0000 | no exchange count held, measured on the attributed count |
 | exchange 40.0, the last read refused | $100.0000 (held) | the held reading, with the reason |
+
+Read today: the drawn figures are unchanged, and the tooltip column reads
+differently. Each row now names the lot-book total beside the exchange count and
+the holdings figure, and the held row ends `Exchange read refused.` without the
+reason.
+
+## 2026-10-28 - the holdings audit lands the lot book on the exchange
+
+### When the exchange sits at or below the larger count
+
+The audit still takes the larger of the bot's two counts to decide the direction.
+When the exchange sits at or below it, the bot adopts the exchange count for both
+of its own: the holdings figure becomes the exchange count, and the lot book moves
+to it. A lot book above the exchange scales down by the exchange over the lot
+total. A lot book below the exchange gains one reconciliation lot for the gap, at
+the current price and under the sibling ceiling, the two rules a surplus already
+meets on the way up. Each repair writes one `DRIFT DOWN` line to the bot log with
+both counts before and after.
+
+`src/trading/scrumming/reconciliation.py, in _adopt_drift_down`
+
+```python
+if _lots_before > exchange_units:
+    _ratio = exchange_units / _lots_before
+    for _lot, _units in zip(self._main_lots, lot_each, strict=True):
+        _lot["units"] = _units * _ratio
+    self._main_lots = [l for l in self._main_lots if l["units"] > 1e-12]
+elif exchange_units - _lots_before > 1e-9:
+    _claimable, _sib_units = self._claimable_exchange_units(exchange_units)
+    _adopt = min(exchange_units, _claimable)
+```
+
+Where the gap cannot be booked, the line says why and the next audit tries again.
+No usable price books nothing, because a lot with no basis reads as profit
+against every price. Units the sibling bots hold stay theirs. A gap of 1e-9 units
+or less reads as aligned, the same floor the earlier drift-down branch kept.
+
+### What the worked example holds before and after
+
+One bot holds lots of 30 and 15 units, a holdings figure of 50, and an exchange
+count of 40. Both versions of the audit ran in one process, the earlier one read
+from git at the commit this change starts from.
+
+```
+                       lots after    each lot          holdings after   gap to the exchange
+before this change       36.0        24.0, 12.0          40.0             4.0 below
+this change              40.0        26.67, 13.33        40.0             none
+```
+
+### Every ordering, swept
+
+Thirteen values were set for each of the three counts, from 0 to 1,000,000, so
+2,197 combinations. Each ran on the tree before this change and on this change,
+with a usable price and no sibling bot.
+
+```
+the exchange at or below the larger count      1,547 combinations
+                                               before   after
+  lot book left below the exchange                371       0
+  lot book landed on the exchange                       1,479
+  inside the band, nothing written                         68
+the exchange above the larger count              650 combinations
+  read identical on both trees                    650 of 650
+```
+
+Changing one digit of one reading in the second set makes the comparison report
+one difference, so the identical count can report a change. The same 650 also
+read identical with no usable price and with sibling bots holding five units. In
+those two runs, the 338 combinations that needed units added stop short and name
+the reason.
+
+### The refusal exits write to the bot log
+
+A refused input used to leave one line in the program's own log alone, and a
+balance read that raised left only a debug line. Each refusal now also writes one
+`RECONCILE REFUSED` line to the bot log, naming the input. Nothing else changed:
+no lot is scaled, the holdings figure stays, and the stored exchange count is not
+updated.
+
+`src/trading/scrumming/reconciliation.py, in _emit_reconcile_refused`
+
+```python
+message=(
+    f"RECONCILE REFUSED ({reason}): {why}. No lot was rescaled and "
+    f"no holdings were reset. Retrying next interval."
+),
+```
+
+### What the Ammo mouse-over reads
+
+The tooltip names the exchange count, the holdings figure and the lot-book total
+in one sentence, on the Qt table and on the page alike. The bot's status record
+carries the lot total as `lot_book_units`, read through the same lot reader the
+audit compares. The Paper Trader and Simulator tables carry the same sentence.
+Their records build the holdings figure from the stored lots, so there the two
+figures read the same.
+
+`src/gui/main_tabs/table_cells_surface.py` — the sentence the tooltip carries
+
+```python
+VENUE_UNITS_NOTE_FORMAT = (
+    "Measured on exchange {units:.6f}; holdings {holdings:.6f}, lot book {lots}."
+)
+ATTRIBUTED_UNITS_NOTE_FORMAT = (
+    "NO EXCHANGE COUNT; measured on holdings {holdings:.6f}, lot book {lots}."
+)
+```
+
+Read off the built cell of a real bot, its status record passed through both
+tables, before and after one audit pass on the worked example:
+
+```
+before the audit   Within dust band — no action pending NO EXCHANGE COUNT; measured on holdings 50.000000, lot book 45.000000.
+after the audit    Fold territory — buy deficit on bearish Measured on exchange 40.000000; holdings 40.000000, lot book 40.000000.
+```
+
+A row whose record carries no lot total reads `lot book unread`, and a reading
+that looks for the lot figure reports it missing there.
+
+Every state now fits twenty words. 2,880 combinations of the cell's inputs were
+composed on both trees.
+
+```
+                                           before this change   this change
+states over twenty words                         1,908               0
+the longest tooltip, in words                      149              20
+Qt tooltip equal to the page's                   2,880           2,880
+every other field of the cell identical               2,880 of 2,880
+the Current Position Value cell identical                 72 of 72
+```
+
+Three clauses were cut to fit. The held reading no longer names the reason, which
+the bot log keeps. The two-reads note is four words, `Position Value reads
+holdings.`, because the three figures already show the two counts. The Manual Fire
+note no longer names the dust band, which the Fire button's own tooltip still
+names.

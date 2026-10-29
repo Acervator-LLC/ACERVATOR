@@ -476,6 +476,7 @@ MANUAL_FIRE_REFUSES = "refuses"
 MANUAL_FIRE_PARKED = "parked"
 VENUE_UNITS_FIELD = "audited_venue_units"
 VENUE_REFUSAL_FIELD = "venue_units_refusal"
+LOT_UNITS_FIELD = "lot_book_units"
 SYMBOL_SEPARATOR = "/"
 QUOTE_BTC = "BTC"
 QUOTE_ETH = "ETH"
@@ -929,6 +930,11 @@ def holdings_of(status: Any) -> float:
 def venue_units_of(status: Any) -> Any:
     """The ``VENUE_UNITS_FIELD`` reading this bot reports, uncoerced for ``ammo_units``."""
     return status.get(VENUE_UNITS_FIELD)
+
+
+def lot_units_of(status: Any) -> Any:
+    """The ``LOT_UNITS_FIELD`` lot total this bot reports, uncoerced for ``ammo_units_note``."""
+    return status.get(LOT_UNITS_FIELD)
 
 
 def venue_refusal_of(status: Any) -> Any:
@@ -1487,6 +1493,7 @@ class BotStatusTableModel:
             price_age_s,
             venue_units_of(status),
             venue_refusal_of(status),
+            lot_units_of(status),
         )
         symbol = status.get("symbol", EMPTY_TEXT) or EMPTY_TEXT
         base_asset = base_asset_of(symbol)
@@ -1570,6 +1577,7 @@ class BotStatusTableModel:
         price_age_s,
         venue_units,
         venue_refusal=None,
+        lot_units=None,
     ) -> dict:
         """The Ammo cell, computed from a fresh price wherever one exists.
 
@@ -1588,6 +1596,7 @@ class BotStatusTableModel:
             price_age_s=price_age_s,
             venue_units=venue_units,
             venue_refusal=venue_refusal,
+            lot_units=lot_units,
         )
 
     def _logo_cell(self, symbol, shown) -> dict:

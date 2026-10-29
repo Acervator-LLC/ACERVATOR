@@ -60,6 +60,7 @@ from ..main_tabs.bot_status_table_surface import (
     fold_taper_of,
     icon_asset_of,
     kept_logo_path,
+    lot_units_of,
     manual_fire_dispute,
     manual_fire_noop_tooltip,
     manual_fire_verdict,
@@ -743,6 +744,7 @@ if _HAS_QT:
                 price_age_s=_price_age,
                 venue_units=status.get("audited_venue_units"),
                 venue_refusal=status.get("venue_units_refusal"),
+                lot_units=lot_units_of(status),
             )
             ammo_color = QColor(_ammo["color"])
             ammo_tip = _ammo["tip"]
