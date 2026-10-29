@@ -122,6 +122,58 @@ plays from the Market Inspector.
 | crash snapshot | a whole-fleet file written every 30 s | not built |
 | risk engine | two fleet sweeps every 2 s | one sweep |
 
+### When a risk rule raises its alert
+
+Each of the seven risk rules raises its alert only for a reading strictly
+beyond its limit. A reading exactly on the limit raises none. Every alert text
+says the reading "exceeds" the limit, and every alert's reading does. The one
+test sits on the rule, and every rule calls it.
+
+`src/trading/risk_manager.py` — `RiskRule.exceeded_by`
+
+```python
+    def exceeded_by(self, reading: float) -> bool:
+        """True only for a ``reading`` strictly above ``threshold``; ``evaluate``
+        applies this one test to every rule.
+        """
+        return reading > self.threshold
+```
+
+Every alert writes one warning line to the Console and to `system.log`. A
+critical alert also goes to the notification manager, which sends it to the
+alert sound, Telegram and SMS. SMS sends only while the "P/L threshold alerts"
+box on `Settings > SMS` is ticked.
+
+| rule | limit | what it reads | severity |
+| --- | --- | --- | --- |
+| `max_drawdown` | 10 % | the fall of total P/L from its peak | warning |
+| `critical_drawdown` | 25 % | the fall of total P/L from its peak | critical |
+| `per_bot_loss` | $50 | one bot's realised loss | warning |
+| `asset_concentration` | 40 % | one asset's share of the running target balance | warning |
+| `exchange_concentration` | 60 % | one venue's share of the running target balance | warning |
+| `correlated_exposure` | 50 % | the combined share of a pair at a correlation of 0.7 or more | warning |
+| `rapid_loss` | 5 % | the fall of total P/L inside 300 s | critical |
+
+Driven on constructed fleets in a redirected home, with every send stopped at
+its import. One step is 0.0001 of P/L, the place each bot's status rounds to,
+or one cent of target balance.
+
+```
+rule                     one step below   on the limit   one step above
+max_drawdown             no alert         no alert       warning
+critical_drawdown        no alert         no alert       critical, to SMS
+per_bot_loss             no alert         no alert       warning
+asset_concentration      no alert         no alert       warning
+exchange_concentration   no alert         no alert       warning
+correlated_exposure      no alert         no alert       warning
+rapid_loss               no alert         no alert       critical, to SMS
+```
+
+A rule that alerts waits out its cooldown before it alerts again: 300 s, and
+600 s for `rapid_loss`. A reading on the limit raises nothing, so it starts no
+cooldown. Another asset beyond the limit in the same sweep then raises the
+alert for that rule.
+
 ## How a screen reaches its renderer
 
 One registry maps a method name to a view-model function. A surface is a plain
