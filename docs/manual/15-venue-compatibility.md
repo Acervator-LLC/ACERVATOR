@@ -10118,7 +10118,9 @@ OVERTAKEN, quoted whole:
 > refused with the venue's own absence as the reason.
 
 True today: no list offers Fidelity, and the broker route still answers True on
-all six sectors, so a saved bot reads the named refusal.
+all six sectors, so a saved bot reads the named refusal. An entry stored for
+Fidelity sits on no trading layer, and the Settings Exchanges page still draws it
+in every sector, so Remove Selected can delete it.
 
 ## 2026-10-11 — a tokenised stock trades in a fraction of a share, and the venue publishes the step
 

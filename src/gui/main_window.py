@@ -1749,11 +1749,11 @@ if _HAS_QT:
             """Every trading layer this exchange's tab belongs on.
 
             ``trading_tab_surface.exchange_layers`` reads the sector map, and a
-            venue it answers no layer for keeps the crypto layer.
+            venue it answers no layer for sits on none.
             """
             from .main_tabs.trading_tab_surface import exchange_layers
 
-            return exchange_layers(exchange_id) or ("crypto",)
+            return exchange_layers(exchange_id)
 
         def add_exchange_tab(self, exchange_id: str, display_name: str) -> None:
             """Seat one exchange tab on every layer the sector map serves it under."""

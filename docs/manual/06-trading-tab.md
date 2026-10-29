@@ -8633,6 +8633,9 @@ EQUITY_VENUES = frozenset(
 )
 ```
 
+OVERTAKEN, and the code block above is kept as written. `EQUITY_VENUES` no longer
+names `fidelity`, and Fidelity is offered on no tab.
+
 `src/gui/main_tabs/trading_tab_surface.py` — the order the pages are given
 
 ```python
@@ -8658,6 +8661,40 @@ no broker connector answers it, and the second Interactive Brokers id reads the
 same. The firm that publishes no interface stays under its four sectors, and
 whether a firm nothing can trade through belongs on any tab is the operator's
 decision.
+
+OVERTAKEN, and the paragraph above is kept as written. Fidelity, the firm that
+publishes no interface, has left the list and is offered on no tab.
+
+A stored venue that no sector lists now sits on no layer, on the Live, Paper and
+Simulator tabs in both builds. That covers an entry stored for Fidelity, for TD
+Ameritrade's id or for the second Interactive Brokers id. The Settings Exchanges
+page still draws each such entry, so Remove Selected can delete it.
+
+```python
+# src/gui/main_tabs/trading_tab_surface.py, in layer_exchanges
+        for layer in exchange_layers(exchange_id):
+            split[layer][exchange_id] = exchange_display_name(holder)
+```
+
+```python
+# src/gui/main_window.py, in MainWindow._served_layers
+            return exchange_layers(exchange_id)
+```
+
+```python
+# src/gui/paper/paper_trading_tab.py, in PaperTradingTab.add_exchange_tab
+        if not exchange_layers(exchange_id):
+            return
+```
+
+Read with the home redirected and no venue contacted, one stored entry each:
+
+| Stored venue | Live, React Paper and React Simulator, before | Qt Paper and Qt Simulator, before | Now, in every build |
+| ------------ | --------------------------------------------- | --------------------------------- | ------------------- |
+| fidelity | Stocks, Crypto, Commodities, Indices | Stock | no layer |
+| tdameritrade | Crypto | Stock | no layer |
+| interactivebrokers | Crypto | Stock | no layer |
+| alpaca, coinbase, kraken | each venue's own layers | each venue's own layer | unchanged |
 
 #### Every tab but Status and Console follows the active asset class
 

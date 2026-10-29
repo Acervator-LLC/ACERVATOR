@@ -136,17 +136,18 @@ STRONG_CLOSE = "</b>"
 STRONG_WEIGHT = "bold"
 
 STOCK_BANNER_LEAD = "Stock Wing:"
-STOCK_BANNER_TAIL = (
-    " eight brokers hold a connector this program builds: "
-    "alpaca, etrade, fidelity, ibkr, robinhood, schwab, tastytrade and webull. "
+#: The banner's first sentence, which ``stock_banner_tail`` fills from ``offered_brokers``.
+STOCK_BANNER_BROKERS = (
+    " {count} brokers are offered here, each with a connector this program "
+    "builds: {names}. "
+)
+STOCK_BANNER_REST = (
     "The form below takes each one's key and secret. "
     "A broker the program signs in at a browser keeps its own "
     "Connect with a Browser press. "
     "Test Connection answers where a credential can be checked without a "
     "session; elsewhere the Start press checks it."
 )
-STOCK_BANNER_PIECES = (STOCK_BANNER_LEAD, STOCK_BANNER_TAIL)
-STOCK_BANNER_TEXT = STRONG_OPEN + STOCK_BANNER_LEAD + STRONG_CLOSE + STOCK_BANNER_TAIL
 STOCK_BANNER_WORD_WRAP = True
 
 ALPHA_SCALE = ALPHA_HIGHEST
@@ -226,6 +227,8 @@ VENUE_STATE_VALIDATED = "validated"
 VENUE_STATE_LOST = "lost"
 VENUE_STATE_FORMAT_CHECKED = "format_checked"
 VENUE_STATE_UNSET = "unset"
+#: A stored entry whose venue ``venue_classes`` lists under no sector.
+VENUE_STATE_NOT_OFFERED = "not_offered"
 
 #: The ``design_system`` token each venue state paints with. Only a venue's own
 #: answer reaches ``SUCCESS``; a format check draws the resting colour.
@@ -234,18 +237,21 @@ VENUE_STATE_TOKENS = {
     VENUE_STATE_LOST: "ERROR",
     VENUE_STATE_FORMAT_CHECKED: "STATUS_NEUTRAL",
     VENUE_STATE_UNSET: "STATUS_NEUTRAL",
+    VENUE_STATE_NOT_OFFERED: "WARNING",
 }
 VENUE_STATE_COLOURS = {
     VENUE_STATE_VALIDATED: ds.SUCCESS,
     VENUE_STATE_LOST: ds.ERROR,
     VENUE_STATE_FORMAT_CHECKED: ds.STATUS_NEUTRAL,
     VENUE_STATE_UNSET: ds.STATUS_NEUTRAL,
+    VENUE_STATE_NOT_OFFERED: ds.WARNING,
 }
 VENUE_STATE_WORDS = {
     VENUE_STATE_VALIDATED: "credentials validated",
     VENUE_STATE_LOST: "API connection lost",
     VENUE_STATE_FORMAT_CHECKED: "credential format checked, no venue asked",
     VENUE_STATE_UNSET: "no valid credentials: never asked, or the venue refused one",
+    VENUE_STATE_NOT_OFFERED: "stored, and listed under no sector",
 }
 VENUE_ROW_FORMAT = "{name} ({venue})"
 VENUE_ROW_STYLE = (
@@ -253,6 +259,14 @@ VENUE_ROW_STYLE = (
     "background: " + ds.SURFACE_CONTROL + "; padding: 4px 8px; text-align: left;"
 )
 VENUE_ROW_TOOLTIP = "{name} — {words}. Press to enter credentials."
+NOT_OFFERED_ROW_TOOLTIP = (
+    "{name} — {words}. Press it, then Remove Selected, to delete the stored entry."
+)
+#: What the feedback row carries once a ``VENUE_STATE_NOT_OFFERED`` row is pressed.
+NOT_OFFERED_PROMPT = (
+    "{name} is listed under no sector, so Add stores nothing for it. "
+    "Remove Selected deletes its stored entry."
+)
 VENUE_FORM_BOUND = "Enter credentials for {name}."
 
 #: The Add form's Exchange row while no venue button is pressed.
@@ -2087,27 +2101,49 @@ def venue_row_style(state: Any) -> str:
     return VENUE_ROW_STYLE.format(colour=venue_state_colour(state))
 
 
+def dialog_venue_states(recorded: Any, stored: Any) -> dict:
+    """``recorded`` with ``VENUE_STATE_NOT_OFFERED`` on every ``stored`` entry
+    whose venue ``acs.venue_classes`` lists under no sector."""
+    held = dict(recorded) if isinstance(recorded, dict) else {}
+    for entry in stored or ():
+        named = entry.get(EXCHANGE_ID_KEY, "") if isinstance(entry, dict) else ""
+        venue = str(named or "").strip().lower()
+        if venue and not acs.venue_classes(venue):
+            held[venue] = VENUE_STATE_NOT_OFFERED
+    return held
+
+
+def venue_row(venue: str, state: str) -> tuple:
+    """The drawn Exchange Status row for ``venue`` in ``state``."""
+    name = venue.capitalize()
+    tip = VENUE_ROW_TOOLTIP
+    if state == VENUE_STATE_NOT_OFFERED:
+        tip = NOT_OFFERED_ROW_TOOLTIP
+    return (
+        VENUE_ROW_FORMAT.format(name=name, venue=venue),
+        venue,
+        state,
+        venue_state_colour(state),
+        venue_row_style(state),
+        tip.format(name=name, words=VENUE_STATE_WORDS[state]),
+    )
+
+
 def exchange_status_rows(wing: Any, states: Any = None) -> tuple:
-    """Every venue ``venues_for_class`` answers for one sector, as drawn rows.
+    """Every venue ``venues_for_class`` answers for one sector, then every
+    ``VENUE_STATE_NOT_OFFERED`` venue ``states`` holds, as drawn rows.
 
     A row is ``(text, venue_id, state, colour, style, tooltip)``, and a sector
     with no venue draws ``class_state``'s note under an empty venue id.
     """
     held = states if isinstance(states, dict) else {}
-    found = []
-    for venue in sorted(acs.venues_for_class(wing)):
-        state = venue_state(venue, held)
-        name = venue.capitalize()
-        found.append(
-            (
-                VENUE_ROW_FORMAT.format(name=name, venue=venue),
-                venue,
-                state,
-                venue_state_colour(state),
-                venue_row_style(state),
-                VENUE_ROW_TOOLTIP.format(name=name, words=VENUE_STATE_WORDS[state]),
-            )
-        )
+    listed = sorted(acs.venues_for_class(wing))
+    stored = sorted(
+        venue
+        for venue in held
+        if venue_state(venue, held) == VENUE_STATE_NOT_OFFERED and venue not in listed
+    )
+    found = [venue_row(venue, venue_state(venue, held)) for venue in listed + stored]
     if not found:
         note = acs.class_state(wing)["note"]
         state = VENUE_STATE_UNSET
@@ -2654,9 +2690,9 @@ def credential_form(venue_id: Any, wing: Any = "") -> dict:
     ``key_rows`` false hides the API Key, API Secret and passphrase rows,
     ``code_row`` true adds the verification-code row for a venue
     ``takes_verification_code`` names, ``test_enabled`` follows
-    ``credential_route_held``, ``add_enabled`` follows ``connector_held``, and
-    an empty ``venue_id`` keeps the shape the form opens with, both presses
-    included.
+    ``credential_route_held``, ``add_enabled`` follows ``connector_held`` and
+    ``acs.venue_classes``, and an empty ``venue_id`` keeps the shape the form
+    opens with, both presses included.
     """
     kind = credential_kind(venue_id, wing)
     browser = kind == CREDENTIAL_BROWSER_AUTHORIZATION
@@ -2665,6 +2701,7 @@ def credential_form(venue_id: Any, wing: Any = "") -> dict:
     bound = bool(str(venue_id or "").strip())
     route = credential_route_held(venue_id) if bound else True
     built = connector_held(venue_id) if bound else True
+    listed = bool(acs.venue_classes(venue_id)) if bound else True
     tip = TEST_CONNECTION_TOOLTIP
     if browser:
         tip = NO_KEY_TO_TEST
@@ -2672,6 +2709,8 @@ def credential_form(venue_id: Any, wing: Any = "") -> dict:
         tip = NO_CREDENTIAL_TEST_TIP
     if browser:
         prompt = BROWSER_FORM_PROMPT
+    elif not listed:
+        prompt = NOT_OFFERED_PROMPT
     elif not built:
         prompt = NO_CONNECTOR_PROMPT
     elif coded:
@@ -2680,12 +2719,12 @@ def credential_form(venue_id: Any, wing: Any = "") -> dict:
         prompt = KEY_FORM_PROMPT
     return {
         "kind": kind,
-        "key_rows": not browser,
-        "code_row": coded,
+        "key_rows": not browser and listed,
+        "code_row": coded and listed,
         "add_text": BROWSER_ADD_BUTTON_TEXT if browser else ADD_BUTTON_TEXT,
-        "add_enabled": built,
+        "add_enabled": built and listed,
         "add_tip": BROWSER_ADD_TOOLTIP if browser else ADD_EXCHANGE_TOOLTIP,
-        "test_enabled": not browser and route,
+        "test_enabled": not browser and route and listed,
         "test_tip": tip,
         "prompt": prompt.format(name=name),
     }
@@ -2799,14 +2838,44 @@ def browser_connected_words(venue_id: Any, approval: Any) -> str:
     )
 
 
+def offered_brokers() -> tuple:
+    """Every venue id ``acs.venues_for_class`` lists under stocks that
+    ``broker_connector_class`` builds a broker for, in id order."""
+    from ...stocks.alpaca_connector import broker_connector_class
+
+    listed = acs.venues_for_class(class_of_wing(STOCK_WING))
+    return tuple(sorted(one for one in listed if broker_connector_class(one)))
+
+
+def names_joined(names: Any) -> str:
+    """``names`` as one phrase, a comma between each and "and" before the last."""
+    held = [str(one) for one in (names or ())]
+    if len(held) < 2:
+        return "".join(held)
+    return ", ".join(held[:-1]) + " and " + held[-1]
+
+
+def stock_banner_tail() -> str:
+    """``STOCK_BANNER_BROKERS`` over ``offered_brokers``, then ``STOCK_BANNER_REST``."""
+    brokers = offered_brokers()
+    named = STOCK_BANNER_BROKERS.format(count=len(brokers), names=names_joined(brokers))
+    return named + STOCK_BANNER_REST
+
+
+def stock_banner_text() -> str:
+    """``STOCK_BANNER_LEAD`` in bold, then ``stock_banner_tail``, as one label."""
+    return STRONG_OPEN + STOCK_BANNER_LEAD + STRONG_CLOSE + stock_banner_tail()
+
+
 def banner_of(wing: str) -> dict:
     """The stock-wing banner, its words, its pieces and its colours."""
+    tail = stock_banner_tail()
     return {
         "shown": wing == STOCK_WING,
-        "text": STOCK_BANNER_TEXT,
+        "text": STRONG_OPEN + STOCK_BANNER_LEAD + STRONG_CLOSE + tail,
         "lead": STOCK_BANNER_LEAD,
-        "tail": STOCK_BANNER_TAIL,
-        "pieces": list(STOCK_BANNER_PIECES),
+        "tail": tail,
+        "pieces": [STOCK_BANNER_LEAD, tail],
         "word_wrap": STOCK_BANNER_WORD_WRAP,
         "style_sheet": STOCK_BANNER_STYLE,
         "marks": {
@@ -3315,6 +3384,8 @@ class SettingsDialogModel:
     def build(self) -> None:
         """Lay out every tab, then seed every control from the store."""
         self._record("build", self.wing)
+        stored = self.settings.list_exchanges() if self.settings else []
+        self.venue_states = dialog_venue_states(self.venue_states, stored)
         self._setup()
         self._load_current()
 
@@ -3346,7 +3417,7 @@ class SettingsDialogModel:
             exchange_status_lines(self.asset_class, self.venue_states)
         )
         self.texts["add_group"] = add_group_title(self.asset_class)
-        self.texts["banner"] = STOCK_BANNER_TEXT if self.wing == STOCK_WING else ""
+        self.texts["banner"] = stock_banner_text() if self.wing == STOCK_WING else ""
         self.styles["banner"] = STOCK_BANNER_STYLE if self.wing == STOCK_WING else ""
         self.on_exchange_changed()
 
@@ -3835,6 +3906,8 @@ class SettingsDialogModel:
                 self.status_log.log(refusal, WARNING_LEVEL)
             return
         self.settings.remove_exchange(eid)
+        if self.venue_states.get(eid) == VENUE_STATE_NOT_OFFERED:
+            self.venue_states.pop(eid)
         if selected in self.listed_exchanges:
             self.listed_exchanges.remove(selected)
         self.values["exchange_list"] = list(self.listed_exchanges)
@@ -4132,7 +4205,7 @@ class _Walker:
             return
         if role == BANNER:
             if self.model.wing == STOCK_WING:
-                self.emit(LABEL, STOCK_BANNER_TEXT)
+                self.emit(LABEL, stock_banner_text())
             return
         if role == LABEL:
             self.emit(LABEL, item[1])

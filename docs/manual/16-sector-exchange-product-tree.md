@@ -447,6 +447,11 @@ venue the sector **could** serve, and the Configured list under it names the
 venues the operator has already stored a credential for. The array has always
 read the sector. The Configured list read the wing.
 
+The array also draws each stored entry whose venue no sector lists, after the
+sector's own venues, so Remove Selected can delete it. Fidelity, TD Ameritrade's
+id and the second Interactive Brokers id are the three such ids, and
+[08-tabs/settings.md](08-tabs/settings.md) carries the readings.
+
 Settings opens on a wing, and there are two wings for six sectors.
 `settings_dialog_surface.wing_or_default` collapses Commodities, Forex, Indices
 and Futures / Perps onto the crypto wing, so a sector word reaches the filter as

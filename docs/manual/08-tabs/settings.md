@@ -8069,7 +8069,7 @@ narrows the same set to the sector the operator is on.
 | Sector | The tab offers | Venues the tab offered and the wizard did not, before | After |
 | ------ | -------------: | ----------------------------------------------------- | ----- |
 | crypto | 21 | alpaca, ibkr, robinhood, schwab, tastytrade, webull | none |
-| stocks | 19 | alpaca, etrade, fidelity, ibkr, interactivebrokers, schwab, tastytrade, tdameritrade, webull | none |
+| stocks | 19 | alpaca, etrade, fidelity (not offered on any tab), ibkr, interactivebrokers, schwab, tastytrade, tdameritrade, webull | none |
 | commodities | 16 | alpaca, etrade, ibkr, schwab, tastytrade, webull | none |
 | forex | 6 | ibkr | none |
 | indices | 13 | alpaca, etrade, ibkr, schwab, tastytrade, webull | none |
@@ -8261,7 +8261,7 @@ widgets and hung one sentence on all seven. Each one now answers for itself.
 `validate_credentials`, holds a route that reaches no session: a hand-written
 connector's own `credential_refusal`, or a venue id
 `src/exchange/ccxt_connector.py`, in `SUPPORTED_EXCHANGES`, names. Nine of the
-21 stocks venues hold neither — alpaca, etrade, fidelity, ibkr,
+21 stocks venues hold neither — alpaca, etrade, fidelity (not offered on any tab), ibkr,
 interactivebrokers, schwab, tastytrade, tdameritrade, webull — and their Test
 Connection carries `NO_CREDENTIAL_TEST_TIP` in place of a press that cannot
 answer.
@@ -8276,7 +8276,7 @@ their Add press is refused and the feedback row carries `NO_CONNECTOR_PROMPT`.
 | ------ | ----------- | -------------- |
 | alpaca | the key id, `src/stocks/alpaca_connector.py`, in `connect` | the secret key |
 | etrade | the consumer key, `src/stocks/etrade_connector.py`, in `connect` | the consumer signing key |
-| fidelity | dropped — `src/stocks/fidelity_connector.py`, in `connect`, answers False with `ORDER_ROUTE_UNPUBLISHED` | dropped |
+| fidelity | not offered on any tab, so no form takes its key | not offered |
 | ibkr | the bearer token, `src/stocks/ibkr_connector.py`, in `connect` | unused |
 | robinhood | no typed row; `src/trading/ata_spm_signin.py`, in `BROWSER_AUTHORIZATION_SECTORS`, sends it to the browser press | no typed row |
 | schwab | the bearer token, `src/stocks/schwab_connector.py`, in `connect` | unused |
@@ -8318,7 +8318,7 @@ not.
 | ----- | ------------------- | -------- | --------------- | --------- |
 | alpaca | drawn | absent | refused | takes a press |
 | etrade | drawn | drawn | refused | takes a press |
-| fidelity | drawn | absent | refused | takes a press |
+| fidelity | not offered on any tab, so absent | absent | refused | refused |
 | ibkr | drawn | absent | refused | takes a press |
 | robinhood | absent | absent | refused | Connect with a Browser |
 | schwab | drawn | absent | refused | takes a press |
@@ -8430,6 +8430,17 @@ True today: the banner reads from `STOCK_BANNER_TEXT`, which names the eight
 brokers, says the form takes each one's key and secret, and says Test Connection
 answers where a credential can be checked without a session. The page carries
 that block twice and both are overtaken by this one sentence.
+
+OVERTAKEN, and the paragraph above is kept as written. The banner now reads
+from `stock_banner_text`, which counts and names the brokers `offered_brokers`
+answers. Seven are named, and Fidelity is not one of them, because no tab offers
+it.
+
+```python
+# src/gui/main_tabs/settings_dialog_surface.py, in offered_brokers
+    listed = acs.venues_for_class(class_of_wing(STOCK_WING))
+    return tuple(sorted(one for one in listed if broker_connector_class(one)))
+```
 
 OVERTAKEN, quoted whole:
 
@@ -9949,5 +9960,56 @@ The sentence above stands as written. This is the reading that replaced it.
 | written above | what it reads now |
 | --- | --- |
 | "The Product Manual PDF is not rebuilt with this section, and its rebuild is owed for this page." | `docs/Acervator-Product-Manual.pdf` is rebuilt with this section and carries this page |
+
+## 2026-10-29 - A stored venue no sector lists stays removable
+
+Three venue ids are listed under no sector and offered on no tab: Fidelity, TD
+Ameritrade's id and the second Interactive Brokers id. An entry stored for one of
+them still draws on the Exchanges page, so Remove Selected can delete it. It draws
+in every sector, after that sector's own venues, in the warning colour.
+
+```python
+# src/gui/main_tabs/settings_dialog_surface.py, in dialog_venue_states
+    for entry in stored or ():
+        named = entry.get(EXCHANGE_ID_KEY, "") if isinstance(entry, dict) else ""
+        venue = str(named or "").strip().lower()
+        if venue and not acs.venue_classes(venue):
+            held[venue] = VENUE_STATE_NOT_OFFERED
+```
+
+A press on that row binds it for Remove Selected and offers nothing else. The key
+and secret rows hide, Add and Test Connection refuse the press, and the feedback
+row reads `NOT_OFFERED_PROMPT`.
+
+```python
+# src/gui/main_tabs/settings_dialog_surface.py, in credential_form
+    listed = bool(acs.venue_classes(venue_id)) if bound else True
+```
+
+Read with the home redirected and no venue contacted, in both builds, with one
+stored entry each for the three ids:
+
+| Reading | Before | Now |
+| ------- | ------ | --- |
+| Sectors drawing the Fidelity entry | Stocks, Crypto, Commodities, Indices | all six |
+| Sectors drawing the other two entries | none | all six |
+| Add on the Fidelity row | takes a press | refused |
+| Key and secret rows on the Fidelity row | drawn | hidden |
+| Remove Selected on the Fidelity row | deletes it | deletes it, in all six sectors |
+| A venue press on the React build | raised `AttributeError` | binds the row |
+
+On the React build every venue press raised `AttributeError`, because the API
+Secret field and the passphrase box took no `setVisible`. Every page control now
+takes it.
+
+```python
+# src/gui/react_settings_dialog.py, in _Held.setVisible
+    def setVisible(self, shown: Any) -> None:
+        """Show or hide the control and redraw."""
+        self._owner.set_visible(self._name, bool(shown))
+```
+
+The Product Manual PDF is not rebuilt with this section, and its rebuild is owed
+for this page.
 
 Back to [the subsystem index](README.md).

@@ -116,6 +116,7 @@ from ..main_tabs.trading_tab_surface import (
     WATCHDOG_STAT_FAILURE_FORMAT,
     WatchdogState,
     exchange_display_name,
+    exchange_layers,
     venue_tab_tooltip,
 )
 from ..variant_surface import PAPER_BOT_DETAIL, PAPER_BOT_WIZARD, surface_class
@@ -836,7 +837,10 @@ class PaperTradingTab(QWidget):
         return exchange_id.lower() in self._equity_exchange_ids
 
     def add_exchange_tab(self, exchange_id: str, display_name: str) -> None:
-        """Add exchange tab to the correct layer (crypto or stock)."""
+        """Add exchange tab to the correct layer (crypto or stock), and to none for
+        a venue ``exchange_layers`` answers no layer for."""
+        if not exchange_layers(exchange_id):
+            return
         is_equity = self._is_equity_exchange(exchange_id)
 
         if is_equity:

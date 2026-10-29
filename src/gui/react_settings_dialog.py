@@ -220,6 +220,10 @@ class _Held:
         """
         self._owner.set_tooltip(self._name, "" if words is None else str(words))
 
+    def setVisible(self, shown: Any) -> None:
+        """Show or hide the control and redraw."""
+        self._owner.set_visible(self._name, bool(shown))
+
 
 class PageLine(_Held):
     """A line of text, as ``QLineEdit`` reports it."""
@@ -236,10 +240,6 @@ class PageLine(_Held):
     def clear(self) -> None:
         """Empty the field and redraw."""
         self._put("")
-
-    def setVisible(self, shown: Any) -> None:
-        """Show or hide the field and redraw."""
-        self._owner.set_visible(self._name, bool(shown))
 
     def isEnabled(self) -> bool:
         """True while the field takes typing."""
@@ -871,7 +871,10 @@ if _HAS_QT and _HAS_WEBENGINE:
 
             Reads the records off disk, so a redraw places no venue call.
             """
-            self._model.venue_states = self._recorded_venue_states()
+            self._model.venue_states = surface.dialog_venue_states(
+                self._recorded_venue_states(), self._stored_exchanges()
+            )
+            self._venue_states = self._model.venue_states
             self._model.values["exchange_list"] = list(
                 surface.exchange_status_lines(
                     self._model.asset_class, self._model.venue_states
