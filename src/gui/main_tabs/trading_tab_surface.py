@@ -271,7 +271,8 @@ def layer_exchanges(entries: Any) -> dict:
     """Each layer's exchanges as ``exchange_id`` to caption, in the order given.
 
     An entry naming no ``exchange_id`` is left out, the way
-    ``_sync_exchange_tabs`` skips it.
+    ``_sync_exchange_tabs`` skips it, and so is a venue ``exchange_layers``
+    answers no layer for.
     """
     split: dict = {name: {} for name in layer_order()}
     for entry in entries or []:
@@ -279,7 +280,7 @@ def layer_exchanges(entries: Any) -> dict:
         exchange_id = str(holder.get("exchange_id") or "")
         if not exchange_id:
             continue
-        for layer in exchange_layers(exchange_id) or ("crypto",):
+        for layer in exchange_layers(exchange_id):
             split[layer][exchange_id] = exchange_display_name(holder)
     return split
 

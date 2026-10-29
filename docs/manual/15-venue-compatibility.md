@@ -157,6 +157,10 @@ EQUITY_VENUES = frozenset(
 )
 ```
 
+OVERTAKEN, and the code block above is kept as written. `EQUITY_VENUES` no longer
+names `fidelity`, and Fidelity is not offered on any tab. The section headed Not
+offered on any tab, under Fidelity below, says why.
+
 Every commodity row this tree carries is a US-listed fund share, so an equity
 broker serves that class. The four spot metal rows name no venue at all, and
 the fund rows name a price source rather than a place to send an order.
@@ -238,7 +242,7 @@ process with nothing recorded:
 | coinbase | crypto, stocks, commodities, forex, indices, futures_perps |
 | cryptocom | crypto, stocks, commodities, forex, indices, futures_perps |
 | etrade | stocks, commodities, indices |
-| fidelity | crypto, stocks, commodities, indices |
+| fidelity | none, not offered on any tab |
 | gateio | crypto, stocks, commodities, forex, indices, futures_perps |
 | gemini | crypto, commodities, forex, futures_perps |
 | huobi | crypto |
@@ -10000,8 +10004,8 @@ and this sentence is recorded and not acted on.
 
 ```
 1  a connector exists and is registered   src/stocks/fidelity_connector.py, in FidelityConnector; BROKER_CONNECTORS now holds 8 ids
-2  offered under every sector it serves    4 of 4, up from 1
-3  the operator can enter its credentials  known_venues holds the id; the Add form offers it under all four
+2  offered under every sector it serves    not offered on any tab, 0 of 4
+3  the operator can enter its credentials  not offered: known_venues holds no fidelity id, and no Add form offers it
 4  a Start press builds its connector      broker_connector_class answers the class, and the session refuses by name
 5  its market rules record on connect      12 records composed, all 12 carrying a sector; the Start press does not reach them, because no session can open
 6  its orders carry the venue's shape      the published absence; place_order raises it and six product words are refused by name
@@ -10060,6 +10064,63 @@ of the four offered, **0** reach an order route and **4** are refused with the
 venue's own absence as the reason. Before this unit
 `broker_serves_sector("fidelity", …)` answered False on all six, because
 `BROKER_CONNECTORS` held no `fidelity` row at all.
+
+### Not offered on any tab
+
+Fidelity is not offered on any sector tab, in any Add Exchange list or in any bot
+wizard, in the Qt build or the React build. It publishes no order route that a
+program can call, on any host and for any sector, so a program can trade nothing
+there.
+
+```
+src/gui/main_tabs/asset_class_surface.py, in EQUITY_VENUES        no "fidelity" member
+src/gui/main_tabs/asset_class_surface.py, in EXTRA_VENUE_CLASSES  no "fidelity" row
+src/gui/main_tabs/asset_class_surface.py, in venue_classes        no sector for "fidelity"
+```
+
+Each list was read with the home redirected, nothing recorded, and one stored
+entry for each venue id. Every list that offers a venue lost Fidelity and kept
+every other venue in the same order.
+
+| Sector | Venues listed | Was |
+| ------ | ------------- | --- |
+| Crypto | 21 | 22 |
+| Stocks | 17 | 18 |
+| Commodities | 20 | 21 |
+| Forex | 15 | 15 |
+| Indices | 15 | 16 |
+| Futures / Perps | 17 | 17 |
+
+The first-run wizard offers 23 venue ids, where it offered 24.
+
+The connector and the sizing rows stay. A saved bot whose venue is Fidelity still
+takes the broker route when it starts, and reads the venue's own refusal.
+
+```
+src/stocks/alpaca_connector.py, in BROKER_CONNECTORS            "fidelity": FidelityConnector
+src/stocks/alpaca_connector.py, in broker_serves_sector         True for "fidelity" on all six sectors
+src/stocks/fidelity_connector.py, in FidelityConnector.connect  False, with ORDER_ROUTE_UNPUBLISHED
+```
+
+OVERTAKEN, quoted whole:
+
+> `venue_classes("fidelity")` now answers crypto, stocks, commodities and indices.
+
+OVERTAKEN, quoted whole:
+
+> `asset_class_surface.EXTRA_VENUE_CLASSES` is what narrows the screen.
+
+OVERTAKEN, quoted whole:
+
+> After this unit the offered set is 4, `broker_serves_sector("fidelity", …)`
+> answers True on all six so every sector takes the broker route and reads the
+> named refusal, and of the four offered, **0** reach an order route and **4** are
+> refused with the venue's own absence as the reason.
+
+True today: no list offers Fidelity, and the broker route still answers True on
+all six sectors, so a saved bot reads the named refusal. An entry stored for
+Fidelity sits on no trading layer, and the Settings Exchanges page still draws it
+in every sector, so Remove Selected can delete it.
 
 ## 2026-10-11 — a tokenised stock trades in a fraction of a share, and the venue publishes the step
 

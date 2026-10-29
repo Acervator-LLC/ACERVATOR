@@ -189,8 +189,7 @@ if _HAS_QT:
                 exchanges that belong to that wing:
                   * crypto: the CCXT-supported list (binance, coinbase,
                     kraken, etc.) — current behaviour
-                  * stock:  the broker list (alpaca, etrade, fidelity,
-                    ibkr, robinhood, schwab, tastytrade, webull) with
+                  * stock:  the brokers `offered_brokers` names, with
                     its own banner, and every control settled per
                     venue by `credential_form`
                 The "Configured Exchanges" list at the top of the tab
@@ -442,7 +441,7 @@ if _HAS_QT:
             layout = QVBoxLayout(w)
 
             if self._wing == "stocks":
-                _banner = QLabel(sds.STOCK_BANNER_TEXT)
+                _banner = QLabel(sds.stock_banner_text())
                 _banner.setWordWrap(sds.STOCK_BANNER_WORD_WRAP)
                 # Qt reads eight hex digits alpha-first, so the edge is
                 # written rgba and draws the tint it names.
@@ -576,12 +575,19 @@ if _HAS_QT:
                 logger.warning("Exchange Status read no recorded state: %s", exc)
                 return {}
 
-        def _refresh_exchange_status(self) -> None:
-            """Draw one pressable row per venue serving the dialog's sector.
+        def _stored_exchanges(self) -> list:
+            """Every entry ``list_exchanges`` answers on ``_sm``, and none without a store."""
+            return list(self._sm.list_exchanges()) if self._sm else []
 
-            Reads the recorded states off disk, so a redraw places no venue call.
+        def _refresh_exchange_status(self) -> None:
+            """Draw one pressable row per venue ``exchange_status_rows`` answers,
+            each stored entry ``dialog_venue_states`` marks not offered included.
+
+            ``_recorded_venue_states`` reads off disk, so a redraw places no venue call.
             """
-            states = self._recorded_venue_states()
+            states = sds.dialog_venue_states(
+                self._recorded_venue_states(), self._stored_exchanges()
+            )
             self._venue_states = states
             rows = sds.exchange_status_rows(self._status_class(), states)
             # clear() drops the selection, and the rows return in the same
@@ -702,7 +708,9 @@ if _HAS_QT:
             every reader of the chosen venue takes it from here.
             """
             return sds.row_venue_id(
-                self._status_class(), self._exchange_list.currentRow()
+                self._status_class(),
+                self._exchange_list.currentRow(),
+                getattr(self, "_venue_states", {}),
             )
 
         def _draw_chosen_venue(self) -> None:
@@ -713,13 +721,17 @@ if _HAS_QT:
             """
             self._chosen_venue.setText(
                 sds.chosen_venue_text(
-                    self._status_class(), self._exchange_list.currentRow()
+                    self._status_class(),
+                    self._exchange_list.currentRow(),
+                    getattr(self, "_venue_states", {}),
                 )
             )
 
         def _open_credentials_for_row(self, at) -> None:
             """Bind the Add-exchange form to the venue the row at ``at`` names."""
-            venue = sds.row_venue_id(self._status_class(), at)
+            venue = sds.row_venue_id(
+                self._status_class(), at, getattr(self, "_venue_states", {})
+            )
             if not venue:
                 return
             self._exchange_list.setCurrentRow(int(at))
