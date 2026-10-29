@@ -197,10 +197,7 @@ def build_registry(live: Any = None) -> Dict[str, Handler]:
     from src.core.safe_url import SafeRequest, safe_urlopen
     from src.exchange import history_surface
     from src.gui.main_tabs import (
-        alerts_tab_surface,
-        analytics_tab_surface,
         api_tester_tab_surface,
-        audio_suite_surface,
         bot_live_settings_surface,
         bot_node_surface,
         bot_selection_surface,
@@ -209,7 +206,6 @@ def build_registry(live: Any = None) -> Dict[str, Handler]:
         bot_visualizer_surface,
         bot_wizard_surface,
         buy_confirmation_surface,
-        competition_tab_surface,
         console_log_surface,
         console_tab_surface,
         crypto_news_ticker_surface,
@@ -226,7 +222,6 @@ def build_registry(live: Any = None) -> Dict[str, Handler]:
         indicator_panel_surface,
         init_wizard_surface,
         instance_consent_surface,
-        journal_tab_surface,
         launcher_surface,
         live_bot_window_surface,
         live_settings_tab_surface,
@@ -246,7 +241,7 @@ def build_registry(live: Any = None) -> Dict[str, Handler]:
         qt_safe_events_surface,
         quick_routing_surface,
         react_history_panel_surface,
-        risk_tab_surface,
+        retired_surfaces,
         settings_dialog_surface,
         shared_testnet_surface,
         simulator_tab_surface,
@@ -258,7 +253,6 @@ def build_registry(live: Any = None) -> Dict[str, Handler]:
         stock_main_window_surface,
         system_status_tab_surface,
         table_cells_surface,
-        testnet_tab_surface,
         theme_engine_surface,
         trade_charts_tab_surface,
         trading_tab_surface,
@@ -294,7 +288,6 @@ def build_registry(live: Any = None) -> Dict[str, Handler]:
         preflight_check_surface.METHOD: preflight_check_surface.view_model,
         qt_safe_events_surface.METHOD: qt_safe_events_surface.view_model,
         table_cells_surface.METHOD: table_cells_surface.view_model,
-        testnet_tab_surface.METHOD: testnet_tab_surface.view_model,
         design_system_surface.METHOD: design_system_surface.view_model,
         exchange_tab_surface.METHOD: exchange_tab_surface.view_model,
         extractor_bot_table_surface.METHOD: extractor_bot_table_surface.view_model,
@@ -303,13 +296,9 @@ def build_registry(live: Any = None) -> Dict[str, Handler]:
         fold_tokens_surface.METHOD: fold_tokens_surface.view_model,
         fold_tranches_tab_surface.METHOD: fold_tranches_tab_surface.view_model,
         theme_engine_surface.METHOD: theme_engine_surface.view_model,
-        alerts_tab_surface.METHOD: alerts_tab_surface.view_model,
-        competition_tab_surface.METHOD: competition_tab_surface.view_model,
-        analytics_tab_surface.METHOD: analytics_tab_surface.view_model,
         api_tester_tab_surface.METHOD: api_tester_tab_surface.view_model,
         dashboard_stat_card_surface.METHOD: dashboard_stat_card_surface.view_model,
         init_wizard_surface.METHOD: init_wizard_surface.view_model,
-        journal_tab_surface.METHOD: journal_tab_surface.view_model,
         launcher_surface.METHOD: launcher_surface.view_model,
         bot_live_settings_surface.METHOD: bot_live_settings_surface.view_model,
         live_bot_window_surface.METHOD: live_bot_window_surface.view_model,
@@ -333,7 +322,6 @@ def build_registry(live: Any = None) -> Dict[str, Handler]:
         pulse_manager_surface.METHOD: pulse_manager_surface.view_model,
         quick_routing_surface.METHOD: quick_routing_surface.view_model,
         react_history_panel_surface.METHOD: react_history_panel_surface.view_model,
-        risk_tab_surface.METHOD: risk_tab_surface.view_model,
         settings_dialog_surface.METHOD: settings_dialog_surface.view_model,
         shared_testnet_surface.METHOD: shared_testnet_surface.view_model,
         simulator_tab_surface.METHOD: simulator_tab_surface.view_model,
@@ -344,11 +332,11 @@ def build_registry(live: Any = None) -> Dict[str, Handler]:
         trade_charts_tab_surface.METHOD: trade_charts_tab_surface.view_model,
         visualizer_themes_surface.METHOD: visualizer_themes_surface.view_model,
         wire_canvas_surface.METHOD: wire_canvas_surface.view_model,
-        audio_suite_surface.METHOD: audio_suite_surface.view_model,
         usb_auth_widget_surface.METHOD: usb_auth_widget_surface.view_model,
         widgets_package_surface.METHOD: widgets_package_surface.view_model,
         "bridge.ping": lambda params: {"protocol": PROTOCOL_VERSION},
     }
+    registry.update(retired_surfaces.on_demand_handlers())
     if live is not None:
         registry[history_surface.METHOD] = history_surface.bind_live(live)
         registry[trade_charts_tab_surface.METHOD] = trade_charts_tab_surface.bind_live(

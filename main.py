@@ -1325,8 +1325,6 @@ def main() -> int:
         PROBE_HAS_BOTS,
         StateManager,
     )
-    from src.trading.risk_manager import RiskManager
-    from src.trading.analytics_engine import AnalyticsEngine
     from src.core.notifications import get_notification_manager
 
     state_mgr = StateManager()
@@ -1377,9 +1375,7 @@ def main() -> int:
     data_pool = get_data_pool()
     bot_manager.set_data_pool(data_pool)
 
-    # Constructed for their side effects.
-    RiskManager(bot_manager)
-    AnalyticsEngine()
+    # Builds the notification manager, which subscribes to fills.
     get_notification_manager()
 
     crypto_window = MainWindow(

@@ -28,8 +28,9 @@ from typing import Any, Optional
 
 from .. import design_system as ds
 from ..color_alpha import css_colours
+from . import retired_surfaces
 
-METHOD = "testnet_tab.state"
+METHOD = retired_surfaces.TESTNET_TAB_METHOD
 LOGGER_NAME = "acervator.testnet"
 
 ACCESSIBLE_NAME = "Testnet Tab"

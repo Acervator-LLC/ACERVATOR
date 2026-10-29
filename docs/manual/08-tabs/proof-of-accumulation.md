@@ -743,6 +743,19 @@ added.
 | The lifetime fee total | `lifetime_certified_fee_usd` |
 | The fill subscriber | `attach_to_bus` |
 
+Read on the current tree, no launch builds that chain or that ledger. The main
+window no longer calls the install, so the row above names the factory and not
+a launch step. Nothing in the running window calls it.
+
+`src/gui/shared_testnet.py` — `SharedTestnetBridge.install_on`, the factory the row names
+
+```python
+    @classmethod
+    def install_on(
+        cls,
+        main_win,
+```
+
 Four refusals guard the mint, and the second column names what each one prevents.
 
 | Refused | Without its guard |
