@@ -9804,7 +9804,7 @@ blocking = [
 ```
 
 `list_bots_by_exchange` also fills each venue tab's bot table, where only the
-active sector's bots are kept. The guard keeps the bots of every sector.
+active sector's bots are kept. The guard counts the bots of every sector.
 
 `NOT_RUNNING_STATES` in `src/gui/main_tabs/main_window_surface.py` holds idle
 and stopped, the two states the main window already reads as not running.
