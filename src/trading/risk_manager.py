@@ -39,6 +39,12 @@ class RiskRule:
     cooldown_seconds: float = 300
     last_triggered: float = 0.0
 
+    def exceeded_by(self, reading: float) -> bool:
+        """True only for a ``reading`` strictly above ``threshold``; ``evaluate``
+        applies this one test to every rule.
+        """
+        return reading > self.threshold
+
 
 @dataclass
 class RiskAlert:
@@ -243,7 +249,7 @@ class RiskManager:
         if self._peak_pnl > 0 and snapshot.drawdown_pct > 0:
             for rule_name in ["max_drawdown", "critical_drawdown"]:
                 rule = self._rules.get(rule_name)
-                if rule and rule.enabled and snapshot.drawdown_pct >= rule.threshold:
+                if rule and rule.enabled and rule.exceeded_by(snapshot.drawdown_pct):
                     alert = self._trigger_rule(
                         rule,
                         now,
@@ -260,7 +266,7 @@ class RiskManager:
             for status in statuses:
                 pnl = status.get("stats", {}).get("realised_pnl", 0)
                 bid = status.get("bot_id", "")
-                if pnl < -rule.threshold and bid not in self._paused_by_risk:
+                if rule.exceeded_by(-pnl) and bid not in self._paused_by_risk:
                     alert = self._trigger_rule(
                         rule,
                         now,
@@ -276,7 +282,7 @@ class RiskManager:
         if rule and rule.enabled and snapshot.total_exposure > 0:
             for asset, exposure in snapshot.asset_exposures.items():
                 pct = (exposure / snapshot.total_exposure) * 100
-                if pct >= rule.threshold:
+                if rule.exceeded_by(pct):
                     alert = self._trigger_rule(
                         rule,
                         now,
@@ -291,7 +297,7 @@ class RiskManager:
         if rule and rule.enabled and snapshot.total_exposure > 0:
             for exch, exposure in snapshot.exchange_exposures.items():
                 pct = (exposure / snapshot.total_exposure) * 100
-                if pct >= rule.threshold:
+                if rule.exceeded_by(pct):
                     alert = self._trigger_rule(
                         rule,
                         now,
@@ -306,7 +312,7 @@ class RiskManager:
         if rule and rule.enabled and snapshot.total_exposure > 0:
             corr_groups = self._find_correlated_groups(snapshot.asset_exposures)
             for group_assets, combined_pct in corr_groups:
-                if combined_pct >= rule.threshold:
+                if rule.exceeded_by(combined_pct):
                     names = "+".join(group_assets)
                     alert = self._trigger_rule(
                         rule,
@@ -329,7 +335,7 @@ class RiskManager:
                     / old_snaps[0].total_pnl
                     * 100
                 )
-                if loss_pct >= rule.threshold:
+                if rule.exceeded_by(loss_pct):
                     alert = self._trigger_rule(
                         rule,
                         now,
