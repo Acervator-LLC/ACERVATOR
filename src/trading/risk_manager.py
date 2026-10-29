@@ -165,7 +165,6 @@ class RiskManager:
         self._alerts: list[RiskAlert] = []
         self._snapshots: list[PortfolioSnapshot] = []
         self._peak_pnl: float = 0.0
-        self._peak_exposure: float = 0.0
         # bot_ids that already raised per_bot_loss; no method removes an entry.
         self._paused_by_risk: set[str] = set()
         self._enabled: bool = True
@@ -231,17 +230,14 @@ class RiskManager:
         now = time.time()
         new_alerts = []
 
-        snapshot = self._build_snapshot(bm, now)
+        statuses = bm.list_bots()
+        snapshot = self._build_snapshot(statuses, now)
         self._snapshots.append(snapshot)
         if len(self._snapshots) > self._max_snapshots:
             self._snapshots = self._snapshots[-self._max_snapshots :]
 
         if snapshot.total_pnl > self._peak_pnl:
             self._peak_pnl = snapshot.total_pnl
-        if snapshot.total_exposure > self._peak_exposure:
-            self._peak_exposure = snapshot.total_exposure
-
-        statuses = bm.list_bots()
 
         # drawdown_pct stays 0 until total_pnl has once been above 0.
         if self._peak_pnl > 0 and snapshot.drawdown_pct > 0:
@@ -346,13 +342,12 @@ class RiskManager:
 
         return new_alerts
 
-    def _build_snapshot(self, bm, now: float) -> PortfolioSnapshot:
-        """Total the ``PortfolioSnapshot`` fields over ``bm.list_bots()``.
+    def _build_snapshot(self, statuses: list[dict], now: float) -> PortfolioSnapshot:
+        """Total ``PortfolioSnapshot`` fields over ``statuses``, one ``list_bots`` sweep.
 
         Only a bot whose state is ``running`` adds its ``target_balance`` to
         ``total_exposure``; every bot contributes to ``total_pnl``.
         """
-        statuses = bm.list_bots()
         total_pnl = 0.0
         total_exposure = 0.0
         asset_exp: dict[str, float] = {}

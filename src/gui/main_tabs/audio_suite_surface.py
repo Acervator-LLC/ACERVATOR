@@ -35,8 +35,9 @@ import os
 from typing import Any
 
 from ..theme_engine import ThemeTokens
+from . import retired_surfaces
 
-METHOD = "audio_suite.state"
+METHOD = retired_surfaces.AUDIO_SUITE_METHOD
 
 SAMPLE_RATE_HZ = 44100
 

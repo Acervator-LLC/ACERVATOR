@@ -97,6 +97,31 @@ def _install_retired_tab_sentinels(self) -> None:
 The underlying engines behind several of those keep running; only the surface
 is gone.
 
+Read on the current tree, the engines that ran for nothing are stopped. Of the
+engines behind those pages, the window builds two: the risk engine and the
+notification manager. The risk engine still runs every 2 seconds, and its
+drawdown alerts still reach the Console and SMS. The audio suite's chime still
+plays from the Market Inspector.
+
+`src/gui/main_window.py` — `MainWindow.__init__`, the two engines the window builds
+
+```python
+            from ..trading.risk_manager import RiskManager
+            from ..core.notifications import get_notification_manager
+
+            self._risk_manager = RiskManager(bot_manager)
+            self._notif_manager = get_notification_manager()
+```
+
+| engine | before | now |
+| --- | --- | --- |
+| analytics | built at launch, a snapshot about every 10 s | not built |
+| testnet bridge | installed at launch, a 250 ms timer for the whole session | not installed |
+| trade journal | built at launch, three day files read | built only when an AI note is written |
+| reconciliation engine | built at launch, never called | not built |
+| crash snapshot | a whole-fleet file written every 30 s | not built |
+| risk engine | two fleet sweeps every 2 s | one sweep |
+
 ## How a screen reaches its renderer
 
 One registry maps a method name to a view-model function. A surface is a plain
@@ -114,6 +139,19 @@ def build_registry() -> Dict[str, Handler]:
     the function so that the transport above carries no dependency on any
     one domain package.
     """
+```
+
+The seven surfaces behind the retired tabs are in that registry, and building
+the registry imports none of them. Each one is imported on the first request
+for its own method, so a session that never asks for a retired page never
+loads its surface.
+
+`src/gui/main_tabs/retired_surfaces.py` — `on_demand_handlers`
+
+```python
+def on_demand_handlers() -> dict[str, Callable[[dict], dict]]:
+    """Return one handler per ``SURFACE_MODULES`` method, unimported until called."""
+    return {method: _handler(module) for method, module in SURFACE_MODULES.items()}
 ```
 
 The transport is one JSON object per line over the pipe the parent process

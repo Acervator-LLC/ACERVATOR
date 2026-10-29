@@ -110,6 +110,20 @@ The 29, grouped by what they are:
 | hardware and import helpers | `src.core.mini_display`, `src.core.system_load_oscillator`, `src.core.usb_auth`, `src.exchange.market_data`, `src.exchange.tablet_backend`, `src.exchange.ytd_csv_import` |
 | the manual builder's own chart module | `src.design_system` |
 
+Read again once the main window stopped building the analytics engine: the source
+folder holds **501** modules, **471** reached and **30** not. The thirtieth is
+`src.trading.analytics_engine`, which no reached module imports any more. Its
+file stays on disk, and the build leaves it out.
+
+`tools/spec_common.py` — `report_unreachable`, the build log on this tree
+
+```
+  [spec] 30 of 501 src modules unreached, left out:
+  ...
+  [spec]   src.trading.analytics_engine
+  ...
+```
+
 Two modules read as reached and are worth naming, because an earlier reading had
 them wrong. `src.gui.audio_suite` is reached from
 `src/gui/market_inspector.py`, which imports it for the chime.

@@ -31,8 +31,9 @@ from typing import Any, Optional
 
 from .. import design_system as ds
 from ..color_alpha import css_colours
+from . import retired_surfaces
 
-METHOD = "alerts_tab.state"
+METHOD = retired_surfaces.ALERTS_TAB_METHOD
 
 ACCESSIBLE_NAME = "Notifications and Alerts tab"
 

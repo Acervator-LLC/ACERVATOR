@@ -88,6 +88,17 @@ and `src/gui/main_window.py, in _refresh_dashboard` skips it.
 Both builds of the screen are complete and both draw the same six columns. The
 window does not open either one.
 
+The engine behind this screen keeps running. The window builds the notification
+manager at launch, and every 2 seconds the refresh tick hands it the fleet P/L
+for the milestone check. The screen's own surface loads only when a request for
+this page arrives, so a session that never asks for it never imports it.
+
+`src/gui/main_tabs/alerts_tab_surface.py` — `METHOD`, read from the one module that names every retired page's method
+
+```python
+METHOD = retired_surfaces.ALERTS_TAB_METHOD
+```
+
 The Product Manual PDF rebuild is owed for this page.
 
 Back to [the subsystem index](README.md).

@@ -1,9 +1,8 @@
 """State recovery, order reconciliation, and trade journaling.
 
-``TradeJournal.record`` and ``CrashRecovery.save_snapshot`` are driven from
-``main_window``'s tick. ``ReconciliationEngine`` is constructed there and
-handed to the journal tab, but nothing calls ``reconcile`` or
-``cancel_orphaned``.
+``main_window._on_ai_feedback`` builds a ``TradeJournal`` when the ``log_feedback``
+switch is on. Nothing in the running window builds ``ReconciliationEngine`` or
+``CrashRecovery``.
 """
 
 from __future__ import annotations
@@ -369,10 +368,8 @@ class ReconciliationEngine:
 
 
 class CrashRecovery:
-    """
-    Saves periodic state snapshots for crash recovery.
-    On startup, compares saved state against exchange state.
-    """
+    """Write ``last_snapshot.json``, whose presence, age and bot count
+    ``get_recovery_info`` reads back."""
 
     def __init__(self, data_dir: Path = None):
         self._dir = data_dir or Path.home() / ".acervator" / "recovery"
