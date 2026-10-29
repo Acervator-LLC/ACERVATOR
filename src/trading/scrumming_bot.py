@@ -100,6 +100,7 @@ from .scrumming.fold_tranches import (
     _STRONG_TREND_MIN_BULL_CANDLES,
 )
 from .scrumming.sizing import (
+    EVENT_ID_KEY,
     cartridge_threshold_usd,
     cycle_growth_cap_usd,
     delta_below_interval,
@@ -1776,6 +1777,16 @@ class ScrummingBot(
                 "tranche_ref": str(tranche.get("ref", "")),
                 "tranche_ibp": str(ibp),
             },
+            booker="_book_manual_tranche_fill",
+            booking={
+                "tranche_index": int(tranche_index),
+                "cost": float(cost),
+                "ibp": float(ibp),
+                "ref": float(tranche.get("ref", 0.0) or 0.0),
+                "tranche_units": float(tranche.get("units", 0.0) or 0.0),
+                EVENT_ID_KEY: str(tranche.get(EVENT_ID_KEY, "") or ""),
+            },
+            sources=[tranche],
         )
         if fill_price is None or fill_price <= 0:
             return {
@@ -1786,15 +1797,41 @@ class ScrummingBot(
                     "exchange rejection); tranche unchanged"
                 ),
             }
+        return {
+            "applied": True,
+            "tranche_index": tranche_index,
+            "cost_usd": cost,
+            "fill_price": float(fill_price),
+            "units_returned": float(self._last_buy_filled_units or 0.0),
+            "remaining_tranches": len(self._fold_tranches),
+        }
 
-        # _execute_buy leaves the venue's own count here; cost is only what was
-        # asked for, and a partial fill bought less.
-        rebought_units = float(self._last_buy_filled_units or 0.0)
+    async def _book_manual_tranche_fill(
+        self,
+        units: float,
+        fill_price: float,
+        asked: float,
+        _first: bool,
+        *,
+        tranche_index: int,
+        cost: float,
+        ibp: float,
+        ref: float,
+        tranche_units: float,
+        sources: Optional[list] = None,
+        **fingerprint: Any,
+    ) -> None:
+        """Book one settled piece of a manual tranche fire: a lot at ``ibp``, the
+        tranche settled by the share of ``asked`` filled, and the growth.
 
-        _mf_ref = float(tranche.get("ref", 0.0) or 0.0)
-        _mf_profit = (
-            float(cost) * (1.0 - float(fill_price) / _mf_ref) if _mf_ref > 0 else 0.0
-        )
+        ``_planned_fold_sources`` finds the tranche again through ``sources`` or the
+        ``fingerprint`` it carried when the order went out.
+        """
+        rebought_units = float(units)
+        _share_filled = min(1.0, rebought_units / asked) if asked > 0 else 1.0
+        _cost = float(cost) * _share_filled
+        _mf_ref = float(ref)
+        _mf_profit = _cost * (1.0 - float(fill_price) / _mf_ref) if _mf_ref > 0 else 0.0
         try:
             _mf_growth = self._apply_fold_target_growth(
                 _mf_profit, source="MANUAL_TRANCHE_FOLD"
@@ -1816,16 +1853,33 @@ class ScrummingBot(
             }
         )
         _removed_ok = False
-        try:
-            self._fold_tranches.remove(tranche)
-            _removed_ok = True
-        except ValueError:
+        tranche = self._planned_fold_sources(
+            [dict(fingerprint, ref=ref, initial_buy_price=ibp)], sources
+        )[0]
+        if tranche is None:
             logger.warning(
                 "Bot %s manual_fire_tranche: tranche disappeared "
                 "between dispatch and post-fill; lots updated, "
                 "tranche cleanup skipped; closed-counter NOT bumped.",
                 self.bot_id,
             )
+        elif _share_filled >= 1.0:
+            self._fold_tranches = [t for t in self._fold_tranches if t is not tranche]
+            _removed_ok = True
+        else:
+            tranche["usd"] = max(0.0, float(tranche.get("usd", 0.0) or 0.0) - _cost)
+            tranche["units"] = max(
+                0.0,
+                float(tranche.get("units", 0.0) or 0.0)
+                - float(tranche_units) * _share_filled,
+            )
+            if tranche["usd"] <= 1e-9 or tranche["units"] <= 1e-12:
+                self._fold_tranches = [
+                    t for t in self._fold_tranches if t is not tranche
+                ]
+                _removed_ok = True
+            else:
+                tranche["fold_partial_spent"] = True
         self._fold_queue_usd = sum(
             float(t.get("usd", 0) or 0) for t in self._fold_tranches
         )
@@ -1848,7 +1902,7 @@ class ScrummingBot(
             message=(
                 f"MANUAL TRANCHE FIRE COMPLETE: tranche "
                 f"#{tranche_index+1} consumed. "
-                f"${cost:.4f} → {rebought_units:.6f} units @ "
+                f"${_cost:.4f} → {rebought_units:.6f} units @ "
                 f"${fill_price:.8f}, returned to main_lots with "
                 f"IBP ${ibp:.8f}. Fold queue now "
                 f"${self._fold_queue_usd:.4f} across "
@@ -1865,7 +1919,7 @@ class ScrummingBot(
                     "symbol": self.config.symbol,
                     "units_rebought": float(rebought_units),
                     "fill_price": float(fill_price),
-                    "usd_spent": float(cost) * float(self._quote_to_usd or 1.0),
+                    "usd_spent": float(_cost) * float(self._quote_to_usd or 1.0),
                     "operator_initiated": True,
                     "manual_kind": "MANUAL_TRANCHE_FOLD",
                     "tranche_ibp": float(ibp),
@@ -1888,7 +1942,7 @@ class ScrummingBot(
                 "side": "BUY",
                 "amount": rebought_units,
                 "price": fill_price,
-                "usd": cost,
+                "usd": _cost,
                 "operator_initiated": True,
                 "accum_profit": float(_mf_profit),
                 "growth_applied": float(_mf_growth),
@@ -1899,14 +1953,6 @@ class ScrummingBot(
             side="BUY", trade_action="MANUAL_TRANCHE_FOLD"
         )
         self._emit_gate_decision_at_fire(side="BUY", trade_action="MANUAL_TRANCHE_FOLD")
-        return {
-            "applied": True,
-            "tranche_index": tranche_index,
-            "cost_usd": cost,
-            "fill_price": float(fill_price),
-            "units_returned": rebought_units,
-            "remaining_tranches": len(self._fold_tranches),
-        }
 
     def update_phantom_config(
         self,
@@ -2427,25 +2473,67 @@ class ScrummingBot(
                 "fill_price": 0.0,
             }
 
-        # A reported filled of zero filled nothing; only an omitted field
-        # falls back to amount.
-        # OVERTAKEN, the sentence above: an omitted field books nothing too,
-        # because ``amount`` is the count the venue accepted and not one it
-        # filled, and ``units`` is the count this sale asked for.
-        _sd_filled = getattr(order, "filled", None)
-        fill_amount = float(_sd_filled or 0.0)
-        fill_price = float(
-            getattr(order, "average_price", None)
-            or getattr(order, "average", None)
-            or getattr(order, "price", None)
-            or ref_price
+        fill_amount, fill_price, _ = await self._settled_fill(
+            order, self.config.symbol, units, ref_price, label="SELF-DESTRUCT"
         )
+        _destruct = {"keep_running": bool(keep_running)}
+        self._hold_resting_order(
+            order, "_book_self_destruct", "sell", fill_amount, fill_price, _destruct
+        )
+        if fill_amount <= 0:
+            try:
+                self._bus.emit(
+                    "bot.log",
+                    bot_id=self.bot_id,
+                    message=(
+                        f"SELF-DESTRUCT SENT, NO FILL REPORTED: market-sell "
+                        f"{units:.8f} {self.config.target_asset} was accepted and "
+                        f"the exchange reported no filled amount. Nothing was "
+                        f"cleared, counted or paused; the sale is booked when the "
+                        f"exchange reports its fill."
+                    ),
+                )
+            except Exception as _sup:
+                logger.debug(
+                    "suppressed in %s: %s: %s",
+                    "self_destruct",
+                    type(_sup).__name__,
+                    _sup,
+                )
+            return {
+                "ok": False,
+                "reason": "the exchange reported no filled amount; nothing changed",
+                "sold_qty": 0.0,
+                "sold_usd": 0.0,
+                "fill_price": 0.0,
+            }
+        return await self._book_self_destruct(
+            fill_amount,
+            fill_price or ref_price,
+            self._order_asked_units(self._last_settled_order or order, units),
+            True,
+            venue_units=units,
+            **_destruct,
+        )
+
+    async def _book_self_destruct(
+        self,
+        units: float,
+        fill_price: float,
+        _asked: float,
+        first: bool,
+        *,
+        keep_running: bool,
+        venue_units: Optional[float] = None,
+    ) -> dict:
+        """Book one settled piece of a self-destruct sale: lots off highest price first,
+        the fold queue cleared, the bot paused unless ``keep_running``.
+
+        ``venue_units`` is the venue reading taken before the order, None for a later
+        piece, which moves ``_audited_venue_units`` by ``units``.
+        """
+        fill_amount = float(units)
         fill_usd = fill_amount * fill_price * float(self._quote_to_usd or 1.0)
-        # The only point on the SELF_DESTRUCT path holding the settled order.
-        self._last_fill_venue_fee = self._venue_fee_record(
-            order, fill_amount, fill_price
-        )
-        await self._settle_venue_fee(order, fill_amount, fill_price)
 
         self._take_filled_units_off_lots(fill_amount)
         try:
@@ -2459,8 +2547,10 @@ class ScrummingBot(
         self._fold_tranches = []
         self._fold_queue_usd = 0.0
         self._current_holdings = max(0.0, self._current_holdings - fill_amount)
-        if fill_amount > 0:
-            self._record_audited_venue_units(units - fill_amount)
+        if venue_units is not None:
+            self._record_audited_venue_units(venue_units - fill_amount)
+        else:
+            self._record_venue_units_after_fill(-fill_amount)
         # The exchange holds units the surviving lots do not account for, so the
         # shortfall is added at the fill price.
         _sd_book_units = sum(
@@ -2482,7 +2572,9 @@ class ScrummingBot(
         try:
             self.stats.total_scrummed_usd += fill_usd
             self.note_scrum_retention_usd(fill_usd)
-            self.stats.total_trades += 1
+            if first:
+                self.stats.total_trades += 1
+            self._count_trade_volume(fill_amount, fill_price)
         except Exception as _sup:
             logger.debug(
                 "suppressed in %s: %s: %s", "self_destruct", type(_sup).__name__, _sup
@@ -2951,6 +3043,13 @@ class ScrummingBot(
         if not self._initialised:
             await self._tick_initialise(symbol)
             return
+
+        try:
+            await self._reconcile_resting_orders()
+        except Exception as _rest_exc:
+            logger.warning(
+                "Bot %s held-order reconcile raised: %s", self.bot_id, _rest_exc
+            )
 
         self._reconcile_tick_counter += 1
         if (
@@ -4452,69 +4551,88 @@ class ScrummingBot(
                             "gap": f"${_gap:.4f}",
                             "use": f"${_use:.4f}",
                         },
+                        booker="_book_hedge_fill",
+                        booking={
+                            "use": float(_use),
+                            "gap": float(_gap),
+                            "bb_pos": float(bb_pos),
+                            "intended": float(ticker.last),
+                        },
                     )
-                    if hedge_fill is None or hedge_fill <= 0:
-                        if self._refusal_is_new("hedge_buy_refused", ticker.last):
-                            self._bus.emit(
-                                "bot.log",
-                                bot_id=self.bot_id,
-                                message=(
-                                    f"HEDGE ABORTED: buy failed at "
-                                    f"${ticker.last:.8f} (gap=${_gap:.4f}, "
-                                    f"reserve=${self._hedge_bal:.2f} "
-                                    f"unchanged). No state update. "
-                                    f"Retry next tick if gates still pass."
-                                ),
-                            )
-                    else:
-                        # _execute_buy leaves the venue's own count here; _use
-                        # is only what was asked for.
-                        _hedge_asset = float(self._last_buy_filled_units or 0.0)
-                        self._main_lots.append(
-                            {
-                                "units": _hedge_asset,
-                                "initial_buy_price": hedge_fill,
-                            }
-                        )
-                        # The reserve falls by what the fill cost, never by the
-                        # ask, and never below zero.
-                        _hedge_spent = min(_use, _hedge_asset * hedge_fill)
-                        self._hedge_bal -= _hedge_spent
-                        self._hedge_trades += 1
-                        self.stats.trade_volume += _hedge_spent
+                    if (hedge_fill is None or hedge_fill <= 0) and self._refusal_is_new(
+                        "hedge_buy_refused", ticker.last
+                    ):
                         self._bus.emit(
                             "bot.log",
                             bot_id=self.bot_id,
-                            message=f"HEDGE REBALANCE: spent ${_hedge_spent:.4f} "
-                            f"of ${_use:.4f} asked "
-                            f"(reserve ${self._hedge_bal:.2f} remaining) "
-                            f"→ bought {_hedge_asset:.6f} @ ${hedge_fill:.8f} "
-                            f"(intended ${ticker.last:.8f}), "
-                            f"gap=${_gap:.4f} ({_gap/max(self._target_balance, 1e-9)*100:.1f}%), "
-                            f"bb={bb_pos:.0%}. Trade #{self._hedge_trades}",
+                            message=(
+                                f"HEDGE ABORTED: buy failed at "
+                                f"${ticker.last:.8f} (gap=${_gap:.4f}, "
+                                f"reserve=${self._hedge_bal:.2f} "
+                                f"unchanged). No state update. "
+                                f"Retry next tick if gates still pass."
+                            ),
                         )
-                        self._bus.emit(
-                            "trade.filled",
-                            bot_id=self.bot_id,
-                            side="buy",
-                            type="HEDGE",
-                            price=hedge_fill,
-                            amount=_hedge_asset,
-                            usd=_hedge_spent,
-                            profit=0,
-                            **self._fill_fee_fields(hedge_fill),
-                        )
-                        self._emit_voting_panel_snapshot_at_fire(
-                            side="BUY", trade_action="HEDGE"
-                        )
-                        self._emit_gate_decision_at_fire(
-                            side="BUY", trade_action="HEDGE"
-                        )
-                        self._last_trade_price = hedge_fill
 
         await self._tick_distribute(ticker, summary, bb_result, is_bullish)
 
         self._last_price = ticker.last
+
+    async def _book_hedge_fill(
+        self,
+        units: float,
+        fill_price: float,
+        asked: float,
+        first: bool,
+        *,
+        use: float,
+        gap: float,
+        bb_pos: float,
+        intended: float,
+    ) -> None:
+        """Book one settled piece of a hedge buy as a lot, take what it cost off
+        ``_hedge_bal``, and announce it as a ``HEDGE`` fill.
+        """
+        hedge_fill = fill_price
+        _hedge_asset = float(units)
+        _use = float(use) * (min(1.0, _hedge_asset / asked) if asked > 0 else 1.0)
+        self._main_lots.append(
+            {
+                "units": _hedge_asset,
+                "initial_buy_price": hedge_fill,
+            }
+        )
+        # The reserve falls by what the fill cost, never by the
+        # ask, and never below zero.
+        _hedge_spent = min(_use, _hedge_asset * hedge_fill)
+        self._hedge_bal -= _hedge_spent
+        if first:
+            self._hedge_trades += 1
+        self._bus.emit(
+            "bot.log",
+            bot_id=self.bot_id,
+            message=f"HEDGE REBALANCE: spent ${_hedge_spent:.4f} "
+            f"of ${_use:.4f} asked "
+            f"(reserve ${self._hedge_bal:.2f} remaining) "
+            f"→ bought {_hedge_asset:.6f} @ ${hedge_fill:.8f} "
+            f"(intended ${intended:.8f}), "
+            f"gap=${gap:.4f} ({gap/max(self._target_balance, 1e-9)*100:.1f}%), "
+            f"bb={bb_pos:.0%}. Trade #{self._hedge_trades}",
+        )
+        self._bus.emit(
+            "trade.filled",
+            bot_id=self.bot_id,
+            side="buy",
+            type="HEDGE",
+            price=hedge_fill,
+            amount=_hedge_asset,
+            usd=_hedge_spent,
+            profit=0,
+            **self._fill_fee_fields(hedge_fill),
+        )
+        self._emit_voting_panel_snapshot_at_fire(side="BUY", trade_action="HEDGE")
+        self._emit_gate_decision_at_fire(side="BUY", trade_action="HEDGE")
+        self._last_trade_price = hedge_fill
 
     async def _check_detonation_trigger(self, ticker) -> bool:
         """Check the higher-timeframe signal for a detonation trigger, edge-triggered
@@ -5039,6 +5157,7 @@ class ScrummingBot(
                 settled += 1
                 self._current_holdings = max(0.0, self._current_holdings - _filled)
                 self._record_venue_units_after_fill(-_filled)
+                self._count_trade_volume(_filled, t["fill_price"])
                 # A resting order filled with nobody watching, so the window
                 # that began before it is already wrong.
                 self._invalidate_symbol_balances(self.config.symbol)
@@ -5161,6 +5280,11 @@ class ScrummingBot(
                     summary=_vote,
                     bypass_stack=True,
                     label="STACK",
+                    booker="_book_stack_spend",
+                    booking={
+                        "rung_index": t.get("index"),
+                        "rung_opened_ts": t.get("opened_ts"),
+                    },
                 )
             except Exception as exc:
                 logger.warning(
@@ -5192,21 +5316,47 @@ class ScrummingBot(
                     ),
                 )
                 continue
-            t["status"] = "filled"
-            t["fill_price"] = float(fill)
             spent += 1
-            self._bus.emit(
-                "bot.log",
-                bot_id=self.bot_id,
-                message=(
-                    f"STACK TRANCHE {t['index']} SPENT @ "
-                    f"${float(fill):.8f} (threshold "
-                    f"${float(t['price']):.8f}, size "
-                    f"{float(t['size']):.6f}) under an authorised "
-                    f"SCRUM gate-chain decision."
-                ),
-            )
         return spent
+
+    async def _book_stack_spend(
+        self,
+        _units: float,
+        fill_price: float,
+        _asked: float,
+        first: bool,
+        *,
+        rung_index: Any,
+        rung_opened_ts: Any,
+    ) -> None:
+        """Mark the stack rung named by ``rung_index`` and ``rung_opened_ts`` filled at
+        its order's first settled piece, and write the spend to ``bot.log``.
+        """
+        if not first:
+            return
+        rung = next(
+            (
+                t
+                for t in self._stack_tranches
+                if t.get("index") == rung_index and t.get("opened_ts") == rung_opened_ts
+            ),
+            None,
+        )
+        if rung is None:
+            return
+        rung["status"] = "filled"
+        rung["fill_price"] = float(fill_price)
+        self._bus.emit(
+            "bot.log",
+            bot_id=self.bot_id,
+            message=(
+                f"STACK TRANCHE {rung['index']} SPENT @ "
+                f"${float(fill_price):.8f} (threshold "
+                f"${float(rung['price']):.8f}, size "
+                f"{float(rung['size']):.6f}) under an authorised "
+                f"SCRUM gate-chain decision."
+            ),
+        )
 
     def _take_filled_units_off_lots(self, filled_units: float) -> int:
         """Take ``filled_units`` off ``_main_lots``, highest ``initial_buy_price``

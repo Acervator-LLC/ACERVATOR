@@ -9263,6 +9263,22 @@ fold path, so the walk writes it no more than the live bot does; the realised
 surplus of a completed cycle reaches the row where the live bot books it, in
 the target's growth, the folded sum and the standing surplus.
 
+True today: the live bot's `stats.realised_pnl` is written at its exchange
+walk, from the exchange's own fill history. The snapshot this walk sends still
+carries no realised figure.
+
+```python
+# src/trading/scrumming/reconciliation.py, in refresh_exchange_position_health
+                self.stats.realized_pnl_exchange = self.stats.realised_pnl = float(
+                    _ph.realized_pnl_usd
+                )
+
+# src/simulator/back_test.py, in stats_snapshot
+        "unrealised_pnl": position.unrealised_pnl_usd(price),
+```
+
+The Product Manual PDF rebuild is owed for this page.
+
 ### Scrums and folds form tranches on the record
 
 The position keeps its lots as the live bot keeps `_main_lots`: the opening

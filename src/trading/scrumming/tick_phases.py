@@ -30,11 +30,11 @@ from ..ta_engine import (
     detect_bb_proximity,
 )
 from .sizing import (
+    EVENT_ID_KEY,
     FRACTIONAL_UNITS,
     fold_cap_remaining_usd,
     fold_spend_usd,
     fold_tranche_records,
-    fold_units,
     opposing_event_id,
     priced_usd,
     scrum_units,
@@ -71,6 +71,7 @@ class TickPhaseMixin:
     _cartridge_last_smart_pct: float
     _check_detonation_trigger: Callable[..., Any]
     _combine_fold_tranches_within_distance: Callable[..., Any]
+    _count_trade_volume: Callable[..., float]
     _current_holdings: float
     _detonation_last_signal_bullish: bool
     _dist_accumulator: float
@@ -100,6 +101,7 @@ class TickPhaseMixin:
     guarded_place_order: Callable[..., Any]
     _hedge_bal: float
     _hedge_trades: int
+    _hold_resting_order: Callable[..., Any]
     _initialised: Any
     _invisible: bool
     _land_pending_wire_credits: Callable[..., float]
@@ -124,15 +126,18 @@ class TickPhaseMixin:
     _refresh_quote_to_usd: Callable[..., Any]
     _refusal_is_new: Callable[..., bool]
     _reset_opposing_hysteresis_after_fill: Callable[..., None]
+    _resting_order_for: Callable[..., Any]
     _route_scrum_proceeds_via_wires: Callable[..., float]
     _scrum_target_mode: str
     _scrum_target_side: Optional[str]
     _settle_fold_plan: Callable[..., Any]
+    _settled_fill: Callable[..., Any]
     _settled_sale_proceeds: Callable[..., float]
     _smart_wire_mgr: Any
     _standing_surplus_usd: float
     _sum_sibling_base_currency_claims: Callable[..., Optional[float]]
     _ta_weights: Any
+    _take_filled_units_off_lots: Callable[..., int]
     _target_balance: Any
     _target_grow_last_side: Optional[str]
     _top_up_remnant_fold_tranches: Callable[..., Any]
@@ -720,6 +725,22 @@ class TickPhaseMixin:
         if not math.isfinite(held) or held <= 0.0:
             return False
 
+        _resting_close = self._resting_order_for("_book_expiry_close")
+        if _resting_close is not None:
+            _unfilled = float(_resting_close["asked"]) - float(_resting_close["booked"])
+            self._bus.emit(
+                "bot.log",
+                bot_id=self.bot_id,
+                message=(
+                    f"EXPIRY CLOSE HELD: order {_resting_close['order_id']} from "
+                    f"the last expiry close still rests at the venue with "
+                    f"{_unfilled:.10f} "
+                    f"of {symbol} unfilled, so nothing more is sent while it rests. "
+                    f"{decision['days_left']:.2f} days to expiry."
+                ),
+            )
+            return False
+
         # A send whose fill the venue did not report leaves the count unchanged,
         # and selling it twice would sell units the bot no longer holds.
         if float(getattr(self, "_expiry_close_sent_units", 0.0) or 0.0) == held:
@@ -791,16 +812,13 @@ class TickPhaseMixin:
             )
             return True
 
-        # A venue reporting a filled count of zero filled nothing. Only a venue
-        # omitting the field entirely falls back to the count it accepted.
-        # OVERTAKEN, the second sentence above: an omitted field books nothing
-        # too, because the accepted count is not a filled count. The held count
-        # is unchanged and the next tick sends nothing.
-        reported = getattr(order, "filled", None)
-        try:
-            filled = float(reported) if reported is not None else 0.0
-        except (TypeError, ValueError):
-            filled = 0.0
+        filled, fill_price, _ = await self._settled_fill(
+            order, symbol, held, mark, label="EXPIRY CLOSE"
+        )
+        _close = {"held": held, "days_left": float(decision["days_left"])}
+        self._hold_resting_order(
+            order, "_book_expiry_close", "sell", filled, fill_price, _close
+        )
         if not math.isfinite(filled) or filled <= 0.0:
             self._bus.emit(
                 "bot.log",
@@ -814,18 +832,39 @@ class TickPhaseMixin:
             )
             return True
 
-        self._current_holdings = max(0.0, held - filled)
+        await self._book_expiry_close(filled, fill_price or mark, held, True, **_close)
+        return True
+
+    async def _book_expiry_close(
+        self,
+        units: float,
+        fill_price: float,
+        _asked: float,
+        first: bool,
+        *,
+        held: float,
+        days_left: float,
+    ) -> None:
+        """Take one settled piece of an expiry close off ``_main_lots``,
+        ``_current_holdings`` and the venue count, count the order once in
+        ``stats.total_trades``, and write it to ``bot.log``.
+        """
+        filled = float(units)
+        self._take_filled_units_off_lots(filled)
+        self._current_holdings = max(0.0, self._current_holdings - filled)
         self._record_venue_units_after_fill(-filled)
+        if first:
+            self.stats.total_trades += 1
+        self._count_trade_volume(filled, fill_price)
         self._bus.emit(
             "bot.log",
             bot_id=self.bot_id,
             message=(
-                f"EXPIRY CLOSE FILLED: {symbol} sold {filled:.10f} of "
+                f"EXPIRY CLOSE FILLED: {self.config.symbol} sold {filled:.10f} of "
                 f"{held:.10f}, leaving {self._current_holdings:.10f} held, "
-                f"{decision['days_left']:.2f} days before expiry."
+                f"{days_left:.2f} days before expiry."
             ),
         )
-        return True
 
     async def _tick_initial_entry(
         self, ticker: Any, symbol: str, current_value: float
@@ -1131,55 +1170,71 @@ class TickPhaseMixin:
                     "gate_current_value": f"${current_value:.6f}",
                     "gate_threshold": f"${self._target_balance * 0.01:.6f}",
                 },
+                booker="_book_entry_fill",
+                booking={"buy_cost": float(buy_cost), "intended": float(price)},
             )
-            if entry_fill is None or entry_fill <= 0:
-                if self._refusal_is_new("initial_entry_refused", price):
-                    self._bus.emit(
-                        "bot.log",
-                        bot_id=self.bot_id,
-                        message=(
-                            f"INITIAL ENTRY ABORTED: buy failed at "
-                            f"${price:.8f}; no main_lots entry added. "
-                            f"Bot will retry on next tick if gates "
-                            f"still pass."
-                        ),
-                    )
-                return
-            # _execute_buy leaves the venue's own count here; buy_cost is only
-            # what was asked for, and a partial fill bought less.
-            bought_units = float(self._last_buy_filled_units or 0.0)
-            self._main_lots.append(
-                {
-                    "units": bought_units,
-                    "initial_buy_price": entry_fill,
-                }
-            )
-            _entry_usd = priced_usd(self._current_holdings, entry_fill)
-            self._bus.emit(
-                "bot.log",
-                bot_id=self.bot_id,
-                message=(
-                    f"INITIAL ENTRY COMPLETE: position=${_entry_usd:.2f} "
-                    f"vs target=${self._target_balance:.2f}. "
-                    f"(forensic: {self._current_holdings:.6f} "
-                    f"{self.config.target_asset} filled @ ${entry_fill:.8f}, "
-                    f"intended ${price:.8f})"
-                ),
-            )
-            self._bus.emit(
-                "trade.filled",
-                bot_id=self.bot_id,
-                side="buy",
-                type="ENTRY",
-                price=entry_fill,
-                amount=bought_units,
-                usd=buy_cost,
-                profit=0.0,
-                operator_initiated=False,
-                **self._fill_fee_fields(entry_fill),
-            )
-            self._emit_voting_panel_snapshot_at_fire(side="BUY", trade_action="ENTRY")
-            self._emit_gate_decision_at_fire(side="BUY", trade_action="ENTRY")
+            if (entry_fill is None or entry_fill <= 0) and self._refusal_is_new(
+                "initial_entry_refused", price
+            ):
+                self._bus.emit(
+                    "bot.log",
+                    bot_id=self.bot_id,
+                    message=(
+                        f"INITIAL ENTRY ABORTED: buy failed at "
+                        f"${price:.8f}; no main_lots entry added. "
+                        f"Bot will retry on next tick if gates "
+                        f"still pass."
+                    ),
+                )
+
+    async def _book_entry_fill(
+        self,
+        units: float,
+        fill_price: float,
+        asked: float,
+        _first: bool,
+        *,
+        buy_cost: float,
+        intended: float,
+    ) -> None:
+        """Book one settled piece of an initial entry as a lot at ``fill_price``, and
+        announce it as an ``ENTRY`` fill priced at its share of ``buy_cost``.
+        """
+        entry_fill = fill_price
+        bought_units = float(units)
+        _share_filled = min(1.0, bought_units / asked) if asked > 0 else 1.0
+        self._main_lots.append(
+            {
+                "units": bought_units,
+                "initial_buy_price": entry_fill,
+            }
+        )
+        _entry_usd = priced_usd(self._current_holdings, entry_fill)
+        self._bus.emit(
+            "bot.log",
+            bot_id=self.bot_id,
+            message=(
+                f"INITIAL ENTRY COMPLETE: position=${_entry_usd:.2f} "
+                f"vs target=${self._target_balance:.2f}. "
+                f"(forensic: {self._current_holdings:.6f} "
+                f"{self.config.target_asset} filled @ ${entry_fill:.8f}, "
+                f"intended ${intended:.8f})"
+            ),
+        )
+        self._bus.emit(
+            "trade.filled",
+            bot_id=self.bot_id,
+            side="buy",
+            type="ENTRY",
+            price=entry_fill,
+            amount=bought_units,
+            usd=float(buy_cost) * _share_filled,
+            profit=0.0,
+            operator_initiated=False,
+            **self._fill_fee_fields(entry_fill),
+        )
+        self._emit_voting_panel_snapshot_at_fire(side="BUY", trade_action="ENTRY")
+        self._emit_gate_decision_at_fire(side="BUY", trade_action="ENTRY")
 
     def _tick_target_ramp(
         self,
@@ -1419,7 +1474,23 @@ class TickPhaseMixin:
             sell_fill = None
         else:
             sell_fill = await self._execute_sell(
-                scrum_asset, ticker.last, summary, label="SCRUM"
+                scrum_asset,
+                ticker.last,
+                summary,
+                label="SCRUM",
+                booker="_book_scrum_fill",
+                booking={
+                    "scrum_asset": float(scrum_asset),
+                    "current_value": float(current_value),
+                    "delta_pct": float(delta_pct),
+                    "direction": str(eff_direction.name),
+                    "confidence": float(eff_confidence),
+                    "conf_floor": float(_eff_conf_floor),
+                    "position_boost": float(position_boost),
+                    "bb_pos": float(bb_pos),
+                    "bb_lower": float(getattr(bb_result, "lower", 0.0) or 0.0),
+                    "bb_upper": float(getattr(bb_result, "upper", 0.0) or 0.0),
+                },
             )
         if sell_fill is None or sell_fill <= 0:
             if not _scrum_skipped_below_min and self._refusal_is_new(
@@ -1435,164 +1506,177 @@ class TickPhaseMixin:
                         f"no fold profit claimed. Retry next tick."
                     ),
                 )
-        else:
-            # _execute_sell leaves the venue's own count here; scrum_asset is
-            # only what was asked for, and a partial fill sold less.
-            _sold_units = float(self._last_sell_filled_units or 0.0)
-            # _settled_sale_proceeds nets the venue's reported fee out
-            # of the gross _sold_units * sell_fill.
-            scrum_usd = self._settled_sale_proceeds(
-                _sold_units, sell_fill, label="SCRUM"
-            )
 
-            if self._fold_cycle_cap_consumed > 1e-9:
-                _prev_cap_consumed = self._fold_cycle_cap_consumed
-                self._fold_cycle_cap_consumed = 0.0
-                self._bus.emit(
-                    "bot.log",
-                    bot_id=self.bot_id,
-                    message=(
-                        f"FOLD CYCLE RESET (SCRUM fired): "
-                        f"Target Delta swung positive, sell "
-                        f"event ends fold cycle. Growth Rate "
-                        f"Cap consumed ${_prev_cap_consumed:.4f} "
-                        f"this cycle — reset to $0.00. Next "
-                        f"fold burst gets fresh cap budget."
-                    ),
-                )
+    async def _book_scrum_fill(
+        self,
+        units: float,
+        fill_price: float,
+        _asked: float,
+        _first: bool,
+        *,
+        scrum_asset: float,
+        current_value: float,
+        delta_pct: float,
+        direction: str,
+        confidence: float,
+        conf_floor: float,
+        position_boost: float,
+        bb_pos: float,
+        bb_lower: float,
+        bb_upper: float,
+    ) -> None:
+        """Queue one settled piece of a scrum sale as fold tranches and announce it as a
+        ``SCRUM`` fill.
 
-            _scrum_routed_total = self._route_scrum_proceeds_via_wires(
-                scrum_usd=scrum_usd, sell_fill=sell_fill, label="scrum"
-            )
+        ``_execute_sell`` calls it inside the re-reads and ``_reconcile_resting_orders``
+        for each later piece.
+        """
+        sell_fill = fill_price
+        _sold_units = float(units)
+        # _settled_sale_proceeds nets the venue's reported fee out
+        # of the gross _sold_units * sell_fill.
+        scrum_usd = self._settled_sale_proceeds(_sold_units, sell_fill, label="SCRUM")
 
-            scrum_usd = scrum_usd - _scrum_routed_total
-
-            self._main_lots.sort(key=lambda l: l["initial_buy_price"], reverse=True)
-            _tranche_count_before = len(self._fold_tranches)
-            _scrum_event_ts = time.time()
-            _scrum_records, _scrum_unqueued = fold_tranche_records(
-                self._main_lots,
-                sell_fill,
-                _sold_units,
-                scrum_usd,
-                opposing_event_id("SCRUM", _scrum_event_ts),
-                _scrum_event_ts,
-            )
-            self._fold_tranches.extend(_scrum_records)
-            self._tranches_created_lifetime += len(_scrum_records)
-            _first_new_tranche = _scrum_records[0] if _scrum_records else None
-            if _scrum_unqueued > 1e-12:
-                self._bus.emit(
-                    "bot.log",
-                    bot_id=self.bot_id,
-                    message=(
-                        f"FOLD ALIGNMENT SHORT: this SCRUM sold "
-                        f"{_sold_units:.8f} units and the lot book covered "
-                        f"only {_sold_units - _scrum_unqueued:.8f}. "
-                        f"{_scrum_unqueued:.8f} units are queued against no "
-                        f"tranche and will not be bought back."
-                    ),
-                )
-
-            # _bound_new_fold_tranches merges and replaces the tranche
-            # object, so _first_new_tranche is re-read from the list.
-            if self._bound_new_fold_tranches(_tranche_count_before):
-                _first_new_tranche = self._fold_tranches[_tranche_count_before]
-
-            if (
-                _first_new_tranche is not None
-                and _tranche_count_before == 0
-                and self._pending_wire_credits > 0
-            ):
-                self._absorb_pending_wire_credits_into(_first_new_tranche)
-
-            self._apply_scrum_fold_pct(_tranche_count_before, scrum_usd, _sold_units)
-
-            self._top_up_remnant_fold_tranches(
-                _tranche_count_before,
-                float(getattr(bb_result, "lower", 0.0) or 0.0),
-                float(getattr(bb_result, "upper", 0.0) or 0.0),
-            )
-            self._combine_fold_tranches_within_distance()
-
-            # Ordered after the top-up because wire USD carries no units.
-            self._land_pending_wire_credits()
-
-            self._fold_queue_usd = sum(t["usd"] for t in self._fold_tranches)
-            self._fold_queue_ref_price = sell_fill
-            self.stats.trade_volume += scrum_usd
-
+        if self._fold_cycle_cap_consumed > 1e-9:
+            _prev_cap_consumed = self._fold_cycle_cap_consumed
+            self._fold_cycle_cap_consumed = 0.0
             self._bus.emit(
                 "bot.log",
                 bot_id=self.bot_id,
-                message=f"SCRUM: Target=${self._target_balance:.2f}, "
-                f"Value=${current_value:.2f} (+{delta_pct:.1f}%), "
-                f"sold {_sold_units:.6f} of {scrum_asset:.6f} asked "
-                f"(${scrum_usd:.4f}) on "
-                f"{eff_direction.name} (conf={eff_confidence:.2f}"
-                f"≥floor {_eff_conf_floor:.2f}, "
-                f"pos_skew={position_boost:+.2f}, bb={bb_pos:.0%}). "
-                f"Fill=${sell_fill:.8f}, queued ${scrum_usd:.4f} for fold.",
+                message=(
+                    f"FOLD CYCLE RESET (SCRUM fired): "
+                    f"Target Delta swung positive, sell "
+                    f"event ends fold cycle. Growth Rate "
+                    f"Cap consumed ${_prev_cap_consumed:.4f} "
+                    f"this cycle — reset to $0.00. Next "
+                    f"fold burst gets fresh cap budget."
+                ),
             )
-            self._bus.emit(
-                "trade.filled",
-                bot_id=self.bot_id,
-                side="sell",
-                type="SCRUM",
-                price=sell_fill,
-                amount=_sold_units,
-                usd=scrum_usd,
-                profit=0,
-                **self._fill_fee_fields(sell_fill),
-            )
-            self._emit_voting_panel_snapshot_at_fire(side="SELL", trade_action="SCRUM")
-            self._emit_gate_decision_at_fire(side="SELL", trade_action="SCRUM")
-            try:
-                _avg_entry_for_pnl = 0.0
-                if self._main_lots:
-                    _tu = sum(float(l.get("units", 0) or 0) for l in self._main_lots)
-                    if _tu > 0:
-                        _avg_entry_for_pnl = (
-                            sum(
-                                float(l.get("units", 0) or 0)
-                                * float(l.get("initial_buy_price", 0) or 0)
-                                for l in self._main_lots
-                            )
-                            / _tu
-                        )
-                _pct_vs_entry = 0.0
-                if _avg_entry_for_pnl > 0:
-                    _pct_vs_entry = (
-                        (sell_fill - _avg_entry_for_pnl) / _avg_entry_for_pnl * 100.0
-                    )
-                self._bus.emit(
-                    "pnl.event",
-                    bot_id=self.bot_id,
-                    data={
-                        "kind": "SCRUM",
-                        "asset": self.config.target_asset,
-                        "symbol": self.config.symbol,
-                        "units": float(_sold_units),
-                        "fill_price": float(sell_fill),
-                        "usd_captured": float(scrum_usd)
-                        * float(self._quote_to_usd or 1.0),
-                        "avg_entry": float(_avg_entry_for_pnl),
-                        "pct_vs_avg_entry": float(_pct_vs_entry),
-                    },
-                )
-            except Exception as _sup:
-                logger.debug(
-                    "suppressed in %s: %s: %s", "tick", type(_sup).__name__, _sup
-                )
-            _scrum_usd_true = float(scrum_usd) * float(self._quote_to_usd or 1.0)
-            self.stats.total_scrummed_usd += _scrum_usd_true
-            self.note_scrum_retention_usd(_scrum_usd_true)
-            self._last_trade_side = "SCRUM"
-            self._reset_opposing_hysteresis_after_fill()
 
-            self._scrum_target_mode = "search"
-            self._scrum_target_side = None
-            self._last_trade_price = sell_fill
+        _scrum_routed_total = self._route_scrum_proceeds_via_wires(
+            scrum_usd=scrum_usd, sell_fill=sell_fill, label="scrum"
+        )
+
+        scrum_usd = scrum_usd - _scrum_routed_total
+
+        self._main_lots.sort(key=lambda l: l["initial_buy_price"], reverse=True)
+        _tranche_count_before = len(self._fold_tranches)
+        _scrum_event_ts = time.time()
+        _scrum_records, _scrum_unqueued = fold_tranche_records(
+            self._main_lots,
+            sell_fill,
+            _sold_units,
+            scrum_usd,
+            opposing_event_id("SCRUM", _scrum_event_ts),
+            _scrum_event_ts,
+        )
+        self._fold_tranches.extend(_scrum_records)
+        self._tranches_created_lifetime += len(_scrum_records)
+        _first_new_tranche = _scrum_records[0] if _scrum_records else None
+        if _scrum_unqueued > 1e-12:
+            self._bus.emit(
+                "bot.log",
+                bot_id=self.bot_id,
+                message=(
+                    f"FOLD ALIGNMENT SHORT: this SCRUM sold "
+                    f"{_sold_units:.8f} units and the lot book covered "
+                    f"only {_sold_units - _scrum_unqueued:.8f}. "
+                    f"{_scrum_unqueued:.8f} units are queued against no "
+                    f"tranche and will not be bought back."
+                ),
+            )
+
+        # _bound_new_fold_tranches merges and replaces the tranche
+        # object, so _first_new_tranche is re-read from the list.
+        if self._bound_new_fold_tranches(_tranche_count_before):
+            _first_new_tranche = self._fold_tranches[_tranche_count_before]
+
+        if (
+            _first_new_tranche is not None
+            and _tranche_count_before == 0
+            and self._pending_wire_credits > 0
+        ):
+            self._absorb_pending_wire_credits_into(_first_new_tranche)
+
+        self._apply_scrum_fold_pct(_tranche_count_before, scrum_usd, _sold_units)
+
+        self._top_up_remnant_fold_tranches(_tranche_count_before, bb_lower, bb_upper)
+        self._combine_fold_tranches_within_distance()
+
+        # Ordered after the top-up because wire USD carries no units.
+        self._land_pending_wire_credits()
+
+        self._fold_queue_usd = sum(t["usd"] for t in self._fold_tranches)
+        self._fold_queue_ref_price = sell_fill
+
+        self._bus.emit(
+            "bot.log",
+            bot_id=self.bot_id,
+            message=f"SCRUM: Target=${self._target_balance:.2f}, "
+            f"Value=${current_value:.2f} (+{delta_pct:.1f}%), "
+            f"sold {_sold_units:.6f} of {scrum_asset:.6f} asked "
+            f"(${scrum_usd:.4f}) on "
+            f"{direction} (conf={confidence:.2f}"
+            f"≥floor {conf_floor:.2f}, "
+            f"pos_skew={position_boost:+.2f}, bb={bb_pos:.0%}). "
+            f"Fill=${sell_fill:.8f}, queued ${scrum_usd:.4f} for fold.",
+        )
+        self._bus.emit(
+            "trade.filled",
+            bot_id=self.bot_id,
+            side="sell",
+            type="SCRUM",
+            price=sell_fill,
+            amount=_sold_units,
+            usd=scrum_usd,
+            profit=0,
+            **self._fill_fee_fields(sell_fill),
+        )
+        self._emit_voting_panel_snapshot_at_fire(side="SELL", trade_action="SCRUM")
+        self._emit_gate_decision_at_fire(side="SELL", trade_action="SCRUM")
+        try:
+            _avg_entry_for_pnl = 0.0
+            if self._main_lots:
+                _tu = sum(float(l.get("units", 0) or 0) for l in self._main_lots)
+                if _tu > 0:
+                    _avg_entry_for_pnl = (
+                        sum(
+                            float(l.get("units", 0) or 0)
+                            * float(l.get("initial_buy_price", 0) or 0)
+                            for l in self._main_lots
+                        )
+                        / _tu
+                    )
+            _pct_vs_entry = 0.0
+            if _avg_entry_for_pnl > 0:
+                _pct_vs_entry = (
+                    (sell_fill - _avg_entry_for_pnl) / _avg_entry_for_pnl * 100.0
+                )
+            self._bus.emit(
+                "pnl.event",
+                bot_id=self.bot_id,
+                data={
+                    "kind": "SCRUM",
+                    "asset": self.config.target_asset,
+                    "symbol": self.config.symbol,
+                    "units": float(_sold_units),
+                    "fill_price": float(sell_fill),
+                    "usd_captured": float(scrum_usd) * float(self._quote_to_usd or 1.0),
+                    "avg_entry": float(_avg_entry_for_pnl),
+                    "pct_vs_avg_entry": float(_pct_vs_entry),
+                },
+            )
+        except Exception as _sup:
+            logger.debug("suppressed in %s: %s: %s", "tick", type(_sup).__name__, _sup)
+        _scrum_usd_true = float(scrum_usd) * float(self._quote_to_usd or 1.0)
+        self.stats.total_scrummed_usd += _scrum_usd_true
+        self.note_scrum_retention_usd(_scrum_usd_true)
+        self._last_trade_side = "SCRUM"
+        self._reset_opposing_hysteresis_after_fill()
+
+        self._scrum_target_mode = "search"
+        self._scrum_target_side = None
+        self._last_trade_price = sell_fill
 
     def _tick_fold_diagnostics(
         self,
@@ -1890,12 +1974,8 @@ class TickPhaseMixin:
                     _mc_fold_exc,
                 )
 
-            buy_asset = fold_units(buy_cost, ticker.last, FRACTIONAL_UNITS)
-            asset_at_scrum = sum(units_at_scrum(t) for t in _eligible)
-            extra_asset = buy_asset - asset_at_scrum
             min_ref = min(t["ref"] for t in _eligible)
             pct_cheaper = (1 - ticker.last / min_ref) * 100
-            accum_profit = priced_usd(extra_asset, ticker.last)
 
             _intended_min_ref = min(t["ref"] for t in _eligible)
 
@@ -1912,6 +1992,30 @@ class TickPhaseMixin:
                         "min_ref": f"${min_ref:.8f}",
                         "pct_cheaper": f"{pct_cheaper:.2f}%",
                     },
+                    booker="_book_fold_fill",
+                    booking={
+                        "buy_cost": float(buy_cost),
+                        "intended": float(ticker.last),
+                        "min_ref": float(min_ref),
+                        "intended_min_ref": float(_intended_min_ref),
+                        "otd_factor": float(_otd_factor),
+                        "excluded": int(_excluded),
+                        "partial_count": int(_partial_count),
+                        "eligible": [dict(t) for t in _eligible],
+                        "plan": [
+                            {
+                                "usd": float(take_usd),
+                                "units": float(take_units),
+                                EVENT_ID_KEY: str(src.get(EVENT_ID_KEY, "") or ""),
+                                "ref": float(src.get("ref", 0.0) or 0.0),
+                                "initial_buy_price": float(
+                                    src.get("initial_buy_price", 0.0) or 0.0
+                                ),
+                            }
+                            for src, take_usd, take_units in _fold_plan
+                        ],
+                    },
+                    sources=[src for src, _take_usd, _take_units in _fold_plan],
                 )
             if buy_fill is None or buy_fill <= 0:
                 if not _fold_skipped_below_min and self._refusal_is_new(
@@ -1930,217 +2034,6 @@ class TickPhaseMixin:
                         ),
                     )
                 return True
-
-            # _execute_buy leaves the venue's own count here; buy_cost is only
-            # what was asked for, and a partial fill bought less.
-            buy_asset = float(self._last_buy_filled_units or 0.0)
-            asset_at_scrum = sum(units_at_scrum(t) for t in _eligible)
-            extra_asset = buy_asset - asset_at_scrum
-            pct_cheaper = (1 - buy_fill / _intended_min_ref) * 100
-            accum_profit = priced_usd(extra_asset, buy_fill)
-
-            _total_elig_units = sum(t["units"] for t in _eligible) + 1e-12
-            for _t in _eligible:
-                _share = _t["units"] / _total_elig_units
-                self._main_lots.append(
-                    {
-                        "units": buy_asset * _share,
-                        "initial_buy_price": _t["initial_buy_price"],
-                    }
-                )
-
-            _pre_remove = len(self._fold_tranches)
-            _removed, _n_spent = self._settle_fold_plan(_fold_plan)
-            if _removed > 0:
-                self._tranches_closed_lifetime += _removed
-            if _removed != _n_spent:
-                self._bus.emit(
-                    "bot.log",
-                    bot_id=self.bot_id,
-                    message=(
-                        f"FOLD DEQUEUE MISMATCH: {_n_spent} "
-                        f"tranche(s) were drained to nothing but "
-                        f"{_removed} left the queue. Likely "
-                        f"concurrent mutation — investigate."
-                    ),
-                )
-            self._fold_queue_usd = sum(t["usd"] for t in self._fold_tranches)
-            if not self._fold_tranches:
-                self._fold_queue_ref_price = 0.0
-
-            self.stats.trade_volume += buy_cost
-
-            _new_surplus_usd = max(0.0, accum_profit * float(self._quote_to_usd or 1.0))
-
-            # These three feed only the FOLD DIAG surplus emit;
-            # _apply_fold_target_growth reads the cap itself.
-            _cap_pct_growth = float(target_growth_pct(self.config))
-            _cycle_cap_growth = self.cycle_growth_cap_usd
-            _cycle_open_target_d = max(
-                0.0,
-                float(self._target_balance) - float(self._fold_cycle_cap_consumed),
-            )
-
-            try:
-                self._bus.emit(
-                    "bot.log",
-                    bot_id=self.bot_id,
-                    message=(
-                        f"FOLD DIAG surplus: bought at "
-                        f"${buy_fill:.8f}, holdings "
-                        f"{self._current_holdings:.6f}. "
-                        f"Accumulated profit "
-                        f"${float(accum_profit):.6f} against target "
-                        f"${self._target_balance:.4f} gives new surplus "
-                        f"${_new_surplus_usd:+.4f} on standing surplus "
-                        f"${self._standing_surplus_usd:.4f}. "
-                        f"Cycle budget ${_cycle_cap_growth:.4f}, "
-                        f"{_cap_pct_growth}% of the cycle-open target "
-                        f"${_cycle_open_target_d:.4f} at anchor "
-                        f"${self._anchor_target_balance:.4f}. "
-                        f"Profit folding "
-                        f"{_yes_no(self.config.profit_folding_active)}."
-                    ),
-                )
-            except Exception as _sup:
-                logger.debug(
-                    "suppressed in %s: %s: %s", "tick", type(_sup).__name__, _sup
-                )
-
-            _growth_applied = self._apply_fold_target_growth(
-                accum_profit, source="auto"
-            )
-
-            try:
-                mgr = self._smart_wire_mgr
-                if (
-                    mgr is not None
-                    and _growth_applied > 0
-                    and hasattr(mgr, "distribute_fold_profit")
-                ):
-                    try:
-                        self._bus.emit(
-                            "bot.log",
-                            bot_id=self.bot_id,
-                            message=(
-                                f"[WIRE FIRE] fold-compound: "
-                                f"${_growth_applied:.4f} → "
-                                f"distribute_fold_profit "
-                                f"(from realized compound growth "
-                                f"@{buy_fill:.8f})"
-                            ),
-                        )
-                    except Exception as _sup:  # noqa: BLE001
-                        logger.debug(
-                            "suppressed in %s: %s: %s",
-                            "tick",
-                            type(_sup).__name__,
-                            _sup,
-                        )
-                    mgr.distribute_fold_profit(
-                        source_id=self.bot_id,
-                        profit_usd=float(_growth_applied),
-                        ref=f"fold-compound@{buy_fill:.8f}",
-                    )
-            except Exception as _wr_exc:
-                logger.warning(
-                    "Bot %s Smart Wire compound-route raised: %s "
-                    "(fold profit still booked locally)",
-                    self.bot_id,
-                    _wr_exc,
-                )
-
-            if (
-                self.config.hedge_rebalance_active
-                and self._hedge_balance_initial > 0
-                and self._hedge_bal < self._hedge_balance_initial
-                and _growth_applied > 0
-            ):
-                _prev = self._hedge_bal
-                self._hedge_bal = min(
-                    self._hedge_balance_initial,
-                    self._hedge_bal + _growth_applied * 0.08,
-                )
-                _added = self._hedge_bal - _prev
-                if _added > 1e-9:
-                    self._bus.emit(
-                        "bot.log",
-                        bot_id=self.bot_id,
-                        message=f"HEDGE REPLENISH: +${_added:.4f} from compound growth "
-                        f"→ reserve now ${self._hedge_bal:.2f} "
-                        f"(cap ${self._hedge_balance_initial:.2f})",
-                    )
-
-            self._bus.emit(
-                "bot.log",
-                bot_id=self.bot_id,
-                message=f"FOLD: Bought ${buy_cost:.4f} @ ${buy_fill:.8f} "
-                f"(intended ${ticker.last:.8f}, "
-                f"{pct_cheaper:.1f}% below min tranche ref ${_intended_min_ref:.8f}). "
-                f"Accumulated +{extra_asset:.6f} extra asset. "
-                f"Profit: ${accum_profit:.4f}. "
-                f"Rebought {_n_spent} tranche(s) whole and "
-                f"part-consumed {_partial_count}, out of "
-                f"{_pre_remove} queued "
-                f"(others held by the OTD price gate: needs "
-                f"price <= ref x {_otd_factor:.4f}"
-                + (
-                    f"; {_excluded} more were price-eligible "
-                    f"but skipped by the per-cycle cap"
-                    if _excluded
-                    else ""
-                )
-                + ")",
-            )
-            self._bus.emit(
-                "trade.filled",
-                bot_id=self.bot_id,
-                side="buy",
-                type="FOLD",
-                price=buy_fill,
-                amount=buy_asset,
-                usd=buy_cost,
-                profit=_growth_applied,
-                **self._fill_fee_fields(buy_fill),
-            )
-            self._emit_voting_panel_snapshot_at_fire(side="BUY", trade_action="FOLD")
-            self._emit_gate_decision_at_fire(side="BUY", trade_action="FOLD")
-            try:
-                _pct_token_gain = 0.0
-                if asset_at_scrum > 1e-12:
-                    _pct_token_gain = extra_asset / asset_at_scrum * 100.0
-                self._bus.emit(
-                    "pnl.event",
-                    bot_id=self.bot_id,
-                    data={
-                        "kind": "FOLD",
-                        "asset": self.config.target_asset,
-                        "symbol": self.config.symbol,
-                        "units_rebought": float(buy_asset),
-                        "units_at_scrum_refs": float(asset_at_scrum),
-                        "extra_asset": float(extra_asset),
-                        "pct_token_gain": float(_pct_token_gain),
-                        "fill_price": float(buy_fill),
-                        "min_ref": float(min_ref),
-                        "pct_cheaper_vs_ref": float(pct_cheaper),
-                        "usd_spent": float(buy_cost) * float(self._quote_to_usd or 1.0),
-                        "growth_applied_usd": float(_growth_applied),
-                    },
-                )
-            except Exception as _sup:
-                logger.debug(
-                    "suppressed in %s: %s: %s", "tick", type(_sup).__name__, _sup
-                )
-            self.stats.total_folded_usd += float(buy_cost) * float(
-                self._quote_to_usd or 1.0
-            )
-            self.reset_swos_cycle()
-            self._last_trade_side = "FOLD"
-            self._last_trade_price = buy_fill
-            self._reset_opposing_hysteresis_after_fill()
-
-            if extra_asset > 0:
-                self._dist_accumulator += extra_asset
 
         else:
             _min_ref = min(t["ref"] for t in self._fold_tranches)
@@ -2163,6 +2056,287 @@ class TickPhaseMixin:
             )
         return False
 
+    def _planned_fold_sources(self, plan: list, sources: Optional[list]) -> list:
+        """The queued tranche each ``plan`` entry settles, None where it left
+        ``_fold_tranches``.
+
+        The object in ``sources`` answers while it is still queued, else the tranche
+        whose ``EVENT_ID_KEY`` names the entry's, else one carrying its ``ref`` and
+        ``initial_buy_price``.
+        """
+        found: list = []
+        for index, entry in enumerate(plan):
+            held = (
+                sources[index] if sources is not None and index < len(sources) else None
+            )
+            if held is not None and any(t is held for t in self._fold_tranches):
+                found.append(held)
+                continue
+            wanted = set(str(entry.get(EVENT_ID_KEY, "") or "").split("+")) - {""}
+            match = None
+            for tranche in self._fold_tranches:
+                named = set(str(tranche.get(EVENT_ID_KEY, "") or "").split("+"))
+                if wanted and wanted <= named:
+                    match = tranche
+                    break
+                if (
+                    not wanted
+                    and tranche.get("ref") == entry.get("ref")
+                    and tranche.get("initial_buy_price")
+                    == entry.get("initial_buy_price")
+                ):
+                    match = tranche
+                    break
+            found.append(match)
+        return found
+
+    async def _book_fold_fill(
+        self,
+        units: float,
+        fill_price: float,
+        asked: float,
+        _first: bool,
+        *,
+        buy_cost: float,
+        intended: float,
+        min_ref: float,
+        intended_min_ref: float,
+        otd_factor: float,
+        excluded: int,
+        partial_count: int,
+        eligible: list,
+        plan: list,
+        sources: Optional[list] = None,
+    ) -> None:
+        """Book one settled piece of a fold rebuy: a lot per ``eligible`` tranche,
+        ``plan`` settled by the share of ``asked`` filled, and the growth.
+
+        ``sources`` holds the queued tranche objects the plan named when the order went
+        out; ``_planned_fold_sources`` finds each again for a piece that settles later.
+        """
+        buy_fill = fill_price
+        buy_asset = float(units)
+        _share_filled = min(1.0, buy_asset / asked) if asked > 0 else 1.0
+        _cost = float(buy_cost) * _share_filled
+        asset_at_scrum = sum(units_at_scrum(t) for t in eligible) * _share_filled
+        extra_asset = buy_asset - asset_at_scrum
+        pct_cheaper = (1 - buy_fill / intended_min_ref) * 100
+        accum_profit = priced_usd(extra_asset, buy_fill)
+
+        _total_elig_units = sum(t["units"] for t in eligible) + 1e-12
+        for _t in eligible:
+            _share = _t["units"] / _total_elig_units
+            self._main_lots.append(
+                {
+                    "units": buy_asset * _share,
+                    "initial_buy_price": _t["initial_buy_price"],
+                }
+            )
+
+        _found = self._planned_fold_sources(plan, sources)
+        _fold_plan = [
+            (
+                src,
+                float(entry["usd"]) * _share_filled,
+                float(entry["units"]) * _share_filled,
+            )
+            for src, entry in zip(_found, plan, strict=True)
+            if src is not None
+        ]
+        _left_queue = len(plan) - len(_fold_plan)
+        if _left_queue:
+            self._bus.emit(
+                "bot.log",
+                bot_id=self.bot_id,
+                message=(
+                    f"FOLD SETTLED SHORT: {_left_queue} of {len(plan)} planned "
+                    f"tranche(s) left the fold queue before this fill landed, so "
+                    f"their share settles nothing."
+                ),
+            )
+        _pre_remove = len(self._fold_tranches)
+        _removed, _n_spent = self._settle_fold_plan(_fold_plan)
+        if _removed > 0:
+            self._tranches_closed_lifetime += _removed
+        if _removed != _n_spent:
+            self._bus.emit(
+                "bot.log",
+                bot_id=self.bot_id,
+                message=(
+                    f"FOLD DEQUEUE MISMATCH: {_n_spent} "
+                    f"tranche(s) were drained to nothing but "
+                    f"{_removed} left the queue. Likely "
+                    f"concurrent mutation — investigate."
+                ),
+            )
+        self._fold_queue_usd = sum(t["usd"] for t in self._fold_tranches)
+        if not self._fold_tranches:
+            self._fold_queue_ref_price = 0.0
+
+        _new_surplus_usd = max(0.0, accum_profit * float(self._quote_to_usd or 1.0))
+
+        # These three feed only the FOLD DIAG surplus emit;
+        # _apply_fold_target_growth reads the cap itself.
+        _cap_pct_growth = float(target_growth_pct(self.config))
+        _cycle_cap_growth = self.cycle_growth_cap_usd
+        _cycle_open_target_d = max(
+            0.0,
+            float(self._target_balance) - float(self._fold_cycle_cap_consumed),
+        )
+
+        try:
+            self._bus.emit(
+                "bot.log",
+                bot_id=self.bot_id,
+                message=(
+                    f"FOLD DIAG surplus: bought at "
+                    f"${buy_fill:.8f}, holdings "
+                    f"{self._current_holdings:.6f}. "
+                    f"Accumulated profit "
+                    f"${float(accum_profit):.6f} against target "
+                    f"${self._target_balance:.4f} gives new surplus "
+                    f"${_new_surplus_usd:+.4f} on standing surplus "
+                    f"${self._standing_surplus_usd:.4f}. "
+                    f"Cycle budget ${_cycle_cap_growth:.4f}, "
+                    f"{_cap_pct_growth}% of the cycle-open target "
+                    f"${_cycle_open_target_d:.4f} at anchor "
+                    f"${self._anchor_target_balance:.4f}. "
+                    f"Profit folding "
+                    f"{_yes_no(self.config.profit_folding_active)}."
+                ),
+            )
+        except Exception as _sup:
+            logger.debug("suppressed in %s: %s: %s", "tick", type(_sup).__name__, _sup)
+
+        _growth_applied = self._apply_fold_target_growth(accum_profit, source="auto")
+
+        try:
+            mgr = self._smart_wire_mgr
+            if (
+                mgr is not None
+                and _growth_applied > 0
+                and hasattr(mgr, "distribute_fold_profit")
+            ):
+                try:
+                    self._bus.emit(
+                        "bot.log",
+                        bot_id=self.bot_id,
+                        message=(
+                            f"[WIRE FIRE] fold-compound: "
+                            f"${_growth_applied:.4f} → "
+                            f"distribute_fold_profit "
+                            f"(from realized compound growth "
+                            f"@{buy_fill:.8f})"
+                        ),
+                    )
+                except Exception as _sup:  # noqa: BLE001
+                    logger.debug(
+                        "suppressed in %s: %s: %s",
+                        "tick",
+                        type(_sup).__name__,
+                        _sup,
+                    )
+                mgr.distribute_fold_profit(
+                    source_id=self.bot_id,
+                    profit_usd=float(_growth_applied),
+                    ref=f"fold-compound@{buy_fill:.8f}",
+                )
+        except Exception as _wr_exc:
+            logger.warning(
+                "Bot %s Smart Wire compound-route raised: %s "
+                "(fold profit still booked locally)",
+                self.bot_id,
+                _wr_exc,
+            )
+
+        if (
+            self.config.hedge_rebalance_active
+            and self._hedge_balance_initial > 0
+            and self._hedge_bal < self._hedge_balance_initial
+            and _growth_applied > 0
+        ):
+            _prev = self._hedge_bal
+            self._hedge_bal = min(
+                self._hedge_balance_initial,
+                self._hedge_bal + _growth_applied * 0.08,
+            )
+            _added = self._hedge_bal - _prev
+            if _added > 1e-9:
+                self._bus.emit(
+                    "bot.log",
+                    bot_id=self.bot_id,
+                    message=f"HEDGE REPLENISH: +${_added:.4f} from compound growth "
+                    f"→ reserve now ${self._hedge_bal:.2f} "
+                    f"(cap ${self._hedge_balance_initial:.2f})",
+                )
+
+        self._bus.emit(
+            "bot.log",
+            bot_id=self.bot_id,
+            message=f"FOLD: Bought ${_cost:.4f} @ ${buy_fill:.8f} "
+            f"(intended ${intended:.8f}, "
+            f"{pct_cheaper:.1f}% below min tranche ref ${intended_min_ref:.8f}). "
+            f"Accumulated +{extra_asset:.6f} extra asset. "
+            f"Profit: ${accum_profit:.4f}. "
+            f"Rebought {_n_spent} tranche(s) whole and "
+            f"part-consumed {partial_count}, out of "
+            f"{_pre_remove} queued "
+            f"(others held by the OTD price gate: needs "
+            f"price <= ref x {otd_factor:.4f}"
+            + (
+                f"; {excluded} more were price-eligible "
+                f"but skipped by the per-cycle cap"
+                if excluded
+                else ""
+            )
+            + ")",
+        )
+        self._bus.emit(
+            "trade.filled",
+            bot_id=self.bot_id,
+            side="buy",
+            type="FOLD",
+            price=buy_fill,
+            amount=buy_asset,
+            usd=_cost,
+            profit=_growth_applied,
+            **self._fill_fee_fields(buy_fill),
+        )
+        self._emit_voting_panel_snapshot_at_fire(side="BUY", trade_action="FOLD")
+        self._emit_gate_decision_at_fire(side="BUY", trade_action="FOLD")
+        try:
+            _pct_token_gain = 0.0
+            if asset_at_scrum > 1e-12:
+                _pct_token_gain = extra_asset / asset_at_scrum * 100.0
+            self._bus.emit(
+                "pnl.event",
+                bot_id=self.bot_id,
+                data={
+                    "kind": "FOLD",
+                    "asset": self.config.target_asset,
+                    "symbol": self.config.symbol,
+                    "units_rebought": float(buy_asset),
+                    "units_at_scrum_refs": float(asset_at_scrum),
+                    "extra_asset": float(extra_asset),
+                    "pct_token_gain": float(_pct_token_gain),
+                    "fill_price": float(buy_fill),
+                    "min_ref": float(min_ref),
+                    "pct_cheaper_vs_ref": float(pct_cheaper),
+                    "usd_spent": float(_cost) * float(self._quote_to_usd or 1.0),
+                    "growth_applied_usd": float(_growth_applied),
+                },
+            )
+        except Exception as _sup:
+            logger.debug("suppressed in %s: %s: %s", "tick", type(_sup).__name__, _sup)
+        self.stats.total_folded_usd += float(_cost) * float(self._quote_to_usd or 1.0)
+        self.reset_swos_cycle()
+        self._last_trade_side = "FOLD"
+        self._last_trade_price = buy_fill
+        self._reset_opposing_hysteresis_after_fill()
+
+        if extra_asset > 0:
+            self._dist_accumulator += extra_asset
+
     async def _tick_distribute(
         self, ticker: Any, summary: Any, bb_result: Any, is_bullish: bool
     ) -> None:
@@ -2178,107 +2352,122 @@ class TickPhaseMixin:
                 )
             if dist_asset > 0:
                 dist_fill = await self._execute_sell(
-                    dist_asset, ticker.last, summary, label="DIST"
+                    dist_asset,
+                    ticker.last,
+                    summary,
+                    label="DIST",
+                    booker="_book_dist_fill",
+                    booking={
+                        "dist_asset": float(dist_asset),
+                        "intended": float(ticker.last),
+                        "bb_lower": float(getattr(bb_result, "lower", 0.0) or 0.0),
+                        "bb_upper": float(getattr(bb_result, "upper", 0.0) or 0.0),
+                    },
                 )
-                if dist_fill is None or dist_fill <= 0:
-                    if self._refusal_is_new("dist_sell_refused", ticker.last):
-                        self._bus.emit(
-                            "bot.log",
-                            bot_id=self.bot_id,
-                            message=(
-                                f"DIST ABORTED: sell failed for "
-                                f"{dist_asset:.6f} excess @ ${ticker.last:.8f}. "
-                                f"Accumulator kept; no re-fold tranches "
-                                f"created. Retry next tick."
-                            ),
-                        )
-                else:
-                    # _execute_sell leaves the venue's own count here;
-                    # dist_asset is only what was asked for.
-                    _sold_units = float(self._last_sell_filled_units or 0.0)
-                    # _settled_sale_proceeds nets the venue's reported
-                    # fee out of _sold_units * dist_fill.
-                    dist_usd = self._settled_sale_proceeds(
-                        _sold_units, dist_fill, label="DIST"
-                    )
-                    self.stats.trade_volume += dist_usd
-
+                if (dist_fill is None or dist_fill <= 0) and self._refusal_is_new(
+                    "dist_sell_refused", ticker.last
+                ):
                     self._bus.emit(
                         "bot.log",
                         bot_id=self.bot_id,
-                        message=f"DIST: Sold {_sold_units:.6f} of "
-                        f"{dist_asset:.6f} asked @ ${dist_fill:.8f} "
-                        f"(intended ${ticker.last:.8f}) = ${dist_usd:.4f}",
+                        message=(
+                            f"DIST ABORTED: sell failed for "
+                            f"{dist_asset:.6f} excess @ ${ticker.last:.8f}. "
+                            f"Accumulator kept; no re-fold tranches "
+                            f"created. Retry next tick."
+                        ),
                     )
-                    self._bus.emit(
-                        "trade.filled",
-                        bot_id=self.bot_id,
-                        side="sell",
-                        type="DIST",
-                        price=dist_fill,
-                        amount=_sold_units,
-                        usd=dist_usd,
-                        profit=dist_usd * 0.02,
-                        **self._fill_fee_fields(dist_fill),
-                    )
-                    self._emit_voting_panel_snapshot_at_fire(
-                        side="SELL", trade_action="DIST"
-                    )
-                    self._emit_gate_decision_at_fire(side="SELL", trade_action="DIST")
-                    self._last_trade_price = dist_fill
 
-                    self._dist_accumulator = 0.0
+    async def _book_dist_fill(
+        self,
+        units: float,
+        fill_price: float,
+        _asked: float,
+        _first: bool,
+        *,
+        dist_asset: float,
+        intended: float,
+        bb_lower: float,
+        bb_upper: float,
+    ) -> None:
+        """Book one settled piece of a distribution sale, queueing its proceeds for
+        re-fold while ``profit_folding_active`` is on, and announce it as a ``DIST``
+        fill.
+        """
+        dist_fill = fill_price
+        _sold_units = float(units)
+        # _settled_sale_proceeds nets the venue's reported
+        # fee out of _sold_units * dist_fill.
+        dist_usd = self._settled_sale_proceeds(_sold_units, dist_fill, label="DIST")
 
-                    if self.config.profit_folding_active:
-                        self._main_lots.sort(
-                            key=lambda l: l["initial_buy_price"], reverse=True
-                        )
-                        _dist_tranche_count_before = len(self._fold_tranches)
-                        _dist_event_ts = time.time()
-                        _dist_records, _dist_unqueued = fold_tranche_records(
-                            self._main_lots,
-                            dist_fill,
-                            _sold_units,
-                            dist_usd,
-                            opposing_event_id("DIST", _dist_event_ts),
-                            _dist_event_ts,
-                        )
-                        self._fold_tranches.extend(_dist_records)
-                        self._tranches_created_lifetime += len(_dist_records)
-                        if _dist_unqueued > 1e-12:
-                            self._bus.emit(
-                                "bot.log",
-                                bot_id=self.bot_id,
-                                message=(
-                                    f"FOLD ALIGNMENT SHORT: this DIST sold "
-                                    f"{_sold_units:.8f} units and the lot "
-                                    f"book covered only "
-                                    f"{_sold_units - _dist_unqueued:.8f}. "
-                                    f"{_dist_unqueued:.8f} units are queued "
-                                    f"against no tranche and will not be "
-                                    f"bought back."
-                                ),
-                            )
-                        self._bound_new_fold_tranches(_dist_tranche_count_before)
-                        # scrum_fold_pct governs DIST proceeds as it governs a SCRUM.
-                        self._apply_scrum_fold_pct(
-                            _dist_tranche_count_before, dist_usd, _sold_units
-                        )
-                        self._top_up_remnant_fold_tranches(
-                            _dist_tranche_count_before,
-                            float(getattr(bb_result, "lower", 0.0) or 0.0),
-                            float(getattr(bb_result, "upper", 0.0) or 0.0),
-                        )
-                        self._combine_fold_tranches_within_distance()
-                        # Ordered after the top-up because wire USD carries no units.
-                        self._land_pending_wire_credits()
-                        self._fold_queue_usd = sum(
-                            t["usd"] for t in self._fold_tranches
-                        )
-                        self._fold_queue_ref_price = dist_fill
-                        self._bus.emit(
-                            "bot.log",
-                            bot_id=self.bot_id,
-                            message=f"DIST proceeds ${dist_usd:.4f} queued for re-fold "
-                            f"(tranche-provenance preserved, fill=${dist_fill:.8f})",
-                        )
+        self._bus.emit(
+            "bot.log",
+            bot_id=self.bot_id,
+            message=f"DIST: Sold {_sold_units:.6f} of "
+            f"{dist_asset:.6f} asked @ ${dist_fill:.8f} "
+            f"(intended ${intended:.8f}) = ${dist_usd:.4f}",
+        )
+        self._bus.emit(
+            "trade.filled",
+            bot_id=self.bot_id,
+            side="sell",
+            type="DIST",
+            price=dist_fill,
+            amount=_sold_units,
+            usd=dist_usd,
+            profit=dist_usd * 0.02,
+            **self._fill_fee_fields(dist_fill),
+        )
+        self._emit_voting_panel_snapshot_at_fire(side="SELL", trade_action="DIST")
+        self._emit_gate_decision_at_fire(side="SELL", trade_action="DIST")
+        self._last_trade_price = dist_fill
+
+        self._dist_accumulator = 0.0
+
+        if self.config.profit_folding_active:
+            self._main_lots.sort(key=lambda l: l["initial_buy_price"], reverse=True)
+            _dist_tranche_count_before = len(self._fold_tranches)
+            _dist_event_ts = time.time()
+            _dist_records, _dist_unqueued = fold_tranche_records(
+                self._main_lots,
+                dist_fill,
+                _sold_units,
+                dist_usd,
+                opposing_event_id("DIST", _dist_event_ts),
+                _dist_event_ts,
+            )
+            self._fold_tranches.extend(_dist_records)
+            self._tranches_created_lifetime += len(_dist_records)
+            if _dist_unqueued > 1e-12:
+                self._bus.emit(
+                    "bot.log",
+                    bot_id=self.bot_id,
+                    message=(
+                        f"FOLD ALIGNMENT SHORT: this DIST sold "
+                        f"{_sold_units:.8f} units and the lot "
+                        f"book covered only "
+                        f"{_sold_units - _dist_unqueued:.8f}. "
+                        f"{_dist_unqueued:.8f} units are queued "
+                        f"against no tranche and will not be "
+                        f"bought back."
+                    ),
+                )
+            self._bound_new_fold_tranches(_dist_tranche_count_before)
+            # scrum_fold_pct governs DIST proceeds as it governs a SCRUM.
+            self._apply_scrum_fold_pct(
+                _dist_tranche_count_before, dist_usd, _sold_units
+            )
+            self._top_up_remnant_fold_tranches(
+                _dist_tranche_count_before, bb_lower, bb_upper
+            )
+            self._combine_fold_tranches_within_distance()
+            # Ordered after the top-up because wire USD carries no units.
+            self._land_pending_wire_credits()
+            self._fold_queue_usd = sum(t["usd"] for t in self._fold_tranches)
+            self._fold_queue_ref_price = dist_fill
+            self._bus.emit(
+                "bot.log",
+                bot_id=self.bot_id,
+                message=f"DIST proceeds ${dist_usd:.4f} queued for re-fold "
+                f"(tranche-provenance preserved, fill=${dist_fill:.8f})",
+            )
