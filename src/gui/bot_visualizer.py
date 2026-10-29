@@ -65,6 +65,7 @@ if _HAS_QT:
     from .visualizer.quick_routing import QuickRoutingMatrix
     from .visualizer.themes import THEMES
     from .visualizer.wire_canvas import _WireCanvas
+    from .main_tabs import bot_visualizer_surface as viz_surface
 
     class BotVisualizationTab(QWidget):
         """The Bot Swarm tab, holding ``_bot_widgets`` and ``_wire_canvas``."""
@@ -172,10 +173,7 @@ if _HAS_QT:
 
             header.addWidget(QLabel("Theme:"))
             self._theme_combo = QComboBox()
-            set_description(
-                self._theme_combo,
-                "The colour theme this canvas draws its bots and wires in.",
-            )
+            set_description(self._theme_combo, viz_surface.THEME_TOOLTIP)
             for key, theme in THEMES.items():
                 self._theme_combo.addItem(theme["name"], key)
             self._theme_combo.setCurrentIndex(2)
@@ -229,7 +227,11 @@ if _HAS_QT:
 
             self._viz_tab = viz_tab  # kept for the wire canvas geometry
             self._bot_swarm_tab = viz_tab
-            self._tabs.addTab(viz_tab, "⚡ Bot Swarm")
+            set_description(
+                self._tabs,
+                viz_surface.TAB_TOOLTIPS[viz_surface.SWARM_TAB_INDEX],
+                self._tabs.addTab(viz_tab, "⚡ Bot Swarm"),
+            )
 
             # Stored wires replay as wire.created, through the drag handler.
             try:
@@ -256,7 +258,7 @@ if _HAS_QT:
             sim_hdr.addStretch()
 
             sim_add_btn = QPushButton("+ Add Sim Bot")
-            set_description(sim_add_btn, "Adds one simulated bot row to this swarm.")
+            set_description(sim_add_btn, viz_surface.SIM_ADD_TOOLTIP)
             sim_add_btn.setStyleSheet(
                 f"QPushButton{{background:{ds.VIZ_PANEL_SURFACE};color:{ds.SUCCESS};border:1px solid {ds.SUCCESS};"
                 "border-radius:3px;padding:3px 10px;font-size:9px;font-weight:bold;}"
@@ -265,9 +267,7 @@ if _HAS_QT:
             sim_hdr.addWidget(sim_add_btn)
 
             sim_run_all = QPushButton("▶ Run All")
-            set_description(
-                sim_run_all, "Starts every simulated bot row that is not running."
-            )
+            set_description(sim_run_all, viz_surface.SIM_RUN_ALL_TOOLTIP)
             sim_run_all.setStyleSheet(
                 f"QPushButton{{background:{ds.VIZ_PANEL_SURFACE};color:{ds.PRIMARY_BRIGHT};border:1px solid {ds.PRIMARY_BRIGHT};"
                 "border-radius:3px;padding:3px 10px;font-size:9px;font-weight:bold;}"
@@ -276,9 +276,7 @@ if _HAS_QT:
             sim_hdr.addWidget(sim_run_all)
 
             sim_stop_all = QPushButton("■ Stop All")
-            set_description(
-                sim_stop_all, "Stops every simulated bot row that is running."
-            )
+            set_description(sim_stop_all, viz_surface.SIM_STOP_ALL_TOOLTIP)
             sim_stop_all.setStyleSheet(
                 f"QPushButton{{background:{ds.VIZ_PANEL_SURFACE};color:{ds.ERROR};border:1px solid {ds.ERROR};"
                 "border-radius:3px;padding:3px 10px;font-size:9px;font-weight:bold;}"
@@ -333,7 +331,11 @@ if _HAS_QT:
             sim_lay.addWidget(sim_summary)
 
             self._sim_bots: list[dict] = []
-            self._tabs.addTab(sim_tab, "🖥 Simulator Swarm")
+            set_description(
+                self._tabs,
+                viz_surface.TAB_TOOLTIPS[viz_surface.SIM_TAB_INDEX],
+                self._tabs.addTab(sim_tab, "🖥 Simulator Swarm"),
+            )
 
             def _add_sim_bot():
                 self._create_sim_bot_row()
@@ -372,7 +374,7 @@ if _HAS_QT:
             paper_hdr.addStretch()
 
             paper_add_btn = QPushButton("+ Add Paper Bot")
-            set_description(paper_add_btn, "Adds one paper bot row to this swarm.")
+            set_description(paper_add_btn, viz_surface.PAPER_ADD_TOOLTIP)
             paper_add_btn.setStyleSheet(
                 f"QPushButton{{background:{ds.VIZ_PANEL_SURFACE};color:{ds.ACCENT_GOLD};border:1px solid {ds.ACCENT_GOLD};"
                 "border-radius:3px;padding:3px 10px;font-size:9px;font-weight:bold;}"
@@ -381,9 +383,7 @@ if _HAS_QT:
             paper_hdr.addWidget(paper_add_btn)
 
             paper_start_all = QPushButton("▶ Start All")
-            set_description(
-                paper_start_all, "Starts every paper bot row that is not running."
-            )
+            set_description(paper_start_all, viz_surface.PAPER_START_ALL_TOOLTIP)
             paper_start_all.setStyleSheet(
                 f"QPushButton{{background:{ds.VIZ_PANEL_SURFACE};color:{ds.SUCCESS};border:1px solid {ds.SUCCESS};"
                 "border-radius:3px;padding:3px 10px;font-size:9px;font-weight:bold;}"
@@ -392,9 +392,7 @@ if _HAS_QT:
             paper_hdr.addWidget(paper_start_all)
 
             paper_stop_all = QPushButton("■ Stop All")
-            set_description(
-                paper_stop_all, "Stops every paper bot row that is running."
-            )
+            set_description(paper_stop_all, viz_surface.PAPER_STOP_ALL_TOOLTIP)
             paper_stop_all.setStyleSheet(
                 f"QPushButton{{background:{ds.VIZ_PANEL_SURFACE};color:{ds.ERROR};border:1px solid {ds.ERROR};"
                 "border-radius:3px;padding:3px 10px;font-size:9px;font-weight:bold;}"
@@ -452,7 +450,11 @@ if _HAS_QT:
             paper_lay.addWidget(paper_summary)
 
             self._paper_bots: list[dict] = []
-            self._tabs.addTab(paper_tab, "📄 Paper Swarm")
+            set_description(
+                self._tabs,
+                viz_surface.TAB_TOOLTIPS[viz_surface.PAPER_TAB_INDEX],
+                self._tabs.addTab(paper_tab, "📄 Paper Swarm"),
+            )
 
             def _add_paper_bot():
                 self._create_paper_bot_row()

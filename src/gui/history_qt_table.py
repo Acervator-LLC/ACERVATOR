@@ -61,6 +61,7 @@ try:
         QVBoxLayout,
         QWidget,
     )
+    from .tooltips import set_description
 
     _HAS_QT = True
 except ImportError:
@@ -244,7 +245,7 @@ if _HAS_QT:
             box.addWidget(self._label)
             box.addStretch(1)
             if self._tooltip:
-                self.setToolTip(self._tooltip)
+                set_description(self, self._tooltip)
 
         def lights(self) -> list:
             """The light records this cell drew, in draw order."""
@@ -272,7 +273,7 @@ if _HAS_QT:
             self._tooltip = str(cell.get("tooltip") or "")
             self._label.setText(self._text)
             self._label.setStyleSheet(f"color: {self._color};" if self._color else "")
-            self.setToolTip(self._tooltip)
+            set_description(self, self._tooltip)
             for dot, drawn, wanted in zip(self._dots, self._lights, lights):
                 if drawn != wanted:
                     paint_dot(dot, wanted)
@@ -350,7 +351,7 @@ if _HAS_QT:
             for index, tooltip in enumerate(tooltips):
                 item = self._table.horizontalHeaderItem(index)
                 if item is not None and tooltip:
-                    item.setToolTip(tooltip)
+                    set_description(item, tooltip)
             header = self._table.horizontalHeader()
             header.setSectionResizeMode(QHeaderView.ResizeToContents)
             header.setStretchLastSection(False)
@@ -428,6 +429,6 @@ if _HAS_QT:
                 item.setForeground(QColor(str(colour)))
             tooltip = cell.get("tooltip")
             if tooltip:
-                item.setToolTip(str(tooltip))
+                set_description(item, str(tooltip))
             item.setTextAlignment(Qt.AlignVCenter | Qt.AlignLeft)
             return item

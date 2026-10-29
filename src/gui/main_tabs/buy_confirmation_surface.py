@@ -125,14 +125,36 @@ YES_TEXT = "Yes — place the buy"
 NO_TEXT = "No — refuse this buy"
 SKIP_TEXT = "Skip this cycle"
 
+YES_TOOLTIP = "Lets the bot place this buy."
+NO_TOOLTIP = (
+    "Refuses this buy. Closing the window, or no answer in 60 seconds, also "
+    "refuses it."
+)
+SKIP_TOOLTIP = "Refuses this buy and the rest of its trading cycle."
+
 YES_ENABLED = True
 NO_ENABLED = True
 SKIP_ENABLED = True
 
 BUTTONS = {
-    YES: {"text": YES_TEXT, "enabled": YES_ENABLED, "style_sheet": YES_STYLE},
-    NO: {"text": NO_TEXT, "enabled": NO_ENABLED, "style_sheet": NO_STYLE},
-    SKIP: {"text": SKIP_TEXT, "enabled": SKIP_ENABLED, "style_sheet": SKIP_STYLE},
+    YES: {
+        "text": YES_TEXT,
+        "tooltip": YES_TOOLTIP,
+        "enabled": YES_ENABLED,
+        "style_sheet": YES_STYLE,
+    },
+    NO: {
+        "text": NO_TEXT,
+        "tooltip": NO_TOOLTIP,
+        "enabled": NO_ENABLED,
+        "style_sheet": NO_STYLE,
+    },
+    SKIP: {
+        "text": SKIP_TEXT,
+        "tooltip": SKIP_TOOLTIP,
+        "enabled": SKIP_ENABLED,
+        "style_sheet": SKIP_STYLE,
+    },
 }
 
 ACTIONS = {

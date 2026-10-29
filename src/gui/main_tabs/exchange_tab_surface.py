@@ -44,13 +44,8 @@ ACCESSIBLE_NAME = ""
 PRIVACY_LABEL_ON = "Privacy Mode: ON"
 PRIVACY_LABEL_OFF = "Privacy Mode: OFF"
 PRIVACY_TOOLTIP = (
-    "Toggle ALL 18 privacy masks at once. When ON, every "
-    "registered field (5 KPIs, 5 counters, 7 Bot table "
-    "columns, IVP bot selector) renders as **** until the "
-    "operator reveals them.\n\n"
-    "Per-dot toggles remain available even when this is "
-    "OFF — Privacy Mode is a fast 'mask everything' "
-    "shortcut for screen-sharing."
+    "Masks every registered field at once, for screen sharing. Each field's own "
+    "dot still works when this is OFF."
 )
 PRIVACY_STYLE_ON = (
     "QPushButton { "
@@ -88,14 +83,8 @@ EXTRACTOR_TABLE_STRETCH = 0
 PULL_RATE_INITIAL_TEXT = "Next data pull: — "
 PULL_RATE_STYLE = f"color:{ds.MAIN_BADGE_TEXT}; font-size:11px; padding:2px 6px;"
 PULL_RATE_TOOLTIP = (
-    "MarketDataPool freshness diagnostic. Slots = number "
-    "of distinct (exchange, symbol[, TF]) cache entries. "
-    "Freshest = seconds since the most-recently-fetched "
-    "slot. Oldest = seconds since the least-recently "
-    "fetched slot. Stale = slots past their TTL "
-    "(ticker 5s, balance 10s, OHLCV = timeframe). "
-    "Cache-hit = coalesced-hits / (hits + fetches). "
-    "Coalescing covers OHLCV and balances."
+    "Data pool freshness. Slots are cache entries, Freshest and Oldest their "
+    "ages in seconds, Stale those past their lifetime."
 )
 PULL_RATE_INTERVAL_MS = 1000
 POOL_STOPPED_STYLE = (
@@ -104,10 +93,8 @@ POOL_STOPPED_STYLE = (
     "font-size:13px; font-weight:bold; padding:6px 8px;"
 )
 POOL_STOPPED_TOOLTIP = (
-    "Appears only while nothing is coming back from this venue. "
-    "The age it names is the time since the last reading of any "
-    "kind landed in the data pool. Single slots passing their "
-    "time to live is ordinary and does not raise this line."
+    "Appears while nothing comes back from this venue. The age names the time "
+    "since the last reading reached the pool."
 )
 POOL_STOPPED_FORMAT = (
     "DATA POOL STOPPED REFRESHING — nothing has come back from "
@@ -1081,6 +1068,7 @@ def build_view_model(model: ExchangeTabModel) -> dict:
         "news_ticker_started": model.news_ticker_started,
         "header_stretch": model.header_stretch,
         "add_bot_label": ADD_BOT_LABEL,
+        "add_bot_tooltip": ADD_BOT_TOOLTIP,
         "add_bot_accent": ADD_BOT_ACCENT,
         "new_bot_asks": list(model.new_bot_asks),
         "bot_wizard_module": BOT_WIZARD_MODULE,
@@ -1110,6 +1098,7 @@ def build_view_model(model: ExchangeTabModel) -> dict:
         "extractor_section_style": EXTRACTOR_SECTION_STYLE,
         "extractor_section_visible": model.extractor_section_visible,
         "command_buttons": [list(pair) for pair in COMMAND_BUTTONS],
+        "command_tooltips": dict(COMMAND_TOOLTIPS),
         "danger_command_label": DANGER_COMMAND_LABEL,
         "fleet_commands": {key: list(pair) for key, pair in FLEET_COMMANDS.items()},
         "commands_sent": [list(sent) for sent in model.commands_sent],

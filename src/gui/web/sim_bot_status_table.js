@@ -150,7 +150,6 @@
     HEADER_RESIZE_MODE,
     HEADER_SORT_MARK_BOX_PX,
     HEADER_SORT_MARK_STYLE,
-    "header_state_tip_format",
     HEADERS,
     "logo_size",
     ROW_HEIGHT,

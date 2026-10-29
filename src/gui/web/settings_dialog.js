@@ -39,6 +39,7 @@
   var STYLES = "styles";
   var TA_ROWS_FIELD = "ta_rows";
   var TABS = "tabs";
+  var TAB_TOOLTIPS = "tab_tooltips";
   var TEXT_ROWS = "text_rows";
   var TEXTS = "texts";
   var THREADS = "threads";
@@ -85,6 +86,7 @@
     STYLES,
     TA_ROWS_FIELD,
     TABS,
+    TAB_TOOLTIPS,
     TEXT_ROWS,
     TEXTS,
     THREADS,
@@ -113,6 +115,7 @@
     PLACEHOLDERS,
     SPACING,
     STYLES,
+    TAB_TOOLTIPS,
     TEXTS,
     THREADS,
     TIMERS,
@@ -1823,6 +1826,7 @@
         var sliderRange = isPlainObject(sliderSpec) ? sliderSpec[RANGE] : undefined;
         sliderProps[NAME_ATTR] = text(sliderName);
         sliderProps[KIND_ATTR] = SLIDER_KIND;
+        sliderProps[TITLE_ATTR] = text(tooltipOf(sliderName));
         if (Array.isArray(sliderRange)) {
           sliderProps.min = text(at(sliderRange, ZERO));
           sliderProps.max = text(at(sliderRange, STEP));
@@ -1982,6 +1986,10 @@
     one[INDEX_ATTR] = text(props.at);
     one[CURRENT_ATTR] = String(props.current);
     one[ARIA_LABEL] = label(props.tab);
+    var said = fromBag(TAB_TOOLTIPS, props.tab);
+    if (said !== undefined) {
+      one[TITLE_ATTR] = text(said);
+    }
     return element(BUTTON_TAG, one, text(props.tab));
   }
 

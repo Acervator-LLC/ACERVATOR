@@ -25,6 +25,8 @@ try:
     from PySide6.QtCore import QSize
     from PySide6.QtWidgets import QVBoxLayout
 
+    from .tooltips import set_description
+
     _HAS_WEBENGINE = True
 except ImportError:
     # Without WebEngine the class is never defined and its import fails by name.
@@ -223,8 +225,7 @@ if _HAS_QT and _HAS_WEBENGINE:
         def set_clickable(self, clickable: bool, tooltip_suffix: str = "") -> None:
             """Arm or disarm the card's press and carry the pointer cursor."""
             self._model.set_clickable(clickable, tooltip_suffix)
-            super().setToolTip(self._model.tooltip)
-            self._push()
+            set_description(self, self._model.tooltip)
 
         def setToolTip(self, words) -> None:  # noqa: N802
             """Hold ``words`` on the card and on the frame around it."""

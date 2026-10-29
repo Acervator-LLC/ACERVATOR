@@ -35,6 +35,10 @@ from .fold_tokens import (
     fold_row_matches_filter,
     install_health_row,
 )
+from ..main_tabs.fold_chrome_surface import (
+    DESPAWN_ROW_TOOLTIP as _DESPAWN_ROW_TOOLTIP,
+)
+from ..tooltips import set_description
 
 if TYPE_CHECKING:
     from ..bot_live_settings import BotLiveSettingsDialog
@@ -94,22 +98,7 @@ class _TrancheRowBorderDelegate(QStyledItemDelegate):
 
 
 #: Tooltip carried by both rows `install_despawn_rows` adds.
-DESPAWN_ROW_TOOLTIP = (
-    "DESPAWN removes a tranche once it reaches this age.\n\n"
-    "The control is on the Settings tab, under Advanced -\n"
-    "Tranche Despawn Timer. 0 is Off and is the default.\n\n"
-    "IT IS NOT A TRADE. No order is placed or cancelled and no\n"
-    "balance moves. The scrum sale already happened, so the\n"
-    "dollars are already in the wallet; the record is only this\n"
-    "bot's queued intent to buy those units back. Removing it\n"
-    "returns that money to ordinary spendable balance and drops\n"
-    "the original-cost provenance the record carried.\n\n"
-    "A tranche with no timestamp is NEVER removed. A stack\n"
-    "tranche holding a resting exchange order is kept until that\n"
-    "order settles.\n\n"
-    "MERGE, DESPAWN and CLEAR are the only three things that\n"
-    "collapse or remove a tranche."
-)
+DESPAWN_ROW_TOOLTIP = _DESPAWN_ROW_TOOLTIP
 
 
 def despawn_timer_text(days: int) -> str:
@@ -258,7 +247,7 @@ def install_despawn_rows(
     _elapsed = _clock.monotonic() - _t0
 
     timer_lbl = QLabel(despawn_timer_text(_days))
-    timer_lbl.setToolTip(DESPAWN_ROW_TOOLTIP)
+    set_description(timer_lbl, DESPAWN_ROW_TOOLTIP)
     _widest = windows[-1][1] if windows else armed
     if _days <= 0 and (_widest["fold_removed"] + _widest["stack_removed"]):
         timer_lbl.setStyleSheet(f"color: {ds.FOLD_RATIO_AMBER};")
@@ -293,11 +282,11 @@ def build_fold_row_controls(dialog: BotLiveSettingsDialog) -> QHBoxLayout:
     row = QHBoxLayout()
 
     order_lbl = QLabel("Order:")
-    order_lbl.setToolTip(FOLD_SORT_TOOLTIP)
+    set_description(order_lbl, FOLD_SORT_TOOLTIP)
     combo = QComboBox()
     combo.addItems(list(FOLD_SORT_ORDERS))
     combo.setCurrentText(fold_sort_order(dialog))
-    combo.setToolTip(FOLD_SORT_TOOLTIP)
+    set_description(combo, FOLD_SORT_TOOLTIP)
     # `currentIndexChanged` would refire on the rebuild's `setCurrentText`.
     combo.activated.connect(
         lambda _index, dlg=dialog, box=combo: on_fold_sort_changed(
@@ -308,7 +297,7 @@ def build_fold_row_controls(dialog: BotLiveSettingsDialog) -> QHBoxLayout:
 
     edit = QLineEdit()
     edit.setPlaceholderText(FOLD_FILTER_PLACEHOLDER)
-    edit.setToolTip(FOLD_FILTER_TOOLTIP)
+    set_description(edit, FOLD_FILTER_TOOLTIP)
     edit.setClearButtonEnabled(True)
     edit.textChanged.connect(lambda text, dlg=dialog: on_fold_filter_changed(dlg, text))
     dialog._fold_filter_edit = edit

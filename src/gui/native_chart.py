@@ -54,6 +54,7 @@ from src.gui.main_tabs.native_chart_surface import (
     TIMEFRAME_COMBO_MAX_WIDTH_PX,
     TIMEFRAME_LABEL,
     TIMEFRAME_TOOLTIP,
+    INDICATOR_TOOLTIPS,
     ALL_CANDLES_REFUSED_TEXT,
     NO_PRICE_RANGE_TEXT,
     TOGGLE_BOX_PX,
@@ -310,7 +311,7 @@ CHART_OVERLAYS: tuple[ChartOverlay, ...] = (
         pane=PRICE_PANE,
         occludes=False,
         draw="_draw_bollinger",
-        tooltip="Bollinger Bands (20, 2σ) with cloud fill",
+        tooltip=INDICATOR_TOOLTIPS["bb"],
         voter="bollinger_bands",
     ),
     ChartOverlay(
@@ -320,7 +321,7 @@ CHART_OVERLAYS: tuple[ChartOverlay, ...] = (
         pane=SUB_PANE,
         occludes=False,
         draw="_draw_vortex",
-        tooltip="Vortex Indicator (VI+ / VI-, period 14, sub-pane)",
+        tooltip=INDICATOR_TOOLTIPS["vortex"],
         voter="vortex",
     ),
     ChartOverlay(
@@ -330,7 +331,7 @@ CHART_OVERLAYS: tuple[ChartOverlay, ...] = (
         pane=SUB_PANE,
         occludes=False,
         draw="_draw_macd",
-        tooltip="MACD line and signal, 12/26/9, sub-pane",
+        tooltip=INDICATOR_TOOLTIPS["macd"],
         voter="macd",
     ),
     ChartOverlay(
@@ -340,7 +341,7 @@ CHART_OVERLAYS: tuple[ChartOverlay, ...] = (
         pane=SUB_PANE,
         occludes=False,
         draw="_draw_stochrsi",
-        tooltip="Stochastic RSI (14/14), 0..1 oscillator, sub-pane",
+        tooltip=INDICATOR_TOOLTIPS["stochrsi"],
         voter="stochastic_rsi",
     ),
     ChartOverlay(
@@ -350,7 +351,7 @@ CHART_OVERLAYS: tuple[ChartOverlay, ...] = (
         pane=PRICE_PANE,
         occludes=False,
         draw="_draw_ichimoku",
-        tooltip="Ichimoku Cloud: Tenkan, Kijun, Span A, Span B, shift +26",
+        tooltip=INDICATOR_TOOLTIPS["ichimoku"],
         voter="ichimoku",
     ),
     ChartOverlay(
@@ -360,7 +361,7 @@ CHART_OVERLAYS: tuple[ChartOverlay, ...] = (
         pane=VOLUME_PANE,
         occludes=False,
         draw="_draw_volume",
-        tooltip="Volume bars (bottom strip)",
+        tooltip=INDICATOR_TOOLTIPS["volume"],
         voter="volume",
     ),
     ChartOverlay(
@@ -370,10 +371,7 @@ CHART_OVERLAYS: tuple[ChartOverlay, ...] = (
         pane=PRICE_PANE,
         occludes=True,
         draw="_draw_slingshot",
-        tooltip=(
-            "Slingshot marks — a diamond at a squeeze release, a circle at "
-            "a snapback. It starts off."
-        ),
+        tooltip=INDICATOR_TOOLTIPS["slingshot"],
         voter="slingshot",
     ),
     ChartOverlay(
@@ -383,7 +381,7 @@ CHART_OVERLAYS: tuple[ChartOverlay, ...] = (
         pane=SUB_PANE,
         occludes=False,
         draw="_draw_adx",
-        tooltip="ADX (14) with +DI and -DI, 0..100, 20 and 25 ruled, sub-pane",
+        tooltip=INDICATOR_TOOLTIPS["adx"],
         voter="adx",
     ),
     ChartOverlay(
@@ -393,7 +391,7 @@ CHART_OVERLAYS: tuple[ChartOverlay, ...] = (
         pane=PRICE_PANE,
         occludes=False,
         draw="_draw_supertrend",
-        tooltip="Supertrend (10, 3.0): the ATR stop under price while bullish, over it while bearish",
+        tooltip=INDICATOR_TOOLTIPS["supertrend"],
         voter="supertrend",
     ),
     ChartOverlay(
@@ -403,7 +401,7 @@ CHART_OVERLAYS: tuple[ChartOverlay, ...] = (
         pane=SUB_PANE,
         occludes=False,
         draw="_draw_zscore",
-        tooltip="Z-Score (50) of the close against its mean, VWMA-smoothed over 3, ±2 ruled, sub-pane",
+        tooltip=INDICATOR_TOOLTIPS["zscore"],
         voter="zscore",
     ),
     ChartOverlay(
@@ -413,7 +411,7 @@ CHART_OVERLAYS: tuple[ChartOverlay, ...] = (
         pane=SUB_PANE,
         occludes=False,
         draw="_draw_ker",
-        tooltip="Kaufman Efficiency Ratio (10), 0..1, sub-pane",
+        tooltip=INDICATOR_TOOLTIPS["ker"],
         voter="kaufman_er",
     ),
     ChartOverlay(
@@ -423,7 +421,7 @@ CHART_OVERLAYS: tuple[ChartOverlay, ...] = (
         pane=SUB_PANE,
         occludes=False,
         draw="_draw_rsi",
-        tooltip="Wilder RSI (14), 0..100, 30 and 70 ruled, sub-pane",
+        tooltip=INDICATOR_TOOLTIPS["rsi"],
         voter="rsi",
     ),
     ChartOverlay(
@@ -433,10 +431,7 @@ CHART_OVERLAYS: tuple[ChartOverlay, ...] = (
         pane=PRICE_PANE,
         occludes=True,
         draw="_draw_zscore_point",
-        tooltip=(
-            "Z-Score algo point — the resistance and support prices the "
-            "reversals project. It starts off."
-        ),
+        tooltip=INDICATOR_TOOLTIPS["zscore_point"],
         voter="zscore",
     ),
     ChartOverlay(
@@ -446,10 +441,7 @@ CHART_OVERLAYS: tuple[ChartOverlay, ...] = (
         pane=PRICE_PANE,
         occludes=True,
         draw="_draw_bullseye",
-        tooltip=(
-            "BB Bullseye zones — shaded ±0.5% and ±0.2% envelopes on the "
-            "Bollinger bands. It starts off."
-        ),
+        tooltip=INDICATOR_TOOLTIPS["bbullseye"],
     ),
 )
 

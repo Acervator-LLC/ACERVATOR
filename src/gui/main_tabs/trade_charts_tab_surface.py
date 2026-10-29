@@ -43,6 +43,7 @@ from .native_chart_surface import CONTROL_HEIGHT_PX, TOGGLE_BOX_PX
 from .native_chart_surface import row_prices, synthetic_candle
 from .native_chart_surface import INDICATOR_DEFAULTS as PANEL_INDICATOR_DEFAULTS
 from .native_chart_surface import INDICATOR_TOGGLES as PANEL_INDICATOR_TOGGLES
+from .native_chart_surface import INDICATOR_TOOLTIPS as PANEL_INDICATOR_TOOLTIPS
 from .native_chart_surface import INDICATOR_ROW_SPACING_PX as PANEL_TOGGLE_GAP_PX
 from .native_chart_surface import LEGEND_INVISIBLE_FIELD as PANEL_LEGEND_INVISIBLE_FIELD
 from .native_chart_surface import LEGEND_INVISIBLE_TEXT as PANEL_LEGEND_INVISIBLE
@@ -51,6 +52,7 @@ from .native_chart_surface import LEGEND_SPACING_PX as PANEL_LEGEND_GAP_PX
 from .native_chart_surface import LEGEND_ON_BOOK_TEXT as PANEL_LEGEND_ON_BOOK
 from .native_chart_surface import TIMEFRAME_LABEL as PANEL_TIMEFRAME_LABEL
 from .native_chart_surface import TIMEFRAMES as PANEL_TIMEFRAME_OPTIONS
+from .native_chart_surface import TIMEFRAME_TOOLTIP as PANEL_TIMEFRAME_TOOLTIP
 
 logger = logging.getLogger("acervator.gui.trade_charts_tab_surface")
 
@@ -1925,6 +1927,7 @@ def build_view_model(
             "timeframe": PANEL_TIMEFRAME,
             "combo_timeframe": COMBO_TIMEFRAME,
             "timeframe_options": list(PANEL_TIMEFRAME_OPTIONS),
+            "timeframe_tooltip": PANEL_TIMEFRAME_TOOLTIP,
             "minimum_height_px": PANEL_MINIMUM_HEIGHT_PX,
             "maximum_height_px": PANEL_MAXIMUM_HEIGHT_PX,
         },
@@ -1934,6 +1937,7 @@ def build_view_model(
                     "key": key,
                     "label": label,
                     "color": colour,
+                    "tooltip": PANEL_INDICATOR_TOOLTIPS[key],
                     "checked": PANEL_INDICATOR_DEFAULTS[key],
                 }
                 for key, label, colour in PANEL_INDICATOR_TOGGLES

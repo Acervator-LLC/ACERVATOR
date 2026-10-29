@@ -29,6 +29,7 @@ try:
     from PySide6.QtCore import Qt, QTimer
 
     from .. import design_system as ds
+    from ..tooltips import set_description
 
     _HAS_QT = True
 except ImportError:
@@ -46,6 +47,7 @@ if _HAS_QT:
 
         def __init__(self, viz_tab: BotVisualizationTab):
             super().__init__(viz_tab)
+            self.setAccessibleName("Quick Routing Matrix")
             self._viz = viz_tab
             outer = QVBoxLayout(self)
             outer.setContentsMargins(4, 0, 4, 0)
@@ -70,9 +72,10 @@ if _HAS_QT:
             )
             self._source_list.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
             self._source_list.setStyleSheet(_list_style)
-            self._source_list.setToolTip(
+            set_description(
+                self._source_list,
                 "Source Bots — check one or more; Connect wires every "
-                "checked source → every checked destination at the Rate."
+                "checked source → every checked destination at the Rate.",
             )
             col_row.addWidget(self._source_list, stretch=1)
 
@@ -98,9 +101,10 @@ if _HAS_QT:
                 f"border:1px solid {ds.VIZ_INPUT_BORDER};padding:3px 6px;"
                 "font-family:Consolas;font-size:11px;}"
             )
-            self._rate_input.setToolTip(
+            set_description(
+                self._rate_input,
                 "Percent of each source's profit-per-trade routed to "
-                "each destination."
+                "each destination.",
             )
             rate_lay.addWidget(self._rate_input)
             rate_lay.addStretch()
@@ -111,8 +115,9 @@ if _HAS_QT:
             self._dest_list.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
             self._dest_list.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
             self._dest_list.setStyleSheet(_list_style)
-            self._dest_list.setToolTip(
-                "Destination Bots — wires terminate at every checked " "destination."
+            set_description(
+                self._dest_list,
+                "Destination Bots — wires terminate at every checked " "destination.",
             )
             col_row.addWidget(self._dest_list, stretch=1)
 
@@ -123,25 +128,28 @@ if _HAS_QT:
             btn_row.setContentsMargins(0, 4, 0, 4)
             btn_row.addStretch()
             self._connect_btn = QPushButton("Connect")
-            self._connect_btn.setToolTip(
+            set_description(
+                self._connect_btn,
                 "Wire every checked Source → every checked Destination "
-                "at the current Rate %."
+                "at the current Rate %.",
             )
             self._connect_btn.clicked.connect(self._on_connect_clicked)
             btn_row.addWidget(self._connect_btn)
 
             self._disconnect_btn = QPushButton("Disconnect")
-            self._disconnect_btn.setToolTip(
+            set_description(
+                self._disconnect_btn,
                 "Remove wires for every checked (Source, Destination) "
-                "pair in the current selection."
+                "pair in the current selection.",
             )
             self._disconnect_btn.clicked.connect(self._on_disconnect_clicked)
             btn_row.addWidget(self._disconnect_btn)
 
             self._disconnect_all_btn = QPushButton("Disconnect All")
-            self._disconnect_all_btn.setToolTip(
+            set_description(
+                self._disconnect_all_btn,
                 "Clear ALL Smart Wires across the entire swarm "
-                "(asks for confirmation)."
+                "(asks for confirmation).",
             )
             self._disconnect_all_btn.clicked.connect(self._on_disconnect_all_clicked)
             btn_row.addWidget(self._disconnect_all_btn)

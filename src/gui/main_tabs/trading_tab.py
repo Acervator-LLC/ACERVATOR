@@ -27,6 +27,7 @@ from .trading_tab_surface import (
     BOTTOM_SPLITTER_SIZES_PX,
     LOG_SPLITTER_SIZES_PX,
     MAIN_SPLITTER_SIZES_PX,
+    PLACEHOLDER_TAB_TOOLTIP,
     TOP_SPLITTER_SIZES_PX,
     placeholder_hint_text,
     placeholder_title_text,
@@ -215,7 +216,9 @@ class TradingTabMixin:
             ph_hint.setAlignment(Qt.AlignCenter)
             ph_layout.addWidget(ph_hint)
             ph_outer.addWidget(ph_card, alignment=Qt.AlignCenter)
-            tab_w.addTab(placeholder, "Get Started")
+            set_description(
+                tab_w, PLACEHOLDER_TAB_TOOLTIP, tab_w.addTab(placeholder, "Get Started")
+            )
 
             page_layout.addWidget(tab_w)
             return page, tab_w, {}, placeholder

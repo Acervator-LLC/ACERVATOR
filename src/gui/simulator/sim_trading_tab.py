@@ -189,6 +189,7 @@ from ..main_tabs.trading_tab_surface import (
     WATCHDOG_STAT_FAILURE_FORMAT,
     WatchdogState,
     exchange_display_name,
+    venue_tab_tooltip,
 )
 from ..simulator_tab import LineView, PlaybackView
 from ..theme_engine import NIGREDO, TONE_PROPERTY
@@ -207,6 +208,7 @@ from .sim_trading_tab_surface import (
     placeholder_title_text,
 )
 from ..descriptions import TRADING_TAB_DESCRIPTIONS
+from ..tooltips import set_description
 
 logger = logging.getLogger("acervator.gui")
 
@@ -637,6 +639,7 @@ class SimTradingTab(QWidget):
                 way_in.setMinimumWidth(row["minimum_width_px"])
                 way_in.setMinimumHeight(row["minimum_height_px"])
                 way_in.setAccessibleName(row["accessible_name"])
+                set_description(way_in, row["tooltip"])
                 way_in.clicked.connect(
                     lambda _checked=False, action=row["action"]: self._way_in(action)
                 )
@@ -652,6 +655,7 @@ class SimTradingTab(QWidget):
                 card_way_in.setMinimumSize(*row["minimum_size_px"])
                 card_way_in.setStyleSheet(row["style_sheet"])
                 card_way_in.setAccessibleName(row["accessible_name"])
+                set_description(card_way_in, row["tooltip"])
                 card_way_in.clicked.connect(
                     lambda _checked=False, action=row["action"]: self._way_in(action)
                 )
@@ -1424,6 +1428,7 @@ class SimTradingTab(QWidget):
             for entry in tab_surface.placeholder_mode_buttons(self._mode):
                 mode_btn = QPushButton(entry["text"])
                 mode_btn.setAccessibleName(entry["accessible_name"])
+                set_description(mode_btn, entry["tooltip"])
                 mode_btn.setFocusPolicy(Qt.NoFocus)
                 mode_btn.setStyleSheet(entry["style_sheet"])
                 mode_btn.clicked.connect(
@@ -1444,7 +1449,11 @@ class SimTradingTab(QWidget):
             ph_hint.setAlignment(Qt.AlignCenter)
             ph_layout.addWidget(ph_hint)
             ph_outer.addWidget(ph_card, alignment=Qt.AlignCenter)
-            tab_w.addTab(placeholder, "Get Started")
+            set_description(
+                tab_w,
+                tab_surface.PLACEHOLDER_TAB_TOOLTIP,
+                tab_w.addTab(placeholder, "Get Started"),
+            )
 
             page_layout.addWidget(tab_w)
             return page, tab_w, {}, placeholder
@@ -1484,6 +1493,9 @@ class SimTradingTab(QWidget):
         self._indicator_panel = SimIndicatorVotingPanel()
         self._chart = None  # No chart in trading tab
         self._flip_button = FlipButton(surface.FLIP_BUTTON_TEXT)
+        set_description(
+            self._flip_button, surface.FLIP_BUTTON_TOOLTIPS[surface.LAYER_INDICATORS]
+        )
         self._flip_button.clicked.connect(self.flip_layer)
         # The rect the last flip press read, in the layer stack's coordinates.
         self._last_flip_rect: Optional[dict] = None
@@ -1531,8 +1543,8 @@ class SimTradingTab(QWidget):
             f"border:1px solid {ds.ERROR};}}"
         )
         self._activity_pause_btn.setCheckable(True)
-        self._activity_pause_btn.setToolTip(
-            TRADING_TAB_DESCRIPTIONS["activity_pause_btn"]
+        set_description(
+            self._activity_pause_btn, TRADING_TAB_DESCRIPTIONS["activity_pause_btn"]
         )
 
         def _on_activity_pause_toggled(checked: bool):
@@ -1574,7 +1586,7 @@ class SimTradingTab(QWidget):
             f"QPushButton:hover{{background:{ds.MAIN_TOGGLE_HOVER};}}"
         )
         self._api_pause_btn.setCheckable(True)
-        self._api_pause_btn.setToolTip(TRADING_TAB_DESCRIPTIONS["api_pause_btn"])
+        set_description(self._api_pause_btn, TRADING_TAB_DESCRIPTIONS["api_pause_btn"])
         # _on_api_event reads this flag; QPlainTextEdit has no SimStatusLog subclass.
         self._api_log_paused: bool = False
         self._api_log_pause_buffer: list[str] = []
@@ -1604,7 +1616,7 @@ class SimTradingTab(QWidget):
         self._api_log_view.setPlaceholderText(
             "API calls, responses, timing, data usage..."
         )
-        self._api_log_view.setToolTip(TRADING_TAB_DESCRIPTIONS["api_log_view"])
+        set_description(self._api_log_view, TRADING_TAB_DESCRIPTIONS["api_log_view"])
         self._api_log_view.setLineWrapMode(QPlainTextEdit.NoWrap)
         self._api_log_view.setMaximumBlockCount(2000)
         api_layout.addWidget(self._api_log_view)
@@ -1642,12 +1654,17 @@ class SimTradingTab(QWidget):
         self._tablet_chooser = QComboBox()
         self._tablet_chooser.setObjectName(TABLET_CHOOSER_NAME)
         self._tablet_chooser.setAccessibleName(TABLET_CHOOSER_NAME)
+        set_description(self._tablet_chooser, surface.TABLET_CHOOSER_TOOLTIP)
         self._tablet_chooser.setFixedWidth(TABLET_CHOOSER_WIDTH_PX)
         self._tablet_chooser.currentIndexChanged.connect(self._on_tablet_chosen)
         self._chart_header.addWidget(self._tablet_chooser)
         self._retrieve_button = QPushButton(surface.RETRIEVE_TABLET_TEXT)
         self._retrieve_button.setObjectName(RETRIEVE_BUTTON_NAME)
         self._retrieve_button.setAccessibleName(RETRIEVE_BUTTON_NAME)
+        set_description(
+            self._retrieve_button,
+            surface.retrieve_tooltip(surface.RETRIEVE_TABLET_TEXT),
+        )
         self._retrieve_button.clicked.connect(self._retrieve_tablet)
         self._chart_header.addWidget(self._retrieve_button)
         column.addLayout(self._chart_header)
@@ -1708,7 +1725,11 @@ class SimTradingTab(QWidget):
             mode=self._mode,
             on_bot_selected=self._on_bot_row_selected,
         )
-        target_widget.addTab(tab, display_name)
+        set_description(
+            target_widget,
+            venue_tab_tooltip(display_name),
+            target_widget.addTab(tab, display_name),
+        )
         target_tabs[exchange_id] = tab
 
         if target_tabs is self._exchange_tabs:
@@ -1745,7 +1766,11 @@ class SimTradingTab(QWidget):
                 dropped += 1
             ph = getattr(self, ph_attr, None)
             if ph is not None and not store and bar.indexOf(ph) < 0:
-                bar.addTab(ph, PLACEHOLDER_TAB_TITLE)
+                set_description(
+                    bar,
+                    tab_surface.PLACEHOLDER_TAB_TOOLTIP,
+                    bar.addTab(ph, PLACEHOLDER_TAB_TITLE),
+                )
         return dropped
 
     def _sync_exchange_tabs(self) -> None:
@@ -1893,6 +1918,9 @@ class SimTradingTab(QWidget):
         self._playback_view.set_payload(feed["playback"])
         self._replay_figures.setText(tab_surface.replay_figures_text(feed["figures"]))
         self._retrieve_button.setText(feed["button_text"])
+        set_description(
+            self._retrieve_button, surface.retrieve_tooltip(feed["button_text"])
+        )
         self._retrieve_button.setEnabled(
             bool(self._tablet_key) and not self.retrieval_running()
         )
@@ -2337,6 +2365,7 @@ class SimTradingTab(QWidget):
             )
         self._layer_stack.setCurrentIndex(surface.LAYERS.index(self._layer))
         self._flip_button.setText(surface.FLIP_BUTTON_TEXT[self._layer])
+        set_description(self._flip_button, surface.FLIP_BUTTON_TOOLTIPS[self._layer])
         self._flip_button.show()
         _pin_emit(
             tab_surface.LAYER_FLIPPED_SIGNAL,

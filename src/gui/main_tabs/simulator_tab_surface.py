@@ -92,6 +92,21 @@ CLEAR_FLEET_TEXT = "Clear Fleet"
 START_RUN_ACTION = "start_run"
 START_RUN_TEXT = "Start Run"
 
+#: The description each way-in and run button carries, keyed by its action.
+ACTION_TOOLTIPS = {
+    IMPORT_LIVE_FLEET_ACTION: (
+        "Copies the live fleet's bots into the Simulator. The live fleet is only read."
+    ),
+    GENERATE_FROM_YTD_ACTION: (
+        "Builds simulated bots from this year's recorded trade files for the venue."
+    ),
+    CREATE_NEW_BOTS_ACTION: "Makes new simulated bots on the chosen Stone Tablet's market.",
+    RUN_PORTFOLIO_ACTION: "Runs the chosen portfolio over the chosen span.",
+    RUN_EVERY_PORTFOLIO_ACTION: "Runs every portfolio over the chosen span.",
+    CLEAR_FLEET_ACTION: "Empties the simulated fleet this mode holds.",
+    START_RUN_ACTION: "Starts this mode's run over the held fleet.",
+}
+
 CHOOSE_PORTFOLIO_ACTION = "choose_portfolio"
 CHOOSE_SPAN_ACTION = "choose_span"
 
@@ -104,6 +119,20 @@ MODE_TEXT = {
     MODE_VALIDATION: "Validation",
     MODE_BACK_TEST: "Back Test",
     MODE_PORTFOLIO_BATTERY: "Portfolio Battery",
+}
+MODE_TOOLTIPS = {
+    MODE_VALIDATION: (
+        "Reruns the gate checks behind this year's recorded trades on Stone Tablet "
+        "candles and reports how often they agree."
+    ),
+    MODE_BACK_TEST: (
+        "Walks bots over Stone Tablet candles through the live gate chain, funding "
+        "folds from their own sells."
+    ),
+    MODE_PORTFOLIO_BATTERY: (
+        "Walks each portfolio over its Stone Tablets and sets the Harvest-Fold end "
+        "beside the hold-only end."
+    ),
 }
 
 #: How each mode's run funds its folds, in ``back_test``'s two fundings.
@@ -296,6 +325,10 @@ FLIP_BUTTON_TEXT = {
     LAYER_INDICATORS: "Replay",
     LAYER_PLAYBACK: "Indicators",
 }
+FLIP_BUTTON_TOOLTIPS = {
+    LAYER_INDICATORS: "Shows the replay layer: VWAP, Stone Tablet playback and the Replay Log.",
+    LAYER_PLAYBACK: "Shows the indicator voting panel again.",
+}
 
 VWAP_TITLE = "VWAP"
 PLAYBACK_TITLE = "Stone Tablet Playback"
@@ -305,6 +338,20 @@ REPLAY_LOG_TITLE = "Replay Log"
 #: directive's own two words for a market with no tablet and for one with.
 RETRIEVE_TABLET_TEXT = "Retrieve Tablet"
 UPDATE_TABLET_TEXT = "Update Tablet"
+RETRIEVE_TABLET_TOOLTIP = "Downloads a Stone Tablet of candles for the chosen market."
+UPDATE_TABLET_TOOLTIP = (
+    "Downloads the chosen market's candles again to bring its Stone Tablet up to date."
+)
+TABLET_CHOOSER_TOOLTIP = "The held market whose Stone Tablet the replay layer plays."
+
+
+def retrieve_tooltip(button_text: Any) -> str:
+    """The retrieval button's description for the word ``button_text`` it reads."""
+    if button_text == UPDATE_TABLET_TEXT:
+        return UPDATE_TABLET_TOOLTIP
+    return RETRIEVE_TABLET_TOOLTIP
+
+
 #: The chooser's item for a held market with no tablet on disk.
 NO_TABLET_CHOICE_FORMAT = "{key} — no tablet"
 

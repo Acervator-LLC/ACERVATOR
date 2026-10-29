@@ -21,6 +21,7 @@ try:
 
     from ..widgets import ColumnSpec, ColumnarTableWidget
     from ..widgets.bot_selection import _reanchor_bot_selection, _select_row_for_bot
+    from ..tooltips import set_description
 
     _HAS_QT = True
 except ImportError:
@@ -109,15 +110,15 @@ if _HAS_QT:
                 liquid_color = self.POOL_COLORS.get(
                     pool_color_name, QColor(ds.TEXT_MED)
                 )
-                liquid_tip = (
-                    f"Extractor pool: {pool_color_name.upper()}\n"
-                    f"  • {n_positions} position(s) open\n"
-                    f"  • {n_drawdown} in drawdown\n"
-                    f"  • {base_currency} base currency\n"
-                    f"  • {chunk_free_base:.8f} {base_currency} free "
-                    f"({free_usd:.2f} USD)\n"
-                    f"  • {deployed_base:.8f} {base_currency} "
-                    f"deployed ({deployed_usd:.2f} USD)"
+                liquid_tip = ebts.liquid_tooltip(
+                    pool_color_name,
+                    n_positions,
+                    n_drawdown,
+                    base_currency,
+                    chunk_free_base,
+                    free_usd,
+                    deployed_base,
+                    deployed_usd,
                 )
 
                 items = [
@@ -154,16 +155,17 @@ if _HAS_QT:
                     if col == 2:  # Mode cell
                         color = self.STATE_COLORS.get(state, QColor(ds.TEXT_HIGH))
                         item.setForeground(color)
-                        item.setToolTip(
+                        set_description(
+                            item,
                             f"Mode: extractor (Base Currency "
                             f"Extractor Multi-Target)\nState: "
                             f"{state.upper() if state else 'UNKNOWN'}\n"
                             f"Accumulates base-currency "
-                            f"units via top-N pair scanning."
+                            f"units via top-N pair scanning.",
                         )
                     if col == 5:  # Liquid cell
                         item.setForeground(liquid_color)
-                        item.setToolTip(liquid_tip)
+                        set_description(item, liquid_tip)
                     self.setItem(row, col, item)
 
                 fire_btn = QPushButton("Fire")
@@ -173,17 +175,19 @@ if _HAS_QT:
                 fire_btn.setStyleSheet(
                     f"font-size: 10px; padding: 1px 6px; color: {ds.TEXT_PLACEHOLDER};"
                 )
-                fire_btn.setToolTip(
+                set_description(
+                    fire_btn,
                     "Manual Fire is per-position for Extractor bots. "
-                    "Use the Detail dialog's Positions Held tab."
+                    "Use the Detail dialog's Positions Held tab.",
                 )
                 self.setCellWidget(row, 6, fire_btn)
 
                 detail_btn = QPushButton("Detail")
                 detail_btn.setFixedHeight(BUTTON_HEIGHT_PX)
                 detail_btn.setStyleSheet("font-size: 10px; padding: 1px 6px;")
-                detail_btn.setToolTip(
-                    "View full bot status, configuration, and error " "details"
+                set_description(
+                    detail_btn,
+                    "View full bot status, configuration, and error " "details",
                 )
                 detail_btn.clicked.connect(lambda _checked, b=bid: self._on_detail(b))
                 self.setCellWidget(row, 7, detail_btn)

@@ -205,6 +205,7 @@
 
   var REFUSAL = "refusal";
   var STEPS = "steps";
+  var STEP_TOOLTIPS = "step_tooltips";
 
   var GROUPS_SPACING_PX = "groups_spacing_px";
   var FORM_HORIZONTAL_SPACING_PX = "form_horizontal_spacing_px";
@@ -248,6 +249,7 @@
   ];
 
   var EXCHANGE_ROW = "exchange";
+  var TARGET_TIP = "target";
   var POOL_EXCHANGE_TIP = "pool_exchange";
   var EXCHANGE_STEP = "exchange_index";
   var POOL_EXCHANGE_STEP = "pool_exchange_index";
@@ -1310,6 +1312,7 @@
     targetBody[COUNT_ATTR] = String(props.items.length);
     targetBody[VALUE_ATTR] = text(props.targetData);
     targetBody.style = { minWidth: length(props.minimumWidth) };
+    targetBody.title = label(toolTip(TARGET_TIP));
     targetBody.value = String(numberOr(props.targetIndex, ZERO));
     targetBody.onChange = function (event) {
       if (props.onTarget) {
@@ -1520,6 +1523,7 @@
         stepBody[PART_ATTR] = WALK_STEP_PART;
         stepBody[NAME_ATTR] = name;
         stepBody[STEP_ATTR] = name;
+        stepBody.title = label(objectField(bag(WALK), STEP_TOOLTIPS)[name]);
         stepBody.onClick = function () {
           if (props.onWalk) {
             props.onWalk(name);

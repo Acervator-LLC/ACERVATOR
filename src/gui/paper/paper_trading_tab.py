@@ -116,6 +116,7 @@ from ..main_tabs.trading_tab_surface import (
     WATCHDOG_STAT_FAILURE_FORMAT,
     WatchdogState,
     exchange_display_name,
+    venue_tab_tooltip,
 )
 from ..variant_surface import PAPER_BOT_DETAIL, PAPER_BOT_WIZARD, surface_class
 from ..widgets.bot_selection import BotListPanelLink
@@ -132,6 +133,7 @@ from .paper_trading_tab_surface import (
     placeholder_title_text,
 )
 from ..descriptions import TRADING_TAB_DESCRIPTIONS
+from ..tooltips import set_description
 
 logger = logging.getLogger("acervator.gui")
 
@@ -600,7 +602,7 @@ class PaperTradingTab(QWidget):
                 way_btn = QPushButton(seat["text"])
                 way_btn.setMinimumWidth(seat["minimum_width_px"])
                 way_btn.setAccessibleName(seat["accessible_name"])
-                way_btn.setToolTip(seat.get("tooltip", ""))
+                set_description(way_btn, seat.get("tooltip", ""))
                 way_btn.setEnabled(bool(seat.get("enabled", True)))
                 way_btn.clicked.connect(
                     lambda _checked=False, key=action: self._way_in(key)
@@ -642,7 +644,7 @@ class PaperTradingTab(QWidget):
                 ph_add.setMinimumSize(*seat["minimum_size_px"])
                 ph_add.setStyleSheet(seat["style_sheet"])
                 ph_add.setAccessibleName(seat["accessible_name"])
-                ph_add.setToolTip(seat.get("tooltip", ""))
+                set_description(ph_add, seat.get("tooltip", ""))
                 ph_add.setEnabled(bool(seat.get("enabled", True)))
                 ph_add.clicked.connect(
                     lambda _checked=False, key=action: self._way_in(key)
@@ -661,7 +663,11 @@ class PaperTradingTab(QWidget):
             ph_hint.setAlignment(Qt.AlignCenter)
             ph_layout.addWidget(ph_hint)
             ph_outer.addWidget(ph_card, alignment=Qt.AlignCenter)
-            tab_w.addTab(placeholder, PLACEHOLDER_TAB_TITLE)
+            set_description(
+                tab_w,
+                tab_surface.PLACEHOLDER_TAB_TOOLTIP,
+                tab_w.addTab(placeholder, PLACEHOLDER_TAB_TITLE),
+            )
 
             page_layout.addWidget(tab_w)
             return page, tab_w, {}, placeholder
@@ -736,8 +742,8 @@ class PaperTradingTab(QWidget):
             f"border:1px solid {ds.ERROR};}}"
         )
         self._activity_pause_btn.setCheckable(True)
-        self._activity_pause_btn.setToolTip(
-            TRADING_TAB_DESCRIPTIONS["activity_pause_btn"]
+        set_description(
+            self._activity_pause_btn, TRADING_TAB_DESCRIPTIONS["activity_pause_btn"]
         )
 
         def _on_activity_pause_toggled(checked: bool):
@@ -779,7 +785,7 @@ class PaperTradingTab(QWidget):
             f"QPushButton:hover{{background:{ds.MAIN_TOGGLE_HOVER};}}"
         )
         self._api_pause_btn.setCheckable(True)
-        self._api_pause_btn.setToolTip(TRADING_TAB_DESCRIPTIONS["api_pause_btn"])
+        set_description(self._api_pause_btn, TRADING_TAB_DESCRIPTIONS["api_pause_btn"])
         # _on_api_event reads this flag; QPlainTextEdit has no PaperStatusLog subclass.
         self._api_log_paused: bool = False
         self._api_log_pause_buffer: list[str] = []
@@ -809,7 +815,7 @@ class PaperTradingTab(QWidget):
         self._api_log_view.setPlaceholderText(
             "API calls, responses, timing, data usage..."
         )
-        self._api_log_view.setToolTip(TRADING_TAB_DESCRIPTIONS["api_log_view"])
+        set_description(self._api_log_view, TRADING_TAB_DESCRIPTIONS["api_log_view"])
         self._api_log_view.setLineWrapMode(QPlainTextEdit.NoWrap)
         self._api_log_view.setMaximumBlockCount(2000)
         api_layout.addWidget(self._api_log_view)
@@ -862,7 +868,11 @@ class PaperTradingTab(QWidget):
             status_log=self._status_log,
             on_bot_selected=self._on_bot_row_selected,
         )
-        target_widget.addTab(tab, display_name)
+        set_description(
+            target_widget,
+            venue_tab_tooltip(display_name),
+            target_widget.addTab(tab, display_name),
+        )
         target_tabs[exchange_id] = tab
 
         if target_tabs is self._exchange_tabs:
@@ -897,7 +907,11 @@ class PaperTradingTab(QWidget):
                 dropped += 1
             ph = getattr(self, ph_attr, None)
             if ph is not None and not store and bar.indexOf(ph) < 0:
-                bar.addTab(ph, PLACEHOLDER_TAB_TITLE)
+                set_description(
+                    bar,
+                    tab_surface.PLACEHOLDER_TAB_TOOLTIP,
+                    bar.addTab(ph, PLACEHOLDER_TAB_TITLE),
+                )
         return dropped
 
     def _sync_exchange_tabs(self) -> None:

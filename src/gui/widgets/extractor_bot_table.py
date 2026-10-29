@@ -106,15 +106,15 @@ if _HAS_QT:
                 liquid_color = self.POOL_COLORS.get(
                     pool_color_name, QColor(ds.TEXT_MED)
                 )
-                liquid_tip = (
-                    f"Extractor pool: {pool_color_name.upper()}\n"
-                    f"  • {n_positions} position(s) open\n"
-                    f"  • {n_drawdown} in drawdown\n"
-                    f"  • {base_currency} base currency\n"
-                    f"  • {chunk_free_base:.8f} {base_currency} free "
-                    f"({free_usd:.2f} USD)\n"
-                    f"  • {deployed_base:.8f} {base_currency} "
-                    f"deployed ({deployed_usd:.2f} USD)"
+                liquid_tip = ebts.liquid_tooltip(
+                    pool_color_name,
+                    n_positions,
+                    n_drawdown,
+                    base_currency,
+                    chunk_free_base,
+                    free_usd,
+                    deployed_base,
+                    deployed_usd,
                 )
 
                 items = [

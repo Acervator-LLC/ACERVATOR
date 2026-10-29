@@ -36,7 +36,14 @@ from __future__ import annotations
 import math
 from typing import Any, Optional
 
-from .fold_tranches_tab_surface import COLUMN_TOOLTIPS
+from ..descriptions import fitted
+from .fold_tranches_tab_surface import (
+    ARBITER_TOOLTIP_FORMAT,
+    CLOSE_RATIO_TOOLTIP,
+    COLUMN_TOOLTIPS,
+    SCRUM_SELLS_TOOLTIP,
+    SOURCE_TOOLTIPS,
+)
 
 METHOD = "fold_tokens.state"
 
@@ -77,28 +84,7 @@ FOLD_SOURCE_MANUAL_FG_HEX = "#00ccff"
 
 OPERATOR_INITIATED_KEY = "operator_initiated"
 
-FOLD_SOURCE_TOOLTIPS = {
-    FOLD_SOURCE_MANUAL_SCRUM: (
-        "An operator-pressed Manual Fire created this tranche. That "
-        "button runs a rebalance; its SELL leg is a manual SCRUM, and "
-        "a scrum is what queues a fold tranche.\n\n"
-        "Stored as operator_initiated = true."
-    ),
-    FOLD_SOURCE_AUTO_REBALANCE: (
-        "An AUTONOMOUS rebalance created this tranche: Wire Stack Fire "
-        "or Max Cartridge Fire. The bot fired it, not the operator.\n\n"
-        "Stored as operator_initiated = false. Which of the two fired "
-        "is NOT stored on the tranche, so this panel does not name "
-        "it; the trade log carries WIRE_STACK_SCRUM or "
-        "CARTRIDGE_SCRUM for the sale itself."
-    ),
-    FOLD_SOURCE_AUTO_SCRUM: (
-        "The ordinary scrum cycle created this tranche, or the DIST "
-        "re-fold that follows a distribution sell.\n\n"
-        "Those two paths store no operator_initiated key at all, and "
-        "that absence is what this label reads."
-    ),
-}
+FOLD_SOURCE_TOOLTIPS = dict(SOURCE_TOOLTIPS)
 
 TRANCHE_TABLE_VISIBLE_ROWS = 18
 
@@ -154,9 +140,8 @@ FOLD_CYCLE_CAP_TOOLTIP = "Growth cash one fold cycle may spend, and spent."
 
 FOLD_OPENED_TOOLTIP = "Fold tranches this bot ever opened, less merged ones."
 FOLD_CLOSED_TOOLTIP = "Fold tranches that folded back and bought the asset."
-FOLD_CLOSE_RATIO_TOOLTIP = (
-    "Share of opened tranches that folded back, discards excluded."
-)
+FOLD_CLOSE_RATIO_TOOLTIP = CLOSE_RATIO_TOOLTIP
+FOLD_SCRUM_SELLS_TOOLTIP = SCRUM_SELLS_TOOLTIP
 FOLD_DISCARDED_TOOLTIP = "Fold tranches removed without folding back, lifetime total."
 FOLD_COUNTERS_RESET_TOOLTIP = "When an operator last set these four counters to zero."
 
@@ -215,54 +200,19 @@ EXTRACTOR_USD_COLUMN = 3
 EXTRACTOR_STATE_COLUMN = 7
 EXTRACTOR_SOURCE_COLUMN = 8
 
-ARBITER_TOOLTIP_FORMAT = (
-    "ARBITER: {label} — who may close THIS Extractor Tranche.\n"
-    "\n"
-    "Parent — the base-currency Scrumming Bot force-sells this "
-    "tranche at x% of growth.\n"
-    "Sibling — the Extractor does all the work and the parent "
-    "stands back.\n"
-    "\n"
-    "RECORDS A DECISION, MOVES NO MONEY. Clicking this places no "
-    "order, cancels none, and changes no balance or Target "
-    "Balance. It writes one value on this tranche and nothing "
-    "else.\n"
-    "\n"
-    "NOT YET ACTED ON. The parent force-sell that 'Parent' names "
-    "is not built, so today a Parent tranche behaves exactly like "
-    "a Sibling one. The value is stored and survives a restart, "
-    "ready for the unit that builds it.\n"
-    "\n"
-    "Per tranche, not per bot. Every Extractor Tranche carries its "
-    "own Arbiter."
-)
 
-EXTRACTOR_TOOLTIP_HEADING = "EXTRACTOR TRANCHE — not this bot's inventory."
-EXTRACTOR_TOOLTIP_CHILD_FORMAT = "Child bot: {name} ({bot_id})"
+EXTRACTOR_TOOLTIP_HEADING = "Extractor Tranche, not this bot's inventory."
+EXTRACTOR_TOOLTIP_CHILD_FORMAT = "Held by {name} ({bot_id})."
 EXTRACTOR_TOOLTIP_PAIR_FORMAT = "Pair: {pair}"
 EXTRACTOR_TOOLTIP_STATE_FORMAT = "State: {state}"
 # Both take text already formatted, so a refused figure can print the
 # em dash where a float format would raise.
-EXTRACTOR_TOOLTIP_LEASE_FORMAT = (
-    "{base_deployed} {base_asset} of this bot's asset is leased to that Extractor."
-)
-EXTRACTOR_TOOLTIP_ALT_FORMAT = "Alt units held: {alt_units}"
+EXTRACTOR_TOOLTIP_LEASE_FORMAT = "{base_deployed} {base_asset} leased to it."
+EXTRACTOR_TOOLTIP_ALT_FORMAT = "{alt_units} alt units held."
 EXTRACTOR_TOOLTIP_FIGURE_FORMAT = "{figure:.8f}"
-EXTRACTOR_TOOLTIP_MARK_FORMAT = (
-    "Last mark: {mark_price:.8f} {base_asset} per alt unit, recorded by "
-    "the Extractor's own tick."
-)
-EXTRACTOR_TOOLTIP_NO_MARK = (
-    "No mark available — this position has not been priced since it "
-    "was loaded. The USD column shows an em dash rather than "
-    "substituting cost basis."
-)
-EXTRACTOR_TOOLTIP_FOOTER = (
-    "This row is a RECORD, not inventory. It is not in this bot's fold "
-    "queue and not in its lots, so no gate, no SCRUM sizing and no "
-    "fold-back can act on it. There is no Fire button because the "
-    "parent does not close a child's position."
-)
+EXTRACTOR_TOOLTIP_MARK_FORMAT = "Last mark {mark_price:.8f} {base_asset} per alt unit."
+EXTRACTOR_TOOLTIP_NO_MARK = "No mark yet, so USD shows a dash."
+EXTRACTOR_TOOLTIP_FOOTER = "No gate, sizing or fold-back acts on it."
 
 STEP_FINITE = "finite_number"
 STEP_ORDER = "fold_display_order"
@@ -613,32 +563,31 @@ def extractor_tranche_cells(row: dict, now_ts: float) -> list:
 
 
 def extractor_tranche_tooltip(row: dict) -> str:
-    """Explain one Extractor Tranche row, units included.
+    """Explain one Extractor Tranche row: who holds the lease, the leased and alt figures, then the mark.
 
-    Carries what the columns cannot: which child holds the lease, the
-    alt-denominated figures, and, where there is no mark, the fact that
-    no mark exists rather than a number standing in for one. A leased
-    amount or an alt holding that is not a finite number prints an em
-    dash, the same mark the cell beside it shows.
+    ``fitted`` keeps each line only while the whole stays within the word limit,
+    and a figure that is not a finite number prints ``UNITS_UNKNOWN``.
     """
     base_asset = row.get("base_asset", "") or EXTRACTOR_DEFAULT_BASE_ASSET
     deployed = finite_number(row.get("base_deployed"))
     alt_units = finite_number(row.get("alt_units"))
-    lines = [
+    mark_price = finite_number(row.get("mark_price_base_per_alt"))
+    mark_line = (
+        EXTRACTOR_TOOLTIP_MARK_FORMAT.format(
+            mark_price=mark_price, base_asset=base_asset
+        )
+        if mark_price is not None
+        else EXTRACTOR_TOOLTIP_NO_MARK
+    )
+    return fitted(
         EXTRACTOR_TOOLTIP_HEADING,
-        "",
-        EXTRACTOR_TOOLTIP_CHILD_FORMAT.format(
+        "\n"
+        + EXTRACTOR_TOOLTIP_CHILD_FORMAT.format(
             name=row.get("child_bot_name", EXTRACTOR_UNKNOWN_FIELD),
             bot_id=row.get("child_bot_id", EXTRACTOR_UNKNOWN_FIELD),
         ),
-        EXTRACTOR_TOOLTIP_PAIR_FORMAT.format(
-            pair=row.get("pair", EXTRACTOR_UNKNOWN_FIELD)
-        ),
-        EXTRACTOR_TOOLTIP_STATE_FORMAT.format(
-            state=row.get("state", EXTRACTOR_UNKNOWN_FIELD)
-        ),
-        "",
-        EXTRACTOR_TOOLTIP_LEASE_FORMAT.format(
+        "\n"
+        + EXTRACTOR_TOOLTIP_LEASE_FORMAT.format(
             base_deployed=(
                 EXTRACTOR_TOOLTIP_FIGURE_FORMAT.format(figure=deployed)
                 if deployed is not None
@@ -646,25 +595,17 @@ def extractor_tranche_tooltip(row: dict) -> str:
             ),
             base_asset=base_asset,
         ),
-        EXTRACTOR_TOOLTIP_ALT_FORMAT.format(
+        "\n"
+        + EXTRACTOR_TOOLTIP_ALT_FORMAT.format(
             alt_units=(
                 EXTRACTOR_TOOLTIP_FIGURE_FORMAT.format(figure=alt_units)
                 if alt_units is not None
                 else UNITS_UNKNOWN
             )
         ),
-    ]
-    mark_price = finite_number(row.get("mark_price_base_per_alt"))
-    if mark_price is not None:
-        lines.append(
-            EXTRACTOR_TOOLTIP_MARK_FORMAT.format(
-                mark_price=mark_price, base_asset=base_asset
-            )
-        )
-    else:
-        lines.append(EXTRACTOR_TOOLTIP_NO_MARK)
-    lines += ["", EXTRACTOR_TOOLTIP_FOOTER]
-    return "\n".join(lines)
+        "\n" + mark_line,
+        "\n" + EXTRACTOR_TOOLTIP_FOOTER,
+    )
 
 
 STEP_HANDLERS = {

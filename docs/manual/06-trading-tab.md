@@ -933,6 +933,18 @@ self._privacy_mode_btn.setToolTip(
     "Toggle ALL 18 privacy masks at once. When ON, every "
 ```
 
+**Current reading, 2026-10-29.** The Privacy Mode description is one sentence that both builds read,
+within twenty words.
+
+`src/gui/main_tabs/exchange_tab_surface.py` — `PRIVACY_TOOLTIP`
+
+```python
+PRIVACY_TOOLTIP = (
+    "Masks every registered field at once, for screen sharing. Each field's own "
+    "dot still works when this is OFF."
+)
+```
+
 **Design intention.** One venue, one tab, one swarm. Add a second exchange and
 it arrives beside the first with its own bots and its own data pool, and
 nothing about the first changes.
@@ -1595,6 +1607,17 @@ a mark whose asset resolves none no web address is known for <ticker>, so this m
 a mark whose address is refused  <ticker> opens nothing: <the rule that refused it>
 ```
 
+**Current reading, 2026-10-29.** The lines are shorter, so a mark's whole description stays within
+twenty words.
+
+`src/gui/main_tabs/bot_status_table_surface.py` — `NO_ORGANISATION_TIP_FORMAT`
+
+```python
+LOGO_TIP_FORMAT = "{asset}, the asset this bot accumulates."
+NO_LOGO_TIP_FORMAT = "{asset}. No logo is kept for it yet."
+NO_ORGANISATION_TIP_FORMAT = "No web address is known, so this mark opens nothing."
+```
+
 The third line is new. An asset that never had an address and an asset whose
 address was refused used to read the same, and now the mark says which it is.
 
@@ -1999,6 +2022,18 @@ return {
     "dot_text": header_glyph(masked),
     "dot_tooltip": header_dot_tooltip(field_id, masked),
 }
+```
+
+**Current reading, 2026-10-29.** A heading's description no longer names the privacy state. The dot
+under the label carries it, so a heading keeps its sentence and its sort line
+within twenty words on both builds.
+
+`src/gui/main_tabs/bot_status_table_surface.py` — `header_tooltip`
+
+```python
+def header_tooltip(column: int, direction: str) -> str:
+    tip = COLUMN_TOOLTIPS.get(column, EMPTY_TEXT)
+    return (tip + sort_tooltip(column, direction)).strip()
 ```
 
 **Functional.** The dot is the `PrivacyDot` the manual calls the universal
@@ -3647,6 +3682,15 @@ self._visibility.currentIndexChanged.connect(self._on_visibility_changed)
 mf.addRow("Order Visibility:", self._visibility)
 ```
 
+**Current reading, 2026-10-29.** The words are the same. The box takes them from the one wizard
+declaration, through the one description helper.
+
+`src/gui/bot_wizard.py` — `TradingParamsPage`
+
+```python
+set_description(self._visibility, BOT_WIZARD_DESCRIPTIONS["visibility"])
+```
+
 Driven on a bot rebuilt from a stored record, the two choices take different
 branches on the same tick: Internal activated all three stored Stack tranches,
 and Order Book activated none of them. The order type an engine trade carries is
@@ -4177,6 +4221,15 @@ screens, all eight answer that sentence and the stored figure stays 3 on each.
 
 ```python
 "landing": "The bot confirms a Landing Strip when this many of the newest Heikin Ashi candles have small bodies and price sits near a Bollinger Band. This count reaches the band-proximity check only. The separate shrinking-body check keeps its own fixed count.",
+```
+
+**Current reading, 2026-10-29.** The Settings row's wording table is the shared declaration itself,
+so every screen draws the shorter sentence below.
+
+`src/gui/descriptions.py` — `SETTINGS_TAB_DESCRIPTIONS`
+
+```python
+"landing": "Landing Strip: newest Heikin Ashi candles checked for Bollinger Band closeness. The shrinking-body check keeps its own fixed count.",
 ```
 
 TA Timeframe - This is the timeframe at which the bot operates and denotes the price chart it will monitor for trade decisions.
@@ -10454,6 +10507,16 @@ record carries                            the tooltip's detonation line
 0.75, after the change     Detonation armed: monitoring 1W for BULLISH auto-harvest at confidence 0.75 or above.
 ```
 
+**Current reading, 2026-10-29.** The detonation line is shorter, and a Fire description keeps it
+only while the whole stays within twenty words. A Fire button that already names
+its blocking gates and its ceiling leaves this line out.
+
+`src/gui/main_tabs/bot_status_table_surface.py` — `DETONATION_FORMAT`
+
+```python
+DETONATION_FORMAT = "\nDetonation armed: {timeframe}, confidence {confidence:.2f} or above."
+```
+
 Before the change the two records read the same, so no screen could tell a set figure
 from the opening one. After it they differ. The timeframe is the same in all four
 readings, which is the reading that shows only the bar was added.
@@ -10777,6 +10840,15 @@ VENUE_UNITS_NOTE_FORMAT = (
 ATTRIBUTED_UNITS_NOTE_FORMAT = (
     "NO EXCHANGE COUNT; measured on holdings {holdings:.6f}, lot book {lots}."
 )
+```
+
+**Current reading, 2026-10-29.** The second sentence drops two words, so the Ammo description stays
+within twenty at its longest. The first is unchanged.
+
+`src/gui/main_tabs/table_cells_surface.py` — `ATTRIBUTED_UNITS_NOTE_FORMAT`
+
+```python
+ATTRIBUTED_UNITS_NOTE_FORMAT = "NO EXCHANGE COUNT; holdings {holdings:.6f}, lot book {lots}."
 ```
 
 Read off the built cell of a real bot, its status record passed through both

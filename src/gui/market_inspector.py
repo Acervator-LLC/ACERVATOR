@@ -29,6 +29,8 @@ from . import sign_in_view
 from .audio_suite import Chime
 from .main_tabs.market_inspector_surface import (
     READY_TO_SEND_ZONE,
+    REFRESH_TOOLTIP,
+    SHOW_ACTIVE_TOOLTIP,
     TOPOLOGIES_ZONE,
 )
 from .main_tabs.market_inspector_surface import (
@@ -1082,19 +1084,13 @@ if _HAS_QT:
             top_row = QHBoxLayout()
             top_row.setSpacing(8)
             self._refresh_btn = QPushButton("Refresh")
-            set_description(
-                self._refresh_btn,
-                "Fetches higher-timeframe candles for top-volume USD markets on connected venues. Active bot targets are included. Takes 10 to 30 seconds.",
-            )
+            set_description(self._refresh_btn, REFRESH_TOOLTIP)
             self._refresh_btn.clicked.connect(lambda: self._start_fetch(force=True))
             top_row.addWidget(self._refresh_btn)
 
             self._show_active_chk = QCheckBox("Include active markets")
             self._show_active_chk.setChecked(False)
-            set_description(
-                self._show_active_chk,
-                "By default the table leaves out markets you already trade. Check this to include your active bot targets.",
-            )
+            set_description(self._show_active_chk, SHOW_ACTIVE_TOOLTIP)
             self._show_active_chk.toggled.connect(self._on_toggle_show_active)
             top_row.addWidget(self._show_active_chk)
 

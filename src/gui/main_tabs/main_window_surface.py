@@ -146,6 +146,33 @@ UNBUILT_TABS = (ACCUMULATION_TAB,)
 # `_reorder_main_tabs` and `reordered_tabs` move the bar into.
 BAR_TAB_ORDER = tuple(name for name in CANONICAL_TAB_ORDER if name not in UNBUILT_TABS)
 
+#: The name a screen reader announces for the main window.
+WINDOW_ACCESSIBLE_NAME = "Acervator Main Window"
+
+#: The description each main tab shows under the pointer, in both builds.
+TAB_TOOLTIPS = {
+    SIM_TAB: (
+        "Replays your fleet against stored market history. Nothing here reaches "
+        "an exchange."
+    ),
+    PAPER_TAB: (
+        "Runs bots on live prices with a pretend balance. No order reaches an "
+        "exchange."
+    ),
+    LIVE_TAB: "Your connected venues and their bots. Orders placed from here are real.",
+    CHARTS_TAB: "One candlestick chart per traded symbol, with indicator overlays.",
+    INSPECTOR_TAB: (
+        "Scans higher timeframes for candidate markets, publishes ATA-SMP posts "
+        "and proposes swarm topologies."
+    ),
+    SWARM_TAB: "Your bots as nodes, with the wires that route profit between them.",
+    HISTORY_TAB: (
+        "Trades pulled from your venues, paired with the bots' own logic and graded."
+    ),
+    STATUS_TAB: "The health of each subsystem, read from the emitters it runs.",
+    CONSOLE_TAB: "Every log line and signal check the program writes, as it writes them.",
+}
+
 # The bridge method that serves each tab. A frontend with no tab book of its
 # own joins its panels to this window's tabs on the method each one calls.
 TAB_METHODS = {
@@ -206,15 +233,37 @@ PILL_STYLE_FORMAT = (
 API_PILL_IDLE_TEXT = "API: —"
 API_PILL_IDLE_COLOUR = ds.CARD_METRIC_LABEL
 API_PILL_TOOLTIP = (
-    "Trailing 60 s calls-per-minute on the busiest connected exchange, the "
-    "share of that window its one connector worker was busy, and the calls "
-    "its queue refused. The percentage is the worse of the two loads, because "
-    "a refused call reaches no log and reads as idleness in the count alone."
+    "Load on the busiest exchange over the last minute: calls, worker busy share "
+    "and refused calls."
 )
-API_PILL_TOOLTIP_SAFETY_FORMAT = (
-    " Red above the {safety_pct:.0f} % phantom-creation safety threshold the "
-    "load monitor is holding."
+API_PILL_TOOLTIP_SAFETY_FORMAT = " Red above {safety_pct:.0f}%."
+
+# The Error Log dialog the ERRORS card opens
+
+ERROR_LOG_EVENTS_TOOLTIP = (
+    "Bot errors from this session, newest first. The last 200 are kept."
 )
+ERROR_LOG_SNAPSHOT_TOOLTIP = (
+    "Each bot's error counts and its last error, as the bot holds them now."
+)
+ERROR_LOG_EVENT_COLUMN_TOOLTIPS = (
+    "When the error was reported.",
+    "The bot that reported it, by the first eight characters of its id.",
+    "Errors in a row for that bot when this one arrived.",
+    "The error text the bot reported.",
+)
+ERROR_LOG_SNAPSHOT_COLUMN_TOOLTIPS = (
+    "The bot, by the first eight characters of its id.",
+    "The asset this bot accumulates.",
+    "Errors this bot has counted since its counters were last reset.",
+    "Errors in a row right now. Enough in a row sends the bot to cooldown.",
+    "The text of this bot's most recent error.",
+)
+ERROR_LOG_RESET_TOOLTIP = (
+    "Clears this list and every bot's error counts and last error, then saves. "
+    "Cannot be undone."
+)
+ERROR_LOG_CLOSE_TOOLTIP = "Closes the Error Log. Nothing is cleared."
 API_PILL_TEXT_FORMAT = (
     "API {exchange}: {calls_per_minute:.0f} CPM, worker {worker_busy_pct:.0f} %"
 )

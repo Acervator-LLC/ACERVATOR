@@ -105,9 +105,8 @@ DIAGNOSTICS_ALIGNMENT_VALUE = 132
 
 RAW_PROBE_LABEL = "Raw HTTP Probe"
 RAW_PROBE_TIP = (
-    "Bypass CCXT and make a direct HTTP request to the exchange.\n"
-    "Shows exact HTTP status, headers, and response body.\n"
-    "Use this to diagnose connection failures."
+    "Sends a direct HTTP request to the venue, bypassing CCXT, and shows the "
+    "exact status, headers and body."
 )
 STATUS_PAGE_LABEL = "Exchange Status Page"
 STATUS_PAGE_TIP = "Check if the exchange reports any known outages"
