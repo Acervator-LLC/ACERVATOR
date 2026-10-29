@@ -5,6 +5,8 @@
 ``build_scrumming_scrum_chain`` and ``build_scrumming_fold_chain`` build.
 It answers a ``GateScan`` of ``GateReading`` rows, each naming one gate's
 state, and ``GateScan.would_fire`` reads those rows as one verdict.
+``timeframe_gates`` runs both chains over one timeframe at a bot's own settings,
+which is how ``PhantomBot._tick`` reads its higher timeframe.
 """
 
 from __future__ import annotations
@@ -20,6 +22,8 @@ from .gate_chain import (
     build_scrumming_scrum_chain,
     effective_gate_flags,
 )
+from .gate_vocabulary import FOLD_BANK, SCRUM_BANK, LightReading, light_reading
+from .indicators.bb_proximity import CONSOLIDATION_THRESHOLD_PCT, detect_bb_proximity
 from .indicators.bollinger import BollingerBands
 from .indicators.landing_strip import detect_landing_strip_v2
 from .indicators.types import SignalDirection
@@ -190,6 +194,7 @@ class GateScan:
     symbol: str = ""
     timeframe: str = ""
     readings: list = field(default_factory=list)
+    landing_strip_side: str = ""
 
     def named(self, state: Any) -> list:
         """The ``GateReading`` names in one state, in chain order."""
@@ -618,6 +623,18 @@ def composite_net(
     return numerator / denominator
 
 
+#: The Indicator Voting Panel row key ``composite_rows`` writes ``composite_net`` to.
+COMPOSITE_KEY = "composite_net"
+
+
+def composite_rows(rows: dict) -> dict:
+    """Write each row's ``composite_net`` over every row of ``rows``, then
+    answer ``rows``."""
+    for timeframe, row in rows.items():
+        row[COMPOSITE_KEY] = composite_net(rows, timeframe, row["net_score"])
+    return rows
+
+
 def signal_detail(summary: Any, indicator: Any, key: Any) -> float:
     """One voter's published reading off ``summary``, or ``NO_WEIGHT``."""
     from .scrumming_bot import _extract_signal_detail
@@ -838,4 +855,69 @@ def scan_gates(
     )
     figures, move = breaker_reading(held, settings_held)
     readings.append(hard_breaker_row(figures, move))
-    return GateScan(symbol=str(symbol), timeframe=str(timeframe), readings=readings)
+    return GateScan(
+        symbol=str(symbol),
+        timeframe=str(timeframe),
+        readings=readings,
+        landing_strip_side=str(getattr(band, "landing_strip_side", "") or ""),
+    )
+
+
+def band_reading(candles: Any, settings: Any) -> Any:
+    """``detect_bb_proximity`` over ``candles`` at the two ``settings`` figures
+    ``ScrummingBot.tick`` passes.
+
+    None under ``MIN_CANDLES_FOR_TA``.
+    """
+    held = list(candles or [])
+    if len(held) < MIN_CANDLES_FOR_TA:
+        return None
+    return detect_bb_proximity(
+        held,
+        tolerance_pct=settings.bb_tolerance_pct,
+        consolidation_threshold=CONSOLIDATION_THRESHOLD_PCT,
+        min_pattern_candles=settings.bb_landing_strip_candles,
+    )
+
+
+def timeframe_gates(
+    symbol: Any,
+    timeframe: Any,
+    candles: Any,
+    summary: Any,
+    settings: Any = None,
+) -> GateScan:
+    """``scan_gates`` over one timeframe's ``candles`` and ``summary`` at ``settings``.
+
+    ``band_reading`` supplies the band and no higher timeframe is weighed.
+    """
+    held = settings if settings is not None else scan_settings(symbol)
+    return scan_gates(
+        symbol, timeframe, candles, summary, band_reading(candles, held), None, held
+    )
+
+
+def scan_reading(scan: GateScan) -> LightReading:
+    """``light_reading`` over one ``GateScan``, each side armed while
+    ``side_fires`` answers True.
+
+    A gate whose ``GateReading.ran`` is False reads not evaluated.
+    """
+    banks = ((SIDE_SCRUM, SCRUM_BANK), (SIDE_FOLD, FOLD_BANK))
+    rows = {bank: scan.side_readings(side) for side, bank in banks}
+    return light_reading(
+        armed={bank: scan.side_fires(side) for side, bank in banks},
+        blockers={
+            bank: [one.detail for one in held if one.state == STATE_BLOCKED]
+            for bank, held in rows.items()
+        },
+        replaced={
+            bank: [one.detail for one in held if one.state == STATE_OVERRIDDEN]
+            for bank, held in rows.items()
+        },
+        landing_strip_side=scan.landing_strip_side,
+        not_run={
+            bank: [one.name for one in held if not one.ran]
+            for bank, held in rows.items()
+        },
+    )

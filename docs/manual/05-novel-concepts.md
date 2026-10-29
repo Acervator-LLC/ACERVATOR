@@ -736,6 +736,24 @@ Configured timeframes:        6h, 1d     6h, 1d     6h, 1d
 Set aside, one runs:          6h         6h         6h
 ```
 
+**The phantom's own gate reading.** On each pass of its loop, the phantom now runs
+the bot's two gate chains over the candles it read, at the bot's own settings, and
+keeps the gate states. This is the gate chain read on the higher timeframe, beside
+the bot's own read. It decides no trade. The Market Inspector draws both readings
+in [the Phantom Bot HTF Signals zone](08-tabs/market-inspector.md).
+
+`src/trading/ata_gate_scan.py` — `timeframe_gates`
+
+```python
+held = settings if settings is not None else scan_settings(symbol)
+return scan_gates(
+    symbol, timeframe, candles, summary, band_reading(candles, held), None, held
+)
+```
+
+The six gates that read the position do not run at the phantom read. No timeframe
+above the phantom's is weighed there.
+
 ## 3 - The Landing Strip
 
 Perhaps the earliest assumption that hit me the most and really presented the catalyzing challenge to creating all of my alternate trading methods, is that you cannot predict what the market will do and after only a short while of actively trading I asked the questions: “But what if I don’t have to?” “What if I decide that I do not have to speculate at all?” I do not remember exactly when I first used the term but I think it was when I was trading A34 and A27 some years ago while participating in a Telegram group with some psytrance friends and associations called the Better Bitcoin Bureau. The name changed a few times but this is the one I recall.

@@ -463,6 +463,8 @@ if _HAS_QT and _HAS_WEBENGINE:
             screen.connectors_getter = self._connectors_getter
             screen.scheduler = self._scheduler
             screen.ata_run_source = self._ata_run_source
+            screen.phantom_lookup = self._phantom_lookup
+            screen.fleet_ids = list(self._fleet_ids)
             screen.scan_counts = dict(self._scan_counts)
             return surface.build_view_model(screen)
 

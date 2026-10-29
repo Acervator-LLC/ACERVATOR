@@ -32,10 +32,6 @@ from .ata_gate_scan import (
     BAND_POSITION_KEY,
     BAND_UPPER_KEY,
 )
-from .indicators.bb_proximity import (
-    CONSOLIDATION_THRESHOLD_PCT,
-    detect_bb_proximity,
-)
 from .indicators.bollinger import BollingerBands
 from .indicators.types import (
     PERCENT_PER_RATIO_UNIT,
@@ -1848,28 +1844,16 @@ def panel_rows_for(scans: Any, symbol: Any) -> dict:
         for one in scan.votes:
             if one.symbol == str(symbol):
                 found[one.timeframe] = one.panel_row()
-    for timeframe, row in found.items():
-        row["composite_net"] = ata_gate_scan.composite_net(
-            found, timeframe, row["net_score"]
-        )
-    return found
+    return ata_gate_scan.composite_rows(found)
 
 
 def proximity_of(candles: Any, settings: Any) -> Any:
     """The ``detect_bb_proximity`` reading, which carries the landing strip.
 
-    ``bb_tolerance_pct`` and ``bb_landing_strip_candles`` come off
-    ``settings``, the same two ``ScrummingBot.tick`` passes.
+    ``ata_gate_scan.band_reading`` takes it at ``settings``, the reading a
+    ``PhantomBot`` takes on its own timeframe.
     """
-    held = list(candles or [])
-    if len(held) < ata_gate_scan.MIN_CANDLES_FOR_TA:
-        return None
-    return detect_bb_proximity(
-        held,
-        tolerance_pct=settings.bb_tolerance_pct,
-        consolidation_threshold=CONSOLIDATION_THRESHOLD_PCT,
-        min_pattern_candles=settings.bb_landing_strip_candles,
-    )
+    return ata_gate_scan.band_reading(candles, settings)
 
 
 def chart_candles(candles: Any) -> list:
