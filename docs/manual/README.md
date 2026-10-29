@@ -251,6 +251,37 @@ when the part numbers repeat or skip, or when the count word disagrees with the
 number of parts. A figure a part file references and `artifacts/manual-figures/`
 does not hold stops the build by name.
 
+### Where the builder reads the venue export
+
+Three sentences on this page are overtaken. Each is quoted whole, with what the
+code does today beneath it.
+
+> Three flags move the input directory, the figures directory and the output
+> file.
+
+Four flags move them. `--evidence-dir` moves the venue input the builder draws
+the evidence figures from, and it defaults to `artifacts/evidence-input/` under
+the repository root.
+
+```python
+parser.add_argument("--evidence-dir", type=Path, default=EVIDENCE_DIR)
+```
+
+> Part 9 adds a second set:
+> [10-live-trade-history.md](10-live-trade-history.md) embeds 39 VWAP charts built
+> from the operator's venue export.
+
+Part 9 embeds 40 VWAP charts. `_write_asset_vwap` in
+`tools/build_product_manual.py` draws them from that export, one for each
+labelled base and one combined view.
+
+> Every chart has its asset name painted out of the pixels, every page carries a
+> label such as `A01` in place of a symbol, and the PDF's own text holds no
+> symbol a reader could copy out.
+
+No VWAP chart has anything painted out. The builder writes the label where the
+asset name would sit, through `_draw_vwap` and `_draw_combined`.
+
 ## Other document producers in this repository
 
 The handoff documents, the archived development chronicle and the
