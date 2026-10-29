@@ -105,10 +105,12 @@ from .main_tabs.market_inspector_surface import (
 )
 from .main_tabs.market_inspector_surface import (
     LINK_COLOUR,
+    NO_CONNECTORS_TEXT,
     PAGE_ENDPOINT_LINKS,
     PAGE_HELD_FIELDS,
     PAGE_PREREQUISITE_LINKS,
     PAGE_REGISTRATION_LINKS,
+    SEALED_NO_CONNECTORS_TEXT,
 )
 from .main_tabs.market_inspector_surface import page_links as _page_links
 from .main_tabs.market_inspector_surface import settings_page as _settings_page_view
@@ -991,6 +993,7 @@ if _HAS_QT:
             # Wired by MainWindow's MarketInspectorTabMixin via set_exchange_source().
             self._connectors_getter = None
             self._scheduler = None
+            self._sealed_getter = None
             self._ata_run_source = None
             self._ata_asset_source = None
             self._ata_candle_source = None
@@ -3007,18 +3010,27 @@ if _HAS_QT:
                 logger.debug("topology proposal read failed: %s", exc)
                 return None
 
-        def set_exchange_source(self, connectors_getter, scheduler) -> None:
+        def set_exchange_source(
+            self, connectors_getter, scheduler, sealed=None
+        ) -> None:
             """Wire the exchange-based data path.
 
             ``connectors_getter`` is a zero-arg callable returning the
             main window's ``{exchange_id: connector}`` dict at call
             time (so the tab always sees the current set).
             ``scheduler`` accepts a coroutine and schedules it on the
-            app's asyncio loop.
+            app's asyncio loop. ``sealed`` is a zero-arg callable that
+            answers True while the saved fleet waits on the unlock.
             """
             self._connectors_getter = connectors_getter
             self._scheduler = scheduler
+            self._sealed_getter = sealed
             self._render_left_modules()
+
+        def _fleet_sealed(self) -> bool:
+            """Whether ``_sealed_getter`` answers that the saved fleet waits on the unlock."""
+            getter = getattr(self, "_sealed_getter", None)
+            return getter is not None and bool(getter())
 
         def _start_fetch(self, force: bool = False) -> None:
             if self._pending_refresh:
@@ -3032,8 +3044,9 @@ if _HAS_QT:
             connectors = self._connectors_getter() or {}
             if not connectors:
                 self._set_status(
-                    "No exchange connectors — connect an exchange "
-                    "on the Trading tab first."
+                    SEALED_NO_CONNECTORS_TEXT
+                    if self._fleet_sealed()
+                    else NO_CONNECTORS_TEXT
                 )
                 return
             self._pending_refresh = True

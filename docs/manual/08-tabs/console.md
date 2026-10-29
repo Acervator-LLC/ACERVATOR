@@ -1065,4 +1065,82 @@ disagree.
 The rows that set the password are on the Settings page. See
 [the Settings page](settings.md).
 
+
+## 2026-10-28 - #1374 - a locked launch reads the prices a screen draws for a market
+
+A locked launch now reads every price a screen draws for a market, not for a
+bot. The venue keys are sealed with the fleet, so each of these reads goes
+through a route that carries no key.
+
+### Where the sentence about prices now reads differently
+
+The reading above stands as written. This is the reading that replaced it.
+
+| written above | what it reads now |
+| --- | --- |
+| "A locked launch reads no price." | A locked launch reads three prices: the rate strip, the Charts ATA-SMP list and the Market Inspector scans. The prices that come through a bot or a venue connection wait for the unlock |
+
+### The prices a locked launch reads
+
+The dashboard tick runs every two seconds. While the window is latched, it feeds
+the two price screens it owns, and no other launch takes that branch.
+
+```python
+if self.fleet_locked():
+    self._feed_locked_price_screens()
+```
+
+`src/gui/main_window.py, in _feed_locked_price_screens` rebuilds the Charts
+ATA-SMP list, fetches the market on screen with no connector, and asks
+`in _pump_currency_rates` for the rates.
+
+| the screen | the read | the route, no key |
+| --- | --- | --- |
+| Live tab, the rate strip, on both builds | BTC/USD and ETH/USD | `src/exchange/currency_rate_monitor.py, in refresh_from_feed`, through `src/paper/live_feed_source.py, in LiveFeedSource.ticker` |
+| Charts, the ATA-SMP list | the candles of the market on screen | `src/exchange/chart_data.py, in ChartDataFetcher.fetch`, which reads CoinGecko with no connector |
+| Market Inspector, Scan Now and Scan All | each scanned market's candles | `src/gui/main_tabs/market_inspector_surface.py, in sector_candle_read`, the public Coinbase route |
+
+The Market Inspector scans read on a locked launch before this change. The rate
+strip and the Charts ATA-SMP list did not.
+
+### The prices that wait for the unlock
+
+| the read | why it waits |
+| --- | --- |
+| the venue page bot rows, the bulk ticker refresher, the Charts live list, the header strip, the voting panel's votes | each one reads a bot, and no bot is loaded |
+| the market pairs scout | it reads each venue's ticker list through a venue connection, and only a bot's start opens one |
+| Market Inspector, Refresh | its markets are the connected venue's own list, read through a venue connection |
+
+On a locked launch the Refresh line names the seal instead of asking for an
+exchange. `src/gui/main_tabs/market_inspector_surface.py,
+SEALED_NO_CONNECTORS_TEXT` holds it:
+
+```
+The saved fleet is sealed, so no bot has opened a venue connection. Give the password: Settings, User tab, Unlock the fleet now.
+```
+
+The Paper and Sim tabs read their own public routes for their own bots, and the
+lock seals neither of those fleets.
+
+### What the price readings were measured doing
+
+Driven through the real dashboard tick, with every venue answered by a stand-in
+shaped like the public replies the code parses:
+
+```
+latched, no bot       rate strip   both prices, on the Qt panel and the React line
+                      Charts       96 candles from CoinGecko
+                      Scan Now     300 candles from the public route
+                      Refresh      the sealed line
+not latched, no bot   rate strip   pending, Charts 0 candles, Refresh asks for an exchange
+before this change    latched      rate strip pending, Charts 0 candles
+```
+
+The unlatched run is the control: the same reading reports the reads that did
+not run. A launch with no password reads the same through the files before this
+section and the files after it: with a fleet and a connector the tick schedules
+the same rate read, and with neither it schedules nothing.
+
+The Product Manual PDF rebuild is owed for this page.
+
 Back to [the subsystem index](README.md).

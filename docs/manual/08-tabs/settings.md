@@ -9501,4 +9501,115 @@ window build, before   journal and recovery folders made
 window build, now      no folder made
 ```
 
+
+## 2026-10-28 - #1374 - the React page draws the Fleet Lock group from the declaration the Qt page reads
+
+The React Settings page now draws the same Fleet Lock group as the Qt page: the
+state line, Password, Confirm Password, Unlock the fleet now and Clear the lock.
+A password can now be set, changed, cleared and given back on either build.
+
+### The drawn build now holds the four controls
+
+The reading in the Fleet Lock section above stands as written. This is the
+reading that replaced it.
+
+| written above | what it reads now |
+| --- | --- |
+| "The four Fleet Lock controls are on the Qt page. The drawn build replaces `in _setup_ui` with one web view and holds no row of its own, so `src/gui/settings_dialog.py, in _fleet_lock_drawn` answers False there and a Save on that page touches no lock and puts no line on the Console." | Both pages draw the four controls. `src/gui/react_settings_dialog.py, in SettingsDialogReact._build_holders` gives the drawn build one holder for each control, so `in _fleet_lock_drawn` answers True on both builds and a Save on either page reaches `in _settle_fleet_lock` |
+
+### One declaration, two builds
+
+`src/gui/main_tabs/settings_dialog_surface.py, FLEET_LOCK_CONTROLS` names each
+control and every field it is drawn with. The Qt build reads it in
+`src/gui/settings_dialog.py, in _create_fleet_lock_group`, and the React page
+draws the rows, the presses and the group from the same entries.
+
+```python
+FLEET_LOCK_CONTROLS: tuple[dict, ...] = (
+    {
+        "name": FLEET_LOCK_PHRASE_NAME,
+        "kind": LINE,
+        "label": FLEET_LOCK_PHRASE_LABEL,
+        "echo": HIDDEN_ECHO,
+        "placeholder": FLEET_LOCK_PHRASE_PLACEHOLDER_ABSENT,
+        "description": FLEET_LOCK_PHRASE_DESCRIPTION,
+    },
+    ...
+    {
+        "name": FLEET_LOCK_CLEAR_NAME,
+        "kind": PRESS,
+        "text": FLEET_LOCK_CLEAR_BUTTON_TEXT,
+        "checkable": True,
+        "danger": True,
+        "description": FLEET_LOCK_CLEAR_DESCRIPTION,
+    },
+)
+```
+
+Each description reaches its control through `src/gui/tooltips.py, in
+set_description` on both builds, in `src/gui/settings_dialog.py, in
+_describe_fleet_lock`.
+
+Read off both built pages with no password set, every field matched: the label,
+the hidden row, the placeholder, the description, whether the control takes a
+press, whether Clear the lock stays pressed in and draws in the danger colour,
+and the state line.
+
+```
+Password             hidden on both    the same label, placeholder and description
+Confirm Password     hidden on both    the same label, placeholder and description
+Unlock the fleet now dead on both      no key file on disk
+Clear the lock       dead on both      stays pressed in, danger, on both
+```
+
+### A field cut from the declaration, reported by both builds
+
+`src/gui/main_tabs/settings_dialog_surface.py, in fleet_lock_faults` names every
+field a control lacks. The Qt dialog and the React host each log one error line
+per fault, and `src/gui/web/settings_dialog.js, in checkFleetLock` reports the
+same fault from the page's own audit.
+
+Measured with the `echo` field cut from the Password entry of a copy of the
+declaration:
+
+| | Qt build | React build |
+| --- | --- | --- |
+| the fault named | `lock_phrase echo missing` | `lock_phrase echo missing`, and the page's own audit names it too |
+| the Password row | drawn as plain text | drawn as plain text |
+| with the field in place | 0 faults | 0 faults |
+
+### Set, refused, opened, changed and cleared on the React page
+
+Driven on the React page in a redirected home, against a saved fleet of two
+bots and one stored venue key:
+
+| step | what happened |
+| --- | --- |
+| both rows typed on the page, Save pressed | the box `This password becomes the only way into your lot book` asked once; answered Yes, the key file was written, the latch went on and the stored venue key moved under the master key |
+| a locked launch, the wrong password | `refused`, the Console's refusal line, no file changed, no bot loaded |
+| the right password | `opened`, both bots loaded, the fleet start ran once |
+| a new password typed twice, Save | the box `The new password becomes the only way in`; the key file was rewritten, the old password no longer opened the key and the new one opened the same key |
+| Clear the lock pressed in, the password typed, Save | the line above the rows showed the demolition and Confirm Password went dead; the box asked, the key file was removed, the latch went off and the venue key opened under the Username again |
+
+The control: the same steps on the page before this change found no Password
+row, wrote no key file and left the latch off.
+
+### The way back after Not now, on the React page
+
+After Not now the fleet stays sealed with no bot loaded. On both builds the way
+back is Settings, User tab, Unlock the fleet now. Measured on the React page:
+the button was live while the key file was on disk and no key was held, its
+press raised the unlock screen, the right password loaded both bots, and the
+button then went dead.
+
+### The arm with no password, on both builds
+
+A Save with both rows empty and no password set reads the same through the files
+before this section and the files after it, on the Qt page and on the React
+page: the same stored settings, no box, no key file, one Console line. The
+control: one Username moved before Save, and the comparison named the box and
+the Console line that moved.
+
+The Product Manual PDF rebuild is owed for this page.
+
 Back to [the subsystem index](README.md).
