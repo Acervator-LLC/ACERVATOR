@@ -2411,6 +2411,17 @@ elif taken_side == SELL_SIDE:
     played.append(SELL_SOUND)
 ```
 
+**The current reading, 2026-10-29.** Every place in the bot that books a fill
+now sends it in one flat shape, so `fill_fields` reads one level only. It reads
+the fill through `read_settled_fill`, which refuses a fill that is not in that
+shape, and all eighteen kinds of fill reach the sounds.
+
+`src/gui/main_tabs/main_window_surface.py` — the one shape the sounds read
+
+```python
+    return read_settled_fill(data).payload()
+```
+
 The six Test buttons carry a part name of their own, and the page's click
 listener reports the plain button part alone, so a press on the React page
 reports nothing to the dialog. Those six are buttons, not settings, and the
@@ -9884,5 +9895,11 @@ They stand as written, and these are the readings that replace them.
 
 The Product Manual PDF is not rebuilt with this section, and its rebuild is
 owed for this page.
+
+The sentence above stands as written. This is the reading that replaced it.
+
+| written above | what it reads now |
+| --- | --- |
+| "The Product Manual PDF is not rebuilt with this section, and its rebuild is owed for this page." | `docs/Acervator-Product-Manual.pdf` is rebuilt with this section and carries this page |
 
 Back to [the subsystem index](README.md).

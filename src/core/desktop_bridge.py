@@ -34,6 +34,8 @@ import time
 from collections import deque
 from typing import Any, BinaryIO, Callable, Deque, Dict, Union
 
+from src.core.emit_contracts import FILL_TOPIC, FillShapeError, read_settled_fill
+
 logger = logging.getLogger("acervator.core.desktop_bridge")
 
 Handler = Callable[[dict], Any]
@@ -51,6 +53,9 @@ UNWRITABLE_FORMAT = "<unwritable {kind}>"
 UNWRITABLE_FRAME_LOG = "bridge frame held a payload JSON cannot write: %s: %s"
 
 WRITABLE_TYPES = (str, int, float, bool, type(None))
+
+FILL_SECTION = "fill"
+"""The section ``follow_fills`` publishes each verified fill under."""
 
 
 class UnknownMethod(LookupError):
@@ -93,6 +98,24 @@ class LiveSystem:
         """Return a copy of the section ``name``, empty when none was published."""
         with self._lock:
             return dict(self._sections.get(name) or {})
+
+
+def follow_fills(live: LiveSystem, bus: Any) -> Callable[[], None]:
+    """Publish each ``FILL_TOPIC`` announcement on ``bus`` into ``live`` as the
+    ``FILL_SECTION`` section, read through ``read_settled_fill``.
+
+    Returns the call that ends the subscription, and logs an announcement it refuses.
+    """
+
+    def publish_fill(event: Any) -> None:
+        try:
+            fill = read_settled_fill(getattr(event, "data", None))
+        except FillShapeError as exc:
+            logger.warning("fill announcement not published to the bridge: %s", exc)
+            return
+        live.publish(FILL_SECTION, **fill.payload())
+
+    return bus.subscribe(FILL_TOPIC, publish_fill)
 
 
 def push_frame(section: str, values: dict) -> dict:

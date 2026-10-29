@@ -25,6 +25,7 @@ if TYPE_CHECKING:
         OrderType,
     )
 
+from ..core.emit_contracts import FILL_TOPIC, TRADE_TYPES, SettledFill
 from ..core.event_bus import get_event_bus
 from ..exchange.base import OrderStatus
 from ..exchange.data_pool import BALANCE_TTL_SECONDS, TICKER_TTL_SECONDS
@@ -256,6 +257,46 @@ class BotContainer:
             return
         for leg in legs:
             self._invalidate_balance(leg)
+
+    def _announce_fill(
+        self,
+        *,
+        kind: str,
+        side: str,
+        units: float,
+        price: float,
+        usd: float,
+        profit: float,
+        operator_initiated: bool,
+        fee: dict,
+        symbol: str = "",
+    ) -> None:
+        """Send one booked piece on ``FILL_TOPIC`` as a ``SettledFill`` naming this bot,
+        ``config.exchange_id`` and ``symbol`` or ``config.symbol``.
+
+        ``fee`` holds one of the two ``SettledFill`` fee fields, and a ``kind``
+        outside ``TRADE_TYPES`` is logged and still sent.
+        """
+        if kind not in TRADE_TYPES:
+            logger.error(
+                "Bot %s announces a %s fill, a kind TRADE_TYPES does not name",
+                self.bot_id,
+                kind,
+            )
+        fill = SettledFill(
+            bot_id=str(self.bot_id),
+            side=side,
+            type=kind,
+            amount=float(units),
+            price=float(price),
+            usd=float(usd),
+            profit=float(profit),
+            operator_initiated=bool(operator_initiated),
+            symbol=str(symbol or self.config.symbol),
+            exchange=str(self.config.exchange_id),
+            **fee,
+        )
+        self._bus.emit(FILL_TOPIC, **fill.payload())
 
     def _count_trade_volume(
         self, units: float, price: float, usd_rate: Optional[float] = None

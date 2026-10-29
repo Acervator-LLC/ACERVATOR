@@ -1396,6 +1396,9 @@ def main() -> int:
             "History tab exposed no history_refreshed signal; the desktop "
             "bridge serves this process's bots and no live trades."
         )
+    from src.core.desktop_bridge import follow_fills
+
+    follow_fills(live_system, bus)
     if bridge_requested(sys.argv):
         try:
             start_bridge(live_system)

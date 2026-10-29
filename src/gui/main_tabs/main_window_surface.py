@@ -40,6 +40,7 @@ from __future__ import annotations
 import math
 from typing import Any, Optional
 
+from ...core.emit_contracts import read_settled_fill
 from ...core.settings import AppSettings
 from ...exchange.api_load_monitor import DEFAULT_SAFETY_PCT
 from ...trading.ta_engine import DEFAULT_WEIGHTS
@@ -307,7 +308,6 @@ RIFLE_TRADE_TYPES = ("SCRUM", "FOLD", "DIST")
 DRIP_TRADE_TYPE = "FOLD"
 BUY_SIDE = "BUY"
 SELL_SIDE = "SELL"
-FILL_NESTED_FIELD = "data"
 
 BEEP_FIRE_PHASE = "fire"
 BEEP_TRACK_PHASE = "track"
@@ -987,15 +987,11 @@ def cached_candle_count(bot: Any) -> Optional[int]:
 
 
 def fill_fields(data: Any) -> dict:
-    """One fill's own fields, whichever level the emitter put them at.
+    """One fill's fields as ``read_settled_fill`` reads them, for ``_on_trade_filled_sfx``.
 
-    Four ``trade.filled`` emitters pass the fill as keywords and five nest it
-    under ``data``, so a reader of one level alone sees nothing from the other
-    five. ``_on_trade_filled_sfx`` reads the fill through this.
+    Raises ``FillShapeError`` for an announcement not in the ``SettledFill`` shape.
     """
-    held = data if isinstance(data, dict) else {}
-    nested = held.get(FILL_NESTED_FIELD)
-    return nested if isinstance(nested, dict) else held
+    return read_settled_fill(data).payload()
 
 
 def trade_filled_sounds(trade_type: Any, profit: Any, side: Any = "") -> list:

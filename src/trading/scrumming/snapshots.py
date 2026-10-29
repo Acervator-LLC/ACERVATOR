@@ -481,7 +481,7 @@ class SnapshotEmitterMixin(_Host):
         """Emit ``bot.voting_panel_snapshot`` at trade-fire time so the
         VotingSummary that drove the trade lands in voting.log alongside it.
 
-        Called after each ``trade.filled`` emit. Fail-soft: when
+        Called at each fill's booking, before ``_announce_fill``. Fail-soft: when
         ``self._last_summary`` is None (startup window, manual-fire bypass)
         it emits ``panel={}`` rather than skipping.
         """
@@ -515,8 +515,8 @@ class SnapshotEmitterMixin(_Host):
         side: str,
         trade_action: str,
     ) -> None:
-        """Emit ``bot.gate_decision`` after each ``trade.filled`` so every
-        fired trade has a paired gate.log row.
+        """Emit ``bot.gate_decision`` at each fill's booking, before
+        ``_announce_fill``, so every fired trade has a paired gate.log row.
 
         ``self._last_gate_state`` is read at fire time. In-tick sites see
         state just refreshed by the scrum/fold evaluators; out-of-tick sites

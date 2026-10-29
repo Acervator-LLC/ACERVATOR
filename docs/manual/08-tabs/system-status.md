@@ -127,6 +127,24 @@ nothing, and a coverage report read zero while hundreds of trades flowed past
 it. A key-name mismatch is invisible to the producer and to the consumer; only
 a declared contract makes it visible.
 
+**The current reading, 2026-10-29.** The fill row of the table above now
+requires every field of the one fill shape, with exactly one of the two fee
+fields, and it names the trade kinds a fill may carry. The payload is read flat,
+because every fill is now sent flat. A payload that carries neither fee field
+reads as a missing field, and one that carries both reads as a bad value.
+
+`src/core/emit_contracts.py, in CONTRACTS` — the fill contract
+
+```python
+    EmitContract(
+        topic=FILL_TOPIC,
+        required=SETTLED_FILL_FIELDS,
+        optional=FILL_FEE_FIELDS,
+        exclusive=FILL_FEE_FIELDS,
+        vocab={"side": FILL_SIDES, "type": TRADE_TYPES},
+        nested_key=None,
+```
+
 The observer already has a formatter that turns its counts into operator-facing
 lines. Its one caller was the Nuclear fleet controller writing a run report; the
 Simulator rebuild deleted that file, so nothing calls it and no screen reads it.

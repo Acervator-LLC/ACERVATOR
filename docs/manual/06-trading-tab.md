@@ -11161,3 +11161,193 @@ on a pair while an order on that pair is held.
 ```
 
 The Product Manual PDF rebuild is owed for this page.
+
+## 2026-10-29 - every verified fill is announced once, in one shape
+
+A fill is announced once, when its booking ends, in one shape. The trade log,
+the fill alert, the fill sounds and the Charts mark read that one announcement,
+and the desktop shell receives it as well. No table and no figure on a screen
+moves because of it yet.
+
+### The shape is declared once
+
+Every announcement carries ten fields and one fee field. The fee field holds
+the dollars the exchange charged, or the reason no fee could be read. The topic
+is still `trade.filled`, because every reader subscribes by that name and a
+second topic beside it would announce each fill twice.
+
+```python
+# src/core/emit_contracts.py, in SettledFill
+    bot_id: str
+    side: str
+    type: str
+    amount: float
+    price: float
+    usd: float
+    profit: float
+    operator_initiated: bool
+    symbol: str
+    exchange: str
+    fee_usd: Optional[float] = None
+    fee_refusal: Optional[str] = None
+```
+
+### One function sends it
+
+Each booking function sends its fill through one call. The bot, its exchange
+and its symbol come from the bot itself, so no path can name them differently.
+
+```python
+# src/trading/bot_container.py, in BotContainer._announce_fill
+        fill = SettledFill(
+            bot_id=str(self.bot_id),
+            side=side,
+            type=kind,
+            amount=float(units),
+            price=float(price),
+            usd=float(usd),
+            profit=float(profit),
+            operator_initiated=bool(operator_initiated),
+            symbol=str(symbol or self.config.symbol),
+            exchange=str(self.config.exchange_id),
+            **fee,
+        )
+        self._bus.emit(FILL_TOPIC, **fill.payload())
+```
+
+The call is the last step of every booking. A reader that looks at the bot when
+the announcement arrives finds every figure the fill moved already written.
+
+```python
+# src/trading/scrumming/tick_phases.py, in TickPhaseMixin._book_scrum_fill
+        self._last_trade_price = sell_fill
+        self._announce_fill(
+            kind="SCRUM",
+            side=FILL_SELL,
+            units=_sold_units,
+            price=sell_fill,
+            usd=scrum_usd,
+            profit=0.0,
+            operator_initiated=False,
+            fee=self._fill_fee_fields(sell_fill),
+        )
+```
+
+### Five kinds of fill now announce
+
+These five booked their fills and told no reader. Each now announces under its
+own kind, and a part that fills later is announced by the same booking.
+
+```
+kind                  booked by
+STACK_SPEND           ScrummingBot._book_stack_spend, each part of the order
+STACK_RUNG            ScrummingBot._reconcile_stack_tranches_visible
+EXPIRY_CLOSE          TickPhaseMixin._book_expiry_close
+EXTRACTOR_ARTILLERY   ExtractorBot._book_artillery
+EXTRACTOR_EXIT        ExtractorBot._book_exit
+```
+
+An Extractor exit pressed from Positions Held is marked as started by the
+operator. The Extractor reads the fee off its own order, in the currency the
+pair is priced in.
+
+```python
+# src/trading/extractor_bot.py, in ExtractorBot.manual_fire_position
+            await self._execute_bullish_exit(
+                pos, alt_price_in_base, exit_pct=FULL_EXIT_PCT, operator_initiated=True
+            )
+```
+
+### The readers read the one shape
+
+The four readers and the desktop shell read each announcement through one
+function. A missing field, a value of the wrong kind, or a fee other than
+exactly one is refused and named. No field takes a default.
+
+```python
+# src/core/emit_contracts.py, in read_settled_fill
+    faults = _fill_faults(event_data)
+    if faults:
+        raise FillShapeError("; ".join(faults))
+```
+
+Each reader calls it before it acts.
+
+```
+reader                 reads the fill in
+the trade log          LogManager._on_trade_filled_bus
+the fill alert         NotificationManager._on_trade_filled
+the fill sounds        fill_fields, for MainWindow._on_trade_filled_sfx
+the Charts mark        fill_record, for both Charts tabs
+the desktop shell      follow_fills
+```
+
+### The announcement reaches the desktop shell
+
+The bridge publishes each announcement as the `fill` push section. The shell
+hands the frame to the window, and the panel host keeps the newest one for any
+panel that follows that section. No panel follows it yet.
+
+```python
+# src/core/desktop_bridge.py, in follow_fills
+        live.publish(FILL_SECTION, **fill.payload())
+```
+
+### What the readings showed
+
+Every completion point was driven on the commit before this change and on this
+change. A real bot traded against a stand-in exchange, in a home folder made for
+the run, with the real readers attached and no socket leaving the machine.
+
+```
+                                 the commit before this change     this change
+shapes an announcement took      6, two flat and four nested        1
+kinds announced, settled fill    13 of 18                           18 of 18
+kinds announced, a later fill    13 of 17                           17 of 17
+a part, then the rest later      2 announcements on 13 kinds,       2 announcements on 17 kinds,
+                                 none on 4                          units summing to the fill
+the desktop shell                no frame                           one fill frame per fill
+```
+
+On the 13 kinds that announced before, the alert, the sounds and both Charts
+marks read the same content on both commits. The trade log row differs in one
+field only.
+
+```
+the trade log row of a scrum     the commit before this change     this change
+exchange                         empty                             the bot's exchange
+every other field                the same                          the same
+```
+
+Before this change a reader filled a missing field with zero. With the units
+taken out, the trade log wrote 0 units and the alert read 0.000000 units. Now
+each of the ten fields taken out in turn is refused by name, and so are both fee
+fields at once and no fee field at all. No row, alert, sound, mark or frame
+follows a refused announcement.
+
+```
+taken out              the reader answers
+amount                 FillShapeError: amount absent
+side                   FillShapeError: side absent
+both fee fields        FillShapeError: 2 of fee_usd, fee_refusal present, not 1
+nothing                read, and every reader acts on it
+```
+
+Each of the 17 held-order kinds filled 40 per cent with its order and the rest at
+the next held-order read. Each order was announced twice, once for each part,
+and the units summed to the fill. The same count with one announcement sent a
+second time read 3 announcements and more units than the exchange filled.
+
+```
+a scrum of 1.25 units            announcements    units announced
+40 per cent, then the rest       2                1.25
+one announcement sent twice      3                1.75
+```
+
+### Where earlier sentences now read differently
+
+They stand as written. These are the readings that replaced them.
+
+| written above | what it reads now |
+| --- | --- |
+| "The Product Manual PDF rebuild is owed for this page." | `docs/Acervator-Product-Manual.pdf` is rebuilt with this section and carries this page |
