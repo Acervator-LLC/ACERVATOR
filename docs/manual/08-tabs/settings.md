@@ -894,6 +894,11 @@ DEFAULT_WEIGHTS = {
 }
 ```
 
+Since 2026-10-28 a new bot does not start at these figures. It starts at twelve
+zeros of its own, written by `src/trading/ta_engine.py, in new_bot_weights`, and
+takes this page's figures at the next Save. The sliders still open at the figures
+above. The dated entry for that day at the end of this page carries the readings.
+
 A weight moved here reaches nothing. Save reads no widget on this page, the
 load path restores none, and the settings schema declares no field for
 indicator weights. The voting engine takes a weights argument and falls back to
@@ -9612,6 +9617,111 @@ the Console line that moved.
 
 The Product Manual PDF rebuild is owed for this page.
 
+## 2026-10-28 - #665 - a new bot's twelve weights start at zero
+
+A new bot now starts with all twelve indicator weights at zero, so its vote reads
+neutral until Save on this window hands it the figures the TA Indicators page
+holds. A bot already saved keeps the figures it votes at, and the twelve sliders
+still open at the published figures.
+
+### One declaration of a new bot's twelve
+
+The one place a new bot's figures are written is `src/trading/ta_engine.py, in
+new_bot_weights`. The Qt wizard and the React wizard both put it in the new
+bot's own config through the same reader in the wizard surface.
+
+```python
+NEW_BOT_WEIGHT = 0.0
+
+
+def new_bot_weights() -> dict[str, float]:
+    """The twelve weights a new bot votes at, ``NEW_BOT_WEIGHT`` under each name."""
+    return dict.fromkeys(DEFAULT_WEIGHTS, NEW_BOT_WEIGHT)
+```
+
+`src/gui/main_tabs/bot_wizard_surface.py, in with_new_bot_weights`
+
+```python
+if config.get("mode") == SCRUMMING_MODE:
+    from ...trading.ta_engine import new_bot_weights
+
+    config["own_ta_weights"] = new_bot_weights()
+return config
+```
+
+### The bot's own weights, and the page's
+
+A bot holds its own twelve in its config and votes at them in place of this
+page's figures. A record saved before holds none, so a saved bot votes at this
+page's figures exactly as it did. Save hands every bot this page's figures and
+empties its own twelve, so a restart keeps the page's figures.
+
+`src/trading/scrumming_bot.py, in ScrummingBot.__init__`
+
+```python
+own_weights = config.own_ta_weights
+if isinstance(own_weights, dict) and own_weights:
+    ta_weights = weights_from_settings(own_weights)
+...
+self._ta_weights = ta_weights
+self._voting_engine = VotingEngine(weights=ta_weights)
+```
+
+A stored value that is not a mapping is left out with a warning, and the bot votes
+at the stored figures.
+
+`src/trading/scrumming_bot.py, in ScrummingBot.set_ta_weights`
+
+```python
+self._ta_weights = dict(weights) if weights else None
+self._voting_engine.set_weights(self._ta_weights)
+self.config.own_ta_weights = {}
+```
+
+```
+moment            new bot                        saved bot
+create            its own twelve at zero         -
+first vote        NEUTRAL at 0.0                 this page's figures
+restart           its own twelve at zero         this page's figures
+Save              this page's figures            this page's figures
+restart after     this page's figures            this page's figures
+```
+
+The Paper Trader and Simulator wizards write no weights, and their runs vote as
+before.
+
+### Driven on both trees
+
+Each tree ran in its own redirected home, the earlier one checked out from git at
+the commit this change starts from. Three stores were read: none written, the
+twelve published figures written, and two figures moved. A new bot came through
+each live wizard and the calls the create path makes. A saved bot came through
+the restore path after the launch handed it the store.
+
+```
+store       new bot, before              new bot, after             saved bot, two trees
+none        published, BULLISH 0.102     twelve zeros, NEUTRAL 0.0  published, 0 differences
+published   published, BULLISH 0.102     twelve zeros, NEUTRAL 0.0  published, 0 differences
+two moved   the store's, BULLISH 0.0988  twelve zeros, NEUTRAL 0.0  the store's, 0 differences
+```
+
+Moving one digit on one side of the saved-bot comparison reports two
+differences, both naming the moved MACD weight, so a zero here can report a
+change. A new bot's record keeps its zeros across a restart. After Save its
+record holds none, and a restart reads the store's figures.
+
+### Where four earlier entries now read differently
+
+They stand as written, and these are the readings that replaced them.
+
+| written above | what it reads now |
+| --- | --- |
+| "A bot reads the group when it is built, so a weight changed here applies to the next bot created and to every bot on the next launch." | A saved bot still does. A new bot starts at twelve zeros of its own and takes this page's figures at the next Save |
+| "The figures are unchanged for that reason." | The published figures are still unchanged. The zero sits in a new bot's own twelve, so no bot already on disk changes |
+| "The detonation check and the initial-entry check each build a fresh voting engine, so the twelve figures reach neither." | The detonation check votes at the bot's own twelve. The initial-entry check still builds its own engine at the published figures |
+| "Detonation cannot fire in any case: its confidence bar starts at 0.50" | The bar starts at 0.00, so a reading the vote reaches can fire it |
+
+The Product Manual PDF rebuild is owed for this page.
 
 ## 2026-10-28 - #1374 - a sealed fleet makes no new bot
 

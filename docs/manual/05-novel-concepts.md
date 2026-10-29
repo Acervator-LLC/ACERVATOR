@@ -1873,6 +1873,11 @@ DEFAULT_WEIGHTS = {
 }
 ```
 
+Since 2026-10-28 a new bot starts with all twelve at 0.0, written by
+`src/trading/ta_engine.py, in new_bot_weights`, and votes neutral until Save on
+the Settings window hands it the TA Indicators figures. The published figures
+above are unchanged, and a saved bot votes as it did.
+
 **The build this specifies.** A tier is a second map beside the weights, and the
 veto is one test in the aggregator. The signal record grows one field, and it
 has to go last: the record is built positionally in this tree, so inserting a
@@ -2199,6 +2204,24 @@ the Min Confidence box.
 ```python
 DETONATION_CONFIDENCE_MIN_DEFAULT: float = 0.75
 ```
+
+### The detonation vote and its bar, 2026-10-28
+
+Two readings in section 14 above carry wording this change moved. They stand as
+written, and these are the readings that replaced them.
+
+| written above | what it reads now |
+| --- | --- |
+| "`conf_min = float(getattr(self.config, "detonation_confidence_min", 0.75))`" | The fallback reads `DETONATION_CONFIDENCE_MIN_DEFAULT`, and the vote the bar is compared against reads the bot's own twelve weights |
+| "a bullish consensus at or above the confidence minimum on the detonation timeframe" | Unchanged, and the minimum can now be set from 0.00 to 1.00, so a reading the vote reaches can fire it |
+
+`src/trading/scrumming_bot.py, in ScrummingBot._check_detonation_trigger`
+
+```python
+engine = VotingEngine(weights=self._ta_weights)
+```
+
+The Product Manual PDF rebuild is owed for this page.
 
 ## 15 - Proof of Accumulation (PoA)
 

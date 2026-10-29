@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 import math
-from dataclasses import dataclass, fields
+from dataclasses import dataclass, field, fields
 from enum import Enum
 from typing import Any, Callable, Optional
 
@@ -116,6 +116,11 @@ SMART_CARTRIDGE_CEILING_OFF_TEXT: str = "off"
 #: confidence a detonation must reach.
 DETONATION_CONFIDENCE_MIN_DEFAULT: float = 0.75
 
+#: The span every Min Confidence box offers, the span ``VotingEngine`` gives a
+#: consensus confidence.
+DETONATION_BAR_MIN: float = 0.0
+DETONATION_BAR_MAX: float = 1.0
+
 #: ``BotConfig.position_ceiling_multiple`` opening figure, in anchor multiples,
 #: read by ``ceiling_multiple``.
 POSITION_CEILING_MULTIPLE_DEFAULT: float = 5.0
@@ -163,6 +168,8 @@ class BotConfig:
     ta_timeframe: str = "1h"  # Timeframe for TA indicator calculations
     # The length exchange_id does not serve, which _snap_ta_timeframe replaced.
     ta_timeframe_unserved: str = ""
+    # Weights this bot votes at; empty votes at the stored ta_indicator_weights.
+    own_ta_weights: dict = field(default_factory=dict)
 
     # % distance from the BB midline that switches SEARCH to TRACK; 10-90.
     scrum_detect_pct: int = 75
@@ -243,7 +250,7 @@ class BotConfig:
     # anchor, not on the ceiling.
     detonation_enabled: bool = False
     detonation_timeframe: str = "1d"  # "1d", "1w"
-    # operator-adjustable 0.50-1.00
+    # Every Min Confidence box offers DETONATION_BAR_MIN to DETONATION_BAR_MAX.
     detonation_confidence_min: float = DETONATION_CONFIDENCE_MIN_DEFAULT
 
     # Read through expiry_close_decision() below, never raw. The close acts only
@@ -397,6 +404,8 @@ _BOT_CONFIG_SHARED_FIELDS: frozenset = frozenset(
 _BOT_CONFIG_SCRUMMING_ONLY_FIELDS: frozenset = frozenset(
     {
         "profit_folding_active",
+        # ScrummingBot alone votes at own_ta_weights.
+        "own_ta_weights",
         # Scrumming-specific accumulation
         "scrumming_interval_pct",
         "scrum_fold_pct",

@@ -5833,6 +5833,11 @@ Min Confidence - This is the minimum technical analysis confidence index (via th
 
 From 0.50 to 1.00, at 0.75 to start.
 
+Since 2026-10-28 every Min Confidence box runs from 0.00 to 1.00 and still opens
+at 0.75, both read from `src/trading/container/config.py`. The detonation check
+votes at the bot's own twelve weights. The dated entry for that day at the end of
+this page carries the readings.
+
 **Functional.** The reader works, and it is exact. On one tape whose consensus
 read zero point two three three four, a bar of zero point two three three three
 fired and a bar of zero point two three three five did not, on the same candles
@@ -10817,3 +10822,101 @@ settles at the fill now. The eleven other paths read identical on both. A
 returned tranche on a bot with no stored exchange count leaves the count at
 zero, so the Ammo cell keeps pricing the held count instead of the returned units
 alone.
+
+## 2026-10-28 - #665 - Min Confidence reaches down to zero, and the detonation vote reads the bot's weights
+
+### The span every Min Confidence box reads
+
+Every Min Confidence box now runs from 0.00 to 1.00 and still opens at 0.75.
+That is the three Qt creation wizards, the three Qt Bot Settings tabs, the React
+wizard field and the React Bot Settings row. Each reads one span and one opening
+figure, so no box can offer a different floor.
+
+`src/trading/container/config.py` — the opening figure and the span
+
+```python
+DETONATION_CONFIDENCE_MIN_DEFAULT: float = 0.75
+
+#: The span every Min Confidence box offers, the span ``VotingEngine`` gives a
+#: consensus confidence.
+DETONATION_BAR_MIN: float = 0.0
+DETONATION_BAR_MAX: float = 1.0
+```
+
+### The floor comes from the vote
+
+The floor is the lowest reading the vote can give. The engine sets a confidence
+to the net score over the weight that voted, so it never reads below zero. It
+calls a vote bullish only above a net score of 0.1, so a bullish confidence can
+be as small as 0.1 over the weight that voted: 0.0085 at the published weights.
+No two-decimal bar above 0.00 lets every bullish reading through.
+
+`src/trading/ta_engine.py, in VotingEngine._aggregate`
+
+```python
+voted_weight = sum(s.weight for s in signals if not s.abstained)
+consensus_conf = abs(net) / voted_weight if voted_weight > 0.0 else 0.0
+```
+
+Driven on 162 constructed tapes at the published weights, read in every
+100-candle window the detonation check fetches:
+
+```
+windows of 100 candles   3,078
+bullish readings         1,744, from 0.0088 to 0.3578, median 0.1167
+at a bar of 0.50             0
+at a bar of 0.25            49
+at a bar of 0.10         1,026
+at a bar of 0.01         1,728
+at a bar of 0.00         1,744
+```
+
+### The detonation vote reads the bot's own twelve
+
+The detonation check now votes at the same twelve weights as the bot's own vote.
+A new bot holds all twelve at zero, so its vote reads neutral and its detonation
+cannot fire until Save on the Settings window hands it the TA Indicators figures.
+The Settings page entry for this day carries the zero start.
+
+`src/trading/scrumming_bot.py, in ScrummingBot._check_detonation_trigger`
+
+```python
+engine = VotingEngine(weights=self._ta_weights)
+```
+
+### What each box held, and what the check did
+
+Each tree ran in its own redirected home, the earlier one checked out from git at
+the commit this change starts from. A figure of 0.10 went into every box. One
+100-candle tape read BULLISH at 0.1837.
+
+```
+                                        before this change    this change
+Qt creation boxes, live paper sim       0.50 to 1.00          0.00 to 1.00
+Qt Bot Settings boxes, live paper sim   0.50 to 1.00          0.00 to 1.00
+React wizard field, as drawn            min 0.5, max 1        min 0, max 1
+React Bot Settings row, as drawn        min 0.5, max 1        min 0, max 1
+0.10 put into a box                     holds 0.50            holds 0.10
+Detonation on, the bar the box held     not fired             fired
+Detonation off                          not fired, no fetch   not fired, no fetch
+a saved bot holding 0.75                loads 0.75            loads 0.75
+a new bot, Detonation on, bar 0.10      -                     not fired; fired after Save
+```
+
+The engine holds no floor of its own: a bar of 0.10 set on the config fired on
+both trees. With the drawn React wizard field taken out of the comparison, the
+Qt and React readings name that field on one side only, so the comparison can
+report a missing field.
+
+### Where four earlier entries now read differently
+
+They stand as written, and these are the readings that replaced them.
+
+| written above | what it reads now |
+| --- | --- |
+| "From 0.50 to 1.00, at 0.75 to start." | From 0.00 to 1.00, at 0.75 to start, on every Min Confidence box |
+| "No figure this box can emit was reached." | A figure the vote reaches can be set: 1,744 of 1,744 bullish readings clear a bar of 0.00 |
+| "PROPOSED — `src/gui/main_tabs/live_settings_tab_surface.py`, the row's range" | Not built as proposed. The row reads the one span, 0.00 to 1.00 |
+| "And the detonation check builds a fresh voting panel with no weights" | The check votes at the bot's own twelve weights |
+
+The Product Manual PDF rebuild is owed for this page.
