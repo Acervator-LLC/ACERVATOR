@@ -41,6 +41,7 @@ class ReconciliationEngineMixin:
     _get_ticker: Callable[..., Any]
     _main_lots: list[dict]
     _quote_to_usd: float
+    _reconcile_resting_orders: Callable[..., Any]
     _refresh_quote_to_usd: Callable[..., Any]
     bot_id: Any
     config: Any
@@ -154,7 +155,9 @@ class ReconciliationEngineMixin:
             _ph = compute_position_health(_trades, _asset_base)
 
             if _complete:
-                self.stats.realized_pnl_exchange = float(_ph.realized_pnl_usd)
+                self.stats.realized_pnl_exchange = self.stats.realised_pnl = float(
+                    _ph.realized_pnl_usd
+                )
                 self.stats.fees_paid_exchange = float(_ph.fees_paid_total)
             else:
                 logger.warning(
@@ -690,6 +693,14 @@ class ReconciliationEngineMixin:
             )
             return
         try:
+            await self._reconcile_resting_orders()
+        except Exception as _rest_exc:
+            logger.warning(
+                "Bot %s held-order reconcile before the bootstrap raised: %s",
+                self.bot_id,
+                _rest_exc,
+            )
+        try:
             symbol = self.config.symbol
             target_asset = self.config.target_asset
             _bal = await self._get_balance(target_asset)
@@ -1181,6 +1192,15 @@ class ReconciliationEngineMixin:
         missing from the response, or when ``_reconcilable_lot_book`` or
         ``_reconcilable_units`` refuses an input.
         """
+        try:
+            await self._reconcile_resting_orders()
+        except Exception as _rest_exc:
+            logger.warning(
+                "Bot %s held-order reconcile before the %s audit raised: %s",
+                self.bot_id,
+                reason,
+                _rest_exc,
+            )
         try:
             balance = await self._get_balance(self.config.target_asset)
 

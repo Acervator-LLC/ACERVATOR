@@ -7,13 +7,14 @@ registers the containers and drives start, stop, pause and resume.
 from __future__ import annotations
 
 import asyncio
+import inspect
 import logging
 import math
 import time
 import uuid
 import weakref
 from dataclasses import replace
-from typing import Callable, Optional, TYPE_CHECKING
+from typing import Any, Callable, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ..exchange.base import (
@@ -25,6 +26,7 @@ if TYPE_CHECKING:
     )
 
 from ..core.event_bus import get_event_bus
+from ..exchange.base import OrderStatus
 from ..exchange.data_pool import BALANCE_TTL_SECONDS, TICKER_TTL_SECONDS
 from ..exchange.timeframes import ALL_TIMEFRAMES
 from .container import (
@@ -78,6 +80,59 @@ TICKER_REFRESH_INTERVAL_S = min(TICKER_TTL_SECONDS, BALANCE_TTL_SECONDS) / 2.0
 
 #: Shortest sleep ``_ticker_refresh_loop`` takes when a cycle overran its period.
 REFRESH_MIN_SLEEP_S = 0.1
+
+#: Units below which an unfilled remainder or a newly filled piece counts as none.
+FILL_DUST_UNITS = 1e-12
+
+#: Times ``_read_settled_order`` re-reads an order the venue has not settled.
+SETTLE_REREADS = 3
+
+#: Seconds ``BotContainer._read_settled_order`` waits before each re-read.
+SETTLE_REREAD_DELAY_S = 0.2
+
+#: ``OrderStatus`` values after which the venue fills nothing more of an order.
+CLOSED_ORDER_STATUSES = frozenset(
+    {OrderStatus.FILLED.value, OrderStatus.CANCELLED.value, OrderStatus.FAILED.value}
+)
+
+#: The ``side`` values a ``_resting_orders`` record carries.
+RESTING_SIDES = ("buy", "sell")
+
+
+def order_status_text(order: object) -> str:
+    """The lower-case status text ``order`` carries, read off an ``OrderStatus`` or a
+    string.
+    """
+    status = getattr(order, "status", None)
+    return str(getattr(status, "value", status) or "").strip().lower()
+
+
+def finite_reading(value: Any) -> float:
+    """``value`` as a float, 0.0 when it is absent or not a finite number."""
+    try:
+        reading = float(value or 0)
+    except (TypeError, ValueError):
+        return 0.0
+    return reading if math.isfinite(reading) else 0.0
+
+
+def order_filled_and_average(order: object) -> tuple[float, float]:
+    """``order``'s ``filled`` count and ``average`` price, each read through
+    ``finite_reading``.
+    """
+    return (
+        finite_reading(getattr(order, "filled", 0)),
+        finite_reading(getattr(order, "average", 0)),
+    )
+
+
+def held_order_side(record: dict) -> str:
+    """The upper-case ``side`` of a ``_resting_orders`` record, or "ORDER" when it is
+    not one of ``RESTING_SIDES``.
+    """
+    side = record.get("side")
+    return side.upper() if side in RESTING_SIDES else "ORDER"
+
 
 __all__ = [
     "DESPAWN_MAX_DAYS",
@@ -152,6 +207,12 @@ class BotContainer:
         # Units the last expiry close sent. ``_tick_expiry_close`` refuses a
         # second send while the held count still equals this figure.
         self._expiry_close_sent_units: float = 0.0
+        # Orders the venue may still fill more of, read by _reconcile_resting_orders.
+        self._resting_orders: list[dict] = []
+        # The queued tranches each held order settles, by order id, never saved.
+        self._resting_sources: dict[str, list] = {}
+        # The newest order body _read_settled_order read.
+        self._last_settled_order: object = None
 
     def force_fire(self, aggressive: bool = False) -> None:
         """Manual fire hook; the base implementation does nothing."""
@@ -195,6 +256,349 @@ class BotContainer:
             return
         for leg in legs:
             self._invalidate_balance(leg)
+
+    def _count_trade_volume(
+        self, units: float, price: float, usd_rate: Optional[float] = None
+    ) -> float:
+        """Add one settled piece's ``units`` times ``price`` times ``usd_rate`` to
+        ``stats.trade_volume``, and return it.
+
+        ``usd_rate`` defaults to ``_quote_to_usd``, and a product that is not a finite
+        positive number adds nothing.
+        """
+        rate = usd_rate
+        if rate is None:
+            rate = getattr(self, "_quote_to_usd", 1.0) or 1.0
+        try:
+            notional = float(units) * float(price) * float(rate)
+        except (TypeError, ValueError):
+            return 0.0
+        if not math.isfinite(notional) or notional <= 0.0:
+            return 0.0
+        self.stats.trade_volume += notional
+        return notional
+
+    @staticmethod
+    def _order_asked_units(order: object, requested: float) -> float:
+        """The count ``order`` asked the venue for, or ``requested`` when its ``amount``
+        is not a finite positive number.
+        """
+        amount = finite_reading(getattr(order, "amount", 0))
+        if amount > 0.0:
+            return amount
+        return float(requested or 0.0)
+
+    async def _read_settled_order(
+        self, order: object, symbol: str
+    ) -> tuple[float, float, object, object]:
+        """Re-read ``order`` up to ``SETTLE_REREADS`` times until the venue reports a
+        filled count and an average price.
+
+        Returns ``(filled, average, settled, last)``, ``settled`` being the body
+        carrying both or None, and keeps ``last`` on ``_last_settled_order``.
+        """
+        filled, average = order_filled_and_average(order)
+        self._last_settled_order = order
+        if filled > 0.0 and average > 0.0:
+            return filled, average, order, order
+        last = order
+        order_id = str(getattr(order, "id", "") or "")
+        if order_id:
+            for _attempt in range(SETTLE_REREADS):
+                try:
+                    await asyncio.sleep(SETTLE_REREAD_DELAY_S)
+                    fetched = await self.exchange.get_order(order_id, symbol)
+                except Exception as exc:
+                    logger.debug(
+                        "settled-fill re-read failed for %s: %s", order_id, exc
+                    )
+                    break
+                last = fetched
+                self._last_settled_order = fetched
+                read_filled, read_average = order_filled_and_average(fetched)
+                if read_filled > 0.0 and read_average > 0.0:
+                    return read_filled, read_average, fetched, fetched
+                filled = read_filled or filled
+                average = read_average or average
+        return filled, average, None, last
+
+    def _hold_resting_order(
+        self,
+        order: object,
+        booker: str,
+        side: str,
+        booked_units: float,
+        booked_price: float,
+        context: Optional[dict] = None,
+        sources: Optional[list] = None,
+    ) -> Optional[dict]:
+        """Keep ``order`` on ``_resting_orders`` while the venue may still fill more of
+        it than ``booked_units``.
+
+        ``_reconcile_resting_orders`` books each later piece through the method
+        ``booker`` names, called with ``context``.
+        """
+        last = self._last_settled_order or order
+        if order_status_text(last) in CLOSED_ORDER_STATUSES:
+            return None
+        asked = self._order_asked_units(last, self._order_asked_units(order, 0.0))
+        unfilled = asked - float(booked_units or 0.0)
+        if unfilled <= FILL_DUST_UNITS:
+            return None
+        order_id = str(getattr(order, "id", "") or "")
+        symbol = str(getattr(order, "symbol", "") or self.config.symbol)
+        if not order_id:
+            self._bus.emit(
+                "bot.log",
+                bot_id=self.bot_id,
+                message=(
+                    f"ORDER NOT HELD: the venue named no id for this {side.upper()} "
+                    f"of {asked:.8f} on {symbol}, so a later fill of its "
+                    f"{unfilled:.8f} unfilled units reaches the books through the "
+                    f"holdings audit alone."
+                ),
+            )
+            return None
+        booked = float(booked_units or 0.0)
+        record = {
+            "order_id": order_id,
+            "symbol": symbol,
+            "side": side,
+            "booker": booker,
+            "asked": asked,
+            "booked": booked,
+            "booked_cost": booked * float(booked_price or 0.0),
+            "booked_fee": float(getattr(last, "fee", 0.0) or 0.0) if booked else 0.0,
+            "price": float(getattr(order, "price", 0.0) or booked_price or 0.0),
+            "placed_ts": time.time(),
+            "context": dict(context or {}),
+        }
+        self._resting_orders.append(record)
+        if sources is not None:
+            self._resting_sources[order_id] = list(sources)
+        self._bus.emit(
+            "bot.log",
+            bot_id=self.bot_id,
+            message=(
+                f"ORDER RESTING: {side.upper()} {symbol} order {order_id} has "
+                f"{unfilled:.8f} of {asked:.8f} unfilled at the venue. Each later "
+                f"fill is booked when the venue reports it, at the next worked "
+                f"tick or holdings audit."
+            ),
+        )
+        return record
+
+    def _resting_order_for(self, *bookers: str) -> Optional[dict]:
+        """The first ``_resting_orders`` record whose ``booker`` is one of ``bookers``,
+        or None.
+        """
+        for record in self._resting_orders:
+            if record.get("booker") in bookers:
+                return record
+        return None
+
+    async def _reconcile_resting_orders(self) -> int:
+        """Book each piece of a ``_resting_orders`` order the venue filled since the
+        last read, and drop each order the venue closed.
+
+        Asks ``get_open_orders`` once per held symbol and ``get_order`` for each held
+        order that list no longer names.
+        """
+        if not self._resting_orders:
+            return 0
+        booked = 0
+        for symbol in sorted({str(r.get("symbol", "")) for r in self._resting_orders}):
+            try:
+                listed = await self.exchange.get_open_orders(symbol)
+            except Exception as exc:
+                logger.warning(
+                    "Bot %s held orders on %s: get_open_orders raised %s: %s",
+                    self.bot_id,
+                    symbol,
+                    type(exc).__name__,
+                    exc,
+                )
+                continue
+            open_by_id = {str(getattr(o, "id", "") or ""): o for o in (listed or [])}
+            for record in [
+                r for r in self._resting_orders if r.get("symbol") == symbol
+            ]:
+                body = open_by_id.get(record["order_id"])
+                if body is None:
+                    try:
+                        body = await self.exchange.get_order(record["order_id"], symbol)
+                    except Exception as exc:
+                        logger.warning(
+                            "Bot %s held order %s: get_order raised %s: %s",
+                            self.bot_id,
+                            record["order_id"],
+                            type(exc).__name__,
+                            exc,
+                        )
+                        continue
+                booked += await self._book_resting_progress(record, body)
+                if order_status_text(body) in CLOSED_ORDER_STATUSES:
+                    self._retire_resting_order(record)
+        return booked
+
+    async def _book_resting_progress(self, record: dict, body: object) -> int:
+        """Book the units ``body`` reports filled beyond ``record['booked']``, at those
+        units' own price, and return 1 when it booked.
+        """
+        filled, average = order_filled_and_average(body)
+        held = float(record.get("booked", 0.0) or 0.0)
+        units = filled - held
+        if units <= FILL_DUST_UNITS:
+            return 0
+        held_cost = float(record.get("booked_cost", 0.0) or 0.0)
+        limit = float(record.get("price", 0.0) or 0.0)
+        cost = filled * average if average > 0.0 else held_cost + units * limit
+        fill_price = (cost - held_cost) / units
+        if not math.isfinite(fill_price) or fill_price <= 0.0:
+            fill_price = average or limit
+        fee_total = finite_reading(getattr(body, "fee", 0))
+        held_fee = float(record.get("booked_fee", 0.0) or 0.0)
+        fee = max(0.0, fee_total - held_fee)
+        first = held <= FILL_DUST_UNITS
+        record["booked"] = filled
+        record["booked_cost"] = cost
+        record["booked_fee"] = max(fee_total, held_fee)
+        try:
+            await self._book_resting_delta(
+                record,
+                units,
+                fill_price,
+                fee,
+                str(getattr(body, "fee_currency", "") or ""),
+                first,
+            )
+        except Exception as exc:
+            logger.exception(
+                "Bot %s held order %s booking raised", self.bot_id, record["order_id"]
+            )
+            self._bus.emit(
+                "bot.log",
+                bot_id=self.bot_id,
+                message=(
+                    f"HELD FILL NOT BOOKED: {held_order_side(record)} "
+                    f"{record.get('symbol')} order {record['order_id']} filled "
+                    f"{units:.8f} more @ ${fill_price:.8f}, and booking it raised "
+                    f"{type(exc).__name__}: {exc}. The holdings audit reconciles "
+                    f"the held count."
+                ),
+            )
+        return 1
+
+    async def _book_resting_delta(
+        self,
+        record: dict,
+        units: float,
+        price: float,
+        fee: float,
+        fee_currency: str,
+        first: bool,
+    ) -> None:
+        """Book one later piece of a held order through the method ``record['booker']``
+        names.
+        """
+        self._note_resting_fee(record, units, price, fee, fee_currency)
+        await self._run_booker(
+            str(record.get("booker", "")),
+            units,
+            price,
+            float(record.get("asked", 0.0) or 0.0),
+            first,
+            record.get("context"),
+            self._resting_sources.get(record["order_id"]),
+        )
+
+    def _note_resting_fee(
+        self,
+        record: dict,
+        units: float,
+        price: float,
+        fee: float,
+        fee_currency: str,
+    ) -> None:
+        """Hold the venue fee of one later piece for its booker; this base class books
+        no fee.
+        """
+        return
+
+    async def _run_booker(
+        self,
+        booker: str,
+        units: float,
+        price: float,
+        asked: float,
+        first: bool,
+        context: Optional[dict],
+        sources: Optional[list] = None,
+    ):
+        """Call the method ``booker`` names with ``units``, ``price``, ``asked``,
+        ``first`` and ``context``, and return what it returns.
+
+        An empty ``booker`` books nothing, and ``sources`` reaches the method only when
+        it is not None.
+        """
+        if not booker:
+            return None
+        method = getattr(self, booker, None)
+        if not callable(method):
+            logger.error(
+                "Bot %s has no booker %r for a settled fill", self.bot_id, booker
+            )
+            return None
+        kwargs = dict(context or {})
+        if sources is not None:
+            kwargs["sources"] = sources
+        result = method(units, price, asked, first, **kwargs)
+        if inspect.isawaitable(result):
+            result = await result
+        return result
+
+    def _retire_resting_order(self, record: dict) -> None:
+        """Drop ``record`` from ``_resting_orders`` and write its outcome to
+        ``bot.log``.
+        """
+        self._resting_orders = [r for r in self._resting_orders if r is not record]
+        self._resting_sources.pop(record["order_id"], None)
+        side = held_order_side(record)
+        booked = float(record.get("booked", 0.0) or 0.0)
+        if booked <= FILL_DUST_UNITS:
+            message = (
+                f"ORDER CLOSED UNFILLED: {side} {record.get('symbol')} order "
+                f"{record['order_id']} closed at the venue with nothing filled, "
+                f"and nothing was booked."
+            )
+        else:
+            message = (
+                f"ORDER SETTLED: {side} {record.get('symbol')} order "
+                f"{record['order_id']} closed with {booked:.8f} of "
+                f"{float(record.get('asked', 0.0) or 0.0):.8f} filled, every "
+                f"piece booked."
+            )
+        self._bus.emit("bot.log", bot_id=self.bot_id, message=message)
+
+    def _export_resting_orders(self) -> list[dict]:
+        """``_resting_orders`` as plain records for a saved state."""
+        return [
+            dict(r, context=dict(r.get("context") or {})) for r in self._resting_orders
+        ]
+
+    def _import_resting_orders(self, stored: object) -> None:
+        """Restore ``_resting_orders`` from a saved list, keeping each record that names
+        an ``order_id`` and a ``booker``.
+        """
+        self._resting_orders = [
+            dict(r)
+            for r in (stored if isinstance(stored, list) else [])
+            if isinstance(r, dict)
+            and r.get("order_id")
+            and r.get("booker")
+            and r.get("side") in RESTING_SIDES
+        ]
+        self._resting_sources = {}
 
     @property
     def sector(self) -> str:

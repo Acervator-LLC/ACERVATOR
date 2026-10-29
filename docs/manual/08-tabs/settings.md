@@ -2696,6 +2696,24 @@ gates it. `Buy fills` gates `buy_fill` and `Sell fills` gates `sell_fill`.
 `src/exchange/ccxt_connector.py, in _alert_venue`, for a lost connection and for
 a venue that answers again.
 
+The figure `check_pnl_milestone` is handed is the fleet's realised total, the
+sum of each bot's `stats.realised_pnl`. That field had no writer and read zero,
+so the alert never fired. The exchange walk now writes it with the bot's
+realised figure from the exchange's own fill history. The walk runs at most once
+in 300 seconds, so the alert follows a fill by up to 300 seconds.
+
+```python
+# src/trading/scrumming/reconciliation.py, in refresh_exchange_position_health
+                self.stats.realized_pnl_exchange = self.stats.realised_pnl = float(
+                    _ph.realized_pnl_usd
+                )
+
+# src/gui/main_window.py, in _refresh_dashboard
+                        self._notif_manager.check_pnl_milestone(
+                            agg.get("total_realised_pnl", 0)
+                        )
+```
+
 Three rows still wait on a trigger of their own.
 
 | Row | What is missing |

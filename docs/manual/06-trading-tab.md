@@ -2934,6 +2934,22 @@ open-order check refuses a second sell while the first one is still there.
             if filled_units <= 0:
 ```
 
+**When the exchange fills that order later.** The paragraph above stands for the
+tick that sends the order. The bot now keeps an order the exchange still holds
+open on `_resting_orders`. Each worked tick asks the exchange about it once and
+books each part the exchange filled through the same path a fill inside the
+re-read takes, so the units leave the position and the fold tranches queue at
+that tick. The section dated 2026-10-29 below gives every path and the readings.
+
+```python
+# src/trading/scrumming/execution.py, in ExecutionEngineMixin._execute_sell
+            asked = self._order_asked_units(self._last_settled_order or order, amount)
+            self._hold_resting_order(
+                order,
+                "_book_sale_fill",
+                "sell",
+```
+
 **The same rule on the three other sale paths.** The Fire button's rebalance and
 the detonation read the exchange's own filled count and treat a reported zero as
 zero, so neither takes units off the lot book on a sale the exchange has not
@@ -2973,6 +2989,25 @@ that way.
 # the self-destruct, src/trading/scrumming_bot.py in self_destruct
         _sd_filled = getattr(order, "filled", None)
         fill_amount = float(_sd_filled or 0.0)
+```
+
+True today: the detonation, the expiry close and the self-destruct no longer
+read `filled` off the first reply, and the reads quoted above on these three
+paths are gone. Each reads the order through `_settled_fill`, the re-read the
+scrum uses. A missing count and a reported zero still book nothing, and the
+order stays held until the exchange fills it or closes it. The self-destruct's
+read is quoted in the section dated 2026-10-29 below.
+
+```python
+# src/trading/scrumming/execution.py, in ExecutionEngineMixin._execute_detonation
+        fill_amount, fill_price, _ = await self._settled_fill(
+            order, self.config.symbol, sell_amount, price, label="DETONATION"
+        )
+
+# src/trading/scrumming/tick_phases.py, in TickPhaseMixin._tick_expiry_close
+        filled, fill_price, _ = await self._settled_fill(
+            order, symbol, held, mark, label="EXPIRY CLOSE"
+        )
 ```
 
 **What the four sale paths wrote, driven.** Each site was driven with the
@@ -10918,5 +10953,211 @@ They stand as written, and these are the readings that replaced them.
 | "No figure this box can emit was reached." | A figure the vote reaches can be set: 1,744 of 1,744 bullish readings clear a bar of 0.00 |
 | "PROPOSED — `src/gui/main_tabs/live_settings_tab_surface.py`, the row's range" | Not built as proposed. The row reads the one span, 0.00 to 1.00 |
 | "And the detonation check builds a fresh voting panel with no weights" | The check votes at the bot's own twelve weights |
+
+## 2026-10-29 - every fill is booked once, from the count the exchange settled
+
+A completed trade changes what the bot holds, what it counts and what it queues.
+Each of those now changes once for each fill, by the count the exchange reports
+filled, on every path an order can take. A count the exchange did not report
+changes nothing.
+
+### A resting order is booked when the exchange fills it
+
+At Order Book a scrum or a fold rests as a limit order at the last price. When
+the re-reads see no fill, the bot keeps the order on its list of held orders,
+`_resting_orders`, and the activity log says so. The open-order check still
+refuses a second order on the same side while it rests.
+
+Each worked tick reads the exchange's open orders once and books every part of a
+held order the exchange filled since the last read. The holdings audit and the
+start-up read do the same before they compare anything, so no fill is booked
+twice. An order the exchange closes with nothing filled leaves the list and
+books nothing.
+
+The read costs one exchange call on each worked tick while an order is held, a
+second on the tick the holdings audit runs, and one more for each held order
+that leaves the open list. A bot with no held order makes no added call. A part
+booked later reads the exchange no more often than a fill inside the re-reads
+does.
+
+```python
+# src/trading/bot_container.py, in BotContainer._reconcile_resting_orders
+            open_by_id = {str(getattr(o, "id", "") or ""): o for o in (listed or [])}
+            for record in [
+                r for r in self._resting_orders if r.get("symbol") == symbol
+            ]:
+                body = open_by_id.get(record["order_id"])
+                if body is None:
+                    try:
+                        body = await self.exchange.get_order(record["order_id"], symbol)
+```
+
+### Each path books through one function
+
+A later part goes through the same booking function as a fill inside the
+re-reads. The held count, the lot book, the fold queue, the counts and the
+announcements therefore move exactly as they do for an immediate fill.
+
+```
+fill path                             booked by
+scrum                                 _book_sale_fill, then _book_scrum_fill
+distribution sell                     _book_sale_fill, then _book_dist_fill
+stack spend                           _book_sale_fill, then _book_stack_spend
+fold rebuy                            _book_purchase_fill, then _book_fold_fill
+initial entry                         _book_purchase_fill, then _book_entry_fill
+hedge buy                             _book_purchase_fill, then _book_hedge_fill
+manual tranche fire                   _book_purchase_fill, then _book_manual_tranche_fill
+Manual Fire, cartridge, wire stack    _book_manual_sale or _book_manual_purchase
+detonation                            _book_detonation
+self-destruct                         _book_self_destruct
+expiry close                          _book_expiry_close
+Extractor round and exit              _book_artillery and _book_exit
+```
+
+A fold settles the tranches it planned by the share of its order that filled. A
+part-filled fold drains that share of each planned tranche, and the rest stays
+queued for the next fold.
+
+**Driven, a scrum's limit order filling after the re-reads.** The bot held 9.5
+units of a stand-in market, $50 over its $900 target. The order for 0.5 units
+rested, then the stand-in exchange filled it.
+
+```
+                             the commit before this change    this change
+order placed, held           9.5                              9.5
+exchange fills it, held      9.5                              9.5
+first worked tick, held      9.5                              9.0, one $49.70 tranche queued, one trade
+the next scrum decision      sells 0.5 again                  sizes $0.00 and sells nothing
+after the holdings audit     held 8.5, $50 under target       nothing to correct
+```
+
+**Driven, a fold's limit order filling after the re-reads.** The order bought
+back one $50 tranche.
+
+```
+                             the commit before this change    this change
+first worked tick            the tranche still queued         the tranche settled, 0.526 units booked
+the next fold decision       buys the same $50 again          no tranche is eligible
+after the holdings audit     0.526 units adopted as a lot,    nothing to correct
+                             $52.50 over target
+```
+
+A part-filled scrum booked 0.2 of its 0.5 units at once and the other 0.3 at the
+next worked tick, one trade for the one order. A restart while a fold rested
+carried the held order in the saved state and booked it during start-up, so the
+next fold found nothing to buy a second time.
+
+### The detonation, self-destruct, expiry close and Extractor read the settled count
+
+These paths booked from the order's first reply alone. Each now reads the order
+the way the scrum does, through `_read_settled_order`, and a count of zero
+books nothing at all.
+
+```python
+# src/trading/scrumming_bot.py, in ScrummingBot.self_destruct
+        fill_amount, fill_price, _ = await self._settled_fill(
+            order, self.config.symbol, units, ref_price, label="SELF-DESTRUCT"
+        )
+```
+
+```
+the first reply says 0 filled    the commit before this change        this change
+detonation, exchange fills       nothing booked                       3 units booked, queue cleared
+self-destruct, exchange fills    0 units booked, bot paused           9 units booked, bot paused
+self-destruct, no fill           queue cleared, a trade counted,      nothing changes, the order is held
+                                 bot paused, a 0-unit fill announced
+expiry close, exchange fills     9 held against the exchange's 0      0 held, no lot left, one trade
+Extractor round, no fill         a 0.05-unit position opened          no position, the pool unchanged
+Extractor exit, no fill          the position closed, a gain booked   the position and the pool unchanged
+```
+
+An expiry close now also takes each settled fill off the lot book, highest buy
+price first, and counts the order once as a trade. The lot book no longer waits
+for the holdings audit after an expiry close.
+
+```python
+# src/trading/scrumming/tick_phases.py, in TickPhaseMixin._book_expiry_close
+        self._take_filled_units_off_lots(filled)
+        self._current_holdings = max(0.0, self._current_holdings - filled)
+```
+
+### Trade volume counts each fill once
+
+`BotContainer._count_trade_volume` is the one writer of the trade volume. Each
+fill adds its units times its price, in dollars, once.
+
+```python
+# src/trading/bot_container.py, in BotContainer._count_trade_volume
+        self.stats.trade_volume += notional
+```
+
+```
+trade volume over the fill's value    the commit before this change    this change
+scrum, distribution sell              1.99                             1.00
+fold, hedge buy                       2.00                             1.00
+entry, manual tranche, stack spend    1.00                             1.00
+the eleven other paths                0.00                             1.00
+```
+
+### The realised figure the P&L milestone reads
+
+The P&L milestone alert reads the fleet's realised total, which adds each bot's
+`stats.realised_pnl`. Nothing wrote that field, so the total read zero. The
+exchange walk now writes it with the figure the header strip's realised column
+already draws.
+
+```python
+# src/trading/scrumming/reconciliation.py, in refresh_exchange_position_health
+                self.stats.realized_pnl_exchange = self.stats.realised_pnl = float(
+                    _ph.realized_pnl_usd
+                )
+```
+
+The walk runs on a tick at most once in 300 seconds, and the start-up read
+forces one. The figure therefore moves at the walk, up to 300 seconds after the
+fill. A fill still makes no walk.
+
+```python
+# src/trading/scrumming/reconciliation.py, in ReconciliationEngineMixin
+    EXCHANGE_HEALTH_REFRESH_COOLDOWN_SEC = 300.0
+```
+
+**Driven, one scrum and one fold, then one exchange walk, with the alert
+threshold at $1.**
+
+```
+                                     the commit before this change    this change
+fleet realised total after the walk  $0.00                            $5.00
+P&L milestone alerts                 none                             one, P/L Milestone: $5.00
+the risk monitor's total P/L         $0.00                            $5.00
+```
+
+**Driven, the tick's walk call inside the 300 seconds, around the same scrum
+and fold.** Neither commit walked, before or after either fill, so the change
+adds no walk to a fill.
+
+Every reader of `stats.realised_pnl` now reads the exchange's figure where it
+read zero. The Swarm card prints it as the bot's P/L. The risk monitor adds it
+to its total P/L and checks each bot against its per-bot loss limit.
+
+```python
+# src/gui/visualizer/bot_node.py, in BotNodeWidget.paintEvent
+            pnl = stats.get("realised_pnl", 0)
+
+# src/trading/risk_manager.py, in RiskManager._build_snapshot
+            pnl = stats.get("realised_pnl", 0) + stats.get("unrealised_pnl", 0)
+```
+
+### What a held order stops
+
+A Manual Fire, a cartridge or a wire stack whose order is still held answers
+the next press with MANUAL FIRE HELD and sends nothing. The expiry close sends
+nothing more while its order is held. The Extractor sends no round and no exit
+on a pair while an order on that pair is held.
+
+```python
+# src/trading/scrumming/execution.py, in _execute_manual_rebalance
+        _held = self._resting_order_for("_book_manual_sale", "_book_manual_purchase")
+```
 
 The Product Manual PDF rebuild is owed for this page.
