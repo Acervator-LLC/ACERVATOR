@@ -15,6 +15,9 @@ from typing import Optional
 from ...trading.container.config import (
     CEILING_MULTIPLE_MAX,
     CEILING_MULTIPLE_MIN,
+    DETONATION_BAR_MAX,
+    DETONATION_BAR_MIN,
+    DETONATION_CONFIDENCE_MIN_DEFAULT,
     FOLD_RATIO_MAX_PCT,
     FOLD_RATIO_MIN_PCT,
     FOLD_RATIO_PCT_DEFAULT,
@@ -763,10 +766,12 @@ if _HAS_QT:
             rf.addRow("Detonation TF:", self._detonation_timeframe)
 
             self._detonation_confidence_min = QDoubleSpinBox()
-            self._detonation_confidence_min.setRange(0.50, 1.00)
+            self._detonation_confidence_min.setRange(
+                DETONATION_BAR_MIN, DETONATION_BAR_MAX
+            )
             self._detonation_confidence_min.setDecimals(2)
             self._detonation_confidence_min.setSingleStep(0.05)
-            self._detonation_confidence_min.setValue(0.75)
+            self._detonation_confidence_min.setValue(DETONATION_CONFIDENCE_MIN_DEFAULT)
             self._detonation_confidence_min.setToolTip(
                 BOT_WIZARD_DESCRIPTIONS["detonation_confidence_min"]
             )

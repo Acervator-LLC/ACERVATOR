@@ -75,6 +75,9 @@ from ...exchange.timeframes import ALL_TIMEFRAMES
 from ...trading.container.config import (
     CEILING_MULTIPLE_MAX,
     CEILING_MULTIPLE_MIN,
+    DETONATION_BAR_MAX,
+    DETONATION_BAR_MIN,
+    DETONATION_CONFIDENCE_MIN_DEFAULT,
     FOLD_RATIO_MAX_PCT,
     FOLD_RATIO_MIN_PCT,
     FOLD_RATIO_PCT_DEFAULT,
@@ -384,11 +387,11 @@ NUMBER_FIELDS: dict[str, dict] = {
     },
     "detonation_confidence_min": {
         "kind": SPIN_DOUBLE,
-        "minimum": 0.50,
-        "maximum": 1.00,
+        "minimum": DETONATION_BAR_MIN,
+        "maximum": DETONATION_BAR_MAX,
         "decimals": 2,
         "step": 0.05,
-        "value": 0.75,
+        "value": DETONATION_CONFIDENCE_MIN_DEFAULT,
     },
     "ext_chunk_size_usd": {
         "kind": SPIN_DOUBLE,
@@ -3223,6 +3226,16 @@ class BotWizardModel:
         else:
             config.update(self.phantom_config())
         return config
+
+
+def with_new_bot_weights(config: dict) -> dict:
+    """``config`` with ``own_ta_weights`` at ``new_bot_weights`` when ``mode`` is
+    ``SCRUMMING_MODE``."""
+    if config.get("mode") == SCRUMMING_MODE:
+        from ...trading.ta_engine import new_bot_weights
+
+        config["own_ta_weights"] = new_bot_weights()
+    return config
 
 
 CONFIG_FIELDS = (

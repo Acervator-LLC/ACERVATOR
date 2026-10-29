@@ -42,8 +42,13 @@ from .ta_engine import (
     detect_bb_proximity,
     BBProximityResult,
     detect_landing_strip_v2,
+    weights_from_settings,
 )
-from .container.config import ceiling_multiple, target_growth_pct
+from .container.config import (
+    DETONATION_CONFIDENCE_MIN_DEFAULT,
+    ceiling_multiple,
+    target_growth_pct,
+)
 from .otd_math import (
     minimum_opposing_trade_distance_pct,
     minimum_opposing_trade_distance_pct_from_config,
@@ -396,6 +401,14 @@ class ScrummingBot(
                     f"process-wide EventBus."
                 ) from _bus_exc
 
+        own_weights = config.own_ta_weights
+        if isinstance(own_weights, dict) and own_weights:
+            ta_weights = weights_from_settings(own_weights)
+        elif own_weights:
+            logger.warning(
+                "Bot own_ta_weights %r is not a mapping; the stored weights stand",
+                own_weights,
+            )
         self._ta_weights = ta_weights
         self._voting_engine = VotingEngine(weights=ta_weights)
         self._last_summary: Optional[VotingSummary] = None
@@ -4572,7 +4585,7 @@ class ScrummingBot(
             return False
 
         try:
-            engine = VotingEngine()
+            engine = VotingEngine(weights=self._ta_weights)
             parsed = candles_from_raw(candles)
             summary = engine.compute_all(parsed, tf)
         except Exception as exc:
@@ -4585,7 +4598,13 @@ class ScrummingBot(
             )
             return False
 
-        conf_min = float(getattr(self.config, "detonation_confidence_min", 0.75))
+        conf_min = float(
+            getattr(
+                self.config,
+                "detonation_confidence_min",
+                DETONATION_CONFIDENCE_MIN_DEFAULT,
+            )
+        )
         is_bullish = (
             summary.consensus_direction == SignalDirection.BULLISH
             and summary.consensus_confidence >= conf_min
@@ -5380,6 +5399,7 @@ class ScrummingBot(
         """
         self._ta_weights = dict(weights) if weights else None
         self._voting_engine.set_weights(self._ta_weights)
+        self.config.own_ta_weights = {}
         logger.info(
             "Bot %s: TA weights taken (%d names) — from the next tick",
             self.bot_id,

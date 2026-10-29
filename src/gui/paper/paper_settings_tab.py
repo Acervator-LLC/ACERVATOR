@@ -752,6 +752,9 @@ class PaperSettingsTabMixin(SettingsTabMixin):
         from ...trading.container.config import (
             CEILING_MULTIPLE_MAX,
             CEILING_MULTIPLE_MIN,
+            DETONATION_BAR_MAX,
+            DETONATION_BAR_MIN,
+            DETONATION_CONFIDENCE_MIN_DEFAULT,
             ceiling_multiple,
         )
 
@@ -788,10 +791,16 @@ class PaperSettingsTabMixin(SettingsTabMixin):
         rf.addRow("Detonation TF:", self._deto_tf)
 
         self._deto_conf = QDoubleSpinBox()
-        self._deto_conf.setRange(0.50, 1.00)
+        self._deto_conf.setRange(DETONATION_BAR_MIN, DETONATION_BAR_MAX)
         self._deto_conf.setDecimals(2)
         self._deto_conf.setSingleStep(0.05)
-        self._deto_conf.setValue(float(getattr(cfg, "detonation_confidence_min", 0.75)))
+        self._deto_conf.setValue(
+            float(
+                getattr(
+                    cfg, "detonation_confidence_min", DETONATION_CONFIDENCE_MIN_DEFAULT
+                )
+            )
+        )
         self._deto_conf.setToolTip(SETTINGS_TAB_DESCRIPTIONS["deto_conf"])
         self._deto_conf.valueChanged.connect(
             lambda v: self._mark_changed("detonation_confidence_min", v)

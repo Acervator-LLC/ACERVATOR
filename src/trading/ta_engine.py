@@ -134,6 +134,7 @@ __all__ = [
     "KaufmanERIndicator",
     "MACD",
     "MIN_CANDLES_FOR_TA",
+    "NEW_BOT_WEIGHT",
     "NO_SHRINK_RATIO",
     "PERCENT_PER_RATIO_UNIT",
     "RSIIndicator",
@@ -163,6 +164,7 @@ __all__ = [
     "detect_macd_taper",
     "detect_volume_confirmed_spring",
     "detect_w_bottom",
+    "new_bot_weights",
     "weights_away_from_default",
     "weights_from_settings",
     "weights_in_force",
@@ -191,6 +193,15 @@ DEFAULT_WEIGHTS = {
     # Both are built on Wilder's RSI, so this vote overlaps stochastic_rsi.
     "rsi": 0.8,
 }
+
+#: The weight each of the twelve ``DEFAULT_WEIGHTS`` indicators holds on a new bot.
+NEW_BOT_WEIGHT = 0.0
+
+
+def new_bot_weights() -> dict[str, float]:
+    """The twelve weights a new bot votes at, ``NEW_BOT_WEIGHT`` under each name."""
+    return dict.fromkeys(DEFAULT_WEIGHTS, NEW_BOT_WEIGHT)
+
 
 # Keyed by the DEFAULT_WEIGHTS name, so _create_indicators needs no second list
 # of figures and KeyErrors on a weight name that has no indicator.
