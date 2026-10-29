@@ -25,6 +25,8 @@ from statistics import median
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
+import numpy as np
+from matplotlib.dates import DateFormatter
 from matplotlib.figure import Figure
 from matplotlib.patches import Rectangle
 from PIL import Image as PilImage
@@ -57,9 +59,15 @@ from src.design_system import (
     plt,
     validate_contrast,
 )
+from src.trading.indicators.bollinger import BollingerBands
+from src.trading.indicators.types import candles_from_raw
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator, Mapping, Sequence
+
+    from matplotlib.axes import Axes
+
+    from src.trading.indicators.types import Candle
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DOCS_DIR = REPO_ROOT / "docs" / "manual"
@@ -1694,8 +1702,8 @@ def verify_count_word(intro: str, total: int) -> tuple[bool, str]:
 
 
 EVIDENCE_DIR = REPO_ROOT / "artifacts" / "evidence-input"
-TRANSACTIONS_DIR = EVIDENCE_DIR / "transactions"
-PLACARDS_DIR = EVIDENCE_DIR / "placards"
+TRANSACTIONS_FOLDER = "transactions"
+PLACARDS_FOLDER = "placards"
 TABLETS_DIR = REPO_ROOT / "stone_tablets"
 BASELINE_DAY = datetime(2026, 4, 12, tzinfo=timezone.utc)
 QUOTE_ASSETS = frozenset({"USD", "USDC"})
@@ -1715,6 +1723,18 @@ PLACARD_LOGO_RIGHT = 0.66
 PLACARD_CODE_LEFT = 0.72
 PLACARD_CODE_TOP = 0.77
 LIGHT_GROUND_SUM = 382
+CHART_BAND = BollingerBands(period=20, std_dev=2.0)
+BAND_BAR_MS = DAY_MS
+BAND_BAR_NAME = "1d"
+BAND_FILL_ALPHA = 0.55
+STEP_DOT_MAX_FILLS = 30
+COMBINED_BASES = 8
+PRICE_PANEL = (0.08, 0.34, 0.77, 0.50)
+UNITS_PANEL = (0.08, 0.12, 0.77, 0.16)
+COMBINED_PANEL = (0.08, 0.16, 0.74, 0.68)
+COMBINED_NOTE_AT = (0.08, 0.06)
+BUY_PEN = 0
+SELL_PEN = 5
 
 
 @dataclass(frozen=True)
@@ -1865,9 +1885,9 @@ def base_labels(fills: Sequence[Fill]) -> dict[str, str]:
     return {asset: f"A{n:02d}" for n, (asset, _) in enumerate(counts.most_common(), 1)}
 
 
-def export_files() -> list[Path]:
-    """Return every venue export under the evidence input directory."""
-    return sorted(TRANSACTIONS_DIR.glob("*.csv"))
+def export_files(evidence_dir: Path) -> list[Path]:
+    """Return every venue export in the ``TRANSACTIONS_FOLDER`` of ``evidence_dir``."""
+    return sorted((evidence_dir / TRANSACTIONS_FOLDER).glob("*.csv"))
 
 
 def newest_export(indexed: Mapping[Path, list[Fill]]) -> Path:
@@ -2210,11 +2230,11 @@ def _write_asset_traces(
     return out
 
 
-def placard_sources(labels: Mapping[str, str]) -> dict[str, Path]:
+def placard_sources(labels: Mapping[str, str], evidence_dir: Path) -> dict[str, Path]:
     """Return each label's supplied position card, keyed by the label its ticker maps
     to."""
     found: dict[str, Path] = {}
-    for path in sorted(PLACARDS_DIR.glob("*.png")):
+    for path in sorted((evidence_dir / PLACARDS_FOLDER).glob("*.png")):
         ticker = path.name.split("_")[0].upper()
         if ticker in labels:
             found[labels[ticker]] = path
@@ -2224,12 +2244,13 @@ def placard_sources(labels: Mapping[str, str]) -> dict[str, Path]:
 def _write_asset_placards(
     figures_dir: Path,
     labels: Mapping[str, str],
+    evidence_dir: Path,
 ) -> list[tuple[str, str]]:
     """Write one obscured position card per charted base, named for that base's label.
 
     A base the venue supplied no card for reports absent and writes nothing, so the
     page that embeds it stops the build by name."""
-    sources = placard_sources(labels)
+    sources = placard_sources(labels, evidence_dir)
     figures_dir.mkdir(parents=True, exist_ok=True)
     out: list[tuple[str, str]] = []
     for label in sorted(labels.values()):
@@ -2240,6 +2261,190 @@ def _write_asset_placards(
             continue
         obscured_placard(src, label).save(figures_dir / name)
         out.append((name, "wrote"))
+    return out
+
+
+def fill_bars(fills: Sequence[Fill], bar_ms: int) -> list[Candle]:
+    """Return a ``Candle`` per ``bar_ms`` bar, carrying the close over an empty bar."""
+    grouped: dict[int, list[Fill]] = {}
+    for fill in sorted(fills, key=lambda f: f.when):
+        grouped.setdefault(int(fill.when.timestamp() * 1000) // bar_ms, []).append(fill)
+    rows: list[list[float]] = []
+    close = 0.0
+    for bar in range(min(grouped, default=0), max(grouped, default=-1) + 1):
+        held = grouped.get(bar, [])
+        prices = [fill.price for fill in held] or [close]
+        close = prices[-1]
+        volume = sum((fill.qty for fill in held), 0.0)
+        row = [float(bar * bar_ms), prices[0], max(prices), min(prices), close, volume]
+        rows.append(row)
+    return candles_from_raw(rows)
+
+
+def fill_band(
+    fills: Sequence[Fill],
+) -> tuple[list[datetime], list[float], list[float], list[float]]:
+    """Return the ``CHART_BAND`` lines over ``fill_bars``, with each bar's start."""
+    candles = fill_bars(fills, BAND_BAR_MS)
+    times: list[datetime] = []
+    upper: list[float] = []
+    middle: list[float] = []
+    lower: list[float] = []
+    for candle, entry in zip(candles, CHART_BAND.bands(candles), strict=True):
+        if entry is None:
+            continue
+        times.append(datetime.fromtimestamp(candle.timestamp / 1000.0, tz=timezone.utc))
+        upper.append(entry[0])
+        middle.append(entry[1])
+        lower.append(entry[2])
+    return times, upper, middle, lower
+
+
+def _draw_band(axis: Axes, fills: Sequence[Fill]) -> str:
+    """Shade the ``fill_band`` channel on axis and return the title note naming it."""
+    times, upper, middle, lower = fill_band(fills)
+    if not times:
+        return "no band"
+    stamps = np.asarray(times)
+    setting = f"Bollinger {CHART_BAND.period} / {CHART_BAND.std_dev:g}"
+    axis.fill_between(
+        stamps,
+        lower,
+        upper,
+        color=ink("rule"),
+        alpha=BAND_FILL_ALPHA,
+        linewidth=0.0,
+        zorder=0,
+        label=f"{setting} sigma",
+    )
+    for line, style in ((upper, "-"), (lower, "-"), (middle, (0, (4, 3)))):
+        axis.plot(stamps, line, color=ink("ink_faint"), lw=0.5, ls=style, zorder=0.4)
+    return f"{setting} on {BAND_BAR_NAME} bars"
+
+
+def _draw_dots(axis: Axes, fills: Sequence[Fill]) -> dict[str, str]:
+    """Dot every buy and sell at its price, and return the pen each side drew in."""
+    pens = {"buy": series()[BUY_PEN], "sell": series()[SELL_PEN]}
+    for side, pen in pens.items():
+        own = [fill for fill in fills if fill.side == side]
+        axis.plot(
+            np.asarray([fill.when for fill in own]),
+            [fill.price for fill in own],
+            linestyle="none",
+            marker=".",
+            markersize=3,
+            color=pen,
+            alpha=0.7,
+            zorder=2,
+            label=f"{side} fills ({len(own)})",
+        )
+    return pens
+
+
+def _page_figure() -> Figure:
+    """Return a figure the ``GRID`` page size, on the page ground."""
+    apply_rcparams()
+    return plt.figure(
+        figsize=(space("page_w_in"), space("page_h_in")),
+        dpi=FIGURE_DPI,
+        facecolor=ink("bg"),
+    )
+
+
+def _draw_vwap(label: str, fills: Sequence[Fill]) -> Figure:
+    """Return the chart of ``label``: price, fills, band and VWAPs, then net units."""
+    times, buy_v, sell_v, held = trajectory(fills)
+    stamps = np.asarray(times)
+    figure = _page_figure()
+    price = figure.add_axes(PRICE_PANEL)
+    units = figure.add_axes(UNITS_PANEL, sharex=price)
+    note = _draw_band(price, fills)
+    pens = _draw_dots(price, fills)
+    marker = "o" if len(fills) <= STEP_DOT_MAX_FILLS else "None"
+    for side, line in (("buy", buy_v), ("sell", sell_v)):
+        price.plot(
+            stamps,
+            line,
+            color=pens[side],
+            lw=1.4,
+            marker=marker,
+            markersize=4,
+            zorder=3,
+            label=f"running {side} VWAP",
+        )
+    lowest = min(fill.price for fill in fills)
+    if lowest > 0 and max(fill.price for fill in fills) / lowest > LOG_AXIS_SPAN:
+        price.set_yscale("log")
+    price.set_ylabel(f"{label} price, USD")
+    price.set_title(f"{label} — {len(fills)} fills, {note}")
+    price.legend(ncols=3, loc="upper right")
+    price.tick_params(labelbottom=False)
+    units.fill_between(
+        stamps,
+        held,
+        0.0,
+        color=ink("accent"),
+        alpha=0.35,
+        linewidth=0.0,
+    )
+    units.plot(stamps, held, color=ink("accent"), lw=1.0)
+    units.set_ylabel("net units")
+    units.xaxis.set_major_formatter(DateFormatter("%d %b"))
+    return figure
+
+
+def _draw_combined(groups: Mapping[str, Sequence[Fill]]) -> Figure:
+    """Return a chart of the ``COMBINED_BASES`` busiest labels' indexed buy VWAPs."""
+    ranked = sorted(groups, key=lambda label: len(groups[label]), reverse=True)
+    pens = accessible_series()
+    figure = _page_figure()
+    axis = figure.add_axes(COMBINED_PANEL)
+    for place, label in enumerate(ranked[:COMBINED_BASES]):
+        times, buy_v, _, _ = trajectory(groups[label])
+        first = next((value for value in buy_v if not math.isnan(value)), 0.0)
+        if first <= 0.0:
+            continue
+        axis.plot(
+            np.asarray(times),
+            [value / first for value in buy_v],
+            color=pens[place % len(pens)],
+            lw=1.5,
+            ls="-" if place < len(pens) else (0, (5, 2)),
+            label=f"{label} ({len(groups[label])})",
+        )
+    axis.axhline(1.0, color=ink("rule"), lw=0.8)
+    axis.set_ylabel("running buy VWAP / first buy VWAP")
+    axis.set_title("Running buy VWAP, each asset indexed to its own first buy VWAP")
+    axis.legend(ncols=3, loc="upper right")
+    axis.xaxis.set_major_formatter(DateFormatter("%d %b"))
+    quotes = " and ".join(sorted(QUOTE_ASSETS))
+    figure.text(
+        *COMBINED_NOTE_AT,
+        f"{len(groups)} charted bases. {quotes} are excluded as quote currencies.",
+        fontsize=size("cap"),
+        color=ink("ink_mute"),
+    )
+    return figure
+
+
+def _write_asset_vwap(
+    figures_dir: Path,
+    labels: Mapping[str, str],
+    fills: Sequence[Fill],
+) -> list[tuple[str, str]]:
+    """Write ``vwap_combined.png`` and one VWAP chart per label of ``fills``."""
+    groups: dict[str, list[Fill]] = {}
+    for fill in fills:
+        groups.setdefault(labels[fill.asset], []).append(fill)
+    combined = "vwap_combined.png"
+    out = [(combined, _save(_draw_combined(groups), figures_dir / combined))]
+    for label in sorted(labels.values()):
+        name = asset_figure_name("vwap", label)
+        held = groups.get(label)
+        if not held:
+            out.append((name, f"absent - no fill for {label} in the newest export"))
+            continue
+        out.append((name, _save(_draw_vwap(label, held), figures_dir / name)))
     return out
 
 
@@ -2420,9 +2625,14 @@ def _write_market(
     return (name, _save(figure, figures_dir / name))
 
 
-def write_evidence_figures(figures_dir: Path) -> list[tuple[str, str]]:
+def write_evidence_figures(
+    figures_dir: Path,
+    evidence_dir: Path,
+) -> list[tuple[str, str]]:
     """Write every evidence figure into figures_dir and return each name and outcome."""
     names = [
+        "vwap_combined.png",
+        asset_figure_name("vwap", "a<NN>"),
         asset_figure_name("weekly", "a<NN>"),
         asset_figure_name("trace", "a<NN>"),
         asset_figure_name("card", "a<NN>"),
@@ -2430,19 +2640,18 @@ def write_evidence_figures(figures_dir: Path) -> list[tuple[str, str]]:
         "evidence_hodl_dollars.png",
         "evidence_market.png",
     ]
-    paths = export_files()
+    paths = export_files(evidence_dir)
     if not paths:
-        return [
-            (name, f"absent - no venue export under {TRANSACTIONS_DIR}")
-            for name in names
-        ]
+        missing = evidence_dir / TRANSACTIONS_FOLDER
+        return [(name, f"absent - no venue export under {missing}") for name in names]
     indexed = {path: load_fills(path)[0] for path in paths}
     labels = labels_across(indexed)
     fills = indexed[newest_export(indexed)]
     candles = {asset: tablet_candles(asset) for asset in labels}
-    out = _write_asset_weekly(figures_dir, labels, candles)
+    out = _write_asset_vwap(figures_dir, labels, fills)
+    out += _write_asset_weekly(figures_dir, labels, candles)
     out += _write_asset_traces(figures_dir, labels, candles)
-    out += _write_asset_placards(figures_dir, labels)
+    out += _write_asset_placards(figures_dir, labels, evidence_dir)
     rows = hodl_rows(fills, labels, candles)
     out.append(_write_hodl_units(figures_dir, rows))
     out.append(_write_hodl_dollars(figures_dir, rows))
@@ -2522,13 +2731,15 @@ def _reading_lines(reading: ExportReading) -> list[str]:
     ]
 
 
-def measurement_lines(paths: Sequence[Path]) -> list[str]:
+def measurement_lines(evidence_dir: Path) -> list[str]:
     """Return the reading and the two tables the manual's VWAP part publishes.
 
     ``labels_across`` names every base, so no line carries a ticker, an account or an
     export file name."""
+    paths = export_files(evidence_dir)
     if not paths:
-        return [f"absent - no venue export under {TRANSACTIONS_DIR}"]
+        missing = evidence_dir / TRANSACTIONS_FOLDER
+        return [f"absent - no venue export under {missing}"]
     indexed = {path: load_fills(path)[0] for path in paths}
     labels = labels_across(indexed)
     rows = base_rows(indexed[newest_export(indexed)], labels)
@@ -2591,6 +2802,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--docs-dir", type=Path, default=DEFAULT_DOCS_DIR)
     parser.add_argument("--figures-dir", type=Path, default=DEFAULT_FIGURES_DIR)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
+    parser.add_argument("--evidence-dir", type=Path, default=EVIDENCE_DIR)
     parser.add_argument(
         "--measure",
         action="store_true",
@@ -2599,11 +2811,11 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     if args.measure:
-        for line in measurement_lines(export_files()):
+        for line in measurement_lines(args.evidence_dir):
             print(console_safe(line))
         return 0
 
-    for figure, outcome in write_evidence_figures(args.figures_dir):
+    for figure, outcome in write_evidence_figures(args.figures_dir, args.evidence_dir):
         print(console_safe(f"figure {figure}: {outcome}"))
 
     result = build(args.docs_dir, args.figures_dir, args.output)
