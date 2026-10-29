@@ -546,8 +546,9 @@ def venue_base_sector(venue: Any, base: Any) -> Optional[str]:
 #: and ``PRECIOUS_METAL_CODES`` already answer commodities for, while its
 #: perpetual carries ``asset_class`` ``CRYPTO`` on the venue's own
 #: ``/api/v2/markets/`` and sits in the crypto list of its own launch page
-#: beside BTC and ETH, so the contract records under crypto and the spot pairs
-#: are left alone.
+#: beside BTC and ETH, so the row cites crypto. ``market_asset_class`` passes
+#: the contract through ``ata_spm.contract_class``, so it records under
+#: futures_perps, and the spot pairs are left alone.
 #:
 #: The other five undo a currency reading on a market holding one currency or
 #: none. ``USDC/USD``, ``USDT/USD`` and ``EURC/EUR`` each quote a token against

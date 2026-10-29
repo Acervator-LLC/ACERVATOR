@@ -38,6 +38,8 @@ from .ata_spm import (
     CLASS_COMMODITIES,
     CLASS_CRYPTO,
     CLASS_FOREX,
+    CLASS_FUTURES_PERPS,
+    CLASS_INDICES,
     CLASS_STOCKS,
     NO_ASSET_CLASS,
     RETIRED_CLASS_DERIVATIVES,
@@ -46,6 +48,7 @@ from .ata_spm import (
     YAHOO_PACE_S,
     YAHOO_RATE_LIMIT_WAIT_S,
     asset_class_named,
+    contract_class,
     ReadPace,
 )
 from .indicators.types import CandleDomainError, candles_from_raw
@@ -306,7 +309,8 @@ RETIRED_SECTORS: dict[str, str] = {
 #: The published exchange root codes a non-crypto futures contract can carry,
 #: each with the class, the sector and the underlying that root names.
 #: ``futures_placement`` reads it for a product the venue flags non_crypto; a
-#: root outside it is named by ``futures_unplaced`` and placed in no class.
+#: root outside it is named by ``futures_unplaced`` and placed in no class. An
+#: index root takes ``CLASS_INDICES`` and no sector, since ``MAPS`` declares none.
 NON_CRYPTO_ROOTS: dict[str, tuple] = {
     "SI": (CLASS_COMMODITIES, SECTOR_PRECIOUS_METALS, "silver"),
     "GC": (CLASS_COMMODITIES, SECTOR_PRECIOUS_METALS, "gold"),
@@ -325,10 +329,10 @@ NON_CRYPTO_ROOTS: dict[str, tuple] = {
     "SB": (CLASS_COMMODITIES, SECTOR_AGRICULTURE, "sugar"),
     "LE": (CLASS_COMMODITIES, SECTOR_LIVESTOCK, "live cattle"),
     "HE": (CLASS_COMMODITIES, SECTOR_LIVESTOCK, "lean hogs"),
-    "ES": (CLASS_STOCKS, SECTOR_PORTFOLIO, "S&P 500 index"),
-    "NQ": (CLASS_STOCKS, SECTOR_PORTFOLIO, "Nasdaq-100 index"),
-    "YM": (CLASS_STOCKS, SECTOR_PORTFOLIO, "Dow Jones Industrial Average"),
-    "RTY": (CLASS_STOCKS, SECTOR_PORTFOLIO, "Russell 2000 index"),
+    "ES": (CLASS_INDICES, "", "S&P 500 index"),
+    "NQ": (CLASS_INDICES, "", "Nasdaq-100 index"),
+    "YM": (CLASS_INDICES, "", "Dow Jones Industrial Average"),
+    "RTY": (CLASS_INDICES, "", "Russell 2000 index"),
 }
 
 USD = "USD"
@@ -769,12 +773,13 @@ MAP_SOURCES: dict[str, str] = {
         "products the venue's market table says it trades: status online and "
         "trading_disabled false; the rest are named on the order line and "
         "never fetched. "
-        "ADDED 2026-09-24: this class also holds the Coinbase CDE futures "
-        "products whose underlying is a crypto asset. futures_placement reads "
+        "The Coinbase CDE futures products whose underlying is a crypto asset "
+        "are not in this class. futures_placement reads "
         "future_product_details.non_crypto and contract_root_unit off each "
         "product record; a root the sector map or CRYPTO_SYMBOLS names is a "
-        "crypto underlying, the row is placed here with FORM_FUTURE, and its "
-        "sector is the tag load_sector_map holds for that root. " + FORM_SOURCE
+        "crypto underlying, contract_class files the row under futures_perps "
+        "with FORM_FUTURE, and its sector is the tag load_sector_map holds for "
+        "that root. " + FORM_SOURCE
     ),
     CLASS_FOREX: (
         "Liquidity tiers: major holds USD, minor crosses two majors, exotic "
@@ -882,9 +887,9 @@ MAP_SOURCES: dict[str, str] = {
         "same function, and derivatives is no longer an asset class holding "
         "it. " + FORM_SOURCE + " Each product now carries FORM_FUTURE or "
         "FORM_PERPETUAL as its form and is placed under the class of its "
-        "underlying by futures_placement; ASSET_CLASSES holds crypto, stocks, "
-        "commodities and forex, and RETIRED_CLASSES resolves the name "
-        "derivatives onto crypto. NON_CRYPTO_ROOTS names the published "
+        "underlying by futures_placement and filed by contract_class; "
+        "ASSET_CLASSES holds six classes, and RETIRED_CLASSES resolves the "
+        "name derivatives onto futures_perps. NON_CRYPTO_ROOTS names the published "
         "exchange root codes a non-crypto contract can carry; a root no table "
         "resolves is placed nowhere, held in _FUTURES_UNPLACED, and counted "
         "on the order line through MarketOrder.unplaced rather than guessed."
@@ -1005,6 +1010,9 @@ FORM_DEPLOYABILITY: dict[str, Deployability] = {
     ),
 }
 FORM_DEPLOYABILITY[FORM_PERPETUAL] = FORM_DEPLOYABILITY[FORM_FUTURE]
+
+#: ``futures_placement`` files every contract on a crypto underlying here.
+CLASS_DEPLOYABILITY[CLASS_FUTURES_PERPS] = FORM_DEPLOYABILITY[FORM_FUTURE]
 
 #: What a row carrying ``NO_VENUE`` answers. ``METALS_SPOT`` is the only such
 #: listing tuple and no configured venue quotes any of its four pairs.
@@ -1409,19 +1417,19 @@ def futures_placement(product: dict) -> tuple[str, str, str]:
     """The underlying, the asset class and the sector one futures product takes.
 
     ``_non_crypto`` and ``_root_of`` read the venue's own record: a root the
-    crypto names hold places the product under ``CLASS_CRYPTO`` with the
-    sector map's tag, a root ``NON_CRYPTO_ROOTS`` names places it under that
-    class and sector, and every other root answers ``NO_ASSET_CLASS``.
+    crypto names hold reads ``CLASS_CRYPTO`` with the sector map's tag, a root
+    ``NON_CRYPTO_ROOTS`` names reads that class and sector, every other root
+    answers ``NO_ASSET_CLASS``, and ``contract_class`` files each class read.
     """
     root = _root_of(product)
     if not root:
         return "", NO_ASSET_CLASS, ""
     if not _non_crypto(product) and (root in CRYPTO_SYMBOLS or _crypto_sector(root)):
-        return root, CLASS_CRYPTO, _crypto_sector(root)
+        return root, contract_class(CLASS_CRYPTO), _crypto_sector(root)
     held = NON_CRYPTO_ROOTS.get(root)
     if held is None:
         return root, NO_ASSET_CLASS, ""
-    return held[2], held[0], held[1]
+    return held[2], contract_class(held[0]), held[1]
 
 
 def _figure_of(product: dict) -> float:

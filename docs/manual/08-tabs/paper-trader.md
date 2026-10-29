@@ -3134,6 +3134,9 @@ answer with the declared sectors, and
 `is_derivative` test behind it and its suffix list are removed, and
 `symbol_class` is the one resolver left.
 
+The sentence above naming crypto is overtaken, and it is kept as written.
+`retired_onto` now resolves `derivatives` onto futures_perps.
+
 A contract market still answers its own sector. The recording carries
 `futures_perps` on a perpetual row, which is the sector the taxonomy declares
 and the sector the Futures / Perps button filters on.

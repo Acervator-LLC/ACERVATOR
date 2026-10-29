@@ -8384,6 +8384,15 @@ asked = RETIRED_CLASSES.get(asked, asked)
 | `equities` | stocks | Stock | `#6699ff` |
 | a name no class holds | crypto | Crypto | `#00ccaa` |
 
+The `derivatives` row and the block above it are overtaken, and both are kept as
+written. A stored `derivatives` name now opens on Futures / Perps, the sector the
+contract rule files a contract on a crypto underlying under.
+
+```python
+# src/trading/ata_spm.py, in RETIRED_CLASSES
+    RETIRED_CLASS_DERIVATIVES: contract_class(CLASS_CRYPTO),
+```
+
 **Design intention.** Derivatives names no sector. A futures contract is a form a
 contract takes, and the class belongs to the thing underneath it, so a future on an
 index sits with equities and a future on ether sits with crypto. A venue's dated
@@ -8395,6 +8404,25 @@ product takes the class of its own underlying.
 ```python
 def futures_placement(product: dict) -> tuple[str, str, str]:
     """The underlying, the asset class and the sector one futures product takes.
+```
+
+The design intention above is overtaken in two places, and it is kept as written.
+A future on a crypto asset now sits with Futures / Perps, and a future on an index
+sits with Indices. The placement passes each class it reads through
+`src/trading/ata_spm.py, in contract_class`, the rule every other placement runs,
+so the scan and the recording file one product under one sector.
+
+```python
+# src/trading/ata_asset_maps.py, in futures_placement
+    root = _root_of(product)
+    if not root:
+        return "", NO_ASSET_CLASS, ""
+    if not _non_crypto(product) and (root in CRYPTO_SYMBOLS or _crypto_sector(root)):
+        return root, contract_class(CLASS_CRYPTO), _crypto_sector(root)
+    held = NON_CRYPTO_ROOTS.get(root)
+    if held is None:
+        return root, NO_ASSET_CLASS, ""
+    return held[2], contract_class(held[0]), held[1]
 ```
 
 **The naming.** The operator's words are "market sector". Under the published
@@ -8479,6 +8507,25 @@ if asked in crypto_venues():
     found.add("crypto")
 ```
 
+The block above is overtaken, and it is kept as written. A venue is now listed
+only under a sector where it trades a market. Stocks comes from the equity list
+only for an id a broker connector answers, and a broker that names its own
+sectors bounds what the rest adds.
+
+```python
+# src/gui/main_tabs/asset_class_surface.py, in venue_classes
+    found = {retired_onto(one) for one in EXTRA_VENUE_CLASSES.get(asked, ())}
+    served = broker_served(asked)
+    if asked in EQUITY_VENUES and served is not None:
+        found.add("stocks")
+    held = recorded if isinstance(recorded, dict) else recorded_venue_classes()
+    found |= set(held.get(asked, frozenset()))
+    if served:
+        found &= set(served)
+    if asked in crypto_venues():
+        found.add("crypto")
+```
+
 OVERTAKEN, and the table above is kept as written. Coinbase serves three
 classes, so the Commodities button can act and the table's last two rows read
 differently.
@@ -8551,6 +8598,13 @@ Two of the nine trade nowhere today. One closed its interface on 10 May 2024 and
 one publishes none, both recorded on
 [15-venue-compatibility.md](15-venue-compatibility.md). Both stay on the list,
 because this section records where the list lives and not what is on it.
+
+The paragraph above is overtaken in part, and it is kept as written. Both ids stay
+on the list. The one whose interface closed is now listed under no sector, because
+no broker connector answers it, and the second Interactive Brokers id reads the
+same. The firm that publishes no interface stays under its four sectors, and
+whether a firm nothing can trade through belongs on any tab is the operator's
+decision.
 
 #### Every tab but Status and Console follows the active asset class
 
