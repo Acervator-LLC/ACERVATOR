@@ -19,6 +19,7 @@ from ..stack_math import (
     STACK_SIZE_KEY,
     STACK_STATUS_KEY,
     STACK_STATUS_PENDING,
+    rung_is_pending,
     unproduced_stack_amount,
 )
 from .sizing import (
@@ -1124,42 +1125,41 @@ class FoldTrancheAccountingMixin:
 
         ``tranches_beyond_held_total`` makes the selection against
         ``_held_units_now``, the fold queue on ``FOLD_AGE_KEY`` and the stack
-        queue on ``STACK_AGE_KEY``, each measured against that one held total
-        and never summed together; a rung holding a resting venue order is kept
-        whatever the arithmetic says, and every drop counts in
-        ``_tranches_discarded_lifetime`` or ``_stack_discarded``.
+        rungs ``rung_is_pending`` admits on ``STACK_AGE_KEY``, each measured
+        against that one held total and never summed together; a filled or
+        cancelled rung marks no units and is never dropped here, a rung holding
+        a resting venue order is kept whatever the arithmetic says, and every
+        drop counts in ``_tranches_discarded_lifetime`` or ``_stack_discarded``.
 
         Args:
           reason: what ran the sweep, carried into the log line.
 
         Returns:
           A report keyed ``fold_removed``, ``fold_kept``, ``stack_removed``,
-          ``stack_kept``, ``stack_kept_live_order``, ``units_removed``,
-          ``usd_removed``, ``held``, ``held_unreadable``, ``fold_marked``,
-          ``stack_marked``, ``ageless``, ``unreadable``, ``refused`` and
-          ``breached``. ``refused`` is True where no held total above zero was
-          readable, and ``breached`` is True where the rungs that had to be kept
-          still mark more than the held total.
+          ``stack_kept``, ``stack_not_pending``, ``stack_kept_live_order``,
+          ``units_removed``, ``usd_removed``, ``held``, ``held_unreadable``,
+          ``fold_marked``, ``stack_marked``, ``ageless``, ``unreadable``,
+          ``refused`` and ``breached``. ``stack_not_pending`` counts the rungs
+          left out of ``stack_marked``, ``refused`` is True where no held total
+          above zero was readable, and ``breached`` is True where the rungs that
+          had to be kept still mark more than the held total.
         """
         _held, _held_unreadable = self._held_units_now()
-        _pinned = frozenset(
-            id(_t)
-            for _t in self._stack_tranches or []
-            if isinstance(_t, dict)
-            and _t.get(STACK_STATUS_KEY) == STACK_STATUS_PENDING
-            and _t.get(STACK_ORDER_ID_KEY)
-        )
+        _stack = list(self._stack_tranches or [])
+        _pending = [_t for _t in _stack if isinstance(_t, dict) and rung_is_pending(_t)]
+        _pinned = frozenset(id(_t) for _t in _pending if _t.get(STACK_ORDER_ID_KEY))
         _fold_drop, _fold_read = tranches_beyond_held_total(
             self._fold_tranches, "units", FOLD_AGE_KEY, _held
         )
         _stack_drop, _stack_read = tranches_beyond_held_total(
-            self._stack_tranches, STACK_SIZE_KEY, STACK_AGE_KEY, _held, _pinned
+            _pending, STACK_SIZE_KEY, STACK_AGE_KEY, _held, _pinned
         )
         report = {
             "fold_removed": 0,
             "fold_kept": len(self._fold_tranches or []),
             "stack_removed": 0,
-            "stack_kept": len(self._stack_tranches or []),
+            "stack_kept": len(_stack),
+            "stack_not_pending": len(_stack) - len(_pending),
             "stack_kept_live_order": len(_pinned),
             "units_removed": 0.0,
             "usd_removed": 0.0,
@@ -1227,9 +1227,10 @@ class FoldTrancheAccountingMixin:
 
         An ``ageless`` count above zero names how many records carried no
         readable stamp, so the operator reads that the oldest-first ordering was
-        undetermined for that many, and a ``refused`` or ``breached`` reading
-        states that the held total gave the sweep no ceiling or that the kept
-        rungs still exceed it.
+        undetermined for that many, a ``stack_not_pending`` count above zero
+        names the rungs left out of the stack total, and a ``refused`` or
+        ``breached`` reading states that the held total gave the sweep no
+        ceiling or that the kept rungs still exceed it.
         """
         _now = time.time()
 
@@ -1270,6 +1271,12 @@ class FoldTrancheAccountingMixin:
                 f" {report['unreadable']} record(s) held no readable units "
                 f"figure and are not in the marked total."
             )
+        if report["stack_not_pending"]:
+            _notes += (
+                f" {report['stack_not_pending']} rung(s) whose status is not "
+                f"pending mark no units, are not in the stack total and were "
+                f"kept."
+            )
         if report["breached"]:
             _notes += (
                 " The rungs holding a resting venue order still mark more "
@@ -1301,10 +1308,12 @@ class FoldTrancheAccountingMixin:
                 f"{report['fold_kept']} fold tranche(s) and "
                 f"{report['stack_kept']} rung(s) kept, "
                 f"{report['stack_kept_live_order']} of them holding a venue "
-                f"order. Each dropped record is units this bot sold and will "
-                f"not buy back at that price. These are counted as DISCARDED, "
-                f"never as closed. No order was placed or cancelled; holdings, "
-                f"cost basis and target balance are unchanged.{_notes}"
+                f"order. Each dropped fold tranche is units this bot sold and "
+                f"will not buy back at that price, and each dropped rung is "
+                f"units it holds and will not sell at that price. These are "
+                f"counted as DISCARDED, never as closed. No order was placed or "
+                f"cancelled; holdings, cost basis and target balance are "
+                f"unchanged.{_notes}"
             )
         self._bus.emit("bot.log", bot_id=self.bot_id, message=_message)
         logger.info(

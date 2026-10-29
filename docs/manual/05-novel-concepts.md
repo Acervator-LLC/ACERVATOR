@@ -1739,6 +1739,66 @@ never as closed, so opened less closed less discarded still equals what stands.
 No order is placed or cancelled, and holdings, cost basis and target balance are
 unchanged.
 
+**Only a pending rung marks units.** The clause above that says a stack rung's
+units are still in the position holds for a pending rung only. It is not edited
+and not removed. A rung reads pending until its sell fills or ends unfilled. A
+filled rung's units left the position when the sell filled. A cancelled rung's
+sell never reaches the book. Neither has units left to deliver.
+
+So the sweep measures the stack queue on its pending rungs alone, and it retires
+only pending rungs. A filled or cancelled rung stays in the queue, and the log
+line counts how many stood outside the stack total. The sell for each rung, and
+the `opened_ts` stamp the ordering reads, come from `_open_stack_from_scrum`; the
+ladder arithmetic the clause names places nothing.
+
+```
+src/trading/stack_math.py, in rung_is_pending                          the one reading of a pending rung
+src/trading/stack_math.py, in _rung_is_order_free                      reads rung_is_pending
+src/trading/scrumming/fold_tranches.py, in retire_tranches_above_held  measures and retires those rungs only
+src/trading/scrumming_bot.py, in _open_stack_from_scrum                places each rung's sell, writes opened_ts
+```
+
+`src/trading/stack_math.py` — `rung_is_pending`
+
+```python
+def rung_is_pending(record: dict) -> bool:
+    """Does `record` read `pending` as its `status`; a filled or cancelled rung
+    marks no units."""
+    return str(record.get(STACK_STATUS_KEY, "")) == STACK_STATUS_PENDING
+```
+
+**What a dropped rung costs.** The paragraph above says every record dropped here
+is units the bot sold and will never buy back at that price. That holds for a fold
+tranche. A dropped rung is units the bot holds and will not sell at that rung's
+price, and the log line states both.
+
+Driven on constructed records in a redirected home, with no venue reached and no
+order placed. Two pending rungs of 4 units, inside 10 units held, stood beside a
+filled rung of 6 and a cancelled rung of 6. The tree before this work read 20
+marked units and dropped both pending rungs and the filled one. This tree reads
+8 and keeps all four. Fourteen status readings ran, each at 3 and at 30 units
+against 10 held. The tree before this work counted all fourteen. This tree
+counts only the three pending readings, and still retires a pending rung of 30
+that holds no venue order. Over 600 bots holding only pending rungs, both trees
+left the same queues and dropped the same 1,130 rungs. Lowering one digit of one
+lot on one side only made 227 of the 600 differ.
+
+```
+at 100 units held, pending rungs inside the holding   pending rungs lost
+                                                       before    after
+60 pending in 6 rungs, 30 filled in 3, newer               0        0
+60 pending in 6 rungs, 60 filled in 6, newer               2        0
+60 pending in 6 rungs, 60 cancelled in 6, newer            2        0
+90 pending in 9 rungs, 90 filled in 9, newer               8        0
+100 pending in 10 rungs, 10 filled in 1, newer             1        0
+60 pending in 6 rungs, 200 filled in 20, newer             6        0
+60 pending in 6 rungs, 60 filled in 6, older               0        0
+```
+
+Where the filled rungs were the older ones, or the pending rungs held venue
+orders, the tree before this work dropped 2 filled records instead. This tree
+drops none.
+
 **What the screen reads afterwards.** The allotment row described under *How the
 ratio cell picks its colour* draws its figure through
 `src/gui/live_settings/fold_tokens.py`, in `compose_units_marked_row`, on the Qt
