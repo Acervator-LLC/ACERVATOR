@@ -310,7 +310,7 @@ class BotContainer:
 
     def _write_fill_figures(self, fill: SettledFill) -> None:
         """Count ``fill`` into the trade tally once per order, stamp ``last_trade_time``, then
-        call ``_write_clock_figures``.
+        call ``_write_clock_figures`` and each sibling's ``_join_walk_readings``.
 
         ``_last_settled_order`` is the order body that settled ``fill``.
         """
@@ -331,12 +331,31 @@ class BotContainer:
         )
         order_id = str(getattr(order, "id", "") or "")
         self._write_clock_figures(fill, order_id, filled, rests)
+        for sibling in self._symbol_siblings(fill.symbol):
+            sibling._join_walk_readings(fill, order_id, filled, rests)
+
+    def _symbol_siblings(self, symbol: str) -> list:
+        """The other bots ``_bot_manager`` holds on ``config.exchange_id`` and ``symbol``."""
+        lookup = getattr(getattr(self, "_bot_manager", None), "bots_on_symbol", None)
+        if not callable(lookup):
+            return []
+        return [
+            bot for bot in lookup(self.config.exchange_id, symbol) if bot is not self
+        ]
 
     def _write_clock_figures(
         self, fill: SettledFill, order_id: str, filled: float, rests: bool
     ) -> None:
         """The figures the exchange walk and the worked tick own; this base class runs
         neither.
+        """
+        return
+
+    def _join_walk_readings(
+        self, fill: SettledFill, order_id: str, filled: float, rests: bool
+    ) -> None:
+        """Add ``fill`` to the readings the exchange walk holds; this base class holds
+        none.
         """
         return
 

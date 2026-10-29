@@ -11444,6 +11444,24 @@ exchange's figure.
             self._fills_since_walk = ()
 ```
 
+### Other bots on the same exchange and symbol
+
+A bot's walk reads every fill the exchange holds for its symbol, so a fill by
+another bot on the same exchange and symbol moves that bot's walk figures too.
+The announcing bot adds its fill to the readings of each such bot. An Extractor
+round or exit on a pair that a Scrumming Bot trades reaches that bot the same
+way. The other bot's own position value does not move.
+
+```python
+# src/trading/container/registry.py, in BotRegistryMixin.bots_on_symbol
+        return [
+            bot
+            for bot in list(self._bots.values())
+            if getattr(getattr(bot, "config", None), "exchange_id", None) == exchange_id
+            and getattr(getattr(bot, "config", None), "symbol", None) == symbol
+        ]
+```
+
 ### What stays on the walk
 
 Four figures still move at the walk alone. Each needs a reading only the
@@ -11500,6 +11518,13 @@ exchange calls during each fill      2 to 7, by kind                    the same
 
 The Extractor holds no walk. Its round and its exit now add to its trade count
 and its buy or sell count, which no Extractor fill moved before.
+
+Two Scrumming Bots on one exchange and symbol were registered on a real bot
+manager, with an Extractor beside them. A scrum by the first bot, and then an
+Extractor round on the same symbol, each moved the second bot's Trades count,
+year-to-date dollars, fees and basis at the fill. Its next walk moved none of
+them. On the commit before this change, each waited for the second bot's own
+walk.
 
 With the exchange listing the scrum 1 per cent lower and at twice the fee, and
 listing an order the platform did not place, the walk wrote the exchange's

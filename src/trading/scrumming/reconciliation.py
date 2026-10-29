@@ -1165,14 +1165,18 @@ class ReconciliationEngineMixin:
     def _write_clock_figures(
         self, fill: SettledFill, order_id: str, filled: float, rests: bool
     ) -> None:
-        """Price ``stats.position_value`` at ``fill`` and add ``fill`` to each reading the
-        exchange walk holds for ``config.symbol``.
-        """
+        """Price ``stats.position_value`` at ``fill``, then call ``_join_walk_readings``."""
         price = float(fill.price)
         if math.isfinite(price) and price > 0.0:
             self.stats.position_value = priced_usd(
                 self._current_holdings, price, float(self._quote_to_usd or 1.0)
             )
+        self._join_walk_readings(fill, order_id, filled, rests)
+
+    def _join_walk_readings(
+        self, fill: SettledFill, order_id: str, filled: float, rests: bool
+    ) -> None:
+        """Add ``fill`` to each reading the exchange walk holds for ``config.symbol``."""
         if fill.symbol != self.config.symbol:
             return
         self._join_ytd_tally(fill, order_id, filled)
