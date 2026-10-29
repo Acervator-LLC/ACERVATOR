@@ -120,7 +120,8 @@ FUTURES_FAMILY_SECTORS: dict[str, str] = {
 #: which is the sector this platform draws for a dated contract.
 FUTURES_SECTOR = "futures_perps"
 
-#: The security types naming a dated contract, whose sector is its family.
+#: The security types naming a dated contract, whose sector is its family
+#: through ``contract_class``.
 CONTRACT_ASSET_CLASSES = ("fut", "fop")
 
 #: The separator Interactive Brokers' own currency list puts between a pair's
@@ -356,9 +357,10 @@ def asset_sector(asset: Any) -> Optional[str]:
     fields name none.
 
     ``venue_market_sector`` is read first and ``venue_base_sector`` second, then
-    ``FUTURES_FAMILY_SECTORS``, then ``ASSET_CLASS_SECTORS``, then
-    ``currency_pair_symbol``.
+    ``FUTURES_FAMILY_SECTORS`` through ``contract_class``, then
+    ``ASSET_CLASS_SECTORS``, then ``currency_pair_symbol``.
     """
+    from ..trading.ata_spm import contract_class
     from ..trading.scrumming.sizing import venue_base_sector, venue_market_sector
 
     if not isinstance(asset, dict):
@@ -374,7 +376,7 @@ def asset_sector(asset: Any) -> Optional[str]:
     word = asset_class_word(asset)
     family = FUTURES_FAMILY_SECTORS.get(str(asset.get("family") or "").strip().lower())
     if word in CONTRACT_ASSET_CLASSES:
-        return family or FUTURES_SECTOR
+        return contract_class(family or FUTURES_SECTOR)
     if family and not word:
         return family
     held = ASSET_CLASS_SECTORS.get(word)
