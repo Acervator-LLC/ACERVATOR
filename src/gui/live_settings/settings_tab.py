@@ -42,39 +42,6 @@ EXPIRY_LEAD_LABELS: dict = {
     "absolute": "A number of days",
 }
 
-EXPIRY_ACTION_TOOLTIP = (
-    "What this bot does as a dated contract nears its end.\n"
-    "Finish the sell ladder: stop buying this contract and let the open "
-    "sell levels run to their end.\n"
-    "Sell the whole position: one order for everything still held."
-)
-
-EXPIRY_LEAD_MODE_TOOLTIP = (
-    "How the lead time is written.\n"
-    "Share of the contract's life: a fraction of the days left when the bot "
-    "started, so one setting covers contracts days apart and years apart.\n"
-    "A number of days: the Lead Days figure below."
-)
-
-EXPIRY_LEAD_FRACTION_TOOLTIP = (
-    "Share of the contract's remaining life measured when the bot started. "
-    "0 is off.\n"
-    "At 0.20, a contract with 12 days left at start closes 2.4 days out, "
-    "and one with 264 days left closes 53 days out."
-)
-
-EXPIRY_LEAD_DAYS_TOOLTIP = (
-    "Days before expiry the close fires. Read only in A number of days "
-    "mode. 0 is off."
-)
-
-EXPIRY_HORIZON_TOOLTIP = (
-    "A contract expiring beyond this many days counts as non-expiring and "
-    "gets no close at all. 0 turns every close off.\n"
-    "The venue publishes contracts dated 2030 and 2089; 365 days leaves "
-    "both of those alone and still covers every dated month."
-)
-
 
 class SettingsTabMixin:
     """Editable bot configuration, written on Apply."""
@@ -289,6 +256,94 @@ class SettingsTabMixin:
             f"or SELF-DESTRUCT FAILED to confirm outcome.\n"
             f"Bot will be PAUSED on completion.",
         )
+
+    def _add_expiry_rows(self, rf: Any, cfg: Any) -> None:
+        """Add the five ``EXPIRY_CONTROL_NAMES`` rows to the Risk Controls form ``rf``."""
+        # Deferred so importing this tab does not pull `src.trading` in.
+        from ...trading.bot_container import (
+            EXPIRY_CLOSE_ACTIONS,
+            EXPIRY_HORIZON_DAYS_DEFAULT,
+            EXPIRY_LEAD_DAYS_DEFAULT,
+            EXPIRY_LEAD_FRACTION_DEFAULT,
+            EXPIRY_LEAD_MODES,
+        )
+        from ..main_tabs.live_settings_tab_surface import TOOLTIPS
+        from ..tooltips import set_description
+
+        self._expiry_action = QComboBox()
+        for _code in EXPIRY_CLOSE_ACTIONS:
+            self._expiry_action.addItem(EXPIRY_CLOSE_LABELS[_code], _code)
+        _held_action = getattr(cfg, "expiry_close_action", EXPIRY_CLOSE_ACTIONS[0])
+        self._expiry_action.setCurrentIndex(
+            EXPIRY_CLOSE_ACTIONS.index(_held_action)
+            if _held_action in EXPIRY_CLOSE_ACTIONS
+            else 0
+        )
+        set_description(self._expiry_action, TOOLTIPS["expiry_action"])
+        self._expiry_action.currentIndexChanged.connect(
+            lambda: self._mark_changed(
+                "expiry_close_action", self._expiry_action.currentData()
+            )
+        )
+        rf.addRow("Expiry Close:", self._expiry_action)
+
+        self._expiry_lead_mode = QComboBox()
+        for _code in EXPIRY_LEAD_MODES:
+            self._expiry_lead_mode.addItem(EXPIRY_LEAD_LABELS[_code], _code)
+        _held_mode = getattr(cfg, "expiry_lead_mode", EXPIRY_LEAD_MODES[0])
+        self._expiry_lead_mode.setCurrentIndex(
+            EXPIRY_LEAD_MODES.index(_held_mode)
+            if _held_mode in EXPIRY_LEAD_MODES
+            else 0
+        )
+        set_description(self._expiry_lead_mode, TOOLTIPS["expiry_lead_mode"])
+        self._expiry_lead_mode.currentIndexChanged.connect(
+            lambda: self._mark_changed(
+                "expiry_lead_mode", self._expiry_lead_mode.currentData()
+            )
+        )
+        rf.addRow("Expiry Lead Mode:", self._expiry_lead_mode)
+
+        self._expiry_lead_fraction = QDoubleSpinBox()
+        self._expiry_lead_fraction.setRange(0.00, 1.00)
+        self._expiry_lead_fraction.setDecimals(2)
+        self._expiry_lead_fraction.setSingleStep(0.05)
+        self._expiry_lead_fraction.setValue(
+            float(getattr(cfg, "expiry_lead_fraction", EXPIRY_LEAD_FRACTION_DEFAULT))
+        )
+        set_description(self._expiry_lead_fraction, TOOLTIPS["expiry_lead_fraction"])
+        self._expiry_lead_fraction.valueChanged.connect(
+            lambda v: self._mark_changed("expiry_lead_fraction", v)
+        )
+        rf.addRow("Lead Fraction:", self._expiry_lead_fraction)
+
+        self._expiry_lead_days = QDoubleSpinBox()
+        self._expiry_lead_days.setRange(0.0, 36500.0)
+        self._expiry_lead_days.setDecimals(1)
+        self._expiry_lead_days.setSingleStep(1.0)
+        self._expiry_lead_days.setSuffix(" days")
+        self._expiry_lead_days.setValue(
+            float(getattr(cfg, "expiry_lead_days", EXPIRY_LEAD_DAYS_DEFAULT))
+        )
+        set_description(self._expiry_lead_days, TOOLTIPS["expiry_lead_days"])
+        self._expiry_lead_days.valueChanged.connect(
+            lambda v: self._mark_changed("expiry_lead_days", v)
+        )
+        rf.addRow("Lead Days:", self._expiry_lead_days)
+
+        self._expiry_horizon = QDoubleSpinBox()
+        self._expiry_horizon.setRange(0.0, 36500.0)
+        self._expiry_horizon.setDecimals(1)
+        self._expiry_horizon.setSingleStep(30.0)
+        self._expiry_horizon.setSuffix(" days")
+        self._expiry_horizon.setValue(
+            float(getattr(cfg, "expiry_horizon_days", EXPIRY_HORIZON_DAYS_DEFAULT))
+        )
+        set_description(self._expiry_horizon, TOOLTIPS["expiry_horizon"])
+        self._expiry_horizon.valueChanged.connect(
+            lambda v: self._mark_changed("expiry_horizon_days", v)
+        )
+        rf.addRow("Expiry Horizon:", self._expiry_horizon)
 
     # Tab 2: Settings (editable)
     def _create_settings_tab(self) -> QWidget:
@@ -943,89 +998,10 @@ class SettingsTabMixin:
         )
         rf.addRow("Min Confidence:", self._deto_conf)
 
-        # Deferred so importing this tab does not pull `src.trading` in.
-        from ...trading.bot_container import (
-            EXPIRY_CLOSE_ACTIONS,
-            EXPIRY_HORIZON_DAYS_DEFAULT,
-            EXPIRY_LEAD_DAYS_DEFAULT,
-            EXPIRY_LEAD_FRACTION_DEFAULT,
-            EXPIRY_LEAD_MODES,
-        )
+        from ..main_tabs.live_settings_tab_surface import bot_market_expires
 
-        self._expiry_action = QComboBox()
-        for _code in EXPIRY_CLOSE_ACTIONS:
-            self._expiry_action.addItem(EXPIRY_CLOSE_LABELS[_code], _code)
-        _held_action = getattr(cfg, "expiry_close_action", EXPIRY_CLOSE_ACTIONS[0])
-        self._expiry_action.setCurrentIndex(
-            EXPIRY_CLOSE_ACTIONS.index(_held_action)
-            if _held_action in EXPIRY_CLOSE_ACTIONS
-            else 0
-        )
-        self._expiry_action.setToolTip(EXPIRY_ACTION_TOOLTIP)
-        self._expiry_action.currentIndexChanged.connect(
-            lambda: self._mark_changed(
-                "expiry_close_action", self._expiry_action.currentData()
-            )
-        )
-        rf.addRow("Expiry Close:", self._expiry_action)
-
-        self._expiry_lead_mode = QComboBox()
-        for _code in EXPIRY_LEAD_MODES:
-            self._expiry_lead_mode.addItem(EXPIRY_LEAD_LABELS[_code], _code)
-        _held_mode = getattr(cfg, "expiry_lead_mode", EXPIRY_LEAD_MODES[0])
-        self._expiry_lead_mode.setCurrentIndex(
-            EXPIRY_LEAD_MODES.index(_held_mode)
-            if _held_mode in EXPIRY_LEAD_MODES
-            else 0
-        )
-        self._expiry_lead_mode.setToolTip(EXPIRY_LEAD_MODE_TOOLTIP)
-        self._expiry_lead_mode.currentIndexChanged.connect(
-            lambda: self._mark_changed(
-                "expiry_lead_mode", self._expiry_lead_mode.currentData()
-            )
-        )
-        rf.addRow("Expiry Lead Mode:", self._expiry_lead_mode)
-
-        self._expiry_lead_fraction = QDoubleSpinBox()
-        self._expiry_lead_fraction.setRange(0.00, 1.00)
-        self._expiry_lead_fraction.setDecimals(2)
-        self._expiry_lead_fraction.setSingleStep(0.05)
-        self._expiry_lead_fraction.setValue(
-            float(getattr(cfg, "expiry_lead_fraction", EXPIRY_LEAD_FRACTION_DEFAULT))
-        )
-        self._expiry_lead_fraction.setToolTip(EXPIRY_LEAD_FRACTION_TOOLTIP)
-        self._expiry_lead_fraction.valueChanged.connect(
-            lambda v: self._mark_changed("expiry_lead_fraction", v)
-        )
-        rf.addRow("Lead Fraction:", self._expiry_lead_fraction)
-
-        self._expiry_lead_days = QDoubleSpinBox()
-        self._expiry_lead_days.setRange(0.0, 36500.0)
-        self._expiry_lead_days.setDecimals(1)
-        self._expiry_lead_days.setSingleStep(1.0)
-        self._expiry_lead_days.setSuffix(" days")
-        self._expiry_lead_days.setValue(
-            float(getattr(cfg, "expiry_lead_days", EXPIRY_LEAD_DAYS_DEFAULT))
-        )
-        self._expiry_lead_days.setToolTip(EXPIRY_LEAD_DAYS_TOOLTIP)
-        self._expiry_lead_days.valueChanged.connect(
-            lambda v: self._mark_changed("expiry_lead_days", v)
-        )
-        rf.addRow("Lead Days:", self._expiry_lead_days)
-
-        self._expiry_horizon = QDoubleSpinBox()
-        self._expiry_horizon.setRange(0.0, 36500.0)
-        self._expiry_horizon.setDecimals(1)
-        self._expiry_horizon.setSingleStep(30.0)
-        self._expiry_horizon.setSuffix(" days")
-        self._expiry_horizon.setValue(
-            float(getattr(cfg, "expiry_horizon_days", EXPIRY_HORIZON_DAYS_DEFAULT))
-        )
-        self._expiry_horizon.setToolTip(EXPIRY_HORIZON_TOOLTIP)
-        self._expiry_horizon.valueChanged.connect(
-            lambda v: self._mark_changed("expiry_horizon_days", v)
-        )
-        rf.addRow("Expiry Horizon:", self._expiry_horizon)
+        if bot_market_expires(self._bot):
+            self._add_expiry_rows(rf, cfg)
 
         layout.addWidget(risk_group)
 

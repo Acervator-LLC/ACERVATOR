@@ -1548,12 +1548,21 @@ def _published_sector(published: Any, market: Any) -> Any:
 
 
 def market_asset_class(market: Any, published: Any = None, venue: Any = "") -> str:
+    """The asset class ``record_venue`` writes for one loaded market record:
+    ``record_class``, which ``contract_class`` files while ``is_contract_market``
+    holds."""
+    from ..trading.ata_spm import contract_class
+
+    named = record_class(market, published, venue)
+    return contract_class(named) if is_contract_market(market) else named
+
+
+def record_class(market: Any, published: Any = None, venue: Any = "") -> str:
     """The asset class one loaded market record belongs to, read off
     ``futures_asset_types`` first, off ``venue_market_sector`` then
     ``venue_base_sector`` second, off ``published`` third, and off
     ``redemption_sector`` wherever ``published`` names no sector.
 
-    ``record_venue`` writes this beside the market's rules,
     ``_published_asset_sectors`` supplies ``published`` as the sector the
     venue's own asset record names, and ``venue`` names the venue
     ``CITED_VENUE_MARKET_SECTORS`` and ``CITED_VENUE_BASE_SECTORS`` key by.

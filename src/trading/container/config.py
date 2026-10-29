@@ -959,16 +959,19 @@ def expiry_close_decision(config, rules, moment_s, start_s=0.0) -> dict:
     """
     answer: dict = {
         "acts": False,
-        "action": expiry_close_action(config),
-        "mode": expiry_lead_mode(config),
+        "action": None,
+        "mode": None,
         "lead_days": None,
         "days_left": None,
         "life_days": None,
-        "horizon_days": expiry_horizon_days(config),
+        "horizon_days": None,
         "reason": EXPIRY_NOT_EXPIRING,
     }
     if rules is None or not getattr(rules, "expires", False):
         return answer
+    answer["action"] = expiry_close_action(config)
+    answer["mode"] = expiry_lead_mode(config)
+    answer["horizon_days"] = expiry_horizon_days(config)
     moment = as_finite_float(moment_s)
     if moment is None:
         answer["reason"] = EXPIRY_UNREADABLE

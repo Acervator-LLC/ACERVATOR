@@ -405,6 +405,13 @@ def asset_class_named(name: Any) -> str:
     return RETIRED_CLASSES.get(folded, NO_ASSET_CLASS)
 
 
+def contract_class(sector: Any) -> str:
+    """The sector a contract product records under: ``CLASS_FUTURES_PERPS``
+    where ``sector`` is ``CLASS_CRYPTO``, else ``sector``."""
+    named = str(sector or "")
+    return CLASS_FUTURES_PERPS if named == CLASS_CRYPTO else named
+
+
 def timeframes_for(asset_class: Any) -> tuple:
     """The four timeframes one asset class is scanned on.
 
