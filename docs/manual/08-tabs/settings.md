@@ -2208,6 +2208,18 @@ profit. Key `profit_sound`, on.
 The tooltip is the only place on the page that names the condition exactly:
 realised profit above zero, on grid and scrumming bots alike.
 
+Read today: the coins follow the profit a fill's announcement carries. A fold,
+a Manual Fire, cartridge or wire-stack buy, and a manual tranche fire carry the
+target growth they applied. A detonation carries the position's value above its
+anchor target, and an Extractor exit carries its gain. Every other fill, a scrum
+and a distribution sale among them, carries $0.00 and plays no coins.
+
+```python
+# src/gui/main_tabs/main_window_surface.py, in trade_filled_sounds
+    if profit > 0:
+        played.append(PROFIT_SOUND)
+```
+
 `src/gui/settings_dialog.py` — the profit box
 
 ```python
@@ -2736,6 +2748,18 @@ sum of each bot's `stats.realised_pnl`. That field had no writer and read zero,
 so the alert never fired. The exchange walk now writes it with the bot's
 realised figure from the exchange's own fill history. The walk runs at most once
 in 300 seconds, so the alert follows a fill by up to 300 seconds.
+
+Read today: the realised figure moves when the fill is announced, while the bot
+holds a complete fill history from its last walk. The window checks the
+milestone every two seconds, so the alert follows the fill by up to two seconds.
+The walk then writes the exchange's own figure over it.
+
+```python
+# src/trading/scrumming/reconciliation.py, in ReconciliationEngineMixin._join_fill_history
+        health = compute_position_health(held, self.config.symbol.split("/")[0])
+        self.stats.realized_pnl_exchange = float(health.realized_pnl_usd)
+        self.stats.realised_pnl = float(health.realized_pnl_usd)
+```
 
 ```python
 # src/trading/scrumming/reconciliation.py, in refresh_exchange_position_health

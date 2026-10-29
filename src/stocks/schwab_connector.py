@@ -210,18 +210,18 @@ def asset_rules(asset: Any) -> MarketRules:
 class SchwabConnector(BrokerBase):
     """Charles Schwab broker connector.
 
-    ``SECTORS_SERVED`` names the six sectors Schwab's own product tables list a
-    market in, and ``place_order`` raises ``ORDER_BODY_UNPUBLISHED`` until that
-    order spec is read.
+    ``SECTORS_SERVED`` names the five sectors ``ORDER_ROUTE`` takes a market in,
+    and ``place_order`` raises ``ORDER_BODY_UNPUBLISHED`` until that order spec
+    is read.
     """
 
-    #: The six sectors Schwab's own product tables list a market in: stocks from
-    #: its equity universe and 55 single-stock futures, commodities from 47
-    #: contracts, indices from 14, crypto from 8, forex from 8 contracts beside
-    #: 70 spot pairs, and futures_perps from all 139 contracts, every one dated
-    #: and none perpetual.
+    #: The five sectors ``ORDER_ROUTE`` takes a market in: stocks from its equity
+    #: universe and 55 single-stock futures, commodities from 47 contracts,
+    #: indices from 14, forex from 8 contracts beside 70 spot pairs, and
+    #: futures_perps from all 139 contracts, every one dated and none perpetual.
+    #: Crypto is absent: ``asset_sector`` files the 8 Crypto contracts under
+    #: futures_perps, and the bank holding spot crypto publishes no API.
     SECTORS_SERVED: tuple = (
-        "crypto",
         "stocks",
         "commodities",
         "forex",

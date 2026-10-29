@@ -842,21 +842,19 @@ class TickPhaseMixin:
         units: float,
         fill_price: float,
         _asked: float,
-        first: bool,
+        _first: bool,
         *,
         held: float,
         days_left: float,
     ) -> None:
         """Take one settled piece of an expiry close off ``_main_lots``,
-        ``_current_holdings`` and the venue count, count the order once in
-        ``stats.total_trades``, and announce it as an ``EXPIRY_CLOSE`` fill.
+        ``_current_holdings`` and the venue count, and announce it as an
+        ``EXPIRY_CLOSE`` fill.
         """
         filled = float(units)
         self._take_filled_units_off_lots(filled)
         self._current_holdings = max(0.0, self._current_holdings - filled)
         self._record_venue_units_after_fill(-filled)
-        if first:
-            self.stats.total_trades += 1
         self._count_trade_volume(filled, fill_price)
         self._bus.emit(
             "bot.log",
@@ -2401,7 +2399,10 @@ class TickPhaseMixin:
         """Book one settled piece of a distribution sale, queueing its proceeds for
         re-fold while ``profit_folding_active`` is on, and announce it as a ``DIST``
         fill.
+
+        The announced profit is the change in ``_target_balance`` across this booking.
         """
+        _target_before = float(self._target_balance)
         dist_fill = fill_price
         _sold_units = float(units)
         # _settled_sale_proceeds nets the venue's reported
@@ -2474,7 +2475,7 @@ class TickPhaseMixin:
             units=_sold_units,
             price=dist_fill,
             usd=dist_usd,
-            profit=dist_usd * 0.02,
+            profit=float(self._target_balance) - _target_before,
             operator_initiated=False,
             fee=self._fill_fee_fields(dist_fill),
         )

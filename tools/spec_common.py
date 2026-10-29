@@ -16,6 +16,9 @@ from __future__ import annotations
 
 import ast
 import os
+from collections import Counter
+from collections.abc import Callable, Iterator
+from typing import NamedTuple, TypeVar
 
 from src._variant import REACT, normalise
 from src._version import BAKED_FILENAME, UNKNOWN_VERSION, resolve_version
@@ -46,6 +49,23 @@ ENTRY_SCRIPT = "main.py"
 
 #: The function a module calls on a module name it builds at run time.
 DYNAMIC_IMPORT_CALL = "import_module"
+
+#: The window's table of retired pages, as its module and its name.
+RETIRED_PAGE_TABLE = ("src.gui.main_tabs.retired_surfaces", "SURFACE_MODULES")
+
+#: The window's tuple of tabs ``MainWindow._setup_ui`` skips, as its module and its name.
+UNBUILT_TAB_TUPLE = ("src.gui.main_tabs.main_window_surface", "UNBUILT_TABS")
+
+#: The module that records each screen's two loaders through ``REGISTER_CALL``.
+SCREEN_REGISTRY = "src.gui.variant_surface"
+
+#: The call that records a screen's loaders in ``SCREEN_REGISTRY``.
+REGISTER_CALL = "register"
+
+#: The calls that ask ``SCREEN_REGISTRY`` for a screen by its name.
+ASKING_CALLS: tuple[str, ...] = ("surface_class", "draws_react")
+
+_Declared = TypeVar("_Declared", bound=ast.expr)
 
 
 def read_acervator_version(project_root: str) -> str:
@@ -142,15 +162,59 @@ def _parsed(path: str) -> ast.Module:
         return ast.parse(handle.read(), filename=path)
 
 
-def _src_import_names(tree: ast.Module, owner: str, is_package: bool) -> set[str]:
+def _in_src(name: str) -> bool:
+    """True when ``name`` is ``SRC_DIRNAME`` or a dotted name under it."""
+    return name == SRC_DIRNAME or name.startswith(SRC_DIRNAME + ".")
+
+
+def _nodes_outside(tree: ast.AST, skipped: frozenset[str]) -> Iterator[ast.AST]:
+    """Yield every node of ``tree`` that no function named in ``skipped`` holds."""
+    pending = [tree]
+    while pending:
+        node = pending.pop()
+        yield node
+        for child in ast.iter_child_nodes(node):
+            if (
+                isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef))
+                and child.name in skipped
+            ):
+                continue
+            pending.append(child)
+
+
+def _called(call: ast.Call) -> str:
+    """Return the name ``call`` calls, read off a bare name or an attribute."""
+    if isinstance(call.func, ast.Attribute):
+        return call.func.attr
+    return getattr(call.func, "id", "")
+
+
+def _spelled(node: ast.AST) -> str | None:
+    """Return the name or text ``node`` spells, or None for any other node."""
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        return node.attr
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    return None
+
+
+def _src_import_names(
+    tree: ast.Module,
+    owner: str,
+    is_package: bool,
+    skipped: frozenset[str] = frozenset(),
+) -> set[str]:
     """Return every ``SRC_DIRNAME`` module name the imports in ``tree`` name, for ``owner``.
 
     ``is_package`` marks an ``__init__`` file, whose relative imports resolve
-    against ``owner`` itself.
+    against ``owner`` itself, and an import inside a function ``skipped`` names
+    is not read.
     """
     package = owner if is_package else owner.rpartition(".")[0]
     named: set[str] = set()
-    for node in ast.walk(tree):
+    for node in _nodes_outside(tree, skipped):
         if isinstance(node, ast.Import):
             named.update(alias.name for alias in node.names)
             continue
@@ -166,25 +230,23 @@ def _src_import_names(tree: ast.Module, owner: str, is_package: bool) -> set[str
             continue
         named.add(head)
         named.update(f"{head}.{alias.name}" for alias in node.names)
-    return {n for n in named if n == SRC_DIRNAME or n.startswith(SRC_DIRNAME + ".")}
+    return {n for n in named if _in_src(n)}
 
 
-def _joined_import_prefixes(tree: ast.Module) -> set[str]:
+def _joined_import_prefixes(
+    tree: ast.Module, skipped: frozenset[str] = frozenset()
+) -> set[str]:
     """Return every text literal a ``DYNAMIC_IMPORT_CALL`` argument joins a value onto.
 
-    The literal is the left side of a ``+`` or the head of an f-string, and an
-    argument that is one whole literal adds nothing.
+    The literal is the left side of a ``+`` or the head of an f-string, an
+    argument that is one whole literal adds nothing, and a call inside a function
+    ``skipped`` names is not read.
     """
     out: set[str] = set()
-    for node in ast.walk(tree):
+    for node in _nodes_outside(tree, skipped):
         if not isinstance(node, ast.Call) or not node.args:
             continue
-        called = (
-            node.func.attr
-            if isinstance(node.func, ast.Attribute)
-            else getattr(node.func, "id", "")
-        )
-        if called != DYNAMIC_IMPORT_CALL:
+        if _called(node) != DYNAMIC_IMPORT_CALL:
             continue
         head: ast.expr = node.args[0]
         if isinstance(head, ast.BinOp) and isinstance(head.op, ast.Add):
@@ -198,16 +260,16 @@ def _joined_import_prefixes(tree: ast.Module) -> set[str]:
     return out
 
 
-def _dynamic_src_names(tree: ast.Module, held: dict[str, str]) -> set[str]:
+def _dynamic_src_names(
+    tree: ast.Module, held: dict[str, str], skipped: frozenset[str] = frozenset()
+) -> set[str]:
     """Return every ``held`` name a ``_joined_import_prefixes`` literal and a text value in ``tree`` spell together.
 
     A prefix outside ``SRC_DIRNAME`` is dropped, and a join that spells no
     ``held`` name is dropped with it.
     """
     prefixes = {
-        found
-        for found in _joined_import_prefixes(tree)
-        if found == SRC_DIRNAME or found.startswith(SRC_DIRNAME + ".")
+        found for found in _joined_import_prefixes(tree, skipped) if _in_src(found)
     }
     if not prefixes:
         return set()
@@ -224,16 +286,207 @@ def _dynamic_src_names(tree: ast.Module, held: dict[str, str]) -> set[str]:
     }
 
 
-def reachable_src_modules(project_root: str) -> frozenset[str]:
-    """Return every ``src_modules`` name ``ENTRY_SCRIPT`` reaches, by an import line or by a name a module builds at run time.
+class _Skipped(NamedTuple):
+    """The edges ``_walk`` skips.
 
-    ``_dynamic_src_names`` answers the second kind from the text each reachable
-    module holds, and walks what that module imports in turn.
+    ``builders`` in every module, ``loaders`` in ``SCREEN_REGISTRY`` and ``pages``
+    from the ``RETIRED_PAGE_TABLE`` module.
     """
-    held = src_modules(project_root)
+
+    builders: frozenset[str] = frozenset()
+    loaders: frozenset[str] = frozenset()
+    pages: frozenset[str] = frozenset()
+
+
+def _tree_reader(held: dict[str, str]) -> Callable[[str], ast.Module]:
+    """Return a function that parses each ``held`` module once and answers its tree."""
+    trees: dict[str, ast.Module] = {}
+
+    def tree_of(name: str) -> ast.Module:
+        if name not in trees:
+            trees[name] = _parsed(held[name])
+        return trees[name]
+
+    return tree_of
+
+
+def _declaration(
+    held: dict[str, str],
+    tree_of: Callable[[str], ast.Module],
+    home: tuple[str, str],
+    kind: type[_Declared],
+) -> _Declared:
+    """Return the module-level value ``home`` names in its module.
+
+    Raises ``LookupError`` when that value is absent or is not a ``kind``.
+    """
+    module, name = home
+    found: ast.expr | None = None
+    for node in tree_of(module).body if module in held else []:
+        if isinstance(node, ast.Assign) and any(
+            isinstance(target, ast.Name) and target.id == name
+            for target in node.targets
+        ):
+            found = node.value
+        elif (
+            isinstance(node, ast.AnnAssign)
+            and isinstance(node.target, ast.Name)
+            and node.target.id == name
+        ):
+            found = node.value
+    if not isinstance(found, kind):
+        missing = f"the build reads {name} from {module} and found no such declaration"
+        raise LookupError(missing)
+    return found
+
+
+def _retired_pages(
+    held: dict[str, str], tree_of: Callable[[str], ast.Module]
+) -> frozenset[str]:
+    """Return each ``held`` name the ``RETIRED_PAGE_TABLE`` module joins onto.
+
+    Each one is a ``DYNAMIC_IMPORT_CALL`` prefix joined to a value of that table.
+    """
+    table = _declaration(held, tree_of, RETIRED_PAGE_TABLE, ast.Dict)
+    pieces = {_spelled(value) for value in table.values}
+    prefixes = _joined_import_prefixes(tree_of(RETIRED_PAGE_TABLE[0]))
+    return frozenset(
+        prefix + piece
+        for prefix in prefixes
+        for piece in pieces
+        if piece is not None and _in_src(prefix) and prefix + piece in held
+    )
+
+
+def _unbuilt_guard(node: ast.If) -> str | None:
+    """Return X when ``node`` is ``if X not in UNBUILT_TABS:``, else None."""
+    test = node.test
+    if not isinstance(test, ast.Compare) or len(test.ops) != 1:
+        return None
+    if not isinstance(test.ops[0], ast.NotIn) or not isinstance(test.left, ast.Name):
+        return None
+    if _spelled(test.comparators[0]) != UNBUILT_TAB_TUPLE[1]:
+        return None
+    return test.left.id
+
+
+class _Index(NamedTuple):
+    """What ``_indexed`` finds in one pass over the reached trees.
+
+    ``spelled`` counts each ``_spelled`` text, ``guards`` holds each ``_unbuilt_guard``
+    and ``asks`` holds each ``ASKING_CALLS`` call.
+    """
+
+    spelled: Counter[str]
+    guards: list[ast.If]
+    asks: list[ast.Call]
+
+
+def _indexed(tree_of: Callable[[str], ast.Module], reached: frozenset[str]) -> _Index:
+    """Return the ``_Index`` of every tree ``reached`` names."""
+    index = _Index(Counter(), [], [])
+    for name in reached:
+        for node in ast.walk(tree_of(name)):
+            text = _spelled(node)
+            if text is not None:
+                index.spelled[text] += 1
+            if isinstance(node, ast.If) and _unbuilt_guard(node) is not None:
+                index.guards.append(node)
+            elif isinstance(node, ast.Call) and _called(node) in ASKING_CALLS:
+                index.asks.append(node)
+    return index
+
+
+def _named_outside(index: _Index, kept: list[ast.AST]) -> set[str]:
+    """Return every text ``index`` counts more often than the ``kept`` nodes spell it."""
+    distinct = {id(node): node for node in kept}.values()
+    held_back = Counter(
+        text for node in distinct if (text := _spelled(node)) is not None
+    )
+    return {text for text, count in index.spelled.items() if count > held_back[text]}
+
+
+def _unbuilt_builders(
+    held: dict[str, str], tree_of: Callable[[str], ast.Module], index: _Index
+) -> frozenset[str]:
+    """Return each method an ``_unbuilt_guard`` body names on ``self``.
+
+    A method ``_named_outside`` finds outside those bodies is not returned.
+    """
+    declared = _declaration(held, tree_of, UNBUILT_TAB_TUPLE, ast.Tuple)
+    unbuilt = {elt.id for elt in declared.elts if isinstance(elt, ast.Name)}
+    bodies = [
+        deep
+        for guard in index.guards
+        if _unbuilt_guard(guard) in unbuilt
+        for stmt in guard.body
+        for deep in ast.walk(stmt)
+    ]
+    guarded = {
+        node.attr
+        for node in bodies
+        if isinstance(node, ast.Attribute) and _spelled(node.value) == "self"
+    }
+    return frozenset(guarded - _named_outside(index, bodies))
+
+
+def _unasked_loaders(
+    held: dict[str, str], tree_of: Callable[[str], ast.Module], index: _Index
+) -> frozenset[str]:
+    """Return each ``SCREEN_REGISTRY`` loader whose screen no ``ASKING_CALLS`` call names.
+
+    It returns none when an ask names no registered screen or an ``ASKING_CALLS``
+    name is used but not called, and never a loader ``_named_outside`` finds.
+    """
+    if SCREEN_REGISTRY not in held:
+        missing = f"the build reads screens from {SCREEN_REGISTRY}, which is absent"
+        raise LookupError(missing)
+    registry = tree_of(SCREEN_REGISTRY)
+    loaders: dict[str, set[str]] = {}
+    kept: list[ast.AST] = []
+    for stmt in registry.body:
+        call = stmt.value if isinstance(stmt, ast.Expr) else None
+        if not isinstance(call, ast.Call) or _called(call) != REGISTER_CALL:
+            continue
+        named = [arg.id for arg in call.args if isinstance(arg, ast.Name)]
+        if not named or len(named) != len(call.args):
+            return frozenset()
+        loaders.setdefault(named[0], set()).update(named[1:])
+        kept.extend(call.args[1:])
+    if set(ASKING_CALLS) & _named_outside(index, [call.func for call in index.asks]):
+        return frozenset()
+    passing = {
+        id(deep)
+        for node in registry.body
+        if isinstance(node, ast.FunctionDef) and node.name in ASKING_CALLS
+        for deep in ast.walk(node)
+    }
+    asked = {
+        _spelled(call.args[0]) if call.args else None
+        for call in index.asks
+        if id(call) not in passing
+    }
+    if not asked <= set(loaders):
+        return frozenset()
+    unasked = {
+        fn for screen, fns in loaders.items() if screen not in asked for fn in fns
+    }
+    return frozenset(unasked - _named_outside(index, kept))
+
+
+def _walk(
+    project_root: str,
+    held: dict[str, str],
+    tree_of: Callable[[str], ast.Module],
+    skipped: _Skipped,
+) -> frozenset[str]:
+    """Return every ``held`` name ``ENTRY_SCRIPT`` reaches past ``skipped``.
+
+    An import line and a ``_dynamic_src_names`` join each count as an edge.
+    """
     entry = _parsed(os.path.join(project_root, ENTRY_SCRIPT))
-    pending = list(_src_import_names(entry, "__main__", False))
-    pending.extend(_dynamic_src_names(entry, held))
+    pending = list(_src_import_names(entry, "__main__", False, skipped.builders))
+    pending.extend(_dynamic_src_names(entry, held, skipped.builders))
     seen: set[str] = set()
     while pending:
         name = pending.pop()
@@ -245,10 +498,49 @@ def reachable_src_modules(project_root: str) -> frozenset[str]:
         path = held.get(name)
         if path is None:
             continue
-        tree = _parsed(path)
-        pending.extend(_src_import_names(tree, name, path.endswith("__init__.py")))
-        pending.extend(_dynamic_src_names(tree, held))
+        tree = tree_of(name)
+        functions = skipped.builders
+        if name == SCREEN_REGISTRY:
+            functions = functions | skipped.loaders
+        pending.extend(
+            _src_import_names(tree, name, path.endswith("__init__.py"), functions)
+        )
+        joined = _dynamic_src_names(tree, held, functions)
+        if name == RETIRED_PAGE_TABLE[0]:
+            joined -= skipped.pages
+        pending.extend(joined)
     return frozenset(seen & set(held))
+
+
+def _readings(project_root: str) -> tuple[frozenset[str], frozenset[str]]:
+    """Return what ``_walk`` reaches by every edge, then past the window's marks."""
+    held = src_modules(project_root)
+    tree_of = _tree_reader(held)
+    every = _walk(project_root, held, tree_of, _Skipped())
+    index = _indexed(tree_of, every)
+    marks = _Skipped(
+        builders=_unbuilt_builders(held, tree_of, index),
+        loaders=_unasked_loaders(held, tree_of, index),
+        pages=_retired_pages(held, tree_of),
+    )
+    return every, _walk(project_root, held, tree_of, marks)
+
+
+def reachable_src_modules(project_root: str) -> frozenset[str]:
+    """Return each ``src_modules`` name ``ENTRY_SCRIPT`` reaches through a built screen.
+
+    ``_readings`` skips retired pages, unbuilt tabs' builders and unasked screens.
+    """
+    return _readings(project_root)[1]
+
+
+def retired_src_modules(project_root: str) -> frozenset[str]:
+    """Return each ``src_modules`` name only a screen the window never builds reaches.
+
+    ``_readings`` answers it as every reached name less the ``_Skipped`` walk's names.
+    """
+    every, built = _readings(project_root)
+    return every - built
 
 
 def unreachable_src_modules(project_root: str) -> frozenset[str]:
@@ -265,15 +557,30 @@ def unreachable_src_files(project_root: str) -> frozenset[str]:
 def report_unreachable(project_root: str) -> list[str]:
     """Print one line per ``unreachable_src_modules`` name and return the names printed.
 
-    Both spec files call this before ``Analysis``, so the build log names every
-    module ``reachable_only`` and ``build_graceful_datas`` leave out.
+    Both spec files call it before ``Analysis``; ``retired_src_modules`` names come last.
     """
-    names = sorted(unreachable_src_modules(project_root))
-    held = len(src_modules(project_root))
-    print(f"  [spec] {len(names)} of {held} src modules unreached, left out:")
-    for name in names:
+    held = src_modules(project_root)
+    every, built = _readings(project_root)
+    unreached = sorted(set(held) - every)
+    retired = sorted(every - built)
+    print(f"  [spec] {len(unreached)} of {len(held)} src modules unreached, left out:")
+    for name in unreached:
         print(f"  [spec]   {name}")
-    return names
+    print(
+        f"  [spec] {len(retired)} of {len(held)} src modules reached only "
+        "through a screen the window never builds, left out:"
+    )
+    for name in retired:
+        print(f"  [spec]   {name}")
+    return unreached + retired
+
+
+def excludes_for(project_root: str) -> list[str]:
+    """Return ``EXCLUDES`` plus every ``retired_src_modules`` name.
+
+    Both spec files hand this list to ``Analysis`` as its excludes.
+    """
+    return [*EXCLUDES, *sorted(retired_src_modules(project_root))]
 
 
 def reachable_only(module_names: list[str], project_root: str) -> list[str]:

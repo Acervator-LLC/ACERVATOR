@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import importlib
+import importlib.util
 from collections.abc import Callable
 
 ALERTS_TAB_METHOD = "alerts_tab.state"
@@ -30,8 +31,20 @@ SURFACE_MODULES: dict[str, str] = {
 
 
 def on_demand_handlers() -> dict[str, Callable[[dict], dict]]:
-    """Return one handler per ``SURFACE_MODULES`` method, unimported until called."""
-    return {method: _handler(module) for method, module in SURFACE_MODULES.items()}
+    """Return one handler per ``SURFACE_MODULES`` method, unimported until called.
+
+    A method whose module ``_is_carried`` cannot find gets no handler.
+    """
+    return {
+        method: _handler(module)
+        for method, module in SURFACE_MODULES.items()
+        if _is_carried(module)
+    }
+
+
+def _is_carried(module_name: str) -> bool:
+    """Return True when ``find_spec`` finds ``module_name`` beside this module."""
+    return importlib.util.find_spec("." + module_name, __package__) is not None
 
 
 def _handler(module_name: str) -> Callable[[dict], dict]:

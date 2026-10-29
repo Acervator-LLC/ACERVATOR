@@ -242,6 +242,11 @@ Neither added sector carries a listed market yet, so a scan of either walks no
 sector at all. The map store answers an empty set for a class it holds no entry
 for, which is what it already does for crypto.
 
+The two sentences above are overtaken for Futures / Perps, and both are kept as
+written. A Futures / Perps scan now walks the venue's futures list, because every
+product on a crypto root is placed there. An Indices scan walks the same list for
+a product on an index root.
+
 The operator asked for the published names rather than this project's own.
 
 > I just want to adopt the standard categorization and language so that the implementation is professional and accurate...
@@ -254,6 +259,10 @@ A retired class name still resolves.
 | `energy` | commodities |
 | `derivatives` | crypto, because a futures product takes the class of its underlying |
 | a name neither taxonomy holds | none; the press is refused |
+
+The `derivatives` row above is overtaken, and it is kept as written. The name now
+answers futures_perps, the class the contract rule files a contract on a crypto
+underlying under.
 
 A refused name runs no scan, so no class is scanned with no timeframes behind it.
 
@@ -342,6 +351,14 @@ The four commodity spot pairs carry no venue at all. A futures row in any class 
 reachable and unwired: the venue takes orders on its US futures products, and the
 futures adapter reads candles and places none.
 
+The table above gains a row, and it is kept as written. Futures / Perps answers
+what a futures row answers, because `CLASS_DEPLOYABILITY` holds the futures form's
+own record for it.
+
+| Class | Reachable from home | Venue wired |
+| ----- | ------------------- | ----------- |
+| futures_perps | yes, the venue takes orders on its US futures products over the same API | no, the futures adapter reads candles and places none |
+
 ### The form each listing carries
 
 Every row draws the form its product takes. The form rides on the row; no control
@@ -365,6 +382,23 @@ def futures_placement(product: Any) -> tuple[str, str, str]:
 
 A root neither the record nor the root table resolves is held back, named on the
 order line and counted. Nothing is guessed.
+
+The placement above now ends in the contract rule, and the block is kept as
+written. A crypto root answers Futures / Perps, and an index root answers Indices
+with no sector.
+
+```python
+# src/trading/ata_asset_maps.py, in futures_placement
+    root = _root_of(product)
+    if not root:
+        return "", NO_ASSET_CLASS, ""
+    if not _non_crypto(product) and (root in CRYPTO_SYMBOLS or _crypto_sector(root)):
+        return root, contract_class(CLASS_CRYPTO), _crypto_sector(root)
+    held = NON_CRYPTO_ROOTS.get(root)
+    if held is None:
+        return root, NO_ASSET_CLASS, ""
+    return held[2], contract_class(held[0]), held[1]
+```
 
 ### The ticker field
 
@@ -1806,6 +1840,38 @@ The operator set the rule for a source that is not free.
 Derivatives is not a class. Each futures product takes the class of its underlying,
 and the product list is read at press time from the venue's own public route,
 ranked by its own 24-hour volume times price.
+
+The second sentence above is overtaken in part, and it is kept as written. A
+product on a crypto root now takes Futures / Perps. A press reads this list for
+the classes the placement can answer, and `FUTURES_CLASSES` derives that set from
+the placement's own tables.
+
+```python
+# src/gui/main_tabs/market_inspector_surface.py, in FUTURES_CLASSES
+FUTURES_CLASSES = tuple(
+    sorted(
+        {
+            ata_spm.contract_class(one)
+            for one in (
+                ata_spm.CLASS_CRYPTO,
+                *(row[0] for row in ata_asset_maps.NON_CRYPTO_ROOTS.values()),
+            )
+        }
+    )
+)
+```
+
+Driven over six product records written for the reading, with the home
+redirected and every network name refused, through `futures_listings` and
+`class_markets` on the tree before this change and on this one:
+
+```
+                                   scan before    scan now        recording
+three contracts on a crypto root   crypto         futures_perps   futures_perps
+two contracts on a commodity root  commodities    commodities     commodities
+one contract on an index root      stocks         indices         indices
+scan and recording agree           2 of 6         6 of 6
+```
 
 `src/trading/ata_asset_maps.py` — where the futures list comes from
 

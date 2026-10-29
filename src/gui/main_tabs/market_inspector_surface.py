@@ -200,20 +200,25 @@ TICKER_NO_LIST_FORMAT = "No ticker list for {sector}. A typed name still scans."
 TICKER_PRESS_LIST_FORMAT = (
     "Scan Now reads the {sector} list from {source}. A typed name still scans."
 )
-#: The classes whose list a press reads off a venue, and what the note names.
-CLASS_PRESS_SOURCES = {
-    ata_spm.CLASS_CRYPTO: "Coinbase's futures products on the CDE venue",
-    ata_spm.CLASS_COMMODITIES: "Coinbase's futures products on the CDE venue",
-    ata_spm.CLASS_STOCKS: "Coinbase's futures products on the CDE venue",
-}
-
-#: The classes a CDE product can be placed under, which is every class
-#: ``ata_asset_maps.NON_CRYPTO_ROOTS`` names plus crypto.
-FUTURES_CLASSES = (
-    ata_spm.CLASS_CRYPTO,
-    ata_spm.CLASS_STOCKS,
-    ata_spm.CLASS_COMMODITIES,
+#: The classes ``ata_asset_maps.futures_placement`` can answer: crypto and every
+#: ``NON_CRYPTO_ROOTS`` class, each filed by ``ata_spm.contract_class``.
+FUTURES_CLASSES = tuple(
+    sorted(
+        {
+            ata_spm.contract_class(one)
+            for one in (
+                ata_spm.CLASS_CRYPTO,
+                *(row[0] for row in ata_asset_maps.NON_CRYPTO_ROOTS.values()),
+            )
+        }
+    )
 )
+
+#: The list ``futures_listings`` reads, as the note under the field names it.
+FUTURES_PRESS_SOURCE = "Coinbase's futures products on the CDE venue"
+
+#: The classes whose list a press reads off a venue, and what the note names.
+CLASS_PRESS_SOURCES = {one: FUTURES_PRESS_SOURCE for one in FUTURES_CLASSES}
 #: What the field carries for the sectors a class declares and lists no market
 #: for. The count is drawn under the field rather than the sector left out of
 #: the menu with no word said about it.

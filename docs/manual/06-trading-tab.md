@@ -8437,6 +8437,15 @@ asked = RETIRED_CLASSES.get(asked, asked)
 | `equities` | stocks | Stock | `#6699ff` |
 | a name no class holds | crypto | Crypto | `#00ccaa` |
 
+The `derivatives` row and the block above it are overtaken, and both are kept as
+written. A stored `derivatives` name now opens on Futures / Perps, the sector the
+contract rule files a contract on a crypto underlying under.
+
+```python
+# src/trading/ata_spm.py, in RETIRED_CLASSES
+    RETIRED_CLASS_DERIVATIVES: contract_class(CLASS_CRYPTO),
+```
+
 **Design intention.** Derivatives names no sector. A futures contract is a form a
 contract takes, and the class belongs to the thing underneath it, so a future on an
 index sits with equities and a future on ether sits with crypto. A venue's dated
@@ -8448,6 +8457,25 @@ product takes the class of its own underlying.
 ```python
 def futures_placement(product: dict) -> tuple[str, str, str]:
     """The underlying, the asset class and the sector one futures product takes.
+```
+
+The design intention above is overtaken in two places, and it is kept as written.
+A future on a crypto asset now sits with Futures / Perps, and a future on an index
+sits with Indices. The placement passes each class it reads through
+`src/trading/ata_spm.py, in contract_class`, the rule every other placement runs,
+so the scan and the recording file one product under one sector.
+
+```python
+# src/trading/ata_asset_maps.py, in futures_placement
+    root = _root_of(product)
+    if not root:
+        return "", NO_ASSET_CLASS, ""
+    if not _non_crypto(product) and (root in CRYPTO_SYMBOLS or _crypto_sector(root)):
+        return root, contract_class(CLASS_CRYPTO), _crypto_sector(root)
+    held = NON_CRYPTO_ROOTS.get(root)
+    if held is None:
+        return root, NO_ASSET_CLASS, ""
+    return held[2], contract_class(held[0]), held[1]
 ```
 
 **The naming.** The operator's words are "market sector". Under the published
@@ -8532,6 +8560,25 @@ if asked in crypto_venues():
     found.add("crypto")
 ```
 
+The block above is overtaken, and it is kept as written. A venue is now listed
+only under a sector where it trades a market. Stocks comes from the equity list
+only for an id a broker connector answers, and a broker that names its own
+sectors bounds what the rest adds.
+
+```python
+# src/gui/main_tabs/asset_class_surface.py, in venue_classes
+    found = {retired_onto(one) for one in EXTRA_VENUE_CLASSES.get(asked, ())}
+    served = broker_served(asked)
+    if asked in EQUITY_VENUES and served is not None:
+        found.add("stocks")
+    held = recorded if isinstance(recorded, dict) else recorded_venue_classes()
+    found |= set(held.get(asked, frozenset()))
+    if served:
+        found &= set(served)
+    if asked in crypto_venues():
+        found.add("crypto")
+```
+
 OVERTAKEN, and the table above is kept as written. Coinbase serves three
 classes, so the Commodities button can act and the table's last two rows read
 differently.
@@ -8604,6 +8651,13 @@ Two of the nine trade nowhere today. One closed its interface on 10 May 2024 and
 one publishes none, both recorded on
 [15-venue-compatibility.md](15-venue-compatibility.md). Both stay on the list,
 because this section records where the list lives and not what is on it.
+
+The paragraph above is overtaken in part, and it is kept as written. Both ids stay
+on the list. The one whose interface closed is now listed under no sector, because
+no broker connector answers it, and the second Interactive Brokers id reads the
+same. The firm that publishes no interface stays under its four sectors, and
+whether a firm nothing can trade through belongs on any tab is the operator's
+decision.
 
 #### Every tab but Status and Console follows the active asset class
 
@@ -11423,3 +11477,200 @@ They stand as written. These are the readings that replaced them.
 | written above | what it reads now |
 | --- | --- |
 | "The Product Manual PDF rebuild is owed for this page." | `docs/Acervator-Product-Manual.pdf` is rebuilt with this section and carries this page |
+
+## 2026-10-29 - every figure a fill settles is written when the fill is announced
+
+When a fill is announced, the bot first writes every figure that fill settles.
+These are the Trades count, the year-to-date dollars, the realised profit, the
+fees, the average entry and cost basis, the open-order counts, the stored
+position value, and the buy and sell counts. The bot tables pull each bot's
+status every two seconds, so a row shows the new figures at its next pull. The
+exchange walk still reads the exchange once in 300 seconds. Where its figure
+differs from the one written at the fill, the walk writes the exchange's figure.
+
+### One function writes the figures
+
+The announcement writes the figures before it sends the fill. A figure that
+cannot be written is logged, and the fill is still announced.
+
+```python
+# src/trading/bot_container.py, in _announce_fill
+        try:
+            self._write_fill_figures(fill)
+        except Exception:
+            logger.exception(
+                "Bot %s %s fill of %.8f: writing its figures raised, and the "
+                "fill is still announced",
+                self.bot_id,
+                kind,
+                fill.amount,
+            )
+        self._bus.emit(FILL_TOPIC, **fill.payload())
+```
+
+The trade count, the buy or sell count and the last trade time count each order
+once, on the first piece the exchange settles. The order body that settled the
+piece shows whether it is the first.
+
+```python
+# src/trading/bot_container.py, in BotContainer._write_fill_figures
+        if filled - units <= FILL_DUST_UNITS:
+            self.stats.total_trades += 1
+            if fill.side == FILL_BUY:
+                self.stats.total_buys += 1
+            else:
+                self.stats.total_sells += 1
+        self.stats.last_trade_time = time.time()
+```
+
+### The walk keeps what it read
+
+Each walk keeps three readings. They are the exchange's fill history for the
+symbol, the year-to-date tally with the units of every order, and the open
+orders. A fill joins each reading through the walk's own arithmetic, so the
+figure written at the fill is the figure the walk computes once the exchange
+lists that fill.
+
+```python
+# src/trading/scrumming/reconciliation.py, in ReconciliationEngineMixin._write_clock_figures
+        price = float(fill.price)
+        if math.isfinite(price) and price > 0.0:
+            self.stats.position_value = priced_usd(
+                self._current_holdings, price, float(self._quote_to_usd or 1.0)
+            )
+        if fill.symbol != self.config.symbol:
+            return
+        self._join_ytd_tally(fill, order_id, filled)
+        self._join_fill_history(fill, order_id, filled)
+        self._join_open_orders(fill, order_id, rests)
+```
+
+A fill adds only the units of its order that a reading does not already hold.
+The walk runs first in a worked tick, so it can read a resting order that the
+exchange filled before the held-order read books it. That order is then in the
+reading already, and it is not counted a second time.
+
+```python
+# src/trading/scrumming/reconciliation.py, in unread_units
+    return max(0.0, min(float(units), float(filled) - float(held)))
+```
+
+### The exchange's figure is the one that stands
+
+Each walk replaces the three readings and drops the fills that joined them
+since the last walk. Where the exchange lists a fill at another price or with
+another fee, or lists an order the platform did not place, the walk writes the
+exchange's figure.
+
+```python
+# src/trading/scrumming/reconciliation.py, in ReconciliationEngineMixin.refresh_exchange_position_health
+            _trades = await self.fetch_fill_history()
+            if _trades is None:
+                return False
+            self._fills_since_walk = ()
+```
+
+### Other bots on the same exchange and symbol
+
+A bot's walk reads every fill the exchange holds for its symbol, so a fill by
+another bot on the same exchange and symbol moves that bot's walk figures too.
+The announcing bot adds its fill to the readings of each such bot. An Extractor
+round or exit on a pair that a Scrumming Bot trades reaches that bot the same
+way. The other bot's own position value does not move.
+
+```python
+# src/trading/container/registry.py, in BotRegistryMixin.bots_on_symbol
+        return [
+            bot
+            for bot in list(self._bots.values())
+            if getattr(getattr(bot, "config", None), "exchange_id", None) == exchange_id
+            and getattr(getattr(bot, "config", None), "symbol", None) == symbol
+        ]
+```
+
+### What stays on the walk
+
+Four figures still move at the walk alone. Each needs a reading only the
+exchange can give.
+
+```
+figure                                     what the walk reads for it
+cash                                       the exchange's balance of USD and USDC
+unrealised profit                          the exchange's spot position
+fill count                                 the pieces the exchange filled each order in
+average entry and cost basis, on an        the exchange's portfolio breakdown
+exchange that answers a spot position
+```
+
+### The profit an announcement carries
+
+A distribution sale announces the change in the target that its booking made,
+and a manual tranche fire announces the growth it added to the target, as a
+fold does. A distribution sale grows nothing, so it announces $0.00. The fill
+sounds play the profit sample on a profit above zero. A distribution sale
+therefore no longer plays it, and a manual tranche fire that grows the target
+does.
+
+```python
+# src/trading/scrumming/tick_phases.py, in TickPhaseMixin._book_dist_fill
+            profit=float(self._target_balance) - _target_before,
+
+# src/trading/scrumming_bot.py, in ScrummingBot._book_manual_tranche_fill
+            profit=_mf_growth,
+```
+
+### What the driven fills showed
+
+Every completion point was driven on the commit before this change and on this
+change, one kind of fill at a time. A real bot traded against a stand-in
+exchange that keeps a fill history, in a home folder made for each run, with no
+socket leaving the machine.
+
+```
+                                     the commit before this change      this change
+the row's Trades cell after a scrum  3 at the next pull, 4 at the       4 at the next pull
+                                     walk 300.5 s after the fill
+figures written at the fill          the fleet trade total on 15 of     every figure but cash and the
+                                     18 kinds, the year-to-date         fill count, on all 16 kinds of
+                                     dollars on 7                       the Scrumming Bot
+figures the walk moved after it      every figure the walk owns         cash and the fill count only
+the figure at the fill against the   -                                  the same on all 16 kinds
+exchange's own arithmetic
+a resting scrum the walk read first  fleet total 5 and $352.00 sold,    4 and $227.00, the exchange's
+                                     the exchange's 4 and $227.00       figures
+exchange calls during each fill      2 to 7, by kind                    the same calls in the same order,
+                                                                        on all 18 kinds
+```
+
+The Extractor holds no walk. Its round and its exit now add to its trade count
+and its buy or sell count, which no Extractor fill moved before.
+
+Two Scrumming Bots on one exchange and symbol were registered on a real bot
+manager, with an Extractor beside them. A scrum by the first bot, and then an
+Extractor round on the same symbol, each moved the second bot's Trades count,
+year-to-date dollars, fees and basis at the fill. Its next walk moved none of
+them. On the commit before this change, each waited for the second bot's own
+walk.
+
+With the exchange listing the scrum 1 per cent lower and at twice the fee, and
+listing an order the platform did not place, the walk wrote the exchange's
+figures over the ones written at the fill.
+
+```
+the walk after the scrum     written at the fill    the walk, the exchange's figure
+the row's Trades cell        4                      5
+realised profit              $24.50                 $23.25
+fees                         $6.882                 $7.926
+cost basis                   $713.00                $762.00
+```
+
+### Where two earlier sentences now read differently
+
+They stand as written. These are the readings that replace them.
+
+| written above | what it reads now |
+| --- | --- |
+| "The figure therefore moves at the walk, up to 300 seconds after the fill." | The realised figure moves when the fill is announced, while the bot holds a complete fill history from its last walk. The walk then writes the exchange's figure over it |
+| "No table and no figure on a screen moves because of it yet." | The announcement writes every figure the fill settles before it is sent, and the bot tables draw them at their next two-second pull |
+
+The Product Manual PDF rebuild is owed for this page and for `docs/manual/08-tabs/settings.md`.

@@ -206,6 +206,37 @@ def on_demand_handlers() -> dict[str, Callable[[dict], dict]]:
     return {method: _handler(module) for method, module in SURFACE_MODULES.items()}
 ```
 
+Read on the current tree, a packaged build carries none of the seven surfaces.
+`src/gui/main_tabs/retired_surfaces.py, in on_demand_handlers` registers a page
+only when the running program can find its surface, so a packaged build's
+registry holds none of the seven methods. A request for one gets the bridge's
+`UnknownMethod` refusal, and no import runs. A run from the source folder still
+answers all seven.
+
+`src/gui/main_tabs/retired_surfaces.py` — `on_demand_handlers` and `_is_carried`, as they read now
+
+```python
+def on_demand_handlers() -> dict[str, Callable[[dict], dict]]:
+    """Return one handler per ``SURFACE_MODULES`` method, unimported until called.
+
+    A method whose module ``_is_carried`` cannot find gets no handler.
+    """
+    return {
+        method: _handler(module)
+        for method, module in SURFACE_MODULES.items()
+        if _is_carried(module)
+    }
+
+
+def _is_carried(module_name: str) -> bool:
+    """Return True when ``find_spec`` finds ``module_name`` beside this module."""
+    return importlib.util.find_spec("." + module_name, __package__) is not None
+```
+
+The rule that leaves the seven out of the build is on
+[17-what-the-build-includes.md](../17-what-the-build-includes.md), under "A
+screen the window never builds".
+
 The transport is one JSON object per line over the pipe the parent process
 already owns: no socket and no port.
 

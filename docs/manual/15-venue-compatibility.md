@@ -223,6 +223,43 @@ included. The other two ids are the rows the issue names as wrong: one is a
 second id for a firm already named, and the other names a firm whose developer
 host has no DNS record.
 
+OVERTAKEN, and both tables and the paragraph above are kept as written. A venue is
+now listed only under a sector where it trades a market. Read in one running
+process with nothing recorded:
+
+| Venue | Sectors `venue_classes` answers |
+| ----- | ------------------------------- |
+| alpaca | crypto, stocks, commodities, indices |
+| binance | crypto, stocks, commodities, forex, indices, futures_perps |
+| bitfinex | crypto, commodities, forex, indices, futures_perps |
+| bitget | crypto, stocks, commodities, futures_perps |
+| bitstamp | crypto, commodities, forex, indices, futures_perps |
+| bybit | crypto, futures_perps |
+| coinbase | crypto, stocks, commodities, forex, indices, futures_perps |
+| cryptocom | crypto, stocks, commodities, forex, indices, futures_perps |
+| etrade | stocks, commodities, indices |
+| fidelity | crypto, stocks, commodities, indices |
+| gateio | crypto, stocks, commodities, forex, indices, futures_perps |
+| gemini | crypto, commodities, forex, futures_perps |
+| huobi | crypto |
+| ibkr | crypto, stocks, commodities, forex, indices, futures_perps |
+| interactivebrokers | none |
+| kraken | crypto, stocks, commodities, forex, indices, futures_perps |
+| kucoin | crypto, stocks, commodities, forex, futures_perps |
+| mexc | crypto, stocks, commodities, forex, indices, futures_perps |
+| okx | crypto, stocks, commodities, futures_perps |
+| okxus | crypto, stocks, commodities |
+| poloniex | crypto |
+| robinhood | crypto, stocks, commodities, forex, indices |
+| schwab | stocks, commodities, forex, indices, futures_perps |
+| tastytrade | crypto, stocks, commodities, forex, indices, futures_perps |
+| tdameritrade | none |
+| webull | crypto, stocks, commodities, forex, indices, futures_perps |
+
+The reason for each cell that left sits in
+[16-sector-exchange-product-tree.md](16-sector-exchange-product-tree.md), under
+Exchange.
+
 ### Coinbase serves three of the four classes
 
 OVERTAKEN, and the Coinbase row above is kept as written. Its classes read
@@ -4747,6 +4784,10 @@ So the operator reaches the identical product under stocks. The indices row
 stays on the screen and its empty market list is recorded here, because
 removing a sector from a venue is the operator's decision.
 
+The two sentences above are overtaken, and both are kept as written. The indices
+row is off the screen for Bitget. A venue is now listed only under a sector where
+it trades a market, and these eight funds record under stocks.
+
 ### The order bodies the sectors take
 
 Crypto, stocks and commodities reach a spot pair. Futures and perpetuals reach
@@ -5006,6 +5047,10 @@ So the operator reaches the identical product under stocks. The indices row
 stays on the screen and its empty market list is recorded here, because
 removing a sector from a venue is the operator's decision.
 
+The two sentences above are overtaken, and both are kept as written. The indices
+row is off the screen for OKX. A venue is now listed only under a sector where it
+trades a market, and these nine funds record under stocks.
+
 ### The order bodies OKX’s sectors take
 
 Crypto, stocks and commodities reach a spot pair. Futures and perpetuals reach
@@ -5234,6 +5279,9 @@ Bitget and OKX carry. Eight index-fund tickers are listed — `XSPY`, `XQQQ`,
 `XIWM`, `XEWY`, `XSMH`, `XSOXL`, `XTQQQ` and `XXLE` — and every one publishes
 Stocks, so the exposure is reachable under stocks, subject to the tokenised
 stock terms above.
+
+The indices sector no longer offers OKX US. A venue is now listed only under a
+sector where it trades a market, and these eight funds record under stocks.
 
 ### The order body OKX US takes
 
@@ -6001,6 +6049,10 @@ EXTRA_VENUE_CLASSES` gains forex and indices for kucoin, so
 `venue_classes` answers crypto, stocks, commodities, forex, indices and
 futures_perps.
 
+The indices half of the sentence above is overtaken, and it is kept as written.
+`venue_classes` answers crypto, stocks, commodities, forex and futures_perps for
+KuCoin, because no KuCoin market records under indices.
+
 OVERTAKEN, quoted whole:
 
 ```
@@ -6205,6 +6257,10 @@ KORU — and publishes `assetClass` STOCK on every one. This is the third venue 
 do that: bitget publishes `symbolType` stock on RSPYUSDT and RQQQUSDT, and OKX
 publishes `instCategory` 3 on SPY and QQQ. The sector offers the venue and the
 recording answers nothing under it, exactly as those two read.
+
+The heading and the last sentence above are overtaken, and both are kept as
+written. Indices no longer offers KuCoin. A venue is now listed only under a
+sector where it trades a market.
 
 The control for that count: the same search over the same 691 futures rows found
 the 6 METAL contracts and the 3 COMMODITY contracts it reports, and found 155
@@ -7436,6 +7492,10 @@ contracts now record under futures_perps:
 through `src/trading/ata_spm.py, in contract_class`. No Schwab market records
 under crypto now, because its spot crypto sits in an account no interface
 reaches.
+
+Schwab is now off the crypto list as well. `SchwabConnector.SECTORS_SERVED` names
+five sectors, and `venue_classes` answers stocks, commodities, forex, indices and
+futures_perps.
 
 ### The size unit, and the two the venue offers
 
@@ -8943,6 +9003,11 @@ Futures Bonds Crypto" — and its own futures product table gives every contract
 symbol and a tick size. `venue_classes("etrade")` now answers crypto, stocks,
 commodities, forex, indices and futures_perps.
 
+The sentence above is overtaken, and it is kept as written.
+`venue_classes("etrade")` answers stocks, commodities and indices. No E*TRADE
+market records under crypto, forex or futures_perps, and its contracts take no
+API order.
+
 OVERTAKEN, quoted whole:
 
 > E*TRADE           developer documentation
@@ -9119,6 +9184,9 @@ There is no spot forex and no currency fund. Over the 32 `us.etrade.com` pages,
 998,389 characters: `forex` **0**, `spot forex` **0**, `currency pair` **0**,
 `currency ETF` **0**, against `FX (currency)` **1** and `jurisdiction` **41**.
 
+Forex no longer offers E*TRADE. Its fifteen currency contracts take no API order,
+and a venue is now listed only under a sector where it trades a market.
+
 ### Crypto, which is new on this screen and real at the venue
 
 Quoted whole from E*TRADE's own crypto account page and its FAQ:
@@ -9141,6 +9209,10 @@ Two platforms are named and neither is an API. The crypto account is
 non-brokerage and at another firm, and the portfolio route's own `securityType`
 enum cannot name a coin. So spot crypto exists, is priced, and takes no order
 here; the sector's order is the crypto ETP, which is `securityType EQ`.
+
+The heading above is overtaken, and it is kept as written. Crypto no longer offers
+E*TRADE. A crypto ETP records under stocks, because
+`src/stocks/etrade_connector.py, in FUND_SECTOR_SYMBOLS` names no crypto fund.
 
 ### Three legal entities, and the API is published under one
 
@@ -9420,6 +9492,11 @@ True on all six, and the difference in both directions is **0**. Before this uni
 it answered False on all six, because `BROKER_CONNECTORS` held no `etrade` row at
 all. Of the six offered, **4** reach the published order route and **2** are
 refused at `order_body` with the venue's own enum as the reason.
+
+The arithmetic above is overtaken, and it is kept as written. The screen offers
+three E*TRADE sectors again, stocks, commodities and indices, each one a sector an
+E*TRADE market records under. `broker_serves_sector("etrade", ...)` still answers
+True on all six, so a saved bot on any sector reaches the venue's own refusal.
 
 ## Fidelity, read from its own hosts on 2026-10-11
 
