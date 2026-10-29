@@ -228,9 +228,9 @@ screen the window stops building leaves the next build with no edit to the build
 | an unbuilt tab | `src/gui/main_tabs/main_window_surface.py`, `UNBUILT_TABS`, and each `if X not in UNBUILT_TABS:` guard | each import line in the builder that the guard skips |
 | a screen nothing asks for | `src/gui/variant_surface.py`, each `register` call | each import line in the loaders of a screen that no `surface_class` or `draws_react` call names |
 
-The sentinels the window sets for its retired tabs name attributes, not modules,
-so the build reads no module from them. The first and third rows cover the
-screens those sentinels mark.
+`RetiredTabsMixin._install_retired_tab_sentinels` assigns None to attributes,
+not to modules, so the build reads no module from it. The first and third rows
+cover the screens it marks.
 
 `tools/spec_common.py` — the three places the build reads, each named once
 
