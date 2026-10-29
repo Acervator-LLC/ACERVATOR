@@ -1508,6 +1508,7 @@ class ScrummingBot(
 
         # The child traded on this same venue account, and one pool is shared.
         self._invalidate_symbol_balances(self.config.symbol)
+        self._record_venue_units_after_fill(b)
 
         try:
             self.config.target_balance = self._target_balance
@@ -2445,6 +2446,8 @@ class ScrummingBot(
         self._fold_tranches = []
         self._fold_queue_usd = 0.0
         self._current_holdings = max(0.0, self._current_holdings - fill_amount)
+        if fill_amount > 0:
+            self._record_audited_venue_units(units - fill_amount)
         # The exchange holds units the surviving lots do not account for, so the
         # shortfall is added at the fill price.
         _sd_book_units = sum(
@@ -5015,6 +5018,8 @@ class ScrummingBot(
                 t["fill_price"] = float(_avg or t["price"])
                 t["filled_amount"] = _filled
                 settled += 1
+                self._current_holdings = max(0.0, self._current_holdings - _filled)
+                self._record_venue_units_after_fill(-_filled)
                 # A resting order filled with nobody watching, so the window
                 # that began before it is already wrong.
                 self._invalidate_symbol_balances(self.config.symbol)

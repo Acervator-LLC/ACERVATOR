@@ -1006,6 +1006,7 @@ class BotContainer:
         ceiling_usd = getattr(self, "position_ceiling_usd", None)
         ceiling_ratio = getattr(self, "ceiling_ratio", None)
         fold_taper = getattr(self, "fold_size_taper", 1.0)
+        lot_book_total = getattr(self, "_lot_book_total", None)
 
         # Queued tranches larger than one cycle's cycle_growth_cap_usd;
         # each is PART-CONSUMED, not skipped, so the count is advisory.
@@ -1079,6 +1080,8 @@ class BotContainer:
             "audited_venue_units": float(
                 getattr(self, "_audited_venue_units", 0.0) or 0.0
             ),
+            # The lot total the holdings audit compares; None where none is read.
+            "lot_book_units": lot_book_total() if callable(lot_book_total) else None,
             # Why the last fill-fired venue read refused, empty while the
             # reading above is the one that read landed.
             "venue_units_refusal": str(getattr(self, "_venue_units_refusal", "") or ""),

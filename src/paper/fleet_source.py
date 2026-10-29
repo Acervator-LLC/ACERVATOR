@@ -853,6 +853,7 @@ def row_status(bot: PaperBot) -> dict:
         "live_target_balance": bot.live_target_usd,
         "ta_timeframe": bot.ta_timeframe or "1h",
         "current_holdings": bot.holdings,
+        "lot_book_units": bot.holdings,
         "quote_to_usd": bot.quote_to_usd,
         "stats": {
             "total_trades": bot.total_trades,
