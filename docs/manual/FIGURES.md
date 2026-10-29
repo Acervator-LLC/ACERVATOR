@@ -224,3 +224,56 @@ git log --all -S<name> -- "*.py"
     sync_ytd_trade_count      7 commits      control
     chartwright               0 commits      coined term
 ```
+
+### The builder draws the VWAP charts
+
+Six sentences on this page are overtaken, and so is the producer row for the
+VWAP charts. Each sentence is quoted whole, with what the code does today
+beneath it.
+
+> 39 charts, one per charted base plus one combined view.
+
+40 charts: one for each of the 39 labelled bases, and the combined view.
+`vwap_a39.png` is the chart for the base the October export adds, which
+[10-live-trade-history.md](10-live-trade-history.md) describes under its own
+heading.
+
+> They carry no page number, because the source PDF is not their source: a
+> generator drew them from the operator's Coinbase export, over the same 5,661
+> fills that part opens with.
+
+They still carry no page number. `_write_asset_vwap` in
+`tools/build_product_manual.py` draws them from the newest export in the input
+folder, 8,310 fills to 19 October, and each chart's title states its own fill
+count.
+
+> A file name carries the label the manual uses, `vwap_a01.png` through
+> `vwap_a38.png`, and never the asset.
+
+The file names run from `vwap_a01.png` to `vwap_a39.png`, and none names the
+asset. The combined view keeps its own name.
+
+> The asset name is painted out of every chart's title, out of its price-axis
+> label, and out of the combined view's legend, so no chart in this repository
+> names what it charts.
+
+No chart has anything painted out. The builder writes the label into each
+title, each price-axis label and the combined view's legend, so no chart in this
+repository names what it charts.
+
+> No commit in this repository's history ever added a chart generator.
+
+`tools/build_product_manual.py` holds the chart generator, and
+`write_evidence_figures` runs it before the build lays out a page.
+
+> A fresh clone has 38 figures it can rebuild and 39 it cannot.
+
+A clone holding the venue export under `artifacts/evidence-input/transactions/`
+rebuilds all 40 VWAP charts. A clone without it rebuilds none of them, and the
+build reads the tracked copies.
+
+The producer row for the VWAP charts now reads:
+
+| Set | Count | Producer | Reachable from this repository |
+| --- | ----: | -------- | --- |
+| Part 9 VWAP charts | 40 | `_write_asset_vwap` in `tools/build_product_manual.py`, given the venue export | yes, with the export |

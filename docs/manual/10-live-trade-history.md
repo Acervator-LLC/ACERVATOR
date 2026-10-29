@@ -679,6 +679,18 @@ this base. `tools/build_product_manual.py`, in `labels_across`, numbers a base
 that arrives late after the labels already published, so A01 through A38 keep
 the bases they have carried throughout and a new base takes the next number.
 
+The following two sentences are overtaken:
+
+> A39 has no VWAP chart. The 39 charts above arrived with the record, and no
+> committed file draws a fortieth, so the weekly chart and the price trace carry
+> this base.
+
+A39 has a VWAP chart. `_write_asset_vwap` in `tools/build_product_manual.py`
+draws one for every label the newest export carries, and that export carries
+A39.
+
+![A39, 10 fills with every step dotted, and no band: its 15 one-day bars are fewer than the 20 the band needs.](figures/vwap_a39.png)
+
 
 ## What this repository holds for these charts
 
@@ -751,6 +763,154 @@ control
     sync_ytd_trade_count  7 commits
     a coined term         0 commits
 ```
+
+## The builder draws every VWAP chart
+
+`tools/build_product_manual.py` draws all 40 VWAP charts this part embeds: one
+for each of the 39 labelled bases, and the combined view. Below, each overtaken
+sentence appears whole, and what the code does today follows it.
+
+> No committed file produces these charts.
+
+`write_evidence_figures` draws them first among the evidence figures, before
+the build lays out a page.
+
+```python
+out = _write_asset_vwap(figures_dir, labels, fills)
+out += _write_asset_weekly(figures_dir, labels, candles)
+```
+
+> The charts and the record behind them belong to the operator. This repository
+> cannot regenerate either.
+
+The record still belongs to the operator and stays out of the repository. A
+checkout holding it under `artifacts/evidence-input/transactions/` regenerates
+every chart. The `--evidence-dir` flag points the builder at a copy held in any
+other folder.
+
+```
+python -m tools.build_product_manual --evidence-dir <a folder holding transactions/>
+```
+
+> The 39 charts of this part, the combined view above included, come from one
+> module, `vwap_charts`. It reads the export once, groups the fills by asset, and
+> writes one PNG per charted base.
+
+> The module is not committed to this repository. Neither is the export it
+> reads.
+
+`_write_asset_vwap` takes the newest export's fills and groups them by label,
+never by asset.
+
+Each group goes to `_draw_vwap`, and the whole set goes to `_draw_combined`.
+Every string a drawing function writes comes from the label, a count or a fixed
+word, so no title, axis label or legend carries an asset name. The repository
+holds the drawing. It does not hold the export.
+
+```python
+groups: dict[str, list[Fill]] = {}
+for fill in fills:
+    groups.setdefault(labels[fill.asset], []).append(fill)
+```
+
+> Every chart is committed, and every one of them has the asset name painted out
+> of its title, out of its price-axis label, and out of the combined view's
+> legend.
+
+The repository holds every chart, and no chart has anything painted out. The
+label sits in the title and the price-axis label of each per-asset chart, and in
+the legend of the combined view.
+
+```python
+price.set_ylabel(f"{label} price, USD")
+price.set_title(f"{label} — {len(fills)} fills, {note}")
+```
+
+> The file name carries the label this part uses, `vwap_a01.png` through
+> `vwap_a38.png`, and never the asset.
+
+The file names run from `vwap_a01.png` to `vwap_a39.png`, and none names the
+asset.
+
+> The combined chart near the top of this part draws the eight assets with the
+> most fills of the earlier export. Those are no longer the eight with the most
+> fills, and nothing in this repository redraws that chart.
+
+`_draw_combined` redraws it from the newest export. Its eight lines are the
+eight bases with the most fills there: A01 to A06, A08 and A11. The note under
+its axis counts the bases that export carries:
+
+```
+39 charted bases. USD and USDC are excluded as quote currencies.
+```
+
+> No committed module computes an average sell price, and none computes a ratio
+> of one average over the other.
+
+`trajectory` in `tools/build_product_manual.py` computes the running sell VWAP
+each chart draws.
+
+`measurement_lines` divides the final sell VWAP by the final buy VWAP for the
+ratio table on the October export.
+
+```python
+ratio = row.sell_vwap / row.final_buy_vwap if row.final_buy_vwap else 0.0
+```
+
+> The price axis turns logarithmic when the highest fill price exceeds the
+> lowest more than eightfold, which covers A01 at 10.30 and A03 at 13.25 and no
+> other asset. A chart of 30 fills or fewer marks each step with a dot: A31,
+> A32, A33, A34, A35, A36, A37 and A38.
+
+On the newest export the axis turns logarithmic for A01 at 14.82 and A03 at
+38.35, and for no other base. Four charts have 30 fills or fewer, and each marks
+every step with a dot: A36, A37, A38 and A39.
+
+```python
+marker = "o" if len(fills) <= STEP_DOT_MAX_FILLS else "None"
+```
+
+### What a redrawn chart reads
+
+Every chart reads the newest export in the input folder: 8,310 fills on 39
+bases, the last on 19 October. The fill count in each chart's title matches the
+table under "Every base, measured on the October export".
+
+The band table, the table under "The 38 per-asset charts" and the description
+under each base's heading take their numbers from the earlier exports. They
+stand as published.
+
+### Where a one-day bar opens
+
+> No committed file builds them.
+
+`fill_bars` builds the one-day bars the band reads. Every bar opens at 00:00
+UTC. The last fill in a bar closes it, and a bar with no fill closes where the
+bar before it closed.
+
+`fill_band` hands those bars to the platform's own band, at period 20 and width
+2.
+
+```python
+CHART_BAND = BollingerBands(period=20, std_dev=2.0)
+BAND_BAR_MS = DAY_MS
+```
+
+The band table above counts one-day bars that open at 17:00 UTC. A recount of
+the same 6,997 fills at that boundary returns every row of that table exactly.
+At 00:00 UTC the recount returns the reconstruction the section on the three
+band columns quotes:
+
+```
+the 27 September export, period 20, width 2, one-day bars
+                   bands   zero width   at or above upper   at or below lower   in a banded bar
+bars at 17:00 UTC  3,792       35             605                 460              4,955
+bars at 00:00 UTC  3,797       36             653                 455              4,975
+```
+
+The channel on a redrawn chart sits on bars that open seven hours later than
+the bars that table counts. The builder opens every bar at 00:00 UTC, the
+boundary `week_start_ms` also uses, on any machine that runs it.
 
 ## The 38 per-asset charts
 
