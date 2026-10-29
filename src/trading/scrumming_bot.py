@@ -1945,7 +1945,7 @@ class ScrummingBot(
             units=rebought_units,
             price=fill_price,
             usd=_cost,
-            profit=0.0,
+            profit=_mf_growth,
             operator_initiated=True,
             fee=self._fill_fee_fields(fill_price),
         )
@@ -2517,7 +2517,7 @@ class ScrummingBot(
         units: float,
         fill_price: float,
         _asked: float,
-        first: bool,
+        _first: bool,
         *,
         keep_running: bool,
         venue_units: Optional[float] = None,
@@ -2568,8 +2568,6 @@ class ScrummingBot(
         try:
             self.stats.total_scrummed_usd += fill_usd
             self.note_scrum_retention_usd(fill_usd)
-            if first:
-                self.stats.total_trades += 1
             self._count_trade_volume(fill_amount, fill_price)
         except Exception as _sup:
             logger.debug(
@@ -5162,6 +5160,7 @@ class ScrummingBot(
                 self._last_fill_venue_fee = venue_fee_record(
                     order, _filled, t["fill_price"]
                 )
+                self._last_settled_order = order
                 self._announce_fill(
                     kind="STACK_RUNG",
                     side=FILL_SELL,
