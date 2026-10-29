@@ -105,6 +105,7 @@ the screen's state.
 | [08-tabs/system-status.md](08-tabs/system-status.md) | Emitter Network and Watchdog, the two halves that run today |
 | [08-tabs/settings.md](08-tabs/settings.md) | The User page, the Exchanges page, and what each of the eleven pages persists |
 | [08-tabs/promotion-pipeline.md](08-tabs/promotion-pipeline.md) | How a strategy earns its way to real money |
+| [08-tabs/alerts.md](08-tabs/alerts.md) | Notifications and Alerts: the Event Routing table, which events reach the message channels, and the engine that runs without the screen |
 
 ## Figures
 
