@@ -461,6 +461,7 @@ class TickPhaseMixin:
                 exchange=self.exchange,
                 symbol=symbol,
                 ta_weights=self._ta_weights,
+                settings=self.config,
             )
             await self._phantom_mgr.start_all(self.bot_id)
             self._phantoms_started = True

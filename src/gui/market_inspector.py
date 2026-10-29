@@ -33,6 +33,10 @@ from .main_tabs.market_inspector_surface import (
     SHOW_ACTIVE_TOOLTIP,
     TOPOLOGIES_ZONE,
 )
+from .main_tabs.market_inspector_surface import PHANTOM_HTF_ZONE
+from .main_tabs.market_inspector_surface import fleet_ids as _fleet_ids
+from .main_tabs.market_inspector_surface import phantom_entries as _phantom_entries
+from .main_tabs.market_inspector_surface import phantom_fleet as _phantom_fleet
 from .main_tabs.market_inspector_surface import (
     APPROVE_PART,
     analyzer_error_text,
@@ -473,9 +477,9 @@ if _HAS_QT:
         )
 
     class _VotingPanel(QFrame):
-        """The Indicator Voting Panel one scanned asset carries.
+        """One ``panel_frame`` grid an open entry carries: a voting panel or gate lights.
 
-        ``show_panel`` places one ``QLabel`` per ``voting_panel`` cell, at
+        ``show_panel`` places one ``QLabel`` per ``panel_frame`` cell, at
         the box that description names.
         """
 
@@ -731,11 +735,9 @@ if _HAS_QT:
             self.preview_label.setVisible(bool(shown))
 
         def _show_panels(self, rows: list) -> None:
-            """Draw one ``_VotingPanel`` and its gate lines per ``voting_panel``.
+            """Draw one ``_VotingPanel`` per ``panel_frame`` in ``rows``, its lines under it.
 
-            The lines sit under the panel of the asset they name, which is
-            what puts the gate chain result beside its own voting grid. Each
-            panel keeps its own box across redraws, so a walk that redraws
+            Each panel keeps its own box across redraws, so a walk that redraws
             once a market builds no widget while the grid keeps its shape.
             """
             while len(self.panels) > len(rows):
@@ -1000,6 +1002,9 @@ if _HAS_QT:
             self._ata_asset_source = None
             self._ata_candle_source = None
             self._ata_class_source = None
+            # Wired by MainWindow's MarketInspectorTabMixin via set_phantom_source().
+            self._phantom_lookup = None
+            self._fleet_ids: list = []
             self._ata_board = ata_spm.SectorBoard()
             self._push_board = ata_spm_push.PushBoard()
             self._push_board.settings.set_vault(encryption.default_vault())
@@ -2685,12 +2690,21 @@ if _HAS_QT:
             self._zone_steppers[key] = stepper
             return stepper
 
+        def set_phantom_source(self, lookup: Callable[[str], Any]) -> None:
+            """Take the callable the Phantom Bot HTF Signals zone looks one bot id up with."""
+            self._phantom_lookup = lookup
+            self._render_left_modules()
+
+        def _phantom_bots(self) -> Optional[list]:
+            """The ``phantom_fleet`` of ``_fleet_ids``, None while no lookup is wired."""
+            return _phantom_fleet(self._fleet_ids, self._phantom_lookup)
+
         def _zone_entries(self, key: str) -> list:
             """The entries one zone steps through.
 
             ATA-SPM steps the sectors the last Scan Now covered, Opposing
-            Trades the pairs the scan kept, and Ready to Send the posts
-            phase four formatted.
+            Trades the pairs the scan kept, Ready to Send the posts phase four
+            formatted, and Phantom Bot HTF Signals the ``phantom_entries``.
             """
             if key == ATA_SPM_MODULE:
                 outcomes = self._push_board.follow_up.outcomes
@@ -2701,6 +2715,8 @@ if _HAS_QT:
                 return [pair_entry(one) for one in self._pairs]
             if key == READY_TO_SEND_ZONE:
                 return _bucket_entries(self._push_board.bucket)
+            if key == PHANTOM_HTF_ZONE:
+                return _phantom_entries(self._phantom_bots())
             return []
 
         def watched_markets(self) -> list:
@@ -2736,7 +2752,9 @@ if _HAS_QT:
                 len(self._ata_board.sectors),
                 self._ata_board.note,
                 self._scan_counts,
-            ) + _right_zone_rows(self._ata_report(), self._push_board.bucket)
+            ) + _right_zone_rows(
+                self._ata_report(), self._push_board.bucket, self._phantom_bots()
+            )
             return [
                 zone_view(
                     key,
@@ -2813,6 +2831,7 @@ if _HAS_QT:
                 elif sym:
                     active.add(sym.upper())
             self._active_symbols = active
+            self._fleet_ids = _fleet_ids(bot_statuses)
             self._render_signals()
 
         def set_asset_class(self, name) -> int:

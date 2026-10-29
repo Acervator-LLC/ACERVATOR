@@ -99,6 +99,19 @@ failed to draw.
 | Bot Swarm Topologies | One of three sentences, by scan state |
 | Phantom Bot HTF Signals | "Phantom Bot source not wired." |
 
+The Phantom Bot HTF Signals row above is overtaken, and it is kept as written. The
+line now names the state of its source. With no bot lookup wired, it says the
+source is not wired. With the lookup wired and no bot running a phantom timeframe,
+it counts the bots it read.
+
+`src/gui/main_tabs/market_inspector_surface.py` — `phantom_zone_text`
+
+```python
+if bots is None:
+    return PHANTOM_HTF_UNWIRED_TEXT
+return PHANTOM_HTF_NONE_FORMAT.format(count=len(list(bots)))
+```
+
 The Qt build gives every zone a `ProposalStepper`. The two web hosts give every
 zone a `ZoneStepper`. Both are written from one description of the zone, so a
 zone's lines are decided in one place.
@@ -4012,6 +4025,87 @@ PHANTOM_HTF_UNWIRED_TEXT = "Phantom Bot source not wired."
 ```
 
 In development.
+
+The section above is overtaken, and it is kept as written. The zone now reads the
+fleet. It steps through one entry for each bot that runs a phantom timeframe, in
+fleet order. A bot whose phantom bots are off gets no entry. The Indicator Voting
+Panel does the same: it adds no phantom row for that bot.
+
+`src/gui/main_tabs/market_inspector_surface.py` — `phantom_entries`
+
+```python
+return [phantom_entry(one) for one in bots or [] if phantom_timeframe(one)]
+```
+
+The tab builder hands the zone one lookup into the bot manager. On each two-second
+refresh the zone looks up the bots the other tabs are fed, and draws them again.
+
+`src/gui/main_tabs/market_inspector_tab.py` — `MarketInspectorTabMixin._build_market_inspector_tab`
+
+```python
+self._market_inspector.set_phantom_source(self._fleet_bot)
+```
+
+One entry names the market, the bot's own timeframe and its phantom timeframe. The
+line under it gives Comp and Conf for each of the two. The next line gives the gate
+sentence for each, in the words of the bot's own GATES line.
+
+```
+ZZZ/USD 1h with phantom 1d
+1h Comp +0.94 Conf 8% · 1d Comp +2.64 Conf 23%
+1h gates: Scrum blocked adx_trend_suppression, efficiency_ratio_regime, overridden TA.
+Fold blocked BB, MID, TA, TRNQ, zscore_extremity. · 1d gates: Scrum blocked FIRE,
+adx_trend_suppression. Fold blocked BB, MID, TA.
+```
+
+Clicking the entry opens two grids. The first is the Indicator Voting Panel, with one
+row for each timeframe. The second is the nineteen gate lights, the scrum bank above
+the fold bank, with one row for each timeframe. Each light keeps the colour the
+History tab gives it.
+
+The bot's row comes from its last tick. The phantom's row comes from the phantom's
+last read. On each pass of its loop, the phantom runs both of the bot's gate chains
+over the candles it read, at the bot's own settings. That reading changes no trade.
+
+`src/trading/phantom_balance.py` — `PhantomBot._tick`
+
+```python
+self.last_gates = timeframe_gates(
+    self.symbol, self.timeframe, candles, summary, self.settings
+)
+```
+
+A higher timeframe reads the market and not the position. The six gates that read
+the position do not run at the phantom read. Their lights stay grey, and the entry
+names them under the grid. The bot's own row holds those six.
+
+```
+1d position: Scrum TGT, INT, OTD and Fold TRNQ, CEIL, OTD did not run. They read
+the bot's position, at 1h.
+```
+
+| Piece | Module | Symbol |
+| ----- | ------ | ------ |
+| the bots the zone reads | `src/gui/main_tabs/market_inspector_surface.py` | `phantom_fleet` |
+| the one active timeframe | `src/trading/phantom_balance.py` | `one_active_phantom_timeframe` |
+| the bot's own lights | `src/trading/scrumming/snapshots.py` | `state_reading` |
+| the phantom's lights | `src/trading/ata_gate_scan.py` | `scan_reading` |
+| the gate sentence | `src/trading/scrumming/snapshots.py` | `bank_text` |
+| Comp for each row | `src/trading/ata_gate_scan.py` | `composite_rows` |
+| the gate light grid | `src/gui/main_tabs/market_inspector_surface.py` | `lights_panel` |
+
+Driven on a constructed bot over a stand-in venue that refuses every order, the
+zone's lights equal the lights the bot's own chains decide at both timeframes. One
+changed gate input moves one light, which shows the comparison can report.
+
+```
+bots in the fleet                              2, one running a phantom timeframe
+entries in the zone                            1; 2 with the second bot's phantoms on
+lights equal to the bot's own chains           19 of 19 at 1h, 19 of 19 at 1d
+one gate input changed, lights that moved      1 at 1h, 1 at 1d
+Qt and React fields compared                   20 equal, 0 different
+orders placed, venue sockets opened            0, 0
+```
 
 ## The asset logo library
 
