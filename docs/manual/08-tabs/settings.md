@@ -9896,4 +9896,10 @@ They stand as written, and these are the readings that replace them.
 The Product Manual PDF is not rebuilt with this section, and its rebuild is
 owed for this page.
 
+The sentence above stands as written. This is the reading that replaced it.
+
+| written above | what it reads now |
+| --- | --- |
+| "The Product Manual PDF is not rebuilt with this section, and its rebuild is owed for this page." | `docs/Acervator-Product-Manual.pdf` is rebuilt with this section and carries this page |
+
 Back to [the subsystem index](README.md).
