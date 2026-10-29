@@ -120,6 +120,7 @@ class TickPhaseMixin:
     _phantoms_started: bool
     _plan_fold_consumption: Callable[..., Any]
     _quote_to_usd: float
+    _record_venue_units_after_fill: Callable[..., float]
     _refresh_quote_to_usd: Callable[..., Any]
     _refusal_is_new: Callable[..., bool]
     _reset_opposing_hysteresis_after_fill: Callable[..., None]
@@ -814,6 +815,7 @@ class TickPhaseMixin:
             return True
 
         self._current_holdings = max(0.0, held - filled)
+        self._record_venue_units_after_fill(-filled)
         self._bus.emit(
             "bot.log",
             bot_id=self.bot_id,

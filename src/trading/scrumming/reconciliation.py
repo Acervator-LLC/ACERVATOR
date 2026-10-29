@@ -860,18 +860,20 @@ class ReconciliationEngineMixin:
         return self._audited_venue_units
 
     def _record_venue_units_after_fill(self, units_delta: float) -> float:
-        """Move ``_audited_venue_units`` by the units one fill settled, positive
-        for a buy and negative for a sale, and return it.
+        """Move ``_audited_venue_units`` by the units one settled fill moved,
+        positive for units in and negative for units out, and return it.
 
-        A fill leaves the sibling totals
-        ``_claimable_exchange_units`` subtracts untouched, so a delta that is
-        not finite is refused and no venue is read.
+        A delta that is not finite, or a positive delta while
+        ``_audited_venue_units`` holds no reading, leaves it as it was, and no
+        venue is read.
         """
         try:
             _delta = float(units_delta)
         except (TypeError, ValueError):
             return self._audited_venue_units
         if not math.isfinite(_delta):
+            return self._audited_venue_units
+        if _delta > 0.0 and self._audited_venue_units <= 0.0:
             return self._audited_venue_units
         return self._store_audited_venue_units(self._audited_venue_units + _delta)
 

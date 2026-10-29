@@ -1859,6 +1859,22 @@ src/trading/scrumming/execution.py, in _execute_sell
     holds no reading; waits for the periodic audit
 ```
 
+Read today: the sale path reads the exchange once after its fill, as the entry
+on the sale's own refresh below describes. Four more fill paths now move the
+stored figure, each by the units its own fill settled and with no new exchange
+read. The 2026-10-28 entry at the end of this page lists every fill path.
+
+```
+src/trading/scrumming_bot.py, in _reconcile_stack_tranches_visible
+    the units a resting stack rung filled, off the held count and the stored figure
+src/trading/scrumming/tick_phases.py, in _tick_expiry_close
+    the units the expiry close sold
+src/trading/scrumming_bot.py, in self_destruct
+    its own pre-fill reading less the units sold
+src/trading/scrumming_bot.py, in apply_extractor_tranche_return
+    the base units that landed, while a reading is stored
+```
+
 The row's cell, the header strip's AMMO total and the Ammo column's sort order
 all take the count from `src/gui/main_tabs/bot_status_table_surface.py`, in
 `measured_units_of`, so no two of them can measure different units.
@@ -10609,7 +10625,7 @@ differently. Each row now names the lot-book total beside the exchange count and
 the holdings figure, and the held row ends `Exchange read refused.` without the
 reason.
 
-## 2026-10-28 - the holdings audit lands the lot book on the exchange
+## 2026-10-28 - the holdings audit lands the lot book on the exchange, and every fill moves the priced figures
 
 ### When the exchange sits at or below the larger count
 
@@ -10739,3 +10755,53 @@ the bot log keeps. The two-reads note is four words, `Position Value reads
 holdings.`, because the three figures already show the two counts. The Manual Fire
 note no longer names the dust band, which the Fire button's own tooltip still
 names.
+
+### Every fill path moves the two priced figures at the fill
+
+A completed trade updates every figure it affects when the exchange confirms the
+fill, by the count the exchange reports filled. Current Position Value and the
+Ammo cell now move at that moment on every fill path, and no path reads the
+exchange more often than it did.
+
+Each path was driven on a bot built in a throwaway home, over a stand-in exchange
+that fills every order in full, one path at a time. The column on the right counts
+the balance reads each fill makes, which this change leaves as they were.
+
+```
+fill path                  the commit before this change        this change    reads
+autonomous scrum           at the fill                          at the fill    1
+distribution sell          at the fill                          at the fill    1
+invisible stack rung       at the fill                          at the fill    1
+visible stack rung         both figures wait for the audit      at the fill    0
+initial entry              at the fill                          at the fill    1
+fold rebuy                 at the fill                          at the fill    1
+hedge buy                  at the fill                          at the fill    1
+Manual Fire, scrum         at the fill                          at the fill    1
+Manual Fire, fold          at the fill                          at the fill    2
+wire stack                 at the fill                          at the fill    1
+cartridge                  at the fill                          at the fill    1
+detonation                 at the fill                          at the fill    1
+expiry close               the Ammo cell waits for the audit    at the fill    0
+self-destruct              the Ammo cell waits for the audit    at the fill    1
+Extractor tranche return   the Ammo cell waits for the audit    at the fill    0
+```
+
+The audit those four waited for runs every 20 ticks. A tick is 5 seconds plus its
+own run time, so the wait reached 100 seconds, and longer while ticks ran slow.
+The bot's settings default to stack mode on with the order book visible, and
+there an autonomous scrum rests its rungs on the book. Its fills reach the bot
+through the visible stack rung, the path that moved neither figure.
+
+`src/trading/scrumming_bot.py, in _reconcile_stack_tranches_visible`
+
+```python
+self._current_holdings = max(0.0, self._current_holdings - _filled)
+self._record_venue_units_after_fill(-_filled)
+```
+
+The four repaired paths ran on the commit before this change and on this change
+in one run, the earlier files read from git. Each waited for the audit before and
+settles at the fill now. The eleven other paths read identical on both. A
+returned tranche on a bot with no stored exchange count leaves the count at
+zero, so the Ammo cell keeps pricing the held count instead of the returned units
+alone.
