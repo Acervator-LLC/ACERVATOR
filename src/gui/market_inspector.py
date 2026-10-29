@@ -3010,7 +3010,9 @@ if _HAS_QT:
                 logger.debug("topology proposal read failed: %s", exc)
                 return None
 
-        def set_exchange_source(self, connectors_getter, scheduler, sealed=None) -> None:
+        def set_exchange_source(
+            self, connectors_getter, scheduler, sealed=None
+        ) -> None:
             """Wire the exchange-based data path.
 
             ``connectors_getter`` is a zero-arg callable returning the
